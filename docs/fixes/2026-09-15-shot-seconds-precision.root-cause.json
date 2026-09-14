@@ -1,0 +1,232 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-15-shot-seconds-precision",
+  "change_kind": "corrective",
+  "problem_type": "外部测量回来的秒数没有精度 owner：每个碰它的地方各自发明一套，真正显示给用户的那处一套都没有",
+  "symptom": "2026-09-12 00:45 用户（T-RL-08）：「视频加载进来点击拆解，结果全部失败，秒数也离谱，为什么那么多小数字」。「全部失败」那半已由 #782 修（grantId）。秒数这半的现场：拆解表节点的时间列按 src/i18n/locales/shotTable.ts:5 的 `timeRange: '{{start}}–{{end}}s'` 渲染，i18next 对数字只做 String(value)，于是 ffmpeg 的原始双精度切点被原样插值成 `1  0–1.4681260000000001s` / `2  1.4681260000000001–3.9033329999999998s`；同一行的「时长」列却是两位小数（修前 electron/video/deconstructVideo.ts:283 的 `.toFixed(2)`），一行之内两套精度自相矛盾。",
+  "direct_cause": "拆解链上镜头区间的端点从产出到显示全程是原始浮点：electron/video/detectShotCuts.ts 的切点来自 ffmpeg `showinfo`、片长来自 electron/export/mediaProbe.ts 的 ffprobe，electron/video/shotTimeline.ts:53 直接把这些原始值当 `marks` 写进 `{startSeconds, endSeconds}`；electron/video/deconstructVideo.ts:281-282 原样转成 DeconstructShot；src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts:31 原样落进持久化行；electron/shared/canvas/shotTable.ts 的 `shotTableFactRowSchema` 只校验 `z.number().finite().nonnegative()` 与 `end >= start`，不管位数；src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts:36 原样搬给视图，src/workbench/generationCanvas/nodes/shotTable/ShotTableGrid.tsx:41 原样交给 i18n 插值。链上唯一三处做过截断的地方全都作用在别的目标上：shotTimeline.ts:47（修前）的手写魔法数 `0.01` 只用来丢贴边切点、deconstructVideo.ts:283（修前）的 `.toFixed(2)` 只作用于 durationSeconds、deconstructVideo.ts:100 的 `.toFixed(1)` 只作用于喂给 VLM 的提示词文本。",
+  "class_root": "「拆解出来的镜头时间该精确到几位」这份领域约束没有 owner。精度既不在产出点被决定，也不在落库契约里被表达，于是每个碰到这些数字的地方各自临时发明一套（丢贴边用 0.01、时长用两位、提示词用一位），而唯一真正显示给用户的那处（i18n 插值）一套都没有——它恰恰是最后一个碰到这些数字、也最没有资格决定精度的地方。这类结构的必然后果不是「某一行忘了 toFixed」，而是「补上那一行以后，下一个新读者又会漏一次，且各处的位数互不相等」。",
+  "migration": "新增精度真相源 electron/shared/canvas/shotTime.ts（`SHOT_TIME_PRECISION_SECONDS = 0.1` + `quantizeShotSeconds`，格数由常量派生），在两道边界收口：① 产出边界 electron/video/shotTimeline.ts 的 buildShotBoundaries——片长与全部切点先量化再去重排序，区间端点从此恒在格子上；② 落库/读入口边界 electron/shared/canvas/shotTable.ts 的 shotTableFactRowSchema 追加 `.transform()`——每一次读（readShotTable / normalizeShotTableMeta，10 扇门）与每一次写（deconstructionResultToShotTable 经 deconstructionShotTableSchema.parse，3 扇门）都经过它，因此已存在项目里的长小数行在读取时即归一、任何一次写回把它治好；`durationSeconds` 改为从量化后的两端派生（它从来不是第二份真相，只是一次被缓存的减法），`source.durationSeconds` 同样量化以免「最后一镜的 endSeconds」和「整片时长」差出一条尾数。同 commit 删旧（P1）：deconstructVideo.ts 的 `.toFixed(2)`、shotTimeline.ts 里手写的贴边魔法数 `0.01`（阈值改由精度派生：吸到 0 或片尾那一格上的切点就是贴边的那些）。显示层不加任何格式化，改为加一条响的检测器（selectShotTableRows.test.ts）禁止它再自己 round。",
+  "affected_population": [
+    "所有用「拆解视频」拿到分镜表的用户：时间列自 2026-08-13 该功能上线起一直显示十七位小数，同一行的时长列却是两位——用户 2026-09-12 亲述「秒数也离谱」",
+    "已存在项目里已经保存的拆解表：行里躺着的长小数在本次修复后于读取时归一，不需要重新拆解、不需要重新花钱调模型",
+    "重试单镜（retryShot）的用户：它显式保留 latest 行的 startSeconds/endSeconds/durationSeconds，量化后保留的就是已归一的值",
+    "喂给 VLM 的提示词与抽帧时间戳：行为不变（提示词本来就 toFixed(1)、抽帧本来就按 ffmpeg seek 精度），只是现在与用户看到的数字对得上了"
+  ],
+  "scope_paths": [
+    "electron/shared/canvas/shotTime.ts",
+    "electron/shared/canvas/shotTable.ts",
+    "electron/video/shotTimeline.ts",
+    "electron/video/deconstructVideo.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts"
+  ],
+  "entry_points": [
+    "electron/shared/canvas/shotTime.ts:29（quantizeShotSeconds：精度这条领域约束的唯一落点）",
+    "electron/video/shotTimeline.ts:44（片长量化：最后一镜的 endSeconds 与整片时长同格）",
+    "electron/video/shotTimeline.ts:52（切点量化：区间端点的产出口，贴边阈值由此派生）",
+    "electron/video/deconstructVideo.ts:285（每镜时长由量化后的两端派生，替掉 .toFixed(2)）",
+    "electron/video/deconstructVideo.ts:302（整片时长跟镜头区间同格）",
+    "electron/shared/canvas/shotTable.ts:45-47（落库/读入口归一：10 扇读门与 3 扇写门的共享瓶颈，老数据在这里被治好）",
+    "electron/shared/canvas/shotTable.ts:69（source.durationSeconds 同一套精度）",
+    "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts:36（显示层读通道：只搬不算，由测试钉死）"
+  ],
+  "invariants": [
+    "拆解出来的镜头起止与时长只落在 SHOT_TIME_PRECISION_SECONDS 的格子上，其最短字符串表示恒为整数或一位小数",
+    "精度只有一份真相（shotTime.ts）；改那一个常量就改掉全链路，没有第二处位数决定",
+    "durationSeconds 由量化后的 endSeconds - startSeconds 派生，不信任落库里那份缓存的减法",
+    "老项目里已保存的长小数行在读入口归一，不依赖任何显示处兜底；归一是幂等的（读→写→再读结果不变）",
+    "显示层（selectShotTableRows / ShotTableGrid）不包含任何 toFixed / Math.round / toPrecision",
+    "「贴边切点」的阈值由精度派生，链上没有手写的时间魔法数"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotTime.ts",
+      "line": 29,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 69,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 45,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 46,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 47,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "line": 285,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "line": 302,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/shotTimeline.ts",
+      "line": 44,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/shotTimeline.ts",
+      "line": 52,
+      "symbol": "quantizeShotSeconds"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+      "line": 36,
+      "symbol": "durationSeconds"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 10,
+    "why_not": "减的是「谁有权决定精度」的份数（3 套各自发明 + 1 处完全没有 → 1 个 owner），不是门的扇数。修之前碰这些数字的 4 扇门各自为政：shotTimeline.ts:47 手写 0.01 只丢贴边切点、shotTimeline.ts:53 原样写端点、deconstructVideo.ts:283 用 .toFixed(2) 只截时长、deconstructVideo.ts:100 用 .toFixed(1) 只给提示词——而真正显示给用户的那条路（shotTableFacts.ts:31 落库 → shotTableFactRowSchema 校验 → selectShotTableRows.ts:36 搬运 → ShotTableGrid.tsx:41 插值）一扇精度门都没有。修之后 10 扇门全部对着同一个 owner（含 owner 自己那一格 shotTime.ts:29）：4 扇在产出边界（片长/切点/每镜时长/整片时长），3+1 扇在落库读入口（行的两端 + 派生时长 + source.durationSeconds），1 扇是显示层的只搬不算读通道（由 selectShotTableRows.test.ts 的源码断言钉死它永远不长出第 11 套精度）。门变多是因为每个应用点现在都显式经过 owner，而不是各自截一刀或干脆不截；这些门不能再合并：产出发生在主进程的 ffmpeg 链上、落库归一发生在跨进程的持久化契约里（它同时要治老数据），显示层住在渲染进程，三处在不同进程/不同时刻。"
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/shared/canvas/shotTime.ts",
+    "tests": [
+      "electron/shared/canvas/shotTime.test.ts",
+      "electron/shared/canvas/shotTable.test.ts"
+    ],
+    "why": "「镜头时间该精确到几位」是一条领域约束，它只在 shotTime.ts 里被定义（常量 + 纯函数），产出边界与持久化契约都是它的应用者。owner 自己的测试钉这条约束本身（吸到格子上、字面量无尾数、幂等、非有限值收敛、半格判据）；持久化契约的测试钉「这条约束在老数据的读入口也生效」；产出边界与显示层的测试钉「应用者没有绕过它、也没有再发明第二套」。"
+  },
+  "regression_tests": [
+    "electron/shared/canvas/shotTime.test.ts",
+    "electron/shared/canvas/shotTable.test.ts",
+    "electron/video/shotTimeline.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.test.ts"
+  ],
+  "residual_risks": [
+    "模型侧同族未修：electron/shared/agentCapabilities/canvasModelShapes.ts:65 的 `durationSec: z.number()` 对模型不设整数约束，而同一字段另一扇写门 electron/shared/agentCapabilities/canvasWrite.ts:233 写的是 `z.number().int().min(1).max(60)`——同一份状态两扇门两套规则，模型回 3.5000000001 会经 `shotTable.duration: '{{duration}}s'` 原样显示。那是模型可见的工具契约（碰 R31，改它会改 Agent 行为），本合同范围只到「拆解测量出来的秒数」，已列入 docs/plan/2026-09-15-shot-seconds-precision.md 的「发现但没动」另开",
+    "量化把区间端点最多挪动半格（0.05s ≈ 1.5 帧 @30fps）。抽帧点由 sampleSecondsForShot 在区间内再内缩 8%，半格挪动不会把采样点推出本镜；但如果将来有人拿这些端点去做帧级剪切（而不是当人看的证据），0.1s 的格子就不够——真要那样就该让它读源片的帧号，而不是把这个常量改小",
+    "极短视频：片长量化后小于半格（<0.05s）会使 buildShotBoundaries 返回空数组，拆解以「没能切出任何镜头」诚实失败，而不是产出一个 0 长镜头。真实视频到不了这个区间，没有为它写阳性对照",
+    "shotTime.ts 只管拆解出来的镜头时间；时间轴自己的帧/秒换算仍归 timelineMath.ts，两者是刻意分开的两份领域约束（一份给「人看的证据」，一份给「帧级编辑」），本次没有把它们合并，也不建议合并"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/colinhacks/zod/blob/main/packages/zod/src/v3/types.ts",
+      "checked_at": "2026-09-15",
+      "purpose": "确认 zod 3 的 `.refine()` 返回 ZodEffects、其上可继续 `.transform()`，且 checks 按注册顺序执行——即「解析时归一」是框架自带的钩子，不必在每个读点挂一层自研 normalizer（R5/R29：先查框架已提供的）"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "复发机制在结构里，且已经复发过三次：同一份状态上，链条的三处各自发明了一套位数（0.01 / toFixed(2) / toFixed(1)），三次都是「这里看着不对就在这里截一刀」，而三次都没碰到真正显示给用户的那一处。只要精度没有 owner，下一个新读者（分镜表的第二种密度、Agent 回复里的时间引用、导出时的时间码、MCP 外部宿主读画布）就会再发明第四套，或者像 i18n 插值那样一套都不发明。判 one_off 会让「再补一个 toFixed」变成合法修法，那正是已经失败过三次的修法。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs buildShotBoundaries / deconstructionResultToShotTable / readShotTable / shotTableFactRowSchema（修前）→ 1 / 3 / 10 / 2 扇：10 扇读门全部穿过 shotTableFactRowSchema 这一个瓶颈，这正是「归一放在 schema 上就能同时治老数据和新数据」的机器证据",
+      "grep -n 'z.number()' electron/shared/canvas/*.ts → 修前 8 处：revision/order/failedShotIndexes 是整数，startSeconds/endSeconds/durationSeconds（行）与 source.durationSeconds 是四处未量化的测量浮点，本次全部收口；electron/shared/canvas 内这一族已清零",
+      "逐个复核 electron/shared/canvas 其余数值字段：videoDepth.ts 的 outWidth/outHeight/expectedRawBytes/totalFramesEstimate 是整数或字节数（computeExpectedRawBytes/even 已保证），videoDepthRun.ts:158 estimateVideoDepthEtaSeconds 已在 owner 处 Math.round，videoDepthModels.ts 的 sizeBytes 是整数——都不属「原始测量浮点原样落库」这一族",
+      "git grep -n 'toFixed|Math.round|toPrecision' 拆解链与分镜表显示链（electron/video/{shotTimeline,deconstructVideo}.ts、src/workbench/generationCanvas/nodes/shotTable/*）→ 修后生产命中只剩两处，且都不是精度决定：shotTimeline.ts 的 sampleSecondsForShot `.toFixed(3)`（喂 ffmpeg 的 seek 时间戳，从不显示）与 deconstructVideo.ts:100 `.toFixed(1)`（提示词文本格式化，量化后已是恒等）；显示层（selectShotTableRows.ts / ShotTableGrid.tsx）0 命中并由源码断言钉死",
+      "git grep -n 'timeRange|shotTable.duration' src → 只有 ShotTableGrid.tsx:41 一处消费这两条 i18n 文案，没有第二个把这些秒数写成字符串的地方（含 Agent 回复文本：electron/capabilityCore 与 electron/shared/agentCapabilities 下 0 处读 shotTable 行的秒数）",
+      "同族但另开（模型侧，非测量侧）：electron/shared/agentCapabilities/canvasModelShapes.ts:65 `durationSec: z.number()` 无整数约束 vs electron/shared/agentCapabilities/canvasWrite.ts:233 `z.number().int().min(1).max(60)`——同字段两扇门两套规则，已进 residual_risks 与 plan 的「发现但没动」"
+    ]
+  },
+  "generality_proof": "精度这条领域约束收成一个常量加一个纯函数之后，链上任何位置想决定位数都只有一条路：调 quantizeShotSeconds。产出边界（buildShotBoundaries）保证区间端点从诞生起就在格子上，落库边界（shotTableFactRowSchema.transform）保证任何来路的行——新拆的、老项目里躺着的、retryShot 拼回去的、将来某个新写者塞进来的——在**每一次**穿过持久化契约时都被归一，而这个契约是 10 扇读门与 3 扇写门唯一的共享瓶颈（door-map 实测）。因此新增读者不可能拿到未归一的值，新增写者也不可能把未归一的值留在文档里；要改精度只能改那一个常量，而不是去数有多少处 toFixed。这比「在 i18n 那一处补格式化」靠前：那只治当前唯一的显示点，治不了下一个显示点，也治不了落库里已经躺着的数据。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/canvas/shotTime.ts",
+      "symbol": "SHOT_TIME_PRECISION_SECONDS / quantizeShotSeconds",
+      "responsibility": "镜头时间精度这条领域约束的唯一真相：格子多大、怎么吸、为什么是 0.1（含与时间轴帧与刻度不冲突的论证）。全链路只从这里派生。"
+    },
+    {
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "shotTableFactRowSchema",
+      "responsibility": "跨进程持久化契约：拆解表的行在每一次读与每一次写时被归一，老项目里的长小数在这里被治好，durationSeconds 在这里由两端派生而不是被信任。"
+    },
+    {
+      "path": "electron/video/shotTimeline.ts",
+      "symbol": "buildShotBoundaries",
+      "responsibility": "镜头区间的产出口：片长与切点先量化再成区间，贴边阈值由精度派生（不再有手写魔法数）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/video/shotTimeline.ts",
+      "entry_point": "buildShotBoundaries",
+      "disposition": "enforced",
+      "evidence": "shotTimeline.test.ts 新增三条：ffmpeg 原始浮点切点/时长 → 端点全在格子上且字面量匹配 /^\\d+(\\.\\d)?$/；量化后撞同一格的两个切点合成一个（不产 0 长镜头）；贴边阈值由精度派生（0.04 与 7.96 被吸到端点而丢掉）。变异测试：把 quantizeShotSeconds 改成恒等 → 本文件红。"
+    },
+    {
+      "path": "electron/shared/canvas/shotTable.ts",
+      "entry_point": "shotTableFactRowSchema",
+      "disposition": "enforced",
+      "evidence": "shotTable.test.ts 新增三条：readShotTable 归一老项目里的长小数行（含 source.durationSeconds）；durationSeconds 由量化两端派生而不信任落库里那份 99 的缓存；normalizeShotTableMeta 把保存副本治好且幂等（normalize(normalize(x)) 恒等）。变异测试下同样红。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+      "entry_point": "selectShotTableRows",
+      "disposition": "enforced",
+      "evidence": "selectShotTableRows.test.ts 新增两条：owner 量化后的秒数原样搬过（1.5 / 3.9 / 2.4）；源码断言 ShotTableGrid.tsx 与 selectShotTableRows.ts 不含 toFixed/Math.round/toPrecision——这是防「每个显示处各写一遍」的响的检测器，不是静默约定。"
+    },
+    {
+      "path": "electron/video/shotTimeline.ts",
+      "entry_point": "sampleSecondsForShot",
+      "disposition": "not-affected",
+      "evidence": "它的 .toFixed(3) 产出的是喂给 ffmpeg 的 seek 时间戳（越准越好、从不显示给用户），和「显示精度」不是同一条约束；区间两端量化后它仍在区间内内缩 8% 取点，既有断言「采样点严格落在镜头区间内」未改仍绿。"
+    },
+    {
+      "path": "electron/video/deconstructVideo.ts",
+      "entry_point": "buildShotAnalysisPrompt",
+      "disposition": "not-affected",
+      "evidence": "它的 .toFixed(1) 是把已量化的数字写成提示词文本（保证出现 `1.5s` 而不是 `1.5`），量化之后它是恒等格式化而非第二份精度决定；deconstructVideo.test.ts 既有 6 条提示词断言未改仍绿。"
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/canvas/shotTime.ts",
+    "invariant": "镜头时间的精度只有一份真相；任何产出、落库、读取路径都只能经 quantizeShotSeconds 得到秒数，显示层不做任何 round。",
+    "failure_mode": "① 有人绕开 owner 自己截一刀或干脆不截 → shotTime.test.ts / shotTable.test.ts / shotTimeline.test.ts 的字面量断言（/^\\d+(\\.\\d)?$/）当场红，变异测试已验：把量化改成恒等 → 10 条断言红；② 有人在显示层再写一遍 toFixed/Math.round → selectShotTableRows.test.ts 的源码断言红并点名文件；③ 有人把落库里那份 durationSeconds 当第二份真相 → 「不信任缓存减法」那条红；④ 老数据读取路径被绕过（新读者不走 readShotTable/normalizeShotTableMeta）→ 该读者拿不到 ShotTableDocument 类型，TypeScript 当场不编译。",
+    "exception_policy": "none",
+    "strategy": "给「镜头时间该精确到几位」一个 owner，在产出与落库读入口两道共享瓶颈上应用它；显示层降级成只搬不算，并用响的检测器守住这一点。",
+    "artifacts": [
+      "electron/shared/canvas/shotTime.ts",
+      "electron/shared/canvas/shotTable.ts",
+      "electron/video/shotTimeline.ts",
+      "electron/video/deconstructVideo.ts",
+      "electron/shared/canvas/shotTime.test.ts",
+      "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/shared/canvas/shotTime.test.ts",
+    "electron/shared/canvas/shotTable.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/video/deconstructVideo.ts",
+      "electron/video/shotTimeline.ts"
+    ],
+    "rationale": "同 commit 删掉本链上两处各自发明的精度：deconstructVideo.ts 只作用于 durationSeconds 的 `.toFixed(2)`（改为由量化两端派生），shotTimeline.ts 判贴边切点用的手写魔法数 `0.01`（改为由精度派生：吸到 0 或片尾那一格就是贴边）。无 fallback、无并行版：显示层没有第二条「万一没归一我再 round 一次」的兜底路，老数据也不靠显示处兜底而是在读入口归一。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "纯仓内的领域约束收口，不涉及第三方依赖版本；查 zod 源码只为确认框架已提供 `.transform()` 这个钩子，没有升级或新增依赖。",
+    "exit_criteria": []
+  }
+}
