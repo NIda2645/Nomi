@@ -207,7 +207,17 @@ describe('InlineParameterBar semantic option presentation wiring', () => {
     expect(source).not.toContain('portalTarget={panelRef}')
     expect(body).not.toContain('NomiSelect')
     expect(body).toContain('<ParameterOptionList')
-    expect(body).toContain("optionLayout === 'chips-column' ? 'column' : 'fill'")
+    expect(body).toContain("optionLayout === 'chips-wrap' ? 'wrap' : 'fill'")
+  })
+
+  // 2026-09-14 用户退回单参数直出那一格：「大片都是空白……减少空间浪费是我们核心设计原则之一」。
+  // 两条判据钉死「尺寸由内容派生」：① 摆法不再按标签长度分叉（chips-column 已删）；
+  // ② 单参数那条路的浮层宽度是 max-content，不是那个固定的 320。
+  it('尺寸由内容派生：没有按标签长度分叉的第二种摆法，单参数浮层不吃固定宽', () => {
+    expect(body).not.toContain('chips-column')
+    expect(source).not.toContain('chips-column')
+    expect(source).toContain("hugWidth ?? 'max-content'")
+    expect(source).toContain('hugsContent')
   })
 
   // 单参数直出与面板走的是**同一个** ParameterControlBody：给单参数另写一套渲染就是并行版。

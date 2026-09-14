@@ -224,6 +224,8 @@ export default function InlineParameterBar({
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [panelInit, setPanelInit] = React.useState<{
     left: number
+    /** 触发器自己的左缘。贴内容的浮层按它对齐——320 那个槽不存在时，按槽居中会整体偏左。 */
+    anchorLeft: number
     top: number
     maxHeight: number
     side: 'above' | 'below'
@@ -233,6 +235,9 @@ export default function InlineParameterBar({
   const triggerRef = React.useRef<HTMLButtonElement | null>(null)
   const panelRef = React.useRef<HTMLDivElement | null>(null)
 
+  // 多参数面板是一叠分组，要一个稳定的列宽才对得齐；**单参数直出不是面板**，它就是那一组选项，
+  // 宽高一律贴内容（2026-09-14 用户退回：「大片都是空白……他本来不需要看那么多地方」）。
+  // 320 在这里只剩「最宽不超过」的作用，不再是「一定这么宽」。
   const PANEL_W = 320
   const PANEL_GAP = 6
 
@@ -254,7 +259,8 @@ export default function InlineParameterBar({
     const maxHeight = side === 'above' ? Math.min(420, spaceAbove) : Math.min(420, Math.max(160, vh - rect.bottom - 18))
     // above 用 bottom 锚（面板实高小于 maxHeight 时依然贴住触发器顶）；below 用 top 锚。
     const top = side === 'above' ? vh - rect.top + PANEL_GAP : rect.bottom + PANEL_GAP
-    setPanelInit({ left, top, maxHeight, side })
+    const anchorLeft = Math.min(Math.max(8, rect.left), Math.max(8, vw - 120))
+    setPanelInit({ left, anchorLeft, top, maxHeight, side })
     setFrozenSummary(summaryText)
     setPanelOpen(true)
   }
@@ -291,6 +297,33 @@ export default function InlineParameterBar({
 
   // 面板打开期间 pill 文本冻结（宽度稳定）；关闭后回到实时值。
   const pillText = panelOpen ? frozenSummary : summaryText
+
+  // `width: max-content` 只能把浮层撑到「全部项排成一行」的宽度，被 maxWidth 夹住之后里面换了行，
+  // 外壳却不会回头再量一次——于是最宽那一行只有 234px，外壳仍是 320px（就是被退回的那种空白）。
+  // CSS 没有「收缩到换行后最宽的那一行」，所以换行后量一次、把宽度钉到那一行。
+  // 这是**定点**不是循环：新宽度 = 现有各行里最宽的一行，每一行原样仍放得下、下一行的第一项
+  // 在更宽时都没挤上来，更窄时更不会，所以布局不变、不会来回抖。
+  //
+  // 「这是不是单参数直出」问 DOM（`[data-parameter-solo]`）而不是问上面的 soloControl：
+  // 这几个 hook 必须排在 `modelOptions.length === 0` 那条早返回**之前**，而 soloControl 算在它之后。
+  const [hugWidth, setHugWidth] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const panel = panelRef.current
+    const group = panel?.querySelector<HTMLElement>('[data-parameter-solo] [role="radiogroup"]')
+    if (!panelOpen || !panel || !group) { setHugWidth(null); return }
+    const style = getComputedStyle(group)
+    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
+    const rows = new Map<number, number>()
+    for (const item of group.querySelectorAll<HTMLElement>('[role="radio"]')) {
+      const rect = item.getBoundingClientRect()
+      const key = Math.round(rect.top)
+      rows.set(key, (rows.get(key) ?? -gap) + rect.width + gap)
+    }
+    const widest = Math.max(0, ...rows.values())
+    if (!widest) return
+    const chrome = panel.getBoundingClientRect().width - group.getBoundingClientRect().width
+    setHugWidth(Math.ceil(widest + chrome))
+  }, [panelOpen, summaryText])
 
   if (modelOptions.length === 0) {
     return (
@@ -344,6 +377,11 @@ export default function InlineParameterBar({
     hasModeChoices: Boolean(modeChoices?.length && onModeSelect),
     chipsMode,
   })
+
+  // **单参数直出不是面板**，它就是那一组选项，宽高一律贴内容
+  // （2026-09-14 用户退回：「大片都是空白，理论上不需要，非常占用视觉空间；他本来不需要看那么多地方」）。
+  // 多参数面板仍要一个稳定列宽把各组小标题对齐，所以只有这条路改。
+  const hugsContent = soloControl !== null
 
   const renderParameterPanel = (surface: 'portal' | 'inline'): JSX.Element => {
     // 浮层的名字得说实话：单参数直出时它就是那个参数的选项列表，不是「参数面板」。
@@ -419,9 +457,11 @@ export default function InlineParameterBar({
         className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
         style={{
           zIndex: 600,
-          left: panelInit?.left,
+          left: hugsContent ? panelInit?.anchorLeft : panelInit?.left,
           ...(panelInit?.side === 'above' ? { bottom: panelInit.top } : { top: panelInit?.top }),
-          width: PANEL_W,
+          ...(hugsContent
+            ? { width: hugWidth ?? 'max-content', maxWidth: PANEL_W }
+            : { width: PANEL_W }),
           boxShadow: 'var(--workbench-shadow-pop)',
         }}
       >

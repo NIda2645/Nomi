@@ -221,7 +221,8 @@ export function ParameterOptionGroup({
       options={options}
       // 双行组无需再撑最小高：每项都带 18px 图形槽（含空占位）→ 内容自然等高。
       density="compact"
-      fit={optionLayout === 'chips-column' ? 'column' : 'fill'}
+      // 语义组（比例 / 供应商）用等宽格子对齐图形槽；其余一律按内容宽换行（2026-09-14 去空白）。
+      fit={optionLayout === 'chips-wrap' ? 'wrap' : 'fill'}
       onChange={onChange}
     />
   )
