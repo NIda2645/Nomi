@@ -226,10 +226,10 @@ export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = ru
   return packUnits(units)
 }
 
-export function buildReviewPrompt({ scope = 'branch', description, diff, diffHash }) {
+export function buildReviewPrompt({ description, diff, diffHash }) {
   return [
     REVIEW_PROMPT.trim(),
-    `\nScope: ${scope} (${description})`,
+    `\nScope: branch (${description})`,
     `Diff SHA-256: ${diffHash}`,
     '\n--- BEGIN REVIEW DIFF ---',
     diff || '(empty diff)',

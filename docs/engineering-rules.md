@@ -663,7 +663,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 - **新 worktree 先 `pnpm install` 再 commit/push**：hook 由 `postinstall` 安装——先推后装 = 推送完全未过本地敏感数据闸与收据闸（实翻车：18 批删除 push 全部裸奔，靠 CI 补拦）。
 - 收据与 findings 都在该 worktree 自己的 `.claude/` 下，天然按 worktree 隔离；`PONYTAIL_REVIEW_BASE_REF`（默认 `origin/main`）、`PONYTAIL_REVIEW_CODEX_BIN`、`PONYTAIL_REVIEW_REPORT_DIR`、`NOMI_PONYTAIL_DEFERRED_LOG_OVERRIDE` 仅用于测试与调试注入。缺失配置不会放行。
 
-**验证**：`scripts/ponytail-review-branch.node-test.mjs` 覆盖评审范围、三级分块（整段/按提交/按文件+截断）、假 runner 下的只读调用向量与预算、findings 落盘与收据字段、失败不发收据、诊断不回显报告、留痕延后、以及收据按树判定（rebase 放行 / 改一行被拦 / 无收据或 mergeBase 不可达 fail-closed）；`scripts/ponytail-review-hook.node-test.mjs` 覆盖 hook 模板（pre-commit 只剩扫描、pre-push 只查收据、钩子里没有任何模型入口）、四列 ref-update 解析、真跑一次生成的 pre-push（无收据被拦 → 评审后放行）与 linked-worktree 隔离；`scripts/check-ponytail-deferred.node-test.mjs` 覆盖账本门岗的红/绿、`--accept`（含短 sha）、读不懂行的 fail-closed 与补审指引。三者都在 `pnpm run check:ponytail-review` 里；改动本规则或钩子时必须运行该测试与 contracts gate。
+**验证**：`scripts/ponytail-review-branch.node-test.mjs` 覆盖评审范围、分块（整段 → 按文件 → 截断 → 装箱，且同一文件只出现一次）、假 runner 下的只读调用向量与预算、findings 落盘与收据字段、失败不发收据、诊断不回显报告、留痕延后、以及收据按树判定（rebase 放行 / 改一行被拦 / 无收据或 mergeBase 不可达 fail-closed）；`scripts/ponytail-review-hook.node-test.mjs` 覆盖 hook 模板（pre-commit 只剩扫描、pre-push 只查收据、钩子里没有任何模型入口）、四列 ref-update 解析、真跑一次生成的 pre-push（无收据被拦 → 评审后放行）与 linked-worktree 隔离；`scripts/check-ponytail-deferred.node-test.mjs` 覆盖账本门岗的红/绿、`--accept`（含短 sha）、读不懂行的 fail-closed 与补审指引。三者都在 `pnpm run check:ponytail-review` 里；改动本规则或钩子时必须运行该测试与 contracts gate。
 
 ## R26 分层边界不许反向/循环
 

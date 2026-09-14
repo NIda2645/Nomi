@@ -87,7 +87,7 @@ printf 'Reply with exactly: OK' | claude --print --output-format text
 | `PONYTAIL_REVIEW_CODEX_BIN` | 让钩子改用这个壳 | `codex` |
 | `PONYTAIL_REVIEW_CLAUDE_BIN` | 壳调用的 claude 可执行文件 | `claude`（走 PATH） |
 | `PONYTAIL_REVIEW_CLAUDE_MODEL` | 传给 `--model` | 不传，用 CLI 默认 |
-| `PONYTAIL_REVIEW_CLAUDE_TIMEOUT_MS` | 壳自限超时，上限 175000 | `165000` |
+| `PONYTAIL_REVIEW_CLAUDE_TIMEOUT_MS` | 壳自限超时，只能往小调 | 调用方给的 `PONYTAIL_REVIEW_TIMEOUT_MS` 减 15s |
 | `PONYTAIL_REVIEW_SKILL_PATH` | 指定 Ponytail skill 原文路径 | `~/.codex/plugins/cache/ponytail/ponytail/` 下版本号最大的那份 |
 
 ## 已验证
@@ -115,12 +115,6 @@ staged 一段明显的 `yagni`/`stdlib` 代码，期望拿到 `completed with fi
 
 ## 什么时候撤掉
 
-Codex 额度恢复（2026-09-11）后：
-
-```sh
-# 从 ~/.zshenv 删掉那行，然后开个新 shell
-sed -i '' '/PONYTAIL_REVIEW_CODEX_BIN/d' ~/.zshenv
-```
-
-`review:branch` 随即回到 `codex` 默认路径。壳留在仓库里当额度/宿主故障时的备用执行器即可；
-真要清掉的话，一并删掉本文档和 `scripts/ponytail-review-claude-shim.mjs`（R1 加新必删旧）。
+Codex 额度恢复后从 `~/.zshenv` 删掉那行、开个新 shell，`review:branch` 即回到 `codex`
+默认路径。壳留在仓库里当额度/宿主故障时的备用执行器；真要清掉的话，一并删掉本文档和
+`scripts/ponytail-review-claude-shim.mjs`（R1 加新必删旧）。
