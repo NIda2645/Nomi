@@ -17,11 +17,21 @@ describe('intake endpoint 解析', () => {
     expect(intakeConfigured()).toBe(false)
   })
 
-  it('明文 http 当没配 —— 照发但不加密比降级更糟', () => {
-    process.env.NOMI_INTAKE_ENDPOINT = 'http://intake.example'
+  it('明文 http 的**远端**当没配 —— 照发但不加密比降级更糟', () => {
     process.env.NOMI_INTAKE_TOKEN = 'token'
-    expect(intakeEndpoint()).toBeNull()
-    expect(intakeConfigured()).toBe(false)
+    for (const endpoint of ['http://intake.example', 'http://10.0.0.5:8787', 'http://127.0.0.1.evil.example', 'ftp://intake.example']) {
+      process.env.NOMI_INTAKE_ENDPOINT = endpoint
+      expect(intakeEndpoint(), endpoint).toBeNull()
+    }
+  })
+
+  it('回环上的 http 放行：走查要往本机 mock 端点真发一次请求', () => {
+    process.env.NOMI_INTAKE_TOKEN = 'token'
+    for (const endpoint of ['http://127.0.0.1:8787', 'http://localhost:8787', 'http://[::1]:8787']) {
+      process.env.NOMI_INTAKE_ENDPOINT = endpoint
+      expect(intakeEndpoint(), endpoint).toBe(endpoint)
+      expect(intakeConfigured(), endpoint).toBe(true)
+    }
   })
 
   it('尾斜杠剥干净，避免拼出 //v1/events', () => {

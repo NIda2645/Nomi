@@ -40,15 +40,30 @@ export function intakeToken(): string {
   return String(process.env.NOMI_INTAKE_TOKEN || '').trim()
 }
 
+/** 回环地址：http 在这里是允许的，因为这些字节根本没离开这台机器。 */
+const LOOPBACK_HOST = /^(?:127(?:\.\d{1,3}){3}|localhost|\[::1\])(?::\d+)?$/i
+
 /**
- * 端点基址。**只认 https**：这三种货物里有工具名、模型 id 和用户勾选带上的文稿，
- * 明文 http 等于把它们交给路上任何人。配了 http 就当没配——静默降级成「只在本机记录」，
+ * 端点基址。**https，或者回环上的 http**。
+ *
+ * 为什么卡 https：这三种货物里有工具名、模型 id 和用户勾选带上的文稿，明文 http
+ * 等于把它们交给路上任何人。配了明文远端就当没配——静默降级成「只在本机记录」，
  * 比「照发但不加密」诚实。
+ *
+ * 为什么给回环开口子：走查与自部署验证都要往 `http://127.0.0.1:<port>` 发一次真请求。
+ * 逼它们弄自签证书，换来的不是安全而是「走查里干脆别发真请求」——那会让整条链
+ * 从此只有单测覆盖。回环流量不出网卡，加密保护的是不存在的中间人。
+ *
+ * 这条判据顺带就是 `check:outbound-policy` 基线里那一行的理由：端点来自**我们自己打包时
+ * 注入的环境变量**，从来不是用户/Agent/供应商给的 URL，所以它不需要过目的地策略；
+ * 而回环这个口子也正是 `hardenedFetch` 会挡掉、我们却必须留着的那一格。
  */
 export function intakeEndpoint(): string | null {
   const configured = String(process.env.NOMI_INTAKE_ENDPOINT || '').trim().replace(/\/+$/, '')
   if (!configured) return null
-  return /^https:\/\//i.test(configured) ? configured : null
+  if (/^https:\/\//i.test(configured)) return configured
+  const loopback = /^http:\/\/([^/?#]+)$/i.exec(configured)
+  return loopback && LOOPBACK_HOST.test(loopback[1]) ? configured : null
 }
 
 /** 端点和令牌都得有。缺一个就是「未配置」——设置页据此显示「只在本机记录」。 */

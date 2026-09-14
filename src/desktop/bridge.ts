@@ -333,6 +333,16 @@ export type DesktopBridge = DesktopMediaBridge &
   telemetry?: {
     track: (payload: unknown) => Promise<{ queued: boolean }>
   }
+  /**
+   * 一键反馈。**不受「帮 Nomi 变好」开关管**（用户主动点的那一条）。
+   * `preview` 只算清单不发东西；`send` 立刻返回，失败已在主进程入队重试。
+   */
+  feedback?: {
+    preview: (payload: import('../../electron/shared/contracts/feedback').FeedbackReportRequest)
+      => Promise<import('../../electron/shared/contracts/feedback').FeedbackReportPreview | null>
+    send: (payload: import('../../electron/shared/contracts/feedback').FeedbackReportRequest)
+      => Promise<import('../../electron/shared/contracts/feedback').FeedbackSendResult>
+  }
   productionRuns?: DesktopProductionRunBridge
   startupProbe?: {
     enabled: boolean

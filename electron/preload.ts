@@ -131,6 +131,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
   telemetry: {
     track: (payload: unknown) => ipcRenderer.invoke("nomi:telemetry:track", payload),
   },
+  feedback: {
+    preview: (payload: unknown) => ipcRenderer.invoke("nomi:feedback:preview", payload),
+    send: (payload: unknown) => ipcRenderer.invoke("nomi:feedback:send", payload),
+  },
   browserChromeMenu: {
     select: (id: unknown) => ipcRenderer.send("browser:chrome-menu:select", id),
     cancel: () => ipcRenderer.send("browser:chrome-menu:cancel"),
