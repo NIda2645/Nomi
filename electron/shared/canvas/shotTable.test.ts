@@ -41,3 +41,51 @@ describe('shot table persistence ownership', () => {
     expect(shotTableDocumentSchema.safeParse({ ...value, rows: [{ ...value.rows[0], keyframeRef: 'data:image/png;base64,AA==' }] }).success).toBe(false)
   })
 })
+
+describe('shot time precision is owned by the persistence boundary', () => {
+  const factsTable = (rows: unknown[], sourceDuration?: number) => ({
+    ...table(),
+    source: {
+      kind: 'deconstruction', sourceNodeId: 'video-1', title: 'Reference', status: 'ready',
+      ...(sourceDuration === undefined ? {} : { durationSeconds: sourceDuration }),
+    },
+    columnSetId: 'facts',
+    columns: [{ columnId: 'visual', kind: 'builtin', labelKey: 'visual', order: 0, visible: true }],
+    rows,
+  })
+
+  // 老项目里已经躺着的长小数：读入口归一，显示层不写任何 round。
+  it('normalizes long-decimal rows already saved in a project', () => {
+    const legacy = factsTable([
+      { rowId: 'fact-1', order: 1, startSeconds: 0, endSeconds: 1.4681260000000001,
+        durationSeconds: 1.4681260000000001, carriedOver: false, cells: {} },
+      { rowId: 'fact-2', order: 2, startSeconds: 1.4681260000000001, endSeconds: 3.9033329999999998,
+        durationSeconds: 2.4352069999999997, carriedOver: false, cells: {} },
+    ], 3.9033329999999998)
+    const restored = readShotTable({ shotTable: legacy })
+    expect(restored?.rows?.map((row) => [row.startSeconds, row.endSeconds, row.durationSeconds]))
+      .toEqual([[0, 1.5, 1.5], [1.5, 3.9, 2.4]])
+    expect(restored?.source.kind === 'deconstruction' && restored.source.durationSeconds).toBe(3.9)
+    // 没有一个数字的字面量还带尾数——这正是用户看到的那一串。
+    for (const row of restored?.rows ?? []) {
+      for (const value of [row.startSeconds, row.endSeconds, row.durationSeconds]) {
+        expect(String(value)).toMatch(/^\d+(\.\d)?$/)
+      }
+    }
+  })
+
+  it('derives duration from the quantized ends instead of trusting a stale cached subtraction', () => {
+    const drifted = factsTable([{ rowId: 'fact-1', order: 1, startSeconds: 1.5, endSeconds: 3.9,
+      durationSeconds: 99, carriedOver: false, cells: {} }])
+    expect(readShotTable({ shotTable: drifted })?.rows?.[0].durationSeconds).toBe(2.4)
+  })
+
+  it('heals the saved copy through the normalizing write boundary, and is idempotent', () => {
+    const meta = { shotTable: factsTable([{ rowId: 'fact-1', order: 1, startSeconds: 0.04999,
+      endSeconds: 2.0500001, durationSeconds: 2.0000101, carriedOver: false, cells: {} }]) }
+    const once = normalizeShotTableMeta(meta)
+    expect((once.shotTable as { rows: Array<{ startSeconds: number; endSeconds: number }> }).rows[0])
+      .toMatchObject({ startSeconds: 0, endSeconds: 2.1, durationSeconds: 2.1 })
+    expect(normalizeShotTableMeta(once)).toEqual(once)
+  })
+})
