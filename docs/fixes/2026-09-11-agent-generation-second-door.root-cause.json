@@ -579,13 +579,13 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
-      "line": 67,
+      "line": 77,
       "symbol": "verbToTransportCall"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
-      "line": 199,
+      "line": 198,
       "symbol": "projectPendingSpendConfirm"
     },
     {
