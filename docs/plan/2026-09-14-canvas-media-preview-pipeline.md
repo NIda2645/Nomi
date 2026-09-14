@@ -11,10 +11,12 @@
 
 ## 先查别人
 
-- 仓库里已有：`electron/export/mediaProbe.ts#probeMediaMetadata`（ffprobe 封装，本次只加 `pix_fmt` 一个字段）、`runBoundedProcess`（限时子进程）、`electron/video/extractVideoFrame.ts`（抽帧落成**素材**，不是派生物，所以不复用它的落盘）、`src/design/media.tsx#NomiImage.thumbnailSrc`（列表已有「缩略图优先」槽位）、`resolveLightweightNodePreview` 已优先 `thumbnailUrl`。结论：预览生成没有现成 owner，新增一份 `electron/assets/assetPreview.ts`；渲染侧只接线。
-- 框架：Chromium `<video preload="metadata">` + `poster`（[HTML 标准 media preload](https://html.spec.whatwg.org/multipage/media.html#attr-media-preload)）；React Flow 的 `onlyRenderVisibleElements` 负责视口剔除，屏上尺寸 LOD 由我们判（R29 四列表见 LOD 计划）。
-- 同类产品：tldraw 按屏上尺寸换渲染精度（`steppedScreenScale`），Figma/Photoshop 类工具一律用 mipmap/代理画布、原图只在导出/编辑时解码。
-- 之前那一版为什么不算：PR #776 的树上 `localizeTaskAsset.ts:38` 仍 `thumbnailUrl = url`、`BaseGenerationNode.tsx:570` 仍 `src={node.result.url}`、视频仍 `preload="auto"` 无 poster；唯一的生产逻辑是恒为 true 的 `shouldApplyLoadedImageDimensions`。
+- 仓库里已有 ffprobe 封装：`electron/export/mediaProbe.ts:426`（`probeMediaMetadata`）和限时子进程 `electron/export/mediaProbe.ts:119`（`runBoundedProcess`）——本次只加 `pix_fmt` 一个字段，预览的 ffmpeg 调用复用 `runBoundedProcess`，不再裸 `spawn`。
+- 仓库里已有抽帧：`electron/video/extractVideoFrame.ts:108`（`extractVideoFrameToAsset`）把帧**落成素材**（`writeAsset`，进素材库、可被引用），而 poster 是源文件的派生物、不能进素材库，所以只复用它的 ffmpeg 参数形状，不复用它的落盘。
+- 仓库里已有「缩略图优先」槽位：`src/design/media.tsx:19`（`NomiImage.thumbnailSrc`）、`src/workbench/generationCanvas/components/canvasNodeLevelOfDetail.ts`（`resolveLightweightNodePreview` 已优先 `thumbnailUrl`）、`electron/capabilityCore/generationOutputMaterializer.ts:88`（已读 `data.thumbnailRelativePath`，只是从没有人写它）。结论：预览生成没有现成 owner，新增 `electron/assets/assetPreview.ts`；渲染侧只接线。
+- 框架：Chromium `<video preload="metadata">` + `poster`（<https://html.spec.whatwg.org/multipage/media.html#attr-media-preload>）；React Flow 只做视口剔除 `onlyRenderVisibleElements`（<https://reactflow.dev/learn/advanced-use/performance>），屏上尺寸 LOD 由我们判（R29 四列表见 LOD 计划）。
+- 同类产品：tldraw 按屏上尺寸换渲染精度（`steppedScreenScale`，<https://tldraw.dev/sdk-features/performance>）；Figma/Photoshop 类工具一律用 mipmap/代理画布、原图只在导出/编辑时解码。
+- 之前那一版为什么不算：PR #776 的树上 `electron/assets/localizeTaskAsset.ts:38` 仍 `thumbnailUrl = url`、`src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx:570` 仍 `src={node.result.url}`、`:552` 仍 `preload="auto"` 无 poster；唯一的生产逻辑是恒为 true 的 `shouldApplyLoadedImageDimensions`。
 
 ## 机制（前 → 后，file:line 以本分支为准）
 
