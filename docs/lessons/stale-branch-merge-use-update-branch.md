@@ -1,13 +1,15 @@
 # 远落后分支合并走 `gh pr update-branch`，不要在本地 push 追平 merge
 
-> 📎 教训 · 首次记录 2026-09-01 · 状态：现行（2026-09-15 补：ENOBUFS 那条**成因已消失**——pre-push 改成只查收据、不再 diff，评审搬去交工前的 `pnpm run review:branch` 且超限自动分块。结论本身照旧成立，理由换成「追平 merge 的 push 99% 是 main 已有的 commit，本地验证一遍没有信息量」)
-> **触发场景**：要合的分支落后 `main` 几十到几百个 commit；或 push 时看到 `spawnSync git ENOBUFS` / pre-push 评审因 diff 过大失败。
+> 📎 教训 · 首次记录 2026-09-01 · 状态：现行（结论不变，**理由 2026-09-15 换过一次**，见下）
+> **触发场景**：要合的分支落后 `main` 几十到几百个 commit。
 
 **结论**：远落后分支上车不要在本地 `git merge origin/main` 再 push。用 `gh pr update-branch <n>` 让**服务端**把 main 并进分支，CI 在 merge tree 上跑验证，全绿后 `gh pr merge <n> --merge`。**验证在本地、并线在服务端。**
 
-**为什么会踩**：2026-09-01 的 A 列车之前已有三个班撞过同一堵墙。打捞类分支落后 main 45~944 commit，本地 merge 后 push 的 diff 高达 15–88MB，远超 R25 ponytail pre-push 评审的 1.5MB 上限（`execFileSync` 的默认 buffer 也一并炸），于是 `spawnSync git ENOBUFS` 直接挡住 push。
+**为什么会踩**：2026-09-01 的 A 列车之前已有三个班撞过同一堵墙。打捞类分支落后 main 45~944 commit，本地 merge 后 push 的 diff 高达 15–88MB。
 
-根因是**量具与工具错配**：追平 merge 的 push 内容 99% 是 main 上已有的 commit，本地钩子却按 outgoing ref diff 要整包评审一遍。
+根因是**量具与工具错配**：追平 merge 的 push 内容 99% 是 main 上已有的 commit，本地却要把整包当成「这次的改动」处理一遍——既慢又没有信息量，该由服务端在 merge tree 上回答的问题被搬到了本地。
+
+当时这个错配是以 `spawnSync git ENOBUFS`（pre-push 评审顶爆体积上限）的形式炸出来的。**2026-09-15 起那个成因不存在了**：pre-push 改成只查一张收据、不再 diff（R25）。结论照旧成立，只是不会再有那条报错替你喊停——所以这条要靠自己记。
 
 **怎么用**：
 

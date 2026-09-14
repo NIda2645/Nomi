@@ -97,7 +97,7 @@ test('base ref 解析不出来时明说要 fetch，不静默退回整仓 diff', 
   )
 })
 
-test('装得下就一块；装不下按提交切再贴着上限装回去，每块都在上限内', (t) => {
+test('装得下就一块；装不下按文件切同一段范围再贴着上限装回去，每块都在上限内', (t) => {
   const root = makeRepository(t)
   commit(root, 'small.txt', 'one line\n', 'small')
   const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
@@ -113,7 +113,11 @@ test('装得下就一块；装不下按提交切再贴着上限装回去，每�
   for (const chunk of chunks) {
     assert.ok(Buffer.byteLength(chunk.text, 'utf8') <= MAX_REVIEW_DIFF_BYTES, `${chunk.label} 超过单块上限`)
   }
-  assert.ok(chunks.every((chunk) => chunk.label.startsWith('commit ')))
+  // 标签必须是「范围 · 文件」而不是「提交」：按提交切会重审中间态，
+  // 把「17 个提交审 17 遍」请回来——每个文件在一次评审里只许出现一次。
+  assert.ok(chunks.every((chunk) => chunk.label.startsWith(`${wide.mergeBase}..${wide.headSha}`)))
+  const labelled = chunks.flatMap((chunk) => chunk.text.split('\n').filter((line) => line.startsWith('### ')))
+  assert.equal(new Set(labelled).size, labelled.length, '同一个文件不许出现在两个单元里')
   // 装箱是有意的：一文件一次调用会让 20 个文件的改动变成 20 次模型调用，
   // 每次还只看得见一个文件。块数必须逼近「总字节 / 上限」的下界，不是单元个数。
   const totalBytes = chunks.reduce((sum, chunk) => sum + Buffer.byteLength(chunk.text, 'utf8'), 0)
@@ -130,8 +134,7 @@ test('单个提交太大按文件切；单个文件仍太大就截断——绝�
   const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
   const chunks = chunkBranchDiff({ repoRoot: root, mergeBase: range.mergeBase, headSha: range.headSha })
   assert.ok(chunks.length >= 2)
-  assert.ok(chunks.every((chunk) => chunk.label.includes('·')), '一个提交装不下时必须按文件切')
-  assert.ok(chunks.some((chunk) => chunk.label.includes('more')) || chunks.length === 2, '切出来的文件单元要装回去')
+  assert.ok(chunks.every((chunk) => chunk.label.includes('·')), '整段装不下时必须按文件切')
   for (const chunk of chunks) {
     assert.ok(Buffer.byteLength(chunk.text, 'utf8') <= MAX_REVIEW_DIFF_BYTES)
   }
@@ -223,7 +226,8 @@ test('诊断行只报字节数，不回显报告或进程输出', (t) => {
     spawnSyncImpl: (command, args, options) => ({ ...fake.spawnSyncImpl(command, args, options), stdout: secret, stderr: secret }),
   })
   assert.equal(result.ok, true)
-  assert.match(result.output, /^report=\d+B stdout=\d+B stderr=\d+B$/)
+  // stdout/stderr 在 stdio 层就丢了，恒为 0，所以诊断行只报 report。
+  assert.match(result.output, /^report=\d+B$/)
   assert.doesNotMatch(result.output, new RegExp(secret))
   assert.match(result.report, new RegExp(secret), 'findings 必须能被人读到——这正是这次改动的目的')
 })

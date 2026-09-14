@@ -152,10 +152,6 @@ export function summarizeBinaryChanges({ repoRoot, git = runGit, selector }) {
   return `--- BINARY CHANGES (bytes omitted from diff) ---\n${lines.join('\n')}`
 }
 
-function withBinarySummary(diff, binarySummary) {
-  return [diff, binarySummary].filter(Boolean).join('\n')
-}
-
 /**
  * 装一个评审单元（一段范围 / 一个提交 / 一个文件）。单元自己就超限时按 UTF-8 安全边界
  * 截断并明说截断了——「让人去拆提交」正是这次要删掉的东西，分块器不许把问题推回给人。
@@ -199,44 +195,32 @@ function packUnits(units) {
   return chunks
 }
 
-function commitFiles(repoRoot, git, commit) {
-  const raw = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--format=', '--name-only', '-z', commit]) || '')
-  return [...new Set(raw.split('\0').map((entry) => entry.trim()).filter(Boolean))]
-}
-
 /**
- * 把整段范围切成若干条不超上限的评审输入：先试整段，装不下按提交切，
- * 单个提交还装不下按文件切，最后把单元贴着上限装回去（packUnits）。
- * 二进制摘要是一个单独的单元，只出现一次。
+ * 把整段范围切成若干条不超上限的评审输入：先试整段，装不下按**文件**切同一段范围，
+ * 再把单元贴着上限装回去（packUnits）。二进制摘要是一个单独的单元，只出现一次。
+ *
+ * **为什么按文件而不按提交**：按提交切等于逐个评审中间态——上一个提交里被下一个提交
+ * 改掉的东西会被当成还在，发现全是已经修好的东西；而且同一段代码被改过 N 次就审 N 遍。
+ * 「17 个提交审 17 遍」正是这次要删掉的病，不许从分块器这里请回来。
+ * 交工前要评审的是**你交出去的那份最终状态**，所以每个文件在这里只出现一次。
  */
 export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = runGit }) {
   const range = `${mergeBase}..${headSha}`
-  const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector: [range] })
+  const selector = [range]
+  const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector })
   const textDiff = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--']) || '')
-  const whole = withBinarySummary(textDiff, binarySummary)
+  const whole = [textDiff, binarySummary].filter(Boolean).join('\n')
   if (!whole.trim()) return []
   const wholeUnit = makeUnit(`full range ${range}`, whole)
   if (!wholeUnit.truncated) return [wholeUnit]
 
-  const commits = String(git(repoRoot, ['rev-list', '--reverse', '--topo-order', range]) || '')
-    .trim().split(/\s+/).filter(Boolean)
-  if (commits.some((sha) => !SHA.test(sha))) throw new Error('Invalid commit list from Git')
-
+  const files = String(git(repoRoot, ['diff', '--no-ext-diff', '--name-only', '-z', range, '--']) || '')
+    .split('\0').map((entry) => entry.trim()).filter(Boolean)
   const units = []
-  for (const commit of commits) {
-    // merge 提交用 dense combined diff：只保留与每个父都不同的部分。
-    const patch = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--unified=80', '--format=', commit]) || '')
-    if (!patch.trim()) continue
-    const commitUnit = makeUnit(`commit ${commit}`, patch)
-    if (!commitUnit.truncated) {
-      units.push(commitUnit)
-      continue
-    }
-    for (const file of commitFiles(repoRoot, git, commit)) {
-      const filePatch = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--unified=80', '--format=', commit, '--', file]) || '')
-      if (!filePatch.trim()) continue
-      units.push(makeUnit(`commit ${commit} · ${file}`, filePatch))
-    }
+  for (const file of files) {
+    const filePatch = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--', file]) || '')
+    if (!filePatch.trim()) continue
+    units.push(makeUnit(`${range} · ${file}`, filePatch))
   }
   if (binarySummary) units.push(makeUnit(`binary changes ${range}`, binarySummary))
   return packUnits(units)
@@ -303,9 +287,10 @@ function createReportPath(env, diffHash) {
   return reportPath
 }
 
-/** 诊断行只报字节数：模型输出可能逐字引了 diff，终端/CI 日志里不许出现它。 */
-function summarizeOutput({ report = '', stdout = '', stderr = '' } = {}) {
-  return `report=${byteLength(report)}B stdout=${byteLength(stdout)}B stderr=${byteLength(stderr)}B`
+/** 诊断行只报字节数：模型输出可能逐字引了 diff，终端/CI 日志里不许出现它。
+ *  只报 report：stdout/stderr 在 stdio 层就丢掉了（见下方 spawn 的 stdio），恒为 0。 */
+function summarizeOutput(report) {
+  return `report=${byteLength(report)}B`
 }
 
 function readReviewReport(reportPath) {
@@ -362,7 +347,7 @@ export function reviewChunk({
       stdio: ['pipe', 'ignore', 'ignore'],
     })
     const report = readReviewReport(reportPath)
-    const output = summarizeOutput({ report, stdout: result?.stdout || '', stderr: result?.stderr || '' })
+    const output = summarizeOutput(report)
 
     if (result?.error || result?.status !== 0) {
       const reason = result?.error?.code === 'ETIMEDOUT'

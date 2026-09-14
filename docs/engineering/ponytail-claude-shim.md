@@ -53,24 +53,14 @@ R25 要求每条分支交工前真跑一次 `/ponytail-review`（2026-09-15 起�
 echo 'export PONYTAIL_REVIEW_CODEX_BIN="/Users/aoqimin/Desktop/Nomi/scripts/ponytail-review-claude-shim.mjs"' >> ~/.zshenv
 ```
 
-**为什么是 `~/.zshenv` 而不是命令前缀**：git hook 是 git 自己起的子进程，你没机会在它前面加
-环境变量——`PONYTAIL_REVIEW_CODEX_BIN=... git commit` 虽然能生效（子进程继承），但这台机器上
-常年挂着 20+ worktree，每次 commit 和每次 push 都要记得加前缀，漏一次就是一次被拦。
-zsh 的**所有**非交互 shell（git hook、Claude Code 的 Bash 工具、脚本）都会 source `~/.zshenv`
+**为什么是 `~/.zshenv` 而不是命令前缀**：`review:branch` 常常由脚本或子 agent 起，你没机会
+在每个入口前面加环境变量；这台机器上常年挂着 20+ worktree，漏一次就是一次白跑。zsh 的**所有**
+非交互 shell（Claude Code 的 Bash 工具、脚本、git hook）都会 source `~/.zshenv`
 （`~/.zshrc` 只对交互 shell 生效，**不要写那里**），所以它是唯一一处能一次覆盖全部入口的地方。
 
-漏设的后果是「被拦」而不是「静默放行」，所以这条路是安全的：忘了设，只是提交不了。
-
-**路径要指向哪一份**：上面写的是主仓库路径，**本分支合并进 `main` 之后**才存在。合并前先指向
-当前工作树里的那份：
-
-```sh
-export PONYTAIL_REVIEW_CODEX_BIN="/Users/aoqimin/Desktop/Nomi/.claude/worktrees/gpt-discussion-review-06eb91/scripts/ponytail-review-claude-shim.mjs"
-```
-
-注意 `resolveCodexBinary` 对「带 `/` 但不存在」的路径直接抛错，所以一旦那棵 worktree 被删掉，
-**所有仓库的提交都会被拦**（不会偷偷退回 Codex）。这是刻意的 fail-closed，但换路径时要记得
-同步改 `~/.zshenv`。
+漏设的后果是「评审跑不出来、拿不到收据、push 被拦」而不是「静默放行」，所以这条路是安全的。
+注意 `resolveCodexBinary` 对「带 `/` 但不存在」的路径直接抛错（不会偷偷退回 Codex）——刻意的
+fail-closed，换路径时记得同步改 `~/.zshenv`。
 
 ### 前置条件：`claude` 必须自己登录过
 

@@ -44,19 +44,12 @@ const HOOKS = Object.freeze([
   }),
 ])
 
-function shellQuote(value) {
-  // Hook arguments are static source-controlled values. Keep this quote helper
-  // strict anyway, so a future target cannot accidentally become shell syntax.
-  return `"${String(value).replace(/[\\"$`]/g, '\\$&')}"`
-}
-
 function renderCommand(command, { final = false } = {}) {
   // Keep the runtime ROOT variable expandable while quoting the target path.
   // Passing the whole expression through shellQuote would escape `$ROOT` and
   // make the generated hook look for a literal directory named "$ROOT".
   const target = String(command.target).replace(/[\\"$`]/g, '\\$&')
   const args = [`"$ROOT/${target}"`]
-  for (const argument of command.args || []) args.push(shellQuote(argument))
   if (command.passArgs) args.push('"$@"')
   return `${final ? 'exec ' : ''}node ${args.join(' ')}`
 }

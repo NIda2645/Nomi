@@ -19,11 +19,11 @@ import { receiptPath, repoRootFromGit, runGit, verifyPushReceipt } from './ponyt
 export const MAX_PUSH_RANGES = 32
 export const MAX_PUSH_INPUT_BYTES = 256_000
 
-const ZERO_SHA = /^0{40}$/
+// 四十个 0（删除 ref 的占位 SHA）本身就落在这个字符集里，不需要第二条正则。
 const SHA = /^[0-9a-f]{40}$/i
 
 function validateSha(value, label) {
-  if (!SHA.test(value) && !ZERO_SHA.test(value)) throw new Error(`Invalid ${label} SHA: ${value}`)
+  if (!SHA.test(value)) throw new Error(`Invalid ${label} SHA: ${value}`)
   return value.toLowerCase()
 }
 
@@ -51,10 +51,6 @@ export function parsePushInput(input) {
   return ranges
 }
 
-export function checkPushReceipt({ repoRoot, pushInput = '', runGit: git = runGit } = {}) {
-  return verifyPushReceipt({ repoRoot, ranges: parsePushInput(pushInput), runGit: git })
-}
-
 function main() {
   try {
     if (process.argv[2] === '--help' || process.argv[2] === '-h') {
@@ -62,7 +58,8 @@ function main() {
       return 0
     }
     const repoRoot = repoRootFromGit()
-    const result = checkPushReceipt({ repoRoot, pushInput: fs.readFileSync(0, 'utf8') })
+    const ranges = parsePushInput(fs.readFileSync(0, 'utf8'))
+    const result = verifyPushReceipt({ repoRoot, ranges })
     if (result.ok) {
       console.error(`[ponytail-receipt] ok${result.receipt ? ` (${result.receipt.status}, ${result.receipt.reviewedAt})` : `: ${result.reason}`}`)
       return 0

@@ -6,8 +6,8 @@ import path from 'node:path'
 import test from 'node:test'
 import installer from './install-git-hooks.cjs'
 import { fileURLToPath } from 'node:url'
-import { MAX_PUSH_RANGES, checkPushReceipt, parsePushInput } from './ponytail-review-hook.mjs'
-import { runBranchReview } from './ponytail-review-branch.mjs'
+import { MAX_PUSH_RANGES, parsePushInput } from './ponytail-review-hook.mjs'
+import { runBranchReview, verifyPushReceipt } from './ponytail-review-branch.mjs'
 
 const repoScriptsDir = path.dirname(fileURLToPath(import.meta.url))
 const BASE_REF = 'review-base'
@@ -70,7 +70,6 @@ test('pre-push 只查收据：一条命令、带 ref 参数、缺文件时安全
   const prePush = installer.renderHookContent(hook('pre-push'))
   assert.match(prePush, /\[ -f "\$ROOT\/scripts\/ponytail-review-hook\.mjs" \] \|\| exit 0/)
   assert.match(prePush, /exec node "\$ROOT\/scripts\/ponytail-review-hook\.mjs" "\$@"/)
-  assert.doesNotMatch(prePush, /--scope/)
   const commitMsg = installer.renderHookContent(hook('commit-msg'))
   assert.match(commitMsg, /check-progress-update\.cjs/)
   assert.doesNotMatch(commitMsg, /ponytail/i)
@@ -110,12 +109,9 @@ test('真跑一次生成的 pre-push：无收据被拦，评审过后放行', (t
   assert.match(allowed.stderr, /ponytail-receipt\] ok/)
 })
 
-test('空 push 输入不拦；坏收据在钩子层就拦住', (t) => {
+test('空 push 输入不拦：没有 ref 更新就没有要评审的树', (t) => {
   const root = makeRepository(t)
-  assert.equal(checkPushReceipt({ repoRoot: root, pushInput: '' }).ok, true)
-  const head = git(root, ['rev-parse', 'HEAD'])
-  const outcome = checkPushReceipt({ repoRoot: root, pushInput: `refs/heads/task ${head} refs/heads/task ${ZERO}\n` })
-  assert.equal(outcome.ok, false)
+  assert.equal(verifyPushReceipt({ repoRoot: root, ranges: parsePushInput('') }).ok, true)
 })
 
 test('linked worktrees get isolated hook paths without touching the base worktree', (t) => {
