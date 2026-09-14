@@ -353,7 +353,12 @@
           "verdict": "Reuse invoke_agent/execute_tool semantics; no OTLP transport is required for offline local files. Preserve separate pi cache counters rather than mislabel input as OTel cache-inclusive input."
         }
       ],
-      "readers": [],
+      "readers": [
+        "electron/telemetry/trajectoryProjection.ts"
+      ],
+      "fixtures": [
+        "tests/fixtures/standard-formats/nomi-agent-trace-view/trace.jsonl"
+      ],
       "writers": [
         "electron/agentLane/laneTrace.mts",
         "electron/agentLane/laneSession.mts"
@@ -363,7 +368,11 @@
           "what": "Each JSONL row is a user turn, not an OTLP span. Unknown metrics remain null; cost is estimated USD from native usage with pricing provenance.",
           "reason": "Creators need one local record per prompt plus session totals; streamed model/tool events would obscure the user-turn boundary."
         }
-      ]
+      ,
+        {
+          "what": "上报出门的不是这份 trace.jsonl，而是它的**字段白名单投影**（electron/telemetry/trajectoryProjection.ts）：OTel 自己标成敏感的六格（input.messages / output.messages / system_instructions / tool.call.arguments / tool.call.result / retrieval.query.text）连字段位都不存在，工具参数只留键名，会话 id 哈希。",
+          "reason": "本地这份要完整（用户得读得到自己的文稿），出门那份要最小。两件事同一个格式做不到，所以做成同一格式上的一次减法，而不是第二个格式。"
+        }]
     },
     {
       "name": "model-catalog-package",
