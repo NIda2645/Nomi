@@ -78,7 +78,7 @@
     { "kind": "read", "path": "src/workbench/ai/v4/AgentPanelV4Message.tsx", "line": 93, "symbol": "V4AssistantMessage" },
     { "kind": "read", "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx", "line": 140, "symbol": "V4AssistantMessage" },
     { "kind": "read", "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx", "line": 53, "symbol": "V4AssistantMessage" },
-    { "kind": "write", "path": "src/workbench/ai/ProjectAgentResidentShell.tsx", "line": 513, "symbol": "onRetry" },
+    { "kind": "write", "path": "src/workbench/ai/ProjectAgentResidentShell.tsx", "line": 517, "symbol": "onRetry" },
     { "kind": "read", "path": "src/workbench/ai/v4/agentPanelV4Labels.ts", "line": 39, "symbol": "stopped" },
     { "kind": "read", "path": "src/i18n/locales/agentPanelV4.ts", "line": 84, "symbol": "stoppedNotice" }
   ],
