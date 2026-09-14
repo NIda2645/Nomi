@@ -27,7 +27,7 @@
   ],
   "entry_points": [
     "electron/integrationCertification/integrationSession.ts:1262 start() 的 certifying 意图落盘 —— 本轮在这里同时落 certifyingDeadlineAt（只落意图 = 盘上多一条没有尽头的中间态）",
-    "electron/integrationCertification/integrationSession.ts:1351 认证结果回写前的终态封口 —— 已落终态的会话不许被迟到的结果复活",
+    "electron/integrationCertification/integrationSession.ts:1349 认证结果回写前的终态封口 —— 已落终态的会话不许被迟到的结果复活",
     "electron/integrationCertification/integrationSession.ts:1399 cancel —— 用户/Agent 侧的撤销入口（此前经 cancelCertifyingRun 抛异常）",
     "electron/integrationCertification/integrationSession.ts:599 构造期装上会话层看门狗（复用 run 层那只 TerminalReaper）",
     "electron/integrationCertification/integrationSession.ts:612 resumeInterrupted —— 启动补偿 + 挂周期扫描，返回这一轮收掉的会话 id",
@@ -80,7 +80,7 @@
       "path": "electron/integrationCertification/integrationSession.ts",
       "entry_point": "start() 的认证结果无条件覆写 session.stage（放开 cancel 之后会把已取消的会话复活成 completed）",
       "disposition": "enforced",
-      "evidence": "结果先攒进局部 outcome，回写前查 isTerminalIntegrationStage（:1351）。integrationSessionTerminal.test.ts「已经取消的会话不许被迟到的认证结果复活成 completed」：certifyComfy 的 promise 在 cancel 之后才 resolve，会话仍是 cancelled"
+      "evidence": "结果先攒进局部 outcome，回写前查 isTerminalIntegrationStage（:1349）。integrationSessionTerminal.test.ts「已经取消的会话不许被迟到的认证结果复活成 completed」：certifyComfy 的 promise 在 cancel 之后才 resolve，会话仍是 cancelled"
     },
     {
       "path": "electron/integrationCertification/integrationSessionRecord.ts",
@@ -187,7 +187,7 @@
   },
   "doors": [
     { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 1262, "symbol": "integrationCertifyingDeadlineAt" },
-    { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 1351, "symbol": "isTerminalIntegrationStage" },
+    { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 1349, "symbol": "isTerminalIntegrationStage" },
     { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 1399, "symbol": "cancelCertifyingRun" },
     { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 1396, "symbol": "isTerminalIntegrationStage" },
     { "kind": "write", "path": "electron/integrationCertification/integrationSession.ts", "line": 855, "symbol": "isTerminalIntegrationStage" },
