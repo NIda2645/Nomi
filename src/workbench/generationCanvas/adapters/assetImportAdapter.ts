@@ -13,6 +13,7 @@ import { dropKindFromFile } from '../model/nodeAssetDrop'
 import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
 import { getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import { ensureAssetImportProgressBridge, useAssetImportProgressStore } from '../store/assetImportProgressStore'
 
 export const GENERATION_CANVAS_IMAGE_IMPORT_MAX_BYTES = 30 * 1024 * 1024
 // 视频文件远大于图片，单独给宽上限；本地优先 App，用户导入自己的片段。
@@ -210,6 +211,7 @@ async function uploadAndApplyAssetToNode(
   deps: AssetUploadDeps,
 ): Promise<boolean> {
   const store = useGenerationCanvasStore.getState()
+  ensureAssetImportProgressBridge()
   let hosted: WorkbenchAssetDto | null
   try {
     hosted = await deps.uploadFile(file, deriveLabelFromFileName(file.name), { ownerNodeId: nodeId })
@@ -237,6 +239,8 @@ async function uploadAndApplyAssetToNode(
         retryableImport: !fallbackResult,
       },
     })
+    // 节点已经换成最终形态（成图/失败卡）才丢进度：先丢会让渐显层提前卸载，闪一帧空卡。
+    useAssetImportProgressStore.getState().clear(nodeId)
     return Boolean(fallbackResult)
   }
   const videoDuration = kind === 'video' ? await deps.probeVideoDuration(hostedUrl) : null
@@ -268,6 +272,7 @@ async function uploadAndApplyAssetToNode(
       ...(videoDuration && videoDuration > 0 ? { videoDuration } : {}),
     },
   })
+  useAssetImportProgressStore.getState().clear(nodeId)
   return true
 }
 
@@ -275,7 +280,12 @@ async function uploadAndApplyAssetToNode(
 export async function retryLocalAssetImport(nodeId: string): Promise<boolean> {
   const pending = pendingRetryImports.get(nodeId)
   if (!pending) return false
-  useGenerationCanvasStore.getState().updateNode(nodeId, { status: 'queued', error: undefined })
+  // 重试导入仍然是「拷文件」，不是「排队等模型」：状态留在 idle，真相在 meta.uploadStatus。
+  useGenerationCanvasStore.getState().updateNode(nodeId, {
+    status: 'idle',
+    error: undefined,
+    meta: { ...(useGenerationCanvasStore.getState().nodes.find((c) => c.id === nodeId)?.meta || {}), uploadStatus: 'uploading', retryableImport: false },
+  })
   return uploadAndApplyAssetToNode(nodeId, pending.file, pending.kind, {
     uploadFile: importWorkbenchLocalAssetFile,
     recoverFile: recoverImportedWorkbenchLocalAssetFile,
@@ -341,7 +351,9 @@ export async function importLocalMediaFilesToGenerationCanvas(
     })
     useGenerationCanvasStore.getState().updateNode(node.id, {
       ...(size ? { size } : {}),
-      status: 'queued',
+      // 'queued' 是生成词表里的「排队等模型」；导入只是在拷文件，套上它整套生成过程反馈就会误挂上来。
+      // 导入中的唯一真相是 meta.uploadStatus:'uploading'。
+      status: 'idle',
       meta: {
         ...(node.meta || {}),
         source: 'local-drop',
