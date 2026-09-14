@@ -15,7 +15,8 @@ describe('导入中的节点不得伪装成排队中的生成', () => {
   })
 
   it('建卡那一刻状态不是 queued/running，导入中的真相只在 meta.uploadStatus', async () => {
-    let release: ((asset: WorkbenchAssetDto) => void) | null = null
+    // 定值断言：赋值发生在 Promise 执行器里，TS 的控制流看不见它，写成 `| null` 会被窄成 null。
+    let release!: (asset: WorkbenchAssetDto) => void
     const uploadFile = vi.fn(() => new Promise<WorkbenchAssetDto>((resolve) => { release = resolve }))
     const pending = importLocalMediaFilesToGenerationCanvas(
       [new File([new Uint8Array(64)], 'shot.png', { type: 'image/png', lastModified: 1 })],
@@ -36,7 +37,7 @@ describe('导入中的节点不得伪装成排队中的生成', () => {
     // 直接问那套派生：导入中的节点不该被判成「有生成在跑」，生成等待层因此不会挂上来。
     expect(generationFeedback(node, Date.now())?.active ?? false).toBe(false)
 
-    release?.({ id: 'a1', name: 'shot.png', createdAt: '', updatedAt: '', userId: 'local', data: { url: 'nomi-local://p/shot.png' } })
+    release({ id: 'a1', name: 'shot.png', createdAt: '', updatedAt: '', userId: 'local', data: { url: 'nomi-local://p/shot.png' } })
     await pending
     expect(useGenerationCanvasStore.getState().nodes[0].status).toBe('success')
   })
