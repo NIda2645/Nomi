@@ -4,7 +4,7 @@
 >
 > **谁读**：接手本仓任何工作的人或执行体（Claude / Codex / 协作者）。动手前不必通读——**按触发场景查**：写走查查 A 区、判测试红绿查 B 区、动分支/合并查 C 区、排查线上/平台故障查 D 区、做产品判断查 E 区。
 >
-> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / R1–R31），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
+> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 17 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
 
 ## 维护纪律
 
@@ -13,6 +13,20 @@
 - **新增一条就在本索引挂一行**（格式：`- [标题](<slug>.md) — 触发场景钩子`，写成真链接）。索引是入口，孤儿文件等于不存在。
 - **过期了就标，不要静默留着**：结论被推翻 → 头部状态改 `⛔ 已反转`，正文保留「当初为什么误判」（误判过程本身是教训）；已被门岗/代码结构消化 → 标 `✅ 已固化`，写清由哪个门岗接管。**删除只在这条彻底不再可能发生时**。
 - **不进本目录的三类**：① 战况快照 / 路线图（几天就过期，属 `docs/plan` 或 `docs/DELIVERY-LEDGER.md`）；② 本机环境与个人账号偏好（属本机记忆）；③ 当前架构事实（属 [`../ARCHITECTURE-NOW.md`](../ARCHITECTURE-NOW.md)）。
+
+## 规则编号映射（2026-09-14 合并 30 → 17）
+
+> 本目录的历史教训里写的是**当时的**编号，一律**不改**（改了就成了改历史）。碰到旧号照这张表换算；正本在 [`../engineering-rules.md`](../engineering-rules.md) 的「编号别名表」。
+
+| 旧号 | 现在 | 旧号 | 现在 |
+|---|---|---|---|
+| R6 | R5.2 | R23 | 仍在 L2 `R23`（不再进 L1）|
+| R10 | R1（CSS 段）| R26 | R17.3 |
+| R12 | R9（巨壳门岗）| R28 | R17（升为主号）|
+| R16 | R13.2 | R29 | R5.4 |
+| R18 | R17.2 | R30 | R13.3 |
+| R19 | R11.1 | R31 | R5.5 |
+| R20 | R5.3 | — | — |
 
 ## 文件格式
 
@@ -36,6 +50,7 @@
 
 ## A. 走查与体验验证（Playwright / Electron 真机）
 
+- [合成夹具永远走不到真实素材那条路](2026-09-14-real-media-first-run-exposed-import-and-open-time.md) — 画布/性能/导入/导出测试全绿、用户第一次拿真素材就卡死或导不进来时读；附夹具与真素材的量级对照 + 门岗 `check:real-media-fixture`
 - [打包成功不证明包来自当前源码](package-only-is-not-a-source-build.md) — 切分支、合并、修代码后打包验收，必须核验两份构建戳
 - [测 Agent 不用各种 prompt 打它、走查靠灌状态 = 测不出东西](agent-tests-must-be-prompt-driven-and-human-path.md) — 写验收走查/派走查任务书前先读；执行版在 `docs/engineering/acceptance-walkthrough-doctrine.md`
 
