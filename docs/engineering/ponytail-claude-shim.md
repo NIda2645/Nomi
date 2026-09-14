@@ -92,9 +92,17 @@ printf 'Reply with exactly: OK' | claude --print --output-format text
 
 ## 已验证
 
-在一次性 worktree `/Users/aoqimin/Desktop/Nomi-ponytail-shim-test`（`origin/main` @ `18e510da`）
-上，对同一个 staged 改动（`docs/release-process.md` 加一行）直接跑
-`PONYTAIL_REVIEW_CODEX_BIN=<壳> pnpm run review:branch`（2026-09-15 前是 `--scope staged`）：
+### 2026-09-15（现役路径：`review:branch`）
+
+在 `/Users/aoqimin/Desktop/Nomi-ponytail-receipt`（分支 `tooling/ponytail-review-before-handoff-20260915`）上
+用真 `claude` 壳跑 `PONYTAIL_REVIEW_CODEX_BIN=<壳> pnpm run review:branch` **五轮**，每轮 3–4 块，
+全部拿到合法结果标记并落盘 findings + 收据；其中第一轮就在本分支自己的 diff 上报出 19 条真发现，
+逐条处置写在那个 PR 的 `## Ponytail` 节里。**真模型跑出的评审内容自此有了实测记录**（这条以前是空的）。
+
+### 2026-09-11（旧路径：已退役的 `--scope staged` 钩子）
+
+下面这张表是在评审还挂在 pre-commit 时录的，跑的是 `node scripts/ponytail-review-hook.mjs --scope staged`
+（该入口 2026-09-15 起不存在）。保留它是因为它证的是**壳自己**的 fail-closed 面，而壳的契约一行没改：
 
 | 场景 | 分类 | 退出码 |
 |---|---|---|
@@ -106,12 +114,8 @@ printf 'Reply with exactly: OK' | claude --print --output-format text
 | skill 原文找不到 | `runner_failed` → BLOCKED | 1 |
 | 真 `claude`（未登录） | `runner_failed` → BLOCKED | 1 |
 
-同时核对过壳真的把「skill 全文 + 传输契约」放进了 `--append-system-prompt`、把带 diff 的
+当时也核对过壳真的把「skill 全文 + 传输契约」放进了 `--append-system-prompt`、把带 diff 的
 prompt 放进了 stdin。
-
-**还没验的一条**：因为 standalone `claude` 未登录，**真模型跑出的评审内容**（包括故意塞一段
-过度工程化代码看它报不报阻断）没能跑通。登录之后按上面的步骤复跑一次即可补上——阳性对照建议
-staged 一段明显的 `yagni`/`stdlib` 代码，期望拿到 `completed with findings`。
 
 ## 什么时候撤掉
 
