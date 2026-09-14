@@ -81,8 +81,9 @@ try {
     match: (body) => flattenRequestText(body).includes(RESIDENT_INTENT)
       && !hasToolResult(body, 'resident-receipt-fix-1'),
     reply: {
-      type: 'tool', id: 'resident-receipt-fix-1', name: 'append_to_end',
-      args: { content: RESIDENT_APPEND },
+      // 20 动词：`append_to_end` 已退役，文稿写入只有 `write_script(content, where)` 一个动词。
+      type: 'tool', id: 'resident-receipt-fix-1', name: 'write_script',
+      args: { content: RESIDENT_APPEND, where: 'end' },
     },
   })
   const approvedFollowup = walk.fixture.expectText({
