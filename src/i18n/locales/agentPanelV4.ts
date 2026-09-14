@@ -80,6 +80,8 @@ export const zhAgentPanelV4 = {
   copyReply: '复制回复',
   retry: '重来',
   continue: '继续',
+  // 一个字都没说就被叫停的回合：正文是空的，这一行就是「停止」在界面上唯一的回执。
+  stoppedNotice: '已停止',
   copy: '复制代码',
   image: '图片',
   expand: '展开',
@@ -492,6 +494,7 @@ export const enAgentPanelV4 = {
   copyReply: 'Copy reply',
   retry: 'Retry',
   continue: 'Continue',
+  stoppedNotice: 'Stopped',
   copy: 'Copy code',
   image: 'Image',
   expand: 'Expand',

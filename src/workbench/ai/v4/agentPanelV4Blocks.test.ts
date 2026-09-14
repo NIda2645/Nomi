@@ -63,14 +63,15 @@ describe('① 用户气泡', () => {
 })
 
 describe('② 助手文本', () => {
-  const labels = { copy: '复制回复', retry: '重来', continue: '继续' }
+  const labels = { copy: '复制回复', retry: '重来', continue: '继续', stopped: '已停止' }
+  const wired = { onCopy: () => undefined, onRetry: () => undefined, onContinue: () => undefined }
   it('流式带光标、完成不带', () => {
     expect(html(el(V4AssistantMessage, { text: 'x', status: 'streaming', labels }))).toContain('style="--streamdown-caret:')
     expect(html(el(V4AssistantMessage, { text: 'x', status: 'complete', labels }))).not.toContain('style="--streamdown-caret:')
   })
 
   it('完成态的复制/重来 hover 才显（默认透明）', () => {
-    const markup = html(el(V4AssistantMessage, { text: 'x', status: 'complete', labels }))
+    const markup = html(el(V4AssistantMessage, { text: 'x', status: 'complete', labels, ...wired }))
     expect(markup).toContain('data-ai-element="actions"')
     expect(markup).toContain('opacity-0')
     expect(markup).toContain('group-hover:opacity-100')
@@ -78,10 +79,35 @@ describe('② 助手文本', () => {
     expect(markup).toContain('重来')
   })
 
+  // 没有 handler 的钮和有 handler 的钮在界面上长得**一模一样**，而按下去一个有事一个没事。
+  // 2026-09-14 用户报「重试点了没反应」的机器成因就是这个：宿主从来没接 `onRetry`，
+  // 钮照画。所以「钮在」从此等价于「这件事这里做得了」。
+  it('宿主没接的动作**不画钮**——界面上不许有按下去没去处的钮', () => {
+    const markup = html(el(V4AssistantMessage, { text: 'x', status: 'complete', labels }))
+    expect(markup).not.toContain('复制回复')
+    expect(markup).not.toContain('重来')
+    const copyOnly = html(el(V4AssistantMessage, { text: 'x', status: 'complete', labels, onCopy: () => undefined }))
+    expect(copyOnly).toContain('复制回复')
+    expect(copyOnly).not.toContain('重来')
+  })
+
   it('中断态出「继续」，且不出复制/重来', () => {
-    const markup = html(el(V4AssistantMessage, { text: 'x', status: 'interrupted', labels }))
+    const markup = html(el(V4AssistantMessage, { text: 'x', status: 'interrupted', labels, ...wired }))
     expect(markup).toContain('继续')
     expect(markup).not.toContain('data-ai-element="actions"')
+  })
+
+  // 一次在模型吐出第一个字之前就被叫停的回合正文是空的。从前这一格整条不渲染，
+  // 于是「停止」在界面上不留任何痕迹——用户唯一能得到的结论就是「没停下来」。
+  it('一个字都没说就被停掉的回合，仍要留下「已停止」这张回执', () => {
+    const markup = html(el(V4AssistantMessage, { text: '', status: 'interrupted', labels }))
+    expect(markup).toContain('data-v4-stopped="true"')
+    expect(markup).toContain('已停止')
+  })
+
+  it('空正文的中断态不画「继续」——没有半句话可接', () => {
+    const markup = html(el(V4AssistantMessage, { text: '', status: 'interrupted', labels, ...wired }))
+    expect(markup).not.toContain('继续')
   })
 
   it('思考行带秒数、不带纯转圈', () => {

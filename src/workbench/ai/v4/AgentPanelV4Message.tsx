@@ -11,7 +11,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
-import { ActionIcon, IconChevronRight, IconCopy, IconRefresh } from './AgentPanelV4Icons'
+import { ActionIcon, IconCheck, IconChevronRight, IconCopy, IconRefresh } from './AgentPanelV4Icons'
 import { Message, MessageActions, MessageResponse } from './vendor/aiElementsPrimitives'
 import { SkillMedia } from '../../skillLibrary/SkillMedia'
 import type { V4AssistantStatus, V4Chip } from './agentPanelV4Types'
@@ -106,14 +106,34 @@ export function V4AssistantMessage({
    * 用户只能猜到底用上没有（2026-09-10 反馈 #6）。缺席 = 这一轮没挂技能，那一行整行不渲染。
    */
   skill?: string
-  labels: { copy: string; retry: string; continue: string }
-  /** 三个动作都可缺：设计实验室单件取景时没有宿主可调，钮仍在，只是按下去没有去处。 */
+  labels: { copy: string; retry: string; continue: string; stopped: string }
+  /**
+   * 三个动作都可缺，**缺了就不画那颗钮**。
+   *
+   * 从前缺了照画（「设计实验室单件取景时没有宿主可调，钮仍在，只是按下去没有去处」）——
+   * 而没有 handler 的钮和有 handler 的钮在界面上长得一模一样。2026-09-14 用户报「重试点了
+   * 没反应」的机器成因就是这个：`ProjectAgentResidentShell` 的 `flowHandlers` 从头到尾没有
+   * `onRetry` 这一项，钮照画、点了什么都不发生，TypeScript 也不会说话（它是可选的）。
+   * 「钮在」从此等价于「这件事这里做得了」——宿主漏接一个动作，界面上立刻看得出少了一颗钮。
+   */
   onCopy?: (text: string) => void
   onRetry?: () => void
   /** 「继续」= 给这个还活着的回合追加一句指令（`turn.steer`），不是重发。 */
   onContinue?: () => void
 }): JSX.Element {
   const { t } = useTranslation()
+  // 「已复制」不是装饰。复制本身 3ms 就完成了，而它**没有任何可见结果**——剪贴板在系统里，
+  // 不在屏幕上。用户点完看不到任何变化，唯一能得到的结论就是「这颗钮坏了」
+  //（2026-09-14 用户原话：复制点了没反应；真机探针证明剪贴板确实拿到了正文）。
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return undefined
+    const timer = window.setTimeout(() => setCopied(false), 1_600)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+  // 一次在模型吐出第一个字之前就被叫停的回合正文是空的。有半句话时那半句话自己就是回执；
+  // 没有话时必须由这一行来当回执，否则「停止」在界面上不留任何痕迹。
+  const stoppedWithoutProse = status === 'interrupted' && !text.trim()
   return (
     <div className="group" data-v4-block="assistant" data-status={status}>
       <Message role="assistant">
@@ -126,27 +146,35 @@ export function V4AssistantMessage({
           <AgentPanelV4Markdown text={text} streaming={status === 'streaming'} />
         </MessageResponse>
         {/* 完成态才有动作，且 **hover 才显**——定稿 ②「hover 出复制/重来两个图标」。 */}
-        {status === 'complete' ? (
+        {status === 'complete' && (onCopy || onRetry) ? (
           <MessageActions className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <button
-              type="button"
-              aria-label={labels.copy}
-              onClick={() => onCopy?.(text)}
-              className="grid size-[22px] place-items-center rounded-nomi-sm hover:bg-nomi-ink-05"
-            >
-              <IconCopy size={14} />
-            </button>
-            <button
-              type="button"
-              aria-label={labels.retry}
-              onClick={onRetry}
-              className="grid size-[22px] place-items-center rounded-nomi-sm hover:bg-nomi-ink-05"
-            >
-              <IconRefresh size={14} />
-            </button>
+            {onCopy ? (
+              <button
+                type="button"
+                aria-label={labels.copy}
+                data-v4-copied={copied ? 'true' : undefined}
+                onClick={() => { onCopy(text); setCopied(true) }}
+                className="grid size-[22px] place-items-center rounded-nomi-sm hover:bg-nomi-ink-05"
+              >
+                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+              </button>
+            ) : null}
+            {onRetry ? (
+              <button
+                type="button"
+                aria-label={labels.retry}
+                onClick={onRetry}
+                className="grid size-[22px] place-items-center rounded-nomi-sm hover:bg-nomi-ink-05"
+              >
+                <IconRefresh size={14} />
+              </button>
+            ) : null}
           </MessageActions>
         ) : null}
-        {status === 'interrupted' ? (
+        {stoppedWithoutProse ? (
+          <p className="m-0 text-caption text-nomi-ink-60" data-v4-stopped="true">{labels.stopped}</p>
+        ) : null}
+        {status === 'interrupted' && !stoppedWithoutProse ? (
           <button
             type="button"
             onClick={onContinue}
