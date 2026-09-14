@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import installer from './install-git-hooks.cjs'
 import { fileURLToPath } from 'node:url'
-import { MAX_PUSH_RANGES, parsePushInput } from './ponytail-review-hook.mjs'
+import { parsePushInput } from './ponytail-review-hook.mjs'
 import { runBranchReview, verifyPushReceipt } from './ponytail-review-branch.mjs'
 
 const repoScriptsDir = path.dirname(fileURLToPath(import.meta.url))
@@ -52,10 +52,6 @@ test('pre-push input validates ref ranges, including create and delete', () => {
   ])
   assert.throws(() => parsePushInput('bad line'), /Invalid pre-push line/)
   assert.throws(() => parsePushInput(`refs/heads/x zz refs/heads/x ${SHA_A}`), /Invalid local SHA/)
-
-  const tooMany = Array.from({ length: MAX_PUSH_RANGES + 1 }, () => `refs/heads/x ${SHA_A} refs/heads/x ${SHA_B}`).join('\n')
-  assert.throws(() => parsePushInput(tooMany), /update count exceeds/)
-  assert.throws(() => parsePushInput('x'.repeat(300_000)), /input exceeds/)
 })
 
 test('pre-commit 只剩敏感数据扫描：提交时刻不再跑模型评审', () => {

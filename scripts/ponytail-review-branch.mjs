@@ -195,33 +195,34 @@ function packUnits(units) {
   return chunks
 }
 
+/** `diff --git` 之前的位置就是每份文件补丁的边界；range diff 里已经有全部文件，
+ *  逐文件再 shell out 一次是白跑。 */
+function splitFilePatches(textDiff) {
+  return String(textDiff).split(/^(?=diff --git )/m).map((patch) => patch.trim()).filter(Boolean)
+}
+
+/** `diff --git a/<p> b/<p>` 的 b 侧就是文件名；名字被 git 引号括起来时退回整行当标签。 */
+function patchLabel(patch) {
+  const header = patch.split('\n', 1)[0]
+  const match = /^diff --git a\/(.+) b\/(.+)$/.exec(header)
+  return match ? match[2] : header
+}
+
 /**
- * 把整段范围切成若干条不超上限的评审输入：先试整段，装不下按**文件**切同一段范围，
- * 再把单元贴着上限装回去（packUnits）。二进制摘要是一个单独的单元，只出现一次。
+ * 把整段范围切成若干条不超上限的评审输入：拿 `merge-base..HEAD` 的 range diff，
+ * 按文件拆成单元，贴着上限装回去（packUnits——全都装得下时它自然只返回一块）。
+ * 单个文件仍超限则截断并写明。二进制摘要是一个单独的单元，只出现一次。
  *
- * **为什么按文件而不按提交**：按提交切等于逐个评审中间态——上一个提交里被下一个提交
+ * **为什么是文件而不是提交**：按提交切等于逐个评审中间态——上一个提交里被下一个提交
  * 改掉的东西会被当成还在，发现全是已经修好的东西；而且同一段代码被改过 N 次就审 N 遍。
  * 「17 个提交审 17 遍」正是这次要删掉的病，不许从分块器这里请回来。
  * 交工前要评审的是**你交出去的那份最终状态**，所以每个文件在这里只出现一次。
  */
 export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = runGit }) {
   const range = `${mergeBase}..${headSha}`
-  const selector = [range]
-  const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector })
   const textDiff = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--']) || '')
-  const whole = [textDiff, binarySummary].filter(Boolean).join('\n')
-  if (!whole.trim()) return []
-  const wholeUnit = makeUnit(`full range ${range}`, whole)
-  if (!wholeUnit.truncated) return [wholeUnit]
-
-  const files = String(git(repoRoot, ['diff', '--no-ext-diff', '--name-only', '-z', range, '--']) || '')
-    .split('\0').map((entry) => entry.trim()).filter(Boolean)
-  const units = []
-  for (const file of files) {
-    const filePatch = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--', file]) || '')
-    if (!filePatch.trim()) continue
-    units.push(makeUnit(`${range} · ${file}`, filePatch))
-  }
+  const units = splitFilePatches(textDiff).map((patch) => makeUnit(`${range} · ${patchLabel(patch)}`, patch))
+  const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector: [range] })
   if (binarySummary) units.push(makeUnit(`binary changes ${range}`, binarySummary))
   return packUnits(units)
 }

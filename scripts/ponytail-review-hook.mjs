@@ -16,9 +16,6 @@ import { pathToFileURL } from 'node:url'
 
 import { receiptPath, repoRootFromGit, runGit, verifyPushReceipt } from './ponytail-review-branch.mjs'
 
-export const MAX_PUSH_RANGES = 32
-export const MAX_PUSH_INPUT_BYTES = 256_000
-
 // 四十个 0（删除 ref 的占位 SHA）本身就落在这个字符集里，不需要第二条正则。
 const SHA = /^[0-9a-f]{40}$/i
 
@@ -27,17 +24,14 @@ function validateSha(value, label) {
   return value.toLowerCase()
 }
 
-/** Parse the four-column protocol Git sends to a pre-push hook. */
+/** Parse the four-column protocol Git sends to a pre-push hook.
+ *  没有体积上限：这里不再喂模型，而 readFileSync(0) 早就把 stdin 全读进内存了，
+ *  在它之后再判字节数护不住任何东西。 */
 export function parsePushInput(input) {
-  const rawInput = String(input || '')
-  if (Buffer.byteLength(rawInput, 'utf8') > MAX_PUSH_INPUT_BYTES) {
-    throw new Error(`pre-push input exceeds ${MAX_PUSH_INPUT_BYTES} bytes`)
-  }
   const ranges = []
-  for (const rawLine of rawInput.split(/\r?\n/)) {
+  for (const rawLine of String(input || '').split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line) continue
-    if (ranges.length >= MAX_PUSH_RANGES) throw new Error(`pre-push update count exceeds ${MAX_PUSH_RANGES}`)
     const fields = line.split(/\s+/)
     if (fields.length !== 4) throw new Error(`Invalid pre-push line: ${line}`)
     const [localRef, localShaRaw, remoteRef, remoteShaRaw] = fields

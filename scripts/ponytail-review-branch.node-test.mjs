@@ -102,8 +102,8 @@ test('装得下就一块；装不下按文件切同一段范围再贴着上限�
   commit(root, 'small.txt', 'one line\n', 'small')
   const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
   const single = chunkBranchDiff({ repoRoot: root, mergeBase: range.mergeBase, headSha: range.headSha })
-  assert.equal(single.length, 1)
-  assert.match(single[0].label, /^full range /)
+  assert.equal(single.length, 1, '全都装得下时 packUnits 自然只返回一块，不需要单独的快路径')
+  assert.match(single[0].label, /small\.txt$/)
 
   commit(root, 'big-a.txt', bulkText(4000, 'alpha'), 'big a')
   commit(root, 'big-b.txt', bulkText(4000, 'beta'), 'big b')
@@ -116,6 +116,7 @@ test('装得下就一块；装不下按文件切同一段范围再贴着上限�
   // 标签必须是「范围 · 文件」而不是「提交」：按提交切会重审中间态，
   // 把「17 个提交审 17 遍」请回来——每个文件在一次评审里只许出现一次。
   assert.ok(chunks.every((chunk) => chunk.label.startsWith(`${wide.mergeBase}..${wide.headSha}`)))
+  assert.ok(chunks.some((chunk) => chunk.label.includes('big-a.txt')) )
   const labelled = chunks.flatMap((chunk) => chunk.text.split('\n').filter((line) => line.startsWith('### ')))
   assert.equal(new Set(labelled).size, labelled.length, '同一个文件不许出现在两个单元里')
   // 装箱是有意的：一文件一次调用会让 20 个文件的改动变成 20 次模型调用，

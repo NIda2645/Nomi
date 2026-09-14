@@ -47,8 +47,6 @@ if (segments.length === 2) return segments[0]                      // scripts/x.
 2. 加规则先验它会红（R17）：造一簇「同一个脚本 7 天 3 份」的夹具断言红，再造一簇「三个不同脚本」的夹具断言绿。
 3. 本份评审同时充当第 1 条落地前的过闸依据；落地后应回来把本节状态改成 `✅ 已固化（由 check:symptom-cluster 的文件级键接管）`。
 
+第 2 条的阳性对照现成就有：18 份里唯一真的同类是 `2026-09-09-feel-browser-lane-and-reviewed-findings` 与 `2026-09-09-feel-unregistered-surfaces`——同一天、同一个 `check-feel.mjs`。文件级键会把这一对准确抓出来，其余 13 组是单发。
+
 **本轮不做**：不改判据本身。这条 lane 的任务是 R25 改版（评审时机），动 `symptom-cluster` 的判据是另一件事、另一份合同、另一批夹具——在这里顺手改会让两件事的验证互相污染。派工单据：把上面第 1+2 条作为一条独立任务派出。
-
-## 四、顺带记一笔：18 份里有没有真的同类？
-
-有一对，但不在「层」这个维度上：`2026-09-09-feel-browser-lane-and-reviewed-findings` 与 `2026-09-09-feel-unregistered-surfaces` 同一天、同一个 `check-feel.mjs`。文件级键会把这一对准确地抓出来——这正是第 1 条修法的阳性对照。其余 13 组是单发。
