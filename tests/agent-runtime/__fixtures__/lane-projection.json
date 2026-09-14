@@ -49,7 +49,11 @@
       "toolCallId": "call-write",
       "toolName": "write_script",
       "text": "Applied append to the document. New revision 1.\nUser sees: The document now contains the new text (append); the user can undo it with Cmd+Z.",
-      "isError": false
+      "isError": false,
+      "nextAction": {
+        "kind": "none",
+        "userSees": "The document now contains the new text (append); the user can undo it with Cmd+Z."
+      }
     },
     {
       "sequence": 5,

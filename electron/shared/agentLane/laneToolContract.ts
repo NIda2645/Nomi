@@ -36,7 +36,7 @@ export type {
 } from "../agentCapabilities/modelFacingTools";
 export { verbMutates as laneToolMutates, verbBillable as laneToolBillable, approvalFacetsOf as laneToolApprovalFacets } from "../agentCapabilities/modelFacingTools";
 
-import type { ModelFacingToolExample as LaneToolExample, ModelFacingToolSpec as LaneToolSpec, VerbNextAction } from "../agentCapabilities/modelFacingTools";
+import type { ModelFacingToolExample as LaneToolExample, ModelFacingToolSpec as LaneToolSpec } from "../agentCapabilities/modelFacingTools";
 
 /**
  * 「一个工具最多允许跑多久」的 lane 侧叫法与预算常量。**同一份定义的别名**，理由与数字
@@ -91,27 +91,13 @@ export function wrongVerbFailure(input: { readonly attempted: string; readonly u
 }
 
 /**
- * 写动词成功时的返回信封（设计正本 §6.2）：用户接下来会看到什么。`userSees` 是宿主写的一句人话，
- * 与面板投影同源——模型可以直接转述，不必自己编「已经出卡了」。
+ * 写动词成功时的返回信封与它的尾行渲染**住在 `./laneToolNextAction`**，不在这里：
+ * 投影层与渲染层都要 import 那一行的渲染函数按结构去尾（尾行是给模型的话，不是用户文案），
+ * 而它们不能把本文件这条 import 链（`../agentCapabilities/*` → zod）拖进浏览器 bundle。
+ * 这里只把它**再导出**一次，`laneToolContract` 的既有调用方一个字都不用改（P1：不是第二份定义）。
  */
-export interface LaneToolNextAction {
-  readonly kind: VerbNextAction;
-  readonly userSees: string;
-  readonly jobId?: string;
-  readonly cardId?: string;
-  /** 给 `undo` 用；`reversible_local` 的写动词必有。 */
-  readonly changeId?: string;
-}
-
-/** 信封 → 模型看到的尾行。**唯一渲染点**，与失败正文的 `Next:` 行同一形状。 */
-export function renderLaneToolNextAction(next: LaneToolNextAction): string {
-  const refs = [
-    ...(next.changeId ? [`changeId=${next.changeId}`] : []),
-    ...(next.jobId ? [`jobId=${next.jobId}`] : []),
-    ...(next.cardId ? [`cardId=${next.cardId}`] : []),
-  ];
-  return `User sees: ${next.userSees}${refs.length > 0 ? ` (${refs.join(", ")})` : ""}`;
-}
+export type { LaneToolNextAction } from "./laneToolNextAction";
+export { renderLaneToolNextAction, laneToolNextActionOf, laneToolTextForUser } from "./laneToolNextAction";
 
 /**
  * 失败 → 模型看到的那段正文。**内外同源**：内部 lane 与对外 MCP 从同一个描述符派生

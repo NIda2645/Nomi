@@ -195,6 +195,39 @@ describe('laneViewModel', () => {
     expect(tool.kind === 'tool' && tool.receipt.output).toBe('The opening scene.')
   })
 
+  it('收据展开体不印那行给模型的话，但正文一个字不少', () => {
+    next = 0
+    // 宿主写进工具结果的尾行有两个读者，读到的不该是同一段字：模型读 `User sees: …`（免得它自己编
+    // 「已经生成好了」），用户读这一行收据。那句话是英文、第三人称写用户，而它讲的事这一行自己
+    // 已经画出来了（撤销钮、介入槽里的卡）——印出去就是同一件事说两遍，其中一遍还不是用户文案。
+    const userSees = 'The document now contains the new text (append); the user can undo it with Cmd+Z.'
+    const model = laneViewModel(projection([
+      part({ kind: 'user', text: 'Append a closing line.' }),
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'write_script', args: { where: 'end' }, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'write_script', isError: false,
+        text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (changeId=undo-1)`,
+        nextAction: { kind: 'none', userSees, changeId: 'undo-1' } }),
+    ]), labels)
+    const tool = model.items[1]
+    expect(tool.kind === 'tool' && tool.receipt.output).toBe('Applied append to the document. New revision 1.')
+  })
+
+  it('没有信封的工具结果原样印，不去猜哪一行是给模型的', () => {
+    next = 0
+    // 去尾只按结构走（投影带上来的信封 → 同一个渲染函数算出那行长什么样 → 逐字对齐才去）。
+    // 认 "User sees:" 这个前缀的写法会在读动词、失败结果、旧转录上乱删正文——那是把一个
+    // 判据换成一个猜测。这条钉住「没有信封就一个字不动」。
+    const model = laneViewModel(projection([
+      part({ kind: 'user', text: '看一下。' }),
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'read_script', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'read_script', isError: false,
+        text: 'The opening scene.\nUser sees: nothing was written by this call.' }),
+    ]), labels)
+    const tool = model.items[1]
+    expect(tool.kind === 'tool' && tool.receipt.output)
+      .toBe('The opening scene.\nUser sees: nothing was written by this call.')
+  })
+
   it('回合以用户消息为界：上一轮的文本绝不并进下一轮的气泡', () => {
     next = 0
     const model = laneViewModel(projection([
