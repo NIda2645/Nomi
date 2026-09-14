@@ -138,11 +138,8 @@ try {
     match: (body) => flattenRequestText(body).includes('请创建一个临时图片节点')
       && !hasToolResult(body, 'resident-receipt-fix-canvas-create'),
     reply: {
-      type: 'tool', id: 'resident-receipt-fix-canvas-create', name: 'nomi_canvas_write',
-      args: {
-        operation: 'create_canvas_nodes', summary: 'resident receipt approval fixture',
-        nodes: [{ clientId: 'resident-receipt-fix-node', kind: 'image', title: 'Resident approval fixture', prompt: 'temporary approval fixture', modelKey: 'agent-runtime-image', modeId: 't2i', params: { size: '1024x1024' } }],
-      },
+      type: 'tool', id: 'resident-receipt-fix-canvas-create', name: 'make_artifact',
+      args: { fileType: 'text', title: 'Resident approval fixture', content: 'temporary approval fixture' },
     },
   })
   const canvasCreateFollowup = walk.fixture.expectText({

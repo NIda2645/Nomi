@@ -38,9 +38,9 @@ function canvasEvidence(overrides = {}) {
     nodes: [{ id: 'source', title: 'NOMILIVESOURCE', kind: 'image' }, { id: 'target', title: 'NOMILIVETARGET', kind: 'image' }],
     edges: [{ source: 'source', target: 'target', mode: overrides.mode ?? 'reference' }],
   }
-  const result = { role: 'toolResult', toolName: 'nomi_canvas_write', toolCallId: 'create-1', isError: false,
+  const result = { role: 'toolResult', toolName: 'make_artifact', toolCallId: 'create-1', isError: false,
     details: { applied: true, operation: 'create_canvas_nodes', affectedNodeIds: ['source', 'target'] }, content: [{ type: 'text', text: 'Applied create_canvas_nodes.' }], ...overrides.result }
-  const messages = [{ role: 'assistant', content: [{ type: 'toolCall', name: 'nomi_canvas_write', id: 'create-1', arguments: { operation: 'create_canvas_nodes' } }] }, result]
+  const messages = [{ role: 'assistant', content: [{ type: 'toolCall', name: 'make_artifact', id: 'create-1', arguments: { fileType: 'text', title: 'fixture', content: 'x' } }] }, result]
   return verifyCanvasEvidence(async () => ({ payload: { generationCanvas: landed } }), {}, 'project', () => [{}], '/synthetic', () => messages, expect)
 }
 
