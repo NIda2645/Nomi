@@ -317,7 +317,12 @@ function availableHint(connection: ModelSettingsHomeConnection, t: ReturnType<ty
   if (connection.vendorKey === 'dreamina-member') return t('onboardingProviders.drawer.home.dreaminaHint')
   if (connection.vendorKey === 'codex-local') return t('onboardingProviders.drawer.home.codexImageHint')
   if (connection.vendorKey === 'antigravity-cli') return t('antigravity.subtitle')
-  return t('onboardingProviders.drawer.home.adaptedHint', { name: translateModelDisplayText(connection.name) })
+  const name = translateModelDisplayText(connection.name)
+  // 有几个预置模型就说几个；一个都没有就别说「已有…模型」——Replicate 这类走 bespoke 调用的家
+  // 预置数就是 0，旧文案在那一行等于对用户说了句假话（D4 诚实交付）。
+  return connection.models.length > 0
+    ? t('onboardingProviders.drawer.home.adaptedHintWithCount', { name, count: connection.models.length })
+    : t('onboardingProviders.drawer.home.adaptedHintNoModels', { name })
 }
 
 export function ModelSettingsHome({

@@ -171,7 +171,10 @@ export function projectOnboardingConnections({ models, vendorMeta, dreaminaStatu
       vendorKey: card.directory.vendorKey,
       name: card.meta.name,
       kind: 'api',
-      models: [],
+      // 未接入 ≠ 没有预置模型。这里曾硬写 `models: []`，把上面第 27 行刚算出来的真实清单
+      // 当场丢掉，于是「已有预置地址、模型和请求适配」这句话下面永远没有列表、搜索框也
+      // 搜不到还没接入那几家的模型名（2026-09-14 修）。
+      models: card.vendorModels,
       logo: card.directory.logo,
       glyph: card.directory.glyph,
       hasApiKey: card.meta.hasApiKey,
