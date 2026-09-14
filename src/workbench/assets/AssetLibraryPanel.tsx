@@ -28,6 +28,7 @@ import { FindReferenceSection } from './FindReferenceSection'
 import type { ReferencePlatform } from '../../../electron/shared/contracts/referenceSearch'
 import { acceptAttrForKinds, mediaKindFromExtension } from '../../../electron/assets/mediaTypes'
 import { notify } from '../../ui/notificationPolicy'
+import { FeedbackButton } from '../../ui/community/FeedbackButton'
 import {
   AssetGridCell,
   FolderGridCell,
@@ -139,7 +140,13 @@ export function AssetLibraryContent({
     setFeedback((current) => ({ ...current, [feedbackOwner]: message
       ? [...new Set([...(current[feedbackOwner] ?? []), message])] : [] }))
   }, [feedbackOwner])
+  // 导入被拒是**四个失败面之一**。这条内联行是这个面上唯一的常驻落点，所以那颗「反馈」钮
+  // 挂在这里，而不是把 notify 的 level 从 inline 改成 background——改 level 会把一条安静的
+  // 内联提示变成一个飘出来的 toast，那是另一件事的改动，不该顺手夹带（失败面那一行改动尽量小）。
+  const [lastFailureKind, setLastFailureKind] = React.useState<string | null>(null)
   const report = React.useCallback((message: string, type: 'info' | 'warning' | 'error' = 'warning') => {
+    // 只有真失败才给反馈入口。「跳过了 2 个重复素材」是正常结果，不是问题。
+    if (type === 'error') setLastFailureKind(message)
     notify({ identity: `asset-library:${feedbackOwner}`, reason: 'operation', message, type, level: 'inline', present })
   }, [feedbackOwner, present])
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
@@ -587,6 +594,12 @@ export function AssetLibraryContent({
         {(feedback[feedbackOwner] ?? []).length > 0 ? (
           <div role="status" aria-live="polite" className="shrink-0 border-b border-nomi-line px-3 py-2 text-caption text-nomi-ink-60" data-asset-library-feedback>
             {feedback[feedbackOwner].map((message) => <p key={message}>{message}</p>)}
+            {lastFailureKind ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {/* 那句人话就是 i18n 已经算好的这条提示本身；导入域没有第二份错误码表要造。 */}
+                <FeedbackButton request={{ intent: 'problem', surface: 'import', stage: 'upload', errorKind: 'asset-import-failed', summary: lastFailureKind }} />
+              </div>
+            ) : null}
           </div>
         ) : null}
         <AssetLibraryToolbar

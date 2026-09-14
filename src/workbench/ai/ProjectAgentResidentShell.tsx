@@ -9,6 +9,7 @@ import { libraryGroup } from '../library/libraryGroups'
 // 「宿主真相怎么变成一行收据」这件事只能靠截图证明。拆开之后那部分是纯函数、有单测；
 // 这里剩下的都是**只有真实运行时才有的东西**（DOM 尺寸、事件桥、文件选择器）。
 import React from 'react'
+import { openFeedbackFor } from '../../ui/community/FeedbackButton'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import { STORYBOARD_PLANNER_SKILL } from '../generationCanvas/agent/storyboardLauncher'
@@ -512,6 +513,16 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
           onUndoTool: actions.undoTool,
           onAdoptCandidate: (index, _tag, candidateIndex) => adoptLaneTaskCandidate(data.flow, index, candidateIndex, t),
           onErrorAction: recoverFromFailure,
+          // 失败面之一（四处共用同一张卡）。那句人话**已经是** Agent 域自己 owner 的产物：
+          // `laneFailureText()` 按码取的本地化文案，走投影落到了 `item.reason`。
+          // 反馈这一侧不再翻一次码，也不做第六张码表（src/ui/community/feedbackSummary.ts）。
+          onFeedback: (_index, reason) => openFeedbackFor({
+            intent: 'problem',
+            surface: 'agent',
+            stage: 'generation',
+            summary: reason,
+            laneName: data.snapshot.active.lane,
+          }),
           onSuggestion: (_index, option) => actions.answerOption(option),
         }}
         slotHandlers={autoMode.slot ? autoModeSlotHandlers : spend.slot ? spendSlotHandlers : {

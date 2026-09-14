@@ -50,6 +50,8 @@ export type V4FlowHandlers = Readonly<{
   onAdoptCandidate?: (index: number, tag: string, candidateIndex: number) => void
   onUndoTask?: (index: number) => void
   onErrorAction?: (index: number) => void
+  /** 失败行上的「反馈」。宿主接了才画那颗钮（#789 的规矩：画出来的必须接得上）。 */
+  onFeedback?: (index: number, reason: string) => void
   onSuggestion?: (index: number, option: string) => void
 }>
 
@@ -182,7 +184,15 @@ export function V4FlowRow({
       />
     )
   }
-  return <V4ErrorBar reason={item.reason} action={item.action} onAction={() => handlers?.onErrorAction?.(at)} />
+  return (
+    <V4ErrorBar
+      reason={item.reason}
+      action={item.action}
+      onAction={() => handlers?.onErrorAction?.(at)}
+      feedbackLabel={handlers?.onFeedback ? labels.assistant.feedback : undefined}
+      onFeedback={handlers?.onFeedback ? () => handlers.onFeedback?.(at, item.reason) : undefined}
+    />
+  )
 }
 
 export function AgentPanelV4Panel({

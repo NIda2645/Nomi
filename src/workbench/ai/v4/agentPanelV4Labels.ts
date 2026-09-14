@@ -36,6 +36,7 @@ export function useV4Labels() {
       copy: t('agentPanelV4.copyReply'),
       retry: t('agentPanelV4.retry'),
       continue: t('agentPanelV4.continue'),
+      feedback: t('agentPanelV4.feedback'),
     },
     task: { status: taskStatus, adopt: t('agentPanelV4.adopt'), undo: t('agentPanelV4.undo') },
     intervention: {
