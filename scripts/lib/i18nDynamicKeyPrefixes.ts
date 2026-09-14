@@ -53,7 +53,6 @@ export const DYNAMIC_KEY_PREFIXES: DynamicPrefix[] = [
   { prefix: 'antigravity.check', why: '动态: 能力自检状态;枚举来源: antigravityDisplayCheckState() 返回值(check.* 词条)' },
   { prefix: 'antigravity.capability', why: '动态: 能力名;枚举来源: antigravity capabilities 数组(capability.* 词条)' },
   // ── community ──
-  { prefix: 'community.stages', why: '动态: 反馈中心分享流程阶段;枚举来源: FeedbackShareContent 的 stage option 列表(stages.* 词条)' },
   // ── modelSetup ──
   { prefix: 'modelSetup.kinds', why: '动态: 模型能力种类;枚举来源: DirectScriptDraftForm 的 KINDS 常量(kinds.* 词条)' },
   { prefix: 'modelSetup.existingConnectionError', why: '动态: 既有连接错误码;枚举来源: ExistingConnectionErrorCode 联合(existingConnectionError.* 词条)' },

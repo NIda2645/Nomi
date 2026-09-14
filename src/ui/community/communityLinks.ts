@@ -1,41 +1,17 @@
-import type { FeedbackDiagnostics } from './feedbackDiagnostics'
-
 export const NOMI_COMMUNITY_LINKS = {
   website: 'https://nomiaqm.com/',
   github: 'https://github.com/aqm857886159/Nomi',
   issues: 'https://github.com/aqm857886159/Nomi/issues/new/choose',
 } as const
 
-/**
- * Keep the private form URL in one place. The desktop app never puts feedback
- * text, conversation content, assets, or credentials in this URL; only the
- * bounded runtime context below is carried to Tally's hidden fields.
- */
-export const PRIVATE_FEEDBACK_URL = 'https://tally.so/r/GxPrx2'
-
-function platformLabel(platform: string): string {
-  if (platform === 'darwin') return 'macOS'
-  if (platform === 'win32') return 'Windows'
-  if (platform === 'linux') return 'Linux'
-  return platform
-}
-
-/**
- * Pass only low-risk runtime context to the private form. Tally's hidden
- * fields use these values to avoid making the user retype version/platform
- * details; the feedback text and attachments remain browser-confirmed inputs.
- */
-export function buildPrivateFeedbackUrl(diagnostics: FeedbackDiagnostics): string {
-  const params = new URLSearchParams({
-    nomi_version: diagnostics.app.version,
-    nomi_platform: platformLabel(diagnostics.app.platform),
-    nomi_arch: diagnostics.app.arch,
-    nomi_stage: diagnostics.context.stage,
-    nomi_provider: [diagnostics.context.provider, diagnostics.context.model].filter(Boolean).join(' / '),
-    nomi_model: diagnostics.context.model ?? '',
-  })
-  return `${PRIVATE_FEEDBACK_URL}?${params.toString()}`
-}
+// 2026-09-15 删掉的：`PRIVATE_FEEDBACK_URL`（Tally 私密表单）与 `buildPrivateFeedbackUrl()`。
+// 反馈的去向改成我们自己的接收端（`infra/feedback-worker/`，用户 09-15 拍板①），
+// 所以「把版本/平台塞进 Tally hidden fields，再让用户在浏览器里自己提交」这条路整条不存在了。
+// 连带删掉的 `platformLabel()` 只服务过那条 URL。
+//
+// `buildGitHubIssueUrl` **留着**：它不是第二个反馈表单，是「把一个不支持的 ComfyUI 节点
+// 报到公开 issue 区」那件事的深链（`src/ui/onboarding/ComfyuiWorkflowImportPanel.tsx:71`）。
+// 公开 issue 与一键反馈是两件事：一件要公开讨论，一件只要我们收到。
 
 /**
  * The forwardable share message = a human recommendation line + the two canonical links.

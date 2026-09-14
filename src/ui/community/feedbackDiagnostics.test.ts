@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { buildFeedbackDiagnostics } from './feedbackDiagnostics'
-import { buildPrivateFeedbackUrl } from './communityLinks'
 
 describe('feedback diagnostics', () => {
   it('contains only a bounded, non-content context envelope', () => {
@@ -53,7 +52,7 @@ describe('feedback diagnostics', () => {
     expect(JSON.stringify(result)).not.toContain('my-private-workflow')
   })
 
-  it('never carries a user-defined vendor string into diagnostics or the Tally URL', () => {
+  it('never carries a user-defined vendor string into diagnostics', () => {
     // A relay/manual vendor key is minted from the user's own base URL
     // (deriveVendorKeyFromBaseUrl → hostname slug). This can be a private internal address.
     const privateBaseUrlSlug = 'internal-proxy-corp-local'
@@ -66,17 +65,13 @@ describe('feedback diagnostics', () => {
     // Boundary maps it to the literal "custom" and drops the user-typed model.
     expect(result.context.provider).toBe('custom')
     expect(result.context.model).toBeUndefined()
-    // The private strings must not appear anywhere in the diagnostics envelope...
+    // The private strings must not appear anywhere in the diagnostics envelope.
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain(privateBaseUrlSlug)
     expect(serialized).not.toContain(privateModelAlias)
     expect(serialized).not.toContain('corp-local')
-    // ...nor in the outbound Tally URL built from those diagnostics.
-    const tallyUrl = buildPrivateFeedbackUrl(result)
-    expect(tallyUrl).not.toContain(privateBaseUrlSlug)
-    expect(tallyUrl).not.toContain(privateModelAlias)
-    expect(tallyUrl).not.toContain('corp-local')
-    expect(new URL(tallyUrl).searchParams.get('nomi_provider')).toBe('custom')
-    expect(new URL(tallyUrl).searchParams.get('nomi_model')).toBe('')
+    // 出站那一半的同一条守卫搬去了 electron/feedback/feedbackReport.test.ts 的
+    // 「用户自建中转的 key 塌成字面量 custom」—— 2026-09-15 起出站不再是一条 Tally URL，
+    // 而是发往我们自己接收端的那份报告。
   })
 })
