@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  IMPORT_DISK_RESERVE_BYTES,
-  filterImportableAudioFiles,
-  isAudioFile,
-} from './importAudioToLibrary'
+import { filterImportableAudioFiles, isAudioFile } from './importAudioToLibrary'
 import { IMPORT_DISK_RESERVE_BYTES } from '../../../electron/shared/contracts/mediaImportPolicy'
 
 function makeFile(name: string, type: string, size = 1024): File {

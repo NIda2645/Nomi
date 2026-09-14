@@ -51,9 +51,9 @@ describe('媒体导入准入 owner', () => {
 
   it('画布不收音频，但理由是「没有落点」而不是「不支持」', () => {
     const admission = admitMediaImport('generation-canvas', { kind: 'audio', sizeBytes: 1 }, null)
-    expect(admission.ok).toBe(false)
-    if (admission.ok) return
-    expect(admission.reason).toBe('unsupported-kind')
+    // 用真的 if 收窄（不是 expect）：expect 不改变类型，而「这一支独有的字段」正是要断言的东西。
+    if (admission.ok) throw new Error('画布不该收下音频')
+    if (admission.reason !== 'unsupported-kind') throw new Error(`reason=${admission.reason}`)
     expect(admission.narrowedBecause).toContain('落点')
   })
 })
@@ -80,9 +80,8 @@ describe('上限从磁盘派生', () => {
       { kind: 'video', sizeBytes: 4000 },
       { freeBytes: IMPORT_DISK_RESERVE_BYTES + 1000 },
     )
-    expect(admission.ok).toBe(false)
-    if (admission.ok) return
-    expect(admission.reason).toBe('no-disk-space')
+    if (admission.ok) throw new Error('装不下就不该放行')
+    if (admission.reason !== 'no-disk-space') throw new Error(`reason=${admission.reason}`)
     expect(admission.fileBytes).toBe(4000)
     expect(admission.freeBytes).toBe(IMPORT_DISK_RESERVE_BYTES + 1000)
   })
@@ -90,9 +89,8 @@ describe('上限从磁盘派生', () => {
   it('硬上限先于磁盘判（它是下游约束，盘再大也放不进去）', () => {
     const cap = MEDIA_IMPORT_SURFACES['agent-composer'].hardCapBytes ?? 0
     const admission = admitMediaImport('agent-composer', { kind: 'image', sizeBytes: cap + 1 }, null)
-    expect(admission.ok).toBe(false)
-    if (admission.ok) return
-    expect(admission.reason).toBe('over-hard-cap')
+    if (admission.ok) throw new Error('超过硬上限就不该放行')
+    if (admission.reason !== 'over-hard-cap') throw new Error(`reason=${admission.reason}`)
     expect(admission.capBytes).toBe(cap)
     expect(admission.because).toBeTruthy()
   })

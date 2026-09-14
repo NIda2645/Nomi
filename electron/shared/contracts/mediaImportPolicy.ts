@@ -116,9 +116,17 @@ export type MediaImportRejection =
   | { reason: 'no-disk-space'; fileBytes: number; freeBytes: number; neededBytes: number }
   | { reason: 'over-hard-cap'; fileBytes: number; capBytes: number; because: string }
 
+/**
+ * 把 `{ ok: false }` 分配到每个拒绝分支上，而不是写成 `{ ok: false } & MediaImportRejection`。
+ * 后者在类型层面是「一个交叉类型」，`reason` 不在顶层，调用方 `switch (admission.reason)`
+ * narrow 不动——拿不到那一支独有的字段（fileBytes / narrowedBecause …）。分配之后
+ * 它是一个真正的可辨识联合，谁都能按 reason 收窄。
+ */
+type Rejected<R> = R extends unknown ? { ok: false } & R : never
+
 export type MediaImportAdmission =
-  | ({ ok: true; kind: MediaKind })
-  | ({ ok: false } & MediaImportRejection)
+  | { ok: true; kind: MediaKind }
+  | Rejected<MediaImportRejection>
 
 export type MediaImportCandidate = {
   /** 已由 mediaTypes 判定的媒体种类（魔数优先、扩展名兜底）。认不出传 null。 */
