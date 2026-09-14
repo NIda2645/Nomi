@@ -28,6 +28,8 @@ import { DEFAULT_TIMEOUT_MS, clickOrFail, expectVisible } from './_assert.mjs'
 
 const FIXTURE_DIR = process.env.NOMI_MEDIA_FIXTURE_DIR || '/Users/aoqimin/Desktop/nomi-media-fixtures'
 const HUGE_VIDEO = process.env.NOMI_HUGE_VIDEO || '/Users/aoqimin/Desktop/视频/9月12日(1)/9月12日(1).mov'
+// 默认落仓库根 scratchpad/（已 .gitignore，只住 worktree）。要留档的那一轮用
+// NOMI_MATRIX_OUT=docs/evidence/<日期>-<主题> 指过去，别把中间产物提进树。
 const OUT_DIR = process.env.NOMI_MATRIX_OUT || path.join(process.cwd(), 'scratchpad/media-import')
 const SHOT_DIR = path.join(process.env.NOMI_MATRIX_OUT || path.join(process.cwd(), 'scratchpad/media-import'), 'shots', process.env.NOMI_MATRIX_TAG || 'run')
 const CELL_TIMEOUT_MS = Number(process.env.NOMI_MATRIX_CELL_TIMEOUT_MS || 15000)

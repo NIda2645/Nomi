@@ -73,7 +73,7 @@ BEFORE 跑出 exit 1（14 格不合格），AFTER exit 0。
 判据退回到「这一格什么都没落盘」——那已经足以支撑「被拒了」这个结论。
 AFTER 全绿，不存在这种歧义。
 
-截图：`scratchpad/media-import/shots/before/` 与 `scratchpad/media-import/shots/after/`（每个入口一张）。
+截图：`docs/evidence/2026-09-14-media-import-single-owner/shots/before/` 与 `docs/evidence/2026-09-14-media-import-single-owner/shots/after/`（每个入口一张）。
 `after/matrix-library-drop.png` 里能直接看到 `9月12日(1).mov`、`small-h264.mp4`、`hevc-10s.mov` 都在库里、
 且没有「已跳过」横幅；`after/matrix-canvas-import.png` 里那条拒绝 toast 就是上面那句话。
 

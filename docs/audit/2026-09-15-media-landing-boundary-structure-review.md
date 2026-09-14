@@ -102,6 +102,6 @@
   先验过它会红（对改之前的代码报 33 处）。
 - 行为侧：`tests/ux/media-import-matrix.walk.mjs` 的入口 × 媒体矩阵，
   BEFORE（`origin/main`）14/36 不合格 → AFTER 0/36；
-  数据在 `scratchpad/media-import/matrix.md`。
+  数据在 `docs/evidence/2026-09-14-media-import-single-owner/matrix.md`。
 - 类型侧：`electron/shared/contracts/mediaImportPolicy.test.ts` 断言「比素材库窄必须写领域理由」
   且理由不许是「还没做 / 暂不支持 / TODO」。
