@@ -34,6 +34,7 @@ import {
   OFF_CANVAS_RENDER_TARGETS,
 } from './canvas-perf/offCanvasRenderProbe.mjs'
 import { buildScenarioAdvisory } from './canvas-perf/advisoryMetrics.mjs'
+import { CANVAS_PERF_GATE_SCENARIOS } from './canvas-perf/gateScenarios.mjs'
 import {
   AUTO_PAN_SAFE_MARGIN_PX,
   MIN_NODE_BAND_COVERAGE,
@@ -99,30 +100,7 @@ const launchTimeoutMs = Math.max(
   // gets a longer default launch window than the built-dist legs.
   Number(argValue('--launch-timeout') || process.env.NOMI_CANVAS_PERF_LAUNCH_TIMEOUT_MS || (useDevServer ? 90_000 : 45_000)),
 )
-const allScenarios = [
-  'waiting-effects',
-  'cold-open',
-  'blank-pan',
-  'node-drag-image',
-  'node-drag-video',
-  // eval v2 (U1): variable-speed + multi-select + LOD + dense-edge drag coverage.
-  'multi-node-drag',
-  'drag-nodes-all',
-  'drag-group-frame-60',
-  'zoom-slider-drag',
-  'drag-at-low-zoom',
-  'drag-over-dense-edges',
-  'marquee-select',
-  'click-select',
-  'wheel-zoom',
-  'pan-zoom-mix',
-  'resize',
-  'media-reveal',
-  'low-zoom-preview',
-  'media-error',
-  'video-hover',
-  'reload-heavy',
-]
+const allScenarios = CANVAS_PERF_GATE_SCENARIOS
 const scenarios = requestedScenarios.includes('all') ? allScenarios : requestedScenarios
 // eval v2 (U2 打分策略): the newly added drag scenarios are advisory-only THIS
 // round. Their budget/hard-failure detail is still computed and recorded for
