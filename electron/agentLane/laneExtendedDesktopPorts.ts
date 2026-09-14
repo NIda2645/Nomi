@@ -11,6 +11,7 @@ import type { PiSkillWriteTransportAdapter, PreparedSkillWrite } from '../capabi
 import type { ProjectAgentProposalReceiptService } from '../capabilityCore/projectAgentProposalReceiptStore'
 import { committedProjectAgentReceiptMatchesApproval } from '../capabilityCore/projectAgentProposalReceiptCorrelation'
 import { modelToolCapabilityId } from '../shared/agentCapabilities/modelFacingTools'
+import { residentGenerationUnavailableMessage } from '../capabilityCore/residentSurfaceLifecycle'
 import { capabilityContractById } from '../shared/agentCapabilities/registry'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuthority'
 import { LANE_DEFERRED_TOOL_CATALOG, LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog'
@@ -44,6 +45,15 @@ export interface LaneExtendedDesktopPortsInput {
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
   return { ok: false, code, message: code }
+}
+
+/**
+ * 生成面不在：code 照旧，message 说的是常驻生成面此刻的**相**（按配置关掉 / 还在起 / 装配抛了 /
+ * 已停），由 residentSurfaceLifecycle 这一个 owner 回答。模型据此能告诉用户「等一会儿再试」还是
+ * 「这个会话没有这条面」，而不是一句零信息的「生成服务暂时不可用」。
+ */
+function generationSurfaceUnavailable(): Extract<RuntimeToolDecision, { ok: false }> {
+  return { ok: false, code: 'generation_surface_unavailable', message: residentGenerationUnavailableMessage() }
 }
 
 function rejectPreparation(code: string): never {
@@ -137,7 +147,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       // `check_job`：生成域先答；它不认识这个 id 就问导出域（同一个动词，用户不需要知道任务住哪个域）。
       const generation = await input.generation()?.tryExecute(transport, signal)
       if (generation?.ok || (generation && !UNKNOWN_GENERATION_JOB.has(generation.code ?? ''))) return generation
-      return await input.phase4.tryExecuteRead(exportJobTransportCall(call), signal) ?? generation ?? failure('generation_surface_unavailable')
+      return await input.phase4.tryExecuteRead(exportJobTransportCall(call), signal) ?? generation ?? generationSurfaceUnavailable()
     }
     return failure('capability_unsupported')
   }
@@ -152,6 +162,10 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     const normalizedCall = { ...call, args: spec.schema.parse(call.args) }
     const contract = capabilityContractById(modelToolCapabilityId(spec, normalizedCall.args))
     if (!contract) return failure('capability_unsupported')
+    // 读走 `executeRead`：路由判据是**动词声明翻出来的 lane**（`translate`，20 动词那张传输表），
+    // 不再是这里按 `internalGroup` 手写的分支树。`origin/main` 那棵树里的 `production` 一支随
+    // 37 个内部名一起退役（v2 的声明里没有 `production` 组）；生成面不在时的那句相由
+    // `generationSurfaceUnavailable()` 说（#785 的 owner），在 `executeRead` 里。
     if (contract.effect === 'read') return executeRead(normalizedCall, signal)
     const entry = pending.get(call.toolCallId)
     if (!entry?.approved || entry.call.toolName !== normalizedCall.toolName
@@ -161,8 +175,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     const { prepared, approved } = entry
     let result: RuntimeToolDecision
     if (prepared.kind === 'direct') {
+      // 传输方法名同样由声明翻（`translate`），不按组名手写；生成面不在 → #785 那句「此刻是哪个相」。
       const { call: transport } = translate(normalizedCall)
-      result = await input.generation()?.tryExecute(transport, signal) ?? failure('generation_surface_unavailable')
+      result = await input.generation()?.tryExecute(transport, signal) ?? generationSurfaceUnavailable()
     } else {
       if (approved === true) return failure('capability_authority_invalid')
       switch (prepared.kind) {
