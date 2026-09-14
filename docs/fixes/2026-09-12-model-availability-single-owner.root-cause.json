@@ -225,5 +225,546 @@
       "electron/shared/modelAvailability.test.ts",
       "src/workbench/ai/modelAvailabilityAgreement.test.ts"
     ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHost.mts",
+      "line": 393,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 55,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 87,
+      "symbol": "CatalogAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 93,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 117,
+      "symbol": "CatalogAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 119,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 149,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 184,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 196,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 197,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 204,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+      "line": 55,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "line": 75,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogHealth.ts",
+      "line": 17,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 15,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 26,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 27,
+      "symbol": "CatalogAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 43,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 54,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 286,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 293,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 294,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 326,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/executableModel.ts",
+      "line": 39,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/executableModel.ts",
+      "line": 74,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 58,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 59,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 62,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 65,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 196,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 197,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/serviceLanguageModels.ts",
+      "line": 25,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 49,
+      "symbol": "MODEL_UNUSABLE_REASONS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 54,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 56,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 67,
+      "symbol": "ModelAvailabilityVendor"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 84,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 84,
+      "symbol": "ModelAvailabilityInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelAvailability.ts",
+      "line": 106,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/modelCatalogCache.ts",
+      "line": 117,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/ModelChipGroups.tsx",
+      "line": 32,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 31,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 32,
+      "symbol": "MODEL_UNUSABLE_REASONS"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 32,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 33,
+      "symbol": "ModelUnusableReason"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 75,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsCatalogProjection.ts",
+      "line": 77,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsHomeState.ts",
+      "line": 28,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsHomeState.ts",
+      "line": 30,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsHomeState.ts",
+      "line": 31,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsHomeState.ts",
+      "line": 33,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/modelSettingsHomeState.ts",
+      "line": 50,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "line": 463,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "line": 465,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/onboardingDrawerDerivations.ts",
+      "line": 55,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/assistantModelIdentity.ts",
+      "line": 21,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/assistantModelIdentity.ts",
+      "line": 45,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/modelCatalogApi.ts",
+      "line": 83,
+      "symbol": "ModelAvailability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "line": 164,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/usableVendorModel.ts",
+      "line": 46,
+      "symbol": "availability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/settings/defaultGenerationModelOptions.ts",
+      "line": 50,
+      "symbol": "availability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 117,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/textBrainResolver.ts",
+      "line": 179,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 213,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+      "line": 51,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "line": 110,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "line": 124,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 324,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "line": 73,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "line": 76,
+      "symbol": "isCredentialReason"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogHealth.ts",
+      "line": 9,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogHealth.ts",
+      "line": 16,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 37,
+      "symbol": "credentialRecordCounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 43,
+      "symbol": "deriveModelAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 55,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogModelAvailability.ts",
+      "line": 60,
+      "symbol": "catalogModelAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 91,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 289,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 322,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 445,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/executableModel.ts",
+      "line": 38,
+      "symbol": "catalogModelAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/executableModel.ts",
+      "line": 52,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/executableModel.ts",
+      "line": 72,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/modelCatalogListing.ts",
+      "line": 190,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/secrets.ts",
+      "line": 193,
+      "symbol": "credentialRecordCounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "line": 41,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "line": 287,
+      "symbol": "apiKeyDecryptStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/serviceLanguageModels.ts",
+      "line": 21,
+      "symbol": "createCatalogAvailability"
+    },
+    {
+      "kind": "write",
+      "path": "src/config/modelCatalogCache.ts",
+      "line": 145,
+      "symbol": "keepUsableModelRows"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 89,
+    "why_not": "数字变大是**对的**，因为减的不是这个维度。修之前「这个模型现在能不能用」有 5 份互相独立的**判据**（modelSettingsHomeState 的 resolveModelHomeStatus、textBrainResolver 的 isExecutableTextModel、assistantModelIdentity 的 filterUsableAssistantTextModels、modelCatalogCache 的 getRunnableVendorKeys、defaultGenerationModelOptions 的 model.enabled），每一份都自己拼一遍「启用 + 发布 + 钥匙」的合取，拼漏一项就是一个新的答案——这 5 扇**下判断的门**现在只剩 1 扇（electron/shared/modelAvailability.ts 的 deriveModelAvailability，主进程算好后随每行模型以 availability 下发）。门表里这 89 扇数的是另一件事：**读同一个答案的入口**。它们从 5 个各自算的判官变成了 89 个引用同一份结论的读者，这正是本次要的结果，不是要合并掉的东西——把读者也合并只会重新长出一个上帝对象。真正不许再长的是「第 6 份判据」，那条由门岗 scripts/check-model-availability.mjs 硬零守着（AST 扫「凭据词 && 启用/发布词」的合取形状），不是靠门数守的。注：before 的 5 是按修前那 5 份判据点名计数；用本门表这组符号去数修前的树得不到可比数字——deriveModelAvailability / CatalogAvailability 这些符号当时根本不存在。"
   }
 }
