@@ -43,6 +43,7 @@
     "等待层拿不到 WebGL 时呈现的是 token-only 的柔和扫光带（垂直居中），不得是实心色块",
     "导入的渐显比例逐字等于「已拷贝字节 / 总字节」，不掺时间；总字节未知时比例为 0"
   ],
+  "structural_review": "docs/audit/2026-09-14-node-busy-state-structure-review.md —— R21.2 触发的结构评审：画布节点表达「在忙」只有生成一套词表，读者侧已挂到第三个早退例外（视频深度 / 本地图像算子 / 本轮的导入）；评审给出不变量归属（归写状态那一层，不归读它那一层）与三个仍活着的同类实例。前作 docs/audit/2026-09-13-canvas-media-preview-structure-review.md 是同一条导入/落盘链的上一刀，本轮按它定的「源/预览决定权收进落盘边界」口径走，未新增第二个 owner。",
   "generality_proof": "三个建卡入口与「重试导入」都汇进 importLocalMediaFilesToGenerationCanvas / retryLocalAssetImport 两个函数，状态只在这两处写；overlay 侧的判断落在 NodeGeneratingOverlay 与 NodeImportingOverlay 各一处 uploadStatus 读取；兜底块只有 GenerationWaitingSurface 一处渲染点，生成与导入共用它，因此一次修复覆盖全部同类入口。",
   "recurrence": {
     "classification": "recurring",
@@ -227,7 +228,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
-      "line": 41,
+      "line": 45,
       "symbol": "GenerationWaitingSurface"
     },
     {
