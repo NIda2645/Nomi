@@ -1,23 +1,23 @@
 # 用 Claude Code 跑 Ponytail 评审（临时壳）
 
-R25 要求每次 commit / push 前真跑一次 `/ponytail-review`。默认执行者是 `codex exec`。
-Codex 账号额度用尽期间（本次：恢复日 **2026-09-11**），`scripts/ponytail-review-hook.mjs`
-会稳定 fail-closed，所有提交和推送都被拦住。
+R25 要求每条分支交工前真跑一次 `/ponytail-review`（2026-09-15 起是 `pnpm run review:branch`，
+不再是每次 commit / push）。默认执行者是 `codex exec`。Codex 账号额度用尽期间，
+`scripts/ponytail-review-branch.mjs` 会稳定 fail-closed、拒绝发收据，于是 push 也过不去。
 
 `scripts/ponytail-review-claude-shim.mjs` 把同一次评审换到 Claude Code CLI 上执行。
 **这不是绕过闸门**：同一份 diff、同一份评审规则、同一套结果标记，只是换了跑模型的宿主。
-钩子本身一行没改，`node --test scripts/ponytail-review-hook.node-test.mjs` 25/25 仍绿。
+评审器契约一行没改，所以壳照旧接得上。
 
 ## 它是怎么接上的
 
-钩子对评审器的全部契约只有三条：接受 Codex 那串参数、从 stdin 拿 prompt、把最终报告写进
+评审器契约只有三条：接受 Codex 那串参数、从 stdin 拿 prompt、把最终报告写进
 `--output-last-message` 指到的文件。所以任何满足这三条的可执行文件都能通过
 `PONYTAIL_REVIEW_CODEX_BIN` 顶上去。壳做的就是：
 
 1. 从 Codex 参数里只取 `--output-last-message` 和 `--cd`，其余忽略；
-2. 从 stdin 读钩子拼好的评审 prompt（含精确的 staged / outgoing diff）；
+2. 从 stdin 读 review:branch 拼好的评审 prompt（含该分支的分块 diff）；
 3. 把**已安装的 Ponytail skill 原文**（`~/.codex/plugins/cache/ponytail/ponytail/<版本>/skills/ponytail-review/SKILL.md`）
-   逐字塞进 `--append-system-prompt`，再补一段「输出传输契约」——因为 skill 本身不知道钩子
+   逐字塞进 `--append-system-prompt`，再补一段「输出传输契约」——因为 skill 本身不知道适配器
    分类器要的那行 `PONYTAIL_REVIEW: PASS|FINDINGS` 标记；
 4. 跑 `claude --print --output-format text`，把最终文本写进报告文件，退出 0。
 
@@ -37,14 +37,13 @@ Codex 账号额度用尽期间（本次：恢复日 **2026-09-11**），`scripts
 
 ## 全部 fail-closed 的路径
 
-壳只在拿到非空模型输出后才写报告文件；在那之前的任何失败都让报告保持钩子预建的 0 字节，
-钩子于是判 `runner_failed` 并拦住 Git。已实测的路径见下方验证表。
+壳只在拿到非空模型输出后才写报告文件；在那之前的任何失败都让报告保持适配器预建的 0 字节，
+`review:branch` 于是判 `runner_failed`、拒绝发收据，push 随即过不去。已实测的路径见下方验证表。
 
-超时：钩子的墙钟自 2026-09-11 起是**派生的**（按 diff 大小与机器负载，180s–600s，见
-`resolveReviewTimeoutMs`），并通过 `PONYTAIL_REVIEW_TIMEOUT_MS` 传给壳。壳自限在该预算
-减 15s 的位置，好让超时由壳报出来而不是被信号砍掉；`PONYTAIL_REVIEW_CLAUDE_TIMEOUT_MS`
-只能把它往小调。**壳不许再写死第二份墙钟**——165s 的常量会在大 diff 上把钩子给的 600s
-提前砍掉，正是这次要修的那种假超时。
+超时：每块一个墙钟，一个常量（`REVIEW_TIMEOUT_MS = 600_000`，见
+`scripts/ponytail-review-branch.mjs`），通过 `PONYTAIL_REVIEW_TIMEOUT_MS` 传给壳。壳自限在该
+预算减 15s 的位置，好让超时由壳报出来而不是被信号砍掉；`PONYTAIL_REVIEW_CLAUDE_TIMEOUT_MS`
+只能把它往小调。**壳不许再写死第二份墙钟**——165s 的常量会把 600s 的预算提前砍掉。
 
 ## 怎么设 env
 
@@ -105,9 +104,9 @@ printf 'Reply with exactly: OK' | claude --print --output-format text
 
 在一次性 worktree `/Users/aoqimin/Desktop/Nomi-ponytail-shim-test`（`origin/main` @ `18e510da`）
 上，对同一个 staged 改动（`docs/release-process.md` 加一行）直接跑
-`PONYTAIL_REVIEW_CODEX_BIN=<壳> node scripts/ponytail-review-hook.mjs --scope staged`：
+`PONYTAIL_REVIEW_CODEX_BIN=<壳> pnpm run review:branch`（2026-09-15 前是 `--scope staged`）：
 
-| 场景 | 钩子分类 | 退出码 |
+| 场景 | 分类 | 退出码 |
 |---|---|---|
 | 干净报告（三行 PASS 形状） | `pass` | 0 |
 | 有发现报告（发现行 + `net:` + `FINDINGS`） | `completed with findings` | 0 |
@@ -133,5 +132,5 @@ Codex 额度恢复（2026-09-11）后：
 sed -i '' '/PONYTAIL_REVIEW_CODEX_BIN/d' ~/.zshenv
 ```
 
-钩子随即回到 `codex` 默认路径。壳留在仓库里当额度/宿主故障时的备用执行器即可；
+`review:branch` 随即回到 `codex` 默认路径。壳留在仓库里当额度/宿主故障时的备用执行器即可；
 真要清掉的话，一并删掉本文档和 `scripts/ponytail-review-claude-shim.mjs`（R1 加新必删旧）。
