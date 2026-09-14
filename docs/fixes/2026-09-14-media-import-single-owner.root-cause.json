@@ -109,7 +109,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/core.ts",
-      "line": 235,
+      "line": 253,
       "symbol": "importProjectAsset"
     },
     {
@@ -222,12 +222,13 @@
     }
   ],
   "door_reduction": {
-    "before": 26,
+    "before": 27,
     "after": 25,
     "merged": [
-      "electron/assets/localFileCopy.ts#copyLocalImageFile（已删除）→ electron/assets/localFileImport.ts#importLocalFiles"
+      "electron/assets/localFileCopy.ts#copyLocalImageFile（已删除）→ electron/assets/localFileImport.ts#importLocalFiles",
+   "electron/assets/localFileCopy.ts#copyPathAsPlayableAsset（已删除，2026-09-15）→ electron/assets/localFileImport.ts#importLocalFile"
     ],
-    "why_not": "真正被合并掉的是**落盘门**：本地文件 → 项目素材此前有两扇独立实现（localFileImport.importLocalFile 与 localFileCopy.copyLocalImageFile），现在只剩一扇。localFileCopy.ts 仍在，但里面只剩一个批量壳 importLocalFilePaths——逐个交给 importLocalFile，准入、嗅探、转码一个字都不在它这里（文件保留在原路径，是因为改名在 diff 里表现为删除+新增，而 electron/assets/ 是高风险前缀，删除会让门表无法校验）。 门表其余 23 行**不是 23 份判断**：准入只有 admitMediaImport 一个纯函数（主进程一个权威调用点 + 渲染层两个预检调用点），kind 只有 dropKindFromFile / mediaTypes 一份，转码只有 videoNeedsPlayabilityTranscode 一处；余下的是桥接、IPC 注册、文案，以及从 owner 转出常量的转发点。"
+    "why_not": "真正被合并掉的是**落盘门**：本地文件 → 项目素材此前有两扇独立实现（localFileImport.importLocalFile 与 localFileCopy.copyLocalImageFile），现在只剩一扇。 2026-09-15 补完最后一处：MCP / Agent 的素材导入（capabilityCore/core.ts#importProjectAsset）此前走本文件第三扇门 copyPathAsPlayableAsset——它自己做转码 + copy + 清理，**跳过准入闸与魔数嗅探**，于是「Agent 和用户不该是两套落盘语义」这句话在同一个文件里是假的。那扇门已删，MCP 也走 importLocalFile；被准入闸挡下时按同一个 Rejected<R> 判别联合翻成带数字的一句话回给模型（mcpImportRejectionMessage），不静默转进成「导入失败」（回归测试 electron/capabilityCore/mcpImportRejection.test.ts）。localFileCopy.ts 仍在，但里面只剩一个批量壳 importLocalFilePaths——逐个交给 importLocalFile，准入、嗅探、转码一个字都不在它这里（文件保留在原路径，是因为改名在 diff 里表现为删除+新增，而 electron/assets/ 是高风险前缀，删除会让门表无法校验）。 门表其余 23 行**不是 23 份判断**：准入只有 admitMediaImport 一个纯函数（主进程一个权威调用点 + 渲染层两个预检调用点），kind 只有 dropKindFromFile / mediaTypes 一份，转码只有 videoNeedsPlayabilityTranscode 一处；余下的是桥接、IPC 注册、文案，以及从 owner 转出常量的转发点。"
   },
   "shared_boundaries": [
     {

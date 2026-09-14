@@ -34,12 +34,11 @@ import { unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
-import { diskLimitBytes } from '../shared/contracts/mediaImportPolicy'
+import { diskLimitBytes, formatMediaBytes, type MediaImportRejection } from '../shared/contracts/mediaImportPolicy'
 import { mediaKindFromExtension } from '../assets/mediaTypes'
 import { readStorageCapacity } from '../assets/storageCapacity'
-import { copyPathAsPlayableAsset } from '../assets/localFileCopy'
+import { MediaImportRejectedError, importLocalFile } from '../assets/localFileImport'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
-import { copyAssetFile } from '../assets/projectAssetStore'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -232,6 +231,25 @@ function writeResultToSnapshot(snapshot: CanvasSnapshot, nodeId: string, result:
  * deny 优先于白名单、且对 realpath 再查一遍（软链逃逸在此断掉）。落盘复用既有 copyAssetFile
  * （不走 Buffer、不另造资产管线，P1）。
  */
+/**
+ * 准入拒绝 → 给模型的一句人话（主进程侧，不走渲染层 i18n）。
+ *
+ * 和渲染层的 `mediaImportRejectionMessage` 是同一个可辨识联合的两个消费者（派生，不是并行版）：
+ * 渲染层给用户看、要过 i18n；这条给模型看、必须带数字。每一支都说清「多大 / 上限多少 / 为什么」
+ * ——只说「过大」等于让模型原地重试同一个文件。
+ */
+export function mcpImportRejectionMessage(fileName: string, rejection: MediaImportRejection): string {
+  const name = fileName || '未命名文件'
+  switch (rejection.reason) {
+    case 'unsupported-kind':
+      return `${name}：这个入口不收这种文件（认出的种类：${rejection.kind ?? '认不出'}；收的是 ${rejection.accepted.join('/')}${rejection.narrowedBecause ? `，因为${rejection.narrowedBecause}` : ''}）。`
+    case 'no-disk-space':
+      return `${name}：磁盘放不下（文件 ${formatMediaBytes(rejection.fileBytes)}，可用 ${formatMediaBytes(rejection.freeBytes)}，这次导入需要 ${formatMediaBytes(rejection.neededBytes)}）。`
+    case 'over-hard-cap':
+      return `${name}：超过这个入口的上限（文件 ${formatMediaBytes(rejection.fileBytes)}，上限 ${formatMediaBytes(rejection.capBytes)}${rejection.because ? `，${rejection.because}` : ''}）。`
+  }
+}
+
 export async function importProjectAsset(input: {
   projectId: string
   path: string
@@ -259,7 +277,9 @@ export async function importProjectAsset(input: {
   } catch {
     realPath = null
   }
-  // 上限从磁盘余量派生（和用户手动导入同一份判据），不再是本模块自己那个与磁盘无关的 64MB。
+  // 上限从磁盘余量派生（和用户手动导入同一份 `diskLimitBytes`，同一个函数两个调用者 = 派生，
+  // 不是并行版），不是本模块自己那个与磁盘无关的兜底常量。落盘前准入闸还会再判一次权威的那遍
+  // （importLocalFile 里的 assertAdmitted）——这里这一遍只为把话说得更早、更具体。
   const kind = realPath ? mediaKindFromExtension(realPath) : null
   const maxBytes = kind ? diskLimitBytes(readStorageCapacity(input.projectId), kind) ?? undefined : undefined
   const verdict = checkImportAsset({ rawPath: raw, realPath, sizeBytes, isFile, maxBytes })
@@ -272,11 +292,22 @@ export async function importProjectAsset(input: {
     return base.toLowerCase().endsWith(verdict.extension) ? base : `${base}${verdict.extension}`
   })()
   const contentType = contentTypeForExtension(verdict.extension)
-  // 视频先过可播放归一化，和用户导入同一条路（copyPathAsPlayableAsset）。
-  const record = (await copyPathAsPlayableAsset(input.projectId, verdict.realPath, fileName, contentType, {
-    kind: 'imported',
-    source: 'mcp-import',
-  })) as { id?: string; name?: string; data?: { url?: string; size?: number; contentHash?: string } }
+  // 落盘走**唯一那条路**：魔数嗅探 + 准入闸 + 视频可播放归一化都在 importLocalFile 里。
+  // 09-14 之前这里走的是 localFileCopy 的第二份实现，跳过了准入闸和嗅探——Agent 和用户
+  // 因此是两套落盘语义（P1/P4）。meta 在**调用方这一侧**收窄成 owner 认的形状，
+  // 不把 owner 的入参放宽去迁就调用者（原来那个 `source: 'mcp-import'` 全仓无人读，随之删掉）。
+  let record: { id?: string; name?: string; data?: { url?: string; size?: number; contentHash?: string } }
+  try {
+    record = (await importLocalFile(
+      { projectId: input.projectId, sourcePath: verdict.realPath, fileName, contentType, kind: 'imported' },
+      { allowSourcePath: true },
+    )) as typeof record
+  } catch (error) {
+    // 被准入闸挡下不是「导入失败」：把那一支独有的数字讲给模型听，让它知道换个文件还是清磁盘。
+    // 静默转进成一句「导入失败」才是这条链上最坏的结果（它会让模型原地重试同一个文件）。
+    if (error instanceof MediaImportRejectedError) throw new Error(mcpImportRejectionMessage(fileName, error.rejection))
+    throw error
+  }
   const data = record.data
   const url = data?.url
   if (!url || !record.id || !data?.contentHash) throw new Error('素材已复制但没拿到完整的可引用身份，请重试。')

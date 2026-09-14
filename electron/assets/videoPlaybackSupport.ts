@@ -30,12 +30,3 @@ export function playableVideoCodecs(): ReadonlySet<string> {
   return probed ?? new Set(FALLBACK_VIDEO_CODECS);
 }
 
-/** 测试/重启用。 */
-export function clearProbedVideoCodecs(): void {
-  probed = null;
-}
-
-/** 这台机器有没有真探过（走查与 PR 正文要能证明「不是回落值」）。 */
-export function hasProbedVideoCodecs(): boolean {
-  return probed !== null;
-}
