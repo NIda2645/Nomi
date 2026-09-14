@@ -207,17 +207,20 @@ describe('InlineParameterBar semantic option presentation wiring', () => {
     expect(source).not.toContain('portalTarget={panelRef}')
     expect(body).not.toContain('NomiSelect')
     expect(body).toContain('<ParameterOptionList')
-    expect(body).toContain("optionLayout === 'chips-wrap' ? 'wrap' : 'fill'")
+    expect(body).toContain("optionLayout === 'chips-column' ? 'column' : 'fill'")
   })
 
-  // 2026-09-14 用户退回单参数直出那一格：「大片都是空白……减少空间浪费是我们核心设计原则之一」。
-  // 两条判据钉死「尺寸由内容派生」：① 摆法不再按标签长度分叉（chips-column 已删）；
-  // ② 单参数那条路的浮层宽度是 max-content，不是那个固定的 320。
-  it('尺寸由内容派生：没有按标签长度分叉的第二种摆法，单参数浮层不吃固定宽', () => {
-    expect(body).not.toContain('chips-column')
-    expect(source).not.toContain('chips-column')
-    expect(source).toContain("hugWidth ?? 'max-content'")
+  // 2026-09-14 用户两次拍板之后的最终形态：**一列、每项一行的摆法不动**（横排换行被退回：
+  // 「两个一行、三个一行反而更难受」），只把浮层右边那截空白收掉——宽度 = 最宽项文字宽 + 内边距。
+  it('单参数直出：摆法仍是一列，浮层宽度由最宽项的文字派生而不是固定 320', () => {
     expect(source).toContain('hugsContent')
+    expect(source).toContain('hugWidth')
+    // 量的是文字（Range 量内容盒），不是被 1fr 拉伸的按钮框——量错对象就会量回容器自己。
+    expect(source).toContain('range.selectNodeContents(item)')
+    // 左缘与触发它的 chip 对齐，不按那个不存在的 320 槽居中。
+    expect(source).toContain('hugsContent ? panelInit?.anchorLeft : panelInit?.left')
+    // 横排换行那一版已整段撤掉：一种摆法、一份控件体（P1）。
+    expect(source).not.toContain("'chips-wrap'")
   })
 
   // 单参数直出与面板走的是**同一个** ParameterControlBody：给单参数另写一套渲染就是并行版。

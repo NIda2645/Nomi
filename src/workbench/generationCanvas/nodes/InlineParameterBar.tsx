@@ -298,31 +298,39 @@ export default function InlineParameterBar({
   // 面板打开期间 pill 文本冻结（宽度稳定）；关闭后回到实时值。
   const pillText = panelOpen ? frozenSummary : summaryText
 
-  // `width: max-content` 只能把浮层撑到「全部项排成一行」的宽度，被 maxWidth 夹住之后里面换了行，
-  // 外壳却不会回头再量一次——于是最宽那一行只有 234px，外壳仍是 320px（就是被退回的那种空白）。
-  // CSS 没有「收缩到换行后最宽的那一行」，所以换行后量一次、把宽度钉到那一行。
-  // 这是**定点**不是循环：新宽度 = 现有各行里最宽的一行，每一行原样仍放得下、下一行的第一项
-  // 在更宽时都没挤上来，更窄时更不会，所以布局不变、不会来回抖。
+  // 单参数直出的浮层宽度 = **最宽那一项的文字宽 + 内边距**，不是那个固定的 320
+  // （2026-09-14 用户两次拍板：一列、每项一行的摆法保持不变，只把右边那截空白收掉；
+  //  ≈128px 而不是 302px，左缘与触发它的 chip 左缘对齐）。
   //
-  // 「这是不是单参数直出」问 DOM（`[data-parameter-solo]`）而不是问上面的 soloControl：
+  // 为什么不能靠 CSS：这一列是 `minmax(0, 1fr)` 的格子，每项都被拉到容器宽，
+  // 所以量 item 的矩形只会量回容器自己；`max-content` 又会把浮层撑到「全部项排成一行」。
+  // 真正要的那个数是**文字本身**的宽度——用 Range 量内容盒，绕开被拉伸的按钮框。
+  //
+  // 「这是不是单参数直出」问 DOM（`[data-parameter-solo]`）而不是问下面的 soloControl：
   // 这几个 hook 必须排在 `modelOptions.length === 0` 那条早返回**之前**，而 soloControl 算在它之后。
   const [hugWidth, setHugWidth] = React.useState<number | null>(null)
   React.useLayoutEffect(() => {
     const panel = panelRef.current
     const group = panel?.querySelector<HTMLElement>('[data-parameter-solo] [role="radiogroup"]')
     if (!panelOpen || !panel || !group) { setHugWidth(null); return }
-    const style = getComputedStyle(group)
-    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
-    const rows = new Map<number, number>()
-    for (const item of group.querySelectorAll<HTMLElement>('[role="radio"]')) {
-      const rect = item.getBoundingClientRect()
-      const key = Math.round(rect.top)
-      rows.set(key, (rows.get(key) ?? -gap) + rect.width + gap)
+    const items = [...group.querySelectorAll<HTMLElement>('[role="radio"]')]
+    if (items.length === 0) return
+    const range = document.createRange()
+    let widestText = 0
+    let itemPadX = 0
+    for (const item of items) {
+      range.selectNodeContents(item)
+      widestText = Math.max(widestText, range.getBoundingClientRect().width)
+      const itemStyle = getComputedStyle(item)
+      itemPadX = Math.max(itemPadX, parseFloat(itemStyle.paddingLeft || '0') + parseFloat(itemStyle.paddingRight || '0'))
     }
-    const widest = Math.max(0, ...rows.values())
-    if (!widest) return
+    range.detach()
+    if (!widestText) return
+    const groupStyle = getComputedStyle(group)
+    const groupPadX = parseFloat(groupStyle.paddingLeft || '0') + parseFloat(groupStyle.paddingRight || '0')
+    // 面板外壳自己那圈（内边距 + 边框）：量出来而不是写死，改了 p-2 也不用回来改这里。
     const chrome = panel.getBoundingClientRect().width - group.getBoundingClientRect().width
-    setHugWidth(Math.ceil(widest + chrome))
+    setHugWidth(Math.ceil(widestText + itemPadX + groupPadX + chrome))
   }, [panelOpen, summaryText])
 
   if (modelOptions.length === 0) {
@@ -460,7 +468,9 @@ export default function InlineParameterBar({
           left: hugsContent ? panelInit?.anchorLeft : panelInit?.left,
           ...(panelInit?.side === 'above' ? { bottom: panelInit.top } : { top: panelInit?.top }),
           ...(hugsContent
-            ? { width: hugWidth ?? 'max-content', maxWidth: PANEL_W }
+            // 量出来之前先按面板列宽画一帧：一列摆法下 `max-content` 会把浮层撑成
+            // 「全部项排成一行」，比 320 还宽，闪一下比什么都难看。
+            ? { width: hugWidth ?? PANEL_W, maxWidth: PANEL_W }
             : { width: PANEL_W }),
           boxShadow: 'var(--workbench-shadow-pop)',
         }}

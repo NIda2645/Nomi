@@ -102,60 +102,65 @@ await walkDesignLabScreen({
         }
       })
       if (!shape) { record(`${state.id} 参数浮层没打开（取景台那一下点空了），这一格什么都没证`); return }
-      // ── 尺寸由内容派生（设计系统 §1.5.2 第 4 条，2026-09-14 用户退回这一格之后加）。
-      // 截图看不出「空白是不是冗余」，但几何量得出来，所以写成断言而不是留给人眼：
-      //   ① 一行放得下就一行——除最后一行外，下一行的第一项必须**确实塞不进**本行；
-      //   ② 不许每项独占一整行（那是长枚举搜索列表的摆法，不是一组并排的可点项）；
-      //   ③ 浮层宽度贴内容——不许比最宽那一行还宽出一截（固定 320 槽就是这么露馅的）。
+      // ── 尺寸由内容派生（设计系统 §1.5.2 第 4 条）。2026-09-14 用户两次拍板之后只剩两条：
+      //   ① 浮层宽不得明显宽于最宽那一项的文字——右边那截空白就是这么露馅的；
+      //   ② 下一行才换行：一项只有在本行确实放不下时才落到下一行。
+      // **「不许每项独占一行」那条已删**：用户明确要一列、每项一行（横排换行「两个一行、三个一行
+      // 反而更难受」）。一列摆法下 ② 自动成立（每项就是一整行），它守的是别退回
+      // 「浮层很宽、项很窄、还竖着排」那种样子。
       const fit = await page.evaluate(() => {
         const panel = document.querySelector('[data-agent-parameter-panel="true"]')
-        // 只量**声称按内容排**的那种组（wrap 档是 flex）。等宽格子（比例那组，grid）是有意撑满的：
-        // 每项带一枚比例小图形，等宽才对得齐——设计系统 §1.5.2.4 明写这一条豁免。
-        const group = [...(panel?.querySelectorAll('[role="radiogroup"]') ?? [])]
-          .find((candidate) => getComputedStyle(candidate).display === 'flex')
+        const group = panel?.querySelector('[role="radiogroup"]')
         if (!panel || !group) return null
         const box = group.getBoundingClientRect()
         const style = getComputedStyle(group)
         const padX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
         const gap = parseFloat(style.columnGap || style.gap || '0') || 0
-        const inner = box.width - padX
+        const range = document.createRange()
         const items = [...group.querySelectorAll('[role="radio"]')].map((el) => {
           const r = el.getBoundingClientRect()
-          return { top: Math.round(r.top), width: r.width }
+          range.selectNodeContents(el)
+          const itemStyle = getComputedStyle(el)
+          return {
+            top: Math.round(r.top),
+            width: r.width,
+            // 量文字而不是被 1fr 拉伸的按钮框：一列摆法下每项都被拉到容器宽，量框等于量容器。
+            text: range.getBoundingClientRect().width
+              + parseFloat(itemStyle.paddingLeft || '0') + parseFloat(itemStyle.paddingRight || '0'),
+          }
         })
+        range.detach()
         const rows = []
         for (const item of items) {
           const row = rows.find((candidate) => Math.abs(candidate.top - item.top) <= 2)
           if (row) { row.widths.push(item.width) } else { rows.push({ top: item.top, widths: [item.width] }) }
         }
         const used = rows.map((row) => row.widths.reduce((a, b) => a + b, 0) + gap * (row.widths.length - 1))
-        return { inner, gap, rows: rows.map((r) => r.widths.length), used, panelWidth: panel.getBoundingClientRect().width, groupWidth: box.width, count: items.length }
+        return {
+          inner: box.width - padX,
+          gap,
+          rows: rows.map((r) => r.widths.length),
+          used,
+          widestText: Math.max(0, ...items.map((i) => i.text)),
+          panelWidth: panel.getBoundingClientRect().width,
+          groupWidth: box.width,
+          count: items.length,
+        }
       })
       if (!fit) { record(`${state.id} 量不到选项组几何（没有 role=radiogroup），尺寸断言等于没跑`); return }
       if (fit.count < 2) { record(`${state.id} 这一格应至少两项可点，实际 ${fit.count} 项——尺寸断言在一项上没有判别力`); return }
+      // ② 下一行才换行：除最后一行外，下一行的第一项必须**确实塞不进**本行。
       for (let i = 0; i < fit.rows.length - 1; i += 1) {
         const nextFirst = fit.used[i + 1] / fit.rows[i + 1]
         if (fit.used[i] + fit.gap + nextFirst <= fit.inner + 1) {
-          record(`${state.id} 第 ${i + 1} 行只用了 ${Math.round(fit.used[i])}/${Math.round(fit.inner)}px，下一行的第一项（约 ${Math.round(nextFirst)}px）本来放得下——一行放得下就该放一行（§1.5.2.4）`)
+          record(`${state.id} 第 ${i + 1} 行只用了 ${Math.round(fit.used[i])}/${Math.round(fit.inner)}px，下一行的第一项（约 ${Math.round(nextFirst)}px）本来放得下——下一行才换行（§1.5.2.4）`)
         }
       }
-      if (fit.rows.length > 1 && fit.rows.every((n) => n === 1)) {
-        record(`${state.id} ${fit.count} 项各占一整行——那是长枚举搜索列表的摆法，不是一组并排可点项（§1.5.2.4）`)
+      // ① 浮层宽不得明显宽于最宽项的文字。只对**单参数直出**成立：它就是那一组选项，
+      // 没有别的东西要对齐；多组面板允许一个稳定列宽去对齐各组小标题（§1.5.2.4 明写的那半句）。
+      if (solo && fit.panelWidth > fit.widestText + 40) {
+        record(`${state.id} 浮层宽 ${Math.round(fit.panelWidth)}px，最宽一项的文字只有 ${Math.round(fit.widestText)}px——右边那截是冗余空白（§1.5.2.4）`)
       }
-      // 「整块不许比内容宽」只对**单参数直出**成立：它就是那一组选项，没有别的东西要对齐。
-      // 多组面板允许一个稳定列宽去对齐各组小标题（§1.5.2.4 明写的那半句），所以那一格只查上面两条
-      // 「一行放得下就一行 / 不许每项独占一行」——项本身仍必须按内容宽，撑满的是组容器不是项。
-      const widest = Math.max(...fit.used)
-      if (solo && fit.groupWidth > widest + 24) {
-        record(`${state.id} 选项组宽 ${Math.round(fit.groupWidth)}px，最宽一行只有 ${Math.round(widest)}px——空白不是留白是冗余（§1.5.2.4）`)
-      }
-      if (solo && fit.panelWidth > fit.groupWidth + 24) {
-        record(`${state.id} 单参数浮层宽 ${Math.round(fit.panelWidth)}px 明显宽于它的内容 ${Math.round(fit.groupWidth)}px——浮层不许吃固定宽（§1.5.2.4）`)
-      }
-      // 基线在前：先证「确实摊着可点项」，后面那句「没有下拉」才不是废话。
-      if (shape.options < 2) record(`${state.id} 浮层里应摊开多个可点选项，实际 ${shape.options} 个`)
-      if (shape.selects) record(`${state.id} 浮层里不该有下拉（数到 ${shape.selects} 个）——选项必须摊开`)
-      if (shape.checked < 0) record(`${state.id} 摊开的选项里没有任何一项是选中态（当前值读不出来）`)
       if (solo) {
         if (!shape.soloKey) record(`${state.id} 只有一个参数时应直出选项（找不到 [data-parameter-solo]）`)
         if (shape.groups > 1) record(`${state.id} 单参数直出不该套面板壳，却数到 ${shape.groups} 组参数`)

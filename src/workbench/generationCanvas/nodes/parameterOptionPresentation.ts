@@ -42,14 +42,14 @@ export function resolveParameterOptionPurpose(
  * 一组选项在参数面板里怎么摆。**三种都是摊开的、点一下就选中**——
  * 面板里不再套下拉（2026-09-11 13:00 用户真机拍板：pill → 面板 → 下拉 → 列表 → 选，四步太多）。
  *
- * · `chips-row`（语义组：比例 / 供应商）——等宽格子，每项带图形槽，一眼选对画幅靠的就是它。
- * · `chips-wrap`（其余枚举）——**每项按自己的内容宽**，一行放得下就一行，放不下按内容换行。
+ * · `chips-row`（短标签）——一排 chip，超宽自动换行，当前值高亮。
+ * · `chips-column`（长标签：模型文件名、长枚举）——一项一行，读得全；挤成等宽格子等于没摊开。
  * · `searchable-list`（候选超过 `FLAT_OPTION_LIMIT`）——搜索框 + **默认就展开**的一列可点项。
  *   它和下拉的差别不是外观，是**步数**：列表已经在你眼前，不需要再点开一次。
  *
  * 语义角色（比例 / 供应商）恒 `chips-row`：比例那组每项带比例小图形，一眼选对画幅靠的就是它。
  */
-export type ParameterOptionLayout = 'chips-row' | 'chips-wrap' | 'searchable-list'
+export type ParameterOptionLayout = 'chips-row' | 'chips-column' | 'searchable-list'
 
 /**
  * 摊平的上限。**为什么是 8**：面板宽 320px，一列可点项每行 28px，列表区一屏就是 8 行
@@ -58,22 +58,18 @@ export type ParameterOptionLayout = 'chips-row' | 'chips-wrap' | 'searchable-lis
  */
 export const FLAT_OPTION_LIMIT = 8
 
-/**
- * 2026-09-14 用户退回「单参数直出」那一格之后，**按标签长度分两种摆法这件事本身被删掉了**。
- * 原来的判据是「每个标签 ≤8 格 → 一排等宽；否则一项一行」，于是 7 个 `1024x1024`（9 格）
- * 各占一整行、每行大半空白。用户原话：「大片都是空白，理论上不需要，非常占用视觉空间……
- * 减少空间浪费是我们核心设计原则之一。」
- *
- * 现在只有一条规则：**尺寸由内容派生**——每项按自己的内容宽，一行放得下就一行，放不下按内容换行
- * （`chips-wrap`）。短标签因此也不再被撑宽（一个 `720p` 不会再拉满一整条）。
- * 等宽格子只留给语义组（比例 / 供应商）：那几组每项带图形槽，等宽才对得齐。
- */
+/** 面板最小分段宽下，全角字约占两个 ASCII 格。超过这个宽度的标签排成一排就只剩省略号。 */
+const ROW_LABEL_CELLS = 8
+const labelCells = (text: string): number => Array.from(text)
+  .reduce((width, char) => width + ((char.codePointAt(0) ?? 0) > 255 ? 2 : 1), 0)
+
 export function parameterOptionLayout(
   options: readonly { text: string }[],
   purpose: ParameterOptionPurpose = 'generic',
 ): ParameterOptionLayout {
   if (purpose !== 'generic') return 'chips-row'
-  return options.length > FLAT_OPTION_LIMIT ? 'searchable-list' : 'chips-wrap'
+  if (options.length > FLAT_OPTION_LIMIT) return 'searchable-list'
+  return options.every(({ text }) => labelCells(text) <= ROW_LABEL_CELLS) ? 'chips-row' : 'chips-column'
 }
 
 /**

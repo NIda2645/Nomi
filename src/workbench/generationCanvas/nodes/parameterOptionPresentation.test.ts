@@ -38,34 +38,30 @@ describe('localizeAutoOption', () => {
 describe('parameterOptionLayout', () => {
   const options = (...text: string[]) => text.map((label) => ({ value: label, text: label }))
 
-  // 2026-09-14：普通枚举一律按内容宽换行。**不再按标签长度分两种摆法**——
-  // 那条判据正是「7 个 1024x1024 各占一整行、每行大半空白」的来源（用户退回单参数直出那一格）。
-  it('lays generic option groups out at content width, short labels included', () => {
-    expect(parameterOptionLayout(options('1K', '2K', '4K'))).toBe('chips-wrap')
-    expect(parameterOptionLayout(options('720p'))).toBe('chips-wrap')
-    expect(parameterOptionLayout(options('自动', '16:9', '9:16', '1:1', '4:3', '3:4'))).toBe('chips-wrap')
+  it('keeps small resolution and ratio groups as a single row of chips', () => {
+    expect(parameterOptionLayout(options('1K', '2K', '4K'))).toBe('chips-row')
+    expect(parameterOptionLayout(options('自动', '16:9', '9:16', '1:1', '4:3', '3:4'))).toBe('chips-row')
   })
 
-  // 长标签走的是同一条路：宽度由内容派生，一行放得下就一行，放不下按内容换行。
+  // 长标签仍然**摊开**，只是改成一项一行：挤进等宽格子只会各自 truncate 成一排读不出的省略号。
   it.each([
-    ['1024x1024', '1536x1024', '1024x1536', '2048x2048'],
     ['model.safetensors', 'second.safetensors'],
     ['模型名称非常长而且没有空格', '另一个模型'],
     ['LTX\\ltx-2.3\\model.safetensors', 'MiniMax/H3/model.safetensors'],
-  ])('wraps long labels by content instead of giving each one a full row: %j', (...labels) => {
-    expect(parameterOptionLayout(options(...labels))).toBe('chips-wrap')
+  ])('stacks long labels into one column instead of hiding them behind a dropdown: %j', (...labels) => {
+    expect(parameterOptionLayout(options(...labels))).toBe('chips-column')
   })
 
   // 超过一屏（8 项）才给搜索框；**列表本身默认就展开**，搜索是用来缩短它的，不是用来藏起它的。
   it('switches to a searchable list only past the flat limit', () => {
-    expect(parameterOptionLayout(options(...Array.from({ length: FLAT_OPTION_LIMIT }, (_, i) => `o${i}`)))).toBe('chips-wrap')
+    expect(parameterOptionLayout(options(...Array.from({ length: FLAT_OPTION_LIMIT }, (_, i) => `o${i}`)))).toBe('chips-row')
     expect(parameterOptionLayout(options(...Array.from({ length: FLAT_OPTION_LIMIT + 1 }, (_, i) => `o${i}`)))).toBe('searchable-list')
     expect(parameterOptionLayout(options(...Array.from({ length: 25 }, (_, i) => `opt${i}`)))).toBe('searchable-list')
   })
 
   it('uses visible labels, not opaque wire values, to decide layout', () => {
     const entries = [{ value: 'very-long-internal-provider-value', text: '1K' }]
-    expect(parameterOptionLayout(entries)).toBe('chips-wrap')
+    expect(parameterOptionLayout(entries)).toBe('chips-row')
   })
 
   it('keeps semantic aspect ratios explicit even when the model declares fifteen choices', () => {
