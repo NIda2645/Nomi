@@ -97,7 +97,7 @@ test('base ref 解析不出来时明说要 fetch，不静默退回整仓 diff', 
   )
 })
 
-test('装得下就一块；装不下自动按提交切，每块都在上限内', (t) => {
+test('装得下就一块；装不下按提交切再贴着上限装回去，每块都在上限内', (t) => {
   const root = makeRepository(t)
   commit(root, 'small.txt', 'one line\n', 'small')
   const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
@@ -109,11 +109,16 @@ test('装得下就一块；装不下自动按提交切，每块都在上限内',
   commit(root, 'big-b.txt', bulkText(4000, 'beta'), 'big b')
   const wide = resolveBranchRange({ repoRoot: root, env: envFor(root) })
   const chunks = chunkBranchDiff({ repoRoot: root, mergeBase: wide.mergeBase, headSha: wide.headSha })
-  assert.ok(chunks.length >= 3, `按提交切应至少 3 块，实得 ${chunks.length}`)
+  assert.ok(chunks.length >= 2, `装不下应至少切 2 块，实得 ${chunks.length}`)
   for (const chunk of chunks) {
     assert.ok(Buffer.byteLength(chunk.text, 'utf8') <= MAX_REVIEW_DIFF_BYTES, `${chunk.label} 超过单块上限`)
   }
   assert.ok(chunks.every((chunk) => chunk.label.startsWith('commit ')))
+  // 装箱是有意的：一文件一次调用会让 20 个文件的改动变成 20 次模型调用，
+  // 每次还只看得见一个文件。块数必须逼近「总字节 / 上限」的下界，不是单元个数。
+  const totalBytes = chunks.reduce((sum, chunk) => sum + Buffer.byteLength(chunk.text, 'utf8'), 0)
+  assert.ok(chunks.length <= Math.ceil(totalBytes / MAX_REVIEW_DIFF_BYTES) + 1,
+    `块数 ${chunks.length} 远超装箱下界（${totalBytes} 字节）——单元没有装回去`)
 })
 
 test('单个提交太大按文件切；单个文件仍太大就截断——绝不再叫人去拆提交', (t) => {
@@ -126,6 +131,7 @@ test('单个提交太大按文件切；单个文件仍太大就截断——绝�
   const chunks = chunkBranchDiff({ repoRoot: root, mergeBase: range.mergeBase, headSha: range.headSha })
   assert.ok(chunks.length >= 2)
   assert.ok(chunks.every((chunk) => chunk.label.includes('·')), '一个提交装不下时必须按文件切')
+  assert.ok(chunks.some((chunk) => chunk.label.includes('more')) || chunks.length === 2, '切出来的文件单元要装回去')
   for (const chunk of chunks) {
     assert.ok(Buffer.byteLength(chunk.text, 'utf8') <= MAX_REVIEW_DIFF_BYTES)
   }

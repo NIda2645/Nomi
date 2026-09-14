@@ -161,10 +161,10 @@ function withBinarySummary(diff, binarySummary) {
 }
 
 /**
- * 装一个分块。单个文件的 diff 仍然超限时按 UTF-8 安全边界截断并明说截断了——
- * 「让人去拆提交」正是这次要删掉的东西，分块器不许把问题推回给人。
+ * 装一个评审单元（一段范围 / 一个提交 / 一个文件）。单元自己就超限时按 UTF-8 安全边界
+ * 截断并明说截断了——「让人去拆提交」正是这次要删掉的东西，分块器不许把问题推回给人。
  */
-function makeChunk(label, body) {
+function makeUnit(label, body) {
   const header = `### ${label}\n`
   const room = MAX_REVIEW_DIFF_BYTES - byteLength(header)
   if (byteLength(body) <= room) return { label, text: `${header}${body}`, truncated: false }
@@ -174,6 +174,35 @@ function makeChunk(label, body) {
   return { label, text: `${header}${notice}${buffer.toString('utf8')}`, truncated: true }
 }
 
+/**
+ * 把单元贴着上限打包。**先切再装回去**是有意的：一份 20 个文件的改动如果一文件一次调用，
+ * 就是 20 次模型调用，而且每次都只看得见一个文件——既贵又看不出跨文件的重复。
+ * 贪心装箱让调用次数回到「总字节 / 上限」的下界，同时每次尽量多给上下文。
+ */
+function packUnits(units) {
+  const chunks = []
+  let group = []
+  let bytes = 0
+  const flush = () => {
+    if (group.length === 0) return
+    chunks.push({
+      label: group.length === 1 ? group[0].label : `${group[0].label} (+${group.length - 1} more)`,
+      text: group.map((unit) => unit.text).join('\n'),
+      truncated: group.some((unit) => unit.truncated),
+    })
+    group = []
+    bytes = 0
+  }
+  for (const unit of units) {
+    const size = byteLength(unit.text) + 1
+    if (group.length > 0 && bytes + size > MAX_REVIEW_DIFF_BYTES) flush()
+    group.push(unit)
+    bytes += size
+  }
+  flush()
+  return chunks
+}
+
 function commitFiles(repoRoot, git, commit) {
   const raw = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--format=', '--name-only', '-z', commit]) || '')
   return [...new Set(raw.split('\0').map((entry) => entry.trim()).filter(Boolean))]
@@ -181,7 +210,8 @@ function commitFiles(repoRoot, git, commit) {
 
 /**
  * 把整段范围切成若干条不超上限的评审输入：先试整段，装不下按提交切，
- * 单个提交还装不下按文件切。二进制摘要在分块时单独成块，只出现一次。
+ * 单个提交还装不下按文件切，最后把单元贴着上限装回去（packUnits）。
+ * 二进制摘要是一个单独的单元，只出现一次。
  */
 export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = runGit }) {
   const range = `${mergeBase}..${headSha}`
@@ -191,31 +221,31 @@ export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = ru
   if (!whole.trim()) return []
   const wholeLabel = `full range ${range}`
   if (byteLength(whole) + byteLength(`### ${wholeLabel}\n`) <= MAX_REVIEW_DIFF_BYTES) {
-    return [makeChunk(wholeLabel, whole)]
+    return [makeUnit(wholeLabel, whole)]
   }
 
   const commits = String(git(repoRoot, ['rev-list', '--reverse', '--topo-order', range]) || '')
     .trim().split(/\s+/).filter(Boolean)
   if (commits.some((sha) => !SHA.test(sha))) throw new Error('Invalid commit list from Git')
 
-  const chunks = []
+  const units = []
   for (const commit of commits) {
     // merge 提交用 dense combined diff：只保留与每个父都不同的部分。
     const patch = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--unified=80', '--format=', commit]) || '')
     if (!patch.trim()) continue
     const label = `commit ${commit}`
     if (byteLength(patch) + byteLength(`### ${label}\n`) <= MAX_REVIEW_DIFF_BYTES) {
-      chunks.push(makeChunk(label, patch))
+      units.push(makeUnit(label, patch))
       continue
     }
     for (const file of commitFiles(repoRoot, git, commit)) {
       const filePatch = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--unified=80', '--format=', commit, '--', file]) || '')
       if (!filePatch.trim()) continue
-      chunks.push(makeChunk(`commit ${commit} · ${file}`, filePatch))
+      units.push(makeUnit(`commit ${commit} · ${file}`, filePatch))
     }
   }
-  if (binarySummary) chunks.push(makeChunk(`binary changes ${range}`, binarySummary))
-  return chunks
+  if (binarySummary) units.push(makeUnit(`binary changes ${range}`, binarySummary))
+  return packUnits(units)
 }
 
 export function buildReviewPrompt({ scope = 'branch', description, diff, diffHash }) {
