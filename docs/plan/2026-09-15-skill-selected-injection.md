@@ -3,12 +3,12 @@
 > 2026-09-15 · 分支 `feat/agent-skill-real-run-principles-20260915` · 基线 `feat/agent-tool-face-20-verbs-v2-20260914`（PR #797）
 > 证据目录 [`docs/evidence/2026-09-15-skill-real-run/`](../evidence/2026-09-15-skill-real-run/prompts.md)
 
-## 一、用户的摩擦（D1，从他说的话起头）
+## 用户的摩擦（D1，从他说的话起头）
 
 - 2026-09-10：「skill 不能用」「用了一个电影分镜 skill，但他和我生成出来的东西提示词一看就不对，而且比例不对」。
 - 2026-09-14 拍板：「skill 能用」= 选了 skill 后**回复里看得出被用、画幅/提示词跟着变**。
 
-## 二、机制：同一件事有两条路，用户点的那条弱
+## 机制：同一件事有两条路，用户点的那条弱
 
 Nomi 里「模型用上一条技能」有两条完全不同的路：
 
@@ -32,7 +32,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 实测这两条路的差距：题库里 3 句对照（同一句话不挂技能）全都自主读到了**正好对的**那条技能并照做；
 而 12 句挂了技能的里有 4 句回复看不出技能被用过。**用户亲手点的那一下，效果不如他什么都不点。**
 
-## 三、要权衡的那一个东西（D6 ②）
+## 要权衡的那一个东西（D6 ②）
 
 「不注入正文、让模型自己去 `read`」也是一条路，而且是 Anthropic / pi 的标准答案——
 索引已经这么做了。但那条路管的是**模型自己发现**；用户**亲手点了**一条技能是另一件事，
@@ -41,7 +41,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 所以两条并存、分工写死：**索引管发现，注入管「用户点了的那一条」**。
 代价是后者每一轮都付一次正文的 token——这正是为什么 frontmatter 必须剥掉。
 
-## 四、数门（R21.3）
+## 数门（R21.3）
 
 `node scripts/door-map.mjs resolveRequestedSkill` → 3 扇读入口：
 
@@ -51,7 +51,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 | configure（活着的那条主路） | `electron/agentLane/laneDesktopRuntime.ts:173` | 改为调 owner |
 | `buildSkillSystemPrompt` | `electron/harness/context/agentContext.ts:87` | **零生产调用者**。它带着交代文案，而活着的那两扇没有——一份带交代的实现躺在旁边、生产跑的是没交代的那份，正是 P1 的并行版。已删，换成 `buildSelectedSkillPrompt` 这一个 owner |
 
-## 五、先查别人（R27）
+## 先查别人（R27）
 
 ### 池子 ① 框架原生（pi 0.85.1）
 
@@ -116,7 +116,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 - `tests/system/agent-tool-face-usecases.json` + `scripts/check-agent-tool-face-usecases.ts`：
   已有的用例清单门岗，本次把 22 句题库登进去并加「skillKey 必须真装着且可选中」。
 
-## 六、改了什么
+## 改了什么
 
 1. `electron/skills/skillFrontmatter.ts`：新增 `skillMarkdownWithoutFrontmatter`（与 pi 对账）。
 2. `electron/harness/context/agentContext.ts`：`buildSkillSystemPrompt` → `buildSelectedSkillPrompt`
@@ -127,7 +127,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 5. 门岗与回放：`skillFrontmatter.test.ts`（88 份真技能对账）、`agentContext.test.ts` 三条、
    `skill-import-real-use.walk.mjs` 三条、`check-agent-tool-face-usecases.ts` 两条新规则。
 
-## 七、不动项
+## 不动项
 
 - `read_skill` / MCP `resources/read` 仍返回**原文含 frontmatter**：外部读者按 Agent Skills 标准
   期待一份完整的 SKILL.md（R31），在那里裁掉才是错的。
@@ -135,7 +135,7 @@ systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
 - 不改 Agent 面板 UI；不做技能触发机制重设计。
 - 「一次只能选一个技能」（T-AG-05）不在本次放开，理由见 `docs/evidence/2026-09-15-skill-real-run/README.md`。
 
-## 八、验收门
+## 验收门
 
 - 真实模型腿前后数字（同一份题库、两条臂）：选了技能那 11 句 `skillVisible` 7/11 → 9/11，三轮一致。
 - D05（唯一真的建出镜头的「直接出片」句）：建锚 ✗→✓、连参考边 ✗→✓，三轮一致。
