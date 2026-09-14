@@ -6,7 +6,13 @@ import { launchNomiApp } from './_launchApp.mjs'
 import { expectVisible, expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 
+// 证据目录由调用方给（截图 + 逐帧量测 + 那两个真实素材都住在那里）。没给就明说，
+// 别让 path.join(undefined) 抛一句看不懂的话。
 const SP = process.env.IMPORT_REVEAL_OUT
+if (!SP) {
+  console.error('IMPORT_REVEAL_OUT 未设置：请指向放 assets/frame4k.png 与 assets/<视频> 的证据目录')
+  process.exit(1)
+}
 const LABEL = process.argv[2] || 'gpu'
 const shots = path.join(SP, 'shots', LABEL)
 fs.rmSync(shots, { recursive: true, force: true })
