@@ -1,5 +1,7 @@
 # 接入验证会话的终态保证（2026-09-15）
 
+状态：✅ 已交付
+
 > 范围：接入验证（「用 AI 帮我接入」/ MCP `nomi_integration` / 设置页自检）的**会话层**
 > 终态保证与取消逃生口。前情是 2026-09-11 真机死锁复盘
 > `docs/plan/2026-09-11-mcp-integration-quality.md`（那一版只落在 `providerAdapter` 的 run 层）。

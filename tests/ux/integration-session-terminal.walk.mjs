@@ -54,7 +54,7 @@ const { app, win } = await launchNomiApp({
 try {
   await win.locator('button', { hasText: /跳过/ }).first().click({ timeout: 4000 }).catch(() => {})
   await win.waitForTimeout(800)
-  await clickOrFail(win.locator('[data-testid="open-model-settings"]').first(), '连接模型入口', { timeout: 8000 })
+  await clickOrFail(win.locator('[data-testid="open-model-settings"]').first(), '连接模型入口')
   await win.waitForTimeout(1500)
   await expectVisible(win.locator('[data-model-settings-page]').first(), '模型设置页')
   // 真机那次认证的结果：DeepSeek 连接出现在「已接入」里，而不是一直转圈。
@@ -63,11 +63,11 @@ try {
 
   // 免费自检那条路（本轮新覆盖的窗口）在界面上的入口：本地 ComfyUI。
   const others = win.locator('[data-model-home-action="other-ways"]').first()
-  if (await others.count()) { await others.click({ timeout: 5000 }).catch(() => {}); await win.waitForTimeout(900) }
+  if (await others.count()) { await others.click().catch(() => {}); await win.waitForTimeout(900) }
   await expectVisible(win.locator('[data-model-home-available="comfyui-local"]').first(), '本地 ComfyUI 行（免费自检那条路）')
   await snap(win, 'other-ways-comfyui-free-selfcheck')
 
-  await clickOrFail(win.locator('[data-model-home-connection="deepseek"], [data-model-home-connected] button').first(), '已接入的连接详情', { timeout: 8000 })
+  await clickOrFail(win.locator('[data-model-home-connection="deepseek"], [data-model-home-connected] button').first(), '已接入的连接详情')
   await win.waitForTimeout(1400)
   await snap(win, 'deepseek-connection-detail')
 } finally {
