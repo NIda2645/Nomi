@@ -2,9 +2,10 @@
 //
 //   ① 第一次打开 Agent 面板 → 「帮 Nomi 变好」卡出现 → 点「愿意」→ 卡消失、开关真的打开
 //      → **冷启动重开** App → 卡不再出现（用户拍板②：只问一次）。
-//   ② 在没有配文本模型的项目里真的按下发送 → Agent 失败行出现（真错误码
-//      `agent_lane_model_unconfigured`，不是注入的）→ 点「反馈」→ 看到一行自动摘要
-//      → 点「发送」→ 收到一个 `NF-MMDD-NNNN` 编号。
+//   ② 规范入口（设置 → 关于 → 反馈）→ 卡 → 「查看」清单 → 发送 → 拿到编号。
+//   ③ **真失败面**：往素材库的真文件选择器丢一个策略拒收的文件（`.txt`，必被拒、不花钱）
+//      → 内联行出现「已跳过 1 个不支持的文件」→ 点那颗「反馈」→ 摘要行就是**那一句**
+//      （不是兜底话）→ 发送 → 编号。这一条同时证明失败面那条路**没有设置外壳**。
 //
 // 两条纪律，都是踩过的坑：
 //   · **不用 `win.reload()`**（`walkthrough-no-win-reload` 那条）。第二次开 App 是真的
@@ -256,6 +257,95 @@ try {
         attachmentKeys: Object.keys(envelope.attachments ?? {}),
       }, null, 2))
     }
+
+    // ── 旅程 ③：真失败面（导入被拒）→ 一键反馈 → 编号 ────────────────────────
+    //
+    // 为什么挑「不支持的类型」：它是**确定性**的策略拒收——不花钱、不碰模型、不依赖网络，
+    // 每次都必失败。超大文件也行，但要先造一个几百 MB 的文件，那是白花的磁盘和时间。
+    // 先退出设置（Esc 两下：一下收反馈卡那一页、一下关设置弹窗），回到工作台。
+    for (let index = 0; index < 2; index += 1) {
+      await second.win.keyboard.press('Escape').catch(() => {})
+      await second.win.locator('[data-settings-tab-id]').first().waitFor({ state: 'detached' }).catch(() => {})
+    }
+    await expectHidden(second.win.locator('[data-settings-tab-id]').first(), '设置弹窗应当关掉了')
+
+    // 素材库住在**生成**面的左栏，不是创作面。先切过去。
+    await clickOrFail(second.win.getByRole('button', { name: '生成', exact: true }).first(), '切到生成面')
+    const assetRail = second.win.locator('button, [role="button"], [role="tab"]').filter({ hasText: /^\s*素材库\s*$/ }).first()
+    if (!(await assetRail.count())) failures.push('生成面左栏应当有「素材库」入口')
+    else await assetRail.click().catch(() => {})
+
+    // **按 aria-label 精确拿素材库自己那个 <input type=file>**。页面上还有 composer 的附件
+    // 输入框——按 `input[type=file]` 取 first 会喂到它那里去（`两个 file input` 那条教训，
+    // 第一次跑就真撞了：txt 变成了 Agent 的附件，素材库毫无反应）。
+    const fileInput = second.win.getByLabel('素材文件选择器').first()
+    await fileInput.waitFor({ state: 'attached' }).catch(() => {})
+    const rejectedFile = path.join(os.tmpdir(), 'nomi-feedback-loop-rejected.txt')
+    fs.writeFileSync(rejectedFile, '这不是图片也不是视频，导入策略必须拒收它。\n')
+    if (!(await fileInput.count())) failures.push('素材库里应当有真实的文件选择器')
+    else await fileInput.setInputFiles(rejectedFile).catch((error) => failures.push(`喂文件失败：${error?.message}`))
+    await second.win.locator('[data-asset-library-feedback]').first().waitFor({ state: 'visible' }).catch(() => {})
+
+    const rejectionRow = second.win.locator('[data-asset-library-feedback]').first()
+    if (!(await rejectionRow.count())) {
+      // 找不到就把现场量出来再报（`assert-you-are-in-the-situation-you-claim`）。
+      const probe = await second.win.evaluate(() => ({
+        fileInputs: document.querySelectorAll('input[type="file"]').length,
+        railLabels: [...document.querySelectorAll('button,[role="button"],[role="tab"]')]
+          .map((node) => (node.textContent || '').trim()).filter((text) => text && text.length <= 8).slice(0, 20),
+        assetMarkers: [...document.querySelectorAll('[data-asset-library-feedback],[data-asset-library-rejection]')].length,
+        bodyHas: (document.body.innerText || '').slice(0, 400),
+      }))
+      console.log(`  · probe ${JSON.stringify(probe)}`)
+    }
+    await expectVisible(rejectionRow, '导入被拒应当在常驻内联行上说出来')
+    const rejectionText = (await rejectionRow.innerText().catch(() => '')).trim()
+    if (!/不支持/.test(rejectionText)) failures.push(`内联行应当说清是被拒了：${JSON.stringify(rejectionText)}`)
+    // 码也露在 DOM 上（给走查和分诊用，不是给用户读的）。
+    const rejectionCode = await second.win.locator('[data-asset-library-rejection]').first()
+      .getAttribute('data-asset-library-rejection').catch(() => null)
+    if (rejectionCode !== 'asset-import-unsupported') failures.push(`被拒的码应当是 asset-import-unsupported，实际 ${rejectionCode}`)
+    await shot(second.win, 'import-rejected')
+
+    await clickOrFail(second.win.locator('[data-asset-library-feedback] [data-feedback-open]').first(), '在导入被拒那一行点「反馈」')
+    await second.win.locator('[data-feedback-card]').first().waitFor({ state: 'visible' }).catch(() => {})
+    const failureCard = second.win.locator('[data-feedback-card]').first()
+    await expectVisible(failureCard, '失败面上的反馈卡应当打开')
+
+    // ① 摘要行必须是**那一句真话**，不是兜底的「这一步没成功」。
+    const failureSummary = (await failureCard.locator('[data-feedback-summary]').first().innerText().catch(() => '')).trim()
+    if (!/不支持/.test(failureSummary)) failures.push(`摘要应当派生自导入被拒那句人话，实际：${JSON.stringify(failureSummary)}`)
+    if (/这一步没成功/.test(failureSummary)) failures.push('摘要落到了兜底话——说明调用处没把 summary 传进来')
+
+    // ② 从失败面进来时**不许套设置外壳**（用户 09-15 看截图时点出来的那条）。
+    await expectHidden(second.win.locator('[data-settings-tab-id]').first(), '失败面进来时不该出现设置侧栏')
+    if (await second.win.locator('[data-feedback-back="about"]').count()) failures.push('失败面进来时不该有「‹ 关于」面包屑')
+    const backCount = await second.win.locator('[data-feedback-card]').locator('..')
+      .getByRole('button', { name: '返回', exact: true }).count().catch(() => 0)
+    if (backCount > 0) failures.push('失败面进来时不该有「返回」')
+    await shot(second.win, 'failure-surface-card')
+
+    await clickOrFail(second.win.locator('[data-feedback-send]').first(), '在失败面的卡上点「发送」')
+    await second.win.locator('[data-feedback-receipt]').first().waitFor({ state: 'visible' }).catch(() => {})
+    const failureReceipt = (await second.win.locator('[data-feedback-receipt]').first().innerText().catch(() => '')).trim()
+    if (!/NF-\d{4}-\d{4}/.test(failureReceipt)) failures.push(`失败面那条也应当收成编号，实际：${JSON.stringify(failureReceipt)}`)
+    await shot(second.win, 'failure-surface-receipt')
+
+    // 接收端收到的第二条：surface 必须是 import，码必须带上。
+    const postedFailure = received.filter((item) => item.url === '/v1/feedback').at(-1)
+    if (!postedFailure) failures.push('接收端没有收到失败面那一条')
+    else {
+      const envelope = JSON.parse(postedFailure.body)
+      if (envelope.context.surface !== 'import') failures.push(`surface 应当是 import，实际 ${envelope.context.surface}`)
+      if (envelope.context.errorCode !== 'asset-import-unsupported') failures.push(`errorCode 应当是 asset-import-unsupported，实际 ${envelope.context.errorCode}`)
+      if (!/不支持/.test(String(envelope.context.summary))) failures.push(`报文里的摘要应当是那句真话，实际 ${envelope.context.summary}`)
+      fs.writeFileSync(path.join(shotsDir, 'posted-feedback-import.summary.json'), JSON.stringify({
+        route: postedFailure.url,
+        context: envelope.context,
+        manifest: { entries: envelope.manifest.entries, excluded: envelope.manifest.excluded },
+      }, null, 2))
+    }
+    fs.rmSync(rejectedFile, { force: true })
 
     console.log(`PASS: feedback loop walk; ${shotNumber} shots → ${path.relative(repoRoot, shotsDir)}`)
     if (failures.length) throw new Error(failures.join('; '))

@@ -26,10 +26,17 @@ type Phase = 'idle' | 'sending' | 'sent' | 'queued' | 'unconfigured' | 'failed'
 export function FeedbackReportCard({
   request = null,
   onDone,
+  showHeading = true,
 }: {
   request?: FeedbackOpenRequest | null
   /** 发完（拿到编号或排队）后调用。浮层态用它关窗，内嵌态用它退回首页。 */
   onDone?: () => void
+  /**
+   * 宿主已经把「反馈这个问题」印在自己的标题栏上时传 false。
+   * 为什么要这一格：从失败面进来时它装在一个 modal 里，modal 自己有标题栏——
+   * 两个标题会在卡上方留出一条空白带，而「面板尺寸由内容派生、空白=冗余」是拍板过的规则。
+   */
+  showHeading?: boolean
 }): JSX.Element {
   const { t } = useTranslation()
   const bridge = getDesktopBridge()
@@ -121,7 +128,7 @@ export function FeedbackReportCard({
 
   return (
     <div data-feedback-card data-feedback-phase={phase} className="space-y-3 rounded-nomi border border-nomi-accent bg-nomi-paper p-3.5">
-      <h2 className="text-body-sm font-medium text-nomi-ink">{t('feedbackReport.title')}</h2>
+      {showHeading ? <h2 className="text-body-sm font-medium text-nomi-ink">{t('feedbackReport.title')}</h2> : null}
 
       {/* 一行自动摘要：机器已经知道的东西机器自己填。 */}
       <p data-feedback-summary className="break-words text-body-sm leading-relaxed text-nomi-ink-80">{summaryLine}</p>

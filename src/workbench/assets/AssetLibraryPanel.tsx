@@ -30,6 +30,12 @@ import { acceptAttrForKinds, mediaKindFromExtension } from '../../../electron/as
 import { notify } from '../../ui/notificationPolicy'
 import { FeedbackButton } from '../../ui/community/FeedbackButton'
 import {
+  ASSET_IMPORT_REJECTION_TEXT_KEY,
+  assetImportRejectionCode,
+  firstAssetImportRejection,
+  type AssetImportRejection,
+} from './assetImportRejection'
+import {
   AssetGridCell,
   FolderGridCell,
 } from './AssetLibraryPanelParts'
@@ -91,21 +97,47 @@ export function classifyUploadFiles(files: File[]): UploadClassification {
 }
 
 // 导入结果 → 用户反馈（Gap C：此前计数全被丢弃，超大/重复/失败/超上限零提示）。
-function reportMediaImport(result: GenerationAssetImportResult, present: (message: string) => void): void {
+//
+// 2026-09-15 多了一件事：把**挡住用户的那个原因**交给失败面上那颗「反馈」钮。
+// 那句人话不在这里新写——它就是内联行上用户此刻正读着的同一句
+// （`ASSET_IMPORT_REJECTION_TEXT_KEY` 指回既有的 `assetLibrary.skipped*` 词条）。
+function rejectionOf(rejection: AssetImportRejection, count: number): { errorKind: string; summary: string } {
+  const sentence = i18n.t(ASSET_IMPORT_REJECTION_TEXT_KEY[rejection], { count })
+  return {
+    errorKind: assetImportRejectionCode(rejection),
+    // `unsupported` 的词条本身已是整句（「已跳过 N 个不支持的文件」）；另外三条是片段，
+    // 由 `skippedSummary` 包成整句 —— 和内联行里看到的逐字一致。
+    summary: rejection === 'unsupported' ? sentence : i18n.t('assetLibrary.skippedSummary', { items: sentence }),
+  }
+}
+
+function reportMediaImport(
+  result: GenerationAssetImportResult,
+  present: (message: string) => void,
+  onRejection?: (rejection: { errorKind: string; summary: string }) => void,
+): void {
   const skipped: string[] = []
   if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
   if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
   if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
   if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
   if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
+  const blocking = firstAssetImportRejection(result)
+  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
 }
 
-function reportAudioImport(result: AudioImportResult, present: (message: string) => void): void {
+function reportAudioImport(
+  result: AudioImportResult,
+  present: (message: string) => void,
+  onRejection?: (rejection: { errorKind: string; summary: string }) => void,
+): void {
   const skipped: string[] = []
   if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
   if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
   if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
   if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
+  const blocking = firstAssetImportRejection(result)
+  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
 }
 
 type AssetLibraryContentProps = {
@@ -143,10 +175,11 @@ export function AssetLibraryContent({
   // 导入被拒是**四个失败面之一**。这条内联行是这个面上唯一的常驻落点，所以那颗「反馈」钮
   // 挂在这里，而不是把 notify 的 level 从 inline 改成 background——改 level 会把一条安静的
   // 内联提示变成一个飘出来的 toast，那是另一件事的改动，不该顺手夹带（失败面那一行改动尽量小）。
-  const [lastFailureKind, setLastFailureKind] = React.useState<string | null>(null)
+  //
+  // 存的是「码 + 那句人话」而不是只存一句话：码给接收端聚类，人话给摘要行。
+  // 两者都由 `assetImportRejection.ts` 派生 —— 那是这一族的唯一 owner，这里不做第二份判断。
+  const [rejection, setRejection] = React.useState<{ errorKind: string; summary: string } | null>(null)
   const report = React.useCallback((message: string, type: 'info' | 'warning' | 'error' = 'warning') => {
-    // 只有真失败才给反馈入口。「跳过了 2 个重复素材」是正常结果，不是问题。
-    if (type === 'error') setLastFailureKind(message)
     notify({ identity: `asset-library:${feedbackOwner}`, reason: 'operation', message, type, level: 'inline', present })
   }, [feedbackOwner, present])
   const uploadInputRef = React.useRef<HTMLInputElement>(null)
@@ -292,7 +325,7 @@ export function AssetLibraryContent({
         .then((result) => {
           refreshProjectAssets()
           refreshAllProjectAssets()
-          reportMediaImport(result, report)
+          reportMediaImport(result, report, setRejection)
           // 落点可见性（2026-08-07 飞书反馈「上传传到另一个位置没看到」）：选中首个新节点 +
           // 请求画布 fit 平移视口过去（复用导演台节点同款组合，不造第二套）。
           const firstNode = result.created[0]?.node
@@ -304,6 +337,7 @@ export function AssetLibraryContent({
         .catch((error) => {
           console.error('asset library upload failed', error)
           report(t('assetLibrary.importFailed'), 'error')
+          setRejection(rejectionOf('failed', 1))
         })
     }
     if (audioFiles.length) {
@@ -311,15 +345,19 @@ export function AssetLibraryContent({
         .then((result) => {
           refreshProjectAssets()
           refreshAllProjectAssets()
-          reportAudioImport(result, report)
+          reportAudioImport(result, report, setRejection)
         })
         .catch((error) => {
           console.error('asset library audio upload failed', error)
           report(t('assetLibrary.audioImportFailed'), 'error')
+          setRejection(rejectionOf('failed', 1))
         })
     }
     if (unsupported.length) {
       report(t('assetLibrary.skippedUnsupported', { count: unsupported.length }), 'warning')
+      // 不支持的类型是**策略拒收**：用户想导的那个文件真的没进来，所以它给反馈入口。
+      // （重复素材不给——那一份已经在库里，什么都没被挡住。）
+      setRejection(rejectionOf('unsupported', unsupported.length))
     }
   }, [projectId, refreshAllProjectAssets, refreshProjectAssets, present, report, t])
 
@@ -594,10 +632,10 @@ export function AssetLibraryContent({
         {(feedback[feedbackOwner] ?? []).length > 0 ? (
           <div role="status" aria-live="polite" className="shrink-0 border-b border-nomi-line px-3 py-2 text-caption text-nomi-ink-60" data-asset-library-feedback>
             {feedback[feedbackOwner].map((message) => <p key={message}>{message}</p>)}
-            {lastFailureKind ? (
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {/* 那句人话就是 i18n 已经算好的这条提示本身；导入域没有第二份错误码表要造。 */}
-                <FeedbackButton request={{ intent: 'problem', surface: 'import', stage: 'upload', errorKind: 'asset-import-failed', summary: lastFailureKind }} />
+            {rejection ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5" data-asset-library-rejection={rejection.errorKind}>
+                {/* 码与人话都来自 assetImportRejection.ts；这里只是把它们递出去。 */}
+                <FeedbackButton request={{ intent: 'problem', surface: 'import', stage: 'upload', ...rejection }} />
               </div>
             ) : null}
           </div>

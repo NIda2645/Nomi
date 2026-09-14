@@ -11,8 +11,10 @@ import { type FeedbackOpenRequest } from './feedbackTypes'
 //   ① 设置 → 关于 → 「反馈与分享」：获批样张（docs/design/mockups/2026-09-01-feedback-share-center*.png）
 //      画的是它**长在设置弹窗右栏里**，左侧 tab（文件/通用/关于）始终在，顶部一条「‹ 关于」面包屑；
 //   ② 生成失败卡上「反馈此问题」：画布里冒出来的浮层，天然没有设置外壳，仍走 DesignModal。
-// 两处共用这同一份主体，靠 `variant` 决定要不要自带标题/面包屑（内嵌要，浮层的标题由 modal chrome 给）。
-// P1 加新必删旧：FeedbackShareDialog 不再自己写页面路由，改为 DesignModal + 本组件。
+// 2026-09-15 起它只有**一个**家：设置 → 关于 → 反馈。
+// 情境入口（四个失败面）那条路不再套这层分页外壳——`FeedbackShareHost` 直接呈现
+// `FeedbackReportCard` 本身（理由写在那份文件里：用户会以为自己跑进了设置）。
+// 连带删掉的是 `FeedbackShareDialog.tsx`：它的全部职责就是给那条路套一个带标题的 modal。
 //
 // 2026-09-15：报告那一页整块换成 `FeedbackReportCard`（四个失败面共用的那张）。
 // 同 commit 删掉的旧实现：手选功能阶段 + 手写摘要/详情 + 「私密 Tally / 公开 GitHub」
@@ -61,10 +63,14 @@ export function FeedbackShareContent({
 }: {
   request?: FeedbackOpenRequest | null
   /**
-   * 'embedded' = 长在设置弹窗内（自带「反馈与分享」标题 + 顶部「‹ 关于」面包屑，匹配样张）；
-   * 'modal'    = 装在浮层里（标题由 DesignModal chrome 给，不重复画）。
+   * 只剩 'embedded'（长在设置弹窗内：自带「反馈与分享」标题 + 顶部「‹ 关于」面包屑，匹配
+   * 2026-09-01 获批样张）。
+   *
+   * 2026-09-15 删掉了 'modal' 那一档：失败面那条路不再套这层分页外壳，直接由
+   * `FeedbackShareHost` 呈现 `FeedbackReportCard` 本身。留着一个没有调用方的枚举成员，
+   * 下一个人就会以为浮层态还活着。
    */
-  variant: 'embedded' | 'modal'
+  variant: 'embedded'
   /** 内嵌态下，从 home 页顶部「‹ 关于」返回设置「关于」区块首页。浮层态传空。 */
   onBackToAbout?: () => void
 }): JSX.Element {
