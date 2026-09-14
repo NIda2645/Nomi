@@ -17,9 +17,12 @@ import { V4ConsentCard } from '../../../../workbench/ai/v4/AgentPanelV4Consent'
 import { FeedbackReportCard } from '../../../../ui/community/FeedbackReportCard'
 import { V4_PANEL_WIDTH } from '../agentPanelV4LabKit'
 
+// 底色用 `bg-nomi-paper`（面板底色的真 token）。第一版写了一个**不存在**的 token 键：
+// Tailwind 对未知键不报错也不生成 CSS，那一格会静默掉回继承色、肉眼看不出——
+// `check:dangling-tailwind` 就是为这一族存在的，它当场抓到了。
 function Panel({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div className="bg-nomi-canvas p-3" style={{ width: V4_PANEL_WIDTH }}>
+    <div className="bg-nomi-paper p-3" style={{ width: V4_PANEL_WIDTH }}>
       {children}
     </div>
   )

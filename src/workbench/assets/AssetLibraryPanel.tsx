@@ -29,12 +29,7 @@ import type { ReferencePlatform } from '../../../electron/shared/contracts/refer
 import { acceptAttrForKinds, mediaKindFromExtension } from '../../../electron/assets/mediaTypes'
 import { notify } from '../../ui/notificationPolicy'
 import { FeedbackButton } from '../../ui/community/FeedbackButton'
-import {
-  ASSET_IMPORT_REJECTION_TEXT_KEY,
-  assetImportRejectionCode,
-  firstAssetImportRejection,
-  type AssetImportRejection,
-} from './assetImportRejection'
+import { rejectionOf, reportAudioImport, reportMediaImport, type AssetImportRejectionReport } from './assetImportRejection'
 import {
   AssetGridCell,
   FolderGridCell,
@@ -96,50 +91,6 @@ export function classifyUploadFiles(files: File[]): UploadClassification {
   return { mediaFiles, audioFiles, unsupported }
 }
 
-// 导入结果 → 用户反馈（Gap C：此前计数全被丢弃，超大/重复/失败/超上限零提示）。
-//
-// 2026-09-15 多了一件事：把**挡住用户的那个原因**交给失败面上那颗「反馈」钮。
-// 那句人话不在这里新写——它就是内联行上用户此刻正读着的同一句
-// （`ASSET_IMPORT_REJECTION_TEXT_KEY` 指回既有的 `assetLibrary.skipped*` 词条）。
-function rejectionOf(rejection: AssetImportRejection, count: number): { errorKind: string; summary: string } {
-  const sentence = i18n.t(ASSET_IMPORT_REJECTION_TEXT_KEY[rejection], { count })
-  return {
-    errorKind: assetImportRejectionCode(rejection),
-    // `unsupported` 的词条本身已是整句（「已跳过 N 个不支持的文件」）；另外三条是片段，
-    // 由 `skippedSummary` 包成整句 —— 和内联行里看到的逐字一致。
-    summary: rejection === 'unsupported' ? sentence : i18n.t('assetLibrary.skippedSummary', { items: sentence }),
-  }
-}
-
-function reportMediaImport(
-  result: GenerationAssetImportResult,
-  present: (message: string) => void,
-  onRejection?: (rejection: { errorKind: string; summary: string }) => void,
-): void {
-  const skipped: string[] = []
-  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
-  if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
-  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
-  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
-  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
-  const blocking = firstAssetImportRejection(result)
-  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
-}
-
-function reportAudioImport(
-  result: AudioImportResult,
-  present: (message: string) => void,
-  onRejection?: (rejection: { errorKind: string; summary: string }) => void,
-): void {
-  const skipped: string[] = []
-  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
-  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
-  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
-  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
-  const blocking = firstAssetImportRejection(result)
-  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
-}
-
 type AssetLibraryContentProps = {
   projectId: string | null
   compact?: boolean
@@ -172,13 +123,10 @@ export function AssetLibraryContent({
     setFeedback((current) => ({ ...current, [feedbackOwner]: message
       ? [...new Set([...(current[feedbackOwner] ?? []), message])] : [] }))
   }, [feedbackOwner])
-  // 导入被拒是**四个失败面之一**。这条内联行是这个面上唯一的常驻落点，所以那颗「反馈」钮
-  // 挂在这里，而不是把 notify 的 level 从 inline 改成 background——改 level 会把一条安静的
-  // 内联提示变成一个飘出来的 toast，那是另一件事的改动，不该顺手夹带（失败面那一行改动尽量小）。
-  //
-  // 存的是「码 + 那句人话」而不是只存一句话：码给接收端聚类，人话给摘要行。
-  // 两者都由 `assetImportRejection.ts` 派生 —— 那是这一族的唯一 owner，这里不做第二份判断。
-  const [rejection, setRejection] = React.useState<{ errorKind: string; summary: string } | null>(null)
+  // 导入被拒是四个失败面之一；这条内联行是它唯一的常驻落点，所以那颗「反馈」钮挂在这儿，
+  // 而不是把 notify 从 inline 改成 background（那会把安静的内联提示变成飘出来的 toast）。
+  // 码与人话都由 `assetImportRejection.ts` 派生——这里不做第二份判断。
+  const [rejection, setRejection] = React.useState<AssetImportRejectionReport | null>(null)
   const report = React.useCallback((message: string, type: 'info' | 'warning' | 'error' = 'warning') => {
     notify({ identity: `asset-library:${feedbackOwner}`, reason: 'operation', message, type, level: 'inline', present })
   }, [feedbackOwner, present])
@@ -355,8 +303,7 @@ export function AssetLibraryContent({
     }
     if (unsupported.length) {
       report(t('assetLibrary.skippedUnsupported', { count: unsupported.length }), 'warning')
-      // 不支持的类型是**策略拒收**：用户想导的那个文件真的没进来，所以它给反馈入口。
-      // （重复素材不给——那一份已经在库里，什么都没被挡住。）
+      // 策略拒收：用户想导的那个文件真的没进来，所以给反馈入口（重复素材不给，那份已在库里）。
       setRejection(rejectionOf('unsupported', unsupported.length))
     }
   }, [projectId, refreshAllProjectAssets, refreshProjectAssets, present, report, t])
@@ -634,7 +581,6 @@ export function AssetLibraryContent({
             {feedback[feedbackOwner].map((message) => <p key={message}>{message}</p>)}
             {rejection ? (
               <div className="mt-1 flex flex-wrap items-center gap-1.5" data-asset-library-rejection={rejection.errorKind}>
-                {/* 码与人话都来自 assetImportRejection.ts；这里只是把它们递出去。 */}
                 <FeedbackButton request={{ intent: 'problem', surface: 'import', stage: 'upload', ...rejection }} />
               </div>
             ) : null}

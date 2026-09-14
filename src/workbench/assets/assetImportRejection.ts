@@ -9,7 +9,13 @@
 // 所以这份文件里**一个新文案都没有**，只有「哪个计数对应哪个既有词条」这一层映射。
 // 整键字面量存在这里而不是在用处拼 `assetLibrary.skipped${X}`：拼出来的动态前缀会盖掉
 // 整个命名空间的死键检测（`src/i18n/translationKey.ts` 的理由）。
+import i18n from '../../i18n'
 import type { TranslationKey } from '../../i18n/translationKey'
+import type { AudioImportResult } from './importAudioToLibrary'
+import type { GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
+
+/** 交给失败面那颗「反馈」钮的两样东西：给接收端聚类的码 + 印在摘要行上的人话。 */
+export type AssetImportRejectionReport = { errorKind: string; summary: string }
 
 /**
  * 被拒的原因 → **整键**。这张表同时是**闭合的原因清单**（类型从它派生，不另立一个只为派型
@@ -60,4 +66,52 @@ export function firstAssetImportRejection(
   if (counts.skippedOverLimitCount) return { rejection: 'over-limit', count: counts.skippedOverLimitCount }
   if (counts.failedCount) return { rejection: 'failed', count: counts.failedCount }
   return null
+}
+
+/* ── 导入结果 → 用户看到的那句话 + 失败面那颗钮要的上下文 ──────────────────────────
+ *
+ * 这三个函数 2026-09-15 从 `AssetLibraryPanel.tsx` 搬过来（那份文件 851 行、破了 800 行上限）。
+ * 搬到这里不只是为了让门岗绿：它们算的东西（哪个原因挡住了用户、那句人话是哪一条词条）
+ * 本来就是这份 owner 的职责，留在组件里等于把这一族的判据劈成两半。
+ *
+ * 那句人话不在这里新写——它就是内联行上用户此刻正读着的同一句
+ * （`ASSET_IMPORT_REJECTION_TEXT_KEY` 指回既有的 `assetLibrary.skipped*` 词条）。
+ */
+export function rejectionOf(rejection: AssetImportRejection, count: number): AssetImportRejectionReport {
+  const sentence = i18n.t(ASSET_IMPORT_REJECTION_TEXT_KEY[rejection], { count })
+  return {
+    errorKind: assetImportRejectionCode(rejection),
+    // `unsupported` 的词条本身已是整句（「已跳过 N 个不支持的文件」）；另外三条是片段，
+    // 由 `skippedSummary` 包成整句 —— 和内联行里看到的逐字一致。
+    summary: rejection === 'unsupported' ? sentence : i18n.t('assetLibrary.skippedSummary', { items: sentence }),
+  }
+}
+
+export function reportMediaImport(
+  result: GenerationAssetImportResult,
+  present: (message: string) => void,
+  onRejection?: (rejection: AssetImportRejectionReport) => void,
+): void {
+  const skipped: string[] = []
+  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
+  if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
+  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
+  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
+  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
+  const blocking = firstAssetImportRejection(result)
+  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
+}
+
+export function reportAudioImport(
+  result: AudioImportResult,
+  present: (message: string) => void,
+  onRejection?: (rejection: AssetImportRejectionReport) => void,
+): void {
+  const skipped: string[] = []
+  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
+  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
+  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
+  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
+  const blocking = firstAssetImportRejection(result)
+  if (blocking) onRejection?.(rejectionOf(blocking.rejection, blocking.count))
 }
