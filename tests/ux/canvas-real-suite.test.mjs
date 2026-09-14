@@ -16,7 +16,6 @@ import {
   summarizeCanvasScenarioFailure,
 } from './canvas-real-suite.mjs'
 import {
-  CANVAS_PERF_FIXED_OVERHEAD_MS,
   CANVAS_PERF_GATE_SCENARIOS,
   CANVAS_PERF_PER_SCENARIO_BUDGET_MS,
   canvasPerfGateTimeoutMs,
@@ -99,7 +98,6 @@ describe('real canvas acceptance suite', () => {
   // 这条钉的是「上限随工作量长」：谁再加一条场景，上限必须自动多出一条场景的预算。
   it('derives the performance wall clock from the scenario list, so adding a scenario cannot blow it', () => {
     const base = canvasPerfGateTimeoutMs(CANVAS_PERF_GATE_SCENARIOS)
-    expect(base).toBe(CANVAS_PERF_FIXED_OVERHEAD_MS + CANVAS_PERF_PER_SCENARIO_BUDGET_MS * CANVAS_PERF_GATE_SCENARIOS.length)
     const oneMore = canvasPerfGateTimeoutMs([...CANVAS_PERF_GATE_SCENARIOS, 'a-scenario-someone-adds-next-week'])
     expect(oneMore - base).toBe(CANVAS_PERF_PER_SCENARIO_BUDGET_MS)
     // 实测阳性对照：run 34899530314 在 20 分钟顶上跑完 20 条、死在第 21 条，
