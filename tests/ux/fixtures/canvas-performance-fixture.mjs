@@ -323,9 +323,9 @@ export function createCanvasPerformanceFixture({ projectsDir, scale = 'M', proje
       groups: [],
       selectedNodeIds: [],
     },
-    timeline: process.env.NOMI_CANVAS_PERF_CANVAS_ONLY === '1'
-      ? clone(snapshot.payload?.timeline || {})
-      : buildTimeline(snapshot.payload?.timeline, nodes, config.clipCount),
+    // 画布专项（NOMI_CANVAS_PERF_CANVAS_ONLY=1）：时间轴不放任何 clip。直接克隆快照时间轴会带上快照里
+    // 根本没拷进夹具项目的素材引用 → 项目库判「缺少 20 个素材」弹同步对话框，项目根本打不开。
+    timeline: buildTimeline(snapshot.payload?.timeline, nodes, process.env.NOMI_CANVAS_PERF_CANVAS_ONLY === '1' ? 0 : config.clipCount),
   }
   const now = Date.now()
   const record = {
