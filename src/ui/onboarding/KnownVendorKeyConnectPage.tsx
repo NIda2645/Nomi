@@ -150,7 +150,7 @@ export function KnownVendorKeyConnectPage({
                 onClick={() => setAllGroupsOpen(true)}
                 className="self-start text-caption text-nomi-ink-60 hover:text-nomi-accent"
               >
-                {t('onboardingProviders.keyOnly.showAllModels', { count: hiddenModelCount })}
+                {t('onboardingProviders.keyOnly.showAllModels')}
               </button>
             ) : null}
           </div>
