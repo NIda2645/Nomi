@@ -13,6 +13,7 @@
 //
 // 这条分工不是洁癖：第六张表一定是「按 message 子串猜分类」那一族（前两个 owner 的头注释
 // 里写着，那正是它们当初要替掉的东西），而且它不会被任何门岗覆盖。
+import type { FeedbackSurface } from '../../../electron/shared/contracts/feedback'
 import type { FeedbackOpenRequest } from './feedbackTypes'
 
 /** 只到分钟。秒对「什么时候出的问题」没有信息，却让这一行变长。 */
@@ -41,14 +42,17 @@ export function feedbackSummaryLine(input: {
 }
 
 /**
- * 失败面 → 反馈面的那一格。`surface` 是反馈契约里的四个字面量之一；
- * 这里把打开请求翻成它，**新增一个失败面必须来这里加一行**——加不进来就说明
+ * 打开请求 → 反馈契约里的 `surface`。**新增一个失败面必须来这里加一行**——加不进来就说明
  * 它该复用现有的某一个（「四处共用同一组件」的机器保证之一）。
+ * 什么上下文都没有的那一档落 `unspecified`，理由见下面那行注释。
  */
-export function feedbackSurfaceOf(request: FeedbackOpenRequest | null): 'agent' | 'generation' | 'import' | 'model-validation' {
+export function feedbackSurfaceOf(request: FeedbackOpenRequest | null): FeedbackSurface {
   if (request?.surface) return request.surface
   // 老调用点只带 stage（生成失败卡从 2026-09-01 起就这么传），按 stage 归位。
   if (request?.stage === 'model') return 'model-validation'
   if (request?.stage === 'upload') return 'import'
-  return 'generation'
+  if (request?.stage === 'generation' || request?.stage === 'export') return 'generation'
+  // 什么上下文都没有 = 规范入口（设置 → 关于 → 反馈）。**不许兜底成 'generation'**：
+  // 那会把「用户主动来说一件事」在分诊时读成「生成坏了」，一个编错的标签会一直骗人。
+  return 'unspecified'
 }

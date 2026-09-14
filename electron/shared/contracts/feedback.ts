@@ -10,10 +10,16 @@
 import type { DiagnosticsBundleManifest } from './diagnostics'
 
 /**
- * 四个失败面。**这个联合就是「四处共用同一组件」的机器保证**：
- * 新增一个失败面必须来这里加一个字面量，加不进来就说明它该复用现有的某一个。
+ * 这份反馈是从哪儿来的。前四个是**失败面**，**这四个字面量就是「四处共用同一组件」的机器
+ * 保证**：新增一个失败面必须来这里加一次，加不进来就说明它该复用现有的某一个。
+ *
+ * 第五个 `unspecified` 是**规范入口**（设置 → 关于 → 反馈）——那一刻没有任何失败上下文。
+ * 它必须存在而不是让那条路复用 `generation`：走查真跑完之后，落到接收端的报文里写着
+ * `"surface":"generation"`（见 docs/evidence 的 posted-feedback.summary.json 第一版），
+ * 而那份报告跟生成一点关系都没有。分诊时把「用户主动来说一件事」读成「生成坏了」，
+ * 比没有这一格更糟——一个编错的标签会一直骗人，而一个诚实的 `unspecified` 只是少一点信息。
  */
-export const FEEDBACK_SURFACES = ['agent', 'generation', 'import', 'model-validation'] as const
+export const FEEDBACK_SURFACES = ['agent', 'generation', 'import', 'model-validation', 'unspecified'] as const
 export type FeedbackSurface = (typeof FEEDBACK_SURFACES)[number]
 
 export type FeedbackReportRequest = {

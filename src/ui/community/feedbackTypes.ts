@@ -20,7 +20,7 @@ export type FeedbackOpenRequest = {
    * 第六张，而前五张各有门岗。理由写在 `feedbackSummary.ts` 的头注释。
    */
   summary?: string
-  /** 四个失败面之一。不给就按 `stage` 归位（老调用点只带 stage）。 */
+  /** 四个失败面之一。不给就按 `stage` 归位（老调用点只带 stage），都归不了就是 `unspecified`。 */
   surface?: 'agent' | 'generation' | 'import' | 'model-validation'
   /** 哪条对话的轨迹。不给就不带轨迹，清单里写明原因。 */
   laneName?: string
