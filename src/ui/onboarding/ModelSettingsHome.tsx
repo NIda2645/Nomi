@@ -9,7 +9,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { Mapping } from '../../../electron/catalog/types'
-import { DesignButton, DesignSearchInput, NomiLoadingMark } from '../../design'
+import { DesignButton, DesignSearchInput, NomiLoadingMark, VendorLogoImage } from '../../design'
 import { translateModelDisplayText } from '../../i18n/modelDisplayText'
 import { cn } from '../../utils/cn'
 import { AiAssistedOnboardingSection } from './AiAssistedOnboardingSection'
@@ -63,7 +63,7 @@ function ConnectionMark({ connection }: { connection: ModelSettingsHomeConnectio
       className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-nomi-sm border border-nomi-line bg-nomi-paper"
     >
       {connection.logo ? (
-        <img src={connection.logo} alt="" className="size-full object-contain" />
+        <VendorLogoImage src={connection.logo} className="size-full" />
       ) : (
         <span className="text-caption font-semibold leading-none text-nomi-ink-60">
           {(connection.glyph || translateModelDisplayText(connection.name)).trim().slice(0, 2).toUpperCase()}

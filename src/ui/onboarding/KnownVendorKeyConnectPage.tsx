@@ -3,7 +3,7 @@ import { IconCheck, IconExternalLink } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 
 import type { KnownVendor } from '../../config/knownVendors'
-import { DesignButton } from '../../design'
+import { DesignButton, VendorLogoImage } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { cn } from '../../utils/cn'
 import { useVendorHealth } from './useVendorHealth'
@@ -111,7 +111,7 @@ export function KnownVendorKeyConnectPage({
             'grid size-10 shrink-0 place-items-center overflow-hidden rounded-nomi-sm border border-nomi-line bg-nomi-paper',
             !directory.logo && 'bg-nomi-ink-05 text-caption font-semibold text-nomi-ink-60',
           )}>
-            {directory.logo ? <img src={directory.logo} alt="" className="size-full object-contain" /> : directory.glyph}
+            {directory.logo ? <VendorLogoImage src={directory.logo} className="size-full" /> : directory.glyph}
           </span>
           <div className="min-w-0">
             <div className="text-body-sm font-semibold text-nomi-ink">{vendorName}</div>
