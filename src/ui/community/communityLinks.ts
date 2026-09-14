@@ -4,13 +4,11 @@ export const NOMI_COMMUNITY_LINKS = {
   issues: 'https://github.com/aqm857886159/Nomi/issues/new/choose',
 } as const
 
-// 2026-09-15 删掉的：`PRIVATE_FEEDBACK_URL`（Tally 私密表单）与 `buildPrivateFeedbackUrl()`。
-// 反馈的去向改成我们自己的接收端（`infra/feedback-worker/`，用户 09-15 拍板①），
-// 所以「把版本/平台塞进 Tally hidden fields，再让用户在浏览器里自己提交」这条路整条不存在了。
-// 连带删掉的 `platformLabel()` 只服务过那条 URL。
+// 这个模块里**没有**第三方表单去向：反馈只发到我们自己的接收端（`infra/feedback-worker/`，
+// 用户 09-15 拍板①）。下面那条反向断言（`communityLinks.test.ts`）守的就是这句话。
 //
-// `buildGitHubIssueUrl` **留着**：它不是第二个反馈表单，是「把一个不支持的 ComfyUI 节点
-// 报到公开 issue 区」那件事的深链（`src/ui/onboarding/ComfyuiWorkflowImportPanel.tsx:71`）。
+// `buildGitHubIssueUrl` 不是第二个反馈表单，是「把一个不支持的 ComfyUI 节点报到公开 issue 区」
+// 那件事的深链（`src/ui/onboarding/ComfyuiWorkflowImportPanel.tsx:71`）。
 // 公开 issue 与一键反馈是两件事：一件要公开讨论，一件只要我们收到。
 
 /**

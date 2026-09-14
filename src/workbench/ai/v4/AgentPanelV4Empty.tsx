@@ -25,12 +25,9 @@ import type { ResidentSurface } from '../resident/residentShellDisplay'
 export function V4EmptyState({
   surface,
   onStarter,
-  /** 实验室用：强制渲染首次询问卡（生产路径不传，由 localStorage 标记决定）。 */
-  forceConsent = false,
 }: {
   surface: ResidentSurface
   onStarter?: (prompt: string) => void
-  forceConsent?: boolean
 }): JSX.Element {
   const { t } = useTranslation()
   const chips = starterChipsForSurface(surface)
@@ -54,7 +51,7 @@ export function V4EmptyState({
                 </button>
               ))}
             </div>
-            <V4ConsentCard forceVisible={forceConsent} />
+            <V4ConsentCard />
           </>
         }
       />

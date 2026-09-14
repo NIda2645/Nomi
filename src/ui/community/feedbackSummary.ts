@@ -16,9 +16,9 @@
 import type { FeedbackSurface } from '../../../electron/shared/contracts/feedback'
 import type { FeedbackOpenRequest } from './feedbackTypes'
 
-/** 只到分钟。秒对「什么时候出的问题」没有信息，却让这一行变长。 */
+/** 只到分钟（本地时间）。秒对「什么时候出的问题」没有信息，却让这一行变长。 */
 function clock(now: Date): string {
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  return now.toTimeString().slice(0, 5)
 }
 
 /**
@@ -34,11 +34,9 @@ export function feedbackSummaryLine(input: {
   model?: string | null
   now?: Date
 }): string {
-  const parts = [input.summary.trim()].filter(Boolean)
-  parts.push(clock(input.now ?? new Date()))
-  if (input.appVersion) parts.push(input.appVersion)
-  if (input.model) parts.push(input.model)
-  return parts.join(' · ')
+  // `filter(Boolean)` 就是「缺的格直接不出现」那条规则的全部实现。
+  return [input.summary.trim(), clock(input.now ?? new Date()), input.appVersion, input.model]
+    .filter(Boolean).join(' · ')
 }
 
 /**

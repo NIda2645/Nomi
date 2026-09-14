@@ -19,7 +19,7 @@ describe('导入被拒：码 → 人话的唯一 owner', () => {
 
   it('重复素材**不是**被拒：它那一份已经在库里，什么都没被挡住', () => {
     expect(ASSET_IMPORT_REJECTIONS).not.toContain('duplicate')
-    expect(firstAssetImportRejection({ skippedTooLargeCount: 0, failedCount: 0 }, 0)).toBeNull()
+    expect(firstAssetImportRejection({ skippedTooLargeCount: 0, failedCount: 0 })).toBeNull()
   })
 
   it('按「用户最想问为什么」排序取第一个', () => {
@@ -27,15 +27,13 @@ describe('导入被拒：码 → 人话的唯一 owner', () => {
       .toEqual({ rejection: 'too-large', count: 2 })
     expect(firstAssetImportRejection({ skippedOverLimitCount: 1, failedCount: 3 }))
       .toEqual({ rejection: 'over-limit', count: 1 })
-    expect(firstAssetImportRejection({ failedCount: 3 }, 5))
-      .toEqual({ rejection: 'unsupported', count: 5 })
     expect(firstAssetImportRejection({ failedCount: 3 }))
       .toEqual({ rejection: 'failed', count: 3 })
   })
 
   it('什么都没被挡住就返回 null —— 没有被拒就没有反馈入口', () => {
     expect(firstAssetImportRejection({})).toBeNull()
-    expect(firstAssetImportRejection({ skippedTooLargeCount: 0 }, 0)).toBeNull()
+    expect(firstAssetImportRejection({ skippedTooLargeCount: 0 })).toBeNull()
   })
 
   it('出门的码带 asset-import- 前缀，与生成域的 asset-too-large 刻意分家', () => {

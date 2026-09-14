@@ -17,11 +17,6 @@ import { intakeConfigured, postIntake, type IntakeRoute } from './intakeClient'
 /** 队列按货物分文件：清掉轨迹不该连带清掉用户已经点过发送的反馈。 */
 export type IntakeQueueKind = 'trajectories' | 'feedback'
 
-const ROUTE_OF: Record<IntakeQueueKind, IntakeRoute> = {
-  trajectories: '/v1/trajectories',
-  feedback: '/v1/feedback',
-}
-
 const MAX_PENDING = 50
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 /** 重试间隔。刻意不做指数退避：这是桌面 App，用户重开就重试，退避曲线没有收益。 */
@@ -107,14 +102,12 @@ export function flushIntakeQueue(kind: IntakeQueueKind): Promise<void> {
     const store = readStore(kind)
     prune(store)
     if (!store.pending.length) return
-    let sentAny = false
     for (const item of [...store.pending]) {
       try {
-        await postIntake(ROUTE_OF[kind], item.payload)
+        await postIntake(`/v1/${kind}`, item.payload)
         const latest = readStore(kind)
         latest.pending = latest.pending.filter((pending) => pending.id !== item.id)
         writeJsonFileAtomic(queuePath(kind), latest)
-        sentAny = true
       } catch {
         // 一条发不出去，后面的多半也发不出去（同一个端点）。留着，下一轮再来。
         break
@@ -131,13 +124,10 @@ export function flushIntakeQueue(kind: IntakeQueueKind): Promise<void> {
       retryTimers.set(kind, timer)
     }
     if (remaining === 0) {
-      const timer = retryTimers.get(kind)
-      if (timer) {
-        clearTimeout(timer)
-        retryTimers.delete(kind)
-      }
+      // clearTimeout(undefined) 是 no-op，所以不用先取再判。
+      clearTimeout(retryTimers.get(kind))
+      retryTimers.delete(kind)
     }
-    void sentAny
   })().finally(() => {
     flushing.delete(kind)
   })

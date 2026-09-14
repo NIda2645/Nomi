@@ -65,10 +65,11 @@ const APPROVED_NON_MODEL_SECTION_SHA256 = {
   // 2026-09-09：声音归通用设置的单一入口，移除这里的旧开关；下方断言保留系统通知策略。
   'AutomationPermissionsSection.tsx': '5eaf11a9f41fb95a0d6873de082de9e8e5fe62eded8282304c0cd6298a357c40',
   'CanvasGestureSection.tsx': '6f6fbf6802c6daae381c83838b387623a78ac7de49ffb1e47ee6101db312c95d',
-  // 2026-09-15：**只改了一行注释**——它原来提到 FeedbackShareDialog，而那份文件本次被删掉了
-  // （失败面那条路不再套带标题的 modal 外壳，直接呈现反馈卡）。布局、区块顺序、文案一个字没动；
-  // 更新这颗钉子是因为它钉的是整份文件的内容，而一条指向已删文件的注释正是最会误导下一个人的东西。
-  'AboutSection.tsx': '2af94be72744b733fa6722e5fc9d0fd83356f4d51afdc69376b15a413ab410ad',
+  // 2026-09-15：两处非布局改动——① 那行注释原来提到 FeedbackShareDialog，而那份文件本次被删
+  // （失败面那条路不再套带标题的 modal 外壳，直接呈现反馈卡）；② `FeedbackShareContent` 的
+  // `variant` prop 只剩一个合法值，删掉之后这里的 `variant="embedded"` 也跟着去掉。
+  // 布局、区块顺序、文案一个字没动。更新这颗钉子是因为它钉的是整份文件的内容。
+  'AboutSection.tsx': 'c4960a0171ae8ceae20c2fdfe92e9bc3984850a35030ea1e2c311f72da5dfdd7',
 } as const
 
 describe('settings dialog structure', () => {
@@ -174,7 +175,7 @@ describe('settings dialog structure', () => {
     expect(aboutSource).toContain("t('about.feedbackShare')")
     // 入口切内嵌视图，不再 dispatch 全局事件、不再关掉设置弹窗。
     expect(aboutSource).toContain("setView('feedback')")
-    expect(aboutSource).toContain('<FeedbackShareContent variant="embedded"')
+    expect(aboutSource).toContain('<FeedbackShareContent onBackToAbout=')
     expect(aboutSource).not.toContain("window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))")
   })
 

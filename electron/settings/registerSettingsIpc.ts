@@ -10,7 +10,7 @@ import { registerAssetRelaySettingsIpc } from "./assetRelaySettingsIpc";
 import { registerTelemetryIpc } from "./telemetryIpc";
 import { registerDiagnosticsIpc } from "../diagnostics/diagnosticsIpc";
 import { registerAgentTraceIpc } from "../diagnostics/agentTraceIpc";
-import { flushPendingFeedback, registerFeedbackIpc } from "../feedback/feedbackIpc";
+import { registerFeedbackIpc } from "../feedback/feedbackIpc";
 
 import { registerAttentionSoundIpc } from "./attentionSoundIpc";
 
@@ -33,6 +33,4 @@ export function registerSettingsIpc(): void {
   // 一键反馈**不受**「帮 Nomi 变好」开关管（用户主动点的），但接线仍住这一格：
   // 用户找「我的数据去哪了」时，三件事在同一个地方说得清。
   registerFeedbackIpc();
-  // 上次没发出去的补发掉。失败无声——用户已经拿到过回执编号。
-  flushPendingFeedback();
 }

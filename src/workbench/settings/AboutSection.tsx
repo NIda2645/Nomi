@@ -67,7 +67,7 @@ export function AboutSection({ onClose, onReplaySplash }: AboutSectionProps): JS
 
   if (view === 'feedback') {
     return (
-      <FeedbackShareContent variant="embedded" onBackToAbout={() => setView('about')} />
+      <FeedbackShareContent onBackToAbout={() => setView('about')} />
     )
   }
 

@@ -7,11 +7,6 @@ export const zhCommunity = {
   shareNomiHint: '一段可直接转发的话，一键复制发给朋友',
   trustLine: '默认只保存在本机；不会后台上传对话、素材或密钥。',
   back: '返回',
-  // 2026-09-15 删掉的一批（手填表整块换成 FeedbackReportCard）：problem/suggestion（意图二选一）·
-  // stageLabel/stages（手选功能阶段）· summaryLabel/Placeholder + detailsLabel/Placeholder（手写摘要与详情）·
-  // screenshotLabel/Hint · diagnostics/diagnosticsHint（旧的字段清单折叠）· destinationHint +
-  // submitPrivate/submitPublic + saved + privateOpened/publicOpened + openPrivate/openGitHub（目的地二选一）·
-  // copied/copySummary/required。新文案在 feedbackReport 命名空间。
   shareTitle: '把 Nomi 发给朋友',
   shareHint: '复制下面这段话，直接发给朋友或团队——不需要注册 Nomi 账号。',
   // 一段可直接转发的话（问题 #2）：像人话，不是裸链接。{{website}}/{{github}} 由 buildShareMessage 填真实链接。

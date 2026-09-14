@@ -59,9 +59,8 @@ export interface LaneTrajectoryToolCall {
   'nomi.tool.duration_ms': number | null
 }
 
-/** 一个回合出门的样子。 */
+/** 一个回合出门的样子。版本号由信封持有（`LaneTrajectoryEnvelope`）——出门的单位是信封，不是单个回合。 */
 export interface LaneTrajectoryTurn {
-  schemaVersion: 1
   'gen_ai.operation.name': 'invoke_agent'
   /** 会话 id 的**哈希**：原样出门等于出门一段本机路径（pi 把 cwd 编进 id 的兄弟目录名里）。 */
   'gen_ai.conversation.id': string

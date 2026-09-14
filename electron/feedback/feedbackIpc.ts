@@ -21,26 +21,14 @@ import type { TrajectoryTurnInput } from '../shared/agentLane/laneTrajectory'
 import type { FeedbackReportPreview, FeedbackSendResult } from '../shared/contracts/feedback'
 import { buildFeedbackReport, isFeedbackReportRequest, type FeedbackReportDeps } from './feedbackReport'
 
-/** 日志尾部读多少字节就够凑出 300 行。整文件可能有 4MB，没必要全读进内存。 */
-const LOG_TAIL_BYTES = 256 * 1024
-
 function readLogTail(maxLines: number): string[] | null {
   try {
     const [newest] = listLogFilesForBundle(logsDir())
     if (!newest) return null
-    const stat = fs.statSync(newest)
-    const start = Math.max(0, stat.size - LOG_TAIL_BYTES)
-    const handle = fs.openSync(newest, 'r')
-    try {
-      const buffer = Buffer.alloc(Math.min(LOG_TAIL_BYTES, stat.size))
-      fs.readSync(handle, buffer, 0, buffer.length, start)
-      // 从中间开始读会把第一行切一半——丢掉它，半行日志没有信息只有误导。
-      const lines = buffer.toString('utf8').split('\n')
-      if (start > 0) lines.shift()
-      return lines.filter((line) => line.trim()).slice(-maxLines)
-    } finally {
-      fs.closeSync(handle)
-    }
+    // 整文件读进来再取尾部：日志按天切且单文件上限 4MB（`logFiles.ts` 的 DAILY_LOG_MAX_BYTES），
+    // 而这条路一次用户点击只走一遍。手写 openSync/readSync 的字节窗口省下的是这点内存，
+    // 换来的是「从中间开始读会切掉半行」那一族边界情况。
+    return fs.readFileSync(newest, 'utf8').split('\n').filter((line) => line.trim()).slice(-maxLines)
   } catch {
     return null
   }
@@ -57,19 +45,18 @@ function readModelCatalog(): unknown | null {
 }
 
 async function readTrajectory(laneName: string): Promise<TrajectoryTurnInput[] | null> {
-  try {
-    const projectId = activeTaskProjectFallback()
-    if (!projectId) return null
-    const projectDir = resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())
-    if (!projectDir) return null
-    // 跨编译岛只走这座桥（pi 是 ESM-only）。桥的返回类型就是形状漂移守卫。
-    const native = createRequire(__filename)('../agentLane/laneNativeLoader.cjs') as {
-      readLaneTraceTurns(projectDir: string, laneName: string): Promise<TrajectoryTurnInput[]>
-    }
-    return await native.readLaneTraceTurns(projectDir, laneName)
-  } catch {
-    return null
+  const projectId = activeTaskProjectFallback()
+  if (!projectId) return null
+  const projectDir = resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())
+  if (!projectDir) return null
+  // 跨编译岛只走这座桥（pi 是 ESM-only）。桥的返回类型就是形状漂移守卫。
+  // 这里**不再**自己包 try/catch：`buildFeedbackReport` 已经把抛出的 readTrajectory 记成
+  // `trajectory-unavailable` 写进清单（`feedbackReport.test.ts` 有那一条）。包两层的结果是
+  // 外层先吞掉，清单里那条 why 永远写不出来。
+  const native = createRequire(__filename)('../agentLane/laneNativeLoader.cjs') as {
+    readLaneTraceTurns(projectDir: string, laneName: string): Promise<TrajectoryTurnInput[]>
   }
+  return await native.readLaneTraceTurns(projectDir, laneName)
 }
 
 function reportDeps(): FeedbackReportDeps {
@@ -128,9 +115,7 @@ export function registerFeedbackIpc(): void {
       return { ok: true, id: null, queued: true }
     }
   })
-}
 
-/** App 起来时把上次没发出去的反馈补发掉。失败无声——用户已经拿到过回执。 */
-export function flushPendingFeedback(): void {
+  // 上次没发出去的在这里补发掉（App 起来时注册一次就够）。失败无声——用户已经拿到过回执。
   void flushIntakeQueue('feedback')
 }

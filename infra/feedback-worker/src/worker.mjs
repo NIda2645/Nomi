@@ -20,11 +20,8 @@
 // 需要真正授权才能做的事：只能写，不能读、不能列、不能删。
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024
-const ROUTES = {
-  '/v1/feedback': { prefix: 'feedback', receipt: true },
-  '/v1/events': { prefix: 'events', receipt: false },
-  '/v1/trajectories': { prefix: 'trajectories', receipt: false },
-}
+// 路由名与落盘前缀是同一个词（`/v1/feedback` → `feedback/…`），所以不留一张只是把它抄一遍的表。
+const ROUTES = new Set(['/v1/feedback', '/v1/events', '/v1/trajectories'])
 
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
@@ -58,18 +55,15 @@ async function nextReceipt(env, now) {
   const month = String(now.getUTCMonth() + 1).padStart(2, '0')
   const day = String(now.getUTCDate()).padStart(2, '0')
   const dayKey = `counter:${now.getUTCFullYear()}-${month}-${day}`
-  let sequence = 1
-  if (env.INTAKE_KV) {
-    try {
-      const current = Number.parseInt((await env.INTAKE_KV.get(dayKey)) || '0', 10)
-      sequence = (Number.isFinite(current) && current > 0 ? current : 0) + 1
-      // 35 天后自然过期：计数器只在当天有意义，留着只是垃圾。
-      await env.INTAKE_KV.put(dayKey, String(sequence), { expirationTtl: 35 * 24 * 60 * 60 })
-    } catch {
-      // KV 抖一下不该让用户的反馈丢掉——编号退化成随机四位，报告照常落盘。
-      sequence = 1 + Math.floor(Math.random() * 9999)
-    }
-  } else {
+  let sequence
+  try {
+    // KV 没绑时 `env.INTAKE_KV.get` 自己就抛，和「KV 抖了一下」落到同一个 catch —— 不为它写第二条分支。
+    const current = Number.parseInt((await env.INTAKE_KV.get(dayKey)) || '0', 10)
+    sequence = (Number.isFinite(current) && current > 0 ? current : 0) + 1
+    // 35 天后自然过期：计数器只在当天有意义，留着只是垃圾。
+    await env.INTAKE_KV.put(dayKey, String(sequence), { expirationTtl: 35 * 24 * 60 * 60 })
+  } catch {
+    // 编号退化成随机四位，报告照常落盘 —— 丢不得的是报告，不是那个好记的名字。
     sequence = 1 + Math.floor(Math.random() * 9999)
   }
   return `NF-${month}${day}-${String(sequence % 10000).padStart(4, '0')}`
@@ -84,8 +78,9 @@ export default {
       return new Response('nomi-feedback-intake\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } })
     }
 
-    const route = ROUTES[url.pathname]
-    if (!route) return json(404, { ok: false, error: 'unknown_route' })
+    if (!ROUTES.has(url.pathname)) return json(404, { ok: false, error: 'unknown_route' })
+    // 反馈是唯一要回「用户能口述的编号」的那条（用户拍板⑥：只给编号）。
+    const wantsReceipt = url.pathname === '/v1/feedback'
     if (request.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' })
     if (!tokenMatches(bearer(request), env.INTAKE_TOKEN)) return json(401, { ok: false, error: 'unauthorized' })
     if (!env.INTAKE_BUCKET) return json(500, { ok: false, error: 'bucket_not_bound' })
@@ -107,9 +102,9 @@ export default {
 
     const now = new Date()
     const ref = crypto.randomUUID()
-    const receipt = route.receipt ? await nextReceipt(env, now) : null
+    const receipt = wantsReceipt ? await nextReceipt(env, now) : null
     const stamp = now.toISOString().slice(0, 10)
-    const key = `${route.prefix}/${stamp}/${ref}.json`
+    const key = `${url.pathname.slice('/v1/'.length)}/${stamp}/${ref}.json`
 
     // 存的是「客户端发来的原文 + 我们观察到的到达元数据」，两者分开放，不混成一层：
     // 混起来之后就分不清某个字段是客户端声明的还是服务端加的。
@@ -127,7 +122,7 @@ export default {
       httpMetadata: { contentType: 'application/json; charset=utf-8' },
     })
 
-    if (route.receipt) return json(200, { ok: true, id: receipt, ref })
+    if (wantsReceipt) return json(200, { ok: true, id: receipt, ref })
     const accepted = Array.isArray(payload.events) ? payload.events.length : 1
     return json(200, { ok: true, ref, accepted })
   },

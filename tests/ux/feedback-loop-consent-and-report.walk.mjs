@@ -69,13 +69,23 @@ console.log(`  · local intake on http://127.0.0.1:${port}`)
 
 // 同一个隔离资料库跑两次启动 —— 「只问一次」只有跨启动才证明得了。
 const iso = prepareIsolation(path.join(os.tmpdir(), 'nomi-feedback-loop-walk'), { requireCatalog: false })
-const launch = (name) => launchNomiApp({
-  name,
-  userDataDir: iso.chromiumDir,
-  settingsDir: iso.settingsDir,
-  projectsDir: iso.projectsDir,
-  env: { ...intakeEnv, NODE_ENV: 'production' },
-})
+async function launch(name) {
+  const instance = await launchNomiApp({
+    name,
+    userDataDir: iso.chromiumDir,
+    settingsDir: iso.settingsDir,
+    projectsDir: iso.projectsDir,
+    env: { ...intakeEnv, NODE_ENV: 'production' },
+  })
+  // 两次启动的收尾逐字相同，所以住在这里：抄两份的代价不是多几行，是其中一份悄悄漂掉。
+  await dismissSplashIfPresent(instance.win)
+  await instance.app.evaluate(({ BrowserWindow }) => {
+    const window_ = BrowserWindow.getAllWindows()[0]
+    if (window_) { window_.setSize(1680, 1050); window_.center() }
+  }).catch(() => {})
+  await instance.win.locator('body').waitFor({ state: 'visible' }).catch(() => {})
+  return instance
+}
 
 async function seedLocale(win) {
   await win.evaluate(() => {
@@ -87,7 +97,7 @@ async function seedLocale(win) {
   })
 }
 
-/** 打开一个项目并让右侧 Agent 面板可见。返回那块面板的 locator。 */
+/** 打开一个项目并让右侧 Agent 面板的空态出现。 */
 async function openAgentPanel(win) {
   // 库页的那张卡写着「新建空白项目」——按真实文案找，别按脑补的「新建项目」找
   // （`dead-selector` 那条教训：失效锚点会同时造出假红和假绿）。
@@ -114,20 +124,13 @@ async function openAgentPanel(win) {
     }))
     console.log(`  · probe ${JSON.stringify(probe)}`)
   }
-  return win.locator('[data-v4-block="empty"]').first()
 }
 
 let first
 try {
   // ── 旅程 ①：首次询问卡 ──────────────────────────────────────────────────────
   first = await launch('feedback-loop-consent')
-  await dismissSplashIfPresent(first.win)
   await seedLocale(first.win)
-  await first.app.evaluate(({ BrowserWindow }) => {
-    const window_ = BrowserWindow.getAllWindows()[0]
-    if (window_) { window_.setSize(1680, 1050); window_.center() }
-  }).catch(() => {})
-  await first.win.waitForTimeout(2500)
   await shot(first.win, 'library')
 
   await openAgentPanel(first.win)
@@ -161,12 +164,6 @@ try {
   // ── 旅程 ①续：冷启动重开，卡不该再出现 ─────────────────────────────────────
   const second = await launch('feedback-loop-consent-again')
   try {
-    await dismissSplashIfPresent(second.win)
-    await second.app.evaluate(({ BrowserWindow }) => {
-      const window_ = BrowserWindow.getAllWindows()[0]
-      if (window_) { window_.setSize(1680, 1050); window_.center() }
-    }).catch(() => {})
-    await second.win.waitForTimeout(2500)
     await openAgentPanel(second.win)
     await expectHidden(second.win.locator('[data-v4-block="consent"]').first(), '第二次打开不该再问（只问一次）')
     await shot(second.win, 'consent-not-asked-again')
@@ -192,23 +189,21 @@ try {
     // 关于页那一行写的是「反馈」（不是「反馈与分享」——那是它点进去之后的标题）。
     // 按那一行的**说明文字**找，不按标题找：标题「反馈」两个汉字在 JS 正则里两边都没有 \b
     // 边界（CJK 不是 \w），`^\s*反馈\b` 这种写法永远匹配不上——正是 dead-selector 那一族。
+    const card = second.win.locator('[data-feedback-card]').first()
     const entry = second.win.locator('button, [role="button"]')
       .filter({ hasText: /遇到问题或想分享|Report a problem or share/i }).first()
+    const report = second.win.locator('button, [role="button"]').filter({ hasText: /告诉我们一件事|Tell us one thing/i }).first()
     if (!(await entry.count())) failures.push('设置 → 关于里应当有「反馈」那一行')
     else {
       await clickOrFail(entry, '点「反馈」那一行')
       // 等「告诉我们一件事」真的出现，而不是等一个固定秒数。
-      await second.win.locator('button, [role="button"]').filter({ hasText: /告诉我们一件事|Tell us one thing/i })
-        .first().waitFor({ state: 'visible' }).catch(() => {})
+      await report.waitFor({ state: 'visible' }).catch(() => {})
     }
-    const report = second.win.locator('button, [role="button"]').filter({ hasText: /告诉我们一件事|Tell us one thing/i }).first()
     if (!(await report.count())) failures.push('设置 → 关于里应当有「告诉我们一件事」入口')
     else {
       await clickOrFail(report, '点「告诉我们一件事」')
-      await second.win.locator('[data-feedback-card]').first().waitFor({ state: 'visible' }).catch(() => {})
+      await card.waitFor({ state: 'visible' }).catch(() => {})
     }
-
-    const card = second.win.locator('[data-feedback-card]').first()
     await expectVisible(card, '反馈卡应当打开')
     const summary = (await card.locator('[data-feedback-summary]').first().innerText().catch(() => '')).trim()
     if (!summary) failures.push('反馈卡应当自带一行摘要（用户零输入）')
@@ -284,9 +279,9 @@ try {
     fs.writeFileSync(rejectedFile, '这不是图片也不是视频，导入策略必须拒收它。\n')
     if (!(await fileInput.count())) failures.push('素材库里应当有真实的文件选择器')
     else await fileInput.setInputFiles(rejectedFile).catch((error) => failures.push(`喂文件失败：${error?.message}`))
-    await second.win.locator('[data-asset-library-feedback]').first().waitFor({ state: 'visible' }).catch(() => {})
-
     const rejectionRow = second.win.locator('[data-asset-library-feedback]').first()
+    await rejectionRow.waitFor({ state: 'visible' }).catch(() => {})
+
     if (!(await rejectionRow.count())) {
       // 找不到就把现场量出来再报（`assert-you-are-in-the-situation-you-claim`）。
       const probe = await second.win.evaluate(() => ({
@@ -308,8 +303,8 @@ try {
     await shot(second.win, 'import-rejected')
 
     await clickOrFail(second.win.locator('[data-asset-library-feedback] [data-feedback-open]').first(), '在导入被拒那一行点「反馈」')
-    await second.win.locator('[data-feedback-card]').first().waitFor({ state: 'visible' }).catch(() => {})
     const failureCard = second.win.locator('[data-feedback-card]').first()
+    await failureCard.waitFor({ state: 'visible' }).catch(() => {})
     await expectVisible(failureCard, '失败面上的反馈卡应当打开')
 
     // ① 摘要行必须是**那一句真话**，不是兜底的「这一步没成功」。
@@ -329,6 +324,9 @@ try {
     await second.win.locator('[data-feedback-receipt]').first().waitFor({ state: 'visible' }).catch(() => {})
     const failureReceipt = (await second.win.locator('[data-feedback-receipt]').first().innerText().catch(() => '')).trim()
     if (!/NF-\d{4}-\d{4}/.test(failureReceipt)) failures.push(`失败面那条也应当收成编号，实际：${JSON.stringify(failureReceipt)}`)
+    // 两条反馈必须拿到**不同**的编号 —— 编号是「用户能口述的把手」，两条共用一个就没法指认了。
+    // （这条断言同时让本机接收端里那个递增计数器有人查；没人查的计数器等于摆设。）
+    if (failureReceipt === receipt) failures.push(`两条反馈拿到了同一个编号：${failureReceipt}`)
     await shot(second.win, 'failure-surface-receipt')
 
     // 接收端收到的第二条：surface 必须是 import，码必须带上。

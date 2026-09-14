@@ -70,8 +70,6 @@ describe('feedback diagnostics', () => {
     expect(serialized).not.toContain(privateBaseUrlSlug)
     expect(serialized).not.toContain(privateModelAlias)
     expect(serialized).not.toContain('corp-local')
-    // 出站那一半的同一条守卫搬去了 electron/feedback/feedbackReport.test.ts 的
-    // 「用户自建中转的 key 塌成字面量 custom」—— 2026-09-15 起出站不再是一条 Tally URL，
-    // 而是发往我们自己接收端的那份报告。
+    // 出站那一半的同一条守卫在 electron/feedback/feedbackReport.test.ts。
   })
 })

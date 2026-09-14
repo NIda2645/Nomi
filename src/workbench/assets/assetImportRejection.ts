@@ -50,14 +50,15 @@ type RejectionCounts = {
  * 只取第一个而不是全部：摘要行是一句话，而「为什么这次没进来」的第一个原因就足以定位；
  * 完整的计数用户仍在内联行上看得到（`skippedSummary` 把它们全列了）。
  * 顺序按「用户最可能想问为什么」排：超大 → 超单次上限 → 失败。
+ *
+ * `unsupported` 不在这里判：那一族在进导入器**之前**就被分流掉了
+ * （`AssetLibraryPanel` 的 `splitFiles`），所以它由调用处直接报，不经过这份计数。
  */
 export function firstAssetImportRejection(
   counts: RejectionCounts,
-  unsupportedCount = 0,
 ): { rejection: AssetImportRejection; count: number } | null {
   if (counts.skippedTooLargeCount) return { rejection: 'too-large', count: counts.skippedTooLargeCount }
   if (counts.skippedOverLimitCount) return { rejection: 'over-limit', count: counts.skippedOverLimitCount }
-  if (unsupportedCount > 0) return { rejection: 'unsupported', count: unsupportedCount }
   if (counts.failedCount) return { rejection: 'failed', count: counts.failedCount }
   return null
 }

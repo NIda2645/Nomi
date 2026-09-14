@@ -65,8 +65,7 @@ export type FeedbackReportPayload = {
 function text(value: unknown, max: number): string {
   if (typeof value !== 'string') return ''
   // 第二道网：摘要与留言都可能带着一段服务商原话里的签名 URL，或用户顺手粘的路径。
-  const clean = redactLogValue(value).trim()
-  return clean.length > max ? clean.slice(0, max) : clean
+  return redactLogValue(value).trim().slice(0, max)
 }
 
 /**
@@ -79,10 +78,6 @@ function identity(value: unknown): string | null {
   const clean = value.trim()
   if (!clean || clean.length > 64) return null
   return /^[a-z0-9][a-z0-9._-]*$/i.test(clean) ? clean : 'custom'
-}
-
-function bytesOf(value: unknown): number {
-  return Buffer.byteLength(JSON.stringify(value ?? null), 'utf8')
 }
 
 export function isFeedbackReportRequest(value: unknown): value is FeedbackReportRequest {
@@ -113,7 +108,7 @@ export async function buildFeedbackReport(
   const includeContent = request.includeContent === true
 
   const add = (path: string, value: unknown, what: string): void => {
-    const bytes = bytesOf(value)
+    const bytes = Buffer.byteLength(JSON.stringify(value ?? null), 'utf8')
     const used = entries.reduce((sum, entry) => sum + entry.bytes, 0)
     if (used + bytes > FEEDBACK_REPORT_MAX_BYTES) {
       excluded.push({ what: path, why: 'report-size-limit' })
@@ -145,12 +140,8 @@ export async function buildFeedbackReport(
   if (!request.laneName) {
     excluded.push({ what: 'trajectory/turns.json', why: 'no-conversation-in-context' })
   } else {
-    let turns: TrajectoryTurnInput[] | null = null
-    try {
-      turns = await deps.readTrajectory(request.laneName)
-    } catch {
-      turns = null
-    }
+    // 取不到（拿不到项目 / 对话不在 / 岛里抛了）一律落 excluded，不炸整包。
+    const turns = await deps.readTrajectory(request.laneName).catch(() => null)
     if (turns === null) {
       excluded.push({ what: 'trajectory/turns.json', why: 'trajectory-unavailable' })
     } else {

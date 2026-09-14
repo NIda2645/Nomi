@@ -85,8 +85,8 @@ export async function postIntake(
   const token = deps.token ?? intakeToken()
   if (!endpoint || !token) throw new Error('Nomi intake endpoint is not configured')
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  // `AbortSignal.timeout` 替掉手写的 AbortController + setTimeout + finally clearTimeout：
+  // 同一件事，少三处可以忘的清理。
   try {
     const response = await (deps.fetch ?? appFetch)(`${endpoint}${route}`, {
       method: 'POST',
@@ -95,7 +95,7 @@ export async function postIntake(
       // 而我们对用户说的是「匿名」。
       credentials: 'omit',
       body: JSON.stringify(payload),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     })
     if (!response.ok) throw new Error(`Nomi intake HTTP ${response.status}`)
     // 接收端回的是 JSON，但网关/代理可能插一页 HTML。解不出来不算失败——
@@ -112,7 +112,8 @@ export async function postIntake(
     } catch {
       return {}
     }
-  } finally {
-    clearTimeout(timer)
+  } catch (error) {
+    // 超时被 AbortSignal 判成 TimeoutError；调用方只需要知道「没发出去，入队重试」。
+    throw error instanceof Error ? error : new Error('Nomi intake failed')
   }
 }

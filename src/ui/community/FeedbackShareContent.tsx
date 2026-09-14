@@ -11,17 +11,12 @@ import { type FeedbackOpenRequest } from './feedbackTypes'
 //   ① 设置 → 关于 → 「反馈与分享」：获批样张（docs/design/mockups/2026-09-01-feedback-share-center*.png）
 //      画的是它**长在设置弹窗右栏里**，左侧 tab（文件/通用/关于）始终在，顶部一条「‹ 关于」面包屑；
 //   ② 生成失败卡上「反馈此问题」：画布里冒出来的浮层，天然没有设置外壳，仍走 DesignModal。
-// 2026-09-15 起它只有**一个**家：设置 → 关于 → 反馈。
-// 情境入口（四个失败面）那条路不再套这层分页外壳——`FeedbackShareHost` 直接呈现
-// `FeedbackReportCard` 本身（理由写在那份文件里：用户会以为自己跑进了设置）。
-// 连带删掉的是 `FeedbackShareDialog.tsx`：它的全部职责就是给那条路套一个带标题的 modal。
+// 它只有**一个**家：设置 → 关于 → 反馈。四个失败面那条路不经过这里——
+// `FeedbackShareHost` 直接呈现 `FeedbackReportCard` 本身（理由写在那份文件里：
+// 套上这层分页外壳，用户会以为自己从画布跑进了设置）。
 //
-// 2026-09-15：报告那一页整块换成 `FeedbackReportCard`（四个失败面共用的那张）。
-// 同 commit 删掉的旧实现：手选功能阶段 + 手写摘要/详情 + 「私密 Tally / 公开 GitHub」
-// 二选一 + 外跳浏览器自己提交 + localStorage 发件箱。
-// 那是「把问题告诉 Nomi」的另一个实现，与新这条并存就是 P1 的并行版；而且它和用户
-// 09-15 拍的两条（「大部分不能让用户填」「数据只去我们的端点」）直接冲突。
-// `share` 页一行未动——分享官网/GitHub 是**分享**，不是反馈，两件事本来就不同。
+// 报告那一页就是 `FeedbackReportCard`，与失败面共用同一份；`share` 页是**分享**不是反馈，
+// 两件事本来就不同，所以它留着。
 
 type Page = 'home' | 'feedback' | 'share'
 
@@ -58,24 +53,13 @@ function openExternal(url: string): void {
 
 export function FeedbackShareContent({
   request = null,
-  variant,
   onBackToAbout,
 }: {
   request?: FeedbackOpenRequest | null
-  /**
-   * 只剩 'embedded'（长在设置弹窗内：自带「反馈与分享」标题 + 顶部「‹ 关于」面包屑，匹配
-   * 2026-09-01 获批样张）。
-   *
-   * 2026-09-15 删掉了 'modal' 那一档：失败面那条路不再套这层分页外壳，直接由
-   * `FeedbackShareHost` 呈现 `FeedbackReportCard` 本身。留着一个没有调用方的枚举成员，
-   * 下一个人就会以为浮层态还活着。
-   */
-  variant: 'embedded'
   /** 内嵌态下，从 home 页顶部「‹ 关于」返回设置「关于」区块首页。浮层态传空。 */
   onBackToAbout?: () => void
 }): JSX.Element {
   const { t } = useTranslation()
-  const embedded = variant === 'embedded'
   const [page, setPage] = React.useState<Page>('home')
   const [shareCopied, setShareCopied] = React.useState(false)
 
@@ -101,8 +85,8 @@ export function FeedbackShareContent({
 
   return (
     <div data-feedback-share-content data-feedback-page={page}>
-      {/* 内嵌态自带标题 + 「‹ 关于」面包屑（样张），浮层态由 DesignModal 的 title 给，不重复画。 */}
-      {embedded && page === 'home' ? (
+      {/* 首页自带标题 + 「‹ 关于」面包屑（2026-09-01 获批样张）。 */}
+      {page === 'home' ? (
         <div className="mb-3">
           {onBackToAbout ? (
             <button

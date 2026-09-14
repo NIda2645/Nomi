@@ -49,12 +49,13 @@ function label(value: unknown, fallback = 'unknown'): string {
   return clean.length > MAX_LABEL_CHARS ? clean.slice(0, MAX_LABEL_CHARS) : clean
 }
 
-function count(value: unknown): number {
-  return Number.isFinite(value) && Number(value) >= 0 ? Math.round(Number(value)) : 0
-}
-
 function duration(value: unknown): number | null {
   return Number.isFinite(value) && Number(value) >= 0 ? Math.round(Number(value)) : null
+}
+
+/** token 计数与耗时的判据是同一条，只有「取不到时算什么」不同：计数是 0，耗时是「不知道」。 */
+function count(value: unknown): number {
+  return duration(value) ?? 0
 }
 
 /**
@@ -87,11 +88,7 @@ function projectToolCall(tool: TrajectoryTurnInput['tools'][number]): LaneTrajec
  * 自己读等于又写一份「审批记录长什么样」的判据，上游加字段时它不会红。
  */
 function approvalDecisions(approvals: readonly unknown[]): string[] {
-  const out: string[] = []
-  for (const note of approvals.slice(0, 20)) {
-    if (isLaneApprovalNote(note)) out.push(note.decision)
-  }
-  return out
+  return approvals.slice(0, 20).filter(isLaneApprovalNote).map((note) => note.decision)
 }
 
 /**
@@ -102,7 +99,6 @@ function approvalDecisions(approvals: readonly unknown[]): string[] {
  */
 export function projectTrajectoryTurn(turn: TrajectoryTurnInput, includeContent = false): LaneTrajectoryTurn {
   const projected: LaneTrajectoryTurn = {
-    schemaVersion: 1,
     'gen_ai.operation.name': 'invoke_agent',
     'gen_ai.conversation.id': trajectoryConversationId(turn.sessionId),
     'gen_ai.provider.name': [...new Set(turn.models.map((model) => label(model.provider)))],
