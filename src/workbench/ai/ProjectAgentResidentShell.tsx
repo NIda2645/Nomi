@@ -503,7 +503,11 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         onHistory={() => setThreadsOpen((value) => !value)}
         onCollapse={() => setCollapsed(true)}
         flowHandlers={{
-          onCopy: (text) => { void navigator.clipboard?.writeText(text) },
+          // 把写剪贴板的**结果**交回去：组件那颗 ✓ 只在真的写进去之后才打。
+          // `navigator.clipboard` 缺席（非安全上下文）或写入被拒时这里 reject，界面上就不打勾。
+          onCopy: (text) => navigator.clipboard
+            ? navigator.clipboard.writeText(text)
+            : Promise.reject(new Error('clipboard_unavailable')),
           // 「重来」= 把**开这一轮的那句话**原样再发一次。lane 没有「重跑一个已经落定的回合」
           // 这个原语（转录是只进不改的），所以重来就是再说一遍——这也正是这颗钮承诺的事。
           //

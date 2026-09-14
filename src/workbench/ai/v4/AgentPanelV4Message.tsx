@@ -116,7 +116,7 @@ export function V4AssistantMessage({
    * `onRetry` 这一项，钮照画、点了什么都不发生，TypeScript 也不会说话（它是可选的）。
    * 「钮在」从此等价于「这件事这里做得了」——宿主漏接一个动作，界面上立刻看得出少了一颗钮。
    */
-  onCopy?: (text: string) => void
+  onCopy?: (text: string) => void | Promise<void>
   onRetry?: () => void
   /** 「继续」= 给这个还活着的回合追加一句指令（`turn.steer`），不是重发。 */
   onContinue?: () => void
@@ -125,6 +125,9 @@ export function V4AssistantMessage({
   // 「已复制」不是装饰。复制本身 3ms 就完成了，而它**没有任何可见结果**——剪贴板在系统里，
   // 不在屏幕上。用户点完看不到任何变化，唯一能得到的结论就是「这颗钮坏了」
   //（2026-09-14 用户原话：复制点了没反应；真机探针证明剪贴板确实拿到了正文）。
+  //
+  // ✓ **只在真的写进去之后才打**：写剪贴板会失败（非安全上下文、权限被拒、文档没聚焦），
+  // 而一颗「失败了也照样打勾」的钮比不打勾更糟——它把一次失败说成了成功。
   const [copied, setCopied] = React.useState(false)
   React.useEffect(() => {
     if (!copied) return undefined
@@ -153,7 +156,7 @@ export function V4AssistantMessage({
                 type="button"
                 aria-label={labels.copy}
                 data-v4-copied={copied ? 'true' : undefined}
-                onClick={() => { onCopy(text); setCopied(true) }}
+                onClick={() => { void Promise.resolve(onCopy(text)).then(() => setCopied(true), () => setCopied(false)) }}
                 className="grid size-[22px] place-items-center rounded-nomi-sm hover:bg-nomi-ink-05"
               >
                 {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}

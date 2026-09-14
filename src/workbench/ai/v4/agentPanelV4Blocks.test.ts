@@ -91,6 +91,14 @@ describe('② 助手文本', () => {
     expect(copyOnly).not.toContain('重来')
   })
 
+  // 写剪贴板会失败（非安全上下文、权限被拒、文档没聚焦）。一颗「失败了也照样打勾」的钮
+  // 比不打勾更糟——它把一次失败说成了成功，正是走查三升级③要拦的「假成功」。
+  it('复制的 ✓ 只在宿主真的写成功之后才打', async () => {
+    const { renderToString } = await import('react-dom/server')
+    expect(renderToString(el(V4AssistantMessage, { text: 'x', status: 'complete', labels, onCopy: () => undefined })))
+      .not.toContain('data-v4-copied')
+  })
+
   it('中断态出「继续」，且不出复制/重来', () => {
     const markup = html(el(V4AssistantMessage, { text: 'x', status: 'interrupted', labels, ...wired }))
     expect(markup).toContain('继续')
