@@ -65,10 +65,10 @@ describe('laneViewModel', () => {
   it('shows undo only on the successful tool selected by the durable receipt join', () => {
     next = 0
     const parts = [
-      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'nomi_canvas_write', args: {}, running: false }),
-      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'nomi_canvas_write', text: 'Created.', isError: false }),
-      part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'nomi_canvas_write', args: {}, running: false }),
-      part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'nomi_canvas_write', text: 'Failed.', isError: true }),
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'make_artifact', args: { fileType: 'table', title: 'Fixture', content: '| a |' }, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'make_artifact', text: 'Created.', isError: false }),
+      part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'make_artifact', args: { fileType: 'table', title: 'Fixture', content: '| a |' }, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'make_artifact', text: 'Failed.', isError: true }),
     ]
     const items = laneViewModel(projection(parts), labels, 'c1').items
     expect(items[0]).toMatchObject({ kind: 'tool', receipt: { toolCallId: 'c1', undoable: true } })
@@ -89,21 +89,21 @@ describe('laneViewModel', () => {
       next = 0
       const model = laneViewModel(projection([
         ...(denied ? [part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
-          data: { toolCallId: 'c1', toolName: 'nomi_canvas_write', decision: 'denied', reason: 'Declined.' } })] : []),
-        part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'nomi_canvas_write',
-          args: { operation: 'create_canvas_nodes', nodes: [{ kind: 'shot', title: 'Opening' }] }, running: false }),
-        part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'nomi_canvas_write',
-          text: isError ? 'Validation failed for tool "nomi_canvas_write":\n  - nodes: Expected array\n\nReceived arguments:\n{}' : 'Created.', isError }),
+          data: { toolCallId: 'c1', toolName: 'make_artifact', decision: 'denied', reason: 'Declined.' } })] : []),
+        part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'make_artifact',
+          args: { fileType: 'table', title: 'Opening', content: '| shot | note |' }, running: false }),
+        part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'make_artifact',
+          text: isError ? 'Validation failed for tool "make_artifact":\n  - nodes: Expected array\n\nReceived arguments:\n{}' : 'Created.', isError }),
       ]), display)
       const item = model.items[0]
       if (item.kind !== 'tool') throw new Error('missing receipt')
       return item.receipt
     }
-    expect(receipt(false)).toMatchObject({ label: 'agentResident.toolCanvasCreate', action: 'canvas', status: 'output-available' })
-    expect(receipt(false).summary).toContain('agentResident.toolNoGeneration')
+    expect(receipt(false)).toMatchObject({ label: 'agentResident.toolCanvasWriteArtifact', action: 'canvas', status: 'output-available' })
+    expect(receipt(false).summary).toContain('agentResident.toolCanvasWriteArtifactSummary')
     expect(receipt(true).summary).not.toContain('agentResident.toolNoGeneration')
     expect(receipt(true).summary).toContain('agentResident.issueExpected')
-    expect(receipt(true).output).toBe('Validation failed for tool "nomi_canvas_write":\n  - nodes: Expected array\n\nReceived arguments:\n{}')
+    expect(receipt(true).output).toBe('Validation failed for tool "make_artifact":\n  - nodes: Expected array\n\nReceived arguments:\n{}')
     expect(receipt(true, true)).toMatchObject({ status: 'output-denied' })
     expect(receipt(true, true).summary).toBeUndefined()
   })
