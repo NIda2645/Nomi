@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import i18n from '../../../../i18n'
 import { selectShotTableRows } from './selectShotTableRows'
 import { createStoryboardShotTable, shotTableDocumentSchema } from '../../../../../electron/shared/canvas/shotTable'
 import type { StoryboardDesign } from '../../../workbenchTypes'
@@ -39,6 +40,9 @@ describe('shot table read-through view', () => {
     })
     const rows = selectShotTableRows({ table: facts, designs: {}, nodes: [], imageModelOptions: [], videoModelOptions: [] })
     expect(rows.map((row) => [row.start, row.end, row.duration])).toEqual([[1.5, 3.9, 2.4]])
+    // 用户真正看到的那一串：ShotTableGrid.tsx:41 就是这两条文案的唯一消费者。
+    expect(i18n.t('shotTable.timeRange', { start: rows[0].start, end: rows[0].end })).toBe('1.5–3.9s')
+    expect(i18n.t('shotTable.duration', { duration: rows[0].duration })).toBe('2.4s')
   })
 
   // 响的检测器，防「每个显示处各写一遍 toFixed」那一族回归（P1：精度只有一个 owner）。
