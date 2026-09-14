@@ -6,6 +6,19 @@
 // 驱动方式全部是界面动作：文件选择器用 setInputFiles（等价真人在 OS 对话框里选文件，Electron
 // webUtils.getPathForFile 拿得到真实路径）；粘贴走主进程 clipboard 写 file-url + 真实 Cmd/Ctrl+V；
 // 拖入走真实 DragEvent。不直接调 assets.copyFiles / importFile 这类 IPC。
+// 素材怎么来（本机跑之前先备好；缺了会逐格报 fixture-missing 并 exit 1，不会假绿）：
+//   SRC=<一段真实 4K HEVC 视频>
+//   M=~/Desktop/nomi-media-fixtures; mkdir -p $M
+//   ffmpeg -ss 12 -i "$SRC" -frames:v 1 $M/4k-frame.png
+//   ffmpeg -i $M/4k-frame.png -vf scale=640:-1 $M/small.png
+//   python3 -c "from PIL import Image; Image.open('$M/small.png').save('$M/small.webp','WEBP')"
+//   ffmpeg -ss 12 -t 2 -i "$SRC" -vf "fps=8,scale=320:-1" $M/small.gif
+//   ffmpeg -ss 12 -t 8 -i "$SRC" -vf scale=854:-2 -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -an $M/small-h264.mp4
+//   ffmpeg -ss 12 -t 10 -i "$SRC" -c copy $M/hevc-10s.mov
+//   ffmpeg -f lavfi -i "sine=frequency=440:duration=5" -c:a libmp3lame $M/tone.mp3
+//   ffmpeg -f lavfi -i "sine=frequency=660:duration=5" $M/tone.wav
+// NOMI_HUGE_VIDEO 指向一段**真实的大视频**（用户那段是 1.38GB / 3840×2160 / 10-bit HEVC / 527s）；
+// 它是整条矩阵里最有信息量的一格——上限、转码、体感全靠它，别拿合成小样替。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
