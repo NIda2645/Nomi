@@ -1,0 +1,134 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-14-agent-panel-action-receipts",
+  "change_kind": "corrective",
+  "problem_type": "Agent 面板上已经发生的动作没有可见回执，用户只能判断成「点了没反应」",
+  "symptom": "真实 App（macOS · GPT-5.5 · 自动改）里：① 输出过程中点「停止」像停不下来；② 回复下方的「复制」「重试」点了没反应。",
+  "direct_cause": "三处各自缺一样东西：① `pushAssistantParts` 只按 `content` 逐项发段，一次在模型吐出第一个字之前就被叫停的回合（`stopReason:'aborted'` + `content: []`）一段都不产出，面板上停止不留任何痕迹；② 复制按钮调用 `navigator.clipboard.writeText` 后没有任何可见状态，剪贴板在系统里不在屏幕上；③ `ProjectAgentResidentShell` 的 `flowHandlers` 从来没有 `onRetry` 这一项，而 `V4AssistantMessage` 无条件画那颗钮。",
+  "class_root": "面板把「这件事这里做得了吗」和「这件事发生了吗」都留成了**不可见的缺省**：动作 handler 是可选的（缺了照画钮，TypeScript 不说话），终局回执是正文的一个属性（没有正文就没有回执）。两者合起来的后果是同一个——界面上「成功了」和「什么都没发生」长得一模一样。",
+  "affected_population": [
+    "任何在 Agent 面板上点停止的用户：真实会话 2026-09-12 的 5 次停止全是零正文形状，界面上无一留下痕迹",
+    "任何点回复下方复制/重试的用户：重试自 v4 面板上线起从未接过宿主"
+  ],
+  "scope_paths": [
+    "electron/shared/agentLane/laneProjection.ts",
+    "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+    "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+    "src/workbench/ai/ProjectAgentResidentShell.tsx",
+    "src/workbench/ai/v4/agentPanelV4Labels.ts",
+    "src/i18n/locales/agentPanelV4.ts",
+    "src/devlab/designLab/v4/states/01-vocabulary.tsx"
+  ],
+  "entry_points": [
+    "pushAssistantParts：主进程把一条 lane 快照摊成有序段的唯一写入口",
+    "V4FlowRow 的 assistant 分支：对话流里那条助手消息的唯一渲染入口",
+    "ProjectAgentResidentShell 的 flowHandlers：面板动作接回宿主的唯一装配点"
+  ],
+  "invariants": [
+    "一个终局的助手回合在面板上必须留下回执——正文为空时由「已停止」这一行充当",
+    "画出来的动作钮必须接得上宿主：没有 handler 就不画那颗钮",
+    "复制这类没有屏幕结果的动作必须自带可见回执"
+  ],
+  "generality_proof": "三处修在同一条链的三个共享边界上：投影层保证「终局必有段」，组件层保证「钮在=做得了」，宿主层把缺席的 onRetry 补上。任何新增的动作钮只要宿主没接就在界面上少一颗钮，而不是多一颗死钮。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "可选 handler + 无条件渲染这对组合在 v4 的 8 个积木里到处存在（介入槽、队列、任务卡、收据都走同一套可选 handler），而「终局没有正文」在 aborted 之外还有 stopReason:'error' 且无 errorMessage 的形状。只修重试那一颗钮必然复发。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs pushAssistantParts：写入口 2 扇，均在 laneProjection.ts 内、共用同一个函数体，修在函数体内即同时覆盖。",
+      "node scripts/door-map.mjs V4AssistantMessage：读入口 2 扇（生产面板 AgentPanelV4Panel.tsx:140、设计实验室 01-vocabulary.tsx:53），两扇都随本次改为「接了才画」。",
+      "rg 'V4FlowHandlers' src → 类型只在 AgentPanelV4Panel.tsx 声明与消费，宿主只有 ProjectAgentResidentShell 一处装配；对照 V4FlowHandlers 的 8 个键与宿主实际提供的键，缺席的只有 onRetry，本次补齐。",
+      "同类第二形态：onContinue 在宿主里存在但对没有 continuationEntryId 的条目原地返回——同样是死钮，本次一并改成有 continuationEntryId 才画。"
+    ]
+  },
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "pushAssistantParts",
+      "responsibility": "把一条助手消息摊成段；终局为 aborted 而无正文时补一段空正文的 interrupted 回执。"
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+      "symbol": "V4AssistantMessage",
+      "responsibility": "只画接得上宿主的动作钮；复制自带「已复制」回执；空正文的中断态画「已停止」而不画无处可去的「继续」。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "entry_point": "V4FlowRow 的 assistant 分支",
+      "disposition": "enforced",
+      "evidence": "onCopy/onRetry/onContinue 三项都改成「宿主接了才传」，onContinue 另加 item.continuationEntryId 条件。"
+    },
+    {
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "entry_point": "flowHandlers",
+      "disposition": "enforced",
+      "evidence": "补上 onRetry：往回找到开这一轮的那条用户输入原样重发；找不到就不接，于是那几条不画钮。"
+    },
+    {
+      "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx",
+      "entry_point": "设计实验室 ② 助手文本取景",
+      "disposition": "enforced",
+      "evidence": "取景台显式接成空操作，让「宿主没接会怎样」只由断言表达，不由实验室的缺省表达。"
+    }
+  ],
+  "doors": [
+    { "kind": "write", "path": "electron/shared/agentLane/laneProjection.ts", "line": 253, "symbol": "pushAssistantParts" },
+    { "kind": "write", "path": "electron/shared/agentLane/laneProjection.ts", "line": 271, "symbol": "pushAssistantParts" },
+    { "kind": "read", "path": "src/workbench/ai/v4/AgentPanelV4Message.tsx", "line": 93, "symbol": "V4AssistantMessage" },
+    { "kind": "read", "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx", "line": 140, "symbol": "V4AssistantMessage" },
+    { "kind": "read", "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx", "line": 53, "symbol": "V4AssistantMessage" },
+    { "kind": "write", "path": "src/workbench/ai/ProjectAgentResidentShell.tsx", "line": 513, "symbol": "onRetry" },
+    { "kind": "read", "path": "src/workbench/ai/v4/agentPanelV4Labels.ts", "line": 39, "symbol": "stopped" },
+    { "kind": "read", "path": "src/i18n/locales/agentPanelV4.ts", "line": 84, "symbol": "stoppedNotice" }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "8 扇分属四个信任域，合并任何一对都会制造新的反向边：投影两扇在主进程同一个函数体内（已是一处实现，门表记的是调用点）；渲染两扇一个是生产面板、一个是设计实验室取景台，合并等于让实验室 import 生产宿主；宿主那扇在渲染层、文案两扇在 i18n 层，都不能搬进组件。真正被消除的是**隐式**的那几扇：三个动作从「缺了照画」改成「接了才画」之后，漏接一个动作不再是一扇看不见的门。"
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+    "invariant": "对话流里画出来的每一颗动作钮都接得上宿主；每一个终局的助手回合都留下可见回执。",
+    "failure_mode": "若「接了才画」被改回无条件渲染，任何一个宿主漏接的动作都会重新变成一颗按下去没有去处的钮，而界面上看不出差别。",
+    "exception_policy": "none",
+    "strategy": "把「做得了吗」编码进渲染条件，把「发生了吗」编码进投影段，两者都不再依赖人去记。",
+    "artifacts": [
+      "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "electron/shared/agentLane/laneProjection.ts"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+    "tests": [
+      "src/workbench/ai/v4/agentPanelV4Blocks.test.ts",
+      "electron/shared/agentLane/laneProjection.test.ts"
+    ],
+    "why": "② 助手文本这一个积木同时持有三个动作的渲染判断与中断态的形态；投影侧那条「终局必有段」由 laneProjection.test.ts 钉住。"
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/agentPanelV4Blocks.test.ts",
+    "electron/shared/agentLane/laneProjection.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/agentPanelV4Blocks.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有并行实现被替换：重试此前根本没有实现，停止回执此前根本没有那一段。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "根因全部在本仓的投影层与渲染层；pi 的取消链路经真机实测为 3–63ms，未改一行。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移。历史转录里那些零正文的 aborted 回合冷读回来会开始显示「已停止」——那正是它们当时应该显示的。",
+  "residual_risks": [
+    "「重来」的语义是把开这一轮的那句用户输入原样重发（lane 没有「重跑一个已落定回合」的原语），所以它会产生一条新的用户气泡，而不是原地替换旧回复。",
+    "check:control-contract 目前拦不住「宿主把可选 handler 漏成 undefined」这一族——本次靠组件的渲染条件兜住，门岗侧仍是欠账。"
+  ],
+  "internal_only_reason": "全部是本仓渲染层与主进程投影层的边界修复；证据来自真实 Electron 走查探针、用户真实会话转录与 focused tests。"
+}
