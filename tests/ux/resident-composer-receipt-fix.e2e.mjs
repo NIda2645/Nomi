@@ -275,7 +275,7 @@ try {
   const leaseHandle = opened.json?.leaseHandle || opened.outcome?.leaseHandle
   expect(leaseHandle, 'Real MCP stdio must open the current GUI project session').toBeTruthy()
   const mcpResult = parseToolResult(await mcp.callTool('nomi_document_edit', {
-    leaseHandle, projectId, operation: 'append', content: MCP_APPEND,
+    leaseHandle, projectId, where: 'end', content: MCP_APPEND,
   }))
   expect(mcpResult.isError, 'Real production MCP write must return a typed success result').toBe(false)
   await expect.poll(async () => JSON.stringify((await readProject(win, projectId)).payload.workbenchDocuments), {
