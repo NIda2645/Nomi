@@ -3,12 +3,13 @@ import type { TelemetrySettingsView } from '../shared/contracts/telemetry'
 import { assertTrustedSender } from '../ipcSenderGuard'
 import { deleteTelemetryData, flushTelemetry, readTelemetrySummary, recordTelemetryEvent } from '../telemetry/telemetryOutbox'
 import { isTelemetryProps, type TelemetryEventName, type TelemetryProps } from '../telemetry/telemetryEvents'
-import { clearTelemetrySession, readTelemetrySettings, telemetryEndpointConfigured, writeTelemetrySettings } from '../telemetry/telemetrySettings'
+import { clearTelemetrySession, readTelemetrySettings, writeTelemetrySettings } from '../telemetry/telemetrySettings'
+import { intakeConfigured } from '../telemetry/intakeClient'
 
 export type { TelemetrySettingsView } from '../shared/contracts/telemetry'
 
 function view(settings = readTelemetrySettings()): TelemetrySettingsView {
-  return { ...settings, endpointConfigured: telemetryEndpointConfigured(), status: settings.enabled ? (telemetryEndpointConfigured() ? 'configured' : 'unconfigured') : 'disabled' }
+  return { ...settings, endpointConfigured: intakeConfigured(), status: settings.enabled ? (intakeConfigured() ? 'configured' : 'unconfigured') : 'disabled' }
 }
 
 export function registerTelemetryIpc(): void {

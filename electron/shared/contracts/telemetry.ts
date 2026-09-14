@@ -4,7 +4,7 @@ export type TelemetryResult = typeof TELEMETRY_RESULT_VALUES[number]
 export type TelemetrySettingsView = {
   schemaVersion: 1
   enabled: boolean
-  endpointMode: 'aptabase'
+  endpointMode: 'nomi'
   consentedAt: string | null
   installSessionId: string | null
   endpointConfigured: boolean
