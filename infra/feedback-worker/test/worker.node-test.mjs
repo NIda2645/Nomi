@@ -10,7 +10,6 @@ function fakeEnv({ token = 'dev-token', kv = true, bucket = true } = {}) {
   const store = new Map()
   return {
     puts,
-    store,
     env: {
       INTAKE_TOKEN: token,
       INTAKE_BUCKET: bucket ? { put: async (key, body, options) => { puts.push({ key, body, options }) } } : undefined,

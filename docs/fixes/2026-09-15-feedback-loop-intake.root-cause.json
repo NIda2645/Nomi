@@ -40,55 +40,49 @@
     {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
-      "line": 90,
+      "line": 96,
       "symbol": "buildFeedbackReport"
     },
     {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
-      "line": 98,
+      "line": 104,
       "symbol": "intakeConfigured"
     },
     {
-      "kind": "read",
-      "path": "electron/feedback/feedbackIpc.ts",
-      "line": 100,
-      "symbol": "buildFeedbackReport"
-    },
-    {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
-      "line": 102,
+      "line": 106,
       "symbol": "buildFeedbackReport"
-    },
-    {
-      "kind": "write",
-      "path": "electron/feedback/feedbackIpc.ts",
-      "line": 108,
-      "symbol": "postIntake"
     },
     {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
       "line": 110,
+      "symbol": "postIntake"
+    },
+    {
+      "kind": "write",
+      "path": "electron/feedback/feedbackIpc.ts",
+      "line": 112,
       "symbol": "flushIntakeQueue"
     },
     {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
-      "line": 114,
+      "line": 116,
       "symbol": "enqueueIntake"
     },
     {
       "kind": "write",
       "path": "electron/feedback/feedbackIpc.ts",
-      "line": 120,
+      "line": 122,
       "symbol": "flushIntakeQueue"
     },
     {
       "kind": "write",
       "path": "electron/feedback/feedbackReport.ts",
-      "line": 148,
+      "line": 146,
       "symbol": "projectLaneTrajectory"
     },
     {
@@ -225,8 +219,8 @@
     }
   ],
   "door_reduction": {
-    "before": 31,
-    "after": 31,
+    "before": 30,
+    "after": 30,
     "why_not": "一扇没减，因为这 31 扇不是同一份状态的 31 个入口，而是**四份状态各自的入口**：同意合同（telemetrySettings）、用量发件箱（telemetryOutbox）、反馈/轨迹队列（intakeQueue）、以及那条出站口（postIntake 的三个调用方）。合并它们等于把「用量攒批」「反馈立刻发并拿编号」「同意开关一改就清缓存」三套语义塞进一个函数——而那正是 enabled 那道闸会长出例外分支的原因（intakeQueue.ts 的头注释写了这条）。真正做过的减法在**出站**那一层：三种货物以前会有三个 fetch 点，现在只有 postIntake 一个；本轮 Ponytail 评审又把 flushPendingFeedback 那道多余的包装门收掉了（内联进 registerFeedbackIpc）。"
   },
   "regression_tests": [

@@ -26,15 +26,6 @@ const ROUTES = new Set(['/v1/feedback', '/v1/events', '/v1/trajectories'])
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
-/** 常数时间比较：令牌虽然不是密钥，也没有理由把它做成可计时探测的。 */
-function tokenMatches(presented, expected) {
-  if (typeof presented !== 'string' || typeof expected !== 'string') return false
-  if (presented.length !== expected.length || expected.length === 0) return false
-  let diff = 0
-  for (let index = 0; index < presented.length; index += 1) diff |= presented.charCodeAt(index) ^ expected.charCodeAt(index)
-  return diff === 0
-}
-
 function bearer(request) {
   const header = request.headers.get('authorization') || ''
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
@@ -82,7 +73,9 @@ export default {
     // 反馈是唯一要回「用户能口述的编号」的那条（用户拍板⑥：只给编号）。
     const wantsReceipt = url.pathname === '/v1/feedback'
     if (request.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' })
-    if (!tokenMatches(bearer(request), env.INTAKE_TOKEN)) return json(401, { ok: false, error: 'unauthorized' })
+    // 普通比较就够：这串是**随 App 发出去的发布令牌**，不是密钥（README 第 1 条）。
+    // 给一个公开值写常数时间比较是防护剧场——能计时探测出来的东西，解包就能直接读到。
+    if (!env.INTAKE_TOKEN || bearer(request) !== env.INTAKE_TOKEN) return json(401, { ok: false, error: 'unauthorized' })
     if (!env.INTAKE_BUCKET) return json(500, { ok: false, error: 'bucket_not_bound' })
 
     const declared = Number.parseInt(request.headers.get('content-length') || '0', 10)

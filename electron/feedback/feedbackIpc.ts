@@ -53,6 +53,12 @@ async function readTrajectory(laneName: string): Promise<TrajectoryTurnInput[] |
   // 这里**不再**自己包 try/catch：`buildFeedbackReport` 已经把抛出的 readTrajectory 记成
   // `trajectory-unavailable` 写进清单（`feedbackReport.test.ts` 有那一条）。包两层的结果是
   // 外层先吞掉，清单里那条 why 永远写不出来。
+  // 形状在这里**手抄一遍**，不是 `typeof import('...laneNativeLoader.cjs')`——试过，不行：
+  // 那样会把 ESM 岛（`electron/tsconfig.pi.json` 那半）的 .mts 拖进 CommonJS 这半的程序，
+  // 整片 `Cannot find module '@earendil-works/pi-agent-core/harness/...'`。
+  // 所以真正的漂移守卫**不在这一行**，在桥那一侧：`laneNativeLoader.cts` 把它声明成返回
+  // `TrajectoryTurnInput[]`，岛里的 `LaneTraceTurn` 一旦不再结构兼容，编译在那边当场红。
+  // 这里抄的这份只保证「我按这个形状用它」。
   const native = createRequire(__filename)('../agentLane/laneNativeLoader.cjs') as {
     readLaneTraceTurns(projectDir: string, laneName: string): Promise<TrajectoryTurnInput[]>
   }
@@ -97,12 +103,8 @@ export function registerFeedbackIpc(): void {
     // 这个构建没配接收端就是真的发不出去。跟用户说「已排队」等于骗他（D4：缺口明着标）。
     if (!intakeConfigured()) return { ok: false, reason: 'endpoint-unconfigured' }
 
-    let report: Awaited<ReturnType<typeof buildFeedbackReport>>
-    try {
-      report = await buildFeedbackReport(payload, reportDeps())
-    } catch {
-      return { ok: false, reason: 'failed' }
-    }
+    const report = await buildFeedbackReport(payload, reportDeps()).catch(() => null)
+    if (!report) return { ok: false, reason: 'failed' }
 
     try {
       const result = await postIntake('/v1/feedback', report)

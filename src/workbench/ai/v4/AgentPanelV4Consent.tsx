@@ -30,7 +30,9 @@ export function V4ConsentCard({
   // 初始值就读一次标记：渲染过一帧再消失会闪一下，那比不出现更糟。
   const [visible, setVisible] = React.useState(() => forceVisible || !hasAskedAgentConsent())
 
-  const answer = React.useCallback((accepted: boolean): void => {
+  // 普通函数就够：它的结果每次渲染都被 `onClick={() => answer(true)}` 包一层新箭头，
+  // useCallback 的 memo 从来不生效，只是多一层噪音。
+  const answer = (accepted: boolean): void => {
     // 两个钮**都**记「问过了」。记的是问过，不是同意——他点了「不用了」之后自己去设置里
     // 打开，也不该让这张卡再冒出来（判据住在 onboardingState.ts，那儿写了理由）。
     markAgentConsentAsked()
@@ -38,7 +40,7 @@ export function V4ConsentCard({
     if (!accepted) return
     // 同意与否的真相源是主进程的同意合同，不是这张卡。这里只是它的第二个写入口。
     void getDesktopBridge()?.settings?.telemetry?.set({ enabled: true }).catch(() => undefined)
-  }, [])
+  }
 
   if (!visible) return <></>
 

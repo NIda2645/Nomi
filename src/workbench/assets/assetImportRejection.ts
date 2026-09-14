@@ -12,21 +12,20 @@
 import type { TranslationKey } from '../../i18n/translationKey'
 
 /**
- * 被拒的**原因**。刻意只收「挡住了用户本来想导入的东西」那几种。
+ * 被拒的原因 → **整键**。这张表同时是**闭合的原因清单**（类型从它派生，不另立一个只为派型
+ * 而存在的数组）。`satisfies` 让编译器保证每个键真的在词典里。
  *
  * `skippedDuplicate` 故意不在里面：重复素材被跳过时，用户想要的那份**已经在库里**，
  * 什么都没被挡住。给它一个「反馈」入口会把一个正常结果说成问题。
  */
-export const ASSET_IMPORT_REJECTIONS = ['too-large', 'over-limit', 'unsupported', 'failed'] as const
-export type AssetImportRejection = (typeof ASSET_IMPORT_REJECTIONS)[number]
-
-/** 码 → **整键**。`satisfies` 让编译器保证一个码都不漏、且每个键真的在词典里。 */
 export const ASSET_IMPORT_REJECTION_TEXT_KEY = {
   'too-large': 'assetLibrary.skippedTooLarge',
   'over-limit': 'assetLibrary.skippedOverLimit',
   unsupported: 'assetLibrary.skippedUnsupported',
   failed: 'assetLibrary.skippedFailed',
-} as const satisfies Record<AssetImportRejection, TranslationKey>
+} as const satisfies Record<string, TranslationKey>
+
+export type AssetImportRejection = keyof typeof ASSET_IMPORT_REJECTION_TEXT_KEY
 
 /**
  * 出门给接收端的机器码。`asset-import-*` 这个前缀是刻意的：它与

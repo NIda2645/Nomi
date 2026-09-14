@@ -189,7 +189,7 @@ export function V4FlowRow({
       reason={item.reason}
       action={item.action}
       onAction={() => handlers?.onErrorAction?.(at)}
-      feedbackLabel={handlers?.onFeedback ? labels.assistant.feedback : undefined}
+      feedbackLabel={labels.assistant.feedback}
       onFeedback={handlers?.onFeedback ? () => handlers.onFeedback?.(at, item.reason) : undefined}
     />
   )

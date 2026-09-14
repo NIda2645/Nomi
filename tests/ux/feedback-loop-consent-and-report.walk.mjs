@@ -49,17 +49,14 @@ const intake = createServer((request, response) => {
   request.on('end', () => {
     const body = Buffer.concat(chunks).toString('utf8')
     received.push({ url: request.url, authorization: request.headers.authorization, body })
-    response.setHeader('content-type', 'application/json')
-    if (request.url === '/v1/feedback') {
-      sequence += 1
-      const now = new Date()
-      const stamp = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
-      response.writeHead(200)
-      response.end(JSON.stringify({ ok: true, id: `NF-${stamp}-${String(sequence).padStart(4, '0')}`, ref: 'walk-ref' }))
-      return
-    }
-    response.writeHead(200)
-    response.end(JSON.stringify({ ok: true, ref: 'walk-ref' }))
+    // 只有 /v1/feedback 回编号（真接收端也是这样）。编号递增，因为下面断言两条必须不同。
+    if (request.url === '/v1/feedback') sequence += 1
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({
+      ok: true,
+      ref: 'walk-ref',
+      ...(request.url === '/v1/feedback' && { id: `NF-0915-${String(sequence).padStart(4, '0')}` }),
+    }))
   })
 })
 await new Promise((resolve, reject) => { intake.once('error', reject); intake.listen(0, '127.0.0.1', resolve) })
@@ -303,12 +300,11 @@ try {
     await shot(second.win, 'import-rejected')
 
     await clickOrFail(second.win.locator('[data-asset-library-feedback] [data-feedback-open]').first(), '在导入被拒那一行点「反馈」')
-    const failureCard = second.win.locator('[data-feedback-card]').first()
-    await failureCard.waitFor({ state: 'visible' }).catch(() => {})
-    await expectVisible(failureCard, '失败面上的反馈卡应当打开')
+    await card.waitFor({ state: 'visible' }).catch(() => {})
+    await expectVisible(card, '失败面上的反馈卡应当打开')
 
     // ① 摘要行必须是**那一句真话**，不是兜底的「这一步没成功」。
-    const failureSummary = (await failureCard.locator('[data-feedback-summary]').first().innerText().catch(() => '')).trim()
+    const failureSummary = (await card.locator('[data-feedback-summary]').first().innerText().catch(() => '')).trim()
     if (!/不支持/.test(failureSummary)) failures.push(`摘要应当派生自导入被拒那句人话，实际：${JSON.stringify(failureSummary)}`)
     if (/这一步没成功/.test(failureSummary)) failures.push('摘要落到了兜底话——说明调用处没把 summary 传进来')
 

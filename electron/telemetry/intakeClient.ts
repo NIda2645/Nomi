@@ -86,34 +86,30 @@ export async function postIntake(
   if (!endpoint || !token) throw new Error('Nomi intake endpoint is not configured')
 
   // `AbortSignal.timeout` 替掉手写的 AbortController + setTimeout + finally clearTimeout：
-  // 同一件事，少三处可以忘的清理。
+  // 同一件事，少三处可以忘的清理。超时/网络错都直接往上抛（fetch 与 AbortSignal 抛的本来就是
+  // Error 子类），调用方只需要知道「没发出去，入队重试」。
+  const response = await (deps.fetch ?? appFetch)(`${endpoint}${route}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    // 反馈回路永远不该带 cookie：带了就等于给了一个跨请求可关联的身份，
+    // 而我们对用户说的是「匿名」。
+    credentials: 'omit',
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+  })
+  if (!response.ok) throw new Error(`Nomi intake HTTP ${response.status}`)
+  // 接收端回的是 JSON，但网关/代理可能插一页 HTML。解不出来不算失败——
+  // 200 已经说明收到了，编号拿不到只是少一个把手。
   try {
-    const response = await (deps.fetch ?? appFetch)(`${endpoint}${route}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      // 反馈回路永远不该带 cookie：带了就等于给了一个跨请求可关联的身份，
-      // 而我们对用户说的是「匿名」。
-      credentials: 'omit',
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-    })
-    if (!response.ok) throw new Error(`Nomi intake HTTP ${response.status}`)
-    // 接收端回的是 JSON，但网关/代理可能插一页 HTML。解不出来不算失败——
-    // 200 已经说明收到了，编号拿不到只是少一个把手。
-    try {
-      const body: unknown = await response.json()
-      if (!body || typeof body !== 'object' || Array.isArray(body)) return {}
-      const record = body as Record<string, unknown>
-      return {
-        ...(typeof record.id === 'string' ? { id: record.id } : {}),
-        ...(typeof record.ref === 'string' ? { ref: record.ref } : {}),
-        ...(Number.isInteger(record.accepted) ? { accepted: Number(record.accepted) } : {}),
-      }
-    } catch {
-      return {}
+    const body: unknown = await response.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return {}
+    const record = body as Record<string, unknown>
+    return {
+      ...(typeof record.id === 'string' ? { id: record.id } : {}),
+      ...(typeof record.ref === 'string' ? { ref: record.ref } : {}),
+      ...(Number.isInteger(record.accepted) ? { accepted: Number(record.accepted) } : {}),
     }
-  } catch (error) {
-    // 超时被 AbortSignal 判成 TimeoutError；调用方只需要知道「没发出去，入队重试」。
-    throw error instanceof Error ? error : new Error('Nomi intake failed')
+  } catch {
+    return {}
   }
 }

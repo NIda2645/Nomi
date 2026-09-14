@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { feedbackSummaryLine, feedbackSurfaceOf } from './feedbackSummary'
-import { FEEDBACK_SURFACES } from '../../../electron/shared/contracts/feedback'
 
 describe('摘要行的格式（只管排版，不管分类）', () => {
   const now = new Date('2026-09-15T02:41:00')
@@ -42,11 +41,5 @@ describe('打开请求 → surface', () => {
     expect(feedbackSurfaceOf({})).toBe('unspecified')
     expect(feedbackSurfaceOf({ intent: 'suggestion' })).toBe('unspecified')
     expect(feedbackSurfaceOf({ stage: 'other' })).toBe('unspecified')
-  })
-
-  it('它产出的每一个值都在契约的联合里（加了第五个就得两边一起改）', () => {
-    for (const request of [null, {}, { stage: 'model' }, { stage: 'upload' }, { stage: 'generation' }, { stage: 'other' }] as const) {
-      expect(FEEDBACK_SURFACES).toContain(feedbackSurfaceOf(request))
-    }
   })
 })

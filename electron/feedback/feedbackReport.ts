@@ -30,8 +30,6 @@ const MAX_LOG_LINES = 300
 /** 整包上限，留出余量给接收端的 2MB。 */
 export const FEEDBACK_REPORT_MAX_BYTES = 1_200_000
 
-const SURFACE_SET: ReadonlySet<string> = new Set(FEEDBACK_SURFACES)
-
 export type FeedbackReportDeps = {
   now: Date
   app: { version: string; electron: string; node: string; chrome: string }
@@ -83,7 +81,7 @@ function identity(value: unknown): string | null {
 export function isFeedbackReportRequest(value: unknown): value is FeedbackReportRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const request = value as Record<string, unknown>
-  if (!SURFACE_SET.has(String(request.surface))) return false
+  if (!(FEEDBACK_SURFACES as readonly string[]).includes(String(request.surface))) return false
   if (typeof request.summary !== 'string' || !request.summary.trim()) return false
   if (request.note !== undefined && typeof request.note !== 'string') return false
   if (request.errorCode !== undefined && typeof request.errorCode !== 'string') return false
