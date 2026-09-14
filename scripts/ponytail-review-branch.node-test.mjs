@@ -306,6 +306,13 @@ test('没有收据、收据读不懂、mergeBase 不在历史里，都 fail-clos
   fs.writeFileSync(receiptPath(root), '{ not json')
   assert.equal(verifyPushReceipt({ repoRoot: root, ranges }).ok, false)
 
+  // schema 也是判据，不是备忘录：版本对不上的收据当没有收据。
+  runBranchReview({ repoRoot: root, env: envFor(root), spawnSyncImpl: fakeRunner().spawnSyncImpl })
+  const wrongSchema = JSON.parse(fs.readFileSync(receiptPath(root), 'utf8'))
+  wrongSchema.schema = 999
+  fs.writeFileSync(receiptPath(root), JSON.stringify(wrongSchema))
+  assert.equal(verifyPushReceipt({ repoRoot: root, ranges }).ok, false)
+
   runBranchReview({ repoRoot: root, env: envFor(root), spawnSyncImpl: fakeRunner().spawnSyncImpl })
   const doctored = JSON.parse(fs.readFileSync(receiptPath(root), 'utf8'))
   doctored.mergeBase = 'f'.repeat(40)

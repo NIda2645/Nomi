@@ -69,16 +69,14 @@ test('pre-push 只查收据：一条命令、带 ref 参数、缺文件时安全
   assert.deepEqual(hook('pre-push').commands.map(({ target }) => target), ['scripts/ponytail-review-hook.mjs'])
   const prePush = installer.renderHookContent(hook('pre-push'))
   assert.match(prePush, /\[ -f "\$ROOT\/scripts\/ponytail-review-hook\.mjs" \] \|\| exit 0/)
-  assert.match(prePush, /exec node "\$ROOT\/scripts\/ponytail-review-hook\.mjs" "--scope" "push" "\$@"/)
-  assert.doesNotMatch(prePush, /--scope" "staged/)
+  assert.match(prePush, /exec node "\$ROOT\/scripts\/ponytail-review-hook\.mjs" "\$@"/)
+  assert.doesNotMatch(prePush, /--scope/)
   const commitMsg = installer.renderHookContent(hook('commit-msg'))
   assert.match(commitMsg, /check-progress-update\.cjs/)
   assert.doesNotMatch(commitMsg, /ponytail/i)
 })
 
 test('钩子没有任何入口能跑模型评审——评审只在 review:branch 里', () => {
-  const rendered = installer.HOOKS.map((definition) => installer.renderHookContent(definition)).join('\n')
-  assert.doesNotMatch(rendered, /ponytail-review-branch/)
   const hookSource = fs.readFileSync(path.join(repoScriptsDir, 'ponytail-review-hook.mjs'), 'utf8')
   assert.doesNotMatch(hookSource, /spawnSync/, '钩子不许再起子进程跑模型')
   assert.doesNotMatch(hookSource, /nomi-ponytail\.lock|with-gates-lock/, '全机评审锁已删除')
@@ -92,12 +90,7 @@ test('真跑一次生成的 pre-push：无收据被拦，评审过后放行', (t
   const head = git(root, ['rev-parse', 'HEAD'])
   const script = path.resolve(repoScriptsDir, 'ponytail-review-hook.mjs')
   const pushInput = `refs/heads/task ${head} refs/heads/task ${ZERO}\n`
-  const run = () => spawnSync(process.execPath, [script, '--scope', 'push'], {
-    cwd: root,
-    encoding: 'utf8',
-    input: pushInput,
-    env: { ...process.env },
-  })
+  const run = () => spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8', input: pushInput })
 
   const blocked = run()
   assert.notEqual(blocked.status, 0)
@@ -130,8 +123,7 @@ test('linked worktrees get isolated hook paths without touching the base worktre
   t.after(() => fs.rmSync(base, { recursive: true, force: true }))
   const root = path.join(base, 'repo')
   const linked = path.join(base, 'linked')
-  fs.mkdirSync(root)
-  git(root, ['init', '--quiet'])
+  git(base, ['init', '--quiet', root])
   git(root, ['config', 'user.email', 'ponytail-test@example.invalid'])
   git(root, ['config', 'user.name', 'Ponytail Test'])
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'initial\n')

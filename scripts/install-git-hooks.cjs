@@ -39,7 +39,7 @@ const HOOKS = Object.freeze([
   Object.freeze({
     name: 'pre-push',
     commands: Object.freeze([
-      Object.freeze({ target: 'scripts/ponytail-review-hook.mjs', args: ['--scope', 'push'], passArgs: true }),
+      Object.freeze({ target: 'scripts/ponytail-review-hook.mjs', passArgs: true }),
     ]),
   }),
 ])

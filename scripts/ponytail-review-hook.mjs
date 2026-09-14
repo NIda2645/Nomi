@@ -14,7 +14,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-import { receiptPath, runGit, verifyPushReceipt } from './ponytail-review-branch.mjs'
+import { receiptPath, repoRootFromGit, runGit, verifyPushReceipt } from './ponytail-review-branch.mjs'
 
 export const MAX_PUSH_RANGES = 32
 export const MAX_PUSH_INPUT_BYTES = 256_000
@@ -51,24 +51,15 @@ export function parsePushInput(input) {
   return ranges
 }
 
-export function checkPushReceipt({ repoRoot, pushInput = '', env = process.env, runGit: git = runGit } = {}) {
-  const ranges = parsePushInput(pushInput)
-  if (ranges.length === 0) return { ok: true, reason: 'no outgoing ref update' }
-  return verifyPushReceipt({ repoRoot, ranges, env, runGit: git })
-}
-
-function repoRootFromGit() {
-  return runGit(process.cwd(), ['rev-parse', '--show-toplevel']).trim()
+export function checkPushReceipt({ repoRoot, pushInput = '', runGit: git = runGit } = {}) {
+  return verifyPushReceipt({ repoRoot, ranges: parsePushInput(pushInput), runGit: git })
 }
 
 function main() {
   try {
     if (process.argv[2] === '--help' || process.argv[2] === '-h') {
-      console.log('Usage: node scripts/ponytail-review-hook.mjs --scope push')
+      console.log('Usage: node scripts/ponytail-review-hook.mjs  (reads Git\'s pre-push ref updates on stdin)')
       return 0
-    }
-    if (process.argv[2] !== '--scope' || process.argv[3] !== 'push') {
-      throw new Error('--scope push is required')
     }
     const repoRoot = repoRootFromGit()
     const result = checkPushReceipt({ repoRoot, pushInput: fs.readFileSync(0, 'utf8') })

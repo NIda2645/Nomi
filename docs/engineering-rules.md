@@ -645,15 +645,13 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 2. Codex 适配器以 `--ask-for-approval never --ignore-rules --sandbox read-only --ephemeral` 启动只读、临时、限时会话，触发 `@ponytail-review`（宿主 slash 名是 `/ponytail-review`）。评审只看过度工程化（delete/stdlib/native/yagni/shrink）。
 3. **超过单次上限自动分块，不再让人拆提交**：单块上限 150 KB（`MAX_REVIEW_DIFF_BYTES`）。整段装得下就一块；装不下按提交切；单个提交还装不下按文件切；单个文件仍超限则按 UTF-8 安全边界截断并在块首写明 `[TRUNCATED: …]`。任一块报 findings，整条分支就是 findings。**二进制文件内容不进评审 diff**，改附一段 `BINARY: <added/modified/deleted> <path> (<size>)` 摘要——图片字节对精简代码评审是 100% 噪音，摘要保留「仓库变肥」信号供评审当 lean 发现提出。
 4. **findings 必须被人读到，这就是这条规则存在的理由**：发现写进 `.claude/ponytail-findings/<headSha>.md`（0600，`.claude/` 已在 gitignore 内），PR 正文必须带 `## Ponytail` 节，**每条发现写「已改」或「不改，因为…」**。v1 靠纪律，没有机器核验，登记为债：到期日 2026-10-15，到期前把「PR 正文的 `## Ponytail` 节条数 ≥ findings 条数」做成门岗或删掉这条要求。
-5. 收据落 `.claude/ponytail-receipt.json`（0600）：`{schema, headSha, treeSha, mergeBase, branch, diffDigest, reviewedAt, runner, status, findingsPath}`。`status` 是 `pass` / `findings` / `deferred`。评审失败（runner 缺失、非零退出、超时、没有合法结果标记）**不发收据**，必须处理环境后重跑。
-6. **钩子只查收据，不跑模型**：`pre-commit` 只做敏感数据扫描（`scripts/check-no-secrets.mjs`）；`pre-push`（`scripts/ponytail-review-hook.mjs --scope push`）解析 Git 传入的四列 ref-update，要推的每个 ref 的 `localSha^{tree}` 必须等于收据的 `treeSha`，且收据的 `mergeBase` 必须在该 ref 的历史里。**判据是树不是提交**：rebase、改提交信息、换作者都不改内容，不该逼人重审；内容一变树就变，收据当场失效。没有收据、收据读不懂、树不符、mergeBase 不可达都 fail-closed 拦住 push。纯删除远端 ref（localSha 全零）没有要评审的树，不拦。
+5. 收据落 `.claude/ponytail-receipt.json`（0600）：`{schema, headSha, treeSha, mergeBase, branch, diffDigest, reviewedAt, runner, status, findingsPath}`。`status` 是 `pass` / `findings` / `deferred`；`schema` 由 `readReceipt` 真的校验（写个版本号却没人读，等于备忘录不是防线，R28）。评审失败（runner 缺失、非零退出、超时、没有合法结果标记）**不发收据**，必须处理环境后重跑。
+6. **钩子只查收据，不跑模型**：`pre-commit` 只做敏感数据扫描（`scripts/check-no-secrets.mjs`）；`pre-push`（`scripts/ponytail-review-hook.mjs`）解析 Git 从 stdin 传入的四列 ref-update，要推的每个 ref 的 `localSha^{tree}` 必须等于收据的 `treeSha`，且收据的 `mergeBase` 必须在该 ref 的历史里。**判据是树不是提交**：rebase、改提交信息、换作者都不改内容，不该逼人重审；内容一变树就变，收据当场失效。没有收据、收据读不懂、树不符、mergeBase 不可达都 fail-closed 拦住 push。纯删除远端 ref（localSha 全零）没有要评审的树，不拦。
 7. 只接受 `--output-last-message` 报告的严格、报告-only 合同：适配器形式要求唯一一条 `net: -N lines possible.` 后紧跟唯一最终行 `PONYTAIL_REVIEW: PASS|FINDINGS`；同时兼容 Ponytail 原生的精确 clean 行 `Lean already. Ship.` 和以 `net: -N lines possible.` 收尾的 findings 报告。stdout/stderr、prompt 回显、重复 marker 和不完整报告一律不算通过。临时报告写在系统临时目录、评审结束立即删除，清理失败也 fail-closed；诊断行只留状态、diff hash 和 report/stdout/stderr 字节数，绝不把报告正文复制进终端或 CI 日志。
 8. **每块一个墙钟，一个常量**（`REVIEW_TIMEOUT_MS = 600_000`）。旧的「按 diff 字节加码 × 负载倍率」派生公式与全机串行锁 `/tmp/nomi-ponytail.lock` 一并删除：它们存在的唯一理由是「超时会拦住 Git 操作」，而分块已把输入钉死在 150 KB 内、超时也只意味着这条命令重跑，不卡任何 Git 操作。gates 那把锁不受影响。
 9. **runner 不可用时的留痕延后**：`pnpm run review:branch -- --defer`（等价写法 `PONYTAIL_REVIEW_DEFER=1`）记一行进 `.claude/ponytail-deferred.log`（格式逐字对齐 `.claude/push-bypass.log`：`<ISO>|deferred|branch=…|sha=<被评审的 HEAD>|worktree=…|reason=…|reviewed=no`）并发一张 `deferred` 收据让 push 放行。`pnpm run check:ponytail-review` 读该账本，任一 `reviewed=no` 或读不懂的行即红（零容忍、无棘轮）；补跑 `pnpm run review:branch` 处理完发现后用 `node scripts/check-ponytail-deferred.mjs --accept <sha>` 标 yes，`--clear-reviewed` 清旧行。**`scripts/claude-hooks/commit-bypass-check.sh` 不放宽**：`-c core.hooksPath=`、`--no-verify`、`commit-tree` 等一切绕口写法照旧 exit 2——留痕只走 `--defer` 这一条明路，它保留扫描、保留账本、保留红灯，而绕口三样全丢。
 
-### 为什么收据是树而不是「手工 ACK」
-
-「手工 ACK 收据」是旁路：人说审过了就算审过了。这里的收据是**机器签发的**——只有 `review:branch` 真的跑完并拿到合法结果标记才会写，而判据绑在内容（树）上，换个分支、改一行、挪一个文件都对不上。它不是信任声明，是内容指纹。
+### 为什么只有一个适配器
 
 `/ponytail-review` 是宿主 Agent skill，不是可移植的 shell 可执行文件；因此仓库只保留一个版本化 Codex 适配器（可用 `PONYTAIL_REVIEW_CODEX_BIN` 指向兼容壳，见 `docs/engineering/ponytail-claude-shim.md`），不接入 Nomi 的 Agent/Canvas 能力链。评审过程内不执行修改、测试、commit 或 push，避免递归和工作树污染。
 

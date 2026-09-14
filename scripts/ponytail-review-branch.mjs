@@ -84,13 +84,9 @@ function tryRunGit(git, repoRoot, args) {
   }
 }
 
-export function resolveBaseRef(env = process.env) {
-  return String(env.PONYTAIL_REVIEW_BASE_REF || '').trim() || DEFAULT_BASE_REF
-}
-
 /** 评审范围就是这条分支自己写的东西：merge-base(base, HEAD)..HEAD。 */
 export function resolveBranchRange({ repoRoot, env = process.env, runGit: git = runGit } = {}) {
-  const baseRef = resolveBaseRef(env)
+  const baseRef = String(env.PONYTAIL_REVIEW_BASE_REF || '').trim() || DEFAULT_BASE_REF
   const mergeBase = tryRunGit(git, repoRoot, ['merge-base', baseRef, 'HEAD'])
   if (!SHA.test(mergeBase)) {
     throw new Error(`无法解析 merge-base(${baseRef}, HEAD)；先 git fetch origin 再重试 review:branch。`)
@@ -219,10 +215,8 @@ export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = ru
   const textDiff = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--']) || '')
   const whole = withBinarySummary(textDiff, binarySummary)
   if (!whole.trim()) return []
-  const wholeLabel = `full range ${range}`
-  if (byteLength(whole) + byteLength(`### ${wholeLabel}\n`) <= MAX_REVIEW_DIFF_BYTES) {
-    return [makeUnit(wholeLabel, whole)]
-  }
+  const wholeUnit = makeUnit(`full range ${range}`, whole)
+  if (!wholeUnit.truncated) return [wholeUnit]
 
   const commits = String(git(repoRoot, ['rev-list', '--reverse', '--topo-order', range]) || '')
     .trim().split(/\s+/).filter(Boolean)
@@ -233,9 +227,9 @@ export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = ru
     // merge 提交用 dense combined diff：只保留与每个父都不同的部分。
     const patch = String(git(repoRoot, ['show', '--cc', '--no-ext-diff', '--unified=80', '--format=', commit]) || '')
     if (!patch.trim()) continue
-    const label = `commit ${commit}`
-    if (byteLength(patch) + byteLength(`### ${label}\n`) <= MAX_REVIEW_DIFF_BYTES) {
-      units.push(makeUnit(label, patch))
+    const commitUnit = makeUnit(`commit ${commit}`, patch)
+    if (!commitUnit.truncated) {
+      units.push(commitUnit)
       continue
     }
     for (const file of commitFiles(repoRoot, git, commit)) {
@@ -323,14 +317,6 @@ function readReviewReport(reportPath) {
   return fs.readFileSync(reportPath, 'utf8')
 }
 
-function removeEphemeralReport(reportPath) {
-  if (!reportPath) return
-  const directory = path.dirname(reportPath)
-  // 只删 createReportPath 自己建的目录，防止将来有人把用户目录传进来。
-  if (!path.basename(directory).startsWith('nomi-ponytail-review-')) return
-  fs.rmSync(directory, { recursive: true, force: true })
-}
-
 /**
  * 跑一个分块。报告正文**会**随结果返回——findings 必须被人读到才有意义，这正是
  * 这次改动的目的；它落到 worktree 自己的 .claude/（已在 gitignore 内），
@@ -342,8 +328,7 @@ export function reviewChunk({
   env = process.env,
   spawnSyncImpl = spawnSync,
 } = {}) {
-  const text = typeof chunk === 'string' ? chunk : chunk.text
-  const label = typeof chunk === 'string' ? 'branch diff' : chunk.label
+  const { label, text } = chunk
   const diffHash = crypto.createHash('sha256').update(text).digest('hex')
   const reportPath = createReportPath(env, diffHash)
   try {
@@ -399,37 +384,35 @@ export function reviewChunk({
     }
     return { ok: true, status, label, diffHash, output, report }
   } finally {
-    try {
-      removeEphemeralReport(reportPath)
-    } catch (_error) {
-      throw new Error('could not remove ephemeral Ponytail review report')
-    }
+    // 报告可能逐字引了 diff。临时目录必须当场消失；删不掉就抛（阻断），不许静默留着。
+    fs.rmSync(path.dirname(reportPath), { recursive: true, force: true })
   }
 }
 
-export function receiptPath(repoRoot, env = process.env) {
-  return String(env.NOMI_PONYTAIL_RECEIPT_OVERRIDE || '').trim() || path.join(repoRoot, RECEIPT_RELATIVE)
+export function receiptPath(repoRoot) {
+  return path.join(repoRoot, RECEIPT_RELATIVE)
 }
 
-export function findingsPath(repoRoot, headSha, env = process.env) {
-  const dir = String(env.NOMI_PONYTAIL_FINDINGS_DIR || '').trim() || path.join(repoRoot, FINDINGS_RELATIVE)
-  return path.join(dir, `${headSha}.md`)
+export function findingsPath(repoRoot, headSha) {
+  return path.join(repoRoot, FINDINGS_RELATIVE, `${headSha}.md`)
 }
 
-export function writeReceipt(repoRoot, receipt, env = process.env) {
-  const target = receiptPath(repoRoot, env)
+export function writeReceipt(repoRoot, receipt) {
+  const target = receiptPath(repoRoot)
   fs.mkdirSync(path.dirname(target), { recursive: true })
   fs.writeFileSync(target, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
   return target
 }
 
-/** 读不懂的收据当作没有收据（fail-closed）：钩子据此拦住 push。 */
-export function readReceipt(repoRoot, env = process.env) {
-  const target = receiptPath(repoRoot, env)
+/** 读不懂的收据当作没有收据（fail-closed）：钩子据此拦住 push。`schema` 也在这里判——
+ *  写下一个版本号却没人校验，等于备忘录不是防线（R28）。 */
+export function readReceipt(repoRoot) {
+  const target = receiptPath(repoRoot)
   if (!fs.existsSync(target)) return null
   try {
     const parsed = JSON.parse(fs.readFileSync(target, 'utf8'))
     if (!parsed || typeof parsed !== 'object') return null
+    if (parsed.schema !== RECEIPT_SCHEMA) return null
     if (!SHA.test(String(parsed.headSha || '')) || !SHA.test(String(parsed.treeSha || ''))) return null
     if (!SHA.test(String(parsed.mergeBase || ''))) return null
     return parsed
@@ -438,8 +421,8 @@ export function readReceipt(repoRoot, env = process.env) {
   }
 }
 
-export function writeFindings({ repoRoot, range, results, env = process.env, now = () => new Date() }) {
-  const target = findingsPath(repoRoot, range.headSha, env)
+export function writeFindings({ repoRoot, range, results, now = () => new Date() }) {
+  const target = findingsPath(repoRoot, range.headSha)
   fs.mkdirSync(path.dirname(target), { recursive: true })
   const body = [
     `# Ponytail findings — ${range.branch || '(detached)'}`,
@@ -527,7 +510,7 @@ export function runBranchReview({
   if (isDeferRequested({ env, argv })) {
     const { logPath, row } = recordDeferredReview({ repoRoot, range, env, now })
     const receipt = buildReceipt({ range, status: 'deferred', diffDigest: '', findingsFile: null, env, now })
-    writeReceipt(repoRoot, receipt, env)
+    writeReceipt(repoRoot, receipt)
     return { ok: true, status: 'deferred', range, receipt, logPath, row }
   }
 
@@ -536,7 +519,7 @@ export function runBranchReview({
 
   if (chunks.length === 0) {
     const receipt = buildReceipt({ range, status: 'pass', diffDigest, findingsFile: null, env, now })
-    writeReceipt(repoRoot, receipt, env)
+    writeReceipt(repoRoot, receipt)
     return { ok: true, status: 'pass', range, receipt, chunks: 0, results: [] }
   }
 
@@ -550,7 +533,7 @@ export function runBranchReview({
   }
 
   const status = results.some((result) => result.status === 'findings') ? 'findings' : 'pass'
-  const findingsFile = writeFindings({ repoRoot, range, results, env, now })
+  const findingsFile = writeFindings({ repoRoot, range, results, now })
   const receipt = buildReceipt({
     range,
     status,
@@ -559,7 +542,7 @@ export function runBranchReview({
     env,
     now,
   })
-  writeReceipt(repoRoot, receipt, env)
+  writeReceipt(repoRoot, receipt)
   return { ok: true, status, range, receipt, findingsFile, chunks: chunks.length, results }
 }
 
@@ -567,11 +550,11 @@ export function runBranchReview({
  * pre-push 的全部判据：要推的每个 head 的**树**必须等于收据里的树。
  * 用树而不是提交：rebase / 改提交信息不改内容，不该逼人重审；内容一变树就变，必须重审。
  */
-export function verifyPushReceipt({ repoRoot, ranges = [], env = process.env, runGit: git = runGit } = {}) {
+export function verifyPushReceipt({ repoRoot, ranges = [], runGit: git = runGit } = {}) {
   const live = ranges.filter((range) => !/^0{40}$/.test(range.localSha))
   if (live.length === 0) return { ok: true, receipt: null, reason: 'only ref deletions' }
-  const receipt = readReceipt(repoRoot, env)
-  if (!receipt) return { ok: false, reason: `没有可读的分支评审收据（${receiptPath(repoRoot, env)}）` }
+  const receipt = readReceipt(repoRoot)
+  if (!receipt) return { ok: false, reason: `没有可读的分支评审收据（${receiptPath(repoRoot)}）` }
 
   for (const range of live) {
     const tree = tryRunGit(git, repoRoot, ['rev-parse', `${range.localSha}^{tree}`]).toLowerCase()
@@ -579,22 +562,16 @@ export function verifyPushReceipt({ repoRoot, ranges = [], env = process.env, ru
     if (tree !== String(receipt.treeSha).toLowerCase()) {
       return { ok: false, reason: `${range.localRef} 的树 ${tree.slice(0, 12)} 与收据的 ${String(receipt.treeSha).slice(0, 12)} 不符` }
     }
-    const reachable = (() => {
-      try {
-        git(repoRoot, ['merge-base', '--is-ancestor', receipt.mergeBase, range.localSha])
-        return true
-      } catch (_error) {
-        return false
-      }
-    })()
-    if (!reachable) {
+    try {
+      git(repoRoot, ['merge-base', '--is-ancestor', receipt.mergeBase, range.localSha])
+    } catch (_error) {
       return { ok: false, reason: `收据的 mergeBase ${String(receipt.mergeBase).slice(0, 12)} 不在 ${range.localRef} 的历史里` }
     }
   }
   return { ok: true, receipt }
 }
 
-function repoRootFromGit() {
+export function repoRootFromGit() {
   return runGit(process.cwd(), ['rev-parse', '--show-toplevel']).trim()
 }
 

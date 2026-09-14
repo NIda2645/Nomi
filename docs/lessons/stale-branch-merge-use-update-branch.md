@@ -12,9 +12,8 @@
 **怎么用**：
 
 - 远落后分支上车流程：`gh pr update-branch <n>` → CI 在 merge tree 上验证 → 全绿 `gh pr merge <n> --merge`。
-- 需要补小修（如文档索引）时：**先** update-branch 让 remote tip ≈ main，**再**只 push 那个小 commit（几个文件，ponytail 安全）。
+- 需要补小修（如文档索引）时：**先** update-branch 让 remote tip ≈ main，**再**只 push 那个小 commit。
 - 本地五门照跑：本地 merge 后跑 `pnpm run gates` 验证，只是不把这个 merge push 上去。
 - 本仓分支保护：required = Quality Gate + Mac Package（未碰打包路径时 skipping = 中性放行），`strict=true`，所以 BEHIND 状态必须先 update-branch。
-- ponytail 钩子 ENOBUFS 的根因修（maxBuffer 提到 512MB）在 commit `24e7d609`，随 #223 线入 main 后此坑消失大半；但对超大 diff，update-branch 流程仍是首选。
 
 **出处**：2026-09-01 A 列车实测（三次 ENOBUFS 失败 + 一次 update-branch 成功）；钩子修复 commit `24e7d609`（PR #223 线）。同族「量具错配」见 [性能预算在 macOS 校准却在 Linux CI 执行](canvas-perf-budget-calibrated-on-macos-fails-on-linux.md)。
