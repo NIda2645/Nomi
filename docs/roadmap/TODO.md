@@ -147,6 +147,8 @@
 | T-QA-05 | 体感回归机制：叠 / 裁 / 拦 / 出视口 / 对比度断言库 + 旅程夜跑 | todo | 09-09 用户要求 | 「这类问题不能再发生」；发现即断言 |
 | T-QA-06 | agent-runtime 两条 flake（laneFixture ENOTEMPTY / G3b③ 挂 runner）治根 | todo | 09-08 多位工人独立撞到 | — |
 | T-QA-07 | Ponytail 评审欠账：Codex 额度耗尽期间全走 `DEFER` 留痕 | todo | 09-14 环境 | 额度回来后 `check:ponytail-review` 一直红到补审 |
+| T-QA-08 | 走查自动录屏：Playwright 起 Electron 时开 `recordVideo`，每个窗口出 webm；截图采样漏掉的过程态（导入渐显空等、停止→回执的间隙）靠视频看，同时留下演示素材 | todo | 用户 09-15 00:2x 口述（Windows 测试机接通时） | 改 `tests/ux/_launchApp.mjs` 一处；动手前按 R5 查 Playwright 当前文档确认 `electron.launch({ recordVideo })` 形状；视频不进 git，放 evidence/scratchpad，PR 贴关键帧 |
+| T-QA-09 | Windows 测试机接入走查：192.168.31.216 已可 SSH（用户 23732），在 D: 建 worktree 跑 R13；SSH 会话 0 截不到桌面，Nomi 窗口截图/录屏走 Playwright，整桌面要计划任务塞进登录会话 | doing | 09-15 00:2x 接通；记忆 `windows-test-machine-ssh` | 先清 C: 上二十几个旧 Nomi-* 目录腾空间（C: 剩 8GB），再建 D:\Nomi-walkthrough |
 
 ## J. 官网与发布
 
