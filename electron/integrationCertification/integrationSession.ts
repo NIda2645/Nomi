@@ -1298,7 +1298,6 @@ export class IntegrationSessionService {
         ...(item.label ? { labelZh: item.label } : {}),
       })),
     };
-    let certificationSucceeded = false;
     /**
      * 认证结果先攒在局部变量里，**最后**才决定要不要写回会话。
      *
@@ -1319,7 +1318,6 @@ export class IntegrationSessionService {
           stage: "completed",
           childRunRef: comfyReservation?.operation?.childRunRef || callbackRef,
         };
-        certificationSucceeded = true;
       } else {
         const run = await this.certification.startHttp({
           entryPoint: "programmatic-session",
@@ -1361,7 +1359,9 @@ export class IntegrationSessionService {
         current.checkpoint !== "cancelled" &&
         current.checkpoint !== "superseded"
       ) {
-        if (certificationSucceeded) {
+        // 「远端那次提交成没成」就看 outcome 的阶段，不再另存一个布尔——
+        // 同一个事实两处记录，日后只会改到其中一个（ponytail 2026-09-15 指出）。
+        if (outcome?.stage === "completed") {
           this.deps.comfyOperationLedger.markCheckpoint(comfyReservation.operation.runId, {
             checkpoint: "finalized",
             expectedRevision: current.revision,
