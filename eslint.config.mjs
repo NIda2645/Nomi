@@ -69,6 +69,19 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // 反馈接收端跑在 Cloudflare Workers 运行时里：`Request`/`Response`/`URL`/`TextEncoder`/
+    // `crypto` 在那儿是真的全局，不是我们忘了 import。所以声明环境，而不是在九行上各写一条
+    // eslint-disable —— 逐行 disable 会把「这个文件跑在哪个运行时」这条事实藏起来，
+    // 下一个人加第十行时还得重新发现一次。
+    // 它的测试用 node --test 跑（`check:feedback-worker`），所以 node 全局也给上。
+    files: ['infra/feedback-worker/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.serviceworker, ...globals.node },
+    },
+  },
+  {
     // The regression must enter through Electron CommonJS before loading the
     // native pi ESM island; require is intentional here, not application style.
     files: ['tests/network/**/*.cjs'],
