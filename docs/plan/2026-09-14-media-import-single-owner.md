@@ -10,6 +10,17 @@
 窄的那条正好守着用户最常用的入口（Finder 粘贴 / 拖入素材库），所以视频一律进不来。
 本 PR 把「收什么媒体 / 收多大 / 要不要转码」收成一份声明，所有入口派生，同 commit 删掉各入口自己那份。
 
+## 先查别人
+
+完整报告：[docs/research/2026-09-14-media-import-single-owner/prior-art.md](../research/2026-09-14-media-import-single-owner/prior-art.md)（四问逐格，含查法与没查的那一格）。三条结论：
+
+- **不新造媒体类型表**——仓库里已经有一张自称「唯一真相源」的表：`electron/assets/mediaTypes.ts:20`（`MEDIA_TYPES`），配套的魔数嗅探在 `electron/assets/mediaTypes.ts:151`、`accept` 生成器在 `electron/assets/mediaTypes.ts:224`。**但它在 `origin/main` 上只有一个生产消费者**（`origin/main:src/workbench/assets/AssetLibraryPanel.tsx:65`）——单源建到了「格式事实」这层，没建到「产品决定」那层（收不收、收多大），于是后者被每个入口各写一遍。本次只补它缺的那一层。
+- **不引磁盘空间依赖**——`ls node_modules | grep -iE 'disk|statfs'` 无命中，Electron 也不暴露磁盘 API（`grep getSystemDiskInfo node_modules/electron/electron.d.ts` 无命中）；Node 自带 `statfsSync`（`node_modules/@types/node/fs.d.ts:1216`），`bavail * bsize` 就是答案，跨平台零依赖（R20：不在护城河上的通用能力用标准实现）。
+- **不按平台猜 codec**——「浏览器能不能解这个 codec」是可以直接问的：`MediaSource.isTypeSupported` / `canPlayType` / `VideoDecoder.isConfigSupported`，社区做 HEVC 判定就是这么做的（<https://github.com/StaZhu/enable-chromium-hevc-hardware-decoding>）。同一次检索也查到反面证据：`isTypeSupported` 在无硬解时也可能返回 true，要判硬件加速得用 `navigator.mediaCapabilities.decodingInfo()`（<https://deepwiki.com/StaZhu/enable-chromium-hevc-hardware-decoding/5.2-troubleshooting>）——**不影响本次判据**，我们要答的是「播不播得了」（播不了才转码），不是「快不快」。
+- **落盘路与转码判定都不新写**——`origin/main:electron/assets/localFileImport.ts:72` 与 `origin/main:electron/assets/videoImportNormalize.ts:27` 已在服役，本次是把第二条落盘实现**合并进**前者、把后者里的常量白名单换成「问本机」。
+
+结构评审（同层 7 天内第三份合同触发，R21.2）：[docs/audit/2026-09-15-media-landing-boundary-structure-review.md](../audit/2026-09-15-media-landing-boundary-structure-review.md)。
+
 ## 类根因（不是「忘了加 video」）
 
 ### 根因 1：两扇落盘门，窄的那扇守着主入口（P1 并行版）

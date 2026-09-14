@@ -385,5 +385,7 @@
     "src/workbench/assets/assetLibraryLocalImport.test.ts",
     "electron/capabilityCore/importAssetGuard.test.ts",
     "tests/ux/media-import-matrix.walk.mjs"
-  ]
+  ],
+  "structural_review": "docs/audit/2026-09-15-media-landing-boundary-structure-review.md",
+  "prior_art": "docs/research/2026-09-14-media-import-single-owner/prior-art.md"
 }
