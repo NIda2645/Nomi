@@ -57,11 +57,11 @@ describe('shot time precision is owned by the persistence boundary', () => {
   // 老项目里已经躺着的长小数：读入口归一，显示层不写任何 round。
   it('normalizes long-decimal rows already saved in a project', () => {
     const legacy = factsTable([
-      { rowId: 'fact-1', order: 1, startSeconds: 0, endSeconds: 1.4681260000000001,
-        durationSeconds: 1.4681260000000001, carriedOver: false, cells: {} },
-      { rowId: 'fact-2', order: 2, startSeconds: 1.4681260000000001, endSeconds: 3.9033329999999998,
-        durationSeconds: 2.4352069999999997, carriedOver: false, cells: {} },
-    ], 3.9033329999999998)
+      { rowId: 'fact-1', order: 1, startSeconds: 0, endSeconds: 1.468126,
+        durationSeconds: 1.468126, carriedOver: false, cells: {} },
+      { rowId: 'fact-2', order: 2, startSeconds: 1.468126, endSeconds: 3.903333,
+        durationSeconds: 2.435207, carriedOver: false, cells: {} },
+    ], 3.903333)
     const restored = readShotTable({ shotTable: legacy })
     expect(restored?.rows?.map((row) => [row.startSeconds, row.endSeconds, row.durationSeconds]))
       .toEqual([[0, 1.5, 1.5], [1.5, 3.9, 2.4]])

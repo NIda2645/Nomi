@@ -35,8 +35,8 @@ describe('shot table read-through view', () => {
       schemaVersion: 1, view: { selectedRowIds: [], density: 'auto' }, revision: 0, updatedAt: '2026-09-15T00:00:00.000Z',
       source: { kind: 'deconstruction', sourceNodeId: 'video-1', title: 'Reference', status: 'ready' },
       columnSetId: 'facts', columns: [{ columnId: 'visual', kind: 'builtin', labelKey: 'visual', order: 0, visible: true }],
-      rows: [{ rowId: 'fact-1', order: 1, startSeconds: 1.4681260000000001, endSeconds: 3.9033329999999998,
-        durationSeconds: 2.4352069999999997, carriedOver: false, cells: { visual: 'A doorway' } }],
+      rows: [{ rowId: 'fact-1', order: 1, startSeconds: 1.468126, endSeconds: 3.903333,
+        durationSeconds: 2.435207, carriedOver: false, cells: { visual: 'A doorway' } }],
     })
     const rows = selectShotTableRows({ table: facts, designs: {}, nodes: [], imageModelOptions: [], videoModelOptions: [] })
     expect(rows.map((row) => [row.start, row.end, row.duration])).toEqual([[1.5, 3.9, 2.4]])

@@ -41,7 +41,7 @@ describe("buildShotBoundaries：切点 → 镜头区间", () => {
 
   // ffmpeg 的切点和 ffprobe 的时长都是原始双精度测量值；用户看到的「一堆小数字」就是它们。
   it("ffmpeg 的原始浮点切点/时长 → 全部吸到 0.1s 的格子上，一个尾数都不留", () => {
-    const out = buildShotBoundaries([1.4681260000000001, 3.9033329999999998], 8.033333);
+    const out = buildShotBoundaries([1.468126, 3.903333], 8.033333);
     expect(out).toEqual([
       { index: 1, startSeconds: 0, endSeconds: 1.5 },
       { index: 2, startSeconds: 1.5, endSeconds: 3.9 },
