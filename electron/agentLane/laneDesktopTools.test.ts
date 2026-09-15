@@ -222,14 +222,16 @@ describe('desktop lane verified writes and durable receipts', () => {
     expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
   })
 
-  it('recaptures the canvas write port at prepare, instead of reusing the lane-open freeze', async () => {
+  it('recaptures the canvas write port at prepare and again at execute, instead of keeping either freeze', async () => {
     const f = await fixture('canvas')
     expect(f.captures()).toBe(0)
     const run = f.lane.execute({ kind: 'prompt', text: 'Update the fixture prompt.' })
     await f.pending(run)
-    expect(f.captures()).toBeGreaterThan(0)
+    const afterPrepare = f.captures()
+    expect(afterPrepare).toBeGreaterThan(0)
     await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
     await run
+    expect(f.captures(), 'execute must ask for the current surface, not reuse the prepare souvenir').toBeGreaterThan(afterPrepare)
     expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
   })
 
