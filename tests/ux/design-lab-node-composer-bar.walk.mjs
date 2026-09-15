@@ -83,6 +83,99 @@ await walkDesignLabScreen({
   cellWidth: 900,
   columns: 2,
   async assertState(page, state, record) {
+    // ── v1.2 两格：点开之后那一层（用户 2026-09-11 13:00 真机拍板「点好几次」）。
+    // 它们证的是两句话，而这两句都不是截图看得出来的：
+    //   ① 面板里**一个下拉都没有**——选项本身就是可点的项；
+    //   ② 只有一个参数时**没有面板壳**——点 pill 直出那组项，点一项即写入并关闭（共 2 步）。
+    if (state.id.startsWith('composer-bar-panel-')) {
+      const solo = state.id.endsWith('-solo-direct')
+      const shape = await page.evaluate(() => {
+        const panel = document.querySelector('[data-agent-parameter-panel="true"]')
+        if (!panel) return null
+        return {
+          // Mantine Combobox 给每个下拉触发器加 aria-haspopup="listbox"：按属性数，换实现照样拦得住。
+          selects: panel.querySelectorAll('[aria-haspopup="listbox"]').length,
+          options: panel.querySelectorAll('[role="radio"]').length,
+          groups: panel.querySelectorAll('[data-agent-parameter-control]').length,
+          soloKey: panel.querySelector('[data-parameter-solo]')?.getAttribute('data-parameter-solo') ?? null,
+          checked: [...panel.querySelectorAll('[role="radio"]')].findIndex((radio) => radio.getAttribute('aria-checked') === 'true'),
+        }
+      })
+      if (!shape) { record(`${state.id} 参数浮层没打开（取景台那一下点空了），这一格什么都没证`); return }
+      // ── 尺寸由内容派生（设计系统 §1.5.2 第 4 条）。2026-09-14 用户两次拍板之后只剩两条：
+      //   ① 浮层宽不得明显宽于最宽那一项的文字——右边那截空白就是这么露馅的；
+      //   ② 下一行才换行：一项只有在本行确实放不下时才落到下一行。
+      // **「不许每项独占一行」那条已删**：用户明确要一列、每项一行（横排换行「两个一行、三个一行
+      // 反而更难受」）。一列摆法下 ② 自动成立（每项就是一整行），它守的是别退回
+      // 「浮层很宽、项很窄、还竖着排」那种样子。
+      const fit = await page.evaluate(() => {
+        const panel = document.querySelector('[data-agent-parameter-panel="true"]')
+        const group = panel?.querySelector('[role="radiogroup"]')
+        if (!panel || !group) return null
+        const box = group.getBoundingClientRect()
+        const style = getComputedStyle(group)
+        const padX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
+        const gap = parseFloat(style.columnGap || style.gap || '0') || 0
+        const range = document.createRange()
+        const items = [...group.querySelectorAll('[role="radio"]')].map((el) => {
+          const r = el.getBoundingClientRect()
+          range.selectNodeContents(el)
+          const itemStyle = getComputedStyle(el)
+          return {
+            top: Math.round(r.top),
+            width: r.width,
+            // 量文字而不是被 1fr 拉伸的按钮框：一列摆法下每项都被拉到容器宽，量框等于量容器。
+            text: range.getBoundingClientRect().width
+              + parseFloat(itemStyle.paddingLeft || '0') + parseFloat(itemStyle.paddingRight || '0'),
+          }
+        })
+        range.detach()
+        const rows = []
+        for (const item of items) {
+          const row = rows.find((candidate) => Math.abs(candidate.top - item.top) <= 2)
+          if (row) { row.widths.push(item.width) } else { rows.push({ top: item.top, widths: [item.width] }) }
+        }
+        const used = rows.map((row) => row.widths.reduce((a, b) => a + b, 0) + gap * (row.widths.length - 1))
+        return {
+          inner: box.width - padX,
+          gap,
+          rows: rows.map((r) => r.widths.length),
+          used,
+          widestText: Math.max(0, ...items.map((i) => i.text)),
+          panelWidth: panel.getBoundingClientRect().width,
+          groupWidth: box.width,
+          count: items.length,
+        }
+      })
+      if (!fit) { record(`${state.id} 量不到选项组几何（没有 role=radiogroup），尺寸断言等于没跑`); return }
+      if (fit.count < 2) { record(`${state.id} 这一格应至少两项可点，实际 ${fit.count} 项——尺寸断言在一项上没有判别力`); return }
+      // ② 下一行才换行：除最后一行外，下一行的第一项必须**确实塞不进**本行。
+      for (let i = 0; i < fit.rows.length - 1; i += 1) {
+        const nextFirst = fit.used[i + 1] / fit.rows[i + 1]
+        if (fit.used[i] + fit.gap + nextFirst <= fit.inner + 1) {
+          record(`${state.id} 第 ${i + 1} 行只用了 ${Math.round(fit.used[i])}/${Math.round(fit.inner)}px，下一行的第一项（约 ${Math.round(nextFirst)}px）本来放得下——下一行才换行（§1.5.2.4）`)
+        }
+      }
+      // ① 浮层宽不得明显宽于最宽项的文字。只对**单参数直出**成立：它就是那一组选项，
+      // 没有别的东西要对齐；多组面板允许一个稳定列宽去对齐各组小标题（§1.5.2.4 明写的那半句）。
+      if (solo && fit.panelWidth > fit.widestText + 40) {
+        record(`${state.id} 浮层宽 ${Math.round(fit.panelWidth)}px，最宽一项的文字只有 ${Math.round(fit.widestText)}px——右边那截是冗余空白（§1.5.2.4）`)
+      }
+      if (solo) {
+        if (!shape.soloKey) record(`${state.id} 只有一个参数时应直出选项（找不到 [data-parameter-solo]）`)
+        if (shape.groups > 1) record(`${state.id} 单参数直出不该套面板壳，却数到 ${shape.groups} 组参数`)
+        // 「点一项即关」只能真点一次才知道。截图已在这之前拍完，这里点不会影响基线。
+        const before = await page.locator('[data-parameter-solo] [role="radio"][aria-checked="true"]').count()
+        const target = page.locator('[data-parameter-solo] [role="radio"]').nth(shape.checked === 0 ? 1 : 0)
+        await target.click()
+        const stillOpen = await page.locator('[data-agent-parameter-panel="true"]').count()
+        if (before !== 1) record(`${state.id} 点之前应恰好一项选中，实际 ${before} 项`)
+        if (stillOpen) record(`${state.id} 单参数直出选完必须自己关掉（它不是面板，没有连改多项这回事）`)
+      } else if (shape.groups < 2) {
+        record(`${state.id} 多参数那一格应有多组参数，实际 ${shape.groups} 组`)
+      }
+      return
+    }
     // ── chips 陈列格：没有节点卡、没有 B 簇、没有锁，下面那一整套画布断言对它一条都不成立。
     // 它只需回答一句话：`parameterLayout="chips"` 真的把参数摆成了**可点的下拉**（一步到位）。
     if (state.id === 'composer-bar-chips-mode') {

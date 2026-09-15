@@ -55,3 +55,54 @@ describe('lane skill provenance', () => {
       .toEqual(['workbench.storyboard.planner', undefined])
   })
 })
+
+describe('lane stop visibility', () => {
+  /**
+   * 用户点「停止」时模型还一个字都没吐出来是**常态**（真实会话 2026-09-12 的 5 次停止全是这个形状：
+   * `stopReason:'aborted'` + `content: []`）。从前 `pushAssistantParts` 只按 `content` 逐项发段，
+   * 空内容就一段都没有——面板上停止**不留任何痕迹**，用户只能判断成「没停下来」。
+   * 停止的回执不是正文的一个属性，是这一回合本身的终局。
+   */
+  function abortedLane(content: unknown[]): LaneSnapshot {
+    return {
+      lane: 'main', tipId: 'stopped', operation: null, queues: [], faulted: false,
+      configuration: { model: { provider: 'fixture', modelId: 'fixture' }, thinkingLevel: 'off', activeToolNames: [] },
+      stats: { messageCount: 1, usage },
+      transcript: [{ id: 'stopped', parentId: null, seq: 1, timestamp: 1, type: 'message', message: {
+        role: 'assistant', content, api: 'openai-completions', provider: 'fixture', model: 'fixture',
+        usage, stopReason: 'aborted', timestamp: 1,
+      } }],
+    } as unknown as LaneSnapshot
+  }
+
+  it('leaves an interrupted receipt when the stopped turn produced no text at all', () => {
+    const projection = projectLaneSnapshot(abortedLane([]), { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
+    expect(projection.parts).toEqual([{
+      kind: 'assistant-text', text: '', interrupted: true, streaming: false,
+      sequence: 0, entrySeq: 1, contentIndex: 0,
+    }])
+  })
+
+  it('carries no continuation entry for an empty stop, because there is nothing to continue from', () => {
+    const projection = projectLaneSnapshot(abortedLane([]), { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
+    expect(projection.parts.every((part) => !('continuationEntryId' in part))).toBe(true)
+  })
+
+  it('still leaves one interrupted receipt when the stop happened after a tool call and before any prose', () => {
+    const projection = projectLaneSnapshot(
+      abortedLane([{ type: 'toolCall', id: 'call-1', name: 'look_at_canvas', arguments: {} }]),
+      { pricing: 'unpriced', supportedThinkingLevels: ['off'] },
+    )
+    expect(projection.parts.map((part) => part.kind)).toEqual(['tool-call', 'assistant-text'])
+    expect(projection.parts.at(-1)).toMatchObject({ kind: 'assistant-text', text: '', interrupted: true })
+  })
+
+  it('does not add a second receipt when the stopped turn already streamed prose', () => {
+    const projection = projectLaneSnapshot(
+      abortedLane([{ type: 'text', text: '开场先留一秒环境声。' }]),
+      { pricing: 'unpriced', supportedThinkingLevels: ['off'] },
+    )
+    expect(projection.parts.filter((part) => part.kind === 'assistant-text')).toHaveLength(1)
+    expect(projection.parts[0]).toMatchObject({ interrupted: true, continuationEntryId: 'stopped' })
+  })
+})

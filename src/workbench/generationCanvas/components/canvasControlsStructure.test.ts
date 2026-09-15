@@ -303,14 +303,15 @@ describe('generation canvas control structure', () => {
   it('uses one compact geometry contract for canvas segmented controls and inputs', () => {
     const segmented = source('../../../design/NomiSegmented.tsx')
     const modeBar = source('../nodes/controls/ModeBar.tsx')
-    const parameterBar = source('../nodes/InlineParameterBar.tsx')
+    // 参数控件的几何住在控件本体那层（R9 拆巨壳后），不在编排壳里。
+    const parameterBody = source('../nodes/controls/ParameterControlBody.tsx')
     const composer = source('../nodes/NodeGenerationComposer.tsx')
 
     expect(segmented).toContain("density?: 'compact' | 'default'")
     expect(segmented).toContain("density === 'compact' ? 28 : 32")
     expect(modeBar).toContain('min-h-7 rounded-nomi-sm px-3 py-1 text-caption')
-    expect(parameterBar).toContain('style={{ height: 28 }}')
-    expect(parameterBar).toContain('density="compact"')
+    expect(parameterBody).toContain('style={{ height: 28 }}')
+    expect(parameterBody).toContain('density="compact"')
     expect(composer).toContain('min-h-7 rounded-nomi-sm px-2.5 py-1 text-caption')
     expect(composer).not.toContain('NomiSegmented')
     expect(composer).not.toContain('h-[22px]')

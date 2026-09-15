@@ -89,6 +89,8 @@ export const zhAgentPanelV4 = {
     decline: '不分享',
     settingsHint: '设置里可关',
   },
+  // 一个字都没说就被叫停的回合：正文是空的，这一行就是「停止」在界面上唯一的回执。
+  stoppedNotice: '已停止',
   copy: '复制代码',
   image: '图片',
   expand: '展开',
@@ -510,6 +512,7 @@ export const enAgentPanelV4 = {
     decline: "Don't share",
     settingsHint: 'Off anytime in Settings',
   },
+  stoppedNotice: 'Stopped',
   copy: 'Copy code',
   image: 'Image',
   expand: 'Expand',

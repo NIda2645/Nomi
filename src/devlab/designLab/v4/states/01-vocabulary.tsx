@@ -47,7 +47,17 @@ function AssistantCell({ status }: { status: V4AssistantStatus }): JSX.Element {
         : fx.t('agentPanelV4.fixtureAssistantAsk')
   return (
     <Piece>
-      <V4AssistantMessage text={text} status={status} labels={labels.assistant} />
+      {/* 取景要看见完成态那两颗钮，而组件从 2026-09-14 起「接了才画」——所以这里把三个动作
+          显式接成空操作。实验室是**取景台**，它要证明的是这一格长什么样；「宿主没接会怎样」
+          由 `agentPanelV4Blocks.test.ts` 断言，不靠这一格的缺省来表达。 */}
+      <V4AssistantMessage
+        text={text}
+        status={status}
+        labels={labels.assistant}
+        onCopy={() => undefined}
+        onRetry={() => undefined}
+        onContinue={() => undefined}
+      />
     </Piece>
   )
 }

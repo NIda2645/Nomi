@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { quantizeShotSeconds } from './shotTime'
 
 const identitySchema = z.string().trim().min(1)
 const viewSchema = z.object({
@@ -35,6 +36,15 @@ export const shotTableFactRowSchema = z.object({
   motionPrompt: z.string().optional(),
 }).strict().refine((row) => row.endSeconds >= row.startSeconds, {
   message: 'Fact row end must not precede start',
+// Every read and write of a fact row goes through this schema (`readShotTable` /
+// `normalizeShotTableMeta` / `deconstructionShotTableSchema.parse`), so quantizing here is what
+// normalizes the long-decimal rows already sitting in saved projects — no display-side fallback.
+// `durationSeconds` is derived from the quantized ends instead of trusted: it was never a second
+// truth, only a cached subtraction.
+}).transform((row) => {
+  const startSeconds = quantizeShotSeconds(row.startSeconds)
+  const endSeconds = quantizeShotSeconds(row.endSeconds)
+  return { ...row, startSeconds, endSeconds, durationSeconds: quantizeShotSeconds(endSeconds - startSeconds) }
 })
 
 export const storyboardShotTableSchema = z.object({
@@ -56,7 +66,7 @@ export const deconstructionShotTableSchema = z.object({
     sourceNodeId: identitySchema,
     sourceAssetRef: z.string().startsWith('nomi-local://').optional(),
     title: z.string(),
-    durationSeconds: z.number().finite().nonnegative().optional(),
+    durationSeconds: z.number().finite().nonnegative().transform(quantizeShotSeconds).optional(),
     status: z.enum(['idle', 'running', 'ready', 'failed']),
     phase: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
     failedShotIndexes: z.array(z.number().int().nonnegative()).optional(),
