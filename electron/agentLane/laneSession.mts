@@ -211,6 +211,22 @@ export async function openLaneSession(
   }
 }
 
+/** One reader of the derived trace.jsonl; both the index summary and the feedback bundle use it. */
+async function readTraceRows(directory: string): Promise<LaneTraceTurn[]> {
+  return (await readFile(join(directory, 'trace.jsonl'), 'utf8')).trim().split('\n').filter(Boolean)
+    .map(line => JSON.parse(line) as LaneTraceTurn);
+}
+
+/**
+ * One conversation's per-turn trace, rebuilt if stale. This is the feedback bundle's and the
+ * trajectory upload's only source of turns: the field allowlist that decides what may leave the
+ * machine lives in `electron/telemetry/trajectoryProjection.ts`, never here — this side stays the
+ * complete local view so the user can still read his own manuscript in trace.md.
+ */
+export async function readLaneTraceTurns(projectDir: string, laneName: string): Promise<LaneTraceTurn[]> {
+  return readTraceRows(await openLaneTraceDirectory(projectDir, laneName));
+}
+
 /** Resolve from pi metadata, never from a renderer-supplied filesystem path. */
 export async function openLaneTraceDirectory(projectDir: string, laneName?: string): Promise<string> {
   const context = BACKGROUND_CONTEXT;
@@ -228,8 +244,7 @@ export async function openLaneTraceDirectory(projectDir: string, laneName?: stri
         try { directory = await writeLaneTrace(session); }
         finally { await session.close(context); }
       }
-      const rows = (await readFile(join(directory, 'trace.jsonl'), 'utf8')).trim().split('\n').filter(Boolean)
-        .map(line => JSON.parse(line) as LaneTraceTurn);
+      const rows = await readTraceRows(directory);
       const total = rows.every(row => row.estimatedCostUsd !== null)
         ? rows.reduce((sum, row) => sum + (row.estimatedCostUsd ?? 0), 0) : null;
       const link = relative(laneSessionsRoot(projectDir), join(directory, 'trace.md')).split(sep).map(encodeURIComponent).join('/');

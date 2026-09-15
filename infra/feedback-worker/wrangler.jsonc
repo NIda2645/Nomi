@@ -1,0 +1,33 @@
+// Nomi 反馈接收端的部署配置。
+// 用 .jsonc 而不是 .toml：Cloudflare 官方现在对新项目推荐 JSON 配置，且部分新功能只在 JSON 配置上可用
+// （https://developers.cloudflare.com/workers/wrangler/configuration/）。
+//
+// 两个 id 是占位符，部署的人要换成自己账号下真实的资源名/id —— 见 README 的三步。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nomi-feedback-intake",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-09-15",
+
+  // 反馈 / 事件 / 轨迹三种对象都落这一个桶，按前缀分目录。
+  "r2_buckets": [
+    {
+      "binding": "INTAKE_BUCKET",
+      "bucket_name": "nomi-feedback-intake"
+    }
+  ],
+
+  // 只用来放「今天第几条」这个计数器。丢了不影响数据，只影响编号好不好看。
+  "kv_namespaces": [
+    {
+      "binding": "INTAKE_KV",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+
+  // INTAKE_TOKEN 是 secret，不写在这里：`wrangler secret put INTAKE_TOKEN`。
+  // 本地 `wrangler dev` 从 .dev.vars 读（那个文件不进 git）。
+  "observability": {
+    "enabled": true
+  }
+}

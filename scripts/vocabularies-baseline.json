@@ -1558,6 +1558,18 @@
         "ready"
       ],
       "reason": "poseClipStatus 是导演台姿态库（Mixamo FBX 单例缓存）的加载态：ready 已落地可采样、loading 拉取中、missing 库里没有该条目或加载失败；不是资产浏览器 NomiBrowserAsset.status（那里的 error 是网络资产失败，这里 missing 还含「本就不存在」），E2E 桥 poseClipStatus 的返回类型用 ReturnType derive，不另立词表。"
+    },
+    {
+          "site": "src/ui/community/FeedbackReportCard.tsx::type:Phase/type-union",
+          "members": [
+                "failed",
+                "idle",
+                "queued",
+                "sending",
+                "sent",
+                "unconfigured"
+          ],
+          "reason": "一键反馈那张卡的**发送阶段**六态，只服务这张卡的渲染分支。与 electron/tasks 的 Job.status 不是同一语义：那边是本机任务队列的执行态（有 succeeded/running，可取消、可重排），这边是「一次用户主动交出去的东西现在在哪一步」——其中 queued（发不出去已入队静默重试）与 unconfigured（这个构建没配接收端）是本域独有的两档，前者在别处会被当成 running、后者在别处根本不存在。不复用是为了让「排队了算不算成功」这条判断只有一个地方可改：这里 queued 与 sent 都收成一行回执，而任务队列绝不能把排队当完成。"
     }
   ],
   "debt": [
