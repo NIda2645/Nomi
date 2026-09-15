@@ -34,7 +34,10 @@ const rawEvidence: CanvasWriteRawEvidence = {
 const cleanups: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 
-async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'committed' | 'missing' | 'mismatch' = 'committed') {
+async function fixture(
+  kind: 'document' | 'canvas' | 'delete',
+  receiptMode: 'committed' | 'missing' | 'mismatch' = 'committed',
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-desktop-lane-receipts-'))
   cleanups.push(() => fs.rm(root, { recursive: true, force: true }))
   await fs.mkdir(path.join(root, '.nomi'))
@@ -109,7 +112,11 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
   }
   const executor = createMainCapabilityExecutorRegistry({ resolveCanvasReadPort: async () => ({ read: async () => ({}) }),
     resolveDocumentWritePort: async () => documentPort, resolveCanvasWritePort: async () => canvasPort })
-  const surface = { executor, surfaceCapture: { captureCommittedCanvasReadPort: () => capturedPort },
+  let captures = 0
+  const surface = { executor, surfaceCapture: { captureCommittedCanvasReadPort: () => {
+    captures += 1
+    return capturedPort
+  } },
     surfacePortRuntime: { createCanvasWritePort: () => canvasPort } } as unknown as DesktopCanvasReadRuntime
   const policy = { mode: kind === 'delete' ? 'safe-auto' as const : 'step' as const, spend: 'confirm' as const }
   const assembly = createDesktopLaneTools({ event: {} as IpcMainInvokeEvent, binding, surface, receipts,
@@ -140,7 +147,7 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
     run.then(() => { throw new Error(`Fixture finished before approval: ${JSON.stringify(lane.projection().parts)}`) }),
   ])
   return { lane, receipts, order, pending, root, assembly, toolName, args, documentFile, canvasFile,
-    sawQueuedAuthority: () => sawQueuedAuthority }
+    captures: () => captures, sawQueuedAuthority: () => sawQueuedAuthority }
 }
 
 describe('desktop lane verified writes and durable receipts', () => {
@@ -212,6 +219,17 @@ describe('desktop lane verified writes and durable receipts', () => {
     expect(f.order).toEqual(['canvas-capture', 'canvas-write', 'canvas-preparing', 'canvas-committed'])
     expect(JSON.parse(await fs.readFile(f.canvasFile, 'utf8')).node.id).toBe('node-fixture')
     expect(f.receipts.read()).toMatchObject({ lifecycle: 'committed', revision: 2 })
+    expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
+  })
+
+  it('recaptures the canvas write port at prepare, instead of reusing the lane-open freeze', async () => {
+    const f = await fixture('canvas')
+    expect(f.captures()).toBe(1)
+    const run = f.lane.execute({ kind: 'prompt', text: 'Update the fixture prompt.' })
+    await f.pending(run)
+    expect(f.captures()).toBeGreaterThan(1)
+    await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+    await run
     expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
   })
 

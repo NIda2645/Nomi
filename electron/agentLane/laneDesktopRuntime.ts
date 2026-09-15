@@ -66,9 +66,15 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
     setPolicy(policy: LaneComposerContext['approvalPolicy']): void
     receipts: ReturnType<typeof createProjectAgentProposalReceiptService>
   } | undefined
+  let lastEvent: IpcMainInvokeEvent | undefined
+
+  function rememberEvent(event: IpcMainInvokeEvent) {
+    lastEvent = event
+  }
 
   function validate(event: IpcMainInvokeEvent) {
     if (!current) throw new Error('agent_lane_closed')
+    rememberEvent(event)
     surface.surfaceCapture.captureCommittedCanvasReadPort(event, current.binding)
   }
 
@@ -82,6 +88,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       }))
     },
     singleShot: async (event, wire, signal) => {
+      rememberEvent(event)
       const request = wire as { prompt?: unknown; projectId?: unknown; context?: unknown }
       const command = parseLaneCommand({ kind: 'prompt', text: request.prompt })
       if (command.kind !== 'prompt') throw new Error('agent_lane_invalid_command')
@@ -104,6 +111,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       return result
     },
     openWorkspace: async (event, wire) => {
+      rememberEvent(event)
       const request = wire as { binding?: ProjectBinding; model?: LaneComposerContext['model'] }
       const binding = request.binding!
       assertProjectAgentBinding(binding)
@@ -128,7 +136,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       let workspace: LaneWorkspaceHandle | undefined
       const tasks = createDesktopLaneTasks(binding.projectId, () => workspace?.refreshTasks())
       let ports: ReturnType<typeof createDesktopLaneTools>
-      try { ports = createDesktopLaneTools({ event, binding, surface, context: () => activeInput, receipts, generationFactory,
+      try { ports = createDesktopLaneTools({ event, currentEvent: () => lastEvent ?? event, binding, surface, context: () => activeInput, receipts, generationFactory,
         // 与下面 `approval.policy` 同一个来源（`composer`，不是 `activeInput`）：档位是「用户现在
         // 选的那一档」，切完下一次调用就该照它走，而不是等下一条消息把快照带进来。
         approvalPolicy: () => composer.approvalPolicy,

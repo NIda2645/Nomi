@@ -12,9 +12,10 @@ import { parseToolResult, spawnMcpStdioClient } from './_mcpJourney.mjs'
 import { laneMessages, laneMessageText, readLaneTranscripts } from './agent-lane-observer.mjs'
 import { flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
-  APPROVAL_CARD, DOCUMENT, INTERVENTION_CONFIRM, INTERVENTION_CONFIRM_REJECT, INTERVENTION_ESCALATE,
-  INTERVENTION_REJECT, INTERVENTION_REJECT_REASON, createRuntimeWalk, hasToolResult, openCanvas,
-  readProject, recorded, toolNames,
+  APPROVAL_CARD, CANVAS_PANEL, DOCUMENT, INTERVENTION_CONFIRM, INTERVENTION_CONFIRM_REJECT,
+  INTERVENTION_ESCALATE, INTERVENTION_REJECT, INTERVENTION_REJECT_REASON, TOOL_RECEIPT,
+  createRuntimeWalk, hasToolResult, openCanvas, readProject, recorded, sendCanvas, toolNames,
+  waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
 const ORIGINAL = '真实用户任务基线：创作者准备在文末补充收尾。'
@@ -133,6 +134,7 @@ try {
 
   await openCanvas(win)
   await expect(win.locator(`${CREATION_PANEL}[data-agent-surface="generation"]`)).toBeVisible()
+  await expect(win.locator('.react-flow').first()).toBeVisible()
 
   const canvasCreateRequest = walk.fixture.expectText({
     label: 'Resident Composer creates a reversible canvas fixture node',
@@ -148,13 +150,20 @@ try {
     match: (body) => hasToolResult(body, 'resident-receipt-fix-canvas-create'),
     reply: { type: 'text', text: '已创建临时画布节点。' },
   })
-  await sendResidentIntent(win, '请创建一个临时图片节点，只用于接下来验证审批。')
+  // 人已经进了生成面：从生成坞那条输入条发（和 agent-artifact.walk 同一口）。
+  // Linux CI 上一轮失败不是「没发到」，是 make_artifact 回了 surface_port_unavailable——
+  // 写口在打开项目时冻死了；下面立刻读 toolResult，禁止再空转 30 秒只看 nodes.length。
+  await sendCanvas(win, '请创建一个临时图片节点，只用于接下来验证审批。')
   const canvasCreateWire = await recorded(canvasCreateRequest.received, 'the real canvas fixture request')
   // One resident thread spans both surfaces, so a canvas turn still carries the creation
   // turn's tool result. A matcher may only exclude *this* turn's own tool_call_id.
   expect(hasToolResult(canvasCreateWire.body, 'resident-receipt-fix-1'),
     'The canvas turn must still carry the earlier creation turn\'s tool result').toBe(true)
   await recorded(canvasCreateFollowup.received, 'the canvas fixture result')
+  await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: win.locator(`${CANVAS_PANEL} ${TOOL_RECEIPT}`).last() })
+  const canvasCreateResult = readLaneTranscripts(projectRoot).flatMap(laneMessages)
+    .find(message => message.role === 'toolResult' && message.toolCallId === 'resident-receipt-fix-canvas-create')
+  expect(canvasCreateResult?.isError, laneMessageText(canvasCreateResult)).toBe(false)
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length, {
     message: 'Canvas fixture node must persist before the irreversible proposal', timeout: 30_000,
   }).toBeGreaterThan(0)
@@ -183,7 +192,7 @@ try {
     match: (body) => hasToolResult(body, 'resident-receipt-fix-rejected'),
     reply: { type: 'text', text: '已记录拒绝，本次没有删除画布内容。' },
   })
-  await sendResidentIntent(win, '请提出一个需要拒绝的删除动作，不要自行删除。')
+  await sendCanvas(win, '请提出一个需要拒绝的删除动作，不要自行删除。')
   const deletionWire = await recorded(rejectedRequest.received, 'the real gated-action proposal')
   expect(toolNames(deletionWire.body), 'Resident tools remain visible before any group request').toContain('delete_from_canvas')
   const rejectedApprovalCard = win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`).last()

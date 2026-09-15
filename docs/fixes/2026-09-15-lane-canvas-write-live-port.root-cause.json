@@ -1,0 +1,162 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-15-lane-canvas-write-live-port",
+  "change_kind": "corrective",
+  "problem_type": "画布写口在打开 lane 时冻死，切工作区后再写就 surface_port_unavailable",
+  "symptom": "Linux E2E resident-composer-receipt-fix：创作面写文稿成功，点生成后再 make_artifact，工具回执是 surface_port_unavailable，generationCanvas.nodes.length 一直是 0。CI 截图上「交付手艺产物」标失败。",
+  "direct_cause": "createDesktopLaneTools 在 openWorkspace 那一次 IPC 上 captureCommittedCanvasReadPort，把 CapturedCanvasReadPort 冻进 canvasWrite adapter。用户后来从生成面发送时，validate 已经用当前 IPC 重新抓过口（证明主进程当前口是活的），但 make_artifact 的 prepare 仍走打开项目时冻住的那一帧。",
+  "class_root": "「当前画布写口」是跟这一次发送的 renderer 帧走的，不是跟打开项目那一次。MCP / singleShot 每次调用都重抓；内部 lane 的 canvas.write 却只在装配时抓一次。冻在装配期的口，切到生成面、URL step 变、或 owner 帧换了之后就会变成 surface_port_unavailable。",
+  "affected_population": [
+    "先在创作面跟 Agent 说话、再切到生成面让它往画布上放东西的用户（resident 常驻线程本来就是跨面的）",
+    "Linux CI 真实 Electron 走查 resident-composer-receipt-fix、以及任何「打开项目在创作、再 openCanvas 后 make_artifact」的 walk"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneDesktopTools.ts",
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "electron/agentLane/laneDesktopTools.test.ts",
+    "tests/ux/resident-composer-receipt-fix.e2e.mjs"
+  ],
+  "entry_points": [
+    "laneDesktopTools canvasWrite.prepare（make_artifact / arrange_canvas / stage_shot / 扩展 nomi_canvas_edit）",
+    "laneDesktopRuntime.validate / openWorkspace（记住当前 IPC 事件）"
+  ],
+  "internal_only_reason": "这是 Nomi 自研 surface port 的生命周期不变量：哪一次 IPC 抓的口能用来写画布。官方 Electron 文档决定不了「打开 lane 的那一帧 vs 用户点发送的那一帧」。",
+  "invariants": [
+    "每次 canvas.write prepare 都必须用 currentEvent() 当场 captureCommittedCanvasReadPort，禁止复用 openWorkspace 冻住的 CapturedCanvasReadPort",
+    "currentEvent 必须是用户刚点发送那次 IPC（validate/rememberEvent），不是项目打开那次"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 78,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 98,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 110,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 118,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 72,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 86,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadPortResolver.ts",
+      "line": 104,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "line": 319,
+      "symbol": "captureCommittedCanvasReadPort"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 8,
+    "why_not": "这 8 扇都是「什么时候允许抓当前 committed 画布口」的合法时刻，不能合成一扇：runtime validate(78) 是后续 IPC 的准入；singleShot 98/110 是一次性对话的头尾；openWorkspace 118 是打开项目；tools 72 是读/文稿 adapter 的装配抓口；tools 86 是本次新增的 canvas.write prepare 当场抓口（修的就是漏了这一扇）；canvasReadPortResolver 104 是 MCP/执行器按 invocation 解析；canvasReadSurfaceIpc 319 是 renderer 抓口的唯一 IPC 实现。减少任何一扇都会让对应调用方失去活口。"
+  },
+  "generality_proof": "内部 lane 的 canvas.write（make_artifact）和扩展 nomi_canvas_edit 共用同一个 live canvasWrite wrapper；类回归测试钉死「装配时 capture 次数是 1，prepare 之后必须 >1」。MCP 走 canvasReadSurfaceIpc / portResolver，每次 invocation 本来就重抓，标 not-affected。",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "canvasWrite.prepare",
+      "responsibility": "每次准备画布写都用 currentEvent 当场抓 committed port，不复用 open 时冻住的口。"
+    },
+    {
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "rememberEvent",
+      "responsibility": "validate / open / singleShot 把「当前 IPC 事件」留下来，给 tools 的 currentEvent 用。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "entry_point": "canvasWrite.prepare",
+      "disposition": "enforced",
+      "evidence": "make_artifact / arrange_canvas / stage_shot 以及 createLaneExtendedDesktopPorts 的 canvas 写都走这个 wrapper；prepare 里当场 captureCommittedCanvasReadPort。"
+    },
+    {
+      "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "entry_point": "captureCommittedCanvasReadPort",
+      "disposition": "not-affected",
+      "evidence": "MCP 与 GUI 执行器每次 invocation 都经这扇 IPC 现抓，本来就不是装配期冻口。本次 Linux 同 job 里 production-mcp / mcp-l2 画布写是绿的，正是这条路径。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "常驻 Agent 一条线程跨创作/生成/预览。任何「打开项目时抓口、之后切面再写」的内部 lane 画布工具都会再踩。今天只是 make_artifact 被 20 动词走查撞上。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs captureCommittedCanvasReadPort：8 扇写口，其中 laneDesktopTools 装配抓口（72）是旧冻法，prepare（86）是本次补上的活口。",
+      "rg createDesktopLaneTools / createPiCanvasWriteTransportAdapter：生产装配只有 laneDesktopRuntime.openWorkspace 一处；测试夹具 laneDesktopTools.test.ts 与 laneDesktopReads.test.ts。",
+      "同形「装配期冻派生」合同 2026-09-15-usable-video-models-derived-on-read：那次是视频模型名单，这次是画布写口，机制同类。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneDesktopTools.ts",
+    "invariant": "canvas.write prepare 必须用 currentEvent 当场抓 committed port。",
+    "failure_mode": "若改回装配期冻口，laneDesktopTools.test 的 recapture 断言会红（prepare 后 captures 仍为 1）。",
+    "exception_policy": "none",
+    "strategy": "把「抓口」从 openWorkspace 挪到每次 prepare；runtime 只负责记住当前 IPC 事件。",
+    "artifacts": [
+      "electron/agentLane/laneDesktopTools.ts",
+      "electron/agentLane/laneDesktopRuntime.ts"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneDesktopTools.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/agentLane/laneDesktopTools.test.ts"
+    ],
+    "rationale": "内部 lane 画布写口的生命周期只在这一层装配。MCP 另有 IPC 抓口，不经这里。"
+  },
+  "regression_tests": [
+    "electron/agentLane/laneDesktopTools.test.ts",
+    "tests/ux/resident-composer-receipt-fix.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/laneDesktopTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneDesktopTools.ts"
+    ],
+    "rationale": "删掉「open 时 createPiCanvasWriteTransportAdapter 一次用到底」的冻口；prepare 每次新建 adapter。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量是自研 surface port 与 lane 装配时机，不由 Electron/Chromium 版本单独决定。",
+    "exit_criteria": []
+  },
+  "migration": "无需迁移。已打开的 lane 在下次发送时走新 prepare。",
+  "residual_risks": [
+    "timeline.write / document.write 仍复用装配期 capturedPort。本次失败只在 canvas.write；切到预览后再写时间轴是同类残留，未在这一刀里改。"
+  ]
+}
