@@ -60,8 +60,10 @@ export const READERS = [
   { file: 'electron/ai/textBrainResolver.ts', question: '首页横幅「创作助手连没连上模型」+ 选哪个文本大脑', reads: 'createCatalogAvailability' },
   { file: 'electron/capabilityCore/generationDefaultModelResolver.ts', question: 'Agent 建分镜时的图片/视频默认模型', reads: 'createCatalogAvailability' },
   { file: 'electron/capabilityCore/moduleCatalogBootstrap.ts', question: 'nomi_generation_plan 的语义能力注册表（钥匙那几档按层放行，见文件内注释）', reads: 'createCatalogAvailability' },
-  { file: 'electron/capabilityCore/mcpStdioServer.ts', question: 'MCP 视频模型清单', reads: 'createCatalogAvailability' },
-  { file: 'electron/capabilityCore/appIntegration.ts', question: '应用内视频模型清单', reads: 'createCatalogAvailability' },
+  // 2026-09-15：这一问原本由 appIntegration.ts 与 mcpStdioServer.ts 各答一次（两份逐字相同的
+  // 派生），两份都在装配期算一次就定住，于是开机后才接入的供应商要重启才认。现在收成一份，
+  // 那两个文件只剩 getter 转发、不再自己回答这个问题，所以从表里换成真正回答它的这一个。
+  { file: 'electron/capabilityCore/usableVideoModelCandidates.ts', question: '可用视频模型清单（应用内与 MCP 共用同一份，每次问都现算）', reads: 'createCatalogAvailability' },
   { file: 'electron/providerAdapter/serviceLanguageModels.ts', question: '适配器可用的语言模型', reads: 'createCatalogAvailability' },
   { file: 'src/config/modelCatalogCache.ts', question: '渲染层第一道闸：画布/分镜所有选择器的选项', reads: 'keepUsableModelRows(availability)' },
   { file: 'src/workbench/ai/assistantModelIdentity.ts', question: '创作助手模型下拉（可用性 + 文本角色）', reads: 'model.availability' },
