@@ -88,6 +88,8 @@ export async function importWorkbenchLocalAssetFile(
     fileName: name || file.name || 'asset',
     contentType: file.type || 'application/octet-stream',
     kind: 'upload' as const,
+    // 导入进度广播的收件人：主进程按它把「已拷贝字节 / 总字节」回报给画布上那张卡。
+    ownerNodeId: meta?.ownerNodeId || null,
   }
   if (desktop.assets.importNativeFile) {
     const imported = await desktop.assets.importNativeFile(file, request)

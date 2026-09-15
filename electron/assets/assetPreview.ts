@@ -53,6 +53,10 @@ function previewScaleFilter(): string {
   return `scale='if(gt(iw,ih),min(iw,${edge}),-2)':'if(gt(iw,ih),-2,min(ih,${edge}))'`;
 }
 
+function ensureDirFor(filePath: string): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
 function previewPathFor(absolutePath: string, extension: "png" | "jpg"): string {
   const parsed = path.parse(absolutePath);
   return path.join(parsed.dir, `${parsed.name}${PREVIEW_MARKER}${extension}`);
@@ -74,9 +78,17 @@ async function runFfmpegPreview(args: string[]): Promise<boolean> {
 }
 
 /**
- * 为一份已落盘的图片/视频派生画布预览。永不抛：拿不到预览就返回不带 previewPath 的结果。
+ * 为一份图片/视频派生画布预览。永不抛：拿不到预览就返回不带 previewPath 的结果。
+ *
+ * `previewOwnerPath` 让预览落在「源以外的地方」：本地导入在**拷贝开始前**就要先出一帧，
+ * 而那一刻素材还没落盘、内容寻址路径还不知道，预览只能先落在项目内的暂存位置
+ * （绝不写进用户自己的目录）；拷完由 attachStoredAssetPreview 认领过去，不重派生第二次。
  */
-export async function createStoredAssetPreview(absolutePath: string, contentType: string): Promise<StoredAssetPreview> {
+export async function createStoredAssetPreview(
+  absolutePath: string,
+  contentType: string,
+  options: { previewOwnerPath?: string } = {},
+): Promise<StoredAssetPreview> {
   const kind = contentType.startsWith("image/") ? "image" : contentType.startsWith("video/") ? "video" : null;
   if (!kind || !absolutePath || !fs.existsSync(absolutePath)) return {};
   let probe: MediaProbeMetadata;
@@ -91,7 +103,8 @@ export async function createStoredAssetPreview(absolutePath: string, contentType
   if (kind === "image" && (!probe.width || !probe.height || Math.max(probe.width, probe.height) <= PREVIEW_LONG_EDGE_PX)) {
     return { ...dimensions };
   }
-  const previewPath = previewPathFor(absolutePath, previewExtensionFor(kind, probe));
+  if (options.previewOwnerPath) ensureDirFor(options.previewOwnerPath);
+  const previewPath = previewPathFor(options.previewOwnerPath || absolutePath, previewExtensionFor(kind, probe));
   if (fs.existsSync(previewPath)) return { previewPath, ...dimensions, ...duration };
   const args = kind === "video"
     ? ["-ss", String(VIDEO_POSTER_SEEK_SECONDS), "-i", absolutePath, "-an", "-sn", "-frames:v", "1", "-vf", previewScaleFilter(), "-q:v", "4", previewPath]
@@ -128,7 +141,7 @@ export type WithStoredAssetPreview<T> = T extends { data?: infer D } ? Omit<T, "
  * 并把它们写回 sidecar（下次列表、重开项目都能直接读到，不用重新派生）。
  * 记录不是落盘产物（比如 nomi-local 引用桩）时原样返回。
  */
-export async function attachStoredAssetPreview<T>(record: T): Promise<WithStoredAssetPreview<T>> {
+export async function attachStoredAssetPreview<T>(record: T, prepared?: StoredAssetPreview): Promise<WithStoredAssetPreview<T>> {
   const stored = record as StoredRecordLike;
   const absolutePath = typeof stored?.data?.absolutePath === "string" ? stored.data.absolutePath : "";
   const relativePath = typeof stored?.data?.relativePath === "string" ? stored.data.relativePath : "";
@@ -143,7 +156,7 @@ export async function attachStoredAssetPreview<T>(record: T): Promise<WithStored
   if (cachedThumbnail && fs.existsSync(path.join(path.dirname(absolutePath), path.basename(cachedThumbnail)))) {
     return withPreviewFields(record, projectId, cachedThumbnail, cachedWidth, cachedHeight);
   }
-  const preview = await createStoredAssetPreview(absolutePath, contentType);
+  const preview = adoptPreparedPreview(absolutePath, prepared) ?? await createStoredAssetPreview(absolutePath, contentType);
   const thumbnailRelativePath = preview.previewPath
     ? relativePath.replace(/[^/]+$/, path.basename(preview.previewPath))
     : "";
@@ -155,6 +168,31 @@ export async function attachStoredAssetPreview<T>(record: T): Promise<WithStored
   };
   if (Object.keys(patch).length > 0) mergeAssetSidecarMeta(absolutePath, patch);
   return withPreviewFields(record, projectId, thumbnailRelativePath, preview.width, preview.height, preview.durationSeconds);
+}
+
+/**
+ * 认领「拷贝前先派生的那一帧」：把暂存预览挪到源旁边的正式位置。
+ * 认领成功 = 画布上正在渐显的那张图和最终挂的那张图是同一个文件，拷完不再切一次。
+ */
+function adoptPreparedPreview(absolutePath: string, prepared?: StoredAssetPreview): StoredAssetPreview | null {
+  const scratchPath = prepared?.previewPath;
+  if (!scratchPath || !fs.existsSync(scratchPath)) return prepared?.width || prepared?.durationSeconds ? { ...prepared, previewPath: undefined } : null;
+  const extension = path.extname(scratchPath).slice(1).toLowerCase() === "png" ? "png" : "jpg";
+  const previewPath = previewPathFor(absolutePath, extension);
+  try {
+    fs.renameSync(scratchPath, previewPath);
+    return { ...prepared, previewPath };
+  } catch (error) {
+    logWarn("assets", "asset-preview-adopt-failed", { scratchPath, previewPath }, error);
+    try { fs.rmSync(scratchPath, { force: true }); } catch { /* non-fatal */ }
+    return null;
+  }
+}
+
+/** 导入失败/走了别的分支时丢掉暂存预览，别在项目里留孤儿文件。 */
+export function discardPreparedPreview(prepared?: StoredAssetPreview): void {
+  if (!prepared?.previewPath) return;
+  try { fs.rmSync(prepared.previewPath, { force: true }); } catch { /* non-fatal */ }
 }
 
 function withPreviewFields<T>(record: T, projectId: string, thumbnailRelativePath: string, width?: number, height?: number, durationSeconds?: number): WithStoredAssetPreview<T> {
