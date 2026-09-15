@@ -62,6 +62,18 @@ function pushAssistantParts(
         args: part.arguments, running: runningToolCallIds.has(part.id) });
     }
   });
+  // 「停止」的回执不是正文的一个属性，是**这一回合的终局**。上面那圈只按 `content` 发段，
+  // 所以一次在模型吐出第一个字之前就被叫停的回合（`stopReason:'aborted'` + `content: []`）
+  // 一段都不产出——面板上停止不留任何痕迹，用户只能判断成「没停下来」。
+  // 真实会话 2026-09-12 的 5 次停止全是这个形状（`nomi.ui.trace` 记的停止时延是 3–11ms，
+  // 停是真停了，只是**没人看见**）。缺席的是回执，不是取消。
+  //
+  // 空正文不给 `continuationEntryId`：没有半句话可接，「继续」在那里就是一颗按下去没有去处的钮。
+  if (!streaming && message.stopReason === 'aborted'
+    && !message.content.some((part) => part.type === 'text')) {
+    out.push({ sequence: out.length, entrySeq, contentIndex: message.content.length,
+      kind: 'assistant-text', text: '', streaming: false, interrupted: true });
+  }
 }
 
 /**

@@ -133,15 +133,19 @@ export function V4FlowRow({
   const at = index ?? 0
   if (item.kind === 'user') return <V4UserBubble text={item.text} chips={item.chips} darkMode={darkMode} />
   if (item.kind === 'assistant') {
+    // 每个动作**接了才画钮**：没有 handler 的钮和能用的钮长得一模一样，而按下去一个有事、
+    // 一个没事（2026-09-14 用户报的「重试点了没反应」）。「继续」还要多一个条件——
+    // 没有 `continuationEntryId` 就是没有半句话可接，宿主那边本来也会原地返回。
     return (
       <V4AssistantMessage
         text={item.text}
         status={item.status}
         {...(item.skill ? { skill: item.skill } : {})}
         labels={labels.assistant}
-        onCopy={handlers?.onCopy}
+        {...(handlers?.onCopy ? { onCopy: handlers.onCopy } : {})}
         {...(handlers?.onRetry ? { onRetry: () => handlers.onRetry?.(at) } : {})}
-        {...(handlers?.onContinue ? { onContinue: () => handlers.onContinue?.(at) } : {})}
+        {...(handlers?.onContinue && item.continuationEntryId
+          ? { onContinue: () => handlers.onContinue?.(at) } : {})}
       />
     )
   }
