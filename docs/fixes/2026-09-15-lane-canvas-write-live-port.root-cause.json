@@ -4,7 +4,7 @@
   "change_kind": "corrective",
   "problem_type": "长寿命 lane 揣着短寿命画面口：冻点从 open 滑到 prepare 再滑到 execute，切面后再写就 surface_port_unavailable",
   "symptom": "Linux E2E resident-composer-receipt-fix：创作面写文稿成功（receipt revision 2），openCanvas 后再 make_artifact，工具回执是 surface_port_unavailable，generationCanvas.nodes.length 一直是 0。回执带 Next: Read the current surface again…，是 resultOf(execute 失败)，不是 prepare throw。",
-  "direct_cause": "liveShared 只让 prepare / 读口现抓。execute 仍握两份纪念品：① lane 的 liveAdapters Map（prepare 造的 adapter，execute 再取，口已过期或已 dispose）；② 生产 resolveCanvasWritePort(target.capturedPort) 用的是 prepare 铸进 invocation 的 token。prepare 过了，execute 打 renderer IPC 时 epoch 已经换了。",
+  "direct_cause": "executor.execute 先 revalidate(invocation)。工厂 verify() 闭包着 prepare 铸进 invocation 的 CapturedCanvasReadPort。上一刀 withLive / liveCapturedWritePort 排在这次 revalidate 之后：P1 一死，现抓写口根本走不到。单测曾用 resolveCanvasWritePort: async () => canvasPort，作废不了这把锁。",
   "class_root": "CapturedCanvasReadPort 跟这一帧 renderer 走，寿命短于常驻 lane。任何把口冻进比它活得更长的对象（open 时的 adapter、prepare 时的 Map、invocation.capturedPort）都会在切面、URL step 变、owner 帧换之后变成 surface_port_unavailable。把冻点往后挪不是结构改完。会话身份证改成窗口+项目是 T-AG-16，不在本刀。",
   "affected_population": [
     "先在创作面跟 Agent 说话、再切到生成面让它往画布上放东西的用户（resident 常驻线程本来就是跨面的）",
@@ -14,18 +14,23 @@
     "electron/agentLane/laneDesktopTools.ts",
     "electron/agentLane/laneDesktopRuntime.ts",
     "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+    "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+    "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+    "electron/capabilityCore/canvasWriteTransportAdapters.test.ts",
     "electron/agentLane/laneDesktopTools.test.ts",
     "tests/ux/resident-composer-receipt-fix.e2e.mjs"
   ],
   "entry_points": [
     "laneDesktopTools canvasWrite.prepare 与 canvasWrite.execute（make_artifact / arrange_canvas / stage_shot / 扩展 nomi_canvas_edit）",
     "registerMainCanvasReadExecutionRuntime resolveCanvasWritePort / resolveDocumentWritePort / resolveTimelineWritePort / resolveExportWritePort",
+    "verifiedCapabilityInvocationRendererFactories 写口 mint.verify / liveRendererWriteEvidence",
     "laneDesktopRuntime.validate / openWorkspace（记住当前 IPC 事件）"
   ],
   "internal_only_reason": "这是 Nomi 自研 surface port 的生命周期不变量：哪一次 IPC 抓的口能用来写画布。官方 Electron 文档决定不了「打开 lane 的那一帧 vs 用户点发送的那一帧 vs execute 那一帧」。",
   "invariants": [
     "canvas.write 的 prepare 和 execute 都必须用 currentEvent() 当场 captureCommittedCanvasReadPort，禁止复用 openWorkspace 或 prepare 冻住的 adapter / CapturedCanvasReadPort",
     "生产写口（画布/文稿/时间轴/导出）在 resolve*WritePort 时必须从当前 committed selection 现抓，禁止用 invocation.target.capturedPort 纪念品",
+    "写口 invocation 的 revalidate / verify 必须从当前 committed selection 现抓，禁止闭包 prepare 的 CapturedCanvasReadPort；renderer 证据只比项目身份+caller，不比 bindingId/portRevision",
     "currentEvent 必须是用户刚点发送那次 IPC（validate/rememberEvent），不是项目打开那次"
   ],
   "doors": [
@@ -76,14 +81,26 @@
       "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
       "line": 319,
       "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 105,
+      "symbol": "captureCommittedCanvasReadPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 345,
+      "symbol": "sameEvidence"
     }
   ],
   "door_reduction": {
-    "before": 7,
-    "after": 8,
-    "why_not": "上一刀 liveShared 把门收到 7 扇，但 execute 仍走 invocation 里冻住的 capturedPort，Linux 真机继续红。本刀在 canvasReadExecutionRuntime liveCapturedWritePort（28）加回一扇「execute 时现抓」的合法门，不是把冻口加回去。其余 7 扇各自必须在：runtime validate(78) 是后续 IPC 准入；singleShot 98/110 是一次性对话头尾；openWorkspace 118 只记事件；tools 73 是内部 lane 读写共用的 liveShared（prepare 和 execute 都走 withLive）；canvasReadPortResolver 104 是按 invocation 解析读口；canvasReadSurfaceIpc 319 是 renderer 抓口的唯一 IPC 实现。减少任何一扇都会让对应调用方失去活口。"
+    "before": 8,
+    "after": 10,
+    "why_not": "上一刀 liveCapturedWritePort 把门收到 8 扇，但 executor 仍先 revalidate 闭包 P1 的 verify，Linux 继续红。本刀加两扇合法门：rendererFactories liveRendererWriteEvidence（105）写口 revalidate 现抓；runtime sameEvidence（345）让现抓证据只比项目身份+caller，否则换 epoch 会被当成 ProjectBindingStaleError。其余 8 扇各自必须在：runtime validate(78) 是后续 IPC 准入；singleShot 98/110 是一次性对话头尾；openWorkspace 118 只记事件；tools 73 是内部 lane 读写共用的 liveShared；canvasReadExecutionRuntime 28 是 execute 打 IPC 前现抓写口；canvasReadPortResolver 104 是按 invocation 解析读口；canvasReadSurfaceIpc 319 是 renderer 抓口的唯一 IPC 实现。减少任何一扇都会让对应调用方失去活口。"
   },
-  "generality_proof": "内部 lane 对着画面的读和写都走 liveShared()+withLive()：prepare 现造 adapter、execute 再现造，不再有 liveAdapters 纪念品。生产写 IPC 另走 liveCapturedWritePort：画布/文稿/时间轴/导出的 resolve*WritePort 都从当前 committed selection 现抓，不读 invocation.capturedPort。类回归测试钉死 capture 次数在 prepare 后 >0、execute 后再涨。MCP create_canvas_nodes 走主进程 addProjectNodes，不经 renderer 写口，不能当本刀已修好的对照。",
+  "generality_proof": "写口工厂 document/canvas/delete/timeline/export 的 verify 都走 liveRendererWriteEvidence，不再闭包 prepare 的 capturedPort。sameEvidence 对 renderer 只比项目身份+caller，否则换 epoch 后 recapture 会被当成 ProjectBindingStaleError。liveShared / liveCapturedWritePort 仍在，但它们排在 revalidate 之后，单独不够。类回归测试钉死：prepare 后换 epoch，execute 仍须 ok:true。MCP create_canvas_nodes 走主进程 addProjectNodes，不能当本刀已修好的对照。",
   "shared_boundaries": [
     {
       "path": "electron/agentLane/laneDesktopTools.ts",
@@ -94,6 +111,16 @@
       "path": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
       "symbol": "liveCapturedWritePort",
       "responsibility": "生产写口在 executor resolve 时从当前 committed selection 现抓，禁止用 prepare 铸进 invocation 的 capturedPort。"
+    },
+    {
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "liveRendererWriteEvidence",
+      "responsibility": "写口 revalidate 从当前 committed selection 现抓证据，禁止闭包 prepare 的 CapturedCanvasReadPort。"
+    },
+    {
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "symbol": "sameEvidence",
+      "responsibility": "renderer 画面证据只比项目身份+caller；bindingId/portRevision 跟这一帧走，不能当会话身份证。"
     },
     {
       "path": "electron/agentLane/laneDesktopRuntime.ts",
@@ -115,6 +142,12 @@
       "evidence": "resolveCanvasWritePort / resolveDocumentWritePort / resolveTimelineWritePort / resolveExportWritePort 四扇写口都走 liveCapturedWritePort，不再 create*WritePort(target.capturedPort)。"
     },
     {
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "entry_point": "liveRendererWriteEvidence",
+      "disposition": "enforced",
+      "evidence": "document/canvas/delete/timeline/export 写口 verify 都走 liveRendererWriteEvidence。canvasWriteTransportAdapters.test 钉死 prepare 后换 epoch，execute 仍 ok。"
+    },
+    {
       "path": "electron/capabilityCore/dispatcher.ts",
       "entry_point": "create_canvas_nodes",
       "disposition": "not-affected",
@@ -125,36 +158,41 @@
     "classification": "recurring",
     "reason": "常驻 Agent 一条线程跨创作/分镜/生成/预览。任何把 CapturedCanvasReadPort 冻进比它活得更长的对象（open adapter、prepare Map、invocation token）都会再踩。结构债 T-AG-16：会话身份证改成窗口+项目。",
     "same_class_scan": [
-      "node scripts/door-map.mjs captureCommittedCanvasReadPort：8 扇写口，其中 tools 73 是 lane liveShared，canvasReadExecutionRuntime 28 是 execute 现抓写口。",
-      "rg liveAdapters / hold( / drop( 在 electron/agentLane：零命中。rg create*WritePort(target.capturedPort) 在 canvasReadExecutionRuntime：零命中。",
+      "node scripts/door-map.mjs captureCommittedCanvasReadPort：9 扇写口 + sameEvidence 1 扇，共 10 扇。其中 tools 73 是 lane liveShared，canvasReadExecutionRuntime 28 是 execute 现抓写口，rendererFactories 105 是写口 revalidate 现抓，runtime 345 是现抓证据只比项目身份。",
+      "rg liveAdapters / hold( / drop( 在 electron/agentLane：零命中。rg create*WritePort(target.capturedPort) 在 canvasReadExecutionRuntime：零命中。写口工厂 verify 不再闭包 capturedPort。",
       "同形「装配期冻派生」合同 2026-09-15-usable-video-models-derived-on-read：那次是视频模型名单，这次是画面写口，机制同类。上下文全文 docs/roadmap/sources/2026-09-16-session-identity-window-plus-project.md。"
     ]
   },
   "prevention": {
     "kind": "centralized-boundary",
-    "enforcement_path": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
-    "invariant": "生产写口必须从当前 committed selection 现抓，禁止用 invocation 里冻住的 capturedPort。",
-    "failure_mode": "当前没有 committed selection 时抛 SurfacePortError(surface_port_unavailable)。lane 层若改回 liveAdapters，laneDesktopTools.test 的 execute recapture 断言会红。",
+    "enforcement_path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+    "invariant": "写口 revalidate 必须从当前 committed selection 现抓证据，禁止闭包 prepare 的 CapturedCanvasReadPort。",
+    "failure_mode": "当前没有 committed selection 时抛 SurfacePortError(surface_port_unavailable)。若 verify 改回闭包 P1，canvasWriteTransportAdapters.test 的 remount execute 会红。",
     "exception_policy": "none",
-    "strategy": "lane 用 withLive 在 prepare/execute 现造 adapter；executor 用 liveCapturedWritePort 在真正打 IPC 前再抓一次当前口。",
+    "strategy": "写口工厂 verify 走 liveRendererWriteEvidence；sameEvidence 对 renderer 只比项目+caller。liveCapturedWritePort 仍在真正打 IPC 前再抓一次。",
     "artifacts": [
+      "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
       "electron/capabilityCore/canvasReadExecutionRuntime.ts",
       "electron/agentLane/laneDesktopTools.ts"
     ]
   },
   "invariant_owner_layer": {
-    "layer": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+    "layer": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
     "has_tests": true,
     "tests": [
+      "electron/capabilityCore/canvasWriteTransportAdapters.test.ts",
       "electron/agentLane/laneDesktopTools.test.ts"
     ],
-    "rationale": "execute 打 renderer 写 IPC 的口在这一层 resolve。lane 的 withLive 是同一不变量的上游。MCP 画布写不经这里。"
+    "rationale": "executor.execute 先 revalidate(P1)。写口是否还握着 prepare token，由工厂 verify 决定。liveCapturedWritePort 排在这次校验之后，单独不够。"
   },
   "regression_tests": [
+    "electron/capabilityCore/canvasWriteTransportAdapters.test.ts",
     "electron/agentLane/laneDesktopTools.test.ts",
     "tests/ux/resident-composer-receipt-fix.e2e.mjs"
   ],
   "class_regression_tests": [
+    "electron/capabilityCore/canvasWriteTransportAdapters.test.ts",
     "electron/agentLane/laneDesktopTools.test.ts"
   ],
   "legacy_paths": {
@@ -162,7 +200,7 @@
     "removed_paths": [
       "electron/agentLane/laneDesktopTools.ts"
     ],
-    "rationale": "删掉 liveAdapters 把 prepare 的 adapter 冻到 execute；读/写都 withLive 现造。生产写口不再 create*WritePort(target.capturedPort)。"
+    "rationale": "删掉 liveAdapters 把 prepare 的 adapter 冻到 execute；读/写都 withLive 现造。生产写口不再 create*WritePort(target.capturedPort)。写口工厂 verify 不再闭包 prepare 的 capturedPort。"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -173,6 +211,7 @@
   "residual_risks": [
     "技能读写不走 capturedPort，切面不会踩这把钥匙。生成适配器本来就是按需工厂，不在这一类。",
     "读口（document/canvas/timeline/export read）仍用 invocation.capturedPort。本刀只收写口，因为 Linux 失败在 make_artifact execute。读口若切面后也红，按同一条不变量收，不要另起冻点。",
+    "executionTarget 仍存 prepare 的 capturedPort；工厂构造仍用它做准入。getCommittedProjectSelection 在 !isLive() 时仍 clearCurrent()。若本刀绿了 Linux 仍 unavailable，下一嫌疑是 renderer requestGuard current=null。",
     "本刀仍是用法补丁：工厂类型仍收 CapturedCanvasReadPort，冻点还能再滑。结构债是 T-AG-16（会话身份证=窗口+项目）。派工前读 docs/roadmap/sources/2026-09-16-session-identity-window-plus-project.md 全文，不要只抄结论。不要塞进本 PR。"
   ]
 }
