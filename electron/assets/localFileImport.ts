@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { copyAssetFile, writeAsset } from "../runtime";
 import { canonicalAssetFileName, extensionFromMime } from "./assetPaths";
-import { mediaKindFromExtension, resolveContentType } from "./mediaTypes";
+import { mediaKindFromContentType, mediaKindFromExtension, resolveContentType } from "./mediaTypes";
 import {
   admitMediaImport,
   type MediaImportRejection,
@@ -51,11 +51,8 @@ function assertAdmitted(
   sizeBytes: number,
   surface: MediaImportSurfaceId,
 ): void {
-  const kind = mediaKindFromExtension(fileName)
-    ?? (contentType.startsWith("image/") ? "image"
-      : contentType.startsWith("video/") ? "video"
-        : contentType.startsWith("audio/") ? "audio"
-          : contentType.startsWith("model/") ? "model3d" : null);
+  // 扩展名是第一事实（落盘前已按魔数补正），认不出才问 contentType——两问都只有 mediaTypes 一份答案。
+  const kind = mediaKindFromExtension(fileName) ?? mediaKindFromContentType(contentType);
   const admission = admitMediaImport(surface, { kind, sizeBytes }, readStorageCapacity(projectId));
   if (!admission.ok) throw new MediaImportRejectedError(admission, fileName);
 }

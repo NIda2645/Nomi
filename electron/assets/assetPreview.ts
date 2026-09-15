@@ -5,6 +5,7 @@ import { probeMediaMetadata, runBoundedProcess, type MediaProbeMetadata } from "
 import { logWarn } from "../logging/logger";
 import type { JsonRecord } from "../jsonUtils";
 import { localAssetUrl } from "./assetPaths";
+import { mediaKindFromContentType } from "./mediaTypes";
 import { mergeAssetSidecarMeta, readAssetSidecarMeta } from "./assetSidecar";
 
 /**
@@ -77,7 +78,9 @@ async function runFfmpegPreview(args: string[]): Promise<boolean> {
  * 为一份已落盘的图片/视频派生画布预览。永不抛：拿不到预览就返回不带 previewPath 的结果。
  */
 export async function createStoredAssetPreview(absolutePath: string, contentType: string): Promise<StoredAssetPreview> {
-  const kind = contentType.startsWith("image/") ? "image" : contentType.startsWith("video/") ? "video" : null;
+  // 能派生预览的只有图和视频；kind 本身不在这里判（mediaTypes 单源），这里只收窄到这两种。
+  const mediaKind = mediaKindFromContentType(contentType);
+  const kind = mediaKind === "image" || mediaKind === "video" ? mediaKind : null;
   if (!kind || !absolutePath || !fs.existsSync(absolutePath)) return {};
   let probe: MediaProbeMetadata;
   try {

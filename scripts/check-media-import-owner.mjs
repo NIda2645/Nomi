@@ -92,8 +92,12 @@ const RULES = [
   {
     id: 'adhoc-media-kind-branch',
     label: "自己判媒体 kind（startsWith('image/') 链，且认不出就当图片）——mkv/空 MIME 被静默当成图送错通道",
-    hint: '用 dropKindFromFile()（src/workbench/generationCanvas/model/nodeAssetDrop.ts）或 '
-      + 'mediaTypes.resolveContentType / mediaKindFromExtension——字节和扩展名是事实，MIME 会撒谎。',
+    // 提示必须分主进程 / 渲染层两条路说：dropKindFromFile 住在 src/，electron/ 按 R26 不许 import 它，
+    // 于是主进程的违规者照着提示做是做不到的（2026-09-15：两处新违规正是在 electron/assets 长出来的）。
+    hint: '主进程（electron/）用 mediaKindFromContentType() / mediaKindFromExtension()'
+      + '（electron/assets/mediaTypes.ts）——contentType → kind 的唯一判据，认不出返回 null；'
+      + '渲染层（src/）用 dropKindFromFile()（src/workbench/generationCanvas/model/nodeAssetDrop.ts）。'
+      + '字节和扩展名是事实，MIME 会撒谎；认不出就返回 null 交给调用方拒，别兜底成图片。',
     scan(code, file) {
       const hits = []
       const lines = code.split('\n')
