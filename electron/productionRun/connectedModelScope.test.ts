@@ -11,7 +11,7 @@ const references: ModelListingEntry["references"] = {
 function entry(patch: Partial<ModelListingEntry>): ModelListingEntry {
   return {
     vendor: "kie", vendorName: "Kie.ai", modelKey: "gpt-image-2-text-to-image", moduleId: "single-shot",
-    kind: "image", label: "GPT Image 2", keyStatus: "ok", usable: true, statusReason: "ok", references, ...patch,
+    kind: "image", label: "GPT Image 2", keyStatus: "ok", statusReason: "ok", references, ...patch,
   };
 }
 

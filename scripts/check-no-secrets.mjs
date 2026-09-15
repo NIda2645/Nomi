@@ -157,10 +157,9 @@ const INLINE_ALLOW = /nomi-secret-scan:allow\s+\S/;
 /**
  * 豁免标记棘轮：只减不增。想加第 N+1 个必须顺手把这个数字改大，
  * 一行 diff、review 看得见——防止「随手标一下就绿了」把门岗降级成橡皮图章。
- * 当前 4 个：scripts/lib/feedback/bilibili.test.mjs 的 B站 WBI 公开测试向量（社区文档已知答案，非凭证）；
- * electron/feedback/feedbackReport.test.ts 的脱敏金测试靶子（合成的 sk- 串，存在的意义就是被断言「不许出现在产物里」）。
+ * 当前 3 个：scripts/lib/feedback/bilibili.test.mjs 的 B站 WBI 公开测试向量（社区文档已知答案，非凭证）。
  */
-const MAX_INLINE_ALLOWS = 4;
+const MAX_INLINE_ALLOWS = 3;
 
 /** 扫一行里的凭证。返回 [{name, sample}]。 */
 function findCredentials(line) {

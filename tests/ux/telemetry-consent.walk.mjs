@@ -1,5 +1,5 @@
 // R16/R13 真实旅程：隐私与诊断默认关 → opt-in → 两次 mock 生成 → 查看摘要 → 删除 → 关闭。
-// 运行时不提供 NOMI_INTAKE_ENDPOINT / NOMI_INTAKE_TOKEN，故全程验证「只在本机记录」且零网络请求。
+// 运行时不提供 NOMI_APTABASE_APP_KEY，故全程验证「只在本机记录」且零网络请求。
 import { launchNomiApp } from './_launchApp.mjs'
 import { screenshotSettled, expectVisible, clickOrFail } from './_assert.mjs'
 import fs from 'node:fs'
@@ -16,7 +16,7 @@ async function shot(win, name) {
   await screenshotSettled(win, { path: path.join(shotsDir, `${String(shotNumber).padStart(2, '0')}-${name}.png`) })
 }
 
-const { app, win } = await launchNomiApp({ name: 'telemetry-consent', env: { NOMI_INTAKE_ENDPOINT: '', NOMI_INTAKE_TOKEN: '' } })
+const { app, win } = await launchNomiApp({ name: 'telemetry-consent', env: { NOMI_APTABASE_APP_KEY: '' } })
 try {
   await win.evaluate(() => {
     for (const key of ['nomi:splash:v1', 'nomi:journey-tour:v1', 'nomi:canvas-gesture-hint:v1']) window.localStorage.setItem(key, 'seen')

@@ -187,17 +187,13 @@ export function NodeErrorReport({
     window.dispatchEvent(new CustomEvent('nomi-open-feedback-share', {
       detail: {
         intent: 'problem',
-        surface: 'generation',
         stage: stageForGenerationError(report.kind),
         errorKind: report.kind,
-        // 那句人话由**生成域自己的 owner** 给（`classifyGenerationError` 已经算好放在 report 里）。
-        // 反馈面不做第六张错误码→人话表，理由见 src/ui/community/feedbackSummary.ts 的头注释。
-        summary: report.providerMessage ? `${report.reason}：${report.providerMessage}` : report.reason,
         provider: vendorKey,
         model: modelKey,
       },
     }))
-  }, [meta, report.kind, report.providerMessage, report.reason])
+  }, [meta, report.kind])
 
   return (
     <div

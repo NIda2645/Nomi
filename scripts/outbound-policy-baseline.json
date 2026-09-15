@@ -21,7 +21,7 @@
     "electron/localRuntime/localTextCapabilityProbe.ts",
     "electron/localRuntime/localTextEndpoints.ts",
     "electron/proxyProbe.ts",
-    "electron/telemetry/intakeClient.ts",
+    "electron/telemetry/aptabaseAdapter.ts",
     "electron/vendor/vendorBaseFallback.ts"
   ],
   "privateHostImporters": [

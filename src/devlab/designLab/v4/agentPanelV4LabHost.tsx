@@ -7,18 +7,6 @@ import { useWorkbenchStore } from '../../../workbench/workbenchStore'
 import ProjectAgentResidentShell from '../../../workbench/ai/ProjectAgentResidentShell'
 import type { ResidentSurface } from '../../../workbench/ai/resident/residentShellDisplay'
 import { V4_PANEL_WIDTH } from './agentPanelV4LabKit'
-import { markAgentConsentAsked } from '../../../workbench/onboarding/onboardingState'
-
-// 实验室里把「帮 Nomi 变好」那张首次询问卡标记成**已问过**（模块加载时一次）。
-//
-// 为什么要这么做，而不是让它照常出现：那三格空态取景的对象是「三条起手 chip 按面派生」，
-// 一张一辈子只出现一次的同意卡盖在它们上面，会把那三格要证明的东西挡掉，
-// 而且会让每次跑实验室的人以为空态默认就长这样。
-// 这张卡**有自己的两格**（`states/08-consent.tsx`，那里它才是主角）。
-//
-// 副作用范围：实验室是 vite dev 端口上的独立页面，与打包 App 的 file:// 不同源，
-// 所以这个标记写不到用户真实资料库里。
-markAgentConsentAsked()
 
 const CLOCK = Date.parse('2026-09-06T09:00:00.000Z')
 const identity = { sequence: 0, entrySeq: 0, contentIndex: 0 }

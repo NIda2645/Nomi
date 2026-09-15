@@ -2,9 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFileAtomic } from '../jsonFile'
 import { getSettingsRoot } from '../settings/settingsRoot'
-import { intakeConfigured, postIntake } from './intakeClient'
+import { sendAptabaseBatch } from './aptabaseAdapter'
 import { buildTelemetryEnvelope, isTelemetryEnvelope, type TelemetryEnvelope, type TelemetryProps } from './telemetryEvents'
-import { getTelemetrySessionId, readTelemetrySettings } from './telemetrySettings'
+import { getTelemetrySessionId, readTelemetrySettings, telemetryEndpointConfigured } from './telemetrySettings'
 import type { TelemetrySummary } from '../shared/contracts/telemetry'
 
 const OUTBOX_FILE = 'telemetry-outbox.json'
@@ -50,7 +50,7 @@ export function readTelemetrySummary(): TelemetrySummary {
     pendingCount: store.pending.length,
     sentCount: store.sent.length,
     failedCount: store.failedCount,
-    endpointConfigured: intakeConfigured(),
+    endpointConfigured: telemetryEndpointConfigured(),
   }
 }
 
@@ -70,13 +70,13 @@ export function flushTelemetry(): Promise<void> {
   if (flushPromise) return flushPromise
   flushPromise = (async () => {
     const settings = readTelemetrySettings()
-    if (!settings.enabled || !intakeConfigured()) return
+    if (!settings.enabled || !telemetryEndpointConfigured()) return
     const store = readStore()
     prune(store)
     const batch = store.pending.slice(0, 25)
     if (batch.length === 0) return
     try {
-      await postIntake('/v1/events', { events: batch })
+      await sendAptabaseBatch(batch)
       const sentAt = batch.map(({ eventName, timestamp }) => ({ eventName, timestamp }))
       store.pending = store.pending.slice(batch.length)
       store.sent = [...store.sent, ...sentAt].slice(-MAX_SENT)

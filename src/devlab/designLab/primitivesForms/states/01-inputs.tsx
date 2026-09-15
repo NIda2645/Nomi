@@ -145,8 +145,8 @@ export const INPUT_STATES: readonly LabState[] = [
     name: 'DesignTextarea（autosize 开/关）/ DesignNumberInput（无步进器）',
     source: SOURCE_FORMS,
     mirrors: [
+      'src/ui/community/FeedbackShareContent.tsx:280',
       'src/ui/onboarding/CapabilityModeEditor.tsx:595',
-      'src/ui/onboarding/CustomCallEditor.tsx:663',
       'src/ui/onboarding/CapabilityModeEditor.tsx:95',
     ],
     coverage: 'shell',
@@ -156,23 +156,19 @@ export const INPUT_STATES: readonly LabState[] = [
     // 那才是要钉住的形态；画着箭头的那版本仓一处都没有。
     render: () => (
       <PrimitiveStage>
-        <Specimen label="Textarea · autosize 关 + rows 固定 + 可竖向拖高（现存两个真实调用点都是这形状）" align="stretch">
-          {/* 2026-09-15 改：这一格原来照抄的是 FeedbackShareContent:280 —— 本仓唯一走 Mantine 自带
-              `label` + autosize + minRows/maxRows 的那份。那张手填表在一键反馈里被整块删掉了
-              （P1 加新必删旧），于是那个形状在生产里**一处都没有了**。
-              继续画它就等于让实验室钉住一个没人用的形态，而实验室存在的意义正是反过来。
-              现在照抄的是活着的两处：CapabilityModeEditor:595（外层 <label> 包着）与
-              CustomCallEditor:663（aria-label）—— 两处都 autosize={false} + rows={3} + 可拖高。 */}
+        <Specimen label="Textarea · autosize 开 + minRows/maxRows 封顶（真实调用点都封顶）" align="stretch">
+          {/* 这一格是本屏唯一走 Mantine 自带 `label` 的真实形状（反馈面板），
+              逐项照抄 FeedbackShareContent:280：label + autosize + minRows/maxRows + error 字符串。 */}
           <Stateful initial={'黄昏的海边，少年逆光走向镜头。\n手持轻微晃动，暖色调。'}>
             {(value, set) => (
               <DesignTextarea
+                label="一句话说清楚"
                 placeholder="发生了什么"
-                aria-label="一句话说清楚"
                 value={value}
                 onChange={(event) => set(event.currentTarget.value)}
-                autosize={false}
-                rows={3}
-                resize="vertical"
+                autosize
+                minRows={2}
+                maxRows={4}
               />
             )}
           </Stateful>

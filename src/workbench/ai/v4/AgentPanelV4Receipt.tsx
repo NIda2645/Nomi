@@ -227,22 +227,10 @@ export function V4Process({ label, segments, running, elapsed, children }: {
  * 失败行下方的一句话原因 + 一个动作（`.errbar`）。付费任务必须标「未扣费」。
  * 它跟着收据或任务卡走，不是独立积木。
  */
-export function V4ErrorBar({ reason, action, onAction, feedbackLabel, onFeedback }: {
-  reason: string
-  action?: string
-  onAction?: () => void
-  /**
-   * 「反馈」那一颗（2026-09-15）。**刻意做成第二个可选 prop，而不是把 `action` 改成数组**：
-   * 这一行同时被 #789（停止/复制/重试回执）和 tool-face v2 改着，把 `{kind:'error'}` 的形状
-   * 从 `action?: string` 拓成动作数组会让三条 lane 在同几行上撞车，而收益只是少一个 prop。
-   * 两颗都没接时这一行和以前逐字一样（画出来的钮必须接得上宿主 —— #789 立的那条规矩）。
-   */
-  feedbackLabel?: string
-  onFeedback?: () => void
-}): JSX.Element {
+export function V4ErrorBar({ reason, action, onAction }: { reason: string; action?: string; onAction?: () => void }): JSX.Element {
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-nomi-sm bg-nomi-danger-soft px-2.5 py-1.5 text-caption text-nomi-danger"
+      className="flex items-center gap-2 rounded-nomi-sm bg-nomi-danger-soft px-2.5 py-1.5 text-caption text-nomi-danger"
       data-v4-block="errorbar"
     >
       <IconAlertTriangle size={13} aria-hidden="true" />
@@ -250,11 +238,6 @@ export function V4ErrorBar({ reason, action, onAction, feedbackLabel, onFeedback
       {action ? (
         <button type="button" className="font-medium text-nomi-ink-80" onClick={onAction}>
           {action}
-        </button>
-      ) : null}
-      {feedbackLabel && onFeedback ? (
-        <button type="button" data-v4-feedback className="font-medium text-nomi-ink-80" onClick={onFeedback}>
-          {feedbackLabel}
         </button>
       ) : null}
     </div>

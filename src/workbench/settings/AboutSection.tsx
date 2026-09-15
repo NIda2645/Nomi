@@ -62,12 +62,12 @@ export function AboutSection({ onClose, onReplaySplash }: AboutSectionProps): JS
   // 画的是它长在设置弹窗右栏、左侧 tab 始终在）。此前它 dispatch 全局事件 + 关掉设置，
   // 结果冒成一个脱离设置的独立浮层——那正是「反馈与分享点开变成独立框」这个反馈的根因。
   // 改法：在 About 区块内切视图（about ↔ feedback），复用 FeedbackShareContent，**不**再关设置。
-  // 全局 FeedbackShareHost 保留，只服务四个失败面那条无设置外壳的情境入口（它直接呈现反馈卡）。
+  // 全局 FeedbackShareHost + FeedbackShareDialog 保留，只服务画布失败卡那条无设置外壳的情境入口。
   const [view, setView] = React.useState<'about' | 'feedback'>('about')
 
   if (view === 'feedback') {
     return (
-      <FeedbackShareContent onBackToAbout={() => setView('about')} />
+      <FeedbackShareContent variant="embedded" onBackToAbout={() => setView('about')} />
     )
   }
 
