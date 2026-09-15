@@ -320,23 +320,26 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
   const generationRegistry = authorities.generationModuleRegistry ?? liveGenerationRuntime.registry
   // 可用性只有一条判据：旧版这里只看 `enabled`，于是外部助手能从上下文里读到一个
   // 供应商已停用 / 没发布 / 没钥匙的视频模型，选了它 findExecutableModel 必拒（P0-10 同类）。
-  const videoCatalog = readCatalog()
-  const videoAvailability = createCatalogAvailability(videoCatalog)
-  const videoModelCandidates = buildVideoModelCandidates(videoCatalog.models
-    .filter((model) => model.kind === 'video' && videoAvailability.of(model).usable)
-    .map((model) => ({
-      provider: model.vendorKey,
-      modelKey: model.modelKey,
-      label: model.labelZh,
-      archetypeId: videoArchetypeIdFromMeta(model.meta),
-      parameterControls: model.onboarding?.fields?.map((field) => ({
-        key: field.key,
-        label: field.displayName,
-        type: field.type,
-        options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
-        ...(field.default === undefined ? {} : { defaultValue: field.default }),
-      })),
-    })))
+  // 同样按需重算：钥匙可能在本进程起来之后才存进来，开机快照会把当时没钥匙的供应商锁死到重启为止。
+  const deriveVideoModelCandidates = () => {
+    const videoCatalog = readCatalog()
+    const videoAvailability = createCatalogAvailability(videoCatalog)
+    return buildVideoModelCandidates(videoCatalog.models
+      .filter((model) => model.kind === 'video' && videoAvailability.of(model).usable)
+      .map((model) => ({
+        provider: model.vendorKey,
+        modelKey: model.modelKey,
+        label: model.labelZh,
+        archetypeId: videoArchetypeIdFromMeta(model.meta),
+        parameterControls: model.onboarding?.fields?.map((field) => ({
+          key: field.key,
+          label: field.displayName,
+          type: field.type,
+          options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+          ...(field.default === undefined ? {} : { defaultValue: field.default }),
+        })),
+      })))
+  }
   // P4 S2: derive real per-shot prices from the live catalog pricing (readCatalog reflects user edits;
   // resolve lazily so a mid-session pricing change is picked up). Preview/gate use the model-pricing
   // resolver; the submission seam uses the contract→ShotPrice resolver for its ledger amounts.
@@ -347,7 +350,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     ?? createGenerationPlanningHandler({
       registry: generationRegistry,
       operations: operationStore,
-      videoModelCandidates,
+      get videoModelCandidates() { return deriveVideoModelCandidates() },
       defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
       planStoryboard: planStoryboardFromScript,
       recommendVideoGeneration,
