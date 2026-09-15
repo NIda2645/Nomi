@@ -6,6 +6,7 @@
 // ⚠️ 切点 ≠ 镜头。detectShotCuts 返回的是**画面切换发生的时刻**（N 个切点）；
 // 一条视频因此被切成 **N+1 段镜头**（0→cut1、cut1→cut2、…、cutN→片尾）。
 // 「按镜头拆」那个已有功能列的是切点本身（在切点处抽帧），和这里的语义不同，别混。
+import { quantizeShotSeconds } from "../shared/canvas/shotTime";
 
 /** whisper verbose_json 的 segment（只取我们用得上的三个字段）。 */
 export type TranscriptSegment = {
@@ -34,17 +35,22 @@ export type ShotDialogue = {
  *
  * 为什么第一段从 0 开始：第一个镜头不由切点产生（它从片头就在），
  * 只列切点会丢掉整个开场镜——而开场镜恰恰是广告里最重要的钩子。
+ *
+ * 时间在**这里**就被量化到 `SHOT_TIME_PRECISION_SECONDS` 的格子上（理由住在 shotTime.ts）：
+ * 这是整条拆解链上「镜头区间」这份状态唯一的产出口，抽帧、喂给 VLM 的提示词、落库的分镜表
+ * 全部从它派生——在这里量化，下游谁都不用再 round 一遍。
  */
 export function buildShotBoundaries(cutSeconds: readonly number[], durationSeconds: number): ShotBoundary[] {
-  const duration = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0;
+  const duration = quantizeShotSeconds(Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0);
   if (duration <= 0) return [];
 
-  // 去重 + 排序 + 丢掉落在片外或贴边的切点（贴边切出 0 长镜头，没意义）。
+  // 量化 → 去重 → 排序 → 丢掉落在片外或贴边的切点（贴边切出 0 长镜头，没意义）。
+  // 「贴边」的阈值由精度派生：吸到 0 或片尾那一格上的切点，就是贴边的那些。
   const cuts = Array.from(new Set(
     cutSeconds
       .filter((s) => Number.isFinite(s))
-      .map((s) => Math.max(0, s))
-      .filter((s) => s > 0.01 && s < duration - 0.01),
+      .map((s) => quantizeShotSeconds(s))
+      .filter((s) => s > 0 && s < duration),
   )).sort((a, b) => a - b);
 
   const marks = [0, ...cuts, duration];

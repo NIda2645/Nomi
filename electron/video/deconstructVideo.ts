@@ -22,6 +22,7 @@ import {
   type ShotBoundary,
   type TranscriptSegment,
 } from "./shotTimeline";
+import { quantizeShotSeconds } from "../shared/canvas/shotTime";
 import { firstString, isJsonRecord, parseLooseJsonObject, trim } from "../jsonUtils";
 // main 上 chooseTextModel/resolveTextBrainKeys 已从 agentChatV2 抽到 textBrainResolver（1040 commit 间的重构）；
 // 旧分支从 agentChatV2 import 已失效，port 时改指真源（docs/ARCHITECTURE-NOW 的「文本大脑」判据同一处）。
@@ -280,7 +281,8 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, onPhase
       index: shot.index,
       startSeconds: shot.startSeconds,
       endSeconds: shot.endSeconds,
-      durationSeconds: Number((shot.endSeconds - shot.startSeconds).toFixed(2)),
+      // 时长是派生量，不是第二份真相：两端都已落在格子上，减法的浮点尾数（1.5 - 0.7）再吸一次。
+      durationSeconds: quantizeShotSeconds(shot.endSeconds - shot.startSeconds),
       sourceFrameUrl: midFrame,
       shotSize: parsed ? firstString(parsed.shotSize) : "",
       mood: parsed ? firstString(parsed.mood) : "",
@@ -295,5 +297,7 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, onPhase
     };
   });
 
-  return { shots, durationSeconds, hasAudio, failedShotIndexes };
+  // 片长跟镜头区间落在同一个格子上：否则「最后一镜的 endSeconds」和「整片时长」会差出一条尾数，
+  // 同一张卡上两个数字互相打脸。
+  return { shots, durationSeconds: quantizeShotSeconds(durationSeconds), hasAudio, failedShotIndexes };
 }

@@ -38,6 +38,30 @@ describe("buildShotBoundaries：切点 → 镜头区间", () => {
     expect(buildShotBoundaries([2, 4], 0)).toEqual([]);
     expect(buildShotBoundaries([2, 4], Number.NaN)).toEqual([]);
   });
+
+  // ffmpeg 的切点和 ffprobe 的时长都是原始双精度测量值；用户看到的「一堆小数字」就是它们。
+  it("ffmpeg 的原始浮点切点/时长 → 全部吸到 0.1s 的格子上，一个尾数都不留", () => {
+    const out = buildShotBoundaries([1.468126, 3.903333], 8.033333);
+    expect(out).toEqual([
+      { index: 1, startSeconds: 0, endSeconds: 1.5 },
+      { index: 2, startSeconds: 1.5, endSeconds: 3.9 },
+      { index: 3, startSeconds: 3.9, endSeconds: 8 },
+    ]);
+    for (const shot of out) {
+      for (const value of [shot.startSeconds, shot.endSeconds]) {
+        expect(String(value)).toMatch(/^\d+(\.\d)?$/);
+      }
+    }
+  });
+
+  it("量化后撞到同一格的两个切点 → 合成一个，不产出 0 长镜头", () => {
+    expect(buildShotBoundaries([2.02, 2.04, 2.0499], 8).map((s) => [s.startSeconds, s.endSeconds]))
+      .toEqual([[0, 2], [2, 8]]);
+  });
+
+  it("贴边阈值由精度派生：半格以内的切点被吸到端点上而丢掉", () => {
+    expect(buildShotBoundaries([0.04, 7.96], 8)).toEqual([{ index: 1, startSeconds: 0, endSeconds: 8 }]);
+  });
 });
 
 describe("assignSegmentsToShots：句子归属", () => {
