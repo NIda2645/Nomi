@@ -63,7 +63,7 @@ try {
   gui = await launchNomiApp({
     name: 'mcp-l2-journeys', userDataDir: dirs.userDataDir, settingsDir: dirs.settingsDir, projectsDir: dirs.projectsDir, capabilityDir: dirs.capabilityDir,
     env: {
-      NOMI_APP_NAME: 'Nomi',
+      NOMI_APP_NAME: 'nomi',
       NOMI_CAPABILITY_DIR: dirs.capabilityDir,
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
       // In packaged mode app.isPackaged===true guards the fixture; opt back in
@@ -92,8 +92,8 @@ try {
   // synthetic key inside the same GUI process that owns safeStorage, using the
   // catalog writer used by Settings after credential validation.
   await gui.app.evaluate(async (_electron, root) => {
-    const { createRequire } = await import('node:module')
-    const require = createRequire(`${root}/package.json`)
+    // app.evaluate 里 require 与动态 import() 都不可用，只有 mainModule 上挂着的那一份能用。
+    const require = process.mainModule.require.bind(process.mainModule)
     const { upsertModelCatalogVendorApiKey } = require(`${root}/dist-electron/catalog/catalogStore.js`)
     const { publishBuiltinCuratedVendor } = require(`${root}/dist-electron/catalog/directKeyCredential.js`)
     upsertModelCatalogVendorApiKey('apimart', { apiKey: 'mcp-l2-loopback-key', enabled: true })
@@ -105,7 +105,7 @@ try {
     clientInfo: { name: 'Codex MCP L2', version: 'e2e' }, capabilities: {},
     ...(mcpRuntime ? { runtime: mcpRuntime } : {}),
     env: {
-      NOMI_APP_NAME: 'Nomi',
+      NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
@@ -199,7 +199,7 @@ try {
   check(resultTextJson(proxyOff).enabled === false, 'C7 管理动词可关闭单连接代理')
 
   const fourNodes = [0, 1, 2, 3].map((index) => ({ clientId: `c8-shot-${index + 1}`, kind: 'shot', title: `镜头 ${index + 1}`, prompt: `湖边纸船镜头 ${index + 1}`, position: { x: index * 380, y: 0 } }))
-  declinedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-decline'), capabilities: { elicitation: {} }, elicitationAction: 'decline', syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'Nomi' } })
+  declinedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-decline'), capabilities: { elicitation: {} }, elicitationAction: 'decline', syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'nomi' } })
   await declinedClient.initialize()
   const c8Project = await call(declinedClient, 'nomi_project_create', { name: 'C8 four-shot confirmation' })
   const c8ProjectData = resultTextJson(c8Project)
@@ -218,7 +218,7 @@ try {
   await declinedClient.terminate()
   declinedClient = null
 
-  landedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-land'), capabilities: {}, syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'Nomi' } })
+  landedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-land'), capabilities: {}, syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'nomi' } })
   await landedClient.initialize()
   const landedProject = await call(landedClient, 'nomi_project_create', { name: 'C8 four-shot landed' })
   const landedProjectData = resultTextJson(landedProject)
@@ -420,7 +420,7 @@ try {
     capabilities: { elicitation: {} }, elicitationAction: 'accept', syntheticCredentialStorage: true,
     runtime: mcpRuntime,
     env: {
-      NOMI_APP_NAME: 'Nomi',
+      NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
@@ -494,7 +494,7 @@ try {
     capabilities: {}, syntheticCredentialStorage: true,
     runtime: mcpRuntime,
     env: {
-      NOMI_APP_NAME: 'Nomi',
+      NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
