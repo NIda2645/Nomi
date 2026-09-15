@@ -109,7 +109,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/core.ts",
-      "line": 251,
+      "line": 232,
       "symbol": "importProjectAsset"
     },
     {

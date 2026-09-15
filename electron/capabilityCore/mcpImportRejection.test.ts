@@ -48,7 +48,7 @@ describe('MCP 素材导入的拒绝路径', () => {
       [/audio/, /image\/video/, /画布节点只有图\/视频两种落点/],
     ],
   ])('把 $reason 翻成带数字的一句话，而不是「导入失败」', async (rejection, patterns) => {
-    const { mcpImportRejectionMessage } = await loadCore()
+    const { mcpImportRejectionMessage } = await import('./mcpImportRejectionMessage')
     const message = mcpImportRejectionMessage('海边.mp4', rejection)
     expect(message).toContain('海边.mp4')
     for (const pattern of patterns) expect(message).toMatch(pattern)
