@@ -93,7 +93,7 @@
     {
       "kind": "write",
       "path": "electron/productionRun/productionRunRepository.ts",
-      "line": 458,
+      "line": 461,
       "symbol": "allowedProviders"
     },
     {
@@ -105,7 +105,7 @@
     {
       "kind": "write",
       "path": "electron/productionRun/productionRunReducer.ts",
-      "line": 781,
+      "line": 793,
       "symbol": "trustLevelOf"
     },
     {

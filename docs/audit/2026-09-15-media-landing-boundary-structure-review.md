@@ -96,9 +96,38 @@
 3. **「拒绝」必须携带数字或领域理由。** 只给计数的文案（「N 个过大」「N 个不支持」）视为缺陷——
    它等于告诉用户「我不告诉你」。渲染统一走 `src/workbench/assets/mediaImportMessage.ts`。
 
+## 五、出站那一半：`electron/catalog` 也持有一份 kind 判定（2026-09-15 补）
+
+触发合同：`docs/fixes/2026-09-15-media-kind-single-judgment.root-cause.json`（R21.2：本层 7 天内第 N 份）。
+
+上面四节评的是**入站**（本地文件 → 项目素材）。同一条媒体路的**出站**那一半住在 `electron/catalog`，
+而这次发现它持有第三份「contentType → kind」判定：`assetLocalization.ts` 里一个与 `mediaTypes` 里
+**同名却语义相反**的 `mediaKindFromContentType`——表那份认不出返回 `null`，它认不出一律返回 `'image'`。
+后者正是 2026-08-20 那次 HTTP 413 的根因形状（视频被当图片塞进 base64 通道），
+`electron/assets/mediaTypes.ts` 的注释从那时起就一直在警告它，但警告不是防线（R28）。
+
+已做的（随那份合同）：判断收口到 `electron/assets/mediaTypes.ts#mediaKindFromContentType`；
+catalog 那份改名 `assetUploadChannelKind` 并改为**在 owner 结果上收窄**（video/audio 原样、其余走
+上传通道的 image 默认）。逐值核对行为不变，回归测试 `electron/assets/localAssetFile.contentType.test.ts` 原样通过。
+改名本身是结构动作：同名反义的两个函数并存时，下一个读者选错一个不会有任何报错。
+
+**这一层给出的信号（记录，不在本批处置）**：`electron/catalog` 在 2026-09-09～09-15 的 7 天里
+累计收到 12 份根因合同。逐份看题目，它们并不是同一个 bug 的复发，而是**四类互不相干的责任挤在一个目录里**：
+供应商凭据与发布判据（`credential-validate-before-save` / `vendor-key-publish-class` / `apimart-direct-key-publish`）、
+花钱与配额（`quote-bound-spend`）、素材出站与投递形状（`media-delivery-shape-is-a-contract` /
+`audio-reference-slot-gate` / 本次这份）、以及能力目录本身（`model-availability-single-owner` /
+`comfyui-combo-format-drift`）。目录里 5 个文件已经贴着 800 行上限
+（`catalogStore.ts` 795、`assetLocalization.ts` 774、`taskParams.ts` 748、`runwayOfficial.ts` 720、
+`comfyuiWorkflowImport.ts` 705）——同一个信号的另一种表现。
+
+**这份补节不做那件事**：把 `electron/catalog` 按上述四类责任拆开是结构裁决，要先定「能力目录、素材出站、
+凭据发布三者各自的 owner 边界画在哪」，不是一条发版集成分支该顺手做的事（那会让这一批的回滚单位变得不可控）。
+这里只把信号和判据记在案，留给下一轮该层的专门评审。**下次改 `electron/catalog` 的人先读这一节。**
+
 ## 验收
 
-- 机器侧：`scripts/check-media-import-owner.mjs` 三条棘轮（8 / 3 / 22，只减不增），已进 `gates:contracts`；
+- 机器侧：`scripts/check-media-import-owner.mjs` 三条棘轮（8 / 2 / 21，只减不增），已进 `gates:contracts`；
+  （2026-09-15 集成批次按这棵树的实测值下调：兜底成 image 的 kind 自判 22 → 21、媒体 MAX_BYTES 常量 3 → 2；见下面第五节。）
   先验过它会红（对改之前的代码报 33 处）。
 - 行为侧：`tests/ux/media-import-matrix.walk.mjs` 的入口 × 媒体矩阵，
   BEFORE（`origin/main`）14/36 不合格 → AFTER 0/36；

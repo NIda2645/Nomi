@@ -477,13 +477,13 @@
     {
       "kind": "read",
       "path": "electron/productionRun/productionRunReducer.ts",
-      "line": 267,
+      "line": 268,
       "symbol": "cardHidden"
     },
     {
       "kind": "read",
       "path": "electron/productionRun/productionRunRepository.ts",
-      "line": 345,
+      "line": 344,
       "symbol": "cardHidden"
     },
     {
@@ -621,13 +621,13 @@
     {
       "kind": "write",
       "path": "electron/productionRun/productionRunTypes.ts",
-      "line": 236,
+      "line": 233,
       "symbol": "cardHidden"
     },
     {
       "kind": "write",
       "path": "electron/productionRun/productionRunService.ts",
-      "line": 173,
+      "line": 172,
       "symbol": "cardHidden"
     }
   ],

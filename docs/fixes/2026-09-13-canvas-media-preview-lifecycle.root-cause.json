@@ -152,7 +152,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 80,
+      "line": 127,
       "symbol": "attachStoredAssetPreview"
     },
     {
@@ -170,25 +170,25 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 554,
+      "line": 549,
       "symbol": "updateMediaDimensions"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 567,
+      "line": 562,
       "symbol": "updateMediaDimensions"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 587,
+      "line": 582,
       "symbol": "updateMediaDimensions"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetPreview.ts",
-      "line": 146,
+      "line": 149,
       "symbol": "createStoredAssetPreview"
     },
     {
@@ -230,7 +230,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 243,
+      "line": 252,
       "symbol": "hostedAssetThumbnailUrl"
     },
     {
@@ -260,7 +260,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 583,
+      "line": 578,
       "symbol": "thumbnailUrl"
     },
     {

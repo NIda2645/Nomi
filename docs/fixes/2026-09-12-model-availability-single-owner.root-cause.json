@@ -230,7 +230,7 @@
     {
       "kind": "read",
       "path": "electron/agentLane/laneHost.mts",
-      "line": 393,
+      "line": 401,
       "symbol": "availability"
     },
     {
@@ -608,7 +608,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/appIntegration.ts",
-      "line": 213,
+      "line": 215,
       "symbol": "createCatalogAvailability"
     },
     {

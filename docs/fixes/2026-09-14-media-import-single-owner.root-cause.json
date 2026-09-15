@@ -85,7 +85,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 46,
+      "line": 47,
       "symbol": "assertAdmitted"
     },
     {
@@ -193,7 +193,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 165,
+      "line": 306,
       "symbol": "filterImportableMediaFiles"
     },
     {
@@ -211,7 +211,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
-      "line": 374,
+      "line": 377,
       "symbol": "importLocalFilesToGenerationCanvas"
     },
     {
