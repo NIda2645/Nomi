@@ -44,9 +44,9 @@ import { createGenerationOutputMaterializer } from './generationOutputMaterializ
 import { hardenedFetch } from '../hardenedFetch'
 import { createRunObservationDrivers } from './appIntegrationRunObservation'
 import { readGenerationDefaultModelResolver } from './generationDefaultModelResolver'
-import { createCatalogAvailability } from '../catalog/catalogModelAvailability'
 import { readCatalog } from '../catalog/catalogStore'
-import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
+import { recommendVideoGeneration } from '../shared/videoCapabilities'
+import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
 import type { CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import {
@@ -209,29 +209,6 @@ export async function startCapabilityCore(
       }),
     } : {})
     const generationRegistry = authorities.generationModuleRegistry ?? liveGenerationRuntime.registry
-    // 可用性只有一条判据：旧版这里只看 `enabled`，于是外部助手能从上下文里读到一个
-    // 供应商已停用 / 没发布 / 没钥匙的视频模型，选了它 findExecutableModel 必拒（P0-10 同类）。
-    // 而且必须**按需重算**：钥匙常常是开机之后才存进来的（用户在设置里接入供应商、走查夹具先起 App 再写 key）。
-    // 开机时算一次就定住，等于把那一刻还没钥匙的供应商永久判成不可用，要重启才认——和下面的 pricing 同理，只能 lazy。
-    const deriveVideoModelCandidates = () => {
-      const videoCatalog = readCatalog()
-      const videoAvailability = createCatalogAvailability(videoCatalog)
-      return buildVideoModelCandidates(videoCatalog.models
-        .filter((model) => model.kind === 'video' && videoAvailability.of(model).usable)
-        .map((model) => ({
-          provider: model.vendorKey,
-          modelKey: model.modelKey,
-          label: model.labelZh,
-          archetypeId: videoArchetypeIdFromMeta(model.meta),
-          parameterControls: model.onboarding?.fields?.map((field) => ({
-            key: field.key,
-            label: field.displayName,
-            type: field.type,
-            options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
-            ...(field.default === undefined ? {} : { defaultValue: field.default }),
-          })),
-        })))
-    }
     // P4 S2: real per-shot pricing from the live catalog (resolve lazily so pricing edits apply).
     const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
     const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
@@ -354,7 +331,7 @@ export async function startCapabilityCore(
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: operationStore,
-        get videoModelCandidates() { return deriveVideoModelCandidates() },
+        get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).
         defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
         planStoryboard: planStoryboardFromScript,
