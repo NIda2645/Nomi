@@ -28,7 +28,6 @@ describe('local asset upload transport', () => {
       fileName: 'large-video.mp4',
       contentType: 'video/mp4',
       kind: 'upload',
-      ownerNodeId: null,
     })
     expect(arrayBuffer).not.toHaveBeenCalled()
     expect(importFile).not.toHaveBeenCalled()

@@ -3,7 +3,6 @@ import type { ExportJobEvent, ExportJobSnapshot, ExportJobVerification } from '.
 import type { WorkspaceFileListResult } from '../../electron/workspace/workspaceFileIndex'
 import type { WorkspaceSyncInspection } from '../../electron/shared/workspaceSyncContracts'
 import type { ProviderKind } from './providerKind'
-import type { AssetLocalizationEvent } from '../../electron/shared/assets/assetLocalizationEvent'
 import type { DesktopMediaBridge, DesktopVideoDepthBridge, DesktopAssetDto, DesktopAssetFoldersState } from './bridgeMedia'
 import type { DesktopConnectorBridge } from './bridgeConnector'
 import type { McpClientProfile, McpInfo, McpVerifyResult } from './mcpBridgeTypes'
@@ -15,7 +14,6 @@ import type { ComfyCandidateTestPayload, ComfyCandidateTestResult, ComfyWorkflow
 import type { CanvasReadSurfaceBridge } from '../../electron/shared/surfacePortBinding'
 import type { LaneBridge } from '../workbench/ai/lane/laneClient'
 import type { GenerationResolvePlanEnvelope, GenerationResolvePlanRequest } from '../../electron/shared/videoCapabilities/planResolutionContracts'
-export type { AssetLocalizationEvent }
 export type { ProviderKind }
 export type { DesktopAdapterModeResult, DesktopProviderAdapterRun, DesktopProviderRegistration } from './onboardingBridgeTypes'
 export type { ScreenshotHotkeyStatus, DesktopAssetDto, DesktopAssetFolder, DesktopAssetFoldersState } from './bridgeMedia'
@@ -392,12 +390,7 @@ export type DesktopBridge = DesktopMediaBridge &
     foldersSave?: (payload: { projectId: string; state: DesktopAssetFoldersState }) => Promise<{ ok: boolean; state: DesktopAssetFoldersState; error?: string }>
     /** 写入层落盘广播（nomi:assets:updated）——素材库面板/素材盒徽章的统一回流信号。 */
     onUpdated?: (cb: (payload: { projectId: string }) => void) => () => void
-    /**
-     * 单节点的「字节正在进项目」生命周期，一条通道两种用法：
-     * 生成结果本地化只发一次（无 bytes）= 开始；本地导入在拷贝流上连发（带 copiedBytes/totalBytes，
-     * 首条带 previewUrl）= 进度。订阅方按 projectId+nodeId 认领。
-     */
-    onLocalizationStarted?: (cb: (payload: AssetLocalizationEvent) => void) => () => void
+    onLocalizationStarted?: (cb: (payload: { projectId: string; nodeId: string }) => void) => () => void
     importRemoteUrl: (payload: {
       projectId: string
       url: string
@@ -411,7 +404,6 @@ export type DesktopBridge = DesktopMediaBridge &
       contentType?: string
       bytes: ArrayBuffer
       kind?: string
-      ownerNodeId?: string | null
     }) => Promise<DesktopAssetDto>
     /** Electron 原生 File 直传 preload；路径只在隔离桥内解析，大文件不复制进 renderer 内存。 */
     importNativeFile?: (file: File, payload: {
@@ -419,8 +411,6 @@ export type DesktopBridge = DesktopMediaBridge &
       fileName: string
       contentType?: string
       kind?: string
-      /** 导入进度广播的收件人：主进程按它把拷贝字节回报给画布上那张卡。 */
-      ownerNodeId?: string | null
     }) => Promise<DesktopAssetDto | null>
     copyFiles?: (payload: { projectId: string; paths: string[] }) => Promise<{
       created: DesktopAssetDto[]

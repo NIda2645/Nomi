@@ -14,22 +14,22 @@
   "scope_paths": [
     "electron/assets/assetPreview.ts",
     "electron/assets/assetSidecar.ts",
+    "electron/assets/projectAssetStore.ts",
     "electron/assets/localFileImport.ts",
     "electron/assets/localizeTaskAsset.ts",
-    "electron/assets/projectAssetStore.ts",
     "electron/export/mediaProbe.ts",
-    "electron/runtime.ts",
     "src/workbench/api/assetUploadApi.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+    "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
+    "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
+    "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts",
     "src/workbench/assets/assetLibraryDrag.ts",
     "src/workbench/assets/assetLibraryUsage.ts",
     "src/workbench/assets/useAllProjectAssets.ts",
-    "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
     "src/workbench/generationCanvas/components/canvasStageDrop.ts",
-    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-    "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
-    "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
-    "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
-    "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
+    "electron/runtime.ts"
   ],
   "entry_points": [
     "Generated image/video localization (localizeTaskAsset -> importRemoteAsset)",
@@ -152,19 +152,19 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 132,
+      "line": 80,
       "symbol": "attachStoredAssetPreview"
     },
     {
       "kind": "write",
       "path": "electron/assets/projectAssetStore.ts",
-      "line": 337,
+      "line": 328,
       "symbol": "attachStoredAssetPreview"
     },
     {
       "kind": "write",
       "path": "electron/assets/projectAssetStore.ts",
-      "line": 562,
+      "line": 553,
       "symbol": "attachStoredAssetPreview"
     },
     {
@@ -188,7 +188,7 @@
     {
       "kind": "write",
       "path": "electron/assets/assetPreview.ts",
-      "line": 159,
+      "line": 146,
       "symbol": "createStoredAssetPreview"
     },
     {
@@ -230,7 +230,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 247,
+      "line": 243,
       "symbol": "hostedAssetThumbnailUrl"
     },
     {
@@ -272,7 +272,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
-      "line": 27,
+      "line": 23,
       "symbol": "thumbnailUrl"
     },
     {

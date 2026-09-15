@@ -5,7 +5,6 @@ import { isJsonRecord, type JsonRecord } from '../jsonUtils'
 import { projectDirById } from '../projects/repository'
 import { localAssetUrl, stableAssetId } from './assetPaths'
 import { broadcastAssetsUpdated } from './assetEvents'
-import { copyFileWithProgress, type AssetCopyProgress } from './assetImportProgress'
 
 export function isContentAddressedUpload(meta: unknown): boolean {
   return isJsonRecord(meta) && ['upload', 'imported', 'local'].includes(String(meta.kind || '').toLowerCase())
@@ -117,14 +116,14 @@ export async function persistUploadBytes(projectId: string, bytes: Buffer, fileN
   })
 }
 
-export async function persistUploadFile(projectId: string, source: string, fileName: string, contentType: string, meta: JsonRecord, onCopyProgress?: AssetCopyProgress) {
+export async function persistUploadFile(projectId: string, source: string, fileName: string, contentType: string, meta: JsonRecord) {
   const projectDir = projectDirById(projectId)
   if (!projectDir) throw new Error('Project not found')
   await fs.promises.mkdir(projectDir, { recursive: true })
   const staging = await fs.promises.mkdtemp(path.join(projectDir, '.nomi-upload-'))
   const snapshot = path.join(staging, 'content')
   try {
-    await copyFileWithProgress(source, snapshot, onCopyProgress)
+    await fs.promises.copyFile(source, snapshot)
     const hash = await contentHashForFile(snapshot)
     const stat = await fs.promises.stat(snapshot)
     return await withUploadIdentity(projectId, hash, async () => {

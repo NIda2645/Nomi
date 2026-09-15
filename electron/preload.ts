@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { importNativeFileFromPreload } from "./assets/nativeFileBridge";
-import type { AssetLocalizationEvent } from "./shared/assets/assetLocalizationEvent";
 import { createCanvasReadSurfacePreloadBridge } from './surfacePortPreloadBridge';
 import { LANE_IPC_CHANNELS, type LaneWorkspaceProjection } from './shared/agentLane/laneContracts';
 import type { LaneDesktopCommand } from './shared/agentLane/laneDesktopContracts';
@@ -211,9 +210,8 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.on("nomi:assets:updated", listener);
       return () => ipcRenderer.removeListener("nomi:assets:updated", listener);
     },
-    // 一条通道两种用法：生成本地化只发一次（无 bytes）；本地导入在拷贝流上连发（带 copiedBytes/totalBytes）。
-    onLocalizationStarted: (cb: (payload: AssetLocalizationEvent) => void) => {
-      const listener = (_: unknown, value: AssetLocalizationEvent) => cb(value);
+    onLocalizationStarted: (cb: (payload: { projectId: string; nodeId: string }) => void) => {
+      const listener = (_: unknown, value: { projectId: string; nodeId: string }) => cb(value);
       ipcRenderer.on("nomi:assets:localization-started", listener);
       return () => ipcRenderer.removeListener("nomi:assets:localization-started", listener);
     },
