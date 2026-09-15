@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="620" viewBox="0 0 1040 620" font-family="-apple-system, PingFang SC, Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="1040" height="620" fill="#f7f6f2"/>
+  <text x="30" y="32" font-size="16" font-weight="600" fill="#111">插件方案一张图：钥匙和钱包留在前台，插件住客房，要什么都打电话到前台</text>
+
+  <!-- Nomi main process = 前台 -->
+  <rect x="30" y="60" width="430" height="330" rx="14" fill="#fff" stroke="#d9d7d1"/>
+  <text x="48" y="86" font-weight="600" fill="#111">Nomi 主进程（前台）</text>
+  <rect x="48" y="100" width="180" height="56" rx="8" fill="#fdf1ec" stroke="#e8553a"/>
+  <text x="58" y="122" fill="#c8432b" font-weight="600">API key 保险箱</text>
+  <text x="58" y="142" fill="#a63d27" font-size="12">只在这里，不外发</text>
+  <rect x="244" y="100" width="196" height="56" rx="8" fill="#fdf1ec" stroke="#e8553a"/>
+  <text x="254" y="122" fill="#c8432b" font-weight="600">报价确认卡（花钱闸）</text>
+  <text x="254" y="142" fill="#a63d27" font-size="12">每次生成前你点头才付</text>
+  <rect x="48" y="172" width="392" height="48" rx="8" fill="#f3f2ee" stroke="#e3e1dc"/>
+  <text x="58" y="192" fill="#333">画布 · 文稿 · 时间轴 · 素材库（插件能读能改的东西）</text>
+  <text x="58" y="210" fill="#777" font-size="12">走现有的 nomi_* 工具，和 Agent 自己用的是同一套</text>
+  <rect x="48" y="236" width="392" height="48" rx="8" fill="#f3f2ee" stroke="#e3e1dc"/>
+  <text x="58" y="256" fill="#333">代调模型：插件说「帮我问模型」，前台拿钥匙去问，只递回答案</text>
+  <text x="58" y="274" fill="#777" font-size="12">抄 Dify / Raycast；付费的照样先过报价卡</text>
+  <rect x="48" y="300" width="392" height="72" rx="8" fill="#eef4fc" stroke="#3b7dd8"/>
+  <text x="58" y="320" fill="#1f4f9c" font-weight="600">安装卡（装之前你看到的）</text>
+  <text x="58" y="340" fill="#333" font-size="12">pi-web-search · 作者 xxx · 周下载 5.3k · 依赖 0 个</text>
+  <text x="58" y="358" fill="#333" font-size="12">要连：api.exa.ai（理由：搜索结果） · 要读：本项目目录 · 不要：钥匙 / 钱 / 你的浏览器登录态</text>
+
+  <!-- wall -->
+  <rect x="480" y="60" width="14" height="330" fill="#d9d7d1"/>
+  <text x="487" y="220" fill="#555" font-size="11" transform="rotate(90 487 220)" text-anchor="middle">进程边界 + 系统沙箱（现成的 bash 围栏）</text>
+
+  <!-- plugin process = 客房 -->
+  <rect x="514" y="60" width="496" height="330" rx="14" fill="#fff" stroke="#d9d7d1"/>
+  <text x="532" y="86" font-weight="600" fill="#111">插件子进程（客房）</text>
+  <rect x="532" y="100" width="220" height="60" rx="8" fill="#f3f2ee" stroke="#e3e1dc"/>
+  <text x="542" y="122" fill="#333">pi-web-search</text>
+  <text x="542" y="142" fill="#777" font-size="12">原样安装，代码一行不改</text>
+  <rect x="770" y="100" width="220" height="60" rx="8" fill="#f3f2ee" stroke="#e3e1dc"/>
+  <text x="780" y="122" fill="#333">pi-mcp-adapter / 其它 pi 扩展</text>
+  <text x="780" y="142" fill="#777" font-size="12">同一个房间，同一套门禁</text>
+  <text x="532" y="192" fill="#111" font-weight="600">房间的门禁（抄 Zed 两把锁 + Figma 联网声明）</text>
+  <text x="532" y="214" fill="#333" font-size="12">① 插件自己声明要什么（域名 + 理由、读哪些目录、要不要跑命令）</text>
+  <text x="532" y="234" fill="#333" font-size="12">② 你在安装卡上点头给什么</text>
+  <text x="532" y="254" fill="#333" font-size="12">③ 系统沙箱按①∩② 机械执行：没声明的域名连不上、房间外的文件读不到、环境变量里没有钥匙</text>
+  <text x="532" y="286" fill="#111" font-weight="600">它想越界时你看到什么</text>
+  <text x="532" y="308" fill="#333" font-size="12">连未声明域名 → 被拒 + 面板里一条「pi-web-search 试图连 x.com，未声明」</text>
+  <text x="532" y="328" fill="#333" font-size="12">想用模型 → 只能打电话到前台，前台按你的档位（每步问 / 自动改 / 全自动）处理</text>
+  <text x="532" y="348" fill="#333" font-size="12">想花钱 → 报价卡照弹，和 Agent 自己花钱一模一样</text>
+  <text x="532" y="372" fill="#777" font-size="12">Windows：上游沙箱还是 alpha 且要提权，我们不替用户提权 → 那台机器上装插件前多一句警告，或先不开</text>
+
+  <!-- arrows -->
+  <path d="M 514 258 L 462 258" stroke="#3b7dd8" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M 462 196 L 514 196" stroke="#3b7dd8" stroke-width="2" marker-end="url(#a)"/>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#3b7dd8"/></marker></defs>
+
+  <!-- timeline: 3 moments -->
+  <text x="30" y="428" font-size="15" font-weight="600" fill="#111">你会经历的三个时刻</text>
+  <rect x="30" y="444" width="320" height="150" rx="12" fill="#fff" stroke="#d9d7d1"/>
+  <text x="46" y="468" font-weight="600" fill="#111">① 装</text>
+  <text x="46" y="490" fill="#333" font-size="12">技能面板旁多一栏「插件」，粘 npm 名或 GitHub 链接</text>
+  <text x="46" y="510" fill="#333" font-size="12">看到安装卡：作者 / 下载量 / 依赖数 / 它要什么 / 它拿不到什么</text>
+  <text x="46" y="530" fill="#333" font-size="12">点「装」。两步，和 Obsidian 一样</text>
+  <text x="46" y="556" fill="#777" font-size="12">砍掉：不做商店、不做评分、不做自动更新（Obsidian 也不做）</text>
+  <rect x="370" y="444" width="320" height="150" rx="12" fill="#fff" stroke="#d9d7d1"/>
+  <text x="386" y="468" font-weight="600" fill="#111">② 用</text>
+  <text x="386" y="490" fill="#333" font-size="12">Agent 面板里多出它的工具，和 nomi_* 工具并排</text>
+  <text x="386" y="510" fill="#333" font-size="12">你说「帮我找三张雨夜便利店参考图」，Agent 调它，结果落素材库</text>
+  <text x="386" y="530" fill="#333" font-size="12">落进来的东西打「外来」标，和拖进来的文件一个待遇</text>
+  <text x="386" y="556" fill="#777" font-size="12">插件本身不花钱；它要模型就走前台，该弹卡弹卡</text>
+  <rect x="710" y="444" width="300" height="150" rx="12" fill="#fff" stroke="#d9d7d1"/>
+  <text x="726" y="468" font-weight="600" fill="#111">③ 出事</text>
+  <text x="726" y="490" fill="#333" font-size="12">插件越界：被拒，面板一行说明，插件不崩 Nomi</text>
+  <text x="726" y="510" fill="#333" font-size="12">插件崩了：只有那个房间倒，画布和文稿不动</text>
+  <text x="726" y="530" fill="#333" font-size="12">不想要了：一键禁用 / 卸载，房间清空</text>
+  <text x="726" y="556" fill="#777" font-size="12">整个「插件」总开关默认关，和 Obsidian 受限模式同款</text>
+</svg>
