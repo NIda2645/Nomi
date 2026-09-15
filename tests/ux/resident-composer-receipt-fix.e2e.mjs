@@ -174,7 +174,7 @@ try {
     match: (body) => flattenRequestText(body).includes('请提出一个需要拒绝的删除动作')
       && !hasToolResult(body, 'resident-receipt-fix-rejected'),
     reply: {
-      type: 'tool', id: 'resident-receipt-fix-rejected', name: 'delete_canvas_nodes',
+      type: 'tool', id: 'resident-receipt-fix-rejected', name: 'delete_from_canvas',
       args: { nodeIds: [fixtureNodeId], reason: 'journey approval gate' },
     },
   })
@@ -185,7 +185,7 @@ try {
   })
   await sendResidentIntent(win, '请提出一个需要拒绝的删除动作，不要自行删除。')
   const deletionWire = await recorded(rejectedRequest.received, 'the real gated-action proposal')
-  expect(toolNames(deletionWire.body), 'Resident tools remain visible before any group request').toContain('delete_canvas_nodes')
+  expect(toolNames(deletionWire.body), 'Resident tools remain visible before any group request').toContain('delete_from_canvas')
   const rejectedApprovalCard = win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`).last()
   // 删节点是不可逆的：v4 把这件事写在槽的 data-kind 上（fail-closed 到 irreversible）。
   await expect(rejectedApprovalCard).toHaveAttribute('data-kind', 'approval-irreversible')
@@ -225,7 +225,7 @@ try {
   const nodesBeforeProbes = (await readProject(win, projectId)).payload.generationCanvas.nodes
   const denials = []
   for (const probe of [
-    { name: 'delete_canvas_nodes', args: { nodeIds: [fixtureNodeId], reason: 'creation surface authority probe' } },
+    { name: 'delete_from_canvas', args: { nodeIds: [fixtureNodeId], reason: 'creation surface authority probe' } },
     { name: 'bash', args: { command: 'printf executed > b1c-shell-must-not-run.txt' } },
   ]) {
     const id = `resident-creation-denied-${probe.name}`
@@ -253,7 +253,7 @@ try {
     denials.push({ tool: probe.name, wire: wireResult, result })
     walk.report.executionDenials = denials
     expect(result.isError, `${probe.name} must be refused by execution authority`).toBe(true)
-    if (probe.name === 'delete_canvas_nodes') expect(laneMessageText(result)).toContain('surface_authority_denied: This action requires the canvas surface.')
+    if (probe.name === 'delete_from_canvas') expect(laneMessageText(result)).toContain('surface_authority_denied: This action requires the canvas surface.')
     if (probe.name === 'bash') expect(laneMessageText(result)).toContain('Request coding before accessing project files.')
     await expectAbsent(win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`), {
       provenBy: creationProof, message: 'Unauthorized tools must be refused before requesting user approval',
