@@ -300,6 +300,8 @@
 
 - [2026-09-08 菜单原语现状清单（刀 1 ①）](2026-09-08-menu-primitive-inventory.md) — 17 文件 / **24 个手写菜单**逐个对账（触发·项·分隔线·禁用·定位·避让·风险）：**方向键 0/24**、点外不关 2 个、定位机制 5 套、六处各猜一遍菜单宽高的硬编码常数；A 建议**先迁时间轴右键菜单**（宿主最小、今天最坏）并把 `CanvasToolbar` 挪出刀 1（hover-open + 无触发元素 + file input 三条边界）；B 从真实用法反推 API（含 checkbox/radio/段名/危险项/项内副标题；**子菜单不做**）；C **19 条形态差异只列不改**等用户拍板；附 `AnchoredPopover` 注释按「浮层里放的是什么」划界的写法。（📋 方案待拍板）
 
+- [2026-09-14 品牌图与预置模型清单收成单一登记处（先查别人报告）](2026-09-14-vendor-logo-registry-prior-art.md) — 四份互不认识的「哪张图代表哪个品牌」收成 `VENDOR_LOGOS` 一张表 + `VendorLogoImage` 一个渲染口（照 `src/design/actions.tsx` 的唯一真相源形状）；接入页的模型清单复用既有 `ModelChipGroups`，不写第二个列表组件，数字与列表同源（✅ 已交付）
+
 ## 🤖 自动收录（待人工归位）
 
 > 这些链接由 `.github/workflows/docs-autosync.yml` 在 main 上自动补登，只保证「能被搜到」，
