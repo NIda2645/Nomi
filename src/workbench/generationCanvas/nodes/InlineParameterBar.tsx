@@ -1,11 +1,10 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { Slider } from '@mantine/core'
 import { IconAdjustmentsHorizontal, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
-import { DesignSwitch, NomiSegmented, NomiSelect, WorkbenchIconButton, type NomiSegmentedOption } from '../../../design'
-import { formatVideoOptionLabel, type ModelParameterControl } from '../../../config/modelCatalogMeta'
+import { NomiSelect, WorkbenchIconButton } from '../../../design'
+import type { ModelParameterControl } from '../../../config/modelCatalogMeta'
 import type { ModelOption } from '../../../config/models'
 import {
   type DynamicCatalogControl,
@@ -14,7 +13,6 @@ import {
   controlInitialValue,
   controlValueToString,
   isParameterControl,
-  optionLabel,
   optionValue,
 } from './controls/parameterControlModel'
 import {
@@ -26,17 +24,19 @@ import {
   splitPrimaryParameterControls,
 } from './primaryParameterChips'
 import { useFittedChipCount } from './useFittedChipCount'
-import { hasUsableSliderStep, isCompleteNumericDraft } from './controls/numericDraft'
 import { commonRatioSortKey } from './aspectRatio'
-import { ratioShape, shapedGroupLabel } from './aspectRatioShape'
 import { resolveArchetypeForOption } from './nodeModelArchetype'
 import { modelVisibilityFooterAction, useDedupedModelSelect } from '../../common/useDedupedModelSelect'
 import {
   localizeAutoOption,
-  parameterOptionLayout,
   resolveParameterOptionPurpose,
-  type ParameterOptionPurpose,
+  soloOptionControl,
 } from './parameterOptionPresentation'
+import {
+  ParameterControlBody,
+  ParameterOptionGroup,
+  ParameterPanelGroup,
+} from './controls/ParameterControlBody'
 import { translateModelDisplayText } from '../../../i18n/modelDisplayText'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 
@@ -143,62 +143,6 @@ type InlineParameterBarProps = {
 // 两种摆法共用同一块面板与同一批控件渲染函数——差的只是「参数区那一格里放什么、面板里剩什么」。
 // 「生成方式」（文生/图生 tab）在画布上仍住 composer 顶部，不进面板（2026-07-17 用户拍板第 2 点）。
 
-/**
- * 面板里的自由输入行（无候选项、无可用区间的参数）。
- *
- * 数字参数必须带草稿缓冲：这个框是受控的，每次击键都回写 meta。而输 `0.4` 要途经 `0.`，
- * 它按 HTML 规范不是合法浮点数、`input.value` 读出来是空串——于是那一键把 null 写进了节点 meta，
- * 也就写进了生成请求参数。（显示不受影响：type="number" 会保留用户键入的原文，坏的是写出去的值。）
- * 所以聚焦期间显示本地草稿，只在草稿构成完整数值时才提交；失焦时若仍是中间态就丢弃草稿回到已提交值。
- * 文本参数没有这个问题，逐键提交即可。
- */
-function ParameterTextInput({
-  control,
-  value,
-  onCommit,
-}: {
-  control: ModelParameterControl
-  value: string
-  onCommit: (value: string) => void
-}): JSX.Element {
-  const label = translateModelDisplayText(control.label)
-  const isNumeric = control.type === 'number'
-  const [draft, setDraft] = React.useState<string | null>(null)
-
-  const handleChange = (next: string): void => {
-    if (!isNumeric) {
-      onCommit(next)
-      return
-    }
-    setDraft(next)
-    if (isCompleteNumericDraft(next)) onCommit(next)
-  }
-
-  return (
-    <label
-      className={cn(
-        'flex items-center gap-2 px-2.5 rounded-nomi border border-nomi-line min-w-0 focus-within:border-nomi-accent',
-      )}
-      style={{ height: 28 }}
-    >
-      <input
-        className={cn(
-          'flex-1 appearance-none bg-transparent border-0 outline-0 text-caption text-nomi-ink-80 min-w-0',
-        )}
-        aria-label={label}
-        type={isNumeric ? 'number' : 'text'}
-        value={draft ?? value}
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        placeholder={control.placeholder}
-        onChange={(e) => handleChange(e.target.value)}
-        onBlur={() => setDraft(null)}
-      />
-    </label>
-  )
-}
-
 /** 摘要 pill 的单参数短文本：当前值的纯 label（不带价签）。boolean=开显示参数名/关跳过；空值跳过。 */
 function summaryPart(control: DynamicModelControl, meta: Record<string, unknown>, autoLabel: string): string {
   if (!isParameterControl(control)) {
@@ -280,6 +224,8 @@ export default function InlineParameterBar({
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [panelInit, setPanelInit] = React.useState<{
     left: number
+    /** 触发器自己的左缘。贴内容的浮层按它对齐——320 那个槽不存在时，按槽居中会整体偏左。 */
+    anchorLeft: number
     top: number
     maxHeight: number
     side: 'above' | 'below'
@@ -289,6 +235,9 @@ export default function InlineParameterBar({
   const triggerRef = React.useRef<HTMLButtonElement | null>(null)
   const panelRef = React.useRef<HTMLDivElement | null>(null)
 
+  // 多参数面板是一叠分组，要一个稳定的列宽才对得齐；**单参数直出不是面板**，它就是那一组选项，
+  // 宽高一律贴内容（2026-09-14 用户退回：「大片都是空白……他本来不需要看那么多地方」）。
+  // 320 在这里只剩「最宽不超过」的作用，不再是「一定这么宽」。
   const PANEL_W = 320
   const PANEL_GAP = 6
 
@@ -310,7 +259,8 @@ export default function InlineParameterBar({
     const maxHeight = side === 'above' ? Math.min(420, spaceAbove) : Math.min(420, Math.max(160, vh - rect.bottom - 18))
     // above 用 bottom 锚（面板实高小于 maxHeight 时依然贴住触发器顶）；below 用 top 锚。
     const top = side === 'above' ? vh - rect.top + PANEL_GAP : rect.bottom + PANEL_GAP
-    setPanelInit({ left, top, maxHeight, side })
+    const anchorLeft = Math.min(Math.max(8, rect.left), Math.max(8, vw - 120))
+    setPanelInit({ left, anchorLeft, top, maxHeight, side })
     setFrozenSummary(summaryText)
     setPanelOpen(true)
   }
@@ -348,6 +298,41 @@ export default function InlineParameterBar({
   // 面板打开期间 pill 文本冻结（宽度稳定）；关闭后回到实时值。
   const pillText = panelOpen ? frozenSummary : summaryText
 
+  // 单参数直出的浮层宽度 = **最宽那一项的文字宽 + 内边距**，不是那个固定的 320
+  // （2026-09-14 用户两次拍板：一列、每项一行的摆法保持不变，只把右边那截空白收掉；
+  //  ≈128px 而不是 302px，左缘与触发它的 chip 左缘对齐）。
+  //
+  // 为什么不能靠 CSS：这一列是 `minmax(0, 1fr)` 的格子，每项都被拉到容器宽，
+  // 所以量 item 的矩形只会量回容器自己；`max-content` 又会把浮层撑到「全部项排成一行」。
+  // 真正要的那个数是**文字本身**的宽度——用 Range 量内容盒，绕开被拉伸的按钮框。
+  //
+  // 「这是不是单参数直出」问 DOM（`[data-parameter-solo]`）而不是问下面的 soloControl：
+  // 这几个 hook 必须排在 `modelOptions.length === 0` 那条早返回**之前**，而 soloControl 算在它之后。
+  const [hugWidth, setHugWidth] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const panel = panelRef.current
+    const group = panel?.querySelector<HTMLElement>('[data-parameter-solo] [role="radiogroup"]')
+    if (!panelOpen || !panel || !group) { setHugWidth(null); return }
+    const items = [...group.querySelectorAll<HTMLElement>('[role="radio"]')]
+    if (items.length === 0) return
+    const range = document.createRange()
+    let widestText = 0
+    let itemPadX = 0
+    for (const item of items) {
+      range.selectNodeContents(item)
+      widestText = Math.max(widestText, range.getBoundingClientRect().width)
+      const itemStyle = getComputedStyle(item)
+      itemPadX = Math.max(itemPadX, parseFloat(itemStyle.paddingLeft || '0') + parseFloat(itemStyle.paddingRight || '0'))
+    }
+    range.detach()
+    if (!widestText) return
+    const groupStyle = getComputedStyle(group)
+    const groupPadX = parseFloat(groupStyle.paddingLeft || '0') + parseFloat(groupStyle.paddingRight || '0')
+    // 面板外壳自己那圈（内边距 + 边框）：量出来而不是写死，改了 p-2 也不用回来改这里。
+    const chrome = panel.getBoundingClientRect().width - group.getBoundingClientRect().width
+    setHugWidth(Math.ceil(widestText + itemPadX + groupPadX + chrome))
+  }, [panelOpen, summaryText])
+
   if (modelOptions.length === 0) {
     return (
       <button
@@ -371,153 +356,10 @@ export default function InlineParameterBar({
     )
   }
 
-  // 分段组（组级图形对齐）：先解析每项图形，任一有 → 整组统一双行等高（无图形项留空占位），
-  // 全无 → 纯文字单行。修「有/无图形混排项目高低参差」（2026-07-17 用户截图）。
-  // 比例组按常用序重排（16:9、9:16 领头，auto 类恒最前，未知保声明序殿后——用户拍板）。
-  const renderOptions = (
-    label: string,
-    value: string,
-    rawOptions: { value: string; text: string }[],
-    onChange: (value: string) => void,
-    requestedPurpose: ParameterOptionPurpose = 'generic',
-  ): JSX.Element => {
-    const purpose = resolveParameterOptionPurpose(rawOptions, requestedPurpose)
-    let entries = rawOptions.map((option) => {
-      const localized = localizeAutoOption(
-        option.value,
-        translateModelDisplayText(option.text),
-        t('generationCommon.parameters.auto'),
-      )
-      return {
-        ...localized,
-        shape: purpose === 'aspect-ratio'
-          ? ratioShape(localized.isAuto, localized.value, localized.text)
-          : null,
-      }
-    })
-    if (parameterOptionLayout(entries, purpose) === 'select') {
-      return (
-        <NomiSelect
-          ariaLabel={label}
-          value={value}
-          options={entries.map((entry) => ({ value: entry.value, label: entry.text }))}
-          onChange={onChange}
-          searchable
-          portalTarget={panelRef}
-          className="w-full justify-between"
-        />
-      )
-    }
-    const anyShape = entries.some((e) => e.shape)
-    if (anyShape) {
-      // Array.sort 稳定：同键项保持声明相对序。
-      entries = [...entries].sort((a, b) => commonRatioSortKey(a.value, a.text) - commonRatioSortKey(b.value, b.text))
-    }
-    const options: NomiSegmentedOption[] = entries.map((o) => ({
-      value: o.value,
-      label: anyShape ? shapedGroupLabel(o.text, o.shape) : o.text,
-      title: o.text,
-    }))
-    return (
-      <NomiSegmented
-        ariaLabel={label}
-        value={value}
-        options={options}
-        // 双行组无需再撑最小高：每项都带 18px 图形槽（含空占位）→ 内容自然等高。
-        density="compact"
-        onChange={onChange}
-      />
-    )
-  }
-
-  // 面板参数组：少量短候选 → 分段；长/多候选 → 搜索列表；其余控件保持原交互。
-  const renderPanelGroup = (control: DynamicModelControl): JSX.Element => {
-    const label = translateModelDisplayText(control.label)
-    // boolean → Switch 行（label 左、开关右，2026-07-17 用户拍板）；组标题即行标题，不再另起。
-    if (isParameterControl(control) && control.type === 'boolean') {
-      const on = (controlInitialValue(control, meta) || 'false') === 'true'
-      return (
-        <div key={control.key} className="flex items-center justify-between gap-2" style={{ minHeight: 26 }}>
-          <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
-          <DesignSwitch
-            size="sm"
-            color="var(--nomi-accent)"
-            aria-label={label}
-            checked={on}
-            onChange={(e) => onParameterControlChange(control, e.currentTarget.checked ? 'true' : 'false')}
-          />
-        </div>
-      )
-    }
-    const body = ((): JSX.Element => {
-      if (!isParameterControl(control)) {
-        return renderOptions(
-          label,
-          catalogControlInitialValue(control, meta),
-          control.options.map((o) => ({ value: optionValue(o), text: optionLabel(o) })),
-          (v) => onCatalogControlChange(control, v),
-        )
-      }
-      if (control.options.length > 0) {
-        return renderOptions(
-          label,
-          controlInitialValue(control, meta),
-          control.options.map((o) => ({
-            value: controlValueToString(o.value),
-            text: formatVideoOptionLabel(o.label, o.priceLabel),
-          })),
-          (v) => onParameterControlChange(control, v),
-        )
-      }
-      // 数值 + min/max（时长秒数这类连续档）→ 滑杆 + 当前值（2026-07-17 用户拍板）。
-      // 但步长切不出两档以上的区间（如未声明步长的 0–1）滑杆等于废掉，退回下面的数字框。
-      if (
-        control.type === 'number'
-        && typeof control.min === 'number'
-        && typeof control.max === 'number'
-        && hasUsableSliderStep(control.min, control.max, control.step)
-      ) {
-        const current = Number(controlInitialValue(control, meta))
-        const value = Number.isFinite(current) ? current : control.min
-        return (
-          <div className="flex items-center gap-3 min-w-0">
-            <Slider
-              className="flex-1 min-w-0"
-              aria-label={label}
-              value={value}
-              min={control.min}
-              max={control.max}
-              step={control.step || 1}
-              label={null}
-              onChange={(v) => onParameterControlChange(control, String(v))}
-              styles={{
-                track: { '--slider-track-bg': 'var(--nomi-ink-10)' },
-                bar: { background: 'var(--nomi-accent)' },
-                thumb: { borderColor: 'var(--nomi-accent)', background: 'var(--nomi-paper)' },
-              }}
-            />
-            <span className="shrink-0 text-right text-caption text-nomi-ink-80 tabular-nums" style={{ minWidth: 28 }}>
-              {value}
-            </span>
-          </div>
-        )
-      }
-      // 自由数值/文本（无候选项、无范围）：面板内输入行。
-      return (
-        <ParameterTextInput
-          control={control}
-          value={controlInitialValue(control, meta)}
-          onCommit={(v) => onParameterControlChange(control, v)}
-        />
-      )
-    })()
-    return (
-      <div key={control.key} className="flex flex-col gap-1.5" data-agent-parameter-control={control.key}>
-        <div className="text-micro font-semibold leading-none text-nomi-ink-40">{label}</div>
-        {body}
-      </div>
-    )
-  }
+  // 控件长什么样住在 `controls/ParameterControlBody.tsx`（R9：这个文件只留编排）。
+  // 「改一个参数写到哪儿去」三件一组传下去：面板、单参数直出、每个参数组共用同一份，
+  // 谁也别再自己接一遍（P1）。
+  const controlWiring = { meta, onCatalogControlChange, onParameterControlChange }
 
   const hasProvider = modelSelect.providerOptions.length > 1
   // 触发器只在**里面真有东西**时出现：长尾参数、供应商、生成方式一件都没有的模型
@@ -530,38 +372,72 @@ export default function InlineParameterBar({
     ? modelSelect.variantOptions
     : (variantChoices || []).map((variant) => ({ value: variant.id, label: variant.label }))
 
+  /**
+   * **只有一个参数时，pill 点开直接就是那个参数的选项列表**（没有面板壳）——2026-09-11 13:00 用户拍板。
+   *
+   * 面板的价值是「一次打开连改多项」。只剩一个参数时它没有那个价值，只剩一层壳：
+   * 图片节点只有尺寸，却要 pill → 面板 → 下拉 → 列表 → 选（四步）。直出之后是两步，选完即关。
+   * 条件写全（供应商、生成方式也算参数组）——少算一个，面板里就会有东西被这条路吞掉。
+   */
+  const soloControl = soloOptionControl({
+    controls: panelControls,
+    hasProvider,
+    hasModeChoices: Boolean(modeChoices?.length && onModeSelect),
+    chipsMode,
+  })
+
+  // **单参数直出不是面板**，它就是那一组选项，宽高一律贴内容
+  // （2026-09-14 用户退回：「大片都是空白，理论上不需要，非常占用视觉空间；他本来不需要看那么多地方」）。
+  // 多参数面板仍要一个稳定列宽把各组小标题对齐，所以只有这条路改。
+  const hugsContent = soloControl !== null
+
   const renderParameterPanel = (surface: 'portal' | 'inline'): JSX.Element => {
-    const content = (
+    // 浮层的名字得说实话：单参数直出时它就是那个参数的选项列表，不是「参数面板」。
+    const surfaceLabel = soloControl
+      ? translateModelDisplayText(soloControl.label)
+      : t('generationCommon.parameters.panel')
+    const content = soloControl ? (
+      <div
+        className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'overflow-y-auto overscroll-contain rounded-nomi-lg p-2')}
+        style={{ maxHeight: surface === 'portal' ? panelInit?.maxHeight : 320 }}
+        data-parameter-solo={soloControl.key}
+        data-agent-parameter-control={soloControl.key}
+      >
+        <ParameterControlBody control={soloControl} {...controlWiring} onPicked={closePanel} />
+      </div>
+    ) : (
       <div className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'flex flex-col gap-3 overflow-y-auto overscroll-contain rounded-nomi-lg p-3')} style={{ maxHeight: surface === 'portal' ? panelInit?.maxHeight : 320 }}>
         {modeChoices?.length && onModeSelect ? (
           <div className="flex flex-col gap-1.5" data-agent-generation-mode="true">
             <div className="text-micro font-semibold leading-none text-nomi-ink-40">
               {modeLabel || t('generationCommon.parameters.generationMode')}
             </div>
-            {renderOptions(
-              modeLabel || t('generationCommon.parameters.generationMode'),
-              activeModeId,
-              modeChoices.map((choice) => ({ value: choice.id, text: choice.label })),
-              onModeSelect,
-            )}
+            <ParameterOptionGroup
+              ariaLabel={modeLabel || t('generationCommon.parameters.generationMode')}
+              value={activeModeId}
+              rawOptions={modeChoices.map((choice) => ({ value: choice.id, text: choice.label }))}
+              onChange={onModeSelect}
+            />
           </div>
         ) : null}
         {/* summary 形态：全部参数都在这里（摘要 pill 只是读，不占走任何一个）。
             chips 形态：只放**没上底栏**的那些——上了 chip 的参数在这里再出现一次，
             就是同一个值两个家（§1.5.2）。 */}
-        {panelControls.map((control) => renderPanelGroup(control))}
+        {panelControls.map((control) => (
+          <ParameterPanelGroup key={control.key} control={control} {...controlWiring} />
+        ))}
         {hasProvider ? (
           <div className="flex flex-col gap-1.5">
             <div className="text-micro font-semibold leading-none text-nomi-ink-40">
               {t('generationCommon.parameters.provider')}
             </div>
-            {renderOptions(
-              t('generationCommon.parameters.provider'),
-              modelSelect.providerValue,
-              modelSelect.providerOptions.map((o) => ({ value: o.value, text: o.label })),
-              modelSelect.onProviderPick,
-              'provider',
-            )}
+            <ParameterOptionGroup
+              ariaLabel={t('generationCommon.parameters.provider')}
+              value={modelSelect.providerValue}
+              rawOptions={modelSelect.providerOptions.map((o) => ({ value: o.value, text: o.label }))}
+              onChange={modelSelect.onProviderPick}
+              requestedPurpose="provider"
+            />
           </div>
         ) : null}
       </div>
@@ -571,7 +447,7 @@ export default function InlineParameterBar({
         <div
           ref={panelRef}
           role="group"
-          aria-label={t('generationCommon.parameters.panel')}
+          aria-label={surfaceLabel}
           data-agent-parameter-panel="true"
           className="w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
           style={{ boxShadow: 'var(--workbench-shadow-pop)' }}
@@ -584,14 +460,18 @@ export default function InlineParameterBar({
       <div
         ref={panelRef}
         role="group"
-        aria-label={t('generationCommon.parameters.panel')}
+        aria-label={surfaceLabel}
         data-agent-parameter-panel="true"
         className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
         style={{
           zIndex: 600,
-          left: panelInit?.left,
+          left: hugsContent ? panelInit?.anchorLeft : panelInit?.left,
           ...(panelInit?.side === 'above' ? { bottom: panelInit.top } : { top: panelInit?.top }),
-          width: PANEL_W,
+          ...(hugsContent
+            // 量出来之前先按面板列宽画一帧：一列摆法下 `max-content` 会把浮层撑成
+            // 「全部项排成一行」，比 320 还宽，闪一下比什么都难看。
+            ? { width: hugWidth ?? PANEL_W, maxWidth: PANEL_W }
+            : { width: PANEL_W }),
           boxShadow: 'var(--workbench-shadow-pop)',
         }}
       >

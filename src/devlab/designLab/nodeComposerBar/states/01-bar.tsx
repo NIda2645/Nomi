@@ -8,13 +8,14 @@
 //
 // 格 id 保持样张阶段的名字不变：截图文件名是拍板对账的锚点，改名等于把前几版的对账线索弄丢。
 import React from 'react'
-import { ChipsModeStage, ComposerBarStage } from '../nodeComposerBarLabKit'
+import { ChipsModeStage, ComposerBarStage, ParamPanelStage } from '../nodeComposerBarLabKit'
 import type { LabState } from '../../labScreen'
 
 const SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §v1.1（摘要 pill + 统一面板）'
 const CHIPS_SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §B（逐参数下拉 · 只给付费确认卡）'
+const FLAT_SOURCE = 'docs/design/2026-09-10-node-composer-bar-v1.md §v1.2（面板里选项摊开 · 单参数直出）'
 const MIRRORS = [
-  'src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:109',
+  'src/workbench/generationCanvas/nodes/InlineParameterBar.tsx:166',
   'src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx:414',
   'src/workbench/generationCanvas/nodes/NodePromptToolCluster.tsx:22',
   'src/workbench/generationCanvas/nodes/NodeFloatingToolbar.tsx:26',
@@ -77,5 +78,27 @@ export const COMPOSER_BAR_STATES: readonly LabState[] = [
     coverage: 'shell',
     scheme: 'light',
     render: () => <ChipsModeStage />,
+  },
+  // ── v1.2：点开之后那一层（2026-09-11 13:00 用户真机拍板「点好几次」）──────────────
+  // 浮层 portal 到 body、不在舞台子树里，所以这两格必须截整屏（capture: 'viewport'）。
+  {
+    id: 'composer-bar-panel-flat-options',
+    name: 'v1.2 · 参数面板展开：选项全摊开，一个下拉都没有（比例带图形 / 清晰度 / 时长滑杆）',
+    source: FLAT_SOURCE,
+    mirrors: 'src/workbench/generationCanvas/nodes/NodeParameterControls.tsx:670',
+    coverage: 'component-only',
+    capture: 'viewport',
+    scheme: 'light',
+    render: () => <ParamPanelStage kind="video-panel" />,
+  },
+  {
+    id: 'composer-bar-panel-solo-direct',
+    name: 'v1.2 · 只有一个参数（Agnes Image 只声明「尺寸」）：点 pill 一步直出选项，没有面板壳',
+    source: FLAT_SOURCE,
+    mirrors: 'src/workbench/generationCanvas/nodes/NodeParameterControls.tsx:670',
+    coverage: 'component-only',
+    capture: 'viewport',
+    scheme: 'light',
+    render: () => <ParamPanelStage kind="image-solo" />,
   },
 ]

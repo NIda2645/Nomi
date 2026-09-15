@@ -162,7 +162,8 @@ i18n `parameters.workflowParams`）**在 04:30 的纠正里全部恢复**——�
 不是遗留物。恢复用的是 `git show d0cc83163^`，不是凭记忆重写。
 
 没有并行版：`chips` 那一支不再有自己的面板、自己的摘要、自己的控件渲染函数，
-它和 `summary` 共用 `renderParameterPanel` / `renderPanelGroup`（单测直接数这两处只有一个定义）。
+它和 `summary` 共用 `renderParameterPanel`（壳里）/ `ParameterPanelGroup`（`controls/ParameterControlBody.tsx`）
+（单测直接数这两处只有一个定义）。
 
 ### 走查怎么守（各守各的形态）
 
@@ -372,3 +373,97 @@ tests/ux/shots/node-composer-placement/06-video-param-panel.png  ← 点摘要 p
 
 还没做的一件：**录基线**。等用户看过真机截图点头，再删 `calibration.json` 里
 `node-composer-bar` 的待拍板登记并跑 `pnpm run design-lab:update -- --screen node-composer-bar`。
+
+---
+
+## v1.2 · 面板里选项摊开 · 单参数直出（2026-09-11 13:00 用户真机拍板）
+
+前面几版钉的都是**收起来**那一层（底栏长什么样）。用户当天反馈的「点好几次」全发生在
+**点开之后**：
+
+```
+底栏 pill → 参数面板 → 面板里的下拉 → 弹出的列表 → 选中那一项     ← 四步
+```
+
+中间两步是同一件事做了两遍：面板本身已经是用户点开的那一次结果，里面再套一颗要点开的下拉，
+等于把一个折叠层塞进另一个折叠层。**这一版换的不是外观，是步数**——改一个值变成两步
+（pill → 点那一项）。
+
+### 拍板三条
+
+| # | 拍板 | 落点 |
+|---|---|---|
+| 1 | **面板里不再套下拉**：枚举参数的选项直接摊成可点项、当前值高亮；≤8 项一律摊平，>8 才带搜索框且**列表默认就展开**。数值 / 滑杆 / 开关不动 | `parameterOptionPresentation.ts:66`（三种摆法）+ `controls/ParameterControlBody.tsx:114`（`ParameterOptionList`） |
+| 2 | **付费卡 ⚙ 的长尾面板一起变**（同一块渲染）；chips 自己那颗下拉不动 | 结构上自动成立：⚙ 走的就是 `renderParameterPanel`。走查对那一格单独断一次，防它以后被岔开 |
+| 3 | **只有一个参数时 pill 直接出列表**，没有面板壳，点一项即写入并关闭 | `parameterOptionPresentation.ts:86`（`soloOptionControl`）+ `InlineParameterBar.tsx:341` |
+
+### 三种摆法怎么选（判据从**选项本身**来，不点名任何参数）
+
+| 摆法 | 什么时候 | 长什么样 |
+|---|---|---|
+| `chips-row` | 标签短（≤8 个 ASCII 格宽），或语义角色是比例 / 供应商 | 一排 chip，超宽自动换行；比例那组每项带比例小图形 |
+| `chips-column` | 候选 ≤8 个但标签长（模型文件名、长枚举） | 一项一行、文字左对齐、读不完就断行。挤进等宽格子只会各自 truncate 成一排读不出的省略号——那时「摊开」等于没摊开 |
+| `searchable-list` | 候选 > 8 个 | 搜索框 + **默认就展开**的一列可点项 |
+
+**为什么上限是 8**：不是拍脑袋。`NomiSelect` 的列表区就是 `max-h-[240px]`
+（`src/design/NomiSelect.tsx:227`）配每行 `minHeight: 30`（`src/design/NomiSelect.tsx:168`），
+240 / 30 = 8 行一屏。沿用同一把尺子，摊开的那一列和原来下拉弹出的那一列一样高，
+不会出现「摊开之后反而要滚」。
+
+**搜索框在这里的职责是缩短列表，不是藏起列表**：它不自动抢焦点（用户多半是来点一下就走的，
+抢焦点会把键盘从画布上偷走），当前值恒在列表里（被搜索过滤掉之后，「当前选的是哪个」就没有
+任何地方还说得出来了）。
+
+### 单参数直出：四个条件缺一不可
+
+面板的价值是「一次打开连改多项」。只剩一个参数时它没有那个价值，只剩一层壳——图片节点只有
+尺寸，却要走满四步。直出的条件是「面板里还有没有别的东西」这同一个问题的四个面：
+
+1. 不是 chips 形态（⚙ 本来就只收长尾，不是这条路的宿主）；
+2. 没有供应商组；
+3. 没有生成方式组；
+4. 那唯一的控件**有候选项**——把一根没有标题的滑杆直接弹在半空中，谁也不知道它在调什么。
+
+直出时浮层的 `aria-label` 用参数名，不叫「参数面板」：浮层的名字得说实话。
+
+### 删除清单（P1）
+
+- 面板里那颗 `NomiSelect`，连同 `portalTarget={panelRef}` 这条**只属于「面板内下拉」的签名**
+  （面板里的下拉必须把浮层 portal 进面板自己，否则点外面会把面板关掉）。单测直接守这个字符串
+  不再出现——守的是那条路真的被删了，不是又长回来一份「短候选摊开、长候选下拉」的并行版。
+- `parameterOptionLayout` 的 `'select'` 返回值整条删除。
+- **没有**给单参数另写一套渲染：它和面板共用 `ParameterControlBody`
+  （`controls/ParameterControlBody.tsx:237`），差别只有外面套不套那行小标题。
+- 壳里那 5 个控件渲染函数（`renderOptions` / `renderControlBody` / `renderPanelGroup` 与
+  `ParameterOptionList` / `ParameterTextInput` 两个私有组件）随 R9 拆巨壳**整体搬进**
+  `controls/ParameterControlBody.tsx`——搬不是抄，单测断壳里一份副本都不留。
+
+### 与 §1.5 / 按钮图标规则对账
+
+| 规则 | 这一版 |
+|---|---|
+| 一功能一个家 | 参数的家还是那颗 pill。变的只是它打开后是「面板」还是「那一个参数的列表」——由参数条数决定，不是两个入口 |
+| 先分组 → 去重 → 归位 → 最后才收纳 | 这一版正是**反向收纳**：把已经收进下拉的选项重新摊出来。收纳是最后手段，>8 项才动用（搜索框），而且仍不折叠 |
+| 一屏一主动作 | 浮层里没有「确定 / 应用」按钮：点一项即生效（chips 与列表都是 `role=radio` + `aria-checked`，W3C APG 的 Radio Group 语义） |
+| 自造概念不硬造 icon | 全程没有新增任何图标 |
+
+### 证据强度
+
+| 部分 | 是什么 |
+|---|---|
+| 实验室两格 | `composer-bar-panel-flat-options`（Seedance 2 真实档案 → 多参数面板）与 `composer-bar-panel-solo-direct`（Agnes Image 真实档案，只声明一个「尺寸」→ pill 直出）。控件由 `resolveRenderedControls`（生产同一个函数）derive；展开态由取景台**真的点一下那颗 pill** 得到，点不到就当场抛错。浮层 portal 到 body，所以两格 `capture: 'viewport'` 截整屏 |
+| 真机 | `node-composer-placement.walk.mjs` 在打包 Electron 里对视频节点与图片节点各断一次「下拉 0 个 / 可点项 ≥1 个」。这台机器上**没有**单参数图片模型（内置图片档案声明了比例 + 清晰度），所以直出那半边只由实验室那一格守——不在真机断言里假装走到了一个不存在的模型 |
+| 付费卡 ⚙ | `design-lab-agent-panel-v4.walk.mjs` 只对 `v4-spend-params-panel-open` 那一格断言：其余格子没有参数浮层，对它们断「没有下拉」是句在任何情况下都成立的废话 |
+
+每一条「没有下拉」都配一句基线（「数得到可点选项」）：面板整个空着时「没有下拉」照样成立，
+那种绿和真绿在观测上一模一样。
+
+### 文案（i18n · R15）
+
+这一版**一条新词条都没加**：搜索框那两句本来就是 `NomiSelect` 的搜索框在用的
+（`src/design/NomiSelect.tsx:222` / `:228`），直接复用——同一句话在两处说法不同才是 i18n 的债。
+
+| 键 | zh-CN | en | 出处 |
+|---|---|---|---|
+| `common.searchOptions` | 搜索选项 | Search options | 现役（`src/i18n/resources.ts:41`） |
+| `common.noMatchingOptions` | 没有匹配的选项 | No matching options | 现役（`src/i18n/resources.ts:42`） |

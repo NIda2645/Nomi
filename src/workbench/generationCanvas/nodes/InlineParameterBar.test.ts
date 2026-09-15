@@ -21,6 +21,7 @@ vi.mock('../../../design', () => ({
   },
   NomiSegmented: () => null,
   DesignSwitch: () => null,
+  DesignSearchInput: () => null,
 }))
 
 describe('InlineParameterBar catalog variant control', () => {
@@ -162,22 +163,70 @@ describe('InlineParameterBar 参数摆法（parameterLayout）', () => {
 })
 
 describe('InlineParameterBar semantic option presentation wiring', () => {
+  // 编排（谁打开这块面、面里还摆不摆供应商/生成方式）住在壳里；
+  // 控件长什么样住在 `controls/ParameterControlBody.tsx`（R9 拆巨壳时整体搬过去的，不是复制）。
+  // 下面每条不变量都断在**它真正归属的那层**——断错层就是假绿。
   const source = readFileSync(fileURLToPath(new URL('./InlineParameterBar.tsx', import.meta.url)), 'utf8')
+  const body = readFileSync(
+    fileURLToPath(new URL('./controls/ParameterControlBody.tsx', import.meta.url)),
+    'utf8',
+  )
 
   it('passes supplier semantics through the shared option renderer', () => {
     expect(source).toMatch(
-      /renderOptions\([\s\S]*?modelSelect\.providerOptions\.map\([\s\S]*?modelSelect\.onProviderPick,[\s\S]*?'provider',[\s\S]*?\)/,
+      /<ParameterOptionGroup[\s\S]*?modelSelect\.providerOptions\.map\([\s\S]*?modelSelect\.onProviderPick[\s\S]*?requestedPurpose="provider"[\s\S]*?\/>/,
     )
   })
 
   it('resolves semantic purpose before choosing shapes or a searchable list', () => {
-    expect(source).toContain('resolveParameterOptionPurpose(rawOptions, requestedPurpose)')
+    expect(body).toContain('resolveParameterOptionPurpose(rawOptions, requestedPurpose)')
   })
 
-  // 两种摆法是**同一个组件的一个属性**，不是两份实现：面板与它那批控件渲染函数只能有一处。
+  // 两种摆法是**同一个组件的一个属性**，不是两份实现：面板与它那批控件渲染只能有一处。
   it('两种摆法共用同一块面板（renderParameterPanel 只有一个定义、只被声明一次）', () => {
     expect(source.match(/const renderParameterPanel = /g) ?? []).toHaveLength(1)
-    expect(source.match(/const renderPanelGroup = /g) ?? []).toHaveLength(1)
+    expect(body.match(/export function ParameterPanelGroup\(/g) ?? []).toHaveLength(1)
     expect(source).toContain("parameterLayout = 'summary'")
+  })
+
+  // 拆巨壳是**搬**不是抄：控件那批渲染只许住在 ParameterControlBody 里，
+  // 壳里再长回一份就是并行版（P1）。
+  it('控件渲染只有一处：壳里不留任何一份副本', () => {
+    for (const moved of ['ParameterOptionList', 'NomiSegmented', 'DesignSwitch', '@mantine/core']) {
+      expect(source).not.toContain(moved)
+      expect(body).toContain(moved)
+    }
+  })
+
+  // 2026-09-11 13:00 用户拍板：**面板里不再套下拉**。这条守的是那条路真的被删了，
+  // 不是又长回来一份「短候选摊开、长候选下拉」的并行版（P1）。
+  // 判据取 `portalTarget={panelRef}`：面板里的下拉必须把浮层 portal 进面板自己
+  // （否则点外面会把面板关掉），所以它是「面板内下拉」独有的签名；底栏那几颗 chip 的
+  // 下拉用的是调用方给的 `portalTarget`，不碰 panelRef。
+  it('面板里没有下拉：选项一律摊开（chip 一排/一列，或默认展开的搜索列表）', () => {
+    expect(source).not.toContain('portalTarget={panelRef}')
+    expect(body).not.toContain('NomiSelect')
+    expect(body).toContain('<ParameterOptionList')
+    expect(body).toContain("optionLayout === 'chips-column' ? 'column' : 'fill'")
+  })
+
+  // 2026-09-14 用户两次拍板之后的最终形态：**一列、每项一行的摆法不动**（横排换行被退回：
+  // 「两个一行、三个一行反而更难受」），只把浮层右边那截空白收掉——宽度 = 最宽项文字宽 + 内边距。
+  it('单参数直出：摆法仍是一列，浮层宽度由最宽项的文字派生而不是固定 320', () => {
+    expect(source).toContain('hugsContent')
+    expect(source).toContain('hugWidth')
+    // 量的是文字（Range 量内容盒），不是被 1fr 拉伸的按钮框——量错对象就会量回容器自己。
+    expect(source).toContain('range.selectNodeContents(item)')
+    // 左缘与触发它的 chip 对齐，不按那个不存在的 320 槽居中。
+    expect(source).toContain('hugsContent ? panelInit?.anchorLeft : panelInit?.left')
+    // 横排换行那一版已整段撤掉：一种摆法、一份控件体（P1）。
+    expect(source).not.toContain("'chips-wrap'")
+  })
+
+  // 单参数直出与面板走的是**同一个** ParameterControlBody：给单参数另写一套渲染就是并行版。
+  it('单参数直出与面板共用同一处控件渲染（ParameterControlBody 只有一个定义）', () => {
+    expect(body.match(/export function ParameterControlBody\(/g) ?? []).toHaveLength(1)
+    expect(source).toContain('<ParameterControlBody control={soloControl} {...controlWiring} onPicked={closePanel} />')
+    expect(body).toContain('<ParameterControlBody')
   })
 })

@@ -147,6 +147,17 @@ async function measure() {
       // 参数面板里的参数组（面板 portal 到 body，所以从 document 找，不从卡里找）。
       panelControlKeys: [...document.querySelectorAll('[data-agent-parameter-panel="true"] [data-agent-parameter-control]')]
         .map((element) => element.getAttribute('data-agent-parameter-control')),
+      // 面板里**一个下拉都不许有**（2026-09-11 13:00 用户拍板：选项全摊开）。
+      // `aria-haspopup="listbox"` 是 Mantine Combobox 给触发器加的属性，所有 NomiSelect 都带它——
+      // 按属性数，不按组件名数：换个下拉实现照样拦得住。
+      panelSelects: document.querySelectorAll('[data-agent-parameter-panel="true"] [aria-haspopup="listbox"]').length,
+      // 摊开的可点项数（分段 chip 与列表项都是 role=radio）。它是上面那句「没有下拉」的基线：
+      // 面板整个空着时「没有下拉」也成立，而那种绿和真绿在观测上一模一样。
+      panelOptionCount: document.querySelectorAll('[data-agent-parameter-panel="true"] [role="radio"]').length,
+      // 单参数直出：点 pill 出来的就是那一个参数的选项列表，没有面板壳。null = 走的是面板。
+      panelSolo: document.querySelector('[data-agent-parameter-panel="true"] [data-parameter-solo]')
+        ?.getAttribute('data-parameter-solo') ?? null,
+      panelOpen: document.querySelectorAll('[data-agent-parameter-panel="true"]').length,
     }
   })
 }
@@ -328,6 +339,18 @@ try {
   if (!withPanel) throw new Error('打开参数面板后量不到浮框几何')
   check('点开 pill 弹的是统一参数面板，里面确实有参数组（基线：不是一块点开空白的面板）',
     withPanel.panelControlKeys.length > 0, `面板里 ${withPanel.panelControlKeys.join(' / ') || '空'}`)
+  // v1.2（2026-09-11 13:00 用户真机拍板）：**面板里一个下拉都没有**——枚举参数的选项直接摊成
+  // 可点项（一排/一列 chip，>8 项才是默认就展开的搜索列表）。改一个值因此是「pill → 点那一项」两步，
+  // 不再是「pill → 面板 → 下拉 → 列表 → 选」四步。
+  // 基线是同一句里的 `panelOptionCount > 0`：面板空着时「没有下拉」照样成立，那种绿骗不过这条。
+  check(
+    '视频节点：面板里一个下拉都没有，选项全摊开（基线：面板里数得到可点选项）',
+    withPanel.panelSelects === 0 && withPanel.panelOptionCount > 0,
+    `下拉 ${withPanel.panelSelects} 个 / 摊开的可点项 ${withPanel.panelOptionCount} 个`,
+  )
+  check('视频节点是多参数，走的是面板不是单参数直出（两条路各守各的）',
+    withPanel.panelControlKeys.length > 1 && withPanel.panelSolo === null,
+    `参数 ${withPanel.panelControlKeys.length} 组 / solo=${withPanel.panelSolo}`)
   await screenshotSettled(getWin(), { path: path.join(shotsDir, '06-video-param-panel.png') })
   // 挑一个**没被选中**的分段档。定位先在页面里算好「哪一组的第几项」再用稳定选择器点：
   // 直接写 `[aria-checked="false"]` 会在点完之后指向另一项（选择器自己失效了），
@@ -454,8 +477,34 @@ try {
   // derive 的，不是一张写死的清单在到处渲染。
   check('图片与视频的参数摘要各按各的档案来（两边不是同一句）', image.parameterSummary !== first.parameterSummary,
     `视频「${first.parameterSummary}」/ 图片「${image.parameterSummary}」`)
-  await dismiss()
   await screenshotSettled(getWin(), { path: path.join(shotsDir, '05-image-node-composer.png') })
+
+  // ⑦.6 图片节点点开之后那一层，也必须是摊开的（v1.2 同一条规则，两种节点各量一次：
+  // 「面板里没有下拉」若只在视频节点上验，换个档案就可能悄悄退回下拉）。
+  const imagePill = getWin().locator('[data-parameter-summary]').last()
+  await imagePill.click()
+  const imagePanel = getWin().locator('[data-agent-parameter-panel="true"]').last()
+  await imagePanel.waitFor({ state: 'visible' })
+  const imageOpen = await measure()
+  if (!imageOpen) throw new Error('点开图片节点的参数后量不到浮框几何')
+  check(
+    '图片节点：点开的参数里一个下拉都没有，选项全摊开（基线：数得到可点选项）',
+    imageOpen.panelSelects === 0 && imageOpen.panelOptionCount > 0,
+    `下拉 ${imageOpen.panelSelects} 个 / 摊开的可点项 ${imageOpen.panelOptionCount} 个`,
+  )
+  // 「单参数直出 / 多参数走面板」是同一条规则的两面。这台机器上**没有**单参数的图片模型
+  // （内置可用的那个档案声明了比例 + 清晰度，pill 只是按 v1.1 的口径挑两个值报），
+  // 所以真机这一侧只量得到「多参数 → 面板、不走直出」这半边；
+  // 直出那半边由设计实验室 `composer-bar-panel-solo-direct` 那一格守（Agnes Image 是**真实档案**，
+  // 只声明一个「尺寸」参数，正是用户 09-11 13:00 截图里那种模型），那一格会真的点一项、
+  // 断言列表随即关闭。两边合起来才覆盖整条规则——这里不假装真机上走到了一个不存在的模型。
+  check(
+    `图片节点是多参数（${imageOpen.panelControlKeys.join(' / ')}），走的是面板不是单参数直出`,
+    imageOpen.panelControlKeys.length > 1 && imageOpen.panelSolo === null,
+    `参数 ${imageOpen.panelControlKeys.length} 组 / solo=${imageOpen.panelSolo}`,
+  )
+  await screenshotSettled(getWin(), { path: path.join(shotsDir, '07-image-param-panel.png') })
+  await dismiss()
 
   // ⑧ 窄视口：真实场景不是缩小 OS 窗口（主窗口 minWidth=1100，缩不下去，而且 Electron
   // 真实窗口下 `page.setViewportSize` 只改 CDP 上报的量值、不动原生边界，会撞出「布局和

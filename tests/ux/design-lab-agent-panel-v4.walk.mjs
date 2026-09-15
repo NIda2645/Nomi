@@ -16,4 +16,26 @@ await walkDesignLabScreen({
   role: 'walk-agent-panel-v4',
   cellWidth: 410,
   columns: 4,
+  /**
+   * 付费卡的 ⚙ 面板也走同一块面板渲染（`InlineParameterBar` 的 `renderParameterPanel`），
+   * 所以 2026-09-11 13:00 拍板的「面板里不许再套下拉」在这里必须同样成立——
+   * 卡上那一刻用户正在确认花多少钱，多点一次最贵。
+   * 只对那一格断言：其余格子没有参数浮层，对它们断言「没有下拉」是句在任何情况下都成立的废话。
+   */
+  async assertState(page, state, record) {
+    if (state.id !== 'v4-spend-params-panel-open') return
+    const shape = await page.evaluate(() => {
+      const panel = document.querySelector('[data-agent-parameter-panel="true"]')
+      if (!panel) return null
+      return {
+        selects: panel.querySelectorAll('[aria-haspopup="listbox"]').length,
+        options: panel.querySelectorAll('[role="radio"]').length,
+        inputs: panel.querySelectorAll('input, [role="slider"]').length,
+      }
+    })
+    if (!shape) { record(`${state.id} ⚙ 面板没打开（取景台那一下点空了），这一格什么都没证`); return }
+    // 基线在前：⚙ 里确实有东西（摊开的选项或滑杆/输入框），后面那句「没有下拉」才不是废话。
+    if (shape.options + shape.inputs === 0) record(`${state.id} ⚙ 面板里什么控件都没有，这一格证不了任何事`)
+    if (shape.selects) record(`${state.id} 付费卡 ⚙ 面板里不该有下拉（数到 ${shape.selects} 个）——选项必须摊开`)
+  },
 })
