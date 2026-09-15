@@ -34,9 +34,7 @@ import { unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
-import { diskLimitBytes, formatMediaBytes, type MediaImportRejection } from '../shared/contracts/mediaImportPolicy'
-import { mediaKindFromExtension } from '../assets/mediaTypes'
-import { readStorageCapacity } from '../assets/storageCapacity'
+import { formatMediaBytes, type MediaImportRejection } from '../shared/contracts/mediaImportPolicy'
 import { MediaImportRejectedError, importLocalFile } from '../assets/localFileImport'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 
@@ -277,12 +275,10 @@ export async function importProjectAsset(input: {
   } catch {
     realPath = null
   }
-  // 上限从磁盘余量派生（和用户手动导入同一份 `diskLimitBytes`，同一个函数两个调用者 = 派生，
-  // 不是并行版），不是本模块自己那个与磁盘无关的兜底常量。落盘前准入闸还会再判一次权威的那遍
-  // （importLocalFile 里的 assertAdmitted）——这里这一遍只为把话说得更早、更具体。
-  const kind = realPath ? mediaKindFromExtension(realPath) : null
-  const maxBytes = kind ? diskLimitBytes(readStorageCapacity(input.projectId), kind) ?? undefined : undefined
-  const verdict = checkImportAsset({ rawPath: raw, realPath, sizeBytes, isFile, maxBytes })
+  // 这里只判**路径安全**（deny 目录优先、软链逃逸、扩展名白名单、文件读不读得出来）。
+  // 「多大算大」不在这里判第二遍：唯一 owner 是 importLocalFile 里的准入闸，它按磁盘余量与
+  // 每面硬顶判，拒绝时带着数字回到模型（见下面的 mcpImportRejectionMessage）。
+  const verdict = checkImportAsset({ rawPath: raw, realPath, sizeBytes, isFile })
   if (!verdict.ok) throw new Error(verdict.reason)
 
   const fileName = (() => {

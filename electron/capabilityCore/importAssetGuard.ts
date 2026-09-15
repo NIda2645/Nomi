@@ -28,12 +28,6 @@ export const IMPORT_ALLOWED_EXTENSIONS: readonly string[] = MEDIA_TYPES
   .map((entry) => entry.ext)
 
 /**
- * 上限由调用方按磁盘余量传入（capabilityCore 侧调 admitMediaImport 拿）。
- * 这里只保留「没传就别放行无穷大」的兜底，不再自己拍一个和磁盘无关的 64MB。
- */
-export const IMPORT_FALLBACK_MAX_BYTES = 2 * 1024 * 1024 * 1024
-
-/**
  * 敏感路径段 deny-list。命中即拒——**先于白名单判**（哪怕有人把私钥改名叫 .png 也进不来）。
  * 用「路径段」而非子串匹配，免得 `/Users/me/sshots/a.png` 这种正常目录被 `.ssh` 误伤。
  */
@@ -57,8 +51,6 @@ export type ImportGuardInput = {
   sizeBytes: number | null
   /** 是否常规文件（接线层 stat().isFile()）。 */
   isFile: boolean
-  /** 上限覆盖：调用方按磁盘余量传（admitMediaImport）；缺省 IMPORT_FALLBACK_MAX_BYTES。 */
-  maxBytes?: number
 }
 
 export type ImportGuardVerdict =
@@ -104,13 +96,11 @@ export function checkImportAsset(input: ImportGuardInput): ImportGuardVerdict {
       reason: `只支持导入图片或视频素材（${IMPORT_ALLOWED_EXTENSIONS.join(' / ')}），收到的是「${extension || '无扩展名'}」。`,
     }
   }
-  const max = input.maxBytes ?? IMPORT_FALLBACK_MAX_BYTES
+  // 「多大算大」一个字都不在这里判：那是准入闸的事（admitMediaImport，按磁盘余量 + 每面硬顶），
+  // 而它的拒绝已经带着数字回到调用方（core.ts 的 mcpImportRejectionMessage）。这里只判
+  // 「这个文件读不读得出来」——空文件/读不到大小是路径问题，不是体积问题。
   if (typeof input.sizeBytes !== 'number' || input.sizeBytes <= 0) {
     return { ok: false, reason: '这个文件是空的或读不到大小，无法导入。' }
-  }
-  if (input.sizeBytes > max) {
-    const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MB`
-    return { ok: false, reason: `文件太大（${mb(input.sizeBytes)}，上限 ${mb(max)}）。请先压缩或裁剪后再导入。` }
   }
   return { ok: true, realPath: real, extension }
 }

@@ -6,10 +6,7 @@
 //
 // 现在它只剩一个批量壳：逐个交给唯一的落盘路 importLocalFile（魔数嗅探 + 准入闸 + 视频归一化都在
 // 那一层），把每个文件的结果聚合回来。准入判断一个字都不在这里（P1：不留第二份）。
-//
-// 2026-09-15 补完最后一处：本文件曾另有一个 `copyPathAsPlayableAsset`，给 MCP / Agent 的素材导入
-// 自己做转码 + copy + 清理——它跳过了准入闸与魔数嗅探，于是「Agent 和用户不该是两套落盘语义」
-// 这句话在同一个文件里是假的。那个出口已删，`capabilityCore/core.ts` 的导入也走 importLocalFile。
+// MCP / Agent 的素材导入（capabilityCore/core.ts）走的是同一条路，不在这里另开一扇（2026-09-15）。
 import path from "node:path";
 
 import {

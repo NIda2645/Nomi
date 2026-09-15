@@ -79,7 +79,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileCopy.ts",
-      "line": 29,
+      "line": 26,
       "symbol": "importLocalFilePaths"
     },
     {
@@ -109,7 +109,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/core.ts",
-      "line": 253,
+      "line": 251,
       "symbol": "importProjectAsset"
     },
     {

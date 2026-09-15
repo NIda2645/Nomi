@@ -63,17 +63,15 @@ describe('checkImportAsset · 拒绝（每条都是一个真实攻击/误用面�
   it('目录/非常规文件 → 拒', () => {
     expect(reason({ ...base, isFile: false })).toContain('普通文件')
   })
-  it('超过上限 → 拒，报实际大小与上限', () => {
-    const r = reason({ ...base, sizeBytes: 2049, maxBytes: 2048 })
-    expect(r).toContain('太大')
-    expect(r).toContain('上限')
-  })
   it('空文件 / 读不到大小 → 拒', () => {
     expect(reason({ ...base, sizeBytes: 0 })).toContain('空')
     expect(reason({ ...base, sizeBytes: null })).toContain('空')
   })
-  it('自定义上限生效（maxBytes 覆盖）', () => {
-    expect(checkImportAsset({ ...base, sizeBytes: 2048, maxBytes: 1024 }).ok).toBe(false)
+  // 「多大算大」不在这一层：2026-09-15 把体积判据收回唯一的准入闸（admitMediaImport，
+  // 按磁盘余量 + 每面硬顶）。这条钉住本层**不再**自己拿一个上限拦人——
+  // 一个大得离谱的文件在这里必须放行，由准入闸带着数字拒它。
+  it('体积不再由本层判：再大也放行，交给准入闸', () => {
+    expect(checkImportAsset({ ...base, sizeBytes: 8 * 1024 * 1024 * 1024 }).ok).toBe(true)
   })
 })
 
