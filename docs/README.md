@@ -11,6 +11,9 @@
 
 | 我要找… | 去这里 |
 |---|---|
+| **接下来要做什么（唯一 TODO 真相源）** | [`roadmap/TODO.md`](roadmap/TODO.md) → **派工/出方案/开分支前先对照它**；用法与维护纪律见 [`roadmap/README.md`](roadmap/README.md) |
+| **某个设计到底落地没有** | [`roadmap/designs-not-yet-built.md`](roadmap/designs-not-yet-built.md)（逐面实扫，带 `file:line` 与基准 SHA）|
+| **用户当时到底怎么说的（原话 / 截图 / 原始调研）** | [`roadmap/sources/`](roadmap/sources/) → TODO 某条有疑问就回查这里 |
 | **某个功能的方案/执行计划** | [`plan/`](plan/) → 先读 [`plan/INDEX.md`](plan/INDEX.md)（按主题分组的查找表）|
 | **跨阶段总纲 / master plan** | [`superpowers/plans/`](superpowers/plans/) → 先读 [Nomi 统一 Agent 总体方案](superpowers/plans/2026-08-24-unified-agent-master-plan.md) |
 | **每个子系统现在真正跑的是什么**（防止把三个月前的方案当现状） | [`ARCHITECTURE-NOW.md`](ARCHITECTURE-NOW.md) |
@@ -46,6 +49,7 @@
 
 | 目录 | 用途 |
 |---|---|
+| `roadmap/` | **后续迭代核心资料**：唯一 TODO（`TODO.md`）+ 设计落地对账（`designs-not-yet-built.md`）+ 原始资料（`sources/`，含微信原文与截图）|
 | `plan/` | 方案/执行文档（**有 INDEX.md，但仍有历史存量缺口**）|
 | `superpowers/plans/` | 跨阶段总纲 / master plan |
 | `onboarding-trials/` | 模型接入实测产物 |
