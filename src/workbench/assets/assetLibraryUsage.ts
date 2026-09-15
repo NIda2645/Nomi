@@ -57,8 +57,6 @@ export function assetToDragPayload(
     kind: asset.kind,
     name: asset.name,
     renderUrl: asset.renderUrl,
-    ...(asset.thumbUrl && asset.thumbUrl !== asset.renderUrl ? { thumbUrl: asset.thumbUrl } : {}),
-    ...(asset.dimensions ? { dimensions: asset.dimensions } : {}),
     origin: asset.origin,
     ...(dragAnchor ? { dragAnchor } : {}),
   }
