@@ -49,7 +49,7 @@ export function createDesktopLaneTools(input: {
   event: IpcMainInvokeEvent
   /**
    * 当前这条 IPC 的事件。默认仍是打开 lane 那一次；生产侧必须改成「用户刚点发送」
-   * 那一次——画布写口跟的是那一帧，不是项目打开时冻住的那一帧。
+   * 那一次——对着画面的读写跟的都是那一帧，不是项目打开时冻住的那一帧。
    */
   currentEvent?: () => IpcMainInvokeEvent
   binding: ProjectBinding
@@ -69,56 +69,116 @@ export function createDesktopLaneTools(input: {
   if (!input.surface.surfacePortRuntime) throw new Error('surface_port_unavailable')
   const surfacePortRuntime = input.surface.surfacePortRuntime
   const currentEvent = input.currentEvent ?? (() => input.event)
-  const capturedPort = input.surface.surfaceCapture.captureCommittedCanvasReadPort(currentEvent(), input.binding)
-  const shared = { registry: canvasReadSurfaceRuntime.registry, capturedPort,
-    requestId: `lane-${randomUUID()}`, executor: input.surface.executor }
-  const canvasRead = createPiCanvasReadTransportAdapter(shared)
-  const documentRead = createPiDocumentReadTransportAdapter(shared)
-  const documentWrite = createPiDocumentWriteTransportAdapter(shared)
-  const timelineRead = createPiTimelineReadTransportAdapter(shared)
-  const timelineWrite = createPiTimelineWriteTransportAdapter(shared)
-  const phase4 = createPiPhase4SurfaceTransportAdapter(shared)
+  const liveShared = () => {
+    const capturedPort = input.surface.surfaceCapture.captureCommittedCanvasReadPort(currentEvent(), input.binding)
+    return { registry: canvasReadSurfaceRuntime.registry, capturedPort,
+      requestId: `lane-${randomUUID()}`, executor: input.surface.executor }
+  }
+  const liveAdapters = new Map<string, { dispose(): void }>()
+  const hold = <T extends { dispose(): void }>(id: string, adapter: T) => {
+    liveAdapters.get(id)?.dispose()
+    liveAdapters.set(id, adapter)
+    return adapter
+  }
+  const drop = (id: string) => { liveAdapters.get(id)?.dispose(); liveAdapters.delete(id) }
+  const canvasRead = {
+    async tryExecute(call: RuntimeToolCall, signal: AbortSignal) {
+      const adapter = createPiCanvasReadTransportAdapter(liveShared())
+      try { return await adapter.tryExecute(call, signal) } finally { adapter.dispose() }
+    },
+    dispose() {},
+  }
+  const documentRead = {
+    async tryExecute(call: RuntimeToolCall, documentId: string, signal: AbortSignal) {
+      const adapter = createPiDocumentReadTransportAdapter(liveShared())
+      try { return await adapter.tryExecute(call, documentId, signal) } finally { adapter.dispose() }
+    },
+    dispose() {},
+  }
+  const timelineRead = {
+    async tryExecute(call: RuntimeToolCall, signal: AbortSignal) {
+      const adapter = createPiTimelineReadTransportAdapter(liveShared())
+      try { return await adapter.tryExecute(call, signal) } finally { adapter.dispose() }
+    },
+    dispose() {},
+  }
   const skillRead = createPiSkillReadTransportAdapter()
   const skillWrite = createPiSkillWriteTransportAdapter({ binding: input.binding })
-  const liveCanvasWriters = new Map<string, ReturnType<typeof createPiCanvasWriteTransportAdapter>>()
+  const documentWrite = {
+    async prepare(...args: Parameters<ReturnType<typeof createPiDocumentWriteTransportAdapter>['prepare']>) {
+      const writer = createPiDocumentWriteTransportAdapter(liveShared())
+      try {
+        const prepared = await writer.prepare(...args)
+        if (!prepared) { writer.dispose(); return null }
+        hold(args[0].toolCallId, writer)
+        return prepared
+      } catch (error) { writer.dispose(); throw error }
+    },
+    async execute(prepared: PreparedDocumentWrite, signal: AbortSignal) {
+      const writer = liveAdapters.get(prepared.call.toolCallId) as ReturnType<typeof createPiDocumentWriteTransportAdapter> | undefined
+      if (!writer) return { ok: false as const, code: 'surface_port_unavailable', message: 'surface_port_unavailable' }
+      try { return await writer.execute(prepared, signal) } finally { drop(prepared.call.toolCallId) }
+    },
+    dispose() {},
+  }
+  const timelineWrite = {
+    async prepare(call: RuntimeToolCall, signal: AbortSignal) {
+      const writer = createPiTimelineWriteTransportAdapter(liveShared())
+      try {
+        const prepared = await writer.prepare(call, signal)
+        if (!prepared) { writer.dispose(); return null }
+        hold(call.toolCallId, writer)
+        return prepared
+      } catch (error) { writer.dispose(); throw error }
+    },
+    async execute(...args: Parameters<ReturnType<typeof createPiTimelineWriteTransportAdapter>['execute']>) {
+      const writer = liveAdapters.get(args[0].call.toolCallId) as ReturnType<typeof createPiTimelineWriteTransportAdapter> | undefined
+      if (!writer) return { ok: false as const, code: 'surface_port_unavailable', message: 'surface_port_unavailable' }
+      try { return await writer.execute(...args) } finally { drop(args[0].call.toolCallId) }
+    },
+    dispose() {},
+  }
+  const phase4 = {
+    async tryExecuteRead(call: RuntimeToolCall, signal: AbortSignal) {
+      const adapter = createPiPhase4SurfaceTransportAdapter(liveShared())
+      try { return await adapter.tryExecuteRead(call, signal) } finally { adapter.dispose() }
+    },
+    async prepareWrite(call: RuntimeToolCall, signal: AbortSignal) {
+      const adapter = createPiPhase4SurfaceTransportAdapter(liveShared())
+      try {
+        const prepared = await adapter.prepareWrite(call, signal)
+        if (!prepared) { adapter.dispose(); return null }
+        hold(call.toolCallId, adapter)
+        return prepared
+      } catch (error) { adapter.dispose(); throw error }
+    },
+    async executeWrite(...args: Parameters<ReturnType<typeof createPiPhase4SurfaceTransportAdapter>['executeWrite']>) {
+      const adapter = liveAdapters.get(args[0].call.toolCallId) as ReturnType<typeof createPiPhase4SurfaceTransportAdapter> | undefined
+      if (!adapter) return { ok: false as const, code: 'surface_port_unavailable', message: 'surface_port_unavailable' }
+      try { return await adapter.executeWrite(...args) } finally { drop(args[0].call.toolCallId) }
+    },
+    dispose() {},
+  }
   const canvasWrite = {
     async prepare(call: RuntimeToolCall, signal: AbortSignal) {
-      const livePort = input.surface.surfaceCapture.captureCommittedCanvasReadPort(currentEvent(), input.binding)
+      const shared = liveShared()
       const writer = createPiCanvasWriteTransportAdapter({
-        registry: canvasReadSurfaceRuntime.registry,
-        capturedPort: livePort,
-        requestId: `lane-${randomUUID()}`,
-        executor: input.surface.executor,
-        port: surfacePortRuntime.createCanvasWritePort(livePort),
+        ...shared,
+        port: surfacePortRuntime.createCanvasWritePort(shared.capturedPort),
       })
       try {
         const prepared = await writer.prepare(call, signal)
-        if (!prepared) {
-          writer.dispose()
-          return null
-        }
-        liveCanvasWriters.get(call.toolCallId)?.dispose()
-        liveCanvasWriters.set(call.toolCallId, writer)
+        if (!prepared) { writer.dispose(); return null }
+        hold(call.toolCallId, writer)
         return prepared
-      } catch (error) {
-        writer.dispose()
-        throw error
-      }
+      } catch (error) { writer.dispose(); throw error }
     },
     async execute(prepared: PreparedCanvasWrite, approval: CanvasWriteApprovalAuthority, signal: AbortSignal) {
-      const writer = liveCanvasWriters.get(prepared.call.toolCallId)
+      const writer = liveAdapters.get(prepared.call.toolCallId) as ReturnType<typeof createPiCanvasWriteTransportAdapter> | undefined
       if (!writer) return { ok: false as const, code: 'surface_port_unavailable', message: 'surface_port_unavailable' }
-      try {
-        return await writer.execute(prepared, approval, signal)
-      } finally {
-        writer.dispose()
-        liveCanvasWriters.delete(prepared.call.toolCallId)
-      }
+      try { return await writer.execute(prepared, approval, signal) } finally { drop(prepared.call.toolCallId) }
     },
-    dispose() {
-      for (const writer of liveCanvasWriters.values()) writer.dispose()
-      liveCanvasWriters.clear()
-    },
+    dispose() {},
   }
   const preparedDocuments = new Map<string, PreparedDocumentWrite>()
   const preparedCanvases = new Map<string, PreparedCanvasWrite>()
@@ -199,8 +259,7 @@ export function createDesktopLaneTools(input: {
       }
     },
     settled: (call) => {
-      liveCanvasWriters.get(call.toolCallId)?.dispose()
-      liveCanvasWriters.delete(call.toolCallId)
+      drop(call.toolCallId)
       preparedDocuments.delete(call.toolCallId)
       preparedCanvases.delete(call.toolCallId)
       approvals.delete(call.toolCallId)
@@ -248,6 +307,8 @@ export function createDesktopLaneTools(input: {
     } satisfies NonNullable<OpenLaneOptions['toolLifecycle']>,
     dispose: () => {
       extended.dispose(); generation?.dispose()
+      for (const adapter of liveAdapters.values()) adapter.dispose()
+      liveAdapters.clear()
       for (const port of [canvasRead, documentRead, documentWrite, canvasWrite, timelineRead, timelineWrite, phase4, skillRead, skillWrite]) port.dispose()
       preparedDocuments.clear(); preparedCanvases.clear(); approvals.clear(); approvedCalls.clear()
       documentReceipts.clear()
