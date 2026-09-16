@@ -42,11 +42,16 @@
     "Framework node dimensions derive from the domain sizing owner"
   ],
   "doors": [
-    { "kind": "write", "path": "electron/main.ts", "line": 582, "symbol": "registerAssetsIpc" },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "line": 582,
+      "symbol": "registerAssetsIpc"
+    },
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 10,
+      "line": 14,
       "symbol": "AssetImportResult"
     },
     {
@@ -70,7 +75,7 @@
     {
       "kind": "read",
       "path": "electron/shared/contracts/assetImportResult.ts",
-      "line": 20,
+      "line": 22,
       "symbol": "AssetImportResult"
     },
     {
@@ -142,7 +147,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneDesktopRuntime.ts",
-      "line": 117,
+      "line": 113,
       "symbol": "assertProjectAgentBinding"
     },
     {
@@ -166,19 +171,19 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 13,
+      "line": 23,
       "symbol": "importLocalFile"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 115,
+      "line": 131,
       "symbol": "importAssetResult"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 119,
+      "line": 131,
       "symbol": "importAssetResult"
     },
     {

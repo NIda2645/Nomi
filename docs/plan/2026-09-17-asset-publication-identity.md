@@ -1,5 +1,15 @@
 # Asset publication identity
 
+## 先查别人
+
+- [独立反方报告及已读官方依据](../research/2026-09-17-pr802/prior-art.md)：保留已有项目存储，身份与 UI 落点分离。
+- [既有项目 identity owner](../../electron/workspace/workspaceProjectIdentity.ts)：复用 immutableProjectUuid/projectGeneration，不新增身份格式。
+- [既有 manifest 同步事务](../../electron/workspace/workspaceManifest.ts)：沿用当前读校验入口，让 publication 前的身份检查与同步发布之间没有应用事件循环等待。
+
+本次是内部持久化不变量修复；未用 TikHub，未将社区推测当成文件系统竞态证据。
+
+## 实施与验收
+
 Approved PR 802 follow-up, base 22b046e7b. Prior art: [independent review](../research/2026-09-17-pr802/prior-art.md). Owner review found that importer checks precede asynchronous deduplication/native copying; publication resolves the project directory again.
 
 Capture a full project identity and canonical root before asynchronous storage work. Every upload entry captures this context, including direct byte/native callers. Carry it through publication, reuse, and metadata updates. Validate the same root and manifest identity synchronously at the final write boundary; never redirect to a newly resolved root. An optional main-only interaction assertion tightens this mandatory storage invariant and is supplied by the trusted window session at IPC integration. Explicit background project IO survives UI navigation; uncommitted interactive IO is revoked on project replacement.

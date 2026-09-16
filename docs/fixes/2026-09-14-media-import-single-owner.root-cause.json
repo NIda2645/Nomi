@@ -73,8 +73,8 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 73,
-      "symbol": "nomi:assets:copy-files"
+      "line": 91,
+      "symbol": "parseCopyFilesPayload"
     },
     {
       "kind": "write",
