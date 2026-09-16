@@ -394,7 +394,10 @@ export function createCanvasReadSurfaceRegistry(
       let fresh: WorkspaceProjectIdentity;
       try { fresh = await input.resolveProjectIdentity(expected.binding.projectId); }
       catch {
-        if (activeSession?.handle === session) clearCurrent();
+        // IO failure retires this authority, not the authenticated frame's
+        // registration. Fresh user intent can revalidate disk identity and open
+        // a new session; no old action or approval becomes valid again.
+        registry.revokeProjectSession(session);
         throw new SurfacePortError("project_identity_unavailable");
       }
       registry.resolveProjectSession(session);
@@ -654,9 +657,12 @@ export function createCanvasReadSurfaceRegistry(
       try {
         fresh = await input.resolveProjectIdentity(capture.binding.binding.projectId);
       } catch {
-        if (current === state) clearCurrent();
+        if (activeSession?.controller.signal === capture.sessionSignal) {
+          registry.revokeProjectSession(activeSession.handle);
+        }
         throw new SurfacePortError("project_identity_unavailable");
       }
+      if (capture.sessionSignal?.aborted) throw new SurfacePortError("capability_cancelled");
       if (current !== state || state.epoch !== capture.epoch || state.binding !== capture.binding) {
         throw new SurfacePortError("surface_port_stale");
       }

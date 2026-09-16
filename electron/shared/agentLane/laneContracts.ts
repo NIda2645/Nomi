@@ -360,6 +360,10 @@ export interface LaneSummary {
  * 「一个窗口一条」这条限制解除时最容易长出来的第二个所有者。
  */
 export interface LaneWorkspaceProjection {
+  /** Main subscription identity, attached by IPC so late terminal events cannot retire a replacement. */
+  readonly workspaceId?: string
+  /** Terminal authority state; history remains readable but old actions are retired. */
+  readonly closed?: true
   /** 这个项目盘上的全部对话，最近更新的在前。 */
   readonly lanes: readonly LaneSummary[]
   /** 用户正看着的那一条。 */

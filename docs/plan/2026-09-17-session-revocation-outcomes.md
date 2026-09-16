@@ -1,6 +1,6 @@
 # 项目会话撤销后的结果与面板终态
 
-状态：🚧 进行中；PR 802 已批准修复范围内的跨池 B 复核。
+状态：✅ 本地实施与验证已完成；PR 802 已批准修复范围内的跨池 B 复核，主任务继续集成验收。
 
 ## 先查别人
 
@@ -19,4 +19,10 @@
 
 先红：五种写 × session/caller/reply-identity 中断；实际文档落盘后撤销仍保留 preparing；空补偿不得置 undone。补 main workspace、IPC 与 client 终态/重开、切 B 不重开 A 测试。相关类型与合同门禁、真实 Electron 集成由主任务复验。无文件迁移和删除；按本逻辑提交 revert，无旧路径 fallback。
 
-第一批已验证：上述 17 个反例先红后绿；5 套件 97 项通过，包含新增派发后 timeout、畸形成功响应与未知异常；自动 lane close 测试直接等待 onClosed，已删除手动 close 的遮盖。生产/测试类型、定向 lint、根因合同通过。第二批终态发布仍实施中。
+第一批已验证：上述 17 个反例先红后绿；5 套件 97 项通过，包含新增派发后 timeout、畸形成功响应与未知异常；自动 lane close 测试直接等待 onClosed，已删除手动 close 的遮盖。生产/测试类型、定向 lint、根因合同通过。
+
+第二批已验证：真实 workspace 的关闭终态先红后绿，实际订阅清理/IPC 所有权释放、旧审批拒绝、下一次 prompt 重新授权、重开途中切 B、迟到 A 关闭通知、open 返回前已关闭均有覆盖（客户端/IPC 27 项、真实 workspace 13 项通过）。
+
+恢复前提已补实证：只在磁盘身份读取 IO 失败时永久撤销原 session，保留已认证 frame 的 transport 注册；身份确实替换/owner 失效仍 clearCurrent。真实 manifest 与 backup 临时移走导致 IO 失败、旧 workspace 自动关闭，文件恢复后新 session 完整读盘验证，再打开真实 workspace 恢复历史并执行新的用户 prompt（真实 loopback HTTP 两回合）。旧请求/旧审批不复活；IO await 后再次检查原 session signal，旧 IO 的迟到失败不能撤销新 session。没有放宽 identity 校验，也没有自动后台重新授权。
+
+最终两批合并验证：8 个 Vitest 套件 130 项通过、真实 workspace 的 node:test 13 项通过；生产与测试类型、定向 lint、根因合同、先查别人、症状聚簇、文件体积及 diff 检查通过。原平台完整 Electron 旅程及 PR 合入验证由主任务继续执行。

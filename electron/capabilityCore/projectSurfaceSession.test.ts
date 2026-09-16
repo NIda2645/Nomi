@@ -36,6 +36,53 @@ async function fixture(send?: (channel: string, payload: Record<string, unknown>
 }
 
 describe('Project surface session identity', () => {
+  it.each(['success', 'failure'] as const)('rejects a late %s reply for revoked authority without revoking its replacement', async (outcome) => {
+    const f = await fixture()
+    const old = f.registry.openProjectSession(f.owner, f.binding)
+    const capture = f.registry.captureProjectSessionPort(old)
+    const wire = f.registry.resolveCapturedCanvasReadPort(capture).binding
+    let finish!: (identity: Awaited<ReturnType<typeof f.resolveProjectIdentity>>) => void
+    let fail!: (error: Error) => void
+    f.resolveProjectIdentity.mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject }))
+    const reply = f.registry.assertCanvasReadPortReply(capture, wire)
+    const rejected = expect(reply).rejects.toMatchObject({ code: outcome === 'success' ? 'capability_cancelled' : 'project_identity_unavailable' })
+    f.registry.revokeProjectSession(old)
+    const replacement = f.registry.openProjectSession(f.owner, f.binding)
+    if (outcome === 'success') finish(await f.resolveProjectIdentity('a'))
+    else fail(new Error('late read failure'))
+    await rejected
+    await expect(f.registry.verifyProjectSession(replacement)).resolves.toMatchObject({ binding: f.binding })
+  })
+
+  it('does not revoke a new session when an old session identity read fails late', async () => {
+    const f = await fixture()
+    const old = f.registry.openProjectSession(f.owner, f.binding)
+    let fail!: (error: Error) => void
+    f.resolveProjectIdentity.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    const rejected = expect(f.registry.verifyProjectSession(old)).rejects.toMatchObject({ code: 'project_identity_unavailable' })
+    f.registry.revokeProjectSession(old)
+    const replacement = f.registry.openProjectSession(f.owner, f.binding)
+    fail(new Error('old session IO failure'))
+    await rejected
+    await expect(f.registry.verifyProjectSession(replacement)).resolves.toMatchObject({ binding: f.binding })
+  })
+
+  it.each(['session-verification', 'reply-verification'] as const)('can issue fresh authority after transient %s IO failure without reviving the old session', async (stage) => {
+    const f = await fixture()
+    const session = f.registry.openProjectSession(f.owner, f.binding)
+    const capture = f.registry.captureProjectSessionPort(session)
+    const wire = f.registry.resolveCapturedCanvasReadPort(capture).binding
+    f.resolveProjectIdentity.mockRejectedValueOnce(new Error('temporary disk read failure'))
+    await expect(stage === 'session-verification' ? f.registry.verifyProjectSession(session)
+      : f.registry.assertCanvasReadPortReply(capture, wire)).rejects.toMatchObject({ code: 'project_identity_unavailable' })
+    expect(() => f.registry.resolveProjectSession(session)).toThrow()
+    expect(() => f.registry.resolveCapturedCanvasReadPort(capture)).toThrow()
+    const fresh = f.registry.openProjectSession(f.owner, f.binding)
+    expect(fresh).not.toBe(session)
+    await expect(f.registry.verifyProjectSession(fresh)).resolves.toMatchObject({ binding: f.binding })
+    expect(() => f.registry.resolveProjectSession(session)).toThrow()
+  })
+
   it.each(['invalid-output', 'untyped-error'] as const)('retains uncertainty after document dispatch with %s', async (failure) => {
     const f = await fixture()
     const session = f.registry.openProjectSession(f.owner, f.binding)

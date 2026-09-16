@@ -44,6 +44,86 @@ const projection = (text: string): LaneProjection => ({
 })
 
 describe('laneClient', () => {
+  it('retires a main-closed workspace and requests fresh authority only for the next new prompt', async () => {
+    const binding = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
+      .mockResolvedValueOnce({ ok: false, code: 'agent_lane_closed' })
+      .mockResolvedValueOnce({ ok: true, workspaceId: 'new' }).mockResolvedValue({ ok: true })
+    const client = createLaneClient(bridge)
+    await client.open(binding)
+    push({ ...workspace(projection('history')), closed: true })
+    expect(client.context()).toBeNull()
+    expect(client.projection().parts).toEqual(projection('history').parts)
+    await client.approve('obsolete-approval')
+    expect(bridge.send).toHaveBeenCalledTimes(2)
+    await client.prompt('New action after reopening')
+    expect(bridge.send).toHaveBeenNthCalledWith(3, { kind: 'workspace-open', binding })
+    expect(bridge.send).toHaveBeenLastCalledWith({ kind: 'prompt', text: 'New action after reopening', workspaceId: 'new' })
+  })
+
+  it('does not reopen old A after the user switches to B', async () => {
+    const a = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
+    const b = { projectId: 'b', immutableProjectUuid: 'uuid-b', projectGeneration: 1 }
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'a' })
+      .mockResolvedValueOnce({ ok: true, workspaceId: 'b' }).mockResolvedValue({ ok: true })
+    const client = createLaneClient(bridge)
+    await client.open(a)
+    push({ ...workspace(projection('A closed')), closed: true })
+    await client.open(b)
+    push({ ...workspace(projection('late A closed')), closed: true, workspaceId: 'a' })
+    expect(client.context()?.subscriptionId).toBe('b')
+    await client.prompt('Only B')
+    expect(bridge.send).toHaveBeenCalledTimes(3)
+    expect(bridge.send).toHaveBeenLastCalledWith({ kind: 'prompt', text: 'Only B', workspaceId: 'b' })
+  })
+
+  it('does not send A input to B when project selection changes during fresh authorization', async () => {
+    const a = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
+    const b = { projectId: 'b', immutableProjectUuid: 'uuid-b', projectGeneration: 1 }
+    const { bridge, push } = fakeBridge()
+    let finish!: (value: { ok: true; workspaceId: string }) => void
+    const gate = new Promise<{ ok: true; workspaceId: string }>(resolve => { finish = resolve })
+    bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old-a' })
+      .mockReturnValueOnce(gate).mockResolvedValueOnce({ ok: true, workspaceId: 'b' })
+    const client = createLaneClient(bridge)
+    await client.open(a)
+    push({ ...workspace(projection('closed')), closed: true, workspaceId: 'old-a' })
+    const prompt = client.prompt('Only intended for A')
+    await client.open(b)
+    finish({ ok: true, workspaceId: 'new-a' })
+    expect(await prompt).toMatchObject({ ok: false, code: 'agent_lane_workspace_stale' })
+    expect(bridge.send).toHaveBeenCalledTimes(3)
+    expect(client.context()?.subscriptionId).toBe('b')
+  })
+
+  it('does not replay the prompt when fresh authority is rejected', async () => {
+    const binding = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
+      .mockResolvedValueOnce({ ok: false, code: 'project_binding_stale' })
+    const client = createLaneClient(bridge)
+    await client.open(binding)
+    push({ ...workspace(projection('closed')), closed: true })
+    expect(await client.prompt('No stale write')).toMatchObject({ ok: false, code: 'project_binding_stale' })
+    expect(bridge.send).toHaveBeenCalledTimes(2)
+    expect(bridge.send).toHaveBeenLastCalledWith({ kind: 'workspace-open', binding })
+  })
+
+  it('does not restore authority when main closes that workspace before open returns', async () => {
+    const binding = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn(async () => {
+      push({ ...workspace(projection('already closed')), workspaceId: 'closing', closed: true })
+      return { ok: true as const, workspaceId: 'closing' }
+    })
+    const client = createLaneClient(bridge)
+    await client.open(binding)
+    expect(client.context()).toBeNull()
+    expect(client.workspace().closed).toBe(true)
+  })
+
   it('does not acknowledge release or discard the owner when main rejects close', async () => {
     const binding = { projectId: 'p', immutableProjectUuid: 'u', projectGeneration: 1 }
     const bridge = fakeBridge().bridge

@@ -71,7 +71,7 @@
     {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":155,"symbol":"CapturedCanvasReadPort"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":156,"symbol":"CapturedCanvasReadPort"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":365,"symbol":"ProjectSurfaceSession"},
-    {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":590,"symbol":"CapturedCanvasReadPort"},
+    {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":593,"symbol":"CapturedCanvasReadPort"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadTransportAdapters.ts","line":176,"symbol":"ProjectSurfaceSession"},
     {"kind":"read","path":"electron/capabilityCore/canvasWriteTransportAdapters.ts","line":72,"symbol":"ProjectSurfaceSession"},
     {"kind":"read","path":"electron/capabilityCore/documentReadTransportAdapters.ts","line":28,"symbol":"ProjectSurfaceSession"},

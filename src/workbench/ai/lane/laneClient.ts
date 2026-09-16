@@ -127,12 +127,22 @@ const NO_BRIDGE: LaneCommandResult = {
 export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBridge()): LaneClient {
   let latest: LaneWorkspaceProjection = EMPTY_LANE_WORKSPACE
   let current: Readonly<{ subscriptionId: string; binding: ProjectBinding }> | null = null
+  let reopen: { binding: ProjectBinding; model?: LaneComposerContext['model'] } | null = null
+  let openedModel: LaneComposerContext['model']
+  let closedWhileOpening: LaneWorkspaceProjection | null = null
   let epoch = 0
   const listeners = new Set<(projection: LaneWorkspaceProjection) => void>()
   // `useSyncExternalStore` 的 getter 必须**引用稳定**：只在真收到新投影时换对象。
   // 这条不是风格问题——仓库里 6 个手写 store 之一因为每次 getter 新建对象，
   // 在「有待决工具」时把整页打成「工作台加载失败」（G6 判据②）。
   const publish = (projection: LaneWorkspaceProjection) => {
+    if (projection.workspaceId && current && projection.workspaceId !== current.subscriptionId) return
+    if (projection.closed) {
+      // Closing an older workspace during open/close cannot seed reauthorization.
+      if (!current) { closedWhileOpening = projection; return }
+      reopen = { binding: current.binding, model: openedModel }
+      current = null
+    }
     latest = projection
     for (const listener of listeners) listener(projection)
   }
@@ -141,6 +151,8 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     unsubscribe?.()
     bridge = next
     current = null
+    reopen = null
+    closedWhileOpening = null
     epoch += 1
     publish(EMPTY_LANE_WORKSPACE)
     unsubscribe = bridge?.onProjection(publish)
@@ -156,30 +168,51 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     if (opening && command.kind !== 'workspace-open' && command.kind !== 'workspace-close') {
       await opening.catch(() => undefined)
     }
+    if (command.kind === 'prompt' && reopen) {
+      const previous = reopen
+      const pending = open(previous.binding, previous.model)
+      const generation = epoch
+      const result = await pending
+      if (!result.ok) {
+        if (generation === epoch) reopen = previous
+        return result
+      }
+      if (generation !== epoch || !current || current.subscriptionId !== result.workspaceId) {
+        return { ok: false, code: 'agent_lane_workspace_stale', diagnostic: 'project changed while reopening a revoked workspace' }
+      }
+    }
     return bridge.send({ ...command, ...(current ? { workspaceId: current.subscriptionId } : {}) })
   }
 
   const approval = (toolCallId: string, action: LaneApprovalAction, reason?: string) =>
     send({ kind: 'approval', toolCallId, action, ...(reason?.trim() ? { reason } : {}) })
 
+  const open: LaneClient['open'] = async (binding, model) => {
+    const generation = ++epoch
+    current = null
+    reopen = null
+    closedWhileOpening = null
+    openedModel = model
+    publish(EMPTY_LANE_WORKSPACE)
+    const inFlight = send({ kind: 'workspace-open', binding, ...(model ? { model } : {}) })
+    opening = inFlight
+    try {
+      const result = await inFlight
+      if (generation === epoch && result.ok && result.workspaceId) {
+        current = Object.freeze({ subscriptionId: result.workspaceId, binding: Object.freeze({ ...binding }) })
+        const terminal = closedWhileOpening as LaneWorkspaceProjection | null
+        if (terminal?.workspaceId === result.workspaceId) publish(terminal)
+      }
+      return result
+    } finally { if (opening === inFlight) opening = undefined }
+  }
+
   return {
     connect,
-    open: async (binding, model) => {
-      const generation = ++epoch
-      current = null
-      publish(EMPTY_LANE_WORKSPACE)
-      const inFlight = send({ kind: 'workspace-open', binding, ...(model ? { model } : {}) })
-      opening = inFlight
-      try {
-        const result = await inFlight
-        if (generation === epoch && result.ok && result.workspaceId) {
-          current = Object.freeze({ subscriptionId: result.workspaceId, binding: Object.freeze({ ...binding }) })
-        }
-        return result
-      } finally { if (opening === inFlight) opening = undefined }
-    },
+    open,
     close: async () => {
       const closing = ++epoch
+      reopen = null
       const result = await send({ kind: 'workspace-close' })
       if (!result.ok) throw new LaneCommandFailure(result.code, result.diagnostic)
       if (closing === epoch) {

@@ -109,7 +109,15 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
           if (disposed || event.sender.isDestroyed()) { await workspace.close(); return }
           const target = event.sender
           const push = (projection: LaneWorkspaceProjection) => {
-            if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, projection)
+            if (active?.workspaceId !== workspaceId) return
+            if (projection.closed) {
+              const previous = active
+              active = undefined
+              previous.unsubscribe()
+              target.removeListener('destroyed', previous.destroyed)
+              abortSingleShots(target)
+            }
+            if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, { ...projection, workspaceId })
           }
           const destroyed = () => { void replace(async () => { if (active?.workspaceId === workspaceId) await close() }) }
           active = { workspace, workspaceId, target, unsubscribe: workspace.subscribe(push), destroyed }

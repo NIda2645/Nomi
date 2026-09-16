@@ -12,6 +12,27 @@ vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: vi.fn() }))
 import { registerAgentLaneIpc } from './laneIpc'
 
 describe('desktop lane lifecycle', () => {
+  it('releases IPC ownership when the workspace itself publishes its closed terminal state', async () => {
+    const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
+    let publish!: Parameters<LaneWorkspaceHandle['subscribe']>[0]
+    const unsubscribe = vi.fn()
+    const initial = { lanes: [], active: { lane: 'main', parts: [] } }
+    const workspace = { projection: () => initial, subscribe: (listener: typeof publish) => { publish = listener; return unsubscribe },
+      close: vi.fn(), execute: vi.fn() } as unknown as LaneWorkspaceHandle
+    const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure: vi.fn(), receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
+    const send = (wire: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, wire)
+    try {
+      const opened = await send({ kind: 'workspace-open', binding: { projectId: 'a' } }) as { workspaceId: string }
+      const terminal = { ...initial, closed: true } as unknown as Parameters<typeof publish>[0]
+      publish(terminal)
+      expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, { ...terminal, workspaceId: opened.workspaceId })
+      expect(unsubscribe).toHaveBeenCalledOnce()
+      expect(sender.removeListener).toHaveBeenCalledWith('destroyed', expect.any(Function))
+      expect(await send({ kind: 'approval', toolCallId: 'old', action: 'allow-once', workspaceId: opened.workspaceId })).toMatchObject({ ok: false, code: 'agent_lane_closed' })
+      expect(workspace.execute).not.toHaveBeenCalled()
+    } finally { await registration.dispose() }
+  })
+
   it('opens and publishes history before the first command, then rebinds subscriptions on project change', async () => {
     const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     const event = { sender }
@@ -32,12 +53,12 @@ describe('desktop lane lifecycle', () => {
     try {
       expect(await send({ kind: 'workspace-open', binding: { projectId: 'one' } })).toMatchObject({ ok: true })
       expect(openWorkspace).toHaveBeenCalledTimes(1)
-      expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, projection('first'))
+      expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, { ...projection('first'), workspaceId: expect.any(String) })
       expect(await send({ kind: 'workspace-open', binding: { projectId: 'two' } })).toMatchObject({ ok: true })
       expect(first.unsubscribe).toHaveBeenCalledOnce()
       expect(first.close).toHaveBeenCalledOnce()
       expect(second.subscribe).toHaveBeenCalledOnce()
-      expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, projection('second'))
+      expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, { ...projection('second'), workspaceId: expect.any(String) })
     } finally { await registration.dispose() }
   })
 
