@@ -11,11 +11,14 @@ import {
 import { dataUrlToFile } from './persistNodeImage'
 import {
   importLocalMediaFilesToGenerationCanvas,
+  isProjectImportCancellation,
   type GenerationAssetImportResult,
   type ImportImageFilesOptions,
 } from './assetImportAdapter'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import i18n from '../../../i18n'
+import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 
 const IMAGE_URL_EXTENSION = /\.(?:png|jpe?g|webp|gif|avif|bmp|svg)(?:[?#].*)?$/i
 const VIDEO_URL_EXTENSION = /\.(?:mp4|m4v|mov|webm|ogv|ogg|avi)(?:[?#].*)?$/i
@@ -56,6 +59,7 @@ export type ClipboardMediaPasteOptions = {
 }
 
 export type ClipboardImagePasteOptions = ClipboardMediaPasteOptions
+type ProjectClipboardOptions = ClipboardMediaPasteOptions & { projectContext: ProjectExecutionContext }
 
 export type ClipboardMediaPasteResult = {
   handled: boolean
@@ -280,14 +284,19 @@ async function mediaUrlToFile(
 
 async function importRemoteMediaUrl(
   url: string,
-  options: ClipboardMediaPasteOptions,
+  options: ProjectClipboardOptions,
   fallbackKind: ClipboardMediaKind | null,
 ): Promise<WorkbenchAssetDto | null> {
   if (!isRemoteUrl(url)) return null
   const kind = mediaKindFromUrl(url) || fallbackKind
   const fileName = fileNameFromMediaUrl(url, fallbackMimeForKind(kind), kind)
   const importRemoteUrl = options.importRemoteUrl ?? ((remoteUrl: string, name: string) =>
-    importWorkbenchRemoteAssetUrl(remoteUrl, name))
+    importWorkbenchRemoteAssetUrl(remoteUrl, name, {
+      projectId: options.projectContext.binding.projectId,
+      projectBinding: options.projectContext.binding,
+      assertCurrent: options.projectContext.assertCurrent,
+    }))
+  options.projectContext.assertCurrent()
   return importRemoteUrl(url, fileName)
 }
 
@@ -302,11 +311,13 @@ function resultFromImport(result: GenerationAssetImportResult): ClipboardMediaPa
   }
 }
 
-async function importMediaFiles(files: File[], options: ClipboardMediaPasteOptions): Promise<ClipboardMediaPasteResult> {
+async function importMediaFiles(files: File[], options: ProjectClipboardOptions): Promise<ClipboardMediaPasteResult> {
+  options.projectContext.assertCurrent()
   const result = await importLocalMediaFilesToGenerationCanvas(files, {
     basePosition: options.basePosition,
     categoryId: options.categoryId,
     ...options.importOptions,
+    projectContext: options.projectContext,
     exactPosition: options.importOptions?.exactPosition ?? true,
   })
   return resultFromImport(result)
@@ -451,18 +462,25 @@ async function uploadFetchedMediaFileToNode(
   nodeId: string,
   file: File,
   candidate: ClipboardMediaUrlCandidate,
-  options: ClipboardMediaPasteOptions,
+  options: ProjectClipboardOptions,
 ): Promise<boolean> {
+  options.projectContext.assertCurrent()
   const kind = mediaKindFromMime(file.type) || candidate.kind || mediaKindFromUrl(file.name)
   if (!kind) return false
   const uploadFile = options.importOptions?.uploadFile ?? importWorkbenchLocalAssetFile
   const recoverFile = options.importOptions?.recoverFile ?? recoverImportedWorkbenchLocalAssetFile
   let asset: WorkbenchAssetDto | null
   try {
-    asset = await uploadFile(file, file.name || titleFromUrl(candidate.url), { ownerNodeId: nodeId })
-  } catch {
+    asset = await uploadFile(file, file.name || titleFromUrl(candidate.url), {
+      ownerNodeId: nodeId, projectId: options.projectContext.binding.projectId,
+      projectBinding: options.projectContext.binding, assertCurrent: options.projectContext.assertCurrent,
+    })
+  } catch (error) {
+    options.projectContext.assertCurrent()
+    if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
     asset = await recoverFile(file)
   }
+  options.projectContext.assertCurrent()
   const localUrl = hostedAssetUrl(asset)
   if (!localUrl) return false
   updateClipboardMediaNodeSuccess({
@@ -478,11 +496,13 @@ async function uploadFetchedMediaFileToNode(
 
 async function pasteRemoteClipboardMediaUrl(
   candidate: ClipboardMediaUrlCandidate,
-  options: ClipboardMediaPasteOptions,
+  options: ProjectClipboardOptions,
 ): Promise<ClipboardMediaPasteResult> {
+  options.projectContext.assertCurrent()
   const nodeId = createPendingClipboardMediaNode(candidate, options)
   try {
     const asset = await importRemoteMediaUrl(candidate.url, options, candidate.kind)
+    options.projectContext.assertCurrent()
     const localUrl = hostedAssetUrl(asset)
     const kind = kindFromAsset(asset, candidate.url, candidate.kind)
     if (localUrl && kind) {
@@ -496,7 +516,9 @@ async function pasteRemoteClipboardMediaUrl(
       })
       return { ...emptyResult(true), importedCount: 1 }
     }
-  } catch {
+  } catch (error) {
+    options.projectContext.assertCurrent()
+    if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
     /* Desktop remote import may be unavailable in tests/web or blocked by the remote host. */
   }
 
@@ -504,14 +526,18 @@ async function pasteRemoteClipboardMediaUrl(
   if (fetchMedia) {
     try {
       const file = await mediaUrlToFile(candidate.url, fetchMedia, candidate.kind)
+      options.projectContext.assertCurrent()
       if (file && await uploadFetchedMediaFileToNode(nodeId, file, candidate, options)) {
         return { ...emptyResult(true), importedCount: 1 }
       }
-    } catch {
+    } catch (error) {
+      options.projectContext.assertCurrent()
+      if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
       /* Fall through to the visible error node below. */
     }
   }
 
+  options.projectContext.assertCurrent()
   updateClipboardMediaNodeError(nodeId, '网页媒体下载失败：该站点可能禁止跨域请求或开启防盗链。请先下载到本地，再复制或拖入画布。')
   return { ...emptyResult(true), failedCount: 1 }
 }
@@ -519,6 +545,18 @@ async function pasteRemoteClipboardMediaUrl(
 export async function pasteClipboardMediaToGenerationCanvas(
   options: ClipboardMediaPasteOptions,
 ): Promise<ClipboardMediaPasteResult> {
+  let projectContext: ProjectExecutionContext | undefined
+  try {
+    projectContext = options.importOptions?.projectContext ?? captureCurrentProjectExecutionContext()
+    projectContext.assertCurrent()
+    return await pasteClipboardMediaInProject({ ...options, projectContext })
+  } catch (error) {
+    if (!projectContext?.signal.aborted && !isProjectImportCancellation(error)) throw error
+    return emptyResult(true)
+  }
+}
+
+async function pasteClipboardMediaInProject(options: ProjectClipboardOptions): Promise<ClipboardMediaPasteResult> {
   const data = options.clipboardData
   const files = extractClipboardMediaFiles(data)
   if (files.length > 0) return importMediaFiles(files, options)
@@ -532,12 +570,16 @@ export async function pasteClipboardMediaToGenerationCanvas(
   if (fetchMedia) {
     try {
       const file = await mediaUrlToFile(candidate.url, fetchMedia, candidate.kind)
+      options.projectContext.assertCurrent()
       if (file) return importMediaFiles([file], options)
-    } catch {
+    } catch (error) {
+      options.projectContext.assertCurrent()
+      if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
       /* If the browser blocks the request, a trusted media URL can still be displayed directly. */
     }
   }
 
+  options.projectContext.assertCurrent()
   if (candidate.trustAsMedia) return createExternalMediaUrlNode(candidate, options)
   return emptyResult(false)
 }

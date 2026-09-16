@@ -118,25 +118,25 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 50,
+      "line": 55,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 282,
+      "line": 298,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 296,
+      "line": 298,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 458,
+      "line": 470,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -298,7 +298,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 184,
+      "line": 189,
       "symbol": "admitMediaImport"
     },
     {

@@ -193,13 +193,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 299,
+      "line": 341,
       "symbol": "filterImportableMediaFiles"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 294,
+      "line": 323,
       "symbol": "resultFromImport"
     },
     {

@@ -6,6 +6,8 @@ import {
   recoverImportedWorkbenchLocalAssetFile,
   type WorkbenchAssetDto,
 } from '../../api/assetUploadApi'
+import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { dropKindFromFile } from '../model/nodeAssetDrop'
 import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
@@ -30,6 +32,8 @@ export type GenerationAssetImportItem = {
 export type GenerationAssetImportSkip = { fileName: string; rejection: MediaImportRejection }
 
 export type GenerationAssetImportResult = {
+  /** Project replacement is a handled cancellation, never an upload failure or fallback request. */
+  cancelled?: true
   created: GenerationAssetImportItem[]
   skippedDuplicateCount: number
   /** 准入闸拒收的文件（类型不对 / 硬上限 / 磁盘装不下）。 */
@@ -41,6 +45,7 @@ export type GenerationAssetImportResult = {
 }
 
 export type ImportImageFilesOptions = {
+  projectContext?: ProjectExecutionContext
   basePosition: { x: number; y: number }
   categoryId?: string
   createObjectUrl?: (file: File) => string
@@ -196,14 +201,14 @@ export function filterImportableMediaFiles(
 }
 
 type AssetUploadDeps = {
-  uploadFile: (file: File, label: string, meta: { ownerNodeId: string }) => Promise<WorkbenchAssetDto>
+  uploadFile: typeof importWorkbenchLocalAssetFile
   recoverFile: (file: File) => Promise<WorkbenchAssetDto | null>
   probeVideoDuration: (url: string) => Promise<number | null>
 }
 
 // 上传失败（无 data-url 兜底）的 File 留存——供节点「重试导入」复用（C3：此前失败即死，只能删了重拖）。
 // File 不可持久化故只活在内存，重启即清（重启后节点仍是 error 态，文案引导重新导入）。
-const pendingRetryImports = new Map<string, { file: File; kind: 'image' | 'video' }>()
+const pendingRetryImports = new Map<string, { file: File; kind: 'image' | 'video'; context: ProjectExecutionContext }>()
 
 export function clearPendingRetryImports(): void {
   pendingRetryImports.clear()
@@ -215,14 +220,21 @@ async function uploadAndApplyAssetToNode(
   file: File,
   kind: 'image' | 'video',
   deps: AssetUploadDeps,
+  context: ProjectExecutionContext,
 ): Promise<boolean> {
+  context.assertCurrent()
   const store = useGenerationCanvasStore.getState()
   let hosted: WorkbenchAssetDto | null
   try {
-    hosted = await deps.uploadFile(file, deriveLabelFromFileName(file.name), { ownerNodeId: nodeId })
-  } catch {
+    hosted = await deps.uploadFile(file, deriveLabelFromFileName(file.name), {
+      ownerNodeId: nodeId, projectId: context.binding.projectId, projectBinding: context.binding, assertCurrent: context.assertCurrent,
+    })
+  } catch (error) {
+    context.assertCurrent()
+    if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
     hosted = await deps.recoverFile(file)
   }
+  context.assertCurrent()
   const hostedUrl = hostedAssetUrl(hosted)
   if (!hostedUrl) {
     // 图片可在极小阈值内退化成 data-url 落盘；视频体积过大不做兜底（报错 + 留 File 供重试）。
@@ -230,8 +242,9 @@ async function uploadAndApplyAssetToNode(
     const fallbackResult = canPersistSmallFallback
       ? { id: `local-${nodeId}-${Date.now()}`, type: 'image' as const, url: await readFileDataUrl(file), createdAt: Date.now() }
       : null
+    context.assertCurrent()
     if (fallbackResult) pendingRetryImports.delete(nodeId)
-    else pendingRetryImports.set(nodeId, { file, kind })
+    else pendingRetryImports.set(nodeId, { file, kind, context })
     store.updateNode(nodeId, {
       ...(fallbackResult ? { result: fallbackResult, history: [fallbackResult] } : {}),
       status: fallbackResult ? 'success' : 'error',
@@ -247,6 +260,7 @@ async function uploadAndApplyAssetToNode(
     return Boolean(fallbackResult)
   }
   const videoDuration = kind === 'video' ? await deps.probeVideoDuration(hostedUrl) : null
+  context.assertCurrent()
   const hostedResult = {
     id: `asset-${nodeId}-${hosted?.id || Date.now()}`,
     type: kind,
@@ -277,17 +291,44 @@ async function uploadAndApplyAssetToNode(
 export async function retryLocalAssetImport(nodeId: string): Promise<boolean> {
   const pending = pendingRetryImports.get(nodeId)
   if (!pending) return false
-  useGenerationCanvasStore.getState().updateNode(nodeId, { status: 'queued', error: undefined })
-  return uploadAndApplyAssetToNode(nodeId, pending.file, pending.kind, {
-    uploadFile: importWorkbenchLocalAssetFile,
-    recoverFile: recoverImportedWorkbenchLocalAssetFile,
-    probeVideoDuration: readVideoDurationSeconds,
-  })
+  try {
+    pending.context.assertCurrent()
+    useGenerationCanvasStore.getState().updateNode(nodeId, { status: 'queued', error: undefined })
+    return await uploadAndApplyAssetToNode(nodeId, pending.file, pending.kind, {
+      uploadFile: importWorkbenchLocalAssetFile,
+      recoverFile: recoverImportedWorkbenchLocalAssetFile,
+      probeVideoDuration: readVideoDurationSeconds,
+    }, pending.context)
+  } catch (error) {
+    if (!pending.context.signal.aborted && !isProjectImportCancellation(error)) throw error
+    return false
+  }
+}
+
+export function isProjectImportCancellation(error: unknown): boolean {
+  const { code } = surfacePortFailure(error)
+  return code === 'capability_cancelled' || code === 'project_binding_stale' || code === 'project_identity_unavailable'
 }
 
 export async function importLocalMediaFilesToGenerationCanvas(
   inputFiles: File[],
   options: ImportImageFilesOptions,
+): Promise<GenerationAssetImportResult> {
+  let context: ProjectExecutionContext | undefined
+  try {
+    context = options.projectContext ?? captureCurrentProjectExecutionContext()
+    context.assertCurrent()
+    return await importFilesInProject(inputFiles, options, context)
+  } catch (error) {
+    if (!context?.signal.aborted && !isProjectImportCancellation(error)) throw error
+    return { cancelled: true, created: [], skippedDuplicateCount: 0, rejected: [], skippedOverLimitCount: 0, failedCount: 0 }
+  }
+}
+
+async function importFilesInProject(
+  inputFiles: File[],
+  options: ImportImageFilesOptions,
+  context: ProjectExecutionContext,
 ): Promise<GenerationAssetImportResult> {
   const createObjectUrl = options.createObjectUrl ?? ((file: File) => URL.createObjectURL(file))
   const revokeObjectUrl = options.revokeObjectUrl ?? ((url: string) => URL.revokeObjectURL(url))
@@ -295,7 +336,8 @@ export async function importLocalMediaFilesToGenerationCanvas(
   const probeVideoDuration = options.readVideoDuration ?? readVideoDurationSeconds
   const uploadFile = options.uploadFile ?? importWorkbenchLocalAssetFile
   const recoverFile = options.recoverFile ?? recoverImportedWorkbenchLocalAssetFile
-  const capacity = options.capacity !== undefined ? options.capacity : await readStorageCapacitySnapshot()
+  const capacity = options.capacity !== undefined ? options.capacity : await readStorageCapacitySnapshot(context.binding.projectId)
+  context.assertCurrent()
   const filtered = filterImportableMediaFiles(inputFiles, capacity)
   const created: GenerationAssetImportItem[] = []
   // 单次拖入上限：超出截断（C5：此前 .slice(0,8) 静默丢，无提示）。
@@ -319,15 +361,18 @@ export async function importLocalMediaFilesToGenerationCanvas(
     let dimensions: ImageDimensions | null = null
     if (kind === 'image') {
       const objectUrl = createObjectUrl(file)
-      dimensions = await readImageDimensions(objectUrl)
-      revokeObjectUrl(objectUrl)
+      try { dimensions = await readImageDimensions(objectUrl) }
+      finally { revokeObjectUrl(objectUrl) }
+      context.assertCurrent()
     }
     const size = nodeSizeForDimensions(dimensions)
     return { file, kind, dimensions, size }
   }))
+  context.assertCurrent()
   const positions = layoutImportPositions(options.basePosition, prepared.map((item) => item.size))
 
   prepared.forEach(({ dimensions, file, kind, size }, index) => {
+    context.assertCurrent()
     const node = useGenerationCanvasStore.getState().addNode({
       kind: 'asset',
       title:
@@ -342,6 +387,7 @@ export async function importLocalMediaFilesToGenerationCanvas(
       categoryId: options.categoryId,
       exactPosition: options.exactPosition,
     })
+    context.assertCurrent()
     useGenerationCanvasStore.getState().updateNode(node.id, {
       ...(size ? { size } : {}),
       status: 'queued',
@@ -358,7 +404,7 @@ export async function importLocalMediaFilesToGenerationCanvas(
 
   let failedCount = 0
   await Promise.all(created.map(async ({ node, file, kind }) => {
-    const ok = await uploadAndApplyAssetToNode(node.id, file, kind, { uploadFile, recoverFile, probeVideoDuration })
+    const ok = await uploadAndApplyAssetToNode(node.id, file, kind, { uploadFile, recoverFile, probeVideoDuration }, context)
     if (!ok) failedCount += 1
   }))
 

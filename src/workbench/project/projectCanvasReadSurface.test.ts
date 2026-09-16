@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   ProjectHydrationSupersededError,
   captureCurrentProjectCanvasReadSurfaceBinding,
+  captureCurrentProjectExecutionContext,
   createProjectCanvasReadSurfaceCoordinator,
   registerProjectCanvasReadSurface,
   registerProjectCanvasReadSurfaceCoordinator,
@@ -189,6 +190,54 @@ function harness() {
 }
 
 describe('project canvas-read Surface hydration coordinator', () => {
+  it('keeps project IO alive across transport changes but permanently revokes A → B → A', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    try {
+      const first = test.coordinator.beginHydration()
+      await first.commitCanvasRead('project-a')
+      const context = captureCurrentProjectExecutionContext()
+      // Same project, fresh transient transport evidence: identity remains usable.
+      test.bridge.commitCanvasRead.mockResolvedValueOnce({ binding: binding('99', 'project-a') })
+      await first.commitCanvasRead('project-a')
+      expect(() => context.assertCurrent()).not.toThrow()
+      const other = test.coordinator.beginHydration(); await other.commitCanvasRead('project-b')
+      const returned = test.coordinator.beginHydration(); await returned.commitCanvasRead('project-a')
+      expect(context.signal.aborted).toBe(true)
+      expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+      expect(() => captureCurrentProjectExecutionContext().assertCurrent()).not.toThrow()
+    } finally { unregister() }
+  })
+
+  it('revokes project IO at release initiation even when release fails', async () => {
+    const test = harness()
+    const epoch = test.coordinator.beginHydration(); await epoch.commitCanvasRead('project-a')
+    const context = test.coordinator.captureProjectExecutionContext()
+    test.bridge.release.mockRejectedValueOnce(new Error('main release failed'))
+    const release = test.coordinator.releaseCurrent()
+    expect(context.signal.aborted).toBe(true)
+    expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+    await expect(release).rejects.toThrow('main release failed')
+    // Existing exact authority remains available for a retry, not for new IO.
+    expect(test.coordinator.getCurrentBinding()).not.toBeNull()
+    expect(() => test.coordinator.captureProjectExecutionContext()).toThrow('project_binding_stale')
+    await test.coordinator.releaseCurrent()
+  })
+
+  it('does not let a replaced coordinator authorize old project IO', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    await test.coordinator.beginHydration().commitCanvasRead('project-a')
+    const context = captureCurrentProjectExecutionContext()
+    unregister()
+    expect(context.signal.aborted).toBe(true)
+    expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+    expect(() => captureCurrentProjectExecutionContext()).toThrow('project_identity_unavailable')
+    const unregisterAgain = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    try { expect(() => context.assertCurrent()).toThrow('project_binding_stale') }
+    finally { unregisterAgain() }
+  })
+
   it('starts main suspend synchronously before returning the hydration epoch', async () => {
     const test = harness()
     const epoch = test.coordinator.beginHydration()

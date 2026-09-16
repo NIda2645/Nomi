@@ -1,0 +1,287 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-interactive-import-project-context",
+  "problem_type": "Interactive canvas import outlives its originating project",
+  "symptom": "Capacity/dimensions/upload completion or retry writes after project replacement",
+  "direct_cause": "Async preparation captures global project too late and retry stores files without originating lifetime",
+  "class_root": "Interactive import lacks the coordinator-owned project execution context across awaits and mutations",
+  "affected_population": [
+    "Canvas dropped files",
+    "Clipboard file imports",
+    "Asset library image/video import",
+    "Retry local import"
+  ],
+  "scope_paths": [
+    "src/workbench/project/projectCanvasReadSurface.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+    "src/workbench/assets/AssetLibraryPanel.tsx"
+  ],
+  "entry_points": [
+    "importLocalMediaFilesToGenerationCanvas",
+    "retryLocalAssetImport"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Nomi coordinator hydration ownership, main session binding and global canvas store boundaries define the invariant; no new third-party API.",
+  "invariants": [
+    "Capture full project binding before asynchronous preparation",
+    "Replacement permanently revokes old interactive actions, including A to B to A",
+    "Same-project page navigation preserves action identity",
+    "Cancelled operations cannot recover or persist data URLs"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 48,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 211,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 223,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 317,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 331,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 62,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 548,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 33,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 38,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 41,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 241,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 270,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 378,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 280,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 303,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 319,
+      "symbol": "captureCurrentProjectExecutionContext"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 323,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 316,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 550,
+      "symbol": "captureCurrentProjectExecutionContext"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 554,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 590,
+      "symbol": "pasteClipboardMediaToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "line": 387,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "line": 310,
+      "symbol": "pasteClipboardMediaToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "line": 467,
+      "symbol": "retryLocalAssetImport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 245,
+      "symbol": "captureProjectExecutionContext"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 25,
+    "why_not": "Drag, clipboard, library and retry are distinct user entries converging on one guarded adapter."
+  },
+  "generality_proof": "All local media import and retry paths carry a coordinator-issued context through capacity/dimensions/storage/duration and node mutation.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "createProjectCanvasReadSurfaceCoordinator",
+      "responsibility": "Own project action lifetime independently of short-lived transport fields"
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "symbol": "importLocalMediaFilesToGenerationCanvas",
+      "responsibility": "Require originating context across preparation, upload, recovery and node writes"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Drag import converges on guarded adapter"
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Clipboard import converges on same adapter"
+    },
+    {
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Library image/video import shares adapter"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "retryLocalAssetImport",
+      "disposition": "enforced",
+      "evidence": "Retry retains captured context instead of adopting current project"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every async preparation/import can overlap project replacement",
+    "same_class_scan": [
+      "node scripts/door-map.mjs importLocalMediaFilesToGenerationCanvas retryLocalAssetImport ProjectHydrationEpoch",
+      "Inspected upload catch recovery, small-file data URL, duration await and retry map",
+      "Clipboard remote import and data URL conversion capture the same context before awaits; library removes dynamic-import await before capture."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+    "invariant": "Only the originating project lifetime may publish an interactive import to the canvas",
+    "failure_mode": "Project replacement or cancellation terminates without further IO, canvas mutation, retry, fallback or rejected UI promise",
+    "exception_policy": "none",
+    "strategy": "Coordinator-owned full-binding execution context captured before waits, propagated to main session IO and retained for retries",
+    "artifacts": [
+      "src/workbench/project/projectCanvasReadSurface.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "src/workbench/assets/AssetLibraryPanel.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/project/projectCanvasReadSurface.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/project/projectCanvasReadSurface.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts"
+    ],
+    "rationale": "Remove unbound upload metadata and retry state; cancellation no longer takes ordinary recovery fallback"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses existing coordinator, store and importer",
+    "exit_criteria": []
+  },
+  "migration": "No persisted schema changes; in-memory retries die with their project lifetime.",
+  "residual_risks": [
+    "Root integration owns final Electron drag/paste project-switch journey",
+    "Remote importer main-process session and storage wiring is completed by root integration."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/project/projectCanvasReadSurface.ts",
+    "has_tests": true,
+    "tests": [
+      "src/workbench/project/projectCanvasReadSurface.test.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts"
+    ],
+    "rationale": "Shared coordinator owns lifetime and adapter enforces before side effects"
+  }
+}

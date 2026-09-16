@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator } from '../../project/projectCanvasReadSurface'
+import type { CanvasReadSurfaceBridge } from '../../../../electron/shared/surfacePortBinding'
+import * as assetUploadApi from '../../api/assetUploadApi'
 import {
   extractClipboardMediaFiles,
   extractClipboardMediaUrl,
@@ -49,7 +52,26 @@ function uploadResult(url: string, contentType?: string) {
 }
 
 describe('clipboardImagePaste', () => {
-  beforeEach(() => {
+  let coordinator: ReturnType<typeof createProjectCanvasReadSurfaceCoordinator>
+  let unregister: () => void
+  async function switchProject(projectId: string) {
+    const epoch = coordinator.beginHydration()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+    await epoch.commitCanvasRead(projectId)
+  }
+  afterEach(() => { unregister?.(); vi.restoreAllMocks() })
+  beforeEach(async () => {
+    coordinator = createProjectCanvasReadSurfaceCoordinator({
+      createSurfaceInstanceId: () => 'clipboard-window',
+      getSurfaceBridge: () => ({
+        suspend: async () => ({ suspension: {} }), release: async () => ({ released: true }),
+        commitCanvasRead: async ({ projectId }: { projectId: string }) => ({ binding: { binding: {
+          projectId, immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1,
+        } } }),
+      } as unknown as CanvasReadSurfaceBridge),
+    })
+    unregister = registerProjectCanvasReadSurfaceCoordinator(coordinator)
+    await switchProject('project-a')
     __resetGenerationCanvasHistoryForTests()
     useGenerationCanvasStore.getState().restoreSnapshot({
       nodes: [],
@@ -57,6 +79,44 @@ describe('clipboardImagePaste', () => {
       selectedNodeIds: [],
       groups: [],
     })
+  })
+
+  it('cancels data URL conversion without recapturing the replacement project or using an external fallback', async () => {
+    const uploadFile = vi.fn(async () => uploadResult('nomi-local://asset/project-a/clip.png'))
+    const pending = pasteClipboardMediaToGenerationCanvas({
+      clipboardData: fakeClipboardData({ plain: 'data:image/png;base64,eA==' }), basePosition: { x: 0, y: 0 },
+      importOptions: { capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null, uploadFile },
+    })
+    await switchProject('project-b')
+    expect(await pending).toMatchObject({ handled: true, importedCount: 0, failedCount: 0, usedExternalUrl: false })
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  })
+
+  it('cancels a remote clipboard completion without fetching fallback media or updating the replacement project', async () => {
+    let finish!: () => void
+    const wait = new Promise<void>(resolve => { finish = resolve })
+    const fetchMedia = vi.fn<typeof fetch>()
+    const pending = pasteClipboardMediaToGenerationCanvas({
+      clipboardData: fakeClipboardData({ plain: 'https://example.com/clip.png' }), basePosition: { x: 0, y: 0 }, fetchMedia,
+      importRemoteUrl: async () => { await wait; throw new Error('host failed') },
+    })
+    await switchProject('project-b')
+    finish()
+    expect(await pending).toMatchObject({ handled: true, importedCount: 0, failedCount: 0 })
+    expect(fetchMedia).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  })
+
+  it('passes the originating binding and assertion to the remote importer', async () => {
+    const remote = vi.spyOn(assetUploadApi, 'importWorkbenchRemoteAssetUrl').mockResolvedValue(uploadResult('nomi-local://asset/project-a/clip.png'))
+    const result = await pasteClipboardMediaToGenerationCanvas({
+      clipboardData: fakeClipboardData({ plain: 'https://example.com/clip.png' }), basePosition: { x: 0, y: 0 },
+    })
+    expect(result.importedCount).toBe(1)
+    expect(remote).toHaveBeenCalledWith('https://example.com/clip.png', 'clip.png', expect.objectContaining({
+      projectId: 'project-a', projectBinding: coordinator.getCurrentBinding()?.binding, assertCurrent: expect.any(Function),
+    }))
   })
 
   it('extracts image and video files from clipboard files and items without duplicates', () => {

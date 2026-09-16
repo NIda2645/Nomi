@@ -5,6 +5,7 @@ import type {
   SurfaceSuspensionWire,
 } from '../../../electron/shared/surfacePortBinding'
 import { settleSurfacePortHandler, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { sameProjectAgentBinding, type ProjectBinding } from '../../../electron/shared/projectBinding'
 import type { CanvasWriteInput, CanvasWriteOperation } from '../../../electron/shared/agentCapabilities/canvasWrite'
 import type { CanvasDeleteInput } from '../../../electron/shared/agentCapabilities/canvasDelete'
 import type { AssetReadInput } from '../../../electron/shared/agentCapabilities/assetRead'
@@ -31,11 +32,13 @@ export type ProjectHydrationEpoch = Readonly<{
 
 export type ProjectHydrationGuard = Pick<ProjectHydrationEpoch, 'signal' | 'assertCurrent'>
 export type ProjectSurfaceExecutionGuard = Readonly<{ signal: AbortSignal; assertCurrent(): void }>
+export type ProjectExecutionContext = ProjectSurfaceExecutionGuard & Readonly<{ binding: ProjectBinding }>
 
 export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
   beginHydration(): ProjectHydrationEpoch
   releaseCurrent(): Promise<void>
   getCurrentBinding(): SurfacePortBindingWire | null
+  captureProjectExecutionContext(): ProjectExecutionContext
   sealCanvasReadSnapshot(
     binding: SurfacePortBindingWire,
     snapshot: unknown,
@@ -102,6 +105,7 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
 }>
 
 let registeredCoordinator: ProjectCanvasReadSurfaceCoordinator | null = null
+let registeredCoordinatorLifetime: AbortController | null = null
 
 /** Share the one coordinator object, never a copied project/binding scalar. */
 export function registerProjectCanvasReadSurfaceCoordinator(
@@ -110,9 +114,14 @@ export function registerProjectCanvasReadSurfaceCoordinator(
   if (registeredCoordinator && registeredCoordinator !== coordinator) {
     throw new SurfacePortWireError('surface_owner_mismatch')
   }
+  if (!registeredCoordinator) registeredCoordinatorLifetime = new AbortController()
   registeredCoordinator = coordinator
   return () => {
-    if (registeredCoordinator === coordinator) registeredCoordinator = null
+    if (registeredCoordinator === coordinator) {
+      registeredCoordinatorLifetime?.abort()
+      registeredCoordinatorLifetime = null
+      registeredCoordinator = null
+    }
   }
 }
 
@@ -228,6 +237,18 @@ export function captureCurrentProjectCanvasReadSurfaceBinding(): SurfacePortBind
   return registeredCoordinator?.getCurrentBinding() ?? null
 }
 
+/** Project IO keeps a lifetime, not the page's transport capture. */
+export function captureCurrentProjectExecutionContext(): ProjectExecutionContext {
+  const coordinator = registeredCoordinator
+  const lifetime = registeredCoordinatorLifetime
+  if (!coordinator || !lifetime) throw new SurfacePortWireError('project_identity_unavailable')
+  const context = coordinator.captureProjectExecutionContext()
+  return Object.freeze({ ...context, signal: AbortSignal.any([context.signal, lifetime.signal]), assertCurrent() {
+    if (lifetime.signal.aborted || registeredCoordinator !== coordinator) throw new SurfacePortWireError('project_binding_stale')
+    context.assertCurrent()
+  } })
+}
+
 /** Exchange the already-captured exact binding and bytes; never recapture global state after an await. */
 export function sealCurrentProjectCanvasReadSnapshot(
   binding: SurfacePortBindingWire,
@@ -241,6 +262,7 @@ export function sealCurrentProjectCanvasReadSnapshot(
 type EpochState = {
   id: number
   controller: AbortController
+  interactionController: AbortController
   bridge: CanvasReadSurfaceBridge | null
   suspensionPromise: Promise<void>
   suspension: SurfaceSuspensionWire | null
@@ -316,6 +338,7 @@ export function createProjectCanvasReadSurfaceCoordinator(
 
   const releaseState = async (state: EpochState): Promise<void> => {
     assertCurrent(state)
+    state.interactionController.abort()
     await awaitWhileCurrent(state, state.suspensionPromise)
     const authority = state.binding ?? state.suspension
     if (!authority || !state.bridge) {
@@ -334,10 +357,12 @@ export function createProjectCanvasReadSurfaceCoordinator(
   const coordinator: ProjectCanvasReadSurfaceCoordinator = Object.freeze({
     beginHydration() {
       current?.controller.abort()
+      current?.interactionController.abort()
       const bridge = input.getSurfaceBridge()
       const state: EpochState = {
         id: ++sequence,
         controller: new AbortController(),
+        interactionController: new AbortController(),
         bridge,
         suspensionPromise: Promise.resolve(),
         suspension: null,
@@ -381,6 +406,17 @@ export function createProjectCanvasReadSurfaceCoordinator(
     },
     getCurrentBinding() {
       return current?.binding ?? null
+    },
+    captureProjectExecutionContext() {
+      const state = current
+      if (!state?.binding) throw new SurfacePortWireError('project_identity_unavailable')
+      const binding = Object.freeze({ ...state.binding.binding })
+      const assertProjectCurrent = (): void => {
+        if (current !== state || state.controller.signal.aborted || state.interactionController.signal.aborted ||
+          !state.binding || !sameProjectAgentBinding(binding, state.binding.binding)) throw new SurfacePortWireError('project_binding_stale')
+      }
+      assertProjectCurrent()
+      return Object.freeze({ binding, signal: state.interactionController.signal, assertCurrent: assertProjectCurrent })
     },
     sealCanvasReadSnapshot(binding, snapshot) {
       const state = current

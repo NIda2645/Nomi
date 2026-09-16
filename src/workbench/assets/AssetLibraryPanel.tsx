@@ -20,7 +20,7 @@ import { assetsForFolderScope, folderCountsForAssets, useAssetFolderInteractions
 import { filterAssets, type AssetRef } from './assetTypes'
 import { ASSET_LIBRARY_DRAG_MIME, serializeAssetLibraryDrag } from './assetLibraryDrag'
 import { importAudioFilesToLibrary, type AudioImportResult } from './importAudioToLibrary'
-import type { GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
+import { importLocalMediaFilesToGenerationCanvas, type GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { confirmDialog, DesignEmptyState, NomiLoadingMark, promptDialog, TooltipProvider } from '../../design'
@@ -277,10 +277,9 @@ export function AssetLibraryContent({
     event.currentTarget.value = ''
     const { mediaFiles, audioFiles, unsupported } = classifyUploadFiles(all)
     if (mediaFiles.length) {
-      void import('../generationCanvas/adapters/assetImportAdapter')
-        .then(({ importLocalMediaFilesToGenerationCanvas }) =>
-          importLocalMediaFilesToGenerationCanvas(mediaFiles, { basePosition: { x: 120, y: 90 } }))
+      void importLocalMediaFilesToGenerationCanvas(mediaFiles, { basePosition: { x: 120, y: 90 } })
         .then((result) => {
+          if (result.cancelled) return
           refreshProjectAssets()
           refreshAllProjectAssets()
           reportMediaImport(result, report)
