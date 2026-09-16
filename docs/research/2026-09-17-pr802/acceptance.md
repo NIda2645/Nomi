@@ -27,7 +27,7 @@
 
 - 后台生成/找回/轮询身份、交互动作签发、子窗口派生、上传绑定必填：红→绿与日志见 `review-disposition.md`「1b」。
 - door-map：当前项目读取 `ccbc0e45d` 106 处 → 0（`/tmp/nomi-pr802-p1-1b-current-project-doors-after.json`）；剩余 14 处显示/传输读（`/tmp/nomi-pr802-p1-1b-live-reader-doors.json`）逐条入棘轮。
-- `pnpm run typecheck` 三配置通过（`/tmp/nomi-pr802-p1-1b-typecheck.log`）；`check:test-types` src 0 错、存量 68 未增；`lint:ci` 0 error / 79 warning（上限 81，`/tmp/nomi-pr802-p1-1b-lint.log`）；相关 Vitest 871 文件 7579 项通过、1 项为本分支前已红（`/tmp/nomi-pr802-p1-1b-related-green.log`）。
+- `pnpm run typecheck` 三配置通过（`/tmp/nomi-pr802-p1-1b-typecheck.log`）；`check:test-types` src 0 错、存量 68 未增；`lint:ci` 0 error / 79 warning（上限 81，`/tmp/nomi-pr802-p1-1b-lint.log`）；相关 Vitest 872 文件 7595 项通过、1 项为本分支前已红（`/tmp/nomi-pr802-p1-1b-related-green.log`）；`pnpm run gates:contracts` 86 道门仅 `check:asset-evidence` 红，且在 `50223265c` 已红（`/tmp/nomi-pr802-p1-1b-gates-contracts-final.log`）。
 - 仍未跑 Electron UI 走查；后台生成轮询中切项目的真实旅程留给第二段。
 
 ## 剩余交付门
