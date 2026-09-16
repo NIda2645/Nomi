@@ -108,6 +108,8 @@ export type CapturedCanvasReadPort = Readonly<{
 export type CapturedCanvasReadPortDispatch = Readonly<{
   owner: SurfaceOwnerDescriptor;
   binding: SurfacePortBinding;
+  /** null is a non-session project read; renderer session actions always carry cancellation. */
+  sessionSignal: AbortSignal | null;
 }>;
 
 export type VerifiedCanvasReadProjectTarget = Readonly<{
@@ -170,6 +172,7 @@ type CapturedState = Readonly<{
   epoch: number;
   owner: SurfaceOwnerEvidence;
   binding: SurfacePortBinding;
+  sessionSignal: AbortSignal | null;
 }>;
 
 type ReleasedState = Readonly<{
@@ -402,8 +405,10 @@ export function createCanvasReadSurfaceRegistry(
       return expected;
     },
     captureProjectSessionPort(session) {
-      registry.resolveProjectSession(session);
-      return registry.captureCanvasReadPort(sessions.get(session)!.owner, current!.binding);
+      const identity = registry.resolveProjectSession(session);
+      const captured = registry.captureCanvasReadPort(sessions.get(session)!.owner, current!.binding);
+      captures.set(captured, Object.freeze({ ...captures.get(captured)!, sessionSignal: identity.signal }));
+      return captured;
     },
     revokeProjectSession(session) {
       const stored = sessions.get(session);
@@ -589,6 +594,7 @@ export function createCanvasReadSurfaceRegistry(
           epoch: state.epoch,
           owner,
           binding: verified,
+          sessionSignal: null,
         }),
       );
       return captured;
@@ -608,6 +614,7 @@ export function createCanvasReadSurfaceRegistry(
       if (!captured || typeof captured !== "object") throw new SurfacePortError("surface_port_stale");
       const capture = captures.get(captured);
       if (!capture) throw new SurfacePortError("surface_port_stale");
+      if (capture.sessionSignal?.aborted) throw new SurfacePortError("capability_cancelled");
       const state = current;
       if (
         !state ||
@@ -623,13 +630,14 @@ export function createCanvasReadSurfaceRegistry(
       if (!sameOwner(descriptor, state.ownerDescriptor)) {
         throw new SurfacePortError("surface_owner_mismatch");
       }
-      return Object.freeze({ owner: descriptor, binding: capture.binding });
+      return Object.freeze({ owner: descriptor, binding: capture.binding, sessionSignal: capture.sessionSignal });
     },
 
     async assertCanvasReadPortReply(captured, replyBinding) {
       if (!captured || typeof captured !== "object") throw new SurfacePortError("surface_port_stale");
       const capture = captures.get(captured);
       if (!capture) throw new SurfacePortError("surface_port_stale");
+      if (capture.sessionSignal?.aborted) throw new SurfacePortError("capability_cancelled");
       const state = current;
       if (
         !state ||

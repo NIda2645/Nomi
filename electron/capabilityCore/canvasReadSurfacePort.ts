@@ -242,6 +242,7 @@ export function createCanvasReadSurfacePortRuntime(
         error instanceof SurfacePortError ? error : new SurfacePortError("surface_port_unavailable"),
       );
     }
+    if (dispatch.sessionSignal) signal = AbortSignal.any([signal, dispatch.sessionSignal]);
     const requestId = randomId().trim();
     if (!requestId || pending.has(requestId)) return Promise.reject(new SurfacePortError("surface_port_unavailable"));
     return new Promise((resolve, reject) => {

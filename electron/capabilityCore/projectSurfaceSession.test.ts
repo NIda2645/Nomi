@@ -75,6 +75,25 @@ describe('Project surface session identity', () => {
     expect(() => f.registry.resolveProjectSession(next)).toThrow()
   })
 
+  it('cancels an already dispatched action immediately when its session closes', async () => {
+    let sent!: () => void
+    const dispatched = new Promise<void>(resolve => { sent = resolve })
+    const send = vi.fn((channel: string) => { if (channel.endsWith(':request')) sent() })
+    const f = await fixture(send)
+    const session = f.registry.openProjectSession(f.owner, f.binding)
+    const captured = f.registry.captureProjectSessionPort(session)
+    const runtime = registerMainCanvasReadExecutionRuntime({ surfaceRegistry: f.registry,
+      capturedSnapshots: createCapturedCanvasReadSnapshotRegistry({ ownerAuthority: f.authority }),
+    })
+    const reading = runtime.surfacePortRuntime!.createPort(captured).read({ signal: new AbortController().signal })
+    const rejected = expect(reading).rejects.toMatchObject({ code: 'capability_cancelled' })
+    await dispatched
+    f.registry.revokeProjectSession(session)
+    expect(send.mock.calls.some(([channel]) => channel === 'nomi:surface:request:cancel')).toBe(true)
+    expect(() => f.registry.resolveCapturedCanvasReadPort(captured)).toThrow()
+    await rejected
+  })
+
   it('revalidates immutable disk identity and detects a project switch while identity IO is pending', async () => {
     const f = await fixture()
     const session = f.registry.openProjectSession(f.owner, f.binding)

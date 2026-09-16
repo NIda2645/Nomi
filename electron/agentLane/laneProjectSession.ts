@@ -1,4 +1,5 @@
 import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceRegistry'
+import { logError } from '../logging/logger'
 
 /** A closed window/project retires interactive authority before awaiting lane cleanup. */
 export function bindLaneProjectSession<T extends { close(): Promise<void> }>(
@@ -18,7 +19,7 @@ export function bindLaneProjectSession<T extends { close(): Promise<void> }>(
     registry.revokeProjectSession(session)
     return closing
   }
-  const revoked = () => { void close().catch(error => console.error('[agent-lane] session close failed', error)) }
+  const revoked = () => { void close().catch(() => logError('agent', 'project-session-close-failed', new Error('Project session cleanup failed'))) }
   signal.addEventListener('abort', revoked, { once: true })
   return { ...workspace, close }
 }
