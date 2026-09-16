@@ -36,7 +36,7 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
   const publicCodes = new Set([
     "capability_invocation_unverified", "capability_authority_invalid", "capability_input_invalid",
     "capability_policy_stale", "capability_output_invalid", "capability_timeout", "capability_cancelled",
-    "capability_execution_failed", "capability_unsupported", "project_binding_stale", "surface_port_suspended",
+    "capability_execution_failed", "capability_receipt_unresolved", "capability_unsupported", "project_binding_stale", "surface_port_suspended",
     "surface_port_unavailable", "surface_port_stale", "surface_owner_mismatch", "document_target_stale",
   ]);
   const published = publicCodes.has(code) ? code : "capability_execution_failed";

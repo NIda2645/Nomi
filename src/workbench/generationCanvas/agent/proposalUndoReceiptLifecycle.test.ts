@@ -83,6 +83,14 @@ beforeEach(async () => {
 afterEach(() => { laneClient.connect(undefined) })
 
 describe('committed proposal receipt renderer lifecycle', () => {
+  it('does not mark an uncertain non-canvas write undone without compensation evidence', async () => {
+    const proposal = { ...record, compensation: [], watchNodes: [], hostApprovalId: 'approval', hostActionHash: 'a'.repeat(64) }
+    deps.activeProposal = proposal
+    expect(hydrateCommittedProposalReceipt(receipt('preparing', 1, proposal))).toBe(true)
+    await expect(recoverPendingProposalReceipt()).resolves.toBe(false)
+    expect(deps.transition).not.toHaveBeenCalled()
+  })
+
   it('persists an explicitly non-Canvas preparation with no restore snapshot', async () => {
     const coordinator = createProposalReceiptCoordinator({
       summary: 'export_timeline',

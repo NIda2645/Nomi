@@ -96,12 +96,12 @@ export function createDesktopLaneTools(input: {
         const receipt = documentReceipts.get(context.toolCallId)
         if (!prepared || !receipt || !approvedCalls.delete(context.toolCallId)) throw new Error('capability_authority_invalid')
         preparedDocuments.delete(context.toolCallId)
-        let decision: RuntimeToolDecision
-        try { decision = await documentWrite.execute(prepared, context.signal) } catch (error) {
+        // A thrown/unknown result leaves preparing evidence; only a definite
+        // refusal can abandon it. Cancellation after dispatch is not a refusal.
+        const decision = await documentWrite.execute(prepared, context.signal)
+        if (!decision.ok && decision.code !== 'capability_receipt_unresolved') {
           abandonDocumentProposalReceipt(input.receipts, receipt.prepared, receipt.proposal, receipt.approvalId)
-          throw error
         }
-        if (!decision.ok) abandonDocumentProposalReceipt(input.receipts, receipt.prepared, receipt.proposal, receipt.approvalId)
         const result = resultOf(decision) as DocumentWriteResult
         commitDocumentProposalReceipt(input.receipts, receipt.prepared, receipt.proposal, receipt.approvalId)
         return result

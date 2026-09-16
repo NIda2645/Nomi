@@ -538,6 +538,9 @@ export async function recoverPendingProposalReceipt(): Promise<boolean> {
     installReceipt(receipt)
     return false
   }
+  // A document/export receipt without Canvas compensation is evidence of an
+  // unknown effect, not evidence that Canvas recovery can undo that effect.
+  if (receipt.proposal.compensation.length === 0) return false
   installReceipt(receipt)
   const release = await ownReceiptRecoveryWindow(receipt.proposalId)
   let durablyCompleted = false

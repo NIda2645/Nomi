@@ -36,7 +36,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 
 async function fixture(
   kind: 'document' | 'canvas' | 'delete',
-  receiptMode: 'committed' | 'missing' | 'mismatch' | 'import-failed' = 'committed',
+  receiptMode: 'committed' | 'missing' | 'mismatch' | 'import-failed' | 'written-then-revoked' = 'committed',
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-desktop-lane-receipts-'))
   cleanups.push(() => fs.rm(root, { recursive: true, force: true }))
@@ -68,6 +68,7 @@ async function fixture(
     expect(input.preconditions).toEqual(documentPreconditions)
     const previous = await fs.readFile(documentFile, 'utf8')
     await fs.writeFile(documentFile, input.operation === 'append' ? previous + input.content : input.content)
+    if (receiptMode === 'written-then-revoked') registry.revokeProjectSession(session)
     return { applied: true, revision: 2, contentHash: 'fnv1a-after' }
   } }
   const canvasPort: CanvasWritePort = {
@@ -141,25 +142,40 @@ async function fixture(
     tools: assembly.tools, toolLifecycle: assembly.toolLifecycle,
     approval: { hasUserInterface: true, policy: () => policy } })
   cleanups.push(() => lane.close())
-  const owned = bindLaneProjectSession(lane, registry, session, () => assembly.dispose())
+  let closed!: () => void
+  const closedPromise = new Promise<void>(resolve => { closed = resolve })
+  const onClosed = vi.fn(() => { assembly.dispose(); closed() })
+  const owned = bindLaneProjectSession(lane, registry, session, onClosed)
   const pending = (run: Promise<unknown>) => Promise.race([
     lane.projection().pending ? Promise.resolve() : new Promise<void>((resolve) => {
       const stop = lane.subscribe((projection) => { if (projection.pending) { stop(); resolve() } })
     }),
     run.then(() => { throw new Error(`Fixture finished before approval: ${JSON.stringify(lane.projection().parts)}`) }),
   ])
-  return { lane: owned, revoke: () => registry.revokeProjectSession(session), receipts, order, pending, root, assembly, toolName, args, documentFile, canvasFile,
+  return { lane: owned, revoke: () => registry.revokeProjectSession(session), closedPromise, onClosed, receipts, order, pending, root, assembly, toolName, args, documentFile, canvasFile,
     captures: () => captures, sawQueuedAuthority: () => sawQueuedAuthority }
 }
 
 describe('desktop lane verified writes and durable receipts', () => {
+  it('retains preparing evidence when a real document write commits before session revocation', async () => {
+    const f = await fixture('document', 'written-then-revoked')
+    const run = f.lane.execute({ kind: 'prompt', text: 'Append the fixture.' })
+    await f.pending(run)
+    await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+    await run
+    await f.closedPromise
+    expect(await fs.readFile(f.documentFile, 'utf8')).toBe('Original fixture document. Appended fixture.')
+    expect(f.receipts.read()).toMatchObject({ lifecycle: 'preparing', revision: 1 })
+  })
+
   it('session revocation cancels a real pending lane approval and closes model execution without writing', async () => {
     const f = await fixture('canvas')
     const run = f.lane.execute({ kind: 'prompt', text: 'Create the fixture artifact.' })
     await f.pending(run)
     expect(f.lane.projection().pending?.toolCallId).toBe('fixture-call')
     f.revoke()
-    await f.lane.close()
+    await f.closedPromise
+    expect(f.onClosed).toHaveBeenCalledOnce()
     await run
     expect(f.lane.projection().pending).toBeUndefined()
     expect(f.order).toEqual(['canvas-capture'])

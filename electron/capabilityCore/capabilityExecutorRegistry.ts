@@ -74,6 +74,7 @@ export type CapabilityExecutionErrorCode =
   | "capability_output_invalid"
   | "capability_timeout"
   | "capability_cancelled"
+  | "capability_receipt_unresolved"
   | "capability_execution_failed"
   | "capability_unsupported";
 
@@ -243,6 +244,7 @@ async function bounded<T>(
   externalSignal: AbortSignal | undefined,
   execute: (signal: AbortSignal) => Promise<T>,
   options: CapabilityExecuteOptions = {},
+  writeStarted: () => boolean = () => false,
 ): Promise<T> {
   if (externalSignal?.aborted) throw new CapabilityExecutionError("capability_cancelled");
 
@@ -269,7 +271,8 @@ async function bounded<T>(
           () => {
             reject(
               new CapabilityExecutionError(
-                timedOut ? "capability_timeout" : cancelled ? "capability_cancelled" : "capability_cancelled",
+                writeStarted() ? "capability_receipt_unresolved"
+                  : timedOut ? "capability_timeout" : cancelled ? "capability_cancelled" : "capability_cancelled",
               ),
             );
           },
@@ -565,6 +568,8 @@ export class CapabilityExecutorRegistry {
       throw new CapabilityExecutionError("capability_unsupported");
     }
     parseInput(invocation);
+    const mutating = isDocumentWrite || isCanvasWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
+    let writeStarted = false;
 
     return bounded(
       this.#timeoutMs,
@@ -581,18 +586,30 @@ export class CapabilityExecutorRegistry {
 
         let source: unknown;
         try {
+          if (signal.aborted) throw new CapabilityExecutionError("capability_cancelled");
+          writeStarted = mutating;
           source = await (port as CanvasReadPort).read({
             ...(isDocumentRead ? { scope: documentReadSemanticInputSchema.parse(invocation.input).scope } : {}),
             signal,
           });
         } catch (error) {
-          if (signal.aborted) throw new CapabilityExecutionError("capability_cancelled");
+          if (signal.aborted) throw new CapabilityExecutionError(writeStarted ? "capability_receipt_unresolved" : "capability_cancelled");
+          if (writeStarted && !(isStableTypedError(error) || error instanceof CapabilityExecutionError)) {
+            throw new CapabilityExecutionError("capability_receipt_unresolved");
+          }
           throw safeStageError(error);
         }
-        await revalidate(invocation);
-        return projectOutput(source, invocation) as CapabilityResult<Input>;
+        try {
+          await revalidate(invocation);
+          return projectOutput(source, invocation) as CapabilityResult<Input>;
+        }
+        catch (error) {
+          if (writeStarted) throw new CapabilityExecutionError("capability_receipt_unresolved");
+          throw error;
+        }
       },
       options,
+      () => writeStarted,
     );
   }
 }

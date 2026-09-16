@@ -11,6 +11,7 @@ import * as factories from './verifiedCapabilityInvocationRendererFactories'
 import { revalidateVerifiedCapabilityInvocation, resolveVerifiedCapabilityExecutionTarget, type VerifiedCapabilityInvocation } from './verifiedCapabilityInvocation'
 import { registerMainCanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import { createCapturedCanvasReadSnapshotRegistry } from './canvasReadCapturedSnapshotRegistry'
+import { createMainCapabilityExecutorRegistry } from './capabilityExecutorRegistry'
 
 function transportCannotBecomeSession(captured: CapturedCanvasReadPort) {
   // @ts-expect-error A frame capability cannot inhabit a long-lived session field.
@@ -35,6 +36,45 @@ async function fixture(send?: (channel: string, payload: Record<string, unknown>
 }
 
 describe('Project surface session identity', () => {
+  it.each(['invalid-output', 'untyped-error'] as const)('retains uncertainty after document dispatch with %s', async (failure) => {
+    const f = await fixture()
+    const session = f.registry.openProjectSession(f.owner, f.binding)
+    const invocation = await factories.createRendererDocumentWriteVerifiedInvocationFactory({ registry: f.registry, session, requestId: 'invalid-result' }).mint({
+      toolCallId: 'tool', documentId: 'doc', anchor: { kind: 'whole-document' },
+      preconditions: { document: { revision: 1, contentHash: 'before' } }, input: { operation: 'append', content: 'After' },
+    })
+    let writes = 0
+    const executor = createMainCapabilityExecutorRegistry({
+      resolveCanvasReadPort: async () => { throw new Error('not a read') },
+      resolveDocumentWritePort: async () => ({ write: async () => {
+        writes += 1
+        if (failure === 'untyped-error') throw new Error('reply encoding failed after commit')
+        return { applied: 'not-a-boolean' }
+      } }),
+    })
+    await expect(executor.execute(invocation)).rejects.toMatchObject({ code: 'capability_receipt_unresolved' })
+    expect(writes).toBe(1)
+  })
+
+  it('reports an unknown outcome when a dispatched document write times out', async () => {
+    const f = await fixture()
+    const session = f.registry.openProjectSession(f.owner, f.binding)
+    const invocation = await factories.createRendererDocumentWriteVerifiedInvocationFactory({ registry: f.registry, session, requestId: 'timeout' }).mint({
+      toolCallId: 'tool', documentId: 'doc', anchor: { kind: 'whole-document' },
+      preconditions: { document: { revision: 1, contentHash: 'before' } }, input: { operation: 'append', content: 'After' },
+    })
+    let writes = 0
+    const executor = createMainCapabilityExecutorRegistry({ timeoutMs: 1,
+      resolveCanvasReadPort: async () => { throw new Error('not a read') },
+      resolveDocumentWritePort: async () => ({ write: ({ signal }) => new Promise((_resolve, reject) => {
+        writes += 1
+        signal.addEventListener('abort', () => reject(new Error('late renderer')), { once: true })
+      }) }),
+    })
+    await expect(executor.execute(invocation)).rejects.toMatchObject({ code: 'capability_receipt_unresolved' })
+    expect(writes).toBe(1)
+  })
+
   it('keeps one identity for the same owner and project while action captures expire', async () => {
     const f = await fixture()
     const session = f.registry.openProjectSession(f.owner, f.binding)
@@ -140,6 +180,37 @@ const cases = [
 ] as const
 
 describe.each(cases)('$name project session authority', ({ factory, args }) => {
+  if ('operation' in args.input && ['append', 'set_node_prompt', 'delete_canvas_nodes', 'undo_timeline_edit', 'export_timeline'].includes(args.input.operation)) {
+    it.each(['session', 'caller', 'reply-identity'] as const)('keeps a dispatched write outcome unknown on %s interruption', async (interruption) => {
+      const caller = new AbortController()
+      let writes = 0
+      const send = vi.fn((channel: string, payload: Record<string, unknown>) => {
+        if (channel.endsWith(':cancel')) return
+        writes += 1
+        if (interruption === 'session') f.registry.revokeProjectSession(session)
+        else if (interruption === 'caller') caller.abort()
+        else {
+          f.resolveProjectIdentity.mockRejectedValueOnce(new Error('identity disk unavailable'))
+          ipc.listeners.get(channel.replace(/:request$/, ':reply'))!(
+            { sender: f.descriptor.contents, senderFrame: f.descriptor.frame } as IpcMainEvent,
+            { ...payload, result: { applied: true } },
+          )
+        }
+      })
+      const f = await fixture(send)
+      const session = f.registry.openProjectSession(f.owner, f.binding)
+      const invocation: VerifiedCapabilityInvocation<unknown, unknown> = await factory({ registry: f.registry, session, requestId: 'request' }).mint(args as never)
+      const runtime = registerMainCanvasReadExecutionRuntime({ surfaceRegistry: f.registry,
+        capturedSnapshots: createCapturedCanvasReadSnapshotRegistry({ ownerAuthority: f.authority }),
+        disk: { resolveProjectIdentity: async () => { throw new Error('no disk fallback') }, readCanvas: () => { throw new Error('no disk fallback') } },
+      })
+      await expect(runtime.executor.execute(invocation, { signal: caller.signal,
+        approval: { receiptProposalId: 'receipt', approvalId: 'approval', actionHash: invocation.actionHash } }))
+        .rejects.toMatchObject({ code: 'capability_receipt_unresolved' })
+      expect(writes).toBe(1)
+    })
+  }
+
   it('production executor dispatches through the current action transport after the prepared transport expires', async () => {
     const send = vi.fn((channel: string, payload: Record<string, unknown>) => {
       const event = { sender: f.descriptor.contents, senderFrame: f.descriptor.frame } as IpcMainEvent
