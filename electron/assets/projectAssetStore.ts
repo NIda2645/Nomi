@@ -175,8 +175,9 @@ function uniqueAssetPath(
   projectId: string,
   fileName: string,
   bucket: AssetBucket = "generated",
+  context?: AssetWriteContext,
 ): { absolutePath: string; relativePath: string } {
-  const projectDir = projectDirById(projectId);
+  const projectDir = context?.root ?? projectDirById(projectId);
   if (!projectDir) throw new Error("Project not found");
   const today = new Date().toISOString().slice(0, 10);
   const assetDir = path.join(projectDir, "assets", bucket, today);
@@ -223,12 +224,12 @@ export function writeAsset(
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   if (isContentAddressedUpload(meta)) return persistUploadBytes(projectId, bytes, storageFileName, actualContentType, meta, context);
   context?.assertCurrent();
-  const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
+  const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta), context);
   fs.writeFileSync(absolutePath, bytes);
   writeAssetSidecarMeta(absolutePath, meta);
   broadcastAssetsUpdated(projectId);
   const contentHash = crypto.createHash("sha256").update(bytes).digest("hex");
-  return storedAssetRecord(projectId, absolutePath, sanitizeName(fileName, "asset"), actualContentType, meta, contentHash);
+  return storedAssetRecord(projectId, absolutePath, sanitizeName(fileName, "asset"), actualContentType, meta, contentHash, context);
 }
 
 /**
@@ -330,7 +331,7 @@ async function copyNativeFileToBucket(context: AssetWriteContext, sourcePath: st
     await fs.promises.copyFile(sourcePath, snapshot);
     const contentHash = await contentHashForFile(snapshot);
     context.assertCurrent();
-    const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
+    const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta), context);
     fs.linkSync(snapshot, absolutePath);
     writeAssetSidecarMeta(absolutePath, meta);
     broadcastAssetsUpdated(projectId);

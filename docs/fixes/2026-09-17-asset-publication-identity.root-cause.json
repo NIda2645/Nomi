@@ -4,7 +4,7 @@
   "problem_type": "Async asset persistence loses project identity before publication",
   "symptom": "An admitted import can publish after its project identity changes",
   "direct_cause": "Importer validation precedes await reuse/native copy and publish re-resolves projectId",
-  "class_root": "Storage publication lacks a fixed project-root and full-identity transaction context",
+  "class_root": "Storage publication lacks a fixed project-root and full-identity transaction context with a single commit boundary; identity reads and optional cache writes must not act as additional publication gates",
   "affected_population": [
     "Byte uploads",
     "Native uploads",
@@ -25,23 +25,26 @@
   "internal_only_reason": "The invariant concerns Nomi project manifests and local filesystem publication; repository owner code is authoritative.",
   "invariants": [
     "All upload publication and reuse retain their original root and full binding",
-    "Interactive assertions tighten mandatory project checks"
+    "Interactive assertions tighten mandatory project checks",
+    "Read-only identity validation never acquires a manifest mutation lock",
+    "Optional hash-cache IO cannot reject valid storage; committed publication is not revoked by DTO construction"
   ],
   "doors": [
     {"kind":"read","path":"electron/assets/assetWriteContext.ts","line":22,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/assets/localFileImport.ts","line":77,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/assets/localFileImport.ts","line":136,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":217,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":297,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":324,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":178,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":218,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":298,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":325,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":20,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":35,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":58,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":94,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":102,"symbol":"storedAssetRecord"},
-    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":104,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":116,"symbol":"AssetWriteContext"},
-    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":126,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":97,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":106,"symbol":"storedAssetRecord"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":108,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":120,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":130,"symbol":"AssetWriteContext"},
     {"kind":"read","path":"electron/capabilityCore/generationOutputMaterializer.ts","line":59,"symbol":"writeAsset"},
     {"kind":"read","path":"electron/catalog/antigravityImageOperation.ts","line":11,"symbol":"writeAsset"},
     {"kind":"read","path":"electron/catalog/processOperation.ts","line":73,"symbol":"writeAsset"},
@@ -54,18 +57,18 @@
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":129,"symbol":"captureAssetWriteContext"},
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":154,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":214,"symbol":"writeAsset"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":224,"symbol":"persistUploadBytes"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":231,"symbol":"storedAssetRecord"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":299,"symbol":"captureAssetWriteContext"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":318,"symbol":"persistUploadFile"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":337,"symbol":"storedAssetRecord"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":376,"symbol":"copyAssetFile"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":586,"symbol":"writeAsset"},
-    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":617,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":225,"symbol":"persistUploadBytes"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":232,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":300,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":319,"symbol":"persistUploadFile"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":338,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":377,"symbol":"copyAssetFile"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":587,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":618,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":54,"symbol":"storedAssetRecord"},
-    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":99,"symbol":"storedAssetRecord"},
-    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":117,"symbol":"captureAssetWriteContext"},
-    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":127,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":103,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":121,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":131,"symbol":"captureAssetWriteContext"},
     {"kind":"write","path":"electron/catalog/antigravityImageOperation.ts","line":20,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/catalog/codexCli.ts","line":284,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/catalog/customCallDispatch.ts","line":109,"symbol":"writeAsset"},
@@ -76,10 +79,9 @@
     {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":146,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":224,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/video/framesToVideo.ts","line":93,"symbol":"writeAsset"}
-  ],
-  "door_reduction": {
+  ],  "door_reduction": {
     "before": 31,
-    "after": 48,
+    "after": 49,
     "why_not": "Byte/native/generated/import callers remain separate product operations; each upload converges on a shared captured storage context."
   },
   "generality_proof": "Every upload owner captures the project identity, so direct callers cannot bypass the importer guard; publication and reuse check the same context.",
@@ -123,7 +125,7 @@
     "invariant": "Publication uses the identity captured before asynchronous IO",
     "failure_mode": "Stale identity rejects before publication or metadata updates",
     "exception_policy": "none",
-    "strategy": "Mandatory write context for upload owners and synchronous final assertion",
+    "strategy": "Mandatory write context with read-only manifest snapshot, synchronous pre-publication assertion, pure committed DTO construction, and best-effort hash-cache persistence with identity checks outside the optional IO",
     "artifacts": [
       "electron/assets/assetWriteContext.ts",
       "electron/assets/uploadContentStore.ts",
@@ -132,10 +134,14 @@
     ]
   },
   "regression_tests": [
-    "electron/assets/projectArtifactImport.test.ts"
+    "electron/assets/projectArtifactImport.test.ts",
+    "electron/assets/projectAssetImportDedup.test.ts",
+    "electron/assets/projectAssetStore.test.ts"
   ],
   "class_regression_tests": [
-    "electron/assets/projectArtifactImport.test.ts"
+    "electron/assets/projectArtifactImport.test.ts",
+    "electron/assets/projectAssetImportDedup.test.ts",
+    "electron/assets/projectAssetStore.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",

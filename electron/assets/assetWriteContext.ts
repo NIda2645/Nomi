@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { projectDirById } from '../projects/repository'
 import { assertProjectAgentBinding, sameProjectAgentBinding, type ProjectBinding } from '../shared/projectBinding'
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
-import { withWorkspaceManifestMutationSync } from '../workspace/workspaceManifest'
+import { readWorkspaceManifestSnapshot } from '../workspace/workspaceManifest'
 
 export type AssetWriteContext = Readonly<{
   projectId: string
@@ -35,9 +35,8 @@ export async function captureAssetWriteContext(
     if (!currentRoot || fs.realpathSync(currentRoot) !== root) stale()
     const stat = fs.statSync(root)
     if (stat.dev !== originalStat.dev || stat.ino !== originalStat.ino) stale()
-    withWorkspaceManifestMutationSync(root, ({ current }) => {
-      if (!current || current.id !== projectId || current.immutableProjectUuid !== binding.immutableProjectUuid || current.projectGeneration !== binding.projectGeneration) stale()
-    }, undefined, { localizeEmbeddedMedia: false })
+    const current = readWorkspaceManifestSnapshot(root)
+    if (!current || current.id !== projectId || current.immutableProjectUuid !== binding.immutableProjectUuid || current.projectGeneration !== binding.projectGeneration) stale()
   }
   assertCurrent()
   return Object.freeze({ projectId, root, binding, assertCurrent })

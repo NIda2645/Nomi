@@ -18,7 +18,7 @@ export async function contentHashForFile(filePath: string): Promise<string> {
 }
 
 export function storedAssetRecord(projectId: string, absolutePath: string, fileName: string, contentType: string, meta: JsonRecord, contentHash: string, context?: AssetWriteContext) {
-  context?.assertCurrent()
+  // DTO construction is after commit; authorization belongs before publication/reuse.
   const projectDir = context?.root ?? projectDirById(projectId)
   if (!projectDir) throw new Error('Project not found')
   const relativePath = path.relative(projectDir, absolutePath).replace(/\\/g, '/')
@@ -82,7 +82,10 @@ async function findStoredUpload(context: AssetWriteContext, size: number, hash: 
         try {
           fs.writeFileSync(temporaryMeta, JSON.stringify({ ...meta, contentHash: candidateHash, contentHashSize: stat.size, contentHashMtime: stat.mtimeMs, contentHashCtime: stat.ctimeMs }))
           fs.renameSync(temporaryMeta, `${absolutePath}.meta`)
-        } finally { fs.rmSync(temporaryMeta, { force: true }) }
+        } catch {
+          // A hash cache is optional; a read-only/low-space sidecar must not
+          // reject valid media. Identity/cancellation checks stay outside.
+        } finally { try { fs.rmSync(temporaryMeta, { force: true }) } catch { /* optional cache cleanup */ } }
       }
       if (candidateHash === hash) return absolutePath
     }
@@ -96,6 +99,7 @@ async function reuseStoredUpload(context: AssetWriteContext, size: number, hash:
   if (!found) return null
   const meta: unknown = JSON.parse(await fs.promises.readFile(`${found}.meta`, 'utf8'))
   if (!isJsonRecord(meta) || !isContentAddressedUpload(meta)) return null
+  context.assertCurrent()
   return storedAssetRecord(context.projectId, found, path.basename(found), contentType, meta, hash, context)
 }
 
