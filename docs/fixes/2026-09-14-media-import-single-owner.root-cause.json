@@ -73,7 +73,7 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 84,
+      "line": 82,
       "symbol": "parseCopyFilesPayload"
     },
     {
@@ -97,7 +97,7 @@
     {
       "kind": "write",
       "path": "electron/assets/videoImportNormalize.ts",
-      "line": 29,
+      "line": 97,
       "symbol": "videoNeedsPlayabilityTranscode"
     },
     {
@@ -115,7 +115,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/importAssetGuard.ts",
-      "line": 26,
+      "line": 93,
       "symbol": "IMPORT_ALLOWED_EXTENSIONS"
     },
     {
@@ -133,7 +133,7 @@
     {
       "kind": "write",
       "path": "src/desktop/bridge.ts",
-      "line": 415,
+      "line": 417,
       "symbol": "storageCapacity"
     },
     {
@@ -145,13 +145,13 @@
     {
       "kind": "write",
       "path": "src/main.tsx",
-      "line": 25,
+      "line": 33,
       "symbol": "reportVideoCodecSupport"
     },
     {
       "kind": "write",
       "path": "src/media/videoCodecProbe.ts",
-      "line": 38,
+      "line": 48,
       "symbol": "probeVideoCodecs"
     },
     {
@@ -163,31 +163,31 @@
     {
       "kind": "write",
       "path": "src/workbench/assets/AssetLibraryPanel.tsx",
-      "line": 77,
+      "line": 271,
       "symbol": "classifyUploadFiles"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/assetLibraryLocalImport.ts",
-      "line": 47,
+      "line": 93,
       "symbol": "importLocalPathsToLibrary"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/importAudioToLibrary.ts",
-      "line": 40,
+      "line": 82,
       "symbol": "filterImportableAudioFiles"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/mediaImportMessage.ts",
-      "line": 13,
+      "line": 41,
       "symbol": "mediaImportRejectionMessage"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/storageCapacitySnapshot.ts",
-      "line": 14,
+      "line": 13,
       "symbol": "readStorageCapacitySnapshot"
     },
     {
@@ -199,13 +199,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 325,
+      "line": 324,
       "symbol": "resultFromImport"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/CanvasToolbar.tsx",
-      "line": 65,
+      "line": 173,
       "symbol": "useLocalFilePicker"
     },
     {

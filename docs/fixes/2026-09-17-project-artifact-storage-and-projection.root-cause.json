@@ -51,19 +51,19 @@
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 14,
+      "line": 13,
       "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 18,
+      "line": 17,
       "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 130,
+      "line": 128,
       "symbol": "AssetImportResult"
     },
     {
@@ -117,19 +117,19 @@
     {
       "kind": "read",
       "path": "src/desktop/bridge.ts",
-      "line": 391,
+      "line": 393,
       "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "src/desktop/bridge.ts",
-      "line": 399,
+      "line": 401,
       "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "src/desktop/bridge.ts",
-      "line": 407,
+      "line": 409,
       "symbol": "AssetImportResult"
     },
     {
@@ -165,7 +165,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 472,
+      "line": 471,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -213,31 +213,31 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 23,
+      "line": 22,
       "symbol": "importLocalFile"
     },
     {
       "kind": "write",
       "path": "electron/assets/projectInteractionCapture.ts",
-      "line": 18,
+      "line": 41,
       "symbol": "assertProjectAgentBinding"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 128,
+      "line": 122,
       "symbol": "importAssetResult"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 128,
+      "line": 126,
       "symbol": "importAssetResult"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 134,
+      "line": 132,
       "symbol": "importRemoteAsset"
     },
     {
@@ -321,7 +321,7 @@
     {
       "kind": "write",
       "path": "electron/main.ts",
-      "line": 577,
+      "line": 581,
       "symbol": "registerAssetsIpc"
     },
     {
@@ -363,7 +363,7 @@
     {
       "kind": "write",
       "path": "src/ui/browser/popover/useBrowserAssetActions.ts",
-      "line": 128,
+      "line": 129,
       "symbol": "unwrapAssetImportResult"
     },
     {
@@ -375,49 +375,49 @@
     {
       "kind": "write",
       "path": "src/workbench/api/assetUploadApi.ts",
-      "line": 89,
+      "line": 78,
       "symbol": "unwrapAssetImportResult"
     },
     {
       "kind": "write",
       "path": "src/workbench/api/assetUploadApi.ts",
-      "line": 98,
+      "line": 87,
       "symbol": "unwrapAssetImportResult"
     },
     {
       "kind": "write",
       "path": "src/workbench/api/assetUploadApi.ts",
-      "line": 108,
+      "line": 97,
       "symbol": "importRemoteUrl"
     },
     {
       "kind": "write",
       "path": "src/workbench/api/assetUploadApi.ts",
-      "line": 117,
+      "line": 106,
       "symbol": "unwrapAssetImportResult"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/importAudioToLibrary.ts",
-      "line": 52,
+      "line": 53,
       "symbol": "admitMediaImport"
     },
     {
       "kind": "write",
       "path": "src/workbench/assets/importAudioToLibrary.ts",
-      "line": 86,
+      "line": 88,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/capability/capabilityApplyHandler.ts",
-      "line": 367,
+      "line": 372,
       "symbol": "captureCurrentProjectCanvasReadSurfaceBinding"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
-      "line": 167,
+      "line": 168,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -435,7 +435,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 302,
+      "line": 301,
       "symbol": "importRemoteUrl"
     },
     {
@@ -489,7 +489,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
-      "line": 35,
+      "line": 38,
       "symbol": "importWorkbenchRemoteAssetUrl"
     },
     {
@@ -531,7 +531,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
-      "line": 38,
+      "line": 39,
       "symbol": "importWorkbenchRemoteAssetUrl"
     },
     {

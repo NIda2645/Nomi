@@ -124,9 +124,35 @@ B 删除了旧全局 recapture 和 renderer evidence 放宽特例，十个 invoc
 类回归 `src/workbench/project/projectActionIssuance.contract.test.ts` 用 AST 扫描拒绝 await 之后签发、可选 context 与私有签发器引用，
 `@ts-expect-error` 半边由 `check:test-types` 保证忘传 context 编译失败。
 
-未收口的是 id 级当前项目读取（`getActiveWorkbenchProjectId` / `getDesktopActiveProjectId` 共 97 处）：其中后台生成在轮询结束后重读当前项目做结果本地化
-（`catalogTaskActions.ts`、`recoverTaskActions.ts`，与「已提交后台生成属于原项目」相悖）、`taskApi` 用当前项目覆盖显式 projectId，以及浏览器浮层/弹窗这类其它窗口的导入。
-它们的 owner 不是交互生命周期：后台需要 Run 自有的项目身份，其它窗口需要各自的签发点，属于待定结构决策，不能静默并入交互取消。
+当时未收口的 id 级当前项目读取（`getActiveWorkbenchProjectId` / `getDesktopActiveProjectId` 共 97 处）已在 §9 收口。
+
+## 9. 「当前打开的项目」读取器整类删除；后台 Run 身份与子窗口签发（09-17，1b）
+
+拍板（用户经协调方）：交互动作全部入口签发；后台生成的项目身份在提交那一刻固定并随任务持久化、是唯一真源；子窗口从父窗口可信会话派生、随之撤销、无父会话即拒；
+`assetUploadApi` 去掉兜底、绑定必填。结构结果：
+
+- 读取器删除而非清点：`src/desktop/activeProject.ts`（含 localStorage「上次项目」复活）、`getActiveWorkbenchProjectId`、`getCanvasEventsProjectId`、主进程
+  `activeTaskProjectFallback` / `withProjectIdSecondChance` 全部删除。door-map：`ccbc0e45d` 上 106 处（renderer 99 + 主进程 7）→ 0。仅剩 14 处显示/传输读
+  （`useOpenProjectId` 显示钩子 11、请求起点捕获传输绑定 2、签发模块内 1），每处在 `projectActionIssuance.contract.test.ts` 的读取器棘轮里写明理由，只减不增。
+- 后台 Run：`RunGenerationNodeOptions.target`（完整 ProjectBinding）必填并写进运行记录 `GenerationNodeRunRecord.projectId`；`runProjectDelivery.ts` 是结局落点的唯一
+  owner——原项目在前台写 store，不在前台经既有 `localProjectStore` 写它的盘上副本（与关闭项目删结果同一 owner），新项目零副作用；`nodeRunOutcome.ts` 是 store 与
+  盘上两条路共用的唯一补丁形状。`taskApi` 的任务项目身份是显式参数（null = 明确不属于项目），不填不改；主进程轮询带来不同项目即 `TASK_PROJECT_MISMATCH`。
+  找回按点击签发，旧记录由记录所在项目派生，指向别的项目即拒绝并说明。
+- 子窗口：`electron/assets/windowProjectCapture.ts` 与全局截图热键共用同一个主进程签发（已提交 surface epoch 同步固定、可撤销断言），浮层的导入/提示词截图/模板设置/
+  删文件都由主进程按父窗口派生，渲染层不再上报 projectId；浮层显示的项目由主进程随 config 推送。
+
+### 聚簇说明：模块 `electron/catalog`
+
+`check:symptom-cluster` 因 `docs/fixes/2026-09-17-background-run-project-identity.root-cause.json` 把 `electron/catalog` 计入 7 天内第 8 份合同。本轮对
+`electron/catalog/customCallDispatch.ts` 的唯一改动是跟随 `unlocalizedTaskAsset` 从已删除的 `electron/tasks/activeProjectFallback.ts` 移到
+`electron/tasks/unlocalizedTaskAsset.ts` 的 import 路径；它是消费者，行为不变，与窗口内其余 catalog 合同（音频参考槽、ComfyUI 组合格式、媒体交付形状、模型可用性、媒体类型判定）
+没有共享状态或调用路径。本轮不据此对 catalog 层做修复，也不改聚类判据或阈值。
+
+### 门岗缺口（随本轮修正）
+
+根因合同门禁要求 scope 内每个变化的生产文件都出现在门表里，而门的 path 必须存在——删掉的高风险文件因此无法被任何合同覆盖，等于在门岗层面阻止「加新必删旧」。
+`scripts/root-cause-contracts.mjs` 改为：删掉的文件只有在该合同 `legacy_paths.removed_paths` 里声明时才不算漏数，未声明的删除照旧报红；先红后绿见
+`scripts/check-root-cause-contracts.node-test.mjs`。
 
 ## 复核材料
 

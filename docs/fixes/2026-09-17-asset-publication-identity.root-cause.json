@@ -54,7 +54,7 @@
     {"kind":"read","path":"electron/catalog/processOperation.ts","line":80,"symbol":"writeAsset"},
     {"kind":"read","path":"electron/runtime.ts","line":236,"symbol":"writeAsset"},
     {"kind":"read","path":"electron/runtime.ts","line":353,"symbol":"writeAsset"},
-    {"kind":"write","path":"electron/assets/assetsIpc.ts","line":134,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/assets/assetsIpc.ts","line":132,"symbol":"importRemoteAsset"},
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":101,"symbol":"copyAssetFile"},
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":110,"symbol":"copyAssetFile"},
     {"kind":"write","path":"electron/assets/localFileImport.ts","line":119,"symbol":"copyAssetFile"},
@@ -84,11 +84,11 @@
     {"kind":"write","path":"electron/connectors/tikhubConnectorService.ts","line":198,"symbol":"importRemoteAsset"},
     {"kind":"write","path":"electron/image/decomposeLayers.ts","line":97,"symbol":"importRemoteAsset"},
     {"kind":"write","path":"electron/onboarding/demoAssetSeed.ts","line":95,"symbol":"writeAsset"},
-    {"kind":"write","path":"electron/screenshot/screenshotHotkey.ts","line":259,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/screenshot/screenshotHotkey.ts","line":240,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/video/depthVideoJob.ts","line":351,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":160,"symbol":"writeAsset"},
     {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":239,"symbol":"writeAsset"},
-    {"kind":"write","path":"electron/video/framesToVideo.ts","line":93,"symbol":"writeAsset"}
+    {"kind":"write","path":"electron/video/framesToVideo.ts","line":98,"symbol":"writeAsset"}
   ],
   "door_reduction": {
     "before": 31,

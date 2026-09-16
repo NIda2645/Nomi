@@ -46,10 +46,22 @@
 | `laneIpc.test.ts:21` TS2352、`assetsIpcSession.test.ts:30` TS2353、PanoramaViewer 测试 mock 类型 | 已修：补全 LaneWorkspaceProjection 夹具（去掉双重断言）、拒绝原因夹具去掉非类型字段、回调 mock 显式类型 | `check:test-types` src 0 错、存量 68 未增 |
 | `persistNodeImage.test.ts` blob 分支偶发红 | 断言把 helper 新建 File（新 lastModified）与测试 File 按身份比较，毫秒边界翻红；改为 blob 分支只断言 File 类型 | 组合回归通过 |
 
+### 1b：当前项目读取器整类删除（2026-09-17，未推送）
+
+| 发现 | 核实与处置 | 验证 |
+|---|---|---|
+| 后台生成在轮询/找回结束后重读当前项目做本地化、`taskApi` 用当前项目覆盖显式 projectId、主进程以已提交项目兜底任务身份（与 §2「已提交后台生成属于原项目」冲突） | 已修。Run 身份（完整 binding）提交时固定并写进运行记录；`runProjectDelivery` 决定落点：原项目在前台写 store，不在前台经 `localProjectStore` 写原项目盘上副本；`taskApi` 身份显式传入、不填不改、夹带不同项目即拒；主进程删 `activeTaskProjectFallback` / 二次认领，轮询带来不同项目 `TASK_PROJECT_MISMATCH` | 红 `/tmp/nomi-pr802-p1-1b-red.log`（`runProjectDelivery.background.test.ts` 轮询中切项目、`textActions.test.ts` 流式中切项目、`taskApi.projectIdentity.test.ts`、`electron/tasks/taskProjectIdentity.test.ts`）→ 绿 `/tmp/nomi-pr802-p1-1b-related-green.log` |
+| 旧运行记录没有项目身份 | 由记录所在项目派生（点击找回时就在签发项目的画布上）；记录指向别的项目即标失败并说明（新 i18n `otherProjectTask`），不轮询、不猜当前项目 | `recoverTaskActions.projectIdentity.test.ts` 三例（派生、拒绝、找回轮询中切项目落盘）红→绿 |
+| 交互动作 await 后晚读/无校验回写（导演台出片、拆图层、ClipNode 导出、时间轴拖入、确认后删结果、工作流复制、花钱卡轮询、审片修复、提示词改写、新手导览、记忆编辑、框/组菜单反馈、拖放归属） | 已修。全部入口 `withProjectAction` 签发，await 后以 `isProjectExecutionContextCurrent` 复验，换项目即取消不回写；显示用途改走 `useOpenProjectId` | 各自单测（factBridge A→B→A、shotVerifyStore、batchPlanPreview、canonicalCanvasPlanPatch 等）与读取器棘轮 |
+| 浏览器浮层/弹窗（其它窗口）自报 projectId、读 localStorage「上次项目」 | 已修，未新建 owner。`windowProjectCapture` 与截图热键共用主进程签发：导入、提示词截图、模板设置、素材导入与删文件均按父窗口已提交项目派生、随之撤销、无父会话即拒；浮层显示项目由主进程随 config 推送 | 红→绿：`windowProjectCapture.test.ts`（真实 registry，A→B→A）、`assetsIpcSession.test.ts` 子窗口两例、`browserPromptExtractionSettings.test.ts` |
+| `assetUploadApi.resolveProjectId` 兜底 | 已删；`UploadWorkbenchAssetMeta` 绑定与断言必填，typecheck 逼出全部调用点 | 编译半边 `@ts-expect-error`（红 `/tmp/nomi-pr802-p1-1b-test-types-red.log`） |
+| 结构：读取器仍可被重新引用 | `src/desktop/activeProject.ts`、`getActiveWorkbenchProjectId`、`getCanvasEventsProjectId`、`activeTaskProjectFallback` 删除。door-map `ccbc0e45d` 106 处（renderer 99）→ 0；剩 14 处显示/传输读逐条写理由入棘轮 | `projectActionIssuance.contract.test.ts` 读取器棘轮（在 HEAD 源码上红，见 1b 红日志） |
+| 门岗缺口：删掉的高风险文件无法被合同覆盖 | `root-cause-contracts.mjs` 允许在 `legacy_paths.removed_paths` 声明删除；未声明照旧红 | `check-root-cause-contracts.node-test.mjs` 新例先红 `/tmp/nomi-pr802-p1-1b-rcc-checker-red.log` 后绿 |
+
 ### 仍未解决（需拍板或第二段）
 
-- id 级当前项目读取 97 处（`getActiveWorkbenchProjectId` 31、`getDesktopActiveProjectId` 66）未收进签发点。分类：显示/通知约 40；交互动作仍晚读或 await 后无校验地回写（导演台 `persistOutputs`、`useDecomposeLayers`、ClipNode 导出后落节点、时间轴拖入、`deleteAssetResult` 经 NodeResultStack 确认后、`WorkflowLibraryContent`、新手引导种图、Agent 面板花钱卡轮询、`useShotVerifyFeedback`）；后台生成在轮询结束后重读当前项目做结果本地化（`catalogTaskActions.ts`、`recoverTaskActions.ts`，与「已提交后台生成属于原项目」冲突）、`taskApi` 用当前项目覆盖显式 `extras.projectId`、`exportApi`/容量快照/upload API 的静默默认；浏览器浮层与弹窗（其它窗口）的导入/删除。后台需要 Run 自有项目身份、其它窗口需要各自签发点——结构决策待定，未静默并入交互取消。
-- `assetUploadApi.resolveProjectId` 仍以当前项目兜底无 binding 的调用（`resultUrlRelocalizeBridge`、`importAudioToLibrary` 在 projectId 为空时）。
-- 真实 Electron 走查（拖入/粘贴/截图热键切项目、resident 旅程）属第二段，本段未跑。
+- 子窗口的只读素材列表（`nomi:assets:list`）与主窗口显式项目 IO 通道仍接受 projectId（读与后台 IO 不是授权）；只有子窗口写入绑定父会话。
+- `electron/capabilityCore/timelineTransportAdapters.test.ts`「fails closed on injected, nested, or operation-mismatched renderer results」在本分支提交前（`50223265c`）已红，非本轮引入，未处理。
+- 真实 Electron 走查（拖入/粘贴/截图热键/浮层导入/后台生成轮询中切项目、resident 旅程）属第二段，本段未跑。
 
 所有未完成项收敛后更新此表，再运行最终分支评审与交付门禁。该文档不是合入或已解决收据。

@@ -130,13 +130,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 550,
+      "line": 551,
       "symbol": "updateMediaDimensions"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
-      "line": 569,
+      "line": 570,
       "symbol": "updateMediaDimensions"
     },
     {

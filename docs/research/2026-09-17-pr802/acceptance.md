@@ -23,6 +23,13 @@
 - 组合整树：`pnpm run typecheck` 三配置通过（`/tmp/nomi-pr802-p1-typecheck.log`）；`check:test-types` src 0 错、存量 68 未增（`/tmp/nomi-pr802-p1-test-types-3.log`）；改动相关 Vitest 38 文件 267 项通过（`/tmp/nomi-pr802-p1-related-green.log`）；真实 node workspace 生命周期 16 项通过（`/tmp/nomi-pr802-p1-lane-workspace.log`）；`lint:ci` 0 error / 78 warning（上限 81）。
 - 仅单测与主进程真实磁盘/真实 ffmpeg 校验，**没有**跑 Electron UI 走查；截图热键真实抓屏与切项目旅程留给第二段。
 
+## 2026-09-17 1b：当前项目读取器删除（本机、未推送）
+
+- 后台生成/找回/轮询身份、交互动作签发、子窗口派生、上传绑定必填：红→绿与日志见 `review-disposition.md`「1b」。
+- door-map：当前项目读取 `ccbc0e45d` 106 处 → 0（`/tmp/nomi-pr802-p1-1b-current-project-doors-after.json`）；剩余 14 处显示/传输读（`/tmp/nomi-pr802-p1-1b-live-reader-doors.json`）逐条入棘轮。
+- `pnpm run typecheck` 三配置通过（`/tmp/nomi-pr802-p1-1b-typecheck.log`）；`check:test-types` src 0 错、存量 68 未增；`lint:ci` 0 error / 79 warning（上限 81，`/tmp/nomi-pr802-p1-1b-lint.log`）；相关 Vitest 871 文件 7579 项通过、1 项为本分支前已红（`/tmp/nomi-pr802-p1-1b-related-green.log`）。
+- 仍未跑 Electron UI 走查；后台生成轮询中切项目的真实旅程留给第二段。
+
 ## 剩余交付门
 
 独立跨池审查、Ponytail、完整 contracts 与风险分档测试、Linux 原失败边界，以及合入真实 main SHA 的 `delivery:verify-merged` 必须完成后才能标记已解决。此前本机通过记录不是合入收据。

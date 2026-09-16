@@ -1,0 +1,854 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-background-run-project-identity",
+  "problem_type": "Submitted background generation re-reads the current project",
+  "symptom": "A generation, recovery or relay submitted in project A and finished after the user switched to B localized its result, took its task project, extracted relay frames or wrote progress and results against B (or dropped them) instead of A",
+  "direct_cause": "catalogTaskActions and recoverTaskActions localized results with getActiveWorkbenchProjectId after polling; taskApi overwrote extras.projectId with getDesktopActiveProjectId at submit, stream and poll; relayFrameResolver, video depth and shot verify read the current project; main runTask/taskResultQuery fell back to activeTaskProjectFallback (the committed GUI project) and a poll could re-adopt a project for a cached task",
+  "class_root": "A run's project identity was never an attribute of the run: every step asked 'which project is open now' instead of reading the identity fixed when the paid task was submitted, so identity drifted with UI navigation",
+  "affected_population": [
+    "Single node generation, variants and in-place regenerate",
+    "Batch and dependency-wave generation",
+    "Streaming text generation",
+    "Timeout recovery (free re-poll), including after restart",
+    "Video relay first-frame extraction",
+    "Local video depth derivation",
+    "Shot verify after batch completion",
+    "ComfyUI candidate test, prompt refine, browser prompt extraction task submissions",
+    "Main-process task submit and poll localization, diagnostics bundle and agent trace project"
+  ],
+  "scope_paths": [
+    "electron/catalog/customCallDispatch.ts",
+    "electron/diagnostics/agentTraceIpc.ts",
+    "electron/diagnostics/diagnosticsIpc.ts",
+    "electron/tasks/",
+    "electron/runtime.ts",
+    "src/workbench/api/taskApi.ts",
+    "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+    "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+    "src/workbench/generationCanvas/runner/audioActions.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "src/workbench/generationCanvas/runner/generationNodeExecutor.ts",
+    "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+    "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+    "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "src/workbench/generationCanvas/runner/imageActions.ts",
+    "src/workbench/generationCanvas/runner/model3dActions.ts",
+    "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+    "src/workbench/generationCanvas/runner/relayFrameResolver.ts",
+    "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+    "src/workbench/generationCanvas/runner/textActions.ts",
+    "src/workbench/generationCanvas/runner/videoActions.ts",
+    "scripts/root-cause-contracts.mjs"
+  ],
+  "entry_points": [
+    "runGenerationNode",
+    "runGenerationNodesBatch",
+    "runGenerationNodesByPlan",
+    "runCatalogGenerationTask",
+    "recoverNodeResult",
+    "runWorkbenchTaskByVendor",
+    "fetchWorkbenchTaskResultByVendor",
+    "fetchTaskResult",
+    "startVideoDepthDerivation"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Approved behavior §2 rule 3 (submitted background generation belongs to the original project) and Nomi's own run records, task cache and per-project persistence define the invariant; no third-party API is involved.",
+  "invariants": [
+    "A run's project identity (full ProjectBinding) is fixed at submission, persisted on the run record (GenerationNodeRunRecord.projectId) and is the only source of truth for that run",
+    "Polling and recovery repeat the task's own identity; nothing re-reads the current project",
+    "An outcome lands in the original project: the store while that exact binding is open, otherwise the project's own disk copy through localProjectStore; the newly open project has zero side effects",
+    "taskApi never fills or overrides a task project; the identity is an explicit argument (null = explicitly no project) and a request that names a different project is refused",
+    "Main never supplies a task project from the committed GUI project; a poll naming a different project than the cached task is refused (TASK_PROJECT_MISMATCH)",
+    "Old run records without projectId derive it from the project the record is persisted in; a record naming another project is refused with an explanation"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/api/taskApi.ts",
+      "line": 84,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/taskApi.ts",
+      "line": 104,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/taskApi.ts",
+      "line": 136,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/taskApi.ts",
+      "line": 164,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/taskApi.ts",
+      "line": 204,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 174,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/audioActions.ts",
+      "line": 4,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 372,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 387,
+      "symbol": "fetchWorkbenchTaskResultByVendor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 456,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 467,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 497,
+      "symbol": "runWorkbenchTextTaskStream"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 504,
+      "symbol": "runWorkbenchTaskByVendor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "line": 50,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "line": 66,
+      "symbol": "TaskProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationNodeExecutor.ts",
+      "line": 32,
+      "symbol": "GenerationNodeExecutorContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 116,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 215,
+      "symbol": "readRunGraph"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 274,
+      "symbol": "readRunGraph"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 362,
+      "symbol": "readRunGraph"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 526,
+      "symbol": "readRunGraph"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/imageActions.ts",
+      "line": 9,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/model3dActions.ts",
+      "line": 4,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 53,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 20,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 25,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 31,
+      "symbol": "NodeRunOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 48,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 75,
+      "symbol": "NodeRunOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 75,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/textActions.ts",
+      "line": 7,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/videoActions.ts",
+      "line": 9,
+      "symbol": "CatalogTaskRunOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+      "line": 126,
+      "symbol": "NodeRunOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 67,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 103,
+      "symbol": "RunProjectTarget"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customCallDispatch.ts",
+      "line": 154,
+      "symbol": "unlocalizedTaskAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/diagnostics/diagnosticsIpc.ts",
+      "line": 112,
+      "symbol": "exportDiagnosticsBundle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "line": 308,
+      "symbol": "unlocalizedTaskAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "line": 493,
+      "symbol": "unlocalizedTaskAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/registerSettingsIpc.ts",
+      "line": 31,
+      "symbol": "registerAgentTraceIpc"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskResultQuery.ts",
+      "line": 290,
+      "symbol": "unlocalizedTaskAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskResultQuery.ts",
+      "line": 348,
+      "symbol": "assertPollProjectMatchesTask"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/processFeedback/processFeedbackLabKit.tsx",
+      "line": 99,
+      "symbol": "enqueueBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/prompt/browserPromptExtractionRunner.ts",
+      "line": 92,
+      "symbol": "runWorkbenchTaskByVendor"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/CustomCallEditor.tsx",
+      "line": 196,
+      "symbol": "runWorkbenchTextTaskStream"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/workflowPage/runTestGeneration.ts",
+      "line": 70,
+      "symbol": "runComfyCandidateTestByVendor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 311,
+      "symbol": "verifyShotsAndReport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 361,
+      "symbol": "recoverNodeResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 386,
+      "symbol": "recoverNodeResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 249,
+      "symbol": "verifyShotsAndReport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "line": 478,
+      "symbol": "recoverNodeResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 129,
+      "symbol": "runWorkbenchTextTaskStream"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+      "line": 77,
+      "symbol": "runWorkbenchTextTaskStream"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "line": 483,
+      "symbol": "applyRelayFirstFrame"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+      "line": 270,
+      "symbol": "enqueueBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 213,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 233,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 250,
+      "symbol": "beginSingletonBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 256,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 260,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 263,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 270,
+      "symbol": "normalizeRetryAttempts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 305,
+      "symbol": "isRetryableGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 318,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 337,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 343,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 351,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 365,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 369,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 373,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 450,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 484,
+      "symbol": "enqueueBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 488,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 500,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 631,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 683,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 96,
+      "symbol": "fetchWorkbenchTaskResultByVendor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 109,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 127,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 136,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 140,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 26,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 49,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 54,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 76,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 78,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 81,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 85,
+      "symbol": "nodeRunOutcomePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/textActions.ts",
+      "line": 49,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/textActions.ts",
+      "line": 62,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/textActions.ts",
+      "line": 66,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasRunActions.ts",
+      "line": 24,
+      "symbol": "nodeRunOutcomePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasRunActions.ts",
+      "line": 47,
+      "symbol": "nodeRunOutcomePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasRunActions.ts",
+      "line": 66,
+      "symbol": "nodeRunOutcomePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasRunActions.ts",
+      "line": 94,
+      "symbol": "nodeRunOutcomePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/NodeDepthActionButton.tsx",
+      "line": 45,
+      "symbol": "startVideoDepthDerivation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 110,
+      "symbol": "whenRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 172,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 187,
+      "symbol": "deliverRunOutcome"
+    },
+    {
+      "kind": "write",
+      "path": "electron/diagnostics/agentTraceIpc.ts",
+      "line": 29,
+      "symbol": "registerAgentTraceIpc"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/unlocalizedTaskAsset.ts",
+      "line": 9,
+      "symbol": "unlocalizedTaskAsset"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+      "line": 12,
+      "symbol": "isRetryableGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/relayFrameResolver.ts",
+      "line": 16,
+      "symbol": "applyRelayFirstFrame"
+    }
+  ],
+  "door_reduction": {
+    "before": 25,
+    "after": 103,
+    "why_not": "The 25 background current-project reads (node scripts/door-map.mjs getActiveWorkbenchProjectId getDesktopActiveProjectId activeTaskProjectFallback withProjectIdSecondChance on ccbc0e45d, filtered to runner/taskApi/tasks/runtime/diagnostics/relay/depth/verify) are all gone; those readers are deleted. The rows listed now are the explicit identity carriers: each submit/poll/recover call passes its run's target or task identity, and deliverRunOutcome/readRunGraph are the single routing owner every terminal outcome goes through. They cannot be merged further without hiding which run a call belongs to. Four rows are owner definitions door-map does not emit (definition lines found by grep)."
+  },
+  "generality_proof": "There is no reader left to drift to: src/desktop/activeProject.ts, getActiveWorkbenchProjectId, getCanvasEventsProjectId and activeTaskProjectFallback are deleted and projectActionIssuance.contract.test.ts fails on any reference to them in src/ or electron/. RunGenerationNodeOptions.target, CatalogTaskRunOptions.projectTarget, the taskApi TaskProjectIdentity arguments, FetchWorkbenchTaskResultRequestDto.projectId and recoverNodeResult's issued project are required, pinned by @ts-expect-error in the same contract test under check:test-types. Every outcome goes through runProjectDelivery, whose store/disk choice compares the full binding, not an id.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "symbol": "deliverRunOutcome",
+      "responsibility": "Route a run outcome to its original project: store when that binding is open, otherwise the project's disk copy (serialized per project)"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+      "symbol": "nodeRunOutcomePatch",
+      "responsibility": "Single patch shape for result/status/run-started/progress/content outcomes shared by the store and disk delivery"
+    },
+    {
+      "path": "src/workbench/api/taskApi.ts",
+      "symbol": "runWorkbenchTaskByVendor",
+      "responsibility": "Forward exactly the caller's task project identity; refuse a request smuggling another project"
+    },
+    {
+      "path": "electron/tasks/taskResultQuery.ts",
+      "symbol": "fetchTaskResult",
+      "responsibility": "Repeat the cached task project identity; refuse a mismatching poll"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "runGenerationNode",
+      "disposition": "enforced",
+      "evidence": "target required; run record carries projectId; progress only while loaded (taskId persisted to disk otherwise); outcomes via deliverRunOutcome; runProjectDelivery.background.test.ts switch during polling red to green"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "entry_point": "runCatalogGenerationTask",
+      "disposition": "enforced",
+      "evidence": "submit, stream, every poll, relay frame and result localization use projectTarget; background test asserts poll identity after a switch"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/textActions.ts",
+      "entry_point": "generateText",
+      "disposition": "enforced",
+      "evidence": "streaming drafts only while loaded, final content delivered as a content outcome; textActions.test.ts mid-stream switch red to green"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "entry_point": "recoverNodeResult",
+      "disposition": "enforced",
+      "evidence": "issued at the click; old record derives identity, foreign record refused, switch during polling lands on disk; recoverTaskActions.projectIdentity.test.ts red to green"
+    },
+    {
+      "path": "src/workbench/api/taskApi.ts",
+      "entry_point": "runWorkbenchTaskByVendor",
+      "disposition": "enforced",
+      "evidence": "explicit identity for run/stream/candidate/poll; taskApi.projectIdentity.test.ts red to green"
+    },
+    {
+      "path": "electron/tasks/taskResultQuery.ts",
+      "entry_point": "fetchTaskResult",
+      "disposition": "enforced",
+      "evidence": "fallback and second chance deleted; taskProjectIdentity.test.ts mismatch red to green"
+    },
+    {
+      "path": "electron/runtime.ts",
+      "entry_point": "runTask",
+      "disposition": "enforced",
+      "evidence": "projectId only from request.extras; activeTaskProjectFallback deleted"
+    },
+    {
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "entry_point": "startVideoDepthDerivation",
+      "disposition": "enforced",
+      "evidence": "issued at the button; result/error delivered to the original project"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+      "entry_point": "verifyShotsAndReport",
+      "disposition": "enforced",
+      "evidence": "takes the issued project; A to B to A never writes back; shotVerifyStore.test.ts"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/relayFrameResolver.ts",
+      "entry_point": "applyRelayFirstFrame",
+      "disposition": "enforced",
+      "evidence": "projectId parameter from the run target; relayFrameResolver.test.ts"
+    },
+    {
+      "path": "electron/diagnostics/diagnosticsIpc.ts",
+      "entry_point": "exportDiagnosticsBundle",
+      "disposition": "enforced",
+      "evidence": "user-initiated main action reads the committed selection at action start instead of the deleted task fallback"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every long-running paid run spans UI navigation; any step that asks for the open project drifts",
+    "same_class_scan": [
+      "node scripts/door-map.mjs getActiveWorkbenchProjectId getDesktopActiveProjectId activeTaskProjectFallback withProjectIdSecondChance on ccbc0e45d: 106 reads (25 in background paths); after: 0",
+      "node scripts/door-map.mjs RunProjectTarget deliverRunOutcome readRunGraph whenRunTargetLoaded isRunTargetLoaded NodeRunOutcome nodeRunOutcomePatch TaskProjectIdentity CatalogTaskRunOptions GenerationNodeExecutorContext runWorkbenchTaskByVendor runWorkbenchTextTaskStream runComfyCandidateTestByVendor fetchWorkbenchTaskResultByVendor recoverNodeResult applyRelayFirstFrame isRetryableGenerationError normalizeRetryAttempts enqueueBatch beginSingletonBatch unlocalizedTaskAsset assertPollProjectMatchesTask startVideoDepthDerivation verifyShotsAndReport exportDiagnosticsBundle registerAgentTraceIpc --write=deliverRunOutcome,enqueueBatch,beginSingletonBatch",
+      "Traced main-internal polls (capability core, production run, comfy candidate test): they poll without a projectId and keep the cached task identity"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+    "invariant": "Only the run's submission-time project receives its outcomes",
+    "failure_mode": "Outcome for a project that is not open is written to that project's disk copy; a mismatching identity is refused; nothing touches the newly open project",
+    "exception_policy": "none",
+    "strategy": "Required run target and explicit task identity (compiler), deleted current-project readers (AST ratchet), single outcome router shared by store and disk delivery",
+    "artifacts": [
+      "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+      "src/workbench/api/taskApi.ts",
+      "electron/tasks/taskResultQuery.ts",
+      "src/workbench/project/projectActionIssuance.contract.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/runner/runProjectDelivery.background.test.ts",
+    "src/workbench/generationCanvas/runner/recoverTaskActions.projectIdentity.test.ts",
+    "src/workbench/generationCanvas/runner/textActions.test.ts",
+    "src/workbench/api/taskApi.projectIdentity.test.ts",
+    "electron/tasks/taskProjectIdentity.test.ts",
+    "src/workbench/project/projectActionIssuance.contract.test.ts",
+    "src/workbench/generationCanvas/runner/outboundBlockedRecoverable.test.ts",
+    "src/workbench/generationCanvas/runner/generationQueue.test.ts",
+    "src/workbench/generationCanvas/runner/notificationOwnership.test.ts",
+    "src/workbench/generationCanvas/runner/relayFrameResolver.test.ts",
+    "src/workbench/generationCanvas/agent/shotVerifyStore.test.ts",
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/project/projectActionIssuance.contract.test.ts",
+    "src/workbench/generationCanvas/runner/runProjectDelivery.background.test.ts",
+    "electron/tasks/taskProjectIdentity.test.ts",
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/tasks/activeProjectFallback.ts",
+      "src/desktop/activeProject.ts"
+    ],
+    "rationale": "Delete the main task project fallback registry (rememberActiveProjectForTasks/activeTaskProjectFallback, withProjectIdSecondChance) and the renderer-wide active project module (getDesktopActiveProjectId/setDesktopActiveProjectId with its localStorage revival) together with their last readers; unlocalizedTaskAsset keeps its behavior in electron/tasks/unlocalizedTaskAsset.ts. The root-cause checker now lets a contract declare such deletions instead of demanding a door on a file that no longer exists."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses the existing run records, task cache and localProjectStore persistence owner",
+    "exit_criteria": []
+  },
+  "migration": "No schema migration: GenerationNodeRunRecord.projectId is an optional new field; records without it derive identity from the project they are stored in.",
+  "residual_risks": [
+    "Real Electron journeys that switch projects during a paid poll and during recovery are not run in this code-convergence step (second step).",
+    "Disk delivery writes the project record while another window might hold it; this reuses the existing localProjectStore owner that closed-project result deletion already relies on.",
+    "electron/capabilityCore/timelineTransportAdapters.test.ts 'fails closed on injected, nested, or operation-mismatched renderer results' already fails on 50223265c (before this branch's commits); not addressed here."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+    "has_tests": true,
+    "tests": [
+      "src/workbench/generationCanvas/runner/runProjectDelivery.background.test.ts",
+      "src/workbench/generationCanvas/runner/recoverTaskActions.projectIdentity.test.ts",
+      "electron/tasks/taskProjectIdentity.test.ts",
+      "src/workbench/project/projectActionIssuance.contract.test.ts"
+    ],
+    "rationale": "The run owns its identity (runner target + persisted run record) and runProjectDelivery is the only place that decides where an outcome lands; taskApi and main task query only forward or verify that identity."
+  }
+}
