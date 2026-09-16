@@ -89,7 +89,7 @@ describe('deliverAgentArtifactToAsset（落盘契约）', () => {
     for (const fileType of ['text', 'markdown', 'html', 'table', 'svg'] as const) {
       expect(await deliverAgentArtifactToAsset({ fileType, content: 'fixture' }, context, importer)).toMatchObject({ ok: true })
     }
-    for (const call of importer.mock.calls) expect(call[2]).toMatchObject({ projectBinding: context.binding, projectId: 'original' })
+    for (const call of importer.mock.calls) expect(call[2]).toMatchObject({ projectBinding: context.binding })
     importer.mockClear()
     const result = await deliverAgentArtifactToAsset({ fileType: 'text', content: 'x' }, {
       ...context, assertCurrent() { throw new SurfacePortWireError('project_binding_stale') },

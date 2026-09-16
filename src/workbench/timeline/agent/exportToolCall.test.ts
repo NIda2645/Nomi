@@ -29,7 +29,6 @@ function job(overrides: Partial<ExportJobSnapshot> = {}): ExportJobSnapshot {
 function runtime(overrides: Partial<ExportToolRuntime> = {}): ExportToolRuntime {
   const state = timeline()
   return {
-    activeProjectId: () => 'project-1',
     readTimeline: () => state,
     readAspectRatio: () => '16:9',
     readGenerationNodes: () => [],
@@ -49,7 +48,7 @@ describe('project-scoped export Agent tools', () => {
     const deps = runtime()
     const current = deps.readTimeline()
     const result = await applyExportToolCall('export_timeline', {
-      expectedRevision: timelineRevision(current), aspectRatio: '9:16', resolution: '720p', quality: 'high', outputName: 'vertical-cut',
+      projectId: 'project-1', expectedRevision: timelineRevision(current), aspectRatio: '9:16', resolution: '720p', quality: 'high', outputName: 'vertical-cut',
     }, deps)
     expect(result).toMatchObject({ accepted: true, jobId: 'job-1', backend: 'filtergraph', durationFrames: 60,
       profile: { aspectRatio: '9:16', resolution: '720p', quality: 'high' } })
@@ -57,23 +56,22 @@ describe('project-scoped export Agent tools', () => {
   })
 
   // 2026-09-06 根因回归（docs/fixes/2026-09-06-mcp-lease-project-binding.root-cause.json）：
-  // 导出作业按 projectId 在主进程登记表里寻址，跟「Nomi 里正开着哪个项目」无关。已校验的 lease
-  // projectId 必须压过 GUI 当前项目；旧代码把它丢掉、只读 GUI，于是外部宿主拿到没有下一步的
-  // project_scope_required（GUI 没开项目）或者操作了错误的项目（GUI 开着别的项目）。
+  // 导出作业按 projectId 在主进程登记表里寻址，跟「Nomi 里正开着哪个项目」无关。调用必须带
+  // 显式 projectId（lease 或动作起点签发的项目）；没带就 project_scope_required，绝不回退读 GUI 当前项目。
   it('addresses export jobs by the verified lease project, not by what the GUI has open', async () => {
-    const noProjectOpen = runtime({ activeProjectId: () => '' })
+    const noProjectOpen = runtime()
     await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1' }, noProjectOpen))
       .rejects.toThrow('project_scope_required')
     await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, noProjectOpen))
       .resolves.toMatchObject({ operation: 'inspect_export_job', jobId: 'job-1', status: 'encoding' })
 
-    const otherProjectOpen = runtime({ activeProjectId: () => 'project-2' })
+    const otherProjectOpen = runtime()
     await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, otherProjectOpen))
       .resolves.toMatchObject({ jobId: 'job-1' })
     await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, otherProjectOpen))
       .resolves.toMatchObject({ cancelled: true })
 
-    const started = runtime({ activeProjectId: () => '' })
+    const started = runtime()
     await expect(applyExportToolCall('export_timeline', {
       projectId: 'project-1', expectedRevision: timelineRevision(started.readTimeline()),
     }, started)).resolves.toMatchObject({ accepted: true, jobId: 'job-1' })
@@ -81,7 +79,7 @@ describe('project-scoped export Agent tools', () => {
   })
 
   it('scopes verify_render to the same project boundary as inspect and cancel', async () => {
-    const foreign = runtime({ activeProjectId: () => '', getJob: vi.fn(async () => job({ projectId: 'project-2' })) })
+    const foreign = runtime({ getJob: vi.fn(async () => job({ projectId: 'project-2' })) })
     await expect(applyExportToolCall('verify_render', { jobId: 'job-1', projectId: 'project-1' }, foreign))
       .rejects.toThrow('export_job_not_found')
     expect(foreign.verifyJob).not.toHaveBeenCalled()
@@ -89,16 +87,16 @@ describe('project-scoped export Agent tools', () => {
 
   it('rejects stale and empty timelines before creating an export job', async () => {
     const deps = runtime()
-    await expect(applyExportToolCall('export_timeline', { expectedRevision: 'stale' }, deps)).resolves.toMatchObject({ accepted: false, code: 'stale_revision' })
+    await expect(applyExportToolCall('export_timeline', { projectId: 'project-1', expectedRevision: 'stale' }, deps)).resolves.toMatchObject({ accepted: false, code: 'stale_revision' })
     expect(deps.startExport).not.toHaveBeenCalled()
     const empty = createDefaultTimeline()
     const emptyRuntime = runtime({ readTimeline: () => empty })
-    await expect(applyExportToolCall('export_timeline', { expectedRevision: timelineRevision(empty) }, emptyRuntime)).resolves.toMatchObject({ accepted: false, code: 'empty_timeline' })
+    await expect(applyExportToolCall('export_timeline', { projectId: 'project-1', expectedRevision: timelineRevision(empty) }, emptyRuntime)).resolves.toMatchObject({ accepted: false, code: 'empty_timeline' })
   })
 
   it('returns a path-free status receipt with useful progress diagnostics', async () => {
     const deps = runtime({ getJob: vi.fn(async () => job({ manifest: { ...job().manifest, diagnostics: { warnings: ['fallback'] } } })) })
-    const result = await applyExportToolCall('inspect_export_job', { jobId: 'job-1' }, deps)
+    const result = await applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, deps)
     expect(result).toMatchObject({ jobId: 'job-1', status: 'encoding', cancellable: true, warningCount: 1, progress: { ratio: 0.5, stage: 'encoding' } })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('projectDir')
@@ -112,11 +110,11 @@ describe('project-scoped export Agent tools', () => {
 
   it('binds inspection and cancellation to the active project', async () => {
     const foreign = runtime({ getJob: vi.fn(async () => job({ projectId: 'project-2' })) })
-    await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1' }, foreign)).rejects.toThrow('export_job_not_found')
+    await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, foreign)).rejects.toThrow('export_job_not_found')
     expect(foreign.cancelJob).not.toHaveBeenCalled()
 
     const deps = runtime()
-    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1' }, deps)).resolves.toEqual({
+    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, deps)).resolves.toEqual({
       operation: 'cancel_export_job', jobId: 'job-1', cancelled: true, status: 'cancelled',
     })
     expect(deps.cancelJob).toHaveBeenCalledWith('job-1')
@@ -124,7 +122,7 @@ describe('project-scoped export Agent tools', () => {
 
   it('does not rewrite terminal jobs when cancellation is requested', async () => {
     const deps = runtime({ getJob: vi.fn(async () => job({ status: 'succeeded', progress: { ratio: 1, stage: 'succeeded', message: 'Succeeded' }, result: { outputPath: 'C:/private/out.mp4', bytes: 1234, durationMs: 2000, execution: { auditManifestDigest: 'a'.repeat(64), input: { kind: 'filtergraph' }, correlationDigest: 'c'.repeat(64) } } })) })
-    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1' }, deps)).resolves.toMatchObject({ cancelled: false, code: 'export_not_cancellable', status: 'succeeded' })
+    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, deps)).resolves.toMatchObject({ cancelled: false, code: 'export_not_cancellable', status: 'succeeded' })
     expect(deps.cancelJob).not.toHaveBeenCalled()
   })
 
@@ -133,7 +131,7 @@ describe('project-scoped export Agent tools', () => {
       jobId: 'job-1', verified: true, verificationLevel: 'export_job_output' as const, contentDecoded: false as const,
       status: 'succeeded', manifestIntegrity: 'canonical' as const, bytes: 4096, durationMs: 2000,
     })) })
-    await expect(applyExportToolCall('verify_render', { jobId: 'job-1' }, success)).resolves.toEqual({
+    await expect(applyExportToolCall('verify_render', { jobId: 'job-1', projectId: 'project-1' }, success)).resolves.toEqual({
       operation: 'verify_render',
       jobId: 'job-1', verified: true, verificationLevel: 'export_job_output', contentDecoded: false,
       status: 'succeeded', manifestIntegrity: 'canonical', bytes: 4096, durationMs: 2000,
@@ -142,7 +140,7 @@ describe('project-scoped export Agent tools', () => {
       jobId: 'job-1', verified: false, verificationLevel: 'export_job_output' as const, contentDecoded: false as const,
       status: 'succeeded', manifestIntegrity: 'canonical' as const, code: 'missing_output',
     })) })
-    const result = await applyExportToolCall('verify_render', { jobId: 'job-1' }, failed)
+    const result = await applyExportToolCall('verify_render', { jobId: 'job-1', projectId: 'project-1' }, failed)
     expect(result).toMatchObject({ verified: false, status: 'succeeded', code: 'missing_output' })
     expect(JSON.stringify(result)).not.toContain('C:/private')
   })

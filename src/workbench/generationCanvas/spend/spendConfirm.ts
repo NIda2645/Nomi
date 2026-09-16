@@ -7,7 +7,6 @@ import { mintSpendGrant } from '../../api/taskApi'
 import type { ProductionContractView } from './productionContractView'
 import type { AnchorCheckpointCardModel } from './anchorCheckpointView'
 import i18n from '../../../i18n'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { getDesktopBridge } from '../../../desktop/bridge'
 
 type GenerationEtaBucket = {
@@ -20,10 +19,13 @@ type GenerationEtaBucket = {
   p90Seconds: number
 }
 
-export function generationCostContextForNode(node: { meta?: Record<string, unknown> | null } | undefined): GenerationCostContext {
+export function generationCostContextForNode(
+  node: { meta?: Record<string, unknown> | null } | undefined,
+  /** 发起确认那一刻签发的项目（它的历史耗时统计）；null = 不属于任何项目，只给冷启动估计。 */
+  projectId: string | null,
+): GenerationCostContext {
   const meta = node?.meta || {}
   const read = (key: string): string => typeof meta[key] === 'string' ? String(meta[key]).trim() : ''
-  const projectId = getDesktopActiveProjectId()
   return {
     vendorKey: read('modelVendor') || read('vendor') || read('imageModelVendor') || read('videoModelVendor') || undefined,
     // generationEtaStats indexes the recipe identity from provenance, where modelAlias wins.
@@ -33,8 +35,11 @@ export function generationCostContextForNode(node: { meta?: Record<string, unkno
   }
 }
 
-export function generationCostContextForNodes(nodes: readonly ({ meta?: Record<string, unknown> | null } | undefined)[]): GenerationCostContext {
-  const contexts = nodes.map(generationCostContextForNode)
+export function generationCostContextForNodes(
+  nodes: readonly ({ meta?: Record<string, unknown> | null } | undefined)[],
+  projectId: string | null,
+): GenerationCostContext {
+  const contexts = nodes.map((node) => generationCostContextForNode(node, projectId))
   const vendorKeys = new Set(contexts.map((context) => context.vendorKey).filter(Boolean))
   const modelKeys = new Set(contexts.map((context) => context.modelKey).filter(Boolean))
   return vendorKeys.size === 1 && modelKeys.size === 1
@@ -204,7 +209,7 @@ export async function confirmGenerationSpend(
 ): Promise<boolean> {
   if (!generationSpendsCredits(nodes)) return true
   const inputs = nodes.map((node) => {
-    const context = generationCostContextForNode(node)
+    const context = generationCostContextForNode(node, null)
     return { vendorKey: context.vendorKey ?? '', modelKey: context.modelKey ?? '', parameters: node?.meta ?? {} }
   })
   let quote
@@ -245,7 +250,7 @@ const COLD_START_SECONDS: Record<Exclude<GenerationCostKind, 'text' | 'mixed'>, 
 
 function historicalEta(context: GenerationCostContext | undefined, kind: GenerationCostKind): GenerationEtaBucket | undefined {
   if (!context?.vendorKey || !context.modelKey || kind === 'text' || kind === 'mixed') return undefined
-  const projectId = context.projectId || getDesktopActiveProjectId()
+  const projectId = context.projectId
   let stats = context.etaStats
   if (!stats && projectId) {
     const cached = etaStatsCache.get(projectId)

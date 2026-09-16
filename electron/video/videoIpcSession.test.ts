@@ -7,6 +7,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: (name: string, handler: (event: 
 vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: vi.fn() }))
 vi.mock('./depthVideoIpc', () => ({ registerVideoDepthIpc: vi.fn() }))
 vi.mock('./extractVideoFrame', () => ({ extractVideoFrameToAsset: mocks.extract }))
+import { createProjectInteractionCapture } from '../assets/projectInteractionCapture'
 import { registerVideoIpc } from './videoIpc'
 
 const binding = { projectId: 'a', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }
@@ -20,7 +21,7 @@ it('opens the trusted project session before any await and hands its assertion t
     openProjectSession: vi.fn(() => session),
     assertProjectSession: vi.fn(() => { if (!current) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' }) }),
   }
-  registerVideoIpc(capture as unknown as CanvasReadSurfaceIpcCapture)
+  registerVideoIpc(createProjectInteractionCapture(capture as unknown as CanvasReadSurfaceIpcCapture, () => undefined))
   mocks.extract.mockImplementation(async (_payload: unknown, options: { assertCurrent?: () => void }) => {
     current = false
     options.assertCurrent?.()
@@ -34,7 +35,7 @@ it('opens the trusted project session before any await and hands its assertion t
 
 it('treats a frame request without a binding as explicit project IO without interactive authority', async () => {
   const capture = { openProjectSession: vi.fn(), assertProjectSession: vi.fn() }
-  registerVideoIpc(capture as unknown as CanvasReadSurfaceIpcCapture)
+  registerVideoIpc(createProjectInteractionCapture(capture as unknown as CanvasReadSurfaceIpcCapture, () => undefined))
   mocks.extract.mockResolvedValue({ url: 'nomi-local://frame' })
   await expect(mocks.handlers.get('nomi:video:extract-frame')!(event, { videoUrl: '/v.mp4', which: 'last', projectId: 'a' })).resolves.toEqual({ url: 'nomi-local://frame' })
   expect(capture.openProjectSession).not.toHaveBeenCalled()

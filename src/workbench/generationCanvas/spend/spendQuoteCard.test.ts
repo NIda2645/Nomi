@@ -3,7 +3,6 @@ import { confirmGenerationSpend, useSpendConfirmStore } from './spendConfirm'
 
 const quoteSpend = vi.hoisted(() => vi.fn())
 vi.mock('../../../desktop/bridge', () => ({ getDesktopBridge: () => ({ tasks: { quoteSpend } }) }))
-vi.mock('../../../desktop/activeProject', () => ({ getDesktopActiveProjectId: () => 'project' }))
 
 describe('shared quote confirmation card', () => {
   beforeEach(() => vi.restoreAllMocks())

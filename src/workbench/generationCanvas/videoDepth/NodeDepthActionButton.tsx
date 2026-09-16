@@ -17,6 +17,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconShadow } from '@tabler/icons-react'
 import { TOOLBAR_ICON as I, ToolbarButton } from '../nodes/NodeFloatingToolbar'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { startVideoDepthDerivation } from './startVideoDepthDerivation'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
@@ -40,7 +41,10 @@ export default function NodeDepthActionButton({ reportFeedback,
       title={t('videoDepth.action.hint')}
       disabled={disabled}
       onClick={() => {
-        startVideoDepthDerivation(node, reportFeedback)
+        withProjectAction(
+          (project) => { startVideoDepthDerivation(node, project, reportFeedback) },
+          () => reportFeedback(t('generationCommon.node.extractFrame.missingProject')),
+        )
       }}
     /></>
   )

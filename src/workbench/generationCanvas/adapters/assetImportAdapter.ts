@@ -228,7 +228,7 @@ async function uploadAndApplyAssetToNode(
   let hosted: WorkbenchAssetDto | null
   try {
     hosted = await deps.uploadFile(file, deriveLabelFromFileName(file.name), {
-      ownerNodeId: nodeId, projectId: context.binding.projectId, projectBinding: context.binding, assertCurrent: context.assertCurrent,
+      ownerNodeId: nodeId, projectBinding: context.binding, assertCurrent: context.assertCurrent,
     })
   } catch (error) {
     context.assertCurrent()

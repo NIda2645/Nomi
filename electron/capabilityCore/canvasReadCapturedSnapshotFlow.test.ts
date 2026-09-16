@@ -28,13 +28,20 @@ vi.mock("../ipcSenderGuard", () => ({ assertTrustedSender: () => undefined }));
 vi.mock("../../src/workbench/capability/multiShotCanvasLanding", () => ({
   handleMultiShotCanvasLandingOp: state.landing,
 }));
-vi.mock("../../src/workbench/project/workbenchProjectSession", () => ({
-  getActiveWorkbenchProjectId: () => state.activeProjectId,
-}));
-vi.mock("../../src/workbench/project/projectCanvasReadSurface", () => ({
-  captureCurrentProjectCanvasReadSurfaceBinding: state.captureSurface,
-  sealCurrentProjectCanvasReadSnapshot: state.sealSurfaceSnapshot,
-}));
+vi.mock("../../src/workbench/project/projectCanvasReadSurface", () => {
+  // 签发点替身：state.activeProjectId 就是此刻窗口里打开的项目；上下文在它变化后失效。
+  const issue = () => {
+    const projectId = state.activeProjectId;
+    return { binding: { projectId, immutableProjectUuid: `uuid-${projectId}`, projectGeneration: 1 }, signal: new AbortController().signal,
+      assertCurrent: () => { if (state.activeProjectId !== projectId) throw Object.assign(new Error("project_binding_stale"), { code: "project_binding_stale" }); } };
+  };
+  return {
+    captureCurrentProjectCanvasReadSurfaceBinding: state.captureSurface,
+    sealCurrentProjectCanvasReadSnapshot: state.sealSurfaceSnapshot,
+    withProjectAction: <R>(run: (project: ReturnType<typeof issue>) => R, unavailable?: () => R) => state.activeProjectId ? run(issue()) : unavailable?.(),
+    isProjectExecutionContextCurrent: (context?: ReturnType<typeof issue>) => { try { context?.assertCurrent(); return Boolean(context); } catch { return false; } },
+  };
+});
 vi.mock("../../src/workbench/generationCanvas/agent/availableModels", () => ({
   listAvailableModelsForAgent: async () => [],
   formatAvailableModelsForPrompt: () => "",

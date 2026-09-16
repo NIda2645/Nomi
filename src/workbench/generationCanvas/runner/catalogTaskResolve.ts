@@ -1,3 +1,4 @@
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 import i18n from '../../../i18n'
 import { tagNomiError } from '../../../../electron/shared/nomiErrorCodes'
 import {
@@ -8,7 +9,9 @@ import {
   listWorkbenchModelCatalogVendors,
 } from '../../api/modelCatalogApi'
 import {
+  type FetchWorkbenchTaskResultRequestDto,
   type TaskKind,
+  type TaskProjectIdentity,
   type TaskRequestDto,
   type TaskResultDto,
 } from '../../api/taskApi'
@@ -44,16 +47,10 @@ export type CatalogTaskActionOptions = {
   idempotencyKey?: string
   /** Renderer disclosure gate for a public temporary-host fallback. */
   anonymousAssetHostingConsent?: 'allow'
-  runTask?: (vendor: string, request: TaskRequestDto) => Promise<TaskResultDto>
+  runTask?: (vendor: string, request: TaskRequestDto, projectId: TaskProjectIdentity) => Promise<TaskResultDto>
   listCatalogModels?: (params: { kind: BillingModelKind; enabled: true }) => Promise<ModelCatalogModelDto[]>
   listCatalogVendors?: () => Promise<ModelCatalogVendorDto[]>
-  fetchTaskResult?: (payload: {
-    taskId: string
-    vendor?: string
-    taskKind?: TaskKind
-    prompt?: string | null
-    modelKey?: string | null
-  }) => Promise<{ vendor: string; result: TaskResultDto }>
+  fetchTaskResult?: (payload: FetchWorkbenchTaskResultRequestDto) => Promise<{ vendor: string; result: TaskResultDto }>
   pollIntervalMs?: number
   pollTimeoutMs?: number
   /** 轮询抖动的随机源（默认 Math.random）。只为让抖动可直测，产品代码不传。 */
@@ -66,9 +63,13 @@ export type CatalogTaskActionOptions = {
   runTextStream?: (
     vendor: string,
     request: TaskRequestDto,
+    projectId: TaskProjectIdentity,
     opts: { onDelta?: (delta: string) => void },
   ) => Promise<TaskResultDto>
 }
+
+/** 真正提交一次任务的选项：运行所属项目（提交那一刻签发）必填。任务身份、结果本地化、接力抽帧只认它，不读「当前项目」。 */
+export type CatalogTaskRunOptions = CatalogTaskActionOptions & { projectTarget: ProjectBinding }
 
 export function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''

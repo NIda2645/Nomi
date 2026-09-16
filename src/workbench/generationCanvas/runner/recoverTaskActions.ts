@@ -1,6 +1,9 @@
 import { fetchWorkbenchTaskResultByVendor, type TaskResultDto } from '../../api/taskApi'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { getActiveWorkbenchProjectId, persistActiveWorkbenchProjectNow } from '../../project/workbenchProjectSession'
+import { persistActiveWorkbenchProjectNow } from '../../project/workbenchProjectSession'
+import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import type { GenerationNodeRunRecord } from '../model/generationCanvasTypes'
+import { deliverRunOutcome, isRunTargetLoaded as isTargetLoaded, type RunProjectTarget } from './runProjectDelivery'
 import { localizeRemoteResultUrl } from './resultAssetLocalization'
 import { narrateProgress } from '../../observability/narrate'
 import { resolveGenerationReferences } from './generationReferenceResolver'
@@ -19,7 +22,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /** 从一个 recoverable 节点重建续查所需的身份（全在节点上，taskId 已落盘）。 */
-function buildRecoverPayload(nodeId: string): { taskId: string; vendor: string; taskKind: ReturnType<typeof resolveTaskKind>; prompt: string; modelKey: string; archetype?: { modeId: string } } | null {
+function buildRecoverPayload(nodeId: string): { taskId: string; vendor: string; taskKind: ReturnType<typeof resolveTaskKind>; prompt: string; modelKey: string; archetype?: { modeId: string }; run?: GenerationNodeRunRecord } | null {
   const state = useGenerationCanvasStore.getState()
   const node = state.nodes.find((candidate) => candidate.id === nodeId)
   if (!node) return null
@@ -38,21 +41,39 @@ function buildRecoverPayload(nodeId: string): { taskId: string; vendor: string; 
     prompt: asTrimmedString(node.prompt),
     modelKey: selectedModelKey(node) || '',
     ...(modeId ? { archetype: { modeId } } : {}),
+    ...(node.runs?.[0] ? { run: node.runs[0] } : {}),
   }
 }
 
 /**
- * 重新拉取一个超时找回态节点的结果（query，不是 generate → 不铸付费令牌、不弹确认）。
- * 主进程 fetchTaskResult 在内存缓存 miss 时用 {vendor,modelKey,taskKind,taskId} 无状态重建查询，
- * 故重启 App 后仍可拉回。拉取期间节点显示 running（品牌 logo 转圈），出片 addNodeResult 回节点。
+ * 找回的项目身份只来自任务自己：运行记录在提交那一刻固定的 projectId。
+ * 旧记录没有这一栏时，由「记录持久化在哪个项目里」派生——点击找回时它就在签发的项目画布上。
+ * 记录说它属于别的项目（例如节点被复制到了这里）→ 拒绝，不把原项目的产物落进这个项目。
  */
-export async function recoverNodeResult(nodeId: string): Promise<void> {
+function resolveRecoverTarget(run: GenerationNodeRunRecord | undefined, project: ProjectExecutionContext): RunProjectTarget | null {
+  const recorded = asTrimmedString(run?.projectId)
+  if (recorded && recorded !== project.binding.projectId) return null
+  return project.binding
+}
+
+/**
+ * 重新拉取一个超时找回态节点的结果（query，不是 generate → 不铸付费令牌、不弹确认）。
+ * 主进程 fetchTaskResult 在内存缓存 miss 时用 {vendor,modelKey,taskKind,taskId,projectId} 无状态重建查询，
+ * 故重启 App 后仍可拉回。拉取期间节点显示 running（品牌 logo 转圈），出片回到**任务所属项目**的节点：
+ * 用户中途切走项目，结果照样写进原项目（盘上副本），新项目零副作用。
+ */
+export async function recoverNodeResult(nodeId: string, project: ProjectExecutionContext): Promise<void> {
   const id = String(nodeId || '').trim()
   if (!id) return
   const payload = buildRecoverPayload(id)
   const store = useGenerationCanvasStore.getState()
   if (!payload) {
     store.setNodeStatus(id, 'error', i18n.t('generationCommon.recoverable.missingTask'))
+    return
+  }
+  const target = resolveRecoverTarget(payload.run, project)
+  if (!target) {
+    store.setNodeStatus(id, 'error', i18n.t('generationCommon.recoverable.otherProjectTask'))
     return
   }
 
@@ -78,48 +99,45 @@ export async function recoverNodeResult(nodeId: string): Promise<void> {
         taskKind: payload.taskKind,
         prompt: payload.prompt || null,
         modelKey: payload.modelKey || null,
+        projectId: target.projectId,
         ...(payload.archetype ? { archetype: payload.archetype } : {}),
       })
       current = response.result
       if (TERMINAL_STATUSES.has(current.status)) break
       if (Date.now() - startedAt > RECOVER_POLL_TIMEOUT_MS) {
         // 仍没出来 → 退回可找回态，按钮重现，稍后可再拉。
-        useGenerationCanvasStore.getState().setNodeStatus(
-          id,
-          'recoverable',
-          i18n.t('generationCommon.recoverable.stillUpstream'),
-        )
+        await deliverRunOutcome(target, id, { kind: 'status', status: 'recoverable', error: i18n.t('generationCommon.recoverable.stillUpstream') })
         return
       }
-      useGenerationCanvasStore.getState().setNodeProgress(id, {
-        runId,
-        phase: 'still-generating',
-        message: narrateProgress('still-generating', { elapsedMs: Date.now() - startedAt }),
-        taskId: payload.taskId,
-      })
+      // 进度只给前台看：原项目不在画布上时不写（那是别的项目的 store），也不为一句进度去写盘。
+      if (isTargetLoaded(target)) {
+        useGenerationCanvasStore.getState().setNodeProgress(id, {
+          runId,
+          phase: 'still-generating',
+          message: narrateProgress('still-generating', { elapsedMs: Date.now() - startedAt }),
+          taskId: payload.taskId,
+        })
+      }
       await delay(RECOVER_POLL_INTERVAL_MS)
     }
   } catch (error) {
     // 网络/查询本身报错 → 退回可找回态（不是真失败），让用户能再点。
     // 走 describeOpaqueFailure 而不是自己写一句「拉取结果失败」：这条路径正是出站被拦最常落地的地方，
     // 而那条错误的价值全在它的机器码和「钱没丢、去确认代理」那句人话上——一句同义反复会把它盖掉。
-    const message = describeOpaqueFailure(error)
-    useGenerationCanvasStore.getState().setNodeStatus(id, 'recoverable', message)
+    await deliverRunOutcome(target, id, { kind: 'status', status: 'recoverable', error: describeOpaqueFailure(error) })
     return
   }
 
-  const liveNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === id)
-  if (!liveNode || !current) return
+  if (!current) return
   try {
-    const normalized = normalizeCatalogTaskResult(current, liveNode)
-    // 结构闸（找回路径）：找回本身就发生在 CDN 快过期的时刻，此处尤其要把临时 URL 落地。
-    const localized = await localizeRemoteResultUrl(normalized, getActiveWorkbenchProjectId() ?? '', id)
-    useGenerationCanvasStore.getState().addNodeResult(id, localized)
-    await persistActiveWorkbenchProjectNow().catch(() => {})
+    const normalized = normalizeCatalogTaskResult(current, node)
+    // 结构闸（找回路径）：找回本身就发生在 CDN 快过期的时刻，此处尤其要把临时 URL 落地——落进任务所属项目。
+    const localized = await localizeRemoteResultUrl(normalized, target.projectId, id)
+    const delivered = await deliverRunOutcome(target, id, { kind: 'result', result: localized })
+    if (delivered === 'store') await persistActiveWorkbenchProjectNow().catch(() => {})
   } catch (error) {
     // 终态是 failed（normalizeCatalogTaskResult 对 failed 抛错）→ 这才是真失败，落 error 桶。
-    const message = describeOpaqueFailure(error)
-    useGenerationCanvasStore.getState().setNodeStatus(id, 'error', message)
+    await deliverRunOutcome(target, id, { kind: 'status', status: 'error', error: describeOpaqueFailure(error) })
   }
 }
 

@@ -9,10 +9,6 @@ vi.mock('../../../desktop/bridge', () => ({
   getDesktopBridge: () => ({ events: etaBridge }),
 }))
 
-vi.mock('../../../desktop/activeProject', () => ({
-  getDesktopActiveProjectId: () => 'eta-context-project',
-}))
-
 describe('generation spend ETA copy', () => {
   it('uses the selected concurrency within each serial dependency wave', () => {
     const parallel = describeGenerationCost(6, 'video', { concurrency: 6, waveSizes: [6], etaStats: [] })
@@ -39,9 +35,10 @@ describe('generation spend ETA copy', () => {
       key: 'relay|video-model|video', vendorKey: 'relay', modelKey: 'video-model', kind: 'video',
       sampleCount: 2, p50Seconds: 120, p90Seconds: 600,
     }] })
+    // 项目身份由发起确认的动作签发后显式传入。
     const context = generationCostContextForNode({ meta: {
       modelVendor: 'relay', modelKey: 'canonical-video-id', modelAlias: 'video-model',
-    } })
+    } }, 'eta-context-project')
 
     const message = describeGenerationCost(1, 'video', context)
 

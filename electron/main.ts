@@ -75,6 +75,8 @@ import { installContentSecurityPolicy } from "./contentSecurityPolicy";
 import { registerSkillIpc } from "./skills/skillIpc";
 import { logError, logInfo, logWarn } from "./logging/logger";
 import { registerDevDiagnostics } from "./logging/devDiagnostics";
+import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
+import { issueChildWindowProject } from "./assets/windowProjectCapture";
 // profile 重定向必须排在 installMainProcessLifecycle **之前**：崩溃处理与日志一装上就会写盘，
 // 晚一步重定向，这次会话的头几行（含会话表头）会落在被隔离掉的那个目录里。
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
@@ -399,6 +401,8 @@ function registerIpc(): void {
   // independent from the delayed/optional external capability core.
   const canvasReadExecutionRuntime = registerDesktopCanvasReadRuntime();
   desktopCanvasReadExecutionRuntime = canvasReadExecutionRuntime;
+  const childWindowProject = (sender: WebContents) => issueChildWindowProject(sender, BrowserWindow.fromWebContents);
+  const projectInteraction = createProjectInteractionCapture(canvasReadExecutionRuntime.surfaceCapture, childWindowProject);
   desktopLaneIpc = registerAgentLaneIpc(createDesktopLaneDependencies(
     canvasReadExecutionRuntime, residentGenerationFactory,
   ));
@@ -552,7 +556,7 @@ function registerIpc(): void {
     shell.showItemInFolder(absolutePath);
     return { ok: true };
   });
-  registerWorkspaceFileDeleteIpc({ readProject });
+  registerWorkspaceFileDeleteIpc({ readProject, childWindowProject });
   registerWorkspaceSyncIpc({ readProject });
   ipcMain.handle("nomi:workspace:reveal-project-folder", (event, payload) => {
     assertTrustedSender(event);
@@ -574,20 +578,15 @@ function registerIpc(): void {
     const { listProjectAssets } = await loadRuntimeModule();
     return listProjectAssets(payload);
   });
-  registerAssetsIpc(canvasReadExecutionRuntime.surfaceCapture);
+  registerAssetsIpc(projectInteraction);
   registerSettingsIpc();
-  registerVideoIpc(canvasReadExecutionRuntime.surfaceCapture);
+  registerVideoIpc(projectInteraction);
   registerScreenshotIpc();
   registerTikhubConnectorIpc();
   ipcMain.handle("nomi:image:decompose-layers", async (event, payload) => {
     assertTrustedSender(event);
     const { decomposeLayers } = await import("./image/decomposeLayers");
     return decomposeLayers(payload);
-  });
-  ipcMain.handle("nomi:scene3d:frames-to-video", async (event, payload) => {
-    assertTrustedSender(event);
-    const { framesToVideoAsset } = await import("./video/framesToVideo");
-    return framesToVideoAsset(payload);
   });
   registerDirectorMobileIpc();
   registerExportJobIpc({

@@ -1,7 +1,6 @@
 import type { DesktopAssetDto } from '../../../desktop/bridge'
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
-import { resolveCapabilityProjectId } from '../../capability/capabilityProjectBinding'
+import { requireCapabilityProjectId } from '../../capability/capabilityProjectBinding'
 import { workbenchAdoptionPorts } from '../../adoption/adoptionStorePorts'
 import type { TimelineClip, TimelineState } from '../timelineTypes'
 import { ASSET_SOURCE_USAGE_LIMIT } from '../../../../electron/shared/agentCapabilities/assetRead'
@@ -319,15 +318,11 @@ const defaultRuntime: MediaToolRuntime = {
 }
 
 /**
- * 素材库按 projectId 在主进程寻址——不需要项目正开着。所以已校验的 lease projectId 优先，
- * 没给才回退 GUI 当前项目（应用内调用者）。解析规则住在 capabilityProjectBinding.ts。
+ * 素材库按 projectId 在主进程寻址——不需要项目正开着。项目只认调用方显式带来的
+ * （lease 或 coordinator 按已验证 binding 下发），不回退 GUI 当前项目。解析规则住在 capabilityProjectBinding.ts。
  */
 function scopeProjectId(boundProjectId?: unknown): string {
-  return resolveCapabilityProjectId(
-    boundProjectId,
-    getDesktopActiveProjectId,
-    'project_scope_required: an active project is required for media tools',
-  )
+  return requireCapabilityProjectId(boundProjectId, 'project_scope_required: an active project is required for media tools')
 }
 
 async function mediaAssets(runtime: MediaToolRuntime, boundProjectId?: unknown): Promise<ProjectMediaAsset[]> {

@@ -1,6 +1,5 @@
 import type { CanvasWorkflowTemplate } from '../generationCanvas/plugins/canvasWorkflowTemplates'
 import { isCanvasWorkflowTemplate } from '../generationCanvas/plugins/canvasWorkflowTemplates'
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
 import { listLocalProjects } from '../project/projectRepository'
 
 /** User-owned, app-level workflow library entry. The template remains an immutable snapshot. */
@@ -117,8 +116,9 @@ export function saveWorkflowToLibrary(input: {
   return entry
 }
 
-export function saveWorkflowFromCurrentProject(template: CanvasWorkflowTemplate): WorkflowLibraryEntry | null {
-  const sourceProjectId = getActiveWorkbenchProjectId() || undefined
+/** sourceProjectId：保存动作起点签发的原项目（没有打开的项目 = null，只是不记来源）。 */
+export function saveWorkflowFromProject(template: CanvasWorkflowTemplate, sourceProject: string | null): WorkflowLibraryEntry | null {
+  const sourceProjectId = sourceProject || undefined
   const sourceProjectName = sourceProjectId ? listLocalProjects().find((project) => project.id === sourceProjectId)?.name : undefined
   return saveWorkflowToLibrary({ template, sourceProjectId, sourceProjectName })
 }

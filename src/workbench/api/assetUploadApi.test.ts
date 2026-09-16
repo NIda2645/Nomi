@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { importWorkbenchLocalAssetFile, importWorkbenchRemoteAssetUrl } from './assetUploadApi'
 
+/** 上传的项目绑定由动作起点签发后显式传入；这里给一个仍然有效的签发替身。 */
+const issued = (projectId: string, assertCurrent: () => void = () => undefined) => ({
+  projectBinding: { projectId, immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 },
+  assertCurrent,
+})
+
 afterEach(() => {
   Reflect.deleteProperty(globalThis, 'window')
 })
@@ -10,7 +16,7 @@ describe('local asset upload transport', () => {
     const binding = { projectId: 'original', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }
     const importRemoteUrl = vi.fn(async () => ({ ok: false, failure: { code: 'project_binding_stale', reason: 'import-failed' } }))
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { nomiDesktop: { assets: { importRemoteUrl } } } })
-    await expect(importWorkbenchRemoteAssetUrl('https://example.com/image.png', 'image.png', { projectBinding: binding }))
+    await expect(importWorkbenchRemoteAssetUrl('https://example.com/image.png', 'image.png', { projectBinding: binding, assertCurrent: () => undefined }))
       .rejects.toMatchObject({ code: 'project_binding_stale' })
     expect(importRemoteUrl).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'original', projectBinding: binding }))
   })
@@ -20,7 +26,7 @@ describe('local asset upload transport', () => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { nomiDesktop: { assets: {
       importFile: vi.fn(async () => JSON.parse(JSON.stringify({ ok: false, failure }))),
     } } } })
-    await expect(importWorkbenchLocalAssetFile(new File(['x'], 'note.txt'), 'note.txt', { projectId: 'original' })).rejects.toMatchObject(failure)
+    await expect(importWorkbenchLocalAssetFile(new File(['x'], 'note.txt'), 'note.txt', issued('original'))).rejects.toMatchObject(failure)
   })
 
   it('rechecks cancellation after asynchronous byte preparation before any disk request', async () => {
@@ -31,10 +37,9 @@ describe('local asset upload transport', () => {
       current = false
       return new ArrayBuffer(4)
     } } as unknown as File
-    await expect(importWorkbenchLocalAssetFile(file, file.name, {
-      projectId: 'original',
-      assertCurrent() { if (!current) throw new Error('project_binding_stale') },
-    })).rejects.toThrow('project_binding_stale')
+    await expect(importWorkbenchLocalAssetFile(file, file.name, issued('original', () => {
+      if (!current) throw new Error('project_binding_stale')
+    }))).rejects.toThrow('project_binding_stale')
     expect(importFile).not.toHaveBeenCalled()
   })
 
@@ -52,11 +57,12 @@ describe('local asset upload transport', () => {
     const arrayBuffer = vi.fn(async () => new ArrayBuffer(4))
     const file = { name: 'large-video.mp4', type: 'video/mp4', arrayBuffer } as unknown as File
 
-    const result = await importWorkbenchLocalAssetFile(file, file.name, { projectId: 'project-1' })
+    const result = await importWorkbenchLocalAssetFile(file, file.name, issued('project-1'))
 
     expect(result).toEqual(imported)
     expect(importNativeFile).toHaveBeenCalledWith(file, {
       projectId: 'project-1',
+      projectBinding: issued('project-1').projectBinding,
       fileName: 'large-video.mp4',
       contentType: 'video/mp4',
       kind: 'upload',

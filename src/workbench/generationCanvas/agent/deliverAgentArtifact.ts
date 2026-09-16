@@ -85,7 +85,6 @@ export async function deliverAgentArtifactToAsset(
   try {
     context.assertCurrent()
     const imported = await assetImport(file, artifactFileName(input), {
-      projectId: context.binding.projectId,
       projectBinding: context.binding,
       assertCurrent: context.assertCurrent,
     })

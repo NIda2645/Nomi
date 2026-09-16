@@ -70,8 +70,11 @@ export type NomiBrowserAssetPopoverProps = {
   dockPresentation?: 'overlay' | 'edge' | 'split'
   defaultOpened?: boolean
   defaultTab?: NomiBrowserAssetTab
-  /** 素材盒的数据桶；undefined 跟随当前项目，空字符串表示全局桶。 */
-  libraryProjectId?: string | null
+  /**
+   * 素材盒所属项目，由承载窗口给出：主窗口 = 它此刻打开的项目；浮层窗 = 主进程按父窗口已提交项目推来的。
+   * 只用于显示与标注，写入的项目由主进程按窗口会话核定。null = 没有打开项目。
+   */
+  projectId: string | null
   onOpenChange?: (opened: boolean) => void
   onWindowRectChange?: (rect: FloatingWindowBoundsRect | null) => void
   /**

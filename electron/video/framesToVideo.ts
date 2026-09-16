@@ -13,10 +13,14 @@ import { spawn } from "node:child_process";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
 import { ensureExecutable } from "../export/ensureExecutable";
 import { writeAsset } from "../runtime";
+import { captureAssetWriteContext } from "../assets/assetWriteContext";
+import type { ProjectBinding } from "../shared/projectBinding";
 import { buildFramesToVideoArgs } from "./framesToVideoArgs";
 
 export type FramesToVideoPayload = {
   projectId: string;
+  /** 发起出片那一刻签发的原项目完整绑定；ffmpeg 之后只发布进这一份身份。 */
+  projectBinding?: ProjectBinding;
   ownerNodeId?: string | null;
   /** 输出文件名（不含路径）；缺省自动生成。 */
   fileName?: string;
@@ -62,9 +66,10 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<void> {
 /**
  * N 帧 PNG → mp4 项目素材。失败一律抛 FramesToVideoError（不返回半成品冒充）。
  */
-export async function framesToVideoAsset(payload: FramesToVideoPayload): Promise<FramesToVideoResult> {
+export async function framesToVideoAsset(payload: FramesToVideoPayload, options: { assertCurrent?: () => void } = {}): Promise<FramesToVideoResult> {
   const { projectId, frames, fps } = payload;
   if (!projectId || typeof projectId !== "string") throw new FramesToVideoError("缺少 projectId");
+  const context = await captureAssetWriteContext(projectId, payload.projectBinding, options.assertCurrent);
   if (!Array.isArray(frames) || frames.length < 2) throw new FramesToVideoError("至少需要 2 帧才能拼成运镜小片");
   if (!Number.isFinite(fps) || fps <= 0) throw new FramesToVideoError("无效的 fps");
 
@@ -94,7 +99,7 @@ export async function framesToVideoAsset(payload: FramesToVideoPayload): Promise
       kind: "generated",
       source: "camera-move",
       ownerNodeId: payload.ownerNodeId || null,
-    }) as { id?: string; data?: { url?: string } };
+    }, context) as { id?: string; data?: { url?: string } };
     const url = record?.data?.url;
     if (!url) throw new FramesToVideoError("拼好的 mp4 写盘失败");
     return { url, assetId: record.id };

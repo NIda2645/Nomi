@@ -7,6 +7,7 @@ import {
   persistActiveWorkbenchProjectNow,
   waitForActiveWorkbenchProjectSaveTarget,
 } from '../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 
 export type CanonicalCanvasPlanPatchRequest = Readonly<{
   projectId: string
@@ -14,7 +15,8 @@ export type CanonicalCanvasPlanPatchRequest = Readonly<{
   receiptProposalId: string
   approvalId: string
   actionHash?: string
-  readActiveProjectId: () => string | null
+  /** 处理这条宿主写请求那一刻签发的已打开项目（没有打开的项目 = null）。 */
+  loaded: ProjectExecutionContext | null
 }>
 
 /**
@@ -28,9 +30,14 @@ export type CanonicalCanvasPlanPatchRequest = Readonly<{
 export async function executeCanonicalCanvasPlanPatch(
   request: CanonicalCanvasPlanPatchRequest,
 ): Promise<unknown> {
-  if (request.readActiveProjectId() !== request.projectId) {
-    throw new SurfacePortWireError('surface_port_stale')
+  const { loaded } = request
+  // 宿主写入只作用于签发时就打开着、且此刻仍有效的那个项目（A→B→A 不复活）。
+  const assertLoaded = (): void => {
+    if (!loaded || loaded.binding.projectId !== request.projectId || !isProjectExecutionContextCurrent(loaded)) {
+      throw new SurfacePortWireError('surface_port_stale')
+    }
   }
+  assertLoaded()
 
   let input
   try {
@@ -66,11 +73,7 @@ export async function executeCanonicalCanvasPlanPatch(
       approvalId: request.approvalId,
       actionHash: request.actionHash,
       signal: new AbortController().signal,
-      assertCurrent: () => {
-        if (request.readActiveProjectId() !== request.projectId) {
-          throw new SurfacePortWireError('surface_port_stale')
-        }
-      },
+      assertCurrent: assertLoaded,
     },
     readSnapshot,
   )
@@ -81,9 +84,7 @@ export async function executeCanonicalCanvasPlanPatch(
   // process boundary and therefore flush the active project before returning
   // the committed result to MCP.  A missing/mismatched save target is an
   // unresolved receipt, not a successful in-memory mutation.
-  if (request.readActiveProjectId() !== request.projectId) {
-    throw new SurfacePortWireError('surface_port_stale')
-  }
+  assertLoaded()
   // React can rebind the owner while the renderer mutation crosses IPC.  The
   // second readiness check closes that cutover window before the durable save.
   const ownerReady = waitForActiveWorkbenchProjectSaveTarget(request.projectId)
@@ -99,8 +100,6 @@ export async function executeCanonicalCanvasPlanPatch(
   if (!saved || saved.id !== request.projectId || !Number.isInteger(saved.revision)) {
     throw new SurfacePortWireError('capability_receipt_unresolved')
   }
-  if (request.readActiveProjectId() !== request.projectId) {
-    throw new SurfacePortWireError('surface_port_stale')
-  }
+  assertLoaded()
   return result
 }

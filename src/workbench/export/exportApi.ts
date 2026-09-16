@@ -1,4 +1,3 @@
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { DesktopMp4ExportResult } from '../../desktop/bridge'
 import type { TelemetryResult } from '../../../electron/shared/contracts/telemetry'
@@ -17,7 +16,8 @@ const MP4_WEBM_IPC_CHUNK_BYTES = 1024 * 1024
 export type ExportTimelineToMp4Options = {
   timeline: TimelineState
   aspectRatio: PreviewAspectRatio
-  projectId?: string
+  /** 导出归属的项目：调用方在导出动作起点签发后显式传入；缺失即报错，不回退当前项目。 */
+  projectId: string
   outputName?: string
   resolution?: '720p' | '1080p'
   quality?: ExportQuality
@@ -39,7 +39,7 @@ export function createTimelineExportManifest(options: Pick<
   ExportTimelineToMp4Options,
   'timeline' | 'aspectRatio' | 'projectId' | 'resolution' | 'quality' | 'generationNodes'
 >): { projectId: string; timeline: TimelineState; manifest: ReturnType<typeof buildRenderManifestRequest> } {
-  const projectId = (options.projectId || getDesktopActiveProjectId()).trim()
+  const projectId = String(options.projectId || '').trim()
   if (!projectId) throw new Error(i18n.t('runtime.export.missingProjectId'))
   const timeline = resolveTimelinePlaybackUrls(options.timeline, options.generationNodes || [])
   const manifest = buildRenderManifestRequest({

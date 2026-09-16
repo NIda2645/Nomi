@@ -5,6 +5,7 @@
  *        开发页 / 老 preload 没有这座桥 → 对话框明说需要桌面运行时。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+import type { ProjectBinding } from '../../electron/shared/projectBinding'
 import type { MobileBridgeEvent, MobileBridgeStatus, MobileBridgeFeedback } from '../../electron/shared/contracts/directorMobileBridge'
 
 export type DesktopDirectorMobileStatus = MobileBridgeStatus
@@ -15,6 +16,8 @@ export type DesktopDirectorBridge = {
   /** 出片：N 帧 PNG dataURL → ffmpeg 拼 mp4 落项目素材（主进程 electron/video/framesToVideo.ts）。 */
   framesToVideo: (payload: {
     projectId: string
+    /** 发起出片动作签发的原项目绑定（主进程据此在拼片后发布前复验）。 */
+    projectBinding: ProjectBinding
     ownerNodeId: string
     fileName: string
     fps: number

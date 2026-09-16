@@ -23,7 +23,7 @@ import {
   DEMO_CANVAS_SPOTLIGHTS,
   seedDemoNodeImages,
 } from './demoProject'
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../project/projectCanvasReadSurface'
 
 type TourPhase = 'idle' | 'running' | 'finale'
 
@@ -58,7 +58,9 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
 
   const run = async () => {
     const myToken = (runToken += 1)
-    const aborted = () => runToken !== myToken
+    // 导览在开始那一刻打开的项目里演示：示例图落进它；中途换了项目就收场，不往新项目里铺示例。
+    const project = withProjectAction((issued) => issued) ?? null
+    const aborted = () => runToken !== myToken || (project !== null && !isProjectExecutionContextCurrent(project))
     const ws = () => useWorkbenchStore.getState()
     set({ phase: 'running', beat: null, teachIndex: 0, selectors: null })
 
@@ -103,7 +105,7 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
     // 注入预置成图：示例画布即显成片(status=success),像一个做完的示例项目(诚实——这就是示例项目)。
     // 图先由主进程落成本项目的真实资产再拿 URL——节点结果会持久化,只有 nomi-local 这种稳定地址
     // 才经得起重新构建/升级/换机(此前写的是构建产物 URL,换环境即裂图,见 demoProject.ts 注释)。
-    const demoImages = await seedDemoNodeImages(getDesktopActiveProjectId() || '')
+    const demoImages = await seedDemoNodeImages(project?.binding.projectId ?? '')
     if (aborted()) return
     const canvas = useGenerationCanvasStore.getState()
     for (const [clientId, nodeId] of Object.entries(map)) {

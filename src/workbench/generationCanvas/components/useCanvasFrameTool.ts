@@ -36,6 +36,7 @@ import {
 } from './canvasPointerGestureModel'
 import type { CanvasNodeRectProbe } from './useCanvasFrameMembership'
 import type { CanvasGroupBox } from './GroupFrame'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 
 type UseCanvasFrameToolArgs = {
   readOnly: boolean
@@ -127,7 +128,7 @@ export function useCanvasFrameTool({
       frameRectsOverlap({ x: box.left, y: box.top, w: box.width, h: box.height }, bounds),
     )
     if (overlapped) {
-      reportCanvasFeedback(i18n.t('generationCommon.canvas.group.nestedNotSupported'), 'warning', { identity: `frame-tool:${activeCategoryId}`, reason: 'nested-frame' })
+      reportCanvasFeedback(i18n.t('generationCommon.canvas.group.nestedNotSupported'), 'warning', { projectId: withProjectAction((project) => project.binding.projectId) ?? '', identity: `frame-tool:${activeCategoryId}`, reason: 'nested-frame' })
       return
     }
     const state = useGenerationCanvasStore.getState()

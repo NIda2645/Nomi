@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
+import type { ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 import { buildCanvasWriteAdmissionForOperation } from '../../../electron/shared/agentCapabilities/canvasWriteEvidence'
 import { captureCanvasWriteRawEvidence, executeCanvasWriteTarget } from '../generationCanvas/agent/canvasWriteTarget'
 import { readGenerationCanvasSnapshot } from '../generationCanvas/agent/generationCanvasTools'
@@ -32,14 +33,23 @@ const patchInput = {
   patch: { promptAppend: '雨天' },
 }
 
-function request(readActiveProjectId: () => string | null, input: unknown = patchInput) {
+/** 宿主请求到达那一刻签发的已打开项目（替身）；isCurrent 模拟它此后是否仍有效。 */
+function issued(projectId: string, isCurrent: () => boolean = () => true): ProjectExecutionContext {
+  return {
+    binding: { projectId, immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 },
+    signal: new AbortController().signal,
+    assertCurrent() { if (!isCurrent()) throw new SurfacePortWireError('project_binding_stale') },
+  }
+}
+
+function request(loaded: ProjectExecutionContext | null, input: unknown = patchInput) {
   return {
     projectId: 'project-a',
     input,
     receiptProposalId: 'receipt-a',
     approvalId: 'approval-a',
     actionHash: 'a'.repeat(64),
-    readActiveProjectId,
+    loaded,
   }
 }
 
@@ -58,18 +68,18 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
   })
 
   it('fails closed for a stale active project before parsing or capturing', async () => {
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-b'))).rejects.toMatchObject({ code: 'surface_port_stale' } satisfies Partial<SurfacePortWireError>)
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-b')))).rejects.toMatchObject({ code: 'surface_port_stale' } satisfies Partial<SurfacePortWireError>)
     expect(captureCanvasWriteRawEvidence).not.toHaveBeenCalled()
   })
 
   it('fails closed for invalid input and for a valid non-patch operation', async () => {
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-a', { operation: 'not-real' }))).rejects.toMatchObject({ code: 'capability_input_invalid' } satisfies Partial<SurfacePortWireError>)
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-a', { operation: 'set_node_prompt', nodeId: 'node-a', prompt: 'new' }))).rejects.toMatchObject({ code: 'capability_input_invalid' } satisfies Partial<SurfacePortWireError>)
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a'), { operation: 'not-real' }))).rejects.toMatchObject({ code: 'capability_input_invalid' } satisfies Partial<SurfacePortWireError>)
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a'), { operation: 'set_node_prompt', nodeId: 'node-a', prompt: 'new' }))).rejects.toMatchObject({ code: 'capability_input_invalid' } satisfies Partial<SurfacePortWireError>)
     expect(captureCanvasWriteRawEvidence).not.toHaveBeenCalled()
   })
 
   it('captures live evidence, builds admission, delegates, and rechecks the active project', async () => {
-    const result = await executeCanonicalCanvasPlanPatch(request(() => 'project-a'))
+    const result = await executeCanonicalCanvasPlanPatch(request(issued('project-a')))
     expect(result).toMatchObject({ applied: true, operation: 'patch_shots', changedShotIndexes: [2] })
     expect(captureCanvasWriteRawEvidence).toHaveBeenCalledWith(snapshot, { operation: 'patch_shots', input: patchInput })
     expect(buildCanvasWriteAdmissionForOperation).toHaveBeenCalledWith(expect.anything(), patchInput)
@@ -86,7 +96,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
   it('fails closed when the committed receipt has no durable project save', async () => {
     vi.mocked(persistActiveWorkbenchProjectNow).mockResolvedValueOnce(null)
 
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-a'))).rejects.toMatchObject({
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a')))).rejects.toMatchObject({
       code: 'capability_receipt_unresolved',
     } satisfies Partial<SurfacePortWireError>)
   })
@@ -96,7 +106,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
     vi.mocked(waitForActiveWorkbenchProjectSaveTarget).mockReturnValueOnce(new Promise((resolve) => {
       releaseOwner = () => resolve(true)
     }))
-    const pending = executeCanonicalCanvasPlanPatch(request(() => 'project-a'))
+    const pending = executeCanonicalCanvasPlanPatch(request(issued('project-a')))
     await Promise.resolve()
     expect(persistActiveWorkbenchProjectNow).not.toHaveBeenCalled()
     expect(executeCanvasWriteTarget).not.toHaveBeenCalled()
@@ -107,7 +117,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
 
   it('fails before mutation when the owner readiness window expires', async () => {
     vi.mocked(waitForActiveWorkbenchProjectSaveTarget).mockReturnValueOnce(false)
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-a'))).rejects.toMatchObject({
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a')))).rejects.toMatchObject({
       code: 'capability_receipt_unresolved',
     } satisfies Partial<SurfacePortWireError>)
     expect(executeCanvasWriteTarget).not.toHaveBeenCalled()
@@ -116,7 +126,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
   it('fails closed when the save owner acknowledges a different project', async () => {
     vi.mocked(persistActiveWorkbenchProjectNow).mockResolvedValueOnce({ id: 'project-b', revision: 2, version: 1 } as never)
 
-    await expect(executeCanonicalCanvasPlanPatch(request(() => 'project-a'))).rejects.toMatchObject({
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a')))).rejects.toMatchObject({
       code: 'capability_receipt_unresolved',
     } satisfies Partial<SurfacePortWireError>)
   })
@@ -124,7 +134,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
   it('does not return a receipt until the durable save resolves', async () => {
     let resolveSave!: (value: Awaited<ReturnType<typeof persistActiveWorkbenchProjectNow>>) => void
     vi.mocked(persistActiveWorkbenchProjectNow).mockReturnValueOnce(new Promise<Awaited<ReturnType<typeof persistActiveWorkbenchProjectNow>>>((resolve) => { resolveSave = resolve }))
-    const pending = executeCanonicalCanvasPlanPatch(request(() => 'project-a'))
+    const pending = executeCanonicalCanvasPlanPatch(request(issued('project-a')))
     await Promise.resolve()
     expect(vi.mocked(persistActiveWorkbenchProjectNow)).toHaveBeenCalledOnce()
     resolveSave({ id: 'project-a', revision: 2, version: 1 } as never)
@@ -132,8 +142,7 @@ describe('canonicalCanvasPlanPatch changed-function coverage', () => {
   })
 
   it('fails closed if the active project changes after admission', async () => {
-    let reads = 0
-    const activeProject = () => (reads++ === 0 ? 'project-a' : 'project-b')
-    await expect(executeCanonicalCanvasPlanPatch(request(activeProject))).rejects.toMatchObject({ code: 'surface_port_stale' } satisfies Partial<SurfacePortWireError>)
+    let checks = 0
+    await expect(executeCanonicalCanvasPlanPatch(request(issued('project-a', () => checks++ === 0)))).rejects.toMatchObject({ code: 'surface_port_stale' } satisfies Partial<SurfacePortWireError>)
   })
 })

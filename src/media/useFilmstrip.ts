@@ -1,6 +1,6 @@
 import React from 'react'
 import { getDesktopBridge } from '../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../workbench/project/workbenchProjectSession'
+import { useOpenProjectId } from '../workbench/project/useOpenProjectId'
 import { parseNomiLocalAssetUrl } from './nomiLocalAssetUrl'
 
 /**
@@ -91,9 +91,10 @@ export function useFilmstrip(
   videoUrl: string | null | undefined,
   explicitProjectId?: string | null,
 ): FilmstripEntry | null {
+  const openProjectId = useOpenProjectId()
   const resolved = resolveFilmstripRequest(videoUrl, {
     explicitProjectId,
-    activeProjectId: getActiveWorkbenchProjectId(),
+    activeProjectId: openProjectId,
   })
   const url = resolved?.videoUrl ?? ''
   const projectId = resolved?.projectId ?? ''

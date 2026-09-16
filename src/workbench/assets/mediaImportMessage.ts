@@ -5,6 +5,7 @@
 // 用户拿它什么也做不了（D1：任何让用户去猜的东西默认砍）。这里把 rejection 里的机器可读数字
 // 翻成一句能行动的话，所有入口调它。
 import i18n from '../../i18n'
+import type { AudioImportResult } from './importAudioToLibrary'
 import {
   formatMediaBytes,
   type MediaImportRejection,
@@ -38,4 +39,13 @@ export function mediaImportRejectionMessages(
   rejected: readonly { fileName: string; rejection: MediaImportRejection }[],
 ): string[] {
   return rejected.map((item) => mediaImportRejectionMessage(item.fileName, item.rejection))
+}
+
+/** 音频导入的跳过汇总（重复 / 被准入闸挡下 / 失败），与图片视频导入同一套人话。 */
+export function reportAudioImport(result: AudioImportResult, present: (message: string) => void): void {
+  const skipped: string[] = []
+  for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
+  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
+  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
+  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
 }

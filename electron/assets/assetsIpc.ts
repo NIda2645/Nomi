@@ -7,8 +7,7 @@ import { CLIPBOARD_FILE_PATH_FORMATS, parseClipboardFilePaths } from "./clipboar
 import { copyProjectAsset, importRemoteAsset } from "./projectAssetStore";
 import type { AssetImportResult } from '../shared/contracts/assetImportResult';
 import type { AssetImportFailure } from '../shared/contracts/assetImportResult';
-import type { CanvasReadSurfaceIpcCapture } from '../capabilityCore/canvasReadSurfaceIpc';
-import { createProjectInteractionCapture } from './projectInteractionCapture';
+import type { ProjectInteractionCapture } from './projectInteractionCapture';
 import { surfacePortFailure } from '../shared/surfacePortBinding';
 
 function importFailure(error: unknown, reason: AssetImportFailure['reason'] = 'import-failed'): AssetImportResult<never> {
@@ -66,10 +65,9 @@ export function parseCopyProjectAssetPayload(payload: unknown): {
   return { sourceProjectId, targetProjectId, relativePath };
 }
 
-export function registerAssetsIpc(surface: CanvasReadSurfaceIpcCapture): void {
+export function registerAssetsIpc(captureInteraction: ProjectInteractionCapture): void {
   // Explicit project/background imports retain disk identity without acquiring
   // interactive authority. Agent artifacts always provide the full binding.
-  const captureInteraction = createProjectInteractionCapture(surface);
   ipcMain.handle("nomi:clipboard:read-file-paths", (event) => {
     // 外泄面：剪贴板里的文件路径会暴露用户磁盘布局，只准主窗口读。
     assertTrustedSender(event);

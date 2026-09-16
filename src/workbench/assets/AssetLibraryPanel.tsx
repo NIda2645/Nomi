@@ -19,14 +19,14 @@ import { assetTimeValue, mergeAssetRefs, useAllProjectAssets } from './useAllPro
 import { assetsForFolderScope, folderCountsForAssets, useAssetFolderInteractions, useAssetFolders } from './useAssetFolders'
 import { filterAssets, type AssetRef } from './assetTypes'
 import { ASSET_LIBRARY_DRAG_MIME, serializeAssetLibraryDrag } from './assetLibraryDrag'
-import { importAudioFilesToLibrary, type AudioImportResult } from './importAudioToLibrary'
+import { importAudioFilesToLibrary } from './importAudioToLibrary'
 import { importLocalMediaFilesToGenerationCanvas, type GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { confirmDialog, DesignEmptyState, NomiLoadingMark, promptDialog, TooltipProvider } from '../../design'
 import { FindReferenceSection } from './FindReferenceSection'
 import type { ReferencePlatform } from '../../../electron/shared/contracts/referenceSearch'
-import { mediaImportRejectionMessages } from './mediaImportMessage'
+import { mediaImportRejectionMessages, reportAudioImport } from './mediaImportMessage'
 import { dropKindFromFile } from '../generationCanvas/model/nodeAssetDrop'
 import { acceptAttrForSurface } from '../../../electron/shared/contracts/mediaImportPolicy'
 import { notify } from '../../ui/notificationPolicy'
@@ -57,7 +57,7 @@ import {
 } from './assetLibraryUsage'
 import { markLibraryUsed, sortByLibraryUsage, useLibraryUsageVersion } from '../library/libraryDiscovery'
 import { runPasteShareLinkImport } from './pasteShareLinkImport'
-import { withProjectAction } from '../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../project/projectCanvasReadSurface'
 
 const DEFAULT_GRID_COLS = 3
 const ESTIMATED_ROW_HEIGHT = 121
@@ -93,14 +93,6 @@ function reportMediaImport(result: GenerationAssetImportResult, present: (messag
   const skipped: string[] = []
   for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
   if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
-  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
-  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
-  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
-}
-
-function reportAudioImport(result: AudioImportResult, present: (message: string) => void): void {
-  const skipped: string[] = []
-  for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
   if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
   if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
   if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
@@ -297,18 +289,20 @@ export function AssetLibraryContent({
           report(t('assetLibrary.importFailed'), 'error')
         })
     })
-    if (audioFiles.length) {
-      void importAudioFilesToLibrary(audioFiles, { projectId })
+    if (audioFiles.length) withProjectAction((project) => {
+      void importAudioFilesToLibrary(audioFiles, project)
         .then((result) => {
+          if (!isProjectExecutionContextCurrent(project)) return
           refreshProjectAssets()
           refreshAllProjectAssets()
           reportAudioImport(result, report)
         })
         .catch((error) => {
+          if (!isProjectExecutionContextCurrent(project) || isProjectImportCancellation(error)) return
           console.error('asset library audio upload failed', error)
           report(t('assetLibrary.audioImportFailed'), 'error')
         })
-    }
+    })
     if (unsupported.length) {
       for (const f of unsupported) report(t('assetLibrary.rejectedUnsupportedUnknown', { name: f.name || t('assetLibrary.unnamedFile') }), 'warning')
     }
@@ -417,8 +411,10 @@ export function AssetLibraryContent({
         setPreviewAsset(asset)
         return
       }
-      void addAssetToTimelineEnd(asset).then((added) => {
-        if (added) markLibraryUsed('asset', asset.id)
+      withProjectAction((project) => {
+        void addAssetToTimelineEnd(asset, project).then((added) => {
+          if (added) markLibraryUsed('asset', asset.id)
+        })
       })
       return
     }
@@ -489,6 +485,7 @@ export function AssetLibraryContent({
 
   const deleteSelectedProjectAssets = React.useCallback(async (): Promise<void> => {
     present('')
+    const loaded = withProjectAction((project) => project) ?? null
     if (!projectId) {
       report(t('assetLibrary.deleteNoProject'), 'warning')
       return
@@ -503,11 +500,11 @@ export function AssetLibraryContent({
       confirmLabel: t('assetLibrary.delete'),
       danger: true,
     })
-    if (!confirmed) return
+    if (!confirmed || (loaded && !isProjectExecutionContextCurrent(loaded))) return
     try {
       // 串行：同一关闭项目的多张结果必须一张张基于最新 record 改，Promise.all 会各读同一旧快照后互相覆盖。
       const outcomes: Awaited<ReturnType<typeof deleteAssetResult>>[] = []
-      for (const asset of selectedProjectAssets) outcomes.push(await deleteAssetResult(asset, projectId))
+      for (const asset of selectedProjectAssets) outcomes.push(await deleteAssetResult(asset, loaded))
       const removedCount = outcomes.reduce((total, outcome) => total + outcome.removedResultCount, 0)
       const deletedFileCount = outcomes.reduce((total, outcome) => total + outcome.deletedFileCount, 0)
       const failedFileCount = outcomes.reduce((total, outcome) => total + outcome.failedFileCount, 0)
@@ -524,6 +521,7 @@ export function AssetLibraryContent({
 
   const deleteOneAsset = React.useCallback(async (asset: AssetRef): Promise<void> => {
     present('')
+    const loaded = withProjectAction((project) => project) ?? null
     if (!assetBelongsToProject(asset, projectId)) {
       report(t('assetLibrary.externalAssetHint'), 'info')
       return
@@ -534,9 +532,9 @@ export function AssetLibraryContent({
       confirmLabel: t('assetLibrary.delete'),
       danger: true,
     })
-    if (!confirmed) return
+    if (!confirmed || (loaded && !isProjectExecutionContextCurrent(loaded))) return
     try {
-      const outcome = await deleteAssetResult(asset, projectId || '')
+      const outcome = await deleteAssetResult(asset, loaded)
       refreshProjectAssets()
       refreshAllProjectAssets()
       setPreviewAsset((current) => current?.id === asset.id ? null : current)

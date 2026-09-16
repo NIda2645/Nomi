@@ -11,7 +11,7 @@ import { useAllProjectAssets } from '../../assets/useAllProjectAssets'
 import AssetPicker from '../../assets/AssetPicker'
 import AssetPickerPopover from '../../assets/AssetPickerPopover'
 import type { AssetRef } from '../../assets/assetTypes'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { useOpenProjectId } from '../../project/useOpenProjectId'
 import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import {
   appendClipNodeSource,
@@ -52,6 +52,7 @@ type ClipNodeExportDestination = 'canvas' | 'download'
 type ClipNodeExportAction = `${ClipNodeExportScope}-${ClipNodeExportDestination}`
 
 export default function ClipNode({ node: rawNode, selected, readOnly = false }: Props): JSX.Element {
+  const openProjectId = useOpenProjectId()
   const node = rawNode as GenerationCanvasNode
   const [feedback, setFeedback] = React.useState<string | null>(null)
   const reportFeedback = React.useCallback((message: string) => {
@@ -350,9 +351,11 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   }, [captureHistory, meta, persist])
 
   const handleExport = async (scope: ClipNodeExportScope, destination: ClipNodeExportDestination): Promise<void> => {
-    const projectId = getActiveWorkbenchProjectId()
+    // 导出动作起点签发原项目：mp4 写进它；导出完回写画布前复验，换了项目就不在新项目落节点。
+    const project = withProjectAction((issued) => issued)
     const tasks = buildClipNodeExportTasks(timeline, scope)
-    if (!projectId || tasks.length === 0 || exporting) return
+    if (!project || tasks.length === 0 || exporting) return
+    const { projectId } = project.binding
     const action: ClipNodeExportAction = `${scope}-${destination}`
     setExporting(action)
     try {
@@ -368,6 +371,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         })
         completed.push({ task, relativePath: result.relativePath })
       }
+      if (!isProjectExecutionContextCurrent(project)) return
 
       if (destination === 'download') {
         const revealed = completed.at(-1)
@@ -551,7 +555,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
                 label={t('generationCommon.clipNode.export')}
                 icon={<IconDownload size={15} />}
                 className="shrink-0 bg-transparent text-nomi-ink-60 hover:bg-nomi-accent-soft hover:text-nomi-accent"
-                disabled={!timelineClips.length || Boolean(exporting) || !getActiveWorkbenchProjectId()}
+                disabled={!timelineClips.length || Boolean(exporting) || !openProjectId}
                 aria-expanded={exportMenuOpen}
                 data-testid="clip-node-export"
                 onClick={() => setExportMenuOpen((value) => !value)}
@@ -620,7 +624,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         <AssetPickerPopover onClose={closePicker}>
           <div className="grid gap-1.5">
             <AssetPicker
-              projectId={getActiveWorkbenchProjectId()}
+              projectId={openProjectId}
               accept={['image', 'video']}
               onPick={(asset) => withProjectAction((project) => void addAsset(asset, project))}
               onUpload={(file) => withProjectAction((project) => void upload(file, project))}

@@ -1,4 +1,3 @@
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
 import type { TelemetryResult } from '../../../electron/shared/contracts/telemetry'
 import { describeOpaqueFailure } from '../observability/opaqueFailure'
@@ -74,6 +73,25 @@ export type TaskRequestDto = {
   extras?: Record<string, unknown>
 }
 
+/**
+ * 任务的项目身份：提交那一刻由调用方显式给出，随任务持久化，轮询/找回原样复述。
+ * `null` = 明确不属于任何项目（接入测试、提示词改写等）。这里从不读「当前项目」补它。
+ */
+export type TaskProjectIdentity = string | null
+
+function withTaskProjectIdentity(
+  request: TaskRequestDto,
+  projectId: TaskProjectIdentity,
+): TaskRequestDto & { extras: Record<string, unknown> } {
+  const declared = request.extras?.projectId
+  if (declared !== undefined && declared !== (projectId ?? undefined)) {
+    throw new Error('TASK_PROJECT_MISMATCH: request.extras.projectId disagrees with the task project identity')
+  }
+  const extras: Record<string, unknown> = { ...(request.extras || {}) }
+  delete extras.projectId
+  return { ...request, extras: { ...extras, ...(projectId ? { projectId } : {}) } }
+}
+
 export type FetchWorkbenchTaskResultRequestDto = {
   taskId: string
   vendor?: string
@@ -82,8 +100,8 @@ export type FetchWorkbenchTaskResultRequestDto = {
   modelKey?: string | null
   /** Persisted archetype mode discriminator for mode-specific mappings. */
   archetype?: { modeId?: string | null } | null
-  /** 续查所属项目：内存缓存 miss 后主进程无状态重建查询时，用它把找回的资产本地化进项目。 */
-  projectId?: string | null
+  /** 任务提交时固定的项目身份（必填，null = 不属于任何项目）：主进程据此核对缓存任务、无状态重建时本地化资产。 */
+  projectId: TaskProjectIdentity
 }
 
 export type FetchWorkbenchTaskResultResponseDto = {
@@ -112,11 +130,14 @@ export async function mintSpendGrant(nodeIds: string[], maxAttemptsPerNode?: num
   return grantId
 }
 
-export async function runWorkbenchTaskByVendor(vendor: string, request: TaskRequestDto): Promise<TaskResultDto> {
+export async function runWorkbenchTaskByVendor(
+  vendor: string,
+  request: TaskRequestDto,
+  projectId: TaskProjectIdentity,
+): Promise<TaskResultDto> {
   const normalizedVendor = String(vendor || '').trim()
   if (!normalizedVendor) throw new Error('vendor is required')
   const desktop = requireDesktopRuntime('task execution')
-  const projectId = getDesktopActiveProjectId()
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const track = (result: TelemetryResult): void => {
     const capability = request.kind === 'text_to_image' ? 'image' : request.kind === 'image_edit' ? 'image-edit' : request.kind === 'text_to_video' || request.kind === 'image_to_video' ? 'video' : request.kind === 'text_to_audio' ? 'audio' : request.kind === 'text_to_3d' || request.kind === 'image_to_3d' ? '3d' : null
@@ -127,13 +148,7 @@ export async function runWorkbenchTaskByVendor(vendor: string, request: TaskRequ
   try {
     const response = await desktop.tasks.run({
       vendor: normalizedVendor,
-      request: {
-        ...request,
-        extras: {
-          ...(request.extras || {}),
-          ...(projectId ? { projectId } : {}),
-        },
-      },
+      request: withTaskProjectIdentity(request, projectId),
     }) as TaskResultDto
     track(response.status === 'succeeded' ? 'success' : response.status === 'failed' ? 'failure' : 'cancel')
     return response
@@ -146,19 +161,16 @@ export async function runWorkbenchTaskByVendor(vendor: string, request: TaskRequ
 export async function runComfyCandidateTestByVendor(
   vendor: string,
   payload: { candidate: { revisionId: string; modelKey: string; taskKind: TaskKind }; request: TaskRequestDto },
+  projectId: TaskProjectIdentity,
 ): Promise<ComfyCandidateTestResultDto> {
   const normalizedVendor = String(vendor || '').trim()
   if (!normalizedVendor) throw new Error('vendor is required')
   const desktop = requireDesktopRuntime('ComfyUI candidate certification')
   if (!desktop.tasks.runComfyCandidateTest) throw new Error('ComfyUI candidate certification is unavailable')
-  const projectId = getDesktopActiveProjectId()
   return desktop.tasks.runComfyCandidateTest({
     vendor: normalizedVendor,
     candidate: payload.candidate,
-    request: {
-      ...payload.request,
-      extras: { ...(payload.request.extras || {}), ...(projectId ? { projectId } : {}) },
-    },
+    request: withTaskProjectIdentity(payload.request, projectId),
   })
 }
 
@@ -173,10 +185,10 @@ export async function cancelComfyCandidateTestRevision(candidate: {
 export async function fetchWorkbenchTaskResultByVendor(
   payload: FetchWorkbenchTaskResultRequestDto,
 ): Promise<FetchWorkbenchTaskResultResponseDto> {
-  // 带上当前项目：内存缓存命中走 cached.projectId；miss 后无状态重建查询时主进程用 payload.projectId 本地化资产。
-  const projectId = payload.projectId ?? getDesktopActiveProjectId()
+  // 只复述任务自带的项目身份：缓存命中时主进程核对它与提交时一致，miss 后无状态重建用它本地化资产。
+  const { projectId, ...query } = payload
   return requireDesktopRuntime('task result polling').tasks.result({
-    ...payload,
+    ...query,
     ...(projectId ? { projectId } : {}),
   }) as Promise<FetchWorkbenchTaskResultResponseDto>
 }
@@ -189,21 +201,15 @@ export async function fetchWorkbenchTaskResultByVendor(
 export async function runWorkbenchTextTaskStream(
   vendor: string,
   request: TaskRequestDto,
+  projectId: TaskProjectIdentity,
   opts: { onDelta?: (delta: string) => void; signal?: AbortSignal } = {},
 ): Promise<TaskResultDto> {
   const normalizedVendor = String(vendor || '').trim()
   if (!normalizedVendor) throw new Error('vendor is required')
   const desktop = requireDesktopRuntime('text streaming')
-  const projectId = getDesktopActiveProjectId()
   const payload = {
     vendor: normalizedVendor,
-    request: {
-      ...request,
-      extras: {
-        ...(request.extras || {}),
-        ...(projectId ? { projectId } : {}),
-      },
-    },
+    request: withTaskProjectIdentity(request, projectId),
   }
   const { streamId } = await desktop.tasks.runTextStream(payload)
   return new Promise<TaskResultDto>((resolve, reject) => {

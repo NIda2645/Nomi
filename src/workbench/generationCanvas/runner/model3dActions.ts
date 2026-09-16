@@ -1,7 +1,7 @@
 import type { GenerationCanvasNode, GenerationNodeResult } from '../model/generationCanvasTypes'
-import { runCatalogGenerationTask, type CatalogTaskActionOptions } from './catalogTaskActions'
+import { runCatalogGenerationTask, type CatalogTaskRunOptions } from './catalogTaskActions'
 
-export type Generate3DOptions = CatalogTaskActionOptions
+export type Generate3DOptions = CatalogTaskRunOptions
 
 /**
  * 3D 模型生成（RunningHub 混元/HiTem/Meshy，输出 .glb）。
@@ -10,7 +10,7 @@ export type Generate3DOptions = CatalogTaskActionOptions
  */
 export async function generate3D(
   node: GenerationCanvasNode,
-  options: Generate3DOptions = {},
+  options: Generate3DOptions,
 ): Promise<GenerationNodeResult> {
   return runCatalogGenerationTask(node, options)
 }

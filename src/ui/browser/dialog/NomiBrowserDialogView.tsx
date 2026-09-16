@@ -21,6 +21,7 @@ import {
 import { BodyPortal, NomiLogoMark } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { NomiBrowserAssetPopover } from '../popover/NomiBrowserAssetPopover'
+import { useOpenProjectId } from '../../../workbench/project/useOpenProjectId'
 import {
   BROWSER_START_SHORTCUTS,
   CAPTURE_FLYOUT_KEYFRAME_TIMES,
@@ -101,6 +102,7 @@ export function NomiBrowserDialogView({
   webContainerRef,
   webContentBounds,
 }: NomiBrowserDialogViewProps): JSX.Element {
+  const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
   const browserAssetPopoverBounds = React.useMemo(() => {
     if (!localBrowserAssetPopoverSplit || !webContentBounds) return webContentBounds
@@ -482,6 +484,7 @@ export function NomiBrowserDialogView({
                 style={localBrowserAssetPopoverSplit ? { width: dockPanelWidth } : undefined}
               >
                 <NomiBrowserAssetPopover
+                  projectId={openProjectId}
                   surface="contained"
                   placement="absolute"
                   opened={browserAssetPopoverOpen}

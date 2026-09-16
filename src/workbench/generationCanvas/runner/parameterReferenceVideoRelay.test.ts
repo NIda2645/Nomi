@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NEWAPI_STANDARD_VIDEO_PARAMS } from '../../../../electron/catalog/newapiTransport'
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/modelCatalogApi'
 import type { TaskRequestDto } from '../../api/taskApi'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -10,7 +9,6 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { runCatalogGenerationTask } from './catalogTaskActions'
 
 vi.mock('../../../desktop/bridge', () => ({ getDesktopBridge: vi.fn() }))
-vi.mock('../../project/workbenchProjectSession', () => ({ getActiveWorkbenchProjectId: vi.fn() }))
 
 describe('explicit video first-frame edges reach generic image parameters as extracted images', () => {
   it.each(['legacy', 'new'] as const)('%s NEWAPI first_frame edge sends extracted PNG, while the same source in a video slot stays MP4', async (entry) => {
@@ -18,7 +16,6 @@ describe('explicit video first-frame edges reach generic image parameters as ext
     const frameUrl = 'https://asset.test/extracted-tail.png'
     const extractFrame = vi.fn().mockResolvedValue({ url: frameUrl })
     vi.mocked(getDesktopBridge).mockReturnValue({ video: { extractFrame } } as unknown as ReturnType<typeof getDesktopBridge>)
-    vi.mocked(getActiveWorkbenchProjectId).mockReturnValue('project')
     const catalogMeta = { parameters: [...NEWAPI_STANDARD_VIDEO_PARAMS, { key: 'clip', label: 'Clip', type: 'image-url', mediaKind: 'video' }] }
     const target: GenerationCanvasNode = { id: 'target', kind: 'video', title: '', prompt: 'animate', position: { x: 0, y: 0 },
       meta: projectParameterReferenceSlots({ modelKey: 'generic-relay', modelVendor: 'custom-relay' }, catalogMeta) }
@@ -35,6 +32,8 @@ describe('explicit video first-frame edges reach generic image parameters as ext
     const vendor: ModelCatalogVendorDto = { key: 'custom-relay', name: 'Relay', enabled: true, hasApiKey: true, createdAt: '', updatedAt: '' }
     const requests: TaskRequestDto[] = []
     await runCatalogGenerationTask(target, {
+      // 接力帧落进运行提交时固定的项目。
+      projectTarget: { projectId: 'project', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 },
       referenceContext: { nodes: [source, target], edges },
       listCatalogModels: async () => [model], listCatalogVendors: async () => [vendor],
       runTask: async (_vendor, request) => {

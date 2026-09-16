@@ -119,7 +119,7 @@ describe('clipboardImagePaste', () => {
     })
     expect(result.importedCount).toBe(1)
     expect(remote).toHaveBeenCalledWith('https://example.com/clip.png', 'clip.png', expect.objectContaining({
-      projectId: 'project-a', projectBinding: coordinator.getCurrentBinding()?.binding, assertCurrent: expect.any(Function),
+      projectBinding: coordinator.getCurrentBinding()?.binding, assertCurrent: expect.any(Function),
     }))
   })
 

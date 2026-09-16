@@ -4,7 +4,6 @@
 import React from 'react'
 import { unwrapAssetImportResult } from '../../../../electron/shared/contracts/assetImportResult'
 import { useTranslation } from 'react-i18next'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { confirmDialog } from '../../../design'
 import { notify } from '../../notificationPolicy'
@@ -44,6 +43,8 @@ type UseBrowserAssetActionsOptions = {
   setFiltersOpen: React.Dispatch<React.SetStateAction<boolean>>
   setDeleteConfirmOpen: React.Dispatch<React.SetStateAction<boolean>>
   presentFeedback: (message: string) => void
+  /** 承载窗口给出的项目（见 NomiBrowserAssetPopoverProps.projectId）。 */
+  projectId: string | null
 }
 
 export function useBrowserAssetActions({
@@ -63,6 +64,7 @@ export function useBrowserAssetActions({
   setFiltersOpen,
   setDeleteConfirmOpen,
   presentFeedback,
+  projectId,
 }: UseBrowserAssetActionsOptions): {
   addLocalFiles: (files: readonly File[]) => void
   selectAsset: (asset: NomiBrowserAsset, event: React.MouseEvent<HTMLDivElement>) => void
@@ -72,8 +74,8 @@ export function useBrowserAssetActions({
 } {
   const { t } = useTranslation()
   const report = React.useCallback((message: string) => {
-    notify({ identity: `browser-assets:${getDesktopActiveProjectId()}`, reason: 'asset-action', level: 'inline', type: 'error', message, present: presentFeedback })
-  }, [presentFeedback])
+    notify({ identity: `browser-assets:${projectId ?? ''}`, reason: 'asset-action', level: 'inline', type: 'error', message, present: presentFeedback })
+  }, [presentFeedback, projectId])
   const addLocalFiles = React.useCallback((files: readonly File[]): void => {
     presentFeedback('')
     // 收件箱只收图/视频；其他类型（文本等）去素材库上传，不在这里静默变卡。
@@ -85,7 +87,6 @@ export function useBrowserAssetActions({
       if (files.length > 0) report(t('browserAssets.onlyImagesAndVideos'))
       return
     }
-    const projectId = getDesktopActiveProjectId()
     const desktopAssets = getDesktopBridge()?.assets
     const persistImport = projectId && desktopAssets?.importFile ? { projectId, importFile: desktopAssets.importFile } : null
     const batchTime = Date.now()
@@ -145,7 +146,7 @@ export function useBrowserAssetActions({
         }
       })()
     })
-  }, [presentFeedback, report, previewUrlsRef, setActiveTab, setLocalAssets, setPersistedAssets, setSelectedIds, t])
+  }, [presentFeedback, report, previewUrlsRef, projectId, setActiveTab, setLocalAssets, setPersistedAssets, setSelectedIds, t])
 
   const selectAsset = React.useCallback((asset: NomiBrowserAsset, event: React.MouseEvent<HTMLDivElement>) => {
     setAssetContextMenu(null)
@@ -195,7 +196,6 @@ export function useBrowserAssetActions({
         const selectedIdSet = new Set(assetsToDelete.map((asset) => asset.id))
         const relativePaths = assetsToDelete.flatMap((asset) => (asset.relativePath ? [asset.relativePath] : []))
         if (relativePaths.length > 0) {
-          const projectId = getDesktopActiveProjectId()
           const deleteFiles = getDesktopBridge()?.workspace?.deleteFiles
           if (!projectId || !deleteFiles) {
             report(t('browserAssets.deleteUnsupported'))
@@ -217,7 +217,7 @@ export function useBrowserAssetActions({
         deleteInFlightRef.current = false
       }
     })()
-  }, [presentFeedback, report, refreshPersistedAssets, selectedAssets, setAssetContextMenu, setDeleteConfirmOpen, setLocalAssets, setPersistedAssets, setSelectedIds, t])
+  }, [presentFeedback, projectId, report, refreshPersistedAssets, selectedAssets, setAssetContextMenu, setDeleteConfirmOpen, setLocalAssets, setPersistedAssets, setSelectedIds, t])
 
   const selectAllVisibleAssets = React.useCallback((): void => {
     if (filteredAssets.length > 0) setSelectedIds(new Set(filteredAssets.map((asset) => asset.id)))

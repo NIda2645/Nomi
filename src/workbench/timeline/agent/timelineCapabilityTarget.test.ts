@@ -6,7 +6,6 @@ import type { TimelineState } from '../timelineTypes'
 import { createDefaultTimeline } from '../timelineMath'
 import { timelineRevision } from '../kernel/timelineKernel'
 import { useWorkbenchStore } from '../../workbenchStore'
-import { setDesktopActiveProjectId } from '../../../desktop/activeProject'
 import {
   executeTimelineReadTarget,
   executeTimelineWriteTarget,
@@ -57,6 +56,8 @@ function fixture(): TimelineState {
 }
 
 const approval = {
+  // 写入的项目身份只认请求显式带来的项目（lease 或动作起点签发），不读 GUI 当前项目。
+  projectId: 'project-a',
   receiptProposalId: 'receipt-plan-a',
   approvalId: 'approval-plan-a',
   actionHash: 'a'.repeat(64),
@@ -65,13 +66,13 @@ const approval = {
 }
 
 const executionGuard = {
+  projectId: 'project-a',
   signal: new AbortController().signal,
   assertCurrent: () => undefined,
 }
 
 describe('canonical Timeline capability target', () => {
   beforeEach(() => {
-    setDesktopActiveProjectId('project-a')
     useWorkbenchStore.setState({
       timeline: fixture(),
       timelineUndoStack: [],
@@ -348,13 +349,11 @@ describe('canonical Timeline capability target', () => {
     const appliedStack = useWorkbenchStore.getState().timelineUndoStack
     const appliedTimeline = useWorkbenchStore.getState().timeline
     const appliedRedo = useWorkbenchStore.getState().timelineRedoStack
-    setDesktopActiveProjectId('project-b')
-    expect(executeTimelineWriteTarget(request)).toMatchObject({ ok: false, undone: false, code: 'undo_token_invalid' })
+    expect(executeTimelineWriteTarget({ ...request, projectId: 'project-b' })).toMatchObject({ ok: false, undone: false, code: 'undo_token_invalid' })
     expect(useWorkbenchStore.getState().timeline).toBe(appliedTimeline)
     expect(useWorkbenchStore.getState().timelineUndoStack).toBe(appliedStack)
     expect(useWorkbenchStore.getState().timelineRedoStack).toBe(appliedRedo)
 
-    setDesktopActiveProjectId('project-a')
     const legacyEntry = fixture()
     useWorkbenchStore.setState({ timelineUndoStack: [...appliedStack, legacyEntry] })
     const legacyStack = useWorkbenchStore.getState().timelineUndoStack

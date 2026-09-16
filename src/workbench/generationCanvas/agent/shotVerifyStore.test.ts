@@ -1,18 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { ReconcileDeviation } from './reconcile'
 import { useShotVerifyStore, buildContentFixMessage, verifyShotsAndReport } from './shotVerifyStore'
 import { DEFAULT_LOOP_MAX_ROUNDS } from './storyboardLoopBudget'
+import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 
 const verifyMocks = vi.hoisted(() => ({
-  activeProjectId: 'project-A',
   gather: vi.fn(() => [{ shotNodeId: 'shot-1' }]),
   verify: vi.fn(),
   makeDeps: vi.fn(() => ({ marker: 'deps' })),
 }))
 
-vi.mock('../../../desktop/activeProject', () => ({
-  getDesktopActiveProjectId: () => verifyMocks.activeProjectId,
-}))
 vi.mock('./gatherShotVerifyInputs', () => ({ gatherShotVerifyInputs: verifyMocks.gather }))
 vi.mock('./shotVerifyRunner', () => ({ verifyGeneratedShots: verifyMocks.verify }))
 vi.mock('./shotVerifyJudge', () => ({ makeShotVerifyDeps: verifyMocks.makeDeps }))
@@ -40,9 +38,15 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+let projectSession: ProjectSessionTestHarness
+/** 审片由调用方在动作起点签发项目；测试走真实签发点。 */
+const issued = (): ProjectExecutionContext => withProjectAction((project) => project)!
+afterEach(() => projectSession.dispose())
+
 describe('shotVerifyStore 状态机', () => {
-  beforeEach(() => {
-    verifyMocks.activeProjectId = 'project-A'
+  beforeEach(async () => {
+    projectSession = createProjectSessionTestHarness()
+    await projectSession.open('project-A')
     verifyMocks.gather.mockClear()
     verifyMocks.verify.mockReset()
     verifyMocks.makeDeps.mockClear()
@@ -159,9 +163,9 @@ describe('shotVerifyStore 状态机', () => {
     const newer = deferred<ReconcileDeviation[]>()
     verifyMocks.verify.mockImplementationOnce(() => older.promise).mockImplementationOnce(() => newer.promise)
 
-    const olderRun = verifyShotsAndReport(['shot-old'])
+    const olderRun = verifyShotsAndReport(['shot-old'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(1))
-    const newerRun = verifyShotsAndReport(['shot-new'])
+    const newerRun = verifyShotsAndReport(['shot-new'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(2))
 
     newer.resolve([content('newer')])
@@ -178,11 +182,11 @@ describe('shotVerifyStore 状态机', () => {
     const newProjectRun = deferred<ReconcileDeviation[]>()
     verifyMocks.verify.mockImplementationOnce(() => oldProjectRun.promise).mockImplementationOnce(() => newProjectRun.promise)
 
-    const oldRun = verifyShotsAndReport(['shot-A'])
+    const oldRun = verifyShotsAndReport(['shot-A'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(1))
-    verifyMocks.activeProjectId = 'project-B'
+    await projectSession.open('project-B')
     useShotVerifyStore.getState().activateProject('project-B')
-    const newRun = verifyShotsAndReport(['shot-B'])
+    const newRun = verifyShotsAndReport(['shot-B'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(2))
 
     newProjectRun.resolve([content('project-B-result')])
@@ -202,9 +206,9 @@ describe('shotVerifyStore 状态机', () => {
     const newer = deferred<ReconcileDeviation[]>()
     verifyMocks.verify.mockImplementationOnce(() => older.promise).mockImplementationOnce(() => newer.promise)
 
-    const olderRun = verifyShotsAndReport(['shot-old'])
+    const olderRun = verifyShotsAndReport(['shot-old'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(1))
-    const newerRun = verifyShotsAndReport(['shot-new'])
+    const newerRun = verifyShotsAndReport(['shot-new'], issued())
     await vi.waitFor(() => expect(verifyMocks.verify).toHaveBeenCalledTimes(2))
     newer.resolve([content('newer')])
     await newerRun

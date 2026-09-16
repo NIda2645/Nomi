@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const deps = vi.hoisted(() => ({ changed: null as null | (() => void), version: 0 }))
 vi.mock('../../desktop/bridge', () => ({ getDesktopBridge: () => null }))
-vi.mock('../../desktop/activeProject', () => ({ setDesktopActiveProjectId: vi.fn() }))
 vi.mock('../generationCanvas/events/canvasEventEmitter', () => ({ emitCanvasGesture: vi.fn(), getCanvasEventLastSeq: () => 0, seedCanvasEventLastSeq: vi.fn() }))
 vi.mock('../generationCanvas/agent/shotVerifyStore', () => ({ useShotVerifyStore: { getState: () => ({ activateProject: vi.fn() }) } }))
 vi.mock('../workbenchStore', () => ({ useWorkbenchStore: { getState: () => ({}), subscribe: () => vi.fn() } }))

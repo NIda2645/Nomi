@@ -18,8 +18,8 @@ import { writeJsonFileAtomic } from "../jsonFile";
 import { getMainWindow } from "../appWindowRegistry";
 import { writeAsset } from "../runtime";
 import { logError } from "../logging/logger";
-import { captureAssetWriteContext, type AssetWriteContext } from "../assets/assetWriteContext";
-import { canvasReadSurfaceRuntime } from "../capabilityCore/canvasReadSurfaceRuntime";
+import type { AssetWriteContext } from "../assets/assetWriteContext";
+import { captureIssuedProjectWrite, issueWindowProject } from "../assets/windowProjectCapture";
 import { surfacePortFailure, type SurfacePortBindingWire } from "../shared/surfacePortBinding";
 
 const PREFS_FILE = "screenshot-hotkey-prefs.json";
@@ -165,10 +165,6 @@ export type ScreenshotCapture = {
 
 type ScreenshotProjectContext = Readonly<{ write: AssetWriteContext; surfaceBinding: SurfacePortBindingWire }>;
 
-function staleProject(): Error {
-  return Object.assign(new Error("project_binding_stale"), { code: "project_binding_stale" });
-}
-
 /** 换项目 = 取消：静默结束，不回写新项目，也不给新项目弹失败提示。 */
 function isProjectCancellation(error: unknown): boolean {
   const { code } = surfacePortFailure(error);
@@ -176,30 +172,15 @@ function isProjectCancellation(error: unknown): boolean {
 }
 
 /**
- * 热键是主进程里的用户动作，没有 IPC sender 可验。项目身份只认主进程已提交的项目面
- * （canvasReadSurfaceRuntime 的 committed binding），**在任何 await 之前**固定下来；
- * 之后每一步都用同一个 epoch 断言复验——切到别的项目（含 A→B→A）即永久失效。
- * 不再有 renderer 自报的 projectId：那是一条能被晚到的新项目覆盖的平行身份。
+ * 热键是主进程里的用户动作，没有 IPC sender 可验。项目身份只认主窗口已提交的项目面，由共享的
+ * 窗口签发点（windowProjectCapture）**在任何 await 之前**固定；之后每一步都用同一个 epoch 断言复验——
+ * 切到别的项目（含 A→B→A）即永久失效。不再有 renderer 自报的 projectId。
  */
 async function captureScreenshotProject(win: Electron.BrowserWindow): Promise<ScreenshotProjectContext | null> {
-  const { registry } = canvasReadSurfaceRuntime;
-  const selection = canvasReadSurfaceRuntime.getCommittedProjectSelection();
-  if (!selection) return null;
-  const { canonicalRootDigest, ...binding } = selection;
-  const captured = registry.captureCommittedCanvasReadPort({ binding, canonicalRootDigest });
-  if (!captured) return null;
-  const surface = registry.resolveCapturedCanvasReadPort(captured);
-  // 已提交的项目面必须就是要弹面板的这个主窗口，别把 A 窗口的项目算到 B 窗口头上。
-  if (surface.owner.contents !== win.webContents) return null;
-  const assertSurface = (): void => {
-    try {
-      registry.resolveCapturedCanvasReadPort(captured);
-    } catch {
-      throw staleProject();
-    }
-  };
-  const write = await captureAssetWriteContext(surface.binding.binding.projectId, surface.binding.binding, assertSurface);
-  return Object.freeze({ write, surfaceBinding: surface.binding });
+  const issued = issueWindowProject(win);
+  if (!issued) return null;
+  const write = await captureIssuedProjectWrite(issued);
+  return Object.freeze({ write, surfaceBinding: issued.surfaceBinding });
 }
 
 /**

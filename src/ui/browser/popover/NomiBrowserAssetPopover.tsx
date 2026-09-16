@@ -1,5 +1,4 @@
 import React from 'react'
-import { getDesktopActiveProjectId, subscribeDesktopActiveProjectIdChange } from '../../../desktop/activeProject'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { NomiBrowserAsset, NomiBrowserAssetTab } from '../assets/browserAssetData'
 import { dispatchBrowserAssetsImportToCanvas } from '../overlay/globalAssetPopoverEvents'
@@ -53,7 +52,7 @@ export function NomiBrowserAssetPopover({
   dockPresentation = 'overlay',
   defaultOpened = false,
   defaultTab = 'all',
-  libraryProjectId,
+  projectId,
   onOpenChange,
   onWindowRectChange,
   onFullWindowModalChange,
@@ -100,13 +99,9 @@ export function NomiBrowserAssetPopover({
   )
   const [promptExtractionSettingsProjectAvailable, setPromptExtractionSettingsProjectAvailable] = React.useState(false)
   const popoverOpen = opened ?? internalOpen
-  const [currentProjectId, setCurrentProjectId] = React.useState(() => getDesktopActiveProjectId())
+  const currentProjectId = projectId ?? ''
   const presentActionFeedback = React.useCallback((message: string) => setActionFeedback({ projectId: currentProjectId, message }), [currentProjectId])
-  const activeLibraryProjectId = libraryProjectId === undefined
-    ? currentProjectId
-    : typeof libraryProjectId === 'string'
-      ? libraryProjectId.trim()
-      : ''
+  const activeLibraryProjectId = currentProjectId
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const {
     contained,
@@ -173,15 +168,6 @@ export function NomiBrowserAssetPopover({
   )
 
   React.useEffect(() => {
-    if (libraryProjectId !== undefined) return undefined
-    return subscribeDesktopActiveProjectIdChange((projectId) => setCurrentProjectId(projectId.trim()))
-  }, [libraryProjectId])
-
-  React.useEffect(() => {
-    if (popoverOpen && libraryProjectId === undefined) setCurrentProjectId(getDesktopActiveProjectId())
-  }, [libraryProjectId, popoverOpen])
-
-  React.useEffect(() => {
     setLocalAssets([])
     setSelectedIds(new Set())
     setAssetContextMenu(null)
@@ -241,7 +227,6 @@ export function NomiBrowserAssetPopover({
   }, [popoverOpen])
 
   const loadPromptExtractionSettings = React.useCallback(async (): Promise<void> => {
-    const projectId = getDesktopActiveProjectId()
     const browserBridge = getDesktopBridge()?.browser
     setPromptExtractionSettingsProjectAvailable(Boolean(projectId && browserBridge?.readPromptExtractionSettings))
     if (!projectId || !browserBridge?.readPromptExtractionSettings) {
@@ -249,19 +234,16 @@ export function NomiBrowserAssetPopover({
       return
     }
     try {
-      const result = await browserBridge.readPromptExtractionSettings({ projectId })
+      const result = await browserBridge.readPromptExtractionSettings()
       const normalized = normalizeBrowserPromptExtractionTemplateSettings(result?.settings)
       setPromptExtractionSettings(normalized)
       if (!result?.settings && browserBridge.writePromptExtractionSettings) {
-        void browserBridge.writePromptExtractionSettings({
-          projectId,
-          settings: normalized,
-        }).catch(() => undefined)
+        void browserBridge.writePromptExtractionSettings({ settings: normalized }).catch(() => undefined)
       }
     } catch {
       setPromptExtractionSettings(createDefaultBrowserPromptExtractionTemplateSettings())
     }
-  }, [])
+  }, [projectId])
 
   React.useEffect(() => {
     if (!popoverOpen) return
@@ -273,18 +255,14 @@ export function NomiBrowserAssetPopover({
       const normalized = normalizeBrowserPromptExtractionTemplateSettings(settings)
       setPromptExtractionSettings(normalized)
       setPromptExtractionSettingsOpen(false)
-      const projectId = getDesktopActiveProjectId()
       const browserBridge = getDesktopBridge()?.browser
       setPromptExtractionSettingsProjectAvailable(Boolean(projectId && browserBridge?.writePromptExtractionSettings))
       if (!projectId || !browserBridge?.writePromptExtractionSettings) return
-      void browserBridge.writePromptExtractionSettings({
-        projectId,
-        settings: normalized,
-      }).catch(() => {
+      void browserBridge.writePromptExtractionSettings({ settings: normalized }).catch(() => {
         // Best effort; in-memory settings remain active for the current session.
       })
     },
-    [],
+    [projectId],
   )
 
   const {
@@ -344,6 +322,7 @@ export function NomiBrowserAssetPopover({
     setFiltersOpen,
     setDeleteConfirmOpen,
     presentFeedback: presentActionFeedback,
+    projectId,
   })
   const selectedCanvasImportAssets = React.useMemo(
     () => selectedAssets.map(browserAssetToCanvasImportItem).filter(isBrowserAssetCanvasImportItem),

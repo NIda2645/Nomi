@@ -13,6 +13,7 @@ import {
   type StorageCapacity,
 } from '../../../electron/shared/contracts/mediaImportPolicy'
 import { readStorageCapacitySnapshot } from './storageCapacitySnapshot'
+import { isProjectImportCancellation, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 
 // 从媒体类型单一真相源派生，与 workspaceFileIndex 的音频分类同源（不再手维护第二份）。
 const AUDIO_EXTENSIONS = new Set(extensionsForKind('audio'))
@@ -76,15 +77,17 @@ export type AudioImportResult = {
  */
 export async function importAudioFilesToLibrary(
   inputFiles: File[],
-  options: { projectId: string | null },
+  project: ProjectExecutionContext,
 ): Promise<AudioImportResult> {
-  const filtered = filterImportableAudioFiles(inputFiles, await readStorageCapacitySnapshot(options.projectId))
+  const filtered = filterImportableAudioFiles(inputFiles, await readStorageCapacitySnapshot(project.binding.projectId))
+  project.assertCurrent()
   let failedCount = 0
   await Promise.all(
     filtered.files.map(async (file) => {
       try {
-        await importWorkbenchLocalAssetFile(file, file.name, { projectId: options.projectId })
+        await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: project.binding, assertCurrent: project.assertCurrent })
       } catch (error) {
+        if (isProjectImportCancellation(error)) throw error
         failedCount += 1
         console.error('asset library audio upload failed', error)
       }

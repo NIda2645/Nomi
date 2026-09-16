@@ -3,10 +3,10 @@ import {
   buildCatalogTaskRequest,
   normalizeCatalogTaskResult,
   runCatalogGenerationTask,
-  type CatalogTaskActionOptions,
+  type CatalogTaskRunOptions,
 } from './catalogTaskActions'
 
-export type GenerateVideoOptions = CatalogTaskActionOptions
+export type GenerateVideoOptions = CatalogTaskRunOptions
 
 export const buildVideoGenerationRequest = buildCatalogTaskRequest
 
@@ -20,7 +20,7 @@ export function normalizeVideoGenerationResult(
 
 export async function generateVideo(
   node: GenerationCanvasNode,
-  options: GenerateVideoOptions = {},
+  options: GenerateVideoOptions,
 ): Promise<GenerationNodeResult> {
   return runCatalogGenerationTask(node, options)
 }

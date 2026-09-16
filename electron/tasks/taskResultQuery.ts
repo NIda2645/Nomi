@@ -7,7 +7,7 @@ import { readCatalog } from "../catalog/catalogStore";
 import { desktopT } from "../i18n";
 import { classifyTaskCacheMiss, wasTaskAdmitted } from "./taskAdmission";
 import { taskFailureMessageFromResponse } from "./responseParsing";
-import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./activeProjectFallback";
+import { unlocalizedTaskAsset } from "./unlocalizedTaskAsset";
 import { traceVendorCompleted } from "../events/vendorCallTrace";
 import { extractProviderCostActual } from "../vendor/cost";
 import { rememberTaskResult } from "../vendor/fingerprintCache";
@@ -131,7 +131,7 @@ function rebuildCachedTaskFromPayload(taskId: string, raw: JsonRecord): CachedTa
   }
   const mapping = stagedCandidate?.mapping || findTaskMapping(vendorKey, taskKind, modelKey, modeId || undefined);
   if (!mapping?.query) return null; // 同步模型无 query op，没法续查
-  const projectId = trim(raw.projectId) || activeTaskProjectFallback();
+  const projectId = trim(raw.projectId);
   return {
     vendor: vendorKey,
     request: {
@@ -334,19 +334,18 @@ async function executeTaskQuery(taskId: string, cached: CachedTask): Promise<{ v
   return { vendor: cached.vendor, result: unpollable };
 }
 
-/** 提交时 projectId 空窗会毒化整个任务生命周期（cached.projectId 恒空 → 每次轮询都跳过本地化、
- *  终态只存易失 CDN url）。轮询 payload 带的 projectId / 主进程活动项目给它第二次机会。 */
-function withProjectIdSecondChance(cached: CachedTask, pollProjectId: string): CachedTask {
-  if (cached.projectId) return cached;
-  const projectId = pollProjectId || activeTaskProjectFallback();
-  return projectId ? { ...cached, projectId } : cached;
+/** 任务的项目身份在提交那一刻固定（cached.projectId），轮询只能复述它、不能改写它：
+ *  带了不同的 projectId 说明调用方拿错了身份，拒绝而不是把结果落进另一个项目。 */
+function assertPollProjectMatchesTask(cached: CachedTask, pollProjectId: string): CachedTask {
+  if (pollProjectId && pollProjectId !== cached.projectId) throw new Error("TASK_PROJECT_MISMATCH");
+  return cached;
 }
 
 export async function fetchTaskResult(payload: unknown): Promise<{ vendor: string; result: TaskResult }> {
   const raw = payload as JsonRecord;
   const taskId = trim(raw.taskId);
   const cached = taskCache.get(taskId);
-  if (cached) return executeTaskQuery(taskId, withProjectIdSecondChance(cached, trim(raw.projectId)));
+  if (cached) return executeTaskQuery(taskId, assertPollProjectMatchesTask(cached, trim(raw.projectId)));
 
   // 缓存 miss：先试无状态重建（重启/驱逐后仍能续查的治本点）。重建得了就走同一段 query。
   const rebuilt = rebuildCachedTaskFromPayload(taskId, raw);

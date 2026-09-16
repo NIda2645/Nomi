@@ -31,11 +31,6 @@ export function setCanvasEventProjectIdProvider(provider: () => string | null): 
   projectIdProvider = provider
 }
 
-/** S9:记忆卡/prompt 注入要按项目取记忆——取当前活跃 projectId(同 flush 语义,调用时刻取值)。 */
-export function getCanvasEventsProjectId(): string | null {
-  return projectIdProvider()
-}
-
 /** 测试用:捕获发射的事件(属性测试的对账输入)。 */
 export function setCanvasEventSinkForTests(sink: ((events: readonly CanvasShadowEvent[]) => void) | null): void {
   testSink = sink

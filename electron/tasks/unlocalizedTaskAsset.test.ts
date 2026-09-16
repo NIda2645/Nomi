@@ -1,28 +1,6 @@
-// 「生成的视频第二天加载不出来」根因闸：projectId 空窗时主进程跳过本地化、存下会过期的
-// CDN URL。锁两件事：① 活动项目注册表 set/get 语义；② 确实无项目时资产必须带 providerUrl
-// 易失标记（绝不再裸存 CDN url，让兜底链与补救本地化有据可依）。
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  activeTaskProjectFallback,
-  rememberActiveProjectForTasks,
-  unlocalizedTaskAsset,
-} from "./activeProjectFallback";
-
-afterEach(() => rememberActiveProjectForTasks(""));
-
-describe("活动项目注册表", () => {
-  it("记住 → 读回；trim；清空即空", () => {
-    rememberActiveProjectForTasks("  proj-1  ");
-    expect(activeTaskProjectFallback()).toBe("proj-1");
-    rememberActiveProjectForTasks("");
-    expect(activeTaskProjectFallback()).toBe("");
-  });
-
-  it("非字符串输入不炸、归空", () => {
-    rememberActiveProjectForTasks(undefined as unknown as string);
-    expect(activeTaskProjectFallback()).toBe("");
-  });
-});
+// 任务没有项目身份时，资产必须带 providerUrl 易失标记（绝不裸存 CDN url，让兜底链与补救本地化有据可依）。
+import { describe, expect, it } from "vitest";
+import { unlocalizedTaskAsset } from "./unlocalizedTaskAsset";
 
 describe("unlocalizedTaskAsset — 无项目上下文时绝不再裸存 CDN url", () => {
   it("http(s) 结果把同一链接标进 providerUrl（易失标记）", () => {

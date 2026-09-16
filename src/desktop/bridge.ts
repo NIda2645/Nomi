@@ -170,6 +170,8 @@ export type DesktopBrowserAssetOverlayCaptureRequest = {
 }
 
 export type DesktopBrowserAssetOverlayConfig = {
+  /** 父窗口已提交的项目（主进程签发，浮层只用来显示/标注；null = 父窗口没有打开项目）。 */
+  projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding | null
   opened: boolean
   viewId: number | null
   bounds: DesktopBrowserViewBounds | null
@@ -446,7 +448,6 @@ export type DesktopBridge = DesktopMediaBridge &
     hide: (payload: { viewId: number }) => void
     importMedia: (payload: {
       viewId: number
-      projectId: string
       url: string
       fileName?: string
       title?: string
@@ -454,14 +455,12 @@ export type DesktopBridge = DesktopMediaBridge &
     }) => Promise<DesktopAssetDto>
     capturePromptImage?: (payload: {
       viewId: number
-      projectId?: string
       url: string
       fileName?: string
       title?: string
     }) => Promise<DesktopBrowserPromptReferenceResult>
     capturePromptScreenshot?: (payload: {
       viewId: number
-      projectId?: string
       fileName?: string
       title?: string
       sourceRect?: {
@@ -471,13 +470,9 @@ export type DesktopBridge = DesktopMediaBridge &
         height: number
       }
     }) => Promise<DesktopBrowserPromptReferenceResult>
-    readPromptExtractionSettings?: (payload: {
-      projectId: string
-    }) => Promise<{ ok: boolean; settings: unknown | null; error?: string }>
-    writePromptExtractionSettings?: (payload: {
-      projectId: string
-      settings: unknown
-    }) => Promise<{ ok: boolean; settings?: unknown; error?: string }>
+    /** 项目由主进程按发起窗口（浮层 = 父窗口）已提交的项目面决定，渲染层不报 projectId。 */
+    readPromptExtractionSettings?: () => Promise<{ ok: boolean; settings: unknown | null; error?: string }>
+    writePromptExtractionSettings?: (payload: { settings: unknown }) => Promise<{ ok: boolean; settings?: unknown; error?: string }>
     selectPromptScreenshot?: (payload: { viewId: number }) => Promise<DesktopBrowserPromptScreenshotSelection>
     setResourceCapture?: (payload: { viewId: number; enabled: boolean }) => void
     captureResource?: (payload: { viewId: number }) => void

@@ -129,6 +129,7 @@ export function useAiSceneBuilder(): { status: AiSceneStatus; run: (description:
             await runWorkbenchTextTaskStream(
               brain.vendor,
               { kind: 'prompt_refine', prompt: buildAiScenePrompt(trimmed, images.length), extras: { modelKey: brain.modelKey, referenceImages: images } },
+              project.binding.projectId,
               {
                 signal: controller.signal,
                 onDelta: (delta) => {

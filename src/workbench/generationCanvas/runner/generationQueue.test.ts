@@ -16,6 +16,8 @@ import { __resetCanvasUndoJournalForTests } from '../events/canvasUndoJournal'
 import { resetModelHealthMemory } from './modelHealthMemory'
 import type { DependencyWavePlan } from './dependencyWaves'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 
 vi.mock('../../api/taskApi', () => ({
   mintSpendGrant: vi.fn(async () => 'grant-test'),
@@ -34,6 +36,14 @@ function planOf(waves: string[][]): DependencyWavePlan {
   return { waves, blocked: [], edgesUsed: [] } as unknown as DependencyWavePlan
 }
 
+let projectSession: ProjectSessionTestHarness
+let projectTarget: ProjectBinding
+beforeEach(async () => {
+  projectSession = createProjectSessionTestHarness()
+  projectTarget = await projectSession.open('project-test')
+})
+afterEach(() => projectSession.dispose())
+
 describe('生成队列外化', () => {
   beforeEach(() => {
     useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
@@ -51,7 +61,7 @@ describe('生成队列外化', () => {
     const ids = addImageNodes(4)
     const plan = planOf([[ids[0], ids[1]], [ids[2], ids[3]]])
     let seenQueuedInSecondWave = 0
-    await runGenerationNodesByPlan(plan, {
+    await runGenerationNodesByPlan(plan, { target: projectTarget,
       assetUploadConsent: 'not-needed',
       concurrency: 2,
       executor: async () => {
@@ -68,7 +78,7 @@ describe('生成队列外化', () => {
     const ids = addImageNodes(6)
     const executed: string[] = []
     const plan = planOf([ids])
-    const runPromise = runGenerationNodesByPlan(plan, {
+    const runPromise = runGenerationNodesByPlan(plan, { target: projectTarget,
       assetUploadConsent: 'not-needed',
       concurrency: 1,
       executor: async (node) => {
@@ -92,7 +102,7 @@ describe('生成队列外化', () => {
     const ids = addImageNodes(8)
     let attempts = 0
     const plan = planOf([ids])
-    const runPromise = runGenerationNodesByPlan(plan, {
+    const runPromise = runGenerationNodesByPlan(plan, { target: projectTarget,
       assetUploadConsent: 'not-needed',
       concurrency: 1,
       retry: { maxAttempts: 1 },
@@ -119,7 +129,7 @@ describe('生成队列外化', () => {
 
   it('不变量②补充：上游连带失败不算进刹车（否则一个上游挂掉会误停整条队列）', () => {
     const store = useGenerationQueueStore.getState()
-    const batchId = store.enqueueBatch([['a', 'b', 'c', 'd']])
+    const batchId = store.enqueueBatch([['a', 'b', 'c', 'd']], 'project-test')
     for (const nodeId of ['a', 'b', 'c']) {
       useGenerationQueueStore.getState().markSettled(batchId, nodeId, 'error', { countsTowardBrake: false })
     }
@@ -139,7 +149,7 @@ describe('生成队列外化', () => {
       timelineUndoStack: [], timelineRedoStack: [],
     })
 
-    const result = await runGenerationNodesBatch([id], {
+    const result = await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       concurrency: 1,
       executor: async () => fakeResult(id),
@@ -154,7 +164,7 @@ describe('生成队列外化', () => {
   it('不变量③：不传 batchId 时行为不变（退化路径 = 回滚保险）', async () => {
     const ids = addImageNodes(3)
     const executed: string[] = []
-    const result = await runGenerationNodesBatch(ids, {
+    const result = await runGenerationNodesBatch(ids, { target: projectTarget,
       assetUploadConsent: 'not-needed',
       concurrency: 3,
       executor: async (node) => {
@@ -168,7 +178,7 @@ describe('生成队列外化', () => {
 
   it('一个成功即清零连续失败计数（偶发失败不该攒成刹车）', () => {
     const store = useGenerationQueueStore.getState()
-    const batchId = store.enqueueBatch([['a', 'b', 'c', 'd', 'e']])
+    const batchId = store.enqueueBatch([['a', 'b', 'c', 'd', 'e']], 'project-test')
     useGenerationQueueStore.getState().markSettled(batchId, 'a', 'error')
     useGenerationQueueStore.getState().markSettled(batchId, 'b', 'error')
     useGenerationQueueStore.getState().markSettled(batchId, 'c', 'success')
@@ -189,7 +199,7 @@ describe('生成队列外化', () => {
     it('unfrozen-anchor 被拦的镜头 → 留 idle（不画红错误卡）、不进 failures', async () => {
       const [shotId] = addImageNodes(1)
       const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'unfrozen-anchor', detail: '在等参考卡「便利店」定妆——在卡上点「定妆」' }])
-      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const result = await runGenerationNodesByPlan(plan, { target: projectTarget, assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
       const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
       expect(node?.status ?? 'idle').toBe('idle') // 不是 'error'——等待态去红
       expect(node?.error).toBeFalsy()
@@ -199,7 +209,7 @@ describe('生成队列外化', () => {
     it('missing-upstream 同样走等待桶（留 idle，不进 failures）', async () => {
       const [shotId] = addImageNodes(1)
       const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'missing-upstream', detail: '上游「前置镜」还没有生成结果' }])
-      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const result = await runGenerationNodesByPlan(plan, { target: projectTarget, assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
       const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
       expect(node?.status ?? 'idle').toBe('idle')
       expect(result.failures.map((f) => f.nodeId)).not.toContain(shotId)
@@ -208,7 +218,7 @@ describe('生成队列外化', () => {
     it('cycle（结构错误）仍走失败桶（红 error + 进 failures，可单独处理）', async () => {
       const [shotId] = addImageNodes(1)
       const plan = planWithBlocked([], [{ nodeId: shotId, reason: 'cycle', detail: '与其他节点构成循环引用' }])
-      const result = await runGenerationNodesByPlan(plan, { assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
+      const result = await runGenerationNodesByPlan(plan, { target: projectTarget, assetUploadConsent: 'not-needed', executor: async () => fakeResult('x') })
       const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === shotId)
       expect(node?.status).toBe('error')
       expect(result.failures.map((f) => f.nodeId)).toContain(shotId)

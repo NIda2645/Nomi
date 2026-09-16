@@ -18,6 +18,7 @@ import {
   writeCanvasBatchConcurrency,
   type CanvasGenerationExecutionGroup,
 } from './canvasProductionScope'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 
 export function useCanvasProductionActions(params: { activeCategoryId: string; selectedNodeIds: readonly string[] }) {
   const { activeCategoryId, selectedNodeIds } = params
@@ -61,7 +62,7 @@ export function useCanvasProductionActions(params: { activeCategoryId: string; s
           requiredModeForGenerationNode(node, { nodes: state.nodes, edges: state.edges }) === input.requiredMode,
       )
       if (targets.length === 0) {
-        reportCanvasFeedback(i18n.t('generationCommon.production.lockedModelChange'), 'warning', { identity: `model-change:${activeCategoryId}`, reason: 'locked', nodeIds: [...selectedNodeIds] })
+        reportCanvasFeedback(i18n.t('generationCommon.production.lockedModelChange'), 'warning', { projectId: withProjectAction((project) => project.binding.projectId) ?? '', identity: `model-change:${activeCategoryId}`, reason: 'locked', nodeIds: [...selectedNodeIds] })
         return
       }
       const updates = targets.map((node) => ({

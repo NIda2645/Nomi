@@ -9,10 +9,10 @@ import type { GenerationNodeResult } from '../model/generationCanvasTypes'
 // 临时 CDN 直链原样当成品返回 → 被 addNodeResult 写进项目文件 → 隔天/过段时间 CDN 过期 →
 // 播放时 4xx/超时 → 纯灰壳（症状「生成的视频过段时间打开播不了」）。
 //
-// 修在渲染层做「最后一道防线」而非只靠主进程：渲染层此刻拿的是「当前打开的项目」这一确切、
-// 同步可读的 projectId，比主进程那条受启动时序影响的 projectId 更可靠。主进程有值时已本地化
-// （result.url 已是 nomi-local → 这里判定为非 http → 立即原样返回，零开销 no-op），只有主进程
-// 漏了才真正补一次。这是同一职责的两道防线，不是并行版：职责单一——result.url 必须落地。
+// 渲染层这道「最后一道防线」用的是运行提交时固定的项目身份（调用方显式传入），绝不读「当前打开的
+// 项目」——结果只落回它所属的项目。主进程有值时已本地化（result.url 已是 nomi-local → 这里判定为
+// 非 http → 立即原样返回，零开销 no-op），只有主进程漏了才真正补一次。这是同一职责的两道防线，
+// 不是并行版：职责单一——result.url 必须落地。
 export function isRemoteHttpUrl(url: string | undefined | null): boolean {
   return typeof url === 'string' && /^https?:\/\//i.test(url.trim())
 }

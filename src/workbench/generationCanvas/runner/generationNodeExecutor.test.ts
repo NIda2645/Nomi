@@ -68,6 +68,7 @@ describe('generationNodeExecutor connected text prompt integration', () => {
     const target = mediaNode(`${kind}-1`, kind)
 
     await generationNodeExecutor(target, {
+      projectTarget: { projectId: 'project-test', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 },
       nodes: [text, target],
       edges: [textPromptEdge(text.id, target.id)],
     })

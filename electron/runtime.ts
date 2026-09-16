@@ -51,7 +51,7 @@ export type ProfileOperationStage = AntigravityProcessStage | "result";
 // 任务执行复用 catalog 状态（readCatalog + extractVendorExtraHeaders 纯函数）；
 // catalogStore 反向复用本文件任务引擎 → 运行期循环引用（CommonJS 安全）。
 import { extractVendorExtraHeaders, readCatalog } from "./catalog/catalogStore";
-import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./tasks/activeProjectFallback";
+import { unlocalizedTaskAsset } from "./tasks/unlocalizedTaskAsset";
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectTaskMapping } from "./catalog/types";
 import { applyHeadlessParamDefaults, imageEditGuardError } from "./catalog/taskParams";
@@ -232,7 +232,7 @@ export async function executeProfileOperation(input: {
     return executeProcessOperation({
       process: input.operation.process,
       context,
-      projectId: trim(input.request.extras?.projectId) || activeTaskProjectFallback(),
+      projectId: trim(input.request.extras?.projectId),
       writeAsset, writeDeterministicAsset, signal: input.signal, stage: input.stage, identity: { vendorKey: input.vendor.key, modelKey: input.model.modelKey, taskKind: input.request.kind }, antigravityPreflight: input.antigravityPreflight,
     });
   }
@@ -338,7 +338,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   await revalidatePendingCredential(vendorKey);
   const stagedCandidate = resolveComfyCandidateExecution(request);
   const { vendor, model, apiKey, customConfig } = stagedCandidate || findExecutableModel(vendorKey, modelKey, wantedKind);
-  const projectId = trim(request.extras?.projectId) || activeTaskProjectFallback();
+  const projectId = trim(request.extras?.projectId);
   const nodeId = trim(request.extras?.nodeId);
   const grantId = trim(request.extras?.grantId);
   const taskId = `task-${crypto.randomUUID()}`;

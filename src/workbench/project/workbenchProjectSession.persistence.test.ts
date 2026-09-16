@@ -27,7 +27,6 @@ vi.mock('../workbenchStore', () => ({
   },
 }))
 vi.mock('../../desktop/bridge', () => ({ getDesktopBridge: () => null }))
-vi.mock('../../desktop/activeProject', () => ({ setDesktopActiveProjectId: vi.fn() }))
 vi.mock('../generationCanvas/events/canvasEventEmitter', () => ({
   emitCanvasGesture: vi.fn(), getCanvasEventLastSeq: vi.fn(() => 0), seedCanvasEventLastSeq: vi.fn(),
 }))

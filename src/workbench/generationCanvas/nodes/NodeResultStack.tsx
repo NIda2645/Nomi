@@ -22,7 +22,7 @@ import NodeMediaPreviewDialog from './NodeMediaPreviewDialog'
 import { DeferredNodeVideo } from './DeferredNodeMedia'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { useResultDownload } from './useResultDownload'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
@@ -318,13 +318,16 @@ export function NodeResultStack({
 
   const remove = async (entry: GenerationNodeResult): Promise<void> => {
     if (readOnly) return
+    // 删除动作起点签发原项目；确认框期间换了项目即取消，不删新项目的东西。
+    const loaded = withProjectAction((project) => project)
+    if (!loaded) return
     const confirmed = await confirmDialog({
       title: t('generationCommon.resultStack.deleteTitle'),
       message: t('generationCommon.resultStack.deleteMessage'),
       confirmLabel: t('generationCommon.resultStack.delete'),
       danger: true,
     })
-    if (!confirmed) return
+    if (!confirmed || !isProjectExecutionContextCurrent(loaded)) return
     const latest = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id)
     const identity = resultIdentity(entry)
     const asset = latest
@@ -335,7 +338,7 @@ export function NodeResultStack({
       return
     }
     try {
-      const outcome = await deleteAssetResult(asset)
+      const outcome = await deleteAssetResult(asset, loaded)
       if (outcome.failedFileCount > 0) reportFeedback(t('generationCommon.resultStack.deleteFileFailed'))
     } catch (error) {
       console.error('delete node result failed', error)
@@ -344,10 +347,12 @@ export function NodeResultStack({
   }
 
   const rerun = (): void => {
-    const projectId = getActiveWorkbenchProjectId()
-    if (!production || !projectId || rerunBusy) return
-    setRerunBusy(true)
-    void reworkProductionShot(projectId, production.runId, production.shotId, reportFeedback).finally(() => setRerunBusy(false))
+    if (!production || rerunBusy) return
+    // 返工属于这次 Run 的原项目：点下去那一刻签发，之后交给 Run 自己的持久身份，不因切页取消。
+    withProjectAction((project) => {
+      setRerunBusy(true)
+      void reworkProductionShot(project.binding.projectId, production.runId, production.shotId, reportFeedback).finally(() => setRerunBusy(false))
+    })
   }
 
   return (

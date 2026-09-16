@@ -26,7 +26,7 @@ import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
 import type { PlanAnchor } from '../../../generationCanvas/agent/storyboardPlan'
 import { useComposerAttachments } from '../../../ai/composer/useComposerAttachments'
 import type { ComposerAttachment } from '../../../ai/composer/composerAttachmentTypes'
-import { getDesktopActiveProjectId } from '../../../../desktop/activeProject'
+import { useOpenProjectId } from '../../../project/useOpenProjectId'
 
 const MENTION_LIMIT = 24
 const MEDIA_KINDS = new Set(['image', 'video', 'audio'])
@@ -64,9 +64,10 @@ export function useShotMentionSource(
   onAddExternalReference: (item: MentionSuggestionItem) => void,
   projectId?: string | null,
 ): ShotMentionCallbacks {
+  const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
   // 复用 AssetPicker/AssetLibraryPanel 的素材池；不在分镜页维护第二份素材列表。
-  const assetProjectId = projectId ?? (getDesktopActiveProjectId() || null)
+  const assetProjectId = projectId ?? openProjectId
   const { canvasAssets, projectAssets } = useAssetPool(assetProjectId)
   const [attachments, setAttachments] = React.useState<ComposerAttachment[]>([])
   const mentionUpload = useComposerAttachments({ attachments, setAttachments })

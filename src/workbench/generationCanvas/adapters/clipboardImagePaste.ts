@@ -294,7 +294,6 @@ async function importRemoteMediaUrl(
   const fileName = fileNameFromMediaUrl(url, fallbackMimeForKind(kind), kind)
   const importRemoteUrl = options.importRemoteUrl ?? ((remoteUrl: string, name: string) =>
     importWorkbenchRemoteAssetUrl(remoteUrl, name, {
-      projectId: options.projectContext.binding.projectId,
       projectBinding: options.projectContext.binding,
       assertCurrent: options.projectContext.assertCurrent,
     }))
@@ -474,7 +473,7 @@ async function uploadFetchedMediaFileToNode(
   let asset: WorkbenchAssetDto | null
   try {
     asset = await uploadFile(file, file.name || titleFromUrl(candidate.url), {
-      ownerNodeId: nodeId, projectId: options.projectContext.binding.projectId,
+      ownerNodeId: nodeId,
       projectBinding: options.projectContext.binding, assertCurrent: options.projectContext.assertCurrent,
     })
   } catch (error) {

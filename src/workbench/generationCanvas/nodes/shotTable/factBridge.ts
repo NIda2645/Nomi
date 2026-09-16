@@ -1,6 +1,6 @@
 import { readShotTable, type DeconstructionShotTableDocument } from '../../../../../electron/shared/canvas/shotTable'
 import { getDesktopBridge } from '../../../../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../../../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'
 import { withCanvasGestureContext } from '../../events/canvasGestureContext'
 import { pushUndoSnapshot, getUndoJournalGeneration } from '../../events/canvasUndoJournal'
@@ -57,9 +57,11 @@ export function ensureDeconstructionShotTable(sourceNodeId: string): string | un
 }
 
 /** The returned promise owns the engine call; progress never advances on timers. */
-export async function deconstructToShotTable(sourceNodeId: string, projectId = getActiveWorkbenchProjectId()): Promise<string | undefined> {
+export async function deconstructToShotTable(sourceNodeId: string, project: ProjectExecutionContext): Promise<string | undefined> {
+  const { projectId } = project.binding
   const generation = getUndoJournalGeneration()
-  const canWrite = () => getUndoJournalGeneration() === generation && getActiveWorkbenchProjectId() === projectId
+  // 发起拆解那一刻签发的原项目仍有效才写回（A→B→A 也不复活）。
+  const canWrite = () => getUndoJournalGeneration() === generation && isProjectExecutionContextCurrent(project)
   const id = ensureDeconstructionShotTable(sourceNodeId)
   if (!id) return undefined
   const store = useGenerationCanvasStore.getState()
@@ -99,8 +101,8 @@ export async function deconstructToShotTable(sourceNodeId: string, projectId = g
 
 
 /** Retry one failed analysis while preserving measured evidence, custom edits and selection on every other row. */
-export async function retryShot(tableNodeId: string, rowId: string): Promise<void> {
-  const projectId = getActiveWorkbenchProjectId()
+export async function retryShot(tableNodeId: string, rowId: string, project: ProjectExecutionContext): Promise<void> {
+  const { projectId } = project.binding
   const generation = getUndoJournalGeneration()
   const canvas = useGenerationCanvasStore.getState()
   const table = readShotTable(canvas.nodes.find(node => node.id === tableNodeId)?.meta)
@@ -112,8 +114,9 @@ export async function retryShot(tableNodeId: string, rowId: string): Promise<voi
   const result = await deconstruct({ videoUrl: source.result.url, projectId, shotIndexes: [row.order],
     customColumns: table.columns.filter(column => column.kind === 'custom').map(column => ({ name: column.columnId, hint: column.hint || column.labelKey })),
   })
-  if (getUndoJournalGeneration() !== generation || getActiveWorkbenchProjectId() !== projectId) return
-  await writeTable(tableNodeId, () => getUndoJournalGeneration() === generation && getActiveWorkbenchProjectId() === projectId, latest => {
+  const canWrite = () => getUndoJournalGeneration() === generation && isProjectExecutionContextCurrent(project)
+  if (!canWrite()) return
+  await writeTable(tableNodeId, canWrite, latest => {
     const fresh = deconstructionResultToShotTable(latest, result).rows.find(item => item.rowId === rowId)
     if (!fresh) return undefined
     const rows = latest.rows.map(item => item.rowId !== rowId ? item : {

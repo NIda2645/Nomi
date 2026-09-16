@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { withProjectAction } from '../../../workbench/project/projectCanvasReadSurface'
 import {
   type DesktopBrowserChromeMenuItem,
   type DesktopBrowserPromptCaptureEvent,
@@ -335,7 +335,9 @@ export function useBrowserDialogActions({
     (request: BrowserAssetPromptCaptureRequest): void => {
       setLastError(null)
       const tabId = activeTabIdRef.current
-      void runBrowserPromptExtractionToLibrary(request, (message) => presentTabFeedback(tabId, message))
+      // 发起提取的这一刻签发项目；没打开项目时提取照样能进主提示词库（null = 不属于任何项目）。
+      const project = withProjectAction((issued) => issued) ?? null
+      void runBrowserPromptExtractionToLibrary(request, (message) => presentTabFeedback(tabId, message), project)
     },
     [],
   )
@@ -500,16 +502,14 @@ export function useBrowserDialogActions({
 
   const importBrowserAssetToAssetPopover = React.useCallback(
     async (input: BrowserAssetRemoteImportInput): Promise<NomiBrowserAsset> => {
-      const projectId = getDesktopActiveProjectId()
-      if (!projectId) throw new Error('projectId is required')
       const tab = tabsRef.current.find((item) => item.id === activeTabIdRef.current)
       const fallbackTitle = input.title || input.fileName || (input.mediaType === 'video' ? t('browserAssets.webVideo') : t('browserAssets.webImage'))
       if (!tab?.viewId || !browserBridge?.importMedia || !canDownloadFromBrowserView(input.url)) {
         throw new Error(t('browserAssets.sourceSessionExpired'))
       }
       const asset = await browserBridge.importMedia({
+        // 项目由主进程按本窗口已提交的项目面签发，渲染层不报 projectId。
         viewId: tab.viewId,
-        projectId,
         url: input.url,
         fileName: input.fileName,
         title: input.title,

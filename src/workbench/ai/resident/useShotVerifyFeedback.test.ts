@@ -1,7 +1,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { setDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import { useShotVerifyStore } from '../../generationCanvas/agent/shotVerifyStore'
 import { AgentPanelV4Panel } from '../v4/AgentPanelV4Panel'
 import { requestShotVerifyFix, useShotVerifyFeedback } from './useShotVerifyFeedback'
@@ -17,9 +17,12 @@ function deferred() {
 const context = { input: '1', output: '1', reasoning: '—', cache: '0', cost: '—' }
 
 beforeAll(async () => { await import('../../../i18n/index') })
-beforeEach(() => {
+let projectSession: ProjectSessionTestHarness
+afterEach(() => projectSession.dispose())
+beforeEach(async () => {
+  projectSession = createProjectSessionTestHarness()
   useShotVerifyStore.getState().clear()
-  setDesktopActiveProjectId('project-a')
+  await projectSession.open('project-a')
   useShotVerifyStore.getState().activateProject('project-a')
   findings()
 })
@@ -30,12 +33,12 @@ function FeedbackPanel({ surface }: { surface: ResidentSurface }) {
 }
 
 describe('verified shots use the existing domain card and admission budget', () => {
-  it('renders current generation findings through the real hook, card and panel only', () => {
+  it('renders current generation findings through the real hook, card and panel only', async () => {
     const render = (surface: ResidentSurface) => renderToStaticMarkup(React.createElement(FeedbackPanel, { surface }))
     expect(render('generation')).toContain('F_VERIFY_LOW')
     expect(render('generation')).toContain('data-reconcile-ai-fix="true"')
     expect(render('creation')).not.toContain('data-reconcile-deviation-card')
-    setDesktopActiveProjectId('project-b')
+    await projectSession.open('project-b')
     expect(render('generation')).not.toContain('data-reconcile-deviation-card')
   })
 
@@ -79,7 +82,7 @@ describe('verified shots use the existing domain card and admission budget', () 
     const ack = deferred()
     const pending = requestShotVerifyFix('project-a', () => ack.promise)
     if (change === 'project') {
-      setDesktopActiveProjectId('project-b')
+      await projectSession.open('project-b')
       useShotVerifyStore.getState().activateProject('project-b')
     } else if (change === 'new-verification') useShotVerifyStore.getState().beginVerify('project-a')
     useShotVerifyStore.getState().setDeviations([{ ...deviation, reason: 'NEW_RESULT' }])

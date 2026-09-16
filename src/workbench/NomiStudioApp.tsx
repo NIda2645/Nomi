@@ -49,7 +49,6 @@ import { handleCapabilityApply, registerCapabilityApplyHandler } from './capabil
 import { cn } from '../utils/cn'
 import { notify } from '../ui/notificationPolicy'
 import { useProjectNotificationTarget } from './project/useProjectNotificationTarget'
-import { setDesktopActiveProjectId } from '../desktop/activeProject'
 import { getDesktopBridge } from '../desktop/bridge'
 import { useHasTextModel } from './library/useHasTextModel'
 import { SplashIntro } from './onboarding/SplashIntro'
@@ -211,10 +210,6 @@ export default function NomiStudioApp(): JSX.Element {
     return { module, service }
   }, [])
 
-  React.useEffect(() => {
-    setDesktopActiveProjectId(activeProject?.id)
-  }, [activeProject?.id])
-
   React.useEffect(() => initReviewEventBridge(), [])
   React.useEffect(() => initComfyuiProgressBridge(), [])
   React.useEffect(() => initResultUrlRelocalizeBridge(), [])
@@ -347,9 +342,6 @@ export default function NomiStudioApp(): JSX.Element {
         // mid-hydration (above), remounting the sidebar so its transition effect can't see the switch.
         if ((activeProjectIdRef.current ?? null) !== hydrated.id) useWorkbenchStore.getState().setSidebarCollapsed(true)
         activeProjectIdRef.current = hydrated.id
-        // 同步喂全局（不等 effect 滞后一拍）：切项目瞬间拖图上传时 resolveProjectId 取的就是新项目，
-        // 不再误写进旧项目目录 / 编错 projectId 致渲染 404（C2 修，对齐 activeProjectIdRef 同步口径）。
-        setDesktopActiveProjectId(hydrated.id)
         setActiveProject(hydrated)
         surfaceEpoch.assertCurrent()
         const committedBinding = await surfaceEpoch.commitCanvasRead(hydrated.id)
@@ -520,7 +512,6 @@ export default function NomiStudioApp(): JSX.Element {
         deleteLocalProject(project.id)
         if (activeProjectIdRef.current === project.id) {
           activeProjectIdRef.current = null
-          setDesktopActiveProjectId(null)
           setActiveProject(null)
           setView('library')
           navigate(buildStudioUrl(), { replace: true })
@@ -648,7 +639,6 @@ export default function NomiStudioApp(): JSX.Element {
     // 持久化解绑已在上方完成：先落盘、await 解绑（等保存锁回执）、引用未变才清空（docs/fixes/2026-09-07-project-save-lock-receipt）。
     // 合并 main 时这里曾被带回「释放后同步解绑」的旧写法，那是本修复替掉的版本，不要再加回来。
     activeProjectIdRef.current = null
-    setDesktopActiveProjectId(null)
     setActiveProject(null)
     setView('library')
     navigate(buildStudioUrl(), { replace: false })

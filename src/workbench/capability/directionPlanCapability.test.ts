@@ -16,11 +16,6 @@ vi.mock('../generationCanvas/agent/runDirectionPlanner', () => ({
   runDirectionPlanner: (...args: unknown[]) => runDirectionPlanner(...args),
 }))
 
-// 当前打开的项目 = 请求项目（否则 handler 会以「项目已切换」拒绝，与本测试无关）。
-vi.mock('../project/workbenchProjectSession', () => ({
-  getActiveWorkbenchProjectId: () => 'proj-1',
-}))
-
 import { handleCapabilityApply } from './capabilityApplyHandler'
 
 const BRIEF = { goal: '给独立创作者的本地优先 AI 视频工作台宣传片', tone: '真诚' }

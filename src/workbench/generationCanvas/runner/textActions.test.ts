@@ -1,8 +1,20 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateText, getTextGenMode } from './textActions'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskResultDto } from '../../api/taskApi'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+
+const PROJECT_ID = 'project-test'
+
+const disk = vi.hoisted(() => new Map<string, unknown>())
+vi.mock('../../library/localProjectStore', () => ({
+  readLocalProjectAsync: vi.fn(async (projectId: string) => structuredClone(disk.get(projectId) ?? null)),
+  saveLocalProject: vi.fn(async (projectId: string, payload: unknown, name?: string) => {
+    disk.set(projectId, structuredClone({ id: projectId, name, version: 1, payload }))
+    return disk.get(projectId)
+  }),
+}))
 
 // 注入一个直接返回 chat 文本的 runTask，避免触网/desktop runtime。
 const stubRun = async (): Promise<TaskResultDto> => ({
@@ -29,9 +41,14 @@ function nodeText(id: string): string {
   return content.map((block) => (block.content || []).map((c) => c.text || '').join('')).join('\n')
 }
 
-beforeEach(() => {
+let session: ProjectSessionTestHarness
+let projectTarget: Awaited<ReturnType<ProjectSessionTestHarness['open']>>
+beforeEach(async () => {
   useGenerationCanvasStore.setState({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+  session = createProjectSessionTestHarness()
+  projectTarget = await session.open(PROJECT_ID)
 })
+afterEach(() => session.dispose())
 
 describe('generateText — 生成模式路由', () => {
   it('getTextGenMode 默认 append，识别 replace/rewrite', () => {
@@ -43,7 +60,7 @@ describe('generateText — 生成模式路由', () => {
 
   it('续写：append 到已有内容后面', async () => {
     const node = addTextNode({ contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '开头' }] }] } })
-    await generateText(node, { runTask: stubRun })
+    await generateText(node, { projectTarget, runTask: stubRun })
     expect(nodeText(node.id)).toBe('开头\nNEW TEXT')
   })
 
@@ -52,7 +69,7 @@ describe('generateText — 生成模式路由', () => {
       meta: { textGenMode: 'replace' },
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '旧内容' }] }] },
     })
-    await generateText(node, { runTask: stubRun })
+    await generateText(node, { projectTarget, runTask: stubRun })
     expect(nodeText(node.id)).toBe('NEW TEXT')
   })
 
@@ -61,7 +78,7 @@ describe('generateText — 生成模式路由', () => {
       meta: { textGenMode: 'rewrite', textGenSelection: '要改的那段' },
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '要改的那段' }] }] },
     })
-    const result = await generateText(node, { runTask: stubRun })
+    const result = await generateText(node, { projectTarget, runTask: stubRun })
     // 文档未变
     expect(nodeText(node.id)).toBe('要改的那段')
     // 标记 = 本次 result.id
@@ -74,7 +91,7 @@ describe('generateText — 生成模式路由', () => {
       meta: { textGenMode: 'rewrite' },
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '开头' }] }] },
     })
-    await generateText(node, { runTask: stubRun })
+    await generateText(node, { projectTarget, runTask: stubRun })
     expect(nodeText(node.id)).toBe('开头\nNEW TEXT')
     const after = useGenerationCanvasStore.getState().nodes.find((n) => n.id === node.id)
     expect(after?.meta?.textPendingSelectionApply).toBeUndefined()
@@ -91,6 +108,7 @@ describe('generateText — 流式增量落地', () => {
     const streamRun = async (
       _vendor: string,
       _request: unknown,
+      _projectId: string | null,
       opts: { onDelta?: (delta: string) => void },
     ): Promise<TaskResultDto> => {
       opts.onDelta?.('生成')
@@ -99,7 +117,7 @@ describe('generateText — 流式增量落地', () => {
       snapshots.push(nodeText(node.id))
       return { id: 'task-s', kind: 'chat', status: 'succeeded', assets: [], raw: { choices: [{ message: { content: '生成的全文' } }] } }
     }
-    await generateText(node, { onTextDelta: () => {}, runTextStream: streamRun })
+    await generateText(node, { projectTarget, onTextDelta: () => {}, runTextStream: streamRun })
     // 中途快照证明增量：第一帧只到“生成”，第二帧到全文，且都挂在“开头”之后。
     expect(snapshots[0]).toBe('开头\n生成')
     expect(snapshots[1]).toBe('开头\n生成的全文')
@@ -115,13 +133,40 @@ describe('generateText — 流式增量落地', () => {
     const streamRun = async (
       _vendor: string,
       _request: unknown,
+      _projectId: string | null,
       opts: { onDelta?: (delta: string) => void },
     ): Promise<TaskResultDto> => {
       opts.onDelta?.('全新')
       opts.onDelta?.('的一篇') // 增量片段
       return { id: 'task-s2', kind: 'chat', status: 'succeeded', assets: [], raw: { choices: [{ message: { content: '全新的一篇' } }] } }
     }
-    await generateText(node, { onTextDelta: () => {}, runTextStream: streamRun })
+    await generateText(node, { projectTarget, onTextDelta: () => {}, runTextStream: streamRun })
     expect(nodeText(node.id)).toBe('全新的一篇')
+  })
+
+  it('项目在流式途中被切走：不再往新项目画布写草稿，定稿写回原项目的盘上副本', async () => {
+    disk.clear()
+    const node = addTextNode({ contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '开头' }] }] } })
+    const streamRun = async (
+      _vendor: string,
+      _request: unknown,
+      projectId: string | null,
+      opts: { onDelta?: (delta: string) => void },
+    ): Promise<TaskResultDto> => {
+      expect(projectId).toBe(PROJECT_ID)
+      opts.onDelta?.('生成')
+      const origin = useGenerationCanvasStore.getState()
+      disk.set(PROJECT_ID, structuredClone({ id: PROJECT_ID, name: 'origin', version: 1, payload: { generationCanvas: { nodes: origin.nodes, edges: origin.edges, groups: origin.groups, selectedNodeIds: [] } } }))
+      await session.open('project-other')
+      useGenerationCanvasStore.setState({ nodes: [{ ...node, contentJson: { type: 'doc', content: [] } }], edges: [], selectedNodeIds: [], groups: [] })
+      opts.onDelta?.('的全文')
+      return { id: 'task-bg', kind: 'chat', status: 'succeeded', assets: [], raw: { choices: [{ message: { content: '生成的全文' } }] } }
+    }
+    await generateText(node, { projectTarget, onTextDelta: () => {}, runTextStream: streamRun })
+    // 新项目里恰好有同 id 节点也不被动（身份按项目比，不按节点 id 猜）。
+    expect(nodeText(node.id)).toBe('')
+    const saved = (disk.get(PROJECT_ID) as { payload: { generationCanvas: { nodes: GenerationCanvasNode[] } } }).payload.generationCanvas.nodes
+    const content = (saved.find((n) => n.id === node.id)?.contentJson?.content || []) as Array<{ content?: Array<{ text?: string }> }>
+    expect(content.map((block) => (block.content || []).map((c) => c.text || '').join('')).join('\n')).toBe('开头\n生成的全文')
   })
 })

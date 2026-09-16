@@ -33,7 +33,7 @@ describe('artifact delivery through the real canvas apply boundary', () => {
     })).rejects.toMatchObject({ code: 'capability_execution_failed', reason: 'no-disk-space' })
     expect(useGenerationCanvasStore.getState().nodes).toEqual([])
     expect(mocks.upload).toHaveBeenCalledWith(expect.any(File), 'note.txt', expect.objectContaining({
-      projectId: 'project-a', projectBinding: mocks.binding, assertCurrent: expect.any(Function),
+      projectBinding: mocks.binding, assertCurrent: expect.any(Function),
     }))
   })
 

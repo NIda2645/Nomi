@@ -1,6 +1,5 @@
 import type { ResolvedGenerationReferences } from './generationReferenceResolver'
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 
 /**
  * **接力帧解析器（唯一真相源）**：把「first_frame 边的源是视频」这件事，统一收口成
@@ -14,7 +13,11 @@ import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSessi
  *
  * 接力语义：用**源视频的尾帧**当本镜首帧（前一镜结束画面 → 后一镜开始画面，视觉连贯）。
  */
-export async function applyRelayFirstFrame(references: Partial<ResolvedGenerationReferences>): Promise<void> {
+export async function applyRelayFirstFrame(
+  references: Partial<ResolvedGenerationReferences>,
+  /** 运行提交时固定的项目身份：接力帧落进这次运行所属的项目，不读「当前项目」。 */
+  projectId: string,
+): Promise<void> {
   if (!references.relayFromVideoUrl || references.firstFrameUrl) return
   const relayVideoUrl = references.relayFromVideoUrl
 
@@ -25,9 +28,7 @@ export async function applyRelayFirstFrame(references: Partial<ResolvedGeneratio
     return
   }
 
-  // ② 抽帧。projectId 是写素材落项目目录所需，runner 作用域拿不到 → 从活动会话取（单源）。
-  const projectId = getActiveWorkbenchProjectId()
-  if (!projectId) throw new Error('视频接力失败：找不到当前项目（请先保存项目后重试）')
+  // ② 抽帧，素材落进运行所属项目的目录。
   const extractFrame = getDesktopBridge()?.video?.extractFrame
   if (!extractFrame) throw new Error('视频接力失败：当前环境不支持抽帧（需桌面端）')
 

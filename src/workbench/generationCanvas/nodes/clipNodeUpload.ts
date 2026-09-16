@@ -4,8 +4,8 @@ import { isProjectExecutionContextCurrent, isProjectImportCancellation, type Pro
 
 type ImportLocalAsset = (
   file: File,
-  name?: string,
-  meta?: Parameters<typeof importWorkbenchLocalAssetFile>[2],
+  name: string | undefined,
+  meta: Parameters<typeof importWorkbenchLocalAssetFile>[2],
 ) => Promise<WorkbenchAssetDto>
 
 export type ClipNodeUploadResult = {
@@ -42,7 +42,7 @@ export async function importClipNodeAsset(
   const { projectId } = context.binding
   try {
     context.assertCurrent()
-    const uploaded = await importFile(file, file.name, { projectId, projectBinding: context.binding, assertCurrent: context.assertCurrent })
+    const uploaded = await importFile(file, file.name, { projectBinding: context.binding, assertCurrent: context.assertCurrent })
     context.assertCurrent()
     const renderUrl = hostedAssetUrl(uploaded)
     if (!renderUrl) throw new Error('uploaded asset url missing')

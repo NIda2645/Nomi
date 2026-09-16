@@ -23,7 +23,7 @@ export type ReferenceAssetDeps = {
   /** SVG 文本 → 栅格化 PNG blob（依赖注入，node 单测不碰 canvas）。 */
   rasterizeSvgToPngBlob: (svgText: string) => Promise<Blob | null>
   /** 落盘资产。真实实现 importWorkbenchLocalAssetFile。 */
-  uploadFile: (file: File, name?: string, meta?: UploadWorkbenchAssetMeta) => Promise<WorkbenchAssetDto>
+  uploadFile: (file: File, name: string | undefined, meta: UploadWorkbenchAssetMeta) => Promise<WorkbenchAssetDto>
 }
 
 const realDeps: ReferenceAssetDeps = {

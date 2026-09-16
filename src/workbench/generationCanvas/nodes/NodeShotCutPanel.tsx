@@ -15,10 +15,9 @@ import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { extractShotCutsToNodes } from './extractShotCutsToNodes'
-import { withProjectAction } from '../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import {
   SHOT_SENSITIVITY_DEFAULT,
   SHOT_SENSITIVITY_MAX,
@@ -70,14 +69,15 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
   React.useEffect(() => {
     let alive = true
     const detect = getDesktopBridge()?.video?.detectShotCuts
-    const projectId = getActiveWorkbenchProjectId()
-    if (!detect || !projectId || !videoUrl) {
+    // 打开切镜面板即动作起点：签发原项目；联系表落进它，结果只在它仍打开时进面板。
+    const project = withProjectAction((issued) => issued)
+    if (!detect || !project || !videoUrl) {
       setState({ phase: 'failed', message: t('generationCommon.node.shotCuts.desktopOnly') })
       return () => { alive = false }
     }
-    detect({ videoUrl, projectId })
+    detect({ videoUrl, projectId: project.binding.projectId })
       .then((result) => {
-        if (!alive) return
+        if (!alive || !isProjectExecutionContextCurrent(project)) return
         const cuts = result.cuts ?? []
         // 灵敏度从这条视频自己的分数分布 derive——写死 0.3 会让弱切点的片子「打开即空」。
         const picked = pickDefaultSensitivity(cuts)
@@ -93,7 +93,7 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
         })
       })
       .catch((error: unknown) => {
-        if (!alive) return
+        if (!alive || !isProjectExecutionContextCurrent(project)) return
         setState({ phase: 'failed', message: error instanceof Error ? error.message : String(error) })
       })
     return () => { alive = false }
