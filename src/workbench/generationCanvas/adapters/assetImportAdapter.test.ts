@@ -142,8 +142,8 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   })
 
   it.each(['bytes', 'native'])('passes the original full binding through the actual %s importer', async (transport) => {
-    const importFile = vi.fn(async () => ({ ok: true, asset }))
-    const importNativeFile = vi.fn(async () => transport === 'native' ? { ok: true, asset } : null)
+    const importFile = vi.fn(async (_request: unknown) => ({ ok: true, asset }))
+    const importNativeFile = vi.fn(async (_file: File, _request: unknown) => transport === 'native' ? { ok: true, asset } : null)
     vi.stubGlobal('window', { nomiDesktop: { assets: { importFile, importNativeFile } } })
     await importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
       basePosition: { x: 0, y: 0 }, capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null,

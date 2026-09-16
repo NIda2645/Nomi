@@ -6,7 +6,7 @@ import {
   recoverImportedWorkbenchLocalAssetFile,
   type WorkbenchAssetDto,
 } from '../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { captureCurrentProjectExecutionContext, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { dropKindFromFile } from '../model/nodeAssetDrop'
@@ -305,10 +305,7 @@ export async function retryLocalAssetImport(nodeId: string): Promise<boolean> {
   }
 }
 
-export function isProjectImportCancellation(error: unknown): boolean {
-  const { code } = surfacePortFailure(error)
-  return code === 'capability_cancelled' || code === 'project_binding_stale' || code === 'project_identity_unavailable'
-}
+export { isProjectImportCancellation }
 
 export async function importLocalMediaFilesToGenerationCanvas(
   inputFiles: File[],

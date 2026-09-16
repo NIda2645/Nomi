@@ -1,4 +1,6 @@
 import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
+import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 
 /**
  * 节点图片落盘统一入口。
@@ -17,11 +19,19 @@ import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../api/assetUp
  */
 
 /** File → 本地资产文件，返回可持久化 nomi-local:// URL；失败返回 null（调用方退回 base64 兜底）。 */
-export async function persistNodeImageFile(file: File, ownerNodeId: string): Promise<string | null> {
+export async function persistNodeImageFile(
+  file: File, ownerNodeId: string, context: ProjectExecutionContext = captureCurrentProjectExecutionContext(),
+): Promise<string | null> {
+  context.assertCurrent()
   try {
-    const asset = await importWorkbenchLocalAssetFile(file, file.name || 'asset', { ownerNodeId })
+    const asset = await importWorkbenchLocalAssetFile(file, file.name || 'asset', {
+      ownerNodeId, projectBinding: context.binding, assertCurrent: context.assertCurrent,
+    })
+    context.assertCurrent()
     return hostedAssetUrl(asset) || null
-  } catch {
+  } catch (error) {
+    context.assertCurrent()
+    if (surfacePortFailure(error).code !== 'capability_execution_failed') throw error
     return null
   }
 }
@@ -38,11 +48,16 @@ export async function persistNodeImageBlob(
   blob: Blob,
   ownerNodeId: string,
   fileName: string,
+  context: ProjectExecutionContext = captureCurrentProjectExecutionContext(),
 ): Promise<{ url: string; localOnly: boolean }> {
+  context.assertCurrent()
   const type = blob.type || 'image/png'
-  const localUrl = await persistNodeImageFile(new File([blob], fileName, { type }), ownerNodeId)
+  const localUrl = await persistNodeImageFile(new File([blob], fileName, { type }), ownerNodeId, context)
+  context.assertCurrent()
   if (localUrl) return { url: localUrl, localOnly: false }
-  return { url: await blobToBase64Url(blob), localOnly: true }
+  const url = await blobToBase64Url(blob)
+  context.assertCurrent()
+  return { url, localOnly: true }
 }
 
 function blobToBase64Url(blob: Blob): Promise<string> {

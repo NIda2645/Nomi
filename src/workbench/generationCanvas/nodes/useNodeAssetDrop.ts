@@ -15,6 +15,7 @@ import {
 } from '../../explorer/workspaceFileDrag'
 import { dropKindFromFile, dropKindFromWorkspaceKind, resolveNodeArraySlots } from '../model/nodeAssetDrop'
 import { type AddAssetOutcome, addAssetUrlToNode } from './nodeAssetWrite'
+import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 
 type DropHandlers = {
   onDragOver: (event: React.DragEvent<HTMLElement>) => void
@@ -87,9 +88,12 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
       // ② OS 文件拖入：上传拿 hosted URL（must-fix：别塞 data:）。可多文件，逐个上传 + 写入。
       const files = Array.from(dt.files || [])
       if (!files.length) return
+      let context: ProjectExecutionContext | undefined
       setUploading(true)
       try {
+        context = captureCurrentProjectExecutionContext()
         for (const file of files) {
+          context.assertCurrent()
           const kind = dropKindFromFile(file)
           if (!kind) {
             reportFeedback(i18n.t('generationCommon.node.assetDrop.unsupported'))
@@ -100,19 +104,26 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
               file,
               file.name || i18n.t('generationCommon.node.assetDrop.defaultName'),
               {
+                projectBinding: context.binding, assertCurrent: context.assertCurrent,
                 ownerNodeId: node.id,
                 taskKind: 'image_edit',
               },
             )
+            context.assertCurrent()
             const url = assetUrl(uploaded)
             if (!url) throw new Error(i18n.t('generationCommon.node.assetDrop.missingUrl'))
             reportOutcome(addAssetUrlToNode(node.id, kind, url), reportFeedback)
           } catch (error) {
+            if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
             reportFeedback(error instanceof Error ? error.message : i18n.t('generationCommon.node.assetDrop.uploadFailed'))
           }
         }
+      } catch (error) {
+        if (isProjectExecutionContextCurrent(context) && !isProjectImportCancellation(error)) {
+          reportFeedback(error instanceof Error ? error.message : i18n.t('generationCommon.node.assetDrop.uploadFailed'))
+        }
       } finally {
-        setUploading(false)
+        if (isProjectExecutionContextCurrent(context)) setUploading(false)
       }
     },
     [acceptsDrop, node.id, reportFeedback],

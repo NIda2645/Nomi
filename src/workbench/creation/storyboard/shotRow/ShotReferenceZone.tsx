@@ -1,4 +1,5 @@
 import React from 'react'
+import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
@@ -153,6 +154,7 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
 
   const handleUpload = React.useCallback(
     async (cell: ShotReferenceCell, file: File) => {
+      let context: ProjectExecutionContext | undefined
       setUploadError('')
       const kind = assetKindOfFile(file)
       if (kind !== cell.assetSlot.accept) {
@@ -162,14 +164,18 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
       setUploadingSlotKey(cell.key)
       setUploadError('')
       try {
+        context = captureCurrentProjectExecutionContext()
         const uploaded = await importWorkbenchLocalAssetFile(file, file.name || cell.label, {
+          projectBinding: context.binding, assertCurrent: context.assertCurrent,
           ...(cell.assetSlot.accept === 'image' ? { taskKind: 'image_edit' as const } : {}),
         })
+        context.assertCurrent()
         applyAppend(cell, assetUrl(uploaded), kind, { name: uploaded.name || file.name })
       } catch (error) {
+        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
         setUploadError(error instanceof Error ? error.message : String(error))
       } finally {
-        setUploadingSlotKey('')
+        if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
       }
     },
     [applyAppend, report, t],

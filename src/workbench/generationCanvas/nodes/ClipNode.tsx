@@ -12,6 +12,7 @@ import AssetPicker from '../../assets/AssetPicker'
 import AssetPickerPopover from '../../assets/AssetPickerPopover'
 import type { AssetRef } from '../../assets/assetTypes'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import {
   appendClipNodeSource,
   clipNodeSourceFromAsset,
@@ -88,7 +89,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState<string | null>(null)
-  const [retryUploadFile, setRetryUploadFile] = React.useState<File | null>(null)
+  const [retryUploadFile, setRetryUploadFile] = React.useState<{ file: File; context: ProjectExecutionContext } | null>(null)
   const uploadExclusiveRef = React.useRef(createExclusiveClipNodeUpload())
   const articleRef = React.useRef<HTMLElement | null>(null)
   const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null)
@@ -206,8 +207,13 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     startConnection(node.id, side)
   }
 
-  const addAsset = React.useCallback(async (asset: AssetRef) => {
+  const addAsset = React.useCallback(async (asset: AssetRef, originatingContext?: ProjectExecutionContext) => {
+    let context = originatingContext
+    try {
+    context ??= captureCurrentProjectExecutionContext()
+    context.assertCurrent()
     const durationSeconds = asset.kind === 'video' ? await readVideoDurationSeconds(asset.renderUrl) : null
+    context.assertCurrent()
     const source = clipNodeSourceFromAsset(asset, durationSeconds)
     if (!source) return
     const currentNode = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id)
@@ -223,12 +229,17 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     setUploadError(null)
     setRetryUploadFile(null)
     setEditingOpen(false)
-  }, [node.id, updateNode])
+    } catch (error) {
+      if (isProjectExecutionContextCurrent(context) && !isProjectImportCancellation(error)) reportFeedback(t('generationCommon.clipNode.uploadFailed'))
+    }
+  }, [node.id, updateNode, reportFeedback, t])
 
-  const upload = React.useCallback(async (file: File) => {
+  const upload = React.useCallback(async (file: File, originatingContext?: ProjectExecutionContext) => {
     await uploadExclusiveRef.current(async () => {
-      const projectId = getActiveWorkbenchProjectId()
-      setRetryUploadFile(file)
+      let context = originatingContext
+      try { context ??= captureCurrentProjectExecutionContext(); context.assertCurrent() } catch { return }
+      const projectId = context.binding.projectId
+      setRetryUploadFile({ file, context })
       setUploadError(null)
       if (!projectId) {
         setUploadError(t('generationCommon.clipNode.uploadFailed'))
@@ -236,16 +247,21 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
       }
       setUploading(true)
       try {
-        const result = await importClipNodeAsset(file, projectId)
+        const result = await importClipNodeAsset(file, projectId, undefined, context)
+        context.assertCurrent()
+        if (result.cancelled) return
         if (result.error || !result.asset) {
           setUploadError(t('generationCommon.clipNode.uploadFailed'))
           return
         }
-        await addAsset(result.asset)
+        await addAsset(result.asset, context)
+        context.assertCurrent()
         setRetryUploadFile(null)
         refresh()
+      } catch (error) {
+        if (isProjectExecutionContextCurrent(context) && !isProjectImportCancellation(error)) setUploadError(t('generationCommon.clipNode.uploadFailed'))
       } finally {
-        setUploading(false)
+        if (isProjectExecutionContextCurrent(context)) setUploading(false)
       }
     })
   }, [addAsset, refresh, t])
@@ -626,7 +642,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
                   size="sm"
                   className="shrink-0 border-nomi-danger/40 text-nomi-danger hover:bg-nomi-danger-soft"
                   disabled={!retryUploadFile || uploading}
-                  onClick={() => { if (retryUploadFile) void upload(retryUploadFile) }}
+                  onClick={() => { if (retryUploadFile) void upload(retryUploadFile.file, retryUploadFile.context) }}
                 >
                   {t('generationCommon.clipNode.retryUpload')}
                 </WorkbenchButton>

@@ -1,13 +1,16 @@
 import type { AssetRef } from '../../assets/assetTypes'
 import { hostedAssetUrl, importWorkbenchLocalAssetFile, type WorkbenchAssetDto } from '../../api/assetUploadApi'
+import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 
 type ImportLocalAsset = (
   file: File,
   name?: string,
-  meta?: { projectId?: string | null },
+  meta?: Parameters<typeof importWorkbenchLocalAssetFile>[2],
 ) => Promise<WorkbenchAssetDto>
 
 export type ClipNodeUploadResult = {
+  cancelled?: true
   asset: AssetRef | null
   error: Error | null
 }
@@ -35,9 +38,15 @@ export async function importClipNodeAsset(
   file: File,
   projectId: string,
   importFile: ImportLocalAsset = importWorkbenchLocalAssetFile,
+  originatingContext?: ProjectExecutionContext,
 ): Promise<ClipNodeUploadResult> {
+  let context = originatingContext
   try {
-    const uploaded = await importFile(file, file.name, { projectId })
+    context ??= captureCurrentProjectExecutionContext()
+    context.assertCurrent()
+    if (context.binding.projectId !== projectId) throw new SurfacePortWireError('project_binding_stale')
+    const uploaded = await importFile(file, file.name, { projectId, projectBinding: context.binding, assertCurrent: context.assertCurrent })
+    context.assertCurrent()
     const renderUrl = hostedAssetUrl(uploaded)
     if (!renderUrl) throw new Error('uploaded asset url missing')
     const kind = file.type.startsWith('video/') ? 'video' : 'image'
@@ -57,6 +66,7 @@ export async function importClipNodeAsset(
       error: null,
     }
   } catch (error) {
+    if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return { asset: null, error: null, cancelled: true }
     return { asset: null, error: error instanceof Error ? error : new Error(String(error)) }
   }
 }

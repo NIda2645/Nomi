@@ -4,7 +4,7 @@ import type {
   SurfacePortBindingWire,
   SurfaceSuspensionWire,
 } from '../../../electron/shared/surfacePortBinding'
-import { settleSurfacePortHandler, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { settleSurfacePortHandler, surfacePortFailure, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
 import { sameProjectAgentBinding, type ProjectBinding } from '../../../electron/shared/projectBinding'
 import type { CanvasWriteInput, CanvasWriteOperation } from '../../../electron/shared/agentCapabilities/canvasWrite'
 import type { CanvasDeleteInput } from '../../../electron/shared/agentCapabilities/canvasDelete'
@@ -247,6 +247,17 @@ export function captureCurrentProjectExecutionContext(): ProjectExecutionContext
     if (lifetime.signal.aborted || registeredCoordinator !== coordinator) throw new SurfacePortWireError('project_binding_stale')
     context.assertCurrent()
   } })
+}
+
+/** Async UI cleanup must not update a replacement project's component state. */
+export function isProjectExecutionContextCurrent(context: ProjectExecutionContext | undefined): boolean {
+  if (!context) return false
+  try { context.assertCurrent(); return true } catch { return false }
+}
+
+export function isProjectImportCancellation(error: unknown): boolean {
+  const { code } = surfacePortFailure(error)
+  return code === 'capability_cancelled' || code === 'project_binding_stale' || code === 'project_identity_unavailable'
 }
 
 /** Exchange the already-captured exact binding and bytes; never recapture global state after an await. */
