@@ -1,7 +1,7 @@
 import React from 'react'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { persistNodeImageFile } from './persistNodeImage'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 
 /**
  * 卡片 / 节点「上传一张图」的统一回调。
@@ -12,12 +12,12 @@ import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent
  *
  * 单一真相源：Scene/Character/Prop 三张图片卡共用此 hook，不各写一份（P1）。
  */
-export function useNodeImageUpload(nodeId: string, source: string): (dataUrl: string, file: File, context?: ProjectExecutionContext) => void {
+export function useNodeImageUpload(nodeId: string, source: string): (dataUrl: string, file: File, context: ProjectExecutionContext) => void {
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   return React.useCallback(
-    (dataUrl: string, file: File, originatingContext?: ProjectExecutionContext) => {
-      let context: ProjectExecutionContext
-      try { context = originatingContext ?? captureCurrentProjectExecutionContext(); context.assertCurrent() } catch { return }
+    (dataUrl: string, file: File, context: ProjectExecutionContext) => {
+      // context 由选文件那一刻（读 FileReader 之前）捕获后传入；这里只复验，不再现取当前项目。
+      if (!isProjectExecutionContextCurrent(context)) return
       const createdAt = Date.now()
       const mergeMeta = (patch: Record<string, unknown>) => {
         const current = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)?.meta || {}

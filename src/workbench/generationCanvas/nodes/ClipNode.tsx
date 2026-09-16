@@ -12,7 +12,7 @@ import AssetPicker from '../../assets/AssetPicker'
 import AssetPickerPopover from '../../assets/AssetPickerPopover'
 import type { AssetRef } from '../../assets/assetTypes'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import {
   appendClipNodeSource,
   clipNodeSourceFromAsset,
@@ -207,10 +207,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     startConnection(node.id, side)
   }
 
-  const addAsset = React.useCallback(async (asset: AssetRef, originatingContext?: ProjectExecutionContext) => {
-    let context = originatingContext
+  const addAsset = React.useCallback(async (asset: AssetRef, context: ProjectExecutionContext) => {
     try {
-    context ??= captureCurrentProjectExecutionContext()
     context.assertCurrent()
     const durationSeconds = asset.kind === 'video' ? await readVideoDurationSeconds(asset.renderUrl) : null
     context.assertCurrent()
@@ -234,20 +232,14 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
     }
   }, [node.id, updateNode, reportFeedback, t])
 
-  const upload = React.useCallback(async (file: File, originatingContext?: ProjectExecutionContext) => {
+  const upload = React.useCallback(async (file: File, context: ProjectExecutionContext) => {
     await uploadExclusiveRef.current(async () => {
-      let context = originatingContext
-      try { context ??= captureCurrentProjectExecutionContext(); context.assertCurrent() } catch { return }
-      const projectId = context.binding.projectId
+      if (!isProjectExecutionContextCurrent(context)) return
       setRetryUploadFile({ file, context })
       setUploadError(null)
-      if (!projectId) {
-        setUploadError(t('generationCommon.clipNode.uploadFailed'))
-        return
-      }
       setUploading(true)
       try {
-        const result = await importClipNodeAsset(file, projectId, undefined, context)
+        const result = await importClipNodeAsset(file, context)
         context.assertCurrent()
         if (result.cancelled) return
         if (result.error || !result.asset) {
@@ -630,8 +622,8 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
             <AssetPicker
               projectId={getActiveWorkbenchProjectId()}
               accept={['image', 'video']}
-              onPick={(asset) => void addAsset(asset)}
-              onUpload={(file) => void upload(file)}
+              onPick={(asset) => withProjectAction((project) => void addAsset(asset, project))}
+              onUpload={(file) => withProjectAction((project) => void upload(file, project))}
               uploading={uploading}
             />
             {uploadError ? (

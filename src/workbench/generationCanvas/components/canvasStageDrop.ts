@@ -19,7 +19,7 @@ import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { reportCanvasFeedback } from './canvasFeedback'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import type { BrowserAssetCanvasImportItem } from '../../../ui/browser/overlay/globalAssetPopoverEvents'
 import type { TiptapDocJson } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
@@ -383,14 +383,15 @@ export function importLocalFilesToGenerationCanvas(
   files: readonly File[],
   options: { basePosition: { x: number; y: number }; categoryId?: string },
 ): Promise<void> {
-  const projectId = getDesktopActiveProjectId()
-  return importLocalMediaFilesToGenerationCanvas([...files], options)
+  // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
+  return withProjectAction((projectContext) => importLocalMediaFilesToGenerationCanvas([...files], { ...options, projectContext })
     .then((result) => {
+      if (result.cancelled) return
       const notes: string[] = []
       if (result.skippedOverLimitCount > 0) notes.push(`超过 8 个，已忽略 ${result.skippedOverLimitCount} 个`)
       for (const message of mediaImportRejectionMessages(result.rejected)) notes.push(message)
       if (result.failedCount > 0) notes.push(`${result.failedCount} 个导入失败`)
-      if (notes.length) reportCanvasFeedback(notes.join('；'), result.failedCount > 0 ? 'error' : 'warning', { projectId, identity: 'canvas-import', reason: 'import-incomplete' })
+      if (notes.length) reportCanvasFeedback(notes.join('；'), result.failedCount > 0 ? 'error' : 'warning', { projectId: projectContext.binding.projectId, identity: 'canvas-import', reason: 'import-incomplete' })
     })
-    .catch(() => {})
+    .catch(() => {}), () => Promise.resolve())
 }

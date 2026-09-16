@@ -6,7 +6,7 @@ import {
   recoverImportedWorkbenchLocalAssetFile,
   type WorkbenchAssetDto,
 } from '../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { dropKindFromFile } from '../model/nodeAssetDrop'
@@ -45,7 +45,8 @@ export type GenerationAssetImportResult = {
 }
 
 export type ImportImageFilesOptions = {
-  projectContext?: ProjectExecutionContext
+  /** 发起导入的那一刻（第一个 await 之前）捕获的原项目生命周期；必传，适配器不再现取当前项目。 */
+  projectContext: ProjectExecutionContext
   basePosition: { x: number; y: number }
   categoryId?: string
   createObjectUrl?: (file: File) => string
@@ -311,13 +312,12 @@ export async function importLocalMediaFilesToGenerationCanvas(
   inputFiles: File[],
   options: ImportImageFilesOptions,
 ): Promise<GenerationAssetImportResult> {
-  let context: ProjectExecutionContext | undefined
+  const context = options.projectContext
   try {
-    context = options.projectContext ?? captureCurrentProjectExecutionContext()
     context.assertCurrent()
     return await importFilesInProject(inputFiles, options, context)
   } catch (error) {
-    if (!context?.signal.aborted && !isProjectImportCancellation(error)) throw error
+    if (!context.signal.aborted && !isProjectImportCancellation(error)) throw error
     return { cancelled: true, created: [], skippedDuplicateCount: 0, rejected: [], skippedOverLimitCount: 0, failedCount: 0 }
   }
 }

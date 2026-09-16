@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createExclusiveClipNodeUpload, importClipNodeAsset } from './clipNodeUpload'
-import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator } from '../../project/projectCanvasReadSurface'
+import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import type { CanvasReadSurfaceBridge } from '../../../../electron/shared/surfacePortBinding'
+
+function project(): ProjectExecutionContext {
+  return withProjectAction((context) => context, () => { throw new Error('no project open') })
+}
 
 function file(name: string, type: string): File {
   return { name, type, size: 4, lastModified: 1, arrayBuffer: async () => new ArrayBuffer(4) } as File
@@ -28,7 +32,7 @@ describe('clip node upload', () => {
   it('returns handled cancellation when an old import finishes after A → B → A', async () => {
     let finish!: () => void
     const wait = new Promise<void>(resolve => { finish = resolve })
-    const pending = importClipNodeAsset(file('rush.mp4', 'video/mp4'), 'project-1', async (_file, _name, meta) => {
+    const pending = importClipNodeAsset(file('rush.mp4', 'video/mp4'), project(), async (_file, _name, meta) => {
       expect(meta?.projectBinding?.projectId).toBe('project-1')
       await wait
       return { id: 'asset', name: 'rush.mp4', data: { url: 'nomi-local://project-1/rush.mp4' }, createdAt: '', updatedAt: '', userId: 'local' }
@@ -37,7 +41,7 @@ describe('clip node upload', () => {
     expect(await pending).toEqual({ asset: null, error: null, cancelled: true })
   })
   it('maps an imported local video to a project asset reference', async () => {
-    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), 'project-1', async () => ({
+    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), project(), async () => ({
       id: 'asset-1',
       name: 'rush.mp4',
       data: { url: 'nomi-local://project-1/rush.mp4', relativePath: 'assets/rush.mp4' },
@@ -58,7 +62,7 @@ describe('clip node upload', () => {
   })
 
   it('returns a retryable failure when local video copy fails', async () => {
-    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), 'project-1', async () => {
+    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), project(), async () => {
       throw new Error('copy failed')
     })
 
@@ -67,7 +71,7 @@ describe('clip node upload', () => {
   })
 
   it('rejects an import that has no local render URL', async () => {
-    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), 'project-1', async () => ({
+    const result = await importClipNodeAsset(file('rush.mp4', 'video/mp4'), project(), async () => ({
       id: 'asset-1',
       name: 'rush.mp4',
       data: {},

@@ -79,7 +79,8 @@ describe('persistNodeImageFile', () => {
     const pending = kind === 'file' ? persistNodeImageFile(file, 'node-1', context) : persistNodeImageBlob(file, 'node-1', 'tile.png', context)
     cancel(); finish()
     await expect(pending).rejects.toMatchObject({ code: 'project_binding_stale' })
-    expect(upload).toHaveBeenCalledWith(file, 'tile.png', expect.objectContaining({ projectBinding: context.binding, assertCurrent: context.assertCurrent }))
+    // The blob path wraps bytes in its own File (fresh lastModified), so only the file path can match by identity.
+    expect(upload).toHaveBeenCalledWith(kind === 'file' ? file : expect.any(File), 'tile.png', expect.objectContaining({ projectBinding: context.binding, assertCurrent: context.assertCurrent }))
     vi.doUnmock('../../api/assetUploadApi')
   })
 

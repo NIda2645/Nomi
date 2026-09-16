@@ -18,6 +18,7 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { extractShotCutsToNodes } from './extractShotCutsToNodes'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import {
   SHOT_SENSITIVITY_DEFAULT,
   SHOT_SENSITIVITY_MAX,
@@ -130,10 +131,15 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
   /** 落画布只有这一条管线：切点选出来的秒数、均匀抽出来的秒数，走的都是它。 */
   const commitSeconds = async (seconds: readonly number[]) => {
     if (!seconds.length || committing) return
-    setCommitting({ done: 0, total: seconds.length })
-    const outcome = await extractShotCutsToNodes({ reportFeedback, node, seconds, onProgress: (progress) => setCommitting(progress) })
-    setCommitting(null)
-    if (outcome.failed === 0 && outcome.created > 0) onClose()
+    await withProjectAction(async (project) => {
+      setCommitting({ done: 0, total: seconds.length })
+      const outcome = await extractShotCutsToNodes({ project, reportFeedback, node, seconds, onProgress: (progress) => setCommitting(progress) })
+      if (outcome.cancelled) return
+      setCommitting(null)
+      if (outcome.failed === 0 && outcome.created > 0) onClose()
+    }, async () => {
+      reportFeedback(t('generationCommon.node.extractFrame.missingProject'))
+    })
   }
 
   const subtitle =

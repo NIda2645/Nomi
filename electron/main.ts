@@ -576,7 +576,7 @@ function registerIpc(): void {
   });
   registerAssetsIpc(canvasReadExecutionRuntime.surfaceCapture);
   registerSettingsIpc();
-  registerVideoIpc();
+  registerVideoIpc(canvasReadExecutionRuntime.surfaceCapture);
   registerScreenshotIpc();
   registerTikhubConnectorIpc();
   ipcMain.handle("nomi:image:decompose-layers", async (event, payload) => {

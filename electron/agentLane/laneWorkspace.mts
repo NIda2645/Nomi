@@ -81,7 +81,14 @@ export async function openLaneWorkspace(
     if (projection.closed) return;
     closed = true;
     unsubscribeActive();
-    projection = { lanes, closed: true, active: { ...active.projection(), running: false,
+    const snapshot = active.projection();
+    const parts = snapshot.parts.map(part => {
+      if (part.kind === 'tool-call') return { ...part, running: false };
+      if (part.kind === 'assistant-text' && part.streaming) return { ...part, streaming: false, interrupted: true as const };
+      if (part.kind === 'thinking') return { ...part, streaming: false };
+      return part;
+    });
+    projection = { lanes, closed: true, active: { ...snapshot, parts, running: false,
       pending: undefined, retry: undefined, queues: [] } };
     try { for (const listener of listeners) listener(projection); }
     finally { listeners.clear(); }

@@ -18,6 +18,9 @@ import { writeJsonFileAtomic } from "../jsonFile";
 import { getMainWindow } from "../appWindowRegistry";
 import { writeAsset } from "../runtime";
 import { logError } from "../logging/logger";
+import { captureAssetWriteContext, type AssetWriteContext } from "../assets/assetWriteContext";
+import { canvasReadSurfaceRuntime } from "../capabilityCore/canvasReadSurfaceRuntime";
+import { surfacePortFailure, type SurfacePortBindingWire } from "../shared/surfacePortBinding";
 
 const PREFS_FILE = "screenshot-hotkey-prefs.json";
 
@@ -156,7 +159,48 @@ export type ScreenshotCapture = {
   url: string;
   width: number;
   height: number;
+  /** 主进程抓屏开始前固定的那一个已提交项目面；渲染层只在它仍是当前绑定时才弹面板。 */
+  surfaceBinding: SurfacePortBindingWire;
 };
+
+type ScreenshotProjectContext = Readonly<{ write: AssetWriteContext; surfaceBinding: SurfacePortBindingWire }>;
+
+function staleProject(): Error {
+  return Object.assign(new Error("project_binding_stale"), { code: "project_binding_stale" });
+}
+
+/** 换项目 = 取消：静默结束，不回写新项目，也不给新项目弹失败提示。 */
+function isProjectCancellation(error: unknown): boolean {
+  const { code } = surfacePortFailure(error);
+  return code === "project_binding_stale" || code === "capability_cancelled";
+}
+
+/**
+ * 热键是主进程里的用户动作，没有 IPC sender 可验。项目身份只认主进程已提交的项目面
+ * （canvasReadSurfaceRuntime 的 committed binding），**在任何 await 之前**固定下来；
+ * 之后每一步都用同一个 epoch 断言复验——切到别的项目（含 A→B→A）即永久失效。
+ * 不再有 renderer 自报的 projectId：那是一条能被晚到的新项目覆盖的平行身份。
+ */
+async function captureScreenshotProject(win: Electron.BrowserWindow): Promise<ScreenshotProjectContext | null> {
+  const { registry } = canvasReadSurfaceRuntime;
+  const selection = canvasReadSurfaceRuntime.getCommittedProjectSelection();
+  if (!selection) return null;
+  const { canonicalRootDigest, ...binding } = selection;
+  const captured = registry.captureCommittedCanvasReadPort({ binding, canonicalRootDigest });
+  if (!captured) return null;
+  const surface = registry.resolveCapturedCanvasReadPort(captured);
+  // 已提交的项目面必须就是要弹面板的这个主窗口，别把 A 窗口的项目算到 B 窗口头上。
+  if (surface.owner.contents !== win.webContents) return null;
+  const assertSurface = (): void => {
+    try {
+      registry.resolveCapturedCanvasReadPort(captured);
+    } catch {
+      throw staleProject();
+    }
+  };
+  const write = await captureAssetWriteContext(surface.binding.binding.projectId, surface.binding.binding, assertSurface);
+  return Object.freeze({ write, surfaceBinding: surface.binding });
+}
 
 /**
  * 抓屏 → 落项目素材 → 通知渲染层开选区面板。
@@ -175,57 +219,66 @@ export async function captureScreenToCanvas(): Promise<void> {
     return;
   }
 
-  const display = displayUnderCursor();
-  const scale = display.scaleFactor || 1;
-  const sources = await desktopCapturer.getSources({
-    types: ["screen"],
-    // 按物理像素要图，否则 Retina 上拿到的是半分辨率的糊图。
-    thumbnailSize: {
-      width: Math.round(display.size.width * scale),
-      height: Math.round(display.size.height * scale),
-    },
-  });
-  const source =
-    sources.find((candidate) => String(candidate.display_id) === String(display.id)) ?? sources[0];
-  if (!source || source.thumbnail.isEmpty()) {
-    win.webContents.send("nomi:screenshot:failed", { reason: "empty" });
-    return;
+  let project: ScreenshotProjectContext | null;
+  try {
+    project = await captureScreenshotProject(win);
+  } catch (error) {
+    if (isProjectCancellation(error)) return;
+    // 项目面不可用 / 项目目录读不到身份：是「当前没有可落的项目」，要让用户看见；其它异常照常抛。
+    const { code } = surfacePortFailure(error);
+    if (code !== "project_identity_unavailable" && !code.startsWith("surface_")) throw error;
+    project = null;
   }
-
-  const size = source.thumbnail.getSize();
-  const projectId = currentProjectIdForCapture();
-  if (!projectId) {
+  if (!project) {
     win.webContents.send("nomi:screenshot:failed", { reason: "no-project" });
     win.show();
     win.focus();
     return;
   }
 
-  const record = writeAsset(
-    projectId,
-    source.thumbnail.toPNG(),
-    `screenshot-${Date.now()}.png`,
-    "image/png",
-    { kind: "generated", source: "screen-capture" },
-  ) as { data?: { url?: string } };
-  const url = record?.data?.url;
-  if (!url) {
-    win.webContents.send("nomi:screenshot:failed", { reason: "write" });
-    return;
+  try {
+    const display = displayUnderCursor();
+    const scale = display.scaleFactor || 1;
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      // 按物理像素要图，否则 Retina 上拿到的是半分辨率的糊图。
+      thumbnailSize: {
+        width: Math.round(display.size.width * scale),
+        height: Math.round(display.size.height * scale),
+      },
+    });
+    project.write.assertCurrent();
+    const source =
+      sources.find((candidate) => String(candidate.display_id) === String(display.id)) ?? sources[0];
+    if (!source || source.thumbnail.isEmpty()) {
+      win.webContents.send("nomi:screenshot:failed", { reason: "empty" });
+      return;
+    }
+
+    const size = source.thumbnail.getSize();
+    const record = writeAsset(
+      project.write.projectId,
+      source.thumbnail.toPNG(),
+      `screenshot-${Date.now()}.png`,
+      "image/png",
+      { kind: "generated", source: "screen-capture" },
+      project.write,
+    ) as { data?: { url?: string } };
+    const url = record?.data?.url;
+    if (!url) {
+      win.webContents.send("nomi:screenshot:failed", { reason: "write" });
+      return;
+    }
+
+    project.write.assertCurrent();
+    win.show();
+    win.focus();
+    const payload: ScreenshotCapture = { url, width: size.width, height: size.height, surfaceBinding: project.surfaceBinding };
+    win.webContents.send("nomi:screenshot:captured", payload);
+  } catch (error) {
+    if (isProjectCancellation(error)) return;
+    throw error;
   }
-
-  win.show();
-  win.focus();
-  win.webContents.send("nomi:screenshot:captured", { url, width: size.width, height: size.height });
-}
-
-/** 抓屏时用哪个项目落素材——由渲染层在项目切换时报上来（主进程不自己猜当前项目）。 */
-let activeProjectId = "";
-export function setScreenshotProjectId(projectId: string): void {
-  activeProjectId = String(projectId || "").trim();
-}
-function currentProjectIdForCapture(): string {
-  return activeProjectId;
 }
 
 app.on("will-quit", () => {

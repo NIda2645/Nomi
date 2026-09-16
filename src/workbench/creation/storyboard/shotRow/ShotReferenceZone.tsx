@@ -1,5 +1,5 @@
 import React from 'react'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
@@ -154,29 +154,29 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
 
   const handleUpload = React.useCallback(
     async (cell: ShotReferenceCell, file: File) => {
-      let context: ProjectExecutionContext | undefined
       setUploadError('')
       const kind = assetKindOfFile(file)
       if (kind !== cell.assetSlot.accept) {
         if (cell.assetSlot.accept !== 'model3d') report(t(WRONG_KIND_KEY[cell.assetSlot.accept], { label: cell.label }))
         return
       }
-      setUploadingSlotKey(cell.key)
-      setUploadError('')
-      try {
-        context = captureCurrentProjectExecutionContext()
-        const uploaded = await importWorkbenchLocalAssetFile(file, file.name || cell.label, {
-          projectBinding: context.binding, assertCurrent: context.assertCurrent,
-          ...(cell.assetSlot.accept === 'image' ? { taskKind: 'image_edit' as const } : {}),
-        })
-        context.assertCurrent()
-        applyAppend(cell, assetUrl(uploaded), kind, { name: uploaded.name || file.name })
-      } catch (error) {
-        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
-        setUploadError(error instanceof Error ? error.message : String(error))
-      } finally {
-        if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
-      }
+      await withProjectAction(async (context) => {
+        setUploadingSlotKey(cell.key)
+        setUploadError('')
+        try {
+          const uploaded = await importWorkbenchLocalAssetFile(file, file.name || cell.label, {
+            projectBinding: context.binding, assertCurrent: context.assertCurrent,
+            ...(cell.assetSlot.accept === 'image' ? { taskKind: 'image_edit' as const } : {}),
+          })
+          context.assertCurrent()
+          applyAppend(cell, assetUrl(uploaded), kind, { name: uploaded.name || file.name })
+        } catch (error) {
+          if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+          setUploadError(error instanceof Error ? error.message : String(error))
+        } finally {
+          if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
+        }
+      })
     },
     [applyAppend, report, t],
   )

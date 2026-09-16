@@ -1,5 +1,5 @@
 import React from 'react'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import {
   pasteClipboardMediaToGenerationCanvas,
   extractClipboardMediaFiles,
@@ -306,19 +306,22 @@ export function useCanvasShortcuts(opts: {
         return
       }
       event.preventDefault()
-      const projectId = getDesktopActiveProjectId()
-      void pasteClipboardMediaToGenerationCanvas({
-        clipboardData: event.clipboardData,
-        basePosition: pastePosition,
-        categoryId: activeCategoryId,
-      }).then((result) => {
-        if (!result.handled) {
+      // 粘贴事件即动作起点：此刻签发原项目；没有打开的项目就不落任何媒体。
+      withProjectAction((projectContext) => {
+        void pasteClipboardMediaToGenerationCanvas({
+          projectContext,
+          clipboardData: event.clipboardData,
+          basePosition: pastePosition,
+          categoryId: activeCategoryId,
+        }).then((result) => {
+          if (!result.handled) {
+            pasteNodes(pastePosition)
+            return
+          }
+          showClipboardMediaPasteNotes(result, projectContext.binding.projectId)
+        }).catch(() => {
           pasteNodes(pastePosition)
-          return
-        }
-        showClipboardMediaPasteNotes(result, projectId)
-      }).catch(() => {
-        pasteNodes(pastePosition)
+        })
       })
     }
     const offDesktopZoom = window.nomiDesktop?.window?.onCanvasZoomShortcut?.((direction) => {

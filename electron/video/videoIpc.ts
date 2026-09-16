@@ -7,12 +7,17 @@
 import { ipcMain } from "electron";
 import { assertTrustedSender } from "../ipcSenderGuard";
 import { registerVideoDepthIpc } from "./depthVideoIpc";
+import type { CanvasReadSurfaceIpcCapture } from "../capabilityCore/canvasReadSurfaceIpc";
+import { createProjectInteractionCapture } from "../assets/projectInteractionCapture";
 
-export function registerVideoIpc(): void {
+export function registerVideoIpc(surface: CanvasReadSurfaceIpcCapture): void {
+  const captureInteraction = createProjectInteractionCapture(surface);
   ipcMain.handle("nomi:video:extract-frame", async (event, payload) => {
     assertTrustedSender(event);
+    // 交互抽帧带着动作起点签发的原项目绑定：在任何 await 之前固定会话，落盘前复验，换项目即不发布。
+    const assertCurrent = captureInteraction(event, payload);
     const { extractVideoFrameToAsset } = await import("./extractVideoFrame");
-    return extractVideoFrameToAsset(payload);
+    return extractVideoFrameToAsset(payload, { assertCurrent });
   });
   ipcMain.handle("nomi:video:extract-filmstrip", async (event, payload) => {
     assertTrustedSender(event);

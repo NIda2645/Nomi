@@ -1,7 +1,7 @@
 import React from 'react'
 import i18n from '../../../i18n'
 import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import {
   COMPOSER_ATTACHMENT_MAX_BYTES,
   attachmentKindFromContentType,
@@ -98,37 +98,37 @@ export function useComposerAttachments(opts: {
   const addFiles = React.useCallback((files: FileList | File[] | null | undefined) => {
     const list = files ? Array.from(files) : []
     if (!list.length) return
-    let context: ProjectExecutionContext
-    try { context = captureCurrentProjectExecutionContext() } catch { return }
-    const accepted: Array<{ id: string; file: File }> = []
-    const nextAttachments: ComposerAttachment[] = []
-    for (const file of list) {
-      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
-        onErrorRef.current?.(
-          i18n.t('runtime.attachments.tooLarge', {
-            name: file.name,
-            limit: formatAttachmentSize(COMPOSER_ATTACHMENT_MAX_BYTES),
-          }),
-        )
-        continue
+    withProjectAction((context) => {
+      const accepted: Array<{ id: string; file: File }> = []
+      const nextAttachments: ComposerAttachment[] = []
+      for (const file of list) {
+        if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
+          onErrorRef.current?.(
+            i18n.t('runtime.attachments.tooLarge', {
+              name: file.name,
+              limit: formatAttachmentSize(COMPOSER_ATTACHMENT_MAX_BYTES),
+            }),
+          )
+          continue
+        }
+        const id = nextAttachmentId()
+        const kind = attachmentKindFromContentType(file.type)
+        const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined
+        nextAttachments.push({
+          id,
+          fileName: file.name || 'asset',
+          contentType: file.type || 'application/octet-stream',
+          sizeBytes: file.size,
+          kind,
+          status: 'uploading',
+          previewUrl,
+        })
+        accepted.push({ id, file })
       }
-      const id = nextAttachmentId()
-      const kind = attachmentKindFromContentType(file.type)
-      const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined
-      nextAttachments.push({
-        id,
-        fileName: file.name || 'asset',
-        contentType: file.type || 'application/octet-stream',
-        sizeBytes: file.size,
-        kind,
-        status: 'uploading',
-        previewUrl,
-      })
-      accepted.push({ id, file })
-    }
-    if (!nextAttachments.length) return
-    setAttachments((prev) => isProjectExecutionContextCurrent(context) ? [...prev, ...nextAttachments] : prev)
-    for (const { id, file } of accepted) void uploadOne(id, file, context)
+      if (!nextAttachments.length) return
+      setAttachments((prev) => isProjectExecutionContextCurrent(context) ? [...prev, ...nextAttachments] : prev)
+      for (const { id, file } of accepted) void uploadOne(id, file, context)
+    })
   }, [setAttachments, uploadOne])
 
   const removeAttachment = React.useCallback((id: string) => {

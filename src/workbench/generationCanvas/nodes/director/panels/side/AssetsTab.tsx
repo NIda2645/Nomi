@@ -12,7 +12,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../../../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../../../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../../../project/projectCanvasReadSurface'
 import { toast } from '../../../../../../ui/toast'
 import { cn } from '../../../../../../utils/cn'
 import {
@@ -238,37 +238,37 @@ export function AssetsTab(): JSX.Element {
   }
 
   const uploadFiles = async (files: File[], folderId: string | null) => {
-    let context: ProjectExecutionContext
-    try { context = captureCurrentProjectExecutionContext() } catch { return }
-    for (const file of files) {
-      if (!isProjectExecutionContextCurrent(context)) return
-      const kind = assetKindOfFileName(file.name, file.type)
-      if (!kind) {
-        toast(t('director.assets.unsupported', { name: file.name }), 'warning')
-        continue
+    await withProjectAction(async (context) => {
+      for (const file of files) {
+        if (!isProjectExecutionContextCurrent(context)) return
+        const kind = assetKindOfFileName(file.name, file.type)
+        if (!kind) {
+          toast(t('director.assets.unsupported', { name: file.name }), 'warning')
+          continue
+        }
+        let url: string
+        let temporary = false
+        try {
+          const asset = await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: context.binding, assertCurrent: context.assertCurrent })
+          context.assertCurrent()
+          url = hostedAssetUrl(asset)
+          if (!url) throw new Error('asset missing url')
+        } catch (error) {
+          if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+          // 无桌面运行时 / 落盘失败：小文件（图片 / JSON）转 data URL 还能随工程存；大文件只能 blob URL，明说是临时的
+          temporary = true
+          // 模型 loader 通过扩展名分 FBX/GLTF；blob 地址保留文件名，fragment 不参与字节读取。
+          url = kind === 'panorama' || kind === 'scene' ? await readFileAsDataUrl(file).catch(() => '') : `${URL.createObjectURL(file)}#${encodeURIComponent(file.name)}`
+        }
+        if (!isProjectExecutionContextCurrent(context)) return
+        if (!url) {
+          toast(t('director.assets.uploadFailed', { name: file.name }), 'error')
+          continue
+        }
+        store.getState().addAssetItem({ name: file.name.replace(/\.[^.]+$/, ''), kind, url, folderId, sizeBytes: file.size })
+        toast(t(temporary ? 'director.assets.uploadedTemporary' : 'director.assets.uploaded', { name: file.name }), temporary ? 'info' : 'success')
       }
-      let url: string
-      let temporary = false
-      try {
-        const asset = await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: context.binding, assertCurrent: context.assertCurrent })
-        context.assertCurrent()
-        url = hostedAssetUrl(asset)
-        if (!url) throw new Error('asset missing url')
-      } catch (error) {
-        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
-        // 无桌面运行时 / 落盘失败：小文件（图片 / JSON）转 data URL 还能随工程存；大文件只能 blob URL，明说是临时的
-        temporary = true
-        // 模型 loader 通过扩展名分 FBX/GLTF；blob 地址保留文件名，fragment 不参与字节读取。
-        url = kind === 'panorama' || kind === 'scene' ? await readFileAsDataUrl(file).catch(() => '') : `${URL.createObjectURL(file)}#${encodeURIComponent(file.name)}`
-      }
-      if (!isProjectExecutionContextCurrent(context)) return
-      if (!url) {
-        toast(t('director.assets.uploadFailed', { name: file.name }), 'error')
-        continue
-      }
-      store.getState().addAssetItem({ name: file.name.replace(/\.[^.]+$/, ''), kind, url, folderId, sizeBytes: file.size })
-      toast(t(temporary ? 'director.assets.uploadedTemporary' : 'director.assets.uploaded', { name: file.name }), temporary ? 'info' : 'success')
-    }
+    })
   }
 
   const q = query.trim().toLowerCase()

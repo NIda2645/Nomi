@@ -14,7 +14,7 @@ import { importWorkbenchLocalAssetFile } from '../../../api/assetUploadApi'
 import type { ImageUrlSlot } from '../../model/parameterReferenceSlots'
 import type { ArchetypeArraySlot } from './archetypeMeta'
 import { assetUrl } from './parameterControlModel'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 
 export type SlotFileUploads = {
   handleArrayUpload: (slot: ArchetypeArraySlot, file: File | null | undefined) => Promise<void>;
@@ -39,56 +39,55 @@ export function createSlotFileUploads(deps: {
 
   const handleArrayUpload = async (slot: ArchetypeArraySlot, file: File | null | undefined): Promise<void> => {
     if (!file) return
-    let context: ProjectExecutionContext | undefined
-    setUploadingArrayKey(slot.metaKey)
-    setUploadError('')
-    try {
-      context = captureCurrentProjectExecutionContext()
-      const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
-        projectBinding: context.binding, assertCurrent: context.assertCurrent,
-        ownerNodeId: nodeId,
-        taskKind: 'image_edit',
-      })
-      context.assertCurrent()
-      const url = assetUrl(uploaded)
-      if (!url) throw new Error(t('generationCommon.parameters.missingAssetUrl'))
-      onArrayAdd(slot, url)
-    } catch (error) {
-      if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
-      setUploadError(error instanceof Error ? error.message : String(error))
-    } finally {
-      if (isProjectExecutionContextCurrent(context)) setUploadingArrayKey('')
-    }
+    await withProjectAction(async (context) => {
+      setUploadingArrayKey(slot.metaKey)
+      setUploadError('')
+      try {
+        const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
+          projectBinding: context.binding, assertCurrent: context.assertCurrent,
+          ownerNodeId: nodeId,
+          taskKind: 'image_edit',
+        })
+        context.assertCurrent()
+        const url = assetUrl(uploaded)
+        if (!url) throw new Error(t('generationCommon.parameters.missingAssetUrl'))
+        onArrayAdd(slot, url)
+      } catch (error) {
+        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+        setUploadError(error instanceof Error ? error.message : String(error))
+      } finally {
+        if (isProjectExecutionContextCurrent(context)) setUploadingArrayKey('')
+      }
+    })
   }
 
   // D3 源视频单槽（video-edit）：上传一个视频 → 写 meta.sourceVideoUrl（传输映射成 video_url）。
   const handleSourceVideoUpload = async (metaKey: string, file: File | null | undefined): Promise<void> => {
     if (!file) return
-    let context: ProjectExecutionContext | undefined
-    setUploadingArrayKey(metaKey)
-    setUploadError('')
-    try {
-      context = captureCurrentProjectExecutionContext()
-      const uploaded = await importWorkbenchLocalAssetFile(
-        file,
-        file.name || t('generationCommon.parameters.sourceVideo'),
-        { ownerNodeId: nodeId, taskKind: 'image_edit', projectBinding: context.binding, assertCurrent: context.assertCurrent },
-      )
-      context.assertCurrent()
-      const url = assetUrl(uploaded)
-      if (!url) throw new Error(t('generationCommon.parameters.missingVideoUrl'))
-      onSourceVideoUrl(metaKey, url)
-    } catch (error) {
-      if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
-      setUploadError(error instanceof Error ? error.message : String(error))
-    } finally {
-      if (isProjectExecutionContextCurrent(context)) setUploadingArrayKey('')
-    }
+    await withProjectAction(async (context) => {
+      setUploadingArrayKey(metaKey)
+      setUploadError('')
+      try {
+        const uploaded = await importWorkbenchLocalAssetFile(
+          file,
+          file.name || t('generationCommon.parameters.sourceVideo'),
+          { ownerNodeId: nodeId, taskKind: 'image_edit', projectBinding: context.binding, assertCurrent: context.assertCurrent },
+        )
+        context.assertCurrent()
+        const url = assetUrl(uploaded)
+        if (!url) throw new Error(t('generationCommon.parameters.missingVideoUrl'))
+        onSourceVideoUrl(metaKey, url)
+      } catch (error) {
+        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+        setUploadError(error instanceof Error ? error.message : String(error))
+      } finally {
+        if (isProjectExecutionContextCurrent(context)) setUploadingArrayKey('')
+      }
+    })
   }
 
   const handleSlotUpload = async (slot: ImageUrlSlot, file: File | null | undefined): Promise<void> => {
     if (!file) return
-    let context: ProjectExecutionContext | undefined
     if (!file.type.startsWith(`${slot.mediaKind ?? 'image'}/`)) {
       // 三选一（同类根因的又一个入口，2026-09-11 补：ComfyUI 声明的音频参数槽走这条上传器，
       // 此前只区分 video/image，音频槽拖错文件会显示「只能选择图片文件」这种文不对题的提示）。
@@ -99,29 +98,30 @@ export function createSlotFileUploads(deps: {
       ))
       return
     }
-    setUploadingSlotKey(slot.key)
-    setUploadError('')
-    try {
-      context = captureCurrentProjectExecutionContext()
-      const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
-        projectBinding: context.binding, assertCurrent: context.assertCurrent,
-        ownerNodeId: nodeId,
-        ...(slot.mediaKind === 'video' || slot.mediaKind === 'audio' ? {} : { taskKind: 'image_edit' }),
-      })
-      context.assertCurrent()
-      const url = assetUrl(uploaded)
-      if (!url) throw new Error(t(
-        slot.mediaKind === 'video' ? 'generationCommon.parameters.missingVideoUrl'
-          : slot.mediaKind === 'audio' ? 'generationCommon.parameters.missingAudioUrl'
-            : 'generationCommon.parameters.missingImageUrl',
-      ))
-      onSingleFrameUrl(slot, url)
-    } catch (error) {
-      if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
-      setUploadError(error instanceof Error ? error.message : String(error))
-    } finally {
-      if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
-    }
+    await withProjectAction(async (context) => {
+      setUploadingSlotKey(slot.key)
+      setUploadError('')
+      try {
+        const uploaded = await importWorkbenchLocalAssetFile(file, file.name || slot.label, {
+          projectBinding: context.binding, assertCurrent: context.assertCurrent,
+          ownerNodeId: nodeId,
+          ...(slot.mediaKind === 'video' || slot.mediaKind === 'audio' ? {} : { taskKind: 'image_edit' }),
+        })
+        context.assertCurrent()
+        const url = assetUrl(uploaded)
+        if (!url) throw new Error(t(
+          slot.mediaKind === 'video' ? 'generationCommon.parameters.missingVideoUrl'
+            : slot.mediaKind === 'audio' ? 'generationCommon.parameters.missingAudioUrl'
+              : 'generationCommon.parameters.missingImageUrl',
+        ))
+        onSingleFrameUrl(slot, url)
+      } catch (error) {
+        if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+        setUploadError(error instanceof Error ? error.message : String(error))
+      } finally {
+        if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
+      }
+    })
   }
 
   return { handleArrayUpload, handleSourceVideoUpload, handleSlotUpload }

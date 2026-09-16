@@ -5,6 +5,7 @@ import { assertTrustedSender } from '../ipcSenderGuard'
 import { LANE_IPC_CHANNELS, type LaneWorkspaceHandle, type LaneWorkspaceProjection } from '../shared/agentLane/laneContracts'
 import { LaneCommandError, parseLaneCommand } from './laneCommandCodec'
 import { laneErrorCodeOf } from '../shared/agentLane/laneErrorCodes'
+import { logError } from '../logging/logger'
 import type { LaneDesktopResult, LaneRestoredDesktopInput } from '../shared/agentLane/laneDesktopContracts'
 
 export interface LaneIpcDependencies {
@@ -116,6 +117,11 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
               previous.unsubscribe()
               target.removeListener('destroyed', previous.destroyed)
               abortSingleShots(target)
+              // Structural replacement can close the inner workspace without passing through
+              // its session wrapper. Revoke now, then serialize disposal before the next open.
+              // Never await here: close may itself be waiting for this publisher's operation.
+              const closing = previous.workspace.close()
+              void replace(async () => { await closing }).catch(error => logError('agent', 'workspace-terminal-close-failed', error))
             }
             if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, { ...projection, workspaceId })
           }

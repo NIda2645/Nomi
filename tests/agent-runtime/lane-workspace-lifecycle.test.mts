@@ -5,6 +5,7 @@ import { openLaneHistory } from '../../electron/agentLane/laneHistory.mjs';
 import { openLaneWorkspace, type LaneWorkspaceOptions } from '../../electron/agentLane/laneWorkspace.mjs';
 import type { LaneHandle, LaneProjection, LaneWorkspaceHandle } from '../../electron/shared/agentLane/laneContracts.js';
 import { createLaneFixture } from './laneFixture.mjs';
+import { createDocumentLaneTools } from '../../electron/agentLane/laneDocumentTools.js';
 
 function deferred() {
   let resolve!: () => void;
@@ -184,6 +185,44 @@ function pendingApproval(workspace: LaneWorkspaceHandle) {
   if (ready) return Promise.resolve(ready);
   return new Promise<NonNullable<LaneProjection['pending']>>((resolve) => {
     const stop = workspace.subscribe(({ active }) => { if (active.pending) { stop(); resolve(active.pending); } });
+  });
+}
+
+for (const kind of ['assistant-text', 'thinking', 'tool-call'] as const) {
+  test(`closed terminal snapshot stops live ${kind} parts without changing the previous projection`, { timeout: 10_000 }, async (t) => {
+    const release = deferred();
+    t.after(() => release.resolve());
+    const fixture = await createLaneFixture(t, kind === 'tool-call'
+      ? [{ type: 'tool', calls: [{ id: 'read', name: 'read_script', arguments: { scope: 'full' } }] }]
+      : [{ type: 'message', parts: [{ type: kind === 'thinking' ? 'thinking' : 'text', text: 'In progress.' }], beforeFinish: () => release.promise }]);
+    const workspace = await openLaneWorkspace({ ...fixture.options, tools: createDocumentLaneTools({
+      read: async (_scope, context) => {
+        await new Promise<void>(resolve => {
+          if (context.signal.aborted) resolve();
+          else context.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return { text: 'Stopped.' };
+      },
+      write: fixture.document.write,
+    }) });
+    fixture.after(() => workspace.close());
+    const live = new Promise<LaneProjection>((resolve) => {
+      const stop = workspace.subscribe(({ active }) => {
+        if (active.parts.some(part => part.kind === kind && ('running' in part ? part.running : 'streaming' in part && part.streaming))) {
+          stop(); resolve(active);
+        }
+      });
+    });
+    const prompt = workspace.execute({ kind: 'prompt', text: 'Begin work.' });
+    const before = await live;
+    const closing = workspace.close();
+    const terminal = workspace.projection();
+    release.resolve();
+    await Promise.all([closing, prompt]);
+    assert.equal(terminal.closed, true);
+    assert.equal(terminal.active.parts.some(part => 'running' in part && part.running || 'streaming' in part && part.streaming), false);
+    assert.equal(before.parts.some(part => part.kind === kind && ('running' in part ? part.running : 'streaming' in part && part.streaming)), true);
+    if (kind === 'assistant-text') assert.equal(terminal.active.parts.some(part => part.kind === kind && part.interrupted), true);
   });
 }
 

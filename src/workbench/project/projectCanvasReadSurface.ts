@@ -38,7 +38,6 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
   beginHydration(): ProjectHydrationEpoch
   releaseCurrent(): Promise<void>
   getCurrentBinding(): SurfacePortBindingWire | null
-  captureProjectExecutionContext(): ProjectExecutionContext
   sealCanvasReadSnapshot(
     binding: SurfacePortBindingWire,
     snapshot: unknown,
@@ -105,6 +104,8 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
 }>
 
 let registeredCoordinator: ProjectCanvasReadSurfaceCoordinator | null = null
+/** Module-private: only the issuance points below can mint a project lifetime from a coordinator. */
+const projectContextIssuers = new WeakMap<ProjectCanvasReadSurfaceCoordinator, () => ProjectExecutionContext>()
 let registeredCoordinatorLifetime: AbortController | null = null
 
 /** Share the one coordinator object, never a copied project/binding scalar. */
@@ -237,16 +238,52 @@ export function captureCurrentProjectCanvasReadSurfaceBinding(): SurfacePortBind
   return registeredCoordinator?.getCurrentBinding() ?? null
 }
 
-/** Project IO keeps a lifetime, not the page's transport capture. */
-export function captureCurrentProjectExecutionContext(): ProjectExecutionContext {
+/** Project IO keeps a lifetime, not the page's transport capture. Module-private by design. */
+function captureCurrentProjectExecutionContext(): ProjectExecutionContext {
   const coordinator = registeredCoordinator
   const lifetime = registeredCoordinatorLifetime
-  if (!coordinator || !lifetime) throw new SurfacePortWireError('project_identity_unavailable')
-  const context = coordinator.captureProjectExecutionContext()
+  const issue = coordinator ? projectContextIssuers.get(coordinator) : undefined
+  if (!coordinator || !lifetime || !issue) throw new SurfacePortWireError('project_identity_unavailable')
+  const context = issue()
   return Object.freeze({ ...context, signal: AbortSignal.any([context.signal, lifetime.signal]), assertCurrent() {
     if (lifetime.signal.aborted || registeredCoordinator !== coordinator) throw new SurfacePortWireError('project_binding_stale')
     context.assertCurrent()
   } })
+}
+
+/**
+ * The single renderer issuance point for project IO authority (key = trusted window + project).
+ * A user action calls it synchronously as its first step, before any await, and receives the
+ * originating project lifetime; everything downstream only accepts that context and can never
+ * re-read "the current project". With no open project the action does not start: `unavailable`
+ * (or undefined) is returned. Late issuance after an await is rejected by
+ * projectActionIssuance.contract.test.ts.
+ */
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R): R | undefined
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R, unavailable: () => R): R
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R, unavailable?: () => R): R | undefined {
+  let project: ProjectExecutionContext
+  try {
+    project = captureCurrentProjectExecutionContext()
+  } catch (error) {
+    if (!isProjectImportCancellation(error)) throw error
+    return unavailable?.()
+  }
+  return run(project)
+}
+
+/**
+ * Issuance point for actions that main started on its own trusted input (the global screenshot
+ * hotkey). Main fixes its committed binding before its awaits and names it in the event; the
+ * renderer adopts that project lifetime only while that very binding is still this window's
+ * current epoch. The wire identifies the action, it never authorizes it; a mismatch means the
+ * project changed in between, so the action is cancelled (undefined).
+ */
+export function withMainProjectAction<R>(surfaceBinding: unknown, run: (project: ProjectExecutionContext) => R): R | undefined {
+  const current = captureCurrentProjectCanvasReadSurfaceBinding()
+  const wire = surfaceBinding && typeof surfaceBinding === 'object' ? surfaceBinding as Partial<SurfacePortBindingWire> : null
+  if (!current || !wire?.binding || typeof wire.binding !== 'object' || !sameBinding(wire as SurfacePortBindingWire, current)) return undefined
+  return withProjectAction(run)
 }
 
 /** Async UI cleanup must not update a replacement project's component state. */
@@ -418,17 +455,6 @@ export function createProjectCanvasReadSurfaceCoordinator(
     getCurrentBinding() {
       return current?.binding ?? null
     },
-    captureProjectExecutionContext() {
-      const state = current
-      if (!state?.binding) throw new SurfacePortWireError('project_identity_unavailable')
-      const binding = Object.freeze({ ...state.binding.binding })
-      const assertProjectCurrent = (): void => {
-        if (current !== state || state.controller.signal.aborted || state.interactionController.signal.aborted ||
-          !state.binding || !sameProjectAgentBinding(binding, state.binding.binding)) throw new SurfacePortWireError('project_binding_stale')
-      }
-      assertProjectCurrent()
-      return Object.freeze({ binding, signal: state.interactionController.signal, assertCurrent: assertProjectCurrent })
-    },
     sealCanvasReadSnapshot(binding, snapshot) {
       const state = current
       if (!state?.binding || !state.bridge) {
@@ -548,6 +574,19 @@ export function createProjectCanvasReadSurfaceCoordinator(
         return write({ ...request, ...guard })
       }))
     },
+  })
+  // The lifetime is the hydration epoch's interaction controller: page changes keep it, any
+  // project replacement or release aborts it permanently (A → B → A cannot revive).
+  projectContextIssuers.set(coordinator, () => {
+    const state = current
+    if (!state?.binding) throw new SurfacePortWireError('project_identity_unavailable')
+    const binding = Object.freeze({ ...state.binding.binding })
+    const assertProjectCurrent = (): void => {
+      if (current !== state || state.controller.signal.aborted || state.interactionController.signal.aborted ||
+        !state.binding || !sameProjectAgentBinding(binding, state.binding.binding)) throw new SurfacePortWireError('project_binding_stale')
+    }
+    assertProjectCurrent()
+    return Object.freeze({ binding, signal: state.interactionController.signal, assertCurrent: assertProjectCurrent })
   })
   return coordinator
 }

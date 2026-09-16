@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { createCanvasReadSurfaceRegistry, createSurfaceOwnerAuthority } from '../capabilityCore/canvasReadSurfaceRegistry'
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
 import { workspaceProjectFile, workspaceProjectBackupFile } from '../workspace/workspacePaths'
@@ -9,6 +9,63 @@ import { createHttpFixture } from '../../tests/agent-runtime/httpFixture.mjs'
 import { openLaneWorkspace } from './laneWorkspace.mjs'
 import { bindLaneProjectSession } from './laneProjectSession'
 import type { LaneWorkspaceHandle, LaneWorkspaceProjection } from '../shared/agentLane/laneContracts'
+import { LANE_IPC_CHANNELS } from '../shared/agentLane/laneContracts'
+import { openLaneHistory } from './laneHistory.mjs'
+import { registerAgentLaneIpc } from './laneIpc'
+
+const ipc = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>() }))
+vi.mock('electron', () => ({ ipcMain: {
+  handle: (channel: string, handler: (...args: unknown[]) => unknown) => ipc.handlers.set(channel, handler),
+  removeHandler: (channel: string) => ipc.handlers.delete(channel),
+} }))
+vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: vi.fn() }))
+
+it('failed real workspace replacement retires the bound session and finishes cleanup before IPC reopens', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-session-replacement-'))
+  const ownerAuthority = createSurfaceOwnerAuthority()
+  const owner = ownerAuthority.capture({ contents: {}, frame: {}, webContentsId: 1, processId: 2,
+    frameRoutingId: 3, origin: 'file://', isLive: () => true })
+  const identity = { projectId: 'project-a', immutableProjectUuid: 'uuid-a', projectGeneration: 1, canonicalRootPath: root, canonicalRootDigest: 'root-a' }
+  const registry = createCanvasReadSurfaceRegistry({ ownerAuthority, resolveProjectIdentity: async () => identity })
+  const wire = await registry.commitCanvasRead(owner, { projectId: identity.projectId,
+    suspension: registry.suspend(owner, { surfaceInstanceId: 'fixture' }) })
+  const original = registry.openProjectSession(owner, wire.binding)
+  let opens = 0
+  const options = { projectDir: root, fetch: globalThis.fetch, tools: [], systemPrompt: 'Fixture.' }
+  const raw = await openLaneWorkspace(options, async options => {
+    if (++opens > 1) throw new Error('replacement open failure')
+    return openLaneHistory(options)
+  })
+  const cleanup = vi.fn()
+  const first = bindLaneProjectSession(raw, registry, original, cleanup)
+  let second: LaneWorkspaceHandle | undefined
+  const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
+  const openWorkspace = vi.fn(async () => {
+    if (openWorkspace.mock.calls.length === 1) return first
+    expect(cleanup).toHaveBeenCalledOnce()
+    const fresh = registry.openProjectSession(owner, wire.binding)
+    expect(fresh).not.toBe(original)
+    await registry.verifyProjectSession(fresh)
+    second = bindLaneProjectSession(await openLaneWorkspace(options), registry, fresh, () => undefined)
+    return second
+  })
+  const registration = registerAgentLaneIpc({ openWorkspace, validate: vi.fn(), configure: vi.fn(),
+    receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
+  const send = (request: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, request)
+  try {
+    const opened = await send({ kind: 'workspace-open', binding: wire.binding }) as { workspaceId: string }
+    expect(await send({ kind: 'lane-create', laneName: 'research', workspaceId: opened.workspaceId })).toMatchObject({ ok: false })
+    expect(() => registry.resolveProjectSession(original)).toThrow()
+    expect(await send({ kind: 'workspace-open', binding: wire.binding })).toMatchObject({ ok: true })
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(sender.send.mock.calls.filter(([, projection]) => projection.closed)).toHaveLength(1)
+  } finally {
+    await registration.dispose()
+    await first.close()
+    await second?.close()
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
 
 it('reopens a real workspace with fresh verified authority after manifest IO recovers, retaining history without reviving old actions', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-session-reopen-'))

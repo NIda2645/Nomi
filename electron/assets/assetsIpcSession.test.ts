@@ -27,7 +27,7 @@ describe('interactive asset IPC publication authority', () => {
   it.each(['nomi:assets:import-file', 'nomi:assets:import-native-file'])('preserves real admission reasons in the wire reply: %s', async channel => {
     registerAssetsIpc({} as CanvasReadSurfaceIpcCapture)
     mocks.importFile.mockRejectedValue(new MediaImportRejectedError({
-      ok: false, reason: 'no-disk-space', fileBytes: 16, freeBytes: 0, neededBytes: 16,
+      reason: 'no-disk-space', fileBytes: 16, freeBytes: 0, neededBytes: 16,
     }, 'note.txt'))
     await expect(mocks.handlers.get(channel)!(event, { projectId: 'a' })).resolves.toEqual({
       ok: false, failure: { code: 'capability_execution_failed', reason: 'no-disk-space' },

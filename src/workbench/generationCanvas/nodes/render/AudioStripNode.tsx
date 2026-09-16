@@ -17,7 +17,7 @@ import { readAudioMeta } from '../../model/nodeMetaFields'
 import { useNodeUsageCount } from '../../hooks/useNodeRelationships'
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'
 import { persistNodeImageFile } from '../../adapters/persistNodeImage'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { UsageDot } from './CardCommon'
 import { NodeEmptyState } from './NodeEmptyState'
 import { getDisplayTitle } from '../../model/titleHeuristics'
@@ -131,23 +131,23 @@ function AudioStripNodeImpl({ node }: Props): JSX.Element {
       const file = event.currentTarget.files?.[0]
       event.currentTarget.value = ''
       if (!file) return
-      let context: ProjectExecutionContext
-      try { context = captureCurrentProjectExecutionContext() } catch { return }
-      const createdAt = Date.now()
-      // 先落盘再写 store：音频动辄几十 MB，base64 进 store 会被每次写入整段 JSON 深拷贝、
-      // 随每次保存全量序列化（同「九宫格切图卡死」的病根，见 docs/plan/2026-08-20-grid-split-freeze.md）。
-      void persistNodeImageFile(file, node.id, context).then((localUrl) => {
-        if (!isProjectExecutionContextCurrent(context)) return
-        if (!localUrl) {
-          reportFeedback(t('generationCommon.audio.uploadFailed'))
-          return
-        }
-        updateNode(node.id, {
-          result: { id: `upload-audio-${createdAt}`, type: 'audio', url: localUrl, createdAt },
-          meta: { ...(node.meta || {}), audioFilename: file.name, audioMime: file.type },
+      withProjectAction((context) => {
+        const createdAt = Date.now()
+        // 先落盘再写 store：音频动辄几十 MB，base64 进 store 会被每次写入整段 JSON 深拷贝、
+        // 随每次保存全量序列化（同「九宫格切图卡死」的病根，见 docs/plan/2026-08-20-grid-split-freeze.md）。
+        void persistNodeImageFile(file, node.id, context).then((localUrl) => {
+          if (!isProjectExecutionContextCurrent(context)) return
+          if (!localUrl) {
+            reportFeedback(t('generationCommon.audio.uploadFailed'))
+            return
+          }
+          updateNode(node.id, {
+            result: { id: `upload-audio-${createdAt}`, type: 'audio', url: localUrl, createdAt },
+            meta: { ...(node.meta || {}), audioFilename: file.name, audioMime: file.type },
+          })
+        }).catch((error) => {
+          if (isProjectExecutionContextCurrent(context) && !isProjectImportCancellation(error)) reportFeedback(t('generationCommon.audio.uploadFailed'))
         })
-      }).catch((error) => {
-        if (isProjectExecutionContextCurrent(context) && !isProjectImportCancellation(error)) reportFeedback(t('generationCommon.audio.uploadFailed'))
       })
     },
     [node.id, node.meta, updateNode, reportFeedback, t],

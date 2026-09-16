@@ -57,6 +57,7 @@ import {
 } from './assetLibraryUsage'
 import { markLibraryUsed, sortByLibraryUsage, useLibraryUsageVersion } from '../library/libraryDiscovery'
 import { runPasteShareLinkImport } from './pasteShareLinkImport'
+import { withProjectAction } from '../project/projectCanvasReadSurface'
 
 const DEFAULT_GRID_COLS = 3
 const ESTIMATED_ROW_HEIGHT = 121
@@ -276,8 +277,8 @@ export function AssetLibraryContent({
     const all = Array.from(event.currentTarget.files || [])
     event.currentTarget.value = ''
     const { mediaFiles, audioFiles, unsupported } = classifyUploadFiles(all)
-    if (mediaFiles.length) {
-      void importLocalMediaFilesToGenerationCanvas(mediaFiles, { basePosition: { x: 120, y: 90 } })
+    if (mediaFiles.length) withProjectAction((projectContext) => {
+      void importLocalMediaFilesToGenerationCanvas(mediaFiles, { projectContext, basePosition: { x: 120, y: 90 } })
         .then((result) => {
           if (result.cancelled) return
           refreshProjectAssets()
@@ -295,7 +296,7 @@ export function AssetLibraryContent({
           console.error('asset library upload failed', error)
           report(t('assetLibrary.importFailed'), 'error')
         })
-    }
+    })
     if (audioFiles.length) {
       void importAudioFilesToLibrary(audioFiles, { projectId })
         .then((result) => {

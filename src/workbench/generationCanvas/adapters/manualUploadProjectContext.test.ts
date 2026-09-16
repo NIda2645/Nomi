@@ -12,11 +12,12 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('../../../i18n', () => ({ default: { t: (key: string) => key } }))
 vi.mock('../../project/projectCanvasReadSurface', () => ({
   isProjectImportCancellation: (error: { code?: string }) => error.code === 'project_binding_stale' || error.code === 'capability_cancelled',
-  captureCurrentProjectExecutionContext: () => {
+  // The single issuance point hands the originating project to the action.
+  withProjectAction: (run: (project: unknown) => unknown) => run((() => {
     const signal = fixture.controller.signal
     return { signal, binding: { projectId: 'project-a', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 },
       assertCurrent() { if (signal.aborted) throw Object.assign(new Error('stale'), { code: 'project_binding_stale' }) } }
-  },
+  })()),
   isProjectExecutionContextCurrent: (context?: ProjectExecutionContext) => { try { if (!context) return false; context.assertCurrent(); return true } catch { return false } },
 }))
 vi.mock('../../api/assetUploadApi', () => ({ importWorkbenchLocalAssetFile: fixture.upload, hostedAssetUrl: (asset: { data: { url: string } }) => asset.data.url }))
@@ -35,6 +36,7 @@ import { useNodeAssetDrop } from '../nodes/useNodeAssetDrop'
 import { useComposerAttachments } from '../../ai/composer/useComposerAttachments'
 import { useNodeImageUpload } from './useNodeImageUpload'
 import { usePanoramaImport } from '../nodes/director/panels/usePanoramaImport'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes }); return { promise, resolve } }
 function replaceProject() { fixture.controller.abort(); fixture.controller = new AbortController() }
@@ -80,7 +82,7 @@ it('checks queued composer state updaters again when React applies them', async 
 
 it('does not replace an image node after its persistence completes in a replacement project', async () => {
   const wait = deferred<typeof asset>(); fixture.upload.mockReturnValue(wait.promise)
-  useNodeImageUpload('node-1', 'test')('data:image/png;base64,eA==', file())
+  useNodeImageUpload('node-1', 'test')('data:image/png;base64,eA==', file(), withProjectAction((project: ProjectExecutionContext) => project)!)
   fixture.update.mockClear(); replaceProject(); wait.resolve(asset)
   await wait.promise; await Promise.resolve(); await Promise.resolve()
   expect(fixture.update).not.toHaveBeenCalled()

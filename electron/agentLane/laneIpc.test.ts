@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { LANE_IPC_CHANNELS, type LaneWorkspaceHandle } from '../shared/agentLane/laneContracts'
+import { LANE_IPC_CHANNELS, type LaneWorkspaceHandle, type LaneWorkspaceProjection } from '../shared/agentLane/laneContracts'
 import { LANE_ERROR_CODES } from '../shared/agentLane/laneErrorCodes'
 
 const ipc = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>() }))
@@ -16,17 +16,24 @@ describe('desktop lane lifecycle', () => {
     const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     let publish!: Parameters<LaneWorkspaceHandle['subscribe']>[0]
     const unsubscribe = vi.fn()
-    const initial = { lanes: [], active: { lane: 'main', parts: [] } }
+    const unknownMetric = { state: 'unknown', reason: 'no-settled-turn' } as const
+    const initial: LaneWorkspaceProjection = { lanes: [], active: {
+      lane: 'main', parts: [], running: false, queues: [],
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0,
+        cost: unknownMetric, contextTokens: unknownMetric, reasoningTokens: unknownMetric },
+      thinking: { supportedLevels: ['off'], level: 'off', canTurnOff: true },
+    } }
     const workspace = { projection: () => initial, subscribe: (listener: typeof publish) => { publish = listener; return unsubscribe },
-      close: vi.fn(), execute: vi.fn() } as unknown as LaneWorkspaceHandle
+      close: vi.fn(async () => { publish({ ...initial, closed: true }) }), execute: vi.fn() } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure: vi.fn(), receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
     const send = (wire: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, wire)
     try {
       const opened = await send({ kind: 'workspace-open', binding: { projectId: 'a' } }) as { workspaceId: string }
-      const terminal = { ...initial, closed: true } as unknown as Parameters<typeof publish>[0]
+      const terminal: LaneWorkspaceProjection = { ...initial, closed: true }
       publish(terminal)
       expect(sender.send).toHaveBeenLastCalledWith(LANE_IPC_CHANNELS.projection, { ...terminal, workspaceId: opened.workspaceId })
       expect(unsubscribe).toHaveBeenCalledOnce()
+      expect(workspace.close).toHaveBeenCalledOnce()
       expect(sender.removeListener).toHaveBeenCalledWith('destroyed', expect.any(Function))
       expect(await send({ kind: 'approval', toolCallId: 'old', action: 'allow-once', workspaceId: opened.workspaceId })).toMatchObject({ ok: false, code: 'agent_lane_closed' })
       expect(workspace.execute).not.toHaveBeenCalled()

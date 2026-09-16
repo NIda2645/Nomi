@@ -1,7 +1,6 @@
 import type { AssetRef } from '../../assets/assetTypes'
 import { hostedAssetUrl, importWorkbenchLocalAssetFile, type WorkbenchAssetDto } from '../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
-import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 
 type ImportLocalAsset = (
   file: File,
@@ -36,15 +35,13 @@ export function createExclusiveClipNodeUpload(): <T>(task: () => Promise<T>) => 
  */
 export async function importClipNodeAsset(
   file: File,
-  projectId: string,
+  context: ProjectExecutionContext,
   importFile: ImportLocalAsset = importWorkbenchLocalAssetFile,
-  originatingContext?: ProjectExecutionContext,
 ): Promise<ClipNodeUploadResult> {
-  let context = originatingContext
+  // 目标项目只从发起动作签发的 context 派生，不再另收一个 projectId 标量（两个真相源会对不上）。
+  const { projectId } = context.binding
   try {
-    context ??= captureCurrentProjectExecutionContext()
     context.assertCurrent()
-    if (context.binding.projectId !== projectId) throw new SurfacePortWireError('project_binding_stale')
     const uploaded = await importFile(file, file.name, { projectId, projectBinding: context.binding, assertCurrent: context.assertCurrent })
     context.assertCurrent()
     const renderUrl = hostedAssetUrl(uploaded)

@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPendingRetryImports, importLocalMediaFilesToGenerationCanvas, retryLocalAssetImport } from './assetImportAdapter'
 import { useGenerationCanvasStore, __resetGenerationCanvasHistoryForTests } from '../store/generationCanvasStore'
 import type { WorkbenchAssetDto } from '../../api/assetUploadApi'
-import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator } from '../../project/projectCanvasReadSurface'
+import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import type { CanvasReadSurfaceBridge } from '../../../../electron/shared/surfacePortBinding'
 import * as capacitySnapshot from '../../assets/storageCapacitySnapshot'
 import { AssetImportError } from '../../../../electron/shared/contracts/assetImportResult'
 
+function currentProject(): ProjectExecutionContext {
+  return withProjectAction((context) => context, () => { throw new Error('no project open') })
+}
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes }); return { promise, resolve } }
 const asset = { id: 'asset-1', name: 'image', userId: 'local', createdAt: '', updatedAt: '', data: { url: 'nomi-local://asset/project-a/image.png' } }
 const makeCoordinator = () => createProjectCanvasReadSurfaceCoordinator({
@@ -59,7 +62,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     const dimension = vi.fn(async () => stage === 'dimensions' ? wait.promise : null)
     const capacity = vi.spyOn(capacitySnapshot, 'readStorageCapacitySnapshot').mockImplementation(async () => stage === 'capacity' ? wait.promise : null)
     const uploadFile = vi.fn(async () => asset)
-    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: dimension, uploadFile,
     })
     await vi.waitFor(() => expect(stage === 'capacity' ? capacity : dimension).toHaveBeenCalled())
@@ -73,7 +76,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     const uploadFile = vi.fn(async () => { if (stage === 'upload') await wait.promise; return asset })
     const duration = vi.fn(async () => { await wait.promise; return 3 })
     const recoverFile = vi.fn(async () => null)
-    const pending = importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+    const pending = importLocalMediaFilesToGenerationCanvas([makeVideoFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, uploadFile, recoverFile, readVideoDuration: duration,
     })
     await vi.waitFor(() => expect(stage === 'upload' ? uploadFile : duration).toHaveBeenCalled())
@@ -89,7 +92,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   it('handles a pending preparation rejection after project cancellation without leaking a rejection', async () => {
     let rejectDimensions!: (error: Error) => void
     const dimensions = new Promise<null>((_, reject) => { rejectDimensions = reject })
-    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(),
       readImageDimensions: () => dimensions,
     })
@@ -100,7 +103,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   })
 
   it('keeps failed retries attached to the original project lifetime', async () => {
-    await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+    await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, uploadFile: async () => { throw new Error('disk failed') }, recoverFile: async () => null,
     })
     const oldNode = useGenerationCanvasStore.getState().nodes[0]
@@ -113,7 +116,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
   it.each(['capability_cancelled', 'project_binding_stale'] as const)('does not recover or use a data URL for main-process %s', async (code) => {
     const recoverFile = vi.fn(async () => null)
     const failure = new AssetImportError({ code, reason: 'import-failed' })
-    await expect(importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    await expect(importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null,
       uploadFile: async () => { throw failure }, recoverFile,
     })).resolves.toMatchObject({ cancelled: true, created: [], failedCount: 0 })
@@ -130,7 +133,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
       readAsDataURL() { finishDataUrl = () => this.onload?.() }
     })
     const recoverFile = vi.fn(async () => { if (stage === 'recovery') await wait.promise; return null })
-    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    const pending = importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null,
       uploadFile: async () => { throw new Error('disk failed') }, recoverFile,
     })
@@ -145,7 +148,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     const importFile = vi.fn(async (_request: unknown) => ({ ok: true, asset }))
     const importNativeFile = vi.fn(async (_file: File, _request: unknown) => transport === 'native' ? { ok: true, asset } : null)
     vi.stubGlobal('window', { nomiDesktop: { assets: { importFile, importNativeFile } } })
-    await importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    await importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 0, y: 0 }, capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null,
     })
     const request = transport === 'native' ? importNativeFile.mock.calls[0][1] : importFile.mock.calls[0][0]
@@ -161,7 +164,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     const uploadFile = vi.fn(() => new Promise<WorkbenchAssetDto>((resolve) => {
       resolveUpload = resolve
     }))
-    const promise = importLocalMediaFilesToGenerationCanvas([makeImageFile()], {
+    const promise = importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
       basePosition: { x: 10, y: 20 },
       createObjectUrl: () => 'blob:preview',
       revokeObjectUrl: vi.fn(),
@@ -204,7 +207,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
       updatedAt: '',
       data: { url: 'nomi-local://asset/project-1/clip.mp4' },
     }))
-    await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+    await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], { projectContext: currentProject(),
       basePosition: { x: 10, y: 20 },
       createObjectUrl: () => 'blob:preview',
       revokeObjectUrl: vi.fn(),
@@ -222,7 +225,7 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
 
   it('keeps a failed video import retryable instead of losing the source file', async () => {
     const uploadFile = vi.fn(async () => { throw new Error('copy failed') })
-    const result = await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], {
+    const result = await importLocalMediaFilesToGenerationCanvas([makeVideoFile()], { projectContext: currentProject(),
       basePosition: { x: 10, y: 20 },
       uploadFile,
       recoverFile: async () => null,

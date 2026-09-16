@@ -2,6 +2,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { rasterizeArtifactToReferenceAsset, type ReferenceAssetDeps } from './rasterizeArtifactToReferenceAsset'
 import type { AgentArtifactMeta } from '../../model/artifactMeta'
 import type { WorkbenchAssetDto } from '../../../api/assetUploadApi'
+import type { ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
+
+const project = { controller: new AbortController() }
+/** 动作起点签发的原项目生命周期（此处由测试替身扮演；被替换即 abort）。 */
+function originProject(): ProjectExecutionContext {
+  const signal = project.controller.signal
+  return { signal, binding: { projectId: 'p', immutableProjectUuid: 'uuid-p', projectGeneration: 1 },
+    assertCurrent() { if (signal.aborted) throw Object.assign(new Error('stale'), { code: 'project_binding_stale' }) },
+  }
+}
 
 // 固化为参考图（SVG → PNG → asset 节点）契约。真实路径依赖 canvas + 主进程资产导入
 //（importWorkbenchLocalAssetFile），node 单测用 stub deps 锁「数据流与分支语义」；
@@ -45,11 +55,25 @@ function makeDeps(overrides: Partial<ReferenceAssetDeps> = {}): ReferenceAssetDe
 }
 
 describe('rasterizeArtifactToReferenceAsset', () => {
-  beforeEach(() => { store.calls = []; store.nodes = [] })
+  beforeEach(() => { store.calls = []; store.nodes = []; project.controller = new AbortController() })
+
+  it.each(['read', 'rasterize', 'upload'])('cancels without creating a node when project changes during %s', async phase => {
+    const deps = makeDeps()
+    const replace = () => { project.controller.abort(); project.controller = new AbortController() }
+    if (phase === 'read') deps.readText = vi.fn(async () => { replace(); return svg })
+    if (phase === 'rasterize') deps.rasterizeSvgToPngBlob = vi.fn(async () => { replace(); return new Blob(['png']) })
+    if (phase === 'upload') {
+      const upload = deps.uploadFile
+      deps.uploadFile = vi.fn(async (...args: Parameters<ReferenceAssetDeps['uploadFile']>) => { replace(); return upload(...args) })
+    }
+    await expect(rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), deps)).resolves.toMatchObject({ ok: false, cancelled: true })
+    expect(store.calls).toEqual([])
+    if (phase !== 'upload') expect(deps.uploadFile).not.toHaveBeenCalled()
+  })
 
   it('SVG 产物 → 栅格化 → 上传 PNG → 新建 asset 节点 + result.url（可被连线当参考）', async () => {
     const deps = makeDeps()
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, deps)
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), deps)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.nodeId).toBe('asset-1')
@@ -67,7 +91,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
 
   it('非 SVG 类型拒绝（v1 仅 SVG 可栅格化）', async () => {
     const deps = makeDeps()
-    const result = await rasterizeArtifactToReferenceAsset({ ...svgArtifact, fileType: 'html' }, deps)
+    const result = await rasterizeArtifactToReferenceAsset({ ...svgArtifact, fileType: 'html' }, originProject(), deps)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toContain('unsupported-file-type')
     expect(deps.uploadFile).not.toHaveBeenCalled()
@@ -75,7 +99,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
 
   it('读文本失败 → 不落盘、不建节点', async () => {
     const deps = makeDeps({ readText: vi.fn(async () => { throw new Error('404') }) })
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, deps)
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), deps)
     expect(result.ok).toBe(false)
     expect(deps.uploadFile).not.toHaveBeenCalled()
     expect(store.calls.length).toBe(0)
@@ -83,14 +107,14 @@ describe('rasterizeArtifactToReferenceAsset', () => {
 
   it('栅格化失败（SVG 有外部引用/不可渲染）→ 干净失败', async () => {
     const deps = makeDeps({ rasterizeSvgToPngBlob: vi.fn(async () => null) })
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, deps)
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), deps)
     expect(result.ok).toBe(false)
     expect(deps.uploadFile).not.toHaveBeenCalled()
   })
 
   it('上传失败 → 不建节点', async () => {
     const deps = makeDeps({ uploadFile: vi.fn(async () => { throw new Error('disk full') }) })
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, deps)
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), deps)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe('disk full')
     expect(store.calls.length).toBe(0)
@@ -101,7 +125,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
   it('中文标题的产物：参考图文件名解码回中文，不留百分号转义', async () => {
     const deps = makeDeps()
     const encoded = `nomi-local://asset/p/assets/imported/2026-09-07/${encodeURIComponent('开场构图线稿')}.svg`
-    const result = await rasterizeArtifactToReferenceAsset({ fileType: 'svg', url: encoded }, deps)
+    const result = await rasterizeArtifactToReferenceAsset({ fileType: 'svg', url: encoded }, originProject(), deps)
 
     expect(result.ok).toBe(true)
     const uploaded = vi.mocked(deps.uploadFile).mock.calls[0][0]
@@ -116,7 +140,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
   it('空格与括号一样解码（同一类：URL 段编码，不是某种语言）', async () => {
     const deps = makeDeps()
     const encoded = `nomi-local://asset/p/assets/imported/d/${encodeURIComponent('shot 01 (draft)')}.svg`
-    await rasterizeArtifactToReferenceAsset({ fileType: 'svg', url: encoded }, deps)
+    await rasterizeArtifactToReferenceAsset({ fileType: 'svg', url: encoded }, originProject(), deps)
 
     expect(vi.mocked(deps.uploadFile).mock.calls[0][0].name).toBe('shot 01 (draft).png')
   })
@@ -126,7 +150,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
   // 更狠的一条是分类：画布按 activeCategoryId 分屏，参考图落错分类等于落在另一块屏上（看起来「点了没反应」）。
   it('给了源节点就生在它右边、并跟它同一个分类（落点与分类都跟源卡走）', async () => {
     store.nodes = [{ id: 'artifact-1', categoryId: 'references', position: { x: 900, y: 200 }, size: { width: 420, height: 260 } }]
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, makeDeps(), 'artifact-1')
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), makeDeps(), 'artifact-1')
     expect(result.ok).toBe(true)
     const add = store.calls.find((call) => (call as { op: string }).op === 'addNode') as { input: Record<string, unknown> }
     expect(add.input.categoryId).toBe('references')
@@ -135,7 +159,7 @@ describe('rasterizeArtifactToReferenceAsset', () => {
 
   it('源节点 id 认不出来时不炸，退回缺省落点与 shots 分类', async () => {
     store.nodes = []
-    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, makeDeps(), 'missing-node')
+    const result = await rasterizeArtifactToReferenceAsset(svgArtifact, originProject(), makeDeps(), 'missing-node')
     expect(result.ok).toBe(true)
     const add = store.calls.find((call) => (call as { op: string }).op === 'addNode') as { input: Record<string, unknown> }
     expect(add.input.categoryId).toBe('shots')

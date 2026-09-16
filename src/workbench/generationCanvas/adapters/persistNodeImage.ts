@@ -1,5 +1,5 @@
 import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
-import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 
 /**
@@ -18,9 +18,12 @@ import { surfacePortFailure } from '../../../../electron/shared/surfacePortBindi
  * 直接 await 落盘换 nomi-local；只有落盘失败才退回 base64 兜底（可持久化、不丢图）。
  */
 
-/** File → 本地资产文件，返回可持久化 nomi-local:// URL；失败返回 null（调用方退回 base64 兜底）。 */
+/**
+ * File → 本地资产文件，返回可持久化 nomi-local:// URL；失败返回 null（调用方退回 base64 兜底）。
+ * context 必传：由发起动作在第一个 await 之前捕获。这里不再「忘了传就现取当前项目」——那正是晚绑定漏门。
+ */
 export async function persistNodeImageFile(
-  file: File, ownerNodeId: string, context: ProjectExecutionContext = captureCurrentProjectExecutionContext(),
+  file: File, ownerNodeId: string, context: ProjectExecutionContext,
 ): Promise<string | null> {
   context.assertCurrent()
   try {
@@ -48,7 +51,7 @@ export async function persistNodeImageBlob(
   blob: Blob,
   ownerNodeId: string,
   fileName: string,
-  context: ProjectExecutionContext = captureCurrentProjectExecutionContext(),
+  context: ProjectExecutionContext,
 ): Promise<{ url: string; localOnly: boolean }> {
   context.assertCurrent()
   const type = blob.type || 'image/png'

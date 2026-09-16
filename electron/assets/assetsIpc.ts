@@ -8,7 +8,7 @@ import { copyProjectAsset, importRemoteAsset } from "./projectAssetStore";
 import type { AssetImportResult } from '../shared/contracts/assetImportResult';
 import type { AssetImportFailure } from '../shared/contracts/assetImportResult';
 import type { CanvasReadSurfaceIpcCapture } from '../capabilityCore/canvasReadSurfaceIpc';
-import { assertProjectAgentBinding, type ProjectBinding } from '../shared/projectBinding';
+import { createProjectInteractionCapture } from './projectInteractionCapture';
 import { surfacePortFailure } from '../shared/surfacePortBinding';
 
 function importFailure(error: unknown, reason: AssetImportFailure['reason'] = 'import-failed'): AssetImportResult<never> {
@@ -67,16 +67,9 @@ export function parseCopyProjectAssetPayload(payload: unknown): {
 }
 
 export function registerAssetsIpc(surface: CanvasReadSurfaceIpcCapture): void {
-  const captureInteraction = (event: Electron.IpcMainInvokeEvent, payload: unknown): (() => void) | undefined => {
-    const raw = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
-    // Explicit project/background imports retain disk identity without acquiring
-    // interactive authority. Agent artifacts always provide the full binding.
-    if (raw.projectBinding === undefined) return undefined;
-    const binding = raw.projectBinding as ProjectBinding;
-    assertProjectAgentBinding(binding);
-    const session = surface.openProjectSession(event, binding);
-    return () => surface.assertProjectSession(event, session);
-  };
+  // Explicit project/background imports retain disk identity without acquiring
+  // interactive authority. Agent artifacts always provide the full binding.
+  const captureInteraction = createProjectInteractionCapture(surface);
   ipcMain.handle("nomi:clipboard:read-file-paths", (event) => {
     // 外泄面：剪贴板里的文件路径会暴露用户磁盘布局，只准主窗口读。
     assertTrustedSender(event);

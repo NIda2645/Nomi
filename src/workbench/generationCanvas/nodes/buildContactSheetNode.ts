@@ -7,6 +7,8 @@
 // 落盘走 persistNodeImageBlob，避免 PNG base64 挂进 store（图多即卡，见 useNodeImageEditing 头注释）。
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { persistNodeImageBlob } from '../adapters/persistNodeImage'
+import { isProjectImportCancellation } from '../adapters/assetImportAdapter'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { CONTACT_SHEET_DEFAULTS, computeContactSheetLayout, containRect } from './contactSheetLayout'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
@@ -92,35 +94,45 @@ export async function buildContactSheetNode(selectedNodeIds: readonly string[], 
     return false
   }
 
-  const rendered = await renderContactSheet(sources)
-  if (!rendered) {
-    reportFeedback(i18n.t('generationCommon.contactSheet.failed'))
-    return false
-  }
+  return withProjectAction(async (project) => {
+    try {
+      const rendered = await renderContactSheet(sources)
+      project.assertCurrent()
+      if (!rendered) {
+        reportFeedback(i18n.t('generationCommon.contactSheet.failed'))
+        return false
+      }
 
-  // 放在选中区右侧，别压着原图。
-  const picked = store.nodes.filter((node) => selectedNodeIds.includes(node.id))
-  const right = picked.reduce((max, node) => Math.max(max, node.position.x), 0)
-  const top = picked.reduce((min, node) => Math.min(min, node.position.y), Number.POSITIVE_INFINITY)
-  const created = store.addNode({
-    kind: 'image',
-    title: i18n.t('generationCommon.contactSheet.nodeTitle', { count: sources.length }),
-    position: { x: Math.round(right + 560), y: Math.round(Number.isFinite(top) ? top : 0) },
-    categoryId: picked[0]?.categoryId,
-  })
-  const createdAt = Date.now()
-  useGenerationCanvasStore.getState().selectNode(created.id)
+      // 放在选中区右侧，别压着原图。
+      const picked = store.nodes.filter((node) => selectedNodeIds.includes(node.id))
+      const right = picked.reduce((max, node) => Math.max(max, node.position.x), 0)
+      const top = picked.reduce((min, node) => Math.min(min, node.position.y), Number.POSITIVE_INFINITY)
+      const created = store.addNode({
+        kind: 'image',
+        title: i18n.t('generationCommon.contactSheet.nodeTitle', { count: sources.length }),
+        position: { x: Math.round(right + 560), y: Math.round(Number.isFinite(top) ? top : 0) },
+        categoryId: picked[0]?.categoryId,
+      })
+      const createdAt = Date.now()
+      useGenerationCanvasStore.getState().selectNode(created.id)
 
-  // 落盘换 nomi-local:// 之后**只写一次** store：base64 进 store 会被事件层整段 JSON 深拷贝，
-  // 联系表这种大图一次就是十几 MB（同 useNodeImageEditing 的收敛，见 persistNodeImageBlob 注释）。
-  const stored = await persistNodeImageBlob(rendered.blob, created.id, `contact-sheet-${createdAt}.png`)
-  useGenerationCanvasStore.getState().updateNode(created.id, {
-    result: { id: `contact-sheet-${createdAt}`, type: 'image', url: stored.url, createdAt },
-    meta: { localOnly: stored.localOnly, ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }) },
-  })
+      // 落盘换 nomi-local:// 之后**只写一次** store：base64 进 store 会被事件层整段 JSON 深拷贝，
+      // 联系表这种大图一次就是十几 MB（同 useNodeImageEditing 的收敛，见 persistNodeImageBlob 注释）。
+      const stored = await persistNodeImageBlob(rendered.blob, created.id, `contact-sheet-${createdAt}.png`, project)
+      project.assertCurrent()
+      useGenerationCanvasStore.getState().updateNode(created.id, {
+        result: { id: `contact-sheet-${createdAt}`, type: 'image', url: stored.url, createdAt },
+        meta: { localOnly: stored.localOnly, ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }) },
+      })
 
-  if (rendered.failed > 0) {
-    reportFeedback(i18n.t('generationCommon.contactSheet.someMissing', { count: rendered.failed }))
-  }
-  return true
+      if (rendered.failed > 0) {
+        reportFeedback(i18n.t('generationCommon.contactSheet.someMissing', { count: rendered.failed }))
+      }
+      return true
+    } catch (error) {
+      if (project.signal.aborted || isProjectImportCancellation(error)) return false
+      reportFeedback(i18n.t('generationCommon.contactSheet.failed'))
+      return false
+    }
+  }, async () => false)
 }

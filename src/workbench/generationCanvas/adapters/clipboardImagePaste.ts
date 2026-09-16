@@ -17,7 +17,7 @@ import {
 } from './assetImportAdapter'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import i18n from '../../../i18n'
-import { captureCurrentProjectExecutionContext, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 
 const IMAGE_URL_EXTENSION = /\.(?:png|jpe?g|webp|gif|avif|bmp|svg)(?:[?#].*)?$/i
@@ -49,17 +49,19 @@ type ClipboardMediaUrlCandidate = {
 }
 
 export type ClipboardMediaPasteOptions = {
+  /** 粘贴事件那一刻签发的原项目生命周期（必传）：转换、远程下载、落盘、落节点都只认它。 */
+  projectContext: ProjectExecutionContext
   basePosition: { x: number; y: number }
   categoryId?: string
   clipboardData?: DataTransfer | null
   fetchMedia?: typeof fetch
   fetchImage?: typeof fetch
   importRemoteUrl?: (url: string, fileName: string) => Promise<WorkbenchAssetDto | null>
-  importOptions?: Partial<ImportImageFilesOptions>
+  importOptions?: Partial<Omit<ImportImageFilesOptions, 'projectContext'>>
 }
 
 export type ClipboardImagePasteOptions = ClipboardMediaPasteOptions
-type ProjectClipboardOptions = ClipboardMediaPasteOptions & { projectContext: ProjectExecutionContext }
+type ProjectClipboardOptions = ClipboardMediaPasteOptions
 
 export type ClipboardMediaPasteResult = {
   handled: boolean
@@ -545,13 +547,12 @@ async function pasteRemoteClipboardMediaUrl(
 export async function pasteClipboardMediaToGenerationCanvas(
   options: ClipboardMediaPasteOptions,
 ): Promise<ClipboardMediaPasteResult> {
-  let projectContext: ProjectExecutionContext | undefined
+  const { projectContext } = options
   try {
-    projectContext = options.importOptions?.projectContext ?? captureCurrentProjectExecutionContext()
     projectContext.assertCurrent()
-    return await pasteClipboardMediaInProject({ ...options, projectContext })
+    return await pasteClipboardMediaInProject(options)
   } catch (error) {
-    if (!projectContext?.signal.aborted && !isProjectImportCancellation(error)) throw error
+    if (!projectContext.signal.aborted && !isProjectImportCancellation(error)) throw error
     return emptyResult(true)
   }
 }
