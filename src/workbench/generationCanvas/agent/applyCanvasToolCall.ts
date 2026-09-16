@@ -388,8 +388,8 @@ export async function applyCanvasToolCall(
     // agent-artifact 交付：Agent 手写的内容必须先落盘为项目资产（nomi-local://）才能建节点——
     // 节点不塞内联源码（meta.artifact.url 引用资产文件）。落盘是纯 IO，先全部完成再进 store 事务，
     // 任一失败即整批中止（一个计划一次意志；不建「指向不存在文件」的半截节点）。
-    const artifactUrlByClientId = new Map<string, { fileType: string; url: string }>()
-    for (const raw of incoming) {
+    const artifactUrlByInputIndex = new Map<number, { fileType: string; url: string }>()
+    for (const [index, raw] of incoming.entries()) {
       const node = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
       if (node.kind !== 'agent-artifact') continue
       const artifact = node.artifact && typeof node.artifact === 'object' ? (node.artifact as Record<string, unknown>) : {}
@@ -411,7 +411,7 @@ export async function applyCanvasToolCall(
       if (!delivered.ok) {
         throw new SurfacePortWireError(delivered.failure.code, delivered.failure.reason)
       }
-      artifactUrlByClientId.set(clientId, { fileType, url: delivered.url })
+      artifactUrlByInputIndex.set(index, { fileType, url: delivered.url })
     }
     const inputs: CreateGenerationNodeToolInput[] = incoming.map((raw, index) => {
       const node = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
@@ -457,7 +457,7 @@ export async function applyCanvasToolCall(
       // 标题由 agent 给（手艺产物的名字就是用户在画布上看到的）；无 prompt（不调模型）。
       if (kind === 'agent-artifact') {
         const clientId = typeof node.clientId === 'string' ? node.clientId : ''
-        const artifact = artifactUrlByClientId.get(clientId)
+        const artifact = artifactUrlByInputIndex.get(index)
         if (!artifact) {
           throw new Error(i18n.t('runtime.nodeRegistry.agent-artifact.deliverFailed', {
             name: clientId || i18n.t('runtime.nodeRegistry.agent-artifact.untitled'),

@@ -39,6 +39,7 @@
   "invariants": [
     "Storage accepts supported project document assets without broadening media placement",
     "Async asset IO retains originating project binding",
+    "Each batch artifact remains attached to its input node even when optional client IDs are absent or repeated",
     "Framework node dimensions derive from the domain sizing owner"
   ],
   "doors": [
@@ -454,6 +455,7 @@
     ]
   },
   "regression_tests": [
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.artifact.test.ts",
     "electron/assets/assetsIpcSession.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
     "electron/shared/contracts/assetImportResult.test.ts",
@@ -464,6 +466,7 @@
     "electron/assets/projectArtifactImport.test.ts"
   ],
   "class_regression_tests": [
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.artifact.test.ts",
     "electron/assets/assetsIpcSession.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
     "electron/shared/contracts/assetImportResult.test.ts",
