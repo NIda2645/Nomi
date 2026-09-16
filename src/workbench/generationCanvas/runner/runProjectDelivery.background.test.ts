@@ -112,7 +112,7 @@ describe('background generation keeps the project identity fixed at submission',
       projectTarget: projectA,
       pollIntervalMs: 1,
       listCatalogVendors: async () => [{ key: 'asyncv', name: 'asyncv', enabled: true, hasApiKey: true, createdAt: '', updatedAt: '' }],
-      listCatalogModels: async () => [{ modelKey: 'video-model', vendorKey: 'asyncv', labelZh: 'v', kind: 'video', enabled: true, published: true, availability: { usable: true }, createdAt: '', updatedAt: '' }],
+      listCatalogModels: async () => [{ modelKey: 'video-model', vendorKey: 'asyncv', labelZh: 'v', kind: 'video', enabled: true, published: true, availability: { usable: true }, publishedModes: ['text_to_video'], createdAt: '', updatedAt: '' }],
       runTask: async (_vendor, request, projectId) => {
         submissions.push({ projectId, extras: request.extras })
         await session.open('project-b')

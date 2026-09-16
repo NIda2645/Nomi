@@ -14,8 +14,6 @@ import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/genera
 
 export type RunProjectTarget = ProjectBinding
 
-export type RunOutcomeDelivery = 'store' | 'disk' | 'missing'
-
 /** 运行所属项目此刻是否就是画布里加载着的那个（身份逐字段比，不按 id 猜）。 */
 export function isRunTargetLoaded(target: RunProjectTarget): boolean {
   return isProjectBindingOpen(target)
@@ -28,15 +26,16 @@ export function whenRunTargetLoaded(target: RunProjectTarget, apply: () => void)
   return true
 }
 
-function applyToStore(nodeId: string, outcome: NodeRunOutcome): RunOutcomeDelivery {
+/** true = 结局写进了正打开的原项目画布（节点已不在则什么都不写，返回 false）。 */
+function applyToStore(nodeId: string, outcome: NodeRunOutcome): boolean {
   const store = useGenerationCanvasStore.getState()
-  if (!store.nodes.some((node) => node.id === nodeId)) return 'missing'
+  if (!store.nodes.some((node) => node.id === nodeId)) return false
   if (outcome.kind === 'result') store.addNodeResult(nodeId, outcome.result)
   else if (outcome.kind === 'status') store.setNodeStatus(nodeId, outcome.status, outcome.error)
   else if (outcome.kind === 'run-started') store.appendNodeRun(nodeId, outcome.run)
   else if (outcome.kind === 'content') store.updateNode(nodeId, { contentJson: outcome.contentJson })
   else store.setNodeProgress(nodeId, outcome.progress)
-  return 'store'
+  return true
 }
 
 export type RunGraph = { nodes: GenerationCanvasNode[]; edges: GenerationCanvasEdge[] }
@@ -71,8 +70,11 @@ function serializeDiskDelivery<T>(projectId: string, operation: () => Promise<T>
   return result
 }
 
-/** 把一次运行的结局投递到它的原项目。 */
-export async function deliverRunOutcome(target: RunProjectTarget, nodeId: string, outcome: NodeRunOutcome): Promise<RunOutcomeDelivery> {
+/**
+ * 把一次运行的结局投递到它的原项目。返回 true = 落进了正打开的原项目画布（调用方据此做只属于前台的收尾：
+ * 模型健康记账、立即保存）；false = 写进了原项目的盘上副本，或节点已不存在。
+ */
+export async function deliverRunOutcome(target: RunProjectTarget, nodeId: string, outcome: NodeRunOutcome): Promise<boolean> {
   if (isRunTargetLoaded(target)) return applyToStore(nodeId, outcome)
   return serializeDiskDelivery(target.projectId, async () => {
     if (isRunTargetLoaded(target)) return applyToStore(nodeId, outcome)
@@ -81,9 +83,9 @@ export async function deliverRunOutcome(target: RunProjectTarget, nodeId: string
     if (isRunTargetLoaded(target)) return applyToStore(nodeId, outcome)
     const canvas = record?.payload.generationCanvas
     const node = canvas?.nodes.find((candidate) => candidate.id === nodeId)
-    if (!record || !canvas || !node) return 'missing'
+    if (!record || !canvas || !node) return false
     const nodes = canvas.nodes.map((candidate) => candidate.id === nodeId ? { ...candidate, ...nodeRunOutcomePatch(candidate, outcome) } : candidate)
     await saveLocalProject(target.projectId, { ...record.payload, generationCanvas: { ...canvas, nodes } }, record.name)
-    return 'disk'
+    return false
   })
 }

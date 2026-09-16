@@ -384,7 +384,10 @@ export function importLocalFilesToGenerationCanvas(
   options: { basePosition: { x: number; y: number }; categoryId?: string },
 ): Promise<void> {
   // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
-  return withProjectAction((projectContext) => importLocalMediaFilesToGenerationCanvas([...files], { ...options, projectContext })
+  // 先同步签发、再挂 .catch：这个命令不会把拒绝丢给调用它的控件。
+  const projectContext = withProjectAction((issued) => issued)
+  if (!projectContext) return Promise.resolve()
+  return importLocalMediaFilesToGenerationCanvas([...files], { ...options, projectContext })
     .then((result) => {
       if (result.cancelled) return
       const notes: string[] = []
@@ -393,5 +396,5 @@ export function importLocalFilesToGenerationCanvas(
       if (result.failedCount > 0) notes.push(`${result.failedCount} 个导入失败`)
       if (notes.length) reportCanvasFeedback(notes.join('；'), result.failedCount > 0 ? 'error' : 'warning', { projectId: projectContext.binding.projectId, identity: 'canvas-import', reason: 'import-incomplete' })
     })
-    .catch(() => {}), () => Promise.resolve())
+    .catch(() => {})
 }

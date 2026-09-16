@@ -15,50 +15,51 @@ export async function extractVideoFrameToNode(node: GenerationCanvasNode, which:
   const label = i18n.t(`generationCommon.node.extractFrame.${which}`)
 
   // 动作起点签发原项目：抽帧落盘、落节点都只认这一份，换项目即取消（不在新项目落节点、不报迟到的错）。
-  await withProjectAction(async (project) => {
-    const extractFrame = getDesktopBridge()?.video?.extractFrame
-    if (!extractFrame) {
-      reportFeedback(i18n.t('generationCommon.node.extractFrame.desktopOnly'))
-      return
-    }
-
-    let url: string
-    try {
-      const result = await extractFrame({ videoUrl, which, projectId: project.binding.projectId, projectBinding: project.binding })
-      project.assertCurrent()
-      url = result?.url || ''
-    } catch (error) {
-      if (project.signal.aborted || isProjectImportCancellation(error)) return
-      reportFeedback(i18n.t('generationCommon.node.extractFrame.failed', {
-          frame: label,
-          message: error instanceof Error ? error.message : String(error),
-        }))
-      return
-    }
-    if (!url) {
-      reportFeedback(i18n.t('generationCommon.node.extractFrame.empty', { frame: label }))
-      return
-    }
-
-    const store = useGenerationCanvasStore.getState()
-    const size = resolveNodeVisualSize(node)
-    const created = store.addNode({
-      kind: 'image',
-      title: i18n.t('generationCommon.node.extractFrame.nodeTitle', {
-        title: (node.title || i18n.t('generationCommon.node.extractFrame.defaultVideoTitle')).trim(),
-        frame: label,
-      }),
-      position: {
-        x: node.position.x + size.width + 64,
-        y: node.position.y + (which === 'last' ? size.height / 2 + 24 : 0),
-      },
-      categoryId: node.categoryId,
-    })
-    // 抽出的帧本身就是成品图 → 直接落 result，新节点立即可见、可当参考，无需再生成。
-    const createdAt = Date.now()
-    store.updateNode(created.id, { result: { id: `frame-${which}-${createdAt}`, type: 'image', url, createdAt } })
-    store.selectNode(created.id)
-  }, async () => {
+  const project = withProjectAction((issued) => issued)
+  if (!project) {
     reportFeedback(i18n.t('generationCommon.node.extractFrame.missingProject'))
+    return
+  }
+  const extractFrame = getDesktopBridge()?.video?.extractFrame
+  if (!extractFrame) {
+    reportFeedback(i18n.t('generationCommon.node.extractFrame.desktopOnly'))
+    return
+  }
+
+  let url: string
+  try {
+    const result = await extractFrame({ videoUrl, which, projectId: project.binding.projectId, projectBinding: project.binding })
+    project.assertCurrent()
+    url = result?.url || ''
+  } catch (error) {
+    if (project.signal.aborted || isProjectImportCancellation(error)) return
+    reportFeedback(i18n.t('generationCommon.node.extractFrame.failed', {
+        frame: label,
+        message: error instanceof Error ? error.message : String(error),
+      }))
+    return
+  }
+  if (!url) {
+    reportFeedback(i18n.t('generationCommon.node.extractFrame.empty', { frame: label }))
+    return
+  }
+
+  const store = useGenerationCanvasStore.getState()
+  const size = resolveNodeVisualSize(node)
+  const created = store.addNode({
+    kind: 'image',
+    title: i18n.t('generationCommon.node.extractFrame.nodeTitle', {
+      title: (node.title || i18n.t('generationCommon.node.extractFrame.defaultVideoTitle')).trim(),
+      frame: label,
+    }),
+    position: {
+      x: node.position.x + size.width + 64,
+      y: node.position.y + (which === 'last' ? size.height / 2 + 24 : 0),
+    },
+    categoryId: node.categoryId,
   })
+  // 抽出的帧本身就是成品图 → 直接落 result，新节点立即可见、可当参考，无需再生成。
+  const createdAt = Date.now()
+  store.updateNode(created.id, { result: { id: `frame-${which}-${createdAt}`, type: 'image', url, createdAt } })
+  store.selectNode(created.id)
 }

@@ -133,8 +133,8 @@ export async function recoverNodeResult(nodeId: string, project: ProjectExecutio
     const normalized = normalizeCatalogTaskResult(current, node)
     // 结构闸（找回路径）：找回本身就发生在 CDN 快过期的时刻，此处尤其要把临时 URL 落地——落进任务所属项目。
     const localized = await localizeRemoteResultUrl(normalized, target.projectId, id)
-    const delivered = await deliverRunOutcome(target, id, { kind: 'result', result: localized })
-    if (delivered === 'store') await persistActiveWorkbenchProjectNow().catch(() => {})
+    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result: localized })
+    if (landedInOpenProject) await persistActiveWorkbenchProjectNow().catch(() => {})
   } catch (error) {
     // 终态是 failed（normalizeCatalogTaskResult 对 failed 抛错）→ 这才是真失败，落 error 桶。
     await deliverRunOutcome(target, id, { kind: 'status', status: 'error', error: describeOpaqueFailure(error) })

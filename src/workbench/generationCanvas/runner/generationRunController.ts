@@ -315,7 +315,7 @@ export async function runGenerationNode(
       }
     }
     if (!result) throw new Error(describeOpaqueFailure(null))
-    const delivered = await deliverRunOutcome(target, id, { kind: 'result', result })
+    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result })
     // 自动另存（集中设置页开启时）：新生成的图/视频静默复制一份到用户目录。fire-and-forget——不 await
     // （不拖慢生成收尾）、失败不冒泡（best-effort 全在主进程侧，关着/没设目录/失败都静默）。只对新生成，
     // 找回(recoverTaskActions)不触发、避免重复另存。
@@ -325,9 +325,9 @@ export async function runGenerationNode(
         ?.assets?.autoSave?.({ url: result.url as string, suggestedName: title || undefined })
         .catch(() => undefined)
     }
-    if (delivered === 'store') recordNodeModelSuccess(id)
+    if (landedInOpenProject) recordNodeModelSuccess(id)
     useGenerationQueueStore.getState().markSettled(batchId, id, 'success')
-    if (delivered === 'store') await persistActiveWorkbenchProjectNow().catch(() => {})
+    if (landedInOpenProject) await persistActiveWorkbenchProjectNow().catch(() => {})
     return result
   } catch (error: unknown) {
     // P 轨遮罩取消：用户主动停的，不进红色错误桶也不算模型失败——回 idle 静静结束。
