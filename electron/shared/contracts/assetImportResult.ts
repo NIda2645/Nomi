@@ -1,6 +1,8 @@
+import { parseSurfacePortFailure, type SurfacePortWireErrorCode } from '../surfacePortBinding'
+
 /** Ordinary data crosses IPC; Error prototypes and custom properties do not. */
 export type AssetImportFailure = Readonly<{
-  code: 'capability_execution_failed' | 'project_binding_stale' | 'project_identity_unavailable'
+  code: SurfacePortWireErrorCode
   reason: 'unsupported-kind' | 'no-disk-space' | 'over-hard-cap' | 'import-failed'
 }>
 
@@ -24,7 +26,7 @@ export function unwrapAssetImportResult<T>(result: AssetImportResult<T>): T {
   if (!result.ok) {
     const failure = result.failure
     if (!failure || typeof failure !== 'object' || Array.isArray(failure)
-      || !['capability_execution_failed', 'project_binding_stale', 'project_identity_unavailable'].includes(failure.code)
+      || !parseSurfacePortFailure(failure)
       || !['unsupported-kind', 'no-disk-space', 'over-hard-cap', 'import-failed'].includes(failure.reason)) {
       throw new AssetImportError({ code: 'capability_execution_failed', reason: 'import-failed' })
     }

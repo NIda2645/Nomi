@@ -579,7 +579,7 @@ function registerIpc(): void {
     const { listProjectAssets } = await loadRuntimeModule();
     return listProjectAssets(payload);
   });
-  registerAssetsIpc();
+  registerAssetsIpc(canvasReadExecutionRuntime.surfaceCapture);
   registerSettingsIpc();
   registerVideoIpc();
   registerScreenshotIpc();

@@ -11,6 +11,7 @@
     "Async artifact writes during project switch"
   ],
   "scope_paths": [
+    "electron/main.ts",
     "electron/shared/contracts/mediaImportPolicy.ts",
     "electron/assets/localFileImport.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
@@ -41,6 +42,7 @@
     "Framework node dimensions derive from the domain sizing owner"
   ],
   "doors": [
+    { "kind": "write", "path": "electron/main.ts", "line": 582, "symbol": "registerAssetsIpc" },
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
@@ -386,7 +388,7 @@
   ],
   "door_reduction": {
     "before": 57,
-    "after": 57,
+    "after": 58,
     "why_not": "Distinct import transports, attachment and media placements, ordinary/duplicate node projections and binding consumers retain their entry points; admission and geometry ownership are centralized."
   },
   "generality_proof": "Every local file entry converges on importLocalFile admission; artifact IO captures identity before awaits; both Flow projections use toGenerationFlowNode.",
@@ -453,6 +455,7 @@
     ]
   },
   "regression_tests": [
+    "electron/assets/assetsIpcSession.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
     "electron/shared/contracts/assetImportResult.test.ts",
     "electron/shared/contracts/mediaImportPolicy.test.ts",
@@ -462,6 +465,7 @@
     "electron/assets/projectArtifactImport.test.ts"
   ],
   "class_regression_tests": [
+    "electron/assets/assetsIpcSession.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
     "electron/shared/contracts/assetImportResult.test.ts",
     "electron/shared/contracts/mediaImportPolicy.test.ts",

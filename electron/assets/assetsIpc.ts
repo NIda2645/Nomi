@@ -6,17 +6,23 @@ import { getAutoSavePrefs, setAutoSavePrefs, type AutoSavePrefs } from "./downlo
 import { CLIPBOARD_FILE_PATH_FORMATS, parseClipboardFilePaths } from "./clipboardFilePaths";
 import { copyProjectAsset } from "./projectAssetStore";
 import type { AssetImportResult } from '../shared/contracts/assetImportResult';
+import type { AssetImportFailure } from '../shared/contracts/assetImportResult';
+import type { CanvasReadSurfaceIpcCapture } from '../capabilityCore/canvasReadSurfaceIpc';
+import { assertProjectAgentBinding, type ProjectBinding } from '../shared/projectBinding';
+import { surfacePortFailure } from '../shared/surfacePortBinding';
 
-async function importAssetResult(payload: unknown, allowSourcePath = false): Promise<AssetImportResult<unknown>> {
+function importFailure(error: unknown, reason: AssetImportFailure['reason'] = 'import-failed'): AssetImportResult<never> {
+  return { ok: false, failure: { code: surfacePortFailure(error).code, reason } };
+}
+
+async function importAssetResult(payload: unknown, capture: () => (() => void) | undefined, allowSourcePath = false): Promise<AssetImportResult<unknown>> {
+  let assertCurrent: (() => void) | undefined;
+  try { assertCurrent = capture(); } catch (error) { return importFailure(error); }
   const { importLocalFile, MediaImportRejectedError } = await import('./localFileImport');
   try {
-    return { ok: true, asset: await importLocalFile(payload, { allowSourcePath }) };
+    return { ok: true, asset: await importLocalFile(payload, { allowSourcePath, assertCurrent }) };
   } catch (error) {
-    const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
-    return { ok: false, failure: {
-      code: code === 'project_binding_stale' || code === 'project_identity_unavailable' ? code : 'capability_execution_failed',
-      reason: error instanceof MediaImportRejectedError ? error.rejection.reason : 'import-failed',
-    } };
+    return importFailure(error, error instanceof MediaImportRejectedError ? error.rejection.reason : 'import-failed');
   }
 }
 
@@ -60,7 +66,17 @@ export function parseCopyProjectAssetPayload(payload: unknown): {
   return { sourceProjectId, targetProjectId, relativePath };
 }
 
-export function registerAssetsIpc(): void {
+export function registerAssetsIpc(surface: CanvasReadSurfaceIpcCapture): void {
+  const captureInteraction = (event: Electron.IpcMainInvokeEvent, payload: unknown): (() => void) | undefined => {
+    const raw = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+    // Explicit project/background imports retain disk identity without acquiring
+    // interactive authority. Agent artifacts always provide the full binding.
+    if (raw.projectBinding === undefined) return undefined;
+    const binding = raw.projectBinding as ProjectBinding;
+    assertProjectAgentBinding(binding);
+    const session = surface.openProjectSession(event, binding);
+    return () => surface.assertProjectSession(event, session);
+  };
   ipcMain.handle("nomi:clipboard:read-file-paths", (event) => {
     // 外泄面：剪贴板里的文件路径会暴露用户磁盘布局，只准主窗口读。
     assertTrustedSender(event);
@@ -112,11 +128,11 @@ export function registerAssetsIpc(): void {
     assertTrustedUiSender(event);
     const raw = (payload || {}) as Record<string, unknown>;
     // 字节通道不接受 renderer 自报路径；原生路径只能经 webUtils 桥进入下面的专用通道。
-    return importAssetResult({ ...raw, sourcePath: undefined });
+    return importAssetResult({ ...raw, sourcePath: undefined }, () => captureInteraction(event, raw));
   });
   ipcMain.handle("nomi:assets:import-native-file", async (event, payload) => {
     assertTrustedSender(event);
-    return importAssetResult(payload, true);
+    return importAssetResult(payload, () => captureInteraction(event, payload), true);
   });
   ipcMain.handle("nomi:assets:ensure-playable", async (event, payload) => {
     assertTrustedSender(event);
