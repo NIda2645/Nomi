@@ -108,7 +108,8 @@ try {
     const saved = await window.nomiDesktop.assets.importFile({
       projectId: activeId, bytes: binary.buffer, contentType: 'video/mp4', fileName: 'reference.mp4', kind: 'upload',
     })
-    const url = saved?.data?.url || saved?.url || ''
+    if (!saved.ok) return { error: saved.failure.reason }
+    const url = saved.asset.data?.url || ''
     if (!url) return { error: 'asset import failed' }
     const store = window.__nomiCanvasStore.getState()
     const node = store.addNode({ kind: 'video', title: '咖啡馆人物镜头', position: { x: 120, y: 160 } })

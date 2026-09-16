@@ -266,3 +266,21 @@ describe("canvas.write renderer evidence capture", () => {
     }, () => current)).rejects.toMatchObject({ code: "capability_target_stale" });
   });
 });
+
+it('preserves compensated business failure without pretending the receipt is unresolved', async () => {
+  const snapshot = writableSnapshot();
+  const admission = buildCanvasWriteAdmission(captureCanvasWriteRawEvidence(snapshot, "node-real"));
+  deps.applyProposalBatch.mockResolvedValue({
+    status: 'aborted', proposalId: 'receipt-a', failedIndex: 0,
+    reason: '/private/ignored-diagnostic', compensatedNodeIds: [],
+    failure: { code: 'capability_execution_failed', reason: 'no-disk-space' },
+  });
+  await expect(executeCanvasWriteTarget({
+    input: { operation: 'set_node_prompt', nodeId: 'node-real', prompt: 'new' },
+    ...admission, receiptProposalId: 'receipt-a', approvalId: 'approval-a',
+    actionHash: 'a'.repeat(64), ...executionGuard,
+  }, () => snapshot)).rejects.toMatchObject({
+    code: 'capability_execution_failed', reason: 'no-disk-space',
+    message: 'capability_execution_failed',
+  });
+});

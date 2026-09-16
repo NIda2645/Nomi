@@ -2,7 +2,8 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-import-dedup-'))
+import { writeWorkspaceManifest } from '../workspace/workspaceManifest'
+const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-import-dedup-')))
 vi.mock('../projects/repository', () => ({
   projectDirById: (id: string) => path.join(root, id),
   sanitizeName: (value: unknown, fallback = 'asset') => String(value || fallback),
@@ -11,7 +12,14 @@ const { writeAsset, copyAssetFile, listProjectAssets } = await import('./project
 type Asset = { id: string; data: { absolutePath: string; url: string } }
 const bytes = Buffer.from('same media bytes')
 const write = async (project = 'one', content = bytes, name = 'sample.png', kind = 'upload') => await writeAsset(project, content, name, 'image/png', { kind }) as Asset
-beforeEach(() => { fs.rmSync(root, { recursive: true, force: true }); fs.mkdirSync(root) })
+beforeEach(() => {
+  fs.rmSync(root, { recursive: true, force: true }); fs.mkdirSync(root)
+  for (const id of ['one', 'two']) {
+    const directory = path.join(root, id); fs.mkdirSync(directory)
+    writeWorkspaceManifest(directory, { id, name: id, version: 2, createdAt: 1, updatedAt: 1, savedAt: 1, revision: 0,
+      immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1, payload: {} })
+  }
+})
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }))
 describe('project upload content identity', () => {
   it('reuses the same bytes across successive imports and different filenames', async () => {

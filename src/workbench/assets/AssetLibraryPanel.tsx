@@ -19,14 +19,16 @@ import { assetTimeValue, mergeAssetRefs, useAllProjectAssets } from './useAllPro
 import { assetsForFolderScope, folderCountsForAssets, useAssetFolderInteractions, useAssetFolders } from './useAssetFolders'
 import { filterAssets, type AssetRef } from './assetTypes'
 import { ASSET_LIBRARY_DRAG_MIME, serializeAssetLibraryDrag } from './assetLibraryDrag'
-import { importAudioFilesToLibrary, type AudioImportResult } from './importAudioToLibrary'
-import type { GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
+import { importAudioFilesToLibrary } from './importAudioToLibrary'
+import { importLocalMediaFilesToGenerationCanvas, type GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { confirmDialog, DesignEmptyState, NomiLoadingMark, promptDialog, TooltipProvider } from '../../design'
 import { FindReferenceSection } from './FindReferenceSection'
 import type { ReferencePlatform } from '../../../electron/shared/contracts/referenceSearch'
-import { acceptAttrForKinds, mediaKindFromExtension } from '../../../electron/assets/mediaTypes'
+import { mediaImportRejectionMessages, reportAudioImport } from './mediaImportMessage'
+import { dropKindFromFile } from '../generationCanvas/model/nodeAssetDrop'
+import { acceptAttrForSurface } from '../../../electron/shared/contracts/mediaImportPolicy'
 import { notify } from '../../ui/notificationPolicy'
 import {
   AssetGridCell,
@@ -55,14 +57,14 @@ import {
 } from './assetLibraryUsage'
 import { markLibraryUsed, sortByLibraryUsage, useLibraryUsageVersion } from '../library/libraryDiscovery'
 import { runPasteShareLinkImport } from './pasteShareLinkImport'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../project/projectCanvasReadSurface'
 
 const DEFAULT_GRID_COLS = 3
 const ESTIMATED_ROW_HEIGHT = 121
 const COMPACT_ESTIMATED_ROW_HEIGHT = 113
 
-// 从媒体类型单一真相源派生（通配 + 显式扩展名，见 mediaTypes.acceptAttrForKinds 注释）。
-// 素材库三类：图 / 视频 / 音频。accept 放行的每个格式下游都接得住（同源,不再漂移）。
-const UPLOAD_ACCEPT = acceptAttrForKinds(['image', 'video', 'audio'])
+// 从准入 owner 派生：这个面收哪些 kind 由 MEDIA_IMPORT_SURFACES 声明（不许自己写 accept 字面量）。
+const UPLOAD_ACCEPT = acceptAttrForSurface('asset-library')
 
 // 上传文件分流（纯函数便于单测）。kind 判定：MIME 优先，缺/不匹配回落扩展名——与音频分支对称，
 // 修「空 MIME 的图/视频被静默丢」(Gap B)。图/视频走画布节点(可拖画布)，音频落项目文件进库。
@@ -77,11 +79,8 @@ export function classifyUploadFiles(files: File[]): UploadClassification {
   const audioFiles: File[] = []
   const unsupported: File[] = []
   for (const file of files) {
-    const mime = (file.type || '').toLowerCase()
-    const kind = mime.startsWith('image/') ? 'image'
-      : mime.startsWith('video/') ? 'video'
-      : mime.startsWith('audio/') ? 'audio'
-      : mediaKindFromExtension(file.name) // 空/未知 MIME → 扩展名兜底
+    // kind 判定用 dropKindFromFile 单源（MIME 优先、octet-stream 回落扩展名），不再另写一遍。
+    const kind = dropKindFromFile(file)
     if (kind === 'image' || kind === 'video') mediaFiles.push(file)
     else if (kind === 'audio') audioFiles.push(file)
     else unsupported.push(file)
@@ -92,16 +91,8 @@ export function classifyUploadFiles(files: File[]): UploadClassification {
 // 导入结果 → 用户反馈（Gap C：此前计数全被丢弃，超大/重复/失败/超上限零提示）。
 function reportMediaImport(result: GenerationAssetImportResult, present: (message: string) => void): void {
   const skipped: string[] = []
-  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
+  for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
   if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
-  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
-  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
-  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
-}
-
-function reportAudioImport(result: AudioImportResult, present: (message: string) => void): void {
-  const skipped: string[] = []
-  if (result.skippedTooLargeCount) skipped.push(i18n.t('assetLibrary.skippedTooLarge', { count: result.skippedTooLargeCount }))
   if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
   if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
   if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
@@ -278,11 +269,10 @@ export function AssetLibraryContent({
     const all = Array.from(event.currentTarget.files || [])
     event.currentTarget.value = ''
     const { mediaFiles, audioFiles, unsupported } = classifyUploadFiles(all)
-    if (mediaFiles.length) {
-      void import('../generationCanvas/adapters/assetImportAdapter')
-        .then(({ importLocalMediaFilesToGenerationCanvas }) =>
-          importLocalMediaFilesToGenerationCanvas(mediaFiles, { basePosition: { x: 120, y: 90 } }))
+    if (mediaFiles.length) withProjectAction((projectContext) => {
+      void importLocalMediaFilesToGenerationCanvas(mediaFiles, { projectContext, basePosition: { x: 120, y: 90 } })
         .then((result) => {
+          if (result.cancelled) return
           refreshProjectAssets()
           refreshAllProjectAssets()
           reportMediaImport(result, report)
@@ -298,21 +288,23 @@ export function AssetLibraryContent({
           console.error('asset library upload failed', error)
           report(t('assetLibrary.importFailed'), 'error')
         })
-    }
-    if (audioFiles.length) {
-      void importAudioFilesToLibrary(audioFiles, { projectId })
+    })
+    if (audioFiles.length) withProjectAction((project) => {
+      void importAudioFilesToLibrary(audioFiles, project)
         .then((result) => {
+          if (!isProjectExecutionContextCurrent(project)) return
           refreshProjectAssets()
           refreshAllProjectAssets()
           reportAudioImport(result, report)
         })
         .catch((error) => {
+          if (!isProjectExecutionContextCurrent(project) || isProjectImportCancellation(error)) return
           console.error('asset library audio upload failed', error)
           report(t('assetLibrary.audioImportFailed'), 'error')
         })
-    }
+    })
     if (unsupported.length) {
-      report(t('assetLibrary.skippedUnsupported', { count: unsupported.length }), 'warning')
+      for (const f of unsupported) report(t('assetLibrary.rejectedUnsupportedUnknown', { name: f.name || t('assetLibrary.unnamedFile') }), 'warning')
     }
   }, [projectId, refreshAllProjectAssets, refreshProjectAssets, present, report, t])
 
@@ -419,8 +411,10 @@ export function AssetLibraryContent({
         setPreviewAsset(asset)
         return
       }
-      void addAssetToTimelineEnd(asset).then((added) => {
-        if (added) markLibraryUsed('asset', asset.id)
+      withProjectAction((project) => {
+        void addAssetToTimelineEnd(asset, project).then((added) => {
+          if (added) markLibraryUsed('asset', asset.id)
+        })
       })
       return
     }
@@ -491,6 +485,7 @@ export function AssetLibraryContent({
 
   const deleteSelectedProjectAssets = React.useCallback(async (): Promise<void> => {
     present('')
+    const loaded = withProjectAction((project) => project) ?? null
     if (!projectId) {
       report(t('assetLibrary.deleteNoProject'), 'warning')
       return
@@ -505,11 +500,11 @@ export function AssetLibraryContent({
       confirmLabel: t('assetLibrary.delete'),
       danger: true,
     })
-    if (!confirmed) return
+    if (!confirmed || (loaded && !isProjectExecutionContextCurrent(loaded))) return
     try {
       // 串行：同一关闭项目的多张结果必须一张张基于最新 record 改，Promise.all 会各读同一旧快照后互相覆盖。
       const outcomes: Awaited<ReturnType<typeof deleteAssetResult>>[] = []
-      for (const asset of selectedProjectAssets) outcomes.push(await deleteAssetResult(asset, projectId))
+      for (const asset of selectedProjectAssets) outcomes.push(await deleteAssetResult(asset, loaded))
       const removedCount = outcomes.reduce((total, outcome) => total + outcome.removedResultCount, 0)
       const deletedFileCount = outcomes.reduce((total, outcome) => total + outcome.deletedFileCount, 0)
       const failedFileCount = outcomes.reduce((total, outcome) => total + outcome.failedFileCount, 0)
@@ -526,6 +521,7 @@ export function AssetLibraryContent({
 
   const deleteOneAsset = React.useCallback(async (asset: AssetRef): Promise<void> => {
     present('')
+    const loaded = withProjectAction((project) => project) ?? null
     if (!assetBelongsToProject(asset, projectId)) {
       report(t('assetLibrary.externalAssetHint'), 'info')
       return
@@ -536,9 +532,9 @@ export function AssetLibraryContent({
       confirmLabel: t('assetLibrary.delete'),
       danger: true,
     })
-    if (!confirmed) return
+    if (!confirmed || (loaded && !isProjectExecutionContextCurrent(loaded))) return
     try {
-      const outcome = await deleteAssetResult(asset, projectId || '')
+      const outcome = await deleteAssetResult(asset, loaded)
       refreshProjectAssets()
       refreshAllProjectAssets()
       setPreviewAsset((current) => current?.id === asset.id ? null : current)

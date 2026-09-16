@@ -44,18 +44,12 @@ export function capabilityProjectBindingError(leaseProjectId: string, openProjec
 }
 
 /**
- * 项目身份的唯一解析处：**显式（已校验的 lease）优先**，没给才回退到 GUI 当前项目。
- *
- * 回退这一支只服务应用内 Agent / Surface 端口的调用者——它们按定义就只操作打开的那个项目，
- * 手上没有 lease。MCP 路一定带 projectId（rpcServer 在 lease 校验后铸的），走不到回退。
+ * 项目身份的唯一解析处：只认**显式**项目——MCP 路是已校验的 lease，应用内 Surface 端口是
+ * coordinator 按已验证 binding 下发的 projectId。没有「回退到 GUI 当前项目」这一支：
+ * 需要当前项目的调用者必须在动作起点经 withProjectAction 签发，再把它显式传进来。
  */
-export function resolveCapabilityProjectId(
-  explicitProjectId: unknown,
-  readOpenProjectId: () => string,
-  missingProjectMessage: string,
-): string {
-  const explicit = typeof explicitProjectId === 'string' ? explicitProjectId.trim() : ''
-  const projectId = explicit || readOpenProjectId().trim()
+export function requireCapabilityProjectId(explicitProjectId: unknown, missingProjectMessage: string): string {
+  const projectId = typeof explicitProjectId === 'string' ? explicitProjectId.trim() : ''
   if (!projectId) throw new Error(missingProjectMessage)
   return projectId
 }

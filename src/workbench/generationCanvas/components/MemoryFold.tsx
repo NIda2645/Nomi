@@ -3,7 +3,8 @@ import { IconBrain, IconChevronDown, IconPin, IconPinFilled, IconX } from '@tabl
 import { cn } from '../../../utils/cn'
 import { useTranslation } from 'react-i18next'
 import { notify } from '../../../ui/notificationPolicy'
-import { getDesktopActiveProjectId, subscribeDesktopActiveProjectIdChange } from '../../../desktop/activeProject'
+import { useOpenProjectId } from '../../project/useOpenProjectId'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import {
   fetchProjectMemoryFacts,
   removeProjectMemoryFact,
@@ -19,7 +20,7 @@ import {
 export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element | null {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
-  const projectId = React.useSyncExternalStore(subscribeDesktopActiveProjectIdChange, getDesktopActiveProjectId, getDesktopActiveProjectId)
+  const projectId = useOpenProjectId()
   const [factState, setFactState] = React.useState<{ projectId: string; facts: MemoryFactView[] } | null>(null)
   const facts = factState?.projectId === projectId ? factState.facts : []
   const [editingId, setEditingId] = React.useState<string | null>(null)
@@ -28,9 +29,11 @@ export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element 
 
   // 重取时机:挂载+每轮对话后(refreshKey)+每次展开(锁/解锁等画布动作不经对话,展开时要新鲜)。
   React.useEffect(() => {
+    // 换项目时 effect 清理把 alive 置 false：旧项目的结果晚到也不会显示到新项目上。
     let alive = true
-    void fetchProjectMemoryFacts().then((next) => {
-      if (alive && getDesktopActiveProjectId() === projectId) setFactState({ projectId, facts: next })
+    if (!projectId) return undefined
+    void fetchProjectMemoryFacts(projectId).then((next) => {
+      if (alive) setFactState({ projectId, facts: next })
     })
     return () => {
       alive = false
@@ -45,24 +48,26 @@ export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element 
    * 文字弹回原样，没有任何东西说改失败了——他会以为自己没保存上（设计系统 §4.1 C1）。
    * 一个包装管三处：成功了刷新列表，失败了说一句、并把列表拉回真相（乐观显示不留假象）。
    */
-  const runMemoryCommand = (command: () => Promise<MemoryFactView[]>): void => {
-    const projectId = getDesktopActiveProjectId()
+  const runMemoryCommand = (command: (projectId: string) => Promise<MemoryFactView[]>): void => withProjectAction((project) => {
+    // 点按钮即动作起点：签发此刻打开的项目；结果只写回它，换了项目就不再动这张卡。
+    const projectId = project.binding.projectId
+    const current = () => isProjectExecutionContextCurrent(project)
     setFeedback(null)
-    void command()
-      .then((next) => { if (getDesktopActiveProjectId() === projectId) setFactState({ projectId, facts: next }) })
+    void command(projectId)
+      .then((next) => { if (current()) setFactState({ projectId, facts: next }) })
       .catch((error: unknown) => {
         console.error('project memory command failed', error)
-        if (getDesktopActiveProjectId() !== projectId) return
+        if (!current()) return
         notify({ identity: `memory:${projectId}`, reason: 'change-failed', message: t('generationCommon.memory.changeFailed'), type: 'error', level: 'inline', present: (message) => setFeedback({ projectId, message }) })
-        void fetchProjectMemoryFacts().then((next) => { if (getDesktopActiveProjectId() === projectId) setFactState({ projectId, facts: next }) }).catch(() => undefined)
+        void fetchProjectMemoryFacts(projectId).then((next) => { if (current()) setFactState({ projectId, facts: next }) }).catch(() => undefined)
       })
-  }
+  })
 
   const commitEdit = (fact: MemoryFactView): void => {
     setEditingId(null)
     const text = draft.trim()
     if (!text || text === fact.text) return
-    runMemoryCommand(() => updateProjectMemoryFact(fact.id, { text }))
+    runMemoryCommand((projectId) => updateProjectMemoryFact(projectId, fact.id, { text }))
   }
 
   return (
@@ -81,7 +86,7 @@ export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element 
         {t('generationCommon.memory.count', { count: facts.length })}
         <IconChevronDown size={11} className={cn('ml-0.5 transition-transform', open && 'rotate-180')} />
       </button>
-      {feedback?.projectId === getDesktopActiveProjectId() ? <p role="status" className="m-0 px-3 text-caption text-nomi-danger">{feedback.message}</p> : null}
+      {feedback?.projectId === projectId ? <p role="status" className="m-0 px-3 text-caption text-nomi-danger">{feedback.message}</p> : null}
       {open ? (
         <ul className={cn('flex flex-col gap-1 px-3 pb-2 list-none p-0 m-0')}>
           {facts.map((fact) => (
@@ -128,7 +133,7 @@ export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element 
                     : 'text-nomi-ink-30 opacity-0 group-hover:opacity-100 hover:text-nomi-ink-60',
                 )}
                 aria-label={fact.pinned ? t('generationCommon.memory.unpin') : t('generationCommon.memory.pin')}
-                onClick={() => runMemoryCommand(() => updateProjectMemoryFact(fact.id, { pinned: !fact.pinned }))}
+                onClick={() => runMemoryCommand((projectId) => updateProjectMemoryFact(projectId, fact.id, { pinned: !fact.pinned }))}
               >
                 {fact.pinned ? <IconPinFilled size={12} /> : <IconPin size={12} stroke={1.8} />}
               </button>
@@ -139,7 +144,7 @@ export function MemoryFold({ refreshKey }: { refreshKey: number }): JSX.Element 
                   'text-nomi-ink-30 opacity-0 group-hover:opacity-100 hover:text-nomi-ink-60',
                 )}
                 aria-label={t('generationCommon.memory.delete')}
-                onClick={() => runMemoryCommand(() => removeProjectMemoryFact(fact.id))}
+                onClick={() => runMemoryCommand((projectId) => removeProjectMemoryFact(projectId, fact.id))}
               >
                 <IconX size={12} stroke={1.8} />
               </button>

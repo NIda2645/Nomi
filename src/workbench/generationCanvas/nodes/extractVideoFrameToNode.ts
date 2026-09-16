@@ -4,7 +4,7 @@
 // 失败一律人话 toast、不冒充（resolver/IPC 已封死"视频/封面当首帧"）。
 import { resolveNodeVisualSize } from './nodeSizing'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { isProjectImportCancellation, withProjectAction } from '../../project/projectCanvasReadSurface'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
@@ -14,8 +14,9 @@ export async function extractVideoFrameToNode(node: GenerationCanvasNode, which:
   if (node.result?.type !== 'video' || !videoUrl) return
   const label = i18n.t(`generationCommon.node.extractFrame.${which}`)
 
-  const projectId = getActiveWorkbenchProjectId()
-  if (!projectId) {
+  // 动作起点签发原项目：抽帧落盘、落节点都只认这一份，换项目即取消（不在新项目落节点、不报迟到的错）。
+  const project = withProjectAction((issued) => issued)
+  if (!project) {
     reportFeedback(i18n.t('generationCommon.node.extractFrame.missingProject'))
     return
   }
@@ -27,9 +28,11 @@ export async function extractVideoFrameToNode(node: GenerationCanvasNode, which:
 
   let url: string
   try {
-    const result = await extractFrame({ videoUrl, which, projectId })
+    const result = await extractFrame({ videoUrl, which, projectId: project.binding.projectId, projectBinding: project.binding })
+    project.assertCurrent()
     url = result?.url || ''
   } catch (error) {
+    if (project.signal.aborted || isProjectImportCancellation(error)) return
     reportFeedback(i18n.t('generationCommon.node.extractFrame.failed', {
         frame: label,
         message: error instanceof Error ? error.message : String(error),

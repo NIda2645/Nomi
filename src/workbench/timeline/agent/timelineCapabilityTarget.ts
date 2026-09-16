@@ -8,8 +8,7 @@ import type {
   TimelineWriteResult,
 } from '../../../../electron/shared/agentCapabilities/timelineWrite'
 import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
-import { resolveCapabilityProjectId } from '../../capability/capabilityProjectBinding'
+import { requireCapabilityProjectId } from '../../capability/capabilityProjectBinding'
 import { clearAdoptionUndoSnapshot, workbenchAdoptionPorts } from '../../adoption/adoptionStorePorts'
 import { useWorkbenchStore } from '../../workbenchStore'
 import {
@@ -37,9 +36,9 @@ export type TimelineWriteTargetExecution = Readonly<{
    * 已校验的 lease 项目（MCP 路）。到得了这里就说明它**已经**是 Nomi 打开的那个项目
    * ——不匹配在 capabilityApplyHandler 的项目身份闸就被点名拒了。这里用它而不是再去问一次
    * GUI，是为了收据/撤销元数据的项目身份来自 lease 这一个源，不再从 GUI 状态二次推断。
-   * 缺省 = 应用内 Surface 端口调用者，落回 GUI 当前项目。
+   * 应用内 Surface 端口：coordinator 按已验证 binding 下发。没有「缺省读 GUI 当前项目」。
    */
-  projectId?: string
+  projectId: string
   input: TimelineWriteInput
   target: TimelineCapabilityTarget
   preconditions: TimelineCapabilityPreconditions
@@ -50,10 +49,10 @@ export type TimelineWriteTargetExecution = Readonly<{
   assertCurrent(): void
 }>
 
-/** 收据/撤销元数据的项目身份：已校验的 lease 优先，没给才落回 GUI 当前项目。 */
+/** 收据/撤销元数据的项目身份：只认请求显式带来的项目（lease 或 coordinator 下发）。 */
 function writeProjectId(request: TimelineWriteTargetExecution): string {
   try {
-    return resolveCapabilityProjectId(request.projectId, getDesktopActiveProjectId, 'project_scope_required')
+    return requireCapabilityProjectId(request.projectId, 'project_scope_required')
   } catch {
     return ''
   }

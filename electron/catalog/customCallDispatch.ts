@@ -10,7 +10,7 @@ import { traceVendorCompleted, traceVendorRequested } from "../events/vendorCall
 import { assertLocalAssetTransportReady, localizeAssetsForVendor, resolveAssetIngestionWithFallback } from "./assetLocalization";
 import { decryptApiKeyRecord } from "./secrets";
 import { readNomiLocalAsset, postJsonForAssetUpload, postMultipartForAssetUpload, putBinaryForAssetUpload } from "../assets/localAssetFile";
-import { unlocalizedTaskAsset } from "../tasks/activeProjectFallback";
+import { unlocalizedTaskAsset } from "../tasks/unlocalizedTaskAsset";
 import { taskTemplateParams } from "./taskParams";
 import { CustomCallScriptError, runCustomCallScript } from "./customCallRunner";
 import { readCatalog } from "./catalogStore";

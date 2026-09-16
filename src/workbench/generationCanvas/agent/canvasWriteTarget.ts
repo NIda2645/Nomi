@@ -21,7 +21,7 @@ import {
 import {
   assertCanvasDeleteAdmissionMatches,
 } from '../../../../electron/shared/agentCapabilities/canvasDeleteEvidence'
-import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
+import { surfacePortFailure, SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type { GenerationCanvasSnapshot, GenerationNodeResult } from '../model/generationCanvasTypes'
 import { buildStepDetailLabels, summarizeToolCall } from '../components/toolCallSummary'
 import { resolveCanvasToolNodeId } from './clientIdRegistry'
@@ -229,12 +229,8 @@ export type CanvasWriteTargetExecution = Readonly<{
 }>
 
 function wireError(error: unknown): SurfacePortWireError {
-  const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined
-  return new SurfacePortWireError(
-    code === 'capability_cancelled' || code === 'capability_input_invalid' || code === 'capability_target_stale'
-      ? code
-      : 'capability_receipt_unresolved',
-  )
+  const failure = surfacePortFailure(error)
+  return new SurfacePortWireError(failure.code, failure.reason)
 }
 
 function assertExecutionCurrent(request: CanvasWriteTargetExecution): void {
@@ -307,16 +303,7 @@ export async function executeCanvasWriteTarget(
   } catch (error) {
     throw wireError(error)
   }
-  if (outcome.status !== 'committed') {
-    throw wireError(
-      Object.assign(new Error(outcome.reason), {
-        code:
-          outcome.reason === 'capability_input_invalid' || outcome.reason === 'capability_target_stale'
-            ? outcome.reason
-            : 'capability_receipt_unresolved',
-      }),
-    )
-  }
+  if (outcome.status !== 'committed') throw wireError(outcome.failure)
   const afterSnapshot = readSnapshot()
   const reconciliation = {
     ok: outcome.reconciliation.ok,
@@ -471,7 +458,7 @@ async function executeCanvasDeleteTarget(
   } catch (error) {
     throw wireError(error)
   }
-  if (outcome.status !== 'committed') throw wireError(new Error(outcome.reason))
+  if (outcome.status !== 'committed') throw wireError(outcome.failure)
   const afterIds = new Set(readSnapshot().nodes.map((node) => node.id))
   const deletedNodeIds = beforeSnapshot.nodes
     .filter((node) => !afterIds.has(node.id) && (request.target as { nodeIds?: unknown }).nodeIds instanceof Array &&

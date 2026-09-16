@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
+import { writeWorkspaceManifest } from '../workspace/workspaceManifest';
 
 const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-asset-store-"));
 
@@ -58,6 +59,8 @@ function trailingMoovMp4(): Buffer {
 
 beforeEach(() => {
   fs.rmSync(path.join(projectRoot, "assets"), { recursive: true, force: true });
+  writeWorkspaceManifest(projectRoot, { id: 'project-1', name: 'project', version: 2, createdAt: 1, updatedAt: 1, savedAt: 1, revision: 0,
+    immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1, payload: {} });
 });
 
 afterAll(() => fs.rmSync(projectRoot, { recursive: true, force: true }));

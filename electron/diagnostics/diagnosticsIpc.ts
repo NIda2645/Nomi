@@ -15,7 +15,7 @@ import { getSettingsRoot, getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { projectAgentPartitionKey } from "../shared/projectBinding";
 import { resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
 import { ensureWorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
-import { activeTaskProjectFallback } from "../tasks/activeProjectFallback";
+import { canvasReadSurfaceRuntime } from "../capabilityCore/canvasReadSurfaceRuntime";
 import { buildDiagnosticsBundle, diagnosticsBundleFileName } from "./diagnosticsBundle";
 import type { DiagnosticsExportResult } from "../shared/contracts/diagnostics";
 
@@ -48,7 +48,8 @@ async function resolveAgentLedgerPath(
 
 export async function exportDiagnosticsBundle(): Promise<DiagnosticsExportResult> {
   const now = new Date();
-  const projectId = activeTaskProjectFallback() || null;
+  // 用户点「导出诊断包」那一刻主进程已提交的项目会话，就是这次动作的项目身份。
+  const projectId = canvasReadSurfaceRuntime.getCommittedProjectSelection()?.projectId || null;
   const projectDir = projectId ? resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()) : null;
   const ledger =
     projectId && projectDir

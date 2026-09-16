@@ -219,6 +219,8 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     }),
     copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
+    storageCapacity: (payload: unknown) => ipcRenderer.invoke("nomi:assets:storage-capacity", payload),
+    reportVideoCodecs: (payload: unknown) => ipcRenderer.invoke("nomi:assets:report-video-codecs", payload),
     copyProjectAsset: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-project-asset", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
@@ -362,11 +364,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     get: () => ipcRenderer.invoke("nomi:screenshot:get") as Promise<unknown>,
     set: (payload: unknown) => ipcRenderer.invoke("nomi:screenshot:set", payload) as Promise<unknown>,
     openPermissionSettings: () => ipcRenderer.invoke("nomi:screenshot:open-permission-settings") as Promise<unknown>,
-    setProjectId: (projectId: string) => ipcRenderer.invoke("nomi:screenshot:set-project", projectId) as Promise<unknown>,
     // 走查专用：对应的 handler 只在主进程 NOMI_E2E=1 时注册，生产环境这里会直接 reject（门禁在主进程侧）。
     e2eCapture: () => ipcRenderer.invoke("nomi:screenshot:e2e-capture") as Promise<unknown>,
-    onCaptured: (cb: (payload: { url: string; width: number; height: number }) => void) => {
-      const listener = (_: unknown, value: { url: string; width: number; height: number }) => cb(value);
+    onCaptured: (cb: (payload: { url: string; width: number; height: number; surfaceBinding: unknown }) => void) => {
+      const listener = (_: unknown, value: { url: string; width: number; height: number; surfaceBinding: unknown }) => cb(value);
       ipcRenderer.on("nomi:screenshot:captured", listener);
       return () => ipcRenderer.removeListener("nomi:screenshot:captured", listener);
     },

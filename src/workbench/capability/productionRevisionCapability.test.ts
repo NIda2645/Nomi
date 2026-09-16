@@ -5,7 +5,6 @@ const runSingleShotAgent = vi.fn()
 vi.mock('../ai/agentLoopMode', () => ({
   runSingleShotAgent: (...args: unknown[]) => runSingleShotAgent(...args),
 }))
-vi.mock('../project/workbenchProjectSession', () => ({ getActiveWorkbenchProjectId: () => 'project-1' }))
 vi.mock('../generationCanvas/agent/runDirectionPlanner', () => ({ runDirectionPlanner: vi.fn() }))
 vi.mock('../generationCanvas/agent/runStoryboardPlanner', () => ({ runStoryboardPlanner: vi.fn() }))
 

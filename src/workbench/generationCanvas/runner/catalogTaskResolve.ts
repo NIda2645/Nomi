@@ -1,3 +1,4 @@
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 import i18n from '../../../i18n'
 import { tagNomiError } from '../../../../electron/shared/nomiErrorCodes'
 import {
@@ -8,7 +9,9 @@ import {
   listWorkbenchModelCatalogVendors,
 } from '../../api/modelCatalogApi'
 import {
+  type FetchWorkbenchTaskResultRequestDto,
   type TaskKind,
+  type TaskProjectIdentity,
   type TaskRequestDto,
   type TaskResultDto,
 } from '../../api/taskApi'
@@ -30,7 +33,7 @@ import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'
 import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
-import { remapArchetypeMode, resolveUsableModelForNode, usableVendorKeys } from './usableVendorModel'
+import { remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
 
 export type CatalogTaskActionOptions = {
   references?: Partial<ResolvedGenerationReferences>
@@ -44,16 +47,10 @@ export type CatalogTaskActionOptions = {
   idempotencyKey?: string
   /** Renderer disclosure gate for a public temporary-host fallback. */
   anonymousAssetHostingConsent?: 'allow'
-  runTask?: (vendor: string, request: TaskRequestDto) => Promise<TaskResultDto>
+  runTask?: (vendor: string, request: TaskRequestDto, projectId: TaskProjectIdentity) => Promise<TaskResultDto>
   listCatalogModels?: (params: { kind: BillingModelKind; enabled: true }) => Promise<ModelCatalogModelDto[]>
   listCatalogVendors?: () => Promise<ModelCatalogVendorDto[]>
-  fetchTaskResult?: (payload: {
-    taskId: string
-    vendor?: string
-    taskKind?: TaskKind
-    prompt?: string | null
-    modelKey?: string | null
-  }) => Promise<{ vendor: string; result: TaskResultDto }>
+  fetchTaskResult?: (payload: FetchWorkbenchTaskResultRequestDto) => Promise<{ vendor: string; result: TaskResultDto }>
   pollIntervalMs?: number
   pollTimeoutMs?: number
   /** 轮询抖动的随机源（默认 Math.random）。只为让抖动可直测，产品代码不传。 */
@@ -66,9 +63,13 @@ export type CatalogTaskActionOptions = {
   runTextStream?: (
     vendor: string,
     request: TaskRequestDto,
+    projectId: TaskProjectIdentity,
     opts: { onDelta?: (delta: string) => void },
   ) => Promise<TaskResultDto>
 }
+
+/** 真正提交一次任务的选项：运行所属项目（提交那一刻签发）必填。任务身份、结果本地化、接力抽帧只认它，不读「当前项目」。 */
+export type CatalogTaskRunOptions = CatalogTaskActionOptions & { projectTarget: ProjectBinding }
 
 export function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -138,14 +139,12 @@ export async function resolveExecutableNodeFromCatalog(
   // 没钉供应商也没 modelKey → 交给下游报「请先选择模型」（保持原行为）。
   if (!vendor && !modelKey) return node
 
-  // 「可用供应商」需要 catalog runtime；非 Electron 上下文（单测/Web）拿不到 → 退回旧行为：信任钉死的
+  // 目录需要 catalog runtime；非 Electron 上下文（单测/Web）拿不到 → 退回旧行为：信任钉死的
   // 供应商（无法重解析，但也不该误抛）。能拿到时才进入「断开→自动迁移」新逻辑。
   const listVendors = options.listCatalogVendors || listWorkbenchModelCatalogVendors
   let vendors: ModelCatalogVendorDto[]
-  let usable: Set<string>
   try {
     vendors = await listVendors()
-    usable = usableVendorKeys(vendors)
   } catch {
     return node
   }
@@ -156,11 +155,14 @@ export async function resolveExecutableNodeFromCatalog(
   // Vendor availability is not proof that this exact model is executable: a sibling can keep the source
   // vendor alive after this model has migrated to a candidate revision. A missing exact row therefore
   // continues into the same whole-catalog lineage resolver used for disconnected vendors.
-  if (vendor && usable.has(vendor)) {
+  // 目录里还有没有这一行供应商，是**身份**问题不是可用性问题（可用性由每行模型自带的 availability 答）。
+  // 留着这道前置判断是为了「这家整个没了」时别白跑一次目录读取——那一趟在没有 catalog bridge 的
+  // 调用方那里会被下面的 catch 吞成「原样返回」，用户就再也收不到「去模型设置」那句指路了。
+  if (vendor && vendors.some((row) => row.key === vendor)) {
     try {
       models = await listCatalogModels({ kind: catalogKindForNode(node), enabled: true })
       const match = models.find((model) =>
-        model.published && model.vendorKey === vendor && [model.modelKey, model.modelAlias].includes(modelKey),
+        model.availability.usable && model.vendorKey === vendor && [model.modelKey, model.modelAlias].includes(modelKey),
       )
       if (match) return { ...node, meta: projectParameterReferenceSlots(node.meta || {}, match.meta) }
     } catch {
@@ -188,7 +190,7 @@ export async function resolveExecutableNodeFromCatalog(
 
   const meta = node.meta || {}
   const modelAlias = asTrimmedString(meta.modelAlias)
-  const match = resolveUsableModelForNode({ modelKey, modelAlias, vendor, meta, models, vendors, usable })
+  const match = resolveUsableModelForNode({ modelKey, modelAlias, vendor, meta, models, vendors })
   if (!match) {
     const sourceArchetype = resolveArchetypeForModel({ modelKey, modelAlias, vendorKey: vendor, meta })
     const brand = sourceArchetype?.label || asTrimmedString(meta.modelLabel) || modelKey

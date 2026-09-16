@@ -219,6 +219,7 @@ describe("CanvasReadSurfaceRegistry authority lifecycle", () => {
     expect(test.registry.resolveCapturedCanvasReadPort(captured)).toEqual({
       owner: test.ownerDescriptor,
       binding,
+      sessionSignal: null,
     });
     await expect(test.registry.assertCanvasReadPortReply(captured, structuredClone(binding))).resolves.toBe(binding);
     expect(() => test.registry.resolveCapturedCanvasReadPort({} as typeof captured)).toThrow(

@@ -21,7 +21,7 @@ import { reportPreviewExportFailure } from './previewExportFeedback'
 import { useVideoPlaybackHeal } from '../../media/useVideoPlaybackHeal'
 import { computeTimelineDuration } from '../timeline/timelineMath'
 import { getDesktopBridge } from '../../desktop/bridge'
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
+import { isProjectOpen, withProjectAction } from '../project/projectCanvasReadSurface'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { selectStableCanvasNodes } from '../generationCanvas/store/canvasNodeProjection'
 import { resolveTimelineClipPlaybackUrl } from '../timeline/timelinePlaybackUrl'
@@ -255,7 +255,8 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
 
   const handleExport = React.useCallback(async () => {
     if (exportBusy) return
-    const projectId = getDesktopActiveProjectId().trim()
+    // 导出是后台作业：点下去那一刻签发原项目，mp4 与失败提示都归它，之后切项目不改归属。
+    const projectId = withProjectAction((project) => project.binding.projectId) ?? ''
     setExportError(null)
     try {
       publishPreviewExportState({ status: 'preparing', progress: 0 })
@@ -360,7 +361,7 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
       // （合同 §2.2 要求它贴时间轴上沿）。padding 只给舞台区，transport 才能真正压到列底边。
       'relative h-full w-full min-w-0 min-h-0 flex flex-col bg-[var(--nomi-ink-05)]',
     )} aria-label={t('timelinePreview.player')}>
-      {exportError?.projectId === getDesktopActiveProjectId() ? <p role="status" className="m-0 px-3 py-2 text-caption text-nomi-danger" data-preview-export-error>{exportError.message}</p> : null}
+      {exportError && isProjectOpen(exportError.projectId) ? <p role="status" className="m-0 px-3 py-2 text-caption text-nomi-danger" data-preview-export-error>{exportError.message}</p> : null}
       {/* 测量区：stage 居中于此（控制条之上的可用高度），控制条作为下方独立一行不再压住画面。 */}
       <div ref={playerRef} className="workbench-preview-player__stage-area min-h-0 min-w-0 flex-1 w-full grid place-items-center p-6">
       <div
@@ -449,7 +450,7 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
             playsInline
             style={videoStyle}
             onError={(event) => {
-              recordVideoPlaybackState(getDesktopActiveProjectId(), {
+              recordVideoPlaybackState(withProjectAction((project) => project.binding.projectId) ?? '', {
                 phase: 'error', rawUrl: videoUrl, readyState: event.currentTarget.readyState,
                 networkState: event.currentTarget.networkState, mediaErrorCode: event.currentTarget.error?.code,
               })
@@ -457,10 +458,10 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
               setTimelinePlaying(false)
             }}
             onLoadedMetadata={(event) => {
-              recordVideoPlaybackState(getDesktopActiveProjectId(), { phase: 'metadata', rawUrl: videoUrl, readyState: event.currentTarget.readyState, networkState: event.currentTarget.networkState })
+              recordVideoPlaybackState(withProjectAction((project) => project.binding.projectId) ?? '', { phase: 'metadata', rawUrl: videoUrl, readyState: event.currentTarget.readyState, networkState: event.currentTarget.networkState })
               heal.onLoadedMetadata(event)
             }}
-            onCanPlay={(event) => recordVideoPlaybackState(getDesktopActiveProjectId(), { phase: 'canplay', rawUrl: videoUrl, readyState: event.currentTarget.readyState, networkState: event.currentTarget.networkState })}
+            onCanPlay={(event) => recordVideoPlaybackState(withProjectAction((project) => project.binding.projectId) ?? '', { phase: 'canplay', rawUrl: videoUrl, readyState: event.currentTarget.readyState, networkState: event.currentTarget.networkState })}
           />
         ) : null}
         {videoTransition ? (

@@ -527,10 +527,10 @@ describe("VerifiedCapabilityInvocation renderer and internal construction bounda
       projectId: BASE_IDENTITY.projectId,
       suspension,
     });
-    const capturedPort = registry.captureCanvasReadPort(owner, binding);
+    const session = registry.openProjectSession(owner, binding.binding);
     const factory = createRendererCanvasReadVerifiedInvocationFactory({
       registry,
-      capturedPort,
+      session,
       requestId: "request-1",
     });
 
@@ -544,20 +544,20 @@ describe("VerifiedCapabilityInvocation renderer and internal construction bounda
     expect(invocation.binding).toEqual(binding.binding);
     expect(resolveVerifiedCanvasReadExecutionTarget(invocation)).toEqual({
       kind: "surface",
-      capturedPort,
+      session,
     });
     await expect(revalidateVerifiedCapabilityInvocation(invocation)).resolves.toBe(invocation);
     expect(() =>
       createRendererCanvasReadVerifiedInvocationFactory({
         registry: { ...registry },
-        capturedPort,
+        session,
         requestId: "request-2",
       }),
     ).toThrow(expect.objectContaining({ code: "capability_authority_invalid" }));
 
     registry.suspend(owner, { surfaceInstanceId: "surface-1" });
     await expect(revalidateVerifiedCapabilityInvocation(invocation)).rejects.toMatchObject({
-      code: "surface_port_stale",
+      code: "surface_port_suspended",
     });
   });
 

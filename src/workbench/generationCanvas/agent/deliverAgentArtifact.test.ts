@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   artifactFileName,
   buildArtifactFile,
@@ -10,6 +10,8 @@ import {
 import { readAgentArtifactMeta } from '../model/artifactMeta'
 import { generationCanvasNodeSchema } from '../model/generationCanvasSchema'
 import { canvasWriteSemanticInputSchema } from '../../../../electron/shared/agentCapabilities/canvasWrite'
+import { AssetImportError } from '../../../../electron/shared/contracts/assetImportResult'
+import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 
 // deliverAgentArtifact：Agent 把文件内容直接交给画布（不调模型）的落盘通道契约。
 // 纯函数部分在 node 直接测；落盘用注入 stub（真实走 importWorkbenchLocalAssetFile → 主进程，GUI 走查覆盖）。
@@ -44,11 +46,13 @@ describe('artifact 文件构建', () => {
 })
 
 describe('deliverAgentArtifactToAsset（落盘契约）', () => {
+  const context = { binding: { projectId: 'original', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }, assertCurrent() {} }
   const stubImporter = (url: string) => async (file: File) => ({ data: { url: `${url}/${file.name}` } })
 
   it('成功：返回 nomi-local URL 且文件名带扩展名', async () => {
     const result = await deliverAgentArtifactToAsset(
       { fileType: 'svg', content: '<svg xmlns="http://www.w3.org/2000/svg"/>', title: '线稿' },
+      context,
       stubImporter('nomi-local://asset/p/assets/generated'),
     )
     expect(result).toMatchObject({ ok: true, url: 'nomi-local://asset/p/assets/generated/线稿.svg' })
@@ -57,26 +61,52 @@ describe('deliverAgentArtifactToAsset（落盘契约）', () => {
   it('空内容 → 拒绝（不落盘空文件）', async () => {
     const result = await deliverAgentArtifactToAsset(
       { fileType: 'text', content: '   ', title: 't' },
+      context,
       stubImporter('nomi-local://'),
     )
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe('empty-content')
+    if (!result.ok) expect(result.failure).toEqual({ code: 'capability_input_invalid' })
   })
 
   it('落盘器抛错 → 转 ok:false + reason（调用方中止整批）', async () => {
     const failing = async () => { throw new Error('disk full') }
     // 'md' 是**扩展名**，不是 fileType（词表 ARTIFACT_FILE_TYPES 里叫 'markdown'）。
     // 两者长得像，写混了 vitest 不管，只有 check:test-types 看得见。
-    const result = await deliverAgentArtifactToAsset({ fileType: 'markdown', content: '# hi', title: 't' }, failing)
+    const result = await deliverAgentArtifactToAsset({ fileType: 'markdown', content: '# hi', title: 't' }, context, failing)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe('disk full')
+    if (!result.ok) expect(result.failure).toEqual({ code: 'capability_execution_failed' })
   })
 
   it('落盘成功返回无 url → 转 ok:false', async () => {
     const empty = async () => ({ data: {} })
-    const result = await deliverAgentArtifactToAsset({ fileType: 'text', content: 'x', title: 't' }, empty)
+    const result = await deliverAgentArtifactToAsset({ fileType: 'text', content: 'x', title: 't' }, context, empty)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe('no-asset-url')
+    if (!result.ok) expect(result.failure).toEqual({ code: 'capability_receipt_unresolved' })
+  })
+
+  it('binds every declared text artifact to the original project and blocks stale writes', async () => {
+    const importer = vi.fn<import('./deliverAgentArtifact').WorkbenchAssetImporter>(stubImporter('nomi-local://asset/original'))
+    for (const fileType of ['text', 'markdown', 'html', 'table', 'svg'] as const) {
+      expect(await deliverAgentArtifactToAsset({ fileType, content: 'fixture' }, context, importer)).toMatchObject({ ok: true })
+    }
+    for (const call of importer.mock.calls) expect(call[2]).toMatchObject({ projectBinding: context.binding })
+    importer.mockClear()
+    const result = await deliverAgentArtifactToAsset({ fileType: 'text', content: 'x' }, {
+      ...context, assertCurrent() { throw new SurfacePortWireError('project_binding_stale') },
+    }, importer)
+    expect(result).toMatchObject({ ok: false, failure: { code: 'project_binding_stale' } })
+    expect(importer).not.toHaveBeenCalled()
+  })
+
+  it('preserves safe storage rejection and cancellation through delivery', async () => {
+    for (const [error, failure] of [
+      [new AssetImportError({ code: 'capability_execution_failed', reason: 'no-disk-space' }), { code: 'capability_execution_failed', reason: 'no-disk-space' }],
+      [new SurfacePortWireError('project_binding_stale'), { code: 'project_binding_stale' }],
+      [new DOMException('private detail', 'AbortError'), { code: 'capability_cancelled' }],
+    ]) {
+      const result = await deliverAgentArtifactToAsset({ fileType: 'text', content: 'x' }, context, async () => { throw error })
+      expect(result).toEqual({ ok: false, failure })
+    }
   })
 })
 

@@ -7,7 +7,7 @@
 //   预算耗尽(decideNext→exhausted)→ 卡片不再给「让 AI 修」、落「已尽力」态,绝不无限回灌。
 
 import { create } from 'zustand'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { isProjectExecutionContextCurrent, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import type { ReconcileDeviation } from './reconcile'
 import { createLoopBudget, startRound, canStartRound, type LoopBudgetState } from './storyboardLoopBudget'
 // 重依赖(画布 store / judge 接线)在 verifyShotsAndReport 内动态 import:
@@ -159,11 +159,20 @@ export const useShotVerifyStore = create<ShotVerifyState>()((set, get) => ({
  * 生成完成后跑校验并写 store(fire-and-forget,不阻塞「生成完成」toast)。
  * verify 是增益:任何失败都静默吞(setDeviations([])),绝不把生成完成拖红。
  */
-export async function verifyShotsAndReport(shotNodeIds: readonly string[]): Promise<ReconcileDeviation[]> {
+export async function verifyShotsAndReport(
+  shotNodeIds: readonly string[],
+  /** 被审镜头所在的项目（调用方在动作起点签发）：审片只读它的画布、结果只写回它。 */
+  project: ProjectExecutionContext,
+): Promise<ReconcileDeviation[]> {
   if (!isShotVerifyEnabled()) return []
-  // 一开始就冻结项目归属；后续切项目时 lifecycle 会作废 request，judge 也继续使用旧项目的
-  // ephemeral key，而不会在新项目会话里留下旧镜头的上下文。
-  const projectId = getDesktopActiveProjectId()
+  // 项目归属来自签发的上下文；后续切项目（含 A→B→A）时上下文失效，request 也被 lifecycle 作废，
+  // judge 继续使用旧项目的 ephemeral key，而不会在新项目会话里留下旧镜头的上下文。
+  const projectId = project.binding.projectId
+  const owns = (request: ShotVerifyRequest): boolean =>
+    isProjectExecutionContextCurrent(project) && useShotVerifyStore.getState().isVerifyCurrent(request, projectId)
+  const complete = (request: ShotVerifyRequest, deviations: ReconcileDeviation[]): void => {
+    if (isProjectExecutionContextCurrent(project)) useShotVerifyStore.getState().completeVerify(request, projectId, deviations)
+  }
   const request = useShotVerifyStore.getState().beginVerify(projectId)
   // 不在此重置预算:预算只在「收敛(偏差清零)」时回满(见 setDeviations),
   // 这样「点修→重生→再校验」链路里预算只减不回弹,半自动封顶真实生效。
@@ -177,19 +186,19 @@ export async function verifyShotsAndReport(shotNodeIds: readonly string[]): Prom
       ])
     // dynamic import 期间可能已经切项目/清场。先验所有权再读全局画布快照，避免把新项目
     // 的节点拿去给旧项目请求审片。
-    if (!useShotVerifyStore.getState().isVerifyCurrent(request, getDesktopActiveProjectId())) return []
+    if (!owns(request)) return []
     const { nodes, edges } = useGenerationCanvasStore.getState()
     const inputs = gatherShotVerifyInputs(shotNodeIds, nodes, edges)
     if (inputs.length === 0) {
-      useShotVerifyStore.getState().completeVerify(request, getDesktopActiveProjectId(), [])
+      complete(request, [])
       return []
     }
     const deviations = await verifyGeneratedShots(inputs, makeShotVerifyDeps(projectId))
-    useShotVerifyStore.getState().completeVerify(request, getDesktopActiveProjectId(), deviations)
+    complete(request, deviations)
     return deviations
   } catch {
     // 只有当前项目的最新请求能清空；旧请求晚失败不得抹掉更新请求已经写入的结果。
-    useShotVerifyStore.getState().completeVerify(request, getDesktopActiveProjectId(), [])
+    complete(request, [])
     return []
   }
 }

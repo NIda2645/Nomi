@@ -1,3 +1,4 @@
+import { parseSurfacePortFailure, surfacePortFailureAdvice, SURFACE_PORT_WIRE_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision, CanvasWriteApprovalAuthority } from "../shared/agentCapabilities/transportContracts";
 import {
   CANVAS_DELETE_CAPABILITY,
@@ -13,8 +14,9 @@ import {
   type CanvasWriteInput,
 } from "../shared/agentCapabilities/canvasWrite";
 import type { TargetRef } from "../shared/capabilityTargeting";
-import type { CapabilityExecutorRegistry, CanvasWritePort } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
+import type { CanvasReadSurfacePortRuntime } from "./canvasReadSurfacePort";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererCanvasDeleteVerifiedInvocationFactory,
   createRendererCanvasWriteVerifiedInvocationFactory,
@@ -39,23 +41,14 @@ export type PiCanvasWriteTransportAdapter = Readonly<{
 }>;
 
 const PUBLIC_FAILURE_CODES = new Set([
+  ...SURFACE_PORT_WIRE_ERROR_CODES,
   "capability_invocation_unverified",
   "capability_authority_invalid",
-  "capability_input_invalid",
   "capability_policy_stale",
   "capability_output_invalid",
   "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed",
-  "capability_receipt_unresolved",
   "capability_surface_unavailable",
   "capability_unsupported",
-  "capability_target_stale",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
 ]);
 
 const CANVAS_DELETE_TOOL_ALIAS = CANVAS_DELETE_CAPABILITY.aliases.mcp;
@@ -66,26 +59,30 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
       ? (error as { code: string }).code
       : undefined;
   const code = candidate && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  const failure = parseSurfacePortFailure(error);
+  return { ok: false, code,
+    message: failure ? surfacePortFailureAdvice(failure).message : code,
+    ...(failure?.reason ? { reason: failure.reason } : {}),
+  };
 }
 
 export function createPiCanvasWriteTransportAdapter(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
-    port: CanvasWritePort;
+    surfacePortRuntime: Pick<CanvasReadSurfacePortRuntime, "createCanvasWritePort">;
     executor: Pick<CapabilityExecutorRegistry, "execute">;
   }>,
 ): PiCanvasWriteTransportAdapter {
   const factory = createRendererCanvasWriteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   const deleteFactory = createRendererCanvasDeleteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   let disposed = false;
@@ -109,13 +106,19 @@ export function createPiCanvasWriteTransportAdapter(
             ? canvasDeleteInputForAlias(call.toolName, args)!
             : canvasDeleteSemanticInputSchema.parse({ operation: "delete_canvas_nodes", ...args });
         } else {
-          const parsed = semanticTool ? args : canvasWritePiInputSchemaForAlias(call.toolName)?.parse(args);
+          // MCP transport metadata is carried beside the semantic operation.
+          // Do not feed project/lease routing fields into the strict semantic
+          // schema: they are verified by the session boundary, not part of
+          // the canvas mutation itself.
+          const { projectId: _projectId, leaseHandle: _leaseHandle, ...semanticArgs } = args;
+          const parsed = semanticTool ? semanticArgs : canvasWritePiInputSchemaForAlias(call.toolName)?.parse(args);
           semanticInput = canvasWriteSemanticInputSchema.parse({ operation, ...parsed });
         }
       } catch {
         throw Object.assign(new Error("capability_input_invalid"), { code: "capability_input_invalid" });
       }
-      const rawEvidence = await input.port.capture(
+      const port = input.surfacePortRuntime.createCanvasWritePort(input.registry.captureProjectSessionPort(input.session));
+      const rawEvidence = await port.capture(
         operation === "set_node_prompt"
           ? {
               operation,

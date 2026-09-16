@@ -28,7 +28,7 @@ async function setup() {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const execute = vi.fn(async (invocation: { capability: { id: string }; input: unknown }, options: unknown) => ({
     capabilityId: invocation.capability.id,
     input: invocation.input,
@@ -38,7 +38,7 @@ async function setup() {
     execute,
     adapter: createPiPhase4SurfaceTransportAdapter({
       registry,
-      capturedPort,
+      session,
       requestId: "request-a",
       executor: { execute } as never,
     }),

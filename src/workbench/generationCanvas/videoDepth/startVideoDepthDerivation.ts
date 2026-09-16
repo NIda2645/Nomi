@@ -21,7 +21,8 @@
  * 用户点一下「提取深度」，剩下的全在这条链上。
  */
 import { getDesktopBridge } from '../../../desktop/bridge'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { deliverRunOutcome, whenRunTargetLoaded, type RunProjectTarget } from '../runner/runProjectDelivery'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useNodeLivePreviewStore } from '../store/nodeLivePreviewStore'
 import { clearTaskCancel, isTaskCancelRequested } from '../runner/localTaskControl'
@@ -55,15 +56,15 @@ export type VideoDepthDerivationHandle = {
  *
  * 前置条件不满足时返回 null 并 toast 说清原因，不静默什么都不做。
  */
-export function startVideoDepthDerivation(sourceNode: GenerationCanvasNode, reportFeedback: (message: string) => void): VideoDepthDerivationHandle | null {
+export function startVideoDepthDerivation(
+  sourceNode: GenerationCanvasNode,
+  /** 点「提取深度」那一刻签发的项目：派生节点建在它里面，跑完的结果也只回到它（用户切走就写它的盘上副本）。 */
+  project: ProjectExecutionContext,
+  reportFeedback: (message: string) => void,
+): VideoDepthDerivationHandle | null {
   const source = videoDepthSourceFromNode(sourceNode)
   if (!source) return null
-
-  const projectId = getActiveWorkbenchProjectId()
-  if (!projectId) {
-    reportFeedback(i18n.t('generationCommon.node.extractFrame.missingProject'))
-    return null
-  }
+  const target: RunProjectTarget = project.binding
   const bridge = getDesktopBridge()?.videoDepth
   if (!bridge) {
     reportFeedback(i18n.t('videoDepth.action.desktopOnly'))
@@ -93,17 +94,20 @@ export function startVideoDepthDerivation(sourceNode: GenerationCanvasNode, repo
     updatedAt: Date.now(),
   })
 
-  const done = runDerivation({ bridge, projectId, nodeId, source })
+  const done = runDerivation({ bridge, target, nodeId, source })
   return { derivedNodeId: nodeId, done }
 }
 
 async function runDerivation(input: {
   bridge: NonNullable<ReturnType<typeof getDesktopBridge>>['videoDepth']
-  projectId: string
+  target: RunProjectTarget
   nodeId: string
   source: { sourceUrl: string }
 }): Promise<void> {
-  const { bridge, projectId, nodeId, source } = input
+  const { bridge, target, nodeId, source } = input
+  const projectId = target.projectId
+  // 进度、活预览都是给前台看的瞬态：原项目不在画布上时不写（那是别的项目的 store）。
+  const whenVisible = (apply: () => void): void => { whenRunTargetLoaded(target, apply) }
 
   // 抽帧与权重下载这两段渲染层看不见（只有主进程知道），所以它们从事件通道来。
   // 走同一份 reducer 汇进同一个进度，不是第二份进度模型。
@@ -113,7 +117,7 @@ async function runDerivation(input: {
       event.doneBytes !== undefined && event.totalBytes && event.totalBytes > 0
         ? Math.round((event.doneBytes / event.totalBytes) * 100)
         : undefined
-    useGenerationCanvasStore.getState().setNodeProgress(nodeId, {
+    whenVisible(() => useGenerationCanvasStore.getState().setNodeProgress(nodeId, {
       phase: videoDepthProgressPhase(event.phase),
       // 首次要下约 50MB 权重。「下载模型 47 MB… 38%」比「正在下载模型权重」多说的那两个数
       // 正是用户此刻唯一想知道的：**要下多少、下到哪了**。它和推理进度共用卡顶那一条，
@@ -127,7 +131,7 @@ async function runDerivation(input: {
           : i18n.t(`videoDepth.phase.${event.phase}` as 'videoDepth.phase.downloading'),
       ...(percent === undefined ? {} : { percent }),
       updatedAt: Date.now(),
-    })
+    }))
   })
 
   /** 上一张缩略图的 objectURL。换图与收场都要 revoke，否则整段片子的帧会一张不落地留在内存里。 */
@@ -144,12 +148,12 @@ async function runDerivation(input: {
         shouldCancel: () => isTaskCancelRequested(nodeId),
         onState: (state) => {
           const view = videoDepthProgressView(state)
-          useGenerationCanvasStore.getState().setNodeProgress(nodeId, {
+          whenVisible(() => useGenerationCanvasStore.getState().setNodeProgress(nodeId, {
             phase: videoDepthProgressPhase(state.phase),
             message: progressMessage(state),
             ...(view.percent === undefined ? {} : { percent: view.percent }),
             updatedAt: Date.now(),
-          })
+          }))
         },
         onPreviewFrame: (frame) => {
           void encodeVideoDepthPreviewUrl(frame).then((url) => {
@@ -157,37 +161,36 @@ async function runDerivation(input: {
             if (finished) { URL.revokeObjectURL(url); return }
             if (previewUrl) URL.revokeObjectURL(previewUrl)
             previewUrl = url
-            useNodeLivePreviewStore.getState().setPreview(nodeId, url)
+            whenVisible(() => useNodeLivePreviewStore.getState().setPreview(nodeId, url))
           })
         },
       },
     )
 
-    const store = useGenerationCanvasStore.getState()
     if (finalState.phase === 'done' && finalState.result) {
-      store.setNodeProgress(nodeId, undefined)
-      store.addNodeResult(nodeId, {
+      // 结果回到发起它的项目：正打开就进画布，切走了就写那个项目的盘上副本。
+      await deliverRunOutcome(target, nodeId, { kind: 'result', result: {
         id: `video-depth-${Date.now()}`,
         type: 'video',
         url: finalState.result.url,
         ...(finalState.result.assetId ? { assetId: finalState.result.assetId } : {}),
         createdAt: Date.now(),
-      })
+      } })
       return
     }
     if (finalState.phase === 'cancelled') {
       // 取消 = 当没发生过：这张卡从出生到现在没产出任何东西，留着就是让用户替我们打扫。
-      store.deleteNode(nodeId)
+      // 取消按钮长在这张卡的遮罩上，只能在原项目前台按下。
+      whenVisible(() => useGenerationCanvasStore.getState().deleteNode(nodeId))
       return
     }
-    store.setNodeProgress(nodeId, undefined)
-    store.setNodeStatus(
-      nodeId,
-      'error',
-      finalState.error
+    await deliverRunOutcome(target, nodeId, {
+      kind: 'status',
+      status: 'error',
+      error: finalState.error
         ? i18n.t(`videoDepth.error.${finalState.error.code}` as 'videoDepth.error.media-failed')
         : i18n.t('videoDepth.error.inference-failed'),
-    )
+    })
   } finally {
     finished = true
     unsubscribe()

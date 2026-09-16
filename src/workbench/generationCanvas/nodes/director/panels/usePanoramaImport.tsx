@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { IconX } from '../../../../../vendor/tablerIcons'
 import { notify } from '../../../../../ui/notificationPolicy'
 import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../../../api/assetUploadApi'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../../project/projectCanvasReadSurface'
 import { PANORAMA_IMPORT_MAX_BYTES } from './panoramaImport'
 import { useDirectorStoreApi } from '../DirectorEditorContext'
 import { readFileAsDataUrl, readImageDimensions } from './imageFile'
@@ -30,56 +31,60 @@ export function usePanoramaImport(): { importPanoramaFile: (file: File) => void;
 
   const importPanoramaFile = React.useCallback(
     (file: File) => {
-      setFeedback(null)
-      if (!file.type.startsWith('image/')) {
-        report(t('director.environment.imageOnly'))
-        return
-      }
-      if (file.size > PANORAMA_IMPORT_MAX_BYTES) {
-        report(t('director.environment.fileTooLarge'))
-        return
-      }
-      const previewUrl = URL.createObjectURL(file)
-      const runId = runRef.current + 1
-      runRef.current = runId
-      const stillCurrent = () => runRef.current === runId
-      const apply = (url: string) => {
-        const state = store.getState()
-        state.saveState()
-        state.patchPanoramaConfig({ url })
-      }
-      void (async () => {
-        try {
-          // 只用来确认这张图真能解码；非 2:1 不拒收（等距柱状贴图对任意比例渲染安全），
-          // 「可能拉伸」交给检查器按贴图真实尺寸常驻提示，不在导入这一刻通知一次就没了
-          try {
-            await readImageDimensions(previewUrl)
-          } catch {
-            report(t('director.environment.dimensionsUnreadable'))
-            return
-          }
-          if (!stillCurrent()) return
-          apply(previewUrl)
-          try {
-            const asset = await importWorkbenchLocalAssetFile(file, file.name || 'panorama')
-            const hostedUrl = hostedAssetUrl(asset)
-            if (!hostedUrl) throw new Error('panorama asset missing url')
-            if (!stillCurrent()) return
-            // 成功不通知：全景已经铺满视口，画面本身就是回执
-            store.getState().patchPanoramaConfig({ url: hostedUrl })
-          } catch {
-            // 没有桌面运行时（devlab / 网页）或落盘失败：退回 data URL，工程还能重开，但明说是临时的
-            const dataUrl = await readFileAsDataUrl(file)
-            if (!stillCurrent()) return
-            store.getState().patchPanoramaConfig({ url: dataUrl })
-            report(t('director.environment.importedTemporary'))
-          }
-        } catch {
-          if (stillCurrent()) report(t('director.environment.importFailed'))
-        } finally {
-          window.setTimeout(() => URL.revokeObjectURL(previewUrl), PREVIEW_URL_TTL_MS)
+      withProjectAction((context) => {
+        setFeedback(null)
+        if (!file.type.startsWith('image/')) {
+          report(t('director.environment.imageOnly'))
+          return
         }
-      })()
+        if (file.size > PANORAMA_IMPORT_MAX_BYTES) {
+          report(t('director.environment.fileTooLarge'))
+          return
+        }
+        const previewUrl = URL.createObjectURL(file)
+        const runId = runRef.current + 1
+        runRef.current = runId
+        const stillCurrent = () => runRef.current === runId && isProjectExecutionContextCurrent(context)
+        const apply = (url: string) => {
+          const state = store.getState()
+          state.saveState()
+          state.patchPanoramaConfig({ url })
+        }
+        void (async () => {
+          try {
+            // 只用来确认这张图真能解码；非 2:1 不拒收（等距柱状贴图对任意比例渲染安全），
+            // 「可能拉伸」交给检查器按贴图真实尺寸常驻提示，不在导入这一刻通知一次就没了
+            try {
+              await readImageDimensions(previewUrl)
+            } catch {
+              if (stillCurrent()) report(t('director.environment.dimensionsUnreadable'))
+              return
+            }
+            if (!stillCurrent()) return
+            apply(previewUrl)
+            try {
+              const asset = await importWorkbenchLocalAssetFile(file, file.name || 'panorama', { projectBinding: context.binding, assertCurrent: context.assertCurrent })
+              context.assertCurrent()
+              const hostedUrl = hostedAssetUrl(asset)
+              if (!hostedUrl) throw new Error('panorama asset missing url')
+              if (!stillCurrent()) return
+              // 成功不通知：全景已经铺满视口，画面本身就是回执
+              store.getState().patchPanoramaConfig({ url: hostedUrl })
+            } catch (error) {
+              if (!stillCurrent() || isProjectImportCancellation(error)) return
+              // 没有桌面运行时（devlab / 网页）或落盘失败：退回 data URL，工程还能重开，但明说是临时的
+              const dataUrl = await readFileAsDataUrl(file)
+              if (!stillCurrent()) return
+              store.getState().patchPanoramaConfig({ url: dataUrl })
+              report(t('director.environment.importedTemporary'))
+            }
+          } catch (error) {
+            if (stillCurrent() && !isProjectImportCancellation(error)) report(t('director.environment.importFailed'))
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(previewUrl), PREVIEW_URL_TTL_MS)
+          }
+        })()
+      })
     },
     [report, store, t],
   )

@@ -7,6 +7,7 @@ import { desktopT } from "../../i18n";
 import { nowIso } from "../../jsonUtils";
 import { sanitizeSourceEvidence } from "../../assets/projectAssetStore";
 import { captureFileName } from "../captureNaming";
+import type { WindowProjectIssuance } from "../../assets/windowProjectCapture";
 import { BROWSER_MEDIA_MAX_BYTES, detectAnimatedImage, mediaTypeFromContentType, resolveBrowserMediaContentType, streamBrowserMediaResponseToFile } from "./browserMediaValidation";
 import {
   captureError,
@@ -425,9 +426,9 @@ export async function downloadBrowserMediaFromPageView(
   return downloadHttpBrowserMediaFromPageSession(record, mediaUrl, fallbackName, requestedMediaType);
 }
 
-export async function importBrowserMedia(record: BrowserViewRecord, payload: BrowserViewImportMediaPayload): Promise<unknown> {
-  const projectId = String(payload.projectId || "").trim();
-  if (!projectId) throw new Error("projectId is required");
+/** `project` 由 IPC 入口从发起窗口（或浮层的父窗口）已提交的项目面签发：页面/渲染层不报项目身份。 */
+export async function importBrowserMedia(record: BrowserViewRecord, payload: BrowserViewImportMediaPayload, project: WindowProjectIssuance): Promise<unknown> {
+  const projectId = project.binding.projectId;
   const contents = record.view.webContents;
   const pageUrl = contents.getURL();
   const mediaUrl = normalizeBrowserMediaUrl(payload.url, pageUrl);
@@ -494,6 +495,8 @@ export async function importBrowserMedia(record: BrowserViewRecord, payload: Bro
 
   try {
     const { moveAssetFile } = await import("../../runtime");
+    // 落盘前复验：下载期间父窗口换了项目 → 取消，不把素材写进任何项目。
+    project.assertCurrent();
     return moveAssetFile(
       projectId,
       download.absolutePath,
@@ -539,7 +542,7 @@ async function dataUrlFromFile(filePath: string, contentType: string): Promise<s
 }
 
 async function movePromptReferenceFile(input: {
-  projectId: string;
+  project: WindowProjectIssuance | null;
   absolutePath: string;
   fileName: string;
   contentType: string;
@@ -547,8 +550,9 @@ async function movePromptReferenceFile(input: {
   pageUrl?: string;
   title?: unknown;
 }): Promise<unknown | null> {
-  if (!input.projectId) return null;
+  if (!input.project) return null;
   const { moveAssetFile } = await import("../../runtime");
+  input.project.assertCurrent();
   // P0-1 来源取证：浏览器提示词参考图来源——usageStatus 强制为 reference_only（诚实默认）。
   const promptRefEvidence = sanitizeSourceEvidence({
     source: "browser",
@@ -556,7 +560,7 @@ async function movePromptReferenceFile(input: {
     capturedAt: nowIso(),
     usageStatus: "reference_only",
   });
-  return moveAssetFile(input.projectId, input.absolutePath, input.fileName, input.contentType, {
+  return moveAssetFile(input.project.binding.projectId, input.absolutePath, input.fileName, input.contentType, {
     kind: "browser-prompt-reference",
     originalUrl: input.sourceUrl || null,
     pageUrl: safeHeaderUrl(input.pageUrl || "") || null,
@@ -569,10 +573,11 @@ async function movePromptReferenceFile(input: {
 export async function captureBrowserPromptImage(
   record: BrowserViewRecord,
   payload: BrowserViewPromptImagePayload,
+  /** 没有已提交项目时为 null：参考图只以 dataUrl 返回，不落任何项目。 */
+  project: WindowProjectIssuance | null,
 ): Promise<unknown> {
   const contents = record.view.webContents;
   if (contents.isDestroyed()) throw new Error("Browser view is unavailable");
-  const projectId = String(payload.projectId || "").trim();
   const pageUrl = contents.getURL();
   const mediaUrl = normalizeBrowserMediaUrl(payload.url, pageUrl);
   const download = await downloadBrowserMediaFromPageView(record, mediaUrl, payload.fileName || payload.title, "image");
@@ -583,7 +588,7 @@ export async function captureBrowserPromptImage(
     const dataUrl = await dataUrlFromFile(download.absolutePath, contentType);
     const fileName = captureFileName(mediaUrl, contentType, "image", payload.fileName || payload.title || download.fileName);
     const asset = await movePromptReferenceFile({
-      projectId,
+      project,
       absolutePath: download.absolutePath,
       fileName,
       contentType,
@@ -613,10 +618,10 @@ export async function captureBrowserPromptImage(
 export async function captureBrowserPromptScreenshot(
   record: BrowserViewRecord,
   payload: BrowserViewPromptScreenshotPayload,
+  project: WindowProjectIssuance | null,
 ): Promise<unknown> {
   const contents = record.view.webContents;
   if (contents.isDestroyed()) throw new Error("Browser view is unavailable");
-  const projectId = String(payload.projectId || "").trim();
   const pageUrl = contents.getURL();
   const localCaptureRect = normalizeLocalCaptureRect(record, payload.sourceRect);
   const image = localCaptureRect ? await contents.capturePage(localCaptureRect) : await contents.capturePage();
@@ -629,7 +634,7 @@ export async function captureBrowserPromptScreenshot(
   fs.writeFileSync(absolutePath, image.toPNG());
   try {
     const asset = await movePromptReferenceFile({
-      projectId,
+      project,
       absolutePath,
       fileName: path.basename(absolutePath),
       contentType,

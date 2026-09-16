@@ -1,4 +1,5 @@
 import type { GenerationCanvasEdge, GenerationCanvasNode, GenerationNodeResult } from '../model/generationCanvasTypes'
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 import type { CatalogTaskActionOptions } from './catalogTaskResolve'
 import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import { generateAudio } from './audioActions'
@@ -10,6 +11,8 @@ import { generateText } from './textActions'
 import { generateVideo } from './videoActions'
 
 export type GenerationNodeExecutorContext = {
+  /** 运行所属项目（提交那一刻签发）：任务 extras.projectId、结果本地化、接力抽帧都落进它。 */
+  projectTarget: ProjectBinding
   nodes?: GenerationCanvasNode[]
   edges?: GenerationCanvasEdge[]
   /** One-shot correction appended to the provider prompt for a bounded QA retry. */
@@ -26,20 +29,22 @@ export type GenerationNodeExecutorContext = {
 
 export type GenerationNodeExecutor = (
   node: GenerationCanvasNode,
-  context?: GenerationNodeExecutorContext,
+  context: GenerationNodeExecutorContext,
 ) => Promise<GenerationNodeResult>
 
 export const generationNodeExecutor: GenerationNodeExecutor = async (node, context) => {
   const executionKind = getGenerationNodeExecutionKind(node.kind)
-  const onProgress = context?.onProgress
-  const grantId = context?.grantId
+  const onProgress = context.onProgress
+  const grantId = context.grantId
+  const projectTarget = context.projectTarget
   // gate = 付费相关透传(令牌 + 幂等键)，随各付费 action 一路进 buildCatalogTaskRequest 的 extras。
   const gate = {
-    ...(context ? { referenceContext: { nodes: context.nodes, edges: context.edges } } : {}),
+    referenceContext: { nodes: context.nodes, edges: context.edges },
+    projectTarget,
     ...(grantId ? { grantId } : {}),
-    ...(context?.idempotencyKey ? { idempotencyKey: context.idempotencyKey } : {}),
-    ...(context?.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: context.anonymousAssetHostingConsent } : {}),
-    ...(context?.promptSuffix ? { promptSuffix: context.promptSuffix } : {}),
+    ...(context.idempotencyKey ? { idempotencyKey: context.idempotencyKey } : {}),
+    ...(context.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: context.anonymousAssetHostingConsent } : {}),
+    ...(context.promptSuffix ? { promptSuffix: context.promptSuffix } : {}),
   }
   if (executionKind === 'image') {
     const references = resolveGenerationReferences(node, context)
@@ -52,7 +57,7 @@ export const generationNodeExecutor: GenerationNodeExecutor = async (node, conte
     return generateVideo(promptNode, { references, ...gate, ...(onProgress ? { onProgress } : {}) })
   }
   if (executionKind === 'text') {
-    return generateText(node, onProgress ? { onProgress } : undefined)
+    return generateText(node, { projectTarget, ...(onProgress ? { onProgress } : {}) })
   }
   if (executionKind === 'audio') {
     const references = resolveGenerationReferences(node, context)

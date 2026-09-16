@@ -1,3 +1,4 @@
+import type { ProjectBinding } from '../../electron/shared/projectBinding'
 import type { DeconstructionProgress } from '../../electron/shared/canvas/shotTable'
 import type { VideoDepthMainOwnedPhase } from '../../electron/shared/canvas/videoDepthRun'
 /**
@@ -22,6 +23,8 @@ export type DesktopMediaBridge = {
       videoUrl: string
       which: 'first' | 'last' | number
       projectId: string
+      /** 交互动作签发的原项目绑定：主进程据此在落盘前复验，换项目即取消发布。不带 = 明确项目的后台 IO。 */
+      projectBinding?: ProjectBinding
       forceRerun?: boolean
     }) => Promise<{ url: string }>
     /** 胶片缩略图条：16 帧横向拼条 jpg → 项目素材 URL（时间轴 clip 全员真帧渲染用）。 */
@@ -92,10 +95,10 @@ export type DesktopMediaBridge = {
     get: () => Promise<ScreenshotHotkeyStatus>
     set: (payload: { enabled: boolean; accelerator: string }) => Promise<ScreenshotHotkeyStatus>
     openPermissionSettings: () => Promise<{ ok: boolean }>
-    setProjectId: (projectId: string) => Promise<{ ok: boolean }>
     /** 走查专用：handler 只在主进程 NOMI_E2E=1 时注册（全局热键是 OS 级按键，Playwright 发不出去）。 */
     e2eCapture?: () => Promise<{ ok: boolean }>
-    onCaptured: (cb: (payload: { url: string; width: number; height: number }) => void) => () => void
+    /** surfaceBinding：主进程抓屏前固定的项目面绑定，渲染层据此判断是否仍是原项目（不当授权用）。 */
+    onCaptured: (cb: (payload: { url: string; width: number; height: number; surfaceBinding: unknown }) => void) => () => void
     onDenied: (cb: (payload: { screenAccess: string }) => void) => () => void
     onFailed: (cb: (payload: { reason: string }) => void) => () => void
   }

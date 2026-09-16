@@ -1,12 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProductionRun } from '../../../../electron/productionRun/productionRunTypes'
 import { executeLaneTaskCandidateAdoption } from './laneTaskCandidateActions'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 
 const candidate = { projectId: 'project-a', productionRunId: 'run-a', artifactId: 'image-a',
   tag: '1', thumbnailUrl: 'nomi-local://asset/project-a/image.png', adopted: false, canAdopt: true }
 const run = { projectId: 'project-a', runId: 'run-a', revision: 7,
   artifacts: [{ artifactId: 'image-a', kind: 'image', status: 'candidate', reviewStatus: 'approved' }] } as ProductionRun
-const deps = () => ({ read: vi.fn().mockResolvedValue(run), command: vi.fn().mockResolvedValue({ run, events: [] }), activeProject: () => 'project-a' })
+const deps = () => ({ read: vi.fn().mockResolvedValue(run), command: vi.fn().mockResolvedValue({ run, events: [] }), project: withProjectAction((project) => project)! })
+
+let projectSession: ProjectSessionTestHarness
+beforeEach(async () => { projectSession = createProjectSessionTestHarness(); await projectSession.open('project-a') })
+afterEach(() => projectSession.dispose())
 
 describe('lane candidate adoption uses the existing domain command', () => {
   it('keeps artifact identity and revision; it does not manufacture review approval', async () => {
@@ -38,7 +44,7 @@ describe('lane candidate adoption uses the existing domain command', () => {
     const first = executeLaneTaskCandidateAdoption(candidate, api)
     await executeLaneTaskCandidateAdoption(candidate, api)
     expect(api.read).toHaveBeenCalledOnce()
-    api.activeProject = () => 'another-project'
+    await projectSession.open('another-project')
     release(run)
     await first
     expect(api.command).not.toHaveBeenCalled()

@@ -9,7 +9,8 @@ import { ASSET_LIBRARY_DRAG_MIME } from '../assets/assetLibraryDrag'
 import { addAssetToTimeline, tryAddAssetFromDragData } from './addAssetToTimeline'
 import AssetPicker from '../assets/AssetPicker'
 import AssetPickerPopover from '../assets/AssetPickerPopover'
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
+import { useOpenProjectId } from '../project/useOpenProjectId'
+import { withProjectAction } from '../project/projectCanvasReadSurface'
 
 /**
  * 叠加层收起条（方案 B 的空态 + 方案 A 的视觉，用户拍板）。
@@ -25,6 +26,7 @@ export function TimelineSecondaryAddRow({
   showAudio: boolean
   showText: boolean
 }): JSX.Element | null {
+  const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
   const addTimelineTextClip = useWorkbenchStore((state) => state.addTimelineTextClip)
   const selectTimelineTextClip = useWorkbenchStore((state) => state.selectTimelineTextClip)
@@ -51,7 +53,6 @@ export function TimelineSecondaryAddRow({
       fps,
       startFrame: playhead,
       targetTrackType: 'audio',
-      activeProjectId: getActiveWorkbenchProjectId(),
       onFailure: (error) => presentFeedback(error instanceof Error ? error.message : t('timelineEditor.adoption.failedRecovered')),
     })
     if (!result) return
@@ -77,7 +78,7 @@ export function TimelineSecondaryAddRow({
       {musicPickerOpen ? (
         <AssetPickerPopover onClose={() => setMusicPickerOpen(false)}>
           <AssetPicker
-            projectId={getActiveWorkbenchProjectId()}
+            projectId={openProjectId}
             accept={['audio']}
             onPick={(asset) => {
               setFeedback('')
@@ -93,7 +94,9 @@ export function TimelineSecondaryAddRow({
               // 解释也没有（设计系统 §4.1 C1）。这不是拒绝、是「静悄悄地没做成」，所以要看返回值，
               // 光加 catch 没用；catch 是给同步抛出的意外留的，说的是同一句话。
               // 「轴保持原样」是真的：失败都发生在写轴之前。
-              void addAssetToTimeline(asset, { fps, startFrame: audioTrackEmpty ? 0 : state.timeline.playheadFrame })
+              const project = withProjectAction((issued) => issued)
+              if (!project) return
+              void addAssetToTimeline(asset, { fps, startFrame: audioTrackEmpty ? 0 : state.timeline.playheadFrame }, project)
                 .then((clip) => {
                   if (!clip) presentFeedback(t('timelineEditor.adoption.failedRecovered'))
                 })

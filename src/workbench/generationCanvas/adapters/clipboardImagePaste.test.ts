@@ -1,10 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import type { CanvasReadSurfaceBridge } from '../../../../electron/shared/surfacePortBinding'
+import * as assetUploadApi from '../../api/assetUploadApi'
 import {
   extractClipboardMediaFiles,
   extractClipboardMediaUrl,
   pasteClipboardMediaToGenerationCanvas,
 } from './clipboardImagePaste'
 import { useGenerationCanvasStore, __resetGenerationCanvasHistoryForTests } from '../store/generationCanvasStore'
+
+function currentProject(): ProjectExecutionContext {
+  return withProjectAction((context) => context, () => { throw new Error('no project open') })
+}
 
 function mediaFile(name: string, type: string): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type, lastModified: 1 })
@@ -49,7 +56,26 @@ function uploadResult(url: string, contentType?: string) {
 }
 
 describe('clipboardImagePaste', () => {
-  beforeEach(() => {
+  let coordinator: ReturnType<typeof createProjectCanvasReadSurfaceCoordinator>
+  let unregister: () => void
+  async function switchProject(projectId: string) {
+    const epoch = coordinator.beginHydration()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+    await epoch.commitCanvasRead(projectId)
+  }
+  afterEach(() => { unregister?.(); vi.restoreAllMocks() })
+  beforeEach(async () => {
+    coordinator = createProjectCanvasReadSurfaceCoordinator({
+      createSurfaceInstanceId: () => 'clipboard-window',
+      getSurfaceBridge: () => ({
+        suspend: async () => ({ suspension: {} }), release: async () => ({ released: true }),
+        commitCanvasRead: async ({ projectId }: { projectId: string }) => ({ binding: { binding: {
+          projectId, immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1,
+        } } }),
+      } as unknown as CanvasReadSurfaceBridge),
+    })
+    unregister = registerProjectCanvasReadSurfaceCoordinator(coordinator)
+    await switchProject('project-a')
     __resetGenerationCanvasHistoryForTests()
     useGenerationCanvasStore.getState().restoreSnapshot({
       nodes: [],
@@ -57,6 +83,44 @@ describe('clipboardImagePaste', () => {
       selectedNodeIds: [],
       groups: [],
     })
+  })
+
+  it('cancels data URL conversion without recapturing the replacement project or using an external fallback', async () => {
+    const uploadFile = vi.fn(async () => uploadResult('nomi-local://asset/project-a/clip.png'))
+    const pending = pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
+      clipboardData: fakeClipboardData({ plain: 'data:image/png;base64,eA==' }), basePosition: { x: 0, y: 0 },
+      importOptions: { capacity: null, createObjectUrl: () => 'blob:test', revokeObjectUrl: vi.fn(), readImageDimensions: async () => null, uploadFile },
+    })
+    await switchProject('project-b')
+    expect(await pending).toMatchObject({ handled: true, importedCount: 0, failedCount: 0, usedExternalUrl: false })
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  })
+
+  it('cancels a remote clipboard completion without fetching fallback media or updating the replacement project', async () => {
+    let finish!: () => void
+    const wait = new Promise<void>(resolve => { finish = resolve })
+    const fetchMedia = vi.fn<typeof fetch>()
+    const pending = pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
+      clipboardData: fakeClipboardData({ plain: 'https://example.com/clip.png' }), basePosition: { x: 0, y: 0 }, fetchMedia,
+      importRemoteUrl: async () => { await wait; throw new Error('host failed') },
+    })
+    await switchProject('project-b')
+    finish()
+    expect(await pending).toMatchObject({ handled: true, importedCount: 0, failedCount: 0 })
+    expect(fetchMedia).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  })
+
+  it('passes the originating binding and assertion to the remote importer', async () => {
+    const remote = vi.spyOn(assetUploadApi, 'importWorkbenchRemoteAssetUrl').mockResolvedValue(uploadResult('nomi-local://asset/project-a/clip.png'))
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
+      clipboardData: fakeClipboardData({ plain: 'https://example.com/clip.png' }), basePosition: { x: 0, y: 0 },
+    })
+    expect(result.importedCount).toBe(1)
+    expect(remote).toHaveBeenCalledWith('https://example.com/clip.png', 'clip.png', expect.objectContaining({
+      projectBinding: coordinator.getCurrentBinding()?.binding, assertCurrent: expect.any(Function),
+    }))
   })
 
   it('extracts image and video files from clipboard files and items without duplicates', () => {
@@ -96,7 +160,7 @@ describe('clipboardImagePaste', () => {
 
   it('imports a local clipboard image file through the existing local asset pipeline', async () => {
     const uploadFile = vi.fn(async () => uploadResult('nomi-local://asset/project/clip.png'))
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ files: [imageFile('clip.png')] }),
       basePosition: { x: 80, y: 120 },
       categoryId: 'shots',
@@ -118,7 +182,7 @@ describe('clipboardImagePaste', () => {
 
   it('imports a local clipboard video file through the existing local asset pipeline', async () => {
     const uploadFile = vi.fn(async () => uploadResult('nomi-local://asset/project/clip.mp4', 'video/mp4'))
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ files: [videoFile('clip.mp4')] }),
       basePosition: { x: 96, y: 144 },
       categoryId: 'shots',
@@ -142,7 +206,7 @@ describe('clipboardImagePaste', () => {
 
   it('places multiple pasted media files in a grid starting at the paste position', async () => {
     const uploadFile = vi.fn(async (file: File) => uploadResult(`nomi-local://asset/project/${file.name}`, file.type))
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({
         files: [imageFile('a.png'), imageFile('b.png'), imageFile('c.png')],
       }),
@@ -204,7 +268,7 @@ describe('clipboardImagePaste', () => {
       headers: { 'content-type': 'image/webp' },
     }))
 
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ html: '<img src="https://cdn.example.com/web.webp">' }),
       basePosition: { x: 12, y: 16 },
       categoryId: 'shots',
@@ -229,7 +293,7 @@ describe('clipboardImagePaste', () => {
     const fetchMedia = vi.fn()
     const importRemoteUrl = vi.fn(async () => uploadResult('nomi-local://asset/project/remote.png'))
 
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ plain: 'https://cdn.example.com/remote.png' }),
       basePosition: { x: 20, y: 30 },
       categoryId: 'shots',
@@ -253,7 +317,7 @@ describe('clipboardImagePaste', () => {
     const fetchMedia = vi.fn()
     const importRemoteUrl = vi.fn(async () => uploadResult('nomi-local://asset/project/movie.mp4', 'video/mp4'))
 
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ html: '<video src="https://cdn.example.com/movie.mp4"></video>' }),
       basePosition: { x: 40, y: 56 },
       categoryId: 'shots',
@@ -274,7 +338,7 @@ describe('clipboardImagePaste', () => {
   })
 
   it('keeps a failed image node when trusted web image download is blocked', async () => {
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ html: '<img src="https://cdn.example.com/protected-image">' }),
       basePosition: { x: 12, y: 16 },
       categoryId: 'shots',
@@ -301,7 +365,7 @@ describe('clipboardImagePaste', () => {
   })
 
   it('keeps a failed video node when trusted web video download is blocked', async () => {
-    const result = await pasteClipboardMediaToGenerationCanvas({
+    const result = await pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ html: '<video src="https://cdn.example.com/protected-video"></video>' }),
       basePosition: { x: 18, y: 24 },
       categoryId: 'shots',
@@ -334,7 +398,7 @@ describe('clipboardImagePaste', () => {
     const importRemoteUrl = vi.fn(() => new Promise<ReturnType<typeof uploadResult>>((resolve) => {
       importLatch.resolve = resolve
     }))
-    const promise = pasteClipboardMediaToGenerationCanvas({
+    const promise = pasteClipboardMediaToGenerationCanvas({ projectContext: currentProject(),
       clipboardData: fakeClipboardData({ plain: 'https://cdn.example.com/pending.png' }),
       basePosition: { x: 220, y: 260 },
       categoryId: 'shots',

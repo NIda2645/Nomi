@@ -1,13 +1,22 @@
+import { SurfacePortWireError, unwrapSurfacePortIpcResponse, type SurfacePortHandlerResult } from '../../../electron/shared/surfacePortBinding'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
   ProjectHydrationSupersededError,
   captureCurrentProjectCanvasReadSurfaceBinding,
+  withMainProjectAction,
+  withProjectAction,
+  type ProjectExecutionContext,
   createProjectCanvasReadSurfaceCoordinator,
   registerProjectCanvasReadSurface,
   registerProjectCanvasReadSurfaceCoordinator,
   sealCurrentProjectCanvasReadSnapshot,
 } from './projectCanvasReadSurface'
+
+/** Test-side action start: issue the originating project exactly as a user action would. */
+function issueProject(): ProjectExecutionContext {
+  return withProjectAction((project) => project, () => { throw new SurfacePortWireError('project_identity_unavailable') })
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -46,6 +55,14 @@ function binding(id: string, projectId = 'project-a') {
     portRevision: Number(id),
     nonce: `binding-nonce-${id}`,
   }
+}
+
+// Model the reply consumer for existing ownership assertions; separate tests inspect raw DTOs.
+function decodedHandler<T>(handler: ((request: T) => unknown) | undefined) {
+  return handler ? (request: T): unknown => {
+    const reply = handler(request)
+    return reply instanceof Promise ? reply.then(unwrapSurfacePortIpcResponse) : unwrapSurfacePortIpcResponse(reply)
+  } : undefined
 }
 
 function harness() {
@@ -116,38 +133,38 @@ function harness() {
     })),
     release: vi.fn(async () => ({ released: true as const })),
     onCanvasRead: vi.fn((handler: typeof readHandler) => {
-      readHandler = handler
+      readHandler = decodedHandler(handler)
       return () => {
         readHandler = undefined
       }
     }),
     onDocumentRead: vi.fn((handler: typeof documentReadHandler) => {
-      documentReadHandler = handler
+      documentReadHandler = decodedHandler(handler)
       return () => {
         documentReadHandler = undefined
       }
     }),
     onDocumentWrite: vi.fn((_handler: DocumentWriteHandler) => () => undefined),
     onCanvasWriteCapture: vi.fn((handler: typeof canvasWriteCaptureHandler) => {
-      canvasWriteCaptureHandler = handler
+      canvasWriteCaptureHandler = decodedHandler(handler)
       return () => {
         canvasWriteCaptureHandler = undefined
       }
     }),
     onCanvasWriteExecute: vi.fn((handler: typeof canvasWriteExecuteHandler) => {
-      canvasWriteExecuteHandler = handler
+      canvasWriteExecuteHandler = decodedHandler(handler)
       return () => {
         canvasWriteExecuteHandler = undefined
       }
     }),
     onTimelineRead: vi.fn((handler: typeof timelineReadHandler) => {
-      timelineReadHandler = handler
+      timelineReadHandler = decodedHandler(handler)
       return () => {
         timelineReadHandler = undefined
       }
     }),
     onTimelineWrite: vi.fn((handler: typeof timelineWriteHandler) => {
-      timelineWriteHandler = handler
+      timelineWriteHandler = decodedHandler(handler)
       return () => {
         timelineWriteHandler = undefined
       }
@@ -180,6 +197,73 @@ function harness() {
 }
 
 describe('project canvas-read Surface hydration coordinator', () => {
+  it('keeps project IO alive across transport changes but permanently revokes A → B → A', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    try {
+      const first = test.coordinator.beginHydration()
+      await first.commitCanvasRead('project-a')
+      const context = issueProject()
+      // Same project, fresh transient transport evidence: identity remains usable.
+      test.bridge.commitCanvasRead.mockResolvedValueOnce({ binding: binding('99', 'project-a') })
+      await first.commitCanvasRead('project-a')
+      expect(() => context.assertCurrent()).not.toThrow()
+      const other = test.coordinator.beginHydration(); await other.commitCanvasRead('project-b')
+      const returned = test.coordinator.beginHydration(); await returned.commitCanvasRead('project-a')
+      expect(context.signal.aborted).toBe(true)
+      expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+      expect(() => issueProject().assertCurrent()).not.toThrow()
+    } finally { unregister() }
+  })
+
+  it('revokes project IO at release initiation even when release fails', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    const epoch = test.coordinator.beginHydration(); await epoch.commitCanvasRead('project-a')
+    const context = issueProject()
+    test.bridge.release.mockRejectedValueOnce(new Error('main release failed'))
+    const release = test.coordinator.releaseCurrent()
+    expect(context.signal.aborted).toBe(true)
+    expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+    await expect(release).rejects.toThrow('main release failed')
+    // Existing exact authority remains available for a retry, not for new IO.
+    expect(test.coordinator.getCurrentBinding()).not.toBeNull()
+    expect(withProjectAction((project) => project)).toBeUndefined()
+    await test.coordinator.releaseCurrent()
+    unregister()
+  })
+
+  it('issues a main-started action only while main\'s captured binding is still the current epoch', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    try {
+      const bindingA = await test.coordinator.beginHydration().commitCanvasRead('project-a')
+      expect(withMainProjectAction(bindingA, (project) => project.binding)).toEqual(bindingA!.binding)
+      expect(withMainProjectAction({ ...bindingA, nonce: 'forged' }, (project) => project)).toBeUndefined()
+      expect(withMainProjectAction({ ...bindingA, binding: undefined }, (project) => project)).toBeUndefined()
+      expect(withMainProjectAction(null, (project) => project)).toBeUndefined()
+      await test.coordinator.beginHydration().commitCanvasRead('project-b')
+      expect(withMainProjectAction(bindingA, (project) => project)).toBeUndefined()
+      // A → B → A: the same project id in a new epoch is a different binding; the old action cannot revive.
+      await test.coordinator.beginHydration().commitCanvasRead('project-a')
+      expect(withMainProjectAction(bindingA, (project) => project)).toBeUndefined()
+    } finally { unregister() }
+  })
+
+  it('does not let a replaced coordinator authorize old project IO', async () => {
+    const test = harness()
+    const unregister = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    await test.coordinator.beginHydration().commitCanvasRead('project-a')
+    const context = issueProject()
+    unregister()
+    expect(context.signal.aborted).toBe(true)
+    expect(() => context.assertCurrent()).toThrow('project_binding_stale')
+    expect(withProjectAction((project) => project)).toBeUndefined()
+    const unregisterAgain = registerProjectCanvasReadSurfaceCoordinator(test.coordinator)
+    try { expect(() => context.assertCurrent()).toThrow('project_binding_stale') }
+    finally { unregisterAgain() }
+  })
+
   it('starts main suspend synchronously before returning the hydration epoch', async () => {
     const test = harness()
     const epoch = test.coordinator.beginHydration()
@@ -515,4 +599,29 @@ describe('project canvas-read Surface hydration coordinator', () => {
     expect(write).toHaveBeenCalledTimes(1)
     unregister()
   })
+})
+
+it.each([
+  ['registerCanvasReadSource', 'onCanvasRead'],
+  ['registerDocumentReadSource', 'onDocumentRead'],
+  ['registerDocumentWriteSource', 'onDocumentWrite'],
+  ['registerCanvasWriteCaptureSource', 'onCanvasWriteCapture'],
+  ['registerCanvasWriteExecuteSource', 'onCanvasWriteExecute'],
+  ['registerTimelineReadSource', 'onTimelineRead'],
+  ['registerTimelineWriteSource', 'onTimelineWrite'],
+  ['registerAssetReadSource', 'onAssetRead'],
+  ['registerExportReadSource', 'onExportRead'],
+  ['registerExportWriteSource', 'onExportWrite'],
+] as const)('%s serializes failures in renderer before invoking the bridge', async (register, subscribe) => {
+  const test = harness()
+  const epoch = test.coordinator.beginHydration()
+  const activeBinding = await epoch.commitCanvasRead('project-a')
+  const registerSource = test.coordinator[register] as (source: () => unknown) => () => void
+  registerSource(async () => { throw new SurfacePortWireError('capability_execution_failed', 'no-disk-space') })
+  const callback = (test.bridge[subscribe].mock.calls[0] as unknown as [(request: unknown) => SurfacePortHandlerResult])[0]
+  expect(await callback({
+    binding: activeBinding, signal: new AbortController().signal,
+    operation: 'set_node_prompt', input: {}, target: {}, preconditions: {},
+    documentId: 'doc', scope: 'full',
+  })).toEqual({ ok: false, error: { code: 'capability_execution_failed', reason: 'no-disk-space' } })
 })

@@ -37,12 +37,4 @@ export function registerScreenshotIpc(): void {
       return { ok: true };
     });
   }
-
-  ipcMain.handle("nomi:screenshot:set-project", async (event, payload) => {
-    assertTrustedSender(event);
-    const { setScreenshotProjectId } = await import("./screenshotHotkey");
-    const projectId = typeof payload === "string" ? payload : String((payload as { projectId?: string })?.projectId || "");
-    setScreenshotProjectId(projectId);
-    return { ok: true };
-  });
 }

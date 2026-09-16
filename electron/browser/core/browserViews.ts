@@ -39,6 +39,7 @@ import {
   setBrowserAssetOverlayDragInteractive,
   setBrowserAssetOverlayHostBounds,
   setBrowserAssetOverlayViewId,
+  setBrowserAssetOverlayProjectResolver,
   setBrowserAssetOverlayRendererUrlResolver,
   showBrowserAssetOverlay,
   sameOverlayRect,
@@ -47,6 +48,8 @@ import {
 import { allocateBrowserViewId, browserAssetOverlaysByWindow, browserViews, browserViewsByWindow } from "./browserViewState";
 import { BROWSER_PROFILE_PARTITION, STANDARD_CHROME_UA, configureBrowserSession } from "./browserViewSession";
 import { assertTrustedUiSender } from "../../ipcSenderGuard";
+import { issueWindowProject } from "../../assets/windowProjectCapture";
+import { canvasReadSurfaceRuntime } from "../../capabilityCore/canvasReadSurfaceRuntime";
 import {
   bringBrowserViewToFront,
   destroyBrowserView,
@@ -239,6 +242,11 @@ function attachBrowserViewEvents(record: BrowserViewRecord): void {
 
 export function registerBrowserViewIpc(rendererUrlResolver?: () => string): void {
   setBrowserAssetOverlayRendererUrlResolver(rendererUrlResolver);
+  // 浮层窗的项目 = 父窗口已提交的项目面；父窗口换项目/关项目时重推，浮层跟着换或清空。
+  setBrowserAssetOverlayProjectResolver((owner) => issueWindowProject(owner)?.binding ?? null);
+  canvasReadSurfaceRuntime.subscribeCommittedProject(() => {
+    for (const record of browserAssetOverlaysByWindow.values()) sendBrowserAssetOverlayConfig(record);
+  });
 
   ipcMain.handle("browser:view:create", async (event, payload: BrowserViewCreatePayload = {}) => {
     assertTrustedUiSender(event);
@@ -336,14 +344,18 @@ export function registerBrowserViewIpc(rendererUrlResolver?: () => string): void
 
   ipcMain.handle("browser:view:import-media", async (event, payload: BrowserViewImportMediaPayload) => {
     assertTrustedUiSender(event);
+    // 项目身份只来自发起窗口（素材盒浮层 = 它的父窗口）已提交的项目面，在任何 await 之前签发。
+    const project = issueWindowProject(getOwnerWindowForSender(event.sender));
+    if (!project) throw Object.assign(new Error("project_identity_unavailable"), { code: "project_identity_unavailable" });
     const record = getBrowserViewForSender(event.sender, payload);
-    return importBrowserMedia(record, payload);
+    return importBrowserMedia(record, payload, project);
   });
 
   ipcMain.handle("browser:view:capture-prompt-image", async (event, payload: BrowserViewPromptImagePayload) => {
     assertTrustedUiSender(event);
+    const project = issueWindowProject(getOwnerWindowForSender(event.sender));
     const record = getBrowserViewForSender(event.sender, payload);
-    return captureBrowserPromptImage(record, payload);
+    return captureBrowserPromptImage(record, payload, project);
   });
 
   ipcMain.handle("browser:view:select-prompt-screenshot", async (event, payload: BrowserViewIdPayload) => {
@@ -354,8 +366,9 @@ export function registerBrowserViewIpc(rendererUrlResolver?: () => string): void
 
   ipcMain.handle("browser:view:capture-prompt-screenshot", async (event, payload: BrowserViewPromptScreenshotPayload) => {
     assertTrustedUiSender(event);
+    const project = issueWindowProject(getOwnerWindowForSender(event.sender));
     const record = getBrowserViewForSender(event.sender, payload);
-    return captureBrowserPromptScreenshot(record, payload);
+    return captureBrowserPromptScreenshot(record, payload, project);
   });
 
   ipcMain.on("browser:view:set-resource-capture", (event, payload: BrowserViewIdPayload & { enabled?: unknown }) => {

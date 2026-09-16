@@ -75,6 +75,10 @@ export function toGenerationFlowNode(
     selectable: !readOnly,
     connectable: !readOnly,
     focusable: !readOnly,
+    // Controlled re-projections replace measured state. Give the framework
+    // the same domain-derived dimensions used by the node shell.
+    width: size.width,
+    height: size.height,
     style: { width: size.width, height: size.height },
     className: 'generation-canvas-react-flow__node',
   }

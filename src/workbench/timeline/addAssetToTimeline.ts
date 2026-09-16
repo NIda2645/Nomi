@@ -1,3 +1,4 @@
+import { isProjectExecutionContextCurrent, withProjectAction, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 import { readAudioDurationSeconds } from '../../media/audioDurationProbe'
 import { readVideoDurationSeconds } from '../../media/videoDurationProbe'
 import { parseAssetLibraryDrag, type AssetLibraryDragPayload } from '../assets/assetLibraryDrag'
@@ -74,19 +75,23 @@ export async function buildAssetTimelineClip(
   return buildClipFromAssetRef(asset, { ...options, durationSeconds })
 }
 
-/** Add one asset at an explicit timeline position. Drag and picker paths share this. */
+/**
+ * Add one asset at an explicit timeline position. Drag and picker paths share this.
+ * project: issued at the drop / pick; a probe that outlives it never writes the next project's timeline.
+ */
 export async function addAssetToTimeline(
   asset: AssetRef,
   options: { fps: number; startFrame: number },
+  project: ProjectExecutionContext,
 ): Promise<TimelineClip | null> {
   const clip = await buildAssetTimelineClip(asset, options)
-  if (!clip) return null
+  if (!clip || !isProjectExecutionContextCurrent(project)) return null
   useWorkbenchStore.getState().addTimelineClipAtFrame(clip, clip.type, options.startFrame)
   return clip
 }
 
 /** Preview-source click action: probe, append to the matching track, then reveal the result. */
-export async function addAssetToTimelineEnd(asset: AssetRef): Promise<boolean> {
+export async function addAssetToTimelineEnd(asset: AssetRef, project: ProjectExecutionContext): Promise<boolean> {
   const initialTimeline = useWorkbenchStore.getState().timeline
   let clip: TimelineClip | null
   try {
@@ -97,7 +102,7 @@ export async function addAssetToTimelineEnd(asset: AssetRef): Promise<boolean> {
     console.warn('asset timeline append probe failed', error)
     return false
   }
-  if (!clip) return false
+  if (!clip || !isProjectExecutionContextCurrent(project)) return false
   const store = useWorkbenchStore.getState()
   const startFrame = findAssetAppendFrame(store.timeline, clip.type)
   store.addTimelineClipAtFrame(clip, clip.type, startFrame)
@@ -108,16 +113,18 @@ export async function addAssetToTimelineEnd(asset: AssetRef): Promise<boolean> {
 /** Parse and route an asset-library drop without duplicating media-kind logic in track components. */
 export function tryAddAssetFromDragData(
   raw: string | null | undefined,
-  options: { fps: number; startFrame: number; targetTrackType: TimelineTrackType; activeProjectId: string | null; onFailure: (error: unknown) => void },
+  options: { fps: number; startFrame: number; targetTrackType: TimelineTrackType; onFailure: (error: unknown) => void },
 ): ({ status: 'accept'; kind: AssetKind } | { status: 'reject'; expectedTrack: TimelineTrackType } | { status: 'reject-external' }) | null {
   const payload = parseAssetLibraryDrag(raw)
   if (!payload) return null
-  const resolution = resolveAssetDrop(payload, options.targetTrackType, options.activeProjectId)
+  // 拖放即动作起点：签发此刻打开的项目，「属不属于本项目」与之后写时间轴都只认它。
+  const project = withProjectAction((issued) => issued)
+  const resolution = resolveAssetDrop(payload, options.targetTrackType, project?.binding.projectId ?? null)
   if (!resolution) return null
   if (resolution.status === 'reject') return resolution
-  if (resolution.status === 'reject-external') return resolution
-  void addAssetToTimeline(resolution.asset, options)
-    .then((clip) => { if (!clip) options.onFailure(null) })
-    .catch(options.onFailure)
+  if (resolution.status === 'reject-external' || !project) return { status: 'reject-external' }
+  void addAssetToTimeline(resolution.asset, options, project)
+    .then((clip) => { if (!clip && isProjectExecutionContextCurrent(project)) options.onFailure(null) })
+    .catch((error: unknown) => { if (isProjectExecutionContextCurrent(project)) options.onFailure(error) })
   return { status: 'accept', kind: resolution.asset.kind }
 }

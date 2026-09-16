@@ -5,6 +5,7 @@ import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/mode
 import type { TaskRequestDto } from '../../api/taskApi'
 import { runCatalogGenerationTask } from './catalogTaskActions'
 import { NEWAPI_STANDARD_VIDEO_PARAMS } from '../../../../electron/catalog/newapiTransport'
+const TEST_TARGET = { projectId: 'project-test', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 } as const
 
 const vendor: ModelCatalogVendorDto = { key: 'custom', name: 'custom', enabled: true, hasApiKey: true, createdAt: '', updatedAt: '' }
 const catalog = (key: string) => ({ parameters: [{ key, label: key, type: 'image-url' }] })
@@ -17,8 +18,8 @@ function source(kind: 'image' | 'video' = 'image'): GenerationCanvasNode {
 }
 async function run(node: GenerationCanvasNode, sourceNode: GenerationCanvasNode, edge: GenerationCanvasEdge, meta: Record<string, unknown>) {
   const calls: TaskRequestDto[] = []
-  const model: ModelCatalogModelDto = { modelKey: 'model', vendorKey: 'custom', labelZh: 'model', kind: 'video', enabled: true, published: true, publishedModes: ['image_to_video'], createdAt: '', updatedAt: '', meta }
-  await runCatalogGenerationTask(node, {
+  const model: ModelCatalogModelDto = { modelKey: 'model', vendorKey: 'custom', labelZh: 'model', kind: 'video', enabled: true, published: true, availability: { usable: true }, publishedModes: ['image_to_video'], createdAt: '', updatedAt: '', meta }
+  await runCatalogGenerationTask(node, { projectTarget: TEST_TARGET,
     referenceContext: { nodes: [node, sourceNode], edges: [edge] },
     listCatalogVendors: async () => [vendor], listCatalogModels: async () => [model],
     runTask: async (_vendor, request) => {

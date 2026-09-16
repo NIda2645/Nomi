@@ -9,7 +9,7 @@ import {
 } from "../shared/agentCapabilities/timelineWrite";
 import type { TargetRef } from "../shared/capabilityTargeting";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererTimelineReadVerifiedInvocationFactory,
   createRendererTimelineWriteVerifiedInvocationFactory,
@@ -24,7 +24,7 @@ const PUBLIC_FAILURE_CODES = new Set([
   "capability_output_invalid",
   "capability_timeout",
   "capability_cancelled",
-  "capability_execution_failed",
+  "capability_execution_failed", "capability_receipt_unresolved",
   "capability_unsupported",
   "capability_target_stale",
   "project_binding_stale",
@@ -53,7 +53,7 @@ export type PiTimelineReadTransportAdapter = Readonly<{
 
 export function createPiTimelineReadTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiTimelineReadTransportAdapter {
@@ -106,7 +106,7 @@ export type PiTimelineWriteTransportAdapter = Readonly<{
 
 export function createPiTimelineWriteTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiTimelineWriteTransportAdapter {

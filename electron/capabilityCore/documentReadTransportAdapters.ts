@@ -1,7 +1,7 @@
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { documentReadScopeForAlias } from "../shared/agentCapabilities/documentRead";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import { createRendererDocumentReadVerifiedInvocationFactory } from "./verifiedCapabilityInvocation";
 
 export type PiDocumentReadTransportAdapter = Readonly<{
@@ -25,13 +25,13 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
 
 export function createPiDocumentReadTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiDocumentReadTransportAdapter {
   const factory = createRendererDocumentReadVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   let disposed = false;

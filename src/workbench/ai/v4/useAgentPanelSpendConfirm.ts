@@ -19,7 +19,7 @@
 // **不弹第二张卡、不打断**（2026-09-11 用户拍板）。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { productionRunApi } from '../../production/productionRunApi'
 import { toast } from '../../../ui/toast'
@@ -96,14 +96,17 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
   const originalModelIds = React.useRef<{ operationId: string; modelIds: readonly string[] } | null>(null)
 
   const refresh = React.useCallback(async (): Promise<PendingSpendConfirm | undefined> => {
-    const projectId = getActiveWorkbenchProjectId()
-    if (!projectId) {
+    // 每次轮询都是一次读动作：此刻签发已打开的项目；回包到时它已不是当前项目就丢弃，不把上一个项目的卡闪进来。
+    const project = withProjectAction((issued) => issued)
+    if (!project) {
       setPending(undefined)
       return undefined
     }
     if (!hasPendingSpendCapability()) { setPending(undefined); setReadFailure(undefined); return undefined }
     try {
-      const next = pendingSpendOfRead(await productionRunApi.pendingSpend(projectId))
+      const read = await productionRunApi.pendingSpend(project.binding.projectId)
+      if (!isProjectExecutionContextCurrent(project)) return undefined
+      const next = pendingSpendOfRead(read)
       setReadFailure(undefined)
       setPending(next)
       if (next && originalModelIds.current?.operationId !== next.operationId) {
@@ -118,6 +121,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       }
       return next
     } catch (error) {
+      if (!isProjectExecutionContextCurrent(project)) return undefined
       // 2026-09-12：这里原来是「通道还没起来 / 项目正在切——这不是错误态，只是『现在没有
       // 要确认的东西』」，然后 `setPending(undefined)`。那句话把两件事说成了一件——
       // **读不到 ≠ 没有**。主进程现在只在「真的没有」时回空数组，抛出来的一律是失败；

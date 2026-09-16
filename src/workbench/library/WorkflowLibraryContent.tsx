@@ -7,7 +7,7 @@ import { notify } from '../../ui/notificationPolicy'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { rewriteCanvasWorkflowTemplateAssetUrls, type CanvasWorkflowTemplate } from '../generationCanvas/plugins/canvasWorkflowTemplates'
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../project/projectCanvasReadSurface'
 import {
   deleteWorkflowLibraryEntry,
   markWorkflowLibraryEntryUsed,
@@ -253,7 +253,9 @@ export function WorkflowLibraryContent({ projectId, compact = false, showHeader 
   )
 
   const copyToCanvas = React.useCallback(async (entry: WorkflowLibraryEntry) => {
-    if (!projectId || projectId !== getActiveWorkbenchProjectId()) {
+    // 复制动作起点签发原项目：素材物化进它，画布实例化前复验（换项目 = 取消，不落进新项目）。
+    const project = withProjectAction((issued) => issued)
+    if (!projectId || !project || project.binding.projectId !== projectId) {
       report(entry.id, t('libraries.workflow.unavailable'))
       return
     }
@@ -262,12 +264,13 @@ export function WorkflowLibraryContent({ projectId, compact = false, showHeader 
     setCopyingId(entry.id)
     try {
       const materialized = await materializeWorkflowAssets(entry.template, projectId)
-      if (projectId !== getActiveWorkbenchProjectId()) { report(entry.id, t('libraries.workflow.unavailable')); return }
+      if (!isProjectExecutionContextCurrent(project)) return
       const created = useGenerationCanvasStore.getState().instantiateWorkflowTemplateSnapshot(materialized.template, insertionPosition())
       if (!created.length) return
       markWorkflowLibraryEntryUsed(entry.id)
       if (materialized.failed) report(entry.id, t('libraries.workflow.assetCopyFailed'))
     } catch (error) {
+      if (!isProjectExecutionContextCurrent(project)) return
       report(entry.id, error instanceof Error ? error.message : String(error))
     } finally {
       setCopyingId(null)

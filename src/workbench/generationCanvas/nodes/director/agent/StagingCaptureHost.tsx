@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../store/generationCanvasStore'
 import { persistDirectorScreenshot } from '../bridge/persistOutputs'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../../../project/projectCanvasReadSurface'
 import { createOutputId } from '../model/directorIds'
 import { DIRECTOR_NODE_KIND, DIRECTOR_PROJECT_META_KEY, STAGING_AUTO_CAPTURE_META_KEY } from '../model/directorNodeMeta'
 import { normalizeDirectorProject } from '../model/directorProject'
@@ -46,6 +47,8 @@ export function StagingCaptureHost(): JSX.Element | null {
 
   const handleResult = React.useCallback(
     async (nodeId: string, capture: HeadlessCaptureResult | null) => {
+      // 常驻出图宿主的「动作起点」= 拿到这次离屏截图结果的那一刻：此刻签发原项目，落盘与写回画布只认它。
+      const originProject = withProjectAction((issued) => issued) ?? null
       const store = useGenerationCanvasStore.getState()
       const node = store.nodes.find((candidate) => candidate.id === nodeId)
       const staging = node ? readStagingAutoCapture(node) : null
@@ -59,7 +62,8 @@ export function StagingCaptureHost(): JSX.Element | null {
       try {
         if (!node || !capture || capture.frames.length === 0) return
         const title = t('director.agent.stagingReference')
-        const persisted = await persistDirectorScreenshot(capture.frames[0], nodeId, title)
+        const persisted = await persistDirectorScreenshot(capture.frames[0], nodeId, title, originProject)
+        if (originProject && !isProjectExecutionContextCurrent(originProject)) return
         const createdAt = Date.now()
         const imageNode = store.addNode({
           kind: 'image',
@@ -92,8 +96,11 @@ export function StagingCaptureHost(): JSX.Element | null {
         const current = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)
         const project = normalizeDirectorProject(current?.meta?.[DIRECTOR_PROJECT_META_KEY] ?? node.meta?.[DIRECTOR_PROJECT_META_KEY])
         store.updateNode(nodeId, { meta: { ...(current?.meta || node.meta || {}), [DIRECTOR_PROJECT_META_KEY]: projectWithScreenshot(project, title, persisted.url) } })
+      } catch (error) {
+        if (originProject && !isProjectExecutionContextCurrent(originProject)) return
+        throw error
       } finally {
-        clearFlag()
+        if (!originProject || isProjectExecutionContextCurrent(originProject)) clearFlag()
         processingRef.current = null
       }
     },

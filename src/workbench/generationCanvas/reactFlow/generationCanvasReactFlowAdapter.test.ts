@@ -27,6 +27,20 @@ function node(id: string, x: number, y = 0): GenerationCanvasNode {
 }
 
 describe('generation canvas React Flow adapter', () => {
+  it('retains framework dimensions when selection and focus replace a measured node', () => {
+    const source = node('artifact', 10)
+    const first = toGenerationFlowNodes([source], new Set(), false)
+    // React Flow measures its internal node; a controlled re-projection must
+    // still expose dimensions even when that internal measurement is reset.
+    const next = toGenerationFlowNodes([source], new Set(['artifact']), false, first, { focusFlashNodeId: 'artifact' })
+    expect(next[0]).not.toBe(first[0])
+    expect(next[0].width).toBe(240)
+    expect(next[0].height).toBe(120)
+    const resized = toGenerationFlowNode({ ...source, size: { width: 400, height: 300 } }, true, false)
+    expect(resized).toMatchObject({ width: 400, height: 300 })
+    expect(source.size).toEqual({ width: 100, height: 80 })
+  })
+
   it('maps nodes without mutating the domain object', () => {
     const source = node('source', 10, 20)
     const mapped = toGenerationFlowNode(source, true, false)

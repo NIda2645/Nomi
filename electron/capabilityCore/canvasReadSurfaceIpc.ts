@@ -10,7 +10,7 @@ import {
 import { assertTrustedSender } from "../ipcSenderGuard";
 import {
   type CanvasReadSurfaceRegistry,
-  type CapturedCanvasReadPort,
+  type ProjectSurfaceSession,
   type SurfaceOwnerAuthorityRuntime,
   type SurfaceOwnerDescriptor,
   type SurfaceOwnerEvidence,
@@ -42,8 +42,9 @@ type NavigationQuarantine = Readonly<{
 
 /** Narrow bridge for other trusted main IPC handlers; it cannot mint owners. */
 export type CanvasReadSurfaceIpcCapture = Readonly<{
-  captureCanvasReadPort(event: IpcMainInvokeEvent, binding: unknown): CapturedCanvasReadPort;
-  captureCommittedCanvasReadPort(event: IpcMainInvokeEvent, binding: ProjectBinding): CapturedCanvasReadPort;
+  openProjectSession(event: IpcMainInvokeEvent, binding: ProjectBinding): ProjectSurfaceSession;
+  openBoundProjectSession(event: IpcMainInvokeEvent, binding: unknown): ProjectSurfaceSession;
+  assertProjectSession(event: IpcMainInvokeEvent, session: ProjectSurfaceSession): void;
   consumeCapturedCanvasReadSnapshot(
     event: IpcMainInvokeEvent,
     handle: unknown,
@@ -183,8 +184,8 @@ export function registerCanvasReadSurfaceIpc(
       if (cleaned) return;
       cleaned = true;
       contents.removeListener("did-start-navigation", navigate);
-      contents.removeListener("render-process-gone", invalidate);
-      contents.removeListener("destroyed", invalidate);
+      contents.removeListener("render-process-gone", invalidateAndCleanup);
+      contents.removeListener("destroyed", invalidateAndCleanup);
       if (ownerRecords.get(contents)?.evidence === evidence) ownerRecords.delete(contents);
     };
     const invalidateAndCleanup = (): void => {
@@ -302,30 +303,15 @@ export function registerCanvasReadSurfaceIpc(
   });
 
   return Object.freeze({
-    captureCanvasReadPort(event: IpcMainInvokeEvent, binding: unknown): CapturedCanvasReadPort {
-      const owner = captureOwner(event);
-      const resolved = input.registry.resolveBindingWire(owner, binding);
-      return input.registry.captureCanvasReadPort(owner, resolved);
+    openProjectSession(event, binding) {
+      return input.registry.openProjectSession(captureOwner(event), binding);
     },
-    captureCommittedCanvasReadPort(event: IpcMainInvokeEvent, binding: ProjectBinding): CapturedCanvasReadPort {
+    openBoundProjectSession(event, binding) {
       const owner = captureOwner(event);
-      const selection = input.registry.getCommittedProjectSelection();
-      if (
-        !selection ||
-        selection.projectId !== binding.projectId ||
-        selection.immutableProjectUuid !== binding.immutableProjectUuid ||
-        selection.projectGeneration !== binding.projectGeneration
-      ) throw new SurfacePortError("surface_port_stale");
-      const captured = input.registry.captureCommittedCanvasReadPort({
-        binding,
-        canonicalRootDigest: selection.canonicalRootDigest,
-      });
-      if (!captured) throw new SurfacePortError("surface_port_unavailable");
-      const dispatch = input.registry.resolveCapturedCanvasReadPort(captured);
-      if (dispatch.owner !== input.ownerAuthority.resolve(owner)) {
-        throw new SurfacePortError("surface_owner_mismatch");
-      }
-      return captured;
+      return input.registry.openProjectSession(owner, input.registry.resolveBindingWire(owner, binding).binding);
+    },
+    assertProjectSession(event, session) {
+      input.registry.assertProjectSessionOwner(session, captureOwner(event));
     },
     consumeCapturedCanvasReadSnapshot(event, handle, requestProjectId) {
       const owner = captureOwner(event);

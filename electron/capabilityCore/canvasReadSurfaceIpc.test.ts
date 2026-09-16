@@ -181,7 +181,7 @@ describe("Canvas read Surface IPC", () => {
     }
   })
 
-  it("reuses the lifecycle IPC's exact owner evidence when Agent start captures a port", async () => {
+  it("reuses the lifecycle IPC's exact owner evidence when Agent opens a session", async () => {
     const test = setup();
     const owner = source();
     const suspended = (await test.invoke("suspend", owner.event, {
@@ -192,14 +192,35 @@ describe("Canvas read Surface IPC", () => {
       suspension: copy(suspended.value.suspension),
     })) as { ok: true; value: { binding: unknown } };
 
-    const captured = test.capture.captureCanvasReadPort(owner.event, copy(committed.value.binding));
+    const session = test.capture.openBoundProjectSession(owner.event, copy(committed.value.binding));
+    const captured = test.registry.captureProjectSessionPort(session);
 
     await expect(
       test.registry.assertCanvasReadPortReply(captured, copy(committed.value.binding)),
     ).resolves.toMatchObject({ binding: { projectId: "project-a" } });
     expect(() =>
-      test.capture.captureCanvasReadPort(source({ id: 99 }).event, copy(committed.value.binding)),
+      test.capture.openBoundProjectSession(source({ id: 99 }).event, copy(committed.value.binding)),
     ).toThrow(expect.objectContaining({ code: "surface_owner_mismatch" }));
+  });
+
+  it.each(['reload', 'render-process-gone', 'destroyed'] as const)('permanently revokes session on %s and preserves it for same-document navigation', async (cause) => {
+    const test = setup();
+    const owner = source();
+    const suspended = await test.invoke('suspend', owner.event, { surfaceInstanceId: 'surface' }) as { value: { suspension: unknown } };
+    const committed = await test.invoke('commitCanvasRead', owner.event, { projectId: 'project-a', suspension: suspended.value.suspension }) as { value: { binding: unknown } };
+    const session = test.capture.openBoundProjectSession(owner.event, committed.value.binding);
+    const identity = test.registry.resolveProjectSession(session);
+    expect(test.capture.openProjectSession(owner.event, identity.binding)).toBe(session);
+    owner.sender.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true, url: 'file:///nomi/index.html?step=generate' });
+    expect(() => test.capture.assertProjectSession(owner.event, session)).not.toThrow();
+    expect(() => test.capture.assertProjectSession(source({ id: 99 }).event, session)).toThrow(expect.objectContaining({ code: 'surface_owner_mismatch' }));
+    if (cause === 'reload') owner.sender.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: 'file:///nomi/index.html' });
+    else if (cause === 'destroyed') owner.destroy();
+    else owner.sender.emit(cause);
+    expect(identity.signal.aborted).toBe(true);
+    expect(() => test.registry.resolveProjectSession(session)).toThrow(expect.objectContaining({ code: 'project_binding_stale' }));
+    expect(owner.sender.listenerCount('render-process-gone')).toBe(0);
+    expect(owner.sender.listenerCount('destroyed')).toBe(0);
   });
 
   it("registers an independent lifecycle and accepts only main-resolved suspension/binding copies", async () => {
@@ -299,13 +320,33 @@ describe("Canvas read Surface IPC", () => {
     const { value: { suspension } } = (await test.invoke("suspend", owner.event, {
       surfaceInstanceId: "surface-1",
     })) as { ok: true; value: { suspension: unknown } };
-    owner.sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
+    owner.sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true, url: "file:///nomi/index.html?step=generate" });
     await expect(
       test.invoke("commitCanvasRead", owner.event, {
         projectId: "project-a",
         suspension: copy(suspension),
       }),
     ).resolves.toMatchObject({ ok: true, value: { binding: { binding: { projectId: "project-a" } } } });
+  });
+
+  it.each(["file:///nomi/index.html", "file:///nomi/index.html?step=generate"])("invalidates real document navigation to %s, even with the same pathname", async (url) => {
+    const test = setup();
+    const owner = source();
+    const { value: { suspension } } = (await test.invoke("suspend", owner.event, {
+      surfaceInstanceId: "surface-1",
+    })) as { ok: true; value: { suspension: unknown } };
+    owner.sender.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+      url,
+    });
+    await expect(
+      test.invoke("commitCanvasRead", owner.event, {
+        projectId: "project-a",
+        suspension: copy(suspension),
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "surface_port_unavailable" } });
+    expect(test.registry.getCommittedProjectSelection()).toBeNull();
   });
 
   it("blocks the old document from reacquiring authority while a full navigation is in progress", async () => {

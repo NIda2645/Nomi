@@ -11,13 +11,13 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { reportCanvasFeedback } from './canvasFeedback'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { buildDependencyWaves } from '../runner/dependencyWaves'
 import { frameHasTimelineUnits, sendFrameToTimeline } from '../agent/sendFrameToTimeline'
 import { confirmAndRunPlan } from './batchPlanPreview'
 import { eligibleGenerationNodeIds, readCanvasBatchConcurrency, resolveCanvasGenerationScope } from './canvasProductionScope'
 import type { FrameContextMenuAction } from './FrameContextMenu'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 
 export type CanvasFrameMenuState = {
   groupId: string
@@ -82,7 +82,7 @@ export function useCanvasFrameActions({
     setFrameMenu(null)
     if (!menu || readOnly) return
     const state = useGenerationCanvasStore.getState()
-    const projectId = getDesktopActiveProjectId()
+    const projectId = withProjectAction((project) => project.binding.projectId) ?? ''
     const report = (message: string) => reportCanvasFeedback(message, 'warning', { projectId, identity: `frame:${menu.groupId}`, reason: action, nodeIds: state.groups.find((group) => group.id === menu.groupId)?.nodeIds })
     if (action === 'edit') {
       setEditingFrameId(menu.groupId)

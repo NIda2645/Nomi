@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DesktopAssetDto } from '../../../desktop/bridge'
-import { setDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { createDefaultTimeline } from '../timelineMath'
 import { applyMediaToolCall, type MediaToolRuntime } from './mediaToolCall'
 
@@ -67,27 +66,23 @@ function runtime(): MediaToolRuntime {
 
 const serialized = (value: unknown): string => JSON.stringify(value)
 
-afterEach(() => setDesktopActiveProjectId(null))
-
 describe('project-scoped media Agent tools', () => {
   it('searches and retrieves stable ids without exposing local media locations', async () => {
-    setDesktopActiveProjectId('project-1')
     const deps = runtime()
-    const search = await applyMediaToolCall('search_media', { query: 'interview', kinds: ['video'] }, deps) as Record<string, unknown>
+    const search = await applyMediaToolCall('search_media', { projectId: 'project-1', query: 'interview', kinds: ['video'] }, deps) as Record<string, unknown>
     expect(search).toMatchObject({ total: 1, media: [expect.objectContaining({ id: 'stable-video-id', kind: 'video' })] })
     expect(serialized(search)).not.toContain('nomi-local://')
     expect(serialized(search)).not.toContain('relativePath')
     expect(serialized(search)).not.toContain('absolutePath')
     expect(serialized(search)).not.toContain('C:\\private')
 
-    const single = await applyMediaToolCall('get_media', { assetId: 'stable-video-id' }, deps)
+    const single = await applyMediaToolCall('get_media', { assetId: 'stable-video-id', projectId: 'project-1' }, deps)
     expect(single).toMatchObject({ media: { id: 'stable-video-id', contentType: 'video/mp4', sizeBytes: 4096 } })
     expect(serialized(single)).not.toContain('nomi-local://')
   })
 
   it('returns honest technical inspection and labels semantic analysis as not performed', async () => {
-    setDesktopActiveProjectId('project-1')
-    const result = await applyMediaToolCall('inspect_media', { assetId: 'stable-video-id' }, runtime())
+    const result = await applyMediaToolCall('inspect_media', { assetId: 'stable-video-id', projectId: 'project-1' }, runtime())
     expect(result).toMatchObject({
       media: { id: 'stable-video-id' },
       technical: { durationSeconds: 4, width: 1920, height: 1080, fps: 30, hasAudio: true },
@@ -96,9 +91,8 @@ describe('project-scoped media Agent tools', () => {
   })
 
   it('validates source ranges and reports intersecting timeline usages', async () => {
-    setDesktopActiveProjectId('project-1')
     const result = await applyMediaToolCall('inspect_source_range', {
-      assetId: 'stable-video-id', startFrame: 30, endFrame: 50,
+      projectId: 'project-1', assetId: 'stable-video-id', startFrame: 30, endFrame: 50,
     }, runtime())
     expect(result).toMatchObject({
       assetId: 'stable-video-id', valid: true, knownSourceFrames: 120,
@@ -108,10 +102,9 @@ describe('project-scoped media Agent tools', () => {
   })
 
   it('returns bounded real waveform values through the decoder runtime', async () => {
-    setDesktopActiveProjectId('project-1')
     const deps = runtime()
     const result = await applyMediaToolCall('read_waveform', {
-      assetId: 'stable-audio-id', startSeconds: 0, endSeconds: 1, buckets: 32,
+      projectId: 'project-1', assetId: 'stable-audio-id', startSeconds: 0, endSeconds: 1, buckets: 32,
     }, deps)
     expect(result).toMatchObject({
       assetId: 'stable-audio-id', sampleRate: 48_000, channels: 2,
@@ -122,19 +115,16 @@ describe('project-scoped media Agent tools', () => {
     })
   })
 
-  it('requires active project ownership and rejects cross-project records', async () => {
+  it('requires an explicit project and rejects cross-project records', async () => {
     await expect(applyMediaToolCall('search_media', {}, runtime())).rejects.toThrow('project_scope_required')
-    setDesktopActiveProjectId('project-2')
-    await expect(applyMediaToolCall('get_media', { assetId: 'stable-video-id' }, runtime())).rejects.toThrow('media_not_found')
+    await expect(applyMediaToolCall('get_media', { assetId: 'stable-video-id', projectId: 'project-2' }, runtime())).rejects.toThrow('media_not_found')
   })
 
-  // 2026-09-06 根因回归：素材库按 projectId 寻址，跟 GUI 打开哪个项目无关。已校验的 lease
-  // projectId 必须压过 GUI 当前项目——旧代码只读 GUI，外部宿主查不到自己刚建的项目的素材。
+  // 2026-09-06 根因回归：素材库按 projectId 寻址，跟 GUI 打开哪个项目无关。只认显式 projectId
+  // （lease 或动作起点签发的项目）——旧代码只读 GUI，外部宿主查不到自己刚建的项目的素材。
   it('addresses the media library by the verified lease project, not by what the GUI has open', async () => {
-    setDesktopActiveProjectId('')
     await expect(applyMediaToolCall('search_media', { projectId: 'project-1' }, runtime()))
       .resolves.toMatchObject({ operation: 'search_media', total: 2 })
-    setDesktopActiveProjectId('project-2')
     await expect(applyMediaToolCall('get_media', { assetId: 'stable-video-id', projectId: 'project-1' }, runtime()))
       .resolves.toMatchObject({ operation: 'get_media', media: { id: 'stable-video-id' } })
   })

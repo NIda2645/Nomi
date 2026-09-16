@@ -40,6 +40,7 @@ import {
   toggleNodeLock,
 } from './exec/storyboardRowActions'
 import { recoverNodeResult } from '../../generationCanvas/runner/recoverTaskActions'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../assets/AssetPreviewDialog'
 import type { AssetRef } from '../../assets/assetTypes'
@@ -357,7 +358,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
    */
   const onRecoverRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.recoverableNode
-    if (node) void recoverNodeResult(node.id)
+    if (node) withProjectAction((project) => { void recoverNodeResult(node.id, project) })
   }
   const onVariantsRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.node
@@ -381,7 +382,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     else void runAction(() => generateAnchorCard(execCtx, runtime.anchor))
   }
   const onRecoverAnchor = (runtime: AnchorCardRuntime): void => {
-    if (runtime.node) void recoverNodeResult(runtime.node.id)
+    const node = runtime.node
+    if (node) withProjectAction((project) => { void recoverNodeResult(node.id, project) })
   }
   const onToggleLockAnchor = (runtime: AnchorCardRuntime): void => {
     if (runtime.node) toggleNodeLock(runtime.node.id)

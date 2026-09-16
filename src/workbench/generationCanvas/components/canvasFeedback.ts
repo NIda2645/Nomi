@@ -1,6 +1,5 @@
 import type { ToastType } from '../../../ui/toast'
 import i18n from '../../../i18n'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { notify, revealNotificationTarget } from '../../../ui/notificationPolicy'
 
 /** The frozen React Flow host cannot gain a new inline slot in this task.
@@ -9,9 +8,9 @@ import { notify, revealNotificationTarget } from '../../../ui/notificationPolicy
 export function reportCanvasFeedback(
   message: string,
   type: ToastType,
-  context: { identity: string; reason: string; nodeIds?: string[]; projectId?: string; taskCenter?: boolean; workspaceMode?: 'preview' | 'generation' },
+  context: { identity: string; reason: string; nodeIds?: string[]; /** 动作起点签发的项目（空串 = 当时没有打开项目）。 */ projectId: string; taskCenter?: boolean; workspaceMode?: 'preview' | 'generation' },
 ): void {
-  const projectId = context.projectId ?? getDesktopActiveProjectId()
+  const projectId = context.projectId
   notify({
     identity: `${projectId}:${context.identity}`,
     reason: context.reason,

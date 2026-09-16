@@ -1,10 +1,11 @@
 import React from 'react'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
 import { NomiImage } from '../../../../design/media'
 import { notify } from '../../../../ui/notificationPolicy'
-import { getDesktopActiveProjectId } from '../../../../desktop/activeProject'
+import { useOpenProjectId } from '../../../project/useOpenProjectId'
 import type { AssetKind, AssetRef } from '../../../assets/assetTypes'
 import { importWorkbenchLocalAssetFile } from '../../../api/assetUploadApi'
 import { assetUrl } from '../../../generationCanvas/nodes/controls/parameterControlModel'
@@ -121,6 +122,7 @@ function SlotStack({ cell }: { cell: ShotReferenceCell }): JSX.Element {
 }
 
 export default function ShotReferenceZone({ mode, archetype, bindings, onChangeBindings, anchors, onTriggerMention, mentionEnabled }: Props): JSX.Element {
+  const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
   const [openSlotKey, setOpenSlotKey] = React.useState('')
   const [uploadingSlotKey, setUploadingSlotKey] = React.useState('')
@@ -159,18 +161,23 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
         if (cell.assetSlot.accept !== 'model3d') report(t(WRONG_KIND_KEY[cell.assetSlot.accept], { label: cell.label }))
         return
       }
-      setUploadingSlotKey(cell.key)
-      setUploadError('')
-      try {
-        const uploaded = await importWorkbenchLocalAssetFile(file, file.name || cell.label, {
-          ...(cell.assetSlot.accept === 'image' ? { taskKind: 'image_edit' as const } : {}),
-        })
-        applyAppend(cell, assetUrl(uploaded), kind, { name: uploaded.name || file.name })
-      } catch (error) {
-        setUploadError(error instanceof Error ? error.message : String(error))
-      } finally {
-        setUploadingSlotKey('')
-      }
+      await withProjectAction(async (context) => {
+        setUploadingSlotKey(cell.key)
+        setUploadError('')
+        try {
+          const uploaded = await importWorkbenchLocalAssetFile(file, file.name || cell.label, {
+            projectBinding: context.binding, assertCurrent: context.assertCurrent,
+            ...(cell.assetSlot.accept === 'image' ? { taskKind: 'image_edit' as const } : {}),
+          })
+          context.assertCurrent()
+          applyAppend(cell, assetUrl(uploaded), kind, { name: uploaded.name || file.name })
+        } catch (error) {
+          if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
+          setUploadError(error instanceof Error ? error.message : String(error))
+        } finally {
+          if (isProjectExecutionContextCurrent(context)) setUploadingSlotKey('')
+        }
+      })
     },
     [applyAppend, report, t],
   )
@@ -296,7 +303,7 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
                 {openSlotKey === cell.key ? (
                   <ShotReferenceSlotPopover
                     cell={cell}
-                    projectId={getDesktopActiveProjectId() || null}
+                    projectId={openProjectId}
                     uploading={uploadingSlotKey === cell.key}
                     anchorsById={anchorsById}
                     onPick={(asset: AssetRef) => applyAppend(cell, asset.renderUrl, asset.kind, {

@@ -7,7 +7,7 @@
 //   · 实时面（timeline.read / timeline.write）——必须拒，且错误点名两个项目 + 给下一步。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { setActiveWorkbenchProjectSaveTarget } from '../project/workbenchProjectSession'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../project/projectSessionTestHarness'
 import { handleCapabilityApply } from './capabilityApplyHandler'
 
 vi.mock('../timeline/agent/phase4CapabilityTargets', () => ({
@@ -22,27 +22,22 @@ vi.mock('../timeline/agent/timelineCapabilityTarget', () => ({
 
 const { executeTimelineReadTarget, executeTimelineWriteTarget } = await import('../timeline/agent/timelineCapabilityTarget')
 
-function openProject(projectId: string | null): void {
-  setActiveWorkbenchProjectSaveTarget(projectId
-    ? {
-        projectId,
-        projectName: projectId,
-        canPersist: () => false,
-        saveProject: (async () => null) as never,
-        onSaved: () => undefined,
-      } as never
-    : null)
+// 「Nomi 里打开的项目」只来自窗口的项目签发点（真实 coordinator），不是保存目标这类旁路状态。
+let projectSession: ProjectSessionTestHarness
+async function openProject(projectId: string | null): Promise<void> {
+  if (projectId) await projectSession.open(projectId)
+  else projectSession.close()
 }
 
-beforeEach(() => vi.clearAllMocks())
-afterEach(() => openProject(null))
+beforeEach(() => { vi.clearAllMocks(); projectSession = createProjectSessionTestHarness() })
+afterEach(() => projectSession.dispose())
 
 describe('MCP lease project binding at the renderer capability boundary', () => {
   it.each([
     ['no project open', null],
     ['a different project open', 'project-Q'],
   ])('addresses asset.read and export.read by the lease project with %s', async (_label, open) => {
-    openProject(open as string | null)
+    await openProject(open as string | null)
     await expect(handleCapabilityApply('asset.read', { projectId: 'project-P', operation: 'search_media' }))
       .resolves.toMatchObject({ forwardedProjectId: 'project-P' })
     await expect(handleCapabilityApply('export.read', { projectId: 'project-P', jobId: 'job-1' }))
@@ -61,7 +56,7 @@ describe('MCP lease project binding at the renderer capability boundary', () => 
     [{ operation: 'get_media', assetId: 'asset-1' }, { operation: 'get_media', assetId: 'asset-1' }],
     [{ operation: 'read_waveform', assetId: 'asset-1', buckets: 8 }, { operation: 'read_waveform', assetId: 'asset-1', buckets: 8 }],
   ])('builds a strict semantic asset.read input from the transport payload (%o)', async (payload, expected) => {
-    openProject('project-P')
+    await openProject('project-P')
     const result = await handleCapabilityApply('asset.read', {
       ...payload, projectId: 'project-P', leaseHandle: 'lease-handle-value',
     }) as { forwardedInput: Record<string, unknown> }
@@ -72,7 +67,7 @@ describe('MCP lease project binding at the renderer capability boundary', () => 
     ['no project open', null],
     ['a different project open', 'project-Q'],
   ])('refuses realtime timeline routes with an actionable error when there is %s', async (_label, open) => {
-    openProject(open as string | null)
+    await openProject(open as string | null)
     for (const op of ['timeline.read', 'timeline.write'] as const) {
       const failure = await handleCapabilityApply(op, { projectId: 'project-P', operation: 'preview' }).catch((error: unknown) => error)
       expect(failure).toBeInstanceOf(Error)
@@ -88,7 +83,7 @@ describe('MCP lease project binding at the renderer capability boundary', () => 
   })
 
   it('passes the lease project into the timeline write target once the bound project is the open one', async () => {
-    openProject('project-P')
+    await openProject('project-P')
     await expect(handleCapabilityApply('timeline.write', {
       projectId: 'project-P', operation: 'apply', plan: { planId: 'plan-1', baseRevision: 'rev-1' },
     })).resolves.toEqual({ applied: true })

@@ -1,7 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import {
   getDesktopBridge,
   type DesktopBrowserAssetOverlayCaptureRequest,
@@ -363,8 +362,6 @@ export function BrowserAssetOverlayApp(): JSX.Element {
 
   const importBrowserAssetToLibrary = React.useCallback(
     async (input: BrowserAssetRemoteImportInput): Promise<NomiBrowserAsset> => {
-      const projectId = getDesktopActiveProjectId()
-      if (!projectId) throw new Error('projectId is required')
       const viewId = config.viewId
       const fallbackTitle = input.title || input.fileName || (input.mediaType === 'video' ? t('browserAssets.webVideo') : t('browserAssets.webImage'))
       // 原生素材盒只接受当前内置网页产生的拖拽；没有来源 WebContents 时不准换成另一套
@@ -373,8 +370,8 @@ export function BrowserAssetOverlayApp(): JSX.Element {
         throw new Error(t('browserAssets.sourceSessionExpired'))
       }
       const asset = await browserBridge.importMedia({
+        // 项目由主进程按父窗口已提交的项目面签发；浮层不报 projectId。
         viewId,
-        projectId,
         url: input.url,
         fileName: input.fileName,
         title: input.title,
@@ -422,6 +419,7 @@ export function BrowserAssetOverlayApp(): JSX.Element {
   return (
     <div className="fixed inset-0 overflow-hidden bg-transparent font-nomi-sans text-nomi-ink">
       <NomiBrowserAssetPopover
+        projectId={config.projectBinding?.projectId ?? null}
         surface="contained"
         placement="absolute"
         opened={config.opened}

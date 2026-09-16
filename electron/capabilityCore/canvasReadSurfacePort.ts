@@ -25,7 +25,7 @@ import {
   SURFACE_EXPORT_WRITE_REPLY_CHANNEL,
   SURFACE_EXPORT_WRITE_REQUEST_CHANNEL,
   SURFACE_PORT_CANCEL_REQUEST_CHANNEL,
-  type SurfacePortWireErrorCode,
+  parseSurfacePortFailure,
 } from "../shared/surfacePortBinding";
 import {
   CapabilityExecutionError,
@@ -57,6 +57,7 @@ type PendingRead = {
   replying: boolean;
   active: boolean;
   replyChannel: string;
+  mutating: boolean;
   abort(): void;
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -74,27 +75,13 @@ export type CanvasReadSurfacePortRuntime = Readonly<{
   createExportWritePort(captured: CapturedCanvasReadPort): ExportWritePort;
 }>;
 
-const REPLY_ERROR_CODES = new Set<SurfacePortWireErrorCode>([
-  "capability_input_invalid",
-  "capability_cancelled",
-  "capability_target_stale",
-  "project_identity_unavailable",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
-]);
-
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function rendererReplyError(value: unknown): SurfacePortError | null {
-  const code = record(value)?.code;
-  return typeof code === "string" && REPLY_ERROR_CODES.has(code as SurfacePortWireErrorCode)
-    ? new SurfacePortError(code as SurfacePortWireErrorCode)
-    : null;
+  const failure = parseSurfacePortFailure(value);
+  return failure ? new SurfacePortError(failure.code, failure.reason) : null;
 }
 
 function sendableFrame(value: object): SendableFrame {
@@ -148,14 +135,16 @@ export function createCanvasReadSurfacePortRuntime(
         if (!request.active || request.signal.aborted) return;
         const rendererError = rendererReplyError(reply?.error);
         if (reply?.error !== undefined && !rendererError) {
-          settle(requestId, request, { error: new SurfacePortError("surface_port_unavailable") });
+          settle(requestId, request, { error: new SurfacePortError(request.mutating ? "capability_receipt_unresolved" : "surface_port_unavailable") });
           return;
         }
-        settle(requestId, request, rendererError ? { error: rendererError } : { value: reply?.result });
+        const uncertain = request.mutating && rendererError && ["capability_cancelled", "surface_port_stale", "surface_port_unavailable", "surface_port_suspended", "project_binding_stale"].includes(rendererError.code);
+        settle(requestId, request, rendererError ? { error: uncertain ? new SurfacePortError("capability_receipt_unresolved") : rendererError } : { value: reply?.result });
       },
       (error) =>
         settle(requestId, request, {
-          error: error instanceof SurfacePortError ? error : new SurfacePortError("surface_port_unavailable"),
+          error: request.mutating ? new SurfacePortError("capability_receipt_unresolved")
+            : error instanceof SurfacePortError ? error : new SurfacePortError("surface_port_unavailable"),
         }),
     );
   };
@@ -246,6 +235,7 @@ export function createCanvasReadSurfacePortRuntime(
     requestChannel: string,
     replyChannel: string,
     fields: Readonly<Record<string, unknown>>,
+    mutating = false,
   ): Promise<unknown> => {
     if (signal.aborted) return Promise.reject(new CapabilityExecutionError("capability_cancelled"));
     let dispatch: CapturedCanvasReadPortDispatch;
@@ -256,6 +246,7 @@ export function createCanvasReadSurfacePortRuntime(
         error instanceof SurfacePortError ? error : new SurfacePortError("surface_port_unavailable"),
       );
     }
+    if (dispatch.sessionSignal) signal = AbortSignal.any([signal, dispatch.sessionSignal]);
     const requestId = randomId().trim();
     if (!requestId || pending.has(requestId)) return Promise.reject(new SurfacePortError("surface_port_unavailable"));
     return new Promise((resolve, reject) => {
@@ -266,6 +257,7 @@ export function createCanvasReadSurfacePortRuntime(
         replying: false,
         active: true,
         replyChannel,
+        mutating,
         abort: () => {
           try {
             sendableFrame(request.dispatch.owner.frame).send(SURFACE_PORT_CANCEL_REQUEST_CHANNEL, {
@@ -275,7 +267,8 @@ export function createCanvasReadSurfacePortRuntime(
           } catch {
             // The local rejection remains authoritative when the renderer is already gone.
           }
-          settle(requestId, request, { error: new CapabilityExecutionError("capability_cancelled") });
+          settle(requestId, request, { error: mutating ? new SurfacePortError("capability_receipt_unresolved")
+            : new CapabilityExecutionError("capability_cancelled") });
         },
         resolve,
         reject,
@@ -289,7 +282,7 @@ export function createCanvasReadSurfacePortRuntime(
           ...fields,
         });
       } catch {
-        settle(requestId, request, { error: new SurfacePortError("surface_port_unavailable") });
+        settle(requestId, request, { error: new SurfacePortError(mutating ? "capability_receipt_unresolved" : "surface_port_unavailable") });
       }
     });
   };
@@ -330,6 +323,7 @@ export function createCanvasReadSurfacePortRuntime(
             SURFACE_DOCUMENT_WRITE_REQUEST_CHANNEL,
             SURFACE_DOCUMENT_WRITE_REPLY_CHANNEL,
             { documentId, operation, content, target, preconditions },
+            true,
           );
         },
       });
@@ -356,6 +350,7 @@ export function createCanvasReadSurfacePortRuntime(
             SURFACE_CANVAS_WRITE_EXECUTE_REQUEST_CHANNEL,
             SURFACE_CANVAS_WRITE_EXECUTE_REPLY_CHANNEL,
             { input: semanticInput, target, preconditions, receiptProposalId, approvalId, actionHash },
+            true,
           );
         },
       });
@@ -382,6 +377,7 @@ export function createCanvasReadSurfacePortRuntime(
             SURFACE_TIMELINE_WRITE_REQUEST_CHANNEL,
             SURFACE_TIMELINE_WRITE_REPLY_CHANNEL,
             { input: semanticInput, target, preconditions, receiptProposalId, approvalId, actionHash },
+            true,
           );
         },
       });
@@ -421,6 +417,7 @@ export function createCanvasReadSurfacePortRuntime(
             SURFACE_EXPORT_WRITE_REQUEST_CHANNEL,
             SURFACE_EXPORT_WRITE_REPLY_CHANNEL,
             { input: semanticInput, target, preconditions, receiptProposalId, approvalId, actionHash },
+            true,
           );
         },
       });

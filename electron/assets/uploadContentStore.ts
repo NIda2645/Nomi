@@ -5,6 +5,7 @@ import { isJsonRecord, type JsonRecord } from '../jsonUtils'
 import { projectDirById } from '../projects/repository'
 import { localAssetUrl, stableAssetId } from './assetPaths'
 import { broadcastAssetsUpdated } from './assetEvents'
+import { captureAssetWriteContext, type AssetWriteContext } from './assetWriteContext'
 
 export function isContentAddressedUpload(meta: unknown): boolean {
   return isJsonRecord(meta) && ['upload', 'imported', 'local'].includes(String(meta.kind || '').toLowerCase())
@@ -16,8 +17,9 @@ export async function contentHashForFile(filePath: string): Promise<string> {
   return hash.digest('hex')
 }
 
-export function storedAssetRecord(projectId: string, absolutePath: string, fileName: string, contentType: string, meta: JsonRecord, contentHash: string) {
-  const projectDir = projectDirById(projectId)
+export function storedAssetRecord(projectId: string, absolutePath: string, fileName: string, contentType: string, meta: JsonRecord, contentHash: string, context?: AssetWriteContext) {
+  // DTO construction is after commit; authorization belongs before publication/reuse.
+  const projectDir = context?.root ?? projectDirById(projectId)
   if (!projectDir) throw new Error('Project not found')
   const relativePath = path.relative(projectDir, absolutePath).replace(/\\/g, '/')
   const stat = fs.statSync(absolutePath)
@@ -30,9 +32,9 @@ export function storedAssetRecord(projectId: string, absolutePath: string, fileN
 
 // Publication is synchronous after native copying/hashing finishes. Byte and native callers
 // therefore cannot observe an incomplete file or choose separate identities in the main process.
-function publish(projectId: string, fileName: string, contentType: string, meta: JsonRecord, hash: string, write: (target: string) => void) {
-  const projectDir = projectDirById(projectId)
-  if (!projectDir) throw new Error('Project not found')
+function publish(context: AssetWriteContext, fileName: string, contentType: string, meta: JsonRecord, hash: string, write: (target: string) => void) {
+  context.assertCurrent()
+  const { projectId, root: projectDir } = context
   const directory = path.join(projectDir, 'assets', 'imported', 'sha256', hash)
   fs.mkdirSync(directory, { recursive: true })
   const parsed = path.parse(path.basename(fileName))
@@ -49,13 +51,12 @@ function publish(projectId: string, fileName: string, contentType: string, meta:
     throw error
   }
   broadcastAssetsUpdated(projectId)
-  return storedAssetRecord(projectId, target, path.basename(target), contentType, storedMeta, hash)
+  return storedAssetRecord(projectId, target, path.basename(target), contentType, storedMeta, hash, context)
 
 }
 
-async function findStoredUpload(projectId: string, size: number, hash: string) {
-  const projectDir = projectDirById(projectId)
-  if (!projectDir) throw new Error('Project not found')
+async function findStoredUpload(context: AssetWriteContext, size: number, hash: string) {
+  const projectDir = context.root
   const walk = async (directory: string): Promise<string | null> => {
     let entries: fs.Dirent[]
     try { entries = await fs.promises.readdir(directory, { withFileTypes: true }) }
@@ -76,11 +77,15 @@ async function findStoredUpload(projectId: string, size: number, hash: string) {
       const afterHash = await fs.promises.stat(absolutePath)
       if (afterHash.size !== stat.size || afterHash.mtimeMs !== stat.mtimeMs || afterHash.ctimeMs !== stat.ctimeMs) continue
       if (!cached) {
+        context.assertCurrent()
         const temporaryMeta = `${absolutePath}.${crypto.randomUUID()}.meta`
         try {
-          await fs.promises.writeFile(temporaryMeta, JSON.stringify({ ...meta, contentHash: candidateHash, contentHashSize: stat.size, contentHashMtime: stat.mtimeMs, contentHashCtime: stat.ctimeMs }))
-          await fs.promises.rename(temporaryMeta, `${absolutePath}.meta`)
-        } finally { await fs.promises.rm(temporaryMeta, { force: true }) }
+          fs.writeFileSync(temporaryMeta, JSON.stringify({ ...meta, contentHash: candidateHash, contentHashSize: stat.size, contentHashMtime: stat.mtimeMs, contentHashCtime: stat.ctimeMs }))
+          fs.renameSync(temporaryMeta, `${absolutePath}.meta`)
+        } catch {
+          // A hash cache is optional; a read-only/low-space sidecar must not
+          // reject valid media. Identity/cancellation checks stay outside.
+        } finally { try { fs.rmSync(temporaryMeta, { force: true }) } catch { /* optional cache cleanup */ } }
       }
       if (candidateHash === hash) return absolutePath
     }
@@ -89,46 +94,51 @@ async function findStoredUpload(projectId: string, size: number, hash: string) {
   return walk(path.join(projectDir, 'assets', 'imported'))
 }
 
-async function reuseStoredUpload(projectId: string, size: number, hash: string, contentType: string) {
-  const found = await findStoredUpload(projectId, size, hash)
+async function reuseStoredUpload(context: AssetWriteContext, size: number, hash: string, contentType: string) {
+  const found = await findStoredUpload(context, size, hash)
   if (!found) return null
   const meta: unknown = JSON.parse(await fs.promises.readFile(`${found}.meta`, 'utf8'))
   if (!isJsonRecord(meta) || !isContentAddressedUpload(meta)) return null
-  return storedAssetRecord(projectId, found, path.basename(found), contentType, meta, hash)
+  context.assertCurrent()
+  return storedAssetRecord(context.projectId, found, path.basename(found), contentType, meta, hash, context)
 }
 
 type StoredAsset = ReturnType<typeof storedAssetRecord>
 const pendingUploads = new Map<string, Promise<StoredAsset>>()
-function withUploadIdentity(projectId: string, hash: string, persist: () => Promise<StoredAsset>): Promise<StoredAsset> {
-  const key = `${projectDirById(projectId)}:${hash}`
+function withUploadIdentity(context: AssetWriteContext, hash: string, persist: () => Promise<StoredAsset>): Promise<StoredAsset> {
+  const key = `${context.root}:${context.binding.immutableProjectUuid}:${context.binding.projectGeneration}:${hash}`
   const pending = pendingUploads.get(key)
-  if (pending) return pending
-  const result = persist().finally(() => { pendingUploads.delete(key) })
+  // Serialize publication, never share a previous caller's authorization/result.
+  const result = (pending ? pending.catch(() => undefined) : Promise.resolve()).then(() => {
+    context.assertCurrent()
+    return persist()
+  }).finally(() => { if (pendingUploads.get(key) === result) pendingUploads.delete(key) })
   pendingUploads.set(key, result)
   return result
 }
 
-export async function persistUploadBytes(projectId: string, bytes: Buffer, fileName: string, contentType: string, meta: JsonRecord) {
+export async function persistUploadBytes(projectId: string, bytes: Buffer, fileName: string, contentType: string, meta: JsonRecord, captured?: AssetWriteContext) {
+  const context = captured ?? await captureAssetWriteContext(projectId)
+  context.assertCurrent()
   const hash = crypto.createHash('sha256').update(bytes).digest('hex')
-  return withUploadIdentity(projectId, hash, async () => {
-    const legacy = await reuseStoredUpload(projectId, bytes.byteLength, hash, contentType)
-    return legacy ?? publish(projectId, fileName, contentType, meta, hash, target => fs.writeFileSync(target, bytes, { flag: 'wx' }))
+  return withUploadIdentity(context, hash, async () => {
+    const legacy = await reuseStoredUpload(context, bytes.byteLength, hash, contentType)
+    return legacy ?? publish(context, fileName, contentType, meta, hash, target => fs.writeFileSync(target, bytes, { flag: 'wx' }))
   })
 }
 
-export async function persistUploadFile(projectId: string, source: string, fileName: string, contentType: string, meta: JsonRecord) {
-  const projectDir = projectDirById(projectId)
-  if (!projectDir) throw new Error('Project not found')
-  await fs.promises.mkdir(projectDir, { recursive: true })
-  const staging = await fs.promises.mkdtemp(path.join(projectDir, '.nomi-upload-'))
+export async function persistUploadFile(projectId: string, source: string, fileName: string, contentType: string, meta: JsonRecord, captured?: AssetWriteContext) {
+  const context = captured ?? await captureAssetWriteContext(projectId)
+  context.assertCurrent()
+  const staging = fs.mkdtempSync(path.join(context.root, '.nomi-upload-'))
   const snapshot = path.join(staging, 'content')
   try {
     await fs.promises.copyFile(source, snapshot)
     const hash = await contentHashForFile(snapshot)
     const stat = await fs.promises.stat(snapshot)
-    return await withUploadIdentity(projectId, hash, async () => {
-      const legacy = await reuseStoredUpload(projectId, stat.size, hash, contentType)
-      return legacy ?? publish(projectId, fileName, contentType, meta, hash, target => { fs.linkSync(snapshot, target); fs.unlinkSync(snapshot) })
+    return await withUploadIdentity(context, hash, async () => {
+      const legacy = await reuseStoredUpload(context, stat.size, hash, contentType)
+      return legacy ?? publish(context, fileName, contentType, meta, hash, target => { fs.linkSync(snapshot, target); fs.unlinkSync(snapshot) })
     })
   } finally {
     await fs.promises.rm(staging, { recursive: true, force: true })

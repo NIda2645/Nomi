@@ -10,6 +10,7 @@ import { getDesktopBridge } from '../../../../desktop/bridge'
 import { canArtifactBecomeReference, type AgentArtifactMeta } from '../../model/artifactMeta'
 import { FloatingToolbarShell, TOOLBAR_ICON as I, ToolbarButton } from '../NodeFloatingToolbar'
 import { rasterizeArtifactToReferenceAsset } from './rasterizeArtifactToReferenceAsset'
+import { withProjectAction } from '../../../project/projectCanvasReadSurface'
 
 type Props = {
   reportFeedback: (message: string) => void
@@ -56,15 +57,18 @@ export default function ArtifactNodeToolbar({ reportFeedback, nodeId, title, art
   }, [onCopyText, reportFeedback, t])
 
   const rasterizeReference = React.useCallback(() => {
-    reportFeedback('')
-    setRasterizing(true)
-    void rasterizeArtifactToReferenceAsset(artifact, undefined, nodeId)
-      .then((result) => {
-        if (result.ok) reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceCreated'))
-        else reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceFailed'))
-      })
-      .catch(() => reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceFailed')))
-      .finally(() => setRasterizing(false))
+    withProjectAction((project) => {
+      reportFeedback('')
+      setRasterizing(true)
+      void rasterizeArtifactToReferenceAsset(artifact, project, undefined, nodeId)
+        .then((result) => {
+          if (!result.ok && result.cancelled) return
+          if (result.ok) reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceCreated'))
+          else reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceFailed'))
+        })
+        .catch(() => reportFeedback(t('runtime.nodeRegistry.agent-artifact.referenceFailed')))
+        .finally(() => setRasterizing(false))
+    })
   }, [artifact, nodeId, reportFeedback, t])
 
   return (

@@ -32,6 +32,7 @@ const result = {
 
 function request(assertCurrent: () => void = () => undefined) {
   return {
+    projectId: "project-a",
     input: { operation: "export_timeline", expectedRevision: "revision-a" },
     target: { kind: "export", timelineRevision: "revision-a" },
     receiptProposalId: "receipt-a",

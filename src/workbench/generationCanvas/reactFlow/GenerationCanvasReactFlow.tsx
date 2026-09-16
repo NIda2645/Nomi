@@ -15,13 +15,13 @@ import '@xyflow/react/dist/style.css'
 import './generationCanvasReactFlow.css'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../ui/toast'
-import { saveWorkflowFromCurrentProject } from '../../library/workflowLibrary'
+import { saveWorkflowFromProject } from '../../library/workflowLibrary'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import { cn } from '../../../utils/cn'
 import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { ASSET_LIBRARY_DRAG_MIME } from '../../assets/assetLibraryDrag'
 import { useWorkbenchStore } from '../../workbenchStore'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useStableCategoryNodes } from './useStableCategoryNodes'
 import { getCanvasGroupBoxes, getSelectedBounds } from '../components/generationCanvasGeometry'
@@ -140,7 +140,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const appearingNodeIds = useNodeAppearTracking(allNodes)
   const handleSaveWorkflow = React.useCallback(() => {
     const template = saveSelectedAsWorkflowTemplate(t('generationCommon.selection.defaultWorkflowName', { count: selectedNodeIds.length })); if (!template) return
-    saveWorkflowFromCurrentProject(template); toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
+    saveWorkflowFromProject(template, withProjectAction((project) => project.binding.projectId) ?? null); toast(t('generationCommon.selection.workflowSaved', { name: template.name }), 'success')
   }, [saveSelectedAsWorkflowTemplate, selectedNodeIds.length, t])
 
   // #4 引用稳定过滤 + #5 minimap 拖动冻结（抽到 useStableCategoryNodes，逐字等价）。
@@ -618,7 +618,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
-      activeProjectId: getActiveWorkbenchProjectId(),
+      // 放下即动作起点：签发此刻打开的项目作为素材归属边界。
+      activeProjectId: withProjectAction((project) => project.binding.projectId) ?? null,
       offset: { x: currentViewport.x, y: currentViewport.y },
       zoom: currentViewport.zoom,
       activeCategoryId,

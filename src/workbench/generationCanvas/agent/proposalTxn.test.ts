@@ -76,7 +76,7 @@ describe('applyProposalBatch — S6-2 提议事务状态机', () => {
       },
     )
 
-    expect(outcome).toMatchObject({ status: 'aborted', proposalId: 'receipt-host-preallocated' })
+    expect(outcome).toMatchObject({ status: 'aborted', proposalId: 'receipt-host-preallocated', failure: { code: 'capability_target_stale' } })
     expect(prepareCalls).toBe(0)
     expect(projection()).toEqual(before)
     expect(getHistoryFlags()).toEqual({ canUndo: false, canRedo: false })
@@ -236,7 +236,7 @@ describe('applyProposalBatch — S6-2 提议事务状态机', () => {
         undefined,
         coordinator,
       ),
-    ).rejects.toThrow('abort marker unavailable')
+    ).rejects.toMatchObject({ code: 'capability_receipt_unresolved' })
 
     expect(projection()).toEqual(before)
     expect(disposition).toBe('preparing')

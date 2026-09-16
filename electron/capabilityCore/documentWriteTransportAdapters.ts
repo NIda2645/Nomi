@@ -5,7 +5,7 @@ import {
 } from "../shared/agentCapabilities/documentWrite";
 import type { DocumentAnchorRef, PreconditionSet, TargetRef } from "../shared/capabilityTargeting";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererDocumentWriteVerifiedInvocationFactory,
   type VerifiedCapabilityInvocation,
@@ -36,7 +36,7 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
   const publicCodes = new Set([
     "capability_invocation_unverified", "capability_authority_invalid", "capability_input_invalid",
     "capability_policy_stale", "capability_output_invalid", "capability_timeout", "capability_cancelled",
-    "capability_execution_failed", "capability_unsupported", "project_binding_stale", "surface_port_suspended",
+    "capability_execution_failed", "capability_receipt_unresolved", "capability_unsupported", "project_binding_stale", "surface_port_suspended",
     "surface_port_unavailable", "surface_port_stale", "surface_owner_mismatch", "document_target_stale",
   ]);
   const published = publicCodes.has(code) ? code : "capability_execution_failed";
@@ -49,13 +49,13 @@ function documentTarget(target: TargetRef): Extract<TargetRef, { kind: "document
 
 export function createPiDocumentWriteTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiDocumentWriteTransportAdapter {
   const factory = createRendererDocumentWriteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   let disposed = false;

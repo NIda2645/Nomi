@@ -1,7 +1,6 @@
 import type { ExportJobSnapshot, ExportJobVerification } from '../../../../electron/export/exportJobManager'
 import { EXPORT_STAGES, type ExportQuality, type ExportStage } from '../../../../electron/export/exportTypes'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
-import { resolveCapabilityProjectId } from '../../capability/capabilityProjectBinding'
+import { requireCapabilityProjectId } from '../../capability/capabilityProjectBinding'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { exportTimelineToMp4 } from '../../export/exportApi'
 import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
@@ -24,7 +23,6 @@ type ExportProfileInput = {
 }
 
 export type ExportToolRuntime = {
-  activeProjectId(): string
   readTimeline(): TimelineState
   readAspectRatio(): PreviewAspectRatio
   readGenerationNodes(): Parameters<typeof exportTimelineToMp4>[0]['generationNodes']
@@ -70,15 +68,11 @@ function exportProfile(input: Record<string, unknown>): ExportProfileInput {
 }
 
 /**
- * 导出作业按 projectId 在主进程登记表里寻址——不需要项目正开着。所以已校验的 lease projectId
- * 优先，没给才回退 GUI 当前项目（应用内调用者）。解析规则住在 capabilityProjectBinding.ts。
+ * 导出作业按 projectId 在主进程登记表里寻址——不需要项目正开着。项目只认调用方显式给出的
+ * （已校验的 lease，或应用内动作起点签发的项目），缺失即 project_scope_required，不回退 GUI 当前项目。
  */
-function scopeProjectId(runtime: ExportToolRuntime, boundProjectId?: unknown): string {
-  return resolveCapabilityProjectId(
-    boundProjectId,
-    () => runtime.activeProjectId(),
-    'project_scope_required: an active project is required',
-  )
+function scopeProjectId(boundProjectId?: unknown): string {
+  return requireCapabilityProjectId(boundProjectId, 'project_scope_required: an active project is required')
 }
 
 function failureCategory(snapshot: ExportJobSnapshot): string | null {
@@ -116,7 +110,7 @@ function compactJob(snapshot: ExportJobSnapshot): Record<string, unknown> {
 }
 
 async function scopedJob(runtime: ExportToolRuntime, jobId: string, boundProjectId?: unknown): Promise<ExportJobSnapshot> {
-  const projectId = scopeProjectId(runtime, boundProjectId)
+  const projectId = scopeProjectId(boundProjectId)
   const snapshot = await runtime.getJob(jobId)
   if (snapshot.projectId !== projectId) throw new Error('export_job_not_found: the job is not available in the active project')
   return snapshot
@@ -152,7 +146,6 @@ function defaultStartExport(runtime: Omit<ExportToolRuntime, 'startExport'>, inp
 
 function defaultRuntime(): ExportToolRuntime {
   const base = {
-    activeProjectId: () => getDesktopActiveProjectId(),
     readTimeline: () => useWorkbenchStore.getState().timeline,
     readAspectRatio: () => useWorkbenchStore.getState().previewAspectRatio,
     readGenerationNodes: () => useGenerationCanvasStore.getState().nodes,
@@ -182,7 +175,7 @@ export async function applyExportToolCall(
 ): Promise<unknown> {
   const input = asRecord(args)
   if (toolName === 'export_timeline') {
-    const projectId = scopeProjectId(runtime, input.projectId)
+    const projectId = scopeProjectId(input.projectId)
     const expectedRevision = requiredString(input.expectedRevision, 'expectedRevision', 64)
     const timeline = normalizeKernelTimeline(runtime.readTimeline())
     const currentRevision = timelineRevision(timeline)

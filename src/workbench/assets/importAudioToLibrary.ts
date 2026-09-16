@@ -7,9 +7,13 @@
 
 import { importWorkbenchLocalAssetFile } from '../api/assetUploadApi'
 import { extensionsForKind } from '../../../electron/assets/mediaTypes'
-
-// 音频通常远小于视频；给个宽松上限，挡住误选的超大文件。
-export const ASSET_LIBRARY_AUDIO_IMPORT_MAX_BYTES = 200 * 1024 * 1024
+import {
+  admitMediaImport,
+  type MediaImportRejection,
+  type StorageCapacity,
+} from '../../../electron/shared/contracts/mediaImportPolicy'
+import { readStorageCapacitySnapshot } from './storageCapacitySnapshot'
+import { isProjectImportCancellation, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 
 // 从媒体类型单一真相源派生，与 workspaceFileIndex 的音频分类同源（不再手维护第二份）。
 const AUDIO_EXTENSIONS = new Set(extensionsForKind('audio'))
@@ -30,14 +34,14 @@ function audioSignature(file: File): string {
 export type AudioImportFilter = {
   files: File[]
   skippedDuplicateCount: number
-  skippedTooLargeCount: number
+  rejected: Array<{ fileName: string; rejection: MediaImportRejection }>
 }
 
-/** 去重 + 大小过滤（纯函数便于单测）。只接受音频文件，非音频在调用方已分流不会进来。 */
-export function filterImportableAudioFiles(files: File[]): AudioImportFilter {
+/** 去重 + 准入（纯函数便于单测）。上限不再是本文件的常量——由磁盘余量派生（mediaImportPolicy）。 */
+export function filterImportableAudioFiles(files: File[], capacity: StorageCapacity | null): AudioImportFilter {
   const seen = new Set<string>()
   let skippedDuplicateCount = 0
-  let skippedTooLargeCount = 0
+  const rejected: AudioImportFilter['rejected'] = []
   const out: File[] = []
   for (const file of files) {
     const signature = audioSignature(file)
@@ -46,19 +50,24 @@ export function filterImportableAudioFiles(files: File[]): AudioImportFilter {
       continue
     }
     seen.add(signature)
-    if ((typeof file.size === 'number' ? file.size : 0) > ASSET_LIBRARY_AUDIO_IMPORT_MAX_BYTES) {
-      skippedTooLargeCount += 1
+    const admission = admitMediaImport(
+      'asset-library',
+      { kind: 'audio', sizeBytes: typeof file.size === 'number' ? file.size : 0 },
+      capacity,
+    )
+    if (!admission.ok) {
+      rejected.push({ fileName: file.name || '', rejection: admission })
       continue
     }
     out.push(file)
   }
-  return { files: out, skippedDuplicateCount, skippedTooLargeCount }
+  return { files: out, skippedDuplicateCount, rejected }
 }
 
 export type AudioImportResult = {
   uploadedCount: number
   skippedDuplicateCount: number
-  skippedTooLargeCount: number
+  rejected: Array<{ fileName: string; rejection: MediaImportRejection }>
   failedCount: number
 }
 
@@ -68,15 +77,17 @@ export type AudioImportResult = {
  */
 export async function importAudioFilesToLibrary(
   inputFiles: File[],
-  options: { projectId: string | null },
+  project: ProjectExecutionContext,
 ): Promise<AudioImportResult> {
-  const filtered = filterImportableAudioFiles(inputFiles)
+  const filtered = filterImportableAudioFiles(inputFiles, await readStorageCapacitySnapshot(project.binding.projectId))
+  project.assertCurrent()
   let failedCount = 0
   await Promise.all(
     filtered.files.map(async (file) => {
       try {
-        await importWorkbenchLocalAssetFile(file, file.name, { projectId: options.projectId })
+        await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: project.binding, assertCurrent: project.assertCurrent })
       } catch (error) {
+        if (isProjectImportCancellation(error)) throw error
         failedCount += 1
         console.error('asset library audio upload failed', error)
       }
@@ -85,7 +96,7 @@ export async function importAudioFilesToLibrary(
   return {
     uploadedCount: filtered.files.length - failedCount,
     skippedDuplicateCount: filtered.skippedDuplicateCount,
-    skippedTooLargeCount: filtered.skippedTooLargeCount,
+    rejected: filtered.rejected,
     failedCount,
   }
 }

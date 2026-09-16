@@ -5,12 +5,13 @@ import { assertTrustedSender } from '../ipcSenderGuard'
 import { LANE_IPC_CHANNELS, type LaneWorkspaceHandle, type LaneWorkspaceProjection } from '../shared/agentLane/laneContracts'
 import { LaneCommandError, parseLaneCommand } from './laneCommandCodec'
 import { laneErrorCodeOf } from '../shared/agentLane/laneErrorCodes'
+import { logError } from '../logging/logger'
 import type { LaneDesktopResult, LaneRestoredDesktopInput } from '../shared/agentLane/laneDesktopContracts'
 
 export interface LaneIpcDependencies {
-  /** Validate project identity, resolve credentials in main, and capture the committed surface. */
+  /** Open the main-issued window/project session and resolve credentials in main. */
   openWorkspace(event: IpcMainInvokeEvent, request: unknown): Promise<LaneWorkspaceHandle>
-  /** Revalidate the committed project before every operation, including approvals and cancellation. */
+  /** Revalidate the stable project session before every operation, including approvals and cancellation. */
   validate(event: IpcMainInvokeEvent): void
   updatePolicy(event: IpcMainInvokeEvent, policy: unknown, workspace: LaneWorkspaceHandle): void
   configure(event: IpcMainInvokeEvent, request: unknown, workspace: LaneWorkspaceHandle): Promise<void>
@@ -109,7 +110,16 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
           if (disposed || event.sender.isDestroyed()) { await workspace.close(); return }
           const target = event.sender
           const push = (projection: LaneWorkspaceProjection) => {
-            if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, projection)
+            if (active?.workspaceId !== workspaceId) return
+            if (projection.closed) {
+              // Structural replacement can close the inner workspace without passing through
+              // its session wrapper. Revoke now (close() detaches synchronously before its first
+              // await), then serialize disposal before the next open. Never await here: close may
+              // itself be waiting for this publisher's operation.
+              const closing = close()
+              void replace(async () => { await closing }).catch(error => logError('agent', 'workspace-terminal-close-failed', error))
+            }
+            if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, { ...projection, workspaceId })
           }
           const destroyed = () => { void replace(async () => { if (active?.workspaceId === workspaceId) await close() }) }
           active = { workspace, workspaceId, target, unsubscribe: workspace.subscribe(push), destroyed }

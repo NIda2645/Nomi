@@ -196,6 +196,7 @@ export function CustomCallEditor({
         await runWorkbenchTextTaskStream(
           brain.vendor,
           { kind: 'prompt_refine', prompt: instruction, extras: { modelKey: brain.modelKey } },
+          null, // 接入配置里的脚本起草不属于任何项目
           {
             signal: ctrl.signal,
             onDelta: (delta) => {

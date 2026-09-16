@@ -2,17 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_RUN_TOAST_ID, describeBlockedNotice, runPlanWithToasts } from './batchPlanPreview'
 import type { DependencyWavePlan } from '../runner/dependencyWaves'
 import { runGenerationNodesByPlan } from '../runner/generationRunController'
+import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 
 const mocks = vi.hoisted(() => ({
-  projectId: 'project-a',
   toast: vi.fn(),
   toastPush: vi.fn(),
   confirmAndMintGrant: vi.fn(async () => 'retry-grant'),
   nodes: [{ id: 'a', kind: 'image', title: 'A', position: { x: 0, y: 0 } }],
   edges: [],
 }))
-
-vi.mock('../../../desktop/activeProject', () => ({ getDesktopActiveProjectId: () => mocks.projectId }))
 
 vi.mock('../../../ui/toast', () => ({
   toast: mocks.toast,
@@ -69,10 +68,14 @@ describe('describeBlockedNotice — 批量「缺啥提示啥」', () => {
 })
 
 describe('runPlanWithToasts concurrency', () => {
-  afterEach(() => vi.unstubAllGlobals())
-  beforeEach(() => {
+  let projectSession: ProjectSessionTestHarness
+  // 批量运行属于发起它的项目：测试里用真实签发点拿到 project-a 的上下文。
+  const openProject = (): ProjectExecutionContext => withProjectAction((project) => project)!
+  afterEach(() => { vi.unstubAllGlobals(); projectSession.dispose() })
+  beforeEach(async () => {
     vi.clearAllMocks()
-    mocks.projectId = 'project-a'
+    projectSession = createProjectSessionTestHarness()
+    await projectSession.open('project-a')
     vi.mocked(runGenerationNodesByPlan).mockResolvedValue({ totalCount: 1, successes: [], failures: [] })
     mocks.confirmAndMintGrant.mockResolvedValue('retry-grant')
   })
@@ -80,9 +83,10 @@ describe('runPlanWithToasts concurrency', () => {
   it('passes the chosen concurrency to the dependency-wave runner', async () => {
     const dependencyPlan = plan({ waves: [['a']] })
 
-    await runPlanWithToasts(dependencyPlan, { grantId: 'grant-1', concurrency: 4, assetUploadConsent: 'allow' })
+    await runPlanWithToasts(dependencyPlan, { grantId: 'grant-1', concurrency: 4, assetUploadConsent: 'allow', project: openProject() })
 
     expect(runGenerationNodesByPlan).toHaveBeenCalledWith(dependencyPlan, {
+      target: testProjectBinding('project-a'),
       grantId: 'grant-1',
       concurrency: 4,
       // 托管决定必须原样透传到波次运行器——中途丢了就等于让 runner 自己去问（F16b 第二张卡）。
@@ -97,7 +101,7 @@ describe('runPlanWithToasts concurrency', () => {
       failures: [],
     })
 
-    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed' })
+    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed', project: openProject() })
 
     expect(mocks.toastPush).not.toHaveBeenCalled()
   })
@@ -106,8 +110,8 @@ describe('runPlanWithToasts concurrency', () => {
     vi.mocked(runGenerationNodesByPlan).mockResolvedValueOnce({
       totalCount: 1, successes: [], failures: [{ nodeId: 'a', error: new Error('failed') }],
     })
-    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed' })
-    mocks.projectId = 'project-b'
+    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed', project: openProject() })
+    await projectSession.open('project-b')
     const dispatchEvent = vi.fn((_event: Event) => true) // No application navigation handler accepted this request.
     vi.stubGlobal('window', { dispatchEvent })
     await mocks.toastPush.mock.calls[0][0].onAction()
@@ -118,9 +122,9 @@ describe('runPlanWithToasts concurrency', () => {
 
   it('does not replace another project recovery action when node IDs match and no grant is supplied', async () => {
     vi.mocked(runGenerationNodesByPlan).mockResolvedValue({ totalCount: 1, successes: [], failures: [{ nodeId: 'a', error: new Error('offline') }] })
-    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed' })
-    mocks.projectId = 'project-b'
-    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed' })
+    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed', project: openProject() })
+    await projectSession.open('project-b')
+    await runPlanWithToasts(plan({ waves: [['a']] }), { assetUploadConsent: 'not-needed', project: openProject() })
     const [first, second] = mocks.toastPush.mock.calls.map(([notice]) => notice)
     expect(first.id).not.toBe(second.id)
     expect(first.id).toContain('project-a')
@@ -145,7 +149,7 @@ describe('runPlanWithToasts concurrency', () => {
         failures: [],
       })
 
-    await runPlanWithToasts(plan({ waves: [['a']] }), { concurrency: 4, assetUploadConsent: 'not-needed' })
+    await runPlanWithToasts(plan({ waves: [['a']] }), { concurrency: 4, assetUploadConsent: 'not-needed', project: openProject() })
     const failedToast = mocks.toastPush.mock.calls[0][0]
     expect(failedToast).toMatchObject({
       id: `${BATCH_RUN_TOAST_ID}:project-a:a`,
@@ -158,6 +162,7 @@ describe('runPlanWithToasts concurrency', () => {
     await vi.waitFor(() => expect(runGenerationNodesByPlan).toHaveBeenCalledTimes(2))
 
     expect(runGenerationNodesByPlan).toHaveBeenLastCalledWith(expect.any(Object), {
+      target: testProjectBinding('project-a'),
       grantId: 'retry-grant',
       concurrency: 4,
       // 重试走 confirmAndRunPlan → 重新解析托管（不是把上一轮的决定翻出来复用）。

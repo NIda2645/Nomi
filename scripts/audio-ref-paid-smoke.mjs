@@ -55,8 +55,10 @@ try {
   const imageDataUrl = `data:image/jpeg;base64,${readFileSync(IMAGE_FIXTURE).toString('base64')}`
   const audioAsset = await win.evaluate(async (a) => window.nomiDesktop.assets.importRemoteUrl({ projectId: a.pid, url: a.d, kind: 'generated', fileName: 'ref-voice.mp3' }), { pid: projectId, d: audioDataUrl })
   const imageAsset = await win.evaluate(async (a) => window.nomiDesktop.assets.importRemoteUrl({ projectId: a.pid, url: a.d, kind: 'generated', fileName: 'ref-face.jpg' }), { pid: projectId, d: imageDataUrl })
-  const audioUrl = audioAsset?.data?.url
-  const imageUrl = imageAsset?.data?.url
+  if (audioAsset?.ok !== true) throw new Error(`音频素材导入失败: ${audioAsset?.failure?.code || 'invalid_import_response'}`)
+  if (imageAsset?.ok !== true) throw new Error(`图片素材导入失败: ${imageAsset?.failure?.code || 'invalid_import_response'}`)
+  const audioUrl = audioAsset.asset?.data?.url
+  const imageUrl = imageAsset.asset?.data?.url
   if (!audioUrl || !imageUrl) { console.log(`✗ 素材导入失败 audio=${audioUrl} image=${imageUrl}`); await app.close(); process.exit(1) }
   console.log(`素材就绪 audio=${audioUrl.slice(0, 60)}… image=${imageUrl.slice(0, 60)}…`)
 

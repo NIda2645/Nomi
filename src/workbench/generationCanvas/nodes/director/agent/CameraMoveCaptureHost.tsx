@@ -14,6 +14,7 @@ import { toast } from '../../../../../ui/toast'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../store/generationCanvasStore'
 import { persistDirectorFramesVideo } from '../bridge/persistOutputs'
+import { isProjectExecutionContextCurrent, withProjectAction, type ProjectExecutionContext } from '../../../../project/projectCanvasReadSurface'
 import { createOutputId } from '../model/directorIds'
 import { CAMERA_MOVE_AUTO_CAPTURE_META_KEY, DIRECTOR_NODE_KIND, DIRECTOR_PROJECT_META_KEY } from '../model/directorNodeMeta'
 import { normalizeDirectorProject } from '../model/directorProject'
@@ -83,13 +84,13 @@ function attachToTarget(targetNodeId: string, mp4Url: string, move: CameraMove |
 }
 
 /** 成功产物写回节点 meta + 工程产物清单 + 喂入目标镜头。清标志留给调用方（重试期间不清）。 */
-async function persistAndAttach(nodeId: string, fps: number, title: string, capture: HeadlessCaptureResult): Promise<boolean> {
+async function persistAndAttach(nodeId: string, fps: number, title: string, capture: HeadlessCaptureResult, originProject: ProjectExecutionContext | null): Promise<boolean> {
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find((candidate) => candidate.id === nodeId)
   if (!node) return false
   const config = readCameraMoveAutoCapture(node)
-  const persisted = await persistDirectorFramesVideo(capture.frames, nodeId, title, fps)
-  if (!persisted.url) return false
+  const persisted = await persistDirectorFramesVideo(capture.frames, nodeId, title, fps, originProject)
+  if (!persisted.url || (originProject && !isProjectExecutionContextCurrent(originProject))) return false
   const videoResult: CameraMoveVideoResult = { url: persisted.url, assetId: persisted.assetId, fps, targetNodeId: config?.targetNodeId, createdAt: Date.now() }
   const current = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)
   const project = normalizeDirectorProject(current?.meta?.[DIRECTOR_PROJECT_META_KEY] ?? node.meta?.[DIRECTOR_PROJECT_META_KEY])
@@ -147,15 +148,18 @@ export function CameraMoveCaptureHost(): JSX.Element | null {
       settledRef.current = true
       clearTimers()
       const effectiveOutcome = coerceOutcomeForE2E(attempt, outcome)
+      // 这一轮结局到达即动作起点：签发原项目，拼片落盘与写回只认它；换了项目就放弃，不在新项目写 meta。
+      const originProject = withProjectAction((issued) => issued) ?? null
       void (async () => {
         let done = effectiveOutcome === 'ok'
         if (effectiveOutcome === 'ok' && capture) {
           try {
-            done = await persistAndAttach(nodeId, fps, t('director.agent.cameraMoveReference'), capture)
+            done = await persistAndAttach(nodeId, fps, t('director.agent.cameraMoveReference'), capture, originProject)
           } catch {
             done = false // 落盘 / 喂入抛错也当失败，走重试兜底
           }
         }
+        if (originProject && !isProjectExecutionContextCurrent(originProject)) return
         const decision = decideCameraMoveRetry(done ? 'ok' : effectiveOutcome === 'ok' ? 'null' : effectiveOutcome, attempt, DEFAULT_CAMERA_MOVE_RETRY)
         if (decision.kind === 'retry') {
           retryTimerRef.current = setTimeout(() => {

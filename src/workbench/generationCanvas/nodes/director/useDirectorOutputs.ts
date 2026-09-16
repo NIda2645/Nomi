@@ -12,6 +12,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../../ui/toast'
 import { persistDirectorFramesVideo, persistDirectorScreenshot } from './bridge/persistOutputs'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { useDirectorStoreApi } from './DirectorEditorContext'
 import { fovToFocalMm } from './model/cameraLens'
 import { DIRECTOR_EXPORT_FPS, exportDimensions, exportFrameCount } from './model/exportSize'
@@ -60,6 +61,8 @@ export function useDirectorOutputs({ apiRef, ownerNodeId, onSendToCanvas }: { ap
   const takeScreenshot = React.useCallback(async (): Promise<boolean> => {
     const api = apiRef.current
     if (!api) return false
+    // 出图动作起点签发原项目（没有打开的项目 = null，显式走本会话临时产物）。
+    const project = withProjectAction((issued) => issued) ?? null
     const state = store.getState()
     const scene = state.activeScene()
     const camera = state.activeCameraId !== 'free' ? scene.cameras.find((item) => item.id === state.activeCameraId) : undefined
@@ -72,14 +75,15 @@ export function useDirectorOutputs({ apiRef, ownerNodeId, onSendToCanvas }: { ap
       const frame = await api.captureFrame({ cameraId: camera ? camera.id : 'free', width, height, burnLabels: true })
       if (!mountedRef.current) return false
       if (!frame) throw new Error('capture failed')
-      const persisted = await persistDirectorScreenshot(frame.dataUrl, owner, name)
-      if (!mountedRef.current) return false
+      const persisted = await persistDirectorScreenshot(frame.dataUrl, owner, name, project)
+      if (!mountedRef.current || (project && !isProjectExecutionContextCurrent(project))) return false
       // 无桌面运行时：V1 桥会把 dataURL 原样回吐；产物只存句柄（禁 base64 进工程）→ 退回本会话的 blob URL 并明说
       const assetUrl = persisted.localOnly ? URL.createObjectURL(frame.blob) : persisted.url
       store.getState().addOutputImage({ name, cameraName: camera?.name ?? '', assetUrl })
       toast(persisted.localOnly ? t('director.timeline.screenshotTemporary') : t('director.timeline.screenshotDone', { name }), persisted.localOnly ? 'info' : 'success')
       return true
-    } catch {
+    } catch (error) {
+      if (project && (!isProjectExecutionContextCurrent(project) || isProjectImportCancellation(error))) return false
       if (mountedRef.current) toast(t('director.timeline.screenshotFailed'), 'error')
       return false
     }
@@ -104,12 +108,14 @@ export function useDirectorOutputs({ apiRef, ownerNodeId, onSendToCanvas }: { ap
       toast(t('director.timeline.recordVideoNeedsCamera'), 'warning')
       return false
     }
+    const project = withProjectAction((issued) => issued) ?? null
     const total = exportFrameCount(state.contentEndSeconds())
     const { width, height } = exportSize()
     const resumeTime = state.timeline.currentTime
     const operation = { cancelled: false }
     operationRef.current = operation
     const cancelled = () => operation.cancelled || !mountedRef.current || store.getState().activeScene().id !== scene.id
+      || (project !== null && !isProjectExecutionContextCurrent(project))
     const reportCancelled = () => {
       if (mountedRef.current) toast(t('director.timeline.recordVideoCancelled'), 'info')
       return false
@@ -133,7 +139,7 @@ export function useDirectorOutputs({ apiRef, ownerNodeId, onSendToCanvas }: { ap
         store.getState().setVideoRecording({ current: index + 1, total })
       }
       const name = t('director.timeline.videoName', { stamp: timeStamp() })
-      const persisted = await persistDirectorFramesVideo(frames, owner, name, DIRECTOR_EXPORT_FPS)
+      const persisted = await persistDirectorFramesVideo(frames, owner, name, DIRECTOR_EXPORT_FPS, project)
       if (cancelled()) return reportCancelled()
       if (persisted.localOnly || !persisted.url) {
         toast(t('director.timeline.recordVideoNoBridge', { frames: frames.length }), 'warning')

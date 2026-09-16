@@ -33,7 +33,7 @@ async function setup() {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const read = vi.fn<TimelineReadPort["read"]>(async ({ input }) => {
     const semanticInput = input as { operation: string; startFrame?: number; endFrame?: number };
     if (semanticInput.operation === "inspect_timeline_range") {
@@ -75,8 +75,8 @@ async function setup() {
   return {
     read,
     write,
-    readAdapter: createPiTimelineReadTransportAdapter({ registry, capturedPort, requestId: "request-a", executor }),
-    writeAdapter: createPiTimelineWriteTransportAdapter({ registry, capturedPort, requestId: "request-a", executor }),
+    readAdapter: createPiTimelineReadTransportAdapter({ registry, session, requestId: "request-a", executor }),
+    writeAdapter: createPiTimelineWriteTransportAdapter({ registry, session, requestId: "request-a", executor }),
   };
 }
 
@@ -254,6 +254,8 @@ describe("timeline capability Pi transports", () => {
       receiptProposalId: "receipt-a",
       approvalId: "approval-a",
       actionHash: prepared!.invocation.actionHash,
-    }, signal)).resolves.toMatchObject({ ok: false, code: "capability_output_invalid" });
+      // The write was dispatched before its reply failed validation: the edit may already be applied,
+      // so the adapter must publish an unresolved receipt, never a definite failure the model would retry.
+    }, signal)).resolves.toMatchObject({ ok: false, code: "capability_receipt_unresolved" });
   });
 });

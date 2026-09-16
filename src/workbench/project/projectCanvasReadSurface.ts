@@ -4,7 +4,8 @@ import type {
   SurfacePortBindingWire,
   SurfaceSuspensionWire,
 } from '../../../electron/shared/surfacePortBinding'
-import { SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { settleSurfacePortHandler, surfacePortFailure, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { sameProjectAgentBinding, type ProjectBinding } from '../../../electron/shared/projectBinding'
 import type { CanvasWriteInput, CanvasWriteOperation } from '../../../electron/shared/agentCapabilities/canvasWrite'
 import type { CanvasDeleteInput } from '../../../electron/shared/agentCapabilities/canvasDelete'
 import type { AssetReadInput } from '../../../electron/shared/agentCapabilities/assetRead'
@@ -31,6 +32,7 @@ export type ProjectHydrationEpoch = Readonly<{
 
 export type ProjectHydrationGuard = Pick<ProjectHydrationEpoch, 'signal' | 'assertCurrent'>
 export type ProjectSurfaceExecutionGuard = Readonly<{ signal: AbortSignal; assertCurrent(): void }>
+export type ProjectExecutionContext = ProjectSurfaceExecutionGuard & Readonly<{ binding: ProjectBinding }>
 
 export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
   beginHydration(): ProjectHydrationEpoch
@@ -71,7 +73,7 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
     } & ProjectSurfaceExecutionGuard) => unknown,
   ): () => void
   registerTimelineReadSource(
-    read: (input: { input: TimelineReadInput; target: unknown; preconditions: unknown }) => unknown,
+    read: (input: { input: TimelineReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown,
   ): () => void
   registerTimelineWriteSource(
     write: (input: {
@@ -81,13 +83,14 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
       receiptProposalId: string
       approvalId: string
       actionHash: string
+      projectId: string
     } & ProjectSurfaceExecutionGuard) => unknown,
   ): () => void
   registerAssetReadSource(
-    read: (input: { input: AssetReadInput; target: unknown; preconditions: unknown }) => unknown,
+    read: (input: { input: AssetReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown,
   ): () => void
   registerExportReadSource(
-    read: (input: { input: ExportReadInput; target: unknown; preconditions: unknown }) => unknown,
+    read: (input: { input: ExportReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown,
   ): () => void
   registerExportWriteSource(
     write: (input: {
@@ -97,11 +100,20 @@ export type ProjectCanvasReadSurfaceCoordinator = Readonly<{
       receiptProposalId: string
       approvalId: string
       actionHash: string
+      projectId: string
     } & ProjectSurfaceExecutionGuard) => unknown,
   ): () => void
 }>
 
 let registeredCoordinator: ProjectCanvasReadSurfaceCoordinator | null = null
+/** Module-private: only the issuance points below can mint a project lifetime from a coordinator. */
+const projectContextIssuers = new WeakMap<ProjectCanvasReadSurfaceCoordinator, () => ProjectExecutionContext>()
+const projectOpenedListeners = new Set<(project: ProjectExecutionContext) => void>()
+function notifyProjectOpened(coordinator: ProjectCanvasReadSurfaceCoordinator): void {
+  if (registeredCoordinator !== coordinator) return
+  for (const listener of [...projectOpenedListeners]) withProjectAction(listener)
+}
+let registeredCoordinatorLifetime: AbortController | null = null
 
 /** Share the one coordinator object, never a copied project/binding scalar. */
 export function registerProjectCanvasReadSurfaceCoordinator(
@@ -110,9 +122,14 @@ export function registerProjectCanvasReadSurfaceCoordinator(
   if (registeredCoordinator && registeredCoordinator !== coordinator) {
     throw new SurfacePortWireError('surface_owner_mismatch')
   }
+  if (!registeredCoordinator) registeredCoordinatorLifetime = new AbortController()
   registeredCoordinator = coordinator
   return () => {
-    if (registeredCoordinator === coordinator) registeredCoordinator = null
+    if (registeredCoordinator === coordinator) {
+      registeredCoordinatorLifetime?.abort()
+      registeredCoordinatorLifetime = null
+      registeredCoordinator = null
+    }
   }
 }
 
@@ -141,7 +158,7 @@ export function registerProjectCanvasReadSurface(
     approvalId: string
     actionHash: string
   } & ProjectSurfaceExecutionGuard) => unknown,
-  readTimeline?: (input: { input: TimelineReadInput; target: unknown; preconditions: unknown }) => unknown,
+  readTimeline?: (input: { input: TimelineReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown,
   writeTimeline?: (input: {
     input: TimelineWriteInput
     target: unknown
@@ -149,10 +166,11 @@ export function registerProjectCanvasReadSurface(
     receiptProposalId: string
     approvalId: string
     actionHash: string
+    projectId: string
   } & ProjectSurfaceExecutionGuard) => unknown,
   additionalSources?: Readonly<{
-    readAsset?: (input: { input: AssetReadInput; target: unknown; preconditions: unknown }) => unknown
-    readExport?: (input: { input: ExportReadInput; target: unknown; preconditions: unknown }) => unknown
+    readAsset?: (input: { input: AssetReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown
+    readExport?: (input: { input: ExportReadInput; target: unknown; preconditions: unknown; projectId: string }) => unknown
     writeExport?: (input: {
       input: ExportWriteInput
       target: unknown
@@ -160,6 +178,7 @@ export function registerProjectCanvasReadSurface(
       receiptProposalId: string
       approvalId: string
       actionHash: string
+      projectId: string
     } & ProjectSurfaceExecutionGuard) => unknown
   }>,
 ): () => void {
@@ -228,6 +247,94 @@ export function captureCurrentProjectCanvasReadSurfaceBinding(): SurfacePortBind
   return registeredCoordinator?.getCurrentBinding() ?? null
 }
 
+/** Project IO keeps a lifetime, not the page's transport capture. Module-private by design. */
+function captureCurrentProjectExecutionContext(): ProjectExecutionContext {
+  const coordinator = registeredCoordinator
+  const lifetime = registeredCoordinatorLifetime
+  const issue = coordinator ? projectContextIssuers.get(coordinator) : undefined
+  if (!coordinator || !lifetime || !issue) throw new SurfacePortWireError('project_identity_unavailable')
+  const context = issue()
+  return Object.freeze({ ...context, signal: AbortSignal.any([context.signal, lifetime.signal]), assertCurrent() {
+    if (lifetime.signal.aborted || registeredCoordinator !== coordinator) throw new SurfacePortWireError('project_binding_stale')
+    context.assertCurrent()
+  } })
+}
+
+/**
+ * The single renderer issuance point for project IO authority (key = trusted window + project).
+ * A user action calls it synchronously as its first step, before any await, and receives the
+ * originating project lifetime; everything downstream only accepts that context and can never
+ * re-read "the current project". With no open project the action does not start: `unavailable`
+ * (or undefined) is returned. Late issuance after an await is rejected by
+ * projectActionIssuance.contract.test.ts.
+ */
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R): R | undefined
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R, unavailable: () => R): R
+export function withProjectAction<R>(run: (project: ProjectExecutionContext) => R, unavailable?: () => R): R | undefined {
+  let project: ProjectExecutionContext
+  try {
+    project = captureCurrentProjectExecutionContext()
+  } catch (error) {
+    if (!isProjectImportCancellation(error)) throw error
+    return unavailable?.()
+  }
+  return run(project)
+}
+
+/**
+ * Issuance for project-scoped background effects that start when a project becomes available
+ * (e.g. repairing stored results after open). The listener receives each newly committed project's
+ * lifetime, including the one already open at subscription; it never reads "the current project".
+ */
+export function subscribeProjectOpened(listener: (project: ProjectExecutionContext) => void): () => void {
+  projectOpenedListeners.add(listener)
+  withProjectAction(listener)
+  return () => { projectOpenedListeners.delete(listener) }
+}
+
+/**
+ * Issuance point for actions that main started on its own trusted input (the global screenshot
+ * hotkey). Main fixes its committed binding before its awaits and names it in the event; the
+ * renderer adopts that project lifetime only while that very binding is still this window's
+ * current epoch. The wire identifies the action, it never authorizes it; a mismatch means the
+ * project changed in between, so the action is cancelled (undefined).
+ */
+export function withMainProjectAction<R>(surfaceBinding: unknown, run: (project: ProjectExecutionContext) => R): R | undefined {
+  const current = captureCurrentProjectCanvasReadSurfaceBinding()
+  const wire = surfaceBinding && typeof surfaceBinding === 'object' ? surfaceBinding as Partial<SurfacePortBindingWire> : null
+  if (!current || !wire?.binding || typeof wire.binding !== 'object' || !sameBinding(wire as SurfacePortBindingWire, current)) return undefined
+  return withProjectAction(run)
+}
+
+/**
+ * Routing/display predicate: is this project the one open in this window right now? It answers a
+ * yes/no question and never hands out authority; anything that acts must hold an issued context.
+ */
+export function isProjectOpen(projectId: string | null | undefined): boolean {
+  const id = String(projectId || '').trim()
+  return Boolean(id) && withProjectAction((project) => project.binding.projectId === id) === true
+}
+
+/**
+ * Background-run predicate: is the run's own project (full identity fixed at submission) the one
+ * loaded in this window right now? Background work routes its store writes by this answer and
+ * otherwise writes the project on disk; it never adopts the loaded project as its target.
+ */
+export function isProjectBindingOpen(binding: ProjectBinding): boolean {
+  return withProjectAction((project) => sameProjectAgentBinding(project.binding, binding)) === true
+}
+
+/** Async UI cleanup must not update a replacement project's component state. */
+export function isProjectExecutionContextCurrent(context: ProjectExecutionContext | undefined): boolean {
+  if (!context) return false
+  try { context.assertCurrent(); return true } catch { return false }
+}
+
+export function isProjectImportCancellation(error: unknown): boolean {
+  const { code } = surfacePortFailure(error)
+  return code === 'capability_cancelled' || code === 'project_binding_stale' || code === 'project_identity_unavailable'
+}
+
 /** Exchange the already-captured exact binding and bytes; never recapture global state after an await. */
 export function sealCurrentProjectCanvasReadSnapshot(
   binding: SurfacePortBindingWire,
@@ -241,6 +348,7 @@ export function sealCurrentProjectCanvasReadSnapshot(
 type EpochState = {
   id: number
   controller: AbortController
+  interactionController: AbortController
   bridge: CanvasReadSurfaceBridge | null
   suspensionPromise: Promise<void>
   suspension: SurfaceSuspensionWire | null
@@ -316,6 +424,7 @@ export function createProjectCanvasReadSurfaceCoordinator(
 
   const releaseState = async (state: EpochState): Promise<void> => {
     assertCurrent(state)
+    state.interactionController.abort()
     await awaitWhileCurrent(state, state.suspensionPromise)
     const authority = state.binding ?? state.suspension
     if (!authority || !state.bridge) {
@@ -334,10 +443,12 @@ export function createProjectCanvasReadSurfaceCoordinator(
   const coordinator: ProjectCanvasReadSurfaceCoordinator = Object.freeze({
     beginHydration() {
       current?.controller.abort()
+      current?.interactionController.abort()
       const bridge = input.getSurfaceBridge()
       const state: EpochState = {
         id: ++sequence,
         controller: new AbortController(),
+        interactionController: new AbortController(),
         bridge,
         suspensionPromise: Promise.resolve(),
         suspension: null,
@@ -367,6 +478,7 @@ export function createProjectCanvasReadSurfaceCoordinator(
             }),
           )
           state.binding = reply.binding
+          notifyProjectOpened(coordinator)
           return reply.binding
         },
         release: () => releaseState(state),
@@ -399,7 +511,7 @@ export function createProjectCanvasReadSurfaceCoordinator(
     registerCanvasReadSource(readSnapshot) {
       const bridge = input.getSurfaceBridge()
       if (!bridge) return () => undefined
-      return bridge.onCanvasRead(({ binding }) => {
+      return bridge.onCanvasRead(({ binding }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding) {
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
@@ -408,31 +520,31 @@ export function createProjectCanvasReadSurfaceCoordinator(
         // The preload invokes this handler synchronously; the store snapshot is
         // therefore captured against the exact binding before any promise turn.
         return readSnapshot()
-      })
+      }))
     },
     registerDocumentReadSource(readDocument) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !readDocument) return () => undefined
-      return bridge.onDocumentRead(({ binding, documentId, scope }) => {
+      return bridge.onDocumentRead(({ binding, documentId, scope }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
         return readDocument({ documentId, scope })
-      })
+      }))
     },
     registerDocumentWriteSource(writeDocument) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !writeDocument) return () => undefined
-      return bridge.onDocumentWrite(({ binding, signal, documentId, operation, content, target, preconditions }) => {
+      return bridge.onDocumentWrite(({ binding, signal, documentId, operation, content, target, preconditions }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, signal)
         return writeDocument({ documentId, operation, content, target, preconditions, ...guard })
-      })
+      }))
     },
     registerCanvasWriteCaptureSource(capture) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !capture) return () => undefined
-      return bridge.onCanvasWriteCapture(({ binding, operation, input, nodeId }) => {
+      return bridge.onCanvasWriteCapture(({ binding, operation, input, nodeId }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
@@ -442,65 +554,78 @@ export function createProjectCanvasReadSurfaceCoordinator(
           ...(input !== undefined ? { input: input as CanvasWriteInput } : {}),
           ...(nodeId ? { nodeId } : {}),
         })
-      })
+      }))
     },
     registerCanvasWriteExecuteSource(execute) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !execute) return () => undefined
-      return bridge.onCanvasWriteExecute(({ binding, ...request }) => {
+      return bridge.onCanvasWriteExecute(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
         return execute({ ...request, ...guard })
-      })
+      }))
     },
     registerTimelineReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onTimelineRead(({ binding, ...request }) => {
+      return bridge.onTimelineRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
-        return read(request)
-      })
+        return read({ ...request, projectId: binding.binding.projectId })
+      }))
     },
     registerTimelineWriteSource(write) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !write) return () => undefined
-      return bridge.onTimelineWrite(({ binding, ...request }) => {
+      return bridge.onTimelineWrite(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
-        return write({ ...request, ...guard })
-      })
+        return write({ ...request, ...guard, projectId: binding.binding.projectId })
+      }))
     },
     registerAssetReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onAssetRead(({ binding, ...request }) => {
+      return bridge.onAssetRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
-        return read(request)
-      })
+        return read({ ...request, projectId: binding.binding.projectId })
+      }))
     },
     registerExportReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onExportRead(({ binding, ...request }) => {
+      return bridge.onExportRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
-        return read(request)
-      })
+        return read({ ...request, projectId: binding.binding.projectId })
+      }))
     },
     registerExportWriteSource(write) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !write) return () => undefined
-      return bridge.onExportWrite(({ binding, ...request }) => {
+      return bridge.onExportWrite(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
-        return write({ ...request, ...guard })
-      })
+        return write({ ...request, ...guard, projectId: binding.binding.projectId })
+      }))
     },
+  })
+  // The lifetime is the hydration epoch's interaction controller: page changes keep it, any
+  // project replacement or release aborts it permanently (A → B → A cannot revive).
+  projectContextIssuers.set(coordinator, () => {
+    const state = current
+    if (!state?.binding) throw new SurfacePortWireError('project_identity_unavailable')
+    const binding = Object.freeze({ ...state.binding.binding })
+    const assertProjectCurrent = (): void => {
+      if (current !== state || state.controller.signal.aborted || state.interactionController.signal.aborted ||
+        !state.binding || !sameProjectAgentBinding(binding, state.binding.binding)) throw new SurfacePortWireError('project_binding_stale')
+    }
+    assertProjectCurrent()
+    return Object.freeze({ binding, signal: state.interactionController.signal, assertCurrent: assertProjectCurrent })
   })
   return coordinator
 }

@@ -1,3 +1,4 @@
+import { SURFACE_PORT_WIRE_ERROR_CODES } from "../shared/surfacePortBinding";
 import {
   ASSET_READ_CAPABILITY,
   assetReadSemanticInputSchema,
@@ -73,6 +74,7 @@ export type CapabilityExecutionErrorCode =
   | "capability_output_invalid"
   | "capability_timeout"
   | "capability_cancelled"
+  | "capability_receipt_unresolved"
   | "capability_execution_failed"
   | "capability_unsupported";
 
@@ -205,19 +207,12 @@ type CapabilityResult<Input> =
 const DEFAULT_TIMEOUT_MS = 15_000;
 const executionOptionsBySignal = new WeakMap<AbortSignal, CapabilityExecuteOptions>();
 const PASSTHROUGH_CODES = new Set([
+  ...SURFACE_PORT_WIRE_ERROR_CODES,
   "capability_invocation_unverified",
   "capability_authority_invalid",
   "capability_policy_stale",
-  "capability_receipt_unresolved",
   "capability_surface_unavailable",
-  "capability_target_stale",
-  "project_identity_unavailable",
-  "project_binding_stale",
   "project_scope_changed",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
   "lease_required",
   "lease_invalid",
   "lease_expired",
@@ -249,6 +244,7 @@ async function bounded<T>(
   externalSignal: AbortSignal | undefined,
   execute: (signal: AbortSignal) => Promise<T>,
   options: CapabilityExecuteOptions = {},
+  writeStarted: () => boolean = () => false,
 ): Promise<T> {
   if (externalSignal?.aborted) throw new CapabilityExecutionError("capability_cancelled");
 
@@ -275,7 +271,8 @@ async function bounded<T>(
           () => {
             reject(
               new CapabilityExecutionError(
-                timedOut ? "capability_timeout" : cancelled ? "capability_cancelled" : "capability_cancelled",
+                writeStarted() ? "capability_receipt_unresolved"
+                  : timedOut ? "capability_timeout" : cancelled ? "capability_cancelled" : "capability_cancelled",
               ),
             );
           },
@@ -571,6 +568,8 @@ export class CapabilityExecutorRegistry {
       throw new CapabilityExecutionError("capability_unsupported");
     }
     parseInput(invocation);
+    const mutating = isDocumentWrite || isCanvasWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
+    let writeStarted = false;
 
     return bounded(
       this.#timeoutMs,
@@ -587,18 +586,30 @@ export class CapabilityExecutorRegistry {
 
         let source: unknown;
         try {
+          if (signal.aborted) throw new CapabilityExecutionError("capability_cancelled");
+          writeStarted = mutating;
           source = await (port as CanvasReadPort).read({
             ...(isDocumentRead ? { scope: documentReadSemanticInputSchema.parse(invocation.input).scope } : {}),
             signal,
           });
         } catch (error) {
-          if (signal.aborted) throw new CapabilityExecutionError("capability_cancelled");
+          if (signal.aborted) throw new CapabilityExecutionError(writeStarted ? "capability_receipt_unresolved" : "capability_cancelled");
+          if (writeStarted && !(isStableTypedError(error) || error instanceof CapabilityExecutionError)) {
+            throw new CapabilityExecutionError("capability_receipt_unresolved");
+          }
           throw safeStageError(error);
         }
-        await revalidate(invocation);
-        return projectOutput(source, invocation) as CapabilityResult<Input>;
+        try {
+          await revalidate(invocation);
+          return projectOutput(source, invocation) as CapabilityResult<Input>;
+        }
+        catch (error) {
+          if (writeStarted) throw new CapabilityExecutionError("capability_receipt_unresolved");
+          throw error;
+        }
       },
       options,
+      () => writeStarted,
     );
   }
 }

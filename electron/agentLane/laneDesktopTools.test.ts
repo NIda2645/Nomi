@@ -2,7 +2,6 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { IpcMainInvokeEvent } from 'electron'
 import type { LaneHandle } from '../shared/agentLane/laneContracts'
 import type { CanvasWritePort, DocumentWritePort } from '../capabilityCore/capabilityExecutorRegistry'
 import type { DesktopCanvasReadRuntime } from '../capabilityCore/canvasReadMainRuntime'
@@ -14,6 +13,7 @@ import { createDesktopLaneTools } from './laneDesktopTools'
 import { executeLaneReceiptCommand } from './laneReceiptCommands'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuthority'
 import { openLane } from './laneHost.mjs'
+import { bindLaneProjectSession } from './laneProjectSession'
 import { createHttpFixture } from '../../tests/agent-runtime/httpFixture.mjs'
 
 // Replace only the GUI's global registry with an actual temporary Surface registry.
@@ -34,7 +34,10 @@ const rawEvidence: CanvasWriteRawEvidence = {
 const cleanups: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 
-async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'committed' | 'missing' | 'mismatch' = 'committed') {
+async function fixture(
+  kind: 'document' | 'canvas' | 'delete',
+  receiptMode: 'committed' | 'missing' | 'mismatch' | 'import-failed' | 'written-then-revoked' = 'committed',
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-desktop-lane-receipts-'))
   cleanups.push(() => fs.rm(root, { recursive: true, force: true }))
   await fs.mkdir(path.join(root, '.nomi'))
@@ -43,7 +46,9 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
   await fs.writeFile(documentFile, 'Original fixture document.')
   const deleteEvidence = { nodes: ['delete-one', 'delete-two'].map(id => ({ ...rawEvidence.node, id, position: { x: 0, y: 0 } })),
     edges: [], groups: [], resolvedReferences: [{ requestedId: 'delete-one', nodeId: 'delete-one' }] }
-  await fs.writeFile(canvasFile, JSON.stringify(kind === 'delete' ? deleteEvidence : rawEvidence))
+  // `make_artifact` → `create_canvas_nodes` 是批量写：证据是 batch 形状（nodes/edges/groups），与删除同形。
+  const batchEvidence = { nodes: [{ ...rawEvidence.node, position: { x: 0, y: 0 } }], edges: [], groups: [], resolvedReferences: [] }
+  await fs.writeFile(canvasFile, JSON.stringify(kind === 'delete' ? deleteEvidence : kind === 'canvas' ? batchEvidence : rawEvidence))
   const receipts = createProjectAgentProposalReceiptService({ projectRoot: root, binding })
   const ownerAuthority = createSurfaceOwnerAuthority()
   const owner = ownerAuthority.capture({ contents: {}, frame: {}, webContentsId: 1, processId: 2, frameRoutingId: 3,
@@ -52,7 +57,7 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
     canonicalRootPath: root, canonicalRootDigest: 'fixture-root-digest' }) })
   const suspended = registry.suspend(owner, { surfaceInstanceId: 'fixture-surface' })
   const committed = await registry.commitCanvasRead(owner, { projectId: binding.projectId, suspension: suspended })
-  const capturedPort = registry.captureCanvasReadPort(owner, committed)
+  const session = registry.openProjectSession(owner, committed.binding)
   desktopRuntime.registry = registry
   const order: string[] = []
   let sawQueuedAuthority = false
@@ -63,6 +68,7 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
     expect(input.preconditions).toEqual(documentPreconditions)
     const previous = await fs.readFile(documentFile, 'utf8')
     await fs.writeFile(documentFile, input.operation === 'append' ? previous + input.content : input.content)
+    if (receiptMode === 'written-then-revoked') registry.revokeProjectSession(session)
     return { applied: true, revision: 2, contentHash: 'fnv1a-after' }
   } }
   const canvasPort: CanvasWritePort = {
@@ -75,6 +81,9 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
     },
     write: async (input) => {
       order.push('canvas-write')
+      if (receiptMode === 'import-failed') throw Object.assign(new Error('/private/provider-token'), {
+        code: 'capability_execution_failed', reason: 'no-disk-space',
+      })
       const authority = lane.receiptAuthority(input.receiptProposalId)
       expect(authority).toEqual({ receiptProposalId: input.receiptProposalId, approvalId: input.approvalId, actionHash: input.actionHash })
       sawQueuedAuthority = !lane.projection().parts.some((part) => part.kind === 'host-note' && part.noteType === LANE_RECEIPT_AUTHORITY_NOTE)
@@ -99,26 +108,30 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
       if (receiptMode !== 'missing') { writeReceipt('committed'); order.push('canvas-committed') }
       if (kind === 'delete') return { applied: true, proposalId: input.receiptProposalId,
         operation: 'delete_canvas_nodes', deletedNodeIds, reconciliation: { ok: true, deviationCount: 0 } }
-      return { applied: true, proposalId: input.receiptProposalId, operation: 'set_node_prompt', affectedNodeIds: ['node-fixture'],
+      // `make_artifact` 的收据形状（create_canvas_nodes）：新建的产物节点 id 映射回去。
+      return { applied: true, proposalId: input.receiptProposalId, operation: 'create_canvas_nodes', affectedNodeIds: ['node-artifact'],
+        affectedEdgeIds: [], clientIdToNodeId: { 'artifact-1': 'node-artifact' }, connectedCount: 0, skippedEdges: [],
         reconciliation: { ok: true, deviationCount: 0 } }
     },
   }
+  let captures = 0
+  const capture = () => { captures += 1; return registry.captureProjectSessionPort(session) }
   const executor = createMainCapabilityExecutorRegistry({ resolveCanvasReadPort: async () => ({ read: async () => ({}) }),
-    resolveDocumentWritePort: async () => documentPort, resolveCanvasWritePort: async () => canvasPort })
-  const surface = { executor, surfaceCapture: { captureCommittedCanvasReadPort: () => capturedPort },
-    surfacePortRuntime: { createCanvasWritePort: () => canvasPort } } as unknown as DesktopCanvasReadRuntime
+    resolveDocumentWritePort: async () => documentPort, resolveCanvasWritePort: async () => { capture(); return canvasPort } })
+  const surface = { executor, surfaceCapture: {},
+    surfacePortRuntime: { createCanvasWritePort: () => { capture(); return canvasPort } } } as unknown as DesktopCanvasReadRuntime
   const policy = { mode: kind === 'delete' ? 'safe-auto' as const : 'step' as const, spend: 'confirm' as const }
-  const assembly = createDesktopLaneTools({ event: {} as IpcMainInvokeEvent, binding, surface, receipts,
+  const assembly = createDesktopLaneTools({ session, binding, surface, receipts,
     context: () => ({ approvalPolicy: policy, documentId: 'document-fixture',
       target: documentTarget, preconditions: documentPreconditions }),
     // 同一份快照的另一半：付费那一侧问的是「这笔钱要不要停下来问」。
     approvalPolicy: () => policy,
     generationFactory: () => undefined, onTaskCreated: async () => undefined })
   cleanups.push(async () => assembly.dispose())
-  const toolName = kind === 'document' ? 'append_to_end' : kind === 'delete' ? 'delete_canvas_nodes' : 'nomi_canvas_write'
-  const args = kind === 'document' ? { content: ' Appended fixture.' }
+  const toolName = kind === 'document' ? 'write_script' : kind === 'delete' ? 'delete_from_canvas' : 'make_artifact'
+  const args = kind === 'document' ? { content: ' Appended fixture.', where: 'end' }
     : kind === 'delete' ? { nodeIds: ['delete-one'], reason: 'Unused fixture shot' }
-    : { operation: 'set_node_prompt', nodeId: 'node-fixture', prompt: 'Updated fixture prompt' }
+    : { fileType: 'text', title: 'Fixture artifact', content: 'Updated fixture content' }
   const http = await createHttpFixture([{ type: 'tool', calls: [{ id: 'fixture-call', name: toolName, arguments: args }] },
     ...(kind === 'delete' && receiptMode === 'committed' ? [{ type: 'tool' as const,
       calls: [{ id: 'second-delete', name: toolName, arguments: { nodeIds: ['delete-two'], reason: 'Unused fixture shot' } }] }] : []),
@@ -129,17 +142,46 @@ async function fixture(kind: 'document' | 'canvas' | 'delete', receiptMode: 'com
     tools: assembly.tools, toolLifecycle: assembly.toolLifecycle,
     approval: { hasUserInterface: true, policy: () => policy } })
   cleanups.push(() => lane.close())
+  let closed!: () => void
+  const closedPromise = new Promise<void>(resolve => { closed = resolve })
+  const onClosed = vi.fn(() => { assembly.dispose(); closed() })
+  const owned = bindLaneProjectSession(lane, registry, session, onClosed)
   const pending = (run: Promise<unknown>) => Promise.race([
     lane.projection().pending ? Promise.resolve() : new Promise<void>((resolve) => {
       const stop = lane.subscribe((projection) => { if (projection.pending) { stop(); resolve() } })
     }),
     run.then(() => { throw new Error(`Fixture finished before approval: ${JSON.stringify(lane.projection().parts)}`) }),
   ])
-  return { lane, receipts, order, pending, root, assembly, toolName, args, documentFile, canvasFile,
-    sawQueuedAuthority: () => sawQueuedAuthority }
+  return { lane: owned, revoke: () => registry.revokeProjectSession(session), closedPromise, onClosed, receipts, order, pending, root, assembly, toolName, args, documentFile, canvasFile,
+    captures: () => captures, sawQueuedAuthority: () => sawQueuedAuthority }
 }
 
 describe('desktop lane verified writes and durable receipts', () => {
+  it('retains preparing evidence when a real document write commits before session revocation', async () => {
+    const f = await fixture('document', 'written-then-revoked')
+    const run = f.lane.execute({ kind: 'prompt', text: 'Append the fixture.' })
+    await f.pending(run)
+    await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+    await run
+    await f.closedPromise
+    expect(await fs.readFile(f.documentFile, 'utf8')).toBe('Original fixture document. Appended fixture.')
+    expect(f.receipts.read()).toMatchObject({ lifecycle: 'preparing', revision: 1 })
+  })
+
+  it('session revocation cancels a real pending lane approval and closes model execution without writing', async () => {
+    const f = await fixture('canvas')
+    const run = f.lane.execute({ kind: 'prompt', text: 'Create the fixture artifact.' })
+    await f.pending(run)
+    expect(f.lane.projection().pending?.toolCallId).toBe('fixture-call')
+    f.revoke()
+    await f.closedPromise
+    expect(f.onClosed).toHaveBeenCalledOnce()
+    await run
+    expect(f.lane.projection().pending).toBeUndefined()
+    expect(f.order).toEqual(['canvas-capture'])
+    expect(f.receipts.read()).toBeNull()
+  })
+
   it('safe-auto deletion requires a fresh once-only approval, retains reason and count, and commits the actual G5 deletion', async () => {
     const f = await fixture('delete')
     const run = f.lane.execute({ kind: 'prompt', text: 'Remove the unused fixture shots.' })
@@ -206,8 +248,21 @@ describe('desktop lane verified writes and durable receipts', () => {
     await run
     expect(f.sawQueuedAuthority()).toBe(true)
     expect(f.order).toEqual(['canvas-capture', 'canvas-write', 'canvas-preparing', 'canvas-committed'])
-    expect(JSON.parse(await fs.readFile(f.canvasFile, 'utf8')).node.prompt).toBe('Updated fixture prompt')
+    expect(JSON.parse(await fs.readFile(f.canvasFile, 'utf8')).node.id).toBe('node-fixture')
     expect(f.receipts.read()).toMatchObject({ lifecycle: 'committed', revision: 2 })
+    expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
+  })
+
+  it('recaptures the canvas write port at prepare and again at execute, instead of keeping either freeze', async () => {
+    const f = await fixture('canvas')
+    expect(f.captures()).toBe(0)
+    const run = f.lane.execute({ kind: 'prompt', text: 'Update the fixture prompt.' })
+    await f.pending(run)
+    const afterPrepare = f.captures()
+    expect(afterPrepare).toBeGreaterThan(0)
+    await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+    await run
+    expect(f.captures(), 'execute must ask for the current surface, not reuse the prepare souvenir').toBeGreaterThan(afterPrepare)
     expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: false })
   })
 
@@ -229,7 +284,7 @@ describe('desktop lane verified writes and durable receipts', () => {
     await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
     await run
     expect(f.receipts.read()).toBeNull()
-    expect(JSON.parse(await fs.readFile(f.canvasFile, 'utf8')).node.prompt).toBe('Original fixture prompt')
+    expect(JSON.parse(await fs.readFile(f.canvasFile, 'utf8')).nodes[0].prompt).toBe('Original fixture prompt')
     expect(f.lane.projection().parts.find((part) => part.kind === 'tool-result')).toMatchObject({ isError: true })
   })
 
@@ -244,4 +299,17 @@ describe('desktop lane verified writes and durable receipts', () => {
     expect(await fs.readFile(f.documentFile, 'utf8')).toBe('Original fixture document.')
     expect(f.order).toEqual([])
   })
+})
+
+it('tells the Agent the import failure and recovery action instead of requesting a fresh surface', async () => {
+  const f = await fixture('canvas', 'import-failed')
+  const run = f.lane.execute({ kind: 'prompt', text: 'Create the fixture artifact.' })
+  await f.pending(run)
+  await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+  await run
+  const result = f.lane.projection().parts.find(part => part.kind === 'tool-result')
+  expect(result).toMatchObject({ isError: true, text: expect.stringContaining('insufficient free space') })
+  expect(result).toMatchObject({ text: expect.stringContaining('Free space on the project disk') })
+  expect(JSON.stringify(result)).not.toContain('/private/provider-token')
+  expect(JSON.stringify(result)).not.toContain('Read the current surface again')
 })

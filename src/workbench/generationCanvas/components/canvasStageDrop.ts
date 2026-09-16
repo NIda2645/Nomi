@@ -13,13 +13,13 @@ import {
   parseAssetLibraryDragItems,
   type AssetLibraryDragPayload,
 } from '../../assets/assetLibraryDrag'
+import { mediaImportRejectionMessages } from '../../assets/mediaImportMessage'
 import { importLocalMediaFilesToGenerationCanvas } from '../adapters/assetImportAdapter'
 import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
-import { dropKindFromFile } from '../model/nodeAssetDrop'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { reportCanvasFeedback } from './canvasFeedback'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import type { BrowserAssetCanvasImportItem } from '../../../ui/browser/overlay/globalAssetPopoverEvents'
 import type { TiptapDocJson } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
@@ -367,19 +367,11 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   }
 
   // 4) OS 文件拖入：复制进项目并上传，创建图片 / 视频素材节点（音频无可落节点，过滤）。
-  const files = filterCanvasImportableLocalFiles(Array.from(event.dataTransfer.files || []))
+  const files = Array.from(event.dataTransfer.files || [])
   if (!files.length) return
   event.preventDefault()
   event.stopPropagation()
   void importLocalFilesToGenerationCanvas(files, { basePosition, categoryId: ctx.activeCategoryId })
-}
-
-/** 画布能落成节点的本地文件：图片 / 视频。音频在画布上没有落点（它的家是素材库 → 时间轴）。 */
-export function filterCanvasImportableLocalFiles(files: readonly File[]): File[] {
-  return files.filter((file) => {
-    const kind = dropKindFromFile(file)
-    return kind === 'image' || kind === 'video'
-  })
 }
 
 /**
@@ -391,14 +383,18 @@ export function importLocalFilesToGenerationCanvas(
   files: readonly File[],
   options: { basePosition: { x: number; y: number }; categoryId?: string },
 ): Promise<void> {
-  const projectId = getDesktopActiveProjectId()
-  return importLocalMediaFilesToGenerationCanvas([...files], options)
+  // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
+  // 先同步签发、再挂 .catch：这个命令不会把拒绝丢给调用它的控件。
+  const projectContext = withProjectAction((issued) => issued)
+  if (!projectContext) return Promise.resolve()
+  return importLocalMediaFilesToGenerationCanvas([...files], { ...options, projectContext })
     .then((result) => {
+      if (result.cancelled) return
       const notes: string[] = []
       if (result.skippedOverLimitCount > 0) notes.push(`超过 8 个，已忽略 ${result.skippedOverLimitCount} 个`)
-      if (result.skippedTooLargeCount > 0) notes.push(`${result.skippedTooLargeCount} 个文件过大`)
+      for (const message of mediaImportRejectionMessages(result.rejected)) notes.push(message)
       if (result.failedCount > 0) notes.push(`${result.failedCount} 个导入失败`)
-      if (notes.length) reportCanvasFeedback(notes.join('；'), result.failedCount > 0 ? 'error' : 'warning', { projectId, identity: 'canvas-import', reason: 'import-incomplete' })
+      if (notes.length) reportCanvasFeedback(notes.join('；'), result.failedCount > 0 ? 'error' : 'warning', { projectId: projectContext.binding.projectId, identity: 'canvas-import', reason: 'import-incomplete' })
     })
     .catch(() => {})
 }

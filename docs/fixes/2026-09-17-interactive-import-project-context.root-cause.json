@@ -1,0 +1,2833 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-interactive-import-project-context",
+  "problem_type": "Interactive canvas import outlives its originating project",
+  "symptom": "Capacity/dimensions/upload completion or retry writes after project replacement",
+  "direct_cause": "Async preparation captures global project too late and retry stores files without originating lifetime",
+  "class_root": "Project IO authority for an action was self-captured wherever each helper remembered to (or defaulted late after awaits) instead of being issued once at the action entry by the owner of window + project identity",
+  "affected_population": [
+    "Canvas dropped files",
+    "Clipboard file imports",
+    "Asset library image/video import",
+    "Retry local import",
+    "Node and reference slot file uploads",
+    "Composer and director manual uploads",
+    "Image transformations and whiteboard publication",
+    "Global screenshot hotkey capture and crop panel",
+    "Video frame and shot-cut extraction to canvas",
+    "Director AI scene library save",
+    "Interactive actions that used to re-read the open project after an await (director outputs, decompose layers, clip export, timeline adds, result deletion, workflow copy, spend confirm refresh, shot verify fix, prompt optimizer, journey tour, memory edits, frame/group menu feedback)",
+    "Browser asset overlay and dialog (child window) imports, prompt captures, prompt template settings and file deletion",
+    "Display surfaces labelled with the open project (asset pickers, filmstrip, production run panel, verify card, memory list)"
+  ],
+  "scope_paths": [
+    "src/workbench/project/projectCanvasReadSurface.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+    "src/workbench/assets/AssetLibraryPanel.tsx",
+    "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+    "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+    "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+    "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+    "src/workbench/ai/composer/useComposerAttachments.ts",
+    "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+    "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+    "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+    "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+    "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+    "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+    "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+    "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+    "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+    "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+    "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+    "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+    "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+    "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+    "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+    "src/workbench/generationCanvas/nodes/artifact/ArtifactNodeToolbar.tsx",
+    "src/workbench/generationCanvas/components/useCanvasScreenshotCapture.tsx",
+    "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+    "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+    "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+    "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+    "electron/screenshot/screenshotHotkey.ts",
+    "electron/screenshot/screenshotIpc.ts",
+    "electron/video/extractVideoFrame.ts",
+    "electron/video/videoIpc.ts",
+    "electron/assets/projectInteractionCapture.ts",
+    "electron/assets/assetsIpc.ts",
+    "electron/assets/windowProjectCapture.ts",
+    "electron/browser/core/browserViews.ts",
+    "electron/browser/media/browserViewMedia.ts",
+    "electron/browser/settings/browserPromptExtractionSettings.ts",
+    "electron/main.ts",
+    "electron/workspace/workspaceFileDelete.ts",
+    "src/media/useFilmstrip.ts",
+    "src/ui/browser/dialog/NomiBrowserDialogView.tsx",
+    "src/ui/browser/dialog/useBrowserDialogActions.ts",
+    "src/ui/browser/prompt/browserPromptExtractionRunner.ts",
+    "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+    "src/workbench/ai/resident/useShotVerifyFeedback.tsx",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/assets/deleteAssetResult.ts",
+    "src/workbench/assets/importAudioToLibrary.ts",
+    "src/workbench/capability/canonicalCanvasPlanPatch.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+    "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+    "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+    "src/workbench/generationCanvas/components/MemoryFold.tsx",
+    "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+    "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+    "src/workbench/generationCanvas/components/useCanvasFrameTool.ts",
+    "src/workbench/generationCanvas/components/useCanvasGroupActions.ts",
+    "src/workbench/generationCanvas/components/useCanvasProductionActions.ts",
+    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+    "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+    "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+    "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+    "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
+    "src/workbench/generationCanvas/nodes/PanoramaViewer.tsx",
+    "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+    "src/workbench/generationCanvas/nodes/director/agent/CameraMoveCaptureHost.tsx",
+    "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+    "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
+    "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+    "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+    "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+    "src/workbench/generationCanvas/videoDepth/NodeDepthActionButton.tsx",
+    "src/workbench/library/WorkflowLibraryContent.tsx",
+    "src/workbench/onboarding/journeyTourStore.ts",
+    "src/workbench/preview/PreviewSourcePanel.tsx",
+    "src/workbench/preview/TimelinePreview.tsx",
+    "src/workbench/preview/previewExportFeedback.ts",
+    "src/workbench/production/useActiveProductionRun.ts",
+    "src/workbench/project/useOpenProjectId.ts",
+    "src/workbench/timeline/TimelineMiniPreview.tsx",
+    "src/workbench/timeline/TimelineSecondaryAddRow.tsx",
+    "src/workbench/timeline/addAssetToTimeline.ts"
+  ],
+  "entry_points": [
+    "importLocalMediaFilesToGenerationCanvas",
+    "retryLocalAssetImport",
+    "withProjectAction",
+    "withMainProjectAction",
+    "captureScreenToCanvas",
+    "extractVideoFrameToAsset",
+    "subscribeProjectOpened",
+    "useOpenProjectId",
+    "issueWindowProject",
+    "issueChildWindowProject"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Nomi coordinator hydration ownership, main session binding and global canvas store boundaries define the invariant; no new third-party API.",
+  "invariants": [
+    "Capture full project binding before asynchronous preparation",
+    "Replacement permanently revokes old interactive actions, including A to B to A",
+    "Same-project page navigation preserves action identity",
+    "Cancelled operations cannot recover or persist data URLs",
+    "Renderer project IO authority is issued only by projectCanvasReadSurface (withProjectAction / withMainProjectAction); the capture is module-private and every downstream helper requires the issued context",
+    "Main-started actions (global screenshot hotkey) fix the committed surface binding and asset write context before their first await; the renderer adopts the action only while that exact binding is current",
+    "Interactive main IO requests carry the issued binding and join the trusted session before any await; explicit background IO still fixes disk identity before its long step",
+    "No business module reads 'the project that is open now': the renderer readers (desktop/activeProject, getActiveWorkbenchProjectId, getCanvasEventsProjectId) are deleted; display-only reads go through useOpenProjectId and every remaining read is pinned with a reason in projectActionIssuance.contract.test.ts",
+    "A child window has no project session of its own: its authority is derived by main from the parent window's committed project (windowProjectCapture), revoked together with it and refused when the parent has none; renderer-reported projectIds in child/browser IPC are not authority"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 68,
+      "symbol": "ProjectInteractionCapture"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "line": 10,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "line": 25,
+      "symbol": "ChildWindowProjectIssuer"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "line": 26,
+      "symbol": "ProjectInteractionCapture"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/windowProjectCapture.ts",
+      "line": 23,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/windowProjectCapture.ts",
+      "line": 45,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/windowProjectCapture.ts",
+      "line": 54,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "line": 430,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "line": 545,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "line": 577,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "line": 621,
+      "symbol": "WindowProjectIssuance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 225,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 491,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 585,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 600,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 153,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "line": 121,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/extractVideoFrame.ts",
+      "line": 119,
+      "symbol": "ExtractVideoFrameOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/videoIpc.ts",
+      "line": 12,
+      "symbol": "ProjectInteractionCapture"
+    },
+    {
+      "kind": "read",
+      "path": "electron/workspace/workspaceFileDelete.ts",
+      "line": 10,
+      "symbol": "ChildWindowProjectIssuer"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/browser/prompt/browserPromptExtractionRunner.ts",
+      "line": 125,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 64,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "line": 14,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/assets/deleteAssetResult.ts",
+      "line": 56,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/assets/deleteAssetResult.ts",
+      "line": 131,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "line": 80,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/canonicalCanvasPlanPatch.ts",
+      "line": 19,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 303,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "line": 241,
+      "symbol": "ShotReferenceZone"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
+      "line": 487,
+      "symbol": "ShotReferenceZone"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+      "line": 47,
+      "symbol": "useComposerAttachments"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 49,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 56,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 205,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 212,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 224,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 299,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 328,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 334,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 53,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 470,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "line": 26,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "line": 54,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 15,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 18,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+      "line": 165,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 171,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+      "line": 25,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasScreenshotCapture.tsx",
+      "line": 19,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 62,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 83,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 93,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 211,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 236,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 5,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 34,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 35,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/CameraMoveCaptureHost.tsx",
+      "line": 87,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
+      "line": 34,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
+      "line": 47,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 75,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "line": 20,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/PanoramaViewer.tsx",
+      "line": 40,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/PanoramaViewer.tsx",
+      "line": 358,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "line": 396,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 60,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 104,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 179,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 21,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 51,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 202,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 152,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+      "line": 36,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 53,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "line": 65,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "line": 62,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 33,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 38,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 110,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 111,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 251,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 271,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 272,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 273,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 274,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 289,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 302,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 328,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 356,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 464,
+      "symbol": "ProjectHydrationEpoch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 85,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 94,
+      "symbol": "ProjectExecutionContext"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/windowProjectCapture.ts",
+      "line": 57,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/core/browserViews.ts",
+      "line": 246,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/core/browserViews.ts",
+      "line": 348,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/core/browserViews.ts",
+      "line": 356,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/core/browserViews.ts",
+      "line": 369,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/settings/browserPromptExtractionSettings.ts",
+      "line": 36,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/settings/browserPromptExtractionSettings.ts",
+      "line": 46,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 232,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 397,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "line": 58,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "line": 151,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 192,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 217,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 235,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 254,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "line": 128,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/shotVerifyDeps.ts",
+      "line": 123,
+      "symbol": "extractVideoFrameToAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "line": 404,
+      "symbol": "issueChildWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "line": 405,
+      "symbol": "createProjectInteractionCapture"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "line": 90,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "line": 105,
+      "symbol": "captureScreenToCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "line": 180,
+      "symbol": "issueWindowProject"
+    },
+    {
+      "kind": "write",
+      "path": "electron/screenshot/screenshotIpc.ts",
+      "line": 36,
+      "symbol": "captureScreenToCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "line": 240,
+      "symbol": "extractVideoFrameToAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/videoIpc.ts",
+      "line": 18,
+      "symbol": "extractVideoFrameToAsset"
+    },
+    {
+      "kind": "write",
+      "path": "src/media/useFilmstrip.ts",
+      "line": 94,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/dialog/NomiBrowserDialogView.tsx",
+      "line": 105,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/dialog/useBrowserDialogActions.ts",
+      "line": 339,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/prompt/browserPromptExtractionRunner.ts",
+      "line": 128,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 67,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 73,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 89,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 89,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 92,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 101,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 129,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "line": 22,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "line": 28,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "line": 47,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "line": 187,
+      "symbol": "useComposerAttachments"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/resident/useShotVerifyFeedback.tsx",
+      "line": 16,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/resident/useShotVerifyFeedback.tsx",
+      "line": 23,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/resident/useShotVerifyFeedback.tsx",
+      "line": 32,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "line": 100,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "line": 108,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "line": 124,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 272,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 273,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 292,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 295,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 301,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 301,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 414,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 488,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 503,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 524,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "line": 535,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/deleteAssetResult.ts",
+      "line": 62,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/deleteAssetResult.ts",
+      "line": 112,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "line": 88,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "line": 90,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/canonicalCanvasPlanPatch.ts",
+      "line": 36,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 267,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 342,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 464,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 125,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 164,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 168,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 175,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 175,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 178,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+      "line": 67,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+      "line": 73,
+      "symbol": "useComposerAttachments"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 361,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 386,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 304,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 320,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 316,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 553,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 589,
+      "symbol": "pasteClipboardMediaToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "line": 30,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "line": 58,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 20,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 35,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 36,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 49,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "line": 49,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+      "line": 72,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+      "line": 172,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+      "line": 174,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 36,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 132,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 155,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 231,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 232,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "line": 244,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "line": 388,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "line": 390,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/MemoryFold.tsx",
+      "line": 23,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/MemoryFold.tsx",
+      "line": 51,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/MemoryFold.tsx",
+      "line": 54,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+      "line": 83,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+      "line": 93,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+      "line": 85,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasFrameTool.ts",
+      "line": 131,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasGroupActions.ts",
+      "line": 43,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasGroupActions.ts",
+      "line": 68,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasProductionActions.ts",
+      "line": 65,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasScreenshotCapture.tsx",
+      "line": 39,
+      "symbol": "withMainProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "line": 310,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "line": 311,
+      "symbol": "pasteClipboardMediaToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/ArtifactNodeToolbar.tsx",
+      "line": 60,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/ArtifactNodeToolbar.tsx",
+      "line": 63,
+      "symbol": "rasterizeArtifactToReferenceAsset"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 96,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 104,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 116,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "line": 468,
+      "symbol": "retryLocalAssetImport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "line": 478,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+      "line": 97,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+      "line": 121,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+      "line": 133,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 55,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 232,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 232,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 238,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 243,
+      "symbol": "importClipNodeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 255,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 255,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 257,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 355,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 374,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 629,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "line": 630,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 62,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 62,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 42,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 46,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 56,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 56,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 59,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 67,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 71,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 81,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 81,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 84,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 101,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 105,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 119,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 119,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 122,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "line": 53,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "line": 64,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "line": 78,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "line": 84,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "line": 87,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/CameraMoveCaptureHost.tsx",
+      "line": 93,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/CameraMoveCaptureHost.tsx",
+      "line": 152,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/CameraMoveCaptureHost.tsx",
+      "line": 162,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+      "line": 51,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+      "line": 66,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+      "line": 100,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+      "line": 103,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 241,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 243,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 252,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 257,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 257,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 263,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/topbar/AddObjectMenu.tsx",
+      "line": 37,
+      "symbol": "usePanoramaImport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 34,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 47,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 66,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 74,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 82,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 82,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 84,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 84,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 87,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 102,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 106,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 65,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 79,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 86,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 86,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 111,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useDirectorOutputs.ts",
+      "line": 118,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "line": 45,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "line": 54,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "line": 74,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+      "line": 18,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+      "line": 35,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "line": 216,
+      "symbol": "useNodeAssetDrop"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "line": 138,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "line": 459,
+      "symbol": "createSlotFileUploads"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+      "line": 67,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+      "line": 84,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+      "line": 90,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "line": 322,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "line": 330,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "line": 352,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "line": 73,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "line": 80,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "line": 96,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "line": 134,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "line": 136,
+      "symbol": "extractShotCutsToNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
+      "line": 48,
+      "symbol": "extractVideoFrameToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
+      "line": 87,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/PanoramaViewer.tsx",
+      "line": 393,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/PanoramaViewer.tsx",
+      "line": 406,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "line": 134,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "line": 138,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "line": 139,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "line": 149,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "line": 149,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "line": 405,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "line": 408,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/CharacterCardNode.tsx",
+      "line": 32,
+      "symbol": "useNodeImageUpload"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/PropCardNode.tsx",
+      "line": 28,
+      "symbol": "useNodeImageUpload"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/SceneCardNode.tsx",
+      "line": 29,
+      "symbol": "useNodeImageUpload"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 64,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 117,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "line": 93,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "line": 102,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 91,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 102,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 116,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 116,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 121,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 121,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 125,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 221,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 297,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 342,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 374,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 391,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 405,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 436,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 450,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 490,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "line": 513,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 36,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 38,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 43,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 69,
+      "symbol": "persistNodeImageBlob"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "line": 103,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 227,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 231,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 245,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 248,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 254,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 430,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 445,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "line": 458,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 167,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 216,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 226,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 249,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 265,
+      "symbol": "persistNodeImageFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "line": 317,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "line": 143,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "line": 622,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+      "line": 43,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+      "line": 60,
+      "symbol": "subscribeProjectOpened"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+      "line": 63,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 552,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 570,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 587,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 607,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 625,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 627,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 656,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 672,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "line": 680,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 19,
+      "symbol": "isProjectBindingOpen"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/NodeDepthActionButton.tsx",
+      "line": 44,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/library/WorkflowLibraryContent.tsx",
+      "line": 257,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/library/WorkflowLibraryContent.tsx",
+      "line": 267,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/library/WorkflowLibraryContent.tsx",
+      "line": 273,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "line": 62,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "line": 63,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/previewExportFeedback.ts",
+      "line": 15,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/PreviewSourcePanel.tsx",
+      "line": 123,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "line": 259,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "line": 364,
+      "symbol": "isProjectOpen"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "line": 453,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "line": 461,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "line": 464,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/useActiveProductionRun.ts",
+      "line": 13,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 114,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 278,
+      "symbol": "isProjectImportCancellation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 291,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 306,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 315,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "line": 324,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/useOpenProjectId.ts",
+      "line": 11,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/useOpenProjectId.ts",
+      "line": 12,
+      "symbol": "subscribeProjectOpened"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 88,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 105,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 121,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 127,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/addAssetToTimeline.ts",
+      "line": 128,
+      "symbol": "isProjectExecutionContextCurrent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelineMiniPreview.tsx",
+      "line": 136,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelineMiniPreview.tsx",
+      "line": 140,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelineMiniPreview.tsx",
+      "line": 143,
+      "symbol": "withProjectAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelineSecondaryAddRow.tsx",
+      "line": 29,
+      "symbol": "useOpenProjectId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelineSecondaryAddRow.tsx",
+      "line": 97,
+      "symbol": "withProjectAction"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 398,
+    "why_not": "The authority doors were merged: self-capture went from 20 committed call sites (31 with the in-flight branch work) to 0 outside projectCanvasReadSurface, and every remaining withProjectAction/withMainProjectAction row is a distinct user or main-started action entry that only receives the issued context. The other rows are consumers that must exist separately (typed ProjectExecutionContext parameters, lifetime checks, shared importers and the main-side session join) and cannot self-issue. 1b: the 99 renderer current-project reads (getActiveWorkbenchProjectId 31 + getDesktopActiveProjectId 66 + getCanvasEventsProjectId 4 minus definitions) went to 0 with the readers deleted; 14 display/transport reads remain through useOpenProjectId and captureCurrentProjectCanvasReadSurfaceBinding, each pinned with its reason. The added rows are the per-action issuance calls that replaced those reads, the display hook consumers and the main-side window issuance (screenshot hotkey, browser handlers, child-window asset import and deletion)."
+  },
+  "generality_proof": "There is no longer a way to obtain project IO authority except at an issuance point: the renderer capture is module-private (compile error on import), shared helpers take a required context (compile error when forgotten, pinned by @ts-expect-error in projectActionIssuance.contract.test.ts under check:test-types), and the AST scan in the same test rejects issuance after an await, optional or nullable context parameters/properties and any private issuer reference anywhere in src. Main-started actions reuse the canvas read surface registry epoch capture plus captureAssetWriteContext instead of a renderer-reported id. Explicit background asset IO remains bound to its original project through its separately owned storage identity. The 'current project' readers themselves are deleted, and the reader ratchet in projectActionIssuance.contract.test.ts fails on any reference to them in src/ or electron/ and on any unpinned display/transport read. Child windows reuse the same main owner as the screenshot hotkey (issueWindowProject over the committed surface registry epoch) instead of a second session owner.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "createProjectCanvasReadSurfaceCoordinator",
+      "responsibility": "Own project action lifetime independently of short-lived transport fields"
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "symbol": "importLocalMediaFilesToGenerationCanvas",
+      "responsibility": "Require originating context across preparation, upload, recovery and node writes"
+    },
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "withProjectAction",
+      "responsibility": "Single renderer issuance point for project IO authority; withMainProjectAction adopts main-started actions only for the exact current binding"
+    },
+    {
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "symbol": "createProjectInteractionCapture",
+      "responsibility": "Main-side session join for interactive import and frame IPC before any await"
+    },
+    {
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "symbol": "captureScreenToCanvas",
+      "responsibility": "Fix committed surface epoch and asset write context before desktopCapturer; re-assert before publication and notification"
+    },
+    {
+      "path": "electron/assets/windowProjectCapture.ts",
+      "symbol": "issueWindowProject",
+      "responsibility": "Main-side issuance for a window without a renderer-issued context (hotkey main window, child window via its parent): committed surface epoch fixed synchronously, revocable assertion"
+    },
+    {
+      "path": "src/workbench/project/useOpenProjectId.ts",
+      "symbol": "useOpenProjectId",
+      "responsibility": "Display-only view of the open project fed by the issuance point; never authority"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Drag import converges on guarded adapter"
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Clipboard import converges on same adapter"
+    },
+    {
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "entry_point": "importLocalMediaFilesToGenerationCanvas",
+      "disposition": "enforced",
+      "evidence": "Library image/video import shares adapter"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "retryLocalAssetImport",
+      "disposition": "enforced",
+      "evidence": "Retry retains captured context instead of adopting current project"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "entry_point": "createSlotFileUploads",
+      "disposition": "enforced",
+      "evidence": "All three slot handlers guard upload metadata, completion, error and finally callbacks; real coordinator A to B to A regression."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "entry_point": "UploadFallback",
+      "disposition": "enforced",
+      "evidence": "Capture before FileReader and pass original context to useNodeImageUpload instead of late recapture."
+    },
+    {
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "entry_point": "importAudioFilesToLibrary",
+      "disposition": "not-affected",
+      "evidence": "Explicit target project library IO without interactive canvas projection; keeps original project storage identity."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "entry_point": "useAiSceneBuilder",
+      "disposition": "enforced",
+      "evidence": "Previous not-affected verdict was wrong: the scene JSON import ran after the model stream through the upload API current-project fallback. Now issued at run start; useAiSceneBuilder.test.ts switch-during-model red to green."
+    },
+    {
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "entry_point": "captureScreenToCanvas",
+      "disposition": "enforced",
+      "evidence": "Hotkey and NOMI_E2E IPC both call it; renderer self-reported project id channel deleted; screenshotHotkeyProjectContext.test.ts paused real capture promise, switch and A to B to A red to green."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasScreenshotCapture.tsx",
+      "entry_point": "withMainProjectAction",
+      "disposition": "enforced",
+      "evidence": "Crop panel opens only for the exact current binding and closes on project abort; useCanvasScreenshotCaptureProjectContext.test.ts red to green."
+    },
+    {
+      "path": "electron/video/videoIpc.ts",
+      "entry_point": "nomi:video:extract-frame",
+      "disposition": "enforced",
+      "evidence": "Joins the trusted session before await; extractVideoFrameToAsset fixes identity before ffmpeg; extractVideoFrameProjectContext.test.ts and videoIpcSession.test.ts red to green."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "entry_point": "extractShotCutsToNodes",
+      "disposition": "enforced",
+      "evidence": "Was a missed door (no context, late node and group writes); now requires the project issued at the commit button and cancels the batch."
+    },
+    {
+      "path": "electron/browser/core/browserViews.ts",
+      "entry_point": "browser:view:import-media",
+      "disposition": "enforced",
+      "evidence": "Project issued by main from the owner window's committed surface before any await, asserted before moveAssetFile; payload projectId removed from the IPC type"
+    },
+    {
+      "path": "electron/browser/settings/browserPromptExtractionSettings.ts",
+      "entry_point": "browser:prompt-extraction-settings:write",
+      "disposition": "enforced",
+      "evidence": "Read/write derive the window project; payload projectId ignored; browserPromptExtractionSettings.test.ts red to green"
+    },
+    {
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "entry_point": "createProjectInteractionCapture",
+      "disposition": "enforced",
+      "evidence": "Child window imports act only inside the parent project and are revoked with it; assetsIpcSession.test.ts child cases red to green; windowProjectCapture.test.ts real registry A to B to A"
+    },
+    {
+      "path": "electron/workspace/workspaceFileDelete.ts",
+      "entry_point": "nomi:workspace:delete-files",
+      "disposition": "enforced",
+      "evidence": "Child window deletion must name the parent's committed project and is re-asserted before each trash"
+    },
+    {
+      "path": "src/ui/browser/overlay/BrowserAssetOverlayApp.tsx",
+      "entry_point": "importBrowserAssetToLibrary",
+      "disposition": "enforced",
+      "evidence": "Overlay no longer reads the localStorage active project; it shows the project main pushes in its config and main issues the import"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodePromptOptimizer.tsx",
+      "entry_point": "run",
+      "disposition": "enforced",
+      "evidence": "Issued at the click; stale results are not written back"
+    },
+    {
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "entry_point": "start",
+      "disposition": "enforced",
+      "evidence": "Tour issues the demo project at start and stops on a switch; demo images seed into that project"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every async preparation/import can overlap project replacement",
+    "same_class_scan": [
+      "node scripts/door-map.mjs importLocalMediaFilesToGenerationCanvas retryLocalAssetImport ProjectHydrationEpoch",
+      "Inspected upload catch recovery, small-file data URL, duration await and retry map",
+      "Clipboard remote import and data URL conversion capture the same context before awaits; library removes dynamic-import await before capture.",
+      "node scripts/door-map.mjs importWorkbenchLocalAssetFile persistNodeImageFile persistNodeImageBlob",
+      "Traced FileReader before useNodeImageUpload, video duration inside ClipNode addAsset, retained clip retry context, and React deferred attachment state updaters.",
+      "node scripts/door-map.mjs captureCurrentProjectExecutionContext captureProjectExecutionContext setScreenshotProjectId on 50223265c: 20 self-capture doors; after: 0 outside the owner module, issuance entries listed in doors",
+      "node scripts/door-map.mjs setScreenshotProjectId captureScreenToCanvas currentProjectIdForCapture (before: renderer-reported id read after desktopCapturer await)",
+      "Census of 97 getActiveWorkbenchProjectId/getDesktopActiveProjectId reads classified display/interactive/background; interactive late reads outside this change listed in residual_risks",
+      "node scripts/door-map.mjs getActiveWorkbenchProjectId getDesktopActiveProjectId getCanvasEventsProjectId activeTaskProjectFallback --read=... before (ccbc0e45d, first two symbols): 99; after: 0 (/tmp/nomi-pr802-p1-1b-current-project-doors-after.json)",
+      "node scripts/door-map.mjs useOpenProjectId captureCurrentProjectCanvasReadSurfaceBinding --read=...: 14 remaining display/transport reads, all pinned in the reader ratchet",
+      "node scripts/door-map.mjs ChildWindowProjectIssuer ExtractVideoFrameOptions ProjectExecutionContext ProjectHydrationEpoch ProjectInteractionCapture ShotReferenceZone WindowProjectIssuance captureScreenToCanvas createProjectInteractionCapture createSlotFileUploads extractShotCutsToNodes extractVideoFrameToAsset extractVideoFrameToNode importClipNodeAsset importLocalMediaFilesToGenerationCanvas importWorkbenchLocalAssetFile isProjectBindingOpen isProjectExecutionContextCurrent isProjectImportCancellation isProjectOpen issueChildWindowProject issueWindowProject pasteClipboardMediaToGenerationCanvas persistNodeImageBlob persistNodeImageFile rasterizeArtifactToReferenceAsset retryLocalAssetImport subscribeProjectOpened useComposerAttachments useNodeAssetDrop useNodeImageUpload useOpenProjectId usePanoramaImport withMainProjectAction withProjectAction"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/project/projectCanvasReadSurface.ts",
+    "invariant": "Only the originating project lifetime may publish an interactive import to the canvas",
+    "failure_mode": "Project replacement or cancellation terminates without further IO, canvas mutation, retry, fallback or rejected UI promise",
+    "exception_policy": "none",
+    "strategy": "Single issuance point (module-private capture, required context parameters, AST and @ts-expect-error class tests) propagated to main session IO; main-started actions bind the registry epoch before awaits; deleted current-project readers with an AST reader ratchet; child windows issued by main from the parent window session",
+    "artifacts": [
+      "src/workbench/project/projectCanvasReadSurface.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "src/workbench/assets/AssetLibraryPanel.tsx",
+      "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "src/workbench/ai/composer/useComposerAttachments.ts",
+      "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "src/workbench/generationCanvas/adapters/useNodeImageUpload.ts",
+      "src/workbench/generationCanvas/nodes/render/AudioStripNode.tsx",
+      "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+      "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+      "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardDrawingTool.tsx",
+      "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+      "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "src/workbench/generationCanvas/nodes/artifact/ArtifactNodeToolbar.tsx",
+      "src/workbench/generationCanvas/components/useCanvasScreenshotCapture.tsx",
+      "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "electron/screenshot/screenshotHotkey.ts",
+      "electron/screenshot/screenshotIpc.ts",
+      "electron/video/extractVideoFrame.ts",
+      "electron/video/videoIpc.ts",
+      "electron/assets/projectInteractionCapture.ts",
+      "electron/assets/windowProjectCapture.ts",
+      "src/workbench/project/useOpenProjectId.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/project/projectCanvasReadSurface.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.test.ts",
+    "src/workbench/generationCanvas/adapters/persistNodeImage.test.ts",
+    "src/workbench/generationCanvas/nodes/controls/slotFileUploads.test.ts",
+    "src/workbench/generationCanvas/nodes/clipNodeUpload.test.ts",
+    "src/workbench/generationCanvas/adapters/manualUploadProjectContext.test.ts",
+    "src/workbench/project/projectActionIssuance.contract.test.ts",
+    "src/workbench/generationCanvas/nodes/imageActionProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/PanoramaViewerProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/whiteboard/whiteboardProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/extractVideoFrameProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.test.ts",
+    "src/workbench/generationCanvas/components/useCanvasScreenshotCaptureProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.test.ts",
+    "electron/screenshot/screenshotHotkeyProjectContext.test.ts",
+    "electron/video/extractVideoFrameProjectContext.test.ts",
+    "electron/video/videoIpcSession.test.ts",
+    "electron/assets/windowProjectCapture.test.ts",
+    "electron/assets/assetsIpcSession.test.ts",
+    "electron/browser/settings/browserPromptExtractionSettings.test.ts",
+    "src/workbench/capability/capabilityApplyHandler.projectBinding.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/factBridge.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/project/projectCanvasReadSurface.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts",
+    "src/workbench/generationCanvas/adapters/clipboardImagePaste.test.ts",
+    "src/workbench/generationCanvas/adapters/persistNodeImage.test.ts",
+    "src/workbench/generationCanvas/nodes/controls/slotFileUploads.test.ts",
+    "src/workbench/generationCanvas/nodes/clipNodeUpload.test.ts",
+    "src/workbench/generationCanvas/adapters/manualUploadProjectContext.test.ts",
+    "src/workbench/project/projectActionIssuance.contract.test.ts",
+    "src/workbench/generationCanvas/nodes/imageActionProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/PanoramaViewerProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/whiteboard/whiteboardProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/extractVideoFrameProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.test.ts",
+    "src/workbench/generationCanvas/components/useCanvasScreenshotCaptureProjectContext.test.ts",
+    "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.test.ts",
+    "electron/screenshot/screenshotHotkeyProjectContext.test.ts",
+    "electron/video/extractVideoFrameProjectContext.test.ts",
+    "electron/video/videoIpcSession.test.ts",
+    "electron/assets/windowProjectCapture.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "electron/screenshot/screenshotIpc.ts"
+    ],
+    "rationale": "Remove unbound upload metadata and retry state; delete the exported self-capture and coordinator capture method, persistNodeImage default contexts, clip/image-upload/import/clipboard optional-context late fallbacks, importClipNodeAsset duplicate projectId parameter, and the nomi:screenshot:set-project renderer-reported project id channel (setScreenshotProjectId/currentProjectIdForCapture, preload/bridge setProjectId); 1b deletes the renderer current-project readers (getActiveWorkbenchProjectId, getCanvasEventsProjectId; src/desktop/activeProject.ts is declared removed in 2026-09-17-background-run-project-identity) and the payload projectId fields of the browser import/prompt capture/settings IPC"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses existing coordinator, store and importer",
+    "exit_criteria": []
+  },
+  "migration": "No persisted schema changes; in-memory retries die with their project lifetime.",
+  "residual_risks": [
+    "Real Electron drag/paste/screenshot/overlay project-switch journeys are not run in this code-convergence step (second step).",
+    "Child-window asset listing (nomi:assets:list) and the generic explicit-project IO channels still accept a projectId for reads and background IO from the main window; only child-window writes are bound to the parent session.",
+    "useOpenProjectId and captureCurrentProjectCanvasReadSurfaceBinding remain as 14 pinned display/transport reads; adding one requires arguing it into the ratchet."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/project/projectCanvasReadSurface.ts",
+    "has_tests": true,
+    "tests": [
+      "src/workbench/project/projectCanvasReadSurface.test.ts",
+      "src/workbench/project/projectActionIssuance.contract.test.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts",
+      "electron/screenshot/screenshotHotkeyProjectContext.test.ts",
+      "electron/assets/windowProjectCapture.test.ts"
+    ],
+    "rationale": "Structure converged: projectCanvasReadSurface is the only renderer issuer of project IO authority (window + project key); helpers cannot self-capture (module visibility) or forget the context (required types); the class test pins issuance timing. Main-started and main IO paths bind the registry epoch / session before awaits. 1b: the readers are deleted and ratcheted; main owns child-window issuance through windowProjectCapture, shared with the screenshot hotkey."
+  }
+}

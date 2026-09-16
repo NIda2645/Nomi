@@ -8,6 +8,7 @@ import { setCanvasEventSinkForTests } from '../events/canvasEventEmitter'
 import { __resetCanvasUndoJournalForTests } from '../events/canvasUndoJournal'
 import { resetModelHealthMemory } from './modelHealthMemory'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 
 vi.mock('../../api/taskApi', () => ({
   mintSpendGrant: vi.fn(async () => `grant-${Math.random().toString(36).slice(2)}`),
@@ -16,6 +17,13 @@ vi.mock('../../api/taskApi', () => ({
 function fakeResult(id: string): GenerationNodeResult {
   return { id, type: 'image', url: `https://example.com/${id}.png`, createdAt: Date.now() } as unknown as GenerationNodeResult
 }
+
+let projectSession: ProjectSessionTestHarness
+beforeEach(async () => {
+  projectSession = createProjectSessionTestHarness()
+  await projectSession.open('project-test')
+})
+afterEach(() => projectSession.dispose())
 
 describe('confirmAndRunNodeVariants', () => {
   let confirmCalls = 0

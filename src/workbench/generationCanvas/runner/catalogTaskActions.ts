@@ -22,6 +22,7 @@ import { buildArchetypeInputParams, currentArchetypeMode, orderedSentImageRefere
 import { projectPromptForSend } from '../../assets/promptMentions'
 import {
   type CatalogTaskActionOptions,
+  type CatalogTaskRunOptions,
   asFiniteNumber,
   asTrimmedString,
   readStringArray,
@@ -42,7 +43,6 @@ import {
   watchComfyuiProgress,
 } from './localTaskControl'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
@@ -51,7 +51,7 @@ import { readParameterReferenceContract } from '../../../../electron/catalog/par
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
 // 对外公共导出面保持不变，外部 import 路径无需改动。
-export type { CatalogTaskActionOptions } from './catalogTaskResolve'
+export type { CatalogTaskActionOptions, CatalogTaskRunOptions } from './catalogTaskResolve'
 export { normalizeCatalogTaskResult } from './catalogTaskResultParse'
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
@@ -369,7 +369,7 @@ async function waitForCatalogTaskResult(
   vendor: string,
   request: TaskRequestDto,
   initialResult: TaskResultDto,
-  options: CatalogTaskActionOptions,
+  options: CatalogTaskRunOptions,
 ): Promise<TaskResultDto> {
   if (TERMINAL_STATUSES.has(initialResult.status)) return initialResult
   // 基准间隔按后端分档（慢道 3s / 快道 1.5s，见 resolvePollIntervalMs）；每轮实际等待还要叠
@@ -424,6 +424,7 @@ async function waitForCatalogTaskResult(
         taskKind: request.kind,
         prompt: request.prompt,
         modelKey: asTrimmedString(request.extras?.modelKey) || null,
+        projectId: options.projectTarget.projectId,
       })
       if (cancelNodeId && isTaskCancelRequested(cancelNodeId)) throw new LocalTaskCancelledError()
       current = response.result
@@ -452,10 +453,10 @@ async function waitForCatalogTaskResult(
 
 export function runCatalogGenerationTask(
   node: GenerationCanvasNode,
-  options: CatalogTaskActionOptions = {},
+  options: CatalogTaskRunOptions,
 ): Promise<GenerationNodeResult> {
   return withAssetLocalizationFeedback({
-    projectId: getActiveWorkbenchProjectId(), nodeId: node.id,
+    projectId: options.projectTarget.projectId, nodeId: node.id,
     subscribe: getDesktopBridge()?.assets?.onLocalizationStarted,
     report: () => options.onProgress?.({ phase: 'finalizing', message: narrateProgress('finalizing') }),
   }, () => runCatalogGenerationTaskWithFeedback(node, options))
@@ -463,8 +464,9 @@ export function runCatalogGenerationTask(
 
 async function runCatalogGenerationTaskWithFeedback(
   node: GenerationCanvasNode,
-  options: CatalogTaskActionOptions = {},
+  options: CatalogTaskRunOptions,
 ): Promise<GenerationNodeResult> {
+  const projectId = options.projectTarget.projectId
   // S2 进度报告:每个阶段说人话(narrate 注册表),治"卡 30 秒像死了"(bug② 根因之一:
   // 此前轮询拿到 status 后随手丢弃,且无任何阶段回报)。
   const report = (phase: GenerationProgressPhase, taskId?: string, ctx?: ProgressNarrationContext) =>
@@ -478,7 +480,7 @@ async function runCatalogGenerationTaskWithFeedback(
   const references = currentOptions.references
   if (getGenerationNodeExecutionKind(executableNode.kind) === 'video' && references?.relayFromVideoUrl) {
     const videoUrl = references.relayFromVideoUrl
-    await applyRelayFirstFrame(references)
+    await applyRelayFirstFrame(references, projectId)
     for (const slot of readParameterReferenceSlots(executableNode.meta)) {
       // Generic image parameters can inherit explicit first_frame edges; video parameters keep the original clip.
       if (slot.mediaKind !== 'video' && references.parameterReferenceUrls?.[slot.key] === videoUrl) {
@@ -494,7 +496,7 @@ async function runCatalogGenerationTaskWithFeedback(
   if (options.onTextDelta && TEXT_STREAM_KINDS.has(request.kind) && !options.runTask) {
     const runTextStream = options.runTextStream || runWorkbenchTextTaskStream
     report('requesting')
-    const streamed = await runTextStream(vendor, request, { onDelta: options.onTextDelta })
+    const streamed = await runTextStream(vendor, request, projectId, { onDelta: options.onTextDelta })
     report('finalizing', streamed.id)
     return normalizeCatalogTaskResult(streamed, executableNode)
   }
@@ -512,7 +514,7 @@ async function runCatalogGenerationTaskWithFeedback(
     const registered = await watchComfyuiProgress({
       promptId: requestedComfyPromptId,
       nodeId: asTrimmedString(request.extras?.nodeId),
-      projectId: asTrimmedString(request.extras?.projectId),
+      projectId,
       taskKind: request.kind,
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
@@ -521,7 +523,7 @@ async function runCatalogGenerationTaskWithFeedback(
   }
   let initialResult: TaskResultDto
   try {
-    initialResult = await runTask(vendor, request)
+    initialResult = await runTask(vendor, request, projectId)
   } catch (error) {
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
     throw error
@@ -538,7 +540,7 @@ async function runCatalogGenerationTaskWithFeedback(
     const registered = await watchComfyuiProgress({
       promptId: initialResult.id,
       nodeId: asTrimmedString(request.extras?.nodeId),
-      projectId: asTrimmedString(request.extras?.projectId),
+      projectId,
       taskKind: request.kind,
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
@@ -553,7 +555,7 @@ async function runCatalogGenerationTaskWithFeedback(
   }
   report('finalizing', initialResult.id)
   const normalized = normalizeCatalogTaskResult(finalResult, executableNode)
-  // 结构闸：主进程漏本地化（projectId 时序为空）时，用「当前打开的项目」这一更可靠的 id 兜底，
-  // 绝不让厂商临时 URL 落进节点 → 隔天过期播不了。主进程已落地时这里判为非 http，零开销 no-op。
-  return localizeRemoteResultUrl(normalized, getActiveWorkbenchProjectId() ?? '', executableNode.id)
+  // 结构闸：主进程漏本地化时，按运行提交时固定的项目补一次本地化，绝不让厂商临时 URL 落进节点
+  // → 隔天过期播不了。切项目后结果仍落原项目。主进程已落地时这里判为非 http，零开销 no-op。
+  return localizeRemoteResultUrl(normalized, projectId, executableNode.id)
 }

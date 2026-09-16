@@ -7,7 +7,7 @@
 // 抽帧是逐个 ffmpeg，几十张会花点时间 → 串行 + 逐个报进度，别一次并发几十个进程把机器打满。
 import { resolveNodeVisualSize } from './nodeSizing'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { formatShotTimestamp, shotCutNodePositions } from './shotCutSelection'
@@ -16,20 +16,17 @@ import i18n from '../../../i18n'
 export type ExtractShotCutsProgress = { done: number; total: number }
 
 export async function extractShotCutsToNodes(params: {
+  /** 用户点「落画布」那一刻签发的原项目生命周期：逐帧落盘、落节点、编组都只认它。 */
+  project: ProjectExecutionContext
   reportFeedback: (message: string) => void
   node: GenerationCanvasNode
   seconds: readonly number[]
   onProgress?: (progress: ExtractShotCutsProgress) => void
-}): Promise<{ created: number; failed: number }> {
-  const { reportFeedback, node, seconds, onProgress } = params
+}): Promise<{ created: number; failed: number; cancelled?: true }> {
+  const { project, reportFeedback, node, seconds, onProgress } = params
   const videoUrl = node.result?.url
   if (node.result?.type !== 'video' || !videoUrl || !seconds.length) return { created: 0, failed: 0 }
 
-  const projectId = getActiveWorkbenchProjectId()
-  if (!projectId) {
-    reportFeedback(i18n.t('generationCommon.node.extractFrame.missingProject'))
-    return { created: 0, failed: 0 }
-  }
   const extractFrame = getDesktopBridge()?.video?.extractFrame
   if (!extractFrame) {
     reportFeedback(i18n.t('generationCommon.node.extractFrame.desktopOnly'))
@@ -42,14 +39,19 @@ export async function extractShotCutsToNodes(params: {
 
   const createdIds: string[] = []
   let failed = 0
+  // 换项目 = 整批取消：已在原项目落好的帧文件留在原项目，新项目里不落节点、不编组、不报「几张没成」。
+  const cancelled = () => ({ created: createdIds.length, failed, cancelled: true as const })
   for (let i = 0; i < seconds.length; i += 1) {
+    if (!isProjectExecutionContextCurrent(project)) return cancelled()
     const at = seconds[i] as number
     onProgress?.({ done: i, total: seconds.length })
     let url: string
     try {
-      const result = await extractFrame({ videoUrl, which: at, projectId })
+      const result = await extractFrame({ videoUrl, which: at, projectId: project.binding.projectId, projectBinding: project.binding })
+      project.assertCurrent()
       url = result?.url || ''
-    } catch {
+    } catch (error) {
+      if (project.signal.aborted || isProjectImportCancellation(error)) return cancelled()
       // 单帧失败不该毁掉整批：记数，最后一条 toast 说清「几张没成」。
       failed += 1
       continue
@@ -69,6 +71,7 @@ export async function extractShotCutsToNodes(params: {
     })
     createdIds.push(created.id)
   }
+  if (!isProjectExecutionContextCurrent(project)) return cancelled()
   onProgress?.({ done: seconds.length, total: seconds.length })
 
   if (createdIds.length) {

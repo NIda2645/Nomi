@@ -107,6 +107,8 @@ export type GenerationNodeRunStatus = Exclude<GenerationNodeStatus, 'idle'> | 'c
 export type GenerationNodeRunRecord = {
   id: string
   status: GenerationNodeRunStatus
+  /** 运行所属项目（提交那一刻固定）。旧记录没有这一栏：由记录所在项目派生，派生不出即拒绝找回。 */
+  projectId?: string
   taskId?: string
   taskKind?: GenerationNodeTaskKind
   assetId?: string

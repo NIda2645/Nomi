@@ -1,4 +1,5 @@
 import type { DesktopBridge } from '../../desktop/bridge'
+import { unwrapAssetImportResult } from '../../../electron/shared/contracts/assetImportResult'
 import type { GenerationCanvasNode, GenerationNodeResult } from '../generationCanvas/model/generationCanvasTypes'
 import type { TimelineClip } from '../timeline/timelineTypes'
 import type { WorkbenchProjectRecordV1 } from './projectRecordSchema'
@@ -250,13 +251,13 @@ async function localizeRecordDataUrlFields<T extends BlobLikeRecord & { type?: u
       continue
     }
     try {
-      const imported = await options.desktop.assets.importRemoteUrl({
+      const imported = unwrapAssetImportResult(await options.desktop.assets.importRemoteUrl({
         projectId: options.projectId,
         url: value,
         kind: 'generated',
         fileName: fileNameForResult(options.prefix, options.ownerId, input, field),
         ownerNodeId: options.ownerId,
-      })
+      }))
       const hostedUrl = typeof imported.data?.url === 'string' ? imported.data.url.trim() : ''
       if (!hostedUrl) {
         stats.errors += 1

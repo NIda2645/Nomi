@@ -1,4 +1,3 @@
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { readLocalProjectAsync, saveLocalProject } from '../library/localProjectStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
@@ -7,6 +6,7 @@ import type { AssetRef } from './assetTypes'
 import { applyAssetResultDeletion, buildAssetResultDeletionPlan } from './assetResultDeletion'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import type { NodeResultLifecyclePatch } from '../generationCanvas/model/nodeResultLifecycle'
+import { isProjectExecutionContextCurrent, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 
 export type DeleteAssetResultOutcome = {
   removedResultCount: number
@@ -53,12 +53,16 @@ function rollbackAppliedPatches(
  */
 async function deleteAssetResultUnlocked(
   asset: AssetRef,
-  currentProjectId: string | null,
+  loaded: ProjectExecutionContext | null,
 ): Promise<DeleteAssetResultOutcome> {
-  const metadataProjectId = asset.origin.source === 'project' ? asset.origin.projectId : currentProjectId
+  const loadedProjectId = loaded ? loaded.binding.projectId : null
+  const metadataProjectId = asset.origin.source === 'project' ? asset.origin.projectId : loadedProjectId
+  // 「在画布 store 里改」只认发起删除时签发、且此刻仍有效的那个已加载项目；排队期间换了项目，
+  // 原项目此刻已是关闭项目，走下面按项目读写盘的既有路径，绝不去改新项目的 store。
+  const inLoadedStore = Boolean(metadataProjectId && metadataProjectId === loadedProjectId && isProjectExecutionContextCurrent(loaded ?? undefined))
   let removedResultCount = 0
 
-  if (metadataProjectId && metadataProjectId === currentProjectId) {
+  if (inLoadedStore) {
     const store = useGenerationCanvasStore.getState()
     const plan = buildAssetResultDeletionPlan(asset, store.nodes)
     const rollbacks = plan.matches.flatMap((match) => {
@@ -105,7 +109,7 @@ async function deleteAssetResultUnlocked(
     }
   }
 
-  const currentNodes = metadataProjectId === currentProjectId
+  const currentNodes = inLoadedStore && isProjectExecutionContextCurrent(loaded ?? undefined)
     ? useGenerationCanvasStore.getState().nodes
     : []
   const fileTarget = buildAssetResultDeletionPlan(asset, currentNodes).fileTarget
@@ -121,11 +125,12 @@ async function deleteAssetResultUnlocked(
 }
 
 
+/** loaded：发起删除那一刻签发的已加载项目（没有打开的项目 = null）；不再缺省读取「当前项目」。 */
 export function deleteAssetResult(
   asset: AssetRef,
-  currentProjectId = getDesktopActiveProjectId(),
+  loaded: ProjectExecutionContext | null,
 ): Promise<DeleteAssetResultOutcome> {
-  const projectId = asset.origin.source === 'project' ? asset.origin.projectId : currentProjectId
-  if (!projectId) return deleteAssetResultUnlocked(asset, currentProjectId)
-  return serializeProjectDeletion(projectId, () => deleteAssetResultUnlocked(asset, currentProjectId))
+  const projectId = asset.origin.source === 'project' ? asset.origin.projectId : loaded?.binding.projectId
+  if (!projectId) return deleteAssetResultUnlocked(asset, loaded)
+  return serializeProjectDeletion(projectId, () => deleteAssetResultUnlocked(asset, loaded))
 }

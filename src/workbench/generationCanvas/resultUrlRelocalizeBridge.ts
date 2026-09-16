@@ -7,6 +7,7 @@
 import { hostedAssetUrl, importWorkbenchRemoteAssetUrl } from '../api/assetUploadApi'
 import { useGenerationCanvasStore } from './store/generationCanvasStore'
 import type { GenerationNodeResult } from './model/generationCanvasTypes'
+import { isProjectExecutionContextCurrent, subscribeProjectOpened, type ProjectExecutionContext } from '../project/projectCanvasReadSurface'
 
 export function shouldRelocalizeResult(result: GenerationNodeResult | null | undefined): boolean {
   if (!result) return false
@@ -32,32 +33,47 @@ export function relocalizedResultPatch(
 
 const attempted = new Set<string>()
 
-async function relocalizeNode(nodeId: string, result: GenerationNodeResult): Promise<void> {
+async function relocalizeNode(nodeId: string, result: GenerationNodeResult, project: ProjectExecutionContext): Promise<void> {
   const sourceUrl = String(result.url || '')
   try {
-    const dto = await importWorkbenchRemoteAssetUrl(sourceUrl, undefined, { ownerNodeId: nodeId, kind: 'generated' })
+    const dto = await importWorkbenchRemoteAssetUrl(sourceUrl, undefined, {
+      projectBinding: project.binding, assertCurrent: project.assertCurrent, ownerNodeId: nodeId, kind: 'generated',
+    })
     const localUrl = hostedAssetUrl(dto)
+    if (!isProjectExecutionContextCurrent(project)) return
     const state = useGenerationCanvasStore.getState()
     const node = state.nodes.find((candidate) => candidate.id === nodeId)
     if (!node?.result || node.result.url !== sourceUrl) return
     const patch = relocalizedResultPatch(node.result, localUrl, dto?.id)
     if (patch) state.updateNode(nodeId, { result: patch })
   } catch {
-    // 链接已死 / 项目上下文缺失 → 静默不打扰；attempted 只在本次启动生效，下次打开会再试。
+    // 链接已死 / 换了项目 → 静默不打扰；attempted 只在本次启动生效，下次打开会再试。
   }
 }
 
-/** 订阅画布 store，对带 http(s) 结果的节点后台补一次本地化。返回解除函数。 */
+/**
+ * 每打开一个项目签发一次它的生命周期，对它画布里带 http(s) 结果的节点后台补一次本地化。
+ * 目标项目只来自签发，不读「当前项目」；换项目即停。返回解除函数。
+ */
 export function initResultUrlRelocalizeBridge(): () => void {
-  const sweep = (): void => {
-    for (const node of useGenerationCanvasStore.getState().nodes) {
-      if (!shouldRelocalizeResult(node.result)) continue
-      const key = `${node.id}:${String(node.result?.url || '')}`
-      if (attempted.has(key)) continue
-      attempted.add(key)
-      void relocalizeNode(node.id, node.result as GenerationNodeResult)
+  let unsubscribeStore: () => void = () => undefined
+  const unsubscribeOpened = subscribeProjectOpened((project) => {
+    unsubscribeStore()
+    const sweep = (): void => {
+      if (!isProjectExecutionContextCurrent(project)) return
+      for (const node of useGenerationCanvasStore.getState().nodes) {
+        if (!shouldRelocalizeResult(node.result)) continue
+        const key = `${project.binding.projectId}:${node.id}:${String(node.result?.url || '')}`
+        if (attempted.has(key)) continue
+        attempted.add(key)
+        void relocalizeNode(node.id, node.result as GenerationNodeResult, project)
+      }
     }
+    sweep()
+    unsubscribeStore = useGenerationCanvasStore.subscribe(sweep)
+  })
+  return () => {
+    unsubscribeOpened()
+    unsubscribeStore()
   }
-  sweep()
-  return useGenerationCanvasStore.subscribe(sweep)
 }

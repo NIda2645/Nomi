@@ -8,6 +8,7 @@
  * - 数据缺失时隐藏对应行（spec §3.4 Level 0）
  */
 import React from 'react'
+import { isProjectExecutionContextCurrent, withProjectAction, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { Icon3dCubeSphere, IconBox, IconMusic, IconPhoto, IconPlayerStop, IconUpload, IconUser, IconVideo, IconMap } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
@@ -392,7 +393,7 @@ export function UploadFallback({
 }: {
   accept: string
   label: string
-  onUpload: (dataUrl: string, file: File) => void
+  onUpload: (dataUrl: string, file: File, context: ProjectExecutionContext) => void
   kind?: 'image' | 'video' | 'audio' | 'character' | 'scene' | 'prop'
 }): JSX.Element {
   const { t } = useTranslation()
@@ -401,12 +402,15 @@ export function UploadFallback({
       const file = event.currentTarget.files?.[0]
       event.currentTarget.value = ''
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = (loadEvent) => {
-        const dataUrl = loadEvent.target?.result
-        if (typeof dataUrl === 'string') onUpload(dataUrl, file)
-      }
-      reader.readAsDataURL(file)
+      withProjectAction((context) => {
+        const reader = new FileReader()
+        reader.onload = (loadEvent) => {
+          if (!isProjectExecutionContextCurrent(context)) return
+          const dataUrl = loadEvent.target?.result
+          if (typeof dataUrl === 'string') onUpload(dataUrl, file, context)
+        }
+        reader.readAsDataURL(file)
+      })
     },
     [onUpload],
   )

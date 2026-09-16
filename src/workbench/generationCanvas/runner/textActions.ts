@@ -1,9 +1,10 @@
 import type { GenerationCanvasNode, GenerationNodeResult, TiptapDocJson } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { markdownToTiptapContent } from '../../creation/markdownToTiptap'
-import { runCatalogGenerationTask, type CatalogTaskActionOptions } from './catalogTaskActions'
+import { runCatalogGenerationTask, type CatalogTaskRunOptions } from './catalogTaskActions'
+import { deliverRunOutcome, whenRunTargetLoaded } from './runProjectDelivery'
 
-export type GenerateTextOptions = CatalogTaskActionOptions
+export type GenerateTextOptions = CatalogTaskRunOptions
 
 /**
  * C5 P2 · 文本节点生成模式：
@@ -21,7 +22,7 @@ export function getTextGenMode(node: Pick<GenerationCanvasNode, 'meta'>): TextGe
 
 export async function generateText(
   node: GenerationCanvasNode,
-  options: GenerateTextOptions = {},
+  options: GenerateTextOptions,
 ): Promise<GenerationNodeResult> {
   const userPrompt = (node.prompt || '').trim()
   const docText = docToPlainText(node.contentJson)
@@ -39,11 +40,13 @@ export async function generateText(
   // 续写/重写：数据层逐 token 增量重渲染（persist:false 草稿）。
   // 改写：替换的是 ProseMirror 选区，数据层拿不到位置 → 不流式，完成时交编辑器一次性替换。
   let streamBuffer = ''
+  // 流式草稿只给前台看：运行所属项目不在画布上时不写 store（那是别的项目）。
+  const target = options.projectTarget
   const onTextDelta = mode === 'rewrite'
     ? undefined
     : (delta: string) => {
         streamBuffer += delta
-        writeStreamingDoc(node.id, mode, baseContent, streamBuffer, false)
+        whenRunTargetLoaded(target, () => writeStreamingDraft(node.id, buildStreamingDoc(mode, baseContent, streamBuffer)))
       }
 
   const result = await runCatalogGenerationTask(
@@ -54,11 +57,13 @@ export async function generateText(
   if (!text) return result
 
   if (mode === 'rewrite') {
-    // 让节点内编辑器替换当前选区（见 TextDocumentNode 的 apply effect）。
-    markPendingSelectionApply(node.id, result.id)
+    // 让节点内编辑器替换当前选区（见 TextDocumentNode 的 apply effect）。选区只存在于打开着的编辑器里；
+    // 原项目不在前台时改写结果留在节点结果历史里，不去碰别的项目。
+    whenRunTargetLoaded(target, () => markPendingSelectionApply(node.id, result.id))
   } else {
-    // 完成：用最终文本定稿并持久化（覆盖流式过程的 persist:false 草稿）。
-    writeStreamingDoc(node.id, mode, baseContent, text, true)
+    // 完成：用最终文本定稿并持久化到运行所属项目（覆盖流式过程的 persist:false 草稿；不在前台则写它的盘上副本）。
+    const contentJson = buildStreamingDoc(mode, baseContent, text)
+    if (contentJson) await deliverRunOutcome(target, node.id, { kind: 'content', contentJson })
   }
   return result
 }
@@ -118,26 +123,24 @@ function buildTextPrompt(
 }
 
 /**
- * 续写/重写的统一落地（流式草稿 + 完成定稿共用一份）：
+ * 续写/重写的统一文档形状（流式草稿 + 完成定稿共用一份）：
  * - append：新内容接在 baseContent（流式起点的原有内容快照）之后。
  * - replace：新内容整篇替换。
- * persist=false 为流式过程中的草稿（不进撤销/不落盘）；persist=true 为完成时定稿。
  */
-function writeStreamingDoc(
-  nodeId: string,
+function buildStreamingDoc(
   mode: TextGenMode,
   baseContent: TiptapDocJson['content'],
   text: string,
-  persist: boolean,
-): void {
+): TiptapDocJson | null {
   const blocks = markdownToTiptapContent(text)
-  if (!blocks.length) return
-  const content = mode === 'replace' ? blocks : [...(baseContent || []), ...blocks]
-  useGenerationCanvasStore.getState().updateNode(
-    nodeId,
-    { contentJson: { type: 'doc', content } },
-    persist ? undefined : { persist: false },
-  )
+  if (!blocks.length) return null
+  return { type: 'doc', content: mode === 'replace' ? blocks : [...(baseContent || []), ...blocks] }
+}
+
+/** 流式过程中的草稿：不进撤销、不落盘，定稿时被覆盖。 */
+function writeStreamingDraft(nodeId: string, contentJson: TiptapDocJson | null): void {
+  if (!contentJson) return
+  useGenerationCanvasStore.getState().updateNode(nodeId, { contentJson }, { persist: false })
 }
 
 /** 改写：打标记，交给 TextDocumentNode 的 effect 用 editor.replaceSelection 落地（persist:false）。 */

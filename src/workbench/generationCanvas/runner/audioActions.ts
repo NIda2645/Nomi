@@ -1,7 +1,7 @@
 import type { GenerationCanvasNode, GenerationNodeResult } from '../model/generationCanvasTypes'
-import { runCatalogGenerationTask, type CatalogTaskActionOptions } from './catalogTaskActions'
+import { runCatalogGenerationTask, type CatalogTaskRunOptions } from './catalogTaskActions'
 
-export type GenerateAudioOptions = CatalogTaskActionOptions
+export type GenerateAudioOptions = CatalogTaskRunOptions
 
 // 声音生成（配音 TTS / 转写 Whisper）与图像/视频同走 catalog 任务流：
 // resolveExecutableNodeFromCatalog → buildCatalogTaskRequest（kind=text_to_audio/transcribe，由
@@ -9,7 +9,7 @@ export type GenerateAudioOptions = CatalogTaskActionOptions
 // runAudioTask）→ normalizeCatalogTaskResult（audio 资产 / transcribe 文本）。
 export async function generateAudio(
   node: GenerationCanvasNode,
-  options: GenerateAudioOptions = {},
+  options: GenerateAudioOptions,
 ): Promise<GenerationNodeResult> {
   return runCatalogGenerationTask(node, options)
 }

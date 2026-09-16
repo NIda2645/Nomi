@@ -5,7 +5,6 @@ const requestConfirm = vi.fn()
 vi.mock('../generationCanvas/spend/spendConfirm', () => ({
   useSpendConfirmStore: { getState: () => ({ requestConfirm }) },
 }))
-vi.mock('../project/workbenchProjectSession', () => ({ getActiveWorkbenchProjectId: () => 'project-1' }))
 
 import { handleCapabilityApply } from './capabilityApplyHandler'
 

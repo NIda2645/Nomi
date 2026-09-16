@@ -8,7 +8,7 @@
 //
 // 反向那条同样重要：拿不到 taskId 就没有可续查的东西，免费按钮按下去也只会报「找不到任务」。
 // 那种情况下 `error` 才是诚实的——不许为了让状态好看而给出一颗按不动的按钮。
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import { runGenerationNodesBatch } from './generationRunController'
 import { useGenerationQueueStore } from './generationQueueStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -19,9 +19,12 @@ import { describeOutboundRefusal } from '../../../../electron/networkOutboundMes
 import { authorizeOutboundDestination } from '../../../../electron/networkOutboundPolicy'
 import { classifyGenerationError } from '../../observability/classifyError'
 import { recoverNodeResult } from './recoverTaskActions'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { fetchWorkbenchTaskResultByVendor, mintSpendGrant } from '../../api/taskApi'
 import { VendorRequestError, encodeVendorErrorMessage } from '../../../../electron/vendor/vendorHttp'
 import { RecoverableTimeoutError } from './recoverableTimeout'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 
 vi.mock('../../api/taskApi', () => ({
   mintSpendGrant: vi.fn(async () => 'grant-test'),
@@ -58,6 +61,14 @@ function addNode(): string {
   return useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: '镜头 1' }).id
 }
 
+let projectSession: ProjectSessionTestHarness
+let projectTarget: ProjectBinding
+beforeEach(async () => {
+  projectSession = createProjectSessionTestHarness()
+  projectTarget = await projectSession.open('project-test')
+})
+afterEach(() => projectSession.dispose())
+
 describe('出站被拦 = 已付费但没取回来', () => {
   beforeEach(() => {
     useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
@@ -69,7 +80,7 @@ describe('出站被拦 = 已付费但没取回来', () => {
 
   it('已拿到 taskId 时落 recoverable —— 用户看到的是免费续查，不是付费重试', async () => {
     const id = addNode()
-    await runGenerationNodesBatch([id], {
+    await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async (node) => {
@@ -86,7 +97,7 @@ describe('出站被拦 = 已付费但没取回来', () => {
 
   it('没有 taskId 时仍落 error —— 不给一颗按不动的免费按钮', async () => {
     const id = addNode()
-    await runGenerationNodesBatch([id], {
+    await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async () => {
@@ -101,7 +112,7 @@ describe('出站被拦 = 已付费但没取回来', () => {
   // 上面那条绿灯也可能只是因为「什么都落 recoverable」。
   it('阳性对照：普通上游失败照旧落 error（付费重试才是对的下一步）', async () => {
     const id = addNode()
-    await runGenerationNodesBatch([id], {
+    await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async (node) => {
@@ -120,7 +131,7 @@ describe('出站被拦 = 已付费但没取回来', () => {
   // 不必凑够阈值把队列真的停住（那会让 worker 挂着等人拿主意，测试还得替用户点取消）。
   it('出站被拦计入刹车，超时可找回不计——两者的省钱方向相反', async () => {
     const blockedId = addNode()
-    await runGenerationNodesBatch([blockedId], {
+    await runGenerationNodesBatch([blockedId], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async (node) => {
@@ -134,7 +145,7 @@ describe('出站被拦 = 已付费但没取回来', () => {
     useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
 
     const timeoutId = addNode()
-    await runGenerationNodesBatch([timeoutId], {
+    await runGenerationNodesBatch([timeoutId], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async () => {
@@ -170,7 +181,7 @@ describe('被拦之后：免费重取片可达（零额度夹具）', () => {
       prompt: '镜头 1',
       meta: { modelVendor: 'apimart', modelKey: 'MiniMax-H3' },
     }).id
-    await runGenerationNodesBatch([id], {
+    await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async (node) => {
@@ -189,7 +200,7 @@ describe('被拦之后：免费重取片可达（零额度夹具）', () => {
         assets: [{ url: 'https://cdn.example.com/shot-1.png', type: 'image' }],
       },
     } as never)
-    await recoverNodeResult(id)
+    await withProjectAction((project) => recoverNodeResult(id, project))
 
     const query = vi.mocked(fetchWorkbenchTaskResultByVendor).mock.calls[0]?.[0]
     expect(query).toMatchObject({ taskId: 'task-paid-free-1', vendor: 'apimart' })
@@ -202,7 +213,7 @@ describe('被拦之后：免费重取片可达（零额度夹具）', () => {
 
   it('【阳性对照】节点上没有 taskId 时，同一颗按钮报「找不到任务」而不是假装拉到了', async () => {
     const id = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: '镜头 2' }).id
-    await recoverNodeResult(id)
+    await withProjectAction((project) => recoverNodeResult(id, project))
     expect(vi.mocked(fetchWorkbenchTaskResultByVendor)).not.toHaveBeenCalled()
     expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)?.status).toBe('error')
   })
@@ -241,7 +252,7 @@ describe('提交侧被拦 = 没扣费（与取回侧刻意分家）', () => {
 
   it('提交被拦即使已有 taskId 也落 error —— 不给一颗「免费重取」的假按钮', async () => {
     const id = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: '镜头 3' }).id
-    await runGenerationNodesBatch([id], {
+    await runGenerationNodesBatch([id], { target: projectTarget,
       assetUploadConsent: 'not-needed',
       retry: { maxAttempts: 1 },
       executor: async (node) => {

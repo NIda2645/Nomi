@@ -10,8 +10,10 @@
 // 无外部引用。glb/markdown/table/html 的"参考化"语义不同（3D 截图 / 渲染帧），P1。
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'
 import type { AgentArtifactMeta } from '../../model/artifactMeta'
-import type { WorkbenchAssetDto } from '../../../api/assetUploadApi'
-import { hostedAssetUrl } from '../../../api/assetUploadApi'
+import type { WorkbenchAssetDto, UploadWorkbenchAssetMeta } from '../../../api/assetUploadApi'
+import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../../api/assetUploadApi'
+import { isProjectImportCancellation } from '../../adapters/assetImportAdapter'
+import type { ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 import { parseNomiLocalAssetUrl } from '../../../../media/nomiLocalAssetUrl'
 import i18n from '../../../../i18n'
 
@@ -21,7 +23,7 @@ export type ReferenceAssetDeps = {
   /** SVG 文本 → 栅格化 PNG blob（依赖注入，node 单测不碰 canvas）。 */
   rasterizeSvgToPngBlob: (svgText: string) => Promise<Blob | null>
   /** 落盘资产。真实实现 importWorkbenchLocalAssetFile。 */
-  uploadFile: (file: File, name?: string) => Promise<WorkbenchAssetDto>
+  uploadFile: (file: File, name: string | undefined, meta: UploadWorkbenchAssetMeta) => Promise<WorkbenchAssetDto>
 }
 
 const realDeps: ReferenceAssetDeps = {
@@ -57,15 +59,12 @@ const realDeps: ReferenceAssetDeps = {
       URL.revokeObjectURL(blobUrl)
     }
   },
-  uploadFile: async (file, name) => {
-    const { importWorkbenchLocalAssetFile } = await import('../../../api/assetUploadApi')
-    return importWorkbenchLocalAssetFile(file, name)
-  },
+  uploadFile: importWorkbenchLocalAssetFile,
 }
 
 export type RasterizeArtifactResult =
   | { ok: true; nodeId: string; url: string }
-  | { ok: false; reason: string }
+  | { ok: false; reason: string; cancelled?: true }
 
 /** 固化出的参考图相对源产物卡的落点：右边一个身位。
  *  真机走查（2026-09-07）实测：不给落点时 addNode 退到缺省的 (120,360) 再避让，参考图落到了
@@ -75,11 +74,13 @@ const REFERENCE_GAP_PX = 48
 
 /** 把 agent-artifact 的 SVG 产物固化成画布参考图（asset 节点）。依赖注入便于单测。
  *
+ *  @param project 发起「固化为参考图」那一刻签发的原项目生命周期（必传，这里不自取当前项目）。
  *  @param sourceNodeId 源产物节点 id。给了就把参考图生在它旁边、并**跟它同一个分类**——
  *    分类不是装饰：画布按 activeCategoryId 分屏渲染，参考图落错分类就等于落在另一块屏上，
  *    用户看到的是「点了没反应」。 */
 export async function rasterizeArtifactToReferenceAsset(
   artifact: AgentArtifactMeta,
+  project: ProjectExecutionContext,
   deps: ReferenceAssetDeps = realDeps,
   sourceNodeId?: string,
 ): Promise<RasterizeArtifactResult> {
@@ -88,14 +89,19 @@ export async function rasterizeArtifactToReferenceAsset(
   }
   let svgText: string
   try {
+    project.assertCurrent()
     svgText = await deps.readText(artifact.url)
+    project.assertCurrent()
   } catch (error) {
+    if (project.signal.aborted || isProjectImportCancellation(error)) return { ok: false, cancelled: true, reason: 'cancelled' }
     return { ok: false, reason: error instanceof Error ? error.message : 'read-failed' }
   }
   let pngBlob: Blob | null
   try {
     pngBlob = await deps.rasterizeSvgToPngBlob(svgText)
+    project.assertCurrent()
   } catch (error) {
+    if (project.signal.aborted || isProjectImportCancellation(error)) return { ok: false, cancelled: true, reason: 'cancelled' }
     return { ok: false, reason: error instanceof Error ? error.message : 'rasterize-failed' }
   }
   if (!pngBlob) return { ok: false, reason: 'rasterize-failed' }
@@ -104,8 +110,10 @@ export async function rasterizeArtifactToReferenceAsset(
   const pngFile = new File([pngBlob], `${baseName}.png`, { type: 'image/png' })
   let asset: WorkbenchAssetDto
   try {
-    asset = await deps.uploadFile(pngFile, pngFile.name)
+    asset = await deps.uploadFile(pngFile, pngFile.name, { projectBinding: project.binding, assertCurrent: project.assertCurrent })
+    project.assertCurrent()
   } catch (error) {
+    if (project.signal.aborted || isProjectImportCancellation(error)) return { ok: false, cancelled: true, reason: 'cancelled' }
     return { ok: false, reason: error instanceof Error ? error.message : 'upload-failed' }
   }
   const hostedUrl = hostedAssetUrl(asset)

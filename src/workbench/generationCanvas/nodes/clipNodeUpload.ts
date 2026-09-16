@@ -1,13 +1,11 @@
 import type { AssetRef } from '../../assets/assetTypes'
-import { hostedAssetUrl, importWorkbenchLocalAssetFile, type WorkbenchAssetDto } from '../../api/assetUploadApi'
+import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 
-type ImportLocalAsset = (
-  file: File,
-  name?: string,
-  meta?: { projectId?: string | null },
-) => Promise<WorkbenchAssetDto>
+type ImportLocalAsset = typeof importWorkbenchLocalAssetFile
 
 export type ClipNodeUploadResult = {
+  cancelled?: true
   asset: AssetRef | null
   error: Error | null
 }
@@ -33,11 +31,15 @@ export function createExclusiveClipNodeUpload(): <T>(task: () => Promise<T>) => 
  */
 export async function importClipNodeAsset(
   file: File,
-  projectId: string,
+  context: ProjectExecutionContext,
   importFile: ImportLocalAsset = importWorkbenchLocalAssetFile,
 ): Promise<ClipNodeUploadResult> {
+  // 目标项目只从发起动作签发的 context 派生，不再另收一个 projectId 标量（两个真相源会对不上）。
+  const { projectId } = context.binding
   try {
-    const uploaded = await importFile(file, file.name, { projectId })
+    context.assertCurrent()
+    const uploaded = await importFile(file, file.name, { projectBinding: context.binding, assertCurrent: context.assertCurrent })
+    context.assertCurrent()
     const renderUrl = hostedAssetUrl(uploaded)
     if (!renderUrl) throw new Error('uploaded asset url missing')
     const kind = file.type.startsWith('video/') ? 'video' : 'image'
@@ -57,6 +59,7 @@ export async function importClipNodeAsset(
       error: null,
     }
   } catch (error) {
+    if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return { asset: null, error: null, cancelled: true }
     return { asset: null, error: error instanceof Error ? error : new Error(String(error)) }
   }
 }

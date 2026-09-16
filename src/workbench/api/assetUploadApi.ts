@@ -1,6 +1,7 @@
-import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
 import type { TaskKind } from './taskApi'
+import type { ProjectBinding } from '../../../electron/shared/projectBinding'
+import { unwrapAssetImportResult } from '../../../electron/shared/contracts/assetImportResult'
 
 export type WorkbenchAssetDto = {
   id: string
@@ -17,12 +18,17 @@ export function hostedAssetUrl(asset: WorkbenchAssetDto | null | undefined): str
   return typeof asset?.data?.url === 'string' ? asset.data.url.trim() : ''
 }
 
+/**
+ * 目标项目只能是发起动作签发的完整绑定（withProjectAction 的 context.binding + assertCurrent）。
+ * 没有「缺省落当前项目」：后台产物本地化走 resultAssetLocalization，带任务自己的 projectId。
+ */
 export type UploadWorkbenchAssetMeta = {
+  projectBinding: ProjectBinding
+  assertCurrent: () => void
   prompt?: string | null
   vendor?: string | null
   modelKey?: string | null
   taskKind?: TaskKind | string | null
-  projectId?: string | null
   ownerNodeId?: string | null
   /** 资产分桶：用户上传='upload'（默认）；生成结果补救本地化='generated'（与主进程 localizeTaskAsset 同桶）。 */
   kind?: 'upload' | 'generated'
@@ -32,12 +38,6 @@ function requireDesktopRuntime(feature: string): DesktopBridge {
   const desktop = getDesktopBridge()
   if (!desktop) throw new Error(`${feature} requires the Electron desktop runtime`)
   return desktop
-}
-
-function resolveProjectId(meta?: UploadWorkbenchAssetMeta): string {
-  const projectId = (meta?.projectId || getDesktopActiveProjectId() || '').trim()
-  if (!projectId) throw new Error('projectId is required for local asset import')
-  return projectId
 }
 
 export function buildWorkbenchAssetImportRequestKey(
@@ -53,54 +53,57 @@ export function buildWorkbenchAssetImportRequestKey(
       : ''
   const fileType = typeof file.type === 'string' ? file.type.trim().toLowerCase() : ''
   const uploadName = typeof name === 'string' ? name.trim() : ''
-  const projectId = typeof meta?.projectId === 'string' ? meta.projectId.trim() : ''
+  const projectId = meta?.projectBinding?.projectId?.trim() ?? ''
   const ownerNodeId = typeof meta?.ownerNodeId === 'string' ? meta.ownerNodeId.trim() : ''
   return [fileName, fileSize, lastModified, fileType, uploadName, projectId, ownerNodeId].join('|')
 }
 
-export async function listWorkbenchLocalAssets(): Promise<{ items: WorkbenchAssetDto[]; cursor: string | null }> {
-  const projectId = getDesktopActiveProjectId()
-  if (!projectId) return { items: [], cursor: null }
-  const desktop = requireDesktopRuntime('local asset list')
-  return desktop.assets.list({ projectId, limit: 200 }) as Promise<{ items: WorkbenchAssetDto[]; cursor: string | null }>
-}
-
 export async function importWorkbenchLocalAssetFile(
   file: File,
-  name?: string,
-  meta?: UploadWorkbenchAssetMeta,
+  name: string | undefined,
+  meta: UploadWorkbenchAssetMeta,
 ): Promise<WorkbenchAssetDto> {
+  meta.assertCurrent()
   const desktop = requireDesktopRuntime('local asset import')
   const request = {
-    projectId: resolveProjectId(meta),
+    projectId: meta.projectBinding.projectId,
+    projectBinding: meta.projectBinding,
     fileName: name || file.name || 'asset',
     contentType: file.type || 'application/octet-stream',
     kind: 'upload' as const,
   }
   if (desktop.assets.importNativeFile) {
     const imported = await desktop.assets.importNativeFile(file, request)
-    if (imported) return imported as WorkbenchAssetDto
+    meta.assertCurrent()
+    if (imported) return unwrapAssetImportResult(imported) as WorkbenchAssetDto
   }
   const arrayBuffer = await file.arrayBuffer()
-  return desktop.assets.importFile({
+  meta.assertCurrent()
+  const imported = await desktop.assets.importFile({
     ...request,
     bytes: arrayBuffer,
-  }) as Promise<WorkbenchAssetDto>
+  })
+  meta.assertCurrent()
+  return unwrapAssetImportResult(imported) as WorkbenchAssetDto
 }
 
 export async function importWorkbenchRemoteAssetUrl(
   url: string,
-  name?: string,
-  meta?: UploadWorkbenchAssetMeta,
+  name: string | undefined,
+  meta: UploadWorkbenchAssetMeta,
 ): Promise<WorkbenchAssetDto> {
+  meta.assertCurrent()
   const desktop = requireDesktopRuntime('remote asset import')
-  return desktop.assets.importRemoteUrl({
-    projectId: resolveProjectId(meta),
+  const imported = await desktop.assets.importRemoteUrl({
+    projectId: meta.projectBinding.projectId,
+    projectBinding: meta.projectBinding,
     url,
-    kind: meta?.kind || 'upload',
+    kind: meta.kind || 'upload',
     fileName: name,
-    ownerNodeId: meta?.ownerNodeId || null,
-  }) as Promise<WorkbenchAssetDto>
+    ownerNodeId: meta.ownerNodeId || null,
+  })
+  meta.assertCurrent()
+  return unwrapAssetImportResult(imported) as WorkbenchAssetDto
 }
 
 export async function recoverImportedWorkbenchLocalAssetFile(_file: File): Promise<WorkbenchAssetDto | null> {

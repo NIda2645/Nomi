@@ -1,12 +1,14 @@
 import React from 'react'
 import { renderToString } from 'react-dom/server'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DirectorStoreContext } from './DirectorEditorContext'
 import { AI_SCENE_FIXTURE, type AiSceneSpec } from './model/aiScene'
 import { createDirectorStore } from './model/directorStore'
 import { createDefaultScene } from './model/directorProject'
 import { useAiSceneBuilder } from './useAiSceneBuilder'
 import { importWorkbenchLocalAssetFile } from '../../../api/assetUploadApi'
+import { createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurfaceCoordinator } from '../../../project/projectCanvasReadSurface'
+import type { CanvasReadSurfaceBridge } from '../../../../../electron/shared/surfacePortBinding'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../../../ui/toast', () => ({ toast: vi.fn() }))
@@ -31,7 +33,23 @@ function setup() {
   return { builder, store, pending, mock }
 }
 
-afterEach(() => vi.unstubAllGlobals())
+let coordinator: ReturnType<typeof createProjectCanvasReadSurfaceCoordinator>
+let unregister: () => void = () => undefined
+async function openProject(projectId: string) { await coordinator.beginHydration().commitCanvasRead(projectId) }
+beforeEach(async () => {
+  vi.mocked(importWorkbenchLocalAssetFile).mockClear()
+  coordinator = createProjectCanvasReadSurfaceCoordinator({
+    createSurfaceInstanceId: () => 'director-window',
+    getSurfaceBridge: () => ({ suspend: async () => ({ suspension: {} }), release: async () => ({ released: true }),
+      commitCanvasRead: async ({ projectId }: { projectId: string }) => ({ binding: { binding: {
+        projectId, immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1,
+      } } }),
+    } as unknown as CanvasReadSurfaceBridge),
+  })
+  unregister = registerProjectCanvasReadSurfaceCoordinator(coordinator)
+  await openProject('project-a')
+})
+afterEach(() => { unregister(); vi.unstubAllGlobals() })
 
 describe('AI scene request ownership (real hook callbacks)', () => {
   it('result stays in the scene selected when the request started', async () => {
@@ -84,6 +102,25 @@ describe('AI scene request ownership (real hook callbacks)', () => {
     builder.cancel()
     upload.resolve({} as Awaited<ReturnType<typeof importWorkbenchLocalAssetFile>>)
     expect(await running).toBe(false)
+    expect(store.getState().project.scenes).toHaveLength(1)
+    expect(store.getState().project.assets.items).toHaveLength(0)
+  })
+
+  it('saves the generated scene into the project the request started in', async () => {
+    const { builder, pending } = setup()
+    const running = builder.run('cafe', [], 'new_layer')
+    pending[0].resolve(AI_SCENE_FIXTURE)
+    expect(await running).toBe(true)
+    expect(vi.mocked(importWorkbenchLocalAssetFile).mock.calls[0][2]).toMatchObject({ projectBinding: { projectId: 'project-a' } })
+  })
+
+  it('a project switch while the model is answering saves nothing into any project library', async () => {
+    const { builder, store, pending } = setup()
+    const running = builder.run('cafe', [], 'new_layer')
+    await openProject('project-b')
+    pending[0].resolve(AI_SCENE_FIXTURE)
+    expect(await running).toBe(false)
+    expect(importWorkbenchLocalAssetFile).not.toHaveBeenCalled()
     expect(store.getState().project.scenes).toHaveLength(1)
     expect(store.getState().project.assets.items).toHaveLength(0)
   })

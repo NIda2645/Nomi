@@ -9,7 +9,7 @@ import { inferWhiteboardAspectRatio } from '../whiteboard/whiteboardState'
 import { buildLayerWhiteboardState } from './buildLayerWhiteboard'
 import { confirmAndMintGrant, describeGenerationCost, generationCostContextForNode } from '../../spend/spendConfirm'
 import { getDesktopBridge } from '../../../../desktop/bridge'
-import { getDesktopActiveProjectId } from '../../../../desktop/activeProject'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { listWorkbenchModelCatalogVendors } from '../../../api/modelCatalogApi'
 import { confirmDialog } from '../../../../design/confirmDialogStore'
 import i18n from '../../../../i18n'
@@ -48,16 +48,20 @@ export function useDecomposeLayers(node: GenerationCanvasNode, imageUrl: string,
   const runDecompose = React.useCallback(async () => {
     reportFeedback('')
     if (!imageUrl || decomposeBusy) return
+    // 拆图层动作起点签发原项目。付费产出的图层按原项目落进它的素材库（显式项目 IO，不因切项目丢钱）；
+    // 白板状态只在原项目仍打开时回写，换了项目不弹到新项目里。
+    const project = withProjectAction((issued) => issued)
+    if (!project) return
     // 先确保 Replicate 已接入，否则引导去接入（不甩死胡同错误）。
     if (!(await ensureReplicateConnectedOrGuide())) return
     const grantId = await confirmAndMintGrant({
       nodeIds: [node.id],
       nodes: [{ meta: { modelVendor: 'replicate', modelKey: 'qwen/qwen-image-layered' } }],
       title: i18n.t('generationCommon.decompose.title'),
-      message: `${describeGenerationCost(1, 'image', generationCostContextForNode(node))}${i18n.t('generationCommon.decompose.costSuffix')}`,
+      message: `${describeGenerationCost(1, 'image', generationCostContextForNode(node, project.binding.projectId))}${i18n.t('generationCommon.decompose.costSuffix')}`,
       confirmLabel: i18n.t('generationCommon.decompose.confirm'),
     })
-    if (!grantId) return
+    if (!grantId || !isProjectExecutionContextCurrent(project)) return
     setDecomposeBusy(true)
 
     try {
@@ -69,16 +73,18 @@ export function useDecomposeLayers(node: GenerationCanvasNode, imageUrl: string,
         imageUrl,
         numLayers: DECOMPOSE_LAYERS,
         grantId,
-        projectId: getDesktopActiveProjectId() || undefined,
+        projectId: project.binding.projectId,
       })
+      if (!isProjectExecutionContextCurrent(project)) return
       if (!layers || layers.length === 0) throw new Error(i18n.t('generationCommon.decompose.noLayers'))
       const ratio = inferWhiteboardAspectRatio(node.meta?.imageWidth, node.meta?.imageHeight)
       setDecomposeState(buildLayerWhiteboardState(layers, ratio))
 
     } catch (error) {
+      if (!isProjectExecutionContextCurrent(project)) return
       reportFeedback(error instanceof Error && error.message ? error.message : i18n.t('generationCommon.decompose.failed'))
     } finally {
-      setDecomposeBusy(false)
+      if (isProjectExecutionContextCurrent(project)) setDecomposeBusy(false)
     }
   }, [decomposeBusy, imageUrl, node, reportFeedback])
 

@@ -58,7 +58,7 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const capture = vi.fn(async () => structuredClone(rawEvidence));
   const write = vi.fn<CanvasWritePort["write"]>(async ({ input, receiptProposalId }) => {
     const operation = (input as { operation?: string }).operation;
@@ -102,11 +102,15 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
   return {
     capture,
     write,
+    remount: async () => {
+      const next = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
+      await registry.commitCanvasRead(owner, { projectId: "project-a", suspension: next });
+    },
     adapter: createPiCanvasWriteTransportAdapter({
       registry,
-      capturedPort,
+      session,
       requestId: "request-a",
-      port,
+      surfacePortRuntime: { createCanvasWritePort: () => port },
       executor,
     }),
   };
@@ -329,6 +333,32 @@ describe("canvas.write Pi transport", () => {
     expect(test.capture).toHaveBeenCalledTimes(2);
   });
 
+  it("executes after the prepare-time captured port is retired by a new surface epoch", async () => {
+    const test = await setup();
+    const signal = new AbortController().signal;
+    const prepared = await test.adapter.prepare(
+      {
+        toolCallId: "tool-live",
+        toolName: CANVAS_WRITE_ALIASES.setNodePrompt,
+        args: { nodeId: "client-alias", prompt: "new prompt" },
+      },
+      signal,
+    );
+    await test.remount();
+    await expect(
+      test.adapter.execute(
+        prepared!,
+        {
+          receiptProposalId: "receipt-live",
+          approvalId: "approval-live",
+          actionHash: prepared!.invocation.actionHash,
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({ ok: true, result: { operation: "set_node_prompt" } });
+    expect(test.write).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects malformed raw evidence and mismatched approval authority before execute dispatch", async () => {
     const malformed = await setup({ node: { id: "node-real" }, groups: [] });
     const signal = new AbortController().signal;
@@ -365,4 +395,22 @@ describe("canvas.write Pi transport", () => {
     ).resolves.toMatchObject({ ok: false, code: "capability_authority_invalid" });
     expect(test.write).not.toHaveBeenCalled();
   });
+});
+
+it('publishes a safe actionable import failure without raw renderer messages', async () => {
+  const test = await setup();
+  const signal = new AbortController().signal;
+  const prepared = await test.adapter.prepare({
+    toolCallId: 'failure', toolName: CANVAS_WRITE_ALIASES.setNodePrompt,
+    args: { nodeId: 'node-real', prompt: 'new prompt' },
+  }, signal);
+  test.write.mockRejectedValue(Object.assign(new Error('/private/provider-token'), {
+    code: 'capability_execution_failed', reason: 'no-disk-space',
+  }));
+  const result = await test.adapter.execute(prepared!, {
+    receiptProposalId: 'receipt', approvalId: 'approval', actionHash: prepared!.invocation.actionHash,
+  }, signal);
+  expect(result).toEqual({ ok: false, code: 'capability_execution_failed', reason: 'no-disk-space',
+    message: 'The artifact could not be saved because the project disk has insufficient free space.' });
+  expect(JSON.stringify(result)).not.toContain('private');
 });

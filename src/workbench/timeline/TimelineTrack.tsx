@@ -19,7 +19,6 @@ import TimelineTransitionMarker from './TimelineTransitionMarker'
 import TimelineSeamHandle from './TimelineSeamHandle'
 import type { TimelineTransitionFeedback } from './timelineVisualFeedback'
 import { IconVolume, IconVolumeOff } from '@tabler/icons-react'
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
 
 type TimelineTrackProps = {
   track: TimelineTrackData
@@ -126,7 +125,6 @@ function TimelineTrack({ track, transitionFeedback = [], variant = 'primary' }: 
         fps,
         startFrame: resolveFrame(event.clientX),
         targetTrackType: track.type,
-        activeProjectId: getActiveWorkbenchProjectId(),
         onFailure: (error) => presentFeedback(error instanceof Error ? error.message : t('timelineEditor.adoption.failedRecovered')),
       })
       if (!result) return false

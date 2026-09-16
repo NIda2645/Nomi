@@ -18,6 +18,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
 import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/modelCatalogApi'
 import * as localTaskControl from './localTaskControl'
+const TEST_TARGET = { projectId: 'project-test', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 } as const
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -355,7 +356,7 @@ describe('buildCatalogTaskRequest — 标准参考面与档案投影并存（中
 // 被静默选中，否则一次 credential repair 会把旧节点送到完全无关的端点并产生付费请求。
 describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', () => {
   const vendorDto = (key: string, hasApiKey: boolean, meta?: unknown): ModelCatalogVendorDto => ({ key, name: key, enabled: true, hasApiKey, ...(meta ? { meta } : {}), createdAt: '', updatedAt: '' })
-  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, published: true, publishedModes: ['text_to_image'], meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
+  const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, published: true, availability: { usable: true }, publishedModes: ['text_to_image'], meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
 
   const staleKieNode: GenerationCanvasNode = {
     id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫',
@@ -377,7 +378,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
 
   it('无 lineage 的 legacy vendor 不再按 archetype 静默请求 apimart', async () => {
     const { calls, options } = harness()
-    await expect(runCatalogGenerationTask(staleKieNode, options)).rejects.toThrow(/NOMI_ERR::model-config/)
+    await expect(runCatalogGenerationTask(staleKieNode, { ...options, projectTarget: TEST_TARGET })).rejects.toThrow(/NOMI_ERR::model-config/)
     expect(calls).toHaveLength(0)
   })
 
@@ -396,7 +397,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
       },
     }
 
-    await expect(runCatalogGenerationTask(staleKieNode, {
+    await expect(runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET,
       listCatalogVendors: async () => [
         vendorDto('kie', true),
         vendorDto('unrelated', true),
@@ -419,7 +420,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
 
   it('同 lineage successor disabled 时不向无关同名供应商提交请求', async () => {
     const runTask = vi.fn()
-    await expect(runCatalogGenerationTask(staleKieNode, {
+    await expect(runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET,
       listCatalogVendors: async () => [
         vendorDto('kie', true),
         vendorDto('unrelated', true),
@@ -437,7 +438,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
   it('没有任何已连接供应商提供该款 → 抛清晰可行动错误，而非 cryptic key missing', async () => {
     const { options } = harness()
     await expect(
-      runCatalogGenerationTask(staleKieNode, { ...options, listCatalogVendors: async () => [vendorDto('kie', false)], listCatalogModels: async () => [] }),
+      runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET, ...options, listCatalogVendors: async () => [vendorDto('kie', false)], listCatalogModels: async () => [] }),
     ).rejects.toThrow(/NOMI_ERR::model-config/)
   })
 })
@@ -476,7 +477,7 @@ describe('runCatalogGenerationTask — ComfyUI 提交时序与 prompt UUID', () 
     const watched: Array<Record<string, unknown>> = []
     stubComfyBridge(events, watched)
 
-    const result = await runCatalogGenerationTask(comfyNode, {
+    const result = await runCatalogGenerationTask(comfyNode, { projectTarget: TEST_TARGET,
       runTask: async (_vendor, request) => {
         events.push('run')
         const promptId = String(request.extras?.comfyPromptId || '')
@@ -502,7 +503,7 @@ describe('runCatalogGenerationTask — ComfyUI 提交时序与 prompt UUID', () 
     const watched: Array<Record<string, unknown>> = []
     stubComfyBridge(events, watched)
 
-    await expect(runCatalogGenerationTask(comfyNode, {
+    await expect(runCatalogGenerationTask(comfyNode, { projectTarget: TEST_TARGET,
       runTask: async () => {
         events.push('run')
         throw new Error('submit failed')
@@ -523,7 +524,7 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
   it('超时抛 RecoverableTimeoutError，detail 带 taskId/vendor/taskKind，且软超时后回报 still-generating', async () => {
     const { isRecoverableTimeoutError } = await import('./recoverableTimeout')
     const phases: string[] = []
-    const error = await runCatalogGenerationTask(videoNode, {
+    const error = await runCatalogGenerationTask(videoNode, { projectTarget: TEST_TARGET,
       // 首发拿到 taskId、非终态 → 进轮询
       runTask: async (_v, req) => ({ id: 'up-task-9', kind: req.kind, status: 'queued' as const, assets: [], raw: {} }),
       // 始终非终态 → 必定走到硬超时
@@ -562,7 +563,7 @@ describe('runCatalogGenerationTask — confirmed local cancellation wins over po
       } }
     })
     try {
-      await expect(runCatalogGenerationTask(node, { runTask, fetchTaskResult, pollIntervalMs: 1 })).rejects.toMatchObject({ name: 'LocalTaskCancelledError' })
+      await expect(runCatalogGenerationTask(node, { projectTarget: TEST_TARGET, runTask, fetchTaskResult, pollIntervalMs: 1 })).rejects.toMatchObject({ name: 'LocalTaskCancelledError' })
       expect(runTask).toHaveBeenCalledOnce()
       expect(fetchTaskResult).toHaveBeenCalledTimes(moment === 'before-query' ? 0 : 1)
     } finally { cancelFlag.mockRestore() }
@@ -582,7 +583,7 @@ describe('runCatalogGenerationTask — 轮询查询失败绝不重新提交付�
   it('轮询期一次网络抖动 → 免费重试查询、付费 runTask 只调一次、最终拿到结果', async () => {
     let submitCount = 0
     let fetchCount = 0
-    const result = await runCatalogGenerationTask(videoNode, {
+    const result = await runCatalogGenerationTask(videoNode, { projectTarget: TEST_TARGET,
       runTask: async (_v, req) => { submitCount += 1; return { id: 'up-1', kind: req.kind, status: 'queued' as const, assets: [], raw: {} } },
       fetchTaskResult: async () => {
         fetchCount += 1
@@ -599,7 +600,7 @@ describe('runCatalogGenerationTask — 轮询查询失败绝不重新提交付�
   it('轮询持续失败 → 落 RecoverableTimeoutError（可找回，非重发），runTask 仍只一次', async () => {
     const { isRecoverableTimeoutError } = await import('./recoverableTimeout')
     let submitCount = 0
-    const error = await runCatalogGenerationTask(videoNode, {
+    const error = await runCatalogGenerationTask(videoNode, { projectTarget: TEST_TARGET,
       runTask: async (_v, req) => { submitCount += 1; return { id: 'up-2', kind: req.kind, status: 'queued' as const, assets: [], raw: {} } },
       fetchTaskResult: async () => { throw new TypeError('Failed to fetch') }, // 查结果一直失败
       pollIntervalMs: 1,
@@ -622,7 +623,7 @@ describe('runCatalogGenerationTask — 轮询查询失败绝不重新提交付�
       }) as unknown as typeof globalThis.setTimeout)
     try {
       let fetchCount = 0
-      const result = await runCatalogGenerationTask(videoNode, {
+      const result = await runCatalogGenerationTask(videoNode, { projectTarget: TEST_TARGET,
         runTask: async (_v, req) => ({ id: 'up-3', kind: req.kind, status: 'queued' as const, assets: [], raw: {} }),
         fetchTaskResult: async () => {
           fetchCount += 1

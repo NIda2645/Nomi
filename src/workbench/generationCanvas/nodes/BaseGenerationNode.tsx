@@ -47,6 +47,7 @@ import { retryLocalAssetImport } from '../adapters/assetImportAdapter'
 import { NodeErrorReport } from './NodeErrorReport'
 import { NodeRecoverableReport } from './NodeRecoverableReport'
 import { dismissRecoverableNode, recoverNodeResult } from '../runner/recoverTaskActions'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { WorkbenchButton } from '../../../design'
 import { completeNodeConnection } from './completeNodeConnection'
 import { getGenerationNodeExecutionKind, isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
@@ -474,7 +475,7 @@ function BaseGenerationNodeImpl({
       {status === 'recoverable' ? (
         <NodeRecoverableReport
           onRecover={() => {
-            void recoverNodeResult(node.id)
+            withProjectAction((project) => { void recoverNodeResult(node.id, project) })
           }}
           onDismiss={() => {
             dismissRecoverableNode(node.id)

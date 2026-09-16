@@ -15,16 +15,20 @@ import { IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { dataUrlToFile, persistNodeImageFile } from '../adapters/persistNodeImage'
+import { isProjectImportCancellation } from '../adapters/assetImportAdapter'
+import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { cropScreenshotRegion, normalizeSelectionRect, type SelectionRect } from './screenshotCropGeometry'
 
 type Props = {
   capture: { url: string; width: number; height: number }
+  /** 抓屏发生时就固定的原项目生命周期（由主进程绑定经 useCanvasScreenshotCapture 接手），不在确认时重新认领当前项目。 */
+  project: ProjectExecutionContext
   basePosition: { x: number; y: number }
   categoryId?: string
   onClose: () => void
 }
 
-export function ScreenshotCropOverlay({ capture, basePosition, categoryId, onClose }: Props): JSX.Element {
+export function ScreenshotCropOverlay({ capture, project, basePosition, categoryId, onClose }: Props): JSX.Element {
   const { t } = useTranslation()
   const frameRef = React.useRef<HTMLDivElement | null>(null)
   const [drag, setDrag] = React.useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null)
@@ -53,9 +57,11 @@ export function ScreenshotCropOverlay({ capture, basePosition, categoryId, onClo
     if (busy) return
     setBusy(true)
     try {
+      project.assertCurrent()
       // 没框 = 要整屏。框太小（误点）也当整屏，别产出一个 3px 的碎片。
       const region = selection && selection.width > 0.01 && selection.height > 0.01 ? selection : null
       const cropped = region ? await cropScreenshotRegion(capture.url, region) : null
+      project.assertCurrent()
       const url = cropped?.dataUrl ?? capture.url
       const store = useGenerationCanvasStore.getState()
       const created = store.addNode({
@@ -74,7 +80,8 @@ export function ScreenshotCropOverlay({ capture, basePosition, categoryId, onClo
       if (cropped) {
         const file = dataUrlToFile(cropped.dataUrl, `screenshot-${createdAt}.png`)
         if (file) {
-          const localUrl = await persistNodeImageFile(file, created.id)
+          const localUrl = await persistNodeImageFile(file, created.id, project)
+          project.assertCurrent()
           const latest = useGenerationCanvasStore.getState()
           const node = latest.nodes.find((candidate) => candidate.id === created.id)
           if (localUrl && node?.result?.id === resultId) {
@@ -82,9 +89,13 @@ export function ScreenshotCropOverlay({ capture, basePosition, categoryId, onClo
           }
         }
       }
+    } catch (error) {
+      if (!project.signal.aborted && !isProjectImportCancellation(error)) throw error
     } finally {
-      setBusy(false)
-      onClose()
+      if (!project.signal.aborted) {
+        setBusy(false)
+        onClose()
+      }
     }
   }
 
@@ -165,7 +176,7 @@ export function ScreenshotCropOverlay({ capture, basePosition, categoryId, onClo
             'bg-nomi-paper text-body font-medium text-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper',
             'transition-colors duration-nomi-fast ease-nomi-fast disabled:opacity-50',
           )}
-          onClick={() => void commit()}
+          onClick={commit}
         >
           {t('generationCommon.screenshot.commit')}
         </button>

@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   saveLocalProject: vi.fn(),
 }))
 
-vi.mock('../../desktop/activeProject', () => ({ getDesktopActiveProjectId: () => 'project-1' }))
 vi.mock('../../desktop/bridge', () => ({
   getDesktopBridge: () => ({ workspace: { deleteFiles: mocks.deleteFiles } }),
 }))
@@ -29,6 +28,12 @@ vi.mock('../library/localProjectStore', () => ({
 }))
 
 import { deleteAssetResult } from './deleteAssetResult'
+import type { ProjectExecutionContext } from '../project/projectCanvasReadSurface'
+
+/** 发起删除时签发的已加载项目（测试替身）。 */
+function loaded(projectId: string): ProjectExecutionContext {
+  return { binding: { projectId, immutableProjectUuid: `uuid-${projectId}`, projectGeneration: 1 }, signal: new AbortController().signal, assertCurrent: () => undefined }
+}
 
 function image(id: string, url: string): GenerationNodeResult {
   return { id, type: 'image', url, createdAt: 1 }
@@ -73,7 +78,7 @@ describe('deleteAssetResult durability', () => {
   })
 
   it('persists the current manifest before deleting the physical file', async () => {
-    await deleteAssetResult(projectAsset('a'), 'project-1')
+    await deleteAssetResult(projectAsset('a'), loaded('project-1'))
 
     expect(mocks.updateNode).toHaveBeenCalledOnce()
     expect(mocks.persistNow).toHaveBeenCalledOnce()
@@ -84,7 +89,7 @@ describe('deleteAssetResult durability', () => {
   it('does not delete the file when immediate persistence fails', async () => {
     mocks.persistNow.mockRejectedValueOnce(new Error('disk full'))
 
-    await expect(deleteAssetResult(projectAsset('a'), 'project-1')).rejects.toThrow('disk full')
+    await expect(deleteAssetResult(projectAsset('a'), loaded('project-1'))).rejects.toThrow('disk full')
     expect(mocks.deleteFiles).not.toHaveBeenCalled()
     expect(mocks.nodes[0].result?.id).toBe('a')
     expect(mocks.nodes[0].history?.map((result) => result.id)).toEqual(['a', 'b'])
@@ -101,7 +106,7 @@ describe('deleteAssetResult durability', () => {
       },
     ]
 
-    await deleteAssetResult(projectAsset('a'), 'project-1')
+    await deleteAssetResult(projectAsset('a'), loaded('project-1'))
 
     expect(mocks.persistNow).toHaveBeenCalledOnce()
     expect(mocks.deleteFiles).not.toHaveBeenCalled()
@@ -123,8 +128,8 @@ describe('deleteAssetResult durability', () => {
       return storedProject
     })
 
-    const deleteA = deleteAssetResult(projectAsset('a'), 'another-project')
-    const deleteB = deleteAssetResult(projectAsset('b', 'assets/generated/b.png'), 'another-project')
+    const deleteA = deleteAssetResult(projectAsset('a'), loaded('another-project'))
+    const deleteB = deleteAssetResult(projectAsset('b', 'assets/generated/b.png'), loaded('another-project'))
     await Promise.resolve()
     await Promise.resolve()
     expect(mocks.readLocalProjectAsync).toHaveBeenCalledTimes(1)

@@ -96,7 +96,7 @@ export function ProcessFeedbackStage(fixture: ProcessFixture): JSX.Element {
     useGenerationCanvasStore.setState({ nodes: [node], edges: [], selectedNodeIds: [] })
     useGenerationQueueStore.setState({ entries: [], batches: {} })
     const queue = useGenerationQueueStore.getState()
-    batchId.current = queue.enqueueBatch([[PF_NODE_ID]])
+    batchId.current = queue.enqueueBatch([[PF_NODE_ID]], 'process-feedback-lab')
     if (fixture.stage !== 'queued') queue.markRunning(batchId.current, PF_NODE_ID)
     if (fixture.stage === 'failed' || fixture.stage === 'saved') queue.markSettled(batchId.current, PF_NODE_ID, fixture.stage === 'saved' ? 'success' : 'error', { error: node.error })
     useWorkbenchStore.getState().setTimeline({ version: 1, fps: 30, scale: 4, playheadFrame: 0, tracks: [{ id: 'pf-track', type: 'image', label: '', clips: [clip] }], textClips: [] })

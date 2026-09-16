@@ -45,6 +45,7 @@
 | T-AG-13 | Goal 模式 v1：一个 Run + 一条 lane，剧本进→成片出 | hold | 09-08 调研已收（PR #623），三条拍板已定 | 六条「没想到」是实施前置门；排在主线后 |
 | T-AG-14 | 看片自评（Agent 最大能力缺口） | hold | 09-07 能力边界七缺口 | — |
 | T-AG-15 | 提示词与 skill 整合（skill 已经把提示词装进去了） | todo | [原文 09-12 00:48](sources/2026-09-14-filehelper-transcript.md#09-12) | 先出方案 |
+| T-AG-16 | 常驻 Agent 的长期身份改为窗口＋完整项目绑定，页面端口仅按动作解析；换项目、reload、窗口销毁永久撤销旧动作。09-17 实证：802 当前红灯另由文本存储准入、跨桥错误失真和节点尺寸投影触发，不能只凭错误名称归因旧端口 | doing | [09-16 上下文及09-17证据修订](sources/2026-09-16-session-identity-window-plus-project.md) · [获批实施方案](../plan/2026-09-17-pr802-root-causes.md) · Linux `resident-composer-receipt-fix` | 用户已批准 A 实际失败链＋B 项目会话全部修复合入；隔离依赖 B，因此完整会话及最终落盘守卫先验收，再合 802 |
 
 ## C. 画布与节点
 

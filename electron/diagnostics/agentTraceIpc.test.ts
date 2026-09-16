@@ -10,7 +10,7 @@ vi.mock('node:module', async (importOriginal) => {
   return { ...actual, createRequire: (filename: string) => actual.createRequire(mocks.nativeRequireBase ?? filename) };
 });
 vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: mocks.guard }));
-vi.mock('../tasks/activeProjectFallback', () => ({ activeTaskProjectFallback: mocks.activeProject }));
+vi.mock('../capabilityCore/canvasReadSurfaceRuntime', () => ({ canvasReadSurfaceRuntime: { getCommittedProjectSelection: () => ({ projectId: mocks.activeProject() }) } }));
 vi.mock('../runtimePaths', () => ({ getWorkspaceRepositoryDeps: vi.fn() }));
 vi.mock('../workspace/workspaceRepository', () => ({ resolveWorkspaceProjectDir: mocks.projectDirectory }));
 import { registerAgentTraceIpc } from './agentTraceIpc';

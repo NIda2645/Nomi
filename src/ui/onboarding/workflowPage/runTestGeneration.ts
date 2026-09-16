@@ -83,7 +83,7 @@ export async function runTestGeneration(input: {
           comfyCertificationRevisionId: input.revisionId,
         },
       },
-    })
+    }, null) // 工作流认证试跑不属于任何项目：产物不进项目素材。
   } catch {
     await cancelComfyCandidateTestRevision(candidate).catch(() => undefined)
     return { ok: false, revisionId: input.revisionId, reasonCode: 'provider_failed', params: {} }

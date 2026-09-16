@@ -1,6 +1,7 @@
 /**
  * [INPUT]: 依赖 @photo-sphere-viewer/core 的 Viewer / EquirectangularAdapter、react-dom 的 createPortal、
- *          ../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、../../../design 的 NomiImage / WorkbenchIconButton
+ *          ../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、../../../design 的 NomiImage / WorkbenchIconButton、
+ *          ../../project/projectCanvasReadSurface（截图开始时捕获项目执行上下文）
  * [OUTPUT]: 对外提供 PanoramaViewer 与 PanoramaScreenshot 类型
  * [POS]: generationCanvas/nodes 的全景查看器：卡片内嵌 + 全屏两态共用一个 psv Viewer 实例；
  *        全屏那层从 Windows 自绘窗口栏之下起画（不是 inset-0 铺满）——那条 32px 是系统拖拽带，
@@ -19,6 +20,8 @@ import { cn } from '../../../utils/cn'
 import { WorkbenchIconButton } from '../../../design/actions'
 import { currentFullscreenOverlayTopOffset } from '../../../ui/app-shell/windowChrome'
 import i18n from '../../../i18n'
+import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
+import { isProjectImportCancellation } from '../adapters/assetImportAdapter'
 
 export type PanoramaScreenshot = {
   /** PNG Blob，不是 base64：全景图动辄 8K，base64 进 store 会被逐次 JSON 深拷贝 + 全量存盘。 */
@@ -34,7 +37,7 @@ type PanoramaViewerProps = {
   width: number
   height: number
   onEnterFullscreen?: (trigger: (() => void) | null) => void
-  onScreenshot?: (screenshot: PanoramaScreenshot) => void
+  onScreenshot?: (screenshot: PanoramaScreenshot, project: ProjectExecutionContext) => void
 }
 
 type PhotoSphereViewerConfig = Pick<
@@ -352,7 +355,7 @@ function PanoramaDialogControls({
   captureRatioId: PanoramaCaptureRatioId
   onCaptureRatioChange: (ratioId: PanoramaCaptureRatioId) => void
   onClose: () => void
-  onScreenshot?: (screenshot: PanoramaScreenshot) => void
+  onScreenshot?: (screenshot: PanoramaScreenshot, project: ProjectExecutionContext) => void
 }): JSX.Element {
   const { t } = useTranslation()
   const viewer = React.useContext(PhotoSphereViewerContext)
@@ -379,30 +382,33 @@ function PanoramaDialogControls({
     }
   }, [])
 
-  const handleScreenshot = React.useCallback(() => {
+  const handleScreenshot = React.useCallback(async () => {
     if (capturing) return
     if (!viewer || !captureFrameRef.current) {
       showFeedback({ tone: 'info', message: t('generationCommon.panorama.notReady') })
       return
     }
 
-    setCapturing(true)
-    showFeedback({ tone: 'info', message: t('generationCommon.panorama.capturing') })
-    void captureFramedPanoramaView(viewer, captureFrameRef.current)
-      .then((screenshot) => {
+    const captureFrame = captureFrameRef.current
+    await withProjectAction(async (project) => {
+      setCapturing(true)
+      showFeedback({ tone: 'info', message: t('generationCommon.panorama.capturing') })
+      try {
+        const screenshot = await captureFramedPanoramaView(viewer, captureFrame)
+        project.assertCurrent()
         if (!screenshot) {
           showFeedback({ tone: 'error', message: t('generationCommon.panorama.captureFailed') })
           return
         }
-        onScreenshot?.(screenshot)
+        onScreenshot?.(screenshot, project)
         showFeedback({ tone: 'success', message: t('generationCommon.panorama.created') })
-      })
-      .catch(() => {
+      } catch (error) {
+        if (project.signal.aborted || isProjectImportCancellation(error)) return
         showFeedback({ tone: 'error', message: t('generationCommon.panorama.captureFailed') })
-      })
-      .finally(() => {
-        if (mountedRef.current) setCapturing(false)
-      })
+      } finally {
+        if (mountedRef.current && !project.signal.aborted) setCapturing(false)
+      }
+    })
   }, [captureFrameRef, capturing, onScreenshot, showFeedback, t, viewer])
 
   return (
@@ -618,7 +624,7 @@ export default function PanoramaViewer({
                     captureRatioId={captureRatioId}
                     onCaptureRatioChange={setCaptureRatioId}
                     onClose={() => setFullscreen(false)}
-                    onScreenshot={(screenshot) => onScreenshot?.(screenshot)}
+                    onScreenshot={(screenshot, project) => onScreenshot?.(screenshot, project)}
                   />
                 </PhotoSpherePanoramaViewer>
               </section>

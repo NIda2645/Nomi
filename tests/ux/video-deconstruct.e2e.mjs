@@ -64,7 +64,8 @@ try {
     const saved = await window.nomiDesktop.assets.importFile({
       projectId, bytes: binary.buffer, contentType: "video/mp4", fileName: "reference.mp4", kind: "upload",
     });
-    return { projectId, url: saved?.data?.url || saved?.url || "" };
+    if (!saved.ok) return { error: saved.failure.reason };
+    return { projectId, url: saved.asset.data?.url || "" };
   }, bytes.toString("base64"));
   if (setup.error || !setup.url) {
     console.log("SKIP: 素材导入失败 —", JSON.stringify(setup).slice(0, 200));

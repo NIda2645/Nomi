@@ -1,32 +1,12 @@
-import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { rollbackNodeHistory } from '../model/graphOps'
-import type { GenerationNodeResult, GenerationNodeRunRecord } from '../model/generationCanvasTypes'
+import type { GenerationNodeRunRecord } from '../model/generationCanvasTypes'
+import { nodeRunOutcomePatch } from './nodeRunOutcome'
 import { createRunId } from './canvasIds'
 import { bumpPersistRevision } from './canvasGuards'
-import { createProgress, getResultTaskKind, getRunDurationSeconds, mergeRunRecord } from './runRecordHelpers'
+import { getRunDurationSeconds, mergeRunRecord } from './runRecordHelpers'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import type { CanvasRunActions, CanvasSliceCreator } from './canvasStoreTypes'
 import { describeOpaqueFailure } from '../../observability/opaqueFailure'
-
-function mergeResultHistory(
-  nextResult: GenerationNodeResult,
-  previousResult: GenerationNodeResult | undefined,
-  previousHistory: GenerationNodeResult[] | undefined,
-): GenerationNodeResult[] {
-  const history: GenerationNodeResult[] = []
-  const seen = new Set<string>()
-  const add = (result: GenerationNodeResult | undefined) => {
-    if (!result) return
-    const key = result.id || result.url || result.thumbnailUrl || result.text || ''
-    if (!key || seen.has(key)) return
-    seen.add(key)
-    history.push(result)
-  }
-  add(nextResult)
-  add(previousResult)
-  ;(previousHistory || []).forEach(add)
-  return history
-}
 
 // S5-a3 run 域记账 = 终态收敛:setNodeProgress(每 1.5s 轮询 tick)不入日志(§4.3 瞬态),
 // 终态 action 发后态整节点(canvas.node.run-updated)——内部时间戳逻辑再复杂,后态都构造性精确;
@@ -41,16 +21,7 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
-      const nextError = status === 'error' ? error || node.error || describeOpaqueFailure(null) : undefined
-      const latestRun = node.runs?.[0]
-      const runs = latestRun && latestRun.status !== 'success' && latestRun.status !== 'error' && latestRun.status !== 'cancelled'
-        ? [mergeRunRecord(latestRun, { status: status === 'idle' ? 'cancelled' : status, error: nextError }), ...(node.runs || []).slice(1)]
-        : node.runs
-
-      node.status = status
-      node.error = nextError
-      node.progress = status === 'queued' || status === 'running' ? node.progress : undefined
-      node.runs = runs
+      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'status', status, error }))
       bumpPersistRevision(state)
     })
     emitRunUpdated(nodeId)
@@ -73,27 +44,7 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
-      if (!progress) {
-        node.progress = undefined
-        bumpPersistRevision(state)
-        return
-      }
-      const nextProgress = createProgress(progress, node.runs?.[0]?.id)
-      const runs = node.runs?.length
-        ? [
-            mergeRunRecord(node.runs[0], {
-              status: node.runs[0].status === 'queued' ? 'running' : node.runs[0].status,
-              progress: nextProgress,
-              taskId: nextProgress.taskId ?? node.runs[0].taskId,
-              taskKind: nextProgress.taskKind ?? node.runs[0].taskKind,
-            }, nextProgress.updatedAt),
-            ...node.runs.slice(1),
-          ]
-        : node.runs
-      node.status = node.status === 'queued' ? 'running' : node.status || 'running'
-      node.error = undefined
-      node.progress = nextProgress
-      node.runs = runs
+      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'progress', progress }))
       bumpPersistRevision(state)
     })
   },
@@ -112,10 +63,7 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
-      node.status = normalizedRun.status === 'cancelled' ? 'idle' : normalizedRun.status
-      node.error = normalizedRun.status === 'error' ? normalizedRun.error || node.error || describeOpaqueFailure(null) : undefined
-      node.progress = normalizedRun.progress
-      node.runs = [normalizedRun, ...(node.runs || []).filter((entry) => entry.id !== normalizedRun.id)]
+      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'run-started', run: normalizedRun }))
       bumpPersistRevision(state)
     })
     emitRunUpdated(nodeId)
@@ -143,40 +91,7 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
-      const previousResult = node.result
-      const latestRun = node.runs?.[0]
-      // Freeze the existing visual footprint before switching from placeholder to result.
-      // Intrinsic media dimensions still update metadata; they cannot move the canvas on completion.
-      if (latestRun && (latestRun.status === 'queued' || latestRun.status === 'running')) {
-        const footprint = resolveNodeVisualSize(node)
-        node.size = footprint
-        node.meta = { ...node.meta, previewHeight: footprint.height }
-      }
-      const completedAt = result.createdAt || Date.now()
-      const runs = latestRun
-        ? [
-            mergeRunRecord(latestRun, {
-              status: 'success',
-              taskId: result.taskId ?? latestRun.taskId,
-              taskKind: getResultTaskKind(result) ?? latestRun.taskKind,
-              assetId: result.assetId ?? latestRun.assetId,
-              assetRefId: result.assetRefId ?? latestRun.assetRefId,
-              resultId: result.id,
-              raw: result.raw ?? latestRun.raw,
-              completedAt,
-              durationSeconds: result.durationSeconds ?? latestRun.durationSeconds,
-              progress: undefined,
-              error: undefined,
-            }, completedAt),
-            ...(node.runs || []).slice(1),
-          ]
-        : node.runs
-      node.result = result
-      node.history = mergeResultHistory(result, previousResult, node.history)
-      node.status = 'success'
-      node.error = undefined
-      node.progress = undefined
-      node.runs = runs
+      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'result', result }))
       bumpPersistRevision(state)
     })
     emitRunUpdated(nodeId)

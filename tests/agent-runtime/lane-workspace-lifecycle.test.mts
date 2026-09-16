@@ -5,6 +5,7 @@ import { openLaneHistory } from '../../electron/agentLane/laneHistory.mjs';
 import { openLaneWorkspace, type LaneWorkspaceOptions } from '../../electron/agentLane/laneWorkspace.mjs';
 import type { LaneHandle, LaneProjection, LaneWorkspaceHandle } from '../../electron/shared/agentLane/laneContracts.js';
 import { createLaneFixture } from './laneFixture.mjs';
+import { createDocumentLaneTools } from '../../electron/agentLane/laneDocumentTools.js';
 
 function deferred() {
   let resolve!: () => void;
@@ -106,8 +107,8 @@ for (const operation of ['configure', 'create', 'select'] as const) {
       await workspace.execute({ kind: 'lane-create', laneName: 'research' });
       await workspace.execute({ kind: 'lane-select', laneName: 'main' });
     }
-    const seen: string[] = [];
-    workspace.subscribe((projection) => seen.push(projection.active.lane));
+    const seen: ReturnType<LaneWorkspaceHandle['projection']>[] = [];
+    workspace.subscribe((projection) => seen.push(projection));
     const gate = opener.pauseNext();
     const changing = operation === 'configure' ? workspace.configureModel(fixture.options.model)
       : workspace.execute({ kind: operation === 'create' ? 'lane-create' : 'lane-select', laneName: 'research' });
@@ -122,7 +123,9 @@ for (const operation of ['configure', 'create', 'select'] as const) {
     await reopened.close();
     assert.equal((await changingOutcome)[0]?.status, 'rejected');
     assert.equal((await abortOutcome)[0]?.status, 'rejected');
-    assert.deepEqual(seen, [], 'no projection may resurrect a conversation after close');
+    assert.equal(seen.length, 1, 'close publishes one terminal snapshot, never the replacement conversation');
+    assert.equal(seen[0].closed, true);
+    assert.equal(seen[0].active.lane, 'main');
     assert.equal(fixture.http.requests.length, 0);
   });
 }
@@ -135,7 +138,11 @@ test('failed replacement closes the workspace instead of dispatching commands to
     return openLane({ ...options, model: fixture.options.model });
   });
   t.after(() => workspace.close());
+  const seen: ReturnType<LaneWorkspaceHandle['projection']>[] = [];
+  workspace.subscribe(value => seen.push(value));
   await assert.rejects(workspace.execute({ kind: 'lane-create', laneName: 'research' }), /fixture open failure/);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].closed, true);
   await assert.rejects(workspace.execute({ kind: 'abort' }), /agent_lane_disposed/);
   await assert.rejects(workspace.configureModel(fixture.options.model), /agent_lane_disposed/);
   assert.equal(opens, 2, 'a failed workspace cannot open more hosts');
@@ -181,10 +188,69 @@ function pendingApproval(workspace: LaneWorkspaceHandle) {
   });
 }
 
+for (const kind of ['assistant-text', 'thinking', 'tool-call'] as const) {
+  test(`closed terminal snapshot stops live ${kind} parts without changing the previous projection`, { timeout: 10_000 }, async (t) => {
+    const release = deferred();
+    t.after(() => release.resolve());
+    const fixture = await createLaneFixture(t, kind === 'tool-call'
+      ? [{ type: 'tool', calls: [{ id: 'read', name: 'read_script', arguments: { scope: 'full' } }] }]
+      : [{ type: 'message', parts: [{ type: kind === 'thinking' ? 'thinking' : 'text', text: 'In progress.' }], beforeFinish: () => release.promise }]);
+    const workspace = await openLaneWorkspace({ ...fixture.options, tools: createDocumentLaneTools({
+      read: async (_scope, context) => {
+        await new Promise<void>(resolve => {
+          if (context.signal.aborted) resolve();
+          else context.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return { text: 'Stopped.' };
+      },
+      write: fixture.document.write,
+    }) });
+    fixture.after(() => workspace.close());
+    const live = new Promise<LaneProjection>((resolve) => {
+      const stop = workspace.subscribe(({ active }) => {
+        if (active.parts.some(part => part.kind === kind && ('running' in part ? part.running : 'streaming' in part && part.streaming))) {
+          stop(); resolve(active);
+        }
+      });
+    });
+    const prompt = workspace.execute({ kind: 'prompt', text: 'Begin work.' });
+    const before = await live;
+    const closing = workspace.close();
+    const terminal = workspace.projection();
+    release.resolve();
+    await Promise.all([closing, prompt]);
+    assert.equal(terminal.closed, true);
+    assert.equal(terminal.active.parts.some(part => 'running' in part && part.running || 'streaming' in part && part.streaming), false);
+    assert.equal(before.parts.some(part => part.kind === kind && ('running' in part ? part.running : 'streaming' in part && part.streaming)), true);
+    if (kind === 'assistant-text') assert.equal(terminal.active.parts.some(part => part.kind === kind && part.interrupted), true);
+  });
+}
+
+test('closing publishes one terminal snapshot before dropping subscribers and cancels pending approval', { timeout: 10_000 }, async (t) => {
+  const fixture = await createLaneFixture(t, [
+    { type: 'tool', calls: [{ id: 'append', name: 'write_script', arguments: { where: 'end', content: 'Must not run.' } }] },
+  ], { hasUserInterface: true, policy: () => ({ mode: 'step', spend: 'confirm' }) });
+  const workspace = await openLaneWorkspace(fixture.options);
+  t.after(() => workspace.close());
+  const before = fixture.document.text();
+  const seen: ReturnType<LaneWorkspaceHandle['projection']>[] = [];
+  workspace.subscribe(value => seen.push(value));
+  const prompt = workspace.execute({ kind: 'prompt', text: 'Append with approval.' });
+  await pendingApproval(workspace);
+  await workspace.close();
+  await prompt;
+  const terminal = seen.filter(value => 'closed' in value && value.closed);
+  assert.equal(terminal.length, 1);
+  assert.equal(terminal[0].active.running, false);
+  assert.equal(terminal[0].active.pending, undefined);
+  assert.equal('closed' in workspace.projection(), true);
+  assert.equal(fixture.document.text(), before);
+});
+
 for (const action of ['approval', 'abort'] as const) {
   test(`a running prompt never holds ${action} behind its model/tool turn`, { timeout: 10_000 }, async (t) => {
     const fixture = await createLaneFixture(t, [
-      { type: 'tool', calls: [{ id: 'append', name: 'append_to_end', arguments: { content: 'The closing line.' } }] },
+      { type: 'tool', calls: [{ id: 'append', name: 'write_script', arguments: { where: 'end', content: 'The closing line.' } }] },
       { type: 'text', text: 'Done.' },
     ], { hasUserInterface: true, policy: () => ({ mode: 'step', spend: 'confirm' }) });
     const workspace = await openLaneWorkspace(fixture.options);

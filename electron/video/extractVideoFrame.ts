@@ -15,6 +15,8 @@ import { probeMediaMetadata } from "../export/mediaProbe";
 import { absolutePathFromLocalAssetUrl } from "../assets/localAssetFile";
 import { hardenedFetch } from "../hardenedFetch";
 import { writeAsset } from "../runtime";
+import { captureAssetWriteContext } from "../assets/assetWriteContext";
+import type { ProjectBinding } from "../shared/projectBinding";
 import { writeProjectCacheFile } from "../assets/projectCacheFile";
 
 export type VideoFrameWhich = "first" | "last" | number;
@@ -23,11 +25,18 @@ export type ExtractVideoFramePayload = {
   videoUrl: string;
   which: VideoFrameWhich;
   projectId: string;
+  /** 交互动作签发的原项目完整绑定（renderer 抽帧/切镜落画布带上）；主进程据此拒绝发布到被替换的项目。 */
+  projectBinding?: ProjectBinding;
   /** 跳过缓存强制重抽（参考 fingerprintCache 的 forceRerun 语义）。 */
   forceRerun?: boolean;
 };
 
 export type ExtractVideoFrameResult = { url: string };
+
+export type ExtractVideoFrameOptions = {
+  /** 可信主进程交互断言（IPC 按 sender 会话签发）；后台调用方（审片环/拆解）不传，只固定磁盘身份。 */
+  assertCurrent?: () => void;
+};
 
 export class VideoFrameError extends Error {
   constructor(message: string) {
@@ -105,10 +114,15 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<void> {
  * 抽一帧落成项目素材。失败一律抛 VideoFrameError —— **绝不返回视频/封面冒充**
  * （resolver 的「不冒充」不变量靠这里兜底：上游拿到 error 就标人话错误、不裸跑）。
  */
-export async function extractVideoFrameToAsset(payload: ExtractVideoFramePayload): Promise<ExtractVideoFrameResult> {
+export async function extractVideoFrameToAsset(
+  payload: ExtractVideoFramePayload,
+  options: ExtractVideoFrameOptions = {},
+): Promise<ExtractVideoFrameResult> {
   const { videoUrl, which, projectId } = payload;
   if (!videoUrl || typeof videoUrl !== "string") throw new VideoFrameError("缺少源视频地址");
   if (!projectId || typeof projectId !== "string") throw new VideoFrameError("缺少 projectId");
+  // 动作起点固定项目身份（根目录 + 完整绑定 + 交互断言），ffmpeg 之后的发布只认这一份，不再按 projectId 现查目录。
+  const context = await captureAssetWriteContext(projectId, payload.projectBinding, options.assertCurrent);
 
   const key = cacheKey(payload);
   if (!payload.forceRerun) {
@@ -146,7 +160,7 @@ export async function extractVideoFrameToAsset(payload: ExtractVideoFramePayload
     const record = writeAsset(projectId, bytes, `frame-${label}-${crypto.randomUUID().slice(0, 8)}.png`, "image/png", {
       kind: "generated",
       source: "video-frame",
-    }) as { data?: { url?: string } };
+    }, context) as { data?: { url?: string } };
     const url = record?.data?.url;
     if (!url) throw new VideoFrameError("抽出的帧图写盘失败");
     frameCache.set(key, url);
@@ -191,6 +205,7 @@ export async function extractVideoEndpointsToAsset(payload: ExtractEndpointsPayl
   const { videoUrl, projectId } = payload;
   if (!videoUrl || typeof videoUrl !== "string") throw new VideoFrameError("缺少源视频地址");
   if (!projectId || typeof projectId !== "string") throw new VideoFrameError("缺少 projectId");
+  const context = await captureAssetWriteContext(projectId);
 
   const key = `${projectId}::${videoUrl}::endpoints`;
   if (!payload.forceRerun) {
@@ -224,7 +239,7 @@ export async function extractVideoEndpointsToAsset(payload: ExtractEndpointsPayl
     const record = writeAsset(projectId, bytes, `frame-endpoints-${crypto.randomUUID().slice(0, 8)}.png`, "image/png", {
       kind: "generated",
       source: "video-frame",
-    }) as { data?: { url?: string } };
+    }, context) as { data?: { url?: string } };
     const url = record?.data?.url;
     if (!url) throw new VideoFrameError("首尾拼图写盘失败");
     frameCache.set(key, url);

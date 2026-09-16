@@ -15,7 +15,6 @@
 // 历史留痕已在 node.runs[] 里持久化 —— 不另立第二份历史真相源。
 import { create } from 'zustand'
 import { notify, revealNotificationTarget } from '../../../ui/notificationPolicy'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import i18n from '../../../i18n'
 
 export type QueueEntryState = 'queued' | 'running' | 'success' | 'error' | 'cancelled'
@@ -80,7 +79,8 @@ type GenerationQueueState = {
   entries: GenerationQueueEntry[]
   batches: Record<string, GenerationQueueBatch>
   /** 登记整个计划（含后续波次）→ 这就是「排队可见」的全部秘密。返回 batchId。 */
-  enqueueBatch: (waves: readonly (readonly string[])[]) => string
+  /** projectId：这批运行所属的项目（提交那一刻签发），不在登记时去读「当前项目」。 */
+  enqueueBatch: (waves: readonly (readonly string[])[], projectId: string) => string
   markRunning: (batchId: string, nodeId: string) => void
   /** countsTowardBrake=false 用于「上游本批失败 → 下游连带失败」：那不是模型挂了，不该触发刹车。 */
   markSettled: (
@@ -102,7 +102,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()((set, get)
   entries: [],
   batches: {},
 
-  enqueueBatch: (waves) => {
+  enqueueBatch: (waves, projectId) => {
     const id = createBatchId()
     const now = Date.now()
     const fresh: GenerationQueueEntry[] = []
@@ -125,7 +125,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()((set, get)
       entries: [...state.entries, ...fresh],
       batches: {
         ...state.batches,
-        [id]: { id, projectId: getDesktopActiveProjectId(), createdAt: now, total: fresh.length, cancelRequested: false, paused: false, consecutiveFailures: 0 },
+        [id]: { id, projectId, createdAt: now, total: fresh.length, cancelRequested: false, paused: false, consecutiveFailures: 0 },
       },
     }))
     return id
@@ -266,8 +266,8 @@ export async function waitForQueueGate(batchId?: string): Promise<QueueGate> {
 }
 
 /** 单发生成（非批量）也进面板：自建 1 个节点的批次，否则面板对单发是瞎的。 */
-export function beginSingletonBatch(nodeId: string): string {
-  return useGenerationQueueStore.getState().enqueueBatch([[nodeId]])
+export function beginSingletonBatch(nodeId: string, projectId: string): string {
+  return useGenerationQueueStore.getState().enqueueBatch([[nodeId]], projectId)
 }
 
 /** 该节点当前是否「已排队但还没开跑」——画布节点据此显示「排队中」。 */

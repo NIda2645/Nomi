@@ -12,17 +12,26 @@ const deps = vi.hoisted(() => ({
 }))
 vi.mock('./agentLoopMode', () => ({ runSingleShotAgent: deps.send }))
 vi.mock('../windowUrlParam', () => ({ readWindowUrlParam: () => deps.project }))
-vi.mock('../project/workbenchProjectSession', () => ({ getActiveWorkbenchProjectId: () => deps.project }))
 vi.mock('../../desktop/bridge', () => ({ getDesktopBridge: () => ({
   video: { extractFrame: deps.frame },
   assets: { list: deps.assets },
 }) }))
 vi.mock('../generationCanvas/agent/runStoryboardPlanner', () => ({ runStoryboardPlanner: deps.planner }))
 vi.mock('../capability/multiShotCanvasLanding', () => ({ handleMultiShotCanvasLandingOp: deps.landing }))
-vi.mock('../project/projectCanvasReadSurface', () => ({
-  captureCurrentProjectCanvasReadSurfaceBinding: deps.captureSurface,
-  sealCurrentProjectCanvasReadSnapshot: deps.sealSurfaceSnapshot,
-}))
+vi.mock('../project/projectCanvasReadSurface', () => {
+  // 签发点替身：deps.project 就是此刻窗口里打开的项目；上下文在它变化后失效。
+  const issue = () => {
+    const projectId = deps.project
+    return { binding: { projectId, immutableProjectUuid: `uuid-${projectId}`, projectGeneration: 1 }, signal: new AbortController().signal,
+      assertCurrent: () => { if (deps.project !== projectId) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' }) } }
+  }
+  return {
+    captureCurrentProjectCanvasReadSurfaceBinding: deps.captureSurface,
+    sealCurrentProjectCanvasReadSnapshot: deps.sealSurfaceSnapshot,
+    withProjectAction: <R>(run: (project: ReturnType<typeof issue>) => R, unavailable?: () => R) => deps.project ? run(issue()) : unavailable?.(),
+    isProjectExecutionContextCurrent: (context?: ReturnType<typeof issue>) => { try { context?.assertCurrent(); return Boolean(context) } catch { return false } },
+  }
+})
 import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
 import { makeShotVerifyDeps } from '../generationCanvas/agent/shotVerifyJudge'
 import { handleCapabilityApply } from '../capability/capabilityApplyHandler'

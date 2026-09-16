@@ -4,7 +4,7 @@ import { nodeReferenceCapacity } from './controls/nodeCrossFieldConstraints'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
-import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
+import { useOpenProjectId } from '../../project/useOpenProjectId'
 import {
   deriveGenerationModelCatalogStatus,
   findModelOptionByIdentifier,
@@ -135,6 +135,7 @@ export default function NodeParameterControls({
   inlinePanelTarget,
   inlinePanelSlot,
 }: NodeParameterControlsProps): JSX.Element | null {
+  const openProjectId = useOpenProjectId()
   const reportFeedback = React.useCallback((message: string) => {
     notify({ identity: `NodeParameterControls:${node.id}`, reason: 'interaction', message, level: 'inline', present: setUploadError })
   }, [node.id])
@@ -740,7 +741,7 @@ export default function NodeParameterControls({
           capacityMessage={archMode?.maxTotalReferences === undefined ? undefined : t('generationCommon.parameters.referenceTotal', { max: archMode.maxTotalReferences })}
           valuesByKey={assetValuesByKey}
           occupiedByKey={arrayOccupiedByKey}
-          projectId={getDesktopActiveProjectId() || null}
+          projectId={openProjectId}
           openSlotKey={openSlotKey}
           uploadingSlotKey={uploadingSlotKey || uploadingArrayKey}
           onTogglePicker={(key) => setOpenSlotKey((prev) => (prev === key ? '' : key))}

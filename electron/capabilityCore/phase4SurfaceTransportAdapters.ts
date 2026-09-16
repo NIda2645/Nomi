@@ -8,7 +8,7 @@ import {
 } from "../shared/agentCapabilities/exportCapabilities";
 import type { TargetRef } from "../shared/capabilityTargeting";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererAssetReadVerifiedInvocationFactory,
   createRendererExportReadVerifiedInvocationFactory,
@@ -64,7 +64,7 @@ export type PiPhase4SurfaceTransportAdapter = Readonly<{
 
 export function createPiPhase4SurfaceTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiPhase4SurfaceTransportAdapter {

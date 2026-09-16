@@ -17,7 +17,7 @@ import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIde
 import { chooseTextModel } from '../ai/textBrainResolver'
 import { vendorModelConnection } from '../ai/vendorModelConnection'
 import { modelContextWindow } from '../shared/modelContextWindow'
-import { NOMI_AGENT_IDENTITY, buildLanguageRule, resolveRequestedSkill } from '../harness/context/agentContext'
+import { NOMI_AGENT_IDENTITY, buildLanguageRule, buildSelectedSkillPrompt, resolveRequestedSkill } from '../harness/context/agentContext'
 import { getProjectMemory, formatMemoryForPrompt } from '../memory/projectMemory'
 import { createDesktopLaneInput, parseLaneComposerContext } from './laneDesktopInput'
 import { createDesktopLaneTools } from './laneDesktopTools'
@@ -26,9 +26,11 @@ import { createProjectAgentProposalReceiptService } from '../capabilityCore/proj
 import { executeLaneReceiptCommand } from './laneReceiptCommands'
 import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residentGenerationAdapterFactory'
 import { canvasReadSurfaceRuntime } from '../capabilityCore/canvasReadSurfaceRuntime'
+import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceRegistry'
 import { parseLaneCommand } from './laneCommandCodec'
 import { readSkillRecords, isSkillSelectableInWorkbench } from '../skills/skillStore'
 import { createDesktopLaneTasks } from './laneDesktopTasks'
+import { bindLaneProjectSession } from './laneProjectSession'
 
 /**
  * 这一刻的项目记忆。读不出来就当没有——记忆是锦上添花的事实，缺了它 lane 仍然要能说话，
@@ -61,15 +63,15 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
 ): LaneIpcDependencies {
   let current: {
     binding: ProjectBinding
+    session: ProjectSurfaceSession
     workspace: LaneWorkspaceHandle
     configure(context: LaneComposerContext): Promise<void>
     setPolicy(policy: LaneComposerContext['approvalPolicy']): void
     receipts: ReturnType<typeof createProjectAgentProposalReceiptService>
   } | undefined
-
   function validate(event: IpcMainInvokeEvent) {
     if (!current) throw new Error('agent_lane_closed')
-    surface.surfaceCapture.captureCommittedCanvasReadPort(event, current.binding)
+    surface.surfaceCapture.assertProjectSession(event, current.session)
   }
 
   return {
@@ -88,7 +90,9 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       const selection = canvasReadSurfaceRuntime.registry.getCommittedProjectSelection()
       if (!selection || (request.projectId !== undefined && request.projectId !== selection.projectId)) throw new Error('project_binding_stale')
       const binding = { projectId: selection.projectId, immutableProjectUuid: selection.immutableProjectUuid, projectGeneration: selection.projectGeneration }
-      surface.surfaceCapture.captureCommittedCanvasReadPort(event, binding)
+      const session = surface.surfaceCapture.openProjectSession(event, binding)
+      const sessionSignal = canvasReadSurfaceRuntime.registry.resolveProjectSession(session).signal
+      const actionSignal = AbortSignal.any([signal, sessionSignal])
       const context = parseLaneComposerContext(request.context)
       const model = selectModel(context.model)
       const skill = context.skillKey ? resolveRequestedSkill({ chatContext: { skill: { key: context.skillKey } } }) : null
@@ -96,17 +100,18 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       const input = createDesktopLaneInput({ projectId: binding.projectId,
         capture: () => context, activate: () => undefined, model: () => model })
       const { runLaneSingleShot } = createRequire(__filename)('./laneNativeLoader.cjs') as { runLaneSingleShot: RunLaneSingleShot }
-      const result = await runLaneSingleShot({ fetch: appFetch, model: model.config, prompt: command.text, input, signal,
-        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY, context.systemPrompt, skill?.body].filter(Boolean).join('\n\n') })
-      signal.throwIfAborted()
-      surface.surfaceCapture.captureCommittedCanvasReadPort(event, binding)
+      const result = await runLaneSingleShot({ fetch: appFetch, model: model.config, prompt: command.text, input, signal: actionSignal,
+        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY, context.systemPrompt,
+          skill ? buildSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') })
+      actionSignal.throwIfAborted()
+      surface.surfaceCapture.assertProjectSession(event, session)
       return result
     },
     openWorkspace: async (event, wire) => {
       const request = wire as { binding?: ProjectBinding; model?: LaneComposerContext['model'] }
       const binding = request.binding!
       assertProjectAgentBinding(binding)
-      surface.surfaceCapture.captureCommittedCanvasReadPort(event, binding)
+      const session = surface.surfaceCapture.openProjectSession(event, binding)
       const projectDir = resolveWorkspaceProjectDir(binding.projectId, getWorkspaceRepositoryDeps())
       if (!projectDir) throw new Error('project_identity_unavailable')
       const identity = await ensureWorkspaceProjectIdentity(projectDir)
@@ -127,7 +132,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       let workspace: LaneWorkspaceHandle | undefined
       const tasks = createDesktopLaneTasks(binding.projectId, () => workspace?.refreshTasks())
       let ports: ReturnType<typeof createDesktopLaneTools>
-      try { ports = createDesktopLaneTools({ event, binding, surface, context: () => activeInput, receipts, generationFactory,
+      try { ports = createDesktopLaneTools({ session, binding, surface, context: () => activeInput, receipts, generationFactory,
         // 与下面 `approval.policy` 同一个来源（`composer`，不是 `activeInput`）：档位是「用户现在
         // 选的那一档」，切完下一次调用就该照它走，而不是等下一条消息把快照带进来。
         approvalPolicy: () => composer.approvalPolicy,
@@ -161,7 +166,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
         })
       } catch (error) { ports.dispose(); tasks.dispose(); throw error }
       const opened = workspace
-      const owner = { binding, workspace, receipts,
+      const owner = { binding, session, workspace, receipts,
         setPolicy: (policy: LaneComposerContext['approvalPolicy']) => { composer = { ...composer, approvalPolicy: policy } },
         configure: async (next: LaneComposerContext) => {
           const model = selectModel(next.model)
@@ -172,12 +177,21 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
           }
           const skill = next.skillKey ? resolveRequestedSkill({ chatContext: { skill: { key: next.skillKey } } }) : null
           if (next.skillKey && !skill) throw new Error('agent_skill_unavailable')
-          composer = { ...next, systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n') }
+          // 技能正文的组装只有一个 owner（`buildSelectedSkillPrompt`）：这里和 singleShot 都调它，
+          // 不各自拼一遍。上一版两处各写 `skill?.body`，于是「交代文案」这件事在两处同时缺席。
+          composer = { ...next, systemPrompt: [next.systemPrompt,
+            skill ? buildSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') }
         },
       }
-      const exposed = { ...opened, close: async () => {
-        try { await opened.close() } finally { ports.dispose(); tasks.dispose(); if (current === owner) current = undefined }
-      } }
+      let exposed: LaneWorkspaceHandle
+      try {
+        exposed = bindLaneProjectSession(opened, canvasReadSurfaceRuntime.registry, session, () => {
+          ports.dispose(); tasks.dispose(); if (current === owner) current = undefined
+        })
+      } catch (error) {
+        try { await opened.close() } finally { ports.dispose(); tasks.dispose() }
+        throw error
+      }
       owner.workspace = exposed
       current = owner
       return exposed

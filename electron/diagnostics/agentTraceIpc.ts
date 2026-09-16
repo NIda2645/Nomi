@@ -1,7 +1,7 @@
 import { ipcMain, shell } from 'electron';
 import { createRequire } from 'node:module';
 import { assertTrustedSender } from '../ipcSenderGuard';
-import { activeTaskProjectFallback } from '../tasks/activeProjectFallback';
+import { canvasReadSurfaceRuntime } from '../capabilityCore/canvasReadSurfaceRuntime';
 import { getWorkspaceRepositoryDeps } from '../runtimePaths';
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository';
 import { parseLaneCommand } from '../agentLane/laneCommandCodec';
@@ -15,7 +15,7 @@ interface AgentTraceDependencies {
 }
 
 const dependencies: AgentTraceDependencies = {
-  activeProject: activeTaskProjectFallback,
+  activeProject: () => canvasReadSurfaceRuntime.getCommittedProjectSelection()?.projectId ?? '',
   projectDirectory: (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()),
   traceDirectory: async (projectDir, laneName) => {
     const native = createRequire(__filename)('../agentLane/laneNativeLoader.cjs') as {

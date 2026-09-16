@@ -465,8 +465,12 @@ function validateDoorMap(contract, changed, existingFiles, label, fileContents) 
     }
   }
 
+  // 本次删掉的文件不可能再有门（门的 path 必须存在）；它只有在 legacy_paths.removed_paths 里明确声明
+  // 「这是删掉的旧路径」才不算漏数。没声明的删除照样当门没数全。
+  const declaredRemoved = new Set((Array.isArray(contract?.legacy_paths?.removed_paths) ? contract.legacy_paths.removed_paths : []).map(normalized));
   const strays = [...changed]
     .filter((file) => isDoorGovernedFile(file) && pathIsInScope(file, scopePaths) && !doorPaths.has(normalized(file)))
+    .filter((file) => existingFiles.has(normalized(file)) || !declaredRemoved.has(normalized(file)))
     .sort();
   for (const file of strays) {
     errors.push(`${label}: changed production file is not in the door map: ${file}`

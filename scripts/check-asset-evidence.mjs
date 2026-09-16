@@ -11,6 +11,10 @@
 //   - rightsStatus 字段名和值毫无警示性，写的人不会察觉它已被弃用。
 //   - 两条都能 grep，做棘轮代价低；靠 review 靠自觉管不住这种静默路径。
 //
+// 豁免按文件登记，所以每条豁免必须仍然命中它所豁免的调用：代码搬走后旧豁免会静默失效、
+// 新位置却被报成违规（PR 802 把 import-remote-url 转发层从 main.ts 挪进 assetsIpc.ts 就是这样）。
+// 失效豁免直接红，逼搬代码的人在同一提交里把豁免跟过去。
+//
 // 棘轮规则：基线只减不增（violations 数 ≤ baseline 数 才放行）。
 //   - 新路径触发 → 立即红灯，不得以「先记到基线里」绕过。
 //   - 存量清 0 后 baseline 对应计数降到 0，之后再引入即红。
@@ -62,6 +66,8 @@ const RULES = [
       'electron/connectors/connectorDefinition.ts',    // 类型声明含 @deprecated 注释
       'electron/assets/projectAssetStore.ts',          // sanitizeSourceEvidence 的迁移读取
     ],
+    // 豁免仍需要的证据：原文（含注释）里还提到 rightsStatus。
+    exemptionStillNeeded: (rawSource) => /rightsStatus/.test(rawSource),
     scan(code, file) {
       const hits = []
       // 过滤豁免文件
@@ -81,13 +87,16 @@ const RULES = [
     hint: '非生成类（kind !== "generated"）的 importRemoteAsset / moveAssetFile 调用必须带 sourceEvidence 字段；浏览器/connector 来源的素材写入路径都需要取证字段。检查调用处是否传入了 { sourceEvidence: ... }。',
     // 已知豁免：
     //   - 生成类（kind: "generated"）不需要 sourceEvidence（AI 生成内容有 certificationEvidence）
-    //   - IPC 转发层（main.ts）只是把渲染层 payload 转给 importRemoteAsset，
-    //     该函数内部自己调用 sanitizeSourceEvidence 处理 sourceEvidence 字段——不是新写入路径
+    //   - IPC 转发层（assetsIpc.ts 的 nomi:assets:import-remote-url）只是把渲染层 payload 转给
+    //     importRemoteAsset，该函数内部自己调用 sanitizeSourceEvidence 处理 sourceEvidence 字段——不是新写入路径
     exemptFiles: [
       'electron/image/decomposeLayers.ts',    // kind: "generated"，AI 合成层
-      'electron/runtime.ts',                  // localizeTaskAsset，kind: "generated"
-      'electron/main.ts',                     // IPC 转发层，importRemoteAsset 内部处理 sourceEvidence
+      'electron/assets/assetsIpc.ts',         // IPC 转发层，importRemoteAsset 内部处理 sourceEvidence
     ],
+    // 豁免仍需要的证据：抹注释后还有 importRemoteAsset / moveAssetFile 调用（不含函数声明）。
+    exemptionStillNeeded: (_rawSource, code) => code.split('\n').some((line) =>
+      /\b(importRemoteAsset|moveAssetFile)\s*\(/.test(line)
+      && !/^(export\s+)?(async\s+)?function\s+(importRemoteAsset|moveAssetFile)\s*\(/.test(line)),
     scan(code, file) {
       const hits = []
       if (this.exemptFiles.some(exempt => file.includes(exempt.replace(/\//g, path.sep)))) return hits
@@ -134,6 +143,18 @@ for (const rule of RULES) {
   }
   results[rule.id] = ruleHits
   totalHits += ruleHits.length
+}
+
+// ── 失效豁免 ─────────────────────────────────────────────────────────────────
+const staleExemptions = []
+for (const rule of RULES) {
+  for (const exempt of rule.exemptFiles ?? []) {
+    const full = path.join(repoRoot, exempt)
+    const raw = fs.existsSync(full) ? fs.readFileSync(full, 'utf8') : null
+    if (raw === null || !rule.exemptionStillNeeded(raw, stripComments(raw))) {
+      staleExemptions.push({ rule: rule.id, file: exempt, missing: raw === null })
+    }
+  }
 }
 
 // ── 基线比对 ─────────────────────────────────────────────────────────────────
@@ -185,8 +206,17 @@ for (const rule of RULES) {
   }
 }
 
+if (staleExemptions.length > 0) {
+  exitCode = 1
+  console.log('\n🔴 STALE EXEMPTIONS 豁免登记已不再命中它豁免的代码（代码搬走/删掉了）：')
+  for (const stale of staleExemptions) {
+    console.log(`    [${stale.rule}] ${stale.file}  ${stale.missing ? '文件不存在' : '文件里已没有被豁免的写法'}`)
+  }
+  console.log('  修法：删掉这条豁免；若代码是搬到别的文件，把豁免连同理由一起跟过去（别把新位置加进基线）。')
+}
+
 if (exitCode !== 0) {
-  console.log('\n❌ check:asset-evidence 失败：存在超出基线的违规（基线只减不增）。')
+  console.log('\n❌ check:asset-evidence 失败：存在超出基线的违规或失效豁免（基线只减不增）。')
   console.log('   修复违规后再运行；禁止用 --update-baseline 掩盖新引入的违规。')
 } else if (totalHits === 0) {
   console.log('\n✅ check:asset-evidence 全绿（0 处违规）')

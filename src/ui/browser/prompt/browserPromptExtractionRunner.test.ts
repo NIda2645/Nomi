@@ -14,7 +14,7 @@ describe('browser extraction local feedback', () => {
     mocks.run.mockResolvedValue({ status: 'succeeded', raw: { text: JSON.stringify({ title: 'Saved reference', prompt: 'A reference image' }) } })
     mocks.save.mockResolvedValue(undefined)
     const present = vi.fn()
-    await runBrowserPromptExtractionToLibrary(request, present)
+    await runBrowserPromptExtractionToLibrary(request, present, null)
     expect(present).toHaveBeenCalledTimes(2)
     expect(present.mock.calls[0][0]).toContain('提取')
     expect(present.mock.calls[1][0]).toContain('提示词库')
@@ -26,8 +26,8 @@ describe('browser extraction local feedback', () => {
     const firstHost = vi.fn()
     const secondHost = vi.fn()
     await Promise.all([
-      runBrowserPromptExtractionToLibrary(request, firstHost),
-      runBrowserPromptExtractionToLibrary({ ...request, requestId: 'capture-2' }, secondHost),
+      runBrowserPromptExtractionToLibrary(request, firstHost, null),
+      runBrowserPromptExtractionToLibrary({ ...request, requestId: 'capture-2' }, secondHost, null),
     ])
     expect(firstHost.mock.calls.at(-1)?.[0]).toContain('Vision model unavailable; retry')
     expect(secondHost.mock.calls.at(-1)?.[0]).toContain('Vision model unavailable; retry')

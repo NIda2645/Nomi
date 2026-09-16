@@ -3,10 +3,10 @@ import {
   buildCatalogTaskRequest,
   normalizeCatalogTaskResult,
   runCatalogGenerationTask,
-  type CatalogTaskActionOptions,
+  type CatalogTaskRunOptions,
 } from './catalogTaskActions'
 
-export type GenerateImageOptions = CatalogTaskActionOptions
+export type GenerateImageOptions = CatalogTaskRunOptions
 
 export const buildImageGenerationRequest = buildCatalogTaskRequest
 
@@ -19,7 +19,7 @@ export function normalizeImageGenerationResult(
 
 export async function generateImage(
   node: GenerationCanvasNode,
-  options: GenerateImageOptions = {},
+  options: GenerateImageOptions,
 ): Promise<GenerationNodeResult> {
   return runCatalogGenerationTask(node, options)
 }

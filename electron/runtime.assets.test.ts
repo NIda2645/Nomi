@@ -227,7 +227,7 @@ describe("runtime workspace asset storage", () => {
     })) as AssetRecord;
 
     expect(asset.data.relativePath).toBe("assets/generated/2026-05-31/render.png");
-    expect(asset.data.absolutePath).toBe(path.join(workspace.rootPath, "assets", "generated", "2026-05-31", "render.png"));
+    expect(asset.data.absolutePath).toBe(path.join(fs.realpathSync(workspace.rootPath), "assets", "generated", "2026-05-31", "render.png"));
     expect(fs.readFileSync(asset.data.absolutePath)).toEqual(PNG_BYTES);
     expect(asset.data.url).toBe(`nomi-local://asset/${encodeURIComponent(workspace.id)}/assets/generated/2026-05-31/render.png`);
   });
@@ -244,7 +244,7 @@ describe("runtime workspace asset storage", () => {
 
     const hash = createHash("sha256").update(Buffer.from([1, 2, 3])).digest("hex");
     expect(asset.data.relativePath).toBe(`assets/imported/sha256/${hash}/photo.png`);
-    expect(asset.data.absolutePath).toBe(path.join(workspace.rootPath, "assets", "imported", "sha256", hash, "photo.png"));
+    expect(asset.data.absolutePath).toBe(path.join(fs.realpathSync(workspace.rootPath), "assets", "imported", "sha256", hash, "photo.png"));
     expect([...fs.readFileSync(asset.data.absolutePath)]).toEqual([1, 2, 3]);
   });
 

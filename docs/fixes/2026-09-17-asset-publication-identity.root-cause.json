@@ -1,0 +1,191 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-asset-publication-identity",
+  "problem_type": "Async asset persistence loses project identity before publication",
+  "symptom": "An admitted import can publish after its project identity changes",
+  "direct_cause": "Importer validation precedes await reuse/native copy and publish re-resolves projectId",
+  "class_root": "Storage publication lacks a fixed project-root and full-identity transaction context with a single commit boundary; identity reads and optional cache writes must not act as additional publication gates",
+  "affected_population": [
+    "Byte uploads",
+    "Native uploads",
+    "Remote downloads across upload and generated buckets",
+    "Dedup reuse and sidecar cache updates"
+  ],
+  "scope_paths": [
+    "electron/assets/assetWriteContext.ts",
+    "electron/assets/uploadContentStore.ts",
+    "electron/assets/projectAssetStore.ts",
+    "electron/assets/localFileImport.ts",
+    "electron/assets/assetsIpc.ts"
+  ],
+  "entry_points": [
+    "persistUploadBytes",
+    "persistUploadFile",
+    "importLocalFile",
+    "importRemoteAsset"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant concerns Nomi project manifests and local filesystem publication; repository owner code is authoritative.",
+  "invariants": [
+    "All upload publication and reuse retain their original root and full binding",
+    "Interactive assertions tighten mandatory project checks",
+    "Read-only identity validation never acquires a manifest mutation lock",
+    "Optional hash-cache IO cannot reject valid storage; committed publication is not revoked by DTO construction"
+  ],
+  "doors": [
+    {"kind":"read","path":"electron/assets/assetWriteContext.ts","line":22,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/localFileImport.ts","line":77,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/localFileImport.ts","line":136,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":179,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":219,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":299,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/projectAssetStore.ts","line":326,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":20,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":35,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":58,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":97,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":106,"symbol":"storedAssetRecord"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":108,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":120,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/assets/uploadContentStore.ts","line":130,"symbol":"AssetWriteContext"},
+    {"kind":"read","path":"electron/capabilityCore/generationOutputMaterializer.ts","line":59,"symbol":"writeAsset"},
+    {"kind":"read","path":"electron/catalog/antigravityImageOperation.ts","line":11,"symbol":"writeAsset"},
+    {"kind":"read","path":"electron/catalog/processOperation.ts","line":73,"symbol":"writeAsset"},
+    {"kind":"read","path":"electron/catalog/processOperation.ts","line":80,"symbol":"writeAsset"},
+    {"kind":"read","path":"electron/runtime.ts","line":236,"symbol":"writeAsset"},
+    {"kind":"read","path":"electron/runtime.ts","line":353,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/assetsIpc.ts","line":132,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":101,"symbol":"copyAssetFile"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":110,"symbol":"copyAssetFile"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":119,"symbol":"copyAssetFile"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":129,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":154,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/localFileImport.ts","line":214,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/localizeTaskAsset.ts","line":16,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":226,"symbol":"persistUploadBytes"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":233,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":301,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":320,"symbol":"persistUploadFile"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":339,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":378,"symbol":"copyAssetFile"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":557,"symbol":"importRemoteAssetToStore"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":566,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":591,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/projectAssetStore.ts","line":623,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":54,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":103,"symbol":"storedAssetRecord"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":121,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/assets/uploadContentStore.ts","line":131,"symbol":"captureAssetWriteContext"},
+    {"kind":"write","path":"electron/catalog/antigravityImageOperation.ts","line":20,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/catalog/codexCli.ts","line":284,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/catalog/customCallDispatch.ts","line":109,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/catalog/processOperation.ts","line":154,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/connectors/tikhubConnectorService.ts","line":109,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/connectors/tikhubConnectorService.ts","line":198,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/image/decomposeLayers.ts","line":97,"symbol":"importRemoteAsset"},
+    {"kind":"write","path":"electron/onboarding/demoAssetSeed.ts","line":95,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/screenshot/screenshotHotkey.ts","line":240,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/video/depthVideoJob.ts","line":351,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":160,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/video/extractVideoFrame.ts","line":239,"symbol":"writeAsset"},
+    {"kind":"write","path":"electron/video/framesToVideo.ts","line":98,"symbol":"writeAsset"}
+  ],
+  "door_reduction": {
+    "before": 31,
+    "after": 56,
+    "why_not": "Byte/native/generated/import callers remain separate product operations; each upload converges on a shared captured storage context."
+  },
+  "generality_proof": "Every upload owner captures the project identity, so direct callers cannot bypass the importer guard; publication and reuse check the same context.",
+  "shared_boundaries": [
+    {
+      "path": "electron/assets/uploadContentStore.ts",
+      "symbol": "persistUploadBytes",
+      "responsibility": "Carry one project write context to byte publication and reuse"
+    },
+    {
+      "path": "electron/assets/uploadContentStore.ts",
+      "symbol": "persistUploadFile",
+      "responsibility": "Carry the same identity across native copying and hashing"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/assets/projectAssetStore.ts",
+      "entry_point": "writeAsset",
+      "disposition": "enforced",
+      "evidence": "Upload branch converges on persistUploadBytes"
+    },
+    {
+      "path": "electron/assets/projectAssetStore.ts",
+      "entry_point": "copyAssetFile",
+      "disposition": "enforced",
+      "evidence": "Native upload branch converges on persistUploadFile"
+    },
+    {
+      "path": "electron/assets/assetsIpc.ts",
+      "entry_point": "nomi:assets:import-remote-url",
+      "disposition": "enforced",
+      "evidence": "Forwarder moved here from main.ts; importRemoteAsset still sanitizes payload.sourceEvidence. check:asset-evidence exemption followed it, and the gate now fails on any exemption that no longer matches its code so a move cannot silently strand one"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any async upload can overlap identity replacement or cancellation",
+    "same_class_scan": [
+      "node scripts/door-map.mjs AssetWriteContext storedAssetRecord writeAsset copyAssetFile captureAssetWriteContext persistUploadBytes persistUploadFile importRemoteAsset importRemoteAssetToStore --roots=src,electron,scripts",
+      "Inspected byte/native dedup publication and sidecar cache updates"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/assets/uploadContentStore.ts",
+    "invariant": "Publication uses the identity captured before asynchronous IO",
+    "failure_mode": "Stale identity rejects before publication or metadata updates",
+    "exception_policy": "none",
+    "strategy": "Mandatory write context with read-only manifest snapshot, synchronous pre-publication assertion, pure committed DTO construction, and best-effort hash-cache persistence with identity checks outside the optional IO",
+    "artifacts": [
+      "electron/assets/assetWriteContext.ts",
+      "electron/assets/uploadContentStore.ts",
+      "electron/assets/projectAssetStore.ts",
+      "electron/assets/localFileImport.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/assets/remoteAssetContext.test.ts",
+    "electron/assets/projectArtifactImport.test.ts",
+    "electron/assets/projectAssetImportDedup.test.ts",
+    "electron/assets/projectAssetStore.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/assets/remoteAssetContext.test.ts",
+    "electron/assets/projectArtifactImport.test.ts",
+    "electron/assets/projectAssetImportDedup.test.ts",
+    "electron/assets/projectAssetStore.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/assets/localFileImport.ts",
+      "electron/assets/uploadContentStore.ts"
+    ],
+    "rationale": "Remove importer-only binding checks and publication-time directory recapture"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Internal project and filesystem ownership contract",
+    "exit_criteria": []
+  },
+  "migration": "No user data migration; legacy complete manifests retain identity.",
+  "residual_risks": [
+    "Session guard IPC integration follows the B project-session interface",
+    "External filesystem writers are not serialized by the Electron event-loop assertion"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/assets/uploadContentStore.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/assets/projectArtifactImport.test.ts"
+    ],
+    "rationale": "Final publication and reuse own validation"
+  }
+}

@@ -48,7 +48,8 @@ describe('ComfyUI workflow test bridge flow', () => {
           certifyOutput: true,
         }),
       }),
-    }))
+      // 认证试跑不属于任何项目：显式 null，不借用此刻打开的项目。
+    }), null)
     expect(mocks.runWorkbenchTaskByVendor).not.toHaveBeenCalled()
   })
 

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
+import { useOpenProjectId } from '../project/useOpenProjectId'
 import { useProductionRunStore } from './productionRunStore'
 
 const POLL_INTERVAL_MS = 1500
@@ -10,9 +10,10 @@ const POLL_INTERVAL_MS = 1500
  * 徽标计数走 TaskCenterButton 自己的 summary 轮询，与这里无关。
  */
 export function useActiveProductionRun(projectId?: string | null, options: { enabled?: boolean } = {}) {
+  const openProjectId = useOpenProjectId()
   const enabled = options.enabled ?? true
   const state = useProductionRunStore()
-  const resolvedProjectId = enabled ? (projectId ?? getActiveWorkbenchProjectId()) : null
+  const resolvedProjectId = enabled ? (projectId ?? openProjectId) : null
 
   React.useEffect(() => {
     if (!resolvedProjectId) {

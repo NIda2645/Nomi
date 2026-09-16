@@ -1,4 +1,3 @@
-import { rememberActiveProjectForTasks } from '../tasks/activeProjectFallback'
 import { registerMainCanvasReadExecutionRuntime, type CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import { registerCanvasReadSurfaceIpc, type CanvasReadSurfaceIpcCapture } from './canvasReadSurfaceIpc'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
@@ -19,9 +18,6 @@ export function registerDesktopCanvasReadRuntime(): DesktopCanvasReadRuntime {
   const execution = registerMainCanvasReadExecutionRuntime({
     surfaceRegistry: canvasReadSurfaceRuntime.registry,
     capturedSnapshots: canvasReadSurfaceRuntime.capturedSnapshots,
-  })
-  canvasReadSurfaceRuntime.subscribeCommittedProject((selection) => {
-    rememberActiveProjectForTasks(selection?.projectId ?? '')
   })
   return Object.freeze({ ...execution, surfaceCapture })
 }

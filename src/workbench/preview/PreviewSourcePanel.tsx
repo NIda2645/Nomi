@@ -7,7 +7,7 @@ import { DesignEmptyState } from '../../design'
 import { lazyWithChunkBoundary } from '../../ui/chunkBoundary'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
-import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
+import { useOpenProjectId } from '../project/useOpenProjectId'
 import { encodeTimelineGenerationNodeDragPayload, TIMELINE_GENERATION_NODE_DRAG_MIME } from '../timeline/timelineDragPayload'
 import { addGenerationNodeToTimelineEnd } from '../timeline/addNodeToTimelineEnd'
 import { useFilmstrip } from '../../media/useFilmstrip'
@@ -120,6 +120,7 @@ function ShotGrid(): JSX.Element {
 }
 
 export default function PreviewSourcePanel(): JSX.Element {
+  const projectId = useOpenProjectId()
   const { t } = useTranslation()
   // 收起态与宽度都归面板系统（editingPanelLayout.visibility.source）——本栏不再自带第二套
   // 收起开关与固定宽度（旧 previewSourcePanelCollapsed + --workbench-preview-source-width
@@ -129,7 +130,6 @@ export default function PreviewSourcePanel(): JSX.Element {
   // tab 归 store（editingPanelLayoutSlice）：时间轴空轨右键的「从素材库添加…」要切它。
   const tab = useWorkbenchStore((state) => state.previewSourceTab)
   const setTab = useWorkbenchStore((state) => state.openPreviewSourceTab)
-  const projectId = getActiveWorkbenchProjectId()
 
   if (collapsed) {
     // 收起态照抄侧栏 rail 的既定做法（2026-07-12 方案 A）：图标下带微字。

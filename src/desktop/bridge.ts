@@ -1,3 +1,4 @@
+import type { MediaImportRejection, StorageCapacity } from '../../electron/shared/contracts/mediaImportPolicy'
 import type { ExportJobEvent, ExportJobSnapshot, ExportJobVerification } from '../../electron/export/exportJobManager'
 import type { WorkspaceFileListResult } from '../../electron/workspace/workspaceFileIndex'
 import type { WorkspaceSyncInspection } from '../../electron/shared/workspaceSyncContracts'
@@ -169,6 +170,8 @@ export type DesktopBrowserAssetOverlayCaptureRequest = {
 }
 
 export type DesktopBrowserAssetOverlayConfig = {
+  /** 父窗口已提交的项目（主进程签发，浮层只用来显示/标注；null = 父窗口没有打开项目）。 */
+  projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding | null
   opened: boolean
   viewId: number | null
   bounds: DesktopBrowserViewBounds | null
@@ -382,26 +385,38 @@ export type DesktopBridge = DesktopMediaBridge &
     onLocalizationStarted?: (cb: (payload: { projectId: string; nodeId: string }) => void) => () => void
     importRemoteUrl: (payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       url: string
       kind?: string
       fileName?: string
       ownerNodeId?: string | null
-    }) => Promise<DesktopAssetDto>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto>>
     importFile: (payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       fileName: string
       contentType?: string
       bytes: ArrayBuffer
       kind?: string
-    }) => Promise<DesktopAssetDto>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto>>
     /** Electron 原生 File 直传 preload；路径只在隔离桥内解析，大文件不复制进 renderer 内存。 */
     importNativeFile?: (file: File, payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       fileName: string
       contentType?: string
       kind?: string
-    }) => Promise<DesktopAssetDto | null>
-    copyFiles?: (payload: { projectId: string; paths: string[] }) => Promise<{ created: DesktopAssetDto[]; skippedUnsupportedCount: number; failedCount: number }>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto> | null>
+    copyFiles?: (payload: { projectId: string; paths: string[] }) => Promise<{
+      created: DesktopAssetDto[]
+      /** 被准入闸挡下的文件，带机器可读原因与数字（渲染层据此说人话）。 */
+      rejected: Array<{ fileName: string; rejection: MediaImportRejection }>
+      failedCount: number
+    }>
+    /** 项目盘剩余空间快照：导入上限从磁盘派生，不是常量。量不到 → null。 */
+    storageCapacity?: (payload: { projectId: string }) => Promise<StorageCapacity | null>
+    /** 本机能解哪些视频 codec：启动时探一次送进主进程，决定导入要不要转码。 */
+    reportVideoCodecs?: (payload: { codecs: string[] }) => Promise<void>
     copyProjectAsset?: (payload: { sourceProjectId: string; targetProjectId: string; relativePath: string }) => Promise<DesktopAssetDto>
     /** 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 转码出新 MP4 资产；不适用 → null。 */
     ensurePlayable?: (payload: { url: string }) => Promise<DesktopAssetDto | null>
@@ -433,7 +448,6 @@ export type DesktopBridge = DesktopMediaBridge &
     hide: (payload: { viewId: number }) => void
     importMedia: (payload: {
       viewId: number
-      projectId: string
       url: string
       fileName?: string
       title?: string
@@ -441,14 +455,12 @@ export type DesktopBridge = DesktopMediaBridge &
     }) => Promise<DesktopAssetDto>
     capturePromptImage?: (payload: {
       viewId: number
-      projectId?: string
       url: string
       fileName?: string
       title?: string
     }) => Promise<DesktopBrowserPromptReferenceResult>
     capturePromptScreenshot?: (payload: {
       viewId: number
-      projectId?: string
       fileName?: string
       title?: string
       sourceRect?: {
@@ -458,13 +470,9 @@ export type DesktopBridge = DesktopMediaBridge &
         height: number
       }
     }) => Promise<DesktopBrowserPromptReferenceResult>
-    readPromptExtractionSettings?: (payload: {
-      projectId: string
-    }) => Promise<{ ok: boolean; settings: unknown | null; error?: string }>
-    writePromptExtractionSettings?: (payload: {
-      projectId: string
-      settings: unknown
-    }) => Promise<{ ok: boolean; settings?: unknown; error?: string }>
+    /** 项目由主进程按发起窗口（浮层 = 父窗口）已提交的项目面决定，渲染层不报 projectId。 */
+    readPromptExtractionSettings?: () => Promise<{ ok: boolean; settings: unknown | null; error?: string }>
+    writePromptExtractionSettings?: (payload: { settings: unknown }) => Promise<{ ok: boolean; settings?: unknown; error?: string }>
     selectPromptScreenshot?: (payload: { viewId: number }) => Promise<DesktopBrowserPromptScreenshotSelection>
     setResourceCapture?: (payload: { viewId: number; enabled: boolean }) => void
     captureResource?: (payload: { viewId: number }) => void

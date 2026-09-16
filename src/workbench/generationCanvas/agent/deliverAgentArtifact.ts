@@ -8,6 +8,11 @@
 //   与图片/素材导入同一条主进程通道，不新造写盘路径。
 // - 本模块保持纯 + 依赖注入（assetImport 可注入），单测不碰 Electron。
 import type { ArtifactFileType } from '../model/artifactMeta'
+import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
+import type { UploadWorkbenchAssetMeta } from '../../api/assetUploadApi'
+import { surfacePortFailure, type SurfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
+
+export type ArtifactWriteContext = Readonly<{ binding: ProjectBinding; assertCurrent(): void }>
 
 /** 文本类手艺产物 → 资产落盘文件名扩展名（与 meta.artifact.url 带真实扩展名的约束一致）。 */
 export const DELIVERABLE_ARTIFACT_EXTENSION: Record<ArtifactFileType, string> = {
@@ -44,7 +49,7 @@ export type DeliverAgentArtifactResult = {
   fileName: string
 } | {
   ok: false
-  reason: string
+  failure: SurfacePortFailure
 }
 
 /** 从标题 derive 安全文件名（去掉路径分隔与危险字符；保底用默认名）。 */
@@ -60,29 +65,35 @@ export function buildArtifactFile(input: DeliverAgentArtifactInput): File {
 }
 
 /** 落盘器抽象：真实实现 importWorkbenchLocalAssetFile，单测注入 stub。 */
-export type WorkbenchAssetImporter = (file: File, name?: string) => Promise<{ data?: { url?: string } }>
+export type WorkbenchAssetImporter = (file: File, name: string, meta: UploadWorkbenchAssetMeta) => Promise<{ data?: { url?: string } }>
 
-const realImporter: WorkbenchAssetImporter = async (file, name) => {
+const realImporter: WorkbenchAssetImporter = async (file, name, meta) => {
   const { importWorkbenchLocalAssetFile } = await import('../../api/assetUploadApi')
-  const asset = await importWorkbenchLocalAssetFile(file, name)
+  const asset = await importWorkbenchLocalAssetFile(file, name, meta)
   return asset as { data?: { url?: string } }
 }
 
 /** 交付一件手艺产物：构建 File → 落盘 → 返回 nomi-local URL（供 create_canvas_nodes 填 meta.artifact）。 */
 export async function deliverAgentArtifactToAsset(
   input: DeliverAgentArtifactInput,
+  context: ArtifactWriteContext,
   assetImport: WorkbenchAssetImporter = realImporter,
 ): Promise<DeliverAgentArtifactResult> {
   const content = (input.content || '').trim()
-  if (!content) return { ok: false, reason: 'empty-content' }
+  if (!content) return { ok: false, failure: { code: 'capability_input_invalid' } }
   const file = buildArtifactFile(input)
   try {
-    const imported = await assetImport(file, artifactFileName(input))
+    context.assertCurrent()
+    const imported = await assetImport(file, artifactFileName(input), {
+      projectBinding: context.binding,
+      assertCurrent: context.assertCurrent,
+    })
+    context.assertCurrent()
     const url = imported?.data?.url
-    if (!url) return { ok: false, reason: 'no-asset-url' }
+    if (!url) return { ok: false, failure: { code: 'capability_receipt_unresolved' } }
     return { ok: true, url, fileName: file.name }
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : 'import-failed' }
+    return { ok: false, failure: surfacePortFailure(error) }
   }
 }
 

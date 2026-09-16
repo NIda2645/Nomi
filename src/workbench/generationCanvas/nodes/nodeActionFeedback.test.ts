@@ -5,8 +5,6 @@ import { extractVideoFrameToNode } from './extractVideoFrameToNode'
 import { buildContactSheetNode } from './buildContactSheetNode'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 
-vi.mock('../../project/workbenchProjectSession', () => ({ getActiveWorkbenchProjectId: () => null }))
-
 const source = { id: 'feedback-source', kind: 'video', title: 'source', position: { x: 0, y: 0 }, categoryId: 'shots', result: { id: 'r', type: 'video', url: 'nomi-local://asset/project/source.mp4', createdAt: 1 } } as GenerationCanvasNode
 
 describe('node action feedback stays separate from generation state', () => {

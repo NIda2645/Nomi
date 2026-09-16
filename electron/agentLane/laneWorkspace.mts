@@ -77,6 +77,23 @@ export async function openLaneWorkspace(
     for (const listener of listeners) listener(projection);
   }
 
+  function publishClosed(): void {
+    if (projection.closed) return;
+    closed = true;
+    unsubscribeActive();
+    const snapshot = active.projection();
+    const parts = snapshot.parts.map(part => {
+      if (part.kind === 'tool-call') return { ...part, running: false };
+      if (part.kind === 'assistant-text' && part.streaming) return { ...part, streaming: false, interrupted: true as const };
+      if (part.kind === 'thinking') return { ...part, streaming: false };
+      return part;
+    });
+    projection = { lanes, closed: true, active: { ...snapshot, parts, running: false,
+      pending: undefined, retry: undefined, queues: [] } };
+    try { for (const listener of listeners) listener(projection); }
+    finally { listeners.clear(); }
+  }
+
   function assertOpen(): void {
     if (closed) throw new Error('agent_lane_disposed');
   }
@@ -162,8 +179,7 @@ export async function openLaneWorkspace(
       unsubscribeActive = active.subscribe(() => publish());
     } catch (error) {
       // The previous handle has already been closed. It is not a usable fallback.
-      closed = true;
-      listeners.clear();
+      publishClosed();
       await active.close();
       throw error;
     }
@@ -229,13 +245,13 @@ export async function openLaneWorkspace(
     appendTaskNote: async (note) => { await awaitReady(); await active.appendTaskNote(note); },
     refreshTasks: () => { if (!closed && !structuralPending) active.refreshTasks(); },
     close: () => {
-      closed = true;
-      unsubscribeActive();
-      listeners.clear();
-      return closing ??= (async () => {
+      if (closing) return closing;
+      closing = Promise.resolve().then(async () => {
         await structure;
         await active.close();
-      })();
+      });
+      publishClosed();
+      return closing;
     },
   };
 }

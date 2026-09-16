@@ -28,13 +28,20 @@ vi.mock("../ipcSenderGuard", () => ({ assertTrustedSender: () => undefined }));
 vi.mock("../../src/workbench/capability/multiShotCanvasLanding", () => ({
   handleMultiShotCanvasLandingOp: state.landing,
 }));
-vi.mock("../../src/workbench/project/workbenchProjectSession", () => ({
-  getActiveWorkbenchProjectId: () => state.activeProjectId,
-}));
-vi.mock("../../src/workbench/project/projectCanvasReadSurface", () => ({
-  captureCurrentProjectCanvasReadSurfaceBinding: state.captureSurface,
-  sealCurrentProjectCanvasReadSnapshot: state.sealSurfaceSnapshot,
-}));
+vi.mock("../../src/workbench/project/projectCanvasReadSurface", () => {
+  // 签发点替身：state.activeProjectId 就是此刻窗口里打开的项目；上下文在它变化后失效。
+  const issue = () => {
+    const projectId = state.activeProjectId;
+    return { binding: { projectId, immutableProjectUuid: `uuid-${projectId}`, projectGeneration: 1 }, signal: new AbortController().signal,
+      assertCurrent: () => { if (state.activeProjectId !== projectId) throw Object.assign(new Error("project_binding_stale"), { code: "project_binding_stale" }); } };
+  };
+  return {
+    captureCurrentProjectCanvasReadSurfaceBinding: state.captureSurface,
+    sealCurrentProjectCanvasReadSnapshot: state.sealSurfaceSnapshot,
+    withProjectAction: <R>(run: (project: ReturnType<typeof issue>) => R, unavailable?: () => R) => state.activeProjectId ? run(issue()) : unavailable?.(),
+    isProjectExecutionContextCurrent: (context?: ReturnType<typeof issue>) => { try { context?.assertCurrent(); return Boolean(context); } catch { return false; } },
+  };
+});
 vi.mock("../../src/workbench/generationCanvas/agent/availableModels", () => ({
   listAvailableModelsForAgent: async () => [],
   formatAvailableModelsForPrompt: () => "",
@@ -282,7 +289,7 @@ describe("production captured canvas read through real main interception", () =>
       const handle = await state.sealSurfaceSnapshot.mock.results[0]!.value;
       const adapter = canvasRead.capture(event, { capturedCanvasReadSnapshot: handle, projectId: request.projectId }, 'production-a-1');
       try {
-        readDecision = await adapter.tryExecute({ toolCallId: 'read-captured-a', toolName: 'nomi_canvas_read', args: {} }, signal);
+        readDecision = await adapter.tryExecute({ toolCallId: 'read-captured-a', toolName: 'look_at_canvas', args: {} }, signal);
       } finally { adapter.dispose(); }
       return runLaneSingleShot({ fetch: globalThis.fetch, model: { kind: 'openai-compatible', providerId: 'fixture', modelId: 'fixture',
         baseURL: http.baseURL, authType: 'api-key', apiKey: 'fixture' }, prompt: request.prompt, signal });
@@ -432,7 +439,7 @@ describe("production captured canvas read through real main interception", () =>
     );
     await expect(
       capturedAdapter.tryExecute(
-        { toolCallId: "read-captured-a", toolName: "nomi_canvas_read", args: {} },
+        { toolCallId: "read-captured-a", toolName: "look_at_canvas", args: {} },
         new AbortController().signal,
       ),
     ).resolves.toEqual({ ok: true, result: canvasReadResultSchema.parse(SNAPSHOT_A), silent: true });
