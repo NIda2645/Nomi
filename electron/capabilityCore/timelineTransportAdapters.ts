@@ -24,7 +24,7 @@ const PUBLIC_FAILURE_CODES = new Set([
   "capability_output_invalid",
   "capability_timeout",
   "capability_cancelled",
-  "capability_execution_failed",
+  "capability_execution_failed", "capability_receipt_unresolved",
   "capability_unsupported",
   "capability_target_stale",
   "project_binding_stale",

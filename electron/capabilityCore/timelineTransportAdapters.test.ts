@@ -254,6 +254,8 @@ describe("timeline capability Pi transports", () => {
       receiptProposalId: "receipt-a",
       approvalId: "approval-a",
       actionHash: prepared!.invocation.actionHash,
-    }, signal)).resolves.toMatchObject({ ok: false, code: "capability_output_invalid" });
+      // The write was dispatched before its reply failed validation: the edit may already be applied,
+      // so the adapter must publish an unresolved receipt, never a definite failure the model would retry.
+    }, signal)).resolves.toMatchObject({ ok: false, code: "capability_receipt_unresolved" });
   });
 });
