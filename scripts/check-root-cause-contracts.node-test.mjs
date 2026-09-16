@@ -680,13 +680,14 @@ const doorSources = new Map([
 ]);
 const doorFiles = new Set([DOOR_FILE, DOOR_OWNER, DOOR_SECOND, "electron/catalog/assetLocalization.test.ts"]);
 
-function validateDoors({ doors, doorReduction, changedFiles } = {}) {
+function validateDoors({ doors, doorReduction, changedFiles, legacyPaths } = {}) {
   const contract = {
     ...completeContract,
     __file: DOOR_FILE,
     scope_paths: ["electron/catalog/"],
     invariant_owner_layer: { layer: DOOR_OWNER, tests: ["electron/catalog/assetLocalization.test.ts"] },
   };
+  if (legacyPaths !== undefined) contract.legacy_paths = legacyPaths;
   if (doors !== undefined) contract.doors = doors;
   if (doorReduction !== undefined) contract.door_reduction = doorReduction;
   return validateRootCauseChange({
@@ -721,6 +722,24 @@ test("doors: path:line 处没有那个 symbol 就是没数门，红", () => {
 
   const malformed = validateDoors({ doors: [{ kind: "mutate", path: DOOR_OWNER, line: 2, symbol: "x" }], doorReduction: { before: 1, after: 1 } });
   assert.match(malformed.errors.join("\n"), /requires kind "write" or "read"/);
+});
+
+test("doors: 删掉的生产文件不可能再有门；在 legacy_paths.removed_paths 声明了就不算漏数，没声明照样红", () => {
+  const deleted = "electron/catalog/retiredFallback.ts";
+  const undeclared = validateDoors({
+    doors: [ownerDoor],
+    doorReduction: { before: 2, after: 1 },
+    changedFiles: [DOOR_FILE, DOOR_OWNER, deleted, "electron/catalog/assetLocalization.test.ts"],
+  });
+  assert.match(undeclared.errors.join("\n"), new RegExp(`changed production file is not in the door map: ${deleted}`));
+
+  const declared = validateDoors({
+    doors: [ownerDoor],
+    doorReduction: { before: 2, after: 1 },
+    changedFiles: [DOOR_FILE, DOOR_OWNER, deleted, "electron/catalog/assetLocalization.test.ts"],
+    legacyPaths: { status: "removed", removed_paths: [deleted], rationale: "The fallback owner was deleted with its last reader." },
+  });
+  assert.equal(declared.ok, true, declared.errors.join("\n"));
 });
 
 test("doors: 改了门表之外的生产文件 = 门没数全，红", () => {
