@@ -19,6 +19,7 @@ import type { ProductionGenerationShot } from "../productionRun/productionRunTyp
 import { createPiGenerationTransportAdapter } from './generationTransportAdapters';
 import { GENERATION_METHODS } from '../shared/agentCapabilities/generation';
 import type { ProjectLeaseV2 } from './projectLease';
+import { bindLaneProjectSession } from '../agentLane/laneProjectSession';
 
 /**
  * A zero-quota contract fixture for the resident Agent's long-form seam.
@@ -211,19 +212,20 @@ afterEach(() => {
 });
 
 describe("resident Agent production journey (zero quota contract)", () => {
-  it('keeps an already submitted durable Run and scheduler owned by its original project after lane session closes', async () => {
+  it.each(['after-result', 'before-result'])('keeps a submitted Run in its original project when lane closes %s', async timing => {
     const { shots, topContract } = buildStoryboardShots('Create a short brand film');
     const { repository } = createRunFixture(shots, topContract);
     const surface = await createSurfaceAdapters();
     let finish!: () => void;
     const deferred = new Promise<void>(resolve => { finish = resolve });
     let background: Promise<unknown> | undefined;
+    let closeLane!: () => Promise<void>;
     const schedulerFinished = vi.fn();
     const planning = vi.fn(async (input) => {
       expect(input.capability).toBe('start');
       expect(input.lease.projectId).toBe(PROJECT_ID);
       expect(input).not.toHaveProperty('signal');
-      return startSemanticMultiShotBatch({ projectId: input.lease.projectId, operationId: OPERATION_ID, shots }, {
+      const result = await startSemanticMultiShotBatch({ projectId: input.lease.projectId, operationId: OPERATION_ID, shots }, {
         readRun: (projectId, runId) => repository.read(projectId, runId),
         submitPlan: run => repository.execute(run.projectId, run.runId, {
           commandId: 'session:generation.submit', expectedRevision: run.revision, type: 'generation.submit', payload: {}, issuedAt: NOW,
@@ -234,15 +236,21 @@ describe("resident Agent production journey (zero quota contract)", () => {
         } }),
         driveScheduler: scheduler => { background = scheduler.runToQuiescence() },
       });
+      if (timing === 'before-result') await closeLane();
+      return result;
     });
     const adapter = createPiGenerationTransportAdapter(surface.binding, {
       leaseFor: () => ({ ...surface.binding } as ProjectLeaseV2), planning,
     });
     const signal = surface.registry.resolveProjectSession(surface.session).signal;
-    await expect(adapter.tryExecute({ toolCallId: 'start', toolName: GENERATION_METHODS.start, args: { operationId: OPERATION_ID } }, signal))
-      .resolves.toMatchObject({ ok: true, result: { state: 'submitted' } });
-    surface.registry.revokeProjectSession(surface.session);
-    adapter.dispose();
+    const onClosed = vi.fn();
+    const lane = bindLaneProjectSession({ close: async () => { adapter.dispose() } }, surface.registry, surface.session, onClosed);
+    closeLane = lane.close;
+    const decision = await adapter.tryExecute({ toolCallId: 'start', toolName: GENERATION_METHODS.start, args: { operationId: OPERATION_ID } }, signal);
+    if (timing === 'after-result') expect(decision).toMatchObject({ ok: true, result: { state: 'submitted' } });
+    else expect(decision).toMatchObject({ ok: false, code: 'generation_cancelled' });
+    await lane.close();
+    expect(onClosed).toHaveBeenCalledOnce();
     expect(signal.aborted).toBe(true);
     expect(schedulerFinished).not.toHaveBeenCalled();
     finish();
