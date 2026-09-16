@@ -33,3 +33,10 @@
 ## 剩余交付门
 
 独立跨池审查、Ponytail、完整 contracts 与风险分档测试、Linux 原失败边界，以及合入真实 main SHA 的 `delivery:verify-merged` 必须完成后才能标记已解决。此前本机通过记录不是合入收据。
+
+## 2026-09-17 第二段：真实 Electron 验收（本机）
+
+- 遗留两红修根因：`timelineTransportAdapters` 由 `8d06c2410` 引入（时间轴写入把 `capability_receipt_unresolved` 降成确定失败），`check:asset-evidence` 由 `ecf3082ea` 引入（转发层挪文件后按文件登记的豁免失效）；两者 `git bisect run` 定位，修法见 `de970f648`、`0028c580f`。
+- 重建后 `node tests/ux/resident-composer-receipt-fix.e2e.mjs` 通过：15 次 loopback 文本请求、0 图片、0 付费；报告 `.tmp/pi-resident-composer-receipt-fix-development-1789590679369/report.json`，01/03 截图已亲眼核对。
+- `canvas-three-gestures.walk.mjs` 通过一次（`tests/ux/shots/canvas-three-gestures/`，04/05 截图已核对）。
+- 新增 `tests/ux/project-switch-background-run.walk.mjs`（真人点击）：A 提交图片生成、loopback 供应商挂住请求时回项目库新建 B → 放行 → 结果写进 A 的盘上副本并本地化为 A 素材，B 画布零节点、目录文件零变化、供应商只收到 1 次请求；回到 A 节点显示图片。截图热键：本机屏幕录制已授权，A 里抓屏原图只落 A；抓屏在途立即切到 B，B 不弹选区、零文件变化（本次抓屏被静默取消，A 也未落图）。loopback、0 付费。截图 `tests/ux/shots/project-switch-background-run/01-04`，已亲眼核对。
