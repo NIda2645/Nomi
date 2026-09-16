@@ -15,6 +15,8 @@
 
 主进程主动关闭 workspace 必须发布一次 closed 终态（无 pending/running/retry）再释放订阅。IPC 释放相应 active，renderer 清旧 current/审批。仅下次用户新 prompt 可以按仍打开的完整原 binding 请求全新 session；切项目清掉该重开上下文，不复活旧审批，不因临时 IO 失败弱化永久撤销。
 
+最终复核补齐两个同层入口：结构替换失败自行发布 closed 时，IPC 必须立即调用绑定后的 close 撤销旧 session，并将异步清理并入既有 lifecycle 队列，后续 reopen 等旧 ports/tasks 清理完成；不得在发布回调里等待结构任务而形成递归死锁。终态投影同时清除各条 tool-call.running、assistant-text/thinking.streaming，流式助手文字标记 interrupted，保留原内容与后台任务事实，不篡改先前快照。
+
 ## 验收与回滚
 
 先红：五种写 × session/caller/reply-identity 中断；实际文档落盘后撤销仍保留 preparing；空补偿不得置 undone。补 main workspace、IPC 与 client 终态/重开、切 B 不重开 A 测试。相关类型与合同门禁、真实 Electron 集成由主任务复验。无文件迁移和删除；按本逻辑提交 revert，无旧路径 fallback。

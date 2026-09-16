@@ -63,7 +63,7 @@
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 137,
+      "line": 130,
       "symbol": "AssetImportResult"
     },
     {
@@ -135,43 +135,43 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 55,
+      "line": 56,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 204,
+      "line": 205,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 298,
+      "line": 299,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 337,
+      "line": 334,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 293,
+      "line": 295,
       "symbol": "importRemoteUrl"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 470,
+      "line": 472,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 37,
+      "line": 39,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -218,26 +218,26 @@
     },
     {
       "kind": "write",
-      "path": "electron/assets/assetsIpc.ts",
-      "line": 76,
+      "path": "electron/assets/projectInteractionCapture.ts",
+      "line": 18,
       "symbol": "assertProjectAgentBinding"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 131,
+      "line": 128,
       "symbol": "importAssetResult"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 135,
+      "line": 128,
       "symbol": "importAssetResult"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 141,
+      "line": 134,
       "symbol": "importRemoteAsset"
     },
     {
@@ -369,7 +369,7 @@
     {
       "kind": "write",
       "path": "src/workbench/ai/composer/useComposerAttachments.ts",
-      "line": 65,
+      "line": 67,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -417,31 +417,31 @@
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
-      "line": 165,
+      "line": 167,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 189,
+      "line": 190,
       "symbol": "admitMediaImport"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 294,
+      "line": 296,
       "symbol": "importWorkbenchRemoteAssetUrl"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 300,
+      "line": 302,
       "symbol": "importRemoteUrl"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
-      "line": 22,
+      "line": 30,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -471,19 +471,19 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
-      "line": 44,
+      "line": 46,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
-      "line": 64,
+      "line": 71,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
-      "line": 94,
+      "line": 105,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -495,25 +495,25 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
-      "line": 249,
+      "line": 252,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
-      "line": 64,
+      "line": 66,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
-      "line": 80,
+      "line": 82,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
-      "line": 99,
+      "line": 102,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {

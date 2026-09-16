@@ -73,7 +73,7 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 91,
+      "line": 84,
       "symbol": "parseCopyFilesPayload"
     },
     {
@@ -163,7 +163,7 @@
     {
       "kind": "write",
       "path": "src/workbench/assets/AssetLibraryPanel.tsx",
-      "line": 76,
+      "line": 77,
       "symbol": "classifyUploadFiles"
     },
     {
@@ -193,13 +193,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 341,
+      "line": 338,
       "symbol": "filterImportableMediaFiles"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 323,
+      "line": 325,
       "symbol": "resultFromImport"
     },
     {

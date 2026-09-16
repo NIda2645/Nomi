@@ -103,6 +103,31 @@ B 删除了旧全局 recapture 和 renderer evidence 放宽特例，十个 invoc
 结论：本轮可以继续完善和集成，因为修复已落在独立且可验证的共享 owner 上，并删除了对应旧路径；
 跨池发现尚需逐条核实，本文不构成直接合入许可。最终“已解决”仍须以发现闭环、原平台旅程和合入验证为准。下一份同族合同应先定位上表哪条不变量失守，再决定修 owner 实现还是补新增边界，不能重新发明页面级钥匙。
 
+## 7. 补充聚簇：模块 `scripts`（09-17 收口时复跑 check:symptom-cluster）
+
+`check:symptom-cluster` 在 2026-09-17 复跑时只剩一处红：模块 `scripts` 在 09-11～09-17 有 12 份合同。新进窗口的本轮成员只有
+`docs/fixes/2026-09-17-project-artifact-storage-and-projection.root-cause.json`，它碰 `scripts/` 的原因是远程导入 IPC 改为统一结果信封后，
+两个付费诊断脚本 `scripts/audio-ref-diag-probe.mjs` 与 `scripts/audio-ref-paid-smoke.mjs` 作为**消费者**同步解包（未运行付费 smoke）。
+它们与窗口内其余 11 份（door-map 规则、Ponytail 超时、gates 分档、分镜默认值等）没有共享状态、抽象或调用路径。
+
+结论沿用 `docs/audit/2026-09-15-scripts-layer-symptom-cluster-review.md`：`scripts/` 是扁平工具目录，两级模块键把互不相关的工具算成一层，
+这 12 份是目录共处而不是同一层被反复修。本轮不据此给 `scripts` 再加任何修复，也不改聚类判据或阈值挤过门岗；
+该评审提出的判据修法（扁平目录按顶层脚本分键）仍是未派的后续项，登记为剩余风险。
+
+## 8. 补充结构收口：项目动作权限只在一处签发（09-17）
+
+§3「交互会话权限」一行在 renderer 侧原先靠各入口自己调用 `captureCurrentProjectExecutionContext()`（提交树 20 处、含在途分支工作 31 处），
+共享 helper 还留有默认参数与 `??=` 晚取回退，全局截图热键更是在 `desktopCapturer.getSources` 之后才读 renderer 上报的项目 id。
+现在结构是：`src/workbench/project/projectCanvasReadSurface.ts` 的 `withProjectAction`（用户动作）与 `withMainProjectAction`（主进程自发动作，按精确
+已提交 binding 认领）是唯一签发点，捕获函数与 coordinator 捕获方法对业务模块不可见；所有共享 helper 的 context 为必填参数；
+主进程截图与抽帧在第一个 await 之前固定 registry epoch / 可信 session 与 `AssetWriteContext`，删除了 `nomi:screenshot:set-project` 通道。
+类回归 `src/workbench/project/projectActionIssuance.contract.test.ts` 用 AST 扫描拒绝 await 之后签发、可选 context 与私有签发器引用，
+`@ts-expect-error` 半边由 `check:test-types` 保证忘传 context 编译失败。
+
+未收口的是 id 级当前项目读取（`getActiveWorkbenchProjectId` / `getDesktopActiveProjectId` 共 97 处）：其中后台生成在轮询结束后重读当前项目做结果本地化
+（`catalogTaskActions.ts`、`recoverTaskActions.ts`，与「已提交后台生成属于原项目」相悖）、`taskApi` 用当前项目覆盖显式 projectId，以及浏览器浮层/弹窗这类其它窗口的导入。
+它们的 owner 不是交互生命周期：后台需要 Run 自有的项目身份，其它窗口需要各自的签发点，属于待定结构决策，不能静默并入交互取消。
+
 ## 复核材料
 
 - [原常驻面结构评审](2026-09-14-resident-surface-lifecycle-structure.md)：解释装配相位与错误表象，不能替代本次磁盘/session/transport 寿命审计。

@@ -41,7 +41,7 @@
     {"kind":"read","path":"electron/agentLane/laneDesktopRuntime.ts","line":63,"symbol":"LaneIpcDependencies"},
     {"kind":"read","path":"electron/agentLane/laneDesktopRuntime.ts","line":66,"symbol":"ProjectSurfaceSession"},
     {"kind":"read","path":"electron/agentLane/laneDesktopTools.ts","line":55,"symbol":"ProjectSurfaceSession"},
-    {"kind":"read","path":"electron/agentLane/laneIpc.ts","line":33,"symbol":"LaneIpcDependencies"},
+    {"kind":"read","path":"electron/agentLane/laneIpc.ts","line":34,"symbol":"LaneIpcDependencies"},
     {"kind":"read","path":"electron/agentLane/laneProjectSession.ts","line":8,"symbol":"ProjectSurfaceSession"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadPortResolver.ts","line":82,"symbol":"CapturedCanvasReadPort"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceIpc.ts","line":45,"symbol":"ProjectSurfaceSession"},
