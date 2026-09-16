@@ -233,13 +233,13 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 77,
+      "line": 73,
       "symbol": "NodeRunOutcome"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 77,
+      "line": 73,
       "symbol": "RunProjectTarget"
     },
     {
@@ -563,31 +563,31 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 53,
+      "line": 49,
       "symbol": "isRunTargetLoaded"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 78,
+      "line": 74,
       "symbol": "isRunTargetLoaded"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 80,
+      "line": 76,
+      "symbol": "isRunTargetLoaded"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "line": 79,
       "symbol": "isRunTargetLoaded"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
       "line": 83,
-      "symbol": "isRunTargetLoaded"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 87,
       "symbol": "nodeRunOutcomePatch"
     },
     {

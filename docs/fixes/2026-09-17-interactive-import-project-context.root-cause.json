@@ -147,37 +147,37 @@
     {
       "kind": "read",
       "path": "electron/assets/projectInteractionCapture.ts",
-      "line": 9,
+      "line": 10,
       "symbol": "WindowProjectIssuance"
     },
     {
       "kind": "read",
       "path": "electron/assets/projectInteractionCapture.ts",
-      "line": 28,
+      "line": 25,
       "symbol": "ChildWindowProjectIssuer"
     },
     {
       "kind": "read",
       "path": "electron/assets/projectInteractionCapture.ts",
-      "line": 29,
+      "line": 26,
       "symbol": "ProjectInteractionCapture"
     },
     {
       "kind": "read",
       "path": "electron/assets/windowProjectCapture.ts",
-      "line": 30,
+      "line": 23,
       "symbol": "WindowProjectIssuance"
     },
     {
       "kind": "read",
       "path": "electron/assets/windowProjectCapture.ts",
-      "line": 52,
+      "line": 45,
       "symbol": "WindowProjectIssuance"
     },
     {
       "kind": "read",
       "path": "electron/assets/windowProjectCapture.ts",
-      "line": 61,
+      "line": 54,
       "symbol": "WindowProjectIssuance"
     },
     {
@@ -381,7 +381,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 471,
+      "line": 470,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -465,19 +465,19 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 8,
+      "line": 5,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 38,
+      "line": 34,
       "symbol": "ProjectExecutionContext"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 39,
+      "line": 35,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -693,7 +693,7 @@
     {
       "kind": "write",
       "path": "electron/assets/windowProjectCapture.ts",
-      "line": 64,
+      "line": 57,
       "symbol": "issueWindowProject"
     },
     {
@@ -1155,19 +1155,19 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 317,
+      "line": 316,
       "symbol": "importLocalMediaFilesToGenerationCanvas"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 554,
+      "line": 553,
       "symbol": "isProjectImportCancellation"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 590,
+      "line": 589,
       "symbol": "pasteClipboardMediaToGenerationCanvas"
     },
     {
@@ -1491,13 +1491,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 66,
+      "line": 62,
       "symbol": "isProjectExecutionContextCurrent"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 66,
+      "line": 62,
       "symbol": "isProjectImportCancellation"
     },
     {

@@ -2,6 +2,7 @@ import type { BrowserWindow, WebContents } from 'electron'
 import { canvasReadSurfaceRuntime } from '../capabilityCore/canvasReadSurfaceRuntime'
 import type { SurfacePortBinding } from '../capabilityCore/canvasReadSurfaceRegistry'
 import { sameProjectAgentBinding, type ProjectBinding } from '../shared/projectBinding'
+import { SurfacePortWireError } from '../shared/surfacePortBinding'
 import { captureAssetWriteContext, type AssetWriteContext } from './assetWriteContext'
 
 export type WindowProjectIssuance = Readonly<{
@@ -10,14 +11,6 @@ export type WindowProjectIssuance = Readonly<{
   /** Throws project_binding_stale once that window's committed project epoch is gone (A→B→A included). */
   assertCurrent(): void
 }>
-
-function staleProject(): Error {
-  return Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' })
-}
-
-function unavailableProject(): Error {
-  return Object.assign(new Error('project_identity_unavailable'), { code: 'project_identity_unavailable' })
-}
 
 /**
  * Main-side issuance for work that main starts or relays on behalf of a window without a renderer
@@ -37,12 +30,12 @@ export function issueWindowProject(win: BrowserWindow, expected?: ProjectBinding
   const surface = registry.resolveCapturedCanvasReadPort(captured)
   // The committed surface must belong to this very window; never credit window A's project to B.
   if (surface.owner.contents !== win.webContents) return null
-  if (expected && !sameProjectAgentBinding(expected, surface.binding.binding)) throw staleProject()
+  if (expected && !sameProjectAgentBinding(expected, surface.binding.binding)) throw new SurfacePortWireError('project_binding_stale')
   const assertCurrent = (): void => {
     try {
       registry.resolveCapturedCanvasReadPort(captured)
     } catch {
-      throw staleProject()
+      throw new SurfacePortWireError('project_binding_stale')
     }
   }
   return Object.freeze({ binding: surface.binding.binding, surfaceBinding: surface.binding, assertCurrent })
@@ -62,6 +55,6 @@ export function issueChildWindowProject(sender: WebContents, fromWebContents: (s
   const parent = fromWebContents(sender)?.getParentWindow()
   if (!parent) return undefined
   const issued = issueWindowProject(parent)
-  if (!issued) throw unavailableProject()
+  if (!issued) throw new SurfacePortWireError('project_identity_unavailable')
   return issued
 }

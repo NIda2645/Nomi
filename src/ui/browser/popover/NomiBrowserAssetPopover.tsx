@@ -101,7 +101,6 @@ export function NomiBrowserAssetPopover({
   const popoverOpen = opened ?? internalOpen
   const currentProjectId = projectId ?? ''
   const presentActionFeedback = React.useCallback((message: string) => setActionFeedback({ projectId: currentProjectId, message }), [currentProjectId])
-  const activeLibraryProjectId = currentProjectId
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const {
     contained,
@@ -171,7 +170,7 @@ export function NomiBrowserAssetPopover({
     setLocalAssets([])
     setSelectedIds(new Set())
     setAssetContextMenu(null)
-  }, [activeLibraryProjectId])
+  }, [currentProjectId])
 
   React.useEffect(() => {
     if (!popoverOpen || contained) return
@@ -275,7 +274,7 @@ export function NomiBrowserAssetPopover({
     filterActive,
     emptyStateCopy,
   } = useBrowserAssetLibraryModel({
-    projectId: activeLibraryProjectId,
+    projectId: currentProjectId,
     popoverOpen,
     localAssets: readyLocalAssets,
     activeTab,

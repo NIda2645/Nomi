@@ -159,19 +159,19 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 295,
+      "line": 294,
       "symbol": "importRemoteUrl"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 471,
+      "line": 470,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
-      "line": 39,
+      "line": 35,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -219,7 +219,7 @@
     {
       "kind": "write",
       "path": "electron/assets/projectInteractionCapture.ts",
-      "line": 41,
+      "line": 38,
       "symbol": "assertProjectAgentBinding"
     },
     {
@@ -429,13 +429,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 296,
+      "line": 295,
       "symbol": "importWorkbenchRemoteAssetUrl"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
-      "line": 301,
+      "line": 300,
       "symbol": "importRemoteUrl"
     },
     {

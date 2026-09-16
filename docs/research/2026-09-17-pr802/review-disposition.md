@@ -60,11 +60,12 @@
 | `check:vocabularies`：新增 `'store' \| 'disk' \| 'missing'` 投递结果词表 | 不新增词表：`deliverRunOutcome` 改为返回「是否落进正打开的原项目画布」布尔值，调用方只需要这一点 | `check:vocabularies` 通过 |
 | 门岗缺口：删掉的高风险文件无法被合同覆盖 | `root-cause-contracts.mjs` 允许在 `legacy_paths.removed_paths` 声明删除；未声明照旧红 | `check-root-cause-contracts.node-test.mjs` 新例先红 `/tmp/nomi-pr802-p1-1b-rcc-checker-red.log` 后绿 |
 
-### 仍未解决（需拍板或第二段）
+### 第二段收口（2026-09-17）
 
-- 子窗口的只读素材列表（`nomi:assets:list`）与主窗口显式项目 IO 通道仍接受 projectId（读与后台 IO 不是授权）；只有子窗口写入绑定父会话。
-- `check:asset-evidence` 报 `electron/assets/assetsIpc.ts` 远程导入缺 `sourceEvidence`：在 `50223265c`（本分支 1a 提交前）已红，非本轮引入，未处理（需要确认远程导入的来源取证归属）。
-- `electron/capabilityCore/timelineTransportAdapters.test.ts`「fails closed on injected, nested, or operation-mismatched renderer results」在本分支提交前（`50223265c`）已红，非本轮引入，未处理。
-- 真实 Electron 走查（拖入/粘贴/截图热键/浮层导入/后台生成轮询中切项目、resident 旅程）属第二段，本段未跑。
+- 子窗口的只读素材列表（`nomi:assets:list`）与主窗口显式项目 IO 仍接受 projectId：主会话裁决可接受（只读 / 已绑定磁盘身份）；子窗口写入绑定父会话。
+- `check:asset-evidence` 超基线：bisect 定位 `ecf3082ea`（转发层从 main.ts 挪到 assetsIpc.ts，按文件登记的豁免失效）。豁免随代码迁移，门岗新增「失效豁免即红」，基线仍 0（`0028c580f`）。
+- `timelineTransportAdapters.test.ts` 红：bisect 定位 `8d06c2410`（时间轴写入的公开错误码缺 `capability_receipt_unresolved`，派发后结果不明被报成确定失败）。已补码并改测试到新语义，撤销合同登记四条写路径（`de970f648`）。
+- 真实 Electron 走查（resident 旅程、画布三手势、后台生成/截图热键切项目）见 `acceptance.md` 第二段。
+- 分支评审第 1 轮 16 条：14 条已改、2 条不改（理由见 PR 802 正文 `## Ponytail`）。
 
 所有未完成项收敛后更新此表，再运行最终分支评审与交付门禁。该文档不是合入或已解决收据。

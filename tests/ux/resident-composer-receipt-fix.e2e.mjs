@@ -203,7 +203,6 @@ try {
     .find(message => message.role === 'toolResult' && message.toolCallId === 'resident-filesystem-failure')
   expect(failedArtifactResult?.isError).toBe(true)
   expect(laneMessageText(failedArtifactResult)).toBe('The action could not be completed.\nNext: Review the failure and the current result before deciding whether to retry.')
-  expect(laneMessageText(failedArtifactResult)).not.toContain('surface_port_unavailable')
   expect((await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id)).toContain(fixtureNodeId)
   await expect(fixtureNode).toBeVisible()
   walk.report.artifactFailure = { status: 'passed', result: failedArtifactResult }

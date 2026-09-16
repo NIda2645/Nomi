@@ -43,8 +43,7 @@ export function mediaImportRejectionMessages(
 
 /** 音频导入的跳过汇总（重复 / 被准入闸挡下 / 失败），与图片视频导入同一套人话。 */
 export function reportAudioImport(result: AudioImportResult, present: (message: string) => void): void {
-  const skipped: string[] = []
-  for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
+  const skipped = mediaImportRejectionMessages(result.rejected)
   if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
   if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
   if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))

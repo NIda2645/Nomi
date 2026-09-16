@@ -45,11 +45,7 @@ export type RunGraph = { nodes: GenerationCanvasNode[]; edges: GenerationCanvasE
  * 批量后续波次在用户切走之后仍按原项目的上游产物解析参考，绝不读到新项目的图。
  */
 export async function readRunGraph(target: RunProjectTarget): Promise<RunGraph | null> {
-  if (isRunTargetLoaded(target)) {
-    const state = useGenerationCanvasStore.getState()
-    return { nodes: state.nodes, edges: state.edges }
-  }
-  await (diskDeliveryQueues.get(target.projectId) ?? Promise.resolve()).catch(() => undefined)
+  if (!isRunTargetLoaded(target)) await (diskDeliveryQueues.get(target.projectId) ?? Promise.resolve()).catch(() => undefined)
   if (isRunTargetLoaded(target)) {
     const state = useGenerationCanvasStore.getState()
     return { nodes: state.nodes, edges: state.edges }

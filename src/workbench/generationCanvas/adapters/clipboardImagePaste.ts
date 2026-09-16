@@ -61,7 +61,6 @@ export type ClipboardMediaPasteOptions = {
 }
 
 export type ClipboardImagePasteOptions = ClipboardMediaPasteOptions
-type ProjectClipboardOptions = ClipboardMediaPasteOptions
 
 export type ClipboardMediaPasteResult = {
   handled: boolean
@@ -286,7 +285,7 @@ async function mediaUrlToFile(
 
 async function importRemoteMediaUrl(
   url: string,
-  options: ProjectClipboardOptions,
+  options: ClipboardMediaPasteOptions,
   fallbackKind: ClipboardMediaKind | null,
 ): Promise<WorkbenchAssetDto | null> {
   if (!isRemoteUrl(url)) return null
@@ -312,7 +311,7 @@ function resultFromImport(result: GenerationAssetImportResult): ClipboardMediaPa
   }
 }
 
-async function importMediaFiles(files: File[], options: ProjectClipboardOptions): Promise<ClipboardMediaPasteResult> {
+async function importMediaFiles(files: File[], options: ClipboardMediaPasteOptions): Promise<ClipboardMediaPasteResult> {
   options.projectContext.assertCurrent()
   const result = await importLocalMediaFilesToGenerationCanvas(files, {
     basePosition: options.basePosition,
@@ -463,7 +462,7 @@ async function uploadFetchedMediaFileToNode(
   nodeId: string,
   file: File,
   candidate: ClipboardMediaUrlCandidate,
-  options: ProjectClipboardOptions,
+  options: ClipboardMediaPasteOptions,
 ): Promise<boolean> {
   options.projectContext.assertCurrent()
   const kind = mediaKindFromMime(file.type) || candidate.kind || mediaKindFromUrl(file.name)
@@ -497,7 +496,7 @@ async function uploadFetchedMediaFileToNode(
 
 async function pasteRemoteClipboardMediaUrl(
   candidate: ClipboardMediaUrlCandidate,
-  options: ProjectClipboardOptions,
+  options: ClipboardMediaPasteOptions,
 ): Promise<ClipboardMediaPasteResult> {
   options.projectContext.assertCurrent()
   const nodeId = createPendingClipboardMediaNode(candidate, options)
@@ -556,7 +555,7 @@ export async function pasteClipboardMediaToGenerationCanvas(
   }
 }
 
-async function pasteClipboardMediaInProject(options: ProjectClipboardOptions): Promise<ClipboardMediaPasteResult> {
+async function pasteClipboardMediaInProject(options: ClipboardMediaPasteOptions): Promise<ClipboardMediaPasteResult> {
   const data = options.clipboardData
   const files = extractClipboardMediaFiles(data)
   if (files.length > 0) return importMediaFiles(files, options)

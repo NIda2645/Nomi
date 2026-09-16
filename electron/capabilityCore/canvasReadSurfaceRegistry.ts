@@ -538,7 +538,6 @@ export function createCanvasReadSurfaceRegistry(
         ownerDescriptor: state.ownerDescriptor,
         authority,
       });
-      if (activeSession) registry.revokeProjectSession(activeSession.handle);
       clearCurrent();
     },
 

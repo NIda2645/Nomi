@@ -36,12 +36,7 @@ vi.mock('../../../../ui/notificationPolicy', () => ({ notify: fixture.feedback }
 vi.mock('../../../../ui/app-shell/windowChrome', () => ({ currentFullscreenOverlayTopOffset: () => 0 }))
 vi.mock('../../../project/projectCanvasReadSurface', () => ({
   // The single issuance point hands the originating project to the action.
-  withProjectAction: (run: (project: unknown) => unknown) => run((() => {
-    const signal = fixture.controller.signal
-    return { signal, binding: { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 },
-      assertCurrent() { if (signal.aborted) throw Object.assign(new Error('stale'), { code: 'project_binding_stale' }) },
-    }
-  })()),
+  withProjectAction: (run: (project: unknown) => unknown) => run(screenshotProject()),
 }))
 vi.mock('../../store/generationCanvasStore', () => {
   const getState = () => ({ nodes: fixture.nodes, edges: [], updateNode: fixture.update, addNode: fixture.add,

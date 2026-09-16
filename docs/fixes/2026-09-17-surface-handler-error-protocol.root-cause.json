@@ -84,7 +84,6 @@
     {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":372,"symbol":"surfacePortFailure"},
     {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":377,"symbol":"surfacePortFailure"},
     {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":400,"symbol":"parseSurfacePortFailure"},
-    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":447,"symbol":"parseSurfacePortFailure"},
     {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":252,"symbol":"unwrapSurfacePortIpcResponse"},
     {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":259,"symbol":"unwrapSurfacePortIpcResponse"},
     {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":266,"symbol":"unwrapSurfacePortIpcResponse"},
@@ -126,8 +125,8 @@
   ],
   "door_reduction": {
     "before": 30,
-    "after": 82,
-    "why_not": "The same symbol census found 30 baseline references and 82 after references: added shared codec/type consumers are intentional, not additional mutable owners. Ten channel registrations remain distinct capabilities, two proposal calls are edit/delete, four reverse lifecycle IPC calls remain; all callback/error classification is centralized. MediaImportRejection references in unchanged import/display consumers share only the existing reason vocabulary and are not contextBridge handlers."
+    "after": 81,
+    "why_not": "The same symbol census found 30 baseline references and 81 after references (the IPC unwrap now reuses surfacePortReplyPayload, one parse site fewer): added shared codec/type consumers are intentional, not additional mutable owners. Ten channel registrations remain distinct capabilities, two proposal calls are edit/delete, four reverse lifecycle IPC calls remain; all callback/error classification is centralized. MediaImportRejection references in unchanged import/display consumers share only the existing reason vocabulary and are not contextBridge handlers."
   },
   "generality_proof": "All ten callback signatures require the same DTO and the only renderer registrar encodes all callbacks; preload and main parse one whitelist. Both proposal consumers preserve the structured failure.",
   "shared_boundaries": [

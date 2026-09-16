@@ -1,12 +1,8 @@
 import type { AssetRef } from '../../assets/assetTypes'
-import { hostedAssetUrl, importWorkbenchLocalAssetFile, type WorkbenchAssetDto } from '../../api/assetUploadApi'
+import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
 import { isProjectExecutionContextCurrent, isProjectImportCancellation, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 
-type ImportLocalAsset = (
-  file: File,
-  name: string | undefined,
-  meta: Parameters<typeof importWorkbenchLocalAssetFile>[2],
-) => Promise<WorkbenchAssetDto>
+type ImportLocalAsset = typeof importWorkbenchLocalAssetFile
 
 export type ClipNodeUploadResult = {
   cancelled?: true

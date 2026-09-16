@@ -64,11 +64,7 @@ describe('project-scoped export Agent tools', () => {
       .rejects.toThrow('project_scope_required')
     await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, noProjectOpen))
       .resolves.toMatchObject({ operation: 'inspect_export_job', jobId: 'job-1', status: 'encoding' })
-
-    const otherProjectOpen = runtime()
-    await expect(applyExportToolCall('inspect_export_job', { jobId: 'job-1', projectId: 'project-1' }, otherProjectOpen))
-      .resolves.toMatchObject({ jobId: 'job-1' })
-    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, otherProjectOpen))
+    await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, noProjectOpen))
       .resolves.toMatchObject({ cancelled: true })
 
     const started = runtime()

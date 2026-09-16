@@ -112,15 +112,11 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
           const push = (projection: LaneWorkspaceProjection) => {
             if (active?.workspaceId !== workspaceId) return
             if (projection.closed) {
-              const previous = active
-              active = undefined
-              previous.unsubscribe()
-              target.removeListener('destroyed', previous.destroyed)
-              abortSingleShots(target)
               // Structural replacement can close the inner workspace without passing through
-              // its session wrapper. Revoke now, then serialize disposal before the next open.
-              // Never await here: close may itself be waiting for this publisher's operation.
-              const closing = previous.workspace.close()
+              // its session wrapper. Revoke now (close() detaches synchronously before its first
+              // await), then serialize disposal before the next open. Never await here: close may
+              // itself be waiting for this publisher's operation.
+              const closing = close()
               void replace(async () => { await closing }).catch(error => logError('agent', 'workspace-terminal-close-failed', error))
             }
             if (!target.isDestroyed()) target.send(LANE_IPC_CHANNELS.projection, { ...projection, workspaceId })

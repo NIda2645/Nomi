@@ -436,16 +436,7 @@ export class SurfacePortWireError extends Error {
 }
 
 export function unwrapSurfacePortIpcResponse<T>(response: unknown): T {
-  if (!response || typeof response !== "object" || Array.isArray(response)) {
-    throw new SurfacePortWireError("surface_port_unavailable");
-  }
-  const envelope = response as Record<string, unknown>;
-  if (envelope.ok === true && Object.prototype.hasOwnProperty.call(envelope, "value")) {
-    return envelope.value as T;
-  }
-  if (envelope.ok === false && envelope.error && typeof envelope.error === "object") {
-    const failure = parseSurfacePortFailure(envelope.error);
-    if (failure) throw new SurfacePortWireError(failure.code, failure.reason);
-  }
-  throw new SurfacePortWireError("surface_port_unavailable");
+  const reply = surfacePortReplyPayload(response);
+  if ("error" in reply) throw new SurfacePortWireError(reply.error.code, reply.error.reason);
+  return reply.result as T;
 }
