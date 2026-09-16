@@ -184,8 +184,8 @@ export function registerCanvasReadSurfaceIpc(
       if (cleaned) return;
       cleaned = true;
       contents.removeListener("did-start-navigation", navigate);
-      contents.removeListener("render-process-gone", invalidate);
-      contents.removeListener("destroyed", invalidate);
+      contents.removeListener("render-process-gone", invalidateAndCleanup);
+      contents.removeListener("destroyed", invalidateAndCleanup);
       if (ownerRecords.get(contents)?.evidence === evidence) ownerRecords.delete(contents);
     };
     const invalidateAndCleanup = (): void => {

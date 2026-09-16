@@ -219,6 +219,8 @@ describe("Canvas read Surface IPC", () => {
     else owner.sender.emit(cause);
     expect(identity.signal.aborted).toBe(true);
     expect(() => test.registry.resolveProjectSession(session)).toThrow(expect.objectContaining({ code: 'project_binding_stale' }));
+    expect(owner.sender.listenerCount('render-process-gone')).toBe(0);
+    expect(owner.sender.listenerCount('destroyed')).toBe(0);
   });
 
   it("registers an independent lifecycle and accepts only main-resolved suspension/binding copies", async () => {

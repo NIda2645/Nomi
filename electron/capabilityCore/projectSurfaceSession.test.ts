@@ -6,11 +6,18 @@ vi.mock('electron', () => ({ ipcMain: { on: (channel: string, listener: (event: 
 vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: () => undefined }))
 vi.mock('../runtimePaths', () => ({ getWorkspaceRepositoryDeps: () => ({}) }))
 vi.mock('../workspace/workspaceRepository', () => ({ readWorkspaceProject: () => undefined, resolveWorkspaceProjectDir: () => undefined }))
-import { createCanvasReadSurfaceRegistry, createSurfaceOwnerAuthority } from './canvasReadSurfaceRegistry'
+import { createCanvasReadSurfaceRegistry, createSurfaceOwnerAuthority, type CapturedCanvasReadPort, type ProjectSurfaceSession } from './canvasReadSurfaceRegistry'
 import * as factories from './verifiedCapabilityInvocationRendererFactories'
-import { revalidateVerifiedCapabilityInvocation, resolveVerifiedCapabilityExecutionTarget } from './verifiedCapabilityInvocation'
+import { revalidateVerifiedCapabilityInvocation, resolveVerifiedCapabilityExecutionTarget, type VerifiedCapabilityInvocation } from './verifiedCapabilityInvocation'
 import { registerMainCanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import { createCapturedCanvasReadSnapshotRegistry } from './canvasReadCapturedSnapshotRegistry'
+
+function transportCannotBecomeSession(captured: CapturedCanvasReadPort) {
+  // @ts-expect-error A frame capability cannot inhabit a long-lived session field.
+  const session: ProjectSurfaceSession = captured
+  return session
+}
+void transportCannotBecomeSession
 
 async function fixture(send?: (channel: string, payload: Record<string, unknown>) => void) {
   const authority = createSurfaceOwnerAuthority()
@@ -140,7 +147,7 @@ describe.each(cases)('$name project session authority', ({ factory, args }) => {
     })
     const f = await fixture(send)
     const session = f.registry.openProjectSession(f.owner, f.binding)
-    const invocation = await factory({ registry: f.registry, session, requestId: 'request' }).mint(args as never)
+    const invocation: VerifiedCapabilityInvocation<unknown, unknown> = await factory({ registry: f.registry, session, requestId: 'request' }).mint(args as never)
     const nextBinding = await f.commit()
     const runtime = registerMainCanvasReadExecutionRuntime({ surfaceRegistry: f.registry,
       capturedSnapshots: createCapturedCanvasReadSnapshotRegistry({ ownerAuthority: f.authority }),
@@ -163,7 +170,7 @@ describe.each(cases)('$name project session authority', ({ factory, args }) => {
     const f = await fixture()
     const session = f.registry.openProjectSession(f.owner, f.binding)
     const adapter = factory({ registry: f.registry, session, requestId: 'request' })
-    const invocation = await adapter.mint(args as never)
+    const invocation: VerifiedCapabilityInvocation<unknown, unknown> = await adapter.mint(args as never)
     const hash = invocation.actionHash
     const preconditions = invocation.preconditions
     await f.commit()
@@ -181,7 +188,7 @@ describe.each(cases)('$name project session authority', ({ factory, args }) => {
   it('does not move an old invocation to another owner opening the same project', async () => {
     const f = await fixture()
     const session = f.registry.openProjectSession(f.owner, f.binding)
-    const invocation = await factory({ registry: f.registry, session, requestId: 'request' }).mint(args as never)
+    const invocation: VerifiedCapabilityInvocation<unknown, unknown> = await factory({ registry: f.registry, session, requestId: 'request' }).mint(args as never)
     f.registry.invalidateOwner(f.owner)
     const other = f.authority.capture({ ...f.descriptor, contents: {}, frame: {}, webContentsId: 8 })
     const suspension = f.registry.suspend(other, { surfaceInstanceId: 'other' })
