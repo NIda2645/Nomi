@@ -13,6 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { findCanvasBlankPoint } from './_canvasHit.mjs'
 import { clickOrFail, expect, expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
 
@@ -128,21 +129,21 @@ function mediaFiles(root) {
 
 async function newBlankProject(win) {
   await clickOrFail(win.getByRole('button', { name: /^新建空白项目/ }).first(), '新建空白项目')
-  await expect.poll(() => currentProjectId(win), { message: '新建后地址栏带上新项目 id', timeout: 30_000 }).toMatch(/^project-/)
+  await expect.poll(() => currentProjectId(win), { message: '新建后地址栏带上新项目 id', timeout: stationTimeout({ operations: 2 }) }).toMatch(/^project-/)
   await clickOrFail(win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }), '切到生成区')
-  await expect(win.locator('.generation-canvas-v2__stage')).toBeVisible({ timeout: 30_000 })
+  await expect(win.locator('.generation-canvas-v2__stage')).toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
   return currentProjectId(win)
 }
 async function backToLibrary(win) {
   await clickOrFail(win.getByRole('button', { name: '返回项目库', exact: true }), '返回项目库')
-  await expect(win.getByRole('button', { name: /^新建空白项目/ }).first()).toBeVisible({ timeout: 30_000 })
+  await expect(win.getByRole('button', { name: /^新建空白项目/ }).first()).toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
 }
 async function openFromLibrary(win, projectId) {
   const card = win.locator(`[data-project-card="true"][data-project-id="${projectId}"]`)
-  await expect(card, '项目库里看得见原项目卡片').toBeVisible({ timeout: 30_000 })
+  await expect(card, '项目库里看得见原项目卡片').toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
   await card.hover()
   await clickOrFail(card.getByRole('button', { name: /继续创作/ }), '继续创作原项目')
-  await expect.poll(() => currentProjectId(win), { message: '回到原项目', timeout: 30_000 }).toBe(projectId)
+  await expect.poll(() => currentProjectId(win), { message: '回到原项目', timeout: stationTimeout({ operations: 2 }) }).toBe(projectId)
 }
 
 const pageErrors = []
@@ -162,7 +163,7 @@ try {
   const rootA = await projectRoot(win, projectA)
   await clickOrFail(win.locator('[aria-label="添加图片节点"]').first(), '添加图片节点')
   const nodeA = win.locator('[data-kind="image"][data-node-id]').last()
-  await expect(nodeA).toBeVisible({ timeout: 10_000 })
+  await expect(nodeA).toBeVisible({ timeout: stationTimeout() })
   const nodeId = await nodeA.getAttribute('data-node-id')
   const editor = win.locator(`[data-node-id="${nodeId}"] div[contenteditable="true"]`).last()
   await editor.click()
@@ -172,12 +173,12 @@ try {
   await win.mouse.click(blank.x, blank.y)
 
   const generateAll = win.locator('[data-batch-scope="all"]')
-  await expect(generateAll, '有待生成节点时出现批量生成入口').toBeVisible({ timeout: 10_000 })
+  await expect(generateAll, '有待生成节点时出现批量生成入口').toBeVisible({ timeout: stationTimeout() })
   await clickOrFail(generateAll, '生成全部')
   const spend = win.locator('div.fixed.inset-0').filter({ hasText: /开始生成/ }).last()
-  await expect(spend, '提交前先看报价确认').toBeVisible({ timeout: 10_000 })
+  await expect(spend, '提交前先看报价确认').toBeVisible({ timeout: stationTimeout() })
   await clickOrFail(spend.getByRole('button', { name: '生成', exact: true }), '确认生成')
-  await expect.poll(() => wireCalls.length, { message: '供应商收到请求（挂住未回）', timeout: 30_000 }).toBe(1)
+  await expect.poll(() => wireCalls.length, { message: '供应商收到请求（挂住未回）', timeout: stationTimeout({ operations: 2 }) }).toBe(1)
   check(wireCalls[0].prompt.includes(PROMPT), '请求就是 A 节点的提示词')
   await expect(win.locator(`[data-node-id="${nodeId}"]`)).toHaveAttribute('data-status', /queued|running/)
   await snap(win, 'a-generation-in-flight')
@@ -193,7 +194,7 @@ try {
   // 放行供应商：结果必须回 A，不能落进正打开的 B。
   heldResponses.splice(0).forEach((release) => release())
   await expect.poll(() => readCanvas(rootA).nodes.find((node) => node.id === nodeId)?.status,
-    { message: 'A 在后台（盘上副本）收到成功结局', timeout: 60_000 }).toBe('success')
+    { message: 'A 在后台（盘上副本）收到成功结局', timeout: stationTimeout({ operations: 4 }) }).toBe('success')
   const deliveredA = readCanvas(rootA).nodes.find((node) => node.id === nodeId)
   const resultUrl = String(deliveredA?.result?.url || '')
   check(Boolean(resultUrl) && !resultUrl.startsWith('data:'), 'A 节点结果已本地化为项目素材', resultUrl.slice(0, 80))
@@ -211,8 +212,8 @@ try {
   await backToLibrary(win)
   await openFromLibrary(win, projectA)
   await clickOrFail(win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }), '切到生成区')
-  await expect(win.locator(`[data-node-id="${nodeId}"]`), '回到 A 节点显示成功').toHaveAttribute('data-status', 'success', { timeout: 30_000 })
-  await expect(win.locator(`[data-node-id="${nodeId}"] img`).first(), 'A 节点上看得见生成图').toBeVisible({ timeout: 30_000 })
+  await expect(win.locator(`[data-node-id="${nodeId}"]`), '回到 A 节点显示成功').toHaveAttribute('data-status', 'success', { timeout: stationTimeout({ operations: 2 }) })
+  await expect(win.locator(`[data-node-id="${nodeId}"] img`).first(), 'A 节点上看得见生成图').toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
   await snap(win, 'a-result-on-return')
 
   // ── 幕四 · 截图热键：A 里抓屏后切到 B，截图不落 B ─────────────────────────────
@@ -226,7 +227,7 @@ try {
     const aFilesBefore = new Set(Object.keys(mediaFiles(rootA)))
     await win.evaluate(() => window.nomiDesktop.screenshot.e2eCapture())
     const crop = win.locator('[data-screenshot-crop]')
-    await expect(crop, 'A 里抓屏弹出选区面板').toBeVisible({ timeout: 30_000 })
+    await expect(crop, 'A 里抓屏弹出选区面板').toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
     const aNewFiles = Object.keys(mediaFiles(rootA)).filter((file) => !aFilesBefore.has(file))
     check(aNewFiles.some((file) => /screenshot-\d+\.png$/.test(file)), '整屏原图落进 A 的素材', aNewFiles.join(','))
     const cropProbe = await proveProbe(crop, '选区面板在 A 里确实可见')
