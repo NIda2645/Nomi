@@ -10,6 +10,7 @@
 import type { ArtifactFileType } from '../model/artifactMeta'
 import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
 import type { UploadWorkbenchAssetMeta } from '../../api/assetUploadApi'
+import { surfacePortFailure, type SurfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 
 export type ArtifactWriteContext = Readonly<{ binding: ProjectBinding; assertCurrent(): void }>
 
@@ -48,7 +49,7 @@ export type DeliverAgentArtifactResult = {
   fileName: string
 } | {
   ok: false
-  reason: string
+  failure: SurfacePortFailure
 }
 
 /** 从标题 derive 安全文件名（去掉路径分隔与危险字符；保底用默认名）。 */
@@ -79,7 +80,7 @@ export async function deliverAgentArtifactToAsset(
   assetImport: WorkbenchAssetImporter = realImporter,
 ): Promise<DeliverAgentArtifactResult> {
   const content = (input.content || '').trim()
-  if (!content) return { ok: false, reason: 'empty-content' }
+  if (!content) return { ok: false, failure: { code: 'capability_input_invalid' } }
   const file = buildArtifactFile(input)
   try {
     context.assertCurrent()
@@ -90,10 +91,10 @@ export async function deliverAgentArtifactToAsset(
     })
     context.assertCurrent()
     const url = imported?.data?.url
-    if (!url) return { ok: false, reason: 'no-asset-url' }
+    if (!url) return { ok: false, failure: { code: 'capability_receipt_unresolved' } }
     return { ok: true, url, fileName: file.name }
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : 'import-failed' }
+    return { ok: false, failure: surfacePortFailure(error) }
   }
 }
 

@@ -308,13 +308,13 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
-      "line": 235,
+      "line": 236,
       "symbol": "captureCurrentProjectCanvasReadSurfaceBinding"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
-      "line": 405,
+      "line": 406,
       "symbol": "deliverAgentArtifactToAsset"
     },
     {
@@ -453,6 +453,8 @@
     ]
   },
   "regression_tests": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
+    "electron/shared/contracts/assetImportResult.test.ts",
     "electron/shared/contracts/mediaImportPolicy.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
     "src/workbench/generationCanvas/agent/deliverAgentArtifact.test.ts",
@@ -460,6 +462,8 @@
     "electron/assets/projectArtifactImport.test.ts"
   ],
   "class_regression_tests": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",
+    "electron/shared/contracts/assetImportResult.test.ts",
     "electron/shared/contracts/mediaImportPolicy.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
     "src/workbench/generationCanvas/agent/deliverAgentArtifact.test.ts",

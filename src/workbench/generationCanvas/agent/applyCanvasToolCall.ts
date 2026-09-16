@@ -1,5 +1,6 @@
 import { hasRealCharacterReferences, normalizeStoryboardAnchorDefaults, validateAnchorModelFit } from './storyboardAnchorPolicy'
 import { captureCurrentProjectCanvasReadSurfaceBinding } from '../../project/projectCanvasReadSurface'
+import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type {
   BuiltinCanvasCategoryId,
   GenerationCanvasEdgeMode,
@@ -408,7 +409,7 @@ export async function applyCanvasToolCall(
       })
       assertWritable()
       if (!delivered.ok) {
-        throw new Error(i18n.t('runtime.nodeRegistry.agent-artifact.deliverFailed', { name, reason: delivered.reason }))
+        throw new SurfacePortWireError(delivered.failure.code, delivered.failure.reason)
       }
       artifactUrlByClientId.set(clientId, { fileType, url: delivered.url })
     }

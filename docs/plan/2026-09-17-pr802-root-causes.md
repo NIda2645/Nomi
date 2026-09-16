@@ -14,7 +14,9 @@
 
 仅隔离进程放行 text 后工具成功、节点持久化，但节点不可见。DOM 360×260；框架 measured={}；调用框架重测后立即可见。共同适配层仅传 CSS size，每次新节点投影不携带框架认可的尺寸；adoptUserNodes 会重置 measured。纯上游函数对照也复现该转换。
 
-异步产物存储从 activeProjectId 重新取项目是待红测试证明的额外风险：最终节点提交守卫不能替代文件 IO 归属约束。
+异步产物存储从 activeProjectId 重新取项目的风险已由 renderer byte 准备期间切项目的红测试证明。另在真实存储去重等待期间替换 manifest identity，byte/native 两个入口均错误发布文件；最终节点提交守卫不能替代文件 IO 归属约束。
+
+2026-09-17 实施证据：存储准入与显式框架尺寸修复后，原 resident-composer 完整旅程在 macOS Electron 43.4.1 首次通过。用隔离项目内真实文件系统阻塞制造保存失败，旧跨桥代码返回 surface_port_unavailable；整合普通 DTO 后返回安全执行失败并保留原节点，文稿→产物→拒绝→MCP→冷启动完整通过（12 次 loopback 请求、零付费）。Linux 与会话结构验收仍须完成。
 
 ## A：共享边界修复
 

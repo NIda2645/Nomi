@@ -184,28 +184,29 @@ try {
   fs.writeFileSync(blockedContentPath, 'fixture occupies the required directory', { flag: 'wx' })
   const failedArtifact = walk.fixture.expectText({
     label: 'Renderer receives a real filesystem artifact failure',
-    match: body => flattenRequestText(body).includes('请测试空白产物拒绝') && !hasToolResult(body, 'resident-empty-artifact'),
-    reply: { type: 'tool', id: 'resident-empty-artifact', name: 'make_artifact', args: { fileType: 'text', title: 'Failed artifact', content: failedArtifactContent } },
+    match: body => flattenRequestText(body).includes('请测试文件保存失败') && !hasToolResult(body, 'resident-filesystem-failure'),
+    reply: { type: 'tool', id: 'resident-filesystem-failure', name: 'make_artifact', args: { fileType: 'text', title: 'Failed artifact', content: failedArtifactContent } },
   })
   const failedArtifactFollowup = walk.fixture.expectText({
     label: 'Agent receives an execution failure without a false port error',
-    match: body => hasToolResult(body, 'resident-empty-artifact'),
-    reply: { type: 'text', text: '空白内容未保存，已有产物保留。' },
+    match: body => hasToolResult(body, 'resident-filesystem-failure'),
+    reply: { type: 'text', text: '文件保存失败，已有产物保留。' },
   })
   try {
-    await sendCanvas(win, '请测试空白产物拒绝，保留已有节点。')
+    await sendCanvas(win, '请测试文件保存失败，保留已有节点。')
     await recorded(failedArtifact.received, 'artifact request with blocked destination')
     await recorded(failedArtifactFollowup.received, 'filesystem artifact rejection')
   } finally {
     fs.unlinkSync(blockedContentPath)
   }
   const failedArtifactResult = readLaneTranscripts(projectRoot).flatMap(laneMessages)
-    .find(message => message.role === 'toolResult' && message.toolCallId === 'resident-empty-artifact')
+    .find(message => message.role === 'toolResult' && message.toolCallId === 'resident-filesystem-failure')
   expect(failedArtifactResult?.isError).toBe(true)
-  expect(laneMessageText(failedArtifactResult)).toContain('capability_execution_failed')
+  expect(laneMessageText(failedArtifactResult)).toBe('The action could not be completed.\nNext: Review the failure and the current result before deciding whether to retry.')
   expect(laneMessageText(failedArtifactResult)).not.toContain('surface_port_unavailable')
   expect((await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id)).toContain(fixtureNodeId)
   await expect(fixtureNode).toBeVisible()
+  walk.report.artifactFailure = { status: 'passed', result: failedArtifactResult }
 
   // E: a real gated action is denied at the UI approval boundary. Approval/spend
   // policy no longer lives in the work-mode popover; use an irreversible canvas
@@ -246,6 +247,20 @@ try {
   await recorded(rejectedFollowup.received, 'the denied gated-action result')
   await expect(win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`)).toHaveCount(0)
   await walk.snap('irreversible-rejection-receipt')
+  // The same persisted artifact remains visible through the real locale UI.
+  await clickOrFail(win.getByRole('button', { name: '设置', exact: true }), '打开语言设置')
+  const settings = win.locator('[data-settings-overlay]')
+  await clickOrFail(settings.locator('[data-settings-tab-id="general"]'), '打开通用设置')
+  await clickOrFail(settings.locator('[data-settings-locale="en"]'), '切换英文')
+  await expect(win.locator('html')).toHaveAttribute('lang', 'en')
+  await clickOrFail(settings.locator('[data-settings-close]'), '关闭英文设置')
+  await expect(fixtureNode).toBeVisible()
+  await walk.snap('artifact-and-rejection-en')
+  await clickOrFail(win.getByRole('button', { name: 'Settings', exact: true }), '恢复语言设置')
+  await clickOrFail(settings.locator('[data-settings-tab-id="general"]'), '返回通用语言设置')
+  await clickOrFail(settings.locator('[data-settings-locale="zh-CN"]'), '恢复中文')
+  await expect(win.locator('html')).toHaveAttribute('lang', 'zh-CN')
+  await clickOrFail(settings.locator('[data-settings-close]'), '关闭中文设置')
   expect((await readProject(win, projectId)).payload.generationCanvas.nodes.map((node) => node.id)).toContain(fixtureNodeId)
   await expect.poll(() => readLaneTranscripts(projectRoot).flatMap(laneMessages)
     .some(message => message.role === 'toolResult' && message.toolCallId === 'resident-receipt-fix-rejected'),
@@ -339,9 +354,61 @@ try {
     walk.report.matrix.N = { status: 'passed', evidence: ['stdio process', 'MCP elicitation', 'GUI RPC', 'revision advanced'], afterMcp }
   }
 
+  // An unfinished interactive approval belongs permanently to its project
+  // session. Leaving A, opening B, then returning to A must not revive it.
+  await openCanvas(win)
+  const abandonedId = 'resident-project-switch-approval'
+  const abandonedIntent = '提出删除审批，然后我会切换项目，请等待确认。'
+  const abandonedRequest = walk.fixture.expectText({
+    label: 'An actual approval is pending before switching projects',
+    match: body => flattenRequestText(body).includes(abandonedIntent) && !hasToolResult(body, abandonedId),
+    reply: { type: 'tool', id: abandonedId, name: 'delete_from_canvas', args: { nodeIds: [fixtureNodeId], reason: 'project session revocation journey' } },
+  })
+  await sendCanvas(win, abandonedIntent)
+  await recorded(abandonedRequest.received, 'approval before project switch')
+  await expect(win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`)).toHaveCount(1)
+  await clickOrFail(win.getByRole('button', { name: '返回项目库', exact: true }), '离开有待审批的项目 A')
+  const otherProject = await walk.newProject()
+  expect(otherProject.projectId).not.toBe(projectId)
+  await expect(win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`)).toHaveCount(0)
+  expect((await readProject(win, otherProject.projectId)).payload.generationCanvas?.nodes ?? []).toHaveLength(0)
+  await clickOrFail(win.getByRole('button', { name: '返回项目库', exact: true }), '离开项目 B')
+  await clickOrFail(win.locator(`[data-project-card="true"][data-project-id="${projectId}"]`), '返回项目 A')
+  await openCanvas(win)
+  await expect(fixtureNode).toBeVisible()
+  await expect(win.locator(`${CREATION_PANEL} ${APPROVAL_CARD}`)).toHaveCount(0)
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id)).toContain(fixtureNodeId)
+  walk.report.projectSwitch = { status: 'passed', originalProjectId: projectId, otherProjectId: otherProject.projectId,
+    evidence: ['pending approval -> leave A -> B stays empty -> return A without revived approval or deletion'] }
+  walk.report.projectId = projectId
+  walk.report.projectRoot = projectRoot
+
+  // Same-URL reload really replaces the document. History survives on disk;
+  // the subsequent edit must execute under a newly opened project session.
+  await win.reload({ waitUntil: 'domcontentloaded' })
+  await clickOrFail(win.getByRole('button', { name: '创作', exact: true }), '刷新后打开原项目文稿')
+  await expect(win.locator(DOCUMENT)).toContainText(RESIDENT_APPEND)
+  const reloadAppend = 'ReloadSessionWrite刷新后继续创作。'
+  const reloadRequest = walk.fixture.expectText({
+    label: 'A fresh project session writes after a same-URL reload',
+    match: body => flattenRequestText(body).includes('刷新后请追加一句') && !hasToolResult(body, 'resident-reload-write'),
+    reply: { type: 'tool', id: 'resident-reload-write', name: 'write_script', args: { content: reloadAppend, where: 'end' } },
+  })
+  const reloadFollowup = walk.fixture.expectText({
+    label: 'The fresh session reports the real committed edit',
+    match: body => hasToolResult(body, 'resident-reload-write'),
+    reply: { type: 'text', text: '刷新后已继续追加。' },
+  })
+  await sendResidentIntent(win, '刷新后请追加一句，保留已有内容。')
+  const reloadWire = await recorded(reloadRequest.received, 'post-reload write request')
+  expect(hasToolResult(reloadWire.body, 'resident-receipt-fix-1')).toBe(true)
+  await recorded(reloadFollowup.received, 'post-reload write result')
+  await expect(win.locator(DOCUMENT)).toContainText(reloadAppend)
+  walk.report.reload = { status: 'passed', evidence: ['same URL reload', 'prior tool history restored', 'new write committed'] }
+
   await walk.stopApp()
   ;({ win } = await walk.start())
-  await clickOrFail(win.locator('[data-project-card="true"]').filter({ hasText: project.name }), '冷重启后打开同一项目')
+  await clickOrFail(win.locator(`[data-project-card="true"][data-project-id="${projectId}"]`), '冷重启后打开同一项目')
   await clickOrFail(win.getByRole('button', { name: '创作', exact: true }), '打开 Resident Composer')
   await expect(win.locator(DOCUMENT)).toContainText(RESIDENT_APPEND)
   await expect(win.locator(DOCUMENT)).toContainText(MCP_APPEND)
