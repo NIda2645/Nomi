@@ -18,6 +18,7 @@ import { useDirectorStoreApi } from './DirectorEditorContext'
 import { buildAiScenePrompt, normalizeAiScene, parseAiSceneText, type AiSceneSpec, type NormalizedAiScene } from './model/aiScene'
 import { exportAiScene, type AiSceneTarget, type AiSceneLibraryAsset } from './model/storeAiSceneActions'
 import { readFileAsDataUrl } from './panels/imageFile'
+import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 
 export type AiScenePhase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
 export type AiSceneStatus = { phase: AiScenePhase; message: string; elapsedSeconds: number; streamedChars: number }
@@ -71,17 +72,19 @@ export function useAiSceneBuilder(): { status: AiSceneStatus; run: (description:
   }, [stopTimer, t])
 
   const saveToLibrary = React.useCallback(
-    async (scene: NormalizedAiScene, controller: AbortController): Promise<AiSceneLibraryAsset | undefined> => {
+    async (scene: NormalizedAiScene, controller: AbortController, project: ProjectExecutionContext): Promise<AiSceneLibraryAsset | undefined> => {
       const sceneName = scene.sceneName
       const exported = exportAiScene(scene)
       const file = new File([JSON.stringify(exported)], `${sceneName}.json`, { type: 'application/json' })
       let url: string
       try {
-        url = hostedAssetUrl(await importWorkbenchLocalAssetFile(file, file.name))
-      } catch {
+        // 落进「发起搭场景那一刻」的项目；等模型那段时间换了项目，发布前就被拒，不会落进新项目的素材库。
+        url = hostedAssetUrl(await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: project.binding, assertCurrent: project.assertCurrent }))
+      } catch (error) {
+        if (!isProjectExecutionContextCurrent(project) || isProjectImportCancellation(error)) return
         url = await readFileAsDataUrl(file).catch(() => '')
       }
-      if (!url || controller.signal.aborted || abortRef.current !== controller) return
+      if (!url || controller.signal.aborted || abortRef.current !== controller || !isProjectExecutionContextCurrent(project)) return
       return { name: t('director.ai.libraryName', { name: sceneName }), kind: 'scene', url, folderId: null, sizeBytes: file.size }
     },
     [t],
@@ -95,74 +98,77 @@ export function useAiSceneBuilder(): { status: AiSceneStatus; run: (description:
         return false
       }
       if (abortRef.current) return false
-      const controller = new AbortController()
-      abortRef.current = controller
-      const targetSceneId = store.getState().project.activeSceneId
-      const ownsRequest = () => abortRef.current === controller && !controller.signal.aborted
-      const label = trimmed || t('director.ai.imageOnlyName')
-      let elapsed = 0
-      let chars = 0
-      setStatus({ phase: 'running', message: t('director.ai.building', { name: label }), elapsedSeconds: 0, streamedChars: 0 })
-      timerRef.current = window.setInterval(() => {
-        elapsed += 1
-        setStatus((current) => (current.phase === 'running' ? { ...current, elapsedSeconds: elapsed } : current))
-      }, 1000)
-      try {
-        let spec: AiSceneSpec | null = null
-        const mock = e2eMock()
-        if (mock) {
-          spec = await mock({ prompt: trimmed, images })
-        } else {
-          const brain = await getTextBrain().catch(() => null)
+      // 动作起点签发原项目：模型流式、落素材库、写回导演台都只认它。
+      return withProjectAction(async (project) => {
+        const controller = new AbortController()
+        abortRef.current = controller
+        const targetSceneId = store.getState().project.activeSceneId
+        const ownsRequest = () => abortRef.current === controller && !controller.signal.aborted && isProjectExecutionContextCurrent(project)
+        const label = trimmed || t('director.ai.imageOnlyName')
+        let elapsed = 0
+        let chars = 0
+        setStatus({ phase: 'running', message: t('director.ai.building', { name: label }), elapsedSeconds: 0, streamedChars: 0 })
+        timerRef.current = window.setInterval(() => {
+          elapsed += 1
+          setStatus((current) => (current.phase === 'running' ? { ...current, elapsedSeconds: elapsed } : current))
+        }, 1000)
+        try {
+          let spec: AiSceneSpec | null = null
+          const mock = e2eMock()
+          if (mock) {
+            spec = await mock({ prompt: trimmed, images })
+          } else {
+            const brain = await getTextBrain().catch(() => null)
+            if (!ownsRequest()) return false
+            if (!brain) {
+              setStatus({ phase: 'error', message: t('director.ai.noTextModel'), elapsedSeconds: elapsed, streamedChars: 0 })
+              toast(t('director.ai.noTextModel'), 'warning')
+              return false
+            }
+            let text = ''
+            await runWorkbenchTextTaskStream(
+              brain.vendor,
+              { kind: 'prompt_refine', prompt: buildAiScenePrompt(trimmed, images.length), extras: { modelKey: brain.modelKey, referenceImages: images } },
+              {
+                signal: controller.signal,
+                onDelta: (delta) => {
+                  text += delta
+                  chars = text.length
+                  if (ownsRequest()) setStatus((current) => (current.phase === 'running' ? { ...current, streamedChars: chars } : current))
+                },
+              },
+            )
+            spec = parseAiSceneText(text)
+          }
           if (!ownsRequest()) return false
-          if (!brain) {
-            setStatus({ phase: 'error', message: t('director.ai.noTextModel'), elapsedSeconds: elapsed, streamedChars: 0 })
-            toast(t('director.ai.noTextModel'), 'warning')
+          if (!spec) {
+            setStatus({ phase: 'error', message: t('director.ai.invalidOutput'), elapsedSeconds: elapsed, streamedChars: chars })
+            toast(t('director.ai.invalidOutput'), 'error')
             return false
           }
-          let text = ''
-          await runWorkbenchTextTaskStream(
-            brain.vendor,
-            { kind: 'prompt_refine', prompt: buildAiScenePrompt(trimmed, images.length), extras: { modelKey: brain.modelKey, referenceImages: images } },
-            {
-              signal: controller.signal,
-              onDelta: (delta) => {
-                text += delta
-                chars = text.length
-                if (ownsRequest()) setStatus((current) => (current.phase === 'running' ? { ...current, streamedChars: chars } : current))
-              },
-            },
-          )
-          spec = parseAiSceneText(text)
-        }
-        if (!ownsRequest()) return false
-        if (!spec) {
-          setStatus({ phase: 'error', message: t('director.ai.invalidOutput'), elapsedSeconds: elapsed, streamedChars: chars })
-          toast(t('director.ai.invalidOutput'), 'error')
+          const normalized = normalizeAiScene(spec, t('director.ai.defaultSceneName'))
+          const asset = await saveToLibrary(normalized, controller, project)
+          if (!ownsRequest()) return false
+          const placed = store.getState().materializeAiScene(normalized, target, targetSceneId, asset)
+          setStatus({ phase: 'done', message: t('director.ai.done', { name: normalized.sceneName, count: placed.objectCount }), elapsedSeconds: elapsed, streamedChars: chars })
+          toast(t('director.ai.done', { name: normalized.sceneName, count: placed.objectCount }), 'success')
+          return true
+        } catch (error) {
+          if (!ownsRequest()) return false
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            setStatus({ phase: 'cancelled', message: t('director.ai.cancelled'), elapsedSeconds: elapsed, streamedChars: chars })
+            return false
+          }
+          setStatus({ phase: 'error', message: t('director.ai.failed'), elapsedSeconds: elapsed, streamedChars: chars })
+          toast(t('director.ai.failed'), 'error')
           return false
+        } finally {
+          if (abortRef.current === controller) {
+            stopTimer()
+            abortRef.current = null
+          }
         }
-        const normalized = normalizeAiScene(spec, t('director.ai.defaultSceneName'))
-        const asset = await saveToLibrary(normalized, controller)
-        if (!ownsRequest()) return false
-        const placed = store.getState().materializeAiScene(normalized, target, targetSceneId, asset)
-        setStatus({ phase: 'done', message: t('director.ai.done', { name: normalized.sceneName, count: placed.objectCount }), elapsedSeconds: elapsed, streamedChars: chars })
-        toast(t('director.ai.done', { name: normalized.sceneName, count: placed.objectCount }), 'success')
-        return true
-      } catch (error) {
-        if (!ownsRequest()) return false
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          setStatus({ phase: 'cancelled', message: t('director.ai.cancelled'), elapsedSeconds: elapsed, streamedChars: chars })
-          return false
-        }
-        setStatus({ phase: 'error', message: t('director.ai.failed'), elapsedSeconds: elapsed, streamedChars: chars })
-        toast(t('director.ai.failed'), 'error')
-        return false
-      } finally {
-        if (abortRef.current === controller) {
-          stopTimer()
-          abortRef.current = null
-        }
-      }
+      }, async () => false)
     },
     [saveToLibrary, stopTimer, store, t],
   )
