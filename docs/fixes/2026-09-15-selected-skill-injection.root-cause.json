@@ -28,13 +28,13 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneDesktopRuntime.ts",
-      "line": 108,
+      "line": 105,
       "symbol": "buildSelectedSkillPrompt"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneDesktopRuntime.ts",
-      "line": 187,
+      "line": 183,
       "symbol": "buildSelectedSkillPrompt"
     },
     {
