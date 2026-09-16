@@ -56,11 +56,14 @@
 | 浏览器浮层/弹窗（其它窗口）自报 projectId、读 localStorage「上次项目」 | 已修，未新建 owner。`windowProjectCapture` 与截图热键共用主进程签发：导入、提示词截图、模板设置、素材导入与删文件均按父窗口已提交项目派生、随之撤销、无父会话即拒；浮层显示项目由主进程随 config 推送 | 红→绿：`windowProjectCapture.test.ts`（真实 registry，A→B→A）、`assetsIpcSession.test.ts` 子窗口两例、`browserPromptExtractionSettings.test.ts` |
 | `assetUploadApi.resolveProjectId` 兜底 | 已删；`UploadWorkbenchAssetMeta` 绑定与断言必填，typecheck 逼出全部调用点 | 编译半边 `@ts-expect-error`（红 `/tmp/nomi-pr802-p1-1b-test-types-red.log`） |
 | 结构：读取器仍可被重新引用 | `src/desktop/activeProject.ts`、`getActiveWorkbenchProjectId`、`getCanvasEventsProjectId`、`activeTaskProjectFallback` 删除。door-map `ccbc0e45d` 106 处（renderer 99）→ 0；剩 14 处显示/传输读逐条写理由入棘轮 | `projectActionIssuance.contract.test.ts` 读取器棘轮（在 HEAD 源码上红，见 1b 红日志） |
+| `check:controls`「点了失败但用户看不到」：画布导入钮/抽首尾帧钮调用的命令在 1a 改成 `withProjectAction(async …)` 后被静态判定为会 reject（本分支 `105693815` 引入，`50223265c` 通过） | 已修。两个命令先同步签发、无项目即反馈，异步部分保持原有 catch，命令本身不再把拒绝丢给控件 | `scripts/check-control-contract.test.mjs` 在 `ccbc0e45d` 红（`/tmp/nomi-pr802-p1-1b-controls-base.log`）→ 绿（`/tmp/nomi-pr802-p1-1b-runner-green.log`） |
+| `check:vocabularies`：新增 `'store' \| 'disk' \| 'missing'` 投递结果词表 | 不新增词表：`deliverRunOutcome` 改为返回「是否落进正打开的原项目画布」布尔值，调用方只需要这一点 | `check:vocabularies` 通过 |
 | 门岗缺口：删掉的高风险文件无法被合同覆盖 | `root-cause-contracts.mjs` 允许在 `legacy_paths.removed_paths` 声明删除；未声明照旧红 | `check-root-cause-contracts.node-test.mjs` 新例先红 `/tmp/nomi-pr802-p1-1b-rcc-checker-red.log` 后绿 |
 
 ### 仍未解决（需拍板或第二段）
 
 - 子窗口的只读素材列表（`nomi:assets:list`）与主窗口显式项目 IO 通道仍接受 projectId（读与后台 IO 不是授权）；只有子窗口写入绑定父会话。
+- `check:asset-evidence` 报 `electron/assets/assetsIpc.ts` 远程导入缺 `sourceEvidence`：在 `50223265c`（本分支 1a 提交前）已红，非本轮引入，未处理（需要确认远程导入的来源取证归属）。
 - `electron/capabilityCore/timelineTransportAdapters.test.ts`「fails closed on injected, nested, or operation-mismatched renderer results」在本分支提交前（`50223265c`）已红，非本轮引入，未处理。
 - 真实 Electron 走查（拖入/粘贴/截图热键/浮层导入/后台生成轮询中切项目、resident 旅程）属第二段，本段未跑。
 

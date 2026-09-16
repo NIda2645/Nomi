@@ -1269,14 +1269,14 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
-      "line": 387,
-      "symbol": "importLocalMediaFilesToGenerationCanvas"
+      "line": 388,
+      "symbol": "withProjectAction"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
-      "line": 387,
-      "symbol": "withProjectAction"
+      "line": 390,
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
     },
     {
       "kind": "write",
@@ -1833,7 +1833,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
-      "line": 31,
+      "line": 35,
       "symbol": "isProjectImportCancellation"
     },
     {
@@ -2331,7 +2331,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
-      "line": 21,
+      "line": 19,
       "symbol": "isProjectBindingOpen"
     },
     {
