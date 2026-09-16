@@ -5,7 +5,7 @@ import {
 } from "../shared/agentCapabilities/documentWrite";
 import type { DocumentAnchorRef, PreconditionSet, TargetRef } from "../shared/capabilityTargeting";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererDocumentWriteVerifiedInvocationFactory,
   type VerifiedCapabilityInvocation,
@@ -49,13 +49,13 @@ function documentTarget(target: TargetRef): Extract<TargetRef, { kind: "document
 
 export function createPiDocumentWriteTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiDocumentWriteTransportAdapter {
   const factory = createRendererDocumentWriteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   let disposed = false;

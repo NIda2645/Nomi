@@ -8,9 +8,9 @@ import { laneErrorCodeOf } from '../shared/agentLane/laneErrorCodes'
 import type { LaneDesktopResult, LaneRestoredDesktopInput } from '../shared/agentLane/laneDesktopContracts'
 
 export interface LaneIpcDependencies {
-  /** Validate project identity, resolve credentials in main, and capture the committed surface. */
+  /** Open the main-issued window/project session and resolve credentials in main. */
   openWorkspace(event: IpcMainInvokeEvent, request: unknown): Promise<LaneWorkspaceHandle>
-  /** Revalidate the committed project before every operation, including approvals and cancellation. */
+  /** Revalidate the stable project session before every operation, including approvals and cancellation. */
   validate(event: IpcMainInvokeEvent): void
   updatePolicy(event: IpcMainInvokeEvent, policy: unknown, workspace: LaneWorkspaceHandle): void
   configure(event: IpcMainInvokeEvent, request: unknown, workspace: LaneWorkspaceHandle): Promise<void>

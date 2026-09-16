@@ -46,10 +46,9 @@ import {
 import type { DocumentAnchorRef, PreconditionSet, TargetRef } from "../shared/capabilityTargeting";
 import {
   assertCanvasReadSurfaceRegistry,
-  SurfacePortError,
   type CanvasReadSurfaceRegistry,
-  type CapturedCanvasReadPort,
-  type SurfacePortBinding,
+  type ProjectSurfaceSession,
+  type VerifiedProjectSurfaceSession,
 } from "./canvasReadSurfaceRegistry";
 import {
   assertCapturedCanvasReadSnapshotRegistry,
@@ -82,39 +81,15 @@ import {
 } from "./verifiedCapabilityInvocationRuntime";
 
 function rendererEvidence(
-  binding: SurfacePortBinding,
+  session: VerifiedProjectSurfaceSession,
   caller: Extract<VerifiedCaller, { kind: "embedded-agent" }>,
 ): RendererAuthorityEvidence {
   return Object.freeze({
-    binding: binding.binding,
-    caller,
-    authorityRef: `surface-port-v1:${nonEmptyString(binding.bindingId)}`,
-    bindingId: nonEmptyString(binding.bindingId),
-    portRevision: binding.portRevision,
-    surfaceInstanceId: nonEmptyString(binding.surfaceInstanceId),
+    binding: session.binding, caller,
+    authorityRef: `project-session-v1:${session.sessionId}`,
+    sessionId: session.sessionId,
+    canonicalRootDigest: session.canonicalRootDigest,
   });
-}
-
-/** Write revalidate must ask the live committed surface, not the prepare-time token. */
-async function liveRendererWriteEvidence(
-  registry: CanvasReadSurfaceRegistry,
-  caller: Extract<VerifiedCaller, { kind: "embedded-agent" }>,
-): Promise<RendererAuthorityEvidence> {
-  const selection = registry.getCommittedProjectSelection();
-  const captured = selection
-    ? registry.captureCommittedCanvasReadPort({
-        binding: {
-          projectId: selection.projectId,
-          immutableProjectUuid: selection.immutableProjectUuid,
-          projectGeneration: selection.projectGeneration,
-        },
-        canonicalRootDigest: selection.canonicalRootDigest,
-      })
-    : null;
-  if (!captured) throw new SurfacePortError("surface_port_unavailable");
-  const dispatch = registry.resolveCapturedCanvasReadPort(captured);
-  const binding = await registry.assertCanvasReadPortReply(captured, dispatch.binding);
-  return rendererEvidence(binding, caller);
 }
 
 export type RendererCanvasReadVerifiedInvocationFactory = Readonly<{
@@ -124,36 +99,32 @@ export type RendererCanvasReadVerifiedInvocationFactory = Readonly<{
 export function createRendererCanvasReadVerifiedInvocationFactory(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
   }>,
 ): RendererCanvasReadVerifiedInvocationFactory {
   try {
     assertCanvasReadSurfaceRegistry(input.registry);
-    input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+    input.registry.resolveProjectSession(input.session);
   } catch {
     throw new CapabilityInvocationError("capability_authority_invalid");
   }
   const requestId = nonEmptyString(input.requestId);
   const registry = input.registry;
-  const capturedPort = input.capturedPort;
+  const session = input.session;
 
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
       const toolCallId = nonEmptyString(toolCallIdValue);
       const semanticInput = parseCanonicalInput(semanticValue);
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => {
-        const dispatch = registry.resolveCapturedCanvasReadPort(capturedPort);
-        const binding = await registry.assertCanvasReadPortReply(capturedPort, dispatch.binding);
-        return rendererEvidence(binding, caller);
-      };
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await registry.verifyProjectSession(session), caller);
       const evidence = await verify();
       return mintCanvasReadInvocation({
         semanticInput,
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "surface", capturedPort }),
+        executionTarget: Object.freeze({ kind: "surface", session }),
       });
     },
   });
@@ -219,34 +190,30 @@ export type RendererDocumentReadVerifiedInvocationFactory = Readonly<{
   ): Promise<VerifiedCapabilityInvocation<DocumentReadInput, Readonly<{ kind: "document"; documentId: string }>>>;
 }>;
 
-/** Main-issued document read invocation over the same captured renderer owner as canvas.read. */
+/** Main-issued document read invocation over the stable project session shared with canvas.read. */
 export function createRendererDocumentReadVerifiedInvocationFactory(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
   }>,
 ): RendererDocumentReadVerifiedInvocationFactory {
   try {
     assertCanvasReadSurfaceRegistry(input.registry);
-    input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+    input.registry.resolveProjectSession(input.session);
   } catch {
     throw new CapabilityInvocationError("capability_authority_invalid");
   }
   const requestId = nonEmptyString(input.requestId);
   const registry = input.registry;
-  const capturedPort = input.capturedPort;
+  const session = input.session;
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, documentId: documentIdValue, input: semanticValue }) {
       const toolCallId = nonEmptyString(toolCallIdValue);
       const documentId = nonEmptyString(documentIdValue);
       const semanticInput = documentReadSemanticInputSchema.parse(semanticValue);
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => {
-        const dispatch = registry.resolveCapturedCanvasReadPort(capturedPort);
-        const binding = await registry.assertCanvasReadPortReply(capturedPort, dispatch.binding);
-        return rendererEvidence(binding, caller);
-      };
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await registry.verifyProjectSession(session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: DOCUMENT_READ_CAPABILITY,
@@ -255,7 +222,7 @@ export function createRendererDocumentReadVerifiedInvocationFactory(
         evidence,
         revalidate: verify,
         target: Object.freeze({ kind: "document" as const, documentId }),
-        executionTarget: Object.freeze({ kind: "document-surface" as const, capturedPort, documentId }),
+        executionTarget: Object.freeze({ kind: "document-surface" as const, session, documentId }),
       });
     },
   });
@@ -280,23 +247,23 @@ export type RendererDocumentWriteVerifiedInvocationFactory = Readonly<{
   >;
 }>;
 
-/** Main-issued reversible document write invocation over one captured Surface owner. */
+/** Main-issued reversible document write invocation over one stable project session. */
 export function createRendererDocumentWriteVerifiedInvocationFactory(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
   }>,
 ): RendererDocumentWriteVerifiedInvocationFactory {
   try {
     assertCanvasReadSurfaceRegistry(input.registry);
-    input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+    input.registry.resolveProjectSession(input.session);
   } catch {
     throw new CapabilityInvocationError("capability_authority_invalid");
   }
   const requestId = nonEmptyString(input.requestId);
   const registry = input.registry;
-  const capturedPort = input.capturedPort;
+  const session = input.session;
   return Object.freeze({
     async mint({
       toolCallId: toolCallIdValue,
@@ -312,7 +279,7 @@ export function createRendererDocumentWriteVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => liveRendererWriteEvidence(registry, caller);
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await registry.verifyProjectSession(session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: DOCUMENT_WRITE_CAPABILITY,
@@ -322,7 +289,7 @@ export function createRendererDocumentWriteVerifiedInvocationFactory(
         revalidate: verify,
         preconditions,
         target: Object.freeze({ kind: "document" as const, documentId, anchor: deepFreeze(structuredClone(anchor)) }),
-        executionTarget: Object.freeze({ kind: "document-write-surface" as const, capturedPort, documentId }),
+        executionTarget: Object.freeze({ kind: "document-write-surface" as const, session, documentId }),
       });
     },
   });
@@ -342,19 +309,19 @@ export type RendererCanvasWriteVerifiedInvocationFactory = Readonly<{
 export function createRendererCanvasWriteVerifiedInvocationFactory(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
   }>,
 ): RendererCanvasWriteVerifiedInvocationFactory {
   try {
     assertCanvasReadSurfaceRegistry(input.registry);
-    input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+    input.registry.resolveProjectSession(input.session);
   } catch {
     throw new CapabilityInvocationError("capability_authority_invalid");
   }
   const requestId = nonEmptyString(input.requestId);
   const registry = input.registry;
-  const capturedPort = input.capturedPort;
+  const session = input.session;
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue, rawEvidence }) {
       const toolCallId = nonEmptyString(toolCallIdValue);
@@ -366,7 +333,7 @@ export function createRendererCanvasWriteVerifiedInvocationFactory(
       }
       const admission = buildCanvasWriteAdmissionForOperation(rawEvidence, semanticInput);
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => liveRendererWriteEvidence(registry, caller);
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await registry.verifyProjectSession(session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: CANVAS_WRITE_CAPABILITY,
@@ -376,7 +343,7 @@ export function createRendererCanvasWriteVerifiedInvocationFactory(
         revalidate: verify,
         target: admission.target,
         preconditions: admission.preconditions,
-        executionTarget: Object.freeze({ kind: "canvas-write-surface" as const, capturedPort }),
+        executionTarget: Object.freeze({ kind: "canvas-write-surface" as const, session }),
       });
     },
   });
@@ -391,12 +358,12 @@ export type RendererCanvasDeleteVerifiedInvocationFactory = Readonly<{
 export function createRendererCanvasDeleteVerifiedInvocationFactory(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
   }>,
 ): RendererCanvasDeleteVerifiedInvocationFactory {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue, rawEvidence }) {
@@ -409,7 +376,7 @@ export function createRendererCanvasDeleteVerifiedInvocationFactory(
       }
       const admission = buildCanvasDeleteAdmission(rawEvidence, semanticInput);
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => liveRendererWriteEvidence(input.registry, caller);
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: CANVAS_DELETE_CAPABILITY,
@@ -419,7 +386,7 @@ export function createRendererCanvasDeleteVerifiedInvocationFactory(
         revalidate: verify,
         target: admission.target,
         preconditions: admission.preconditions,
-        executionTarget: Object.freeze({ kind: "canvas-write-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "canvas-write-surface" as const, session: input.session }),
       });
     },
   });
@@ -456,10 +423,10 @@ export type RendererTimelineReadVerifiedInvocationFactory = Readonly<{
 }>;
 
 export function createRendererTimelineReadVerifiedInvocationFactory(
-  input: Readonly<{ registry: CanvasReadSurfaceRegistry; capturedPort: CapturedCanvasReadPort; requestId: string }>,
+  input: Readonly<{ registry: CanvasReadSurfaceRegistry; session: ProjectSurfaceSession; requestId: string }>,
 ): RendererTimelineReadVerifiedInvocationFactory {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
@@ -471,11 +438,7 @@ export function createRendererTimelineReadVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => {
-        const dispatch = input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
-        const binding = await input.registry.assertCanvasReadPortReply(input.capturedPort, dispatch.binding);
-        return rendererEvidence(binding, caller);
-      };
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: TIMELINE_READ_CAPABILITY,
@@ -485,7 +448,7 @@ export function createRendererTimelineReadVerifiedInvocationFactory(
         preconditions: timelinePreconditions(semanticInput),
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "timeline-read-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "timeline-read-surface" as const, session: input.session }),
       });
     },
   });
@@ -496,10 +459,10 @@ export type RendererTimelineWriteVerifiedInvocationFactory = Readonly<{
 }>;
 
 export function createRendererTimelineWriteVerifiedInvocationFactory(
-  input: Readonly<{ registry: CanvasReadSurfaceRegistry; capturedPort: CapturedCanvasReadPort; requestId: string }>,
+  input: Readonly<{ registry: CanvasReadSurfaceRegistry; session: ProjectSurfaceSession; requestId: string }>,
 ): RendererTimelineWriteVerifiedInvocationFactory {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
@@ -511,7 +474,7 @@ export function createRendererTimelineWriteVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => liveRendererWriteEvidence(input.registry, caller);
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: TIMELINE_WRITE_CAPABILITY,
@@ -521,7 +484,7 @@ export function createRendererTimelineWriteVerifiedInvocationFactory(
         preconditions: timelinePreconditions(semanticInput),
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "timeline-write-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "timeline-write-surface" as const, session: input.session }),
       });
     },
   });
@@ -550,12 +513,12 @@ function exportPreconditions(input: ExportReadInput | ExportWriteInput): Precond
 }
 
 export function createRendererAssetReadVerifiedInvocationFactory(
-  input: Readonly<{ registry: CanvasReadSurfaceRegistry; capturedPort: CapturedCanvasReadPort; requestId: string }>,
+  input: Readonly<{ registry: CanvasReadSurfaceRegistry; session: ProjectSurfaceSession; requestId: string }>,
 ): Readonly<{
   mint(value: Readonly<{ toolCallId: string; input: unknown }>): Promise<VerifiedCapabilityInvocation<AssetReadInput, AssetTarget>>;
 }> {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
@@ -567,11 +530,7 @@ export function createRendererAssetReadVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => {
-        const dispatch = input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
-        const binding = await input.registry.assertCanvasReadPortReply(input.capturedPort, dispatch.binding);
-        return rendererEvidence(binding, caller);
-      };
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: ASSET_READ_CAPABILITY,
@@ -581,19 +540,19 @@ export function createRendererAssetReadVerifiedInvocationFactory(
         preconditions: EMPTY_PRECONDITIONS,
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "asset-read-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "asset-read-surface" as const, session: input.session }),
       });
     },
   });
 }
 
 export function createRendererExportReadVerifiedInvocationFactory(
-  input: Readonly<{ registry: CanvasReadSurfaceRegistry; capturedPort: CapturedCanvasReadPort; requestId: string }>,
+  input: Readonly<{ registry: CanvasReadSurfaceRegistry; session: ProjectSurfaceSession; requestId: string }>,
 ): Readonly<{
   mint(value: Readonly<{ toolCallId: string; input: unknown }>): Promise<VerifiedCapabilityInvocation<ExportReadInput, ExportTarget>>;
 }> {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
@@ -605,11 +564,7 @@ export function createRendererExportReadVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => {
-        const dispatch = input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
-        const binding = await input.registry.assertCanvasReadPortReply(input.capturedPort, dispatch.binding);
-        return rendererEvidence(binding, caller);
-      };
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: EXPORT_READ_CAPABILITY,
@@ -619,19 +574,19 @@ export function createRendererExportReadVerifiedInvocationFactory(
         preconditions: EMPTY_PRECONDITIONS,
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "export-read-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "export-read-surface" as const, session: input.session }),
       });
     },
   });
 }
 
 export function createRendererExportWriteVerifiedInvocationFactory(
-  input: Readonly<{ registry: CanvasReadSurfaceRegistry; capturedPort: CapturedCanvasReadPort; requestId: string }>,
+  input: Readonly<{ registry: CanvasReadSurfaceRegistry; session: ProjectSurfaceSession; requestId: string }>,
 ): Readonly<{
   mint(value: Readonly<{ toolCallId: string; input: unknown }>): Promise<VerifiedCapabilityInvocation<ExportWriteInput, ExportTarget>>;
 }> {
   assertCanvasReadSurfaceRegistry(input.registry);
-  input.registry.resolveCapturedCanvasReadPort(input.capturedPort);
+  input.registry.resolveProjectSession(input.session);
   const requestId = nonEmptyString(input.requestId);
   return Object.freeze({
     async mint({ toolCallId: toolCallIdValue, input: semanticValue }) {
@@ -643,7 +598,7 @@ export function createRendererExportWriteVerifiedInvocationFactory(
         throw new CapabilityInvocationError("capability_input_invalid");
       }
       const caller = Object.freeze({ kind: "embedded-agent" as const, requestId, toolCallId });
-      const verify = async (): Promise<RendererAuthorityEvidence> => liveRendererWriteEvidence(input.registry, caller);
+      const verify = async (): Promise<RendererAuthorityEvidence> => rendererEvidence(await input.registry.verifyProjectSession(input.session), caller);
       const evidence = await verify();
       return mintCapabilityInvocation({
         capability: EXPORT_WRITE_CAPABILITY,
@@ -653,7 +608,7 @@ export function createRendererExportWriteVerifiedInvocationFactory(
         preconditions: exportPreconditions(semanticInput),
         evidence,
         revalidate: verify,
-        executionTarget: Object.freeze({ kind: "export-write-surface" as const, capturedPort: input.capturedPort }),
+        executionTarget: Object.freeze({ kind: "export-write-surface" as const, session: input.session }),
       });
     },
   });

@@ -5,7 +5,7 @@ import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
 import {
   SurfacePortError,
   type CanvasReadSurfaceRegistry,
-  type CapturedCanvasReadPort,
+  type ProjectSurfaceSession,
 } from "./canvasReadSurfaceRegistry";
 import type {
   CapturedCanvasReadSnapshotPort,
@@ -159,10 +159,10 @@ export function createPiCanvasReadIpcCapture(
         });
       }
       if (admission.surfaceBinding === undefined) return createUnavailablePiCanvasReadTransportAdapter();
-      const capturedPort = input.surfaceCapture.captureCanvasReadPort(event, admission.surfaceBinding);
+      const session = input.surfaceCapture.openBoundProjectSession(event, admission.surfaceBinding);
       return createPiCanvasReadTransportAdapter({
         registry: input.registry,
-        capturedPort,
+        session,
         requestId,
         executor: input.executor,
       });
@@ -173,14 +173,14 @@ export function createPiCanvasReadIpcCapture(
 export function createPiCanvasReadTransportAdapter(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
     executor: Pick<CapabilityExecutorRegistry, "execute">;
   }>,
 ): PiCanvasReadTransportAdapter {
   const factory = createRendererCanvasReadVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   return Object.freeze({

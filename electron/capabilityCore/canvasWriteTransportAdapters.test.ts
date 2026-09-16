@@ -58,7 +58,7 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const capture = vi.fn(async () => structuredClone(rawEvidence));
   const write = vi.fn<CanvasWritePort["write"]>(async ({ input, receiptProposalId }) => {
     const operation = (input as { operation?: string }).operation;
@@ -108,9 +108,9 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
     },
     adapter: createPiCanvasWriteTransportAdapter({
       registry,
-      capturedPort,
+      session,
       requestId: "request-a",
-      port,
+      surfacePortRuntime: { createCanvasWritePort: () => port },
       executor,
     }),
   };

@@ -2,7 +2,7 @@ import { parseSurfacePortFailure, surfacePortFailureAdvice } from '../shared/sur
 import { committedProjectAgentReceiptMatchesApproval } from '../capabilityCore/projectAgentProposalReceiptCorrelation'
 import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/transportContracts'
 import { randomUUID } from 'node:crypto'
-import type { IpcMainInvokeEvent } from 'electron'
+import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceRegistry'
 import type { ProjectBinding } from '../shared/projectBinding'
 import { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
 import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
@@ -52,12 +52,7 @@ function resultOf(decision: RuntimeToolDecision | null): unknown {
 
 /** Verified Surface adapters own authority. The lane supplies approval and ordering. */
 export function createDesktopLaneTools(input: {
-  event: IpcMainInvokeEvent
-  /**
-   * 当前这条 IPC 的事件。默认仍是打开 lane 那一次；生产侧必须改成「用户刚点发送」
-   * 那一次——对着画面的读写跟的都是那一帧，不是项目打开时冻住的那一帧。
-   */
-  currentEvent?: () => IpcMainInvokeEvent
+  session: ProjectSurfaceSession
   binding: ProjectBinding
   surface: DesktopCanvasReadRuntime
   context(): LaneComposerContext
@@ -74,85 +69,17 @@ export function createDesktopLaneTools(input: {
 }) {
   if (!input.surface.surfacePortRuntime) throw new Error('surface_port_unavailable')
   const surfacePortRuntime = input.surface.surfacePortRuntime
-  const currentEvent = input.currentEvent ?? (() => input.event)
-  const liveShared = () => {
-    const capturedPort = input.surface.surfaceCapture.captureCommittedCanvasReadPort(currentEvent(), input.binding)
-    return { registry: canvasReadSurfaceRuntime.registry, capturedPort,
-      requestId: `lane-${randomUUID()}`, executor: input.surface.executor }
-  }
-  const withLive = async <T extends { dispose(): void }, R>(create: () => T, run: (adapter: T) => Promise<R>): Promise<R> => {
-    const adapter = create()
-    try { return await run(adapter) } finally { adapter.dispose() }
-  }
-  const liveCanvasWrite = () => {
-    const shared = liveShared()
-    return createPiCanvasWriteTransportAdapter({
-      ...shared,
-      port: surfacePortRuntime.createCanvasWritePort(shared.capturedPort),
-    })
-  }
-  const canvasRead = {
-    async tryExecute(call: RuntimeToolCall, signal: AbortSignal) {
-      const adapter = createPiCanvasReadTransportAdapter(liveShared())
-      try { return await adapter.tryExecute(call, signal) } finally { adapter.dispose() }
-    },
-    dispose() {},
-  }
-  const documentRead = {
-    async tryExecute(call: RuntimeToolCall, documentId: string, signal: AbortSignal) {
-      const adapter = createPiDocumentReadTransportAdapter(liveShared())
-      try { return await adapter.tryExecute(call, documentId, signal) } finally { adapter.dispose() }
-    },
-    dispose() {},
-  }
-  const timelineRead = {
-    async tryExecute(call: RuntimeToolCall, signal: AbortSignal) {
-      const adapter = createPiTimelineReadTransportAdapter(liveShared())
-      try { return await adapter.tryExecute(call, signal) } finally { adapter.dispose() }
-    },
-    dispose() {},
-  }
+  const shared = { registry: canvasReadSurfaceRuntime.registry, session: input.session,
+    requestId: `lane-${randomUUID()}`, executor: input.surface.executor }
+  const canvasRead = createPiCanvasReadTransportAdapter(shared)
+  const documentRead = createPiDocumentReadTransportAdapter(shared)
+  const documentWrite = createPiDocumentWriteTransportAdapter(shared)
+  const canvasWrite = createPiCanvasWriteTransportAdapter({ ...shared, surfacePortRuntime })
+  const timelineRead = createPiTimelineReadTransportAdapter(shared)
+  const timelineWrite = createPiTimelineWriteTransportAdapter(shared)
+  const phase4 = createPiPhase4SurfaceTransportAdapter(shared)
   const skillRead = createPiSkillReadTransportAdapter()
   const skillWrite = createPiSkillWriteTransportAdapter({ binding: input.binding })
-  const documentWrite = {
-    async prepare(...args: Parameters<ReturnType<typeof createPiDocumentWriteTransportAdapter>['prepare']>) {
-      return withLive(() => createPiDocumentWriteTransportAdapter(liveShared()), writer => writer.prepare(...args))
-    },
-    async execute(prepared: PreparedDocumentWrite, signal: AbortSignal) {
-      return withLive(() => createPiDocumentWriteTransportAdapter(liveShared()), writer => writer.execute(prepared, signal))
-    },
-    dispose() {},
-  }
-  const timelineWrite = {
-    async prepare(call: RuntimeToolCall, signal: AbortSignal) {
-      return withLive(() => createPiTimelineWriteTransportAdapter(liveShared()), writer => writer.prepare(call, signal))
-    },
-    async execute(...args: Parameters<ReturnType<typeof createPiTimelineWriteTransportAdapter>['execute']>) {
-      return withLive(() => createPiTimelineWriteTransportAdapter(liveShared()), writer => writer.execute(...args))
-    },
-    dispose() {},
-  }
-  const phase4 = {
-    async tryExecuteRead(call: RuntimeToolCall, signal: AbortSignal) {
-      return withLive(() => createPiPhase4SurfaceTransportAdapter(liveShared()), adapter => adapter.tryExecuteRead(call, signal))
-    },
-    async prepareWrite(call: RuntimeToolCall, signal: AbortSignal) {
-      return withLive(() => createPiPhase4SurfaceTransportAdapter(liveShared()), adapter => adapter.prepareWrite(call, signal))
-    },
-    async executeWrite(...args: Parameters<ReturnType<typeof createPiPhase4SurfaceTransportAdapter>['executeWrite']>) {
-      return withLive(() => createPiPhase4SurfaceTransportAdapter(liveShared()), adapter => adapter.executeWrite(...args))
-    },
-    dispose() {},
-  }
-  const canvasWrite = {
-    async prepare(call: RuntimeToolCall, signal: AbortSignal) {
-      return withLive(liveCanvasWrite, writer => writer.prepare(call, signal))
-    },
-    async execute(prepared: PreparedCanvasWrite, approval: CanvasWriteApprovalAuthority, signal: AbortSignal) {
-      return withLive(liveCanvasWrite, writer => writer.execute(prepared, approval, signal))
-    },
-    dispose() {},
-  }
   const preparedDocuments = new Map<string, PreparedDocumentWrite>()
   const preparedCanvases = new Map<string, PreparedCanvasWrite>()
   const approvals = new Map<string, CanvasWriteApprovalAuthority>()

@@ -24,7 +24,7 @@ async function setup() {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const read = vi.fn(async ({ scope }: { scope: "full" | "selection" }) => ({
     text: scope === "full" ? "full draft" : "selected text",
     path: "/private/editor-state",
@@ -34,7 +34,7 @@ async function setup() {
     resolveDocumentReadPort: async () => ({ read }),
   });
   return {
-    adapter: createPiDocumentReadTransportAdapter({ registry, capturedPort, requestId: "request-a", executor }),
+    adapter: createPiDocumentReadTransportAdapter({ registry, session, requestId: "request-a", executor }),
     read,
   };
 }

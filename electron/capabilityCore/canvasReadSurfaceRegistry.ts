@@ -115,7 +115,29 @@ export type VerifiedCanvasReadProjectTarget = Readonly<{
   canonicalRootDigest: string;
 }>;
 
+declare const projectSurfaceSessionBrand: unique symbol;
+/** Main-issued window/project identity. It contains no renderer transport. */
+export type ProjectSurfaceSession = Readonly<{ readonly [projectSurfaceSessionBrand]: never }>;
+export type VerifiedProjectSurfaceSession = Readonly<VerifiedCanvasReadProjectTarget & {
+  sessionId: string;
+  signal: AbortSignal;
+}>;
+
+type ProjectSessionState = {
+  handle: ProjectSurfaceSession;
+  owner: SurfaceOwnerEvidence;
+  descriptor: SurfaceOwnerDescriptor;
+  identity: VerifiedProjectSurfaceSession;
+  controller: AbortController;
+};
+
 export type CanvasReadSurfaceRegistry = Readonly<{
+  openProjectSession(owner: SurfaceOwnerEvidence, binding: ProjectBinding): ProjectSurfaceSession;
+  resolveProjectSession(session: ProjectSurfaceSession): VerifiedProjectSurfaceSession;
+  verifyProjectSession(session: ProjectSurfaceSession): Promise<VerifiedProjectSurfaceSession>;
+  assertProjectSessionOwner(session: ProjectSurfaceSession, owner: SurfaceOwnerEvidence): void;
+  captureProjectSessionPort(session: ProjectSurfaceSession): CapturedCanvasReadPort;
+  revokeProjectSession(session: ProjectSurfaceSession): void;
   suspend(owner: SurfaceOwnerEvidence, input: Readonly<{ surfaceInstanceId: string }>): SurfaceSuspension;
   commitCanvasRead(
     owner: SurfaceOwnerEvidence,
@@ -269,6 +291,8 @@ export function createCanvasReadSurfaceRegistry(
   const issuedSuspensions = new WeakSet<object>();
   const issuedBindings = new WeakSet<object>();
   const captures = new WeakMap<object, CapturedState>();
+  const sessions = new WeakMap<object, ProjectSessionState>();
+  let activeSession: ProjectSessionState | null = null;
   let current: LifecycleState | null = null;
   let lastReleased: ReleasedState | null = null;
   let epoch = 0;
@@ -280,6 +304,9 @@ export function createCanvasReadSurfaceRegistry(
 
   const clearCurrent = (): void => {
     current = null;
+    const previous = activeSession;
+    activeSession = null;
+    previous?.controller.abort();
     publishSelection(null);
   };
 
@@ -322,6 +349,68 @@ export function createCanvasReadSurfaceRegistry(
   };
 
   const registry: CanvasReadSurfaceRegistry = Object.freeze({
+    openProjectSession(owner, binding) {
+      const state = requireCurrentOwner(owner);
+      if (state.status !== "committed" || !state.selection) throw new SurfacePortError("surface_port_suspended");
+      if (!sameVerifiedTarget(state.selection, { binding, canonicalRootDigest: state.selection.canonicalRootDigest })) {
+        throw new SurfacePortError("project_binding_stale");
+      }
+      if (activeSession) {
+        registry.assertProjectSessionOwner(activeSession.handle, owner);
+        return activeSession.handle;
+      }
+      const handle = Object.freeze({}) as ProjectSurfaceSession;
+      const controller = new AbortController();
+      const session: ProjectSessionState = {
+        handle, owner, descriptor: state.ownerDescriptor, controller,
+        identity: Object.freeze({ sessionId: requiredString(randomId()), binding: state.binding!.binding,
+          canonicalRootDigest: state.selection.canonicalRootDigest, signal: controller.signal }),
+      };
+      sessions.set(handle, session);
+      activeSession = session;
+      return handle;
+    },
+    resolveProjectSession(session) {
+      const stored = session && typeof session === "object" ? sessions.get(session) : undefined;
+      if (!stored || stored !== activeSession || stored.controller.signal.aborted) throw new SurfacePortError("project_binding_stale");
+      const state = requireCurrentOwner(stored.owner);
+      if (state.status !== "committed" || !state.selection) throw new SurfacePortError("surface_port_suspended");
+      if (!sameVerifiedTarget(state.selection, stored.identity)) {
+        registry.revokeProjectSession(session);
+        throw new SurfacePortError("project_binding_stale");
+      }
+      return stored.identity;
+    },
+    assertProjectSessionOwner(session, owner) {
+      registry.resolveProjectSession(session);
+      const stored = sessions.get(session)!;
+      if (!sameOwner(stored.descriptor, ownerDescriptor(owner))) throw new SurfacePortError("surface_owner_mismatch");
+    },
+    async verifyProjectSession(session) {
+      const expected = registry.resolveProjectSession(session);
+      let fresh: WorkspaceProjectIdentity;
+      try { fresh = await input.resolveProjectIdentity(expected.binding.projectId); }
+      catch {
+        if (activeSession?.handle === session) clearCurrent();
+        throw new SurfacePortError("project_identity_unavailable");
+      }
+      registry.resolveProjectSession(session);
+      if (!sameProjectSelection({ ...expected.binding, canonicalRootDigest: expected.canonicalRootDigest }, fresh)) {
+        clearCurrent();
+        throw new SurfacePortError("project_binding_stale");
+      }
+      return expected;
+    },
+    captureProjectSessionPort(session) {
+      registry.resolveProjectSession(session);
+      return registry.captureCanvasReadPort(sessions.get(session)!.owner, current!.binding);
+    },
+    revokeProjectSession(session) {
+      const stored = sessions.get(session);
+      if (!stored) throw new SurfacePortError("project_binding_stale");
+      if (activeSession === stored) activeSession = null;
+      stored.controller.abort();
+    },
     suspend(owner, request) {
       const descriptor = ownerDescriptor(owner);
       if (current && !sameOwner(current.ownerDescriptor, descriptor)) {
@@ -413,6 +502,8 @@ export function createCanvasReadSurfaceRegistry(
       state.binding = binding;
       state.selection = selection;
       state.status = "committed";
+      if (activeSession && (!sameOwner(activeSession.descriptor, state.ownerDescriptor)
+        || !sameVerifiedTarget(selection, activeSession.identity))) registry.revokeProjectSession(activeSession.handle);
       publishSelection(state.selection);
       return binding;
     },
@@ -439,11 +530,13 @@ export function createCanvasReadSurfaceRegistry(
         ownerDescriptor: state.ownerDescriptor,
         authority,
       });
+      if (activeSession) registry.revokeProjectSession(activeSession.handle);
       clearCurrent();
     },
 
     invalidateOwner(owner) {
       const descriptor = input.ownerAuthority.resolve(owner);
+      if (activeSession && sameOwner(activeSession.descriptor, descriptor)) registry.revokeProjectSession(activeSession.handle);
       if (current && sameOwner(current.ownerDescriptor, descriptor)) clearCurrent();
       if (lastReleased && sameOwner(lastReleased.ownerDescriptor, descriptor)) lastReleased = null;
     },

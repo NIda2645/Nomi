@@ -14,25 +14,12 @@ import {
   createCanvasReadPortResolver,
   type DiskCanvasReadPortDeps,
 } from "./canvasReadPortResolver";
-import { SurfacePortError, type CanvasReadSurfaceRegistry } from "./canvasReadSurfaceRegistry";
-import type { ProjectBinding } from "../shared/projectBinding";
+import { type CanvasReadSurfaceRegistry } from "./canvasReadSurfaceRegistry";
 import type { CapturedCanvasReadSnapshotRegistry } from './canvasReadCapturedSnapshotRegistry'
 import {
   createCanvasReadSurfacePortRuntime,
   type CanvasReadSurfacePortRuntime,
 } from "./canvasReadSurfacePort";
-
-function liveCapturedWritePort(registry: CanvasReadSurfaceRegistry, binding: ProjectBinding) {
-  const selection = registry.getCommittedProjectSelection();
-  const captured = selection
-    ? registry.captureCommittedCanvasReadPort({
-        binding,
-        canonicalRootDigest: selection.canonicalRootDigest,
-      })
-    : null;
-  if (!captured) throw new SurfacePortError("surface_port_unavailable");
-  return captured;
-}
 
 export type CanvasReadExecutionRuntime = Readonly<{
   executor: CapabilityExecutorRegistry;
@@ -80,13 +67,13 @@ export function registerMainCanvasReadExecutionRuntime(input: Readonly<{
       resolveDocumentReadPort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "document-surface") throw new Error("capability_unsupported");
-        return surfacePortRuntime.createDocumentReadPort(target.capturedPort, target.documentId);
+        return surfacePortRuntime.createDocumentReadPort(input.surfaceRegistry.captureProjectSessionPort(target.session), target.documentId);
       },
       resolveDocumentWritePort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "document-write-surface") throw new Error("capability_unsupported");
         return surfacePortRuntime.createDocumentWritePort(
-          liveCapturedWritePort(input.surfaceRegistry, invocation.binding),
+          input.surfaceRegistry.captureProjectSessionPort(target.session),
           target.documentId,
         );
       },
@@ -94,36 +81,36 @@ export function registerMainCanvasReadExecutionRuntime(input: Readonly<{
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "canvas-write-surface") throw new Error("capability_unsupported");
         return surfacePortRuntime.createCanvasWritePort(
-          liveCapturedWritePort(input.surfaceRegistry, invocation.binding),
+          input.surfaceRegistry.captureProjectSessionPort(target.session),
         );
       },
       resolveAssetReadPort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "asset-read-surface") throw new Error("capability_unsupported");
-        return surfacePortRuntime.createAssetReadPort(target.capturedPort);
+        return surfacePortRuntime.createAssetReadPort(input.surfaceRegistry.captureProjectSessionPort(target.session));
       },
       resolveExportReadPort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "export-read-surface") throw new Error("capability_unsupported");
-        return surfacePortRuntime.createExportReadPort(target.capturedPort);
+        return surfacePortRuntime.createExportReadPort(input.surfaceRegistry.captureProjectSessionPort(target.session));
       },
       resolveExportWritePort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "export-write-surface") throw new Error("capability_unsupported");
         return surfacePortRuntime.createExportWritePort(
-          liveCapturedWritePort(input.surfaceRegistry, invocation.binding),
+          input.surfaceRegistry.captureProjectSessionPort(target.session),
         );
       },
       resolveTimelineReadPort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "timeline-read-surface") throw new Error("capability_unsupported");
-        return surfacePortRuntime.createTimelineReadPort(target.capturedPort);
+        return surfacePortRuntime.createTimelineReadPort(input.surfaceRegistry.captureProjectSessionPort(target.session));
       },
       resolveTimelineWritePort: async (invocation) => {
         const target = resolveVerifiedCapabilityExecutionTarget(invocation);
         if (target.kind !== "timeline-write-surface") throw new Error("capability_unsupported");
         return surfacePortRuntime.createTimelineWritePort(
-          liveCapturedWritePort(input.surfaceRegistry, invocation.binding),
+          input.surfaceRegistry.captureProjectSessionPort(target.session),
         );
       },
     }),

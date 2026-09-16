@@ -14,8 +14,9 @@ import {
   type CanvasWriteInput,
 } from "../shared/agentCapabilities/canvasWrite";
 import type { TargetRef } from "../shared/capabilityTargeting";
-import type { CapabilityExecutorRegistry, CanvasWritePort } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
+import type { CanvasReadSurfacePortRuntime } from "./canvasReadSurfacePort";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererCanvasDeleteVerifiedInvocationFactory,
   createRendererCanvasWriteVerifiedInvocationFactory,
@@ -68,20 +69,20 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
 export function createPiCanvasWriteTransportAdapter(
   input: Readonly<{
     registry: CanvasReadSurfaceRegistry;
-    capturedPort: CapturedCanvasReadPort;
+    session: ProjectSurfaceSession;
     requestId: string;
-    port: CanvasWritePort;
+    surfacePortRuntime: Pick<CanvasReadSurfacePortRuntime, "createCanvasWritePort">;
     executor: Pick<CapabilityExecutorRegistry, "execute">;
   }>,
 ): PiCanvasWriteTransportAdapter {
   const factory = createRendererCanvasWriteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   const deleteFactory = createRendererCanvasDeleteVerifiedInvocationFactory({
     registry: input.registry,
-    capturedPort: input.capturedPort,
+    session: input.session,
     requestId: input.requestId,
   });
   let disposed = false;
@@ -116,7 +117,8 @@ export function createPiCanvasWriteTransportAdapter(
       } catch {
         throw Object.assign(new Error("capability_input_invalid"), { code: "capability_input_invalid" });
       }
-      const rawEvidence = await input.port.capture(
+      const port = input.surfacePortRuntime.createCanvasWritePort(input.registry.captureProjectSessionPort(input.session));
+      const rawEvidence = await port.capture(
         operation === "set_node_prompt"
           ? {
               operation,

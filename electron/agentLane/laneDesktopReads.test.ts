@@ -2,7 +2,6 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopCanvasReadRuntime } from '../capabilityCore/canvasReadMainRuntime'
 import type { DocumentReadPort, TimelineReadPort } from '../capabilityCore/capabilityExecutorRegistry'
 import { createMainCapabilityExecutorRegistry } from '../capabilityCore/capabilityExecutorRegistry'
@@ -36,7 +35,7 @@ async function fixture(toolName: string, args: Record<string, unknown>, stale = 
     canonicalRootPath: root, canonicalRootDigest: 'reads-fixture-root' }) })
   const suspension = registry.suspend(owner, { surfaceInstanceId: 'reads-surface' })
   const committed = await registry.commitCanvasRead(owner, { projectId: binding.projectId, suspension })
-  const capturedPort = registry.captureCanvasReadPort(owner, committed)
+  const session = registry.openProjectSession(owner, committed.binding)
   desktopRuntime.registry = registry
   const canvasRead = vi.fn(async () => canvasSource)
   const documentRead = vi.fn<DocumentReadPort['read']>(async ({ scope }) => ({ text: `${scope} fixture text` }))
@@ -48,9 +47,9 @@ async function fixture(toolName: string, args: Record<string, unknown>, stale = 
   })
   const executor = createMainCapabilityExecutorRegistry({ resolveCanvasReadPort: async () => ({ read: canvasRead }),
     resolveDocumentReadPort: async () => ({ read: documentRead }), resolveTimelineReadPort: async () => ({ read: timelineRead }) })
-  const surface = { executor, surfaceCapture: { captureCommittedCanvasReadPort: () => capturedPort },
+  const surface = { executor, surfaceCapture: {},
     surfacePortRuntime: { createCanvasWritePort: () => ({}) } } as unknown as DesktopCanvasReadRuntime
-  const assembly = createDesktopLaneTools({ event: {} as IpcMainInvokeEvent, binding, surface,
+  const assembly = createDesktopLaneTools({ session, binding, surface,
     receipts: createProjectAgentProposalReceiptService({ projectRoot: root, binding }),
     context: () => ({ documentId: 'fixture-document', approvalPolicy: { mode: 'safe-auto', spend: 'confirm' } }),
     // 档位和工具审批读**同一份**快照（生产里两者都来自 `composer.approvalPolicy`）。

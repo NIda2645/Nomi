@@ -24,14 +24,14 @@ async function setup() {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-a" });
   const binding = await registry.commitCanvasRead(owner, { projectId: "project-a", suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const write = vi.fn(async () => ({ applied: true, revision: 2, contentHash: "fnv1a-next" }));
   const executor = createMainCapabilityExecutorRegistry({
     resolveCanvasReadPort: async () => ({ read: async () => ({}) }),
     resolveDocumentWritePort: async () => ({ write }),
   });
   return {
-    adapter: createPiDocumentWriteTransportAdapter({ registry, capturedPort, requestId: "request-a", executor }),
+    adapter: createPiDocumentWriteTransportAdapter({ registry, session, requestId: "request-a", executor }),
     write,
   };
 }

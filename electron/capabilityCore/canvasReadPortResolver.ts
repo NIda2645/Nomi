@@ -97,7 +97,10 @@ export function createCanvasReadPortResolver(
 
   return async (invocation) => {
     const target = resolveVerifiedCanvasReadExecutionTarget(invocation);
-    if (target.kind === "surface") return rendererPort(target.capturedPort);
+    if (target.kind === "surface") {
+      if (!input.surfaceRegistry) throw new SurfacePortError("surface_port_unavailable");
+      return rendererPort(input.surfaceRegistry.captureProjectSessionPort(target.session));
+    }
     if (target.kind === "captured-snapshot") return capturedSnapshotPort(target.capturedPort);
 
     const captured =

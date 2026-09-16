@@ -76,11 +76,11 @@ async function piHarness() {
   });
   const suspension = registry.suspend(owner, { surfaceInstanceId: "surface-1" });
   const binding = await registry.commitCanvasRead(owner, { projectId: IDENTITY.projectId, suspension });
-  const capturedPort = registry.captureCanvasReadPort(owner, binding);
+  const session = registry.openProjectSession(owner, binding.binding);
   const executor = createMainCapabilityExecutorRegistry({
     resolveCanvasReadPort: async () => ({ read: async () => structuredClone(SOURCE) }),
   });
-  return { registry, owner, capturedPort, executor };
+  return { registry, owner, session, executor };
 }
 
 describe("canvas.read transport adapters", () => {
@@ -169,7 +169,7 @@ describe("canvas.read transport adapters", () => {
     const test = await piHarness();
     const adapter = createPiCanvasReadTransportAdapter({
       registry: test.registry,
-      capturedPort: test.capturedPort,
+      session: test.session,
       requestId: "request-1",
       executor: test.executor,
     });
@@ -218,11 +218,11 @@ describe("canvas.read transport adapters", () => {
     ).resolves.toBeNull();
   });
 
-  it("returns a stable Pi failure code after Surface rotation without raw causes or disk fallback", async () => {
+  it("rejects a suspended project without raw causes or disk fallback", async () => {
     const test = await piHarness();
     const adapter = createPiCanvasReadTransportAdapter({
       registry: test.registry,
-      capturedPort: test.capturedPort,
+      session: test.session,
       requestId: "request-1",
       executor: test.executor,
     });
@@ -239,8 +239,8 @@ describe("canvas.read transport adapters", () => {
       ),
     ).resolves.toEqual({
       ok: false,
-      code: "surface_port_stale",
-      message: "surface_port_stale",
+      code: "surface_port_suspended",
+      message: "surface_port_suspended",
     });
   });
 

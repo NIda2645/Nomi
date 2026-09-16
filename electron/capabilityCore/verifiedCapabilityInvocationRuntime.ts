@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { CANVAS_READ_CAPABILITY, type CanvasReadInput } from "../shared/agentCapabilities/canvasRead";
 import type { PreconditionSet } from "../shared/capabilityTargeting";
 import type { ProjectBinding } from "../shared/projectBinding";
-import type { CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import type { CapturedCanvasReadSnapshotPort } from "./canvasReadCapturedSnapshotRegistry";
 import { ProjectBindingStaleError, type ProjectLeaseV2 } from "./projectLease";
 
@@ -77,9 +77,8 @@ type RendererAuthorityEvidence = Readonly<{
   binding: ProjectBinding;
   caller: Extract<VerifiedCaller, { kind: "embedded-agent" }>;
   authorityRef: string;
-  bindingId: string;
-  portRevision: number;
-  surfaceInstanceId: string;
+  sessionId: string;
+  canonicalRootDigest: string;
 }>;
 
 type CapturedRendererAuthorityEvidence = Readonly<{
@@ -104,20 +103,20 @@ type CapabilityAuthorityEvidence =
   | InternalAuthorityEvidence;
 
 export type VerifiedCanvasReadExecutionTarget =
-  | Readonly<{ kind: "surface"; capturedPort: CapturedCanvasReadPort }>
+  | Readonly<{ kind: "surface"; session: ProjectSurfaceSession }>
   | Readonly<{ kind: "captured-snapshot"; capturedPort: CapturedCanvasReadSnapshotPort }>
   | Readonly<{ kind: "project"; binding: ProjectBinding; canonicalRootDigest: string }>;
 
 export type VerifiedCapabilityExecutionTarget =
   | VerifiedCanvasReadExecutionTarget
-  | Readonly<{ kind: "document-surface"; capturedPort: CapturedCanvasReadPort; documentId: string }>
-  | Readonly<{ kind: "document-write-surface"; capturedPort: CapturedCanvasReadPort; documentId: string }>
-  | Readonly<{ kind: "canvas-write-surface"; capturedPort: CapturedCanvasReadPort }>
-  | Readonly<{ kind: "timeline-read-surface"; capturedPort: CapturedCanvasReadPort }>
-  | Readonly<{ kind: "timeline-write-surface"; capturedPort: CapturedCanvasReadPort }>
-  | Readonly<{ kind: "asset-read-surface"; capturedPort: CapturedCanvasReadPort }>
-  | Readonly<{ kind: "export-read-surface"; capturedPort: CapturedCanvasReadPort }>
-  | Readonly<{ kind: "export-write-surface"; capturedPort: CapturedCanvasReadPort }>;
+  | Readonly<{ kind: "document-surface"; session: ProjectSurfaceSession; documentId: string }>
+  | Readonly<{ kind: "document-write-surface"; session: ProjectSurfaceSession; documentId: string }>
+  | Readonly<{ kind: "canvas-write-surface"; session: ProjectSurfaceSession }>
+  | Readonly<{ kind: "timeline-read-surface"; session: ProjectSurfaceSession }>
+  | Readonly<{ kind: "timeline-write-surface"; session: ProjectSurfaceSession }>
+  | Readonly<{ kind: "asset-read-surface"; session: ProjectSurfaceSession }>
+  | Readonly<{ kind: "export-read-surface"; session: ProjectSurfaceSession }>
+  | Readonly<{ kind: "export-write-surface"; session: ProjectSurfaceSession }>;
 
 type InvocationState = Readonly<{
   evidence: CapabilityAuthorityEvidence;
@@ -199,19 +198,7 @@ function projectBinding(
   });
 }
 
-function isRendererSurfaceEvidence(value: CapabilityAuthorityEvidence): value is RendererAuthorityEvidence {
-  return "bindingId" in value && "portRevision" in value && "surfaceInstanceId" in value;
-}
-
 function sameEvidence(left: CapabilityAuthorityEvidence, right: CapabilityAuthorityEvidence): boolean {
-  if (isRendererSurfaceEvidence(left) && isRendererSurfaceEvidence(right)) {
-    return (
-      left.binding.projectId === right.binding.projectId &&
-      left.binding.immutableProjectUuid === right.binding.immutableProjectUuid &&
-      left.binding.projectGeneration === right.binding.projectGeneration &&
-      stableJson(left.caller) === stableJson(right.caller)
-    );
-  }
   return stableJson(left) === stableJson(right);
 }
 

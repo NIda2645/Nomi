@@ -9,7 +9,7 @@ import {
 } from "../shared/agentCapabilities/timelineWrite";
 import type { TargetRef } from "../shared/capabilityTargeting";
 import type { CapabilityExecutorRegistry } from "./capabilityExecutorRegistry";
-import type { CanvasReadSurfaceRegistry, CapturedCanvasReadPort } from "./canvasReadSurfaceRegistry";
+import type { CanvasReadSurfaceRegistry, ProjectSurfaceSession } from "./canvasReadSurfaceRegistry";
 import {
   createRendererTimelineReadVerifiedInvocationFactory,
   createRendererTimelineWriteVerifiedInvocationFactory,
@@ -53,7 +53,7 @@ export type PiTimelineReadTransportAdapter = Readonly<{
 
 export function createPiTimelineReadTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiTimelineReadTransportAdapter {
@@ -106,7 +106,7 @@ export type PiTimelineWriteTransportAdapter = Readonly<{
 
 export function createPiTimelineWriteTransportAdapter(input: Readonly<{
   registry: CanvasReadSurfaceRegistry;
-  capturedPort: CapturedCanvasReadPort;
+  session: ProjectSurfaceSession;
   requestId: string;
   executor: Pick<CapabilityExecutorRegistry, "execute">;
 }>): PiTimelineWriteTransportAdapter {

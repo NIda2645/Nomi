@@ -10,7 +10,7 @@ import {
 import { assertTrustedSender } from "../ipcSenderGuard";
 import {
   type CanvasReadSurfaceRegistry,
-  type CapturedCanvasReadPort,
+  type ProjectSurfaceSession,
   type SurfaceOwnerAuthorityRuntime,
   type SurfaceOwnerDescriptor,
   type SurfaceOwnerEvidence,
@@ -42,8 +42,9 @@ type NavigationQuarantine = Readonly<{
 
 /** Narrow bridge for other trusted main IPC handlers; it cannot mint owners. */
 export type CanvasReadSurfaceIpcCapture = Readonly<{
-  captureCanvasReadPort(event: IpcMainInvokeEvent, binding: unknown): CapturedCanvasReadPort;
-  captureCommittedCanvasReadPort(event: IpcMainInvokeEvent, binding: ProjectBinding): CapturedCanvasReadPort;
+  openProjectSession(event: IpcMainInvokeEvent, binding: ProjectBinding): ProjectSurfaceSession;
+  openBoundProjectSession(event: IpcMainInvokeEvent, binding: unknown): ProjectSurfaceSession;
+  assertProjectSession(event: IpcMainInvokeEvent, session: ProjectSurfaceSession): void;
   consumeCapturedCanvasReadSnapshot(
     event: IpcMainInvokeEvent,
     handle: unknown,
@@ -56,16 +57,6 @@ function normalizedOrigin(url: string): string {
   try {
     const parsed = new URL(url);
     return parsed.protocol === "file:" ? "file://" : parsed.origin;
-  } catch {
-    return "";
-  }
-}
-
-/** Path+host identity. Query/hash (`?step=`) is the same loaded document. */
-function loadedDocumentKey(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
   } catch {
     return "";
   }
@@ -153,7 +144,6 @@ export function registerCanvasReadSurfaceIpc(
     const frame = event.senderFrame;
     const mainFrame = contents.mainFrame;
     const origin = normalizedOrigin(frame?.url ?? "");
-    const documentKey = loadedDocumentKey(frame?.url ?? "");
     if (
       !frame ||
       !mainFrame ||
@@ -204,16 +194,6 @@ export function registerCanvasReadSurfaceIpc(
     };
     const navigate = (details: WebContentsDidStartNavigationEventParams): void => {
       if (!details.isMainFrame || details.isSameDocument) return;
-      // Linux Chromium can report replaceState(`?step=`) as a cross-document
-      // start. The loaded HTML did not change; tombstoning here leaves the
-      // resident Agent with no committed surface to write the canvas.
-      if (
-        documentKey
-        && typeof details.url === "string"
-        && loadedDocumentKey(details.url) === documentKey
-      ) {
-        return;
-      }
       // The old document stays tombstoned until either a new main document
       // commits or the attempted navigation ends without replacing it. The
       // latter must restore availability for the still-running old document,
@@ -323,30 +303,15 @@ export function registerCanvasReadSurfaceIpc(
   });
 
   return Object.freeze({
-    captureCanvasReadPort(event: IpcMainInvokeEvent, binding: unknown): CapturedCanvasReadPort {
-      const owner = captureOwner(event);
-      const resolved = input.registry.resolveBindingWire(owner, binding);
-      return input.registry.captureCanvasReadPort(owner, resolved);
+    openProjectSession(event, binding) {
+      return input.registry.openProjectSession(captureOwner(event), binding);
     },
-    captureCommittedCanvasReadPort(event: IpcMainInvokeEvent, binding: ProjectBinding): CapturedCanvasReadPort {
+    openBoundProjectSession(event, binding) {
       const owner = captureOwner(event);
-      const selection = input.registry.getCommittedProjectSelection();
-      if (
-        !selection ||
-        selection.projectId !== binding.projectId ||
-        selection.immutableProjectUuid !== binding.immutableProjectUuid ||
-        selection.projectGeneration !== binding.projectGeneration
-      ) throw new SurfacePortError("surface_port_stale");
-      const captured = input.registry.captureCommittedCanvasReadPort({
-        binding,
-        canonicalRootDigest: selection.canonicalRootDigest,
-      });
-      if (!captured) throw new SurfacePortError("surface_port_unavailable");
-      const dispatch = input.registry.resolveCapturedCanvasReadPort(captured);
-      if (dispatch.owner !== input.ownerAuthority.resolve(owner)) {
-        throw new SurfacePortError("surface_owner_mismatch");
-      }
-      return captured;
+      return input.registry.openProjectSession(owner, input.registry.resolveBindingWire(owner, binding).binding);
+    },
+    assertProjectSession(event, session) {
+      input.registry.assertProjectSessionOwner(session, captureOwner(event));
     },
     consumeCapturedCanvasReadSnapshot(event, handle, requestProjectId) {
       const owner = captureOwner(event);

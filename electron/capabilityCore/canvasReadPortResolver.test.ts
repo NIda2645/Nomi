@@ -142,10 +142,10 @@ describe("canvas.read port resolver", () => {
 
   it("never retargets a renderer invocation to disk when its captured port is unavailable", async () => {
     const surface = surfaceHarness();
-    const { captured } = await surface.commit();
+    const { binding } = await surface.commit();
     const invocation = await createRendererCanvasReadVerifiedInvocationFactory({
       registry: surface.registry,
-      capturedPort: captured,
+      session: surface.registry.openProjectSession(surface.owner, binding.binding),
       requestId: "request-1",
     }).mint({ toolCallId: "tool-1", input: {} });
     const readCanvas = vi.fn();

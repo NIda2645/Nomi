@@ -1,0 +1,494 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-project-surface-session",
+  "problem_type": "Long-lived capability owners retain frame lifetime authority",
+  "symptom": "Same-project navigation can invalidate resident Agent tools; global live recapture can lose original window ownership.",
+  "direct_cause": "Adapter constructors and prepared execution targets keep CapturedCanvasReadPort while write revalidation follows global committed selection.",
+  "class_root": "Project session identity and action transport lifetime share one authority type.",
+  "affected_population": [
+    "Resident canvas/document/timeline/assets/export tools across navigation, project changes and renderer replacement"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "electron/agentLane/laneDesktopTools.ts",
+    "electron/agentLane/laneIpc.ts",
+    "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+    "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+    "electron/capabilityCore/canvasReadTransportAdapters.ts",
+    "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+    "electron/capabilityCore/documentReadTransportAdapters.ts",
+    "electron/capabilityCore/documentWriteTransportAdapters.ts",
+    "electron/capabilityCore/timelineTransportAdapters.ts",
+    "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+    "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+    "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+    "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+    "electron/capabilityCore/canvasReadPortResolver.ts",
+    "electron/agentLane/laneProjectSession.ts"
+  ],
+  "entry_points": [
+    "Desktop lane workspace, seven transport adapters and ten invocation factories",
+    "Trusted IPC project artifact publication"
+  ],
+  "internal_only_reason": "Session authority is an application invariant; existing Electron isSameDocument lifecycle events and registry owner identity are retained.",
+  "invariants": [
+    "Long-lived renderer invocation authority is a main-issued owner plus complete ProjectBinding session.",
+    "Action captures never outlive one operation; revoked sessions never revive after A to B to A.",
+    "Snapshot reads retain captured bytes and MCP project reads retain their independent project authority."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 63,
+      "symbol": "LaneIpcDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 66,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 55,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneIpc.ts",
+      "line": 33,
+      "symbol": "LaneIpcDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneProjectSession.ts",
+      "line": 7,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "line": 45,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "line": 46,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "line": 47,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 127,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 135,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 136,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 137,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 138,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 139,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 140,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "line": 362,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "line": 176,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+      "line": 72,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/documentReadTransportAdapters.ts",
+      "line": 28,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/documentWriteTransportAdapters.ts",
+      "line": 52,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "line": 67,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/timelineTransportAdapters.ts",
+      "line": 56,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/timelineTransportAdapters.ts",
+      "line": 109,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 102,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 197,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 254,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 312,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 361,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 426,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 462,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 516,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 550,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "line": 584,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 106,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 112,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 113,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 114,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 115,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 116,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 117,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 118,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 119,
+      "symbol": "ProjectSurfaceSession"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 124,
+      "symbol": "VerifiedCapabilityExecutionTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 226,
+      "symbol": "VerifiedCapabilityExecutionTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 271,
+      "symbol": "VerifiedCapabilityExecutionTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "line": 313,
+      "symbol": "VerifiedCapabilityExecutionTarget"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 74,
+      "symbol": "createPiCanvasReadTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 75,
+      "symbol": "createPiDocumentReadTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 76,
+      "symbol": "createPiDocumentWriteTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 77,
+      "symbol": "createPiCanvasWriteTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 78,
+      "symbol": "createPiTimelineReadTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 79,
+      "symbol": "createPiTimelineWriteTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 80,
+      "symbol": "createPiPhase4SurfaceTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+      "line": 58,
+      "symbol": "createCanvasReadPortResolver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+      "line": 127,
+      "symbol": "createCanvasReadPortResolver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadSurfaceRuntime.ts",
+      "line": 21,
+      "symbol": "createCanvasReadSurfaceRegistry"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "line": 163,
+      "symbol": "createPiCanvasReadTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "line": 402,
+      "symbol": "createDesktopLaneDependencies"
+    }
+  ],
+  "door_reduction": {
+    "before": 58,
+    "after": 58,
+    "why_not": "The census includes typed session references and distinct capability factories. These domain doors remain necessary and converge on one registry session authority; old capture entry calls reduce from 9 to the independent MCP resolver only."
+  },
+  "generality_proof": "All renderer adapter factories and execution targets use the same opaque session. Registry binds owner, project UUID/generation/root and permanent revocation before deriving a per-action capture.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "symbol": "createCanvasReadSurfaceRegistry",
+      "responsibility": "Own stable session issuance, currentness, owner match and permanent revocation."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "entry_point": "createDesktopLaneTools",
+      "disposition": "enforced",
+      "evidence": "All renderer read/write adapters derive from the lane session."
+    },
+    {
+      "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "entry_point": "createPiCanvasReadIpcCapture",
+      "disposition": "enforced",
+      "evidence": "Trusted surface-binding admission is converted to stable owner session while explicit snapshots remain distinct."
+    },
+    {
+      "path": "electron/capabilityCore/canvasReadPortResolver.ts",
+      "entry_point": "createCanvasReadPortResolver",
+      "disposition": "not-affected",
+      "evidence": "MCP project authority keeps live-or-disk behavior and captured snapshot authority retains fixed bytes."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "All renderer domains and future page switches can encounter the same lifetime mismatch.",
+    "same_class_scan": [
+      "door-map CapturedCanvasReadPort: 47 production references",
+      "door-map captureCommittedCanvasReadPort: 9 calls",
+      "Reviewed seven adapters, ten renderer factories, nine live execution target variants and lane lifecycle"
+    ]
+  },
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+    "invariant": "Only a main-issued stable project session may enter a long-lived renderer factory.",
+    "failure_mode": "Forged, wrong-owner, wrong-project and revoked sessions throw typed stale/owner errors before action dispatch.",
+    "exception_policy": "none",
+    "strategy": "Separate opaque session identity from temporary capture type and remove old constructor paths.",
+    "artifacts": [
+      "electron/agentLane/laneDesktopRuntime.ts",
+      "electron/agentLane/laneDesktopTools.ts",
+      "electron/agentLane/laneIpc.ts",
+      "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "electron/capabilityCore/canvasReadSurfaceIpc.ts",
+      "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+      "electron/capabilityCore/documentReadTransportAdapters.ts",
+      "electron/capabilityCore/documentWriteTransportAdapters.ts",
+      "electron/capabilityCore/timelineTransportAdapters.ts",
+      "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+      "electron/capabilityCore/canvasReadPortResolver.ts",
+      "electron/agentLane/laneProjectSession.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/projectSurfaceSession.test.ts",
+    "electron/capabilityCore/canvasReadSurfaceIpc.test.ts",
+    "electron/agentLane/laneDesktopTools.test.ts",
+    "electron/capabilityCore/residentProductionJourney.contract.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/projectSurfaceSession.test.ts",
+    "electron/capabilityCore/canvasReadSurfaceIpc.test.ts",
+    "electron/agentLane/laneDesktopTools.test.ts",
+    "electron/capabilityCore/residentProductionJourney.contract.test.ts"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+    "tests": [
+      "electron/capabilityCore/projectSurfaceSession.test.ts"
+    ]
+  },
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneDesktopTools.ts",
+      "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+      "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts"
+    ],
+    "rationale": "Delete liveShared/withLive/event snapshots, global live recapture and renderer sameEvidence exceptions; no compatibility overload."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency upgrade is needed to separate application session and transport identity; Electron lifecycle events remain unchanged.",
+    "exit_criteria": []
+  },
+  "migration": "In-memory capability handles only. Reload opens a fresh session and restores existing conversation history. No project data migration.",
+  "residual_risks": [
+    "Full Electron and Linux/macOS journey verification runs in parent integration after A+B."
+  ]
+}
