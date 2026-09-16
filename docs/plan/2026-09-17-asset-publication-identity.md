@@ -1,0 +1,9 @@
+# Asset publication identity
+
+Approved PR 802 follow-up, base 22b046e7b. Prior art: [independent review](../research/2026-09-17-pr802/prior-art.md). Owner review found that importer checks precede asynchronous deduplication/native copying; publication resolves the project directory again.
+
+Capture a full project identity and canonical root before asynchronous storage work. Every upload entry captures this context, including direct byte/native callers. Carry it through publication, reuse, and metadata updates. Validate the same root and manifest identity synchronously at the final write boundary; never redirect to a newly resolved root. An optional main-only interaction assertion tightens this mandatory storage invariant and is supplied by the trusted window session at IPC integration. Explicit background project IO survives UI navigation; uncommitted interactive IO is revoked on project replacement.
+
+Remove the importer-only identity check and dynamic target lookup from upload publication. Preserve synchronous generated writes. Deduplicate filesystem publication, not caller authorization: each caller checks its own context before returning a reused result. Metadata cache updates use a checked synchronous atomic rename so cancellation cannot land between check and publication.
+
+Red tests pause actual filesystem lookup, replace identity/root or cancel, then resume and assert zero publication/metadata change; cover byte/native/dedup reuse. Verify all five artifact formats plus unknown-format and disk-capacity rejection through real import IO. Existing dedup and asset-store tests remain required. No migration or deletion of user assets; revert this scoped commit to roll back. External filesystem writers are outside the Electron event-loop transaction; snapshot validation does not claim an OS-wide filesystem lock.

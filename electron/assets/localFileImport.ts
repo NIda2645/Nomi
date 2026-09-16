@@ -22,20 +22,8 @@ import {
 import type { JsonRecord } from "../jsonUtils";
 import { logWarn } from "../logging/logger";
 import { attachStoredAssetPreview } from "./assetPreview";
-import { assertProjectAgentBinding, sameProjectAgentBinding, type ProjectBinding } from "../shared/projectBinding";
-import { ensureWorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
-import { projectDirById } from "../projects/repository";
-
-async function assertImportProjectBinding(raw: JsonRecord, projectId: string): Promise<void> {
-  if (raw.projectBinding === undefined) return;
-  const binding = raw.projectBinding as ProjectBinding;
-  assertProjectAgentBinding(binding);
-  if (binding.projectId !== projectId) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' });
-  const projectRoot = projectDirById(projectId);
-  if (!projectRoot) throw Object.assign(new Error('project_identity_unavailable'), { code: 'project_identity_unavailable' });
-  const identity = await ensureWorkspaceProjectIdentity(projectRoot);
-  if (!sameProjectAgentBinding(binding, identity)) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' });
-}
+import type { ProjectBinding } from "../shared/projectBinding";
+import { captureAssetWriteContext, type AssetWriteContext } from "./assetWriteContext";
 
 function bytesFromPayload(value: unknown): Buffer {
   if (value instanceof ArrayBuffer) return Buffer.from(value);
@@ -44,7 +32,7 @@ function bytesFromPayload(value: unknown): Buffer {
   throw new Error("bytes must be an ArrayBuffer");
 }
 
-type ImportLocalFileOptions = { allowSourcePath?: boolean };
+type ImportLocalFileOptions = { allowSourcePath?: boolean; assertCurrent?: () => void };
 
 /** 准入闸挡下时抛这个：调用方要把 rejection 里的数字讲给用户听，不许退化成一句「过大」。 */
 export class MediaImportRejectedError extends Error {
@@ -86,6 +74,7 @@ async function importNativeSourcePath(
   projectId: string,
   fileName: string,
   contentType: string,
+  context: AssetWriteContext,
 ): Promise<unknown> {
   const stat = await fs.promises.stat(sourcePath);
   if (!stat.isFile()) throw new Error("source file is unavailable");
@@ -109,8 +98,7 @@ async function importNativeSourcePath(
   const storedName = canonicalAssetFileName(fileName, effectiveContentType);
   const baseMeta = { kind: raw.kind || "upload", originalName: raw.fileName || null };
   if (!effectiveContentType.startsWith("video/")) {
-    await assertImportProjectBinding(raw, projectId);
-    return copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta);
+    return copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context);
   }
 
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "nomi-video-native-import-"));
@@ -118,17 +106,17 @@ async function importNativeSourcePath(
     try {
       const transcoded = await transcodeFileToPlayableMp4IfNeeded(sourcePath, storedName, tempDir);
       if (transcoded) {
-        await assertImportProjectBinding(raw, projectId);
+        context.assertCurrent();
         return await copyAssetFile(projectId, transcoded.outputPath, playableMp4FileName(storedName), "video/mp4", {
           ...baseMeta,
           playbackNormalizedFrom: transcoded.reason,
-        });
+        }, context);
       }
     } catch (error) {
       logWarn("assets", "video-normalize-failed-import-original-file", undefined, error);
     }
-    await assertImportProjectBinding(raw, projectId);
-    return await copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta);
+    context.assertCurrent();
+    return await copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context);
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
@@ -138,17 +126,17 @@ export async function importLocalFile(payload: unknown, options: ImportLocalFile
   const raw = payload as JsonRecord;
   const projectId = String(raw.projectId || "").trim();
   if (!projectId) throw new Error("projectId is required");
-  await assertImportProjectBinding(raw, projectId);
+  const context = await captureAssetWriteContext(projectId, raw.projectBinding as ProjectBinding | undefined, options.assertCurrent);
   const hintedContentType = String(raw.contentType || "application/octet-stream");
   const sourcePath = options.allowSourcePath ? String(raw.sourcePath || "").trim() : "";
   // 画布预览（图片缩略 / 视频 poster）在落盘边界统一派生：本地导入与生成结果本地化走同一扇门。
-  return attachStoredAssetPreview(await importLocalFileToStore(raw, projectId, sourcePath, hintedContentType));
+  return attachStoredAssetPreview(await importLocalFileToStore(raw, projectId, sourcePath, hintedContentType, context));
 }
 
-async function importLocalFileToStore(raw: JsonRecord, projectId: string, sourcePath: string, hintedContentType: string): Promise<unknown> {
+async function importLocalFileToStore(raw: JsonRecord, projectId: string, sourcePath: string, hintedContentType: string, context: AssetWriteContext): Promise<unknown> {
   if (sourcePath) {
     const rawName = String(raw.fileName || path.basename(sourcePath) || `asset-${Date.now()}.bin`);
-    return importNativeSourcePath(raw, sourcePath, projectId, rawName, hintedContentType);
+    return importNativeSourcePath(raw, sourcePath, projectId, rawName, hintedContentType, context);
   }
   const bytes = bytesFromPayload(raw.bytes);
   const rawFileName = String(raw.fileName || "").trim();
@@ -162,7 +150,7 @@ async function importLocalFileToStore(raw: JsonRecord, projectId: string, source
   const normalized = contentType.startsWith("video/")
     ? await ensurePlayableVideoBytes(bytes, canonicalAssetFileName(fileName, contentType), contentType)
     : null;
-  await assertImportProjectBinding(raw, projectId);
+  context.assertCurrent();
   return writeAsset(
     projectId,
     normalized?.bytes ?? bytes,
@@ -173,6 +161,7 @@ async function importLocalFileToStore(raw: JsonRecord, projectId: string, source
       originalName: raw.fileName || null,
       ...(normalized?.playbackNormalizedFrom ? { playbackNormalizedFrom: normalized.playbackNormalizedFrom } : {}),
     },
+    context,
   );
 }
 

@@ -1,4 +1,5 @@
 import { contentHashForFile, isContentAddressedUpload, persistUploadBytes, persistUploadFile, storedAssetRecord } from './uploadContentStore';
+import { captureAssetWriteContext, type AssetWriteContext } from './assetWriteContext';
 import type { ProjectAgentAttachmentClaim, ProjectAgentAttachmentRef } from '../shared/workbenchInput'
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -170,19 +171,6 @@ function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Ui
   }
 }
 
-async function writeAssetSidecarMetaAsync(absolutePath: string, meta: JsonRecord): Promise<void> {
-  const sidecar: JsonRecord = {};
-  for (const [key, value] of Object.entries(meta)) {
-    if (value !== undefined) sidecar[key] = value;
-  }
-  if (Object.keys(sidecar).length === 0) return;
-  try {
-    await fs.promises.writeFile(`${absolutePath}.meta`, JSON.stringify(sidecar));
-  } catch {
-    /* non-fatal */
-  }
-}
-
 function uniqueAssetPath(
   projectId: string,
   fileName: string,
@@ -226,13 +214,15 @@ export function writeAsset(
   fileName: string,
   contentType: string,
   rawMeta: JsonRecord,
+  context?: AssetWriteContext,
 ): unknown {
   // 唯一 sidecar 写入者之一：capture 族 originalUrl 恒 null 的不变量在此收口（见 assetPaths）。
   const meta = validatedGeneratedMeta(sanitizeAssetMetaForKind(rawMeta), contentType, bytes);
   const actualContentType = effectiveContentType(fileName, contentType, bytes);
   validateStructuredAsset(actualContentType, bytes);
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
-  if (isContentAddressedUpload(meta)) return persistUploadBytes(projectId, bytes, storageFileName, actualContentType, meta);
+  if (isContentAddressedUpload(meta)) return persistUploadBytes(projectId, bytes, storageFileName, actualContentType, meta, context);
+  context?.assertCurrent();
   const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
   fs.writeFileSync(absolutePath, bytes);
   writeAssetSidecarMeta(absolutePath, meta);
@@ -304,7 +294,10 @@ export async function copyAssetFile(
   fileName: string,
   contentType: string,
   rawMeta: JsonRecord,
+  captured?: AssetWriteContext,
 ): Promise<unknown> {
+  const context = captured ?? await captureAssetWriteContext(projectId);
+  context.assertCurrent();
   let meta = sanitizeAssetMetaForKind(rawMeta);
   // 文件头无条件读：声明对不对要靠字节验，只在 octet-stream 时读等于「只在声明已经认输时才查证」。
   const header = await (async () => {
@@ -322,19 +315,27 @@ export async function copyAssetFile(
   if (actualContentType === "model/gltf-binary") validateStructuredAsset(actualContentType, await fs.promises.readFile(sourcePath));
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const stored = isContentAddressedUpload(meta)
-    ? await persistUploadFile(projectId, sourcePath, storageFileName, actualContentType, meta)
-    : await copyNativeFileToBucket(projectId, sourcePath, fileName, storageFileName, actualContentType, meta);
+    ? await persistUploadFile(projectId, sourcePath, storageFileName, actualContentType, meta, context)
+    : await copyNativeFileToBucket(context, sourcePath, fileName, storageFileName, actualContentType, meta);
   // 原生路径拷贝是本地导入 / Finder 粘贴拖入 / MCP import_asset / 跨项目复制的共用门：预览在这里派生一次。
   return attachStoredAssetPreview(stored);
 }
 
-async function copyNativeFileToBucket(projectId: string, sourcePath: string, fileName: string, storageFileName: string, contentType: string, meta: JsonRecord): Promise<unknown> {
-  const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
-  await fs.promises.copyFile(sourcePath, absolutePath);
-  const contentHash = await contentHashForFile(absolutePath);
-  await writeAssetSidecarMetaAsync(absolutePath, meta);
-  broadcastAssetsUpdated(projectId);
-  return storedAssetRecord(projectId, absolutePath, sanitizeName(fileName, "asset"), contentType, meta, contentHash);
+async function copyNativeFileToBucket(context: AssetWriteContext, sourcePath: string, fileName: string, storageFileName: string, contentType: string, meta: JsonRecord): Promise<unknown> {
+  context.assertCurrent();
+  const { projectId } = context;
+  const staging = fs.mkdtempSync(path.join(context.root, '.nomi-upload-'));
+  const snapshot = path.join(staging, 'content');
+  try {
+    await fs.promises.copyFile(sourcePath, snapshot);
+    const contentHash = await contentHashForFile(snapshot);
+    context.assertCurrent();
+    const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta));
+    fs.linkSync(snapshot, absolutePath);
+    writeAssetSidecarMeta(absolutePath, meta);
+    broadcastAssetsUpdated(projectId);
+    return storedAssetRecord(projectId, absolutePath, sanitizeName(fileName, "asset"), contentType, meta, contentHash, context);
+  } finally { await fs.promises.rm(staging, { recursive: true, force: true }); }
 }
 
 /**

@@ -45,7 +45,7 @@
   "doors": [
     { "kind": "write", "path": "electron/assets/mediaTypes.ts", "line": 105, "symbol": "mediaKindFromContentType" },
     { "kind": "write", "path": "electron/assets/assetPreview.ts", "line": 82, "symbol": "mediaKindFromContentType" },
-    { "kind": "write", "path": "electron/assets/localFileImport.ts", "line": 69, "symbol": "mediaKindFromContentType" },
+    { "kind": "write", "path": "electron/assets/localFileImport.ts", "line": 57, "symbol": "mediaKindFromContentType" },
     { "kind": "write", "path": "electron/catalog/assetLocalization.ts", "line": 122, "symbol": "mediaKindFromContentType" },
     { "kind": "write", "path": "electron/catalog/assetLocalization.ts", "line": 157, "symbol": "assetUploadChannelKind" },
     { "kind": "write", "path": "electron/catalog/assetLocalization.ts", "line": 226, "symbol": "assetUploadChannelKind" },

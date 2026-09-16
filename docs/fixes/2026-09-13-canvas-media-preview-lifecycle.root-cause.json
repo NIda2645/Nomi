@@ -112,19 +112,19 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 145,
+      "line": 133,
       "symbol": "attachStoredAssetPreview"
     },
     {
       "kind": "write",
       "path": "electron/assets/projectAssetStore.ts",
-      "line": 328,
+      "line": 321,
       "symbol": "attachStoredAssetPreview"
     },
     {
       "kind": "write",
       "path": "electron/assets/projectAssetStore.ts",
-      "line": 553,
+      "line": 554,
       "symbol": "attachStoredAssetPreview"
     },
     {

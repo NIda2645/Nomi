@@ -58,13 +58,13 @@
     {
       "kind": "read",
       "path": "electron/assets/localFileImport.ts",
-      "line": 66,
+      "line": 54,
       "symbol": "MediaImportSurfaceId"
     },
     {
       "kind": "read",
       "path": "electron/assets/localFileImport.ts",
-      "line": 74,
+      "line": 62,
       "symbol": "MediaImportSurfaceId"
     },
     {
@@ -190,13 +190,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 32,
-      "symbol": "assertProjectAgentBinding"
-    },
-    {
-      "kind": "write",
-      "path": "electron/assets/localFileImport.ts",
-      "line": 70,
+      "line": 58,
       "symbol": "admitMediaImport"
     },
     {
@@ -388,7 +382,7 @@
   ],
   "door_reduction": {
     "before": 57,
-    "after": 58,
+    "after": 57,
     "why_not": "Distinct import transports, attachment and media placements, ordinary/duplicate node projections and binding consumers retain their entry points; admission and geometry ownership are centralized."
   },
   "generality_proof": "Every local file entry converges on importLocalFile admission; artifact IO captures identity before awaits; both Flow projections use toGenerationFlowNode.",

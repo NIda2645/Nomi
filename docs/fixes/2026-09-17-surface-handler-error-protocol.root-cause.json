@@ -42,7 +42,7 @@
   ],
   "doors": [
     {"kind":"read","path":"electron/assets/localFileCopy.ts","line":22,"symbol":"MediaImportRejection"},
-    {"kind":"read","path":"electron/assets/localFileImport.ts","line":51,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/assets/localFileImport.ts","line":39,"symbol":"MediaImportRejection"},
     {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":17,"symbol":"SurfacePortFailure"},
     {"kind":"read","path":"electron/capabilityCore/canvasWriteTransportAdapters.ts","line":43,"symbol":"SURFACE_PORT_WIRE_ERROR_CODES"},
     {"kind":"read","path":"electron/capabilityCore/capabilityExecutorRegistry.ts","line":209,"symbol":"SURFACE_PORT_WIRE_ERROR_CODES"},

@@ -85,7 +85,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 61,
+      "line": 93,
       "symbol": "assertAdmitted"
     },
     {
