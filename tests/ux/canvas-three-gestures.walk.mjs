@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { addCanvasNodeFromRail } from './_canvasRail.mjs'
-import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
+import { expectNodeInsideCanvas, findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
 import { expect, expectAbsent, proveProbe, screenshotSettled } from './_assert.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -67,7 +67,7 @@ try {
   await expect(menu.locator('[data-add-section="generate"] [data-add-intent]').first()).toHaveAttribute('data-add-intent', 'video')
   await menu.locator('[data-add-intent="video"]').click({ button: 'right' })
   await screenshotSettled(win, { path: path.join(shots, '01-menu-customization.png') })
-  await expect.poll(() => win.evaluate(() => window.nomiDesktop.settings.canvasMenuPreference.get())).toMatchObject({ schemaVersion: 1, hiddenIntentIds: ['audio'], orderedIntentIds: ['video', 'image', 'clip', 'text'] })
+  await expect.poll(() => win.evaluate(() => window.nomiDesktop.settings.canvasMenuPreference.get())).toMatchObject({ schemaVersion: 1, hiddenIntentIds: ['audio'], orderedIntentIds: ['video', 'image', 'text', 'clip'] })
   await win.keyboard.press('Escape')
   await expectAbsent(railAudio, { provenBy: railAudioProof })
   menu = await openMenu()
@@ -99,12 +99,19 @@ try {
   await win.mouse.down()
   await win.mouse.move(box.x + box.width / 2 + 170, box.y + 110, { steps: 20 })
   await expect(nodes()).toHaveCount(2)
-  await win.screenshot({ path: path.join(shots, '02-alt-drag-copy.png') })
+  const copy = await nodes().evaluateAll((elements, source) => elements.map((element) => element.dataset.nodeId).find((id) => id !== source), original)
+  const draggedCopyPosition = await position(copy)
+  expect(await position(original)).toEqual(originalPosition)
+  expect(draggedCopyPosition).not.toEqual(originalPosition)
+  // Page.screenshot can inject an OS cursor move while Electron is dragging.
+  // Capture the committed result only after releasing the real gesture.
   await win.mouse.up()
   await win.keyboard.up('Alt')
+  await expect(nodes()).toHaveCount(2)
   expect(await position(original)).toEqual(originalPosition)
-  const copy = await nodes().evaluateAll((elements, source) => elements.map((element) => element.dataset.nodeId).find((id) => id !== source), original)
+  expect(await position(copy)).toEqual(draggedCopyPosition)
   expect(await position(copy)).not.toEqual(originalPosition)
+  await screenshotSettled(win, { path: path.join(shots, '02-alt-drag-copy.png') })
   await win.keyboard.press('Meta+z')
   await expect(nodes()).toHaveCount(1)
   expect(await position(original)).toEqual(originalPosition)
@@ -115,6 +122,17 @@ try {
   await addCanvasNodeFromRail(win, 'text')
   await expect(nodes()).toHaveCount(3)
   await fit()
+  // fitView uses the whole pane, including the overlaid add rail. Place this
+  // fixture's left handle beyond the rail before exercising that handle.
+  const fixtureImage = await node(original).boundingBox()
+  const rail = await win.locator('.generation-canvas-v2-toolbar').boundingBox()
+  const imageShift = Math.max(0, rail.x + rail.width + 40 - fixtureImage.x)
+  const fixtureHit = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${original}"]` })
+  expect(fixtureHit).not.toBeNull()
+  await win.mouse.move(fixtureHit.x, fixtureHit.y)
+  await win.mouse.down()
+  await win.mouse.move(fixtureHit.x + imageShift, fixtureHit.y, { steps: 12 })
+  await win.mouse.up()
   const textIds = await win.locator('.generation-canvas-v2-node[data-kind="text"]').evaluateAll((elements) => elements.map((element) => element.dataset.nodeId))
   const clear = await blank()
   await win.mouse.click(clear.x, clear.y)
@@ -134,7 +152,10 @@ try {
   await win.mouse.down()
   await win.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 20 })
   await expect(win.locator('[data-batch-connection-count="2"]')).toBeVisible()
-  await win.screenshot({ path: path.join(shots, '03-multi-connect-preview.png') })
+  // Native capture leaves the in-progress drag's mouse position untouched.
+  const previewImage = await browserWindow.evaluate(async window => (await window.webContents.capturePage()).toPNG().toString('base64'))
+  fs.writeFileSync(path.join(shots, '03-multi-connect-preview.png'), Buffer.from(previewImage, 'base64'))
+  await expect(win.locator('[data-batch-connection-count="2"]')).toBeVisible()
   await win.mouse.up()
   await expect(win.locator('.generation-canvas-v2__edge')).toHaveCount(2)
   const edgeProof = await proveProbe(win.locator('.generation-canvas-v2__edge'), 'both connected edges render')
@@ -148,11 +169,69 @@ try {
   const inputBox = await inputHandle.boundingBox()
   const selectedBox = await node(textIds[0]).boundingBox()
   await win.mouse.move(inputBox.x + inputBox.width / 2, inputBox.y + inputBox.height / 2)
+  expect(await inputHandle.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+  }), 'reverse gesture starts on the actual handle, not the overlaid rail').toBe(true)
   await win.mouse.down()
   await win.mouse.move(selectedBox.x + selectedBox.width / 2, selectedBox.y + selectedBox.height / 2, { steps: 20 })
   await expect(win.locator('[data-batch-connection-count="2"]')).toBeVisible()
   await win.mouse.up()
   await expect(win.locator('.generation-canvas-v2__edge')).toHaveCount(2)
+  // Select/reproject a measured node, then resize through the framework's real
+  // control. SVG endpoints must follow the browser's new handle measurement.
+  const resizeNode = win.locator(`.react-flow__node[data-id="${original}"]`)
+  const resizeHit = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${original}"]` })
+  expect(resizeHit).not.toBeNull()
+  await win.mouse.click(resizeHit.x, resizeHit.y)
+  await expect(resizeNode).toHaveClass(/selected/)
+  const beforeResize = await resizeNode.boundingBox()
+  const attachedEdges = () => win.evaluate(({ targetId, sourceIds }) => {
+    const rect = id => document.querySelector(`.react-flow__node[data-id="${id}"]`)?.getBoundingClientRect()
+    const target = rect(targetId)
+    if (!target) return []
+    return Array.from(document.querySelectorAll('.generation-canvas-v2__edge-path')).map(edge => {
+      const matrix = edge.getScreenCTM()
+      if (!matrix || edge.getTotalLength() === 0) return null
+      const screenPoint = length => {
+        const point = edge.getPointAtLength(length)
+        return new DOMPoint(point.x, point.y).matrixTransform(matrix)
+      }
+      const start = screenPoint(0)
+      const end = screenPoint(edge.getTotalLength())
+      const sourceId = sourceIds.find(id => {
+        // XYFlow anchors a left edge at the handle's outer left edge. Text
+        // source dots have a 28px hit box; target anchors have a 1px box.
+        const source = document.querySelector(`.react-flow__node[data-id="${id}"] .react-flow__handle.source[data-side="left"]`)?.getBoundingClientRect()
+        return source && Math.hypot(start.x - source.left, start.y - (source.top + source.height / 2)) <= 3
+      })
+      const targetError = Math.hypot(end.x - target.right, end.y - (target.top + target.height / 2))
+      return sourceId && targetError <= 3 ? sourceId : null
+    }).sort()
+  }, { targetId: original, sourceIds: textIds })
+  await expect.poll(attachedEdges).toEqual([...textIds].sort())
+  const resizeHandle = resizeNode.locator('.react-flow__resize-control.handle.bottom.right')
+  await expect(resizeHandle).toBeVisible()
+  const resizeBox = await resizeHandle.boundingBox()
+  await win.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(resizeBox.x + 60, resizeBox.y + 40, { steps: 12 })
+  await win.mouse.up()
+  await expect.poll(async () => (await resizeNode.boundingBox()).width).toBeGreaterThan(beforeResize.width + 20)
+  await expect.poll(async () => (await resizeNode.boundingBox()).height).toBeGreaterThan(beforeResize.height + 20)
+  await expect.poll(attachedEdges).toEqual([...textIds].sort())
+  await screenshotSettled(win, { path: path.join(shots, '05-resized-connected-node.png') })
+  const deselect = await blank()
+  await win.mouse.click(deselect.x, deselect.y)
+  await expect(resizeNode).not.toHaveClass(/selected/)
+  await expectNodeInsideCanvas(win, node(original), 'resized node stays visible after deselection/reprojection')
+  await expect.poll(attachedEdges).toEqual([...textIds].sort())
+  await screenshotSettled(win, { path: path.join(shots, '06-deselected-resized-node.png') })
+  await win.keyboard.press('Meta+z')
+  await expect.poll(async () => Math.abs((await resizeNode.boundingBox()).width - beforeResize.width)).toBeLessThan(3)
+  await expect.poll(async () => Math.abs((await resizeNode.boundingBox()).height - beforeResize.height)).toBeLessThan(3)
+  await expect.poll(attachedEdges).toEqual([...textIds].sort())
+  console.log('PASS: real resize updates both edge endpoints, survives deselection and undoes once')
   await win.keyboard.press('Meta+z')
   await expectAbsent(win.locator('.generation-canvas-v2__edge'), { provenBy: edgeProof })
   console.log('PASS: reverse body drop also previews ×2 and undoes once')
