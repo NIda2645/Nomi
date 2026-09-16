@@ -120,6 +120,12 @@
       "entry_point": "copyAssetFile",
       "disposition": "enforced",
       "evidence": "Native upload branch converges on persistUploadFile"
+    },
+    {
+      "path": "electron/assets/assetsIpc.ts",
+      "entry_point": "nomi:assets:import-remote-url",
+      "disposition": "enforced",
+      "evidence": "Forwarder moved here from main.ts; importRemoteAsset still sanitizes payload.sourceEvidence. check:asset-evidence exemption followed it, and the gate now fails on any exemption that no longer matches its code so a move cannot silently strand one"
     }
   ],
   "recurrence": {
