@@ -10,6 +10,7 @@
 // 的切换；前者的消费者全都活着。混住一个文件的后果是：删 `harness/runtime/` 这个动作
 // 会同时删掉二十多个活文件唯一的类型来源。**搬走活的那一半**，旧文件对它们只留 re-export，
 // 旧通路一行逻辑不改（P1：不是第二份定义，是同一份换了住址）。
+import type { MediaImportRejection } from '../contracts/mediaImportPolicy'
 import type { ZodTypeAny } from 'zod'
 
 export interface RuntimeToolDescriptor {
@@ -26,7 +27,7 @@ export interface RuntimeToolCall {
 
 export type RuntimeToolDecision =
   | { ok: true; result?: unknown; effectiveArgs?: Record<string, unknown>; overridesDelta?: Record<string, unknown>; silent?: boolean; proposalId?: string; approvalScope?: 'once' | 'session' | 'always' }
-  | { ok: false; message?: string; code?: string; denied?: boolean }
+  | { ok: false; message?: string; code?: string; reason?: MediaImportRejection['reason']; denied?: boolean }
 
 export interface RuntimeToolCallRecord extends RuntimeToolCall {
   status: 'ok' | 'denied' | 'cancelled' | 'error'

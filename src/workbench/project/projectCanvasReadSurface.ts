@@ -4,7 +4,7 @@ import type {
   SurfacePortBindingWire,
   SurfaceSuspensionWire,
 } from '../../../electron/shared/surfacePortBinding'
-import { SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { settleSurfacePortHandler, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
 import type { CanvasWriteInput, CanvasWriteOperation } from '../../../electron/shared/agentCapabilities/canvasWrite'
 import type { CanvasDeleteInput } from '../../../electron/shared/agentCapabilities/canvasDelete'
 import type { AssetReadInput } from '../../../electron/shared/agentCapabilities/assetRead'
@@ -399,7 +399,7 @@ export function createProjectCanvasReadSurfaceCoordinator(
     registerCanvasReadSource(readSnapshot) {
       const bridge = input.getSurfaceBridge()
       if (!bridge) return () => undefined
-      return bridge.onCanvasRead(({ binding }) => {
+      return bridge.onCanvasRead(({ binding }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding) {
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
@@ -408,31 +408,31 @@ export function createProjectCanvasReadSurfaceCoordinator(
         // The preload invokes this handler synchronously; the store snapshot is
         // therefore captured against the exact binding before any promise turn.
         return readSnapshot()
-      })
+      }))
     },
     registerDocumentReadSource(readDocument) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !readDocument) return () => undefined
-      return bridge.onDocumentRead(({ binding, documentId, scope }) => {
+      return bridge.onDocumentRead(({ binding, documentId, scope }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
         return readDocument({ documentId, scope })
-      })
+      }))
     },
     registerDocumentWriteSource(writeDocument) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !writeDocument) return () => undefined
-      return bridge.onDocumentWrite(({ binding, signal, documentId, operation, content, target, preconditions }) => {
+      return bridge.onDocumentWrite(({ binding, signal, documentId, operation, content, target, preconditions }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, signal)
         return writeDocument({ documentId, operation, content, target, preconditions, ...guard })
-      })
+      }))
     },
     registerCanvasWriteCaptureSource(capture) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !capture) return () => undefined
-      return bridge.onCanvasWriteCapture(({ binding, operation, input, nodeId }) => {
+      return bridge.onCanvasWriteCapture(({ binding, operation, input, nodeId }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
@@ -442,64 +442,64 @@ export function createProjectCanvasReadSurfaceCoordinator(
           ...(input !== undefined ? { input: input as CanvasWriteInput } : {}),
           ...(nodeId ? { nodeId } : {}),
         })
-      })
+      }))
     },
     registerCanvasWriteExecuteSource(execute) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !execute) return () => undefined
-      return bridge.onCanvasWriteExecute(({ binding, ...request }) => {
+      return bridge.onCanvasWriteExecute(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
         return execute({ ...request, ...guard })
-      })
+      }))
     },
     registerTimelineReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onTimelineRead(({ binding, ...request }) => {
+      return bridge.onTimelineRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
         return read(request)
-      })
+      }))
     },
     registerTimelineWriteSource(write) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !write) return () => undefined
-      return bridge.onTimelineWrite(({ binding, ...request }) => {
+      return bridge.onTimelineWrite(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
         return write({ ...request, ...guard })
-      })
+      }))
     },
     registerAssetReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onAssetRead(({ binding, ...request }) => {
+      return bridge.onAssetRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
         return read(request)
-      })
+      }))
     },
     registerExportReadSource(read) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !read) return () => undefined
-      return bridge.onExportRead(({ binding, ...request }) => {
+      return bridge.onExportRead(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const state = current
         if (!state || !state.binding)
           throw new SurfacePortWireError(state ? 'surface_port_suspended' : 'surface_port_unavailable')
         if (!sameBinding(binding, state.binding)) throw new SurfacePortWireError('surface_port_stale')
         return read(request)
-      })
+      }))
     },
     registerExportWriteSource(write) {
       const bridge = input.getSurfaceBridge()
       if (!bridge || !write) return () => undefined
-      return bridge.onExportWrite(({ binding, ...request }) => {
+      return bridge.onExportWrite(({ binding, ...request }) => settleSurfacePortHandler(() => {
         const guard = requestGuard(binding, request.signal)
         return write({ ...request, ...guard })
-      })
+      }))
     },
   })
   return coordinator

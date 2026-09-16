@@ -1,3 +1,4 @@
+import { SurfacePortWireError, unwrapSurfacePortIpcResponse, type SurfacePortHandlerResult } from '../../../electron/shared/surfacePortBinding'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -46,6 +47,14 @@ function binding(id: string, projectId = 'project-a') {
     portRevision: Number(id),
     nonce: `binding-nonce-${id}`,
   }
+}
+
+// Model the reply consumer for existing ownership assertions; separate tests inspect raw DTOs.
+function decodedHandler<T>(handler: ((request: T) => unknown) | undefined) {
+  return handler ? (request: T): unknown => {
+    const reply = handler(request)
+    return reply instanceof Promise ? reply.then(unwrapSurfacePortIpcResponse) : unwrapSurfacePortIpcResponse(reply)
+  } : undefined
 }
 
 function harness() {
@@ -116,38 +125,38 @@ function harness() {
     })),
     release: vi.fn(async () => ({ released: true as const })),
     onCanvasRead: vi.fn((handler: typeof readHandler) => {
-      readHandler = handler
+      readHandler = decodedHandler(handler)
       return () => {
         readHandler = undefined
       }
     }),
     onDocumentRead: vi.fn((handler: typeof documentReadHandler) => {
-      documentReadHandler = handler
+      documentReadHandler = decodedHandler(handler)
       return () => {
         documentReadHandler = undefined
       }
     }),
     onDocumentWrite: vi.fn((_handler: DocumentWriteHandler) => () => undefined),
     onCanvasWriteCapture: vi.fn((handler: typeof canvasWriteCaptureHandler) => {
-      canvasWriteCaptureHandler = handler
+      canvasWriteCaptureHandler = decodedHandler(handler)
       return () => {
         canvasWriteCaptureHandler = undefined
       }
     }),
     onCanvasWriteExecute: vi.fn((handler: typeof canvasWriteExecuteHandler) => {
-      canvasWriteExecuteHandler = handler
+      canvasWriteExecuteHandler = decodedHandler(handler)
       return () => {
         canvasWriteExecuteHandler = undefined
       }
     }),
     onTimelineRead: vi.fn((handler: typeof timelineReadHandler) => {
-      timelineReadHandler = handler
+      timelineReadHandler = decodedHandler(handler)
       return () => {
         timelineReadHandler = undefined
       }
     }),
     onTimelineWrite: vi.fn((handler: typeof timelineWriteHandler) => {
-      timelineWriteHandler = handler
+      timelineWriteHandler = decodedHandler(handler)
       return () => {
         timelineWriteHandler = undefined
       }
@@ -515,4 +524,29 @@ describe('project canvas-read Surface hydration coordinator', () => {
     expect(write).toHaveBeenCalledTimes(1)
     unregister()
   })
+})
+
+it.each([
+  ['registerCanvasReadSource', 'onCanvasRead'],
+  ['registerDocumentReadSource', 'onDocumentRead'],
+  ['registerDocumentWriteSource', 'onDocumentWrite'],
+  ['registerCanvasWriteCaptureSource', 'onCanvasWriteCapture'],
+  ['registerCanvasWriteExecuteSource', 'onCanvasWriteExecute'],
+  ['registerTimelineReadSource', 'onTimelineRead'],
+  ['registerTimelineWriteSource', 'onTimelineWrite'],
+  ['registerAssetReadSource', 'onAssetRead'],
+  ['registerExportReadSource', 'onExportRead'],
+  ['registerExportWriteSource', 'onExportWrite'],
+] as const)('%s serializes failures in renderer before invoking the bridge', async (register, subscribe) => {
+  const test = harness()
+  const epoch = test.coordinator.beginHydration()
+  const activeBinding = await epoch.commitCanvasRead('project-a')
+  const registerSource = test.coordinator[register] as (source: () => unknown) => () => void
+  registerSource(async () => { throw new SurfacePortWireError('capability_execution_failed', 'no-disk-space') })
+  const callback = (test.bridge[subscribe].mock.calls[0] as unknown as [(request: unknown) => SurfacePortHandlerResult])[0]
+  expect(await callback({
+    binding: activeBinding, signal: new AbortController().signal,
+    operation: 'set_node_prompt', input: {}, target: {}, preconditions: {},
+    documentId: 'doc', scope: 'full',
+  })).toEqual({ ok: false, error: { code: 'capability_execution_failed', reason: 'no-disk-space' } })
 })

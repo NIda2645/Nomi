@@ -25,7 +25,7 @@ import {
   SURFACE_EXPORT_WRITE_REPLY_CHANNEL,
   SURFACE_EXPORT_WRITE_REQUEST_CHANNEL,
   SURFACE_PORT_CANCEL_REQUEST_CHANNEL,
-  type SurfacePortWireErrorCode,
+  parseSurfacePortFailure,
 } from "../shared/surfacePortBinding";
 import {
   CapabilityExecutionError,
@@ -74,27 +74,13 @@ export type CanvasReadSurfacePortRuntime = Readonly<{
   createExportWritePort(captured: CapturedCanvasReadPort): ExportWritePort;
 }>;
 
-const REPLY_ERROR_CODES = new Set<SurfacePortWireErrorCode>([
-  "capability_input_invalid",
-  "capability_cancelled",
-  "capability_target_stale",
-  "project_identity_unavailable",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
-]);
-
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function rendererReplyError(value: unknown): SurfacePortError | null {
-  const code = record(value)?.code;
-  return typeof code === "string" && REPLY_ERROR_CODES.has(code as SurfacePortWireErrorCode)
-    ? new SurfacePortError(code as SurfacePortWireErrorCode)
-    : null;
+  const failure = parseSurfacePortFailure(value);
+  return failure ? new SurfacePortError(failure.code, failure.reason) : null;
 }
 
 function sendableFrame(value: object): SendableFrame {

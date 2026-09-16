@@ -1,3 +1,4 @@
+import { SurfacePortError } from "./canvasReadSurfaceRegistry";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -246,5 +247,18 @@ describe("main-only CapabilityExecutorRegistry", () => {
       write: async () => undefined,
     };
     expect(readPort.read).toBeTypeOf("function");
+  });
+});
+
+it('retains the sanitized failure reason from the verified renderer reply', async () => {
+  const harness = makeHarness();
+  const invocation = await harness.mint();
+  const registry = createMainCapabilityExecutorRegistry({
+    resolveCanvasReadPort: async () => ({
+      read: async () => { throw new SurfacePortError('capability_execution_failed', 'no-disk-space'); },
+    }),
+  });
+  await expect(registry.execute(invocation)).rejects.toMatchObject({
+    code: 'capability_execution_failed', reason: 'no-disk-space',
   });
 });

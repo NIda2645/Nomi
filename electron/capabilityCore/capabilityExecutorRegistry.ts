@@ -1,3 +1,4 @@
+import { SURFACE_PORT_WIRE_ERROR_CODES } from "../shared/surfacePortBinding";
 import {
   ASSET_READ_CAPABILITY,
   assetReadSemanticInputSchema,
@@ -205,19 +206,12 @@ type CapabilityResult<Input> =
 const DEFAULT_TIMEOUT_MS = 15_000;
 const executionOptionsBySignal = new WeakMap<AbortSignal, CapabilityExecuteOptions>();
 const PASSTHROUGH_CODES = new Set([
+  ...SURFACE_PORT_WIRE_ERROR_CODES,
   "capability_invocation_unverified",
   "capability_authority_invalid",
   "capability_policy_stale",
-  "capability_receipt_unresolved",
   "capability_surface_unavailable",
-  "capability_target_stale",
-  "project_identity_unavailable",
-  "project_binding_stale",
   "project_scope_changed",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
   "lease_required",
   "lease_invalid",
   "lease_expired",

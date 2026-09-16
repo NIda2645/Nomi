@@ -1,3 +1,4 @@
+import { surfacePortFailure, SurfacePortWireError, type SurfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
 import { isStoryboardOriginal, overriddenShotFields } from '../model/storyboardOverrides'
 // 提议事务执行器(harness S6-2)——状态机 approved→committed/aborted 的落地层。
 // 一笔提议(plan card 的 create+connect 折叠,或单工具)= 一个 proposalId = 一次原子批量:
@@ -50,7 +51,7 @@ export type ProposalOutcome =
       compensation: CompensationOp[]
       watchNodes: ProposalWatchNode[]
     }
-  | { status: 'aborted'; proposalId: string; failedIndex: number; reason: string; compensatedNodeIds: string[] }
+  | { status: 'aborted'; proposalId: string; failedIndex: number; reason: string; failure: SurfacePortFailure; compensatedNodeIds: string[] }
 
 export type ProposalBatchAdmission = Readonly<{
   proposalId: string
@@ -147,9 +148,10 @@ export async function applyProposalBatch(
     for (const op of ops) if (op.kind === 'delete-nodes') createdNodeIds.push(...op.nodeIds)
     pendingStep = undefined
   }
-  const abort = (reason: string): Extract<ProposalOutcome, { status: 'aborted' }> => {
+  const abort = (error: unknown): Extract<ProposalOutcome, { status: 'aborted' }> => {
     if (aborted) return aborted
-    aborted = { status: 'aborted', proposalId, failedIndex: currentIndex, reason, compensatedNodeIds: [] }
+    const reason = errorMessage(error)
+    aborted = { status: 'aborted', proposalId, failedIndex: currentIndex, reason, failure: surfacePortFailure(error), compensatedNodeIds: [] }
     if (!isSameCanvas()) return aborted
     collectCurrentStep()
     const cleanupContext = { ...ctx, canWrite: undefined, allowDuringCleanup: true }
@@ -179,9 +181,9 @@ export async function applyProposalBatch(
     return aborted
   }
   const abortAndFinalizeReceipt = async (
-    reason: string,
+    error: unknown,
   ): Promise<Extract<ProposalOutcome, { status: 'aborted' }>> => {
-    const outcome = abort(reason)
+    const outcome = abort(error)
     // Compensation happens first. If the durable completion marker fails, the
     // preparing receipt remains recovery evidence and reopen repeats the same
     // idempotent compensation.
@@ -190,7 +192,7 @@ export async function applyProposalBatch(
         await receiptCoordinator.abort(proposalId)
       } catch (error) {
         retainWriteOwnerForRecovery = true
-        throw error
+        throw new SurfacePortWireError('capability_receipt_unresolved')
       }
     }
     return outcome
@@ -206,7 +208,7 @@ export async function applyProposalBatch(
     // acknowledgement is lost. Keep all foreign document writes outside the
     // recovery window until commit/abort disposition is durable.
     if (receiptCoordinator || receiptCommitInFlight) return false
-    abort('Canvas edit superseded the pending proposal')
+    abort(new SurfacePortWireError('capability_cancelled'))
   })
   release = typeof ownership === 'function' ? ownership : await ownership
   try {
@@ -214,14 +216,14 @@ export async function applyProposalBatch(
     try {
       admission?.beforePrepare()
     } catch (error: unknown) {
-      return abort(errorMessage(error))
+      return abort(error)
     }
     if (receiptCoordinator) {
       const before = readGenerationCanvasSnapshot()
       try {
         receiptPrepared = await receiptCoordinator.prepare(proposalId, before)
       } catch (error: unknown) {
-        abort(errorMessage(error))
+        abort(error)
         // A lost preparation acknowledgement can still leave a durable
         // preparing record. Resolve that exact proposal before deciding
         // whether it is safe to retire the recovery evidence.
@@ -230,13 +232,13 @@ export async function applyProposalBatch(
           disposition = await receiptCoordinator.disposition(proposalId)
         } catch {
           retainWriteOwnerForRecovery = true
-          throw error
+          throw new SurfacePortWireError('capability_receipt_unresolved')
         }
-        if (disposition !== 'preparing') throw error
+        if (disposition !== 'preparing') throw new SurfacePortWireError('capability_receipt_unresolved')
         receiptPrepared = true
-        return await abortAndFinalizeReceipt(errorMessage(error))
+        return await abortAndFinalizeReceipt(error)
       }
-      if (!receiptPrepared) return abort('Project Agent proposal receipt preparation is unavailable')
+      if (!receiptPrepared) return abort(new SurfacePortWireError('capability_execution_failed'))
       if (aborted) return await abortAndFinalizeReceipt(currentAbortReason())
     }
     try {
@@ -244,7 +246,7 @@ export async function applyProposalBatch(
       journalStart = getUndoJournalPosition()
       withCanvasGestureContext({ ...ctx, suppressUndoBarriers: false }, () => pushUndoSnapshot())
     } catch (error: unknown) {
-      return await abortAndFinalizeReceipt(errorMessage(error))
+      return await abortAndFinalizeReceipt(error)
     }
     for (let index = 0; index < steps.length; index += 1) {
       currentIndex = index
@@ -256,7 +258,7 @@ export async function applyProposalBatch(
         const result = await applyCanvasToolCall(step.toolName, step.effectiveArgs, ctx, canWrite,
           step.storyboardTarget?.documentId, step.storyboardTarget?.storyboardId ?? undefined)
         if (aborted) return await abortAndFinalizeReceipt(currentAbortReason())
-        if (!isSameCanvas()) return await abortAndFinalizeReceipt('Agent turn abandoned')
+        if (!isSameCanvas()) return await abortAndFinalizeReceipt(new SurfacePortWireError('capability_cancelled'))
         collectCurrentStep()
         if (step.toolName === 'create_canvas_nodes' && result && typeof result === 'object') {
           const record = result as { clientIdToNodeId?: Record<string, string> }
@@ -265,7 +267,7 @@ export async function applyProposalBatch(
         results.push(result)
         assertTurnCanWrite(canWrite)
       } catch (error: unknown) {
-        return await abortAndFinalizeReceipt(errorMessage(error))
+        return await abortAndFinalizeReceipt(error)
       }
     }
 
@@ -318,11 +320,11 @@ export async function applyProposalBatch(
           try {
             disposition = await receiptCoordinator.disposition(proposalId)
           } catch {
-            throw error
+            throw new SurfacePortWireError('capability_receipt_unresolved')
           }
           if (disposition !== 'committed') {
-            if (disposition === 'preparing') return await abortAndFinalizeReceipt(errorMessage(error))
-            throw error
+            if (disposition === 'preparing') return await abortAndFinalizeReceipt(error)
+            throw new SurfacePortWireError('capability_receipt_unresolved')
           }
         }
       } finally {

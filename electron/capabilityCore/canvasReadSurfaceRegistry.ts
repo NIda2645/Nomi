@@ -4,6 +4,7 @@ import {
   SURFACE_PORT_BINDING_VERSION,
   type SurfacePortBindingWire,
   type SurfacePortWireErrorCode,
+  type SurfacePortFailure,
   type SurfaceSuspensionWire,
 } from "../shared/surfacePortBinding";
 import type { ProjectBinding } from "../shared/projectBinding";
@@ -13,7 +14,7 @@ export { SURFACE_PORT_BINDING_VERSION };
 export type SurfacePortErrorCode = SurfacePortWireErrorCode;
 
 export class SurfacePortError extends Error {
-  constructor(readonly code: SurfacePortErrorCode) {
+  constructor(readonly code: SurfacePortErrorCode, readonly reason?: SurfacePortFailure['reason']) {
     super(code);
     this.name = "SurfacePortError";
   }

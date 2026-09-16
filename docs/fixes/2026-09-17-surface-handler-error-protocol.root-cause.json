@@ -1,0 +1,251 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-surface-handler-error-protocol",
+  "problem_type": "Cross-context capability failure identity lost by exception serialization",
+  "symptom": "Resident composer artifact creation reports surface_port_unavailable for a renderer business failure",
+  "direct_cause": "Renderer custom Error crosses contextBridge without code; preload instanceof classifies it as unavailable. Proposal transaction previously discarded the original code.",
+  "class_root": "The cross-context callback contract returns arbitrary values and exceptions instead of a serializable discriminated result, and transaction abort drops failure identity.",
+  "affected_population": [
+    "All ten renderer read/write capability handlers and both canvas proposal execution paths"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneDesktopTools.ts",
+    "electron/capabilityCore/canvasReadSurfacePort.ts",
+    "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+    "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+    "electron/capabilityCore/capabilityExecutorRegistry.ts",
+    "electron/shared/agentCapabilities/transportContracts.ts",
+    "electron/shared/agentLane/laneToolContract.ts",
+    "electron/shared/surfacePortBinding.ts",
+    "electron/surfacePortPreloadBridge.ts",
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+    "src/workbench/generationCanvas/agent/proposalTxn.ts",
+    "src/workbench/project/projectCanvasReadSurface.ts"
+  ],
+  "entry_points": [
+    "Project coordinator registers ten callbacks exposed through the preload bridge",
+    "Canvas create/edit and delete proposal outcomes"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://github.com/electron/electron/blob/main/docs/api/context-bridge.md",
+      "checked_at": "2026-09-16",
+      "purpose": "Error custom fields do not survive contextBridge; ordinary result objects do."
+    }
+  ],
+  "invariants": [
+    "Every renderer callback serializes its failure before crossing contextBridge",
+    "Synchronous snapshot acquisition remains synchronous",
+    "Failure code whitelist has one owner and raw error details never cross the bridge",
+    "Known aborted business work is not reported as unresolved durable receipt"
+  ],
+  "doors": [
+    {"kind":"read","path":"electron/assets/localFileCopy.ts","line":22,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/assets/localFileImport.ts","line":37,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/capabilityCore/canvasReadSurfaceRegistry.ts","line":17,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/capabilityCore/canvasWriteTransportAdapters.ts","line":43,"symbol":"SURFACE_PORT_WIRE_ERROR_CODES"},
+    {"kind":"read","path":"electron/capabilityCore/capabilityExecutorRegistry.ts","line":209,"symbol":"SURFACE_PORT_WIRE_ERROR_CODES"},
+    {"kind":"read","path":"electron/capabilityCore/mcpImportRejectionMessage.ts","line":10,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/shared/agentCapabilities/transportContracts.ts","line":30,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/shared/agentLane/laneToolContract.ts","line":66,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/shared/contracts/mediaImportPolicy.ts","line":129,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":66,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":80,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":97,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":112,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":130,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":145,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":163,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":350,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":353,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":356,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":381,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":384,"symbol":"SURFACE_PORT_WIRE_ERROR_CODES"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":393,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":408,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":432,"symbol":"SurfacePortFailure"},
+    {"kind":"read","path":"src/desktop/bridge.ts","line":408,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/assets/assetLibraryLocalImport.ts","line":11,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/assets/importAudioToLibrary.ts","line":36,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/assets/importAudioToLibrary.ts","line":69,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/assets/mediaImportMessage.ts","line":13,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/assets/mediaImportMessage.ts","line":38,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/generationCanvas/adapters/assetImportAdapter.ts","line":30,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/workbench/generationCanvas/agent/canvasWriteTarget.ts","line":260,"symbol":"applyProposalBatch"},
+    {"kind":"read","path":"src/workbench/generationCanvas/agent/canvasWriteTarget.ts","line":433,"symbol":"applyProposalBatch"},
+    {"kind":"read","path":"src/workbench/generationCanvas/agent/proposalTxn.ts","line":54,"symbol":"SurfacePortFailure"},
+    {"kind":"write","path":"electron/agentLane/laneDesktopTools.ts","line":41,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/agentLane/laneDesktopTools.ts","line":42,"symbol":"surfacePortFailureAdvice"},
+    {"kind":"write","path":"electron/capabilityCore/canvasReadSurfacePort.ts","line":82,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/capabilityCore/canvasWriteTransportAdapters.ts","line":61,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/capabilityCore/canvasWriteTransportAdapters.ts","line":63,"symbol":"surfacePortFailureAdvice"},
+    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":357,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":372,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":377,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":400,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/shared/surfacePortBinding.ts","line":447,"symbol":"parseSurfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":252,"symbol":"unwrapSurfacePortIpcResponse"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":259,"symbol":"unwrapSurfacePortIpcResponse"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":266,"symbol":"unwrapSurfacePortIpcResponse"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":273,"symbol":"unwrapSurfacePortIpcResponse"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":300,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":327,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":357,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":389,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":420,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":450,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":479,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":509,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":539,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"electron/surfacePortPreloadBridge.ts","line":568,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"src/workbench/generationCanvas/agent/canvasWriteTarget.ts","line":232,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"src/workbench/generationCanvas/agent/canvasWriteTarget.ts","line":262,"symbol":"applyProposalBatch"},
+    {"kind":"write","path":"src/workbench/generationCanvas/agent/canvasWriteTarget.ts","line":435,"symbol":"applyProposalBatch"},
+    {"kind":"write","path":"src/workbench/generationCanvas/agent/proposalTxn.ts","line":154,"symbol":"surfacePortFailure"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":402,"symbol":"onCanvasRead"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":402,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":416,"symbol":"onDocumentRead"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":416,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":427,"symbol":"onDocumentWrite"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":427,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":435,"symbol":"onCanvasWriteCapture"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":435,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":450,"symbol":"onCanvasWriteExecute"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":450,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":458,"symbol":"onTimelineRead"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":458,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":469,"symbol":"onTimelineWrite"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":469,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":477,"symbol":"onAssetRead"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":477,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":488,"symbol":"onExportRead"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":488,"symbol":"settleSurfacePortHandler"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":499,"symbol":"onExportWrite"},
+    {"kind":"write","path":"src/workbench/project/projectCanvasReadSurface.ts","line":499,"symbol":"settleSurfacePortHandler"}
+  ],
+  "door_reduction": {
+    "before": 30,
+    "after": 82,
+    "why_not": "The same symbol census found 30 baseline references and 82 after references: added shared codec/type consumers are intentional, not additional mutable owners. Ten channel registrations remain distinct capabilities, two proposal calls are edit/delete, four reverse lifecycle IPC calls remain; all callback/error classification is centralized. MediaImportRejection references in unchanged import/display consumers share only the existing reason vocabulary and are not contextBridge handlers."
+  },
+  "generality_proof": "All ten callback signatures require the same DTO and the only renderer registrar encodes all callbacks; preload and main parse one whitelist. Both proposal consumers preserve the structured failure.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "settleSurfacePortHandler",
+      "responsibility": "Encode typed failures in the originating realm and centralize whitelist parsing"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "applyProposalBatch",
+      "responsibility": "Carry structured failures through compensation and preserve unresolved durable receipt semantics"
+    },
+    {
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "surfacePortFailureAdvice",
+      "responsibility": "Derive actionable model-facing guidance solely from validated reason enums and stable codes."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "entry_point": "registerCanvasWriteExecuteSource",
+      "disposition": "enforced",
+      "evidence": "Wraps callback before registration; preload accepts DTO only"
+    },
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "entry_point": "registerDocumentReadSource",
+      "disposition": "enforced",
+      "evidence": "Same renderer-side encoder and preload parser as canvas writes"
+    },
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "entry_point": "resultOf",
+      "disposition": "enforced",
+      "evidence": "Decision failure retains its validated reason and model-facing recovery guidance; real lane fixture confirms disk rejection is not reported as a stale surface."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every capability and every custom error can reproduce realm/prototype loss.",
+    "same_class_scan": [
+      "door-map onCanvasRead onDocumentRead onDocumentWrite onCanvasWriteCapture onCanvasWriteExecute onTimelineRead onTimelineWrite onAssetRead onExportRead onExportWrite applyProposalBatch unwrapSurfacePortIpcResponse",
+      "Inspected all ten instanceof classification sites plus main REPLY_ERROR_CODES and proposalTxn catch blocks"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/surfacePortBinding.ts",
+    "invariant": "Renderer callback returns only validated success/failure DTO; whitelist is shared.",
+    "failure_mode": "Unknown exceptions become capability_execution_failed without raw text; malformed reply envelopes fail closed.",
+    "exception_policy": "none",
+    "strategy": "Encode before contextBridge drops fields and require that shape in every callback signature.",
+    "artifacts": [
+      "electron/agentLane/laneDesktopTools.ts",
+      "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+      "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "electron/shared/agentCapabilities/transportContracts.ts",
+      "electron/shared/agentLane/laneToolContract.ts",
+      "electron/shared/surfacePortBinding.ts",
+      "electron/surfacePortPreloadBridge.ts",
+      "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+      "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "src/workbench/project/projectCanvasReadSurface.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/laneDesktopTools.test.ts",
+    "electron/capabilityCore/canvasReadSurfacePort.test.ts",
+    "electron/capabilityCore/canvasWriteTransportAdapters.test.ts",
+    "electron/capabilityCore/capabilityExecutorRegistry.test.ts",
+    "electron/shared/surfacePortBinding.test.ts",
+    "electron/surfacePortPreloadBridge.test.ts",
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.test.ts",
+    "src/workbench/generationCanvas/agent/proposalTxn.test.ts",
+    "src/workbench/project/projectCanvasReadSurface.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/surfacePortBinding.test.ts",
+    "electron/surfacePortPreloadBridge.test.ts",
+    "electron/capabilityCore/canvasReadSurfacePort.test.ts",
+    "src/workbench/project/projectCanvasReadSurface.test.ts",
+    "electron/agentLane/laneDesktopTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/surfacePortPreloadBridge.ts",
+      "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "src/workbench/generationCanvas/agent/canvasWriteTarget.ts"
+    ],
+    "rationale": "Remove cross-realm instanceof classification, duplicated reply whitelist, abort code loss and message-based outcome classification."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "Electron 43.4.1",
+    "target": "Current supported Electron with explicit structured callback results",
+    "rationale": "Documented Error transfer semantics require an application protocol, not a version workaround.",
+    "exit_criteria": [
+      "Real Electron contextBridge typed failure regression passes on any dependency upgrade",
+      "All supported platforms preserve the explicit DTO without raw error fields"
+    ]
+  },
+  "migration": "No persisted data changes. Renderer/preload are built together; raw callback return compatibility is deliberately removed.",
+  "residual_risks": [
+    "Real Electron journey and Linux CI are verified by the parent integration task; unit protocol tests alone are not live cross-context evidence."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/surfacePortBinding.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/shared/surfacePortBinding.test.ts",
+      "electron/surfacePortPreloadBridge.test.ts"
+    ],
+    "rationale": "The typed callback result contract owns serialization before the realm boundary and the shared whitelist owns parsing after it."
+  }
+}

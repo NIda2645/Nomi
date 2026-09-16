@@ -472,3 +472,15 @@ describe("dedicated renderer CanvasReadPort", () => {
     await expect(writing).resolves.toEqual(result);
   });
 });
+
+it.each(['capability_receipt_unresolved', 'capability_execution_failed'] as const)(
+  'preserves %s and sanitized domain reason after exact binding validation', async (code) => {
+    const test = setup();
+    const { captured, binding } = await test.capture();
+    const reading = test.runtime.createPort(captured).read({ signal: new AbortController().signal });
+    test.reply({ requestId: 'read-5', binding, error: { code, reason: 'no-disk-space', raw: '/private/token' } });
+    await expect(reading).rejects.toMatchObject({
+      code, reason: code === 'capability_execution_failed' ? 'no-disk-space' : undefined,
+    });
+  },
+);

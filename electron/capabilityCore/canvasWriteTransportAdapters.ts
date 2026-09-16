@@ -1,3 +1,4 @@
+import { parseSurfacePortFailure, surfacePortFailureAdvice, SURFACE_PORT_WIRE_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision, CanvasWriteApprovalAuthority } from "../shared/agentCapabilities/transportContracts";
 import {
   CANVAS_DELETE_CAPABILITY,
@@ -39,23 +40,14 @@ export type PiCanvasWriteTransportAdapter = Readonly<{
 }>;
 
 const PUBLIC_FAILURE_CODES = new Set([
+  ...SURFACE_PORT_WIRE_ERROR_CODES,
   "capability_invocation_unverified",
   "capability_authority_invalid",
-  "capability_input_invalid",
   "capability_policy_stale",
   "capability_output_invalid",
   "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed",
-  "capability_receipt_unresolved",
   "capability_surface_unavailable",
   "capability_unsupported",
-  "capability_target_stale",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
 ]);
 
 const CANVAS_DELETE_TOOL_ALIAS = CANVAS_DELETE_CAPABILITY.aliases.mcp;
@@ -66,7 +58,11 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
       ? (error as { code: string }).code
       : undefined;
   const code = candidate && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  const failure = parseSurfacePortFailure(error);
+  return { ok: false, code,
+    message: failure ? surfacePortFailureAdvice(failure).message : code,
+    ...(failure?.reason ? { reason: failure.reason } : {}),
+  };
 }
 
 export function createPiCanvasWriteTransportAdapter(

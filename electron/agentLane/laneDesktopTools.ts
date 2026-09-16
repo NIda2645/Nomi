@@ -1,3 +1,4 @@
+import { parseSurfacePortFailure, surfacePortFailureAdvice } from '../shared/surfacePortBinding'
 import { committedProjectAgentReceiptMatchesApproval } from '../capabilityCore/projectAgentProposalReceiptCorrelation'
 import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/transportContracts'
 import { randomUUID } from 'node:crypto'
@@ -36,11 +37,16 @@ import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residen
 import { documentProposalReceiptFor, prepareDocumentProposalReceipt, commitDocumentProposalReceipt, abandonDocumentProposalReceipt } from '../capabilityCore/projectAgentDocumentReceipt'
 
 function resultOf(decision: RuntimeToolDecision | null): unknown {
-  if (!decision?.ok) throw new LaneDomainFailure({
-    code: decision?.code ?? 'capability_unsupported',
-    message: decision?.message ?? `The selected surface could not complete this action (${decision?.code ?? 'capability_unsupported'}).`,
-    nextAction: 'Read the current surface again and use its current identifiers and revision before retrying.',
-  })
+  if (!decision?.ok) {
+    const failure = parseSurfacePortFailure(decision)
+    const advice = failure ? surfacePortFailureAdvice(failure) : undefined
+    throw new LaneDomainFailure({
+      code: decision?.code ?? 'capability_unsupported',
+      message: advice?.message ?? decision?.message ?? 'The selected surface could not complete this action.',
+      nextAction: advice?.nextAction ?? 'Review the requested action and select a supported capability before trying again.',
+      ...(failure?.reason ? { reason: failure.reason } : {}),
+    })
+  }
   return decision.result
 }
 

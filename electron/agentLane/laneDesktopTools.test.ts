@@ -36,7 +36,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 
 async function fixture(
   kind: 'document' | 'canvas' | 'delete',
-  receiptMode: 'committed' | 'missing' | 'mismatch' = 'committed',
+  receiptMode: 'committed' | 'missing' | 'mismatch' | 'import-failed' = 'committed',
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-desktop-lane-receipts-'))
   cleanups.push(() => fs.rm(root, { recursive: true, force: true }))
@@ -80,6 +80,9 @@ async function fixture(
     },
     write: async (input) => {
       order.push('canvas-write')
+      if (receiptMode === 'import-failed') throw Object.assign(new Error('/private/provider-token'), {
+        code: 'capability_execution_failed', reason: 'no-disk-space',
+      })
       const authority = lane.receiptAuthority(input.receiptProposalId)
       expect(authority).toEqual({ receiptProposalId: input.receiptProposalId, approvalId: input.approvalId, actionHash: input.actionHash })
       sawQueuedAuthority = !lane.projection().parts.some((part) => part.kind === 'host-note' && part.noteType === LANE_RECEIPT_AUTHORITY_NOTE)
@@ -268,4 +271,17 @@ describe('desktop lane verified writes and durable receipts', () => {
     expect(await fs.readFile(f.documentFile, 'utf8')).toBe('Original fixture document.')
     expect(f.order).toEqual([])
   })
+})
+
+it('tells the Agent the import failure and recovery action instead of requesting a fresh surface', async () => {
+  const f = await fixture('canvas', 'import-failed')
+  const run = f.lane.execute({ kind: 'prompt', text: 'Create the fixture artifact.' })
+  await f.pending(run)
+  await f.lane.execute({ kind: 'approval', toolCallId: 'fixture-call', action: 'allow-once' })
+  await run
+  const result = f.lane.projection().parts.find(part => part.kind === 'tool-result')
+  expect(result).toMatchObject({ isError: true, text: expect.stringContaining('insufficient free space') })
+  expect(result).toMatchObject({ text: expect.stringContaining('Free space on the project disk') })
+  expect(JSON.stringify(result)).not.toContain('/private/provider-token')
+  expect(JSON.stringify(result)).not.toContain('Read the current surface again')
 })

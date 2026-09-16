@@ -64,7 +64,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneDesktopTools.ts",
-      "line": 73,
+      "line": 79,
       "symbol": "captureCommittedCanvasReadPort"
     },
     {

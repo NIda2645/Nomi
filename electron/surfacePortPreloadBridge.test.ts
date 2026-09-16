@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { settleSurfacePortHandler, type SurfacePortHandlerResult } from './shared/surfacePortBinding'
+
+function wireHandler<T>(handler: (request: T) => unknown): (request: T) => SurfacePortHandlerResult | Promise<SurfacePortHandlerResult> {
+  return (request) => settleSurfacePortHandler(() => handler(request))
+}
+
 import { createCanvasReadSurfacePreloadBridge } from './surfacePortPreloadBridge'
 
 describe('Surface preload bridge', () => {
@@ -112,10 +118,10 @@ describe('Surface preload bridge', () => {
       portRevision: 1,
       nonce: 'nonce-1',
     }
-    const stop = bridge.onCanvasRead(async ({ binding: receivedBinding }) => ({
+    const stop = bridge.onCanvasRead(wireHandler(async ({ binding: receivedBinding }) => ({
       selectedNodeIds: [],
       bindingWasExact: receivedBinding === binding,
-    }))
+    })))
 
     receive?.({ requestId: 'request-1', binding })
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith('nomi:surface:canvasRead:reply', {
@@ -140,15 +146,15 @@ describe('Surface preload bridge', () => {
         send,
       },
     )
-    bridge.onCanvasRead(async () => {
+    bridge.onCanvasRead(wireHandler(async () => {
       throw new Error('/private/project/provider-token')
-    })
+    }))
 
     receive?.({ requestId: 'request-2', binding: { version: 1 } })
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith('nomi:surface:canvasRead:reply', {
       requestId: 'request-2',
       binding: { version: 1 },
-      error: { code: 'surface_port_unavailable' },
+      error: { code: 'capability_execution_failed' },
     }))
     expect(JSON.stringify(send.mock.calls)).not.toContain('private')
   })
@@ -169,8 +175,8 @@ describe('Surface preload bridge', () => {
     const binding = { version: 1, bindingId: 'binding-a' } as never
     const capture = vi.fn(() => ({ node: { id: 'node-real' }, groups: [] }))
     const execute = vi.fn(() => ({ applied: true, proposalId: 'receipt-a' }))
-    bridge.onCanvasWriteCapture(capture)
-    bridge.onCanvasWriteExecute(execute)
+    bridge.onCanvasWriteCapture(wireHandler(capture))
+    bridge.onCanvasWriteExecute(wireHandler(execute))
 
     receivers.get('nomi:surface:canvasWrite:capture:request')?.({
       requestId: 'capture-a', binding, operation: 'set_node_prompt', nodeId: 'node-alias',
@@ -233,8 +239,8 @@ describe('Surface preload bridge', () => {
     const preconditions = { timeline: { revision: 'revision-a' } }
     const read = vi.fn(() => ({ operation: 'read_timeline', revision: 'revision-a' }))
     const write = vi.fn(() => ({ operation: 'undo_timeline_edit', ok: true, undone: true }))
-    bridge.onTimelineRead(read)
-    bridge.onTimelineWrite(write)
+    bridge.onTimelineRead(wireHandler(read))
+    bridge.onTimelineWrite(wireHandler(write))
 
     receivers.get('nomi:surface:timelineRead:request')?.({
       requestId: 'read-a', binding, input: { operation: 'read_timeline' }, target, preconditions,
@@ -302,10 +308,10 @@ describe('Surface preload bridge', () => {
     let signal: AbortSignal | undefined
     let finish!: () => void
     const pending = new Promise<void>((resolve) => { finish = resolve })
-    bridge.onCanvasWriteExecute((request) => {
+    bridge.onCanvasWriteExecute(wireHandler((request) => {
       signal = request.signal
       return pending
-    })
+    }))
     receivers.get('nomi:surface:canvasWrite:execute:request')?.({
       requestId: 'execute-a',
       binding,
@@ -338,4 +344,43 @@ describe('Surface preload bridge', () => {
       error: { code: 'capability_cancelled' },
     }))
   })
+})
+
+it.each([
+  ['onCanvasRead', 'canvasRead', {}],
+  ['onDocumentRead', 'documentRead', { documentId: 'doc', scope: 'full' }],
+  ['onDocumentWrite', 'documentWrite', { documentId: 'doc', operation: 'append', content: 'text' }],
+  ['onCanvasWriteCapture', 'canvasWrite:capture', { operation: 'set_node_prompt', nodeId: 'node' }],
+  ['onCanvasWriteExecute', 'canvasWrite:execute', { input: {} }],
+  ['onTimelineRead', 'timelineRead', { input: { operation: 'read_timeline' } }],
+  ['onTimelineWrite', 'timelineWrite', { input: { operation: 'undo_timeline_edit', undoToken: 'undo', expectedRevision: 'rev' } }],
+  ['onAssetRead', 'assetRead', { input: { operation: 'get_media', assetId: 'asset' } }],
+  ['onExportRead', 'exportRead', { input: { operation: 'inspect_export_job', jobId: 'job' } }],
+  ['onExportWrite', 'exportWrite', { input: { operation: 'cancel_export_job', jobId: 'job' } }],
+] as const)('%s accepts only structured renderer callback replies', async (method, channel, fields) => {
+  const receivers = new Map<string, (payload: unknown) => void>()
+  const send = vi.fn()
+  const bridge = createCanvasReadSurfacePreloadBridge(vi.fn(), {
+    subscribe(name, callback) { receivers.set(name, callback); return () => receivers.delete(name) },
+    send,
+  })
+  let reply: unknown = JSON.parse(JSON.stringify({
+    ok: false, error: { code: 'capability_execution_failed', reason: 'no-disk-space', raw: '/private/token' },
+  }))
+  // Deliberately bypass TypeScript to exercise rejection of a malformed renderer.
+  const register = bridge[method] as (handler: () => SurfacePortHandlerResult) => () => void
+  register(() => reply as SurfacePortHandlerResult)
+  const binding = { version: 1 }
+  const request = { requestId: 'request', binding, target: {}, preconditions: {},
+    receiptProposalId: 'receipt', approvalId: 'approval', actionHash: 'hash', ...fields }
+  receivers.get(`nomi:surface:${channel}:request`)?.(request)
+  await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith(`nomi:surface:${channel}:reply`, {
+    requestId: 'request', binding,
+    error: { code: 'capability_execution_failed', reason: 'no-disk-space' },
+  }))
+  reply = { applied: true }
+  receivers.get(`nomi:surface:${channel}:request`)?.(request)
+  await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith(`nomi:surface:${channel}:reply`, {
+    requestId: 'request', binding, error: { code: 'surface_port_unavailable' },
+  }))
 })

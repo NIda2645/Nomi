@@ -396,3 +396,21 @@ describe("canvas.write Pi transport", () => {
     expect(test.write).not.toHaveBeenCalled();
   });
 });
+
+it('publishes a safe actionable import failure without raw renderer messages', async () => {
+  const test = await setup();
+  const signal = new AbortController().signal;
+  const prepared = await test.adapter.prepare({
+    toolCallId: 'failure', toolName: CANVAS_WRITE_ALIASES.setNodePrompt,
+    args: { nodeId: 'node-real', prompt: 'new prompt' },
+  }, signal);
+  test.write.mockRejectedValue(Object.assign(new Error('/private/provider-token'), {
+    code: 'capability_execution_failed', reason: 'no-disk-space',
+  }));
+  const result = await test.adapter.execute(prepared!, {
+    receiptProposalId: 'receipt', approvalId: 'approval', actionHash: prepared!.invocation.actionHash,
+  }, signal);
+  expect(result).toEqual({ ok: false, code: 'capability_execution_failed', reason: 'no-disk-space',
+    message: 'The artifact could not be saved because the project disk has insufficient free space.' });
+  expect(JSON.stringify(result)).not.toContain('private');
+});

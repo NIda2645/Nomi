@@ -1,3 +1,4 @@
+import type { MediaImportRejection } from '../contracts/mediaImportPolicy';
 // Agent lane · 一个模型可见工具的**契约**（说明书那一半），与它的执行分开。
 //
 // **为什么要把说明书和执行拆开**：门岗、系统提示词渲染、以及「模型第一次就填对了吗」
@@ -62,6 +63,7 @@ export {
 export interface LaneToolFailureShape {
   /** 闭合词表，供 UI 分档。**它不是给模型读的**——`[error] E_DENIED` 在真机上等于什么都没说。 */
   readonly code: string;
+  readonly reason?: MediaImportRejection['reason'];
   /** 一句人话：哪里错、期望什么。门岗断言 `message !== code`。 */
   readonly message: string;
   /** 下一步具体怎么做。「把 nodes 直接给数组本体，不要 JSON.stringify」这种。 */
@@ -143,6 +145,7 @@ export class LaneDomainFailure extends Error {
 export function laneToolFailureToRpc(failure: LaneToolFailureShape): Readonly<Record<string, unknown>> {
   return {
     code: failure.code,
+    ...(failure.reason ? { reason: failure.reason } : {}),
     message: failure.message,
     nextAction: failure.nextAction,
     ...(failure.allowed ? { allowed: failure.allowed } : {}),
