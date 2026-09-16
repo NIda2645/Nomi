@@ -1,4 +1,5 @@
 import { getDesktopBridge } from '../../../desktop/bridge'
+import { unwrapAssetImportResult } from '../../../../electron/shared/contracts/assetImportResult'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
 
 // 「厂商临时 URL 绝不落进 result.url」的结构闸 + 存量抢救，共用的领域逻辑。
@@ -33,12 +34,12 @@ export async function localizeRemoteResultUrl(
   if (!importRemoteUrl) return result
   const remoteUrl = String(result.url)
   try {
-    const asset = await importRemoteUrl({
+    const asset = unwrapAssetImportResult(await importRemoteUrl({
       projectId: trimmedProjectId,
       url: remoteUrl,
       kind: 'generated',
       ownerNodeId: nodeId,
-    })
+    }))
     const localUrl = typeof asset?.data?.url === 'string' ? asset.data.url.trim() : ''
     if (!localUrl || localUrl === remoteUrl) return result
     return {

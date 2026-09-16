@@ -65,7 +65,7 @@
     {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":393,"symbol":"SurfacePortFailure"},
     {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":408,"symbol":"SurfacePortFailure"},
     {"kind":"read","path":"electron/shared/surfacePortBinding.ts","line":432,"symbol":"SurfacePortFailure"},
-    {"kind":"read","path":"src/desktop/bridge.ts","line":410,"symbol":"MediaImportRejection"},
+    {"kind":"read","path":"src/desktop/bridge.ts","line":411,"symbol":"MediaImportRejection"},
     {"kind":"read","path":"src/workbench/assets/assetLibraryLocalImport.ts","line":11,"symbol":"MediaImportRejection"},
     {"kind":"read","path":"src/workbench/assets/importAudioToLibrary.ts","line":36,"symbol":"MediaImportRejection"},
     {"kind":"read","path":"src/workbench/assets/importAudioToLibrary.ts","line":69,"symbol":"MediaImportRejection"},

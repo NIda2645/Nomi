@@ -103,14 +103,18 @@ export async function importWorkbenchRemoteAssetUrl(
   name?: string,
   meta?: UploadWorkbenchAssetMeta,
 ): Promise<WorkbenchAssetDto> {
+  meta?.assertCurrent?.()
   const desktop = requireDesktopRuntime('remote asset import')
-  return desktop.assets.importRemoteUrl({
-    projectId: resolveProjectId(meta),
+  const imported = await desktop.assets.importRemoteUrl({
+    projectId: meta?.projectBinding?.projectId ?? resolveProjectId(meta),
+    ...(meta?.projectBinding ? { projectBinding: meta.projectBinding } : {}),
     url,
     kind: meta?.kind || 'upload',
     fileName: name,
     ownerNodeId: meta?.ownerNodeId || null,
-  }) as Promise<WorkbenchAssetDto>
+  })
+  meta?.assertCurrent?.()
+  return unwrapAssetImportResult(imported) as WorkbenchAssetDto
 }
 
 export async function recoverImportedWorkbenchLocalAssetFile(_file: File): Promise<WorkbenchAssetDto | null> {

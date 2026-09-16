@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { importWorkbenchLocalAssetFile } from './assetUploadApi'
+import { importWorkbenchLocalAssetFile, importWorkbenchRemoteAssetUrl } from './assetUploadApi'
 
 afterEach(() => {
   Reflect.deleteProperty(globalThis, 'window')
 })
 
 describe('local asset upload transport', () => {
+  it('carries remote import identity and preserves cancellation from the main session', async () => {
+    const binding = { projectId: 'original', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }
+    const importRemoteUrl = vi.fn(async () => ({ ok: false, failure: { code: 'project_binding_stale', reason: 'import-failed' } }))
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { nomiDesktop: { assets: { importRemoteUrl } } } })
+    await expect(importWorkbenchRemoteAssetUrl('https://example.com/image.png', 'image.png', { projectBinding: binding }))
+      .rejects.toMatchObject({ code: 'project_binding_stale' })
+    expect(importRemoteUrl).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'original', projectBinding: binding }))
+  })
+
   it('keeps a structured storage rejection across the IPC result envelope', async () => {
     const failure = { code: 'capability_execution_failed', reason: 'no-disk-space' }
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { nomiDesktop: { assets: {

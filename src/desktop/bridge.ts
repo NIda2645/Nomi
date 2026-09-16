@@ -383,11 +383,12 @@ export type DesktopBridge = DesktopMediaBridge &
     onLocalizationStarted?: (cb: (payload: { projectId: string; nodeId: string }) => void) => () => void
     importRemoteUrl: (payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       url: string
       kind?: string
       fileName?: string
       ownerNodeId?: string | null
-    }) => Promise<DesktopAssetDto>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto>>
     importFile: (payload: {
       projectId: string
       projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding

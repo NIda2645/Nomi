@@ -18,10 +18,15 @@
     "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
     "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
     "src/workbench/api/assetUploadApi.ts",
+    "src/workbench/project/projectMediaMigration.ts",
+    "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
+    "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
     "src/desktop/bridge.ts",
     "electron/assets/assetsIpc.ts",
     "electron/shared/contracts/assetImportResult.ts",
-    "src/ui/browser/popover/useBrowserAssetActions.ts"
+    "src/ui/browser/popover/useBrowserAssetActions.ts",
+    "scripts/audio-ref-diag-probe.mjs",
+    "scripts/audio-ref-paid-smoke.mjs"
   ],
   "entry_points": [
     "importLocalFile byte/native/copy/media runners",
@@ -44,15 +49,21 @@
   ],
   "doors": [
     {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "line": 582,
-      "symbol": "registerAssetsIpc"
+      "kind": "read",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 14,
+      "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 14,
+      "line": 18,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 137,
       "symbol": "AssetImportResult"
     },
     {
@@ -106,13 +117,19 @@
     {
       "kind": "read",
       "path": "src/desktop/bridge.ts",
-      "line": 398,
+      "line": 391,
       "symbol": "AssetImportResult"
     },
     {
       "kind": "read",
       "path": "src/desktop/bridge.ts",
-      "line": 406,
+      "line": 399,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "line": 407,
       "symbol": "AssetImportResult"
     },
     {
@@ -124,7 +141,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
-      "line": 298,
+      "line": 204,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -132,6 +149,18 @@
       "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
       "line": 298,
       "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 337,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 293,
+      "symbol": "importRemoteUrl"
     },
     {
       "kind": "read",
@@ -144,6 +173,18 @@
       "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
       "line": 37,
       "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
+      "line": 33,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
+      "line": 34,
+      "symbol": "importRemoteUrl"
     },
     {
       "kind": "write",
@@ -178,14 +219,32 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 131,
-      "symbol": "importAssetResult"
+      "line": 76,
+      "symbol": "assertProjectAgentBinding"
     },
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
       "line": 131,
       "symbol": "importAssetResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 135,
+      "symbol": "importAssetResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 141,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetWriteContext.ts",
+      "line": 24,
+      "symbol": "assertProjectAgentBinding"
     },
     {
       "kind": "write",
@@ -198,6 +257,12 @@
       "path": "electron/assets/localFileImport.ts",
       "line": 58,
       "symbol": "admitMediaImport"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localizeTaskAsset.ts",
+      "line": 16,
+      "symbol": "importRemoteAsset"
     },
     {
       "kind": "write",
@@ -237,6 +302,30 @@
     },
     {
       "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "line": 109,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "line": 198,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/image/decomposeLayers.ts",
+      "line": 97,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "line": 577,
+      "symbol": "registerAssetsIpc"
+    },
+    {
+      "kind": "write",
       "path": "electron/shared/contracts/projectAgentContextBinding.ts",
       "line": 13,
       "symbol": "assertProjectAgentBinding"
@@ -246,6 +335,30 @@
       "path": "electron/shared/projectBinding.ts",
       "line": 45,
       "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/audio-ref-diag-probe.mjs",
+      "line": 39,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/audio-ref-diag-probe.mjs",
+      "line": 45,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/audio-ref-paid-smoke.mjs",
+      "line": 56,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/audio-ref-paid-smoke.mjs",
+      "line": 57,
+      "symbol": "importRemoteUrl"
     },
     {
       "kind": "write",
@@ -269,6 +382,18 @@
       "kind": "write",
       "path": "src/workbench/api/assetUploadApi.ts",
       "line": 98,
+      "symbol": "unwrapAssetImportResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/assetUploadApi.ts",
+      "line": 108,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/assetUploadApi.ts",
+      "line": 117,
       "symbol": "unwrapAssetImportResult"
     },
     {
@@ -303,6 +428,18 @@
     },
     {
       "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 294,
+      "symbol": "importWorkbenchRemoteAssetUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 300,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
       "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
       "line": 22,
       "symbol": "importWorkbenchLocalAssetFile"
@@ -322,7 +459,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
-      "line": 71,
+      "line": 72,
       "symbol": "importWorkbenchLocalAssetFile"
     },
     {
@@ -348,6 +485,12 @@
       "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
       "line": 94,
       "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.ts",
+      "line": 35,
+      "symbol": "importWorkbenchRemoteAssetUrl"
     },
     {
       "kind": "write",
@@ -384,11 +527,41 @@
       "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
       "line": 114,
       "symbol": "toGenerationFlowNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/resultUrlRelocalizeBridge.ts",
+      "line": 38,
+      "symbol": "importWorkbenchRemoteAssetUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
+      "line": 37,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
+      "line": 37,
+      "symbol": "unwrapAssetImportResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectMediaMigration.ts",
+      "line": 254,
+      "symbol": "importRemoteUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectMediaMigration.ts",
+      "line": 254,
+      "symbol": "unwrapAssetImportResult"
     }
   ],
   "door_reduction": {
     "before": 57,
-    "after": 57,
+    "after": 85,
     "why_not": "Distinct import transports, attachment and media placements, ordinary/duplicate node projections and binding consumers retain their entry points; admission and geometry ownership are centralized."
   },
   "generality_proof": "Every local file entry converges on importLocalFile admission; artifact IO captures identity before awaits; both Flow projections use toGenerationFlowNode.",
@@ -433,7 +606,7 @@
     "classification": "recurring",
     "reason": "Shared admission and projection affect multiple inputs and callers on each render/import",
     "same_class_scan": [
-      "node scripts/door-map.mjs toGenerationFlowNode importLocalFile deliverAgentArtifactToAsset",
+      "node scripts/door-map.mjs registerAssetsIpc AssetImportResult MediaImportSurfaceId importWorkbenchLocalAssetFile assertProjectAgentBinding importLocalFile importAssetResult admitMediaImport unwrapAssetImportResult captureCurrentProjectCanvasReadSurfaceBinding deliverAgentArtifactToAsset toGenerationFlowNode importRemoteAsset importRemoteUrl importWorkbenchRemoteAssetUrl --roots=src,electron,scripts",
       "Inspected text, markdown, html, table, svg input populations and byte/native paths"
     ]
   },
@@ -455,6 +628,10 @@
     ]
   },
   "regression_tests": [
+    "src/workbench/generationCanvas/nodes/director/bridge/persistOutputs.test.ts",
+    "src/workbench/generationCanvas/runner/resultAssetLocalization.test.ts",
+    "src/workbench/generationCanvas/runner/projectAssetHealthCheck.test.ts",
+    "tests/ux/canvas-three-gestures.walk.mjs",
     "src/workbench/generationCanvas/agent/applyCanvasToolCall.artifact.test.ts",
     "electron/assets/assetsIpcSession.test.ts",
     "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowFramework.test.ts",

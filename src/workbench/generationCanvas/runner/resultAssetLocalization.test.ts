@@ -40,8 +40,8 @@ describe('localizeRemoteResultUrl — 厂商临时 URL 落地结构闸', () => {
 
   it('http 结果 + projectId → 下载落地，换本地 url，原 CDN 进 providerUrl', async () => {
     const importRemoteUrl = vi.fn().mockResolvedValue({
-      id: 'asset-9',
-      data: { url: 'nomi-local://asset/proj-1/assets/generated/v.mp4' },
+      ok: true,
+      asset: { id: 'asset-9', data: { url: 'nomi-local://asset/proj-1/assets/generated/v.mp4' } },
     })
     mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
     const out = await localizeRemoteResultUrl(videoResult('https://cdn.vendor/v.mp4'), 'proj-1', 'node-1')
@@ -57,7 +57,7 @@ describe('localizeRemoteResultUrl — 厂商临时 URL 落地结构闸', () => {
   })
 
   it('已有 providerUrl → 不覆盖（保住原始来源）', async () => {
-    const importRemoteUrl = vi.fn().mockResolvedValue({ data: { url: 'nomi-local://asset/p/v.mp4' } })
+    const importRemoteUrl = vi.fn().mockResolvedValue({ ok: true, asset: { data: { url: 'nomi-local://asset/p/v.mp4' } } })
     mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
     const out = await localizeRemoteResultUrl(
       videoResult('https://cdn.vendor/v.mp4', { providerUrl: 'https://origin/real.mp4' }),
@@ -79,6 +79,13 @@ describe('localizeRemoteResultUrl — 厂商临时 URL 落地结构闸', () => {
     const importRemoteUrl = vi.fn().mockRejectedValue(new Error('403 expired'))
     mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
     const result = videoResult('https://cdn.vendor/expired.mp4')
+    expect(await localizeRemoteResultUrl(result, 'proj-1', 'node-1')).toBe(result)
+  })
+
+  it('structured stale-project rejection retains the original result without fabricating a local URL', async () => {
+    const importRemoteUrl = vi.fn().mockResolvedValue({ ok: false, failure: { code: 'project_binding_stale', reason: 'import-failed' } })
+    mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
+    const result = videoResult('https://cdn.vendor/v.mp4')
     expect(await localizeRemoteResultUrl(result, 'proj-1', 'node-1')).toBe(result)
   })
 

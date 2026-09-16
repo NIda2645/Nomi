@@ -4,12 +4,12 @@ import type { CanvasReadSurfaceIpcCapture } from '../capabilityCore/canvasReadSu
 import { SurfacePortWireError } from '../shared/surfacePortBinding'
 
 const mocks = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMainInvokeEvent, payload: unknown) => Promise<unknown>>(),
-  importFile: vi.fn(), trusted: vi.fn() }))
+  importFile: vi.fn(), importRemote: vi.fn(), trusted: vi.fn() }))
 vi.mock('electron', () => ({ clipboard: {}, dialog: {}, ipcMain: {
   handle: (name: string, handler: (event: IpcMainInvokeEvent, payload: unknown) => Promise<unknown>) => mocks.handlers.set(name, handler),
 } }))
 vi.mock('../ipcSenderGuard', () => ({ assertTrustedSender: mocks.trusted, assertTrustedUiSender: mocks.trusted }))
-vi.mock('./projectAssetStore', () => ({ copyProjectAsset: vi.fn() }))
+vi.mock('./projectAssetStore', () => ({ copyProjectAsset: vi.fn(), importRemoteAsset: mocks.importRemote }))
 vi.mock('./downloadPrefs', () => ({ getAutoSavePrefs: vi.fn(), setAutoSavePrefs: vi.fn() }))
 vi.mock('./localFileImport', async importOriginal => ({
   ...await importOriginal<typeof import('./localFileImport')>(),
@@ -58,5 +58,23 @@ describe('interactive asset IPC publication authority', () => {
     await expect(mocks.handlers.get('nomi:assets:import-file')!(event, { projectId: 'a' }))
       .resolves.toEqual({ ok: true, asset: { id: 'explicit-project-file' } })
     expect(capture.openProjectSession).not.toHaveBeenCalled()
+  })
+
+  it('binds remote downloads to the trusted session before downloading', async () => {
+    const session = Object.freeze({})
+    let current = true
+    const capture = { openProjectSession: vi.fn(() => session), assertProjectSession: vi.fn(() => {
+      if (!current) throw new SurfacePortWireError('project_binding_stale')
+    }) }
+    registerAssetsIpc(capture as unknown as CanvasReadSurfaceIpcCapture)
+    mocks.importRemote.mockImplementation(async (_payload, options) => {
+      await Promise.resolve()
+      options.assertCurrent()
+      return { id: 'must-not-publish' }
+    })
+    const pending = mocks.handlers.get('nomi:assets:import-remote-url')!(event, { projectId: 'a', projectBinding: binding })
+    expect(capture.openProjectSession).toHaveBeenCalledWith(event, binding)
+    current = false
+    await expect(pending).resolves.toMatchObject({ ok: false, failure: { code: 'project_binding_stale' } })
   })
 })

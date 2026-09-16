@@ -10,6 +10,8 @@
 
 ## 实施与验收
 
+Remote 同类入口补查：clipboard 的下载路径同样跨 await。`importRemoteAsset` 在下载前捕获同一 AssetWriteContext，data/http/generated/upload 均把 context 交给既有 writeAsset；显式后台导入保持原项目，交互 IPC 同步捕获可信 session。三条真实磁盘反例证明旧实现会在下载期间身份替换/撤销后继续发布，补修后零发布。远程 IPC 复用统一结果 DTO，所有 renderer 消费者统一 unwrap。
+
 Approved PR 802 follow-up, base 22b046e7b. Prior art: [independent review](../research/2026-09-17-pr802/prior-art.md). Owner review found that importer checks precede asynchronous deduplication/native copying; publication resolves the project directory again.
 
 Capture a full project identity and canonical root before asynchronous storage work. Every upload entry captures this context, including direct byte/native callers. Carry it through publication, reuse, and metadata updates. Validate the same root and manifest identity synchronously at the final write boundary; never redirect to a newly resolved root. An optional main-only interaction assertion tightens this mandatory storage invariant and is supplied by the trusted window session at IPC integration. Explicit background project IO survives UI navigation; uncommitted interactive IO is revoked on project replacement.

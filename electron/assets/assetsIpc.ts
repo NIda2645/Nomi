@@ -4,7 +4,7 @@ import { clipboard, dialog, ipcMain } from "electron";
 import { assertTrustedSender, assertTrustedUiSender } from "../ipcSenderGuard";
 import { getAutoSavePrefs, setAutoSavePrefs, type AutoSavePrefs } from "./downloadPrefs";
 import { CLIPBOARD_FILE_PATH_FORMATS, parseClipboardFilePaths } from "./clipboardFilePaths";
-import { copyProjectAsset } from "./projectAssetStore";
+import { copyProjectAsset, importRemoteAsset } from "./projectAssetStore";
 import type { AssetImportResult } from '../shared/contracts/assetImportResult';
 import type { AssetImportFailure } from '../shared/contracts/assetImportResult';
 import type { CanvasReadSurfaceIpcCapture } from '../capabilityCore/canvasReadSurfaceIpc';
@@ -133,6 +133,13 @@ export function registerAssetsIpc(surface: CanvasReadSurfaceIpcCapture): void {
   ipcMain.handle("nomi:assets:import-native-file", async (event, payload) => {
     assertTrustedSender(event);
     return importAssetResult(payload, () => captureInteraction(event, payload), true);
+  });
+  ipcMain.handle("nomi:assets:import-remote-url", async (event, payload): Promise<AssetImportResult<unknown>> => {
+    assertTrustedSender(event);
+    try {
+      const assertCurrent = captureInteraction(event, payload);
+      return { ok: true, asset: await importRemoteAsset(payload, { assertCurrent }) };
+    } catch (error) { return importFailure(error); }
   });
   ipcMain.handle("nomi:assets:ensure-playable", async (event, payload) => {
     assertTrustedSender(event);

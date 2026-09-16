@@ -37,12 +37,14 @@ try {
 
   const imageDataUrl = `data:image/jpeg;base64,${readFileSync(IMAGE_FIXTURE).toString('base64')}`
   const imageAsset = await win.evaluate(async (a) => window.nomiDesktop.assets.importRemoteUrl({ projectId: a.pid, url: a.d, kind: 'generated', fileName: 'ref-face-real.jpg' }), { pid: projectId, d: imageDataUrl })
-  const imageUrl = imageAsset?.data?.url
+  if (imageAsset?.ok !== true) throw new Error(`图片素材导入失败: ${imageAsset?.failure?.code || 'invalid_import_response'}`)
+  const imageUrl = imageAsset.asset?.data?.url
   let audioUrl = null
   if (MODE === 'image_audio') {
     const audioDataUrl = `data:audio/mpeg;base64,${readFileSync(AUDIO_FIXTURE).toString('base64')}`
     const audioAsset = await win.evaluate(async (a) => window.nomiDesktop.assets.importRemoteUrl({ projectId: a.pid, url: a.d, kind: 'generated', fileName: 'ref-voice.mp3' }), { pid: projectId, d: audioDataUrl })
-    audioUrl = audioAsset?.data?.url
+    if (audioAsset?.ok !== true) throw new Error(`音频素材导入失败: ${audioAsset?.failure?.code || 'invalid_import_response'}`)
+    audioUrl = audioAsset.asset?.data?.url
   }
   if (!imageUrl || (MODE === 'image_audio' && !audioUrl)) { console.log(`✗ 素材导入失败 image=${imageUrl} audio=${audioUrl}`); await app.close(); process.exit(1) }
   console.log(`素材就绪 image=${imageUrl.slice(0, 60)}… audio=${audioUrl ? audioUrl.slice(0, 60) + '…' : '(none)'}`)

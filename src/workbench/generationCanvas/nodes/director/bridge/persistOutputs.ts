@@ -8,6 +8,7 @@
  */
 import { getDesktopActiveProjectId } from '../../../../../desktop/activeProject'
 import { getDesktopBridge } from '../../../../../desktop/bridge'
+import { importWorkbenchRemoteAssetUrl } from '../../../../api/assetUploadApi'
 
 export type PersistedScreenshot = {
   url: string
@@ -31,7 +32,7 @@ export async function persistDirectorScreenshot(dataUrl: string, ownerNodeId: st
   const projectId = getDesktopActiveProjectId()
   if (!desktop || !projectId) return { url: dataUrl, localOnly: true }
   const fileName = `${fileSafePart(title, 'director')}-${fileSafePart(ownerNodeId, 'node')}-${Date.now()}.png`
-  const asset = await desktop.assets.importRemoteUrl({ projectId, url: dataUrl, kind: 'generated', fileName, ownerNodeId })
+  const asset = await importWorkbenchRemoteAssetUrl(dataUrl, fileName, { projectId, kind: 'generated', ownerNodeId })
   const url = typeof asset.data?.url === 'string' ? asset.data.url.trim() : ''
   if (!url || /^(data|blob):/i.test(url)) throw new Error('Director screenshot persistence returned no durable asset URL')
   return { url, assetId: asset.id, raw: { asset }, localOnly: false }

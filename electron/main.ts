@@ -569,11 +569,6 @@ function registerIpc(): void {
     const { testModelCatalogMapping } = await import("./catalog/catalogCommit");
     return testModelCatalogMapping(id, payload);
   });
-  ipcMain.handle("nomi:assets:import-remote-url", async (event, payload) => {
-    assertTrustedSender(event);
-    const { importRemoteAsset } = await loadRuntimeModule();
-    return importRemoteAsset(payload);
-  });
   ipcMain.handle("nomi:assets:list", async (event, payload) => {
     assertTrustedUiSender(event); // UI 面：素材盒界面长在浮层窗里，理由见 ipcSenderGuard#assertTrustedUiSender
     const { listProjectAssets } = await loadRuntimeModule();

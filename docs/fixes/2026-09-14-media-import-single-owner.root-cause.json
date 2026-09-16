@@ -133,7 +133,7 @@
     {
       "kind": "write",
       "path": "src/desktop/bridge.ts",
-      "line": 414,
+      "line": 415,
       "symbol": "storageCapacity"
     },
     {

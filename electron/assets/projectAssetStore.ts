@@ -1,5 +1,6 @@
 import { contentHashForFile, isContentAddressedUpload, persistUploadBytes, persistUploadFile, storedAssetRecord } from './uploadContentStore';
 import { captureAssetWriteContext, type AssetWriteContext } from './assetWriteContext';
+import type { ProjectBinding } from '../shared/projectBinding';
 import type { ProjectAgentAttachmentClaim, ProjectAgentAttachmentRef } from '../shared/workbenchInput'
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -439,6 +440,7 @@ export function moveAssetFile(
 }
 
 type RemoteAssetImportOptions = {
+  assertCurrent?: () => void;
   /** 仅供 main 进程内部已配置的本地生成服务使用；renderer IPC 无法注入第二参数。 */
   trustedPrivateOrigin?: string;
   certificationEvidence?: CertificationMediaEvidence;
@@ -561,12 +563,14 @@ async function importRemoteAssetToStore(payload: unknown, options: RemoteAssetIm
   const url = String(raw.url || "").trim();
   if (!projectId) throw new Error("projectId is required");
   if (!url) throw new Error("url is required");
+  const context = await captureAssetWriteContext(projectId, raw.projectBinding as ProjectBinding | undefined, options.assertCurrent);
   const sourceEvidence = sanitizeSourceEvidence(raw.sourceEvidence);
   if (url.startsWith("nomi-local://")) {
     // 已在项目里的文件（自定义调用 / 本地流程产物经 localizeTaskAsset 回到这里）：不复制，
     // 但同样走一次预览派生，画布对它和远端产物一视同仁。
     const absolutePath = absolutePathFromLocalAssetUrl(url, projectId);
-    const relativePath = absolutePath ? path.relative(projectDirById(projectId) || "", absolutePath).replace(/\\/g, "/") : "";
+    context.assertCurrent();
+    const relativePath = absolutePath ? path.relative(context.root, absolutePath).replace(/\\/g, "/") : "";
     return {
       id: stableLocalReferenceId(projectId, url),
       name: String(raw.fileName || "local asset"),
@@ -590,6 +594,7 @@ async function importRemoteAssetToStore(payload: unknown, options: RemoteAssetIm
       String(raw.fileName || `asset-${Date.now()}.${ext}`),
       options.certificationEvidence?.contentType || parsed.contentType,
       { kind: raw.kind || "generated", originalUrl: null, ...(sourceEvidence ? { sourceEvidence } : {}), ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}) },
+      context,
     );
   }
   if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s), data, and nomi-local assets are supported");
@@ -621,7 +626,7 @@ async function importRemoteAssetToStore(payload: unknown, options: RemoteAssetIm
     ownerNodeId: raw.ownerNodeId || null,
     ...(sourceEvidence ? { sourceEvidence } : {}),
     ...(options.certificationEvidence ? { certificationEvidence: options.certificationEvidence } : {}),
-  });
+  }, context);
 }
 
 export function listProjectAssets(payload: unknown): { items: LocalAssetRecord[]; cursor: string | null } {

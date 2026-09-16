@@ -35,8 +35,8 @@ describe('runProjectAssetHealthCheck — 开项目抢救漏落的厂商临时 UR
 
   it('http 节点 → 下载落地并写回本地 url；nomi-local 节点原样不动、不调 bridge', async () => {
     const importRemoteUrl = vi.fn().mockResolvedValue({
-      id: 'a1',
-      data: { url: 'nomi-local://asset/proj-1/assets/generated/v.mp4' },
+      ok: true,
+      asset: { id: 'a1', data: { url: 'nomi-local://asset/proj-1/assets/generated/v.mp4' } },
     })
     mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
     const staleNode = seedVideoNode('https://cdn.vendor/v.mp4')
@@ -84,7 +84,7 @@ describe('runProjectAssetHealthCheck — 开项目抢救漏落的厂商临时 UR
     useGenerationCanvasStore.getState().updateNode(node, {
       result: { id: 'fresh', type: 'video', url: 'nomi-local://asset/proj-1/assets/generated/fresh.mp4', createdAt: 2 },
     })
-    resolveImport({ data: { url: 'nomi-local://asset/proj-1/assets/generated/stale.mp4' } })
+    resolveImport({ ok: true, asset: { data: { url: 'nomi-local://asset/proj-1/assets/generated/stale.mp4' } } })
     await check
 
     // 新结果不被过期体检的旧本地化覆盖
@@ -108,7 +108,7 @@ describe('runProjectAssetHealthCheck — 开项目抢救漏落的厂商临时 UR
 
     const check = runProjectAssetHealthCheck('proj-1', guard)
     current = false
-    resolveImport({ data: { url: 'nomi-local://asset/proj-1/assets/generated/late.mp4' } })
+    resolveImport({ ok: true, asset: { data: { url: 'nomi-local://asset/proj-1/assets/generated/late.mp4' } } })
 
     await expect(check).rejects.toThrow('project_hydration_superseded')
     expect(urlOf(node)).toBe('https://cdn.vendor/v.mp4')
