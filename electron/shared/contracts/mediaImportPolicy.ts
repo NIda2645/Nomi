@@ -19,13 +19,14 @@ import { acceptAttrForKinds, type MediaKind } from '../../assets/mediaTypes'
 
 /** 能承载媒体的入口。新增入口必须在这里登记。 */
 export type MediaImportSurfaceId =
+  | 'project-storage'
   | 'asset-library'
   | 'generation-canvas'
   | 'agent-composer'
   | 'director-3d'
   | 'panorama'
 
-/** 素材库能持有的全部媒体种类——其余面只能是它的子集，且必须说明为什么窄。 */
+/** 素材库展示的媒体种类；项目存储还承载文档/文本产物。 */
 export const LIBRARY_MEDIA_KINDS: readonly MediaKind[] = ['image', 'video', 'audio', 'model3d']
 
 export type MediaImportSurface = {
@@ -46,6 +47,13 @@ export type MediaImportSurface = {
 }
 
 export const MEDIA_IMPORT_SURFACES: Readonly<Record<MediaImportSurfaceId, MediaImportSurface>> = {
+  'project-storage': {
+    id: 'project-storage',
+    kinds: [...LIBRARY_MEDIA_KINDS, 'document', 'text'],
+    narrowedBecause: null,
+    hardCapBytes: null,
+    hardCapBecause: null,
+  },
   'asset-library': {
     id: 'asset-library',
     kinds: LIBRARY_MEDIA_KINDS,

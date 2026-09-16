@@ -112,7 +112,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 127,
+      "line": 145,
       "symbol": "attachStoredAssetPreview"
     },
     {

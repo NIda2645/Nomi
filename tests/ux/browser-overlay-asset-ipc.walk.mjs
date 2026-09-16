@@ -53,7 +53,8 @@ const IMPORT_CALL = `async (desktop, arg) => {
     kind: 'image',
     bytes: bytes.buffer,
   })
-  return { url: res?.url || res?.relativePath || 'imported' }
+  if (!res.ok) throw new Error(res.failure.reason)
+  return { url: res.asset.data.url }
 }`
 
 try {

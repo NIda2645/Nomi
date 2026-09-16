@@ -5,6 +5,7 @@ import { stationTimeout } from './_station-budget.mjs'
 // The model is deterministic only at the external provider boundary. This file never injects
 // lane messages, reducer state, conversation results, receipt files, or the final project state.
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 
 import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
@@ -150,8 +151,8 @@ try {
     reply: { type: 'text', text: '已创建临时画布节点。' },
   })
   // 人已经进了生成面：从生成坞那条输入条发（和 agent-artifact.walk 同一口）。
-  // Linux CI 上一轮失败不是「没发到」，是 make_artifact 回了 surface_port_unavailable——
-  // 写口在打开项目时冻死了；下面立刻读 toolResult，禁止再空转 30 秒只看 nodes.length。
+  // 原失败先被文本存储准入拒绝，再因跨 context 错误失真报成 surface_port_unavailable。
+  // 保留文本输入，直接读 toolResult，并验证真正可见，不能用换 SVG 或只看落盘数掩盖。
   //
   // 不要用最后一条 `[data-v4-block="tool"]` 当落地信号：v4 过程默认收在合上的
   // `<details>` 里，Playwright 把里面的回执判成 hidden，Linux 会干等 240s。
@@ -175,6 +176,36 @@ try {
   await expect(fixtureNode).toBeVisible()
   await fixtureNode.click({ position: { x: 12, y: 12 } })
   await expect(fixtureNode).toHaveAttribute('data-selected', 'true')
+
+  // A real filesystem obstruction in the isolated test project forces an IO
+  // failure after renderer dispatch, exercising the actual contextBridge reply.
+  const failedArtifactContent = 'Resident filesystem rejection fixture'
+  const blockedContentPath = path.join(projectRoot, 'assets', 'imported', 'sha256', crypto.createHash('sha256').update(failedArtifactContent).digest('hex'))
+  fs.writeFileSync(blockedContentPath, 'fixture occupies the required directory', { flag: 'wx' })
+  const failedArtifact = walk.fixture.expectText({
+    label: 'Renderer receives a real filesystem artifact failure',
+    match: body => flattenRequestText(body).includes('请测试空白产物拒绝') && !hasToolResult(body, 'resident-empty-artifact'),
+    reply: { type: 'tool', id: 'resident-empty-artifact', name: 'make_artifact', args: { fileType: 'text', title: 'Failed artifact', content: failedArtifactContent } },
+  })
+  const failedArtifactFollowup = walk.fixture.expectText({
+    label: 'Agent receives an execution failure without a false port error',
+    match: body => hasToolResult(body, 'resident-empty-artifact'),
+    reply: { type: 'text', text: '空白内容未保存，已有产物保留。' },
+  })
+  try {
+    await sendCanvas(win, '请测试空白产物拒绝，保留已有节点。')
+    await recorded(failedArtifact.received, 'artifact request with blocked destination')
+    await recorded(failedArtifactFollowup.received, 'filesystem artifact rejection')
+  } finally {
+    fs.unlinkSync(blockedContentPath)
+  }
+  const failedArtifactResult = readLaneTranscripts(projectRoot).flatMap(laneMessages)
+    .find(message => message.role === 'toolResult' && message.toolCallId === 'resident-empty-artifact')
+  expect(failedArtifactResult?.isError).toBe(true)
+  expect(laneMessageText(failedArtifactResult)).toContain('capability_execution_failed')
+  expect(laneMessageText(failedArtifactResult)).not.toContain('surface_port_unavailable')
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id)).toContain(fixtureNodeId)
+  await expect(fixtureNode).toBeVisible()
 
   // E: a real gated action is denied at the UI approval boundary. Approval/spend
   // policy no longer lives in the work-mode popover; use an irreversible canvas

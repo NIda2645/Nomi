@@ -390,18 +390,20 @@ export type DesktopBridge = DesktopMediaBridge &
     }) => Promise<DesktopAssetDto>
     importFile: (payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       fileName: string
       contentType?: string
       bytes: ArrayBuffer
       kind?: string
-    }) => Promise<DesktopAssetDto>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto>>
     /** Electron 原生 File 直传 preload；路径只在隔离桥内解析，大文件不复制进 renderer 内存。 */
     importNativeFile?: (file: File, payload: {
       projectId: string
+      projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
       fileName: string
       contentType?: string
       kind?: string
-    }) => Promise<DesktopAssetDto | null>
+    }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto> | null>
     copyFiles?: (payload: { projectId: string; paths: string[] }) => Promise<{
       created: DesktopAssetDto[]
       /** 被准入闸挡下的文件，带机器可读原因与数字（渲染层据此说人话）。 */

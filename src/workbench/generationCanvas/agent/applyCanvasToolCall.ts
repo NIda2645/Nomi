@@ -1,4 +1,5 @@
 import { hasRealCharacterReferences, normalizeStoryboardAnchorDefaults, validateAnchorModelFit } from './storyboardAnchorPolicy'
+import { captureCurrentProjectCanvasReadSurfaceBinding } from '../../project/projectCanvasReadSurface'
 import type {
   BuiltinCanvasCategoryId,
   GenerationCanvasEdgeMode,
@@ -229,6 +230,9 @@ export async function applyCanvasToolCall(
     if (canWrite) assertTurnCanWrite(canWrite)
   }
   assertWritable()
+  // Capture before any model lookup/dynamic import awaits. IO never retargets
+  // itself to whatever project happens to be active when the await completes.
+  const artifactBinding = captureCurrentProjectCanvasReadSurfaceBinding()?.binding
   const record = args && typeof args === 'object' ? (args as Record<string, unknown>) : {}
   // MCP's public entry is canonical; the semantic operation lives in args.
   // Do not add the retired bare `patch_shots` name back to the public alias
@@ -396,7 +400,13 @@ export async function applyCanvasToolCall(
       if (!isTextDeliverableFileType(fileType) || !content.trim()) {
         throw new Error(i18n.t('runtime.nodeRegistry.agent-artifact.missingContent', { name, fileType: fileType || '—' }))
       }
-      const delivered = await deliverAgentArtifactToAsset({ fileType, content, title })
+      assertWritable()
+      if (!artifactBinding) throw Object.assign(new Error('project_identity_unavailable'), { code: 'project_identity_unavailable' })
+      const delivered = await deliverAgentArtifactToAsset({ fileType, content, title }, {
+        binding: artifactBinding,
+        assertCurrent: assertWritable,
+      })
+      assertWritable()
       if (!delivered.ok) {
         throw new Error(i18n.t('runtime.nodeRegistry.agent-artifact.deliverFailed', { name, reason: delivered.reason }))
       }

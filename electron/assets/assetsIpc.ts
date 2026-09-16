@@ -5,6 +5,20 @@ import { assertTrustedSender, assertTrustedUiSender } from "../ipcSenderGuard";
 import { getAutoSavePrefs, setAutoSavePrefs, type AutoSavePrefs } from "./downloadPrefs";
 import { CLIPBOARD_FILE_PATH_FORMATS, parseClipboardFilePaths } from "./clipboardFilePaths";
 import { copyProjectAsset } from "./projectAssetStore";
+import type { AssetImportResult } from '../shared/contracts/assetImportResult';
+
+async function importAssetResult(payload: unknown, allowSourcePath = false): Promise<AssetImportResult<unknown>> {
+  const { importLocalFile, MediaImportRejectedError } = await import('./localFileImport');
+  try {
+    return { ok: true, asset: await importLocalFile(payload, { allowSourcePath }) };
+  } catch (error) {
+    const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+    return { ok: false, failure: {
+      code: code === 'project_binding_stale' || code === 'project_identity_unavailable' ? code : 'capability_execution_failed',
+      reason: error instanceof MediaImportRejectedError ? error.rejection.reason : 'import-failed',
+    } };
+  }
+}
 
 export function readClipboardFilePathsFromFormats(
   availableFormats: readonly string[],
@@ -96,15 +110,13 @@ export function registerAssetsIpc(): void {
   // UI 面而非主窗专属：素材盒浮层窗的拖入导入走这条（同 nomi:assets:list 的理由）。
   ipcMain.handle("nomi:assets:import-file", async (event, payload) => {
     assertTrustedUiSender(event);
-    const { importLocalFile } = await import("./localFileImport");
     const raw = (payload || {}) as Record<string, unknown>;
     // 字节通道不接受 renderer 自报路径；原生路径只能经 webUtils 桥进入下面的专用通道。
-    return importLocalFile({ ...raw, sourcePath: undefined });
+    return importAssetResult({ ...raw, sourcePath: undefined });
   });
   ipcMain.handle("nomi:assets:import-native-file", async (event, payload) => {
     assertTrustedSender(event);
-    const { importLocalFile } = await import("./localFileImport");
-    return importLocalFile(payload, { allowSourcePath: true });
+    return importAssetResult(payload, true);
   });
   ipcMain.handle("nomi:assets:ensure-playable", async (event, payload) => {
     assertTrustedSender(event);

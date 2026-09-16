@@ -1,0 +1,500 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-project-artifact-storage-and-projection",
+  "problem_type": "Project artifact storage and controlled node projection violate shared boundary contracts",
+  "symptom": "make_artifact text fails after navigation; admitted persisted node remains hidden",
+  "direct_cause": "Library-only admission rejects text; controlled projection clears framework dimensions; async importer resolves active project",
+  "class_root": "Storage, placement and transport projection responsibilities are conflated instead of preserving explicit type, identity and geometry invariants",
+  "affected_population": [
+    "All text/html/markdown/table artifacts",
+    "All controlled canvas node projections",
+    "Async artifact writes during project switch"
+  ],
+  "scope_paths": [
+    "electron/shared/contracts/mediaImportPolicy.ts",
+    "electron/assets/localFileImport.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+    "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+    "src/workbench/api/assetUploadApi.ts",
+    "src/desktop/bridge.ts",
+    "electron/assets/assetsIpc.ts",
+    "electron/shared/contracts/assetImportResult.ts",
+    "src/ui/browser/popover/useBrowserAssetActions.ts"
+  ],
+  "entry_points": [
+    "importLocalFile byte/native/copy/media runners",
+    "deliverAgentArtifactToAsset",
+    "toGenerationFlowNode ordinary and duplicate drag"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/xyflow/xyflow/blob/main/packages/system/src/utils/store.ts",
+      "checked_at": "2026-09-17",
+      "purpose": "adoptUserNodes resets measured on controlled projection"
+    }
+  ],
+  "invariants": [
+    "Storage accepts supported project document assets without broadening media placement",
+    "Async asset IO retains originating project binding",
+    "Framework node dimensions derive from the domain sizing owner"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 10,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/localFileCopy.ts",
+      "line": 29,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/localFileImport.ts",
+      "line": 66,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/localFileImport.ts",
+      "line": 74,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/assetImportResult.ts",
+      "line": 20,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/mediaImportPolicy.ts",
+      "line": 33,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/mediaImportPolicy.ts",
+      "line": 49,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/mediaImportPolicy.ts",
+      "line": 151,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/mediaImportPolicy.ts",
+      "line": 178,
+      "symbol": "MediaImportSurfaceId"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "line": 398,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "line": 406,
+      "symbol": "AssetImportResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 50,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 282,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 296,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "line": 458,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/clipNodeUpload.ts",
+      "line": 37,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 117,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneLegacyIntegrity.mts",
+      "line": 21,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneLegacyIntegrity.mts",
+      "line": 69,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneLegacyMigration.mts",
+      "line": 75,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 13,
+      "symbol": "importLocalFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 115,
+      "symbol": "importAssetResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 119,
+      "symbol": "importAssetResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localFileCopy.ts",
+      "line": 35,
+      "symbol": "importLocalFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localFileImport.ts",
+      "line": 32,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localFileImport.ts",
+      "line": 70,
+      "symbol": "admitMediaImport"
+    },
+    {
+      "kind": "write",
+      "path": "electron/audioTaskRunner.ts",
+      "line": 67,
+      "symbol": "importLocalFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/audioTaskRunner.ts",
+      "line": 133,
+      "symbol": "importLocalFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/core.ts",
+      "line": 277,
+      "symbol": "importLocalFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+      "line": 194,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+      "line": 295,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectAgentReceiptResolver.ts",
+      "line": 35,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/contracts/projectAgentContextBinding.ts",
+      "line": 13,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/projectBinding.ts",
+      "line": 45,
+      "symbol": "assertProjectAgentBinding"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/popover/useBrowserAssetActions.ts",
+      "line": 128,
+      "symbol": "unwrapAssetImportResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "line": 65,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/assetUploadApi.ts",
+      "line": 89,
+      "symbol": "unwrapAssetImportResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/assetUploadApi.ts",
+      "line": 98,
+      "symbol": "unwrapAssetImportResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "line": 52,
+      "symbol": "admitMediaImport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/importAudioToLibrary.ts",
+      "line": 86,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "line": 367,
+      "symbol": "captureCurrentProjectCanvasReadSurfaceBinding"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
+      "line": 165,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "line": 184,
+      "symbol": "admitMediaImport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/persistNodeImage.ts",
+      "line": 22,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "line": 235,
+      "symbol": "captureCurrentProjectCanvasReadSurfaceBinding"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "line": 405,
+      "symbol": "deliverAgentArtifactToAsset"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+      "line": 71,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/artifact/rasterizeArtifactToReferenceAsset.ts",
+      "line": 62,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 44,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 64,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/slotFileUploads.ts",
+      "line": 94,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/side/AssetsTab.tsx",
+      "line": 249,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/usePanoramaImport.tsx",
+      "line": 64,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/director/useAiSceneBuilder.ts",
+      "line": 80,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "line": 99,
+      "symbol": "importWorkbenchLocalAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "line": 531,
+      "symbol": "toGenerationFlowNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "line": 114,
+      "symbol": "toGenerationFlowNode"
+    }
+  ],
+  "door_reduction": {
+    "before": 57,
+    "after": 57,
+    "why_not": "Distinct import transports, attachment and media placements, ordinary/duplicate node projections and binding consumers retain their entry points; admission and geometry ownership are centralized."
+  },
+  "generality_proof": "Every local file entry converges on importLocalFile admission; artifact IO captures identity before awaits; both Flow projections use toGenerationFlowNode.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/contracts/mediaImportPolicy.ts",
+      "symbol": "admitMediaImport",
+      "responsibility": "Separate project storage and placement while sharing capacity enforcement"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "symbol": "toGenerationFlowNode",
+      "responsibility": "Project explicit framework dimensions for all node classes"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+      "symbol": "deliverAgentArtifactToAsset",
+      "responsibility": "Require originating project and write guard for artifact IO"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/assets/assetsIpc.ts",
+      "entry_point": "import-file and import-native-file",
+      "disposition": "enforced",
+      "evidence": "Both converge on importLocalFile"
+    },
+    {
+      "path": "electron/assets/localFileCopy.ts",
+      "entry_point": "importLocalFilePaths",
+      "disposition": "enforced",
+      "evidence": "Copy path converges on importLocalFile admission"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "entry_point": "duplicate drag projection",
+      "disposition": "enforced",
+      "evidence": "Uses toGenerationFlowNode like collection projection"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Shared admission and projection affect multiple inputs and callers on each render/import",
+    "same_class_scan": [
+      "node scripts/door-map.mjs toGenerationFlowNode importLocalFile deliverAgentArtifactToAsset",
+      "Inspected text, markdown, html, table, svg input populations and byte/native paths"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/contracts/mediaImportPolicy.ts",
+    "invariant": "Project storage owns storage types; UI placement owns visible media types",
+    "failure_mode": "Unknown formats and insufficient storage fail admission; stale artifact context rejects before IO",
+    "exception_policy": "none",
+    "strategy": "Central storage policy and explicit bound importer replace accidental global state and media-only storage admission",
+    "artifacts": [
+      "electron/shared/contracts/mediaImportPolicy.ts",
+      "electron/assets/localFileImport.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts",
+      "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "src/workbench/api/assetUploadApi.ts",
+      "src/desktop/bridge.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/contracts/mediaImportPolicy.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
+    "src/workbench/generationCanvas/agent/deliverAgentArtifact.test.ts",
+    "src/workbench/api/assetUploadApi.test.ts",
+    "electron/assets/projectArtifactImport.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/contracts/mediaImportPolicy.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.test.ts",
+    "src/workbench/generationCanvas/agent/deliverAgentArtifact.test.ts",
+    "src/workbench/api/assetUploadApi.test.ts",
+    "electron/assets/projectArtifactImport.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/assets/localFileImport.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "src/workbench/generationCanvas/agent/deliverAgentArtifact.ts"
+    ],
+    "rationale": "Remove library-default storage, CSS-only framework projection, and artifact import without originating project"
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "@xyflow/react 12.11.5",
+    "target": "Next supported React Flow version validated against controlled sizing and handle geometry tests",
+    "rationale": "Installed framework follows documented controlled-node behavior; repair the application adapter",
+    "exit_criteria": [
+      "Controlled selection/focus/resize/duplicate node tests and real Electron journey pass on upgrade"
+    ]
+  },
+  "migration": "No data rewrite. Existing project nodes derive framework dimensions at load. Previously saved assets remain.",
+  "residual_risks": [
+    "Implementation and complete Electron/macOS/Linux validation pending"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/contracts/mediaImportPolicy.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/shared/contracts/mediaImportPolicy.test.ts",
+      "electron/assets/projectArtifactImport.test.ts"
+    ],
+    "rationale": "Shared admission separates storage and placement; the actual filesystem path validates originating binding."
+  }
+}

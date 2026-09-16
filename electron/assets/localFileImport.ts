@@ -22,6 +22,20 @@ import {
 import type { JsonRecord } from "../jsonUtils";
 import { logWarn } from "../logging/logger";
 import { attachStoredAssetPreview } from "./assetPreview";
+import { assertProjectAgentBinding, sameProjectAgentBinding, type ProjectBinding } from "../shared/projectBinding";
+import { ensureWorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
+import { projectDirById } from "../projects/repository";
+
+async function assertImportProjectBinding(raw: JsonRecord, projectId: string): Promise<void> {
+  if (raw.projectBinding === undefined) return;
+  const binding = raw.projectBinding as ProjectBinding;
+  assertProjectAgentBinding(binding);
+  if (binding.projectId !== projectId) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' });
+  const projectRoot = projectDirById(projectId);
+  if (!projectRoot) throw Object.assign(new Error('project_identity_unavailable'), { code: 'project_identity_unavailable' });
+  const identity = await ensureWorkspaceProjectIdentity(projectRoot);
+  if (!sameProjectAgentBinding(binding, identity)) throw Object.assign(new Error('project_binding_stale'), { code: 'project_binding_stale' });
+}
 
 function bytesFromPayload(value: unknown): Buffer {
   if (value instanceof ArrayBuffer) return Buffer.from(value);
@@ -59,11 +73,11 @@ function assertAdmitted(
 
 function surfaceFromPayload(raw: JsonRecord): MediaImportSurfaceId {
   const value = String(raw.surface || "").trim();
-  // 主进程只把关「Nomi 到底存不存得下」（素材库全集 + 磁盘）；更窄的落点约束（画布只有图/视频
-  // 两种节点）属于渲染层的摆放问题，在那里用同一个 admitMediaImport 判。
+  // 存储也承载产物文档；素材库展示集合不是存储全集。
+  // 显式入口仍执行该入口约束，无入口的通用存储只验证格式和磁盘。
   return value === "agent-composer" || value === "director-3d" || value === "panorama"
     ? value
-    : "asset-library";
+    : value === "asset-library" || value === "generation-canvas" ? value : "project-storage";
 }
 
 async function importNativeSourcePath(
@@ -95,6 +109,7 @@ async function importNativeSourcePath(
   const storedName = canonicalAssetFileName(fileName, effectiveContentType);
   const baseMeta = { kind: raw.kind || "upload", originalName: raw.fileName || null };
   if (!effectiveContentType.startsWith("video/")) {
+    await assertImportProjectBinding(raw, projectId);
     return copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta);
   }
 
@@ -103,6 +118,7 @@ async function importNativeSourcePath(
     try {
       const transcoded = await transcodeFileToPlayableMp4IfNeeded(sourcePath, storedName, tempDir);
       if (transcoded) {
+        await assertImportProjectBinding(raw, projectId);
         return await copyAssetFile(projectId, transcoded.outputPath, playableMp4FileName(storedName), "video/mp4", {
           ...baseMeta,
           playbackNormalizedFrom: transcoded.reason,
@@ -111,6 +127,7 @@ async function importNativeSourcePath(
     } catch (error) {
       logWarn("assets", "video-normalize-failed-import-original-file", undefined, error);
     }
+    await assertImportProjectBinding(raw, projectId);
     return await copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta);
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
@@ -121,6 +138,7 @@ export async function importLocalFile(payload: unknown, options: ImportLocalFile
   const raw = payload as JsonRecord;
   const projectId = String(raw.projectId || "").trim();
   if (!projectId) throw new Error("projectId is required");
+  await assertImportProjectBinding(raw, projectId);
   const hintedContentType = String(raw.contentType || "application/octet-stream");
   const sourcePath = options.allowSourcePath ? String(raw.sourcePath || "").trim() : "";
   // 画布预览（图片缩略 / 视频 poster）在落盘边界统一派生：本地导入与生成结果本地化走同一扇门。
@@ -144,6 +162,7 @@ async function importLocalFileToStore(raw: JsonRecord, projectId: string, source
   const normalized = contentType.startsWith("video/")
     ? await ensurePlayableVideoBytes(bytes, canonicalAssetFileName(fileName, contentType), contentType)
     : null;
+  await assertImportProjectBinding(raw, projectId);
   return writeAsset(
     projectId,
     normalized?.bytes ?? bytes,

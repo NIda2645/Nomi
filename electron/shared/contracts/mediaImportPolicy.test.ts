@@ -14,6 +14,15 @@ import {
 const SURFACES = Object.keys(MEDIA_IMPORT_SURFACES) as MediaImportSurfaceId[]
 
 describe('媒体导入准入 owner', () => {
+  it('project storage accepts document artifacts without expanding media library placement', () => {
+    for (const kind of ['text', 'document'] as const) {
+      expect(admitMediaImport('project-storage' as MediaImportSurfaceId, { kind, sizeBytes: 100 }, null).ok).toBe(true)
+      expect(admitMediaImport('asset-library', { kind, sizeBytes: 100 }, null).ok).toBe(false)
+      expect(admitMediaImport('project-storage' as MediaImportSurfaceId, { kind, sizeBytes: 100 }, { freeBytes: 10 })).toMatchObject({ ok: false, reason: 'no-disk-space' })
+    }
+    expect(admitMediaImport('project-storage' as MediaImportSurfaceId, { kind: null, sizeBytes: 10 }, null)).toMatchObject({ ok: false, reason: 'unsupported-kind' })
+  })
+
   // 这条是本 PR 的产品要求本身：用户「这地方要通用支持，不能只支持一部分」。
   it('素材库收下 Nomi 能持有的每一种媒体（图 / 视频 / 音频 / 3D）', () => {
     for (const kind of LIBRARY_MEDIA_KINDS) {
@@ -21,12 +30,10 @@ describe('媒体导入准入 owner', () => {
     }
   })
 
-  it('任何面都不许比素材库宽——素材库是「Nomi 存得下什么」的全集', () => {
+  it('all media placements fit project storage, including non-media documents', () => {
     for (const id of SURFACES) {
       for (const kind of MEDIA_IMPORT_SURFACES[id].kinds) {
-        // 附件面另有文档/文本（模型读得懂的非媒体），不算「比素材库宽」。
-        if (kind === 'document' || kind === 'text') continue
-        expect(LIBRARY_MEDIA_KINDS, `${id} 的 ${kind}`).toContain(kind)
+        expect(MEDIA_IMPORT_SURFACES['project-storage'].kinds, `${id} 的 ${kind}`).toContain(kind)
       }
     }
   })

@@ -73,7 +73,7 @@
     {
       "kind": "write",
       "path": "electron/assets/assetsIpc.ts",
-      "line": 59,
+      "line": 73,
       "symbol": "nomi:assets:copy-files"
     },
     {
@@ -85,7 +85,7 @@
     {
       "kind": "write",
       "path": "electron/assets/localFileImport.ts",
-      "line": 47,
+      "line": 61,
       "symbol": "assertAdmitted"
     },
     {
@@ -127,13 +127,13 @@
     {
       "kind": "write",
       "path": "electron/shared/contracts/mediaImportPolicy.ts",
-      "line": 42,
+      "line": 43,
       "symbol": "admitMediaImport"
     },
     {
       "kind": "write",
       "path": "src/desktop/bridge.ts",
-      "line": 412,
+      "line": 414,
       "symbol": "storageCapacity"
     },
     {

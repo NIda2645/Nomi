@@ -2,6 +2,7 @@
 // 删除从「localStorage 软删」改为真删——落盘文件经 workspace.deleteFiles 进系统回收站，
 // 素材库同步消失（与 AssetLibraryPanel 同一口径），不再有「托盘删了库里还在」的分裂。
 import React from 'react'
+import { unwrapAssetImportResult } from '../../../../electron/shared/contracts/assetImportResult'
 import { useTranslation } from 'react-i18next'
 import { getDesktopActiveProjectId } from '../../../desktop/activeProject'
 import { getDesktopBridge } from '../../../desktop/bridge'
@@ -124,7 +125,7 @@ export function useBrowserAssetActions({
             bytes: await file.arrayBuffer(),
             kind: 'browser-upload',
           })
-          const mapped = browserAssetFromDesktopAsset(persisted)
+          const mapped = browserAssetFromDesktopAsset(unwrapAssetImportResult(persisted))
           const readyAsset: NomiBrowserAsset = {
             ...(mapped ?? pendingAsset),
             status: 'ready',

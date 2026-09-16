@@ -1,6 +1,8 @@
 import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
 import type { TaskKind } from './taskApi'
+import type { ProjectBinding } from '../../../electron/shared/projectBinding'
+import { unwrapAssetImportResult } from '../../../electron/shared/contracts/assetImportResult'
 
 export type WorkbenchAssetDto = {
   id: string
@@ -18,6 +20,8 @@ export function hostedAssetUrl(asset: WorkbenchAssetDto | null | undefined): str
 }
 
 export type UploadWorkbenchAssetMeta = {
+  projectBinding?: ProjectBinding
+  assertCurrent?: () => void
   prompt?: string | null
   vendor?: string | null
   modelKey?: string | null
@@ -70,22 +74,28 @@ export async function importWorkbenchLocalAssetFile(
   name?: string,
   meta?: UploadWorkbenchAssetMeta,
 ): Promise<WorkbenchAssetDto> {
+  meta?.assertCurrent?.()
   const desktop = requireDesktopRuntime('local asset import')
   const request = {
-    projectId: resolveProjectId(meta),
+    projectId: meta?.projectBinding?.projectId ?? resolveProjectId(meta),
+    ...(meta?.projectBinding ? { projectBinding: meta.projectBinding } : {}),
     fileName: name || file.name || 'asset',
     contentType: file.type || 'application/octet-stream',
     kind: 'upload' as const,
   }
   if (desktop.assets.importNativeFile) {
     const imported = await desktop.assets.importNativeFile(file, request)
-    if (imported) return imported as WorkbenchAssetDto
+    meta?.assertCurrent?.()
+    if (imported) return unwrapAssetImportResult(imported) as WorkbenchAssetDto
   }
   const arrayBuffer = await file.arrayBuffer()
-  return desktop.assets.importFile({
+  meta?.assertCurrent?.()
+  const imported = await desktop.assets.importFile({
     ...request,
     bytes: arrayBuffer,
-  }) as Promise<WorkbenchAssetDto>
+  })
+  meta?.assertCurrent?.()
+  return unwrapAssetImportResult(imported) as WorkbenchAssetDto
 }
 
 export async function importWorkbenchRemoteAssetUrl(
