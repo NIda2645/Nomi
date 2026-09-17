@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 import { toast } from '../../../ui/toast'
 import { DEFAULT_CANVAS_BATCH_CONCURRENCY } from '../components/canvasProductionScope'
 import type { SpendQuote } from '../../../../electron/shared/contracts/spendQuote'
@@ -297,3 +298,21 @@ export function spendQuoteDetail(quote: Pick<SpendQuote, 'amount'>): { label: st
       : i18n.t('generationCommon.spend.catalogCredits', { amount: quote.amount }),
   }
 }
+
+/**
+ * C1 寿命声明：付费待确认队列（审计 §9 点名「最值得先做真机的一条，涉钱」）。
+ *
+ * **释放不能只是置空**：`pending`/`queue` 里挂着还没 resolve 的 Promise 回调——
+ * 直接 `setState({ pending: null })` 会让等它的那次生成**永远等下去**（一个不会返回的
+ * await，任务卡就此停在「等待确认」）。所以这里逐个 `resolve(false)`：
+ * 离开项目 = 没有人会去答这张卡了，那就是「不确认」。
+ */
+export const spendConfirmStoreLifetime = declareStoreLifetime({
+  store: 'useSpendConfirmStore',
+  fields: { pending: 'project', queue: 'project' },
+  releaseProject: () => {
+    const { pending, queue } = useSpendConfirmStore.getState()
+    useSpendConfirmStore.setState({ pending: null, queue: [] })
+    for (const entry of [pending, ...queue]) entry?.resolve(false)
+  },
+})

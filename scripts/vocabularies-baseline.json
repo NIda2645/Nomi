@@ -1704,6 +1704,17 @@
     },
     {
       "members": [
+        "process",
+        "project",
+        "turn",
+        "view",
+        "window"
+      ],
+      "reason": "C1 的寿命轴 canonical owner：store 数据字段「活到什么时候」的唯一词表，14 个 store 的 declareStoreLifetime 声明与 check:store-lifetime 门岗都读它。加第六个值等于改语义（审计 docs/audit/2026-09-17-ownership-lifetime-census.md §6 C1 定的五档），不是扩充词表。",
+      "site": "src/workbench/project/storeLifetime.ts::type:StateLifetime/type-union"
+    },
+    {
+      "members": [
         "connected",
         "disabled",
         "local",

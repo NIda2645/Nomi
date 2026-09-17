@@ -5,6 +5,7 @@ import { useWorkbenchStore } from '../workbenchStore'
 import { createDefaultTimeline } from '../timeline/timelineMath'
 import { releaseWorkbenchProjectRuntimeState } from './releaseWorkbenchProjectSession'
 import { useShotVerifyStore } from '../generationCanvas/agent/shotVerifyStore'
+import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { clearActiveWorkbenchProjectSaveTarget, setActiveWorkbenchProjectSaveTarget } from './workbenchProjectSession'
 import {
   getCommittedProposal,
@@ -186,5 +187,31 @@ describe('releaseWorkbenchProjectRuntimeState', () => {
     setActiveWorkbenchProjectSaveTarget(target)
 
     expect(useShotVerifyStore.getState().isVerifyCurrent(request, 'project-A')).toBe(true)
+  })
+})
+
+/**
+ * C1（2026-09-18）：审计 §9 把 `useSpendConfirmStore` 点名为「最值得先做真机的一条，涉钱」。
+ * 这两条断言先把它的两种坏法钉住——真机切项目那一遍在 PR 正文里。
+ */
+describe('C1 · 付费待确认卡的寿命归项目会话', () => {
+  it('切项目后上一个项目的付费卡不会留在新项目里', () => {
+    const decision = useSpendConfirmStore.getState().requestConfirm({
+      title: '开始生成', message: '本次约 0.3 元', nodeIds: ['n1'],
+    } as never)
+    expect(useSpendConfirmStore.getState().pending).not.toBeNull()
+    releaseWorkbenchProjectRuntimeState()
+    expect(useSpendConfirmStore.getState().pending).toBeNull()
+    expect(useSpendConfirmStore.getState().queue).toEqual([])
+    return expect(decision).resolves.toBe(false)
+  })
+
+  it('释放不是简单置空：等着答复的那一方会拿到「没确认」，不会永远挂着', async () => {
+    const first = useSpendConfirmStore.getState().requestConfirm({ title: 'A', message: 'A', nodeIds: ['a'] } as never)
+    const queued = useSpendConfirmStore.getState().requestConfirm({ title: 'B', message: 'B', nodeIds: ['b'] } as never)
+    expect(useSpendConfirmStore.getState().queue).toHaveLength(1)
+    releaseWorkbenchProjectRuntimeState()
+    // 队首和排队的都要被回绝。少 resolve 任何一个，那次生成就停在「等待确认」永远不返回。
+    await expect(Promise.all([first, queued])).resolves.toEqual([false, false])
   })
 })
