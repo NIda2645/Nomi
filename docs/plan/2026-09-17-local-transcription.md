@@ -18,10 +18,17 @@
 
 **回滚**：逐里程碑 revert 本分支提交。缓存只写 `userData/model-cache/local-speech/`，不碰用户项目与原始素材。
 
-## 先查别人：四列表（R5 ④）
+## 先查别人
 
-调研正本：`~/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`。
-实读上游（2026-09-17）：OpenWhispr `scripts/download-whisper-cpp.js`、`src/helpers/whisperServer.js`；whisper.cpp `examples/server/README.md`；并用 0.0.10 二进制对真素材**实跑**核对过请求与响应形状。
+调研正本：`~/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`（比较了 whisper.cpp / sherpa-onnx / faster-whisper / Moonshine / Parakeet / 平台自带 / WASM 七条路，以及 OpenWhispr / Vibe / Buzz / Whishper / Kdenlive 五个近邻实现）。以下每条都是 2026-09-17 亲自打开读过的，不是凭印象：
+
+- **同类桌面应用怎么接**：OpenWhispr（Electron + React，MIT）https://github.com/OpenWhispr/openwhispr/blob/main/src/helpers/whisperServer.js —— spawn 预编译 `whisper-server` 到本机随机端口、POST `/inference`、用 `response_format` 取时间戳。**我们照抄这条路线**（sidecar 而不是 native addon），因为查到的活跃桌面转写应用里没有一个走 node-gyp 编译。
+- **为什么钉死版本**：https://github.com/OpenWhispr/openwhispr/blob/main/scripts/download-whisper-cpp.js 顶注原话——跟 latest 会让上游一次 bump 在两次发版之间静默改变转写输出而没有 diff 可审；同一个文件的注释还记着 Windows 缺 MSVC 运行时 DLL 会 0xC0000135 闪退（CUS-113）。**两条我们都吃下来了**（`docs/engineering/supply-chain-pins.json` + 成员清单里那四个 DLL）。
+- **接口契约**：whisper.cpp 官方 server 文档 https://github.com/ggml-org/whisper.cpp/blob/master/examples/server/README.md ——`/inference` 的 multipart 字段与 verbose_json 响应形状。文档之外还用 0.0.10 二进制对真素材**实跑**逐字核对过（文档给依据，实跑给封印）。
+- **权重来源**：https://huggingface.co/ggerganov/whisper.cpp ——官方 ggml 权重仓库，按 commit `5359861c` 钉死；每个权重的 sha256 由 HF 的 LFS 元数据给出，与我们实下载后算出的值逐字相同（两个独立来源对上）。
+- **反例（这条路别走）**：Kdenlive 的 speech-to-text 让用户自己 `pip install` https://docs.kdenlive.org/en/effects_and_filters/speech_to_text.html ——社区正在推 `pywhispercpp` 想换成 sidecar 式 https://discuss.kde.org/t/support-whisper-cpp-for-speech-to-text-using-pywhispercpp/49900 。「让用户装 Python 依赖」已被验证是坑，不考虑。
+- **仓库内现状**：`electron/catalog/elevenlabs.ts:109` 与 `electron/catalog/apimartAudios.ts:111` 是现有两条云端转写线，`electron/audioTaskRunner.ts:141` 是它们共用的解析器——本地这条接的是**同一个** taskKind、同一段结果处理，不是新概念。
+- **共用地基**：`electron/video/depthVideoModelCache.ts:1` 原本独占「下载+校验+原子落盘」那份实现；本次抽成 `electron/downloads/verifiedAssetCache.ts:1` 两家同用，深度那份主体已删。
 
 | 它提供 | 我们用 | 我们另写 | 我们拆散 |
 |---|---|---|---|
@@ -33,15 +40,18 @@
 
 ## 参考实现逐层对照
 
-| 层 | 它怎么做 | 我们怎么做 | 判定 |
-|---|---|---|---|
-| 传输 | whisper-server HTTP multipart | 同一 taskKind 声明 localEngine，走同一个 multipart | 一致 |
-| 出站 | 自己开 fetch | 走 hardenedFetch + `allowedPrivateOrigins` 精确到本次端口 | 有意不同：目的地策略只有一个 owner |
-| 会话 | server 保温供连续听写 | 一次任务一个进程，`finally` 必收 | 有意不同：批处理不是听写，保温换不来后台常驻 600 MB |
-| 上下文 | prompt 字典 + 音频 | 只给音频，language 恒 auto | 有意不同：用户硬约束②，不留「选错语言」的路 |
-| 档位 | 多引擎 / 多 GPU 档 | 单引擎单档（实测裁掉另外三档） | 有意不同：见下「档位的算式」 |
-| 控制流 | 自动 GPU fallback 与重试 | 每段重试一次，再失败带段号抛出；**禁止自动换云端** | 有意不同：硬约束要求失败可见 |
-| 安全 | 固定 release，DLL 随 exe | 固定 sha256、完整安装校验、只听回环、退出回收 | 一致 |
+| 层 | 它怎么做 | 我们怎么做 | 判定 | 若没想到补在哪个阶段前 |
+|---|---|---|---|---|
+| 工具 | whisper-server HTTP multipart `/inference` | 同一 taskKind 声明 `localEngine`，走同一个 multipart | 一致 | 无 |
+| 转录渲染 | OpenWhispr 把听写文字直接贴进输入框 | Nomi 把 segments 按时间归属到镜头，显示检测到的语言与失败原因 | 有意不同：视频分镜领域 | UI 接线前 |
+| 会话 | server 常驻保温，供连续听写 | 一次任务一个进程，`finally` 必收 | 有意不同：批处理不是听写，保温换不来后台常驻 600 MB | 无 |
+| 上下文 | prompt 字典 + 音频 | 只给音频，`language` 恒 `auto` | 有意不同：用户硬约束②，不留「选错语言」的路 | 无 |
+| 模型与花费 | 多引擎 / 多 GPU 档，用户自己挑 | 单引擎单档（实测裁掉另外三档），本地不花钱；改用云端要重新走付费授权 | 有意不同：单引擎裁决 + 档位算式 | 无 |
+| 控制流 | 自动 GPU fallback 与重试 | 每段重试一次，再失败带段号抛出；**禁止自动换云端** | 有意不同：硬约束要求失败可见 | 无 |
+| 扩展 API | `/inference` 与 `/health` 都开放 | 只用固定 loopback endpoint、固定字段、受控二进制 | 一致 | 无 |
+| 观测与测试 | 日志与健康检查 | 分段进度与错误类别；真素材 CER 与接缝复核；失败路径八条注入测试 | 一致 | 最终验收前 |
+| 安全 | 固定 release，DLL 随 exe 分发 | 固定 sha256（含逐成员复验）、完整安装校验、只听回环、退出回收 | 一致 | 发布资产与打包验收前 |
+| 出站 | 自己开 fetch | 走 `hardenedFetch` + `allowedPrivateOrigins` 精确到本次端口 | 有意不同：目的地策略只有一个 owner | 无 |
 
 ## HTTP 接触面裁决
 
