@@ -1,8 +1,5 @@
-import path from "node:path";
-
 import { readNestedRecord, trim, type JsonRecord } from "../../jsonUtils";
-import { skillMarkdownWithoutFrontmatter } from "../../skills/skillFrontmatter";
-import { findSkillRecord, type SkillRecord } from "../../skills/skillStore";
+import { findSkillRecord, readSkillRecords, type SkillRecord } from "../../skills/skillStore";
 import { sanitizeForBroadCompat } from "../../ai/promptSanitize";
 import { getDesktopLocale } from "../../desktopLocale";
 
@@ -90,105 +87,18 @@ export function buildLanguageRule(): string {
       ].join("\n");
 }
 
-export function resolveRequestedSkill(payload: JsonRecord): SkillRecord | null {
+/**
+ * 用户为这一轮点的那条技能。目录每次现扫（pi 的加载器，async）：他刚导入的技能这一轮就找得到。
+ *
+ * 它进提示词的那一段**不在这里拼**：唯一注入点是岛上的 `electron/agentLane/laneSkillPrompt.mts`
+ * （信封来自 pi 的 `formatSkillInvocation`，权威节走它的 `additionalInstructions`），CJS 侧经
+ * `laneNativeLoader.cts` 的桥调它。本文件被 `FORBIDDEN_OWNER_IMPORT` 钉死不许摸 pi，所以 2026-09-18
+ * 之前那份逐字手拼 pi 信封的 `buildSelectedSkillPrompt` 同 commit 删掉了（P1：不留并行版）。
+ */
+export async function resolveRequestedSkill(payload: JsonRecord): Promise<SkillRecord | null> {
   const requested = readRequestedSkill(payload);
-  return requested.key || requested.name ? findSkillRecord(requested.key, requested.name) : null;
-}
-
-/**
- * 用户为**这一轮**挂的那条技能，注入成系统提示词的一段。**全仓唯一的技能注入点。**
- *
- * ── 它在解决哪个真实摩擦（D6 ①）──
- *
- * 用户在 composer 里点了「电影分镜」，然后说「这段剧本帮我做成分镜」。在 2026-09-15 之前，
- * 这条技能是这样进提示词的（`laneDesktopRuntime.ts` 两处）：
- *
- *     systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
- *
- * 也就是把整份 `SKILL.md` 原文（含 frontmatter）拼在面板提示词后面，**一个字的交代都没有**。
- * 模型看到的是：一段画布工具说明，然后突然一块 `license: Apache-2.0` / `source:` / `preview:`，
- * 再然后一份标题叫「电影分镜」的 markdown。没有任何东西告诉它：
- *   ① 这是用户**为这一轮点的**，不是背景资料；
- *   ② 它规定的画幅/时长/模式要**写进工具入参**，不是在正文里说一句「用宽屏」就算；
- *   ③ 用户要在回复里**看得出**它被用了。
- *
- * 症状就是用户 2026-09-10 的原话：「用了一个电影分镜 skill，但他和我生成出来的东西提示词一看
- * 就不对，而且比例不对」。以及 2026-09-12 Agent 自述的「镜头语言规则用了、视觉锚引用没用上」。
- *
- * ── 要权衡的那一个东西（D6 ②）──
- *
- * 另一条路是「不注入正文，让模型自己用 `read` 去读」——`<available_skills>` 索引已经这么做了
- * （`laneSkillIndex.mts`，pi / Anthropic 的标准答案）。但那条路管的是**模型自己发现**技能；
- * 用户**亲手点了**一条技能是另一件事：让它再自己决定要不要去读，就是把一次明确的用户意图
- * 降级成一个建议。所以两条并存且分工明确：索引管发现，这里管「用户点了的那一条」。
- *
- * ── 为什么只有一个注入点 ──
- *
- * 数门（`node scripts/door-map.mjs resolveRequestedSkill`）当时是 3 扇：`laneDesktopRuntime`
- * 的 singleShot 与 configure 各自内联拼一次，第三扇是本文件里一个**零生产调用者**的
- * `buildSkillSystemPrompt`——它带着交代文案，而活着的那两扇没有。一份带交代的实现躺在旁边、
- * 生产上跑的是没交代的那份，正是 P1 说的并行版。现在正文只在这里生成一次，那个旧的已删。
- */
-/**
- * 权威节相对技能正文的位置。**暂定 `after_body`，不是结论**——2026-09-18 起有一路三臂
- * A/B 在真模型上量它（臂 0 `omitted` 作阳性对照、臂 A `before_body`、臂 B `after_body`），
- * 另带一个维度：同一回合连调 8 次以上时模型是否还听它（回合上限 24 次请求，系统提示词全程
- * 不变，但工具结果一条条堆进消息列表，第 1 次听话不代表第 12 次还听话）。
- *
- * 所以位置是**一个参数**，不是散在字符串拼接里的写死顺序：数据回来改这一个常量即可切换，
- * 三个臂都从这里可达，不必改 `buildSelectedSkillPrompt` 的任何一行。
- */
-export type SkillToolAuthorityPlacement = "before_body" | "after_body" | "omitted";
-export const SKILL_TOOL_AUTHORITY_PLACEMENT: SkillToolAuthorityPlacement = "after_body";
-
-/**
- * 权威节正文。**不重列工具**：名字与「读/写·要不要先问·花不花钱」那四类事实已经由
- * `renderLanePromptSections` 从注册表派生一次（后果句 `verbConsequence(effect, nextAction)`
- * 是 `verbDeclaration.ts:140` 那张表，全仓只此一份）。再列一遍就是第二份会漂的副本（P1）。
- *
- * 指向**按名字**而不是「上面/下面」：本函数的产出进 `composeLaneSystemPrompt` 的第一个参数，
- * 而 `Available tools` / `Tool usage` 是它之后才拼的（`lanePromptSections.ts:73-86`）——
- * 写「以上面为准」当场就是错的，而且位置一旦按 A/B 结果切换，方位词会再错一次。
- *
- * 语气是**给一份能力清单**，不是「你这份技能写错了」。技能可能整份是给别的宿主写的
- * （一个 ChatCut 技能会点名 `submit_video` / `track_progress`——这里一个都没有），
- * 那不是错误，是常态：用户装它就是想用它。所以这一节要让模型**照着意图改用我们的工具**，
- * 而不是停下来报错——那才是「装得进来就能跑」。
- */
-const SKILL_TOOL_AUTHORITY_SECTION = [
-  "关于工具，一律以本条提示词里的 `Available tools` 与 `Tool usage` 两节为准——那是你**实际拥有**的全部工具：",
-  "- 技能正文里出现的**任何工具名，以及它对某个工具是读还是写、要不要先问用户、花不花钱的说法**，一律不作数。技能可能是为别的宿主写的，也可能写于这些工具改名或改性质之前。",
-  "- 正文要你做成的**事**照做；用哪个工具、那个工具会造成什么后果，只看那两节。",
-  "- 正文点名的工具在那两节里找不到，**不是错误**：按它想做成的那件事，在那两节里挑能做成的那个用（例如别的宿主的「提交一个视频生成任务」，在这里就是生视频那个动词）。别猜一个相近的名字，也别假装调过了。",
-  "- 确实没有任何一个工具能做成那一步：用一句人话告诉用户这一步在 Nomi 里做不了，然后把其余步骤照常做完。",
-].join("\n");
-
-export function buildSelectedSkillPrompt(
-  skill: SkillRecord,
-  placement: SkillToolAuthorityPlacement = SKILL_TOOL_AUTHORITY_PLACEMENT,
-): string {
-  // frontmatter 不进提示词：它是打包清单（license / source / preview / 双语 label），不是方法。
-  // 实测 `curated-film-storyboard` 原文 1724 字里只有 305 字是方法——82% 的注入预算花在了元数据上。
-  // **这不是 Nomi 的发明**：pi 自己展开 `/skill:<name>` 时就是 `stripFrontmatter(content).trim()`
-  // （`pi-coding-agent/dist/core/agent-session.js:994`）。我们只是此前没走它那条路。
-  const method = skillMarkdownWithoutFrontmatter(skill.body);
-  // 信封逐字照 pi 的 `_expandSkillCommand`（同文件 :995）：`<skill name= location=>` +
-  // 「References are relative to …」+ 正文。R31：别人已经定了形状就不要自己再造一个——
-  // 这个形状还顺带把「技能目录里的相对路径指哪」说清楚了，而我们自己那版没有。
-  const envelope = `<skill name="${skill.name}" location="${skill.filePath}">\n`
-    + `References are relative to ${path.dirname(skill.filePath)}.\n\n${method}\n</skill>`;
-  const authority = placement === "omitted" ? [] : [SKILL_TOOL_AUTHORITY_SECTION];
-  return [
-    "本轮用户在输入框里挂了一条技能。它不是背景资料，是这一轮的作业规范：",
-    "- 照它的方法和约束做这一轮；与你自己的一般习惯冲突时以它为准。",
-    "- 它规定的画幅、时长、镜头数、生成模式这类**参数**，要真的写进你调用工具时的入参里；只在正文里说一句「用宽屏」不算照做。",
-    "- 回复里要让用户看得出它被用了：用一句话说清你照它做了哪一两条关键决定。不要复述整份技能。",
-    "- 它提到的外部 CLI、HTTP 或文件工具不会自动执行，除非当前对话确实提供了对应能力。",
-    "",
-    ...(placement === "before_body" ? [...authority, ""] : []),
-    envelope,
-    ...(placement === "after_body" ? ["", ...authority] : []),
-  ].join("\n");
+  if (!requested.key && !requested.name) return null;
+  return findSkillRecord(requested.key, requested.name, await readSkillRecords());
 }
 
 /**

@@ -122,7 +122,7 @@ export interface OpenLaneOptions {
    * 给函数时每个回合重读一次（`laneInstalledSkills.mts` 的 `LaneSkillIndexSource`），
    * 模型看到的索引与 `read` 允许越出项目的技能根始终是同一份。
    */
-  native?: { settingsRoot: string; skills: readonly SkillRecord[] | (() => readonly SkillRecord[]) }
+  native?: { settingsRoot: string; skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>) }
   /** 项目目录。会话落在 `<project>/.nomi/agent-sessions/` 下。 */
   projectDir: string
   /** 一条 lane = 一条独立的对话轨。默认 `main`。 */

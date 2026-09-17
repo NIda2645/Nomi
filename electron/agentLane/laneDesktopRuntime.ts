@@ -17,11 +17,18 @@ import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIde
 import { chooseTextModel } from '../ai/textBrainResolver'
 import { vendorModelConnection } from '../ai/vendorModelConnection'
 import { modelContextWindow } from '../shared/modelContextWindow'
-import { NOMI_AGENT_IDENTITY, buildLanguageRule, buildSelectedSkillPrompt, resolveRequestedSkill } from '../harness/context/agentContext'
+import { NOMI_AGENT_IDENTITY, buildLanguageRule, resolveRequestedSkill } from '../harness/context/agentContext'
+import type { SkillRecord } from '../skills/skillStore'
 import { getProjectMemory, formatMemoryForPrompt } from '../memory/projectMemory'
 import { createDesktopLaneInput, parseLaneComposerContext } from './laneDesktopInput'
 import { createDesktopLaneTools } from './laneDesktopTools'
 import type { OpenDesktopLaneWorkspace, RunLaneSingleShot } from './laneRuntimePort'
+
+/** 选中技能 → 提示词。唯一注入点在岛上（pi 的 `formatSkillInvocation`），这里只是桥（形状手抄，理由见 `feedbackIpc.ts:57`）。 */
+function renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> {
+  const native = createRequire(__filename)('./laneNativeLoader.cjs') as { renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> }
+  return native.renderSelectedSkillPrompt(skill)
+}
 import { createProjectAgentProposalReceiptService } from '../capabilityCore/projectAgentProposalReceiptStore'
 import { executeLaneReceiptCommand } from './laneReceiptCommands'
 import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residentGenerationAdapterFactory'
@@ -95,14 +102,14 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       const actionSignal = AbortSignal.any([signal, sessionSignal])
       const context = parseLaneComposerContext(request.context)
       const model = selectModel(context.model)
-      const skill = context.skillKey ? resolveRequestedSkill({ chatContext: { skill: { key: context.skillKey } } }) : null
+      const skill = context.skillKey ? await resolveRequestedSkill({ chatContext: { skill: { key: context.skillKey } } }) : null
       if (context.skillKey && !skill) throw new Error('agent_skill_unavailable')
+      const selectedSkillPrompt = skill ? await renderSelectedSkillPrompt(skill) : ''
       const input = createDesktopLaneInput({ projectId: binding.projectId,
         capture: () => context, activate: () => undefined, model: () => model })
       const { runLaneSingleShot } = createRequire(__filename)('./laneNativeLoader.cjs') as { runLaneSingleShot: RunLaneSingleShot }
       const result = await runLaneSingleShot({ fetch: appFetch, model: model.config, prompt: command.text, input, signal: actionSignal,
-        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY, context.systemPrompt,
-          skill ? buildSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') })
+        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY, context.systemPrompt, selectedSkillPrompt].filter(Boolean).join('\n\n') })
       actionSignal.throwIfAborted()
       surface.surfaceCapture.assertProjectSession(event, session)
       return result
@@ -154,7 +161,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
         workspace = await openDesktopLaneWorkspace({ projectDir, fetch: appFetch,
           // 给函数不给快照（下同）：用户在 Agent 面板旁边导入一个技能包、或者让 Agent 自己写一个落盘，
           // 都发生在这条 lane 活着的时候。传数组时那条技能要关掉项目重开才出现（2026-09-11 走查）。
-          native: { settingsRoot: getSettingsRoot(), skills: () => readSkillRecords().filter(isSkillSelectableInWorkbench) },
+          native: { settingsRoot: getSettingsRoot(), skills: async () => (await readSkillRecords()).filter(isSkillSelectableInWorkbench) },
           // 给函数不给快照：回复语言铁律跟界面语言走、项目记忆跟用户和 Agent 的改动走，
           // 这条已经开着的 lane 下一个回合就该跟上，而不是等冷启动（2026-09-11 走查）。
           // 宿主每个回合求值一次（`laneHost` 的 `systemPromptForRun`），不是每次模型请求。
@@ -175,12 +182,12 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
             selected = model
             try { await opened.configureModel(model.config) } catch (error) { selected = previous; throw error }
           }
-          const skill = next.skillKey ? resolveRequestedSkill({ chatContext: { skill: { key: next.skillKey } } }) : null
+          const skill = next.skillKey ? await resolveRequestedSkill({ chatContext: { skill: { key: next.skillKey } } }) : null
           if (next.skillKey && !skill) throw new Error('agent_skill_unavailable')
-          // 技能正文的组装只有一个 owner（`buildSelectedSkillPrompt`）：这里和 singleShot 都调它，
+          // 技能正文的组装只有一个 owner（岛上的 `renderSelectedSkillPrompt`）：这里和 singleShot 都调它，
           // 不各自拼一遍。上一版两处各写 `skill?.body`，于是「交代文案」这件事在两处同时缺席。
           composer = { ...next, systemPrompt: [next.systemPrompt,
-            skill ? buildSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') }
+            skill ? await renderSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') }
         },
       }
       let exposed: LaneWorkspaceHandle

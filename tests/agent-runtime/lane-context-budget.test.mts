@@ -152,8 +152,8 @@ test('C58 real loopback loads the installed Skill before any coding request and 
   const lane = await fixture.openLane({ ...fixture.options,
     tools: LANE_MODEL_TOOL_CATALOG.map(spec => bindLaneTool(spec, async () => { throw new Error('No domain call expected'); })),
     native: { settingsRoot: path.join(fixture.projectDir, 'settings'), skills: [{ name: 'storyboard', directoryName: 'storyboard',
-      filePath, body, description: 'Split manuscripts into shots', manifest: null, origin: 'user', audience: 'internal',
-      packageVersion: 'nomi-skill-v1', contentHash: 'fixture' }] },
+      filePath, packageDir: path.dirname(filePath), body, content: body, description: 'Split manuscripts into shots', manifest: null, origin: 'user', audience: 'internal',
+      packageVersion: 'nomi-skill-v1', contentHash: 'fixture', requiresCodingTools: false }] },
   });
   await lane.execute({ kind: 'prompt', text: '拆成分镜' });
   const last = JSON.stringify(fixture.http.requests.at(-1)?.body);

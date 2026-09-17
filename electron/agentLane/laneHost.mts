@@ -38,13 +38,12 @@ import {
 import { createLaneApprovalGate } from './laneApprovalGate.js';
 import type { OpenLane, OpenLaneOptions } from './laneRuntimePort.js';
 import { composeLaneSystemPrompt } from './lanePromptSections.js';
-import { loadPiSkillFormatter, renderLaneSkillSection } from './laneSkillIndex.mjs';
+import { loadPiSkillFormatter, renderLaneSkillSection, laneSkillUnlockReason } from './laneSkillCatalog.mjs';
 import { openLaneSession } from './laneSession.mjs';
 import { createLaneTools } from './laneTools.mjs';
 import { projectLaneSnapshot, type LaneModelFacts } from '../shared/agentLane/laneProjection.js';
 import { openLaneNativeDesktop } from './laneNativeDesktop.mjs';
 import { LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog.js';
-import { laneSkillUnlockReason } from './laneSkillIndex.mjs';
 import { appendLaneContinuation, laneContinuationText } from './laneContinuation.mjs';
 
 /** 阶段 1 的观测：pi 每个 delta 自报的 `contentIndex`，与我们从 content 数组下标推出来的那个。 */
@@ -200,11 +199,11 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // `Available tools` / `Guidelines` 两段由宿主拼，不靠调用方记得（G-03 的后一半）。
   // 2026-09-07 合并评审实核：`composeLaneSystemPrompt` 此前零生产调用者——通道②③写满了，
   // 一个字都到不了模型。拼接点放在这里，是因为这里是唯一知道「这条 lane 装了哪些工具」的地方。
-  // 技能索引那一段用 pi 的 `formatSkillsForPrompt` 渲染（`laneSkillIndex.mts` 里一行渲染代码都没有）。
+  // 技能索引那一段用 pi 的 `formatSkillsForPrompt` 渲染（`laneSkillCatalog.mts` 里一行渲染代码都没有）。
   //
   // 索引有两种来源，寿命不同：
   //   · 桌面原生（`native.skillIndex`）**是活的**——每个回合重扫一次技能库，用户中途导入的技能
-  //     下一个回合就在索引里，而且 `read` 同时被允许读它（同一份快照，见 `laneInstalledSkills.mts`）。
+  //     下一个回合就在索引里，而且 `read` 同时被允许读它（同一份快照，见 `laneSkillCatalog.mts`）。
   //   · `options.skills` 是影子夹具/单测那条路：调用方自己给一份定死的索引，本来就不会变。
   // 没有技能时不去 import 那个包：一条 lane 不该为了拿一个空串付一次 ESM 解析。
   const staticSkills = options.skills ?? [];

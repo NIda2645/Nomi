@@ -652,8 +652,10 @@ export interface LaneSkillIndexEntry {
   /** frontmatter 的 `name`。模型看见的标识，也是 `/skill` chip 引用的那个。 */
   readonly name: string
   readonly description: string
-  /** SKILL.md 的**绝对**路径——coding 工具的 operations 插槽只收绝对路径。 */
+  /** 技能文件的**绝对**路径（`SKILL.md`，或根目录下的 `<stem>.md`）——coding 工具的 operations 插槽只收绝对路径。 */
   readonly filePath: string
+  /** 发现来源：随安装包分发 / 用户目录。进 pi `Skill.sourceInfo.source`，按事实填、不填常量。 */
+  readonly origin: 'builtin' | 'user'
   /** `disable-model-invocation: true` 的技能不进索引，只能由 `/skill` chip 显式送。 */
   readonly disableModelInvocation: boolean
   /** 这个技能要跑脚本吗（自带 `scripts/`/`bin/`/`hooks/`，或 frontmatter 写了 `tools: coding`）。 */

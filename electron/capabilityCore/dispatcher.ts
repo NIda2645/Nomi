@@ -19,7 +19,7 @@ import { canvasDeleteSemanticInputSchema } from '../shared/agentCapabilities/can
 import { documentWriteSemanticInputSchema } from '../shared/agentCapabilities/documentWrite'
 import { readProjectDocument, writeProjectDocument } from './documentSurface'
 import { CanvasGraphError, type CanvasSnapshot } from './canvasGraph'
-import { listSkillSummariesForMcp, readSkillContentForMcp, type SkillMcpAccess } from '../skills/skillStore'
+import { listSkillSummariesForMcp, readSkillContentForMcp, readSkillRecords, type SkillMcpAccess } from '../skills/skillStore'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import type { ProductionBrief } from '../productionRun/productionRunTypes'
 import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
@@ -388,7 +388,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       return { models: listAvailableModels() }
     case 'skills.list':
       // 导演/编剧技能库元数据（渐进披露，不含正文）。供 MCP 脊柱 resources/prompts 列表。
-      return { skills: listSkillSummariesForMcp(mcpSkillAccess(ctx.origin)) }
+      return { skills: listSkillSummariesForMcp(mcpSkillAccess(ctx.origin), await readSkillRecords()) }
     case 'skills.read': {
       // 按 name/directoryName 读一个技能正文。找不到 ⇒ null（协议层转 error）。
       const packageVersion = typeof params.packageVersion === 'string' ? params.packageVersion : ''
@@ -396,7 +396,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       return readSkillContentForMcp(
         String(params.name || params.directoryName || ''),
         mcpSkillAccess(ctx.origin),
-        undefined,
+        await readSkillRecords(),
         packageVersion && contentHash ? { packageVersion, contentHash } : undefined,
         typeof params.filePath === 'string' ? params.filePath : undefined,
       )
