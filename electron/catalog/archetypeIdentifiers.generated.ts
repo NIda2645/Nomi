@@ -254,16 +254,28 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "muse_image"
   ],
   "grok-imagine-image-2": [
-    "grok_imagine_image_2"
+    "grok_imagine_image_2",
+    "grok-imagine-2.0-ext"
   ],
   "gemini-image-3-pro": [
-    "gemini_image3_pro"
+    "gemini_image3_pro",
+    "gemini-3-pro-image-preview"
   ],
   "gemini-image-3.1-flash": [
     "gemini_image3.1_flash"
   ],
   "runway-seed-audio": [
     "seed_audio"
+  ],
+  "gpt-image-2.5-flare": [
+    "gpt-image-2.5-flare",
+    "gpt-image-2-5-flare-text-to-image",
+    "gpt-image-2-5-flare-image-to-image"
+  ],
+  "gpt-image-2.5-sunburst": [
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2-5-sunburst-text-to-image",
+    "gpt-image-2-5-sunburst-image-to-image"
   ],
   "gpt-image-2": [
     "gpt-image-2",
@@ -324,6 +336,16 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "qwen-image-2-0",
     "qwen-image-2.0-pro",
     "qwen-image-2-0-pro"
+  ],
+  "imagen-4-fast": [
+    "google/imagen4-fast",
+    "imagen4-fast",
+    "imagen-4-fast"
+  ],
+  "imagen-4-ultra": [
+    "google/imagen4-ultra",
+    "imagen4-ultra",
+    "imagen-4-ultra"
   ],
   "imagen-4": [
     "imagen-4",

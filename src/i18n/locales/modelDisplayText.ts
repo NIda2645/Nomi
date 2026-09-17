@@ -377,6 +377,8 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   '给图（最多 10 张）+ 提示词改图 / 多图融合':
     'Provide up to 10 images plus a prompt to edit or blend them',
   '给图（最多 14 张）+ 提示词改图': 'Provide up to 14 images plus a prompt to edit them',
+  '给图（最多 16 张）+ 提示词改图': 'Provide up to 16 images plus a prompt to edit them',
+  'Gemini 3 Pro 图像': 'Gemini 3 Pro Image',
   '给图（最多 14 张）+ 提示词改图 / 多图融合':
     'Provide up to 14 images plus a prompt to edit or blend them',
   '给图（最多 14 张）+ 提示词改图，跨镜身份一致性最强':
