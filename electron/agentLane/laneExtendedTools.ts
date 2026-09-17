@@ -101,8 +101,21 @@ function nextActionFor(
  *
  * **只在真的有一张卡在等人时才走这条**：全自动档由策略代答的那一笔已经开跑了
  * （`policyStartedGeneration`），对它说「停下来等用户点卡」是双重错误——卡不存在，钱也已经花了。
+ *
+ * ── 为什么条件写在函数里，而不是只写在调用点（2026-09-18）──
+ *
+ * F 块的合同把这条列进 `residual_risks`：`code: 'user_sees_spend_card'` 只靠调用点那个 `if` 保证，
+ * 门岗看不见。`check:announced-card` 的 `hardcoded-card-claim` 是**正则**，它分不清「写死且无条件」
+ * 和「写死但被真实结论守着」——把它扩到 `code:` 会对这一行报**假红**，而假红只会教人绕开门岗
+ * （R17：门岗红了先读它红在哪条判据，不是改判据）。所以这条不变量往**更早**一层搬：函数自己拿着
+ * 那份结果，宣称「有一张卡在等你」之前先核对它。第二个调用点再出现时，它也带着同一道核对。
  */
 function spendCardResult(result: unknown): never {
+  if (policyStartedGeneration(result)) {
+    // 程序员错误，不是用户错误：这一笔已经开跑、钱已经花了，任何「卡在等你」都是假话。
+    throw new Error('spendCardResult called for a generation the approval policy already started'
+      + ' — no card is waiting and credit is already being spent (see nextActionFor: job_running).')
+  }
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
   const shots = Array.isArray(record.shots) ? record.shots.length : undefined
   throw new LaneDomainFailure({
@@ -111,6 +124,9 @@ function spendCardResult(result: unknown): never {
     nextAction: 'STOP. Do not call any other tools and do not claim generation has started or completed. Tell the user what the card shows and wait for their decision.',
   })
 }
+
+/** 测试用：让「卡在等你」这句话的守卫本身可以被直接打上一枪（R17 阳性对照）。 */
+export const __spendCardResultForTest = spendCardResult;
 
 export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescriptor[] {
   // Visibility groups do not transfer execution ownership: timeline reads keep their typed port

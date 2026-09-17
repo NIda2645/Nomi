@@ -18,6 +18,7 @@ import type { GenerationDefaultTaskKind } from "../settings/generationModelDefau
 import {
   isLongFormGenerationRequest,
   requestedVideoDurationSeconds,
+  semanticCandidateFromParams,
 } from "./semanticGenerationCandidate";
 import type { ShotPrice } from "../productionRun/shotPricing";
 
@@ -115,12 +116,25 @@ export type AssertReferencesResolvable = (projectId: string, references: Readonl
 
 /**
  * P4 S6.5 `plan` 入口: parse one client-supplied shot `{ shotId?, role?, included?, candidate }` into a
- * draft shot. The candidate is a FULL PlanCandidate (same shape single-shot create takes) — reusing
- * `candidateFrom` means the `plan` entrance shares the single-shot validation (no second parser).
+ * draft shot. An explicit `candidate` is a FULL PlanCandidate (same shape single-shot create takes) —
+ * reusing `candidateFrom` means the `plan` entrance shares the single-shot validation (no second parser).
+ *
+ * 一镜**没带** `candidate` 时它就是一份语义镜（prompt + 可选 provider/model/参数/参考）——那正是 20 动词
+ * `draft_shots` 交出来的形状。2026-09-18 之前这里直接 `candidateFrom(undefined)`，整条多镜路对着模型
+ * 抛一段裸 zod。语义镜交给**单镜那一个**解析器 `semanticCandidateFromParams` 编译（不长第二个解析器，
+ * 也就同样继承它「显式身份不借用默认模型的 mode」那条纪律）。
  */
-export function draftShotFromPlan(value: unknown, index: number, parsers: MultiShotCandidateParsers): GenerationOperationDraftShot {
+export function draftShotFromPlan(
+  value: unknown,
+  index: number,
+  parsers: MultiShotCandidateParsers,
+  compileSemanticShot?: (params: Record<string, unknown>, shotId: string) => PlanCandidate,
+): GenerationOperationDraftShot {
   const raw = parsers.record(value, `generation shot ${index}`);
   const env = shotEnvelope(raw, index, `shot-${index + 1}`);
+  if (raw.candidate === undefined && compileSemanticShot) {
+    return { ...env, candidate: compileSemanticShot(raw, env.shotId) };
+  }
   const candidate = parsers.candidateFrom(raw.candidate);
   return { ...env, candidate };
 }
@@ -170,7 +184,7 @@ export function draftShotFromStoryboard(draft: StoryboardShotDraft, index: numbe
 
 /** The shared derivations the multi-shot factory needs (all pure, all single source of truth from S2/S4). */
 export type MultiShotHelperDeps = {
-  registry: Pick<ModuleRegistry, "resolve">;
+  registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   videoModelCandidates?: readonly VideoModelCandidate[];
   planStoryboard?: (input: {
     projectId: string;
@@ -213,6 +227,30 @@ type OperationWithShots = { shots?: ReadonlyArray<GenerationOperationDraftShot> 
  * Extracted from the handler closure to keep mcpGenerationTools.ts under the 800-line shell gate (R9).
  */
 export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
+  /**
+   * 一镜没带 `candidate` 时的编译口：交给单镜那一个语义解析器，所以「显式点名的模型算数、
+   * 没点名就只用保存过的默认、都没有就诚实拒绝」这三条在多镜路上逐字相同。
+   * `durationSeconds` 是计划层的名字，供应商合同用 `duration`——与 storyboard 路同一条换名规则。
+   */
+  const compileSemanticShot = (raw: Record<string, unknown>, shotId: string): PlanCandidate => {
+    const declared = raw.parameters && typeof raw.parameters === "object" && !Array.isArray(raw.parameters)
+      ? (raw.parameters as Record<string, unknown>)
+      : undefined;
+    const durationSeconds = typeof raw.durationSeconds === "number" ? raw.durationSeconds : undefined;
+    const parameters = durationSeconds !== undefined
+      && declared?.duration === undefined && declared?.durationSeconds === undefined
+      ? { ...(declared ?? {}), duration: durationSeconds }
+      : declared;
+    return semanticCandidateFromParams({
+      operationId: shotId,
+      params: { ...raw, ...(parameters ? { parameters } : {}) },
+      candidateFrom: deps.parsers.candidateFrom,
+      ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
+      ...(deps.registry.snapshot ? { registry: { snapshot: deps.registry.snapshot } } : {}),
+      ...(deps.allowRegistryFallback ? { allowRegistryFallback: true } : {}),
+    });
+  };
+
   const storyboardDefaults = (taskKind: GenerationDefaultTaskKind): { moduleId: string; providerId: string; modelId: string; mode: string; modeId?: string } => {
     const configured = deps.defaultModelForTaskKind?.(taskKind);
     if (configured) return configured;
@@ -236,7 +274,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     let shots: GenerationOperationDraftShot[];
     if (Array.isArray(params.shots)) {
       if (params.shots.length === 0) throw new Error("多镜生成需要至少一个镜头");
-      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers));
+      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers, compileSemanticShot));
     } else if (typeof params.scriptText === "string" || isLongFormGenerationRequest(params)) {
       // A minute-scale natural-language request must not silently collapse to
       // one provider clip. Promote it to the same storyboard seam as an

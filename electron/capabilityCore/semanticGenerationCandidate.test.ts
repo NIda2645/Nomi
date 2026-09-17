@@ -113,4 +113,32 @@ describe("semantic generation candidate", () => {
     expect(candidate).not.toHaveProperty("modeId");
     expect(candidate).not.toHaveProperty("variantId");
   });
+
+  // 根因合同 2026-09-18-draft-shots-drops-candidate：模型点了名的模型，对**没保存过默认**的用户
+  // 也必须算数。此前 moduleId 只能从保存的默认里来，所以「点名 + 没存默认」= 当场拒绝，
+  // 而模型面上根本没有 moduleId 这个字段可填——点名因此永远差一格。
+  it("honours an explicitly named provider+model for a user who never saved a default", () => {
+    const candidate = semanticCandidateFromParams({
+      operationId: "op-named",
+      params: { prompt: "生成一张六棱柱的图", taskKind: "text_to_image", providerId: "fixture", modelId: "image-model" },
+      candidateFrom: parse,
+      registry,
+    });
+    expect(candidate).toMatchObject({
+      moduleId: "generation.single-shot", providerId: "fixture", modelId: "image-model", mode: "text_to_image",
+    });
+  });
+
+  it("still refuses when nothing names a model — the module lookup is not a way in", () => {
+    // 阳性对照：上一条的绿不是因为判据恒真。没点名 + 没默认 = 照旧拒绝，不许按目录行序挑一个花钱。
+    expect(() => semanticCandidateFromParams({
+      operationId: "op-unnamed", params: { prompt: "生成一张图" }, candidateFrom: parse, registry,
+    })).toThrow(/没有配置可用的图片模型/);
+    // 点了名但目录里没有这个身份，也照旧拒绝（不为不存在的模型编一个 module）。
+    expect(() => semanticCandidateFromParams({
+      operationId: "op-unknown",
+      params: { prompt: "生成一张图", providerId: "fixture", modelId: "not-in-catalog" },
+      candidateFrom: parse, registry,
+    })).toThrow(/没有配置可用的图片模型/);
+  });
 });

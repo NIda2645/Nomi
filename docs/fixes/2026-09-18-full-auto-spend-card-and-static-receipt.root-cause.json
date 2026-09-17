@@ -23,8 +23,8 @@
   ],
   "entry_points": [
     "electron/productionRun/productionPendingSpend.ts:150 projectPendingSpendConfirm（面板报价卡的唯一投影点）",
-    "electron/agentLane/laneExtendedTools.ts:132 nextActionFor（20 个 lane 动词回执的唯一产地）",
-    "electron/agentLane/laneExtendedTools.ts:114 spendCardResult（`generate` 那条「停下来等卡」的失败回执）",
+    "electron/agentLane/laneExtendedTools.ts:148 nextActionFor（20 个 lane 动词回执的唯一产地）",
+    "electron/agentLane/laneExtendedTools.ts:113 spendCardResult（`generate` 那条「停下来等卡」的失败回执）",
     "electron/agentLane/laneDesktopTools.ts:135 nextAction: user_sees_panel（同族的第二个回执产地：`start_model_setup`，实扫确认它说的是真的——面板确实当场打开）"
   ],
   "invariants": [
@@ -78,7 +78,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneExtendedTools.ts",
-      "line": 132,
+      "line": 148,
       "symbol": "nextActionFor"
     },
     {
