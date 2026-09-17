@@ -1582,11 +1582,12 @@
         "current",
         "custom",
         "development",
-        "launcher-stale",
+        "launcher-broken",
+        "launcher-elsewhere",
         "legacy-launcher",
         "stale-development"
       ],
-      "reason": "客户端配置里那条 nomi 条目相对当前 Nomi 的兼容性判定（mcpConfig.classifyMcpEntry 唯一产出）的中立 owner：主进程 mcpConfig.ts 与渲染层 mcpBridgeTypes.ts 的 McpConfigState 都从这份 tuple derive。八态里 legacy-launcher / stale-development / auth-stale / launcher-stale 是 Nomi 自己写过的历史形状（启动修复只动这些；launcher-stale 含「命令签名都对、NOMI_SETTINGS_DIR 指向别的/已删除 profile」，2026-09-14 起），custom 是 Nomi 没写过的条目（永不动）。与 McpVerifyReason 不同：这里判的是静态配置形状，那边判的是真起进程后的握手结论。",
+      "reason": "McpConfigState 的中立 owner。launcher-broken 表示启动器或 profile 已损坏，可启动自愈；launcher-elsewhere 表示另一份有效 Nomi 或 profile，只显示归属，由用户主动切换。其余历史形状保持原判定；custom 永不自动改写。主进程和渲染层从此 tuple derive，与实连诊断 McpVerifyReason 独立。",
       "site": "electron/shared/mcpConnectionContract.ts::variable:MCP_CONFIG_STATES/as-const"
     },
     {

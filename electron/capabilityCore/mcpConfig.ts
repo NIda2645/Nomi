@@ -453,6 +453,8 @@ export type McpClientInfo = {
   configPath: string
   snippet: string
   configState: McpConfigState
+  configuredCommand: string | null
+  configuredSettingsDir: string | null
   launcherKind: McpLauncherKind
 }
 
@@ -476,7 +478,8 @@ function clientInfo(client: McpClientKey): McpClientInfo {
   const configState = classifyMcpEntry(client, configured, server)
   const installed = configured !== null || (spec.format === 'toml' ? codexInstalled(target) : jsonInstalled(target))
   const snippet = spec.format === 'toml' ? codexBlock(server) : jsonSnippet(server)
-  return { installed, appInstalled: isMcpClientAppInstalled(client), configPath: target, snippet, configState, launcherKind }
+  return { installed, appInstalled: isMcpClientAppInstalled(client), configPath: target, snippet, configState, launcherKind,
+    configuredCommand: configured?.command ?? null, configuredSettingsDir: configured?.env?.[SETTINGS_ROOT_ENV] ?? null }
 }
 
 /** 读接入状态 + 各客户端配置片段。rpcPort 由调用方（appIntegration）传入。只读。 */
@@ -527,14 +530,13 @@ function writeClientConfig(client: McpClientKey, spec: ClientSpec): { ok: true; 
  * client simply works (R28: put the guard at the earliest layer that can catch it).
  *
  * Scope stays deliberately narrow: only entries that classify as Nomi-owned historical shapes
- * (`legacy-launcher` / `stale-development` / `auth-stale` / `launcher-stale`, the last one including an
- * entry whose NOMI_SETTINGS_DIR names another or deleted profile) are
+ * (`legacy-launcher` / `stale-development` / `auth-stale` / `launcher-broken`) are
  * rewritten, only when a packaged launcher exists to point at, and every rewrite takes a `.nomi-backup`
  * first. A `custom` entry — anything Nomi did not write — is never touched. An isolated instance is
  * refused at `atomicWrite`, the one door every write goes through.
  *
- * A repaired entry carries the client's **display label** as well as its key, because the only thing
- * anyone downstream does with this list is tell the user which assistant to restart.
+ * A different viable launcher or profile belongs to that installation, even when its authentication
+ * differs. Only an explicit install may switch it; settings shows its recorded path.
  */
 export type McpConfigRepairResult = {
   changed: boolean
@@ -658,6 +660,27 @@ function missingDevelopmentPath(entry: McpServerEntry): boolean {
   return entry.args.some((arg) => (path.isAbsolute(arg) || arg.startsWith('.')) && !fs.existsSync(arg))
 }
 
+function executableFile(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.X_OK)
+    return fs.statSync(file).isFile()
+  } catch {
+    return false
+  }
+}
+
+function brokenLauncher(entry: McpServerEntry): boolean {
+  if (!executableFile(entry.command)) return true
+  // Helper launchers also depend on a script and GUI executable.
+  if (isNodeLauncherEntry(entry)) {
+    if (!executableFile(entry.env!.NOMI_MCP_APP_COMMAND)) return true
+    if (entry.args.some((arg) => path.isAbsolute(arg) && !fs.existsSync(arg))) return true
+  }
+  const profile = entry.env?.[SETTINGS_ROOT_ENV]
+  if (!profile) return false
+  try { return !fs.statSync(profile).isDirectory() } catch { return true }
+}
+
 export function classifyMcpEntry(
   client: McpClientKey,
   entry: McpServerEntry | null,
@@ -670,9 +693,14 @@ export function classifyMcpEntry(
   if (!sameCommand(entry, expected) && !looksLikeNomiLauncher(entry)) return 'custom'
   if (isLegacyScriptEntry(entry)) return 'legacy-launcher'
   if (missingDevelopmentPath(entry)) return 'stale-development'
+  if (brokenLauncher(entry)) return 'launcher-broken'
+  // Ownership precedes authentication: a different installation may use a different token.
+  const profile = entry.env?.[SETTINGS_ROOT_ENV]
+  if (!sameCommand(entry, expected)
+      || (profile && !sameProfile(entry, expected))) return 'launcher-elsewhere'
   if (verifyMcpClient(entry.env?.[MCP_CLIENT_ENV], entry.env?.[MCP_CLIENT_PROOF_ENV]) !== client
       || entry.env?.[MCP_CONFIG_VERSION_ENV] !== MCP_CONFIG_VERSION) return 'auth-stale'
-  if (!sameLauncher(entry, expected)) return 'launcher-stale'
+  if (!sameLauncher(entry, expected)) return 'launcher-broken'
   return entry.env?.[MCP_CONFIG_KIND_ENV] === 'development' ? 'development' : 'current'
 }
 
@@ -693,7 +721,7 @@ function shouldAutoMigrate(state: McpConfigState): boolean {
   return state === 'legacy-launcher'
     || state === 'stale-development'
     || state === 'auth-stale'
-    || state === 'launcher-stale'
+    || state === 'launcher-broken'
 }
 
 export type McpInstallResult =
