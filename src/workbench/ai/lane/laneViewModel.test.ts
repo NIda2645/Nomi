@@ -10,6 +10,7 @@ import type {
 import { LANE_APPROVAL_NOTE_TYPE } from '../../../../electron/shared/agentLane/laneContracts'
 import { laneInterventionSource, laneViewModel, type LaneViewModelLabels } from './laneViewModel'
 import { humanizeToolFailure, readableToolName, readableToolSummary } from '../resident/residentToolDisplay'
+import { laneToolFailureDetail, laneToolFailureSummary } from './laneToolFailureText'
 
 const labels: LaneViewModelLabels = {
   toolLabel: (name) => `[${name}]`,
@@ -83,7 +84,8 @@ describe('laneViewModel', () => {
       ...labels,
       toolLabel: (name, args) => readableToolName(translate, name, args),
       toolSummary: (name, args) => readableToolSummary(translate, name, args),
-      toolFailure: text => humanizeToolFailure(translate, text),
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
     }
     const receipt = (isError: boolean, denied = false) => {
       next = 0
@@ -103,9 +105,71 @@ describe('laneViewModel', () => {
     expect(receipt(false).summary).toContain('agentResident.toolCanvasWriteArtifactSummary')
     expect(receipt(true).summary).not.toContain('agentResident.toolNoGeneration')
     expect(receipt(true).summary).toContain('agentResident.issueExpected')
-    expect(receipt(true).output).toBe('Validation failed for tool "make_artifact":\n  - nodes: Expected array\n\nReceived arguments:\n{}')
+    // C5（2026-09-18）：展开体**不再**是模型收到的那段英文散文。这条断言以前逐字锁着
+    // `Validation failed for tool "make_artifact": …\nReceived arguments:\n{}`——
+    // 也就是把「中文界面印英文原文 + 回显整个参数对象」锁成了正确行为。
+    // 现在失败一律走本地文案：这一条没有结构化信封（旧转录形状），退回正文猜法的结果。
+    expect(receipt(true).output).toContain('agentResident.issueExpected')
+    expect(receipt(true).output).not.toContain('Received arguments')
+    expect(receipt(true).output).not.toContain('Validation failed for tool')
     expect(receipt(true, true)).toMatchObject({ status: 'output-denied' })
     expect(receipt(true, true).summary).toBeUndefined()
+  })
+
+  /**
+   * C5 的正路：结构化信封在时，面板印的是**由 code 派生的本地文案 + 结构化字段**。
+   *
+   * 这条断言存在的理由是一张真机截图（审计 §5 / B03）：中文界面上飘出
+   * `The current target could not accept this action (surface_port_stale). Next: …`。
+   * 那段字是 `renderLaneToolFailure` 拼给**模型**读的——英文、第三人称、末尾还带一行
+   * 只对模型成立的 `Next:` 指令。用户读到它既不知道发生了什么，也不知道该干什么。
+   */
+  it('C5：失败按 failure.code 走 i18n，模型正文一个字都不进面板', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolLabel: (name, args) => readableToolName(translate, name, args),
+      toolSummary: (name, args) => readableToolSummary(translate, name, args),
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c9', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c9', toolName: 'make_artifact', isError: true,
+        text: 'The current target could not accept this action (surface_port_stale).\nNext: Reopen the page and try again.',
+        failure: { code: 'surface_port_stale' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.summary).toBe('agentToolFailure.surface_port_stale')
+    expect(item.receipt.output).toBe('agentToolFailure.surface_port_stale')
+    expect(item.receipt.output).not.toContain('Next:')
+    expect(item.receipt.output).not.toContain('could not accept this action')
+  })
+
+  it('C5：码不在闭合集合里也说本地话，把码带出来给排查用——不退回模型正文', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c10', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c10', toolName: 'make_artifact', isError: true,
+        text: 'Some provider prose nobody translated.',
+        failure: { code: 'generation_pricing_unknown', allowed: ['a', 'b'] } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.summary).toBe('agentToolFailure.unknown(generation_pricing_unknown)')
+    expect(item.receipt.output).toContain('agentToolFailure.unknown(generation_pricing_unknown)')
+    expect(item.receipt.output).toContain('agentToolFailure.allowedValues(a、b)')
+    expect(item.receipt.output).not.toContain('provider prose')
   })
 
   it('任务卡：状态 / 进度 / 金额全部来自 join 出来的领域事实，卡本身只有两个 id', () => {

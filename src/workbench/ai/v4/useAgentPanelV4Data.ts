@@ -8,6 +8,7 @@ import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
 import { laneClient } from '../lane/laneClient'
 import { laneInterventionSource, laneViewModel } from '../lane/laneViewModel'
 import { humanizeToolFailure, readableToolName, readableToolSummary } from '../resident/residentToolDisplay'
+import { laneToolFailureDetail, laneToolFailureSummary } from '../lane/laneToolFailureText'
 import { projectV4Intervention } from './agentPanelV4Intervention'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { listWorkbenchModelCatalogModels, listWorkbenchModelCatalogVendors, type ModelCatalogModelDto, type ModelCatalogVendorDto } from '../../api/modelCatalogApi'
@@ -185,7 +186,10 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
   const view = React.useMemo(() => laneViewModel(snapshot.active, {
     toolLabel: (name, args) => readableToolName(t, name, args),
     toolSummary: (name, args) => readableToolSummary(t, name, args),
-    toolFailure: (text) => humanizeToolFailure(t, text) ?? text,
+    // C5：有结构化信封就按 `code` 查本地词条；没有（旧转录）才退回按正文猜。
+    // **两条路都不再 `?? text`**——那个兜底正是把模型收到的英文散文印给用户的那一行。
+    toolFailure: (text, failure) => (failure ? laneToolFailureSummary(t, failure) : humanizeToolFailure(t, text)),
+    toolFailureDetail: (failure) => laneToolFailureDetail(t, failure),
     thinkingLabel: t('agentPanelV4.thinkingLabel'),
     formatTokens: formatV4Tokens,
     formatCost: (amount) => t('agentPanelV4.costUsd', { amount: amount.toFixed(2) }),

@@ -21,6 +21,7 @@ import { enCommunity, zhCommunity } from './locales/community'
 import { enFeedbackReport, zhFeedbackReport } from './locales/feedbackReport'
 import { enAgentPanelV4, zhAgentPanelV4 } from './locales/agentPanelV4'
 import { enAgentLaneError, zhAgentLaneError } from './locales/agentLaneError'
+import { enAgentToolFailure, zhAgentToolFailure } from './locales/agentToolFailure'
 
 export const zhCN = {
   shotTable: zhShotTable,
@@ -435,6 +436,7 @@ export const zhCN = {
   feedbackReport: zhFeedbackReport,
   agentPanelV4: zhAgentPanelV4,
   agentLaneError: zhAgentLaneError,
+  agentToolFailure: zhAgentToolFailure,
 } as const
 
 type TranslationShape<T> = {
@@ -854,6 +856,7 @@ export const en = {
   feedbackReport: enFeedbackReport,
   agentPanelV4: enAgentPanelV4,
   agentLaneError: enAgentLaneError,
+  agentToolFailure: enAgentToolFailure,
 } satisfies TranslationShape<typeof zhCN>
 
 export const resources = {
