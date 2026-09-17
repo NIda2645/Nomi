@@ -58,7 +58,12 @@ export type MaterializeShotsWirePayload = {
   projectId: string;
   runId: string;
   materializationOperationId: string;
-  groupName: string;
+  /**
+   * 计划名本体。渲染层用它拼分镜组名（`分镜组·<计划名>`）和分镜表标题，**两处都走 i18n**。
+   * 主进程不再合成任何面向用户的文案：以前这里发的是硬编码的 `分镜组·多镜计划`，它会盖过渲染层
+   * 带 zh/en 的兜底，英文用户看到的是中文（与「镜头 N」那处同一个病）。没有计划名就不带。
+   */
+  planName?: string;
   shots: MaterializeShotWire[];
 };
 
@@ -121,7 +126,7 @@ function shotKind(shot: ProductionGenerationShot): "image" | "video" {
 /**
  * 从 Run 投影出 materialize-shots 载荷。**只投影 included 的锚 + 镜**（试拍/分批只覆盖勾选镜，§3.1）。
  * 已完成（ready/adopted）且有本地 artifact 的镜带上 result（打开项目补齐时一并回填；确认即落时通常还没有）。
- * groupName = 计划名（分镜组·<计划名>）。previewSecret/projectRoot 用于把 artifact 投成 nomi-local:// url。
+ * planName = 计划名（渲染层据它拼分镜组名与分镜表标题）。previewSecret/projectRoot 用于把 artifact 投成 nomi-local:// url。
  */
 export function buildMaterializeShotsPayload(
   run: ProductionRun,
@@ -187,11 +192,12 @@ export function buildMaterializeShotsPayload(
     };
   });
 
+  const planName = (deps.planName || "").trim();
   return {
     projectId: run.projectId,
     runId: run.runId,
     materializationOperationId: canvasLandingOperationId(run.runId),
-    groupName: `分镜组·${(deps.planName || "").trim() || "多镜计划"}`,
+    ...(planName ? { planName } : {}),
     shots,
   };
 }

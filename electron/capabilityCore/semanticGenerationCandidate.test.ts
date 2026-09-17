@@ -120,6 +120,27 @@ describe("semantic generation candidate", () => {
     })).not.toThrow();
   });
 
+  // 2026-09-18 金路径真机红：Agent 照 list_models 给了 modelKey，宿主却答「没有配置可用的图片模型」——
+  // 因为只有「用户保存过的默认模型」能带出 providerId/moduleId，显式点名的模型从不去目录里查它属于谁。
+  it("resolves provider and module for an explicitly named model even when no default is saved", () => {
+    const candidate = semanticCandidateFromParams({
+      operationId: "op-explicit",
+      params: { prompt: "清晨的旧书店门口", taskKind: "text_to_image", modelId: "image-model", modeId: "t2i" },
+      candidateFrom: parse,
+      registry,
+    });
+    expect(candidate).toMatchObject({ providerId: "fixture", moduleId: "generation.single-shot", modelId: "image-model", mode: "text_to_image", modeId: "t2i" });
+  });
+
+  it("still refuses an explicitly named model the registry does not know (no invented provider)", () => {
+    expect(() => semanticCandidateFromParams({
+      operationId: "op-unknown",
+      params: { prompt: "x", taskKind: "text_to_image", modelId: "ghost-model" },
+      candidateFrom: parse,
+      registry,
+    })).toThrow(/没有配置可用的图片模型/);
+  });
+
   it("lets explicit fields override saved defaults without exposing internal IDs", () => {
     const candidate = semanticCandidateFromParams({
       operationId: "op-explicit",

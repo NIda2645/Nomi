@@ -4,6 +4,7 @@ import { attachShotResult, materializeShots } from './multiShotCanvasLanding'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { resetClientIdRegistry } from '../generationCanvas/agent/applyCanvasToolCall'
+import { readShotTable } from '../../../electron/shared/canvas/shotTable'
 
 // P4 S5 — attach-shot-result 的运行时断言（result.url 必须 nomi-local://）+ 节点已删静默跳过。
 
@@ -108,5 +109,57 @@ describe('materializeShots undo transaction', () => {
     const afterUndo = useGenerationCanvasStore.getState()
     expect(afterUndo.nodes.filter((node) => node.meta?.materializationOperationId === operationId)).toEqual([])
     expect(afterUndo.groups.filter((group) => group.materializationOperationId === operationId)).toEqual([])
+  })
+})
+
+// 分镜表 = Run 落地节点的表格表示版（2026-09-18 单一账本）。表与节点同生、同一个撤销步、每 Run 一张。
+describe('production shot table is born with the landed nodes', () => {
+  const runId = 'run-table-1'
+  const operationId = `canvas-landing:${runId}`
+  const shots = [
+    { shotId: 'shot-1', role: 'shot' as const, kind: 'image' as const, prompt: '一' },
+    { shotId: 'shot-2', role: 'shot' as const, kind: 'image' as const, prompt: '二' },
+    { shotId: 'shot-3', role: 'shot' as const, kind: 'image' as const, prompt: '三' },
+  ]
+  const tables = () => useGenerationCanvasStore.getState().nodes.filter((node) => node.kind === 'shot_table')
+
+  beforeEach(() => {
+    resetClientIdRegistry()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  })
+
+  it('落地 N≥2 镜 → 一张 shot_table(production) 指向这个 Run，标题 = 计划名，行零缓存', async () => {
+    const result = await materializeShots({ materializationOperationId: operationId, runId, planName: '旧书店', shots })
+    expect(result.shotTableNodeId).toBeTruthy()
+    const [table] = tables()
+    expect(table.title).toBe('旧书店')
+    expect(readShotTable(table.meta)?.source).toEqual({ kind: 'production', runId, materializationOperationId: operationId })
+    expect(table.meta?.shotTable).not.toHaveProperty('rows')
+  })
+
+  it('补齐重放（节点已在）不建第二张；用户删掉表后重放也不复活它——删表只是删视图', async () => {
+    await materializeShots({ materializationOperationId: operationId, runId, planName: '旧书店', shots })
+    await materializeShots({ materializationOperationId: operationId, runId, planName: '旧书店', shots })
+    expect(tables()).toHaveLength(1)
+    useGenerationCanvasStore.getState().deleteNode(tables()[0].id)
+    const replay = await materializeShots({ materializationOperationId: operationId, runId, planName: '旧书店', shots })
+    expect(tables()).toHaveLength(0)
+    expect(replay.shotTableNodeId).toBeNull()
+    expect(replay.createdNodeIds).toHaveLength(0)
+  })
+
+  it('单镜草稿不建表（没有「分镜」可表）', async () => {
+    await materializeShots({ materializationOperationId: operationId, runId, planName: '一张图', shots: shots.slice(0, 1) })
+    expect(tables()).toHaveLength(0)
+  })
+
+  it('表、节点、组同一个撤销步：一次 undo 三者全退', async () => {
+    await materializeShots({ materializationOperationId: operationId, runId, planName: '旧书店', shots })
+    expect(tables()).toHaveLength(1)
+    useGenerationCanvasStore.getState().undo()
+    const state = useGenerationCanvasStore.getState()
+    expect(state.nodes.filter((node) => node.meta?.materializationOperationId === operationId)).toEqual([])
+    expect(state.groups.filter((group) => group.materializationOperationId === operationId)).toEqual([])
+    expect(tables()).toHaveLength(0)
   })
 })

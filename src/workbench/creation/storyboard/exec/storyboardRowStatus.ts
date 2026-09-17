@@ -204,6 +204,52 @@ export function deriveShotRowExec(input: {
   }
 }
 
+/**
+ * **没有方案的行**——Run 落地的画布节点（Agent 分镜的唯一账本）。状态只从节点本身推：
+ * 没有锚可等、没有必填参考可缺、没有首帧图可连。`external` 是 Run 那边对这一镜的看法
+ * （占位三态：主进程调度器在跑 / 上游拒了），只在节点自己还没结果时补位——节点一旦有结果，
+ * 它说了算。状态词表与方案行**同一份**（SHOT_ROW_STATUSES），不另立第二套。
+ */
+export function deriveNodeRowExec(
+  node: GenerationCanvasNode,
+  external?: { generating?: boolean; failedMessage?: string | null },
+): ShotRowExec {
+  const done = hasUsableResult(node)
+  const locked = Boolean(isAnchorFrozen(node) && done)
+  const generating = isNodeActive(node) || (!done && external?.generating === true)
+  const failedNode = isNodeFailed(node) ? node : null
+  const externallyFailed = !failedNode && !done && external?.failedMessage !== undefined && external.failedMessage !== null
+  const recoverableNode = isNodeRecoverable(node) ? node : null
+  const status: ShotRowStatus = generating
+    ? 'generating'
+    : failedNode || externallyFailed
+      ? 'failed'
+      : recoverableNode
+        ? 'recoverable'
+        : locked
+          ? 'locked'
+          : done
+            ? 'done'
+            : 'ready'
+  const percent = isNodeActive(node) ? node.progress?.percent : undefined
+  return {
+    status,
+    node,
+    keyframeNode: null,
+    recoverableNode,
+    waitingRefs: [],
+    ignoredAnchors: [],
+    unlockedRefs: [],
+    missingSlots: [],
+    changedRefs: [],
+    resultUrl: resultDisplayUrl(node),
+    progressPercent: typeof percent === 'number' && Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null,
+    progressMessage: isNodeActive(node) ? node.progress?.message || null : null,
+    errorMessage: failedNode?.error || (externallyFailed ? external?.failedMessage ?? null : null),
+    locked,
+  }
+}
+
 // ── 表级 derive：每行 runtime（行渲染/批量/计数全吃这一份，F2 禁静态快照）──
 
 export type StoryboardRowRuntime = {

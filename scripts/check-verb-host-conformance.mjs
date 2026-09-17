@@ -75,8 +75,7 @@ const { skillWriteInputForAlias } = await load('electron/shared/agentCapabilitie
  * 忘记登记的成本是门岗当场红——这个方向是故意的（R17：能让门岗拦的别留给人）。
  */
 const TRANSLATOR_CONSUMED = {
-  'draft_shots/shots[].shotId': '改已有草稿走顶层候选 patch，宿主的 candidatePatch 没有逐镜寻址（多镜按 shotId 的 patch 还没做，返回值会说清改了哪一镜）',
-  'draft_shots/shots[].role': '同上：patch 分支按顶层候选改，role 是逐镜信封字段，宿主的 candidatePatch 不收',
+  'draft_shots/shots[].role': 'patch 分支改的是候选，role 是逐镜信封字段，宿主的 candidatePatch 不收（表上是 refuse：填了就当场拒，不会静默丢）',
   'read_script/scope': 'scope 是契约的 operation 判别值，翻译成 full/selection 后由方法名承载',
   'write_script/where': '同上：where 翻成 document.write 的 operation（insert/replace/append）',
   'arrange_canvas/tidy': '布尔开关本身就是 operation 判别（tidy:true → tidy_canvas），不作为字段下传',
@@ -216,6 +215,19 @@ function leafValues(value, out = new Set()) {
   return out
 }
 
+/**
+ * 一份载荷里每个叶子值**第一次出现的路径**（与 `fieldProbes` 同一种路径写法：`shots[].shotId`）。
+ * R3 从示例出发时用它把「丢了哪个值」翻回「丢了哪个字段」，好对得上 TRANSLATOR_CONSUMED 的登记键。
+ */
+function leafPaths(value, keys = [], out = new Map()) {
+  if (Array.isArray(value)) { for (const item of value) leafPaths(item, [...keys, '[]'], out); return out }
+  if (isRecord(value)) { for (const [key, item] of Object.entries(value)) leafPaths(item, [...keys, key], out); return out }
+  if (value === undefined) return out
+  const leaf = `${typeof value}:${String(value)}`
+  if (!out.has(leaf)) out.set(leaf, keys.join('.').replace(/\.\[\]/g, '[]'))
+  return out
+}
+
 /** 把一个动词的一次调用走完整条路；返回这次调用的全部问题。 */
 function checkCall(verb, spec, contract, label, args) {
   const problems = []
@@ -344,6 +356,25 @@ function checkVerb(verb) {
       if (!missing.length) continue
       if (TRANSLATOR_CONSUMED[`${verb.name}/${probe.path}`]) continue
       problems.push(`R3 逐字段：字段 "${probe.path}" 被翻译层静默丢掉（丢了 ${missing.slice(0, 3).join(', ')}）`
+        + '\n        → 要么把它传下去，要么在 TRANSLATOR_CONSUMED 里按这个路径具名登记并写清它被谁吃掉了')
+    }
+  }
+  // R3 · 从**示例**出发：最小实例一次只加一个字段，够不到那些「只有和另一个字段同在才合法」的字段——
+  // `draft_shots` 的 `shots[].shotId` 没有 `draftId` 就过不了动词自己的 refine，探针于是从不碰它；
+  // 2026-09-18 它就这样被声明成 drop、且门岗全绿了一整天。示例是动词作者亲手写下的「模型会这么调」，
+  // 示例里给了值的每个字段都必须到达宿主——同一把尺子、同一份登记，只是起点换成示例。
+  for (const [index, example] of seeds.entries()) {
+    const args = verb.schema.parse(example.arguments)
+    const outcome = checkCall(verb, spec, contract, `R3 示例#${index + 1}`, args)
+    if (outcome.translated === undefined) continue
+    const kept = leafValues(outcome.translated)
+    const dropped = new Map()
+    for (const [leaf, fieldPath] of leafPaths(args)) {
+      if (kept.has(leaf) || TRANSLATOR_CONSUMED[`${verb.name}/${fieldPath}`]) continue
+      dropped.set(fieldPath, [...(dropped.get(fieldPath) ?? []), leaf])
+    }
+    for (const [fieldPath, leaves] of dropped) {
+      problems.push(`R3 示例#${index + 1}：字段 "${fieldPath}" 在示例里给了值，却没有到达宿主（丢了 ${leaves.slice(0, 3).join(', ')}）`
         + '\n        → 要么把它传下去，要么在 TRANSLATOR_CONSUMED 里按这个路径具名登记并写清它被谁吃掉了')
     }
   }

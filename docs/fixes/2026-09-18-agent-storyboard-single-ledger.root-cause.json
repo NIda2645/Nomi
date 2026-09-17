@@ -1,0 +1,657 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-agent-storyboard-single-ledger",
+  "problem_type": "One user-visible thing (\"the storyboard the Agent just drafted\") had two owners: the Run's generationPlan landed as canvas nodes, while the storyboard table/page read a second store the Agent no longer writes",
+  "symptom": "Agent says three shots were drafted; the canvas shows three nodes and a group, but the storyboard table stays empty (or shows the blank two-row starter). Editing one shot of a multi-shot draft through draft_shots(draftId, shotId) silently edited the top-level candidate instead, so nothing the user could see changed.",
+  "direct_cause": "shotTable.ts knew only source kinds 'storyboard' (ledger B: storyboardDesignsByDocumentId) and 'deconstruction'. The Run landing (src/workbench/capability/multiShotCanvasLanding.ts materializeShots) created nodes + group but no table view. On the edit side the verb→host table (verbTransportRoutes.ts DRAFT_SHOT_FIELD_MAP) declared shots[].shotId as absentOn.patch = drop ('多镜逐镜 patch 还没做'), so draft_shots(draftId, shots[{shotId}]) always patched the top-level candidate; neither generationPlanInputSchema's patch branch, the planning handler nor the durable store carried shotId, although productionGenerationPlanEdits.applyGenerationCandidatePatch already supported per-shot patches. The conformance gate stayed green because its per-field probe starts from the minimal instance and shotId is invalid without draftId, so the field was never probed.",
+  "class_root": "A durable intent (Run generationPlan) gained a canvas projection (nodes) but the tabular projection kept its own store, so 'table = tabular view of canvas nodes' (2026-09-01 ruling) held for user-authored plans only. Any new projection surface or edit door added on one ledger without a machine-checked owner for the other recreates the split.",
+  "migration": "No data migration. Existing projects with landed nodes but no production table get the table only when a landing next creates nodes (a pure replay never manufactures views, so a user-deleted table stays deleted). storyboardDesignsByDocumentId remains the owner of user-authored plans only; its retirement date and conditions are registered in docs/plan/2026-09-18-agent-storyboard-write-path.md §8 (2026-10-16).",
+  "affected_population": [
+    "Every user whose in-app Agent drafts a multi-shot storyboard via draft_shots (any provider, any model)",
+    "External MCP hosts that create or patch a multi-shot draft through nomi_generation_plan / nomi_submit_generation_plan (same handler, same shotId door)",
+    "Anyone reading a shot_table node from a project saved by this version on an older build: the persistence boundary rejects the unknown 'production' source fail-closed (normalizeShotTableMeta throws), which is the existing contract for unknown/future tables"
+  ],
+  "scope_paths": [
+    "src/workbench/capability/multiShotCanvasLanding.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+    "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+    "electron/shared/canvas/shotTable.ts",
+    "electron/productionRun/multiShotCanvasLanding.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+    ".github/workflows/quality-gate.yml",
+    "scripts/validation-policy.mjs",
+    "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+    "electron/agentLane/verbTransportRoutes.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.ts",
+    "src/i18n/locales/generationCommon.ts",
+    "scripts/check-verb-host-conformance.mjs",
+    "scripts/check-i18n-visible-text.mjs"
+  ],
+  "entry_points": [
+    "src/workbench/capability/multiShotCanvasLanding.ts materializeShots — the only creator of Run-landed nodes (draft create/patch, paid confirmation, project reopen all arrive here)",
+    "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx readShotTable/selectShotTableRows — the only reader that turns a shot_table node into rows",
+    "electron/agentLane/laneVerbTransport.ts verbToTransportCall(draft_shots) + electron/agentLane/verbTransportRoutes.ts DRAFT_SHOT_FIELD_MAP — the only translation from the model-facing verb to generation.plan; shotId is declared on the table (absentOn.patch = lift → plan patch envelope), the transport executes the table",
+    "electron/capabilityCore/generationTransportAdapters.ts parsedArgs — semantic (nomi_generation_plan) and canonical (nomi_submit_generation_plan) doors into the same planning handler",
+    "electron/capabilityCore/mcpGenerationTools.ts capability 'plan' — merges the patch against the addressed shot's candidate and forwards shotId to the store",
+    "electron/productionRun/productionGenerationOperationStore.ts patch — durable generation.patch command carrying shotId (reducer already applied per-shot patches via applyGenerationCandidatePatch)"
+  ],
+  "invariants": [
+    "An Agent-drafted storyboard has exactly one owner: the Run's generationPlan projected to canvas nodes. A shot_table whose source is 'production' stores no rows (schema: rows z.never) and derives every row from nodes with meta.productionRunId === source.runId.",
+    "The production shot table is born in the same landing transaction as the nodes and the group (one Cmd+Z removes all three) and only when that landing actually creates nodes; an idempotent replay never creates a second table nor resurrects one the user deleted.",
+    "draft_shots(draftId, shots[{shotId}]) edits that shot's candidate (its revision +1 -> the landed node is re-bound) and never the top-level candidate or any other shot; an unknown shotId is rejected instead of silently patching the top-level candidate.",
+    "The semantic and canonical generation-plan doors accept the same shotId field; the durable command's idempotency key is derived from the addressed shot's candidate revision so a second edit of the same shot is not swallowed as a replay.",
+    "Row status vocabulary for production rows is the storyboard row vocabulary (SHOT_ROW_STATUSES) derived from the node, with the Run's job phase filling in only while the node has no result of its own."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 101,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 102,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 103,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 105,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 109,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 89,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 106,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 115,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "line": 22,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "line": 28,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 327,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 406,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 75,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 85,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 134,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 135,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 98,
+      "symbol": "productionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 100,
+      "symbol": "productionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "line": 138,
+      "symbol": "productionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "line": 81,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "line": 11,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 23,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 36,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 69,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "line": 109,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+      "line": 39,
+      "symbol": "selectProductionShotRows"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "line": 16,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "line": 24,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "line": 34,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "line": 66,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "line": 78,
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 83,
+      "symbol": "liftedByFieldMap"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 195,
+      "symbol": "applyPlanCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 200,
+      "symbol": "applyPlanCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 199,
+      "symbol": "canvasLandingOperationId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 66,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 95,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 117,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 132,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 156,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 169,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 191,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 207,
+      "symbol": "operationFromRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "line": 258,
+      "symbol": "applyGenerationCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "line": 401,
+      "symbol": "applyGenerationCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "line": 426,
+      "symbol": "applyGenerationCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/shotTable/ShotTableStage.tsx",
+      "line": 28,
+      "symbol": "createStoryboardShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "line": 300,
+      "symbol": "createProductionShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "line": 378,
+      "symbol": "materializeShots"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "line": 16,
+      "symbol": "createStoryboardShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "line": 26,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "line": 278,
+      "symbol": "deriveShotRowExec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 74,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 164,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 168,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 411,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 420,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 455,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 495,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 501,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 510,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 511,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 512,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 519,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 561,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 584,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 591,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "line": 270,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "line": 310,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
+      "line": 78,
+      "symbol": "deriveNodeRowExec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "line": 53,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "line": 77,
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "line": 93,
+      "symbol": "setStoryboardPlan"
+    }
+  ],
+  "door_reduction": {
+    "before": 59,
+    "after": 73,
+    "why_not": "None of the 59 pre-existing doors could be merged here: 41 of them are ledger B (storyboardDesignsByDocumentId) writers that own user-authored plans — StoryboardPlanEditor's field edits, applyCanvasToolCall's external-MCP storyboard operations, the onboarding tour, the deconstruction-to-plan copy — and deleting them is the dated retirement registered in the plan document (2026-10-16, conditions listed there), not this change. The reducer's three applyGenerationCandidatePatch call sites are one helper reached from three commands (patch/revise draft/revise sealed), i.e. one owner already. The 14 added doors are not a second truth: (a) the projection itself — one write (the table node born inside materializeShots' landing transaction) and the reads that derive rows from nodes (readShotTable in findProductionShotTable, selectProductionShotRows/deriveNodeRowExec); (b) the per-shot patch chain, which reads the addressed shot's candidate through the same helpers the top-level path used (applyPlanCandidatePatch in the in-memory store, operationFromRun, generationPlanInputSchema read at both public doors); (c) five reads of generationPlanInputSchema in electron/agentLane/verbTransportRoutes.ts — that is the merged verb-host foundation deriving its target key lists from the host schema (a data table, not a second validator), counted because door-map counts every reference to the symbol; (d) exactly one write door in laneVerbTransport.ts, liftedByFieldMap, which replaces the hand-written shotId spread the interrupted WIP had — the field now travels because the table declares it (absentOn.patch = lift), not because a translator line copies it."
+  },
+  "regression_tests": [
+    "electron/shared/canvas/shotTable.test.ts",
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.test.ts",
+    "electron/agentLane/laneVerbTransport.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts",
+    "electron/productionRun/agentDraftSingleLedger.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/agentLane/verbTransportRoutes.test.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+    "electron/productionRun/multiShotCanvasLanding.test.ts",
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "tests/ux/golden-path.e2e.mjs"
+  ],
+  "residual_risks": [
+    "The storyboard page (StoryboardPlanEditor) and the sidebar's plan list still read ledger B only; an Agent draft is visible in the canvas shot table but not listed there. Making the page render a production source changes appearance and interaction, so it is deferred to a mockup round (plan §8, B.3); until the retirement date the two surfaces coexist by design and honestly.",
+    "A landed node has two paid doors (the Run's generate card and the node's own canvas run button); the table's 'generate N' delegates to the node's existing door. Not new, but not collapsed here.",
+    "Per-shot patch through draft_shots is one shot per call (the verb contract's own example); multiple shots in one draftId call still apply the first only. Renaming a shot's title through patch is refused by the table (title is an envelope field with absentOn.patch = refuse), not silently stripped.",
+    "check:verb-host-conformance R5 (no hand-copied envelopes) only matches brace-free object literals, so a rebuild written as spread-conditionals ({ shotId: x.shotId, ...(x.role ? { role } : {}) }) passes unseen — the in-memory store's create was exactly that and lost title until this change spread generationShotEnvelopeOf; the gate's blind spot itself is recorded as a structural finding in the plan document, not fixed here.",
+    "generate.shotIds is accepted by the schema and declared from-read:look_at_canvas.id, but the planning handler's present branch never reads params.shotIds (it returns every included shot); a field that is declared, translated and then ignored is the same shape as the shotId drop — recorded as a structural finding, out of this contract's scope."
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is Nomi's own data-flow ownership (one durable intent, derived views). The single-document-plus-idempotent-apply prior art was already checked and cited in docs/fixes/2026-09-10-agent-draft-single-ledger.root-cause.json (Automerge documents, IETF idempotency-key draft); this change extends that owner with one more derived view and one more edit door, touching no third-party API.",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The split recurred structurally: 2026-09-14 (afe85411d) removed the Agent's write door to ledger B and pointed at draft_shots, but no reader followed; every later surface that reads 'the storyboard' (table node, page, sidebar, golden-path walk) kept ledger B. The same shape recurs whenever a projection surface is added on one ledger only, and the edit side already recurred once (single-shot patch fixed on 2026-09-08 while the multi-shot shotId door stayed closed).",
+    "same_class_scan": [
+      "git grep -n \"source.kind === 'storyboard'\\|kind: z.literal('storyboard')\" src electron: enumerated every reader of the table source (ShotTableNode.tsx:43,52, shotTableActions.ts:45, selectShotTableRows.ts:41, openShotTableRow.ts, ensureStoryboardShotTable.ts:12, shotTable.ts:53); the new 'production' branch is added at the single row selector and the node component, the rest stay ledger-B-only by design until the dated retirement.",
+      "git grep -n 'materializeShots\\|landCanvasBestEffort' src electron: the three landing moments (draft create/patch, paid confirmation, reopen reconciliation) all reach materializeShots, so the table is born on every path that can land nodes and on no other.",
+      "git grep -n 'shotId' electron/agentLane/verbTransportRoutes.ts electron/shared/agentCapabilities/generationPlanSchemas.ts electron/capabilityCore/generationTransportAdapters.ts electron/capabilityCore/mcpGenerationTools.ts electron/productionRun/productionGenerationOperationStore.ts: the five hops between verb and reducer are the complete chain (the reducer and productionGenerationPlanEdits already carried shotId; the canonical adapter derives its patch shape from the schema branch, so it gained shotId without a second hand-written list); each hop is covered by a test that was proven red with that hop reverted.",
+      "scripts/check-verb-host-conformance.mjs R3 now also seeds per-field arrival from every documented example (the minimal-instance probe cannot reach fields that are only valid together with another field — shotId needs draftId); the gate's self-test carries the lift→drop mutation and it is red.",
+      "git grep -n 'groupName' electron src tests: the main process no longer composes any user-facing string for the landing (the hardcoded '分镜组·多镜计划' overrode the renderer's zh/en fallback, the same class as the '镜头 N' string removed the same day); the renderer derives the group label from planName through i18n and the wire carries planName only.",
+      "node scripts/door-map.mjs on the mutators above (before 59 / after 73): no changed production file is outside the door map except the i18n locale text and the catalog lookup added to semanticGenerationCandidate.ts (identityForNamedModel: an explicitly named modelId resolves its provider/module from the registry instead of requiring a saved default — the golden path's first real-machine red)."
+    ]
+  },
+  "generality_proof": "Every Run-landed node is created in exactly one place, materializeShots, which the draft, paid-confirmation and reopen moments share (2026-09-10 contract). Putting the table's birth inside that transaction means any present or future landing moment gets the view without opting in, and the table cannot drift from the nodes because it holds no rows: the persistence schema forbids them (rows: z.never) and the only row source is productionShotNodes(nodes, runId). On the edit side the shotId is validated at both schema doors and consumed by the one planning handler and the one durable store, so an external MCP host and the in-app lane cannot diverge.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "materializeShots",
+      "responsibility": "Sole creator of Run-landed nodes; now also births the production shot table inside the same undo transaction, only when nodes are actually created, idempotent per runId."
+    },
+    {
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "productionShotTableSchema",
+      "responsibility": "Persistence boundary for the production table: source = {runId, materializationOperationId}, rows forbidden, so no second copy of the shots can ever be saved."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
+      "symbol": "selectProductionShotRows",
+      "responsibility": "Sole derivation of production rows from canvas nodes (left half = node prompt, right half = the node's model mode slots read through referenceSlotStorage; status from deriveNodeRowExec)."
+    },
+    {
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "symbol": "DRAFT_SHOT_FIELD_MAP",
+      "responsibility": "Declares shots[].shotId as absentOn.patch = lift (to the plan patch envelope's shotId) with provenance from-read:draft_shots.shotId; the parent table verifies at assembly that the envelope really has that field, and liftedByFieldMap executes it — no field name lives in the transport."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "patch",
+      "responsibility": "Forwards shotId into the durable generation.patch command and keys idempotency on the addressed shot's candidate revision."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "materializeShots",
+      "disposition": "enforced",
+      "evidence": "multiShotCanvasLanding.test.ts: table born with N>=2 nodes, single-shot draft has no table, replay creates no second table and does not resurrect a deleted one, one undo removes nodes+group+table. Proven red with willCreateTable forced false."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "reconcileOpenProjectHook",
+      "disposition": "enforced",
+      "evidence": "Reopen reconciliation replays the same materializeShots with the same canvas-landing:{runId} operation id; the 'missing.length > 0' condition makes a pure replay inert for the table (test: replay after delete)."
+    },
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "verbToTransportCall",
+      "disposition": "enforced",
+      "evidence": "laneVerbTransport.test.ts: draft_shots(draftId, shots[{shotId}]) -> {operation:'patch', operationId, shotId, patch}; single-shot draft omits shotId. verbTransportRoutes.test.ts: lift executes and a lift whose envelope lacks the field throws at assembly. Proven red with the table's lift reverted to drop (unit test red; check:verb-host-conformance R3-from-examples red — the gate's own self-test now carries that mutation)."
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "entry_point": "parsedArgs",
+      "disposition": "enforced",
+      "evidence": "generationTransportAdapters.test.ts: both nomi_generation_plan{operation:'patch'} and nomi_submit_generation_plan accept shotId and forward it to planning. Proven red with the canonical schema's shotId removed."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "createGenerationPlanningHandler capability 'plan'",
+      "disposition": "enforced",
+      "evidence": "mcpGenerationTools.test.ts: patch with shotId changes only that shot's prompt, leaves the top-level candidate and other shots byte-identical, unknown shotId throws. Proven red with shotId not forwarded to the store."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "entry_point": "patch",
+      "disposition": "enforced",
+      "evidence": "agentDraftSingleLedger.test.ts: command payload carries shotId, commandId = generation.patch:{op}:{shotId}:{shotRevision}, onPlanChanged fires, unknown shotId throws. Proven red with shotId dropped from the payload."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "entry_point": "ensureStoryboardShotTable",
+      "disposition": "not-affected",
+      "evidence": "Ledger B's view (source 'storyboard') is unchanged: it still creates one view per explicit user-authored plan write and never on hydration. Its retirement is the dated debt in the plan document, not a silent change here."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "entry_point": "deconstructToShotTable",
+      "disposition": "not-affected",
+      "evidence": "The deconstruction facts table has its own owner (columnSetId 'facts', rows are measured facts) and no Agent draft flows through it; the union schema keeps it byte-identical."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/capability/multiShotCanvasLanding.ts",
+    "invariant": "For every landing that creates Run-owned shot nodes (N>=2), exactly one shot_table(production) pointing at that runId exists afterwards, created in the same transaction; it never stores rows and is never re-created by a replay.",
+    "failure_mode": "A landing that creates nodes without the table fails multiShotCanvasLanding.test.ts and the golden-path walk (tests/ux/golden-path.e2e.mjs asserts the production table on disk after draft_shots); a table with cached rows is rejected fail-closed by normalizeShotTableMeta at persistence; a patch that drops shotId fails the transport/adapter/handler/store tests each proven red by mutation.",
+    "exception_policy": "none",
+    "strategy": "Put the view's birth into the one write boundary every landing moment already shares, forbid rows in its persistence schema so it cannot become a second truth, and validate the per-shot edit field at both public schema doors so no host can bypass it.",
+    "artifacts": [
+      "src/workbench/capability/multiShotCanvasLanding.ts",
+      "electron/shared/canvas/shotTable.ts",
+      "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/capabilityCore/mcpGenerationTools.ts",
+      "electron/productionRun/productionGenerationOperationStore.ts",
+      "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "electron/agentLane/verbTransportRoutes.ts",
+      "scripts/check-verb-host-conformance.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.test.ts",
+    "electron/agentLane/laneVerbTransport.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "tests/ux/golden-path.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No parallel implementation was introduced: the production table stores no rows, so there is no second copy of the shots to delete, and the Agent's write door to ledger B was already removed on 2026-09-14 (afe85411d). Ledger B (storyboardDesignsByDocumentId) stays for user-authored plans only, with a dated retirement (2026-10-16) and explicit conditions in docs/plan/2026-09-18-agent-storyboard-write-path.md §8; the old golden-path assertions that read ledger B were replaced in the same diff. Two smaller parallel sources were deleted in place rather than as files: the main process's hand-composed group label (groupName on the landing wire) and the in-memory store's hand-written shot envelope."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Purely internal data-flow ownership; React Flow renders the table node but owns no synchronization between the Run and the table, and no third-party version changes the outcome.",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "src/workbench/capability/multiShotCanvasLanding.ts",
+    "tests": [
+      "src/workbench/capability/multiShotCanvasLanding.test.ts",
+      "src/workbench/capability/agentDraftSingleLedger.test.ts",
+      "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.test.ts"
+    ],
+    "rationale": "materializeShots is the one place every landing moment (draft create/patch, paid confirmation, project-reopen reconciliation) already funnels through, so 'the table exists iff the nodes were born here' can only be enforced there; the persistence schema (electron/shared/canvas/shotTable.ts, rows: z.never) makes it impossible for the view to grow a second copy of the shots, and the per-shot edit door is validated at both public schema doors so no host bypasses it. Putting the invariant anywhere later (the table component, the row selector) would let a landing without a table slip through unobserved."
+  }
+}

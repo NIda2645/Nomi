@@ -161,3 +161,43 @@ draftShotFromPlan((call!.call.args as any).shots[0], 0, {
 ```
 
 即：翻译层 ✓ → 入参 schema ✓ → handler 多镜分支 ✗（`mcpGenerationMultiShot.ts:124`）。
+
+
+## 8. 实施记录（2026-09-18 · 方案 B 第一刀，分支 `fix/storyboard-single-ledger-20260918`）
+
+> 用户拍板原话：「他读账本 A，那你这个肯定得修复呀，而且他们得合并成一个账本吧。」= Agent 分镜只认账本 A。
+
+### 8.1 做了什么（外观零改动那一半）
+
+| 子项 | 落点 | 说明 |
+|---|---|---|
+| B.1 第三种表源 | `electron/shared/canvas/shotTable.ts` `productionShotTableSchema` | `source = { kind:'production', runId, materializationOperationId }`，`rows: z.never()`——表**不存一行**，持久化边界拒收缓存行（fail-closed，与 storyboard 表同一条纪律） |
+| B.2 表与节点同生 | `src/workbench/capability/multiShotCanvasLanding.ts` `materializeShots` | 只在**这次真建了节点**且 N≥2 时建表（与分镜组同一阈值），挂同一 txn（一个 Cmd+Z 撤节点+组+表）；按 `source.runId` 幂等；纯补齐重放不建、用户删了表不复活（删表 = 删视图）。标题 = 计划名（主进程新增 wire 字段 `planName`，组名仍是它加前缀） |
+| 行 derive | `src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts` | 行 = 画布上 `meta.productionRunId === runId` 的镜头节点（锚不占镜号；跨分类副本/基于此重生成的不算），按画布顺序 = 落地序。左半列 = 节点 prompt；右半列 = 该节点模型的 `mode.slots`（绑定按 `referenceSlotStorage` 从 meta 读回）；状态词表复用 `SHOT_ROW_STATUSES`（`deriveNodeRowExec`：节点自身 > Run 占位三态补位） |
+| 表内「生成 N 镜」 | `shotTableActions.ts` | production 行 = 节点：勾选的节点走节点**既有**的付费门 `confirmAndRunPlan`（spendConfirm），不另造第二条执行通路 |
+| B.4 改一镜走 Run 账本 | `laneVerbTransport.ts` → `generationPlanSchemas.ts` → `generationTransportAdapters.ts` → `mcpGenerationTools.ts` → `productionGenerationOperationStore.ts` | `draft_shots(draftId, shots[{shotId}])` 的 `shotId` 此前在翻译层被丢、四层 schema/handler/store 都没它的位置（reducer 的 `applyGenerationCandidatePatch` 早就支持按 shotId 改）。现在五跳全通：那一镜候选 revision +1 → 已落节点重绑定 → 表行跟着变。语义门与规范门都收 `shotId`；幂等键 = `generation.patch:{op}:{shotId}:{那一镜的 revision}` |
+| 走查 | `tests/ux/golden-path.e2e.mjs` | 全部断言改读账本 A（画布节点 + `shot_table(production)` + 分镜组）；**接进 CI**：`quality-gate.yml` desktop-linux job 新增 `Golden path` 步（`journeys` 触发），`validation-policy.mjs` 把它登记为 journey 文件 |
+
+**外观逐项对账**：表节点复用同一个 `ShotTableNode`/`ShotTableGrid`——列（镜/关键帧/时长/画面/参考槽/状态）、密度三档、勾选、footer「已选 N 镜 / 生成 N 镜」全部不变；storyboard 与 deconstruction 两种表的分支逐字未动。production 表**多**出来的只有：它出现在画布上（这就是修的东西）、空态一句「这组镜头已从画布删除」（新 i18n 键 `shotTable.productionSourceMissing`，zh/en）、footer 没有「打开分镜表」按钮（同 deconstruction 表——它没有方案可打开）。行标题：本表没有标题列（与 storyboard 表一致）；表头标题 = 计划名。
+
+**分镜表的行标题优先级（既成事实，表要跟它一致，不再造第四种）**：模型拟的 `title`（`draft_shots` 信封字段，`electron/shared/generationShotEnvelope.ts`）> 提示词派生 > 渲染层 i18n 兜底（`generationCommon.production.canvasLanding.shotFallbackTitle`）。表若将来加标题列，**读节点已有的 `title`**，不许自己从 prompt 截一段，也不许在主进程编中文兜底。
+
+### 8.2 没做的（要样张拍板 / 另案）
+
+- **B.3 分镜页与侧栏「方案」列表增加 Run 条目、「新建方案」改语义、落地后自动激活** —— 改的是外观与交互（`StoryboardPlanEditor` 要以「只读候选 + revise」渲染一类新 source；侧栏多一类条目），按 R8 先出样张、用户拍板，本刀不做。现状诚实说明：Agent 草稿在**画布**的分镜表里可见、可选、可生成；分镜页/侧栏仍只列用户手写方案。
+- 表内改提示词/模型 → `generation.revise`：没有做表内编辑（storyboard 表本来也不在表内编辑，走全页）。Agent 侧的「改一镜」已通。
+- `draft_shots(draftId)` 一次只改一镜（动词契约的例子就是这个形状；多镜同调只取第一镜，与此前行为一致）；改标题（信封字段）不在 patch 面。
+
+### 8.3 账本 B（`storyboardDesignsByDocumentId`）的退役承诺
+
+- **保留场景**：仅用户手写方案（分镜页编辑器 / 侧栏「新建方案」/ 拆解表「复制成方案」/ 外部 MCP `nomi_canvas_edit` 的 `propose_storyboard_plan`/`patch_shots`）。Agent lane **不写**它（09-14 起）。
+- **退役日期：2026-10-16。**
+- **退役条件（全部满足才删）**：① B.3 落地（分镜页/侧栏能渲染 `shot_table(production)`，样张拍板）；② 外部 MCP 的分镜 operation 收编到 `draft_shots`（与 #754 同刀，`docs/plan/2026-09-14-agent-tool-face-v2.md` §6 那张表的到期项）；③ `projectRepository.ts` 的 `starter-*` 起手架删除（空项目由 Agent 起草进入分镜，不再靠两行空白方案）；④ golden-path 与四条分镜走查在单一账本上全绿。
+- **到期未满足**：按 R17 算红——但**仓库今天没有通用的「带到期日的欠账」门岗**（只有 `check:framework-boundary` 对框架债到期即红），本条登记在 `docs/roadmap/TODO.md` T-DS-19，到期由人核。这是一条结构性发现（见 §8.4）。
+- 到期前每一处新读分镜的面（表/页/栏/走查）**只许读账本 A**；往 B 加 Agent 写门 = 复活双 owner，`check:tool-face mutual-tiebreak` 会红。
+
+### 8.4 结构性发现
+
+1. 仓库没有通用的「带到期日的欠账」登记与门岗：`framework-boundaries.json` 的到期机制只服务框架债。分镜账本 B 这类「留一份到某天」的承诺没有机器核的地方。
+2. 一个 Run 落地的节点有**两扇付费门**（Run 的 `generate` 报价卡；节点自己的画布生成按钮/表内「生成」→ spendConfirm）。两条都早已存在，本刀没有收敛；「付费门只有 `generate` 一条」（§5 方案 B 的目标）要另案裁决。
+3. 对外 MCP 面的分镜 operation（`nomi_canvas_edit`）仍写账本 B，与内部 `draft_shots` 写账本 A 分叉——`docs/plan/2026-09-14-agent-tool-face-v2.md` §6 登记过但无日期；本文把它绑到账本 B 的退役日 2026-10-16。

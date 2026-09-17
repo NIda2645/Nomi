@@ -229,6 +229,15 @@ const ELECTRON_EXCLUDED_FILES = new Set([
   // 扁平化派生器对**契约作者**的报错(「这个 union 没有判别字段」这一族)。同样是装配期,
   // 且它的读者按定义是正在写 zod 契约的人。
   'electron/shared/agentCapabilities/flatModelInput.ts',
+  // 动词 → 宿主对应关系表的**装配期**不变量（「动词加了字段没加对应关系」「落点指向宿主没有的字段」
+  // 「lift 的信封上没这个位置」…）。表不自洽时模块加载即抛、App 起不来，读者是改表的开发者；
+  // 唯一一条运行时的 refuse（「送不到宿主」）带 code `capability_input_invalid`，受众是模型（工具错误），
+  // 与本名单里其它喂模型的文本同类。2026-09-18 verb-host 那一刀把翻译从手写改成表时长出来的。
+  'electron/shared/agentCapabilities/verbs/verbFieldMap.ts',
+  // 同上一层：来源核对（「说它来自某读动词的返回，但那个动词不返回这个字段」）与路线装配，全是装配期。
+  'electron/agentLane/verbTransportRoutes.ts',
+  // 仅一条：某个动词没有导出域的对应关系——只有代码里漏了一条路线才会走到，是开发者错误，不是用户路径。
+  'electron/agentLane/laneVerbTransport.ts',
 ])
 
 function isElectronVisibleScope(relative) {

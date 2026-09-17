@@ -59,6 +59,23 @@ export const storyboardShotTableSchema = z.object({
   rows: z.never().optional(),
 }).strict()
 
+/**
+ * Agent 分镜的账本只有一份：`ProductionRun.generationPlan` 落成的画布节点。这张表不存任何一行，
+ * 行从画布上 `meta.productionRunId === runId` 的节点 derive（分镜表 = 画布节点的表格表示版，
+ * 2026-09-01 拍板）。删掉这张表只是删掉一个视图，节点与 Run 一字不动。
+ */
+export const productionShotTableSchema = z.object({
+  ...commonShape,
+  source: z.object({
+    kind: z.literal('production'),
+    runId: identitySchema,
+    /** 落地那一批的幂等章（`canvas-landing:<runId>`）：同一 Run 的补齐重放据它认出这张表已存在。 */
+    materializationOperationId: identitySchema,
+  }).strict(),
+  columnSetId: z.literal('production'),
+  rows: z.never().optional(),
+}).strict()
+
 export const deconstructionShotTableSchema = z.object({
   ...commonShape,
   source: z.object({
@@ -78,8 +95,9 @@ export const deconstructionShotTableSchema = z.object({
 }).strict()
 
 /** Cross-process persistence owner. Storyboard rows remain in the existing design/node owners. */
-export const shotTableDocumentSchema = z.union([storyboardShotTableSchema, deconstructionShotTableSchema])
+export const shotTableDocumentSchema = z.union([storyboardShotTableSchema, productionShotTableSchema, deconstructionShotTableSchema])
 export type StoryboardShotTableDocument = z.infer<typeof storyboardShotTableSchema>
+export type ProductionShotTableDocument = z.infer<typeof productionShotTableSchema>
 export type DeconstructionShotTableDocument = z.infer<typeof deconstructionShotTableSchema>
 export type ShotTableDocument = z.infer<typeof shotTableDocumentSchema>
 export type ShotTableColumn = z.infer<typeof shotTableColumnSchema>
@@ -105,6 +123,21 @@ export function createStoryboardShotTable(
   return storyboardShotTableSchema.parse({
     schemaVersion: 1,
     source: { kind: 'storyboard', documentId, designId },
+    columnSetId: 'production',
+    view: { selectedRowIds: [], density: 'auto' },
+    revision: 0,
+    updatedAt,
+  })
+}
+
+export function createProductionShotTable(
+  runId: string,
+  materializationOperationId: string,
+  updatedAt = new Date().toISOString(),
+): ProductionShotTableDocument {
+  return productionShotTableSchema.parse({
+    schemaVersion: 1,
+    source: { kind: 'production', runId, materializationOperationId },
     columnSetId: 'production',
     view: { selectedRowIds: [], density: 'auto' },
     revision: 0,

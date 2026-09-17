@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
-  assembleVerbFieldMap, objectFieldKeys, projectByFieldMap,
+  assembleVerbFieldMap, liftedByFieldMap, objectFieldKeys, projectByFieldMap,
 } from "../shared/agentCapabilities/verbs/verbFieldMap";
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, PROVENANCE_UNVERIFIABLE, SIMPLE_VERB_ROUTES } from "./verbTransportRoutes";
 import { verbToTransportCall } from "./laneVerbTransport";
@@ -115,6 +115,29 @@ describe("生成出来的翻译与手写版逐字节相同", () => {
     const patched = translate({ draftId: "op-1", shots: [{ shotId: "shot-3", prompt: "改一句" }] }) as { patch: Record<string, unknown> };
     expect(patched).toMatchObject({ operation: "patch", operationId: "op-1" });
     expect(patched.patch).toEqual({ prompt: "改一句" });
+  });
+
+  it("寻址字段提到信封上：改草稿时一镜的 shotId 落在 plan patch 顶层，候选 patch 里没有它", () => {
+    const shot = { shotId: "shot-2", prompt: "逆光侧脸" };
+    expect(projectByFieldMap(shot, DRAFT_SHOT_FIELD_MAP, "patch")).toEqual({ prompt: "逆光侧脸" });
+    expect(liftedByFieldMap(shot, DRAFT_SHOT_FIELD_MAP, "patch")).toEqual({ shotId: "shot-2" });
+    expect(liftedByFieldMap({ prompt: "换一句" }, DRAFT_SHOT_FIELD_MAP, "patch")).toEqual({});
+  });
+
+  it("lift 的落点必须真在父表同名目标（信封）上——信封没这个位置就装配期抛，不许提上来送不到", () => {
+    const child = assembleVerbFieldMap({
+      label: "child", sourceKeys: ["addr", "body"], targets: { patch: ["body"] },
+      relations: {
+        body: { kind: "same", from: ["model-authored"] },
+        addr: { kind: "same", from: ["model-authored"], absentOn: { patch: { disposition: "lift", to: "addr", why: "寻址" } } },
+      },
+    });
+    const parent = (envelopeKeys: string[]) => ({
+      label: "parent", sourceKeys: ["items"], targets: { patch: envelopeKeys },
+      relations: { items: { kind: "elements" as const, map: child, why: "逐项" } },
+    });
+    expect(() => assembleVerbFieldMap(parent(["addr", "items"]))).not.toThrow();
+    expect(() => assembleVerbFieldMap(parent(["items"]))).toThrow(/信封上没有这个位置/);
   });
 
   it("顶层缺省折进每一镜，逐镜自己写的优先", () => {
