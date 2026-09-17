@@ -108,9 +108,13 @@ async function withApp(name, fn) {
   try {
     // 实例刚起来就直接打付费 IPC 会连窗口一起带走（实测）；先做一次无害调用热身并确认凭据在位。
     const vendors = await win.evaluate(() => window.nomiDesktop.modelCatalog.listVendors());
+    console.log(`  · 实例就绪（${name}）`);
     return await fn(win, vendors);
   } finally {
     await app.close().catch(() => undefined); // 跑完立刻退，不留窗口
+    // 上一个实例要彻底死透再起下一个：连着起会让新实例在窗口刚出来时就被带走
+    // （实测症状是 "Application exited" / "Target page…closed"，看着像产品崩，其实是实例互踩）。
+    await new Promise((r) => setTimeout(r, 6000));
   }
 }
 
@@ -126,6 +130,7 @@ async function submitCase(c) {
         const { grantId } = await win.evaluate(async (id) =>
           await window.nomiDesktop.tasks.grantSpend({ nodeIds: [id], maxAttemptsPerNode: 1 }), nodeId);
         if (!grantId) throw new Error("铸令牌失败");
+        console.log("  · 令牌已铸，发 createTask…");
         const initial = await win.evaluate(async (a) =>
           await window.nomiDesktop.tasks.run({ vendor: a.vendor, request: { kind: a.kind, prompt: a.prompt, extras: { ...a.extras, nodeId: a.nodeId, grantId: a.grantId } } }),
           { ...c, nodeId, grantId });
