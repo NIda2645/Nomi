@@ -50,19 +50,25 @@ export const HIGGSFIELD_VENDOR_SEED = {
 } as const;
 
 /**
- * Higgsfield 的 status 动词 → 我们的归一态。
+ * Higgsfield 的 status 动词 → 我们的归一态。**只声明共享词表不认识的那一个。**
  *
- * **一张表，不散落**（这是本文件唯一一处状态词知识）。两条来自实测而非文档：
- * - `in_progress`：官方文档与调研都只列了 queued/completed/failed/nsfw/canceled，
- *   真实轮询里出现的却是它。只按文档写，它会落进 resolveTaskStatus 的「未知动词」分支。
- * - `nsfw`：内容策略拒绝，**是失败终态且自动退款**。归到 failed，让轮询立刻停；
- *   不归 succeeded（没有产物），也不留成未知（那会一直轮询到超时）。
+ * Higgsfield 实际会吐六个动词：`queued / in_progress / completed / failed / canceled / nsfw`。
+ * 其中前五个 `resolveTaskStatus` 的通用词表已经认得（responseParsing.ts），
+ * 再抄一份进这里不会改变任何行为，只会多一份会漂的并行映射（P1）——kie 当初正是
+ * 因此**故意不带 statusMapping**。所以这里只留 `nsfw`。
+ *
+ * 为什么 `nsfw` 必须归 failed：它是内容策略拒绝，**有退款、没有产物**。落进未知分支的话
+ * resolveTaskStatus 会乐观返回 queued 继续轮询，直到超时才判死——用户要多等一整个宽限期
+ * 才看得到「这条被拒了」。
+ *
+ * 为什么不把 `nsfw` 加进通用词表：那会改掉所有供应商的行为（今天别家吐 nsfw 是走
+ * 「未知动词 + 宽限期」那条路的），属于跨供应商的判据变更，不该顺手夹带在接一家的改动里。
+ *
+ * ⚠️ 这张表的正确性由 higgsfieldContract.test.ts 守着：那里既断言 nsfw 由**本表**认出
+ * （删掉就红），也断言另外五个词确实被**通用词表**认出（上游若改词表，我们立刻知道）。
  */
 export const HIGGSFIELD_STATUS_MAPPING: Record<string, string[]> = {
-  queued: ["queued"],
-  running: ["in_progress"],
-  succeeded: ["completed"],
-  failed: ["failed", "nsfw", "canceled", "cancelled"],
+  failed: ["nsfw"],
 };
 
 /**
@@ -93,14 +99,22 @@ export const HIGGSFIELD_IMAGE_QUERY_OP: HttpOperation = {
   },
 };
 
-/** 视频轮询 op（DoP 用）。产物键与图片平行（videos[].url）。 */
+/**
+ * 视频轮询 op（DoP 用）。
+ *
+ * ⚠️ 产物键与图片**不对称**：图片是 `images: [{url}]`（数组），视频是
+ * `video: {url}`（**单数对象**）。这一条是 2026-09-17 真机跑出来才发现的——
+ * 本文件最初按「和图片平行」写成 `videos.0.url`，那样会一个字都取不到、
+ * 任务明明成功却拿不到产物。录下来的终态在
+ * fixtures/higgsfield/dop-terminal.json，测试打在它上面。
+ */
 export const HIGGSFIELD_VIDEO_QUERY_OP: HttpOperation = {
   method: "GET",
   path: STATUS_PATH,
   response_mapping: {
     task_id: "request_id",
     status: "status",
-    video_url: "videos.0.url",
+    video_url: "video.url",
     error_message: "detail",
   },
 };

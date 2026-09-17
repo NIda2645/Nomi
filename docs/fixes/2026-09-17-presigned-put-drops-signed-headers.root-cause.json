@@ -1,0 +1,346 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-presigned-put-drops-signed-headers",
+  "problem_type": "供应商自述的协议被当成我们可以写死的常量",
+  "symptom": "参考图上传到供应商自有通道时拿到 HTTP 403 SignatureDoesNotMatch，看起来像网络抖动",
+  "direct_cause": "upload-initiate-put 把 PUT 的协议头写死成只有 Content-Type；Higgsfield 的预签名 URL 把 x-amz-tagging 也算进签名（X-Amz-SignedHeaders = content-type;host;x-amz-tagging），少一个被签名的头 → S3 拒签。同一形状的第二处是鉴权方案词：authType 那张 enum 只能表达「key 放哪」，于是 `Authorization` 里的方案词只能在每条 mapping 里抄字面量。",
+  "class_root": "「这次请求要带哪些头、前缀写什么词」是**供应商在响应里或契约里告诉我们的事实**，而这两处都把它变成了代码里的常量。常量化供应商自述的协议，就一定会在下一家（或同一家改配置）时以同样方式再坏一次，且坏法是 403/401 这种看着像环境问题的错。",
+  "one_off_or_recurring": "one_off",
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "两处都是把供应商自述协议常量化，但它们各自只有一个实现点（一条上传策略分支、一个 authHeaders 函数），不是散落多处的同类。改成声明式之后没有第二份副本会漂。",
+    "same_class_scan": [
+      "实扫 CURATED_ASSET_INGESTION 与 CURATED_VIDEO_INGESTION 的全部 8 条通道：只有两步预签名家族会遇到「响应指定 PUT 头」；upload-initiate-multipart 与 upload-presigned 本来就把 fields 从响应里读出来（已是声明式），只有 upload-initiate-put 把头写死。",
+      "实扫 authHeaders 的 8 个调用点（runtime / requestPipeline / validateCandidateCredential / selfCheck / vendorHealth / directKeyCredential / profileHttpRequest / httpConnector），全部改为透传 vendor.authScheme；没有第二处自己拼 Authorization 的地方。",
+      "实扫 18 个内置供应商种子：除 higgsfield 外没有第二家的方案词不是 Bearer/x-api-key。"
+    ]
+  },
+  "affected_population": [
+    "所有走 upload-initiate-put 的供应商自有上传通道（今天是 fal 与新接的 higgsfield）",
+    "所有 Authorization 方案词不是 Bearer 的供应商（今天是 higgsfield 的 `Key`）"
+  ],
+  "scope_paths": [
+    "electron/catalog/assetIngestionRegistry.ts",
+    "electron/catalog/assetLocalization.ts",
+    "electron/catalog/builtinVendorSeeds.ts",
+    "electron/catalog/credentialConfigFields.ts",
+    "electron/catalog/directKeyCredential.ts",
+    "electron/catalog/higgsfieldModels.ts",
+    "electron/catalog/higgsfieldVendor.ts",
+    "electron/catalog/profileHttpRequest.ts",
+    "electron/catalog/seedBuiltins.ts",
+    "electron/catalog/types.ts",
+    "electron/catalog/validateCandidateCredential.ts",
+    "electron/providerAdapter/selfCheck.ts",
+    "electron/runtime.ts"
+  ],
+  "entry_points": [
+    "resolveLocalAsset 把本地素材解析成供应商可达 URL 时走到 upload-initiate-put 分支",
+    "buildHttpRequest / authHeaders 为任何一次供应商调用装配 Authorization 头"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://api.higgsfield.ai/files/generate-upload-url",
+      "checked_at": "2026-09-17",
+      "purpose": "官方上传端点本身（按其文档 file-uploads 的两步流程实调）。实测：PUT 只带 Content-Type → 403 SignatureDoesNotMatch；带上响应里的 upload_headers → 200，取回字节 sha256 与本地逐字节相同。对象保留是 7 天（x-amz-expiration），不是文档写的 1 小时（那是预签名窗口）。证据 docs/evidence/2026-09-17-higgsfield-contract/。"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://docs.higgsfield.ai/docs/concepts/file-uploads",
+      "checked_at": "2026-09-17",
+      "purpose": "两步上传的官方描述与 upload_headers 字段；同时是「文档写 1 小时、实际对象保留 7 天」这处偏差的出处。"
+    }
+  ],
+  "invariants": [
+    "预签名 PUT 的协议头以供应商初始化响应为准，不以代码里的常量为准",
+    "声明了 uploadHeadersPath 却拿不到那个对象时必须报错，不得静默退回只发 Content-Type",
+    "字节上传请求永不携带供应商 API key（预签名 URL 自带授权）",
+    "Authorization 的方案词由供应商种子声明一次，所有调用点透传，不在 mapping 里抄字面量"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 4,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 12,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 88,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 118,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 130,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 142,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 152,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 155,
+      "symbol": "CURATED_ASSET_INGESTION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 161,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "line": 163,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 265,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 275,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 284,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 447,
+      "symbol": "uploadHeadersPath"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 448,
+      "symbol": "uploadHeadersPath"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 450,
+      "symbol": "uploadHeadersPath"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 509,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 727,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 728,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "line": 735,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "line": 113,
+      "symbol": "HIGGSFIELD_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "line": 181,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/credentialConfigFields.ts",
+      "line": 56,
+      "symbol": "VENDOR_CONFIG_FIELD_CLASSIFICATION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/directKeyCredential.ts",
+      "line": 58,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldModels.ts",
+      "line": 79,
+      "symbol": "HIGGSFIELD_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldModels.ts",
+      "line": 93,
+      "symbol": "HIGGSFIELD_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldModels.ts",
+      "line": 107,
+      "symbol": "HIGGSFIELD_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldModels.ts",
+      "line": 121,
+      "symbol": "HIGGSFIELD_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldVendor.ts",
+      "line": 93,
+      "symbol": "STATUS_PATH"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/higgsfieldVendor.ts",
+      "line": 113,
+      "symbol": "STATUS_PATH"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/profileHttpRequest.ts",
+      "line": 60,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "line": 302,
+      "symbol": "HIGGSFIELD_MODELS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "line": 303,
+      "symbol": "HIGGSFIELD_MODELS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "line": 342,
+      "symbol": "HIGGSFIELD_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "line": 428,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "line": 220,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "line": 250,
+      "symbol": "VendorAuthType"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "line": 279,
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "line": 48,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "line": 74,
+      "symbol": "authScheme"
+    },
+    {
+      "kind": "read",
+      "path": "electron/runtime.ts",
+      "line": 174,
+      "symbol": "authScheme"
+    }
+  ],
+  "door_reduction": {
+    "before": 41,
+    "after": 41,
+    "why_not": "这 41 扇里绝大多数是**读**入口：authScheme 被 8 个鉴权装配点读一次、HIGGSFIELD_* 常量被种子与模型表读一次。写入口本来就只有一个（authHeaders 装配 Authorization / assetLocalization 装配 PUT 头），本次改动正是把这两个写入口收成声明驱动。读入口分散是刻意的——它们各自服务不同场景（存活探针、健康检查、自检、真实请求），合并它们等于把四件事塞进一个函数，不属于本不变量的范围。"
+  },
+  "regression_tests": [
+    "electron/catalog/higgsfieldContract.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/assetLocalization.ts",
+      "electron/ai/requestPipeline.ts"
+    ],
+    "rationale": "写死的单头 { \"Content-Type\": ... } 与写死的 `Bearer ` 前缀都已删除，改为「Content-Type + 供应商声明的那组头」与「vendor.authScheme ?? Bearer」。没有保留旧行为的开关：留一个 fallback 等于留一个只在某些供应商上偶发 403/401 的静默分支。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "current": "无第三方依赖变更",
+    "target": "无",
+    "rationale": "修的是我们自己的请求装配，不涉及依赖版本。",
+    "exit_criteria": []
+  },
+  "migration": "无持久化数据变更。uploadHeadersPath 与 authScheme 都是可选字段，缺省行为与改动前逐字节相同，故既有供应商（含 fal）不受影响。",
+  "residual_risks": [
+    "只在 Higgsfield 一家做了真实字节级上传验证；fal 的预签名今天只签 Content-Type，未回归实测——它不声明 uploadHeadersPath，走的是与改动前完全相同的分支。",
+    "供应商若把被签名的头从响应里拿掉却仍然要求它，我们会报错而不是猜。这是有意的，但表现为一次可见失败而不是自动恢复。",
+    "本分支还改了 4 个 @generated 档案桥接文件（gen:archetype-defaults 的产物）。它们在 electron/catalog/ 下因而被本门岗判为高风险，但纯数据文件里没有任何读写入口，数不出门——见报告「结构性发现」，本 lane 不改门岗。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/assetLocalization.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/catalog/higgsfieldContract.test.ts"
+    ],
+    "rationale": "upload-initiate-put 分支是「把吞入声明翻译成一次真实 PUT」的唯一实现点；方案词那条的 owner 是 electron/ai/requestPipeline.ts 的 authHeaders，同一份测试里断言出网头确实是 `Key …`。两条都做过突变验证：删掉 uploadHeadersPath 声明、把 authScheme 改回 Bearer，测试各红一条。"
+  }
+}
