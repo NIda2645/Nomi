@@ -23,7 +23,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CAPABILITY_ALIAS_ENTRIES } from '../electron/shared/agentCapabilities/registry'
 import { VERB_DECLARATIONS } from '../electron/shared/agentCapabilities/verbDeclarations'
-import { findEffectRestatements, findFalseFieldValues, declaredToolsOf } from './skill-tool-binding-lib.mjs'
+import { findEffectRestatements, findFalseFieldValues, declaredToolsOf, objectShapeOf } from './skill-tool-binding-lib.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -36,11 +36,10 @@ const effectByAlias = new Map<string, string>(
 // 每个动词模型可见 schema 的字段 → 那个字段自己的校验器。同样现取，不在本文件写死任何字段名或取值。
 const fieldSchemasByTool = new Map<string, Map<string, { safeParse(value: unknown): { success: boolean } }>>()
 for (const verb of VERB_DECLARATIONS) {
-  const shape = (verb.schema as unknown as { shape?: Record<string, unknown> }).shape
-  if (!shape) continue
   const fields = new Map<string, { safeParse(value: unknown): { success: boolean } }>()
   const collect = (node: unknown, depth: number): void => {
-    const own = (node as { shape?: Record<string, unknown> })?.shape
+    // `.shape` 要剥壳才拿得到：superRefine/optional/default 包一层就没有 `.shape` 了。
+    const own = objectShapeOf(node) as Record<string, unknown> | undefined
     if (!own || depth > 2) return
     for (const [name, child] of Object.entries(own)) {
       if (!fields.has(name)) fields.set(name, child as { safeParse(value: unknown): { success: boolean } })
@@ -52,6 +51,19 @@ for (const verb of VERB_DECLARATIONS) {
   }
   collect(verb.schema, 0)
   fieldSchemasByTool.set(verb.name, fields)
+}
+
+// 判据不许空转：一个收参数的动词若派生出 0 个字段，说明取字段那段读不动它的 schema，
+// 判据对它什么都没查却仍会报绿。名单存**身份**不存数字，只减不增（R17 棘轮）。
+const VERBS_TAKING_NO_PARAMETERS = new Set(['look_at_canvas'])
+const vacuous = [...fieldSchemasByTool]
+  .filter(([name, fields]) => fields.size === 0 && !VERBS_TAKING_NO_PARAMETERS.has(name))
+  .map(([name]) => name)
+if (vacuous.length > 0) {
+  console.error(`❌ 判据空转：${vacuous.join(', ')} 派生出 0 个字段。`)
+  console.error('   这些动词的 schema 读不出 `.shape`（多半又被包了一层），判据查不到它们却会报绿。')
+  console.error('   修 scripts/skill-tool-binding-lib.mjs 的 objectShapeOf，别把动词加进 VERBS_TAKING_NO_PARAMETERS。')
+  process.exit(1)
 }
 
 const skillsDir = path.join(repoRoot, 'skills')
