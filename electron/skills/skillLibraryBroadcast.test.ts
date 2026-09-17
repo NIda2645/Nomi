@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { preloadSurfaceSource } from "../preload/preloadSurfaceSources";
 
 import {
   broadcastSkillLibraryChanged,
@@ -33,7 +34,7 @@ describe("技能盘变了的唯一信号来自写盘那一层（2026-09-11）", 
 
   it("两个写盘的函数都发信号，渲染层不再自己喊第二遍", () => {
     const skillPackage = source("electron/skills/skillPackage.ts");
-    const preload = source("electron/preload.ts");
+    const preload = preloadSurfaceSource();
     const router = source("src/NomiRouterApp.tsx");
     const workbenchSkills = source("src/workbench/skillLibrary/useWorkbenchSkills.ts");
 

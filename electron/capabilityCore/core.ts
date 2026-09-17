@@ -29,7 +29,7 @@ import {
   type NodeSpec,
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
-import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
+import { verifyAndMaybeRetry, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 import { unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { pickFirstFramePainter } from './firstFramePainter'
