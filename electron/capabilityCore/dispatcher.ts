@@ -570,6 +570,22 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         return { applied: true, proposalId: proposalId(), operation: input.operation, affectedNodeIds: [input.nodeId], reconciliation: canvasRecovery() }
       }
       if (input.operation === 'create_canvas_nodes') {
+        // 这条 headless 路把 planned node **逐字段重建**成 `NodeSpec`（`canvasGraph.ts`，七个字段），
+        // 而 `artifact`（模型手写的 SVG/HTML/Markdown 正文）不在其中。渲染层那条路会把它交给
+        // `deliverAgentArtifact` 落盘再挂进 `meta.artifact`；这条路没有那一步，于是正文在重建的那一行
+        // **无声蒸发**：外部宿主收到 `applied: true` 和一个真节点 id，画布上是一个空壳，正文再也找不回来。
+        // 2026-09-18 扫描抓出（与镜头 `title` 死在五处手抄里是同一形态）。
+        //
+        // 在能拦住的最早一层**拒收**，而不是建一个空节点再说成功：这条路今天送不到，就别收下它。
+        // 补齐传输（headless 也走一次真落盘）是另一件事，那才是让它重新可用的办法。
+        const artifactNodes = input.nodes.filter((node) => node.artifact !== undefined).map((node) => node.clientId)
+        if (artifactNodes.length > 0) {
+          throw new RpcError(`这个宿主还不能保存手写产物的正文（${artifactNodes.join(', ')}）`, 400, {
+            code: 'capability_unsupported',
+            nextAction: 'Create the node without artifact content, or author the artifact inside the Nomi app.',
+            capability: 'canvas.write' as never,
+          })
+        }
         const created = await addProjectNodes(
           ctx.planConfirmed ? withPreApprovedPlan(base) : base,
           input.nodes.map((node) => ({
