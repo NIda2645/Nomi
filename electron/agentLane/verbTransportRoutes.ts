@@ -33,9 +33,9 @@ import { draftShotSchema } from '../shared/agentCapabilities/verbs/writeVerbs'
  */
 function outputFieldNames(verb: string): ReadonlySet<string> | undefined {
   const declaration = VERB_DECLARATIONS.find((item) => item.name === verb)
-  if (!declaration) throw new Error(`verbTransportRoutes: provenance names a verb that does not exist: "${verb}"`)
+  if (!declaration) throw new Error(`verbTransportRoutes: 来源里写了不存在的动词 "${verb}"`)
   const contract = CAPABILITY_CONTRACTS.find((item) => item.id === declaration.contractId)
-  if (!contract) throw new Error(`verbTransportRoutes: ${verb} maps to a capability that is not registered`)
+  if (!contract) throw new Error(`verbTransportRoutes: ${verb} 落在一个没注册的能力上`)
   const names = new Set<string>()
   const walk = (node: unknown): void => {
     if (!node || typeof node !== 'object') return
@@ -78,13 +78,13 @@ function assertProvenanceResolvable(map: VerbFieldMap): VerbFieldMap {
       const names = outputFieldNames(verb)
       if (names === undefined) {
         if (PROVENANCE_UNVERIFIABLE[verb]) continue
-        throw new Error(`${map.label}: "${source}" says it comes from ${verb}'s result, but ${verb}'s result shape is not declared, so this cannot be checked. `
-          + 'Either give that capability a real outputSchema, or register it by name in PROVENANCE_UNVERIFIABLE with the reason why.')
+        throw new Error(`${map.label}: "${source}" 说它来自 ${verb} 的返回，但 ${verb} 的返回形状没有声明，核不动。`
+          + '要么把那个能力的 outputSchema 收成真形状，要么在 PROVENANCE_UNVERIFIABLE 里具名登记并写清为什么。')
       }
       if (!names.has(field)) {
-        throw new Error(`${map.label}: "${source}" says it comes from "${field}" in ${verb}'s result, but ${verb} does NOT return that field. `
-          + 'The model therefore cannot obtain this value at all. That is a design error, not a model error: either point at a read verb that really returns it, '
-          + 'or make it host-resolved (the host resolves it without asking the model).')
+        throw new Error(`${map.label}: "${source}" 说它来自 ${verb} 的返回里的 "${field}"，但 ${verb} **不返回**这个字段。`
+          + '模型因此根本拿不到这个值——这不是模型的问题，是设计错了：要么换一个真的会返回它的读动词，'
+          + '要么改成 host-resolved（宿主自己解析，不问模型）。')
       }
     }
   }
@@ -94,7 +94,7 @@ function assertProvenanceResolvable(map: VerbFieldMap): VerbFieldMap {
 /** 一个动词的源字段名单——从**它自己的声明**取，不在这里重列一遍。 */
 function verbKeys(name: string): readonly string[] {
   const declaration = VERB_DECLARATIONS.find((verb) => verb.name === name)
-  if (!declaration) throw new Error(`verbTransportRoutes: no verb declaration named ${name}`)
+  if (!declaration) throw new Error(`verbTransportRoutes: 没有名为 ${name} 的动词声明`)
   return objectFieldKeys(declaration.schema, `verb ${name}`)
 }
 

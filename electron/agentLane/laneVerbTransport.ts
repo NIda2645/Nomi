@@ -129,7 +129,7 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
 export function exportJobTransportCall(call: RuntimeToolCall): RuntimeToolCall {
   const args = (call.args && typeof call.args === 'object' ? call.args : {}) as Args
   const route = EXPORT_JOB_ROUTES[call.toolName]
-  if (!route) throw new Error(`exportJobTransportCall: ${call.toolName} has no export-domain relation`)
+  if (!route) throw new Error(`exportJobTransportCall: ${call.toolName} 没有导出域的对应关系`)
   return {
     toolCallId: call.toolCallId,
     toolName: call.toolName === 'cancel_job' ? EXPORT_WRITE_ALIASES.cancel : EXPORT_READ_ALIASES.inspect,
