@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { transcribeLocally } from "../electron/localSpeech/localSpeechTranscribe";
+import { transcribeLocally, type LocalSpeechProgress } from "../electron/localSpeech/localSpeechTranscribe";
 import { isLocalSpeechEngineInstalled, pendingLocalSpeechBytes } from "../electron/localSpeech/localSpeechInstall";
 import { LOCAL_SPEECH_DEFAULT_TIER, localSpeechEngineForPlatform, localSpeechTier } from "../electron/shared/localSpeech/localSpeechAssets";
 import { rememberProxyStateForTests } from "../electron/systemProxy";
@@ -29,8 +29,10 @@ import { rememberProxyStateForTests } from "../electron/systemProxy";
 const require_ = createRequire(import.meta.url);
 const { requireRealMediaAssets, readRealMediaRegistry } = require_("../tests/ux/fixtures/realMedia.mjs") as {
   requireRealMediaAssets: (ids: string[]) => { dir: string; assets: Map<string, { id: string; file: string | null; relativePath?: string }> };
-  readRealMediaRegistry: () => { coverage: { class: string; assets: string[] }[] };
+  readRealMediaRegistry: () => { coverage: { class: string; test: string | null; assets: string[] }[] };
 };
+/** 登记表 coverage[].test 里写的就是这个仓库相对路径。 */
+const SELF_REGISTRY_PATH = "scripts/local-speech-live-check.ts";
 
 process.env.NOMI_SETTINGS_DIR ||= path.join(os.homedir(), ".nomi-local-speech-live");
 // 出站要一条「已提交的应用网络路由」，那条路由平时由 Electron 启动时探测系统代理得到。
@@ -44,14 +46,37 @@ const secondsIndex = args.indexOf("--seconds");
 const limitSeconds = secondsIndex >= 0 ? Number(args[secondsIndex + 1]) : 0;
 const explicitIds = args.filter((arg) => !arg.startsWith("--") && arg !== String(limitSeconds));
 
+/**
+ * 三个阶段一个都不许漏：生产端 `LocalSpeechProgress` 每加一个成员，这里的 `never` 兜底就会编译红，
+ * 而不是像 2026-09-17 那样——`starting` 加进了生产端，这边的二元三目把它当成 transcribing 去读
+ * `doneSeconds.toFixed`，脚本一条素材都跑不完。
+ */
+function describeProgress(progress: LocalSpeechProgress): string {
+  switch (progress.phase) {
+    case "starting":
+      return `开跑：${progress.gpuAccelerated ? "GPU 加速" : "纯 CPU"}，预计 ${progress.estimatedMinutes} 分钟`;
+    case "downloading":
+      return `下载引擎与权重 ${(progress.doneBytes / 1e6).toFixed(0)}/${(progress.totalBytes / 1e6).toFixed(0)} MB`;
+    case "transcribing":
+      return `转写第 ${progress.chunkIndex + 1}/${progress.chunkCount} 段（${progress.doneSeconds.toFixed(0)}/${progress.totalSeconds.toFixed(0)} 秒）`;
+    default: {
+      const unexpected: never = progress;
+      throw new Error(`未知的本地转写进度阶段：${JSON.stringify(unexpected)}`);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const registry = readRealMediaRegistry();
-  const coverage = registry.coverage.find((entry) => entry.class === "transcription");
-  if (!coverage) {
-    console.error("登记表里没有 transcription 这条覆盖——先在 tests/ux/real-media-fixtures.json 登记素材再跑。");
+  // 默认集从登记表反查：**凡是把本脚本登记为 test 的覆盖类**（transcription / transcription-english /
+  // 以后再加的语种）全都算，不写死类名——否则登记表说「这条由它验」、脚本却静默不跑，登记即放绿（R17）。
+  const ownCoverage = registry.coverage.filter((entry) => entry.test === SELF_REGISTRY_PATH);
+  if (ownCoverage.length === 0) {
+    console.error(`登记表里没有任何一条覆盖把 ${SELF_REGISTRY_PATH} 登记为 test——先在 tests/ux/real-media-fixtures.json 登记素材再跑。`);
     process.exit(1);
   }
-  const wantedIds = explicitIds.length > 0 ? explicitIds : coverage.assets;
+  const wantedIds = explicitIds.length > 0 ? explicitIds : [...new Set(ownCoverage.flatMap((entry) => entry.assets))];
+  console.log(`覆盖类：${ownCoverage.map((entry) => `${entry.class}（${entry.assets.length}）`).join("、")}`);
   const { dir, assets } = requireRealMediaAssets(wantedIds);
   console.log(`真实素材目录：${dir}`);
   console.log(`缓存根（引擎与权重落这里）：${process.env.NOMI_SETTINGS_DIR}`);
@@ -93,10 +118,7 @@ async function main(): Promise<void> {
       audioFilePath: audioPath,
       tier,
       onProgress: (progress) => {
-        const line =
-          progress.phase === "downloading"
-            ? `下载引擎与权重 ${(progress.doneBytes / 1e6).toFixed(0)}/${(progress.totalBytes / 1e6).toFixed(0)} MB`
-            : `转写第 ${progress.chunkIndex + 1}/${progress.chunkCount} 段（${progress.doneSeconds.toFixed(0)}/${progress.totalSeconds.toFixed(0)} 秒）`;
+        const line = describeProgress(progress);
         if (line !== lastLine) {
           lastLine = line;
           console.log(`  · ${line}`);
