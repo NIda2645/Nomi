@@ -19,6 +19,7 @@ import {
 } from '../../generationCanvas/agent/storyboardPlanEdits'
 import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import { planDefaultAspect } from '../../generationCanvas/agent/storyboardShotScope'
+import { CreationResourceTreeToggle } from '../CreationResourceTreeToggle'
 import StoryboardAnchorZone from './anchorZone/StoryboardAnchorZone'
 import StoryboardBulkBar from './StoryboardBulkBar'
 import StoryboardShotTable from './StoryboardShotTable'
@@ -449,6 +450,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     >
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
         <div className="flex items-center gap-2 min-w-0">
+          {/* 左栏收起时的展开钮：住标题左边、把标题挤开一格（收起态它是 L1 常驻）。 */}
+          <CreationResourceTreeToggle placement="panel" />
           <IconMovie size={16} stroke={1.5} className="text-nomi-ink-60 shrink-0" />
           <input
             value={plan.title}

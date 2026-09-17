@@ -51,6 +51,7 @@ import { useGenerationCanvasStore } from './generationCanvas/store/generationCan
 import type { AgentContextHandle } from '../../electron/shared/agentContextSnapshot'
 import { DEFAULT_PROJECT_AGENT_APPROVAL_POLICY, type ProjectAgentApprovalPolicy } from '../../electron/shared/agentCapabilities/capabilityApprovalPolicy';
 import { createEditingPanelLayoutSlice, type EditingPanelLayoutSlice } from './preview/editingPanelLayoutSlice'
+import { createCreationResourceTreeSlice, type CreationResourceTreeSlice } from './creation/creationResourceTreeCollapse'
 import { createTimelineClipWritesSlice, type TimelineClipWritesSlice } from './timeline/timelineClipWritesSlice'
 import { readTimelinePanelCollapsed, writeTimelinePanelCollapsed } from './timeline/timelinePanelPrefs'
 import { TIMELINE_PANEL_DEFAULT, clampTimelinePanelHeight } from './timeline/timelinePanelBounds'
@@ -84,7 +85,7 @@ export type ProjectAgentReference = Readonly<{
   contextHandle?: AgentContextHandle
 }>
 
-type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & TimelineClipWritesSlice & {
+type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & CreationResourceTreeSlice & TimelineClipWritesSlice & {
   persistRevision: number
   workspaceMode: WorkspaceMode
   /** 生成/预览区右侧助手侧栏宽度（px，可拖宽）。 */
@@ -348,6 +349,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   timelinePanelHeight: TIMELINE_PANEL_DEFAULT,
   setTimelinePanelHeight: (height) => set({ timelinePanelHeight: clampTimelinePanelHeight(height) }),
   ...createEditingPanelLayoutSlice(set, get, store),
+  ...createCreationResourceTreeSlice(set, get, store),
   exportResolution: '1080p',
   exportQuality: 'standard',
   setExportResolution: (exportResolution) => set({ exportResolution }),

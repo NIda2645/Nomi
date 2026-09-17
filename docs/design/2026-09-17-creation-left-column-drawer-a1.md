@@ -1,6 +1,6 @@
 # A-1 · 创作面左栏抽屉化 + 「分组/镜头」去重
 
-> 📎 设计成文 · 2026-09-17 · 状态：**待用户拍板**（本文只成文，不实施；生产代码一行没动）
+> 📎 设计成文 · 2026-09-17 · 状态：**已拍板（§8.1），刀 1 已实施**（刀 2 去重、刀 3 形态仍未动）
 > 基线：`e96614e14`（= `origin/main`，PR #804 合入后）。worktree `/Users/aoqimin/Desktop/Nomi-sidebar-a1-0917`，分支 `docs/global-sidebar-a1-20260917`。
 > 上游拍板：2026-09-08 17:20 用户对 Claude Design 画布「Nomi 左侧栏 · 画布节点 · 过程反馈」说「可以」；22:20 裁决 A 组拆 **A-1 抽屉化+去重 → A-2 全局左侧栏+删顶栏 → A-3 创作面文稿条**。本文是 A-1，A-2/A-3 只列决定不展开。
 > 09-17 用户拍板「左侧栏提前」：它是 W-03 的结构解。
@@ -191,6 +191,12 @@ W-03 自己那条路（方案 C 收列宽，`after-measure.json`：越界 33 →
   - 视觉基线绿 + `check:tokens` / `check:controls`（收起钮要 `disabled` 语义吗？不要——它永远可点）。
   - **R13 真实任务走查（必做，且必须实测，不许推算）**：1280×933 分镜面，Agent 展开，**点收起钮**，断言分镜编辑器 `client ≥ 800` 且 `overflowLeafCount == 0`；zh/en 两轨各一张真截图。EN 那轨是硬骨头（W-03 量到 EN 越界 70 > zh 33）。
   - 再点展开，断言恢复 240 且 `treeRows` 数量不变。
+
+**刀 1 实施记（2026-09-17）**：落在 `feat/creation-left-column-collapse-a1-20260917`。与成文的两处偏差，都写在这里而不是悄悄改：
+- **成文只说「加收起」，实施同时统一了两根左栏的外框**——因为用户 22:2x 追加了那条（「最左侧那个栏……好像又变成长方形」）。查证结论：分镜页那列**从没迁到 C76 圆角版**（`git log -S 'WorkspacePanelFrameContext.Provider'` 全历史只有 1a92b17e6 一个 commit 写过那行 `value={workspaceMode === "creation"}`，而树是四天前 ced576920 提到 shell 的），不是迁过又被改回。所以这一刀把判据从宿主面搬进组件本身：`DocumentListSidebar` 不再读 `useWorkspacePanelFrame()`，只有圆角卡片一套。
+- **连带删掉分镜面自己那份留白**：`StoryboardWorkspace` 的 `pt-[22px] px-6 pb-6` 与 `assistantPaneWidth()`（+32px）改走 shell 的 `p-4 gap-4`，与创作面同一份（P1，两份留白 = 两份真相）。用户可见后果：分镜面中间面板到窗口左缘由 24px 变 16px，与创作面一致。
+- 状态字段 `creationResourceTreeCollapsedPreference` 是**三态**（null/true/false）而不是成文里写的布尔：`null` 才让「默认按面给」和「用户设过的全局值」分得开。寿命=窗口/进程级用户偏好，落 `localStorage['nomi.creationResourceTreeCollapsed']`，照 `agentDockHidden` 的既有机制，不进项目 payload。
+- 合同：`docs/fixes/2026-09-17-creation-left-column-collapse.root-cause.json`（`one_off` + 机器生成的 15 扇门表）。
 
 ### 刀 2 · (a)(b) 去重合一
 
