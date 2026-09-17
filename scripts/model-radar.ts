@@ -32,7 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MODEL_ARCHETYPES } from "../src/config/modelArchetypes/index.ts";
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins.ts";
-import type { CatalogState } from "../electron/catalog/types.ts";
+import { billingKindForTaskKind, type CatalogState, type Mapping } from "../electron/catalog/types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SNAPSHOT_DIR = path.join(ROOT, "docs/research/model-radar");
@@ -396,25 +396,43 @@ export async function collectVendors(
  * 不受本函数影响），`uncovered` 只是次要提示；而一旦天天把已接的模型报成缺口，几次之后就没人看了。
  * 实测校准：`flux2/flex-text-to-image`、`bytedance/seedance-1-5-pro` 这类真缺口仍被正确报出。
  */
+/** 第三级判据的长度闸。`ANCHOR`（已接的 coverage token，可信方）门槛不变；`PROBE`（新文档探针，
+ *  待判定方）2026-09-18 从 8 降到 4——"veo3" 这类 4 字真实缺口够不到已接的 "veo3.1" 家族 token，
+ *  被误报成假缺口（档案批 lane 实测）。"wan"(3 字)/"x"(1 字) 仍在 4 以下，底线没有下移。 */
+const MIN_PROBE_TOKEN_LEN = 4;
+const MIN_ANCHOR_TOKEN_LEN = 8;
+
 export function isCovered(slug: string, coverage: Set<string>): boolean {
   const full = normalizeToken(slug);
   if (!full) return false;
   if (coverage.has(full)) return true;
   const last = normalizeToken(slug.split("/").pop() ?? "");
   if (last && coverage.has(last)) return true;
+  // 三级判据的第三级：**只认「已接的 token 包住新 probe」这一个方向**。
+  // 2026-09-18 前还认反方向（新 probe 包住已接的 token），于是 "gpt-image-2.5" 的 probe
+  // "gptimage25" 把已接的 "gptimage2" 整个包在里面、被判成"已覆盖"——但 2.5 是与 2 不同的型号
+  // （多 6 个真参数），那不是覆盖，是新版本号把旧型号的 token 冒领了。新 probe 更长/更新，
+  // 天然更可能是"同族但没接过的新型号"而不是"已接模型的别名"，故这个方向必须去掉（P2 根因修复，
+  // 不是加豁免）。保留的方向（token 包住 probe）仍是合法场景：已接 token 常带厂商后缀
+  // （"gemini-3.1-flash" 的真实 id 是 "...-image-preview"），新文档页给的是不带后缀的短名。
   for (const probe of [full, last]) {
-    if (probe.length < 8) continue;
+    if (probe.length < MIN_PROBE_TOKEN_LEN) continue;
     for (const token of coverage) {
-      if (token.length < 8) continue;
-      if (token.includes(probe) || probe.includes(token)) return true;
+      if (token.length < MIN_ANCHOR_TOKEN_LEN) continue;
+      if (token.includes(probe)) return true;
     }
   }
   return false;
 }
 
-export function coverageTokens(vendorKey?: string): Set<string> {
+/** 内置种子的目录状态——coverage/seeded/wire 三处判据共用同一份 derive，不各自重复拼一次空壳。 */
+function seededCatalogState(): CatalogState {
   const empty: CatalogState = { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} };
-  const state = applyBuiltinSeeds(empty, "2026-01-01T00:00:00.000Z").state;
+  return applyBuiltinSeeds(empty, "2026-01-01T00:00:00.000Z").state;
+}
+
+export function coverageTokens(vendorKey?: string): Set<string> {
+  const state = seededCatalogState();
   const tokens = new Set<string>();
   const add = (value: unknown) => {
     const token = normalizeToken(String(value ?? ""));
@@ -444,8 +462,7 @@ export function coverageTokens(vendorKey?: string): Set<string> {
  * （走 buildLanguageModelForVendor 直连 /chat/completions），挂了 mapping 的就不是聊天大脑。
  */
 export function seededModelKeys(vendorKey: string, kind: "text"): string[] {
-  const empty: CatalogState = { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} };
-  const state = applyBuiltinSeeds(empty, "2026-01-01T00:00:00.000Z").state;
+  const state = seededCatalogState();
   const mapped = new Set(state.mappings.filter((p) => p.vendorKey === vendorKey).map((p) => p.modelKey));
   return state.models
     .filter((m) => m.vendorKey === vendorKey && m.kind === kind && !mapped.has(m.modelKey))
@@ -495,6 +512,82 @@ export function diffVendor(
     uncovered: coverage ? current.filter((e) => !isCovered(e.slug, coverage)) : [],
     // 归一后比对：目录大小写/分隔符与我们种的 id 偶有出入（MiniMax-H3 ↔ minimax-h3）。
     unlisted: seeded.filter((id) => !liveIds.has(normalizeToken(id))),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// wire / elsewhere —— 把「缺档案」和「缺协议」分开看（2026-09-18，普查报告结构性发现 2、3）
+// ---------------------------------------------------------------------------
+
+export type WireStatus = "known" | "unknown";
+
+export type AnnotatedRadarEntry = RadarEntry & {
+  /** 该 (vendor, category) 有没有现役协议（enabled 的 Mapping）。`known` = 加这个模型只是
+   *  多一份档案（catalog 行 + 参数表），不用碰协议层；`unknown` = 这家这个模态我们从没接过，
+   *  真要接得先搞清楚协议长什么样。判定来源见 hasKnownWire。 */
+  wire: WireStatus;
+  /** 同一个模型是否已经被别的供应商接了（跨 vendor，如 Runway 代理了 apimart/kie 都没有的模型）。
+   *  命中的供应商 key 列表；没有 = []。判定来源见 elsewhereVendors。 */
+  elsewhere: string[];
+};
+
+/**
+ * 该 (vendorKey, category) 有没有现役协议——electron/catalog 里有没有 enabled 的 Mapping 落在
+ * 这个模态（taskKind 经 billingKindForTaskKind 归到 image/video/audio/text）。
+ * 只喂 mappings 数组、不摸真实 catalog：纯函数，可单测；调用方从 seededCatalogState().mappings 传入。
+ * 不 hardcode 供应商名单——"apimart images/videos/audio 已知、kie 没有 text mapping" 这类结论
+ * 全部从 mappings 数据 derive，不是写死在这个函数里的判断。
+ */
+export function hasKnownWire(vendorKey: string, category: RadarCategory, mappings: readonly Mapping[]): boolean {
+  return mappings.some(
+    (m) => m.enabled && m.vendorKey === vendorKey && billingKindForTaskKind(m.taskKind) === category,
+  );
+}
+
+/**
+ * 同一个 slug 是否已经被别的供应商覆盖——跨 vendor 版 isCovered。`coverageByVendor` 是
+ * 「vendorKey → coverageTokens(vendorKey)」的预算表；本函数纯查表、可单测。
+ * `excludeVendor` 排除条目自己的供应商（同供应商的覆盖已经在 diffVendor 的 uncovered 里判过，
+ * 这里只找"别家"）。命中的供应商按 key 排序返回，方便打印时稳定。
+ */
+export function elsewhereVendors(
+  slug: string,
+  excludeVendor: string,
+  coverageByVendor: ReadonlyMap<string, Set<string>>,
+): string[] {
+  const hits: string[] = [];
+  for (const [vendorKey, tokens] of coverageByVendor) {
+    if (vendorKey === excludeVendor) continue;
+    if (isCovered(slug, tokens)) hits.push(vendorKey);
+  }
+  return hits.sort();
+}
+
+/** 把 wire/elsewhere 两列贴到一批条目上（纯函数，main() 与测试共用）。 */
+export function annotateEntries(
+  entries: readonly RadarEntry[],
+  wireFor: (category: RadarCategory) => WireStatus,
+  elsewhereFor: (slug: string) => string[],
+): AnnotatedRadarEntry[] {
+  return entries.map((e) => ({ ...e, wire: wireFor(e.category), elsewhere: elsewhereFor(e.slug) }));
+}
+
+/** RadarDiff 的「未接入 / 新增」两列换成带 wire/elsewhere 的版本；其余字段原样带过。
+ *  不改 diffVendor 本身（它是纯差分，不该知道 catalog 长什么样）——注解是差分之外单独的一层。 */
+export type AnnotatedRadarDiff = Omit<RadarDiff, "added" | "uncovered"> & {
+  added: AnnotatedRadarEntry[];
+  uncovered: AnnotatedRadarEntry[];
+};
+
+export function annotateDiff(
+  diff: RadarDiff,
+  wireFor: (category: RadarCategory) => WireStatus,
+  elsewhereFor: (slug: string) => string[],
+): AnnotatedRadarDiff {
+  return {
+    ...diff,
+    added: annotateEntries(diff.added, wireFor, elsewhereFor),
+    uncovered: annotateEntries(diff.uncovered, wireFor, elsewhereFor),
   };
 }
 
@@ -581,15 +674,30 @@ async function main(): Promise<void> {
     console.log(`Weekly liveness: ${receipts.filter((row) => row.ok).length}/${receipts.length}; credential missing: ${missing}.`);
   }
 
-  const diffs: RadarDiff[] = [];
+  // wire/elsewhere 的两张表只建一次：coverageByVendor 覆盖全部内置供应商（不止本轮抓到的几家，
+  // "别家已接" 要能看见没被抓的 vendor，如 Runway）；mappings 是 wire 判据的唯一真相源。
+  const coverageByVendor = new Map<string, Set<string>>(
+    BUILTIN_VENDOR_SEEDS.map((v) => [v.key, coverageTokens(v.key)]),
+  );
+  const mappings = seededCatalogState().mappings;
+
+  const diffs: AnnotatedRadarDiff[] = [];
   for (const [vendor, current] of Object.entries(entries)) {
     const adapter = VENDORS[vendor];
     const catalogVendorKey = adapter?.catalogVendorKey ?? vendor;
     // 一处声明驱动两件事：声明了 seededKind 的车道做反向检查（unlisted），
     // 并且不再问正向的「还有什么没接」（uncovered）——它俩是两个不同的问题。
     const seeded = adapter?.seededKind ? seededModelKeys(catalogVendorKey, adapter.seededKind) : [];
-    const coverage = adapter?.seededKind ? null : coverageTokens(catalogVendorKey);
-    diffs.push(diffVendor(vendor, current, readSnapshot(vendor), coverage, seeded));
+    const coverage = adapter?.seededKind ? null : coverageByVendor.get(catalogVendorKey) ?? coverageTokens(catalogVendorKey);
+    const diff = diffVendor(vendor, current, readSnapshot(vendor), coverage, seeded);
+    // 把「缺档案」和「缺协议」分开看的那两列——贴在 added/uncovered 上，不留旧的未注解版本（P1）。
+    diffs.push(
+      annotateDiff(
+        diff,
+        (category) => (hasKnownWire(catalogVendorKey, category, mappings) ? "known" : "unknown"),
+        (slug) => elsewhereVendors(slug, catalogVendorKey, coverageByVendor),
+      ),
+    );
     // 没查成的家不在 entries 里，快照自然不动：修好后重跑才有真差异，不会把断档吃成「全下架」。
     if (updateBaseline) writeSnapshot(vendor, current);
   }
@@ -600,18 +708,29 @@ async function main(): Promise<void> {
       .map((c) => `${c} ${list.filter((e) => e.category === c).length}`)
       .join(" · ");
 
+  // wire/elsewhere 的行内标注——协议已知/未知 + 命中的别家 vendor，added 与「值得看一眼」的
+  // uncovered 行共用同一句拼法。
+  const wireTag = (e: AnnotatedRadarEntry) =>
+    `协议:${e.wire === "known" ? "已知" : "未知"}${e.elsewhere.length ? ` · 别家已接:${e.elsewhere.join(",")}` : ""}`;
+
   for (const d of diffs) {
     const present = new Set<RadarCategory>((entries[d.vendor] ?? []).map((e) => e.category));
     console.log(`\n=== ${d.vendor} ===  盯住 ${d.total} 个模型`);
     const seededLane = Boolean(VENDORS[d.vendor]?.seededKind);
+    const uncoveredKnownWire = d.uncovered.filter((e) => e.wire === "known").length;
+    const uncoveredElsewhere = d.uncovered.filter((e) => e.elsewhere.length > 0).length;
     console.log(
       `  新增 ${d.added.length} · 下架 ${d.removed.length}` +
         (seededLane
           ? ` · ⚠️ 我们种了但没列 ${d.unlisted.length}`
-          : ` · 未接入 ${d.uncovered.length}（${byCat(d.uncovered, present)}）`),
+          : ` · 未接入 ${d.uncovered.length}（其中协议已知 ${uncoveredKnownWire} · 别家已接 ${uncoveredElsewhere}）（${byCat(d.uncovered, present)}）`),
     );
-    for (const e of d.added) console.log(`  🆕 [${e.category}] ${e.slug} — ${e.title}`);
+    for (const e of d.added) console.log(`  🆕 [${e.category}] ${e.slug} — ${e.title}（${wireTag(e)}）`);
     for (const e of d.removed) console.log(`  🗑️  [${e.category}] ${e.slug}（上次有、这次没了）`);
+    // 未接入整册（能有 93 条）逐条打印是噪音；只挑「其实不是协议缺口/别家已经接了」的子集出来——
+    // 这正是本次误判（"以为协议不够"）的那几条，值得单独看见，其余留给 latest.json。
+    const actionable = d.uncovered.filter((e) => e.wire === "known" || e.elsewhere.length > 0);
+    for (const e of actionable) console.log(`  🔎 [${e.category}] ${e.slug} — ${e.title}（未接入 · ${wireTag(e)}）`);
     for (const id of d.unlisted) console.log(`  ⚠️  ${id}（我们的种子里有，供应商这一轮没列——查是不是退役了）`);
     if (d.added.length === 0 && d.removed.length === 0 && d.unlisted.length === 0) console.log("  （索引无变化）");
   }
@@ -624,11 +743,13 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(SNAPSHOT_DIR, "latest.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), diffs, failures }, null, 2)}\n`);
   const totalNew = diffs.reduce((n, d) => n + d.added.length, 0);
   const totalUnlisted = diffs.reduce((n, d) => n + d.unlisted.length, 0);
+  const totalUncovered = diffs.reduce((n, d) => n + d.uncovered.length, 0);
+  const totalUncoveredKnownWire = diffs.reduce((n, d) => n + d.uncovered.filter((e) => e.wire === "known").length, 0);
   const failNote =
     failures.length > 0 ? `；⚠️ ${failures.map((f) => f.vendor).join(" / ")} 没查成（见上，不是「没新模型」）` : "";
   console.log(
     `\n结果已写 docs/research/model-radar/latest.json。本轮新增 ${totalNew} 个；` +
-      `未接入存量 ${diffs.reduce((n, d) => n + d.uncovered.length, 0)} 个；` +
+      `未接入存量 ${totalUncovered} 个（其中协议已知 ${totalUncoveredKnownWire}）；` +
       `我们种了但供应商没列 ${totalUnlisted} 个${failNote}。` +
       (updateBaseline ? "（已更新快照）" : "（未更新快照，确认后跑 --update-baseline）"),
   );
