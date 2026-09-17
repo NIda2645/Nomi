@@ -24,7 +24,7 @@ import {
 } from "./assetValueScheme";
 import { contentTypeFromMagicBytes, mediaKindFromContentType } from "../assets/mediaTypes";
 import { tagNomiError } from "../shared/nomiErrorCodes";
-import { desktopT } from "../i18n";
+import { desktopT } from "../desktopStrings";
 import {
   ingestionAccepts,
   resolveAssetIngestionForKind,
