@@ -16,6 +16,10 @@
 
 本轮是已批准的内部归属不变量修复，不新增框架或通用能力。实读 #519 引入路径的来历报告、#783 只读收敛实现、mcpConfig.ts 的 classifyMcpEntry / writeClientConfig / sameProfile 与 ConnectAssistantCard 完整现有外壳。路径检查使用现有 node:fs；Windows 以存在性及 access X_OK 的系统语义判定，不按 macOS 安装目录推断身份。
 
+- 依赖已有的检查：`node_modules/@types/node/fs.d.ts:3842` 的 accessSync 接受 X_OK，失败抛错；配合 statSync 的 isFile 判断目录，复用 Node 平台语义。
+- 仓库已有的写盘入口：`electron/capabilityCore/mcpConfig.ts:512` writeClientConfig 已统一内置与自定义客户端的 JSON/TOML、备份与拒绝写入；主动切换继续使用它。
+- 仓库已有的读零写盘约束：[MCP 连接真实性方案](2026-09-14-mcp-connection-truthfulness.md) 和 [读路径事故教训](../lessons/mcp-read-path-must-not-write-host-configs.md) 要求设置展示磁盘事实，不能用打开页面来迁移配置；本次在这一边界延伸归属状态。
+
 ## UI 与控制层级
 
 复用设置「管理连接」客户端卡现有状态区域、现有主操作位置与 IconRefresh。elsewhere 替代原失效提示和「升级接入」，不增加并列按钮。路径可换行；中英同构。任务书已批准文案和动作，属现有状态的小修改，不重复请求拍板。正式界面截图逐项核对状态、实际路径、唯一切换按钮和读零写盘。
