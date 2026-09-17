@@ -44,13 +44,13 @@
     {
       "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 27,
+      "line": 36,
       "symbol": "VerbTransportCall"
     },
     {
       "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 80,
+      "line": 64,
       "symbol": "VerbTransportCall"
     },
     {
@@ -188,7 +188,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 117,
+      "line": 103,
       "symbol": "assetReadInputOf"
     },
     {

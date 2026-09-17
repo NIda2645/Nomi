@@ -79,10 +79,10 @@ test('这道门岗进了 contracts 档，不是一个没人跑的脚本', () => 
 })
 
 const MUTATIONS = [
-  ['A 类 · 动词声明宿主 .strict() 不认的字段（改草稿那条路上的 title）', [
+  ['A 类 · 拿掉动词那道拦截后，信封字段在改草稿那条路上必须当场被拒（不许静默消失）', [
     ['electron/shared/agentCapabilities/verbs/writeVerbs.ts',
-      '      const renamed = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot.title !== undefined);',
-      '      const renamed = -1;'],
+      '        const index = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot[field] !== undefined);',
+      '        const index = -1;'],
   ]],
   ['B 类 · 宿主重新硬要模型拿不到的 contentHash / version', [
     ['electron/shared/agentCapabilities/generationPlanSchemas.ts',
@@ -93,24 +93,52 @@ const MUTATIONS = [
     ['electron/shared/agentCapabilities/verbs/readVerbs.ts',
       '    semanticInputOf: (args) => ({ scope: (args as { scope?: "full" | "selection" }).scope ?? "full" }),\n', ''],
   ]],
-  ['C 类 · 翻译层把时长改名成宿主没有的顶层字段', [
-    ['electron/agentLane/laneVerbTransport.ts',
-      'const withDuration = durationSec === undefined ? parameters : { ...(parameters ?? {}), duration: durationSec }',
-      'const withDuration = parameters'],
-    ['electron/agentLane/laneVerbTransport.ts',
-      '...(withDuration ? { parameters: withDuration } : {}),',
-      '...(withDuration ? { parameters: withDuration } : {}), ...(durationSec === undefined ? {} : { durationSeconds: durationSec }),'],
+  ['C 类 · 对应关系落在一个**存在但语义不对**的宿主字段上（装配期看不出来，喂真值才红）', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "kind: 'rename', to: 'parameters.duration',", "kind: 'rename', to: 'mode',"],
   ]],
-  ['D 类 · 翻译层静默丢掉模型点名的目录身份', [
-    ['electron/agentLane/laneVerbTransport.ts',
-      '  const modelId = candidate?.modelId ?? modelKey', '  const modelId = modelKey'],
-    ['electron/agentLane/laneVerbTransport.ts',
-      '    ...(candidate?.providerId ? { providerId: candidate.providerId } : {}),\n', ''],
+  ['D 类 · 把目录身份从 expanded 改成 consumed（装配期合法，值静默消失，只有逐字段探针看得见）', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "      kind: 'expanded', into: ['candidate.providerId', 'candidate.modelId'],",
+      "      kind: 'consumed',"],
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '模型按目录点名的供应商' },\n", ''],
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "    'candidate.modelId': { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelKey'], why: '模型按目录点名的模型，优先于 modelKey', priority: 2 },\n", ''],
   ]],
   ['R4 · 翻出一个没有传输适配器认的 lane', [
     ['electron/agentLane/laneVerbTransport.ts',
       "    case 'save_skill':",
       "    case 'start_model_setup':\n      return { lane: 'modelSetup' as never, call: { ...base, toolName: 'nomi_open_model_setup', args } }\n    case 'save_skill':"],
+  ]],
+  // ── 对应关系表这一层的三条（2026-09-18 第二步：翻译从表生成）──
+  //
+  // 这三条打在**真实声明**上，不是合成样例：它们证明的是「今天这张表真的在管今天这些字段」。
+  // 装配期抛 → 门岗导入它就炸 → 红。合成样例那一族在 electron/agentLane/verbTransportRoutes.test.ts。
+  ['表 · 动词加了字段却没加对应关系（漏一条就是一次静默丢弃）', [
+    ['electron/shared/agentCapabilities/verbs/writeVerbs.ts',
+      'export const draftShotSchema = z.object({\n  shotId:',
+      'export const draftShotSchema = z.object({\n  cameraLens: z.string().trim().min(1).optional().describe("Lens note."),\n  shotId:'],
+  ]],
+  ['表 · 对应关系指向宿主不存在的字段', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "to: 'parameters.duration',", "to: 'durationSeconds',"],
+  ]],
+  ['表 · 删掉一条对应关系（重演 candidate.providerId 静默消失）', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '模型按目录点名的供应商' },\n", ''],
+  ]],
+  // R1 只保证「宿主要的，动词告诉过模型」，保证不了「模型拿得到那个值」。这一条补的就是那半边：
+  // 把参考素材的来源从 host-resolved 改成「某个读动词的返回」，而那个读动词根本不返回它 → 必须红。
+  ['来源 · 声明成来自一个不返回这个字段的读动词（模型连拿到的机会都没有）', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "      from: ['from-read:look_at_media.assetId', 'host-resolved'],",
+      "      from: ['from-read:look_at_canvas.contentHash'],"],
+  ]],
+  ['来源 · 指向一个返回形状根本没声明的动词，且没具名登记', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "  list_models: 'generation.context.read 的 outputSchema 是 z.unknown()；真形状在 availableModelsSchema.agentModelEntrySchema，但契约上没声明，所以核不动',\n",
+      ''],
   ]],
   ['R5 · 下游投影重新手抄信封字段表（title 原来就是这么死了五次的）', [
     ['electron/productionRun/productionRunRepository.ts',

@@ -134,9 +134,17 @@ export function writeVerbs(): VerbDeclaration[] {
       // `title` 是镜头**信封**上的字段（`generationShotEnvelope.ts`），而改草稿这条路递给宿主的是
       // **候选** patch（提示词/模型/参数/参考）——信封不在那份 patch 的形状里。不拦的话模型收到的是
       // 宿主的 `Unrecognized key(s): 'title'`：一个它看不懂为什么的拒绝。在这里拦，它当场知道该怎么做。
-      const renamed = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot.title !== undefined);
-      if (renamed >= 0) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", renamed, "title"], message: "a shot title is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop title here" });
+      // `title` / `role` 是镜头**信封**上的字段（`generationShotEnvelope.ts`），而改草稿这条路递给宿主的是
+      // **候选** patch（提示词/模型/参数/参考）——信封不在那份 patch 的形状里。不拦的话它们要么被宿主回一句
+      // 模型看不懂的 `Unrecognized key`，要么无声消失。在这里拦，它当场知道该怎么做。
+      // 这条与对应表上 `absentOn.patch = refuse` 是同一句话的两层：表保证它不会静默丢，这里保证模型先被告知。
+      for (const field of ["title", "role"] as const) {
+        const index = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot[field] !== undefined);
+        if (index < 0) continue;
+        context.addIssue({
+          code: z.ZodIssueCode.custom, path: ["shots", index, field],
+          message: `a shot's ${field} is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop ${field} here`,
+        });
       }
     }),
     examples: [
