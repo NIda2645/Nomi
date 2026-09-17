@@ -43,6 +43,7 @@ import path from 'node:path'
 
 import { clickOrFail, expect, expectAbsent, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
+import { CANVAS_STAGE_SELECTOR, findCanvasBlankPoint, waitForCanvasViewportSettled } from './_canvasHit.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import { FIXTURE_IMAGE_MODEL, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
@@ -80,8 +81,8 @@ const SHOT_2_ID = 'shot-2'
 const TARGET_ASSERTION = '重启后盘上第 2 镜的提示词丢了'
 
 const SHOT_TABLE = '[data-testid="shot-table-node"]'
-/** 分镜表的第 N 行（行 id = 节点 id；行序 = 落地序 = 镜序）。 */
-const row = (nodeId) => `${SHOT_TABLE} [data-shot-table-row="${nodeId}"]`
+/** 分镜表的第 N 行（行 id = 节点 id；行序 = 落地序 = 镜序）。不带表前缀：调用处自己决定是从表还是从窗口找。 */
+const row = (nodeId) => `[data-shot-table-row="${nodeId}"]`
 
 // ── 参数解析。createRuntimeWalk 自己会校验 process.argv（只认 `--packaged <abs>`），
 //    所以本脚本的旗标必须在它读之前摘掉，否则它会以「用法错误」报红。 ────────────────
@@ -146,16 +147,59 @@ function readPersistedPayload(projectRoot) {
   return JSON.parse(fs.readFileSync(files[0], 'utf8')).payload
 }
 
-// ── 画布：把分镜表带进视口。React Flow 开着 onlyRenderVisibleElements（视口外的节点连 DOM 都不进），
-//    表在低缩放下又会收成一张卡（没有行）。所以走产品自己的两个控件：先「适应视图」证明表在，
-//    再「重置视图」到 100% 让表铺开成完整表格——这正是用户会做的两下。 ──────────────
+// ── 画布：把分镜表带进视口并铺开。React Flow 开着 onlyRenderVisibleElements（视口外的节点连 DOM 都不进），
+//    表在低缩放（<80%）下又只剩镜号/关键帧两列（compact），画面与状态列都不在。所以按用户会做的三下来：
+//    ① 先等画布自己停下（落节点/重开项目后画布延迟发一次自动 fit，人是看它缩好了才动手的）；
+//    ② 「适应视图」——全部节点入视口，证明表在；
+//    ③ 在空白处按住拖动，把表拖到舞台正中，再把缩放滑块（产品自己的控件）拨到 80%——滑块绕视口中心缩放，
+//       ≥80% 表就铺开成完整表格（shotTableDensityForZoom 的 full 档），而 100% 时 960px 宽的表在 800px 的舞台里
+//       左沿会出界、第一列的勾选框点不到（真机量到的）。不用「重置视图」：它回到画布原点，表并不在那儿。 ──────
 async function bringShotTableIntoFullView(win) {
+  await waitForCanvasViewportSettled(win)
   await clickOrFail(win.getByRole('button', { name: '适应视图', exact: true }), '适应全部节点')
   const table = win.locator(SHOT_TABLE)
   await proveProbe(table, '画布上没有出现分镜表节点')
-  await clickOrFail(win.getByRole('button', { name: '重置视图', exact: true }), '重置为 100%')
-  await expect(win.getByRole('slider', { name: '缩放比例', exact: true }), '缩放没有回到 100%').toHaveValue('100')
-  await expect(table, '100% 下分镜表没有铺开成完整表格').toHaveAttribute('data-density', 'full')
+  await waitForCanvasViewportSettled(win)
+
+  const centers = async () => win.evaluate(({ tableSelector, stageSelector }) => {
+    const rect = (el) => el?.getBoundingClientRect()
+    const stage = rect(document.querySelector(stageSelector))
+    const node = rect(document.querySelector(tableSelector))
+    if (!stage || !node) return null
+    return { stage: { x: stage.left + stage.width / 2, y: stage.top + stage.height / 2, left: stage.left, top: stage.top, right: stage.right, bottom: stage.bottom },
+      table: { x: node.left + node.width / 2, y: node.top + node.height / 2, left: node.left, top: node.top, right: node.right, bottom: node.bottom } }
+  }, { tableSelector: SHOT_TABLE, stageSelector: CANVAS_STAGE_SELECTOR })
+  // 拖到正中（最多三次逼近：起点必须是空白处，而空白处离边太近时一次拖不完整段）。
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = await centers()
+    expect(before, '拖动前读不到舞台或分镜表的位置').toBeTruthy()
+    const delta = { x: before.stage.x - before.table.x, y: before.stage.y - before.table.y }
+    if (Math.abs(delta.x) < 8 && Math.abs(delta.y) < 8) break
+    const blank = await findCanvasBlankPoint(win, { inset: 24 })
+    expect(blank, '画布上找不到可以按住拖动的空白处').toBeTruthy()
+    const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+    const target = { x: clamp(blank.x + delta.x, before.stage.left + 12, before.stage.right - 12), y: clamp(blank.y + delta.y, before.stage.top + 12, before.stage.bottom - 12) }
+    await win.mouse.move(blank.x, blank.y)
+    await win.mouse.down()
+    await win.mouse.move(target.x, target.y, { steps: 12 })
+    await win.mouse.up()
+  }
+  const centered = await centers()
+  expect(Math.hypot(centered.stage.x - centered.table.x, centered.stage.y - centered.table.y), '分镜表没有被拖到舞台正中').toBeLessThan(24)
+
+  // 滑块 → 80%：绕视口中心（此刻 = 表的中心）缩放。走真实 input 事件（同 app-page-zoom.e2e.mjs）。
+  const slider = win.getByRole('slider', { name: '缩放比例', exact: true })
+  await slider.evaluate((element) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(element, '80')
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await expect(slider, '缩放没有到 80%').toHaveValue('80')
+  await expect(table, '80% 下分镜表没有铺开成完整表格').toHaveAttribute('data-density', 'full')
+  const final = await centers()
+  expect(final.table.left >= final.stage.left && final.table.right <= final.stage.right && final.table.top >= final.stage.top && final.table.bottom <= final.stage.bottom,
+    `80% 下分镜表没有整张落在舞台内（表 ${JSON.stringify(final.table)} · 舞台 ${JSON.stringify(final.stage)}）`).toBe(true)
   return table
 }
 
@@ -247,6 +291,7 @@ async function stepSplitIntoThreeShots(win, projectId) {
 /** 进画布，把分镜表铺开，并断言表里就是 3 行、行序即镜序。 */
 async function stepOpenShotTable(win, nodeIds) {
   await openCanvas(win)
+  await shot('canvas-opened-after-landing')
   const table = await bringShotTableIntoFullView(win)
   await expect(table.locator('[data-shot-table-row]'), '分镜表不是 3 行').toHaveCount(3)
   const rowIds = await table.locator('[data-shot-table-row]').evaluateAll((rows) => rows.map((el) => el.getAttribute('data-shot-table-row')))
@@ -303,13 +348,24 @@ async function stepAgentPatchShot2(win, projectId, runId, nodeIds) {
   const after = shotPrompts((await readProject(win, projectId)).payload)
   expect(after[0], '第 1 镜被误改').toBe(SHOT_PROMPTS[0])
   expect(after[2], '第 3 镜被误改').toBe(SHOT_PROMPTS[2])
-  await expect(win.locator(row(nodeIds[1])), '分镜表第 2 行没有显示改后的提示词').toContainText('逆光下的侧脸')
+  await expect(win.locator(SHOT_TABLE).locator(row(nodeIds[1])), '分镜表第 2 行没有显示改后的提示词').toContainText('逆光下的侧脸')
   say('第 2 镜提示词已经 Agent 改掉（Run 账本 → 节点 → 表），1/3 镜逐字未变')
   await shot('shot2-prompt-patched')
 }
 
-/** ⑥⑦ 第 2 镜生成一张图片（loopback，零额度），结果回到该行。 */
+/**
+ * ⑥⑦ 第 2 镜生成一张图片（loopback，零额度），结果回到该行。
+ * 表里的「生成 N 镜」走节点自己那扇既有的付费门（confirmAndRunPlan → 画布批次 runner）；批次跑完 runner 会
+ * 拿真图去问一次审片（「资深影视分镜审片」，零额度 loopback）——它是产品行为，必须预登记，否则收尾时
+ * 以「未登记的模型请求」报红（第一次真跑就是这么红的）。审片的提示词里带的是模型拟的镜头标题与改后的
+ * 提示词——这也是「值抵达了」的又一处证据，下面顺手断它。
+ */
 async function stepGenerateShot2Image(win, projectId, nodeIds) {
+  const judge = walk.fixture.expectText({
+    label: '批次完成后 runner 拿真图问审片',
+    match: (body) => flattenRequestText(body).includes('资深影视分镜审片'),
+    reply: { type: 'text', text: JSON.stringify({ reason: 'GOLDEN_JUDGE：构图与意图一致。', scores: { identity: 5, composition: 5 } }) },
+  })
   const table = win.locator(SHOT_TABLE)
   await expect(table.locator(row(nodeIds[1])), '第 2 镜不在未生成态').toContainText('未生成')
   await clickOrFail(table.locator('footer').getByRole('button', { name: '生成 1 镜', exact: true }), '生成选中的第 2 镜')
@@ -327,7 +383,11 @@ async function stepGenerateShot2Image(win, projectId, nodeIds) {
   expect(shotPrompts((await readProject(win, projectId)).payload), '生成不许改动任何一镜的提示词')
     .toEqual([SHOT_PROMPTS[0], SHOT_2_NEW_PROMPT, SHOT_PROMPTS[2]])
   expect(walk.fixture.images, '这一步应当恰好发生 1 次图片生成调用').toHaveLength(1)
-  say(`第 2 镜（${SHOT_2_ID}）已生成，结果回到该行`)
+  const judgeWire = await recorded(judge.received, '审片请求')
+  const judgeText = flattenRequestText(judgeWire.body)
+  expect(judgeText, '审片看到的不是模型拟的那个镜头标题').toContain(SHOT_TITLES[1])
+  expect(judgeText, '审片看到的不是改后的提示词').toContain(SHOT_2_NEW_PROMPT)
+  say(`第 2 镜（${SHOT_2_ID}）已生成，结果回到该行；审片拿到的是它的标题与改后提示词`)
   await shot('shot2-generated')
   return { resultUrl }
 }

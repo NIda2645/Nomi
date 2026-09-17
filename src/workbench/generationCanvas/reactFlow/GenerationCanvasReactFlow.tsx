@@ -742,7 +742,10 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         onToggleMinimap={() => setMinimapVisible((visible) => !visible)}
         onJumpToCanvasPoint={handleMinimapJump}
         onFitView={() => fitView(true)}
-        onResetView={() => void flow.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 200 })}
+        // 「重置视图」走我们自己的调度器，不走 React Flow 的 d3 过渡：紧接着「适应视图」点它时，
+        // fit 那 200ms 的 rAF 动画还在逐帧写视口，d3 过渡每一帧都被盖回去——滑块停在 fit 的 59% 而不是 100%
+        // （2026-09-18 金路径真机；与 fitView 零时长那条「先停掉在飞的动画」是同一类，#503 同款）。
+        onResetView={() => { cancelViewportAnimation(); animateViewportTo(1, { x: 0, y: 0 }, 200) }}
         onTidy={() => tidy(stageSize.width / Math.max(1, stageSize.height))}
         onZoomTo={zoomTo}
         frameMenu={frameActions.frameMenu}
