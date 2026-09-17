@@ -70,7 +70,8 @@
   "invariant_owner_layer": {
     "layer": "electron/catalog/seedBuiltins.ts",
     "tests": [
-      "electron/catalog/seedBuiltins.test.ts"
+      "electron/catalog/seedBuiltins.test.ts",
+      "electron/catalog/vendorProfiles20260918.test.ts"
     ]
   },
   "regression_tests": [
