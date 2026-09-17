@@ -98,7 +98,7 @@
 | T-AG-21 | `useAgentUsageStore` 的 token 是跨项目累计的（六条 C 里显式标了 `process` 寿命） | todo | 09-18 批次 3 收尾 | 要一句拍板：默认改成「按项目 / 会话归零」还是保持全局累计。今天的写法让用户看到的数字不对应他正在做的这个项目 |
 | T-ED-06 | 拆解中断后分镜表节点**永久卡死不报错** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 终态保证缺一条：每个节点必须落到成功/失败/可找回三者之一，没有「永远在跑」这一格 |
 | T-ED-07 | `edit_timeline` 的卡说不清它要改什么：只有通用能力卡，没有逐条摘要与计划高亮带 | todo | 09-18 批次 3 收尾（F 块 lane 换锚点后暴露） | 产品问题不是 bug：按 R8 先出样张再改；`agent-timeline-ops.walk.mjs` 保持红，红在这条真需求上 |
-| T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n |
+| T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n **09-18 批次 3 收尾真机 EN 截图又撞到同族第二处**：画布节点标题行的种类角标在 English 下仍印「图片」（`closing-shots/model-box-open-en.png`，与它并排的 `Shot 1` 已经是英文）。同一行里一半翻了一半没翻，修的时候一起扫。 |
 | T-DS-17 | 拆解表画面六格失败时**一个字原因都没给** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | `visionFailed` 已经带着 `failureReason`，UI 没渲染它——不是没有原因，是没往外说 |
 | T-DS-18 | 分镜面多选浮条 `sticky bottom-2` **永不生效** | todo | 09-17 W-03 工人结构性发现 | 浮条住在 `[data-storyboard-rows]` 里，而那个容器是 `overflow-hidden` → sticky 没有可滚动的定位祖先，等于普通静态定位。批量选中后浮条不跟随，用户滚下去就看不见它了。与 T-DS-14 同一片区域，一起改 |
 
@@ -192,6 +192,7 @@
 | T-QA-16 | `check:boundaries` 没有「渲染层够得到的模块不许 import 主进程 API」这条判据——整类今天只靠设计实验室整页崩才抓得到 | todo | 09-18 批次 3 收尾（合并面暴露的结构性发现①） | 本批实例：Higgsfield 给渲染层可达的 `assetLocalization.ts` 加了主进程 i18n，把 Electron main 拉进渲染 bundle，vite 报 `does not provide an export named 'app'`；已拆出 electron-free 的 `desktopStrings.ts`（i18n.ts 443→41 行）救急。**连带的第二件**：`assetLocalization.ts` 本身把渲染安全的纯助手与主进程专用的上传机器混在一个模块里，拆开才是根治 |
 | T-QA-17 | `check:symptom-cluster` 的模块键太粗：一份合同只要在 `scope_paths` 写了该层任意一个文件就给它记一笔，跨层修复会被顺带记账，评审变成交税 | todo | 09-15 记下 · 09-18 批次 3 收尾 量化 | 实测：`electron/providerAdapter` 七天七份合同里**只有两份重心真在这一层**（≥2/3），最后两份各只碰一个文件（7% / 5%）。改法：按该模块在 `scope_paths` 里的占比加权成簇，或按 `doors` 里真正改动的门所在模块计。证据在 `docs/audit/2026-09-18-provider-adapter-cluster-structural-review.md` §2 |
 | T-QA-18 | 同一条不变量「任何非终态在有限时间内必须落到终态」在 run 层与 session 层各实现了一次，没有任何机器判据保证它们同源 | todo | 09-18 批次 3 收尾（providerAdapter 结构评审 §3） | 09-12 修在 `terminalGuarantee.ts`、09-15 又修在 `serviceLifecycle.ts`；两处的退避预算、看门狗周期、逃生口各写各的，改一处另一处不会红。停止层（一条）：凡声明了非终态集合的模块必须在同一处声明 ① 终态化保证 ② 看门狗 ③ 逃生口，缺一即红；两层各自声明时判据要能看出指向同一份定义。**加规则前先验它会红**（R17）——今天至少这两处会红 |
+| T-QA-19 | agent-runtime 的 L1 T3 / G2 两条场景现在只覆盖「没问就直接做了」那一支，「出了确认卡」那一支没有场景摆批准动作 | todo | 09-18 批次 3 收尾 gates 翻红后定位 | T-ED-02 把 `userSees` 从写死改成**由真实批准结论派生**之后，这两条场景的期望文本才对上——但它们本来就没摆批准，所以覆盖的是「不问」那支。要把「出卡」那支也钉住，得在 `tests/agent-runtime/laneL1Scenarios.mts` 里真的摆一次批准，不是把话写回去。**连带的过程问题**：这两条只在 `pnpm run gates` 的全量档跑，功能 lane 只跑 focused，所以改行为的那条 lane 当时看不见自己把夹具改废了——与 T-QA-15「默认 SKIP 没有红灯」是同一族 |
 
 ## J. 官网与发布
 
