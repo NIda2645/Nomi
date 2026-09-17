@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { copyAssetFile, writeAsset } from "../runtime";
-import { canonicalAssetFileName, extensionFromMime } from "./assetPaths";
+import { canonicalAssetFileName, extensionFromMime, localAssetUrl } from "./assetPaths";
 import { mediaKindFromContentType, mediaKindFromExtension, resolveContentType } from "./mediaTypes";
 import {
   admitMediaImport,
@@ -21,7 +21,9 @@ import {
 } from "./videoImportNormalize";
 import type { JsonRecord } from "../jsonUtils";
 import { logWarn } from "../logging/logger";
-import { attachStoredAssetPreview } from "./assetPreview";
+import { projectDirById } from "../projects/repository";
+import { attachStoredAssetPreview, createStoredAssetPreview, discardPreparedPreview, type StoredAssetPreview } from "./assetPreview";
+import { createAssetImportProgressReporter, type AssetCopyProgress } from "./assetImportProgress";
 import type { ProjectBinding } from "../shared/projectBinding";
 import { captureAssetWriteContext, type AssetWriteContext } from "./assetWriteContext";
 
@@ -68,6 +70,54 @@ function surfaceFromPayload(raw: JsonRecord): MediaImportSurfaceId {
     : value === "asset-library" || value === "generation-canvas" ? value : "project-storage";
 }
 
+type NativeImportFeedback = { onCopyProgress?: AssetCopyProgress; preparedPreview?: Promise<StoredAssetPreview | undefined> };
+
+/** 暂存预览只落在项目内（绝不写进用户自己的目录）；文件名带 .preview. 故素材库列表天然过滤掉。 */
+const IMPORT_PREVIEW_SCRATCH_DIR = path.join("assets", "imported", ".import-previews");
+
+function importPreviewScratchOwnerPath(projectId: string, nodeId: string): string | null {
+  const projectDir = projectDirById(projectId);
+  if (!projectDir) return null;
+  return path.join(projectDir, IMPORT_PREVIEW_SCRATCH_DIR, `${nodeId.replace(/[^A-Za-z0-9_-]/g, "_")}.src`);
+}
+
+/**
+ * 拷贝开始前先出一帧 + 开一条进度上报：导入中节点的马赛克按「已拷贝字节 / 总字节」长出来，
+ * 而不是按时间跑动画。没有 ownerNodeId（素材盒批量导入、MCP 等无节点宿主）时整条反馈不启用。
+ */
+async function prepareNativeImportFeedback(
+  raw: JsonRecord,
+  sourcePath: string,
+  projectId: string,
+  contentType: string,
+): Promise<NativeImportFeedback> {
+  const nodeId = String(raw.ownerNodeId || "").trim();
+  if (!nodeId) return {};
+  const totalBytes = await fs.promises.stat(sourcePath).then((stat) => stat.size).catch(() => 0);
+  const reporter = createAssetImportProgressReporter({ projectId, nodeId, totalBytes });
+  // 先说话再干活：卡片立刻有「导入中 · 0% · 1.38 GB」，不等 ffprobe。
+  reporter.announce();
+  const scratchOwnerPath = importPreviewScratchOwnerPath(projectId, nodeId);
+  // 预览与拷贝并行派生：4K 源的 ffprobe + 缩放要好几秒，挡在拷贝前面就是一张长时间的空卡。
+  const preparedPreview = scratchOwnerPath
+    ? createStoredAssetPreview(sourcePath, contentType, { previewOwnerPath: scratchOwnerPath }).then((preview) => {
+      const previewPath = preview.previewPath;
+      if (previewPath) {
+        const relativePath = path.posix.join(IMPORT_PREVIEW_SCRATCH_DIR.split(path.sep).join("/"), path.basename(previewPath));
+        reporter.setPreviewUrl(localAssetUrl(projectId, relativePath));
+      }
+      return preview;
+    }).catch(() => undefined)
+    : undefined;
+  return {
+    preparedPreview,
+    onCopyProgress: (copiedBytes, streamTotalBytes) => {
+      reporter.report(copiedBytes, streamTotalBytes);
+      if (copiedBytes >= streamTotalBytes) reporter.finish();
+    },
+  };
+}
+
 async function importNativeSourcePath(
   raw: JsonRecord,
   sourcePath: string,
@@ -75,6 +125,7 @@ async function importNativeSourcePath(
   fileName: string,
   contentType: string,
   context: AssetWriteContext,
+  feedback: NativeImportFeedback = {},
 ): Promise<unknown> {
   const stat = await fs.promises.stat(sourcePath);
   if (!stat.isFile()) throw new Error("source file is unavailable");
@@ -98,7 +149,7 @@ async function importNativeSourcePath(
   const storedName = canonicalAssetFileName(fileName, effectiveContentType);
   const baseMeta = { kind: raw.kind || "upload", originalName: raw.fileName || null };
   if (!effectiveContentType.startsWith("video/")) {
-    return copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context);
+    return copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context, feedback);
   }
 
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "nomi-video-native-import-"));
@@ -110,13 +161,13 @@ async function importNativeSourcePath(
         return await copyAssetFile(projectId, transcoded.outputPath, playableMp4FileName(storedName), "video/mp4", {
           ...baseMeta,
           playbackNormalizedFrom: transcoded.reason,
-        }, context);
+        }, context, feedback);
       }
     } catch (error) {
       logWarn("assets", "video-normalize-failed-import-original-file", undefined, error);
     }
     context.assertCurrent();
-    return await copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context);
+    return await copyAssetFile(projectId, sourcePath, storedName, effectiveContentType, baseMeta, context, feedback);
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
@@ -130,13 +181,20 @@ export async function importLocalFile(payload: unknown, options: ImportLocalFile
   const hintedContentType = String(raw.contentType || "application/octet-stream");
   const sourcePath = options.allowSourcePath ? String(raw.sourcePath || "").trim() : "";
   // 画布预览（图片缩略 / 视频 poster）在落盘边界统一派生：本地导入与生成结果本地化走同一扇门。
+  // 原生路径那条已经在拷贝前先派生过一帧并沿路认领，这里不会再派生第二次。
   return attachStoredAssetPreview(await importLocalFileToStore(raw, projectId, sourcePath, hintedContentType, context));
 }
 
 async function importLocalFileToStore(raw: JsonRecord, projectId: string, sourcePath: string, hintedContentType: string, context: AssetWriteContext): Promise<unknown> {
   if (sourcePath) {
     const rawName = String(raw.fileName || path.basename(sourcePath) || `asset-${Date.now()}.bin`);
-    return importNativeSourcePath(raw, sourcePath, projectId, rawName, hintedContentType, context);
+    const feedback = await prepareNativeImportFeedback(raw, sourcePath, projectId, hintedContentType);
+    try {
+      return await importNativeSourcePath(raw, sourcePath, projectId, rawName, hintedContentType, context, feedback);
+    } catch (error) {
+      discardPreparedPreview(await feedback.preparedPreview);
+      throw error;
+    }
   }
   const bytes = bytesFromPayload(raw.bytes);
   const rawFileName = String(raw.fileName || "").trim();

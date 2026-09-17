@@ -5,6 +5,7 @@
  * 这里**只搬家、不改行为**：每个键、每条频道名、每句注释都逐字保留，preload.ts 用 `...mediaBridge` 组装，暴露给渲染层的对象形状逐字节不变。
  */
 import { ipcRenderer, webUtils } from "electron";
+import type { AssetLocalizationEvent } from "../shared/assets/assetLocalizationEvent";
 import { invokeSync } from "./ipcCall";
 import { importNativeFileFromPreload } from "../assets/nativeFileBridge";
 
@@ -21,8 +22,9 @@ export const mediaBridge = {
       ipcRenderer.on("nomi:assets:updated", listener);
       return () => ipcRenderer.removeListener("nomi:assets:updated", listener);
     },
-    onLocalizationStarted: (cb: (payload: { projectId: string; nodeId: string }) => void) => {
-      const listener = (_: unknown, value: { projectId: string; nodeId: string }) => cb(value);
+    // 一条通道两种用法：生成本地化只发一次（无 bytes）；本地导入在拷贝流上连发（带 copiedBytes/totalBytes）。
+    onLocalizationStarted: (cb: (payload: AssetLocalizationEvent) => void) => {
+      const listener = (_: unknown, value: AssetLocalizationEvent) => cb(value);
       ipcRenderer.on("nomi:assets:localization-started", listener);
       return () => ipcRenderer.removeListener("nomi:assets:localization-started", listener);
     },

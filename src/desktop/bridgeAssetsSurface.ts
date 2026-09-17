@@ -5,6 +5,7 @@
  * `assets: DesktopAssetsSurface` 组装。
  */
 import type { MediaImportRejection, StorageCapacity } from '../../electron/shared/contracts/mediaImportPolicy'
+import type { AssetLocalizationEvent } from '../../electron/shared/assets/assetLocalizationEvent'
 import type { DesktopAssetDto, DesktopAssetFoldersState } from './bridgeMedia'
 
 export type DesktopAssetsSurface = {
@@ -19,7 +20,12 @@ export type DesktopAssetsSurface = {
   foldersSave?: (payload: { projectId: string; state: DesktopAssetFoldersState }) => Promise<{ ok: boolean; state: DesktopAssetFoldersState; error?: string }>
   /** 写入层落盘广播（nomi:assets:updated）——素材库面板/素材盒徽章的统一回流信号。 */
   onUpdated?: (cb: (payload: { projectId: string }) => void) => () => void
-  onLocalizationStarted?: (cb: (payload: { projectId: string; nodeId: string }) => void) => () => void
+  /**
+   * 单节点的「字节正在进项目」生命周期，一条通道两种用法：
+   * 生成结果本地化只发一次（无 bytes）= 开始；本地导入在拷贝流上连发（带 copiedBytes/totalBytes，
+   * 首条带 previewUrl）= 进度。订阅方按 projectId+nodeId 认领。
+   */
+  onLocalizationStarted?: (cb: (payload: AssetLocalizationEvent) => void) => () => void
   importRemoteUrl: (payload: {
     projectId: string
     projectBinding?: import('../../electron/shared/projectBinding').ProjectBinding
@@ -35,6 +41,8 @@ export type DesktopAssetsSurface = {
     contentType?: string
     bytes: ArrayBuffer
     kind?: string
+    /** 导入进度广播的收件人：主进程按它把拷贝字节回报给画布上那张卡。 */
+    ownerNodeId?: string | null
   }) => Promise<import('../../electron/shared/contracts/assetImportResult').AssetImportResult<DesktopAssetDto>>
   /** Electron 原生 File 直传 preload；路径只在隔离桥内解析，大文件不复制进 renderer 内存。 */
   importNativeFile?: (file: File, payload: {

@@ -12,6 +12,7 @@ import type { ComfyCandidateTestPayload, ComfyCandidateTestResult } from './comf
 import type { CanvasReadSurfaceBridge } from '../../electron/shared/surfacePortBinding'
 import type { LaneBridge } from '../workbench/ai/lane/laneClient'
 import type { GenerationResolvePlanEnvelope, GenerationResolvePlanRequest } from '../../electron/shared/videoCapabilities/planResolutionContracts'
+export type { AssetLocalizationEvent } from '../../electron/shared/assets/assetLocalizationEvent'
 export type { ProviderKind }
 export type { DesktopAdapterModeResult, DesktopProviderAdapterRun, DesktopProviderRegistration } from './onboardingBridgeTypes'
 export type { ScreenshotHotkeyStatus, DesktopAssetDto, DesktopAssetFolder, DesktopAssetFoldersState } from './bridgeMedia'
