@@ -25,6 +25,8 @@ function mcpInfo(connected: readonly string[]): McpInfo {
       configPath: `/Users/me/.config/${key}/mcp.json`,
       snippet: '{}',
       configState: connected.includes(key) ? 'current' : 'absent',
+      configuredCommand: connected.includes(key) ? '/Applications/Nomi.app/Contents/MacOS/Nomi' : null,
+      configuredSettingsDir: connected.includes(key) ? '/Users/me/Library/Application Support/Nomi' : null,
       launcherKind: 'packaged',
     }
   }
