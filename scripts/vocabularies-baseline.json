@@ -1602,6 +1602,18 @@
       ],
       "reason": "实连验证（mcpVerify.verifyMcp 真起一次配置里那条命令握手）的诊断结论的中立 owner：主进程 mcpVerify.ts 与渲染层 mcpBridgeTypes.ts 的 McpVerifyReason 都从这份 tuple derive；UI 文案按它走 i18n（ConnectAssistantCard 的 REASON_I18N），主进程不回中文。与 McpConfigState 分工：这里是运行时诊断（spawn/握手/超时），那边是静态配置形状。",
       "site": "electron/shared/mcpConnectionContract.ts::variable:MCP_VERIFY_REASONS/as-const"
+    },
+    {
+      "members": [
+        "failed",
+        "idle",
+        "queued",
+        "sending",
+        "sent",
+        "unconfigured"
+      ],
+      "reason": "一键反馈那张卡的**发送阶段**六态，只服务这张卡的渲染分支。与 electron/tasks 的 Job.status 不是同一语义：那边是本机任务队列的执行态（有 succeeded/running，可取消、可重排），这边是「一次用户主动交出去的东西现在在哪一步」——其中 queued（发不出去已入队静默重试）与 unconfigured（这个构建没配接收端）是本域独有的两档，前者在别处会被当成 running、后者在别处根本不存在。不复用是为了让「排队了算不算成功」这条判断只有一个地方可改：这里 queued 与 sent 都收成一行回执，而任务队列绝不能把排队当完成。",
+      "site": "src/ui/community/FeedbackReportCard.tsx::type:Phase/type-union"
     }
   ],
   "debt": [
