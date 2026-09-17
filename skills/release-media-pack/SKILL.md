@@ -9,13 +9,10 @@ metadata:
     author: "@nomi"
     tools:
       - read_script
-      - read_canvas_state
-      - propose_storyboard_plan
-      - create_canvas_nodes
-      - connect_canvas_edges
-      - set_node_prompt
-      - run_generation_batch
-      - arrange_storyboard_to_timeline
+      - look_at_canvas
+      - draft_shots
+      - arrange_canvas
+      - generate
     required-providers:
       - text
       - image
@@ -46,8 +43,8 @@ metadata:
       - id: story
         goal: 让故事先成立，再把核心版本变化作为剧情转折写入 3–4 段、60 秒内的分镜与声音/转场方案，交用户审阅。
         tools:
-          - read_canvas_state
-          - propose_storyboard_plan
+          - look_at_canvas
+          - draft_shots
         depends-on:
           - research
         pause: true
@@ -65,10 +62,9 @@ metadata:
       - id: build
         goal: 把获批分镜落成画布节点，连接角色、道具和风格锚，写入可直接生成且包含连续性出入点的提示词。
         tools:
-          - read_canvas_state
-          - create_canvas_nodes
-          - connect_canvas_edges
-          - set_node_prompt
+          - look_at_canvas
+          - draft_shots
+          - arrange_canvas
         depends-on:
           - story
         pause: true
@@ -82,8 +78,8 @@ metadata:
       - id: generate
         goal: 用户确认花费后按波次生成：先验证锚点和代表镜头，再扩到关键帧与全部视频；失败只重跑受影响镜头。
         tools:
-          - read_canvas_state
-          - run_generation_batch
+          - look_at_canvas
+          - generate
         depends-on:
           - build
         pause: true
@@ -96,8 +92,7 @@ metadata:
       - id: assemble
         goal: 把已生成镜头按故事顺序排入时间轴，保留中央安全区、语义转场和声音提示，分别准备中文与英文后期版本。
         tools:
-          - read_canvas_state
-          - arrange_storyboard_to_timeline
+          - look_at_canvas
         depends-on:
           - generate
         pause: true
@@ -153,7 +148,7 @@ license: AGPL-3.0-only
 2. **先故事，后功能**：前五秒先让人物、冲突或荒诞事件成立；更新只作为世界变化的原因出现，不能把宣传片剪成功能 PPT。
 3. **中文、英文分成两支**：同一故事和镜头可复用，但 ZH 与 EN 的标题、断行、图文和文案必须独立校对；禁止中英翻译同屏混排。品牌/模型官方名不算混排。
 4. **不假装工具存在**：Nomi 当前能拆分镜、建节点、连参考、生成、排时间轴；不能由本 Skill 直接做 TikHub 联网、音乐/音效、HyperFrames/FFmpeg、本地打包、成片 QA 或上传。缺口进入 handoff，状态降级。
-5. **不提前花费**：证据、研究、故事和分镜先审。`run_generation_batch` 只在用户确认后调用；先跑锚点和代表镜头，再扩批。
+5. **不提前花费**：证据、研究、故事和分镜先审。`generate` 只在用户确认后调用；先跑锚点和代表镜头，再扩批。
 6. **不照抄样片**：只学习钩子、节奏、转场、标题、声音、证明方式和 CTA；不复刻完整故事、镜头顺序、台词、人物、音乐、Logo、画面或品牌视觉。
 
 ## 流程规划
@@ -211,11 +206,11 @@ Nomi 当前没有 TikHub 工具。若用户已提供研究包，就读取并提�
 
 ## 媒体生成
 
-1. `propose_storyboard_plan` 一次生成整份可审阅分镜。
-2. 用户确认后，用 `create_canvas_nodes` 落节点；角色/道具/风格锚用 `connect_canvas_edges` 共用，避免跨镜漂移。
+1. `draft_shots` 一次生成整份可审阅分镜。
+2. 用户确认后，用 `draft_shots` 落节点；角色/道具/风格锚用 `arrange_canvas` 共用，避免跨镜漂移。
 3. 提示词只写该镜独有的动作、环境、光线、构图、运镜和时间演进；出入点要为相邻剪辑服务。
-4. `run_generation_batch` 先跑一张锚和一个代表镜头；质量成立后再按依赖波次扩批。失败只返工受影响镜头。
-5. `arrange_storyboard_to_timeline` 只负责按故事顺序排片。排入时间轴不等于完成后期或导出。
+4. `generate` 先跑一张锚和一个代表镜头；质量成立后再按依赖波次扩批。失败只返工受影响镜头。
+5. 把分镜按镜序排进时间轴**不在你的能力范围内**（无对应动词）——不要声称你排好了；时间轴改动只有 `edit_timeline`。
 
 ## 视频剪辑
 

@@ -28,18 +28,26 @@ function generationCall(base: { toolCallId: string }, toolName: GenerationMethod
   return { lane: 'generation', call: { ...base, toolName, args } }
 }
 
-/** `draft_shots` 的一镜 → 生成契约 `shots[]` 的一镜（语义字段；候选身份由宿主按目录合成）。 */
+/**
+ * `draft_shots` 的一镜 → 生成契约 `shots[]` 的一镜（语义字段；候选身份由宿主按目录合成）。
+ *
+ * **时长落在 `parameters.duration` 里，不是顶层字段**（2026-09-18 根因）：宿主读时长只有一处
+ * （`mcpGenerationVideoResolve.shotDurationSeconds`，认 `parameters.duration` / `parameters.durationSeconds`），
+ * 而 `generationPlanInputSchema` 的 `shots[]` 是 `.strict()`、压根没有顶层时长字段。此前这里把
+ * `durationSec` 改名成顶层 `durationSeconds` 递过去，于是**每一次带时长的调用都被整条拒收**
+ * （`generation_input_invalid`）——分镜天生每镜带时长，Agent 因此永远出不来分镜表。
+ */
 function draftShotToPlanShot(shot: Args): Args {
-  const { shotId, role, prompt, taskKind, durationSec, modelKey, modeId, parameters, references, title } = shot as {
+  const { shotId, role, prompt, taskKind, durationSec, modelKey, modeId, parameters, references } = shot as {
     shotId?: string; role?: string; prompt: string; taskKind?: string; durationSec?: number; modelKey?: string; modeId?: string;
-    parameters?: Args; references?: string[]; title?: string
+    parameters?: Args; references?: string[]
   }
+  const withDuration = durationSec === undefined ? parameters : { ...(parameters ?? {}), duration: durationSec }
   return {
     ...(shotId ? { shotId } : {}), ...(role ? { role } : {}), prompt,
-    ...(title ? { title } : {}),
-    ...(taskKind ? { taskKind } : {}), ...(durationSec !== undefined ? { durationSeconds: durationSec } : {}),
+    ...(taskKind ? { taskKind } : {}),
     ...(modelKey ? { modelId: modelKey } : {}), ...(modeId ? { modeId } : {}),
-    ...(parameters ? { parameters } : {}),
+    ...(withDuration ? { parameters: withDuration } : {}),
     ...(references ? { references: references.map((assetId) => ({ assetId })) } : {}),
   }
 }
@@ -58,13 +66,13 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       if (draftId) {
         // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
         const first = shots[0] ?? {}
-        const { shotId: _shotId, role: _role, title: _title, ...rest } = draftShotToPlanShot(first)
+        const { shotId: _shotId, role: _role, ...rest } = draftShotToPlanShot(first)
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'patch', operationId: draftId, patch: rest })
       }
       // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。
       if (shots.length === 1 && !shots[0]?.role) {
         // 单镜：走单镜 create（宿主从 prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
-        const { shotId: _shotId, title: _title, ...single } = draftShotToPlanShot(shots[0]!)
+        const { shotId: _shotId, ...single } = draftShotToPlanShot(shots[0]!)
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', ...single, cardHidden: true })
       }
       return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', shots: shots.map(draftShotToPlanShot), cardHidden: true })
