@@ -96,7 +96,7 @@
     {
       "kind": "read",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 454,
+      "line": 460,
       "symbol": "CreationResourceTreeToggle"
     },
     {
