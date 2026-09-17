@@ -18,6 +18,8 @@ import type { GenerationDefaultTaskKind } from "../settings/generationModelDefau
 import {
   isLongFormGenerationRequest,
   requestedVideoDurationSeconds,
+  semanticCandidateFromParams,
+  type SemanticGenerationCandidateDeps,
 } from "./semanticGenerationCandidate";
 import type { ShotPrice } from "../productionRun/shotPricing";
 
@@ -114,14 +116,38 @@ export type MultiShotCandidateParsers = {
 export type AssertReferencesResolvable = (projectId: string, references: ReadonlyArray<PlanCandidate["references"][number]>) => void;
 
 /**
- * P4 S6.5 `plan` 入口: parse one client-supplied shot `{ shotId?, role?, included?, candidate }` into a
- * draft shot. The candidate is a FULL PlanCandidate (same shape single-shot create takes) — reusing
- * `candidateFrom` means the `plan` entrance shares the single-shot validation (no second parser).
+ * P4 S6.5 `plan` 入口: parse one client-supplied shot into a draft shot.
+ *
+ * 一个镜可以**整只给 candidate**（PlanCandidate 原样，历史写法），也可以像单镜 create 那样只给语义字段
+ * （`prompt` + 可选 `taskKind`/`modelId`/`modeId`/`parameters`/`references`）。两者都走
+ * `semanticCandidateFromParams` ——它自己第一行就是「给了 candidate 就原样解析」，所以显式候选那条路逐字节
+ * 不变；缺候选时由它按用户保存的默认模型合成，和单镜 create 同一台合成器、同一条报错。
+ *
+ * 为什么必须两种都收：单镜路早就修过这个毛病（`mcpGenerationTools.ts` 单镜分支的注释原话——「让模型不必去
+ * 发明内部 candidate ID 和供应商接线，**之前的行为表现为一次假拒绝**」），但只修了 N=1 那个 arity。N≥2 这条
+ * 仍然硬要 `candidate`，于是 lane 上的 `draft_shots` 一到多镜就被 zod 以 `Required` 拒掉——同一份镜头描述，
+ * 一个镜收、两个镜拒。这里把那条不对称删掉，而不是再长一台合成器（P1）。
+ *
+ * `semantic` 不注入时行为仍然安全：显式 candidate 照常过，缺候选的镜头拿到人话「没有配置可用的模型」，
+ * 而不是 zod 的 `Required`。
  */
-export function draftShotFromPlan(value: unknown, index: number, parsers: MultiShotCandidateParsers): GenerationOperationDraftShot {
+export function draftShotFromPlan(
+  value: unknown,
+  index: number,
+  parsers: MultiShotCandidateParsers,
+  semantic?: Pick<SemanticGenerationCandidateDeps, "defaultModelForTaskKind" | "registry" | "allowRegistryFallback">,
+): GenerationOperationDraftShot {
   const raw = parsers.record(value, `generation shot ${index}`);
   const env = shotEnvelope(raw, index, `shot-${index + 1}`);
-  const candidate = parsers.candidateFrom(raw.candidate);
+  const candidate = semanticCandidateFromParams({
+    // 逐镜 candidateId 跟着 shotId 走（与 `draftShotFromStoryboard` 同一约定），草稿改一镜不动其它镜。
+    operationId: env.shotId,
+    params: raw,
+    candidateFrom: parsers.candidateFrom,
+    ...(semantic?.defaultModelForTaskKind ? { defaultModelForTaskKind: semantic.defaultModelForTaskKind } : {}),
+    ...(semantic?.registry ? { registry: semantic.registry } : {}),
+    ...(semantic?.allowRegistryFallback ? { allowRegistryFallback: semantic.allowRegistryFallback } : {}),
+  });
   return { ...env, candidate };
 }
 
@@ -170,7 +196,8 @@ export function draftShotFromStoryboard(draft: StoryboardShotDraft, index: numbe
 
 /** The shared derivations the multi-shot factory needs (all pure, all single source of truth from S2/S4). */
 export type MultiShotHelperDeps = {
-  registry: Pick<ModuleRegistry, "resolve">;
+  /** `resolve` 是密封期用的；`snapshot` 是语义合成期用的（缺省即不做目录兜底）。 */
+  registry: Pick<ModuleRegistry, "resolve"> & { snapshot?: () => readonly unknown[] };
   videoModelCandidates?: readonly VideoModelCandidate[];
   planStoryboard?: (input: {
     projectId: string;
@@ -236,7 +263,11 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     let shots: GenerationOperationDraftShot[];
     if (Array.isArray(params.shots)) {
       if (params.shots.length === 0) throw new Error("多镜生成需要至少一个镜头");
-      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers));
+      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers, {
+        ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
+        ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
+        ...(deps.allowRegistryFallback ? { allowRegistryFallback: deps.allowRegistryFallback } : {}),
+      }));
     } else if (typeof params.scriptText === "string" || isLongFormGenerationRequest(params)) {
       // A minute-scale natural-language request must not silently collapse to
       // one provider clip. Promote it to the same storyboard seam as an

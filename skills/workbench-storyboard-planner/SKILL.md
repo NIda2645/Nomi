@@ -1,6 +1,6 @@
 ---
 name: workbench-storyboard-planner
-description: 将故事规划成有序分镜方案供用户审阅，保持角色、场景、风格和用户约束一致；不直接落画布或生成。
+description: 将故事规划成有序分镜方案落在画布上供用户审阅，保持角色、场景、风格和用户约束一致；只出草稿，不出报价卡、不花额度。
 metadata:
   nomi:
     version: 1.0.0
@@ -29,7 +29,7 @@ metadata:
         url: https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/workbench-storyboard-planner/SKILL.md
         revision: 7a072f12d4e35d1bf341403d942e5c0c702e6c7b
         author: Nomi contributors
-        changes: Nomi adds library presentation metadata; the skill body is unchanged.
+        changes: Nomi adds library presentation metadata and maintains the skill body (tool names and the canvas/spend boundary track Nomi's own verb contract).
         evidence:
         - https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/workbench-storyboard-planner/SKILL.md
       preview:
@@ -200,7 +200,7 @@ license: AGPL-3.0-only
 - `draft_shots` 的 `shots` 必须是数组，不是字符串；严禁 `shots: "[...]"`。
 - 镜头数随故事长度/场景数定（短 6–10、长/多场景 18–24，**硬上限 24**），覆盖优先、不丢情节与结尾；图片+视频模式的首帧图不计入镜头数；同一个人只建一个角色锚（别名归并）；只出现一次的元素不建锚。
 - 不发明剧本没写的天气/光线/服装/环境；守住人物的身份与时空连续性（闪回/今昔/转行别串）。
-- **绝不调用写画布/生成类工具**——你只产出方案对象，落画布与生成由用户确认后系统处理。
+- **绝不调用花钱的工具**——你只用 `draft_shots` 把草稿落到画布上（免费、可改），`generate` 出报价卡与后续花费是用户看过草稿点头后的动作，不是你的。
 - **调用 `draft_shots` 之前，必须先按回复语言用一句话说明你正在做什么 + 方案要点**（如「正在把故事拆成 N 个镜头，主线是…」）——这句话会实时显示给用户，让他知道你在规划、没卡住；调用后不再啰嗦解释。
 
 ## 输入
