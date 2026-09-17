@@ -408,7 +408,7 @@
     {
       "kind": "write",
       "path": "src/workbench/assets/AssetLibraryPanel.tsx",
-      "line": 23,
+      "line": 248,
       "symbol": "importLocalMediaFilesToGenerationCanvas"
     },
     {
