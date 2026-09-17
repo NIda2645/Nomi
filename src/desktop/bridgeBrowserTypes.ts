@@ -6,6 +6,9 @@
  * 组装，并原样 re-export 这些类型名，既有 `from './bridge'` 的 import 面不变。
  */
 import type { DesktopAssetDto } from './bridgeMedia'
+// 仅类型的回指：DesktopBrowserPromptScreenshotSelection 留在 bridge.ts（它的 reason 联合是
+// check:vocabularies 在册、按路径记身份的 debt site），这里只借它的形状，编译期即擦除。
+import type { DesktopBrowserPromptScreenshotSelection } from './bridge'
 
 export type DesktopBrowserViewBounds = {
   x: number
@@ -154,22 +157,6 @@ export type DesktopBrowserPromptReferenceResult = {
   asset?: DesktopAssetDto
   sourceRect?: DesktopBrowserResourceCaptureRect
 }
-
-export type DesktopBrowserPromptScreenshotSelection =
-  | {
-      ok: true
-      rect: {
-        left: number
-        top: number
-        width: number
-        height: number
-      }
-    }
-  | {
-      ok: false
-      reason?: 'cancelled' | 'error'
-      message?: string
-    }
 
 /** 浏览器面：内置浏览器视图、素材浮层、提示词/资源抓取的桥面形状。 */
 export type DesktopBrowserSurface = {

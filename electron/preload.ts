@@ -148,6 +148,105 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     readFilePaths: () => ipcRenderer.invoke("nomi:clipboard:read-file-paths") as Promise<string[]>,
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
+  // 这两支**故意**留在组装层，不随各族桥面搬家：它们里的 `vendorHealth.state` 与
+  // `textBrain.status` 两个字面量联合是 check:vocabularies 在册的 debt site，而 debt 的身份
+  // 含文件路径——搬一次家就被读成「新开一处 debt」，而真正的收敛（中立合同）是另一件事。
+  onboarding: {
+    integrationHandoffList: () => ipcRenderer.invoke("nomi:integration-handoff:list"),
+    integrationHandoffAck: (requestId: string) => ipcRenderer.invoke("nomi:integration-handoff:ack", requestId),
+    integrationHandoffSubscribe: (callback: (entry: unknown) => void) => {
+      const listener = (_event: unknown, entry: unknown) => callback(entry)
+      ipcRenderer.on("nomi:integration-handoff:changed", listener as never)
+      ipcRenderer.send("nomi:integration-handoff:subscribe")
+      return () => ipcRenderer.removeListener("nomi:integration-handoff:changed", listener as never)
+    },
+    integrationSessionSaveCredential: (payload: { sessionId: string; expectedRevision: number; apiKey: string }) =>
+      ipcRenderer.invoke("nomi:integration-session:credential", payload),
+    integrationSessionPrepareComfy: (payload: {
+      vendorKey: string; name: string; workflow: string; binding: unknown; modelKey?: string;
+      enumOptions?: unknown; uiWorkflow?: string;
+    }) => ipcRenderer.invoke("nomi:integration-session:comfyui:prepare", payload),
+    integrationSessionStartSelfCheck: (payload: { sessionId: string; expectedRevision: number }) =>
+      ipcRenderer.invoke("nomi:integration-session:start-self-check", payload),
+    integrationSessionGet: (sessionId: string) => ipcRenderer.invoke("nomi:integration-session:get", { sessionId }),
+    antigravityStatus: () => ipcRenderer.invoke("nomi:antigravity:status"),
+    antigravityTest: (payload?: unknown) => ipcRenderer.invoke("nomi:antigravity:test", payload),
+    antigravityCancel: () => ipcRenderer.invoke("nomi:antigravity:cancel"),
+    httpConnectionConfigure: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:configure", payload),
+    httpCertificationStart: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:start", payload),
+    certificationGet: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:get", payload),
+    certificationCancel: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:cancel", payload),
+    certificationList: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:list", payload),
+    httpConnectionListModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:list-models", payload),
+    httpCertificationStartExisting: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:existing:start", payload),
+    httpCertificationRetry: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:integration-certification:http:retry", payload),
+    guessKinds: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:onboarding:guess-kinds", payload) as Promise<{
+        kinds: Record<string, "text" | "image" | "video" | "audio">;
+      }>,
+    testConnection: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:onboarding:test-connection", payload) as Promise<{
+        ok: boolean;
+        status?: number;
+        error?: string;
+      }>,
+    listModels: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:onboarding:list-models", payload) as Promise<{
+        ok: boolean;
+        models?: string[];
+        status?: number;
+        error?: string;
+      }>,
+    vendorHealth: (payload: unknown) =>
+      ipcRenderer.invoke("nomi:onboarding:vendor-health", payload) as Promise<{
+        vendorKey: string;
+        state: "reachable" | "unreachable" | "unsupported";
+        reason?: string;
+        checkedAt: number;
+      }>,
+  },
+  promptLibrary: {
+    list: () =>
+      ipcRenderer.invoke("nomi:prompt-library:list") as Promise<{ ok: boolean; prompts: unknown[]; error?: string }>,
+    textBrain: () =>
+      ipcRenderer.invoke("nomi:prompt-library:text-brain") as Promise<{
+        ok: boolean;
+        brain: { vendor: string; modelKey: string } | null;
+        status: "ok" | "locked" | "missing";
+      }>,
+    userList: () =>
+      ipcRenderer.invoke("nomi:prompt-library:user-list") as Promise<{
+        ok: boolean;
+        prompts: unknown[];
+        error?: string;
+      }>,
+    userAdd: (input: { title?: string; prompt: string; promptType: "image" | "video"; tags?: string[]; referenceImages?: { url: string; title?: string; sourceUrl?: string }[] }) =>
+      ipcRenderer.invoke("nomi:prompt-library:user-add", input) as Promise<{
+        ok: boolean;
+        prompts: unknown[];
+        error?: string;
+      }>,
+    userUpdate: (id: string, patch: { title?: string; prompt?: string; promptType?: "image" | "video" }) =>
+      ipcRenderer.invoke("nomi:prompt-library:user-update", { id, patch }) as Promise<{
+        ok: boolean;
+        prompts: unknown[];
+        error?: string;
+      }>,
+    userDelete: (id: string) =>
+      ipcRenderer.invoke("nomi:prompt-library:user-delete", { id }) as Promise<{
+        ok: boolean;
+        prompts: unknown[];
+        error?: string;
+      }>,
+  },
   ...runtimeBridge,
   ...mediaBridge,
   ...creationBridge,

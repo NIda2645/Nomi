@@ -59,40 +59,6 @@ export const creationBridge = {
       },
     },
   },
-  promptLibrary: {
-    list: () =>
-      ipcRenderer.invoke("nomi:prompt-library:list") as Promise<{ ok: boolean; prompts: unknown[]; error?: string }>,
-    textBrain: () =>
-      ipcRenderer.invoke("nomi:prompt-library:text-brain") as Promise<{
-        ok: boolean;
-        brain: { vendor: string; modelKey: string } | null;
-        status: "ok" | "locked" | "missing";
-      }>,
-    userList: () =>
-      ipcRenderer.invoke("nomi:prompt-library:user-list") as Promise<{
-        ok: boolean;
-        prompts: unknown[];
-        error?: string;
-      }>,
-    userAdd: (input: { title?: string; prompt: string; promptType: "image" | "video"; tags?: string[]; referenceImages?: { url: string; title?: string; sourceUrl?: string }[] }) =>
-      ipcRenderer.invoke("nomi:prompt-library:user-add", input) as Promise<{
-        ok: boolean;
-        prompts: unknown[];
-        error?: string;
-      }>,
-    userUpdate: (id: string, patch: { title?: string; prompt?: string; promptType?: "image" | "video" }) =>
-      ipcRenderer.invoke("nomi:prompt-library:user-update", { id, patch }) as Promise<{
-        ok: boolean;
-        prompts: unknown[];
-        error?: string;
-      }>,
-    userDelete: (id: string) =>
-      ipcRenderer.invoke("nomi:prompt-library:user-delete", { id }) as Promise<{
-        ok: boolean;
-        prompts: unknown[];
-        error?: string;
-      }>,
-  },
   memory: {
     get: (projectId: string) =>
       ipcRenderer.invoke("nomi:memory:get", { projectId }) as Promise<{ ok: boolean; facts: unknown[] }>,

@@ -144,11 +144,28 @@ export type {
   DesktopBrowserPromptCaptureEvent,
   DesktopBrowserTextPromptSaveEvent,
   DesktopBrowserPromptReferenceResult,
-  DesktopBrowserPromptScreenshotSelection,
 } from './bridgeBrowserTypes'
 import type { DesktopBrowserSurface } from './bridgeBrowserTypes'
 import type { DesktopAssetsSurface } from './bridgeAssetsSurface'
 import type { DesktopModelCatalogSurface } from './bridgeModelCatalogSurface'
+
+// DesktopBrowserPromptScreenshotSelection **故意**不跟着搬走：它的 `reason` 字面量联合是
+// check:vocabularies 在册的 debt site，而 debt 的身份含文件路径——搬家会被读成「新开一处 debt」。
+export type DesktopBrowserPromptScreenshotSelection =
+  | {
+      ok: true
+      rect: {
+        left: number
+        top: number
+        width: number
+        height: number
+      }
+    }
+  | {
+      ok: false
+      reason?: 'cancelled' | 'error'
+      message?: string
+    }
 
 /** 主进程更新状态广播（功能需求2/3）。renderer 状态机纯 derive 自此事件。 */
 export type DesktopUpdateEvent =
