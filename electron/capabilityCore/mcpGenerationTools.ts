@@ -90,6 +90,8 @@ export type GenerationOperationShot = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /** 模型拟的短标题（给人看，不进 provider 请求）。见 GenerationOperationDraftShot.title。 */
+  title?: string;
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
 }>;
@@ -397,7 +399,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         const candidate = normalized(shot.candidate);
         return {
           shotId: shot.shotId,
-          sceneOneLiner: candidate.prompt.slice(0, 120),
+          // 用户在这一刻要决定花不花钱，每行读到的应该是「日落前的一分钟」，不是被砍断的提示词。
+          // 模型没拟标题时才退回提示词前缀（120 与动词 `title` 的上限同源）。
+          sceneOneLiner: shot.title?.trim() || candidate.prompt.slice(0, 120),
           providerModelText: providerModelText(candidate),
           candidate,
           durationSeconds: shotDurationSeconds(candidate),

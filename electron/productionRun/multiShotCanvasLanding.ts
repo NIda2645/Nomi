@@ -67,13 +67,22 @@ export function canvasLandingOperationId(runId: string): string {
   return `canvas-landing:${runId}`;
 }
 
-/** 从镜的 candidate 推一个人话标题（有 index 用「镜头 N」；锚用其 prompt 前缀）。纯函数。 */
-function shotTitle(shot: ProductionGenerationShot, index: number): string {
-  if (shot.role === "anchor") {
-    const p = shot.candidate?.prompt?.trim() ?? "";
-    return p ? p.slice(0, 24) : `参考 ${index + 1}`;
-  }
-  return `镜头 ${index + 1}`;
+/**
+ * 这一镜落到画布上的标签。
+ *
+ * 优先用**模型自己拟的标题**（`draft_shots` 的 `title`，如「日落前的一分钟」）。以前这里读不到它：
+ * 动词收下了，翻译层扔了，草稿信封没有装它的口袋，于是主进程只能自己编一个「镜头 N」。
+ *
+ * 编不出来时**返回空**，让渲染层用它那份带 zh/en 的 i18n 兜底
+ * （`generationCommon.production.canvasLanding.shotFallbackTitle`）。主进程再合成一份就是第二份兜底，
+ * 而且是硬编码中文——它会盖过 i18n 那份，英文用户因此在画布上看到「镜头 1」（R15）。
+ * 只保留「图片镜/锚用提示词前缀」这一条派生：它随输入 derive，不是写死的语言。
+ */
+function shotLabel(shot: ProductionGenerationShot): string {
+  const authored = shot.title?.trim() ?? "";
+  if (authored) return authored;
+  const isStill = shot.role === "anchor" || /image/i.test(shot.candidate?.mode ?? "");
+  return isStill ? (shot.candidate?.prompt?.trim().slice(0, 24) ?? "") : "";
 }
 
 /**
@@ -164,15 +173,14 @@ export function buildMaterializeShotsPayload(
     }
   }
 
-  const shots: MaterializeShotWire[] = included.map((shot, index) => {
+  const shots: MaterializeShotWire[] = included.map((shot) => {
     const result = resultByShot.get(shot.shotId);
     return {
       shotId: shot.shotId,
       ...(shot.role ? { role: shot.role } : {}),
       kind: shotKind(shot),
-      title: shot.role === undefined && /image/i.test(shot.candidate.mode)
-        ? (shot.candidate.prompt.trim().slice(0, 24) || shotTitle(shot, index))
-        : shotTitle(shot, index),
+      // 空标题**不发**：发空串会盖掉渲染层的 i18n 兜底，和发硬编码中文是同一个 bug。
+      ...(shotLabel(shot) ? { title: shotLabel(shot) } : {}),
       prompt: shot.candidate?.prompt ?? "",
       ...(shot.candidate ? { candidate: candidateWire(shot.candidate) } : {}),
       ...(result ? { result } : {}),

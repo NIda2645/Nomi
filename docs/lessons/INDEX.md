@@ -118,6 +118,8 @@
 - [参考实现不拆开逐层对照 = 没研究](reference-implementation-not-dissected-is-not-research.md) — 上一条的第二半：四列表只覆盖「已经想到的能力」，照不出「压根没想到还有这一层」；框架自带 coding agent/官方 example 必须按九层拆开并排，判定 `一致`/`有意不同(理由须是领域约束)`/`没想到`，「没想到」清单是实施阶段前置门
 - [写死的墙钟上限会在工作量长大时把 CI 砍在半路](fixed-wall-clock-caps-break-when-work-grows.md) — `exceeded <N>ms and was terminated` 而每条断言都有结果 = 进程被砍不是断言红；上限要从「有多少活」派生，别把 20 改成 40
 
+- [技能里的指令会跨代累积，模型服从的是过期那条](stale-directives-outlive-tool-renames.md) — Agent「只回文字不调工具」先翻这条；工具**名**过期有门岗，「该不该调用它」的祈使句过期没有任何机器看得见；删过期禁令要只删过期那半（「不许写画布」作废时「不许花钱」仍成立）
+
 ## C. Git 交付、分支与文档改动
 
 - [三点 diff 会掩盖过期分支的大回滚](three-dot-diff-hides-stale-branch-reverts.md) — 判断能不能合必须用两点 diff
