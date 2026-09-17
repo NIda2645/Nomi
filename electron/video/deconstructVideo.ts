@@ -231,6 +231,11 @@ async function transcribeShots(
   // 于是这个登记器对它们就是个空操作——**不按 vendor 分支**，谁报谁用（P4）。
   const { registerLocalSpeechProgressSink } = await import("../localSpeech/localSpeechProgressBus");
   const releaseSink = registerLocalSpeechProgressSink(leg.nodeId, (progress) => {
+    if (progress.phase === "starting") {
+      // 没有 GPU 加速时才说——有加速时这句话只会变成噪音（R2：没有行动价值的信息就删）。
+      if (!progress.gpuAccelerated) onDetail?.(desktopT("localSpeech.noGpuNotice", { minutes: progress.estimatedMinutes }));
+      return;
+    }
     onDetail?.(
       progress.phase === "downloading"
         ? desktopT("localSpeech.progressDownload", {

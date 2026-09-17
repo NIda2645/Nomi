@@ -69,6 +69,14 @@ export type LocalSpeechEnginePlatform = Readonly<{
   members: readonly LocalSpeechEngineMember[];
   /** 这些成员里哪一个是 whisper-server 可执行文件。 */
   executableFileName: string;
+  /**
+   * 这个构建有没有 GPU 加速。**它决定用户等多久，所以必须是实测出来的事实，不是猜的**：
+   * mac 两条是 Metal 构建（2026-09-17 实测 120 秒音频 10.4 秒出结果，11.5× 实时）；
+   * Windows 那条是 `-cpu` 构建，同一段音频在真机 20 核 CPU 上跑了 115.1 秒——**约 1× 实时**。
+   * 差了一个数量级：十分钟的视频在 mac 上一分钟出稿，在 Windows 上要等十分钟。
+   * 不把这件事说在前面，用户只会以为卡死了。
+   */
+  gpuAccelerated: boolean;
 }>;
 
 const ENGINE_BASE = `https://github.com/OpenWhispr/whisper.cpp/releases/download/${LOCAL_SPEECH_ENGINE_RELEASE}`;
@@ -99,6 +107,7 @@ export const LOCAL_SPEECH_ENGINE_PLATFORMS: readonly LocalSpeechEnginePlatform[]
       },
     ],
     executableFileName: "whisper-server-darwin-arm64",
+    gpuAccelerated: true,
   },
   {
     platformKey: "darwin-x64",
@@ -119,6 +128,7 @@ export const LOCAL_SPEECH_ENGINE_PLATFORMS: readonly LocalSpeechEnginePlatform[]
       },
     ],
     executableFileName: "whisper-server-darwin-x64",
+    gpuAccelerated: true,
   },
   {
     platformKey: "win32-x64",
@@ -144,6 +154,9 @@ export const LOCAL_SPEECH_ENGINE_PLATFORMS: readonly LocalSpeechEnginePlatform[]
       { fileName: "vcomp140.dll", sizeBytes: 193_152, sha256: "55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164" },
     ],
     executableFileName: "whisper-server-win32-x64-cpu.exe",
+    // `-cpu` 构建，没有 GPU 加速。上游同版本有 cuda / vulkan 变体（773 MB / 24 MB），
+    // 但那要按显卡分发、还要判有没有驱动——先用一定跑得起来的这条，等有真机数字再谈加档。
+    gpuAccelerated: false,
   },
 ];
 
@@ -155,8 +168,10 @@ export type LocalSpeechTier = Readonly<{
   model: VerifiedAsset;
   /** 实测 CER（见文件头的算式）——UI 用它诚实标注差距，不写「接近云端」这种没有数字支撑的话。 */
   measuredCer: number;
-  /** 实测相对实时倍率（M5 / Metal）。无 GPU 的机器会慢得多，UI 据此给耗时提示。 */
+  /** 实测相对实时倍率（M5 / Metal，有 GPU 加速时）。 */
   measuredRealtimeFactor: number;
+  /** 实测相对实时倍率（真 Windows 11 / 20 核 CPU，无 GPU 加速时）。开跑前的耗时提示按它算。 */
+  measuredCpuRealtimeFactor: number;
 }>;
 
 /** HuggingFace `ggerganov/whisper.cpp` 的钉死 commit（2026-09-17 实查；仓库自 2024-10-29 起未动）。 */
@@ -179,6 +194,8 @@ export const LOCAL_SPEECH_TIERS: readonly LocalSpeechTier[] = [
     },
     measuredCer: 0.065,
     measuredRealtimeFactor: 11.5,
+    // 2026-09-17 在真 Windows 11（10.0.26200，20 核）上实测：120 秒音频 115.1 秒。
+    measuredCpuRealtimeFactor: 1.04,
   },
 ];
 

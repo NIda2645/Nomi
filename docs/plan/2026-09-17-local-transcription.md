@@ -80,4 +80,5 @@
 2. ✅ 共用下载原语 + 删 Depth 那份主体；本地引擎五模块 + 接进 transcribe。
 3. ✅ 拆解侧的转写线选择、进度 detail、失败类别与「改用云端重试」。
 4. ✅ 供应链版本钉登记 + `check:supply-chain-pins` 门岗（含会红的判据测试）；R21 合同带门表。
-5. ◻︎ 未完：英文真素材（本机没有，已登记欠账）、Windows 真机（测试机磁盘不够）、拆解参数行里的「转写」下拉（等批次 2 的 T-DS-13 参数行组件，socket 已留在 `payload.transcribe`）。
+5. ✅ Windows 真机（10.0.26200，20 核 CPU）：五个文件的 sha256 与清单逐字相同、`tar -xf` 解包、exe 起得来、120 秒音频 115.1 秒出稿（检测 chinese 0.998，88 段）——**约 1× 实时，比 mac 的 Metal 慢一个数量级**。这条实测直接改了产品行为：清单多一格 `gpuAccelerated`、每档多一个 `measuredCpuRealtimeFactor`，开跑前按**这台机器**的倍率报预计耗时，不拿 mac 的数字去糊 Windows。
+6. ◻︎ 未完：英文真素材（本机没有，已登记欠账 `local-speech-english-real-media`）；拆解参数行里的「转写」下拉（等批次 2 的 T-DS-13 参数行组件，socket 已留在 `payload.transcribe`）；Windows 的 cuda / vulkan 加速档（上游有，但要按显卡分发 + 判驱动，等有真机数字再谈）。

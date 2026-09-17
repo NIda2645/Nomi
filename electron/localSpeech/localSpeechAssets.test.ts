@@ -73,6 +73,20 @@ describe("本地转写资产清单", () => {
     expect(new Set(LOCAL_SPEECH_TIERS.map((tier) => tier.id)).size).toBe(LOCAL_SPEECH_TIERS.length);
   });
 
+  it("Windows 那条是 CPU 构建、mac 两条是 GPU 构建——这一格决定用户被告知等多久，必须与真机实测一致", () => {
+    const byKey = Object.fromEntries(LOCAL_SPEECH_ENGINE_PLATFORMS.map((entry) => [entry.platformKey, entry.gpuAccelerated]));
+    expect(byKey["darwin-arm64"]).toBe(true);
+    expect(byKey["darwin-x64"]).toBe(true);
+    expect(byKey["win32-x64"]).toBe(false);
+  });
+
+  it("无 GPU 的倍率必须明显低于有 GPU 的——拿 mac 的数字去糊 Windows，报出来的「1 分钟」在用户那里是十分钟的沉默", () => {
+    for (const tier of LOCAL_SPEECH_TIERS) {
+      expect(tier.measuredCpuRealtimeFactor).toBeGreaterThan(0);
+      expect(tier.measuredCpuRealtimeFactor).toBeLessThan(tier.measuredRealtimeFactor);
+    }
+  });
+
   it("每一档都必须带实测数字——没有实测就不该出现在清单里（D3：不许 bluff）", () => {
     for (const tier of LOCAL_SPEECH_TIERS) {
       expect(tier.measuredCer).toBeGreaterThan(0);

@@ -29,9 +29,15 @@ import {
   type LocalSpeechSegment,
 } from "./localSpeechSegments";
 import { WINDOW_SECONDS } from "./localSpeechSegments";
-import type { LocalSpeechTier } from "../shared/localSpeech/localSpeechAssets";
+import { localSpeechEngineForPlatform, type LocalSpeechTier } from "../shared/localSpeech/localSpeechAssets";
 
 export type LocalSpeechProgress =
+  /**
+   * 开跑前报一次。`gpuAccelerated=false` 时这条是**必须说出来的话**：同一段 120 秒音频
+   * 在 mac 的 Metal 构建上 10 秒出结果，在 Windows 的 CPU 构建上要 115 秒（2026-09-17 真机实测）。
+   * 差一个数量级，不先说清楚，用户只会以为卡死了。
+   */
+  | { phase: "starting"; estimatedMinutes: number; gpuAccelerated: boolean }
   | { phase: "downloading"; doneBytes: number; totalBytes: number }
   | { phase: "transcribing"; chunkIndex: number; chunkCount: number; doneSeconds: number; totalSeconds: number };
 
@@ -86,10 +92,14 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<void> {
   });
 }
 
-/** 没有 GPU 时预估耗时（分钟），给「这次大概要等多久」那句提示用。 */
-export function estimateMinutes(durationSeconds: number, realtimeFactor: number): number {
-  const factor = realtimeFactor > 0 ? realtimeFactor : 1;
-  return Math.max(1, Math.round(durationSeconds / factor / 60));
+/**
+ * 预估耗时（分钟），给「这次大概要等多久」那句提示用。
+ * 倍率按**这台机器上的引擎有没有 GPU 加速**选，不是拿 mac 的数字去糊 Windows——
+ * 那样报出来的「1 分钟」在用户那里会变成 10 分钟的沉默。
+ */
+export function estimateMinutes(durationSeconds: number, tier: LocalSpeechTier, gpuAccelerated: boolean): number {
+  const factor = gpuAccelerated ? tier.measuredRealtimeFactor : tier.measuredCpuRealtimeFactor;
+  return Math.max(1, Math.round(durationSeconds / (factor > 0 ? factor : 1) / 60));
 }
 
 export async function transcribeLocally(input: LocalSpeechTranscribeInput): Promise<LocalSpeechTranscribeResult> {
@@ -100,6 +110,14 @@ export async function transcribeLocally(input: LocalSpeechTranscribeInput): Prom
   const meta = await probeMediaMetadata(input.audioFilePath);
   const durationSeconds = typeof meta.durationSeconds === "number" && Number.isFinite(meta.durationSeconds) ? meta.durationSeconds : 0;
   if (!(durationSeconds > 0)) throw localSpeechFailure("audio-unreadable", "duration");
+
+  const engine = localSpeechEngineForPlatform();
+  if (!engine) throw localSpeechFailure("unsupported-platform", `${process.platform}-${process.arch}`);
+  input.onProgress?.({
+    phase: "starting",
+    estimatedMinutes: estimateMinutes(durationSeconds, input.tier, engine.gpuAccelerated),
+    gpuAccelerated: engine.gpuAccelerated,
+  });
 
   const ready = await ensureLocalSpeechReady(input.tier, {
     signal: input.signal,
