@@ -15,6 +15,8 @@ export type AssetImportProgress = {
   copiedBytes: number
   totalBytes: number
   previewUrl?: string
+  /** 这一刻在干什么。老主进程不发这一格 → 按 `copying` 读，行为和以前一样。 */
+  phase?: 'preparing' | 'copying' | 'finalizing'
 }
 
 type AssetImportProgressState = {
@@ -68,6 +70,7 @@ export function ensureAssetImportProgressBridge(): void {
     useAssetImportProgressStore.getState().report(event.nodeId, {
       copiedBytes: event.copiedBytes,
       totalBytes: event.totalBytes,
+      ...(event.phase ? { phase: event.phase } : {}),
       ...(event.previewUrl ? { previewUrl: event.previewUrl } : {}),
     })
   })
