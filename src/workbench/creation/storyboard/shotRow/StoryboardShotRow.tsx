@@ -152,6 +152,21 @@ function MenuItem({
   )
 }
 
+/**
+ * 行级 Enter 快捷键（「回车 = 去改提示词」）**不许抢走已经聚焦的控件的那一下**。
+ *
+ * 2026-09-17 实测到的坑：原来的名单只列了文本录入类（`input, textarea, select, contenteditable`），
+ * 于是**行内每一颗按钮**——「生成」、行尾 ⋯、画面格那排动作钮——用键盘 Tab 过去之后按 Enter，
+ * 都会被这一行 `preventDefault()` 吃掉，焦点直接跳去提示词框。鼠标用户完全看不到这个问题，
+ * 键盘用户则是「这颗钮按不动」。
+ *
+ * 判据改成「这一下 Enter 本来就属于某个控件吗」，而不是「是不是在打字」——
+ * 按钮、链接、combobox 的 Enter 都是它们自己的。行自己是个 `div`，不在这张名单里，
+ * 所以焦点真落在行上时快捷键照旧。
+ */
+const ENTER_BELONGS_TO_CONTROL =
+  'input, textarea, select, button, a[href], [contenteditable="true"], [role="button"], [role="combobox"], [role="option"], [role="switch"]'
+
 export default function StoryboardShotRow(props: Props): JSX.Element {
   const { t } = useTranslation()
   const {
@@ -467,7 +482,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
         } else if (event.metaKey && event.key === 'Enter') {
           event.preventDefault()
           onGenerate?.()
-        } else if (event.key === 'Enter' && !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))) {
+        } else if (event.key === 'Enter' && !(event.target instanceof HTMLElement && event.target.closest(ENTER_BELONGS_TO_CONTROL))) {
           event.preventDefault()
           const box = event.currentTarget.querySelector<HTMLElement>('[data-prompt-box="true"] [contenteditable="true"]')
           box?.focus()

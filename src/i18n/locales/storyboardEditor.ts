@@ -203,6 +203,7 @@ export const zhStoryboardEditor = {
     doneTag: '已生成',
     lockedTag: '已锁定 · 不进批量',
     switchesAria: '这一镜的开关（生成音频、返回尾帧…）',
+    overflowAria: '这一镜收起来的设置：{{items}}',
   },
   skip: {
     aria: '本次跳过镜 {{index}}',
@@ -565,6 +566,7 @@ export const enStoryboardEditor = {
     doneTag: 'Generated',
     lockedTag: 'Locked · out of batches',
     switchesAria: 'Switches for this shot (generate audio, return last frame…)',
+    overflowAria: 'Settings tucked away for this shot: {{items}}',
   },
   skip: {
     aria: 'Skip shot {{index}} this run',

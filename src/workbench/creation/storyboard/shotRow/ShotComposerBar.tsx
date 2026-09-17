@@ -2,7 +2,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconDots, IconLoader2 } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
-import { DesignSwitch, NomiSelect } from '../../../../design'
+import { AnchoredPopover, DesignSwitch, NomiSelect } from '../../../../design'
 import type { ModelOption } from '../../../../config/models'
 import { modelVisibilityFooterAction, useDedupedModelSelect } from '../../../common/useDedupedModelSelect'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
@@ -12,6 +12,14 @@ import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { effectiveShotDurationSec } from '../../../generationCanvas/agent/storyboardPlan'
 import { DURATION_OPTIONS_SEC, shotTypeOf } from '../../../generationCanvas/agent/storyboardPlanEdits'
 import { composerBarPlan, composerModeOptions } from './composerBarModel'
+import {
+  COMPOSER_CHIP_YIELD,
+  composerModelChipMinWidth,
+  composerDemotedChipKeys,
+  type ComposerChipDemand,
+  type ComposerChipKind,
+} from './composerBarGeometry'
+import { useComposerBarWidth } from './useComposerBarWidth'
 
 /**
  * 提示词框下方的**底栏**（合同 v6 §2.3）——「和画布里的图片节点一样」那句话的落点。
@@ -26,13 +34,26 @@ import { composerBarPlan, composerModeOptions } from './composerBarModel'
  *   ① **永远一行**。上一轮的"装不下就整表换两行"整套（`composerGridLayout` + `ComposerGridScope`
  *      + 两个测量 hook）删除——两行版把一枚胶囊的溢出变成了全表行高的抖动，而真正的问题是
  *      **胶囊本来就太多**。少摆几枚，一行就够了。
- *   ② **窄了只缩文字，不换行、不截断重叠**，而且**缩谁是有优先级的**（`SHRINK`）。
+ *   ② **窄了只缩文字，不换行、不截断重叠**，而且**缩谁是有优先级的**。
  *      默认的等比收缩会把「16:9」缩成「1.」、「720p」缩成「7…」——每枚都缩一点，等于每枚都废
  *      （2026-09-06 混排那张实拍就是这样）。所以只有**模型名**大幅让位：它最长、且前几个字就认得出
  *      （「Seedance 2.5」→「Seedanc…」，`title` 里仍读得到全名），供应商次之；模式 / 画幅 / 时长 /
- *      清晰度都是短枚举（「首帧」「16:9」「5 秒」「720p」），少一个字就没意义，**一律不缩**；
- *      ⋯ 与「生成」是动作，更不缩。用户拍板的降级方式就是这一条：缩模型名、挂 tooltip。
+ *      清晰度都是短枚举（「首帧」「16:9」「5 秒」「720p」），少一个字就没意义，**一律不缩**。
  *   ③ **「生成」钉在最右**（`ml-auto`），和所有胶囊同一条基线。
+ *
+ * **2026-09-17 补上机制的后两步（用户拍板：方案 D + 让位下限）。** ② 只写了让位优先级、
+ * 没写下限，于是「最高优先级那枚一个人扛下全部亏空」——英文下模型胶囊被压到 0–23px，
+ * 只剩一颗齿轮图标，型号名一个字不剩（§1.5.4「模型是一等决策，不许埋」），压到 0 还不够
+ * 就开始顶「生成」出右缘。补的是：
+ *
+ *   ④ **每枚声明下限**，按优先级让到下限为止（政策表在 `composerBarGeometry.ts`，
+ *      优先级和下限写在同一处——分开写必然漂）。模型那枚的下限落到 CSS 上是
+ *      `MODEL_CHIP_MIN_WIDTH_CSS`（`ch` 单位，让浏览器按真实字体算）。
+ *   ⑤ **都到底了还装不下 → 把可降级的枚举整枚挪进行尾 ⋯**（`demotable`：尺寸这类档案参数可以，
+ *      模型 / 模式 / 时长不可以）。判据是这一行自己那条 bar 的**实测宽度** + 这一行真要渲染的
+ *      那几个标签——同一个容器宽度下中文装得下而英文装不下，一个全局断点表达不了。
+ *      注意这与 ① 删掉的那套测量 hook 不是一回事：那套量内容、改行高（抖）；
+ *      这条量外框、改内容，而外框宽度不取决于内容（见 `useComposerBarWidth`）。
  *
  * 摆几枚由 `composerBarPlan` derive（select 摆出来、boolean 收进行尾 ⋯），画幅胶囊只在这一行
  * 覆盖了整片默认时出现（§2.4.1）——于是"胶囊出现"本身就是信息。已生成/已锁定的行，
@@ -64,14 +85,21 @@ type Props = {
 }
 
 /**
- * 收缩优先级（`flex-shrink` 因子）。装不下时按这里让位，不等比收缩——等比 = 每枚都缩一点 = 每枚都废。
- * 数字大 = 先缩：模型名最长又最容易认（前几个字母就够）；画幅/时长/清晰度是短枚举，缩一个字就没意义。
+ * 一枚胶囊的收缩壳：把**优先级和下限**一起放在 flex item 上
+ *（`NomiSelect` 自身只负责值的 truncate）。
+ *
+ * 两件必须同时给：只给 `flex-shrink` 不给 `min-width`，壳会缩得比触发还窄、压到隔壁那枚身上；
+ * 只给 `min-width` 不给 `flex-shrink`，这枚就根本不让位。政策表在 `composerBarGeometry.ts`。
  */
-const SHRINK = { model: 8, provider: 4, mode: 0, aspect: 0, duration: 0, param: 0 } as const
-
-/** 一枚胶囊的收缩壳：把优先级放在 flex item 上（`NomiSelect` 自身只负责值的 truncate）。 */
-function Chip({ shrink, children }: { shrink: number; children: React.ReactNode }): JSX.Element {
-  return <span className="flex min-w-0 items-center" style={{ flexShrink: shrink }}>{children}</span>
+function Chip({ kind, minWidth, children }: { kind: ComposerChipKind; minWidth?: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <span
+      className="flex min-w-0 items-center"
+      style={{ flexShrink: COMPOSER_CHIP_YIELD[kind].shrink, ...(minWidth ? { minWidth } : null) }}
+    >
+      {children}
+    </span>
+  )
 }
 
 /** 开关当前值：`shot.params` 没写过就读档案默认。 */
@@ -125,17 +153,72 @@ export default function ShotComposerBar({
     ...(aspect ? [aspect] : []),
   ])].map((value) => ({ value, label: value }))
 
+  // ── 让位第三步：都到下限了还装不下，就把可降级的枚举整枚挪进行尾 ⋯（2026-09-17 用户拍板方案 D）──
+  // 判据是这一行自己那条 bar 的实测宽度 + 这一行真要渲染的那几个标签（见 composerBarGeometry）。
+  const paramValueLabel = React.useCallback((control: ModelParameterControl): string => {
+    const current = shot.params?.[control.key] === undefined ? String(control.defaultValue ?? '') : String(shot.params?.[control.key])
+    const option = control.options.find((candidate) => String(candidate.value) === current)
+    return translateModelDisplayText(option?.label ?? current)
+  }, [shot.params])
+
+  const selectedModelOption = shot.modelKey ? modelSelect.modelOptions.find((option) => option.value === modelSelect.modelValue) : undefined
+  const modelChipLabel = selectedModelOption?.label ?? t('storyboardEditor.defaultModel')
+  // 「默认模型」那一项没有身份图标，固定开销少 20px——下限和估算都得跟着变，否则会把它撑胖。
+  const modelChipHasIcon = Boolean(selectedModelOption?.icon)
+  const barRef = React.useRef<HTMLDivElement>(null)
+  const barWidth = useComposerBarWidth(barRef)
+  const chipDemands: (ComposerChipDemand & { key?: string })[] = [
+    ...(modelSelectOptions ? [{ kind: 'model' as const, label: modelChipLabel, hasIcon: modelChipHasIcon }] : []),
+    ...(modelSelect.providerOptions.length > 1 ? [{ kind: 'provider' as const, label: modelSelect.providerOptions.find((option) => option.value === modelSelect.providerValue)?.label ?? '' }] : []),
+    ...(modeOptions.length > 0 ? [{ kind: 'mode' as const, label: translateModelDisplayText(modeOptions.find((option) => option.value === (mode?.id ?? ''))?.label ?? '') }] : []),
+    ...(aspectOverridden ? [{ kind: 'aspect' as const, label: `${aspect}${t('storyboardEditor.aspectScope.overrideMark')}` }] : []),
+    { kind: 'duration' as const, label: t('storyboardEditor.second', { count: effectiveDuration }) },
+    ...inlineParams.map((control) => ({ kind: 'param' as const, label: paramValueLabel(control), key: control.key })),
+  ]
+  const demotedKeys = new Set(composerDemotedChipKeys(chipDemands, barWidth, {
+    dots: switchParams.length > 0,
+    generate: Boolean(statusTag) || Boolean(onGenerate),
+  }))
+  const shownParams = inlineParams.filter((control) => !demotedKeys.has(control.key))
+  const demotedParams = inlineParams.filter((control) => demotedKeys.has(control.key))
+  // ⋯ 是「装不下的东西的家」：开关本来就住这儿，被挪下来的枚举也住这儿。两者都没有 = 不出这枚钮。
+  const hasOverflowHome = switchParams.length > 0 || demotedParams.length > 0
+  const dotsRef = React.useRef<HTMLButtonElement>(null)
+  const overflowPanelRef = React.useRef<HTMLDivElement>(null)
+  // 弹层里有东西被改过 / 被挪下来 → 小圆点。开着的开关和被挪下来的枚举都算「⋯ 里有内容」。
+  const overflowDotCount = activeSwitches.length + demotedParams.length
+  // 无障碍名要说清「这里面现在是什么」，不能永远一句「更多」——被挪下来的枚举是决定，
+  // 用户得能在不打开的情况下知道 `1024x1024` 去哪儿了。
+  const overflowSummary = [
+    ...demotedParams.map((control) => `${translateModelDisplayText(control.label)} ${paramValueLabel(control)}`),
+    ...activeSwitches.map((control) => translateModelDisplayText(control.label)),
+  ]
+  const overflowAria = overflowSummary.length > 0
+    ? t('storyboardEditor.composerBar.overflowAria', { items: overflowSummary.join(' · ') })
+    : t('storyboardEditor.composerBar.switchesAria')
+  const overflowTitle = overflowSummary.length > 0 ? overflowSummary.join(' · ') : t('storyboardEditor.composerBar.switchesAria')
+
+  // 关弹层（Esc / 点外面）由 `AnchoredPopover` 一处管——这里不再挂第二个 Esc 监听（P1：不留并行版），
+  // 只负责关掉之后把焦点还给 ⋯，否则键盘用户会被丢在 body 上。
+  const closeOverflow = React.useCallback(() => {
+    setSwitchesOpen(false)
+    dotsRef.current?.focus()
+  }, [])
+
   return (
     <div
+      ref={barRef}
       className="relative flex min-w-0 flex-nowrap items-center gap-1 border-t border-nomi-line-soft px-2 py-1.5"
       data-storyboard-composer-bar="true"
+      data-storyboard-composer-demoted={demotedParams.length > 0 ? demotedParams.map((control) => control.key).join(',') : undefined}
     >
       {modelSelectOptions ? (
-        <Chip shrink={SHRINK.model}>
+        <Chip kind="model" minWidth={`${composerModelChipMinWidth(modelChipLabel, modelChipHasIcon)}px`}>
           <NomiSelect
             ariaLabel={isImageShot ? t('storyboardEditor.imageModel') : t('storyboardEditor.videoModel')}
             size="xs"
             triggerMaxWidth={150}
+            triggerMinWidth={composerModelChipMinWidth(modelChipLabel, modelChipHasIcon)}
             value={shot.modelKey ? modelSelect.modelValue : ''}
             options={modelSelectOptions}
             onChange={(id) => (id ? modelSelect.onModelPick(id) : onShotModelChange(''))}
@@ -146,7 +229,7 @@ export default function ShotComposerBar({
         </Chip>
       ) : null}
       {modelSelect.providerOptions.length > 1 ? (
-        <Chip shrink={SHRINK.provider}>
+        <Chip kind="provider">
           <NomiSelect
             ariaLabel={t('storyboardEditor.provider')}
             size="xs"
@@ -159,7 +242,7 @@ export default function ShotComposerBar({
       ) : null}
 
       {modeOptions.length > 0 ? (
-        <Chip shrink={SHRINK.mode}>
+        <Chip kind="mode">
           <NomiSelect
             ariaLabel={t('storyboardEditor.shotParams.mode')}
             size="xs"
@@ -174,7 +257,7 @@ export default function ShotComposerBar({
       {/* 画幅：**只有覆盖了整片默认的行才有这枚胶囊**（§2.4.1 规则 3）。
           蓝色「· 覆盖」标记让它在一列继承行里一眼可辨；选「跟随整片默认」即收回覆盖、胶囊消失。 */}
       {aspectOverridden ? (
-        <Chip shrink={SHRINK.aspect}>
+        <Chip kind="aspect">
           <span className="flex min-w-0 items-center" data-storyboard-aspect-override={aspect}>
             <NomiSelect
               ariaLabel={t('storyboardEditor.row.aspectAria')}
@@ -190,7 +273,7 @@ export default function ShotComposerBar({
         </Chip>
       ) : null}
 
-      <Chip shrink={SHRINK.duration}>
+      <Chip kind="duration">
         <NomiSelect
           ariaLabel={isImageShot ? t('storyboardEditor.row.stayHint') : t('storyboardEditor.duration')}
           size="xs"
@@ -200,8 +283,8 @@ export default function ShotComposerBar({
         />
       </Chip>
 
-      {inlineParams.map((control) => (
-        <Chip key={control.key} shrink={SHRINK.param}>
+      {shownParams.map((control) => (
+        <Chip key={control.key} kind="param">
           <NomiSelect
             ariaLabel={translateModelDisplayText(control.label)}
             size="xs"
@@ -217,20 +300,20 @@ export default function ShotComposerBar({
         </Chip>
       ))}
 
-      {/* 行尾 ⋯：开关的家（生成音频 / 返回尾帧…）。开着的用一颗小圆点报信，
-          具体开了哪几个进弹层——一排同形同色的开关摆在扫视行上读不出差别，只剩噪音。 */}
-      {switchParams.length > 0 ? (
+      {/* 行尾 ⋯ = **装不下的东西的家**。原本只住开关（一排同形同色的开关摆在扫视行上读不出差别，
+          只剩噪音）；2026-09-17 起，装不下时被挪下来的枚举参数也住这儿——所以弹层里必须是
+          **能改值的控件**，不是一张只读清单：挪进来的是决定，不是说明文字。
+          开着的开关 / 被挪下来的枚举各用一颗小圆点报信，不然「⋯ 里有东西」这件事没人知道。 */}
+      {hasOverflowHome ? (
         <>
           <button
+            ref={dotsRef}
             type="button"
             onClick={() => setSwitchesOpen((open) => !open)}
             aria-expanded={switchesOpen}
-            aria-label={t('storyboardEditor.composerBar.switchesAria')}
-            title={
-              activeSwitches.length > 0
-                ? activeSwitches.map((control) => translateModelDisplayText(control.label)).join(' · ')
-                : t('storyboardEditor.composerBar.switchesAria')
-            }
+            aria-haspopup="dialog"
+            aria-label={overflowAria}
+            title={overflowTitle}
             data-storyboard-composer-switches={shot.index}
             className={cn(
               'relative grid size-6 shrink-0 place-items-center rounded-pill border border-nomi-line text-nomi-ink-60',
@@ -238,32 +321,60 @@ export default function ShotComposerBar({
             )}
           >
             <IconDots size={13} stroke={1.8} aria-hidden />
-            {activeSwitches.length > 0 ? (
+            {overflowDotCount > 0 ? (
               <span
                 className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-nomi-accent"
-                data-storyboard-composer-switches-on={activeSwitches.length}
+                data-storyboard-composer-switches-on={overflowDotCount}
                 aria-hidden
               />
             ) : null}
           </button>
           {switchesOpen ? (
-            <div
-              className="absolute bottom-9 right-2 z-30 flex min-w-44 flex-col gap-1.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper p-2 shadow-nomi-md"
-              data-storyboard-composer-switch-panel={shot.index}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              {switchParams.map((control) => (
-                <DesignSwitch
-                  key={control.key}
-                  size="xs"
-                  labelPosition="left"
-                  label={translateModelDisplayText(control.label)}
-                  checked={switchValue(shot, control)}
-                  onChange={(event) =>
-                    onUpdate({ params: { ...(shot.params ?? {}), [control.key]: event.currentTarget.checked } })}
-                />
-              ))}
-            </div>
+            // Portal 贴锚点，不是原地 absolute：这枚弹层的祖先里有 `overflow-hidden`
+            //（行块、编辑器外框），原地 absolute 会被裁成一条边，而 rect / count / toBeVisible
+            // 三样证据全都看不出来（见 AnchoredPopover 抬头那段）。里面有下拉和开关 =
+            // 多焦点富内容，按那张表该走 AnchoredPopover 而不是 WorkbenchMenu。
+            <AnchoredPopover anchorRef={dotsRef} align="end" gap={6} onClose={closeOverflow}>
+              <div
+                ref={overflowPanelRef}
+                role="dialog"
+                aria-label={overflowAria}
+                data-storyboard-composer-switch-panel={shot.index}
+                className="flex min-w-44 flex-col gap-1.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper p-2 shadow-nomi-md"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {demotedParams.map((control) => (
+                  // 名字和值**紧挨着**，不把值两端对齐甩到右缘：
+                  // 甩到右缘之后，名字和它管的那个值之间隔着一条空白，眼睛要来回扫才配得上对
+                  //（2026-09-09 用户拍板的通用规则，`check:tokens` 的「行尾贴边」棘轮盯着它）。
+                  <label key={control.key} className="flex items-center gap-2 text-caption text-nomi-ink-60">
+                    <span className="min-w-0 truncate">{translateModelDisplayText(control.label)}</span>
+                    <NomiSelect
+                      ariaLabel={translateModelDisplayText(control.label)}
+                      size="xs"
+                      value={
+                        shot.params?.[control.key] === undefined
+                          ? String(control.defaultValue ?? '')
+                          : String(shot.params?.[control.key])
+                      }
+                      options={control.options.map((option) => ({ value: String(option.value), label: translateModelDisplayText(option.label) }))}
+                      onChange={(value) => onUpdate({ params: { ...(shot.params ?? {}), [control.key]: value } })}
+                    />
+                  </label>
+                ))}
+                {switchParams.map((control) => (
+                  <DesignSwitch
+                    key={control.key}
+                    size="xs"
+                    labelPosition="left"
+                    label={translateModelDisplayText(control.label)}
+                    checked={switchValue(shot, control)}
+                    onChange={(event) =>
+                      onUpdate({ params: { ...(shot.params ?? {}), [control.key]: event.currentTarget.checked } })}
+                  />
+                ))}
+              </div>
+            </AnchoredPopover>
           ) : null}
         </>
       ) : null}

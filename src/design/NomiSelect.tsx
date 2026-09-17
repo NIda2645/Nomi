@@ -68,6 +68,15 @@ export type NomiSelectProps = {
   size?: 'sm' | 'xs'
   /** 长值（模型名）截断上限 px。 */
   triggerMaxWidth?: number
+  /**
+   * 触发 pill 的**宽度下限**（CSS 长度，如 `calc(8ch + 56px)`）。
+   *
+   * 为什么需要它：`flex-shrink` 只说了「谁先让位」，没说「让到哪儿为止」。给了优先级不给下限，
+   * 最先让位的那枚就会被一路压到 0——2026-09-17 分镜底栏的模型胶囊被压成一颗图标、型号名一个字
+   * 不剩，就是这条缺口（§1.5.4「模型是一等决策，不许埋」）。传了它，值区照旧 `truncate`，
+   * 但整枚不会再缩到没字。
+   */
+  triggerMinWidth?: string | number
   disabled?: boolean
   title?: string
   className?: string
@@ -123,6 +132,7 @@ export function NomiSelect({
   triggerBadge,
   size = 'sm',
   triggerMaxWidth,
+  triggerMinWidth,
   disabled,
   title,
   className,
@@ -209,6 +219,7 @@ export function NomiSelect({
             heightClass,
             className,
           )}
+          style={triggerMinWidth === undefined ? undefined : { minWidth: triggerMinWidth }}
         >
           {leadingLabel ? (
             <span className="shrink-0 text-micro leading-none text-nomi-ink-40">{leadingLabel}</span>
