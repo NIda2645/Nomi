@@ -129,7 +129,44 @@ export function resolveRequestedSkill(payload: JsonRecord): SkillRecord | null {
  * `buildSkillSystemPrompt`——它带着交代文案，而活着的那两扇没有。一份带交代的实现躺在旁边、
  * 生产上跑的是没交代的那份，正是 P1 说的并行版。现在正文只在这里生成一次，那个旧的已删。
  */
-export function buildSelectedSkillPrompt(skill: SkillRecord): string {
+/**
+ * 权威节相对技能正文的位置。**暂定 `after_body`，不是结论**——2026-09-18 起有一路三臂
+ * A/B 在真模型上量它（臂 0 `omitted` 作阳性对照、臂 A `before_body`、臂 B `after_body`），
+ * 另带一个维度：同一回合连调 8 次以上时模型是否还听它（回合上限 24 次请求，系统提示词全程
+ * 不变，但工具结果一条条堆进消息列表，第 1 次听话不代表第 12 次还听话）。
+ *
+ * 所以位置是**一个参数**，不是散在字符串拼接里的写死顺序：数据回来改这一个常量即可切换，
+ * 三个臂都从这里可达，不必改 `buildSelectedSkillPrompt` 的任何一行。
+ */
+export type SkillToolAuthorityPlacement = "before_body" | "after_body" | "omitted";
+export const SKILL_TOOL_AUTHORITY_PLACEMENT: SkillToolAuthorityPlacement = "after_body";
+
+/**
+ * 权威节正文。**不重列工具**：名字与「读/写·要不要先问·花不花钱」那四类事实已经由
+ * `renderLanePromptSections` 从注册表派生一次（后果句 `verbConsequence(effect, nextAction)`
+ * 是 `verbDeclaration.ts:140` 那张表，全仓只此一份）。再列一遍就是第二份会漂的副本（P1）。
+ *
+ * 指向**按名字**而不是「上面/下面」：本函数的产出进 `composeLaneSystemPrompt` 的第一个参数，
+ * 而 `Available tools` / `Tool usage` 是它之后才拼的（`lanePromptSections.ts:73-86`）——
+ * 写「以上面为准」当场就是错的，而且位置一旦按 A/B 结果切换，方位词会再错一次。
+ *
+ * 语气是**给一份能力清单**，不是「你这份技能写错了」。技能可能整份是给别的宿主写的
+ * （一个 ChatCut 技能会点名 `submit_video` / `track_progress`——这里一个都没有），
+ * 那不是错误，是常态：用户装它就是想用它。所以这一节要让模型**照着意图改用我们的工具**，
+ * 而不是停下来报错——那才是「装得进来就能跑」。
+ */
+const SKILL_TOOL_AUTHORITY_SECTION = [
+  "关于工具，一律以本条提示词里的 `Available tools` 与 `Tool usage` 两节为准——那是你**实际拥有**的全部工具：",
+  "- 技能正文里出现的**任何工具名，以及它对某个工具是读还是写、要不要先问用户、花不花钱的说法**，一律不作数。技能可能是为别的宿主写的，也可能写于这些工具改名或改性质之前。",
+  "- 正文要你做成的**事**照做；用哪个工具、那个工具会造成什么后果，只看那两节。",
+  "- 正文点名的工具在那两节里找不到，**不是错误**：按它想做成的那件事，在那两节里挑能做成的那个用（例如别的宿主的「提交一个视频生成任务」，在这里就是生视频那个动词）。别猜一个相近的名字，也别假装调过了。",
+  "- 确实没有任何一个工具能做成那一步：用一句人话告诉用户这一步在 Nomi 里做不了，然后把其余步骤照常做完。",
+].join("\n");
+
+export function buildSelectedSkillPrompt(
+  skill: SkillRecord,
+  placement: SkillToolAuthorityPlacement = SKILL_TOOL_AUTHORITY_PLACEMENT,
+): string {
   // frontmatter 不进提示词：它是打包清单（license / source / preview / 双语 label），不是方法。
   // 实测 `curated-film-storyboard` 原文 1724 字里只有 305 字是方法——82% 的注入预算花在了元数据上。
   // **这不是 Nomi 的发明**：pi 自己展开 `/skill:<name>` 时就是 `stripFrontmatter(content).trim()`
@@ -140,6 +177,7 @@ export function buildSelectedSkillPrompt(skill: SkillRecord): string {
   // 这个形状还顺带把「技能目录里的相对路径指哪」说清楚了，而我们自己那版没有。
   const envelope = `<skill name="${skill.name}" location="${skill.filePath}">\n`
     + `References are relative to ${path.dirname(skill.filePath)}.\n\n${method}\n</skill>`;
+  const authority = placement === "omitted" ? [] : [SKILL_TOOL_AUTHORITY_SECTION];
   return [
     "本轮用户在输入框里挂了一条技能。它不是背景资料，是这一轮的作业规范：",
     "- 照它的方法和约束做这一轮；与你自己的一般习惯冲突时以它为准。",
@@ -147,7 +185,9 @@ export function buildSelectedSkillPrompt(skill: SkillRecord): string {
     "- 回复里要让用户看得出它被用了：用一句话说清你照它做了哪一两条关键决定。不要复述整份技能。",
     "- 它提到的外部 CLI、HTTP 或文件工具不会自动执行，除非当前对话确实提供了对应能力。",
     "",
+    ...(placement === "before_body" ? [...authority, ""] : []),
     envelope,
+    ...(placement === "after_body" ? ["", ...authority] : []),
   ].join("\n");
 }
 
