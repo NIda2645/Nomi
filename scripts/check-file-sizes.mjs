@@ -25,13 +25,13 @@ const SCAN_DIRS = ["src", "electron"];
 // 现存巨壳的基线行数（棘轮上限）。清空此表 = 巨壳债还清。
 // 改小某个数 = 你成功瘦身后锁定的新上限。新增条目应经人工评审。
 const ALLOWLIST = {
-  "electron/runtime.ts": 509, // …→ 531（2026-08-27 pi 运行切换移除旧 Agent 再导出）→ 530（2026-08-28 onboarding facade cleanup）→ 526（2026-08-30 runtime lifecycle cleanup）→ 519（2026-09-01 actual-cost 接线时把两处终态 trace 收成单行，净瘦身）
+  "electron/runtime.ts": 490, // …→ 531（2026-08-27 pi 运行切换移除旧 Agent 再导出）→ 530（2026-08-28 onboarding facade cleanup）→ 526（2026-08-30 runtime lifecycle cleanup）→ 519（2026-09-01 actual-cost 接线时把两处终态 trace 收成单行，净瘦身）→ 490（2026-09-17 TaskRequest/CachedTask 抽到 electron/taskTypes.ts）
   // Conversational model integration boundary: the session service keeps the
   // state machine, receipt contract, canonical certification and recovery
   // transitions together. It is reviewed as one security boundary and must
   // be split only along a stable ownership seam, not by moving methods into
   // a second writer. (2026-08-29)
-  "electron/integrationCertification/integrationSession.ts": 1419, // 1695→1652（2026-09-10 把 workflow 绑定净化与「谁来编译说明卡」的裁决各抽成独立模块）→ 1338（2026-09-15 棘轮锁定：门岗自己报「已瘦身」要求下调，来自 main 的既有瘦身，不是本 PR 改的）
+  "electron/integrationCertification/integrationSession.ts": 1401, // 1695→1652（2026-09-10 把 workflow 绑定净化与「谁来编译说明卡」的裁决各抽成独立模块）→ 1338（2026-09-15 棘轮锁定：门岗自己报「已瘦身」要求下调，来自 main 的既有瘦身，不是本 PR 改的）
   // Existing SettingsDialog shell now owns the durable integration handoff
   // projection alongside the legacy model settings pages. Keep this reviewed
   // baseline until the planned settings-surface extraction. (2026-08-29)

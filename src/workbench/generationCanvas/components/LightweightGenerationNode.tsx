@@ -39,6 +39,12 @@ export function LightweightGenerationNode({
       data-node-id={node.id}
       data-kind={node.kind}
       data-selected={selected ? 'true' : 'false'}
+      // 身份三件套（id / kind / status）在**每一档 LOD 上都要在**：它们回答的是「这张卡是谁、
+      // 现在是什么状态」，与「这一档画多细」无关。2026-09-15 的屏幕尺寸 LOD（#787 的另一半）
+      // 就是在这里栽的：卡片一拿到结果媒体就掉进轻量档，而轻量档没有 data-status，于是
+      // 「重试成功了吗」这件事在 DOM 上凭空消失（走查等不到 success，实际上生成是成功的）。
+      // 结论不是「测试写太死」，是这一层的契约漏了一格——补在这里，任何 LOD 判据改动都不再能弄丢它。
+      data-status={node.status}
       data-render-mode="lightweight"
       data-appear={appear ? 'true' : undefined}
       style={{

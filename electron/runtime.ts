@@ -110,17 +110,9 @@ export {
   fetchModelCatalogDocs,
   testModelCatalogMapping,
 } from "./catalog/catalogCommit";
-export type TaskRequest = {
-  kind: ProfileKind;
-  prompt: string;
-  negativePrompt?: string;
-  seed?: number;
-  width?: number;
-  height?: number;
-  steps?: number;
-  cfgScale?: number;
-  extras?: Record<string, unknown> & { executionBinding?: import("./productionRun/productionExecutionBinding").ProductionExecutionBinding };
-};
+// 请求与工作缓存两份形状住在 ./taskTypes（R9：runtime.ts 是编排层）；re-export 保住既有 import 面。
+export type { CachedTask, TaskRequest } from "./taskTypes";
+import type { CachedTask, TaskRequest } from "./taskTypes";
 export type TaskResult = {
   id: string;
   kind: ProfileKind;
@@ -140,6 +132,11 @@ export type TaskResult = {
     height?: number;
   }>;
   raw: unknown;
+  /**
+   * 文本任务的收尾原因（AI SDK 的 `finishReason`：`stop` / `length` / `content-filter`…）。
+   * **截断这一类问题在下游只能靠它自证**——没有它，「模型答不出来」和「我们自己把它截断了」长得一模一样。
+   */
+  finishReason?: string;
   /** failed 时的上游真实原因（tasks/responseParsing.taskFailureMessageFromResponse 取；渲染层只读这一处）。 */
   error?: string;
   /**
@@ -166,22 +163,6 @@ export function admitTask(id: string, entry: CachedTask): void {
   taskCache.set(id, entry);
   markTaskAdmitted(id);
 }
-
-export type CachedTask = {
-  vendor: string;
-  request: TaskRequest;
-  raw: unknown;
-  mapping?: Mapping | null;
-  model?: Model;
-  providerMeta?: JsonRecord;
-  projectId?: string;
-  nodeId?: string;
-  wantedKind?: BillingModelKind;
-  /** S8 指纹:异步任务终态成功时写回指纹缓存用。 */
-  fingerprint?: string;
-  /** 未知状态动词连击（规则见 tasks/taskResultQuery）：本对象已是逐任务跨轮询的载体，故状态存这。 */
-  unrecognizedStatusStreak?: { verb: string; polls: number; firstSeenAt: number };
-};
 
 // 可执行模型解析下沉到 catalog/executableModel（R12 净减）；re-export 保住 textTaskRunner/taskResultQuery 既有 import 面。
 export { findExecutableModel, findExecutableModelForTask } from "./catalog/executableModel";

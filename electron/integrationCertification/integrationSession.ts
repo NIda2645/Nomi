@@ -59,6 +59,7 @@ import { comfyuiHistoryTransform } from "../catalog/comfyuiLocal";
 import { candidateRevisionId } from "../catalog/stagedVendorIdentity";
 import { promoteCertifiedComfyCandidate, resolveComfyStagedCandidate } from "../catalog/comfyuiCandidateLifecycle";
 import { buildComfyCertificationFixtureParams } from "../shared/comfyCertificationFixtures";
+import { safeHandoffOrigin } from "./integrationHandoffOrigin";
 import {
   assertIntegrationRevision,
   INTEGRATION_STAGES,
@@ -549,41 +550,6 @@ function integrationContractDigest(session: IntegrationSession, idempotencyKey: 
     idempotencyKey,
   });
 }
-function safeHandoffOrigin(baseUrl: string): { origin?: string } {
-  try {
-    const parsed = new URL(baseUrl);
-    if (
-      !["http:", "https:"].includes(parsed.protocol) ||
-      parsed.username ||
-      parsed.password ||
-      parsed.search ||
-      parsed.hash
-    ) {
-      return {};
-    }
-    // handoffQueue performs the authoritative public/private check. Keep a
-    // private origin out of the display payload rather than making opening the
-    // credentials page fail for a local ComfyUI/provider connection.
-    const host = parsed.hostname.toLowerCase();
-    if (
-      host === "localhost" ||
-      host.endsWith(".localhost") ||
-      host.startsWith("127.") ||
-      host.startsWith("10.") ||
-      host.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-      host === "::1" ||
-      host.startsWith("fc") ||
-      host.startsWith("fd") ||
-      host.startsWith("fe80:")
-    )
-      return {};
-    return { origin: parsed.origin };
-  } catch {
-    return {};
-  }
-}
-
 export class IntegrationSessionService {
   private state: PersistedState;
   private readonly filePath: string;
@@ -845,6 +811,22 @@ export class IntegrationSessionService {
     this.syncHttpCertification(session);
     return this.projection(session);
   }
+  /**
+   * 「key 存好了，但这次没能替他读出模型清单」——把原因记在会话上，而不是把存 key 判成失败。
+   *
+   * 为什么是一个方法而不是在 IPC 里直接改字段：`blockingReason` 是会话状态的一部分，
+   * 只能由拥有这份状态的这一层写（写完要 persist + 进投影）。调用方只给一个稳定的码，
+   * 界面按码说人话（`modelSetup.credentialSavedBlocked`），不把供应商原文直接摆给用户。
+   */
+  blockDiscovery(sessionId: unknown, code: string): IntegrationSessionProjection {
+    const session = this.getOrThrow(sessionId);
+    session.blockingReason = { code };
+    session.updatedAt = (this.deps.now || (() => new Date().toISOString()))();
+    this.state.revision += 1;
+    this.persist();
+    return this.projection(session);
+  }
+
   /**
    * 列出本客户端的接入会话，未完成的排前面。修复前不带 sessionId 直接报错，而 MCP 面上没有
    * 第二条路——实测里 agent 只能去盘上 grep 我们的日志找回 id。丢了上下文不是模型的问题。

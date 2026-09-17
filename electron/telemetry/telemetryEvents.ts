@@ -1,14 +1,24 @@
 import { TELEMETRY_RESULT_VALUES, type TelemetryResult } from '../shared/contracts/telemetry'
 
 export const TELEMETRY_SCHEMA_VERSION = 1 as const
-export const TELEMETRY_EVENT_NAMES = ['app.started', 'feature.used', 'generation.completed', 'export.completed', 'update.action'] as const
+export const TELEMETRY_EVENT_NAMES = ['app.started', 'feature.used', 'generation.completed', 'export.completed', 'update.action', 'agent.turn.completed'] as const
 export type TelemetryEventName = typeof TELEMETRY_EVENT_NAMES[number]
 export type DurationBucket = '<1s' | '1-5s' | '>5s'
 export type AttemptCountBucket = '1' | '2-3' | '4+'
-export type FeatureId = 'generation' | 'export' | 'storyboard' | 'timeline' | 'asset-import'
+export type FeatureId = 'generation' | 'export' | 'storyboard' | 'timeline' | 'asset-import' | 'agent'
 export type CapabilitySlot = 'text' | 'image' | 'image-edit' | 'video' | 'audio' | '3d'
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'unknown'
 export type UpdateAction = 'check' | 'download' | 'install'
+/** 一个回合里调了几次工具。分桶而不是原数：原数在小样本上就是指纹。 */
+export type ToolCallBucket = '0' | '1-3' | '4+'
+/**
+ * 「模型种类」—— 用户拍板要收的那一格，但**不能是模型 id**：自建中转的 key 由用户自己的
+ * base-url 派生（`src/ui/community/feedbackDiagnostics.ts:41` 已经为反馈面解决过同一个问题），
+ * 原样上报等于上报一个私有域名。所以只分三类：
+ *   builtin = 我们策展过的供应商（稳定字面量）· custom = 用户自建/中转 · local = 本机跑的（ComfyUI 等）
+ * 它回答的是「接自建中转的人回合成功率是不是更低」，而那不需要知道是哪一家。
+ */
+export type ModelClass = 'builtin' | 'custom' | 'local'
 
 export type TelemetryProps =
   | { eventName: 'app.started'; props: { appMajor: number; appMinor: number; osFamily: 'macos' | 'windows' | 'linux' | 'other'; locale: 'zh-CN' | 'en' } }
@@ -16,6 +26,7 @@ export type TelemetryProps =
   | { eventName: 'generation.completed'; props: { capability: CapabilitySlot; durationBucket: DurationBucket; result: TelemetryResult; attemptCountBucket: AttemptCountBucket } }
   | { eventName: 'export.completed'; props: { format: ExportFormat; durationBucket: DurationBucket; result: TelemetryResult } }
   | { eventName: 'update.action'; props: { action: UpdateAction; result: TelemetryResult } }
+  | { eventName: 'agent.turn.completed'; props: { result: TelemetryResult; toolCallBucket: ToolCallBucket; modelClass: ModelClass } }
 
 export type TelemetryEnvelope = {
   schemaVersion: typeof TELEMETRY_SCHEMA_VERSION
@@ -30,15 +41,22 @@ const EVENT_SET = new Set<string>(TELEMETRY_EVENT_NAMES)
 const RESULT_SET = new Set<TelemetryResult>(TELEMETRY_RESULT_VALUES)
 const DURATION_SET = new Set<DurationBucket>(['<1s', '1-5s', '>5s'])
 const ATTEMPT_SET = new Set<AttemptCountBucket>(['1', '2-3', '4+'])
-const FEATURE_SET = new Set<FeatureId>(['generation', 'export', 'storyboard', 'timeline', 'asset-import'])
+const FEATURE_SET = new Set<FeatureId>(['generation', 'export', 'storyboard', 'timeline', 'asset-import', 'agent'])
 const CAPABILITY_SET = new Set<CapabilitySlot>(['text', 'image', 'image-edit', 'video', 'audio', '3d'])
 const EXPORT_SET = new Set<ExportFormat>(['mp4', 'webm', 'gif', 'unknown'])
 const UPDATE_SET = new Set<UpdateAction>(['check', 'download', 'install'])
+const TOOL_CALL_SET = new Set<ToolCallBucket>(['0', '1-3', '4+'])
+const MODEL_CLASS_SET = new Set<ModelClass>(['builtin', 'custom', 'local'])
 
 export function durationBucket(durationMs: number): DurationBucket {
   if (!Number.isFinite(durationMs) || durationMs < 1000) return '<1s'
   if (durationMs <= 5000) return '1-5s'
   return '>5s'
+}
+
+export function toolCallBucket(calls: number): ToolCallBucket {
+  if (!Number.isFinite(calls) || calls <= 0) return '0'
+  return calls <= 3 ? '1-3' : '4+'
 }
 
 export function attemptCountBucket(attempts: number): AttemptCountBucket {
@@ -72,6 +90,7 @@ export function isTelemetryProps(value: unknown, eventName: TelemetryEventName):
   if (eventName === 'generation.completed') return hasExactKeys(props, ['capability', 'durationBucket', 'result', 'attemptCountBucket']) && CAPABILITY_SET.has(props.capability as CapabilitySlot) && DURATION_SET.has(props.durationBucket as DurationBucket) && RESULT_SET.has(props.result as TelemetryResult) && ATTEMPT_SET.has(props.attemptCountBucket as AttemptCountBucket)
   if (eventName === 'export.completed') return hasExactKeys(props, ['format', 'durationBucket', 'result']) && EXPORT_SET.has(props.format as ExportFormat) && DURATION_SET.has(props.durationBucket as DurationBucket) && RESULT_SET.has(props.result as TelemetryResult)
   if (eventName === 'update.action') return hasExactKeys(props, ['action', 'result']) && UPDATE_SET.has(props.action as UpdateAction) && RESULT_SET.has(props.result as TelemetryResult)
+  if (eventName === 'agent.turn.completed') return hasExactKeys(props, ['result', 'toolCallBucket', 'modelClass']) && RESULT_SET.has(props.result as TelemetryResult) && TOOL_CALL_SET.has(props.toolCallBucket as ToolCallBucket) && MODEL_CLASS_SET.has(props.modelClass as ModelClass)
   return false
 }
 

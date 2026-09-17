@@ -1,24 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_AUTOMATION_POLICY_SETTINGS } from '../../../electron/settings/automationPolicySettings'
-import { buildAutomationSettingsView, buildProviderHealthView } from './settingsAutomationView'
+import { buildProviderHealthView } from './settingsAutomationView'
 
 describe('settings automation view', () => {
-  it('exposes only known initiators', () => {
-    const view = buildAutomationSettingsView(DEFAULT_AUTOMATION_POLICY_SETTINGS)
-
-    // 2026-09-14：mode（引导/平衡/策略自动）与 mandatoryGates 已随「默认制作模式」「支出与风险边界」两栏删除。
-    expect(view).not.toHaveProperty('mode')
-    expect(view).not.toHaveProperty('mandatoryGates')
-    expect(view.hosts).toEqual([
-      { key: 'nomi', enabled: true, locked: true },
-      { key: 'claude', enabled: true, locked: false },
-      { key: 'codex', enabled: true, locked: false },
-      { key: 'cursor', enabled: false, locked: false },
-      // 新加的内置客户端默认**不可信**（和 Cursor 一样要用户显式勾）——写档不等于给权限。
-      { key: 'pi', enabled: false, locked: false },
-      { key: 'workbuddy', enabled: false, locked: false },
-    ])
+  it('no longer owns a hosts list (it lives in the client cards, derived from the registry)', () => {
+    // 默认可信名单从 electron/shared/mcpClientRegistry 的 defaultTrusted derive：
+    // 写档不等于给权限，新加的内置客户端默认不可信。
+    expect(DEFAULT_AUTOMATION_POLICY_SETTINGS.trustedHosts).toEqual(['nomi', 'claude', 'codex'])
   })
 
   it('derives provider health from the real catalog state', () => {

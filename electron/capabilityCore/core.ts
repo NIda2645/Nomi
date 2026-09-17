@@ -29,7 +29,7 @@ import {
   type NodeSpec,
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
-import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
+import { verifyAndMaybeRetry, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
 import { unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { pickFirstFramePainter } from './firstFramePainter'
@@ -41,26 +41,9 @@ import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
 
-/**
- * 审片环 deps 工厂（可选注入，由传输层提供）。**默认不传 = 行为逐字节不变**（batchPlanPreview 渲染层路径、
- * 纯 CLI 评测路径都不受影响）。传了 → 生成成功后 core 调一次 verifyAndMaybeRetry 并把 outcome 挂返回。
- * 领域策略住 shotVerifyOrchestrate（纯）、传输层只注入 deps、core 只透传 outcome——三层干净（方案 §3/§9）。
- *
- * ctx 是 core 在生成时算出的真实上下文（复用首发 grantId + 同 nodeId + 同模型/参数/参考重试的原料）。
- */
-export type ShotVerifyDepsContext = {
-  projectId: string
-  grantId: string
-  nodeId: string
-  vendor: string
-  modelKey: string
-  generationKind: string
-  nodeKind: string
-  basePrompt: string
-  params: Record<string, unknown>
-  references: string[]
-}
-export type MakeVerifyDeps = (ctx: ShotVerifyDepsContext) => ShotVerifyDeps
+// 审片环 deps 工厂的两份形状住在 ./shotVerifyDepsContext（R9：core.ts 贴着 800 行上限，类型不占它的额度）。
+export type { MakeVerifyDeps, ShotVerifyDepsContext } from './shotVerifyDepsContext'
+import type { MakeVerifyDeps } from './shotVerifyDepsContext'
 
 type TaskResultLike = {
   id?: string
@@ -724,6 +707,10 @@ export async function generateOnProject(
         basePrompt: prompt,
         params: input.params || {},
         references,
+        confirmJudgeSpend: (judge) => gateway.confirmSpend({
+          projectId: input.projectId, ...(projectName ? { projectName } : {}), nodeId,
+          intent: 'text', vendor: judge.vendor, modelKey: judge.modelKey, prompt: '',
+        }),
       })
       const outcome = await verifyAndMaybeRetry(
         {

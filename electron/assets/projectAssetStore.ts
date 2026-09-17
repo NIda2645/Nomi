@@ -15,7 +15,8 @@ import { ensureDir } from "../runtimePaths";
 import { broadcastAssetsUpdated } from "./assetEvents";
 import { readAssetSidecarMeta, writeAssetSidecarMeta } from "./assetSidecar";
 import { absolutePathFromLocalAssetUrl } from "./localAssetFile";
-import { attachStoredAssetPreview, isStoredAssetPreviewPath } from "./assetPreview";
+import { attachStoredAssetPreview, isStoredAssetPreviewPath, type StoredAssetPreview } from "./assetPreview";
+import { copyFileWithProgress, type AssetCopyProgress } from "./assetImportProgress";
 import { collectFilesRecursively, parseDataUrl } from "./assetBytes";
 import {
   assetBucketFromMeta,
@@ -290,6 +291,13 @@ export function writeDeterministicAsset(
 }
 
 /** Copy an existing native file into the project without materializing it as a main-process Buffer. */
+export type CopyAssetFileOptions = {
+  /** 拷贝流的字节回调：导入中节点的渐显靠它驱动（没有就走原来的整块 copyFile）。 */
+  onCopyProgress?: AssetCopyProgress
+  /** 与拷贝并行派生的那一帧预览；落盘后由 attachStoredAssetPreview 认领，不重派生。 */
+  preparedPreview?: StoredAssetPreview | Promise<StoredAssetPreview | undefined>
+};
+
 export async function copyAssetFile(
   projectId: string,
   sourcePath: string,
@@ -297,6 +305,7 @@ export async function copyAssetFile(
   contentType: string,
   rawMeta: JsonRecord,
   captured?: AssetWriteContext,
+  options: CopyAssetFileOptions = {},
 ): Promise<unknown> {
   const context = captured ?? await captureAssetWriteContext(projectId);
   context.assertCurrent();
@@ -317,19 +326,21 @@ export async function copyAssetFile(
   if (actualContentType === "model/gltf-binary") validateStructuredAsset(actualContentType, await fs.promises.readFile(sourcePath));
   const storageFileName = canonicalAssetFileName(fileName, actualContentType);
   const stored = isContentAddressedUpload(meta)
-    ? await persistUploadFile(projectId, sourcePath, storageFileName, actualContentType, meta, context)
-    : await copyNativeFileToBucket(context, sourcePath, fileName, storageFileName, actualContentType, meta);
+    ? await persistUploadFile(projectId, sourcePath, storageFileName, actualContentType, meta, context, options.onCopyProgress)
+    : await copyNativeFileToBucket(context, sourcePath, fileName, storageFileName, actualContentType, meta, options.onCopyProgress);
   // 原生路径拷贝是本地导入 / Finder 粘贴拖入 / MCP import_asset / 跨项目复制的共用门：预览在这里派生一次。
-  return attachStoredAssetPreview(stored);
+  return attachStoredAssetPreview(stored, await options.preparedPreview);
 }
 
-async function copyNativeFileToBucket(context: AssetWriteContext, sourcePath: string, fileName: string, storageFileName: string, contentType: string, meta: JsonRecord): Promise<unknown> {
+// 拷贝仍然先落暂存、再 link 进桶（AssetWriteContext 那条「写回世代必须还是发起时那个项目」的规矩不动）；
+// 本次只把**字节回调**接进来：进度是拷贝过程的副产物，不是另一条写盘路（P1：不开第二条）。
+async function copyNativeFileToBucket(context: AssetWriteContext, sourcePath: string, fileName: string, storageFileName: string, contentType: string, meta: JsonRecord, onCopyProgress?: AssetCopyProgress): Promise<unknown> {
   context.assertCurrent();
   const { projectId } = context;
   const staging = fs.mkdtempSync(path.join(context.root, '.nomi-upload-'));
   const snapshot = path.join(staging, 'content');
   try {
-    await fs.promises.copyFile(sourcePath, snapshot);
+    await copyFileWithProgress(sourcePath, snapshot, onCopyProgress);
     const contentHash = await contentHashForFile(snapshot);
     context.assertCurrent();
     const { absolutePath } = uniqueAssetPath(projectId, storageFileName, assetBucketFromMeta(meta), context);

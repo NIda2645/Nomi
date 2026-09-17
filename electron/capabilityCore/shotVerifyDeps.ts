@@ -3,9 +3,12 @@
 // 同 mcpResultEnrich(纯) / mcpResultEnrichLive(接线)、shotVerify(纯) / shotVerifyJudge(接线)）。
 //
 // 三个副作用点，全在这里落地（方案 §2/§3/§4）：
-//  · judge   → runTask({kind:'image_to_prompt', extras:{referenceImages:[帧图], modelKey:判分模型}})：
-//    走 executeTextTask → streamTextTask 多模态 chat；**在 runtime.ts 早于任何 grant 校验返回**
-//    → 判分不消耗生成额度、走判分模型自己的 key（与渲染层 judge 走 chat 同语义）。
+//  · judge   → runTask({kind:'image_to_prompt', extras:{referenceImages:[帧图], modelKey:判分模型, grantId}})：
+//    走 executeTextTask → streamTextTask 多模态 chat。**判分是一次真付费调用**，所以它要有自己的令牌：
+//    2026-09-09 之前 runtime.ts 的文本路确实早于 grant 校验返回，这里的注释也照此写着「不花生成额度」——
+//    那条前提当天被 `2d907292a` 删掉，注释却留了下来，于是判分在 09-11 起**每一次都在发请求前被闸挡掉**
+//    （与视频拆解同一个根因族）。现在按首帧两跳的既定手法办：judge 用 `ctx.confirmJudgeSpend` 铸**自己的**
+//    令牌（同一判分模型一次确认、本次审片内复用），绝不去吃镜头 grant 的 3 次重试预算。
 //    判分模型 = resolveOnboardingAgentFromCatalog()（headless「语言大脑」既定入口，第一个可用 text 模型）。
 //  · extractFrame → extractVideoFrameToAsset({which:'first'})：主进程既有 ffmpeg 抽帧基建（通用，不认 vendor）。
 //  · regenerate → **复用首发 grantId + 同 nodeId** 直发 runTask，把 retryDirective 拼进 prompt。
@@ -15,34 +18,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runTask } from '../runtime'
+import { isSpendAuthorizationError } from '../spendGrant'
 import { listOnboardingAgentCandidates } from '../catalog/catalogStore'
 import { extractVideoEndpointsToAsset, extractVideoFrameToAsset } from '../video/extractVideoFrame'
 import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import { getDesktopLocale } from '../desktopLocale'
 import type { ShotVerifyDeps } from './shotVerifyOrchestrate'
 
-/** 首发生成的上下文——重试要复用它（同 grant/同 node/同模型/同参数），judge 要它的 projectId。 */
-export type ShotVerifyDepsContext = {
-  projectId: string
-  /** 首发那次铸的 grant（可能为空——未授权路径根本走不到审片，此处防御性带上）。 */
-  grantId: string
-  /** 被生成的镜头节点 id（重试重发同一个，落同一颗 grant 的同 node 预算）。 */
-  nodeId: string
-  /** 生成用的 vendor/modelKey（重试原样复用）。 */
-  vendor: string
-  modelKey: string
-  /** 首发的 ProfileKind（如 image_edit / image_to_video）。 */
-  generationKind: string
-  /** 首发节点 kind（extras.nodeKind）。 */
-  nodeKind: string
-  /** 首发的原始 prompt（重试 = 原 prompt + 定向指令）。 */
-  basePrompt: string
-  /** 首发的生成参数（width/height/seed/duration…），重试原样带。 */
-  params: Record<string, unknown>
-  /** 首发的参考图（重试原样带——保持锚不变）。 */
-  references: string[]
-}
-
+// 这份上下文的**唯一声明**住在 ./shotVerifyDepsContext（core.ts 与这里共用同一个名字；
+// 两处各写一遍就是并行版）。re-export 保住既有 `from './shotVerifyDeps'` 的 import 面。
+export type { ShotVerifyDepsContext } from './shotVerifyDepsContext'
+import type { ShotVerifyDepsContext } from './shotVerifyDepsContext'
 /** runTask 的注入形状（与 core.RunTaskFn 一致；测试注入桩不打 vendor）。 */
 type RunTaskLike = (payload: { vendor: string; request: unknown }) => Promise<{
   status?: string
@@ -151,22 +137,43 @@ export function makeShotVerifyDeps(
     return `data:${mime};base64,${bytes.toString('base64')}`
   }
 
-  /** 单候选跑一次 judge（走 runTask image_to_prompt → text 路，runtime.ts 早于 grant 校验返回，不花生成额度）。 */
+  // 本次审片里，每个判分模型的令牌只确认一次（同一模型再判就复用它，不再弹第二张卡）。
+  const judgeGrants = new Map<string, string>()
+  async function judgeGrantFor(agent: JudgeCandidate): Promise<string> {
+    const key = `${agent.vendor}::${agent.modelKey}`
+    const cached = judgeGrants.get(key)
+    if (cached) return cached
+    const minted = await ctx.confirmJudgeSpend({ vendor: agent.vendor, modelKey: agent.modelKey })
+    if (!minted) throw new Error('判分未获付费确认（上层按「跳过判分」处理，生成本身不受影响）')
+    judgeGrants.set(key, minted)
+    return minted
+  }
+
+  /** 单候选跑一次 judge（走 runTask image_to_prompt → text 路，**带自己的 grantId**，见文件头）。 */
   async function callJudge(agent: JudgeCandidate, prompt: string, frameImageUrl: string): Promise<string> {
-    const result = await runTaskFn({
-      vendor: agent.vendor,
-      request: {
-        kind: 'image_to_prompt', // billingKindForTaskKind → 'text'，runtime.ts 早于 grant 校验返回（不花生成额度）
-        prompt,
-        extras: {
-          modelKey: agent.modelKey,
-          modelAlias: agent.modelKey,
-          projectId: ctx.projectId,
-          referenceImages: [toJudgeImageUrl(frameImageUrl)], // firstReferenceImage 取它当多模态图（本地资产已转 data:）
+    const grantId = await judgeGrantFor(agent)
+    try {
+      const result = await runTaskFn({
+        vendor: agent.vendor,
+        request: {
+          kind: 'image_to_prompt', // billingKindForTaskKind → 'text'，走 runtime.ts 的文本付费出口
+          prompt,
+          extras: {
+            modelKey: agent.modelKey,
+            modelAlias: agent.modelKey,
+            projectId: ctx.projectId,
+            grantId,
+            nodeId: ctx.nodeId,
+            referenceImages: [toJudgeImageUrl(frameImageUrl)], // firstReferenceImage 取它当多模态图（本地资产已转 data:）
+          },
         },
-      },
-    })
-    return judgeTextFromResult(result)
+      })
+      return judgeTextFromResult(result)
+    } catch (error) {
+      // 令牌用尽/过期 → 丢掉缓存，下一次判分重新确认一次；绝不静默把付费失败当成模型答不出来。
+      if (isSpendAuthorizationError(error)) judgeGrants.delete(`${agent.vendor}::${agent.modelKey}`)
+      throw error
+    }
   }
 
   return {

@@ -18,6 +18,7 @@ import { enRuntime, zhRuntime } from './locales/runtime'
 import { enVideoDepth, zhVideoDepth } from './locales/videoDepth'
 import { enAgentResident, zhAgentResident } from './locales/agentResident'
 import { enCommunity, zhCommunity } from './locales/community'
+import { enFeedbackReport, zhFeedbackReport } from './locales/feedbackReport'
 import { enAgentPanelV4, zhAgentPanelV4 } from './locales/agentPanelV4'
 import { enAgentLaneError, zhAgentLaneError } from './locales/agentLaneError'
 
@@ -231,6 +232,12 @@ export const zhCN = {
     all: '全部',
     local: '本地新建',
     folders: '外部文件夹',
+    // 角标只说状态（两到四个字，卡片列宽 200px 装得下）；下面 `sync*` 那几句完整的话
+    // 退回它们本来的位置——悬停 title 与详情浮层。
+    syncBadgeReady: '已就绪',
+    syncBadgeExternalChange: '有新版本',
+    syncBadgeMissingAssets: '缺 {{count}} 个素材',
+    syncBadgeCorrupt: '文件异常',
     syncReady: '可在另一台电脑继续',
     syncExternalChange: '另一台电脑有新版本',
     syncMissingAssets: '有 {{count}} 个素材未同步',
@@ -425,6 +432,7 @@ export const zhCN = {
   videoDepth: zhVideoDepth,
   agentResident: zhAgentResident,
   community: zhCommunity,
+  feedbackReport: zhFeedbackReport,
   agentPanelV4: zhAgentPanelV4,
   agentLaneError: zhAgentLaneError,
 } as const
@@ -642,6 +650,10 @@ export const en = {
     all: 'All',
     local: 'Local',
     folders: 'Folders',
+    syncBadgeReady: 'Ready',
+    syncBadgeExternalChange: 'Newer elsewhere',
+    syncBadgeMissingAssets: '{{count}} missing',
+    syncBadgeCorrupt: 'Needs attention',
     syncReady: 'Ready to continue on another computer',
     syncExternalChange: 'A newer version exists on another computer',
     syncMissingAssets: '{{count}} assets are missing',
@@ -839,6 +851,7 @@ export const en = {
   videoDepth: enVideoDepth,
   agentResident: enAgentResident,
   community: enCommunity,
+  feedbackReport: enFeedbackReport,
   agentPanelV4: enAgentPanelV4,
   agentLaneError: enAgentLaneError,
 } satisfies TranslationShape<typeof zhCN>

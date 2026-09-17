@@ -243,6 +243,12 @@ export const zhGenerationCommon = {
       finalizing: '正在存到你电脑上',
       comfyQueuedAhead: '排队 · 前面 {{count}} 个',
     },
+    import: {
+      progress: '导入中 · {{percent}}% · {{size}}',
+      progressUnknownSize: '导入中 · {{percent}}%',
+      checking: '导入中 · 检查中 · {{size}}',
+      checkingUnknownSize: '导入中 · 检查中',
+    },
     error: {
       auth: { reason: 'API Key 无效', hint: '请在「设置 → 模型」检查这个模型的 API Key。' },
       balance: {
@@ -1160,7 +1166,7 @@ export const zhGenerationCommon = {
       contractDeclined: '本次决定已记录；没有提交生成任务，也没有产生支出。调整分镜或制作范围后可再确认一批新的生成。',
     },
     runTone: { working: '制作中', attention: '等待确认', danger: '需要处理', success: '已完成', neutral: '草稿' },
-    origin: { nomi: 'Nomi', claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', external: '外部客户端' },
+    origin: { nomi: 'Nomi', external: '外部客户端' },
     runPanel: {
       aria: '当前制作状态',
       origin: '来自 {{host}}',
@@ -1668,6 +1674,12 @@ export const enGenerationCommon = {
       stillGeneratingElapsed: 'Taking longer than usual · {{minutes}} min elapsed · Still running in the background',
       finalizing: 'Saving to your computer',
       comfyQueuedAhead: 'Queued · {{count}} task(s) ahead',
+    },
+    import: {
+      progress: 'Importing · {{percent}}% · {{size}}',
+      progressUnknownSize: 'Importing · {{percent}}%',
+      checking: 'Importing · Checking · {{size}}',
+      checkingUnknownSize: 'Importing · Checking',
     },
     error: {
       auth: { reason: 'Invalid API key', hint: 'Check this model’s API key in Model access.' },
@@ -2572,7 +2584,7 @@ export const enGenerationCommon = {
       contractDeclined: 'This decision is recorded. No generation task was submitted and no spend occurred. Revise the storyboard or scope to confirm a new batch of generation.',
     },
     runTone: { working: 'Producing', attention: 'Approval needed', danger: 'Needs attention', success: 'Complete', neutral: 'Draft' },
-    origin: { nomi: 'Nomi', claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', external: 'external client' },
+    origin: { nomi: 'Nomi', external: 'external client' },
     runPanel: {
       aria: 'Current production status',
       origin: 'From {{host}}',

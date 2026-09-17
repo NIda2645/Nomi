@@ -81,6 +81,15 @@ export const zhAgentPanelV4 = {
   copyReply: '复制回复',
   retry: '重来',
   continue: '继续',
+  feedback: '反馈',
+  consent: {
+    title: '帮 Nomi 变好',
+    collects: '✓ 匿名分享：用了哪些功能 · 生成成没成功 · Agent 每一步用了什么工具、花了多久',
+    excludes: '✗ 不含：你的提示词 · 文稿 · 素材 · 文件路径 · 密钥',
+    accept: '愿意',
+    decline: '不分享',
+    settingsHint: '设置里可关',
+  },
   // 一个字都没说就被叫停的回合：正文是空的，这一行就是「停止」在界面上唯一的回执。
   stoppedNotice: '已停止',
   copy: '复制代码',
@@ -110,6 +119,8 @@ export const zhAgentPanelV4 = {
   confirmReject: '确认不要',
   escalate: '不再问 →',
   collapsePlan: '收起 ▴',
+  expandPlan: '展开 ▾',
+  planKeepOnly: '只做这几条：{{kept}}',
   cancel: '取消',
 
   // 队列
@@ -496,6 +507,15 @@ export const enAgentPanelV4 = {
   copyReply: 'Copy reply',
   retry: 'Retry',
   continue: 'Continue',
+  feedback: 'Report',
+  consent: {
+    title: 'Help Nomi get better',
+    collects: '✓ Shared anonymously: which features you used · whether a generation succeeded · which tools each Agent step used and how long it took',
+    excludes: '✗ Never included: your prompts · manuscripts · assets · file paths · keys',
+    accept: 'I\u2019m in',
+    decline: "Don't share",
+    settingsHint: 'Off anytime in Settings',
+  },
   stoppedNotice: 'Stopped',
   copy: 'Copy code',
   image: 'Image',
@@ -521,6 +541,8 @@ export const enAgentPanelV4 = {
   confirmReject: 'Confirm no',
   escalate: "Don't ask again →",
   collapsePlan: 'Collapse ▴',
+  expandPlan: 'Expand ▾',
+  planKeepOnly: 'Only do these: {{kept}}',
   cancel: 'Cancel',
 
   queueStatus: { queued: 'Queued', running: 'Running', complete: 'Done' },

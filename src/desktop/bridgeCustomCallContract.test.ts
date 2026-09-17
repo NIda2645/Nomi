@@ -2,12 +2,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DesktopBridge } from './bridge'
+import { bridgeSurfaceSource } from './bridgeSurfaceSources'
 
 type ModelCatalogBridge = DesktopBridge['modelCatalog']
 type AiInstructionPayload = Parameters<NonNullable<ModelCatalogBridge['customCallAiInstruction']>>[0]
 type TestRunPayload = Parameters<NonNullable<ModelCatalogBridge['customCallTestRun']>>[0]
 
-const bridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/desktop/bridge.ts'), 'utf8')
+// 桥面拆成多文件后必须整面一起读（见 bridgeSurfaceSources 的注释）。
+const bridgeSource = bridgeSurfaceSource()
 const customCallBridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/desktop/modelCatalogBridgeTypes.ts'), 'utf8')
 
 describe('desktop custom-call bridge contract', () => {
@@ -53,6 +55,6 @@ describe('desktop custom-call bridge contract', () => {
     expect(testRunPayload).not.toHaveProperty('modeId')
     expect(customCallBridgeSource.match(/taskKind\?: ProfileKind/g)?.length).toBeGreaterThanOrEqual(3)
     expect(customCallBridgeSource.match(/modeId\?: string/g)?.length).toBeGreaterThanOrEqual(3)
-    expect(bridgeSource).toContain('modelCatalog: CustomCallBridge &')
+    expect(bridgeSource).toContain('DesktopModelCatalogSurface = CustomCallBridge &')
   })
 })

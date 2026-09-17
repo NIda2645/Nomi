@@ -50,6 +50,8 @@ export type V4FlowHandlers = Readonly<{
   onAdoptCandidate?: (index: number, tag: string, candidateIndex: number) => void
   onUndoTask?: (index: number) => void
   onErrorAction?: (index: number) => void
+  /** 失败行上的「反馈」。宿主接了才画那颗钮（#789 的规矩：画出来的必须接得上）。 */
+  onFeedback?: (index: number, reason: string) => void
   onSuggestion?: (index: number, option: string) => void
 }>
 
@@ -63,8 +65,10 @@ export type V4InterventionHandlers = Readonly<{
   onEscalate?: () => void
   onAlternate?: () => void
   onOption?: (option: string, index: number) => void
-  onPlanToggle?: (label: string, checked: boolean) => void
-  onCollapsePlan?: () => void
+  /** 计划行勾选 / 收起。**必填**——见 `V4Intervention` 里那段注释（R28）。 */
+  onPlanToggle: (label: string, checked: boolean) => void
+  onCollapsePlan: () => void
+  planCollapsed?: boolean
 }>
 
 export type V4QueueHandlers = Readonly<{
@@ -104,7 +108,8 @@ export type AgentPanelV4PanelProps = {
   height?: number
   darkMode?: boolean
   flowHandlers?: V4FlowHandlers
-  slotHandlers?: V4InterventionHandlers
+  /** 介入槽的写口。**必填**：少接一根线，卡上那几颗按钮就是点不动的（R28）。 */
+  slotHandlers: V4InterventionHandlers
   queueHandlers?: V4QueueHandlers
   onHistory?: () => void
   onCollapse?: () => void
@@ -186,7 +191,15 @@ export function V4FlowRow({
       />
     )
   }
-  return <V4ErrorBar reason={item.reason} action={item.action} onAction={() => handlers?.onErrorAction?.(at)} />
+  return (
+    <V4ErrorBar
+      reason={item.reason}
+      action={item.action}
+      onAction={() => handlers?.onErrorAction?.(at)}
+      feedbackLabel={labels.assistant.feedback}
+      onFeedback={handlers?.onFeedback ? () => handlers.onFeedback?.(at, item.reason) : undefined}
+    />
+  )
 }
 
 export function AgentPanelV4Panel({

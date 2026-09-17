@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { preloadSurfaceSource } from "../preload/preloadSurfaceSources";
 
 function source(relativePath: string): string {
   return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -13,7 +14,7 @@ function exists(relativePath: string): boolean {
 describe("Agent lane production cutover structure", () => {
   it("removes the legacy conversation shells after Host cutover", () => {
     const main = source("electron/main.ts");
-    const preload = source("electron/preload.ts");
+    const preload = preloadSurfaceSource();
     const bridge = source("src/desktop/bridge.ts");
     const app = source("src/workbench/NomiStudioApp.tsx");
 
@@ -32,7 +33,7 @@ describe("Agent lane production cutover structure", () => {
 
   it("keeps the legacy chatV2 renderer transport outside the production graph", () => {
     const main = source("electron/main.ts");
-    const preload = source("electron/preload.ts");
+    const preload = preloadSurfaceSource();
     const bridge = source("src/desktop/bridge.ts");
     const singleShot = source("src/workbench/ai/agentLoopMode.ts");
 
@@ -122,7 +123,7 @@ describe("Agent lane production cutover structure", () => {
 
   it("hydrates proposal receipts only after the current lane workspace is installed", () => {
     const app = source("src/workbench/NomiStudioApp.tsx");
-    const preload = source("electron/preload.ts");
+    const preload = preloadSurfaceSource();
     const open = app.indexOf("await laneClient.open(committedBinding.binding)");
     const currentGuard = app.indexOf("surfaceEpoch.assertCurrent()", open);
     const hydrate = app.indexOf("hydrateCommittedProposalReceipt(await laneReceiptClient.readProposalReceipt(opened.workspaceId))", currentGuard);

@@ -22,7 +22,15 @@ import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const preloadFile = path.join(repoRoot, 'electron', 'preload.ts')
+// preload 的桥面自 2026-09-17 起分成 electron/preload.ts（组装层）+ electron/preload/*.ts（各族桥面）。
+// 这里扫的是「渲染层能调到的全部 nomi:skill:* 通道」，所以两处都要读——只读组装层会扫出 0 条，
+// 而 0 条会让这道门岗静默变绿（假绿），下面的 Guard 0 就是钉住这一点的响的检测器。
+const preloadFiles = [
+  path.join(repoRoot, 'electron', 'preload.ts'),
+  ...fs.readdirSync(path.join(repoRoot, 'electron', 'preload'))
+    .filter((name) => name.endsWith('.ts'))
+    .map((name) => path.join(repoRoot, 'electron', 'preload', name)),
+]
 const skillIpcFile = path.join(repoRoot, 'electron', 'skills', 'skillIpc.ts')
 
 function stripLineComments(source) {
@@ -55,16 +63,18 @@ function extractRegisteredSkillChannels(source) {
   return channels
 }
 
-if (!fs.existsSync(preloadFile)) {
-  console.error(`✖ preload.ts not found: ${preloadFile}`)
-  process.exit(1)
+for (const file of preloadFiles) {
+  if (!fs.existsSync(file)) {
+    console.error(`✖ preload source not found: ${file}`)
+    process.exit(1)
+  }
 }
 if (!fs.existsSync(skillIpcFile)) {
   console.error(`✖ skillIpc.ts not found: ${skillIpcFile}`)
   process.exit(1)
 }
 
-const preloadSrc = stripLineComments(fs.readFileSync(preloadFile, 'utf8'))
+const preloadSrc = preloadFiles.map((file) => stripLineComments(fs.readFileSync(file, 'utf8'))).join('\n')
 const skillIpcSrc = stripLineComments(fs.readFileSync(skillIpcFile, 'utf8'))
 
 const preloadChannels = extractPreloadSkillChannels(preloadSrc)
@@ -82,6 +92,15 @@ while ((am = asyncRe.exec(preloadSrc)) !== null) {
 }
 
 let failed = false
+
+// Guard 0（硬零）：扫不到任何 nomi:skill:* 通道 = 扫错地方了，不是「协议很干净」。
+// 桥面搬过一次家（2026-09-17 拆 preload 巨壳），这道检测器保证下次再搬家时门岗会红而不是变绿。
+if (preloadChannels.size === 0) {
+  failed = true
+  console.log('\n✖ Skill IPC coverage: 在 preload 侧一条 nomi:skill:* 都没扫到。')
+  console.log('  这几乎一定是桥面又搬家了（扫描清单：' + preloadFiles.map((f) => path.relative(repoRoot, f)).join(', ') + '）。')
+  console.log('  修法是把新位置加进 preloadFiles，不是把这条判据删掉——0 条通道过关就是假绿。')
+}
 
 if (missing.length > 0) {
   failed = true

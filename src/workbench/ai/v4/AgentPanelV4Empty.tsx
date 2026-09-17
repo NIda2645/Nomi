@@ -10,11 +10,16 @@
 //   · **一句话 + 三条起手**，不写使用说明。哪三条由 `agentPanelV4EmptyState.ts` 从
 //     已注册能力表派生，这里只负责长相。
 //
+// 2026-09-15 多了一张「帮 Nomi 变好」首次询问卡（`V4ConsentCard`）。它**不违反**上面
+// 「不占预算」那条：它一辈子只出现一次（答完即消失，标记跨会话），答完这一格就回到
+// 原样。放在 chip 行下方而不是上方——起手 chip 是他打开面板要做的事，同意书不是。
+//
 // 布局复用 `DesignEmptyState`（设计系统 §3.3 全仓统一空态），不另写一份居中结构。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignEmptyState } from '../../../design'
 import { starterChipsForSurface, V4_EMPTY_TITLE_KEY } from './agentPanelV4EmptyState'
+import { V4ConsentCard } from './AgentPanelV4Consent'
 import type { ResidentSurface } from '../resident/residentShellDisplay'
 
 export function V4EmptyState({
@@ -32,19 +37,22 @@ export function V4EmptyState({
         density="inline"
         title={t(V4_EMPTY_TITLE_KEY[surface])}
         action={
-          <div className="flex flex-wrap justify-center gap-1.5">
-            {chips.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                data-v4-starter={chip.id}
-                onClick={() => onStarter?.(t(chip.promptKey))}
-                className="rounded-full border border-nomi-line px-2.5 py-1 text-caption text-nomi-ink-80 hover:bg-nomi-ink-05"
-              >
-                {t(chip.labelKey)}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {chips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  data-v4-starter={chip.id}
+                  onClick={() => onStarter?.(t(chip.promptKey))}
+                  className="rounded-full border border-nomi-line px-2.5 py-1 text-caption text-nomi-ink-80 hover:bg-nomi-ink-05"
+                >
+                  {t(chip.labelKey)}
+                </button>
+              ))}
+            </div>
+            <V4ConsentCard />
+          </>
         }
       />
     </div>
