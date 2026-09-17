@@ -7,6 +7,15 @@
 > 对照用的仓库克隆（浅克隆，含 commit）在会话 scratchpad `prior-art/`，本文引用时给出 commit 与 file:line。
 > **这份文件是要拿去做架构决定的。** 它允许、并且下面确实推翻了我们自己的一半判断。
 
+## 先查别人
+
+（本文件**就是**那份检索报告；这一节是它的索引，正文 §2 是逐面的原文与出处。）
+
+- **依赖里已有？** pi 的 `AgentHarnessTool<TContext, TParameters>` 一份 typebox 两用（`node_modules/@earendil-works/pi-agent-core/dist/index.d.ts`，本人直接读，见 §2.5）；Vercel AI SDK 的 `inputSchema` 明写 *"dual purpose"*（https://ai-sdk.dev/docs/reference/ai-sdk-core/tool ）。
+- **仓库里已有？** 我们在对外 MCP 面**已经是投影形状**：`electron/capabilityCore/mcpGenerationToolCatalog.ts:22` 用 `.omit().extend()`；而同文件 `:33-54` 又手抄了一份逐字段拷贝（见 §2 与 findings-inventory §6）。
+- **生态里已有？** MCP 现行版 2026-07-28 规范（https://modelcontextprotocol.io/specification/2026-07-28/server/tools ）；Claude Agent SDK 一份 zod 派生模型面并在执行前校验（`sdk.d.ts:9145`，https://code.claude.com/docs/en/agent-sdk/custom-tools ）；OpenAI「Avoid JSON schema divergence」原句给的两条出路是派生或 CI 拦漂移（https://developers.openai.com/api/docs/guides/structured-outputs ）；Codex `_meta["openai/fileParams"]` 是圈里唯一「声明对应 → 生成翻译」的先例（`codex-mcp/src/codex_apps/file_params.rs:43-45`）。
+- **自媒体/同族？** DTO 映射器族（MapStruct `unmappedSourcePolicy`、AutoMapper `AssertConfigurationIsValid()`，https://mapstruct.org/documentation/stable/reference/html/ ）——`verbFieldMap.ts` 的五条不变量是它的运行时复刻，而这一族的适用前提是「两边独立演化」，两边都归我们时它在维护一条自造的缝。
+
 ## 0. 一句话裁决
 
 **「该有两遍，不该有四遍」对了一半、错了关键的一半。**

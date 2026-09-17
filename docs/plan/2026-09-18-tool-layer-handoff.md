@@ -10,6 +10,17 @@
 
 ---
 
+## 先查别人
+
+这份交接文档不提新方案，它转述的裁决来自一份真做过的检索报告：
+`docs/plan/2026-09-18-tool-layer-prior-art-verdict.md`（六个面：MCP 规范 + TS SDK、Claude Agent SDK、
+Messages API、OpenAI function calling / Agents SDK / Codex、pi、ChatCut）。本文 §4 是它的结论摘要。
+
+- **依赖里已有？** pi 的 `AgentHarnessTool<TContext, TParameters>` 一份 typebox 两用——`node_modules/@earendil-works/pi-agent-core/dist/index.d.ts` 本人直接读，逐条记在 `docs/plan/2026-09-18-tool-layer-prior-art-verdict.md:98`（§2.5）。
+- **仓库里已有？** 我们对外 MCP 面已经是投影：`electron/capabilityCore/mcpGenerationToolCatalog.ts:22`；同文件 `:33-54` 是要删的第三份手抄（本文 §5）。
+- **生态里已有？** Claude Agent SDK 一份 zod 派生模型面 + 执行前校验（https://code.claude.com/docs/en/agent-sdk/custom-tools ）；OpenAI「Avoid JSON schema divergence」（https://developers.openai.com/api/docs/guides/structured-outputs ）；Vercel AI SDK `inputSchema` *"dual purpose"*（https://ai-sdk.dev/docs/reference/ai-sdk-core/tool ）。
+- **反方证据？** 唯一的「两份手写」先例 Codex **已被量到漂移**（`timeout_ms` 宿主收、模型不知道），见 `docs/plan/2026-09-18-tool-layer-prior-art-verdict.md:90`——它是反例，不是支持。
+
 ## 0. 三十秒版
 
 一个能力从模型嘴里说出来、到宿主真的去执行，中间被**手写重述了四到五遍**。

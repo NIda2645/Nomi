@@ -120,30 +120,30 @@ function priorityOf(relation: VerbFieldRelation): number {
 export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
   const { label, sourceKeys, targets, relations } = input;
   const targetNames = Object.keys(targets);
-  if (targetNames.length === 0) throw new Error(`${label}: 一张对应表至少要有一个目标形状`);
+  if (targetNames.length === 0) throw new Error(`${label}: a field map needs at least one target shape`);
 
   // ① 每个源字段都要有关系——**少一条就是一次静默丢弃**，这正是 `candidate.providerId` 当初消失的方式。
   const declaredRoots = new Set(Object.keys(relations).map(rootOf));
   for (const key of sourceKeys) {
     if (!declaredRoots.has(key)) {
-      throw new Error(`${label}: 动词字段 "${key}" 没有对应关系。补一条（same / rename / resolved / consumed…），`
-        + "别让它悄悄消失——翻译层漏列一个字段不报错，只是模型填的东西到不了宿主。");
+      throw new Error(`${label}: verb field "${key}" has no relation. Declare one (same / rename / resolved / consumed…) `
+        + "so it cannot vanish silently: a field the translation layer forgets to list raises nothing — what the model filled in simply never reaches the host.");
     }
   }
   // ② 关系的源字段必须真的存在于动词 schema 上（改名之后残留的关系会在这里被抓到）。
   for (const source of Object.keys(relations)) {
     if (!sourceKeys.includes(rootOf(source))) {
-      throw new Error(`${label}: 对应关系写了 "${source}"，但动词 schema 上没有 "${rootOf(source)}"`);
+      throw new Error(`${label}: relation names "${source}", but the verb schema has no "${rootOf(source)}"`);
     }
   }
   // ③ `expanded` 列出的子路径必须各自有关系（删掉其中一条 = 那个子字段静默消失）。
   for (const [source, relation] of Object.entries(relations)) {
     if (relation.kind !== "expanded") continue;
-    if (relation.into.length === 0) throw new Error(`${label}: "${source}" 声明成 expanded 却没列出承载它的子路径`);
+    if (relation.into.length === 0) throw new Error(`${label}: "${source}" is declared expanded but lists no sub-paths to carry it`);
     for (const child of relation.into) {
       if (!relations[child]) {
-        throw new Error(`${label}: "${source}" 说它由 "${child}" 承载，但 "${child}" 没有自己的对应关系——`
-          + "这条一旦缺失，那个子字段就会被静默丢掉（2026-09-18 的 providerId 就是这么没的）。");
+        throw new Error(`${label}: "${source}" says "${child}" carries it, but "${child}" has no relation of its own — `
+          + "without one that sub-field is dropped silently (this is exactly how providerId disappeared on 2026-09-18).");
       }
     }
   }
@@ -153,12 +153,12 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
     if (path === undefined) {
       if ((relation.kind === "consumed" || relation.kind === "expanded" || relation.kind === "defaults" || relation.kind === "elements")
         && !relation.why.trim()) {
-        throw new Error(`${label}: "${source}" 的 ${relation.kind} 没写理由——没有理由的丢弃与忘记写没有区别`);
+        throw new Error(`${label}: "${source}" has ${relation.kind} without a reason — a discard with no reason is indistinguishable from forgetting to write one`);
       }
       continue;
     }
     if (relation.kind === "resolved" && (!relation.by.trim() || !relation.why.trim())) {
-      throw new Error(`${label}: "${source}" 是有损对应（resolved），必须写清 by（谁来补）与 why（模型为什么给不出）`);
+      throw new Error(`${label}: "${source}" is a lossy relation (resolved); it must state by (who fills it in) and why (why the model cannot give it)`);
     }
     for (const target of targetNames) {
       if (targets[target]!.includes(rootOf(path))) continue;
@@ -166,8 +166,8 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
         ? relation.absentOn?.[target]
         : undefined;
       if (!absence || !absence.why.trim()) {
-        throw new Error(`${label}: "${source}" 要落在宿主的 "${path}" 上，但目标形状 "${target}" 没有 "${rootOf(path)}"。`
-          + `要么改对应关系，要么在 absentOn.${target} 里写清处置（refuse 还是 drop）与理由。`);
+        throw new Error(`${label}: "${source}" must land on the host's "${path}", but target shape "${target}" has no "${rootOf(path)}". `
+          + `Either fix the relation, or state the disposition (refuse or drop) and its reason in absentOn.${target}.`);
       }
     }
   }
@@ -177,11 +177,11 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
     if (!["same", "rename", "resolved", "defaults"].includes(relation.kind)) continue;
     const from = provenanceOf(relation);
     if (!from || from.length === 0) {
-      throw new Error(`${label}: "${source}" 没声明来源（from）。模型从哪拿到这个值？`
-        + "四档选一：model-authored / from-read:<动词>.<字段> / host-resolved / derived:<字段>。");
+      throw new Error(`${label}: "${source}" declares no provenance (from). Where does the model get this value? `
+        + "Pick one of four: model-authored / from-read:<verb>.<field> / host-resolved / derived:<field>.");
     }
     for (const entry of from) {
-      if (!PROVENANCE.test(entry)) throw new Error(`${label}: "${source}" 的来源 "${entry}" 不是合法的一档`);
+      if (!PROVENANCE.test(entry)) throw new Error(`${label}: "${source}" has provenance "${entry}", which is not one of the four`);
     }
   }
   // ⑤ 同一个目标上两条关系抢同一个落点，必须分出优先级（`modelKey` 与 `candidate.modelId` 就是一对）。
@@ -196,8 +196,8 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
       if (writers.length < 2) continue;
       const priorities = new Set(writers.map((writer) => writer.priority));
       if (priorities.size !== writers.length) {
-        throw new Error(`${label}: ${writers.map((w) => `"${w.source}"`).join(" 与 ")} 都落在 "${path}"（目标 ${target}）`
-          + "，却没有分出优先级。谁赢必须是声明出来的，不是靠写在前面还是后面。");
+        throw new Error(`${label}: ${writers.map((w) => `"${w.source}"`).join(" and ")} both land on "${path}" (target ${target})`
+          + " without a priority. Which one wins must be declared, not decided by which line comes first.");
       }
     }
   }
@@ -225,7 +225,7 @@ export function projectByFieldMap(
   target: string,
   resolvers: VerbFieldResolvers = {},
 ): Record<string, unknown> {
-  if (!map.targets[target]) throw new Error(`${map.label}: 没有名为 "${target}" 的目标形状`);
+  if (!map.targets[target]) throw new Error(`${map.label}: has no target shape named "${target}"`);
   const keys = map.targets[target]!;
   const whole: Array<{ path: string; value: unknown; priority: number }> = [];
   const nested: Array<{ path: string; value: unknown; priority: number }> = [];
@@ -238,7 +238,7 @@ export function projectByFieldMap(
       const absence = (relation as { absentOn?: Readonly<Record<string, VerbFieldAbsence>> }).absentOn?.[target];
       if (raw !== undefined && absence?.disposition === "refuse") {
         throw Object.assign(
-          new Error(`${map.label}: "${sourcePath}" 在这条路上送不到宿主（${absence.why}）`),
+          new Error(`${map.label}: "${sourcePath}" cannot reach the host on this route (${absence.why})`),
           { code: "capability_input_invalid" },
         );
       }
@@ -304,5 +304,5 @@ export function objectFieldKeys(schema: ZodTypeAny, label: string): readonly str
     if (!inner) break;
     node = inner;
   }
-  throw new Error(`objectFieldKeys(${label}): 这不是一份能取出字段名单的对象 schema`);
+  throw new Error(`objectFieldKeys(${label}): this is not an object schema whose field names can be read`);
 }

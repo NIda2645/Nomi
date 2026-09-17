@@ -4,6 +4,16 @@
 > **这份文件只做一件事：把散在六条分支、两份结构评审和一次真机 23 轮里的工具层发现，收在一处。**
 > 它是**输入**，不是结论——「我们的分层对不对」那一问要拿它去和别人的设计对照才能回答（见 §5）。
 
+## 先查别人
+
+本清单的 §5 是「这一问没做」，§6 是**做完之后回来的答案**。检索报告正本：
+`docs/plan/2026-09-18-tool-layer-prior-art-verdict.md`（六个面逐个对照，原文与出处都在它 §2）。
+
+- **依赖里已有？** pi 一份 typebox 两用（`node_modules/@earendil-works/pi-agent-core/dist/index.d.ts`）；Vercel AI SDK `inputSchema` *"dual purpose"*（https://ai-sdk.dev/docs/reference/ai-sdk-core/tool ）。
+- **仓库里已有？** `electron/capabilityCore/mcpGenerationToolCatalog.ts:22` 已经是 `.omit().extend()` 投影；同文件 `:33-54` 却是第三份手抄翻译（本清单 §6「14 条都没覆盖的那一条」）。
+- **生态里已有？** Claude Agent SDK 的宿主自补是「改写 + 重新过同一份准入」（https://code.claude.com/docs/en/hooks ）；OpenAI 明说别让两份 schema 漂移（https://developers.openai.com/api/docs/guides/structured-outputs ）；MCP 2026-07-28（https://modelcontextprotocol.io/specification/2026-07-28/server/tools ）。
+- **反方证据？** 唯一「两份手写」的先例是 Codex，**而它已经被量到漂移**（`timeout_ms` 宿主收、模型不知道）——所以它不支持我们现在这版，它是我们现在这版的反例。
+
 ## 1. 起点：用户看到的那一件事
 
 用户点「新建方案」让 Agent 照文稿出分镜。main 上 5 轮真模型：**0 轮出东西**，
