@@ -108,3 +108,83 @@
 - **Composio 修饰器**（https://docs.composio.dev/docs/tools-direct/modify-tool-behavior/before-execution-modifiers ，本人抓取）：`modifySchema({toolSlug, toolkitSlug, schema}) => schema`（删属性、改描述）、`beforeExecute({toolSlug, toolkitSlug, params}) => params`（*"modify the arguments called by the LLM before they are executed"*，例子就是宿主填值 `params.arguments.size = 1`）、`afterExecute`。三者都是**声明的、按工具挂的变换函数**，类型 `Schema→Schema` / `Params→Params`——用在**你不拥有执行端**的边界上。
 - **DTO 映射器（我们对应表真正的同族）**：MapStruct（https://mapstruct.org/documentation/stable/reference/html/ §2.4）`unmappedTargetPolicy = ERROR|WARN|IGNORE`（默认 WARN）、`unmappedSourcePolicy`（默认 IGNORE），编译期生成、*"Clear error-reports at build time"*；AutoMapper（https://docs.automapper.io/en/stable/Configuration-validation.html ）`AssertConfigurationIsValid()` *"checks to make sure that every single Destination type member has a corresponding type member on the source type"*，出路是 custom resolver / projection / `Ignore()`。**`verbFieldMap.ts` 的五条不变量（①每个源字段有关系 ②关系源存在 ④落点存在 ⑤同落点分优先级）就是 `unmappedSourcePolicy=ERROR` + `unmappedTargetPolicy` 的运行时复刻**，`resolved`/`consumed`/`absentOn` 对应 custom resolver / `Ignore()`。这一族的适用前提在它们自己的动机里写着：AutoMapper *"eliminate the need for manual testing"* 之于「两边类型独立演化」——**两边都是你自己写的时候，这一族是在维护一条你自己造出来的缝**。
 
+## 3. 四问的回答
+
+**Q1 分几层。** 顶尖产品在「模型看到的工具面」与「执行」之间是 **1 份 schema + 1 条审批策略**，没有更多：MCP/TS SDK（§2.1）、Agent SDK/Claude Code（§2.2）、Messages API（§2.3）、OpenAI Agents SDK（§2.4）、pi（§2.5）、ChatCut（§2.6）、Vercel/Pydantic/LangGraph（§2.7）全部如此。唯一的两处手写是 Codex（`*_spec.rs` + handler struct，§2.4），但两处**同名**、中间无翻译。各层为什么存在：schema 那一层存在是因为模型需要一份合同、执行需要一次校验——**同一份满足两边**；审批那一层存在是因为「能不能做」不是形状问题而是策略问题（模式 / 规则 / 钱 / 人在不在），所以它按**工具名 + 同一份参数**判，从不按第二份 schema 判。
+
+**Q2 跨进程 + 花钱闸。** 别人有同样的约束：ChatCut 跨 socket 花额度（§2.6），Claude Code 的 MCP 工具跨进程且可不可逆（§2.2），Vercel 的 `needsApproval` 工具可以是付费 API（§2.7）。他们把准入校验放在**执行侧、对着同一份 schema**（MCP：server MUST validate；ChatCut：`edit_item` 在 app 进程强校验 + `validateOnly` 干跑），把钱的决定放在**策略层**（Claude Code `_meta["anthropic/requiresUserInteraction"]`；Vercel `toolApproval` + OPA 策略；ChatCut 后端权益 + 技能文本）。**「模型面 schema 直接当准入校验」在有钱的场景下够用，前提是三件事一起成立**：① 准入除了 schema 还有一道**策略**（花不花钱、谁批）——我们有（`laneApprovalGate` + 报价卡）；② 审批绑定的是**同一份参数的哈希**（Vercel `hashCanonical(input)` 进 HMAC）——我们有手工版（`laneExtendedDesktopPorts.ts:169` `JSON.stringify` 比对）；③ 宿主自补的字段在补完之后**重新过同一份 schema 与策略**（Claude Code：*"against the input your hook returns, not the input Claude sent"*）——**我们没有**：自补发生在翻译层（§1 #5），审批闸在它之前看模型面，报价卡在它之后看宿主面，两者之间只有翻译的正确性做保证。没有人证明「第二份手写 schema」在有钱场景下是必要的；有人证明的是「一份 schema + 策略 + 绑定 + 补后重审」够用。
+
+**Q3 翻译从对应关系派生。** LLM 工具圈**没有人做**「声明字段对应 → 生成翻译」。做的是三类别的事：(i) **一份定义派生投影**——Pydantic `prepare: ToolDefinition → ToolDefinition`、Composio `modifySchema: Schema → Schema`（删属性、改描述）；(ii) **`T → T` 归一/补值**——Vercel `refineToolInput`（注释明写 *"must return an input with the same type shape"*）、Composio `beforeExecute: Params → Params`、Claude Code `updatedInput`；(iii) **生成式方言转换**——Codex `sanitize_json_schema`、OpenAI Agents `toOpenAIStrictToolSchema` + 无损断言。「声明对应 + 未映射即错」的成熟先例在 DTO 映射圈（MapStruct `unmappedTargetPolicy=ERROR`、AutoMapper `AssertConfigurationIsValid`，§2.7），它们的代价与 `verbFieldMap.ts` 一样：一套自己的关系词表（我们 7 种 `kind` + 4 档 `from`，308 行）、生成器本身要测（`check-verb-host-conformance` 内置阳性对照）、以及最重要的一条——**它只在两边类型必须独立演化时才值得**。**更好的解**：一份 schema + 两个显式声明——`hide`（模型面不显示的宿主字段：`operation`、`cardHidden`、完整 `candidate`、`contentHash/version`）与 `fill`（宿主补：`operation: 'create'`、`cardHidden: true`、参考图身份）——补完再过同一份 schema。字段名相同 ⇒ 不需要「传」，B/C/D 类整族消失；`check-verb-host-conformance` 的 R1–R3 退化成一句子集断言，R4（lane 有适配器）与 R5（下游不手抄信封）保留。
+
+**Q4 §4 九项里哪些是对的方向走错了实现。** 见 §5：两项（翻译派生化、一致性门岗 R1–R3）是「对的方向、为一条本可消掉的缝造的机器」；一项（superRefine 搬到动词面）只做了一半；其余六项方向与实现都对。
+
+## 4. 裁决展开：对在哪个前提上，前提变了怎么办
+
+- **对的部分对在**：跨进程传输 + 宿主侧花钱闸 ⇒ 执行侧必须自己校验（MCP MUST）、审批必须在宿主（MCP SHOULD）。这两条与传输机制无关，前提不会变。
+- **错的部分错在**：把「两道动作」实现成了「两份手写 schema」。它能活下来的**唯一前提**是 `RuntimeToolCall.args: unknown`——传输把类型抹平，TS 看不见 verb 与 host 之间的缝，于是「同一件事写两遍」不报错。别人没有这条缝：MCP SDK / Agent SDK / Vercel / pi 的 handler 参数类型都从那一份 schema 推导（`InferShape` / `Static<TParameters>` / `InferToolInput`）。
+- **正确的分法**（与六个面一致）：
+  1. **一份宿主契约 schema**（今天的 `generationPlanInputSchema` 一族）= 准入校验的唯一真相。
+  2. **模型面 = 它的投影**：`VerbDeclaration.schema` 不再手写，改为 `project(hostSchema, { hide: [...], describe: {...} })`；字段名与宿主**逐字相同**；`laneToolSchema.mts` 已有的「生成 + 信息不丢门岗」机制直接套在投影上。
+  3. **宿主自补是显式 `fill`，补完重新过 ①**——不是一条模型看不见的翻译。
+  4. **审批策略按工具名 + 参数哈希**（已有），报价卡从 ①③ 的同一个对象渲染，`title` 那类字段不再需要「一路活到底」的门岗，因为它从来没离开过那一个对象。
+  5. 真正有损的关系只剩**一条**：`references: string[]` → `{assetId}[]`。两个出路都比对应表便宜：宿主契约直接收 `string | {assetId,…}`（一份 schema 内的 union，`jsonArgTolerance.ts` 已有同款写法），或模型面就填 `[{assetId}]`。
+- **前提变了怎么办**：若将来工具在同进程执行、或传输类型化（`RuntimeToolCall<T>`），上面 ②③ 不变（它们不依赖传输），只是 ④ 的哈希绑定可以退成引用相等。**反过来**，若有一天模型面**必须**与宿主面不同名（例如接入一个字段名固定的外部 skill 生态），再回到对应表——那时它是 Composio 那种「你不拥有执行端」的边界，前提成立。
+
+## 5. §4 九项逐项判定
+
+| # | 已落地项 | 判定 | 依据 |
+|---|---|---|---|
+| 1 | 多镜与单镜共用候选合成器（模型不再发明 `candidateId`/接线） | **对的方向，对的实现** | OpenAI 原句 *"Don't make the model fill arguments you already know"*（§2.4）；ChatCut 模型只给 asset ref（§2.6） |
+| 2 | 镜头信封单一真相源 + 编译期穷尽性断言（`generationShotEnvelope.ts`） | **对的方向，对的实现**（但它治的是宿主**内部**五处投影，与「分几层」无关） | prior art 是「投影元数据挂在字段上、机器核」（MCP `x-mcp-header`，§2.1）。风险：R5 门岗用正则抓 `{a: x.a}` 重建是脆的，长期该由类型（`satisfies Pick<…>`）而不是文本扫描兜 |
+| 3 | 动词↔宿主一致性门岗（R1–R5） | **对的方向，为一条本可消掉的缝造的尺子** | 内部面确实曾一道门都没有（评审 §3 的密度对比成立）。但 R1–R3 核的是「两份 schema 的复合成不成立」——投影化之后这个问题不存在，三条退化为子集断言；R4/R5 保留 |
+| 4 | 翻译层从对应关系派生（`verbFieldMap.ts` + `verbTransportRoutes.ts`） | **对的方向，错的实现（第二好解）** | 方向对：对应关系必须被机器核，手写函数无人核（评审 §1 ②）。实现错：造了 7 种关系 × 4 档来源的翻译机去维护一条缝，而 9 条 rename 里 7 条的 `why` 是命名偏好（`verbTransportRoutes.ts:161,166-167,186,211,215,218,224,228`），按 R5.5 不是合法偏差；`defaults` 两条与宿主 `inherited`（§1 #7）重复。同族先例（MapStruct/AutoMapper）的适用前提是两边独立演化——我们不满足 |
+| 5 | 参考图身份宿主解析（`resolveProjectAssetReferenceIdentity`） | **对的方向，对的实现** | ChatCut `referenceAssetIds` *"the backend resolves bytes server-side"*（§2.6）；Composio `beforeExecute` 宿主填值（§2.7） |
+| 6 | 跨字段约束搬到动词面（`writeVerbs.ts:126-169` superRefine） | **对的方向，只做了一半** | zod `superRefine` **不进 JSON Schema**，模型在发出前看不到它，只在被拒时看到——而且它跑在 `laneTools.mts:237` 那次 zod 复验，不在 pi 的 ajv（§1 #3）。真正「发出前告知」= 写进 description（Anthropic *"extremely detailed descriptions … is by far the most important factor"*）或按 OpenAI *"Use enums and object structure to prevent invalid states"* 改结构（`shotId` 要 `draftId` → 拆成两个分支）。`role` 字段描述已隐含「锚被别的镜复用」，所以真机归零可信，但机制上是错误信息在教模型 |
+| 7 | 技能不许复述注册表事实（`check:skill-tool-binding` 五类） | **对的方向，对的实现** | 所有面都把工具定义当唯一真相源（§2）；ChatCut 技能文本只讲选型与流程，工具性质在 schema 描述里（§2.6） |
+| 8 | 失败形状两个出口收敛（`laneFailureFromDecision.ts`） | **对的方向，对的实现** | MCP 2026-07-28 把「输入校验失败」归 `isError`（模型可自纠）、`-32602` 只留给形状/未知工具（§2.1）——顺手核一下我们 `capability_input_invalid` 走的是哪一类 |
+| 9 | `check:boundary-owners`（958 个 owner 核在位） | **与分层无关；方向对** | 不需要 prior art；它核的是「声明过的主人在不在」 |
+
+## 6. 三条在跑的 lane 怎么办
+
+| lane | 分支 | 处置 | 理由 |
+|---|---|---|---|
+| 翻译派生化 | `fix/verb-host-contract-sweep-20260918`（本文基线，已到 head e804cd3b1） | **让它落地，但冻结方向**：不再加关系种类、不再加 rename；下一刀是**做减法**——把 7 条偏好 rename 改成同名（改 `list_models` 输出与 verb 字段名，不改宿主），删 `defaults` 两条（宿主 `inherited` 已做），只留 `references`（有损）与 `absentOn`（领域约束）。表缩到那一步时 `verbFieldMap.ts` 可整个删、换成 `project(hostSchema, {hide, describe})` + `fill` | 它今天是内部面唯一会红的东西，撤掉比留着贵；但继续往里加关系就是在给缝加固 |
+| 技能加载迁 pi | `fix/skill-loading-align-pi-20260918` | **不受影响** | 它治的是 D 类（技能复述注册表），与「模型面 vs 宿主面分几层」正交；`check:skill-tool-binding` 第五类（字段值要过 verb schema）在投影化之后照样成立，只是 schema 来源换成投影 |
+| 合账本 | `fix/storyboard-single-ledger-20260918` | **不受影响** | 它治的是分镜表 0/23 可见（两套账本），在宿主内部；它 merge 了翻译派生化分支，随那条一起落 |
+
+**一句话**：三条都不用停；变的是**翻译派生化的下一步方向**（减法，不是加法）。
+
+## 7. R5.5 三列表：规范链接 / 我们的偏差 / 偏差理由
+
+工具 schema 是对外也读写的契约（外部 MCP 宿主也调），按 R5.5 逐条登记。理由只许是领域约束；下面标「**偏好**」的按规则不成立。
+
+| 规范 / 先例 | 我们的偏差 | 偏差理由（领域约束才算） |
+|---|---|---|
+| MCP 2026-07-28：一份 `inputSchema` 同时给模型与校验（https://modelcontextprotocol.io/specification/2026-07-28/server/tools ；TS SDK `mcp.ts:240-274`） | 内部面两份手写 schema（verb / host）+ 对应表 | **偏好 + 传输抹平类型**。无领域约束要求两份；应改为投影（§4） |
+| MCP：`-32602` 只留形状/未知工具，语义校验失败归 `isError` | `capability_input_invalid` 等码的归类**未核** | 待核（§9） |
+| MCP：审批在宿主、作用于模型原始参数；`ToolAnnotations` 只是 hint | `laneApprovalGate` 在 `before_tool` 看模型参数 ✓；报价卡看翻译后宿主形状 | 报价需要宿主解析（目录、钳制、单价）——**领域约束成立**；但卡与模型调用之间应共享同一对象（§4 ④），不是靠翻译正确 |
+| MCP `x-mcp-header`：字段级投影元数据挂在 schema 上、客户端 MUST 核 | 信封字段用 `GENERATION_SHOT_ENVELOPE_KEYS` + 正则门岗 R5 | 同一思路的仓内实现，**无偏差**；正则实现是权宜 |
+| Claude Code `updatedInput`：宿主改写后**重新过准入** | 翻译层自补后不重过审批闸 | **无领域理由**；投影化 + `fill` 后重过 ① 即可消掉 |
+| Claude Code `_meta["anthropic/requiresUserInteraction"]`：花钱工具的闸是定义上的一个声明、模式与钩子都跳不过 | 我们用 `effect: "spend"` 只许宿主 profile + `paidBoundary` + `nextAction: user_sees_spend_card` | 同一思路（声明在定义上、装配期核），**无偏差**；对外 MCP 面可考虑同时发 `_meta` 让 Claude Code 宿主也强制弹窗（§9 未证实它读第三方 server 的这个键） |
+| OpenAI：*"Don't make the model fill arguments you already know"* | A1/A2 已修 ✓；**外部面仍广播 `candidate: generationCandidateSchema`（`candidateId/revision/moduleId/mode`）与 `references[].contentHash/version`**（`mcpGenerationToolCatalog.ts:22-30`） | 无领域理由；见 §8 |
+| pi：`execute(params: Static<TParameters>)`，校验一次 | 我们在 `execute` 内再 zod 校验一次（§1 #3） | **领域约束成立**（superRefine 只有 zod 能跑），但两份文件头对「校验几次」说法矛盾（§1），要改一处 |
+| ChatCut：模型别名 → 供应商参数的翻译在 handler 内、并在描述里公开 | 我们的翻译在独立表里、模型看不见 | 偏好；且 ChatCut 的做法印证「翻译在 handler、名字对模型公开」就够 |
+| Vercel：审批绑定 `hashCanonical(input)` | `JSON.stringify` 逐字比对（`laneExtendedDesktopPorts.ts:169`） | 同一意图；键序敏感是**已知弱点**（zod parse 后键序稳定，今天没炸） |
+
+## 8. 清单 14 条都没覆盖的那一条
+
+**对外 MCP 面把宿主契约 schema 原样广播给外部模型，A/E 两类缺陷在外部面以另一种形式存在，而外部面那道门岗看不见它。**
+
+- `electron/capabilityCore/mcpGenerationToolCatalog.ts:22-30`：`generationTransportSchema = generationPlanInputSchema.options[1].omit({operation}).extend({leaseHandle, projectId, operationId, vendor, modelKey, patch})`，`:62` 直接 `inputSchema: generationInputSchema`。于是外部模型（Claude Code 当 MCP 宿主时）看到的 `candidate` 是 `generationCandidateSchema`——要 `candidateId / revision / moduleId / mode`，全是模型拿不到的内部身份（清单 A1 的外部版）；`references[]` 的 `contentHash / version` 也一并广播（A2 的外部版，只是今天已改可选）。
+- `scripts/check-mcp-operation-constructible.mjs` 只证「**最小实例**可构造」（头注释：*"只填必填"*）——`candidate` 可选，不填就绿。它核不到「模型拿得到这个值吗」（`verbTransportRoutes.ts:28-33` 的 `from-read:` 核只在内部面有）。
+- `:33-52` `buildOperationCreateParams` 是外部面的**手写逐字段拷贝**（B2/E1 那一族），`createFields` 每加一个字段这里就静默丢一个；`:43-49` 又手写了一遍 `vendor→providerId` / `modelKey→modelId`——**同一条 rename 现在有三份实现**：内部表（`verbTransportRoutes.ts:161-167`）、外部 build（这里）、宿主 `inherited`（`mcpGenerationMultiShot.ts:359-366`）。
+- 它为什么没进清单：清单按「内部面一天挖出来的」收，而它在外部面；评审 §3 说「对外 MCP 面（早就有第二道门）干净得多」——干净的是**可构造性**，不是**可填性**。投影化（§4）把两个面变成同一份宿主 schema 的两个投影后，这一条与内部面的 A 类一起消失。
+
+## 9. 未证实 / 没查到的
+
+- MCP 现行版 2026-07-28 的 `x-mcp-header` / `InputRequiredResult` 两节：原文由本人抓取的版本页 + schema.ts 确认存在，**逐句条文未逐字复核**（引用来自同日抓取的规范页）。
+- Claude Code 是否对**第三方** MCP server 的 `_meta["anthropic/requiresUserInteraction"]` 也强制弹窗：文档写在 `/mcp` 页，语义上是的，**未真机验**。
+- ChatCut app 进程内的校验实现（`out/main/mcp/server.js` 之后）**不可见**；结论只基于它广播的 `inputSchema` 与技能文本。
+- 我们 `capability_input_invalid` 一族在对外 MCP 面走 `isError` 还是 `-32602`：**未核**。
+- Codex `ToolHandler` trait 的确切签名：clone 里 grep 未命中（文件组织已变），本文只引用了 `*_spec.rs` / handler 的 `ToolPayload::Function { arguments }` 与 `sanitize_json_schema`，均为本人读到的 file:line。
+- 「投影化后 `verbFieldMap.ts` 可整个删掉」是设计推断，**没做原型**；`references` 那一条要选 union 还是模型面填对象，需要看 `modelVisibleJsonSchema` 对 union 的发布（Google legacy 路径不支持 `anyOf`，`modelArgumentTolerance.ts:30-34` 已记）。
