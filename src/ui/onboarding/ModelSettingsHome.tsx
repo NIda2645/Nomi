@@ -4,7 +4,7 @@ import {
   IconChevronRight,
   IconCloud,
   IconCode,
-  IconWorld,
+  IconPlugConnected,
   IconServerBolt,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -339,7 +339,7 @@ export function ModelSettingsHome({
   dataSourceContent,
   availableFooter,
   onReload,
-  onCustomGateway,
+  onCustomApi,
   onDirectScript,
 }: {
   connections: ModelSettingsHomeConnection[]
@@ -355,7 +355,7 @@ export function ModelSettingsHome({
   dataSourceContent?: React.ReactNode
   availableFooter?: React.ReactNode
   onReload: () => void
-  onCustomGateway: () => void
+  onCustomApi: () => void
   onDirectScript: () => void
 }): JSX.Element {
   const { t } = useTranslation()
@@ -465,11 +465,30 @@ export function ModelSettingsHome({
     />
   ))
 
+  /**
+   * 「自定义 API / 中转站」——手工接入那条路的家。
+   *
+   * 它在 2026-09-11 的 57d73c742 里随「起点改成用 AI 帮我接入」一起下线过；09-17 用户拍板
+   * **两个都要**：MCP / AI 协助那条仍是首选摆在上面，手工入口回到「其他接入方式」下做第三条路。
+   * 恢复的是入口，不是重设计——文案、图标、落点（向导的 `newapi` 预设 = 可编辑 baseUrl 那一支）
+   * 都沿用 v0.21.0 那一版。
+   */
+  const customApiRow = (
+    <ActionRow
+      icon={<IconPlugConnected size={16} stroke={1.7} aria-hidden="true" />}
+      title={t('onboardingProviders.drawer.home.customApi')}
+      hint={t('onboardingProviders.drawer.home.customApiHint')}
+      onClick={onCustomApi}
+      dataMarker="custom-api"
+    />
+  )
+
   const otherMethodsSection = !hasConnections ? (
     <section className="mt-5" data-model-home-other-methods>
       <SectionHeading title={t('onboardingProviders.drawer.home.otherMethods')} />
       <RowGroup>
         {alternateRows}
+        {customApiRow}
         {availableFooter ? <div className="p-2">{availableFooter}</div> : null}
       </RowGroup>
     </section>
@@ -491,6 +510,7 @@ export function ModelSettingsHome({
             {otherWaysOpen ? (
               <>
                 {alternateRows}
+                {customApiRow}
                 {availableFooter ? <div className="p-2">{availableFooter}</div> : null}
               </>
             ) : null}
@@ -569,21 +589,6 @@ export function ModelSettingsHome({
             <section className="mt-6 border-t border-nomi-line pt-4" data-model-home-advanced>
               <SectionHeading title={t('onboardingProviders.drawer.home.advanced')} />
               <RowGroup>
-                {/* 「填自己的地址 + Key，让 Nomi 去拉清单」——这条路的向导分支一直在
-                    （`OnboardingWizard` 的 `selectedPreset?.custom` 那一支，presets 里的
-                    `custom` / `newapi` 就是它的入口），但**没有任何地方把 preset 传给它**：
-                    首页 18 家全是固定地址的预置平台，唯一能走到它的方式是
-                    「我已有调用脚本」→ 点返回。于是用户长期反馈的「自己接模型太难」里，
-                    最要紧的那条路对他不存在（2026-09-17，W-06）。
-                    这里只加一行，复用同一个 ActionRow 和同一个已有向导——不新造界面。
-                    不挂「高级」徽章：它比下面那条简单，挂上去等于劝退它真正的用户。 */}
-                <ActionRow
-                  icon={<IconWorld size={16} stroke={1.7} aria-hidden="true" />}
-                  title={t('onboardingProviders.drawer.home.customGateway')}
-                  hint={t('onboardingProviders.drawer.home.customGatewayHint')}
-                  onClick={onCustomGateway}
-                  dataMarker="custom-gateway"
-                />
                 <ActionRow
                   icon={<IconCode size={16} stroke={1.7} aria-hidden="true" />}
                   title={t('onboardingProviders.drawer.home.directScript')}

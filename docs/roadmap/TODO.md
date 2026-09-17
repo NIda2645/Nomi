@@ -86,7 +86,10 @@
 | T-DS-11 | 剪辑面 T2（转场选择器 / 右键菜单 / 字幕样式）落没落**不知道** | todo | [设计实扫](designs-not-yet-built.md) | 先核实再排 |
 | T-DS-12 | 两份设计文档的状态抬头已过期（`2026-09-09-agent-process-state…` 写着「未实施」、v6 合同写着「未接真数据」） | todo | 同上 | 改抬头，一分钟的事 |
 | T-DS-13 | 同一分钟新建的两个项目自动名完全相同（都叫「未命名项目 09/17 05:10」），只看顶栏分不清在哪个项目 | done 批次2 | 2026-09-17 #802 列车收尾实测 · 同 [走查 W-10](../audit/2026-09-17-post-804-walkthrough.md) | 已修（`3d78d058d`）：默认名查一次现有索引，撞了才加序号——按「随输入 derive」，不是改成固定的秒级格式。缩略图与状态行**不改**：新项目的占位图和「刚刚」本来就该一样，它们没有身份可言，名字才是那一格 |
-| T-DS-15 | 视频拆解可切模型：付费卡参数行 + 画布视频节点拆解参数条两处（同一组件，同一参数）；视觉/转写各一行；默认=上次选过的（复用 #682 偏好）→ 回落大脑(优先能读图)；不做逐行模型列、不进设置页 | todo | 09-17 用户拍板 | 批次 2 之后、发版前；现状 `electron/video/deconstructVideo.ts:305` 绑在 resolveTextBrainKeys |
+| T-DS-15 | 视频拆解可切模型：付费卡参数行 + 画布视频节点拆解参数条两处（同一组件，同一参数）；视觉/转写各一行；默认=上次选过的（复用 #682 偏好）→ 回落大脑(优先能读图)；不做逐行模型列、不进设置页 | todo | 09-17 用户拍板 | 批次 2 之后、发版前；现状 `electron/video/deconstructVideo.ts:305` 绑在 resolveTextBrainKeys 另两条一起放这里（09-17）：① 转写语言做成**用户可选**（批次 2 只修了默认随界面语言派生，`deconstructVideo.ts` 的 `transcribeLanguage()`）；② 视觉默认不该落到 Moonshot vision-preview 这种会 30s 无首字的模型——首字预算对带图调用要**实测后**定，不许拍脑袋把 30s 抬上去。（协调方原话把这两条挂在 T-DS-13 上，但那个号已被「同一分钟同名项目」占着且本批已 done，按「ID 不回收」改挂这里。） |
+| T-RL-11 | 视频拆解：转写模型解析绑在文本大脑的供应商上 → 大脑是 Moonshot 就报「没有可用的转写模型」；转写语言写死 `zh` | done 批次2 | 09-17 真机失败日志 09:51Z · 用户点名 | 已修：`findExecutableModelAnyVendor('audio', 供应商偏好)` 在**所有已启用供应商**里解，报价卡那一行仍由同一个 `findExecutableModel` 解出，与 runTask 真扣费的是同一行；language 改成随界面语言派生并进 spend plan 的 parameters。回归测试 `electron/video/deconstructLegResolution.test.ts`（含反面：只在大脑那家找会抛） |
+| T-MO-14 | 异步图片中转：`newapiTransport` 把 image 写死成同步 | todo | 09-17 顺带发现 | 批次 2 不修（只记）。中转站按 key 接进来之后，异步出图的那一类会走错分支 |
+| T-MO-15 | **本地转写**：新增 `local-speech` 供应商（sherpa-onnx 或 whisper.cpp 二进制随 app 走），走现有 audio 档案的 transcribe 模式，与 APIMart Whisper / ElevenLabs 同一解析器，用户在 T-DS-15 那行选「本地」；零成本、不出网、离线可用；拆解 / 口播剪辑 / 字幕三条线共用 | todo | 09-17 用户拍板 | 批次 3 之后；先查别人（R5：sherpa-onnx vs whisper.cpp vs Apple Speech，各自 M 系速度/中英准确率/包体），再出接入方案；现状：仓库从未有过本地转写，转写只有 `apimartAudios.ts` 与 `elevenlabs.ts` 两条云端。（协调方原话给的号是 T-MO-11 / T-DS-13，两个号都已被占用且都是 done 行，按「ID 不回收」改用这两个号。） |
 
 ## E. 素材与导入
 

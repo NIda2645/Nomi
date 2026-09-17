@@ -28,7 +28,9 @@ import { firstString, isJsonRecord, parseLooseJsonObject, trim } from "../jsonUt
 // 旧分支从 agentChatV2 import 已失效，port 时改指真源（docs/ARCHITECTURE-NOW 的「文本大脑」判据同一处）。
 import { resolveTextBrainKeys } from "../ai/textBrainResolver";
 import { runTask } from "../runtime";
-import { findExecutableModel } from "../catalog/executableModel";
+import { findExecutableModel, findExecutableModelAnyVendor } from "../catalog/executableModel";
+import { readVendorPreferenceSettings } from "../settings/vendorPreferenceSettings";
+import { getDesktopLocale } from "../i18n";
 import { isSpendAuthorizationError } from "../spendGrant";
 import { logError } from "../logging/logger";
 import { desktopT } from "../i18n";
@@ -222,7 +224,9 @@ async function transcribeShots(
         // grantId/nodeId 必须带：转写走 runtime 的音频付费出口（runtime.ts 的 consumeTaskSpend）。
         // 2026-09-09 之前这里的注释写着「早于 grant 校验返回」——那条前提当天就被删了，
         // 而注释留到了 09-11，于是对白列跟画面列一起变成空白（诊断 D）。
-        extras: { projectId, file: track.url, language: "zh", modelKey: leg.modelKey, grantId: leg.grantId, nodeId: leg.nodeId },
+        // language 随输入派生，不 hardcode（2026-09-17）：原来写死 "zh"，英文用户的视频
+        // 被按中文转写。它同时进 spend plan 的 parameters，报价与真实调用看到的是同一个值。
+        extras: { projectId, file: track.url, language: transcribeLanguage(), modelKey: leg.modelKey, grantId: leg.grantId, nodeId: leg.nodeId },
       },
     });
     const raw = (result as { raw?: unknown }).raw;
@@ -245,21 +249,31 @@ async function transcribeShots(
   }
 }
 
+/**
+ * 转写语言。**随输入派生**，不写死（2026-09-17）：原来是 `language: "zh"`，
+ * 于是英文界面的用户把一段英文视频拆出来，转写请求仍然按中文发。
+ * 这里只修默认派生（取界面语言）；把它做成用户可选那一步归 TODO 的 T-DS-15。
+ */
+function transcribeLanguage(): string {
+  return getDesktopLocale() === "en" ? "en" : "zh";
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 解出转写会用的那一行模型（与 runtime 用同一个解析器，报价才对得上真实扣费）。 */
+/**
+ * 解出转写会用的那一行模型（与 runtime 用同一个解析器，报价才对得上真实扣费）。
+ *
+ * 2026-09-17 修：原来写的是 `findExecutableModel(brain.vendor, "", "audio")`——
+ * 只在**文本大脑那一家**里找 audio 模型。大脑是 Moonshot 时它必然找不到，用户拿到
+ * 「没有可用的转写模型」，而 APIMart / 火山语音的转写模型就在隔壁启用着（09-17 真机实测）。
+ * 「谁来做转写」和「谁来做文本」本来就是两件事，绑在一起是一个没人声明过的耦合。
+ * 现在在所有已启用供应商里解，顺序按 #682 的供应商偏好。
+ */
 function resolveTranscribeLeg(): { vendorKey: string; modelKey: string } | null {
-  const brain = resolveTextBrainKeys();
-  if (!brain) return null;
-  try {
-    // runTask 对 transcribe 走的正是这一行（extras 不带 modelKey 时 modelKey 为空串）。
-    const { vendor, model } = findExecutableModel(brain.vendor, "", "audio");
-    return { vendorKey: vendor.key, modelKey: model.modelKey };
-  } catch {
-    return null;
-  }
+  const resolved = findExecutableModelAnyVendor("audio", readVendorPreferenceSettings().orderedVendorKeys);
+  return resolved ? { vendorKey: resolved.vendor.key, modelKey: resolved.model.modelKey } : null;
 }
 
 /**
@@ -322,7 +336,9 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
     vision: visionIdentity,
     lines: [
       ...targets.map(() => ({ ...visionIdentity, parameters: visionParameters })),
-      ...(transcribeLeg ? [{ ...transcribeLeg }] : []),
+      // 转写这一行也带上 parameters：报价卡看到的 language 与真实调用发出去的是同一个值
+      // （2026-09-17；此前调用侧写死 "zh"，卡上什么都没写，两边对不上也看不出来）。
+      ...(transcribeLeg ? [{ ...transcribeLeg, parameters: { language: transcribeLanguage() } }] : []),
     ],
   };
   const grantId = await options.authorizeSpend(plan);
