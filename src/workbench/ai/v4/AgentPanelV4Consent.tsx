@@ -60,7 +60,9 @@ export function V4ConsentCard({
         <DesignButton data-v4-consent-decline variant="default" onClick={() => answer(false)}>
           {t('agentPanelV4.consent.decline')}
         </DesignButton>
-        <span className="text-micro text-nomi-ink-40">{t('agentPanelV4.consent.settingsHint')}</span>
+        {/* 12px 而不是 micro(11px)：体感门岗 `check:feel` 的可读下限就是 12px，
+            而这行是首次询问卡上唯一解释「以后去哪儿关」的话——它比按钮更需要被读到。 */}
+        <span className="text-caption text-nomi-ink-40">{t('agentPanelV4.consent.settingsHint')}</span>
       </div>
     </div>
   )
