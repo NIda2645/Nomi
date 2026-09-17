@@ -212,6 +212,7 @@ export async function collectApimart(fetchText: FetchText): Promise<RadarEntry[]
  * 拿它判生成模型死活会天天诈胡。chat 分区的 id 才和 `/v1/chat/completions` 的 model 同名。
  */
 const APIMART_MODELS_API_URL = "https://api.apimart.ai/v1/models?expand=category&category=chat";
+const HIGGSFIELD_MODELS_API_URL = "https://api.higgsfield.ai/models";
 
 /**
  * 从凭据记录里取脚本层**能用**的明文。
@@ -291,6 +292,50 @@ export type VendorAdapter = {
   seededKind?: "text";
 };
 
+/**
+ * 取 Higgsfield 凭据。只从 env 取（`HIGGSFIELD_API_KEY`，形如 `id:secret`）；
+ * 拿不到就抛 —— 由 collectVendors 翻译成这条车道「没查成」，**绝不静默当成「没有新模型」**。
+ */
+export function resolveHiggsfieldApiKey(): string {
+  const fromEnv = (process.env.HIGGSFIELD_API_KEY || "").trim();
+  if (fromEnv) return fromEnv;
+  throw new Error("拿不到 higgsfield 凭据：给这条车道设 HIGGSFIELD_API_KEY 环境变量（id:secret）后重跑。");
+}
+
+/**
+ * 把 Higgsfield 的 `GET /models` 解析成 RadarEntry。
+ *
+ * ⚠️ 这个目录**不是可调用性的权威源**：2026-09-17 实测 Soul Cinema 与 DoP 都不在这 76 条里，
+ * 端点却是活的（见 docs/evidence/2026-09-17-higgsfield-contract）。所以这条车道只回答
+ * 「目录上新了什么」，回答不了「这家还有什么能调」——别拿它的缺席当「该模型没了」。
+ * 同理它也和账户额度无关：两把额度不同的 key 返回逐字节相同的 76 条。
+ */
+export function parseHiggsfield(text: string): RadarEntry[] {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error("higgsfield /models 返回的不是 JSON——凭据或网关可能出问题了，不是「没有新模型」");
+  }
+  const rows = (json as { items?: unknown })?.items;
+  if (!Array.isArray(rows)) throw new Error("higgsfield /models 返回里没有 items 数组——形状变了，实抓确认再适配");
+  const out: RadarEntry[] = [];
+  for (const row of rows) {
+    const slug = String((row as { slug?: unknown })?.slug ?? "");
+    if (!slug) continue;
+    const output = String((row as { output_type?: unknown })?.output_type ?? "");
+    const category: RadarCategory = output === "video" ? "video" : output === "audio" ? "audio" : "image";
+    out.push({
+      vendor: "higgsfield",
+      category,
+      slug,
+      title: String((row as { title?: unknown })?.title ?? slug),
+      url: HIGGSFIELD_MODELS_API_URL,
+    });
+  }
+  return dedupe(out);
+}
+
 export const VENDORS: Record<string, VendorAdapter> = {
   kie: { collect: async (fetchText) => parseKie(await fetchText(KIE_INDEX_URL)) },
   apimart: { collect: collectApimart },
@@ -299,6 +344,7 @@ export const VENDORS: Record<string, VendorAdapter> = {
     catalogVendorKey: "apimart",
     seededKind: "text",
   },
+  higgsfield: { collect: async (fetchText) => parseHiggsfield(await fetchText(HIGGSFIELD_MODELS_API_URL)) },
 };
 
 export type VendorFailure = { vendor: string; error: string };
@@ -497,8 +543,15 @@ async function fetchIndex(url: string): Promise<string> {
     const { ProxyAgent } = await import("undici");
     dispatcher = new ProxyAgent(proxy);
   }
-  const needsAuth = new URL(url).host === "api.apimart.ai";
-  const headers = needsAuth ? { Authorization: `Bearer ${resolveApimartApiKey()}` } : undefined;
+  // 每家的 Authorization 方案词不同：apimart 是 Bearer，higgsfield 是 `Key id:secret`
+  // （见 electron/catalog/higgsfieldVendor.ts 的 authScheme）。凭据永不打印、不落盘。
+  const host = new URL(url).host;
+  const headers =
+    host === "api.apimart.ai"
+      ? { Authorization: `Bearer ${resolveApimartApiKey()}` }
+      : host === "api.higgsfield.ai"
+        ? { Authorization: `Key ${resolveHiggsfieldApiKey()}` }
+        : undefined;
   const res = await fetch(url, { ...(headers ? { headers } : {}), ...(dispatcher ? { dispatcher } : {}) } as RequestInit);
   if (!res.ok) throw new Error(`抓取失败 ${url} → HTTP ${res.status}`);
   const text = await res.text();

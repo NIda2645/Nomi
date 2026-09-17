@@ -80,6 +80,8 @@ import { MINIMAX_OFFICIAL_MODELS, MINIMAX_VENDOR_SEED } from "./minimaxOfficial"
 import { ELEVENLABS_MODELS, ELEVENLABS_VENDOR_SEED } from "./elevenlabs";
 import { LOCAL_SPEECH_CURATED_MAPPINGS, LOCAL_SPEECH_CURATED_MODELS, LOCAL_SPEECH_VENDOR_SEED } from "./localSpeech";
 import { MESHY_MODELS, MESHY_VENDOR_SEED } from "./meshyOfficial";
+import { HIGGSFIELD_MODELS } from "./higgsfieldModels";
+import { HIGGSFIELD_VENDOR_SEED } from "./higgsfieldVendor";
 import { FAL_OFFICIAL_MODELS, FAL_VENDOR_SEED } from "./falOfficial";
 import { RUNWAY_OFFICIAL_MODELS, RUNWAY_VENDOR_SEED } from "./runwayOfficial";
 
@@ -298,6 +300,8 @@ const MINIMAX_OFFICIAL_CURATED_MODELS = officialCuratedModels(MINIMAX_OFFICIAL_M
 const MINIMAX_OFFICIAL_CURATED_MAPPINGS = officialCuratedMappings(MINIMAX_OFFICIAL_MODELS);
 const ELEVENLABS_CURATED_MODELS = officialCuratedModels(ELEVENLABS_MODELS);
 const ELEVENLABS_CURATED_MAPPINGS = officialCuratedMappings(ELEVENLABS_MODELS);
+const HIGGSFIELD_CURATED_MODELS = officialCuratedModels(HIGGSFIELD_MODELS);
+const HIGGSFIELD_CURATED_MAPPINGS = officialCuratedMappings(HIGGSFIELD_MODELS);
 const MESHY_CURATED_MODELS = officialCuratedModels(MESHY_MODELS);
 const MESHY_CURATED_MAPPINGS = officialCuratedMappings(MESHY_MODELS);
 const FAL_CURATED_MODELS = officialCuratedModels(FAL_OFFICIAL_MODELS);
@@ -338,6 +342,7 @@ const CURATED_VENDOR_CONTRACTS: readonly { vendorKey: string; models: CuratedMod
   { vendorKey: RUNWAY_VENDOR_SEED.key, models: RUNWAY_CURATED_MODELS, mappings: RUNWAY_CURATED_MAPPINGS },
   // 本地转写：transcribe taskKind 的第三个 provider（前两个是 APIMart Whisper / ElevenLabs Scribe）。
   { vendorKey: LOCAL_SPEECH_VENDOR_SEED.key, models: LOCAL_SPEECH_CURATED_MODELS, mappings: LOCAL_SPEECH_CURATED_MAPPINGS },
+  { vendorKey: HIGGSFIELD_VENDOR_SEED.key, models: HIGGSFIELD_CURATED_MODELS, mappings: HIGGSFIELD_CURATED_MAPPINGS },
 ];
 
 /**
@@ -423,6 +428,7 @@ function seedVendor(vendors: Vendor[], seed: VendorSeed, now: string): boolean {
   vendors.push({
     key: seed.key, name: seed.name, enabled,
     baseUrlHint: seed.baseUrl, authType: seed.authType, authHeader: seed.authHeader,
+    ...(seed.authScheme ? { authScheme: seed.authScheme } : {}),
     // 本地素材吞入声明（仅 Replicate 等声明了 assetIngestion 的 vendor 带；resolveAssetIngestionWithFallback 据此把本地图传文件 API）。
     ...(seed.assetIngestion ? { assetIngestion: seed.assetIngestion } : {}),
     createdAt: now, updatedAt: now,

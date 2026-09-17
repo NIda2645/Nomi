@@ -61,7 +61,7 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   const headers = mergeHeadersCaseInsensitive(
     providerKind === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {},
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
-    authHeaders(authType, apiKey, vendor.authHeader ?? undefined),
+    authHeaders(authType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
   )
   const result = await fetchModelList(providerKind, vendor.baseUrlHint, headers, AbortSignal.timeout(12_000), {
     query: authQueryParams(authType, apiKey, vendor.authQueryParam ?? undefined),

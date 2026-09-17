@@ -427,6 +427,15 @@ export const zhOnboardingProviders = {
       promoText: '如果你愿意，可以用我们的链接注册；不愿意也可以直接去官方注册。',
       promoCta: '用我们的链接',
     },
+    higgsfield: {
+      tagline: '官方原生 · Soul 2 图片与 DoP 运镜视频',
+      credentialPlaceholder: '粘贴 Higgsfield 的 id:secret',
+      credentialHint:
+        '在 Higgsfield 控制台创建 API 凭据，粘贴时把 id 和 secret 用冒号连成一串（形如 abc123:xyz789）。凭证本地加密存储。',
+      promoText:
+        'Higgsfield 官方 API。Nomi 只接它自研的三个旗舰模型（Soul 2、Soul Cinema、DoP）；它转售的 Kling / Seedance 等你在 Nomi 里已经能直连原厂，不必多绕一层。',
+      promoCta: '打开 Higgsfield 控制台',
+    },
     modelscope: {
       tagline: '官方原生 · 绑定阿里云每天免费额度',
       promoText: '魔搭社区由阿里达摩院运营，绑定阿里云账号后每天有免费推理额度。去官网拿 API Key。',
@@ -1640,6 +1649,15 @@ export const enOnboardingProviders = {
       tagline: 'One key unlocks built-in models',
       promoText: 'You can register with our link if you like, or go directly to the official website.',
       promoCta: 'Use our link',
+    },
+    higgsfield: {
+      tagline: 'Official access · Soul 2 images and DoP camera-move video',
+      credentialPlaceholder: 'Paste your Higgsfield id:secret',
+      credentialHint:
+        'Create API credentials in the Higgsfield console, then paste the id and secret joined by a colon (like abc123:xyz789). Credentials are encrypted locally.',
+      promoText:
+        'Higgsfield official API. Nomi seeds only its three in-house flagships (Soul 2, Soul Cinema, DoP). The Kling and Seedance models it resells are already available in Nomi straight from their original vendors, so there is no need to route through another layer.',
+      promoCta: 'Open Higgsfield console',
     },
     modelscope: {
       tagline: 'Official access · Daily free quota with an Alibaba Cloud account',

@@ -196,6 +196,13 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "regenerate": "text_to_video"
     }
   },
+  "higgsfield-dop": {
+    "defaultModeId": "i2v",
+    "modes": {
+      "i2v": "image_to_video",
+      "firstlast": "image_to_video"
+    }
+  },
   "volcengine-seedance-2": {
     "defaultModeId": "t2v",
     "modes": {
@@ -638,6 +645,18 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     "defaultModeId": "transcribe",
     "modes": {
       "transcribe": "transcribe"
+    }
+  },
+  "higgsfield-soul-2": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image"
+    }
+  },
+  "higgsfield-soul-cinema": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image"
     }
   }
 };

@@ -152,6 +152,12 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "minimax-h3-regeneration": [
     "MiniMax-H3-Regeneration"
   ],
+  "higgsfield-dop": [
+    "higgsfield-ai/dop/standard",
+    "higgsfield-ai/dop/turbo",
+    "higgsfield-dop-standard",
+    "higgsfield-dop-turbo"
+  ],
   "volcengine-seedance-2": [
     "doubao-seedance-2-0-260128",
     "doubao-seedance-2-0-fast-260128",
@@ -442,5 +448,15 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "nomi-local-speech": [
     "whisper-cpp-local",
     "nomi-local-speech"
+  ],
+  "higgsfield-soul-2": [
+    "higgsfield-ai/soul/v2/standard",
+    "higgsfield-soul-2",
+    "soul-2"
+  ],
+  "higgsfield-soul-cinema": [
+    "higgsfield-ai/soul/cinema",
+    "higgsfield-soul-cinema",
+    "soul-cinema"
   ]
 };
