@@ -90,6 +90,11 @@
 | T-RL-11 | 视频拆解：转写模型解析绑在文本大脑的供应商上 → 大脑是 Moonshot 就报「没有可用的转写模型」；转写语言写死 `zh` | done 批次2 | 09-17 真机失败日志 09:51Z · 用户点名 | 已修：`findExecutableModelAnyVendor('audio', 供应商偏好)` 在**所有已启用供应商**里解，报价卡那一行仍由同一个 `findExecutableModel` 解出，与 runTask 真扣费的是同一行；language 改成随界面语言派生并进 spend plan 的 parameters。回归测试 `electron/video/deconstructLegResolution.test.ts`（含反面：只在大脑那家找会抛） |
 | T-MO-14 | 异步图片中转：`newapiTransport` 把 image 写死成同步 | todo | 09-17 顺带发现 | 批次 2 不修（只记）。中转站按 key 接进来之后，异步出图的那一类会走错分支 |
 | T-MO-15 | **本地转写**：新增 `local-speech` 供应商（sherpa-onnx 或 whisper.cpp 二进制随 app 走），走现有 audio 档案的 transcribe 模式，与 APIMart Whisper / ElevenLabs 同一解析器，用户在 T-DS-15 那行选「本地」；零成本、不出网、离线可用；拆解 / 口播剪辑 / 字幕三条线共用 | todo | 09-17 用户拍板 | 批次 3 之后；先查别人（R5：sherpa-onnx vs whisper.cpp vs Apple Speech，各自 M 系速度/中英准确率/包体），再出接入方案；现状：仓库从未有过本地转写，转写只有 `apimartAudios.ts` 与 `elevenlabs.ts` 两条云端。（协调方原话给的号是 T-MO-11 / T-DS-13，两个号都已被占用且都是 done 行，按「ID 不回收」改用这两个号。） |
+| T-MO-16 | **目录未标价的模型**：报价卡印「目录未标价」却放行，回执也无金额（实测 MiniMax H3 一单真扣 4.572 credits，用户只能去 APIMart 后台查） | todo | [付费走查 09-17 §6.6](../audit/2026-09-17-post-804-walkthrough.md) · 09-17 用户拍板 | **拍板：放行，不加任何拦截**（用户原话「可以放行全自动 我们也没法给他计算所有中转的」）。只剩两条要求：① 报价卡与回执上明写「Nomi 无法报价，供应商按实扣」——不印「目录未标价」这种读起来像 bug 的话；② 每步问 / 自动改两档下仍要用户明确点一次；全自动档照 09-12 拍板放行不问 |
+| T-AG-17 | 付费卡在**空提示词**时照样让你确认，确认完才说「请先写点提示词」 | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 校验应在**出卡前**：能本地判定必然发不出去的请求，不该先走一遍钱的闸 |
+| T-ED-06 | 拆解中断后分镜表节点**永久卡死不报错** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 终态保证缺一条：每个节点必须落到成功/失败/可找回三者之一，没有「永远在跑」这一格 |
+| T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n |
+| T-DS-17 | 拆解表画面六格失败时**一个字原因都没给** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | `visionFailed` 已经带着 `failureReason`，UI 没渲染它——不是没有原因，是没往外说 |
 
 ## E. 素材与导入
 
