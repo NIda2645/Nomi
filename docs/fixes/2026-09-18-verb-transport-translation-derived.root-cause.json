@@ -33,6 +33,12 @@
   "doors": [
     {
       "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 76,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
       "line": 36,
       "symbol": "VerbTransportCall"
@@ -40,8 +46,134 @@
     {
       "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 51,
+      "symbol": "DRAFT_SHOT_FIELD_MAP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
       "line": 64,
       "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 83,
+      "symbol": "DRAFT_SHOT_FIELD_MAP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 75,
+      "symbol": "VerbFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 80,
+      "symbol": "PROVENANCE_UNVERIFIABLE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 147,
+      "symbol": "VerbFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 149,
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 184,
+      "symbol": "VerbFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 196,
+      "symbol": "DRAFT_SHOT_FIELD_MAP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 201,
+      "symbol": "VerbFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 58,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 58,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 59,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 63,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 75,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 77,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 82,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 86,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 99,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 109,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 117,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 125,
+      "symbol": "draftShotSchema"
     },
     {
       "kind": "write",
@@ -56,40 +188,10 @@
       "symbol": "exportJobTransportCall"
     },
     {
-      "kind": "read",
+      "kind": "write",
       "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
-      "line": 76,
-      "symbol": "VerbTransportCall"
-    },
-    {
-      "kind": "read",
-      "path": "electron/agentLane/verbTransportRoutes.ts",
-      "line": 80,
-      "symbol": "PROVENANCE_UNVERIFIABLE"
-    },
-    {
-      "kind": "read",
-      "path": "electron/agentLane/verbTransportRoutes.ts",
-      "line": 192,
-      "symbol": "DRAFT_SHOT_FIELD_MAP"
-    },
-    {
-      "kind": "read",
-      "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 51,
-      "symbol": "DRAFT_SHOT_FIELD_MAP"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
-      "line": 53,
-      "symbol": "VerbFieldProvenance"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
-      "line": 53,
-      "symbol": "VerbFieldRelation"
+      "line": 150,
+      "symbol": "exportJobTransportCall"
     },
     {
       "kind": "write",
@@ -104,33 +206,27 @@
       "symbol": "projectByFieldMap"
     },
     {
-      "kind": "read",
-      "path": "electron/agentLane/verbTransportRoutes.ts",
-      "line": 75,
-      "symbol": "VerbFieldMap"
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 82,
+      "symbol": "projectByFieldMap"
     },
     {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
-      "line": 125,
-      "symbol": "draftShotSchema"
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 141,
+      "symbol": "projectByFieldMap"
     },
     {
       "kind": "write",
       "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
       "line": 15,
       "symbol": "writeVerbs"
-    },
-    {
-      "kind": "read",
-      "path": "electron/agentLane/verbTransportRoutes.ts",
-      "line": 147,
-      "symbol": "draftShotSchema"
     }
   ],
   "door_reduction": {
     "before": 16,
-    "after": 16,
+    "after": 32,
     "why_not": "The doors did not move: the same two call sites translate (laneExtendedDesktopPorts for the lane, the verb declarations for the map's source lists). What changed is that the correspondence those doors carry is now a value the assembler validates instead of statements inside a function. Collapsing the remaining doors would merge the lane transport with the declaration layer, which is the boundary that lets the host keep its own independent admission check — the one thing this change deliberately did not touch."
   },
   "generality_proof": "The mechanism is schema-driven end to end: assembleVerbFieldMap takes source keys from the verb's own schema and target keys from the host's own schema via objectFieldKeys, so a field added to either side changes the check without anyone editing the check. Ten of the eleven transported verbs are declared this way, including the export-domain fallback half of check_job/cancel_job; the eleventh (look_at_media) is excluded for a stated reason, not by omission.",

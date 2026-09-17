@@ -64,6 +64,8 @@ const SHOT_PROMPTS = [
   '书架前的女孩侧影，手指抽出一本旧诗集，中近景。',
   '窗光落在摊开的书页上，女孩微笑的特写。',
 ]
+/** 模型拟的镜头标题（信封字段）。它必须一路走到节点标签——不是「镜头 N」兜底——所以带标记串。 */
+const SHOT_TITLES = ['GOLDEN_TITLE_1：推门', 'GOLDEN_TITLE_2：抽书', 'GOLDEN_TITLE_3：窗光']
 /** 第 2 镜要被改成的那一句。必须与原句可区分，且不含原句子串——否则「改了没」判不出来。 */
 const SHOT_2_NEW_PROMPT = 'GOLDEN_PATCHED：逆光下的侧脸，尘埃在光柱里浮动，安静的近景。'
 const PATCH_INSTRUCTION = '把选中的这一镜改成逆光侧脸、尘埃浮在光柱里的安静近景。'
@@ -194,8 +196,8 @@ async function stepSplitIntoThreeShots(win, projectId) {
     reply: {
       type: 'tool', id: PLAN_CALL_ID, name: 'draft_shots',
       args: {
-        shots: SHOT_PROMPTS.map((prompt) => ({
-          taskKind: 'text_to_image', modelKey: FIXTURE_IMAGE_MODEL, modeId: 't2i', parameters: { size: '1024x1024' }, prompt,
+        shots: SHOT_PROMPTS.map((prompt, position) => ({
+          title: SHOT_TITLES[position], taskKind: 'text_to_image', modelKey: FIXTURE_IMAGE_MODEL, modeId: 't2i', parameters: { size: '1024x1024' }, prompt,
         })),
       },
     },
@@ -222,6 +224,10 @@ async function stepSplitIntoThreeShots(win, projectId) {
   const payload = (await readProject(win, projectId)).payload
   const nodes = landedShotNodes(payload)
   expect(nodes.map((node) => node.prompt), '落盘的三镜提示词与草稿不一致').toEqual(SHOT_PROMPTS)
+  // 断「值真的抵达了」，不是「没报错」：模型拟的标题成了节点标签（不是渲染层的「镜头 N」兜底），
+  // 模型点名的模型成了节点的模型（不是用户默认的那个）。2026-09-18 这两条各在链路上死过。
+  expect(nodes.map((node) => node.title), '模型拟的镜头标题没有一路走到节点标签').toEqual(SHOT_TITLES)
+  expect(nodes.map((node) => node.meta.modelKey), '节点的模型不是草稿里点名的那个').toEqual(SHOT_PROMPTS.map(() => FIXTURE_IMAGE_MODEL))
   const runId = nodes[0].meta.productionRunId
   expect(nodes.map((node) => node.meta.productionRunId), '三镜不属于同一个 Run').toEqual([runId, runId, runId])
   expect(nodes.map((node) => node.meta.productionShotId), '镜头 id 不是宿主按序派的稳定 id').toEqual(['shot-1', SHOT_2_ID, 'shot-3'])
@@ -244,6 +250,8 @@ async function stepOpenShotTable(win, nodeIds) {
   await expect(table.locator('[data-shot-table-row]'), '分镜表不是 3 行').toHaveCount(3)
   const rowIds = await table.locator('[data-shot-table-row]').evaluateAll((rows) => rows.map((el) => el.getAttribute('data-shot-table-row')))
   expect(rowIds, '分镜表的行不是那三个镜头节点（按落地序）').toEqual(nodeIds)
+  // 表是节点的投影：那一行的画面列必须就是那一镜节点的提示词（不是别的行、不是缓存的旧值）。
+  await expect(table.locator(row(nodeIds[1])), '表里第 2 行的画面列不是第 2 镜的提示词').toContainText(SHOT_PROMPTS[1].slice(0, 10))
   await expect(table, '表头没有说这是 3 镜').toContainText('3 镜')
   say('已进入画布，分镜表 3 行')
   await shot('shot-table-three-rows')

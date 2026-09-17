@@ -43,6 +43,12 @@
   "doors": [
     {
       "kind": "read",
+      "path": "electron/agentLane/laneDocumentTools.ts",
+      "line": 19,
+      "symbol": "DocumentLanePort"
+    },
+    {
+      "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
       "line": 36,
       "symbol": "VerbTransportCall"
@@ -52,18 +58,6 @@
       "path": "electron/agentLane/laneVerbTransport.ts",
       "line": 64,
       "symbol": "VerbTransportCall"
-    },
-    {
-      "kind": "write",
-      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
-      "line": 77,
-      "symbol": "verbToTransportCall"
-    },
-    {
-      "kind": "write",
-      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
-      "line": 113,
-      "symbol": "exportJobTransportCall"
     },
     {
       "kind": "read",
@@ -78,16 +72,376 @@
       "symbol": "listProjectAssets"
     },
     {
-      "kind": "write",
-      "path": "electron/assets/assetsIpc.ts",
-      "line": 105,
-      "symbol": "copyProjectAsset"
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "line": 764,
+      "symbol": "listProjectAssets"
     },
     {
-      "kind": "write",
-      "path": "electron/assets/assetsIpc.ts",
-      "line": 132,
-      "symbol": "importRemoteAsset"
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 120,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 146,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 157,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 164,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 171,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 178,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 185,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 191,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 199,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 206,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 235,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 241,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 247,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 251,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 252,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 256,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 257,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 261,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 262,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 266,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 267,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 272,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 276,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 278,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 281,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 296,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 298,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 304,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 330,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 416,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 417,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 443,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 458,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 485,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 489,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 492,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 495,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 527,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 534,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 536,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 541,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 559,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 583,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 629,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 646,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 657,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 679,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 700,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 795,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 798,
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 89,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 106,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 115,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 60,
+      "symbol": "SealedMultiShotEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 92,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 175,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 361,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 366,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 394,
+      "symbol": "SealedMultiShotEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 108,
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 114,
+      "symbol": "GenerationOperationShot"
     },
     {
       "kind": "read",
@@ -102,16 +456,10 @@
       "symbol": "McpStdioServerOptions"
     },
     {
-      "kind": "write",
+      "kind": "read",
       "path": "electron/capabilityCore/mcpStdioServer.ts",
-      "line": 248,
-      "symbol": "createMcpStdioDirectInvoker"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpStdioServer.ts",
-      "line": 263,
-      "symbol": "createDefaultMcpProposalReceiptResolver"
+      "line": 253,
+      "symbol": "McpStdioServerOptions"
     },
     {
       "kind": "read",
@@ -126,16 +474,52 @@
       "symbol": "SemanticGenerationDefault"
     },
     {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 157,
-      "symbol": "semanticCandidateFromParams"
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 66,
+      "symbol": "SemanticGenerationCandidateParams"
     },
     {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 292,
-      "symbol": "isLongFormGenerationRequest"
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 89,
+      "symbol": "SemanticGenerationCandidateParams"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 142,
+      "symbol": "SemanticGenerationCandidateParams"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 159,
+      "symbol": "SemanticGenerationDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 184,
+      "symbol": "SemanticGenerationDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 222,
+      "symbol": "SemanticGenerationDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 223,
+      "symbol": "SemanticGenerationDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 293,
+      "symbol": "SemanticGenerationDefault"
     },
     {
       "kind": "read",
@@ -151,9 +535,9 @@
     },
     {
       "kind": "read",
-      "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 69,
-      "symbol": "generationPlanInputSchema"
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 15,
+      "symbol": "readVerbs"
     },
     {
       "kind": "read",
@@ -169,9 +553,27 @@
     },
     {
       "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
-      "line": 15,
-      "symbol": "readVerbs"
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 96,
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 114,
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 161,
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 179,
+      "symbol": "READ_GUIDELINES"
     },
     {
       "kind": "read",
@@ -186,18 +588,6 @@
       "symbol": "DOCUMENT_WRITE_OPERATION_BY_WHERE"
     },
     {
-      "kind": "write",
-      "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 103,
-      "symbol": "assetReadInputOf"
-    },
-    {
-      "kind": "write",
-      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
-      "line": 103,
-      "symbol": "timelineReadInputOf"
-    },
-    {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
       "line": 125,
@@ -205,33 +595,57 @@
     },
     {
       "kind": "write",
-      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
-      "line": 15,
-      "symbol": "writeVerbs"
-    },
-    {
-      "kind": "read",
-      "path": "electron/agentLane/laneDocumentTools.ts",
-      "line": 19,
-      "symbol": "DocumentLanePort"
-    },
-    {
-      "kind": "write",
       "path": "electron/agentLane/laneDesktopTools.ts",
-      "line": 90,
+      "line": 106,
       "symbol": "createDocumentLaneTools"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 60,
-      "symbol": "SealedMultiShotEntry"
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 77,
+      "symbol": "verbToTransportCall"
     },
     {
-      "kind": "read",
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 113,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 150,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 108,
+      "symbol": "assetReadInputOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 105,
+      "symbol": "copyProjectAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 132,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 331,
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 92,
-      "symbol": "StoryboardShotDraft"
+      "line": 157,
+      "symbol": "semanticCandidateFromParams"
     },
     {
       "kind": "write",
@@ -242,49 +656,55 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 292,
+      "symbol": "isLongFormGenerationRequest"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 302,
+      "symbol": "isLongFormGenerationRequest"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
       "line": 367,
       "symbol": "draftShotFromStoryboard"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 107,
-      "symbol": "GenerationOperationState"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 113,
-      "symbol": "GenerationOperationShot"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/appIntegration.ts",
-      "line": 331,
-      "symbol": "createGenerationPlanningHandler"
-    },
-    {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 720,
+      "line": 735,
       "symbol": "coldstartEtaForGate"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/dispatcher.ts",
-      "line": 120,
-      "symbol": "DispatchContext"
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 248,
+      "symbol": "createMcpStdioDirectInvoker"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/dispatcher.ts",
-      "line": 146,
-      "symbol": "RpcError"
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 263,
+      "symbol": "createDefaultMcpProposalReceiptResolver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 15,
+      "symbol": "writeVerbs"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 103,
+      "symbol": "timelineReadInputOf"
     }
   ],
   "door_reduction": {
     "before": 40,
-    "after": 40,
+    "after": 110,
     "why_not": "The count is what `node scripts/door-map.mjs` reports for every file this change touches; the change adds no door and removes one (the dead modelSetup lane branch). Merging them would merge things that are genuinely different: toSemanticInput is already the single shared call point for the internal lane and the external MCP projection, verbToTransportCall is the single translation for deferred-group verbs, and semanticCandidateFromParams keeps its N=1 and N>=2 call sites on purpose — collapsing those two arities into one is exactly what previously let the multi-shot path diverge. What was missing was never fewer doors but a check that every door's output is accepted on the other side, which the new gate now performs across all of them in one pass."
   },
   "generality_proof": "The gate enumerates VERB_DECLARATIONS rather than a hand-written list, derives instances from each verb's own published JSON Schema, and validates against the same *InputForAlias / plan-schema functions the transport adapters call. A new verb, a new field on an existing verb, a rename in the translator, or an upstream change to a host schema is covered without anyone remembering to add a case; the fail-closed count check (fewer than 20 verbs scanned is red) stops the gate from silently scanning nothing.",

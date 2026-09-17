@@ -27,12 +27,7 @@
     "electron/shared/agentCapabilities/generationPlanSchemas.ts",
     ".github/workflows/quality-gate.yml",
     "scripts/validation-policy.mjs",
-    "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
-    "electron/agentLane/verbTransportRoutes.ts",
-    "electron/capabilityCore/semanticGenerationCandidate.ts",
-    "src/i18n/locales/generationCommon.ts",
-    "scripts/check-verb-host-conformance.mjs",
-    "scripts/check-i18n-visible-text.mjs"
+    "electron/agentLane/verbTransportRoutes.ts"
   ],
   "entry_points": [
     "src/workbench/capability/multiShotCanvasLanding.ts materializeShots — the only creator of Run-landed nodes (draft create/patch, paid confirmation, project reopen all arrive here)",
