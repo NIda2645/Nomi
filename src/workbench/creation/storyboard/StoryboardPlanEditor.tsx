@@ -445,7 +445,13 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
 
   return (
     <section
-      className="relative w-full h-full min-h-0 grid grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
+      // `grid-cols-1` 不是装饰，是 W-03 的根因修法（2026-09-17 实测）：这张 grid 从来没写过列模板，
+      // 于是浏览器给它一条**隐式 `auto` 列 = max-content**——最长的那一行（页脚 min-content 702px、
+      // 批量条那句提示 max-content 795px）把整列撑到 707px，五个行块连同分镜表全被一起拉宽，
+      // 再被这里的 `overflow-hidden` 从右边剪掉：1280 视口 + Agent 面板展开时 29–33 个叶子越界。
+      // 表格自己的 min-content 只有 417px，完全装得下 —— 它是被撑的，不是撑人的那个。
+      // `grid-cols-1` = `repeat(1, minmax(0,1fr))`，把列钉回容器宽，各行自己去 truncate / 滚动。
+      className="relative w-full h-full min-h-0 grid grid-cols-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
       data-storyboard-editor="true"
     >
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
@@ -498,7 +504,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
         onChange={setStoryboardPlan}
       />
 
-      <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4">
+      {/* 分镜行按**这块**的可用宽度分档（容器查询），不按视口宽——Agent 面板开/关才是真正的变量，
+          视口宽只是它的一个远因。`container-type:inline-size` 同时把"内容反过来撑宽容器"这条路堵死，
+          于是上面那条 `grid-cols-1` 有了第二道保险。容器起名 `storyboard`，免得被别处的容器截胡。 */}
+      <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4 [container-name:storyboard] [container-type:inline-size]" data-storyboard-scroll="true">
         {/* 执行计划审阅条（切片 3）：主进程同源 resolve 的合并/拆条建议 + 阻断问题，逐条采纳即改方案。
             同一份 resolve 结果还喂给表格行的行内警示（D1：摩擦在行上，提示就在行上）。 */}
         <StoryboardPlanStrategyPanel plan={plan} state={strategyState} onChange={setStoryboardPlan} />
@@ -632,10 +641,14 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
             </span>
           )}
         </div>
-        {/* 页脚右组在窄列下会把左边那句进度挤没（W-03）。允许它整组换行，
-            主动作按钮本身仍不收缩。 */}
-        <div className="flex flex-wrap items-center justify-end gap-2.5">
-          <span className="text-micro text-nomi-ink-40">{t('storyboardEditor.footer.spendNote')}</span>
+        {/* 右端只留主动作。这里原本还挂着一句 `footer.spendNote`——而它**逐字**就是上面那条
+            提示行（`spendHint`）的后半句「每次生成前确认花费 / Cost is confirmed before every
+            generation」，同一屏写了两遍。它住在 `shrink-0` 的组里，所以永远不让位：英文下白占
+            约 220px（中文约 110px），而左边那句**有行动价值**的进度/问题摘要正是靠 `truncate`
+            在这点宽度上被切掉的——1280 + Agent 面板展开时 EN 被切 426px，连「还差几张参考卡」
+            都看不见；1680 宽屏也仍被切 26px。让位顺序反了：零行动价值的重复说明不让，
+            要用户去做事的那句反而让。删掉重复的那句就是修在根因（R2「有行动价值吗，没有删」）。 */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <WorkbenchButton
             variant="primary"
             onClick={onRunBatch}

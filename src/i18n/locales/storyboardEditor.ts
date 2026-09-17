@@ -70,7 +70,6 @@ export const zhStoryboardEditor = {
     reasonLocked: '{{count}} 已锁',
     reasonSeparator: '，',
     excludedSuffix: '（不进批量）',
-    spendNote: '每次生成前确认花费',
     generateRemaining: '生成剩余',
   },
   exec: {
@@ -437,7 +436,6 @@ export const enStoryboardEditor = {
     reasonLocked: '{{count}} locked',
     reasonSeparator: ', ',
     excludedSuffix: ' (excluded from batch)',
-    spendNote: 'Cost is confirmed before every generation',
     generateRemaining: 'Generate Remaining',
   },
   exec: {
