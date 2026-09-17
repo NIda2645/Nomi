@@ -69,6 +69,19 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // 反馈接收端跑在 Cloudflare Workers 运行时里：`Request`/`Response`/`URL`/`TextEncoder`/
+    // `crypto` 在那儿是真的全局，不是我们忘了 import。所以声明环境，而不是在九行上各写一条
+    // eslint-disable —— 逐行 disable 会把「这个文件跑在哪个运行时」这条事实藏起来，
+    // 下一个人加第十行时还得重新发现一次。
+    // 它的测试用 node --test 跑（`check:feedback-worker`），所以 node 全局也给上。
+    files: ['infra/feedback-worker/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.serviceworker, ...globals.node },
+    },
+  },
+  {
     // 画布规模基准（tests/perf/）：Node 脚本，但 page.evaluate 的回调体是**页内**代码，
     // document / window 在那里合法。两套全局都给，而不是把整个目录塞进上面的 ignores——
     // tests/ux/** 当年整体豁免是因为那批文件把页内代码写成字符串，ESLint 根本看不见；
