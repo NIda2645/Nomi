@@ -146,6 +146,26 @@ export function writeVerbs(): VerbDeclaration[] {
           message: `a shot's ${field} is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop ${field} here`,
         });
       }
+      // 「整份计划不能只有锚」——语义上自洽的约束：`role: "anchor"` 的定义就是「被**其它镜头**复用的
+      // 参考卡」，一份只有锚的计划自相矛盾（没有任何镜头去复用它们）。
+      //
+      // 为什么搬到这一面：宿主本来就拦（`mcpGenerationMultiShot.ts` 的
+      // 「多镜计划至少需要一个视频镜头」），但模型**只能撞上去才知道有这条规矩**。
+      // 2026-09-18 真机 23 轮实测，这是剩余失败的最大一类——27 次失败里 11 次是它，
+      // 而模型的意图完全正确：它在做标准分镜流程，先单独立视觉锚再排镜头，标题都写着
+      // 「角色锚｜林野」「场景锚｜旧房子客厅」「陈默·人物设定」——**那正是我们自己的导演技能教它的**。
+      // 6 次里 5 次它靠错误信息自纠了（下一次带 6~12 镜成功），但每次白费一个来回，还有 1 次整轮没救回来。
+      //
+      // 所以这里给的不只是「不行」，还有那条合法路怎么走：用户如果只想要那几张参考图本身，
+      // 它们就不是锚（没有别的镜头复用），省掉 `role` 当普通镜头发即可。
+      if (value.draftId === undefined && value.shots.every((shot) => shot.role === "anchor")) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom, path: ["shots", 0, "role"],
+          message: "an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — "
+            + "put the anchors and the shots that reuse them in this one call. "
+            + "If the user only wants those reference images themselves, omit role so they are ordinary shots.",
+        });
+      }
     }),
     examples: [
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
