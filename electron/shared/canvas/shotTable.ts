@@ -72,6 +72,12 @@ export const deconstructionShotTableSchema = z.object({
     failedShotIndexes: z.array(z.number().int().nonnegative()).optional(),
     errorMessage: z.string().optional(),
     /**
+     * 阶段内部那句更细的进度话（「首次使用本地转写，正在下载引擎与模型 120/575 MB」）。
+     * 与 `errorMessage` **分开两个字段**：错误是红的、带 role=alert，进度不是——
+     * 共用一个字段就等于把每一条进度都渲染成一次失败。
+     */
+    progressDetail: z.string().optional(),
+    /**
      * 这次失败是**哪一类**的机器可读判据。今天只有一个值：`local-speech`（本地离线转写那一路挂了）。
      * 为什么需要它而不是让 UI 去认错误文案：文案会翻译、会改写，拿它当判据就是把
      * 「给不给『改用云端』这个出口」这件事绑在字符串比对上——那正是最容易静默失效的那种判据。

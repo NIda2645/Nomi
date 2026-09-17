@@ -1,52 +1,73 @@
-# 本地转写 provider（批次 3 任务书 T-MO-11）
+# 本地转写 provider（批次 3 · T-MO-11）
 
-状态：实施中。基线 e96614e14。任务书编号与 TODO 中已完成的模型可用性任务同号，本计划以 09-17 批次 3 任务书为准，不改旧 TODO 身份。
+状态：已实现，真机验收过（mac arm64）。基线 e96614e14。任务书编号与 TODO 里已完成的模型可用性任务同号，本计划以 09-17 批次 3 任务书为准，不改旧 TODO 身份。
 
-## 用户镜头与范围
+## 用户镜头
 
-拆解视频的转写参数选择本地（离线），首次使用先告知引擎与模型下载体积，明确确认后下载。模型提供多语言 base/small/medium 三档，默认 small；按上游标称体积 148/466/1530 MB，small 相对 base 多 318 MB、相对 medium 少 1064 MB，作为中英混合输入的体积与质量折中，实际质量必须以真素材验证，不声称已达到云端质量。语言由音频自动检测，返回检测语言。长音频分段、一次重试、错误携带段号及原因，用户手动选择改用云端，无自动切换。
+拆解视频的对白，今天只能走云端（APIMart Whisper / ElevenLabs Scribe）——没网、不想把素材传出去、额度用完，对白列就只能是空的。这次补的是第三条线：**在这台电脑上离线转写**，不联网、不花钱，语言从音频自己听出来。
 
-当前基线没有任务书提到的批次 2 转写参数组件与 Depth 下载告知组件。先实现独立后端，已向派工方请求可接入提交，禁止生成平行 UI。首次下载的 Nomi fork release、mac 签名/公证资产与 Windows 真机仍需取得实证。
+首次用它要先下一次引擎与权重（≈575 MB），这件事**开跑前就说**，下载期间节点上有一行走着的进度；任何一步失败都说清是哪一步、为什么，并在分镜表上给一颗**「改用云端重试」**按钮。切换只能是用户点的那一下——代码不许在失败时自己切云端，那样用户会在不知情的情况下花钱，本地那条坏了也就再没人知道。
 
-范围：现有 transcribe taskKind 的声明式本地执行、统一解析、可信下载、sidecar 生命周期、分段、档案与供应链检查。复用 hardenedFetch、现有 ffmpeg、现有模型目录；不引 Python、第二个 ASR 引擎或 native addon。
-回滚：逐里程碑 revert 当前分支提交；缓存仅写隔离设置目录下独立命名空间，不修改用户项目原始素材。
-验收：禁止 .en、auto 语言、缺失/空结果显式报错、分段失败重试一次、sha256/磁盘/网络错误、共享解析器；再 gates 与用户指定七套测试按序执行。真实中文/英文/混合离线与云端 WER、mac/Windows、zh/en 截图缺证据即 unverified。
+## 范围与不动项
 
-## 先查别人：四列表
+**做**：`transcribe` taskKind 的第三个 provider（声明驱动，不是新概念）；可信下载（钉死版本 + 逐文件 sha256 + 原子落盘 + 进度 + 磁盘满单独成档）；sidecar 生命周期；长音频分段与接缝；错误分类与云端出口；供应链版本钉登记与门岗。
 
-调研正本：`/Users/aoqimin/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`。
-实读上游：OpenWhispr `scripts/download-whisper-cpp.js:19-47`、`src/helpers/whisperCppRelease.js:1-8`、`src/helpers/whisperServer.js:497-650,865-1015`（2026-09-17）；Context7 `/ggml-org/whisper.cpp` server README 与 server.cpp。
+**不动**：云端那两条线的任何行为；拆解的切点 / 抽帧 / 报价 / 令牌那几段；引擎不进安装包（见下「打包边界」）。
+
+**不做**（明确划掉，不是没做完）：第二个 ASR 引擎（sherpa-onnx / Parakeet）——单引擎裁决；Python 依赖或 native addon——前者被 Kdenlive 验证是坑，后者无 prior-art；自研解压器——系统自带 bsdtar 已经有。
+
+**回滚**：逐里程碑 revert 本分支提交。缓存只写 `userData/model-cache/local-speech/`，不碰用户项目与原始素材。
+
+## 先查别人：四列表（R5 ④）
+
+调研正本：`~/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`。
+实读上游（2026-09-17）：OpenWhispr `scripts/download-whisper-cpp.js`、`src/helpers/whisperServer.js`；whisper.cpp `examples/server/README.md`；并用 0.0.10 二进制对真素材**实跑**核对过请求与响应形状。
 
 | 它提供 | 我们用 | 我们另写 | 我们拆散 |
 |---|---|---|---|
-| whisper.cpp 多语言识别与 auto language | whisper-server `/inference`，verbose_json | 无 ASR 推理实现 | 不拆解编码器/解码器 |
-| OpenWhispr pin 0.0.10 预编译 sidecar 与 MSVC DLL | 同样 pin、校验、spawn loopback 生命周期 | Nomi 可信资产清单、设置目录缓存、取消和错误投影 | 不照搬其多引擎/GPU 静默 fallback |
-| server 分段时间戳 | 统一音频结果解析器的 segments | 长素材按 30s 整数倍窗口加重叠、全局时间偏移归并 | 不重写模型内部 30s 推理窗口 |
-| 现有 depthVideoModelCache 的 hardenedFetch + SHA-256 + 原子落盘 | 提取同一下载原语供两家共用 | 文件发布清单与安装依赖检查 | 删除 Depth 独占的重复下载主体 |
+| whisper.cpp 的多语言识别与 auto 语言检测 | whisper-server `/inference`，verbose_json | 不写任何 ASR 推理 | 不拆解码器内部 |
+| 预编译 sidecar + Windows 的 MSVC 运行时 DLL | 同样钉死版本、逐文件 sha256、spawn 回环生命周期 | Nomi 自己的资产清单、缓存目录、取消与错误投影 | 不照搬它的多引擎与 GPU 静默 fallback |
+| server 给的段级时间戳 | 折进统一的结果形状（与云端 verbose_json 同形） | 长素材按 30 秒窗口整数倍切、按句子边界续接、全局时间偏移归并 | 不重写模型内部那 30 秒推理窗口 |
+| 系统自带 bsdtar（`tar -xf` 认 zip） | 直接用它解包 | 解包后逐成员 sha256 复验 | 不自研 zip 解析 |
+| 既有 depthVideoModelCache 的 hardenedFetch + sha256 + 原子落盘 | 抽成共用原语两家同用 | 新增磁盘满分类 | **删掉** Depth 独占的那份下载主体 |
 
 ## 参考实现逐层对照
 
-| 层 | 它怎么做 | 我们怎么做 | 判定 | 若没想到补在哪个阶段前 |
-|---|---|---|---|---|
-| 工具 | whisper-server HTTP multipart | 同一 taskKind 调 sidecar multipart | 一致 | 无 |
-| 转录渲染 | OpenWhispr 显示听写文字 | Nomi 统一 segments 归属镜头，显示检测语言和失败原因 | 有意不同：视频分镜领域 | UI 接线前 |
-| 会话 | server 保温供连续听写 | 每个转写任务持有并 finally 关闭 sidecar | 有意不同：离线批量视频任务隔离 | 无 |
-| 上下文 | prompt 字典与音频 | 仅音频，language=auto，不用 UI locale 强制语言 | 有意不同：用户多语言硬约束 | 无 |
-| 模型与花费 | 多引擎/GPU 档 | 单引擎多语言三档，云端必须重新走付费授权 | 有意不同：单引擎裁决 | 无 |
-| 控制流 | 自动 GPU fallback 与重试 | 分段重试一次，失败显式抛出；禁止自动换云端 | 有意不同：硬约束要求可见失败 | 无 |
-| 扩展 API | /inference 与 /health | 仅固定 loopback endpoint、固定字段、受控二进制 | 一致 | 无 |
-| 观测与测试 | 日志与健康检查 | 分段进度与错误类型、真素材与 WER、故障注入 | 一致 | 最终验收前 |
-| 安全 | 固定 release，随 exe 放 DLL | 固定 SHA-256、完整安装、签名验证、限 loopback、退出回收 | 一致 | 发布资产与打包验收前 |
+| 层 | 它怎么做 | 我们怎么做 | 判定 |
+|---|---|---|---|
+| 传输 | whisper-server HTTP multipart | 同一 taskKind 声明 localEngine，走同一个 multipart | 一致 |
+| 出站 | 自己开 fetch | 走 hardenedFetch + `allowedPrivateOrigins` 精确到本次端口 | 有意不同：目的地策略只有一个 owner |
+| 会话 | server 保温供连续听写 | 一次任务一个进程，`finally` 必收 | 有意不同：批处理不是听写，保温换不来后台常驻 600 MB |
+| 上下文 | prompt 字典 + 音频 | 只给音频，language 恒 auto | 有意不同：用户硬约束②，不留「选错语言」的路 |
+| 档位 | 多引擎 / 多 GPU 档 | 单引擎单档（实测裁掉另外三档） | 有意不同：见下「档位的算式」 |
+| 控制流 | 自动 GPU fallback 与重试 | 每段重试一次，再失败带段号抛出；**禁止自动换云端** | 有意不同：硬约束要求失败可见 |
+| 安全 | 固定 release，DLL 随 exe | 固定 sha256、完整安装校验、只听回环、退出回收 | 一致 |
 
 ## HTTP 接触面裁决
 
-`file` 派生自当前音频分段；`language` 常量 auto（用户硬约束）；`response_format` 常量 verbose_json（与云端解析契约一致）；`translate` 不用（保留原语种）；`prompt` 不用（避免 UI locale 污染）；`temperature` 上游默认；`model` 路径派生自校验通过的多语言资产；`host` 常量 127.0.0.1；`port` 派生自 OS 可用端口；`threads` 派生自主机可用核数；GPU 由已发布平台构建明确声明，CPU 路径必须告知耗时。
+`file` 派生自当前音频分段；`language` 常量 `auto`（用户硬约束）；`response_format` 常量 `verbose_json`（与云端解析契约同形）；`translate` 不用（要原语种）；`prompt` 不用（避免 UI locale 污染）；`temperature` 常量 `0.0`（否则「重试一次」变成掷骰子）；`model` 派生自校验通过的权重路径；`host` 常量 `127.0.0.1`；`port` 由 OS 分配；`threads` 由主机核数派生（夹在 2–8）。规范：whisper.cpp `examples/server/README.md`。偏差：只开放上述子集，不新增上游字段；分段进度与错误是**宿主事件**，不伪装成上游协议。
 
-规范：https://github.com/ggml-org/whisper.cpp/blob/master/examples/server/README.md 。偏差：只开放上述请求子集，不新增上游字段；Nomi 分段进度与错误为宿主事件，不伪装为上游协议。
+## 档位的算式（实测，不是拍脑袋）
 
-## 里程碑
+真素材（`NOMI_REAL_MEDIA_DIR` 登记的中英混口播 120 秒，M5 / Metal），另用三段真素材复核：
 
-1. 框架登记、门表、合同与会红的测试。
-2. 可信下载与 sidecar/分段执行，共用解析器与目录档案。
-3. 接批次 2 共用组件、显式云端重试，供应链与打包检查。
-4. 指定验证全收齐、修复、真实验收、跨池复核、最终报告。每阶段独立中文 commit；不 push、不建 PR。
+| 档位 | 体积 | CER | 速度 | 裁决 |
+|---|---|---|---|---|
+| large-v3-turbo-q5_0 | 574 MB | 6.5% | 11.5× 实时 | **唯一入选** |
+| large-v3-q5_0 | 1081 MB | 6.8% | 7.1× 实时 | 砍。贵 507 MB、慢 1.6 倍、质量在噪声里持平；产品演示那 40 秒它整段幻听成「请不吝点赞 订阅…」而 turbo 转对了。挂成「更稳」是卖降级 |
+| medium-q5_0 | 539 MB | 8.2% | 13.3× 实时 | 砍。只小 35 MB 却更差 |
+| small-q5_1 | 190 MB | 36.8% | 30× 实时 | 砍。对普通话输出**繁体**，把 "web coding" 听成「外部 coding」 |
+
+只剩一档，所以**档案里连那个下拉都不要**（R2：没有行动价值的信息就删）。档位这套结构留着，是因为「弱机器 / 纯 CPU 的 Windows 要一个轻量档」是真实需求——但它得先有自己的实测数字。
+
+## 打包边界（与任务书的一处有意偏离）
+
+任务书写「`asarUnpack` + macOS 签名公证要覆盖该二进制」。实际裁决是**二进制根本不进安装包**，理由三条：① 权重 574 MB 进包等于让每个不用它的用户白下；② 这台打包链今天是 `identity: null` + afterPack 一次 ad-hoc `codesign --deep --sign -`，**没有 Developer ID、没有公证**——真做签名那天，一个第三方构建的二进制躺在包里只会更难；③ 它住在 userData、由我们 spawn，不掺进 app bundle 的签名边界，也就不需要被公证，同时天然绕开 asar 里放可执行文件那条坑。`electron/localSpeech/localSpeechPackaging.test.ts` 守的是**反方向**：哪天有人顺手把它打进包里就红。
+
+## 里程碑与状态
+
+1. ✅ 框架四列表登记（`docs/engineering/framework-boundaries.json`）。
+2. ✅ 共用下载原语 + 删 Depth 那份主体；本地引擎五模块 + 接进 transcribe。
+3. ✅ 拆解侧的转写线选择、进度 detail、失败类别与「改用云端重试」。
+4. ✅ 供应链版本钉登记 + `check:supply-chain-pins` 门岗（含会红的判据测试）；R21 合同带门表。
+5. ◻︎ 未完：英文真素材（本机没有，已登记欠账）、Windows 真机（测试机磁盘不够）、拆解参数行里的「转写」下拉（等批次 2 的 T-DS-13 参数行组件，socket 已留在 `payload.transcribe`）。
