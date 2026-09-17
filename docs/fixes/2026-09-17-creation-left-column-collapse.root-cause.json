@@ -66,13 +66,13 @@
     {
       "kind": "read",
       "path": "src/workbench/creation/WorkbenchEditor.tsx",
-      "line": 74,
+      "line": 73,
       "symbol": "CreationResourceTreeToggle"
     },
     {
       "kind": "read",
       "path": "src/workbench/creation/WorkbenchEditor.tsx",
-      "line": 91,
+      "line": 90,
       "symbol": "CreationResourceTreeToggle"
     },
     {
@@ -126,7 +126,7 @@
     {
       "kind": "write",
       "path": "src/workbench/workbenchStore.ts",
-      "line": 352,
+      "line": 349,
       "symbol": "createCreationResourceTreeSlice"
     }
   ],
