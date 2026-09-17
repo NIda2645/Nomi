@@ -39,7 +39,7 @@
     {
       "kind": "write",
       "path": "electron/integrationCertification/integrationSessionIpc.ts",
-      "line": 71,
+      "line": 76,
       "symbol": "propose"
     },
     {
