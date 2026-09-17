@@ -18,6 +18,8 @@ const ARM = (process.env.EXP_ARM ?? '0') as '0' | 'A' | 'B' | 'T';
 const TRIALS = Number(process.env.EXP_TRIALS ?? '20');
 const OFFSET = Number(process.env.EXP_OFFSET ?? '0');
 const BUDGET_CNY = Number(process.env.EXP_BUDGET_CNY ?? '40');
+// 续跑用的分块后缀：断点重跑时换一个 tag，绝不覆盖已落盘的前一块。实验条件不受它影响。
+const TAG = process.env.EXP_TAG ?? '';
 const root = path.resolve('.tmp/exp-placement');
 const settings = path.join(root, 'settings');
 const source = path.join(app.getPath('appData'), 'nomi', 'model-catalog.json');
@@ -125,7 +127,7 @@ async function main() {
   const authority = buildAuthorityBlock();
   await writeFile(path.join(root, 'authority-block.txt'), authority);
 
-  const budgetFile = path.join(root, `budget-${ARM}.json`);
+  const budgetFile = path.join(root, `budget-${ARM}${TAG}.json`);
   let spentCny = 0;
   let capturedPrompt: string | undefined;
   const httpLog: Array<Record<string, unknown>> = [];
@@ -140,7 +142,7 @@ async function main() {
     if (!sys || sys.role !== 'system' || typeof sys.content !== 'string') throw new Error('EXP_SYSTEM_MESSAGE_SHAPE');
     const placed = placeAuthority(sys.content, authority);
     sys.content = placed;
-    if (!capturedPrompt) { capturedPrompt = placed; await writeFile(path.join(root, `system-prompt-${ARM}.txt`), placed); }
+    if (!capturedPrompt) { capturedPrompt = placed; await writeFile(path.join(root, `system-prompt-${ARM}${TAG}.txt`), placed); }
     if (spentCny > BUDGET_CNY) throw new Error('EXP_BUDGET_BLOCKED');
     const response = await fetch(input, { ...init, body: JSON.stringify(body), redirect: 'error' });
     const text = await response.clone().text();
@@ -224,10 +226,10 @@ async function main() {
       } finally { unsub(); await lane.close(); }
     } catch (e) { trialError = e instanceof Error ? e.message : String(e); }
     trials.push({ index: i, utterance, trialError, turns, writes, spentCnySoFar: spentCny });
-    await writeFile(path.join(root, `trials-${ARM}.json`), JSON.stringify({ arm: ARM, model: modelId, spentCny, trials }, null, 2));
+    await writeFile(path.join(root, `trials-${ARM}${TAG}.json`), JSON.stringify({ arm: ARM, model: modelId, spentCny, trials }, null, 2));
     console.log(JSON.stringify({ arm: ARM, trial: i, calls: turns.flatMap(t => (t.calls as Array<{ name: string }>).map(c => c.name)), spentCny: Number(spentCny.toFixed(4)) }));
   }
-  await writeFile(path.join(root, `trials-${ARM}.json`), JSON.stringify({ arm: ARM, model: modelId, spentCny, authority, trials }, null, 2));
+  await writeFile(path.join(root, `trials-${ARM}${TAG}.json`), JSON.stringify({ arm: ARM, model: modelId, spentCny, authority, trials }, null, 2));
   console.log(JSON.stringify({ arm: ARM, done: trials.length, spentCny: Number(spentCny.toFixed(4)) }));
 }
 void app.whenReady().then(main).then(() => app.exit(0), (e) => { console.error('EXP_FAILED', e instanceof Error ? e.stack : String(e)); app.exit(1); });
