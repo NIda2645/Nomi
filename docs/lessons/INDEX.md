@@ -52,6 +52,7 @@
 
 - [合成夹具永远走不到真实素材那条路](2026-09-14-real-media-first-run-exposed-import-and-open-time.md) — 画布/性能/导入/导出测试全绿、用户第一次拿真素材就卡死或导不进来时读；附夹具与真素材的量级对照 + 门岗 `check:real-media-fixture`
 - [打包成功不证明包来自当前源码](package-only-is-not-a-source-build.md) — 切分支、合并、修代码后打包验收，必须核验两份构建戳
+- [出厂配置只能在**产物**上验](shipped-config-must-be-verified-on-the-artifact.md) — 随包发出去的端点/令牌/默认地址；只读 `process.env` 在装机版里等于没配，四道绿灯一起骗人
 - [测 Agent 不用各种 prompt 打它、走查靠灌状态 = 测不出东西](agent-tests-must-be-prompt-driven-and-human-path.md) — 写验收走查/派走查任务书前先读；执行版在 `docs/engineering/acceptance-walkthrough-doctrine.md`
 
 - [UA 默认样式泄漏是一类问题，但蓝框未必来自 UA](ua-default-style-leaks-are-a-class.md) — 输入框点击厚环；先查计算样式，再按文本/非文本控件在全局边界治理
@@ -146,6 +147,7 @@
 - [grep 静默跳过含 NUL 字节的文件](grep-silently-skips-files-with-nul-bytes.md) — 搜不到已知存在的符号时先 `file` / `grep -a`
 - [查重别按报错串 grep](dedupe-grep-misses-silent-copy.md) — 不抛异常的那份正好隐身，而它才是真 bug
 - [死 i18n 词条有两种成因，处置相反](dead-i18n-keys-two-causes.md) — 删之前先做「译文值 × 源码硬编码」交叉比对
+- [`satisfies TranslationKey` 不验证这个键存不存在](satisfies-translationkey-does-not-verify-the-key.md) — 界面对、报文/日志里却冒出原始 key 时；常量表里的键不算被验过，`ParseKeys` 对未知键回落 string
 - [Tailwind 只扫 `.tsx` 时，住进 `.ts` 的类名会静默消失](tailwind-content-ts-classnames-silently-dropped.md) — 「类名写着却没生效」先查它在不在生成的 CSS 里；已由 `content` 加 `./src/**/*.ts` + 哨兵单测固化，附全仓 4 处失效盘点
 - [Electron 被 macOS 误报恶意软件的修法](electron-xprotect-false-positive-resign.md) — 重下 + ad-hoc 重签换 cdhash；摘 quarantine 没用
 - [Windows 改保存名闪退：根因已修、平台未验](sogou-save-dialog-crash-pending-win32-verify.md) — 再遇先要崩溃日志尾行和 minidump，别重猜

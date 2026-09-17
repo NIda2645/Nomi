@@ -310,6 +310,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@eslint/js": "^10.0.1",
     "@mastra/core": "^1.45.0",
     "@playwright/test": "1.60.0",
@@ -351,7 +352,12 @@
       "output": "release"
     },
     "afterPack": "scripts/after-pack-mac.cjs",
-    "extraResources": [{ "from": "assets/sound", "to": "assets/sound" }],
+    "extraResources": [
+      {
+        "from": "assets/sound",
+        "to": "assets/sound"
+      }
+    ],
     "asarUnpack": [
       "node_modules/@ffmpeg-installer/**",
       "node_modules/.pnpm/@ffmpeg-installer+*/**",
