@@ -12,6 +12,19 @@ const CHECKLIST_COLLAPSED_KEY = 'nomi:checklist-collapsed:v1'
 const CHECKLIST_FIRST_SHOWN_KEY = 'nomi:checklist-first-shown:v1'
 const CHECKLIST_DISMISSED_KEY = 'nomi:checklist-dismissed:v1'
 const JOURNEY_TOUR_KEY = 'nomi:journey-tour:v1'
+/**
+ * 「帮 Nomi 变好」那张首次询问卡问过没有（用户 09-15 拍板②：**只问一次**）。
+ *
+ * 为什么住在这里而不是自己起一套：这份文件就是本仓「一次性、跨会话、localStorage、
+ * try/catch 守着」的既有约定（splash / journey tour / checklist 都在这儿）。
+ * 自己起一套的代价不是多几行，是**第二套「问过没有」的判断**——而那类判断一旦有两份，
+ * 迟早出现「这台机器上它又弹了一次」。
+ *
+ * 记的是**问过**，不是**同意了**。同意与否的真相源是主进程的 telemetry-settings.json
+ * （用户随时能在设置里改），这里只回答「还要不要再问他」。两者分开，所以
+ * 「他当时点了不用了、后来自己去设置里打开」不会让这张卡再冒出来。
+ */
+const AGENT_CONSENT_KEY = 'nomi:agent-consent-asked:v1'
 
 /** 上手清单生命周期上限：首次显示满 2 天仍未完成 → 自动永久关闭，不再回来。 */
 export const CHECKLIST_TTL_MS = 2 * 24 * 60 * 60 * 1000
@@ -74,6 +87,24 @@ export function hasSeenJourneyTour(): boolean {
 export function markJourneyTourSeen(): void {
   try {
     window.localStorage.setItem(JOURNEY_TOUR_KEY, 'seen')
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 首次询问卡问过没有。两个钮（「愿意」「不用了」）都写这个标记 —— 都算问过了。 */
+export function hasAskedAgentConsent(): boolean {
+  try {
+    return window.localStorage.getItem(AGENT_CONSENT_KEY) === 'asked'
+  } catch {
+    // localStorage 不可用时退化成「问过了」：宁可少问一次，也不要每次开面板都弹一张卡。
+    return true
+  }
+}
+
+export function markAgentConsentAsked(): void {
+  try {
+    window.localStorage.setItem(AGENT_CONSENT_KEY, 'asked')
   } catch {
     /* ignore */
   }

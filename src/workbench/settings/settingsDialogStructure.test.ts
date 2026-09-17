@@ -67,7 +67,11 @@ const APPROVED_NON_MODEL_SECTION_SHA256 = {
   // 2026-09-14：删「默认制作模式」三段与「支出与风险边界」整栏（#781），并删掉独立的「可信发起方」栏——开关并进 MCP 连接页每张客户端卡（#783）。
   'AutomationPermissionsSection.tsx': 'b17cbf04eb214de65677603dbe03dbe3ba9ae6323ef7f9d241bd298d94b48c7d',
   'CanvasGestureSection.tsx': '6f6fbf6802c6daae381c83838b387623a78ac7de49ffb1e47ee6101db312c95d',
-  'AboutSection.tsx': 'b38e0e2265f29ca56da53595e4bb5886bd14799ea3a7f7f36797b33d46eda57f',
+  // 2026-09-15：两处非布局改动——① 那行注释原来提到 FeedbackShareDialog，而那份文件本次被删
+  // （失败面那条路不再套带标题的 modal 外壳，直接呈现反馈卡）；② `FeedbackShareContent` 的
+  // `variant` prop 只剩一个合法值，删掉之后这里的 `variant="embedded"` 也跟着去掉。
+  // 布局、区块顺序、文案一个字没动。更新这颗钉子是因为它钉的是整份文件的内容。
+  'AboutSection.tsx': 'c4960a0171ae8ceae20c2fdfe92e9bc3984850a35030ea1e2c311f72da5dfdd7',
 } as const
 
 describe('settings dialog structure', () => {
@@ -176,7 +180,7 @@ describe('settings dialog structure', () => {
     expect(aboutSource).toContain("t('about.feedbackShare')")
     // 入口切内嵌视图，不再 dispatch 全局事件、不再关掉设置弹窗。
     expect(aboutSource).toContain("setView('feedback')")
-    expect(aboutSource).toContain('<FeedbackShareContent variant="embedded"')
+    expect(aboutSource).toContain('<FeedbackShareContent onBackToAbout=')
     expect(aboutSource).not.toContain("window.dispatchEvent(new CustomEvent('nomi-open-feedback-share'))")
   })
 

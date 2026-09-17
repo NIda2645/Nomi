@@ -5,7 +5,7 @@
  * `modelCatalog: DesktopModelCatalogSurface` 组装。
  */
 import type { CustomCallBridge } from './modelCatalogBridgeTypes'
-import type { ComfyCandidateTestPayload, ComfyCandidateTestResult, ComfyWorkflowMutationResult } from './comfyCandidateContracts'
+import type { ComfyWorkflowMutationResult } from './comfyCandidateContracts'
 
 export type DesktopModelCatalogSurface = CustomCallBridge & {
   onChanged?: (cb: () => void) => () => void

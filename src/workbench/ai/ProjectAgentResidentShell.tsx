@@ -9,6 +9,8 @@ import { libraryGroup } from '../library/libraryGroups'
 // 「宿主真相怎么变成一行收据」这件事只能靠截图证明。拆开之后那部分是纯函数、有单测；
 // 这里剩下的都是**只有真实运行时才有的东西**（DOM 尺寸、事件桥、文件选择器）。
 import React from 'react'
+import { openFeedbackFor } from '../../ui/community/FeedbackButton'
+import { withProjectAction } from '../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import { DesignModal } from '../../design'
@@ -566,6 +568,24 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
           onUndoTool: actions.undoTool,
           onAdoptCandidate: (index, _tag, candidateIndex) => adoptLaneTaskCandidate(data.flow, index, candidateIndex, t),
           onErrorAction: recoverFromFailure,
+          // 失败面之一（四处共用同一张卡）。那句人话**已经是** Agent 域自己 owner 的产物：
+          // `laneFailureText()` 按码取的本地化文案，走投影落到了 `item.reason`。
+          // 反馈这一侧不再翻一次码，也不做第六张码表（src/ui/community/feedbackSummary.ts）。
+          // 项目身份在**点下去那一刻**由唯一签发口给出（withProjectAction），不是去读「当前项目」——
+          // 主进程侧那种读法 2026-09-17 起已清零。没有打开项目时就不带（清单里写明轨迹缺席的 why）。
+          onFeedback: (_index, reason) => {
+            const request = {
+              intent: 'problem' as const,
+              surface: 'agent' as const,
+              stage: 'generation' as const,
+              summary: reason,
+              laneName: data.snapshot.active.lane,
+            }
+            withProjectAction(
+              (project) => openFeedbackFor({ ...request, projectId: project.binding.projectId }),
+              () => openFeedbackFor(request),
+            )
+          },
           onSuggestion: (_index, option) => actions.answerOption(option),
         }}
         slotHandlers={slotHandlers}

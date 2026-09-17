@@ -18,6 +18,7 @@ import { enRuntime, zhRuntime } from './locales/runtime'
 import { enVideoDepth, zhVideoDepth } from './locales/videoDepth'
 import { enAgentResident, zhAgentResident } from './locales/agentResident'
 import { enCommunity, zhCommunity } from './locales/community'
+import { enFeedbackReport, zhFeedbackReport } from './locales/feedbackReport'
 import { enAgentPanelV4, zhAgentPanelV4 } from './locales/agentPanelV4'
 import { enAgentLaneError, zhAgentLaneError } from './locales/agentLaneError'
 
@@ -431,6 +432,7 @@ export const zhCN = {
   videoDepth: zhVideoDepth,
   agentResident: zhAgentResident,
   community: zhCommunity,
+  feedbackReport: zhFeedbackReport,
   agentPanelV4: zhAgentPanelV4,
   agentLaneError: zhAgentLaneError,
 } as const
@@ -849,6 +851,7 @@ export const en = {
   videoDepth: enVideoDepth,
   agentResident: enAgentResident,
   community: enCommunity,
+  feedbackReport: enFeedbackReport,
   agentPanelV4: enAgentPanelV4,
   agentLaneError: enAgentLaneError,
 } satisfies TranslationShape<typeof zhCN>

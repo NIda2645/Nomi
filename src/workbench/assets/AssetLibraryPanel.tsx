@@ -9,7 +9,6 @@
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import i18n from '../../i18n'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { IconPhoto, IconX } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
@@ -20,16 +19,16 @@ import { assetsForFolderScope, folderCountsForAssets, useAssetFolderInteractions
 import { filterAssets, type AssetRef } from './assetTypes'
 import { ASSET_LIBRARY_DRAG_MIME, serializeAssetLibraryDrag } from './assetLibraryDrag'
 import { importAudioFilesToLibrary } from './importAudioToLibrary'
-import { importLocalMediaFilesToGenerationCanvas, type GenerationAssetImportResult } from '../generationCanvas/adapters/assetImportAdapter'
+import { importLocalMediaFilesToGenerationCanvas } from '../generationCanvas/adapters/assetImportAdapter'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../workbenchStore'
 import { confirmDialog, DesignEmptyState, NomiLoadingMark, promptDialog, TooltipProvider } from '../../design'
 import { FindReferenceSection } from './FindReferenceSection'
 import type { ReferencePlatform } from '../../../electron/shared/contracts/referenceSearch'
-import { mediaImportRejectionMessages, reportAudioImport } from './mediaImportMessage'
-import { dropKindFromFile } from '../generationCanvas/model/nodeAssetDrop'
 import { acceptAttrForSurface } from '../../../electron/shared/contracts/mediaImportPolicy'
 import { notify } from '../../ui/notificationPolicy'
+import { FeedbackButton } from '../../ui/community/FeedbackButton'
+import { rejectionOf, reportAudioImport, reportMediaImport, type AssetImportRejectionReport } from './assetImportRejection'
 import {
   AssetGridCell,
   FolderGridCell,
@@ -66,37 +65,9 @@ const COMPACT_ESTIMATED_ROW_HEIGHT = 113
 // 从准入 owner 派生：这个面收哪些 kind 由 MEDIA_IMPORT_SURFACES 声明（不许自己写 accept 字面量）。
 const UPLOAD_ACCEPT = acceptAttrForSurface('asset-library')
 
-// 上传文件分流（纯函数便于单测）。kind 判定：MIME 优先，缺/不匹配回落扩展名——与音频分支对称，
-// 修「空 MIME 的图/视频被静默丢」(Gap B)。图/视频走画布节点(可拖画布)，音频落项目文件进库。
-export type UploadClassification = {
-  mediaFiles: File[]   // image / video → 画布素材节点
-  audioFiles: File[]   // audio → 项目文件源（音频 tab）
-  unsupported: File[]  // 既非图/视频也非音频 → 跳过并提示
-}
-
-export function classifyUploadFiles(files: File[]): UploadClassification {
-  const mediaFiles: File[] = []
-  const audioFiles: File[] = []
-  const unsupported: File[] = []
-  for (const file of files) {
-    // kind 判定用 dropKindFromFile 单源（MIME 优先、octet-stream 回落扩展名），不再另写一遍。
-    const kind = dropKindFromFile(file)
-    if (kind === 'image' || kind === 'video') mediaFiles.push(file)
-    else if (kind === 'audio') audioFiles.push(file)
-    else unsupported.push(file)
-  }
-  return { mediaFiles, audioFiles, unsupported }
-}
-
-// 导入结果 → 用户反馈（Gap C：此前计数全被丢弃，超大/重复/失败/超上限零提示）。
-function reportMediaImport(result: GenerationAssetImportResult, present: (message: string) => void): void {
-  const skipped: string[] = []
-  for (const message of mediaImportRejectionMessages(result.rejected)) skipped.push(message)
-  if (result.skippedOverLimitCount) skipped.push(i18n.t('assetLibrary.skippedOverLimit', { count: result.skippedOverLimitCount }))
-  if (result.skippedDuplicateCount) skipped.push(i18n.t('assetLibrary.skippedDuplicate', { count: result.skippedDuplicateCount }))
-  if (result.failedCount) skipped.push(i18n.t('assetLibrary.skippedFailed', { count: result.failedCount }))
-  if (skipped.length) present(i18n.t('assetLibrary.skippedSummary', { items: skipped.join(i18n.t('assetLibrary.listSeparator')) }))
-}
+// 上传文件分流住在 ./uploadClassification（R9：面板是壳）；re-export 保住既有 import 面。
+export { classifyUploadFiles, type UploadClassification } from './uploadClassification'
+import { classifyUploadFiles } from './uploadClassification'
 
 type AssetLibraryContentProps = {
   projectId: string | null
@@ -130,6 +101,10 @@ export function AssetLibraryContent({
     setFeedback((current) => ({ ...current, [feedbackOwner]: message
       ? [...new Set([...(current[feedbackOwner] ?? []), message])] : [] }))
   }, [feedbackOwner])
+  // 导入被拒是四个失败面之一；这条内联行是它唯一的常驻落点，所以那颗「反馈」钮挂在这儿，
+  // 而不是把 notify 从 inline 改成 background（那会把安静的内联提示变成飘出来的 toast）。
+  // 码与人话都由 `assetImportRejection.ts` 派生——这里不做第二份判断。
+  const [rejection, setRejection] = React.useState<AssetImportRejectionReport | null>(null)
   const report = React.useCallback((message: string, type: 'info' | 'warning' | 'error' = 'warning') => {
     notify({ identity: `asset-library:${feedbackOwner}`, reason: 'operation', message, type, level: 'inline', present })
   }, [feedbackOwner, present])
@@ -275,7 +250,7 @@ export function AssetLibraryContent({
           if (result.cancelled) return
           refreshProjectAssets()
           refreshAllProjectAssets()
-          reportMediaImport(result, report)
+          reportMediaImport(result, report, setRejection)
           // 落点可见性（2026-08-07 飞书反馈「上传传到另一个位置没看到」）：选中首个新节点 +
           // 请求画布 fit 平移视口过去（复用导演台节点同款组合，不造第二套）。
           const firstNode = result.created[0]?.node
@@ -287,6 +262,7 @@ export function AssetLibraryContent({
         .catch((error) => {
           console.error('asset library upload failed', error)
           report(t('assetLibrary.importFailed'), 'error')
+          setRejection(rejectionOf('failed', 1))
         })
     })
     if (audioFiles.length) withProjectAction((project) => {
@@ -295,18 +271,21 @@ export function AssetLibraryContent({
           if (!isProjectExecutionContextCurrent(project)) return
           refreshProjectAssets()
           refreshAllProjectAssets()
-          reportAudioImport(result, report)
+          reportAudioImport(result, report, setRejection)
         })
         .catch((error) => {
           if (!isProjectExecutionContextCurrent(project) || isProjectImportCancellation(error)) return
           console.error('asset library audio upload failed', error)
           report(t('assetLibrary.audioImportFailed'), 'error')
+          setRejection(rejectionOf('failed', 1))
         })
     })
     if (unsupported.length) {
       for (const f of unsupported) report(t('assetLibrary.rejectedUnsupportedUnknown', { name: f.name || t('assetLibrary.unnamedFile') }), 'warning')
+      // 策略拒收：用户想导的那个文件真的没进来，所以给反馈入口（重复素材不给，那份已在库里）。
+      setRejection(rejectionOf('unsupported', unsupported.length))
     }
-  }, [projectId, refreshAllProjectAssets, refreshProjectAssets, present, report, t])
+  }, [refreshAllProjectAssets, refreshProjectAssets, present, report, t])
 
   /** 工具栏那颗 🔗 = 「找参考」的家（一功能一个家）：开合内嵌面板，不弹层。 */
   const handleToggleFind = React.useCallback(() => {
@@ -583,6 +562,11 @@ export function AssetLibraryContent({
         {(feedback[feedbackOwner] ?? []).length > 0 ? (
           <div role="status" aria-live="polite" className="shrink-0 border-b border-nomi-line px-3 py-2 text-caption text-nomi-ink-60" data-asset-library-feedback>
             {feedback[feedbackOwner].map((message) => <p key={message}>{message}</p>)}
+            {rejection ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5" data-asset-library-rejection={rejection.errorKind}>
+                <FeedbackButton request={{ intent: 'problem', surface: 'import', stage: 'upload', ...(projectId ? { projectId } : {}), ...rejection }} />
+              </div>
+            ) : null}
           </div>
         ) : null}
         <AssetLibraryToolbar
