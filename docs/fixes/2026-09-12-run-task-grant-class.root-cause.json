@@ -165,25 +165,25 @@
     {
       "kind": "write",
       "path": "electron/runtime.ts",
+      "line": 336,
+      "symbol": "consumeTaskSpend"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
       "line": 360,
       "symbol": "consumeTaskSpend"
     },
     {
       "kind": "write",
       "path": "electron/runtime.ts",
-      "line": 384,
+      "line": 417,
       "symbol": "consumeTaskSpend"
     },
     {
       "kind": "write",
       "path": "electron/runtime.ts",
-      "line": 441,
-      "symbol": "consumeTaskSpend"
-    },
-    {
-      "kind": "write",
-      "path": "electron/runtime.ts",
-      "line": 455,
+      "line": 431,
       "symbol": "consumeTaskSpend"
     },
     {
