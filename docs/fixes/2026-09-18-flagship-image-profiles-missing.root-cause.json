@@ -1,0 +1,112 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-flagship-image-profiles-missing",
+  "problem_type": "协议早就通、档案没种——用户在模型框里找不到他正在为之付钱的旗舰图像模型",
+  "symptom": "用户在 kie / apimart 那边看得到、也充得了值的旗舰图像模型（GPT Image 2.5 Flare / Sunburst、Imagen 4 Fast / Ultra），在 Nomi 的模型框里一个都选不到；Gemini Image 3 Pro 与 Grok Imagine Image 2 只在 Runway 那一条线上能选，同一个模型经 APIMart 就不在列表里。群反馈里「接模型」长期是第一大主题，这是它最具体的一种形态。",
+  "direct_cause": "这些模型缺的只是**档案（archetype）与 curated mapping**：传输面早就接好了——kie 与 apimart 都是既有供应商，协议、鉴权、上传、轮询一行都不用新写。2026-09-18 的协议覆盖普查确认：grok / gpt / gemini / veo 经 apimart、kie 只缺档案不缺协议。",
+  "class_root": "档案是手写的数据，而「供应商上新了一个用户会为之充值的旗舰模型」这件事在仓库里**没有任何东西会红**——唯一的检测器是 `pnpm run radar:models`（人手跑的雷达，不是门岗）。所以「协议能到、档案没种」这一格只能靠人定期去看；看漏一次，用户就得到「Nomi 接不上我要的模型」这个结论，而真相是只差一份声明。",
+  "migration": "纯新增：四个新档案（gpt-image-2.5-flare / gpt-image-2.5-sunburst / imagen-4-fast / imagen-4-ultra）+ 两个既有档案原地补 identifierPatterns 与 vendorParams（gemini-image-3-pro / grok-imagine-image-2），共 +6 kie mapping、+7 apimart mapping。没有旧实现要删；@generated 的参数默认桥接由 `pnpm gen:archetype-defaults` 重生成。",
+  "affected_population": [
+    "已经在 kie 或 apimart 充过值、想用 GPT Image 2.5 / Imagen 4 出图的用户——他们在模型框里根本看不到这些行",
+    "已经能用 Gemini Image 3 Pro / Grok Imagine Image 2（Runway 线）的用户：同一个模型经 APIMart 这条更便宜/更快的线不可选",
+    "kie 侧 GPT Image 2.5 选了 27:16 / 16:27 / 9:8 / 8:9 这四个极端画幅又调高清晰度的用户：两个控件各自合法、组合非法，过去只能等一次失败的付费任务和一句上游英文报错"
+  ],
+  "scope_paths": [
+    "electron/catalog/apimartImages.ts",
+    "electron/catalog/archetypeWireDefaults.generated.ts",
+    "electron/catalog/kieGptImage25.ts",
+    "electron/catalog/kieImages2026.ts",
+    "electron/catalog/seedModelIdentity.ts"
+  ],
+  "entry_points": [
+    "electron/catalog/kieImages2026.ts:115 KIE_IMAGE_MODELS_2026（kie 图像模型与 mapping 的唯一值源）",
+    "electron/catalog/apimartImages.ts:107 APIMART_IMAGE_MODELS（apimart 图像模型与 mapping 的唯一值源）",
+    "electron/catalog/seedModelIdentity.ts:23 CANONICAL_MODEL_IDS（同一模型跨供应商的合并键）",
+    "electron/catalog/kieGptImage25.ts:46 KIE_GPT_IMAGE_25_TRANSFORM（发请求前的跨字段校验闸）"
+  ],
+  "invariants": [
+    "声明即承诺：只种供应商文档实查支持的模式与参数——apimart 的 Grok 文档写明不支持图生图，就不种 image-to-image mapping，不造一个永远 400 的入口",
+    "档次级而不是模式级分键：Flare 与 Sunburst 是并列产品（快 / 精修），合并成一条会让用户选不到精修那款",
+    "kie 的 GPT Image 2.5 上，27:16 / 16:27 / 9:8 / 8:9 四个画幅只允许 1K；这条组合约束在**付费请求发出之前**被拦下，不靠上游报错"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/catalog/kieImages2026.ts",
+      "line": 115,
+      "symbol": "KIE_IMAGE_MODELS_2026"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/kieImages2026.ts",
+      "line": 159,
+      "symbol": "KIE_GPT_IMAGE_25_TRANSFORM"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/apimartImages.ts",
+      "line": 107,
+      "symbol": "APIMART_IMAGE_MODELS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/seedModelIdentity.ts",
+      "line": 23,
+      "symbol": "CANONICAL_MODEL_IDS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/kieGptImage25.ts",
+      "line": 46,
+      "symbol": "KIE_GPT_IMAGE_25_TRANSFORM"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 5,
+    "why_not": "五扇分属三件不同的事：两份供应商侧的模型/mapping 值源（kie / apimart 各一，它们的形状由各自供应商的报文决定，合并只会逼出一张带 if 的共同表）、一份跨供应商合并键（CANONICAL_MODEL_IDS，本来就是唯一一份）、一道发请求前的跨字段校验闸。合并任意两扇都会把「谁说了算」这件事搅在一起。",
+    "note": "本次是纯新增声明，没有减少入口的机会。"
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/seedBuiltins.ts",
+    "tests": [
+      "electron/catalog/seedBuiltins.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/vendorProfiles20260918.test.ts"
+  ],
+  "residual_risks": [
+    "kie 那 6 条真机验收是 402（账户余额不足），按 R22 记 unverified，没有用 mock 绿灯替代 live 证据；APIMart 7/7 已真机封印，实花 $0.107。",
+    "跨字段约束今天只能落在发请求前的 request_transform 上，档案体系没有声明位——UI 仍会把 2K/4K 摆成可选，用户要点下去才知道不行。真正最早的一层是 UI 置灰，那要给档案加「跨字段约束」这个声明位，本次没做。",
+    "「供应商上新旗舰模型」这一类今天仍只有 `pnpm run radar:models` 这个人手检测器，本次没有把它变成门岗（见 recurrence）。"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://docs.kie.ai/market/gpt/gpt-image-2-5-flare-text-to-image.md",
+      "checked_at": "2026-09-18",
+      "purpose": "逐字取 kie 侧 GPT Image 2.5 的入参、画幅与清晰度枚举，以及「27:16/16:27/9:8/8:9 只支持 1K」这条跨字段约束"
+    }
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "本次改的是**数据**——六个档案与十三条 mapping，外加一道 kie 专属的组合校验闸；没有一条会从别的调用者、别的供应商或别的平台再回来的代码路径。类级那件事（供应商上新我们没种档案）的检测器 `pnpm run radar:models` 与 2026-09-18 的协议覆盖普查此前就存在，本次既没有改它、也没有再造第二条判断路径，所以这份合同不该假装自己是那条类级防线。把它做成门岗（雷达差异 > 0 即红）是一条独立的决定，要先回答「供应商每周上新十几个，红了谁来关」——不在本次范围内。",
+    "same_class_scan": [
+      "electron/catalog/kieImages2026.ts:115 KIE_IMAGE_MODELS_2026 —— kie 图像线的唯一值源，本次新增的行全在这里",
+      "electron/catalog/apimartImages.ts:107 APIMART_IMAGE_MODELS —— apimart 图像线的唯一值源，同上",
+      "electron/catalog/apimartVideos.ts:161 —— 雷达曾报 veo3 是缺口，实查发现 archetype veo-3.1 早已接（含 frame/reference 两模式），属假缺口，本次不动：说明同类扫描做过并给出了否定结论",
+      "scripts/model-radar.ts —— 「供应商列了、我们没种」的既有检测器；本次只让它认得新档案，没有改它的判据"
+    ]
+  },
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "纯新增声明，没有被它替代的旧档案或旧 mapping。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入、升级或保留任何第三方依赖；用的是既有的 kie / apimart 传输面。",
+    "exit_criteria": []
+  }
+}
