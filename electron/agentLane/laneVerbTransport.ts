@@ -28,17 +28,37 @@ function generationCall(base: { toolCallId: string }, toolName: GenerationMethod
   return { lane: 'generation', call: { ...base, toolName, args } }
 }
 
-/** `draft_shots` 的一镜 → 生成契约 `shots[]` 的一镜（语义字段；候选身份由宿主按目录合成）。 */
-function draftShotToPlanShot(shot: Args): Args {
+/** `draft_shots` 声明里的目录候选身份：模型从 `list_models` 抄来的 provider+model。 */
+type VerbCandidate = { providerId?: string; modelId?: string }
+
+function verbCandidate(value: unknown): VerbCandidate | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const { providerId, modelId } = value as VerbCandidate
+  return typeof providerId === 'string' || typeof modelId === 'string' ? { providerId, modelId } : undefined
+}
+
+/**
+ * `draft_shots` 的一镜 → 生成契约 `shots[]` 的一镜。
+ *
+ * **身份和语义一样要过桥**：动词声明里的 `candidate{providerId,modelId}`（以及顶层那一份默认）说的就是
+ * 「这一笔花在哪个模型上」。2026-09-18 之前这里把它整个丢掉，于是 ① 没保存过默认模型的用户撞
+ * 「没有配置可用的图片模型」，② 保存过的用户被**静默换成默认模型**扣钱——模型点了名却不算数。
+ * `modelKey`（同样来自 `list_models`）与 `candidate.modelId` 指同一件事，就近的那个赢。
+ */
+function draftShotToPlanShot(shot: Args, inherited: { candidate?: VerbCandidate; taskKind?: string } = {}): Args {
   const { shotId, role, prompt, taskKind, durationSec, modelKey, modeId, parameters, references, title } = shot as {
     shotId?: string; role?: string; prompt: string; taskKind?: string; durationSec?: number; modelKey?: string; modeId?: string;
     parameters?: Args; references?: string[]; title?: string
   }
+  const candidate = verbCandidate(shot.candidate) ?? inherited.candidate
+  const modelId = modelKey || candidate?.modelId
+  const effectiveTaskKind = taskKind || inherited.taskKind
   return {
     ...(shotId ? { shotId } : {}), ...(role ? { role } : {}), prompt,
     ...(title ? { title } : {}),
-    ...(taskKind ? { taskKind } : {}), ...(durationSec !== undefined ? { durationSeconds: durationSec } : {}),
-    ...(modelKey ? { modelId: modelKey } : {}), ...(modeId ? { modeId } : {}),
+    ...(effectiveTaskKind ? { taskKind: effectiveTaskKind } : {}), ...(durationSec !== undefined ? { durationSeconds: durationSec } : {}),
+    ...(candidate?.providerId ? { providerId: candidate.providerId } : {}),
+    ...(modelId ? { modelId } : {}), ...(modeId ? { modeId } : {}),
     ...(parameters ? { parameters } : {}),
     ...(references ? { references: references.map((assetId) => ({ assetId })) } : {}),
   }
@@ -55,19 +75,27 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
     case 'draft_shots': {
       const shots = (Array.isArray(args.shots) ? args.shots : []) as Args[]
       const draftId = typeof args.draftId === 'string' ? args.draftId : undefined
+      // 顶层 `candidate` / `taskKind` 是**这一批的默认**（动词声明原话：Default catalog candidate for these
+      // shots）；只有自己没写的那一镜才继承它。
+      const inherited = {
+        ...(verbCandidate(args.candidate) ? { candidate: verbCandidate(args.candidate)! } : {}),
+        ...(typeof args.taskKind === 'string' && args.taskKind ? { taskKind: args.taskKind } : {}),
+      }
       if (draftId) {
         // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
         const first = shots[0] ?? {}
-        const { shotId: _shotId, role: _role, title: _title, ...rest } = draftShotToPlanShot(first)
+        const { shotId: _shotId, role: _role, title: _title, ...rest } = draftShotToPlanShot(first, inherited)
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'patch', operationId: draftId, patch: rest })
       }
       // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。
       if (shots.length === 1 && !shots[0]?.role) {
-        // 单镜：走单镜 create（宿主从 prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
-        const { shotId: _shotId, title: _title, ...single } = draftShotToPlanShot(shots[0]!)
+        // 单镜：走单镜 create（宿主按这份身份 + prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
+        const { shotId: _shotId, title: _title, ...single } = draftShotToPlanShot(shots[0]!, inherited)
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', ...single, cardHidden: true })
       }
-      return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', shots: shots.map(draftShotToPlanShot), cardHidden: true })
+      return generationCall(base, GENERATION_METHODS.plan, {
+        operation: 'create', shots: shots.map((shot) => draftShotToPlanShot(shot, inherited)), cardHidden: true,
+      })
     }
     case 'generate':
       return generationCall(base, GENERATION_METHODS.plan, { operation: 'present', operationId: args.draftId, ...(args.shotIds ? { shotIds: args.shotIds } : {}) })

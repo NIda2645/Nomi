@@ -59,6 +59,10 @@ const createFields = {
     candidate: generationCandidateSchema.optional(),
     prompt: z.string().trim().min(1).optional(),
     taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional(),
+    // 一镜能点名模型却点不了它的供应商，身份就只剩一半：没有 `providerId`，
+    // 「这一笔花在哪个模型上」在多镜路上无法表达（2026-09-18 根因合同）。
+    moduleId: z.string().trim().min(1).optional(),
+    providerId: z.string().trim().min(1).optional(),
     modelId: z.string().trim().min(1).optional(),
     mode: z.string().trim().min(1).optional(),
     modeId: z.string().trim().min(1).optional(),
