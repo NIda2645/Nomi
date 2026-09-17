@@ -398,20 +398,6 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "speech": "text_to_audio"
     }
   },
-  "gpt-image-2.5-flare": {
-    "defaultModeId": "t2i",
-    "modes": {
-      "t2i": "text_to_image",
-      "i2i": "image_edit"
-    }
-  },
-  "gpt-image-2.5-sunburst": {
-    "defaultModeId": "t2i",
-    "modes": {
-      "t2i": "text_to_image",
-      "i2i": "image_edit"
-    }
-  },
   "gpt-image-2": {
     "defaultModeId": "t2i",
     "modes": {
@@ -480,18 +466,6 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     "modes": {
       "t2i": "text_to_image",
       "edit": "image_edit"
-    }
-  },
-  "imagen-4-fast": {
-    "defaultModeId": "t2i",
-    "modes": {
-      "t2i": "text_to_image"
-    }
-  },
-  "imagen-4-ultra": {
-    "defaultModeId": "t2i",
-    "modes": {
-      "t2i": "text_to_image"
     }
   },
   "imagen-4": {
@@ -680,6 +654,32 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     }
   },
   "higgsfield-soul-cinema": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image"
+    }
+  },
+  "gpt-image-2.5-flare": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "i2i": "image_edit"
+    }
+  },
+  "gpt-image-2.5-sunburst": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "i2i": "image_edit"
+    }
+  },
+  "imagen-4-fast": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image"
+    }
+  },
+  "imagen-4-ultra": {
     "defaultModeId": "t2i",
     "modes": {
       "t2i": "text_to_image"

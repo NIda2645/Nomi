@@ -87,70 +87,6 @@ export const ARCHETYPE_WIRE_DEFAULTS_IMAGE: Record<string, Record<string, Record
       }
     }
   },
-  "gpt-image-2.5-flare": {
-    "text_to_image": {
-      "*": {
-        "aspect_ratio": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "model": "gpt-image-2-5-flare-text-to-image"
-      },
-      "apimart": {
-        "size": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "quality": "medium",
-        "model": "gpt-image-2-5-flare-text-to-image"
-      }
-    },
-    "image_edit": {
-      "*": {
-        "aspect_ratio": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "model": "gpt-image-2-5-flare-image-to-image"
-      },
-      "apimart": {
-        "size": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "quality": "medium",
-        "model": "gpt-image-2-5-flare-image-to-image"
-      }
-    }
-  },
-  "gpt-image-2.5-sunburst": {
-    "text_to_image": {
-      "*": {
-        "aspect_ratio": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "model": "gpt-image-2-5-sunburst-text-to-image"
-      },
-      "apimart": {
-        "size": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "quality": "medium",
-        "model": "gpt-image-2-5-sunburst-text-to-image"
-      }
-    },
-    "image_edit": {
-      "*": {
-        "aspect_ratio": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "model": "gpt-image-2-5-sunburst-image-to-image"
-      },
-      "apimart": {
-        "size": "auto",
-        "resolution": "1K",
-        "background": "auto",
-        "quality": "medium",
-        "model": "gpt-image-2-5-sunburst-image-to-image"
-      }
-    }
-  },
   "gpt-image-2": {
     "text_to_image": {
       "*": {
@@ -365,20 +301,6 @@ export const ARCHETYPE_WIRE_DEFAULTS_IMAGE: Record<string, Record<string, Record
       }
     }
   },
-  "imagen-4-fast": {
-    "text_to_image": {
-      "*": {
-        "aspect_ratio": "16:9"
-      }
-    }
-  },
-  "imagen-4-ultra": {
-    "text_to_image": {
-      "*": {
-        "aspect_ratio": "1:1"
-      }
-    }
-  },
   "imagen-4": {
     "text_to_image": {
       "*": {
@@ -568,6 +490,84 @@ export const ARCHETYPE_WIRE_DEFAULTS_IMAGE: Record<string, Record<string, Record
         "resolution": "720p",
         "batch_size": 1,
         "enhance_prompt": true
+      }
+    }
+  },
+  "gpt-image-2.5-flare": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "model": "gpt-image-2-5-flare-text-to-image"
+      },
+      "apimart": {
+        "size": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "quality": "medium",
+        "model": "gpt-image-2-5-flare-text-to-image"
+      }
+    },
+    "image_edit": {
+      "*": {
+        "aspect_ratio": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "model": "gpt-image-2-5-flare-image-to-image"
+      },
+      "apimart": {
+        "size": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "quality": "medium",
+        "model": "gpt-image-2-5-flare-image-to-image"
+      }
+    }
+  },
+  "gpt-image-2.5-sunburst": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "model": "gpt-image-2-5-sunburst-text-to-image"
+      },
+      "apimart": {
+        "size": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "quality": "medium",
+        "model": "gpt-image-2-5-sunburst-text-to-image"
+      }
+    },
+    "image_edit": {
+      "*": {
+        "aspect_ratio": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "model": "gpt-image-2-5-sunburst-image-to-image"
+      },
+      "apimart": {
+        "size": "auto",
+        "resolution": "1K",
+        "background": "auto",
+        "quality": "medium",
+        "model": "gpt-image-2-5-sunburst-image-to-image"
+      }
+    }
+  },
+  "imagen-4-fast": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "16:9"
+      }
+    }
+  },
+  "imagen-4-ultra": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "1:1"
       }
     }
   }

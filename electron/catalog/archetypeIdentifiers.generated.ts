@@ -267,16 +267,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "runway-seed-audio": [
     "seed_audio"
   ],
-  "gpt-image-2.5-flare": [
-    "gpt-image-2.5-flare",
-    "gpt-image-2-5-flare-text-to-image",
-    "gpt-image-2-5-flare-image-to-image"
-  ],
-  "gpt-image-2.5-sunburst": [
-    "gpt-image-2.5-sunburst",
-    "gpt-image-2-5-sunburst-text-to-image",
-    "gpt-image-2-5-sunburst-image-to-image"
-  ],
   "gpt-image-2": [
     "gpt-image-2",
     "gpt-image-2-text-to-image",
@@ -336,16 +326,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "qwen-image-2-0",
     "qwen-image-2.0-pro",
     "qwen-image-2-0-pro"
-  ],
-  "imagen-4-fast": [
-    "google/imagen4-fast",
-    "imagen4-fast",
-    "imagen-4-fast"
-  ],
-  "imagen-4-ultra": [
-    "google/imagen4-ultra",
-    "imagen4-ultra",
-    "imagen-4-ultra"
   ],
   "imagen-4": [
     "imagen-4",
@@ -480,5 +460,25 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "higgsfield-ai/soul/cinema",
     "higgsfield-soul-cinema",
     "soul-cinema"
+  ],
+  "gpt-image-2.5-flare": [
+    "gpt-image-2.5-flare",
+    "gpt-image-2-5-flare-text-to-image",
+    "gpt-image-2-5-flare-image-to-image"
+  ],
+  "gpt-image-2.5-sunburst": [
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2-5-sunburst-text-to-image",
+    "gpt-image-2-5-sunburst-image-to-image"
+  ],
+  "imagen-4-fast": [
+    "google/imagen4-fast",
+    "imagen4-fast",
+    "imagen-4-fast"
+  ],
+  "imagen-4-ultra": [
+    "google/imagen4-ultra",
+    "imagen4-ultra",
+    "imagen-4-ultra"
   ]
 };

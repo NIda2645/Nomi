@@ -50,14 +50,6 @@ export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolea
     "text_to_image": true,
     "image_edit": true
   },
-  "gpt-image-2.5-flare": {
-    "text_to_image": true,
-    "image_edit": true
-  },
-  "gpt-image-2.5-sunburst": {
-    "text_to_image": true,
-    "image_edit": true
-  },
   "seedream": {
     "text_to_image": true,
     "image_edit": true
@@ -85,6 +77,14 @@ export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolea
     "text_to_image": true
   },
   "seedream-5-pro": {
+    "text_to_image": true,
+    "image_edit": true
+  },
+  "gpt-image-2.5-flare": {
+    "text_to_image": true,
+    "image_edit": true
+  },
+  "gpt-image-2.5-sunburst": {
     "text_to_image": true,
     "image_edit": true
   }
