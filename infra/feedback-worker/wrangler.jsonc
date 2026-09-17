@@ -21,7 +21,7 @@
   "kv_namespaces": [
     {
       "binding": "INTAKE_KV",
-      "id": "d4ad124163814f4a864e60af5e1c99fd" // nomi-secret-scan:allow KV 命名空间 id 是资源标识不是凭证——没有账号 token 谁也用不了它，Cloudflare 官方示例就写在公开仓库的 wrangler 配置里
+      "id": "d4ad124163814f4a864e60af5e1c99fd"
     }
   ],
 
