@@ -24,3 +24,17 @@ describe('lightweight shots use the shared lifecycle feedback', () => {
     expect(render({ status: 'error', error: 'SpecificUnrecognizedProviderFailure' })).toContain('SpecificUnrecognizedProviderFailure')
   })
 })
+
+// LOD 是「画多细」，不是「是谁、什么状态」。这一条把身份三件套钉在两档共同的契约上：
+// 少了 data-status，下游（走查、样式、任何按状态选择的消费者）就会在卡片掉档的那一刻
+// 静默失明——那正是屏幕尺寸 LOD（#787 的另一半）被撤出批次的机制。
+describe('两档共用同一份身份契约', () => {
+  it('轻量档也带 data-node-id / data-kind / data-status', () => {
+    const markup = render({})
+    expect(markup).toContain('data-node-id="light-shot"')
+    expect(markup).toContain('data-kind="image"')
+    expect(markup).toContain('data-status="success"')
+    expect(render({ status: 'error', error: 'x' })).toContain('data-status="error"')
+    expect(render({ status: 'running' })).toContain('data-status="running"')
+  })
+})
