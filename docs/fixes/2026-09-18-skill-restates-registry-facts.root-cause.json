@@ -69,7 +69,7 @@
     },
     {
       "path": "scripts/check-skill-tool-binding.ts",
-      "symbol": "check:skill-tool-binding",
+      "symbol": "findEffectRestatements, findFalseFieldValues",
       "responsibility": "The commit-time boundary that keeps this repository's own skills free of tool-nature claims, so they stay portable to other hosts and cannot drift out of step with the registry"
     }
   ],
