@@ -6,6 +6,12 @@
  *     而英语权重对中文输入只会输出英文翻译或垃圾，那是静默错误（P1：不留逃生口）。
  *  ② 语言由**音频自动检测**（`language=auto`），UI 语言只作提示不作判据。
  *  ③ 引擎二进制**不进安装包**，首次使用才下载；来源钉死版本 + sha256。
+ *  ④ **VAD 必开**（2026-09-18 加）：whisper 碰到没人说话的音频不会输出空，它会从训练语料里挑一句
+ *     最常见的话填进去（英文 "Thank you."、中文「请不吝点赞 订阅」），而且默认会把上一窗口的文字
+ *     当下一窗口的提示词，于是复读停不下来、**把后面的真人讲话一起吞掉**。NASA 那条真素材实测：
+ *     片头 54 秒静音 → 前 26 段全是 "Thank you."、第一句真内容被推到 126 秒，**约 72 秒讲话凭空消失**，
+ *     语言探测也因为只取最前面 30 秒而采在静音上（置信 0.385，等于拿一段空气判断这条片子说什么语言）。
+ *     开 VAD 后同一条：幻听 0 段、首句真内容回到 54.56 秒（与实际静音结束 54.17 秒吻合）、置信 1.000。
  *
  * ── URL 为什么钉死、为什么不跟 latest ─────────────────────────────────────────
  * 上游 whisper.cpp 每天出 `bNNNN` 构建，**升一版就可能静默改变转写输出**（解码器阈值、VAD 默认值、
@@ -179,6 +185,29 @@ const WEIGHTS_COMMIT = "5359861c739e955e79d9a303bcbc70fb988958b1";
 const WEIGHTS_BASE = `https://huggingface.co/ggerganov/whisper.cpp/resolve/${WEIGHTS_COMMIT}`;
 const WEIGHTS_SOURCE_PAGE = "https://huggingface.co/ggerganov/whisper.cpp";
 
+/** HuggingFace `ggml-org/whisper-vad` 的钉死 commit（2026-09-18 实查）。 */
+const VAD_COMMIT = "9ffd54a1e1ee413ddf265af9913beaf518d1639b";
+
+/**
+ * Silero VAD（ggml 转换版），whisper.cpp 官方 `models/download-vad-model.sh` 取的就是这个仓库。
+ * **不自研静音预扫**：引擎自己带 `--vad`，系统已经给的能力不许再长一份自研版（R5「先查别人」）。
+ *
+ * 为什么是 v5.1.2 而不是同仓的 v6.2.0：2026-09-18 拿 NASA 那条片头静音素材两个都实测，
+ * 幻听段数、首句位置、语言置信三项完全一致（0 段 / 54.5s / 1.000），没有可测得的差别；
+ * 同分就取 whisper.cpp 文档与下载脚本列在前面的那个，少一份「我们为什么和上游不一样」要解释。
+ * 885 KB，相对权重的 574 MB 可以忽略，所以**不做成开关**——没有「要不要防幻听」这种选择题（P1）。
+ */
+export const LOCAL_SPEECH_VAD_MODEL: VerifiedAsset = {
+  id: "ggml-silero-v5.1.2",
+  fileName: "ggml-silero-v5.1.2.bin",
+  downloadUrl: `https://huggingface.co/ggml-org/whisper-vad/resolve/${VAD_COMMIT}/ggml-silero-v5.1.2.bin`,
+  sizeBytes: 885_098,
+  // 2026-09-18 实下载后 shasum -a 256 得到。
+  sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+  license: "MIT",
+  sourcePage: "https://huggingface.co/ggml-org/whisper-vad",
+};
+
 export const LOCAL_SPEECH_TIERS: readonly LocalSpeechTier[] = [
   {
     id: "balanced",
@@ -222,6 +251,7 @@ export function localSpeechAssetOrigins(): readonly string[] {
   const urls = [
     ...LOCAL_SPEECH_ENGINE_PLATFORMS.map((entry) => entry.archive.downloadUrl),
     ...LOCAL_SPEECH_TIERS.map((tier) => tier.model.downloadUrl),
+    LOCAL_SPEECH_VAD_MODEL.downloadUrl,
   ];
   return [...new Set(urls.map((url) => new URL(url).origin))];
 }

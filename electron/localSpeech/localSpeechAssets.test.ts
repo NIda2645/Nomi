@@ -3,6 +3,7 @@ import {
   LOCAL_SPEECH_DEFAULT_TIER,
   LOCAL_SPEECH_ENGINE_PLATFORMS,
   LOCAL_SPEECH_TIERS,
+  LOCAL_SPEECH_VAD_MODEL,
   localSpeechAssetOrigins,
   localSpeechEngineForPlatform,
   localSpeechTier,
@@ -11,6 +12,8 @@ import {
 const allAssets = [
   ...LOCAL_SPEECH_ENGINE_PLATFORMS.map((entry) => entry.archive),
   ...LOCAL_SPEECH_TIERS.map((tier) => tier.model),
+  // VAD 模型也走同一套「钉死 commit + 精确字节 + sha256」的判据，不因为它只有 885 KB 就松一档。
+  LOCAL_SPEECH_VAD_MODEL,
 ];
 
 describe("本地转写资产清单", () => {

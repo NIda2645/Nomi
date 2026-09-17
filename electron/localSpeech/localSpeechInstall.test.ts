@@ -93,10 +93,29 @@ function engineFixture(input: { members: Record<string, Buffer>; executable: str
   };
 }
 
-async function loadInstall(engine: ReturnType<typeof engineFixture>) {
+/**
+ * VAD 模型夹具。真清单里那条指向 huggingface.co，测试的出站策略只放行本地夹具服务器——
+ * 所以每条用例都要把它换成本地的一份。**不是可选件**：清单文件头④说了 VAD 常开、没有开关，
+ * 少了它就该报错而不是悄悄跑一个会在静音上幻听的引擎。
+ */
+function vadFixture(bytes = Buffer.from("silero"), shaOverride?: string) {
+  const url = `/${crypto.randomUUID().slice(0, 8)}-vad.bin`;
+  routes.set(url, bytes);
+  return {
+    id: "fixture-vad",
+    fileName: "fixture-vad.bin",
+    downloadUrl: `${origin}${url}`,
+    sizeBytes: bytes.byteLength,
+    sha256: shaOverride ?? sha(bytes),
+    license: "MIT",
+    sourcePage: "https://example.invalid/fixture",
+  };
+}
+
+async function loadInstall(engine: ReturnType<typeof engineFixture>, vad: ReturnType<typeof vadFixture> = vadFixture()) {
   vi.doMock("../shared/localSpeech/localSpeechAssets", async () => {
     const actual = await vi.importActual<typeof import("../shared/localSpeech/localSpeechAssets")>("../shared/localSpeech/localSpeechAssets");
-    return { ...actual, localSpeechEngineForPlatform: () => engine, LOCAL_SPEECH_ENGINE_PLATFORMS: [engine] };
+    return { ...actual, localSpeechEngineForPlatform: () => engine, LOCAL_SPEECH_ENGINE_PLATFORMS: [engine], LOCAL_SPEECH_VAD_MODEL: vad };
   });
   return import("./localSpeechInstall");
 }
@@ -126,6 +145,7 @@ describe("本地转写引擎安装", () => {
     expect(fs.existsSync(ready.executablePath)).toBe(true);
     expect(fs.statSync(ready.executablePath).mode & 0o111).toBeGreaterThan(0);
     expect(fs.existsSync(ready.modelPath)).toBe(true);
+    expect(fs.existsSync(ready.vadModelPath)).toBe(true);
     expect(install.isLocalSpeechEngineInstalled(engine)).toBe(true);
     const cacheRoot = path.dirname(path.dirname(ready.executablePath));
     expect(fs.readdirSync(cacheRoot)).not.toContain("engine-fixture.zip");
@@ -202,6 +222,23 @@ describe("本地转写引擎安装", () => {
     const model = modelFixture(Buffer.from("weights"));
 
     await expect(install.ensureLocalSpeechReady(model)).rejects.toMatchObject({ reason: "unsupported-platform" });
+  });
+
+  it("VAD 模型字节被换过 → 整条红，不许退化成「没有 VAD 也先跑着」（那会在静音上幻听并吞掉真人讲话）", async () => {
+    const engine = engineFixture({ members: { "whisper-server": Buffer.from("real") }, executable: "whisper-server" });
+    const install = await loadInstall(engine, vadFixture(Buffer.from("silero"), "0".repeat(64)));
+    const model = modelFixture(Buffer.from("weights"));
+
+    await expect(install.ensureLocalSpeechReady(model)).rejects.toMatchObject({ reason: "checksum-mismatch" });
+  });
+
+  it("首次下载的分母含 VAD 模型——漏算它，进度条会在最后那几百 KB 上停在 100% 不动", async () => {
+    const engine = engineFixture({ members: { "whisper-server": Buffer.from("real") }, executable: "whisper-server" });
+    const vad = vadFixture(Buffer.from("silero-bytes"));
+    const install = await loadInstall(engine, vad);
+    const model = modelFixture(Buffer.from("weights"));
+
+    expect(install.pendingLocalSpeechBytes(model, engine)).toBe(engine.archive.sizeBytes + model.model.sizeBytes + vad.sizeBytes);
   });
 
   it("已装好的引擎与权重不会被重下（存在即已校验，见下载层第 3 条规矩）", async () => {
