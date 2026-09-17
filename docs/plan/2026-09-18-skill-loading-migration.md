@@ -8,6 +8,14 @@
 
 pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `formatSkillInvocation` / `SkillDiagnostic`），我们一个都没用，自己写了约 3000 行。自研那份在 6 月到 9 月踩出了 **59 条**经验（下表）。这份文档先把 59 条按原文捞出来，再按「pi 已覆盖 / 我们薄薄保留 / 确已过时」三档判，**每条 pi 已覆盖 / 薄薄保留的都要变成一条断言**——没变成断言的清单条目，等于没对照过（`docs/audit/2026-09-18-electron-unowned-state-structural-review.md` 的结论：958 个声明过的不变量因为没人核，等于不存在）。
 
+## 先查别人（R27 模板四问，实施前的检索报告）
+
+- **依赖里已有？** 有，整套。`node_modules/@earendil-works/pi-agent-core/dist/harness/skills.js:8`（`formatSkillInvocation(skill, additionalInstructions)`）、`:19`（`loadSkills`：递归、根目录下带 frontmatter 的 `.md`、ignore 文件、warning-only 诊断）、`:47`（`loadSourcedSkills`）、`dist/harness/skills.d.ts`（`SkillDiagnostic.code ∈ file_info_failed|list_failed|read_failed|parse_failed|invalid_metadata`）；`node_modules/@earendil-works/pi-coding-agent/dist/core/skills.js:275`（`formatSkillsForPrompt`，已在用）、`dist/utils/frontmatter.js:1-24`（`parseFrontmatter`，剥 BOM）。**pi-agent-core 的加载器不剥 BOM**（`dist/harness/skills.js` 的 `parseFrontmatter` 无 `stripBom`）——这是 S14 要薄薄保留的唯一一处。
+- **仓库里已有？** 有两份自研、零处 import pi 的加载器：`git grep -n "loadSkills\|loadSourcedSkills\|formatSkillInvocation" electron/` = 0 命中；自研在 `electron/skills/skillStore.ts:127-231`（`discoverSkillRecordsFromRoots`，只认 `root/<dir>/SKILL.md`）与 `electron/agentLane/laneInstalledSkills.mts:29-30`（`basename === 'SKILL.md'` 否则抛）；第三处手抄是 `electron/harness/context/agentContext.ts:175-179`（逐字抄 pi 的 `<skill>` 信封）。判官已经是 pi：`scripts/skills-format-lib.mjs:165-175`（F6 拿 pi-coding-agent 的 `loadSkillsFromDir` 判「别的宿主能不能读」）。
+- **生态里已有？** 同一形状三家收敛：Agent Skills 规范 <https://agentskills.io/specification>（`metadata` 是留给客户端的扩展点）、Claude Code <https://code.claude.com/docs/en/skills>（folder + SKILL.md + frontmatter；loose `.md` 也认）、pi-coding-agent 自己的应用层加载 `node_modules/@earendil-works/pi-coding-agent/dist/core/skills.js:308-345`（多根 collision winner=first、按 realpath 去重）与 <https://github.com/badlogic/pi-skills>（把别家目录加进 `skills` 根）。
+- **TikHub 自媒体里怎么说？** 未查。理由：这是「框架已提供的 API 该不该自研」的判断（R5④），判据是依赖与生态源码，不是用户行为；用户侧的摩擦已由 2026-09-18 真机复现（`my-skill.md` 在别处能装、在 Nomi 报错）钉死。
+- **结论：用已有。** 发现 / 解析 / 信封 / 诊断四样全部换成 pi 的函数；Nomi 只保留 pi 不管的投影与策略（§1「pi 不管的」一行），每一条在 §2 有出处与断言。
+
 ## 1. 先查别人：pi 到底给了什么（实读 `node_modules/@earendil-works/*@0.85.1`）
 
 | pi 提供 | 在哪 | 行为 |

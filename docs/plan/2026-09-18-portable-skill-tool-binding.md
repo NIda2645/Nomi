@@ -41,6 +41,14 @@
 
 ---
 
+## 先查别人（R27 模板四问；§2 是展开版，这里是可复核的索引）
+
+- **依赖里已有？** 没有间接层。pi 的 `Skill` 类型无 tools/capabilities 字段（`node_modules/@earendil-works/pi-coding-agent/dist/core/skills.d.ts:3-16`），`allowed-tools` 在整个 dist 里 grep = 0；工具层 `ToolDefinition` 只有 `name/label/description`（`dist/core/extensions/types.d.ts:344-372`）；唯一宿主适配是 `formatSkillsForPrompt(skills, "read"|"bash")` 的二选一。
+- **仓库里已有？** 间接层已经建好：注册表 `electron/shared/agentCapabilities/registry.ts`（`resolveCapabilityAlias`，模型面名字 → 契约 → effect），`renderLanePromptSections` 从它派生 `Available tools` / `Tool usage`（`electron/agentLane/lanePromptSections.ts:73-86`），后果句只有一份 `verbConsequence(effect, nextAction)`（`electron/shared/agentCapabilities/verbDeclaration.ts:140`）；缺的只是技能没接上（§4.2）。
+- **生态里已有？** 规范正本 <https://agentskills.io/specification>（6 个键，一个字不提工具解析；`metadata` 留给客户端）；MCP 规范 <https://modelcontextprotocol.io/specification/2026-07-28/server/prompts#data-types>（Prompt 无引用工具的字段）与 Skills 扩展 <https://modelcontextprotocol.io/extensions/skills/overview>（SEP-2640，走 Resources，不含工具引用；含工具引用的 SEP-2076 已关）；逐宿主实查见 §2.6 表（pi / Codex parser.rs / Cursor / Cline / Claude Code / LangChain / A2A 等，每行带 URL 或 file:line）。
+- **TikHub 自媒体里怎么说？** 未查 TikHub；社区同类痛点有正式记录：<https://github.com/fworks-tech/agenthood/issues/552>（"No way to check if required tools are available before activation"），第三方只有转译器 <https://github.com/jduncan-rva/skill-porter>，业界正解是「自然语言间接」<https://codex.danielvaughan.com/2026/05/05/agent-skills-open-standard-portable-skills-codex-cli-cross-agent/>。
+- **结论：用已有（注册表）+ 不自造字段。** (a) 技能正文只写要做成的事，(b) 宿主从注册表派生工具事实（§3.1）；提交期门岗 `check:skill-tool-binding` 只管我们自己的技能，外部技能运行时由权威节纠正。
+
 ## 1. 先把事故看准：它不是"硬写工具名"，是"技能正文复述了注册表已经拥有的事实"
 
 ### 1.1 两次事故 + 一次今天才发现的
