@@ -185,6 +185,22 @@ draftShotFromPlan((call!.call.args as any).shots[0], 0, {
 
 **分镜表的行标题优先级（既成事实，表要跟它一致，不再造第四种）**：模型拟的 `title`（`draft_shots` 信封字段，`electron/shared/generationShotEnvelope.ts`）> 提示词派生 > 渲染层 i18n 兜底（`generationCommon.production.canvasLanding.shotFallbackTitle`）。表若将来加标题列，**读节点已有的 `title`**，不许自己从 prompt 截一段，也不许在主进程编中文兜底。
 
+### 8.1.1 真机走查记录（`tests/ux/golden-path.e2e.mjs`，隔离 profile，loopback 零额度）
+
+九步全绿：新建项目 → 三句剧本 → `draft_shots` 落 3 镜 + `shot_table(production)` + 分镜组 → 画布表里 3 行（行 id = 节点 id、行序 = 落地序、第 2 行画面列 = 第 2 镜提示词、节点标签 = 模型拟的 `title`、节点模型 = 草稿点名的模型）→ 表里勾第 2 镜 → Agent `draft_shots(draftId, shots[{shotId:'shot-2'}])` 改它（1/3 镜逐字未变、表行跟着变）→ 表 footer「生成 1 镜」→ 花钱确认卡 → loopback 出图回到该行（审片请求拿到的是模型拟的标题与改后提示词）→ 真进程退出 → 冷启动「继续创作」→ 盘上与表里修改和图都在、同一 SDK session、零模型调用。阳性对照（`--positive-control`：关 app 后把盘上第 2 镜节点提示词改回旧值）必须在「重启后盘上第 2 镜的提示词丢了」那一条红——见 8.1.2。截图 `.tmp/golden-path-<ts>/01…11-*.png`。
+
+走查一路挖出并修掉的东西（都是用户路径上的）：
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| 点「重置视图」滑块 70→95 又被拉回 59 | 重置走 React Flow 的 d3 过渡（`setViewport({duration:200})`），紧跟「适应视图」时 fit 那 200ms 的 rAF 动画逐帧盖回去——与 #503（`docs/fixes/2026-09-05-canvas-perf-marquee-autopan`）同一类：视口动画只许有一个 owner（`useReactFlowViewportAnimation`） | **产品修**：`GenerationCanvasReactFlow.tsx` 重置改为 `cancelViewportAnimation()` + `animateViewportTo(1, 原点, 200)`，与 fitView 零时长那条同款。无自动覆盖（金路径最终不走重置——见下一行），如实记 |
+| 打开画布后 360ms 内的任何视口动作都会被盖掉 | 落节点/重开项目补齐都会 `requestCanvasFit`，画布挂载后 `useCanvasFitSignal` 延迟 360ms 自动 fit（产品意图：让用户看到新落的东西） | **走查修**：共享 helper `waitForCanvasViewportSettled`（`tests/ux/_canvasHit.mjs`，滑块连续 800ms 没动才算停）——人是看画布停了才动手；不改产品 |
+| 「重置视图」回到画布原点，表不在那儿（`onlyRenderVisibleElements` 下连 DOM 都没有） | 表由 `addNode` 自动摆位，不在原点 | **走查修**：适应视图 → 空白处按住拖到舞台正中 → 滑块 80%（真实控件，绕视口中心缩放） |
+| 100% 时表 960px 宽、舞台 800px，左沿出界，勾选框点不到 | 表的 full 密度阈值是 ≥80%（`shotTableDensityForZoom`） | **走查修**：拨 80% 而不是 100%，并断整张表在舞台内 |
+| 收尾报「1 个未登记的模型请求 /v1/chat/completions」 | 表里的「生成」走画布批次 runner（`confirmAndRunPlan`），批次跑完 runner 拿真图问一次审片 | **走查修**：预登记审片请求，顺手断它拿到的标题/提示词 |
+
+**没修、要另案的 UX 发现（眼见于截图）**：① 画布左侧浮动「加节点」工具条压在拖到正中的表的第一列上（勾选框在它底下，点得到但看不见）——任何节点被拖到左侧都会被它盖住，是画布通用问题；② 分镜组的标题条压住第一个节点的「镜头 1 · 标题」那一行（与 09-09「标签行不与动作条互遮」那条拍板同族）；③ 草稿刚落地时占位节点写「排队中 · 第 1/3」，可此刻什么都没在跑（cardHidden 草稿）——文案与状态不符；④ 重启回到画布时底部弹出「生成全部 2 个」批次条（画布对未生成节点的既有提议），与表 footer 的「生成 N 镜」是同一件事的两个入口（8.4 第 2 条那两扇付费门）。
+
 ### 8.2 没做的（要样张拍板 / 另案）
 
 - **B.3 分镜页与侧栏「方案」列表增加 Run 条目、「新建方案」改语义、落地后自动激活** —— 改的是外观与交互（`StoryboardPlanEditor` 要以「只读候选 + revise」渲染一类新 source；侧栏多一类条目），按 R8 先出样张、用户拍板，本刀不做。现状诚实说明：Agent 草稿在**画布**的分镜表里可见、可选、可生成；分镜页/侧栏仍只列用户手写方案。
