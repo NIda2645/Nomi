@@ -175,7 +175,9 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
         />
       </span>
 
-      <span className="ml-auto shrink-0 text-micro text-nomi-ink-40">
+      {/* 这句提示是行尾附属信息：它跟着内容走，不许贴死在右缘（用户 2026-09-09 拍板）。
+          `shrink-0` + `ml-auto` 在窄列里就是「宁可冲出去也不换行」——W-03 里被切的就是它。 */}
+      <span className="ml-auto min-w-0 text-micro text-nomi-ink-40">
         {t('storyboardEditor.bulk.hint', { count: plan.shots.length })}
         {overriddenRows > 0 ? ` · ${t('storyboardEditor.aspectScope.bulkHint', { count: overriddenRows })}` : ''}
         {unsupportedAspectRows > 0 ? ` · ${t('storyboardEditor.aspectScope.unsupportedHint', { count: unsupportedAspectRows })}` : ''}
