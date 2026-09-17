@@ -25,6 +25,24 @@ export function isVisualAnchor(anchor: Pick<PlanAnchor, 'carrier' | 'kind'>): bo
 }
 
 /**
+ * 「这把锚**自带素材**」的唯一谓词：自己带 URL（@ 引用素材库 / 上传的文件），
+ * 或指着画布上一个已经出了图的节点（结果即收：用作… → 设为首帧 / 存为参考）。
+ *
+ * 自带素材的锚**不需要再生成一张参考卡**，所以 materialize 从不给它建节点
+ * （`storyboardPlan.ts` 的建卡两处 + 连边一处），执行时素材要么随 params 走 URL、
+ * 要么随边从源节点走。
+ *
+ * 为什么必须只有一份（2026-09-18 根因）：行状态层曾另写一份判据——「这张锚的 URL 有没有
+ * 落进本行模式某个吃图槽的 `referenceBindings`」——去决定要不要等它。@ 引用与结果即收
+ * 两条路都不写 `referenceBindings`，没钉模型的行更连槽都没有，于是同一张锚在执行层
+ * 「素材已就位」、在状态层「等参考图」：批量把该行排除、页脚照着报数、参考卡带写「N 镜在等它」。
+ * 两份判据回答同一个问题就必然漂，这里收成一份。
+ */
+export function anchorCarriesOwnMaterial(anchor: Pick<PlanAnchor, 'referenceUrl' | 'referenceSourceNodeId'>): boolean {
+  return Boolean(anchor.referenceUrl || anchor.referenceSourceNodeId)
+}
+
+/**
  * 定妆卡/场景卡提示词构造（R6 调研落地：把图当「版面/网格」描述，先锁身份再列视图，
  * 中性背景+平光+小标签，多视图+多变体集中一张图，整张喂参考视频）。GPT Image 2 尤擅此类多面板版面。
  * 视觉锚（character/scene/prop）→ 卡片大图；变体（成年/童年、白天/夜晚…）拼进「变体行」。

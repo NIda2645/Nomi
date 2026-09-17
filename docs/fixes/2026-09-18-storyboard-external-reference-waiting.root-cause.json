@@ -1,0 +1,187 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-storyboard-external-reference-waiting",
+  "problem_type": "同一份状态被两层各写一份判据：执行层认「素材怎么走」，状态层认「槽里填没填」",
+  "symptom": "分镜行挂了真实参考图（@ 引用素材库/上传的文件，或「用作… → 设为首帧/存为参考」收进来的已生成结果），行状态却显示「等参考图」（data-storyboard-frame=waiting-refs）：页脚计入「在等参考卡」、参考卡带写「N 镜在等它」、整批生成把这一行排除。而同一行真点「生成」时，素材照常发给模型。",
+  "direct_cause": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts 的 waitingRefs 循环只在「该锚的 URL 落进了本行模式某个吃图槽的 shot.referenceBindings」时才放行；两条真实写入路径（addExternalReferenceAnchor → shot.anchorIds）都不写 referenceBindings，没钉模型的行（mode=null）更连槽都没有，于是它去找一张 materialize 按设计根本不会建的参考卡节点，找不到就判等待。",
+  "class_root": "「这张锚还要不要生成一张参考卡、素材到底到不到得了模型」这一个问题，materialize 与行状态层各写了一份判据。materialize 用的是「自带 URL 或指着已有节点」（storyboardPlan.ts 四处），状态层用的是「referenceBindings 槽里填没填」。判据不同源，同一张锚就必然在两层得出相反结论。",
+  "affected_population": [
+    "任何用 @ 从素材库/上传插入参考图的分镜行（不分模型）",
+    "任何用「用作… → 设为首帧 / 存为参考」把已生成结果收进另一镜的行",
+    "没钉模型的行（参考列为 unknown-contract，只渲染 @ 入口）——它连槽都没有，必然命中"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts"
+  ],
+  "entry_points": [
+    "分镜行提示词框的 @ 引用（素材库 / 上传 / 某镜结果）",
+    "画面格动作浮条「用作…」→ 设为首帧 / 存为参考",
+    "Agent 经 propose_storyboard_plan 写入带 referenceUrl 的锚"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这条不变量完全由本仓自己的分镜数据模型与 materialize 出口决定，没有第三方文档可依。",
+  "invariants": [
+    "一张锚自带素材（自己带 URL，或指着画布上一个节点）时，materialize 不为它建参考卡节点——状态层因此不得去等一张不会存在的卡。",
+    "自带素材的锚是否「就位」，只由素材怎么到模型决定：只带 URL 的随 params.referenceImageUrls 走，恒就位；指着节点的随一条参考边走，那个节点必须还在且已出图。",
+    "「这张锚自带素材」只有一个谓词（anchorCarriesOwnMaterial），materialize 与行状态层都读它。"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "line": 403,
+      "symbol": "addExternalReferenceAnchor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 407,
+      "symbol": "addExternalReferenceAnchor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+      "line": 41,
+      "symbol": "anchorCarriesOwnMaterial"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "line": 132,
+      "symbol": "anchorCarriesOwnMaterial"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "line": 496,
+      "symbol": "anchorCarriesOwnMaterial"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "line": 578,
+      "symbol": "anchorCarriesOwnMaterial"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "line": 616,
+      "symbol": "anchorCarriesOwnMaterial"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "line": 668,
+      "symbol": "anchorCarriesOwnMaterial"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "两扇写入门是两种不同的用户动作，必须都在：ShotTable:403 是提示词框里的 @ 引用，PlanEditor:407 是画面格「用作…」的结果即收（另带 sourceNodeId）。五扇读门原本各写一份条件表达式，本次全部改读同一个谓词（storyboardPromptCompiler:41），门数不减但判据从 5 份收成 1 份——要消掉读门只能把 materialize 与状态派生合成一层，那是两个不同职责，合并反而制造巨壳。"
+  },
+  "generality_proof": "两条写入门产出的状态形状只有两种：带 referenceUrl、或再带 referenceSourceNodeId。修复把「要不要等」的判据搬到 anchorCarriesOwnMaterial 这一个谓词上，并按素材的两条真实出口（params URL / 参考边）分别判定就位；materialize 的四处判据同时改读这个谓词。因此不管素材从哪个入口进来、行有没有钉模型、模式有没有吃图槽，两层给出的结论都来自同一份事实。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+      "symbol": "anchorCarriesOwnMaterial",
+      "responsibility": "「这张锚自带素材（因此不需要再生成一张参考卡）」的唯一谓词；materialize 与行状态层共用。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "deriveShotRowExec",
+      "responsibility": "行状态与参考卡等待计数的唯一 owner：自带素材的锚按素材出口判就位，只有源节点缺失/未出图才算等待。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "entry_point": "onAddExternalReference",
+      "disposition": "enforced",
+      "evidence": "@ 引用把锚追加进 shot.anchorIds、不写 referenceBindings；新判据不再要求槽位绑定，storyboardExec.test.ts 的素材库用例覆盖。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "onSetResultAsFirstFrame",
+      "disposition": "enforced",
+      "evidence": "结果即收带 referenceSourceNodeId；新判据按源节点在不在、出没出图判定，storyboardExec.test.ts 的两条用例分别覆盖就位与悬空。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+      "entry_point": "normalizeStoryboardAnchorDefaults",
+      "disposition": "enforced",
+      "evidence": "Agent 写入路径也会产出带 referenceUrl 的锚；storyboardAnchorReal.test.ts 在真实写边界上验证整份方案 8 行全 ready，并保留「源节点悬空仍等待」那条。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "entry_point": "deriveAnchorCardRuntimes",
+      "disposition": "enforced",
+      "evidence": "参考卡带的「N 镜在等它」直接数 rows 的 waitingRefs，判据收口后自动跟随，无第二处判定。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "entry_point": "buildAnchorCardNode 的两处建卡判据",
+      "disposition": "enforced",
+      "evidence": "原本各写一遍 referenceUrl || referenceSourceNodeId，现改读同一谓词；door-map 显示 5 处调用点全部指向它。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "两条写入入口都会反复产生这类锚，且任何新的「把素材挂到镜头上」的入口（如拖拽落图、技能产出）都会再走一遍同一条路；只要判据有两份，新入口就会再次踩中。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs addExternalReferenceAnchor → 2 扇写入口，全部覆盖",
+      "grep -rn referenceSourceNodeId src/ → materialize 三处 + 状态层一处 + schema/edits，逐处核对",
+      "grep -rn referenceBindings src/ electron/ → 确认它今天不投影到节点（v6 合同 §9.3 记为待还的债），因此不能当作「素材到得了模型」的判据"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+    "invariant": "自带素材的锚不需要参考卡节点；要不要等只看素材出口（params URL 恒就位，参考边要源节点在且已出图）。",
+    "failure_mode": "源节点缺失或还没出图时 fail-closed：该行照旧 waiting-refs，并把那张锚放进 waitingRefs 指名等谁。",
+    "exception_policy": "none",
+    "strategy": "把判据从两个读取方各自的条件表达式，提升成 materialize 与状态层共同 import 的一个谓词；新的读取方只能读它，无处再写第二份。",
+    "artifacts": [
+      "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardExec.test.ts",
+    "src/workbench/generationCanvas/agent/storyboardAnchorReal.test.ts",
+    "tests/ux/storyboard-table-phasec.walk.mjs",
+    "tests/ux/storyboard-table-exec.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardExec.test.ts",
+    "src/workbench/generationCanvas/agent/storyboardAnchorReal.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlan.ts"
+    ],
+    "rationale": "storyboardRowStatus.ts 里按 referenceBindings 槽位匹配的那份放行判据（连同它带进来的 SLOT_ACCEPTS 依赖）与 storyboardPlan.ts 四处手写的 referenceUrl || referenceSourceNodeId 条件，回答的是同一个问题；同 commit 全部改读新谓词，无 fallback、无并行版。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量完全由本仓分镜数据模型决定，不受任何第三方运行时影响。",
+    "exit_criteria": []
+  },
+  "residual_risks": [
+    "参考卡带/锚行对自带素材的锚仍显示「未生成」且不渲染缩略图（resultUrl 只从节点结果取）。同一族的投影谎言，但修它要连带处理锁定/生成两个对该锚无效的控件，属 UI 一轮，未在本次修复内。",
+    "referenceBindings 至今不投影到节点（v6 合同 §9.3 的债）。本次修复把「等不等」与它解耦，但没有还这笔债；等它真的投影到节点时，槽位与 anchorIds 两条路要重新对账一次。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/exec/storyboardExec.test.ts",
+      "src/workbench/generationCanvas/agent/storyboardAnchorReal.test.ts"
+    ]
+  },
+  "migration": "无数据迁移：PlanAnchor 的形状一个字段都没改，磁盘上的旧方案照读。行为变化只发生在读取侧——存量方案里那些「挂了外部参考却被判等参考图」的行，打开即恢复成 ready 并重新进入批量；反过来，指着已删除节点的锚照旧判等待（fail-closed），所以没有一行会因为这次改动被静默地送进生成。"
+}

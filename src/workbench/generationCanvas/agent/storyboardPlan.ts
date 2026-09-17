@@ -2,6 +2,7 @@ import type { BuiltinCanvasCategoryId, GenerationCanvasEdgeMode } from '../model
 import { DEFAULT_IMAGE_SECONDS } from '../model/buildClipFromGenerationNode'
 import i18n from '../../../i18n'
 import {
+  anchorCarriesOwnMaterial,
   buildAnchorSheetPrompt,
   buildKeyframePrompt,
   buildShotPrompt,
@@ -499,7 +500,7 @@ function buildShotRowNodes(
   const referenceOrder = referenceOrderForShot(shot, anchorById)
   const externalReferences = visualAnchorIds
     .map((anchorId) => anchorById.get(anchorId))
-    .filter((anchor): anchor is PlanAnchor => Boolean(anchor && anchor.referenceUrl && !anchor.referenceSourceNodeId))
+    .filter((anchor): anchor is PlanAnchor => Boolean(anchor && anchorCarriesOwnMaterial(anchor) && !anchor.referenceSourceNodeId))
     .sort((a, b) => (referenceOrder.get(a.id) ?? 0) - (referenceOrder.get(b.id) ?? 0))
   const externalImageUrls = externalReferences.filter((anchor) => (anchor.referenceKind ?? 'image') === 'image').map((anchor) => anchor.referenceUrl!)
   const externalVideoUrls = externalReferences.filter((anchor) => anchor.referenceKind === 'video').map((anchor) => anchor.referenceUrl!)
@@ -580,7 +581,8 @@ function buildShotRowNodes(
     for (const anchorId of visualAnchorIds) {
       const anchor = anchorById.get(anchorId)!
       const sourceId = options.existingAnchorNodeIdByAnchorId?.[anchorId] || anchorId
-      if (anchor.referenceUrl && !anchor.referenceSourceNodeId) continue
+      // 自带素材且**不是**指向已有节点的那种：素材随 params 走 URL，没有边可连。
+      if (anchorCarriesOwnMaterial(anchor) && !anchor.referenceSourceNodeId) continue
       edges.push({ sourceClientId: anchor.referenceSourceNodeId || sourceId, targetClientId: referenceTargetId, mode: edgeModeForAnchor(anchor.kind), order: referenceOrder.get(anchorId) })
     }
   }
@@ -618,7 +620,7 @@ export function storyboardPlanToCreateNodesArgs(
 
   // 视觉锚 → 定妆卡/场景卡节点。prompt 用「卡片大图」构造器：多视图+多变体集中一张图、整张喂参考（用户拍板）。
   for (const anchor of plan.anchors) {
-    if (!isVisualAnchor(anchor) || anchor.referenceUrl || anchor.referenceSourceNodeId) continue
+    if (!isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor)) continue
     nodes.push(buildAnchorCardNode(anchor, options))
   }
 
@@ -670,7 +672,7 @@ export function storyboardShotToCreateNodesArgs(
   if (!options.omitAnchorReferenceEdges) {
     for (const anchorId of shot.anchorIds) {
       const anchor = anchorById.get(anchorId)
-      if (!anchor || !isVisualAnchor(anchor) || anchor.referenceUrl || anchor.referenceSourceNodeId) continue
+      if (!anchor || !isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor)) continue
       if (existing[anchorId]) continue
       nodes.push(buildAnchorCardNode(anchor, options))
     }

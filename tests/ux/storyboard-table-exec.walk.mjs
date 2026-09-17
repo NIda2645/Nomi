@@ -314,8 +314,11 @@ try {
     .poll(async () => (await anchorNames.evaluateAll((nodes) => nodes.map((node) => node.value))),
       { message: '设为镜 1 首帧后参考卡区没有长出名为「镜 6」的参考卡' })
     .toContain('镜 6')
-  // 只记录不判红（结构性发现，见 PR 正文）：这张卡的来源是已生成的镜 6 结果，但行状态派生可能把它当「待生成」。
-  console.log('  · 结果即收后镜 1 画面格状态 →', await frame(1).getAttribute('data-storyboard-frame'))
+  // 收进来的素材是**镜 6 已经生成好的结果**（画布上那个节点还在、真出了图），所以镜 1 无可等待。
+  // 修复前这里被判 `waiting-refs`：状态层去找一张永远不会存在的参考卡节点，而执行层早就能从
+  // 镜 6 那个节点连边取图。
+  await expect(frame(1), '收了一张已生成结果当参考的行不该说「等参考图」')
+    .not.toHaveAttribute('data-storyboard-frame', 'waiting-refs')
 
   // ── D2. 参考卡 / @ 胶囊预览：双击走同一 body-portal 全屏。 ──
   // 参考卡的**悬停**浮层随 v6（0d5a56d47）去掉了——`StoryboardHoverPreview` 现在全仓零调用点（遗留死码，

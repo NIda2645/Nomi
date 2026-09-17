@@ -1,10 +1,10 @@
-import { anchorsConsumedBy, SLOT_ACCEPTS } from '../../../../config/modelArchetypes/anchorPolicy'
+import { anchorsConsumedBy } from '../../../../config/modelArchetypes/anchorPolicy'
 import { ignoredShotAnchors, type IgnoredAnchor } from '../../../generationCanvas/agent/storyboardAnchorPolicy'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../config/modelArchetypes/types'
 import type { ModelOption } from '../../../../config/models'
 import { stableShotId, type PlanAnchor, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
-import { isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
+import { anchorCarriesOwnMaterial, isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import { isAnchorFrozen } from '../../../generationCanvas/model/anchorBibleKeys'
 import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
 import { effectiveShotValue, missingRequiredSlots, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
@@ -121,10 +121,22 @@ export function deriveShotRowExec(input: {
     // isVisualAnchor 再过一道：与 materialize 连边同一谓词——不给「永远等一张不会生成的卡」留缝
     // （如 carrier 被手动翻成 visual 的 style 锚，materialize 不建节点也不连边）。
     for (const anchor of referencedVisualAnchors(shot, plan.anchors).filter(isVisualAnchor)) {
-      // A real reference already bound in the active image slot is the input;
-      // materialization deliberately does not create another anchor node for it.
-      if (anchor.referenceUrl && !anchor.referenceSourceNodeId && mode?.slots.some(slot => SLOT_ACCEPTS[slot.kind].includes('image')
-        && shot.referenceBindings?.[slot.kind]?.some(binding => binding.anchorId === anchor.id && binding.url === anchor.referenceUrl))) continue
+      // 自带素材的锚（@ 引用素材库/上传、结果即收）**没有**参考卡节点可等——materialize 按同一个
+      // 谓词决定不给它建卡（storyboardPromptCompiler.anchorCarriesOwnMaterial）。等不等，要看
+      // **素材怎么到模型**（与 storyboardPlan.ts 的两条出口一一对应）：
+      //   · 只带 URL       → 随 `params.referenceImageUrls` 走，节点建不建都不影响 → 从不等；
+      //   · 指着画布节点   → 随一条参考边从那个节点走 → 那个节点还在、且真出了图，才叫就位。
+      // 这里曾另写一份判据：「URL 有没有落进本行吃图槽的 `referenceBindings`」。但 `referenceBindings`
+      // 今天根本不投影到节点（v6 合同 §9.3 记着这笔债），@ 引用与结果即收两条路也都不写它，
+      // 没钉模型的行更连槽都没有——于是同一张锚在执行层「素材已就位」、在状态层「等参考图」。
+      if (anchorCarriesOwnMaterial(anchor)) {
+        if (!anchor.referenceSourceNodeId) continue
+        const sourceNode = nodes.find((candidate) => candidate.id === anchor.referenceSourceNodeId) ?? null
+        if (sourceNode && hasUsableResult(sourceNode)) continue
+        // 源节点被删/还没出图：那条边接不上，素材真的到不了模型——这一行该等，且等的是它。
+        waitingRefs.push({ anchor, node: sourceNode })
+        continue
+      }
       const anchorNode = findAnchorNode(nodes, designId, anchor)
       if (!anchorNode || !hasUsableResult(anchorNode)) {
         waitingRefs.push({ anchor, node: anchorNode })
