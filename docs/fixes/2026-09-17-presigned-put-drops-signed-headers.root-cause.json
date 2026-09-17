@@ -182,13 +182,13 @@
     {
       "kind": "read",
       "path": "electron/catalog/builtinVendorSeeds.ts",
-      "line": 113,
+      "line": 128,
       "symbol": "HIGGSFIELD_VENDOR_SEED"
     },
     {
       "kind": "read",
       "path": "electron/catalog/builtinVendorSeeds.ts",
-      "line": 181,
+      "line": 196,
       "symbol": "authScheme"
     },
     {
@@ -248,7 +248,7 @@
     {
       "kind": "read",
       "path": "electron/catalog/seedBuiltins.ts",
-      "line": 302,
+      "line": 303,
       "symbol": "HIGGSFIELD_MODELS"
     },
     {
@@ -260,13 +260,13 @@
     {
       "kind": "read",
       "path": "electron/catalog/seedBuiltins.ts",
-      "line": 342,
+      "line": 345,
       "symbol": "HIGGSFIELD_VENDOR_SEED"
     },
     {
       "kind": "read",
       "path": "electron/catalog/seedBuiltins.ts",
-      "line": 428,
+      "line": 431,
       "symbol": "authScheme"
     },
     {
@@ -290,7 +290,7 @@
     {
       "kind": "read",
       "path": "electron/catalog/validateCandidateCredential.ts",
-      "line": 48,
+      "line": 64,
       "symbol": "authScheme"
     },
     {

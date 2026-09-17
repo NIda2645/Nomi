@@ -544,19 +544,19 @@
     {
       "kind": "write",
       "path": "electron/catalog/builtinVendorSeeds.ts",
-      "line": 140,
+      "line": 144,
       "symbol": "builtinVendorSeed"
     },
     {
       "kind": "read",
       "path": "electron/catalog/builtinVendorSeeds.ts",
-      "line": 47,
+      "line": 50,
       "symbol": "CredentialMode"
     },
     {
       "kind": "write",
       "path": "electron/catalog/seedBuiltins.ts",
-      "line": 529,
+      "line": 535,
       "symbol": "applyBuiltinSeeds"
     },
     {
