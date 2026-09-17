@@ -140,6 +140,7 @@
 - [能力绑在组件挂载生命周期上，「不存在」就会被说成「过期」](capability-bound-to-component-lifecycle-reports-stale.md) — Agent/MCP 工具「时好时坏」、`*_stale` 一族错误码重试永远撞同一句、或你正要在 `.tsx` useEffect 里 `setXxxTools(api)` 发布能力时读；owner 上移到会话层、组件只做增强覆盖；门岗 `check:capability-lifecycle`
 - [读路径不许写盘：像读实为写的 clientInfo 把本机 5 个 MCP 客户端配置指向死 profile](mcp-read-path-must-not-write-host-configs.md) — 开设置页就改写真实宿主配置、写了不读回照样绿灯；守卫下沉到唯一写盘门，隔离判据用 os.userInfo().homedir；跑隔离实例前先备份 5 个文件
 - [Antigravity 图像验证两平台一起红：自己的 agent 定义关掉了自己的钩子](antigravity-hooks-need-inherit-customizations.md) — `inheritCustomizations:false` 在 agy ≥1.1.27 连 hooks 一起关；「加载了」≠「执行了」；同码双平台红先查共享层
+- [全局 HID 不带目标应用：发 Cmd+Q 之前不确认前台是谁，你退掉的是自己的宿主](hid-global-input-must-verify-frontmost-app.md) — 准备用真鼠标真键盘驱动桌面 App（尤其 `Cmd+Q`/`Cmd+W`），或一批 agent 毫无征兆集体断线、用户看到某 App「闪退」时读；全局事件落在前台窗口不带目标应用，退出走 `osascript quit app`，能用 Playwright 页面级驱动就别用全局 HID
 
 - [平台门控必须在 UI 上说人话](platform-gates-must-explain-user-action.md) — Windows 等平台被拒绝却显示未检测或部分受限时
 - [Antigravity CLI Windows 修复计划](../plan/2026-09-08-antigravity-cli-windows.md) — 六条现场记录核实、回归与 RC 边界

@@ -18,7 +18,7 @@
 | T-RL-02 | Agent 做不出图/视频：动词被翻成适配器白名单里没有的名字 → 恒 `generation_surface_unavailable` | done #797 | [截图](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) · [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合；#777 已关。剩余矩阵夹具见 T-AG-10 |
 | T-RL-03 | 视频拆解全失败：付费出口没穿 `grantId`，错误被吞 | done #804 | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合入 `integration/release-20260917`：保留「付费出口一律带 grantId」主体，按用户拍板删掉「最短镜头长度按源片 fps 派生」与那条 12fps 用例（碎镜那条由 #795 的 0.1s 量化解掉，不留并行判据） |
 | T-RL-04 | 设置页 7–8 个冗余区块全删 + 供应商默认放行 + 系统提示词搬进模式弹层 | done #781 | [原文 09-12/09-13](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合 |
-| T-RL-05 | MCP 连接真实性五 bug（只打开 tab 就静默改写本机 5 个全局配置等） | done #804 | [原文 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合入 `integration/release-20260917`：保留 MCP 连接真实性修复，设置页以 #781 为准丢弃那一半。**仍需用户在真实 Nomi.app 点一次连接**验证 **批次 2 追加**：走查发现「配置目录在不在」就判已装，5 个空目录让 5 个客户端全显示可接入（W-15），已改成要求非空痕迹。 |
+| T-RL-05 | MCP 连接真实性五 bug（只打开 tab 就静默改写本机 5 个全局配置等） | done #804 · 09-17 真实资料库真点验过四条判据 | [原文 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合入 `integration/release-20260917`：保留 MCP 连接真实性修复，设置页以 #781 为准丢弃那一半。**仍需用户在真实 Nomi.app 点一次连接**验证 **批次 2 追加**：走查发现「配置目录在不在」就判已装，5 个空目录让 5 个客户端全显示可接入（W-15），已改成要求非空痕迹。 |
 | T-RL-06 | 右侧 AI 栏 + 时间轴同时开 → 页面被切割、右下缺一块、面板没顶到底 | done #794 #796 | [截图 09-13 19:27](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) | 已合；停靠列 B 方案仍留下一版 |
 | T-RL-07 | 「skill 能用」：选了 skill 回复里看得出被用、画幅/提示词跟着变 | done #800 | [原文 09-10/09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合 #800，证据 `docs/evidence/2026-09-15-skill-real-run/`；一次只能选一个 skill 仍归 T-AG-05 |
 | T-RL-08 | 拆解出来的秒数一堆小数 | done #795 | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合（`shotTime.ts` 0.1s 量化是唯一 owner） |
@@ -96,6 +96,7 @@
 | T-ED-06 | 拆解中断后分镜表节点**永久卡死不报错** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 终态保证缺一条：每个节点必须落到成功/失败/可找回三者之一，没有「永远在跑」这一格 |
 | T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n |
 | T-DS-17 | 拆解表画面六格失败时**一个字原因都没给** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | `visionFailed` 已经带着 `failureReason`，UI 没渲染它——不是没有原因，是没往外说 |
+| T-DS-18 | 分镜面多选浮条 `sticky bottom-2` **永不生效** | todo | 09-17 W-03 工人结构性发现 | 浮条住在 `[data-storyboard-rows]` 里，而那个容器是 `overflow-hidden` → sticky 没有可滚动的定位祖先，等于普通静态定位。批量选中后浮条不跟随，用户滚下去就看不见它了。与 T-DS-14 同一片区域，一起改 |
 
 ## E. 素材与导入
 
@@ -126,6 +127,9 @@
 | T-MO-10 | 接入验证会扣积分（花钱却没过报价卡） | todo | 09-11 群反馈 | 违反「钱的闸」，要么免费自检要么先问 **批次 2 只做了根因定位，没改行为**（怎么修是产品岔路，等拍板）：付费点是 `electron/catalog/directKeyCredential.ts:49` `probeDirectKeyCredential` —— 用户点「保存验证」当场发一次真实 `POST /chat/completions`（`max_tokens:1`）；它经 `appFetch` 直接出门，**不碰 `runtime.ts`、没有 `grantId`**，所以报价卡在结构上永远不会为它出现。`revalidatePendingCredential`（`validateCandidateCredential.ts:82`）在首用前还会再跑一次同样的付费探测。受影响的只有 apimart（唯一声明 `livenessProbe` 的种子）；kie/minimax 走 `first-use`，存 key 不验。`builtinVendorSeeds.ts` 上那句「Paid only by the weekly radar」已是假话，批次 2 把注释纠正了。三条修法各自对用户的承诺不同：① 换一个真免费的自检端点（要先证明它对合法 key 不回 401）② 把这次探测接进报价卡（接入时就弹一张卡，多一步）③ 退回 `first-use`：存 key 不验，接入页显示「已保存 · 未验证」——但走查第 2.1 节刚确认现在这条路的诚实报错是**好的**，退回会把它弄丢。 **09-17 裁决（批次 3 实施）**：`probeDirectKeyCredential` **不许再发 `POST /chat/completions`**。先查 APIMart 有没有 `GET /v1/models` 或等价免费端点——**合法 key 不 401 要实测一次**（只发 GET、不生成；仓库现有证据说的正相反，`builtinVendorSeeds.ts` 的 livenessProbe 就是为此存在的，所以这一步是证伪而不是确认）；实测不成立就和 kie/minimax 一样走 `first-use`：存 key 不验。`revalidatePendingCredential` 同样处理。把「验证不花钱」写成测试：任何 credential 探测路径出现 `POST /chat/completions` 即红。 |
 | T-MO-11 | 「这个模型现在能不能用」以前有好几份判断，收成一个 owner（P0-10） | done #765 | 09-12 P0 清单 | 已合：`electron/shared/modelAvailability.ts` 单一真相源 + 门岗 `pnpm run check:model-availability` + 模型框去重 `useDedupedModelSelect`；落点在 `71b38b8fa` 核对通过 |
 | T-MO-12 | 接模型验收：30 句题库进 CI + 外部宿主真实闭环 + 修掉「工具结果说没有证据的话」这一族 | hold #799 | 09-15 验收方案 | 用户 09-17 拍板延后：它堆在 #754（T-MO-05）之上，单独合会把题库钉在一个还没落地的工具面上。随 T-MO-05 一起基于最新 main 重做；30 句进 CI 这件事本身不作废 |
+| T-MO-17 | 设置侧栏里没有「MCP」四个字，用户要连 MCP 得先猜「自动化与权限」 | todo | 09-17 T-RL-05 真实点击验收（现场 `~/Desktop/nomi-scratch-0917/mcp-click/report.md`） | 真实点击验收的用户镜头摩擦①：六步路径 齿轮→设置→自动化与权限→管理连接→选客户端→一键接入，第三步全靠猜。改法是让侧栏那条同时印出「MCP」，不新增层级 |
+| T-MO-18 | 顶部徽章「就绪」实际意思是「还没接」，语义反了 | todo | 09-17 T-RL-05 真实点击验收（现场 `~/Desktop/nomi-scratch-0917/mcp-click/report.md`） | 摩擦②：徽章跟着所选客户端在 已接入/就绪/已配置 之间跳，「就绪」这个词在别处都表示「好了」，这里却表示「尚未接入」——同一套词表要一个 owner，别让「就绪」既表成功又表未开始 |
+| T-MO-19 | 「撤销接入」是底部弱对比小字链，与「一键接入」按钮不对称 | todo | 09-17 T-RL-05 真实点击验收（现场 `~/Desktop/nomi-scratch-0917/mcp-click/report.md`） | 摩擦③：接入是主按钮、撤销是最底部小号文字链，用户找不回来。一对互逆动作应当同一视觉层级（撤销可以是次级按钮，但不能是弱对比文字链） |
 
 ## G. 生态与插件
 
@@ -167,9 +171,11 @@
 | T-QA-08 | 走查自动录屏：Playwright 起 Electron 时开 `recordVideo`，每个窗口出 webm；截图采样漏掉的过程态（导入渐显空等、停止→回执的间隙）靠视频看，同时留下演示素材 | todo | 用户 09-15 00:2x 口述（Windows 测试机接通时） | 改 `tests/ux/_launchApp.mjs` 一处；动手前按 R5 查 Playwright 当前文档确认 `electron.launch({ recordVideo })` 形状；视频不进 git，放 evidence/scratchpad，PR 贴关键帧 |
 | T-QA-09 | Windows 测试机接入走查：192.168.31.216 已可 SSH（用户 23732），在 D: 建 worktree 跑 R13；SSH 会话 0 截不到桌面，Nomi 窗口截图/录屏走 Playwright，整桌面要计划任务塞进登录会话 | doing | 09-15 00:2x 接通；记忆 `windows-test-machine-ssh` | 先清 C: 上二十几个旧 Nomi-* 目录腾空间（C: 剩 8GB），再建 D:\Nomi-walkthrough |
 | T-QA-10 | `electron/preload.ts`(797) / `src/desktop/bridge.ts`(784) 贴着 800 行巨壳上限，谁加桥接都撞线 | done #804 | #790 撤出复盘（交接 §2.4） | 已在 `integration/release-20260917` 拆完：preload 797→265（组装层 + 四族桥面 + `ipcCall`），bridge 784→428（浏览器/素材/模型目录三支各自成型）。不加白名单、不抬基线；顺带堵了「按源码文本判断桥面的检查只读组装层会静默变绿」那条假绿（`check:skill-ipc-coverage` 加硬零 Guard 0 + 两处结构测试改读整面） |
-| T-DS-14 | 分镜面 1280 宽下编辑器列仅 570px，29 个叶子被右缘切（W-03）；画布视频节点动作条同病（W-13） | todo | [走查 09-17](../audit/2026-09-17-post-804-walkthrough.md#51-走查时撞到的比-16-条更要紧的三件) | 批次 2 已修不动结构的部分（批量条提示、页脚换行）。剩下的要在四个方案里选一个：编辑器列 min-width + 横滚 / Agent 面板窄视口自动收 / 帧列与参考列断点收窄 / 底栏胶囊收进「⋯」。**先出对比表请用户拍板**（底栏换行那条已被 2026-09-06 拍板否掉，别再提） |
+| T-DS-14 | 分镜面 1280 宽下编辑器列仅 570px，29 个叶子被右缘切（W-03）；画布视频节点动作条同病（W-13） | todo | [走查 09-17](../audit/2026-09-17-post-804-walkthrough.md#51-走查时撞到的比-16-条更要紧的三件) | 批次 2 已修不动结构的部分（批量条提示、页脚换行）。剩下的要在四个方案里选一个：编辑器列 min-width + 横滚 / Agent 面板窄视口自动收 / 帧列与参考列断点收窄 / 底栏胶囊收进「⋯」。**先出对比表请用户拍板**（底栏换行那条已被 2026-09-06 拍板否掉，别再提）。**09-17 拍板：结构解 = 全局左侧栏 A-1 抽屉化提前（成文中）**；原方案 C（帧列与参考列断点收窄）降级为「抽屉打开时的兜底」，进批次 3 |
 | T-MO-13 | 打包版拒绝验证 127.0.0.1 供应商（W-14），本机/局域网 OpenAI 兼容网关接不进来 | todo | [走查 09-17](../audit/2026-09-17-post-804-walkthrough.md#23-顺带撞到打包版拒绝验证回环地址的供应商) | 批次 2 记 `unverified`：查到 `seedLabTrustedPrivateOrigins(app.isPackaged)` 早返回、packaged CSP 无 `http:` 两处分叉，但凭据验证那条路不过目的地策略，都解释不了。**先复核**：打包 + 起本机兼容端点 + 打包实例走一次真实接入 + 与开发构建交叉对照，再谈修 |
 | T-QA-11 | #802 这一轮验证全部走 loopback 供应商、0 付费；**没有跑过付费供应商 smoke** | todo | 2026-09-17 #802 列车收尾 | 发 RC（T-RL-09）之前必须补一次真付费闭环：只用 APIMart（用户没有即梦账号、kie 余额为负），先抓出站报文以便被拒时仍能验契约；R22 口径：没跑就记 `unverified`，不许拿 mock 绿灯替代 |
+| T-QA-12 | 所有权审计六条 C（同一份状态有几个 owner / 生命周期对不齐）→ 批次 3 第一条 lane | todo | [所有权与生命周期普查 09-17](../audit/2026-09-17-ownership-lifetime-census.md)（分支 `audit/ownership-lifetime-20260917` 待合） | 报告 A6/B3/C6/D0；C 档六条是「要动结构才修得掉」的那一档，批次 3 排第一条 lane。合审计分支时把报告路径核一遍 |
+| T-QA-13 | 走查夹具的 key 注入**已经死了**，`hasApiKey` 恒 false——所有靠它的走查真实性受影响 | todo | 09-17 W-03 工人结构性发现 | `tests/ux/storyboard-table-exec.walk.mjs` 注入的凭据进不去：`validateCandidateCredential.ts:50` 对 `authType:'none'` 直接抛错，渲染层写 key 时强制 `enabled:false`，而 `credentialRecordCounts` 又要求 `enabled !== false` → 计数恒 0。这是**走查基础设施债**（假绿源），修它之前别拿这条链上的走查当真实证据 |
 
 ## J. 官网与发布
 
