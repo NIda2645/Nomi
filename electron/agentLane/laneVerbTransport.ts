@@ -21,7 +21,7 @@ type Args = Record<string, unknown>
 /** 一次翻译的结果：走哪条传输、方法名与方法参数。生成 lane 的方法名按字面量类型收窄。 */
 export type VerbTransportCall =
   | Readonly<{ lane: 'generation'; call: RuntimeToolCall & { toolName: GenerationMethodName } }>
-  | Readonly<{ lane: 'timeline' | 'canvas' | 'export' | 'media' | 'skillRead' | 'skillWrite' | 'modelSetup'; call: RuntimeToolCall }>
+  | Readonly<{ lane: 'timeline' | 'canvas' | 'export' | 'media' | 'skillRead' | 'skillWrite'; call: RuntimeToolCall }>
 
 /** 生成 lane 的一次调用：`toolName` 只能是 `GENERATION_METHODS` 里的名字。 */
 function generationCall(base: { toolCallId: string }, toolName: GenerationMethodName, args: Args): VerbTransportCall {
@@ -38,17 +38,38 @@ function generationCall(base: { toolCallId: string }, toolName: GenerationMethod
  * （`generation_input_invalid`）——分镜天生每镜带时长，Agent 因此永远出不来分镜表。
  */
 function draftShotToPlanShot(shot: Args): Args {
-  const { shotId, role, title, prompt, taskKind, durationSec, modelKey, modeId, parameters, references } = shot as {
+  const { shotId, role, title, prompt, taskKind, durationSec, modelKey, modeId, candidate, parameters, references } = shot as {
     shotId?: string; role?: string; title?: string; prompt: string; taskKind?: string; durationSec?: number; modelKey?: string; modeId?: string;
-    parameters?: Args; references?: string[]
+    candidate?: { providerId?: string; modelId?: string }; parameters?: Args; references?: string[]
   }
   const withDuration = durationSec === undefined ? parameters : { ...(parameters ?? {}), duration: durationSec }
+  // 目录点名（`candidate.providerId` / `candidate.modelId`）是模型**明说**的身份，优先于 `modelKey`。
+  // 它过去在这里被整只丢掉（解构里根本没有它），而丢掉一次点名的后果是按用户默认模型去花钱——
+  // 不报错、不拒收，只是用错模型（2026-09-18 扫描的 D 类）。
+  const modelId = candidate?.modelId ?? modelKey
   return {
     ...(shotId ? { shotId } : {}), ...(role ? { role } : {}), ...(title ? { title } : {}), prompt,
     ...(taskKind ? { taskKind } : {}),
-    ...(modelKey ? { modelId: modelKey } : {}), ...(modeId ? { modeId } : {}),
+    ...(candidate?.providerId ? { providerId: candidate.providerId } : {}),
+    ...(modelId ? { modelId } : {}), ...(modeId ? { modeId } : {}),
     ...(withDuration ? { parameters: withDuration } : {}),
     ...(references ? { references: references.map((assetId) => ({ assetId })) } : {}),
+  }
+}
+
+/**
+ * `draft_shots` 的两个**顶层**缺省（`taskKind` / `candidate`）折进每一镜。
+ *
+ * 它们在动词上声明成「这一批镜头的默认值」，而传输层过去只读 `shots` 与 `draftId`——顶层那两个字段
+ * 被整只丢掉，且**不报任何错**：模型说「这三镜都用 apimart 的 image-1 出图」，宿主照用户的默认模型跑。
+ * 一次花钱的调用用错模型而没有人被告知，比被拒收更糟。逐镜自己写的值永远优先。
+ */
+function withDraftDefaults(shot: Args, defaults: { taskKind?: string; candidate?: { providerId?: string; modelId?: string } }): Args {
+  const candidate = shot.candidate ?? defaults.candidate
+  return {
+    ...shot,
+    ...(shot.taskKind === undefined && defaults.taskKind !== undefined ? { taskKind: defaults.taskKind } : {}),
+    ...(candidate !== undefined ? { candidate } : {}),
   }
 }
 
@@ -61,7 +82,11 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
   const base = { toolCallId: call.toolCallId }
   switch (call.toolName) {
     case 'draft_shots': {
-      const shots = (Array.isArray(args.shots) ? args.shots : []) as Args[]
+      const defaults = {
+        ...(typeof args.taskKind === 'string' ? { taskKind: args.taskKind } : {}),
+        ...(args.candidate && typeof args.candidate === 'object' ? { candidate: args.candidate as { providerId?: string; modelId?: string } } : {}),
+      }
+      const shots = (Array.isArray(args.shots) ? args.shots : []).map((shot) => withDraftDefaults(shot as Args, defaults))
       const draftId = typeof args.draftId === 'string' ? args.draftId : undefined
       if (draftId) {
         // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
@@ -75,8 +100,9 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
         // **带 role 或 title 的不走这条**：这两个都是镜头**信封**上的字段（给人看/排序用，不进 provider
         // 请求），而单镜路把镜头摊平成顶层参数、顶层没有它们的位置。摊平就只能悄悄丢掉——
         // 那正是 2026-09-18 这一整条链的病根。`role` 本来就这么判，`title` 照同一条规则。
-        const { shotId: _shotId, ...single } = draftShotToPlanShot(shots[0]!)
-        return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', ...single, cardHidden: true })
+        // `shotId` 也不再在这里摘：动词自己保证「没有 draftId 就不许带 shotId」，带了的那次走上面的
+        // patch 分支。摘掉它同样是静默丢字段（模型以为在改 shot-3，实际新建了一份草稿）。
+        return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', ...draftShotToPlanShot(shots[0]!), cardHidden: true })
       }
       return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', shots: shots.map(draftShotToPlanShot), cardHidden: true })
     }
@@ -105,8 +131,10 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       return { lane: 'skillRead', call: { ...base, toolName: SKILL_READ_ALIASES.load, args: { name: args.name } } }
     case 'save_skill':
       return { lane: 'skillWrite', call: { ...base, toolName: SKILL_WRITE_ALIASES.author, args } }
-    case 'start_model_setup':
-      return { lane: 'modelSetup', call: { ...base, toolName: 'nomi_open_model_setup', args } }
+    // `start_model_setup` 不在这里：它是**常驻**动词（没有 `internalGroup`），执行绑在 `laneDesktopTools`，
+    // 永远不经延迟组这条路。这里曾经有一条 `modelSetup` 分支——`laneExtendedDesktopPorts` 没有对应的
+    // 适配器分支，真走到它只会掉进 direct → 生成适配器 → `generation_surface_unavailable`。
+    // 一条永远不会被调用、被调用就一定错的分支不是保险，是并行版（P1），所以删掉。
     default:
       return undefined
   }

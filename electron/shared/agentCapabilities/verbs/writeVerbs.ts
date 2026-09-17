@@ -123,7 +123,22 @@ export function writeVerbs(): VerbDeclaration[] {
         modelId: z.string().trim().min(1).describe("Model id from list_models."),
       }).optional().describe("Default catalog candidate for these shots."),
       shots: z.array(draftShotSchema).min(1).max(40).describe("The shots to create or update."),
-    }).strict(),
+    }).strict().superRefine((value, context) => {
+      // `shotId` 只在「改已有草稿」时有意义。少了这条约束，模型发
+      // `{shots:[{shotId:"shot-3", prompt:"…"}]}`（忘了 draftId）时会新建一份草稿、把 shot-3 悄悄丢掉——
+      // 它以为改好了，用户看到的是画布上多了一个镜头（2026-09-18 扫描的 D 类：静默丢字段）。
+      const stray = value.shots.findIndex((shot) => shot.shotId !== undefined);
+      if (value.draftId === undefined && stray >= 0) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", stray, "shotId"], message: "shotId only addresses a shot inside an existing draft — pass draftId too, or omit shotId to create" });
+      }
+      // `title` 是镜头**信封**上的字段（`generationShotEnvelope.ts`），而改草稿这条路递给宿主的是
+      // **候选** patch（提示词/模型/参数/参考）——信封不在那份 patch 的形状里。不拦的话模型收到的是
+      // 宿主的 `Unrecognized key(s): 'title'`：一个它看不懂为什么的拒绝。在这里拦，它当场知道该怎么做。
+      const renamed = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot.title !== undefined);
+      if (renamed >= 0) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", renamed, "title"], message: "a shot title is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop title here" });
+      }
+    }),
     examples: [
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
       { when: "Change one existing shot's prompt:", arguments: { draftId: "op-1", shots: [{ shotId: "shot-3", prompt: "夜景，霓虹灯下的街道" }] } },
@@ -168,7 +183,19 @@ export function writeVerbs(): VerbDeclaration[] {
       }).strict()).max(48).optional().describe("Reference links to add between existing nodes."),
       tidy: z.boolean().optional().describe("Re-lay out the canvas."),
       categoryId: z.string().trim().min(1).optional().describe("With tidy: only this canvas category."),
-    }).strict(),
+    }).strict().superRefine((value, context) => {
+      // 两个分支**互斥**：给了 links 就是连边，给了 tidy 就是重排。都不给的那次过去会在翻译层抛一个
+      // 裸 Error（模型收到的不是一条说得清的拒绝）；两个都给时 tidy 被静默忽略。约束写在声明上，
+      // 模型在调用发出之前就被告知（R17：防线建在最早能拦住的那层）。
+      const connects = (value.links?.length ?? 0) > 0;
+      const tidies = value.tidy === true;
+      if (connects === tidies) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["links"], message: "give exactly one of links (to connect nodes) or tidy: true (to re-lay out)" });
+      }
+      if (value.categoryId !== undefined && !tidies) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["categoryId"], message: "categoryId only narrows tidy: true" });
+      }
+    }),
     examples: [{ when: "Use the character sheet as a reference for a shot:", arguments: { links: [{ fromId: "node-char", toId: "node-shot-2", role: "character_ref" }] } }],
     prepareArguments: rejectGeneratingNodes("arrange_canvas", modelArgumentTolerance({ arrayFields: ["links"] })),
     semanticInputOf: (args) => canvasWriteInputOf("arrange_canvas", args),
