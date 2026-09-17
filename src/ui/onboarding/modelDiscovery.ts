@@ -65,6 +65,9 @@ export function credentialSaveNotice(projection: unknown): {
   if (typeof code !== 'string' || !code) return null
   // 唯一「不抛错但也没结果」的出口；其余码原样带出去，绝不静默吞掉。
   if (code === 'model_discovery_empty') return { key: 'modelSetup.credentialSavedNoModels' }
+  // 发现这一步整个没跑通（没有清单接口 / 请求失败）：key 仍然是存好的，所以这里也是一条
+  // 「说清为什么」的通知，不是错误——主进程刻意不让它冒成存 key 失败（integrationSessionIpc）。
+  if (code === 'model_discovery_unavailable') return { key: 'modelSetup.credentialSavedDiscoveryUnavailable' }
   return { key: 'modelSetup.credentialSavedBlocked', values: { reason: code } }
 }
 

@@ -79,13 +79,20 @@ type Projection = {
   stage: string;
   candidates?: Array<{ modelKey: string; kind: string }>;
   blockingReason?: { code: string };
+  credentialStatus?: string;
 };
 
-function install(discovered: Array<{ modelKey: string; label: string; kind: string; modes: string[] }>, owner: "nomi" | "codex" = "nomi") {
+function install(
+  discovered: Array<{ modelKey: string; label: string; kind: string; modes: string[] }> | Error,
+  owner: "nomi" | "codex" = "nomi",
+) {
   const window = new harness.FakeBrowserWindow();
   setMainWindow(window as never);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-credential-discovery-"));
-  const discoverHttpModels = vi.fn(async () => discovered);
+  const discoverHttpModels = vi.fn(async () => {
+    if (discovered instanceof Error) throw discovered;
+    return discovered;
+  });
   const service = createRuntimeIntegrationSessionService({
     filePath: path.join(dir, "sessions.json"),
     certification: { discoverHttpModels } as never,
@@ -153,6 +160,16 @@ describe("saving an onboarding key discovers models in the same step", () => {
     expect(discoverHttpModels).toHaveBeenCalledTimes(1);
     expect(projection.stage).toBe("needs_selection");
     expect((projection.candidates || []).map((candidate) => candidate.modelKey)).toEqual(["relay-flash"]);
+  });
+
+  // 存 key 是用户亲手做的那件事；替他多读一次模型清单是我们加的那一步。
+  // 后者失败不许把前者说成失败——2026-09-17 CI 的 mcp-l2-journeys C7 就是这么红的
+  //（中转站没有 /models 接口 → 整条存 key 被判失败）。
+  it("发现失败不把「key 已经存好」说成失败，只记一条阻塞原因", async () => {
+    const { save } = install(new Error("中转站没有可用的 /models 接口"));
+    const projection = await save("sk-probe-key");
+    expect(projection.blockingReason?.code).toBe("model_discovery_unavailable");
+    expect(projection.credentialStatus).toBe("ready");
   });
 
   it("says why when the provider lists nothing, instead of handing back a silently empty picker", async () => {

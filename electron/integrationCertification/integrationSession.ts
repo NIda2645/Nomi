@@ -846,6 +846,22 @@ export class IntegrationSessionService {
     return this.projection(session);
   }
   /**
+   * 「key 存好了，但这次没能替他读出模型清单」——把原因记在会话上，而不是把存 key 判成失败。
+   *
+   * 为什么是一个方法而不是在 IPC 里直接改字段：`blockingReason` 是会话状态的一部分，
+   * 只能由拥有这份状态的这一层写（写完要 persist + 进投影）。调用方只给一个稳定的码，
+   * 界面按码说人话（`modelSetup.credentialSavedBlocked`），不把供应商原文直接摆给用户。
+   */
+  blockDiscovery(sessionId: unknown, code: string): IntegrationSessionProjection {
+    const session = this.getOrThrow(sessionId);
+    session.blockingReason = { code };
+    session.updatedAt = (this.deps.now || (() => new Date().toISOString()))();
+    this.state.revision += 1;
+    this.persist();
+    return this.projection(session);
+  }
+
+  /**
    * 列出本客户端的接入会话，未完成的排前面。修复前不带 sessionId 直接报错，而 MCP 面上没有
    * 第二条路——实测里 agent 只能去盘上 grep 我们的日志找回 id。丢了上下文不是模型的问题。
    */

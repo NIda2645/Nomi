@@ -33,6 +33,8 @@ export const zhModelSetup = {
   // 原样显示错误文案，不走这里。
   credentialSavedNoModels:
     'Key 已存好，但这个供应商没有模型清单接口 / 返回了空列表，所以没自动列出模型——可稍后重新拉取，或手动输入模型 ID。',
+  credentialSavedDiscoveryUnavailable:
+    'Key 已存好。这家没能读出模型清单（没有清单接口，或这次没读通），所以没自动列出模型——在「选择模型」里手动输入模型 ID 即可，或稍后重新拉取。',
   credentialSavedBlocked: 'Key 已存好，但这次接入还卡在「{{reason}}」这一步。',
   noModelsFetchedHint: '没自动拉到模型，可在「选择模型」里手动输入 id，或重新拉取',
   noModelsFetchedWithReason: '没自动拉到模型：{{error}}。可在「选择模型」里手动输入 id，或重新拉取',
@@ -166,6 +168,8 @@ export const enModelSetup = {
     'This provider has no model listing endpoint / returned an empty list. Enter an ID manually in Choose models, or fetch again.',
   credentialSavedNoModels:
     'The key is saved, but this provider has no model listing endpoint / returned an empty list, so nothing was listed — fetch again later, or enter model IDs manually.',
+  credentialSavedDiscoveryUnavailable:
+    'The key is saved. This provider’s model list could not be read (no listing endpoint, or it did not respond), so nothing was listed — enter model IDs manually in Choose models, or fetch again later.',
   credentialSavedBlocked: 'The key is saved, but this integration is still blocked at “{{reason}}”.',
   noModelsFetchedHint:
     'Models could not be fetched automatically. Enter an ID manually in Choose models, or fetch again.',

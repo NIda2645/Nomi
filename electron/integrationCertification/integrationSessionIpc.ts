@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { assertTrustedSender } from "../ipcSenderGuard";
+import { logWarn } from "../logging/logger";
 import type { IntegrationSessionService } from "./integrationSession";
 import { readCatalog } from "../catalog/catalogStore";
 import { isComfyuiVendor } from "../catalog/types";
@@ -72,10 +73,19 @@ export function registerIntegrationSessionIpc(service: IntegrationSessionService
     // `saveCredential` 明确允许 owner="nomi" 往别的客户端提出的会话里写 key（交接单那条路——
     // MCP 客户端提议接入、用户在 Nomi 的安全页手填），而发现模型走的是会话本人的身份。
     // 写死 "nomi" 会让交接来的会话在 key 落地那一刻报 owner mismatch（mcp-l2-journeys C7 实测）。
-    if (saved.kind === "http-api-provider") {
-      return service.propose(saved.id, saved.revision, saved.ownerClientId, {});
+    //
+    // 发现失败**不许把「key 已经存好」说成失败**：key 是用户刚亲手输入、已经落库的事实，
+    // 而「这家有没有 /models 接口」是我们额外替他多做的一步。把这一步的异常沿 IPC 抛回去，
+    // 调用方（引导向导 / MCP 交接单那条路）只能读成「保存失败」——2026-09-17 CI 的
+    // mcp-l2-journeys C7 就是这么红的：中转站没有 /models，于是整条存 key 被判失败。
+    // 所以这里把它降成会话上的一条阻塞原因，由 `credentialSaveNotice` 在原地说人话。
+    if (saved.kind !== "http-api-provider") return saved;
+    try {
+      return await service.propose(saved.id, saved.revision, saved.ownerClientId, {});
+    } catch (error) {
+      logWarn("onboarding", "credential-discovery-failed", { sessionId: saved.id }, error);
+      return service.blockDiscovery(saved.id, "model_discovery_unavailable");
     }
-    return saved;
   });
   /** 用户在模型页按下「开始自检」。自检不发生成请求、不消耗额度，所以这里没有挑战、
    * 没有收据、没有手势章——只有一次普通的、以 Nomi 为 owner 的 start。 */
