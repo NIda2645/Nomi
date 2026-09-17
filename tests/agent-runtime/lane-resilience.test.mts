@@ -319,6 +319,26 @@ test('a suspended (deferred) operation projects as still running, and claims not
 
 // ── 回合上限 ─────────────────────────────────────────────────────────────────
 
+test('缺省不设上限：同一回合连着调很多次工具，一次都不该被拦（2026-09-18 用户拍板去掉 24）', async (t) => {
+  // 为什么这条必须存在：去掉的是**缺省值**不是机制，而「缺省不设」这件事没有断言就会被下一个人
+  // 顺手加回来——加回来不报错，只是让活多的那一轮又被砍在半路。
+  // 阳性对照是上面那条（显式设了 1 就真的拦），两条一起才证明「机制在、缺省不拦」。
+  const call = (id: string) => ({ type: 'tool' as const, calls: [{ id, name: 'read_script', arguments: {} }] });
+  const steps = Array.from({ length: 30 }, (_, index) => call(`call-${index + 1}`));
+  const fixture = await createLaneFixture(t, [...steps, { type: 'text', text: 'All thirty ran.' }]);
+  // 注意：**不传 limits**。这就是产品缺省。
+  const lane = await fixture.openLane(fixture.options);
+
+  await lane.execute({ kind: 'prompt', text: 'Read the document thirty times.' });
+
+  const results = toolResults(lane.projection());
+  const blocked = results.filter((entry) => entry.kind === 'tool-result' && entry.isError
+    && /model-request limit/.test(entry.text));
+  assert.deepEqual(blocked, [], '缺省档不该有任何一次工具调用因为「回合上限」被拦');
+  assert.ok(fixture.http.requests.length > 24,
+    `24 这个旧缺省必须真的不再生效（实发 ${fixture.http.requests.length} 次请求）`);
+});
+
 test('a turn that reaches its model-request limit stops with a sentence, not with a step-limit code', async (t) => {
   const fixture = await createLaneFixture(t, [
     { type: 'tool', calls: [{ id: 'call-read', name: 'read_script', arguments: {} }] },

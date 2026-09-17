@@ -1,5 +1,6 @@
 import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabilities/transportContracts'
 import type { LaneToolNextAction } from '../shared/agentLane/laneToolContract'
+import { laneFailureFromDecision } from '../shared/agentLane/laneFailureFromDecision'
 import { LANE_DEFERRED_TOOL_CATALOG } from './laneToolCatalog'
 import { bindLaneTool, LaneDomainFailure, type LaneToolDescriptor } from './laneRuntimePort'
 
@@ -58,11 +59,13 @@ export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescrip
       const decision = await port.execute({ toolCallId: context.toolCallId, toolName: spec.name, args }, context.signal)
       // 域端口给了一句比 code 更具体的话（#785：常驻生成面此刻的相——按配置关掉 / 还在起 / 装配抛了）
       // 就带给模型；只有 code 的照旧。否则 owner 说得再清楚，模型看到的仍是一句零信息的「不可用」。
-      if (!decision.ok) throw new LaneDomainFailure({ code: decision.code ?? 'capability_execution_failed',
-        message: `${spec.name} could not complete the requested action (${decision.code ?? 'capability_execution_failed'}).`
-          + (decision.message && decision.message !== decision.code ? ` ${decision.message}` : ''),
+      if (!decision.ok) throw new LaneDomainFailure(laneFailureFromDecision({
+        toolName: spec.name,
+        code: decision.code,
+        message: decision.message,
+        fallbackCode: 'capability_execution_failed',
         nextAction: 'Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.',
-      })
+      }))
       if (spec.name === 'generate') spendCardResult(decision.result)
       const text = JSON.stringify(decision.result ?? null)
       const nextAction = nextActionFor(spec.name, decision.result)
