@@ -59,6 +59,7 @@
 
 - [删旧实现里的一道门之前，先问它在保证什么](migration-parity-needs-user-behavior.md) — 磁吸带子的「选中才出」不是实现细节，它保证的是「卡片之间的连线永远点得到」；删门前先把那条保证写成断言并验它会红
 - [跑批渲染必须一格一个浏览上下文，复用同一个到第 34 次就再也起不来](one-browser-context-per-render-or-the-batch-dies-midway.md) — 前几十格都好、从某一格起 `waitForFunction` 恒超时，而单独 `ONLY=` 跑那一格完全正常
+- [不在任何 CI 链里的走查会一批腐烂，而腐烂的走查会把真 bug 一起藏起来](unwired-walks-rot-as-a-batch.md) — 某个面多条走查同时红、要判「产品回归还是走查过期」时读；21 层过期里藏着 1 个真回归，附四条死法对照表与落盘取证法
 - [走查断言必须有真信号](walkthrough-assertions-need-a-real-signal.md) — 写/改走查前必读：用 `tests/ux/_assert.mjs`，假绿是框架缺陷不是手滑
 - [走查取点只信真实光标到位后的那一次](walkthrough-geometry-must-reverify-under-the-real-cursor.md) — stage 一变窄「点空白被磁性 + 吃掉 / 框选 autoPan 永不安定 / 连线点中心被卡拦」一起来；判据是白名单（最顶层元素就是 pane），单一 owner `tests/ux/_canvasHit.mjs`
 - [`waitForFunction` 配 async 判据 = 一个从不等待的等待](wait-for-function-with-async-predicate-never-waits.md) — 判据里有 `await` 就等于没等：Promise 被当 truthy，0ms 返回 null；下游那句 `Cannot read properties of null` 长得像业务 bug。换 `expect.poll`
