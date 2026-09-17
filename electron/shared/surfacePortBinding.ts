@@ -320,21 +320,19 @@ export type CanvasReadSurfaceBridge = Readonly<{
   ) => () => void;
 }>;
 
-export type SurfacePortWireErrorCode =
-  | "capability_execution_failed"
-  | "capability_cancelled"
-  | "capability_input_invalid"
-  | "capability_receipt_unresolved"
-  | "capability_target_stale"
-  | "capability_unsupported"
-  | "project_identity_unavailable"
-  | "project_binding_stale"
-  | "surface_port_suspended"
-  | "surface_port_unavailable"
-  | "surface_port_stale"
-  | "surface_owner_mismatch";
-
-export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode> = new Set([
+/**
+ * 端口线上错误码的**唯一值源**（C4，2026-09-18）。
+ *
+ * 这一族码在仓库里曾有 15 份定义、8 个文件，其中 6 份是手抄——连这里自己都抄了两遍
+ * （一份联合类型 + 一份同样内容的 Set 字面量）。代价不是好看不好看：拆
+ * `surface_port_stale` 为「不存在 / 已过期」两码时，漏改任意一份，那条通道就把新码当未知码
+ * 吞掉，模型收到的是「读一遍再试」而不是真原因（`docs/audit/2026-09-17-ownership-lifetime-census.md` §4）。
+ *
+ * 现在只有这一条元组是手写的，类型和 Set 都从它 derive；下游 adapter 只许
+ * `new Set([...SURFACE_PORT_WIRE_ERROR_CODES, ...自己那几个])`，不许重列。
+ * `check:vocabularies` 的错误码一类看的就是「整条都是字面量」——**派生即隐身，手抄才现形**。
+ */
+export const SURFACE_PORT_WIRE_ERROR_CODE_LIST = [
   "capability_execution_failed",
   "capability_cancelled",
   "capability_input_invalid",
@@ -347,6 +345,43 @@ export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode
   "surface_port_unavailable",
   "surface_port_stale",
   "surface_owner_mismatch",
+] as const;
+
+export type SurfacePortWireErrorCode = (typeof SURFACE_PORT_WIRE_ERROR_CODE_LIST)[number];
+
+export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode> =
+  new Set(SURFACE_PORT_WIRE_ERROR_CODE_LIST);
+
+/**
+ * 端口码之上，传输层自己多出来的那几个「这一次调用本身没验过 / 没授权 / 策略过期 / 出参不合法 /
+ * 超时」的码。它们不属于端口身份，但每一个 transport adapter 的公开面都要放行。
+ */
+export const CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST = [
+  "capability_invocation_unverified",
+  "capability_authority_invalid",
+  "capability_policy_stale",
+  "capability_output_invalid",
+  "capability_timeout",
+] as const;
+
+export type CapabilityTransportVerificationErrorCode =
+  (typeof CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST)[number];
+
+/**
+ * 每个 transport adapter 公开面的**共同底座**：端口码 + 传输验证码。
+ *
+ * 在这之前，canvasRead / documentRead / documentWrite / phase4Surface / timeline 各自手抄了
+ * 一份「这 17 个码可以放行」，抄出来的结果是 15/14/15/16/20 五个不同的数——
+ * `documentRead` 少了 `capability_receipt_unresolved`，`timeline` 少了
+ * `project_identity_unavailable`，`canvasRead` 两个都少。少掉的那些不会报错，只会被
+ * 静默替换成 `capability_execution_failed`，于是模型收到的是「执行失败，读一遍再试」
+ * 而不是「项目身份取不到」——**它按那句话重试，永远修不好真问题**。
+ *
+ * adapter 只许 `new Set([...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES, ...自己那几个])`。
+ */
+export const CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES: ReadonlySet<string> = new Set<string>([
+  ...SURFACE_PORT_WIRE_ERROR_CODE_LIST,
+  ...CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST,
 ]);
 
 export type SurfacePortFailure = Readonly<{ code: SurfacePortWireErrorCode; reason?: MediaImportRejection["reason"] }>;

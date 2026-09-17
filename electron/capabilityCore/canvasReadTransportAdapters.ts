@@ -1,3 +1,4 @@
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import { CANVAS_READ_CAPABILITY, type CanvasReadResult } from "../shared/agentCapabilities/canvasRead";
 import type { IpcMainInvokeEvent } from "electron";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
@@ -29,23 +30,9 @@ export function isCanvasReadTransportMethod(method: string): boolean {
   return true;
 }
 
-const PUBLIC_FAILURE_CODES = new Set([
-  "capability_invocation_unverified",
-  "capability_authority_invalid",
-  "capability_input_invalid",
-  "capability_policy_stale",
-  "capability_output_invalid",
-  "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed",
-  "capability_unsupported",
-  "project_identity_unavailable",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
-]);
+// C4：放行清单从 owner 派生。这一份以前少了 `capability_receipt_unresolved` 与
+// `capability_target_stale`——两者都会被静默换成 `capability_execution_failed`。
+const PUBLIC_FAILURE_CODES = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES;
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
   const candidate =
