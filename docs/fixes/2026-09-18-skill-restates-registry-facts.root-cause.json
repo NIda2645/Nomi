@@ -34,7 +34,7 @@
     {
       "kind": "write",
       "path": "electron/harness/context/agentContext.ts",
-      "line": 132,
+      "line": 166,
       "symbol": "buildSelectedSkillPrompt"
     },
     {
@@ -164,8 +164,9 @@
   },
   "migration": "No persisted data changes. Installed user skills are not rewritten; the runtime authority section covers them.",
   "residual_risks": [
-    "The commit-time gate detects effect claims through Chinese phrasing. A restatement worded outside those phrasings, or written in English, passes. The runtime authority section is the backstop for exactly that case, which is why the fix does not rely on the gate alone.",
-    "The end-to-end leg — a real model, with a deliberately wrong external skill installed, calling the right tool anyway — was not executed in this batch. Covered today by the prompt-assembly assertions (ordering and content) plus the import assertions, not by a live run."
+    "The commit-time gate detects effect claims through Chinese phrasing only. Registered as a dated debt, not a bare acknowledgement: expires 2026-12-18; until then the runtime authority section is the substitute, and it depends on no phrasing recognition at all, so the exposure is 'an English restatement could be committed into our own skills', not 'the model could be misled'. Expiry verification is specified in docs/plan/2026-09-18-portable-skill-tool-binding.md §7.5.3 — translate the three existing positive controls into English, assert red, then mutate one live skill into English and require exit=1. Not done now because all 88 skills are Chinese, so an English criterion would have zero real samples to prove it reds, which is exactly the 'added a rule without verifying it reds' that R17 forbids.",
+    "The authority section's position is provisional, not concluded. SKILL_TOOL_AUTHORITY_PLACEMENT defaults to after_body on a recency argument, and a three-arm A/B on a real model is measuring it (omitted as the positive control, before_body, after_body), plus whether the model still honours it past the 8th tool call in one turn. The placement is a single switchable parameter with all three arms reachable and a test pinning that, so the outcome changes one constant.",
+    "The end-to-end leg — a real model, with the foreign ChatCut skill installed, mapping submit_video onto Nomi's video verb — was not executed in this batch. Covered today by the prompt-assembly assertions and the import assertions in electron/skills/foreignSkillPortability.test.ts, not by a live run."
   ],
   "invariant_owner_layer": {
     "layer": "electron/shared/agentCapabilities/registry.ts",

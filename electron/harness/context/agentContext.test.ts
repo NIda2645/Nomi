@@ -108,6 +108,33 @@ describe("Nomi agent context ownership", () => {
     expect(prompt).toContain("绝不调用写画布/生成类工具");
   });
 
+  // A/B 的三个臂必须都从那一个参数可达，否则「等数据回来一行切换」是空话。
+  // 这条同时钉住：位置是参数，不是散在字符串拼接里的写死顺序。
+  it("exposes all three A/B arms through the placement parameter", () => {
+    const skill = skillFixture({ body: "# Method\n做点什么。" });
+    const authority = "关于工具，一律以本条提示词里的";
+
+    const after = context.buildSelectedSkillPrompt(skill, "after_body");
+    expect(after.indexOf(authority)).toBeGreaterThan(after.indexOf("</skill>"));
+
+    const before = context.buildSelectedSkillPrompt(skill, "before_body");
+    expect(before.indexOf(authority)).toBeGreaterThan(-1);
+    expect(before.indexOf(authority)).toBeLessThan(before.indexOf("<skill name="));
+
+    // 臂 0 是阳性对照：整节不出现，用来量「没有它会坏成什么样」。
+    const omitted = context.buildSelectedSkillPrompt(skill, "omitted");
+    expect(omitted).not.toContain(authority);
+
+    // 三个臂只差这一节，正文与交代文案逐字相同——否则量到的是别的变量。
+    for (const arm of [after, before, omitted]) {
+      expect(arm).toContain("本轮用户在输入框里挂了一条技能");
+      expect(arm).toContain("做点什么。\n</skill>");
+    }
+    // 默认值就是暂定的那个臂；改常量即切换，不必改任何调用点。
+    expect(context.buildSelectedSkillPrompt(skill)).toBe(
+      context.buildSelectedSkillPrompt(skill, context.SKILL_TOOL_AUTHORITY_PLACEMENT));
+  });
+
   // 指向按**名字**不按方位：本函数产出进 `composeLaneSystemPrompt` 第一个参数，
   // 而 `Available tools` 是它之后才拼的（`lanePromptSections.ts:73-86`）——写「以上面为准」当场就是错的。
   it("points at the tool sections by name, never by direction", () => {
