@@ -90,19 +90,19 @@ describe("Higgsfield 真实响应的读取路径", () => {
   it("从录下来的终态里按档案声明的路径取到产物 URL", () => {
     const terminal = fixture("soul2-terminal.json");
     const mapping = modelFor("higgsfield-ai/soul/v2/standard").mappings[0];
-    const path = mapping.query!.response_mapping!.image_url!;
+    const path = String(mapping.query!.response_mapping!.image_url);
     // images.0.url —— 裸字符串，不是 apimart 的 url 数组。写成 images.0.url.0 会取空。
     expect(path).toBe("images.0.url");
-    const value = path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], terminal);
+    const value = path.split(".").reduce<unknown>((acc: unknown, key: string) => (acc as Record<string, unknown>)?.[key], terminal);
     expect(String(value)).toMatch(/^https:\/\/.+\.png$/);
   });
 
   it("DoP 的产物在 video.url（单数对象），不是 videos[] —— 写成数组会取空", () => {
     const terminal = fixture("dop-terminal.json");
     const mapping = modelFor("higgsfield-ai/dop/turbo").mappings[0];
-    const path = mapping.query!.response_mapping!.video_url!;
+    const path = String(mapping.query!.response_mapping!.video_url);
     expect(path).toBe("video.url");
-    const value = path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], terminal);
+    const value = path.split(".").reduce<unknown>((acc: unknown, key: string) => (acc as Record<string, unknown>)?.[key], terminal);
     expect(String(value)).toMatch(/^https:\/\/.+\.mp4$/);
     // 图片那条是数组、视频这条是对象：两者**不对称**，所以不能照着图片抄一份。
     expect(Array.isArray((terminal as { video?: unknown }).video)).toBe(false);
