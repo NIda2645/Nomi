@@ -20,11 +20,16 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
+import { clickOrFail, expect } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, PERMISSION_POPOVER,
   V4_FLOW, chooseAssistantModel, createRuntimeWalk, openCanvas, permissionTier, readProject, sendCanvas,
 } from './agent-runtime-walk-support.mjs'
+
+// 真模型一轮的安全上限走公共预算 owner（tests/ux/_station-budget.mjs），不自造墙钟常量：
+// 原来这里写死 180_000，check:test-waits 的 station 棘轮当场红——私有墙钟没人能随环境调。
+const MODEL_TURN_MS = stationTimeout({ turns: 1 })
 
 // 这条走查**真的花钱**：文件名带 `.paid`，而且在 CI 里当场拒跑。防线建在最早能拦住的那层（R17）——
 // 靠「谁都记得别在 CI 里跑它」是拦不住的，一次忘记的代价是真实账单。
@@ -122,7 +127,7 @@ try {
   const CARD_ANNOUNCEMENT = 'priced confirmation card in Nomi'
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   await expect(card, '「只问花钱」档下，真模型点名一个真模型之后，报价卡必须出现在槽里')
-    .toBeVisible({ timeout: 180_000 })
+    .toBeVisible({ timeout: MODEL_TURN_MS })
   await walk.snap('paid-01-zh-spend-card-before-confirm')
   // 按下去之前先在真实 DOM 上架一个通知观察者：宿主要是拒了，它只会用一条活 6 秒的 toast 说话，
   // 去 locator 上现断言跟它的自动消失赛跑（与 `agent-spend-confirm-executes.walk.mjs` 同一手法）。
@@ -140,7 +145,7 @@ try {
   // `noWaitAfter`：这一下会触发主进程的落地链，默认的「等页面稳下来」会和它拉锯。
   await clickOrFail(card.locator(INTERVENTION_CONFIRM), '报价卡上那颗主按钮', { noWaitAfter: true })
   try {
-    await expect.poll(() => renderedShots(win, projectId), { timeout: 180_000 }).toBeGreaterThanOrEqual(1)
+    await expect.poll(() => renderedShots(win, projectId), { timeout: MODEL_TURN_MS }).toBeGreaterThanOrEqual(1)
   } catch (error) {
     const spoken = (await win.evaluate(() => window.__nomiToastLog ?? [])).join(' | ')
     const refused = consoleLines.filter((line) => line.includes('spend-confirm') || line.includes('refused') || line.includes('capab'))
@@ -167,7 +172,7 @@ try {
 
   const before = await renderedShots(win, projectId)
   await sendCanvas(win, ASK_AUTO)
-  await expect.poll(() => renderedShots(win, projectId), { timeout: 180_000 }).toBeGreaterThan(before)
+  await expect.poll(() => renderedShots(win, projectId), { timeout: MODEL_TURN_MS }).toBeGreaterThan(before)
   await expect(card, 'full-auto: no priced card may appear — the tier answered it').toHaveCount(0)
   // 图已经落盘 = 这一轮的活干完了，不再去等 composer 的「运行中」相：那一相在图出来之前就退了，
   // 等它只会等到一条自己造的红（2026-09-18 实测过一次）。

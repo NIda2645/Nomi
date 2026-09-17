@@ -32,6 +32,9 @@ export const workbenchStoreLifetime = declareStoreLifetime({
     projectSidebarWidth: 'window',
     sidebarCollapsed: 'window',
     agentDockHidden: 'window',
+    // A-1「创作内容」列的收起偏好：与 agentDockHidden 同一机制（localStorage 的用户级 UI 偏好，
+    // 不进项目记录、不 bump persistRevision），所以同一档寿命——切项目不还原。
+    creationResourceTreeCollapsedPreference: 'window',
     timelinePanelCollapsed: 'window',
     timelinePanelHeight: 'window',
     exportResolution: 'window',
