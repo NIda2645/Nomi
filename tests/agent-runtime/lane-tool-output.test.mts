@@ -78,7 +78,7 @@ test('the contract parse runs once, after pi\'s ajv, and a cross-field failure r
   const valid = results.find((part) => part.toolCallId === 'valid');
   assert.ok(empty && stray && valid, 'all three calls produced a result');
   assert.equal(empty.isError, true, 'an empty edge list must be an error result, not a green receipt');
-  assert.match(empty.text, /links to connect or tidy/);
+  assert.match(empty.text, /exactly one of links .* or tidy/, 'the cross-field rule is stated on the verb (writeVerbs superRefine), not thrown from the translation layer');
   assert.match(empty.text, /Next: /, 'a rejection without a next step makes the model resend the same call');
   assert.equal(stray.isError, true, 'a field from another operation is rejected, as the description promises');
   // 20 动词的 schema 是 strict 的：别的工具的字段在 pi 的 ajv 那一层就被拒（它会回显收到的入参，探针 §4.2 臂 A），
