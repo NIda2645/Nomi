@@ -419,6 +419,82 @@ describe('capabilityCore/mcpConfig', () => {
     expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
   })
 
+  describe('startup preserves another viable launcher', () => {
+    function otherLauncher() {
+      const command = path.join(homeDir, 'Other Nomi', process.platform === 'win32' ? 'Nomi.exe' : 'Nomi')
+      fs.mkdirSync(path.dirname(command), { recursive: true })
+      fs.writeFileSync(command, '', { mode: 0o755 })
+      return { command, args: [], env: { NOMI_SETTINGS_DIR: homeDir, NOMI_MCP_STDIO: '1' } }
+    }
+
+    it.each(['claude', 'codex', 'sample-assistant'])('preserves %s byte for byte despite another owner authentication', (client) => {
+      isPackaged = true
+      const entry = otherLauncher()
+      const target = client === 'codex' ? path.join(homeDir, '.codex', 'config.toml')
+        : client === 'claude' ? claudeJson() : path.join(homeDir, 'sample.json')
+      if (client === 'sample-assistant') registerCustomMcpProfile({ key: client, label: 'Sample', format: 'json', configPath: target })
+      const before = client === 'codex'
+        ? `[mcp_servers.nomi]\ncommand = ${JSON.stringify(entry.command)}\nargs = []\nenv = { NOMI_SETTINGS_DIR = ${JSON.stringify(homeDir)}, NOMI_MCP_STDIO = "1" }\n`
+        : JSON.stringify({ untouched: true, mcpServers: { nomi: entry } }, null, 2)
+      fs.writeFileSync(target, before)
+      expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
+      expect(fs.readFileSync(target, 'utf8')).toBe(before)
+      expect(readMcpInfo(0).clients[client]).toMatchObject({ configState: 'launcher-elsewhere', configuredCommand: entry.command })
+      expect(fs.existsSync(`${target}.nomi-backup`)).toBe(false)
+      expect(installMcp(client).ok).toBe(true)
+      expect(readMcpInfo(0).clients[client].configState).toBe('current')
+      expect(fs.readFileSync(`${target}.nomi-backup`, 'utf8')).toBe(before)
+    })
+
+    it('preserves the same executable with a different existing profile', () => {
+      isPackaged = true
+      installMcp('claude')
+      const written = JSON.parse(fs.readFileSync(claudeJson(), 'utf8'))
+      const profile = path.join(homeDir, 'another-profile')
+      fs.mkdirSync(profile)
+      written.mcpServers.nomi.env.NOMI_SETTINGS_DIR = profile
+      written.mcpServers.nomi.env[MCP_CLIENT_PROOF_ENV] = 'another-profile-proof'
+      const before = JSON.stringify(written)
+      fs.writeFileSync(claudeJson(), before)
+      expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
+      expect(fs.readFileSync(claudeJson(), 'utf8')).toBe(before)
+      expect(readMcpInfo(0).clients.claude.configState).toBe('launcher-elsewhere')
+    })
+
+    it.each(['missing', 'directory', 'not-executable'])('repairs a %s launcher', (failure) => {
+      isPackaged = true
+      const entry = otherLauncher()
+      if (failure === 'missing' || failure === 'directory') fs.unlinkSync(entry.command)
+      if (failure === 'directory') fs.mkdirSync(entry.command)
+      if (failure === 'not-executable') {
+        fs.chmodSync(entry.command, 0o644)
+        // Windows access(X_OK) only checks existence; exercise denial without assuming POSIX modes.
+        if (process.platform === 'win32') {
+          const access = fs.accessSync.bind(fs)
+          vi.spyOn(fs, 'accessSync').mockImplementation((target, mode) => {
+            if (target === entry.command) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+            return access(target, mode)
+          })
+        }
+      }
+      fs.writeFileSync(claudeJson(), JSON.stringify({ mcpServers: { nomi: entry } }))
+      expect(classifyMcpEntry('claude', entry)).toBe('launcher-broken')
+      expect(repairStaleMcpConfigs()).toMatchObject({ changed: true, repaired: [{ from: 'launcher-broken' }] })
+      expect(readMcpInfo(0).clients.claude.configState).toBe('current')
+      vi.restoreAllMocks()
+    })
+
+    it('repairs an existing retired script rather than treating existence as viability', () => {
+      isPackaged = true
+      const script = path.join(homeDir, 'scripts', 'nomi-mcp.mjs')
+      fs.mkdirSync(path.dirname(script))
+      fs.writeFileSync(script, 'process.exit(2)')
+      fs.writeFileSync(claudeJson(), JSON.stringify({ mcpServers: { nomi: { command: process.execPath, args: [script] } } }))
+      expect(repairStaleMcpConfigs()).toMatchObject({ changed: true, repaired: [{ from: 'legacy-launcher' }] })
+      expect(readMcpInfo(0).clients.claude.configState).toBe('current')
+    })
+  })
+
   // 2026-09-13 现场：只是打开设置页，本机 5 个客户端配置全被改成指向一个跑完就删的 /tmp profile。
   // 守卫住在唯一的写盘门（atomicWrite）上：repair / install / uninstall 三条路都从这扇门过，谁也绕不开。
   describe('an isolated instance never rewrites host configs in the real user home', () => {
