@@ -96,7 +96,8 @@ const launched = await launchNomiApp({
 })
 const { app } = launched
 let win = launched.win
-win.setDefaultTimeout(30_000)
+// 不设 `setDefaultTimeout`：Playwright 的默认动作超时本来就是 30s，写一遍只是多一个私有墙钟常量
+// （`check:test-waits` 的 station-fixed-timeout 正是在数它）。所有等待都带自己的判据与超时。
 win.on('console', (message) => { if (message.type() === 'error') console.log(`[renderer:error] ${message.text()}`) })
 win.on('pageerror', (error) => console.log(`[renderer:pageerror] ${error.message}`))
 
@@ -128,7 +129,6 @@ try {
   await expect.poll(() => app.windows().some((candidate) => /[?&]projectId=/.test(candidate.url())),
     { message: '项目窗口未打开', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
   win = app.windows().find((candidate) => /[?&]projectId=/.test(candidate.url())) ?? win
-  win.setDefaultTimeout(30_000)
   await win.waitForLoadState('domcontentloaded')
   await resize(1440, 920)
   await clickOrFail(win.locator('nav.nomi-stepper [data-mode="preview"]').first(), '进入预览')
