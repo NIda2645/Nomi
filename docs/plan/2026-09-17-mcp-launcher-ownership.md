@@ -27,3 +27,7 @@
 3. gates 与指定七段 CI 顺序走查全部收齐，修红后复验；正式包/走查包启动配置字节对账、中英截图；交工评审。
 
 回滚：按里程碑 git revert；客户端主动写入仍有 .nomi-backup。不 push、不建 PR，不修改别的 worktree 或主仓。
+
+## Ponytail
+
+adc64d26f 分支评审两块：一条建议已改，另一块通过。归属分支已确保 command 相同，后续直接调用 sameProfile，删除重复 sameLauncher 包装与过时注释。mcpConfig 49 条单测复验通过。

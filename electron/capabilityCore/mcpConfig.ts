@@ -620,15 +620,6 @@ function sameCommand(left: McpServerEntry, right: McpServerEntry): boolean {
     && left.args.every((arg, index) => arg === right.args[index])
 }
 
-/**
- * 同一个**启动器** = 能启动当前这一个 Nomi 的条目：命令相同，且写在里面的 NOMI_SETTINGS_DIR 读回来等于本实例
- * 的设置根、目录还在。此前只比 command + args：指向一个早已删除的 /tmp 测试 profile 的配置照样判 current
- * → 绿灯，而助手一连就起一个空白 Nomi（2026-09-13 本机 5 个客户端全是这种绿）。
- */
-function sameLauncher(left: McpServerEntry, right: McpServerEntry): boolean {
-  return sameCommand(left, right) && sameProfile(left, right)
-}
-
 function isLegacyScriptEntry(entry: McpServerEntry): boolean {
   return entry.args.some((arg) => /(?:^|[\\/])scripts[\\/]nomi-mcp\.mjs$/i.test(arg))
 }
@@ -700,7 +691,7 @@ export function classifyMcpEntry(
       || (profile && !sameProfile(entry, expected))) return 'launcher-elsewhere'
   if (verifyMcpClient(entry.env?.[MCP_CLIENT_ENV], entry.env?.[MCP_CLIENT_PROOF_ENV]) !== client
       || entry.env?.[MCP_CONFIG_VERSION_ENV] !== MCP_CONFIG_VERSION) return 'auth-stale'
-  if (!sameLauncher(entry, expected)) return 'launcher-broken'
+  if (!sameProfile(entry, expected)) return 'launcher-broken'
   return entry.env?.[MCP_CONFIG_KIND_ENV] === 'development' ? 'development' : 'current'
 }
 
