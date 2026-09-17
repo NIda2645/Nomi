@@ -382,26 +382,10 @@ try {
   //    收起走面板自己的收起钮（真人手势），不是改视口作弊。
   await clickOrFail(win.locator('[data-v4-control="collapse"]').first(), '收起常驻 Agent 面板（让分镜面拿回整列宽）')
   await expect(win.locator('[data-agent-resident="true"][data-agent-collapsed="true"]')).toBeVisible()
-  // ② 契约文件仍是 v5（2026-09-01 样张）。v6 信息架构（0d5a56d47 +
-  //    docs/design/2026-09-05-storyboard-table-v6-design-contract.md §2.2/§2.4）**有意**推翻了其中两条：
-  //      · 动作浮条：v5「hover 才现、半透明压在画面格上」→ v6「移到画面格下方、一行常驻小图标」
-  //        （v6 文档点名：半透明按钮压缩略图本来就是 §1.5.3 的已知反例）；
-  //      · 画面格宽度：v5「84px 列宽 + 写死 76×132 竖版」→ v6「列宽固定 136px、媒体盒按画幅缩放」。
-  //    v6 只更新了人读的设计合同文档，没把机器可校验的 intent 契约迁过来——R8 的一个缺口，已单独记账。
-  //    这里按**名字**摘掉这两条、其余照旧硬断言；名字对不上立刻报红，免得上游改名后它们被静默跳过。
-  const SUPERSEDED_BY_V6 = ['画面格动作浮条默认不可见（悬停才出现）', '画面格宽度约 76px（竖屏项目主画幅）']
-  const keepRules = (rules) => (rules ?? []).filter((rule) => !SUPERSEDED_BY_V6.includes(rule.name))
-  const v6Contract = {
-    ...storyboardIntentContract,
-    structure: keepRules(storyboardIntentContract.structure),
-    geometry: keepRules(storyboardIntentContract.geometry),
-  }
-  const ruleCountBefore = (storyboardIntentContract.structure?.length ?? 0) + (storyboardIntentContract.geometry?.length ?? 0)
-  const ruleCountAfter = v6Contract.structure.length + v6Contract.geometry.length
-  if (ruleCountBefore - ruleCountAfter !== SUPERSEDED_BY_V6.length) {
-    failures.push(`契约里没找全被 v6 取代的那 ${SUPERSEDED_BY_V6.length} 条（只摘掉 ${ruleCountBefore - ruleCountAfter} 条）——规则被改名了，先核对再跑`)
-  }
-  await assertMockupContract(win, v6Contract)
+  // ② 契约已迁到 v6（2026-09-18）：条款逐条对着
+  //    docs/design/2026-09-05-storyboard-table-v6-design-contract.md 誊抄，所以整份硬断言，
+  //    不再按名字摘任何一条（上一版那个 SUPERSEDED_BY_V6 过滤是记号，不是修复）。
+  await assertMockupContract(win, storyboardIntentContract)
 
   fixture.assertClean()
 } catch (error) {
