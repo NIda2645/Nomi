@@ -68,13 +68,13 @@ type StageArgs = { shotId: string; staging?: Record<string, unknown>; cameraMove
 export function canvasWriteInputOf(verb: string, args: unknown): CanvasWriteInput {
   let semantic: unknown;
   if (verb === "arrange_canvas") {
-    const { links, tidy, categoryId } = args as ArrangeArgs;
+    const { links, categoryId } = args as ArrangeArgs;
+    // 「links 与 tidy 恰好一个」由动词声明的 superRefine（writeVerbs.ts `arrangeCanvas`）在这之前保证，
+    // 模型收到的是那条说得清的拒绝；这里不再有第二份判据（P1：同一条不变量只住一层）。
     if (links && links.length > 0) {
       semantic = { operation: "connect_canvas_edges", edges: links.map((link) => ({ sourceClientId: link.fromId, targetClientId: link.toId, ...(link.role ? { mode: link.role } : {}) })) };
-    } else if (tidy) {
-      semantic = { operation: "tidy_canvas", ...(categoryId ? { categoryId } : {}) };
     } else {
-      throw new Error("arrange_canvas needs links to connect or tidy: true");
+      semantic = { operation: "tidy_canvas", ...(categoryId ? { categoryId } : {}) };
     }
   } else if (verb === "make_artifact") {
     const { fileType, title, content } = args as ArtifactArgs;
