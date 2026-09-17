@@ -31,6 +31,7 @@ import {
   type LaneQueueKind, type LaneQueuedMessage, type LaneTaskFacts, type LaneThinking, type LaneThinkingLevel,
 } from './laneContracts.js';
 import { laneToolNextActionOf } from './laneToolNextAction.js';
+import { laneToolFailureOf } from './laneToolFailureEnvelope.js';
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -262,10 +263,15 @@ export function projectLaneSnapshot(
       // 正文逐字带上来（这一层不做取舍），信封另起一个字段——渲染层要靠它把「给模型看的那行尾巴」
       // 按结构摘掉。信封是这条消息自己的 `details.nextAction`，不是从别处 join 来的第二份真相。
       const nextAction = laneToolNextActionOf(message.details);
+      // 失败的结构化信封同理：这一层只走一遍、不翻译。翻译（按 code 查 i18n 词条）是渲染层的事，
+      // 而它必须拿到**结构**才翻得了——否则只能去正则那段英文散文，那条老路只认得出
+      // schema 校验一种，其余一律落回英文（C5 / 审计 §5）。
+      const failure = laneToolFailureOf(message.details);
       parts.push({ sequence: parts.length, entrySeq: entry.seq, contentIndex: 0, kind: 'tool-result',
         toolCallId: message.toolCallId, toolName: message.toolName,
         text: textOf(message.content), isError: message.isError,
-        ...(nextAction ? { nextAction } : {}) });
+        ...(nextAction ? { nextAction } : {}),
+        ...(failure ? { failure } : {}) });
     }
   }
   // 流式中的那条助手消息还没落成 entry。它接在转录末尾，用同一套编号继续往下走——

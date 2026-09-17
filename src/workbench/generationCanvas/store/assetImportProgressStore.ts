@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 import { create } from 'zustand'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { AssetLocalizationEvent } from '../../../desktop/bridge'
@@ -84,3 +85,13 @@ export function __detachAssetImportProgressBridgeForTests(): void {
   detach = undefined
   useAssetImportProgressStore.setState({ byNode: {}, settled: {} })
 }
+
+/**
+ * C1 寿命声明：按**节点 id** 存的导入进度。节点 id 是项目内的标识，换项目后同一个 id
+ * 指的是别的东西——留着就是把上一个项目的进度条画到新项目的节点上。
+ */
+export const assetImportProgressStoreLifetime = declareStoreLifetime({
+  store: 'useAssetImportProgressStore',
+  fields: { byNode: 'project', settled: 'project' },
+  releaseProject: () => useAssetImportProgressStore.setState({ byNode: {}, settled: {} }),
+})

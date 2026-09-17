@@ -40,7 +40,7 @@ import type { OpenLane, OpenLaneOptions } from './laneRuntimePort.js';
 import { composeLaneSystemPrompt } from './lanePromptSections.js';
 import { loadPiSkillFormatter, renderLaneSkillSection } from './laneSkillIndex.mjs';
 import { openLaneSession } from './laneSession.mjs';
-import { createLaneTools } from './laneTools.mjs';
+import { createLaneTools, takeLaneToolFailure } from './laneTools.mjs';
 import { projectLaneSnapshot, type LaneModelFacts } from '../shared/agentLane/laneProjection.js';
 import { openLaneNativeDesktop } from './laneNativeDesktop.mjs';
 import { LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog.js';
@@ -463,8 +463,19 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
         consecutive,
       });
     }
-    return appliedDirectly && !event.isError
-      ? { content: [...event.content, { type: 'text', text: '\nApplied directly (undoable)' }] } : undefined;
+    // C5：失败的结构化信封挂回 `details`，让面板按 `code` 查 i18n 词条，而不是去正则
+    // 那段英文散文（中文界面上印出 `... (surface_port_stale). Next: …` 的就是它）。
+    // 走 pi 自己的 `after_tool` result.details，和成功那条路的 `details.nextAction` 同形。
+    // `details` 是**整体替换**（`harness/agent-harness.d.ts:576`），所以必须带上原有的那份。
+    const failure = event.isError ? takeLaneToolFailure(event.toolCallId) : undefined;
+    const details = failure
+      ? { ...(event.details && typeof event.details === 'object' && !Array.isArray(event.details)
+          ? event.details as Record<string, unknown> : {}), failure }
+      : undefined;
+    if (appliedDirectly && !event.isError) {
+      return { content: [...event.content, { type: 'text', text: '\nApplied directly (undoable)' }] };
+    }
+    return details ? { details: details as never } : undefined;
   });
 
   function inputMessage(text: string): string | LaneInputMessage {

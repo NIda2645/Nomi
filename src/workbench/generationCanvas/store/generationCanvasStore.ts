@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -276,3 +277,54 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   ...createCanvasGraphActions(set, get, store),
   ...createCanvasRunActions(set, get, store),
 }))))
+
+/**
+ * C1 寿命声明 + 释放（原来是 `releaseWorkbenchProjectSession.ts` 里那份 10/13 的手写清单）。
+ *
+ * 三个原来没被清的字段，各有各的理由：
+ * - `persistRevision`：落盘计数，进程级。切项目把它归零会让「有没有未保存改动」的判断出错。
+ * - `workflowTemplates`：ComfyUI 工作流模板是**装机级**目录数据，不是项目内容。
+ * - `pendingConnectionSourceKind`：和它的两个同伴（`...Id` / `...Side`）是一次连线手势的三个
+ *   分量，原清单只清了两个——**这正是手写清单的典型漏法**：同一件事的三个字段，漏一个。
+ */
+export const generationCanvasStoreLifetime = declareStoreLifetime({
+  store: 'useGenerationCanvasStore',
+  fields: {
+    persistRevision: 'process',
+    workflowTemplates: 'process',
+    // 画布内容本体：项目就是它。
+    nodes: 'project',
+    edges: 'project',
+    groups: 'project',
+    isReady: 'project',
+    selectedNodeIds: 'project',
+    pendingConnectionSourceId: 'project',
+    pendingConnectionSourceSide: 'project',
+    pendingConnectionSourceKind: 'project',
+    generationAiDraft: 'project',
+    generationAiMessages: 'project',
+    generationAiCollapsed: 'project',
+    canUndo: 'project',
+    canRedo: 'project',
+    hasClipboard: 'project',
+  },
+  releaseProject: () => {
+    const empty = createDefaultGenerationCanvasSnapshot()
+    useGenerationCanvasStore.setState({
+      isReady: false,
+      nodes: empty.nodes,
+      edges: empty.edges,
+      groups: empty.groups,
+      selectedNodeIds: [],
+      pendingConnectionSourceId: '',
+      pendingConnectionSourceSide: 'right',
+      pendingConnectionSourceKind: 'node',
+      generationAiDraft: '',
+      generationAiMessages: [],
+      generationAiCollapsed: true,
+      canUndo: false,
+      canRedo: false,
+      hasClipboard: false,
+    })
+  },
+})

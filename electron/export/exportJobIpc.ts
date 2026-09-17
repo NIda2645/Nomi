@@ -1,3 +1,4 @@
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import { ipcMain, webContents as electronWebContents } from "electron";
 import type { WebContents } from "electron";
 
@@ -22,15 +23,12 @@ function requireActiveProjectSelection(deps: ExportJobIpcDeps): CommittedSurface
   return selection;
 }
 
+// C2：四维比对不在这里列了，用 owner 的 `sameCommittedProjectSelection`（全仓同一份）。
 function sameSelection(
   snapshot: Readonly<{ projectIdentity: CommittedSurfaceProjectSelection | null }>,
   selection: CommittedSurfaceProjectSelection,
 ): boolean {
-  const identity = snapshot.projectIdentity;
-  return identity !== null && identity.projectId === selection.projectId
-    && identity.immutableProjectUuid === selection.immutableProjectUuid
-    && identity.projectGeneration === selection.projectGeneration
-    && identity.canonicalRootDigest === selection.canonicalRootDigest;
+  return sameCommittedProjectSelection(snapshot.projectIdentity, selection);
 }
 
 export function registerExportJobIpc(deps: ExportJobIpcDeps): void {
