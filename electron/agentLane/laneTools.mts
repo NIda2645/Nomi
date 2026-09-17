@@ -26,6 +26,7 @@ import {
   renderLaneToolNextAction, type LaneToolFailureShape,
 } from '../shared/agentLane/laneToolContract.js';
 import { VERB_EFFECTS } from '../shared/agentCapabilities/verbDeclaration.js';
+import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts.js';
 import type { LaneToolDescriptor } from './laneRuntimePort.js';
 import { toModelVisibleSchema } from './laneToolSchema.mjs';
 
@@ -169,7 +170,16 @@ function detailsWithTruncation(details: unknown, truncation: LaneOutputTruncatio
   return { ...(details as Record<string, unknown>), truncation };
 }
 
-export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): AgentHarnessTool<undefined>[] {
+/**
+ * 工具执行时能读到的**闸的真实结论**。宿主接上 `laneApprovalGate.decisionFor`；
+ * 不装闸的路（影子夹具 / 单测）不传，回执那一行就不提卡（见 `LaneToolExecutionContext`）。
+ */
+export type LaneApprovalDecisionReader = (toolCallId: string) => LaneApprovalDecision | undefined;
+
+export function createLaneTools(
+  descriptors: readonly LaneToolDescriptor[],
+  approvalDecision?: LaneApprovalDecisionReader,
+): AgentHarnessTool<undefined>[] {
   const names = new Set<string>();
   return descriptors.map((descriptor) => {
     if (!TOOL_NAME.test(descriptor.name) || names.has(descriptor.name)) {
@@ -245,7 +255,13 @@ export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): Age
         const budget = AbortSignal.timeout(timeoutMs);
         const signal = AbortSignal.any([outer, budget]);
         const outcome = await Promise.race([
-          descriptor.execute(bound.data, { toolCallId, signal }),
+          descriptor.execute(bound.data, {
+            toolCallId,
+            signal,
+            // 回执要说「用户此刻看到什么」，就必须拿到这次调用**真的**是怎么过闸的
+            // （静态表说不准，见 `LaneToolExecutionContext.approvalDecision`）。
+            ...(() => { const decision = approvalDecision?.(toolCallId); return decision ? { approvalDecision: decision } : {}; })(),
+          }),
           // 领域端口**可能根本不看 signal**（第三方 SDK、同步阻塞、忘了接）。只把信号传下去
           // 等于把预算交给被超时的那一方自己执行。这条 race 是唯一真正会到期的东西。
           new Promise<never>((_resolve, reject) => {
