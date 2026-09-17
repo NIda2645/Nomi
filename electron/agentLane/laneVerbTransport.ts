@@ -38,13 +38,13 @@ function generationCall(base: { toolCallId: string }, toolName: GenerationMethod
  * （`generation_input_invalid`）——分镜天生每镜带时长，Agent 因此永远出不来分镜表。
  */
 function draftShotToPlanShot(shot: Args): Args {
-  const { shotId, role, prompt, taskKind, durationSec, modelKey, modeId, parameters, references } = shot as {
-    shotId?: string; role?: string; prompt: string; taskKind?: string; durationSec?: number; modelKey?: string; modeId?: string;
+  const { shotId, role, title, prompt, taskKind, durationSec, modelKey, modeId, parameters, references } = shot as {
+    shotId?: string; role?: string; title?: string; prompt: string; taskKind?: string; durationSec?: number; modelKey?: string; modeId?: string;
     parameters?: Args; references?: string[]
   }
   const withDuration = durationSec === undefined ? parameters : { ...(parameters ?? {}), duration: durationSec }
   return {
-    ...(shotId ? { shotId } : {}), ...(role ? { role } : {}), prompt,
+    ...(shotId ? { shotId } : {}), ...(role ? { role } : {}), ...(title ? { title } : {}), prompt,
     ...(taskKind ? { taskKind } : {}),
     ...(modelKey ? { modelId: modelKey } : {}), ...(modeId ? { modeId } : {}),
     ...(withDuration ? { parameters: withDuration } : {}),
@@ -70,8 +70,11 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'patch', operationId: draftId, patch: rest })
       }
       // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。
-      if (shots.length === 1 && !shots[0]?.role) {
+      if (shots.length === 1 && !shots[0]?.role && !shots[0]?.title) {
         // 单镜：走单镜 create（宿主从 prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
+        // **带 role 或 title 的不走这条**：这两个都是镜头**信封**上的字段（给人看/排序用，不进 provider
+        // 请求），而单镜路把镜头摊平成顶层参数、顶层没有它们的位置。摊平就只能悄悄丢掉——
+        // 那正是 2026-09-18 这一整条链的病根。`role` 本来就这么判，`title` 照同一条规则。
         const { shotId: _shotId, ...single } = draftShotToPlanShot(shots[0]!)
         return generationCall(base, GENERATION_METHODS.plan, { operation: 'create', ...single, cardHidden: true })
       }

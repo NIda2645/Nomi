@@ -1,5 +1,6 @@
 import type { GenerationOperation, GenerationOperationStore } from "../capabilityCore/mcpGenerationTools";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
+import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import type { ProductionRunService } from "./productionRunService";
 
 type GenerationRunOwner = Pick<ProductionRunService, "createGenerationDraft" | "readFull" | "command">;
@@ -24,9 +25,7 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     ...(plan.shots && plan.shots.length > 0
       ? {
           shots: plan.shots.map((shot) => ({
-            shotId: shot.shotId,
-            ...(shot.role ? { role: shot.role } : {}),
-            ...(shot.included !== undefined ? { included: shot.included } : {}),
+            ...generationShotEnvelopeOf(shot),
             candidate: structuredClone(shot.candidate),
             ...(shot.contract ? { contract: structuredClone(shot.contract) } : {}),
           })),

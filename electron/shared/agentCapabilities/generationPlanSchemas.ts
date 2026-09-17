@@ -56,6 +56,11 @@ const createFields = {
     shotId: z.string().trim().min(1).optional(),
     role: z.enum(["anchor", "shot"]).optional(),
     included: z.boolean().optional(),
+    /**
+     * 这一镜给人看的短标题（模型自己拟，如「日落前的一分钟」）。两个终点在等它：画布节点的标签，
+     * 以及花钱确认卡上那行「#1 〈标题〉· 模型 · 价格」。上限 120 与 `sceneOneLiner` 的截断长度同源。
+     */
+    title: z.string().trim().min(1).max(120).optional(),
     candidate: generationCandidateSchema.optional(),
     prompt: z.string().trim().min(1).optional(),
     taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional(),

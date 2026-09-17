@@ -14,6 +14,7 @@ import type { ModuleRegistry } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { SINGLE_SHOT_GENERATION_MODULE_ID } from "../shared/generationModuleId";
+import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../shared/generationShotEnvelope";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import {
   isLongFormGenerationRequest,
@@ -31,6 +32,11 @@ export type GenerationOperationDraftShot = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /**
+   * 模型拟的短标题。放在**信封**上而不是候选里：候选是「发给供应商的那一份」，标题一个字都不进
+   * provider 请求；它是给人看的，随镜头走、改模型不丢。
+   */
+  title?: string;
   candidate: PlanCandidate;
 }>;
 
@@ -39,6 +45,8 @@ export type SealedMultiShotEntry = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /** 模型拟的短标题（给人看，不进 provider 请求）。见 GenerationOperationDraftShot.title。 */
+  title?: string;
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
 }>;
@@ -89,7 +97,7 @@ export type StoryboardPlanResult = Readonly<{
 const SHOT_ROLES = new Set(["anchor", "shot"]);
 
 /** P4 S6.5: validate a shot's role/included/shotId envelope. Shared by the `plan` and `scriptText` paths. */
-function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: string): { shotId: string; role?: "anchor" | "shot"; included?: boolean } {
+function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: string): GenerationShotEnvelope {
   const rawShotId = typeof raw.shotId === "string" ? raw.shotId.trim() : "";
   const shotId = rawShotId || fallbackId;
   if (!/^[A-Za-z0-9._:-]{1,120}$/.test(shotId)) throw new Error(`Invalid shot id at ${index}`);
@@ -97,7 +105,14 @@ function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: s
   if (role !== undefined && !SHOT_ROLES.has(String(role))) throw new Error(`Invalid shot role at ${index}`);
   const included = raw.included;
   if (included !== undefined && typeof included !== "boolean") throw new Error(`Invalid shot included flag at ${index}`);
-  return { shotId, ...(role === undefined ? {} : { role: role as "anchor" | "shot" }), ...(included === undefined ? {} : { included }) };
+  const rawTitle = typeof raw.title === "string" ? raw.title.trim() : "";
+  if (rawTitle.length > 120) throw new Error(`Shot title at ${index} is longer than 120 characters`);
+  return {
+    shotId,
+    ...(role === undefined ? {} : { role: role as "anchor" | "shot" }),
+    ...(included === undefined ? {} : { included }),
+    ...(rawTitle ? { title: rawTitle } : {}),
+  };
 }
 
 /** Injected candidate parsers (they live in mcpGenerationTools and are also used by the single-shot path). */
@@ -372,13 +387,11 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     if (!operation.shots || operation.shots.length === 0) return undefined;
     const sealedShots: SealedMultiShotEntry[] = operation.shots.map((shot) => {
       const included = shot.included !== false;
-      if (!included) return { shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), included: false, candidate: shot.candidate };
+      if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
       const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
       return {
-        shotId: shot.shotId,
-        ...(shot.role ? { role: shot.role } : {}),
-        ...(shot.included !== undefined ? { included: shot.included } : {}),
+        ...generationShotEnvelopeOf(shot),
         candidate: { ...normalized, sealedContractHash: contract.contractHash },
         contract,
       };

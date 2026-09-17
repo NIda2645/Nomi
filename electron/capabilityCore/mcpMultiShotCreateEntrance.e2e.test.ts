@@ -394,6 +394,36 @@ describe("P4 S6.5 — lane draft_shots：镜头只给语义字段、不给 candi
     }
   });
 
+  it("模型拟的标题一路送到花钱卡那行，不是被砍断的提示词", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler, generationAuthority } = harness(vendor.origin, [], undefined, savedDefaults);
+    try {
+      const params = lanePlanParams([
+        { shotId: "shot-1", role: "shot", title: "日落前的一分钟", prompt: "小禾合上电脑，看夕阳。镜头缓慢推近她的侧脸，窗外的光把桌面染成橘色。", taskKind: "image_to_video", durationSec: 8 },
+        { shotId: "shot-2", role: "shot", prompt: "第二天清晨，她重新打开电脑。", taskKind: "image_to_video", durationSec: 5 },
+      ]);
+      // 前提断言：lane 确实把 title 发出来了（翻译层曾经在这里把它扔掉）。
+      expect((params.shots as Array<Record<string, unknown>>)[0].title).toBe("日落前的一分钟");
+
+      const created = await handler({ capability: "create", lease, params: { operationId: "op-title", ...params } }) as {
+        operation: { shots?: Array<{ title?: string }> };
+      };
+      // 标题落在镜头信封上，不在候选里——它一个字都不该进 provider 请求。
+      expect(created.operation.shots?.map((shot) => shot.title)).toEqual(["日落前的一分钟", undefined]);
+
+      await handler({ capability: "preview", lease, params: { operationId: "op-title" } });
+      const gate = await generationAuthority.requestGenerationGate({ lease, params: { operationId: "op-title" } }) as {
+        shots?: { shots: Array<{ shotId: string; sceneOneLiner: string }> };
+      };
+      const lines = gate.shots?.shots ?? [];
+      // 用户在这一刻决定花不花钱：第一行读到人话标题；第二行没拟标题，才退回提示词前缀。
+      expect(lines.find((shot) => shot.shotId === "shot-1")?.sceneOneLiner).toBe("日落前的一分钟");
+      expect(lines.find((shot) => shot.shotId === "shot-2")?.sceneOneLiner).toBe("第二天清晨，她重新打开电脑。");
+    } finally {
+      await vendor.close();
+    }
+  });
+
   it("显式给了 candidate 的镜头逐字节照旧（这条修的是缺候选，不是改已有语义）", async () => {
     const vendor = await startLoopbackVendor();
     const { handler } = harness(vendor.origin, [], undefined, savedDefaults);

@@ -198,6 +198,11 @@ export type ProductionGenerationShot = {
   role?: "anchor" | "shot";
   /** Checkbox for 试拍/分批: a sealed contract only covers included shots. Absent → included. */
   included?: boolean;
+  /**
+   * 模型拟的短标题（给人看，不进 provider 请求）。画布节点标签与花钱确认卡那行都读它；
+   * 缺省时由**渲染层**用带 zh/en 的 i18n 兜底，主进程不再自己合成（那份是硬编码中文）。
+   */
+  title?: string;
   candidate: PlanCandidate;
   /** Sealed sub-contract for this shot; absent until the plan is sealed. */
   contract?: ExecutionContractV1;
