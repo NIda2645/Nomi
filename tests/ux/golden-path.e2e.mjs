@@ -42,6 +42,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { clickOrFail, expect, expectAbsent, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import { FIXTURE_IMAGE_MODEL, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
@@ -166,7 +167,7 @@ async function bringShotTableIntoFullView(win) {
 async function stepNewProject() {
   const { win } = await walk.start({ first: true })
   currentWin = win
-  win.setDefaultTimeout(30_000)
+  win.setDefaultTimeout(stationTimeout({ operations: 2 }))
   const created = await walk.newProject()
   await expectVisible(win.locator(DOCUMENT), '新建空项目后创作区文本编辑器没有出现')
   say(`新建空项目：${created.projectId}`)
@@ -220,7 +221,7 @@ async function stepSplitIntoThreeShots(win, projectId) {
   // 账本 A：3 个镜头节点同属一个 Run，提示词逐字等于草稿；一张 production 分镜表指着同一个 Run；
   // 一个带幂等章的分镜组。三者缺一都是「Agent 说落了、用户看不到」。
   await expect.poll(async () => shotPrompts((await readProject(win, projectId)).payload).length,
-    { message: '草稿没有落成 3 个镜头节点', timeout: 30_000 }).toBe(3)
+    { message: '草稿没有落成 3 个镜头节点', timeout: stationTimeout({ operations: 2 }) }).toBe(3)
   const payload = (await readProject(win, projectId)).payload
   const nodes = landedShotNodes(payload)
   expect(nodes.map((node) => node.prompt), '落盘的三镜提示词与草稿不一致').toEqual(SHOT_PROMPTS)
@@ -298,7 +299,7 @@ async function stepAgentPatchShot2(win, projectId, runId, nodeIds) {
   await recorded(patchDone.received, 'draft_shots 改镜工具结果')
 
   await expect.poll(async () => shotNode((await readProject(win, projectId)).payload, SHOT_2_ID)?.prompt,
-    { message: '改镜之后第 2 镜节点的提示词没有落盘', timeout: 30_000 }).toBe(SHOT_2_NEW_PROMPT)
+    { message: '改镜之后第 2 镜节点的提示词没有落盘', timeout: stationTimeout({ operations: 2 }) }).toBe(SHOT_2_NEW_PROMPT)
   const after = shotPrompts((await readProject(win, projectId)).payload)
   expect(after[0], '第 1 镜被误改').toBe(SHOT_PROMPTS[0])
   expect(after[2], '第 3 镜被误改').toBe(SHOT_PROMPTS[2])
@@ -319,9 +320,9 @@ async function stepGenerateShot2Image(win, projectId, nodeIds) {
   await clickOrFail(spendDialog.getByRole('button', { name: '生成', exact: true }), '确认生成（loopback 零额度）')
   await expectAbsent(spendDialog, { provenBy: spendProof, message: '确认后花钱确认卡应持续消失' })
 
-  await expect(table.locator(row(nodeIds[1])), '第 2 镜没有变成已生成').toContainText('已生成', { timeout: 60_000 })
+  await expect(table.locator(row(nodeIds[1])), '第 2 镜没有变成已生成').toContainText('已生成', { timeout: stationTimeout({ operations: 4 }) })
   await expect.poll(async () => shotNode((await readProject(win, projectId)).payload, SHOT_2_ID)?.result?.url ?? null,
-    { message: '第 2 镜的生成结果没有回到它的节点', timeout: 60_000 }).toMatch(/^nomi-local:\/\//)
+    { message: '第 2 镜的生成结果没有回到它的节点', timeout: stationTimeout({ operations: 4 }) }).toMatch(/^nomi-local:\/\//)
   const resultUrl = shotNode((await readProject(win, projectId)).payload, SHOT_2_ID).result.url
   expect(shotPrompts((await readProject(win, projectId)).payload), '生成不许改动任何一镜的提示词')
     .toEqual([SHOT_PROMPTS[0], SHOT_2_NEW_PROMPT, SHOT_PROMPTS[2]])
@@ -367,7 +368,7 @@ async function stepRestartAndVerify(projectRoot, projectId, nodeIds, { resultUrl
 
   const { win } = await walk.start()
   currentWin = win
-  win.setDefaultTimeout(30_000)
+  win.setDefaultTimeout(stationTimeout({ operations: 2 }))
 
   // 先问盘，再开 UI。两个理由：
   //   ① 「重启后还在」的真相源是盘，不是重新渲染出来的那一屏；先读盘，结论不依赖任何交互；
@@ -388,7 +389,7 @@ async function stepRestartAndVerify(projectRoot, projectId, nodeIds, { resultUrl
   await win.waitForFunction(() => {
     const url = new URL(location.href)
     return Boolean(url.searchParams.get('projectId') ?? new URLSearchParams(url.hash.split('?')[1] ?? '').get('projectId'))
-  }, null, { timeout: 30_000 })
+  }, null, { timeout: stationTimeout({ operations: 2 }) })
   const reopenedId = await win.evaluate(() => {
     const url = new URL(location.href)
     return url.searchParams.get('projectId') ?? new URLSearchParams(url.hash.split('?')[1] ?? '').get('projectId')
@@ -400,11 +401,11 @@ async function stepRestartAndVerify(projectRoot, projectId, nodeIds, { resultUrl
   const table = await bringShotTableIntoFullView(win)
   await expect(table.locator('[data-shot-table-row]'), '重启后分镜表不是 3 行').toHaveCount(3)
   await expect(table.locator(row(nodeIds[1])), '重启后第 2 行没有显示改后的提示词').toContainText('逆光下的侧脸')
-  await expect(table.locator(row(nodeIds[1])), '重启后第 2 镜不是已生成态').toContainText('已生成', { timeout: 30_000 })
+  await expect(table.locator(row(nodeIds[1])), '重启后第 2 镜不是已生成态').toContainText('已生成', { timeout: stationTimeout({ operations: 2 }) })
   // 只比 src 字符串会假绿：src 在、图挂了也照样通过。判据取 naturalWidth——它 >0 意味着这张图**真的解码出来了**。
   const restoredImage = table.locator(`${row(nodeIds[1])} img`).first()
   await expect.poll(async () => restoredImage.evaluate((el) => el.naturalWidth),
-    { message: '重启后第 2 行的关键帧格没有真的把那张图解码出来', timeout: 20_000 })
+    { message: '重启后第 2 行的关键帧格没有真的把那张图解码出来', timeout: stationTimeout({ operations: 2 }) })
     .toBeGreaterThan(0)
   const restored = await restoredImage.evaluate((el) => ({ src: el.getAttribute('src'), w: el.naturalWidth, h: el.naturalHeight, complete: el.complete }))
   console.log('  · 重启后关键帧格 img：', JSON.stringify(restored))
