@@ -8,6 +8,7 @@ import type { DispatchContext } from "./dispatcher";
 import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from "./approvalReceipt";
 import { decideGenerationSpend, generationChallengeTokenOf } from "./generationSpendDecision";
 import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
+import { beginPolicySpendDecision } from "./policySpendDecision";
 
 /**
  * Main-process transport for the semantic generation vocabulary.
@@ -189,6 +190,17 @@ function draftedOperationId(drafted: unknown, args: Record<string, unknown>): st
 }
 
 /**
+ * 同 `draftedOperationId`，但读不出来就回 `undefined`。
+ *
+ * 它只用在一个地方：占「这一笔由档位代答」那个位（T-AG-04）。那里读不出 id **不能抛**——
+ * 抛了就会把一次本来能成的建草稿变成失败。读不出的后果只是这一笔少了一层占位，
+ * 决门那一步照旧用会抛的那一份（`draftedOperationId`），不许拿猜的 id 去开付费门。
+ */
+function draftedOperationIdOrNone(drafted: unknown, args: Record<string, unknown>): string | undefined {
+  try { return draftedOperationId(drafted, args); } catch { return undefined; }
+}
+
+/**
  * Build the adapter used by one Host partition. `leaseFor` is an internal
  * main-process identity bridge; the resulting lease never crosses the model
  * or renderer boundary.
@@ -345,16 +357,36 @@ export function createPiGenerationTransportAdapter(
         // operationId is required by every non-create descriptor. Parsing it
         // here keeps malformed model calls out of the durable operation store.
         if (capability !== "context" && capability !== "create") operationId(args);
-        const result = await plan(capability, args, currentLease, signal);
-        // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
-        // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
-        const cardShown = capability === "present"
-          || ((capability === "create" || capability === "plan") && !planCardHidden(result));
-        if (cardShown) {
-          const decided = await decideByPolicyAfterDraft(args, result, currentLease, signal);
-          if (decided) return { ok: true, result: decided };
+        // ── 「这一笔由档位代答，别把它投影成卡」（T-AG-04）──
+        //
+        // 面板每 1.5s 读一次投影，而 `plan()` 一落盘，报价卡就可见了——代答跑在它之后。
+        // 所以占位必须**早于草稿落盘**，晚一步用户就会看见那张他刚授权过「不用再问」的卡闪出来。
+        //
+        // `present`（`generate` 动词，真机上唯一会让卡露面的那条）入参里带着 operationId，直接占。
+        // `create` 的 id 由宿主生成、这一刻还不存在：它在**紧接着 `plan()` 的同步语句里**补占
+        // （中间没有 await，IPC 读进不来）。桌面 lane 的 `create` 本来就带 `cardHidden`、不出卡，
+        // 那一支是给外部宿主与夹具留的。
+        const policyAnswers = spendDecidedByPolicy(deps.approvalPolicy?.());
+        const claimPolicyDecision = (operation: string | undefined): (() => void) | undefined =>
+          policyAnswers && operation ? beginPolicySpendDecision(currentLease.projectId, operation) : undefined;
+        const claimed = typeof args.operationId === "string" && args.operationId.trim() ? args.operationId.trim() : undefined;
+        // 释放放在 `finally`：代答**失败**时卡要回到原处等用户（「策略答不了才问人」）。
+        let releasePolicyClaim = claimPolicyDecision(claimed);
+        try {
+          const result = await plan(capability, args, currentLease, signal);
+          // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
+          // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
+          const cardShown = capability === "present"
+            || ((capability === "create" || capability === "plan") && !planCardHidden(result));
+          if (cardShown) {
+            if (!releasePolicyClaim) releasePolicyClaim = claimPolicyDecision(draftedOperationIdOrNone(result, args));
+            const decided = await decideByPolicyAfterDraft(args, result, currentLease, signal);
+            if (decided) return { ok: true, result: decided };
+          }
+          return { ok: true, result, silent: capability === "context" || capability === "read" };
+        } finally {
+          releasePolicyClaim?.();
         }
-        return { ok: true, result, silent: capability === "context" || capability === "read" };
       } catch (error) {
         return safeFailure(error);
       }

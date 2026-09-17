@@ -56,3 +56,22 @@ test('hard-list publication remains disallowed in edit-selection mode', async ()
     resolveSubject: createLaneNativeApprovalResolver({ projectDir: '/project', sandboxActive: true, effects: LANE_CODING_TOOL_EFFECTS }) });
   assert.equal((await instance.preflight({ toolCallId: 'publish', toolName: 'bash', args: { command: 'git push origin main' } }, undefined)).decision, 'denied-by-policy');
 });
+
+// T-ED-02：工具回执要说真话，就得问得到「这一次到底是怎么过闸的」。
+// 闸是这件事的唯一 owner；此前它根本不对外说，于是回执只能查一张静态表。
+test('the gate remembers how each call actually passed, and forgets it when the host says so', async () => {
+  const instance = gate('safe-auto');
+  await instance.preflight({ toolCallId: 'read-1', toolName: 'read', args: {} }, undefined);
+  assert.equal(instance.decisionFor('read-1'), 'auto-granted');
+
+  const waiting = instance.preflight({ toolCallId: 'push-1', toolName: 'bash', args: { command: 'git push origin main' } }, undefined);
+  instance.answer('push-1', 'allow-once');
+  await waiting;
+  assert.equal(instance.decisionFor('push-1'), 'granted-once');
+
+  // 没进过闸的调用不许编一个结论出来：回执据此不提卡。
+  assert.equal(instance.decisionFor('never-seen'), undefined);
+
+  instance.forget('push-1');
+  assert.equal(instance.decisionFor('push-1'), undefined);
+});

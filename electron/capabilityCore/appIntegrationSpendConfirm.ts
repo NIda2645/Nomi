@@ -32,6 +32,7 @@ import type { ModelPricing } from "../productionRun/shotPricing";
 import type { ProductionActionResult, ProductionRun } from "../productionRun/productionRunTypes";
 import { listPendingSpendConfirms, projectPendingSpendConfirm } from "../productionRun/productionPendingSpend";
 import { decideGenerationSpend } from "./generationSpendDecision";
+import { spendAnsweredByPolicy } from "./policySpendDecision";
 import type { PendingSpendConfirm, PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 import { readResidentSurfaceLifecycle } from "./residentSurfaceLifecycle";
 
@@ -187,15 +188,25 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     return runs;
   };
 
-  /** 面板要显示的那些。空数组 = 面板上一张付费卡都不该出现。 */
+  /**
+   * 面板要显示的那些。空数组 = 面板上一张付费卡都不该出现。
+   *
+   * `spendAnsweredByPolicy` 是「这一笔此刻正由『全自动』档代答」那份事实（`policySpendDecision.ts`）。
+   * 它**只减不增**：任何一笔它说 `false` 的，行为与此前逐字相同。
+   */
   const listPendingSpend = (projectId: string): readonly PendingSpendConfirm[] => {
     if (!deps.isProjectOpen(projectId)) return Object.freeze([]);
-    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing);
+    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing, spendAnsweredByPolicy);
   };
 
+  /**
+   * 三个写动作共用的读。用同一个谓词是硬要求：一笔正由档位代答的生成，面板上没有卡，
+   * 用户也就没有点过什么——此刻再让「改参数 / 丢弃 / 确认」落到它身上，就是在一笔已经
+   * 在飞的授权旁边开第二个决定者。
+   */
   const pendingFor = (projectId: string, operationId: string): PendingSpendConfirm | undefined => {
     const run = deps.runs.read(projectId, operationId);
-    return run ? projectPendingSpendConfirm(run, deps.resolvePricing) : undefined;
+    return run ? projectPendingSpendConfirm(run, deps.resolvePricing, spendAnsweredByPolicy) : undefined;
   };
 
   const leased = async (projectId: string): Promise<ProjectLeaseV2> => {

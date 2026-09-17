@@ -10,7 +10,7 @@
 // 「先说什么后做什么」在数据里就不存在了；这道门送出去的是 `LaneProjection`，
 // 一串**有序的段**，顺序是记下来的不是推出来的。
 import type {
-  LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
+  LaneApprovalDecision, LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
 } from '../shared/agentLane/laneContracts'
 import { LaneDomainFailure } from '../shared/agentLane/laneToolContract'
 import type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec } from '../shared/agentLane/laneToolContract'
@@ -48,7 +48,21 @@ export type LaneToolOutcome =
  * 活着的领域 port。焊在一起的结果就是想扫一眼「模型看到了什么」都得先起半个 App——
  * 于是没人扫，于是 `z.record(z.unknown())` 活了半年。
  */
-export type LaneToolExecutionContext = { toolCallId: string; signal: AbortSignal }
+export type LaneToolExecutionContext = {
+  toolCallId: string
+  signal: AbortSignal
+  /**
+   * 这次调用**真的**是怎么过闸的（`laneApprovalGate.decisionFor`）。写回执时读它。
+   *
+   * 为什么回执需要它：闸跑在 `before_tool`，工具跑完再写回执——那一刻卡早就答完了。
+   * 一张静态表因此永远说不准「用户现在看到什么」：`edit_timeline` 原来无条件回
+   * 「一张复审卡正在问用户」，而三档里只有 `step`/`safe-auto` 真出过卡，且出过的那张也已经答完。
+   * 模型照着那句话让用户去点一张不存在的卡（2026-09-12「劈成两半」）。
+   *
+   * 缺席 = 这条 lane 没装闸（阶段 1 的影子夹具 / 单测）。那时回执只说做成了什么，不提卡。
+   */
+  approvalDecision?: LaneApprovalDecision
+}
 
 export type LaneToolDescriptor = LaneToolSpec & {
   execute(args: unknown, context: LaneToolExecutionContext): Promise<LaneToolOutcome>
