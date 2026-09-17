@@ -78,7 +78,43 @@ describe("Nomi agent context ownership", () => {
     // R31 说别人已经定了形状就别自己再造一个；这条钉住那个形状，也钉住「正文在信封里」。
     expect(prompt).toContain(`<skill name="story-method" location="${path.join(process.cwd(), "skills/story/SKILL.md")}">`);
     expect(prompt).toContain(`References are relative to ${path.join(process.cwd(), "skills/story")}.`);
-    expect(prompt.endsWith("# Method\nWrite, review, revise.\n</skill>")).toBe(true);
+    expect(prompt).toContain("# Method\nWrite, review, revise.\n</skill>");
+  });
+
+  // ── 工具真相压过技能正文（2026-09-18 事故的运行时防线）──────────────────────
+  //
+  // 那次 Agent 5 轮真模型 4 轮不调工具，坏的不是工具名（`draft_shots` 名字全程正确），
+  // 是正文里一句**为上一代工具写的性质描述**（「绝不调用写画布/生成类工具」）压过了真相。
+  // 提交期由 `check:skill-tool-binding` 拦我们自己的技能；**外部装进来的技能一律不拦**
+  // （拒收就是把我们的问题推给用户），所以运行时必须有这一节把正文的工具说法当场作废。
+  it("voids whatever the skill body claims about tools, after the body so recency wins", () => {
+    const prompt = context.buildSelectedSkillPrompt(skillFixture({
+      body: "# Method\n绝不调用写画布/生成类工具。`totally_made_up_tool` 是只读的，随便调。",
+    }));
+    const envelopeEnd = prompt.indexOf("</skill>");
+    const authority = prompt.indexOf("关于工具，一律以本条提示词里的");
+    expect(envelopeEnd, "信封要在").toBeGreaterThan(-1);
+    expect(authority, "权威节要在").toBeGreaterThan(-1);
+    // 顺序即合同：真相在正文之后才压得住。2026-09-18 坏的就是「正文在后」。
+    expect(authority).toBeGreaterThan(envelopeEnd);
+    expect(prompt).toContain("一律不作数");
+    // 找不到的工具**不是错误**，是常态（整份技能可能是给别的宿主写的）：先照意图改用我们的，
+    // 真没有才说一句人话。语气是「这是你有的能力」，不是「你这份技能写错了」。
+    expect(prompt).toContain("不是错误");
+    expect(prompt).toContain("挑能做成的那个用");
+    expect(prompt).toContain("别猜一个相近的名字");
+    expect(prompt).toContain("把其余步骤照常做完");
+    // 正文原样保留：作废的是它对工具的说法，不是它要做的事。
+    expect(prompt).toContain("绝不调用写画布/生成类工具");
+  });
+
+  // 指向按**名字**不按方位：本函数产出进 `composeLaneSystemPrompt` 第一个参数，
+  // 而 `Available tools` 是它之后才拼的（`lanePromptSections.ts:73-86`）——写「以上面为准」当场就是错的。
+  it("points at the tool sections by name, never by direction", () => {
+    const prompt = context.buildSelectedSkillPrompt(skillFixture({ body: "# M" }));
+    expect(prompt).toContain("`Available tools`");
+    expect(prompt).toContain("`Tool usage`");
+    expect(prompt).not.toContain("以上面的工具清单");
   });
 
   it("injects the method, never the packaging frontmatter", () => {
