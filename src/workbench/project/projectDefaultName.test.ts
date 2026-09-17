@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatDefaultProjectName } from './projectRepository'
-import type { WorkbenchProjectSummary } from './projectTypes'
+import type { WorkbenchProjectSummary } from './projectRecordSchema'
 
 // 2026-09-17 走查 W-10 的回归：连续新建两个空白项目，项目库里两张卡的名字、缩略图、状态行
 // **完全相同**，用户没有任何办法分辨哪个是哪个。缩略图（同一张灰色占位）与状态行（都是「刚刚」）

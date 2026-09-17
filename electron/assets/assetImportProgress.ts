@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { pipeline } from "node:stream/promises";
 
 import { broadcastAssetImportProgress } from "./assetEvents";
+import type { AssetLocalizationEvent } from "../shared/assets/assetLocalizationEvent";
 
 /** 拷贝流每几十 KB 就回调一次；广播按这个间隔节流（末帧无条件发，保证一定收到 100%）。 */
 const PROGRESS_BROADCAST_INTERVAL_MS = 80;
@@ -47,7 +48,9 @@ export function createAssetImportProgressReporter(input: {
   // （325.7 MB 的源会变成 68.1 MB 的中间件），让那个数字跳到标签上等于换了个文件在讲。
   const sourceBytes = input.totalBytes;
   let lastRatio = 0;
-  let phase: "preparing" | "copying" | "finalizing" = "preparing";
+  // 阶段词表的唯一 owner 是事件契约（`AssetLocalizationEvent["phase"]`）——
+  // 在这里抄一份同样的联合，就是等着两边哪天不一样。
+  let phase: NonNullable<AssetLocalizationEvent["phase"]> = "preparing";
   const send = (ratio: number) => {
     lastSentAt = Date.now();
     lastRatio = ratio;

@@ -6,10 +6,10 @@
 // 翻成一句能行动的话，所有入口调它。
 import i18n from '../../i18n'
 import type { TranslationKey } from '../../i18n/translationKey'
-import type { MediaKind } from '../../../electron/assets/mediaTypes'
 import {
   formatMediaBytes,
   type MediaImportRejection,
+  type MediaKind,
 } from '../../../electron/shared/contracts/mediaImportPolicy'
 
 /**

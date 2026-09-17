@@ -17,6 +17,14 @@
 
 import { acceptAttrForKinds, type MediaKind } from '../../assets/mediaTypes'
 
+/**
+ * 转出 `MediaKind`（R17.3 分层边界）：渲染层只许 import `electron/shared/contracts/`，
+ * 而「这个面收哪些种类」的答案（`accepted`）本来就是本契约的一部分——
+ * 拿着它却够不到它的类型，调用方只能自己抄一份联合，那才是真正的第二份真相源。
+ * 纯类型转出，运行时零成本，不把 `mediaTypes` 的实现拖进渲染 bundle。
+ */
+export type { MediaKind }
+
 /** 能承载媒体的入口。新增入口必须在这里登记。 */
 export type MediaImportSurfaceId =
   | 'project-storage'
