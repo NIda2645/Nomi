@@ -8,6 +8,11 @@
  * 判据本体与它为什么这么判，见 `scripts/skill-tool-binding-lib.mjs`。
  * 这里只做两件事：从注册表派生真相视图、把 `skills/` 喂给判据。
  *
+ * 2026-09-18 补第五类：**字段该填什么值**也是注册表事实。技能写「`durationSec` 一律填 `0`」，
+ * 而动词 schema 是 `z.number().positive()`——模型照技能填、被 ajv 当场拒，当天 5 次失败全是这一条。
+ * 这一条的判据刻意不问「有没有复述」，只问「复述的**值**过不过得了那个字段的 schema」：
+ * 过得了就一声不吭，所以举例子、写示例参数都不会被误伤，零误报是结构保证的。
+ *
  * 与 `check:mcp-tool-references` 的分工（两个门岗，一条边的两半）：
  *   · 那个管**名字**——技能提到的工具名必须存在 / 不是已退役的。
  *   · 这个管**性质**——名字对了、工具也在，但正文说它是只读的而它其实会写，一样出事。
@@ -17,7 +22,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CAPABILITY_ALIAS_ENTRIES } from '../electron/shared/agentCapabilities/registry'
-import { findEffectRestatements, declaredToolsOf } from './skill-tool-binding-lib.mjs'
+import { VERB_DECLARATIONS } from '../electron/shared/agentCapabilities/verbDeclarations'
+import { findEffectRestatements, findFalseFieldValues, declaredToolsOf } from './skill-tool-binding-lib.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -26,6 +32,27 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const effectByAlias = new Map<string, string>(
   CAPABILITY_ALIAS_ENTRIES.filter((entry) => entry.surface === 'pi').map((entry) => [entry.alias, entry.contract.effect]),
 )
+
+// 每个动词模型可见 schema 的字段 → 那个字段自己的校验器。同样现取，不在本文件写死任何字段名或取值。
+const fieldSchemasByTool = new Map<string, Map<string, { safeParse(value: unknown): { success: boolean } }>>()
+for (const verb of VERB_DECLARATIONS) {
+  const shape = (verb.schema as unknown as { shape?: Record<string, unknown> }).shape
+  if (!shape) continue
+  const fields = new Map<string, { safeParse(value: unknown): { success: boolean } }>()
+  const collect = (node: unknown, depth: number): void => {
+    const own = (node as { shape?: Record<string, unknown> })?.shape
+    if (!own || depth > 2) return
+    for (const [name, child] of Object.entries(own)) {
+      if (!fields.has(name)) fields.set(name, child as { safeParse(value: unknown): { success: boolean } })
+      // 数组元素的形状（`shots[]` 里那一层）——技能规定的字段几乎都住在这一层。
+      const element = (child as { element?: unknown; _def?: { type?: unknown; innerType?: unknown } })
+      collect(element.element ?? element._def?.innerType ?? element._def?.type, depth + 1)
+      collect(child, depth + 1)
+    }
+  }
+  collect(verb.schema, 0)
+  fieldSchemasByTool.set(verb.name, fields)
+}
 
 const skillsDir = path.join(repoRoot, 'skills')
 const skillFiles = fs.existsSync(skillsDir)
@@ -45,6 +72,10 @@ for (const file of skillFiles) {
   for (const finding of findEffectRestatements(source, declared, effectByAlias)) {
     const subject = finding.tools.length > 0 ? finding.tools.join(', ') : '（泛指工具）'
     offenders.push(`${relative}:${finding.line} [${finding.kind}] ${subject} —— ${finding.text}`)
+  }
+  for (const finding of findFalseFieldValues(source, declared, fieldSchemasByTool)) {
+    offenders.push(`${relative}:${finding.line} [field_value] ${finding.tool}.${finding.field} 收不下 `
+      + `${JSON.stringify(finding.value)} —— ${finding.text}`)
   }
 }
 

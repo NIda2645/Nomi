@@ -108,3 +108,85 @@ export function declaredToolsOf(source) {
   const block = /^[ \t]*tools:[ \t]*\n((?:[ \t]+- [^\s-][^\n]*\n)+)/m.exec(source)
   return block ? [...block[1].matchAll(/^[ \t]+- ([^\s]+)/gm)].map((match) => match[1]) : []
 }
+
+// ── 第五类注册表事实：字段该填什么值 ─────────────────────────────────────────
+//
+// 上面四类（名字 / 读写 / 审批 / 花钱）是 2026-09-18 前三次事故的形状。当天真机 23 轮又暴露了第五类，
+// 而且上面那把尺子完全看不见它：
+//
+//   技能 `workbench-storyboard-planner/SKILL.md:69`：「`durationSec` 一律填 `0`」
+//   动词 `writeVerbs.ts:33`：`z.number().positive()`，描述写的是「omit for stills」
+//
+// 模型照技能填了 `0`，被 ajv 当场拒——5 次失败全是这一条。它自己在回复里说破了：
+// 「上次按图片分镜规范填了静帧时长，系统不接收」：**它知道自己照规范做的，但没法知道规范和工具对不上。**
+//
+// 判据刻意不去检测「有没有复述」，只检测「复述的东西是不是假的」：
+// **技能给某个字段规定的字面值，必须能通过那个字段自己的 schema。**
+// 值能过就一声不吭，所以举合法例子、写示例参数不会被误伤。
+//
+// **但它不是零误报的**——我第一版这么宣称过，门岗第一次跑就证伪了：
+// 「用户已指定模型或清晰度时才填（从 `list_models` 取准确值）」里的 `list_models` 是**工具名**，
+// 被归给了前面最近的 `parameters`，而 object schema 收不下字符串 → 假红。
+// 所以裸标识符要先排掉「它其实是个工具名/字段名」的情况（见 `isReference`）。
+// 数字、布尔、带引号的串没有这个歧义，照测。
+//
+// 归属规则：一个字面值归**它前面最近的那个字段**。少了这条，
+// 「`taskKind` 填 `text_to_image`，`durationSec` 省掉」里的 `text_to_image` 会被拿去喂 durationSec 的
+// schema（不是数字 → 假红）。按字段出现位置切段，每段只喂本段的值。
+
+/**
+ * 反引号里的字面量 → JS 值。认不出的返回 `undefined`（=不参与判定，宁可漏报不误报）。
+ *
+ * `known` 是「这一带认识的名字」：工具名与字段名。裸标识符同时可能是**枚举值**（`text_to_image`）
+ * 和**引用**（`list_models`、`draftId`），光看形状分不开——在 `known` 里的一律当引用排掉。
+ * 代价是枚举值里恰好与某个字段/工具同名的那些测不到；换来的是不会把「从 X 取值」读成「填 X」。
+ */
+function literalValueOf(text, known) {
+  const raw = text.trim()
+  if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw)
+  if (raw === 'true' || raw === 'false') return raw === 'true'
+  if (/^["'].*["']$/.test(raw)) return raw.slice(1, -1)
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(raw)) return known.has(raw) ? undefined : raw
+  return undefined
+}
+
+/**
+ * 判一个技能文件里有没有「给字段规定了一个 schema 不认的值」。
+ *
+ * @param source SKILL.md 全文
+ * @param declaredTools frontmatter 声明的工具名（空 ⇒ 整份跳过，与上面同一条结构判据）
+ * @param fieldSchemas Map<工具名, Map<字段名, {safeParse(value)}>> —— **由动词声明派生**，不在这里抄第二份
+ * @returns {{line:number, tool:string, field:string, value:unknown, text:string}[]}
+ */
+export function findFalseFieldValues(source, declaredTools, fieldSchemas) {
+  if (declaredTools.length === 0) return []
+  const fields = new Map()
+  for (const tool of declaredTools) {
+    for (const [name, schema] of fieldSchemas.get(tool) ?? []) {
+      if (!fields.has(name)) fields.set(name, { tool, schema })
+    }
+  }
+  if (fields.size === 0) return []
+  // 这一带认识的名字：所有工具名 + 所有字段名。裸标识符命中它就是引用，不是规定的值。
+  const known = new Set([...fields.keys()])
+  for (const tool of fieldSchemas.keys()) known.add(tool)
+  const out = []
+  for (const [index, line] of source.split('\n').entries()) {
+    // 按「反引号里的字段名」把整行切段：每段属于它开头那个字段，段内的字面量才算它的。
+    const marks = [...line.matchAll(/`([A-Za-z_][A-Za-z0-9_.]*)`/g)]
+      .filter((match) => fields.has(match[1].split('.').pop()))
+    for (const [order, mark] of marks.entries()) {
+      const field = mark[1].split('.').pop()
+      const from = mark.index + mark[0].length
+      const to = order + 1 < marks.length ? marks[order + 1].index : line.length
+      for (const literal of line.slice(from, to).matchAll(/`([^`]+)`/g)) {
+        const value = literalValueOf(literal[1], known)
+        if (value === undefined) continue
+        const { tool, schema } = fields.get(field)
+        if (schema.safeParse(value).success) continue
+        out.push({ line: index + 1, tool, field, value, text: line.trim() })
+      }
+    }
+  }
+  return out
+}
