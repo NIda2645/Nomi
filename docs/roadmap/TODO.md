@@ -1,6 +1,6 @@
 # Nomi 迭代 TODO —— 唯一真相源
 
-> 状态：🚧 进行中 — 这份文件**长期活着**，状态变了就改这一份。基准 `origin/main @ 155f660ce`，最后盘点 2026-09-14。
+> 状态：🚧 进行中 — 这份文件**长期活着**，状态变了就改这一份。基准 `origin/main @ 71b38b8fa`（#802 合入），最后盘点 2026-09-17。
 > **派工、出方案、开分支之前先对照这份表**；某条看不懂或觉得写错了，回查它「来源」那一列（[sources/](sources/) 是原始资料，[designs-not-yet-built.md](designs-not-yet-built.md) 是设计落地实扫）。用法与维护纪律见 [README](README.md)。
 
 **状态口径**：`doing` 有分支/PR 在写 · `todo` 该做没开工 · `hold` 要先聊/等别的东西 · `done` 已合 main（写 PR 号）。
@@ -14,14 +14,14 @@
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-RL-01 | 合并列车：open PR 逐个过 CI 合进 main | doing | 09-14 拍板 | #785 Contracts 转绿先进（它解 `Canvas Performance (Linux)` 那条共同红），其余按序 |
-| T-RL-02 | Agent 做不出图/视频：动词被翻成适配器白名单里没有的名字 → 恒 `generation_surface_unavailable` | doing | [截图](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) · [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | `feat/agent-tool-face-20-verbs-v2` 开 PR，关 #777 |
-| T-RL-03 | 视频拆解全失败：付费出口没穿 `grantId`，错误被吞 | doing #782 | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 合 |
-| T-RL-04 | 设置页 7–8 个冗余区块全删 + 供应商默认放行 + 系统提示词搬进模式弹层 | doing #781 | [原文 09-12/09-13](sources/2026-09-14-filehelper-transcript.md#09-12) | 合 |
-| T-RL-05 | MCP 连接真实性五 bug（只打开 tab 就静默改写本机 5 个全局配置等） | doing #783 | [原文 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 合；**用户需从真实 Nomi.app 重点一次连接** |
-| T-RL-06 | 右侧 AI 栏 + 时间轴同时开 → 页面被切割、右下缺一块、面板没顶到底 | todo | [截图 09-13 19:27](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) | 09-14 拍板 **A = 修回旧设计**（时间轴横贯底部、AI 面板被顶上去），以迁移前代码为规格，不需样张；停靠列 B 留下一版 |
-| T-RL-07 | 「skill 能用」：选了 skill 回复里看得出被用、画幅/提示词跟着变 | todo | [原文 09-10/09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | v2 合后带 skill 真跑 20 句 |
-| T-RL-08 | 拆解出来的秒数一堆小数 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 并进拆解那条分支 |
+| T-RL-01 | 合并列车：open PR 逐个过 CI 合进 main | doing | 09-14 拍板 | #802 已合入 main（merge SHA `71b38b8fa`，`delivery:verify-merged` 收据在 `.git/nomi-delivery/merged-main/71b38b8fa.../ci-evidence.json`）；#782 / #783 / #768 / #790 / #786 与反馈回路已在 `integration/release-20260917` 删冲突部分后重整，#754 / #799 延后 |
+| T-RL-02 | Agent 做不出图/视频：动词被翻成适配器白名单里没有的名字 → 恒 `generation_surface_unavailable` | done #797 | [截图](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) · [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合；#777 已关。剩余矩阵夹具见 T-AG-10 |
+| T-RL-03 | 视频拆解全失败：付费出口没穿 `grantId`，错误被吞 | doing #PRNUM | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合入 `integration/release-20260917`：保留「付费出口一律带 grantId」主体，按用户拍板删掉「最短镜头长度按源片 fps 派生」与那条 12fps 用例（碎镜那条由 #795 的 0.1s 量化解掉，不留并行判据） |
+| T-RL-04 | 设置页 7–8 个冗余区块全删 + 供应商默认放行 + 系统提示词搬进模式弹层 | done #781 | [原文 09-12/09-13](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合 |
+| T-RL-05 | MCP 连接真实性五 bug（只打开 tab 就静默改写本机 5 个全局配置等） | doing #PRNUM | [原文 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合入 `integration/release-20260917`：保留 MCP 连接真实性修复，设置页以 #781 为准丢弃那一半。**仍需用户在真实 Nomi.app 点一次连接**验证 |
+| T-RL-06 | 右侧 AI 栏 + 时间轴同时开 → 页面被切割、右下缺一块、面板没顶到底 | done #794 #796 | [截图 09-13 19:27](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) | 已合；停靠列 B 方案仍留下一版 |
+| T-RL-07 | 「skill 能用」：选了 skill 回复里看得出被用、画幅/提示词跟着变 | done #800 | [原文 09-10/09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合 #800，证据 `docs/evidence/2026-09-15-skill-real-run/`；一次只能选一个 skill 仍归 T-AG-05 |
+| T-RL-08 | 拆解出来的秒数一堆小数 | done #795 | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合（`shotTime.ts` 0.1s 量化是唯一 owner） |
 | T-RL-09 | 发版本身：0.21.0（8-27）仍是最新 release，主线积压三千多提交 | todo | 09-12 RC 切线拍板 | 列车合完打 RC；打包前置缺陷：`@anthropic-ai/sandbox-runtime` 原生二进制要 `asarUnpack` **且**显式递路径 |
 
 ## B. Agent 质量
@@ -30,40 +30,42 @@
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-AG-01 | **Agent 缺「做事原则」**：直接让它出片时不建人物资产、不用参考图模式，怀疑 system prompt 原则没写好 | todo | [截图：Agent 自述「镜头语言规则用了、视觉锚引用没用上」](sources/screenshots/2026-09-12-0033-agent-self-report.jpg) | 这是用户猜的假设，**先验再改**：拿真实 case 跑一遍看它到底读了什么原则 |
+| T-AG-01 | **Agent 缺「做事原则」**：直接让它出片时不建人物资产、不用参考图模式，怀疑 system prompt 原则没写好 | todo | [截图：Agent 自述「镜头语言规则用了、视觉锚引用没用上」](sources/screenshots/2026-09-12-0033-agent-self-report.jpg) | 这是用户猜的假设，**先验再改**：拿真实 case 跑一遍看它到底读了什么原则。已部分验证：#800 给身份层加了三句出片原则，22 句题库里「看得出技能被用」7/11 → 9/11；「不建人物资产 / 不用参考图模式」这两条仍未验 |
 | T-AG-02 | 停止/复制/重试三个动作没有回执（停止实测 3–11ms 就生效，`onRetry` 从未接线） | doing #789 | [原文 09-13 19:32](sources/2026-09-14-filehelper-transcript.md#09-13) | 合 |
-| T-AG-03 | 聊天框四件：一直写字框不变大 · 发送/模式按钮突然跳到左边 · 模式弹层点外面不关 · 一条回复被切成 3 段 | todo | [原文 09-10 13:45](sources/2026-09-14-filehelper-transcript.md#09-10) | 没有任何 lane 碰过；一个小 PR 的量 |
+| T-AG-03 | 聊天框四件：一直写字框不变大 · 发送/模式按钮突然跳到左边 · 模式弹层点外面不关 · 一条回复被切成 3 段 | done | [原文 09-10 13:45](sources/2026-09-14-filehelper-transcript.md#09-10) | 四件全已修（写字框量高 / 右簇右锚 / 弹层 outside-close / 一回合一个气泡 3e7de5a86），TODO 原来那句「没有任何 lane 碰过」是陈旧描述 |
 | T-AG-04 | 全自动档还弹付费卡；「工具回执说有确认卡、宿主没出卡」（让它剪辑劈两半那次） | todo | [截图](sources/screenshots/2026-09-12-0043-edit-split-confirm-card.jpg) | 归 v2 的「export 先确认卡」设计；两条路里删 `needs_spend_confirmation` 状态已拍板 |
-| T-AG-05 | 一次只能选一个 skill；skill 不随聊天发出，用户以为没用上 | todo | [原文 09-10](sources/2026-09-14-filehelper-transcript.md#09-10) | 与 T-AG-15 一起做 |
+| T-AG-05 | 一次只能选一个 skill（skill 不随聊天发出那半已修：6b04d50db，chip 是引用、发完就摘） | todo | [原文 09-10](sources/2026-09-14-filehelper-transcript.md#09-10) | 只剩「多选 skill」未修：`useAgentPanelV4Actions` 的 `skillKey?: string` 仍是单值。与 T-AG-15 一起做 |
 | T-AG-06 | 废话文案：「已保存到项目」「运行命令」那串重复提示 | todo | [截图](sources/screenshots/2026-09-12-0027-canvas-saved-note.jpg) | 顺手 |
 | T-AG-07 | skill 触发机制：官方怎么做 vs 我们怎么做 | hold | 09-12 派过研究，分支在远端，**结论没回来** | 先把那份结论捞回来再决定 |
 | T-AG-08 | 怎么定义/评估/量化 **skill 结构**的质量（不是 skill 内容） | hold 💬 | [原文 09-14 00:12](sources/2026-09-14-filehelper-transcript.md#09-14) | 讨论题，别派工 |
 | T-AG-09 | benchmark：剧本 / 资产 / 分镜 / 提示词 / 模型选择 / 模式选择 —— 专属 AI 生成视频的评价基准 | hold 💬 | [原文 09-13 19:46](sources/2026-09-14-filehelper-transcript.md#09-13) | 讨论题；它决定「Agent 优化到可用」怎么量 |
 | T-AG-10 | 矩阵评测夹具：每个动词 × 每种画布状态 | todo | [原文 09-14 01:52](sources/2026-09-14-filehelper-transcript.md#09-14) | tool-face v2 合后的下一刀 |
 | T-AG-11 | Agent 轨迹数据收集 + 隐私边界（今天的诊断包里**没有**转录，只有日志和模型目录） | todo | [原文 09-13 19:13–19:42](sources/2026-09-14-filehelper-transcript.md#09-13) | 先定「转录哪些字段能出门」，再谈上报；实现见 T-EC-05 |
-| T-AG-12 | 快速反馈机制：出问题处就近弹「反馈给开发者」+ 信息过滤 + 让他愿意点的说法 | todo | [原文 09-12 #7 / 09-13 19:38](sources/2026-09-14-filehelper-transcript.md#09-13) | 与 T-AG-11 同一条链（先有轨迹才有东西可反馈） |
+| T-AG-12 | 快速反馈机制：出问题处就近弹「反馈给开发者」+ 信息过滤 + 让他愿意点的说法 | doing #PRNUM | [原文 09-12 #7 / 09-13 19:38](sources/2026-09-14-filehelper-transcript.md#09-13) | 已在 `integration/release-20260917` 重做并入（分支 `feat/feedback-loop-20260915` 曾被 `90a1139a5` 从列车撤出）：四个失败面同一颗钮、用户零输入（除一行可空留言）、默认关、创作内容默认不带、接收端 Worker 只收不回。projectId 由失败面在点下去那一刻给（不读「当前项目」）。与 T-AG-11 同一条链——没有轨迹时清单里写明 why |
 | T-AG-13 | Goal 模式 v1：一个 Run + 一条 lane，剧本进→成片出 | hold | 09-08 调研已收（PR #623），三条拍板已定 | 六条「没想到」是实施前置门；排在主线后 |
 | T-AG-14 | 看片自评（Agent 最大能力缺口） | hold | 09-07 能力边界七缺口 | — |
 | T-AG-15 | 提示词与 skill 整合（skill 已经把提示词装进去了） | todo | [原文 09-12 00:48](sources/2026-09-14-filehelper-transcript.md#09-12) | 先出方案 |
+| T-AG-16 | 中文界面里工具失败提示仍是英文（如 "The action could not be completed. Next: …"） | hold 💬 | 2026-09-17 #802 列车收尾实测（#802 之前就存在） | 不是纯 i18n 补词条：这几句是**产品文案**（失败原因 + 下一步该干嘛），要用户先看一版中文措辞再落；落时走 R15，zh/en 两轨都要真截图 |
 | T-AG-16 | 常驻 Agent 的长期身份改为窗口＋完整项目绑定，页面端口仅按动作解析；换项目、reload、窗口销毁永久撤销旧动作。09-17 实证：802 当前红灯另由文本存储准入、跨桥错误失真和节点尺寸投影触发，不能只凭错误名称归因旧端口 | doing | [09-16 上下文及09-17证据修订](sources/2026-09-16-session-identity-window-plus-project.md) · [获批实施方案](../plan/2026-09-17-pr802-root-causes.md) · Linux `resident-composer-receipt-fix` | 用户已批准 A 实际失败链＋B 项目会话全部修复合入；隔离依赖 B，因此完整会话及最终落盘守卫先验收，再合 802 |
 
 ## C. 画布与节点
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-CV-01 | 大画布卡：框选卡顿、60 张图拖组几乎动不了、右下角拖比例卡 | doing #787 #763 | [原文 09-10/09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 合；硬指标「长任务 249 → 个位数」不达标不算完 |
+| T-CV-01 | 大画布卡：框选卡顿、60 张图拖组几乎动不了、右下角拖比例卡 | doing #763 | [原文 09-10/09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | #787 只进了预览/海报媒体管线那半；按屏幕尺寸 LOD（S5）被撤出，见 T-CV-14。硬指标「长任务 249 → 个位数」仍不达标不算完 |
 | T-CV-02 | 编组后点空白框就没了；框没拉环、拉环易丢；单击才出蓝色拉环 | todo | [原文 09-12 01:07](sources/2026-09-14-filehelper-transcript.md#09-12) | 磁吸「选中才出带子」是旧设计已拍板恢复；**「编组框丢」是另一件，要核** |
 | T-CV-03 | 节点下面东西太多：只留 icon + hover 名称，运镜/更多挪右上，下面只放模型生成相关 | todo | [原文 09-10 #12](sources/2026-09-14-filehelper-transcript.md#09-10) | 与 #784 同一面；#784 样张已被退回「只收宽不改摆法」 |
 | T-CV-04 | 视频节点却显示「几个图片」→ 要通用 ×1 ×2 数量控件 | todo | [原文 09-10 #11](sources/2026-09-14-filehelper-transcript.md#09-10) | 小 |
-| T-CV-05 | 点节点后下方输入框来回漂移、被截断；参数挤在一起 | todo | [原文 09-10 #10](sources/2026-09-14-filehelper-transcript.md#09-10) | 要核（可能已随参数条 v1 改掉） |
+| T-CV-05 | 点节点后下方输入框来回漂移、被截断；参数挤在一起 | done | [原文 09-10 #10](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修：输入框位置改成 stage/anchor/自然尺寸的纯函数（`anchoredPlacement.ts`，走查 `node-composer-placement.walk.mjs`）；参数面板摊开选项、浮层宽由内容派生（829e884cd + #784） |
 | T-CV-06 | 画布里图片比例不对、上下有透明边 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 要核 |
 | T-CV-07 | 徽标/角标看不清：分镜头左上右上徽标、技能卡黑胶囊 | todo | [截图](sources/screenshots/2026-09-12-0047-skill-card-badge.jpg) | 09-09 拍过「镜头 N 标签行在图上方」，黑胶囊是另一处 |
 | T-CV-08 | 常用文本节点被收进加号；左侧工具栏 hover 加号挡住后面节点 | todo | [原文 09-10 #5 #16](sources/2026-09-14-filehelper-transcript.md#09-10) | 过设计系统 §1.5 控件层级 |
-| T-CV-09 | 声音节点连不上视频节点（有些视频能参考音频，如 Seedance 2.0） | todo | [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | 根因已定位：一条共享规则写死（`anchorPolicy.ts` + `referenceEdgeCapability.ts`）；音频模型也该多接几个 |
+| T-CV-09 | 声音节点连不上视频节点（有些视频能参考音频，如 Seedance 2.0） | done | [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修（f03b949e0 + d1b1a8e82，早于 #802）：参考边分类器认音频、音频参考槽三选一门岗；「写死的共享规则」那句已陈旧——视频档案已按模型声明 `audio_ref`，剩余只是给更多模型补槽 |
 | T-CV-10 | ComfyUI：音频输入用不了（缺 `LOAD_AUDIO_RE`）；节点参数确定后不能再改 | todo | [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | — |
 | T-CV-11 | Alt + 拖动复制节点；添加节点菜单能排序、常用前置 | todo | 群反馈（核心用户 A） | 小 |
-| T-CV-12 | 「默认加入运镜很难受」：先查是不是自动加的，能删就删 | todo | [原文 09-12 15:38](sources/2026-09-14-filehelper-transcript.md#09-12) | **没人查过**；不是自动加的话要设计反馈验证用户到底用不用 |
+| T-CV-12 | 「默认加入运镜很难受」：先查是不是自动加的，能删就删 | done | [原文 09-12 15:38](sources/2026-09-14-filehelper-transcript.md#09-12) | 不是自动加的：运镜控件已整个删除（c1b1c9e02 删 `NodeCameraMoveControl.tsx` -284 行），画布节点默认值里零命中 |
 | T-CV-13 | Group / Frame 命名双轨：UI 叫 Frame，数据类型仍叫 `NodeGroup` | todo | [设计实扫](designs-not-yet-built.md) | 卫生项 |
+| T-CV-14 | 画布「按屏幕尺寸判 LOD（S5）」重做：#787 的这半在列车里被撤出（`3a72f0ce7` 由 `fae43a80e` + `29e232a31` 撤回），main 仍是「节点数 > 80 且 zoom < 0.55」的老判据 | todo | #787 · #802 正文「进过批次又撤出去的」 | 2026-09-17 查清根因是**两条**：① 契约漏了一格——`data-status` 只长在全套 chrome 上，卡片掉档就没了（已在 `integration/release-20260917` 修：轻量档补齐身份三件套 + 测试钉住，走查的「等不到 success」自此不再是假红）；② 产品行为——那一刀规定「有结果媒体才准进轻量档」，于是卡片**生成完成那一刻外观掉档**，掉档时机是设计决策（R8 要样张拍板），这半仍未做 |
 
 ## D. 设计落地（界面大改）
 
@@ -83,16 +85,18 @@
 | T-DS-10 | 创作三栏各不相同不搭配；Nomi 栏空间浪费；时间轴无法向下缩、右上功能栏遮挡 | todo | [原文 09-10 02:09 / 13:45](sources/2026-09-14-filehelper-transcript.md#09-10) | 三栏统一那条要等 T-DS-01 |
 | T-DS-11 | 剪辑面 T2（转场选择器 / 右键菜单 / 字幕样式）落没落**不知道** | todo | [设计实扫](designs-not-yet-built.md) | 先核实再排 |
 | T-DS-12 | 两份设计文档的状态抬头已过期（`2026-09-09-agent-process-state…` 写着「未实施」、v6 合同写着「未接真数据」） | todo | 同上 | 改抬头，一分钟的事 |
+| T-DS-13 | 同一分钟新建的两个项目自动名完全相同（都叫「未命名项目 09/17 05:10」），只看顶栏分不清在哪个项目 | todo | 2026-09-17 #802 列车收尾实测 | 小，但会让人误删/误改项目。修法按「随输入 derive」：自动名的时间精度或去重后缀由**已存在的同名项目**派生，不是拍一个固定格式；顶栏也要能区分（副标题/序号） |
 
 ## E. 素材与导入
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-MD-01 | 素材拖不进画布 / 拖不进 prompt 框 / `@` 无反应 / 预览界面拖不进 | doing | [原文 09-10 #9 · 09-12 #4](sources/2026-09-14-filehelper-transcript.md#09-12) | 入口矩阵 + 单一 owner 在写 |
-| T-MD-02 | 素材库搜视频出来的封面坏；skill 图不加载 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 与 T-MD-01 可能同根（媒体预览管线） |
+| T-MD-01 | 素材拖不进画布 / 拖不进 prompt 框 / `@` 无反应 / 预览界面拖不进 | done #792 | [原文 09-10 #9 · 09-12 #4](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合（四个入口收成 `mediaImportPolicy.ts` 单一 owner + 门岗 `check:media-import-owner`，矩阵 36 格全合格）；只剩「预览界面拖入」那一格四份证据里都没有、未覆盖也未证伪，另记在 T-MD-06 一起看；封面坏那条仍是 T-MD-02 |
+| T-MD-02 | skill 图不加载（素材库搜视频出来的封面坏那半已修） | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 视频封面已由落盘边界派生 poster 修掉（`assetPreview.ts` 抽首帧 + `AssetVideoCover` 回落）；skill 画廊侧那条仍无独立证据，`SkillMedia` 的 onError→placeholder 是降级不是根因 |
 | T-MD-03 | 资产库与剪辑区的交互没了（「和我们以前的都不太一样」） | todo | [原文 09-10 #17](sources/2026-09-14-filehelper-transcript.md#09-10) | 先核实是回归还是从没有过 |
-| T-MD-04 | 真实素材（4K HEVC 1.38GB）：S 档 24 图 + 24 视频，20 秒都进不了画布 | doing | [原文 09-13 05:42](sources/2026-09-14-filehelper-transcript.md#09-13) | 旧夹具用色块且绕过导入，从没撞到；门岗 `check:real-media-fixture` 已进 #780 |
+| T-MD-04 | 真实素材（4K HEVC 1.38GB）：S 档 24 图 + 24 视频，20 秒都进不了画布 | doing | [原文 09-13 05:42](sources/2026-09-14-filehelper-transcript.md#09-13) | 1.38GB 进不了画布那半已修（矩阵 AFTER：四个入口全收，1317MB 原样落盘，10s HEVC 7.2s → 0.15–0.29s）；**真素材登记仍是债**：`real-media-fixtures.json` 四类 coverage 全 `status=debt`（`real-media-debt.json`，due 2026-10-14），S 档冷开/性能那半没有任何数字 |
 | T-MD-05 | 「提取深度」不问确认直接下模型 / 冒出无关图片节点 / 下载卡住 / 视频节点变黑 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 要核 |
+| T-MD-06 | 导入中节点改成进度驱动的渐显（无 GPU 兜底不再是实心蓝条） | doing #PRNUM | #790 · [设计](../design/mockups/2026-09-14-import-progress-reveal.svg) | #790 曾整个被 `bdbe9ce6c` 撤出，根因是 preload/bridge 两个巨壳贴着 800 行上限（T-QA-10）。拆壳后已在 `integration/release-20260917` 重做并入：拷贝字节驱动马赛克渐显、拷贝与预览并行、导入状态不再借用生成词表的 `queued`。「预览界面拖入」那一格（T-MD-01 剩余）仍未覆盖 |
 
 ## F. 设置 · 接模型 · MCP
 
@@ -100,16 +104,18 @@
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-MO-01 | 写完 key 没像以前一次性打开所有模型；「已有预置地址模型」没有列表，AI 侧也选不到 | doing #788 #786 | [原文 09-10 #4 · 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 合 |
-| T-MO-02 | **接入验证一直转然后全部失败**：`store.mutate` 文件锁自旋超时 + `process()` fire-and-forget 无 catch → `certifying` 永久卡死、cancel 被拒 | todo | [原文 09-12 01:26](sources/2026-09-14-filehelper-transcript.md#09-12) | **清单里最久没人接的 P0**（远端从没这条分支）；先核实免费自检是否走同一条路 |
+| T-MO-01 | 写完 key 没像以前一次性打开所有模型（预置模型清单已由 #788 修好） | doing #PRNUM | [原文 09-10 #4 · 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 已在 `integration/release-20260917` 基于 main 重做并入（存 key 与发现同一步；拿不到清单按原因说人话，zh/en 两轨） |
+| T-MO-02 | **接入验证一直转然后全部失败**：`store.mutate` 文件锁自旋超时 + `process()` fire-and-forget 无 catch → `certifying` 永久卡死、cancel 被拒 | done | [原文 09-12 01:26](sources/2026-09-14-filehelper-transcript.md#09-12) | 已修：`process()` 外包 catch → `terminal.settle`（b58e409bc），cancel 永不抛（`integrationSessionRunView.ts`）。**全部失败那半归 T-MO-07**：锁自旋超时机制仍在，只是不再致死（退避重试 + errors.jsonl + 看门狗） |
 | T-MO-03 | 供应商切一次再切回来跳回 ApiMart；要记住上次选择；不用的会员模型一直占位；模型框同名不同商难分 | todo | 群反馈 · [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | 09-06 已拍板「模型框排序去重」，没落 |
 | T-MO-04 | 点进供应商的模型大页面：线条太多、既然已经接入了这页到底干嘛的 | todo | [原文 09-12 #5](sources/2026-09-14-filehelper-transcript.md#09-12) | 设计题，先想清它存在的理由再改 |
-| T-MO-05 | MCP 接模型工具面收成 4 个工具（一个工具 = 一种后果） | doing #754 | 09-11 基线：入参写对 62%、回合成功 1/9 | 用 `pr754-clean` 开新 PR 取代 #754；验收 = 夹具 ≥90% |
-| T-MO-06 | 不在列表里的 AI 客户端也该能连 MCP（我都没装 pi，它却显示可连） | todo | [原文 09-12 · 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 部分归 #783 |
+| T-MO-05 | MCP 接模型工具面收成 4 个工具（一个工具 = 一种后果） | hold #754 | 09-11 基线：入参写对 62%、回合成功 1/9 | 用户 09-17 拍板**延后**，PR 保持开着。对当前 main 落后 299 个提交、`git merge-tree` 仍有 8 个文件冲突（含 modify/delete 型），外加一条真功能红（打包冒烟：没有凭据却连上了，必须当根因修）。重做基于最新 main 重整，主体与那组真实模型入参写对率数字保留；验收仍是夹具 ≥90% |
+| T-MO-06 | 不在列表里的 AI 客户端也该能连 MCP（我都没装 pi，它却显示可连） | todo | [原文 09-12 · 09-13](sources/2026-09-14-filehelper-transcript.md#09-13) | 随 #783 合入（本轮 `integration/release-20260917` 的 B 块就是它：客户端名单收成 `electron/shared/mcpClientRegistry.ts` 唯一 owner、按安装痕迹检测、pi 删除、其他客户端给通用配置片段） |
 | T-MO-07 | 接入验证效率：并行 + 每模型 30s 超时 + 部分成功语义 + 只重测失败的 | todo | [原文 09-12 01:26](sources/2026-09-14-filehelper-transcript.md#09-12) | 业界共识形状（LiteLLM / TokenHub / model-check 都这样）；排在 T-MO-02 之后 |
 | T-MO-08 | 用户接中转站最痛的是「手抄 20 个模型名」——pi-ai provider 的 `resolve` **原生就能自动发现**，我们没用 | todo | [pi 生态调研](sources/2026-09-14-pi-ecosystem-gaps.md) | A 类（原生就有）；先确认发现走 `resolve` 而不是第二个出站点 |
 | T-MO-09 | `pi-ai` 的 `ProviderConfig`/`Model` 还没做逐字段裁决，上游加字段今天拦不住 | todo | 同上 | 补进 `docs/engineering/framework-boundaries.json` |
 | T-MO-10 | 接入验证会扣积分（花钱却没过报价卡） | todo | 09-11 群反馈 | 违反「钱的闸」，要么免费自检要么先问 |
+| T-MO-11 | 「这个模型现在能不能用」以前有好几份判断，收成一个 owner（P0-10） | done #765 | 09-12 P0 清单 | 已合：`electron/shared/modelAvailability.ts` 单一真相源 + 门岗 `pnpm run check:model-availability` + 模型框去重 `useDedupedModelSelect`；落点在 `71b38b8fa` 核对通过 |
+| T-MO-12 | 接模型验收：30 句题库进 CI + 外部宿主真实闭环 + 修掉「工具结果说没有证据的话」这一族 | hold #799 | 09-15 验收方案 | 用户 09-17 拍板延后：它堆在 #754（T-MO-05）之上，单独合会把题库钉在一个还没落地的工具面上。随 T-MO-05 一起基于最新 main 重做；30 句进 CI 这件事本身不作废 |
 
 ## G. 生态与插件
 
@@ -131,7 +137,7 @@
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
-| T-ED-01 | 时间轴：收不回去 / 拉上来太大 / 右下缺一块 / 跟着右侧 Agent 面板左右变动遮挡左边 | todo | [截图 09-13 19:27](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) | 用户说核心只要**两条轨（图片轨 + 视频轨）能拖动预览**就够；与 T-RL-06 同一面，一起修 |
+| T-ED-01 | 时间轴：收不回去 / 拉上来太大 / 右下缺一块 / 跟着右侧 Agent 面板左右变动遮挡左边 | doing | [截图 09-13 19:27](sources/screenshots/2026-09-13-1927-layout-split-and-surface-error.jpg) | 布局那半已由 #794 #796 合入（时间轴横贯底部、胶囊可召回）；剩「两条轨（图片轨 + 视频轨）能拖动预览」未验，要真机走一遍再判 done |
 | T-ED-02 | 让 Agent「劈成两半」：它说要确认卡、卡没出现、也没劈 | todo | [截图](sources/screenshots/2026-09-12-0043-edit-split-confirm-card.jpg) | 与 T-AG-04 同根 |
 | T-ED-03 | 剪辑数据模型重写（动态轨道 + 稳定 id/别名 + 关键帧形状；一次性原子切换不留两套） | hold | 09-11 已拍板方向 | **用户说不着急**；第一刀纵向切片 = 口播 + B-roll + 闪避 |
 | T-ED-04 | MotionClone：给定视频生成可编辑的 motion 进时间轴 | hold | [原文 09-13 22:04](sources/2026-09-14-filehelper-transcript.md#09-13) | 与「深度视频 = 剥掉外观的动作参考」同族 |
@@ -150,13 +156,15 @@
 | T-QA-07 | Ponytail 评审欠账：Codex 额度耗尽期间全走 `DEFER` 留痕 | todo | 09-14 环境 | 额度回来后 `check:ponytail-review` 一直红到补审 |
 | T-QA-08 | 走查自动录屏：Playwright 起 Electron 时开 `recordVideo`，每个窗口出 webm；截图采样漏掉的过程态（导入渐显空等、停止→回执的间隙）靠视频看，同时留下演示素材 | todo | 用户 09-15 00:2x 口述（Windows 测试机接通时） | 改 `tests/ux/_launchApp.mjs` 一处；动手前按 R5 查 Playwright 当前文档确认 `electron.launch({ recordVideo })` 形状；视频不进 git，放 evidence/scratchpad，PR 贴关键帧 |
 | T-QA-09 | Windows 测试机接入走查：192.168.31.216 已可 SSH（用户 23732），在 D: 建 worktree 跑 R13；SSH 会话 0 截不到桌面，Nomi 窗口截图/录屏走 Playwright，整桌面要计划任务塞进登录会话 | doing | 09-15 00:2x 接通；记忆 `windows-test-machine-ssh` | 先清 C: 上二十几个旧 Nomi-* 目录腾空间（C: 剩 8GB），再建 D:\Nomi-walkthrough |
+| T-QA-10 | `electron/preload.ts`(797) / `src/desktop/bridge.ts`(784) 贴着 800 行巨壳上限，谁加桥接都撞线 | doing #PRNUM | #790 撤出复盘（交接 §2.4） | 已在 `integration/release-20260917` 拆完：preload 797→265（组装层 + 四族桥面 + `ipcCall`），bridge 784→428（浏览器/素材/模型目录三支各自成型）。不加白名单、不抬基线；顺带堵了「按源码文本判断桥面的检查只读组装层会静默变绿」那条假绿（`check:skill-ipc-coverage` 加硬零 Guard 0 + 两处结构测试改读整面） |
+| T-QA-11 | #802 这一轮验证全部走 loopback 供应商、0 付费；**没有跑过付费供应商 smoke** | todo | 2026-09-17 #802 列车收尾 | 发 RC（T-RL-09）之前必须补一次真付费闭环：只用 APIMart（用户没有即梦账号、kie 余额为负），先抓出站报文以便被拒时仍能验契约；R22 口径：没跑就记 `unverified`，不许拿 mock 绿灯替代 |
 
 ## J. 官网与发布
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
 | T-WB-01 | 官网四件：SEO / 页面设计 / 官方文档 / 功能速递介绍视频 | todo | [原文 09-14 00:14](sources/2026-09-14-filehelper-transcript.md#09-14) | 对标 MiniMax Design 的 X 运营与官网、TapNow、libtv |
-| T-WB-02 | logo 与真实产品不一致 | doing #788 | [原文 09-13 19:12](sources/2026-09-14-filehelper-transcript.md#09-13) | 合 |
+| T-WB-02 | logo 与真实产品不一致 | done #788 | [原文 09-13 19:12](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合 |
 | T-WB-03 | 产品发布会：PPT（对标 Apple）+ 逐字稿 + 图片/视频素材 + 特效 + 音乐 | hold | 09-08 用户加入，排最后 | **先写逐字稿**（逐字稿就是定位练习）；demo 段全部真机录屏，片子尽量用 Nomi 自己做 |
 | T-WB-04 | 每周 RC 的发版时钟；`docs-autosync` 从来没能开 PR（仓库设置禁止 Actions 建 PR），**债已经攒出来了**：09-14 实测 `origin/main` 上 `check:docs-index` 超基线 136 篇、`check:doc-status` 超基线 101 篇 | todo | 09-07 裁决 · 09-09 实核 · 09-14 实测 | 这两个门岗在 `gates:contracts` 里是 advisory 所以没人看见；**要么用户开「Actions 可建 PR」，要么手工 cherry-pick `docs/autosync-*` 分支补齐** |
 
