@@ -59,6 +59,7 @@ import { comfyuiHistoryTransform } from "../catalog/comfyuiLocal";
 import { candidateRevisionId } from "../catalog/stagedVendorIdentity";
 import { promoteCertifiedComfyCandidate, resolveComfyStagedCandidate } from "../catalog/comfyuiCandidateLifecycle";
 import { buildComfyCertificationFixtureParams } from "../shared/comfyCertificationFixtures";
+import { safeHandoffOrigin } from "./integrationHandoffOrigin";
 import {
   assertIntegrationRevision,
   INTEGRATION_STAGES,
@@ -549,41 +550,6 @@ function integrationContractDigest(session: IntegrationSession, idempotencyKey: 
     idempotencyKey,
   });
 }
-function safeHandoffOrigin(baseUrl: string): { origin?: string } {
-  try {
-    const parsed = new URL(baseUrl);
-    if (
-      !["http:", "https:"].includes(parsed.protocol) ||
-      parsed.username ||
-      parsed.password ||
-      parsed.search ||
-      parsed.hash
-    ) {
-      return {};
-    }
-    // handoffQueue performs the authoritative public/private check. Keep a
-    // private origin out of the display payload rather than making opening the
-    // credentials page fail for a local ComfyUI/provider connection.
-    const host = parsed.hostname.toLowerCase();
-    if (
-      host === "localhost" ||
-      host.endsWith(".localhost") ||
-      host.startsWith("127.") ||
-      host.startsWith("10.") ||
-      host.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-      host === "::1" ||
-      host.startsWith("fc") ||
-      host.startsWith("fd") ||
-      host.startsWith("fe80:")
-    )
-      return {};
-    return { origin: parsed.origin };
-  } catch {
-    return {};
-  }
-}
-
 export class IntegrationSessionService {
   private state: PersistedState;
   private readonly filePath: string;
