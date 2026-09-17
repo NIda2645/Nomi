@@ -62,7 +62,6 @@ describe('进度上报器', () => {
     const reporter = createAssetImportProgressReporter({ projectId: 'p1', nodeId: 'n1', totalBytes: 1_000 })
     reporter.announce()
     reporter.report(1_000, 1_000)
-    reporter.finish()
     reporter.finalize()
     const payloads = vi.mocked(broadcastAssetImportProgress).mock.calls.map(([payload]) => payload)
     expect(payloads[0]?.phase).toBe('preparing')

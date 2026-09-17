@@ -41,7 +41,7 @@ export function createAssetImportProgressReporter(input: {
   nodeId: string
   totalBytes: number
   previewUrl?: string
-}): { announce: () => void; report: AssetCopyProgress; finish: () => void; finalize: () => void; setPreviewUrl: (url: string) => void } {
+}): { announce: () => void; report: AssetCopyProgress; finalize: () => void; setPreviewUrl: (url: string) => void } {
   let lastSentAt = 0;
   let previewUrl = input.previewUrl;
   // 显示给用户的永远是**他选的那个文件**的大小。视频先归一化再拷贝时，拷的是转码产物
@@ -72,8 +72,6 @@ export function createAssetImportProgressReporter(input: {
       if (ratio < 1 && now - lastSentAt < PROGRESS_BROADCAST_INTERVAL_MS) return;
       send(ratio);
     },
-    // 拷贝之后还有哈希/落库/预览认领；比例已经满了，这里只补一条「字节已就位」。
-    finish: () => { if (lastRatio < 1) send(1); },
     // 收尾段（W-08）：比例满了但事情没完，那 ~5 秒此前对用户是「100% 还在转」。
     // 它没有可测的分母（哈希要重读一遍整个文件、落库和预览认领时长各不相同），
     // 所以给的是**阶段**不是百分比——诚实说「在收尾」，而不是编一个走到 99% 就停的假进度条。
