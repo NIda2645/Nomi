@@ -20,6 +20,8 @@
     "所有 Authorization 方案词不是 Bearer 的供应商（今天是 higgsfield 的 `Key`）"
   ],
   "scope_paths": [
+    "electron/catalog/archetypeWireDefaults.image.generated.ts",
+    "electron/catalog/archetypeWireDefaults.video.generated.ts",
     "electron/catalog/assetIngestionRegistry.ts",
     "electron/catalog/assetLocalization.ts",
     "electron/catalog/builtinVendorSeeds.ts",
@@ -290,7 +292,7 @@
     {
       "kind": "read",
       "path": "electron/catalog/validateCandidateCredential.ts",
-      "line": 64,
+      "line": 70,
       "symbol": "authScheme"
     },
     {

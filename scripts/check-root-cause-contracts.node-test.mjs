@@ -349,6 +349,17 @@ test("match: every existing docs/fixes contract still validates through the form
   }));
 });
 
+// 判据要读正文的规则，必须拿得到它要判的那些文件的正文。
+// `@generated` 纯数据免门（isGeneratedDataFile）判的**正是没有门的文件**，而 CLI 一度只按
+// door.path 与 preserved_exports 装 fileContents——于是那条规则对它自己要豁免的那一类不可达，
+// 单测全绿、真仓里照样红（2026-09-18 合并 Higgsfield + 六条 C 时实测）。
+// 这里钉住装载面：本次改动的文件一律带正文进 validator。
+test("match: CLI feeds file contents for every changed file, not just door paths", () => {
+  const checker = fs.readFileSync(path.join(repoRoot, "scripts/check-root-cause-contracts.mjs"), "utf8");
+  assert.match(checker, /for \(const file of changedFiles\) loadFileContent\(file\);/,
+    "没有这一行，isGeneratedDataFile 读不到正文，@generated 纯数据免门那条规则恒为 false");
+});
+
 test("not_match: unrelated historical contracts are ignored", () => {
   const unrelated = {
     ...completeContract,

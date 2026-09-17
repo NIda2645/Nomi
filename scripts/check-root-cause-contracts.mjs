@@ -125,6 +125,13 @@ function loadFileContent(candidate) {
     // The validator reports the missing path/content as a failed claim.
   }
 }
+// `@generated` 纯数据免门那条判据（root-cause-contracts.mjs 的 isGeneratedDataFile）要读文件正文，
+// 而它要判的**正是没有门的那些文件**——只按 door.path 装内容，它永远读不到、永远返回 false，
+// 于是规则对它自己要豁免的那一类不可达（2026-09-18 合并 Higgsfield + 六条 C 时实测：
+// archetypeWireDefaults.{image,video}.generated.ts 仍被判「改了门表之外的文件」）。
+// 本次改动的文件一律装上正文，判据才落到真实文件上。
+for (const file of changedFiles) loadFileContent(file);
+
 for (const contract of contracts) {
   // 门表（R21，2026-09-11）：每条 door 的 path:line 都要拿真实文件核对一遍。
   for (const door of Array.isArray(contract.doors) ? contract.doors : []) loadFileContent(door?.path);
