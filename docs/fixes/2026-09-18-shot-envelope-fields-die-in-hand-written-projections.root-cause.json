@@ -13,11 +13,17 @@
     "外部 MCP 宿主经 nomi_operation_create 传语义 shots[] 的调用方：同一条链路、同样丢字段"
   ],
   "scope_paths": [
-    "electron/shared/generationShotEnvelope.ts",
-    "electron/capabilityCore/",
-    "electron/productionRun/",
-    "electron/agentLane/",
-    "electron/shared/agentCapabilities/"
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/productionRun/multiShotCanvasLanding.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/shared/generationShotEnvelope.ts"
   ],
   "entry_points": [
     "electron/agentLane/laneVerbTransport.ts:draftShotToPlanShot",

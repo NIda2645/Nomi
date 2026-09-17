@@ -148,3 +148,19 @@ status statuses state states phase phases stage stages step steps lifecycle life
 
 - 「29 份 `centralized-boundary` 里有多少个主人今天已经被侵蚀」——本文没查，这正是 R1 要回答的。R1 做完才有数。
 - 本文只覆盖 `electron`。`src/`（渲染层）是否同构未查。
+
+## 8. 补记（2026-09-18 晚）：`electron/harness` / `electron/skills` 的技能加载层是同一形状的第三例
+
+同一天 `electron/harness` 收到本周第三份合同（`2026-09-15-selected-skill-injection`、`2026-09-18-skill-restates-registry-facts`、
+`2026-09-18-skill-loader-diverges-from-ecosystem`），三份都落在**技能加载 → 进提示词**这一条链上。结构结论与 §3 一致，
+只是主人不是「声明了没人看」，而是**声明了两次**：`electron/skills/skillStore.ts` 与 `electron/agentLane/laneInstalledSkills.mts`
+各写了一份技能遍历器，两份都比 pi 自带的 `loadSkills` 窄一点、窄在不同的轴上（一份只认 `root/<dir>/SKILL.md`，一份对不叫
+SKILL.md 的路径直接抛）；`electron/harness/context/agentContext.ts` 又逐字手抄了 pi 的 `<skill>` 信封，因为那一层被钉死不许摸 pi。
+「一个 Skill 别的宿主读得到、Nomi 也读得到」这条不变量在 22 份合同里被记了 59 次，却没有一个机械的主人。
+
+这一层的结构评审正本是 `docs/plan/2026-09-18-skill-loading-migration.md`（59 条不变量逐条三档判定 + 迁完的分层 + 留下的每个文件
+为什么 pi 取代不了）。处置：主人搬到岛上一处（`electron/agentLane/laneSkillCatalog.mts`，pi 的 `loadSourcedSkills`），
+`electron/harness/context` 只剩身份 / 语言 / 合成，选中技能进提示词的唯一注入点在 `laneSkillPrompt.mts`（pi 的 `formatSkillInvocation`）。
+`check:framework-boundary` 新增 `private-skill-directory-walk` 让两份旧遍历器的名字回不来；`skillFrontmatter.test.ts` 把唯一留下的本地解析
+钉在 pi 的 `parseFrontmatter` 上（88 份真技能逐文件深等）。
+

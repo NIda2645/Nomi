@@ -18,7 +18,7 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 | `formatSkillInvocation(skill, additionalInstructions?)` | 同上 | `<skill name= location=>\nReferences are relative to <dir>.\n\n{content}\n</skill>` + `\n\n{additionalInstructions}`——**第二个参数正是追加指令的口子** |
 | `NodeExecutionEnv` | `pi-agent-core/harness/env/nodejs` | 本地磁盘的 `ExecutionEnv`，`laneFileSystem.mts` 已经在用 |
 | `formatSkillsForPrompt(skills, 'read'\|'bash')` | `pi-coding-agent/dist/core/skills.js:275` | `<available_skills>` 段，已在用（`laneSkillIndex.mts`） |
-| `parseFrontmatter` / `stripFrontmatter` | `pi-coding-agent/dist/utils/frontmatter.js` | pi 自己的 frontmatter 解析（`yaml` 包）；`skillFrontmatter.test.ts` 已拿它当对账基准 |
+| `parseFrontmatter` / `stripFrontmatter` | `pi-coding-agent/dist/utils/frontmatter.js` | pi 自己的 frontmatter 解析（`yaml` 包，**剥 BOM**）；`skillFrontmatter.test.ts` 拿它当对账基准。注意 **pi-agent-core 的 `loadSkills` 自带的 `parseFrontmatter` 不剥 BOM**（实读 `harness/skills.js`）：带 BOM 的文件不以 `---` 开头 → frontmatter 读成空 → description 缺失 → 技能被丢掉。两层之间的这道缝就是 S14 |
 
 **pi 不管的（这些是我们要薄薄保留的理由）**：多根优先级（内置 vs 用户目录）、Nomi 扩展块 `metadata.nomi`、策展块 `metadata.nomi.library`、内容寻址（contentHash）、MCP 受众、Workbench 可选性、包导入/导出/删除、IPC、可信读根的软链纪律、「要不要 coding 工具」。
 
@@ -40,14 +40,14 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 | S4 | "A metadata.nomi block that exists but fails validation yields manifest=null with an error, which … turns into an empty capability list — a broken manifest grants zero tools, never the full host set." | 同上 | 写坏的扩展块不能变成放开全部工具 | **我们薄薄保留**：pi 不认识 `metadata.nomi`（Agent Skills 规范把 `metadata` 留给客户端），只有我们能校验它 | `S4 坏的 metadata.nomi → manifest=null + manifestError` |
 | S5 | "No frontmatter key outside the Agent Skills closed set {name, description, license, compatibility, metadata, allowed-tools} plus the deliberate exception disable-model-invocation. Nomi-specific declarations live under metadata.nomi and nowhere else." | 同上 | 顶层键闭集，多一个别的宿主就报错 | **我们薄薄保留**（门岗层）：这是对**我们自己仓库**的约束，由 `check:skills-format` 守；加载器对外部技能的未知键（ChatCut 的 `user-invocable`）**必须原样放行**（S31）。pi 的加载器不查闭集，与我们的开放原则一致 | 由 `check:skills-format` 已守；`S31` 断言外部未知键放行 |
 | S6 | "pi's own loader, run over skills/, returns exactly as many skills as there are SKILL.md files and emits zero diagnostics — the judge of 'can another host read this' is that host's parser, not a rule we wrote." | 同上 | 我们比别人宽松的那一侧永远看不见问题 | **pi 已覆盖**（结构上）：加载器就是 pi 的，「我们能读 ≠ 别人能读」这个缝隙不存在了 | `S3`（同一条断言） |
-| S7 | "A Skill package has exactly one manifest: the YAML frontmatter of its SKILL.md. No skill.json may exist anywhere under skills/, in any subdirectory." | 同上 | 两份清单漂移 | **我们薄薄保留**：`skillManifestMigration.ts` 只在用户目录把存量 `skill.json` 折进 frontmatter（standard-formats 登记的债，due 2026-12-07）。pi 不知道那个旧文件 | `skillManifestMigration.test.ts`（已有）；`S7 迁移仍在用户根触发` |
-| S8 | "Own the one and only parse of a Skill's declarations, at the same strictness as every other Agent Skills host. Both the loader and the package importer call it, so a header that another host would reject cannot be read as valid here." | 同上 `shared_boundaries` | 宽松一侧盲 | **我们薄薄保留 + 钉在 pi 上**：pi 的 `loadSkills` 不把解析好的 frontmatter 对象交出来（只给 name/description/disable），而我们要读 `metadata.nomi` / `library` / `tools:`，且 CJS 侧的导入校验（`validateSkillPackage`，同步 IPC）摸不到 pi。所以本地 `parseSkillFrontmatter` 留下，但**必须与 pi 的 `parseFrontmatter` 逐文件对账**（原来只对账 stripper） | `skillFrontmatter.test.ts › 88 份真 SKILL.md 的 frontmatter 值与 pi parseFrontmatter 深等` |
-| S9 | [commit `7dcc5a240`] 损坏包（正文含 NUL 等 C0 控制字符）不许「占坑遮蔽」同目录名下一个合法包；记 warning 且不加 seenDirs | `skillStore.ts:181-193` | `{origin:'builtin',description:'Broken'}` 挡掉了 `{origin:'user',description:'Valid'}` | **我们薄薄保留**：pi 的 YAML 解析把 NUL 正文当合法（它不看正文），不会跳过；多根优先级本来就是 Nomi 的事（S10） | `skillStore.test.ts › does not let an invalid higher-priority package shadow`（改喂新加载器） |
-| S10 | [commit `9aec0d384`] 用户目录并入 `getSkillsRoots` 末尾——内置同名优先、外来包无法覆盖内置；[注释] `seenDirs` 用 NFC 小写目录名去重 | `runtimePaths.ts:57-67`、`skillStore.ts:156` | 外来包冒充内置 | **我们薄薄保留**：pi `loadSourcedSkills` 对多个根不做去重（`pi-coding-agent` 自己的 `loadSkills(options)` 做「先到先得 + collision 诊断」，那是它的应用层，不是 `loadSourcedSkills`）。按 pi-coding-agent 同一规则实现：先出现的根赢，输家记一条 `shadowed` 诊断 | `S10 内置遮蔽同名用户技能，输家有诊断`；`S10b 大小写/NFC 同名视为同一个` |
+| S7 | "A Skill package has exactly one manifest: the YAML frontmatter of its SKILL.md. No skill.json may exist anywhere under skills/, in any subdirectory." | 同上 | 两份清单漂移 | **我们薄薄保留**：`skillManifestMigration.ts` 只在用户目录把存量 `skill.json` 折进 frontmatter（standard-formats 登记的债，due 2026-12-07）。pi 不知道那个旧文件 | `skillManifestMigration.test.ts`（已有，改喂岛上目录）；`skill-catalog-migration.test.mts › S7`（用户根迁、内置根一字不动、`legacy_manifest` 诊断带路径） |
+| S8 | "Own the one and only parse of a Skill's declarations, at the same strictness as every other Agent Skills host. Both the loader and the package importer call it, so a header that another host would reject cannot be read as valid here." | 同上 `shared_boundaries` | 宽松一侧盲 | **我们薄薄保留 + 钉在 pi 上**：pi 的 `loadSkills` 不把解析好的 frontmatter 对象交出来（只给 name/description/disable），而我们要读 `metadata.nomi` / `library` / `tools:`，且 CJS 侧的导入校验（`validateSkillPackage`，同步 IPC）摸不到 pi。所以本地 `parseSkillFrontmatter` 留下，但**必须与 pi 的 `parseFrontmatter` 逐文件对账**（原来只对账 stripper） | `skillFrontmatter.test.ts › 88 份真 SKILL.md 的 frontmatter 值与 pi parseFrontmatter 深等`（实跑 88/88 深等；唯一刻意差异：没闭合的 `---` 我们报错、pi 当正文——导入侧要一句人话拒收） |
+| S9 | [commit `7dcc5a240`] 损坏包（正文含 NUL 等 C0 控制字符）不许「占坑遮蔽」同目录名下一个合法包；记 warning 且不加 seenDirs | `skillStore.ts:181-193` | `{origin:'builtin',description:'Broken'}` 挡掉了 `{origin:'user',description:'Valid'}` | **我们薄薄保留**：pi 的 YAML 解析把 NUL 正文当合法（它不看正文），不会跳过；多根优先级本来就是 Nomi 的事（S10） | `skill-catalog-migration.test.mts › S9`；`skillStore.test.ts › does not let an invalid higher-priority package shadow`（改喂岛上的 `discoverSkillRecords`，断言逐字不变） |
+| S10 | [commit `9aec0d384`] 用户目录并入 `getSkillsRoots` 末尾——内置同名优先、外来包无法覆盖内置；[注释] `seenDirs` 用 NFC 小写目录名去重 | `runtimePaths.ts:57-67`、`skillStore.ts:156` | 外来包冒充内置 | **我们薄薄保留**：pi `loadSourcedSkills` 对多个根不做去重（`pi-coding-agent` 自己的 `loadSkills(options)` 做「先到先得 + collision 诊断」，那是它的应用层，不是 `loadSourcedSkills`）。按 pi-coding-agent 同一规则实现：先出现的根赢，输家记一条 `shadowed` 诊断 | `S10 内置遮蔽同名用户技能，输家有诊断`（含大小写/NFC 同名视为同一个）；`S10b` 同一根里 `foo/SKILL.md` 与 `foo.md` 撞句柄先到先得，且 `writeSkillImport` 的冲突避让认得单文件技能的 stem |
 | S11 | [注释] `getSkillDiscoveryRoots` 在无 Electron 的 Node 进程（零额度 agent-runtime 套件、MCP node 宿主）里退回 `NOMI_SKILLS_DIR` / cwd / `NOMI_APP_PATH` / resourcesPath 同一批有序根 | `skillStore.ts:55-91` | 「同一批根、同一套优先级」在每个进程一致 | **我们薄薄保留**：根在哪是宿主的事 | `S11 无 Electron 进程 getSkillDiscoveryRoots 仍给出有序根` |
 | S12 | [注释] 正文为空的 SKILL.md 跳过 | `skillStore.ts:179-180` | 空包占坑 | **pi 已覆盖**：description 缺失/空 → 不加载；正文空但 frontmatter 全 → pi 加载（content 空串）。取 pi 语义：description 才是准入条件 | `S12 无 description 不加载、正文空但 frontmatter 全照常加载` |
 | S13 | [commit `7a072f12d`] "Frontmatter now parses through js-yaml at the same strictness as everyone else" / `JSON_SCHEMA` 不认 YAML 标签、不做日期强转 | `skillFrontmatter.ts:11-17` | 宽松侧盲 | **我们薄薄保留**（同 S8） | 同 S8 |
-| S14 | [注释] BOM / CRLF 归一后再判 `---` | `skillFrontmatter.ts:25` | Windows 写的技能读不出 | **pi 已覆盖**：`parseFrontmatter` 先 `\r\n→\n`；BOM 一项 pi 不剥——S8 的对账会把这条差异钉出来（若 pi 不剥 BOM 而我们剥，两边对同一文件给出不同结论，那正是要被看见的） | 同 S8（对账含带 BOM 的样本） |
+| S14 | [注释] BOM / CRLF 归一后再判 `---` | `skillFrontmatter.ts:25` | Windows 写的技能读不出 | **我们薄薄保留（env 一层）**：CRLF pi 已归一；BOM pi-agent-core 的加载器**不剥**（pi-coding-agent 自己的加载器剥），实跑证实带 BOM 的 SKILL.md 会因「description 缺失」被丢掉。处置不是再写一份加载器：`BomTolerantExecutionEnv extends NodeExecutionEnv` 只在 `readTextFile` 剥一次 BOM，遍历 / ignore / 解析 / 诊断全部仍是 pi 的（`laneSkillCatalog.mts`） | `skill-catalog-migration.test.mts › S14`（BOM+CRLF 文件加载、content 归一、零诊断）；`skillFrontmatter.test.ts` 边界样本含 BOM |
 | S15 | [注释] 策展块（`metadata.nomi.library`）校验失败 → frontmatter 记 error，不当合法包 | `skillFrontmatter.ts:37-41`、`2026-09-08-curated-media-boundary`："Curated intake has one license and applicability schema shared by discovery and imports." | 随应用再分发的内容必须有可再分发许可 | **我们薄薄保留**：pi 不知道策展 | `skillCuration.test.ts`（已有，改喂新加载器） |
 
 ### 2.2 记录投影与受众（skillStore 的策略层）
@@ -56,7 +56,7 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 |---|---|---|---|---|---|
 | S16 | "对外暴露是安全边界：isCraftSkill 只对 origin==='builtin'（随安装包分发）的技能可能返回 true；用户导入的技能一律不对外暴露，与目录名（含 director-/writer- 前缀、含白名单 model-integration）无关。" | `2026-09-01-skill-import-standard-formats` | 导入放开后暴露跟着放开 | **我们薄薄保留**：受众是 Nomi 的 MCP 策略（`isSkillVisibleTo` / `isSkillVisibleToMcp`），pi 无此概念 | `skillStore.test.ts › MCP complete skill content`（public 不见 user 技能，已有） |
 | S17 | "「读」与「列」用同一把尺子：readSkillContent 与 listSkillSummaries 都过 isCraftSkill，外部 MCP 客户端不能靠报目录名绕过「看不见」去「拿全文」" | 同上 | 列不见却读得到 | **我们薄薄保留** | 同上（`readSkillContentForMcp('public')` 为 null，已有） |
-| S18 | "卡片描述回落到 skillStore 已算好的 manifest∥frontmatter 单一真相源，没有 skill.json 的标准技能不再显示「暂无说明」" | 同上；`skillIpc.ts:85-88` | 标准技能卡片「暂无说明」 | **pi 已覆盖 + 我们投影**：description 由 pi 从 frontmatter 读；DTO 只投影它 | `skillIpc.test.ts`（已有）+ `S18 根目录 my-skill.md 的描述进 DTO` |
+| S18 | "卡片描述回落到 skillStore 已算好的 manifest∥frontmatter 单一真相源，没有 skill.json 的标准技能不再显示「暂无说明」" | 同上；`skillIpc.ts:85-88` | 标准技能卡片「暂无说明」 | **pi 已覆盖 + 我们投影**：description 由 pi 从 frontmatter 读；DTO 只投影它 | `skillIpc.test.ts › projects a loose root .md Skill`；`skill-catalog-migration.test.mts › S1`（DTO 段） |
 | S19 | "Imported Skills cannot publish themselves through package metadata." [注释] `audience: root.origin === "user" ? "internal" : manifest.audience` | `skillStore.ts:211-212` | 用户包自己声明 `audience: mcp` 就对外 | **我们薄薄保留** | `S19 用户目录技能声明 audience: mcp 仍是 internal` |
 | S20 | "A built-in Skill enters the Workbench picker only when its validated manifest explicitly declares selectableInWorkbench or it is an existing multi-stage playbook; internal routing Skills remain hidden." + "User Skills remain visible even when their optional manifest is missing or invalid, while their manifestError remains observable in the DTO." | `2026-09-04-workbench-skill-picker` | 分镜规划技能在菜单里不见 | **我们薄薄保留**：`isSkillSelectableInWorkbench` 纯函数不动 | `skillStore.test.ts`、`skillIpc.test.ts`（已有） |
 | S21 | "Every exposed file belongs to the authorized package and current content hash." / "Authorize package and verify its file-map hash before returning any file." | `2026-09-10-b6-mcp-skill-content` | 外部宿主读到改过的包 | **我们薄薄保留**：内容寻址是 Nomi 的 MCP 契约；pi 不做 hash。`contentHash` 仍由 `computeSkillContentHash(readSkillPackageFiles)` 算，**根 `.md` 技能的包 = 那一个文件** | `skillStore.test.ts › MCP complete skill content`（已有）+ `S21 根 .md 技能的 contentHash 只含它自己` |
@@ -65,18 +65,18 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 | S24 | "Exact identity lookup shared by every read transport. Deliberately does not use findSkillRecord's internal prefix fallback" [注释] | `skillStore.ts:285-295` | 相近前缀的资源被混淆 | **我们薄薄保留** | 已有（MCP content 测试） |
 | S25 | "Only a validated built-in preview declaration may resolve to bytes within its real skill directory." | `2026-09-08-curated-media-boundary` | 打包后 preview 解析到 `dist/skills` 外 | **我们薄薄保留**：`resolveSkillPreview` 不动（改为吃 async 目录） | `skillCuration.test.ts`（已有） |
 | S26 | "Each declared media identity is projected through the existing guarded skill-preview protocol." / "Full prompt text and curation survive renderer normalization." | `2026-09-09-skill-library-media-projection` | 卡片没封面、描述被截 | **我们薄薄保留**：DTO 投影 | `skillIpc.test.ts`（已有） |
-| S27 | "SKILL.md remains the body owner; the library receives a projection, never a second content file." [注释] `getCuratedPrompts` 自己用正则剥 frontmatter | `curatedPrompts.ts:5, 15` | 第二份正文文件 | **pi 已覆盖**（剥 frontmatter）：`Skill.content` 就是去 frontmatter 的正文；`curatedPrompts` 那条正则是仓里**第三份** stripper，删 | `skillCuration.test.ts › getCuratedPrompts 的 prompt 不含 frontmatter`（已有 `toContain("中性背景")`，补一条 `not.toMatch(/^---/)`） |
+| S27 | "SKILL.md remains the body owner; the library receives a projection, never a second content file." [注释] `getCuratedPrompts` 自己用正则剥 frontmatter | `curatedPrompts.ts:5, 15` | 第二份正文文件 | **pi 已覆盖**（剥 frontmatter）：`Skill.content` 就是去 frontmatter 的正文；`curatedPrompts` 那条正则是仓里**第三份** stripper，删 | `skillCuration.test.ts › discovers 48 Skills and projects 40 effects`（40 条 prompt 无一以 `---` 开头；替换 `content` 后投影跟着变） |
 
 ### 2.3 IPC 与写盘
 
 | # | 不变量原文 | 出处 | 当初防的 | 判定 | 断言 |
 |---|---|---|---|---|---|
-| S28 | "preload 暴露的所有 nomi:skill:* invokeSync 通道在主进程的 registerSkillIpc 里都有对应 registerSyncIpc 注册——check:skill-ipc-coverage 硬零保证。" | `2026-09-03-skill-ipc-missing-handlers` | 三条写通道没注册，UI 静默 | **我们薄薄保留 + 扩**：门岗改成「每条通道两侧协议一致」：`invokeSync ↔ registerSyncIpc`、`ipcRenderer.invoke ↔ ipcMain.handle`，缺一侧或两侧不同协议都红 | `check-skill-ipc-coverage`（改）；`S28 门岗对 invoke/handle 也做差集`（node-test） |
+| S28 | "preload 暴露的所有 nomi:skill:* invokeSync 通道在主进程的 registerSkillIpc 里都有对应 registerSyncIpc 注册——check:skill-ipc-coverage 硬零保证。" | `2026-09-03-skill-ipc-missing-handlers` | 三条写通道没注册，UI 静默 | **我们薄薄保留 + 扩**：门岗改成「每条通道两侧协议一致」：`invokeSync ↔ registerSyncIpc`、`ipcRenderer.invoke ↔ ipcMain.handle`，缺一侧或两侧不同协议都红 | `check-skill-ipc-coverage`（改）；`scripts/check-skill-ipc-coverage.node-test.mjs` 六条阳性对照（09-03 事故原形、正反两向协议混用、扫空即红、注释不算数） |
 | S29 | "preload skill 对象里不存在用 ipcRenderer.invoke 暴露的 nomi:skill:* 通道——check:skill-ipc-coverage Guard 2 保证。" | 同上 | `res.ok` 对一个 Promise 恒 truthy | **确已过时（这一条的字面）**：pi 的加载器是 async 的，`nomi:skill:list` 必须走 `ipcMain.handle`。它防的那个 bug（协议混用）由 S28 的新判据继续防——不再是「一律 sync」，而是「同一条通道两侧同一种协议」，比原来更准（原来只拦 invoke，不拦「handle 了但 preload 用 sendSync」） | `S28` |
-| S30 | "skill 写操作（import/export/delete）全部走 invokeSync（同步），渲染层拿到 {ok, ...} 对象而非 Promise，res.ok 检查有意义。" | 同上 | 同上 | **我们薄薄保留**：三条写通道不碰目录，仍同步 | `check-skill-ipc-coverage`（改后仍验三条写通道是 sync） |
+| S30 | "skill 写操作（import/export/delete）全部走 invokeSync（同步），渲染层拿到 {ok, ...} 对象而非 Promise，res.ok 检查有意义。" | 同上 | 同上 | **我们薄薄保留（两条）+ 一条改判**：import / delete 不碰目录，仍 `invokeSync`，渲染层照旧拿 `{ok,…}`；**export 要按句柄在目录里找包**（不再自己走一遍根——两份发现逻辑迟早对同一目录给出不同答案），目录是 async 的，所以它与 list 一起走 `ipcMain.handle`。它防的那个 bug（一侧 Promise 一侧同步值）由 S28 的逐通道判据继续防 | `check-skill-ipc-coverage`（import/delete 两侧 sync、list/export 两侧 async）；`SkillLibraryPanel` 删除前 `await exportPackage` 抓快照 |
 | S31 | "An externally authored skill is never rejected for naming a tool this host lacks or for describing a tool wrongly; it is accepted verbatim and corrected at prompt-assembly time." + [commit `db40dfe2f`] 外部技能零拦截 | `2026-09-18-skill-restates-registry-facts` | 拒收是把我们的问题推给用户 | **pi 已覆盖**（加载层）：`SkillDiagnostic` 只 warning 不失败——ChatCut 的 `name: video-gen` ≠ 目录 `chatcut-video-gen`、未知键 `user-invocable`，pi 记 warning 照常加载 | `S31 真实 ChatCut 技能装得进来、有 warning、不报错` |
 | S32 | "共享磁盘状态的变更信号发自写盘那一层，不发自某一个调用入口——入口会长出第四个，而漏掉的那一个不会报错" | `2026-09-11-lane-live-skills-snapshot` | Agent 写的技能对渲染层静默 | **我们薄薄保留**：`skillLibraryBroadcast` 不动 | `skillLibraryBroadcast.test.ts`（已有） |
-| S33 | [注释] `neededProviders` 在主进程从「真正落盘的那条记录」派生 | `skillIpc.ts:21-27` | 渲染层从工具入参读 = 第二个 owner | **我们薄薄保留（owner 不变、来源改为包本身）**：导入 IPC 仍同步，不能等 async 目录；从刚校验过的包的 SKILL.md frontmatter 派生（同一个 `readSkillManifest` owner）——包就是落盘的那份 | `skillIpc.test.ts › import 回执带 neededProviders` |
+| S33 | [注释] `neededProviders` 在主进程从「真正落盘的那条记录」派生 | `skillIpc.ts:21-27` | 渲染层从工具入参读 = 第二个 owner | **我们薄薄保留（owner 不变、来源改为包本身）**：导入 IPC 仍同步，不能等 async 目录；从刚校验过的包的 SKILL.md frontmatter 派生（同一个 `readSkillManifest` owner）——包就是落盘的那份 | `skill-catalog-migration.test.mts › S33`（`readSkillManifest` → `deriveSkillNeeds`，从包本身派生） |
 | S34 | [注释] "The adapter deliberately talks only to the validated package importer and then re-reads the catalog, so an optimistic 'saved' response can never be emitted when the library did not change." | `skillWriteTransportAdapters.ts:130-133` | 乐观回执 | **我们薄薄保留**：重读改成 `await readRecords()` | `skillWriteTransportAdapters.test.ts`（已有，依赖注入改 async） |
 | S35 | "Every deviation from the standard carries a reason." / readers 登记 | `2026-09-07-standard-format-not-aligned`、`standard-formats.json › agent-skill` | 自造格式 | **我们薄薄保留**：登记表 readers 加 `laneSkillCatalog.mts`，删不再解析 SKILL.md 的文件 | `check:standard-formats`（门岗） |
 
@@ -89,7 +89,7 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 | S38 | "Installed Skill package roots and SKILL.md must not be symbolic links." [注释] + "可信读根的集合是活的，但每个根只 canonicalize 一次…根本身是软链的一律拒，判越界的那一层不依赖上游记得校验" | `laneInstalledSkills.mts:42-44`；`2026-09-11` | 软链根 = 任意可读区 | **我们薄薄保留**：pi 的 `resolveKind` 会**跟着软链走**并把软链目录当技能加载——与我们的可信读根模型相反。目录层 lstat 拒软链根/软链 SKILL.md（记诊断、不加载）；`laneCodingPaths` 那道第二层不动 | `S38 软链的技能目录不进目录、有诊断`；`lane-live-skill-index.test.mts`（已有，第二层） |
 | S39 | "Installed Skill path escaped its package." [注释]（realpath(file) 的父目录必须等于 realpath(root)） | `laneInstalledSkills.mts:45-47` | 包内 SKILL.md 是指向包外的软链 | **我们薄薄保留**（同 S38 一并判） | 同 S38（软链 SKILL.md 样本） |
 | S40 | "技能索引与 read 允许越出项目的可信根必须来自同一个 owner 的同一次刷新——「模型看得见」与「模型读得到」不许分叉" | `2026-09-11` | 提示词里有、read 却越界 | **我们薄薄保留**：`LaneSkillIndexSource` 留（回合边界策略是 Nomi 的），`entries` / `trustedSkillRoots` / `promptSection` 仍同一次 `refresh()` 产出；根 `.md` 技能的可信根 = 它所在的技能根目录 | `lane-live-skill-index.test.mts`（已有）+ `S40 根 .md 技能看得见就读得到` |
-| S41 | "一条 lane 的系统提示词在每个回合边界整体重新求值一次，回合内不变" / "跨多个回合活着的宿主，其装配参数里「会变的事实」必须以来源（函数 / 索引源）传入，不能传快照" | `2026-09-11` | 刚导入的技能要重开项目 | **我们薄薄保留**：`skills` 来源改成 `() => Promise<SkillRecord[]>`（目录本身 async） | `laneDesktopStructure.test.ts`（结构，改字面）+ `lane-live-skill-index`（已有） |
+| S41 | "一条 lane 的系统提示词在每个回合边界整体重新求值一次，回合内不变" / "跨多个回合活着的宿主，其装配参数里「会变的事实」必须以来源（函数 / 索引源）传入，不能传快照" | `2026-09-11` | 刚导入的技能要重开项目 | **我们薄薄保留**：`skills` 来源改成 `() => Promise<SkillRecord[]>`（目录本身 async） | `laneDesktopStructure.test.ts`（结构，字面改成 `async () => (await readSkillRecords())…`）+ `lane-live-skill-index`（已有）+ `agentContext.test.ts › resolves the requested skill against a freshly read catalog every time` |
 | S42 | "「这条技能要不要 coding 工具」判在准入那一刻，判之前索引必须已经刷到当前回合" + [注释] 两条来源任一即真（盘上 `scripts/bin/hooks` 或 frontmatter `tools:`） | `2026-09-11`；`laneSkillIndex.mts:68-94` | 「模型说要跑 selftest 然后说没工具」 | **我们薄薄保留**：coding 解锁是 Nomi 的工具预算策略；`requiresCodingTools` 在目录层算一次（子目录名 + frontmatter），索引是纯投影 | `lane-skill-index.test.mts`（已有）+ `S42 带 scripts/ 的技能记录 requiresCodingTools=true` |
 | S43 | [commit `936e9389d`] 解锁只看**被引用的**技能，不看整个索引 | `laneSkillIndex.mts:133-148` | coding 组永远亮 = 20% 前缀 | **我们薄薄保留** | `lane-skill-index.test.mts`（已有） |
 | S44 | [commit `936e9389d`] 进系统提示词的只有 name/description/location；叫模型用 `read`；**不新造 `load_skill` 工具**；`disable-model-invocation` 不进索引；空索引不留空白段 | `laneSkillIndex.mts` 头注释；`lane-skill-index.test.mts` | 每轮为 30KB 技能付费；bash 审批；prompt cache 抖 | **pi 已覆盖**（`formatSkillsForPrompt`，已在用） | `lane-skill-index.test.mts`（已有 8 条） |
@@ -114,7 +114,9 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 | S58 | "Skill content, web-fetched text, external MCP text, and non-cleared project assets are tainted and have untrusted trust." | `2026-09-03-m4-provenance-taint` | 外来正文当成可信 | **不在本层**（provenance 在 promptPipe，本次不碰）；记录以免漏 | — （不属加载层，无改动） |
 | S59 | "A declared-but-not-loaded skill is an execution error rather than a fake evidence record" [注释] | `skillExecutionEvidence.ts:37-40` | 用户看到「用了方法论」其实没加载 | **我们薄薄保留**：证据是 Nomi 的产物契约（`loadPlaybookStageEvidence` 改 async） | `skillExecutionEvidence.test.ts`（已有） |
 
-统计：**pi 已覆盖 17 条**（S2 S3 S6 S12 S14 S18 S22 S27 S31 S36½ S37 S44 S45 S46 S50 S53 S54½）· **我们薄薄保留 39 条** · **确已过时 3 条**（S1 的前半、S29、S36 的前半）· **不在本层 1 条**（S58）。
+统计（实施后回写）：**pi 已覆盖 16 条**（S2 S3 S6 S12 S18 S22 S27 S31 S36½ S37 S44 S45 S46 S50 S53 S54½；S14 实跑证伪后改判）· **我们薄薄保留 40 条**（含 S14、S30 的两条、S54 的开关）· **确已过时 3 条**（S1 的前半、S29、S36 的前半）· **不在本层 1 条**（S58）。
+
+**断言账本**：59 条里 **55 条有会红的断言**（`skill-catalog-migration.test.mts` 24 条按 S 编号 + 既有 vitest / agent-runtime 套件改喂岛上目录 + 三个门岗：S5 `check:skills-format`、S35 `check:standard-formats`、S46 `check:framework-boundary`）；**4 条没有断言，各有理由**：S58 不在本层（provenance 住 promptPipe，本次一行没碰）；S1 前半 / S29 / S36 前半是「确已过时」——过时项的对偶就是 S1 / S28 / S36 的新断言，没有第二条要写。
 
 ### 2.6 没进合同、从 commit / 教训里补的
 
@@ -130,7 +132,7 @@ pi 已经出了整套技能加载（`loadSkills` / `loadSourcedSkills` / `format
 
 ```
 electron/agentLane/laneSkillCatalog.mts      NEW · 岛 · 技能目录唯一 owner
-  discoverSkillRecords(roots)  → pi loadSourcedSkills(NodeExecutionEnv, roots, mapSkill)
+  discoverSkillRecords(roots)  → pi loadSourcedSkills(BomTolerantExecutionEnv ⊂ NodeExecutionEnv, roots)
                                   mapSkill = Nomi 投影：origin/audience、metadata.nomi、curation、
                                   contentHash、requiresCodingTools、软链拒、控制字符拒、多根去重
   readSkillRecords()           → discoverSkillRecords(getSkillDiscoveryRoots())
@@ -143,7 +145,11 @@ electron/agentLane/laneNativeLoader.cts      桥加两个出口：readSkillRecor
 electron/skills/skillStore.ts                只剩 SkillRecord 类型 + 根 + 策略（受众/可选性/查找/内容寻址）；
                                              readSkillRecords() 经桥、async
 删：laneInstalledSkills.mts、laneSkillIndex.mts、harness/skillIndex.ts(+test)、skillFrontmatter.ts 的 stripper、
-    skillStore.ts 的目录遍历、agentContext.ts 的 buildSelectedSkillPrompt、curatedPrompts 的正则 stripper
+    skillStore.ts 的目录遍历、agentContext.ts 的 buildSelectedSkillPrompt、curatedPrompts 的正则 stripper、
+    foreignSkillPortability.test.ts + __fixtures__ 摘录（断言进 S31/S55，夹具换成逐字拷自 ~/.claude/skills 的完整 ChatCut 技能）
+门岗：check:framework-boundary 新增 forbidden `private-skill-directory-walk`（两份旧遍历器的名字回不到岛上；变异验红）
+      check:skill-ipc-coverage 改判「每条通道两侧同一种协议」+ node-test
+      framework-surface `AgentHarnessOptions.resources`：debt（due 09-21）→ unused（技能走 loadSourcedSkills / formatSkillsForPrompt / formatSkillInvocation 三个 pi 函数，不走 pi-coding-agent 的 Resources 装配面）
 ```
 
 留下的每个文件为什么不能被 pi 取代：
@@ -164,3 +170,20 @@ electron/skills/skillStore.ts                只剩 SkillRecord 类型 + 根 + �
 - **不动**：`skills/` 88 个技能一字不改；MCP 协议层（`mcpProtocol.ts`）；渲染层技能库 UI（只改 `listWorkbenchSkills` 成 Promise 的两个 hook）；`laneCodingPaths.mts`；`check:skills-format`。
 - **回滚**：单一分支单一提交序列，`git revert` 整段；没有持久化数据格式变化（用户目录里的技能文件不被改写）。
 - **验收门**：`pnpm run gates` 全过；`tests/agent-runtime/skill-catalog-migration.test.mts` 覆盖 §2 每条 pi 已覆盖 / 薄薄保留（能力回归两条：`my-skill.md` 与真实 ChatCut 技能）；根因合同 `docs/fixes/2026-09-18-skill-loader-diverges-from-ecosystem.root-cause.json`（recurring，门表由 `node scripts/door-map.mjs` 出）。
+
+## 5. 实施后对账（2026-09-18 晚，恢复被掐断的现场之后）
+
+**那 47 个 WIP 文件**：留 44（原样或小修）、重做 3、丢 0。重做的三处都是 WIP 里能跑但不该留的形状：
+① `laneSkillCatalog.mts` 里两处**字面控制字符**（`fingerprint` 的 NUL / U+0001 分隔符、损坏包正则的 C0 区间）——`check:nul-bytes` 会红、`grep` 会静默跳过这个文件（教训 `grep-silently-skips-files-with-nul-bytes`），改成转义；
+② `laneDesktopRuntime.ts` 桥函数夹在 import 块中间，挪到 import 之后；
+③ WIP 没动的 13 个 vitest 套件（skillStore / skillIpc / skillCuration / builtinSkills / skillFrontmatter / agentContext / localProtocol / officialAgentSkillFixture / skillManifestMigration / builtinPacks / skillDispatcher / laneDesktopStructure / foreignSkillPortability）全部改吃岛上的 `discoverSkillRecords`（vitest 能经 `.mjs` 说明符解析 `.mts`，`canvasReadCapturedSnapshotFlow.test.ts` 已是先例）。
+WIP 之外补的：BOM env（S14 实跑证伪「pi 已覆盖」）、`writeSkillImport` 认单文件 stem（S10b）、两条脚本改吃岛（`check-agent-tool-face-usecases.ts` / `agent-tool-face-real-model.mjs`——`readSkillRecords()` 的 CJS 桥要编译产物，源码上跑的门岗吃不到）、`builtinPacks.test.ts` 的 mock 工厂不许 import 岛（岛 import 被 mock 的 skillStore → 模块图互等，实跑挂了 18 分钟）。
+
+**两条能力回归**：
+- `my-skill.md`（S1，两条）：迁移前 `discoverSkillRecordsFromRoots` 看不见它、`createLaneInstalledSkills` 对它抛 `Installed Skill records require an absolute SKILL.md path.`；迁移后进目录（句柄 `my-skill`、包根 = 所在技能根）、进 `<available_skills>`、lane 的 `read` 真的读到、`renderSelectedSkillPrompt` 出 pi 信封、MCP 内容寻址与导出都成立。
+- 真实 ChatCut 技能（S31 / S55，夹具 `tests/fixtures/skills/chatcut-video-gen/` 与 `~/.claude/skills/chatcut-video-gen` `diff -rq` 零差异）：`name: video-gen` ≠ 目录、未知键 `user-invocable`，pi 只发一条 `invalid_metadata` warning，技能照常加载、`references/` 一并进包；提示词里它点名的 `submit_video` / `track_progress` / `browse_assets` 原样在、权威节在正文之后、语气是能力清单。
+
+**根因合同**：`docs/fixes/2026-09-18-skill-loader-diverges-from-ecosystem.root-cause.json`（recurring，30 扇门由 `node scripts/door-map.mjs readSkillRecords discoverSkillRecords renderSelectedSkillPrompt` 出 + 定义门）。顺手回填了两份同批合同：`skill-restates-registry-facts` 的门表指着已删的 `buildSelectedSkillPrompt`、回归测试指着已删的 `foreignSkillPortability.test.ts`；`shot-envelope-fields…` 的 `scope_paths` 是整目录（`electron/agentLane/` 等），把本次无关改动都算成它的「门没数全」，收窄到它门表里的文件。`check:symptom-cluster` 对 `electron/harness` 报本周第三份合同，结构评审按指示引用既有的 `docs/audit/2026-09-18-electron-unowned-state-structural-review.md`（补记 §8 点名本层，正本是本文档）。
+
+**已知边界（不是债）**：单文件技能的可信读根是它所在的技能根（lane 的 `read` 因而能读同根下的兄弟文件，软链逃逸仍被 canonical 校验拒）；pi 会递归进没有 SKILL.md 的子目录（`root/a/b/SKILL.md` 句柄 `b`），删除只认顶层两种形态——导入不会产出嵌套形态。
+
