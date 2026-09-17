@@ -15,6 +15,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { prepareIsolation, launchIsolatedApp } from "../../evals/lib/isoApp.mjs";
+// 等待上限走公共预算 owner（tests/ux/_station-budget.mjs），不自造墙钟常量：
+// 私有数字没人能随环境调，check:test-waits 的 station 棘轮会当场红。
+import { stationTimeout } from "./_station-budget.mjs";
+
+/** 一次「真人点确认生成」的安全上限：本地界面动作，不含模型一轮。 */
+const CONFIRM_CLICK_MS = stationTimeout({ operations: 6 });
 
 if (!process.env.PAID_E2E) {
   console.log("SKIP vendor-profiles-20260918-paid: 会花额度。PAID_E2E=1 node tests/ux/vendor-profiles-20260918-paid.e2e.mjs 才跑。");
@@ -142,7 +148,7 @@ async function submitCase(c) {
         // 2026-09-18 查了半天才看清：日志只显示 createTask 发出后无响应，截图一看是弹框在等人点。
         // 验收脚本必须像真人一样点这一下（记忆 tests-must-drive-ui-like-a-human），
         // 不许绕过闸门——本轮用户已就总额（≤$5）授权，逐条仍走确认框。
-        const confirmed = win.getByRole("button", { name: "确认生成" }).click({ timeout: 90000 })
+        const confirmed = win.getByRole("button", { name: "确认生成" }).click({ timeout: CONFIRM_CLICK_MS })
           .then(() => console.log("  · 已点「确认生成」（付费确认框）"))
           .catch(() => undefined); // 没弹框（比如被缓存命中）就不用点
         void confirmed;
