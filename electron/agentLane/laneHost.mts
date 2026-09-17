@@ -1,4 +1,5 @@
 import { attachLaneTrace } from './laneTraceRecorder.mjs';
+import { logWarn } from '../logging/logger.js';
 import { capabilityContractById } from '../shared/agentCapabilities/registry.js';
 import { modelToolCapabilityId } from '../shared/agentCapabilities/modelFacingTools.js';
 import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts.js';
@@ -470,6 +471,17 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     // 「连续」的定义就在这一行：任何一条别的结果——成功了，或者换了一堵墙——都把计数清掉。
     if (key !== failures.key) { failures.key = key; failures.count = key ? 1 : 0; }
     else if (key) failures.count += 1;
+    // 工具失败要在**主进程日志**里留一行（2026-09-17）。此前整条失败链只有 lane 自己的会话 JSONL
+    // 记得住：真机复现 `surface_port_stale` 那一轮，`read_script` 连挂 3 次、会话里 12 处命中，
+    // 而 `logs/nomi-<date>.log` 一共 9 行、**一个字都没提这件事**。排查的人打开日志看到的是「什么都没发生」。
+    // 只记工具名、首行和连续次数：正文可能带用户文稿，绝不整条落盘。
+    if (event.isError) {
+      logWarn('agent', 'lane-tool-failed', {
+        tool: event.toolName,
+        firstLine: body.split('\n', 1)[0].slice(0, 200),
+        consecutive: failures.count,
+      });
+    }
     return appliedDirectly && !event.isError
       ? { content: [...event.content, { type: 'text', text: '\nApplied directly (undoable)' }] } : undefined;
   });
