@@ -67,8 +67,13 @@ export function registerIntegrationSessionIpc(service: IntegrationSessionService
     );
     // Saving a key is the shared discovery boundary: immediately populate the
     // durable session from the provider's authoritative list endpoint.
+    //
+    // 身份用**这条会话自己的 owner**，不是写 key 的那一方。两者本来就可以不同：
+    // `saveCredential` 明确允许 owner="nomi" 往别的客户端提出的会话里写 key（交接单那条路——
+    // MCP 客户端提议接入、用户在 Nomi 的安全页手填），而发现模型走的是会话本人的身份。
+    // 写死 "nomi" 会让交接来的会话在 key 落地那一刻报 owner mismatch（mcp-l2-journeys C7 实测）。
     if (saved.kind === "http-api-provider") {
-      return service.propose(saved.id, saved.revision, "nomi", {});
+      return service.propose(saved.id, saved.revision, saved.ownerClientId, {});
     }
     return saved;
   });

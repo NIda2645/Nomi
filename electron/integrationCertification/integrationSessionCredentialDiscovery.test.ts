@@ -81,7 +81,7 @@ type Projection = {
   blockingReason?: { code: string };
 };
 
-function install(discovered: Array<{ modelKey: string; label: string; kind: string; modes: string[] }>) {
+function install(discovered: Array<{ modelKey: string; label: string; kind: string; modes: string[] }>, owner: "nomi" | "codex" = "nomi") {
   const window = new harness.FakeBrowserWindow();
   setMainWindow(window as never);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-credential-discovery-"));
@@ -108,7 +108,7 @@ function install(discovered: Array<{ modelKey: string; label: string; kind: stri
       providerKind: "openai-compatible",
       authType: "bearer",
     },
-    "nomi",
+    owner,
   );
   const event = { sender: window.webContents, senderFrame: { routingId: 7, url: window.webContents.getURL() } };
   const save = (apiKey: string) =>
@@ -140,6 +140,19 @@ describe("saving an onboarding key discovers models in the same step", () => {
     ]);
     // 凭据只走这道门，投影里一个字都不带。
     expect(JSON.stringify(projection)).not.toContain("sk-probe-key");
+  });
+
+  // 交接单那条路：MCP 客户端提出会话，用户在 Nomi 的安全页手填 key。写 key 的是 nomi，
+  // 会话的 owner 是那个客户端——发现模型必须按**会话自己的身份**跑，否则 key 落地那一刻
+  // 就是一句 owner mismatch（mcp-l2-journeys C7 实测过）。
+  it("外部客户端提出的会话，用户在 Nomi 写完 key 一样就地发现模型", async () => {
+    const { discoverHttpModels, save } = install([
+      { modelKey: "relay-flash", label: "relay-flash", kind: "text", modes: ["chat"] },
+    ], "codex");
+    const projection = await save("sk-probe-key");
+    expect(discoverHttpModels).toHaveBeenCalledTimes(1);
+    expect(projection.stage).toBe("needs_selection");
+    expect((projection.candidates || []).map((candidate) => candidate.modelKey)).toEqual(["relay-flash"]);
   });
 
   it("says why when the provider lists nothing, instead of handing back a silently empty picker", async () => {
