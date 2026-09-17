@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks'
 import {
   CAPTURED_CANVAS_READ_SNAPSHOT_VERSION,
   type CapturedCanvasReadSnapshotHandleWire,
+  sameSurfaceFrameOwner,
 } from '../shared/surfacePortBinding'
 import {
   canvasReadResultSchema,
@@ -93,14 +94,8 @@ function requiredString(value: unknown, code: 'surface_port_stale' | 'capability
   return normalized
 }
 
-function sameOwner(left: SurfaceOwnerDescriptor, right: SurfaceOwnerDescriptor): boolean {
-  return left.contents === right.contents
-    && left.frame === right.frame
-    && left.webContentsId === right.webContentsId
-    && left.processId === right.processId
-    && left.frameRoutingId === right.frameRoutingId
-    && left.origin === right.origin
-}
+// C2：与 canvasReadSurfaceRegistry 那份逐字相同的六维比对，改成 import owner 的那一份。
+const sameOwner = sameSurfaceFrameOwner
 
 function bindingMatchesOwner(binding: SurfacePortBinding, owner: SurfaceOwnerDescriptor): boolean {
   return binding.webContentsId === owner.webContentsId

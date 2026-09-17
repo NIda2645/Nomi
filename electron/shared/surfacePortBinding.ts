@@ -54,6 +54,64 @@ export type SurfacePortBindingWire = Readonly<{
   nonce: string;
 }>;
 
+/**
+ * 「这两份端口绑定是不是同一个」——**唯一**比对函数（C2，2026-09-18）。
+ *
+ * 在这之前这件事在三层各写了一遍，维度数是 13 / 13 / **7**：
+ * 主进程登记表 `canvasReadSurfaceRegistry.sameBindingWire` 与渲染层
+ * `projectCanvasReadSurface.sameBinding` 比全 13 维；而 **preload**
+ * （`surfacePortPreloadBridge.sameSurfaceAuthority`）只比 7 维——漏掉 `version`、
+ * `webContentsId`、`processId`、`frameRoutingId`、`origin`。
+ *
+ * 漏在 preload 尤其要命：它正是主进程与渲染层之间那道信任边界，「这条回复是不是发给我的」
+ * 要靠它答。两份绑定只在 `webContentsId` 上不同（同一个项目、另一个窗口）时，
+ * 它会说「是同一个」。#802 那次「少一个维度」就是这个形状。
+ *
+ * 维度的定义在类型 `SurfacePortBindingWire` 上，比对跟着类型走：上游加字段时，
+ * `check:identity-compare` 会因为「owner 之外又出现一个身份比对」报红，而不是让三层各自
+ * 决定要不要跟上。
+ */
+export function sameSurfacePortBindingWire(
+  left: SurfacePortBindingWire | null | undefined,
+  right: SurfacePortBindingWire | null | undefined,
+): boolean {
+  if (!left || !right || !left.binding || !right.binding) return false;
+  return left.version === right.version
+    && left.bindingId === right.bindingId
+    && left.binding.projectId === right.binding.projectId
+    && left.binding.immutableProjectUuid === right.binding.immutableProjectUuid
+    && left.binding.projectGeneration === right.binding.projectGeneration
+    && left.webContentsId === right.webContentsId
+    && left.processId === right.processId
+    && left.frameRoutingId === right.frameRoutingId
+    && left.origin === right.origin
+    && left.surfaceInstanceId === right.surfaceInstanceId
+    && left.portRevision === right.portRevision
+    && left.nonce === right.nonce;
+}
+
+/**
+ * 「这两条描述指的是同一个渲染帧吗」——**唯一**比对函数（C2，2026-09-18）。
+ *
+ * 它比的是「哪个 webContents / 哪个进程 / 哪个帧 / 哪个源」，不是端口绑定那一整套。
+ * 之前 `canvasReadSurfaceRegistry.ts` 与 `canvasReadCapturedSnapshotRegistry.ts` 各写了一遍
+ * 逐字相同的六维——两份副本今天一致，改一处就开始不一致，而它们一起决定
+ * 「这次快照能不能算数」。
+ *
+ * 入参用结构类型而不是 import 那两个登记表的具体类型：owner 模块不该反过来依赖消费者。
+ */
+export function sameSurfaceFrameOwner(
+  left: Readonly<{ contents: unknown; frame: unknown; webContentsId: number; processId: number; frameRoutingId: number; origin: string }>,
+  right: Readonly<{ contents: unknown; frame: unknown; webContentsId: number; processId: number; frameRoutingId: number; origin: string }>,
+): boolean {
+  return left.contents === right.contents
+    && left.frame === right.frame
+    && left.webContentsId === right.webContentsId
+    && left.processId === right.processId
+    && left.frameRoutingId === right.frameRoutingId
+    && left.origin === right.origin;
+}
+
 export type CanvasReadSurfaceRequestWire = Readonly<{
   requestId: string;
   binding: SurfacePortBindingWire;

@@ -1,0 +1,21 @@
+{
+  "registered": [
+    {
+      "site": "electron/capabilityCore/canvasReadSurfaceRegistry.ts::sameSuspensionWire",
+      "dimensions": [
+        "nonce",
+        "portRevision",
+        "surfaceInstanceId"
+      ],
+      "reason": "这是**挂起单**的身份，不是端口绑定的身份：一次挂起由「哪个 surface 实例 + 第几版端口 + 这一次的 nonce」定，刻意不含项目与帧维度——挂起要能跨项目切换存活到恢复那一刻，把项目维度加进去等于让每次切项目都作废挂起。与 SurfacePortBinding 是两种身份，不是同一种的窄版。"
+    },
+    {
+      "site": "electron/workspace/workspaceManifest.ts::sameCompleteIdentity",
+      "dimensions": [
+        "immutableProjectUuid",
+        "projectGeneration"
+      ],
+      "reason": "比的是「主清单与备份清单是不是同一个项目的同一代」，两边都还没有 projectId（清单本身就是 projectId 的来源，此时读的是磁盘原始 JSON）。它刻意只用盘上那两个不可变量做一致性校验，属于清单完整性检查，不是运行期的项目身份比对。"
+    }
+  ]
+}
