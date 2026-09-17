@@ -131,9 +131,30 @@ async function submitCase(c) {
           await window.nomiDesktop.tasks.grantSpend({ nodeIds: [id], maxAttemptsPerNode: 1 }), nodeId);
         if (!grantId) throw new Error("铸令牌失败");
         console.log("  · 令牌已铸，发 createTask…");
-        const initial = await win.evaluate(async (a) =>
+        // createTask 挂住时**取证再放弃**：截一张图 + 扒一段 DOM 文本。2026-09-18 这条挂住查了半天，
+        // 光看日志分不清是「请求发不出去」还是「界面上弹了个框在等人点」——证据比猜快。
+        const RUN_TIMEOUT_MS = Number(process.env.PAID_RUN_TIMEOUT_MS || 180000);
+        const runPromise = win.evaluate(async (a) =>
           await window.nomiDesktop.tasks.run({ vendor: a.vendor, request: { kind: a.kind, prompt: a.prompt, extras: { ...a.extras, nodeId: a.nodeId, grantId: a.grantId } } }),
           { ...c, nodeId, grantId });
+        // **真人那一下**：`tasks.run` 会挂起，等界面上的付费确认框被点（「AI 助手想生成一个素材 ·
+        // 需你确认花费 → 确认生成」）。这不是产品 bug，正是 CLAUDE.md 那条「钱的闸 = 每次提交看报价确认」。
+        // 2026-09-18 查了半天才看清：日志只显示 createTask 发出后无响应，截图一看是弹框在等人点。
+        // 验收脚本必须像真人一样点这一下（记忆 tests-must-drive-ui-like-a-human），
+        // 不许绕过闸门——本轮用户已就总额（≤$5）授权，逐条仍走确认框。
+        const confirmed = win.getByRole("button", { name: "确认生成" }).click({ timeout: 90000 })
+          .then(() => console.log("  · 已点「确认生成」（付费确认框）"))
+          .catch(() => undefined); // 没弹框（比如被缓存命中）就不用点
+        void confirmed;
+        let timer;
+        const initial = await Promise.race([
+          runPromise,
+          new Promise((_, reject) => { timer = setTimeout(async () => {
+            const shot = path.join(OUT, `HANG-${c.id}.png`);
+            try { await win.screenshot({ path: shot }); console.log(`  · 挂住取证：截图 ${shot}`); } catch (e) { console.log(`  · 截图失败：${String(e?.message || e).slice(0, 120)}`); }
+            reject(new Error(`tasks.run 超过 ${RUN_TIMEOUT_MS}ms 没返回（已截图）`));
+          }, RUN_TIMEOUT_MS); }),
+        ]).finally(() => clearTimeout(timer));
         if (!initial?.id) throw new Error(`无 taskId（createTask 被拒）：${JSON.stringify(initial)?.slice(0, 300)}`);
         return initial.id;
       });
