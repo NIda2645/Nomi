@@ -1,0 +1,1198 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-shot-envelope-fields-die-in-hand-written-projections",
+  "problem_type": "一份状态沿链路传递时，被沿途手写的逐字段投影静默丢掉",
+  "symptom": "用户点「新建方案」让 Agent 照文稿出分镜后：画布上每个落地节点都叫「镜头 shot-1」，而不是 Agent 拟的「日落前的一分钟」；花钱确认卡上每行读到的是生成提示词被砍断的前 120 个字符。英文用户在画布上看到的是中文「镜头 1」——主进程硬编码的标题盖过了渲染层带 zh/en 的 i18n 兜底。",
+  "direct_cause": "模型经 draft_shots 写的每镜 title 在链路中途被五处各自手写的逐字段重建依次丢弃：electron/agentLane/laneVerbTransport.ts:41 解构时没列 title；electron/capabilityCore/mcpGenerationMultiShot.ts shotEnvelope 没解析 title；同文件密封条目的 included / 非 included 两支各重建一次；electron/productionRun/productionGenerationOperationStore.ts:27 的门卡投影逐字段列举；electron/productionRun/productionRunRepository.ts:349 的持久化投影逐字段列举。两个终点（multiShotCanvasLanding 的节点标签、mcpGenerationTools 的 sceneOneLiner）一直在等这个字段，因此各自退回了合成兜底。",
+  "class_root": "镜头信封（shotId/role/included/title 这类给人看、给编排用、不进 provider 请求的字段）没有单一真相源，每个投影点各自手抄一份字段列表。TypeScript 对此完全沉默：对象字面量只要满足目标类型的必填项就合法，漏掉可选字段既不报错也不警告。于是「新增一个信封字段」这件事，在每一处手抄列表上都是一个静默丢弃点——编译期绿、单测绿、门岗绿，只有用户在界面上看到兜底值。这与「字段被拒收」是相反的失效：拒收会报错、看得见；丢弃没有任何信号。",
+  "migration": "无持久化数据变更。title 是新增可选字段，历史 Run 没有它时行为与今天逐字节相同（走各自的兜底）。P1：主进程 multiShotCanvasLanding.shotTitle() 那份硬编码中文标题合成已在同 commit 删除，不留并行版；兜底唯一归渲染层的 i18n 词条 generationCommon.production.canvasLanding.shotFallbackTitle。",
+  "affected_population": [
+    "每一个用 Agent 从剧本拟分镜的用户：画布上全部镜头节点只能看到「镜头 <shotId>」，分不清哪镜是哪镜",
+    "每一个在多镜报价卡上决定花钱的用户：每行读到的是被砍断的提示词而不是镜头标题",
+    "全部英文用户：主进程硬编码中文标题盖过 i18n 兜底，画布上出现「镜头 1」（R15）",
+    "外部 MCP 宿主经 nomi_operation_create 传语义 shots[] 的调用方：同一条链路、同样丢字段"
+  ],
+  "scope_paths": [
+    "electron/shared/generationShotEnvelope.ts",
+    "electron/capabilityCore/",
+    "electron/productionRun/",
+    "electron/agentLane/",
+    "electron/shared/agentCapabilities/"
+  ],
+  "entry_points": [
+    "electron/agentLane/laneVerbTransport.ts:draftShotToPlanShot",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts:shotEnvelope",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts:sealMultiShotFor",
+    "electron/productionRun/productionGenerationOperationStore.ts:generationPlanProjection",
+    "electron/productionRun/productionRunRepository.ts:createGenerationDraft",
+    "electron/productionRun/multiShotCanvasLanding.ts:shotLabel",
+    "electron/capabilityCore/mcpGenerationTools.ts:sceneOneLiner"
+  ],
+  "invariants": [
+    "信封字段集合只有一处定义：GENERATION_SHOT_ENVELOPE_KEYS 与 GenerationShotEnvelope 由编译期断言互相钉死，只改其一即报错",
+    "任何投影一镜的地方都整只搬信封（generationShotEnvelopeOf），不再手写字段列表",
+    "模型拟的 title 从动词出发，能同时抵达画布节点标签与花钱确认卡那一行",
+    "主进程不合成任何面向用户的兜底文案；拿不到标题就不发该字段，兜底归知道用户语言的渲染层",
+    "title 只在信封上，一个字都不进 candidate、因而一个字都不进 provider 请求"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 27,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 59,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 34,
+      "symbol": "GenerationLeaseFactory"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 69,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 71,
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 75,
+      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 209,
+      "symbol": "GenerationTransportAdapterDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 210,
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 60,
+      "symbol": "SealedMultiShotEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 92,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 100,
+      "symbol": "GenerationShotEnvelope"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 152,
+      "symbol": "MultiShotCandidateParsers"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 154,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 174,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 174,
+      "symbol": "MultiShotCandidateParsers"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 174,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 224,
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 225,
+      "symbol": "MultiShotCandidateParsers"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 246,
+      "symbol": "AssertReferencesResolvable"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 250,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 257,
+      "symbol": "MultiShotHelperDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 277,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 278,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 281,
+      "symbol": "draftShotFromPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 355,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 360,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 361,
+      "symbol": "draftShotFromStoryboard"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 386,
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 388,
+      "symbol": "SealedMultiShotEntry"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 390,
+      "symbol": "generationShotEnvelopeOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 394,
+      "symbol": "generationShotEnvelopeOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 107,
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 113,
+      "symbol": "GenerationOperationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 129,
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 129,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 130,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 131,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 133,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 136,
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 136,
+      "symbol": "GenerationAuthorizationPreparation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 136,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 137,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 139,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 144,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 144,
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 163,
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 164,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 244,
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 290,
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 295,
+      "symbol": "AssertReferencesResolvable"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 298,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 300,
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 301,
+      "symbol": "GenerationAuthorizationPreparation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 302,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 303,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 312,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 332,
+      "symbol": "GenerationPlanningHandlerDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 352,
+      "symbol": "GenerationPlanningHandlerDependencies"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 368,
+      "symbol": "createMultiShotCreateHelpers"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 387,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 675,
+      "symbol": "coldstartEtaForGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 53,
+      "symbol": "MaterializeShotCandidateWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 62,
+      "symbol": "MaterializeShotWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 81,
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 102,
+      "symbol": "MaterializeShotCandidateWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 102,
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 115,
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 127,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 129,
+      "symbol": "MaterializeShotsWirePayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 154,
+      "symbol": "MaterializeShotWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 176,
+      "symbol": "MaterializeShotWire"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 193,
+      "symbol": "canvasLandingOperationId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 216,
+      "symbol": "CanvasLandingDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 216,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "line": 218,
+      "symbol": "buildMaterializeShotsPayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 8,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 28,
+      "symbol": "generationShotEnvelopeOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 54,
+      "symbol": "ProductionGenerationOperationStoreHooks"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 55,
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 65,
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "line": 208,
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 40,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 73,
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 86,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 87,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 110,
+      "symbol": "ProductionRunParseError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 116,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 116,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 118,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 126,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 131,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 152,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 152,
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 168,
+      "symbol": "ProductionRunRepositoryDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 181,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 183,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 186,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 188,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 203,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 208,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 212,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 222,
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 222,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 235,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 236,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 237,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 238,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 239,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 259,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 260,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 284,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 297,
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 304,
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 307,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 315,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 316,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 350,
+      "symbol": "generationShotEnvelopeOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 357,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 358,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 376,
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 376,
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 379,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 390,
+      "symbol": "ProductionRunRevisionConflictError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 396,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 454,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 470,
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 491,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 497,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 498,
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 522,
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 522,
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 541,
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 547,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "line": 555,
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 17,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 19,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 22,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 23,
+      "symbol": "DEFAULT_TRUST_LEVEL"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 23,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 27,
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 27,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 28,
+      "symbol": "normalizeTrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 39,
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 125,
+      "symbol": "ProductionStageStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 140,
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 249,
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 295,
+      "symbol": "ProductionGateStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 305,
+      "symbol": "ProductionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 307,
+      "symbol": "ProductionDirectionCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 354,
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 358,
+      "symbol": "ProductionBrief"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 359,
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 360,
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 363,
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 364,
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 365,
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 366,
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 368,
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 405,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 409,
+      "symbol": "ProductionRunDraftSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 440,
+      "symbol": "ProductionBrief"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 441,
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 448,
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 500,
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "line": 501,
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 54,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 64,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 99,
+      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 104,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 105,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 125,
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/generationShotEnvelope.ts",
+      "line": 24,
+      "symbol": "GENERATION_SHOT_ENVELOPE_KEYS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/generationShotEnvelope.ts",
+      "line": 41,
+      "symbol": "GenerationShotEnvelope"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/generationShotEnvelope.ts",
+      "line": 41,
+      "symbol": "GenerationShotEnvelopeKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/generationShotEnvelope.ts",
+      "line": 50,
+      "symbol": "GenerationShotEnvelope"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 175,
+    "why_not": "五处**手写的字段列表**已经合并为一处（generationShotEnvelopeOf），这是本次真正减掉的门。门表里剩下的入口是该信封类型与常量的全部读写点：它们分布在动词声明、传输翻译、草稿解析、密封、门卡投影、持久化、画布落地七层，各层职责不同且跨进程边界（主进程/渲染层）与跨模块边界（capabilityCore / productionRun / agentLane），合并它们等于取消分层。真正的防线不是把入口数压到 1，而是让每个入口都不可能再手抄字段列表——编译期断言保证漏接当场报错，这比减少入口数更强。"
+  },
+  "regression_tests": [
+    "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts"
+  ],
+  "residual_risks": [
+    "编译期断言保证「类型与键名常量同步」，但拦不住有人在别处**新写**一段 `{ shotId: x.shotId, role: x.role }` 而不调 generationShotEnvelopeOf——那仍会静默丢字段。已在 generationShotEnvelope.ts 头部写明纪律并留下 grep 锚点；把「不许手写信封字段列表」做成静态门岗是后续独立工单。",
+    "本次只收敛了**镜头信封**这一份状态。同类形状（沿链路多段手写逐字段重建）在别的链路上是否存在，已派独立扫描，尚未收口。"
+  ],
+  "external_sources": [],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状在同一条链路上复发了五次，且是一处一处试出来才找齐的：每补一处，断言就往前挪一格。任何新增的信封字段都会在同样这些点上重演，因为成因是「手抄字段列表」这种写法本身，不是某一处的疏忽。",
+    "same_class_scan": [
+      "沿 title 从动词到两个终点逐段走查，找到五处手写重建（见 direct_cause 的 file:line）",
+      "node scripts/door-map.mjs 对 11 个改动文件逐个数门，确认信封类型与常量的全部读写点已进门表"
+    ]
+  },
+  "generality_proof": "把「信封有哪些字段」这件事从七处手抄收敛成一份定义，并用一行编译期断言把字段类型与可枚举键名常量互相钉死。此后新增信封字段只需改这一个文件；若只改类型不改常量（或反过来），TypeScript 当场报错——两个方向的变异都已实测会红、还原后回绿。投影点一律 spread generationShotEnvelopeOf，新字段自动随之流过全部七层，不再依赖任何人记得去改第二处。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/generationShotEnvelope.ts",
+      "symbol": "generationShotEnvelopeOf",
+      "responsibility": "把一镜的信封整只搬到下一层，替代沿途每一处手写的字段列表；字段集合的唯一定义处"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "draftShotToPlanShot",
+      "disposition": "enforced",
+      "evidence": "解构补上 title 并透传；带 title 的单镜不再摊平成顶层参数（顶层没有信封字段的位置，摊平就只能丢掉），与既有的 role 判据同一条规则"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "shotEnvelope",
+      "disposition": "enforced",
+      "evidence": "返回类型改为共享的 GenerationShotEnvelope；解析 title 并做 120 字上限校验"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "sealMultiShotFor",
+      "disposition": "enforced",
+      "evidence": "included 与非 included 两支都改成 spread generationShotEnvelopeOf(shot)，原先各手写一份列表"
+    },
+    {
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "entry_point": "generationPlanProjection",
+      "disposition": "enforced",
+      "evidence": "门卡投影改成 spread generationShotEnvelopeOf(shot)"
+    },
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "entry_point": "createGenerationDraft",
+      "disposition": "enforced",
+      "evidence": "持久化投影改成 spread generationShotEnvelopeOf(shot)"
+    },
+    {
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "entry_point": "shotLabel",
+      "disposition": "enforced",
+      "evidence": "优先读 shot.title；删掉硬编码中文兜底，拿不到标题时不发该字段，兜底交给渲染层 i18n"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "sceneOneLiner",
+      "disposition": "enforced",
+      "evidence": "花钱确认卡那一行优先读 shot.title，模型没拟标题时才退回提示词前 120 字"
+    }
+  ],
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "electron/shared/generationShotEnvelope.ts",
+    "invariant": "信封字段集合只有一处定义；类型与可枚举键名常量由编译期断言互相钉死，只改其一即编译失败",
+    "failure_mode": "有人在别处新写一段手抄的字段列表而不调 generationShotEnvelopeOf——那段仍会静默丢字段（见 residual_risks）",
+    "exception_policy": "none",
+    "strategy": "把「有哪些字段」从七处手抄收敛成一份定义，并让漏接在编译期而不是在用户界面上暴露",
+    "artifacts": [
+      "electron/shared/generationShotEnvelope.ts",
+      "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/multiShotCanvasLanding.ts"
+    ],
+    "rationale": "shotTitle() 是主进程自己合成的标题兜底（硬编码「镜头 N」「参考 N」），它会盖过渲染层那份带 zh/en 的 i18n 兜底，英文用户因此看到中文。P1 加新必删旧：同 commit 删除，兜底只留渲染层一份。其余五处手写字段列表也在同 commit 全部替换为 generationShotEnvelopeOf，不留并行版。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及任何第三方依赖：全部是本仓内部数据流与类型定义的收敛。",
+    "exit_criteria": []
+  },
+  "internal_only_reason": "纯内部数据流问题：字段在我们自己的七层投影之间传递，不涉及任何外部规范或供应商契约。provider 请求体不含该字段，因此没有外部依据可查。",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/generationShotEnvelope.ts",
+    "tests": [
+      "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts"
+    ],
+    "rationale": "不变量是「信封字段只有一处定义，且任何投影都整只搬」。归属层就是这份定义本身：字段集合、可枚举键名常量、以及把两者钉死的编译期断言全在这一个文件里，漏接在 tsc 阶段就失败——这是比任何运行时测试都早的一层。运行时那一半（模型拟的标题真的抵达画布节点与花钱确认卡）由 e2e 守，它断言的是值抵达，而不是「没报错」——第一版只断言草稿里有值就绿了，再往前推两格才发现还差两处。"
+  }
+}
