@@ -246,6 +246,10 @@ export default function WorkbenchEditor(): JSX.Element {
           '[&_.is-editor-empty]:before:content-[attr(data-placeholder)]',
           '[&_.is-editor-empty]:before:text-nomi-ink-40 [&_.is-editor-empty]:before:float-left',
           '[&_.is-editor-empty]:before:pointer-events-none [&_.is-editor-empty]:before:h-0',
+          // 左浮动 + 高度 0 的伪元素宽度是「收缩到适合」——对一句长占位文字来说，
+          // 「适合」就是整句的长度，于是它冲出编辑卡右缘（2026-09-17，W-12，zh/en 都有）。
+          // 给它一个真实上限，让它在卡内折行；文档为空时下面没有内容可被它盖住。
+          '[&_.is-editor-empty]:before:max-w-full',
         )}
       >
         <EditorContent editor={editor} />
