@@ -231,7 +231,7 @@ export const INPUT_STATES: readonly LabState[] = [
     name: 'DesignSwitch · 生产三形（裸开关 / 自带 label / 禁用仍受控）+ DesignCheckbox 唯一真实用法',
     source: SOURCE_FORMS,
     mirrors: [
-      'src/workbench/settings/AutomationPermissionsSection.tsx:204',
+      'src/workbench/settings/AutomationPermissionsSection.tsx:188',
       'src/ui/onboarding/DirectScriptDraftForm.tsx:95',
       'src/workbench/settings/ScreenshotHotkeySection.tsx:51',
       'src/ui/onboarding/ModelPickerScreen.tsx:348',
