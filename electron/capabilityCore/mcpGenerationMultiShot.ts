@@ -150,7 +150,7 @@ export function draftShotFromPlan(
   value: unknown,
   index: number,
   parsers: MultiShotCandidateParsers,
-  semantic?: Pick<SemanticGenerationCandidateDeps, "defaultModelForTaskKind" | "registry" | "allowRegistryFallback">,
+  semantic?: Pick<SemanticGenerationCandidateDeps, "defaultModelForTaskKind" | "registry" | "allowRegistryFallback" | "resolveAssetReferenceIdentity">,
 ): GenerationOperationDraftShot {
   const raw = parsers.record(value, `generation shot ${index}`);
   const env = shotEnvelope(raw, index, `shot-${index + 1}`);
@@ -162,6 +162,7 @@ export function draftShotFromPlan(
     ...(semantic?.defaultModelForTaskKind ? { defaultModelForTaskKind: semantic.defaultModelForTaskKind } : {}),
     ...(semantic?.registry ? { registry: semantic.registry } : {}),
     ...(semantic?.allowRegistryFallback ? { allowRegistryFallback: semantic.allowRegistryFallback } : {}),
+    ...(semantic?.resolveAssetReferenceIdentity ? { resolveAssetReferenceIdentity: semantic.resolveAssetReferenceIdentity } : {}),
   });
   return { ...env, candidate };
 }
@@ -244,6 +245,8 @@ export type MultiShotHelperDeps = {
   allowRegistryFallback?: boolean;
   /** P4 §5.1.4: 校验复用锚（references）存在且属于本项目。未注入 = 不校验（向后兼容）。 */
   assertReferencesResolvable?: AssertReferencesResolvable;
+  /** assetId → 可引用身份。与单镜路同一台解析器；未注入 = 只收已经带身份的参考。 */
+  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */
@@ -282,6 +285,9 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
         ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
         ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
         ...(deps.allowRegistryFallback ? { allowRegistryFallback: deps.allowRegistryFallback } : {}),
+        ...(deps.resolveAssetReferenceIdentity
+          ? { resolveAssetReferenceIdentity: (assetId: string) => deps.resolveAssetReferenceIdentity!(projectId, assetId) }
+          : {}),
       }));
     } else if (typeof params.scriptText === "string" || isLongFormGenerationRequest(params)) {
       // A minute-scale natural-language request must not silently collapse to

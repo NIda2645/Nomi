@@ -721,6 +721,38 @@ function projectAgentAttachmentClaim(value: unknown): ProjectAgentAttachmentClai
   return Object.freeze({ assetId: record.assetId, version: 1 });
 }
 
+/**
+ * 一份项目素材的**可引用身份**（内容哈希 + 版本）。全仓只此一处算它。
+ *
+ * 版本恒 1 是内容寻址的推论，不是占位：素材按 `sha256/<hash>/` 落盘，改内容就是另一份素材、另一个
+ * `assetId`（`core.ts` 导入那条路同样写死 1）。
+ */
+function assetIdentityOf(asset: LocalAssetRecord): Readonly<{ contentHash: string; version: 1 }> | undefined {
+  const absolutePath = asset.data.absolutePath;
+  if (typeof absolutePath !== "string" || !fs.existsSync(absolutePath)) return undefined;
+  return Object.freeze({
+    contentHash: crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex"),
+    version: 1 as const,
+  });
+}
+
+/**
+ * assetId → 可引用身份。**模型只知道 assetId**（`look_at_media` 返回的就是它），内容哈希与版本
+ * 归项目素材库管；生成计划的参考素材由宿主在这里补齐，而不是要求模型发明它拿不到的字段
+ * （2026-09-18 根因，与「多镜不再要求模型发明 candidate」同一条纪律）。
+ * 素材不属于本项目、或文件已经不在盘上 → `undefined`，由调用方给出人话拒绝。
+ */
+export function resolveProjectAssetReferenceIdentity(
+  projectId: string,
+  assetId: string,
+): Readonly<{ contentHash: string; version: 1 }> | undefined {
+  const wanted = assetId.trim();
+  if (!wanted) return undefined;
+  const asset = listProjectAssets({ projectId, limit: 500 }).items.find((item) => item.id === wanted);
+  if (!asset || asset.projectId !== projectId) return undefined;
+  return assetIdentityOf(asset);
+}
+
 /** Resolve untrusted renderer claims against the exact main-owned project asset index. */
 export function resolveProjectAgentAttachmentClaims(
   projectId: string,
@@ -738,14 +770,12 @@ export function resolveProjectAgentAttachmentClaims(
     if (!asset || asset.projectId !== projectId) throw new Error("project_agent_attachment_invalid");
     const absolutePath = asset.data.absolutePath;
     const relativePath = asset.data.relativePath;
-    if (
-      typeof absolutePath !== "string" ||
-      typeof relativePath !== "string" ||
-      !fs.existsSync(absolutePath)
-    ) {
+    if (typeof absolutePath !== "string" || typeof relativePath !== "string") {
       throw new Error("project_agent_attachment_invalid");
     }
-    const contentHash = crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex");
+    const identity = assetIdentityOf(asset);
+    if (!identity) throw new Error("project_agent_attachment_invalid");
+    const { contentHash } = identity;
     const contentType = asset.data.contentType;
     const size = asset.data.size;
     if (typeof contentType !== "string" || !Number.isSafeInteger(size) || (size as number) < 0) {
@@ -754,7 +784,7 @@ export function resolveProjectAgentAttachmentClaims(
     return Object.freeze({
       assetId: asset.id,
       contentHash,
-      version: 1,
+      version: identity.version,
       display: Object.freeze({
         url: localAssetUrl(projectId, relativePath),
         fileName: path.basename(absolutePath),
