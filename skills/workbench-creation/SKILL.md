@@ -6,8 +6,8 @@ metadata:
     selectable-in-workbench: true
     version: 1.0.0
     tools:
-      - creation_read
-      - creation_write
+      - read_script
+      - write_script
     required-providers:
       - text
     library:

@@ -22,6 +22,8 @@ import { createProductionRunRepository } from "../productionRun/productionRunRep
 import { createProductionRunService } from "../productionRun/productionRunService";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
 import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
+import { verbToTransportCall } from "../agentLane/laneVerbTransport";
 
 // P4 S6.5 生产入口 — end-to-end over the REAL semantic create→seal→gate→start entrance (NOT test injection
 // into the reducer). This is the proof the review demanded: `nomi_operation_create` with a multi-shot
@@ -113,7 +115,13 @@ function shotCandidate(id: string, prompt: string, role: "anchor" | "shot") {
   return { candidateId: `cand-${id}`, revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId, mode, prompt, parameters: {}, references: [] };
 }
 
-function harness(vendorOrigin: string, submits: string[], planStoryboard?: (input: { projectId: string; scriptText: string }) => StoryboardPlanResult) {
+function harness(
+  vendorOrigin: string,
+  submits: string[],
+  planStoryboard?: (input: { projectId: string; scriptText: string }) => StoryboardPlanResult,
+  /** 用户在设置里存过的默认模型。生产里一定有；缺省 = 没配过模型的那台机器。 */
+  defaultModelForTaskKind?: (taskKind: GenerationDefaultTaskKind) => { moduleId: string; providerId: string; modelId: string; mode: string; modeId?: string } | undefined,
+) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-entrance-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
@@ -145,6 +153,7 @@ function harness(vendorOrigin: string, submits: string[], planStoryboard?: (inpu
     operations,
     resolveModelPricing: () => ({ cost: 6, enabled: true, specCosts: [] }),
     ...(planStoryboard ? { planStoryboard } : {}),
+    ...(defaultModelForTaskKind ? { defaultModelForTaskKind } : {}),
     now,
     prepareAuthorization: ({ lease: projectLease, operation, contract, multiShot }) => prepareProductionGenerationAuthorization({
       lease: projectLease,
@@ -324,6 +333,132 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
       expect(gate.shots).toBeUndefined(); // flat single-shot card (no display.shots)
       expect(gate.costScope).toBe(`generation.single-shot:${operationId}`);
       expect(gate.maximumCost).toBe(6); // one shot's derived price
+    } finally {
+      await vendor.close();
+    }
+  });
+});
+
+// 2026-09-18 根因：**lane 上的 `draft_shots` 走的就是 `shots[]` 这条路，而它一个 candidate 都不给。**
+//
+// 上面每一条多镜测试都手填了完整的 `candidate`（`shotCandidate(...)`），所以「多镜入口」看起来有覆盖。
+// 真实调用不长那样：模型只会写 prompt / taskKind / 时长，内部的 candidateId、moduleId、providerId、
+// transport 接线它既不知道也不该知道。单镜那条路早就承认了这件事——`mcpGenerationTools.ts` 单镜分支的
+// 注释原话是「让模型不必去发明内部 candidate ID 和供应商接线，之前的行为表现为一次假拒绝」——但那次
+// 只修了 N=1 这个 arity。N≥2 仍然硬要 candidate，于是同一份镜头描述，一个镜收、两个镜拒。
+//
+// 这条测试用 `verbToTransportCall` 取**真实 lane 发出的那份 params**（不是手抄一份，抄了就会漂），
+// 直接喂进真 handler。它守的不变量是：模型写得出的东西，宿主必须收得下。
+describe("P4 S6.5 — lane draft_shots：镜头只给语义字段、不给 candidate", () => {
+  const savedDefaults = (taskKind: GenerationDefaultTaskKind) => (taskKind === "text_to_image"
+    ? { moduleId: "generation.single-shot", providerId: "apimart", modelId: "image-model", mode: "text-to-image" }
+    : { moduleId: "generation.single-shot", providerId: "apimart", modelId: "video-model", mode: "image-to-video" });
+
+  /** lane 真正发出的 params —— 动词在前，翻译层在中，这里取它的产物。 */
+  const lanePlanParams = (shots: unknown[]): Record<string, unknown> => {
+    const transported = verbToTransportCall({ toolCallId: "t-draft", toolName: "draft_shots", args: { shots } });
+    if (!transported) throw new Error("draft_shots 没有走延迟组传输层");
+    return transported.call.args as Record<string, unknown>;
+  };
+
+  it("模型只写 prompt/taskKind/时长，宿主就能建出多镜草稿（候选由保存的默认模型合成）", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, [], undefined, savedDefaults);
+    try {
+      const params = lanePlanParams([
+        { shotId: "anchor-1", role: "anchor", prompt: "阿雨 定妆照", taskKind: "text_to_image" },
+        { shotId: "shot-1", role: "shot", prompt: "雨夜推门", taskKind: "image_to_video", durationSec: 3 },
+        { shotId: "shot-2", role: "shot", prompt: "货架对视", taskKind: "image_to_video", durationSec: 4 },
+      ]);
+      // 前提断言：lane 确实一个 candidate 都没发（否则下面证的是另一回事）。
+      const wire = params.shots as Array<Record<string, unknown>>;
+      expect(wire).toHaveLength(3);
+      expect(wire.every((shot) => shot.candidate === undefined)).toBe(true);
+
+      const created = await handler({ capability: "create", lease, params: { operationId: "op-lane", ...params } }) as {
+        operation: { shots?: Array<{ shotId: string; role?: string; candidate: { candidateId: string; modelId: string; prompt: string; parameters: Record<string, unknown> } }> };
+        nextAction: string;
+      };
+      const shots = created.operation.shots ?? [];
+      expect(shots.map((shot) => shot.shotId)).toEqual(["anchor-1", "shot-1", "shot-2"]);
+      // 合成出来的候选带的是保存的默认模型，不是目录第一行——锚走图片模型，镜走视频模型。
+      expect(shots.map((shot) => shot.candidate.modelId)).toEqual(["image-model", "video-model", "video-model"]);
+      // 候选 id 跟着 shotId 走（改一镜不动其它镜）。
+      expect(shots.map((shot) => shot.candidate.candidateId)).toEqual(["cand-anchor-1", "cand-shot-1", "cand-shot-2"]);
+      // 提示词逐字保留；时长落在 provider 契约认的 `duration` 上。
+      expect(shots.map((shot) => shot.candidate.prompt)).toEqual(["阿雨 定妆照", "雨夜推门", "货架对视"]);
+      expect(shots.slice(1).map((shot) => shot.candidate.parameters.duration)).toEqual([3, 4]);
+      expect(created.nextAction).toBe("preview");
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("模型拟的标题一路送到花钱卡那行，不是被砍断的提示词", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler, generationAuthority } = harness(vendor.origin, [], undefined, savedDefaults);
+    try {
+      const params = lanePlanParams([
+        { shotId: "shot-1", role: "shot", title: "日落前的一分钟", prompt: "小禾合上电脑，看夕阳。镜头缓慢推近她的侧脸，窗外的光把桌面染成橘色。", taskKind: "image_to_video", durationSec: 8 },
+        { shotId: "shot-2", role: "shot", prompt: "第二天清晨，她重新打开电脑。", taskKind: "image_to_video", durationSec: 5 },
+      ]);
+      // 前提断言：lane 确实把 title 发出来了（翻译层曾经在这里把它扔掉）。
+      expect((params.shots as Array<Record<string, unknown>>)[0].title).toBe("日落前的一分钟");
+
+      const created = await handler({ capability: "create", lease, params: { operationId: "op-title", ...params } }) as {
+        operation: { shots?: Array<{ title?: string }> };
+      };
+      // 标题落在镜头信封上，不在候选里——它一个字都不该进 provider 请求。
+      expect(created.operation.shots?.map((shot) => shot.title)).toEqual(["日落前的一分钟", undefined]);
+
+      await handler({ capability: "preview", lease, params: { operationId: "op-title" } });
+      const gate = await generationAuthority.requestGenerationGate({ lease, params: { operationId: "op-title" } }) as {
+        shots?: { shots: Array<{ shotId: string; sceneOneLiner: string }> };
+      };
+      const lines = gate.shots?.shots ?? [];
+      // 用户在这一刻决定花不花钱：第一行读到人话标题；第二行没拟标题，才退回提示词前缀。
+      expect(lines.find((shot) => shot.shotId === "shot-1")?.sceneOneLiner).toBe("日落前的一分钟");
+      expect(lines.find((shot) => shot.shotId === "shot-2")?.sceneOneLiner).toBe("第二天清晨，她重新打开电脑。");
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("显式给了 candidate 的镜头逐字节照旧（这条修的是缺候选，不是改已有语义）", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, [], undefined, savedDefaults);
+    try {
+      const explicit = shotCandidate("shot-1", "显式候选", "shot");
+      const created = await handler({ capability: "create", lease, params: { operationId: "op-explicit", shots: [
+        { shotId: "shot-1", role: "shot", candidate: explicit },
+      ] } }) as { operation: { shots?: Array<{ candidate: Record<string, unknown> }> } };
+      expect(created.operation.shots?.[0].candidate).toMatchObject(explicit);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("这台机器没配过模型时，给的是人话而不是 zod 的 Required", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, []);
+    try {
+      await expect(handler({ capability: "create", lease, params: lanePlanParams([
+        { shotId: "shot-1", role: "shot", prompt: "雨夜推门", taskKind: "image_to_video" },
+        { shotId: "shot-2", role: "shot", prompt: "货架对视", taskKind: "image_to_video" },
+      ]) })).rejects.toThrow(/没有配置可用的视频模型/);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("缺 prompt 的镜头点名是第几镜，而不是丢一个 Required", async () => {
+    const vendor = await startLoopbackVendor();
+    const { handler } = harness(vendor.origin, [], undefined, savedDefaults);
+    try {
+      await expect(handler({ capability: "create", lease, params: { shots: [
+        { shotId: "shot-1", role: "shot", prompt: "有提示词", taskKind: "image_to_video" },
+        { shotId: "shot-2", role: "shot", taskKind: "image_to_video" },
+      ] } })).rejects.toThrow(/prompt is required/);
     } finally {
       await vendor.close();
     }

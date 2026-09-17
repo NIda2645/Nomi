@@ -9,13 +9,10 @@ metadata:
     author: "@nomi"
     tools:
       - read_script
-      - read_canvas_state
-      - propose_storyboard_plan
-      - create_canvas_nodes
-      - connect_canvas_edges
-      - set_node_prompt
-      - run_generation_batch
-      - arrange_storyboard_to_timeline
+      - look_at_canvas
+      - draft_shots
+      - arrange_canvas
+      - generate
     required-providers:
       - text
       - image
@@ -36,8 +33,8 @@ metadata:
       - id: storyboard
         goal: 把产品文案拆成一份宣传片分镜方案（3 秒钩子 → 每个卖点一镜 → 使用场景 → 行动号召），交用户在创作区审阅修改。
         tools:
-          - read_canvas_state
-          - propose_storyboard_plan
+          - look_at_canvas
+          - draft_shots
         depends-on:
           - script
         pause: true
@@ -51,10 +48,9 @@ metadata:
       - id: build
         goal: 把确认后的分镜方案落成画布节点，建好产品/风格锚的参考边。
         tools:
-          - read_canvas_state
-          - create_canvas_nodes
-          - connect_canvas_edges
-          - set_node_prompt
+          - look_at_canvas
+          - draft_shots
+          - arrange_canvas
         depends-on:
           - storyboard
         pause: true
@@ -63,8 +59,8 @@ metadata:
       - id: generate
         goal: 按波次生成关键帧与镜头视频（先锁产品参考，再出各镜）。
         tools:
-          - read_canvas_state
-          - run_generation_batch
+          - look_at_canvas
+          - generate
         depends-on:
           - build
         pause: true
@@ -75,8 +71,7 @@ metadata:
       - id: assemble
         goal: 把生成好的镜头按镜序排到时间轴，节奏收紧、CTA 收尾，准备预览导出。
         tools:
-          - read_canvas_state
-          - arrange_storyboard_to_timeline
+          - look_at_canvas
         depends-on:
           - generate
         pause: true
@@ -121,10 +116,10 @@ license: AGPL-3.0-only
 五阶段（系统按依赖逐段放行，每段完成即暂停审阅）：
 
 1. **script 剧本审阅** —— 把文案改写为编号脚本和镜头意图，用户应用或拒绝写入候选。**不碰画布、不花额度。**
-2. **storyboard 拆镜头** —— 基于已确认脚本，用 `propose_storyboard_plan` 一次产出整份分镜方案，落到创作区给用户审阅。**不碰画布、不花额度。**
-3. **build 落画布** —— 用户确认方案后，用 `create_canvas_nodes` 把镜头排成节点、`connect_canvas_edges` 把产品/风格锚连成参考边。
-4. **generate 生成** —— 用 `run_generation_batch` 按波次生成：先生成产品参考图锁住一致性，再出各镜关键帧与视频。**这一步花额度，确认后才跑。**
-5. **assemble 排时间轴** —— 用 `arrange_storyboard_to_timeline` 按镜序排片，准备预览导出。
+2. **storyboard 拆镜头** —— 基于已确认脚本，用 `draft_shots` 一次产出整份分镜方案，落到创作区给用户审阅。**不碰画布、不花额度。**
+3. **build 落画布** —— 用户确认方案后，用 `draft_shots` 把镜头排成节点、`arrange_canvas` 把产品/风格锚连成参考边。
+4. **generate 生成** —— 用 `generate` 按波次生成：先生成产品参考图锁住一致性，再出各镜关键帧与视频。**这一步花额度，确认后才跑。**
+5. **assemble 排时间轴** —— 把分镜按镜序排进时间轴目前**没有对应的模型动词**（2026-09-14 收编 20 动词时丢在模型面外，契约仍在主进程）。别承诺这一步，交给用户在剪辑面自己排；要改时间轴只有 `edit_timeline`。
 
 和用户交互：每阶段开始前用一句中文说要做什么；调用工具后不啰嗦解释。遇到信息不足（如不知道品牌色/受众）先问一句，别瞎编。
 
@@ -160,7 +155,7 @@ anchors（跨镜头一致）：
 - **波次**：第一波先生成 `prop` 产品参考图（image 模型）锁住产品；第二波再生成各镜（关键帧 image → 镜头视频 i2v）。别一上来全量跑。
 - **模型**：关键帧/产品图用 image 模型；镜头视频用 video 模型（图生视频 i2v，把关键帧当首帧）。具体用哪个模型由系统按你已接入的能力选——**你只声明要 image / video 能力，不指定某个具体型号**。
 - **产品一致性**：每个产品镜都要连到产品锚的参考边，确保同一个产品不会每镜长得不一样。
-- 生成是花额度的动作，`run_generation_batch` 会走确认门，用户点头才真跑。
+- 生成是花额度的动作，`generate` 会走确认门，用户点头才真跑。
 
 ## 提示词写法
 

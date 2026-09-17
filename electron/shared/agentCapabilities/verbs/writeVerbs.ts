@@ -26,7 +26,7 @@ const generationParameters = z.record(z.union([z.string(), z.number(), z.boolean
 /** 一镜草稿：模型填的是**语义**（提示词/模型/参数/参考），候选身份由宿主按目录合成，与单镜路径同一个解析器。 */
 export const draftShotSchema = z.object({
   shotId: shotId.optional().describe("Pass an existing shot id to update that draft; omit to create a new shot."),
-  title: z.string().trim().min(1).max(120).optional().describe("Short shot title shown on the canvas node."),
+  title: z.string().trim().min(1).max(120).optional().describe("Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language."),
   prompt: z.string().trim().min(1).max(8_000).describe("Generation prompt in the user's language (Chinese user → Chinese prompt)."),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),

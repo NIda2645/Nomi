@@ -300,3 +300,56 @@ test('每个工具恰好一个效果，而 replay 从中派生', async () => {
     /declares effect "undoable"/,
   );
 });
+
+// ── 动词 → 宿主契约的**贯通**断言（2026-09-18 根因）。
+//
+// 上面那族证的是「模型看到的 schema 自洽」，但模型写对了参数**不等于**宿主收得下：
+// 中间还隔着 `verbToTransportCall` 那层改形状的翻译。2026-09-18 真机实测，用户点「新建方案」让
+// Agent 照剧本出分镜，`draft_shots` 连着三次被宿主判 `generation_input_invalid` —— 因为动词声明了
+// 每镜 `title` 与 `durationSec`，翻译层原样递过去（还把 durationSec 改名成 durationSeconds），
+// 而宿主 `generationPlanInputSchema` 的 `shots[]` 是 `.strict()`，这两个字段一个都不认。
+// 分镜天生带标题和时长，于是这条路 100% 失败，用户看到的是「Agent 出不来分镜表」。
+//
+// 所以这条测试把**动词自己声明的示例**喂过翻译层、再喂进宿主 schema：两端对不上就当场红，
+// 而不是等下一次真模型付费运行时才用一次失败告诉你。
+test('动词 → 宿主契约贯通：声明的示例、以及真实分镜那种「字段填满」的调用，宿主都必须收得下', async () => {
+  const { verbToTransportCall } = await import('../../electron/agentLane/laneVerbTransport.js');
+  const { generationPlanInputSchema, generationStatusInputSchema } = await import('../../electron/shared/agentCapabilities/generationPlanSchemas.js');
+  const { GENERATION_METHODS } = await import('../../electron/shared/agentCapabilities/generation.js');
+  const { VERB_DECLARATIONS } = await import('../../electron/shared/agentCapabilities/verbDeclarations.js');
+  type Parser = { safeParse: (value: unknown) => { success: boolean; error?: { issues: Array<{ path: Array<string | number>; message: string }> } } };
+  const hostSchemaFor = (toolName: string): Parser | undefined =>
+    toolName === GENERATION_METHODS.plan ? generationPlanInputSchema as unknown as Parser
+      : toolName === GENERATION_METHODS.status ? generationStatusInputSchema as unknown as Parser
+        : undefined;
+  const failures: string[] = [];
+  const check = (label: string, toolName: string, args: unknown): void => {
+    const transported = verbToTransportCall({ toolCallId: 't-1', toolName, args });
+    if (!transported) return;
+    const hostSchema = hostSchemaFor(transported.call.toolName);
+    if (!hostSchema) return;
+    const parsed = hostSchema.safeParse(transported.call.args);
+    if (parsed.success) return;
+    const where = (parsed.error?.issues ?? []).map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join(' · ');
+    failures.push(`${label} 被宿主拒收：${where}`);
+  };
+
+  // ① 每个动词自己声明的示例（下限）。
+  for (const verb of VERB_DECLARATIONS) {
+    for (const [index, example] of (verb.examples ?? []).entries()) {
+      check(`${verb.name} 示例 #${index + 1}`, verb.name, example.arguments);
+    }
+  }
+
+  // ② 真实分镜那一形状（上限）。示例只证「照抄示例能过」，而 2026-09-18 真机失败的恰恰是
+  //    示例没覆盖的那条路：**多镜 + 每镜带标题和时长**。分镜天生长这样，所以这条必须单列。
+  check('draft_shots · 照剧本出分镜（多镜 + 标题 + 时长）', 'draft_shots', {
+    shots: [
+      { title: '锚 · 白色纸船', role: 'anchor', prompt: '白色纸船停在水盆里，中性背景', taskKind: 'text_to_image' },
+      { title: '镜 1 · 全景', role: 'shot', prompt: '雨后清晨的窗边水盆，全景', taskKind: 'text_to_image', durationSec: 3 },
+      { title: '镜 2 · 特写', role: 'shot', prompt: '纸船缓慢转向的特写', taskKind: 'text_to_image', durationSec: 3 },
+    ],
+  });
+
+  assert.deepEqual(failures, [], `动词与宿主契约对不上：\n${failures.join('\n')}`);
+});

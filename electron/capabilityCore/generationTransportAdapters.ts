@@ -81,7 +81,18 @@ function parsedArgs(call: RuntimeToolCall): Record<string, unknown> {
             ? z.object({ operationId: z.string().trim().min(1), shotIds: z.array(z.string().trim().min(1)).optional() }).strict()
             : z.object({ operationId: z.string().trim().min(1) }).strict());
   const parsed = schema.safeParse(call.args);
-  if (!parsed.success) throw Object.assign(new Error("generation_input_invalid"), { code: "generation_input_invalid" });
+  if (!parsed.success) {
+    // 说清**哪个字段为什么被拒**。2026-09-18 根因：这里原本只抛一个裸码，模型（和人）都看不到
+    // 是哪一项不合法，于是同一份载荷被原样重试三次、回合挂到超时。校验拒收必须自带理由——
+    // 一个说不出自己拒了什么的边界，等于把契约漂移变成静默故障。
+    const where = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw Object.assign(new Error(`generation_input_invalid — ${where}`), {
+      code: "generation_input_invalid",
+      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    });
+  }
   return parsed.data as Record<string, unknown>;
 }
 

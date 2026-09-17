@@ -9,13 +9,10 @@ metadata:
     author: "@nomi"
     tools:
       - read_script
-      - read_canvas_state
-      - propose_storyboard_plan
-      - create_canvas_nodes
-      - connect_canvas_edges
-      - set_node_prompt
-      - run_generation_batch
-      - arrange_storyboard_to_timeline
+      - look_at_canvas
+      - draft_shots
+      - arrange_canvas
+      - generate
     required-providers:
       - text
       - image
@@ -36,8 +33,8 @@ metadata:
       - id: storyboard
         goal: 把故事拆成一份短剧分镜方案：先立角色圣经（每个主要角色的静态特征/动态服装/禁改项），再按「钩子 → 升级 → 反转」切镜。交用户在创作区审阅修改。
         tools:
-          - read_canvas_state
-          - propose_storyboard_plan
+          - look_at_canvas
+          - draft_shots
         depends-on:
           - script
         pause: true
@@ -51,10 +48,9 @@ metadata:
       - id: build
         goal: 把方案落成画布：角色/场景定妆卡在前、镜头在后，每镜连上它引用的角色卡（character_ref）。定妆卡出图后请用户冻结，冻结后整批镜头才放行——这是跨镜不换脸的地基。
         tools:
-          - read_canvas_state
-          - create_canvas_nodes
-          - connect_canvas_edges
-          - set_node_prompt
+          - look_at_canvas
+          - draft_shots
+          - arrange_canvas
         depends-on:
           - storyboard
         pause: true
@@ -63,8 +59,8 @@ metadata:
       - id: generate
         goal: 按波次生成：先出并冻结角色/场景定妆卡，再逐镜从冻结参考图走图生视频。生成后每镜自动审片，身份/构图不达标的会定向重滚。
         tools:
-          - read_canvas_state
-          - run_generation_batch
+          - look_at_canvas
+          - generate
         depends-on:
           - build
         pause: true
@@ -75,8 +71,7 @@ metadata:
       - id: assemble
         goal: 按镜序排到时间轴：开场 3 秒留钩子、结尾留悬念，准备预览导出。
         tools:
-          - read_canvas_state
-          - arrange_storyboard_to_timeline
+          - look_at_canvas
         depends-on:
           - generate
         pause: true
@@ -135,17 +130,17 @@ license: AGPL-3.0-only
    - **动态特征**（服装/配饰——允许随剧情换）
    - **禁改项**（明确写出「这几样绝不能变」）
 
-   然后按「钩子 → 升级 → 反转」切镜，用 `propose_storyboard_plan` 一次产出整份方案。**不碰画布、不花额度。**
+   然后按「钩子 → 升级 → 反转」切镜，用 `draft_shots` 一次产出整份方案。**不碰画布、不花额度。**
 
 3. **build 落画布 + 冻结定妆** —— 用户确认方案后落节点：角色/场景定妆卡在前、镜头在后，
-   每镜用 `connect_canvas_edges` 连上它引用的角色卡（`character_ref`）。定妆卡出图后**请用户冻结**——
+   每镜用 `arrange_canvas` 连上它引用的角色卡（`character_ref`）。定妆卡出图后**请用户冻结**——
    冻结后整批镜头才放行。如果系统提示「未冻结锚拒发批量」，那是保护你：先让用户看过脸、点头，再往下走。
 
-4. **generate 生成** —— 用 `run_generation_batch` 按波次跑：先出并冻结定妆卡，再逐镜从冻结参考图生成。
+4. **generate 生成** —— 用 `generate` 按波次跑：先出并冻结定妆卡，再逐镜从冻结参考图生成。
    系统会在每镜生成后自动审片（身份/构图/连贯三轴），不达标的自动定向重滚；救不回的会标红告诉用户。
    **这一步花额度**，确认后才跑。
 
-5. **assemble 排时间轴** —— 用 `arrange_storyboard_to_timeline` 按镜序排片，开场 3 秒留钩子、结尾留悬念。
+5. **assemble 排时间轴** —— 用 （排时间轴：无对应动词，交给用户） 按镜序排片，开场 3 秒留钩子、结尾留悬念。
 
 和用户交互：每阶段开始前用一句中文说要做什么；调用工具后不啰嗦解释。信息不足（不知道年代/地点/人物关系）先问一句，别瞎编。
 

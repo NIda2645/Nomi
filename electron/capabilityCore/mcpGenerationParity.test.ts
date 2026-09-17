@@ -38,7 +38,11 @@ describe('MCP generation draft schema parity', () => {
     ]) expect(validateToolArguments(tool.name, tool.inputSchema, { leaseHandle: 'lease', ...args })).not.toBeNull()
   })
 
-  it('routes prompt-only shots from both surfaces to the same existing candidate rejection', async () => {
+  // 名字原本叫「…the same existing candidate rejection」——把「只给 prompt 的镜头会被拒」当成契约钉住了。
+  // 「existing」这个词是马脚：有人量到了那个拒绝，选择冻结它，而不是问它该不该存在。2026-09-18 查明那正是
+  // 缺陷本身（单镜早就允许只给 prompt，多镜不允许）。这条测试真正守得住的不变量是**两个入口结果一致**，
+  // 与结果是收是拒无关；那条留下，冻结的那半删掉（正面用例在 mcpMultiShotCreateEntrance.e2e.test.ts）。
+  it('routes prompt-only shots from both surfaces to the same outcome', async () => {
     const shot = { prompt: 'A sunrise' }
     const parsers = {
       record: (value: unknown) => value as Record<string, unknown>,
@@ -55,8 +59,10 @@ describe('MCP generation draft schema parity', () => {
         args: { operation: 'create', shots: [shot] } }, new AbortController().signal)
       const external = tool.build({ leaseHandle: 'lease', projectId: binding.projectId, shots: [shot] })
       expect(planning).toHaveBeenCalledWith(expect.objectContaining({ capability: 'create', params: expect.objectContaining({ shots: external.shots }) }))
+      // 这台夹具没注入 defaultModelForTaskKind（= 用户没配过模型），两边都该给同一句人话。
       expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed' })
       expect(() => draftShotFromPlan((external.shots as unknown[])[0], 0, parsers)).toThrow(laneResult && !laneResult.ok ? laneResult.message : 'Expected shared failure')
+      expect(laneResult && !laneResult.ok ? laneResult.message : '').toMatch(/没有配置可用的/)
     } finally { adapter.dispose() }
   })
 
