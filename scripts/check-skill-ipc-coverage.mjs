@@ -31,7 +31,6 @@ const preloadFiles = [
     .filter((name) => name.endsWith('.ts'))
     .map((name) => path.join(repoRoot, 'electron', 'preload', name)),
 ]
-const preloadFile = preloadFiles[0]
 const skillIpcFile = path.join(repoRoot, 'electron', 'skills', 'skillIpc.ts')
 
 function stripLineComments(source) {

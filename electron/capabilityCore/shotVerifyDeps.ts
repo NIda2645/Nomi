@@ -25,38 +25,10 @@ import { parseLocalAssetUrl } from '../protocol/localProtocol'
 import { getDesktopLocale } from '../desktopLocale'
 import type { ShotVerifyDeps } from './shotVerifyOrchestrate'
 
-/** 首发生成的上下文——重试要复用它（同 grant/同 node/同模型/同参数），judge 要它的 projectId。 */
-export type ShotVerifyDepsContext = {
-  projectId: string
-  /** 首发那次铸的 grant（可能为空——未授权路径根本走不到审片，此处防御性带上）。 */
-  grantId: string
-  /** 被生成的镜头节点 id（重试重发同一个，落同一颗 grant 的同 node 预算）。 */
-  nodeId: string
-  /** 生成用的 vendor/modelKey（重试原样复用）。 */
-  vendor: string
-  modelKey: string
-  /** 首发的 ProfileKind（如 image_edit / image_to_video）。 */
-  generationKind: string
-  /** 首发节点 kind（extras.nodeKind）。 */
-  nodeKind: string
-  /** 首发的原始 prompt（重试 = 原 prompt + 定向指令）。 */
-  basePrompt: string
-  /** 首发的生成参数（width/height/seed/duration…），重试原样带。 */
-  params: Record<string, unknown>
-  /** 首发的参考图（重试原样带——保持锚不变）。 */
-  references: string[]
-  /**
-   * 给判分模型铸一颗**它自己的**付费令牌（返回 grantId；null = 没批 → 本次判分跳过）。
-   *
-   * 为什么不复用 `grantId`：那颗令牌的报价行是**生成模型**的，判分模型对不上身份（会当场弹第二张卡），
-   * 而且它的 3 次预算是留给「视频本身 + 审片重试」的。首帧两跳早就是这么办的（core.ts 的
-   * `renderStaticFrame`：各自铸独立 grant），这里照同一条路。
-   *
-   * **必填**：漏传只会在运行期炸、还会被上层收成「判分跳过」——让编译器在这里就拦住（R28）。
-   */
-  confirmJudgeSpend: (judge: { vendor: string; modelKey: string }) => Promise<string | null>
-}
-
+// 这份上下文的**唯一声明**住在 ./shotVerifyDepsContext（core.ts 与这里共用同一个名字；
+// 两处各写一遍就是并行版）。re-export 保住既有 `from './shotVerifyDeps'` 的 import 面。
+export type { ShotVerifyDepsContext } from './shotVerifyDepsContext'
+import type { ShotVerifyDepsContext } from './shotVerifyDepsContext'
 /** runTask 的注入形状（与 core.RunTaskFn 一致；测试注入桩不打 vendor）。 */
 type RunTaskLike = (payload: { vendor: string; request: unknown }) => Promise<{
   status?: string
