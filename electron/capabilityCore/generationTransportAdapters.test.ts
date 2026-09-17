@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { RuntimeToolCall } from "../shared/agentCapabilities/transportContracts";
 import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectLeaseV2 } from "./projectLease";
-import { createPiGenerationTransportAdapter } from "./generationTransportAdapters";
+import { createPiGenerationTransportAdapter, legacyMethodSchemaForTest } from "./generationTransportAdapters";
+import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
+import { GENERATION_METHODS } from "../shared/agentCapabilities/generation";
 import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import { GENERATION_RESOLVE_CAPABILITY } from "../shared/agentCapabilities/generation";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
@@ -161,3 +163,48 @@ describe("resident semantic generation transport", () => {
     expect(generationPlanInputSchema.safeParse({ operation: "resolve", shots: [{ id: "s1", durationSec: 6 }] }).success).toBe(false);
   });
 });
+
+describe('方法别名的入参形状从语义联合现取，不手抄', () => {
+  // 2026-09-18 根因：这里原本手写了一份 create 的形状，**比真契约窄**——
+  // 少了 taskKind/providerId/modelId/mode/modeId/variantId/parameters/references。
+  // 手抄那份是 .strict()，所以模型写对了真契约的字段，走这条别名路反而被拒。
+  // 今天没爆只是因为常驻 lane 只路由 plan/status，走不到这几支——是埋着的地雷不是无害重复。
+  const createBranch = generationPlanInputSchema.options.find(
+    (option) => (option.shape.operation as unknown as { _def: { value: string } })._def.value === 'create',
+  )!
+
+  it('create 别名收得下真契约 create 分支的每一个字段（这条红 = 有人又手抄了一份更窄的）', () => {
+    // 被替掉的那份手抄只有 5 个键（prompt/candidate/shots/scriptText/cardHidden），
+    // 而真契约有 14 个——少掉的 9 个正是模型最常写的那几个（模型、模式、参数、参考图）。
+    // 把 create 分支的字段全填满：任何一个被别名那支漏掉，.strict() 就会拒。
+    const saturated = {
+      prompt: '黄昏天台',
+      taskKind: 'text_to_video' as const,
+      providerId: 'apimart', modelId: 'image-1', mode: 'text-to-image', modeId: 'm1', variantId: 'v1',
+      parameters: { resolution: '768P' },
+      references: [{ assetId: 'asset-1', contentHash: 'h1', version: 1 }],
+      shots: [{ prompt: '镜一', title: '开场' }],
+      scriptText: '一段剧本',
+      cardHidden: true,
+      moduleId: 'generation.single-shot',
+    }
+    // 前提断言：这份载荷确实是真契约认的（否则下面那条证明不了什么）。
+    expect(createBranch.omit({ operation: true }).safeParse(saturated).success).toBe(true)
+
+    // 逐字段核对：别名那支的键集合不得小于真契约分支。
+    {
+      const canonical = Object.keys(createBranch.omit({ operation: true }).shape).sort()
+      const viaAlias = Object.keys(
+        (legacyMethodSchemaForTest(GENERATION_METHODS.create) as unknown as { shape: Record<string, unknown> }).shape,
+      ).sort()
+      expect(viaAlias).toEqual(canonical)
+    }
+  })
+
+  it('按 operation 字面量取分支，不按下标——联合重排不该静默指到别的分支', () => {
+    const present = legacyMethodSchemaForTest(GENERATION_METHODS.present) as unknown as { shape: Record<string, unknown> }
+    expect(Object.keys(present.shape).sort()).toEqual(['operationId', 'shotIds'])
+    const patch = legacyMethodSchemaForTest(GENERATION_METHODS.patch) as unknown as { shape: Record<string, unknown> }
+    expect(Object.keys(patch.shape).sort()).toEqual(['operationId', 'patch'])
+  })
+})
