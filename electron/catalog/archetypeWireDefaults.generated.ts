@@ -43,6 +43,21 @@ export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolea
     "text_to_video": true,
     "image_to_video": true
   },
+  "grok-imagine-image-2": {
+    "text_to_image": true
+  },
+  "gemini-image-3-pro": {
+    "text_to_image": true,
+    "image_edit": true
+  },
+  "gpt-image-2.5-flare": {
+    "text_to_image": true,
+    "image_edit": true
+  },
+  "gpt-image-2.5-sunburst": {
+    "text_to_image": true,
+    "image_edit": true
+  },
   "seedream": {
     "text_to_image": true,
     "image_edit": true
