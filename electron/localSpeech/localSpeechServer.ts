@@ -53,6 +53,29 @@ function pickFreePort(): Promise<number> {
   });
 }
 
+/**
+ * sidecar 的启动参数（纯函数，好让「必须开 VAD」「语言必须 auto」这两条不变量由测试盯着，
+ * 而不是靠读一遍 spawn 那行代码——能让门岗拦的别留给人，R17）。
+ */
+export function buildServerArgs(input: { modelPath: string; vadModelPath: string; port: number }): string[] {
+  // 线程数取可用核数的一半、夹在 [2, 8]：留一半给 ffmpeg 切片与 UI，别把整机吃满。
+  const threads = Math.min(8, Math.max(2, Math.floor((os.cpus()?.length || 4) / 2)));
+  return [
+    "-m", input.modelPath,
+    "--host", "127.0.0.1",
+    "--port", String(input.port),
+    "-t", String(threads),
+    // 默认语言也写 auto：请求里还会再带一次，但 CLI 默认值是 `en`，
+    // 万一哪天请求字段名变了，兜底也必须是「自动检测」而不是「当英文处理」（硬约束①②）。
+    "-l", "auto",
+    // VAD 常开，没有开关（硬约束④）。它先把非语音段摘掉再送解码，一次解决两件事：
+    // ① 静音上的幻听与由它引发的复读（那会吞掉后面的真人讲话）；
+    // ② 语言探测只取最前面 30 秒——片头留空时那 30 秒是静音，等于拿空气判断说的是哪国话。
+    "--vad",
+    "--vad-model", input.vadModelPath,
+  ];
+}
+
 export class LocalSpeechServer {
   private child: ChildProcess | null = null;
   private stderrTail = "";
@@ -68,22 +91,12 @@ export class LocalSpeechServer {
    * 起进程并等到它真的能应答。**等的是「健康检查通过」，不是 sleep 一个拍脑袋的秒数**——
    * 冷热盘差十倍，固定等待要么白等要么在慢机器上假失败。
    */
-  static async start(input: { executablePath: string; modelPath: string; signal?: AbortSignal }): Promise<LocalSpeechServer> {
+  static async start(input: { executablePath: string; modelPath: string; vadModelPath: string; signal?: AbortSignal }): Promise<LocalSpeechServer> {
     const port = await pickFreePort().catch((error: unknown) => {
       throw localSpeechFailure("engine-start-failed", error instanceof Error ? error.message : String(error));
     });
     const server = new LocalSpeechServer(port);
-    // 线程数取可用核数的一半、夹在 [2, 8]：留一半给 ffmpeg 切片与 UI，别把整机吃满。
-    const threads = Math.min(8, Math.max(2, Math.floor((os.cpus()?.length || 4) / 2)));
-    const args = [
-      "-m", input.modelPath,
-      "--host", "127.0.0.1",
-      "--port", String(port),
-      "-t", String(threads),
-      // 默认语言也写 auto：请求里还会再带一次，但 CLI 默认值是 `en`，
-      // 万一哪天请求字段名变了，兜底也必须是「自动检测」而不是「当英文处理」（硬约束①②）。
-      "-l", "auto",
-    ];
+    const args = buildServerArgs({ modelPath: input.modelPath, vadModelPath: input.vadModelPath, port });
     const child = spawn(input.executablePath, args, { windowsHide: true });
     server.child = child;
     child.stderr?.on("data", (chunk) => {
@@ -113,7 +126,9 @@ export class LocalSpeechServer {
         throw localSpeechFailure("engine-start-failed", server.stderrTail.trim().slice(-300) || "engine exited during startup");
       }
       if (await server.healthy()) {
-        logInfo("local-speech", "engine-started", { port, threads });
+        // 日志报的就是真正传出去的那份参数（不另算一遍 threads——那会变成第二个真相源，
+        // 也正是这次抽函数时留下悬空引用的地方）。
+        logInfo("local-speech", "engine-started", { port, threads: args[args.indexOf("-t") + 1], vad: args.includes("--vad") });
         return server;
       }
       await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));

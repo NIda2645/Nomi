@@ -24,6 +24,17 @@
       "reviewBy": "2026-12-15"
     },
     {
+      "id": "whisper-vad-silero",
+      "what": "本地转写的语音活动检测模型（HuggingFace ggml-org/whisper-vad 的 ggml-silero-v5.1.2.bin，885 KB）",
+      "sourceFile": "electron/shared/localSpeech/localSpeechAssets.ts",
+      "pinnedVersion": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+      "upstreamReleasesUrl": "https://huggingface.co/ggml-org/whisper-vad/commits/main",
+      "whyNotLatest": "和权重同理：钉 commit 不钉 resolve/main。这条更该钉死的理由是**它直接决定转写内容**——2026-09-18 拿片头有 54 秒静音的 NASA 真素材实测：没有 VAD 时引擎在静音上幻听 \"Thank you.\" 并复读 26 段、把随后约 72 秒真人讲话一起吞掉，语言探测也采在静音上（置信 0.385）；开 VAD 后幻听 0 段、首句回到 54.56 秒、置信 1.000。换模型或改它的阈值 = 换转写输出，要按 docs/plan/2026-09-17-local-transcription.md 的表格用同一批真素材重测。",
+      "pinnedAt": "2026-09-18",
+      "reviewBy": "2026-12-15",
+      "openQuestion": "同仓另有 ggml-silero-v6.2.0.bin（同为 885 KB）。2026-09-18 拿 NASA 那条两个都实测，幻听段数 / 首句位置 / 语言置信三项完全一致，取 whisper.cpp 官方下载脚本与文档列在前面的 v5.1.2。上游哪天给出 v6 的实测优势再换，换法同样是重测不是改常量。"
+    },
+    {
       "id": "depth-anything-v2-small",
       "what": "「提取深度」权重（HuggingFace onnx-community/depth-anything-v2-small 的 fp16 onnx）",
       "sourceFile": "electron/shared/canvas/videoDepthModels.ts",

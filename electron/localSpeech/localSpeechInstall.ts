@@ -33,6 +33,7 @@ import { logInfo } from "../logging/logger";
 import {
   LOCAL_SPEECH_CACHE_FAMILY,
   LOCAL_SPEECH_ENGINE_RELEASE,
+  LOCAL_SPEECH_VAD_MODEL,
   localSpeechEngineForPlatform,
   type LocalSpeechEnginePlatform,
   type LocalSpeechTier,
@@ -69,7 +70,9 @@ export function isLocalSpeechEngineInstalled(engine: LocalSpeechEnginePlatform):
 
 /** 这次点下去要先下多少字节（开跑前就要能告诉用户「首次使用需下载 ≈ N MB」）。 */
 export function pendingLocalSpeechBytes(tier: LocalSpeechTier, engine: LocalSpeechEnginePlatform | undefined): number {
-  const modelBytes = pendingVerifiedAssetBytes(LOCAL_SPEECH_CACHE_FAMILY, [tier.model]);
+  // VAD 模型和权重一起算进分母：它是跑起来的必需件（见清单文件头④），不是可选加料，
+  // 分母漏了它，进度条会在最后那 885 KB 上停在 100% 不动。
+  const modelBytes = pendingVerifiedAssetBytes(LOCAL_SPEECH_CACHE_FAMILY, [tier.model, LOCAL_SPEECH_VAD_MODEL]);
   if (!engine) return modelBytes;
   const engineBytes = isLocalSpeechEngineInstalled(engine) ? 0 : engine.archive.sizeBytes;
   return modelBytes + engineBytes;
@@ -163,7 +166,7 @@ async function installEngine(
 export async function ensureLocalSpeechReady(
   tier: LocalSpeechTier,
   options: { onProgress?: (progress: LocalSpeechInstallProgress) => void; signal?: AbortSignal } = {},
-): Promise<{ executablePath: string; modelPath: string }> {
+): Promise<{ executablePath: string; modelPath: string; vadModelPath: string }> {
   const engine = localSpeechEngineForPlatform();
   if (!engine) throw localSpeechFailure("unsupported-platform", `${process.platform}-${process.arch}`);
 
@@ -176,9 +179,10 @@ export async function ensureLocalSpeechReady(
   if (totalBytes > 0) options.onProgress?.({ doneBytes: 0, totalBytes });
 
   await installEngine(engine, { onProgress: report, signal: options.signal });
-  if (!isVerifiedAssetCached(LOCAL_SPEECH_CACHE_FAMILY, tier.model)) {
+  const needed = [tier.model, LOCAL_SPEECH_VAD_MODEL].filter((asset) => !isVerifiedAssetCached(LOCAL_SPEECH_CACHE_FAMILY, asset));
+  if (needed.length > 0) {
     try {
-      await ensureVerifiedAssets(LOCAL_SPEECH_CACHE_FAMILY, [tier.model], { onProgress: report, signal: options.signal });
+      await ensureVerifiedAssets(LOCAL_SPEECH_CACHE_FAMILY, needed, { onProgress: report, signal: options.signal });
     } catch (error) {
       throw translateDownloadError(error);
     }
@@ -187,11 +191,12 @@ export async function ensureLocalSpeechReady(
   // 下载那层遇到 abort 会安静返回，不抛——所以这里要自己确认东西真的在盘上，
   // 否则「取消」会伪装成「装好了」，下一步以一个不存在的路径起进程（静默空结果的经典来路）。
   if (!isLocalSpeechEngineInstalled(engine)) throw localSpeechFailure("download-failed", engine.archive.id);
-  if (!isVerifiedAssetCached(LOCAL_SPEECH_CACHE_FAMILY, tier.model)) {
-    throw localSpeechFailure("download-failed", tier.model.id);
+  for (const asset of [tier.model, LOCAL_SPEECH_VAD_MODEL]) {
+    if (!isVerifiedAssetCached(LOCAL_SPEECH_CACHE_FAMILY, asset)) throw localSpeechFailure("download-failed", asset.id);
   }
   return {
     executablePath: localSpeechExecutablePath(engine),
     modelPath: verifiedAssetPath(LOCAL_SPEECH_CACHE_FAMILY, tier.model),
+    vadModelPath: verifiedAssetPath(LOCAL_SPEECH_CACHE_FAMILY, LOCAL_SPEECH_VAD_MODEL),
   };
 }

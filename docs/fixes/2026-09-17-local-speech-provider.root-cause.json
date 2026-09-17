@@ -244,55 +244,55 @@
     {
       "kind": "read",
       "path": "electron/shared/localSpeech/localSpeechAssets.ts",
-      "line": 67,
+      "line": 73,
       "symbol": "VerifiedAsset"
     },
     {
       "kind": "read",
       "path": "electron/shared/localSpeech/localSpeechAssets.ts",
-      "line": 69,
+      "line": 75,
       "symbol": "LocalSpeechEngineMember"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechInstall.ts",
-      "line": 50,
+      "line": 51,
       "symbol": "verifiedAssetRoot"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechInstall.ts",
-      "line": 54,
+      "line": 55,
       "symbol": "localSpeechEngineDir"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechInstall.ts",
-      "line": 59,
+      "line": 60,
       "symbol": "localSpeechEngineDir"
     },
     {
       "kind": "read",
       "path": "electron/localSpeech/localSpeechInstall.ts",
-      "line": 49,
+      "line": 50,
       "symbol": "LocalSpeechEnginePlatform"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechServer.ts",
-      "line": 73,
+      "line": 96,
       "symbol": "localSpeechFailure"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechServer.ts",
-      "line": 109,
+      "line": 122,
       "symbol": "localSpeechFailure"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechServer.ts",
-      "line": 113,
+      "line": 126,
       "symbol": "localSpeechFailure"
     },
     {
