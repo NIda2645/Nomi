@@ -55,25 +55,25 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
-      "line": 496,
+      "line": 503,
       "symbol": "anchorCarriesOwnMaterial"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
-      "line": 578,
+      "line": 585,
       "symbol": "anchorCarriesOwnMaterial"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
-      "line": 616,
+      "line": 623,
       "symbol": "anchorCarriesOwnMaterial"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
-      "line": 668,
+      "line": 675,
       "symbol": "anchorCarriesOwnMaterial"
     }
   ],

@@ -62,31 +62,49 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 69,
+      "line": 89,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 71,
+      "line": 106,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 115,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 89,
       "symbol": "generationStatusInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 75,
-      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+      "line": 108,
+      "symbol": "generationStatusInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 209,
+      "line": 117,
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 246,
       "symbol": "GenerationTransportAdapterDependencies"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 210,
+      "line": 247,
       "symbol": "PiGenerationTransportAdapter"
     },
     {
@@ -1094,7 +1112,7 @@
   ],
   "door_reduction": {
     "before": 5,
-    "after": 175,
+    "after": 178,
     "why_not": "五处**手写的字段列表**已经合并为一处（generationShotEnvelopeOf），这是本次真正减掉的门。门表里剩下的入口是该信封类型与常量的全部读写点：它们分布在动词声明、传输翻译、草稿解析、密封、门卡投影、持久化、画布落地七层，各层职责不同且跨进程边界（主进程/渲染层）与跨模块边界（capabilityCore / productionRun / agentLane），合并它们等于取消分层。真正的防线不是把入口数压到 1，而是让每个入口都不可能再手抄字段列表——编译期断言保证漏接当场报错，这比减少入口数更强。"
   },
   "regression_tests": [

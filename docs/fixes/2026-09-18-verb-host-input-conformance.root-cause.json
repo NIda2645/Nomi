@@ -152,7 +152,19 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 69,
+      "line": 89,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 106,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 115,
       "symbol": "generationPlanInputSchema"
     },
     {
@@ -218,7 +230,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneDesktopTools.ts",
-      "line": 90,
+      "line": 106,
       "symbol": "createDocumentLaneTools"
     },
     {
@@ -284,7 +296,7 @@
   ],
   "door_reduction": {
     "before": 40,
-    "after": 40,
+    "after": 42,
     "why_not": "The count is what `node scripts/door-map.mjs` reports for every file this change touches; the change adds no door and removes one (the dead modelSetup lane branch). Merging them would merge things that are genuinely different: toSemanticInput is already the single shared call point for the internal lane and the external MCP projection, verbToTransportCall is the single translation for deferred-group verbs, and semanticCandidateFromParams keeps its N=1 and N>=2 call sites on purpose — collapsing those two arities into one is exactly what previously let the multi-shot path diverge. What was missing was never fewer doors but a check that every door's output is accepted on the other side, which the new gate now performs across all of them in one pass."
   },
   "generality_proof": "The gate enumerates VERB_DECLARATIONS rather than a hand-written list, derives instances from each verb's own published JSON Schema, and validates against the same *InputForAlias / plan-schema functions the transport adapters call. A new verb, a new field on an existing verb, a rename in the translator, or an upstream change to a host schema is covered without anyone remembering to add a case; the fail-closed count check (fewer than 20 verbs scanned is red) stops the gate from silently scanning nothing.",
