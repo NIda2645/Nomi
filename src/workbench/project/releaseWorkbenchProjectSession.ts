@@ -23,7 +23,7 @@ import '../generationCanvas/store/nodeLivePreviewStore'
 import '../onboarding/journeyTourStore'
 import '../production/productionCanvasLandingStore'
 import '../production/productionRunStore'
-import '../workbenchStore'
+import '../workbenchStoreLifetime'
 
 /**
  * 离开当前项目时，把**归项目会话管**的渲染层状态释放掉（内容已经落过盘）。
