@@ -88,6 +88,8 @@ function engineFixture(input: { members: Record<string, Buffer>; executable: str
       sha256: input.memberShaOverride?.[fileName] ?? sha(bytes),
     })),
     executableFileName: input.executable,
+    // 夹具按 mac 那条的形状（有 GPU 加速）——这条测试关心的是安装与校验，不是速度。
+    gpuAccelerated: true,
   };
 }
 
@@ -104,6 +106,7 @@ const tierOf = (model: { downloadUrl: string; sizeBytes: number; sha256: string;
   model: { ...model, license: "MIT", sourcePage: "https://example.invalid/fixture" },
   measuredCer: 0.065,
   measuredRealtimeFactor: 11.5,
+  measuredCpuRealtimeFactor: 1.04,
 });
 
 function modelFixture(bytes: Buffer, shaOverride?: string) {

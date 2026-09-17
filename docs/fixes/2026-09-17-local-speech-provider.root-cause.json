@@ -316,25 +316,19 @@
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechTranscribe.ts",
-      "line": 81,
+      "line": 87,
       "symbol": "localSpeechFailure"
     },
     {
       "kind": "write",
       "path": "electron/localSpeech/localSpeechTranscribe.ts",
-      "line": 84,
-      "symbol": "localSpeechFailure"
-    },
-    {
-      "kind": "write",
-      "path": "electron/localSpeech/localSpeechTranscribe.ts",
-      "line": 97,
+      "line": 90,
       "symbol": "localSpeechFailure"
     },
     {
       "kind": "read",
       "path": "electron/localSpeech/localSpeechTranscribe.ts",
-      "line": 41,
+      "line": 47,
       "symbol": "LocalSpeechTier"
     },
     {
@@ -442,7 +436,7 @@
     {
       "kind": "write",
       "path": "electron/video/deconstructVideo.ts",
-      "line": 420,
+      "line": 425,
       "symbol": "buildShotAnalysisPrompt"
     },
     {
@@ -586,7 +580,7 @@
   ],
   "door_reduction": {
     "before": 0,
-    "after": 67,
+    "after": 66,
     "why_not": "这是新能力的第一次落地，之前这份状态一扇门都没有（before=0），所以门数只会从 0 变成 N，谈不上减少。N 条里有 41 条是下载/缓存那份状态的写读入口——它们现在全部落在**一个**实现上（verifiedAssetCache），此前深度那份是独立的第二套；也就是说门虽然多了，但**判据的 owner 从两个变成了一个**。"
   }
 }
