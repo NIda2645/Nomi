@@ -92,12 +92,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
   useModelSettingsPageFocus(page, goBack)
   const openWizard = React.useCallback(
     (preset?: string, existingVendorKey?: string, initialScreen?: 'form' | 'scriptDraft') => {
-      openPage({
-        type: 'add',
-        ...(preset ? { preset } : {}),
-        ...(existingVendorKey ? { existingVendorKey } : {}),
-        ...(initialScreen ? { initialScreen } : {}),
-      })
+      openPage({ type: 'add', ...(preset ? { preset } : {}), ...(existingVendorKey ? { existingVendorKey } : {}), ...(initialScreen ? { initialScreen } : {}) })
     },
     [openPage],
   )
