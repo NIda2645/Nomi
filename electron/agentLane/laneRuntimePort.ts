@@ -178,7 +178,7 @@ export interface OpenLaneOptions {
    * 要么把慢的那条误杀，要么让快的那条卡满 90 秒。
    */
   watchdog?: { firstResponseMs?: number; idleMs?: number }
-  /** 一个回合最多几次模型请求。缺省 `LANE_MAX_MODEL_REQUESTS`。 */
+  /** 一个回合最多几次模型请求。**缺省不设**（见 `LANE_MAX_MODEL_REQUESTS` 的注释）；设了才拦。 */
   limits?: { maxModelRequests?: number; contextTokenBudget?: number }
 }
 

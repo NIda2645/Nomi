@@ -74,13 +74,25 @@ export const LANE_IDLE_MS = 120_000;
 export const LANE_RETRY_POLICY = Object.freeze({ enabled: true, maxRetries: 3, baseDelayMs: 1_000 } as const);
 
 /**
- * 一个回合最多几次模型请求。**唯一一层策略**（方案 §1.6 第六行）。
+ * 一个回合的模型请求数上限。**缺省不设**（2026-09-18 用户拍板：「不要给什么次数限制」）。
  *
- * 挂点是 `before_request`：harness 没有 `shouldStopAfterTurn`（那是老路
- * `createAgentSession` 的），它能停一个 run 的口子只有 `before_tool` 的 `block.terminate`、
- * `after_tool` 的 `terminate` 和 `requestAbort` 三个。所以这里数数、在 `before_tool` 拦。
+ * 为什么原来有一个 24、又为什么去掉它：
+ * 数总次数来拦人，恰恰是本仓自己否掉的做法——`laneRepeatedFailure.mts` 的注释原话是
+ * 「累计次数不在这里算——『这个工具总在坏』是审计的活，**不是拦截的活**」。而 24 这个数干的正是那件事。
+ *
+ * 真正的危险各有各的守卫，一个都不靠这个数：
+ *   · 模型卡在循环里重发同一个调用 → `laneRepeatedFailure`（同工具同错误连撞 3 次拦、5 次终止，
+ *     用户再说一句话即清零）。它 3 次就拦住了，轮不到 24。
+ *   · 上下文撑爆 → `laneContextBudget` 的自动压缩（8 万 token 预算）。
+ *   · 花钱失控 → 报价卡，每次提交由用户点头。
+ * 所以 24 不保护任何具体的东西，它只在一种情况下生效：**活是真的多**——而那恰恰是不该拦的时候。
+ * 单位也不对：24 次 `look_at_canvas` 一分钱不花，24 次生成是真金白银，而后者本来就被报价卡挡着。
+ * 用「次数」当刹车，量的是干活的多少，不是危险的大小。
+ *
+ * 机制留着（`options.limits.maxModelRequests` 仍然生效，拦法与措辞一字未动）：
+ * 评测要跑「撞上限会怎样」，宿主也可能有自己的理由设一个。缺省 = 不设。
  */
-export const LANE_MAX_MODEL_REQUESTS = 24;
+export const LANE_MAX_MODEL_REQUESTS: number | undefined = undefined;
 
 // 「同一个工具连着撞同一堵墙」的规则住 laneRepeatedFailure.mts（含用户新消息即清零）。
 export { LANE_REPEATED_FAILURE_BLOCK, LANE_REPEATED_FAILURE_TERMINATE } from './laneRepeatedFailure.mjs';
@@ -344,6 +356,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     : undefined;
   const directlyApplied = new Set<string>();
   const maxModelRequests = options.limits?.maxModelRequests ?? LANE_MAX_MODEL_REQUESTS;
+  // 缺省不设上限时这一支整条不参与：不计数、不拦截，逐字节等同于没有这个机制。
   // 计数按 **run** 走，不按 lane 走：上限说的是「这一轮」，一条 lane 活一整天。
   const requests = { runId: '', count: 0 };
   const failures = createLaneRepeatedFailureTracker();
@@ -381,7 +394,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   harness.hooks.on('before_tool', async (event, hookContext) => {
     // ① 回合上限。**模型看到的是一句人话，不是一个 `step-limit` 错误码**——它还有机会
     // 用这一步把结论说出来，而错误码只会让这一轮以「失败」收场，尽管活已经干了大半。
-    if (requests.count >= maxModelRequests) {
+    if (maxModelRequests !== undefined && requests.count >= maxModelRequests) {
       return { block: { terminate: true, reason:
         `This turn has reached its ${maxModelRequests}-model-request limit, so no further tool call will run. `
         + 'State your conclusion and what is still undone, in text, now.' } };
