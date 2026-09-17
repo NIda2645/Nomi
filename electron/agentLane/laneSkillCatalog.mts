@@ -97,6 +97,19 @@ async function isSymbolicLink(target: string): Promise<boolean> {
 }
 
 /**
+ * Windows 记事本写的 SKILL.md 带 UTF-8 BOM。pi-agent-core 的 `loadSkills` 不剥它：文件不再以 `---` 开头，
+ * frontmatter 整个读成空、description 缺失、技能被丢掉——而 pi-coding-agent 自己的加载器（`stripBom`）
+ * 和我们 2026-09-07 起的 `parseSkillFrontmatter` 都剥。这是 pi 两层之间的缝，不是新造一份加载器：
+ * 只在 `readTextFile` 这一处把 BOM 去掉，遍历 / ignore / 解析 / 诊断全部照旧是 pi 的（S14）。
+ */
+class BomTolerantExecutionEnv extends NodeExecutionEnv {
+  override async readTextFile(...args: Parameters<NodeExecutionEnv['readTextFile']>): ReturnType<NodeExecutionEnv['readTextFile']> {
+    const result = await super.readTextFile(...args);
+    return result.ok && result.value.charCodeAt(0) === 0xfeff ? { ...result, value: result.value.slice(1) } : result;
+  }
+}
+
+/**
  * 存量 `skill.json` 的一次性迁移，只碰用户目录（`skillManifestMigration.ts` 头注释）。
  * 必须跑在 pi 读盘**之前**：迁移会重写 SKILL.md。失败不阻断加载，只记一条诊断。
  */
@@ -126,7 +139,7 @@ export async function discoverSkillRecords(roots: readonly SkillDiscoveryRoot[])
   for (const root of normalizedRoots) await migrateLegacyManifests(root, diagnostics);
 
   // pi 的 env：cwd 无关紧要（根全是绝对路径），沿用 laneFileSystem 同一个 NodeExecutionEnv，不自己写 FileSystem。
-  const env = new NodeExecutionEnv({ cwd: normalizedRoots[0]?.path ?? process.cwd() });
+  const env = new BomTolerantExecutionEnv({ cwd: normalizedRoots[0]?.path ?? process.cwd() });
   const loaded = await loadSourcedSkills<SkillDiscoveryRoot>(
     env,
     normalizedRoots.map((root) => ({ path: root.path, source: root })),
@@ -190,7 +203,7 @@ async function projectSkill(skill: Skill, source: SkillDiscoveryRoot, diagnostic
   // 损坏包（正文含 NUL 等 C0 控制字符 = 二进制/截断/写坏）不许「占坑遮蔽」：pi 的 YAML 解析只看 frontmatter，
   // 不会替我们拦；这里当损坏处理且**不占键**，让后续根里同名的合法包顶上（commit 7dcc5a240）。
   // eslint-disable-next-line no-control-regex
-  if (/[ --]/.test(body)) {
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(body)) {
     return skip('corrupt', 'Skill package SKILL.md contains control characters, skipped as corrupt');
   }
 
@@ -332,8 +345,8 @@ const EMPTY_INDEX: LaneSkillIndex = Object.freeze({
 function fingerprint(records: readonly SkillRecord[]): string {
   return records
     .map((record) => [record.filePath, record.name, record.description,
-      record.disableModelInvocation === true ? '1' : '0', record.requiresCodingTools ? '1' : '0', record.contentHash].join(' '))
-    .join('');
+      record.disableModelInvocation === true ? '1' : '0', record.requiresCodingTools ? '1' : '0', record.contentHash].join('\u0000'))
+    .join('\u0001');
 }
 
 export type LaneSkillRecordSource = () => readonly SkillRecord[] | Promise<readonly SkillRecord[]>;

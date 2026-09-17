@@ -235,9 +235,12 @@ export function readSkillPackageFiles(record: Readonly<{ filePath: string; packa
 /** 把一个已校验的包写进用户 skills 根，按冲突避让取目录名。返回最终落地目录名 + 绝对路径。 */
 export function writeSkillImport(userRoot: string, pkg: SkillPackage): { dirName: string; dir: string } {
   fs.mkdirSync(userRoot, { recursive: true });
+  // 已占用的句柄：`<dir>/SKILL.md` 的目录名，**加上**根目录下 `<stem>.md` 单文件技能的 stem（pi 两种都认；
+  // 只数目录会让导入的 `foo/` 与已有的 `foo.md` 撞成同一个句柄，目录层再拿诊断去遮蔽其中一个）。
   const existing = new Set(
     fs.existsSync(userRoot)
-      ? fs.readdirSync(userRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+      ? fs.readdirSync(userRoot, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? [e.name] : e.isFile() && /\.md$/i.test(e.name) ? [e.name.replace(/\.md$/i, "")] : [])
       : [],
   );
   const dirName = resolveImportDirName(pkg.dirName, existing);

@@ -211,10 +211,8 @@
                     "at": "electron/agentLane/laneHost.mts:75"
                   },
                   "resources": {
-                    "verdict": "debt",
-                    "due": "2026-09-21",
-                    "owner": "阶段 3b · 技能与提示词资源",
-                    "why": "DefaultResourceLoader（skills / prompts / themes / AGENTS 文件）是 pi 的资源装配面，Nomi 的技能系统目前走自己那条路。这一格属于 framework-boundaries 已登记的 resource-loading 能力，收敛方案在 docs/plan/2026-09-07-agent-runtime-rebuild.md，裁决要跟着那份方案一起下。"
+                    "verdict": "unused",
+                    "why": "2026-09-18 还清那笔 debt 时的裁决：技能的发现与解析已经是 pi 的——`loadSourcedSkills`（electron/agentLane/laneSkillCatalog.mts）出目录、`formatSkillsForPrompt` 出 <available_skills>、`formatSkillInvocation` 出选中技能的信封（laneSkillPrompt.mts）。这一格收的是 pi-coding-agent 那套 Resources（prompts / themes / AGENTS 文件 + 系统提示词装配），Nomi 没有 prompts/themes/AGENTS 这些概念，系统提示词由 composeLaneSystemPrompt 按回合求值（laneHost.mts）；把技能塞进 resources 会让同一份索引有两个装配点。所以不构造它，技能走上面三个 pi 函数。"
                   },
                   "streamOptions": {
                     "verdict": "unused",
@@ -474,6 +472,11 @@
               "id": "private-skill-resource-catalog",
               "pattern": "createNomiSkillResourceCatalog|getNomiSkillRoots",
               "why": "自研 skill 发现与目录装配，与 DefaultResourceLoader.getSkills() 同职责；两份发现逻辑迟早对同一目录给出不同答案。"
+            },
+            {
+              "id": "private-skill-directory-walk",
+              "pattern": "discoverSkillRecordsFromRoots|createLaneInstalledSkills",
+              "why": "2026-09-18 之前仓里有两份自研的技能遍历器（skillStore 的 discoverSkillRecordsFromRoots 只认 root/<dir>/SKILL.md；laneInstalledSkills 对不叫 SKILL.md 的路径直接抛），各自比 pi 的 loadSkills 窄一点——以 my-skill.md 分发的技能在 pi / Claude Code 装得进、在 Nomi 报错。发现只能来自 pi 的 loadSourcedSkills（laneSkillCatalog.mts）；投影、受众、内容寻址、软链纪律才是我们的活。"
             }
           ]
         },

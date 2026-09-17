@@ -23,12 +23,6 @@ import { getProjectMemory, formatMemoryForPrompt } from '../memory/projectMemory
 import { createDesktopLaneInput, parseLaneComposerContext } from './laneDesktopInput'
 import { createDesktopLaneTools } from './laneDesktopTools'
 import type { OpenDesktopLaneWorkspace, RunLaneSingleShot } from './laneRuntimePort'
-
-/** 选中技能 → 提示词。唯一注入点在岛上（pi 的 `formatSkillInvocation`），这里只是桥（形状手抄，理由见 `feedbackIpc.ts:57`）。 */
-function renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> {
-  const native = createRequire(__filename)('./laneNativeLoader.cjs') as { renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> }
-  return native.renderSelectedSkillPrompt(skill)
-}
 import { createProjectAgentProposalReceiptService } from '../capabilityCore/projectAgentProposalReceiptStore'
 import { executeLaneReceiptCommand } from './laneReceiptCommands'
 import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residentGenerationAdapterFactory'
@@ -38,6 +32,12 @@ import { parseLaneCommand } from './laneCommandCodec'
 import { readSkillRecords, isSkillSelectableInWorkbench } from '../skills/skillStore'
 import { createDesktopLaneTasks } from './laneDesktopTasks'
 import { bindLaneProjectSession } from './laneProjectSession'
+
+/** 选中技能 → 提示词。唯一注入点在岛上（pi 的 `formatSkillInvocation`），这里只是桥（形状手抄，理由见 `feedbackIpc.ts:57`）。 */
+function renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> {
+  const native = createRequire(__filename)('./laneNativeLoader.cjs') as { renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> }
+  return native.renderSelectedSkillPrompt(skill)
+}
 
 /**
  * 这一刻的项目记忆。读不出来就当没有——记忆是锦上添花的事实，缺了它 lane 仍然要能说话，

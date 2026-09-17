@@ -1,0 +1,192 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-skill-loader-diverges-from-ecosystem",
+  "problem_type": "Nomi kept two hand-written Skill loaders, each narrower than the ecosystem loader pi ships, so a Skill other hosts install fails here",
+  "symptom": "A Skill distributed as a single `my-skill.md` (frontmatter + body, no folder) loads in pi and Claude Code but is invisible to Nomi's library, and the desktop lane throws `Installed Skill records require an absolute SKILL.md path.` for it (laneInstalledSkills.mts:29). The same shape of narrowness showed up twice before this week: name/description precedence (2026-09-07) and regex frontmatter parsing that accepted what pi rejects (2026-09-07).",
+  "direct_cause": "skillStore.discoverSkillRecordsFromRoots walked only `root/<dir>/SKILL.md` (its own comment called pi's loose-file and nested discovery 'not Nomi's package contract'), and laneInstalledSkills.createLaneInstalledSkills re-validated `basename === 'SKILL.md'` and threw. Neither imported pi's loadSkills / loadSourcedSkills / formatSkillInvocation / SkillDiagnostic although the package was already a dependency and check:skills-format already used pi's loader as the judge of 'can another host read this'.",
+  "class_root": "The Skill loading layer was written before the ecosystem converged and never re-homed onto the framework once pi shipped the same capability (R5④): discovery, frontmatter stripping, the invocation envelope and the diagnostics all had a private copy, and every private copy drifted narrower than pi's on a different axis. The 2026-09-18 structural review (docs/audit/2026-09-18-electron-unowned-state-structural-review.md) found the same shape across Electron: declared invariants with no mechanical owner. Here the invariant 'a Skill another host can read, Nomi can read' had 59 hand-recorded experiences in 22 contracts and no single owner, so each loader re-answered it slightly differently.",
+  "affected_population": [
+    "Every user who installs a Skill authored for another host (Claude Code, pi, Codex, ChatCut) — loose `.md` Skills, Skills whose name differs from the folder, Skills with unknown frontmatter keys",
+    "Every desktop lane turn, because the lane index and the selected-skill prompt were assembled by the private copies",
+    "Every MCP client listing or reading Skills through the dispatcher, because the catalog it projects came from the private walker"
+  ],
+  "scope_paths": [
+    "electron/skills/",
+    "electron/agentLane/laneSkillCatalog.mts",
+    "electron/agentLane/laneSkillPrompt.mts",
+    "electron/agentLane/laneNativeLoader.cts",
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "electron/harness/context/agentContext.ts",
+    "electron/capabilityCore/dispatcher.ts",
+    "electron/capabilityCore/skillReadTransportAdapters.ts",
+    "electron/capabilityCore/skillWriteTransportAdapters.ts",
+    "electron/promptLibrary/builtinPacks.ts",
+    "electron/promptLibrary/curatedPrompts.ts",
+    "electron/protocol/localProtocol.ts",
+    "electron/shared/agentLane/skillPromptPlacement.ts"
+  ],
+  "entry_points": [
+    "Skill library panel: list / export (renderer IPC, now async through the pi-loaded catalog)",
+    "Composer: user attaches a Skill and sends a turn (singleShot) or in an open workspace (configure)",
+    "Desktop lane turn boundary: skill index refresh and trusted read roots",
+    "MCP dispatcher: skills.list / skills.read for public and locally authenticated clients",
+    "Prompt library: curated effects projected from built-in Skills",
+    "nomi-local://skill-preview cover bytes",
+    "Production run: playbook stage evidence"
+  ],
+  "invariants": [
+    "Skill discovery and parsing have exactly one implementation in this repository, and it is pi's loadSourcedSkills; Nomi code only projects pi's Skill into SkillRecord and applies Nomi policy (roots precedence, metadata.nomi, curation, content hash, audience, symlink refusal, corrupt-package skip, legacy skill.json migration, coding-tool need)",
+    "A Skill that pi's loader accepts is accepted here with the same identity: loose root `.md` files and folder Skills both become records, name and description come from the frontmatter alone, and pi's SkillDiagnostic is surfaced as a warning that never rejects the Skill",
+    "The selected-skill prompt envelope is pi's formatSkillInvocation; the runtime authority section is its additionalInstructions argument when placement is after_body, and the placement stays a single switchable constant with all three A/B arms reachable",
+    "Every consumer of the catalog receives records explicitly (`await readSkillRecords()` or an injected source); no function reads the disk as a hidden default, so a freshly imported Skill is visible on the next read",
+    "Every nomi:skill:* IPC channel uses the same protocol on both sides (invokeSync ↔ registerSyncIpc, ipcRenderer.invoke ↔ ipcMain.handle); the catalog channels are async because the loader is, the write channels stay synchronous",
+    "A Windows-authored SKILL.md with a UTF-8 BOM loads; the BOM is removed once, in the execution env's readTextFile, and nothing else about pi's traversal or parsing is re-implemented"
+  ],
+  "doors": [
+    { "kind": "read", "path": "electron/agentLane/laneDesktopRuntime.ts", "line": 164, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/agentLane/laneNativeLoader.cts", "line": 12, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/agentLane/laneSkillCatalog.mts", "line": 243, "symbol": "discoverSkillRecords" },
+    { "kind": "read", "path": "electron/capabilityCore/dispatcher.ts", "line": 391, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/capabilityCore/dispatcher.ts", "line": 399, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/capabilityCore/skillReadTransportAdapters.ts", "line": 54, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/capabilityCore/skillWriteTransportAdapters.ts", "line": 138, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/harness/context/agentContext.ts", "line": 101, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/promptLibrary/builtinPacks.ts", "line": 19, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/protocol/localProtocol.ts", "line": 141, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillExecutionEvidence.ts", "line": 14, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillIpc.ts", "line": 102, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillIpc.ts", "line": 128, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillStore.ts", "line": 129, "symbol": "readSkillRecords" },
+    { "kind": "write", "path": "electron/agentLane/laneDesktopRuntime.ts", "line": 39, "symbol": "renderSelectedSkillPrompt" },
+    { "kind": "write", "path": "electron/agentLane/laneDesktopRuntime.ts", "line": 107, "symbol": "renderSelectedSkillPrompt" },
+    { "kind": "write", "path": "electron/agentLane/laneDesktopRuntime.ts", "line": 190, "symbol": "renderSelectedSkillPrompt" },
+    { "kind": "write", "path": "electron/agentLane/laneNativeLoader.cts", "line": 18, "symbol": "renderSelectedSkillPrompt" },
+    { "kind": "write", "path": "electron/agentLane/laneSkillPrompt.mts", "line": 27, "symbol": "renderSelectedSkillPrompt" },
+    { "kind": "read", "path": "electron/agentLane/laneSkillCatalog.mts", "line": 133, "symbol": "discoverSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillStore.ts", "line": 125, "symbol": "readSkillRecords" },
+    { "kind": "read", "path": "electron/skills/skillPackage.ts", "line": 230, "symbol": "readSkillPackageFiles" },
+    { "kind": "read", "path": "electron/skills/skillPreview.ts", "line": 13, "symbol": "resolveSkillPreview" },
+    { "kind": "read", "path": "electron/skills/skillManifestSchema.ts", "line": 180, "symbol": "readSkillManifest" },
+    { "kind": "read", "path": "electron/skills/skillFrontmatter.ts", "line": 24, "symbol": "parseSkillFrontmatter" },
+    { "kind": "read", "path": "electron/promptLibrary/curatedPrompts.ts", "line": 6, "symbol": "getCuratedPrompts" },
+    { "kind": "read", "path": "electron/shared/agentLane/skillPromptPlacement.ts", "line": 15, "symbol": "SKILL_TOOL_AUTHORITY_PLACEMENT" }
+  ],
+  "door_reduction": {
+    "before": 21,
+    "after": 27,
+    "why_not": "The doors that mattered were merged: two discovery walkers (skillStore.discoverSkillRecordsFromRoots, laneInstalledSkills.createLaneInstalledSkills) became one (laneSkillCatalog.discoverSkillRecords); three frontmatter strippers (skillFrontmatter.skillMarkdownWithoutFrontmatter, curatedPrompts' regex, agentContext's hand-copied envelope) became zero because pi's Skill.content already is the stripped body; the hand-copied `<skill name=` envelope became formatSkillInvocation. The count went up because the catalog is now async and every consumer that used to read the disk through a hidden default parameter now calls `await readSkillRecords()` explicitly — those 14 read doors existed before as invisible defaults (`records = readSkillRecords()`), which is exactly the shape the door map is meant to expose. The remaining definition doors are one per retained responsibility (package file table, preview resolution, metadata.nomi, frontmatter values, curated projection, placement constant), each documented in docs/plan/2026-09-18-skill-loading-migration.md §3 with why pi cannot replace it."
+  },
+  "generality_proof": "Discovery is pi's function, so any Skill shape pi accepts tomorrow (or any diagnostic pi adds) reaches Nomi without a Nomi change; the projection reads only the fields pi's Skill type exposes and derives everything else from the file on disk. The forbidden pattern `private-skill-directory-walk` in docs/engineering/framework-boundaries.json reds on the two removed walker names inside the lane island, and skillFrontmatter.test.ts pins the one remaining local parser to pi's parseFrontmatter across all 88 real SKILL.md files, so a future divergence on either axis is caught at gate time rather than by a user.",
+  "shared_boundaries": [
+    { "path": "electron/agentLane/laneSkillCatalog.mts", "symbol": "discoverSkillRecords", "responsibility": "The only place Skills are discovered and parsed: pi's loadSourcedSkills plus Nomi's projection and policy, consumed by the lane index, IPC, MCP dispatcher, prompt library, preview protocol and production evidence" },
+    { "path": "electron/agentLane/laneSkillPrompt.mts", "symbol": "renderSelectedSkillPrompt", "responsibility": "The only place a user-selected Skill becomes prompt text: pi's formatSkillInvocation with the authority section as additionalInstructions" },
+    { "path": "electron/skills/skillStore.ts", "symbol": "readSkillRecords", "responsibility": "The CommonJS-side door to the catalog: async, bridged through laneNativeLoader.cts, so every consumer awaits a fresh catalog instead of a hidden default read" },
+    { "path": "electron/skills/skillFrontmatter.ts", "symbol": "parseSkillFrontmatter", "responsibility": "The single local frontmatter parse retained because pi's loader does not hand back the parsed object; pinned to pi's parseFrontmatter by test" }
+  ],
+  "same_class_entry_points": [
+    { "path": "electron/agentLane/laneSkillCatalog.mts", "entry_point": "Desktop lane turn boundary: skill index refresh and trusted read roots", "disposition": "enforced", "evidence": "createLaneSkillIndexSource is a pure projection of the pi-loaded records; the loose `.md` capability regression (S1, two tests) proves the index lists it, formatSkillsForPrompt renders its location, and the lane `read` tool reads it through the trusted root." },
+    { "path": "electron/skills/skillIpc.ts", "entry_point": "Skill library panel: list / export (renderer IPC)", "disposition": "enforced", "evidence": "nomi:skill:list and nomi:skill:export moved to ipcMain.handle over the async catalog; check:skill-ipc-coverage now judges per-channel protocol alignment with six positive controls in scripts/check-skill-ipc-coverage.node-test.mjs." },
+    { "path": "electron/capabilityCore/dispatcher.ts", "entry_point": "MCP dispatcher: skills.list / skills.read", "disposition": "enforced", "evidence": "Both cases await readSkillRecords() and pass the records explicitly; skillDispatcher.test.ts asserts the audience and the explicit record argument." },
+    { "path": "electron/promptLibrary/curatedPrompts.ts", "entry_point": "Prompt library: curated effects projected from built-in Skills", "disposition": "enforced", "evidence": "The private regex stripper is deleted; the projection reads pi's stripped `content`. skillCuration.test.ts asserts 40 effects from 88 pi-loaded records and that no prompt starts with a frontmatter fence." },
+    { "path": "electron/protocol/localProtocol.ts", "entry_point": "nomi-local://skill-preview cover bytes", "disposition": "enforced", "evidence": "resolveSkillPreview no longer reads the disk by default; the protocol handler awaits the catalog. localProtocol.test.ts streams the real cover bytes through the pi-loaded records." },
+    { "path": "electron/skills/skillExecutionEvidence.ts", "entry_point": "Production run: playbook stage evidence", "disposition": "enforced", "evidence": "loadPlaybookStageEvidence is async over the same catalog; both driver-op call sites await it." },
+    { "path": "electron/skills/skillPackage.ts", "entry_point": "Skill library: import / delete a package (synchronous write channels)", "disposition": "not-affected", "evidence": "Import validation is deliberately kept synchronous and local (it must answer inside a sync IPC and cannot reach ESM-only pi); it reads metadata.nomi from the package it just wrote instead of re-scanning the disk, and delete recognises both `<name>/SKILL.md` and `<name>.md`. Asserted by S33 and S10b in tests/agent-runtime/skill-catalog-migration.test.mts." }
+  ],
+  "fix": {
+    "failure_mode": "If pi's loader rejects a file (no description) it is absent from the catalog with a warning diagnostic; if a projection step fails for one Skill (unreadable, symlinked, corrupt) that Skill alone is skipped with a diagnostic and the rest of the catalog loads; a consumer that forgets to await gets a Promise where an array is expected and fails type-checking.",
+    "exception_policy": "none",
+    "strategy": "Replace both private walkers with pi's loadSourcedSkills on the ESM island, keep only Nomi projection and policy around it, route the selected-skill prompt through formatSkillInvocation, make the catalog async end to end, and turn the 59 recovered invariants into assertions before deleting the code that used to embody them.",
+    "artifacts": [
+      "electron/agentLane/laneSkillCatalog.mts",
+      "electron/agentLane/laneSkillPrompt.mts",
+      "electron/agentLane/laneNativeLoader.cts",
+      "electron/shared/agentLane/skillPromptPlacement.ts",
+      "electron/skills/skillStore.ts",
+      "electron/skills/skillPackage.ts",
+      "electron/skills/skillIpc.ts",
+      "electron/harness/context/agentContext.ts",
+      "electron/preload/runtimeBridge.ts",
+      "scripts/check-skill-ipc-coverage.mjs",
+      "docs/engineering/framework-boundaries.json",
+      "docs/plan/2026-09-18-skill-loading-migration.md"
+    ]
+  },
+  "regression_tests": [
+    "tests/agent-runtime/skill-catalog-migration.test.mts",
+    "tests/agent-runtime/lane-live-skill-index.test.mts",
+    "electron/skills/skillFrontmatter.test.ts",
+    "electron/skills/skillStore.test.ts",
+    "electron/skills/skillIpc.test.ts",
+    "electron/harness/context/agentContext.test.ts",
+    "scripts/check-skill-ipc-coverage.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/agent-runtime/skill-catalog-migration.test.mts",
+    "electron/skills/skillFrontmatter.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneInstalledSkills.mts",
+      "electron/agentLane/laneSkillIndex.mts",
+      "electron/harness/skillIndex.ts",
+      "electron/harness/skillIndex.test.ts",
+      "electron/skills/foreignSkillPortability.test.ts",
+      "electron/skills/__fixtures__/chatcut-video-gen.SKILL.md"
+    ],
+    "rationale": "Both private walkers, the zero-caller catalog formatter, the local frontmatter stripper and the hand-copied envelope are deleted in the same change; the portability test and its excerpt fixture are replaced by S31/S55 over the complete real ChatCut Skill. No fallback path reads the disk the old way, and the forbidden pattern in framework-boundaries.json reds if either walker name returns to the lane island."
+  },
+  "migration": "No persisted data format changes. User-installed Skills are not rewritten except the pre-existing one-time skill.json migration, which now runs before pi reads the user root. Renderer callers of skill.list / skill.exportPackage receive Promises; both hooks and the panel were updated in the same change.",
+  "residual_risks": [
+    "A loose `.md` Skill's trusted read root is the skills root it sits in, not a per-package folder, so the lane `read` tool may read sibling files in that root; symlink escape is still refused by the canonical check in laneCodingPaths. Registered as a known widening, not a debt: the root is the user's own Skill directory.",
+    "pi recurses into nested folders without a SKILL.md, so `root/a/b/SKILL.md` is discovered with handle `b`; delete only handles top-level `<name>/` and `<name>.md`. Nested user Skills are not a supported install shape today and are not produced by import.",
+    "The BOM strip lives in a NodeExecutionEnv subclass; if a future pi version strips the BOM itself the subclass becomes a no-op rather than a conflict. Pinned by S14."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneSkillCatalog.mts",
+    "has_tests": true,
+    "tests": [
+      "tests/agent-runtime/skill-catalog-migration.test.mts",
+      "tests/agent-runtime/lane-live-skill-index.test.mts"
+    ],
+    "rationale": "The catalog is the single owner of 'what is a Skill and which ones are installed'; every other layer consumes its records. The migration suite runs the real pi loader over real disk fixtures and asserts each recovered invariant by its list number."
+  },
+  "external_sources": [
+    { "kind": "source-code", "url": "https://github.com/earendil-works/pi-mono/blob/main/packages/agent/src/harness/skills.ts", "checked_at": "2026-09-18", "purpose": "loadSkills / loadSourcedSkills / formatSkillInvocation / SkillDiagnostic semantics (read from node_modules/@earendil-works/pi-agent-core@0.85.1 dist/harness/skills.js): loose root .md files, ignore files, warning-only diagnostics, no BOM stripping" },
+    { "kind": "source-code", "url": "https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/skills.ts", "checked_at": "2026-09-18", "purpose": "pi-coding-agent's own loader strips the BOM and resolves name collisions winner-first; Nomi mirrors both rules in the projection layer" },
+    { "kind": "official-doc", "url": "https://code.claude.com/docs/en/skills", "checked_at": "2026-09-18", "purpose": "Agent Skills frontmatter contract (name, description, metadata left to the client) that both loaders now share" }
+  ],
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "@earendil-works/pi-agent-core 0.85.1 was already a runtime dependency; this change uses more of it and adds nothing.",
+    "exit_criteria": []
+  },
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Third instance in eleven days of the same class — a private Skill reader narrower than the ecosystem's: 2026-09-07 a self-invented skill.json manifest while SKILL.md frontmatter was the standard (docs/lessons/self-invented-skill-json-while-the-standard-existed.md); 2026-09-07 regex frontmatter parsing that read what pi's real YAML parser rejects (2026-09-07-skill-manifest-two-owners); 2026-09-18 two walkers that reject a loose .md Skill pi accepts. Each was fixed as an instance while the private loaders stayed; the class closes only when the loader is the framework's and the recovered invariants are assertions.",
+    "same_class_scan": [
+      "Read every root-cause contract touching the Skill layer (grep skills/|skillStore|skillPackage|SkillIndex over docs/fixes: 22 files) and copied each `invariants` / `shared_boundaries.responsibility` sentence verbatim into docs/plan/2026-09-18-skill-loading-migration.md §2, plus 14 more from commit messages and code comments: 59 items, judged pi-covered (17) / kept thin (39) / obsolete (3) with reasons.",
+      "Counted the private copies of pi capabilities in the layer before deleting them: 2 directory walkers, 3 frontmatter strippers, 1 hand-copied invocation envelope, 1 zero-caller catalog formatter (harness/skillIndex.ts) — all removed in this change.",
+      "Ran pi's own loader over the repository's 88 Skills through the new catalog: 88 records, zero diagnostics (S3), so the judge (check:skills-format F6) and the runtime now use one parser.",
+      "Checked the one parser we still keep (parseSkillFrontmatter) against pi's parseFrontmatter on every real SKILL.md and four edge shapes (no frontmatter, BOM+CRLF, empty block, unclosed): values deep-equal; the only deliberate difference is that an unclosed fence is reported as an error on import instead of silently read as body.",
+      "Checked the opposite direction — where pi is wider than our security model: pi follows symlinked Skill folders; the projection refuses symlinked package roots and SKILL.md files (S38/S39) and the lane path layer refuses them again independently.",
+      "Verified the new forbidden pattern reds under mutation: a file naming createLaneInstalledSkills inside electron/agentLane fails check:framework-boundary (private-skill-directory-walk)."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneSkillCatalog.mts",
+    "invariant": "Skill discovery and parsing come from pi's loadSourcedSkills in one place; Nomi code projects and applies policy but never walks the disk for Skills or re-implements frontmatter stripping, the invocation envelope or diagnostics. A Skill pi accepts, Nomi accepts.",
+    "failure_mode": "check:framework-boundary reds if either removed walker name reappears in the lane island; skillFrontmatter.test.ts reds if the retained parser diverges from pi on any real Skill; the migration suite reds if a loose .md Skill or the real ChatCut Skill stops loading; TypeScript reds if a consumer treats the async catalog as an array.",
+    "exception_policy": "none",
+    "strategy": "Move the owner onto the ESM island next to pi so the framework function is the implementation, bridge one async door to the CommonJS side, and convert every hidden default disk read into an explicit awaited argument so the door map shows every consumer.",
+    "artifacts": [
+      "electron/agentLane/laneSkillCatalog.mts",
+      "electron/agentLane/laneSkillPrompt.mts",
+      "electron/agentLane/laneNativeLoader.cts",
+      "electron/skills/skillStore.ts",
+      "docs/engineering/framework-boundaries.json",
+      "scripts/check-skill-ipc-coverage.mjs"
+    ]
+  }
+}

@@ -3,8 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillFrontmatter } from "./skillFrontmatter";
-import { parseSkillManifest, type SkillManifest } from "./skillManifestSchema";
-import { discoverSkillRecordsFromRoots, findSkillRecord, readSkillManifest } from "./skillStore";
+import { parseSkillManifest, readSkillManifest, type SkillManifest } from "./skillManifestSchema";
+import { findSkillRecord } from "./skillStore";
+// 目录来自 pi 的加载器（岛上、async）。
+import { discoverSkillRecords } from "../agentLane/laneSkillCatalog.mjs";
 
 // 内置 skill 回归门：仓库里 skills/<name>/SKILL.md 的 Nomi 扩展块（frontmatter 的
 // metadata.nomi）一旦写坏这里就红，防「改坏内置包没人发现」。
@@ -114,8 +116,8 @@ describe("built-in skill packs", () => {
   // 而查找归一只把 `.` 换成 `-`——所以归一后仍对不上目录名的那几个 skillKey 会**静默**
   // 失效：拿不到 manifest 就等于「不收窄能力、也不显示阶段」，CI 一片绿。这条断言把
   // 「代码里写死的 skillKey 必须指得到一个真实技能」变成机器判据（R28）。
-  it("every hardcoded launcher skillKey still resolves to a real skill record", () => {
-    const records = discoverSkillRecordsFromRoots([{ path: SKILLS_DIR, origin: "builtin" }]).records;
+  it("every hardcoded launcher skillKey still resolves to a real skill record", async () => {
+    const records = (await discoverSkillRecords([{ path: SKILLS_DIR, origin: "builtin" }])).records;
     const launcherKeys = [
       "workbench-generation",
       "workbench-storyboard-planner",
@@ -128,8 +130,8 @@ describe("built-in skill packs", () => {
     }
   });
 
-  it("still resolves the pre-convergence dotted keys that live in persisted data", () => {
-    const records = discoverSkillRecordsFromRoots([{ path: SKILLS_DIR, origin: "builtin" }]).records;
+  it("still resolves the pre-convergence dotted keys that live in persisted data", async () => {
+    const records = (await discoverSkillRecords([{ path: SKILLS_DIR, origin: "builtin" }])).records;
     for (const [legacyKey, directoryName] of [
       ["workbench.storyboard.planner", "workbench-storyboard-planner"],
       ["workbench.fixation.planner", "workbench-fixation-planner"],

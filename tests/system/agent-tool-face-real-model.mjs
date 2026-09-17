@@ -66,25 +66,21 @@ const models = [
 ]
 // 技能索引用**真实技能库**渲染（production 走的是同一对函数），不是两条编出来的假技能：
 // 「直接出片」那一组要量的正是「它有没有自己去找一个技能」，而假索引里没有可找的东西。
-const { readSkillRecords, findSkillRecord, isSkillSelectableInWorkbench } = await import('../../electron/skills/skillStore.ts')
-const { renderLaneSkillSection, loadPiSkillFormatter, laneSkillRequiresCodingTools } = await import('../../electron/agentLane/laneSkillIndex.mts')
-const { buildSelectedSkillPrompt } = await import('../../electron/harness/context/agentContext.ts')
-const { parseSkillFrontmatter } = await import('../../electron/skills/skillFrontmatter.ts')
-const skillRecords = readSkillRecords().filter(isSkillSelectableInWorkbench)
-const skillIndex = renderLaneSkillSection(await loadPiSkillFormatter(), skillRecords.map((record) => ({
-  name: record.name, description: record.description, filePath: record.filePath,
-  disableModelInvocation: record.disableModelInvocation,
-  requiresCodingTools: laneSkillRequiresCodingTools({ frontmatterValues: parseSkillFrontmatter(record.body).values }),
-})))
-// 两条臂。`owner` = 现在的生产线（`buildSelectedSkillPrompt`）；`raw` 逐字复现 2026-09-15 之前
-// 那一行（`laneDesktopRuntime.ts` 的 `[next.systemPrompt, skill?.body]`），**只为了让前后数字
-// 落在同一份判据上**。它不是一个生产开关，生产侧只有 owner 一条路。
+const { getSkillDiscoveryRoots, findSkillRecord, isSkillSelectableInWorkbench } = await import('../../electron/skills/skillStore.ts')
+const { discoverSkillRecords, renderLaneSkillSection, loadPiSkillFormatter, toLaneSkillIndexEntry } = await import('../../electron/agentLane/laneSkillCatalog.mts')
+const { renderSelectedSkillPrompt } = await import('../../electron/agentLane/laneSkillPrompt.mts')
+// 目录来自 pi 的加载器（岛上、async）——生产走的是同一条 `discoverSkillRecords`，这里不经 CJS 桥（桥要编译产物）。
+const skillRecords = (await discoverSkillRecords(getSkillDiscoveryRoots())).records.filter(isSkillSelectableInWorkbench)
+const skillIndex = renderLaneSkillSection(await loadPiSkillFormatter(), skillRecords.map(toLaneSkillIndexEntry))
+// 两条臂。`owner` = 现在的生产线（岛上的 `renderSelectedSkillPrompt`，pi 的 `formatSkillInvocation` 信封）；
+// `raw` 逐字复现 2026-09-15 之前那一行（`laneDesktopRuntime.ts` 的 `[next.systemPrompt, skill?.body]`），
+// **只为了让前后数字落在同一份判据上**。它不是一个生产开关，生产侧只有 owner 一条路。
 const SKILL_ARM = process.env.NOMI_R30_SKILL_ARM === 'raw' ? 'raw' : 'owner'
 const selectedSkillBlock = (skillKey) => {
   if (!skillKey) return ''
   const record = findSkillRecord(skillKey, '', skillRecords)
   if (!record) throw new Error(`bank names a skill that is not installed: ${skillKey}`)
-  return SKILL_ARM === 'raw' ? record.body : buildSelectedSkillPrompt(record)
+  return SKILL_ARM === 'raw' ? record.body : renderSelectedSkillPrompt(record)
 }
 
 function fakePorts(world = 'default') {

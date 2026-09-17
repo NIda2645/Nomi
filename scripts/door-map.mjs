@@ -14,7 +14,7 @@
 // 用法：
 //   node scripts/door-map.mjs applyCanvasToolCall
 //   node scripts/door-map.mjs electron/productionRun/productionRunApprovalReceipt.ts
-//   node scripts/door-map.mjs readSkillRecords discoverSkillRecordsFromRoots
+//   node scripts/door-map.mjs readSkillRecords discoverSkillRecords
 //   node scripts/door-map.mjs --write=setFoo --read=getFoo
 //   node scripts/door-map.mjs applyCanvasToolCall --roots=src --include-tests
 import fs from 'node:fs'

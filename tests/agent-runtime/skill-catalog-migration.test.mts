@@ -33,7 +33,10 @@ import {
 } from '../../electron/shared/agentLane/skillPromptPlacement.js';
 import { CAPABILITY_ALIAS_ENTRIES } from '../../electron/shared/agentCapabilities/registry.js';
 import { projectSkillsForRenderer } from '../../electron/skills/skillIpc.js';
-import { computeSkillContentHash, exportSkillPackageByName, SKILL_PACKAGE_VERSION, validateSkillPackage } from '../../electron/skills/skillPackage.js';
+import { computeSkillContentHash, exportSkillPackageByName, readSkillPackageFiles, SKILL_PACKAGE_VERSION, validateSkillPackage, writeSkillImport } from '../../electron/skills/skillPackage.js';
+import { readSkillManifest } from '../../electron/skills/skillManifestSchema.js';
+import { parseSkillFrontmatter } from '../../electron/skills/skillFrontmatter.js';
+import { deriveSkillNeeds } from '../../electron/skills/skillCapability.js';
 import {
   getSkillDiscoveryRoots, listSkillSummariesForMcp, readSkillContentForMcp, type SkillRecord,
 } from '../../electron/skills/skillStore.js';
@@ -309,6 +312,72 @@ test('S19 · 用户目录的技能声明 audience: mcp 仍是 internal；内置�
   assert.equal(records.find((r) => r.directoryName === 'u-mcp')?.audience, 'internal');
   assert.equal(records.find((r) => r.directoryName === 'b-mcp')?.audience, 'mcp');
   assert.deepEqual(listSkillSummariesForMcp('public', records).map((s) => s.directoryName), ['b-mcp']);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 我们薄薄保留的投影规则（S7 S9 S10b S14 S33）——每条都是 pi 不管、而旧代码踩过坑的
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('S14 · 带 UTF-8 BOM 的 SKILL.md（Windows 记事本写的）照常加载：pi-agent-core 不剥 BOM，我们在 env 那一层剥', async (t) => {
+  const root = await tempRoot(t);
+  await landSkill(root, 'bom', `﻿---\r\nname: bom\r\ndescription: 记事本写的。\r\n---\r\n\r\n正文。\r\n`);
+  const { records, diagnostics } = await discoverSkillRecords([{ path: root, origin: 'user' }]);
+  assert.deepEqual(records.map((record) => [record.name, record.description]), [['bom', '记事本写的。']], JSON.stringify(diagnostics));
+  assert.equal(records[0]!.content, '正文。', 'CRLF 归一、BOM 不在正文里');
+  assert.deepEqual(diagnostics, []);
+});
+
+test('S9 · 损坏包（正文含 NUL）不许占坑遮蔽：内置根里那份坏的被跳过、用户根里同名的合法包顶上', async (t) => {
+  const builtin = await tempRoot(t);
+  const user = await tempRoot(t);
+  await landSkill(builtin, 'shared', '---\nname: shared\ndescription: Broken\n---\n\0');
+  await landSkill(user, 'shared', skillMd('shared', 'Valid'));
+  const { records, diagnostics } = await discoverSkillRecords([{ path: builtin, origin: 'builtin' }, { path: user, origin: 'user' }]);
+  assert.deepEqual(records.map((record) => [record.origin, record.description]), [['user', 'Valid']]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.type]), [['corrupt', 'warning']]);
+});
+
+test('S10b · 同一根里 foo/SKILL.md 与 foo.md 撞句柄：先到的赢、输家记诊断；导入避让也认得单文件的 stem', async (t) => {
+  const root = await tempRoot(t);
+  await writeFile(path.join(root, 'foo.md'), skillMd('foo', '单文件'));
+  await landSkill(root, 'foo', skillMd('foo', '目录包'));
+  const { records, diagnostics } = await discoverSkillRecords([{ path: root, origin: 'user' }]);
+  assert.equal(records.filter((record) => record.directoryName === 'foo').length, 1);
+  assert.ok(diagnostics.some((d) => d.code === 'shadowed'), JSON.stringify(diagnostics));
+  // 导入一个句柄为 bar 的包，而根里已有 bar.md：落地目录要避让成 bar-2，不与单文件技能撞成同一个句柄。
+  await writeFile(path.join(root, 'bar.md'), skillMd('bar', '单文件'));
+  const landed = writeSkillImport(root, { version: SKILL_PACKAGE_VERSION, exportedAt: 0, dirName: 'bar', files: { 'SKILL.md': skillMd('bar', '导入的包') } });
+  assert.equal(landed.dirName, 'bar-2');
+});
+
+test('S7 · 存量 skill.json 只在用户根迁进 frontmatter（跑在 pi 读盘之前）；内置根一个字不动', async (t) => {
+  const user = await tempRoot(t);
+  const builtin = await tempRoot(t);
+  const legacy = { name: 'legacy.skill', version: '2.1.0', description: '清单里的描述', tools: [], requiredProviders: ['video'] };
+  for (const [root, dir] of [[user, 'legacy-user'], [builtin, 'legacy-builtin']] as const) {
+    await landSkill(root, dir, '---\nname: legacy.skill\ndescription: frontmatter 那份\n---\n\n方法论。\n');
+    await writeFile(path.join(root, dir, 'skill.json'), JSON.stringify(legacy));
+  }
+  const { records, diagnostics } = await discoverSkillRecords([{ path: builtin, origin: 'builtin' }, { path: user, origin: 'user' }]);
+  // 内置根：没迁（skill.json 还在，frontmatter 原样）；用户根：迁了（skill.json 没了，清单进了 metadata.nomi）。
+  assert.ok(fs.existsSync(path.join(builtin, 'legacy-builtin', 'skill.json')));
+  assert.ok(!fs.existsSync(path.join(user, 'legacy-user', 'skill.json')));
+  const migrated = records.find((record) => record.origin === 'user')!;
+  assert.equal(migrated.manifest?.version, '2.1.0');
+  assert.equal(migrated.description, '清单里的描述');
+  const untouched = records.find((record) => record.origin === 'builtin')!;
+  assert.equal(untouched.manifest, null);
+  assert.equal(untouched.description, 'frontmatter 那份');
+  assert.ok(diagnostics.some((d) => d.code === 'legacy_manifest' && d.type === 'warning' && d.path === path.join(user, 'legacy-user')), JSON.stringify(diagnostics));
+});
+
+test('S33 · 导入回执的 neededProviders 从刚落盘的那份包本身派生（同一个 readSkillManifest owner），不再扫盘', async () => {
+  const body = '---\nname: needs-video\ndescription: x\nmetadata:\n  nomi:\n    version: "1.0.0"\n    tools: []\n    required-providers:\n      - video\n---\n正文';
+  const { manifest } = readSkillManifest(parseSkillFrontmatter(body));
+  assert.deepEqual(deriveSkillNeeds(manifest!).providers, ['video']);
+  // 包文件表：单文件技能以 SKILL.md 为键呈现，与目录包同一形状——内容寻址与导出共用这一条。
+  const loose = { filePath: path.join(repoRoot, 'tests/fixtures/skills/chatcut-video-gen/SKILL.md'), packageDir: path.join(repoRoot, 'tests/fixtures/skills/chatcut-video-gen') };
+  assert.ok(Object.keys(readSkillPackageFiles(loose)).includes('references/kling.md'));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
