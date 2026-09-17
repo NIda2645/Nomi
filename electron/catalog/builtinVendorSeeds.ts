@@ -13,6 +13,7 @@ import { ANTIGRAVITY_VENDOR_SEED } from "./antigravityTexts";
 import { MINIMAX_VENDOR_SEED } from "./minimaxOfficial";
 import { ELEVENLABS_VENDOR_SEED } from "./elevenlabs";
 import { MESHY_VENDOR_SEED } from "./meshyOfficial";
+import { HIGGSFIELD_VENDOR_SEED } from "./higgsfieldVendor";
 import { FAL_VENDOR_SEED } from "./falOfficial";
 import { RUNWAY_VENDOR_SEED } from "./runwayOfficial";
 import type { HttpOperation, Vendor } from "./types";
@@ -33,6 +34,8 @@ export type VendorSeed = {
   legacyBaseUrls?: readonly string[];
   authType: Vendor["authType"];
   authHeader?: string | null;
+  /** Authorization 方案词（缺省 Bearer）；见 catalog/types.ts 的 Vendor.authScheme。 */
+  authScheme?: Vendor["authScheme"];
   authQueryParam?: string | null;
   providerKind?: Vendor["providerKind"];
   enabled?: boolean;
@@ -107,6 +110,7 @@ export const BUILTIN_VENDOR_SEEDS: readonly VendorSeed[] = [
   MINIMAX_VENDOR_SEED,
   ELEVENLABS_VENDOR_SEED,
   MESHY_VENDOR_SEED,
+  HIGGSFIELD_VENDOR_SEED, // Higgsfield 官方直连（Soul 2 / Soul Cinema / DoP；74 个转售模型不接）
 ];
 
 /** Return the immutable code-owned seed for a vendor key, if one exists. */
@@ -174,6 +178,7 @@ export function builtinVendorScopeMatches(vendor: Vendor): boolean {
   return normalize(vendor.baseUrlHint, true) === normalize(seed.baseUrl, true)
     && normalize(vendor.authType) === normalize(seed.authType)
     && normalize(vendor.authHeader) === normalize(seed.authHeader)
+    && normalize(vendor.authScheme) === normalize(seed.authScheme)
     && normalize(vendor.authQueryParam) === normalize(seed.authQueryParam)
     && normalize(vendorProviderKind) === normalize(seedProviderKind)
     && JSON.stringify(vendor.assetIngestion ?? null) === JSON.stringify(seed.assetIngestion ?? null);

@@ -470,6 +470,7 @@ const LOCALE_NEUTRAL_VENDOR_NAMES = new Map([
   ['MiniMax', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.minimaxi.com;\u4ed3\u5185\u4e2d\u82f1\u6587\u6587\u6848\u5747\u5199 MiniMax(MiniMax H3 \u5404\u6761\u540c\u5199\u6cd5)'],
   ['ElevenLabs', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.elevenlabs.io;\u4ed3\u5185\u5404\u6761\u540c\u5199\u6cd5(Eleven v3 / Eleven Music v2)'],
   ['Meshy', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.meshy.ai;\u4ed3\u5185\u5404\u6761\u540c\u5199\u6cd5(Meshy 7)'],
+  ['Higgsfield', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.higgsfield.ai;\u5b98\u65b9\u53ea\u7528\u62c9\u4e01\u5199\u6cd5,\u65e0\u4e2d\u6587\u8bd1\u540d'],
 ])
 
 /** \u89e3\u6790 BUILTIN_VENDOR_SEEDS \u540d\u5355 \u2192 \u6bcf\u4e2a\u79cd\u5b50\u7684 { ident, file, name }\u3002\u89e3\u6790\u4e0d\u51fa\u6765\u4e00\u5f8b\u629b(fail-closed)\u3002 */

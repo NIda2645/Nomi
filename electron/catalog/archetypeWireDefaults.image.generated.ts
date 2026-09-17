@@ -461,5 +461,25 @@ export const ARCHETYPE_WIRE_DEFAULTS_IMAGE: Record<string, Record<string, Record
         "ratio": "1:1"
       }
     }
+  },
+  "higgsfield-soul-2": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "4:3",
+        "resolution": "720p",
+        "batch_size": 1,
+        "enhance_prompt": true
+      }
+    }
+  },
+  "higgsfield-soul-cinema": {
+    "text_to_image": {
+      "*": {
+        "aspect_ratio": "4:3",
+        "resolution": "720p",
+        "batch_size": 1,
+        "enhance_prompt": true
+      }
+    }
   }
 };

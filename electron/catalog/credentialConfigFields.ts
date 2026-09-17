@@ -42,6 +42,8 @@ export const VENDOR_CONFIG_FIELD_CLASSIFICATION: Record<keyof Vendor, VendorConf
   baseUrlHint: "non-credential",
   authType: "non-credential",
   authHeader: "non-credential",
+  // 方案词（"Bearer" / "Key"）是公开协议常量，不是秘密——key 本身仍只走 ApiKeyRecord。
+  authScheme: "non-credential",
   authQueryParam: "non-credential",
   providerKind: "non-credential",
   assetIngestion: "non-credential",
