@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import type { RuntimeToolCall } from "../shared/agentCapabilities/transportContracts";
 import type { ProjectBinding } from "../shared/projectBinding";
@@ -6,7 +7,6 @@ import type { ProjectLeaseV2 } from "./projectLease";
 import { createPiGenerationTransportAdapter, legacyMethodSchemaForTest } from "./generationTransportAdapters";
 import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import { GENERATION_METHODS } from "../shared/agentCapabilities/generation";
-import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import { GENERATION_RESOLVE_CAPABILITY } from "../shared/agentCapabilities/generation";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 
@@ -169,7 +169,9 @@ describe('方法别名的入参形状从语义联合现取，不手抄', () => {
   // 少了 taskKind/providerId/modelId/mode/modeId/variantId/parameters/references。
   // 手抄那份是 .strict()，所以模型写对了真契约的字段，走这条别名路反而被拒。
   // 今天没爆只是因为常驻 lane 只路由 plan/status，走不到这几支——是埋着的地雷不是无害重复。
-  const createBranch = generationPlanInputSchema.options.find(
+  // 与生产同款的收窄（generationTransportAdapters.ts 的 branchByOperation）：
+  // 联合成员的静态类型里没有 .omit，要先收到 ZodObject 才拿得到。
+  const createBranch = (generationPlanInputSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>).find(
     (option) => (option.shape.operation as unknown as { _def: { value: string } })._def.value === 'create',
   )!
 

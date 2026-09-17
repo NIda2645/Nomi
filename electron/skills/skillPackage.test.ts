@@ -332,6 +332,7 @@ describe("外部技能包的工具名写错了也照样装得进来", () => {
     const root = mkTmp();
     const written = writeSkillImport(root, {
       version: SKILL_PACKAGE_VERSION,
+      exportedAt: 1_758_000_000_000,
       dirName: "foreign-pack",
       files: { "SKILL.md": foreignSkill },
     });

@@ -23,6 +23,7 @@ import { describe, expect, it } from "vitest";
 import { SKILL_PACKAGE_VERSION, validateSkillPackage } from "./skillPackage";
 import { buildSelectedSkillPrompt } from "../harness/context/agentContext";
 import { CAPABILITY_ALIAS_ENTRIES } from "../shared/agentCapabilities/registry";
+import type { SkillRecord } from "./skillStore";
 
 const foreignBody = readFileSync(path.join(__dirname, "__fixtures__/chatcut-video-gen.SKILL.md"), "utf8");
 const FOREIGN_TOOLS = ["submit_video", "track_progress", "browse_assets"] as const;
@@ -48,11 +49,19 @@ describe("别人家的技能装进 Nomi", () => {
   });
 
   it("② 运行时给能力清单，语气不是「你写错了」", () => {
-    const prompt = buildSelectedSkillPrompt({
-      key: "chatcut-video-gen", name: "video-gen", dirName: "chatcut-video-gen",
+    const foreignSkill: SkillRecord = {
+      name: "video-gen",
+      directoryName: "chatcut-video-gen",
       filePath: path.join(process.cwd(), "skills/chatcut-video-gen/SKILL.md"),
+      description: "Generate a video with ChatCut's own tools.",
       body: foreignBody,
-    } as Parameters<typeof buildSelectedSkillPrompt>[0]);
+      manifest: null,
+      origin: "user",
+      audience: "internal",
+      packageVersion: SKILL_PACKAGE_VERSION,
+      contentHash: "c".repeat(64),
+    };
+    const prompt = buildSelectedSkillPrompt(foreignSkill);
 
     // 正文原样进去——我们不改用户装的文件，也不在提示词里删它的字。
     for (const foreign of FOREIGN_TOOLS) expect(prompt).toContain(foreign);
