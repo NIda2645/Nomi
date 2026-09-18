@@ -87,16 +87,16 @@
       "symbol": "describeOutboundFailure"
     },
     {
-      "kind": "write",
+      "kind": "read",
       "path": "electron/outboundDispatchEvidence.ts",
-      "line": 90,
-      "symbol": "outboundDispatchEvidence"
+      "line": 69,
+      "symbol": "outboundRequestWasNeverWritten"
     }
   ],
   "door_reduction": {
     "before": 8,
     "after": 10,
-    "why_not": "门数没减、反而多了两扇，这是这次修复的核心：原来 8 扇入口里有 3 扇（submissionOutbox 的三处 markSubmissionUnknown）把两种性质相反的失败写进同一个耐久档位，「少一扇门」正是缺陷本身。现在多出来的两扇是 markNotDispatched（确定没写出去 → 确定态 + 安全释放预留）与 outboundDispatchEvidence（判据的唯一 owner）——判据从零个 owner 变成一个，写入口按语义分成两类而不是一类。其余各扇必须各自存在：181/191 是重入与崩溃恢复两条不同的时机（job 已 submitting / 意图已 committed），299 是出站真失败，dispatchUnit 两扇分别是锚与镜（派生规则不同），JOB_TRANSITIONS 是状态机这份真相的唯一读入口。"
+    "why_not": "门数没减、反而从 8 扇多到 10 扇，这正是这次修复的核心：原来 8 扇入口里有 3 扇（submissionOutbox 的三处 markSubmissionUnknown）把两种性质相反的失败写进同一个耐久档位，「少一扇门」就是缺陷本身。新增的两扇是 markNotDispatched（确定没写出去 → 确定态 + 预留安全释放）与 outboundRequestWasNeverWritten（判据的产生点，全仓唯一读 undici cause 链的地方，此前 0 个 owner）。其余各扇必须各自存在：181/191 是重入与崩溃恢复两个不同时机（job 已 submitting / 意图已 committed），299 是出站真失败；dispatchUnit 两扇分别是锚与镜（派生规则不同）；JOB_TRANSITIONS 是状态机这份真相的唯一读入口。"
   },
   "regression_tests": [
     "electron/outboundDispatchEvidence.test.ts",
