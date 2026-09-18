@@ -84,12 +84,6 @@ async function waitForTerminal(mcp, sessionId, timeoutMs) {
   }
 }
 
-const COMFY_WORKFLOW = JSON.stringify({
-  1: { class_type: 'LoadImage', inputs: { image: 'first.png' } },
-  2: { class_type: 'CLIPTextEncode', inputs: { text: '{{request.prompt}}', clip: ['3', 0] } },
-  3: { class_type: 'SaveImage', inputs: { image: ['2', 0] } },
-})
-
 // ── A 臂：真 key + 真端点，正常路径仍然落终态 ────────────────────────────
 async function realProviderArm(apiKey) {
   // A 臂用**固定**的隔离 profile：跑完之后 UI 走查

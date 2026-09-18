@@ -21,39 +21,60 @@ import type { CapabilityContract } from "./capabilityContract";
 /** 一张声明卡最大 512KB（与旧 `proposal.adapterDraft` 同一上限，传输层用字符串承载）。 */
 const MAX_DECLARATION_TEXT = 512 * 1024;
 
+const setupIdField = z.string().trim().min(1).max(200)
+  .describe("The setup handle returned by connect_provider; nomi_read target=setup reports its state.");
+
+/**
+ * 同一个对外工具里同名字段必须**同形**（`projectMcpTool` 的 mergeFieldSchema 装配期抛）——
+ * 那条规则不是审美：两个动词对同一个字段各写一份描述，模型读到的就是两种说法。
+ */
+const vendorKeyField = z.string().trim().min(1).max(160)
+  .describe("Connection id, exactly as nomi_read target=models returned it.");
+
+/**
+ * 每个 action 模型要填的那一部分（**带描述**）。
+ *
+ * 动词声明（`verbs/onboardingVerbs.ts`）与契约的 `inputSchema` 都从这里派生——以前两边各写一遍
+ * 同样的字段与约束（Ponytail 2026-09-18），那正是「同一件事两份定义」：其中一份改了约束，
+ * 另一份不会红，而模型读的是前者、运行时判的是后者。
+ */
+export const MODEL_SETUP_ACTION_FIELDS = {
+  connect_provider: z.object({
+    name: z.string().trim().min(1).max(240).optional().describe("Provider display name, required when connecting a new one."),
+    vendorKey: vendorKeyField.optional(),
+    docs: z.string().max(65_536).optional().describe("API documentation: the text itself, or one http(s) URL per line."),
+    suggestedBaseUrl: z.string().trim().min(1).max(2_000).optional().describe("Address suggestion. It is only pre-filled on the credential page; the user confirms it by saving, and Nomi binds the key to it."),
+    suggestedAuthNote: z.string().trim().min(1).max(400).optional().describe("One sentence on how this provider wants the key sent, shown next to the address."),
+    sourceUrl: z.string().trim().min(1).max(2_048).optional().describe("Documentation page the suggestion was read from; shown to the user."),
+    proxyEnabled: z.boolean().optional().describe("Turn this connection's already-saved proxy on or off. The proxy URL itself is never an argument."),
+    reissueKey: z.boolean().optional().describe("Reopen the credential page for an existing connection so the user can paste a new key."),
+  }).strict(),
+  submit_declaration: z.object({
+    setupId: setupIdField,
+    declaration: z.string().min(2).max(MAX_DECLARATION_TEXT).describe("The declaration card as JSON text. Its shape is the contractSchema returned by nomi_read target=setup."),
+  }).strict(),
+  show_models: z.object({
+    vendorKey: vendorKeyField,
+    modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).describe("Exact model ids from nomi_read target=models."),
+    visible: z.boolean().describe("true shows them in the pickers, false hides them."),
+  }).strict(),
+  cancel: z.object({ setupId: setupIdField }).strict(),
+} as const;
+
+/** 契约的语义输入：上面那几份 + 各自的 `action` 判别字段。 */
 export const modelSetupInputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("connect_provider"),
-    name: z.string().trim().min(1).max(240).optional(),
-    vendorKey: z.string().trim().min(1).max(160).optional(),
-    docs: z.string().max(65_536).optional(),
-    suggestedBaseUrl: z.string().trim().min(1).max(2_000).optional(),
-    suggestedAuthNote: z.string().trim().min(1).max(400).optional(),
-    sourceUrl: z.string().trim().min(1).max(2_048).optional(),
-    proxyEnabled: z.boolean().optional(),
-    reissueKey: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal("submit_declaration"),
-    setupId: z.string().trim().min(1).max(200),
-    declaration: z.string().min(2).max(MAX_DECLARATION_TEXT),
-  }).strict(),
-  z.object({
-    action: z.literal("show_models"),
-    vendorKey: z.string().trim().min(1).max(160),
-    modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
-    visible: z.boolean(),
-  }).strict(),
-  z.object({
-    action: z.literal("cancel"),
-    setupId: z.string().trim().min(1).max(200),
-  }).strict(),
+  MODEL_SETUP_ACTION_FIELDS.connect_provider.extend({ action: z.literal("connect_provider") }),
+  MODEL_SETUP_ACTION_FIELDS.submit_declaration.extend({ action: z.literal("submit_declaration") }),
+  MODEL_SETUP_ACTION_FIELDS.show_models.extend({ action: z.literal("show_models") }),
+  MODEL_SETUP_ACTION_FIELDS.cancel.extend({ action: z.literal("cancel") }),
 ]);
 
 export const modelRemoveInputSchema = z.object({
-  vendorKey: z.string().trim().min(1).max(160),
-  modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).optional(),
-  ifUnchanged: z.string().trim().min(1).max(200),
+  vendorKey: vendorKeyField,
+  modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).optional()
+    .describe("Exact model ids to delete. Omit to delete the whole connection and its saved key."),
+  ifUnchanged: z.string().trim().min(1).max(200)
+    .describe("Fingerprint from the nomi_read that listed these; the delete is refused if anything changed since."),
 }).strict();
 
 export type ModelSetupInput = z.infer<typeof modelSetupInputSchema>;

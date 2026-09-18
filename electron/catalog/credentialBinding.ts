@@ -103,14 +103,7 @@ export function readCredentialBinding(vendor: Pick<Vendor, "credentialBinding"> 
  */
 export function sameCredentialDestination(left: CredentialBinding | undefined, right: CredentialBinding): boolean {
   if (!left) return false;
-  const shape = (value: CredentialBinding): string => JSON.stringify({
-    origin: value.origin,
-    authType: value.authType ?? "",
-    authHeader: value.authHeader ?? "",
-    authQueryParam: value.authQueryParam ?? "",
-    authScheme: value.authScheme ?? "",
-  });
-  return shape(left) === shape(right);
+  return ENFORCED_BINDING_FIELDS.every((field) => (left[field] ?? "") === (right[field] ?? ""));
 }
 
 export type CredentialDestinationVerdict =

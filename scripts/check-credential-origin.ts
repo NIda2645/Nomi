@@ -68,19 +68,12 @@ const TOOL_FIELDS = ['baseUrl', ...DESTINATION_FIELDS]
 const UPSERT_FUNCTIONS = new Set(["upsertVendor", "upsertModelCatalogVendor", "applyVendorUpsert"])
 
 function listFiles(): string[] {
-  const out: string[] = []
-  const walk = (dir: string): void => {
-    const absolute = path.join(repoRoot, dir)
-    if (!fs.existsSync(absolute)) return
-    for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
-      const relative = `${dir}/${entry.name}`
-      if (entry.name === 'node_modules') continue
-      if (entry.isDirectory()) walk(relative)
-      else if (SCAN_EXTENSIONS.has(path.extname(entry.name))) out.push(relative)
-    }
-  }
-  for (const root of SCAN_ROOTS) walk(root)
-  return out
+  return SCAN_ROOTS.flatMap((root) => {
+    if (!fs.existsSync(path.join(repoRoot, root))) return []
+    return fs.readdirSync(path.join(repoRoot, root), { recursive: true, encoding: 'utf8' })
+      .map((entry) => `${root}/${String(entry).split(path.sep).join('/')}`)
+      .filter((relative) => !relative.includes('/node_modules/') && SCAN_EXTENSIONS.has(path.extname(relative)))
+  })
 }
 
 const isTest = (relative: string): boolean => /\.(test|spec)\.[cm]?[jt]sx?$/.test(relative)

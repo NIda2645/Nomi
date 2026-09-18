@@ -5,20 +5,13 @@
 // `start_model_setup`（把设置页打开，让用户自己接），那一条仍然在，且是它自己的动词。
 // 这里这五条是**对外宿主**（Claude Code / Codex）驱动的那条路：它能读文档、能交卡，但它交的
 // 一切都是**未签名的数据**——所以地址与鉴权放法一个字都不在入参里（§6.1）。
-import { z } from "zod";
-
+import { MODEL_SETUP_ACTION_FIELDS, modelRemoveInputSchema } from "../modelOnboarding";
 import type { VerbDeclaration } from "../verbDeclaration";
 
-const setupId = z.string().trim().min(1).max(200)
-  .describe("The setup handle returned by connect_provider; nomi_read target=setup reports its state.");
-
-/**
- * 同一个对外工具里同名字段必须**同形**（`projectMcpTool` 的 mergeFieldSchema 装配期抛）——
- * 那条规则不是审美：两个动词对同一个字段各写一份描述，模型读到的就是两种说法。
- * 必填与否不在这里表达（由「所有别名都必填才全局必填」派生），所以一份定义两处用。
- */
-const vendorKey = z.string().trim().min(1).max(160)
-  .describe("Connection id, exactly as nomi_read target=models returned it.");
+// 五条动词的 schema **不在这里重写**：模型要填的那一部分与契约的语义输入是同一件事，
+// 定义在 `../modelOnboarding.ts` 的 `MODEL_SETUP_ACTION_FIELDS`（带描述），两边都从它派生。
+// 以前这里各写一遍同样的字段与约束（Ponytail 2026-09-18）——其中一份改了约束另一份不会红，
+// 而模型读的是前者、运行时判的是后者。
 
 export function onboardingVerbs(): VerbDeclaration[] {
   const connectProvider: VerbDeclaration = {
@@ -35,16 +28,7 @@ export function onboardingVerbs(): VerbDeclaration[] {
       notWhen: "It never accepts, asks for or stores an API key, and it cannot decide where a key is sent: the address is confirmed by the user on that page. Once the key is saved, describe the provider's API with submit_model_declaration. To hide or show models that are already connected use show_provider_models; to delete one use remove_model_provider.",
       params: "name is the provider's display name. docs is the API documentation: either the text itself or one http(s) URL per line. suggestedBaseUrl is only pre-filled on the page for the user to confirm. Pass vendorKey instead of name to adjust a connection that already exists; only its name, its proxy switch and reissuing the key can change there.",
     },
-    schema: z.object({
-      name: z.string().trim().min(1).max(240).optional().describe("Provider display name, required when connecting a new one."),
-      vendorKey: vendorKey.optional(),
-      docs: z.string().max(65_536).optional().describe("API documentation: the text itself, or one http(s) URL per line."),
-      suggestedBaseUrl: z.string().trim().min(1).max(2_000).optional().describe("Address suggestion. It is only pre-filled on the credential page; the user confirms it by saving, and Nomi binds the key to it."),
-      suggestedAuthNote: z.string().trim().min(1).max(400).optional().describe("One sentence on how this provider wants the key sent, shown next to the address."),
-      sourceUrl: z.string().trim().min(1).max(2_048).optional().describe("Documentation page the suggestion was read from; shown to the user."),
-      proxyEnabled: z.boolean().optional().describe("Turn this connection's already-saved proxy on or off. The proxy URL itself is never an argument."),
-      reissueKey: z.boolean().optional().describe("Reopen the credential page for an existing connection so the user can paste a new key."),
-    }).strict(),
+    schema: MODEL_SETUP_ACTION_FIELDS.connect_provider,
     examples: [
       { when: "Connect a provider the user has an account with:", arguments: { name: "Higgsfield", docs: "https://docs.higgsfield.ai/api-reference", suggestedBaseUrl: "https://platform.higgsfield.ai" } },
       { when: "The user says the key stopped working:", arguments: { vendorKey: "higgsfield", reissueKey: true } },
@@ -71,10 +55,7 @@ export function onboardingVerbs(): VerbDeclaration[] {
       notWhen: "It never proves a model can produce anything: the reply always keeps whether this model can actually produce something in its unverified list until the user generates once. Send it only after connect_model_provider reports the key is saved. It does not delete anything; use remove_model_provider for that.",
       params: "setupId comes from connect_model_provider. declaration is the card as JSON text; nomi_read target=setup returns the exact schema it must match, and every rejected field comes back with the path and the documentation URL you declared for it.",
     },
-    schema: z.object({
-      setupId,
-      declaration: z.string().min(2).max(512 * 1024).describe("The declaration card as JSON text. Its shape is the contractSchema returned by nomi_read target=setup."),
-    }).strict(),
+    schema: MODEL_SETUP_ACTION_FIELDS.submit_declaration,
     examples: [
       { when: "Describe one image model after reading the docs:", arguments: { setupId: "setup-1", declaration: '{"sources":[],"assetIngestion":{"strategy":"none","sourceUrl":"https://docs.example/api"},"models":[]}' } },
     ],
@@ -94,11 +75,7 @@ export function onboardingVerbs(): VerbDeclaration[] {
       notWhen: "Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration.",
       params: "vendorKey and modelKeys come from nomi_read target=models. visible=false hides them.",
     },
-    schema: z.object({
-      vendorKey,
-      modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).describe("Exact model ids from nomi_read target=models."),
-      visible: z.boolean().describe("true shows them in the pickers, false hides them."),
-    }).strict(),
+    schema: MODEL_SETUP_ACTION_FIELDS.show_models,
     examples: [
       { when: "Hide two models the user never picks:", arguments: { vendorKey: "apimart", modelKeys: ["imagen-4", "imagen-4-fast"], visible: false } },
     ],
@@ -118,7 +95,7 @@ export function onboardingVerbs(): VerbDeclaration[] {
       notWhen: "It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration.",
       params: "setupId comes from connect_model_provider.",
     },
-    schema: z.object({ setupId }).strict(),
+    schema: MODEL_SETUP_ACTION_FIELDS.cancel,
     examples: [{ when: "Drop the setup:", arguments: { setupId: "setup-1" } }],
   };
 
@@ -135,11 +112,7 @@ export function onboardingVerbs(): VerbDeclaration[] {
       notWhen: "This cannot be undone and it is not how you tidy a crowded picker: use show_provider_models with visible=false to hide instead. It does not connect anything; that is connect_model_provider.",
       params: "vendorKey and modelKeys come from nomi_read target=models. Leave modelKeys out to delete the whole connection. ifUnchanged is the fingerprint that same read returned, so a stale plan cannot delete something else.",
     },
-    schema: z.object({
-      vendorKey,
-      modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).optional().describe("Exact model ids to delete. Omit to delete the whole connection and its saved key."),
-      ifUnchanged: z.string().trim().min(1).max(200).describe("Fingerprint from the nomi_read that listed these; the delete is refused if anything changed since."),
-    }).strict(),
+    schema: modelRemoveInputSchema,
     examples: [
       { when: "Delete a connection the user is done with:", arguments: { vendorKey: "old-relay", ifUnchanged: "models-7f3a" } },
     ],
