@@ -30,6 +30,9 @@ import path from 'node:path';
 
 import { loadSourcedSkills, type Skill } from '@earendil-works/pi-agent-core';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
+// pi-coding-agent 也导出一个叫 `Skill` 的类型，**形状与 pi-agent-core 的不同**
+// （这个有 baseDir/sourceInfo 没有 content，那个相反）。带别名引用，不再手抄。
+import type { Skill as PiCodingAgentSkill, formatSkillsForPrompt } from '@earendil-works/pi-coding-agent';
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/harness/env/nodejs';
 
 import type { LaneSkillIndexEntry } from '../shared/agentLane/laneContracts.js';
@@ -247,19 +250,20 @@ export async function readSkillRecords(): Promise<SkillRecord[]> {
 // lane 索引：SkillRecord → pi 的 Skill 形状 → formatSkillsForPrompt
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** pi-coding-agent 的 `Skill` 结构面（`formatSkillsForPrompt` 真的读的字段 + 它的必填项）。 */
-export interface PiSkill {
-  name: string
-  description: string
-  filePath: string
-  baseDir: string
-  sourceInfo: { path: string, source: string, scope: 'user' | 'project' | 'temporary', origin: 'package' | 'top-level' }
-  disableModelInvocation: boolean
-}
+/**
+ * pi-coding-agent 的 `Skill`，**引用上游类型，不再手抄**（`dist/core/skills.d.ts:9`）。
+ *
+ * 手抄过一版逐字段相同的 interface。它是这条分支自己论点的反例：整条迁移就是为了
+ * 不再手写 pi 已经提供的东西，而**类型是最容易漏掉的那一份**——它不跑、不报错，
+ * 上游加个字段也不会红。当初大概率是为了避开重名才手抄的：本文件第 31 行已经从
+ * pi-agent-core 导入了另一个同名的 `Skill`，两者形状不同。重名正是漂移的起点，
+ * 解法是别名，不是复制。
+ */
+export type PiSkill = PiCodingAgentSkill
 
-/** pi 那一侧我们要用到的那一个函数。写成接口是为了让单测不必动态 import 整个包。 */
+/** pi 那一侧我们要用到的那一个函数；签名从上游 `typeof` 取，单测仍只需实现这一个方法。 */
 export interface PiSkillFormatter {
-  formatSkillsForPrompt(skills: PiSkill[], fileReadTool?: 'read' | 'bash'): string
+  formatSkillsForPrompt: typeof formatSkillsForPrompt
 }
 
 export async function loadPiSkillFormatter(): Promise<PiSkillFormatter> {
