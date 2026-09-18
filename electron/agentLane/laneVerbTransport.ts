@@ -16,7 +16,10 @@
 //
 // 方法名同样不手写：生成域取自 `GENERATION_METHODS`（字面量类型，改名少一边就是 tsc 红），其余取自
 // 各契约导出的别名表。`laneVerbTransport.test.ts` 再真跑一遍每个动词翻出的方法能不能被目标适配器认。
+import type { z } from 'zod'
+
 import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContracts'
+import { generationPlanInputSchema, generationStatusInputSchema } from '../shared/agentCapabilities/generationPlanSchemas'
 import { GENERATION_METHODS, type GenerationMethodName } from '../shared/agentCapabilities/generation'
 import { TIMELINE_WRITE_ALIASES } from '../shared/agentCapabilities/timelineWrite'
 import { EXPORT_READ_ALIASES, EXPORT_WRITE_ALIASES } from '../shared/agentCapabilities/exportCapabilities'
@@ -37,13 +40,32 @@ import {
 
 type Args = Record<string, unknown>
 
-/** 一次翻译的结果：走哪条传输、方法名与方法参数。生成 lane 的方法名按字面量类型收窄。 */
+/**
+ * **生成 lane 的参数类型就是宿主那份 union 本身。**
+ *
+ * 2026-09-18 的交接文档把 `RuntimeToolCall.args: unknown` 叫作「整个问题的物理原因」：类型一旦抹平，
+ * 两份 schema 就永远不可能在编译期对上账。原型那一刀只在 `cancel_job` 一条路上收窄，理由是当时只有
+ * 那一个动词是投影。现在 19 个都是了，所以这里重新判：**生成 lane 值得收，而且收得最狠**——
+ * 它是花钱那条路，载荷不是透传而是真被拼出来的（`draft_shots` 三支各拼一份），而「拼出一份宿主 union
+ * 里根本没有的形状」正是 2026-09-18 C 类缺陷的定义。收窄之后那件事是 tsc 红，不是一次付费运行的失败。
+ *
+ * 其余五条 lane **没有一起收**，理由是如实的而不是省事：它们的载荷是投影 `.parse()` 的直接产物
+ * （模型面 = 宿主面减 `operation`），中间没有任何拼装，收窄只会把同一份类型换一个名字写两遍；
+ * 而 `media` 那条同时装着 `asset.read` 五支与 `export.read` 两支，一个联合类型在这里表达不出
+ * 「哪个动词走哪一支」——那条要等 `look_at_media` 也变成投影（今天它是**构造**，见
+ * `verbSemanticInput.assetReadInputOf`）。
+ */
+type GenerationTransportArgs =
+  | z.infer<typeof generationPlanInputSchema>
+  | z.infer<typeof generationStatusInputSchema>
+
+/** 一次翻译的结果：走哪条传输、方法名与方法参数。生成 lane 的方法名与**参数形状**都按宿主收窄。 */
 export type VerbTransportCall =
-  | Readonly<{ lane: 'generation'; call: RuntimeToolCall & { toolName: GenerationMethodName } }>
+  | Readonly<{ lane: 'generation'; call: RuntimeToolCall<GenerationTransportArgs> & { toolName: GenerationMethodName } }>
   | Readonly<{ lane: 'timeline' | 'canvas' | 'export' | 'media' | 'skillRead' | 'skillWrite'; call: RuntimeToolCall }>
 
-/** 生成 lane 的一次调用：`toolName` 只能是 `GENERATION_METHODS` 里的名字。 */
-function generationCall(base: { toolCallId: string }, toolName: GenerationMethodName, args: Args): VerbTransportCall {
+/** 生成 lane 的一次调用：`toolName` 只能是 `GENERATION_METHODS` 里的名字，`args` 只能是宿主认的那几支。 */
+function generationCall(base: { toolCallId: string }, toolName: GenerationMethodName, args: GenerationTransportArgs): VerbTransportCall {
   return { lane: 'generation', call: { ...base, toolName, args } }
 }
 
