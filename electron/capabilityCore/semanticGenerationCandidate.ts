@@ -178,38 +178,6 @@ function modeFromSnapshot(
   return declared ?? selected.mode;
 }
 
-/**
- * The module bucket that owns an **explicitly named** provider+model. This is a
- * lookup, not a choice: the caller already said which model spends the money, and
- * `moduleId` is an internal routing bucket the model face never sees (it is absent
- * from every verb declaration). Without it a named model could only be used by
- * users who had also saved a Workbench default — i.e. naming a model did nothing.
- * Returns undefined when the identity is not in the catalog, so the caller still
- * refuses rather than inventing a bucket.
- */
-function moduleIdForIdentity(
-  deps: SemanticGenerationCandidateDeps,
-  providerId: string,
-  modelId: string,
-): string | undefined {
-  for (const manifest of deps.registry?.snapshot?.() ?? []) {
-    if (!manifest || typeof manifest !== "object") continue;
-    const moduleId = text((manifest as { moduleId?: unknown }).moduleId);
-    const providers = (manifest as { providers?: unknown }).providers;
-    if (!moduleId || !Array.isArray(providers)) continue;
-    for (const provider of providers) {
-      if (!provider || typeof provider !== "object") continue;
-      if (text((provider as { providerId?: unknown }).providerId) !== providerId) continue;
-      const models = (provider as { models?: unknown }).models;
-      if (!Array.isArray(models)) continue;
-      if (models.some((model) => model && typeof model === "object" && text((model as { modelId?: unknown }).modelId) === modelId)) {
-        return moduleId;
-      }
-    }
-  }
-  return undefined;
-}
-
 function fallbackFromSnapshot(
   deps: SemanticGenerationCandidateDeps,
   taskKind: GenerationDefaultTaskKind,
