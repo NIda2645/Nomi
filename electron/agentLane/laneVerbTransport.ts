@@ -22,6 +22,7 @@ import { CANVAS_DELETE_ALIAS } from '../shared/agentCapabilities/canvasDelete'
 import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
+import { cancelJobHostArgs, cancelJobModelSchema, type CancelJobModelArgs } from '../shared/agentCapabilities/verbs/cancelJobProjection'
 import { applyDefaultsByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
 
@@ -125,14 +126,29 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
   }
 }
 
-/** `check_job` / `cancel_job` 的导出那一半：生成域说「不认识这个 id」时再问导出域。 */
+/**
+ * `check_job` / `cancel_job` 的导出那一半：生成域说「不认识这个 id」时再问导出域。
+ *
+ * 两条走的是两种机制，而这正是 2026-09-18 投影原型要展示的那个分叉：
+ *   · `cancel_job` **走投影**——模型面就是宿主面减掉 `operation`，所以这里没有对应关系可执行，
+ *     只有「补上宿主自补的那个值、重过同一份宿主 schema」（`cancelJobHostArgs`）。往下仍只递模型
+ *     那一半：`operation` 由方法别名承载，`exportWriteInputForAlias` 在跨进程那一侧重新拼回来并
+ *     再验一次（那道准入是花钱/不可逆闸，不删）。
+ *   · `check_job` 走 `EXPORT_JOB_ROUTES` 那张表——留着当对照。
+ */
 export function exportJobTransportCall(call: RuntimeToolCall): RuntimeToolCall {
   const args = (call.args && typeof call.args === 'object' ? call.args : {}) as Args
+  if (call.toolName === 'cancel_job') {
+    const typed: RuntimeToolCall<CancelJobModelArgs> = { ...call, args: cancelJobModelSchema.parse(args) }
+    // 补完重过同一份宿主 schema：这一步断言「投影 + 补值确实还原成一份合法的宿主输入」。
+    const { operation: _hostFilled, ...modelHalf } = cancelJobHostArgs(typed.args)
+    return { toolCallId: typed.toolCallId, toolName: EXPORT_WRITE_ALIASES.cancel, args: modelHalf }
+  }
   const route = EXPORT_JOB_ROUTES[call.toolName]
   if (!route) throw new Error(`exportJobTransportCall: ${call.toolName} 没有导出域的对应关系`)
   return {
     toolCallId: call.toolCallId,
-    toolName: call.toolName === 'cancel_job' ? EXPORT_WRITE_ALIASES.cancel : EXPORT_READ_ALIASES.inspect,
+    toolName: EXPORT_READ_ALIASES.inspect,
     args: projectByFieldMap(args, route.map, route.target),
   }
 }

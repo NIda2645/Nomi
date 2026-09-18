@@ -268,10 +268,13 @@ export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Obj
 })
 
 /**
- * `check_job` / `cancel_job` 的**导出那一半**：生成域说「不认识这个 id」时再问导出域。
- * 同一个动词对两个域各有一张表——这不是重复，是两个域各自的词表，而且两张都被各自的 schema 核过。
+ * `check_job` 的**导出那一半**：生成域说「不认识这个 id」时再问导出域。
+ *
+ * **`cancel_job` 不在这里了**（2026-09-18 投影原型）：它的模型面直接从导出域宿主 schema 派生
+ * （`verbs/cancelJobProjection.ts`），模型面与宿主面**同一份形状**，中间没有可写的对应关系——
+ * 一张说「A 对应 A」的表本身就是那条该消掉的缝。剩下 `check_job` 这一条留着，正好当对照：
+ * 铺开时先看一个动词是不是单域，再决定它走投影还是走这张表。
  */
 export const EXPORT_JOB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Object.freeze({
   check_job: simple('check_job → export job inspect', 'check_job', 'job', exportJobKeys, { jobId: { kind: 'same', from: ['from-read:export_video.jobId'] } }),
-  cancel_job: simple('cancel_job → export job cancel', 'cancel_job', 'job', exportJobKeys, { jobId: { kind: 'same', from: ['from-read:export_video.jobId'] } }),
 })
