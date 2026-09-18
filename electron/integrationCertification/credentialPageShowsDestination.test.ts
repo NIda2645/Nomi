@@ -27,15 +27,11 @@ import { safeHandoffOrigin } from "./integrationHandoffOrigin";
 
 const LAN_BASE_URL = "http://192.168.1.20:8000/v1";
 
-function makeStore() {
-  return createCredentialElicitationStore({
+async function renderCredentialPage(baseUrl: string): Promise<{ status: number; html: string }> {
+  const store = createCredentialElicitationStore({
     originResolver: () => "http://127.0.0.1:45999",
     now: () => Date.now(),
   } as never);
-}
-
-async function renderCredentialPage(baseUrl: string): Promise<{ status: number; html: string }> {
-  const store = makeStore();
   const ticketed = withCredentialElicitationTicket(
     { id: "integration-lan", kind: "http-api-provider", config: { name: "LAN relay", baseUrl, authType: "bearer" } } as never,
     store as never,

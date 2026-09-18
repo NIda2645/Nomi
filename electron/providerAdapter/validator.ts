@@ -455,9 +455,8 @@ export function validateProviderAdapterDraft(
 function assertCardLevelOperations(draft: ProviderAdapterDraft): void {
   const ingestion = draft.assetIngestion;
   if (ingestion && "endpoint" in ingestion && typeof ingestion.endpoint === "string") {
-    if (new URL(ingestion.endpoint).origin !== new URL(draft.provider.baseUrl).origin) {
-      throw new Error("assetIngestion.endpoint must use the provider's same origin");
-    }
+    // 与 mode 端点同一个判据函数：它除了同源还查穿越与编码，自己再比一次 origin 会漏掉那两样。
+    assertSafePath(ingestion.endpoint, draft.provider.baseUrl);
   }
   const selfCheck = draft.selfCheck;
   if (selfCheck?.kind !== "liveness-probe") return;
