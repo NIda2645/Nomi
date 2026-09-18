@@ -5,10 +5,10 @@
 // 多镜）。字段怎么落位由 `projectByFieldMap` 执行那张表。
 //
 // 为什么这么改（2026-09-18，用户原话「该有两遍，不该有四遍」）：一个能力原本被重述四遍——动词声明、
-// 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的名字，宿主要内部名，而且
+// 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的形状，宿主要内部形状，而且
 // 宿主那道校验是跨进程 + 花钱闸的准入规定，必须继续独立跑）。这一遍不该手写：它承载的全部信息就是
 // 前两遍之间的对应关系。手写它的代价当天量到过两次——`durationSec` 被改名成宿主没有的顶层字段（整条
-// 拒收），`modelKey` 与逐镜 `candidate.providerId/modelId` 压根没被列进解构（**静默**丢掉，模型点名的
+// 拒收），平铺的模型字段与逐镜 `candidate.providerId/modelId` 压根没被列进解构（**静默**丢掉，模型点名的
 // 模型被换成用户默认的那个去花钱）。这两种病因是同一个：对应关系只活在一段手写代码里，没有东西能核对
 // 它完不完整、指向的宿主字段存不存在。
 //
@@ -22,6 +22,7 @@ import { CANVAS_DELETE_ALIAS } from '../shared/agentCapabilities/canvasDelete'
 import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
+import { cancelJobModelSchema, type CancelJobModelArgs } from '../shared/agentCapabilities/verbs/cancelJobProjection'
 import { applyDefaultsByFieldMap, liftedByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
 
@@ -70,8 +71,10 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       const shots = (Array.isArray(args.shots) ? args.shots : [])
         .map((shot) => applyDefaultsByFieldMap(args, DRAFT_SHOTS_FIELD_MAP, shot as Args))
       // 分支判断是真逻辑（改草稿 / 单镜摊平 / 多镜），不是字段名单——它留在代码里。
-      const draftId = typeof args.draftId === 'string' ? args.draftId : undefined
-      if (draftId) {
+      // 字段名用 main 改名后的 `operationId`（#814 把模型面的 draftId 改成了它）；
+      // 逐镜寻址的结构是本刀的（单一账本那一刀把「改第 N 镜」打通了）。
+      const operationId = typeof args.operationId === 'string' ? args.operationId : undefined
+      if (operationId) {
         // 修改已有草稿：带 `shotId` = 改多镜草稿里的那一镜（那一镜候选 revision +1 → 已落的节点按它重绑定）；
         // 不带 = 单镜草稿的顶层候选。一次调用改一镜（动词契约的例子就是这个形状）。
         // `shotId` 在候选 patch 里没有位置，但它是 plan patch **信封**上的寻址字段——表上写的是 `lift`，
@@ -130,14 +133,29 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
   }
 }
 
-/** `check_job` / `cancel_job` 的导出那一半：生成域说「不认识这个 id」时再问导出域。 */
+/**
+ * `cancel_job` 的导出那一支（2026-09-18 投影原型）。**这里没有对应关系可执行**：模型面就是宿主面
+ * 减掉 `operation`，字段名两边逐字相同。所以只剩一件事——把模型那一份按**派生出来的**那份 schema
+ * 收成有类型的参数。宿主自补的 `operation` 由方法别名承载，`exportWriteInputForAlias` 在跨进程那一侧
+ * 补上它并重过同一份宿主 schema（那道准入是花钱/不可逆闸，不删；也不在这边再做一遍——同一件事两份
+ * 实现就是 P1 说的并行版）。返回类型带上推断出来的参数类型，`RuntimeToolCall<TArgs>` 的收窄从这里起步。
+ */
+function cancelJobExportCall(call: RuntimeToolCall): RuntimeToolCall<CancelJobModelArgs> {
+  return { toolCallId: call.toolCallId, toolName: EXPORT_WRITE_ALIASES.cancel, args: cancelJobModelSchema.parse(call.args) }
+}
+
+/**
+ * `check_job` / `cancel_job` 的导出那一半：生成域说「不认识这个 id」时再问导出域。
+ * `cancel_job` 走上面那条投影；`check_job` 走 `EXPORT_JOB_ROUTES` 那张表——留着当对照。
+ */
 export function exportJobTransportCall(call: RuntimeToolCall): RuntimeToolCall {
   const args = (call.args && typeof call.args === 'object' ? call.args : {}) as Args
+  if (call.toolName === 'cancel_job') return cancelJobExportCall(call)
   const route = EXPORT_JOB_ROUTES[call.toolName]
   if (!route) throw new Error(`exportJobTransportCall: ${call.toolName} 没有导出域的对应关系`)
   return {
     toolCallId: call.toolCallId,
-    toolName: call.toolName === 'cancel_job' ? EXPORT_WRITE_ALIASES.cancel : EXPORT_READ_ALIASES.inspect,
+    toolName: EXPORT_READ_ALIASES.inspect,
     args: projectByFieldMap(args, route.map, route.target),
   }
 }

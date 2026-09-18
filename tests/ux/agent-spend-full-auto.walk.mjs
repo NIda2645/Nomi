@@ -45,7 +45,7 @@ const PRICE_TOTAL = '[data-v4-price="total"]'
 function draftTurn(walk, { marker, callId, prompt, done }) {
   // 20 动词：draft_shots 建草稿（落画布、不出卡），generate 才把报价卡摆到用户面前；「全自动」档在 generate 那一刻替用户决门。
   const generateId = `${callId}-generate`
-  let draftId
+  let operationId
   const planner = walk.fixture.expectText({
     label: `the agent drafts a generation for ${marker}`,
     match: (body) => flattenRequestText(body).includes(marker),
@@ -54,16 +54,16 @@ function draftTurn(walk, { marker, callId, prompt, done }) {
     } },
   })
   const drafted = walk.fixture.expectText({
-    label: `the draft for ${marker} comes back with its draftId, then the agent calls generate`,
+    label: `the draft for ${marker} comes back with its operationId, then the agent calls generate`,
     match: (body) => {
       const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === callId)
       if (!result) return false
-      draftId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+      operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
       return true
     },
     reply: { type: 'hold' },
   })
-  drafted.received.then(() => drafted.release({ type: 'tool', id: generateId, name: 'generate', args: { draftId } }))
+  drafted.received.then(() => drafted.release({ type: 'tool', id: generateId, name: 'generate', args: { operationId } }))
   const finished = walk.fixture.expectText({
     label: `the drafting turn for ${marker} completes through the same SDK turn`,
     match: (body) => (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === generateId),

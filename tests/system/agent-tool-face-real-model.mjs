@@ -60,9 +60,9 @@ const emptyCanvas = canvasReadResultSchema.parse({ nodes: [], edges: [], groups:
 const script = '海边小镇的清晨。林夏推开窗，风带着咸味。她拿起相机走向码头。渔船正要出海。她按下快门。一天开始了。'
 const timeline = timelineReadResultSchema.parse({ operation: 'read_timeline', revision: 'r1', fps: 30, scale: 1, playheadFrame: 0, durationFrames: 0, valid: true, tracks: [{ id: 'v1', type: 'video', label: 'V1', clips: [] }], textClips: [], transitions: [] })
 const models = [
-  { modelKey: 'gpt-image-2', kind: 'image', label: 'GPT Image 2', vendorKey: 'openai', modes: [{ modeId: 't2i', label: '文生图', params: [{ key: 'aspect_ratio', type: 'select', options: [{ value: '1:1' }, { value: '16:9' }, { value: '9:16' }] }] }] },
-  { modelKey: 'kling-2.1', kind: 'video', label: 'Kling 2.1', vendorKey: 'kling', modes: [{ modeId: 't2v', label: '文生视频', params: [{ key: 'duration', type: 'select', options: [{ value: '5' }, { value: '10' }] }] }, { modeId: 'i2v', label: '图生视频', params: [{ key: 'duration', type: 'select', options: [{ value: '5' }, { value: '10' }] }] }] },
-  { modelKey: 'seedance-1.5', kind: 'video', label: 'Seedance 1.5', vendorKey: 'bytedance', modes: [{ modeId: 't2v', label: '文生视频', params: [] }, { modeId: 'i2v', label: '图生视频', params: [] }] },
+  { modelId: 'gpt-image-2', kind: 'image', label: 'GPT Image 2', vendorKey: 'openai', modes: [{ modeId: 't2i', label: '文生图', params: [{ key: 'aspect_ratio', type: 'select', options: [{ value: '1:1' }, { value: '16:9' }, { value: '9:16' }] }] }] },
+  { modelId: 'kling-2.1', kind: 'video', label: 'Kling 2.1', vendorKey: 'kling', modes: [{ modeId: 't2v', label: '文生视频', params: [{ key: 'duration', type: 'select', options: [{ value: '5' }, { value: '10' }] }] }, { modeId: 'i2v', label: '图生视频', params: [{ key: 'duration', type: 'select', options: [{ value: '5' }, { value: '10' }] }] }] },
+  { modelId: 'seedance-1.5', kind: 'video', label: 'Seedance 1.5', vendorKey: 'bytedance', modes: [{ modeId: 't2v', label: '文生视频', params: [] }, { modeId: 'i2v', label: '图生视频', params: [] }] },
 ]
 // 技能索引用**真实技能库**渲染（production 走的是同一对函数），不是两条编出来的假技能：
 // 「直接出片」那一组要量的正是「它有没有自己去找一个技能」，而假索引里没有可找的东西。
@@ -104,8 +104,8 @@ function fakePorts(world = 'default') {
     ...createExtendedLaneTools({ execute: async (call) => {
       const a = call.args ?? {}
       switch (call.toolName) {
-        case 'draft_shots': return { ok: true, result: { operation: { operationId: a.draftId ?? 'op-1', state: 'draft', cardHidden: true, shots: (a.shots ?? []).map((s, i) => ({ shotId: s.shotId ?? `shot-${7 + i}`, candidate: { prompt: s.prompt } })) }, clamps: [] } }
-        case 'generate': return { ok: true, result: { operation: { operationId: a.draftId, state: 'draft' }, shots: a.shotIds ?? ['shot-1'], nextAction: 'await_user' } }
+        case 'draft_shots': return { ok: true, result: { operation: { operationId: a.operationId ?? 'op-1', state: 'draft', cardHidden: true, shots: (a.shots ?? []).map((s, i) => ({ shotId: s.shotId ?? `shot-${7 + i}`, candidate: { prompt: s.prompt } })) }, clamps: [] } }
+        case 'generate': return { ok: true, result: { operation: { operationId: a.operationId, state: 'draft' }, shots: a.shotIds ?? ['shot-1'], nextAction: 'await_user' } }
         case 'check_job': return { ok: true, result: { operation: { operationId: a.jobId, state: 'submitted', progress: 40, spent: { amount: 0.2, currency: 'CNY' } } } }
         case 'cancel_job': return { ok: true, result: { operation: { operationId: a.jobId, state: 'cancelled' } } }
         case 'edit_timeline': return { ok: true, result: { applied: true, revision: 'r2', undoToken: 'undo-1' } }

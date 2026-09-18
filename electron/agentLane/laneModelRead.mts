@@ -28,9 +28,9 @@ export const laneModelReadDefinition = (() => {
 })();
 
 export function createLaneModelRead(resolve: () => readonly AgentModelEntry[]) {
-  return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelKey?: string }) => {
+  return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelId?: string }) => {
     const entries = resolve().filter(entry =>
-      (args.modelKey === undefined || entry.modelKey === args.modelKey)
+      (args.modelId === undefined || entry.modelId === args.modelId)
       && (args.kind === undefined || entry.kind === args.kind));
     return { content: [{ type: 'text' as const, text: JSON.stringify({ models: entries }) }],
       details: { models: entries } };

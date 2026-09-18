@@ -81,7 +81,7 @@ test('这道门岗进了 contracts 档，不是一个没人跑的脚本', () => 
 const MUTATIONS = [
   ['A 类 · 拿掉动词那道拦截后，信封字段在改草稿那条路上必须当场被拒（不许静默消失）', [
     ['electron/shared/agentCapabilities/verbs/writeVerbs.ts',
-      '        const index = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot[field] !== undefined);',
+      '        const index = value.operationId === undefined ? -1 : value.shots.findIndex((shot) => shot[field] !== undefined);',
       '        const index = -1;'],
   ]],
   ['B 类 · 宿主重新硬要模型拿不到的 contentHash / version', [
@@ -102,9 +102,9 @@ const MUTATIONS = [
       "      kind: 'expanded', into: ['candidate.providerId', 'candidate.modelId'],",
       "      kind: 'consumed',"],
     ['electron/agentLane/verbTransportRoutes.ts',
-      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '模型按目录点名的供应商' },\n", ''],
+      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '拍平嵌套：模型按目录点名的供应商，宿主收在顶层' },\n", ''],
     ['electron/agentLane/verbTransportRoutes.ts',
-      "    'candidate.modelId': { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelKey'], why: '模型按目录点名的模型，优先于 modelKey', priority: 2 },\n", ''],
+      "    'candidate.modelId': { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelId'], why: '拍平嵌套：宿主收在顶层，优先于平铺的 modelId', priority: 2 },\n", ''],
   ]],
   ['R4 · 翻出一个没有传输适配器认的 lane', [
     ['electron/agentLane/laneVerbTransport.ts',
@@ -126,7 +126,7 @@ const MUTATIONS = [
   ]],
   ['表 · 删掉一条对应关系（重演 candidate.providerId 静默消失）', [
     ['electron/agentLane/verbTransportRoutes.ts',
-      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '模型按目录点名的供应商' },\n", ''],
+      "    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '拍平嵌套：模型按目录点名的供应商，宿主收在顶层' },\n", ''],
   ]],
   // R1 只保证「宿主要的，动词告诉过模型」，保证不了「模型拿得到那个值」。这一条补的就是那半边：
   // 把参考素材的来源从 host-resolved 改成「某个读动词的返回」，而那个读动词根本不返回它 → 必须红。

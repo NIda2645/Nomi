@@ -324,7 +324,10 @@ async function stepAgentPatchShot2(win, projectId, runId, nodeIds) {
     match: (body) => flattenRequestText(body).includes(PATCH_INSTRUCTION) && !hasToolResult(body, PATCH_CALL_ID),
     reply: {
       type: 'tool', id: PATCH_CALL_ID, name: 'draft_shots',
-      args: { draftId: runId, shots: [{ shotId: SHOT_2_ID, prompt: SHOT_2_NEW_PROMPT }] },
+      // 20 动词：改一镜提示词 = draft_shots(operationId, shots[{shotId}])。
+      // 字段名用 main 改名后的 operationId；值仍从真实 Run 账本读回（runId / SHOT_2_ID），
+      // 不写字面量——这条走查的意义就是「Agent 改的那一镜真的回到了表里」。
+      args: { operationId: runId, shots: [{ shotId: SHOT_2_ID, prompt: SHOT_2_NEW_PROMPT }] },
     },
   })
   const patchDone = walk.fixture.expectText({

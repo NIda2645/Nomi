@@ -601,7 +601,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // caller; it is recomputed from the selected archetype mode/variant.
       const { transportModelId: _ignoredTransportModelId, references: patchedReferences, ...patchRest } = rawPatch as
         Partial<Omit<PlanCandidate, "candidateId" | "revision">> & { references?: unknown };
-      // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 draftId 时走这里）。不在这里补身份，
+      // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 operationId 时走这里）。不在这里补身份，
       // 一次 patch 就会把一条缺 contentHash 的参考写进已存候选——类型说它齐了，运行时不是（静默假数据）。
       const userPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">> = patchedReferences === undefined
         ? patchRest

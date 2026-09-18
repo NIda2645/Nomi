@@ -7,14 +7,14 @@ function entryByKey(): Map<string, AgentModelEntry> {
   const entries = buildAgentModelEntries([
     { value: "seedance-2", label: "即梦 Seedance", vendor: "kie", meta: { archetypeId: "seedance-2" } } as ModelOption,
   ]);
-  return new Map(entries.map((e) => [e.modelKey, e]));
+  return new Map(entries.map((e) => [e.modelId, e]));
 }
 
 function textEntryByKey(): Map<string, AgentModelEntry> {
   const entries = buildAgentModelEntries([
     { value: "agent-runtime-text", label: "Fixture 文本", vendor: "loopback", kind: "text" } as ModelOption & { kind: "text" },
   ]);
-  return new Map(entries.map((e) => [e.modelKey, e]));
+  return new Map(entries.map((e) => [e.modelId, e]));
 }
 
 describe("buildPlannedNodeMeta", () => {

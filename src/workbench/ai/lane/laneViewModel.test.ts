@@ -270,8 +270,8 @@ describe('laneViewModel', () => {
       part({ kind: 'user', text: 'Append a closing line.' }),
       part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'write_script', args: { where: 'end' }, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'write_script', isError: false,
-        text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (changeId=undo-1)`,
-        nextAction: { kind: 'none', userSees, changeId: 'undo-1' } }),
+        text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (undoToken=undo-1)`,
+        nextAction: { kind: 'none', userSees, undoToken: 'undo-1' } }),
     ]), labels)
     const tool = model.items[1]
     expect(tool.kind === 'tool' && tool.receipt.output).toBe('Applied append to the document. New revision 1.')

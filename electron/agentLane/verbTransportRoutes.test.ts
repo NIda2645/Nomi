@@ -57,7 +57,7 @@ describe("对应关系表：坏表在装配期就抛", () => {
       .toThrow(/candidate\.providerId/);
   });
 
-  it("两条关系抢同一个落点却不分优先级 → 抛（modelKey 与 candidate.modelId 就是这一对）", () => {
+  it("两条关系抢同一个落点却不分优先级 → 抛（平铺 modelId 与 candidate.modelId 就是这一对）", () => {
     expect(() => assembleVerbFieldMap({
       label: "probe", sourceKeys: ["a", "b"], targets: { host: ["same"] },
       relations: {
@@ -97,11 +97,11 @@ describe("生成出来的翻译与手写版逐字节相同", () => {
       .toMatchObject({ operation: "create", prompt: "p", parameters: { seed: 7, duration: 3 }, cardHidden: true });
   });
 
-  it("目录点名赢过 modelKey，两件各自落位（优先级是声明出来的，不是靠写的顺序）", () => {
-    expect(translate({ shots: [{ prompt: "p", modelKey: "fallback", candidate: { providerId: "apimart", modelId: "image-1" } }] }))
+  it("目录点名赢过平铺的 modelId，两件各自落位（优先级是声明出来的，不是靠写的顺序）", () => {
+    expect(translate({ shots: [{ prompt: "p", modelId: "fallback", candidate: { providerId: "apimart", modelId: "image-1" } }] }))
       .toMatchObject({ providerId: "apimart", modelId: "image-1" });
-    // 只给 modelKey 时它就是赢家——否则上一条可能只是「candidate 恒赢」而 modelKey 根本没接。
-    expect(translate({ shots: [{ prompt: "p", modelKey: "fallback" }] })).toMatchObject({ modelId: "fallback" });
+    // 只给平铺 modelId 时它就是赢家——否则上一条可能只是「candidate 恒赢」而平铺那条根本没接。
+    expect(translate({ shots: [{ prompt: "p", modelId: "fallback" }] })).toMatchObject({ modelId: "fallback" });
   });
 
   it("参考素材出去的是宿主认的引用外壳，身份留给宿主补", () => {
@@ -112,7 +112,7 @@ describe("生成出来的翻译与手写版逐字节相同", () => {
   it("信封字段进多镜、不进候选 patch（absentOn 的机器版）", () => {
     const multi = translate({ shots: [{ role: "anchor", title: "锚", prompt: "a" }, { role: "shot", prompt: "b" }] }) as { shots: Array<Record<string, unknown>> };
     expect(multi.shots[0]).toMatchObject({ role: "anchor", title: "锚", prompt: "a" });
-    const patched = translate({ draftId: "op-1", shots: [{ shotId: "shot-3", prompt: "改一句" }] }) as { patch: Record<string, unknown> };
+    const patched = translate({ operationId: "op-1", shots: [{ shotId: "shot-3", prompt: "改一句" }] }) as { patch: Record<string, unknown> };
     expect(patched).toMatchObject({ operation: "patch", operationId: "op-1" });
     expect(patched.patch).toEqual({ prompt: "改一句" });
   });
@@ -154,9 +154,9 @@ describe("生成出来的翻译与手写版逐字节相同", () => {
       "cancel_job", "check_job", "delete_from_canvas", "edit_timeline", "export_video",
       "generate", "read_skill", "save_skill", "undo",
     ]);
-    expect(verbToTransportCall({ toolCallId: "c", toolName: "undo", args: { changeId: "undo-1", expectedRevision: "r2" } })!.call.args)
+    expect(verbToTransportCall({ toolCallId: "c", toolName: "undo", args: { undoToken: "undo-1", expectedRevision: "r2" } })!.call.args)
       .toEqual({ undoToken: "undo-1", expectedRevision: "r2" });
-    expect(verbToTransportCall({ toolCallId: "c", toolName: "edit_timeline", args: { revision: "r1", summary: "s", operations: [] } })!.call.args)
+    expect(verbToTransportCall({ toolCallId: "c", toolName: "edit_timeline", args: { baseRevision: "r1", summary: "s", operations: [] } })!.call.args)
       .toEqual({ planId: "plan-c", baseRevision: "r1", summary: "s", operations: [] });
   });
 

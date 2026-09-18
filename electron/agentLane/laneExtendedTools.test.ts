@@ -7,6 +7,11 @@ import { timelineEditPlanModelSchema } from '../shared/agentCapabilities/timelin
 import { collectVendorCompatibilityFailures, toPublishedJsonSchema } from '../shared/agentCapabilities/modelVisibleJsonSchema'
 import { modelFacingToolSpecs } from '../shared/agentCapabilities/modelFacingToolRegistry'
 import { LANE_MODEL_TOOL_CATALOG, LANE_TOOL_BUDGET, LANE_DEFERRED_TOOL_CATALOG, LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog'
+import { VERB_DECLARATIONS } from '../shared/agentCapabilities/verbDeclarations'
+import { objectFieldKeys } from '../shared/agentCapabilities/verbs/verbFieldMap'
+import {
+  LANE_TOOL_NEXT_ACTION_REFS, renderLaneToolNextAction, type LaneToolNextAction,
+} from '../shared/agentLane/laneToolNextAction'
 
 const preserved = ['edit_timeline', 'undo', 'export_video',
   'make_artifact', 'stage_shot', 'draft_shots', 'check_job',
@@ -107,7 +112,7 @@ describe('工具回执从真实审批结论派生', () => {
   }
 
   const editArgs = {
-    revision: 'revision-1', summary: '劈成两半',
+    baseRevision: 'revision-1', summary: '劈成两半',
     operations: [{ kind: 'split', clipId: 'clip-1', atFrame: 30 }],
   }
 
@@ -140,7 +145,7 @@ describe('工具回执从真实审批结论派生', () => {
       drafted: { operation: { operationId: 'op-7' } },
       spendDecision: { decidedBy: 'policy:full_auto', receiptId: 'receipt-1' },
       started: { ok: true },
-    }, 'auto-granted', { draftId: 'op-7' })
+    }, 'auto-granted', { operationId: 'op-7' })
     expect(outcome.ok).toBe(true)
     expect(outcome.nextAction?.kind).toBe('job_running')
     expect(outcome.nextAction?.jobId).toBe('op-7')
@@ -150,10 +155,64 @@ describe('工具回执从真实审批结论派生', () => {
   it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
     const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
       .find(candidate => candidate.name === 'generate')!
-    const outcome = await tool.execute(tool.schema.parse({ draftId: 'op-7' }), { toolCallId: 'call-1', signal }) as
+    const outcome = await tool.execute(tool.schema.parse({ operationId: 'op-7' }), { toolCallId: 'call-1', signal }) as
       { ok: boolean; failure?: { code: string; message: string } }
     expect(outcome.ok).toBe(false)
     expect(outcome.failure?.code).toBe('user_sees_spend_card')
     expect(outcome.failure?.message).toMatch(/for 2 shot\(s\)/)
+  })
+})
+
+// ── 宿主拼给模型看的那一行，用的必须是模型真能填的字段名（2026-09-18 第三刀）──────────────
+//
+// 工具结果的末行是**宿主替模型写的**：`User sees: … (undoToken=undo-1)`。它的作用是告诉模型
+// 「下一步要填的那个值在这里」。所以那一行里出现的每个名字，都必须是某个动词 schema 上**真的有**
+// 的字段——否则模型照着填就是一个未知字段，照着不填就得自己猜。
+//
+// 这两条当天各抓到一处：`edit_timeline` 的末行印 `changeId=`，而 `undo` 收的字段叫 `undoToken`；
+// `draft_shots` 的末行把草稿 id 印成 `jobId=`，而下一步 `draft_shots` / `generate` 要求填 `operationId`。
+// 断言里没有写死任何期望名字——期望值从注册表里的动词 schema 取，动词改名这两条自己跟着走。
+describe('工具结果末行里的引用名 = 模型下一步真能填的字段名', () => {
+  const signal = new AbortController().signal
+  const fieldsOf = (verb: string): readonly string[] =>
+    objectFieldKeys(VERB_DECLARATIONS.find(declaration => declaration.name === verb)!.schema, `verb ${verb}`)
+  /** 末行里 `name=value` 那几个引用名（`User sees:` 那句人话不参与）。 */
+  const refNamesOf = (next: LaneToolNextAction): string[] =>
+    [...renderLaneToolNextAction(next).matchAll(/([A-Za-z][A-Za-z0-9_]*)=/g)].map(match => match[1]!)
+
+  const nextActionOf = async (name: string, result: unknown, args: Record<string, unknown>) => {
+    const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result }) })
+      .find(candidate => candidate.name === name)!
+    const outcome = await tool.execute(tool.schema.parse(args), { toolCallId: 'call-1', signal, approvalDecision: 'auto-granted' }) as
+      { nextAction?: LaneToolNextAction }
+    return outcome.nextAction!
+  }
+
+  it('edit_timeline 交回的撤销令牌，名字就是 undo 收的那个字段', async () => {
+    const next = await nextActionOf('edit_timeline', { undoToken: 'undo-1' }, {
+      baseRevision: 'revision-1', summary: '劈成两半', operations: [{ kind: 'split', clipId: 'clip-1', atFrame: 30 }],
+    })
+    const undoFields = fieldsOf('undo')
+    const named = refNamesOf(next).filter(name => renderLaneToolNextAction(next).includes(`${name}=undo-1`))
+    expect(named.length).toBeGreaterThan(0)
+    for (const name of named) expect(undoFields).toContain(name)
+  })
+
+  it('draft_shots 交回的草稿 id，名字就是 draft_shots 与 generate 收的那个字段', async () => {
+    const next = await nextActionOf('draft_shots', { operation: { operationId: 'op-7' } }, {
+      shots: [{ prompt: '海上日出' }],
+    })
+    const rendered = renderLaneToolNextAction(next)
+    const named = refNamesOf(next).filter(name => rendered.includes(`${name}=op-7`))
+    expect(named.length).toBeGreaterThan(0)
+    for (const name of named) {
+      expect(fieldsOf('draft_shots')).toContain(name)
+      expect(fieldsOf('generate')).toContain(name)
+    }
+  })
+
+  it('末行支持的每个引用名，都至少有一个动词真的收它（不许留一个没人要的名字）', () => {
+    const everyVerbField = new Set(VERB_DECLARATIONS.flatMap(declaration => fieldsOf(declaration.name)))
+    for (const name of LANE_TOOL_NEXT_ACTION_REFS) expect([...everyVerbField]).toContain(name)
   })
 })
