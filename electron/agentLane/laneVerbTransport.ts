@@ -1,10 +1,12 @@
 // Agent lane · 延迟组动词 → 传输层方法调用。**这个文件不再手写任何字段名单。**
 //
-// **这个文件里没有一条对应关系了。** 19 个动词的模型面是各自宿主契约 schema 的投影
-// （`verbs/verbProjections.ts`），字段名两边逐字相同，所以这里只剩下三样真正的逻辑：走哪条 lane /
-// 哪个方法、`draft_shots` 那三支的分支判断（改草稿 / 单镜摊平 / 多镜），以及两个**双域**动词在生成域
-// 那一半的唯一一条改名（`verbs/verbDualDomain.ts`，理由是两个域各有一份持久化）。
-// `draft_shots` 的形状变化住在 `verbs/draftShotsProjection.ts`，那是全链仅剩的有损投影。
+// **这个文件里没有一条对应关系了。** 这条路上经过的动词，模型面要么是它自己那份宿主契约 schema 的
+// 投影（`verbs/verbProjections.ts`：`generate` / `undo` / `edit_timeline` / `export_video` /
+// `delete_from_canvas` / `read_skill` / `save_skill` / `check_job` / `cancel_job` 的导出域），字段名两边
+// 逐字相同；要么是 `draft_shots` 那一份**有损**投影（`verbs/draftShotsProjection.ts`，全链仅此一个）。
+// 所以这里只剩下三样真正的逻辑：走哪条 lane / 哪个方法、`draft_shots` 那三支的分支判断（改草稿 /
+// 单镜摊平 / 多镜），以及两个**双域**动词在生成域那一半的唯一一条改名（`verbs/verbDualDomain.ts`，
+// 理由是两个域各有一份持久化）。
 //
 // 为什么这么改（2026-09-18，用户原话「该有两遍，不该有四遍」）：一个能力原本被重述四遍——动词声明、
 // 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的形状，宿主要内部形状，而且
