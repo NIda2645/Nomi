@@ -158,15 +158,14 @@ async function formOnlyArm(dirs, provider) {
   })
   try {
     await mcp.initialize(20_000)
-    const begun = parseToolResult(await mcp.callTool('nomi_model_setup', {
-    action: 'connect_provider',
-    name: 'Form-only relay',
-    suggestedBaseUrl: provider.baseUrl,
-    }))
-    check(!begun.isError, 'B1 form-only 宿主也能建接入会话')
+    // 2026-09-18（#754）：`connect_provider` 一跳就是「开会话 + 给出贴 key 的路」，
+    // 所以这里只有一次调用——B 臂验的是「这条路对只声明 form 的宿主长什么样」。
     const opened = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'connect_provider', vendorKey: 'reopen', reissueKey: true,
+      action: 'connect_provider',
+      name: 'Form-only relay',
+      suggestedBaseUrl: provider.baseUrl,
     }, { timeoutMs: 60_000 }))
+    check(!opened.isError, 'B1 form-only 宿主也能建接入会话')
     check(mcp.urlElicitations().length === 0, 'B2 没向只声明 form 的宿主发 mode="url"（规范禁止）')
     check(mcp.elicitationCount() === 0, 'B2 也没退化成 form 模式问密钥')
     check(opened.json?.credentialEntry?.mode === 'manual', 'B3 给出明确的手动路径而不是一个它打不开的链接')

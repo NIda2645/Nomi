@@ -144,11 +144,9 @@ try {
   })
   const integrationStartData = resultTextJson(integrationStarted)
   const integrationSessionId = integrationStartData.setupId || resultData(integrationStarted).setupId
-  const credentialHandoff = await call(mcp, 'nomi_model_setup', {
-    action: 'connect_provider', reissueKey: true,
-      })
-  check(resultTextJson(credentialHandoff).state?.stage === 'needs_credential', 'C7 T14 connect_provider 只打开 Nomi 安全页')
-  // open_credentials 现在还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
+  // 2026-09-18（#754）：贴 key 页由上面那一跳打开，不再有第二个动词。
+  check(integrationStartData.state?.stage === 'needs_credential', 'C7 T14 connect_provider 只打开 Nomi 安全页')
+  // connect_provider 还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
   // 供应商名从持久 handoff 还原。这是 PR #528 要证明的那件事，所以在这里正面断言它，
   // 而不是让它以「后面某个点击被模态挡住」的形式暴露出来。
   const settingsOverlay = win.locator('[data-settings-overlay="true"]')

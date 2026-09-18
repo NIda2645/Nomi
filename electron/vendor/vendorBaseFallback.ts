@@ -238,9 +238,9 @@ export async function fetchVendorWithBaseFallback(url: string, init: RequestInit
 export function codeDeclaredFallbackOrigins(vendorKey: string): string[] {
   const family = FAMILIES.find((item) => item.vendorKey === vendorKey);
   if (!family) return [];
-  // 声明写错了就当它不存在——绝不因此放行一个解析不出来的目的地。
-  const originOf = (candidate: string): string => { try { return new URL(candidate).origin; } catch { return ""; } };
-  return [...new Set([family.primary, ...family.alternates].map(originOf).filter(Boolean))];
+  // 归一用的是本文件已有的那一个（`runLadder` 对同一批 family URL 用的也是它）：
+  // 声明写错了它返回空串，就当这条不存在——绝不因此放行一个解析不出来的目的地。
+  return [...new Set([family.primary, ...family.alternates].map(normalizeOrigin).filter(Boolean))];
 }
 
 export function activeVendorBaseOverride(vendorKey: string): string | null {
