@@ -12,7 +12,8 @@ import { selectProductionShotRows, type LandedRun } from './productionShotRows'
 export type ShotTableRowView = {
   id: string
   index: number
-  duration: number
+  /** 没有时长（静帧）就是 undefined，**不是 0**——「没有」和「零秒」是两件事，挤进一个表示读者就分不开。 */
+  duration?: number
   start?: number
   end?: number
   prompt: string

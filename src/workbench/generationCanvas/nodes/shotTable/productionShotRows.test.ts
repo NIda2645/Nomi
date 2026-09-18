@@ -62,11 +62,14 @@ describe('selectShotTableRows · production source', () => {
     expect(rows([landed('queued-shot')], { ...run, runId: 'run-9' } as LandedRun)[0].exec?.status).toBe('ready')
   })
 
-  it('duration reads the node\'s declared duration and never invents one', () => {
+  it('duration reads the node\'s declared duration and never invents one; a still frame has **no** duration, not zero', () => {
     const view = rows([
       landed('v', { kind: 'video', meta: { productionRunId: 'run-1', productionShotRole: 'shot', duration: 5 } }),
       landed('i'),
     ])
-    expect(view.map((row) => row.duration)).toEqual([5, 0])
+    // 静帧那行是 undefined 而不是 0：表里因此显示「—」而不是「0s」。
+    // 2026-09-18 金路径真机截图上三行静帧全写着「0s」，读起来像「时长为零」——
+    // 「没有」和「零」挤进同一个表示，读者就分不开（这一批合同里最常见的那个形状）。
+    expect(view.map((row) => row.duration)).toEqual([5, undefined])
   })
 })

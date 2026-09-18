@@ -32,10 +32,11 @@ export function productionShotNodes(nodes: readonly GenerationCanvasNode[], runI
   })
 }
 
-function durationOf(node: GenerationCanvasNode): number {
+/** 静帧没有时长：返回 undefined 而不是 0。落成 0 的话表里会显示「0s」，读起来像「时长为零」。 */
+function durationOf(node: GenerationCanvasNode): number | undefined {
   const meta = metaOf(node)
   const value = node.kind === 'image' ? meta.imageDurationSec : meta.duration
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 function modeOf(node: GenerationCanvasNode, imageModelOptions: readonly ModelOption[], videoModelOptions: readonly ModelOption[]): ArchetypeMode | null {
