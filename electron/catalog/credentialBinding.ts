@@ -30,6 +30,16 @@ export const CREDENTIAL_DESTINATION_FIELDS = Object.freeze([
   "proxyUrl",
 ] as const);
 
+/**
+ * 绑定里**真正被判据用到**的那几个字段（Ponytail 2026-09-18）。
+ *
+ * 「记下来但没有人判」正是这条不变量要杀的那个形状，所以绑定上不留这样的字段：
+ * `proxyUrl` 曾经以一个 `proxied` 布尔的形式记在这里而从不参与授权——而且代理开关是
+ * `connect_provider` **明确允许**的合法动作，把它记成绑定的一部分会让一次合法操作看起来像违规。
+ * 它已经删掉。剩下的四个全部在 `judgeCredentialDestination` 里判。
+ */
+export const ENFORCED_BINDING_FIELDS = Object.freeze(["origin", "authType", "authHeader", "authQueryParam", "authScheme"] as const);
+
 /** MCP 工具面上一律不许出现的入参名（`check:credential-origin` 判据 ②）。 */
 export const CREDENTIAL_DESTINATION_TOOL_FIELDS = Object.freeze([
   "baseUrl",
@@ -60,7 +70,6 @@ export function deriveCredentialBinding(
     ...(vendor?.authHeader ? { authHeader: String(vendor.authHeader) } : {}),
     ...(vendor?.authQueryParam ? { authQueryParam: String(vendor.authQueryParam) } : {}),
     ...(vendor?.authScheme ? { authScheme: String(vendor.authScheme) } : {}),
-    ...(vendor?.network?.proxyUrl ? { proxied: true } : {}),
     confirmedAt,
   };
 }
@@ -82,7 +91,6 @@ export function readCredentialBinding(vendor: Pick<Vendor, "credentialBinding"> 
     ...(text(record.authHeader) ? { authHeader: text(record.authHeader) as string } : {}),
     ...(text(record.authQueryParam) ? { authQueryParam: text(record.authQueryParam) as string } : {}),
     ...(text(record.authScheme) ? { authScheme: text(record.authScheme) as string } : {}),
-    ...(record.proxied === true ? { proxied: true } : {}),
     confirmedAt: record.confirmedAt,
   };
 }
@@ -101,14 +109,14 @@ export function sameCredentialDestination(left: CredentialBinding | undefined, r
     authHeader: value.authHeader ?? "",
     authQueryParam: value.authQueryParam ?? "",
     authScheme: value.authScheme ?? "",
-    proxied: value.proxied === true,
   });
   return shape(left) === shape(right);
 }
 
 export type CredentialDestinationVerdict =
   | { allowed: true }
-  | { allowed: false; boundOrigin: string; attemptedOrigin: string };
+  /** `changed` 说清**是哪一样变了**：地址，还是 key 的放法——两者给用户的下一句话不同。 */
+  | { allowed: false; boundOrigin: string; attemptedOrigin: string; changed: "origin" | "authType" | "authHeader" | "authQueryParam" | "authScheme" };
 
 /**
  * 带 key 的这次请求，目的地是用户确认过的那个吗。
@@ -121,14 +129,27 @@ export function judgeCredentialDestination(input: {
   binding: CredentialBinding | undefined;
   url: string;
   codeDeclaredOrigins: readonly string[];
+  /** 这次请求实际要用的鉴权放法（vendor 行上的那几个字段）。 */
+  placement?: Pick<Vendor, "authType" | "authHeader" | "authQueryParam" | "authScheme">;
 }): CredentialDestinationVerdict {
   const binding = input.binding;
   if (!binding || !binding.origin) return { allowed: true };
   const attempted = originOf(input.url);
   if (!attempted) return { allowed: true };
-  if (attempted === binding.origin) return { allowed: true };
-  if (input.codeDeclaredOrigins.includes(attempted)) return { allowed: true };
-  return { allowed: false, boundOrigin: binding.origin, attemptedOrigin: attempted };
+  const originAllowed = attempted === binding.origin || input.codeDeclaredOrigins.includes(attempted);
+  if (!originAllowed) return { allowed: false, boundOrigin: binding.origin, attemptedOrigin: attempted, changed: "origin" };
+  // 「改变这个 origin **或 key 的放法**，只能再走一次贴 key 页」——后半句以前只写在不变量里、
+  // 没有人判（Ponytail 2026-09-18）。放法变了而 key 没重存，就是「这把 key 以用户没确认过的方式
+  // 被送出去」，和换地址是同一件事：同一把钥匙，换了一个信封。
+  const placement = input.placement;
+  if (placement) {
+    const drifted = (["authType", "authHeader", "authQueryParam", "authScheme"] as const)
+      .find((field) => String(placement[field] ?? "") !== String(binding[field] ?? ""));
+    if (drifted) {
+      return { allowed: false, boundOrigin: binding.origin, attemptedOrigin: attempted, changed: drifted };
+    }
+  }
+  return { allowed: true };
 }
 
 /**

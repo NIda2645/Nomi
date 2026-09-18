@@ -9,7 +9,7 @@
 //
 // 一次修好不算完：下一个写入口只要自己 patch 一次 baseUrlHint，同族问题就回来。三条硬判据：
 //
-//   规则 1（硬零）：`baseUrlHint / authType / authHeader / authQueryParam / authScheme / proxyUrl`
+//   规则 1（硬零，判据走 TypeScript AST）：`baseUrlHint / authType / authHeader / authQueryParam / authScheme / proxyUrl`
 //       的**写入**只许出现在登记的 owner 文件里（catalog 的写门与内置种子）。别处写 = 第二个
 //       「key 去哪」的真相源。判据只认赋值位（`x: value` 在对象字面量里、`x =`），不认读取。
 //
@@ -29,6 +29,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SCAN_ROOTS = ['electron', 'src']
@@ -63,7 +64,8 @@ const DESTINATION_OWNERS = new Map([
 const DESTINATION_FIELDS = ['baseUrlHint', 'authType', 'authHeader', 'authQueryParam', 'authScheme', 'proxyUrl']
 const TOOL_FIELDS = ['baseUrl', ...DESTINATION_FIELDS]
 
-const UPSERT_CALL = /\b(?:upsertVendor|upsertModelCatalogVendor|applyVendorUpsert)\s*\(/g
+/** 写入目录的那几个函数名。判据认**调用**，不认字面量里的同名字符串。 */
+const UPSERT_FUNCTIONS = new Set(["upsertVendor", "upsertModelCatalogVendor", "applyVendorUpsert"])
 
 function listFiles(): string[] {
   const out: string[] = []
@@ -83,32 +85,54 @@ function listFiles(): string[] {
 
 const isTest = (relative: string): boolean => /\.(test|spec)\.[cm]?[jt]sx?$/.test(relative)
 
-/** 从 `(` 起按括号配平取出实参文本（上限 4000 字符，够长的调用点就该拆了）。 */
-function callArguments(text: string, openParen: number): string {
-  let depth = 0
-  for (let index = openParen; index < text.length && index < openParen + 4_000; index += 1) {
-    const char = text[index]
-    if (char === '(') depth += 1
-    else if (char === ')') {
-      depth -= 1
-      if (depth === 0) return text.slice(openParen + 1, index)
-    }
-  }
-  return text.slice(openParen + 1, openParen + 4_000)
+/** 这个被调用的东西叫什么（`f(...)` 与 `x.f(...)` 都取 `f`）。 */
+function calleeName(expression: ts.Expression): string {
+  if (ts.isIdentifier(expression)) return expression.text
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text
+  return ""
 }
 
+/** 这个实参对象里，字面写出来的那几个去向字段。 */
+function destinationPropertiesOf(argument: ts.Expression | undefined): string[] {
+  if (!argument || !ts.isObjectLiteralExpression(argument)) return []
+  const written: string[] = []
+  for (const property of argument.properties) {
+    const name = property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+      ? property.name.text
+      : ""
+    if (DESTINATION_FIELDS.includes(name as (typeof DESTINATION_FIELDS)[number])) written.push(name)
+  }
+  return written
+}
+
+/**
+ * 谁把「key 去哪」写进了一行持久 vendor。
+ *
+ * 判据走 TypeScript 自己的 AST（仓库里别的门岗，如 `check-capability-lifecycle.mjs`，也是这么做的）。
+ * 上一版在这里手搓了正则 + 括号配平解析器——它读不懂字符串里的括号，也分不清注释里的调用
+ * （Ponytail 2026-09-18）。语法树没有这些问题，而且少了一半代码。
+ */
 function scanWriters(): string[] {
   const findings: string[] = []
   for (const relative of listFiles()) {
     if (isTest(relative) || DESTINATION_OWNERS.has(relative)) continue
     const text = fs.readFileSync(path.join(repoRoot, relative), 'utf8')
-    for (const match of text.matchAll(UPSERT_CALL)) {
-      const args = callArguments(text, match.index + match[0].length - 1)
-      const written = DESTINATION_FIELDS.filter((field) => new RegExp(`\\b${field}\\s*:`).test(args))
-      if (written.length === 0) continue
-      const line = text.slice(0, match.index).split('\n').length
-      findings.push(`${relative}:${line} 把 ${written.join(' / ')} 写进一行 vendor —— 「key 去哪」只许在登记的 owner 里写（见本门岗 DESTINATION_OWNERS）`)
+    if (![...UPSERT_FUNCTIONS].some((name) => text.includes(name))) continue
+    const source = ts.createSourceFile(
+      relative, text, ts.ScriptTarget.Latest, true,
+      relative.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    )
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && UPSERT_FUNCTIONS.has(calleeName(node.expression))) {
+        const written = destinationPropertiesOf(node.arguments[0])
+        if (written.length > 0) {
+          const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
+          findings.push(`${relative}:${line} 把 ${written.join(' / ')} 写进一行 vendor —— 「key 去哪」只许在登记的 owner 里写（见本门岗 DESTINATION_OWNERS）`)
+        }
+      }
+      ts.forEachChild(node, visit)
     }
+    visit(source)
   }
   return findings
 }

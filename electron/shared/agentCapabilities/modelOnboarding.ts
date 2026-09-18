@@ -50,15 +50,11 @@ export const modelSetupInputSchema = z.discriminatedUnion("action", [
   }).strict(),
 ]);
 
-export const modelSetupResultSchema = z.unknown();
-
 export const modelRemoveInputSchema = z.object({
   vendorKey: z.string().trim().min(1).max(160),
   modelKeys: z.array(z.string().trim().min(1).max(160)).min(1).max(200).optional(),
   ifUnchanged: z.string().trim().min(1).max(200),
 }).strict();
-
-export const modelRemoveResultSchema = z.unknown();
 
 export type ModelSetupInput = z.infer<typeof modelSetupInputSchema>;
 export type ModelRemoveInput = z.infer<typeof modelRemoveInputSchema>;
@@ -68,7 +64,8 @@ export const MODEL_ONBOARDING_SETUP_CAPABILITY = {
   version: 1,
   aliases: { pi: "connect_model_provider", mcp: "nomi_model_setup" },
   inputSchema: modelSetupInputSchema,
-  outputSchema: modelSetupResultSchema,
+  // 结果形状由信封（`capabilityCore/modelOnboarding/envelope.ts`）说了算，契约这一层不再复述一遍。
+  outputSchema: z.unknown(),
   effect: "reversible_write",
   effectClass: "reversible_local",
   execution: { port: "model-catalog", availability: "main_or_renderer" },
@@ -83,7 +80,7 @@ export const MODEL_ONBOARDING_REMOVE_CAPABILITY = {
   version: 1,
   aliases: { pi: "remove_model_provider", mcp: "nomi_remove_provider" },
   inputSchema: modelRemoveInputSchema,
-  outputSchema: modelRemoveResultSchema,
+  outputSchema: z.unknown(),
   effect: "destructive",
   effectClass: "irreversible",
   execution: { port: "model-catalog", availability: "main_or_renderer" },

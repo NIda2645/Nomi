@@ -26,13 +26,7 @@ function card(overrides: Record<string, unknown> = {}) {
 }
 
 function draft(overrides: Record<string, unknown> = {}) {
-  const { assetIngestion, ...rest } = card(overrides);
-  return {
-    provider: { baseUrl: "https://api.relay.example", authType: "bearer" },
-    assetIngestion,
-    ...rest,
-    ...overrides,
-  };
+  return { provider: { baseUrl: "https://api.relay.example", authType: "bearer" }, ...card(overrides) };
 }
 
 const options = { providerBaseUrl: "https://api.relay.example", selectedModelKeys: ["relay-paint"] };

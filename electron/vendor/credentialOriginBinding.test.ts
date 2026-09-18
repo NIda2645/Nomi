@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorizeSubmitDestination, setSubmitOutboundDepsForTests } from "./vendorOutboundGuard";
 import {
+  ENFORCED_BINDING_FIELDS,
   deriveCredentialBinding,
   judgeCredentialDestination,
   readCredentialBinding,
@@ -58,6 +59,7 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
     expect(refusal).toBeTruthy();
     expect(matchNomiErrorCode(refusal as string)).toBe("outbound-blocked-credential-origin");
     // 两个事实都要在错误里，否则用户没法判断「是我自己换了地址」还是「有人改了它」。
+    expect(refusal as string).toContain("changed=origin");
     expect(refusal as string).toContain("bound=https://api.relay.example");
     expect(refusal as string).toContain("attempted=https://collector.attacker.example");
   });
@@ -136,6 +138,34 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
     })).resolves.toBeNull();
   });
 
+  // Ponytail 2026-09-18：绑定上曾经记着「保存时走不走代理」这个布尔，而判据从来不看它，
+  // 而且代理开关是 `connect_provider` **明确允许**的动作——记了不判的字段正是这条不变量要杀的形状。
+  // 它已删掉；剩下的四个字段全部真的判。这两条把「记的 == 判的」钉住。
+  it("key 的放法变了而 key 没重存 → 同样拦下（同一把钥匙换了一个信封）", async () => {
+    seedPublicInternet();
+    const rebranded = { ...boundVendor(), authType: "x-api-key" as const, authHeader: "X-Key" };
+    const refusal = await authorizeSubmitDestination({
+      vendor: rebranded,
+      url: "https://api.relay.example/v1/images/generations",
+      routedThroughProviderProxy: false,
+      carriesCredential: true,
+    });
+    expect(matchNomiErrorCode(refusal as string)).toBe("outbound-blocked-credential-origin");
+    // 说清**是哪一样变了**：地址没变，变的是放法——给用户的下一句话不同。
+    expect(refusal as string).toContain("changed=authType");
+  });
+
+  it("【阳性对照】开关单供应商代理是合法动作，不算「放法变了」", async () => {
+    seedPublicInternet();
+    const proxied = { ...boundVendor(), network: { proxyUrl: "http://127.0.0.1:7890", proxyEnabled: true } };
+    await expect(authorizeSubmitDestination({
+      vendor: proxied,
+      url: "https://api.relay.example/v1/images/generations",
+      routedThroughProviderProxy: true,
+      carriesCredential: true,
+    })).resolves.toBeNull();
+  });
+
   it("绑定是纯函数：读回来的就是写下去的那一份", () => {
     const row = { baseUrlHint: "https://api.relay.example/v1", authType: "x-api-key" as const, authHeader: "X-Key" };
     const binding = deriveCredentialBinding(row, "2026-09-18T00:00:00.000Z");
@@ -145,6 +175,10 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
     expect(readCredentialBinding({ credentialBinding: undefined })).toBeUndefined();
     expect(judgeCredentialDestination({ binding, url: "https://api.relay.example/v1/x", codeDeclaredOrigins: [] }).allowed).toBe(true);
     expect(judgeCredentialDestination({ binding, url: "https://other.example/v1/x", codeDeclaredOrigins: [] }).allowed).toBe(false);
+    // 绑定上不留「记了没人判」的字段：出现在绑定里的每个字段（除了时刻本身）都在判据里。
+    // 反过来不要求——没配 authQueryParam 的连接本来就不该在绑定里凭空多一个空字段。
+    expect(Object.keys(binding).filter((key) => key !== "confirmedAt")
+      .filter((key) => !(ENFORCED_BINDING_FIELDS as readonly string[]).includes(key))).toEqual([]);
   });
 });
 

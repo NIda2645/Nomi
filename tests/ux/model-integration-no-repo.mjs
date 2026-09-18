@@ -49,7 +49,7 @@ async function run() {
       }),
     )
     assert(
-      !begin.isError && typeof begin.json?.id === 'string',
+      !begin.isError && typeof begin.json?.setupId === 'string',
       'signed agent can create a durable draft from an empty directory',
     )
     assert(

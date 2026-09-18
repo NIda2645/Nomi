@@ -49,10 +49,6 @@ export type OnboardingDispatchDeps = {
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-function fail(failure: OnboardingFailure): OnboardingFailure {
-  return failure;
-}
-
 /** 目录里现在有哪几行——`ifUnchanged` 与 `nomi_read target=models` 读的是同一份。 */
 export function currentCatalogFingerprint(): string {
   const catalog = readCatalog();
@@ -71,20 +67,20 @@ async function connectProvider(
   if (vendorKey) {
     const vendor = listModelCatalogVendors().find((row) => row.key === vendorKey);
     if (!vendor) {
-      return fail({
+      return {
         ok: false, code: "not_found",
         message: `No connection called ${vendorKey}. Read nomi_read target=models for the ids that exist.`,
         nextAction: "Call nomi_read target=models and use one of the vendor ids it returns.",
-      });
+      };
     }
     // 地址与鉴权放法在这条路上是**只读**的：改它们等于让一段对话文本决定用户的密钥发往哪里。
     if (suggestedBaseUrl) {
       const binding = readCredentialBinding(vendor);
-      return fail({
+      return {
         ok: false, code: "credential_origin_mismatch",
         message: `This connection already holds a key${binding?.origin ? `, bound to ${binding.origin}` : ""}. Where a saved key is sent is decided by the user on Nomi's credential page, not by an argument.`,
         nextAction: "Call connect_provider again with reissueKey=true (and no suggestedBaseUrl): Nomi reopens that page with the address editable, and the user's save rebinds the key.",
-      });
+      };
     }
     const changes: OnboardingResult["changes"] = [];
     const name = text(args.name);
@@ -94,12 +90,12 @@ async function connectProvider(
     }
     if (typeof args.proxyEnabled === "boolean") {
       if (args.proxyEnabled && !vendor.network?.proxyUrl) {
-        return fail({
+        return {
           ok: false, code: "needs_input",
           message: "This connection has no proxy saved, so there is nothing to switch on.",
           needs: ["a proxy URL saved by the user in Nomi's network settings"],
           nextAction: "Ask the user to save a proxy for this connection in Nomi's model settings first.",
-        });
+        };
       }
       upsertModelCatalogVendor({ key: vendorKey, network: { proxyEnabled: args.proxyEnabled } });
       changes.push({ state: "S11.1", summary: `Turned this connection's proxy ${args.proxyEnabled ? "on" : "off"}.` });
@@ -115,20 +111,20 @@ async function connectProvider(
   }
 
   if (!vendorKey && !text(args.name)) {
-    return fail({
+    return {
       ok: false, code: "needs_input",
       message: "connect_provider needs a name for a new connection, or a vendorKey to adjust one that exists.",
       needs: ["name"],
       nextAction: "Send name (the provider's display name), plus docs and suggestedBaseUrl when you have them.",
-    });
+    };
   }
   if (!vendorKey && !suggestedBaseUrl) {
-    return fail({
+    return {
       ok: false, code: "needs_input",
       message: "Nomi needs an address to pre-fill on the credential page before the user can confirm it.",
       needs: ["suggestedBaseUrl"],
       nextAction: "Read the provider's documentation for its API base URL and send it as suggestedBaseUrl. The user confirms it by saving; you never decide it.",
-    });
+    };
   }
 
   const opened = vendorKey
@@ -170,16 +166,19 @@ async function connectProvider(
 }
 
 /** 已存在的连接要重新贴 key：沿用它已绑定的 origin 开一个会话（地址不由这一跳决定）。 */
-function reopenForVendor(deps: OnboardingDispatchDeps, vendorKey: string) {
+function reopenForVendor(
+  deps: OnboardingDispatchDeps,
+  vendorKey: string,
+): OnboardingFailure | ReturnType<IntegrationSessionService["begin"]> {
   const vendor = listModelCatalogVendors().find((row) => row.key === vendorKey);
   const baseUrl = text(vendor?.baseUrlHint);
   if (!baseUrl) {
-    return fail({
+    return {
       ok: false, code: "needs_input",
       message: `Connection ${vendorKey} has no address on file, so Nomi cannot reopen its credential page.`,
       needs: ["the user to add this connection in Nomi's model settings"],
       nextAction: "Ask the user to open Nomi's model settings and add the address there.",
-    });
+    };
   }
   return deps.sessions.begin({
     kind: "http-api-provider",
@@ -246,21 +245,21 @@ async function submitDeclaration(
   try {
     card = JSON.parse(String(args.declaration ?? ""));
   } catch (error) {
-    return fail({
+    return {
       ok: false, code: "declaration_rejected",
       message: "The declaration is not valid JSON.",
       rejections: [{ path: "declaration", code: "schema", message: error instanceof Error ? error.message.slice(0, 300) : "invalid JSON" }],
       nextAction: "Send the card again as one JSON object; nomi_read target=setup returns the exact schema it must match.",
-    });
+    };
   }
   const models = isJsonRecord(card) && Array.isArray(card.models) ? card.models : [];
   if (models.length === 0) {
-    return fail({
+    return {
       ok: false, code: "declaration_rejected",
       message: "The declaration lists no models.",
       rejections: [{ path: "models", code: "schema", message: "models must contain at least one model" }],
       nextAction: "Describe at least one model, with its modelKey, kind and one mode.",
-    });
+    };
   }
   const candidates = models.map((model) => ({
     modelKey: isJsonRecord(model) ? String(model.modelKey ?? "") : "",
@@ -276,25 +275,25 @@ async function submitDeclaration(
       adapterDraft: String(args.declaration ?? ""),
     });
   } catch (error) {
-    return fail({
+    return {
       ok: false, code: "declaration_rejected",
       message: "Nomi rejected the declaration.",
       rejections: rejectionsFromError(error, card),
       nextAction: "Fix the named field against the documentation URL you declared for it, then call submit_declaration again with the same setupId.",
-    });
+    };
   }
 
   const withCompileRequest = projection as { compileRequest?: { reasonCode?: string; suggestedTemplate?: string }; revision: number; id: string };
   if (withCompileRequest.compileRequest) {
     // 自建 / 内网端点：模板是**你显式选**的一条出路，不是我们替你套的兜底（§ Q3）。
-    return fail({
+    return {
       ok: false, code: "needs_input",
       message: "Nomi cannot read this endpoint's public documentation, so it will not guess a request shape for it.",
       needs: ["a declaration card for this endpoint"],
       nextAction: withCompileRequest.compileRequest.suggestedTemplate
         ? `If this is an OpenAI-compatible relay, say so explicitly by declaring the built-in template ${withCompileRequest.compileRequest.suggestedTemplate} in the card. Otherwise describe the real request shape.`
         : "Describe the real request shape in the card.",
-    });
+    };
   }
 
   let settled;
@@ -306,12 +305,12 @@ async function submitDeclaration(
     if (/no_generic_contract|no generic contract/i.test(error instanceof Error ? error.message : String(error))) {
       return noGenericContractFailure(candidates.map((candidate) => candidate.modelKey).join(", "));
     }
-    return fail({
+    return {
       ok: false, code: "provider_failed",
       message: "The free self-check did not pass.",
       rejections: rejectionsFromError(error, card),
       nextAction: "Read nomi_read target=setup for the self-check evidence, fix the card and submit it again.",
-    });
+    };
   }
 
   const vendors = listModelCatalogVendors();
@@ -341,11 +340,11 @@ function showModels(args: Record<string, unknown>): OnboardingResult | Onboardin
   const catalog = readCatalog();
   const missing = modelKeys.filter((modelKey) => !catalog.models.some((model) => model.vendorKey === vendorKey && model.modelKey === modelKey));
   if (missing.length > 0) {
-    return fail({
+    return {
       ok: false, code: "not_found",
       message: `These models are not on connection ${vendorKey}: ${missing.join(", ")}.`,
       nextAction: "Call nomi_read target=models and use the exact vendor and model ids it returns.",
-    });
+    };
   }
   for (const modelKey of modelKeys) upsertModelCatalogModel({ vendorKey, modelKey, enabled: visible });
   return {
@@ -388,19 +387,19 @@ export function removeProvider(args: Record<string, unknown>): OnboardingResult 
   const expected = text(args.ifUnchanged);
   const actual = currentCatalogFingerprint();
   if (expected !== actual) {
-    return fail({
+    return {
       ok: false, code: "stale_fingerprint",
       message: `The model list changed since you read it (you had ${expected}, it is now ${actual}). Nothing was deleted.`,
       nextAction: "Call nomi_read target=models again, check the rows are still the ones you meant, and retry with the fingerprint it returns.",
-    });
+    };
   }
   const catalog = readCatalog();
   if (!catalog.vendors.some((vendor) => vendor.key === vendorKey)) {
-    return fail({
+    return {
       ok: false, code: "not_found",
       message: `No connection called ${vendorKey}.`,
       nextAction: "Call nomi_read target=models for the ids that exist.",
-    });
+    };
   }
   if (modelKeys.length > 0) {
     deleteModelCatalogModels(modelKeys.map((modelKey) => ({ vendorKey, modelKey })));
@@ -454,11 +453,11 @@ export async function dispatchModelSetup(
     case "show_models": return showModels(params);
     case "cancel": return cancelSetup(deps, params);
     default:
-      return fail({
+      return {
         ok: false, code: "invalid_args",
         message: `nomi_model_setup needs one of these actions: connect_provider, submit_declaration, show_models, cancel.`,
         nextAction: "Send action with one of those four values.",
-      });
+      };
   }
 }
 

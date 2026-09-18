@@ -101,22 +101,21 @@ async function run() {
   const dirs = makeIsolatedRoot('nomi-model-integration-trusted-audio-')
   const provider = await startProvider()
   const runtime = devRuntime()
-  let sessionId = ''
-  let revision = 0
+  let setupId = ''
   try {
     await withMcp(dirs, runtime, async (mcp) => {
+      // 2026-09-18（#754）：`connect_provider` **一跳**就是「开会话 + 打开贴 key 页」——
+      // `open_credentials` 作为独立动词已经不存在了。返回的是 §4.3 信封：句柄在 `setupId`，
+      // 会话投影在 `state`。
       const begin = parseToolResult(await mcp.callTool('nomi_model_setup', {
-    action: 'connect_provider',
-    name: 'Trusted audio journey',
-    suggestedBaseUrl: provider.baseUrl,
+        action: 'connect_provider',
+        name: 'Trusted audio journey',
+        suggestedBaseUrl: provider.baseUrl,
       }))
-      assert(!begin.isError && begin.json?.stage === 'needs_credential', 'MCP creates an unverified audio session')
-      sessionId = begin.json.id
-      revision = begin.json.revision
-      const handoff = parseToolResult(await mcp.callTool('nomi_model_setup', {
-        action: 'open_credentials',
-      }))
-      assert(!handoff.isError && handoff.json?.stage === 'needs_credential', 'MCP requests the credential handoff')
+      assert(!begin.isError && begin.json?.ok === true, 'MCP creates an unverified audio session')
+      assert(begin.json?.state?.stage === 'needs_credential', 'the session is waiting for the user to paste a key')
+      assert(begin.json?.nextAction?.kind === 'user_sees_key_page', 'MCP opens the credential page in the same hop')
+      setupId = begin.json.setupId
     })
 
     await withTrustedRenderer(dirs, async (win) => {
@@ -130,13 +129,12 @@ async function run() {
           apiKey: 'isolated-fixture-key',
         })
         return result
-      }, { id: sessionId })
+      }, { id: setupId })
       assert(saved?.credentialStatus === 'ready' && saved?.stage === 'draft', 'trusted renderer stores the credential')
       assertNoCredentialMaterial(saved, 'trusted credential projection')
     })
 
     await withMcp(dirs, runtime, async (mcp) => {
-      const current = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
       // 2026-09-18（#754）：候选/选择不再单独一跳——卡上的 `models[]` 就是选择，
       // 收卡一跳做完「形状校验 + 同源 + 免费自检 + 登记」。
       const proposed = parseToolResult(await mcp.callTool('nomi_model_setup', {
@@ -175,7 +173,7 @@ async function run() {
       const handoffs = await win.evaluate(
         async () => (await window.nomiDesktop?.onboarding?.integrationHandoffList?.()) || [],
       )
-      const mine = handoffs.filter((item) => item.sessionId === sessionId)
+      const mine = handoffs.filter((item) => item.sessionId === setupId)
       const verification = mine.filter((item) => item.target === 'verification')
       // 阳性对照：这条会话确实有交接单（凭据那张），所以「没有 verification」不是因为列表恒空。
       if (mine.length === 0) throw new Error('handoff list returned nothing for this session — the probe itself is dead')

@@ -76,7 +76,7 @@ async function waitForTerminal(mcp, sessionId, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let last
   for (;;) {
-    const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
+    const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId: sessionId }))
     last = read.json || {}
     if (TERMINAL_STAGES.has(String(last.stage))) return last
     if (Date.now() >= deadline) return last
@@ -105,17 +105,12 @@ async function realProviderArm(apiKey) {
   })
   try {
     await mcp.initialize(20_000)
-    const begun = parseToolResult(await mcp.callTool('nomi_model_setup', {
-    action: 'connect_provider',
-    name: 'DeepSeek 兼容端点',
-    suggestedBaseUrl: 'https://api.deepseek.com/v1',
-    }))
-    check(begun.json?.stage === 'needs_credential', 'A1 begin 建出待补密钥的接入会话', begun.json?.stage)
-    const sessionId = begun.json?.id
-
-    // 真人在一次性安全页里贴真 key（密钥永不进 MCP 通道，那条不变量由既有 e2e 盯）。
+    // 2026-09-18（#754）：`connect_provider` 一跳就是「开会话 + 打开贴 key 页」，而且它**阻塞等
+    // 那一页被完成**——`open_credentials` 作为独立动词不存在了。所以这里只有一个 pending 调用。
     const pending = mcp.callTool('nomi_model_setup', {
-      action: 'open_credentials',
+      action: 'connect_provider',
+      name: 'DeepSeek 兼容端点',
+      suggestedBaseUrl: 'https://api.deepseek.com/v1',
     }, { timeoutMs: 120_000 })
     let elicit
     for (const deadline = Date.now() + 30_000; ;) {
@@ -132,25 +127,32 @@ async function realProviderArm(apiKey) {
     })
     check(save.status === 200, 'A2 真 key 经一次性安全页存进本机加密存储', `HTTP ${save.status}`)
     const opened = parseToolResult(await pending)
-    check(opened.json?.credentialStatus === 'ready', 'A2 会话显示密钥已就绪')
+    check(opened.json?.ok === true, 'A2 connect_provider 正常返回')
+    check(opened.json?.state?.credentialStatus === 'ready', 'A2 会话显示密钥已就绪')
+    const sessionId = opened.json?.setupId
 
-    // 空 propose = 让 Nomi 自己去真实上游拉模型清单。
-    const discovered = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'propose',
-    }, { timeoutMs: 90_000 }))
-    const candidates = discovered.json?.candidates || []
-    check(candidates.length > 0, 'A3 从真实 /v1/models 拉到候选模型', `n=${candidates.length}`)
-    const pick = candidates.find((item) => item.kind === 'text') || candidates[0]
-
-    const selected = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'propose',
-    }, { timeoutMs: 60_000 }))
-    check(selected.json?.stage === 'ready_to_certify', 'A4 选一个文本模型后可以开跑', selected.json?.stage)
-
+    // 2026-09-18（#754）：「拉候选 → 选 → 跑自检」三跳合成一跳 `submit_declaration`——
+    // 卡上的 `models[]` 就是选择，自检是收卡的一部分。真实上游的模型清单由驱动方读文档得到，
+    // 这条臂用 DeepSeek 官方 OpenAI 兼容端点上一个确定存在的文本模型。
     const started = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'start',
+      action: 'submit_declaration',
+      setupId: sessionId,
+      declaration: JSON.stringify({
+        sources: [{ url: 'https://api-docs.deepseek.com/api/create-chat-completion', evidence: 'POST /chat/completions' }],
+        assetIngestion: { strategy: 'none', sourceUrl: 'https://api-docs.deepseek.com/api/create-chat-completion' },
+        models: [{
+          modelKey: 'deepseek-chat',
+          labelZh: 'DeepSeek Chat',
+          kind: 'text',
+          modes: [{
+            taskKind: 'chat',
+            create: { method: 'POST', path: '/chat/completions', body: { model: 'deepseek-chat', messages: '{{request.messages}}' } },
+            sourceUrls: ['https://api-docs.deepseek.com/api/create-chat-completion'],
+          }],
+        }],
+      }),
     }, { timeoutMs: 120_000 }))
-    check(!started.isError, 'A5 start 不报错', started.json?.stage)
+    check(!started.isError, 'A5 submit_declaration 不报错', started.json?.code)
 
     const final = await waitForTerminal(mcp, sessionId, 12 * 60_000)
     check(TERMINAL_STAGES.has(String(final.stage)), 'A6 会话落到终态（不再无限期停在 certifying）', `stage=${final.stage} reason=${final.blockingReason?.code ?? '—'}`)
@@ -176,26 +178,37 @@ async function escapeHatchArm() {
   try {
     await mcp.initialize(20_000)
     const begun = parseToolResult(await mcp.callTool('nomi_model_setup', {
-    action: 'connect_provider',
-    name: '吊死的本机 ComfyUI',
-    suggestedBaseUrl: hole.baseUrl,
-    }))
-    check(!begun.isError, 'B1 begin 建出 ComfyUI 接入会话（免费自检那条路）', begun.json?.stage)
-    const sessionId = begun.json?.id
+      action: 'connect_provider',
+      name: '吊死的本机 ComfyUI',
+      suggestedBaseUrl: hole.baseUrl,
+    }, { timeoutMs: 120_000 }))
+    check(!begun.isError, 'B1 connect_provider 建出接入会话（免费自检那条路）', begun.json?.state?.stage)
+    const sessionId = begun.json?.setupId
 
-    const proposed = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'propose',
-    }, { timeoutMs: 60_000 }))
-    check(proposed.json?.stage === 'ready_to_certify', 'B2 工作流通过分析，可以开跑', proposed.json?.stage)
-
-    // start 会挂住（上游只接受连接不回应）。**不 await**：这正是死锁那一刻的现场。
+    // 2026-09-18（#754）：自检是**收卡的一部分**，所以挂住的是 `submit_declaration` 这一跳，
+    // 不再是单独的 start。**不 await**：这正是死锁那一刻的现场（上游只接受连接不回应）。
     const hanging = mcp.callTool('nomi_model_setup', {
-      action: 'start',
+      action: 'submit_declaration',
+      setupId: sessionId,
+      declaration: JSON.stringify({
+        sources: [{ url: `${hole.baseUrl}/docs`, evidence: 'black hole fixture' }],
+        assetIngestion: { strategy: 'none', sourceUrl: `${hole.baseUrl}/docs` },
+        models: [{
+          modelKey: 'hole-paint',
+          labelZh: '吊死的画图',
+          kind: 'image',
+          modes: [{
+            taskKind: 'text_to_image',
+            create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+            sourceUrls: [`${hole.baseUrl}/docs`],
+          }],
+        }],
+      }),
     }, { timeoutMs: 8 * 60_000 }).catch((error) => ({ swallowed: String(error?.message || error) }))
 
     let certifying
     for (const deadline = Date.now() + 60_000; ;) {
-      const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
+      const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId: sessionId }))
       certifying = read.json || {}
       if (certifying.stage === 'certifying' || TERMINAL_STAGES.has(String(certifying.stage))) break
       if (Date.now() >= deadline) break
@@ -208,19 +221,19 @@ async function escapeHatchArm() {
 
     // ★ 本轮的核心断言：修前这里抛 "Cannot cancel certification in progress"。
     const cancelled = parseToolResult(await mcp.callTool('nomi_model_setup', {
-      action: 'cancel', setupId:
+      action: 'cancel', setupId: sessionId,
     }, { timeoutMs: 60_000 }))
     check(!cancelled.isError, 'B4 cancel 不再报错（修前：Cannot cancel certification in progress）',
       cancelled.isError ? JSON.stringify(cancelled.json || cancelled.text) : '')
-    check(cancelled.json?.stage === 'cancelled', 'B4 会话真的落到 cancelled —— certifying 有出口了', cancelled.json?.stage)
-    check(cancelled.json?.blockingReason?.code === 'certification_abandoned_locally',
-      'B4 如实标注「本地放弃」而不是假装撤销了远端', cancelled.json?.blockingReason?.code)
-    fs.writeFileSync(path.join(EVIDENCE, 'arm-b-cancelled-session.json'), JSON.stringify(cancelled.json, null, 2))
+    check(cancelled.json?.state?.stage === 'cancelled', 'B4 会话真的落到 cancelled —— certifying 有出口了', cancelled.json?.state?.stage)
+    check(cancelled.json?.state?.blockingReason?.code === 'certification_abandoned_locally',
+      'B4 如实标注「本地放弃」而不是假装撤销了远端', cancelled.json?.state?.blockingReason?.code)
+    fs.writeFileSync(path.join(EVIDENCE, 'arm-b-cancelled-session.json'), JSON.stringify(cancelled.json?.state ?? cancelled.json, null, 2))
 
     // 放开逃生口的对偶：迟到的结果不许复活已取消的会话。
     await hole.close() // 掐掉上游 → 那个挂住的 certifyComfy 现在会以失败 settle
     await Promise.race([hanging, delay(90_000)])
-    const after = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
+    const after = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId: sessionId }))
     check(after.json?.stage === 'cancelled', 'B5 迟到的认证结果没有把已取消的会话复活（终态是封的）', after.json?.stage)
   } finally {
     await mcp.terminate()

@@ -10,6 +10,3 @@
  * 改名字只有一处可改（P1：不是第二份定义，是同一份的住址）。
  */
 export const MCP_READ_TOOL_NAME = "nomi_read";
-
-/** 装配期把这些名字也算「解析得到」（`assembleVerbDeclarations` 的 `mcpToolNames`）。 */
-export const MCP_NON_CONTRACT_TOOL_NAMES: readonly string[] = Object.freeze([MCP_READ_TOOL_NAME]);

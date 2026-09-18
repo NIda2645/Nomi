@@ -90,7 +90,8 @@ export function setSubmitOutboundDepsForTests(next: Partial<SubmitOutboundDeps> 
 
 export type SubmitDestinationInput = {
   // `key` 只用来查「代码里写死的官方备用域」；查不到 = 没有例外，不是放行，所以它可选。
-  vendor: Pick<Vendor, "baseUrlHint"> & Partial<Pick<Vendor, "key" | "credentialBinding">>;
+  vendor: Pick<Vendor, "baseUrlHint">
+    & Partial<Pick<Vendor, "key" | "credentialBinding" | "authType" | "authHeader" | "authQueryParam" | "authScheme">>;
   /** 已拼好鉴权 query 的最终 URL（判的就是真正要请求的那一个）。 */
   url: string;
   /** 这次请求是否由单供应商显式代理承载（`vendor.network.proxyUrl`）。 */
@@ -126,14 +127,15 @@ export async function authorizeSubmitDestination(input: SubmitDestinationInput):
       binding: readCredentialBinding(input.vendor),
       url: input.url,
       codeDeclaredOrigins: codeDeclaredFallbackOrigins(String(input.vendor.key || "")),
+      placement: input.vendor,
     });
     if (!verdict.allowed) {
       // 码由 `tagNomiError` 挂，不手拼字面量——码表是 `shared/nomiErrorCodes.ts` 唯一 owner。
-      // 人话里只放**这次的两个事实**（绑定的是哪个、要去哪个）；「怎么办」由渲染层的词表说，
-      // 那边才有 i18n（这里写死中文 = 英文用户读到半句中文）。
+      // 人话里只放**这次的几个事实**（绑定的是哪个、要去哪个、变的是哪一样）；「怎么办」由渲染层
+      // 的词表说，那边才有 i18n（这里写死中文 = 英文用户读到半句中文）。
       return tagNomiError(
         "outbound-blocked-credential-origin",
-        `bound=${verdict.boundOrigin} attempted=${verdict.attemptedOrigin}`,
+        `changed=${verdict.changed} bound=${verdict.boundOrigin} attempted=${verdict.attemptedOrigin}`,
       );
     }
   }

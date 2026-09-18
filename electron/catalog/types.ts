@@ -48,12 +48,6 @@ export type CredentialBinding = {
   authHeader?: string;
   authQueryParam?: string;
   authScheme?: string;
-  /**
-   * 保存密钥那一刻这条连接是否由单供应商代理承载。**只记布尔，不记 URL**——`network.proxyUrl`
-   * 可以带 `user:pass@`，是 credential-bearing 字段（加密落盘，见 credentialConfigFields.ts）。
-   * 往这里抄一份明文等于把它从加密层搬回明文目录，那是另一个方向的同族问题。
-   */
-  proxied?: boolean;
   confirmedAt: string;
 };
 

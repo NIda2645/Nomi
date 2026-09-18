@@ -29,18 +29,6 @@ const dotPath = z.string().min(1).max(512);
 const endpoint = z.string().url().max(2_048);
 const sourceUrl = z.string().url().max(2_048);
 
-/** 声明面允许的吞入策略：`catalog/types.ts` 的 AssetIngestion 去掉两条不可声明的。 */
-export const DECLARABLE_INGESTION_STRATEGIES = Object.freeze([
-  "none",
-  "inline-base64",
-  "upload-url",
-  "upload-multipart",
-  "upload-stream",
-  "upload-presigned",
-  "upload-initiate-put",
-  "upload-initiate-multipart",
-] as const);
-
 const ingestionCommon = {
   accepts: mediaKinds.optional().describe("Which media kinds this channel accepts: image, video or audio."),
   ttlSeconds: z.number().int().positive().max(31_536_000).optional().describe("How long the uploaded file stays reachable, in seconds."),
@@ -126,6 +114,15 @@ export const declaredAssetIngestionSchema = z.discriminatedUnion("strategy", [
 ]);
 
 export type DeclaredAssetIngestion = z.infer<typeof declaredAssetIngestionSchema>;
+
+/**
+ * 声明面允许的吞入策略，**从 schema 自己派生**（Ponytail 2026-09-18：手抄一份字面量 = 第二份真相源，
+ * 加一条策略时它会安静地落后）。`catalog/types.ts` 的 AssetIngestion 减去两条不可声明的
+ * （`comfyui-upload` 本地专属、`anon-chain` 跨供应商互借的匿名图床）。
+ */
+export const DECLARABLE_INGESTION_STRATEGIES: readonly DeclaredAssetIngestion["strategy"][] = Object.freeze(
+  declaredAssetIngestionSchema.options.map((option) => option.shape.strategy.value),
+);
 
 /**
  * 免费自检的形状。**探针不许是生成端点**（那会把「免费」变成「每接一次模型扣一次钱」）——
