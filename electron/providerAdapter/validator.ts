@@ -210,12 +210,10 @@ const adapterDraftSchema: z.ZodType<ProviderAdapterDraft> = z
         providerKind: z.enum(["openai-compatible", "anthropic", "openai-responses"]).optional(),
       })
       .strict(),
-    sources: adapterSourcesSchema,
-    models: adapterDraftModelsSchema,
-    assetIngestion: declaredAssetIngestionSchema.optional(),
-    selfCheck: declaredSelfCheckSchema.optional(),
-    omitted: declaredOmissionsSchema.optional(),
-    openapi: declaredOpenApiSchema.optional(),
+    // 卡顶层那几格从交件 schema 派生，不再抄第二遍（Ponytail 2026-09-18）。差别只有一处，
+    // 而且是领域约束：**交件时 `assetIngestion` 必填**（`none` 也要显式写），内部编译器
+    // 那条路产出的卡可以没有它（它走 curated 注册表）。
+    ...adapterSuppliedContractSchema.partial({ assetIngestion: true }).shape,
   })
   .strict();
 

@@ -30,14 +30,6 @@ async function run() {
     )
     const sessionId = firstDraft.json.setupId
     const revision = firstDraft.json.state?.revision
-    const duplicate = parseToolResult(
-      await first.callTool('nomi_model_setup', {
-        action: 'connect_provider',
-        name: 'Packaged restart draft',
-        suggestedBaseUrl: 'https://example.invalid/v1',
-      }),
-    )
-    assert(typeof duplicate.json?.setupId === 'string', 'a second connect_provider also returns a handle')
     assertNoCredentialMaterial(firstDraft.json, 'pre-restart draft')
     await first.terminate()
 

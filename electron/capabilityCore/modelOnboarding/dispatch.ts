@@ -283,22 +283,21 @@ async function submitDeclaration(
     };
   }
 
-  const withCompileRequest = projection as { compileRequest?: { reasonCode?: string; suggestedTemplate?: string }; revision: number; id: string };
-  if (withCompileRequest.compileRequest) {
+  if (projection.compileRequest) {
     // 自建 / 内网端点：模板是**你显式选**的一条出路，不是我们替你套的兜底（§ Q3）。
     return {
       ok: false, code: "needs_input",
       message: "Nomi cannot read this endpoint's public documentation, so it will not guess a request shape for it.",
       needs: ["a declaration card for this endpoint"],
-      nextAction: withCompileRequest.compileRequest.suggestedTemplate
-        ? `If this is an OpenAI-compatible relay, say so explicitly by declaring the built-in template ${withCompileRequest.compileRequest.suggestedTemplate} in the card. Otherwise describe the real request shape.`
+      nextAction: projection.compileRequest.suggestedTemplate
+        ? `If this is an OpenAI-compatible relay, say so explicitly by declaring the built-in template ${projection.compileRequest.suggestedTemplate} in the card. Otherwise describe the real request shape.`
         : "Describe the real request shape in the card.",
     };
   }
 
   let settled;
   try {
-    settled = await deps.sessions.start(setupId, withCompileRequest.revision, deps.owner, changeIdFor(setupId, "submit_declaration", args));
+    settled = await deps.sessions.start(setupId, projection.revision, deps.owner, changeIdFor(setupId, "submit_declaration", args));
   } catch (error) {
     // 「这个 kind 在通用协议上根本没有端点」与「这张卡写错了」是两种处境，给的下一步相反：
     // 前者改卡一万次都没用，出口是人写脚本（`serviceFallback` 的 no_generic_contract 一路传到这里）。
