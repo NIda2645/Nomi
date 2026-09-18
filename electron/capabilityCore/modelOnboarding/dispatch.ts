@@ -63,9 +63,10 @@ async function connectProvider(
 ): Promise<OnboardingResult | OnboardingFailure> {
   const vendorKey = text(args.vendorKey);
   const suggestedBaseUrl = text(args.suggestedBaseUrl);
+  // 查一次，两处用（改名/代理开关那一段，和下面重开贴 key 页那一跳）。
+  const vendor = vendorKey ? listModelCatalogVendors().find((row) => row.key === vendorKey) : undefined;
 
   if (vendorKey) {
-    const vendor = listModelCatalogVendors().find((row) => row.key === vendorKey);
     if (!vendor) {
       return {
         ok: false, code: "not_found",
@@ -128,7 +129,7 @@ async function connectProvider(
   }
 
   const opened = vendorKey
-    ? reopenForVendor(deps, vendorKey)
+    ? reopenForVendor(deps, vendorKey, vendor)
     : deps.sessions.begin({
       kind: "http-api-provider",
       name: text(args.name),
@@ -165,12 +166,18 @@ async function connectProvider(
   };
 }
 
-/** 已存在的连接要重新贴 key：沿用它已绑定的 origin 开一个会话（地址不由这一跳决定）。 */
+/**
+ * 已存在的连接要重新贴 key：地址**沿用它自己那一行**，不由这一跳的入参决定。
+ *
+ * 这条路刻意与「新建一家」分开命名（而不是合成一次 `begin`）：两者的地址来源不同——
+ * 一个来自已存的 vendor 行，一个来自 Agent 的建议且必须由用户在那一页上确认。把它们写成
+ * 同一个表达式，正好抹掉本刀要守的那条区别（§6.1）。vendor 由调用方传进来，不重查一次。
+ */
 function reopenForVendor(
   deps: OnboardingDispatchDeps,
   vendorKey: string,
+  vendor: { name?: string; baseUrlHint?: string | null } | undefined,
 ): OnboardingFailure | ReturnType<IntegrationSessionService["begin"]> {
-  const vendor = listModelCatalogVendors().find((row) => row.key === vendorKey);
   const baseUrl = text(vendor?.baseUrlHint);
   if (!baseUrl) {
     return {
