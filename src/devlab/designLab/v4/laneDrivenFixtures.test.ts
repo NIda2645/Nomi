@@ -17,6 +17,7 @@ const labels: LaneViewModelLabels = {
   toolLabel: () => '读取时间轴',
   toolSummary: () => undefined,
   toolFailure: () => undefined,
+  toolFailureDetail: (failure) => failure.code,
   thinkingLabel: '正在想…',
   formatTokens: (value) => String(value),
   formatCost: (usd) => `$${usd.toFixed(2)}`,

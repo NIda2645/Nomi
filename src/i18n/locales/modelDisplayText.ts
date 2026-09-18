@@ -13,6 +13,9 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   'CFG 强度': 'CFG strength',
   默认: 'Default',
   'Codex 生图': 'Codex image generation',
+  '本地转写（离线）': 'Local transcription (offline)',
+  '本地转写': 'Local transcription',
+  '在这台电脑上离线转写，不联网、不花钱；语言自动识别': 'Transcribe on this computer, offline and free; the language is detected automatically',
   'checkpoint 文件名': 'Checkpoint filename',
   '不想出现的内容（可留空）': 'Content to exclude (optional)',
   '你 ComfyUI/models/checkpoints 目录里的文件名': 'Filename in your ComfyUI/models/checkpoints directory',
@@ -36,6 +39,12 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
     'Upscale one image to 2K, 4K, or 8K (4K and 8K require a premium membership)',
   保留原声: 'Keep original audio',
   比例: 'Aspect ratio',
+  出图张数: 'Images per run',
+  自动润色提示词: 'Auto-refine prompt',
+  'Higgsfield 旗舰图片模型，纯文字生成': "Higgsfield's flagship image model, text only",
+  '电影感成像，纯文字生成': 'Cinematic look, text only',
+  单图首帧驱动运镜: 'One opening frame drives the camera move',
+  '给定首尾两帧，生成中间的运镜': 'Give an opening and closing frame; the camera move in between is generated',
   标准: 'Standard',
   参考视频: 'Reference video',
   参考图: 'Reference image',
@@ -368,6 +377,8 @@ export const enModelDisplayText: Readonly<Record<string, string>> = {
   '给图（最多 10 张）+ 提示词改图 / 多图融合':
     'Provide up to 10 images plus a prompt to edit or blend them',
   '给图（最多 14 张）+ 提示词改图': 'Provide up to 14 images plus a prompt to edit them',
+  '给图（最多 16 张）+ 提示词改图': 'Provide up to 16 images plus a prompt to edit them',
+  'Gemini 3 Pro 图像': 'Gemini 3 Pro Image',
   '给图（最多 14 张）+ 提示词改图 / 多图融合':
     'Provide up to 14 images plus a prompt to edit or blend them',
   '给图（最多 14 张）+ 提示词改图，跨镜身份一致性最强':

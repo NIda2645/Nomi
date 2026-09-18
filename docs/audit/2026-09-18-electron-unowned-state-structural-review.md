@@ -150,5 +150,87 @@ status statuses state states phase phases stage stages step steps lifecycle life
 
 ## 7. 未证实
 
-- 「29 份 `centralized-boundary` 里有多少个主人今天已经被侵蚀」——本文没查，这正是 R1 要回答的。R1 做完才有数。
+- ~~「29 份 `centralized-boundary` 里有多少个主人今天已经被侵蚀」——本文没查，这正是 R1 要回答的。~~
+  **已答，见 §8。**
 - 本文只覆盖 `electron`。`src/`（渲染层）是否同构未查。
+
+---
+
+## 8. R1 做完了：958 条的第一次体检（2026-09-18）
+
+门岗 `check:boundary-owners`（`scripts/check-boundary-owners.mjs`，判据在 `scripts/boundary-owners.mjs`），
+已进 `gates:contracts`。第一次全量体检：
+
+| | |
+|---|---|
+| 声明过的 owner | **958** |
+| 主人还在原位 | **803**（83.8%） |
+| 主人不在了 | **67**（7.0%）——路径没了 40 ／ 符号没了 27 |
+| symbol 机器读不了 | **88**（9.2%） |
+
+**侵蚀率 7%，低到足以让这道门岗当天就硬起来**，所以没有走分阶段。67 条的处置：
+
+- **改锚 12 条**：同名符号只是搬了家（如 `readSkillCuration` 移到 `electron/shared/`），
+  台账登记新锚，**门岗接着核新地址**——这是真修，不是豁免。新锚坏了照样红。
+- **退役 45 条**：主人被整体删除，理由逐条取自真实删除提交。最大一族是 agent-lane 切换
+  （`36f343204` 一系「remove retired owners…」）与 `3f5ca19e5`「删掉旧面板闭包」，
+  都是 P1「加新必删旧」的正常结果，那几条不变量确实不再适用。
+- **待查 10 条**：有名字相近的后继（如 `RUNWAY_RATIO_FAMILIES` → `RUNWAY_VIDEO_RATIO_ENUMS`），
+  但等价性没读码核实，**不冒充已修**；棘轮只减不增。
+
+**最刺眼的一条**：`2026-08-31-generation-result-retrieval-boundary` 声明的
+`electron/assets/projectAssetStore.ts :: importGeneratedBytes`，
+`git log -S --all` 显示这个符号**在仓库历史里一次都没出现过**，只命中合同自身那次提交。
+也就是说它**立约当天声明的就是一个不存在的主人**——旧校验器只查 `path` 存在、不查 `symbol`，
+所以这条「已建 owner，此类不会再复发」的承诺从第一天起就是空的，而且整整没人发现。
+同一份合同另外 5 条边界都在位，所以它看起来一直很健康。
+
+### 8.1 顺带挖到的：合同事实上是写一次就冻住的
+
+试着把一份合同里搬了家的 `path` 改对，`check:root-cause-contracts` 连环报 **11 条错**——
+因为 `validateContract` 要求 `enforcement_path`／回归测试**在本次 diff 里有变化**，
+而那是当初那次修复的产物。**于是「主人搬了家，把合同改对」这条路是堵死的。**
+这也是为什么本次的处置台账必须活在合同**外面**。
+
+顺带暴露：那份合同自己还有 2 个 `scope_paths` 和 2 个 `regression_tests` 指向已不存在的文件——
+同样因为历史合同从不复检，**今天完全看不见**。
+
+### 8.2 §4 的一处过度乐观：体积上限/小数精度/白名单，`check:vocabularies` 结构上够不着
+
+§4 说「补 code/codes/failure/error/limit/limits/precision/allowlist 就能看见本周这批无主状态」。
+实测逐词加进 `SEMANTIC_OWNER_TOKENS` 后的新增 owner 数：
+
+| 词 | 新增 | 是不是本周合同里的真实无主状态 |
+|---|---|---|
+| `code`/`codes` | **+55** | 是（含 `PUBLIC_CODES`，`capability_execution_failed` 在词表基线里确实 0 次） |
+| `failure`/`failures` | **+13** | 是（**六份手抄的 `PUBLIC_FAILURE_CODES` 副本**全在里面） |
+| `error`/`errors` | **+29** | 是（各 `*ErrorCode` 联合） |
+| `field`/`fields` | **+19** | 是（镜头信封那类手抄字段列表） |
+| `capability`/`capabilities` | **+27** | 是（能力可用性） |
+| `identity`/`identities` | **+1** | 是（项目身份） |
+| `limit`/`limits` | **+0** | **否** |
+| `precision` | **+0** | **否** |
+| `allowlist` | **+0** | **否** |
+
+后三个是 0 不是巧合：**体积上限和小数精度是标量常量，不是成员词表**，
+而这个扫描器按「≥2 个字符串成员的枚举」找候选，**结构上就够不着它们**。
+要拦 30MB/600MB 散在六处，得另建一道「同一个量的多处字面量」门岗，不是给这道加词。
+（`kind`/`reason`/`mode` 分别 +310/+50/+60，远超本周覆盖面，加了会淹掉真信号。）
+
+### 8.3 为什么这次没有把词加进去
+
+六个有依据的词一起加，扫描器从 210 涨到 **328 个 owner，门岗当场红出 118 条「新词表未登记」**——
+方向完全正确，六份 `PUBLIC_FAILURE_CODES` 一个不漏地被捞了出来。
+
+但 `check:vocabularies` 的两个桶都容不下它们：`registered` 要求逐条写明「为什么它有资格当独立 owner」
+（门岗自己还有 `GENERIC_AUTHORITY_REASON` 正则专门拒套话），`debt` 则是硬棘轮
+（`debt-cap-loose` + `historical-new-debt` 双向锁死，**新增 debt 结构上不允许**）。
+
+118 条里每一条都要真读代码判「该复用现有 owner 还是确属独立」。**在没有真判过的情况下批量写 118 条理由，
+就是造第 119 个「以为有人在管」**——正是本文要消灭的东西。所以这次**只交测量、不改词表**。
+
+建议分三批推进，每批独立可验收：
+1. **`failure`/`failures`（+13）**先做——收益最集中（六份手抄码表），且已有 09-17 那次
+   「六份手抄同步齐」的现场；正解是把六份收敛成一份 derive，收敛完这 13 条自然消失，不用登记。
+2. **`code`/`codes` + `error`/`errors`（合计 ≈70，去重后更少）**次之，多半能并进同一次码表收敛。
+3. **`field`/`fields` + `capability` + `identity`（+47）**最后，与镜头信封收敛一起做。

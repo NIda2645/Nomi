@@ -145,6 +145,9 @@ export type AssertReferencesResolvable = (projectId: string, references: Readonl
  *
  * `semantic` 不注入时行为仍然安全：显式 candidate 照常过，缺候选的镜头拿到人话「没有配置可用的模型」，
  * 而不是 zod 的 `Required`。
+ *
+ * 走同一台合成器还带来第二件事（2026-09-18 另一份根因合同的原话）：它「显式身份不借用默认模型的 mode」
+ * 那条纪律，多镜路逐字继承——不是靠这里再抄一遍。
  */
 export function draftShotFromPlan(
   value: unknown,
@@ -213,7 +216,7 @@ export function draftShotFromStoryboard(draft: StoryboardShotDraft, index: numbe
 /** The shared derivations the multi-shot factory needs (all pure, all single source of truth from S2/S4). */
 export type MultiShotHelperDeps = {
   /** `resolve` 是密封期用的；`snapshot` 是语义合成期用的（缺省即不做目录兜底）。 */
-  registry: Pick<ModuleRegistry, "resolve"> & { snapshot?: () => readonly unknown[] };
+  registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   videoModelCandidates?: readonly VideoModelCandidate[];
   planStoryboard?: (input: {
     projectId: string;

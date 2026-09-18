@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 // 节点**活预览帧**的会话级瞬态存储。刻意独立于画布主 store：
 // 预览帧是高频瞬态，绝不进 node.meta / 持久化 project.json——关掉项目/终态即弃。
 // GeneratingOverlay 订阅它；写它的目前有两条链：ComfyUI 采样中间图（comfyuiProgressBridge，
@@ -29,3 +30,10 @@ export const useNodeLivePreviewStore = create<NodeLivePreviewState>((set) => ({
       return { byNode: next }
     }),
 }))
+
+/** C1 寿命声明：按节点 id 存的实时预览帧，与 assetImportProgress 同理（节点 id 是项目内标识）。 */
+export const nodeLivePreviewStoreLifetime = declareStoreLifetime({
+  store: 'useNodeLivePreviewStore',
+  fields: { byNode: 'project' },
+  releaseProject: () => useNodeLivePreviewStore.setState({ byNode: {} }),
+})

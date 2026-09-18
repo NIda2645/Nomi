@@ -71,7 +71,7 @@ export async function probeAdapterCredential(
   const headers = mergeHeadersCaseInsensitive(
     providerKind === "anthropic" ? { "anthropic-version": "2023-06-01" } : {},
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
-    authHeaders(authType, input.apiKey, vendor.authHeader ?? undefined),
+    authHeaders(authType, input.apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
   );
   let result;
   try {

@@ -1,4 +1,5 @@
 import type { McpGenerationCapability, McpGenerationPolicySnapshot } from './mcpGenerationPolicy'
+import type { CapabilityTransportVerificationErrorCode, SurfacePortWireErrorCode } from '../shared/surfacePortBinding'
 import type { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
 
 export type RpcPolicyErrorCode =
@@ -16,22 +17,19 @@ export type RpcPolicyErrorCode =
   | 'receipt_invalid'
   | 'receipt_expired'
 
+/**
+ * C4：端口码与传输验证码从 owner derive，不再手抄。抄的那一份少了
+ * `capability_receipt_unresolved` / `capability_target_stale` / `project_binding_stale` /
+ * `capability_invocation_unverified` / `capability_policy_stale` —— 主进程抛得出这些码，
+ * 而这个类型不认，于是 RPC 层要么类型上过不去、要么把它们降级成通用码。
+ * 本地只留 MCP 连接/项目选择这三个它自己独有的。
+ */
 export type RpcProjectSessionErrorCode =
+  | SurfacePortWireErrorCode
+  | CapabilityTransportVerificationErrorCode
   | 'mcp_connection_unauthenticated'
   | 'project_selection_denied'
-  | 'project_identity_unavailable'
   | 'project_session_unavailable'
-  | 'capability_authority_invalid'
-  | 'capability_input_invalid'
-  | 'capability_unsupported'
-  | 'capability_output_invalid'
-  | 'capability_timeout'
-  | 'capability_cancelled'
-  | 'capability_execution_failed'
-  | 'surface_port_suspended'
-  | 'surface_port_unavailable'
-  | 'surface_port_stale'
-  | 'surface_owner_mismatch'
 
 export type RpcPublicErrorCode = RpcPolicyErrorCode | RpcProjectSessionErrorCode
 

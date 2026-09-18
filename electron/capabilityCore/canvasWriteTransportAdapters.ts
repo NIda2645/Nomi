@@ -1,4 +1,4 @@
-import { parseSurfacePortFailure, surfacePortFailureAdvice, SURFACE_PORT_WIRE_ERROR_CODES } from "../shared/surfacePortBinding";
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES, parseSurfacePortFailure, surfacePortFailureAdvice } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision, CanvasWriteApprovalAuthority } from "../shared/agentCapabilities/transportContracts";
 import {
   CANVAS_DELETE_CAPABILITY,
@@ -40,15 +40,11 @@ export type PiCanvasWriteTransportAdapter = Readonly<{
   dispose(): void;
 }>;
 
+// C4：这一份本来就是全仓唯一从 owner 派生的（其余 6 份是手抄）。现在底座也归位到
+// CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES，只留画布写自己独有的那一个。
 const PUBLIC_FAILURE_CODES = new Set([
-  ...SURFACE_PORT_WIRE_ERROR_CODES,
-  "capability_invocation_unverified",
-  "capability_authority_invalid",
-  "capability_policy_stale",
-  "capability_output_invalid",
-  "capability_timeout",
+  ...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES,
   "capability_surface_unavailable",
-  "capability_unsupported",
 ]);
 
 const CANVAS_DELETE_TOOL_ALIAS = CANVAS_DELETE_CAPABILITY.aliases.mcp;

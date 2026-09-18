@@ -560,9 +560,6 @@
     "9c5fc42168b8742497d0fe14eaa92406ad75157c4cf539a7a6d930b1d023d355": 1,
     "74dad77f6b09eaaed15060a7dd2f5c1577ad1e8fd3efe49fd3241a2b4f06ee67": 1
   },
-  "tests/ux/mcp-key-window.walk.mjs": {
-    "2d73771947c9a9e6c5b5269d5dc9e76ae411d41858d274c2f75b0324d2ed7a8c": 1
-  },
   "tests/ux/mcp-l2-journeys.e2e.mjs": {
     "03cb54e08253d0183959cc6992bb3d5d87527eaf18008868da1bd6e4aa5e5d48": 1,
     "f7eefa04450e7c1e5109586a0932182866fca6e5826ba9353e2aa4c1f7ad6b62": 1,

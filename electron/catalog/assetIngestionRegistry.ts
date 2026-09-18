@@ -44,6 +44,34 @@ export const CURATED_ASSET_INGESTION: Record<string, AssetIngestion> = {
     accepts: ["image", "video", "audio"],
     visibility: "public-provider",
   },
+  // Higgsfield 自有上传（2026-09-17 字节级实测通过，证据 docs/evidence/2026-09-17-higgsfield-contract）：
+  //   POST /files/generate-upload-url {content_type}
+  //     → { public_url, upload_url, content_type, upload_headers }
+  //   PUT 字节到 upload_url（**不带 Higgsfield 凭据**，预签名 URL 自带授权）
+  //   参考图给模型用的是 public_url（CloudFront，无需鉴权）
+  //
+  // 声明它的意义：resolveAssetIngestionWithFallback 的第 2 优先级是「目标 vendor 自己的通道」
+  // （assetLocalization.ts），声明之后 Higgsfield 的参考图就**不会**落到第 4 优先级那条
+  // 「KIE / APIMart 兜底」上——用户的图不经第三方，也不经匿名图床。
+  //
+  // uploadHeadersPath 是必须的：预签名 URL 把 x-amz-tagging 算进了签名
+  // （X-Amz-SignedHeaders = content-type;host;x-amz-tagging），只发 Content-Type 会 403
+  // SignatureDoesNotMatch（实测）。头从响应里读，不写死。
+  //
+  // ttlSeconds 取 **7 天**：文档只写了「1 小时」，但那是 upload_url 的预签名窗口
+  // （X-Amz-Expires=3600）；对象本身的保留是 x-amz-expiration 里的
+  // rule-id="Delete after 7 days"。参考图能被模型读多久，看的是后者。
+  higgsfield: {
+    strategy: "upload-initiate-put",
+    endpoint: "https://api.higgsfield.ai/files/generate-upload-url",
+    uploadUrlPath: "upload_url",
+    uploadHeadersPath: "upload_headers",
+    urlPath: "public_url",
+    authType: "key",
+    accepts: ["image", "video", "audio"],
+    visibility: "public-provider",
+    ttlSeconds: 7 * 24 * 60 * 60,
+  },
   runninghub: {
     strategy: "upload-multipart",
     endpoint: "https://www.runninghub.cn/openapi/v2/media/upload/binary",

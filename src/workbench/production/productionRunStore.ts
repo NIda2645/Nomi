@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../project/storeLifetime'
 import { create } from 'zustand'
 
 import type { ProductionRun } from '../../../electron/productionRun/productionRunTypes'
@@ -107,3 +108,18 @@ export const useProductionRunStore = create<ProductionRunStore>()((set, get) => 
     set({ projectId: null, run: null, cursor: 0, loading: false, error: null, lastPolledAt: null, requestedRunId: null, navigationTarget: null })
   },
 }))
+
+/**
+ * C1 寿命声明：这个 store 存着 `projectId`，读侧按它自校（审计 §1.1「不清但不串」）。
+ * 但「不串」不等于「该留」：离开项目后还在轮询上一个项目的 run，既白花请求，
+ * 也让新项目的制作面在第一帧显示别人的进度。它的 `reset()` 会推进 `loadRequestEpoch`，
+ * 在途回执落地时认得出自己已经过期。
+ */
+export const productionRunStoreLifetime = declareStoreLifetime({
+  store: 'useProductionRunStore',
+  fields: {
+    projectId: 'project', run: 'project', cursor: 'project', loading: 'project',
+    error: 'project', lastPolledAt: 'project', requestedRunId: 'project', navigationTarget: 'project',
+  },
+  releaseProject: () => useProductionRunStore.getState().reset(),
+})

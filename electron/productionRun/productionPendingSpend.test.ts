@@ -142,6 +142,32 @@ describe("付费卡的宿主投影", () => {
     expect(outcome).toBeInstanceOf(Error);
   });
 
+  // ── T-AG-04：「全自动」档不该再弹报价卡 ───────────────────────────────────
+  //
+  // 三条一起才算钉住，少一条就会退回旧形状：①「代答中不出卡」是新行为；②「代答不上的那一笔
+  // 照旧出卡」是**必须保留**的行为（策略答不了才问人，也包括用户看着一张卡时切进全自动）；
+  // ③ 封印那一支一个字不动——代答链第一步就是封印，之后任何一步失败都停在「sealed + 门还等着」。
+  it("全自动档代答中的那一笔不投影成卡（草稿落盘到封印之间不许闪卡）", () => {
+    const answered = (projectId: string, operationId: string) => projectId === "project-1" && operationId === "op-a";
+    expect(projectPendingSpendConfirm(run(), resolvePricing, answered)).toBeUndefined();
+    expect(listPendingSpendConfirms([run()], resolvePricing, answered)).toEqual([]);
+  });
+
+  it("没有代答在飞的草稿照旧出卡（每步问 / 自动改两档，以及代答失败后卡回到原处）", () => {
+    const answeringSomethingElse = (_projectId: string, operationId: string) => operationId === "op-other";
+    expect(projectPendingSpendConfirm(run(), resolvePricing, answeringSomethingElse)).toBeDefined();
+    // 谓词缺席 = 外部 MCP 宿主那条路，逐字不变。
+    expect(projectPendingSpendConfirm(run(), resolvePricing)).toBeDefined();
+  });
+
+  it("封印后门还等着的那一笔，在全自动档下仍然出卡（代答链失败 = 它真的在等人）", () => {
+    const sealed = run({
+      gates: [{ gateId: "gate-a", kind: "budget", status: "waiting", requestedAt: NOW } as never],
+    });
+    sealed.generationPlan = { ...sealed.generationPlan!, state: "sealed", authorizationGateId: "gate-a" };
+    expect(projectPendingSpendConfirm(sealed, resolvePricing, () => true)).toBeDefined();
+  });
+
   it("一个项目里多笔时按 updatedAt 排序（介入槽只显示第一张，其余算「还有 N 条」）", () => {
     const older = run({ runId: "op-old", updatedAt: "2026-09-10T00:00:00.000Z" });
     const newer = run({ runId: "op-new", updatedAt: "2026-09-12T00:00:00.000Z" });

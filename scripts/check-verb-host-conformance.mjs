@@ -344,7 +344,21 @@ function checkVerb(verb) {
     const key = JSON.stringify(item.args)
     if (seen.has(key)) continue
     seen.add(key)
-    problems.push(...checkCall(verb, spec, contract, item.label, item.args).problems)
+    const outcome = checkCall(verb, spec, contract, item.label, item.args)
+    problems.push(...outcome.problems)
+    // R1b · 最小实例里**每个必填字段**的值都要到达宿主。R3 只探可选字段（它一次加一个），必填字段
+    // 在最小实例里本来就在、从不被单独探——于是「必填字段被翻译层静默丢掉」此前对这把尺子是盲区，
+    // 2026-09-18 阳性对照 ⑤ 做成真的那一刻才露出来。最小实例没有可选字段，不存在「被更具体的字段合法盖掉」。
+    if (item.label === 'R1 最小实例' && outcome.translated !== undefined) {
+      const kept = leafValues(outcome.translated)
+      for (const [field, value] of Object.entries(isRecord(item.args) ? item.args : {})) {
+        if (TRANSLATOR_CONSUMED[`${verb.name}/${field}`]) continue
+        const missing = [...leafValues(value)].filter((leaf) => !kept.has(leaf))
+        if (!missing.length) continue
+        problems.push(`R1b 必填字段：字段 "${field}" 被翻译层静默丢掉（丢了 ${missing.slice(0, 3).join(', ')}）`
+          + '\n        → 要么把它传下去，要么在 TRANSLATOR_CONSUMED 里按这个路径具名登记并写清它被谁吃掉了')
+      }
+    }
   }
   if (verb.schema.safeParse(minimal).success) {
     for (const probe of fieldProbes(verb, published, verb.schema.parse(minimal))) {
@@ -383,13 +397,9 @@ function checkVerb(verb) {
 
 // ── 阳性对照：坏声明必须报红 ─────────────────────────────────────────────────
 
-function selfCheck() {
+async function selfCheck() {
   const donor = VERB_DECLARATIONS.find((verb) => verb.name === 'read_skill')
-  const broken = {
-    ...donor,
-    name: 'read_skill',
-    schema: donor.schema.extend?.({}) ?? donor.schema,
-  }
+  if (!donor) return '阳性对照 ⑤ 失效：拿不到参照声明 read_skill'
   // ① 宿主收不下：给一个真实动词喂一份宿主一定拒的载荷
   let rejected = false
   try { hostBridge('skillRead', 'load_skill', { name: 'x', bogusFieldTheHostNeverDeclared: 1 }) } catch { rejected = true }
@@ -404,11 +414,16 @@ function selfCheck() {
   // ④ 最小实例判据必须真的只填必填
   const sample = instanceFor({ type: 'object', properties: { a: { type: 'string' }, b: { type: 'string' } }, required: ['a'] }, true)
   if (Object.keys(sample).length !== 1) return '阳性对照 ④ 失效：最小实例把可选字段也填了，R1 等于没跑'
-  if (!broken) return '阳性对照 ⑤ 失效：拿不到参照声明'
+  // ⑤ 整把尺子的阳性对照：一份**坏声明**（动词面多要一个宿主从没声明过的必填字段）喂进
+  //    checkVerb，必须报出至少一条问题。此前这里只判了 `broken` 对象的真假——尺子从没被证明会红。
+  const { z } = await import('zod')
+  if (typeof donor.schema.extend !== 'function') return '阳性对照 ⑤ 失效：参照声明的 schema 不是可扩展的 zod object'
+  const broken = { ...donor, schema: donor.schema.extend({ bogusFieldTheHostNeverDeclared: z.string().min(1) }) }
+  if (checkVerb(broken).length === 0) return '阳性对照 ⑤ 失效：动词面多要一个宿主不收的必填字段，checkVerb 一条问题都没报——这把尺子不会红'
   return null
 }
 
-const selfCheckFailure = selfCheck()
+const selfCheckFailure = await selfCheck()
 if (selfCheckFailure) {
   console.error(`✖ ${selfCheckFailure}`)
   process.exit(1)

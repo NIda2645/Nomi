@@ -1,0 +1,220 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-full-auto-spend-card-and-static-receipt",
+  "problem_type": "「用户此刻看到什么」由写死的表回答，而不是从真实审批状态派生",
+  "symptom": "① 用户切到「全自动」档（切档卡上明说付费生成不再逐笔问），Agent 建好草稿后面板仍然弹出报价卡，同一件事被问第二遍。② 让 Agent「把素材劈成两半」，模型回「请在确认卡里批准」，介入槽里一张卡都没有；用户先以为在加载，再以为 Nomi 坏了（2026-09-12 截图）。",
+  "direct_cause": "① `electron/productionRun/productionPendingSpend.ts` 的 draft 分支只看 `plan.state==='draft'` 与 `cardHidden`，完全不看这一笔是不是已经由档位接手；而档位代答那一步（`generationTransportAdapters.ts` 的 `decideByPolicyAfterDraft`）跑在草稿落盘之后，面板每 1.5s 读一次投影，中间那一段卡是真的摆出来的。② `electron/agentLane/laneExtendedTools.ts` 的 `nextActionFor` 对 `edit_timeline` 无条件返回 `user_sees_review_card`，`generate` 无条件抛 `user_sees_spend_card`——两处都从不查闸的真实结论。",
+  "class_root": "宿主对模型/用户announce「现在有一张卡在等你」时，那句话的来源是一张**静态表**而不是产生卡的那份状态。凡是这样写的地方，announce 与 render 就没有任何东西保证它们同步：闸跑在 `before_tool`（回执写出来时卡早已答完），档位代答跑在草稿落盘之后（卡该消失却还在），两处症状不同、成因同构。",
+  "migration": "投影与回执改为从真实状态派生，旧的两条静态判断在同一 commit 删除：`productionPendingSpend.ts` 的 draft 分支新增「这一笔正由档位代答」一支；`laneExtendedTools.ts` 的 `nextActionFor` 三处写死的 `kind: 'user_sees_*_card'` 全部改为从 `context.approvalDecision` 派生，`generate` 的无条件 `spendCardResult` 改为只在真的没被代答时才走。没有留并行版、没有开关、没有 fallback。",
+  "affected_population": [
+    "把档位切到「全自动」的用户：每一次 Agent 发起的付费生成，在草稿落盘到封印之间都会看到一张他刚授权过「不用再问」的报价卡",
+    "任何档位下让 Agent 做时间轴编辑（`edit_timeline`）的用户：模型照着回执让他去点一张不存在的复审卡",
+    "「全自动」档下调用 `generate` 的模型：工具回执告诉它「卡在等用户、生成没开始」，而钱已经花了、任务已经在跑"
+  ],
+  "scope_paths": [
+    "electron/productionRun/productionPendingSpend.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/capabilityCore/policySpendDecision.ts",
+    "electron/agentLane/laneExtendedTools.ts",
+    "electron/agentLane/laneApprovalGate.ts",
+    "electron/shared/agentCapabilities/verbDeclaration.ts",
+    "scripts/check-announced-card-rendered.mjs"
+  ],
+  "entry_points": [
+    "electron/productionRun/productionPendingSpend.ts:150 projectPendingSpendConfirm（面板报价卡的唯一投影点）",
+    "electron/agentLane/laneExtendedTools.ts:148 nextActionFor（20 个 lane 动词回执的唯一产地）",
+    "electron/agentLane/laneExtendedTools.ts:113 spendCardResult（`generate` 那条「停下来等卡」的失败回执）",
+    "electron/agentLane/laneDesktopTools.ts:135 nextAction: user_sees_panel（同族的第二个回执产地：`start_model_setup`，实扫确认它说的是真的——面板确实当场打开）"
+  ],
+  "invariants": [
+    "面板上出现一张付费报价卡 ⇔ 这一笔真的在等用户决定：既没有被档位接手代答，也不是一份还没摆出来的草稿",
+    "工具回执里的 `kind: user_sees_*_card` 只能从闸的真实结论派生，永远不是写死的字面量",
+    "档位代答失败（含代答链任何一步失败）时，那一笔必须回到「在等用户」——卡出现在原处，不许静默消失"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "line": 150,
+      "symbol": "projectPendingSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 209,
+      "symbol": "projectPendingSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "line": 106,
+      "symbol": "spendAnsweredByPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 199,
+      "symbol": "spendAnsweredByPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "line": 209,
+      "symbol": "spendAnsweredByPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "line": 150,
+      "symbol": "spendAnsweredByPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 371,
+      "symbol": "beginPolicySpendDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "line": 148,
+      "symbol": "nextActionFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "line": 331,
+      "symbol": "rememberDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "line": 192,
+      "symbol": "decisionFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/policySpendDecision.ts",
+      "line": 45,
+      "symbol": "beginPolicySpendDecision"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 11,
+    "why_not": "两组门各自只有一个真正的判据产地，剩下的都是同一份事实的读口，合并会把它们搬到错误的层。① 报价卡：判据只在 `productionPendingSpend.ts` 那一处（纯投影），`appIntegrationSpendConfirm.ts` 的两扇是同一函数的两个调用点（列表读 + 三个写动作的读），必须同源同谓词，合成一个就等于让写动作绕过投影自己判一次。② 「这一笔由档位代答」只有一个写口（适配器）和三个读口（投影 + 两个调用点），读口本来就该多。③ `nextActionFor` 只有一扇。跨组合并（把回执判据搬进投影，或反过来）会让 lane 的工具回执依赖面板的投影，而外部 MCP 宿主那条路根本没有面板。"
+  },
+  "regression_tests": [
+    "electron/productionRun/productionPendingSpend.test.ts",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "tests/agent-runtime/lane-native-approval.test.mts"
+  ],
+  "residual_risks": [
+    "「这一笔由档位代答」是进程内事实，不落盘：进程在代答途中被杀，重启后那份草稿会照常出卡。这是刻意选的那一边——重启后确实没有任何代答在飞，出卡比静默诚实。",
+    "`nomi_generation_plan` 的 `create` 分支拿不到 operationId，占位只能在紧接 `plan()` 的同步语句里补（中间无 await，IPC 读进不来）。桌面 lane 的 `create` 本来就带 `cardHidden`、不出卡，这一支只对外部宿主与夹具生效。",
+    "门岗 `hardcoded-card-claim` 只看 `kind:` 这一个字段；`generate` 那条失败回执的 `code: 'user_sees_spend_card'` 由代码分支保证（`policyStartedGeneration`），不由门岗保证，靠 `laneExtendedTools.test.ts` 的两条测试守着。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "两条都是本仓自己的状态机与投影之间的不同步，没有任何外部协议/供应商契约参与；判据的 owner（`capabilityApprovalPolicy.spendDecidedByPolicy`、`laneApprovalGate`）都在仓内，查外部文档证明不了任何一条。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个成因在两个互不相识的面上各长了一次（面板投影、lane 工具回执），中间隔着半年和两位作者。复发机制是结构性的：announce 那一句写起来只要一个字符串常量，而它要跟上的那份状态住在别处、随时在变；没有任何编译期或门岗约束逼人去查那份状态。新加一个动词、新加一档审批，都会再来一次。",
+    "same_class_scan": [
+      "实扫 `kind:\\s*['\"]user_sees` 与 `code:\\s*['\"]user_sees` 全仓（`grep -rn` over electron/ src/）：命中 4 处，全部在 `electron/agentLane/laneExtendedTools.ts:22/26/30/46`（修前行号），已全部改为派生",
+      "electron/agentLane/laneDesktopTools.ts:135 `nextAction: { kind: 'user_sees_panel' }`——同族的第二个回执产地。逐条核：它的动作是 `requestRenderer('settings.open-model-provider')` 且 await 成功才返回，所以「面板开着」在回执写出来的那一刻为真；且 `user_sees_panel` 不是卡，没有「谁来答」的问题。not-affected。",
+      "electron/shared/agentCapabilities/verbs/writeVerbs.ts:239/274/306 的 `nextAction: 'user_sees_*_card'`——那是**声明**（模型读到的工具说明书，讲的是这个动词一般会怎样），不是回执；`verbDeclaration.ts:148` 的后果句本来就写着「全自动档它直接应用，而且结果会这么说」。它们保持静态是对的，改动的是那句承诺的兑现方。",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts 全文扫 announce→render 链上的静默收空分支：`check:announced-card-rendered` 基线为 0，本次未新增"
+    ]
+  },
+  "generality_proof": "两条症状共用同一条不变量：**announce 必须是算出来的**。修法把两处的「算」各自钉在唯一 owner 上——报价卡钉在 `productionPendingSpend.projectPendingSpendConfirm`（面板与三个写动作同一个谓词），工具回执钉在 `laneApprovalGate.decisionFor`（闸是「这次调用怎么过的」的唯一产地，回执经 `LaneToolExecutionContext.approvalDecision` 读它）。再加一道机器判据：`check:announced-card-rendered` 的 `hardcoded-card-claim` 规则把 `kind: 'user_sees_*_card'` 这种写死的字面量在受检文件里判红，并把 `laneExtendedTools.ts` / `verbDeclaration.ts` 纳入 WATCHED。于是下一个动词想再写一张静态表，编译得过、测试可能也过，但门岗当场红——这一类不再靠人记得。",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "projectPendingSpendConfirm",
+      "responsibility": "「面板上该不该有一张付费卡」的唯一判据。draft 分支在这里一次性回答三件事：还没摆出来（cardHidden）、正由档位代答（spendAnsweredByPolicy）、真的在等人。面板列表与三个写动作共用它。"
+    },
+    {
+      "path": "electron/capabilityCore/policySpendDecision.ts",
+      "symbol": "beginPolicySpendDecision",
+      "responsibility": "「这一笔此刻正由档位代答」这件事实的唯一 owner，有始有终：写口在适配器（判据仍是 `spendDecidedByPolicy`），释放在 finally，所以代答失败时卡必然回到原处。"
+    },
+    {
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "decisionFor",
+      "responsibility": "「这一次调用真的是怎么过闸的」的唯一产地。工具回执只能从这里取，不许自己编一句「用户看到一张卡」。"
+    },
+    {
+      "path": "scripts/check-announced-card-rendered.mjs",
+      "symbol": "hardcoded-card-claim",
+      "responsibility": "机器判据：受检文件里任何写死的 `kind: 'user_sees_*_card'` 当场报红，把「回执照表抄」这一族钉在门岗上。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "nextActionFor",
+      "disposition": "enforced",
+      "evidence": "三处写死的 `kind: 'user_sees_*_card'` 全部改为从 `context.approvalDecision` 派生；`check:announced-card-rendered` 在修前对这个文件报 3 处红、修后 0 处（实跑过正反两次）。"
+    },
+    {
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "entry_point": "projectPendingSpendConfirm",
+      "disposition": "enforced",
+      "evidence": "draft 分支新增档位代答一支；`agentPanelSpendConfirm.e2e.test.ts` 在 `requestGenerationGate` 那一刻（草稿已落盘、尚未封印）观察到 0 张卡，并以同一次观察的 `state === 'draft'` 作阳性对照；把该分支删掉后这条测试与投影单测各自变红（实跑过）。"
+    },
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "entry_point": "start_model_setup 的 nextAction",
+      "disposition": "not-affected",
+      "evidence": "逐条核过：它 await `requestRenderer('settings.open-model-provider')` 成功后才返回，回执说的「面板开着」在写出来的那一刻为真；`user_sees_panel` 不是确认卡，不存在「谁来答、答完没有」这条时间差。"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "VerbDeclaration.nextAction",
+      "disposition": "not-affected",
+      "evidence": "这是模型读到的**说明书**（`renderVerbDescription` 的后果句），讲的是这个动词一般会怎样，本来就该是静态的；`verbDeclaration.ts:148` 明写「全自动档它直接应用，而且结果会这么说」——要修的是那个「结果」，不是这句声明。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-announced-card-rendered.mjs",
+    "invariant": "announce→render 链上的受检文件里，`kind: 'user_sees_*_card'` 不得是写死的字面量；它必须从真实审批状态派生。",
+    "failure_mode": "`pnpm run check:announced-card` 逐条打印文件:行与「为什么它是这一族」，退出码 1，contracts 门当场红。",
+    "exception_policy": "none",
+    "strategy": "把「回执照表抄」做成棘轮门岗（基线 0、只减不增），并按 R17「加规则先验它会红」在修前实跑一次确认它抓得到这三处。",
+    "artifacts": [
+      "scripts/check-announced-card-rendered.mjs",
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/agentLane/laneExtendedTools.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "electron/productionRun/productionPendingSpend.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneExtendedTools.ts",
+      "src/workbench/ai/v4/useAgentPanelAutoMode.ts"
+    ],
+    "rationale": "`laneExtendedTools.ts` 里三处写死的 `kind: 'user_sees_*_card'` 与 `generate` 无条件走 `spendCardResult` 的那条路，在同一 commit 被派生版取代（不是加一个分支，是那几行没了）；`useAgentPanelAutoMode.ts` 顶部那段「全自动仍然会问付费」的陈旧说明同 commit 删除（它与 2026-09-12 拍板和 i18n 文案相反）。没有留并行版、开关或 fallback（P1）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或升级任何依赖；两条修复全部落在仓内自己的状态机与投影上。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionPendingSpend.ts",
+    "tests": [
+      "electron/productionRun/productionPendingSpend.test.ts",
+      "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+      "electron/agentLane/laneExtendedTools.test.ts",
+      "tests/agent-runtime/lane-native-approval.test.mts"
+    ],
+    "structural_ticket": "docs/roadmap/TODO.md"
+  }
+}

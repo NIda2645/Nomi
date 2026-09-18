@@ -178,6 +178,38 @@ function modeFromSnapshot(
   return declared ?? selected.mode;
 }
 
+/**
+ * The module bucket that owns an **explicitly named** provider+model. This is a
+ * lookup, not a choice: the caller already said which model spends the money, and
+ * `moduleId` is an internal routing bucket the model face never sees (it is absent
+ * from every verb declaration). Without it a named model could only be used by
+ * users who had also saved a Workbench default — i.e. naming a model did nothing.
+ * Returns undefined when the identity is not in the catalog, so the caller still
+ * refuses rather than inventing a bucket.
+ */
+function moduleIdForIdentity(
+  deps: SemanticGenerationCandidateDeps,
+  providerId: string,
+  modelId: string,
+): string | undefined {
+  for (const manifest of deps.registry?.snapshot?.() ?? []) {
+    if (!manifest || typeof manifest !== "object") continue;
+    const moduleId = text((manifest as { moduleId?: unknown }).moduleId);
+    const providers = (manifest as { providers?: unknown }).providers;
+    if (!moduleId || !Array.isArray(providers)) continue;
+    for (const provider of providers) {
+      if (!provider || typeof provider !== "object") continue;
+      if (text((provider as { providerId?: unknown }).providerId) !== providerId) continue;
+      const models = (provider as { models?: unknown }).models;
+      if (!Array.isArray(models)) continue;
+      if (models.some((model) => model && typeof model === "object" && text((model as { modelId?: unknown }).modelId) === modelId)) {
+        return moduleId;
+      }
+    }
+  }
+  return undefined;
+}
+
 function fallbackFromSnapshot(
   deps: SemanticGenerationCandidateDeps,
   taskKind: GenerationDefaultTaskKind,
@@ -277,7 +309,12 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
   const providerId = text(deps.params.providerId) || named?.providerId || fallback?.providerId;
   const modelId = namedModelId || fallback?.modelId;
   if (!moduleId || !providerId || !modelId) {
-    throw new Error(`没有配置可用的${taskKind.includes("video") ? "视频" : "图片"}模型，请先在设置中选择模型`);
+    // 这句话有两个读者，得同时说得通（2026-09-18 真机实测）：用户能去设置里选，**而 Agent 不能**。
+    // 只写「请先在设置中选择模型」时，DeepSeek 连着调了 6 次 `draft_shots`、每次收到同一句话，
+    // 它看得见 `list_models` 里那个能用的模型却不知道自己可以点名它——一条本可恢复的路被说成了死路。
+    const kind = taskKind.includes("video") ? "视频" : "图片";
+    throw new Error(`没有配置可用的${kind}模型。请在设置里选一个默认${kind}模型；`
+      + `或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。`);
   }
   // A saved mode/variant belongs to the saved provider+model identity.  If the
   // user explicitly chooses another model, carrying those fields across can

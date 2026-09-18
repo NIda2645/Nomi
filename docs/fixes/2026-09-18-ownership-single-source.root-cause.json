@@ -1,0 +1,281 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-ownership-single-source",
+  "problem_type": "One fact with no single owner, copied into N places that then drift",
+  "symptom": "Four independently reported failures share one shape: a credential injected through the renderer never counts so every walkthrough that relies on it is silently green (T-QA-13); a Chinese UI shows the model-facing English failure prose `The current target could not accept this action (surface_port_stale). Next: …`; switching projects leaves the previous project's paid-confirmation card, import progress and dock badge behind; and setting the TikHub route to automatic silently rewrites the user's on-disk route preference.",
+  "direct_cause": "Each site holds its own copy of a fact that has an owner elsewhere: ApiKeyRecord.enabled means both 'user disabled it' and 'not certified yet'; the wire error-code table exists in 15 places, 6 hand-copied; store fields have no lifetime tag so the project release point is a hand-written list; one identity is compared by three functions with 13/13/7 dimensions; and a resolve* function writes to the preference store.",
+  "class_root": "The contracts in this repository carry what a thing is but not who owns it. With no owner axis, whoever needed the fact copied it, and every copy is correct on the day it is written and wrong the day the owner changes. The audit (docs/audit/2026-09-17-ownership-lifetime-census.md) measured this across five dimensions and found six C-grade items, all stopping at an existing owner module 0-1 layers down; no new layer and no framework change is required.",
+  "affected_population": [
+    "Every user who switches projects: the previous project's paid-confirmation card, asset-import progress, live previews and agent dock badge stay on screen",
+    "Every user who reads an agent tool failure in a Chinese UI: the panel prints the English prose written for the model",
+    "Every user who connects a no-auth provider (local ComfyUI / Ollama) or whose walkthrough fixture seeds a credential: the key is stored but never counts",
+    "Every user with TikHub on automatic routing: one transient probe failure silently pins the other domain into their saved preference"
+  ],
+  "scope_paths": [
+    "electron/shared/surfacePortBinding.ts",
+    "electron/shared/projectBinding.ts",
+    "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+    "electron/catalog/rendererCatalogMutation.ts",
+    "electron/catalog/validateCandidateCredential.ts",
+    "electron/connectors/tikhubRoute.ts",
+    "src/workbench/project/storeLifetime.ts",
+    "src/workbench/project/releaseWorkbenchProjectSession.ts",
+    "src/workbench/ai/lane/laneToolFailureText.ts",
+    "electron/export/exportJobIpc.ts",
+    "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+    "scripts/root-cause-contracts.mjs"
+  ],
+  "entry_points": [
+    "Switching from one project to another in the project library",
+    "An agent tool failing during a turn, rendered in the agent panel",
+    "Pasting an API key for a provider that declares no authentication",
+    "Any outbound TikHub call while the route mode is automatic"
+  ],
+  "invariants": [
+    "A credential record's enabled flag means only 'the user disabled it'; a provider that declares no authentication has nothing to verify, so its credential counts",
+    "A wire error-code set has one value source; adapters may spread and append but never relist",
+    "Every store data field declares a lifetime, and project-scoped fields are released through that declaration rather than a hand-written list",
+    "One identity has one comparison function, which lives in its owner module; other layers import it and never list dimensions again",
+    "A function whose name promises it only computes an answer never writes to host configuration or user preferences"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/shared/surfacePortBinding.ts",
+      "line": 393,
+      "symbol": "SURFACE_PORT_WIRE_ERROR_CODE_LIST"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/surfacePortBinding.ts",
+      "line": 103,
+      "symbol": "sameSurfaceFrameOwner"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/surfacePortBinding.ts",
+      "line": 74,
+      "symbol": "sameSurfacePortBindingWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/projectBinding.ts",
+      "line": 70,
+      "symbol": "sameProjectAgentBinding"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/projectBinding.ts",
+      "line": 65,
+      "symbol": "sameCommittedProjectSelection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "line": 37,
+      "symbol": "laneToolFailureOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "line": 136,
+      "symbol": "upsertRendererCatalogVendorApiKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "line": 36,
+      "symbol": "validateCandidateCredential"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubRoute.ts",
+      "line": 131,
+      "symbol": "resolveTikhubHost"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/storeLifetime.ts",
+      "line": 42,
+      "symbol": "declareStoreLifetime"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/releaseWorkbenchProjectSession.ts",
+      "line": 53,
+      "symbol": "storeLifetimeRegistry"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "line": 63,
+      "symbol": "laneToolFailureSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/exportJobIpc.ts",
+      "line": 27,
+      "symbol": "sameSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+      "line": 287,
+      "symbol": "generationQueueStoreLifetime"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/root-cause-contracts.mjs",
+      "line": 428,
+      "symbol": "isGeneratedDataFile"
+    }
+  ],
+  "door_reduction": {
+    "before": 47,
+    "after": 15,
+    "why_not": "Counted with node scripts/door-map.mjs across the five owners: 15 error-code definitions, 8 identity comparisons, 14 undeclared stores plus two hand-written release lists, 2 read-path preference writes, and the credential enable decision spread over the validator and the renderer mutation boundary. The 12 that remain are the owners themselves plus the two boundaries that must stay separate: validateCandidateCredential answers 'is this key verifiable' while upsertRendererCatalogVendorApiKey answers 'does this write publish', and merging them would put the certification boundary inside the validator."
+  },
+  "generality_proof": "Each fix replaces a copy with an import or a declaration, so a new consumer cannot reintroduce the drift without the gate seeing it: spreading an owner set removes the literal the vocabulary scanner looks for, importing an owner comparator removes the dimension literals the identity scanner looks for, and a new store field without a lifetime tag fails check:store-lifetime. None of the five gates carries a per-site exemption that a future author can copy.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "SURFACE_PORT_WIRE_ERROR_CODE_LIST",
+      "responsibility": "The single value source for wire error codes; the type and the set are both derived from it and adapters spread it"
+    },
+    {
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "sameSurfacePortBindingWire",
+      "responsibility": "The one comparison for surface port binding identity, used by the main-process registry, the preload bridge and the renderer"
+    },
+    {
+      "path": "electron/shared/projectBinding.ts",
+      "symbol": "sameCommittedProjectSelection",
+      "responsibility": "The one comparison for a committed project selection (project binding plus canonical root digest)"
+    },
+    {
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "symbol": "laneToolFailureOf",
+      "responsibility": "Carries the structured failure code to the renderer so the panel derives local text instead of parsing the model-facing English prose"
+    },
+    {
+      "path": "src/workbench/project/storeLifetime.ts",
+      "symbol": "declareStoreLifetime",
+      "responsibility": "Every store field's lifetime declaration; the project release point derives its work from this registry"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpToolErrorResults.ts",
+      "entry_point": "POLICY_CODES",
+      "disposition": "enforced",
+      "evidence": "Was the largest hand-copy at 42 codes and also relisted the seven integration codes; now spreads the transport owner and INTEGRATION_ERROR_CODES"
+    },
+    {
+      "path": "electron/capabilityCore/timelineTransportAdapters.ts",
+      "entry_point": "PUBLIC_FAILURE_CODES",
+      "disposition": "enforced",
+      "evidence": "Spreads the transport owner and keeps only the four timeline-specific codes; the missing project_identity_unavailable came back"
+    },
+    {
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "entry_point": "PUBLIC_FAILURE_CODES",
+      "disposition": "not-affected",
+      "evidence": "A deliberately narrow six-code surface that never handles port binding; registered in the vocabularies baseline with that reason rather than widened"
+    },
+    {
+      "path": "electron/surfacePortPreloadBridge.ts",
+      "entry_point": "sameSurfaceAuthority",
+      "disposition": "enforced",
+      "evidence": "Compared 7 of 13 dimensions at the trust boundary; now aliases the owner comparison, so two bindings differing only by webContentsId are no longer called the same"
+    },
+    {
+      "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+      "entry_point": "sameSuspensionWire",
+      "disposition": "not-affected",
+      "evidence": "Suspension identity deliberately excludes project dimensions so a suspension survives a project switch; registered in the identity-compare baseline with that reason"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+      "entry_point": "entries",
+      "disposition": "not-affected",
+      "evidence": "Declared process-lived: each entry signs its projectId at submit time, and clearing it on project switch would erase in-flight paid work from the UI while it keeps running"
+    },
+    {
+      "path": "electron/capabilityCore/mcpConfig.ts",
+      "entry_point": "repairStaleMcpConfigs",
+      "disposition": "not-affected",
+      "evidence": "DEFERRED BY INSTRUCTION — The startup half of the read-path-writes class (it rewrites other applications' host configs on every capability-core start). Left to the launch-rewrite lane by explicit instruction; check:read-path-writes covers only the read-prefix half and says so in its header"
+    },
+    {
+      "path": "scripts/root-cause-contracts.mjs",
+      "entry_point": "validateDoorMap",
+      "disposition": "enforced",
+      "evidence": "The door-map rule itself had a catch-22 for @generated pure-data files: out of scope they read as an undeclared path, in scope they read as a changed file with no door, and a pure-data file cannot have a door. They are now exempt when the header carries @generated AND the file has no executable declaration, so generated code still needs its door map; two node tests cover both halves."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Copying a fact that has an owner elsewhere is the default behaviour whenever a new layer needs that fact, and every copy is correct the day it is written. The audit found this same shape in five independent dimensions within one repository, and two of them already had a written lesson that had never become a gate.",
+    "same_class_scan": [
+      "node scripts/audit/scan-ownership.mjs across src and electron (2311 files): 14 stores, 272 module singletons, 61 comparison functions, 69 write-to-disk candidates, 15 error-code definitions",
+      "node scripts/door-map.mjs sameProjectAgentBinding / releaseWorkbenchProjectRuntimeState / storeLifetimeRegistry",
+      "Each of the five new gates was run against the unfixed tree first and its red count recorded: 20 vocabulary sites, 14 stores plus 3 release-point findings, 15 identity comparators, 5 read-path writes, 2 credential assertions"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/surfacePortBinding.ts",
+    "invariant": "A fact that has an owner is imported from that owner; the gates are built so that deriving from the owner removes the literal they scan for, which makes the compliant form the invisible one.",
+    "failure_mode": "A new copy is a literal, so the scanner sees it and the gate fails with the site and the drifted dimensions named.",
+    "exception_policy": "none",
+    "strategy": "Add the missing ownership axis to the contracts (lifetime for store fields, one comparator per identity, one value source per code table) and make each axis machine-checkable.",
+    "artifacts": [
+      "electron/shared/surfacePortBinding.ts",
+      "scripts/check-store-lifetime.mjs",
+      "scripts/check-identity-compare.mjs",
+      "scripts/check-read-path-writes.mjs",
+      "scripts/check-vocabularies-scan.mjs",
+      "scripts/check-error-surface.mjs"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/rendererCatalogMutation.test.ts",
+    "src/workbench/project/releaseWorkbenchProjectSession.test.ts",
+    "src/workbench/ai/lane/laneViewModel.test.ts",
+    "electron/connectors/tikhubRoute.test.ts",
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/project/releaseWorkbenchProjectSession.ts",
+      "electron/connectors/tikhubRoute.ts"
+    ],
+    "rationale": "The two hand-written release lists are gone and the release point derives from the registry; the persisted TikHub stickyHost is neither written nor read any more, so no parallel path remains."
+  },
+  "migration": "Installations carrying a stickyHost written by the old automatic routing keep the value on disk but it is deliberately ignored: honouring it would keep pinning a route the user never agreed to. The next outbound call re-races the two domains with the free health probe.",
+  "residual_risks": [
+    "check:read-path-writes covers only read/resolve/list/get-prefixed functions reaching atomicWrite or writeConnectorPrefs. The startup and external trigger classes named in audit section 3 are not covered by it and repairStaleMcpConfigs remains with the launch-rewrite lane.",
+    "useAgentUsageStore is declared process-lived to match its own docstring. The audit lists whether token usage should accumulate across projects as a product question; the declaration makes the current answer visible but does not settle it.",
+    "The project-switch evidence is the project-switch-background-run walkthrough plus two unit tests on the spend-confirm release. A human did not click through a project switch with a paid-confirmation card open in this batch."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/surfacePortBinding.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/catalog/rendererCatalogMutation.test.ts",
+      "src/workbench/ai/lane/laneViewModel.test.ts",
+      "src/workbench/project/releaseWorkbenchProjectSession.test.ts"
+    ],
+    "rationale": "The shared layer is where both cross-process contracts live (wire error codes and surface port identity); the renderer-side owners for store lifetime and failure text are covered by their own tests listed above."
+  },
+  "internal_only_reason": "Which module owns a fact in this repository, and how long a renderer store field should live, are decisions about this codebase's own layering; no external specification governs them.",
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency changed; the pi agent-core after_tool hook used to carry the failure envelope is an existing framework capability, used rather than reimplemented.",
+    "exit_criteria": []
+  }
+}

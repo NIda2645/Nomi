@@ -1,0 +1,243 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-17-creation-left-column-collapse",
+  "problem_type": "a shared column has no way to get out of the way, and the same column is drawn by two different frame systems",
+  "symptom": "在 1280 宽的笔记本上打开分镜表，表被切掉一半：提示词列、底栏「已生成 3/8 镜…」、锚卡行的「2 张待生成 / 全部展开」都看不全（实测编辑器 client = 568，越界叶子 zh 33 / en 70）。关掉 Nomi 面板就全好了——说明这不是分镜表自己的排版病，是横向预算病。同一屏左边那列「创作内容」只装 4 行、163px，却吃掉 240px 的横向预算、纵向空 715px。另外用户 2026-09-17 原话：「我以前改过一次，最左侧那个栏是圆角矩形，不知道为啥现在好像又变成长方形」——创作页那列是圆角卡片，分镜页同一个组件却渲成贴边长方形。",
+  "direct_cause": "DocumentListSidebar 永远以 240px 常驻，没有任何收起路径（唯一的让步是 max-[1180px]:w-[200px]，而 1280 根本不触发它）。外观那一半的直接原因是 WorkbenchShell.tsx 把圆角卡片的开关写死成 `workspaceMode === \"creation\"`（1a92b17e6，2026-09-10 C76），而这棵树早在四天前（ced576920）就已经跨 creation/storyboard 两个面常驻了——C76 没把分镜面一起带上。git log -S 显示那行 Provider 值自写下起从未被改过，所以分镜页那列是**从没迁到圆角版**，不是迁过又被改回。",
+  "class_root": "这两半是同一个类根因的两面：**一根跨面常驻的列，它的「在不在」和「长什么样」都由宿主面各自决定，而不是由这根列自己的 owner 决定。** 「在不在」上没有 owner，于是谁也不能让它走开；「长什么样」上 owner 是宿主面的 workspaceMode 字面量，于是同一个组件在两个面渲成两套外框。只要判据留在宿主面，下一个挂这根列的面（预览、未来的全局左侧栏 A-2）还会各自再发明一次。",
+  "affected_population": [
+    "所有在 ≤1400 宽窗口上编分镜表的用户（1280 笔记本 + Agent 面板展开是最常见的一档）",
+    "所有走进分镜页的用户：左栏在那一面长成贴边长方形，与创作页的圆角卡片不一致",
+    "EN 用户更严重：同一档下越界叶子 70 个（zh 33），串长 1.5–2 倍"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/creationResourceTreeCollapse.ts",
+    "src/workbench/creation/useCreationResourceTreeCollapsed.ts",
+    "src/workbench/creation/CreationResourceTreeToggle.tsx",
+    "src/workbench/creation/DocumentListSidebar.tsx",
+    "src/workbench/WorkbenchShell.tsx",
+    "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+    "src/workbench/creation/WorkbenchEditor.tsx",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/workbenchStore.ts"
+  ],
+  "entry_points": [
+    "左栏头部的收起钮",
+    "中间面板头部的展开钮（创作面工具栏 / 分镜面标题行 / 分镜面空态）",
+    "切换工作区（创作 ↔ 分镜）时按面给的默认值",
+    "冷启动时从 localStorage 读回的用户偏好"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "工作台的列宽与外框归属是 Nomi 自己的布局契约；没有第三方规范决定这根列在不在、长什么样。",
+  "invariants": [
+    "「创作内容」那列的收起态只有一份真相：一个全局用户偏好，三态（null = 没设过，按面给默认；true/false = 用户设过的全局值）。它落 localStorage，不进项目 payload、不 bump persistRevision。",
+    "「没设过时这一面默认收不收」只写在 DEFAULT_COLLAPSED_BY_MODE 一处：创作面展开、分镜面收起。",
+    "这根列只有一套外框：workspacePanelFrame（C76 圆角卡片）。DocumentListSidebar 不再读宿主面的 workspaceFrame 开关，也就不存在第二套贴边长方形。",
+    "收起 = 整列不挂载：不留 rail、不留 0 宽残壳、不留边框线。",
+    "展开钮在收起态无条件渲染，且中间面板在收起态仍保持 rounded 卡片外观与到窗口左缘的留白（用户 2026-09-17 拍板的形态约束）。",
+    "收起/展开只有这一对钮：不进顶栏、不进右键菜单、不进命令面板、不配快捷键。",
+    "这一刀不碰 projectAgentDockCollapsed：Nomi 栏的开合是另一条全站共用的不变式，左右各管各的。"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "line": 267,
+      "symbol": "useCreationResourceTreeCollapsed"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/CreationResourceTreeToggle.tsx",
+      "line": 22,
+      "symbol": "useCreationResourceTreeCollapsed"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/CreationResourceTreeToggle.tsx",
+      "line": 23,
+      "symbol": "setCreationResourceTreeCollapsed"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "line": 239,
+      "symbol": "CreationResourceTreeToggle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "line": 73,
+      "symbol": "CreationResourceTreeToggle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "line": 90,
+      "symbol": "CreationResourceTreeToggle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/creationResourceTreeCollapse.ts",
+      "line": 51,
+      "symbol": "CreationResourceTreeSlice"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/creationResourceTreeCollapse.ts",
+      "line": 54,
+      "symbol": "CreationResourceTreeSlice"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/creationResourceTreeCollapse.ts",
+      "line": 56,
+      "symbol": "readCreationResourceTreeCollapsed"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "line": 460,
+      "symbol": "CreationResourceTreeToggle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "line": 64,
+      "symbol": "CreationResourceTreeToggle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/useCreationResourceTreeCollapsed.ts",
+      "line": 10,
+      "symbol": "creationResourceTreeCollapsedPreference"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/useCreationResourceTreeCollapsed.ts",
+      "line": 12,
+      "symbol": "creationResourceTreeCollapsedFor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/workbenchStore.ts",
+      "line": 88,
+      "symbol": "CreationResourceTreeSlice"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchStore.ts",
+      "line": 349,
+      "symbol": "createCreationResourceTreeSlice"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 15,
+    "why_not": "这是新增能力不是收敛既有状态，门是随字段一起新建的，没有「之前散着的门」可合。15 扇里只有两扇是真正的业务门：唯一写口 setCreationResourceTreeCollapsed（只被 CreationResourceTreeToggle 调用）与唯一读口 useCreationResourceTreeCollapsed（WorkbenchShell 决定挂不挂那列、那颗钮决定画收起还是展开）。其余是同一个模块内部的类型自引用、store 的装配点，以及那颗钮的 5 个挂载点——挂载点不能再合并：收起态必须无条件有回头路，创作面工具栏的两个分支、分镜面标题行、分镜面空态各是一处用户真的会停在那里的屏幕。同一刀里反而删掉了两扇既有的门：DocumentListSidebar 的 workspaceFrame 外框分支，和 StoryboardWorkspace 自己那套 pt-[22px] px-6 pb-6 + assistantPaneWidth 的私有留白。"
+  },
+  "generality_proof": "收起态的判据住在 creationResourceTreeCollapse.ts 一个模块里，由 workspaceMode 派生而不是由某个入口动作派生；挂载判断仍在 WorkbenchShell 这唯一挂载点上，与 2026-09-06 立的那条「树归 shell 挂」不变式同一处。外框判据从「宿主面等于 creation 吗」改成「这个组件就是这套外框」，于是任何新的宿主面（预览、A-2 的全局左侧栏）挂上这根列时，外观和收起能力都是继承来的，没有留给作者忘记的 per-caller 分支。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/creation/creationResourceTreeCollapse.ts",
+      "symbol": "creationResourceTreeCollapsedFor / DEFAULT_COLLAPSED_BY_MODE / createCreationResourceTreeSlice",
+      "responsibility": "拥有「收没收起」这一个答案：偏好的寿命（窗口/进程级用户偏好，落 localStorage）、三态语义、以及两面的默认值。"
+    },
+    {
+      "path": "src/workbench/creation/CreationResourceTreeToggle.tsx",
+      "symbol": "CreationResourceTreeToggle",
+      "responsibility": "拥有那**一对**钮：展开态住左栏头部、收起态住中间面板头部，收起态无条件渲染。一功能一个家。"
+    },
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "aside 外框",
+      "responsibility": "拥有这根列唯一的外框写法（workspacePanelFrame），不再按宿主面分叉。"
+    },
+    {
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "symbol": "workbench-shell__body 的 p-4 gap-4 与树的挂载条件",
+      "responsibility": "拥有创作/分镜两面唯一一份留白（gutter）来源与树的唯一挂载点。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "entry_point": "左栏头部收起钮",
+      "disposition": "enforced",
+      "evidence": "钮由 CreationResourceTreeToggle 提供，写口只有 setCreationResourceTreeCollapsed 一个；真机走查点它并断言整列消失、展开钮出现。"
+    },
+    {
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "entry_point": "创作面工具栏左上角的展开钮",
+      "disposition": "enforced",
+      "evidence": "两个分支（有动作 / 无动作的空工具栏）都挂了它——空工具栏那条正是「回不去」最容易漏的一格。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "分镜面标题行左端的展开钮",
+      "disposition": "enforced",
+      "evidence": "住在标题左边、把标题挤开一格（用户拍板的「面板标题右移给它让位」）。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "entry_point": "分镜面空态（没有方案时中间没有面板头）",
+      "disposition": "enforced",
+      "evidence": "空态区域左上角单独挂一颗，否则「左栏收起 + 没有方案」= 用户回不去。绝不抄 CollapsedAiChip.tsx:24 那种条件渲染。"
+    },
+    {
+      "path": "src/workbench/explorer/ProjectExplorerSidebar.tsx",
+      "entry_point": "生成面的项目资源栏（另一根左栏，自带 60/300/500 收起+拖宽）",
+      "disposition": "not-affected",
+      "evidence": "另一棵树、另一批资源、另一个 store 字段（sidebarCollapsed）。统一这两根左栏是 A-2 的活，本刀刻意不碰（成文 §5.3）。"
+    },
+    {
+      "path": "src/workbench/preview/editingPanelLayoutSlice.ts",
+      "entry_point": "projectAgentDockCollapsed（Nomi 栏开合）",
+      "disposition": "not-affected",
+      "evidence": "全站共用的另一条不变式，本刀一行没动；真机走查里左栏收起与 Agent 开合是两把独立的闸，四种组合都量过。"
+    }
+  ],
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "这是新增能力（一根列第一次有了收起态），不是一类反复出现的缺陷。外观那一半确实是「同一个语义两份定义」的老毛病，但它的入口只有一扇（WorkbenchShell 的 Provider 值），本刀把它从判据里删掉了——不是加第三种分支。真正会复发的那一层（两根左栏是两套独立体系、宽度值四种写法）归 A-2，成文 §6 已登记，本刀只记不修。",
+    "same_class_scan": [
+      "grep useWorkspacePanelFrame：改前 3 个消费方（DocumentListSidebar / AssistantPane / AgentPanelV4Panel），改后 2 个——这根列不再读它。",
+      "grep assistantPaneWidth：改前 3 个宿主（storyboard / preview / generation）各自加一份 p-4 的 32px，改后 2 个——分镜面改走和创作面同一份 gap-4。",
+      "git log -S 'WorkspacePanelFrameContext.Provider'：全历史只有 1a92b17e6 一个 commit 写过那行，证明分镜页那列从没被迁到圆角版（不是迁过又改回）。"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/creationResourceTreeCollapse.test.ts",
+    "src/workbench/creation/creationResourceTreeModes.test.ts",
+    "tests/ux/creation-sidebar-multi-doc.walk.mjs",
+    "tests/ux/design-lab/__baselines__/creation-columns/columns-collapsed.png",
+    "tests/ux/design-lab/__baselines__/creation-columns/columns-storyboard-tree.png"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/creationResourceTreeCollapse.test.ts",
+    "src/workbench/creation/creationResourceTreeModes.test.ts"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/creation/creationResourceTreeCollapse.ts",
+    "tests": [
+      "src/workbench/creation/creationResourceTreeCollapse.test.ts"
+    ]
+  },
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/creation/DocumentListSidebar.tsx",
+      "src/workbench/creation/storyboard/StoryboardWorkspace.tsx"
+    ],
+    "rationale": "同 commit 删掉三样并行实现：DocumentListSidebar 的 max-[1180px]:w-[200px] 窄档让步（被收起态取代）、它的 `workspaceFrame ? 圆角卡片 : 贴边 border-r` 外框分叉（只留圆角那套）、StoryboardWorkspace 自己那份 pt-[22px] px-6 pb-6 + assistantPaneWidth 私有留白（改走 shell 的 p-4 gap-4，与创作面同一份）。没有 fallback、没有逃生口。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "渲染层布局与一个 localStorage 偏好，没有第三方运行时参与。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移。用户可见变化三条：① 分镜面第一次打开时那列默认收起（分镜表变宽），点中间面板左上角的钮即可要回来；② 分镜面那列从贴边长方形变成与创作面一致的圆角卡片，中间面板的左留白从 24px 统一成 16px；③ 收起/展开一次之后，这个选择全局记住并跨重启保留。旧项目不受影响：偏好是用户级的，第一次运行时为「没设过」，按面给默认。",
+  "residual_risks": [
+    "只在 macOS 真 Electron 构建 + 隔离资料库上验过 1280×933 与 1680×1050 两档；Windows 最小窗（GH runner 会夹到下限）这一刀没有真机证据。",
+    "分镜面空态那颗展开钮是绝对定位在内容区左上角，不在任何面板头里——形态与另外两处不完全一致，属于「有回头路」的下限实现，A-3 做文稿条时应一并收编。"
+  ]
+}

@@ -122,9 +122,11 @@ try {
   await clickOrFail(row.getByRole('button', { name: '输入 @ 选择参考' }), '再次打开 @ 入口')
   await clickOrFail(win.locator('[data-mention-item^="library:"]').first(), '插入素材库胶囊')
   await expectText(row.locator('.ProseMirror'), /主角|素材库参考|某镜结果/, '参考胶囊/提示词内容没有保留')
-  // 只记录不判红（结构性发现，见 PR 正文）：@ 插入的外部素材走 addExternalReferenceAnchor → anchorIds，
-  // 不写 shot.referenceBindings；而 storyboardRowStatus 只认槽位绑定，这一行可能因此被判「等参考图」。
-  console.log('  · @ 插入两条外部参考后镜 1 画面格状态 →', await row.locator('[data-storyboard-frame]').first().getAttribute('data-storyboard-frame'))
+  // 挂上去的参考图**就是**素材：@ 插入的外部素材走 addExternalReferenceAnchor → anchorIds，
+  // materialize 把它当 `params.referenceImageUrls` 发出去，所以这一行没有任何东西可等。
+  // 修复前它被判 `waiting-refs`（「等参考图」），页脚照着报数、批量把它排除——执行层与状态层两份真相。
+  await expect(row.locator('[data-storyboard-frame]').first(), '挂了真实参考图的行不该说「等参考图」')
+    .not.toHaveAttribute('data-storyboard-frame', 'waiting-refs')
   await snap('02-result-and-library-capsules.png')
 
   // 4) 走同一 @ 面板的 composer attachment 上传入口，等上传完成后候选出现，再插入。
@@ -158,9 +160,19 @@ try {
   // 6) 解绑。行展开态 / 台词 / 转场已随 0fc4768fb（remove row expansion and editorial fields）删除——
   //    编辑性字段不再挂在分镜行上，这不是回归。@ 路径上「解绑」= 删掉提示词里的那枚 @ 胶囊：
   //    updateShotPrompt 按文本里的 @ URL 重建 anchorIds（storyboardPlanEdits.ts），参考卡与素材源都留着。
-  //    取证点：参考卡 chip 从「1 镜在等它」变成「未生成」（没人等了），磁盘上 assets/upload.png 仍在。
+  //    取证点用参考卡的**反查过滤**：它直接数 shot.anchorIds（「正在看引用「X」的 N 镜」），
+  //    所以「绑没绑上」有据可查，而不是只看提示词里少了一枚胶囊。磁盘上 assets/upload.png 仍在。
+  //    （不再看 chip 上的「N 镜在等它」：挂了真图的行本来就不该等，那句话 2026-09-18 起只留给
+  //    还要生成的参考卡——见 docs/fixes/2026-09-18-storyboard-external-reference-waiting.root-cause.json。）
   const uploadChip = win.locator('[data-storyboard-anchor-chip]').filter({ hasText: 'upload.png' }).first()
-  await expectText(uploadChip, /1 镜在等它/, '@ 插入上传素材后，它的参考卡 chip 应显「1 镜在等它」')
+  const filterBar = win.locator('[data-storyboard-filter="true"]')
+  const filterByUpload = async (label) => {
+    await clickOrFail(uploadChip, label)
+    await expectVisible(filterBar, `${label}：反查过滤条没有出现`)
+  }
+  await filterByUpload('反查上传素材（解绑前）')
+  await expectText(filterBar, /正在看引用「upload.png」的 1 镜/, '@ 插入后这张卡应被 1 镜引用')
+  await clickOrFail(filterBar.getByRole('button', { name: '退出过滤' }), '退出反查过滤')
   const mentionChips = row.locator('[data-storyboard-mention-chip="true"]')
   const chipsBefore = await mentionChips.count()
   if (chipsBefore < 3) failures.push(`解绑前提示词里应有 3 枚 @ 胶囊（某镜结果 / 素材库 / 上传），实为 ${chipsBefore}`)
@@ -168,7 +180,10 @@ try {
   await clickOrFail(mentionChips.last(), '选中最后插入的上传胶囊')
   await win.keyboard.press('Backspace')
   await expect(mentionChips, '删胶囊后提示词里的 @ 胶囊没有少一枚').toHaveCount(chipsBefore - 1)
-  await expectText(uploadChip, /未生成/, '删掉 @ 后参考卡 chip 应不再被任何镜等待（解绑生效）')
+  await filterByUpload('反查上传素材（解绑后）')
+  await expectText(filterBar, /正在看引用「upload.png」的 0 镜/, '删掉 @ 后这张卡不该再被任何镜引用（解绑生效）')
+  await expectVisible(win.getByText('没有镜头引用这张卡', { exact: true }), '空过滤态没有说人话')
+  await clickOrFail(filterBar.getByRole('button', { name: '退出过滤' }), '退出反查过滤')
   if (!fs.existsSync(path.join(projectRoot, 'assets', 'upload.png'))) failures.push('解绑应只移除绑定，却把素材源 upload.png 删了')
   await snap('06-unbound-reference.png')
 

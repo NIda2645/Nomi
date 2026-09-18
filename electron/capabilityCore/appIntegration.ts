@@ -12,7 +12,6 @@
 // 这里只做接线，不碰 main.ts 的其它职责（保持 main.ts 精简、单一关注点）。
 import { app } from 'electron'
 import { getMainWindow } from '../appWindowRegistry'
-import { notifyHostConfigRepaired } from './hostConfigRepairNotice'
 import { startRpcServer, type RpcServerHandle } from './rpcServer'
 import { ensureCapabilitySigningKey, ensureToken } from './security'
 import { clearInstanceAdvertisement, writeInstanceAdvertisement } from './lockfile'
@@ -156,12 +155,8 @@ export async function startCapabilityCore(
     // 已接入的编程助手若还指着 Nomi 旧入口，宿主侧只显示一句 CONNECTION_CLOSED——里面一个字都没提 Nomi，
     // 用户没有理由想到「去开 Nomi 的模型接入面板」。这个修复原本只作为渲染那块面板的副作用发生，等于没有。
     // 能力核起来 = 这些配置指向的服务端就绪，正是把它们修回来的时刻（只动 Nomi 自己写过的条目，见 mcpConfig）。
-    // 修好了还得说一声：宿主进程启动时已经读过那份旧配置，不重启就一直用着旧入口。
-    // 「有没有真的改文件」只有这一层知道（repair.changed），所以通知的闸也建在这里，
-    // 而不是让每个接线方各自去猜要不要弹（R28：防线建在最早能拦住的那层）。
     try {
-      const repair = repairStaleMcpConfigs()
-      if (repair.changed) await notifyHostConfigRepaired({ clientLabels: repair.repaired.map((item) => item.label) })
+      repairStaleMcpConfigs()
     } catch { /* 宿主配置不可读不是 Nomi 的故障，不能反向拖垮能力核 */ }
     const token = ensureToken()
     const generationService = getProductionRunService()

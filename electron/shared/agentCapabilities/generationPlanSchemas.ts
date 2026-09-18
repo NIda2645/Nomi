@@ -90,6 +90,9 @@ const createFields = {
      * / `params.providerId` 取身份），只有这份 `.strict()` 的 shots 元素没声明它们。于是模型按目录点名
      * 「用 apimart 的 image-1」时，多镜那条路要么被整条拒收、要么把点名悄悄丢掉、落回用户的默认模型——
      * 一次**花钱**的调用用错模型且没有任何人报错。补齐的是声明，不是新能力。
+     *
+     * 换一个角度说同一件事（两份根因合同同一天各自挖到）：一镜能点名模型却点不了它的供应商，
+     * 身份就只剩一半——没有 `providerId`，「这一笔花在哪个模型上」在多镜路上根本无法表达。
      */
     moduleId: z.string().trim().min(1).optional(),
     providerId: z.string().trim().min(1).optional(),

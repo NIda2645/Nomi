@@ -87,3 +87,73 @@ describe('domain failure message reaches the model', () => {
     expect(result.failure?.message).toBe('check_job could not complete the requested action (capability_unsupported).')
   })
 })
+
+// ── T-ED-02：回执必须从**真实的审批结论**派生，不许照静态表抄 ──────────────────
+//
+// 2026-09-12 真实会话：用户让 Agent 把素材「劈成两半」，模型回「请在确认卡里批准」，
+// 槽里一张卡都没有。成因是这一层对 `edit_timeline` 无条件回 `user_sees_review_card` ——
+// 而闸跑在 `before_tool`，回执写出来的那一刻，卡要么早被答完、要么这一档压根没出过。
+describe('工具回执从真实审批结论派生', () => {
+  const signal = new AbortController().signal
+  const runVerb = async (
+    name: string, result: unknown, approvalDecision?: 'auto-granted' | 'granted-once' | 'granted-session',
+    args: Record<string, unknown> = {},
+  ) => {
+    const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result }) })
+      .find(candidate => candidate.name === name)!
+    return tool.execute(tool.schema.parse(args), {
+      toolCallId: 'call-1', signal, ...(approvalDecision ? { approvalDecision } : {}),
+    }) as Promise<{ ok: boolean; nextAction?: { kind: string; userSees: string; jobId?: string } }>
+  }
+
+  const editArgs = {
+    revision: 'revision-1', summary: '劈成两半',
+    operations: [{ kind: 'split', clipId: 'clip-1', atFrame: 30 }],
+  }
+
+  it('自动放行的那一档：回执说「已经应用」，绝不提一张不存在的卡', async () => {
+    const outcome = await runVerb('edit_timeline', { undoToken: 'undo-1' }, 'auto-granted', editArgs)
+    expect(outcome.nextAction?.kind).toBe('none')
+    expect(outcome.nextAction?.userSees).toMatch(/applied directly/)
+    // 「没有卡在等你」可以说；「一张卡在问你」不许说——后者正是 2026-09-12 那句话。
+    expect(outcome.nextAction?.userSees).toMatch(/no card is waiting/)
+    expect(outcome.nextAction?.userSees).not.toMatch(/card asks|review card/)
+  })
+
+  it('用户答过卡的那一档：回执说「他批了、已经应用」，同样不说「有卡在等你」', async () => {
+    const outcome = await runVerb('edit_timeline', { undoToken: 'undo-1' }, 'granted-once', editArgs)
+    expect(outcome.nextAction?.kind).toBe('none')
+    expect(outcome.nextAction?.userSees).toMatch(/approved the review card/)
+    expect(outcome.nextAction?.userSees).toMatch(/now applied/)
+  })
+
+  it('不可逆动词的 kind 也从结论取：没出过卡就不说出过', async () => {
+    const confirmed = await runVerb('delete_from_canvas', {}, 'granted-once', { nodeIds: ['node-1'] })
+    expect(confirmed.nextAction?.kind).toBe('user_sees_confirm_card')
+    const silent = await runVerb('delete_from_canvas', {}, 'auto-granted', { nodeIds: ['node-1'] })
+    expect(silent.nextAction?.kind).toBe('none')
+    expect(silent.nextAction?.userSees).not.toMatch(/confirmed/)
+  })
+
+  it('全自动档代答的 generate 已经开跑：不许再把模型停在一张不存在的报价卡上', async () => {
+    const outcome = await runVerb('generate', {
+      drafted: { operation: { operationId: 'op-7' } },
+      spendDecision: { decidedBy: 'policy:full_auto', receiptId: 'receipt-1' },
+      started: { ok: true },
+    }, 'auto-granted', { draftId: 'op-7' })
+    expect(outcome.ok).toBe(true)
+    expect(outcome.nextAction?.kind).toBe('job_running')
+    expect(outcome.nextAction?.jobId).toBe('op-7')
+    expect(outcome.nextAction?.userSees).toMatch(/generation has started/)
+  })
+
+  it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
+    const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
+      .find(candidate => candidate.name === 'generate')!
+    const outcome = await tool.execute(tool.schema.parse({ draftId: 'op-7' }), { toolCallId: 'call-1', signal }) as
+      { ok: boolean; failure?: { code: string; message: string } }
+    expect(outcome.ok).toBe(false)
+    expect(outcome.failure?.code).toBe('user_sees_spend_card')
+    expect(outcome.failure?.message).toMatch(/for 2 shot\(s\)/)
+  })
+})

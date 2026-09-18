@@ -54,6 +54,11 @@ const WATCHED = [
   'src/workbench/ai/v4/agentPanelSpendCard.ts',
   'src/workbench/ai/v4/useAgentPanelV4Data.ts',
   'src/workbench/ai/ProjectAgentResidentShell.tsx',
+  // 工具回执这一面（2026-09-18 · T-ED-02）。模型读到的 `User sees: …` 那一行也是一次 announce：
+  // 它说「一张卡在等你」，槽里就必须真有一张。`verbDeclaration.ts` 是那句承诺的出处
+  // （`user_sees_review_card` 的后果句写着「全自动档它直接应用，而且**结果会这么说**」）。
+  'electron/agentLane/laneExtendedTools.ts',
+  'electron/shared/agentCapabilities/verbDeclaration.ts',
 ]
 
 /**
@@ -65,6 +70,16 @@ const LOUD_MARKERS = /missingInterventionCard|traceMissingInterventionCard|setRe
 const COLLAPSES_TO_EMPTY = /\breturn\s*(?:\[\s*\]|undefined|null)\s*[;}]|\bset[A-Z]\w*\(\s*(?:undefined|null|\[\s*\])\s*\)/
 
 const RULES = [
+  {
+    id: 'hardcoded-card-claim',
+    why: '回执里把 `kind: "user_sees_…_card"` **写死** = 这句「用户看到一张卡」与真实审批状态无关。'
+      + '闸跑在工具执行**之前**，回执写出来的那一刻卡早已答完（或这一档压根没出过卡），'
+      + '于是模型让用户去点一张不存在的卡。`kind` 必须从闸的真实结论派生。',
+    kind: 'expression',
+    // 这条规则读**带字符串**的源码（只去注释）：它要看的恰恰是那个字符串字面量本身。
+    source: 'literals',
+    pattern: /\bkind\s*:\s*(['"`])user_sees_\w*card\1/g,
+  },
   {
     id: 'silent-catch',
     why: '`catch` 里收成空（return []/undefined/null 或 setX(空)）却一个字都不说 = 把「我读不到」说成「没有要确认的东西」。',
@@ -85,6 +100,29 @@ const RULES = [
  * 旁边写着「这里原来是 catch 回空数组」，门岗照样报红。一道会被自己的说明文字触发的门岗，
  * 只会教人不写说明。
  */
+function stripComments(source) {
+  let out = ''
+  let i = 0
+  while (i < source.length) {
+    const two = source.slice(i, i + 2)
+    if (two === '//') {
+      const end = source.indexOf('\n', i)
+      const stop = end < 0 ? source.length : end
+      out += ' '.repeat(stop - i)
+      i = stop
+    } else if (two === '/*') {
+      const end = source.indexOf('*/', i + 2)
+      const stop = end < 0 ? source.length : end + 2
+      out += source.slice(i, stop).replace(/[^\n]/g, ' ')
+      i = stop
+    } else {
+      out += source[i]
+      i += 1
+    }
+  }
+  return out
+}
+
 function stripCommentsAndStrings(source) {
   let out = ''
   let i = 0
@@ -137,8 +175,12 @@ function lineOf(source, index) {
 
 function scan(relative, raw) {
   const source = stripCommentsAndStrings(raw)
+  // 一条讲字符串字面量的规则不能读被抹平的源码——但注释仍然要去掉，否则门岗会被讲述这个病的
+  // 说明文字触发（本门岗第一版翻过这个车）。
+  const withLiterals = stripComments(raw)
   const hits = []
   for (const rule of RULES) {
+    const text = rule.source === 'literals' ? withLiterals : source
     if (rule.kind === 'catch') {
       for (const block of catchBlocks(source)) {
         if (!COLLAPSES_TO_EMPTY.test(block.text)) continue
@@ -148,8 +190,8 @@ function scan(relative, raw) {
       continue
     }
     rule.pattern.lastIndex = 0
-    for (const match of source.matchAll(rule.pattern)) {
-      hits.push({ key: `${relative} :: ${rule.id}`, why: rule.why, line: lineOf(source, match.index), snippet: match[0].replace(/\s+/g, ' ').slice(0, 100) })
+    for (const match of text.matchAll(rule.pattern)) {
+      hits.push({ key: `${relative} :: ${rule.id}`, why: rule.why, line: lineOf(text, match.index), snippet: match[0].replace(/\s+/g, ' ').slice(0, 100) })
     }
   }
   return hits
@@ -170,12 +212,14 @@ if (SELFTEST) {
   const positives = {
     'silent-catch': 'async function f(){ try { return await g() } catch { return [] } }',
     'optional-call-defaults-empty': 'export function list(id){ return actions?.listPendingSpend(id) ?? [] }',
+    'hardcoded-card-claim': "const next = { kind: 'user_sees_review_card', userSees: 'a card asks the user' }",
   }
   const negatives = {
     'silent-catch': 'async function f(){ try { return await g() } catch (e) { setReadFailure(reasonOf(e)); return undefined } }',
     'optional-call-defaults-empty': 'export function list(id){ if (!actions) throw new Error("x"); return actions.listPendingSpend(id) }',
+    'hardcoded-card-claim': "const next = { kind: confirmed ? 'user_sees_confirm_card' : 'none', userSees: text }",
   }
-  const commentOnly = '// 原来这里是 catch { return [] } 以及 actions?.list(id) ?? []\nconst x = 1\n'
+  const commentOnly = '// 原来这里是 catch { return [] } 以及 actions?.list(id) ?? [] 还有 kind: \'user_sees_review_card\'\nconst x = 1\n'
   let failed = false
   for (const rule of RULES) {
     const hit = (text) => scan('fixture.ts', text).filter((entry) => entry.key.endsWith(rule.id)).length
@@ -219,7 +263,7 @@ for (const [key, count] of [...counts.entries()].sort(([a], [b]) => a.localeComp
   const budget = allowed[key] ?? 0
   if (count > budget) {
     red = true
-    console.error(`✗ 确认卡渲染门岗失败：${key} 有 ${count} 处「失败写成空、一声不吭」（基线 ${budget}）`)
+    console.error(`✗ 确认卡渲染门岗失败：${key} 有 ${count} 处 announce 与 render 对不上（基线 ${budget}）`)
     for (const hit of found.filter((entry) => entry.key === key)) {
       console.error(`    ${key.split(' :: ')[0]}:${hit.line}  ${hit.snippet}`)
       console.error(`      为什么它是这一族：${hit.why}`)
@@ -235,10 +279,11 @@ for (const [key, budget] of Object.entries(allowed)) {
 }
 
 if (red) {
-  console.error('  → 这一族的规矩：announce 说有一条在等用户，render 就必须画出点什么。')
+  console.error('  → 这一族的规矩：announce 说有一条在等用户，render 就必须画出点什么，而 announce 自己必须是**算出来的**。')
   console.error('    读不到 → 主进程抛、渲染层渲 missingInterventionCard（会说话的卡）；')
   console.error('    认不出 → 让类型不可空，交给编译器拦（`projectV4Intervention` 已是这么做的）。')
-  console.error('    「回个空数组先跑起来」是这一族的病因，不是它的解法。')
+  console.error('    写死「用户看到卡」→ 从闸的真实结论派生（`laneApprovalGate.decisionFor`）。')
+  console.error('    「回个空数组先跑起来」「照表抄一句话」是这一族的病因，不是它的解法。')
   process.exit(1)
 }
 

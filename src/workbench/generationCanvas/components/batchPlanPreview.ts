@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 // 批量执行计划预览态(harness S2b,样张方案 A:画布原位确认)。
 // 语义铁律:进入预览 ≠ 开始生成——确认前零 vendor 调用零扣费;取消即散,画布零变化。
 import { create } from 'zustand'
@@ -260,3 +261,13 @@ export async function runPlanWithToasts(
     })
   }
 }
+
+/**
+ * C1 寿命声明：批量计划预览是这个项目画布上的一次待确认动作。
+ * `running` 尤其不能留——切过去看到一个「正在跑」而其实什么都没跑。
+ */
+export const batchPlanPreviewStoreLifetime = declareStoreLifetime({
+  store: 'useBatchPlanPreviewStore',
+  fields: { plan: 'project', running: 'project' },
+  releaseProject: () => useBatchPlanPreviewStore.setState({ plan: null, running: false }),
+})

@@ -1,3 +1,4 @@
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -279,12 +280,8 @@ function exportProjectIdentity(value: ExportJobProjectIdentity): ExportJobProjec
   });
 }
 
-function sameExportProjectIdentity(left: ExportJobProjectIdentity, right: ExportJobProjectIdentity): boolean {
-  return left.projectId === right.projectId
-    && left.immutableProjectUuid === right.immutableProjectUuid
-    && left.projectGeneration === right.projectGeneration
-    && left.canonicalRootDigest === right.canonicalRootDigest;
-}
+// C2：四维比对的 owner 在 `shared/projectBinding.ts`，这里不再列字段。
+const sameExportProjectIdentity = sameCommittedProjectSelection;
 
 export async function startExportJob(
   payload: unknown,
