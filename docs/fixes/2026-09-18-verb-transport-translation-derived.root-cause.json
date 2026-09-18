@@ -128,7 +128,7 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
-      "line": 177,
+      "line": 184,
       "symbol": "PROVENANCE_UNVERIFIABLE"
     },
     {
