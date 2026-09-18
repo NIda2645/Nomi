@@ -1,0 +1,474 @@
+{
+  "method": "git grep -lF skill directory name in tests/electron/src/scripts, then path contains test|spec|walk|e2e; mention proxy, not execution coverage",
+  "total": 88,
+  "mentioned": 22,
+  "unmentioned": 66,
+  "skills": [
+    {
+      "name": "brand-promo",
+      "mentionedFiles": [
+        "electron/capabilityCore/skillReadTransportAdapters.test.ts",
+        "electron/skills/builtinSkills.test.ts",
+        "electron/skills/skillIpc.test.ts",
+        "electron/skills/skillPackage.test.ts",
+        "electron/skills/skillStore.test.ts",
+        "src/workbench/skillLibrary/parseSkillImport.test.ts",
+        "tests/system/agent-tool-face-usecases.json"
+      ]
+    },
+    {
+      "name": "creation-edit",
+      "mentionedFiles": [
+        "tests/ux/agent-runtime-editing.walk.mjs",
+        "tests/ux/creation-editor-mount.walk.mjs",
+        "tests/ux/creation-work-surfaces.e2e.mjs",
+        "tests/ux/g1/cases.json",
+        "tests/ux/rich-editor-p1.walk.mjs"
+      ]
+    },
+    {
+      "name": "curated-candle-mood",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-coffee-pour",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-cross-view",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-expression-reference",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-expression-sheet",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-eyewear-light",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-film-storyboard",
+      "mentionedFiles": [
+        "tests/agent-runtime/skill-catalog-migration.test.mts",
+        "tests/system/agent-tool-face-usecases.json",
+        "tests/ux/skill-import-real-use.walk.mjs"
+      ]
+    },
+    {
+      "name": "curated-multi-view",
+      "mentionedFiles": [
+        "electron/protocol/localProtocol.test.ts",
+        "electron/skills/skillCuration.test.ts",
+        "electron/skills/skillIpc.test.ts",
+        "tests/system/agent-tool-face-usecases.json",
+        "tests/ux/skill-library-cards.walk.mjs",
+        "tests/ux/skill-library-specimen.walk.mjs"
+      ]
+    },
+    {
+      "name": "curated-outpaint",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-product-before-after",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-product-condensation",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-product-exploded-view",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-product-turntable",
+      "mentionedFiles": [
+        "tests/system/agent-tool-face-usecases.json"
+      ]
+    },
+    {
+      "name": "curated-product-unboxing",
+      "mentionedFiles": []
+    },
+    {
+      "name": "curated-restore-image",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-action",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-art-design",
+      "mentionedFiles": [
+        "scripts/check-skills-format.node-test.mjs"
+      ]
+    },
+    {
+      "name": "director-cinematography",
+      "mentionedFiles": [
+        "electron/capabilityCore/nomiMcpApps.test.ts",
+        "electron/capabilityCore/nomiMcpSkills.test.ts",
+        "tests/system/agent-tool-face-usecases.json",
+        "tests/ux/mcp-skills-integration.e2e.mjs",
+        "tests/ux/packaged-mcp-smoke.e2e.mjs",
+        "tests/ux/production-mcp-journey.e2e.mjs"
+      ]
+    },
+    {
+      "name": "director-consistency",
+      "mentionedFiles": [
+        "electron/skills/skillManifestSchema.test.ts"
+      ]
+    },
+    {
+      "name": "director-guzhuang",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-keyframe-review",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-performance",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-shot-translation",
+      "mentionedFiles": [
+        "electron/capabilityCore/shotLanguage.test.ts",
+        "electron/skills/skillExecutionEvidence.test.ts",
+        "electron/skills/skillManifestSchema.test.ts"
+      ]
+    },
+    {
+      "name": "director-sound",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-staging",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-style-otomo-wright",
+      "mentionedFiles": []
+    },
+    {
+      "name": "director-transitions",
+      "mentionedFiles": []
+    },
+    {
+      "name": "drama-short",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts",
+        "tests/system/agent-tool-face-real-model.mjs",
+        "tests/system/agent-tool-face-usecases.json"
+      ]
+    },
+    {
+      "name": "effect-camera-01",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-02",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-03",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-04",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-05",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-06",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-07",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-08",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-09",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-10",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-11",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-12",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-13",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-14",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-15",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-16",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-17",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-18",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-19",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-20",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-21",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-22",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-23",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-24",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-25",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-26",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-27",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-28",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-29",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-camera-30",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-character-three-view",
+      "mentionedFiles": [
+        "electron/skills/skillCuration.test.ts",
+        "tests/ux/skill-library-cards.walk.mjs"
+      ]
+    },
+    {
+      "name": "effect-expression-grid",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-fill-outpaint",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-natural-texture",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-object-six-view",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-overhead-view",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-restore-drawing",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-scene-three-view",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-storyboard-panels",
+      "mentionedFiles": []
+    },
+    {
+      "name": "effect-transfer-expression",
+      "mentionedFiles": []
+    },
+    {
+      "name": "model-integration",
+      "mentionedFiles": [
+        "tests/system/capabilities.json",
+        "tests/ux/_modelIntegrationHarness.mjs",
+        "tests/ux/model-integration-manifest.test.mjs",
+        "tests/ux/model-integration-no-repo.mjs",
+        "tests/ux/model-integration-packaged.e2e.mjs",
+        "tests/ux/model-integration-trusted-audio.e2e.mjs"
+      ]
+    },
+    {
+      "name": "release-media-pack",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts"
+      ]
+    },
+    {
+      "name": "skill-author",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts"
+      ]
+    },
+    {
+      "name": "workbench-creation",
+      "mentionedFiles": [
+        "tests/ux/onboarding-checkmark-honesty.walk.mjs"
+      ]
+    },
+    {
+      "name": "workbench-fixation-planner",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts"
+      ]
+    },
+    {
+      "name": "workbench-generation",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts",
+        "electron/skills/skillIpc.test.ts",
+        "electron/skills/skillStore.test.ts",
+        "src/workbench/generation/generationWorkspaceLayout.structure.test.ts",
+        "src/workbench/generationCanvas/nodes/nodeInnerScrollNoWheel.test.ts",
+        "tests/ux/agent-panel-mechanics.walk.mjs",
+        "tests/ux/apimart-text-brain.e2e.mjs",
+        "tests/ux/canvas-batch-production.walk.mjs",
+        "tests/ux/canvas-control-clarity.walk.mjs",
+        "tests/ux/canvas-frame-real-task.walk.mjs",
+        "tests/ux/canvas-migration-backfill.walk.mjs",
+        "tests/ux/fixtures/agent-panel-mechanics/main.tsx",
+        "tests/ux/layout-timeline-panel-span.walk.mjs",
+        "tests/ux/modelscope-expand.e2e.mjs",
+        "tests/ux/overlay-z-order.walk.mjs",
+        "tests/ux/perf-results/canvas-baseline-hot.json",
+        "tests/ux/perf-results/canvas-final-hot.json",
+        "tests/ux/perf-results/canvas-final-postfix-select.json",
+        "tests/ux/perf-results/canvas-pr216-acceptance.json",
+        "tests/ux/perf-results/canvas-xl-boundary.json",
+        "tests/ux/pr720-ux-geometry.walk.mjs",
+        "tests/ux/shot-cut-empty-states.walk.mjs",
+        "tests/ux/staging-agent-eval.e2e.mjs",
+        "tests/ux/staging-reference.e2e.mjs",
+        "tests/ux/timeline-toolbar-row.walk.mjs"
+      ]
+    },
+    {
+      "name": "workbench-storyboard-planner",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts",
+        "electron/skills/skillIpc.test.ts",
+        "electron/skills/skillStore.test.ts",
+        "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+        "tests/agent-runtime/exp-placement.electron.mts",
+        "tests/agent-runtime/lane-b1b-real.electron.mts",
+        "tests/agent-runtime/lane-c0-instructions.test.mts",
+        "tests/ux/agent-transcript-merge.walk.mjs"
+      ]
+    },
+    {
+      "name": "writer-adaptation",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-behavior-psychology",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-dialogue",
+      "mentionedFiles": [
+        "electron/capabilityCore/nomiMcpSkills.test.ts",
+        "electron/skills/builtinSkills.test.ts",
+        "electron/skills/skillExecutionEvidence.test.ts",
+        "electron/skills/skillManifestMigration.test.ts"
+      ]
+    },
+    {
+      "name": "writer-improv",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-incubation",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-novel-digester",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-review",
+      "mentionedFiles": [
+        "electron/productionRun/productionScriptReview.test.ts",
+        "electron/skills/builtinSkills.test.ts"
+      ]
+    },
+    {
+      "name": "writer-screenwriter",
+      "mentionedFiles": [
+        "electron/productionRun/productionScriptReview.test.ts",
+        "electron/skills/builtinSkills.test.ts",
+        "electron/skills/skillExecutionEvidence.test.ts",
+        "tests/system/agent-tool-face-usecases.json"
+      ]
+    },
+    {
+      "name": "writer-songfangjin",
+      "mentionedFiles": []
+    },
+    {
+      "name": "writer-structure",
+      "mentionedFiles": [
+        "electron/skills/builtinSkills.test.ts"
+      ]
+    },
+    {
+      "name": "writer-style-schrader",
+      "mentionedFiles": []
+    }
+  ]
+}

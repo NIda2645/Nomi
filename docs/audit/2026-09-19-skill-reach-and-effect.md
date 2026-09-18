@@ -14,7 +14,17 @@
 
 ## Q2 · 外部包
 
-待测。来源已固定为 Anthropic、Trail of Bits、Hugging Face，共 5 个真实包，[来源/commit/散列/字段](../evidence/2026-09-19-skill-reach/external-packages.json)。未使用仓库格式夹具。
+**导入 5/5；composer 可见 5/5；真实请求索引 5/5；产出符合意图 2/5（正常完成且合格 1/5）。** 模型：apimart / DeepSeek V3.2，每包新对话、手动挂技能。来源覆盖三家；5 份 SKILL.md 逐字节保留；整个包文件保留 32/33，丢的是 Semgrep 的 SVG 标志，导入过滤策略所致。PDF 的 8 个 scripts 文件全部保留。
+
+| 真实外部包 | 导入 | composer | 实际索引 | 能跑 / 实际产出 |
+|---|---|---|---|---|
+| Anthropic brand-guidelines（license） | 成功 | 有 | 有 | 0：色值与字体送达；却把辅助灰色列作正文色，主色用途错配 |
+| Anthropic internal-comms（附件） | 成功 | 有 | 有 | 0：读到了 3P 附件；编造周报日期与 MVP 开发计划 |
+| Anthropic pdf（scripts/ + license） | 成功 | 有 | 有 | 1：真实 PDF，提取文字正确；超过 180s 观察窗，最终人工停止，会话未正常收尾 |
+| Trail of Bits semgrep-rule-creator（allowed-tools） | 成功，跳过 1 SVG | 有 | 有 | 0：缺 semgrep；模型改写模拟测试，未完成真实测试；未批准破坏系统包隔离的安装选项 |
+| Hugging Face transformers-js（compatibility + license） | 成功 | 有 | 有 | 1：给出正确安装、pipeline 与指定输入示例；遵照用户要求不下载/执行模型 |
+
+每格证据：[包来源与 SHA](../evidence/2026-09-19-skill-reach/external-packages.json)、[导入逐条 UI 文本](../evidence/2026-09-19-skill-reach/q2-import.json)、[导入/菜单截图](../evidence/2026-09-19-skill-reach/shots/)、[实际索引](../evidence/2026-09-19-skill-reach/q2-actual-index.xml)、[5 轮裁决与输出](../evidence/2026-09-19-skill-reach/q2-results.json)、[原始请求与响应](../evidence/2026-09-19-skill-reach/q2-wire.jsonl.gz)、[PDF 验证](../evidence/2026-09-19-skill-reach/q2-pdf-validation.json)。成功导入的 `SkillImportFailure` 均不适用。不是用代码推导出来的“可用”。
 
 ## Q3 · 模型自选
 
@@ -34,4 +44,4 @@
 
 ## 额度与验证
 
-尚未发起真模型请求。验证与 PR 状态待交付时更新。
+已进行真模型测量；Token 与费用在全轮结束后汇总。供应商响应未给扣费字段，当前 catalog 将该模型记为 unpriced，不把金额猜成 0。验证与 PR 状态待交付时更新。
