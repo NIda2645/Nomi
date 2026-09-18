@@ -11,20 +11,16 @@ const CONTRA = /绝不|不得调用|不能调用|不应调用|禁止.*工具|只
 const med = a => { if (!a.length) return NaN; const b = [...a].sort((x, y) => x - y); return b.length % 2 ? b[(b.length - 1) / 2] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2; };
 
 function loadArm(arm) {
-  const trials = new Map(); let spent = 0;
+  // 一次遍历认两种文件：trials-* 是落盘的试次，budget-* 记的是含「被掐断那一次未落盘试次」
+  // 在内的真实花费（取它做花费上界）。两种的臂名匹配规则相同，所以没必要走两遍目录。
+  const trials = new Map(); let spent = 0, budget = 0;
   for (const f of readdirSync(ROOT)) {
-    const m = /^trials-(.+)\.json$/.exec(f); if (!m) continue;
-    if (m[1] !== arm && !m[1].startsWith(arm + '-')) continue;
+    const m = /^(trials|budget)-(.+)\.json$/.exec(f); if (!m) continue;
+    if (m[2] !== arm && !m[2].startsWith(arm + '-')) continue;
     const d = JSON.parse(readFileSync(`${ROOT}/${f}`, 'utf8'));
+    if (m[1] === 'budget') { budget += d.spentCny ?? 0; continue; }
     spent += d.spentCny ?? 0;
     for (const t of d.trials ?? []) trials.set(t.index, t);
-  }
-  // budget-*.json 记的是含「被掐断那一次未落盘试次」在内的真实花费，取它做花费上界
-  let budget = 0;
-  for (const f of readdirSync(ROOT)) {
-    const m = /^budget-(.+)\.json$/.exec(f); if (!m) continue;
-    if (m[1] !== arm && !m[1].startsWith(arm + '-')) continue;
-    budget += JSON.parse(readFileSync(`${ROOT}/${f}`, 'utf8')).spentCny ?? 0;
   }
   return { trials: [...trials.values()].sort((a, b) => a.index - b.index), spent, budget };
 }
