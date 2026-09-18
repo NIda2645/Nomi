@@ -1,10 +1,11 @@
 // Browser actions drive the actual app. The only main-process calls label/flush the measurement observer.
 import fs from 'node:fs';
 import path from 'node:path';
+import console from 'node:console';
 import { setTimeout as pause } from 'node:timers/promises';
 export function traces(projectsDir){
  const rows=[];
- function visit(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())visit(p);else if(e.name==='trace.jsonl')for(const line of fs.readFileSync(p,'utf8').split('\n').filter(Boolean)){try{rows.push({...JSON.parse(line),source:p})}catch{}}}}
+ function visit(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())visit(p);else if(e.name==='trace.jsonl')for(const line of fs.readFileSync(p,'utf8').split('\n').filter(Boolean)){try{rows.push({...JSON.parse(line),source:p})}catch{/* A live writer can leave a partial line; the next poll rereads the file. */}}}}
  visit(projectsDir);return rows;
 }
 export async function runCase({win,app,iso,evidence},item,{newConversation=true}={}){

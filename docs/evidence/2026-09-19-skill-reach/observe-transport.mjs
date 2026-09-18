@@ -2,6 +2,7 @@
 // Real appFetch delegates to the real provider unchanged, except the explicitly labelled Q3 index ablation.
 import fs from 'node:fs';
 import path from 'node:path';
+import { Buffer } from 'node:buffer';
 import { createRequire } from 'node:module';
 export function attach({ root, outputDir }) {
  const require=createRequire(import.meta.url), transport=require(path.join(root,'dist-electron/appFetch.js'));
