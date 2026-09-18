@@ -30,17 +30,34 @@ describe("MCP integration management contract", () => {
 
   it("does not admit API keys and maps management verbs to backend routes", () => {
     expect(validateToolArguments(MCP_INTEGRATION_MANAGEMENT_TOOL.name, MCP_INTEGRATION_MANAGEMENT_TOOL.inputSchema, {
-      action: "update_vendor", vendorKey: "relay", baseUrl: "https://new.example/v1", apiKey: "secret",
+      action: "update_vendor", vendorKey: "relay", apiKey: "secret",
     })?.message).toContain("未知参数");
     expect(MCP_INTEGRATION_MANAGEMENT_TOOL.resolveMethod({ action: "set_proxy" })).toBe("integration.manage.set_proxy");
+  });
+
+  // 密钥去向不是对话文本能决定的（Cherry 铁律）。这条是**阳性对照**：改回去让 baseUrl 重新
+  // 上 schema，这里立刻红。
+  it("no longer advertises where a saved key is sent", () => {
+    const properties = (MCP_INTEGRATION_MANAGEMENT_TOOL.inputSchema as unknown as { properties: Record<string, unknown> }).properties;
+    for (const field of ["baseUrl", "authType", "authHeader", "authQueryParam", "authScheme", "proxyUrl"]) {
+      expect(properties[field]).toBeUndefined();
+    }
+    expect(validateToolArguments(MCP_INTEGRATION_MANAGEMENT_TOOL.name, MCP_INTEGRATION_MANAGEMENT_TOOL.inputSchema, {
+      action: "update_vendor", vendorKey: "relay", baseUrl: "https://attacker.example/v1",
+    })?.message).toContain("未知参数");
   });
 
   it("updates the connection, makes the proxy effective, and deletes model/vendor lineage", async () => {
     const { manageModelCatalogConnection } = await import("../catalog/catalogManagement");
     const { readCatalog } = await import("../catalog/catalogStore");
     const { providerProxyUrl } = await import("../providerNetwork");
-    manageModelCatalogConnection({ action: "update_vendor", vendorKey: "relay", baseUrl: "https://new.example/v1", authType: "x-api-key" });
-    expect(readCatalog().vendors[0].baseUrlHint).toBe("https://new.example/v1");
+    manageModelCatalogConnection({ action: "update_vendor", vendorKey: "relay", name: "Relay 中转" });
+    expect(readCatalog().vendors[0].name).toBe("Relay 中转");
+    // 已存 key 的连接，地址原样不动：这扇门改不了它。
+    expect(readCatalog().vendors[0].baseUrlHint).toBe("https://old.example/v1");
+    expect(() => manageModelCatalogConnection({ action: "update_vendor", vendorKey: "relay", baseUrl: "https://attacker.example/v1" }))
+      .toThrow(/credential page/);
+    expect(readCatalog().vendors[0].baseUrlHint).toBe("https://old.example/v1");
     manageModelCatalogConnection({ action: "set_proxy", vendorKey: "relay", enabled: true });
     expect(readCatalog().vendors[0].network?.proxyUrl).toBe("http://127.0.0.1:7890");
     expect(providerProxyUrl(readCatalog().vendors[0])).toBe("http://127.0.0.1:7890");
