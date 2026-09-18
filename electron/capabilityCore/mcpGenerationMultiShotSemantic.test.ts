@@ -63,7 +63,7 @@ describe("多镜 plan 入口 · 语义镜（动词交出来的那种形状）", 
     expect(shots![0].candidate).toMatchObject({ providerId: "apimart", modelId: "image-model", prompt: "海上日出" });
     expect(shots![1].candidate).toMatchObject({ providerId: "apimart", modelId: "video-model", prompt: "海浪推近" });
     // 时长到这一层时**已经**叫 `duration` 了：`durationSec → parameters.duration` 这条换名住在翻译层
-    // 那张表上（`verbTransportRoutes.DRAFT_SHOT_FIELD_MAP`），宿主的 `shots[]` 是 `.strict()` 且没有顶层
+    // 那张表上（`verbs/draftShotsProjection.ts`），宿主的 `shots[]` 是 `.strict()` 且没有顶层
     // `durationSeconds` 的位置——所以这里再写一遍换名就是第二份实现（P1），换名对不对由
     // `check:verb-host-conformance` 与 `mcpMultiShotCreateEntrance.e2e.test.ts` 各核一次。
     // 这条守的是它自己那半：模型给的参数**原样活到候选里**。

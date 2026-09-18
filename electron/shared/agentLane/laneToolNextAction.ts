@@ -39,7 +39,7 @@ export interface LaneToolNextAction {
   readonly undoToken?: string;
   /** 草稿 id：`draft_shots` 与 `generate` 都按这个名字收它。 */
   readonly operationId?: string;
-  /** 已经在跑的那一笔：`check_job` / `cancel_job` 按这个名字收它（双域，见 `verbTransportRoutes.ts`）。 */
+  /** 已经在跑的那一笔：`check_job` / `cancel_job` 按这个名字收它（双域，见 `verbs/verbDualDomain.ts`）。 */
   readonly jobId?: string;
 }
 
