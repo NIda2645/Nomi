@@ -672,6 +672,14 @@ try {
   // GUI 主进程那半同样是现场：多镜批次的驱动可能跑在能力核这一侧，它的 WARN 只会出现在这里。
   const guiTail = typeof gui?.mainLogTail === 'function' ? gui.mainLogTail() : []
   if (guiTail.length) console.error(`  --- gui main log (tail) ---\n${guiTail.slice(-200).join('\n')}`)
+  // 供应商那半边的账本：哪些请求**真的到了**、连接什么时候开的关的。
+  // 「出站报 fetch failed」在调用方只是一句话，能分清「请求压根没发出去」和「发了但连接断了」
+  // 的只有这一侧。
+  if (provider) {
+    console.error(`  --- fixture vendor ledger (keepAliveTimeout=${provider.keepAliveTimeoutMs}ms) ---`)
+    console.error(`  hits:\n${(provider.hits || []).map((hit) => `    ${hit.at || ''} ${hit.method} ${hit.url}`).join('\n')}`)
+    console.error(`  sockets:\n${(provider.socketEvents || []).map((line) => `    ${line}`).join('\n')}`)
+  }
   process.exitCode = 1
 } finally {
   await declinedClient?.terminate().catch(() => undefined)

@@ -31,11 +31,12 @@ export async function startFakeApimartServer({ pendingPolls = 0 } = {}) {
   const tasks = new Map()
   const hits = []
   let sequence = 0
+  const socketEvents = []
   const server = http.createServer((req, res) => {
     let body = ''
     req.on('data', (chunk) => { body += chunk })
     req.on('end', () => {
-      hits.push({ method: req.method, url: req.url, body })
+      hits.push({ method: req.method, url: req.url, body, at: new Date().toISOString() })
       const json = (value, status = 200) => {
         const payload = JSON.stringify(value)
         res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) })
@@ -69,10 +70,31 @@ export async function startFakeApimartServer({ pendingPolls = 0 } = {}) {
       json({ error: 'not found' }, 404)
     })
   })
+  // 出站失败（`fetch failed`）在调用方那侧只剩一句「fetch failed」——真正能分清
+  // 「请求根本没到过供应商」与「到了但连接半路断了」的，只有服务端这半边的连接账本。
+  // 2026-09-18 C9 那条间歇红就卡在这个区分上。
+  server.on('connection', (socket) => {
+    const at = new Date().toISOString()
+    socketEvents.push(`open ${at} ${socket.remoteAddress}:${socket.remotePort}`)
+    socket.on('close', (hadError) => socketEvents.push(`close ${new Date().toISOString()} opened=${at} hadError=${hadError}`))
+  })
+  server.on('clientError', (error, socket) => {
+    socketEvents.push(`clientError ${new Date().toISOString()} ${error?.code || error?.message}`)
+    try { socket.destroy() } catch { /* 诊断不许反过来弄炸夹具 */ }
+  })
   let origin = ''
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   origin = `http://127.0.0.1:${server.address().port}`
-  return { origin, hits, referencePath: media.referencePath, videoPath: path.join(media.root, 'fixture.mp4'), close: () => new Promise((resolve) => server.close(resolve)) }
+  return {
+    origin,
+    hits,
+    socketEvents,
+    /** Node 默认 5s 就把闲置的 keep-alive 连接关掉；把它记下来，好判断空窗期是不是跨过了它。 */
+    keepAliveTimeoutMs: server.keepAliveTimeout,
+    referencePath: media.referencePath,
+    videoPath: path.join(media.root, 'fixture.mp4'),
+    close: () => new Promise((resolve) => server.close(resolve)),
+  }
 }
 
 export function encryptFixtureKey(userDataDir) {
