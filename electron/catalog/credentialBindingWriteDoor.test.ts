@@ -57,4 +57,23 @@ describe("凭据绑定的写门", () => {
     upsertModelCatalogVendorApiKey("relay", { apiKey: "sk-live-2", enabled: true });
     expect(readCredentialBinding(readCatalog().vendors[0])?.origin).toBe("https://api.elsewhere.example");
   });
+
+  it("绑定后改名及重新保存密钥都保留 assetIngestion / authScheme", async () => {
+    const { upsertModelCatalogVendorApiKey, upsertModelCatalogVendor, readCatalog } = await import("./catalogStore");
+    const { readCredentialBinding } = await import("./credentialBinding");
+    const assetIngestion = { strategy: "upload-multipart", endpoint: "https://api.relay.example/files", urlPath: "url", accepts: ["image"] };
+    upsertModelCatalogVendor({ key: "relay", authScheme: "Key", assetIngestion });
+    upsertModelCatalogVendorApiKey("relay", { apiKey: "sk-live", enabled: true });
+    const binding = readCredentialBinding(readCatalog().vendors[0]);
+    expect(binding).toMatchObject({ origin: "https://api.relay.example", authScheme: "Key" });
+    expect(readCatalog().vendors[0]).toMatchObject({ assetIngestion, authScheme: "Key" });
+
+    upsertModelCatalogVendor({ key: "relay", name: "Relay renamed" });
+    expect(readCatalog().vendors[0]).toMatchObject({ name: "Relay renamed", assetIngestion, authScheme: "Key" });
+    expect(readCredentialBinding(readCatalog().vendors[0])).toEqual(binding);
+
+    upsertModelCatalogVendorApiKey("relay", { apiKey: "sk-live-2", enabled: true });
+    expect(readCatalog().vendors[0]).toMatchObject({ assetIngestion, authScheme: "Key" });
+    expect(readCredentialBinding(readCatalog().vendors[0])).toEqual(binding);
+  });
 });

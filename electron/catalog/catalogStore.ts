@@ -425,7 +425,7 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
     authQueryParam: typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
     // 绑定只从 existing 继承、永不从 payload 读（§6.1）：改地址不会顺手把绑定改掉。
-    ...(existing?.credentialBinding ? { credentialBinding: existing.credentialBinding } : {}),
+    credentialBinding: existing?.credentialBinding,
     network: proxyEnabled !== undefined ? { proxyEnabled } : undefined,
     // 用户数据（这家怎么传参考图）：不带该键=保留，显式 null=清除。三态同 Model.customCall。
     assetIngestion: raw.assetIngestion === null ? undefined : ((raw.assetIngestion as Vendor["assetIngestion"]) ?? existing?.assetIngestion),

@@ -59,6 +59,7 @@ const FULL_VENDOR = {
   enabled: true,
   hasApiKey: false,
   credentialVerificationPending: false,
+  credentialBinding: { origin: "https://relay.acme.example", authType: "bearer", authHeader: "X-Acme-Key", authScheme: "Key", authQueryParam: "token", confirmedAt: "2026-09-01T00:00:00.000Z" },
   baseUrlHint: "https://relay.acme.example/v1",
   authType: "bearer",
   authHeader: "X-Acme-Key",
@@ -110,7 +111,10 @@ describe("vendor upsert 不丢字段（整类）", () => {
   });
 
   it("类边界：Vendor 的每个可落盘字段都活过一次「只改名字」的保存", () => {
-    upsertModelCatalogVendor(FULL_VENDOR);
+    // 绑定来自已存记录，不能用普通 upsert payload 伪造（绑定的写门是保存密钥）。
+    fs.writeFileSync(path.join(mockedUserDataRoot, "model-catalog.json"), JSON.stringify({
+      version: 13, vendors: [FULL_VENDOR], models: [], mappings: [], apiKeysByVendor: {},
+    }));
     upsertModelCatalogVendor({ key: FULL_VENDOR.key, name: "只改名字" });
 
     const saved = readVendor(FULL_VENDOR.key);

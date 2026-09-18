@@ -42,177 +42,159 @@
   "doors": [
     {
       "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "CURRENT_CATALOG_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "hasLegacyCustomConfigField"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/customConfigStore.ts",
+      "symbol": "hasLegacyCustomConfigField"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "symbol": "catalogVersion"
+    },
+    {
+      "kind": "read",
       "path": "electron/catalog/upsertDraft.ts",
-      "line": 37,
       "symbol": "UpsertDraft"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 412,
-      "symbol": "sealUpsertDraft"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 550,
-      "symbol": "sealUpsertDraft"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 631,
-      "symbol": "sealUpsertDraft"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 443,
-      "symbol": "applyVendorUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 698,
-      "symbol": "applyVendorUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 749,
-      "symbol": "applyVendorUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 574,
-      "symbol": "applyModelUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 706,
-      "symbol": "applyModelUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 765,
-      "symbol": "applyModelUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 655,
-      "symbol": "applyMappingUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 710,
-      "symbol": "applyMappingUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 766,
-      "symbol": "applyMappingUpsert"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 230,
-      "symbol": "migrateVendorFieldLossV13"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 104,
-      "symbol": "repairDroppedVendorSeedFields"
     },
     {
       "kind": "read",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 76,
+      "symbol": "VENDOR_FIELD_LOSS_NOTICE_META_KEY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/vendorFieldLossRepair.ts",
       "symbol": "VENDOR_FIELD_LOSS_CUTOFF_ISO"
     },
     {
       "kind": "read",
       "path": "electron/shared/vendorFieldLossNotice.ts",
-      "line": 16,
       "symbol": "VENDOR_FIELD_LOSS_NOTICE_META_KEY"
-    },
-    {
-      "kind": "write",
-      "path": "src/ui/onboarding/CustomVendorManage.tsx",
-      "line": 141,
-      "symbol": "withoutVendorFieldLossNotice"
-    },
-    {
-      "kind": "read",
-      "path": "src/ui/onboarding/CustomVendorManage.tsx",
-      "line": 164,
-      "symbol": "VendorFieldLossNotice"
-    },
-    {
-      "kind": "write",
-      "path": "src/ui/onboarding/useOnboardingDrawerCatalog.ts",
-      "line": 82,
-      "symbol": "vendorFieldLossNoticeAt"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 389,
-      "symbol": "applyPlainCustomConfigWrite"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 703,
-      "symbol": "applyPlainCustomConfigWrite"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/customConfigStore.ts",
-      "line": 183,
-      "symbol": "applyPlainCustomConfigWrite"
-    },
-    {
-      "kind": "read",
-      "path": "electron/catalog/types.ts",
-      "line": 689,
-      "symbol": "CURRENT_CATALOG_VERSION"
-    },
-    {
-      "kind": "read",
-      "path": "src/ui/onboarding/VendorFieldLossNotice.tsx",
-      "line": 24,
-      "symbol": "VendorFieldLossNotice"
-    },
-    {
-      "kind": "read",
-      "path": "src/ui/onboarding/CustomVendorCard.tsx",
-      "line": 107,
-      "symbol": "CustomVendorManage"
-    },
-    {
-      "kind": "read",
-      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
-      "line": 413,
-      "symbol": "CustomVendorCard"
     },
     {
       "kind": "read",
       "path": "src/i18n/locales/onboardingProviders.ts",
-      "line": 1,
-      "symbol": "const"
+      "symbol": "zhOnboardingProviders"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhOnboardingProviders"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomVendorCard.tsx",
+      "symbol": "CustomVendorManage"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomVendorManage.tsx",
+      "symbol": "VendorFieldLossNotice"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "symbol": "CustomVendorCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/VendorFieldLossNotice.tsx",
+      "symbol": "VendorFieldLossNoticeProps"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "migrateVendorFieldLossV13"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyPlainCustomConfigWrite"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "hasLegacyCustomConfigField"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "sealUpsertDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyVendorUpsert"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyApiKeyUpsert"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyModelUpsert"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyMappingUpsert"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customConfigStore.ts",
+      "symbol": "hasLegacyCustomConfigField"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customConfigStore.ts",
+      "symbol": "applyPlainCustomConfig"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "upsertModelCatalogVendorApiKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/vendorFieldLossRepair.ts",
+      "symbol": "vendorFieldLossNoticeAt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/vendorFieldLossRepair.ts",
+      "symbol": "repairDroppedVendorSeedFields"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "symbol": "upsertModelCatalogVendorApiKey"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/CustomVendorManage.tsx",
+      "symbol": "withoutVendorFieldLossNotice"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/useOnboardingDrawerCatalog.ts",
+      "symbol": "vendorFieldLossNoticeAt"
     }
   ],
   "door_reduction": {
-    "before": 22,
-    "after": 28,
-    "why_not": "写路径那 13 扇是三个 apply*Upsert 各自的三个调用点（单条公开 upsert / 导入包事务 / mutateCatalog 事务）、它们新汇合的三个 sealUpsertDraft 点、以及新边界自身那扇读门。三个调用点必须各自存在：单条 upsert 要立即落盘，导入包与 mutateCatalog 要的是「攒齐再一次性写」的全有或全无语义，合并它们会重新引入「vendor 写了 model 没写成」的半接入空壳。门数没减反而 +1，是因为本刀在写路径之外多了一件事：**已损坏记录的一次性修复**（v12→v13 迁移 1 扇写门 + 修复函数 1 扇 + 提示 meta 键 1 扇读门 + 渲染层读/清各 1 扇）。这些新门不是第二份规则，而是同一条不变量在「存量数据」这一侧的落点；`applyPlainCustomConfigWrite` 那 2 扇是把一个已有函数从 catalogStore 挪进它的合作者所在的 customConfigStore（800 行硬上限所迫），门数不变、只换了归属。"
+    "before": 17,
+    "after": 30,
+    "why_not": "合并列车按同一符号集合（door-map）重扫最新 main 与当前树：17 → 30 个符号入口，替换原来按行号计数的 22/28。生成器跳过声明位置，因此登记函数体真实调用、类型使用和词典派生引用；不使用泛化 const 作为状态符号。原有单条写入与事务入口必须保留各自落盘语义，新增的存量迁移、提示读取及清除入口共同服务同一修复；绑定只从既存记录继承，唯一写门仍是保存密钥。"
   },
   "generality_proof": "修法不在任何一个具体字段上，而在「怎么组装一条记录」这件事上：sealUpsertDraft 的入参类型 UpsertDraft<T> 用 AllFieldsOf<T> 把目标类型的**全部**键（含可选键）取成联合，再在一个非同态映射里要求每个键都出现。于是 Vendor / Model / Mapping 三个类型中任何一个加字段，三处调用点里对应那一处的对象字面量立刻缺键 → TS2345「Property 'x' is missing」。已用两次变异实测：(A) 把 assetIngestion 从 applyVendorUpsert 的清单里摘掉 → tsc 报 missing；(B) 给 Vendor 加一个从未被引用的 brandNewField、写路径一行不动 → tsc 同样报 missing（并连带打红 credentialConfigFields.ts 那张凭据分级表）。因为拦截点是类型而不是运行期检查，它对所有调用者、所有 payload 形状、所有平台一律成立，且不存在「跑到了才发现」的空窗。",
   "shared_boundaries": [
@@ -284,11 +266,13 @@
   },
   "regression_tests": [
     "electron/catalog/vendorUpsertFieldPreservation.test.ts",
-    "electron/catalog/vendorFieldLossRepair.test.ts"
+    "electron/catalog/vendorFieldLossRepair.test.ts",
+    "electron/catalog/credentialBindingWriteDoor.test.ts"
   ],
   "class_regression_tests": [
     "electron/catalog/vendorUpsertFieldPreservation.test.ts",
-    "electron/catalog/vendorFieldLossRepair.test.ts"
+    "electron/catalog/vendorFieldLossRepair.test.ts",
+    "electron/catalog/credentialBindingWriteDoor.test.ts"
   ],
   "invariant_owner_layer": {
     "layer": "electron/catalog/upsertDraft.ts",
@@ -318,7 +302,7 @@
     "`Mapping.delivery` / `abandon` 的丢失**检测不出来**：修复前的每一条 mapping 都没有这两个字段，「声明过又被抹掉」和「从来没声明」在记录上完全一样。行为上 `resolveModeDelivery` 仍按「带 query 即异步」推断，与丢失前一致，故没有单独的修复动作。",
     "UpsertDraft 只覆盖 Vendor / Model / Mapping 三类记录。catalog 之外还有别的持久化重建点（projects / 画布节点）没有做同样的穷尽约束，本刀没有横扫。",
     "磁盘 JSON 上若存在 TypeScript 类型尚未声明的字段（更老/更新版本写入的），sealUpsertDraft 仍会丢掉它——类型就是本仓对这条记录的完整定义。Nomi 是本地优先单应用，不存在新旧版本并发写同一份 catalog；引入 unknown-key 透传会把 v8→v9 / v11→v12 那两个「明文清干净了吗」的迁移判据变得不可判定。",
-    "#754 实施分支（feat/agent-model-onboarding-20260918）给 Vendor 加了 credentialBinding 并在 applyVendorUpsert 里打了逐字段补丁。本刀基于 origin/main，两者尚未相遇——合入顺序与补丁删除见 PR 正文。",
+    "已在合并列车中 rebase 到包含 #817 的 main：credentialBinding 的条件展开补丁已删除，改为 UpsertDraft 中一行 existing 继承。绑定写门测试验证保存密钥、普通改名和重新保存密钥后 assetIngestion / authScheme 均保留；不从 payload 或种子回填绑定。",
     "连接卡上那条提示是用户可见改动，**没有走 R8 样张拍板**（它是修复的附属交代、不是新功能面），也还没做 zh/en 真截图走查；本 PR 只开不合，截图与拍板在合入前补。"
   ]
 }
