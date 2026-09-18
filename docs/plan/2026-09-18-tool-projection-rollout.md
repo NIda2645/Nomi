@@ -5,6 +5,23 @@
 > `docs/plan/2026-09-18-tool-layer-prior-art-verdict.md` §4（裁决：一份 schema + `hide`/`fill`）。
 > 原型回答的是「能不能」，这一刀回答的是「铺开之后**还剩什么**」。
 
+## 先查别人
+
+**这一刀的检索**大头在上游那两份里，它们是同一天真做过的报告，不在这里重抄：
+`docs/plan/2026-09-18-tool-layer-prior-art-verdict.md` §2（六个面逐个对照，原文与出处都在它里面）与
+`docs/plan/2026-09-18-tool-projection-cancel-job-prototype.md` 的「先查别人」（原型那一刀的五条）。
+铺开这一刀**自己新查的**是「我们仓库里已经有几处是这个形状」，因为铺开的正确姿势是去接已有的那几处，
+不是在旁边再造一套：
+
+- **依赖里已有？** pi 的 `AgentTool<TParameters>` 一份 TypeBox 两用、`execute` 的参数类型从同一份 schema 推导——`node_modules/@earendil-works/pi-agent-core/dist/types.d.ts:340-361`（裁决 §2.5 本人读过）。本刀用到的两个 TypeScript 手法都不是自研：`Omit<Host, keyof Model>` 做集合差、解构剩余项落进 `Record<string, never>` 做穷尽性，都是手册里的常规用法。
+- **仓库里已有？（其一）** 对外 MCP 生成面早就是投影形状：`electron/capabilityCore/mcpGenerationToolCatalog.ts:22` 的 `.omit().extend()`。本刀把同一手法搬到内部动词面，不是新发明。
+- **仓库里已有？（其二）** `canvas.delete` 早就是「一份 schema 两个用途」，只是方向反过来写的——宿主面定义成 `canvasDeletePiInputSchema.extend({ operation })`（`electron/shared/agentCapabilities/canvasDelete.ts:16`）。所以 `delete_from_canvas` 这一条**不需要新建任何东西**，只补一句显式 fill。
+- **仓库里已有？（其三）** 「补完重过同一份宿主 schema」每个域都已经有了：`electron/shared/agentCapabilities/exportCapabilities.ts:157` 的 `exportWriteInputForAlias`，以及 `skillWriteInputForAlias` / `timelineWriteInputForAlias` / `canvasDeleteInputForAlias`，全是 `semanticSchema.parse({ operation: alias, ...})`。本刀**接**它们，不在传输层再拼一遍（原型那一刀在这里犯过，Ponytail 点出来后删掉了）。
+- **生态里已有？** Claude Agent SDK：一份 zod 派生模型面 + 宿主改写参数后**重新过准入**（https://code.claude.com/docs/en/hooks ）；MCP TS SDK 用同一个对象派生 `tools/list` 与校验调用，注释原话 *"the listing and the call cannot diverge."*（https://modelcontextprotocol.io/specification/2026-07-28/server/tools ）。
+- **反方证据？** 唯一「模型面与执行两处手写」的先例是 Codex，而它已被量到漂移（`timeout_ms` 宿主收、模型不知道；出处与行号在 `docs/plan/2026-09-18-tool-layer-prior-art-verdict.md` §2.4）。**但反方里有一条是对的**：同一份裁决 §3 说投影之后 `check:verb-host-conformance` 的 R1–R3 就不需要了——本刀实测那句话只对能投影的 11 个成立，剩下 9 个缝还在，所以那三条留着（下面「三条本来该删、最后没删」）。
+- **TikHub 自媒体里怎么说？** 没用。这是一次纯内部的类型/schema 结构改动，没有任何用户可见面，自媒体上不会有人讨论「某个 Electron 应用的动词 schema 该不该从宿主契约派生」；可复核的对照面全在上面几条的源码与官方文档里（同 `docs/plan/2026-09-18-tool-projection-cancel-job-prototype.md` 那一刀的判断）。
+- **结论** 全部用已有：手法抄 Claude Agent SDK 与 MCP TS SDK，落点接我们自己四个域里已有的 `*InputForAlias`（`electron/shared/agentCapabilities/exportCapabilities.ts:157` 那一族）。这一刀**没有新增任何机制**——新增的三个模块都是把原来住在 353 行 DSL 里的东西搬出来各自站好（投影 / 有损变换 / 来源轴），DSL 本身删掉。
+
 ## 一句大白话
 
 一个工具过去在我们这里被写两遍：模型看的那份 schema 一遍、宿主收的那份一遍，中间再手写一张对照表说清
