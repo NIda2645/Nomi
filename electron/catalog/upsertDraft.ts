@@ -35,9 +35,5 @@ export type UpsertDraft<T> = { [K in AllFieldsOf<T>]: T[K] | undefined };
  * `...(x ? { x } : {})` 条件展开，JSON 里不留 `null` 洞，读回来的形状逐字不变）。
  */
 export function sealUpsertDraft<T extends object>(draft: UpsertDraft<T>): T {
-  const sealed: Record<string, unknown> = {};
-  for (const [field, value] of Object.entries(draft)) {
-    if (value !== undefined) sealed[field] = value;
-  }
-  return sealed as T;
+  return Object.fromEntries(Object.entries(draft).filter(([, value]) => value !== undefined)) as T;
 }

@@ -42,7 +42,7 @@
       "kind": "read",
       "path": "electron/catalog/upsertDraft.ts",
       "line": 37,
-      "symbol": "sealUpsertDraft"
+      "symbol": "UpsertDraft"
     },
     {
       "kind": "write",
@@ -125,13 +125,13 @@
     {
       "kind": "write",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 114,
+      "line": 123,
       "symbol": "repairDroppedVendorSeedFields"
     },
     {
       "kind": "read",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 71,
+      "line": 78,
       "symbol": "VENDOR_FIELD_LOSS_NOTICE_META_KEY"
     },
     {
@@ -185,7 +185,7 @@
     {
       "kind": "read",
       "path": "src/ui/onboarding/VendorFieldLossNotice.tsx",
-      "line": 25,
+      "line": 24,
       "symbol": "VendorFieldLossNotice"
     },
     {

@@ -13,7 +13,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconInfoCircle } from '@tabler/icons-react'
-import { cn } from '../../utils/cn'
 
 type VendorFieldLossNoticeProps = {
   /** 迁移盖的时间戳；空 = 这家没被盖过，什么都不渲染。 */
@@ -42,11 +41,7 @@ export function VendorFieldLossNotice({ noticeAt, onDismiss, disabled }: VendorF
         type="button"
         onClick={onDismiss}
         disabled={disabled}
-        className={cn(
-          'self-start inline-flex items-center h-7 px-2.5 rounded-nomi-sm',
-          'bg-nomi-ink text-nomi-paper text-caption font-semibold',
-          'hover:bg-nomi-accent disabled:opacity-50 disabled:cursor-not-allowed',
-        )}
+        className="self-start inline-flex items-center h-7 px-2.5 rounded-nomi-sm bg-nomi-ink text-nomi-paper text-caption font-semibold hover:bg-nomi-accent disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {t('onboardingProviders.customVendor.fieldLossDismiss')}
       </button>
