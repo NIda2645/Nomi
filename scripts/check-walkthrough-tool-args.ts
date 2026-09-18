@@ -17,11 +17,9 @@ const walkthroughRoot = path.join(repoRoot, "tests", "ux");
 
 function collectFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) return collectFiles(full);
-    return /\.(mjs|mts|ts)$/.test(entry.name) ? [full] : [];
-  });
+  return fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(mjs|mts|ts)$/.test(entry.name))
+    .map((entry) => path.join(entry.parentPath, entry.name));
 }
 
 const schemasByVerb: Record<string, unknown> = {};

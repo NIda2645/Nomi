@@ -36,18 +36,6 @@ import ts from 'typescript'
 /** 键路径里表示「数组的每一项」的段。只用于报错信息，不参与匹配。 */
 const ITEM = '[]'
 
-/**
- * 顺着 JSON Schema 往下走一层。
- * 返回 `{ schema, open }`：`open` 表示这一层 `additionalProperties: true`（宿主自己允许扩展键）。
- */
-function descend(schema, key) {
-  if (!schema || typeof schema !== 'object') return undefined
-  const node = unwrapUnion(schema)
-  if (!node?.properties) return undefined
-  const next = node.properties[key]
-  return next === undefined ? undefined : unwrapUnion(next)
-}
-
 /** `anyOf`/`oneOf` 取第一个带 properties 的分支；没有就原样返回。 */
 function unwrapUnion(schema) {
   if (!schema || typeof schema !== 'object') return schema
@@ -84,7 +72,7 @@ function checkObject(objectLiteral, schema, sourceFile, filePath, verb, out) {
     }
     const key = name.text
     out.checked += 1
-    const child = descend(node, key)
+    const child = node.properties[key] === undefined ? undefined : unwrapUnion(node.properties[key])
     if (child === undefined) {
       if (!open) {
         const { line } = sourceFile.getLineAndCharacterOfPosition(name.getStart(sourceFile))
