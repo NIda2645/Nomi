@@ -123,7 +123,7 @@ export function noBlast(): BlastRadius {
   return { modelsAppearing: 0, modelsDisappearing: 0, recordsDeleted: 0, outboundRequests: [] };
 }
 
-/** 自检发出的免费请求（`billable` 恒 false）。 */
-export function freeRequests(origin: string, count: number): BlastRadius["outboundRequests"] {
-  return count > 0 && origin ? [{ origin, count, billable: false }] : [];
+/** 自检发出的免费请求（`billable` 由 `BlastRadius` 的类型钉死成 false，写不成 true）。 */
+export function freeRequests(origin: string): BlastRadius["outboundRequests"] {
+  return origin ? [{ origin, count: 1, billable: false }] : [];
 }

@@ -322,7 +322,7 @@ async function submitDeclaration(
     // 自检过了也**永远**留着 model_produces_output：它只有一次真实生成能消掉。
     unverified: unverified("model_produces_output", "asset_upload_works"),
     changes: candidates.map((candidate) => ({ state: "S11.4" as const, summary: `Registered ${candidate.modelKey}, marked not tried yet.` })),
-    blastRadius: { ...noBlast(), modelsAppearing: candidates.length, outboundRequests: freeRequests(origin, 1) },
+    blastRadius: { ...noBlast(), modelsAppearing: candidates.length, outboundRequests: freeRequests(origin) },
     nextAction: {
       kind: "none",
       userSees: `${candidates.length} model(s) now appear in Nomi's model pickers, marked "not tried yet". The first real generation is the try-out.`,
