@@ -60,7 +60,7 @@
     {
       "kind": "read",
       "path": "electron/agentLane/laneSkillCatalog.mts",
-      "line": 243,
+      "line": 246,
       "symbol": "discoverSkillRecords"
     },
     {
@@ -161,12 +161,6 @@
     },
     {
       "kind": "read",
-      "path": "electron/agentLane/laneSkillCatalog.mts",
-      "line": 133,
-      "symbol": "discoverSkillRecords"
-    },
-    {
-      "kind": "read",
       "path": "electron/skills/skillStore.ts",
       "line": 125,
       "symbol": "readSkillRecords"
@@ -228,7 +222,7 @@
   ],
   "door_reduction": {
     "before": 21,
-    "after": 30,
+    "after": 29,
     "why_not": "The doors that mattered were merged: two discovery walkers (skillStore.discoverSkillRecordsFromRoots, laneInstalledSkills.createLaneInstalledSkills) became one (laneSkillCatalog.discoverSkillRecords); three frontmatter strippers (skillFrontmatter.skillMarkdownWithoutFrontmatter, curatedPrompts' regex, agentContext's hand-copied envelope) became zero because pi's Skill.content already is the stripped body; the hand-copied `<skill name=` envelope became formatSkillInvocation. The count went up because the catalog is now async and every consumer that used to read the disk through a hidden default parameter now calls `await readSkillRecords()` explicitly — those 14 read doors existed before as invisible defaults (`records = readSkillRecords()`), which is exactly the shape the door map is meant to expose. The remaining definition doors are one per retained responsibility (package file table, preview resolution, metadata.nomi, frontmatter values, curated projection, placement constant), each documented in docs/plan/2026-09-18-skill-loading-migration.md §3 with why pi cannot replace it."
   },
   "generality_proof": "Discovery is pi's function, so any Skill shape pi accepts tomorrow (or any diagnostic pi adds) reaches Nomi without a Nomi change; the projection reads only the fields pi's Skill type exposes and derives everything else from the file on disk. The forbidden pattern `private-skill-directory-walk` in docs/engineering/framework-boundaries.json reds on the two removed walker names inside the lane island, and skillFrontmatter.test.ts pins the one remaining local parser to pi's parseFrontmatter across all 88 real SKILL.md files, so a future divergence on either axis is caught at gate time rather than by a user.",

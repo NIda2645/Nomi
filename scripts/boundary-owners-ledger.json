@@ -141,6 +141,26 @@
         "symbol": "outboundRequestWasNeverWritten"
       },
       "reason": "同一份判据，只是在 PR #810 的 Ponytail 评审里把两个表达同一个二元判断的导出收成一个：删掉 `outboundDispatchEvidence()` 与它的联合类型，只留 `outboundRequestWasNeverWritten()`。文件没搬、职责没变（仍是「这次出站请求有没有写出去」的唯一 owner），只有符号名换了。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-skill-manifest-two-owners.root-cause.json",
+      "path": "electron/skills/skillStore.ts",
+      "symbol": "discoverSkillRecordsFromRoots",
+      "anchor": {
+        "path": "electron/agentLane/laneSkillCatalog.mts",
+        "symbol": "discoverSkillRecords"
+      },
+      "reason": "技能发现整体迁到 pi 的 loadSourcedSkills 之后，这条不变量的主人搬到了岛上的目录模块；旧名只剩 laneSkillCatalog.mts 文件头注释里的一处历史说明。同一条不变量、同一个职责，只是换了住处。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-11-lane-live-skills-snapshot.root-cause.json",
+      "path": "electron/agentLane/laneInstalledSkills.mts",
+      "symbol": "createLaneSkillIndexSource / LaneSkillIndexSource",
+      "anchor": {
+        "path": "electron/agentLane/laneSkillCatalog.mts",
+        "symbol": "createLaneSkillIndexSource / LaneSkillIndexSource"
+      },
+      "reason": "laneInstalledSkills.mts 是迁 pi 时删掉的两份自研遍历器之一；同名函数整体搬进 laneSkillCatalog.mts，签名与「索引是记录集的纯投影」那条不变量一字未动（lane-live-skill-index.test.mts 仍在测它）。"
     }
   ],
   "retirements": [
@@ -413,6 +433,12 @@
       "path": "scripts/ponytail-review-hook.mjs",
       "symbol": "runUnderPonytailLock",
       "reason": "声明的 owner 已从代码中删除（54ca55d0e refactor(ponytail): 评审搬到交工前，钩子只查收据）；该合同针对它的那条不变量不再适用。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-15-selected-skill-injection.root-cause.json",
+      "path": "electron/skills/skillFrontmatter.ts",
+      "symbol": "skillMarkdownWithoutFrontmatter",
+      "reason": "frontmatter 剥离整件事交给了 pi：进提示词的是 pi 给的 SkillRecord.content（已去 frontmatter），我们不再自己剥一遍。全仓零引用，那条「剥得干不干净」的不变量随之不再适用——它现在由 skillFrontmatter.test.ts 对 88 份真技能与 pi parseFrontmatter 的深相等断言兜住。"
     }
   ],
   "unverified": [

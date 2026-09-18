@@ -16,9 +16,7 @@
     "scripts/skill-tool-binding-lib.mjs",
     "electron/shared/agentCapabilities/registry.ts",
     "electron/skills/skillPackage.ts",
-    "scripts/check-skill-tool-binding.node-test.mjs",
-    "electron/agentLane/laneSkillPrompt.mts",
-    "electron/shared/agentLane/skillPromptPlacement.ts"
+    "scripts/check-skill-tool-binding.node-test.mjs"
   ],
   "entry_points": [
     "Composer: user attaches a skill and sends a turn (laneDesktopRuntime singleShot)",
@@ -35,45 +33,27 @@
   "doors": [
     {
       "kind": "write",
-      "path": "electron/agentLane/laneSkillPrompt.mts",
-      "line": 27,
-      "symbol": "renderSelectedSkillPrompt"
-    },
-    {
-      "kind": "write",
-      "path": "electron/agentLane/laneDesktopRuntime.ts",
-      "line": 107,
-      "symbol": "renderSelectedSkillPrompt"
-    },
-    {
-      "kind": "write",
-      "path": "electron/agentLane/laneDesktopRuntime.ts",
-      "line": 190,
-      "symbol": "renderSelectedSkillPrompt"
-    },
-    {
-      "kind": "read",
-      "path": "electron/skills/skillPackage.ts",
-      "line": 135,
-      "symbol": "validateSkillPackage"
-    },
-    {
-      "kind": "read",
       "path": "electron/harness/context/agentContext.ts",
-      "line": 98,
-      "symbol": "resolveRequestedSkill"
+      "line": 166,
+      "symbol": "buildSelectedSkillPrompt"
     },
     {
-      "kind": "read",
-      "path": "electron/shared/agentLane/skillPromptPlacement.ts",
-      "line": 15,
-      "symbol": "SKILL_TOOL_AUTHORITY_PLACEMENT"
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 105,
+      "symbol": "buildSelectedSkillPrompt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 183,
+      "symbol": "buildSelectedSkillPrompt"
     }
   ],
   "door_reduction": {
     "before": 3,
-    "after": 6,
-    "why_not": "One definition plus its two callers. The definition is already the repository's sole place a user-selected skill becomes prompt text (consolidated 2026-09-15, when a fourth zero-caller door was deleted), so the authority section was added there once and both callers inherit it without knowing about it. The two call sites are the lane's singleShot and configure entry paths; merging them is a lane-lifecycle change unrelated to this fix. 2026-09-18 (skill-loader-diverges-from-ecosystem): the single definition moved from agentContext.buildSelectedSkillPrompt to the ESM island's laneSkillPrompt.renderSelectedSkillPrompt so the envelope can come from pi's formatSkillInvocation; the two lane call sites are unchanged. The importer door (validateSkillPackage) is listed because that change touched skillPackage.ts and it is this contract's not-affected entry point. resolveRequestedSkill (which skill the user picked, now awaiting the async catalog) and the placement constant (moved to the neutral shared layer) are read doors of the same fact and are listed so the map is complete."
+    "after": 3,
+    "why_not": "One definition plus its two callers. The definition is already the repository's sole place a user-selected skill becomes prompt text (consolidated 2026-09-15, when a fourth zero-caller door was deleted), so the authority section was added there once and both callers inherit it without knowing about it. The two call sites are the lane's singleShot and configure entry paths; merging them is a lane-lifecycle change unrelated to this fix."
   },
   "generality_proof": "The gate derives every tool name and every effect value from resolveCapabilityAlias() at run time and hardcodes neither, so a tool renamed or reclassified tomorrow is judged by its new facts with no edit to the gate. The runtime authority section names no tool at all — it defers to the sections that renderLanePromptSections already derives from the registry — so it cannot itself go stale.",
   "shared_boundaries": [
@@ -83,9 +63,9 @@
       "responsibility": "The single source for which model-facing name maps to which capability contract, and therefore for that tool's effect class"
     },
     {
-      "path": "electron/agentLane/laneSkillPrompt.mts",
-      "symbol": "renderSelectedSkillPrompt",
-      "responsibility": "The only place a user-selected skill becomes system-prompt text (moved here 2026-09-18 so the envelope is pi's formatSkillInvocation), and therefore the only place the registry's authority can be asserted over it — as formatSkillInvocation's additionalInstructions"
+      "path": "electron/harness/context/agentContext.ts",
+      "symbol": "buildSelectedSkillPrompt",
+      "responsibility": "The only place a user-selected skill becomes system-prompt text, and therefore the only place the registry's authority can be asserted over it"
     },
     {
       "path": "scripts/check-skill-tool-binding.ts",
@@ -134,13 +114,13 @@
       "path": "electron/skills/skillPackage.ts",
       "entry_point": "Skill library: user imports an externally authored skill package",
       "disposition": "not-affected",
-      "evidence": "not-affected by the gate, deliberately: external packages are never rejected for naming a tool this host lacks or describing one wrongly (2026-09-18 user ruling — rejecting pushes our problem onto them). Asserted by two negative tests in electron/skills/skillPackage.test.ts; the correction happens at runtime in laneSkillPrompt.renderSelectedSkillPrompt instead."
+      "evidence": "not-affected by the gate, deliberately: external packages are never rejected for naming a tool this host lacks or describing one wrongly (2026-09-18 user ruling — rejecting pushes our problem onto them). Asserted by two negative tests in electron/skills/skillPackage.test.ts; the correction happens at runtime in buildSelectedSkillPrompt instead."
     },
     {
-      "path": "electron/agentLane/laneSkillPrompt.mts",
+      "path": "electron/harness/context/agentContext.ts",
       "entry_point": "Every turn that injects a user-selected skill, ours or installed",
       "disposition": "enforced",
-      "evidence": "enforced at runtime: the authority section is injected after the skill envelope so recency favours the registry, voids any tool name or tool-nature claim in the body, and tells the model to say so in plain words when a named tool is absent. Ordering and content pinned by S54 / S55 in tests/agent-runtime/skill-catalog-migration.test.mts (moved from agentContext.test.ts on 2026-09-18 with the owner)."
+      "evidence": "enforced at runtime: the authority section is injected after the skill envelope so recency favours the registry, voids any tool name or tool-nature claim in the body, and tells the model to say so in plain words when a named tool is absent. Ordering and content pinned by two tests in agentContext.test.ts."
     }
   ],
   "fix": {
@@ -148,7 +128,7 @@
     "exception_policy": "none",
     "strategy": "Delete the restatements from our own skills, make the restatement shape a red gate at commit time for our skills only, and at run time assert the registry's authority over whatever any skill body says.",
     "artifacts": [
-      "electron/agentLane/laneSkillPrompt.mts",
+      "electron/harness/context/agentContext.ts",
       "scripts/check-skill-tool-binding.ts",
       "scripts/skill-tool-binding-lib.mjs",
       "skills/brand-promo/SKILL.md",
@@ -164,7 +144,7 @@
     "scripts/check-skill-tool-binding.node-test.mjs",
     "electron/harness/context/agentContext.test.ts",
     "electron/skills/skillPackage.test.ts",
-    "tests/agent-runtime/skill-catalog-migration.test.mts"
+    "electron/skills/foreignSkillPortability.test.ts"
   ],
   "class_regression_tests": [
     "scripts/check-skill-tool-binding.node-test.mjs"
@@ -186,7 +166,7 @@
   "residual_risks": [
     "The commit-time gate detects effect claims through Chinese phrasing only. Registered as a dated debt, not a bare acknowledgement: expires 2026-12-18; until then the runtime authority section is the substitute, and it depends on no phrasing recognition at all, so the exposure is 'an English restatement could be committed into our own skills', not 'the model could be misled'. Expiry verification is specified in docs/plan/2026-09-18-portable-skill-tool-binding.md §7.5.3 — translate the three existing positive controls into English, assert red, then mutate one live skill into English and require exit=1. Not done now because all 88 skills are Chinese, so an English criterion would have zero real samples to prove it reds, which is exactly the 'added a rule without verifying it reds' that R17 forbids.",
     "The authority section's position is provisional, not concluded. SKILL_TOOL_AUTHORITY_PLACEMENT defaults to after_body on a recency argument, and a three-arm A/B on a real model is measuring it (omitted as the positive control, before_body, after_body), plus whether the model still honours it past the 8th tool call in one turn. The placement is a single switchable parameter with all three arms reachable and a test pinning that, so the outcome changes one constant.",
-    "The end-to-end leg — a real model, with the foreign ChatCut skill installed, mapping submit_video onto Nomi's video verb — was not executed in this batch. Covered today by the prompt-assembly assertions and the import assertions in tests/agent-runtime/skill-catalog-migration.test.mts (S31 / S55, over the complete real ChatCut skill), not by a live run."
+    "The end-to-end leg — a real model, with the foreign ChatCut skill installed, mapping submit_video onto Nomi's video verb — was not executed in this batch. Covered today by the prompt-assembly assertions and the import assertions in electron/skills/foreignSkillPortability.test.ts, not by a live run."
   ],
   "invariant_owner_layer": {
     "layer": "electron/shared/agentCapabilities/registry.ts",
