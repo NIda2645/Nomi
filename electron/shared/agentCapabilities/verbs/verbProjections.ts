@@ -47,6 +47,8 @@ import { EXPORT_WRITE_ALIASES, exportWriteSemanticInputSchema } from "../exportC
 import { modelSetupOpenInputSchema } from "../modelSetup";
 import { SKILL_READ_ALIASES, skillReadSemanticInputSchema } from "../skillRead";
 import { SKILL_WRITE_ALIASES, skillWriteSemanticInputSchema } from "../skillWrite";
+import { timelineEditPlanModelSchema } from "../timelineRead";
+import { TIMELINE_WRITE_ALIASES, timelineWriteSemanticInputSchema } from "../timelineWrite";
 
 /**
  * 宿主补的那份值的类型：**宿主面减模型面**。
@@ -183,3 +185,50 @@ export const DELETE_FROM_CANVAS_HOST_FILL:
 export const startModelSetupModelSchema = modelSetupOpenInputSchema.extend({
   provider: modelSetupOpenInputSchema.shape.provider.describe("Provider name hint, e.g. DeepSeek or Anthropic."),
 });
+
+// ── undo · timeline.write ────────────────────────────────────────────────────
+
+const undoHostSchema = timelineWriteSemanticInputSchema.options[1];
+
+/**
+ * 藏两个字段：`operation` 是方法词表；`reason` 是宿主自己写进撤销记录的备注，模型给不出也不该给。
+ * 名字**不改**：`edit_timeline` 的结果里那个字段就叫 `undoToken`，`undo` 收的也叫 `undoToken`——
+ * 出来进去同一个词。（2026-09-18 之前模型面叫 `changeId`，而结果正文里印的是 `undoToken`：
+ * 一条工具结果里两个名字都在，模型得自己猜哪个是 `undo` 要的。）
+ */
+export const undoModelSchema = undoHostSchema.omit({ operation: true, reason: true }).extend({
+  undoToken: undoHostSchema.shape.undoToken.describe("The undoToken returned by the write you are reverting."),
+  expectedRevision: undoHostSchema.shape.expectedRevision.describe("Current timeline revision from read_timeline."),
+});
+
+export const UNDO_HOST_FILL: HostFill<typeof undoHostSchema, typeof undoModelSchema> = {
+  operation: TIMELINE_WRITE_ALIASES.undo,
+};
+
+// ── edit_timeline · timeline.write ───────────────────────────────────────────
+
+const editTimelineHostSchema = timelineWriteSemanticInputSchema.options[0];
+
+/**
+ * 这一条的投影比别的多一步，而那一步是**有理由**的：宿主把 `operations` 声明成九支判别联合，
+ * 而模型面发布的是**拍平**成一个对象的那一版（`timelineEditPlanModelSchema`，每个字段带
+ * `[for move, text]` 这样的适用标注）。拍平不是第二份形状：它由同一份宿主 schema 机器生成
+ * （`flattenDiscriminatedUnion`），对外 MCP 的 `plan` 字段与这里同源同一份。
+ * 理由是领域约束——多家供应商的工具校验器对根级/嵌套 `anyOf` 支持不一致（`laneExtendedTools.test.ts`
+ * 的 `collectVendorCompatibilityFailures` 就是那条断言），拍平是为了让模型那一侧真的收得下。
+ *
+ * 剩下的和别的投影一样：藏掉 `planId`（宿主按这次调用派生的幂等键）与 `operation`，只覆写一句描述。
+ */
+export const editTimelineModelSchema = timelineEditPlanModelSchema.omit({ planId: true }).extend({
+  baseRevision: timelineEditPlanModelSchema.shape.baseRevision
+    .describe("The revision returned by read_timeline; the edit applies only if it is still current."),
+});
+
+/** 幂等键的算法只有这一处；`editTimelineHostFill` 与传输层都从它来。 */
+export const editTimelinePlanId = (toolCallId: string): string => `plan-${toolCallId}`;
+
+export function editTimelineHostFill(
+  toolCallId: string,
+): HostFill<typeof editTimelineHostSchema, typeof editTimelineModelSchema> {
+  return { planId: editTimelinePlanId(toolCallId), operation: TIMELINE_WRITE_ALIASES.applyPlan };
+}

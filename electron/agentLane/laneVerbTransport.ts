@@ -23,8 +23,8 @@ import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
 import {
-  cancelJobModelSchema, exportVideoModelSchema, readSkillModelSchema, saveSkillModelSchema,
-  type CancelJobModelArgs,
+  cancelJobModelSchema, editTimelineModelSchema, editTimelinePlanId, exportVideoModelSchema,
+  readSkillModelSchema, saveSkillModelSchema, undoModelSchema, type CancelJobModelArgs,
 } from '../shared/agentCapabilities/verbs/verbProjections'
 import { applyDefaultsByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
@@ -108,10 +108,11 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       return { lane: 'media', call: { ...base, toolName: operation, args: methodArgs } }
     }
     case 'edit_timeline':
-      // `planId` 是这一次调用派生的（宿主按它做幂等），不是模型填的——所以它是信封，不是对应关系。
-      return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.applyPlan, args: { planId: `plan-${call.toolCallId}`, ...routed('edit_timeline', args) } } }
+      // `planId` 是这一次调用派生的幂等键（宿主按它做幂等），模型给不出——它和 `operation` 一起是这条
+      // 投影的 fill；算法只有 `editTimelinePlanId` 一处。
+      return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.applyPlan, args: { planId: editTimelinePlanId(call.toolCallId), ...editTimelineModelSchema.parse(args) } } }
     case 'undo':
-      return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.undo, args: routed('undo', args) } }
+      return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.undo, args: undoModelSchema.parse(args) } }
     // 下面三条都是投影：模型面就是各自宿主面减掉 `operation`，字段名逐字相同，没有可执行的对应关系。
     case 'delete_from_canvas':
       return { lane: 'canvas', call: { ...base, toolName: CANVAS_DELETE_ALIAS, args: canvasDeletePiInputSchema.parse(args) } }

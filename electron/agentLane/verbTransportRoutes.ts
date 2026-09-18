@@ -22,8 +22,6 @@ import { CAPABILITY_CONTRACTS } from '../shared/agentCapabilities/registry'
 import { toPublishedJsonSchema } from '../shared/agentCapabilities/modelVisibleJsonSchema'
 import { generationPlanInputSchema, generationStatusInputSchema } from '../shared/agentCapabilities/generationPlanSchemas'
 import { exportReadSemanticInputSchema, exportWriteSemanticInputSchema } from '../shared/agentCapabilities/exportCapabilities'
-import { timelineWriteSemanticInputSchema } from '../shared/agentCapabilities/timelineWrite'
-import { timelineEditPlanSchema } from '../shared/agentCapabilities/timelineRead'
 import { VERB_DECLARATIONS } from '../shared/agentCapabilities/verbDeclarations'
 import { draftShotSchema } from '../shared/agentCapabilities/verbs/writeVerbs'
 
@@ -113,8 +111,6 @@ const candidatePatchKeys = objectFieldKeys(
   'generation candidate patch',
 )
 const statusKeys = objectFieldKeys(generationStatusInputSchema.options[0], 'generation status')
-const undoKeys = objectFieldKeys(timelineWriteSemanticInputSchema.options[1], 'timeline undo')
-const applyPlanKeys = objectFieldKeys(timelineEditPlanSchema, 'timeline edit plan')
 const exportJobKeys = objectFieldKeys(exportReadSemanticInputSchema.options[0], 'export job')
 
 /**
@@ -226,18 +222,6 @@ export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Obj
   }),
   cancel_job: simple('cancel_job → generation status cancel', 'cancel_job', 'status', statusKeys, {
     jobId: { kind: 'rename', to: 'operationId', from: ['from-read:generate.jobId'], why: JOB_ID_IS_DUAL_DOMAIN },
-  }),
-  undo: simple('undo → timeline undo', 'undo', 'undo', undoKeys, {
-    // `edit_timeline` 的结果里那个字段叫 `undoToken`（契约 `timelineWrite.ts` 声明的），模型面收的
-    // 也叫 `undoToken`——出来进去同一个词。2026-09-18 之前模型面叫 `changeId`，而结果正文里印的是
-    // `undoToken`：一条工具结果里两个名字都在，模型得自己猜哪个是 `undo` 要的。
-    undoToken: { kind: 'same', from: ['from-read:edit_timeline.undoToken'] },
-    expectedRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
-  }),
-  edit_timeline: simple('edit_timeline → timeline edit plan', 'edit_timeline', 'applyPlan', applyPlanKeys, {
-    baseRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
-    summary: { kind: 'same', from: ['model-authored'] },
-    operations: { kind: 'same', from: ['model-authored', 'from-read:read_timeline.clips'] },
   }),
 })
 

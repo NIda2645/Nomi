@@ -9,14 +9,16 @@ import { CANVAS_DELETE_ALIAS, canvasDeleteInputForAlias, canvasDeletePiInputSche
 import { documentReadSemanticInputSchema } from "../documentRead";
 import { modelSetupOpenInputSchema } from "../modelSetup";
 import { SKILL_WRITE_ALIASES, skillWriteInputForAlias, skillWriteSemanticInputSchema } from "../skillWrite";
+import { TIMELINE_WRITE_ALIASES, timelineWriteInputForAlias, timelineWriteSemanticInputSchema } from "../timelineWrite";
 import { EXPORT_WRITE_ALIASES, exportWriteInputForAlias, exportWriteSemanticInputSchema } from "../exportCapabilities";
 import { SKILL_READ_ALIASES, skillReadInputForAlias, skillReadSemanticInputSchema } from "../skillRead";
 import * as projections from "./verbProjections";
 import {
   CANCEL_JOB_HOST_FILL, cancelJobModelSchema, DELETE_FROM_CANVAS_HOST_FILL, EXPORT_VIDEO_HOST_FILL,
   exportVideoModelSchema, objectFieldKeys, READ_SCRIPT_SCOPE_DEFAULT, READ_SKILL_HOST_FILL,
-  readScriptModelSchema, readSkillModelSchema, SAVE_SKILL_HOST_FILL, saveSkillModelSchema,
-  startModelSetupModelSchema,
+  editTimelineHostFill, editTimelineModelSchema, editTimelinePlanId, readScriptModelSchema,
+  readSkillModelSchema, SAVE_SKILL_HOST_FILL, saveSkillModelSchema, startModelSetupModelSchema,
+  UNDO_HOST_FILL, undoModelSchema,
 } from "./verbProjections";
 
 /** 一条投影：宿主 schema、模型面 schema、声明的 fill，以及宿主自己那条「补值 + 重过同一份 schema」的真路。 */
@@ -65,6 +67,15 @@ const CASES: readonly ProjectionCase[] = [
     hostFill: DELETE_FROM_CANVAS_HOST_FILL,
     sample: { nodeIds: ["node-a", "node-b"] },
     admit: (args) => canvasDeleteInputForAlias(CANVAS_DELETE_ALIAS, args),
+  },
+  {
+    verb: "undo",
+    hostSchema: timelineWriteSemanticInputSchema.options[1],
+    modelSchema: undoModelSchema,
+    hostFill: UNDO_HOST_FILL,
+    hiddenOptional: ["reason"],
+    sample: { undoToken: "undo-1", expectedRevision: "revision-2" },
+    admit: (args) => timelineWriteInputForAlias(TIMELINE_WRITE_ALIASES.undo, args),
   },
   {
     verb: "cancel_job（导出域）",
@@ -126,5 +137,26 @@ describe("覆盖：每一份声明出来的宿主自补值都被上面那三条�
         .toContain((projections as Record<string, unknown>)[name]);
     }
     expect(declared.length).toBe(covered.length);
+  });
+});
+
+describe("edit_timeline：fill 里有一个宿主**按这次调用派生**的值（幂等键），不是常量", () => {
+  const modelArgs = editTimelineModelSchema.parse({
+    baseRevision: "revision-1", summary: "Move the opening clip",
+    operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }],
+  });
+
+  it("模型面 + 宿主自补 = 宿主面，一个不多一个不少", () => {
+    const hostKeys = objectFieldKeys(timelineWriteSemanticInputSchema.options[0], "timeline apply host");
+    const modelKeys = objectFieldKeys(editTimelineModelSchema, "edit_timeline model face");
+    expect([...modelKeys, ...Object.keys(editTimelineHostFill("call-1"))].sort()).toEqual([...hostKeys].sort());
+  });
+
+  it("补完重过同一份宿主 schema：声明的 fill 与宿主那条真路逐字节相同", () => {
+    const filled = { planId: editTimelinePlanId("call-1"), ...modelArgs };
+    expect(timelineWriteInputForAlias(TIMELINE_WRITE_ALIASES.applyPlan, filled))
+      .toEqual({ ...modelArgs, ...editTimelineHostFill("call-1") });
+    // 模型那一半单独喂给宿主 schema 必须过不了（缺 planId 与 operation）。
+    expect(timelineWriteSemanticInputSchema.options[0].safeParse(modelArgs).success).toBe(false);
   });
 });

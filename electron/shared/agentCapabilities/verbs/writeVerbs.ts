@@ -12,7 +12,6 @@ import {
 } from "../canvasModelShapes";
 import { canvasDeletePiInputSchema } from "../canvasDelete";
 import { CANVAS_NODE_PROMPT_GUIDELINES, plannedEdgeSchema } from "../canvasWrite";
-import { timelineEditPlanModelSchema } from "../timelineRead";
 import { modelArgumentTolerance } from "../modelArgumentTolerance";
 import { isGeneratingNodeKind } from "../../canvas/nodeExecutionKinds";
 import { LaneDomainFailure, wrongVerbFailure } from "../../agentLane/laneToolContract";
@@ -20,7 +19,8 @@ import type { VerbDeclaration } from "../verbDeclaration";
 import { DOCUMENT_ID_TRANSPORT_FIELD, READ_GUIDELINES } from "./readVerbs";
 import { canvasWriteInputOf, documentWriteInputOf } from "./verbSemanticInput";
 import {
-  cancelJobModelSchema, exportVideoModelSchema, saveSkillModelSchema, startModelSetupModelSchema,
+  cancelJobModelSchema, editTimelineModelSchema, exportVideoModelSchema, saveSkillModelSchema,
+  startModelSetupModelSchema, undoModelSchema,
 } from "./verbProjections";
 
 const shotId = z.string().trim().min(1).max(160);
@@ -333,12 +333,11 @@ export function writeVerbs(): VerbDeclaration[] {
       "Frames, not seconds: every timeline position and duration is an integer frame count at the fps read_timeline returns.",
       "Always plan against a fresh revision: read the timeline, build the plan from what you just read, and pass that same revision back as baseRevision.",
     ],
-    // `planId` 是宿主按这次调用派生的幂等键，模型给不出 → 只 omit 它；`baseRevision` **不改名**，
-    // 模型面与宿主面同一个词（改名过的那一版叫 `revision`，而宿主同一个对象里另有一个 `revision`＝
-    // 编辑之后的新版本号——两个词指两件事，模型面少一个词就把它们叠成了一件）。这里只覆写描述。
-    schema: timelineEditPlanModelSchema.omit({ planId: true }).extend({
-      baseRevision: timelineEditPlanModelSchema.shape.baseRevision.describe("The revision returned by read_timeline; the edit applies only if it is still current."),
-    }),
+    // 模型面 = `timeline.write` 的 `apply_edit_plan` 分支减掉 `planId`（宿主派生的幂等键）与 `operation`，
+    // `operations` 用同一份宿主 schema 机器拍平的那一版。`baseRevision` **不改名**：宿主同一个对象里另有
+    // 一个 `revision`＝编辑之后的新版本号，两个词指两件事，模型面少一个词就把它们叠成了一件。
+    // 见 `verbProjections.ts`。
+    schema: editTimelineModelSchema,
     examples: [{ when: "Move the opening clip to the start:", arguments: { baseRevision: "revision-1", summary: "Move the opening clip", operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }] } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["operations"] }),
   };
@@ -351,10 +350,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here.",
       params: "undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline.",
     },
-    schema: z.object({
-      undoToken: z.string().trim().min(1).max(160).describe("The undoToken returned by the write you are reverting."),
-      expectedRevision: z.string().trim().min(1).max(64).describe("Current timeline revision from read_timeline."),
-    }).strict(),
+    // 模型面 = `timeline.write` 的 `undo_timeline_edit` 分支减掉 `operation` 与 `reason`（`verbProjections.ts`）。
+    schema: undoModelSchema,
     examples: [{ when: "Revert the last plan:", arguments: { undoToken: "undo-1", expectedRevision: "revision-2" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
