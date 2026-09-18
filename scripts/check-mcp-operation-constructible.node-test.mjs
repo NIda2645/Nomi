@@ -4,63 +4,14 @@
 // 补上**，所以尺子坏了的表现就是一句「✅ 全部可构造」——比没有门更糟。这里不测被测对象，测尺子：
 // 把登记表与传输 schema 逐条变异，门必须每一条都红；变异撤掉，门必须回绿。
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const gate = path.join(repoRoot, 'scripts/check-mcp-operation-constructible.mjs')
+import { assertGateIsOnContracts, createGateMutationHarness } from './gate-mutation-harness.mjs'
 
-function runGate() {
-  try {
-    execFileSync('pnpm', ['exec', 'tsx', gate], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' })
-    return { red: false, output: '' }
-  } catch (error) {
-    return { red: true, output: `${error.stdout ?? ''}${error.stderr ?? ''}` }
-  }
-}
-
-/**
- * 变异真的改生产/门岗文件，所以先把原文落盘成恢复档：被 SIGKILL 打断时下一次启动会自动还原，
- * 而不是把变异静默留在工作区等着被人连着提交上去。
- */
-const RECOVERY_FILE = path.join(repoRoot, '.tmp/mcp-fillable-mutation-recovery.json')
-
-if (fs.existsSync(RECOVERY_FILE)) {
-  for (const [relative, content] of JSON.parse(fs.readFileSync(RECOVERY_FILE, 'utf8'))) {
-    fs.writeFileSync(path.join(repoRoot, relative), content)
-  }
-  fs.rmSync(RECOVERY_FILE, { force: true })
-  console.warn('⚠ 上一轮变异测试被中断，已从恢复档还原')
-}
-
-function withMutation(edits, body) {
-  const originals = edits.map(([relative]) => [relative, fs.readFileSync(path.join(repoRoot, relative), 'utf8')])
-  const restore = () => {
-    for (const [relative, content] of originals) fs.writeFileSync(path.join(repoRoot, relative), content)
-    fs.rmSync(RECOVERY_FILE, { force: true })
-  }
-  const onSignal = () => { restore(); process.exit(130) }
-  fs.mkdirSync(path.dirname(RECOVERY_FILE), { recursive: true })
-  fs.writeFileSync(RECOVERY_FILE, JSON.stringify(originals))
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  try {
-    for (const [relative, find, replace] of edits) {
-      const full = path.join(repoRoot, relative)
-      const text = fs.readFileSync(full, 'utf8')
-      assert.ok(text.includes(find), `变异目标不在 ${relative} 里了，这条变异已经过期：${find.slice(0, 70)}`)
-      fs.writeFileSync(full, text.replace(find, replace))
-    }
-    return body()
-  } finally {
-    restore()
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
-  }
-}
+const { runGate, withMutation } = createGateMutationHarness({
+  gate: 'scripts/check-mcp-operation-constructible.mjs',
+  recoveryFile: '.tmp/mcp-fillable-mutation-recovery.json',
+})
 
 test('门岗在今天的代码上是绿的', () => {
   const outcome = runGate()
@@ -68,10 +19,7 @@ test('门岗在今天的代码上是绿的', () => {
 })
 
 test('这道门岗进了 contracts 档，不是一个没人跑的脚本', () => {
-  const scripts = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).scripts
-  assert.ok(scripts['check:mcp-operation-constructible'], 'package.json 里没有这条 script')
-  assert.ok(scripts['gates:contracts'].includes('check:mcp-operation-constructible'),
-    'gates:contracts 里没有它 —— 门岗不在常跑档上等于没有门岗')
+  assertGateIsOnContracts('check:mcp-operation-constructible')
 })
 
 const MUTATIONS = [

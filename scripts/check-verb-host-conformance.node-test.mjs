@@ -4,68 +4,17 @@
 // 把生产代码逐条变异回 2026-09-18 之前的写法，门必须每一条都红；变异撤掉，门必须回绿。
 // 变异在临时副本上做（`--mutate` 走环境变量注入，不碰工作区），跑完不留痕。
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const gate = path.join(repoRoot, 'scripts/check-verb-host-conformance.mjs')
+import { assertGateIsOnContracts, createGateMutationHarness } from './gate-mutation-harness.mjs'
 
-function runGate() {
-  try {
-    execFileSync('pnpm', ['exec', 'tsx', gate], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' })
-    return { red: false, output: '' }
-  } catch (error) {
-    return { red: true, output: `${error.stdout ?? ''}${error.stderr ?? ''}` }
-  }
-}
-
-/**
- * 这个测试**真的改生产文件**（否则量不到门岗对真实代码的反应）。`finally` 兜住抛异常那条路，
- * 但兜不住 SIGKILL / 断电——那会把变异留在工作区，最坏的情况是被人连着提交上去。
- * 所以变异前先把原文落盘成恢复档，任何一次启动先看有没有上一轮留下的恢复档，有就先还原。
- * 「被中断」因此从一个静默灾难变成一次自动复原。
- */
-const RECOVERY_FILE = path.join(repoRoot, '.tmp/verb-host-conformance-mutation-recovery.json')
-
-function restoreLeftoverMutation() {
-  if (!fs.existsSync(RECOVERY_FILE)) return
-  const saved = JSON.parse(fs.readFileSync(RECOVERY_FILE, 'utf8'))
-  for (const [relative, content] of saved) fs.writeFileSync(path.join(repoRoot, relative), content)
-  fs.rmSync(RECOVERY_FILE, { force: true })
-  console.warn('⚠ 上一轮变异测试被中断，已从恢复档还原生产文件')
-}
-
-restoreLeftoverMutation()
-
-/** 一次变异 = 一组 [文件, 找, 换]。跑完无论成败都还原，绝不把变异留在工作区。 */
-function withMutation(edits, body) {
-  const originals = edits.map(([relative]) => [relative, fs.readFileSync(path.join(repoRoot, relative), 'utf8')])
-  const restore = () => {
-    for (const [relative, content] of originals) fs.writeFileSync(path.join(repoRoot, relative), content)
-    fs.rmSync(RECOVERY_FILE, { force: true })
-  }
-  const onSignal = () => { restore(); process.exit(130) }
-  fs.mkdirSync(path.dirname(RECOVERY_FILE), { recursive: true })
-  fs.writeFileSync(RECOVERY_FILE, JSON.stringify(originals))
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  try {
-    for (const [relative, find, replace] of edits) {
-      const file = path.join(repoRoot, relative)
-      const before = fs.readFileSync(file, 'utf8')
-      assert.ok(before.includes(find), `变异目标不在 ${relative} 里了，这条变异已经过期：${find.slice(0, 60)}`)
-      fs.writeFileSync(file, before.replace(find, replace))
-    }
-    return body()
-  } finally {
-    restore()
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
-  }
-}
+// 跑门岗 / 改生产文件 / 无论成败都还原 / 被中断时从恢复档复原——四件事的**唯一**一份实现
+// （2026-09-18 把它抽出来之前，这里、`check:model-face-frozen` 与
+// `check:mcp-operation-constructible` 各有一份抄的，正是 P1 说的并行版）。
+const { runGate, withMutation } = createGateMutationHarness({
+  gate: 'scripts/check-verb-host-conformance.mjs',
+  recoveryFile: '.tmp/verb-host-conformance-mutation-recovery.json',
+})
 
 test('门岗在今天的代码上是绿的', () => {
   const outcome = runGate()
@@ -73,9 +22,7 @@ test('门岗在今天的代码上是绿的', () => {
 })
 
 test('这道门岗进了 contracts 档，不是一个没人跑的脚本', () => {
-  const scripts = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).scripts
-  assert.ok(scripts['check:verb-host-conformance'], 'package.json 里没有这条 script')
-  assert.ok(scripts['gates:contracts'].includes('check:verb-host-conformance'), 'gates:contracts 里没有它 —— 门岗不在常跑档上等于没有门岗')
+  assertGateIsOnContracts('check:verb-host-conformance')
 })
 
 const MUTATIONS = [

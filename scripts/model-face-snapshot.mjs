@@ -6,12 +6,6 @@
  * 模型面的**真相源**（手写 → 从宿主契约 schema 派生），而换真相源的验收尺只有一条：**模型看到的东西
  * 逐字节没变**。这个模块就是那把尺子的序列化器，`check-model-face-frozen.mjs` 与交付证据都从它来。
  */
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const load = (relative) => import(path.join(repoRoot, relative))
-
 /** 键序稳定：对象按键名排序递归重建，数组保持原序（目录顺序是合同，见 `verbDeclarations.ts` 文件头）。 */
 export function stableSort(value) {
   if (Array.isArray(value)) return value.map(stableSort)
@@ -55,9 +49,9 @@ function modelFaceOf(verb, { toPublishedJsonSchema, toModelFacingToolSpec }) {
 
 /** 全部 20 个动词的模型面，按目录顺序（顺序本身是合同：它是提示词与 `tools/list` 的前缀）。 */
 export async function captureModelFace() {
-  const { VERB_DECLARATIONS } = await load('electron/shared/agentCapabilities/verbDeclarations.ts')
-  const { toPublishedJsonSchema } = await load('electron/shared/agentCapabilities/modelVisibleJsonSchema.ts')
-  const { toModelFacingToolSpec } = await load('electron/shared/agentCapabilities/modelFacingTools.ts')
+  const { VERB_DECLARATIONS } = await import('../electron/shared/agentCapabilities/verbDeclarations.ts')
+  const { toPublishedJsonSchema } = await import('../electron/shared/agentCapabilities/modelVisibleJsonSchema.ts')
+  const { toModelFacingToolSpec } = await import('../electron/shared/agentCapabilities/modelFacingTools.ts')
   const tools = VERB_DECLARATIONS.map((verb) => modelFaceOf(verb, { toPublishedJsonSchema, toModelFacingToolSpec }))
   return { verbCount: tools.length, tools }
 }

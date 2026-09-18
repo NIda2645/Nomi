@@ -25,8 +25,8 @@
 // ── 「一个字段都不许没人管」在这里是**编译期**的 ──
 //
 // 对照表时代这条不变量住在装配期（表里漏一条就抛）。这里换成 TypeScript：每个函数把模型面的字段**全部
-// 解构出来**，剩下的落进 `unhandled`，而 `unhandled` 的类型是 `Record<string, never>`——动词 schema 新长
-// 一个字段而没人处置它，`tsc` 当场红，不用等 App 起来。落点那一侧同样由类型钉住：返回类型取自宿主
+// 解构出来**，剩下的落进 `unhandled`，再一句 `unhandled satisfies Record<string, never>`——动词 schema
+// 新长一个字段而没人处置它，`tsc` 当场红，不用等 App 起来。落点那一侧同样由类型钉住：返回类型取自宿主
 // schema，宿主改名就红。这两条合起来，比那张 353 行的关系表**早一步**、也**严一层**。
 import type { z } from "zod";
 
@@ -49,11 +49,6 @@ type CandidatePatch = PlanPatch["patch"];
 /** 宿主的单镜 create：一镜摊成顶层参数。 */
 type PlanFlatCreate = Omit<PlanCreate, "operation" | "shots" | "scriptText" | "cardHidden" | "candidate">;
 
-/** 一个字段都不许没人管：新长出来的模型面字段落进这里，而这个类型不接受任何键。 */
-function assertEveryFieldHandled(unhandled: Record<string, never>): void {
-  void unhandled;
-}
-
 /** `refuse` 那一档：模型填了它，而这条路送不到宿主。静默丢掉就是这一整类缺陷的形状。 */
 function refuse(field: string, why: string): never {
   throw Object.assign(new Error(`draft_shots: "${field}" 在这条路上送不到宿主（${why}）`), {
@@ -75,7 +70,8 @@ function semanticsOf(shot: DraftShot): CandidatePatch {
     shotId: _envelopeShotId, role: _envelopeRole, title: _envelopeTitle,
     ...unhandled
   } = shot;
-  assertEveryFieldHandled(unhandled);
+  // 一个字段都不许没人管：新长出来的模型面字段落进 `unhandled`，而这个类型不接受任何键 → tsc 红。
+  void (unhandled satisfies Record<string, never>);
   return {
     ...(prompt !== undefined ? { prompt } : {}),
     ...(taskKind !== undefined ? { taskKind } : {}),
@@ -137,7 +133,7 @@ export function draftShotToFlatCreate(shot: DraftShot): PlanFlatCreate {
  */
 export function withDraftShotsDefaults(args: DraftShotsArgs, shot: DraftShot): DraftShot {
   const { taskKind, candidate, operationId: _selectsBranch, shots: _theseShots, ...unhandled } = args;
-  assertEveryFieldHandled(unhandled);
+  void (unhandled satisfies Record<string, never>);
   return {
     ...shot,
     ...(shot.taskKind === undefined && taskKind !== undefined ? { taskKind } : {}),
