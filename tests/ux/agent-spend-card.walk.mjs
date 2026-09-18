@@ -39,13 +39,13 @@ try {
       shots: [{ prompt: '一个悬浮的六棱柱，柔和的演播室灯光', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters: { size: '1024x1024' } }],
     } },
   })
-  let draftId
+  let operationId
   const plannerDoneDraft = walk.fixture.expectText({
-    label: 'the draft result comes back with the host-generated draftId',
+    label: 'the draft result comes back with the host-generated operationId',
     match: (body) => {
       const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === PLAN_CALL)
       if (!result) return false
-      draftId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+      operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
       return true
     },
     reply: { type: 'hold' },
@@ -58,7 +58,7 @@ try {
   await sendCanvas(win, ASK)
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDoneDraft.received, 'generation draft result')
-  plannerDoneDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { draftId } })
+  plannerDoneDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
   await recorded(plannerDone.received, 'generation draft result')
 
   // 草稿落画布（一本账）：节点先出现，用户看得见 agent 到底要生成什么。

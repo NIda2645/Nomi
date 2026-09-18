@@ -41,16 +41,16 @@ const canvas = (id: string, name: string, args: Record<string, unknown>, semanti
   resultText: `Applied directly (undoable).\nUser sees: ${userSees}`,
 });
 const DRAFT_USER_SEES = 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.';
-/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到 draftId（jobId=）。 */
+/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到的 id，末行按它下一步要填的名字印成 `operationId=`。 */
 const draft = (id: string, args: Record<string, unknown>, operationId: string): L1Call =>
-  domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (jobId=${operationId})`);
+  domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (operationId=${operationId})`);
 const turn = (prompt: string, ...frames: L1Frame[]): L1Turn => ({ prompt, frames });
 const scenario = (id: string, family: L1Scenario['family'], title: string, turns: L1Turn[],
   extra: Partial<L1Scenario> = {}): L1Scenario => ({ id, family, title, turns, finalDocument: INITIAL_DOCUMENT, ...extra });
 const emptyCanvas = { nodes: [], edges: [], groups: [], selectedNodeIds: [] };
 const timeline = { operation: 'read_timeline', revision: 'r1', fps: 30, scale: 1,
   playheadFrame: 0, durationFrames: 0, valid: true, tracks: [], textClips: [], transitions: [] };
-const plan = { revision: 'r1', summary: 'Move opening clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 30 }] };
+const plan = { baseRevision: 'r1', summary: 'Move opening clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 30 }] };
 // draft_shots 的 parameters 是模型档案声明的标量表；嵌套结构由宿主按目录钳值，不进模型面。
 const nestedParameters = { seed: 7, aspect_ratio: '16:9', hd: true };
 const queued: LaneTaskFacts = { status: 'queued', progress: 0, currency: 'CNY' };
@@ -92,7 +92,7 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
       // 正是 T-ED-02 那条根因（回执不从真实批准派生）。现在 userSees 由本次调用的真实批准结论派生，
       // 而本场景**没有**摆出批准动作，所以它断言的是「没问就直接改了」那一支。要覆盖「出了卡」那一支，
       // 得在场景里真的摆一次批准，不是把话写死。
-      'The timeline edit applied directly \u2014 this approval mode did not ask, and no card is waiting for the user. It is reversible; call undo to take it back. (changeId=undo-1)')), say('The edit has an undo token.'))]),
+      'The timeline edit applied directly \u2014 this approval mode did not ask, and no card is waiting for the user. It is reversible; call undo to take it back. (undoToken=undo-1)')), say('The edit has an undo token.'))]),
   scenario('G1', 'generation', 'Draft a shot without spending', [turn('Draft a sunrise image.',
     calls(draft('create-g1', { shots: [{ prompt: 'Sunrise' }] }, 'gen-1')), say('The draft awaits the user; nothing was spent.'))]),
   scenario('G2', 'generation', 'Read a submitted job then cancel it', [turn('Stop the existing generation.',
@@ -102,7 +102,7 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
       'The job was cancelled; credit already spent is not refunded.')), say('Cancellation was requested once.'))]),
   scenario('G3', 'generation', 'Preserve scalar parameters while drafting and revising', [turn('Revise this structured draft.',
     calls(draft('create-g3', { shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')),
-    calls(draft('patch-g3', { draftId: 'gen-3', shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')), say('Nested parameters survived the revision.'))]),
+    calls(draft('patch-g3', { operationId: 'gen-3', shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')), say('Nested parameters survived the revision.'))]),
   scenario('K1', 'task', 'A draft task progresses without duplicating state', [turn('Start a reviewable short-film draft.',
     calls(draft('start-k1', { shots: [{ prompt: 'A short film opening' }] }, 'run-k1')), say('The draft task was created.'))],
     { task: { productionRunId: 'run-k1', operationId: 'start-k1', facts: [queued, running, complete] } }),

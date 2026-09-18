@@ -9,7 +9,7 @@ import type { ProjectAgentProposalReceiptView } from '../shared/projectAgentProp
 
 const binding = { projectId: 'project-1', immutableProjectUuid: '00000000-0000-4000-8000-000000000001', projectGeneration: 1 }
 const signal = new AbortController().signal
-const plan = { revision: 'revision-1', summary: 'Move clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 0 }] }
+const plan = { baseRevision: 'revision-1', summary: 'Move clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 0 }] }
 const call = (toolName: string, args: unknown = plan): RuntimeToolCall => ({ toolName, args, toolCallId: 'call-1' })
 
 function setup() {

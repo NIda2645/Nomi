@@ -64,7 +64,7 @@ test('P5 ① · size of the draft_shots schema, by pi\'s own estimator', () => {
     console.log(`[P5①]   ${tool.name}: ≈ ${size} tokens`);
   }
   const properties = Object.keys((storyboard.parameters as { properties: Record<string, unknown> }).properties);
-  assert.deepEqual(properties, ['draftId', 'taskKind', 'candidate', 'shots'], 'draft_shots root: the draft to revise, per-draft defaults, and the shots');
+  assert.deepEqual(properties, ['operationId', 'taskKind', 'candidate', 'shots'], 'draft_shots root: the draft to revise, per-draft defaults, and the shots');
   // B1c moves full guidance/examples into the stable system prompt; the budget above records
   // the one deliberate growth since (film-level aspectRatio), not prose creeping back in.
   assert.ok(schemaTokens + descriptionTokens <= TOKEN_BUDGET,

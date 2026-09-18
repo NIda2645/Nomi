@@ -33,7 +33,7 @@ test('safe-auto lands draft_shots directly without a review card, and nothing is
 
 test('generate returns isError + STOP: the model cannot claim generation started', async (t) => {
   const fixture = await createLaneFixture(t, [
-    { type: 'tool', calls: [{ id: 'fixture-generate', name: 'generate', arguments: { draftId: 'op-1' } }] },
+    { type: 'tool', calls: [{ id: 'fixture-generate', name: 'generate', arguments: { operationId: 'op-1' } }] },
     { type: 'text', text: 'The card is in front of you.' },
   ], { hasUserInterface: true, policy: () => ({ mode: 'safe-auto', spend: 'confirm' }) });
   const lane = await openLane({ ...fixture.options, tools: createExtendedLaneTools({

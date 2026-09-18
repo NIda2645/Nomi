@@ -266,8 +266,8 @@ async function stepAgentPatchShot2(win, projectId) {
     match: (body) => flattenRequestText(body).includes(PATCH_INSTRUCTION) && !hasToolResult(body, PATCH_CALL_ID),
     reply: {
       type: 'tool', id: PATCH_CALL_ID, name: 'draft_shots',
-      // 20 动词：改一镜提示词 = draft_shots(draftId, shots[{shotId}])；id 由 look_at_canvas 读回（这里按镜序取第 2 镜）。
-      args: { draftId: PLAN_CALL_ID, shots: [{ shotId: 'shot-2', prompt: SHOT_2_NEW_PROMPT }] },
+      // 20 动词：改一镜提示词 = draft_shots(operationId, shots[{shotId}])；id 由 look_at_canvas 读回（这里按镜序取第 2 镜）。
+      args: { operationId: PLAN_CALL_ID, shots: [{ shotId: 'shot-2', prompt: SHOT_2_NEW_PROMPT }] },
     },
   })
   const patchDone = walk.fixture.expectText({

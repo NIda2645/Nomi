@@ -6,7 +6,7 @@ const text = z.string().max(8192)
 const value = z.union([text, z.number().finite(), z.boolean()])
 // Validate the serializable capability facts at the IPC boundary, never executable authority.
 export const agentModelEntrySchema: z.ZodType<AgentModelEntry> = z.object({
-  modelKey: text.min(1), modelAlias: text.nullable(), vendor: text.nullable(), label: text,
+  modelId: text.min(1), modelAlias: text.nullable(), vendor: text.nullable(), label: text,
   kind: z.enum(BILLING_MODEL_KINDS), archetypeId: text.optional(), defaultModeId: text,
   modes: z.array(z.object({
     modeId: text, vendorTerm: text, intent: text, hint: text,

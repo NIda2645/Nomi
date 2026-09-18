@@ -179,5 +179,5 @@ it('agent catalog capture includes reference-only models through the real public
       : [])
   const { listAvailableModelsForAgent } = await import('../workbench/generationCanvas/agent/availableModels')
   const entries = await listAvailableModelsForAgent()
-  expect(entries.map((entry) => entry.modelKey).sort()).toEqual(['edit-only', 'reference-video'])
+  expect(entries.map((entry) => entry.modelId).sort()).toEqual(['edit-only', 'reference-video'])
 })
