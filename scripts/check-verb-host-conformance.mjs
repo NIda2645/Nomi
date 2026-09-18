@@ -72,6 +72,7 @@ const { toSemanticInput, toModelFacingToolSpec } = await load('electron/shared/a
 const { verbToTransportCall, exportJobTransportCall } = await load('electron/agentLane/laneVerbTransport.ts')
 const { generationPlanInputSchema, generationStatusInputSchema } = await load('electron/shared/agentCapabilities/generationPlanSchemas.ts')
 const { GENERATION_METHODS } = await load('electron/shared/agentCapabilities/generation.ts')
+const { PROVENANCE_UNVERIFIABLE } = await load('electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts')
 const { assetReadInputForAlias } = await load('electron/shared/agentCapabilities/assetRead.ts')
 const { exportReadInputForAlias, exportWriteInputForAlias } = await load('electron/shared/agentCapabilities/exportCapabilities.ts')
 const { timelineWriteInputForAlias } = await load('electron/shared/agentCapabilities/timelineWrite.ts')
@@ -518,7 +519,25 @@ function sourceFiles() {
   return out
 }
 
-const failures = []
+// 来源缺口按动词身份做棘轮，不能删 A 加 B 偷换名额；删掉缺口必须同时缩小基线。
+// 沿用 contracts 现有入口和变异自检，不另建一条会被忘记接线的验证链。
+function provenanceRatchetFailures() {
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/provenance-unverifiable-baseline.json'), 'utf8'))
+  if (!Array.isArray(baseline) || baseline.some((name) => typeof name !== 'string') || new Set(baseline).size !== baseline.length) {
+    return ['PROVENANCE_UNVERIFIABLE 棘轮基线必须是无重复的动词身份数组']
+  }
+  const current = Object.keys(PROVENANCE_UNVERIFIABLE)
+  const added = current.filter((name) => !baseline.includes(name))
+  const stale = baseline.filter((name) => !Object.hasOwn(PROVENANCE_UNVERIFIABLE, name))
+  const problems = [
+    ...added.map((name) => `PROVENANCE_UNVERIFIABLE 棘轮禁止新增身份：${name}`),
+    ...stale.map((name) => `PROVENANCE_UNVERIFIABLE 基线有陈旧身份：${name}；请随修复删掉，不能留给下次回涨`),
+  ]
+  if (!problems.length) console.log(`✅ PROVENANCE_UNVERIFIABLE 棘轮：${current.length} 条，身份基线一致`)
+  return problems
+}
+
+const failures = provenanceRatchetFailures()
 let checked = 0
 for (const verb of VERB_DECLARATIONS) {
   checked += 1
