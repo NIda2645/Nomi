@@ -95,6 +95,8 @@ export function repairDroppedVendorSeedFields(state: CatalogState, stampedAt: st
       // 自建连接：没有代码侧出处，补不了 —— 盖一条可见的提示，绝不静默。
       // 但只盖在修复之前写过的记录上：之后写的那些走的已经是类型闭合的写路径，没风险，别打扰。
       if (String(vendor.updatedAt || "") >= VENDOR_FIELD_LOSS_CUTOFF_ISO) return vendor;
+      // 已经盖过就不再刷新时间戳 —— 万一这段被重跑，不许二次改写用户记录（幂等）。
+      if (vendorFieldLossNoticeAt(vendor)) return vendor;
       stamped.push(vendor.key);
       return { ...vendor, meta: withNotice(vendor.meta, stampedAt) };
     }

@@ -27,7 +27,7 @@ import { listModelCatalogVendors, upsertModelCatalogVendor } from "./catalogStor
 import { upsertRendererCatalogVendor } from "./rendererCatalogMutation";
 import { HIGGSFIELD_VENDOR_SEED } from "./higgsfieldVendor";
 import { REPLICATE_VENDOR_SEED } from "./replicate";
-import { vendorFieldLossNoticeAt, withoutVendorFieldLossNotice } from "./vendorFieldLossRepair";
+import { repairDroppedVendorSeedFields, vendorFieldLossNoticeAt, withoutVendorFieldLossNotice } from "./vendorFieldLossRepair";
 import { buildHttpRequest } from "../ai/requestPipeline";
 import type { CatalogState, Vendor } from "./types";
 
@@ -142,5 +142,47 @@ describe("v12→v13 一次性修复：被抹掉的供应商声明回来了", () 
     upsertModelCatalogVendor({ key: HIGGSFIELD_VENDOR_SEED.key, authScheme: "" });
     expect(vendorByKey(HIGGSFIELD_VENDOR_SEED.key)?.authScheme).toBeNull();
     expect(vendorByKey(HIGGSFIELD_VENDOR_SEED.key)?.authScheme).toBeNull();
+  });
+
+  // 纯核直测：迁移体（`migrateVendorFieldLossV13`）自带 nowIso + logWarn，时间不定、还会写日志；
+  // 修复本身是纯函数、时间由调用方给，于是「补了谁、盖了谁」和「跑两遍会不会变」这两件事
+  // 才能被确定性地断言。这也是两者分开的理由。
+  it("纯核：报告如实说出补了谁、盖了谁", () => {
+    const t = "2026-09-10T00:00:00.000Z";
+    const { report } = repairDroppedVendorSeedFields(
+      {
+        version: 12,
+        vendors: [
+          { key: HIGGSFIELD_VENDOR_SEED.key, name: "H", enabled: true, createdAt: t, updatedAt: t },
+          { key: "my-relay", name: "R", enabled: true, createdAt: t, updatedAt: t },
+        ],
+        models: [],
+        mappings: [],
+        apiKeysByVendor: {},
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+    expect(report.repaired).toEqual([{ vendorKey: HIGGSFIELD_VENDOR_SEED.key, fields: ["authScheme"] }]);
+    expect(report.stamped).toEqual(["my-relay"]);
+  });
+
+  it("纯核：幂等 —— 跑第二遍什么都不再改（迁移万一被重跑也不会二次改写用户数据）", () => {
+    const t = "2026-09-10T00:00:00.000Z";
+    const first = repairDroppedVendorSeedFields(
+      {
+        version: 12,
+        vendors: [
+          { key: HIGGSFIELD_VENDOR_SEED.key, name: "H", enabled: true, createdAt: t, updatedAt: t },
+          { key: "my-relay", name: "R", enabled: true, createdAt: t, updatedAt: t },
+        ],
+        models: [],
+        mappings: [],
+        apiKeysByVendor: {},
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+    const second = repairDroppedVendorSeedFields(first.state, "2026-09-18T20:00:00.000Z");
+    expect(second.state.vendors).toEqual(first.state.vendors);
+    expect(second.report.repaired).toEqual([]);
   });
 });

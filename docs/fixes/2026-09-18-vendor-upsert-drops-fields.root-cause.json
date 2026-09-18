@@ -125,7 +125,7 @@
     {
       "kind": "write",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 123,
+      "line": 125,
       "symbol": "repairDroppedVendorSeedFields"
     },
     {
