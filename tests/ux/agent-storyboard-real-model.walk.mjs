@@ -196,12 +196,22 @@ try {
    * 所以守卫不是「保险起见按一下 Esc」：它先**观察**输入框可不可用，只有不可用时才按 Esc，
    * 并把「这一轮是被挡过的」记进报告——被挡这件事本身是数据，不许静默抹掉。
    */
+  let blockedShotTaken = false
   async function ensureComposerUsable() {
     const input = win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`)
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      if (await input.isEditable().catch(() => false)) return attempt > 0 ? attempt : 0
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      // **trial click，不是 isEditable。** 模态是一张盖在上面的遮罩：输入框自己在 DOM 上仍然
+      // 「可编辑」，只是点不到它。`isEditable()` 看不见遮挡，第一版守卫因此完全没起作用
+      // （19 轮照旧 30s 超时）。`click({ trial: true })` 走的是 Playwright 的完整可操作性检查，
+      // 含命中测试——「点得到吗」这个问题只有它答得准，而那正是真人会遇到的那件事。
+      const usable = await input.click({ trial: true, timeout: 3_000 }).then(() => true).catch(() => false)
+      if (usable) return attempt
+      if (!blockedShotTaken) {
+        blockedShotTaken = true
+        await win.screenshot({ path: path.join(outputDir, 'panel-blocked.png') }).catch(() => {})
+      }
       await win.keyboard.press('Escape')
-      await win.waitForTimeout(600)
+      await win.waitForTimeout(800)
     }
     return -1
   }
