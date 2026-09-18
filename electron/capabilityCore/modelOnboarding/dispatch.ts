@@ -273,6 +273,10 @@ async function submitDeclaration(
     kind: isJsonRecord(model) ? String(model.kind ?? "") : "",
   }));
 
+  // 这条路上**不会**有 compileRequest：它只在「Nomi 得自己去读文档」时才产生，而这一跳永远带着
+  // 一张现成的卡（`adapterDraft`）。自建/内网端点的那条「不许静默套模板」因此也不需要在这里说——
+  // Agent 已经把形状声明出来了，没有可猜的东西。那条出路服务的是设置页/渲染层那条路
+  // （`integrationAdapterContract.compileRequestFor` 的 `private_host_needs_declaration`）。
   let projection;
   try {
     const before = deps.sessions.get(setupId, deps.owner) as { revision: number };
@@ -287,18 +291,6 @@ async function submitDeclaration(
       message: "Nomi rejected the declaration.",
       rejections: rejectionsFromError(error, card),
       nextAction: "Fix the named field against the documentation URL you declared for it, then call submit_declaration again with the same setupId.",
-    };
-  }
-
-  if (projection.compileRequest) {
-    // 自建 / 内网端点：模板是**你显式选**的一条出路，不是我们替你套的兜底（§ Q3）。
-    return {
-      ok: false, code: "needs_input",
-      message: "Nomi cannot read this endpoint's public documentation, so it will not guess a request shape for it.",
-      needs: ["a declaration card for this endpoint"],
-      nextAction: projection.compileRequest.suggestedTemplate
-        ? `If this is an OpenAI-compatible relay, say so explicitly by declaring the built-in template ${projection.compileRequest.suggestedTemplate} in the card. Otherwise describe the real request shape.`
-        : "Describe the real request shape in the card.",
     };
   }
 
