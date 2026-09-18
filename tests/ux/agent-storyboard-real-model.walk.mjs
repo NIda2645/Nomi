@@ -33,6 +33,7 @@
 //   export NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/"
 //   source ~/.nomi-secrets.env            # 只为证明 key 在；模型 key 走本机 catalog，不从这里取
 //   node tests/ux/agent-storyboard-real-model.walk.mjs [--rounds 23] [--model "DeepSeek V3.2"]
+import { stationTimeout } from './_station-budget.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -143,17 +144,17 @@ try {
 
   // 首启的遥测征询卡会盖住面板。按最保护隐私的那一档答（「不分享」），这也是真人该看到的默认路径。
   const consent = win.getByRole('button', { name: '不分享', exact: true }).first()
-  if (await consent.count()) { await consent.click({ timeout: 20_000 }); await win.waitForTimeout(600) }
+  if (await consent.count()) { await consent.click({ timeout: stationTimeout({ operations: 2 }) }); await win.waitForTimeout(600) }
 
   // ② 真实页面输入 · 导入真实素材：素材库的文件选择器，等价真人在 OS 对话框里选文件。
   // 素材库入口只在**生成**工作区（创作区那一屏没有它），所以先切过去。
-  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: 20_000 })
+  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
   await win.waitForTimeout(2000)
-  await win.getByRole('button', { name: '素材库', exact: true }).first().click({ timeout: 20_000 })
+  await win.getByRole('button', { name: '素材库', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
   const uploadInput = win.locator('section[aria-label="素材库"] input[type="file"]').first()
-  await uploadInput.waitFor({ state: 'attached', timeout: 20_000 })
+  await uploadInput.waitFor({ state: 'attached', timeout: stationTimeout({ operations: 2 }) })
   await uploadInput.setInputFiles(referenceImage)
-  const importDeadline = Date.now() + 120_000
+  const importDeadline = Date.now() + stationTimeout({ operations: 8 })
   let importedAssets = 0
   while (Date.now() < importDeadline) {
     const dir = path.join(projectDir, 'assets')
@@ -164,24 +165,24 @@ try {
   report.importedAssets = importedAssets
   if (importedAssets === 0) throw new Error('真实素材导入没落盘——后面「用素材库那张图当参考」那几轮就不成立了')
   const closeLibrary = win.locator('section[aria-label="素材库"] button[aria-label*="关闭"]').first()
-  if (await closeLibrary.count()) await closeLibrary.click({ timeout: 10_000 }).catch(() => {})
+  if (await closeLibrary.count()) await closeLibrary.click({ timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
 
   // ② 真实页面输入 · 文稿是敲进编辑器的
-  await win.getByRole('button', { name: '创作', exact: true }).first().click({ timeout: 20_000 })
+  await win.getByRole('button', { name: '创作', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
   await win.waitForTimeout(1200)
   const doc = win.locator(DOCUMENT)
-  await doc.waitFor({ state: 'visible', timeout: 30_000 })
+  await doc.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
   await doc.fill(CASES.script)
 
   // ② 真实页面输入 · 模型从下拉里选
-  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: 20_000 })
+  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
   await win.waitForTimeout(1500)
   await expandResidentPanel(win)
-  await win.locator(`${CANVAS_PANEL} ${COMPOSER_MODEL}`).click({ timeout: 20_000 })
-  await win.locator(`${CANVAS_PANEL} ${MODEL_POPOVER} [data-v4-model-row]`).first().locator('button').first().click({ timeout: 20_000 })
+  await win.locator(`${CANVAS_PANEL} ${COMPOSER_MODEL}`).click({ timeout: stationTimeout({ operations: 2 }) })
+  await win.locator(`${CANVAS_PANEL} ${MODEL_POPOVER} [data-v4-model-row]`).first().locator('button').first().click({ timeout: stationTimeout({ operations: 2 }) })
   const option = win.locator('[data-nomi-select-dropdown] [data-nomi-select-option-label]')
     .filter({ hasText: new RegExp(escapeForRegExp(MODEL_LABEL)) }).first()
-  await option.click({ timeout: 20_000 })
+  await option.click({ timeout: stationTimeout({ operations: 2 }) })
   await win.waitForTimeout(800)
 
   const seenToolCallIds = new Set()
@@ -192,16 +193,16 @@ try {
     const started = Date.now()
     try {
       // 每一轮都是**新对话**：量的是「这句话单独说出来时它会怎么做」，不是「上一轮铺垫之后」。
-      await win.locator(`${CANVAS_PANEL} ${HISTORY_BUTTON}`).click({ timeout: 20_000 })
-      await win.locator(THREAD_MENU).getByRole('button', { name: '新对话', exact: true }).click({ timeout: 20_000 })
+      await win.locator(`${CANVAS_PANEL} ${HISTORY_BUTTON}`).click({ timeout: stationTimeout({ operations: 2 }) })
+      await win.locator(THREAD_MENU).getByRole('button', { name: '新对话', exact: true }).click({ timeout: stationTimeout({ operations: 2 }) })
       await win.waitForTimeout(500)
       const input = win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`)
-      await input.waitFor({ state: 'visible', timeout: 20_000 })
+      await input.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
       await input.fill(item.text)
-      await win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`).click({ timeout: 20_000 })
+      await win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`).click({ timeout: stationTimeout({ operations: 2 }) })
       const running = win.locator(`${CANVAS_PANEL} ${COMPOSER}[data-mode="running"]`)
-      await running.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
-      await running.waitFor({ state: 'hidden', timeout: 300_000 })
+      await running.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+      await running.waitFor({ state: 'hidden', timeout: stationTimeout({ turns: 1 }) })
       await win.waitForTimeout(1500)
     } catch (roundError) {
       row.roundError = roundError.message
