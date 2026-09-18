@@ -91,7 +91,7 @@ const MUTATIONS = [
   ]],
   ['B 类 · 共享默认值搬回单个执行器（只修一个面）', [
     ['electron/shared/agentCapabilities/verbs/readVerbs.ts',
-      '    semanticInputOf: (args) => ({ scope: (args as { scope?: "full" | "selection" }).scope ?? "full" }),\n', ''],
+      '    semanticInputOf: (args) => ({ scope: (args as { scope?: DocumentReadInput["scope"] }).scope ?? READ_SCRIPT_SCOPE_DEFAULT }),\n', ''],
   ]],
   ['C 类 · 对应关系落在一个**存在但语义不对**的宿主字段上（装配期看不出来，喂真值才红）', [
     ['electron/agentLane/verbTransportRoutes.ts',

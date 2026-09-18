@@ -23,7 +23,6 @@ import { toPublishedJsonSchema } from '../shared/agentCapabilities/modelVisibleJ
 import { generationPlanInputSchema, generationStatusInputSchema } from '../shared/agentCapabilities/generationPlanSchemas'
 import { canvasDeletePiInputSchema } from '../shared/agentCapabilities/canvasDelete'
 import { exportReadSemanticInputSchema, exportWriteSemanticInputSchema } from '../shared/agentCapabilities/exportCapabilities'
-import { skillReadSemanticInputSchema } from '../shared/agentCapabilities/skillRead'
 import { skillWriteSemanticInputSchema } from '../shared/agentCapabilities/skillWrite'
 import { timelineWriteSemanticInputSchema } from '../shared/agentCapabilities/timelineWrite'
 import { timelineEditPlanSchema } from '../shared/agentCapabilities/timelineRead'
@@ -121,7 +120,6 @@ const applyPlanKeys = objectFieldKeys(timelineEditPlanSchema, 'timeline edit pla
 const exportStartKeys = objectFieldKeys(exportWriteSemanticInputSchema.options[0], 'export start')
 const exportJobKeys = objectFieldKeys(exportReadSemanticInputSchema.options[0], 'export job')
 const canvasDeleteKeys = objectFieldKeys(canvasDeletePiInputSchema, 'canvas delete')
-const skillReadKeys = objectFieldKeys(skillReadSemanticInputSchema, 'skill read')
 const skillWriteKeys = objectFieldKeys(skillWriteSemanticInputSchema, 'skill write')
 
 /**
@@ -257,10 +255,6 @@ export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Obj
     nodeIds: { kind: 'same', from: ['from-read:look_at_canvas.id'] },
     reason: { kind: 'same', from: ['model-authored'] },
   }),
-  read_skill: simple('read_skill → skill read', 'read_skill', 'read', skillReadKeys, {
-    // 技能名不来自任何读动词：可选技能就列在系统提示词里，模型是照着那份名单挑的。
-    name: { kind: 'same', from: ['model-authored'] },
-  }),
   save_skill: simple('save_skill → skill write', 'save_skill', 'write', skillWriteKeys, {
     dirName: { kind: 'same', from: ['model-authored'] },
     skillMarkdown: { kind: 'same', from: ['model-authored'] },
@@ -271,7 +265,7 @@ export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Obj
  * `check_job` 的**导出那一半**：生成域说「不认识这个 id」时再问导出域。
  *
  * **`cancel_job` 不在这里了**（2026-09-18 投影原型）：它的模型面直接从导出域宿主 schema 派生
- * （`verbs/cancelJobProjection.ts`），模型面与宿主面**同一份形状**，中间没有可写的对应关系——
+ * （`verbs/verbProjections.ts`），模型面与宿主面**同一份形状**，中间没有可写的对应关系——
  * 一张说「A 对应 A」的表本身就是那条该消掉的缝。剩下 `check_job` 这一条留着，正好当对照：
  * 铺开时先看一个动词是不是单域，再决定它走投影还是走这张表。
  */

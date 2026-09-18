@@ -129,7 +129,7 @@ describe("生成出来的翻译与手写版逐字节相同", () => {
   it("其余延迟组动词也走同一张表（一个只覆盖 draft_shots 的机制会在下一个动词上原样复发）", () => {
     expect(Object.keys(SIMPLE_VERB_ROUTES).sort()).toEqual([
       "cancel_job", "check_job", "delete_from_canvas", "edit_timeline", "export_video",
-      "generate", "read_skill", "save_skill", "undo",
+      "generate", "save_skill", "undo",
     ]);
     expect(verbToTransportCall({ toolCallId: "c", toolName: "undo", args: { undoToken: "undo-1", expectedRevision: "r2" } })!.call.args)
       .toEqual({ undoToken: "undo-1", expectedRevision: "r2" });

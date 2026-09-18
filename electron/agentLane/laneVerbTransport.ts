@@ -22,7 +22,9 @@ import { CANVAS_DELETE_ALIAS } from '../shared/agentCapabilities/canvasDelete'
 import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
-import { cancelJobModelSchema, type CancelJobModelArgs } from '../shared/agentCapabilities/verbs/cancelJobProjection'
+import {
+  cancelJobModelSchema, readSkillModelSchema, type CancelJobModelArgs,
+} from '../shared/agentCapabilities/verbs/verbProjections'
 import { applyDefaultsByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
 
@@ -114,7 +116,9 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
     case 'export_video':
       return { lane: 'export', call: { ...base, toolName: EXPORT_WRITE_ALIASES.start, args: routed('export_video', args) } }
     case 'read_skill':
-      return { lane: 'skillRead', call: { ...base, toolName: SKILL_READ_ALIASES.load, args: routed('read_skill', args) } }
+      // 投影：模型面就是 `skill.read` 宿主面减掉 `operation` 与 `expectedContentHash`，字段名逐字相同，
+      // 没有可执行的对应关系。只剩「按派生出来的那份 schema 把参数收成有类型的」。
+      return { lane: 'skillRead', call: { ...base, toolName: SKILL_READ_ALIASES.load, args: readSkillModelSchema.parse(args) } }
     case 'save_skill':
       return { lane: 'skillWrite', call: { ...base, toolName: SKILL_WRITE_ALIASES.author, args: routed('save_skill', args) } }
     // `start_model_setup` 不在这里：它是**常驻**动词（没有 `internalGroup`），执行绑在 `laneDesktopTools`，

@@ -3,9 +3,11 @@
 import { z } from "zod";
 
 import { LANE_MODEL_OUTPUT_MAX_BYTES, LANE_MODEL_OUTPUT_MAX_LINES } from "../../agentLane/laneContracts";
+import type { DocumentReadInput } from "../documentRead";
 import { modelArgumentTolerance, noArgumentTolerance } from "../modelArgumentTolerance";
 import { NO_ARGUMENTS_SCHEMA } from "../verbDeclaration";
 import type { VerbDeclaration } from "../verbDeclaration";
+import { readScriptModelSchema, readSkillModelSchema, READ_SCRIPT_SCOPE_DEFAULT } from "./verbProjections";
 import { assetReadInputOf, timelineReadInputOf } from "./verbSemanticInput";
 
 const OUTPUT_LIMIT = `Long text is truncated to the first ${LANE_MODEL_OUTPUT_MAX_LINES} lines or ${LANE_MODEL_OUTPUT_MAX_BYTES / 1024}KB; the result says so when that happens.`;
@@ -73,7 +75,9 @@ export function readVerbs(): VerbDeclaration[] {
       params: `scope is full (default) or selection. ${OUTPUT_LIMIT}`,
     },
     promptGuidelines: READ_GUIDELINES,
-    schema: z.object({ scope: z.enum(["full", "selection"]).optional().describe("full (default) reads the whole document; selection reads only what the user selected.") }).strict(),
+    // 模型面从宿主契约 schema 派生（`verbProjections.ts`）：宿主的 `scope` 必填，模型面让它可选，
+    // 缺省由宿主补（下面的 `semanticInputOf`）。宿主改字段名或改枚举，这里是 tsc 红。
+    schema: readScriptModelSchema,
     examples: [{ when: "Read the whole document:", arguments: {} }, { when: "Resolve \"this part\":", arguments: { scope: "selection" } }],
     mcpTransportFields: DOCUMENT_ID_TRANSPORT_FIELD,
     prepareArguments: modelArgumentTolerance({ knownFields: ["scope"] }),
@@ -82,7 +86,7 @@ export function readVerbs(): VerbDeclaration[] {
     // 内部 lane 靠 `laneDocumentTools` 里一句手写的 `?? "full"` 兜住，对外 MCP 面没有那句，
     // 于是 `nomi_document_read` 只带租约调用时当场 `capability_input_invalid`——同一个默认值，
     // 一边有一边没有，就是漂移。补在这里之后那句手写兜底已删（P1）。
-    semanticInputOf: (args) => ({ scope: (args as { scope?: "full" | "selection" }).scope ?? "full" }),
+    semanticInputOf: (args) => ({ scope: (args as { scope?: DocumentReadInput["scope"] }).scope ?? READ_SCRIPT_SCOPE_DEFAULT }),
   };
   const readTimeline: VerbDeclaration = {
     // 常驻（设计正本 §5.1 / PR A 的常驻 10 个）：读时间轴不需要先请求 timeline 组；执行绑在 laneTimelineTools。
@@ -189,7 +193,9 @@ export function readVerbs(): VerbDeclaration[] {
       notWhen: "Loading a skill grants no tool permission and runs nothing; to store a new one use save_skill.",
       params: "name is the skill name from the skills index.",
     },
-    schema: z.object({ name: z.string().trim().min(1).max(240).describe("Skill name exactly as listed in the skills index.") }).strict(),
+    // 模型面从 `skill.read` 契约派生：藏掉 `operation`（传输方法词表）与 `expectedContentHash`
+    // （只有宿主拿得到的内容哈希）。见 `verbProjections.ts`。
+    schema: readSkillModelSchema,
     examples: [{ when: "Load the UGC ad skill:", arguments: { name: "ugc-ad" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
