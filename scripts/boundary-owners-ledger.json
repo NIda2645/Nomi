@@ -131,6 +131,16 @@
         "symbol": "sameCommand / sameProfile / classifyMcpEntry"
       },
       "reason": "`sameLauncher` 在 2026-09-17 `ed7163fdb`（评审意见：重复的启动命令比较包装）被删——它的定义原本就是 `sameCommand(left,right) && sameProfile(left,right)`，`classifyMcpEntry` 现在直接调那两个。边界没搬家也没退役，只是那层包装没了，所以锚换成它真正的两个组成部分。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-18-submission-not-dispatched.root-cause.json",
+      "path": "electron/outboundDispatchEvidence.ts",
+      "symbol": "outboundDispatchEvidence",
+      "anchor": {
+        "path": "electron/outboundDispatchEvidence.ts",
+        "symbol": "outboundRequestWasNeverWritten"
+      },
+      "reason": "同一份判据，只是在 PR #810 的 Ponytail 评审里把两个表达同一个二元判断的导出收成一个：删掉 `outboundDispatchEvidence()` 与它的联合类型，只留 `outboundRequestWasNeverWritten()`。文件没搬、职责没变（仍是「这次出站请求有没有写出去」的唯一 owner），只有符号名换了。"
     }
   ],
   "retirements": [
