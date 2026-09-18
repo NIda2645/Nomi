@@ -6,6 +6,8 @@
 // 一律 `wrong_verb` 拒绝并点名 `draft_shots`（判据 `electron/shared/canvas/nodeExecutionKinds.ts`，不手写名单）。
 // 只有 `generate` 会把报价卡摆到用户面前；它的返回值是 GitHub MCP `issue_write` 的形状：isError + 明文「不要再调工具」。
 import { z } from "zod";
+import { timelineWriteResultSchema } from "../timelineWrite";
+import { exportWriteResultSchema } from "../exportCapabilities";
 
 import {
   cameraMoveParamsObjectSchema, CAMERA_MOVE_MODEL_GUIDELINES, STAGING_MODEL_GUIDELINES, stagingReferenceParamsSchema,
@@ -336,6 +338,7 @@ export function writeVerbs(): VerbDeclaration[] {
     // 一个 `revision`＝编辑之后的新版本号，两个词指两件事，模型面少一个词就把它们叠成了一件。
     // 见 `verbProjections.ts`。
     schema: editTimelineModelSchema,
+    outputSchema: timelineWriteResultSchema.options[0],
     examples: [{ when: "Move the opening clip to the start:", arguments: { baseRevision: "revision-1", summary: "Move the opening clip", operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }] } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["operations"] }),
   };
@@ -379,6 +382,7 @@ export function writeVerbs(): VerbDeclaration[] {
     },
     // 模型面 = `export.write` 的 `export_timeline` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
     schema: exportVideoModelSchema,
+    outputSchema: z.union([exportWriteResultSchema.options[0], exportWriteResultSchema.options[1]]),
     examples: [{ when: "Export at 1080p:", arguments: { expectedRevision: "revision-3", resolution: "1080p" } }],
     prepareArguments: modelArgumentTolerance({}),
   };

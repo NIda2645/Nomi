@@ -1,6 +1,7 @@
 // 七个读动词（设计正本 §5.1）：模型看到的世界 = 用户看到的世界。执行那一半住 `electron/agentLane/`
 // （`laneCanvasTools.ts` / `laneDocumentTools.ts` / `laneTimelineTools.ts` / `laneModelRead.mts` / `laneExtendedDesktopPorts.ts`）。
 import { z } from "zod";
+import { agentModelEntrySchema } from "../availableModelsSchema";
 
 import { LANE_MODEL_OUTPUT_MAX_BYTES, LANE_MODEL_OUTPUT_MAX_LINES } from "../../agentLane/laneContracts";
 import type { DocumentReadInput } from "../documentRead";
@@ -155,6 +156,7 @@ export function readVerbs(): VerbDeclaration[] {
   };
   // `models` 组由原生装配层绑定执行（`laneModelRead.mts`），按组延迟披露。
   const listModels: VerbDeclaration = {
+    outputSchema: z.object({ models: z.array(agentModelEntrySchema) }).strict(),
     name: "list_models", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.context.read", effect: "read", nextAction: "none", internalGroup: "models",
     describe: {
       does: "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots.",

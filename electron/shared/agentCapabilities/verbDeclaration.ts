@@ -106,6 +106,8 @@ export interface VerbDeclaration {
   readonly describe: VerbDescription;
   /** 模型真正要填的那一部分语义输入。别名定死的字段已经剥掉（见 `aliasBoundInput`）。 */
   readonly schema: ZodTypeAny;
+  /** 宿主返回的真实形状，仅供来源核对；不投影进模型输入面。未声明时沿用能力 outputSchema。 */
+  readonly outputSchema?: ZodTypeAny;
   /** 至少一个，当工具字段数 ≥10 或语义上有分支时（门岗 `missing-example`）。 */
   readonly examples: readonly VerbExample[];
   /** 通道③：进系统提示词的 `Guidelines`，跨工具去重。 */

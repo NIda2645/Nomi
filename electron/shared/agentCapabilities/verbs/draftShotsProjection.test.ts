@@ -62,12 +62,10 @@ describe("draft_shots 的投影与对照表时代逐字节相同", () => {
 });
 
 describe("「模型从哪拿到这个值」那条轴（投影接不住它，所以它留下来了）", () => {
-  it("「核不动」的清单是棘轮：只许减，加一条必须先改这条断言（否则它会悄悄长大）", () => {
-    // 这五个动词的 outputSchema 是 z.unknown()——不是「字段不在返回里」，是「返回形状根本没声明」。
-    // 把某个契约的 outputSchema 收成真形状，就能从这里删掉一条，对它的来源核对随之生效。
-    // 这是下一轮要查的清单，不是豁免：`from-read` 指向一个**有**声明却不含该字段的动词，没有任何出口。
+  it("只剩没有运行时 operation 结果 schema 的两个生成动词", () => {
+    // 身份棘轮由 check:verb-host-conformance 的仓库基线与变异自检负责。
     expect(Object.keys(PROVENANCE_UNVERIFIABLE).sort())
-      .toEqual(["draft_shots", "edit_timeline", "export_video", "generate", "list_models"]);
+      .toEqual(["draft_shots", "generate"]);
   });
 
   it("「还没进表」的清单也是棘轮：静默的空白与「想过了」长得一模一样，所以它必须被写出来", () => {
