@@ -201,14 +201,14 @@ async function smokeClient(client, { signed = true } = {}) {
         suggestedBaseUrl: 'https://example.invalid/v1',
       },
     })
-    assert(integrationBegin.result?.isError !== true, `${client} signed integration.begin succeeds without a credential`)
+    assert(integrationBegin.result?.isError !== true, `${client} signed connect_provider succeeds without a credential: ${JSON.stringify(integrationBegin.result?.content?.[0]?.text || '').slice(0, 300)}`)
     const integration = JSON.parse(integrationBegin.result?.content?.[0]?.text || '{}')
     // 新面把会话包在信封里（§4.3）：setupId 在顶层，会话投影在 state。
     assert(integration.ok === true && typeof integration.setupId === 'string', `${client} connect_provider returns a setup handle`)
     assert(integration.state?.ownerClientId === client, `${client} integration draft is owned by its signed identity`)
     // 只要还有 model_produces_output，模型就不能说「接好了」——信封结构替代大写祈使句。
     assert((integration.unverified || []).some((entry) => entry.claim === 'model_produces_output'), `${client} envelope keeps model_produces_output unverified`)
-    assert(integration.stage === 'needs_credential' && integration.credentialStatus === 'missing', `${client} integration draft remains unverified until secure credential handoff`)
+    assert(integration.state?.stage === 'needs_credential' && integration.state?.credentialStatus === 'missing', `${client} integration draft remains unverified until secure credential handoff`)
     assert(!JSON.stringify(integration).match(/authorization|api.?key|credentialRef/i), `${client} integration draft exposes no credential-shaped value`)
 
     const created = await rpc('tools/call', {

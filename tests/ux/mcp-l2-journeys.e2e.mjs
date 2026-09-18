@@ -144,6 +144,10 @@ try {
   })
   const integrationStartData = resultTextJson(integrationStarted)
   const integrationSessionId = integrationStartData.setupId || resultData(integrationStarted).setupId
+  // 句柄拿不到就当场说清楚——传一个 undefined 下去只会在三跳之后以
+  // 「integration_session_not_found」的形式冒出来，那时已经看不出是哪一步丢的。
+  check(typeof integrationSessionId === 'string' && integrationSessionId.length > 0,
+    'C7 T14 connect_provider 返回可用的 setupId', JSON.stringify(integrationStartData).slice(0, 200))
   // 2026-09-18（#754）：贴 key 页由上面那一跳打开，不再有第二个动词。
   check(integrationStartData.state?.stage === 'needs_credential', 'C7 T14 connect_provider 只打开 Nomi 安全页')
   // connect_provider 还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
@@ -174,15 +178,55 @@ try {
   // 密钥落地后，那条持久「去填 key」请求必须由写它的那层收走。留着它 = 用户下次打开设置→模型
   // 又被拽回一个已经接好的供应商的添加页（走查里这条 fixture 原本自己 ack 掉，把这个缺口盖住了）。
   check(credentialSaved.queued === 0, 'C7 T14 密钥落地后持久凭据 handoff 被收走')
+  // 一张**写坏的**卡：字段级打回，并且带着卡上自己声明的出处（不是我们猜的那条）。
   const rejectedProposal = await mcp.callTool('nomi_model_setup', {
-    action: 'submit_declaration', setupId: integrationSessionId,
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        // 声明成异步却不给 query —— 这是「我们缺一条 query」，不是用户填错了。
+        modes: [{
+          taskKind: 'text_to_image',
+          delivery: 'asynchronous',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
   })
-  check(rejectedProposal.isError && /proposal\.selections|candidate/i.test(parseToolResult(rejectedProposal).text), 'C7 T14 propose 返回字段级可读打回原因')
+  const rejectedText = parseToolResult(rejectedProposal).text
+  check(rejectedProposal.isError || resultTextJson(rejectedProposal)?.ok === false,
+    'C7 T14 写坏的声明卡被打回', rejectedText.slice(0, 160))
+  check(/query|asynchronous|declaration/i.test(rejectedText), 'C7 T14 打回原因落到具体字段上', rejectedText.slice(0, 160))
+
   const proposed = await call(mcp, 'nomi_model_setup', {
-    action: 'submit_declaration', setupId: integrationSessionId,
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images returns data[0].url' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        modes: [{
+          taskKind: 'text_to_image',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
   })
   const proposedData = resultTextJson(proposed)
-  check(proposedData.stage === 'ready_to_certify', 'C7 T14 propose 通过强 schema 落库门')
+  check(proposedData.ok === true, 'C7 T14 合格的声明卡一跳过校验 + 自检 + 登记', JSON.stringify(proposedData).slice(0, 200))
+  // 自检过了也消不掉这一条：只有用户真跑一次才能。
+  check((proposedData.unverified || []).some((entry) => entry.claim === 'model_produces_output'),
+    'C7 T14 信封仍把 model_produces_output 标为无证据')
   // 接模型没有付费验证，所以 propose 与 start 之间没有 confirm 这一跳（2026-09-12 拍板）。
   // 仍然要证的是「这一跳不会花钱」：自检跑完，供应商的付费生成端点一次都没被碰过。
   // 2026-09-18（#754）：`expectedRevision` 不再是模型入参（会话指纹由执行层现读现填），

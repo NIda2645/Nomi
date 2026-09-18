@@ -680,7 +680,7 @@ export class IntegrationSessionService {
     if (!found)
       throw new IntegrationRequestError(
         "integration_session_not_found",
-        "Integration session not found. List the open sessions with nomi_read target=integration (no sessionId) instead of guessing an id",
+        "Integration session not found. List the open setups with nomi_read target=setup (no setupId) instead of guessing an id",
       );
     return found;
   }
