@@ -10,11 +10,17 @@ import { documentReadSemanticInputSchema } from "../documentRead";
 import { modelSetupOpenInputSchema } from "../modelSetup";
 import { SKILL_WRITE_ALIASES, skillWriteInputForAlias, skillWriteSemanticInputSchema } from "../skillWrite";
 import { TIMELINE_WRITE_ALIASES, timelineWriteInputForAlias, timelineWriteSemanticInputSchema } from "../timelineWrite";
-import { EXPORT_WRITE_ALIASES, exportWriteInputForAlias, exportWriteSemanticInputSchema } from "../exportCapabilities";
+import {
+  EXPORT_READ_ALIASES, EXPORT_WRITE_ALIASES, exportReadInputForAlias, exportReadSemanticInputSchema,
+  exportWriteInputForAlias, exportWriteSemanticInputSchema,
+} from "../exportCapabilities";
+import { generationPlanInputSchema } from "../generationPlanSchemas";
+import { verbToTransportCall } from "../../../agentLane/laneVerbTransport";
 import { SKILL_READ_ALIASES, skillReadInputForAlias, skillReadSemanticInputSchema } from "../skillRead";
 import * as projections from "./verbProjections";
 import {
-  CANCEL_JOB_HOST_FILL, cancelJobModelSchema, DELETE_FROM_CANVAS_HOST_FILL, EXPORT_VIDEO_HOST_FILL,
+  CANCEL_JOB_HOST_FILL, cancelJobModelSchema, CHECK_JOB_HOST_FILL, checkJobModelSchema,
+  DELETE_FROM_CANVAS_HOST_FILL, EXPORT_VIDEO_HOST_FILL, GENERATE_HOST_FILL, generateModelSchema,
   exportVideoModelSchema, objectFieldKeys, READ_SCRIPT_SCOPE_DEFAULT, READ_SKILL_HOST_FILL,
   editTimelineHostFill, editTimelineModelSchema, editTimelinePlanId, readScriptModelSchema,
   readSkillModelSchema, SAVE_SKILL_HOST_FILL, saveSkillModelSchema, startModelSetupModelSchema,
@@ -76,6 +82,26 @@ const CASES: readonly ProjectionCase[] = [
     hiddenOptional: ["reason"],
     sample: { undoToken: "undo-1", expectedRevision: "revision-2" },
     admit: (args) => timelineWriteInputForAlias(TIMELINE_WRITE_ALIASES.undo, args),
+  },
+  {
+    verb: "generate",
+    hostSchema: generationPlanInputSchema.options[4],
+    modelSchema: generateModelSchema,
+    hostFill: GENERATE_HOST_FILL,
+    sample: { operationId: "op-1" },
+    // 生成 lane 没有 `*InputForAlias`：它的「补值 + 重过同一份 schema」就是传输层那一步加上宿主桥的
+    // `generationPlanInputSchema.parse`。这里走的是**生产那条真路**，不是在测试里重拼一遍。
+    admit: (args) => generationPlanInputSchema.parse(
+      verbToTransportCall({ toolCallId: "probe", toolName: "generate", args })!.call.args,
+    ),
+  },
+  {
+    verb: "check_job（导出域）",
+    hostSchema: exportReadSemanticInputSchema.options[0],
+    modelSchema: checkJobModelSchema,
+    hostFill: CHECK_JOB_HOST_FILL,
+    sample: { jobId: "export-1" },
+    admit: (args) => exportReadInputForAlias(EXPORT_READ_ALIASES.inspect, args),
   },
   {
     verb: "cancel_job（导出域）",

@@ -1,8 +1,10 @@
 // Agent lane · 延迟组动词 → 传输层方法调用。**这个文件不再手写任何字段名单。**
 //
-// 对应关系住在 `verbTransportRoutes.ts`（一张数据表，源/目标名单都从各自的 schema 取）；这里只剩下
-// 两样真正的逻辑：走哪条 lane / 哪个方法，以及 `draft_shots` 那三支的分支判断（改草稿 / 单镜摊平 /
-// 多镜）。字段怎么落位由 `projectByFieldMap` 执行那张表。
+// **这个文件里没有一条对应关系了。** 19 个动词的模型面是各自宿主契约 schema 的投影
+// （`verbs/verbProjections.ts`），字段名两边逐字相同，所以这里只剩下三样真正的逻辑：走哪条 lane /
+// 哪个方法、`draft_shots` 那三支的分支判断（改草稿 / 单镜摊平 / 多镜），以及两个**双域**动词在生成域
+// 那一半的唯一一条改名（`verbs/verbDualDomain.ts`，理由是两个域各有一份持久化）。
+// `draft_shots` 的形状变化住在 `verbs/draftShotsProjection.ts`，那是全链仅剩的有损投影。
 //
 // 为什么这么改（2026-09-18，用户原话「该有两遍，不该有四遍」）：一个能力原本被重述四遍——动词声明、
 // 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的形状，宿主要内部形状，而且
@@ -23,11 +25,15 @@ import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
 import {
-  cancelJobModelSchema, editTimelineModelSchema, editTimelinePlanId, exportVideoModelSchema,
-  readSkillModelSchema, saveSkillModelSchema, undoModelSchema, type CancelJobModelArgs,
+  cancelJobModelSchema, checkJobModelSchema, editTimelineModelSchema, editTimelinePlanId,
+  exportVideoModelSchema, generateModelSchema, readSkillModelSchema, saveSkillModelSchema,
+  undoModelSchema, type CancelJobModelArgs,
 } from '../shared/agentCapabilities/verbs/verbProjections'
-import { applyDefaultsByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
-import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
+import { cancelJobGenerationArgs, checkJobGenerationArgs } from '../shared/agentCapabilities/verbs/verbDualDomain'
+import {
+  draftShotsPatchEnvelope, draftShotToCandidatePatch, draftShotToFlatCreate, draftShotToPlanShot,
+  withDraftShotsDefaults, type DraftShot, type DraftShotsArgs,
+} from '../shared/agentCapabilities/verbs/draftShotsProjection'
 
 type Args = Record<string, unknown>
 
@@ -42,26 +48,6 @@ function generationCall(base: { toolCallId: string }, toolName: GenerationMethod
 }
 
 /**
- * 参考素材那一档的补全器（表里 `references` 声明成 `resolved`，落点的形状变化由这里执行）。
- * 只做 assetId → 宿主认的引用外壳；内容哈希与版本由宿主按项目素材库钉——模型拿不到它们。
- */
-const DRAFT_SHOT_RESOLVERS = Object.freeze({
-  references: (value: unknown): unknown =>
-    (Array.isArray(value) ? value.map((assetId) => ({ assetId })) : value),
-})
-
-/** 一镜 → 宿主的一镜。字段全部由 `DRAFT_SHOT_FIELD_MAP` 落位，这里不出现任何字段名。 */
-function draftShotToPlanShot(shot: Args, target: 'shot' | 'patch' | 'flat'): Args {
-  return projectByFieldMap(shot, DRAFT_SHOT_FIELD_MAP, target, DRAFT_SHOT_RESOLVERS)
-}
-
-/** 纯对应关系的动词：执行它自己那张表。字段名一个都不出现在这个文件里。 */
-function routed(verb: keyof typeof SIMPLE_VERB_ROUTES, args: Args): Args {
-  const route = SIMPLE_VERB_ROUTES[verb]!
-  return projectByFieldMap(args, route.map, route.target)
-}
-
-/**
  * 把一个延迟组动词调用翻成传输层调用。返回 `undefined` = 这个动词不走延迟组（常驻工具自己绑执行）。
  * 参数在这里**只改形状不改语义**：schema 已由 pi 的 ajv 验过。
  */
@@ -70,38 +56,42 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
   const base = { toolCallId: call.toolCallId }
   switch (call.toolName) {
     case 'draft_shots': {
-      // 顶层缺省折进每一镜（哪些字段算缺省、折进哪个数组，由表上的 `defaults` 声明）。
-      const shots = (Array.isArray(args.shots) ? args.shots : [])
-        .map((shot) => applyDefaultsByFieldMap(args, DRAFT_SHOTS_FIELD_MAP, shot as Args))
-      // 分支判断是真逻辑（改草稿 / 单镜摊平 / 多镜），不是字段名单——它留在代码里。
-      const operationId = typeof args.operationId === 'string' ? args.operationId : undefined
-      if (operationId) {
+      // 唯一**结构有损**的那个动词：三处形状真的变了（嵌套层级 / 拍平 / 参考素材的身份由宿主补），
+      // 投影里故意没有「改形状」这个动作，所以它有自己的显式变换（`draftShotsProjection.ts`）。
+      const draft = { ...args, shots: Array.isArray(args.shots) ? args.shots : [] } as unknown as DraftShotsArgs
+      // 顶层缺省折进每一镜；逐镜自己写的优先。
+      const shots = draft.shots.map((shot) => withDraftShotsDefaults(draft, shot))
+      // 分支判断是真逻辑（改草稿 / 单镜摊平 / 多镜），不是字段名单——它留在这里。
+      if (draft.operationId !== undefined) {
         // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
-        // 信封字段落不进候选 patch，这一条写在表的 `absentOn.patch` 里，不在这里摘。
-        const patch = draftShotToPlanShot(shots[0] ?? {}, 'patch')
+        // 信封字段落不进候选 patch，`draftShotToCandidatePatch` 当场拒绝，不在这里摘。
+        const patch = draftShotToCandidatePatch(shots[0] ?? ({} as DraftShot))
         return generationCall(base, GENERATION_METHODS.plan, {
-          ...projectByFieldMap(args, DRAFT_SHOTS_FIELD_MAP, 'patch'), operation: 'patch', patch,
+          ...draftShotsPatchEnvelope(draft), operation: 'patch', patch,
         })
       }
       // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。
       if (shots.length === 1 && !shots[0]?.role && !shots[0]?.title) {
         // 单镜：走单镜 create（宿主从 prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
-        // **带 role 或 title 的不走这条**：这两个都是镜头信封上的字段，而顶层没有它们的位置
-        // （表的 `absentOn.flat` 就是这句话的机器版）。摊平就只能悄悄丢掉——那正是这一整条链的病根。
+        // **带 role 或 title 的不走这条**：这两个都是镜头信封上的字段，而顶层没有它们的位置。
+        // 摊平就只能悄悄丢掉——那正是这一整条链的病根。
         return generationCall(base, GENERATION_METHODS.plan, {
-          operation: 'create', ...draftShotToPlanShot(shots[0]!, 'flat'), cardHidden: true,
+          operation: 'create', ...draftShotToFlatCreate(shots[0]!), cardHidden: true,
         })
       }
       return generationCall(base, GENERATION_METHODS.plan, {
-        operation: 'create', shots: shots.map((shot) => draftShotToPlanShot(shot, 'shot')), cardHidden: true,
+        operation: 'create', shots: shots.map(draftShotToPlanShot), cardHidden: true,
       })
     }
     case 'generate':
-      return generationCall(base, GENERATION_METHODS.plan, { operation: 'present', ...routed('generate', args) })
+      // 投影：模型面就是 `present` 分支减掉 `operation`，字段名逐字相同。
+      return generationCall(base, GENERATION_METHODS.plan, { operation: 'present', ...generateModelSchema.parse(args) })
+    // 两个**双域**动词的生成域那一半：模型面的 `jobId` 在这边落到 `operationId` 上。这是整条链上仅剩的
+    // 一条改名，理由是领域约束（两个域各有一份持久化，各用各的目录名），写在 `verbDualDomain.ts`。
     case 'check_job':
-      return generationCall(base, GENERATION_METHODS.status, { operation: 'read', ...routed('check_job', args) })
+      return generationCall(base, GENERATION_METHODS.status, { operation: 'read', ...checkJobGenerationArgs(checkJobModelSchema.parse(args)) })
     case 'cancel_job':
-      return generationCall(base, GENERATION_METHODS.status, { operation: 'cancel', ...routed('cancel_job', args) })
+      return generationCall(base, GENERATION_METHODS.status, { operation: 'cancel', ...cancelJobGenerationArgs(cancelJobModelSchema.parse(args)) })
     case 'look_at_media': {
       // 五合一读 → 契约五个方法之一（`assetReadInputOf`，与对外 MCP 同一张表）；方法名就是 phase4 读适配器认的别名。
       const { operation, ...methodArgs } = assetReadInputOf(args) as { operation: string } & Args
@@ -146,16 +136,17 @@ function cancelJobExportCall(call: RuntimeToolCall): RuntimeToolCall<CancelJobMo
 
 /**
  * `check_job` / `cancel_job` 的导出那一半：生成域说「不认识这个 id」时再问导出域。
- * `cancel_job` 走上面那条投影；`check_job` 走 `EXPORT_JOB_ROUTES` 那张表——留着当对照。
+ *
+ * 两条都是投影，所以这里没有任何对应关系可执行——只剩「按派生出来的那份 schema 把参数收成有类型的」。
+ * 宿主自补的 `operation` 由方法别名承载，`export*InputForAlias` 在跨进程那一侧补上它并重过同一份宿主
+ * schema（那道准入是花钱/不可逆闸，不删；也不在这边再做一遍——同一件事两份实现就是 P1 说的并行版）。
  */
 export function exportJobTransportCall(call: RuntimeToolCall): RuntimeToolCall {
-  const args = (call.args && typeof call.args === 'object' ? call.args : {}) as Args
   if (call.toolName === 'cancel_job') return cancelJobExportCall(call)
-  const route = EXPORT_JOB_ROUTES[call.toolName]
-  if (!route) throw new Error(`exportJobTransportCall: ${call.toolName} 没有导出域的对应关系`)
+  if (call.toolName !== 'check_job') throw new Error(`exportJobTransportCall: ${call.toolName} 不是双域动词`)
   return {
     toolCallId: call.toolCallId,
     toolName: EXPORT_READ_ALIASES.inspect,
-    args: projectByFieldMap(args, route.map, route.target),
+    args: checkJobModelSchema.parse(call.args),
   }
 }

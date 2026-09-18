@@ -43,7 +43,10 @@ import type { z } from "zod";
 
 import { documentReadSemanticInputSchema, type DocumentReadInput } from "../documentRead";
 import { CANVAS_DELETE_ALIAS, canvasDeletePiInputSchema, canvasDeleteSemanticInputSchema } from "../canvasDelete";
-import { EXPORT_WRITE_ALIASES, exportWriteSemanticInputSchema } from "../exportCapabilities";
+import {
+  EXPORT_READ_ALIASES, EXPORT_WRITE_ALIASES, exportReadSemanticInputSchema, exportWriteSemanticInputSchema,
+} from "../exportCapabilities";
+import { generationPlanInputSchema } from "../generationPlanSchemas";
 import { modelSetupOpenInputSchema } from "../modelSetup";
 import { SKILL_READ_ALIASES, skillReadSemanticInputSchema } from "../skillRead";
 import { SKILL_WRITE_ALIASES, skillWriteSemanticInputSchema } from "../skillWrite";
@@ -232,3 +235,34 @@ export function editTimelineHostFill(
 ): HostFill<typeof editTimelineHostSchema, typeof editTimelineModelSchema> {
   return { planId: editTimelinePlanId(toolCallId), operation: TIMELINE_WRITE_ALIASES.applyPlan };
 }
+
+// ── generate · generation.plan（present 分支）────────────────────────────────
+
+const generateHostSchema = generationPlanInputSchema.options[4];
+
+export const generateModelSchema = generateHostSchema.omit({ operation: true }).extend({
+  operationId: generateHostSchema.shape.operationId.describe("The operationId returned by draft_shots."),
+  shotIds: generateHostSchema.shape.shotIds.describe("Only these shots of the draft; omit for all."),
+});
+
+export const GENERATE_HOST_FILL: HostFill<typeof generateHostSchema, typeof generateModelSchema> = {
+  operation: "present",
+};
+
+// ── check_job / cancel_job：双域动词的模型面（两个都投在**导出域**上）────────────
+
+/**
+ * 两个双域动词的模型面都从导出域派生，因为导出域那一半是**零 rename** 的真投影：宿主字段真叫
+ * `jobId`（`…/jobs/<jobId>/` 的目录名）。生成域那一半才是改名（`.nomi/runs/<operationId>/`），
+ * 那一条留在 `verbDualDomain.ts` 里当一条带领域理由的声明映射——投影**故意**没有「改名」这个动作。
+ */
+const checkJobHostSchema = exportReadSemanticInputSchema.options[0];
+
+export const checkJobModelSchema = checkJobHostSchema.omit({ operation: true }).extend({
+  jobId: checkJobHostSchema.shape.jobId
+    .describe("The job id returned by generate or export_video, or shown on a canvas node."),
+});
+
+export const CHECK_JOB_HOST_FILL: HostFill<typeof checkJobHostSchema, typeof checkJobModelSchema> = {
+  operation: EXPORT_READ_ALIASES.inspect,
+};

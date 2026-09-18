@@ -19,8 +19,8 @@ import type { VerbDeclaration } from "../verbDeclaration";
 import { DOCUMENT_ID_TRANSPORT_FIELD, READ_GUIDELINES } from "./readVerbs";
 import { canvasWriteInputOf, documentWriteInputOf } from "./verbSemanticInput";
 import {
-  cancelJobModelSchema, editTimelineModelSchema, exportVideoModelSchema, saveSkillModelSchema,
-  startModelSetupModelSchema, undoModelSchema,
+  cancelJobModelSchema, editTimelineModelSchema, exportVideoModelSchema, generateModelSchema,
+  saveSkillModelSchema, startModelSetupModelSchema, undoModelSchema,
 } from "./verbProjections";
 
 const shotId = z.string().trim().min(1).max(160);
@@ -213,10 +213,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots.`,
       params: "operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots.",
     },
-    schema: z.object({
-      operationId: z.string().trim().min(1).max(160).describe("The operationId returned by draft_shots."),
-      shotIds: z.array(shotId).max(40).optional().describe("Only these shots of the draft; omit for all."),
-    }).strict(),
+    // 模型面 = `generation.plan` 的 `present` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: generateModelSchema,
     examples: [{ when: "Show the card for a draft:", arguments: { operationId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["shotIds"] }),
   };

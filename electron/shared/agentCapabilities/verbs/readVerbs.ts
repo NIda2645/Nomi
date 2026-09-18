@@ -7,7 +7,7 @@ import type { DocumentReadInput } from "../documentRead";
 import { modelArgumentTolerance, noArgumentTolerance } from "../modelArgumentTolerance";
 import { NO_ARGUMENTS_SCHEMA } from "../verbDeclaration";
 import type { VerbDeclaration } from "../verbDeclaration";
-import { readScriptModelSchema, readSkillModelSchema, READ_SCRIPT_SCOPE_DEFAULT } from "./verbProjections";
+import { checkJobModelSchema, readScriptModelSchema, readSkillModelSchema, READ_SCRIPT_SCOPE_DEFAULT } from "./verbProjections";
 import { assetReadInputOf, timelineReadInputOf } from "./verbSemanticInput";
 
 const OUTPUT_LIMIT = `Long text is truncated to the first ${LANE_MODEL_OUTPUT_MAX_LINES} lines or ${LANE_MODEL_OUTPUT_MAX_BYTES / 1024}KB; the result says so when that happens.`;
@@ -181,7 +181,9 @@ export function readVerbs(): VerbDeclaration[] {
       params: "jobId comes from the result of generate or export_video, or from look_at_canvas.",
     },
     promptGuidelines: READ_GUIDELINES,
-    schema: z.object({ jobId: z.string().trim().min(1).max(160).describe("The job id returned by generate or export_video, or shown on a canvas node.") }).strict(),
+    // **双域动词**：模型面投在导出域上（`export.read` 的 `inspect_export_job` 分支减掉 `operation`，
+    // 零 rename 的真投影）；生成域那一半的改名在 `verbDualDomain.ts`，理由是两个域各有一份持久化。
+    schema: checkJobModelSchema,
     examples: [{ when: "Check a running job:", arguments: { jobId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
