@@ -1,14 +1,15 @@
 """Derive request/response observations; never treat output text as a tool call."""
-import json, pathlib, hashlib, re, gzip
+import json, pathlib, hashlib, re, sys
 root=pathlib.Path(__file__).resolve().parent
+wire=pathlib.Path(sys.argv[1]) if len(sys.argv)>1 else root/'wire'
 rows=[]
-for p in sorted((root/'wire').glob('*-sent.json')):
+for p in sorted(wire.glob('*-sent.json')):
  body=json.loads(p.read_text()); prefix=p.name[:-10]
  system='\n'.join(m['content'] for m in body.get('messages',[]) if m['role']=='system' and isinstance(m.get('content'),str))
  section=re.search(r'<available_skills>[\s\S]*?</available_skills>',system)
  index=section.group() if section else ''
  row={'id':prefix,'model':body.get('model'),'messageCount':len(body.get('messages',[])),'indexNames':re.findall(r'<name>(.*?)</name>',index),'systemSha256':hashlib.sha256(system.encode()).hexdigest(),'calls':[],'text':'','usage':None}
- rp=root/'wire'/(prefix+'-response.txt'); calls={}
+ rp=wire/(prefix+'-response.txt'); calls={}
  if rp.exists():
   for line in rp.read_text().splitlines():
    if not line.startswith('data:') or '[DONE]' in line: continue

@@ -1,0 +1,19 @@
+{
+  "provider": "apimart",
+  "model": "deepseek-v3.2",
+  "requests": 164,
+  "requestsWithUsage": 160,
+  "requestsWithoutUsage": [
+    "024-Q2-pdf",
+    "043-Q2-transformers",
+    "091-S08",
+    "152-S03-ablated"
+  ],
+  "promptTokens": 5568900,
+  "cachedPromptTokens": 5118336,
+  "completionTokens": 43683,
+  "moneyUsd": null,
+  "moneyReason": "供应商响应没有扣费字段；真实trace pricing=unpriced、estimatedCostUsd=null；没有可读的账户账单。金额拿不到，不记成零。",
+  "scope": "含Q2所有尝试、Q3两轮pilot/22轮主测/一轮索引消融；不含交付Ponytail runner费用。四个中断请求无usage，因此token是已观察下限。",
+  "approvedMediaGenerations": 0
+}
