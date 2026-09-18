@@ -19,7 +19,9 @@ import { LaneDomainFailure, wrongVerbFailure } from "../../agentLane/laneToolCon
 import type { VerbDeclaration } from "../verbDeclaration";
 import { DOCUMENT_ID_TRANSPORT_FIELD, READ_GUIDELINES } from "./readVerbs";
 import { canvasWriteInputOf, documentWriteInputOf } from "./verbSemanticInput";
-import { cancelJobModelSchema } from "./verbProjections";
+import {
+  cancelJobModelSchema, exportVideoModelSchema, saveSkillModelSchema, startModelSetupModelSchema,
+} from "./verbProjections";
 
 const shotId = z.string().trim().min(1).max(160);
 const generationParameters = z.record(z.union([z.string(), z.number(), z.boolean()]));
@@ -365,6 +367,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Never to clean up on your own initiative (arrange_canvas tidies without removing); never for nodes you did not read in look_at_canvas.",
       params: "nodeIds are exact current ids from look_at_canvas; locked nodes and stale ids are rejected.",
     },
+    // `canvas.delete` 的宿主面就定义成这份 pi schema `.extend({ operation })`——模型面与宿主面只有一份
+    // 定义，宿主自补的那个值在 `verbProjections.ts` 的 `DELETE_FROM_CANVAS_HOST_FILL` 里显式声明。
     schema: canvasDeletePiInputSchema,
     examples: [{ when: "Delete two nodes the user pointed at:", arguments: { nodeIds: ["node-a", "node-b"] } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["nodeIds"] }),
@@ -378,13 +382,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Not before reading the current timeline (read_timeline); stale revisions and empty timelines are rejected. To stop a running export use cancel_job; to follow it use check_job.",
       params: "expectedRevision from read_timeline; outputName, aspectRatio, resolution and quality are optional.",
     },
-    schema: z.object({
-      expectedRevision: z.string().trim().min(1).max(64).describe("The timeline revision from read_timeline."),
-      outputName: z.string().trim().min(1).max(120).optional().describe("File name without extension."),
-      aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5", "3:4", "4:3", "21:9"]).optional().describe("Output aspect ratio."),
-      resolution: z.enum(["720p", "1080p"]).optional().describe("Output resolution."),
-      quality: z.enum(["small", "standard", "high"]).optional().describe("Encoding quality preset."),
-    }).strict(),
+    // 模型面 = `export.write` 的 `export_timeline` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: exportVideoModelSchema,
     examples: [{ when: "Export at 1080p:", arguments: { expectedRevision: "revision-3", resolution: "1080p" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
@@ -415,10 +414,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Not for one-off instructions; to follow an existing skill use read_skill.",
       params: "dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body).",
     },
-    schema: z.object({
-      dirName: z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).describe("Directory slug for the skill (ASCII letters, digits, . _ -)."),
-      skillMarkdown: z.string().trim().min(1).max(1024 * 1024).describe("The complete SKILL.md content, frontmatter included."),
-    }).strict(),
+    // 模型面 = `skill.write` 宿主面减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: saveSkillModelSchema,
     examples: [{ when: "Save a skill:", arguments: { dirName: "talking-head-cut", skillMarkdown: "---\nname: talking-head-cut\ndescription: Cut a talking head.\n---\n1. Read the transcript." } }],
     prepareArguments: modelArgumentTolerance({}),
   };
@@ -431,7 +428,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "It never accepts, asks for, or stores an API key; keys are typed by the user in that panel only. To see what is already connected use list_models.",
       params: "provider is an optional hint (free text is fine).",
     },
-    schema: z.object({ provider: z.string().trim().min(1).max(80).optional().describe("Provider name hint, e.g. DeepSeek or Anthropic.") }).strict(),
+    // 模型面 = `model.setup.open` 宿主面 + 一句描述覆写；宿主一个字段都不补（`verbProjections.ts`）。
+    schema: startModelSetupModelSchema,
     examples: [{ when: "Connect DeepSeek:", arguments: { provider: "DeepSeek" } }],
     prepareArguments: modelArgumentTolerance({}),
   };

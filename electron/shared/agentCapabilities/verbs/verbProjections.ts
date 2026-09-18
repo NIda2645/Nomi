@@ -42,8 +42,11 @@
 import type { z } from "zod";
 
 import { documentReadSemanticInputSchema, type DocumentReadInput } from "../documentRead";
+import { CANVAS_DELETE_ALIAS, canvasDeletePiInputSchema, canvasDeleteSemanticInputSchema } from "../canvasDelete";
 import { EXPORT_WRITE_ALIASES, exportWriteSemanticInputSchema } from "../exportCapabilities";
+import { modelSetupOpenInputSchema } from "../modelSetup";
 import { SKILL_READ_ALIASES, skillReadSemanticInputSchema } from "../skillRead";
+import { SKILL_WRITE_ALIASES, skillWriteSemanticInputSchema } from "../skillWrite";
 
 /**
  * 宿主补的那份值的类型：**宿主面减模型面**。
@@ -129,3 +132,54 @@ export type CancelJobModelArgs = z.infer<typeof cancelJobModelSchema>;
 export const CANCEL_JOB_HOST_FILL: HostFill<typeof cancelJobHostSchema, typeof cancelJobModelSchema> = {
   operation: EXPORT_WRITE_ALIASES.cancel,
 };
+
+// ── export_video · export.write ──────────────────────────────────────────────
+
+const exportVideoHostSchema = exportWriteSemanticInputSchema.options[0];
+
+export const exportVideoModelSchema = exportVideoHostSchema.omit({ operation: true }).extend({
+  expectedRevision: exportVideoHostSchema.shape.expectedRevision.describe("The timeline revision from read_timeline."),
+  outputName: exportVideoHostSchema.shape.outputName.describe("File name without extension."),
+  aspectRatio: exportVideoHostSchema.shape.aspectRatio.describe("Output aspect ratio."),
+  resolution: exportVideoHostSchema.shape.resolution.describe("Output resolution."),
+  quality: exportVideoHostSchema.shape.quality.describe("Encoding quality preset."),
+});
+
+export const EXPORT_VIDEO_HOST_FILL: HostFill<typeof exportVideoHostSchema, typeof exportVideoModelSchema> = {
+  operation: EXPORT_WRITE_ALIASES.start,
+};
+
+// ── save_skill · skill.write ─────────────────────────────────────────────────
+
+export const saveSkillModelSchema = skillWriteSemanticInputSchema.omit({ operation: true }).extend({
+  dirName: skillWriteSemanticInputSchema.shape.dirName.describe("Directory slug for the skill (ASCII letters, digits, . _ -)."),
+  skillMarkdown: skillWriteSemanticInputSchema.shape.skillMarkdown.describe("The complete SKILL.md content, frontmatter included."),
+});
+
+export const SAVE_SKILL_HOST_FILL: HostFill<typeof skillWriteSemanticInputSchema, typeof saveSkillModelSchema> = {
+  operation: SKILL_WRITE_ALIASES.author,
+};
+
+// ── delete_from_canvas · canvas.delete ───────────────────────────────────────
+
+/**
+ * 这一条**本来就是投影**，只是方向反过来写的：`canvas.delete` 的宿主面定义成
+ * `canvasDeletePiInputSchema.extend({ operation })`，所以那份 pi schema 就是模型面，两边只有一份定义。
+ * 这里不再起第二个名字（那会变成同一个形状的两个家），只把宿主自补的那个值显式声明出来——
+ * 于是「藏了却没人补」在这个动词上同样是 tsc 红。
+ */
+export const DELETE_FROM_CANVAS_HOST_FILL:
+  HostFill<typeof canvasDeleteSemanticInputSchema, typeof canvasDeletePiInputSchema> = {
+  operation: CANVAS_DELETE_ALIAS,
+};
+
+// ── start_model_setup · model.setup.open ─────────────────────────────────────
+
+/**
+ * 宿主一个字段都不补：模型面 = 宿主面 + 一句描述覆写。没有 `*_HOST_FILL`，因为差集是空的——
+ * 空的 fill 写出来只是噪音，而「宿主新长出一个必填字段」在这条路上照样有红：它会流进模型面，
+ * `check:model-face-frozen` 当场拦住。
+ */
+export const startModelSetupModelSchema = modelSetupOpenInputSchema.extend({
+  provider: modelSetupOpenInputSchema.shape.provider.describe("Provider name hint, e.g. DeepSeek or Anthropic."),
+});

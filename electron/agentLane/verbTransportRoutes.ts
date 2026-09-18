@@ -21,9 +21,7 @@ import {
 import { CAPABILITY_CONTRACTS } from '../shared/agentCapabilities/registry'
 import { toPublishedJsonSchema } from '../shared/agentCapabilities/modelVisibleJsonSchema'
 import { generationPlanInputSchema, generationStatusInputSchema } from '../shared/agentCapabilities/generationPlanSchemas'
-import { canvasDeletePiInputSchema } from '../shared/agentCapabilities/canvasDelete'
 import { exportReadSemanticInputSchema, exportWriteSemanticInputSchema } from '../shared/agentCapabilities/exportCapabilities'
-import { skillWriteSemanticInputSchema } from '../shared/agentCapabilities/skillWrite'
 import { timelineWriteSemanticInputSchema } from '../shared/agentCapabilities/timelineWrite'
 import { timelineEditPlanSchema } from '../shared/agentCapabilities/timelineRead'
 import { VERB_DECLARATIONS } from '../shared/agentCapabilities/verbDeclarations'
@@ -117,10 +115,7 @@ const candidatePatchKeys = objectFieldKeys(
 const statusKeys = objectFieldKeys(generationStatusInputSchema.options[0], 'generation status')
 const undoKeys = objectFieldKeys(timelineWriteSemanticInputSchema.options[1], 'timeline undo')
 const applyPlanKeys = objectFieldKeys(timelineEditPlanSchema, 'timeline edit plan')
-const exportStartKeys = objectFieldKeys(exportWriteSemanticInputSchema.options[0], 'export start')
 const exportJobKeys = objectFieldKeys(exportReadSemanticInputSchema.options[0], 'export job')
-const canvasDeleteKeys = objectFieldKeys(canvasDeletePiInputSchema, 'canvas delete')
-const skillWriteKeys = objectFieldKeys(skillWriteSemanticInputSchema, 'skill write')
 
 /**
  * 信封字段在这两个形状上没有位置。**处置必须逐条写明**，因为「送不到」与「可以丢」长得一模一样：
@@ -243,21 +238,6 @@ export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Obj
     baseRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
     summary: { kind: 'same', from: ['model-authored'] },
     operations: { kind: 'same', from: ['model-authored', 'from-read:read_timeline.clips'] },
-  }),
-  export_video: simple('export_video → export start', 'export_video', 'start', exportStartKeys, {
-    expectedRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
-    outputName: { kind: 'same', from: ['model-authored'] },
-    aspectRatio: { kind: 'same', from: ['model-authored'] },
-    resolution: { kind: 'same', from: ['model-authored'] },
-    quality: { kind: 'same', from: ['model-authored'] },
-  }),
-  delete_from_canvas: simple('delete_from_canvas → canvas delete', 'delete_from_canvas', 'delete', canvasDeleteKeys, {
-    nodeIds: { kind: 'same', from: ['from-read:look_at_canvas.id'] },
-    reason: { kind: 'same', from: ['model-authored'] },
-  }),
-  save_skill: simple('save_skill → skill write', 'save_skill', 'write', skillWriteKeys, {
-    dirName: { kind: 'same', from: ['model-authored'] },
-    skillMarkdown: { kind: 'same', from: ['model-authored'] },
   }),
 })
 

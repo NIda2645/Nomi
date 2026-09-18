@@ -5,13 +5,18 @@
 // **漏加一行不会静默**——最后那条覆盖断言核的是「模块里导出的每一份 `*_HOST_FILL` 都在这张表里」。
 import { describe, expect, it } from "vitest";
 
+import { CANVAS_DELETE_ALIAS, canvasDeleteInputForAlias, canvasDeletePiInputSchema, canvasDeleteSemanticInputSchema } from "../canvasDelete";
 import { documentReadSemanticInputSchema } from "../documentRead";
+import { modelSetupOpenInputSchema } from "../modelSetup";
+import { SKILL_WRITE_ALIASES, skillWriteInputForAlias, skillWriteSemanticInputSchema } from "../skillWrite";
 import { EXPORT_WRITE_ALIASES, exportWriteInputForAlias, exportWriteSemanticInputSchema } from "../exportCapabilities";
 import { SKILL_READ_ALIASES, skillReadInputForAlias, skillReadSemanticInputSchema } from "../skillRead";
 import * as projections from "./verbProjections";
 import {
-  CANCEL_JOB_HOST_FILL, cancelJobModelSchema, objectFieldKeys, READ_SCRIPT_SCOPE_DEFAULT,
-  READ_SKILL_HOST_FILL, readScriptModelSchema, readSkillModelSchema,
+  CANCEL_JOB_HOST_FILL, cancelJobModelSchema, DELETE_FROM_CANVAS_HOST_FILL, EXPORT_VIDEO_HOST_FILL,
+  exportVideoModelSchema, objectFieldKeys, READ_SCRIPT_SCOPE_DEFAULT, READ_SKILL_HOST_FILL,
+  readScriptModelSchema, readSkillModelSchema, SAVE_SKILL_HOST_FILL, saveSkillModelSchema,
+  startModelSetupModelSchema,
 } from "./verbProjections";
 
 /** 一条投影：宿主 schema、模型面 schema、声明的 fill，以及宿主自己那条「补值 + 重过同一份 schema」的真路。 */
@@ -36,6 +41,30 @@ const CASES: readonly ProjectionCase[] = [
     hiddenOptional: ["expectedContentHash"],
     sample: { name: "ugc-ad" },
     admit: (args) => skillReadInputForAlias(SKILL_READ_ALIASES.load, args),
+  },
+  {
+    verb: "export_video",
+    hostSchema: exportWriteSemanticInputSchema.options[0],
+    modelSchema: exportVideoModelSchema,
+    hostFill: EXPORT_VIDEO_HOST_FILL,
+    sample: { expectedRevision: "revision-3", resolution: "1080p" },
+    admit: (args) => exportWriteInputForAlias(EXPORT_WRITE_ALIASES.start, args),
+  },
+  {
+    verb: "save_skill",
+    hostSchema: skillWriteSemanticInputSchema,
+    modelSchema: saveSkillModelSchema,
+    hostFill: SAVE_SKILL_HOST_FILL,
+    sample: { dirName: "talking-head-cut", skillMarkdown: "---\nname: x\n---\nbody" },
+    admit: (args) => skillWriteInputForAlias(SKILL_WRITE_ALIASES.author, args),
+  },
+  {
+    verb: "delete_from_canvas",
+    hostSchema: canvasDeleteSemanticInputSchema,
+    modelSchema: canvasDeletePiInputSchema,
+    hostFill: DELETE_FROM_CANVAS_HOST_FILL,
+    sample: { nodeIds: ["node-a", "node-b"] },
+    admit: (args) => canvasDeleteInputForAlias(CANVAS_DELETE_ALIAS, args),
   },
   {
     verb: "cancel_job（导出域）",
@@ -64,6 +93,14 @@ describe.each(CASES)("$verb 的模型面是宿主面的投影，不是第二份 
     // 反向：模型那一半单独喂给宿主 schema 必须过不了，否则被藏起来的字段根本不是宿主自补的，
     // 这条投影就是在藏一个模型本该给的值。
     expect(item.hostSchema.safeParse(modelArgs).success).toBe(false);
+  });
+});
+
+describe("start_model_setup：宿主一个字段都不补，模型面 = 宿主面 + 一句描述", () => {
+  it("字段名单两边逐字相同（宿主改名就是 tsc 红，这条是它的运行期同胞）", () => {
+    expect(objectFieldKeys(startModelSetupModelSchema, "start_model_setup model face"))
+      .toEqual(objectFieldKeys(modelSetupOpenInputSchema, "model.setup.open host"));
+    expect(modelSetupOpenInputSchema.safeParse({ provider: "DeepSeek" }).success).toBe(true);
   });
 });
 

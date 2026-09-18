@@ -18,12 +18,13 @@ import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContr
 import { GENERATION_METHODS, type GenerationMethodName } from '../shared/agentCapabilities/generation'
 import { TIMELINE_WRITE_ALIASES } from '../shared/agentCapabilities/timelineWrite'
 import { EXPORT_READ_ALIASES, EXPORT_WRITE_ALIASES } from '../shared/agentCapabilities/exportCapabilities'
-import { CANVAS_DELETE_ALIAS } from '../shared/agentCapabilities/canvasDelete'
+import { CANVAS_DELETE_ALIAS, canvasDeletePiInputSchema } from '../shared/agentCapabilities/canvasDelete'
 import { SKILL_READ_ALIASES } from '../shared/agentCapabilities/skillRead'
 import { SKILL_WRITE_ALIASES } from '../shared/agentCapabilities/skillWrite'
 import { assetReadInputOf } from '../shared/agentCapabilities/verbs/verbSemanticInput'
 import {
-  cancelJobModelSchema, readSkillModelSchema, type CancelJobModelArgs,
+  cancelJobModelSchema, exportVideoModelSchema, readSkillModelSchema, saveSkillModelSchema,
+  type CancelJobModelArgs,
 } from '../shared/agentCapabilities/verbs/verbProjections'
 import { applyDefaultsByFieldMap, projectByFieldMap } from '../shared/agentCapabilities/verbs/verbFieldMap'
 import { DRAFT_SHOTS_FIELD_MAP, DRAFT_SHOT_FIELD_MAP, EXPORT_JOB_ROUTES, SIMPLE_VERB_ROUTES } from './verbTransportRoutes'
@@ -111,16 +112,17 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.applyPlan, args: { planId: `plan-${call.toolCallId}`, ...routed('edit_timeline', args) } } }
     case 'undo':
       return { lane: 'timeline', call: { ...base, toolName: TIMELINE_WRITE_ALIASES.undo, args: routed('undo', args) } }
+    // 下面三条都是投影：模型面就是各自宿主面减掉 `operation`，字段名逐字相同，没有可执行的对应关系。
     case 'delete_from_canvas':
-      return { lane: 'canvas', call: { ...base, toolName: CANVAS_DELETE_ALIAS, args: routed('delete_from_canvas', args) } }
+      return { lane: 'canvas', call: { ...base, toolName: CANVAS_DELETE_ALIAS, args: canvasDeletePiInputSchema.parse(args) } }
     case 'export_video':
-      return { lane: 'export', call: { ...base, toolName: EXPORT_WRITE_ALIASES.start, args: routed('export_video', args) } }
+      return { lane: 'export', call: { ...base, toolName: EXPORT_WRITE_ALIASES.start, args: exportVideoModelSchema.parse(args) } }
     case 'read_skill':
       // 投影：模型面就是 `skill.read` 宿主面减掉 `operation` 与 `expectedContentHash`，字段名逐字相同，
       // 没有可执行的对应关系。只剩「按派生出来的那份 schema 把参数收成有类型的」。
       return { lane: 'skillRead', call: { ...base, toolName: SKILL_READ_ALIASES.load, args: readSkillModelSchema.parse(args) } }
     case 'save_skill':
-      return { lane: 'skillWrite', call: { ...base, toolName: SKILL_WRITE_ALIASES.author, args: routed('save_skill', args) } }
+      return { lane: 'skillWrite', call: { ...base, toolName: SKILL_WRITE_ALIASES.author, args: saveSkillModelSchema.parse(args) } }
     // `start_model_setup` 不在这里：它是**常驻**动词（没有 `internalGroup`），执行绑在 `laneDesktopTools`，
     // 永远不经延迟组这条路。这里曾经有一条 `modelSetup` 分支——`laneExtendedDesktopPorts` 没有对应的
     // 适配器分支，真走到它只会掉进 direct → 生成适配器 → `generation_surface_unavailable`。
