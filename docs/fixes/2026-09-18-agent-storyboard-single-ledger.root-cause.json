@@ -27,7 +27,7 @@
     "electron/shared/agentCapabilities/generationPlanSchemas.ts",
     ".github/workflows/quality-gate.yml",
     "scripts/validation-policy.mjs",
-    "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts"
+    "electron/agentLane/verbTransportRoutes.ts"
   ],
   "entry_points": [
     "src/workbench/capability/multiShotCanvasLanding.ts materializeShots — the only creator of Run-landed nodes (draft create/patch, paid confirmation, project reopen all arrive here)",
@@ -45,6 +45,36 @@
     "Row status vocabulary for production rows is the storyboard row vocabulary (SHOT_ROW_STATUSES) derived from the node, with the Run's job phase filling in only while the node has no result of its own."
   ],
   "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 107,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 108,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 109,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 111,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 115,
+      "symbol": "generationPlanInputSchema"
+    },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
@@ -102,13 +132,13 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 143,
+      "line": 137,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 144,
+      "line": 138,
       "symbol": "generationPlanInputSchema"
     },
     {
@@ -204,8 +234,8 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 97,
-      "symbol": "draftShotsPatchEnvelope"
+      "line": 86,
+      "symbol": "liftedByFieldMap"
     },
     {
       "kind": "write",
@@ -452,30 +482,12 @@
       "path": "src/workbench/onboarding/journeyTourStore.ts",
       "line": 94,
       "symbol": "setStoryboardPlan"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
-      "line": 39,
-      "symbol": "generationPlanInputSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
-      "line": 40,
-      "symbol": "generationPlanInputSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
-      "line": 247,
-      "symbol": "generationPlanInputSchema"
     }
   ],
   "door_reduction": {
     "before": 59,
-    "after": 71,
-    "why_not": "None of the 59 pre-existing doors could be merged here: 41 of them are ledger B (storyboardDesignsByDocumentId) writers that own user-authored plans — StoryboardPlanEditor's field edits, applyCanvasToolCall's external-MCP storyboard operations, the onboarding tour, the deconstruction-to-plan copy — and deleting them is the dated retirement registered in the plan document (2026-10-16, conditions listed there), not this change. The reducer's three applyGenerationCandidatePatch call sites are one helper reached from three commands (patch/revise draft/revise sealed), i.e. one owner already. The 14 added doors are not a second truth: (a) the projection itself — one write (the table node born inside materializeShots' landing transaction) and the reads that derive rows from nodes (readShotTable in findProductionShotTable, selectProductionShotRows/deriveNodeRowExec); (b) the per-shot patch chain, which reads the addressed shot's candidate through the same helpers the top-level path used (applyPlanCandidatePatch in the in-memory store, operationFromRun, generationPlanInputSchema read at both public doors); (c) reads of generationPlanInputSchema in the verb-host foundation, which derives its shapes from the host schema rather than validating a second time (2026-09-18 evening: that foundation became the projection modules verbs/verbProjections.ts and verbs/draftShotsProjection.ts, so these doors moved with it — same count of ideas, three files instead of one); (d) exactly one write door in laneVerbTransport.ts, liftedByFieldMap, which replaces the hand-written shotId spread the interrupted WIP had — the field now travels because the table declares it (absentOn.patch = lift), not because a translator line copies it."
+    "after": 73,
+    "why_not": "None of the 59 pre-existing doors could be merged here: 41 of them are ledger B (storyboardDesignsByDocumentId) writers that own user-authored plans — StoryboardPlanEditor's field edits, applyCanvasToolCall's external-MCP storyboard operations, the onboarding tour, the deconstruction-to-plan copy — and deleting them is the dated retirement registered in the plan document (2026-10-16, conditions listed there), not this change. The reducer's three applyGenerationCandidatePatch call sites are one helper reached from three commands (patch/revise draft/revise sealed), i.e. one owner already. The 14 added doors are not a second truth: (a) the projection itself — one write (the table node born inside materializeShots' landing transaction) and the reads that derive rows from nodes (readShotTable in findProductionShotTable, selectProductionShotRows/deriveNodeRowExec); (b) the per-shot patch chain, which reads the addressed shot's candidate through the same helpers the top-level path used (applyPlanCandidatePatch in the in-memory store, operationFromRun, generationPlanInputSchema read at both public doors); (c) five reads of generationPlanInputSchema in electron/agentLane/verbTransportRoutes.ts — that is the merged verb-host foundation deriving its target key lists from the host schema (a data table, not a second validator), counted because door-map counts every reference to the symbol; (d) exactly one write door in laneVerbTransport.ts, liftedByFieldMap, which replaces the hand-written shotId spread the interrupted WIP had — the field now travels because the table declares it (absentOn.patch = lift), not because a translator line copies it."
   },
   "regression_tests": [
     "electron/shared/canvas/shotTable.test.ts",
@@ -485,7 +497,7 @@
     "electron/capabilityCore/mcpGenerationTools.test.ts",
     "electron/productionRun/agentDraftSingleLedger.test.ts",
     "electron/capabilityCore/generationTransportAdapters.test.ts",
-    "electron/shared/agentCapabilities/verbs/draftShotsProjection.test.ts",
+    "electron/agentLane/verbTransportRoutes.test.ts",
     "electron/capabilityCore/semanticGenerationCandidate.test.ts",
     "electron/productionRun/multiShotCanvasLanding.test.ts",
     "scripts/check-verb-host-conformance.node-test.mjs",
@@ -530,7 +542,7 @@
       "responsibility": "Sole derivation of production rows from canvas nodes (left half = node prompt, right half = the node's model mode slots read through referenceSlotStorage; status from deriveNodeRowExec)."
     },
     {
-      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
       "symbol": "DRAFT_SHOT_FIELD_MAP",
       "responsibility": "Declares shots[].shotId as absentOn.patch = lift (to the plan patch envelope's shotId) with provenance from-read:draft_shots.shotId; the parent table verifies at assembly that the envelope really has that field, and liftedByFieldMap executes it — no field name lives in the transport."
     },
@@ -605,8 +617,8 @@
       "electron/capabilityCore/mcpGenerationTools.ts",
       "electron/productionRun/productionGenerationOperationStore.ts",
       "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
-      "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "electron/agentLane/verbTransportRoutes.ts",
       "scripts/check-verb-host-conformance.mjs"
     ]
   },
