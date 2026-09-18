@@ -179,7 +179,6 @@ async function main() {
     try {
         const document = createDocumentPort(STORY);
       let shots: Array<Record<string, unknown>> = [];
-      writes = [];
       const tools = [...createDocumentLaneTools(document), ...createCanvasLaneTools({
         read: async () => ({ nodes: shots.map((s, n) => ({ id: `node-shot-${n + 1}`, kind: 'video', title: `第 ${n + 1} 镜`,
           prompt: String(s.prompt ?? ''), status: 'idle', position: { x: n * 300, y: 0 }, locked: false, hasResult: false })),
@@ -215,7 +214,6 @@ async function main() {
         handled.add(pending.toolCallId);
         void lane.execute({ kind: 'approval', toolCallId: pending.toolCallId, action: 'allow-once' });
       });
-      turns = [];
       try {
         for (const text of [utterance, FOLLOW_UP]) {
           const start = lane.projection().parts.length;
