@@ -15,6 +15,7 @@ import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayL
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
+import { sealUpsertDraft } from "./upsertDraft";
 import { derivePublishedExecution } from "../shared/modelPublication";
 import type { ModelAvailability } from "../shared/modelAvailability";
 import { createCatalogAvailability } from "./catalogModelAvailability";
@@ -410,22 +411,27 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const proxyEnabled = typeof rawNetwork?.proxyEnabled === "boolean"
     ? rawNetwork.proxyEnabled
     : existing?.network?.proxyEnabled;
-  const vendor: Vendor = {
+  // 整份覆写：Vendor 的每个字段都要有一条裁决，漏一个编译红（见 upsertDraft.ts 的类根因说明）。
+  const vendor = sealUpsertDraft<Vendor>({
     key,
     name: String(raw.name || existing?.name || key).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     hasApiKey: existing?.hasApiKey ?? false,
+    // readCatalog 每次从 apiKeysByVendor[].verificationPending 现算并覆盖，落盘的值没有意义。
+    credentialVerificationPending: undefined,
     baseUrlHint: typeof raw.baseUrlHint === "string" ? raw.baseUrlHint.trim() || null : (existing?.baseUrlHint ?? null),
     authType: (raw.authType as Vendor["authType"]) || existing?.authType || "bearer",
     authHeader: typeof raw.authHeader === "string" ? raw.authHeader.trim() || null : (existing?.authHeader ?? null),
-    authQueryParam:
-      typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
+    authScheme: typeof raw.authScheme === "string" ? raw.authScheme.trim() || null : (existing?.authScheme ?? undefined),
+    authQueryParam: typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
+    network: proxyEnabled !== undefined ? { proxyEnabled } : undefined,
+    // 用户数据（这家怎么传参考图）：不带该键=保留，显式 null=清除。三态同 Model.customCall。
+    assetIngestion: raw.assetIngestion === null ? undefined : ((raw.assetIngestion as Vendor["assetIngestion"]) ?? existing?.assetIngestion),
     meta: metaWithoutExtraHeaders(incomingMeta),
-    ...(proxyEnabled !== undefined ? { network: { proxyEnabled } } : {}),
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   state.vendors = [vendor, ...state.vendors.filter((item) => item.key !== key)];
   if (existing && previousScope !== normalizedConnectionScope(vendor)) invalidateVendorValidation(state, key);
   // Advance v11→v12 once no vendor still carries legacy plaintext network config
@@ -544,7 +550,7 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
     (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
   const customCall = normalizeCustomCall(raw.customCall, existing?.customCall);
-  const model: Model = {
+  const model = sealUpsertDraft<Model>({
     modelKey,
     vendorKey,
     modelAlias: typeof raw.modelAlias === "string" ? raw.modelAlias.trim() || null : (existing?.modelAlias ?? null),
@@ -556,10 +562,10 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
     meta: raw.meta ?? existing?.meta,
     pricing: (raw.pricing as Model["pricing"]) || existing?.pricing,
     onboarding: (raw.onboarding as Model["onboarding"]) ?? existing?.onboarding,
-    ...(customCall ? { customCall } : {}),
+    customCall: customCall || undefined,
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   state.models = [
     model,
     ...state.models.filter((item) => !(item.vendorKey === vendorKey && item.modelKey === modelKey)),
@@ -625,26 +631,24 @@ function applyMappingUpsert(state: CatalogState, payload: unknown): Mapping {
   const query = (raw.query as HttpOperation | undefined) || legacy.query || legacyResp.query || existing?.query;
   const result = (raw.result as HttpOperation | undefined) || existing?.result;
   if (!create) throw new Error("create operation is required (method + path)");
-  const mapping: Mapping = {
+  const mapping = sealUpsertDraft<Mapping>({
     id,
     vendorKey,
     taskKind,
-    ...(modelKey ? { modelKey } : {}),
-    ...(modeId ? { modeId } : {}),
+    modelKey,
+    modeId,
     name: String(raw.name || existing?.name || taskKind).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     create,
-    ...(query ? { query } : {}),
-    ...(result ? { result } : {}),
-    ...(raw.statusMapping || legacy.statusMapping || existing?.statusMapping
-      ? {
-          statusMapping:
-            (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping,
-        }
-      : {}),
+    // 传输契约（同步/异步 + 任务不要了怎么办，见 transportDelivery.ts）：导入包会带，不许落盘即丢。
+    delivery: (raw.delivery as Mapping["delivery"]) ?? existing?.delivery,
+    abandon: (raw.abandon as Mapping["abandon"]) ?? existing?.abandon,
+    query: query || undefined,
+    result: result || undefined,
+    statusMapping: (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping,
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   guardAntigravityMappingWrite(mapping, (request) => Boolean(request && antigravityConnection.hasPassed(request)));
   state.mappings = [mapping, ...state.mappings.filter((item) => item.id !== id)];
   return mapping;
