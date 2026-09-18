@@ -6,7 +6,6 @@ import { createModels } from '@earendil-works/pi-ai';
 import { createNomiProvider } from '../../electron/agentLane/laneModelProvider.mjs';
 import { openLaneSession } from '../../electron/agentLane/laneSession.mjs';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
-import { z } from 'zod';
 import { createLaneNativeAssembly } from '../../electron/agentLane/laneNativeAssembly.mjs';
 import { createExtendedLaneTools } from '../../electron/agentLane/laneExtendedTools.js';
 import { createCanvasLaneTools } from '../../electron/agentLane/laneCanvasTools.js';

@@ -69,6 +69,12 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // agent-runtime 下的 .mjs 是 Node 脚本（实验分析器之类），和 tests/network 同类：
+    // 它们用 console / process / URL，不是页内代码。
+    files: ['tests/agent-runtime/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // 反馈接收端跑在 Cloudflare Workers 运行时里：`Request`/`Response`/`URL`/`TextEncoder`/
     // `crypto` 在那儿是真的全局，不是我们忘了 import。所以声明环境，而不是在九行上各写一条
     // eslint-disable —— 逐行 disable 会把「这个文件跑在哪个运行时」这条事实藏起来，

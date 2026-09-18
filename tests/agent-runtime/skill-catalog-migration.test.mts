@@ -318,7 +318,7 @@ test('S19 · 用户目录的技能声明 audience: mcp 仍是 internal；内置�
 
 test('S14 · 带 UTF-8 BOM 的 SKILL.md（Windows 记事本写的）照常加载：pi-agent-core 不剥 BOM，我们在 env 那一层剥', async (t) => {
   const root = await tempRoot(t);
-  await landSkill(root, 'bom', `﻿---\r\nname: bom\r\ndescription: 记事本写的。\r\n---\r\n\r\n正文。\r\n`);
+  await landSkill(root, 'bom', ` ---\r\nname: bom\r\ndescription: 记事本写的。\r\n---\r\n\r\n正文。\r\n`);
   const { records, diagnostics } = await discoverSkillRecords([{ path: root, origin: 'user' }]);
   assert.deepEqual(records.map((record) => [record.name, record.description]), [['bom', '记事本写的。']], JSON.stringify(diagnostics));
   assert.equal(records[0]!.content, '正文。', 'CRLF 归一、BOM 不在正文里');

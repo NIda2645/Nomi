@@ -174,8 +174,8 @@ async function main() {
   for (let i = OFFSET; i < Math.min(OFFSET + TRIALS, UTTERANCES.length); i++) {
     const utterance = UTTERANCES[i]!;
     let trialError: string | undefined;
-    let turns: Array<Record<string, unknown>> = [];
-    let writes: Array<Record<string, unknown>> = [];
+    const turns: Array<Record<string, unknown>> = [];
+    const writes: Array<Record<string, unknown>> = [];
     try {
         const document = createDocumentPort(STORY);
       let shots: Array<Record<string, unknown>> = [];
