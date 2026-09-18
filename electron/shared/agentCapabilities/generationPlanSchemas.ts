@@ -111,7 +111,13 @@ const createFields = {
   cardHidden: z.boolean().optional(),
 } as const;
 
-const operationId = z.string().trim().min(1);
+/**
+ * 一次生成运行的 id。**上限是宿主这一侧的准入约束，不是模型面的装饰**：这个值直接当
+ * `.nomi/runs/<operationId>/` 的目录名用（`mcpGenerationTools.ts` 里没给就发一个 `op-<uuid>`＝39 字），
+ * 外部调用方给一个无界长串就是一条无界路径。2026-09-18 投影化之前这条上限只写在模型面上——
+ * 也就是写在**最拦不住的那一层**（R17）；搬到宿主之后模型面从它派生，两边不可能再各写一份。
+ */
+const operationId = z.string().trim().min(1).max(160);
 
 export const generationPlanInputSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("context"),
@@ -122,7 +128,7 @@ export const generationPlanInputSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("patch"), operationId, shotId: z.string().trim().min(1).optional(), patch: candidatePatch }).strict(),
   z.object({ operation: z.literal("preview"), operationId }).strict(),
   /** `generate` 动词：把已建草稿的报价卡摆到用户面前；`shotIds` 只把卡限定在这几镜（缺省全部）。 */
-  z.object({ operation: z.literal("present"), operationId, shotIds: z.array(z.string().trim().min(1)).max(40).optional() }).strict(),
+  z.object({ operation: z.literal("present"), operationId, shotIds: z.array(z.string().trim().min(1).max(160)).max(40).optional() }).strict(),
   // Strategy resolution is the separate GENERATION_RESOLVE_CAPABILITY owner.
 ]);
 

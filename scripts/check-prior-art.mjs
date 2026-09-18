@@ -6,11 +6,8 @@
 //   ① docs/plan/<日期>-*.md（日期 >= 2026-09-07）必须有「## 先查别人」节，节内 ≥3 条带出处的条目；
 //   ② PR 改 src/ 或 electron/ 超过 300 行，正文必须引用一份合格的方案文档。
 //
-// PR 侧什么时候生效（fail-closed 的边界写死在这里，别靠猜）：
-//   · CI 的 pull_request 事件：GITHUB_EVENT_NAME=pull_request 时**必查**，正文从 PRIOR_ART_PR_BODY
-//     读（工作流在 contracts job 的 env 里注入）。正文为空 = 没引用 = 红。
-//   · 本地：默认跳过（本地没有 PR 这个东西）；显式加 --pr 时用 `gh pr view --json body` 取当前
-//     分支的 PR 正文，取不到就明说「今天没查成」并跳过，不假装通过。
+// PR 正文怎么取、什么时候必查，只有一个 owner：scripts/lib/prBody.mjs（抬头写清了为什么
+// 不再读事件负载——那份正文是 push 那一刻的快照，push 后补正文会被判成没写，白烧一轮 CI）。
 //
 // 用法：
 //   node scripts/check-prior-art.mjs          计划文档侧 + （CI 里）PR 侧
@@ -19,6 +16,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolvePullRequestBody } from './lib/prBody.mjs'
 import {
   PRIOR_ART_DIFF_BUDGET,
   PRIOR_ART_THRESHOLD_DATE,
@@ -84,23 +82,6 @@ function changedProductionLines() {
   return total
 }
 
-function pullRequestBody() {
-  if (process.env.GITHUB_EVENT_NAME === 'pull_request') {
-    return { available: true, body: process.env.PRIOR_ART_PR_BODY ?? '' }
-  }
-  if (!process.argv.includes('--pr')) return { available: false, reason: '不在 pull_request 事件里，且未加 --pr' }
-  try {
-    const body = execFileSync('gh', ['pr', 'view', '--json', 'body', '--jq', '.body'], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    return { available: true, body }
-  } catch (error) {
-    return { available: false, reason: `gh pr view 取不到正文：${error instanceof Error ? error.message.split('\n')[0] : String(error)}` }
-  }
-}
-
 const plans = collectPlans()
 /** 第三种出处（链接指向仓库里真实存在的文件）要真去看一眼——指不到的链接不算出处。 */
 const fileExists = (candidate) => fs.existsSync(path.join(repoRoot, candidate))
@@ -110,9 +91,11 @@ const governed = [...plans.keys()].filter((file) => {
   return match && match[1] >= PRIOR_ART_THRESHOLD_DATE
 })
 
-const pr = pullRequestBody()
+const pr = resolvePullRequestBody({ cwd: repoRoot })
 let prNote
 if (!pr.available) {
+  // 取不到正文而本来必查（pull_request 事件）→ 红。拿不到证据就说拿不到，不假装通过。
+  if (pr.required) errors.push(`PR 正文取不到，无法判「有没有引用方案」：${pr.reason}`)
   prNote = `⏭️ PR 侧跳过（${pr.reason}）`
 } else {
   const changedLines = changedProductionLines()

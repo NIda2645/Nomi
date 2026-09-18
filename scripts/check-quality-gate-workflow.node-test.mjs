@@ -5,6 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 
+import { CI_E2E_CHAIN } from './run-ci-e2e-chain.mjs'
 import { PROFILES, STAGES } from '../tests/system/profiles.mjs'
 import { assertFullCanvasShardPartition, FULL_CANVAS_SHARDS } from '../tests/ux/canvas-real-suite.mjs'
 
@@ -40,7 +41,8 @@ test('quality gate runs for pull requests and real main before/after pushes', ()
     group: 'quality-gate-${{ github.event.pull_request.number || github.sha }}',
     'cancel-in-progress': true,
   })
-  assert.deepEqual(workflow.permissions, { actions: 'read', checks: 'read', contents: 'read' })
+  // pull-requests: read 是正文侧门岗现取 PR 正文所需（2026-09-18，C 件）。
+  assert.deepEqual(workflow.permissions, { actions: 'read', checks: 'read', contents: 'read', 'pull-requests': 'read' })
 
   const scopeEnvironment = workflow.jobs.scope.steps.find((step) => step.id === 'profile').env
   assert.equal(scopeEnvironment.NOMI_BASE_SHA, "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}")
@@ -87,10 +89,21 @@ test('contracts always run and unit alone chooses focused or full coverage', () 
     contracts.env.ROOT_CAUSE_BASE_REF,
     '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
   )
-  // check:prior-art 的 PR 侧判据靠这两个 env 才看得见 PR 正文与 base；少了它们，大改一律静默放行。
-  assert.equal(contracts.env.PRIOR_ART_PR_BODY, '${{ github.event.pull_request.body }}')
+  // 2026-09-18：正文**不再从事件负载里拿**。那份正文是 push 那一刻的快照，push 后补正文
+  // 会被判成没写，只能空提交重推换一轮 40 分钟（PR #804）。现在由 scripts/lib/prBody.mjs
+  // 用 gh 现取，所以这里钉死的是「取正文要用的三样」，并且钉死旧 env 已经消失。
+  assert.equal(contracts.env.PRIOR_ART_PR_BODY, undefined)
+  assert.equal(contracts.env.DOOR_MAP_PR_BODY, undefined)
+  assert.equal(contracts.env.GH_TOKEN, '${{ github.token }}')
+  assert.equal(contracts.env.GH_REPO, '${{ github.repository }}')
+  assert.equal(contracts.env.NOMI_PR_NUMBER, '${{ github.event.pull_request.number }}')
+  assert.equal(contracts.env.GITHUB_EVENT_NAME, '${{ github.event_name }}')
   assert.equal(
     contracts.env.PRIOR_ART_BASE_REF,
+    '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
+  )
+  assert.equal(
+    contracts.env.DOOR_MAP_BASE_REF,
     '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
   )
 
@@ -136,6 +149,33 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
       'xvfb-run -a pnpm run test:canvas:critical',
     ],
   )
+  // 2026-09-18（B 件）：七步一律 continue-on-error，job 的结论交给末尾那一步。
+  // 串行 fail-fast 让每轮 CI 只暴露一条红（#804 连三轮各红一条不同走查）。
+  const chainSteps = [
+    'Browser feel mechanism', 'Electron smoke', 'CI-safe user journeys', 'MCP L1 handshake journey',
+    'MCP elicitation-first journey', 'Real user loopback journey gate', 'Critical canvas acceptance',
+  ]
+  for (const name of chainSteps) {
+    assert.equal(selectedSteps[name]['continue-on-error'], true, `${name} 必须 continue-on-error，否则后面几条又被吞掉`)
+    assert.ok(selectedSteps[name].id, `${name} 必须有 id，汇总步靠它读 outcome`)
+  }
+  const summary = desktop.steps.find((step) => step.name === 'E2E chain summary')
+  assert.equal(summary.if, 'always()')
+  assert.equal(summary.run, 'node scripts/summarize-e2e-chain.mjs')
+  assert.equal(summary['continue-on-error'], undefined, '汇总步本身不许 continue-on-error——它就是 job 的结论')
+  // 汇总必须**每一步都读到**：漏掉一个 id，那条走查就悄悄失去了决定 job 红绿的能力。
+  for (const name of chainSteps) {
+    assert.match(summary.env.CHAIN, new RegExp(`${selectedSteps[name].id}:\\$\\{\\{ steps\\.${selectedSteps[name].id}\\.outcome \\}\\}`))
+  }
+
+  // 本地那条链（pnpm run test:e2e:ci-chain）必须和这个 job **同序同命令**——
+  // 两份清单各写各的，就是下一个「本地全绿 CI 连红三轮」。
+  assert.deepEqual(CI_E2E_CHAIN.map((step) => step.id), chainSteps.map((name) => selectedSteps[name].id))
+  assert.deepEqual(
+    CI_E2E_CHAIN.map((step) => step.script),
+    chainSteps.map((name) => /pnpm run ([\w:-]+)/.exec(selectedSteps[name].run)[1]),
+  )
+
   assert.equal(selectedSteps['Electron smoke'].if, "needs.scope.outputs.desktop == 'true'")
   assert.equal(selectedSteps['CI-safe user journeys'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['MCP L1 handshake journey'].if, "needs.scope.outputs.journeys == 'true'")
@@ -229,6 +269,9 @@ test('package scripts expose canonical separated profiles and classifier contrac
     scripts['test:mcp-elicitation'],
     'python3 scripts/with-gates-lock.py --command "pnpm run check:electron-install && node tests/ux/mcp-generation-elicitation-first.e2e.mjs"',
   )
+  // A 件（2026-09-18）：本地一条命令按 CI 同序跑完七步。必须**只持一次 gates 锁**——
+  // 七个 test:* 各自套锁，不在最外层套一次就会逐个重新排队（本机常有 20+ worktree）。
+  assert.equal(scripts['test:e2e:ci-chain'], 'python3 scripts/with-gates-lock.py -- node scripts/run-ci-e2e-chain.mjs')
   assert.equal(scripts['test:system:canvas:critical'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-canvas-critical')
   assert.equal(scripts['test:system:canvas:full'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-canvas-full')
   assert.equal(scripts['test:system:performance'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-performance')

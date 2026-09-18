@@ -161,6 +161,16 @@
         "symbol": "createLaneSkillIndexSource / LaneSkillIndexSource"
       },
       "reason": "laneInstalledSkills.mts 是迁 pi 时删掉的两份自研遍历器之一；同名函数整体搬进 laneSkillCatalog.mts，签名与「索引是记录集的纯投影」那条不变量一字未动（lane-live-skill-index.test.mts 仍在测它）。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-18-agent-storyboard-single-ledger.root-cause.json",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "symbol": "DRAFT_SHOT_FIELD_MAP",
+      "anchor": {
+        "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+        "symbol": "draftShotToPlanShot"
+      },
+      "reason": "2026-09-18 晚投影铺开：一镜的字段对应表（DRAFT_SHOT_FIELD_MAP）被取代成一个有类型的显式变换。那条不变量一个字没变——三处形状变化（嵌套层级 / 拍平 / 参考素材身份由宿主补）与「信封字段落不进候选 patch」都在新锚里，而且 #813 开通的「shotId 提到 plan patch 信封上」也跟着搬了（draftShotsPatchEnvelope，同文件）。原表连同 verbFieldMap.ts 的 DSL 一起删掉。"
     }
   ],
   "retirements": [

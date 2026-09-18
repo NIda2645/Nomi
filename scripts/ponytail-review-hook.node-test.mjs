@@ -61,14 +61,31 @@ test('pre-commit 只剩敏感数据扫描：提交时刻不再跑模型评审', 
   assert.doesNotMatch(preCommit, /ponytail/i)
 })
 
-test('pre-push 只查收据：一条命令、带 ref 参数、缺文件时安全跳过', () => {
-  assert.deepEqual(hook('pre-push').commands.map(({ target }) => target), ['scripts/ponytail-review-hook.mjs'])
+test('pre-push 只查收据 + 正文门岗本地半场：都不跑模型，缺文件时安全跳过', () => {
+  // 2026-09-18 加的第二条命令是**正文门岗**（check-pr-body-gates.mjs）：它也只读判据，
+  // 不跑模型。收据那条必须仍是 exec 的最后一条——只有它要吃 git 从 stdin 喂的 ref 列表。
+  assert.deepEqual(hook('pre-push').commands.map(({ target }) => target),
+    ['scripts/check-pr-body-gates.mjs', 'scripts/ponytail-review-hook.mjs'])
   const prePush = installer.renderHookContent(hook('pre-push'))
+  assert.match(prePush, /\[ -f "\$ROOT\/scripts\/check-pr-body-gates\.mjs" \] \|\| exit 0/)
   assert.match(prePush, /\[ -f "\$ROOT\/scripts\/ponytail-review-hook\.mjs" \] \|\| exit 0/)
+  assert.match(prePush, /^node "\$ROOT\/scripts\/check-pr-body-gates\.mjs"$/m)
   assert.match(prePush, /exec node "\$ROOT\/scripts\/ponytail-review-hook\.mjs" "\$@"/)
   const commitMsg = installer.renderHookContent(hook('commit-msg'))
   assert.match(commitMsg, /check-progress-update\.cjs/)
   assert.doesNotMatch(commitMsg, /ponytail/i)
+})
+
+test('正文门岗本地半场不判死：拿不到 PR 正文就放行，判据仍由 CI fail-closed', () => {
+  const script = path.resolve(repoScriptsDir, 'check-pr-body-gates.mjs')
+  const run = spawnSync(process.execPath, [script], {
+    cwd: path.resolve(repoScriptsDir, '..'),
+    encoding: 'utf8',
+    // PATH 里挖掉 gh 等于「本机没装 gh」，这正是最常见的那种「今天没查成」。
+    env: { ...process.env, PATH: '/nonexistent', GITHUB_EVENT_NAME: '' },
+  })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stderr, /跳过/)
 })
 
 test('钩子没有任何入口能跑模型评审——评审只在 review:branch 里', () => {

@@ -156,9 +156,14 @@ function classify(symbol, called, forced) {
   return READER_NAME.test(symbol) ? 'read' : 'write'
 }
 
-export function mapDoors({ files, readFile, targetSymbols, forced = new Map() }) {
+/**
+ * 每一处出现（带行号）——**只给人看**。行号会随无关的排版改动漂移，所以它不进合同：
+ * 2026-09-11 到 09-18 之间，钉着行号的门表长出一整族「门表的行号跟上 xxx」提交
+ * （批次 3 一次集成修了 16 处），而它们一次都没有发现过真正的门增删。
+ */
+export function mapDoorOccurrences({ files, readFile, targetSymbols, forced = new Map() }) {
   const wanted = new Set(targetSymbols)
-  const doors = []
+  const occurrences = []
   for (const file of files) {
     const text = readFile(file)
     if (![...wanted].some((symbol) => text.includes(symbol))) continue
@@ -166,14 +171,14 @@ export function mapDoors({ files, readFile, targetSymbols, forced = new Map() })
     const visit = (node) => {
       if (ts.isIdentifier(node) && wanted.has(node.text) && !isBindingOccurrence(node)) {
         const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
-        doors.push({ kind: classify(node.text, isCallTarget(node), forced), path: file, line, symbol: node.text })
+        occurrences.push({ kind: classify(node.text, isCallTarget(node), forced), path: file, line, symbol: node.text })
       }
       ts.forEachChild(node, visit)
     }
     ts.forEachChild(source, visit)
   }
   const seen = new Set()
-  return doors
+  return occurrences
     .filter((door) => {
       const key = `${door.kind}|${door.path}|${door.line}|${door.symbol}`
       if (seen.has(key)) return false
@@ -181,6 +186,27 @@ export function mapDoors({ files, readFile, targetSymbols, forced = new Map() })
       return true
     })
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.path.localeCompare(b.path) || a.line - b.line || a.symbol.localeCompare(b.symbol))
+}
+
+/**
+ * 门表本体（进合同的那份）。**一扇门 = 一个文件里的一个符号**，同一个文件里调它三次仍是一扇门：
+ * 门问的是「这份状态还能从哪里被碰到」，那是模块级的事实；哪一行碰的是排版。
+ * 所以本函数按 `{kind, path, symbol}` 去重，输出里没有 `line`。
+ */
+export function dedupeDoors(occurrences) {
+  const seen = new Set()
+  const doors = []
+  for (const { kind, path: file, symbol } of occurrences) {
+    const key = `${kind}|${file}|${symbol}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    doors.push({ kind, path: file, symbol })
+  }
+  return doors
+}
+
+export function mapDoors(options) {
+  return dedupeDoors(mapDoorOccurrences(options))
 }
 
 function main() {
@@ -199,19 +225,24 @@ function main() {
   }
 
   const files = collectSourceFiles(roots, includeTests)
-  const doors = mapDoors({
+  const scan = {
     files,
     readFile: (file) => fs.readFileSync(path.resolve(repoRoot, file), 'utf8'),
     targetSymbols,
     forced,
-  })
+  }
+  // 一次 AST 扫描两份输出：门表（进合同）与出现处（给人看）。
+  const occurrences = mapDoorOccurrences(scan)
+  const doors = dedupeDoors(occurrences)
 
   const writes = doors.filter((door) => door.kind === 'write')
   const reads = doors.filter((door) => door.kind === 'read')
   console.error(`数门：${[...targetSymbols].sort().join(', ')}`)
   console.error(`  扫了 ${files.length} 个文件（roots=${roots.join(',')}${includeTests ? '，含测试' : '，不含测试'}）`)
-  console.error(`  写入口 ${writes.length} 扇 · 读入口 ${reads.length} 扇 · 共 ${doors.length} 扇`)
-  for (const door of doors) console.error(`  [${door.kind}] ${door.path}:${door.line} ${door.symbol}`)
+  console.error(`  写入口 ${writes.length} 扇 · 读入口 ${reads.length} 扇 · 共 ${doors.length} 扇`
+    + `（${occurrences.length} 处出现——同一个文件里调多次仍算一扇门）`)
+  // 行号只在这里出现（给人跳过去看），不进 stdout 那份门表——见 mapDoors 抬头。
+  for (const door of occurrences) console.error(`  [${door.kind}] ${door.path}:${door.line} ${door.symbol}`)
   console.error(`\n把下面这段粘进 docs/fixes/<日期>-<题目>.root-cause.json 的 "doors"；`)
   console.error(`门 ≥2 扇而本次没合并它们，必须在 "door_reduction.why_not" 里写清为什么。`)
   console.log(JSON.stringify(doors, null, 2))

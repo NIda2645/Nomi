@@ -897,16 +897,21 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 
 ```json
 "doors": [
-  { "kind": "write", "path": "src/workbench/capability/capabilityApplyHandler.ts", "line": 625, "symbol": "applyCanvasToolCall" },
-  { "kind": "read",  "path": "electron/promptLibrary/curatedPrompts.ts",           "line": 6,   "symbol": "readSkillRecords" }
+  { "kind": "write", "path": "src/workbench/capability/capabilityApplyHandler.ts", "symbol": "applyCanvasToolCall" },
+  { "kind": "read",  "path": "electron/promptLibrary/curatedPrompts.ts",           "symbol": "readSkillRecords" }
 ],
 "door_reduction": { "before": 6, "after": 2, "why_not": "before ≥ 2 且一扇没减时必填" }
 ```
 
 - **门表用脚本生成，不手写**：`node scripts/door-map.mjs <mutator 符号或文件>`（TS compiler API 扫 `src/` + `electron/`，
   约 1 秒出结果，输出可直接粘进合同）。手写的门表和一句「我扫过了」是同一种东西。
+- **门的身份 = 文件 + 符号，不含行号**（2026-09-18）。行号不是这份状态的性质，是它此刻的排版：
+  门一扇没增没减，只要有人在上面插了两行注释，门表就报 `door does not resolve`。于是长出一整族
+  没有信息量的提交（「门表的行号跟上 xxx」，批次 3 一次集成修了 16 处），而它们一次都没发现过
+  真正的门增删——判据落错了层（R17）。同一个文件里调同一个符号三次仍算**一扇**门。
+  合同里再出现 `line` 一律红（两套身份并存就是那族提交复活的地方）：重跑 `door-map.mjs` 取当前门表。
 - **门岗核对四件事**（`scripts/root-cause-contracts.mjs`，随 `check:root-cause-contracts` 跑）：每条 door 的 path 存在、
-  **该行真的提到该 symbol**（写错行号 = 没重数）；`door_reduction.after` 等于 `doors.length`（门表记的是修完之后还剩几扇）；
+  **该文件真的还提到该 symbol**（整词匹配；门没了 = 红）；`door_reduction.after` 等于 `doors.length`（门表记的是修完之后还剩几扇）；
   `before ≥ 2` 而一扇没减时 `why_not` 必填；本次改动中落在本合同 `scope_paths` 内的 `src/`/`electron/` 生产文件 ⊆ 门表 path 集合
   （**改了门表之外的文件 = 门没数全，或 scope 画大了**）。
 - **允许不减，不允许无声地不减**。有时几扇门确实必须各自存在（分属不同进程、不同信任域）——那就写清楚，
