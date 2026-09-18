@@ -90,25 +90,9 @@ export type IntegrationProposal = {
  * 「Nomi 自己编不动，请你来编」的结构化交底（B 路，见 providerAdapter/agentCompileRequest.ts）。
  * 落盘的只有这几个小字段；目标 schema 与撰写规则是常量，在投影时现加，不占会话文件。
  */
-export type IntegrationCompileRequest = {
-  schemaVersion: 1;
-  /**
-   * 为什么这次要外部交卡。
-   *  - `adapter_contract_required`：本机没有可读文档的文本模型（鸡生蛋），交给驱动 Agent 写。
-   *  - `private_host_needs_declaration`：自建 / 内网端点。**以前这里是静默落回 OpenAI 兼容模板**
-   *    （`compileRequestFor` 返回 undefined → `builtinOpenAiCompatibleDraft`），于是「我们猜了一个
-   *    形状」和「这家真的长这样」在界面上长得一模一样。09-18 拍板：模板变成 Agent **显式选**，
-   *    不再静默——它可以在卡里直接引用内置模板，但那是它的一次声明，不是我们的一次兜底。
-   *    （设置页填表路不变：那是人在选「中转站」预设，他知道自己在选什么。）
-   */
-  reasonCode: "adapter_contract_required" | "private_host_needs_declaration";
-  field: "proposal.adapterDraft";
-  provider: { baseUrl: string; authType: AdapterAuthType; providerKind?: string };
-  models: Array<{ modelKey: string; kind: string }>;
-  docs: { provided: boolean; bytes: number };
-  /** `private_host_needs_declaration` 时给模型的那条出路（内置模板 id），不是我们替它选。 */
-  suggestedTemplate?: string;
-};
+// 这个类型跟着**产生它的那条判据**住（R9：巨壳只减不增，且类型该在它的生产者旁边）。
+import type { IntegrationCompileRequest } from "./integrationAdapterContract";
+export type { IntegrationCompileRequest };
 export type IntegrationSession = {
   schemaVersion: 1;
   id: string;

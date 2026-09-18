@@ -4,9 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { dispatch } from "./dispatcher";
-import { validateToolArguments } from "./mcpArgValidation";
 import { buildToolErrorOutcome } from "./mcpToolErrorResults";
-import { INTEGRATION_REQUIRED_BY_ACTION, MCP_INTEGRATION_TOOL } from "./mcpIntegrationTools";
 import { createApprovalReceiptAuthority } from "./approvalReceipt";
 import { createProjectLeaseAuthority } from "./projectLease";
 import { IntegrationSessionService } from "../integrationCertification/integrationSession";
@@ -166,57 +164,30 @@ describe("缺陷 3 · 项目句柄是短 id，不用模型逐字复述", () => {
 });
 
 describe("缺陷 4 · schema 的 required 说真话", () => {
-  it("每个声明必填的字段缺席时实现真的拒；非必填缺席时真的能跑", async () => {
-    const integration = MCP_INTEGRATION_TOOL;
-    const missing = (args: Record<string, unknown>) =>
-      validateToolArguments(integration.name, integration.inputSchema, args) !== null;
-    const actionDescription = String(
-      (integration.inputSchema.properties as { action: { description?: string } }).action.description || "",
-    );
+  // 2026-09-18（#754）：这条缺陷的**来源**被删掉了，不是被修好了。
+  //
+  // 旧面（`nomi_integration`）广播 `required: ['action']`，而实现按 action 逐字段抛——两份必填表，
+  // 一份广播、一份执行，中间只能靠一张手写的 `INTEGRATION_REQUIRED_BY_ACTION` 对齐。
+  // 新面没有那张表可对齐：契约的 `inputSchema` 是一个按 action 判别的 zod 联合，
+  // **广播出去的那份 schema 就是运行时 parse 的那一份**（`projectMcpTool` 从同一批声明派生）。
+  // 所以这里改成钉住那条结构性质：谁想再写第二张必填表，这条会红。
+  it("必填只有一份：广播的 schema 就是运行时校验的那个联合", async () => {
+    const { MCP_TOOL_RESOLVER } = await import("./mcpToolCatalog");
+    const { modelSetupInputSchema } = await import("../shared/agentCapabilities/modelOnboarding");
+    const tool = MCP_TOOL_RESOLVER.resolve("nomi_model_setup")!;
+    const schema = tool.inputSchema as unknown as { required: string[]; properties: Record<string, unknown> };
 
-    for (const [action, required] of Object.entries(INTEGRATION_REQUIRED_BY_ACTION)) {
-      const dir = tmp(`nomi-defect4-${action}-`);
-      const sessions = makeSessions(dir);
-      const ctx = { integrationSessions: sessions, origin: { host: HOST } } as never;
-      const gate = await toSpendGate(sessions);
-      const complete: Record<string, unknown> = {
-        action,
-        ...(action === "begin"
-          ? { kind: "http-api-provider", name: "Other", baseUrl: "https://other.example" }
-          : { sessionId: gate.id, expectedRevision: gate.revision }),
-        ...(action === "propose"
-          ? { proposal: { candidates: [{ modelKey: "m", kind: "text" }], selections: [{ modelKey: "m" }] } }
-          : {}),
-        ...(action === "confirm" || action === "start" ? { idempotencyKey: "k" } : {}),
-      };
-      const declared = action === "begin" ? [...required, "baseUrl"] : [...required];
-
-      // 完整入参过 schema，也过工具层。
-      expect({ action, ok: missing(complete) }).toEqual({ action, ok: false });
-      expect(() => integration.build(complete)).not.toThrow();
-
-      for (const field of declared) {
-        const withoutField = { ...complete };
-        delete withoutField[field];
-        // ① 对外契约说它必填（扁平 schema 表达不了条件必填——见 mcpIntegrationTools.ts 的说明，
-        //    Anthropic 适配器会丢掉根 allOf——所以真话写在 action 的描述里，并由工具层执行）。
-        expect({ action, field, declared: actionDescription.includes(field) })
-          .toEqual({ action, field, declared: true });
-        expect(() => integration.build(withoutField)).toThrow(new RegExp(field));
-        // ② 实现真的拒（绕过工具层的聚合校验，直接打到服务端）。
-        const method = integration.resolveMethod(withoutField);
-        const params = { ...withoutField };
-        delete params.action;
-        await expect(dispatch(method, params, ctx)).rejects.toBeInstanceOf(Error);
-      }
+    // 顶层只有 action 必填——其余随 action 变，且那个「变」由契约自己的联合表达，不是第二张表。
+    expect(schema.required).toEqual(["action"]);
+    // 每个 action 的真实必填由同一个联合回答；缺字段当场 parse 失败。
+    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", setupId: "s" }).success).toBe(false);
+    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", setupId: "s", declaration: "{}" }).success).toBe(true);
+    expect(modelSetupInputSchema.safeParse({ action: "show_models", vendorKey: "v", modelKeys: ["m"] }).success).toBe(false);
+    expect(modelSetupInputSchema.safeParse({ action: "show_models", vendorKey: "v", modelKeys: ["m"], visible: false }).success).toBe(true);
+    // 地址与鉴权放法一个都不在这张 schema 上（§6.1；`check:credential-origin` 也盯这一条）。
+    for (const field of ["baseUrl", "authType", "authHeader", "authQueryParam", "authScheme", "proxyUrl"]) {
+      expect(schema.properties[field]).toBeUndefined();
     }
-  });
-
-  it("缺字段一次列全，而不是逐个抛（实测里 22 次失败有 9 次栽在逐个抛上）", () => {
-    expect(() => MCP_INTEGRATION_TOOL.build({ action: "begin", kind: "http-api-provider" }))
-      .toThrow(/missing name, baseUrl/);
-    expect(() => MCP_INTEGRATION_TOOL.build({ action: "start", sessionId: "s" }))
-      .toThrow(/missing expectedRevision, idempotencyKey/);
   });
 });
 
@@ -242,7 +213,7 @@ describe("缺陷 5 · revision is stale 拆成各说一件事的码", () => {
       error = value;
     }
     for (const locale of ["zh-CN", "en"] as const) {
-      const outcome = buildToolErrorOutcome("nomi_integration", error, locale);
+      const outcome = buildToolErrorOutcome("nomi_model_setup", error, locale);
       expect(outcome.outcome.errorCode).toBe("integration_revision_stale");
       expect(outcome.outcome.recoveryActions).not.toHaveLength(0);
       expect(outcome.outcome.details).toEqual({ currentRevision: 7, sentRevision: 3 });

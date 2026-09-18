@@ -340,7 +340,10 @@ export function projectMcpTool(
     }
   }
 
-  const properties: Record<string, JsonSchemaObject> = { ...MCP_LEASE_PROPERTIES };
+  // App 级能力（模型目录）不发租约字段：它的对象不住在任何一个项目里，要一个 leaseHandle
+  // 只会在「从零接一家供应商」的路上多加一道闸（见 CapabilityContract.scope）。
+  const appScoped = contract.scope === "app";
+  const properties: Record<string, JsonSchemaObject> = appScoped ? {} : { ...MCP_LEASE_PROPERTIES };
   for (const [field, schema] of transportOnly) {
     if (fields.has(field) || discriminators.has(field)) {
       // 一个字段不能既是「外部才有的传输寻址」又是模型可见的语义输入——那是两个真相源。
@@ -354,7 +357,7 @@ export function projectMcpTool(
   for (const [field, entry] of fields) properties[field] = entry.schema;
 
   const required = [
-    "leaseHandle",
+    ...(appScoped ? [] : ["leaseHandle"]),
     ...[...discriminators.keys()].sort(),
     ...[...requiredCounts.entries()].filter(([, count]) => count === specs.length).map(([field]) => field).sort(),
   ];

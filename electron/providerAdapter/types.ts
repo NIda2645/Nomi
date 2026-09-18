@@ -111,6 +111,8 @@ export type AdapterModelDraft = {
     default?: string | number | boolean;
     min?: number;
     max?: number;
+    /** §5：这个参数的取值范围与默认值是从哪一页读来的（mode 级 sourceUrls 已有，参数级补齐）。 */
+    sourceUrl?: string;
   }>;
   modes: AdapterModeDraft[];
 };

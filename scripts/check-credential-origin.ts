@@ -20,7 +20,7 @@
 //   规则 3（硬零）：出站守卫必须引用 `credentialBinding`。守卫是不变量的执行端；判据被人删掉
 //       之后，上面两条仍然全绿，而 key 又能去任何地方了。
 //
-// **加规则先验它会红**（R17）：本门岗落地时对 `git show HEAD~1` 的两处实证会红——
+// **加规则先验它会红**（R17）：本门岗落地时对 `origin/main` 1ba0c0cb5 实跑 8 处红，分属两个文件——
 //   · electron/catalog/catalogManagement.ts:21   写 baseUrlHint（规则 1）
 //   · electron/capabilityCore/mcpIntegrationManagementTools.ts:15-18  广播四个字段（规则 2）
 // 复验命令写在 docs/fixes/2026-09-18-credential-destination-is-user-confirmed.root-cause.json。

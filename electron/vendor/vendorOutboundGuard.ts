@@ -89,7 +89,8 @@ export function setSubmitOutboundDepsForTests(next: Partial<SubmitOutboundDeps> 
 }
 
 export type SubmitDestinationInput = {
-  vendor: Pick<Vendor, "key" | "baseUrlHint" | "credentialBinding">;
+  // `key` 只用来查「代码里写死的官方备用域」；查不到 = 没有例外，不是放行，所以它可选。
+  vendor: Pick<Vendor, "baseUrlHint"> & Partial<Pick<Vendor, "key" | "credentialBinding">>;
   /** 已拼好鉴权 query 的最终 URL（判的就是真正要请求的那一个）。 */
   url: string;
   /** 这次请求是否由单供应商显式代理承载（`vendor.network.proxyUrl`）。 */

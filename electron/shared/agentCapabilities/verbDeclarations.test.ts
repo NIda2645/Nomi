@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CAPABILITY_CONTRACTS } from "./registry";
+import { MCP_NON_CONTRACT_TOOL_NAMES } from "./mcpTransportNames";
 import { isPaidBoundaryAlias } from "./paidBoundary";
 import { assembleVerbDeclarations, proseWithoutQuotedExamples, renderVerbDescription, verbConsequence, type VerbDeclaration } from "./verbDeclaration";
 import { VERB_DECLARATIONS } from "./verbDeclarations";
@@ -15,6 +16,12 @@ function assemble(declarations: readonly VerbDeclaration[]) {
     declarations,
     contractById: (id) => CAPABILITY_CONTRACTS.find((contract) => contract.id === id),
     isPaidBoundaryName: isPaidBoundaryAlias,
+    // 与生产装配同一份输入：只投对外 profile 的动词在说明书里点名的是对外那一侧的名字。
+    mcpToolNames: [
+      ...(CAPABILITY_CONTRACTS as readonly { aliases: { mcp?: string } }[])
+        .flatMap((contract) => (contract.aliases.mcp ? [contract.aliases.mcp] : [])),
+      ...MCP_NON_CONTRACT_TOOL_NAMES,
+    ],
   });
 }
 

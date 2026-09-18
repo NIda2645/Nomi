@@ -1,7 +1,7 @@
 // 真机验收：接入验证会话「一定落终态 + certifying 一定能取消」（2026-09-15）
 //
 // 为什么走 MCP 而不是点界面：用户 09-11/09-12 撞到的那次死锁就是从外部宿主
-// （WorkBuddy）驱动 `nomi_integration` 撞的——run 卡在 certifying、cancel 被拒、
+// （WorkBuddy）驱动 `nomi_model_setup` 撞的——run 卡在 certifying、cancel 被拒、
 // 只能重启 app。要在真机上复现「同一条路」，就得走同一条路：真实 Electron 主进程、
 // 真实 stdio MCP 通道、隔离 profile、真实密钥与真实上游端点。
 //
@@ -76,7 +76,7 @@ async function waitForTerminal(mcp, sessionId, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let last
   for (;;) {
-    const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
+    const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
     last = read.json || {}
     if (TERMINAL_STAGES.has(String(last.stage))) return last
     if (Date.now() >= deadline) return last
@@ -105,21 +105,17 @@ async function realProviderArm(apiKey) {
   })
   try {
     await mcp.initialize(20_000)
-    const begun = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'begin',
-      kind: 'http-api-provider',
-      name: 'DeepSeek 兼容端点',
-      baseUrl: 'https://api.deepseek.com/v1',
-      providerKind: 'openai-compatible',
-      authType: 'bearer',
-      clientRequestId: 'session-terminal-real-1',
+    const begun = parseToolResult(await mcp.callTool('nomi_model_setup', {
+    action: 'connect_provider',
+    name: 'DeepSeek 兼容端点',
+    suggestedBaseUrl: 'https://api.deepseek.com/v1',
     }))
     check(begun.json?.stage === 'needs_credential', 'A1 begin 建出待补密钥的接入会话', begun.json?.stage)
     const sessionId = begun.json?.id
 
     // 真人在一次性安全页里贴真 key（密钥永不进 MCP 通道，那条不变量由既有 e2e 盯）。
-    const pending = mcp.callTool('nomi_integration', {
-      action: 'open_credentials', sessionId, expectedRevision: begun.json?.revision,
+    const pending = mcp.callTool('nomi_model_setup', {
+      action: 'open_credentials',
     }, { timeoutMs: 120_000 })
     let elicit
     for (const deadline = Date.now() + 30_000; ;) {
@@ -139,22 +135,20 @@ async function realProviderArm(apiKey) {
     check(opened.json?.credentialStatus === 'ready', 'A2 会话显示密钥已就绪')
 
     // 空 propose = 让 Nomi 自己去真实上游拉模型清单。
-    const discovered = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'propose', sessionId, expectedRevision: opened.json?.revision, proposal: {},
+    const discovered = parseToolResult(await mcp.callTool('nomi_model_setup', {
+      action: 'propose',
     }, { timeoutMs: 90_000 }))
     const candidates = discovered.json?.candidates || []
     check(candidates.length > 0, 'A3 从真实 /v1/models 拉到候选模型', `n=${candidates.length}`)
     const pick = candidates.find((item) => item.kind === 'text') || candidates[0]
 
-    const selected = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'propose', sessionId, expectedRevision: discovered.json?.revision,
-      proposal: { candidates: [{ modelKey: pick.modelKey, kind: pick.kind }], selections: [{ modelKey: pick.modelKey }] },
+    const selected = parseToolResult(await mcp.callTool('nomi_model_setup', {
+      action: 'propose',
     }, { timeoutMs: 60_000 }))
     check(selected.json?.stage === 'ready_to_certify', 'A4 选一个文本模型后可以开跑', selected.json?.stage)
 
-    const started = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'start', sessionId, expectedRevision: selected.json?.revision,
-      idempotencyKey: 'session-terminal-real-start',
+    const started = parseToolResult(await mcp.callTool('nomi_model_setup', {
+      action: 'start',
     }, { timeoutMs: 120_000 }))
     check(!started.isError, 'A5 start 不报错', started.json?.stage)
 
@@ -181,31 +175,27 @@ async function escapeHatchArm() {
   })
   try {
     await mcp.initialize(20_000)
-    const begun = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'begin',
-      kind: 'comfyui-workflow',
-      name: '吊死的本机 ComfyUI',
-      baseUrl: hole.baseUrl,
-      clientRequestId: 'session-terminal-hatch-1',
+    const begun = parseToolResult(await mcp.callTool('nomi_model_setup', {
+    action: 'connect_provider',
+    name: '吊死的本机 ComfyUI',
+    suggestedBaseUrl: hole.baseUrl,
     }))
     check(!begun.isError, 'B1 begin 建出 ComfyUI 接入会话（免费自检那条路）', begun.json?.stage)
     const sessionId = begun.json?.id
 
-    const proposed = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'propose', sessionId, expectedRevision: begun.json?.revision,
-      proposal: { workflow: COMFY_WORKFLOW, modelKey: 'hatch-probe' },
+    const proposed = parseToolResult(await mcp.callTool('nomi_model_setup', {
+      action: 'propose',
     }, { timeoutMs: 60_000 }))
     check(proposed.json?.stage === 'ready_to_certify', 'B2 工作流通过分析，可以开跑', proposed.json?.stage)
 
     // start 会挂住（上游只接受连接不回应）。**不 await**：这正是死锁那一刻的现场。
-    const hanging = mcp.callTool('nomi_integration', {
-      action: 'start', sessionId, expectedRevision: proposed.json?.revision,
-      idempotencyKey: 'session-terminal-hatch-start',
+    const hanging = mcp.callTool('nomi_model_setup', {
+      action: 'start',
     }, { timeoutMs: 8 * 60_000 }).catch((error) => ({ swallowed: String(error?.message || error) }))
 
     let certifying
     for (const deadline = Date.now() + 60_000; ;) {
-      const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
+      const read = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
       certifying = read.json || {}
       if (certifying.stage === 'certifying' || TERMINAL_STAGES.has(String(certifying.stage))) break
       if (Date.now() >= deadline) break
@@ -217,8 +207,8 @@ async function escapeHatchArm() {
     fs.writeFileSync(path.join(EVIDENCE, 'arm-b-certifying-session.json'), JSON.stringify(certifying, null, 2))
 
     // ★ 本轮的核心断言：修前这里抛 "Cannot cancel certification in progress"。
-    const cancelled = parseToolResult(await mcp.callTool('nomi_integration', {
-      action: 'cancel', sessionId, expectedRevision: certifying.revision,
+    const cancelled = parseToolResult(await mcp.callTool('nomi_model_setup', {
+      action: 'cancel', setupId:
     }, { timeoutMs: 60_000 }))
     check(!cancelled.isError, 'B4 cancel 不再报错（修前：Cannot cancel certification in progress）',
       cancelled.isError ? JSON.stringify(cancelled.json || cancelled.text) : '')
@@ -230,7 +220,7 @@ async function escapeHatchArm() {
     // 放开逃生口的对偶：迟到的结果不许复活已取消的会话。
     await hole.close() // 掐掉上游 → 那个挂住的 certifyComfy 现在会以失败 settle
     await Promise.race([hanging, delay(90_000)])
-    const after = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
+    const after = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
     check(after.json?.stage === 'cancelled', 'B5 迟到的认证结果没有把已取消的会话复活（终态是封的）', after.json?.stage)
   } finally {
     await mcp.terminate()

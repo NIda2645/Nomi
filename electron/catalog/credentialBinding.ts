@@ -130,3 +130,32 @@ export function judgeCredentialDestination(input: {
   if (input.codeDeclaredOrigins.includes(attempted)) return { allowed: true };
   return { allowed: false, boundOrigin: binding.origin, attemptedOrigin: attempted };
 }
+
+/**
+ * 保存 key 的那个事务里记下「这把 key 去哪」。**catalog 的 key 写门是唯一调用者**
+ * （`applyApiKeyUpsert`）——判据写在这里而不是写在写门里，是为了让 `catalogStore` 那个已知巨壳
+ * 只减不增，也让「绑定怎么算」与「绑定存哪」在同一个文件里读得完。
+ *
+ * 去向没变就不写：同一条连接重存同一把 key 不该把 `updatedAt` 抖一下
+ *（`credentialPublication.test.ts` 的「本就停用时不重写它」守的正是这个）。
+ */
+export function bindCredentialDestination(
+  vendor: (Parameters<typeof deriveCredentialBinding>[0] & { credentialBinding?: CredentialBinding }) | undefined,
+  at: string,
+): void {
+  if (!vendor) return;
+  const binding = deriveCredentialBinding(vendor, at);
+  if (!sameCredentialDestination(vendor.credentialBinding, binding)) vendor.credentialBinding = binding;
+}
+
+/**
+ * vendor upsert 的 payload 想改绑定吗。
+ *
+ * 两种可能：① `{ ...existingVendor, enabled }` 这种原样转抄（无意图，放行）；
+ * ② 真的想改它——那就是「让数据决定 key 去哪」，大声拒绝，不静默丢掉。
+ */
+export function assertNoCredentialBindingRewrite(incoming: unknown, existing: CredentialBinding | undefined): void {
+  if (incoming === undefined) return;
+  if (JSON.stringify(incoming) === JSON.stringify(existing)) return;
+  throw new Error("credentialBinding is written only when a key is saved; it is not part of a vendor upsert payload");
+}

@@ -1,4 +1,5 @@
 import { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
+import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY } from '../shared/agentCapabilities/modelOnboarding'
 import { CANVAS_WRITE_CAPABILITY } from '../shared/agentCapabilities/canvasWrite'
 import { DOCUMENT_READ_CAPABILITY } from '../shared/agentCapabilities/documentRead'
 import { DOCUMENT_WRITE_CAPABILITY } from '../shared/agentCapabilities/documentWrite'
@@ -102,6 +103,14 @@ export function deriveProjectSessionScopes(policy: McpGenerationPolicy): readonl
     'layout:write',
     'export:read',
     'asset:read',
+    // 接模型（App 级能力，`nomi_model_setup` / `nomi_remove_provider`）。同样是「scope 是传输能力，
+    // 不是批准」：接一家的人闸在贴 key 页——**没有用户在那一页上粘贴并保存，这条路一步都走不完**，
+    // 而工具本身连地址都决定不了（§6.1）；删一家的人闸是宿主按 destructiveHint 弹的那一下，
+    // 外加「先读再删」的指纹（`ifUnchanged` 不符就什么都不删）。
+    // 不发这两个的后果不是多一道闸，而是把工具从 tools/list 上公开着、却谁都调不动
+    //（`timeline:write` 与两个 `layout:*` 已经栽过这一次）。
+    MODEL_ONBOARDING_SETUP_CAPABILITY.requiredScope,
+    MODEL_ONBOARDING_REMOVE_CAPABILITY.requiredScope,
   ])
   const snapshot = policy.snapshot()
   if (snapshot.flagEnabled) {
