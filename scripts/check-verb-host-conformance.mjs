@@ -208,12 +208,6 @@ function saturate(seed, published, verbSchema) {
 }
 
 /** 一份载荷里出现过的全部叶子值（R3 按值比对，所以改名不算丢）。 */
-function leafValues(value, out = new Set()) {
-  if (Array.isArray(value)) { for (const item of value) leafValues(item, out); return out }
-  if (isRecord(value)) { for (const item of Object.values(value)) leafValues(item, out); return out }
-  if (value !== undefined) out.add(`${typeof value}:${String(value)}`)
-  return out
-}
 
 /**
  * 一份载荷里每个叶子值**第一次出现的路径**（与 `fieldProbes` 同一种路径写法：`shots[].shotId`）。
@@ -226,6 +220,14 @@ function leafPaths(value, keys = [], out = new Map()) {
   const leaf = `${typeof value}:${String(value)}`
   if (!out.has(leaf)) out.set(leaf, keys.join('.').replace(/\.\[\]/g, '[]'))
   return out
+}
+
+/**
+ * 同一份载荷的叶子值集合。**从 `leafPaths` 派生**：那张表的键就是叶子身份
+ * （`${typeof}:${值}`），再写一个同形状的递归遍历只会多一份要一起改的东西。
+ */
+function leafValues(value) {
+  return new Set(leafPaths(value).keys())
 }
 
 /** 把一个动词的一次调用走完整条路；返回这次调用的全部问题。 */
