@@ -10,7 +10,8 @@ export function traces(projectsDir){
 export async function runCase({win,app,iso,evidence},item,{newConversation=true}={}){
  if(newConversation){await win.getByRole('button',{name:'历史会话',exact:true}).click();await win.getByRole('button',{name:'新对话',exact:true}).click();await win.locator('[data-v4-block="assistant"]').waitFor({state:'detached',timeout:10000});}
  if(item.skill){await win.getByRole('button',{name:'Skill',exact:true}).click();await win.getByRole('textbox',{name:'搜索技能，或输入 / 命令',exact:true}).fill(item.skill);await win.locator('[data-v4-command="skill:'+item.skill+'"]').click();}
- await app.evaluate((_,item)=>globalThis.skillReach.label(item.id,item.omit??null),item);
+ try { await app.evaluate((_,item)=>globalThis.skillReach.label(item.id,item.omit??null),item); }
+ catch(error) { if(!String(error).includes('Execution context was destroyed'))throw error; await app.evaluate((_,item)=>globalThis.skillReach.label(item.id,item.omit??null),item); }
  const previous=new Set(traces(iso.projectsDir).map(t=>t.turnId));
  await win.getByRole('textbox',{name:'给 Nomi 的消息',exact:true}).fill(item.prompt);
  await win.screenshot({path:path.join(evidence,'shots',item.id+'-input.png')});

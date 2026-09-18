@@ -434,5 +434,1213 @@
     "status": 200,
     "finishedAt": "2026-09-18T22:26:23.240Z",
     "responseBytes": 61842
+  },
+  {
+    "id": "045-S01",
+    "label": "S01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:01.824Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:06.399Z",
+    "responseBytes": 6380
+  },
+  {
+    "id": "046-S01",
+    "label": "S01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:06.516Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:12.669Z",
+    "responseBytes": 31640
+  },
+  {
+    "id": "047-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:13.488Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:16.429Z",
+    "responseBytes": 5152
+  },
+  {
+    "id": "048-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:16.547Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:20.719Z",
+    "responseBytes": 10190
+  },
+  {
+    "id": "049-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:20.741Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:36.770Z",
+    "responseBytes": 123564
+  },
+  {
+    "id": "050-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:36.783Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:28:51.870Z",
+    "responseBytes": 153785
+  },
+  {
+    "id": "051-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:28:51.880Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:03.610Z",
+    "responseBytes": 105453
+  },
+  {
+    "id": "052-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:06.504Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:15.470Z",
+    "responseBytes": 87791
+  },
+  {
+    "id": "053-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:15.484Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:18.999Z",
+    "responseBytes": 6834
+  },
+  {
+    "id": "054-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:19.020Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:33.137Z",
+    "responseBytes": 120484
+  },
+  {
+    "id": "055-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:36.055Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:39.989Z",
+    "responseBytes": 5957
+  },
+  {
+    "id": "056-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:40.097Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:29:58.769Z",
+    "responseBytes": 178935
+  },
+  {
+    "id": "057-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:29:58.778Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:30:14.630Z",
+    "responseBytes": 39092
+  },
+  {
+    "id": "058-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:30:14.644Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:30:32.229Z",
+    "responseBytes": 150630
+  },
+  {
+    "id": "059-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:30:32.935Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:30:37.209Z",
+    "responseBytes": 6505
+  },
+  {
+    "id": "060-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:30:37.313Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:30:43.115Z",
+    "responseBytes": 15227
+  },
+  {
+    "id": "061-S02",
+    "label": "S02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:30:43.141Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:30:56.138Z",
+    "responseBytes": 85188
+  },
+  {
+    "id": "062-S03",
+    "label": "S03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:30:57.039Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:00.128Z",
+    "responseBytes": 9546
+  },
+  {
+    "id": "063-S03",
+    "label": "S03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:00.201Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:05.218Z",
+    "responseBytes": 11386
+  },
+  {
+    "id": "064-S03",
+    "label": "S03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:05.341Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:21.788Z",
+    "responseBytes": 112408
+  },
+  {
+    "id": "065-S04",
+    "label": "S04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:22.981Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:26.128Z",
+    "responseBytes": 9624
+  },
+  {
+    "id": "066-S04",
+    "label": "S04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:26.201Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:39.198Z",
+    "responseBytes": 90720
+  },
+  {
+    "id": "067-S05",
+    "label": "S05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:40.396Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:44.517Z",
+    "responseBytes": 8916
+  },
+  {
+    "id": "068-S05",
+    "label": "S05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:44.612Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:47.959Z",
+    "responseBytes": 2968
+  },
+  {
+    "id": "069-S05",
+    "label": "S05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:48.066Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:31:52.047Z",
+    "responseBytes": 4076
+  },
+  {
+    "id": "070-S05",
+    "label": "S05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:31:52.133Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:08.898Z",
+    "responseBytes": 141145
+  },
+  {
+    "id": "071-S05",
+    "label": "S05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:09.032Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:14.537Z",
+    "responseBytes": 25319
+  },
+  {
+    "id": "072-S06",
+    "label": "S06",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:15.514Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:18.637Z",
+    "responseBytes": 7600
+  },
+  {
+    "id": "073-S06",
+    "label": "S06",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:18.745Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:25.077Z",
+    "responseBytes": 9099
+  },
+  {
+    "id": "074-S06",
+    "label": "S06",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:25.179Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:28.627Z",
+    "responseBytes": 11260
+  },
+  {
+    "id": "075-S06",
+    "label": "S06",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:28.713Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:44.859Z",
+    "responseBytes": 98486
+  },
+  {
+    "id": "076-S07",
+    "label": "S07",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:45.675Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:32:50.427Z",
+    "responseBytes": 11538
+  },
+  {
+    "id": "077-S07",
+    "label": "S07",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:32:50.493Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:19.099Z",
+    "responseBytes": 228707
+  },
+  {
+    "id": "078-S07",
+    "label": "S07",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:19.217Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:28.356Z",
+    "responseBytes": 55922
+  },
+  {
+    "id": "079-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:29.069Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:32.237Z",
+    "responseBytes": 8635
+  },
+  {
+    "id": "080-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:32.352Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:36.597Z",
+    "responseBytes": 1528
+  },
+  {
+    "id": "081-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:36.701Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:40.957Z",
+    "responseBytes": 12728
+  },
+  {
+    "id": "082-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:41.033Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:33:45.309Z",
+    "responseBytes": 7460
+  },
+  {
+    "id": "083-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:33:45.333Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:34:20.097Z",
+    "responseBytes": 299464
+  },
+  {
+    "id": "084-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:34:20.104Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:34:33.906Z",
+    "responseBytes": 151207
+  },
+  {
+    "id": "085-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:34:33.914Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:34:52.266Z",
+    "responseBytes": 228073
+  },
+  {
+    "id": "086-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:34:52.272Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:35:10.276Z",
+    "responseBytes": 225403
+  },
+  {
+    "id": "087-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:35:10.709Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:35:31.075Z",
+    "responseBytes": 254342
+  },
+  {
+    "id": "088-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:35:31.084Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:35:37.186Z",
+    "responseBytes": 7560
+  },
+  {
+    "id": "089-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:35:37.207Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:36:00.515Z",
+    "responseBytes": 262571
+  },
+  {
+    "id": "090-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:02.346Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:36:18.115Z",
+    "responseBytes": 162654
+  },
+  {
+    "id": "091-S08",
+    "label": "S08",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:20.967Z",
+    "omittedSkill": null,
+    "status": 200,
+    "readError": "AbortError: This operation was aborted"
+  },
+  {
+    "id": "092-S09",
+    "label": "S09",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:30.362Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:36:33.625Z",
+    "responseBytes": 7840
+  },
+  {
+    "id": "093-S09",
+    "label": "S09",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:33.737Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:36:37.067Z",
+    "responseBytes": 1881
+  },
+  {
+    "id": "094-S09",
+    "label": "S09",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:37.162Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:36:40.724Z",
+    "responseBytes": 9195
+  },
+  {
+    "id": "095-S09",
+    "label": "S09",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:36:40.802Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:07.234Z",
+    "responseBytes": 188699
+  },
+  {
+    "id": "096-S10",
+    "label": "S10",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:08.287Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:13.175Z",
+    "responseBytes": 11026
+  },
+  {
+    "id": "097-S10",
+    "label": "S10",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:13.277Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:16.755Z",
+    "responseBytes": 4748
+  },
+  {
+    "id": "098-S10",
+    "label": "S10",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:16.862Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:24.294Z",
+    "responseBytes": 42687
+  },
+  {
+    "id": "099-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:25.246Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:28.075Z",
+    "responseBytes": 4058
+  },
+  {
+    "id": "100-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:28.174Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:31.454Z",
+    "responseBytes": 7475
+  },
+  {
+    "id": "101-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:31.461Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:35.235Z",
+    "responseBytes": 6557
+  },
+  {
+    "id": "102-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:35.244Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:38.973Z",
+    "responseBytes": 6108
+  },
+  {
+    "id": "103-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:38.986Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:43.094Z",
+    "responseBytes": 10194
+  },
+  {
+    "id": "104-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:43.185Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:37:47.234Z",
+    "responseBytes": 14001
+  },
+  {
+    "id": "105-S11",
+    "label": "S11",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:37:47.332Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:21.754Z",
+    "responseBytes": 231495
+  },
+  {
+    "id": "106-S12",
+    "label": "S12",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:22.754Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:27.964Z",
+    "responseBytes": 10004
+  },
+  {
+    "id": "107-S12",
+    "label": "S12",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:28.053Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:38.933Z",
+    "responseBytes": 63064
+  },
+  {
+    "id": "108-A01",
+    "label": "A01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:39.759Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:42.993Z",
+    "responseBytes": 7274
+  },
+  {
+    "id": "109-A01",
+    "label": "A01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:43.079Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:47.442Z",
+    "responseBytes": 6572
+  },
+  {
+    "id": "110-A01",
+    "label": "A01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:47.532Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:50.103Z",
+    "responseBytes": 3969
+  },
+  {
+    "id": "111-A01",
+    "label": "A01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:50.214Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:38:57.244Z",
+    "responseBytes": 28343
+  },
+  {
+    "id": "112-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:38:58.256Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:01.093Z",
+    "responseBytes": 6737
+  },
+  {
+    "id": "113-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:01.188Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:06.253Z",
+    "responseBytes": 11940
+  },
+  {
+    "id": "114-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:06.356Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:10.052Z",
+    "responseBytes": 7199
+  },
+  {
+    "id": "115-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:10.060Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:13.613Z",
+    "responseBytes": 4748
+  },
+  {
+    "id": "116-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:13.628Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:18.442Z",
+    "responseBytes": 7733
+  },
+  {
+    "id": "117-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:18.464Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:33.282Z",
+    "responseBytes": 99902
+  },
+  {
+    "id": "118-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:33.289Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:39.512Z",
+    "responseBytes": 30582
+  },
+  {
+    "id": "119-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:39.522Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:50.512Z",
+    "responseBytes": 100252
+  },
+  {
+    "id": "120-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:50.523Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:39:55.462Z",
+    "responseBytes": 25102
+  },
+  {
+    "id": "121-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:39:56.280Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:04.563Z",
+    "responseBytes": 5061
+  },
+  {
+    "id": "122-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:04.670Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:09.322Z",
+    "responseBytes": 12753
+  },
+  {
+    "id": "123-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:09.335Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:18.982Z",
+    "responseBytes": 90579
+  },
+  {
+    "id": "124-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:19.721Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:23.831Z",
+    "responseBytes": 12240
+  },
+  {
+    "id": "125-A02",
+    "label": "A02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:23.854Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:30.521Z",
+    "responseBytes": 25582
+  },
+  {
+    "id": "126-A03",
+    "label": "A03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:31.429Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:34.051Z",
+    "responseBytes": 4333
+  },
+  {
+    "id": "127-A03",
+    "label": "A03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:34.150Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:38.111Z",
+    "responseBytes": 4748
+  },
+  {
+    "id": "128-A03",
+    "label": "A03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:38.202Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:43.352Z",
+    "responseBytes": 5066
+  },
+  {
+    "id": "129-A03",
+    "label": "A03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:43.454Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:47.121Z",
+    "responseBytes": 1527
+  },
+  {
+    "id": "130-A03",
+    "label": "A03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:47.223Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:40:54.891Z",
+    "responseBytes": 40135
+  },
+  {
+    "id": "131-A04",
+    "label": "A04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:40:55.680Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:41:00.022Z",
+    "responseBytes": 3786
+  },
+  {
+    "id": "132-A04",
+    "label": "A04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:41:00.141Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:41:04.661Z",
+    "responseBytes": 7747
+  },
+  {
+    "id": "133-A04",
+    "label": "A04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:41:04.771Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:41:11.281Z",
+    "responseBytes": 31841
+  },
+  {
+    "id": "134-N01",
+    "label": "N01",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:41:12.207Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:41:20.301Z",
+    "responseBytes": 2276
+  },
+  {
+    "id": "135-N02",
+    "label": "N02",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:42:38.114Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:42:41.650Z",
+    "responseBytes": 677
+  },
+  {
+    "id": "136-N03",
+    "label": "N03",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:42:42.786Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:42:46.821Z",
+    "responseBytes": 11244
+  },
+  {
+    "id": "137-N04",
+    "label": "N04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:42:47.994Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:42:53.021Z",
+    "responseBytes": 9175
+  },
+  {
+    "id": "138-N04",
+    "label": "N04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:42:53.128Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:02.385Z",
+    "responseBytes": 6656
+  },
+  {
+    "id": "139-N04",
+    "label": "N04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:02.499Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:07.212Z",
+    "responseBytes": 15218
+  },
+  {
+    "id": "140-N04",
+    "label": "N04",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:07.336Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:09.980Z",
+    "responseBytes": 3378
+  },
+  {
+    "id": "141-N05",
+    "label": "N05",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:10.875Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:17.250Z",
+    "responseBytes": 4722
+  },
+  {
+    "id": "142-N06",
+    "label": "N06",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:18.148Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:22.039Z",
+    "responseBytes": 672
+  },
+  {
+    "id": "143-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:22.807Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:27.969Z",
+    "responseBytes": 6514
+  },
+  {
+    "id": "144-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:28.074Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:34.210Z",
+    "responseBytes": 42893
+  },
+  {
+    "id": "145-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:34.219Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:43.081Z",
+    "responseBytes": 66664
+  },
+  {
+    "id": "146-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:43.092Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:55.551Z",
+    "responseBytes": 63405
+  },
+  {
+    "id": "147-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:55.975Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:43:59.109Z",
+    "responseBytes": 6732
+  },
+  {
+    "id": "148-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:43:59.128Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:45:38.985Z",
+    "responseBytes": 15606
+  },
+  {
+    "id": "149-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:45:39.000Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:45:47.307Z",
+    "responseBytes": 31238
+  },
+  {
+    "id": "150-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:45:48.030Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:14.076Z",
+    "responseBytes": 283182
+  },
+  {
+    "id": "151-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:14.299Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:18.297Z",
+    "responseBytes": 6517
+  },
+  {
+    "id": "152-S03-ablated",
+    "label": "S03-ablated",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:18.409Z",
+    "omittedSkill": "director-consistency",
+    "removedEntries": 1,
+    "status": 200,
+    "readError": "AbortError: This operation was aborted"
+  },
+  {
+    "id": "153-S01-fresh",
+    "label": "S01-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:24.190Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:27.797Z",
+    "responseBytes": 7726
+  },
+  {
+    "id": "154-S01-fresh",
+    "label": "S01-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:27.891Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:39.604Z",
+    "responseBytes": 84560
+  },
+  {
+    "id": "155-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:40.843Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:44.043Z",
+    "responseBytes": 7047
+  },
+  {
+    "id": "156-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:44.145Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:55.304Z",
+    "responseBytes": 98007
+  },
+  {
+    "id": "157-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:55.746Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:46:59.484Z",
+    "responseBytes": 7197
+  },
+  {
+    "id": "158-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:46:59.502Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:11.335Z",
+    "responseBytes": 99887
+  },
+  {
+    "id": "159-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:12.857Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:20.083Z",
+    "responseBytes": 58186
+  },
+  {
+    "id": "160-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:20.091Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:25.893Z",
+    "responseBytes": 49602
+  },
+  {
+    "id": "161-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:26.071Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:38.413Z",
+    "responseBytes": 120881
+  },
+  {
+    "id": "162-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:38.651Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:41.483Z",
+    "responseBytes": 4064
+  },
+  {
+    "id": "163-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:41.594Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:45.683Z",
+    "responseBytes": 18663
+  },
+  {
+    "id": "164-S02-fresh",
+    "label": "S02-fresh",
+    "model": "deepseek-v3.2",
+    "startedAt": "2026-09-18T22:47:45.890Z",
+    "omittedSkill": null,
+    "status": 200,
+    "finishedAt": "2026-09-18T22:47:54.462Z",
+    "responseBytes": 59581
   }
 ]
