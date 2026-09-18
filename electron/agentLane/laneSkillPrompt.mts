@@ -28,11 +28,10 @@ export function renderSelectedSkillPrompt(
   skill: SelectedSkill,
   placement: SkillToolAuthorityPlacement = SKILL_TOOL_AUTHORITY_PLACEMENT,
 ): string {
-  const piSkill = { name: skill.name, description: skill.description, content: skill.content, filePath: skill.filePath };
   // 臂 B `after_body`：权威节就是 pi 的 additionalInstructions。臂 A / 臂 0：同一个信封，前面加一节 / 不加。
   const envelope = placement === 'after_body'
-    ? formatSkillInvocation(piSkill, SKILL_TOOL_AUTHORITY_SECTION)
-    : formatSkillInvocation(piSkill);
+    ? formatSkillInvocation(skill, SKILL_TOOL_AUTHORITY_SECTION)
+    : formatSkillInvocation(skill);
   return [
     SELECTED_SKILL_FRAMING,
     '',

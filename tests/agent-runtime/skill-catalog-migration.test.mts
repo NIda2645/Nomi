@@ -45,7 +45,6 @@ import { createLaneFixture } from './laneFixture.mjs';
 const repoRoot = process.cwd();
 const REPO_SKILLS = path.join(repoRoot, 'skills');
 const CHATCUT_FIXTURE = path.join(repoRoot, 'tests/fixtures/skills/chatcut-video-gen');
-const PI_DIAGNOSTIC_CODES = new Set(['file_info_failed', 'list_failed', 'read_failed', 'parse_failed', 'invalid_metadata']);
 
 async function tempRoot(t: { after(fn: () => unknown): void }, prefix = 'nomi-skill-catalog-'): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), prefix));
@@ -185,7 +184,6 @@ test('S55 · 真实 ChatCut 技能的提示词：正文原样、权威节在正�
 test('S3/S6 · 仓内 88 个内置技能经 pi 加载：88 条、零 pi 诊断——判官与被判的是同一把尺子', async () => {
   const { records, diagnostics } = await discoverSkillRecords([{ path: REPO_SKILLS, origin: 'builtin' }]);
   assert.equal(records.length, 88);
-  assert.deepEqual(diagnostics.filter((d) => PI_DIAGNOSTIC_CODES.has(d.code ?? '')), []);
   assert.deepEqual(diagnostics, []);
   for (const record of records) {
     assert.equal(record.origin, 'builtin');

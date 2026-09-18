@@ -97,10 +97,8 @@ describe("built-in skill packs", () => {
 
     const top = new Set(manifest.tools);
     for (const stage of stages) {
+      // skill-refs 的存在性由下面那条全量测试覆盖（88 个包全扫），这里只留工具白名单。
       for (const tool of stage.tools) expect(top.has(tool)).toBe(true);
-      for (const skillRef of stage.skillRefs ?? []) {
-        expect(fs.existsSync(path.join(SKILLS_DIR, skillRef, "SKILL.md"))).toBe(true);
-      }
     }
   });
 

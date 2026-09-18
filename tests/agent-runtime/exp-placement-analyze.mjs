@@ -34,7 +34,7 @@ for (const arm of ARMS) {
   const { trials, spent, budget } = loadArm(arm);
   if (!trials.length) { console.log(`ARM ${arm}: (no data)`); continue; }
   let draftT1 = 0, draftAny = 0, textOnlyT1 = 0, badName = 0, allCalls = 0,
-      argsFirstOK = 0, argsTried = 0, mentions = 0, trialErrs = 0, substFirst = 0;
+      argsFirstOK = 0, argsTried = 0, mentions = 0, trialErrs = 0;
   const surv = []; const reqPerTurn = []; const reqPerTrial = []; const detail = [];
   for (const t of trials) {
     if (t.trialError) trialErrs++;
@@ -60,7 +60,6 @@ for (const arm of ARMS) {
       if (SUBSTITUTE.has(names[k])) { dev = k + 1; break; }
     }
     if (dev === Infinity && firstDraft < 0) dev = names.length + 1;
-    if (dev !== Infinity && dev <= 1) substFirst++;
     for (let n = 1; n <= Math.max(names.length, dev === Infinity ? 0 : dev); n++) {
       surv[n - 1] ??= { at: 0, ok: 0 };
       if (names.length >= n || dev === n) { surv[n - 1].at++; if (dev > n) surv[n - 1].ok++; }
@@ -99,8 +98,7 @@ for (let i = 0; i < Math.min(maxD, 16); i++) {
 }
 console.log('\n### 两比例差的双侧 Fisher 精确检验（整场调过 draft_shots）');
 function logf(n){let s=0;for(let i=2;i<=n;i++)s+=Math.log(i);return s;}
-function fisher(a,b,c,d){const N=a+b+c+d;const lc=(x,y)=>logf(x+y)-logf(x)-logf(y);
-  const base=lc(a+b,c+d)+0, tot=logf(N)-logf(a+c)-logf(b+d);
+function fisher(a,b,c,d){const N=a+b+c+d;
   const p=(x)=>Math.exp(logf(a+b)-logf(x)-logf(a+b-x)+logf(c+d)-logf(a+c-x)-logf(c+d-(a+c-x))+logf(a+c)+logf(b+d)-logf(N));
   const lo=Math.max(0,a+c-(c+d)), hi=Math.min(a+b,a+c); const obs=p(a); let s=0;
   for(let x=lo;x<=hi;x++){const v=p(x); if(v<=obs*1.0000001) s+=v;} return Math.min(1,s);}
