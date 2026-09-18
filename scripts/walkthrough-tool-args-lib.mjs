@@ -16,6 +16,12 @@
 
 import ts from 'typescript'
 
+/**
+ * @typedef {{ filePath: string, line: number, verb: string, key: string }} ArgKeyViolation
+ * @typedef {{ filePath: string, verb: string, reason: 'spread' | 'computed-key' | 'non-literal-args' }} UncheckedSite
+ * @typedef {{ violations: ArgKeyViolation[], skipped: UncheckedSite[], checked: number, sites: number }} ArgScanResult
+ */
+
 /** 键路径里表示「数组的每一项」的段。只用于报错信息，不参与匹配。 */
 const ITEM = '[]'
 
@@ -97,8 +103,10 @@ function propertyOf(objectLiteral, key) {
 /**
  * @param files `{ path, text }[]` —— 走查源码
  * @param schemasByVerb `Record<verb, publishedJsonSchema>` —— 模型此刻真正读到的 schema，注册表派生
+ * @returns {ArgScanResult}
  */
 export function collectWalkthroughToolArgViolations(files, schemasByVerb) {
+  /** @type {ArgScanResult & { path: string[] }} */
   const out = { violations: [], skipped: [], checked: 0, sites: 0, path: [] }
   for (const file of files) {
     const sourceFile = ts.createSourceFile(file.path, file.text, ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS)
