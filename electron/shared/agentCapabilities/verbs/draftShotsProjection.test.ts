@@ -39,13 +39,9 @@ describe("draft_shots 的投影与对照表时代逐字节相同", () => {
     expect(topLevel).not.toHaveProperty("shotId")
   });
 
-  it("信封字段进多镜、不进候选 patch（「送不到」与「可以丢」分开写明的机器版）", () => {
+  it("信封字段进多镜（改草稿那条路上它们被拒，见下一条）", () => {
     const multi = translate({ shots: [{ role: "anchor", title: "锚", prompt: "a" }, { role: "shot", prompt: "b" }] }) as { shots: Array<Record<string, unknown>> };
     expect(multi.shots[0]).toMatchObject({ role: "anchor", title: "锚", prompt: "a" });
-    const patched = translate({ operationId: "op-1", shots: [{ shotId: "shot-3", prompt: "改一句" }] }) as { patch: Record<string, unknown> };
-    expect(patched).toMatchObject({ operation: "patch", operationId: "op-1" });
-    // `shotId` 提到了信封上（上一条断言），所以候选 patch 里只剩语义。
-    expect(patched.patch).toEqual({ prompt: "改一句" });
   });
 
   it("信封落不进去的两条路上当场拒绝，不静默消失", () => {

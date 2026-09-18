@@ -197,11 +197,11 @@ function expandIssues(issues) {
 }
 
 /** Zod 报的问题 → 「往哪儿填什么」。返回 null = 这条问题补不了（结构性不可达或真冲突）。 */
-function repairFromIssue(issue, schema, args) {
+function repairFromIssue(issue, schema, args, toolName) {
   const segments = Array.isArray(issue.path) ? issue.path : []
   // 判据 ④ 的采集点：校验器点名说「缺这个」的字段，就是外部调用方必须填得出来的那些。
   if (issue.code === 'invalid_type' || issue.code === 'too_small') {
-    demanded.add(`${currentTool} :: ${segments.map((part) => (typeof part === 'number' ? '[]' : part)).join('.')}`)
+    demanded.add(`${toolName} :: ${segments.map((part) => (typeof part === 'number' ? '[]' : part)).join('.')}`)
   }
   if (issue.code === 'invalid_literal') {
     setAtPath(args, segments, issue.expected)
@@ -258,10 +258,7 @@ function issuesOf(error) {
   return Array.isArray(error?.issues) ? error.issues : []
 }
 
-let currentTool = ''
-
 function constructOperation(tool, operationValue, seed) {
-  currentTool = tool.name
   const schema = tool.inputSchema
   const args = seed ?? sampleFor(schema)
   args.operation = operationValue
@@ -281,7 +278,7 @@ function constructOperation(tool, operationValue, seed) {
 
     let progressed = false
     for (const issue of issues) {
-      const repair = repairFromIssue(issue, schema, args)
+      const repair = repairFromIssue(issue, schema, args, tool.name)
       if (repair?.blocked) return { ok: false, reason: repair.blocked }
       if (repair?.repaired) progressed = true
     }

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { isPiGenerationToolName } from "../capabilityCore/generationTransportAdapters";
 import { resolveCapabilityAlias } from "../shared/agentCapabilities/registry";
 import { modelFacingToolSpecs } from "../shared/agentCapabilities/modelFacingToolRegistry";
-import { toPublishedJsonSchema } from "../shared/agentCapabilities/modelVisibleJsonSchema";
+import { objectFieldKeys } from "../shared/agentCapabilities/verbs/verbProjections";
 import { LANE_DEFERRED_TOOL_CATALOG } from "./laneToolCatalog";
 import { exportJobTransportCall, verbToTransportCall, type VerbTransportCall } from "./laneVerbTransport";
 
@@ -42,8 +42,7 @@ const SAMPLE_FIELDS: Record<string, unknown> = {
  */
 function sampleArgsFor(verb: string): Record<string, unknown> {
   const spec = modelFacingToolSpecs("internal").find((item) => item.name === verb);
-  const published = spec ? toPublishedJsonSchema(spec.schema) : undefined;
-  const keys = Object.keys(published?.properties ?? {});
+  const keys = spec ? objectFieldKeys(spec.schema, `verb ${verb}`) : [];
   return Object.fromEntries(Object.entries(SAMPLE_FIELDS).filter(([key]) => keys.includes(key)));
 }
 
