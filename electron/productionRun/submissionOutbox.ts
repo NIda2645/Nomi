@@ -134,6 +134,40 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
     return run;
   }
 
+  /**
+   * 「这次提交**一个字节都没写出去**」——确定态，不是未知态。
+   *
+   * 与 `markSubmissionUnknown` 的区别就是这条轴上的全部意义：unknown 说的是
+   * 「供应商可能已经收下并开始扣费」，所以它把预留改成 `unsettled`（钱悬着）、
+   * 把这一镜交给人工对账；而这里说的是「供应商那边什么都没发生」，
+   * 所以预留可以 **provider-safe 地释放**（钱一分没花），job 落在 `needs_attention`
+   * 这个**确定**的失败态上——它可以被正常重试路径重新授权，不需要任何人去供应商核对。
+   *
+   * 判据不在这里：它由 `outboundDispatchEvidence.ts` 一个人答，而且拿不出证据就算 unknown。
+   */
+  function markNotDispatched(request: SubmissionOutboxRequest, reason: string): ProductionRun {
+    let run = requiredRun(deps.repository, request.projectId, request.runId);
+    const job = requiredJob(run, request.jobId);
+    if (job.status === "submitting" || job.status === "submit_intent_persisted") {
+      run = jobCommand(request, "not-dispatched", "needs_attention", {
+        errorCode: "provider_not_reached",
+        errorMessage: reason,
+      });
+    }
+    const reservationId = `${request.runId}:${request.jobId}:${job.attempt}`;
+    const ledger = deps.repository.readBudgetLedger(request.projectId, request.runId);
+    if (ledger.reservations[reservationId]?.status === "reserved") {
+      run = budgetCommand(request, "release-not-dispatched", {
+        billingEntryId: `${reservationId}:release-not-dispatched`,
+        kind: "release",
+        reservationId,
+        providerSafe: true,
+        occurredAt: now(),
+      });
+    }
+    return run;
+  }
+
   async function submitOnce(request: SubmissionOutboxRequest, fencingEpoch = 0): Promise<SubmissionOutboxResult> {
     let run = requiredRun(deps.repository, request.projectId, request.runId);
     let job = requiredJob(run, request.jobId);
@@ -227,27 +261,19 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       try {
         response = await deps.dispatch(dispatchInput);
       } catch (error) {
+        // ── 「确定没写出去」→ 自动重发一次（且只有一次）。2026-09-18 拍板 ──
+        //
+        // 只有**能证明一个字节都没写出去**的失败走到这里（判据在
+        // `outboundDispatchEvidence.ts`，拿不出证据一律算 unknown）。这种失败里供应商那边
+        // 什么都没发生：不重发的代价是把一次本可自愈的网络抖动变成一张需要人去供应商核对的
+        // 单子，而这一笔钱用户刚刚在报价卡上点过确认——重发同一笔不需要再问他一次。
+        //
+        // 三重保险让它不可能变成第二次下单：① 证据本身（读写字节都是 0）；
+        // ② 幂等键逐字不变（`dispatchInput.idempotencyKey`，供应商档案声明了 submitIdempotency）；
+        // ③ 只重发一次——第二次再失败就说明不是抖动，落回确定态 `needs_attention` 交给人。
+        // 不碰意图日志：这一次尝试的 `provider.submit` 意图已经 committed，它覆盖的正是
+        // 「同一个 attempt、同一个幂等键」的这两次调用；崩溃恢复看到它仍然正确地说「未知」。
         if (!(error instanceof SubmissionNotDispatchedError)) throw error;
-        if (submitIntent) {
-          deps.intentLog!.abort(submitIntent.intentId, { fencingEpoch });
-          submitIntent = deps.intentLog!.prepare({
-            runId: request.runId,
-            kind: "provider.submit",
-            key: intentKey,
-            payload: {
-              projectId: request.projectId,
-              runId: request.runId,
-              jobId: request.jobId,
-              attempt: dispatchInput.job.attempt,
-              provider: dispatchInput.job.provider,
-              model: dispatchInput.job.model,
-              idempotencyKey: dispatchInput.idempotencyKey,
-            },
-            fencingEpoch,
-            allowRetryAfterAbort: true,
-          });
-          submitIntent = deps.intentLog!.commit(submitIntent.intentId, { fencingEpoch });
-        }
         response = await deps.dispatch(dispatchInput);
       }
       if (!response.providerTaskId.trim()) throw new Error("Provider returned an empty task id");
@@ -261,6 +287,14 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       const recoveredJob = requiredJob(recovered, request.jobId);
       if (recoveredJob.status === "provider_accepted" && recoveredJob.providerTaskId) {
         return { providerTaskId: recoveredJob.providerTaskId, run: recovered };
+      }
+      // 能证明「一个字节都没写出去」的失败是**确定态**，不是未知态。此前这里是一个
+      // catch-all：连不上、DNS 解不出、从池里取到一条对面已关的 keep-alive 连接，
+      // 统统被记成「供应商可能已经接受任务，Nomi 不会自动重提」，于是一次根本没发生过的
+      // 提交把这一镜永久冻在人工对账里（2026-09-18 C9 间歇红的根因第二层）。
+      if (error instanceof SubmissionNotDispatchedError) {
+        markNotDispatched(request, error.message);
+        throw error;
       }
       markSubmissionUnknown(request);
       throw new SubmissionReceiptUnknownError(error instanceof Error ? error.message : undefined);
