@@ -174,7 +174,7 @@
     "check:media-import-owner": "node ./scripts/check-media-import-owner.mjs",
     "check:asset-evidence": "node ./scripts/check-asset-evidence.mjs",
     "check:mcp-payload": "pnpm exec tsx scripts/check-mcp-payload.ts",
-    "check:mcp-operation-constructible": "pnpm exec tsx scripts/check-mcp-operation-constructible.mjs",
+    "check:mcp-operation-constructible": "node --test ./scripts/check-mcp-operation-constructible.node-test.mjs",
     "check:verb-host-conformance": "node --test ./scripts/check-verb-host-conformance.node-test.mjs",
     "check:mcp-scope-reachable": "pnpm exec tsx scripts/check-mcp-scope-reachable.mjs",
     "check:mcp-legacy-entry": "node --test ./scripts/nomi-mcp-entry.node-test.mjs",
