@@ -1,0 +1,138 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-generation-contract-shapes",
+  "problem_type": "Different verb outputs hidden behind one capability placeholder",
+  "symptom": "Model catalog provenance cannot be verified despite an existing runtime schema; five verbs remain registered as unverifiable.",
+  "direct_cause": "outputFieldNames reads only capability.outputSchema, while generation.context.read serves both a catalog and project context.",
+  "class_root": "The result representation is owned at capability granularity although the queried fact is a verb-specific payload.",
+  "affected_population": ["pi list_models consumers", "from-read provenance for generation, timeline and export verbs"],
+  "scope_paths": ["electron/shared/agentCapabilities/generation.ts", "electron/shared/agentCapabilities/verbDeclaration.ts", "electron/shared/agentCapabilities/verbs/readVerbs.ts", "electron/shared/agentCapabilities/verbs/writeVerbs.ts", "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts", "scripts/check-verb-host-conformance.mjs"],
+  "entry_points": ["Verb assembly asserts provenance", "The conformance contracts gate checks the exception identity baseline"],
+  "external_sources": [],
+  "internal_only_reason": "This repair concerns existing Nomi handlers and their existing Zod schemas; no external protocol or dependency behavior changes.",
+  "invariants": ["A declared verb output is authoritative for provenance; only absent declarations use the capability output", "Unverifiable verb identities can only shrink", "Published model input schemas and descriptions remain byte-identical"],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generation.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generation.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "NOT_YET_DECLARED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "PROVENANCE_UNVERIFIABLE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "assertVerbFieldProvenance"
+    }
+  ],
+  "door_reduction": { "before": 4, "after": 21, "why_not": "Initial provenance-only scan found four doors; extending the machine scan to VerbDeclaration and generation input schemas enumerated 21, not 17 new execution paths. Assembly remains one enforcement entry. Verb declarations and model projection need the declaration type; transport, catalog, dual-domain and projection consumers need the canonical input schemas. These read sites retain distinct routing/description roles without duplicating validation." },
+  "generality_proof": "Every from-read declaration goes through outputFieldNames, so verb precedence and missing-field rejection apply to every caller; the identity baseline forbids replacing retired exceptions with new names.",
+  "shared_boundaries": [{ "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts", "symbol": "assertVerbFieldProvenance", "responsibility": "Verify source fields against the actual verb output where declared" }],
+  "invariant_owner_layer": { "layer": "electron/shared/agentCapabilities", "tests": ["electron/shared/agentCapabilities/verbs/verbFieldProvenance.test.ts"] },
+  "same_class_entry_points": [
+    { "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts", "entry_point": "list_models", "disposition": "enforced", "evidence": "Catalog result wraps the existing agentModelEntrySchema; the project-context capability can no longer hide catalog field errors." },
+    { "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts", "entry_point": "edit_timeline / export_video", "disposition": "enforced", "evidence": "Each result reuses its existing runtime result branch, with provenance checked through the same boundary." },
+    { "path": "electron/capabilityCore/mcpGenerationTools.ts", "entry_point": "context / create / patch / present", "disposition": "not-affected", "evidence": "Published MCP names and handler results are frozen by the user's ruling; unresolved operation schemas and capability splits remain explicit in the audit and residual risks." }
+  ],
+  "recurrence": { "classification": "recurring", "reason": "Both the pi/MCP context paths and generation plan branches share a capability while returning distinct objects.", "same_class_scan": ["Read laneModelRead.mts and mcpGenerationTools.ts context/create/patch/present handlers", "Read timelineWriteResultSchema and exportWriteResultSchema together with their result projectors", "Scanned productionRunTypes.ts, approvalReceipt.ts and executionContract.ts: operation, authorization and receipt outputs have TS types but no reusable runtime result schema", "Ran node scripts/door-map.mjs electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts before production edits"] },
+  "prevention": { "kind": "centralized-boundary", "enforcement_path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts", "invariant": "Output provenance uses verb-specific schemas and retired exceptions cannot return", "failure_mode": "Assembly throws on unavailable source fields; contracts fail on new or stale exception identities", "exception_policy": "none", "strategy": "Reuse actual result schemas at verb declarations, then enforce precedence in the one provenance resolver and shrink-only identities in the existing gate", "artifacts": ["electron/shared/agentCapabilities/verbDeclaration.ts", "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts", "scripts/check-verb-host-conformance.mjs"] },
+  "regression_tests": ["electron/shared/agentCapabilities/verbs/verbFieldProvenance.test.ts", "scripts/check-verb-host-conformance.node-test.mjs"],
+  "class_regression_tests": ["electron/shared/agentCapabilities/verbs/verbFieldProvenance.test.ts", "scripts/check-verb-host-conformance.node-test.mjs"],
+  "legacy_paths": { "status": "removed", "removed_paths": ["electron/shared/agentCapabilities/generation.ts", "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts"], "rationale": "Remove shared input/output placeholder constants and the list_models/edit_timeline/export_video exception entries; keep capability fallback only for undeclared verb output per the explicit ruling." },
+  "dependency_lifecycle": { "decision": "not-applicable", "rationale": "Existing Zod schemas are reused without changing dependencies or their behavior.", "exit_criteria": [] },
+  "migration": "No disk format, published method name or model-visible schema changes; no persisted data migration.",
+  "residual_risks": ["generation.context.read still serves catalog and project context; splitting published capability/method ownership is explicitly outside this lane, tracked in docs/audit/2026-09-19-generation-context-two-payloads.md", "draft_shots and generate remain unverifiable until GenerationOperation and its nested execution/authorization result schemas exist; the baseline remains two identities"]
+}

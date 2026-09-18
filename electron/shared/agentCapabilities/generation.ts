@@ -1,8 +1,6 @@
 import { z } from "zod";
 import type { CapabilityContract } from "./capabilityContract";
-
-const input = z.record(z.unknown());
-const output = z.unknown();
+import { generationPlanInputSchema, generationStatusInputSchema } from "./generationPlanSchemas";
 
 /**
  * Generation Strategy Resolver 的输入形状 —— **模型可见 schema 的单一生成点**（K1 / §7 岔路 3 方案 A）。
@@ -73,8 +71,8 @@ export const GENERATION_CONTEXT_READ_CAPABILITY = {
   id: "generation.context.read",
   version: 1,
   aliases: { pi: "list_models", method: GENERATION_METHODS.context },
-  inputSchema: input,
-  outputSchema: output,
+  inputSchema: z.record(z.unknown()), // pi 收 kind/modelId，MCP 收项目租赁信封；拆能力前没有同一份输入。
+  outputSchema: z.unknown(), // list_models 的 models 与 MCP 项目上下文是两种返回；按 09-19 裁决留待拆能力，动词独立声明。
   effect: "read",
   effectClass: "reversible_local",
   execution: { port: "production-run", availability: "main_only" },
@@ -94,8 +92,8 @@ export const GENERATION_PLAN_CAPABILITY = {
     pi: Object.freeze(["generate"]),
     method: Object.freeze([GENERATION_METHODS.plan, GENERATION_METHODS.create, GENERATION_METHODS.patch, GENERATION_METHODS.present, GENERATION_METHODS.preview]),
   }),
-  inputSchema: input,
-  outputSchema: output,
+  inputSchema: generationPlanInputSchema,
+  outputSchema: z.unknown(), // create/patch/present/preview 各有返回；GenerationOperation/ExecutionContractV1 尚无运行时结果 schema，待 owner 提供后复用。
   effect: "reversible_write",
   effectClass: "reversible_local",
   execution: { port: "production-run", availability: "main_only" },
@@ -114,7 +112,7 @@ export const GENERATION_RESOLVE_CAPABILITY = {
   version: 1,
   aliases: { method: GENERATION_METHODS.resolve },
   inputSchema: generationResolveInputSchema,
-  outputSchema: output,
+  outputSchema: z.unknown(), // resolvePlanAdvisory 投影 GenerationResolutionResult（仅 TS 类型）；待 resolver 声明运行时结果 schema。
   effect: "read",
   effectClass: "reversible_local",
   execution: { port: "production-run", availability: "main_only" },
@@ -132,8 +130,8 @@ export const GENERATION_GATE_CAPABILITY = {
   // 只以字符串字面量活在 `generationDispatcher.ts` 的路由表和 `modelToolSurfaceManifest.ts`
   // 那张手写的三行名单里——契约上查不到它，于是「付费边界上有哪些名字」只能靠手抄。
   additionalAliases: { method: Object.freeze([GENERATION_METHODS.start, GENERATION_METHODS.gateDecide]) },
-  inputSchema: input,
-  outputSchema: output,
+  inputSchema: z.record(z.unknown()), // request/decide/start 的租赁与收据由 dispatcher 分相校验，尚无共同运行时入参 schema；待该 owner 提供。
+  outputSchema: z.unknown(), // approvalReceipt 的挑战/凭据及 start 注入结果只有 TS 类型；待三相结果 owner 声明 schema，不能借计划结果冒充。
   effect: "paid",
   effectClass: "spend",
   execution: { port: "production-run", availability: "main_only" },
@@ -148,8 +146,8 @@ export const GENERATION_RUN_READ_CAPABILITY = {
   // 模型可见的 `nomi_generation_status` 归 `generation.control`（它能 cancel），`read` 这一支经
   // `operationCapabilityIds` 回到这里；本契约自己只有 dispatcher 方法名（审计 M4 的修法）。
   aliases: { pi: "check_job", method: GENERATION_METHODS.read },
-  inputSchema: input,
-  outputSchema: output,
+  inputSchema: generationStatusInputSchema.options[0],
+  outputSchema: z.unknown(), // read 返回 GenerationOperation（含封存契约/授权），productionRunTypes 不是该投影的运行时 schema；待 operation owner 提供。
   effect: "read",
   effectClass: "reversible_local",
   execution: { port: "production-run", availability: "main_only" },
@@ -163,8 +161,8 @@ export const GENERATION_CONTROL_CAPABILITY = {
   version: 1,
   aliases: { method: GENERATION_METHODS.status },
   additionalAliases: { method: Object.freeze([GENERATION_METHODS.cancel, GENERATION_METHODS.reconcile]) },
-  inputSchema: input,
-  outputSchema: output,
+  inputSchema: generationStatusInputSchema,
+  outputSchema: z.unknown(), // cancel 返回 operation，reconcile 可由宿主注入；待两支声明运行时结果 schema，不能复用导出 job 回执。
   effect: "reversible_write",
   effectClass: "reversible_local",
   execution: { port: "production-run", availability: "main_only" },

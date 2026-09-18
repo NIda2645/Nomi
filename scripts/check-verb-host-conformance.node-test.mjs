@@ -69,8 +69,8 @@ const MUTATIONS = [
       '    "shots.references": ["from-read:look_at_canvas.contentHash"],'],
   ]],
   ['来源 · 指向一个返回形状根本没声明的动词，且没具名登记', [
-    ['electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts',
-      '  list_models: "generation.context.read 的 outputSchema 是 z.unknown()；真形状在 availableModelsSchema.agentModelEntrySchema，但契约上没声明，所以核不动",\n',
+    ['electron/shared/agentCapabilities/verbs/readVerbs.ts',
+      '    outputSchema: z.object({ models: z.array(agentModelEntrySchema) }).strict(),\n',
       ''],
   ]],
   // 投影新长出来的那条闸——宿主自补的字段被藏起来却没人补它 / 补错了值——是 **tsc** 红，不是门岗红。
@@ -113,4 +113,24 @@ for (const [name, edits] of MUTATIONS) {
 
 test('变异全部撤掉之后门岗回绿（证明上面的红来自变异，不是仪器坏了）', () => {
   assert.equal(runGate().red, false)
+})
+
+test('来源棘轮 · 真实新增一条登记必须红，撤掉回绿', () => {
+  const outcome = withMutation([
+    ['electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts',
+      'export const PROVENANCE_UNVERIFIABLE: Readonly<Record<string, string>> = Object.freeze({',
+      'export const PROVENANCE_UNVERIFIABLE: Readonly<Record<string, string>> = Object.freeze({\n  list_models: "mutation: retired exception",'],
+  ], runGate)
+  assert.equal(outcome.red, true)
+  assert.match(outcome.output, /棘轮禁止新增身份：list_models/)
+  assert.equal(runGate().red, false)
+})
+
+test('来源棘轮 · 总数不变也不能偷换身份', () => {
+  const outcome = withMutation([
+    ['scripts/provenance-unverifiable-baseline.json', '"generate"', '"list_models"'],
+  ], runGate)
+  assert.equal(outcome.red, true)
+  assert.match(outcome.output, /棘轮禁止新增身份：generate/)
+  assert.match(outcome.output, /基线有陈旧身份：list_models/)
 })

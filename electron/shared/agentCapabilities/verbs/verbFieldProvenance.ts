@@ -95,16 +95,13 @@ const RAW: Readonly<Record<string, Readonly<Record<string, readonly VerbFieldPro
 });
 
 /**
- * 返回形状**没有声明**的动词（`outputSchema` 是 `z.unknown()`）。指向它们的来源声明今天核不动——
- * 这不是豁免，是一份下一轮要查的清单：把这些契约的 `outputSchema` 收成真形状，这里就能删掉一条，
+ * 动词与能力都**没有声明**真实返回形状的清单。指向它们的来源声明今天核不动——
+ * 把动词的 `outputSchema` 从真实宿主 schema 复用过来，这里就能删掉一条，
  * 核对随之生效。**不许**往这份清单里加「字段不在返回里」的那种情况——那一种没有出口，只能改设计。
  */
 export const PROVENANCE_UNVERIFIABLE: Readonly<Record<string, string>> = Object.freeze({
-  list_models: "generation.context.read 的 outputSchema 是 z.unknown()；真形状在 availableModelsSchema.agentModelEntrySchema，但契约上没声明，所以核不动",
-  draft_shots: "generation.plan 的 outputSchema 是 z.unknown()；草稿 id（operation.operationId）与每镜的 shotId（operation.shots[].shotId）确实都在它的返回里，契约没声明",
-  generate: "同上，同一个 generation.plan 契约",
-  edit_timeline: "timeline.write 的返回形状没声明到字段级",
-  export_video: "export.write 的返回形状没声明到字段级",
+  draft_shots: "mcpGenerationTools.ts 的 create/patch 返回 operation 与可选 changeset；GenerationOperation 及嵌套 ExecutionContractV1/授权仅有 TS 类型，无运行时结果 schema；等 owner 提供后复用，不能把 generationCandidateSchema 入参冒充结果",
+  generate: "mcpGenerationTools.ts 的 present 返回 operation/shots/nextAction；同样缺 GenerationOperation 的运行时 schema，不能借 draft_shots 或 preview 的另一种返回；等结果 owner 提供后复用",
 });
 
 /**
@@ -138,7 +135,7 @@ function outputFieldNames(verb: string, declarations: readonly VerbDeclaration[]
       if (bucket && typeof bucket === "object") for (const child of Object.values(bucket as Record<string, unknown>)) walk(child);
     }
   };
-  try { walk(toPublishedJsonSchema(contract.outputSchema)); } catch { return undefined; }
+  try { walk(toPublishedJsonSchema(declaration.outputSchema ?? contract.outputSchema)); } catch { return undefined; }
   // 没有任何属性 = 这个动词的**返回形状根本没声明**（`z.unknown()`）。那不是「字段不在里面」，
   // 是「这里没有可核对的东西」——两种红要分开说，否则人会以为改个字段名就能糊弄过去。
   return names.size > 0 ? names : undefined;
@@ -185,7 +182,7 @@ export function assertVerbFieldProvenance(declarations: readonly VerbDeclaration
         if (names === undefined) {
           if (PROVENANCE_UNVERIFIABLE[verb!]) continue;
           throw new Error(`verbFieldProvenance: ${name}.${field} 说它来自 ${verb} 的返回，但 ${verb} 的返回形状没有声明，核不动。`
-            + "要么把那个能力的 outputSchema 收成真形状，要么在 PROVENANCE_UNVERIFIABLE 里具名登记并写清为什么。");
+            + "请在动词上复用真实 outputSchema；PROVENANCE_UNVERIFIABLE 的身份基线只许减少，不许加条掩盖缺口。");
         }
         if (!names.has(output!)) {
           throw new Error(`verbFieldProvenance: ${name}.${field} 说它来自 ${verb} 的返回里的 "${output}"，但 ${verb} **不返回**这个字段。`
