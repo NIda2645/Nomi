@@ -174,7 +174,7 @@ try {
   editCall.release({
     type: 'tool', id: EDIT_ID, name: 'edit_timeline',
     args: {
-      revision: revisionFromToolResult(editWire.body, READ_ID),
+      baseRevision: revisionFromToolResult(editWire.body, READ_ID),
       summary: '把长镜头从中间劈成两半',
       operations: [{ kind: 'split', clipId: SPLIT_CLIP, atFrame: 120 }],
     },
