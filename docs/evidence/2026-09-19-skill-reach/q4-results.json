@@ -1,0 +1,82 @@
+{
+  "sampling": "从66条无测试名提及的集合有目的抽取5 skill + 5 effect；不估计其余56条分布。",
+  "counts": {
+    "sample": 10,
+    "alive": 8,
+    "unreachable": 0,
+    "badObservedRun": 2
+  },
+  "definition": "活=实际入口和内容可达；坏=这次真实调用未交付正确产出，不等同文件损坏或永久不可用。",
+  "rows": [
+    {
+      "name": "director-action",
+      "kind": "skill",
+      "classification": "坏的",
+      "reason": "S08成功读技能后 shots 传成字符串，重复校验错误并超时；契约 electron/shared/agentCapabilities/verbs/writeVerbs.ts:156 要数组。之后还报模型不可用，未诊断其根因。",
+      "shot": "shots/q4-director-action.png"
+    },
+    {
+      "name": "director-guzhuang",
+      "kind": "skill",
+      "classification": "坏的",
+      "reason": "S04明朝题输出唐宋官服色和晚清座钟；正文 skills/director-guzhuang/SKILL.md:77、:129 明示适用年代，但模型未按目标时代筛选。",
+      "shot": "shots/q4-director-guzhuang.png"
+    },
+    {
+      "name": "director-transitions",
+      "kind": "skill",
+      "classification": "活的",
+      "reason": "S06成功读取并输出三种首尾衔接方案。",
+      "shot": "shots/q4-director-transitions.png"
+    },
+    {
+      "name": "director-performance",
+      "kind": "skill",
+      "classification": "活的",
+      "reason": "真实composer搜索命中，真实索引含名；S05未自选，不据此断言技能失效；本条正文执行效果未单独测。",
+      "shot": "shots/q4-director-performance.png"
+    },
+    {
+      "name": "director-sound",
+      "kind": "skill",
+      "classification": "活的",
+      "reason": "S11成功读取并给出声音/沉默设计。",
+      "shot": "shots/q4-director-sound.png"
+    },
+    {
+      "name": "effect-camera-01",
+      "kind": "effect",
+      "classification": "活的",
+      "reason": "真实效果库详情→用到节点；编辑器正文哈希与运行时投影一致。未生成媒体。",
+      "shot": "shots/q4-effect-camera-01-applied.png"
+    },
+    {
+      "name": "effect-camera-13",
+      "kind": "effect",
+      "classification": "活的",
+      "reason": "真实效果库详情→用到节点；编辑器正文哈希与运行时投影一致。未生成媒体。",
+      "shot": "shots/q4-effect-camera-13-applied.png"
+    },
+    {
+      "name": "effect-camera-27",
+      "kind": "effect",
+      "classification": "活的",
+      "reason": "真实效果库详情→用到节点；编辑器正文哈希与运行时投影一致。未生成媒体。",
+      "shot": "shots/q4-effect-camera-27-applied.png"
+    },
+    {
+      "name": "effect-expression-grid",
+      "kind": "effect",
+      "classification": "活的",
+      "reason": "真实效果库详情→用到节点；编辑器正文哈希与运行时投影一致。未生成媒体。",
+      "shot": "shots/q4-effect-expression-grid-applied.png"
+    },
+    {
+      "name": "effect-fill-outpaint",
+      "kind": "effect",
+      "classification": "活的",
+      "reason": "真实效果库详情→用到节点；编辑器正文哈希与运行时投影一致。未生成媒体。",
+      "shot": "shots/q4-effect-fill-outpaint-applied.png"
+    }
+  ]
+}

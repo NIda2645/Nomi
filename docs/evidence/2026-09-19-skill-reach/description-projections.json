@@ -1,0 +1,368 @@
+{
+  "note": "文字不等于语义错误；用于识别两份手写用途说明，需人工审其含义。",
+  "total": 88,
+  "same": 28,
+  "different": 60,
+  "rows": [
+    {
+      "name": "creation-edit",
+      "description": "Direct creation-area document editing: read current content, append or replace text, and maintain the shot-list format.",
+      "summaryZh": "读取当前文稿，追加或改写内容，并保留分镜列表格式。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-candle-mood",
+      "description": "用点火、暖光与烟雾营造安静氛围。 用户要求烛光氛围短片时使用。",
+      "summaryZh": "用点火、暖光与烟雾营造安静氛围。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-coffee-pour",
+      "description": "把注入、油脂和蒸汽拆成清楚的镜头节拍。 用户要求咖啡倾注特写时使用。",
+      "summaryZh": "把注入、油脂和蒸汽拆成清楚的镜头节拍。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-cross-view",
+      "description": "把参考画面转成另一机位，核对空间关系。 用户要求跨视角构图时使用。",
+      "summaryZh": "把参考画面转成另一机位，核对空间关系。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-expression-reference",
+      "description": "参考第二张图的表情，保留第一张图的人物。 用户要求参考表情迁移时使用。",
+      "summaryZh": "参考第二张图的表情，保留第一张图的人物。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-expression-sheet",
+      "description": "按姿势参考生成同一角色的多种表情。 用户要求表情设定表时使用。",
+      "summaryZh": "按姿势参考生成同一角色的多种表情。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-eyewear-light",
+      "description": "用移动光线表现镜片与镜架材质。 用户要求眼镜光轨广告时使用。",
+      "summaryZh": "用移动光线表现镜片与镜架材质。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-film-storyboard",
+      "description": "把用户提供的剧本文字整理成宽屏分镜。 用户要求电影分镜时使用。",
+      "summaryZh": "把用户提供的剧本文字整理成宽屏分镜。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-multi-view",
+      "description": "把同一主体整理成一致的多面设定。 用户要求多视图设定时使用。",
+      "summaryZh": "把同一主体整理成一致的多面设定。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-outpaint",
+      "description": "补齐边缘空白，核对纹理与透视衔接。 用户要求自然扩图时使用。",
+      "summaryZh": "补齐边缘空白，核对纹理与透视衔接。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-product-before-after",
+      "description": "通过擦镜转场展示同一产品的清洁变化。 用户要求清洁前后对比时使用。",
+      "summaryZh": "通过擦镜转场展示同一产品的清洁变化。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-product-condensation",
+      "description": "用微距、水滴和环绕镜头展示产品质感。 用户要求凝露产品广告时使用。",
+      "summaryZh": "用微距、水滴和环绕镜头展示产品质感。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-product-exploded-view",
+      "description": "让部件分离展示后归位，保持产品结构。 用户要求产品爆炸视图时使用。",
+      "summaryZh": "让部件分离展示后归位，保持产品结构。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-product-turntable",
+      "description": "保持鞋型和细节，完成转台环绕展示。 用户要求转台产品广告时使用。",
+      "summaryZh": "保持鞋型和细节，完成转台环绕展示。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-product-unboxing",
+      "description": "按揭盖、取出和定格组织一次开箱。 用户要求产品开箱时使用。",
+      "summaryZh": "按揭盖、取出和定格组织一次开箱。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "curated-restore-image",
+      "description": "重新诠释旧图细节；结果可能改变原纹理。 用户要求旧图重新绘制时使用。",
+      "summaryZh": "重新诠释旧图细节；结果可能改变原纹理。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-01",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求空镜转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-02",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求过肩对话时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-03",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求特写情绪时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-04",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求推轨跟拍时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-05",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求仰拍起势时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-06",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求俯拍众生时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-07",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求摇镜扫景时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-08",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求移轴虚化时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-09",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求逆光剪影时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-10",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求手持跟拍时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-11",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求慢动作升格时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-12",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求快动作降格时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-13",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求焦点转换时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-14",
+      "description": "用明确的画面结构组织视觉重点。 用户要求画框构图时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-15",
+      "description": "用明确的画面结构组织视觉重点。 用户要求对角线构图时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-16",
+      "description": "用明确的画面结构组织视觉重点。 用户要求绝对对称时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-17",
+      "description": "用明确的画面结构组织视觉重点。 用户要求三分法构图时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-18",
+      "description": "用明确的画面结构组织视觉重点。 用户要求前景遮挡时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-19",
+      "description": "用明确的画面结构组织视觉重点。 用户要求后景虚化时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-20",
+      "description": "用明确的画面结构组织视觉重点。 用户要求前景虚化时使用。",
+      "summaryZh": "用明确的画面结构组织视觉重点。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-21",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求长镜头一镜到底时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-22",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求蒙太奇剪辑时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-23",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求叠化转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-24",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求闪白转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-25",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求黑场转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-26",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求匹配转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-27",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求声音转场时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-28",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求主观视角时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-29",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求客观视角时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-camera-30",
+      "description": "用具体的机位与运动描述控制镜头节奏。 用户要求上帝视角时使用。",
+      "summaryZh": "用具体的机位与运动描述控制镜头节奏。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-character-three-view",
+      "description": "人物三视图：使用连接的参考，保留主体一致性。 用户要求人物三视图时使用。",
+      "summaryZh": "人物三视图：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-expression-grid",
+      "description": "表情九宫格：使用连接的参考，保留主体一致性。 用户要求表情九宫格时使用。",
+      "summaryZh": "表情九宫格：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-fill-outpaint",
+      "description": "自然扩图：使用连接的参考，保留主体一致性。 用户要求自然扩图时使用。",
+      "summaryZh": "自然扩图：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-natural-texture",
+      "description": "去 AI 感：使用连接的参考，保留主体一致性。 用户要求去 AI 感时使用。",
+      "summaryZh": "去 AI 感：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-object-six-view",
+      "description": "物件六视图：使用连接的参考，保留主体一致性。 用户要求物件六视图时使用。",
+      "summaryZh": "物件六视图：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-overhead-view",
+      "description": "俯视构图：使用连接的参考，保留主体一致性。 用户要求俯视构图时使用。",
+      "summaryZh": "俯视构图：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-restore-drawing",
+      "description": "旧图重绘：使用连接的参考，保留主体一致性。 用户要求旧图重绘时使用。",
+      "summaryZh": "旧图重绘：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-scene-three-view",
+      "description": "场景三视图：使用连接的参考，保留主体一致性。 用户要求场景三视图时使用。",
+      "summaryZh": "场景三视图：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-storyboard-panels",
+      "description": "宽屏分镜：使用连接的参考，保留主体一致性。 用户要求宽屏分镜时使用。",
+      "summaryZh": "宽屏分镜：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "effect-transfer-expression",
+      "description": "参考表情：使用连接的参考，保留主体一致性。 用户要求参考表情时使用。",
+      "summaryZh": "参考表情：使用连接的参考，保留主体一致性。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "model-integration",
+      "description": "Connect HTTP models or a native ComfyUI workflow through Nomi's verified certification path.",
+      "summaryZh": "按已验证的接入流程连接 HTTP 模型或 ComfyUI 工作流。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "workbench-creation",
+      "description": "Creation-area AI assistant for writing, rewriting, screenwriting, prompt generation, and shot-list drafting. Returns documentAction proposals for user confirmation before any write.",
+      "summaryZh": "协助写作、改写和编剧，生成提示词及分镜草稿，修改前交由用户确认。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "workbench-generation",
+      "description": "Generation-area AI assistant. Plans image/video canvas nodes with prompts; never auto-executes generation.",
+      "summaryZh": "规划图片和视频节点及其提示词，由用户决定何时开始生成。",
+      "equalIgnoringWhitespace": false
+    },
+    {
+      "name": "workbench-storyboard-planner",
+      "description": "将故事规划成有序分镜方案落在画布上供用户审阅，保持角色、场景、风格和用户约束一致；只出草稿，不出报价卡、不花额度。",
+      "summaryZh": "把短故事拆成有序镜头，整理为可审阅的分镜方案。",
+      "equalIgnoringWhitespace": false
+    }
+  ]
+}

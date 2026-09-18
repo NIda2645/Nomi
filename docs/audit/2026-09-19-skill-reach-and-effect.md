@@ -1,6 +1,6 @@
 # 技能送达与生效实测 · 2026-09-19
 
-> 测量进行中；产品代码零改动。基线 `8d95b910305f724213c69224fa07b51fcc663cd1`，macOS arm64，本分支本地 build，1280×933。真 Electron、隔离空项目/设置/Chromium；凭据仅从本机 catalog 复制到隔离区，不进入证据。
+> 测量完成；产品代码零改动。基线 `8d95b910305f724213c69224fa07b51fcc663cd1`，macOS arm64，本分支本地 build，1280×933。真 Electron、隔离空项目/设置/Chromium；凭据仅从本机 catalog 复制到隔离区，不进入证据。
 
 ## Q1 · 导入入口
 
@@ -41,15 +41,37 @@
 
 ## Q4 · 未测技能抽样
 
-待测。
+**抽 10 条：活 8、够不到 0、本次跑坏 2。** 复现文本提及计数 **22/88，未提及 66**；这不是测试执行覆盖率。以下十条均在 66 内；“活”仅表示已由真实 UI/索引送达，“坏”是本次回合失败，不能归因为技能文件永久损坏。
+
+| 样本 | 类别 | 分类 / 可复核原因 |
+|---|---|---|
+| director-action | skill | 坏：S08 真读后工具反复传错数组、180s 超时；`writeVerbs.ts:156` 是数组契约 |
+| director-guzhuang | skill | 坏：S04 明朝题混入唐宋/晚清；正文 `skills/director-guzhuang/SKILL.md:77,129` 有年代限定，模型未筛选 |
+| director-transitions | skill | 活：菜单可见，S06 真读并产出三方案 |
+| director-performance | skill | 活：菜单及真实索引可见；正文执行效果未单独测，S05 没选它 |
+| director-sound | skill | 活：菜单可见，S11 真读并产出声音设计 |
+| effect-camera-01 | effect | 活：空镜转场实际写入视频节点 |
+| effect-camera-13 | effect | 活：焦点转换实际写入视频节点 |
+| effect-camera-27 | effect | 活：声音转场实际写入视频节点 |
+| effect-expression-grid | effect | 活：表情九宫格实际写入图片节点 |
+| effect-fill-outpaint | effect | 活：自然扩图实际写入图片节点 |
+
+[逐条证据及完整路径](../evidence/2026-09-19-skill-reach/q4-results.json)、[5/5 节点正文哈希一致](../evidence/2026-09-19-skill-reach/q4-ui-effects.json)、[原始提及普查](../evidence/2026-09-19-skill-reach/q4-mention-census.json)。effects 不在模型索引是既定分工，不算“够不到”；未把点击应用算媒体生成成功。
 
 ## 结构性发现
 
-待逐层对账。
+六层均已核对，[详细 owner 与 file:line](../evidence/2026-09-19-skill-reach/structure.md)：
+
+- 导入四组规则在 renderer/main 各写一份（`parseSkillImport.ts:39` / `skillPackage.ts:39`）；本轮未注入漂移，不把风险当已复现回归。
+- 模型 description 与画廊 summary 两份人工文案 **60/88 不同**，不是 60 个错误；分改可能造成用户与模型理解分叉。
+- 手选正文去 frontmatter，`read_skill` 返回完整原文；effect 运行时正文 **40/40** 与唯一源相等，没发现额外手写正文。
+- 实读 **40 条 disableModelInvocation=true**，任务书“0条”已过时；`skillRead.ts:44` 的“无模型可见 read_skill”注释也被真实调用反证。
 
 ## 待拍板
 
-等待测量结束汇总；本轮不修产品。
+1. **下一轮优先补“读了但没做对”还是提高命中率？** 建议先处理工具契约错误、编造完成和跨朝代误用；它们直接使任务失效。命中 7/12 不能单独作为产品质量目标。
+2. **外部工具型技能承诺到哪一步？** 导入 5/5 不代表依赖可用：PDF 绕路才成功、Semgrep 没跑真测试。需裁决运行依赖的产品边界；本轮没有替产品选自动安装方案。
+3. **导入发现与 effect 填槽如何呈现？** 两条点击路可达，原生拖入尚无证据；实际应用仍留下 `{场景}` / `{object}` / `{角色名}`。是否引导填槽、承诺窗口拖入，留下一轮决策。
 
 ## 额度与验证
 
