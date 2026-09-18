@@ -8,7 +8,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { DOOR_MAP_THRESHOLD_DATE, contractDate, evaluatePullRequest, governedContracts, referencedContracts } from './door-map-lib.mjs'
-import { mapDoors } from './door-map.mjs'
+import { mapDoors, mapDoorOccurrences } from './door-map.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FILE = 'docs/fixes/2026-09-11-fixture.root-cause.json'
@@ -112,20 +112,35 @@ test('案例三（技能事实）：SkillRecord 的消费者 ≥7 个模块（do
   ]) assert.ok(consumers.has(expected), `漏数了消费者：${expected}`)
 })
 
+const fixtureScan = {
+  files: ['fixture.ts'],
+  readFile: () => [
+    "import { applyThing } from './other'",
+    'export function applyThing() {}',
+    'const map = { applyThing: 1 }',
+    'applyThing()',
+    'const alias = applyThing',
+    'applyThing()',
+  ].join('\n'),
+  targetSymbols: ['applyThing'],
+}
+
 test('数门不把声明、import 绑定和对象键当成门', () => {
-  const doors = mapDoors({
-    files: ['fixture.ts'],
-    readFile: () => [
-      "import { applyThing } from './other'",
-      'export function applyThing() {}',
-      'const map = { applyThing: 1 }',
-      'applyThing()',
-      'const alias = applyThing',
-    ].join('\n'),
-    targetSymbols: ['applyThing'],
-  })
-  assert.deepEqual(doors, [
+  assert.deepEqual(mapDoorOccurrences(fixtureScan), [
     { kind: 'read', path: 'fixture.ts', line: 5, symbol: 'applyThing' },
     { kind: 'write', path: 'fixture.ts', line: 4, symbol: 'applyThing' },
+    { kind: 'write', path: 'fixture.ts', line: 6, symbol: 'applyThing' },
   ])
+})
+
+// 2026-09-18：进合同的那份门表**不带行号**，同一个文件里调两次仍是一扇门。
+// 行号只是某一刻的排版：钉着它的那半年长出一族「门表的行号跟上 xxx」提交，
+// 一次都没发现过真的门增删（批次 3 一次集成修了 16 处漂移）。
+test('门表本体按 {kind, path, symbol} 去重，且不含行号', () => {
+  const doors = mapDoors(fixtureScan)
+  assert.deepEqual(doors, [
+    { kind: 'read', path: 'fixture.ts', symbol: 'applyThing' },
+    { kind: 'write', path: 'fixture.ts', symbol: 'applyThing' },
+  ])
+  assert.ok(doors.every((door) => !('line' in door)), '门表里不许再出现行号')
 })

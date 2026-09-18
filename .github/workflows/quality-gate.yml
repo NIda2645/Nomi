@@ -42,6 +42,8 @@ permissions:
   actions: read
   checks: read
   contents: read
+  # 正文侧门岗现取 PR 正文（见 contracts job 的 env 注释）。只读，够用。
+  pull-requests: read
 
 jobs:
   scope:
@@ -77,15 +79,17 @@ jobs:
     env:
       VOCAB_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
       ROOT_CAUSE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
-      # check:prior-art 的 PR 侧判据（R27，2026-09-07）：改 src/ 或 electron/ 超过 300 行的 PR，
-      # 正文必须引用一份带「## 先查别人」节的方案。正文只能从事件里拿——脚本自己去 gh 拿会
-      # 在 CI 里撞 token 权限，而拿不到就跳过等于「大改一律放行」。走 env 而不是拼进命令行：
-      # PR 正文是外人可写的文本，进命令行就是一条注入通道。
-      PRIOR_ART_PR_BODY: ${{ github.event.pull_request.body }}
+      # 正文侧判据（check:prior-art R27 / check:door-map R21）不再读 `github.event.pull_request.body`。
+      # 那是 **push 那一刻**的正文快照：推完再把方案链接补进正文，正在跑的这轮仍判「没引用」，
+      # 只能空提交重推换一轮 40 分钟（2026-09-17 PR #804 就栽在正文比 push 晚 19 秒）。
+      # 现在正文由 scripts/lib/prBody.mjs 用 gh **现取**，所以改完正文重跑这个 job 就能变绿。
+      # 取不到正文 = 红（不是跳过）：一个拿不到证据的门岗只能报它真拿到的那个结论。
+      # 正文不进命令行（外人可写的文本，进命令行就是注入通道）——脚本用 execFile 直连 gh。
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NOMI_PR_NUMBER: ${{ github.event.pull_request.number }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
       PRIOR_ART_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
-      # check:door-map 的 PR 侧判据（R21，2026-09-11）：判为 recurring 的修复，正文必须引用那份
-      # 带门表（doors）的根因合同。理由同上——门表写完就沉进 docs/fixes 的话，派工链上的人看不见它。
-      DOOR_MAP_PR_BODY: ${{ github.event.pull_request.body }}
       DOOR_MAP_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
     steps:
       - uses: actions/checkout@v7
@@ -161,26 +165,62 @@ jobs:
         run: pnpm run build
       - name: Install Chromium for browser mechanism tests
         run: pnpm exec playwright install --with-deps chromium
+      # 七步一律 continue-on-error + 末尾汇总（2026-09-18）。此前它们是串行 fail-fast：
+      # 第一条走查红了，后面六条根本不跑，于是**每轮 CI 只能学到一件事**——
+      # PR #804 连着三轮，每轮红的都是另一条不同的走查，三轮 ≈ 两小时只为收集三条信息。
+      # 判据不变（任一条红 = job 红，由末尾那步执行），变的只是「一次收齐几条」。
+      # 时长不涨：步数、并行度、跑的命令一个没动；红的时候反而是一轮拿到全部发现。
+      # 单步的 `if:` 保留——没选中的面照常 skipped，汇总把 skipped 与 failure 分开报。
       - name: Browser feel mechanism
+        id: feel
+        continue-on-error: true
         run: pnpm run test:feel:browser
       - name: Electron smoke
+        id: smoke
+        continue-on-error: true
         if: needs.scope.outputs.desktop == 'true'
         run: xvfb-run -a pnpm run test:e2e
       - name: CI-safe user journeys
+        id: journeys
+        continue-on-error: true
         if: needs.scope.outputs.journeys == 'true'
         run: xvfb-run -a pnpm run test:journeys
       - name: MCP L1 handshake journey
+        id: mcp-journey
+        continue-on-error: true
         if: needs.scope.outputs.journeys == 'true'
         run: xvfb-run -a pnpm run test:mcp-journey
       - name: MCP elicitation-first journey
+        id: mcp-elicitation
+        continue-on-error: true
         if: needs.scope.outputs.journeys == 'true'
         run: xvfb-run -a pnpm run test:mcp-elicitation
       - name: Real user loopback journey gate
+        id: real-user-journeys
+        continue-on-error: true
         if: needs.scope.outputs.journeys == 'true'
         run: xvfb-run -a pnpm run test:real-user-journeys:ci
       - name: Critical canvas acceptance
+        id: canvas-critical
+        continue-on-error: true
         if: needs.scope.outputs.canvas == 'critical'
         run: xvfb-run -a pnpm run test:canvas:critical
+
+      # 这一步才是 job 的结论。`continue-on-error` 只改 conclusion，不改 outcome——
+      # 所以判据读 outcome，而且必须 fail-closed：认识的三种是 success/skipped/failure，
+      # 出现第四种（cancelled 之类）一律当红，别让一个没见过的字符串变成静默放行。
+      - name: E2E chain summary
+        if: always()
+        env:
+          CHAIN: >-
+            feel:${{ steps.feel.outcome }}
+            smoke:${{ steps.smoke.outcome }}
+            journeys:${{ steps.journeys.outcome }}
+            mcp-journey:${{ steps.mcp-journey.outcome }}
+            mcp-elicitation:${{ steps.mcp-elicitation.outcome }}
+            real-user-journeys:${{ steps.real-user-journeys.outcome }}
+            canvas-critical:${{ steps.canvas-critical.outcome }}
+        run: node scripts/summarize-e2e-chain.mjs
 
       # 走查证据（截图 + output.jsonl）。win-gate.yml 一直有这步，本 job 却没有——
       # 结果是 ubuntu 这边走查一红就只剩一行「✗ 某某检查」，几何类失败隔着 CI 根本判不了因

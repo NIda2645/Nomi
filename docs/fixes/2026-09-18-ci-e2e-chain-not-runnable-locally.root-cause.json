@@ -1,0 +1,120 @@
+{
+  "schema_version": 3,
+  "external_sources": [],
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "本批改的是本仓自己的交付流水线（本地脚本 + GitHub Actions 的内置语义），没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "id": "2026-09-18-ci-e2e-chain-not-runnable-locally",
+  "problem_type": "CI 独有的验证面在本地没有入口，于是只能靠一轮轮 CI 去逐条发现",
+  "symptom": "PR #804 本地 `pnpm run gates` 连过五轮全绿，CI 的 desktop-linux job 仍连红三轮，每轮红的是另一条不同的走查——总计约两小时墙钟只换来三条信息。",
+  "direct_cause": "desktop-linux job 跑的七条走查（feel:browser / e2e / journeys / mcp-journey / mcp-elicitation / real-user-journeys:ci / canvas:critical）在 package.json 里各有入口，但**没有任何一条本地命令按同序把它们跑完**；`gates` 一条都不含。",
+  "class_root": "某个验证面只有远端入口而没有本地入口时，「本地全绿」这句话的含义会悄悄缩水成「本地那部分全绿」，而没人会注意到缩水了多少——防线建在了能拦住它的那层之后（R17）。",
+  "affected_population": [
+    "任何要推集成分支/碰面分支的人：走查红的条数 × 一轮 CI 的墙钟",
+    "2026-09-17 PR #804（三轮）、批次 3 集成分支"
+  ],
+  "scope_paths": [
+    "scripts/run-ci-e2e-chain.mjs",
+    "scripts/lib/chainSummary.mjs",
+    "package.json"
+  ],
+  "entry_points": [
+    "pnpm run test:e2e:ci-chain（本地）",
+    ".github/workflows/quality-gate.yml 的 desktop-linux job（CI）"
+  ],
+  "internal_only_reason": "「本地要不要有一条和 CI 同序的命令」是本仓自己的交付流水线形状，没有外部规范可依；GitHub Actions 侧的语义（step outcome / continue-on-error）已在 B 件合同里按官方文档核过。",
+  "invariants": [
+    "CI_E2E_CHAIN 的步骤顺序与命令，逐项等于 quality-gate.yml 的 desktop-linux job（由 check:quality-gate-workflow 的回归测试钉死）",
+    "本地链只持一次 gates 锁：最外层套 with-gates-lock.py，子命令靠 NOMI_GATES_LOCK_TOKEN 继承",
+    "链内任一步红了继续跑完，退出码 = 任一红"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/check-quality-gate-workflow.node-test.mjs",
+      "symbol": "CI_E2E_CHAIN"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/run-ci-e2e-chain.mjs",
+      "symbol": "CI_E2E_CHAIN"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "两扇都是**读**：一扇是链本身的执行体，一扇是钉死它与 CI 同序的回归测试。合并它们等于让被测者自己声明自己和 CI 一致——那正是这条不变量要防的东西。"
+  },
+  "generality_proof": "把「CI 跑哪七步、什么顺序」从工作流 YAML 里提成一份被两侧共同引用的清单（CI_E2E_CHAIN），任何一侧改动而另一侧没跟上，回归测试当场红。于是「本地跑的和 CI 跑的不是同一套」不再可能悄悄发生。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/run-ci-e2e-chain.mjs",
+      "symbol": "CI_E2E_CHAIN",
+      "responsibility": "七步走查链的唯一清单：顺序、命令、哪几步需要显示器。"
+    },
+    {
+      "path": "scripts/lib/chainSummary.mjs",
+      "symbol": "renderChainSummary",
+      "responsibility": "汇总表与红绿判据，本地与 CI 共用一份。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/check-quality-gate-workflow.node-test.mjs",
+      "entry_point": "CI_E2E_CHAIN",
+      "disposition": "enforced",
+      "evidence": "回归测试逐项比对 CI_E2E_CHAIN 与 desktop-linux job 的 step id / 命令；实测删掉本地链里的一步即红。"
+    },
+    {
+      "path": "scripts/run-gates-tests.mjs",
+      "entry_point": "TIER_COMMANDS",
+      "disposition": "not-affected",
+      "evidence": "gates 的单测分档本来就有本地入口（gates / gates:full），不属于「只有远端入口」这一类。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "下一次给 CI 加一条走查时，同样会只加在 YAML 里；没有机器判据的话，本地入口再次落后是默认结果而不是意外。",
+    "same_class_scan": [
+      "grep 全部 workflow 的 `pnpm run` 步骤，逐个对照 package.json 是否有本地入口：只有 desktop-linux 这七步没有整链入口（canvas-acceptance / canvas-performance / mac-package 各自都有 test:canvas:acceptance / :performance / dist:mac:dir）。",
+      "node -e 读 quality-gate.yml 的 jobs，核对 canvas-acceptance 与 canvas-performance 已是独立 job，不在本链范围内。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/run-ci-e2e-chain.mjs",
+    "invariant": "CI_E2E_CHAIN 是七步走查链的唯一清单；回归测试逐项比对它与 desktop-linux job 的 step id / pnpm 命令，并核对 test:e2e:ci-chain 套了 with-gates-lock.py。",
+    "failure_mode": "任一侧漂移 → node --test 当场红（已实测：本地链删一步红、脚本去掉锁红）。",
+    "exception_policy": "none",
+    "strategy": "把两边共用的事实提到一处并让测试比对，而不是靠人记得「改了 YAML 也要改脚本」。",
+    "artifacts": [
+      "scripts/run-ci-e2e-chain.mjs",
+      "scripts/lib/chainSummary.mjs",
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "此前根本没有本地整链入口可删；七个 test:* 脚本仍是各自可单跑的入口，本链只是按 CI 同序调用它们，没有第二份实现。"
+  },
+  "migration": "派工模板（docs/engineering/agent-orchestration-playbook.md 收尾段）改成引用 `pnpm run test:e2e:ci-chain`；旧任务书里逐条列七个命令的写法作废。",
+  "residual_risks": [
+    "本机 macOS 与 CI 的 Linux + xvfb 软渲染仍有平台差异：本地链全绿不证明 CI 全绿（几何/帧率类断言尤其），它证明的是「这七条都真的跑过一遍」。",
+    "链内某一步自身的 flake 不会因为本改动减少。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/run-ci-e2e-chain.mjs",
+    "tests": [
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  }
+}
