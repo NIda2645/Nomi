@@ -184,9 +184,7 @@ describe("custom-call custom config secure persistence", () => {
       signingKey,
       region: "cn-beijing",
     });
-    // v13 会给修复前写过的自建连接盖一条「声明可能丢了」的提示（vendorFieldLossRepair.ts）。
-    // 本条断言问的是「旧 customConfig 明文清干净了吗」，所以剥掉那条提示再看。
-    expect(withoutVendorFieldLossNotice(store.listModelCatalogVendors()[0].meta)).toBeUndefined();
+    expect(store.listModelCatalogVendors()[0].meta).toBeUndefined();
     expect(store.listModelCatalogCustomCallConfig("signed-relay")).toEqual([
       { name: "region", hasValue: true },
       { name: "signingKey", hasValue: true },
@@ -356,9 +354,7 @@ describe("custom-call custom config secure persistence", () => {
     // Both credential-bearing configs left the projected DTO and the on-disk vendor row.
     expect(projected.meta).toBeUndefined();
     expect(JSON.parse(disk).vendors[0].meta).toBeUndefined();
-    // v13 会给修复前写过的自建连接盖一条「声明可能丢了」的提示（vendorFieldLossRepair.ts）。
-    // 本条断言问的是「旧 customConfig 明文清干净了吗」，所以剥掉那条提示再看。
-    expect(withoutVendorFieldLossNotice(store.listModelCatalogVendors()[0].meta)).toBeUndefined();
+    expect(store.listModelCatalogVendors()[0].meta).toBeUndefined();
     // readCatalog's INTERNAL vendor carries the decrypted overlay for outbound consumers.
     expect((state.vendors[0].meta as { extraHeaders?: unknown }).extraHeaders).toEqual({ "x-tenant": "tenant-a" });
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({ signingKey });
@@ -500,7 +496,8 @@ describe("custom-call custom config secure persistence", () => {
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
       shared: "encrypted-wins",
     });
-    // 同上：剥掉 v13 的「声明可能丢了」提示后，meta 应当被清空（本条问的是明文有没有清干净）。
+    // 这条路径会跑到 v13 迁移，而它给修复前写过的自建连接盖了一条「声明可能丢了」的提示
+    // （vendorFieldLossRepair.ts）。本条断言问的是「旧 customConfig 明文清干净了吗」，剥掉那条再看。
     expect(withoutVendorFieldLossNotice(state.vendors[0].meta)).toBeUndefined();
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
