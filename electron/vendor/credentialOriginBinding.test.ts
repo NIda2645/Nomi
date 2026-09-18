@@ -46,10 +46,13 @@ function boundVendor(overrides: Record<string, unknown> = {}) {
 }
 
 describe("凭据绑定：key 只去用户确认过的 origin", () => {
-  beforeEach(() => setSubmitOutboundDepsForTests(null));
+  // 每条用例都要钉死网络事实（绝不碰真 DNS，见 seedPublicInternet 的理由），所以钉在这里一次。
+  beforeEach(() => {
+    setSubmitOutboundDepsForTests(null);
+    seedPublicInternet();
+  });
 
   it("① 说明卡里一条绝对 URL 指向别家 → 带 key 的请求被拦，且挂的是凭据绑定那条码", async () => {
-    seedPublicInternet();
     const refusal = await authorizeSubmitDestination({
       vendor: boundVendor(),
       url: "https://collector.attacker.example/v1/images/generations",
@@ -65,7 +68,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("② 上传初始化端点（第二个带 key 的出口）指向别家 → 同样拦下", async () => {
-    seedPublicInternet();
     const refusal = await authorizeSubmitDestination({
       vendor: boundVendor(),
       url: "https://uploads.other.example/v1/uploads",
@@ -76,7 +78,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("③ 旧数据 / 手改 catalog：vendor 行地址被换掉而密钥原样留着 → 拦下（校验器看不见这一类）", async () => {
-    seedPublicInternet();
     // 绑定写的是保存 key 那一刻的 origin；有人事后把 baseUrlHint 改成别家，绑定不会跟着变。
     const tampered = { ...boundVendor(), baseUrlHint: "https://api.elsewhere.example" };
     const refusal = await authorizeSubmitDestination({
@@ -89,7 +90,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("【阳性对照】同一条连接、同一个 origin → 放行（否则这条判据只是「一律拦」）", async () => {
-    seedPublicInternet();
     await expect(authorizeSubmitDestination({
       vendor: boundVendor(),
       url: "https://api.relay.example/v1/images/generations",
@@ -99,7 +99,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("【阳性对照】不带 key 的第二步上传（预签名 URL）不受这条判据管——它是动态目标，本来就不带 key", async () => {
-    seedPublicInternet();
     await expect(authorizeSubmitDestination({
       vendor: boundVendor(),
       url: "https://s3.amazonaws.example/bucket/abc?signature=1",
@@ -109,7 +108,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("【阳性对照】代码里写死的官方备用域放行——自愈梯子不是「有人改了地址」", async () => {
-    seedPublicInternet();
     const apimart = {
       key: "apimart",
       name: "APIMart",
@@ -129,7 +127,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("没有绑定（旧装机 / curated 种子 / ComfyUI）= 这条判据不成立，交回私网策略——不许把「不知道」当「拒绝」", async () => {
-    seedPublicInternet();
     await expect(authorizeSubmitDestination({
       vendor: { key: "legacy", baseUrlHint: "https://api.legacy.example", credentialBinding: undefined },
       url: "https://api.legacy.example/v1/tasks",
@@ -142,7 +139,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   // 而且代理开关是 `connect_provider` **明确允许**的动作——记了不判的字段正是这条不变量要杀的形状。
   // 它已删掉；剩下的四个字段全部真的判。这两条把「记的 == 判的」钉住。
   it("key 的放法变了而 key 没重存 → 同样拦下（同一把钥匙换了一个信封）", async () => {
-    seedPublicInternet();
     const rebranded = { ...boundVendor(), authType: "x-api-key" as const, authHeader: "X-Key" };
     const refusal = await authorizeSubmitDestination({
       vendor: rebranded,
@@ -156,7 +152,6 @@ describe("凭据绑定：key 只去用户确认过的 origin", () => {
   });
 
   it("【阳性对照】开关单供应商代理是合法动作，不算「放法变了」", async () => {
-    seedPublicInternet();
     const proxied = { ...boundVendor(), network: { proxyUrl: "http://127.0.0.1:7890", proxyEnabled: true } };
     await expect(authorizeSubmitDestination({
       vendor: proxied,

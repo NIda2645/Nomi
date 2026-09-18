@@ -467,8 +467,9 @@ function assertCardLevelOperations(draft: ProviderAdapterDraft): void {
   assertSafeResponsePath(selfCheck.successPath, "selfCheck.successPath");
   // 探针不许是生成端点：自检必须免费（09-12 拍板「接模型没有付费验证」）。同一条 path
   // 出现在任何一条 mode 的 create 上，就说明这张卡想拿一次真实生成当自检。
-  const createPaths = new Set(draft.models.flatMap((model) => model.modes.map((mode) => mode.create.path)));
-  if (createPaths.has(selfCheck.request.path)) {
+  const probesGenerationEndpoint = draft.models.some((model) =>
+    model.modes.some((mode) => mode.create.path === selfCheck.request.path));
+  if (probesGenerationEndpoint) {
     throw new Error("selfCheck must not probe a generation endpoint; the self-check is free and never spends the user's credit");
   }
 }
