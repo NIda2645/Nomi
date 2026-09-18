@@ -242,7 +242,7 @@ async function stepSplitIntoThreeShots(win, projectId) {
       type: 'tool', id: PLAN_CALL_ID, name: 'draft_shots',
       args: {
         shots: SHOT_PROMPTS.map((prompt, position) => ({
-          title: SHOT_TITLES[position], taskKind: 'text_to_image', modelKey: FIXTURE_IMAGE_MODEL, modeId: 't2i', parameters: { size: '1024x1024' }, prompt,
+          title: SHOT_TITLES[position], taskKind: 'text_to_image', modelId: FIXTURE_IMAGE_MODEL, modeId: 't2i', parameters: { size: '1024x1024' }, prompt,
         })),
       },
     },
