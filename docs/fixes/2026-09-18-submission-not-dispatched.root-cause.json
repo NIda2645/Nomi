@@ -89,7 +89,7 @@
     {
       "kind": "read",
       "path": "electron/outboundDispatchEvidence.ts",
-      "line": 67,
+      "line": 70,
       "symbol": "outboundRequestWasNeverWritten"
     }
   ],
@@ -104,8 +104,9 @@
     "electron/productionRun/submissionOutbox.test.ts"
   ],
   "residual_risks": [
-    "判据只认 undici 现有的错误形状（syscall=connect / ENOTFOUND / EAI_AGAIN / UND_ERR_CONNECT_TIMEOUT / UND_ERR_SOCKET 且读写字节都是 0）。上游换形状时判据会退化成 unknown——方向是安全的那一边（多一次人工对账，不会多扣一次钱），且 electron/outboundDispatchEvidence.test.ts 用真实形状钉住了这几条。",
-    "「写出去之后才断」仍然只能是 unknown，这一档依旧要人去供应商核对——这是该领域的真实约束，不是可以修掉的东西。"
+    "判据认的是 undici 现有的错误码（syscall=connect / ENOTFOUND / EAI_AGAIN / UND_ERR_CONNECT_TIMEOUT / UND_ERR_SOCKET）。上游换形状时判据会退化成 unknown——方向是安全的那一边（多一次人工对账，不会多扣一次钱），且 electron/outboundDispatchEvidence.test.ts 用真实形状钉住了这几条。",
+    "`UND_ERR_SOCKET`（对面在没给出任何响应字节的情况下关了连接）按 RFC 9112 §9.6 判为「未被处理」。理论上仍存在「服务端收下并开始处理后才关连接、且一个响应字节都没发」的情形；那种情形下重发会到达供应商，但幂等键逐字不变且供应商档案声明 submitIdempotency，会被对面去重。不看 socket 字节计数是因为它们是整条连接累计的——keep-alive 复用时永远不是 0，第一版按它判，PR #810 第一轮 CI 当场证伪。",
+    "「写出去之后才断」（响应头超时、读体中断）仍然只能是 unknown，这一档依旧要人去供应商核对——这是该领域的真实约束，不是可以修掉的东西。"
   ],
   "external_sources": [
     {
@@ -119,6 +120,12 @@
       "url": "https://nodejs.org/api/http.html#serverkeepalivetimeout",
       "checked_at": "2026-09-18",
       "purpose": "确认 Node http.Server 默认 keepAliveTimeout=5000ms —— 现场那段 4~7 秒空窗正好跨过它，这是竞态窗口的来源"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.rfc-editor.org/rfc/rfc9112#section-9.6",
+      "checked_at": "2026-09-18",
+      "purpose": "HTTP/1.1 连接关闭与重试：对端在 keep-alive 边界关闭且未给出响应时，请求未被处理，客户端可在新连接上重试——这是把 UND_ERR_SOCKET 判为「没写出去」的领域依据"
     }
   ],
   "recurrence": {

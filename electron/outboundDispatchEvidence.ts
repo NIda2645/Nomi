@@ -21,7 +21,6 @@ type ErrorLike = {
   cause?: unknown;
   message?: unknown;
   name?: unknown;
-  socket?: { bytesWritten?: unknown; bytesRead?: unknown } | null;
 };
 
 /** DNS 解析失败：连接从未建立，请求不可能写出去。 */
@@ -50,14 +49,18 @@ function provesNotWritten(node: ErrorLike): boolean {
   // 建连阶段失败（`syscall: "connect"` 覆盖 ECONNREFUSED / EHOSTUNREACH / ENETUNREACH / 连接 ETIMEDOUT）。
   if (node.syscall === "connect") return true;
   if (DNS_CODES.has(code) || CONNECT_CODES.has(code)) return true;
-  // undici 的 SocketError 会带上这条 socket 的字节计数。两边都是 0 = 这条连接上
-  // 我们一个字节都没写、也一个字节都没读——典型形态就是从池里取到一条对面已经关掉的
-  // keep-alive 连接（`other side closed`）。计数缺失时**不算证据**（fail-closed）。
-  if (code === "UND_ERR_SOCKET") {
-    const written = node.socket?.bytesWritten;
-    const read = node.socket?.bytesRead;
-    return written === 0 && read === 0;
-  }
+  // undici 的 SocketError：对面在**没有给出任何响应字节**的情况下把连接关了。
+  //
+  // 为什么不看 `socket.bytesWritten/bytesRead`（第一版看了，CI 当场证伪）：那两个计数是
+  // **整条连接累计**的。keep-alive 复用的连接上一次请求早就写过字节，所以复用场景下它们
+  // 永远不是 0，按它判会把真正的「没写出去」判成 unknown——2026-09-18 PR #810 第一轮 CI
+  // 拿到的真实错误就是这样（`SocketError UND_ERR_SOCKET: other side closed`，计数无从归属）。
+  //
+  // 真正的判据是这条路本身：本函数只用在 `fetch()` **自己抛出**的那一刻，此时连 Response
+  // 都没有，也就不可能收到过任何响应头；而对面是在 keep-alive 边界上主动关的连接。
+  // HTTP/1.1 对这一幕有明确规定（RFC 9112 §9.6 连接关闭与重试）：这样关掉的连接上，
+  // 请求没有被处理，客户端可以在新连接上重试。
+  if (code === "UND_ERR_SOCKET") return true;
   return false;
 }
 

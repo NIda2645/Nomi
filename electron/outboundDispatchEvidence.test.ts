@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { describeOutboundFailure, outboundRequestWasNeverWritten } from "./outboundDispatchEvidence";
 
-/** undici 的 SocketError 形状：带 code 与这条连接的字节计数。 */
-function socketError(message: string, bytesWritten: number | undefined, bytesRead: number | undefined) {
+/**
+ * undici 的 SocketError 形状。字节计数**刻意带上**：它们是整条连接累计的，
+ * keep-alive 复用时永远不是 0——判据不许再去看它们（第一版看了，CI 当场证伪）。
+ */
+function socketError(message: string, bytesWritten = 4096, bytesRead = 2048) {
   return Object.assign(new Error(message), {
     name: "SocketError",
     code: "UND_ERR_SOCKET",
@@ -17,20 +20,16 @@ function fetchFailed(cause: unknown) {
 }
 
 describe("outboundRequestWasNeverWritten", () => {
-  it("从连接池取到一条对面已关的 keep-alive 连接 = 可证明没写出去", () => {
-    // 这正是 2026-09-18 C9 那条红的现场：服务端按 5s keep-alive 干净关掉空闲连接，
-    // 客户端下一次请求写在这条连接上，两边字节计数都是 0。
+  it("从连接池取到一条对面已关的 keep-alive 连接 = 没写出去（2026-09-18 CI 上的真实错误）", () => {
+    // 现场：服务端按 5s keep-alive 干净关掉空闲连接，客户端下一次请求写在这条连接上，
+    // `fetch()` 抛 TypeError: fetch failed ← SocketError UND_ERR_SOCKET: other side closed。
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed")))).toBe(true);
+  });
+
+  it("判据不看字节计数：那是整条连接累计的，复用时永远不是 0（第一版看了，被 CI 证伪）", () => {
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 4096, 2048)))).toBe(true);
     expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 0, 0)))).toBe(true);
-  });
-
-  it("写出去之后才断 = 结果未知，绝不算没写出去", () => {
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 512, 0)))).toBe(false);
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 512, 128)))).toBe(false);
-  });
-
-  it("字节计数缺失时 fail-closed：拿不出证据就是 unknown", () => {
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", undefined, undefined)))).toBe(false);
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 0, undefined)))).toBe(false);
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", undefined, undefined)))).toBe(true);
   });
 
   it("建连阶段失败（connect / DNS / 建连超时）= 可证明没写出去", () => {
