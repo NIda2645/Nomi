@@ -30,6 +30,11 @@
 3. 修复的阳性对照：造一条 `authScheme` 被抹掉的内置家，走生产那支请求装配看真实出站头，
    修前 `Bearer`、修后 `Key`。
 4. `pnpm run gates` 全量档绿。
+5. **CI 独有的那道**：`check:prior-art` 的 PR 侧只在 `pull_request` 事件里跑（正文由工作流注入
+   `PRIOR_ART_PR_BODY`），本地 `gates` 恒跳过——所以「本地全绿」证不了它。
+   另一条坑：正文是**推送那一刻**的快照，事后 `gh pr edit` 改了正文不会让已跑的那次重新读到，
+   必须再推一次（`synchronize` 事件才带新正文）。本地要提前验就跑
+   `node scripts/check-prior-art.mjs --pr`。
 
 ## 先查别人
 
