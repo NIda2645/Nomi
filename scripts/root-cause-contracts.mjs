@@ -390,8 +390,9 @@ function validateInvariantOwnerLayer(contract, existingFiles, label) {
  * `SkillRecord` 的 8 条投影）。三次都被当成独立的一处 bug 单独修了一遍，因为修的人被任务书框在
  * 一个文件里：他看得见症状那扇门，看不见另外几扇——而「去数一遍」这件事在高负载下没有人做。
  *
- * `doors` 把它变成机器能核对的东西：每条 `{kind, path, line, symbol}` 都要 path 存在、
- * 该行真的提到该 symbol。门表用 `node scripts/door-map.mjs <mutator 符号或文件>` 生成，
+ * `doors` 把它变成机器能核对的东西：每条 `{kind, path, symbol}` 都要 path 存在、
+ * 该文件真的还提到该 symbol（**不钉行号**，理由见 sourceMentionsSymbol）。门表用
+ * `node scripts/door-map.mjs <mutator 符号或文件>` 生成，
  * 不是手写——手写的门表和「我扫过了」是同一种东西。
  *
  * `door_reduction` 问的是第二件事：**数完之后你把门合并了没有**。≥2 扇而一扇没减，
@@ -439,9 +440,32 @@ function isDoorGovernedFile(file) {
   return DOOR_ROOTS.some((root) => name.startsWith(root));
 }
 
-function lineMentionsSymbol(source, line, symbol) {
-  const text = String(source).split("\n")[line - 1];
-  return typeof text === "string" && text.includes(symbol);
+/**
+ * 门的身份 =「哪个文件里的哪个符号」，**不含行号**（2026-09-18）。
+ *
+ * 此前身份里钉着行号（`path:line` 那一行必须提到 symbol）。行号不是这份状态的性质，
+ * 是这份状态**在某一刻的排版**：门一扇没增没减，只要有人在同一个文件上面插了两行注释，
+ * 门表就报「door does not resolve」。于是 2026-09-11 起长出一整族没有信息量的提交——
+ * 「门表的行号跟上 xxx 的瘦身」——批次 3 一次集成就修了 16 处漂移，
+ * 而这些提交一次都没有发现过真正的门增删。门岗于是在教人「红了就重跑一下工具」，
+ * 这正是 R17 说的把防线建错层：判据要落在**不变量**上，不落在排版上。
+ *
+ * 改成整文件的**整词**匹配后：门被删掉（那个文件不再提到这个符号）照样红，
+ * 门被挪行、被格式化、被别人在上面插几行 —— 不红。
+ *
+ * 为什么是整词而不是 `includes`：`includes` 让 `applyCanvas` 被 `applyCanvasToolCall` 顶着算数，
+ * 于是删掉真正那扇门也不会红——一条永远绿的判据比没有判据更糟。
+ */
+function sourceMentionsSymbol(source, symbol) {
+  const text = String(source);
+  const escaped = symbol.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // JS 标识符可以含 $ 与 _，`\b` 认不出它们的边界，所以自己写两侧的前后瞻。
+  return new RegExp(`(?<![A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`).test(text);
+}
+
+/** 同一个 {kind, path, symbol} 只可能是同一扇门；出现两条 = 门表是手写/手改的。 */
+function doorIdentity(door) {
+  return `${door.kind}|${normalized(door.path)}|${String(door.symbol).trim()}`;
 }
 
 function validateDoorMap(contract, changed, existingFiles, label, fileContents) {
@@ -449,17 +473,31 @@ function validateDoorMap(contract, changed, existingFiles, label, fileContents) 
   const scopePaths = Array.isArray(contract?.scope_paths) ? contract.scope_paths : [];
   const doors = contract?.doors;
   const doorPaths = new Set();
+  const doorIdentities = new Set();
 
   if (!Array.isArray(doors) || doors.length === 0) {
     errors.push(`${label}: doors is required — 列出这条不变量碰到的状态的全部写入口与读入口`
-      + `，每条 {kind:"write"|"read", path, line, symbol}；用 \`node scripts/door-map.mjs <mutator 符号或文件>\` 生成，别手写`);
+      + `，每条 {kind:"write"|"read", path, symbol}；用 \`node scripts/door-map.mjs <mutator 符号或文件>\` 生成，别手写`);
   } else {
     for (const door of doors) {
-      if (!record(door) || !DOOR_KINDS.has(door.kind) || !nonEmptyText(door.path)
-        || !Number.isInteger(door.line) || door.line < 1 || !nonEmptyText(door.symbol)) {
-        errors.push(`${label}: every doors entry requires kind "write" or "read", path, a positive integer line, and symbol`);
+      if (!record(door) || !DOOR_KINDS.has(door.kind) || !nonEmptyText(door.path) || !nonEmptyText(door.symbol)) {
+        errors.push(`${label}: every doors entry requires kind "write" or "read", path, and symbol`);
         continue;
       }
+      // 行号不是门的身份（见 sourceMentionsSymbol 抬头）。留着一份旧形状的门表 = 两套身份并存，
+      // 而这正是「行号跟上」那族提交的来源，所以这里硬红，不静默忽略。
+      if (door.line !== undefined) {
+        errors.push(`${label}: doors entry must not carry a line number — 门的身份是 path + symbol`
+          + `，行号只是某一刻的排版；重跑 \`node scripts/door-map.mjs <mutator 符号或文件>\` 取当前门表`);
+        continue;
+      }
+      const identity = doorIdentity(door);
+      if (doorIdentities.has(identity)) {
+        errors.push(`${label}: duplicate door ${identity} —— 同一个符号在同一个文件里只算一扇门`
+          + `（门表用 node scripts/door-map.mjs 生成，别手写）`);
+        continue;
+      }
+      doorIdentities.add(identity);
       const clean = normalized(door.path);
       doorPaths.add(clean);
       if (!fileExists(clean, existingFiles)) {
@@ -469,9 +507,9 @@ function validateDoorMap(contract, changed, existingFiles, label, fileContents) 
       const source = fileContent(clean, fileContents);
       if (typeof source !== "string") {
         errors.push(`${label}: door cannot be verified because file contents are unavailable: ${door.path}`);
-      } else if (!lineMentionsSymbol(source, door.line, door.symbol.trim())) {
-        errors.push(`${label}: door does not resolve — ${door.path}:${door.line} does not mention ${door.symbol}`
-          + `（修完之后行号会动：重跑 node scripts/door-map.mjs 取当前门表）`);
+      } else if (!sourceMentionsSymbol(source, door.symbol.trim())) {
+        errors.push(`${label}: door does not resolve — ${door.path} does not mention ${door.symbol}`
+          + `（这扇门没了或改了名：重跑 node scripts/door-map.mjs 取当前门表）`);
       }
     }
   }
