@@ -2,6 +2,7 @@
 // 只有 provider 是真的；画布/文稿写口是隔离夹具。系统提示词的改写发生在出站 fetch 里，
 // 三臂逐字相同、只差权威块的位置。
 import { app } from 'electron';
+import { discoverSkillRecords } from '../../electron/agentLane/laneSkillCatalog.mjs';
 import { mkdir, mkdtemp, readFile, copyFile, chmod, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { openLane } from '../../electron/agentLane/laneHost.mjs';
@@ -123,6 +124,16 @@ async function main() {
   const skillBody = await readFile(path.resolve('.tmp/exp/skill-orig.md'), 'utf8');
   const skillPath = path.join(skillDir, 'SKILL.md');
   await writeFile(skillPath, skillBody);
+  // 走**真实发现路径**拿 SkillRecord，而不是手搓一个：进提示词的是 `content`（已去 frontmatter），
+  // 手搓时把 body 当成 content 或填空，实验照跑但量的是另一份提示词——而那种失效看起来和正常跑一模一样。
+  const { records: expRecords, diagnostics: expDiagnostics } = await discoverSkillRecords([
+    { path: path.join(root, 'skills'), origin: 'builtin' },
+  ]);
+  if (expRecords.length !== 1) {
+    throw new Error(`实验夹具技能没被发现到（${expRecords.length} 个）：${JSON.stringify(expDiagnostics)}`);
+  }
+  const [expSkill] = expRecords;
+  if (!expSkill.content.trim()) throw new Error('实验夹具技能的 content 是空的——提示词里不会有方法正文，这一轮量不出东西');
 
   const authority = buildAuthorityBlock();
   await writeFile(path.join(root, 'authority-block.txt'), authority);
@@ -192,9 +203,7 @@ async function main() {
         if (!tools.some(t => t.name === spec.name)) tools.push(bindLaneTool(spec, async () => ({ ok: true, text: 'Timeline is empty.' })));
       }
       const lane = await openLane({ projectDir: await mkdtemp(path.join(root, 'project-')), tools, model, fetch: guardedFetch,
-        native: { settingsRoot: settings, skills: [{ name: 'workbench-storyboard-planner', directoryName: 'workbench-storyboard-planner',
-          filePath: skillPath, description: '将故事规划成有序分镜方案供用户审阅，保持角色、场景、风格和用户约束一致；不直接落画布或生成。',
-          body: skillBody, manifest: null, origin: 'builtin', audience: 'internal', packageVersion: 'nomi-skill-v1', contentHash: 'exp-fixture' }] },
+        native: { settingsRoot: settings, skills: [expSkill] },
         approval: { hasUserInterface: true, policy: () => ({ mode: 'safe-auto', spend: 'confirm' }) },
         limits: { maxModelRequests: 12 },
         systemPrompt: '你是 Nomi 视频创作助手。根据真实工具结果回答。当前宿主只能创建试拍草稿，报价和生成由画布提交提供；不能假称已生成。',
