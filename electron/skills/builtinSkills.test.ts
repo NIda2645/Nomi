@@ -142,4 +142,25 @@ describe("built-in skill packs", () => {
       expect(findSkillRecord(legacyKey, legacyKey, records)?.directoryName, legacyKey).toBe(directoryName);
     }
   });
+  // 跨技能引用：`stages[].skill-refs`（解析后是 `skillRefs`）点名的是**另一个技能的目录名**。
+  // 此前只有 release-media-pack 那条用例顺带验了它自己那几条；其余技能的引用没有任何东西核。
+  // 这条不变量没有主人时的后果很安静：引用一个不存在的技能，加载时只是少拿到一份手艺参考，
+  // 既不抛也不警告——和 2026-09-18 挖出的那一整类「指向必须存在的东西却没人核」同形。
+  it("every stage skill-ref across all skill packs resolves to a real skill directory", () => {
+    let checked = 0;
+    for (const dir of dirs) {
+      for (const stage of manifestOf(dir).stages ?? []) {
+        for (const skillRef of stage.skillRefs ?? []) {
+          checked += 1;
+          expect(
+            fs.existsSync(path.join(SKILLS_DIR, skillRef, "SKILL.md")),
+            `${dir} 阶段「${stage.id}」的 skill-refs 指向不存在的技能「${skillRef}」`,
+          ).toBe(true);
+        }
+      }
+    }
+    // 断言不许是空的：键名写错（`skillRefs` vs `skill-refs`）会让上面整个循环一次都不进，
+    // 而那种失效看起来和真绿一模一样。2026-09-18 已经因此造出过两个空转的判据。
+    expect(checked, "一条 skill-ref 都没扫到——多半是键名对不上，不是真的没有引用").toBeGreaterThan(0);
+  });
 });
