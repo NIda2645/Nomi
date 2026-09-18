@@ -198,7 +198,7 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
-      "line": 39,
+      "line": 38,
       "symbol": "selectProductionShotRows"
     },
     {
@@ -462,7 +462,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
-      "line": 78,
+      "line": 80,
       "symbol": "deriveNodeRowExec"
     },
     {
