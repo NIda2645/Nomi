@@ -45,8 +45,18 @@ const GPT_IMAGE_2_APIMART_PARAM_MAP: ParamMap = {
 // 变体合并模型用：body model = 档案当前变体的 modelKey（{{request.params.model}}，同视频侧）。
 const VARIANT_MODEL_REF = "{{request.params.model}}";
 
+// GPT Image 2.5 的 apimart 翻译：档案（vendorParams.apimart）已直接用 apimart 的字段名 `size`，
+// 只剩清晰度大小写这一件事——档案暴露 1K/2K/4K（全站一致的中性档位串），apimart 线缆要 1k/2k/4k。
+// 与 GPT Image 2 的 paramMap 相比少了 size←aspect_ratio 那条改名规则（2.5 的 apimart 枚举比 kie 多 7 档，
+// 无法共用一份 canonical 比例控件，故档案层就分了 vendor，不需要再改名）。
+const GPT_IMAGE_25_APIMART_PARAM_MAP: ParamMap = {
+  rules: [{ wire: "resolution", fromMany: ["resolution"], transform: "toLowerCase" }],
+};
+
 const SIZE = "{{request.params.size}}";
 const RESOLUTION = "{{request.params.resolution}}";
+const QUALITY = "{{request.params.quality}}"; // GPT Image 2.5 专属质量档（kie 那四个端点没有这个字段）
+const BACKGROUND = "{{request.params.background}}"; // 透明/不透明/自动
 const NEGATIVE_PROMPT = "{{request.params.negative_prompt}}"; // 负向提示词（可选，未填则丢弃）
 const IMAGE_URLS = "{{request.params.image_urls}}"; // 改图模式的输入图数组（档案 slot inputKey=image_urls）
 
@@ -132,6 +142,44 @@ export const APIMART_IMAGE_MODELS: ApimartImageModel[] = [
     editBody: { size: SIZE, resolution: RESOLUTION, image_urls: "{{request.params.input_urls}}" },
     // 铁律迁移：gpt-image-2 已中性化（档案 params=比例+清晰度），apimart 字段是 size/resolution → 翻译。
     paramMap: GPT_IMAGE_2_APIMART_PARAM_MAP,
+  }),
+  // GPT Image 2.5（2026-09-18 照 docs.apimart.ai gpt-image-2.5/generation.md 对账）：
+  // **单 model id 双模式**（给 image_urls 即改图，≤16 张）→ modelRef 取行 modelKey；
+  // Flare(快) / Sunburst(精修) 是两个并列产品、两份档案（kie 侧那四个拆分 id 见 kieImages2026）。
+  // ⚠️ 改图输入图 apimart 叫 `image_urls`，档案槽 inputKey 是 kie 契约名 `input_urls` → 这里做键名转接
+  //    （同 gpt-image-2 那行）。抄成 `image_urls: IMAGE_URLS` 会静默丢掉所有参考图。
+  // ⚠️ quality 只在 apimart 有（档案 vendorParams.apimart 声明），故只能出现在这两行、不能进 kie 的 body。
+  imageModel({
+    modelKey: "gpt-image-2.5-flare", labelZh: "GPT Image 2.5 Flare", archetypeId: "gpt-image-2.5-flare",
+    t2iBody: { size: SIZE, resolution: RESOLUTION, quality: QUALITY, background: BACKGROUND },
+    editBody: { size: SIZE, resolution: RESOLUTION, quality: QUALITY, background: BACKGROUND, image_urls: "{{request.params.input_urls}}" },
+    paramMap: GPT_IMAGE_25_APIMART_PARAM_MAP,
+  }),
+  imageModel({
+    modelKey: "gpt-image-2.5-sunburst", labelZh: "GPT Image 2.5 Sunburst", archetypeId: "gpt-image-2.5-sunburst",
+    t2iBody: { size: SIZE, resolution: RESOLUTION, quality: QUALITY, background: BACKGROUND },
+    editBody: { size: SIZE, resolution: RESOLUTION, quality: QUALITY, background: BACKGROUND, image_urls: "{{request.params.input_urls}}" },
+    paramMap: GPT_IMAGE_25_APIMART_PARAM_MAP,
+  }),
+  // Gemini 3 Pro Image（2026-09-18 照 docs.apimart.ai gemini-3-pro/generation.md 对账）：
+  // 复用已有档案 `gemini-image-3-pro`（原只有 Runway 一条线，见 runwayNativeImage.ts 文件头的
+  // 「日后别家也提供同一模型，原地加 identifierPatterns + vendorParams 即可」）——P4：档案是模型身份。
+  // 参考图上限 14（两家一致，是模型本身的能力）。档案槽 inputKey 沿用 Runway 契约名 `reference_image_urls`
+  // → 这里转接成 apimart 的 `image_urls`。resolution 此处是**大写** 1K/2K/4K（文档如此），不加小写 paramMap。
+  // 选 `-preview`（常规通道）不选 `-official`：同 nano-banana-2 的既有拍板（D4，见档案注释）。
+  imageModel({
+    modelKey: "gemini-3-pro-image-preview", labelZh: "Gemini 3 Pro 图像", archetypeId: "gemini-image-3-pro",
+    t2iBody: { size: SIZE, resolution: RESOLUTION },
+    editBody: { size: SIZE, resolution: RESOLUTION, image_urls: "{{request.params.reference_image_urls}}" },
+  }),
+  // Grok Imagine 2.0 Ext（2026-09-18 照 docs.apimart.ai grok-imagine-2.0-ext/generation.md 对账）：
+  // 同样复用已有档案 `grok-imagine-image-2`（Runway 那条线是同一个产品）。
+  // ⚠️ **只有 t2i，没有 editBody**——文档白纸黑字「Not supported: Image-to-image」。这是拒绝不是缺漏，
+  //    补一条改图 mapping 等于造一个永远 400 的入口。
+  // ⚠️ 不发 resolution：该模型只认 `"quality"` 一个值，档案因此不声明该控件（见档案注释）。
+  imageModel({
+    modelKey: "grok-imagine-2.0-ext", labelZh: "Grok Imagine 2.0", archetypeId: "grok-imagine-image-2",
+    t2iBody: { size: SIZE },
   }),
   // 独占档案（apimart 专属，新建）：Qwen-Image / Z-Image-Turbo。
   // Imagen 4 已退役（2026-07-30：上游 Google 确定性 404，见 seedBuiltins 的 RETIRED_APIMART_IMAGE_*）

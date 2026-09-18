@@ -84,6 +84,7 @@
 - [弹层被祖先 overflow 裁掉时三样证据同时失明](overlay-clipped-by-ancestor-overflow.md) — 浮层走查必查：`toBeVisible` / rect / 「点得动」全绿也可能用户点不到，改用 `expectOverlayReachable`
 
 - [固定等待三连坑](fixed-station-waits-three-incidents.md) — 视频、审批、点击统一用状态判据与预算上限；R18 拦固定等待
+- [付费验收挂住时，第一步是截图，不是读日志](paid-acceptance-hang-screenshot-before-logs.md) — 「等上游」和「屏幕上有个框在等人点」在日志里长得一样；四个付费 e2e 因不铸 grant 长期默认 SKIP 也是同一类盲区
 
 ## B. 测试与 CI 的红绿判读
 
@@ -116,6 +117,7 @@
 - [文档级对照拦不住代码级硬写](doc-level-conformance-misses-field-level-hardcoding.md) — 刚交完四列表/逐层对照就想说「这个框架接好了」；框架某个字段逐项可选而我们对所有实例写了同一个值，两份文档都看不见（字段裁决要机器化、门岗不许绑死某个框架）
 - [参考实现不拆开逐层对照 = 没研究](reference-implementation-not-dissected-is-not-research.md) — 上一条的第二半：四列表只覆盖「已经想到的能力」，照不出「压根没想到还有这一层」；框架自带 coding agent/官方 example 必须按九层拆开并排，判定 `一致`/`有意不同(理由须是领域约束)`/`没想到`，「没想到」清单是实施阶段前置门
 - [写死的墙钟上限会在工作量长大时把 CI 砍在半路](fixed-wall-clock-caps-break-when-work-grows.md) — `exceeded <N>ms and was terminated` 而每条断言都有结果 = 进程被砍不是断言红；上限要从「有多少活」派生，别把 20 改成 40
+- [门岗的 scope 指到不存在的目录，会安静地报绿](gate-scope-pointing-nowhere-passes-silently.md) — 依赖「登记表+scope+禁令」式门岗、刚搬过目录、或在给新禁令做阳性对照时；附「探针写成注释会被 stripComments 吃掉」一坑
 
 ## C. Git 交付、分支与文档改动
 
@@ -126,6 +128,7 @@
 - [PR 攒到阶段边界再开](pr-cadence-batch-by-default.md) — 频繁 PR 的成本是墙钟：CI 排队 + 合并列车 + 门岗链冲突；**但前提是还有下一件活可搭车——手上空了要交回给用户就是边界，必须开 PR，否则活搁浅在一次性分支上永远合不进去**
 - [派任务只给分支名会撞车](dispatch-names-branch-not-path-causes-collisions.md) — 必须写死绝对目录 + 开工 `git worktree add`
 - [下否定式结论前先证明你在哪个 checkout](prove-which-checkout-before-negative-claims.md) — 「仓库里没有 X」多半是你站在一个陈旧分支上
+- [手写的状态账本没有时刻，读的人会把旧快照当现状](handwritten-status-ledger-goes-stale-silently.md) — 引用「盘点 / 台账 / inventory」下结论前先现查一遍；能机器派生的状态别手写
 - [改 baseline JSON 用文本级编辑，别整体重写](json-baselines-need-surgical-edits.md) — 短数组原文是单行，重写会炸出上千行假 diff
 - [方案讨论期别急着 commit/PR](discuss-before-committing-docs.md) — 聊透拍板再落 git；实施类不受限
 - [commit 阶段的绕口要拒绝，push 阶段才留痕审计](commit-bypass-must-be-blocked-not-audited.md) — 同一种绕过写法两阶段处置相反；判据是「拦错代价 / 放过代价 / 有无合法场景」，不是「哪个更严」
@@ -169,6 +172,7 @@
 - [批量产出要逐步冒出来 + 自动编组](batch-output-appears-progressively-and-grouped.md) — 一个动作产出多个节点时的既定交互
 - [「改不了 / 没有按钮」是可发现性问题](vendor-manage-is-a-discoverability-problem.md) — 功能一直在，根因是控件被 overflow 裁出视口
 - [用户说「坏了」多半是「找不到」](group-says-broken-usually-means-undiscoverable.md) — 先真机实测再信；扫到真 bug ≠ 那就是他的 bug
+- [拒绝话术只对人说，不对 Agent 说](refusal-text-must-also-tell-the-agent-a-path.md) — 工具错误写「请到设置里…」等于让程序去点按钮；人类面与模型面必须是两份文案
 - [盘上状态有第二个读者时，写方不派失效信号 =「导进来了却用不上」](imported-thing-invisible-to-the-second-reader.md) — 用户说「我加进去了但用不了」；或要给某份进程外列表加第二个读者
 - [中转平台的上限 ≠ 模型的上限](model-limits-first-party-over-reseller.md) — 参数上限要查一手厂商文档
 - [KIE 文件上传的实测契约](kie-file-upload-real-contract.md) — 官方文档三处与实测不符（响应字段 / 回链域名 / 有效期）

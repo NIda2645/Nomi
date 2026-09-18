@@ -2,12 +2,15 @@ import crypto from "node:crypto";
 
 import {
   SURFACE_PORT_BINDING_VERSION,
+  sameSurfaceFrameOwner,
+  sameSurfacePortBindingWire,
   type SurfacePortBindingWire,
   type SurfacePortWireErrorCode,
   type SurfacePortFailure,
   type SurfaceSuspensionWire,
 } from "../shared/surfacePortBinding";
 import type { ProjectBinding } from "../shared/projectBinding";
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import type { WorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
 
 export { SURFACE_PORT_BINDING_VERSION };
@@ -192,40 +195,25 @@ function requiredPositiveInteger(value: unknown): number {
   return Number(value);
 }
 
-function sameOwner(left: SurfaceOwnerDescriptor, right: SurfaceOwnerDescriptor): boolean {
-  return (
-    left.contents === right.contents &&
-    left.frame === right.frame &&
-    left.webContentsId === right.webContentsId &&
-    left.processId === right.processId &&
-    left.frameRoutingId === right.frameRoutingId &&
-    left.origin === right.origin
-  );
-}
+/**
+ * C2：这三份比对以前在本文件各列一遍字段，而它们比的都是**已经有 owner 的那两种身份**——
+ * `sameOwner` 的六维在 `canvasReadCapturedSnapshotRegistry.ts` 里还有一份逐字相同的副本。
+ * 现在都只从 owner import（`shared/surfacePortBinding.ts` / `shared/projectBinding.ts`）。
+ */
+export const sameOwner = sameSurfaceFrameOwner;
 
-function sameProjectSelection(
+const sameProjectSelection = (
   selection: CommittedSurfaceProjectSelection,
   identity: WorkspaceProjectIdentity,
-): boolean {
-  return (
-    selection.projectId === identity.projectId &&
-    selection.immutableProjectUuid === identity.immutableProjectUuid &&
-    selection.projectGeneration === identity.projectGeneration &&
-    selection.canonicalRootDigest === identity.canonicalRootDigest
-  );
-}
+): boolean => sameCommittedProjectSelection(selection, identity);
 
-function sameVerifiedTarget(
+const sameVerifiedTarget = (
   selection: CommittedSurfaceProjectSelection,
   target: VerifiedCanvasReadProjectTarget,
-): boolean {
-  return (
-    selection.projectId === target.binding.projectId &&
-    selection.immutableProjectUuid === target.binding.immutableProjectUuid &&
-    selection.projectGeneration === target.binding.projectGeneration &&
-    selection.canonicalRootDigest === target.canonicalRootDigest
-  );
-}
+): boolean => sameCommittedProjectSelection(selection, {
+  ...target.binding,
+  canonicalRootDigest: target.canonicalRootDigest,
+});
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -243,25 +231,13 @@ function sameSuspensionWire(value: unknown, suspension: SurfaceSuspension): bool
   );
 }
 
+// C2：维度不在这里列了，交给 owner 的 `sameSurfacePortBindingWire`（三层同一份）。
+// 本函数只剩它自己那一半职责：入参是 `unknown`（来自线上），先确认它长得像一份绑定线格式，
+// 再交给 owner 逐维比。形状校验与身份比对是两件事，混在一起写就是三层各抄一遍的起点。
 function sameBindingWire(value: unknown, binding: SurfacePortBinding): boolean {
   const candidate = record(value);
-  const project = record(candidate?.binding);
-  return Boolean(
-    candidate &&
-    project &&
-    candidate.version === binding.version &&
-    candidate.bindingId === binding.bindingId &&
-    project.projectId === binding.binding.projectId &&
-    project.immutableProjectUuid === binding.binding.immutableProjectUuid &&
-    project.projectGeneration === binding.binding.projectGeneration &&
-    candidate.webContentsId === binding.webContentsId &&
-    candidate.processId === binding.processId &&
-    candidate.frameRoutingId === binding.frameRoutingId &&
-    candidate.origin === binding.origin &&
-    candidate.surfaceInstanceId === binding.surfaceInstanceId &&
-    candidate.portRevision === binding.portRevision &&
-    candidate.nonce === binding.nonce,
-  );
+  if (!candidate || !record(candidate.binding)) return false;
+  return sameSurfacePortBindingWire(candidate as unknown as SurfacePortBindingWire, binding);
 }
 
 function freezeProjectBinding(identity: WorkspaceProjectIdentity): ProjectBinding {

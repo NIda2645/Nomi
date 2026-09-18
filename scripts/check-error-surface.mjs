@@ -86,6 +86,61 @@ for (const [exportName, label, source, file] of [
   }
 }
 
+// ── 规则④ 工具失败码 ↔ 面板文案（C5，2026-09-18，硬零） ────────────────────────
+// 规则① 管的是 lane **命令**失败（发不出去那一类）。这一条管 lane **工具**失败——
+// 它以前压根没有文案表：失败正文由主进程拼成给模型读的英文散文，面板原样印，
+// 中文界面上于是出现 `... could not accept this action (surface_port_stale). Next: …`。
+// 现在结构化信封带到渲染层按 code 查词条，所以「每个码都要有本地话」必须变成机器判据。
+//
+// 码表真相源有两处，本门岗**读它们**、不在这里抄第三份（C4 同一条纪律）。
+const toolCodeSources = [
+  [path.join(repoRoot, 'electron', 'shared', 'surfacePortBinding.ts'), 'SURFACE_PORT_WIRE_ERROR_CODE_LIST'],
+  [path.join(repoRoot, 'electron', 'shared', 'surfacePortBinding.ts'), 'CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST'],
+  [path.join(repoRoot, 'electron', 'shared', 'agentLane', 'laneToolFailureEnvelope.ts'), 'LANE_TOOL_OWN_FAILURE_CODE_LIST'],
+]
+const toolCodes = []
+for (const [file, name] of toolCodeSources) {
+  if (!fs.existsSync(file)) { failures.push(`${rel(file)}: 门岗要读的码表文件不在了（${name}）`); continue }
+  const block = new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const`).exec(fs.readFileSync(file, 'utf8'))
+  if (!block) { failures.push(`${rel(file)}: 找不到 ${name} 字面量数组——门岗读不到码表就等于没有门岗`); continue }
+  for (const match of block[1].matchAll(/^\s*"([a-z][a-z0-9_]*)",$/gm)) toolCodes.push(match[1])
+}
+const toolLocaleFile = path.join(repoRoot, 'src', 'i18n', 'locales', 'agentToolFailure.ts')
+const toolKeyMapFile = path.join(repoRoot, 'src', 'workbench', 'ai', 'lane', 'laneToolFailureText.ts')
+// 词典里这几条不是码，是兜底句与结构化细节的模板——不参与一一对应。
+const TOOL_LOCALE_NON_CODE_KEYS = new Set(['unknown', 'fieldExpected', 'allowedValues', 'useInstead'])
+for (const [exportName, label, file, nonCode] of [
+  ['zhAgentToolFailure', 'zh-CN', toolLocaleFile, TOOL_LOCALE_NON_CODE_KEYS],
+  ['enAgentToolFailure', 'en', toolLocaleFile, TOOL_LOCALE_NON_CODE_KEYS],
+  ['AGENT_TOOL_FAILURE_TEXT_KEY', '整键表', toolKeyMapFile, new Set()],
+]) {
+  if (!fs.existsSync(file)) { failures.push(`${rel(file)}: 找不到（规则④ 要的文案表）`); continue }
+  const keys = declaredKeys(fs.readFileSync(file, 'utf8'), exportName)
+  if (!keys) { failures.push(`${rel(file)}: 找不到 ${exportName}`); continue }
+  for (const code of toolCodes) {
+    if (!keys.includes(code)) failures.push(`${rel(file)}: ${label} 缺 '${code}'——工具失败码必须有本地文案，否则面板只能印模型看的英文正文`)
+  }
+  for (const key of keys) {
+    if (!toolCodes.includes(key) && !nonCode.has(key)) failures.push(`${rel(file)}: ${label} 的 '${key}' 不在工具失败码表里（孤儿条目）`)
+  }
+}
+
+// ── 规则⑤ 失败正文不许原样进面板（C5，硬零） ───────────────────────────────────
+// 这是上面那张表存在的**理由**本身：有了文案表，还得有人保证渲染层真的去用它。
+// 判据落在唯一那条缝上——`laneViewModel` 的 `output` 在失败分支里不许出现 `part.text`。
+{
+  const viewModelFile = path.join(repoRoot, 'src', 'workbench', 'ai', 'lane', 'laneViewModel.ts')
+  const source = fs.existsSync(viewModelFile) ? fs.readFileSync(viewModelFile, 'utf8') : ''
+  if (!source) failures.push('src/workbench/ai/lane/laneViewModel.ts: 找不到（规则⑤ 的判据落点）')
+  else {
+    const outputBlock = /output:([\s\S]*?)\},\n/.exec(source)
+    if (!outputBlock) failures.push('src/workbench/ai/lane/laneViewModel.ts: 找不到 `output:` 那一段——判据落点搬家了，同步这条规则')
+    else if (!/part\.isError/.test(outputBlock[1])) {
+      failures.push('src/workbench/ai/lane/laneViewModel.ts: `output` 对成功和失败一视同仁——失败正文是给模型读的英文散文，必须按 failure.code 走 i18n')
+    }
+  }
+}
+
 // ── 规则② diagnostic 不许进显示汇 ──────────────────────────────────────────────
 // 它只许出现在：类型/契约声明、构造 LaneCommandFailure、console 诊断。
 const DIAGNOSTIC_ALLOWED = [
@@ -182,4 +237,4 @@ if (failures.length) {
   console.error(`\n为什么有这条门岗：docs/plan/2026-09-11-agent-error-surface.md`)
   process.exit(1)
 }
-console.log(`check:error-surface 通过（${codes.length} 个码 × 2 种语言；lane 英文散句存量 ${found.length}/${baseline.entries.length}）`)
+console.log(`check:error-surface 通过（命令码 ${codes.length} + 工具码 ${toolCodes.length}，各 × 2 种语言；lane 英文散句存量 ${found.length}/${baseline.entries.length}）`)

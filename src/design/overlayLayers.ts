@@ -128,3 +128,49 @@ export function getSettingsEscapeOwnership(
 export function settingsEscapeTargetWasRemoved(target: EventTarget | null): boolean {
   return target instanceof Node && !target.isConnected
 }
+
+/**
+ * 这个下拉/菜单是**我自己弹出来的**吗？
+ *
+ * 不能只用 z-index + 文档顺序去判（`isPopupAtOrAboveDialog` 那套）：两边都是
+ * `NOMI_OVERLAY_Z_INDEX.popover`，于是判据落到文档顺序上，而 Mantine 的 Combobox
+ * **在挂载时就把 portal 节点插进 body**（`keepMounted`），位置反而排在后开的浮层**前面**。
+ * 2026-09-17 实测：`docOrderFollowing=false`，于是「点自己里面那枚下拉的选项」被判成点外面。
+ *
+ * 真正的判据是**从属关系**，不是层号也不是先后：浮层里有没有一个正展开着的触发器。
+ * 两条都认（框架各写各的）：`aria-expanded="true"`，或 `aria-controls` 指着这张 popup 的 id。
+ */
+function ownsOpenPopup(surface: HTMLElement, popup: HTMLElement): boolean {
+  if (surface.contains(popup)) return true
+  if (surface.querySelector('[aria-expanded="true"]')) return true
+  const id = popup.id
+  return Boolean(id && surface.querySelector(`[aria-controls="${CSS.escape(id)}"]`))
+}
+
+/**
+ * 这一下事件是落在「我自己弹出来的那一层」里吗？
+ *
+ * 为什么需要：下拉 / 菜单被 Portal 到 `document.body`，**DOM 上根本不在浮层里面**。
+ * 于是「点外面就关」这条规则会把「点开我里面那枚下拉的选项」也算成点外面——
+ * 浮层先关、`onOptionSubmit` 再也跑不到，结果就是**浮层里的选择器改不了值**
+ * （2026-09-17 实测：分镜行尾 ⋯ 里的尺寸下拉，点哪个选项都没反应）。
+ *
+ * Escape 那条路早就有让位规则（`getSettingsEscapeOwnership().openPopup`），
+ * mousedown 这条对偶路径一直没有——这里把缺的那一半补上，两条路共用同一个选择器名单。
+ */
+export function isInsidePopupAbove(surface: HTMLElement, target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null
+  if (!element) return false
+  const popup = element.closest<HTMLElement>(OPEN_ESCAPE_POPUP_SELECTOR)
+  return popup !== null && (ownsOpenPopup(surface, popup) || isPopupAtOrAboveDialog(popup, surface))
+}
+
+/** 有没有一层「我自己弹出来的」下拉/菜单正开着——开着就该由它先吃掉 Escape。 */
+export function hasOpenPopupAbove(surface: HTMLElement): boolean {
+  return [...document.querySelectorAll<HTMLElement>(OPEN_ESCAPE_POPUP_SELECTOR)].some(
+    (candidate) => isVisiblyOpen(candidate)
+      && candidate !== surface
+      && !surface.contains(candidate)
+      && (ownsOpenPopup(surface, candidate) || isPopupAtOrAboveDialog(candidate, surface)),
+  )
+}

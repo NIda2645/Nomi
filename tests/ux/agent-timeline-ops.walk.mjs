@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 // R13/R16 · 设计合同 §2.6：剪辑面里「让 Nomi 改时间轴」的完整闭环，走真实 loopback Agent 链——
 // 选中片段 → Agent 提计划 → 时间轴高亮（尚未落盘）→ 介入槽审批卡「应用这次」→ 收据 toast → 撤销。
+//
+// 2026-09-18（T-ED-02）：模型可见动词早就收敛成 20 个（`edit_timeline` / `undo`），而这条走查还在
+// 断言 `propose_edit_plan` / `apply_edit_plan` 那套**传输层方法名**——于是它一直红在第一步，
+// 「剪辑面的 Agent 能不能改时间轴」实际上没人在看。锚点跟着真实工具面走，并顺手钉住那条回执：
+// 卡答完、改动落盘之后，模型收到的 `User sees: …` 必须说「已经应用」，不许再说「一张复审卡在问用户」
+// ——后者正是 2026-09-12 用户撞到的那句（「它说要确认卡、卡没出现、也没劈」）。
 // 三类新 op（transition / text / audio）在第二轮同一条 propose→apply→undo 链上一起验。
 // 零额度：文本模型是本机 loopback fixture，无生成、无解码、隔离 profile。
 // Run: pnpm run build && node tests/ux/agent-timeline-ops.walk.mjs
@@ -128,12 +134,14 @@ async function proposePlan({ prompt, readToolId, planToolId, plan, doneText }) {
   await input.fill(prompt)
   await clickOrFail(win.locator(`${PREVIEW_PANEL} ${COMPOSER_SEND}`), `发送剪辑指令：${prompt}`)
   const readWire = await recorded(readCall.received, `${planToolId} read_timeline request`)
+  // 模型面是 20 个动词：改时间轴叫 `edit_timeline`，撤回叫 `undo`。
+  // `propose_edit_plan` / `apply_edit_plan` / `undo_timeline_edit` 是**传输层**的方法词表，模型看不到它们。
   expect((readWire.body.tools ?? []).map((tool) => tool.function.name), 'The preview surface must advertise the timeline write chain')
-    .toEqual(expect.arrayContaining(['read_timeline', 'propose_edit_plan', 'apply_edit_plan', 'undo_timeline_edit']))
+    .toEqual(expect.arrayContaining(['read_timeline', 'edit_timeline', 'undo']))
   const planWire = await recorded(planCall.received, `${planToolId} plan request`)
   planCall.release({
-    type: 'tool', id: planToolId, name: 'apply_edit_plan',
-    args: { ...plan, baseRevision: revisionFromToolResult(planWire.body, readToolId) },
+    type: 'tool', id: planToolId, name: 'edit_timeline',
+    args: { summary: plan.summary, operations: plan.operations, revision: revisionFromToolResult(planWire.body, readToolId) },
   })
   return settled
 }
@@ -186,11 +194,22 @@ try {
     prompt: '把这段结尾收紧一点',
     readToolId: 'walk-read-1',
     planToolId: 'walk-trim-1',
-    plan: { planId: 'walk-plan-trim', summary: '把「推门近景」的结尾收紧 1 秒', operations: [{ kind: 'trim', clipId: 'clip-b', edge: 'right', deltaFrame: -30 }] },
+    plan: { summary: '把「推门近景」的结尾收紧 1 秒', operations: [{ kind: 'trim', clipId: 'clip-b', edge: 'right', deltaFrame: -30 }] },
     doneText: 'WALK_TRIM_DONE：已按计划把结尾收紧。',
   })
   const approval = agent.locator(APPROVAL_CARD).first()
   const approvalProof = await proveProbe(approval, '剪辑计划的介入槽必须可见')
+  // ⚠️ 2026-09-18 实测：这条断言现在真的红，而且**是产品问题，不是锚点过期**。
+  //
+  // 把上面那三个早已退役的传输层方法名（`propose_edit_plan` / `apply_edit_plan` / `undo_timeline_edit`）
+  // 换成模型面真正有的 `edit_timeline` 之后，这条走查第一次走到了这里——卡确实出现了，
+  // 但它是**通用的能力审批卡**（「调整时间线 / 把调整写入当前时间线」），既没有逐条人话摘要、
+  // 时间轴上也没有 `[data-timeline-plan-preview]` 高亮带。也就是说：走 20 动词那条路的时间轴编辑，
+  // 用户看到的卡说不出「它到底要改什么」。
+  //
+  // 这是另一条根因（卡的内容/计划预览没跟着动词面迁移），不属于 T-ED-02（回执派生）那条，
+  // 而且改卡长什么样要先出样张（P5/R8）。它在这里保持**红**，不许靠删断言清账——
+  // 删掉它，这条走查就会退回「什么都没在看」的状态，而这正是它刚从里面爬出来的坑。
   await expect(approval, '介入槽必须逐条给出人话摘要，而不是一串 operation JSON').toContainText('收紧')
   // v4：可逆 / 不可逆写在槽的 data-kind 上（时间轴计划带 planLines 时 kind 是 plan，
   // 否则可逆改动是 approval-reversible）。两者都必须**不是** irreversible。
@@ -231,7 +250,6 @@ try {
     readToolId: 'walk-read-2',
     planToolId: 'walk-ops-2',
     plan: {
-      planId: 'walk-plan-three-ops',
       summary: '加叠化 · 改字幕 · 降音量并淡出',
       operations: [
         { kind: 'transition', action: 'set', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'dissolve', durationFrames: 15 },

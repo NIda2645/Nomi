@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../project/storeLifetime'
 // P4 S5 — 画布落地的运行时驱动（渲染层）。一个轻 store 持有「当前项目最活跃的多镜 Run 全量」，
 // 供占位节点派生三态（shotPlaceholderState）。真相源仍是主进程的 Run（这里只是它的只读投影缓存，非第二真相源）。
 //
@@ -26,3 +27,13 @@ export const useProductionCanvasLandingStore = create<LandingStore>()((set, get)
   setRun: (projectId, run) => { if (!get().pinnedForE2E) set({ projectId, run }) },
   reset: () => { if (!get().pinnedForE2E) set({ projectId: null, run: null }) },
 }))
+
+/**
+ * C1 寿命声明：这个 store 的第一个字段就叫 `projectId`——它自己写着它归项目管。
+ * `pinnedForE2E` 是走查夹具的钉子，同样只对当前项目成立。
+ */
+export const productionCanvasLandingStoreLifetime = declareStoreLifetime({
+  store: 'useProductionCanvasLandingStore',
+  fields: { projectId: 'project', run: 'project', pinnedForE2E: 'project' },
+  releaseProject: () => useProductionCanvasLandingStore.getState().reset(),
+})

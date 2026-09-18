@@ -1,27 +1,8 @@
 import { CANVAS_READ_CAPABILITY } from "../shared/agentCapabilities/canvasRead";
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import { RpcError, type RpcPublicErrorCode } from "./rpcError";
 
-const PUBLIC_CODES = new Set([
-  "lease_required",
-  "lease_invalid",
-  "lease_expired",
-  "lease_revoked",
-  "project_scope_changed",
-  "project_binding_stale",
-  "project_identity_unavailable",
-  "capability_authority_invalid",
-  "capability_input_invalid",
-  "capability_output_invalid",
-  "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed",
-  // 文稿端口在基线态（创作页未挂载）对 selection / 定位锚说「做不了」，外部宿主要看到真码。
-  "capability_unsupported",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
-]);
+/** 项目会话那一档：用户得重选项目 / 重开会话才走得下去的码。 */
 const PROJECT_SESSION_RECOVERY_CODES = new Set([
   "lease_required",
   "lease_invalid",
@@ -29,6 +10,14 @@ const PROJECT_SESSION_RECOVERY_CODES = new Set([
   "lease_revoked",
   "project_scope_changed",
   "project_binding_stale",
+]);
+// C4：公开面 = 传输层共同底座（owner 派生）+ 项目会话那一档，不再手抄。
+// 手抄的那一份少了 `capability_receipt_unresolved` / `capability_target_stale` /
+// `capability_invocation_unverified` / `capability_policy_stale` 四个码；文稿端口在基线态
+// 说「做不了」时要外部宿主看到真码，少一个就少一次说真话的机会。
+const PUBLIC_CODES = new Set([
+  ...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES,
+  ...PROJECT_SESSION_RECOVERY_CODES,
 ]);
 const OPEN_PROJECT_SESSION = "Choose a project and open a new project session";
 

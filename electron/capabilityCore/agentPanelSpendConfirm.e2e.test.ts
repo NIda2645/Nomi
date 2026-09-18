@@ -566,6 +566,57 @@ describe("三档 × 付费报价卡（2026-09-12 拍板）", () => {
     }
   });
 
+  /**
+   * T-AG-04：**代答进行中的那一段**，面板上也不许有卡。
+   *
+   * 上面那条只看得见「决完之后没有卡」——而用户撞到的恰恰是决完之前那一段：草稿一落盘投影就出卡，
+   * 面板每 1.5s 读一次，于是他刚在切档卡上答应过「不再逐笔问」，转头又被问了一遍。
+   *
+   * 观察点选在 `requestGenerationGate`：它是代答链的第一步，跑在草稿已经落盘之后。
+   * 阳性对照就在同一次观察里——那一刻 Run 确实存在且还没封印（`draftedAtGate`），
+   * 所以「0 张卡」不是因为我们看了个空项目。
+   */
+  it("全自动：从草稿落盘到封印的那一段也不出卡（用户刚授权过的事不该被再问一遍）", async () => {
+    const vendor = await startLoopbackVendor();
+    const base = harness();
+    const submits: string[] = [];
+    try {
+      const built = buildActions(base, vendor.origin, submits);
+      const observed: { cards: number; state: string | undefined }[] = [];
+      const transport = createPiGenerationTransportAdapter(
+        { projectId: PROJECT_ID, immutableProjectUuid: "project-uuid-1", projectGeneration: 1 },
+        {
+          planning: built.handler,
+          requestGenerationGate: async (input) => {
+            const runId = String((input.params as { operationId?: unknown }).operationId ?? "");
+            const current = runId ? base.repository.read(PROJECT_ID, runId) : null;
+            observed.push({
+              cards: built.withWindow.listPendingSpend(PROJECT_ID).length,
+              state: current?.generationPlan?.state,
+            });
+            return built.authority.requestGenerationGate(input);
+          },
+          authorizeGeneration: built.authority.authorizeGeneration,
+          approvalReceiptAuthority: built.receipts,
+          leaseFor: () => lease,
+          approvalPolicy: () => ({ mode: "project", spend: "confirm" }),
+        },
+      );
+      await callTool(transport, "nomi_generation_plan", {
+        operation: "create", taskKind: "text_to_image", candidate: candidate("image-model", { size: "1024x1024" }),
+      });
+      await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
+
+      expect(observed, "观察点没被走到 = 这条测试什么都没验").toHaveLength(1);
+      // 阳性对照：那一刻草稿真的在盘上、还没封印——也就是旧代码会出卡的那一刻。
+      expect(observed[0].state).toBe("draft");
+      expect(observed[0].cards).toBe(0);
+      expect(submits).toHaveLength(1);
+    } finally {
+      await vendor.close();
+    }
+  });
+
   for (const mode of ["step", "safe-auto"] as const) {
     it(`${mode}：一个字都没变——报价卡照常出现，供应商一次都没被碰`, async () => {
       const vendor = await startLoopbackVendor();

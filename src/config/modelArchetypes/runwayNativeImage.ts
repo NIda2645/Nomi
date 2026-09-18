@@ -1,3 +1,4 @@
+import type { ModelParameterControl } from "../modelCatalogMeta";
 import type { ModelArchetype } from "./types";
 import {
   runwayImageParams,
@@ -35,13 +36,24 @@ const RUNWAY_OPENAPI_SOURCE = {
   vendorKey: "runway",
 } as const;
 
-/** 该模型的两个模式（文生图 + 参考/改图）。参数与槽上限全部 derive 自官方 wire 表。 */
+/** 该模型的两个模式（文生图 + 参考/改图）。参数与槽上限全部 derive 自官方 wire 表。
+ *
+ *  `apimart` 参数（B 分层）：这两个产品 2026-09-18 起也经 APIMart 接入（见 GROK / GEMINI 两处档案的
+ *  sources）。APIMart 的比例是朝向式 `size`（`16:9`），Runway 是像素式 `ratio`（`1920:1080`），
+ *  **一个值在另一家都不合法**，故必须按 vendor 分声明——这正是本文件头写的「日后别家也提供同一模型，
+ *  原地加 identifierPatterns + vendorParams 即可」，不新建第二个档案（P4）。
+ *  `apimartT2iOnly`：该模型在 APIMart 侧**没有改图端点**（Grok Imagine 2.0 Ext 文档明确列
+ *  "Not supported: image-to-image"）→ 只给 t2i 挂 apimart 参数，改图模式仍归 Runway。
+ */
 function runwayImageModes(
   model: Parameters<typeof runwayImageParams>[0],
   refLabel = "参考图",
+  apimart?: { params: ModelParameterControl[]; t2iOnly?: boolean },
 ): ModelArchetype["modes"] {
   const params = runwayImageParams(model);
   const max = RUNWAY_IMAGE_REFERENCE_MAX[model];
+  const apimartT2i = apimart ? { vendorParams: { apimart: apimart.params } } : {};
+  const apimartI2i = apimart && !apimart.t2iOnly ? { vendorParams: { apimart: apimart.params } } : {};
   return [
     {
       id: "t2i",
@@ -52,6 +64,7 @@ function runwayImageModes(
       transportTaskKind: "text_to_image",
       slots: [],
       params,
+      ...apimartT2i,
     },
     {
       id: "i2i",
@@ -62,9 +75,30 @@ function runwayImageModes(
       transportTaskKind: "image_edit",
       slots: [{ kind: "image_ref", label: refLabel, min: 1, max, inputKey: "reference_image_urls" }],
       params,
+      ...apimartI2i,
     },
   ];
 }
+
+const opt = (values: string[]): ModelParameterControl["options"] => values.map((value) => ({ value, label: value }));
+
+/** APIMart 的 Grok Imagine 2.0 Ext：`size` 7 档朝向式。
+ *  **不声明 resolution**：文档里该字段唯一合法值是 `"quality"`（且明写「never use public quality field」），
+ *  一个只有一个值的下拉是纯噪音（R2）——不发即走平台默认。
+ *  **不声明 n**（1–12）：一个生成节点产出一张图是全站语义。 */
+const APIMART_GROK_IMAGINE_2_PARAMS: ModelParameterControl[] = [
+  { key: "size", label: "比例", type: "select", options: opt(["1:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16"]), defaultValue: "16:9" },
+];
+
+/** APIMart 的 Gemini 3 Pro Image：`size` 11 档 + `resolution` 大写 1K/2K/4K。
+ *  **不声明 n**：文档写死 "Range: 1"。
+ *  **不声明 official_fallback**：它是渠道降级开关不是创作参数，且与 -official 型号互斥。
+ *  默认比例取 `16:9` 而非 `auto`：文档自己提醒 auto 在文生图会在 1:1/16:9 之间摇摆、
+ *  「We recommend specifying an aspect ratio」——默认值不该让同一组参数产出不同画幅。 */
+const APIMART_GEMINI_3_PRO_PARAMS: ModelParameterControl[] = [
+  { key: "size", label: "比例", type: "select", options: opt(["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]), defaultValue: "16:9" },
+  { key: "resolution", label: "清晰度", type: "select", options: opt(["1K", "2K", "4K"]), defaultValue: "1K" },
+];
 
 /**
  * Gen-4 Image —— Runway 自家图像模型。
@@ -143,8 +177,14 @@ export const RUNWAY_MUSE_IMAGE_ARCHETYPE: ModelArchetype = {
 };
 
 /**
- * Grok Imagine Image 2 —— xAI 的图像模型，目前仓里只有 Runway 一条接入线。
+ * Grok Imagine Image 2 —— xAI 的图像模型。**两条接入线**：Runway（文生图 + 参考图）与
+ * APIMart 的 `grok-imagine-2.0-ext`（**只有文生图**）。
  * （视频侧的 `grok-imagine-1.5-video` 是**另一个产品**，不共用档案。）
+ *
+ * ⚠️ 否定式判断：APIMart 文档「Not supported: Image-to-image」是白纸黑字的**拒绝**，不是没写到，
+ * 故 APIMart 侧**不注册 image_edit mapping**、改图模式也不挂 apimart 参数。档案仍保留改图模式
+ * （Runway 那条线支持），选中 APIMart 行再切改图会在运行时明确报错——与 veo31.ts 记的
+ * 「变体×模式禁忌未做门控、错误透传」同一处置，尚无 vendor×mode 的门控轴。
  */
 export const GROK_IMAGINE_IMAGE_2_ARCHETYPE: ModelArchetype = {
   id: "grok-imagine-image-2",
@@ -153,7 +193,7 @@ export const GROK_IMAGINE_IMAGE_2_ARCHETYPE: ModelArchetype = {
   kind: "image",
   defaultModeId: "t2i",
   transportTaskKind: "text_to_image",
-  identifierPatterns: ["grok_imagine_image_2"],
+  identifierPatterns: ["grok_imagine_image_2", "grok-imagine-2.0-ext"],
   legacyIds: ["runway-image"],
   sources: [
     {
@@ -161,11 +201,28 @@ export const GROK_IMAGINE_IMAGE_2_ARCHETYPE: ModelArchetype = {
       covers:
         "/v1/text_to_image 的 grok_imagine_image_2 变体：ratio 28 值（含 1024:1024 / 1280:720 / auto_1k / auto_2k，**不含 1360:768、768:1360**）、referenceImages maxItems 3、outputCount 1–4",
     },
+    {
+      url: "https://docs.apimart.ai/en/api-reference/images/grok-imagine-2.0-ext/generation.md",
+      checkedAt: "2026-09-18",
+      vendorKey: "apimart",
+      covers:
+        "POST /v1/images/generations，model 固定 `grok-imagine-2.0-ext`；size 7 档 1:1|2:3|3:2|3:4|4:3|9:16|16:9（亦收像素别名）；" +
+        "n 1–12(默认 1)；resolution 唯一合法值 `quality`（文档另注「never use public quality field」）；" +
+        "response_format 仅 `url`；nsfw_check 布尔(默认 false)；**文档明确 Not supported: Image-to-image / streaming / base64 输出**；" +
+        "计价 $0.08 / 成功出图；提交返回 202 + data.id，轮询 GET /v1/tasks/{id}，图 URL 有效期 72 小时",
+    },
   ],
-  modes: runwayImageModes("grok_imagine_image_2"),
+  modes: runwayImageModes("grok_imagine_image_2", "参考图", { params: APIMART_GROK_IMAGINE_2_PARAMS, t2iOnly: true }),
 };
 
-/** Gemini Image 3 Pro —— Google 的图像模型（与 `nano-banana` 的 Gemini 2.5 Flash Image 是不同产品）。 */
+/** Gemini Image 3 Pro —— Google 的图像模型（与 `nano-banana` 的 Gemini 2.5 Flash Image 是不同产品）。
+ *  **两条接入线**：Runway 与 APIMart 的 `gemini-3-pro-image-preview`（两家都是参考图上限 14，
+ *  这不是巧合——它是模型本身的能力，两家如实转述）。
+ *
+ *  ⚠️ 只接 APIMart 的 `-preview`（常规通道），**不接 `-official`**：同页两条是同一个模型的两条渠道，
+ *  official 走官方直连、贵且限流严，需要时用户可自建自定义模型指过去，不占 curated 名额——
+ *  与 nanoBanana2.ts 对 `gemini-3.1-flash-image-preview-official` 的既有拍板逐字一致（D4 极简）。
+ */
 export const GEMINI_IMAGE_3_PRO_ARCHETYPE: ModelArchetype = {
   id: "gemini-image-3-pro",
   family: "gemini-image-3",
@@ -173,7 +230,7 @@ export const GEMINI_IMAGE_3_PRO_ARCHETYPE: ModelArchetype = {
   kind: "image",
   defaultModeId: "t2i",
   transportTaskKind: "text_to_image",
-  identifierPatterns: ["gemini_image3_pro"],
+  identifierPatterns: ["gemini_image3_pro", "gemini-3-pro-image-preview"],
   legacyIds: ["runway-image"],
   sources: [
     {
@@ -181,8 +238,20 @@ export const GEMINI_IMAGE_3_PRO_ARCHETYPE: ModelArchetype = {
       covers:
         "/v1/text_to_image 的 gemini_image3_pro 变体：ratio 30 值（1344:768 起，含 1024:1024，**不含 1280:720 / 1360:768 / auto_1k / auto_2k**）、referenceImages maxItems 14、outputCount 属性存在但 spec 未给 min/max",
     },
+    {
+      url: "https://docs.apimart.ai/en/api-reference/images/gemini-3-pro/generation.md",
+      checkedAt: "2026-09-18",
+      vendorKey: "apimart",
+      covers:
+        "POST /v1/images/generations；model `gemini-3-pro-image-preview`（别名 nano-banana-pro-ext）或 " +
+        "`gemini-3-pro-image-preview-official`（别名 nano-banana-pro，**我们不接**）；size 11 档 " +
+        "auto|1:1|2:3|3:2|3:4|4:3|4:5|5:4|9:16|16:9|21:9（文档提醒 auto 在文生图会在 1:1/16:9 间摇摆，建议显式指定）；" +
+        "resolution **大写** 1K(默认)|2K|4K；**n 取值范围只有 1**；image_urls **最多 14 张**（URL 或完整 " +
+        "data: URI，单张 ≤30MB，格式 jpeg/jpg/png/webp）；official_fallback 布尔（与 -official 型号互斥）；" +
+        "nsfw_check 布尔(默认 false)；响应 data[0].task_id 异步轮询",
+    },
   ],
-  modes: runwayImageModes("gemini_image3_pro"),
+  modes: runwayImageModes("gemini_image3_pro", "参考图", { params: APIMART_GEMINI_3_PRO_PARAMS }),
 };
 
 /** Gemini Image 3.1 Flash —— ratio enum 最长的一个（56 值，含 11264:1408 这类极端画幅）。 */

@@ -22,7 +22,9 @@ describe('creation resource tree reachability', () => {
 
   it('mounts the tree once, at the shell, for exactly those modes', () => {
     const shell = read('src/workbench/WorkbenchShell.tsx')
-    expect(shell).toContain('workspaceModeCarriesCreationResourceTree(workspaceMode) ? <DocumentListSidebar />')
+    // A-1 刀 1 之后挂载条件多了一个收起闸，但「归属由这个 owner 判断、只在 shell 挂一次」没变。
+    expect(shell).toContain('workspaceModeCarriesCreationResourceTree(workspaceMode) && !creationResourceTreeCollapsed ? <DocumentListSidebar />')
+    expect(shell.match(/<DocumentListSidebar \/>/g)).toHaveLength(1)
     // 一个家：两个工作区都不许自己再挂一棵（挂两棵 = 又能各自漂）。
     for (const file of [
       'src/workbench/creation/CreationWorkspace.tsx',

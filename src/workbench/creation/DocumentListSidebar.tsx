@@ -1,5 +1,6 @@
 import React from 'react'
-import { useWorkspacePanelFrame, workspacePanelFrame, workspacePanelHeader } from '../WorkspacePanelFrame'
+import { workspacePanelFrame, workspacePanelHeader } from '../WorkspacePanelFrame'
+import { CreationResourceTreeToggle } from './CreationResourceTreeToggle'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -28,7 +29,6 @@ type ResourceMenu = {
 
 export default function DocumentListSidebar(): JSX.Element {
   const { t } = useTranslation()
-  const workspaceFrame = useWorkspacePanelFrame()
   const documents = useWorkbenchStore((state) => state.workbenchDocuments)
   const activeDocumentId = useWorkbenchStore((state) => state.activeDocumentId)
   const activeStoryboardId = useWorkbenchStore((state) => state.activeStoryboardId)
@@ -221,20 +221,23 @@ export default function DocumentListSidebar(): JSX.Element {
 
   return (
     <aside
-      className={cn('flex h-full w-[240px] shrink-0 flex-col max-[1180px]:w-[200px]', workspaceFrame ? workspacePanelFrame : 'border-r border-nomi-line-soft bg-nomi-paper')}
+      className={cn('flex h-full w-[240px] shrink-0 flex-col', workspacePanelFrame)}
       aria-label={t('creationAi.documentList.aria')}
       data-creation-resource-tree="true"
     >
-      <div className={cn('flex shrink-0 items-center justify-between', workspaceFrame ? workspacePanelHeader : 'h-12 border-b border-nomi-line-soft px-3')}>
+      <div className={cn('flex shrink-0 items-center justify-between gap-1', workspacePanelHeader)}>
         <div className="min-w-0">
           <div className="truncate text-body-sm font-semibold text-nomi-ink">{t('creationAi.documentList.title')}</div>
           <div className="text-micro text-nomi-ink-40">{t('creationAi.documentList.count', { count: documents.length })}</div>
         </div>
-        <WorkbenchIconButton
-          icon={<IconPlus size={16} stroke={1.6} />}
-          label={t('creationAi.documentList.newDocumentAria')}
-          onClick={addWorkbenchDocument}
-        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <WorkbenchIconButton
+            icon={<IconPlus size={16} stroke={1.6} />}
+            label={t('creationAi.documentList.newDocumentAria')}
+            onClick={addWorkbenchDocument}
+          />
+          <CreationResourceTreeToggle placement="column" />
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label={t('creationAi.documentList.aria')}>

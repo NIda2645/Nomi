@@ -31,6 +31,7 @@ import {
   laneApprovalWasRefused,
 } from '../../../../electron/shared/agentLane/laneContracts'
 import { laneToolTextForUser } from '../../../../electron/shared/agentLane/laneToolNextAction'
+import type { LaneToolPublicFailure } from '../../../../electron/shared/agentLane/laneToolFailureEnvelope'
 import type { V4InterventionSource } from '../v4/agentPanelV4Intervention'
 import { resolveModelToolCapabilityId } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
 import { actionFamilyForCapability } from '../v4/agentPanelV4ActionFamily'
@@ -53,7 +54,16 @@ export interface LaneViewModelLabels {
   /** 工具别名 → 人话动词 + 对象（「读取文稿」）。 */
   toolLabel(toolName: string, args: unknown): string
   toolSummary(toolName: string, args: unknown): string | undefined
-  toolFailure(text: string): string | undefined
+  /**
+   * 失败 → 面板该印的那段字。
+   *
+   * `failure` 在时按 `code` 查本地词条（C5 的正路）；缺席（旧转录、信封没挂上）才退回
+   * 按正文猜——那条老路只认得出 schema 校验一种，认不出就返回 undefined，由调用方决定。
+   * **两条路都不许把模型正文当文案印出去**：那段字是英文、第三人称、还带 `Next:` 指令。
+   */
+  toolFailure(text: string, failure?: LaneToolPublicFailure): string | undefined
+  /** 失败的展开体：摘要 + 结构化字段（哪个字段、期望什么类型、合法值）。 */
+  toolFailureDetail(failure: LaneToolPublicFailure): string
   /** 思考行左侧那个词。 */
   thinkingLabel: string
   /** 数字格式化：token 数、金额。缺省不印，不是印 0。 */
@@ -363,7 +373,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // 没有摘要、没有展开体）。理由住在用户自己填它的那张介入槽里；再把它印到行尾、又塞进
     // 展开体，同一句话就在面板上出现三次——设计实验室 P6 探针把这一格接上真投影时当场红了。
     const { summary: _summary, ...withoutSummary } = existing.receipt
-    const failure = part.isError ? labels.toolFailure(part.text) : undefined
+    const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
     items[slot.index] = {
       kind: 'tool',
       receipt: denial !== undefined
@@ -377,7 +387,15 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
           // 而它讲的那件事这一行自己已经画出来了（上面那颗撤销钮、介入槽里的卡）。
           // 原样印 = 同一件事说两遍，其中一遍还不是用户文案。按投影带上来的信封**结构去尾**，
           // 不认 "User sees:" 这个前缀——渲染格式改了这里跟着改，不会漏。
-          output: redactResidentSensitiveText(laneToolTextForUser(part.text, part.nextAction)) || undefined },
+          // C5：失败时展开体印的是**由 code 派生的本地文案 + 结构化字段**，不是模型收到的那段
+          // 英文散文。原来这里对成功/失败一视同仁地印 `part.text`，于是中文界面上出现
+          // `The current target could not accept this action (surface_port_stale). Next: …`
+          // （审计 §5 / B03 截图）。信封缺席的旧转录退回 `toolFailure` 的正文猜法，仍不印原文。
+          output: part.isError
+            ? (part.failure
+              ? redactResidentSensitiveText(labels.toolFailureDetail(part.failure))
+              : labels.toolFailure(part.text) && redactResidentSensitiveText(labels.toolFailure(part.text)!)) || undefined
+            : redactResidentSensitiveText(laneToolTextForUser(part.text, part.nextAction)) || undefined },
     }
   }
 
