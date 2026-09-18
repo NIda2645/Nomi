@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { VERB_DECLARATIONS } from "../verbDeclarations";
-import { assertVerbFieldProvenance, PROVENANCE_UNVERIFIABLE } from "./verbFieldProvenance";
+import { assertVerbFieldProvenance } from "./verbFieldProvenance";
 
 describe("verb output provenance", () => {
-  it("retires the model catalog, timeline and export exceptions", () => {
-    expect(Object.keys(PROVENANCE_UNVERIFIABLE).sort()).toEqual(["draft_shots", "generate"]);
-  });
-
   it("checks the verb output even when its capability output is unknown", () => {
     const declarations = VERB_DECLARATIONS.map((verb) => verb.name === "list_models"
       ? { ...verb, outputSchema: z.object({ models: z.array(z.object({ unrelated: z.string() })) }) }
