@@ -238,15 +238,9 @@ export async function fetchVendorWithBaseFallback(url: string, init: RequestInit
 export function codeDeclaredFallbackOrigins(vendorKey: string): string[] {
   const family = FAMILIES.find((item) => item.vendorKey === vendorKey);
   if (!family) return [];
-  const origins = new Set<string>();
-  for (const candidate of [family.primary, ...family.alternates]) {
-    try {
-      origins.add(new URL(candidate).origin);
-    } catch {
-      /* 声明写错了就当它不存在——绝不因此放行一个解析不出来的目的地 */
-    }
-  }
-  return [...origins];
+  // 声明写错了就当它不存在——绝不因此放行一个解析不出来的目的地。
+  const originOf = (candidate: string): string => { try { return new URL(candidate).origin; } catch { return ""; } };
+  return [...new Set([family.primary, ...family.alternates].map(originOf).filter(Boolean))];
 }
 
 export function activeVendorBaseOverride(vendorKey: string): string | null {

@@ -176,8 +176,6 @@ try {
   // 密钥落地后，那条持久「去填 key」请求必须由写它的那层收走。留着它 = 用户下次打开设置→模型
   // 又被拽回一个已经接好的供应商的添加页（走查里这条 fixture 原本自己 ack 掉，把这个缺口盖住了）。
   check(credentialSaved.queued === 0, 'C7 T14 密钥落地后持久凭据 handoff 被收走')
-  const afterCredential = await call(mcp, 'nomi_read', { target: 'setup', setupId: integrationSessionId })
-  const afterCredentialData = resultTextJson(afterCredential)
   const rejectedProposal = await mcp.callTool('nomi_model_setup', {
     action: 'submit_declaration', setupId: integrationSessionId,
   })

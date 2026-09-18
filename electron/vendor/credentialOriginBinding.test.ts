@@ -203,16 +203,7 @@ describe("端到端：带 key 的请求被拦时，fetch 从未被调用", () =>
   it("旧数据里一条指向别家的绝对 URL → VendorRequestError，且 fetch 零次调用", async () => {
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
-    const vendor = {
-      key: "relay",
-      name: "Relay",
-      enabled: true,
-      authType: "bearer",
-      baseUrlHint: "https://api.relay.example",
-      credentialBinding: deriveCredentialBinding({ baseUrlHint: "https://api.relay.example", authType: "bearer" }, "t"),
-      createdAt: "t",
-      updatedAt: "t",
-    } as unknown as Vendor;
+    const vendor = boundVendor() as unknown as Vendor;
     const error = await requestJson(
       vendor,
       "sk-live",
