@@ -36,10 +36,10 @@ cd /Users/aoqimin/Desktop/Nomi-skillreach-0919 && pnpm install
 
 ## 一、先读这些，别重查（已核实，带出处）
 
+（格式与加载那一块的出处在上面「先查别人」节，这里不重复。）
+
 | 事实 | 出处 |
 |---|---|
-| 导入已对齐市场标准：文件夹 + `SKILL.md` + YAML frontmatter，收 zip；自造的 `.nomiskill.json` 信封已删（2026-08-27） | `src/workbench/skillLibrary/parseSkillImport.ts` 头注释 |
-| R5.5 已登记，三处偏差都有理由（顶层键是闭集 → 扩展只能走 `metadata`，引了官方参考校验器 `validator.py:104-115`） | `docs/engineering/standard-formats.json` 的 `agent-skill` 条 |
 | **用户导入的技能恒可选**：`origin === 'user'` 直接 return true，不需要写任何 `metadata.nomi` | `electron/skills/skillStore.ts:175-181` |
 | 模型看到的索引 = `readSkillRecords().filter(isSkillSelectableInWorkbench)` → 48 条内置 + 全部用户导入。**40 条 `kind: effect` 模型看不见**（只走节点 chip，设计如此） | `electron/agentLane/laneDesktopRuntime.ts:164` |
 | `<available_skills>` 由 pi 的 `formatSkillsForPrompt` 渲染，模型可 `read_skill` 取正文；`disableModelInvocation` 全仓 0 条为 true | `electron/agentLane/laneSkillCatalog.mts:293` |
