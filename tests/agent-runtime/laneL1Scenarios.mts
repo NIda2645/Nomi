@@ -41,16 +41,16 @@ const canvas = (id: string, name: string, args: Record<string, unknown>, semanti
   resultText: `Applied directly (undoable).\nUser sees: ${userSees}`,
 });
 const DRAFT_USER_SEES = 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.';
-/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到 operationId（回执末行印成 jobId=）。 */
+/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到的 id，末行按它下一步要填的名字印成 `operationId=`。 */
 const draft = (id: string, args: Record<string, unknown>, operationId: string): L1Call =>
-  domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (jobId=${operationId})`);
+  domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (operationId=${operationId})`);
 const turn = (prompt: string, ...frames: L1Frame[]): L1Turn => ({ prompt, frames });
 const scenario = (id: string, family: L1Scenario['family'], title: string, turns: L1Turn[],
   extra: Partial<L1Scenario> = {}): L1Scenario => ({ id, family, title, turns, finalDocument: INITIAL_DOCUMENT, ...extra });
 const emptyCanvas = { nodes: [], edges: [], groups: [], selectedNodeIds: [] };
 const timeline = { operation: 'read_timeline', revision: 'r1', fps: 30, scale: 1,
   playheadFrame: 0, durationFrames: 0, valid: true, tracks: [], textClips: [], transitions: [] };
-const plan = { revision: 'r1', summary: 'Move opening clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 30 }] };
+const plan = { baseRevision: 'r1', summary: 'Move opening clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 30 }] };
 // draft_shots 的 parameters 是模型档案声明的标量表；嵌套结构由宿主按目录钳值，不进模型面。
 const nestedParameters = { seed: 7, aspect_ratio: '16:9', hd: true };
 const queued: LaneTaskFacts = { status: 'queued', progress: 0, currency: 'CNY' };
