@@ -15,6 +15,7 @@ import type { NomiModelConfig } from './laneModelConfig'
 import type { LaneLegacyFacts } from './laneLegacyNote'
 import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
 import type { LaneToolNextAction } from './laneToolNextAction'
+import type { LaneToolPublicFailure } from './laneToolFailureEnvelope'
 
 /** 一段 = 模型一轮回复里的一个小块，或转录里的一条记录。顺序由 `sequence` 唯一决定。 */
 export interface LanePartIdentity {
@@ -75,6 +76,13 @@ export type LanePart =
        * 而不是去认 "User sees:" 这个前缀。缺席 = 这次结果没有信封（读动词、失败、旧转录），不是「没有下一步」。
        */
       readonly nextAction?: LaneToolNextAction
+      /**
+       * 失败时的**结构化信封**（`details.failure`，由 `laneHost` 的 `after_tool` 挂上）。
+       *
+       * 带它上来是为了让渲染层按 `code` 查 i18n 词条——面板要印的是本语言的一句人话，
+       * 不是模型收到的那段英文散文。缺席 = 这次不是失败，或旧转录里没有信封（退回原正文）。
+       */
+      readonly failure?: LaneToolPublicFailure
     })
   | (LanePartIdentity & {
       /**

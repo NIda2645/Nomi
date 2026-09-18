@@ -1,4 +1,6 @@
 import type { ResultLocale } from './mcpToolResults'
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from '../shared/surfacePortBinding'
+import { INTEGRATION_ERROR_CODES } from '../shared/integrationContract'
 
 type Ctx = { locale: ResultLocale }
 const L = (ctx: Ctx, zh: string, en: string): string => (ctx.locale === 'en' ? en : zh)
@@ -95,30 +97,36 @@ const USER_ACTION_HINT: Record<string, { action: string; zh: string; en: string 
 
 const OPEN_NEW_PROJECT_SESSION = 'Open a new project session and retry'
 
-const POLICY_CODES = new Set([
-  'mcp_connection_unauthenticated',
-  'legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready',
-  'capability_invocation_unverified', 'capability_authority_invalid', 'capability_input_invalid',
-  'capability_policy_stale', 'capability_output_invalid', 'capability_timeout',
-  'capability_cancelled', 'capability_execution_failed', 'capability_unsupported',
-  'project_session_unavailable', 'project_selection_denied', 'project_identity_unavailable',
-  'human_approval_required', 'receipt_invalid', 'receipt_expired',
-  'lease_required', 'lease_invalid', 'project_scope_changed', 'project_binding_stale', 'lease_expired', 'lease_revoked',
-  'surface_port_suspended', 'surface_port_unavailable', 'surface_port_stale', 'surface_owner_mismatch',
+/** 资源找不到那一档：码本身就是全部公开信息，不带任何私有路径/供应商原文。 */
+const NOT_FOUND_CODES = [
   'node_not_found', 'unknown_node_kind', 'invalid_edge_mode', 'document_not_found', 'project_not_found',
-  'integration_session_not_found', 'integration_owner_mismatch', 'integration_expected_revision_missing',
-  'integration_revision_stale', 'integration_revision_ahead', 'integration_stage_not_allowed',
-  'integration_required_fields_missing',
+] as const
+
+/** 项目会话那一档：得重选项目 / 重开会话。 */
+const PROJECT_SESSION_CODES = [
+  'project_session_unavailable', 'project_selection_denied',
+  'lease_required', 'lease_invalid', 'lease_expired', 'lease_revoked', 'project_scope_changed',
+] as const
+
+/**
+ * C4：这两份以前各手抄了一遍传输层码表（42 码 / 20 码），`POLICY_CODES` 还连
+ * `INTEGRATION_ERROR_CODES` 那 7 个码一起抄。整张表在仓库里有 15 份定义，拆一个码要改 15 处。
+ * 现在只从 owner spread，本文件只列自己这一层独有的分档。
+ *
+ * These typed failures may wrap private disk/provider causes; the code is their whole public message.
+ */
+const SAFE_CANVAS_READ_CODES = new Set<string>([
+  ...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES,
+  ...NOT_FOUND_CODES,
 ])
 
-/** These typed failures may wrap private disk/provider causes; the code is their whole public message. */
-const SAFE_CANVAS_READ_CODES = new Set([
-  'capability_invocation_unverified', 'capability_authority_invalid', 'capability_input_invalid',
-  'capability_policy_stale', 'capability_output_invalid', 'capability_timeout',
-  'capability_cancelled', 'capability_execution_failed', 'capability_unsupported',
-  'project_identity_unavailable', 'project_binding_stale',
-  'surface_port_suspended', 'surface_port_unavailable', 'surface_port_stale', 'surface_owner_mismatch',
-  'node_not_found', 'unknown_node_kind', 'invalid_edge_mode', 'document_not_found', 'project_not_found',
+const POLICY_CODES = new Set<string>([
+  ...SAFE_CANVAS_READ_CODES,
+  ...PROJECT_SESSION_CODES,
+  ...INTEGRATION_ERROR_CODES,
+  'mcp_connection_unauthenticated',
+  'legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready',
+  'human_approval_required', 'receipt_invalid', 'receipt_expired',
 ])
 
 /** A6 · 错误 → 人话原因 + 恢复动作 + 诊断信息（未知错误不编内容，原样透传 message）。 */

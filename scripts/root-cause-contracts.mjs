@@ -407,6 +407,32 @@ const DOOR_KINDS = new Set(["write", "read"]);
  */
 const DOOR_ROOTS = ["src/", "electron/"];
 
+/**
+ * `@generated` 纯数据文件的 catch-22（2026-09-18，Higgsfield lane 挖出）。
+ *
+ * 一份机器生成的纯数据表（码表快照、词典、夹具清单）是 `.ts`、住在 door root 下、又在
+ * `scope_paths` 里，于是它两头不是人：**不在 scope 里**算「scope 画小了」，**在 scope 里**又被
+ * 当成「改了门表之外的文件」——而纯数据文件**不可能有门**：它没有写入口也没有读入口，
+ * 它就是被读的那份数据本身。
+ *
+ * 过去只能靠手写一条假门（随便指一行 + 编个 symbol）糊过去，那比没门岗更糟：门表从此
+ * 不可信，而门表正是 R21 用来替代「我扫过了」这句话的东西。
+ *
+ * 判据要两条同时成立，**不能只看标记**——否则在任何文件顶上写一行 `@generated` 就能免门：
+ *   ① 文件头有 `@generated` 标记（生成器写的，人不该改这个文件）；
+ *   ② 文件里没有可执行声明（function / class / 箭头函数 / 控制流）——它真的只是数据。
+ * 只满足①的（生成出来的**代码**）照常要门表：它有行为，就有入口。
+ */
+const EXECUTABLE_DECLARATION = /\bfunction\b|\bclass\s+[A-Za-z_$]|=>|\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bswitch\s*\(/;
+
+function isGeneratedDataFile(file, fileContents) {
+  const source = fileContent(normalized(file), fileContents);
+  if (typeof source !== "string") return false;
+  const header = source.split("\n").slice(0, 10).join("\n");
+  if (!/@generated\b/.test(header)) return false;
+  return !EXECUTABLE_DECLARATION.test(source);
+}
+
 function isDoorGovernedFile(file) {
   const name = normalized(file);
   if (isTestFile(name) || name.endsWith(".md") || name.endsWith(".json")) return false;
@@ -469,7 +495,8 @@ function validateDoorMap(contract, changed, existingFiles, label, fileContents) 
   // 「这是删掉的旧路径」才不算漏数。没声明的删除照样当门没数全。
   const declaredRemoved = new Set((Array.isArray(contract?.legacy_paths?.removed_paths) ? contract.legacy_paths.removed_paths : []).map(normalized));
   const strays = [...changed]
-    .filter((file) => isDoorGovernedFile(file) && pathIsInScope(file, scopePaths) && !doorPaths.has(normalized(file)))
+    .filter((file) => isDoorGovernedFile(file) && !isGeneratedDataFile(file, fileContents)
+      && pathIsInScope(file, scopePaths) && !doorPaths.has(normalized(file)))
     .filter((file) => existingFiles.has(normalized(file)) || !declaredRemoved.has(normalized(file)))
     .sort();
   for (const file of strays) {

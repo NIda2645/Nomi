@@ -37,7 +37,7 @@
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 407,
+      "line": 408,
       "symbol": "addExternalReferenceAnchor"
     },
     {

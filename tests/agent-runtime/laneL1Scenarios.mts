@@ -88,13 +88,18 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
       { operation: 'inspect_timeline_range', startFrame: 30, endFrame: 60 })), say('The requested interval has no clips.'))]),
   scenario('T3', 'timeline', 'Apply a revision-bound plan through the review card', [turn('Move the opening clip.',
     calls(domain('write-t3', 'edit_timeline', plan, { applied: true, revision: 'r2', undoToken: 'undo-1' }, plan,
-      'The timeline highlights the planned edit and a review card asks the user to apply it (in full-auto mode it is already applied). (changeId=undo-1)')), say('The edit has an undo token.'))]),
+      // 这句以前写死「有一张卡在等用户」，还用括号补一句「全自动档其实已经应用了」——两种结论塞进一句话，
+      // 正是 T-ED-02 那条根因（回执不从真实批准派生）。现在 userSees 由本次调用的真实批准结论派生，
+      // 而本场景**没有**摆出批准动作，所以它断言的是「没问就直接改了」那一支。要覆盖「出了卡」那一支，
+      // 得在场景里真的摆一次批准，不是把话写死。
+      'The timeline edit applied directly \u2014 this approval mode did not ask, and no card is waiting for the user. It is reversible; call undo to take it back. (changeId=undo-1)')), say('The edit has an undo token.'))]),
   scenario('G1', 'generation', 'Draft a shot without spending', [turn('Draft a sunrise image.',
     calls(draft('create-g1', { shots: [{ prompt: 'Sunrise' }] }, 'gen-1')), say('The draft awaits the user; nothing was spent.'))]),
   scenario('G2', 'generation', 'Read a submitted job then cancel it', [turn('Stop the existing generation.',
     calls(domain('read-g2', 'check_job', { jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'submitted' } })),
     calls(domain('cancel-g2', 'cancel_job', { jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'cancelled' } }, { jobId: 'gen-2' },
-      'The job was cancelled after the user confirmed; credit already spent is not refunded.')), say('Cancellation was requested once.'))]),
+      // 同上：「after the user confirmed」原来是写死的，本场景没摆批准，断言的就该是不带这半句的那一支。
+      'The job was cancelled; credit already spent is not refunded.')), say('Cancellation was requested once.'))]),
   scenario('G3', 'generation', 'Preserve scalar parameters while drafting and revising', [turn('Revise this structured draft.',
     calls(draft('create-g3', { shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')),
     calls(draft('patch-g3', { draftId: 'gen-3', shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')), say('Nested parameters survived the revision.'))]),

@@ -1,0 +1,20 @@
+=== POST /higgsfield-ai/dop/standard  body={"prompt":"x","image_url":"https://example.com/a.jpg","motions":["__bad__"]}  [key=main]
+{"detail":[{"type":"model_attributes_type","loc":["body","motions",0],"msg":"Input should be a valid dictionary or object to extract fields from","input":"__bad__"}]}
+[HTTP 422]
+
+=== POST /higgsfield-ai/dop/standard  body={"prompt":"x","image_url":"https://example.com/a.jpg","motions":[{"__bad__":1}]}  [key=main]
+{"detail":[{"type":"missing","loc":["body","motions",0,"id"],"msg":"Field required","input":{"__bad__":1}},{"type":"missing","loc":["body","motions",0,"strength"],"msg":"Field required","input":{"__bad__":1}}]}
+[HTTP 422]
+
+=== POST /higgsfield-ai/soul/v2/standard  body={"custom_reference_id":123,"image_url":123,"image_urls":"__bad__","input_images":"__bad__","reference_image_url":123}  [key=main]
+{"detail":[{"type":"missing","loc":["body","prompt"],"msg":"Field required","input":{"custom_reference_id":123,"image_url":123,"image_urls":"__bad__","input_images":"__bad__","reference_image_url":123}},{"type":"uuid_type","loc":["body","custom_reference_id"],"msg":"UUID input should be a string, bytes or UUID object","input":123}]}
+[HTTP 422]
+
+=== POST /marketing-studio/image  body={"prompt":"probe"}  [key=main]
+{"detail":"not_enough_credits"}
+[HTTP 403]
+
+=== POST /marketing-studio/image  body={"prompt":"probe"}  [key=alt]
+{"status":"queued","request_id":"6fc80e9d-e356-4df3-b075-ecc898c40c74","status_url":"https://platform.higgsfield.ai/requests/6fc80e9d-e356-4df3-b075-ecc898c40c74/status","cancel_url":"https://platform.higgsfield.ai/requests/6fc80e9d-e356-4df3-b075-ecc898c40c74/cancel"}
+[HTTP 200]
+

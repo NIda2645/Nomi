@@ -1,3 +1,4 @@
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import {
   timelineReadInputForAlias,
@@ -16,23 +17,11 @@ import {
   type VerifiedCapabilityInvocation,
 } from "./verifiedCapabilityInvocation";
 
+// C4：共同底座从 owner 派生，只保留时间轴自己独有的四个码。
+// 这一份以前少了 `project_identity_unavailable`。
 const PUBLIC_FAILURE_CODES = new Set([
-  "capability_invocation_unverified",
-  "capability_authority_invalid",
-  "capability_input_invalid",
-  "capability_policy_stale",
-  "capability_output_invalid",
-  "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed", "capability_receipt_unresolved",
-  "capability_unsupported",
-  "capability_target_stale",
-  "project_binding_stale",
+  ...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES,
   "project_scope_required",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
   "plan_id_conflict",
   "undo_token_invalid",
   "undo_stale_revision",

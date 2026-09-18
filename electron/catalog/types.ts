@@ -157,6 +157,17 @@ export type AssetIngestion =
       initFileNameField?: string;
       initContentTypeField?: string;
       uploadUrlPath: string;
+      /**
+       * 初始化响应里「PUT 时必须原样带上的头」对象的点路径（如 Higgsfield 的 `upload_headers`）。
+       *
+       * 为什么不是写死一组头：预签名 URL 把哪些头算进签名是**供应商侧决定**的。Higgsfield 的
+       * `X-Amz-SignedHeaders = content-type;host;x-amz-tagging` —— 2026-09-17 实测，PUT 只带
+       * `Content-Type`（本策略在此之前的行为）会拿到 403 `SignatureDoesNotMatch`，带上响应给的
+       * `upload_headers` 才 200。把头从响应里读出来，就不用为每家猜一遍它签了什么
+       * （R5：别照二手资料写死，按供应商自己给的来）。
+       * 缺省 undefined ⇒ 仍只发 Content-Type，fal 等既有通道逐字节不变。
+       */
+      uploadHeadersPath?: string;
       urlPath: string;
       authType?: "bearer" | "key";
       accepts?: ReadonlyArray<AssetMediaKind>;
@@ -238,6 +249,23 @@ export type Vendor = {
   baseUrlHint?: string | null;
   authType?: VendorAuthType;
   authHeader?: string | null;
+  /**
+   * `Authorization` 头里 key 前面的**方案词**，缺省 `Bearer`。
+   *
+   * 为什么要它：`authType` 那张 enum（none/bearer/x-api-key/query）回答的是「key 放哪」，
+   * 回答不了「放进 Authorization 时前缀写什么词」。Higgsfield 要的是
+   * `Authorization: Key <id>:<secret>` —— 既不是 Bearer，也不是「换个头名字」，
+   * 而是同一个头里换一个方案词。
+   *
+   * 为什么不给 authType 加第五个值：那张 union 今天被**手抄在 15 处**
+   * （providerAdapter/types.ts、integrationCertification/httpConnector.ts、
+   *  mcpIntegrationTools.ts、src/api/desktopClient.ts …），加一个值要同时改 15 份副本，
+   * 且会撞上正在重写的认证面。方案词是正交的新概念，独立一个可选字段表达最省
+   * （R17：能在最早一层声明就别散进每条 mapping 的字面量）。
+   *
+   * 缺省 undefined ⇒ 行为与今天逐字节相同。
+   */
+  authScheme?: string | null;
   authQueryParam?: string | null;
   /**
    * Which Vercel AI SDK provider implementation to use for this vendor.
@@ -458,6 +486,20 @@ export type HttpOperation = {
       /** mode=repeat 时的 flag 名（如 "--image"）。 */
       flag?: string;
     }>;
+  };
+  /**
+   * **本地引擎 transport 声明**（仅 audioTaskRunner 消费，P4 声明驱动不 hardcode vendor）。
+   * 当一条 mapping 的执行者不是远端 HTTP 端点、也不是一次性 CLI，而是**本机常驻 sidecar**
+   * （whisper.cpp 的 `whisper-server`）时，create op 声明 localEngine，runner 据此分流到
+   * `electron/localSpeech/` 的编排（装引擎 → 切段 → 逐段推理 → 折回全局时间轴），
+   * 出的结果与云端 whisper 的 `verbose_json` 同形状，因此上层解析器一份就够（P1）。
+   *  - kind      ：引擎选择子。将来同形状的第二个本地引擎声明各自的 kind 即复用这条路。
+   *  - tierParam ：`request.params` 里哪个键携带权重档位（值的白名单在 catalog/localSpeech.ts）。
+   * 可序列化（持久化进 catalog JSON）：纯数据声明。
+   */
+  localEngine?: {
+    kind: "whisper-cpp";
+    tierParam: string;
   };
   /**
    * **multipart/form-data transport 声明**（P4 声明驱动不 hardcode vendor）。当端点收的是二进制文件上传

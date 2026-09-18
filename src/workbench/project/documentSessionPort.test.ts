@@ -136,7 +136,11 @@ describe('surface_port_stale sites outside the document owner stay as they are',
     ['electron/capabilityCore/canvasReadSurfaceRegistry.ts', 17],
     ['electron/capabilityCore/canvasReadCapturedSnapshotRegistry.ts', 15],
     ['electron/capabilityCore/canvasReadSurfacePort.ts', 1],
-    ['electron/capabilityCore/canvasReadTransportAdapters.ts', 2],
+    // C4（2026-09-18）：这里原本是 2 次——一次在放行清单的手抄字面量里，一次在真·比对处。
+    // 放行清单已改成 spread `CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES`（码表单一值源），
+    // 那一次字面量随之消失。**降到 1 是这条钉子该有的反应**：它钉的是「别再多长一份手抄」，
+    // 收掉一份就该降一格。
+    ['electron/capabilityCore/canvasReadTransportAdapters.ts', 1],
     ['src/workbench/project/projectCanvasReadSurface.ts', 8],
     ['src/workbench/capability/canonicalCanvasPlanPatch.ts', 1],
     ['src/workbench/capability/capabilityApplyHandler.ts', 1],

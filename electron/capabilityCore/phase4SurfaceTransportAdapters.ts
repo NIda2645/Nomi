@@ -1,3 +1,4 @@
+import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { assetReadInputForAlias, type AssetReadInput } from "../shared/agentCapabilities/assetRead";
 import {
@@ -16,24 +17,8 @@ import {
   type VerifiedCapabilityInvocation,
 } from "./verifiedCapabilityInvocation";
 
-const PUBLIC_FAILURE_CODES = new Set([
-  "capability_invocation_unverified",
-  "capability_authority_invalid",
-  "capability_input_invalid",
-  "capability_policy_stale",
-  "capability_output_invalid",
-  "capability_timeout",
-  "capability_cancelled",
-  "capability_execution_failed",
-  "capability_receipt_unresolved",
-  "capability_unsupported",
-  "capability_target_stale",
-  "project_binding_stale",
-  "surface_port_suspended",
-  "surface_port_unavailable",
-  "surface_port_stale",
-  "surface_owner_mismatch",
-]);
+// C4：放行清单从 owner 派生。这一份以前少了 `project_identity_unavailable`。
+const PUBLIC_FAILURE_CODES = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES;
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
   const candidate = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"

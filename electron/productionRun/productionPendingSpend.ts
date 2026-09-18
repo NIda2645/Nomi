@@ -59,14 +59,35 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
 }
 
 /**
+ * 「这一笔此刻正由**档位**代答」。`true` = 它不在等用户，别投影成卡。
+ *
+ * 事实的 owner 是 `capabilityCore/policySpendDecision.ts`（进程内，有始有终）；这里只收一个谓词，
+ * 因为本文件是纯投影，不认识宿主。缺席 = 没有任何档位在代答，行为逐字不变（外部 MCP 宿主那条路
+ * 从来不传它）。
+ */
+export type SpendAnsweredByPolicy = (projectId: string, operationId: string) => boolean;
+
+/**
  * 这个 Run 里有没有一笔「等人点头」的生成？没有 → `undefined`（那时面板上一张卡都不该出现）。
  *
  * 刻意**不**投影 `submitted` / `cancelled`：那两档已经不是「等你决定」了，
  * 它们各有自己的界面（任务卡 / 收据行），再出一张确认卡就是在问一个已经答过的问题。
+ *
+ * ── 档位那一档（2026-09-18 · T-AG-04）──
+ *
+ * 用户在「全自动」档下拍过板：付费生成直接跑、不再逐笔看报价（2026-09-12）。所以一份
+ * **正在被档位代答**的草稿不是「在等你点头」——它在等的是策略，而策略马上就会在同一道闸上决完
+ * （`decideByPolicyAfterDraft`）。此前这里完全不看这件事，于是草稿落盘到封印之间的那一段，
+ * 面板照旧弹卡，用户刚答应过的事被又问了一遍（T-AG-04）。
+ *
+ * 判据只放在 `draft` 这一支，**`sealed` 那一支一个字不动**，这是裁决明写要保留的行为：
+ * 代答链（`decideGenerationSpend`）第一步就是封印+开门，之后任何一步失败都留下
+ * 「sealed + gate waiting」——那时卡照旧出现在原处等用户，也就是「策略答不了才问人」。
  */
 export function projectPendingSpendConfirm(
   run: ProductionRun,
   resolvePricing: PricingResolver,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
 ): PendingSpendConfirm | undefined {
   if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
   const plan = run.generationPlan;
@@ -81,6 +102,9 @@ export function projectPendingSpendConfirm(
     return undefined;
   } else if (plan.cardHidden === true) {
     // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
+    return undefined;
+  } else if (spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) {
+    // 「全自动」档正在替用户决这一笔（见上）。它不在等人，别摆卡。
     return undefined;
   }
   const shots = shotsOf(plan, resolvePricing);
@@ -117,12 +141,13 @@ export function projectPendingSpendConfirm(
 export function listPendingSpendConfirms(
   runs: readonly ProductionRun[],
   resolvePricing: PricingResolver,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
 ): readonly PendingSpendConfirm[] {
   return Object.freeze(
     runs
       .slice()
       .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
-      .map((run) => projectPendingSpendConfirm(run, resolvePricing))
+      .map((run) => projectPendingSpendConfirm(run, resolvePricing, spendAnsweredByPolicy))
       .filter((value): value is PendingSpendConfirm => Boolean(value)),
   );
 }

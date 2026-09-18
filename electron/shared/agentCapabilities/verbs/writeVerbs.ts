@@ -81,6 +81,32 @@ const prepareWriteScriptArguments = (() => {
   };
 })();
 
+/**
+ * `modelKey` 与 `candidate.modelId` 是**同一件事的两个名字**（都写着 "from list_models"）：`list_models`
+ * 自己印的是 `modelKey=`，而 `draft_shots` 的示例演示的是 `candidate`。两个都填且互相矛盾时，传输层
+ * 无论选哪个都是在替用户决定「这一笔花在哪个模型上」——那正是 2026-09-18 根因合同要消灭的沉默。
+ * 所以这里当场退回去问模型，而不是挑一个。（两个名字本身是一条结构性欠账，收敛到一个名字要动
+ * `list_models` 的提示词，属 R13 第三档的工具面改动，不在本刀。）
+ */
+function rejectConflictingModelIdentity(args: unknown): Record<string, unknown> {
+  const record = (args && typeof args === "object" && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
+  const shots = Array.isArray(record.shots) ? record.shots : [];
+  for (const shot of shots) {
+    if (!shot || typeof shot !== "object") continue;
+    const { modelKey, candidate } = shot as { modelKey?: unknown; candidate?: { modelId?: unknown } };
+    const declared = candidate && typeof candidate === "object" ? candidate.modelId : undefined;
+    if (typeof modelKey === "string" && typeof declared === "string" && modelKey.trim() && declared.trim()
+      && modelKey.trim() !== declared.trim()) {
+      throw new LaneDomainFailure(wrongVerbFailure({
+        attempted: "draft_shots", useInstead: "draft_shots",
+        because: `A shot names two different models: modelKey="${modelKey.trim()}" and candidate.modelId="${declared.trim()}". `
+          + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.",
+      }));
+    }
+  }
+  return record;
+}
+
 const CANVAS_WRITE_GUIDELINES = Object.freeze([
   "Every canvas write is a reversible local edit: describe what changed in your reply using the returned userSees line rather than claiming more.",
 ]);
@@ -112,7 +138,7 @@ export function writeVerbs(): VerbDeclaration[] {
       does: "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
       notWhen: "It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelKey, modeId, parameters, references, role. Model and parameter values come from list_models; ids from look_at_canvas. Pass draftId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelKey (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass draftId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
@@ -171,7 +197,7 @@ export function writeVerbs(): VerbDeclaration[] {
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
       { when: "Change one existing shot's prompt:", arguments: { draftId: "op-1", shots: [{ shotId: "shot-3", prompt: "夜景，霓虹灯下的街道" }] } },
     ],
-    prepareArguments: modelArgumentTolerance({ arrayFields: ["shots"] }),
+    prepareArguments: (args: unknown) => rejectConflictingModelIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
   };
 
   const generate: VerbDeclaration = {

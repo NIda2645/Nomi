@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../project/storeLifetime'
 /**
  * 引导旅途的状态机 + 模块级 runner。
  *
@@ -181,4 +182,13 @@ export const useJourneyTourStore = create<JourneyTourState>((set) => {
       set({ active: false, phase: 'idle', beat: null, selectors: null })
     },
   }
+})
+
+/**
+ * C1 寿命声明：新手引导是**这个窗口**这一次的一段流程（它自己按 localStorage 记「看过了」）。
+ * 切项目把它清掉，正在走的引导会从中间断掉——那不是隔离，是打断。
+ */
+export const journeyTourStoreLifetime = declareStoreLifetime({
+  store: 'useJourneyTourStore',
+  fields: { active: 'window', phase: 'window', beat: 'window', teachIndex: 'window', selectors: 'window' },
 })

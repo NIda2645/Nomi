@@ -26,7 +26,7 @@ export function V4AutoModeBanner({
 }: {
   /** 档位名（「全自动」）。 */
   label: string
-  /** 那句诚实交代：仍然会问的是什么。 */
+  /** 那句诚实交代：付费生成会直接跑，不可逆仍然每次问（`autoModeBannerNote`）。 */
   note: string
   /** 退回上一档那颗小钮的文案（「回到自动改」）。 */
   revertLabel: string

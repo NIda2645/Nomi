@@ -128,13 +128,13 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 157,
+      "line": 160,
       "symbol": "semanticCandidateFromParams"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 292,
+      "line": 295,
       "symbol": "isLongFormGenerationRequest"
     },
     {
@@ -152,19 +152,19 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 89,
+      "line": 90,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 106,
+      "line": 107,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 115,
+      "line": 116,
       "symbol": "generationPlanInputSchema"
     },
     {
@@ -212,7 +212,7 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
-      "line": 125,
+      "line": 151,
       "symbol": "draftShotSchema"
     },
     {
@@ -248,13 +248,13 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 284,
+      "line": 287,
       "symbol": "draftShotFromPlan"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 367,
+      "line": 370,
       "symbol": "draftShotFromStoryboard"
     },
     {
@@ -272,7 +272,7 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/appIntegration.ts",
-      "line": 331,
+      "line": 326,
       "symbol": "createGenerationPlanningHandler"
     },
     {

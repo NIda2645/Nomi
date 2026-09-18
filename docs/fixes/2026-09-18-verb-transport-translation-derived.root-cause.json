@@ -112,7 +112,7 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
-      "line": 125,
+      "line": 151,
       "symbol": "draftShotSchema"
     },
     {

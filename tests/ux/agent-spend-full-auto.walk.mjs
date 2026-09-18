@@ -95,8 +95,19 @@ try {
   await expect(card.locator(PRICE_TOTAL), '「自动改」档下那张卡照旧印着宿主按目录算的价').toContainText('0.30')
   // 阴性对照：这一档下宿主**根本不去碰那道门**，所以不该有任何失败。
   // ③ 里同一个定位器要变成「有」——两次之间唯一的变量就是档位。
-  const failures = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
-  await expect(failures, '「自动改」档下不该去决门，也就不该有任何失败').toHaveCount(0)
+  //
+  // ⚠️ 「有卡了，停下」**不算失败**（2026-09-18 修）：这条断言 09-12 写下时，`generate` 成功出卡
+  // 还是一条普通成功结果；09-14 的 20 动词切换（`4753f64af`）把它改成了 GitHub MCP `issue_write`
+  // 那个形状——**isError + 明文停下**，好让模型不会把「卡出来了」说成「已经生成了」。那条结果
+  // 在面板上照样画成一条红带，于是这个阴性对照从那天起就把「按设计出卡」数成了「决门失败」。
+  // 它一直没被发现，是因为同一个 commit 还把 `candidate` 丢了，这条走查在更早的 ① 就红了。
+  // 判据改成「除了那句出卡公告之外的失败」——档位这个唯一变量照旧钉着，多余的那一条被排除。
+  const CARD_ANNOUNCEMENT = 'priced confirmation card'
+  const anyFailure = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
+  const failures = anyFailure.filter({ hasNotText: CARD_ANNOUNCEMENT })
+  await expect(anyFailure.filter({ hasText: CARD_ANNOUNCEMENT }),
+    '出卡本身要留下那句「停下、去看卡」的公告——它是 ③ 的对照基准，不是失败').toHaveCount(1)
+  await expect(failures, '「自动改」档下不该去决门，也就不该有任何决门失败').toHaveCount(0)
   await walk.snap('full-auto-01-safe-auto-still-asks')
 
   // 这一张**不丢弃**：2026-09-11 用户拍板「已经在等的那张卡不因切档而被放行」，

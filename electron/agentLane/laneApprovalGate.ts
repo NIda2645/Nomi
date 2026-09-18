@@ -84,6 +84,18 @@ export interface LaneApprovalGate {
   /** 用户在卡上点了什么。答的不是当前那张卡就返回 `false`（卡已经翻篇了，别把答案落到新的一张上）。 */
   answer(toolCallId: string, action: LaneApprovalAction, reason?: string): boolean;
   pending(): LanePendingApproval | undefined;
+  /**
+   * 这一次调用**真的**是怎么过闸的（2026-09-18 · T-ED-02）。工具回执据此说人话：
+   * `auto-granted` = 用户这一档下压根没出过卡，`granted-once` / `granted-session` = 他点过。
+   *
+   * 为什么回执不能查一张静态表：`laneExtendedTools.ts` 原来对 `edit_timeline` **无条件**回
+   * 「一张复审卡正在问用户要不要应用」——而这道闸跑在 `before_tool`，回执写出来的时候
+   * 那张卡早就答完了、改动也已经落下去了。模型照着那句话让用户去点一张不存在的卡
+   * （2026-09-12 「劈成两半」那次）。事实在这里，回执就该从这里取。
+   */
+  decisionFor(toolCallId: string): LaneApprovalDecision | undefined;
+  /** 这次调用结束了，忘掉它的结论（宿主在 `after_tool` 调）。 */
+  forget(toolCallId: string): void;
   describe(request: LaneApprovalRequest): string;
   /** 关窗 / 切项目 / 按停止：等待中的卡一律以 `cancelled` 收尾。 */
   cancelAll(cause: LaneApprovalCancelCause): void;
@@ -127,6 +139,25 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
    * 不去猜顺序，也不让用户在转录里看到同一次取消出现两遍。
    */
   const noted = new Set<string>();
+  /**
+   * `toolCallId` → 这次调用真的是怎么过闸的。回执（`laneExtendedTools.ts`）读它。
+   *
+   * 宿主在 `after_tool` 里 `forget`，所以正常只会存着在飞的那一两条。上限是兜底：
+   * 被闸拦下的调用在某些路径上不走 `after_tool`，而一条永远只涨不落的表在一条活一整天的
+   * lane 上就是泄漏。超了丢最老的（Map 按插入序），丢掉的后果只是那条回执少一句限定语。
+   */
+  const decisions = new Map<string, LaneApprovalDecision>();
+  const DECISION_MEMORY = 256;
+
+  function rememberDecision(toolCallId: string, decision: LaneApprovalDecision): void {
+    if (!toolCallId) return;
+    decisions.set(toolCallId, decision);
+    while (decisions.size > DECISION_MEMORY) {
+      const oldest = decisions.keys().next();
+      if (oldest.done) break;
+      decisions.delete(oldest.value);
+    }
+  }
 
   function note(entry: LaneApprovalNote): void {
     if (noted.has(entry.toolCallId)) return;
@@ -193,8 +224,62 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     return true;
   }
 
+  /**
+   * 预检那一趟本身。外面那层 `preflight` 只多做一件事：**把结论记下来**，
+   * 好让工具回执从真实的这一条派生，而不是从一张静态表上抄（T-ED-02）。
+   */
+  async function runPreflight(
+    request: LaneApprovalRequest, signal: AbortSignal | undefined,
+  ): Promise<LaneApprovalOutcome> {
+    // 重启后被 pi 再问一次的那些调用：不复活卡，直接取消（探针 ③ 的裁决）。
+    if (restored.delete(request.toolCallId)) {
+      // 记录由宿主在钩子里当场写：这一支**没有 abort 在飞**，所以它不会被 stranded
+      // （文件头 ③ 只管被 abort 打断的那两支）。
+      return { allow: false, decision: "cancelled", cause: "restart", reason: RESTART_REASON };
+    }
+    const { resolved, subject, policy, decided } = decisionOf(request);
+    if (decided.state === "auto-granted") return { allow: true, decision: "auto-granted",
+      undoable: subject.effect !== 'read' && subject.effectClass === 'reversible_local' };
+    if (decided.state === "denied-by-policy") {
+      return { allow: false, decision: "denied-by-policy", reason: decided.reason };
+    }
+
+    let settle!: (outcome: LaneApprovalOutcome) => void;
+    const answered = new Promise<LaneApprovalOutcome>((resolve) => { settle = resolve; });
+    waiting.set(request.toolCallId, {
+      settle,
+      capabilityId: subject.capabilityId,
+      pending: Object.freeze({
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+        args: request.args,
+        ...(subject.effectClass ? { effectClass: subject.effectClass } : {}),
+        grantable: laneApprovalGrantable(subject, policy) && resolved?.grantable !== false,
+        pendingCount: waiting.size + 1,
+      }),
+    });
+    publish();
+
+    // 文件头 ①②：race 那个 signal，**被打断时 resolve**。等待本身不设超时——
+    // 等待期没有请求在飞、不花一分钱，「你没在五分钟内回答」不是一个我们要替用户
+    // 编出来的事件（方案 §1.2）。关窗 / 切项目 / 按停止走 `cancelAll`，文案不同。
+    //
+    // 监听器用一次性的 controller 摘掉：不摘的那一版会在这次调用**早就批过之后**、
+    // 下一次 abort 时再兑现一遍，往 `drainNotes()` 里塞一条不存在的取消记录——
+    // 一条用户从没经历过的「你取消了」。
+    const detach = new AbortController();
+    try {
+      return await Promise.race([answered, abortedTo(signal, request, detach.signal)]);
+    } finally {
+      detach.abort();
+      if (waiting.delete(request.toolCallId)) publish();
+    }
+  }
+
   return {
     pending: currentPending,
+    decisionFor: (toolCallId) => decisions.get(toolCallId),
+    forget: (toolCallId) => { decisions.delete(toolCallId); },
     describe: (request) => {
       const { subject, decided } = decisionOf(request);
       if (decided.state === 'denied-by-policy') return '当前策略禁止此动作';
@@ -242,49 +327,9 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     },
 
     preflight: async (request, signal) => {
-      // 重启后被 pi 再问一次的那些调用：不复活卡，直接取消（探针 ③ 的裁决）。
-      if (restored.delete(request.toolCallId)) {
-        // 记录由宿主在钩子里当场写：这一支**没有 abort 在飞**，所以它不会被 stranded
-        // （文件头 ③ 只管被 abort 打断的那两支）。
-        return { allow: false, decision: "cancelled", cause: "restart", reason: RESTART_REASON };
-      }
-      const { resolved, subject, policy, decided } = decisionOf(request);
-      if (decided.state === "auto-granted") return { allow: true, decision: "auto-granted",
-        undoable: subject.effect !== 'read' && subject.effectClass === 'reversible_local' };
-      if (decided.state === "denied-by-policy") {
-        return { allow: false, decision: "denied-by-policy", reason: decided.reason };
-      }
-
-      let settle!: (outcome: LaneApprovalOutcome) => void;
-      const answered = new Promise<LaneApprovalOutcome>((resolve) => { settle = resolve; });
-      waiting.set(request.toolCallId, {
-        settle,
-        capabilityId: subject.capabilityId,
-        pending: Object.freeze({
-          toolCallId: request.toolCallId,
-          toolName: request.toolName,
-          args: request.args,
-          ...(subject.effectClass ? { effectClass: subject.effectClass } : {}),
-          grantable: laneApprovalGrantable(subject, policy) && resolved?.grantable !== false,
-          pendingCount: waiting.size + 1,
-        }),
-      });
-      publish();
-
-      // 文件头 ①②：race 那个 signal，**被打断时 resolve**。等待本身不设超时——
-      // 等待期没有请求在飞、不花一分钱，「你没在五分钟内回答」不是一个我们要替用户
-      // 编出来的事件（方案 §1.2）。关窗 / 切项目 / 按停止走 `cancelAll`，文案不同。
-      //
-      // 监听器用一次性的 controller 摘掉：不摘的那一版会在这次调用**早就批过之后**、
-      // 下一次 abort 时再兑现一遍，往 `drainNotes()` 里塞一条不存在的取消记录——
-      // 一条用户从没经历过的「你取消了」。
-      const detach = new AbortController();
-      try {
-        return await Promise.race([answered, abortedTo(signal, request, detach.signal)]);
-      } finally {
-        detach.abort();
-        if (waiting.delete(request.toolCallId)) publish();
-      }
+      const outcome = await runPreflight(request, signal);
+      rememberDecision(request.toolCallId, outcome.decision);
+      return outcome;
     },
   };
 
