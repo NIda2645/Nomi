@@ -1,0 +1,253 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-verb-transport-translation-derived",
+  "problem_type": "The translation between the model-facing verb and the host contract was hand-written, so the correspondence it carries had no owner and nothing could check it; and the table said where a field goes without ever saying where the model gets it",
+  "symptom": "Same day, same seam, twice: durationSec was hand-renamed to a top-level durationSeconds the host does not have (every shot carrying a duration was refused outright), and modelKey plus the per-shot candidate.providerId/modelId were simply not listed in the destructure, so a model naming a catalog model had that choice silently replaced by the user's default on a spending path.",
+  "direct_cause": "draftShotToPlanShot and the draft_shots branch in verbToTransportCall enumerated field names by hand; a field the author forgot was dropped with no error, and a target name the author invented was rejected only by the host at runtime.",
+  "class_root": "A capability was restated four times — verb declaration, translation, contract schema, handler and its downstream projections. Two of those restatements have to exist: the model needs names that suit it (modelKey, durationSec) and the host needs its internal names behind a cross-process, spend-gated admission check. The third carries nothing but the correspondence between the first two, yet it was code, so the correspondence had no machine-checkable form: neither completeness (every verb field has a destination) nor validity (every destination exists on the host) could be stated, let alone enforced. The first half of the invariant (what the host requires, the verb must have told the model) does not imply the second: adding contentHash to the verb declaration would satisfy it while leaving the tool just as unusable, because no read verb returns contentHash. A correspondence that states only the destination cannot express that, so the table carries a provenance for every field as well.",
+  "affected_population": [
+    "Every deferred-group verb call: 10 of the 11 transported verbs went through hand-enumerated field lists",
+    "Every draft_shots call carrying a duration, a catalog model choice, or a reference image",
+    "Every future field added to any of those verbs, which had to be remembered in a second place with nothing to remind the author"
+  ],
+  "scope_paths": [
+    "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+    "electron/agentLane/verbTransportRoutes.ts",
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts"
+  ],
+  "entry_points": [
+    "Agent panel turn calling any deferred-group verb",
+    "check_job / cancel_job falling through to the export domain"
+  ],
+  "invariants": [
+    "The correspondence between a verb field and a host field is data, and the translation function is executed from it rather than written beside it",
+    "Every verb field has a declared destination; a field with no relation fails assembly instead of disappearing at runtime",
+    "Every declared destination exists on the host shape it targets, or is registered per target with an explicit disposition (refuse or drop) and a reason",
+    "A field the model filled that cannot reach the host on this path is refused, never silently skipped; dropping is allowed only where it is declared as deliberate with a reason",
+    "A lossy correspondence (shape changes, the host completes the value) is declared as such and can never look like a same-name passthrough",
+    "Two relations competing for one destination must declare which wins; ordering in the source file decides nothing",
+    "Source and target field lists are read from the schemas that own them, never transcribed",
+    "Every field that carries a value declares where the model obtains it — one of model-authored, from-read:<verb>.<field>, host-resolved, derived:<field> — and a from-read claim is resolved against that verb's own declared output schema"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 36,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 64,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 77,
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 113,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 76,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 80,
+      "symbol": "PROVENANCE_UNVERIFIABLE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 192,
+      "symbol": "DRAFT_SHOT_FIELD_MAP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 51,
+      "symbol": "DRAFT_SHOT_FIELD_MAP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 53,
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "line": 53,
+      "symbol": "VerbFieldRelation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 51,
+      "symbol": "projectByFieldMap"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 57,
+      "symbol": "projectByFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 75,
+      "symbol": "VerbFieldMap"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 151,
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 15,
+      "symbol": "writeVerbs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "line": 147,
+      "symbol": "draftShotSchema"
+    }
+  ],
+  "door_reduction": {
+    "before": 16,
+    "after": 16,
+    "why_not": "The doors did not move: the same two call sites translate (laneExtendedDesktopPorts for the lane, the verb declarations for the map's source lists). What changed is that the correspondence those doors carry is now a value the assembler validates instead of statements inside a function. Collapsing the remaining doors would merge the lane transport with the declaration layer, which is the boundary that lets the host keep its own independent admission check — the one thing this change deliberately did not touch."
+  },
+  "generality_proof": "The mechanism is schema-driven end to end: assembleVerbFieldMap takes source keys from the verb's own schema and target keys from the host's own schema via objectFieldKeys, so a field added to either side changes the check without anyone editing the check. Ten of the eleven transported verbs are declared this way, including the export-domain fallback half of check_job/cancel_job; the eleventh (look_at_media) is excluded for a stated reason, not by omission.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "symbol": "assembleVerbFieldMap",
+      "responsibility": "Validate one verb-to-host correspondence table against both sides' own schemas, and refuse to produce a translator from a table that is incomplete, mistargeted, ambiguous or silently lossy"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "symbol": "projectByFieldMap",
+      "responsibility": "Execute a correspondence table — the only place a verb argument becomes a host argument, and it contains no field names of its own"
+    },
+    {
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "symbol": "DRAFT_SHOT_FIELD_MAP",
+      "responsibility": "Declare, as data, every field correspondence for the deferred-group verbs, including the lossy and the deliberately dropped ones"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "draft_shots",
+      "disposition": "enforced",
+      "evidence": "draftShotToPlanShot and withDraftDefaults are gone; the per-shot projection, the top-level defaults and all three target shapes come from DRAFT_SHOT_FIELD_MAP / DRAFT_SHOTS_FIELD_MAP. The only field names left in the file select a branch (has draftId, is a single shot, carries an envelope), which is routing, not correspondence."
+    },
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "generate, check_job, cancel_job, undo, edit_timeline, export_video, delete_from_canvas, read_skill, save_skill",
+      "disposition": "enforced",
+      "evidence": "Each is now a declared route whose target key list is read from its own host schema; export_video and save_skill previously forwarded the whole argument object untouched, which meant a new verb field would have reached the host unvalidated by anything on this side."
+    },
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "exportJobTransportCall",
+      "disposition": "enforced",
+      "evidence": "The export-domain half of check_job/cancel_job was the last hand-written {jobId: args.jobId}; it now executes its own declared table against the export job schema."
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "draft_shots revise-a-draft entrance",
+      "disposition": "enforced",
+      "evidence": "role joins title in the refusal: both are envelope fields with no place in a candidate patch. The verb refusal and the table's absentOn.patch = refuse are the same sentence at two layers — the verb so the model is told in its own field names, the table so the value can never be dropped without anyone noticing."
+    },
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "look_at_media",
+      "disposition": "not-affected",
+      "evidence": "Its translation is not a correspondence: the parameter shape selects which of five host methods is called (assetReadInputOf). Expressing dispatch as a field table would encode a decision as data without making it checkable, which is the disease rather than the cure. It keeps its own function and stays covered by the conformance gate's minimal / pairwise / saturated cases."
+    },
+    {
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "entry_point": "undo.changeId provenance",
+      "disposition": "enforced",
+      "evidence": "The provenance check fired on its first run: the relation claimed the value comes from edit_timeline's returned changeId, but timeline.write's declared output has no such field — the lane renames undoToken to changeId in a hand-written nextAction projection (electron/agentLane/laneExtendedTools.ts:22). The claim now names the field the contract actually declares, and the rename is the one this table already carries."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Two schemas maintained by different people, joined by a hand-written third statement, drift every time either side changes; this seam had already produced four such defects in one day before the translation stopped being hand-written.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs laneVerbTransport.ts verbTransportRoutes.ts verbFieldMap.ts writeVerbs.ts",
+      "Read every case of verbToTransportCall and classified it as correspondence (declared) or dispatch (kept as a function), with the one exclusion named in same_class_entry_points",
+      "Counted the remaining field-name references in laneVerbTransport.ts: three, all branch selection"
+    ]
+  },
+  "prevention": {
+    "kind": "schema-validation",
+    "enforcement_path": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+    "invariant": "A correspondence table is validated against both sides' own schemas at assembly: every verb field has a relation, every relation names a real verb field, every expanded parent's children each have their own relation, every destination exists on each target shape or is registered there with an explicit disposition and reason, competing destinations declare a priority, and a lossy relation states who completes the value and why the model cannot. Separately, every value-carrying relation declares its provenance, and a from-read claim is checked against the named verb's declared output: a field that verb does not return is red with no registry escape, while a verb with no declared output shape at all is red unless registered by name with a reason.",
+    "failure_mode": "Assembly throws naming the field, the target shape and what to do; the app does not start and any gate that imports the table exits non-zero.",
+    "exception_policy": "none",
+    "strategy": "Stop writing the third statement. Declare the correspondence as data, read both field lists from the schemas that own them, and generate the translator from the table — while leaving the host's own admission check completely untouched, because it is a cross-process, spend-gated boundary that must keep validating independently of whatever produced its input.",
+    "artifacts": [
+      "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "electron/agentLane/verbTransportRoutes.ts",
+      "scripts/check-verb-host-conformance.node-test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/verbTransportRoutes.test.ts",
+    "electron/agentLane/laneVerbTransport.test.ts",
+    "scripts/check-verb-host-conformance.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/verbTransportRoutes.test.ts",
+    "scripts/check-verb-host-conformance.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneVerbTransport.ts"
+    ],
+    "rationale": "draftShotToPlanShot's destructure, withDraftDefaults, the per-verb hand-built argument objects and the whole-args forwarding are all deleted in the same commit. No parallel translation remains: every deferred-group verb executes its declared table."
+  },
+  "migration": "No persisted data changes. The wire payloads are byte-identical to the hand-written translation; verbTransportRoutes.test.ts pins the known cases (duration merged into parameters, catalog identity beating modelKey, reference shells, envelope routing, folded defaults).",
+  "residual_risks": [
+    "look_at_media's five-in-one dispatch is still a function; a new read mode there is covered only by the conformance gate's cases, not by an assembly-time completeness check.",
+    "The branch selection inside draft_shots (has draftId / single shot / carries an envelope) still reads three field names. It is routing rather than correspondence, but a fourth branch added carelessly would not be caught by the table.",
+    "The table checks that a destination exists on the host shape, not that it means the same thing: a relation pointing at a real but semantically wrong host field is caught only when the conformance gate feeds it a real value and the host's own types reject it.",
+    "Five verbs declare their capability outputSchema as z.unknown() (list_models, draft_shots, generate, edit_timeline, export_video), so a from-read claim against them cannot be resolved. They are listed by name in PROVENANCE_UNVERIFIABLE with a reason and pinned by a ratchet test; tightening any of those outputSchemas removes an entry and turns the check on for it. list_models is the sharpest of the five: the real shape exists as agentModelEntrySchema but the contract never names it, so 'where does the model learn a modelKey' is true but unverifiable today.",
+    "The provenance check proves the field name appears somewhere in that verb's output, not that the same value is reachable from the same call — a name collision between two nested shapes would satisfy it."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/agentLane/verbTransportRoutes.test.ts",
+      "scripts/check-verb-host-conformance.node-test.mjs"
+    ],
+    "rationale": "The correspondence between two layers cannot be owned by either of them, so it lives in its own module with its own assembler. Its ruler is proved by synthetic bad tables in verbTransportRoutes.test.ts and, on the real declarations, by three mutations kept permanently in the gate's test: adding a verb field with no relation, pointing a relation at a host field that does not exist, and deleting a relation to replay the silent loss of candidate.providerId."
+  },
+  "internal_only_reason": "Which names a Nomi verb offers the model and which names a Nomi capability accepts are both facts about this repository; no external specification governs the mapping between them.",
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is involved.",
+    "exit_criteria": []
+  }
+}

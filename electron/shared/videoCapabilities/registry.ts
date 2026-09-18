@@ -19,6 +19,7 @@ import { MINIMAX_H3_ARCHETYPE } from "./minimaxH3";
 import { MINIMAX_H3_MAX_ARCHETYPE } from "./minimaxH3Max";
 import { MINIMAX_H3_APIMART_ARCHETYPE } from "./minimaxH3Apimart";
 import { MINIMAX_H3_REGENERATION_ARCHETYPE } from "./minimaxH3Regeneration";
+import { HIGGSFIELD_DOP_ARCHETYPE } from "./higgsfieldDop";
 import { OMNI_FLASH_EXT_ARCHETYPE } from "./omniFlashExt";
 import { RUNNINGHUB_SEEDANCE_ARCHETYPE } from "./runninghubSeedance";
 import { RUNNINGHUB_VIDEO_ARCHETYPES } from "./runninghubVideoArchetypes";
@@ -84,6 +85,7 @@ const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
   HAILUO_2_3_ARCHETYPE,
   OMNI_FLASH_EXT_ARCHETYPE,
   MINIMAX_H3_REGENERATION_ARCHETYPE,
+  HIGGSFIELD_DOP_ARCHETYPE,
   SEEDANCE_VOLCENGINE_ARCHETYPE,
   SEEDANCE_VOLCENGINE_2_5_ARCHETYPE,
   DREAMINA_SEEDANCE_ARCHETYPE,

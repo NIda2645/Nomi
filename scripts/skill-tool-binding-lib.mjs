@@ -151,6 +151,25 @@ function literalValueOf(text, known) {
 }
 
 /**
+ * 取一个 schema 节点的字段表（`.shape`），**剥掉包在外面的壳**。
+ *
+ * 为什么要剥：`superRefine` / `optional` / `default` 会把 ZodObject 包成别的类型，
+ * 包完之后 `.shape` 就没了。第一版直接读 `node.shape`，于是 20 个动词里有 6 个
+ * 派生出 0 个字段——判据对它们完全空转，却仍然报绿。绿是因为什么都没看。
+ *
+ * @param node 任意 schema 节点
+ * @returns 字段表，取不到返回 undefined
+ */
+export function objectShapeOf(node) {
+  let cur = node
+  for (let i = 0; i < 8 && cur; i += 1) {
+    if (cur.shape) return cur.shape
+    cur = cur._def?.schema ?? cur._def?.innerType ?? cur._def?.type ?? cur.unwrap?.()
+  }
+  return undefined
+}
+
+/**
  * 判一个技能文件里有没有「给字段规定了一个 schema 不认的值」。
  *
  * @param source SKILL.md 全文

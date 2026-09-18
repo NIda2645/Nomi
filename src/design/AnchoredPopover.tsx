@@ -1,6 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NOMI_OVERLAY_Z_INDEX } from './overlayLayers'
+import { NOMI_OVERLAY_Z_INDEX, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -27,9 +27,11 @@ import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './an
  * 别再写一句新的「全站唯一」，写清楚**判据**。
  *
  * ## 全仓浮层定位现有四套（2026-09-08 复核）
- *   ① 本组件 —— 生产侧 3 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
- *      `workbench/assets/AssetPickerPopover.tsx`、`workbench/library/ProjectSyncBadge.tsx`
- *      ——最后这个是 2026-09-12 从 ④ 那类「原地 absolute」收编过来的），外加设计实验室的 3 处陈列；
+ *   ① 本组件 —— 生产侧 4 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
+ *      `workbench/assets/AssetPickerPopover.tsx`、`workbench/library/ProjectSyncBadge.tsx`、
+ *      `workbench/creation/storyboard/shotRow/ShotComposerBar.tsx`
+ *      ——后两个分别是 2026-09-12 与 2026-09-17 从 ④ 那类「原地 absolute」收编过来的），
+ *      外加设计实验室的 3 处陈列；
  *   ② Radix —— `src/design/tooltip.tsx`（tooltip 一族）**与 `src/design/menu.tsx`（菜单一族，
  *      2026-09-08 刀 1 起：`timeline/TimelineContextMenu.tsx`、
  *      `generationCanvas/components/NodeContextMenu.tsx`）**。刀 1 没有引进第五套定位库，
@@ -118,11 +120,19 @@ export function AnchoredPopover({
 
   React.useEffect(() => {
     if (!onClose) return undefined
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    // 「关掉我」这件事有两条路（Esc / 点外面），两条都必须给**我自己弹出来的那一层**让位：
+    // 下拉和菜单 Portal 到 body，DOM 上不在我里面，不让位就会出现「浮层里的选择器改不了值」
+    // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+      if (popRef.current && hasOpenPopupAbove(popRef.current)) return
+      onClose()
+    }
     const onDown = (event: MouseEvent) => {
       const target = event.target as globalThis.Node
       const anchor = anchorRef?.current ?? fallbackAnchorRef.current
       if (popRef.current?.contains(target) || anchor?.contains(target)) return
+      if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
     document.addEventListener('keydown', onKey)

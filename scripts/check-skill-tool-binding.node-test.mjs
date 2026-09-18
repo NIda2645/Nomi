@@ -5,7 +5,7 @@
 // 不是我编的样例——判据只有对着真事故红过，才算接住了它。
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { findFalseFieldValues, findEffectRestatements, declaredToolsOf } from './skill-tool-binding-lib.mjs'
+import { findFalseFieldValues, findEffectRestatements, declaredToolsOf, objectShapeOf } from './skill-tool-binding-lib.mjs'
 
 // 真相视图由调用方注入，正如生产里由 `resolveCapabilityAlias()` 派生。
 const effects = new Map([['draft_shots', 'reversible_write'], ['look_at_canvas', 'read'], ['generate', 'reversible_write']])
@@ -91,4 +91,18 @@ test('字面值归它前面最近的那个字段——不是同一行就算同�
 
 test('没声明工具的技能整份跳过——与上面同一条结构判据，不靠豁免名单', () => {
   assert.deepEqual(findFalseFieldValues('`durationSec` 一律填 `0`', [], fieldSchemas), [])
+})
+
+test('取字段要剥壳：superRefine 包一层之后 `.shape` 就没了（第一版在这里对 6 个动词空转）', () => {
+  const bare = { shape: { durationSec: {} } }
+  // ZodEffects（superRefine 的产物）把 object 藏在 `_def.schema` 里，自己没有 `.shape`。
+  const refined = { _def: { schema: bare } }
+  // ZodOptional / ZodDefault 藏在 `_def.innerType`；两层叠起来也要剥得开。
+  const optionalRefined = { _def: { innerType: refined } }
+
+  assert.equal(refined.shape, undefined, '前提：包过的节点确实读不到 `.shape`——这就是那个洞')
+  assert.deepEqual(objectShapeOf(bare), bare.shape)
+  assert.deepEqual(objectShapeOf(refined), bare.shape, 'superRefine 包过也要拿得到字段')
+  assert.deepEqual(objectShapeOf(optionalRefined), bare.shape, '叠两层也要拿得到')
+  assert.equal(objectShapeOf({ _def: {} }), undefined, '真没有字段表就老实返回 undefined')
 })

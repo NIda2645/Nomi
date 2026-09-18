@@ -20,6 +20,7 @@ import { appFetch } from '../appFetch'
 import { readProxyPrefs } from '../proxySettings'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
+import { resolveProjectAssetReferenceIdentity } from '../assets/projectAssetStore'
 import { startCredentialElicitationServer } from '../integrationCertification/credentialElicitationServer'
 import { installIntegrationSessionRuntime } from '../integrationCertification/integrationSessionRuntimeInstall'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
@@ -330,6 +331,9 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       operations: operationStore,
       get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
       defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
+      // 参考素材的身份（内容哈希 + 版本）归项目素材库管，模型只给 assetId。接线前 `draft_shots`
+      // 只要带一张参考图就 100% 被判 `generation_input_invalid`，而那两个字段模型根本拿不到。
+      resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
       planStoryboard: planStoryboardFromScript,
       recommendVideoGeneration,
       resolveModelPricing,

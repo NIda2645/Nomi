@@ -40,7 +40,7 @@ import type { OpenLane, OpenLaneOptions } from './laneRuntimePort.js';
 import { composeLaneSystemPrompt } from './lanePromptSections.js';
 import { loadPiSkillFormatter, renderLaneSkillSection, laneSkillUnlockReason } from './laneSkillCatalog.mjs';
 import { openLaneSession } from './laneSession.mjs';
-import { createLaneTools } from './laneTools.mjs';
+import { createLaneTools, takeLaneToolFailure } from './laneTools.mjs';
 import { projectLaneSnapshot, type LaneModelFacts } from '../shared/agentLane/laneProjection.js';
 import { openLaneNativeDesktop } from './laneNativeDesktop.mjs';
 import { LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog.js';
@@ -73,13 +73,25 @@ export const LANE_IDLE_MS = 120_000;
 export const LANE_RETRY_POLICY = Object.freeze({ enabled: true, maxRetries: 3, baseDelayMs: 1_000 } as const);
 
 /**
- * 一个回合最多几次模型请求。**唯一一层策略**（方案 §1.6 第六行）。
+ * 一个回合的模型请求数上限。**缺省不设**（2026-09-18 用户拍板：「不要给什么次数限制」）。
  *
- * 挂点是 `before_request`：harness 没有 `shouldStopAfterTurn`（那是老路
- * `createAgentSession` 的），它能停一个 run 的口子只有 `before_tool` 的 `block.terminate`、
- * `after_tool` 的 `terminate` 和 `requestAbort` 三个。所以这里数数、在 `before_tool` 拦。
+ * 为什么原来有一个 24、又为什么去掉它：
+ * 数总次数来拦人，恰恰是本仓自己否掉的做法——`laneRepeatedFailure.mts` 的注释原话是
+ * 「累计次数不在这里算——『这个工具总在坏』是审计的活，**不是拦截的活**」。而 24 这个数干的正是那件事。
+ *
+ * 真正的危险各有各的守卫，一个都不靠这个数：
+ *   · 模型卡在循环里重发同一个调用 → `laneRepeatedFailure`（同工具同错误连撞 3 次拦、5 次终止，
+ *     用户再说一句话即清零）。它 3 次就拦住了，轮不到 24。
+ *   · 上下文撑爆 → `laneContextBudget` 的自动压缩（8 万 token 预算）。
+ *   · 花钱失控 → 报价卡，每次提交由用户点头。
+ * 所以 24 不保护任何具体的东西，它只在一种情况下生效：**活是真的多**——而那恰恰是不该拦的时候。
+ * 单位也不对：24 次 `look_at_canvas` 一分钱不花，24 次生成是真金白银，而后者本来就被报价卡挡着。
+ * 用「次数」当刹车，量的是干活的多少，不是危险的大小。
+ *
+ * 机制留着（`options.limits.maxModelRequests` 仍然生效，拦法与措辞一字未动）：
+ * 评测要跑「撞上限会怎样」，宿主也可能有自己的理由设一个。缺省 = 不设。
  */
-export const LANE_MAX_MODEL_REQUESTS = 24;
+export const LANE_MAX_MODEL_REQUESTS: number | undefined = undefined;
 
 // 「同一个工具连着撞同一堵墙」的规则住 laneRepeatedFailure.mts（含用户新消息即清零）。
 export { LANE_REPEATED_FAILURE_BLOCK, LANE_REPEATED_FAILURE_TERMINATE } from './laneRepeatedFailure.mjs';
@@ -186,7 +198,10 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     ...(options.model.contextWindow === undefined ? {} : { contextWindow: options.model.contextWindow }) };
   const models = createModels({ credentials });
   models.setProvider(provider);
-  const tools = [...createLaneTools(options.tools), ...(native?.tools ?? [])];
+  // 闸的结论交给工具执行上下文：回执要说「用户此刻看到什么」，就不能查静态表（T-ED-02）。
+  // `gate` 在下面才建，这里给的是一个到执行时才求值的读法，不是快照。
+  const tools = [...createLaneTools(options.tools, (toolCallId) => gate?.decisionFor(toolCallId)),
+    ...(native?.tools ?? [])];
   // The native menu is a visibility catalogue, while desktop surface assembly
   // owns the executable descriptors. Keep only names that are actually
   // registered in this process; otherwise pi rejects the whole turn with
@@ -343,19 +358,22 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     : undefined;
   const directlyApplied = new Set<string>();
   const maxModelRequests = options.limits?.maxModelRequests ?? LANE_MAX_MODEL_REQUESTS;
+  // 缺省不设上限时这一支整条不参与：不计数、不拦截，逐字节等同于没有这个机制。
   // 计数按 **run** 走，不按 lane 走：上限说的是「这一轮」，一条 lane 活一整天。
   const requests = { runId: '', count: 0 };
   const failures = createLaneRepeatedFailureTracker();
 
-  harness.hooks.on('before_request', (event) => {
-    if (event.step !== 'assistant') return undefined;
-    // 重试不消耗预算：`attempt` 在重试时递增，同一步会带着 2、3、4 再来一次。
-    // 把重试算进步数，等于让一次网络抖动吃掉用户的回合。
-    if (event.attempt !== 1) return undefined;
-    if (requests.runId !== event.runId) { requests.runId = event.runId; requests.count = 0; }
-    requests.count += 1;
-    return undefined;
-  });
+  if (maxModelRequests !== undefined) {
+    harness.hooks.on('before_request', (event) => {
+      if (event.step !== 'assistant') return undefined;
+      // 重试不消耗预算：`attempt` 在重试时递增，同一步会带着 2、3、4 再来一次。
+      // 把重试算进步数，等于让一次网络抖动吃掉用户的回合。
+      if (event.attempt !== 1) return undefined;
+      if (requests.runId !== event.runId) { requests.runId = event.runId; requests.count = 0; }
+      requests.count += 1;
+      return undefined;
+    });
+  }
 
   harness.hooks.on('before_payload', (event) => options.input
     ? { payload: options.input.rewritePayload(event.payload, event.model.api) } : undefined);
@@ -380,7 +398,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   harness.hooks.on('before_tool', async (event, hookContext) => {
     // ① 回合上限。**模型看到的是一句人话，不是一个 `step-limit` 错误码**——它还有机会
     // 用这一步把结论说出来，而错误码只会让这一轮以「失败」收场，尽管活已经干了大半。
-    if (requests.count >= maxModelRequests) {
+    if (maxModelRequests !== undefined && requests.count >= maxModelRequests) {
       return { block: { terminate: true, reason:
         `This turn has reached its ${maxModelRequests}-model-request limit, so no further tool call will run. `
         + 'State your conclusion and what is still undone, in text, now.' } };
@@ -448,6 +466,8 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
 
   harness.hooks.on('after_tool', (event) => {
     options.toolLifecycle?.settled(event);
+    // 回执已经写完了，这条结论没有第二个读者。留着就是让一条活一整天的 lane 慢慢长表。
+    gate?.forget(event.toolCallId);
     const appliedDirectly = directlyApplied.delete(event.toolCallId);
     const body = event.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
     const consecutive = failures.note(event.toolName, event.isError, body);
@@ -462,8 +482,19 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
         consecutive,
       });
     }
-    return appliedDirectly && !event.isError
-      ? { content: [...event.content, { type: 'text', text: '\nApplied directly (undoable)' }] } : undefined;
+    // C5：失败的结构化信封挂回 `details`，让面板按 `code` 查 i18n 词条，而不是去正则
+    // 那段英文散文（中文界面上印出 `... (surface_port_stale). Next: …` 的就是它）。
+    // 走 pi 自己的 `after_tool` result.details，和成功那条路的 `details.nextAction` 同形。
+    // `details` 是**整体替换**（`harness/agent-harness.d.ts:576`），所以必须带上原有的那份。
+    const failure = event.isError ? takeLaneToolFailure(event.toolCallId) : undefined;
+    const details = failure
+      ? { ...(event.details && typeof event.details === 'object' && !Array.isArray(event.details)
+          ? event.details as Record<string, unknown> : {}), failure }
+      : undefined;
+    if (appliedDirectly && !event.isError) {
+      return { content: [...event.content, { type: 'text', text: '\nApplied directly (undoable)' }] };
+    }
+    return details ? { details: details as never } : undefined;
   });
 
   function inputMessage(text: string): string | LaneInputMessage {

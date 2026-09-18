@@ -17,6 +17,7 @@
 //     它的档案不设 modelEnum → body 的 model 读 {{model.modelKey}}（catalog 行的 modelKey）。
 
 import type { HttpOperation, ProfileKind } from "./types";
+import { KIE_GPT_IMAGE_25_TRANSFORM } from "./kieGptImage25";
 
 /** kie 全家桶统一的状态归一 + 轮询（与 kieSeedream / kieNanoBanana 完全一致的值）。 */
 const KIE_STATUS_MAPPING: Record<string, string[]> = {
@@ -48,12 +49,13 @@ const ROW_MODEL_REF = "{{model.modelKey}}";
 
 /** kie 图片 create op 工厂：model + input.prompt 固定，inputFields 补该模型自己的字段。
  *  模板引擎会丢弃取值为 undefined 的键，故未填的可选参数不会发出去。 */
-function createOp(inputFields: Record<string, unknown>, modelRef: string): HttpOperation {
+function createOp(inputFields: Record<string, unknown>, modelRef: string, requestTransform?: string): HttpOperation {
   return {
     method: "POST",
     path: "/api/v1/jobs/createTask",
     headers: CREATE_HEADERS,
     body: { model: modelRef, input: { prompt: "{{request.prompt}}", ...inputFields } },
+    ...(requestTransform ? { request_transform: requestTransform } : {}),
   };
 }
 
@@ -61,6 +63,10 @@ const ASPECT_RATIO = "{{request.params.aspect_ratio}}";
 const RESOLUTION = "{{request.params.resolution}}";
 const QUALITY = "{{request.params.quality}}";
 const OUTPUT_FORMAT = "{{request.params.output_format}}";
+/** GPT Image 2.5 的背景模式（transparent/opaque/auto）。 */
+const BACKGROUND = "{{request.params.background}}";
+/** Imagen 4 的负向提示词（可选，未填则模板丢弃该键）。 */
+const NEGATIVE_PROMPT = "{{request.params.negative_prompt}}";
 /** 档案改图槽 inputKey=image_urls（seedream / nano-banana 一族）。 */
 const IMAGE_URLS = "{{request.params.image_urls}}";
 /** FLUX.2 档案改图槽 inputKey=input_urls（kie 在 flux2 上换了字段名）。 */
@@ -84,13 +90,15 @@ function imageModel(p: {
   modelRef: string;
   t2iInput: Record<string, unknown>;
   editInput?: Record<string, unknown>; // 省略 = 仅文生图
+  /** 发请求前的跨字段校验闸（档案层表达不了的组合约束，见 kieGptImage25.ts）。两条 mapping 都挂。 */
+  requestTransform?: string;
 }): KieImageModel {
   const mappings: KieImageModel["mappings"] = [
     {
       id: `seed-kie-${p.seedKey}-text_to_image`,
       taskKind: "text_to_image",
       name: `${p.labelZh} · 文生图`,
-      create: createOp(p.t2iInput, p.modelRef),
+      create: createOp(p.t2iInput, p.modelRef, p.requestTransform),
     },
   ];
   if (p.editInput) {
@@ -98,7 +106,7 @@ function imageModel(p: {
       id: `seed-kie-${p.seedKey}-image_edit`,
       taskKind: "image_edit",
       name: `${p.labelZh} · 改图`,
-      create: createOp(p.editInput, p.modelRef),
+      create: createOp(p.editInput, p.modelRef, p.requestTransform),
     });
   }
   return { modelKey: p.modelKey, labelZh: p.labelZh, archetypeId: p.archetypeId, mappings };
@@ -138,6 +146,40 @@ export const KIE_IMAGE_MODELS_2026: KieImageModel[] = [
     seedKey: "seedream-5-lite", modelRef: MODE_MODEL_REF,
     t2iInput: { aspect_ratio: ASPECT_RATIO, quality: QUALITY, output_format: OUTPUT_FORMAT },
     editInput: { image_urls: IMAGE_URLS, aspect_ratio: ASPECT_RATIO, quality: QUALITY, output_format: OUTPUT_FORMAT },
+  }),
+
+  // ── GPT Image 2.5（Flare / Sunburst）────────────────────────────────────────
+  // kie 把「档次 × 模式」拆成 **4 个 model id**（`gpt-image-2-5-{flare,sunburst}-{text-to-image,image-to-image}`）
+  // → modelRef 取档案 per-mode modelEnum；catalog 行取该档次的 t2i id 做行标识。
+  // 改图输入图字段名是 `input_urls`（与 FLUX.2 同名、与 seedream/nano-banana 的 image_urls 不同）。
+  // ⚠️ 这四个端点**没有 quality / n / output_format 字段**——档案里那三项只挂 vendorParams.apimart，
+  //    这里一个都不发（发了 422，抄 apimart 的 body 过来就是这么错的）。
+  imageModel({
+    modelKey: "gpt-image-2-5-flare-text-to-image", labelZh: "GPT Image 2.5 Flare", archetypeId: "gpt-image-2.5-flare",
+    seedKey: "gpt-image-2-5-flare", modelRef: MODE_MODEL_REF, requestTransform: KIE_GPT_IMAGE_25_TRANSFORM,
+    t2iInput: { aspect_ratio: ASPECT_RATIO, resolution: RESOLUTION, background: BACKGROUND },
+    editInput: { input_urls: INPUT_URLS, aspect_ratio: ASPECT_RATIO, resolution: RESOLUTION, background: BACKGROUND },
+  }),
+  imageModel({
+    modelKey: "gpt-image-2-5-sunburst-text-to-image", labelZh: "GPT Image 2.5 Sunburst", archetypeId: "gpt-image-2.5-sunburst",
+    seedKey: "gpt-image-2-5-sunburst", modelRef: MODE_MODEL_REF, requestTransform: KIE_GPT_IMAGE_25_TRANSFORM,
+    t2iInput: { aspect_ratio: ASPECT_RATIO, resolution: RESOLUTION, background: BACKGROUND },
+    editInput: { input_urls: INPUT_URLS, aspect_ratio: ASPECT_RATIO, resolution: RESOLUTION, background: BACKGROUND },
+  }),
+
+  // ── Google Imagen 4（Fast / Ultra）─────────────────────────────────────────
+  // **单 id 单模式**（纯文生图，input 里没有任何图片字段）→ 省略 editInput、modelRef 取行 modelKey。
+  // 两档默认比例不同（fast 16:9 / ultra 1:1），差异在档案里（imagen4Kie.ts），这里 body 形状相同。
+  // seed 两档类型不同（int / string）→ 档案不声明，这里也不发。
+  imageModel({
+    modelKey: "google/imagen4-fast", labelZh: "Imagen 4 Fast", archetypeId: "imagen-4-fast",
+    seedKey: "imagen4-fast", modelRef: ROW_MODEL_REF,
+    t2iInput: { aspect_ratio: ASPECT_RATIO, negative_prompt: NEGATIVE_PROMPT },
+  }),
+  imageModel({
+    modelKey: "google/imagen4-ultra", labelZh: "Imagen 4 Ultra", archetypeId: "imagen-4-ultra",
+    seedKey: "imagen4-ultra", modelRef: ROW_MODEL_REF,
+    t2iInput: { aspect_ratio: ASPECT_RATIO, negative_prompt: NEGATIVE_PROMPT },
   }),
 
   // ── FLUX.2 Pro ────────────────────────────────────────────────────────────

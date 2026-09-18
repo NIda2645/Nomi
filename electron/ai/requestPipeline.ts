@@ -161,10 +161,12 @@ export function buildTemplateContext(input: {
 // ---------------------------------------------------------------------------
 
 /** Auth headers by auth type. `query`/`none` carry no header. */
-export function authHeaders(authType: AuthType, apiKey: string, headerName?: string): Record<string, string> {
+export function authHeaders(authType: AuthType, apiKey: string, headerName?: string, scheme?: string | null): Record<string, string> {
   if (!apiKey || authType === "none" || authType === "query") return {};
   if (authType === "x-api-key") return { [headerName || "X-API-Key"]: apiKey };
-  return { Authorization: `Bearer ${apiKey}` };
+  // 方案词由 vendor.authScheme 声明（见 catalog/types.ts）；缺省 Bearer，故既有供应商零变化。
+  const word = typeof scheme === "string" && scheme.trim() ? scheme.trim() : "Bearer";
+  return { Authorization: `${word} ${apiKey}` };
 }
 
 /** Auth query params (only for authType === "query"). */
@@ -409,6 +411,8 @@ export function buildHttpRequest(input: {
   baseUrl: string;
   authType: AuthType;
   authHeaderName?: string;
+  /** Authorization 方案词（缺省 Bearer）；见 catalog/types.ts 的 Vendor.authScheme。 */
+  authScheme?: string | null;
   authQueryParam?: string;
   apiKey: string;
   context: JsonRecord;
@@ -431,7 +435,7 @@ export function buildHttpRequest(input: {
 
   const renderedHeaders = stringifyHeaders(renderTemplateValue(operation.headers, context));
   const headers: Record<string, string> = {
-    ...authHeaders(input.authType, input.apiKey, input.authHeaderName),
+    ...authHeaders(input.authType, input.apiKey, input.authHeaderName, input.authScheme),
     ...(input.extraHeaders || {}),
     ...renderedHeaders,
   };

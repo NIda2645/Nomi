@@ -2,10 +2,31 @@ import { z } from "zod";
 
 export const GENERATION_RECONCILE_OUTCOMES = ["found", "not_found"] as const;
 
+/**
+ * 一条**已钉住**的参考：内容哈希与版本都在，执行契约按它签名（`contractHash` 覆盖 references）。
+ * 它是候选里存的形状，不是模型填的形状。
+ */
 const reference = z.lazy(() => z.object({
   assetId: z.string().trim().min(1),
   contentHash: z.string().trim().min(1),
   version: z.number().int().min(1),
+  kind: z.enum(["image", "video", "audio"]).optional(),
+  role: z.enum(["character", "first_frame", "last_frame", "reference", "audio"]).optional(),
+}).strict());
+
+/**
+ * 一条**模型填的**参考：只要 assetId。
+ *
+ * 2026-09-18 根因：这里原本就是上面那条已钉住的形状，于是 `draft_shots` 只要带一张参考图就
+ * 100% 被判 `generation_input_invalid` —— 而 `contentHash` / `version` 是模型**拿不到**的东西
+ * （`look_at_media` 与 `look_at_canvas` 都不返回它们）。「宿主要求动词给不出的字段」与多镜那次
+ * 硬要整只 `candidate` 是同一类，解法也同一条：模型给语义（哪份素材、当什么用），身份由宿主按
+ * 项目素材库补（`resolveProjectAssetReferenceIdentity`）。已经钉好的调用方照常直接给，逐字节不变。
+ */
+const planReferenceInput = z.lazy(() => z.object({
+  assetId: z.string().trim().min(1),
+  contentHash: z.string().trim().min(1).optional(),
+  version: z.number().int().min(1).optional(),
   kind: z.enum(["image", "video", "audio"]).optional(),
   role: z.enum(["character", "first_frame", "last_frame", "reference", "audio"]).optional(),
 }).strict());
@@ -37,7 +58,7 @@ const candidatePatch = z.object({
   modeId: z.string().optional(),
   variantId: z.string().optional(),
   parameters: parameters.optional(),
-  references: z.array(reference).optional(),
+  references: z.array(planReferenceInput).optional(),
 }).strict();
 
 const createFields = {
@@ -50,7 +71,7 @@ const createFields = {
   modeId: z.string().trim().min(1).optional(),
   variantId: z.string().trim().min(1).optional(),
   parameters: parameters.optional(),
-  references: z.array(reference).optional(),
+  references: z.array(planReferenceInput).optional(),
   candidate: generationCandidateSchema.optional(),
   shots: z.array(z.object({
     shotId: z.string().trim().min(1).optional(),
@@ -64,12 +85,23 @@ const createFields = {
     candidate: generationCandidateSchema.optional(),
     prompt: z.string().trim().min(1).optional(),
     taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional(),
+    /**
+     * 2026-09-18 扫描：这两个字段**合成器早就在读**（`semanticCandidateFromParams` 按 `params.moduleId`
+     * / `params.providerId` 取身份），只有这份 `.strict()` 的 shots 元素没声明它们。于是模型按目录点名
+     * 「用 apimart 的 image-1」时，多镜那条路要么被整条拒收、要么把点名悄悄丢掉、落回用户的默认模型——
+     * 一次**花钱**的调用用错模型且没有任何人报错。补齐的是声明，不是新能力。
+     *
+     * 换一个角度说同一件事（两份根因合同同一天各自挖到）：一镜能点名模型却点不了它的供应商，
+     * 身份就只剩一半——没有 `providerId`，「这一笔花在哪个模型上」在多镜路上根本无法表达。
+     */
+    moduleId: z.string().trim().min(1).optional(),
+    providerId: z.string().trim().min(1).optional(),
     modelId: z.string().trim().min(1).optional(),
     mode: z.string().trim().min(1).optional(),
     modeId: z.string().trim().min(1).optional(),
     variantId: z.string().trim().min(1).optional(),
     parameters: parameters.optional(),
-    references: z.array(reference).optional(),
+    references: z.array(planReferenceInput).optional(),
   }).strict()).optional(),
   scriptText: z.string().trim().min(1).optional(),
   /**

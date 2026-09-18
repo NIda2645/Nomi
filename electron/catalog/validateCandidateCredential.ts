@@ -43,11 +43,17 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   // （UI 文案逐字为「已保存 · 未验证 / 联网后会自动复验，下次调用前也会先检查一次」）。
   // 对这一类我们不会再验——没有可验的便宜端点。挂上它等于让 12 家常驻一句做不到的承诺，
   // 并把接入卡上的「N 个可使用」永久换成「未验证」。那还是名实不一，只是换了个方向。
-  if (strategy === 'first-use') {
+  //
+  // `authType: 'none'` 走同一条路，理由更硬：这家**根本不发鉴权**，所以没有「验证密钥」这件事
+  // 可做。它以前落在下面那条 throw 里，用户读到的是「暂时无法验证密钥，请检查接口地址和网络
+  // 后重试」——地址和网络都没问题，问题是我们拿一件不存在的事当失败报（名实不一）。同一份判据
+  // 在可用性 owner 那边早就写对了：`modelAvailability.ts:93` 对 `authType === 'none'` 直接判可用、
+  // 连钥匙都不探；`catalogModelAvailability.ts:32` 同样短路。这里是那条不变量漏掉的第三处。
+  if (strategy === 'first-use' || vendor.authType === 'none') {
     if (!apiKey) throw credentialFailure('credential.validationUnavailable', vendor.key)
     return false
   }
-  if (!apiKey || !vendor.baseUrlHint || vendor.authType === 'none') {
+  if (!apiKey || !vendor.baseUrlHint) {
     throw credentialFailure('credential.validationUnavailable', vendor.key)
   }
   // 种子声明了零成本存活探测的（apimart）：那份代码拥有的 livenessProbe 才是诚实的 key 判据。
@@ -61,7 +67,7 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   const headers = mergeHeadersCaseInsensitive(
     providerKind === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {},
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
-    authHeaders(authType, apiKey, vendor.authHeader ?? undefined),
+    authHeaders(authType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
   )
   const result = await fetchModelList(providerKind, vendor.baseUrlHint, headers, AbortSignal.timeout(12_000), {
     query: authQueryParams(authType, apiKey, vendor.authQueryParam ?? undefined),

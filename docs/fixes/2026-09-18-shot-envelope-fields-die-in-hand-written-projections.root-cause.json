@@ -13,8 +13,7 @@
     "外部 MCP 宿主经 nomi_operation_create 传语义 shots[] 的调用方：同一条链路、同样丢字段"
   ],
   "scope_paths": [
-    "electron/agentLane/laneVerbTransport.ts",
-    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/shared/generationShotEnvelope.ts",
     "electron/capabilityCore/mcpGenerationMultiShot.ts",
     "electron/capabilityCore/mcpGenerationTools.ts",
     "electron/productionRun/multiShotCanvasLanding.ts",
@@ -23,7 +22,7 @@
     "electron/productionRun/productionRunTypes.ts",
     "electron/shared/agentCapabilities/generationPlanSchemas.ts",
     "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
-    "electron/shared/generationShotEnvelope.ts"
+    "electron/agentLane/laneVerbTransport.ts"
   ],
   "entry_points": [
     "electron/agentLane/laneVerbTransport.ts:draftShotToPlanShot",
@@ -45,49 +44,67 @@
     {
       "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 27,
+      "line": 36,
       "symbol": "VerbTransportCall"
     },
     {
       "kind": "read",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 59,
+      "line": 64,
       "symbol": "VerbTransportCall"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 34,
+      "line": 35,
       "symbol": "GenerationLeaseFactory"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 69,
+      "line": 90,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 71,
+      "line": 107,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 116,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 90,
       "symbol": "generationStatusInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 75,
-      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+      "line": 109,
+      "symbol": "generationStatusInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 209,
+      "line": 118,
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 258,
       "symbol": "GenerationTransportAdapterDependencies"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 210,
+      "line": 259,
       "symbol": "PiGenerationTransportAdapter"
     },
     {
@@ -111,121 +128,121 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 152,
+      "line": 155,
       "symbol": "MultiShotCandidateParsers"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 154,
+      "line": 157,
       "symbol": "GenerationOperationDraftShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 174,
+      "line": 178,
       "symbol": "GenerationOperationDraftShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 174,
+      "line": 178,
       "symbol": "MultiShotCandidateParsers"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 174,
+      "line": 178,
       "symbol": "StoryboardShotDraft"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 224,
+      "line": 228,
       "symbol": "StoryboardPlanResult"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 225,
+      "line": 229,
       "symbol": "MultiShotCandidateParsers"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 246,
+      "line": 250,
       "symbol": "AssertReferencesResolvable"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 250,
+      "line": 256,
       "symbol": "GenerationOperationDraftShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 257,
+      "line": 263,
       "symbol": "MultiShotHelperDeps"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 277,
+      "line": 283,
       "symbol": "GenerationOperationDraftShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 278,
+      "line": 284,
       "symbol": "GenerationOperationDraftShot"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 281,
+      "line": 287,
       "symbol": "draftShotFromPlan"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 355,
+      "line": 364,
       "symbol": "StoryboardShotDraft"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 360,
+      "line": 369,
       "symbol": "StoryboardShotDraft"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 361,
+      "line": 370,
       "symbol": "draftShotFromStoryboard"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 386,
+      "line": 395,
       "symbol": "GenerationSealMultiShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 388,
+      "line": 397,
       "symbol": "SealedMultiShotEntry"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 390,
+      "line": 399,
       "symbol": "generationShotEnvelopeOf"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "line": 394,
+      "line": 403,
       "symbol": "generationShotEnvelopeOf"
     },
     {
@@ -345,67 +362,67 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 298,
+      "line": 304,
       "symbol": "GenerationOperation"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 300,
+      "line": 306,
       "symbol": "GenerationSealMultiShot"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 301,
+      "line": 307,
       "symbol": "GenerationAuthorizationPreparation"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 302,
+      "line": 308,
       "symbol": "GenerationOperation"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 303,
+      "line": 309,
       "symbol": "GenerationOperation"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 312,
+      "line": 318,
       "symbol": "generationCandidateSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 332,
+      "line": 357,
       "symbol": "GenerationPlanningHandlerDependencies"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 352,
+      "line": 377,
       "symbol": "GenerationPlanningHandlerDependencies"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 368,
+      "line": 402,
       "symbol": "createMultiShotCreateHelpers"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 387,
+      "line": 422,
       "symbol": "GenerationOperation"
     },
     {
       "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "line": 675,
+      "line": 720,
       "symbol": "coldstartEtaForGate"
     },
     {
@@ -1035,37 +1052,37 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 54,
+      "line": 75,
       "symbol": "generationCandidateSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 64,
+      "line": 85,
       "symbol": "generationCandidateSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 99,
+      "line": 131,
       "symbol": "GENERATION_RECONCILE_OUTCOMES"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 104,
+      "line": 136,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 105,
+      "line": 137,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
-      "line": 125,
+      "line": 151,
       "symbol": "draftShotSchema"
     },
     {
@@ -1095,7 +1112,7 @@
   ],
   "door_reduction": {
     "before": 5,
-    "after": 175,
+    "after": 178,
     "why_not": "五处**手写的字段列表**已经合并为一处（generationShotEnvelopeOf），这是本次真正减掉的门。门表里剩下的入口是该信封类型与常量的全部读写点：它们分布在动词声明、传输翻译、草稿解析、密封、门卡投影、持久化、画布落地七层，各层职责不同且跨进程边界（主进程/渲染层）与跨模块边界（capabilityCore / productionRun / agentLane），合并它们等于取消分层。真正的防线不是把入口数压到 1，而是让每个入口都不可能再手抄字段列表——编译期断言保证漏接当场报错，这比减少入口数更强。"
   },
   "regression_tests": [

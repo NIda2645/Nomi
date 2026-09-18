@@ -25,7 +25,9 @@ import {
   LANE_READ_TOOL_TIMEOUT_MS, laneToolBillable, laneToolModelDescription, laneToolMutates, renderLaneToolFailure,
   renderLaneToolNextAction, type LaneToolFailureShape,
 } from '../shared/agentLane/laneToolContract.js';
+import type { LaneToolPublicFailure } from '../shared/agentLane/laneToolFailureEnvelope.js';
 import { VERB_EFFECTS } from '../shared/agentCapabilities/verbDeclaration.js';
+import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts.js';
 import type { LaneToolDescriptor } from './laneRuntimePort.js';
 import { toModelVisibleSchema } from './laneToolSchema.mjs';
 
@@ -39,6 +41,36 @@ const TOOL_NAME = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
  * 外部 MCP 客户端拿到的是可行动错误，我们自己的 Agent 拿到一个错误码）。
  */
 class LaneToolFailure extends Error {}
+
+/**
+ * 这次失败的**结构化信封**，等 `after_tool` 来取（C5）。
+ *
+ * 为什么要这个中转：失败必须 `throw`（G-02，见下面 execute 里那段），而 throw 只带得走一个
+ * message——`code` / `allowed` / `issues` 在这一刻就丢了，面板只剩一段英文散文可印。
+ * pi 给的 `after_tool` 钩子能往 tool result 上挂 `details`，但它的 event 里没有抛出的那个
+ * 错误对象，只有渲染好的正文。所以结构得在同一个进程、同一个 tick 里按 toolCallId 递过去。
+ *
+ * **不是缓存**：写一次读一次，取走即删。`after_tool` 无论成功失败都会跑到，
+ * 所以正常路径不留东西；万一某条路没跑到（宿主被杀），下一次 `laneHost` 装配时整张表就没了
+ * （它随模块活，模块随进程活），也不会越长越大——上限只有「同一批次里并发的工具调用数」。
+ */
+const pendingToolFailures = new Map<string, LaneToolPublicFailure>()
+
+function rememberToolFailure(toolCallId: string, failure: LaneToolFailureShape): void {
+  pendingToolFailures.set(toolCallId, {
+    code: failure.code,
+    ...(failure.allowed ? { allowed: failure.allowed } : {}),
+    ...(failure.issues ? { issues: failure.issues } : {}),
+    ...(failure.useInstead ? { useInstead: failure.useInstead } : {}),
+  })
+}
+
+/** `after_tool` 侧的取件口：取走即删（见上）。 */
+export function takeLaneToolFailure(toolCallId: string): LaneToolPublicFailure | undefined {
+  const failure = pendingToolFailures.get(toolCallId)
+  if (failure) pendingToolFailures.delete(toolCallId)
+  return failure
+}
 
 /** 截断发生了什么。进 `details`，不进模型载荷——pi 的分工（核对 §2.6）。 */
 export interface LaneOutputTruncation {
@@ -169,7 +201,16 @@ function detailsWithTruncation(details: unknown, truncation: LaneOutputTruncatio
   return { ...(details as Record<string, unknown>), truncation };
 }
 
-export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): AgentHarnessTool<undefined>[] {
+/**
+ * 工具执行时能读到的**闸的真实结论**。宿主接上 `laneApprovalGate.decisionFor`；
+ * 不装闸的路（影子夹具 / 单测）不传，回执那一行就不提卡（见 `LaneToolExecutionContext`）。
+ */
+export type LaneApprovalDecisionReader = (toolCallId: string) => LaneApprovalDecision | undefined;
+
+export function createLaneTools(
+  descriptors: readonly LaneToolDescriptor[],
+  approvalDecision?: LaneApprovalDecisionReader,
+): AgentHarnessTool<undefined>[] {
   const names = new Set<string>();
   return descriptors.map((descriptor) => {
     if (!TOOL_NAME.test(descriptor.name) || names.has(descriptor.name)) {
@@ -237,7 +278,9 @@ export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): Age
         // 失败按 §3.3 的形状 throw：字段名 + 类型名 + 合法值 + 下一步，不回传值。
         const bound = descriptor.schema.safeParse(params);
         if (!bound.success) {
-          throw new LaneToolFailure(renderLaneToolFailure(argumentFailure(descriptor.name, params, bound.error)));
+          const failure = argumentFailure(descriptor.name, params, bound.error);
+          rememberToolFailure(toolCallId, failure);
+          throw new LaneToolFailure(renderLaneToolFailure(failure));
         }
         // 计时器在**这里**才 arm。闸（`before_tool`）跑在进 execute 之前，所以用户盯着
         // 审批卡想五分钟，这条预算一秒不走——「审批等待期不计时」不是一段约定，是这行代码
@@ -245,13 +288,21 @@ export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): Age
         const budget = AbortSignal.timeout(timeoutMs);
         const signal = AbortSignal.any([outer, budget]);
         const outcome = await Promise.race([
-          descriptor.execute(bound.data, { toolCallId, signal }),
+          descriptor.execute(bound.data, {
+            toolCallId,
+            signal,
+            // 回执要说「用户此刻看到什么」，就必须拿到这次调用**真的**是怎么过闸的
+            // （静态表说不准，见 `LaneToolExecutionContext.approvalDecision`）。
+            ...(() => { const decision = approvalDecision?.(toolCallId); return decision ? { approvalDecision: decision } : {}; })(),
+          }),
           // 领域端口**可能根本不看 signal**（第三方 SDK、同步阻塞、忘了接）。只把信号传下去
           // 等于把预算交给被超时的那一方自己执行。这条 race 是唯一真正会到期的东西。
           new Promise<never>((_resolve, reject) => {
             budget.addEventListener('abort', () => {
-              reject(outer.aborted ? outer.reason
-                : new LaneToolFailure(renderLaneToolFailure(timeoutFailure(descriptor.name, timeoutMs))));
+              if (outer.aborted) { reject(outer.reason); return; }
+              const failure = timeoutFailure(descriptor.name, timeoutMs);
+              rememberToolFailure(toolCallId, failure);
+              reject(new LaneToolFailure(renderLaneToolFailure(failure)));
             }, { once: true });
           }),
         ]);
@@ -260,7 +311,10 @@ export function createLaneTools(descriptors: readonly LaneToolDescriptor[]): Age
         // return 一个「失败对象」的后果是 pi 记 `isError: false`——面板画绿收据、模型收到
         // 一条「成功」的工具结果里面装着错误。那正是「文字说的和下面那堆红字对不上」的
         // 机器成因之一。正文由**唯一**的渲染点生成，内外两个投影同源。
-        if (!outcome.ok) throw new LaneToolFailure(renderLaneToolFailure(outcome.failure));
+        if (!outcome.ok) {
+          rememberToolFailure(toolCallId, outcome.failure);
+          throw new LaneToolFailure(renderLaneToolFailure(outcome.failure));
+        }
         const shown = truncateForModel(outcome.text);
         // 返回信封的尾行在截断**之后**拼：正文再长也不能把「用户接下来看到什么」截掉。
         const text = outcome.nextAction ? `${shown.text}\n${renderLaneToolNextAction(outcome.nextAction)}` : shown.text;

@@ -24,6 +24,7 @@ const SAMPLE_VENDOR = {
   baseUrlHint: "https://relay.example/v1",
   authType: "bearer",
   authHeader: null,
+  authScheme: "Key",
   authQueryParam: null,
   providerKind: "openai-compatible",
   network: { proxyUrl: "http://user:pass@127.0.0.1:7897" },

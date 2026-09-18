@@ -1,5 +1,4 @@
 import { AssistantPane } from '../../AssistantPane'
-import { assistantPaneWidth } from '../../assistantWidthBounds'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMovie } from '@tabler/icons-react'
@@ -7,12 +6,15 @@ import { cn } from '../../../utils/cn'
 import { DesignEmptyState, WorkbenchButton } from '../../../design'
 import { useWorkbenchStore } from '../../workbenchStore'
 import StoryboardPlanEditor from './StoryboardPlanEditor'
+import { CreationResourceTreeToggle } from '../CreationResourceTreeToggle'
 
 /**
  * 分镜独立工作区（v5 C3）：storyboard 模式的唯一挂载点，分镜表全宽（§3.7 删 1264 上限）、
  * 无 AI 栏以外的自有装饰——完整编辑器只住这里（P1 一个实现一个家）。
  * 左侧创作资源树**不由本组件挂**：它跨 creation / storyboard 常驻，唯一挂载点是
  * WorkbenchShell（见 ../creationResourceTreeModes.ts）。本组件只负责剩下的那块宽度。
+ * 留白（gutter）也不归本组件：A-1 刀 1 之后创作面与分镜面共用 shell 那一份 `p-4 gap-4`，
+ * 本组件自己那套 `pt-[22px] px-6 pb-6` + `assistantPaneWidth` 已删——两份留白就是两份真相。
  * 有方案 → StoryboardPlanEditor；无方案 → 空态引导回创作页拆镜头。返回原稿 = 切回 creation。
  */
 export default function StoryboardWorkspace({ projectId, aiCollapsed = false, agentDockRef }: { projectId?: string | null; aiCollapsed?: boolean; agentDockRef?: React.Ref<HTMLDivElement> }): JSX.Element {
@@ -39,11 +41,11 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
   if (plan) {
     return (
       <section
-        className={cn('workbench-storyboard relative w-full h-full min-w-0 min-h-0', 'grid min-h-0 bg-workbench-bg', agentDockRef && !aiCollapsed ? 'grid-cols-[minmax(0,1fr)_var(--storyboard-assistant-width)]' : 'grid-cols-[minmax(0,1fr)]')}
-        style={{ '--storyboard-assistant-width': aiCollapsed ? '0px' : `${assistantPaneWidth(assistantWidth)}px` } as React.CSSProperties}
+        className={cn('workbench-storyboard relative w-full h-full min-w-0 min-h-0', 'grid min-h-0 gap-4 bg-workbench-bg', agentDockRef && !aiCollapsed ? 'grid-cols-[minmax(0,1fr)_var(--storyboard-assistant-width)]' : 'grid-cols-[minmax(0,1fr)]')}
+        style={{ '--storyboard-assistant-width': aiCollapsed ? '0px' : `${assistantWidth}px` } as React.CSSProperties}
         aria-label={t('workspace.storyboard')}
       >
-        <div className="min-w-0 min-h-0 overflow-hidden pt-[22px] px-6 pb-6">
+        <div className="min-w-0 min-h-0 overflow-hidden">
           <StoryboardPlanEditor projectId={projectId} />
         </div>
         {agentDockRef ? <AssistantPane dockRef={agentDockRef} collapsed={aiCollapsed} /> : null}
@@ -53,11 +55,13 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
 
   return (
     <section
-      className={cn('workbench-storyboard relative w-full h-full min-w-0 min-h-0', 'grid min-h-0 bg-workbench-bg', agentDockRef && !aiCollapsed ? 'grid-cols-[minmax(0,1fr)_var(--storyboard-assistant-width)]' : 'grid-cols-[minmax(0,1fr)]')}
-      style={{ '--storyboard-assistant-width': aiCollapsed ? '0px' : `${assistantPaneWidth(assistantWidth)}px` } as React.CSSProperties}
+      className={cn('workbench-storyboard relative w-full h-full min-w-0 min-h-0', 'grid min-h-0 gap-4 bg-workbench-bg', agentDockRef && !aiCollapsed ? 'grid-cols-[minmax(0,1fr)_var(--storyboard-assistant-width)]' : 'grid-cols-[minmax(0,1fr)]')}
+      style={{ '--storyboard-assistant-width': aiCollapsed ? '0px' : `${assistantWidth}px` } as React.CSSProperties}
       aria-label={t('workspace.storyboard')}
     >
-      <div className="min-w-0 min-h-0 grid place-items-center">
+      <div className="relative min-w-0 min-h-0 grid place-items-center">
+        {/* 空态也要有回头路：没有方案时中间没有面板头，钮就落在这块区域左上角。 */}
+        <div className="absolute left-0 top-0"><CreationResourceTreeToggle placement="panel" /></div>
         <DesignEmptyState
           icon={<IconMovie size={34} className="text-nomi-ink-30" />}
           title={t('storyboardEditor.empty.title')}

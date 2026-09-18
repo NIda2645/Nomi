@@ -104,12 +104,33 @@
     },
     {
       "members": [
+        "capability_input_invalid",
+        "surface_port_stale"
+      ],
+      "reason": "两成员的局部抛错参数类型（capability_input_invalid / surface_port_stale），是「这个函数会抛哪两种」的签名，不是一份码表副本。",
+      "site": "electron/capabilityCore/canvasReadCapturedSnapshotRegistry.ts::function:requiredString/parameter:code/type-union"
+    },
+    {
+      "members": [
         "committed",
         "committing",
         "suspended"
       ],
       "reason": "canvasRead surface 端口的三态生命周期（suspended 挂起未绑定 / committing 绑定事务进行中 / committed 已绑定可读）：它保护「A 面 sealed 快照在 Surface 切到 B 后仍只读一份规范快照并拒绝 replay」的端口所有权语义，是 surface-port 绑定状态机，不是生成/导出/审批任务态；三态与任何任务词表都不同源，故独立。",
       "site": "electron/capabilityCore/canvasReadSurfaceRegistry.ts::type:LifecycleState/property:status/type-union"
+    },
+    {
+      "members": [
+        "capability_cancelled",
+        "capability_execution_failed",
+        "capability_input_invalid",
+        "capability_output_invalid",
+        "capability_receipt_unresolved",
+        "capability_timeout",
+        "capability_unsupported"
+      ],
+      "reason": "执行器**自己抛得出**的失败档，不是线上放行清单：它是端口码的真子集（没有 surface_port_* / project_* 这些由更外层判定的码），把它 spread 成全集等于声称执行器会抛它抛不出的码。同文件的 PASSTHROUGH_CODES 才是放行清单，已经 spread owner。",
+      "site": "electron/capabilityCore/capabilityExecutorRegistry.ts::type:CapabilityExecutionErrorCode/type-union"
     },
     {
       "members": [
@@ -174,12 +195,35 @@
     },
     {
       "members": [
+        "capability_cancelled",
+        "capability_execution_failed",
+        "capability_input_invalid",
+        "capability_target_stale",
+        "production_gate_requires_nomi",
+        "production_run_not_found"
+      ],
+      "reason": "制作 Run 通道的公开面是**刻意窄**的：它只经手 production_gate_requires_nomi / production_run_not_found 两个自有码加四个通用码，压根不走端口绑定，spread 全集会让它声称放行一批它永远收不到的 surface_port_* 码。",
+      "site": "electron/capabilityCore/productionRunTransportAdapters.ts::variable:PUBLIC_FAILURE_CODES/set"
+    },
+    {
+      "members": [
         "directory",
         "invalid",
         "missing"
       ],
       "reason": "项目租约令牌目录在磁盘上的物理探测结果（missing 不存在 / directory 是合法目录 / invalid 存在但不是目录）：directoryState 只服务租约签发/回收时对令牌路径做文件系统一致性检查，是磁盘实体判别，与任务/审批/生成状态无任何语义重叠，故独立。",
       "site": "electron/capabilityCore/projectLeaseStore.ts::function:directoryState/type-union"
+    },
+    {
+      "members": [
+        "capability_authority_invalid",
+        "capability_cancelled",
+        "capability_execution_failed",
+        "capability_input_invalid",
+        "capability_surface_unavailable"
+      ],
+      "reason": "技能写通道的公开面是**刻意窄**的白名单：五个码里 capability_surface_unavailable 是它自有的，其余四个是通用失败档；它不经手端口绑定，spread 传输层全集等于声称放行一批它永远收不到的 surface_port_* 码。",
+      "site": "electron/capabilityCore/skillWriteTransportAdapters.ts::variable:PUBLIC_FAILURE_CODES/set"
     },
     {
       "members": [
@@ -596,6 +640,14 @@
     },
     {
       "members": [
+        "capability_input_invalid",
+        "capability_target_stale"
+      ],
+      "reason": "两成员的画布写证据错误类型（capability_input_invalid / capability_target_stale），是「这条证据校验会拒哪两种」的函数签名，不是一份码表副本。",
+      "site": "electron/shared/agentCapabilities/canvasWriteEvidence.ts::type:CanvasWriteEvidenceErrorCode/type-union"
+    },
+    {
+      "members": [
         "found",
         "not_found"
       ],
@@ -671,6 +723,32 @@
       ],
       "reason": "任务卡的五个面板状态，stopped 与 failed 分别表达「用户停了」和「执行失败」，不复用生产任务终态。2026-09-08（阶段 3d G13）owner 从 src/workbench/ai/v4/agentPanelV4Types.ts::V4TaskStatus 搬到中立契约层，成员一个没变：这五个词现在跨进程——主进程从 ProductionRun 领域 join 出来的 LaneTaskFacts.status 就带着它，渲染层照着画。两侧各留一份字面量 union 就得再写一张映射表（R14.1 的「同一语义两份定义」），而 electron/ 不许 import src/（check:boundaries），能容下唯一 owner 的只有 electron/shared/。V4TaskStatus 现在是它的类型别名，v4 组件的 import 路径一行没改。",
       "site": "electron/shared/agentLane/laneContracts.ts::variable:LANE_TASK_STATUSES/as-const"
+    },
+    {
+      "members": [
+        "agent_lane_approval_missing",
+        "agent_lane_bridge_absent",
+        "agent_lane_busy_running",
+        "agent_lane_closed",
+        "agent_lane_conversation_exists",
+        "agent_lane_conversation_in_use",
+        "agent_lane_conversation_missing",
+        "agent_lane_disposed",
+        "agent_lane_execute_failed",
+        "agent_lane_invalid_command",
+        "agent_lane_model_unconfigured",
+        "agent_lane_opening",
+        "agent_lane_owner_mismatch",
+        "agent_lane_provider_error",
+        "agent_lane_request_duplicate",
+        "agent_lane_workspace_stale",
+        "agent_skill_unavailable",
+        "project_agent_unavailable",
+        "project_binding_stale",
+        "project_identity_unavailable"
+      ],
+      "reason": "C4 的 canonical owner 本体：Agent lane 错误码唯一值源，LaneErrorCode 类型与同文件 CODE_SET 都从它 derive。",
+      "site": "electron/shared/agentLane/laneErrorCodes.ts::variable:LANE_ERROR_CODES/as-const"
     },
     {
       "members": [
@@ -857,6 +935,19 @@
     },
     {
       "members": [
+        "integration_expected_revision_missing",
+        "integration_owner_mismatch",
+        "integration_required_fields_missing",
+        "integration_revision_ahead",
+        "integration_revision_stale",
+        "integration_session_not_found",
+        "integration_stage_not_allowed"
+      ],
+      "reason": "C4 的 canonical owner 本体：接入认证会话的错误码唯一值源，IntegrationErrorCode 类型从它 derive，mcpToolErrorResults 的 POLICY_CODES 已改为 spread 它。",
+      "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_ERROR_CODES/as-const"
+    },
+    {
+      "members": [
         "cancelled",
         "certifying",
         "committing",
@@ -880,11 +971,12 @@
         "current",
         "custom",
         "development",
-        "launcher-stale",
+        "launcher-broken",
+        "launcher-elsewhere",
         "legacy-launcher",
         "stale-development"
       ],
-      "reason": "客户端配置里那条 nomi 条目相对当前 Nomi 的兼容性判定（mcpConfig.classifyMcpEntry 唯一产出）的中立 owner：主进程 mcpConfig.ts 与渲染层 mcpBridgeTypes.ts 的 McpConfigState 都从这份 tuple derive。八态里 legacy-launcher / stale-development / auth-stale / launcher-stale 是 Nomi 自己写过的历史形状（启动修复只动这些；launcher-stale 含「命令签名都对、NOMI_SETTINGS_DIR 指向别的/已删除 profile」，2026-09-14 起），custom 是 Nomi 没写过的条目（永不动）。与 McpVerifyReason 不同：这里判的是静态配置形状，那边判的是真起进程后的握手结论。",
+      "reason": "McpConfigState 的中立 owner。launcher-broken 表示启动器或 profile 已损坏，可启动自愈；launcher-elsewhere 表示另一份有效 Nomi 或 profile，只显示归属，由用户主动切换。其余历史形状保持原判定；custom 永不自动改写。主进程和渲染层从此 tuple derive，与实连诊断 McpVerifyReason 独立。",
       "site": "electron/shared/mcpConnectionContract.ts::variable:MCP_CONFIG_STATES/as-const"
     },
     {
@@ -929,6 +1021,24 @@
       ],
       "reason": "ADAPTER_RUN_STAGES 是 Provider Adapter 跨主进程、IPC 与 renderer 的中立运行阶段合同；reconciling 明确表示远端提交结果不确定且只能查询，所有 DTO、终态判断和持久化解析必须从该 owner 派生，禁止再维护平行字符串集合。",
       "site": "electron/shared/providerAdapterContract.ts::variable:ADAPTER_RUN_STAGES/as-const"
+    },
+    {
+      "members": [
+        "capability_cancelled",
+        "capability_execution_failed",
+        "capability_input_invalid",
+        "capability_receipt_unresolved",
+        "capability_target_stale",
+        "capability_unsupported",
+        "project_binding_stale",
+        "project_identity_unavailable",
+        "surface_owner_mismatch",
+        "surface_port_stale",
+        "surface_port_suspended",
+        "surface_port_unavailable"
+      ],
+      "reason": "C4 的 canonical owner 本体：端口线上错误码的唯一手写元组，同文件的 SurfacePortWireErrorCode 类型与 SURFACE_PORT_WIRE_ERROR_CODES 集合都从它 derive，transport adapter 一律 spread CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES。它就是本条规则要求大家收敛过来的那一份。",
+      "site": "electron/shared/surfacePortBinding.ts::variable:SURFACE_PORT_WIRE_ERROR_CODE_LIST/as-const"
     },
     {
       "members": [
@@ -1415,6 +1525,22 @@
     },
     {
       "members": [
+        "capability_input_invalid",
+        "capability_target_stale"
+      ],
+      "reason": "分镜 patch 错误类 StoryboardPatchShotsError 自己的两成员错误码，写在构造参数上；与同类 property:code 是同一个声明的两处出现，不是两份定义。",
+      "site": "src/workbench/generationCanvas/agent/storyboardPatchShots.ts::class:StoryboardPatchShotsError/parameter:code/type-union"
+    },
+    {
+      "members": [
+        "capability_input_invalid",
+        "capability_target_stale"
+      ],
+      "reason": "分镜 patch 错误类 StoryboardPatchShotsError 自己的两成员错误码，写在只读属性上；与同类 parameter:code 是同一个声明的两处出现，不是两份定义。",
+      "site": "src/workbench/generationCanvas/agent/storyboardPatchShots.ts::class:StoryboardPatchShotsError/property:code/type-union"
+    },
+    {
+      "members": [
         "cancelled",
         "completed"
       ],
@@ -1576,6 +1702,17 @@
       ],
       "reason": "ShotPlaceholderPhase 是合法的 view model：queued、generating、stopped、failed、done 表达镜头占位卡的用户可见阶段，由 ProductionJobStatus、Run status 与 error code 通过一个穷尽 mapper 派生；它不持久化、不反向覆盖 ProductionRun 账本。",
       "site": "src/workbench/production/shotPlaceholderState.ts::type:ShotPlaceholderPhase/type-union"
+    },
+    {
+      "members": [
+        "process",
+        "project",
+        "turn",
+        "view",
+        "window"
+      ],
+      "reason": "C1 的寿命轴 canonical owner：store 数据字段「活到什么时候」的唯一词表，14 个 store 的 declareStoreLifetime 声明与 check:store-lifetime 门岗都读它。加第六个值等于改语义（审计 docs/audit/2026-09-17-ownership-lifetime-census.md §6 C1 定的五档），不是扩充词表。",
+      "site": "src/workbench/project/storeLifetime.ts::type:StateLifetime/type-union"
     },
     {
       "members": [

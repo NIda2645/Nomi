@@ -24,6 +24,7 @@ import {
 } from "./assetValueScheme";
 import { contentTypeFromMagicBytes, mediaKindFromContentType } from "../assets/mediaTypes";
 import { tagNomiError } from "../shared/nomiErrorCodes";
+import { desktopT } from "../desktopStrings";
 import {
   ingestionAccepts,
   resolveAssetIngestionForKind,
@@ -439,7 +440,21 @@ export async function resolveLocalAsset(
     if (typeof uploadUrl !== "string" || !uploadUrl || typeof fileUrl !== "string" || !fileUrl) {
       throw new Error(`上传初始化响应缺少 signed URL 或文件 URL(期望 ${ingestion.uploadUrlPath} / ${ingestion.urlPath})`);
     }
-    await putBinary(uploadUrl, { "Content-Type": asset.contentType }, asset.bytes, asset.contentType);
+    // 预签名 PUT 的头由供应商在初始化响应里指定（见 types.ts 的 uploadHeadersPath 注释）：
+    // 少一个被签名的头 = 403 SignatureDoesNotMatch。声明了路径就必须拿到，拿不到直接报错，
+    // 不静默退回「只发 Content-Type」——那会变成一个只在某些供应商上偶发的 403。
+    const declaredHeaders: Record<string, string> = {};
+    if (ingestion.uploadHeadersPath) {
+      const raw = readNestedPath(response, ingestion.uploadHeadersPath);
+      if (!raw || typeof raw !== "object") {
+        throw new Error(desktopT("assetUpload.missingPutHeaders", { path: ingestion.uploadHeadersPath }));
+      }
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value !== "string") throw new Error(desktopT("assetUpload.headerNotString", { name: key }));
+        declaredHeaders[key] = value;
+      }
+    }
+    await putBinary(uploadUrl, { "Content-Type": asset.contentType, ...declaredHeaders }, asset.bytes, asset.contentType);
     return fileUrl;
   }
 

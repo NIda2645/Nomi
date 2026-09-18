@@ -1,0 +1,13 @@
+{
+  "keys": [
+    "content_type",
+    "public_url",
+    "upload_headers",
+    "upload_url"
+  ],
+  "content_type": "image/png",
+  "upload_headers": {
+    "Content-Type": "image/png",
+    "x-amz-tagging": "retention=temporary"
+  }
+}

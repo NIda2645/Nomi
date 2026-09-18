@@ -92,9 +92,14 @@ describe('real character reference at the shared storyboard write boundary', () 
     const nodeBacked = structuredClone(plan)
     nodeBacked.anchors[0].referenceSourceNodeId = 'missing-source-node'
     expect(deriveStoryboardRowRuntimes({ ...input, plan: nodeBacked })[0].exec.status).toBe('waiting-refs')
+    // 2026-09-18 反转：`referenceBindings` 没了**不**该把行拖进等待。它今天根本不投影到节点
+    // （v6 合同 §9.3 记着这笔债），materialize 发出去的是 `params.referenceImageUrls`，来源是
+    // `shot.anchorIds`。旧断言把「槽里没填」当成「素材到不了模型」，而 @ 引用素材库/上传、
+    // 结果即收两条真实入口从来不写 referenceBindings——那正是用户看到的
+    // 「明明挂了图却说在等参考图、还被批量排除」。等待只由**素材怎么走**决定（见上一条）。
     const unbound = structuredClone(plan)
     unbound.shots.forEach(shot => { shot.referenceBindings = undefined })
-    expect(deriveStoryboardRowRuntimes({ ...input, plan: unbound })[0].exec.status).toBe('waiting-refs')
+    expect(deriveStoryboardRowRuntimes({ ...input, plan: unbound })[0].exec.status).toBe('ready')
   })
   it('retains the existing project storyboard default identity when model is omitted', () => {
     const input = fixture()

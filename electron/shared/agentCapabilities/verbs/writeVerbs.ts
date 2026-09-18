@@ -81,6 +81,32 @@ const prepareWriteScriptArguments = (() => {
   };
 })();
 
+/**
+ * `modelKey` 与 `candidate.modelId` 是**同一件事的两个名字**（都写着 "from list_models"）：`list_models`
+ * 自己印的是 `modelKey=`，而 `draft_shots` 的示例演示的是 `candidate`。两个都填且互相矛盾时，传输层
+ * 无论选哪个都是在替用户决定「这一笔花在哪个模型上」——那正是 2026-09-18 根因合同要消灭的沉默。
+ * 所以这里当场退回去问模型，而不是挑一个。（两个名字本身是一条结构性欠账，收敛到一个名字要动
+ * `list_models` 的提示词，属 R13 第三档的工具面改动，不在本刀。）
+ */
+function rejectConflictingModelIdentity(args: unknown): Record<string, unknown> {
+  const record = (args && typeof args === "object" && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
+  const shots = Array.isArray(record.shots) ? record.shots : [];
+  for (const shot of shots) {
+    if (!shot || typeof shot !== "object") continue;
+    const { modelKey, candidate } = shot as { modelKey?: unknown; candidate?: { modelId?: unknown } };
+    const declared = candidate && typeof candidate === "object" ? candidate.modelId : undefined;
+    if (typeof modelKey === "string" && typeof declared === "string" && modelKey.trim() && declared.trim()
+      && modelKey.trim() !== declared.trim()) {
+      throw new LaneDomainFailure(wrongVerbFailure({
+        attempted: "draft_shots", useInstead: "draft_shots",
+        because: `A shot names two different models: modelKey="${modelKey.trim()}" and candidate.modelId="${declared.trim()}". `
+          + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.",
+      }));
+    }
+  }
+  return record;
+}
+
 const CANVAS_WRITE_GUIDELINES = Object.freeze([
   "Every canvas write is a reversible local edit: describe what changed in your reply using the returned userSees line rather than claiming more.",
 ]);
@@ -112,7 +138,7 @@ export function writeVerbs(): VerbDeclaration[] {
       does: "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
       notWhen: "It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelKey, modeId, parameters, references, role. Model and parameter values come from list_models; ids from look_at_canvas. Pass draftId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelKey (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass draftId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
@@ -123,12 +149,55 @@ export function writeVerbs(): VerbDeclaration[] {
         modelId: z.string().trim().min(1).describe("Model id from list_models."),
       }).optional().describe("Default catalog candidate for these shots."),
       shots: z.array(draftShotSchema).min(1).max(40).describe("The shots to create or update."),
-    }).strict(),
+    }).strict().superRefine((value, context) => {
+      // `shotId` 只在「改已有草稿」时有意义。少了这条约束，模型发
+      // `{shots:[{shotId:"shot-3", prompt:"…"}]}`（忘了 draftId）时会新建一份草稿、把 shot-3 悄悄丢掉——
+      // 它以为改好了，用户看到的是画布上多了一个镜头（2026-09-18 扫描的 D 类：静默丢字段）。
+      const stray = value.shots.findIndex((shot) => shot.shotId !== undefined);
+      if (value.draftId === undefined && stray >= 0) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", stray, "shotId"], message: "shotId only addresses a shot inside an existing draft — pass draftId too, or omit shotId to create" });
+      }
+      // `title` 是镜头**信封**上的字段（`generationShotEnvelope.ts`），而改草稿这条路递给宿主的是
+      // **候选** patch（提示词/模型/参数/参考）——信封不在那份 patch 的形状里。不拦的话模型收到的是
+      // 宿主的 `Unrecognized key(s): 'title'`：一个它看不懂为什么的拒绝。在这里拦，它当场知道该怎么做。
+      // `title` / `role` 是镜头**信封**上的字段（`generationShotEnvelope.ts`），而改草稿这条路递给宿主的是
+      // **候选** patch（提示词/模型/参数/参考）——信封不在那份 patch 的形状里。不拦的话它们要么被宿主回一句
+      // 模型看不懂的 `Unrecognized key`，要么无声消失。在这里拦，它当场知道该怎么做。
+      // 这条与对应表上 `absentOn.patch = refuse` 是同一句话的两层：表保证它不会静默丢，这里保证模型先被告知。
+      for (const field of ["title", "role"] as const) {
+        const index = value.draftId === undefined ? -1 : value.shots.findIndex((shot) => shot[field] !== undefined);
+        if (index < 0) continue;
+        context.addIssue({
+          code: z.ZodIssueCode.custom, path: ["shots", index, field],
+          message: `a shot's ${field} is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop ${field} here`,
+        });
+      }
+      // 「整份计划不能只有锚」——语义上自洽的约束：`role: "anchor"` 的定义就是「被**其它镜头**复用的
+      // 参考卡」，一份只有锚的计划自相矛盾（没有任何镜头去复用它们）。
+      //
+      // 为什么搬到这一面：宿主本来就拦（`mcpGenerationMultiShot.ts` 的
+      // 「多镜计划至少需要一个视频镜头」），但模型**只能撞上去才知道有这条规矩**。
+      // 2026-09-18 真机 23 轮实测，这是剩余失败的最大一类——27 次失败里 11 次是它，
+      // 而模型的意图完全正确：它在做标准分镜流程，先单独立视觉锚再排镜头，标题都写着
+      // 「角色锚｜林野」「场景锚｜旧房子客厅」「陈默·人物设定」——**那正是我们自己的导演技能教它的**。
+      // 6 次里 5 次它靠错误信息自纠了（下一次带 6~12 镜成功），但每次白费一个来回，还有 1 次整轮没救回来。
+      //
+      // 所以这里给的不只是「不行」，还有那条合法路怎么走：用户如果只想要那几张参考图本身，
+      // 它们就不是锚（没有别的镜头复用），省掉 `role` 当普通镜头发即可。
+      if (value.draftId === undefined && value.shots.every((shot) => shot.role === "anchor")) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom, path: ["shots", 0, "role"],
+          message: "an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — "
+            + "put the anchors and the shots that reuse them in this one call. "
+            + "If the user only wants those reference images themselves, omit role so they are ordinary shots.",
+        });
+      }
+    }),
     examples: [
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
       { when: "Change one existing shot's prompt:", arguments: { draftId: "op-1", shots: [{ shotId: "shot-3", prompt: "夜景，霓虹灯下的街道" }] } },
     ],
-    prepareArguments: modelArgumentTolerance({ arrayFields: ["shots"] }),
+    prepareArguments: (args: unknown) => rejectConflictingModelIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
   };
 
   const generate: VerbDeclaration = {
@@ -168,7 +237,19 @@ export function writeVerbs(): VerbDeclaration[] {
       }).strict()).max(48).optional().describe("Reference links to add between existing nodes."),
       tidy: z.boolean().optional().describe("Re-lay out the canvas."),
       categoryId: z.string().trim().min(1).optional().describe("With tidy: only this canvas category."),
-    }).strict(),
+    }).strict().superRefine((value, context) => {
+      // 两个分支**互斥**：给了 links 就是连边，给了 tidy 就是重排。都不给的那次过去会在翻译层抛一个
+      // 裸 Error（模型收到的不是一条说得清的拒绝）；两个都给时 tidy 被静默忽略。约束写在声明上，
+      // 模型在调用发出之前就被告知（R17：防线建在最早能拦住的那层）。
+      const connects = (value.links?.length ?? 0) > 0;
+      const tidies = value.tidy === true;
+      if (connects === tidies) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["links"], message: "give exactly one of links (to connect nodes) or tidy: true (to re-lay out)" });
+      }
+      if (value.categoryId !== undefined && !tidies) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["categoryId"], message: "categoryId only narrows tidy: true" });
+      }
+    }),
     examples: [{ when: "Use the character sheet as a reference for a shot:", arguments: { links: [{ fromId: "node-char", toId: "node-shot-2", role: "character_ref" }] } }],
     prepareArguments: rejectGeneratingNodes("arrange_canvas", modelArgumentTolerance({ arrayFields: ["links"] })),
     semanticInputOf: (args) => canvasWriteInputOf("arrange_canvas", args),

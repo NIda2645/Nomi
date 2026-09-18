@@ -113,6 +113,7 @@ function LaneReceiptCell({ lane }: { lane: (rejectReason: string) => LaneSnapsho
     toolLabel: () => fx.t('agentPanelV4.fixtureReadTimeline'),
     toolSummary: () => undefined,
     toolFailure: () => undefined,
+    toolFailureDetail: (failure) => failure.code,
     thinkingLabel: fx.t('agentPanelV4.thinkingLabel'),
     formatTokens: (value) => String(value),
     formatCost: (usd) => `$${usd.toFixed(2)}`,

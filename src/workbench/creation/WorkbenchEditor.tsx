@@ -1,5 +1,6 @@
 import React from 'react'
 import { workspacePanelFrame, workspacePanelHeader } from '../WorkspacePanelFrame'
+import { CreationResourceTreeToggle } from './CreationResourceTreeToggle'
 import { useTranslation } from 'react-i18next'
 import { EditorContent, type Editor, type JSONContent } from '@tiptap/react'
 import SelectionGeneratePopover from './SelectionGeneratePopover'
@@ -67,7 +68,10 @@ function WorkbenchEditorToolbar({ editor }: { editor: Editor | null }): JSX.Elem
         workspacePanelHeader,
         )}
         aria-label={t('creationAi.editor.toolbarAria')}
-      />
+      >
+        {/* 左栏收起时唯一的回头路，必须无条件常驻——哪怕工具栏本身是空的。 */}
+        <CreationResourceTreeToggle placement="panel" />
+      </div>
     )
   }
   const byId = new Map(actions.map((action) => [action.id, action]))
@@ -83,6 +87,7 @@ function WorkbenchEditorToolbar({ editor }: { editor: Editor | null }): JSX.Elem
       )}
       aria-label={t('creationAi.editor.toolbarAria')}
     >
+      <CreationResourceTreeToggle placement="panel" />
       {leftGroups.map((group, index) => (
         <React.Fragment key={group[0]?.id ?? index}>
           {index > 0 ? <ToolbarDivider /> : null}

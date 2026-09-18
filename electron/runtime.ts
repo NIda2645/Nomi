@@ -171,7 +171,7 @@ import { findExecutableModel } from "./catalog/executableModel";
 // Thin Vendor→primitive adapters over the shared requestPipeline auth logic
 // (the shared module is electron-free and doesn't know the Vendor shape).
 function authHeaders(vendor: Vendor, apiKey: string): Record<string, string> {
-  return buildAuthHeaders(vendor.authType as AuthType, apiKey, vendor.authHeader ?? undefined);
+  return buildAuthHeaders(vendor.authType as AuthType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined);
 }
 
 // billingKindForTaskKind 下沉到 catalog/types（R12 净减）；re-export 保住既有消费方 import 面。

@@ -55,6 +55,7 @@ export async function probeDirectKeyCredential(vendor: Vendor, apiKey: string, f
       baseUrl: vendor.baseUrlHint || builtinVendorSeed(vendor.key)!.baseUrl,
       authType: vendor.authType || 'bearer',
       authHeaderName: vendor.authHeader ?? undefined,
+      authScheme: vendor.authScheme ?? undefined,
       authQueryParam: vendor.authQueryParam ?? undefined,
       apiKey,
       context: { model },

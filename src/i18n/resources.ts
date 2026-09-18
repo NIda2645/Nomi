@@ -21,6 +21,7 @@ import { enCommunity, zhCommunity } from './locales/community'
 import { enFeedbackReport, zhFeedbackReport } from './locales/feedbackReport'
 import { enAgentPanelV4, zhAgentPanelV4 } from './locales/agentPanelV4'
 import { enAgentLaneError, zhAgentLaneError } from './locales/agentLaneError'
+import { enAgentToolFailure, zhAgentToolFailure } from './locales/agentToolFailure'
 
 export const zhCN = {
   shotTable: zhShotTable,
@@ -324,7 +325,6 @@ export const zhCN = {
     projectRepairTitle: '项目暂时无法打开',
     projectRepairMessage: '未找到可用的自动备份。可以打开项目文件夹检查 .nomi/project.json：{{path}}',
     openProjectFolder: '打开项目文件夹',
-    hostConfigRepaired: '已修复 {{clients}} 的 Nomi 接入配置，重启 {{clients}} 后生效',
     integrationSelfCheckPending: '「{{name}}」等你开始自检',
     integrationSelfCheckPendingAction: '去自检',
     initializeTitle: '初始化为 Nomi 项目',
@@ -435,6 +435,7 @@ export const zhCN = {
   feedbackReport: zhFeedbackReport,
   agentPanelV4: zhAgentPanelV4,
   agentLaneError: zhAgentLaneError,
+  agentToolFailure: zhAgentToolFailure,
 } as const
 
 type TranslationShape<T> = {
@@ -739,7 +740,6 @@ export const en = {
     projectRepairTitle: 'The project cannot be opened',
     projectRepairMessage: 'No valid automatic backup was found. Open the project folder and inspect .nomi/project.json: {{path}}',
     openProjectFolder: 'Open project folder',
-    hostConfigRepaired: 'Repaired the Nomi connection for {{clients}}. Restart {{clients}} to apply it.',
     integrationSelfCheckPending: '"{{name}}" is waiting for you to start its self-check',
     integrationSelfCheckPendingAction: 'Review',
     initializeTitle: 'Initialize as a Nomi project',
@@ -854,6 +854,7 @@ export const en = {
   feedbackReport: enFeedbackReport,
   agentPanelV4: enAgentPanelV4,
   agentLaneError: enAgentLaneError,
+  agentToolFailure: enAgentToolFailure,
 } satisfies TranslationShape<typeof zhCN>
 
 export const resources = {
