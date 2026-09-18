@@ -31,7 +31,7 @@
 
 ---
 
-## 2. 先查别人（R5 五触发面）
+## 先查别人（R5 五触发面 · 本方案第 2 节）
 
 ### 2.1 四列表（R5.4 姿势，对象是本仓两个「框架级」子系统：`electron/providerAdapter/` 与 `electron/integrationCertification/`）
 
