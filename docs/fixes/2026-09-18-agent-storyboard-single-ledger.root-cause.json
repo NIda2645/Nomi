@@ -78,19 +78,19 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 89,
+      "line": 90,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 106,
+      "line": 107,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 115,
+      "line": 116,
       "symbol": "generationPlanInputSchema"
     },
     {
@@ -132,31 +132,31 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 134,
+      "line": 137,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "line": 135,
+      "line": 138,
       "symbol": "generationPlanInputSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/canvas/shotTable.ts",
-      "line": 98,
+      "line": 110,
       "symbol": "productionShotTableSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/canvas/shotTable.ts",
-      "line": 100,
+      "line": 112,
       "symbol": "productionShotTableSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/canvas/shotTable.ts",
-      "line": 138,
+      "line": 150,
       "symbol": "productionShotTableSchema"
     },
     {
@@ -186,19 +186,19 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
-      "line": 69,
+      "line": 78,
       "symbol": "readShotTable"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
-      "line": 109,
+      "line": 120,
       "symbol": "readShotTable"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
-      "line": 38,
+      "line": 39,
       "symbol": "selectProductionShotRows"
     },
     {
@@ -216,13 +216,13 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
-      "line": 34,
+      "line": 33,
       "symbol": "readShotTable"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
-      "line": 66,
+      "line": 63,
       "symbol": "readShotTable"
     },
     {
@@ -354,97 +354,97 @@
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
-      "line": 278,
+      "line": 290,
       "symbol": "deriveShotRowExec"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 74,
+      "line": 75,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 164,
+      "line": 169,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 168,
+      "line": 504,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 411,
+      "line": 513,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 420,
+      "line": 573,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 455,
+      "line": 165,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 495,
+      "line": 412,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 501,
+      "line": 421,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 510,
+      "line": 464,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 511,
+      "line": 522,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 512,
+      "line": 523,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 519,
+      "line": 524,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 561,
+      "line": 531,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 584,
+      "line": 596,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
-      "line": 591,
+      "line": 603,
       "symbol": "setStoryboardPlan"
     },
     {
@@ -462,7 +462,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
-      "line": 80,
+      "line": 81,
       "symbol": "deriveNodeRowExec"
     },
     {
@@ -474,13 +474,13 @@
     {
       "kind": "write",
       "path": "src/workbench/onboarding/journeyTourStore.ts",
-      "line": 77,
+      "line": 78,
       "symbol": "setStoryboardPlan"
     },
     {
       "kind": "write",
       "path": "src/workbench/onboarding/journeyTourStore.ts",
-      "line": 93,
+      "line": 94,
       "symbol": "setStoryboardPlan"
     }
   ],
@@ -608,7 +608,7 @@
     "invariant": "For every landing that creates Run-owned shot nodes (N>=2), exactly one shot_table(production) pointing at that runId exists afterwards, created in the same transaction; it never stores rows and is never re-created by a replay.",
     "failure_mode": "A landing that creates nodes without the table fails multiShotCanvasLanding.test.ts and the golden-path walk (tests/ux/golden-path.e2e.mjs asserts the production table on disk after draft_shots); a table with cached rows is rejected fail-closed by normalizeShotTableMeta at persistence; a patch that drops shotId fails the transport/adapter/handler/store tests each proven red by mutation.",
     "exception_policy": "none",
-    "strategy": "Put the view's birth into the one write boundary every landing moment already shares, forbid rows in its persistence schema so it cannot become a second truth, and validate the per-shot edit field at both public schema doors so no host can bypass it.",
+    "strategy": "Put the view's birth into the one write boundary every landing moment already shares, forbid rows in its persistence schema so it cannot become a second truth, and validate the per-shot edit field at both public schema doors so no host can bypass it. 注：这条防线的第 11 个产物 `electron/capabilityCore/generationTransportAdapters.ts`（按 `operation` 字面量派生分支、替掉那份手抄的更窄 schema）已随 PR #809 合入 main（merge 192922bd1，`PLAN_BRANCH_FOR_METHOD` / `branchByOperation` 已在 main 上），本分支对它零差异，故不再列进 artifacts——门岗要求每个产物都在本次 diff 里改过，而它已经是上游事实，不是本次要装的东西。",
     "artifacts": [
       "src/workbench/capability/multiShotCanvasLanding.ts",
       "electron/shared/canvas/shotTable.ts",
@@ -617,7 +617,6 @@
       "electron/capabilityCore/mcpGenerationTools.ts",
       "electron/productionRun/productionGenerationOperationStore.ts",
       "electron/shared/agentCapabilities/generationPlanSchemas.ts",
-      "electron/capabilityCore/generationTransportAdapters.ts",
       "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
       "electron/agentLane/verbTransportRoutes.ts",
       "scripts/check-verb-host-conformance.mjs"
