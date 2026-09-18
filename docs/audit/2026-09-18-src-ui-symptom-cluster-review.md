@@ -1,4 +1,4 @@
-# src/ui 症状聚类结构评审（2026-09-12 → 2026-09-18，7 份根因合同）
+# src/ui 与 src/i18n 症状聚类结构评审（2026-09-12 → 2026-09-18）
 
 > 状态：结论已定，行动项待排期
 > 触发：`check:symptom-cluster` —— 同一层 7 天里收到第 3 份根因合同就该问「是不是这一层的结构不对」，
@@ -48,5 +48,27 @@
    的合同一律堆进 `src/ui`。建议按合同的 `shared_boundaries[].path` 归模块（那才是修在哪一层），
    `scope_paths` 只当覆盖面。验收：拿这七份重跑，聚类落到真正的边界层上。
 
+## 同一窗口里的第二个聚簇：`src/i18n`（6 份）
+
+`check:symptom-cluster` 同时报了 `src/i18n`：`2026-09-12-announced-card-never-rendered`、
+`2026-09-12-storyboard-plan-defaults-passthrough`、`2026-09-14-agent-panel-action-receipts`、
+`2026-09-14-import-borrows-generation-waiting-surface`、`2026-09-14-media-import-single-owner`，
+加上本刀。
+
+**结论：这一格是纯粹的归模块噪音，不是结构问题。** 六份合同没有任何一份的类根因在文案层——
+它们各自修的是投影、归属、单一 owner，只是「改了行为就得改一句话」，于是
+`src/i18n/locales/*.ts` 出现在 `scope_paths` 里，被 `moduleKey()` 归进 `src/i18n`。
+`src/i18n/locales/` 是**纯数据**（词典），没有判断、没有状态、没有写路径，结构上不可能是
+七天里六个 bug 的共同成因。
+
+这正是上面行动项 4 的第二份证据，而且比 `src/ui` 那份更干净：
+`src/ui` 至少还有「渲染层是所有跨进程真相的最终消费者」这层真实关联，`src/i18n` 连这层都没有。
+**建议把纯数据目录（`src/i18n/locales/`、各类 `*-baseline.json`）整体排除出聚类的模块归属**，
+和 `check:root-cause-contracts` 里已有的 `isGeneratedDataFile` 豁免同一个道理：
+一个会因为「改了一句文案」而报红的聚类门岗，报的不是结构问题，而是它自己的归类方式。
+验收：拿这六份重跑，`src/i18n` 那一格消失，`src/ui` 那一格仍在。
+
+---
+
 本刀（`2026-09-18-vendor-upsert-drops-fields`）的修法与行动项 3 是同一件事，已落地；
-其余三项不在本 PR 范围内，排期见 `docs/roadmap/TODO.md`。
+其余三项（含两条门岗归类改进）不在本 PR 范围内，排期见 `docs/roadmap/TODO.md`。
