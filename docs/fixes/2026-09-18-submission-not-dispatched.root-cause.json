@@ -142,7 +142,7 @@
   "shared_boundaries": [
     {
       "path": "electron/outboundDispatchEvidence.ts",
-      "symbol": "outboundRequestWasNeverWritten, describeOutboundFailure",
+      "symbol": "outboundDispatchEvidence",
       "responsibility": "回答「这次出站请求有没有写出去」这唯一一个问题；拿不出证据就答 unknown（fail-closed），不允许第二个地方各自判"
     },
     {
