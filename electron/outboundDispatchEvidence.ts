@@ -38,9 +38,7 @@ function asErrorLike(value: unknown): ErrorLike | null {
 function causeChain(error: unknown): ErrorLike[] {
   const chain: ErrorLike[] = [];
   let current = asErrorLike(error);
-  const seen = new Set<unknown>();
-  while (current && !seen.has(current) && chain.length < 5) {
-    seen.add(current);
+  while (current && !chain.includes(current) && chain.length < 5) {
     chain.push(current);
     current = asErrorLike(current.cause);
   }
