@@ -87,11 +87,14 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       const shots = draft.shots.map((shot) => withDraftShotsDefaults(draft, shot))
       // 分支判断是真逻辑（改草稿 / 单镜摊平 / 多镜），不是字段名单——它留在这里。
       if (draft.operationId !== undefined) {
-        // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
-        // 信封字段落不进候选 patch，`draftShotToCandidatePatch` 当场拒绝，不在这里摘。
-        const patch = draftShotToCandidatePatch(shots[0] ?? ({} as DraftShot))
+        // 修改已有草稿：带 `shotId` = 改多镜草稿里的那一镜（那一镜候选 revision +1 → 已落的节点按它重绑定）；
+        // 不带 = 单镜草稿的顶层候选。一次调用改一镜（动词契约的例子就是这个形状）。
+        // `shotId` **不是**候选字段而是 plan patch **信封**上的寻址字段，所以它由
+        // `draftShotsPatchEnvelope` 提到信封上；其余信封字段（title / role）落不进候选 patch，
+        // 由 `draftShotToCandidatePatch` 当场拒绝，不在这里摘。
+        const first = shots[0] ?? ({} as DraftShot)
         return generationCall(base, GENERATION_METHODS.plan, {
-          ...draftShotsPatchEnvelope(draft), operation: 'patch', patch,
+          ...draftShotsPatchEnvelope(draft, first), operation: 'patch', patch: draftShotToCandidatePatch(first),
         })
       }
       // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。

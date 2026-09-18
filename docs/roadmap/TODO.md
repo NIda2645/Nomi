@@ -101,6 +101,7 @@
 | T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n **09-18 批次 3 收尾真机 EN 截图又撞到同族第二处**：画布节点标题行的种类角标在 English 下仍印「图片」（`closing-shots/model-box-open-en.png`，与它并排的 `Shot 1` 已经是英文）。同一行里一半翻了一半没翻，修的时候一起扫。 |
 | T-DS-17 | 拆解表画面六格失败时**一个字原因都没给** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | `visionFailed` 已经带着 `failureReason`，UI 没渲染它——不是没有原因，是没往外说 |
 | T-DS-18 | 分镜面多选浮条 `sticky bottom-2` **永不生效** | todo | 09-17 W-03 工人结构性发现 | 浮条住在 `[data-storyboard-rows]` 里，而那个容器是 `overflow-hidden` → sticky 没有可滚动的定位祖先，等于普通静态定位。批量选中后浮条不跟随，用户滚下去就看不见它了。与 T-DS-14 同一片区域，一起改 |
+| T-DS-19 | **分镜账本 B 退役**（`storyboardDesignsByDocumentId` 只剩用户手写方案；Agent 分镜已归 Run 账本 A，分镜表读落地节点） | todo · **到期 2026-10-16** | [方案 §8.3](../plan/2026-09-18-agent-storyboard-write-path.md) · 用户 09-18 拍板「合并成一个账本」 | 条件全满足才删：① B.3 分镜页/侧栏渲染 `shot_table(production)`（先出样张）② 外部 MCP 分镜 operation 收编到 `draft_shots`（与 #754 同刀）③ 删 `projectRepository.ts` 的 `starter-*` 起手架 ④ golden-path + 四条分镜走查在单一账本上全绿。到期未满足按 R17 算红——仓库没有通用到期门岗，到期由人核（§8.4 结构性发现） |
 
 ## E. 素材与导入
 

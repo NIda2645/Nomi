@@ -42,7 +42,9 @@ describe('buildMaterializeShotsPayload', () => {
     expect(payload!.shots.map((s) => s.shotId)).toEqual(['a1', 's1'])
     expect(payload!.shots.every((s) => s.result === undefined)).toBe(true)
     expect(payload!.materializationOperationId).toBe(canvasLandingOperationId('run-1'))
-    expect(payload!.groupName).toBe('分镜组·雨夜便利店')
+    expect(payload!.planName).toBe('雨夜便利店')
+    // 组名由渲染层按 i18n 拼；主进程不再发任何面向用户的文案（英文用户不该看到中文组名）。
+    expect(payload).not.toHaveProperty('groupName')
     // anchor → image kind + referenceSheet 语义（role）；镜 → video。
     expect(payload!.shots.find((s) => s.shotId === 'a1')?.kind).toBe('image')
     expect(payload!.shots.find((s) => s.shotId === 's1')?.kind).toBe('video')

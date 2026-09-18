@@ -26,7 +26,7 @@ const MATERIALIZE_PAYLOAD = {
   projectId: null, // 走查里填成当前项目 id
   runId: RUN_ID,
   materializationOperationId: OP_ID,
-  groupName: '雨夜便利店',
+  planName: '雨夜便利店',
   shots: [
     { shotId: 'anchor-1', role: 'anchor', kind: 'image', title: '主角 · 阿雨', prompt: '定妆照' },
     { shotId: 'shot-1', role: 'shot', kind: 'video', title: '镜头 1', prompt: '雨夜，阿雨推开便利店玻璃门' },

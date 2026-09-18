@@ -64,7 +64,7 @@ const JOURNEY_PATTERNS = [
   /^src\/.*(?:agent|bridge|credential|model|provider|catalog|comfyui|network|security|generationCanvas\/runner).*\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i,
   /^electron\/capabilityCore\/mcp.*\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i,
   /^tests\/ux\/mcp-(?:l1-handshake|journey).*\.(?:mjs|js|ts)$/i,
-  /^tests\/ux\/(?:resident-composer-receipt-fix|storyboard-agent-canonical-patch|production-mcp-journey)\.(?:e2e\.)?mjs$/i,
+  /^tests\/ux\/(?:resident-composer-receipt-fix|storyboard-agent-canonical-patch|production-mcp-journey|golden-path)\.(?:e2e\.)?mjs$/i,
 ]
 
 const DESKTOP_PATTERNS = [/^src\/desktop\/bridge\.(?:ts|tsx|js|jsx)$/]

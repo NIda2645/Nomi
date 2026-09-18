@@ -130,3 +130,19 @@ describe("verbToTransportCall · every transported verb lands on a method its la
     expect(isPiGenerationToolName("nomi_generation_plan_v9")).toBe(false);
   });
 });
+
+// 2026-09-18 单一账本：改多镜草稿里的一镜必须能经 Run 账本走通——动词契约的例子就是
+// `{ operationId, shots: [{ shotId, prompt }] }`，翻译层曾把 shotId 声明成 drop，于是「改第 2 镜」永远改的是顶层候选。
+describe("draft_shots with operationId · one shot of a multi-shot draft", () => {
+  it("lifts the shotId onto the plan patch envelope so the host edits that shot, not the top-level candidate", () => {
+    const translated = verbToTransportCall({ toolCallId: "call-1", toolName: "draft_shots",
+      args: { operationId: "op-1", shots: [{ shotId: "shot-2", prompt: "逆光侧脸" }] } });
+    expect(translated?.call.args).toEqual({ operation: "patch", operationId: "op-1", shotId: "shot-2", patch: { prompt: "逆光侧脸" } });
+  });
+
+  it("omits shotId for a single-shot draft (top-level candidate, unchanged)", () => {
+    const translated = verbToTransportCall({ toolCallId: "call-1", toolName: "draft_shots",
+      args: { operationId: "op-1", shots: [{ prompt: "换一句" }] } });
+    expect(translated?.call.args).toEqual({ operation: "patch", operationId: "op-1", patch: { prompt: "换一句" } });
+  });
+});

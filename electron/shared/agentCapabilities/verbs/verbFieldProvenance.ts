@@ -80,7 +80,9 @@ const RAW: Readonly<Record<string, Readonly<Record<string, readonly VerbFieldPro
     "shots.taskKind": ["model-authored"],
     "shots.parameters": ["from-read:list_models.params"],
     "shots.modeId": ["from-read:list_models.modeId"],
-    "shots.shotId": ["from-read:look_at_canvas.id"],
+    // 来源是 `draft_shots` **自己的返回**（`operation.shots[].shotId`），不是 `look_at_canvas` 的节点 id——
+    // 宿主按 shot.shotId 找镜，把画布节点 id 递进去只会得到 "Generation shot not found"（#813 查明）。
+    "shots.shotId": ["from-read:draft_shots.shotId"],
     "shots.role": ["model-authored"],
     "shots.title": ["model-authored"],
     "shots.durationSec": ["model-authored"],
@@ -99,7 +101,7 @@ const RAW: Readonly<Record<string, Readonly<Record<string, readonly VerbFieldPro
  */
 export const PROVENANCE_UNVERIFIABLE: Readonly<Record<string, string>> = Object.freeze({
   list_models: "generation.context.read 的 outputSchema 是 z.unknown()；真形状在 availableModelsSchema.agentModelEntrySchema，但契约上没声明，所以核不动",
-  draft_shots: "generation.plan 的 outputSchema 是 z.unknown()；草稿 id 确实在它的返回里，契约没声明",
+  draft_shots: "generation.plan 的 outputSchema 是 z.unknown()；草稿 id（operation.operationId）与每镜的 shotId（operation.shots[].shotId）确实都在它的返回里，契约没声明",
   generate: "同上，同一个 generation.plan 契约",
   edit_timeline: "timeline.write 的返回形状没声明到字段级",
   export_video: "export.write 的返回形状没声明到字段级",

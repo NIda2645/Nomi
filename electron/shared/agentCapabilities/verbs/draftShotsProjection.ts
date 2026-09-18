@@ -20,7 +20,8 @@
 // 另外两件不是形状变化，是**这条路上没有它的位置**：改草稿递给宿主的是候选 patch（提示词/模型/参数/
 // 参考），镜头**信封**（`title` / `role`）不在那份形状里；单镜 create 把一镜摊成顶层参数，顶层同样没有
 // 信封的位置。「送不到」与「可以丢」长得一模一样（都是「值没过去」），所以两者必须分开写明：
-// 信封字段 `refuse`（当场说），`shotId` 在 patch 上 `drop`（有意，返回值会说清改的是哪一镜）。
+// 信封字段 `refuse`（当场说）。`shotId` 是第三种——它**既不是**候选内容**也不是**该丢的东西，
+// 而是**寻址**：提到 plan patch 的信封上（`draftShotsPatchEnvelope`），宿主据它只改那一镜。
 //
 // ── 「一个字段都不许没人管」在这里是**编译期**的 ──
 //
@@ -110,7 +111,7 @@ export function draftShotToPlanShot(shot: DraftShot): PlanShot {
 /**
  * 改草稿那一支的候选 patch：只有语义。
  * `title` / `role` 当场拒绝（动词声明的 `superRefine` 在更早一层已经告诉过模型，这里是它的第二层）；
- * `shotId` **有意**丢掉——宿主的候选 patch 不寻址单镜（多镜逐镜 patch 还没做），返回值会说清改的是哪一镜。
+ * `shotId` 不在这里——它是寻址不是候选，由 `draftShotsPatchEnvelope` 提到 plan patch 的信封上。
  */
 export function draftShotToCandidatePatch(shot: DraftShot): CandidatePatch {
   if (shot.title !== undefined) refuse("shots[].title", REFUSE_ON_PATCH);
@@ -141,8 +142,17 @@ export function withDraftShotsDefaults(args: DraftShotsArgs, shot: DraftShot): D
   };
 }
 
-/** 改草稿那一支的顶层：只有 `operationId`（新建时它还不存在，宿主发——所以走到 create 就说明模型没给它）。 */
-export function draftShotsPatchEnvelope(args: DraftShotsArgs): { operationId: string } {
+/**
+ * 改草稿那一支的**信封**：哪一份草稿（`operationId`）、哪一镜（`shotId`）。
+ *
+ * `shotId` 为什么在这里而不在候选 patch 里：它是**寻址**，不是候选内容。宿主按它只改那一镜的候选
+ * （那一镜 revision +1，已落的节点按它重绑定）；缺省 = 单镜草稿的顶层候选。2026-09-18 之前这条是
+ * 「有意丢弃」，于是「改第 2 镜」永远改的是顶层候选，用户在画布上什么都看不到——单一账本那一刀
+ * （#813）把这扇门开通，宿主的 patch 分支从那天起收 `shotId`，这里跟着把它提到信封上。
+ *
+ * 返回类型取自**宿主自己的 patch 分支**减掉候选内容，所以宿主改名或改必填，这里是 tsc 红。
+ */
+export function draftShotsPatchEnvelope(args: DraftShotsArgs, shot: DraftShot): Omit<PlanPatch, "operation" | "patch"> {
   if (args.operationId === undefined) throw new Error("draft_shots: 改草稿那一支必须带 operationId");
-  return { operationId: args.operationId };
+  return { operationId: args.operationId, ...(shot.shotId !== undefined ? { shotId: shot.shotId } : {}) };
 }

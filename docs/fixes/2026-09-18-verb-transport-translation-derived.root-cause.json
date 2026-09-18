@@ -62,37 +62,37 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 92,
-      "symbol": "draftShotToCandidatePatch"
-    },
-    {
-      "kind": "write",
-      "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 94,
+      "line": 97,
       "symbol": "draftShotsPatchEnvelope"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 103,
+      "line": 97,
+      "symbol": "draftShotToCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 106,
       "symbol": "draftShotToFlatCreate"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 116,
+      "line": 119,
       "symbol": "checkJobGenerationArgs"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 118,
+      "line": 121,
       "symbol": "cancelJobGenerationArgs"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneVerbTransport.ts",
-      "line": 127,
+      "line": 130,
       "symbol": "editTimelinePlanId"
     },
     {
@@ -122,13 +122,13 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
-      "line": 134,
+      "line": 135,
       "symbol": "DraftShotsArgs"
     },
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
-      "line": 184,
+      "line": 186,
       "symbol": "PROVENANCE_UNVERIFIABLE"
     },
     {

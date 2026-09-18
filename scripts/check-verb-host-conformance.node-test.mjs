@@ -83,6 +83,15 @@ const MUTATIONS = [
     ['electron/productionRun/productionRunRepository.ts',
       'import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";', ''],
   ]],
+  // 逐字段探针从最小实例出发，够不到「没有 operationId 就不合法」的 shotId；只有从示例出发才碰得到它。
+  // 2026-09-18 这个字段就是这样被「有意丢弃」而门岗全绿的（#813 查明：于是「改第 2 镜」永远改的是
+  // 顶层候选，用户在画布上什么都看不到）。投影化之后那条处置搬到了 `draftShotsPatchEnvelope`——
+  // 把它改回「丢掉」，门必须照样红。
+  ['R3 · 示例里给了值的寻址字段被翻译层吃掉（shotId 不再提到信封上）', [
+    ['electron/shared/agentCapabilities/verbs/draftShotsProjection.ts',
+      "  return { operationId: args.operationId, ...(shot.shotId !== undefined ? { shotId: shot.shotId } : {}) };",
+      "  void shot;\n  return { operationId: args.operationId };"],
+  ]],
   ['R2b · 跨字段约束搬回翻译层，靠替模型编造缺省端点（只有两字段组合能暴露）', [
     ['electron/shared/agentCapabilities/verbs/readVerbs.ts',
       '      rangeRefinement("startFrame", "endFrame")(value as Record<string, unknown>, context);\n', ''],

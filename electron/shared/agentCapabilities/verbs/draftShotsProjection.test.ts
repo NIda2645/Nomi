@@ -29,12 +29,22 @@ describe("draft_shots 的投影与对照表时代逐字节相同", () => {
       .toMatchObject({ references: [{ assetId: "asset-1" }, { assetId: "asset-2" }] });
   });
 
+  it("寻址字段提到信封上：改草稿时一镜的 shotId 落在 plan patch 顶层，候选 patch 里没有它", () => {
+    // #813 之前这一条是「有意丢弃」，于是「改第 2 镜」永远改的是顶层候选，用户在画布上什么都看不到。
+    const patched = translate({ operationId: "op-1", shots: [{ shotId: "shot-2", prompt: "逆光侧脸" }] }) as Record<string, unknown>
+    expect(patched).toMatchObject({ operation: "patch", operationId: "op-1", shotId: "shot-2" })
+    expect(patched.patch).toEqual({ prompt: "逆光侧脸" })
+    // 不带 shotId = 单镜草稿的顶层候选：信封上就不该冒出一个空的寻址字段。
+    const topLevel = translate({ operationId: "op-1", shots: [{ prompt: "换一句" }] }) as Record<string, unknown>
+    expect(topLevel).not.toHaveProperty("shotId")
+  });
+
   it("信封字段进多镜、不进候选 patch（「送不到」与「可以丢」分开写明的机器版）", () => {
     const multi = translate({ shots: [{ role: "anchor", title: "锚", prompt: "a" }, { role: "shot", prompt: "b" }] }) as { shots: Array<Record<string, unknown>> };
     expect(multi.shots[0]).toMatchObject({ role: "anchor", title: "锚", prompt: "a" });
     const patched = translate({ operationId: "op-1", shots: [{ shotId: "shot-3", prompt: "改一句" }] }) as { patch: Record<string, unknown> };
     expect(patched).toMatchObject({ operation: "patch", operationId: "op-1" });
-    // `shotId` 在这条路上是**有意**丢弃（宿主的候选 patch 不寻址单镜），所以 patch 里只剩语义。
+    // `shotId` 提到了信封上（上一条断言），所以候选 patch 里只剩语义。
     expect(patched.patch).toEqual({ prompt: "改一句" });
   });
 

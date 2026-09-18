@@ -178,38 +178,6 @@ function modeFromSnapshot(
   return declared ?? selected.mode;
 }
 
-/**
- * The module bucket that owns an **explicitly named** provider+model. This is a
- * lookup, not a choice: the caller already said which model spends the money, and
- * `moduleId` is an internal routing bucket the model face never sees (it is absent
- * from every verb declaration). Without it a named model could only be used by
- * users who had also saved a Workbench default — i.e. naming a model did nothing.
- * Returns undefined when the identity is not in the catalog, so the caller still
- * refuses rather than inventing a bucket.
- */
-function moduleIdForIdentity(
-  deps: SemanticGenerationCandidateDeps,
-  providerId: string,
-  modelId: string,
-): string | undefined {
-  for (const manifest of deps.registry?.snapshot?.() ?? []) {
-    if (!manifest || typeof manifest !== "object") continue;
-    const moduleId = text((manifest as { moduleId?: unknown }).moduleId);
-    const providers = (manifest as { providers?: unknown }).providers;
-    if (!moduleId || !Array.isArray(providers)) continue;
-    for (const provider of providers) {
-      if (!provider || typeof provider !== "object") continue;
-      if (text((provider as { providerId?: unknown }).providerId) !== providerId) continue;
-      const models = (provider as { models?: unknown }).models;
-      if (!Array.isArray(models)) continue;
-      if (models.some((model) => model && typeof model === "object" && text((model as { modelId?: unknown }).modelId) === modelId)) {
-        return moduleId;
-      }
-    }
-  }
-  return undefined;
-}
-
 function fallbackFromSnapshot(
   deps: SemanticGenerationCandidateDeps,
   taskKind: GenerationDefaultTaskKind,
@@ -241,6 +209,43 @@ function fallbackFromSnapshot(
 }
 
 /**
+ * 显式点名的模型在目录里属于谁。Agent 照 `list_models` 给出 `modelKey`（宿主面 `modelId`）时，providerId/moduleId
+ * 本来就是目录里那一行的事实，不该要求用户另外「保存过默认模型」才能带出来（2026-09-18 金路径真机红：
+ * 三镜都指名了图片模型，宿主仍答「没有配置可用的图片模型」）。只认目录里真有的行：查不到就返回
+ * undefined，让下面那条拒绝照旧成立——绝不替它编一个供应商。给了 providerId 就只在那家里找。
+ */
+function identityForNamedModel(
+  deps: SemanticGenerationCandidateDeps,
+  modelId: string,
+  providerId: string,
+  taskKind: GenerationDefaultTaskKind,
+): SemanticGenerationDefault | undefined {
+  let loose: SemanticGenerationDefault | undefined;
+  for (const manifest of deps.registry?.snapshot?.() ?? []) {
+    if (!manifest || typeof manifest !== "object") continue;
+    const moduleId = text((manifest as { moduleId?: unknown }).moduleId);
+    const providers = (manifest as { providers?: unknown }).providers;
+    if (!moduleId || !Array.isArray(providers)) continue;
+    for (const provider of providers) {
+      if (!provider || typeof provider !== "object") continue;
+      const candidateProviderId = text((provider as { providerId?: unknown }).providerId);
+      if (!candidateProviderId || (providerId && candidateProviderId !== providerId)) continue;
+      const models = (provider as { models?: unknown }).models;
+      if (!Array.isArray(models)) continue;
+      const model = models.find((candidate) => candidate && typeof candidate === "object" && text((candidate as { modelId?: unknown }).modelId) === modelId) as { modes?: unknown } | undefined;
+      if (!model) continue;
+      const modes = Array.isArray(model.modes) ? model.modes.filter((candidate): candidate is string => typeof candidate === "string") : [];
+      const mode = modes.find((candidate) => normalized(candidate) === normalized(taskKind));
+      const identity = { moduleId, providerId: candidateProviderId, modelId, mode: mode ?? modes[0] ?? taskKind };
+      // 声明了这个任务模式的那一行优先；同名模型别家只声明了别的模式时才退到它（仍是目录事实）。
+      if (mode) return identity;
+      loose ??= identity;
+    }
+  }
+  return loose;
+}
+
+/**
  * Build the canonical candidate for a short semantic create request.  An
  * explicit `candidate` is still authoritative and is parsed unchanged; the
  * short path only fills omitted identity fields from saved Workbench defaults
@@ -263,13 +268,14 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
   // catalog row order. The only implicit identity is the saved Workbench
   // default; registry fallback is opt-in for no-provider unit fixtures only.
   const fallback = configured ?? (deps.allowRegistryFallback ? fallbackFromSnapshot(deps, taskKind) : undefined);
-  const providerId = text(deps.params.providerId) || fallback?.providerId;
-  const modelId = text(deps.params.modelId) || fallback?.modelId;
-  // An explicitly named provider+model is authoritative even for a user who never
-  // saved a default; only the internal module bucket is looked up for it.
-  const moduleId = text(deps.params.moduleId)
-    || fallback?.moduleId
-    || (providerId && modelId ? moduleIdForIdentity(deps, providerId, modelId) : undefined);
+  // 显式点名的模型：它的供应商/模块是目录事实，从目录里取；只有没点名时才落到保存的默认。
+  const namedModelId = text(deps.params.modelId);
+  const named = namedModelId && (!text(deps.params.providerId) || !text(deps.params.moduleId))
+    ? identityForNamedModel(deps, namedModelId, text(deps.params.providerId), taskKind)
+    : undefined;
+  const moduleId = text(deps.params.moduleId) || named?.moduleId || fallback?.moduleId;
+  const providerId = text(deps.params.providerId) || named?.providerId || fallback?.providerId;
+  const modelId = namedModelId || fallback?.modelId;
   if (!moduleId || !providerId || !modelId) {
     // 这句话有两个读者，得同时说得通（2026-09-18 真机实测）：用户能去设置里选，**而 Agent 不能**。
     // 只写「请先在设置中选择模型」时，DeepSeek 连着调了 6 次 `draft_shots`、每次收到同一句话，
