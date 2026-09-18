@@ -18,6 +18,7 @@ import { adapterProviderState } from './adapterVerificationViewModel'
 import { useVendorHealth } from './useVendorHealth'
 import { vendorConnectionPill } from './vendorConnectionView'
 import { type ChipModel } from './ModelChipGroups'
+import type { OnboardingVendorMeta } from './useOnboardingDrawerCatalog'
 import { shouldSkipImplicitVendorHealth } from './vendorHealthProbePolicy'
 import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
@@ -25,17 +26,17 @@ type ModelEditorProps = React.ComponentProps<typeof ModelEnableEditor>
 
 type CustomVendorCardProps = {
   vendorKey: string
+  /**
+   * 这家连接的目录投影（地址 / 有没有 key / 「声明可能丢了」的标记 / meta 原样）。
+   * 收成一个 prop 而不是散成四个：它们同出一源（useOnboardingDrawerCatalog 的 vendorMeta），
+   * 散着传只会让每加一项就动一次宿主。
+   */
+  vendorMeta?: OnboardingVendorMeta
   /** 用户接入时填的「来源名称」（vendorMeta.name）。 */
   name: string
   models: ChipModel[]
-  baseUrl: string
-  hasApiKey: boolean
   /** Direct-script providers use their explicit test run; generic GET /models is not meaningful. */
   skipHealthProbe?: boolean
-  /** v12→v13 迁移盖的「这家的声明我补不了」标记，见 VendorFieldLossNotice。 */
-  fieldLossNoticeAt?: string | null
-  /** 该 vendor 记录的 meta 原样（关掉提示时写回用）。 */
-  vendorMetaRaw?: unknown
   onToggle: ModelEditorProps['onToggle']
   onDelete: ModelEditorProps['onDelete']
   onCustomCall: ModelEditorProps['onCustomCall']
@@ -52,11 +53,8 @@ export function CustomVendorCard({
   vendorKey,
   name,
   models,
-  baseUrl,
-  hasApiKey,
+  vendorMeta,
   skipHealthProbe = false,
-  fieldLossNoticeAt,
-  vendorMetaRaw,
   onToggle,
   onDelete,
   onCustomCall,
@@ -68,6 +66,9 @@ export function CustomVendorCard({
   focus,
 }: CustomVendorCardProps): JSX.Element {
   const { t } = useTranslation()
+  // 目录投影里拆出这张卡要用的四格（缺投影 = 还没读到目录，按「地址空、有 key」的既有保守缺省走）。
+  const baseUrl = vendorMeta?.baseUrl ?? ''
+  const hasApiKey = vendorMeta?.hasApiKey ?? true
   const skipImplicitHealth = shouldSkipImplicitVendorHealth({ models })
   const { connection, recheck } = useVendorHealth(vendorKey, {
     hasApiKey,
@@ -110,8 +111,8 @@ export function CustomVendorCard({
         hasApiKey={hasApiKey}
         modelCount={models.length}
         connection={connection}
-        fieldLossNoticeAt={fieldLossNoticeAt}
-        vendorMetaRaw={vendorMetaRaw}
+        fieldLossNoticeAt={vendorMeta?.fieldLossNoticeAt ?? null}
+        vendorMetaRaw={vendorMeta?.raw}
         onRecheck={recheck}
         onChanged={onChanged}
         focus={focus}

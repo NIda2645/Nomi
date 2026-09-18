@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURRENT_CATALOG_VERSION } from "./types";
-import { withoutVendorFieldLossNotice } from "./vendorFieldLossRepair";
+import { withoutVendorFieldLossNotice } from "../shared/vendorFieldLossNotice";
 
 const safeStorageState = vi.hoisted(() => ({
   available: true,

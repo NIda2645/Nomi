@@ -4,7 +4,7 @@ import { getDesktopBridge } from '../../desktop/bridge'
 import type { DreaminaStatus } from './DreaminaMemberCard'
 import type { ChipModel } from './ModelChipGroups'
 import { projectModelSettingsCatalog } from './modelSettingsCatalogProjection'
-import { vendorFieldLossNoticeAt } from '../../../electron/catalog/vendorFieldLossRepair'
+import { vendorFieldLossNoticeAt } from '../../../electron/shared/vendorFieldLossNotice'
 
 export type OnboardingVendorMeta = {
   name: string
@@ -14,10 +14,10 @@ export type OnboardingVendorMeta = {
   enabled: boolean
   authType: string
   customCallOnly: boolean
-  /** v12→v13 迁移盖的「这家的声明我补不了」标记时间戳；空 = 没盖过。见 vendorFieldLossRepair.ts。 */
-  fieldLossNoticeAt: string | null
+  /** v12→v13 迁移盖的「这家的声明我补不了」标记时间戳；空/缺席 = 没盖过。见 vendorFieldLossRepair.ts。 */
+  fieldLossNoticeAt?: string | null
   /** vendor.meta 原样——关掉上面那条提示时要把它写回、只去掉那一个键。 */
-  raw: unknown
+  raw?: unknown
 }
 
 const MAX_BRIDGE_RETRIES = 5

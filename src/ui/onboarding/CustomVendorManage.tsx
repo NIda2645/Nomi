@@ -23,7 +23,7 @@ import { confirmAndDeleteVendor } from './vendorDeleteAction'
 import { VendorBaseUrlField } from './VendorBaseUrlField'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
 import { VendorFieldLossNotice } from './VendorFieldLossNotice'
-import { withoutVendorFieldLossNotice } from '../../../electron/catalog/vendorFieldLossRepair'
+import { withoutVendorFieldLossNotice } from '../../../electron/shared/vendorFieldLossNotice'
 import type { VendorConnection } from './useVendorHealth'
 import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
@@ -134,12 +134,16 @@ export function CustomVendorManage({
   // 关掉提示 = 把 meta 原样写回、只去掉那一个键。走现成的 upsertVendor，不新造 IPC。
   const handleDismissFieldLoss = React.useCallback(async () => {
     setBusy(true)
+    setError('')
     try {
       await getDesktopBridge()?.modelCatalog.upsertVendor({
         key: vendorKey,
         meta: withoutVendorFieldLossNotice(vendorMetaRaw) ?? null,
       })
       onChanged()
+    } catch (e) {
+      // 跨进程命令被拒绝时必须说出来：否则按钮像是生效了、提示却还在，用户以为是 bug。
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }

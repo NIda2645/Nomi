@@ -31,14 +31,9 @@ import { logWarn } from "../logging/logger";
 import { nowIso } from "../jsonUtils";
 import type { CatalogState, Vendor } from "./types";
 import { isJsonRecord } from "../jsonUtils";
+// 标记键与读写它的纯函数住在中立层：渲染层的连接卡也要读同一个键，而它不许 import 主进程实现。
+import { VENDOR_FIELD_LOSS_NOTICE_META_KEY, vendorFieldLossNoticeAt } from "../shared/vendorFieldLossNotice";
 
-/**
- * 给自建连接盖的一次性标记：「这条记录活过了那个会抹字段的版本，而它的出处不在代码里，
- * 我补不了」。存在 `vendor.meta` 而不是新开一个 CatalogState 字段——meta 已经随
- * `ModelCatalogVendorDto` 到渲染层，界面读得到、用户点「知道了」时用现成的 upsertVendor 清掉，
- * 不必为一次性提示新造一条 IPC 与一份状态（P1：不长第二套通知系统）。
- */
-export const VENDOR_FIELD_LOSS_NOTICE_META_KEY = "vendorFieldLossNotice";
 
 /**
  * 只有**在修复之前写过**的记录才可能被抹掉。这条界线让提示落在真正有风险的那批记录上：
@@ -63,21 +58,7 @@ function withNotice(meta: unknown, stampedAt: string): unknown {
   return base;
 }
 
-/** 清掉标记（用户点「知道了」时走 upsertVendor 写回）。meta 只剩空壳时整个去掉，不留空对象。 */
-export function withoutVendorFieldLossNotice(meta: unknown): unknown {
-  if (!isJsonRecord(meta) || !Object.prototype.hasOwnProperty.call(meta, VENDOR_FIELD_LOSS_NOTICE_META_KEY)) return meta;
-  const clean = { ...meta };
-  delete clean[VENDOR_FIELD_LOSS_NOTICE_META_KEY];
-  return Object.keys(clean).length > 0 ? clean : undefined;
-}
 
-/** 这条记录上还挂着「声明可能被抹掉了」的提示吗。 */
-export function vendorFieldLossNoticeAt(vendor: { meta?: unknown } | null | undefined): string | null {
-  const meta = vendor?.meta;
-  if (!isJsonRecord(meta)) return null;
-  const at = meta[VENDOR_FIELD_LOSS_NOTICE_META_KEY];
-  return typeof at === "string" && at.trim() ? at : null;
-}
 
 /**
  * v12 → v13 的一次性修复。纯函数：只改内存 state，落盘由 migrateCatalogForward 统一做。

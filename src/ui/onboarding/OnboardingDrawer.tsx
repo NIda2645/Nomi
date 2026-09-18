@@ -415,11 +415,8 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         vendorKey={group.vendorKey}
         name={group.name}
         models={group.models}
-        baseUrl={meta?.baseUrl ?? ''}
-        hasApiKey={meta?.hasApiKey ?? true}
+        vendorMeta={meta}
         skipHealthProbe={Boolean(meta?.customCallOnly) && group.models.every((model) => model.hasCustomCall || model.customCallDraft)}
-        fieldLossNoticeAt={meta?.fieldLossNoticeAt ?? null}
-        vendorMetaRaw={meta?.raw}
         onToggle={handleSetEnabled}
         onDelete={handleDelete}
         onCustomCall={(row) => openCustomCall(row.vendorKey, row.modelKey)}

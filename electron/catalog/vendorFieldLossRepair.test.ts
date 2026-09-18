@@ -27,7 +27,8 @@ import { listModelCatalogVendors, upsertModelCatalogVendor } from "./catalogStor
 import { upsertRendererCatalogVendor } from "./rendererCatalogMutation";
 import { HIGGSFIELD_VENDOR_SEED } from "./higgsfieldVendor";
 import { REPLICATE_VENDOR_SEED } from "./replicate";
-import { repairDroppedVendorSeedFields, vendorFieldLossNoticeAt, withoutVendorFieldLossNotice } from "./vendorFieldLossRepair";
+import { repairDroppedVendorSeedFields } from "./vendorFieldLossRepair";
+import { vendorFieldLossNoticeAt, withoutVendorFieldLossNotice } from "../shared/vendorFieldLossNotice";
 import { buildHttpRequest } from "../ai/requestPipeline";
 import type { CatalogState, Vendor } from "./types";
 
