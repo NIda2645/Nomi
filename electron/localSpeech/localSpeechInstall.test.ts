@@ -15,8 +15,20 @@ import { execFileSync } from "node:child_process";
  *
  * 出站被 `tests/setup/networkTransport.ts` 指向 global fetch，所以这里用一个本地 http 服务
  * 当「上游」——测的是我们自己的校验与落盘，不是别人的 CDN。
+ *
+ * **为什么按平台开关（2026-09-18，CI 上 Unit 翻红之后）**：引擎发的是 zip，解包靠系统自带的
+ * bsdtar（`tar -xf` 认 zip），而清单里只有 `darwin-arm64` / `darwin-x64` / `win32-x64` 三条——
+ * **Linux 根本没有引擎**。原来的夹具却按 `${process.platform}-${process.arch}` 凭空造一条，
+ * 于是在 Linux CI 上造出了一个生产里不可能存在的局面：GNU tar 读不了 zip，一上来就
+ * `extract-failed`，三条本该走到校验那一步的用例永远到不了（另外几条「期望 extract-failed」的
+ * 则是**因为错的理由**绿的——假绿）。判据不是「跳过 Linux」，而是**照生产的样子断言**：
+ * 发引擎的平台跑完整条安装链；不发引擎的平台断言它如实报 `unsupported-platform`。
  */
 import { createServer, type Server } from "node:http";
+import { localSpeechEngineForPlatform } from "../shared/localSpeech/localSpeechAssets";
+
+/** 这台机器的平台在清单里有没有引擎——真相源是清单本身，不是写死的平台名。 */
+const ENGINE_SHIPS_HERE = Boolean(localSpeechEngineForPlatform());
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-localstt-install-test-"));
 let server: Server;
@@ -134,7 +146,7 @@ function modelFixture(bytes: Buffer, shaOverride?: string) {
   return tierOf({ id: "fixture-model", fileName: "fixture-model.bin", downloadUrl: `${origin}${url}`, sizeBytes: bytes.byteLength, sha256: shaOverride ?? sha(bytes) });
 }
 
-describe("本地转写引擎安装", () => {
+describe.runIf(ENGINE_SHIPS_HERE)("本地转写引擎安装（本平台发引擎：跑完整条安装与校验链）", () => {
   it("装好之后可执行文件在位、带执行位，压缩包不留在缓存里", async () => {
     const engine = engineFixture({ members: { "whisper-server": Buffer.from("#!/bin/sh\nexit 0\n"), "extra.dll": Buffer.from("dll") }, executable: "whisper-server" });
     const install = await loadInstall(engine);
@@ -251,5 +263,30 @@ describe("本地转写引擎安装", () => {
     routes.clear();
     expect(install.pendingLocalSpeechBytes(model, engine)).toBe(0);
     await expect(install.ensureLocalSpeechReady(model)).resolves.toMatchObject({ modelPath: expect.stringContaining("fixture-model.bin") });
+  });
+});
+
+/**
+ * 不发引擎的平台（今天是 Linux）——**不是跳过**：它有它自己那条必须成立的断言。
+ * 少了这条，上面那个 `runIf` 就成了「在 CI 上什么都没测」，而那和绿灯长得一模一样。
+ */
+describe.runIf(!ENGINE_SHIPS_HERE)("本平台不发引擎", () => {
+  it("如实报 unsupported-platform，而不是拿一个空路径去起进程", async () => {
+    vi.resetModules();
+    const install = await import("./localSpeechInstall");
+    const model = {
+      id: "fixture-model",
+      fileName: "fixture-model.bin",
+      downloadUrl: "http://127.0.0.1:1/unused.bin",
+      sizeBytes: 7,
+      sha256: "0".repeat(64),
+      license: "MIT",
+      sourcePage: "https://example.invalid/fixture",
+    };
+    await expect(install.ensureLocalSpeechReady(model as never)).rejects.toMatchObject({ reason: "unsupported-platform" });
+  });
+
+  it("清单里确实一条本平台的引擎都没有（这条断言保证上面那条不是因为别的原因绿的）", () => {
+    expect(localSpeechEngineForPlatform()).toBeUndefined();
   });
 });
