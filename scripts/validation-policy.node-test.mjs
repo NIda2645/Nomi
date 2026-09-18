@@ -96,6 +96,7 @@ test('the registered product journeys cannot fall back to focused-only validatio
     'tests/ux/resident-composer-receipt-fix.e2e.mjs',
     'tests/ux/storyboard-agent-canonical-patch.e2e.mjs',
     'tests/ux/production-mcp-journey.e2e.mjs',
+    'tests/ux/golden-path.e2e.mjs',
   ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy([file])), {
       ...focusedOnly,

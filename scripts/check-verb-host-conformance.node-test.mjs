@@ -147,6 +147,13 @@ const MUTATIONS = [
     ['electron/productionRun/productionRunRepository.ts',
       'import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";', ''],
   ]],
+  // 逐字段探针从最小实例出发，够不到「没有 draftId 就不合法」的 shotId；只有从示例出发才碰得到它。
+  // 2026-09-18 这个字段就是这样被声明成 drop 而门岗全绿的——把它改回 drop，门必须红。
+  ['R3 · 示例里给了值的寻址字段被翻译层吃掉（shotId 改回 drop，逐字段探针看不见它）', [
+    ['electron/agentLane/verbTransportRoutes.ts',
+      "patch: Object.freeze({ disposition: 'lift' as const, to: 'shotId', why:",
+      "patch: Object.freeze({ disposition: 'drop' as const, why:"],
+  ]],
   ['R2b · 跨字段约束搬回翻译层，靠替模型编造缺省端点（只有两字段组合能暴露）', [
     ['electron/shared/agentCapabilities/verbs/readVerbs.ts',
       '      rangeRefinement("startFrame", "endFrame")(value as Record<string, unknown>, context);\n', ''],

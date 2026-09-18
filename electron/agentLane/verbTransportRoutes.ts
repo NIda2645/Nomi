@@ -72,7 +72,7 @@ function outputFieldNames(verb: string): ReadonlySet<string> | undefined {
  */
 export const PROVENANCE_UNVERIFIABLE: Readonly<Record<string, string>> = Object.freeze({
   list_models: 'generation.context.read 的 outputSchema 是 z.unknown()；真形状在 availableModelsSchema.agentModelEntrySchema，但契约上没声明，所以核不动',
-  draft_shots: 'generation.plan 的 outputSchema 是 z.unknown()；草稿 id 确实在它的返回里，契约没声明',
+  draft_shots: 'generation.plan 的 outputSchema 是 z.unknown()；草稿 id（operation.operationId）与每镜的 shotId（operation.shots[].shotId）确实都在它的返回里，契约没声明',
   generate: '同上，同一个 generation.plan 契约',
   edit_timeline: 'timeline.write 的返回形状没声明到字段级',
   export_video: 'export.write 的返回形状没声明到字段级',
@@ -127,8 +127,10 @@ const skillWriteKeys = objectFieldKeys(skillWriteSemanticInputSchema, 'skill wri
 /**
  * 信封字段在这两个形状上没有位置。**处置必须逐条写明**，因为「送不到」与「可以丢」长得一模一样：
  *   · `title` / `role` → `refuse`：模型填了它就是想让它生效，这条路送不到就当场说，别让它无声消失；
- *   · `shotId` → `drop`：带 operationId 时模型用它指哪一镜，而宿主的候选 patch 不寻址单镜（多镜逐镜 patch
- *     还没做）。这一条是**有意**的丢弃，返回值里会说清究竟改了哪一镜，所以不抛。
+ *   · `shotId` → `lift`：带 draftId 时模型用它指哪一镜。它不是候选字段，是 plan patch **信封**上的寻址字段
+ *     （宿主按它只改那一镜的候选，revision +1，已落的节点按它重绑定；缺省 = 单镜草稿的顶层候选）。
+ *     2026-09-18 之前这里写的是 `drop`（「多镜逐镜 patch 还没做」）——于是「改第 2 镜」永远改的是顶层候选，
+ *     用户在画布上什么都看不到；单一账本那一刀把这扇门开通，处置随之改成 lift。
  */
 const REFUSE_ON_PATCH = '改草稿递给宿主的是候选 patch（提示词/模型/参数/参考），信封不在那份形状里'
 const REFUSE_ON_FLAT = '单镜 create 把这一镜摊成顶层参数，顶层没有信封的位置'
@@ -137,7 +139,7 @@ const ENVELOPE_REFUSED = Object.freeze({
   flat: Object.freeze({ disposition: 'refuse' as const, why: REFUSE_ON_FLAT }),
 })
 const SHOT_ID_ABSENT = Object.freeze({
-  patch: Object.freeze({ disposition: 'drop' as const, why: '宿主的候选 patch 不寻址单镜（多镜逐镜 patch 还没做）；返回值会说清改的是哪一镜' }),
+  patch: Object.freeze({ disposition: 'lift' as const, to: 'shotId', why: '它是寻址不是候选：指哪一镜，落在 plan patch 的信封上；宿主据它只改那一镜的候选' }),
   flat: Object.freeze({ disposition: 'refuse' as const, why: REFUSE_ON_FLAT }),
 })
 
@@ -157,7 +159,9 @@ export const DRAFT_SHOT_FIELD_MAP: VerbFieldMap = assertProvenanceResolvable(ass
     taskKind: { kind: 'same', from: ['model-authored'] },
     parameters: { kind: 'same', from: ['from-read:list_models.params'] },
     modeId: { kind: 'same', from: ['from-read:list_models.modeId'] },
-    shotId: { kind: 'same', from: ['from-read:look_at_canvas.id'], absentOn: SHOT_ID_ABSENT },
+    // 来源是 `draft_shots` 自己的返回（operation.shots[].shotId），**不是** look_at_canvas 的节点 id——
+    // 宿主按 shot.shotId 找镜，节点 id 递进去只会得到 "Generation shot not found"。
+    shotId: { kind: 'same', from: ['from-read:draft_shots.shotId'], absentOn: SHOT_ID_ABSENT },
     role: { kind: 'same', from: ['model-authored'], absentOn: ENVELOPE_REFUSED },
     title: { kind: 'same', from: ['model-authored'], absentOn: ENVELOPE_REFUSED },
     durationSec: {

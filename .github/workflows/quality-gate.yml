@@ -178,6 +178,11 @@ jobs:
       - name: Real user loopback journey gate
         if: needs.scope.outputs.journeys == 'true'
         run: xvfb-run -a pnpm run test:real-user-journeys:ci
+      # 金路径（2026-09-18 接进 CI）：Agent 拆镜 → 草稿落画布 + 分镜表 → 表里选镜 → Agent 改一镜 → 生成 → 冷重启。
+      # 它从 09-15 改成 draft_shots 起就没在任何工作流里跑过（package.json 之外零引用）——改完又是一条没人跑的走查。
+      - name: Golden path (Agent storyboard lands on canvas)
+        if: needs.scope.outputs.journeys == 'true'
+        run: xvfb-run -a pnpm run test:golden
       - name: Critical canvas acceptance
         if: needs.scope.outputs.canvas == 'critical'
         run: xvfb-run -a pnpm run test:canvas:critical

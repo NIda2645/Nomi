@@ -7,11 +7,13 @@ import type { ShotRowExec } from '../../../creation/storyboard/exec/storyboardRo
 import { effectiveShotValue } from '../../../creation/storyboard/shotRow/shotRowModel'
 import { referenceColumnOf, type ShotReferenceColumn } from '../../../creation/storyboard/shotRow/shotReferenceCells'
 import { stableShotId, effectiveShotDurationSec } from '../../agent/storyboardPlan'
+import { selectProductionShotRows, type LandedRun } from './productionShotRows'
 
 export type ShotTableRowView = {
   id: string
   index: number
-  duration: number
+  /** 没有时长（静帧）就是 undefined，**不是 0**——「没有」和「零秒」是两件事，挤进一个表示读者就分不开。 */
+  duration?: number
   start?: number
   end?: number
   prompt: string
@@ -29,8 +31,13 @@ export function selectShotTableRows(input: {
   nodes: readonly GenerationCanvasNode[]
   imageModelOptions: readonly ModelOption[]
   videoModelOptions: readonly ModelOption[]
+  /** 落地 store 缓存的 Run；只有 production 表读它（占位三态）。 */
+  run?: LandedRun | null
 }): ShotTableRowView[] {
   const { table, designs, nodes, imageModelOptions, videoModelOptions } = input
+  if (table.source.kind === 'production') {
+    return selectProductionShotRows({ runId: table.source.runId, nodes, imageModelOptions, videoModelOptions, run: input.run })
+  }
   if (table.source.kind === 'deconstruction') {
     return (table.rows ?? []).map(row => ({
       id: row.rowId, index: row.order, duration: row.durationSeconds, start: row.startSeconds, end: row.endSeconds,
