@@ -458,6 +458,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 提交侧的同族码：请求从未发出、没有计费。必须与上面一条分开，否则用户读到的是「钱已经付过、
   // 用重新拉取结果免费取回」——一句完全相反的假话，还会把他推向一颗根本不存在的按钮。
   if (outboundCode === 'outbound-blocked-submit') return reportFor('outbound-blocked-submit', cleanRaw, '')
+  // 同族第三条（凭据绑定）：也必须单独一支——它的下一步是「回接入页重新保存密钥」，
+  // 归进上面那条会把用户送去查代理，而这台机器的网络一点毛病都没有。
+  if (outboundCode === 'outbound-blocked-credential-origin') return reportFor('outbound-blocked-credential-origin', cleanRaw, '')
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, undefined)
   // 类型不符同理是专用签名，同层最先判。upstream 显式给 ''：这是**我们自己**的内部信号，

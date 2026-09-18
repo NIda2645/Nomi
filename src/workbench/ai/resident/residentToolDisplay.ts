@@ -250,6 +250,14 @@ export function readableToolName(t: Translate, name: string, rawArgs?: unknown):
   if (normalized.includes('generation.context.read')) return t('agentResident.toolModelsRead')
   if (normalized.includes('generation.control')) return t('agentResident.toolJobCancel')
   if (normalized.includes('model.setup.open')) return t('agentResident.toolModelSetup')
+  // 接模型的两口（#754）：连/交卡/显示隐藏说「接入模型」，永久删除单独说一句——
+  // 面板上这两件事长得一样的话，用户就分不出「他在接」和「他在删」。
+  if (normalized.includes('model.onboarding.remove') || normalized.includes('remove_model_provider')) {
+    return t('agentResident.toolModelRemove')
+  }
+  if (normalized.includes('model.onboarding.setup') || normalized.includes('connect_model_provider')) {
+    return t('agentResident.toolModelSetup')
+  }
   if (normalized.includes('production.run.write')) return t('agentResident.toolProductionWrite')
   if (normalized.includes('skill.read')) return t('agentResident.toolSkillRead')
   if (normalized.includes('skill.write')) return t('agentResident.toolSkillWrite')

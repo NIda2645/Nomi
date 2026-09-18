@@ -4,7 +4,7 @@
 // 真实的 `VERB_DECLARATIONS` 原样通过（合法近邻）。少了后者，一个「什么都判红」的规则也能过 CI。
 import { describe, expect, it } from "vitest";
 
-import { CAPABILITY_CONTRACTS } from "./registry";
+import { CAPABILITY_CONTRACTS, mcpToolNames } from "./registry";
 import { isPaidBoundaryAlias } from "./paidBoundary";
 import { assembleVerbDeclarations, proseWithoutQuotedExamples, renderVerbDescription, verbConsequence, type VerbDeclaration } from "./verbDeclaration";
 import { VERB_DECLARATIONS } from "./verbDeclarations";
@@ -15,6 +15,8 @@ function assemble(declarations: readonly VerbDeclaration[]) {
     declarations,
     contractById: (id) => CAPABILITY_CONTRACTS.find((contract) => contract.id === id),
     isPaidBoundaryName: isPaidBoundaryAlias,
+    // 与生产装配同一个函数——不是同样的一段代码抄两遍。
+    mcpToolNames: mcpToolNames(),
   });
 }
 

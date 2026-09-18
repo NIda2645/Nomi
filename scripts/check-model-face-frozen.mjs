@@ -27,16 +27,24 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { captureModelFace, serializeModelFace } from './model-face-snapshot.mjs'
+import { onboardingVerbs } from '../electron/shared/agentCapabilities/verbs/onboardingVerbs.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(repoRoot, 'scripts', 'model-face-baseline.json')
 
-/** 设计正本说 20 个动词。少扫到一个就是模块没加载全——那时「没差异」是假的（fail-closed）。 */
-const EXPECTED_VERB_COUNT = 20
+/** 内部面冻结为 20 个；对外专属数量从声明源派生，独立于装配结果，漏装配仍 fail-closed。 */
+const EXPECTED_INTERNAL_VERB_COUNT = 20
+const isMcpOnly = (verb) => verb.profiles?.length === 1 && verb.profiles[0] === 'mcp'
+const expectedMcpOnlyCount = onboardingVerbs().filter(isMcpOnly).length
 
 const face = await captureModelFace()
-if (face.verbCount !== EXPECTED_VERB_COUNT) {
-  console.error(`✖ 只扫到 ${face.verbCount} 个动词，设计正本说是 ${EXPECTED_VERB_COUNT} 个——门岗等于没跑（fail-closed）`)
+const internalVerbCount = face.tools.filter((verb) => !isMcpOnly(verb)).length
+if (internalVerbCount !== EXPECTED_INTERNAL_VERB_COUNT) {
+  console.error(`✖ 内部面只扫到 ${internalVerbCount} 个动词，设计正本说是 ${EXPECTED_INTERNAL_VERB_COUNT} 个——门岗等于没跑（fail-closed）`)
+  process.exit(1)
+}
+if (face.verbCount !== internalVerbCount + expectedMcpOnlyCount) {
+  console.error(`✖ 只扫到 ${face.verbCount} 个动词，应为内部面 ${internalVerbCount} + 声明中的对外专属 ${expectedMcpOnlyCount} 个——模块没加载全（fail-closed）`)
   process.exit(1)
 }
 const current = serializeModelFace(face)

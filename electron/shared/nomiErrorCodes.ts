@@ -24,6 +24,11 @@ export type NomiErrorCode =
   // 相反——请求从未离开本机，供应商没被请求到、没有计费，也不存在可找回的 taskId。共用一个码会让
   // 渲染层给出一颗按不动的「重新拉取结果」，并配一句「钱已经付过」的假话。
   | 'outbound-blocked-submit'
+  // 带着用户密钥的请求，目的地不是他保存这把 key 时确认过的那个 origin（凭据绑定，
+  // catalog/credentialBinding.ts）。与上面两条同族「请求没离开本机、没有计费」，但**下一步不同**：
+  // 这里没有网络要修——要么是有人在用户没看见的时候改了地址，要么是他确实换了供应商地址而
+  // 还没重新保存密钥。正确的动作是回接入页重新保存一次，不是去看代理。
+  | 'outbound-blocked-credential-origin'
 
 const MARKER_PREFIX = 'NOMI_ERR::'
 const MARKER_SUFFIX = '::'

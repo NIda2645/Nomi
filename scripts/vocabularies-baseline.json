@@ -195,6 +195,18 @@
     },
     {
       "members": [
+        "S11.0",
+        "S11.1",
+        "S11.3",
+        "S11.4",
+        "S11.5",
+        "S11.6"
+      ],
+      "reason": "接模型信封里「这一跳动了哪一格状态」的唯一 owner（docs/plan/2026-09-18-agent-model-onboarding.md §4.3）。它不是会话阶段（IntegrationStage 那份回答「这次接入走到哪」），而是**后果的坐标**：连接 / 模型记录 / 声明 / 自检 / 显示 / 在途各一格，宿主据它算 blastRadius 与撤销范围。复用 IntegrationStage 会把「会话在哪一步」与「这一跳改了什么」混成一个词，而它们连基数都不同（一次 submit_declaration 同时动 S11.4 与 S11.5）。",
+      "site": "electron/capabilityCore/modelOnboarding/envelope.ts::type:OnboardingStateId/type-union"
+    },
+    {
+      "members": [
         "capability_cancelled",
         "capability_execution_failed",
         "capability_input_invalid",

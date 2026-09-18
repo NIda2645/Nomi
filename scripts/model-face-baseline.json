@@ -1,5 +1,5 @@
 {
-  "verbCount": 20,
+  "verbCount": 25,
   "tools": [
     {
       "aliasBoundInput": null,
@@ -1870,6 +1870,337 @@
             "type": "string"
           }
         },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": {
+        "action": "connect_provider"
+      },
+      "alsoCovers": null,
+      "contractId": "model.onboarding.setup",
+      "description": "Open Nomi's credential page for one provider so the user can paste its key, and start a setup. The user asks to connect a provider or a model that Nomi does not have yet. It never accepts, asks for or stores an API key, and it cannot decide where a key is sent: the address is confirmed by the user on that page. Once the key is saved, describe the provider's API with submit_model_declaration. To hide or show models that are already connected use show_provider_models; to delete one use remove_model_provider. name is the provider's display name. docs is the API documentation: either the text itself or one http(s) URL per line. suggestedBaseUrl is only pre-filled on the page for the user to confirm. Pass vendorKey instead of name to adjust a connection that already exists; only its name, its proxy switch and reissuing the key can change there. A Nomi panel opens for the user; this call stores nothing by itself.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "docs": "https://docs.higgsfield.ai/api-reference",
+            "name": "Higgsfield",
+            "suggestedBaseUrl": "https://platform.higgsfield.ai"
+          },
+          "when": "Connect a provider the user has an account with:"
+        },
+        {
+          "arguments": {
+            "reissueKey": true,
+            "vendorKey": "higgsfield"
+          },
+          "when": "The user says the key stopped working:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "connect_model_provider",
+      "nextAction": "user_sees_panel",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": [
+        "A first call looks like {\"action\": \"connect_provider\", \"name\": \"Higgsfield\", \"docs\": \"https://docs.higgsfield.ai/api-reference\", \"suggestedBaseUrl\": \"https://platform.higgsfield.ai\"}, then hand the card over with {\"action\": \"submit_declaration\", \"setupId\": \"the id it returned\", \"declaration\": \"the card as JSON text\"}.",
+        "Nothing on this tool spends the user's credit, and nothing here can decide where a saved key is sent: that address is confirmed by the user on Nomi's own page."
+      ],
+      "promptSnippet": "Open Nomi's credential page for one provider so the user can paste its key, and start a setup.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "docs": {
+            "description": "API documentation: the text itself, or one http(s) URL per line.",
+            "maxLength": 65536,
+            "type": "string"
+          },
+          "name": {
+            "description": "Provider display name, required when connecting a new one.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "proxyEnabled": {
+            "description": "Turn this connection's already-saved proxy on or off. The proxy URL itself is never an argument.",
+            "type": "boolean"
+          },
+          "reissueKey": {
+            "description": "Reopen the credential page for an existing connection so the user can paste a new key.",
+            "type": "boolean"
+          },
+          "sourceUrl": {
+            "description": "Documentation page the suggestion was read from; shown to the user.",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "suggestedAuthNote": {
+            "description": "One sentence on how this provider wants the key sent, shown next to the address.",
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          },
+          "suggestedBaseUrl": {
+            "description": "Address suggestion. It is only pre-filled on the credential page; the user confirms it by saving, and Nomi binds the key to it.",
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": {
+        "action": "submit_declaration"
+      },
+      "alsoCovers": null,
+      "contractId": "model.onboarding.setup",
+      "description": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass. The key is saved and you have read the provider's API documentation. It never proves a model can produce anything: the reply always keeps whether this model can actually produce something in its unverified list until the user generates once. Send it only after connect_model_provider reports the key is saved. It does not delete anything; use remove_model_provider for that. setupId comes from connect_model_provider. declaration is the card as JSON text; nomi_read target=setup returns the exact schema it must match, and every rejected field comes back with the path and the documentation URL you declared for it. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "declaration": "{\"sources\":[],\"assetIngestion\":{\"strategy\":\"none\",\"sourceUrl\":\"https://docs.example/api\"},\"models\":[]}",
+            "setupId": "setup-1"
+          },
+          "when": "Describe one image model after reading the docs:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "submit_model_declaration",
+      "nextAction": "none",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "declaration": {
+            "description": "The declaration card as JSON text. Its shape is the contractSchema returned by nomi_read target=setup.",
+            "maxLength": 524288,
+            "minLength": 2,
+            "type": "string"
+          },
+          "setupId": {
+            "description": "The setup handle returned by connect_provider; nomi_read target=setup reports its state.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "setupId",
+          "declaration"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": {
+        "action": "show_models"
+      },
+      "alsoCovers": null,
+      "contractId": "model.onboarding.setup",
+      "description": "Show or hide models of a connected provider in Nomi's model pickers. The user asks to tidy up the model list, or to bring a hidden model back. Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration. vendorKey and modelKeys come from nomi_read target=models. visible=false hides them. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "modelKeys": [
+              "imagen-4",
+              "imagen-4-fast"
+            ],
+            "vendorKey": "apimart",
+            "visible": false
+          },
+          "when": "Hide two models the user never picks:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "show_provider_models",
+      "nextAction": "none",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Show or hide models of a connected provider in Nomi's model pickers.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "modelKeys": {
+            "description": "Exact model ids from nomi_read target=models.",
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "visible": {
+            "description": "true shows them in the pickers, false hides them.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "vendorKey",
+          "modelKeys",
+          "visible"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": {
+        "action": "cancel"
+      },
+      "alsoCovers": null,
+      "contractId": "model.onboarding.setup",
+      "description": "Abandon an in-flight model setup. The user changes their mind before the declaration is accepted. It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration. setupId comes from connect_model_provider. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "setupId": "setup-1"
+          },
+          "when": "Drop the setup:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "cancel_model_setup",
+      "nextAction": "none",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Abandon an in-flight model setup.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "setupId": {
+            "description": "The setup handle returned by connect_provider; nomi_read target=setup reports its state.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "setupId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "model.onboarding.remove",
+      "description": "Permanently delete models, or a whole provider connection including its saved key. The user asks to remove a provider or models they no longer want. This cannot be undone and it is not how you tidy a crowded picker: use show_provider_models with visible=false to hide instead. It does not connect anything; that is connect_model_provider. vendorKey and modelKeys come from nomi_read target=models. Leave modelKeys out to delete the whole connection. ifUnchanged is the fingerprint that same read returned, so a stale plan cannot delete something else. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
+      "effect": "irreversible",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "ifUnchanged": "models-7f3a",
+            "vendorKey": "old-relay"
+          },
+          "when": "Delete a connection the user is done with:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "remove_model_provider",
+      "nextAction": "user_sees_confirm_card",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": [
+        "Read first, then delete: {\"vendorKey\": \"old-relay\", \"ifUnchanged\": \"the fingerprint that read returned\"}. Leaving modelKeys out deletes the whole connection, including the key the user saved, and Nomi will not seed it back.",
+        "There is no undo. If the user only wants a shorter list, hide the models instead."
+      ],
+      "promptSnippet": "Permanently delete models, or a whole provider connection including its saved key.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "ifUnchanged": {
+            "description": "Fingerprint from the nomi_read that listed these; the delete is refused if anything changed since.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "modelKeys": {
+            "description": "Exact model ids to delete. Omit to delete the whole connection and its saved key.",
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendorKey",
+          "ifUnchanged"
+        ],
         "type": "object"
       }
     }

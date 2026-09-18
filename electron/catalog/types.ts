@@ -41,6 +41,16 @@ export type AiSdkProviderKind = (typeof AI_SDK_PROVIDER_KINDS)[number];
 export type AssetMediaKind = (typeof ASSET_MEDIA_KINDS)[number];
 export type VendorAuthType = (typeof VENDOR_AUTH_TYPES)[number];
 
+/** 见 `catalog/credentialBinding.ts`。类型住这里，判据住那里（types.ts 不长逻辑）。 */
+export type CredentialBinding = {
+  origin: string;
+  authType?: string;
+  authHeader?: string;
+  authQueryParam?: string;
+  authScheme?: string;
+  confirmedAt: string;
+};
+
 export type AssetIngestion =
   | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
   | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
@@ -277,6 +287,14 @@ export type Vendor = {
   network?: { proxyUrl?: string; proxyEnabled?: boolean };
   /** R1:本地素材吞入策略。curated vendor 也可由代码注册表兜底(见 assetLocalization.curatedAssetIngestion)。 */
   assetIngestion?: AssetIngestion;
+  /**
+   * 用户按下「保存密钥」那一刻，这把 key 被绑在哪个 origin 上（catalog/credentialBinding.ts）。
+   *
+   * 顶层字段而不是塞进 `meta`：`meta` 是没有类型的杂物袋，一条**安全不变量**住在杂物袋里，
+   * 等于把它交给字符串键去维护。缺省 undefined ⇒ 没有绑定（旧装机 / curated 种子 / ComfyUI），
+   * 那时这条判据不成立、交回私网策略——不许把「不知道」当成「拒绝」。
+   */
+  credentialBinding?: CredentialBinding;
   meta?: unknown;
   createdAt: string;
   updatedAt: string;

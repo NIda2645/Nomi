@@ -449,6 +449,12 @@
       "path": "electron/skills/skillFrontmatter.ts",
       "symbol": "skillMarkdownWithoutFrontmatter",
       "reason": "frontmatter 剥离整件事交给了 pi：进提示词的是 pi 给的 SkillRecord.content（已去 frontmatter），我们不再自己剥一遍。全仓零引用，那条「剥得干不干净」的不变量随之不再适用——它现在由 skillFrontmatter.test.ts 对 88 份真技能与 pi parseFrontmatter 的深相等断言兜住。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-11-mcp-onboarding-defects.root-cause.json",
+      "path": "electron/capabilityCore/mcpIntegrationTools.ts",
+      "symbol": "INTEGRATION_REQUIRED_BY_ACTION",
+      "reason": "2026-09-18（#754）：这条不变量的**来源**被删掉了，不是主人搬了家。那份合同守的是「广播的必填表要和运行时校验的那一份一致」，而它之所以需要一张手抄的表，是因为旧面广播 required:['action'] 而实现逐字段抛。新面（nomi_model_setup）的对外 schema 就是契约自己那个按 action 判别的 zod 联合——广播的那份**就是**运行时 parse 的那一份，没有第二张表可对齐，也就没有可漂移的东西。等价断言搬进 electron/capabilityCore/mcpOnboardingDefects.test.ts 的「必填只有一份」，它钉的是这条结构性质而不是那张表。"
     }
   ],
   "unverified": [

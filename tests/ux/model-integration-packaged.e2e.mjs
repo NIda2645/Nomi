@@ -17,40 +17,27 @@ async function run() {
     first = spawnModelIntegrationMcp({ dirs, client: 'codex', signed: true })
     await first.initialize()
     const firstDraft = parseToolResult(
-      await first.callTool('nomi_integration', {
-        action: 'begin',
-        kind: 'http-api-provider',
+      await first.callTool('nomi_model_setup', {
+        action: 'connect_provider',
         name: 'Packaged restart draft',
-        baseUrl: 'https://example.invalid/v1',
-        authType: 'bearer',
-        clientRequestId: 'j4-restart-draft',
+        suggestedBaseUrl: 'https://example.invalid/v1',
       }),
     )
+    // 2026-09-18（#754）：返回的是 §4.3 信封——句柄在 `setupId`，会话投影在 `state`。
     assert(
-      !firstDraft.isError && typeof firstDraft.json?.id === 'string',
+      !firstDraft.isError && typeof firstDraft.json?.setupId === 'string',
       'packaged process creates the first durable draft',
     )
-    const sessionId = firstDraft.json.id
-    const revision = firstDraft.json.revision
-    const duplicate = parseToolResult(
-      await first.callTool('nomi_integration', {
-        action: 'begin',
-        kind: 'http-api-provider',
-        name: 'Packaged restart draft',
-        baseUrl: 'https://example.invalid/v1',
-        authType: 'bearer',
-        clientRequestId: 'j4-restart-draft',
-      }),
-    )
-    assert(duplicate.json?.id === sessionId, 'same clientRequestId is idempotent before process restart')
-    assert(duplicate.json?.revision === revision, 'idempotent begin does not advance the session revision')
+    const sessionId = firstDraft.json.setupId
+    const revision = firstDraft.json.state?.revision
     assertNoCredentialMaterial(firstDraft.json, 'pre-restart draft')
     await first.terminate()
 
     second = spawnModelIntegrationMcp({ dirs, client: 'codex', signed: true, runtime: first.runtime })
     await second.initialize()
-    const afterRestart = parseToolResult(await second.callTool('nomi_read', { target: 'integration', sessionId }))
+    const afterRestart = parseToolResult(await second.callTool('nomi_read', { target: 'setup', setupId: sessionId }))
     assert(!afterRestart.isError && afterRestart.json?.id === sessionId, 'fresh MCP process reads the same session')
+    // nomi_read 返回的是会话投影本体（不是信封），所以下面几条照旧读顶层字段。
     assert(afterRestart.json?.revision === revision, 'fresh-process readback preserves revision')
     assert(afterRestart.json?.stage === 'needs_credential', 'fresh-process readback preserves unverified stage')
     assert(afterRestart.json?.credentialStatus === 'missing', 'fresh-process readback does not invent a credential')

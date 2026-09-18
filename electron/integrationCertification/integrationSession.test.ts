@@ -416,6 +416,8 @@ describe("IntegrationSessionService", () => {
   function suppliedContract(overrides: Record<string, unknown> = {}) {
     return JSON.stringify({
       sources: [{ url: "https://docs.example/api", evidence: "POST /images returns data[0].url" }],
+      // §5：卡上**必填**，`none` 也要显式写出来——「没声明」不是「用兜底」。
+      assetIngestion: { strategy: "none", sourceUrl: "https://docs.example/api" },
       models: [
         {
           modelKey: "paint-v2",
@@ -534,8 +536,28 @@ describe("IntegrationSessionService", () => {
     expect(proposed.compileRequest).toBeUndefined();
   });
 
-  it("does not ask the agent to compile for a self-hosted endpoint that uses the built-in contract", async () => {
+  // 2026-09-18（§ 发现 4 / Q3）：自建、内网端点**不再静默落回 OpenAI 兼容模板**。
+  // 以前这一跳直接 ready_to_certify，界面上「我们猜了一个形状」和「这家真的长这样」一模一样。
+  // 现在停在 needs_input，并把内置模板 id 作为一条**明写的出路**递给交卡的那一方——它选，不是我们替它选。
+  it("asks the agent to declare（而不是静默套模板）for a self-hosted endpoint", async () => {
     const { service } = make({ compilerAvailable: () => false });
+    const session = service.begin(
+      { kind: "http-api-provider", name: "Local", baseUrl: "http://192.168.1.20:8000/v1" },
+      "codex",
+    );
+    const ready = service.markCredentialReady(session.id, "ref", "codex");
+
+    const proposed = await service.propose(session.id, ready.revision, "codex", mediaProposal());
+
+    expect(proposed.stage).toBe("needs_input");
+    expect(proposed.compileRequest?.reasonCode).toBe("private_host_needs_declaration");
+    // 出路必须是一条**具体的**模板 id，不是一句「你自己看着办」。
+    expect(proposed.compileRequest?.suggestedTemplate).toBe("openai-compatible/chat-completions");
+  });
+
+  // 【阳性对照】本机有可读文档的文本模型时，内部编译器照旧接手——这条改动只动外部交件那条路。
+  it("still compiles in-house for a self-hosted endpoint when Nomi has a text model", async () => {
+    const { service } = make({ compilerAvailable: () => true });
     const session = service.begin(
       { kind: "http-api-provider", name: "Local", baseUrl: "http://192.168.1.20:8000/v1" },
       "codex",

@@ -90,14 +90,9 @@ export type IntegrationProposal = {
  * 「Nomi 自己编不动，请你来编」的结构化交底（B 路，见 providerAdapter/agentCompileRequest.ts）。
  * 落盘的只有这几个小字段；目标 schema 与撰写规则是常量，在投影时现加，不占会话文件。
  */
-export type IntegrationCompileRequest = {
-  schemaVersion: 1;
-  reasonCode: "adapter_contract_required";
-  field: "proposal.adapterDraft";
-  provider: { baseUrl: string; authType: AdapterAuthType; providerKind?: string };
-  models: Array<{ modelKey: string; kind: string }>;
-  docs: { provided: boolean; bytes: number };
-};
+// 这个类型跟着**产生它的那条判据**住（R9：巨壳只减不增，且类型该在它的生产者旁边）。
+import type { IntegrationCompileRequest } from "./integrationAdapterContract";
+export type { IntegrationCompileRequest };
 export type IntegrationSession = {
   schemaVersion: 1;
   id: string;
@@ -685,7 +680,7 @@ export class IntegrationSessionService {
     if (!found)
       throw new IntegrationRequestError(
         "integration_session_not_found",
-        "Integration session not found. List the open sessions with nomi_read target=integration (no sessionId) instead of guessing an id",
+        "Integration session not found. List the open setups with nomi_read target=setup (no setupId) instead of guessing an id",
       );
     return found;
   }

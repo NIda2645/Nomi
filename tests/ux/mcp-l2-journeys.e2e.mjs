@@ -136,17 +136,21 @@ try {
 
   // C7-T14: the Agent handles provider variance, while Nomi owns only the
   // secure credential handoff, proposal persistence gate, and paid two-phase.
-  const integrationStarted = await call(mcp, 'nomi_integration', {
-    action: 'begin', kind: 'http-api-provider', name: 'C7 relay proposal', baseUrl: provider.origin,
-    authType: 'bearer', authHeader: 'Authorization', docs: `${provider.origin}/docs`,
+  const integrationStarted = await call(mcp, 'nomi_model_setup', {
+    action: 'connect_provider',
+    name: 'C7 relay proposal',
+    suggestedBaseUrl: provider.origin,
+    docs: `${provider.origin}/docs`,
   })
   const integrationStartData = resultTextJson(integrationStarted)
-  const integrationSessionId = integrationStartData.id || resultData(integrationStarted).id
-  const credentialHandoff = await call(mcp, 'nomi_integration', {
-    action: 'open_credentials', sessionId: integrationSessionId, expectedRevision: integrationStartData.revision,
-  })
-  check(resultTextJson(credentialHandoff).stage === 'needs_credential', 'C7 T14 open_credentials 只打开 Nomi 安全页')
-  // open_credentials 现在还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
+  const integrationSessionId = integrationStartData.setupId || resultData(integrationStarted).setupId
+  // 句柄拿不到就当场说清楚——传一个 undefined 下去只会在三跳之后以
+  // 「integration_session_not_found」的形式冒出来，那时已经看不出是哪一步丢的。
+  check(typeof integrationSessionId === 'string' && integrationSessionId.length > 0,
+    'C7 T14 connect_provider 返回可用的 setupId', JSON.stringify(integrationStartData).slice(0, 200))
+  // 2026-09-18（#754）：贴 key 页由上面那一跳打开，不再有第二个动词。
+  check(integrationStartData.state?.stage === 'needs_credential', 'C7 T14 connect_provider 只打开 Nomi 安全页')
+  // connect_provider 还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
   // 供应商名从持久 handoff 还原。这是 PR #528 要证明的那件事，所以在这里正面断言它，
   // 而不是让它以「后面某个点击被模态挡住」的形式暴露出来。
   const settingsOverlay = win.locator('[data-settings-overlay="true"]')
@@ -174,29 +178,65 @@ try {
   // 密钥落地后，那条持久「去填 key」请求必须由写它的那层收走。留着它 = 用户下次打开设置→模型
   // 又被拽回一个已经接好的供应商的添加页（走查里这条 fixture 原本自己 ack 掉，把这个缺口盖住了）。
   check(credentialSaved.queued === 0, 'C7 T14 密钥落地后持久凭据 handoff 被收走')
-  const afterCredential = await call(mcp, 'nomi_read', { target: 'integration', sessionId: integrationSessionId })
-  const afterCredentialData = resultTextJson(afterCredential)
-  const rejectedProposal = await mcp.callTool('nomi_integration', {
-    action: 'propose', sessionId: integrationSessionId, expectedRevision: afterCredentialData.revision,
-    proposal: { candidates: [{ modelKey: 'relay-image', kind: 'image' }], selections: [{ modelKey: 'missing-model' }] },
+  // 一张**写坏的**卡：字段级打回，并且带着卡上自己声明的出处（不是我们猜的那条）。
+  const rejectedProposal = await mcp.callTool('nomi_model_setup', {
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        // 声明成异步却不给 query —— 这是「我们缺一条 query」，不是用户填错了。
+        modes: [{
+          taskKind: 'text_to_image',
+          delivery: 'asynchronous',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
   })
-  check(rejectedProposal.isError && /proposal\.selections|candidate/i.test(parseToolResult(rejectedProposal).text), 'C7 T14 propose 返回字段级可读打回原因')
-  const proposed = await call(mcp, 'nomi_integration', {
-    action: 'propose', sessionId: integrationSessionId, expectedRevision: afterCredentialData.revision,
-    proposal: { candidates: [{ modelKey: 'relay-image', kind: 'image' }], selections: [{ modelKey: 'relay-image' }] },
+  const rejectedText = parseToolResult(rejectedProposal).text
+  check(rejectedProposal.isError || resultTextJson(rejectedProposal)?.ok === false,
+    'C7 T14 写坏的声明卡被打回', rejectedText.slice(0, 160))
+  check(/query|asynchronous|declaration/i.test(rejectedText), 'C7 T14 打回原因落到具体字段上', rejectedText.slice(0, 160))
+
+  const proposed = await call(mcp, 'nomi_model_setup', {
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images returns data[0].url' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        modes: [{
+          taskKind: 'text_to_image',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
   })
   const proposedData = resultTextJson(proposed)
-  check(proposedData.stage === 'ready_to_certify', 'C7 T14 propose 通过强 schema 落库门')
+  check(proposedData.ok === true, 'C7 T14 合格的声明卡一跳过校验 + 自检 + 登记', JSON.stringify(proposedData).slice(0, 200))
+  // 自检过了也消不掉这一条：只有用户真跑一次才能。
+  check((proposedData.unverified || []).some((entry) => entry.claim === 'model_produces_output'),
+    'C7 T14 信封仍把 model_produces_output 标为无证据')
   // 接模型没有付费验证，所以 propose 与 start 之间没有 confirm 这一跳（2026-09-12 拍板）。
   // 仍然要证的是「这一跳不会花钱」：自检跑完，供应商的付费生成端点一次都没被碰过。
-  const staleStart = await mcp.callTool('nomi_integration', {
-    action: 'start', sessionId: integrationSessionId, expectedRevision: proposedData.revision - 1,
-    idempotencyKey: 'c7-t14-stale-revision',
-  })
-  check(staleStart.isError === true && resultData(staleStart).errorCode === 'integration_revision_stale', `C7 T14 start 仍按 expectedRevision 把关; actual=${JSON.stringify(staleStart)}`)
+  // 2026-09-18（#754）：`expectedRevision` 不再是模型入参（会话指纹由执行层现读现填），
+  // 所以这里不再有「陈旧 revision 被拒」这一条。换成新面自己的那条撤不回闸：
+  // 删除必须带 `nomi_read target=models` 给的指纹，不符就什么都不删。
+  const staleDelete = await mcp.callTool('nomi_remove_provider', { vendorKey: 'apimart', ifUnchanged: 'models-000000000000' })
+  check(resultTextJson(staleDelete)?.code === 'stale_fingerprint', `C7 T14 陈旧指纹的删除被拒; actual=${JSON.stringify(staleDelete)}`)
   check(provider.hits.filter((hit) => /^\/v1\/(images|videos)\/generations$/.test(hit.url || '')).length === 0, 'C7 T14 自检不提交供应商付费任务')
-  const proxyOff = await call(mcp, 'nomi_integration_manage', { action: 'set_proxy', vendorKey: 'apimart', enabled: false })
-  check(resultTextJson(proxyOff).enabled === false, 'C7 管理动词可关闭单连接代理')
+  const proxyOff = await call(mcp, 'nomi_model_setup', { action: 'connect_provider', vendorKey: 'apimart', proxyEnabled: false })
+  check(resultTextJson(proxyOff).ok === true, 'C7 代理开关并进 connect_provider（同格合并，不再另开一个管理工具）')
 
   const fourNodes = [0, 1, 2, 3].map((index) => ({ clientId: `c8-shot-${index + 1}`, kind: 'shot', title: `镜头 ${index + 1}`, prompt: `湖边纸船镜头 ${index + 1}`, position: { x: index * 380, y: 0 } }))
   declinedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-decline'), capabilities: { elicitation: {} }, elicitationAction: 'decline', syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'nomi' } })

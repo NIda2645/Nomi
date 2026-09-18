@@ -6,6 +6,12 @@ import { BILLING_MODEL_KINDS, PROFILE_KINDS, type BillingModelKind, type HttpOpe
 // （新增 kind 不分类 = tsc 红）。这里只消费，不再手抄 Set——手抄那版没有穷尽检查，也说不清
 // image_to_prompt / transcribe 这类「吃媒体但通道写死在运行期」的 kind 该不该要声明。
 import { PROFILE_KIND_REFERENCE_CHANNEL } from "../shared/contracts/modelAccessCapabilities";
+import {
+  declaredAssetIngestionSchema,
+  declaredOmissionsSchema,
+  declaredOpenApiSchema,
+  declaredSelfCheckSchema,
+} from "./declarationCard";
 import type { AdapterModelDraft, ProviderAdapterDraft } from "./types";
 
 const allowedMethods = new Set(["GET", "POST", "PUT", "PATCH"]);
@@ -92,6 +98,9 @@ const adapterParametersSchema = z
         default: z.union([z.string(), z.number(), z.boolean()]).optional(),
         min: z.number().finite().optional(),
         max: z.number().finite().optional(),
+        // 每个数字能追到出处（§5）：mode 级 sourceUrls 已有，参数级补齐。
+        sourceUrl: z.string().url().optional()
+          .describe("Exact documentation page URL this parameter's range and default were read from."),
       })
       .strict(),
   )
@@ -168,7 +177,18 @@ const adapterDraftModelsSchema = z
  * 不接受外部覆写——否则「说明卡」就变成了「把请求发到哪儿」的改写入口。
  */
 export const adapterSuppliedContractSchema = z
-  .object({ sources: adapterSourcesSchema, models: adapterDraftModelsSchema })
+  .object({
+    sources: adapterSourcesSchema,
+    models: adapterDraftModelsSchema,
+    /**
+     * **必填，且 `none` 必须显式**（§5，任务书附二）。「没声明」不是「用兜底」——
+     * 那正是跨供应商互借与匿名图床活下来的缝。声明成 `none` 的家，参考图路径上诚实报错。
+     */
+    assetIngestion: declaredAssetIngestionSchema,
+    selfCheck: declaredSelfCheckSchema.optional(),
+    omitted: declaredOmissionsSchema.optional(),
+    openapi: declaredOpenApiSchema.optional(),
+  })
   .strict();
 
 export type AdapterSuppliedContract = z.infer<typeof adapterSuppliedContractSchema>;
@@ -181,11 +201,19 @@ const adapterDraftSchema: z.ZodType<ProviderAdapterDraft> = z
         authType: z.enum(["none", "bearer", "x-api-key", "query"]),
         authHeader: z.string().min(1).max(128).optional(),
         authQueryParam: z.string().min(1).max(128).optional(),
+        /**
+         * `Authorization` 里 key 前面的方案词（Higgsfield 的 `Key id:secret`）。
+         * **由 Nomi 从已绑定的 vendor 填**，卡上只能复述、不能改——它属于「key 怎么放」，
+         * 与地址同一档，只能在贴 key 页上改（§6.1）。
+         */
+        authScheme: z.string().min(1).max(64).optional(),
         providerKind: z.enum(["openai-compatible", "anthropic", "openai-responses"]).optional(),
       })
       .strict(),
-    sources: adapterSourcesSchema,
-    models: adapterDraftModelsSchema,
+    // 卡顶层那几格从交件 schema 派生，不再抄第二遍（Ponytail 2026-09-18）。差别只有一处，
+    // 而且是领域约束：**交件时 `assetIngestion` 必填**（`none` 也要显式写），内部编译器
+    // 那条路产出的卡可以没有它（它走 curated 注册表）。
+    ...adapterSuppliedContractSchema.partial({ assetIngestion: true }).shape,
   })
   .strict();
 
@@ -411,7 +439,39 @@ export function validateProviderAdapterDraft(
   for (const modelKey of selected) {
     if (!seenModels.has(modelKey)) throw new Error(`Adapter is missing selected model ${modelKey}`);
   }
+  assertCardLevelOperations(parsed);
   return parsed;
+}
+
+/**
+ * 卡顶层那两个**也会带着 key 出站**的端点：上传初始化与自检探针（§6.1「收卡时」）。
+ *
+ * 为什么和 mode 的端点同一条判据、写在同一个函数里：它们是同一个问题的两个出口。分两处判 =
+ * 第二个同源分类器，而下一次只会有人补上其中一处（`check:outbound-policy` 反对的正是这件事）。
+ *
+ * 第二步上传目标（预签名 URL）**不在这里判**——它是上游动态返回的，且按策略不带 key
+ * （`catalog/types.ts:151-153`），由私网策略照判。
+ */
+function assertCardLevelOperations(draft: ProviderAdapterDraft): void {
+  const ingestion = draft.assetIngestion;
+  if (ingestion && "endpoint" in ingestion && typeof ingestion.endpoint === "string") {
+    // 与 mode 端点同一个判据函数：它除了同源还查穿越与编码，自己再比一次 origin 会漏掉那两样。
+    assertSafePath(ingestion.endpoint, draft.provider.baseUrl);
+  }
+  const selfCheck = draft.selfCheck;
+  if (selfCheck?.kind !== "liveness-probe") return;
+  assertSafePath(selfCheck.request.path, draft.provider.baseUrl);
+  assertJsonShape(selfCheck.request.headers, "selfCheck.request.headers");
+  assertJsonShape(selfCheck.request.query, "selfCheck.request.query");
+  assertJsonShape(selfCheck.request.body, "selfCheck.request.body");
+  assertSafeResponsePath(selfCheck.successPath, "selfCheck.successPath");
+  // 探针不许是生成端点：自检必须免费（09-12 拍板「接模型没有付费验证」）。同一条 path
+  // 出现在任何一条 mode 的 create 上，就说明这张卡想拿一次真实生成当自检。
+  const probesGenerationEndpoint = draft.models.some((model) =>
+    model.modes.some((mode) => mode.create.path === selfCheck.request.path));
+  if (probesGenerationEndpoint) {
+    throw new Error("selfCheck must not probe a generation endpoint; the self-check is free and never spends the user's credit");
+  }
 }
 
 function stableValue(value: unknown): unknown {

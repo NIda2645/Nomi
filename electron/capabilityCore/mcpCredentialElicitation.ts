@@ -32,8 +32,8 @@ const L = (locale: ResultLocale, zh: string, en: string): string => (locale === 
 // 降级成「人工填 key」时，模型需要被明确告知**它这一步该做的是等**。不说清楚，它就会
 // 把「没成功」当成「再试一次」——2026-09-10 实测里同一个循环在花费确认那一关烧掉了三次白点。
 const WAIT_HINT = {
-  zh: '在人保存之前不要重复调用 open_credentials；要确认有没有存好，用 nomi_read（target=integration）看 credentialStatus 是不是 ready。',
-  en: ' Do not call open_credentials again while waiting; check nomi_read (target=integration) for credentialStatus "ready" instead.',
+  zh: '在人保存之前不要重复调用 connect_provider；要确认有没有存好，用 nomi_read（target=setup）看 credentialStatus 是不是 ready。',
+  en: ' Do not call connect_provider again while waiting; check nomi_read (target=setup) for credentialStatus "ready" instead.',
 }
 
 const COPY = {
@@ -101,6 +101,13 @@ function withoutTicket(projection: unknown, extra?: Record<string, unknown>): Re
 
 export async function runIntegrationCredentialElicitation(input: {
   built: Record<string, unknown>
+  /**
+   * 开贴 key 页的那个方法。新面（`nomi_model_setup action=connect_provider`）在**同一跳**里
+   * 就开了页，所以这里要调的是它自己——**必填**，没有默认值：留一个指向已退役的
+   * `integration.open_credentials` 的兜底，只会让下一次改名再悄悄走回去一次
+   * （这一轮 CI 的打包冒烟就是这么红的）。
+   */
+  method: string
   invoke: (method: string, params: Record<string, unknown>) => Promise<unknown>
   elicitation: Pick<ElicitationClient, 'requestUrl' | 'notifyComplete'>
   locale?: ResultLocale
@@ -109,7 +116,15 @@ export async function runIntegrationCredentialElicitation(input: {
   signal?: AbortSignal
 }): Promise<CredentialElicitationOutcome> {
   const locale = input.locale ?? 'zh-CN'
-  const opened = await input.invoke('integration.open_credentials', input.built)
+  const envelope = await input.invoke(input.method, input.built) as Record<string, unknown>
+  // 开场那一跳恒是 §4.3 信封（唯一的调用方就是新面），会话投影在它的 `state` 里。
+  const opened = { ...(envelope.state as Record<string, unknown>), ...(envelope.setupId ? { id: envelope.setupId } : {}) }
+  /**
+   * 回信保持**调用方那一面的形状**：新面收到的必须还是 §4.3 的信封（`ok/setupId/unverified/…`），
+   * 只是它的 `state` 已经把用掉的一次性票剥掉了。剥票的逻辑只有一份，两种形状共用。
+   */
+  const respond = (view: unknown, extra?: Record<string, unknown>): CredentialElicitationOutcome =>
+    ({ kind: 'result', result: { ...envelope, state: withoutTicket(view, extra) } })
   const uiOpened = (opened as Record<string, unknown> | null)?.credentialUiOpened === true
   const ticket = ticketOf(opened)
   // The provider name for the manual instruction: the ticket knows it, and so does the projection when
@@ -124,7 +139,7 @@ export async function runIntegrationCredentialElicitation(input: {
   if (!ticket) {
     // No loopback page available in the owning process. The durable handoff already fired, so the
     // in-app route is live; say so rather than leaving the agent to improvise.
-    return { kind: 'result', result: withoutTicket(opened, { credentialEntry: manual('') }) }
+    return respond(opened, { credentialEntry: manual('') })
   }
 
   const asked = await input.elicitation.requestUrl({
@@ -134,12 +149,12 @@ export async function runIntegrationCredentialElicitation(input: {
   }, input.signal)
 
   if (!asked.supported) {
-    return { kind: 'result', result: withoutTicket(opened, { credentialEntry: manual(ticket.display.name) }) }
+    return respond(opened, { credentialEntry: manual(ticket.display.name) })
   }
   if (asked.action !== 'accept') {
     // Not an error: the session is still `needs_credential`, the in-app route is live, and the caller
     // has somewhere to go. Only a page that was opened and then abandoned (below) is a real dead end.
-    return { kind: 'result', result: withoutTicket(opened, { credentialEntry: notOpened(ticket.display.name) }) }
+    return respond(opened, { credentialEntry: notOpened(ticket.display.name) })
   }
 
   // `accept` is consent to open the URL, not proof the key was saved. The session is the only honest
@@ -148,10 +163,11 @@ export async function runIntegrationCredentialElicitation(input: {
   const deadline = Date.now() + (input.waitMs ?? DEFAULT_WAIT_MS)
   for (;;) {
     if (input.signal?.aborted) throw input.signal.reason instanceof Error ? input.signal.reason : new Error('MCP request cancelled')
+    // 轮询读的是会话投影本体（`integration.get` 不包信封），回信时再按信封形状包回去。
     const current = await input.invoke('integration.get', { sessionId: ticket.sessionId }) as Record<string, unknown>
     if (current?.credentialStatus === 'ready') {
       input.elicitation.notifyComplete(ticket.elicitationId)
-      return { kind: 'result', result: withoutTicket(current) }
+      return respond(current)
     }
     if (Date.now() >= deadline) return { kind: 'error', message: COPY.declined(locale) }
     await wait(POLL_INTERVAL_MS)
