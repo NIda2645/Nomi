@@ -57,6 +57,19 @@
 - 对外 MCP 已发布 schema 不动；磁盘格式不动；宿主准入校验不动。
 - `RuntimeToolCall` 的默认类型参数仍是 `unknown`，其余调用点逐字不变。
 
+## `CANCEL_JOB_HOST_FILL` 那个常量凭什么留着（两次变异，先证明它会红）
+
+交工前的 Ponytail 评审两轮都点它：「只为一个测试而存在的生产常量，把期望值直接写进测试就行」。
+按 R17「加规则必须先验它会红」的办法实测了两条变异，结论是**它接住了一类真的漂移，删不得**：
+
+| 变异 | typecheck | 读法 |
+|---|---|---|
+| ② **宿主自补字段的取值变了**（`z.literal("cancel_export_job")` → `"cancel_export_job_v2"`），而补值那一处没跟上 | **红**：`cancelJobProjection.ts(66,3): error TS2322: Type '"cancel_export_job"' is not assignable to type '"cancel_export_job_v2"'` | 这正是 Codex `timeout_ms` 那个形状搬到**补值**这一侧的样子：宿主改了它要收的那个值，补的人不知道。把期望值写进测试只会在跑测试时才红，而且写的人和改 schema 的人不是同一个人。 |
+| ① **宿主分支多了一个必填字段**（给 cancel 分支加 `requestedBy: z.string()`） | **绿**（没有任何错） | 诚实记下来：这一条**它接不住**。新字段会顺着 `.omit({operation})` 流进模型面，于是变成「模型被要求填一个它拿不到的值」——那是 A 类，归 `check:verb-host-conformance` 的来源判据管，不归这个常量管。铺开时要想清楚：投影默认「宿主新加的字段都是模型该填的」，这个默认对不对。 |
+
+所以这条评审意见记「不改」，理由是上面这张表；同一轮评审的另两条（多余的 round trip、
+让泛型不再是个立刻被抹掉的局部标注）已改。
+
 ## 双域：原型覆盖到哪、覆盖不到哪（**明说，不静默降级**）
 
 投影的前提是「**有且只有一份**宿主 schema 是真相」。`cancel_job` 有两份：
