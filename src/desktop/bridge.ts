@@ -370,8 +370,9 @@ export type DesktopBridge = DesktopMediaBridge &
   }
   modelCatalog: DesktopModelCatalogSurface
   skill: {
-    list: () => unknown[]
-    exportPackage: (dirName: string) => unknown
+    /** 目录由 pi 的加载器给（async）：列表与导出是 Promise，导入与删除仍是同步回执。 */
+    list: () => Promise<unknown[]>
+    exportPackage: (dirName: string) => Promise<unknown>
     importPackage: (payload: unknown) => unknown
     deleteByDir: (dirName: string) => unknown
     /** 技能盘变了（导入/删除/Agent 的 author_skill 写完落盘）。可选：老 preload 无此口。 */

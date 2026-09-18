@@ -6,7 +6,7 @@ import { deriveSkillNeeds } from "./skillCapability";
 import { ipcMain } from "electron";
 import { assertTrustedSender } from "../ipcSenderGuard";
 import type { SkillProviderKind } from "./skillManifestSchema";
-import { isSkillSelectableInWorkbench, readSkillRecords } from "./skillStore";
+import { isSkillSelectableInWorkbench, readSkillRecords, type SkillRecord } from "./skillStore";
 import {
   importSkillPackageToUserDir,
   exportSkillPackageByName,
@@ -21,7 +21,7 @@ export type SkillImportOutcome =
       /**
        * Provider modalities the freshly saved Skill declares.  The creation panel
        * uses it to say "this one needs video, go connect one" the moment the save
-       * lands.  It is derived here, from the record that actually hit disk —
+       * lands.  It is derived here, from the package that actually hit disk —
        * before the format converged the renderer read it off the `author_skill`
        * tool arguments, which made the tool call a second owner of the same fact.
        */
@@ -32,11 +32,8 @@ export type SkillImportOutcome =
 function importSkillAndDeriveNeeds(raw: unknown): SkillImportOutcome {
   const result = importSkillPackageToUserDir(raw);
   if (!result.ok) return result;
-  const saved = readSkillRecords().find(
-    (record) => record.origin === "user" && record.directoryName === result.dirName,
-  );
-  const needs = saved?.manifest ? deriveSkillNeeds(saved.manifest) : null;
-  return { ...result, neededProviders: needs?.providers ?? [] };
+  const needs = result.manifest ? deriveSkillNeeds(result.manifest) : null;
+  return { ok: true, dirName: result.dirName, skillName: result.skillName, neededProviders: needs?.providers ?? [] };
 }
 
 export type SkillListItem = {
@@ -67,8 +64,9 @@ export type SkillListItem = {
   contentHash: string;
 };
 
-export function listSkillsForRenderer(): SkillListItem[] {
-  return readSkillRecords()
+/** 目录记录 → 渲染层 DTO（纯投影）。 */
+export function projectSkillsForRenderer(records: readonly SkillRecord[]): SkillListItem[] {
+  return records
     // The canonical record policy owns picker visibility. Do not recreate a
     // stages-only heuristic here: single-stage built-ins may explicitly opt in.
     .filter(isSkillSelectableInWorkbench)
@@ -82,7 +80,7 @@ export function listSkillsForRenderer(): SkillListItem[] {
       directoryName: r.directoryName,
       name: r.name,
       label: r.manifest?.label || r.name,
-      // description 只有一个 owner：SKILL.md frontmatter 的必填字段（skillStore 读好的）。
+      // description 只有一个 owner：SKILL.md frontmatter 的必填字段（pi 的加载器读好的）。
       // 2026-08-27 真机走查抓出过这里的旧形状：那时只取 manifest → 没有 skill.json 的技能
       // 一律显示「暂无说明」，哪怕 frontmatter 里写着标准的 description。清单退场后
       // 「两处取值」这个形状本身没了，回归也就不可能再来一次。
@@ -99,12 +97,23 @@ export function listSkillsForRenderer(): SkillListItem[] {
   });
 }
 
+/** 每次都重扫盘（目录没有快照）：技能盘刚变，下一次 list 就是新的。 */
+export async function listSkillsForRenderer(): Promise<SkillListItem[]> {
+  return projectSkillsForRenderer(await readSkillRecords());
+}
+
 type RegisterSyncIpc = (channel: string, handler: (...args: unknown[]) => unknown) => void;
 
-/** Register the renderer-facing skill list boundary used by the ref Host wiring. */
+/**
+ * Register the renderer-facing skill list boundary used by the ref Host wiring.
+ *
+ * 协议按通道分两种，且**每条通道两侧必须同一种**（`check:skill-ipc-coverage` 门岗）：
+ *   · `nomi:skill:list` 走 `ipcMain.handle` / `ipcRenderer.invoke`——目录由 pi 的加载器给，它是 async 的；
+ *   · 三条写通道（import / export / delete）仍走 `registerSyncIpc` / `invokeSync`——它们不碰目录，
+ *     渲染层拿到 `{ok, ...}` 对象而非 Promise，`res.ok` 检查有意义（2026-09-03 合同不变量 ③）。
+ */
 export function registerSkillIpc(registerSyncIpc: RegisterSyncIpc): void {
-  registerSyncIpc("nomi:skill:list", () => listSkillsForRenderer());
-  ipcMain.handle("nomi:skill:list-secure", async (event) => {
+  ipcMain.handle("nomi:skill:list", async (event) => {
     assertTrustedSender(event);
     return listSkillsForRenderer();
   });
@@ -112,9 +121,12 @@ export function registerSkillIpc(registerSyncIpc: RegisterSyncIpc): void {
   // 2026-09-03: PR #279 合入了渲染层解析逻辑和主进程落地函数，但忘了在这里注册，
   // 导致渲染层一直收到 "No handler registered" 且 UI 静默（P0 回归）。
   registerSyncIpc("nomi:skill:import", (raw: unknown) => importSkillAndDeriveNeeds(raw));
-  registerSyncIpc("nomi:skill:export", (dirName: unknown) =>
-    exportSkillPackageByName(String(dirName ?? ""), Date.now()),
-  );
+  // 导出要先拿目录（async），而这条通道是同步的：渲染层已经拿着列表（含 directoryName / filePath / packageDir
+  // 都在主进程），所以这里现扫一次盘的代价用 `handle` 付——写通道里只有它读目录，故它也走 handle。
+  ipcMain.handle("nomi:skill:export", async (event, dirName: unknown) => {
+    assertTrustedSender(event);
+    return exportSkillPackageByName(String(dirName ?? ""), Date.now(), await readSkillRecords());
+  });
   registerSyncIpc("nomi:skill:delete", (dirName: unknown) =>
     deleteUserSkill(String(dirName ?? "")),
   );

@@ -1,4 +1,5 @@
 import { resolveSkillPreview } from "../skills/skillPreview";
+import { readSkillRecords } from "../skills/skillStore";
 import { protocol } from "electron";
 import fs from "node:fs";
 import { createOwnedFileStream } from "./fileResponseStream";
@@ -130,14 +131,14 @@ function rangeNotSatisfiable(size: number): Response {
  * 与 `asset` host 分开处理是因为它们**不属于任何项目**：没有 projectId，也就不该进
  * 项目事件日志、不该走项目路径解析。命中白名单才有响应，其余一律 404。
  */
-function handleNonProjectHost(request: Request, hostname: string, segments: readonly string[]): Response | null {
+async function handleNonProjectHost(request: Request, hostname: string, segments: readonly string[]): Promise<Response | null> {
   const target =
     hostname === "runtime"
       ? resolveLocalRuntimeAsset(segments)
       : hostname === "model"
         ? resolveLocalModelAsset(segments)
         : hostname === "skill-preview"
-          ? resolveSkillPreview(segments)
+          ? resolveSkillPreview(segments, await readSkillRecords())
           : null;
   if (!target) return hostname === "runtime" || hostname === "model" || hostname === "skill-preview" ? new Response("Not found", { status: 404 }) : null;
   const stat = fs.statSync(target.filePath);
@@ -180,7 +181,7 @@ export async function handleNomiLocalRequest(request: Request): Promise<Response
   const nonProject = nonProjectHostSegments(request.url);
   if (nonProject && (nonProject.hostname === "runtime" || nonProject.hostname === "model" || nonProject.hostname === "skill-preview")) {
     try {
-      const response = handleNonProjectHost(request, nonProject.hostname, nonProject.segments);
+      const response = await handleNonProjectHost(request, nonProject.hostname, nonProject.segments);
       if (response) return response;
     } catch {
       return new Response("Not found", { status: 404 });

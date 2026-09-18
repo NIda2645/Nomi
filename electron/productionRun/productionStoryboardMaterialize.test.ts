@@ -51,6 +51,8 @@ async function approvedStoryboard(options: { stale?: boolean } = {}) {
     commandId: 'direction', expectedRevision: 0, type: 'gate.decide',
     payload: { gateId: 'gate-direction-v1', status: 'approved' }, issuedAt: new Date().toISOString(),
   })
+  // 剧本产物在阶段证据（技能目录，2026-09-18 起是 pi 的 async 加载器）落定之后才写：等它出现再拿。
+  await waitFor(() => Boolean(service.readFull('project-1', runId)?.artifacts.some((artifact) => artifact.kind === 'script')))
   let run = service.readFull('project-1', runId)
   const script = run.artifacts.find((artifact) => artifact.kind === 'script')!
   await service.command('project-1', runId, {

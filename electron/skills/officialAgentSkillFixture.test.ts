@@ -14,7 +14,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SKILL_PACKAGE_VERSION, validateSkillPackage } from "./skillPackage";
-import { discoverSkillRecordsFromRoots } from "./skillStore";
+// 目录来自 pi 的加载器（岛上、async）——官方样例现在由 pi 自己的解析器读，判官与被判的是同一把尺子。
+import { discoverSkillRecords } from "../agentLane/laneSkillCatalog.mjs";
 
 const FIXTURE = "tests/fixtures/standard-formats/agent-skill/SKILL.md";
 const officialSkillMd = fs.readFileSync(path.resolve(process.cwd(), FIXTURE), "utf8");
@@ -41,12 +42,12 @@ describe("Agent Skills 官方样例（R31 夹具对账）", () => {
     if (result.ok) expect(result.skillName).toBe("my-skill");
   });
 
-  it("落盘后被发现，name / description 从 YAML frontmatter 读出来", () => {
+  it("落盘后被发现，name / description 从 YAML frontmatter 读出来", async () => {
     const dir = path.join(root, "my-skill");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "SKILL.md"), officialSkillMd);
 
-    const { records } = discoverSkillRecordsFromRoots([{ path: root, origin: "user" }]);
+    const { records } = await discoverSkillRecords([{ path: root, origin: "user" }]);
     expect(records).toHaveLength(1);
     expect(records[0].name).toBe("my-skill");
     expect(records[0].description).toBe("What this skill does");
@@ -55,7 +56,7 @@ describe("Agent Skills 官方样例（R31 夹具对账）", () => {
     expect(records[0].manifestError).toBeUndefined();
   });
 
-  it("官方文档列出的可选键（allowed-tools / argument-hint）不会让解析失败", () => {
+  it("官方文档列出的可选键（allowed-tools / argument-hint）不会让解析失败", async () => {
     // 登记表 agent-skill 的第一条 deviation 声明「我们不消费这些键，但它们不许让导入失败」。
     // 这条断言就是那句声明的执行体：声明写在 JSON 里没人跑，写成断言才拦得住人。
     const withOptionalKeys = officialSkillMd.replace(
@@ -66,7 +67,7 @@ describe("Agent Skills 官方样例（R31 夹具对账）", () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "SKILL.md"), withOptionalKeys);
 
-    const { records } = discoverSkillRecordsFromRoots([{ path: root, origin: "user" }]);
+    const { records } = await discoverSkillRecords([{ path: root, origin: "user" }]);
     expect(records).toHaveLength(1);
     expect(records[0].description).toBe("What this skill does");
   });

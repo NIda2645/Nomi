@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { contentTypeFromPath } from "../assets/assetPaths";
-import { readSkillRecords, type SkillRecord } from "./skillStore";
+import type { SkillRecord } from "./skillStore";
 
 /** Media identity, shared by library cards and the future Agent hover consumer. */
 export function skillPreviewUrl(record: SkillRecord): string {
@@ -12,7 +12,7 @@ export function skillPreviewUrl(record: SkillRecord): string {
 /** Only declared built-in media is exposed; a request never supplies a disk path. */
 export function resolveSkillPreview(
   segments: readonly string[],
-  records: SkillRecord[] = readSkillRecords(),
+  records: readonly SkillRecord[],
 ): { filePath: string; contentType: string } | null {
   if (segments.length !== 1) return null;
   const record = records.find((item) => item.directoryName === segments[0] && skillPreviewUrl(item));

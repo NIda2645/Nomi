@@ -31,6 +31,7 @@ import { CAPABILITY_CONTRACTS } from "../shared/agentCapabilities/registry";
  */
 
 import { skillProviderKindSchema, type SkillProviderKind } from "../shared/skillProvider";
+import type { SkillFrontmatter } from "./skillFrontmatter";
 export { skillProviderKindSchema, type SkillProviderKind } from "../shared/skillProvider";
 
 export const skillAudienceSchema = z.enum(["internal", "mcp"]);
@@ -163,4 +164,25 @@ export function parseSkillManifest(input: unknown):
   const parsed = skillManifestSchema.safeParse(input);
   if (parsed.success) return { ok: true, manifest: parsed.data };
   return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+}
+
+/**
+ * Read the Nomi extension block out of `metadata.nomi`.
+ *
+ * Three outcomes, and the middle one is the security-relevant one: a block that
+ * exists but does not validate returns `manifest: null` **with** an error, which
+ * downstream turns into an empty capability list (zero tools).  A missing block
+ * is not an error — most skills are pure knowledge and declare nothing beyond
+ * the two required frontmatter fields.  pi's loader never sees this block
+ * (the Agent Skills spec leaves `metadata` to the client), so this is the one
+ * place it is read — by the catalog and by the package importer alike.
+ */
+export function readSkillManifest(front: SkillFrontmatter): { manifest: SkillManifest | null; error?: string } {
+  if (front.error) return { manifest: null, error: front.error };
+  const metadata = front.values.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return { manifest: null };
+  const nomi = (metadata as Record<string, unknown>).nomi;
+  if (nomi === undefined) return { manifest: null };
+  const parsed = parseSkillManifest(nomi);
+  return parsed.ok ? { manifest: parsed.manifest } : { manifest: null, error: `metadata.nomi 校验失败：${parsed.error}` };
 }
