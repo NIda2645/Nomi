@@ -681,7 +681,11 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
  *  extraHeaders, which may carry Authorization) out of the plaintext vendor row into the existing
  *  safeStorage-backed vendor credential record. Legacy plaintext stays readable until an explicit
  *  vendor write migrates every secret atomically (mirrors the v8→v9 customConfig deferral). */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+/* v13 一次性修复上一版 upsert 抹掉的供应商声明（authScheme / assetIngestion）：内置家按
+ *  BUILTIN_VENDOR_SEEDS 补回「键整个不存在」的那两项（值不同=用户改过，一律不碰）；自建家没有
+ *  代码侧出处补不了，盖一条 meta 提示让界面明着告诉用户去重新导入接入包。写路径的类根因已由
+ *  upsertDraft.ts 在编译期闭合，故这是一次性的、不再重跑的修复。见 vendorFieldLossRepair.ts。 */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 export const CURRENT_CATALOG_VERSION: CatalogVersion = catalogVersion.current as CatalogVersion;
 
 export type CatalogState = {

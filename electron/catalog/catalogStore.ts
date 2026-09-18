@@ -16,6 +16,7 @@ import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, 
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
 import { sealUpsertDraft } from "./upsertDraft";
+import { migrateVendorFieldLossV13 } from "./vendorFieldLossRepair";
 import { derivePublishedExecution } from "../shared/modelPublication";
 import type { ModelAvailability } from "../shared/modelAvailability";
 import { createCatalogAvailability } from "./catalogModelAvailability";
@@ -26,7 +27,7 @@ import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigrav
 import { antigravityConnection } from "../ai/antigravityConnection";
 import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
 import {
-  applyPlainCustomConfig,
+  applyPlainCustomConfigWrite,
   hasLegacyCustomConfigField,
   legacyCustomConfig,
   migrateLegacyCustomConfigSecrets,
@@ -223,6 +224,13 @@ function migrateCatalogForward(state: CatalogState): CatalogState {
     }
   }
 
+  // v12 → v13: 补回被上一版 upsert 抹掉的 authScheme / assetIngestion，补不了的自建家盖一条可见提示
+  // （判据、以及「为什么是一次性迁移而不是加载时补齐」都在 vendorFieldLossRepair.ts）。
+  if (s.version === 12) {
+    s = migrateVendorFieldLossV13(s);
+    writeCatalog(s);
+  }
+
   if ((s.version as number) > CURRENT_CATALOG_VERSION) {
     // Newer file than this app understands — return it untouched so it stays
     // readable, and let `writeCatalog` REFUSE any write back (read-only guard).
@@ -358,17 +366,6 @@ export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
 }
 export function getModelCatalogHealth(): unknown {
   return deriveModelCatalogHealth(readCatalog());
-}
-/**
- * 明确的 custom-config 凭据写边界：先加密，再从 vendor.meta 移除旧明文。
- * 全部 legacy 字段都清理完后，才在同一内存事务中升到 v9。
- */
-function applyPlainCustomConfigWrite(state: CatalogState, vendorKey: string, config: Record<string, string>): void {
-  applyPlainCustomConfig(state, vendorKey, config);
-  state.vendors = state.vendors.map((vendor) =>
-    vendor.key === vendorKey ? { ...vendor, meta: withoutLegacyCustomConfig(vendor.meta) } : vendor,
-  );
-  if (state.version === 8 && !state.vendors.some(hasLegacyCustomConfigField)) state.version = 9;
 }
 /**
  * 把一次 vendor upsert 应用到内存 state，不读盘不写盘。

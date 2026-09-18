@@ -32,6 +32,10 @@ type CustomVendorCardProps = {
   hasApiKey: boolean
   /** Direct-script providers use their explicit test run; generic GET /models is not meaningful. */
   skipHealthProbe?: boolean
+  /** v12→v13 迁移盖的「这家的声明我补不了」标记，见 VendorFieldLossNotice。 */
+  fieldLossNoticeAt?: string | null
+  /** 该 vendor 记录的 meta 原样（关掉提示时写回用）。 */
+  vendorMetaRaw?: unknown
   onToggle: ModelEditorProps['onToggle']
   onDelete: ModelEditorProps['onDelete']
   onCustomCall: ModelEditorProps['onCustomCall']
@@ -51,6 +55,8 @@ export function CustomVendorCard({
   baseUrl,
   hasApiKey,
   skipHealthProbe = false,
+  fieldLossNoticeAt,
+  vendorMetaRaw,
   onToggle,
   onDelete,
   onCustomCall,
@@ -104,6 +110,8 @@ export function CustomVendorCard({
         hasApiKey={hasApiKey}
         modelCount={models.length}
         connection={connection}
+        fieldLossNoticeAt={fieldLossNoticeAt}
+        vendorMetaRaw={vendorMetaRaw}
         onRecheck={recheck}
         onChanged={onChanged}
         focus={focus}

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURRENT_CATALOG_VERSION } from "./types";
+import { withoutVendorFieldLossNotice } from "./vendorFieldLossRepair";
 
 const safeStorageState = vi.hoisted(() => ({
   available: true,
@@ -183,7 +184,9 @@ describe("custom-call custom config secure persistence", () => {
       signingKey,
       region: "cn-beijing",
     });
-    expect(store.listModelCatalogVendors()[0].meta).toBeUndefined();
+    // v13 会给修复前写过的自建连接盖一条「声明可能丢了」的提示（vendorFieldLossRepair.ts）。
+    // 本条断言问的是「旧 customConfig 明文清干净了吗」，所以剥掉那条提示再看。
+    expect(withoutVendorFieldLossNotice(store.listModelCatalogVendors()[0].meta)).toBeUndefined();
     expect(store.listModelCatalogCustomCallConfig("signed-relay")).toEqual([
       { name: "region", hasValue: true },
       { name: "signingKey", hasValue: true },
@@ -353,7 +356,9 @@ describe("custom-call custom config secure persistence", () => {
     // Both credential-bearing configs left the projected DTO and the on-disk vendor row.
     expect(projected.meta).toBeUndefined();
     expect(JSON.parse(disk).vendors[0].meta).toBeUndefined();
-    expect(store.listModelCatalogVendors()[0].meta).toBeUndefined();
+    // v13 会给修复前写过的自建连接盖一条「声明可能丢了」的提示（vendorFieldLossRepair.ts）。
+    // 本条断言问的是「旧 customConfig 明文清干净了吗」，所以剥掉那条提示再看。
+    expect(withoutVendorFieldLossNotice(store.listModelCatalogVendors()[0].meta)).toBeUndefined();
     // readCatalog's INTERNAL vendor carries the decrypted overlay for outbound consumers.
     expect((state.vendors[0].meta as { extraHeaders?: unknown }).extraHeaders).toEqual({ "x-tenant": "tenant-a" });
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({ signingKey });
@@ -495,7 +500,8 @@ describe("custom-call custom config secure persistence", () => {
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
       shared: "encrypted-wins",
     });
-    expect(state.vendors[0].meta).toBeUndefined();
+    // 同上：剥掉 v13 的「声明可能丢了」提示后，meta 应当被清空（本条问的是明文有没有清干净）。
+    expect(withoutVendorFieldLossNotice(state.vendors[0].meta)).toBeUndefined();
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
 
@@ -521,7 +527,7 @@ describe("custom-call custom config secure persistence", () => {
     expect(store.upsertModelCatalogCustomCallConfig("signed-relay", [])).toEqual([]);
     const state = store.readCatalog();
     expect(state.version).toBe(CURRENT_CATALOG_VERSION);
-    expect(state.vendors.map((item) => item.meta)).toEqual([
+    expect(state.vendors.map((item) => withoutVendorFieldLossNotice(item.meta))).toEqual([
       { label: "first-public" },
       { label: "second-public" },
     ]);

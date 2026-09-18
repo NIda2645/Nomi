@@ -13,7 +13,15 @@
   ],
   "scope_paths": [
     "electron/catalog/catalogStore.ts",
-    "electron/catalog/upsertDraft.ts"
+    "electron/catalog/upsertDraft.ts",
+    "electron/catalog/vendorFieldLossRepair.ts",
+    "electron/catalog/customConfigStore.ts",
+    "electron/catalog/types.ts",
+    "src/ui/onboarding/VendorFieldLossNotice.tsx",
+    "src/ui/onboarding/CustomVendorManage.tsx",
+    "src/ui/onboarding/CustomVendorCard.tsx",
+    "src/ui/onboarding/OnboardingDrawer.tsx",
+    "src/ui/onboarding/useOnboardingDrawerCatalog.ts"
   ],
   "entry_points": [
     "设置页保存供应商 → rendererCatalogMutation.upsertModelCatalogVendor → applyVendorUpsert",
@@ -25,92 +33,172 @@
   "invariants": [
     "重建一条 Vendor / Model / Mapping 记录时，该类型的每一个字段都必须在写路径上有一条显式裁决（取 raw、取 existing、或显式声明由别处派生而不落盘）",
     "给这三个类型加字段而不在写路径上给出裁决，必须在编译期失败，而不是在运行期静默丢值",
-    "草稿里裁决为 undefined 的字段不落盘（不留 null 洞），读回来的记录形状与旧写法逐字相同"
+    "草稿里裁决为 undefined 的字段不落盘（不留 null 洞），读回来的记录形状与旧写法逐字相同",
+    "已经被抹掉的记录必须由一次性迁移按代码侧出处补回；补不回来的必须在界面上明着告诉用户是哪家、缺什么、去哪重填，不得静默",
+    "修复只补「字段键整个不存在」的情况；键存在（哪怕值是 null 或与种子不同）一律不碰——覆盖用户显式改过的值是第二次数据丢失"
   ],
   "doors": [
     {
       "kind": "read",
       "path": "electron/catalog/upsertDraft.ts",
       "line": 37,
-      "symbol": "UpsertDraft"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "line": 415,
       "symbol": "sealUpsertDraft"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 553,
+      "line": 412,
       "symbol": "sealUpsertDraft"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 634,
+      "line": 550,
       "symbol": "sealUpsertDraft"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 446,
+      "line": 631,
+      "symbol": "sealUpsertDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 443,
       "symbol": "applyVendorUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 701,
+      "line": 698,
       "symbol": "applyVendorUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 752,
+      "line": 749,
       "symbol": "applyVendorUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 577,
+      "line": 574,
       "symbol": "applyModelUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 709,
+      "line": 706,
       "symbol": "applyModelUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 768,
+      "line": 765,
       "symbol": "applyModelUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 658,
+      "line": 655,
       "symbol": "applyMappingUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 713,
+      "line": 710,
       "symbol": "applyMappingUpsert"
     },
     {
       "kind": "write",
       "path": "electron/catalog/catalogStore.ts",
-      "line": 769,
+      "line": 766,
       "symbol": "applyMappingUpsert"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 230,
+      "symbol": "migrateVendorFieldLossV13"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/vendorFieldLossRepair.ts",
+      "line": 114,
+      "symbol": "repairDroppedVendorSeedFields"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/vendorFieldLossRepair.ts",
+      "line": 71,
+      "symbol": "VENDOR_FIELD_LOSS_NOTICE_META_KEY"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/CustomVendorManage.tsx",
+      "line": 140,
+      "symbol": "withoutVendorFieldLossNotice"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomVendorManage.tsx",
+      "line": 160,
+      "symbol": "VendorFieldLossNotice"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/useOnboardingDrawerCatalog.ts",
+      "line": 82,
+      "symbol": "vendorFieldLossNoticeAt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 389,
+      "symbol": "applyPlainCustomConfigWrite"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "line": 703,
+      "symbol": "applyPlainCustomConfigWrite"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "line": 413,
+      "symbol": "CustomVendorCard"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "line": 689,
+      "symbol": "CURRENT_CATALOG_VERSION"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customConfigStore.ts",
+      "line": 183,
+      "symbol": "applyPlainCustomConfigWrite"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/VendorFieldLossNotice.tsx",
+      "line": 25,
+      "symbol": "VendorFieldLossNotice"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomVendorCard.tsx",
+      "line": 106,
+      "symbol": "CustomVendorManage"
     }
   ],
   "door_reduction": {
-    "before": 13,
-    "after": 13,
-    "why_not": "十三扇门是三个 apply*Upsert 各自的三个调用点（单条公开 upsert / 导入包事务 / mutateCatalog 事务）、它们新增的三个 sealUpsertDraft 汇合点，以及新边界自身那扇读门。三个调用点必须各自存在：单条 upsert 要立即落盘，导入包与 mutateCatalog 要的是「攒齐再一次性写」的全有或全无语义，合并它们会重新引入「vendor 写了 model 没写成」的半接入空壳。门数没减是因为本来就没有第二份合并逻辑可删——真正缺的不是收口，而是这三个收口点内部没有「记录必须完整」的不变量。本刀把三条各自独立的手抄字段清单换成同一个 UpsertDraft<T> 边界（upsertDraft.ts），13 扇门背后从三份规则变成一份由类型强制的规则。"
+    "before": 22,
+    "after": 26,
+    "why_not": "写路径那 13 扇是三个 apply*Upsert 各自的三个调用点（单条公开 upsert / 导入包事务 / mutateCatalog 事务）、它们新汇合的三个 sealUpsertDraft 点、以及新边界自身那扇读门。三个调用点必须各自存在：单条 upsert 要立即落盘，导入包与 mutateCatalog 要的是「攒齐再一次性写」的全有或全无语义，合并它们会重新引入「vendor 写了 model 没写成」的半接入空壳。门数没减反而 +1，是因为本刀在写路径之外多了一件事：**已损坏记录的一次性修复**（v12→v13 迁移 1 扇写门 + 修复函数 1 扇 + 提示 meta 键 1 扇读门 + 渲染层读/清各 1 扇）。这些新门不是第二份规则，而是同一条不变量在「存量数据」这一侧的落点；`applyPlainCustomConfigWrite` 那 2 扇是把一个已有函数从 catalogStore 挪进它的合作者所在的 customConfigStore（800 行硬上限所迫），门数不变、只换了归属。"
   },
   "generality_proof": "修法不在任何一个具体字段上，而在「怎么组装一条记录」这件事上：sealUpsertDraft 的入参类型 UpsertDraft<T> 用 AllFieldsOf<T> 把目标类型的**全部**键（含可选键）取成联合，再在一个非同态映射里要求每个键都出现。于是 Vendor / Model / Mapping 三个类型中任何一个加字段，三处调用点里对应那一处的对象字面量立刻缺键 → TS2345「Property 'x' is missing」。已用两次变异实测：(A) 把 assetIngestion 从 applyVendorUpsert 的清单里摘掉 → tsc 报 missing；(B) 给 Vendor 加一个从未被引用的 brandNewField、写路径一行不动 → tsc 同样报 missing（并连带打红 credentialConfigFields.ts 那张凭据分级表）。因为拦截点是类型而不是运行期检查，它对所有调用者、所有 payload 形状、所有平台一律成立，且不存在「跑到了才发现」的空窗。",
   "shared_boundaries": [
@@ -170,19 +258,23 @@
     "strategy": "把防线从「运行期有没有丢」前移到「写得出来吗」——R17：能让编译器拦的不留给门岗，能让门岗拦的不留给人。同一手法在 credentialConfigFields.ts 已经用 Record<keyof Vendor, …> 跑通（凭据分级穷尽），本刀是它在「写路径完整性」这一轴上的对偶；两张表并联后，给 Vendor 加字段必须同时答「它是不是凭据」和「保存时怎么裁决」。",
     "artifacts": [
       "electron/catalog/upsertDraft.ts",
-      "electron/catalog/catalogStore.ts"
+      "electron/catalog/catalogStore.ts",
+      "electron/catalog/vendorFieldLossRepair.ts"
     ]
   },
   "regression_tests": [
-    "electron/catalog/vendorUpsertFieldPreservation.test.ts"
+    "electron/catalog/vendorUpsertFieldPreservation.test.ts",
+    "electron/catalog/vendorFieldLossRepair.test.ts"
   ],
   "class_regression_tests": [
-    "electron/catalog/vendorUpsertFieldPreservation.test.ts"
+    "electron/catalog/vendorUpsertFieldPreservation.test.ts",
+    "electron/catalog/vendorFieldLossRepair.test.ts"
   ],
   "invariant_owner_layer": {
     "layer": "electron/catalog/upsertDraft.ts",
     "tests": [
       "electron/catalog/vendorUpsertFieldPreservation.test.ts",
+      "electron/catalog/vendorFieldLossRepair.test.ts",
       "electron/catalog/credentialConfigFields.test.ts"
     ],
     "notes": "「供应商记录的完整性」此前没有 owner：types.ts 只声明形状，catalogStore 的三个 apply*Upsert 各自手抄一份清单，谁都没被要求答『这条记录写全了吗』。现在 owner 是 upsertDraft.ts——编译期那一层。它的对偶运行期测试是 vendorUpsertFieldPreservation.test.ts（FULL_VENDOR 用 `satisfies Required<Vendor>`，加字段不补样本同样编译红），credentialConfigFields.test.ts 是同轴的凭据分级穷尽测试。"
@@ -199,11 +291,14 @@
     "rationale": "不变量完全由本仓的 TypeScript 类型与持久化写路径决定，没有第三方运行时参与；TypeScript 版本无需变动（-? 剥 undefined 的语义是长期稳定行为，且已用 AllFieldsOf 显式绕开，不依赖某个版本的边角行为）。",
     "exit_criteria": []
   },
-  "migration": "不需要数据迁移，但**已经丢过的记录不会自己回来**：存量用户磁盘上被抹掉的 assetIngestion / authScheme 仍是缺的。可自愈的那部分靠既有兜底——内置 curated vendor 走 assetIngestionRegistry 的代码级注册表（resolveAssetIngestionWithFallback），seedBuiltins 对新装/新增 key 的 vendor 会重新写入；不能自愈的是用户自接 vendor 上的手填声明，需要用户重新保存一次该字段。本刀不做静默回填：分不清「用户主动删掉的」和「被我们抹掉的」时，按 root-cause skill 的规则宁可可见地缺失，也不猜着改写用户数据。",
+  "migration": "带版本号的一次性迁移 **v12 → v13**（`migrateVendorFieldLossV13` / `repairDroppedVendorSeedFields`）。先数出处：`Vendor.assetIngestion` 与 `Vendor.authScheme` 在全仓只有两个产地——`seedBuiltins.seedVendor` ← `BUILTIN_VENDOR_SEEDS`（代码里，永远在），以及 `importModelCatalogPackage` ← 用户手上那份接入包（vendor schema 是 `.passthrough()`）。设置页、接入向导、MCP 的 `update_vendor`（白名单 6 个字段）都写不了这两项。于是：① 内置家出处在代码里 ⇒ 按种子补回，判据是 `!(field in vendor)`，**键存在就一律不碰**（用户改成别的值、或显式清成 null，都属于他的值）；② 接入包导入的自建家出处只在用户那份包里 ⇒ 补不了，给这条记录盖一个 `vendor.meta.vendorFieldLossNotice` 时间戳，连接卡上出现一条可关掉的提示，说清哪家（就在那家卡上）、缺什么（本地素材上传方式 / Authorization 方案词）、去哪重填（重新导入那份接入包）；③ 手动接入/向导建的自建家本来就没有这两项 ⇒ 不受影响，提示文案明说这一点。`Mapping.delivery` / `abandon` 唯一产地也是接入包，没有代码侧出处，同样只能重新导入——提示文案与之共用同一条出路。**为什么是一次性迁移而不是加载时补齐**：写路径已由 `UpsertDraft<T>` 在编译期闭合，这类丢失不可能再发生，加载时补齐守的是一件不会再来的事，代价却是它会永远跟用户较劲——用户哪天真想去掉某家的 `assetIngestion`，下次启动又被按种子塞回来，而那时我们连「是我们抹的还是他删的」都分不出来。一次性迁移只跑一次，可审计、可复现、之后永不再碰用户的值（`vendorFieldLossRepair.test.ts` 最后一条就钉住这件事）。",
   "residual_risks": [
-    "存量磁盘上已丢的用户自接 vendor 的 assetIngestion 没有回填路径，用户需重新保存一次（上面 migration 已说明理由）；是否做一次带确认的回填向导，留给产品侧决定。",
-    "UpsertDraft 只覆盖 Vendor / Model / Mapping 三类记录。catalog 之外还有别的持久化重建点（如 projects / 画布节点）没有做同样的穷尽约束，本刀没有横扫；结构性发现已写进交付报告。",
-    "磁盘 JSON 上若存在 TypeScript 类型尚未声明的字段（更老/更新版本写入的），sealUpsertDraft 仍会丢掉它——因为类型就是本仓对这条记录的完整定义。Nomi 是本地优先单应用、不存在新旧版本并发写同一份 catalog，故按已知边界处理，不引入 unknown-key 透传（透传会把 v8→v9 / v11→v12 那两个『明文清干净了吗』的迁移判据变得不可判定）。",
-    "#754 实施分支（feat/agent-model-onboarding-20260918）给 Vendor 加了 credentialBinding 并在 applyVendorUpsert 里逐字段打了继承补丁。本刀基于 origin/main，两者尚未相遇——合入顺序与补丁删除见交付报告。"
+    "接入包导入的自建连接补不回来：出处只在用户那份包里。已用连接卡上的可关掉提示明着交代（哪家/缺什么/去哪重填），但用户若已删掉那份包，这两项就只能手动重建——目前没有手填 assetIngestion 的界面（全仓也没有任何写入口），这条缺口记在这里。",
+    "提示是按「非内置家」盖的，分不出这条自建连接当初是接入包导入的还是向导手建的（两者在记录上没有可区分的痕迹）。对手建的连接它是一次无害但多余的打扰——文案已明说「手动接入的连接不受影响」，并且一键可关。宁可多说一句，也不让真丢了数据的人蒙在鼓里（D4）。",
+    "`Mapping.delivery` / `abandon` 的丢失**检测不出来**：修复前的每一条 mapping 都没有这两个字段，「声明过又被抹掉」和「从来没声明」在记录上完全一样。行为上 `resolveModeDelivery` 仍按「带 query 即异步」推断，与丢失前一致，故没有单独的修复动作。",
+    "UpsertDraft 只覆盖 Vendor / Model / Mapping 三类记录。catalog 之外还有别的持久化重建点（projects / 画布节点）没有做同样的穷尽约束，本刀没有横扫。",
+    "磁盘 JSON 上若存在 TypeScript 类型尚未声明的字段（更老/更新版本写入的），sealUpsertDraft 仍会丢掉它——类型就是本仓对这条记录的完整定义。Nomi 是本地优先单应用，不存在新旧版本并发写同一份 catalog；引入 unknown-key 透传会把 v8→v9 / v11→v12 那两个「明文清干净了吗」的迁移判据变得不可判定。",
+    "#754 实施分支（feat/agent-model-onboarding-20260918）给 Vendor 加了 credentialBinding 并在 applyVendorUpsert 里打了逐字段补丁。本刀基于 origin/main，两者尚未相遇——合入顺序与补丁删除见 PR 正文。",
+    "连接卡上那条提示是用户可见改动，**没有走 R8 样张拍板**（它是修复的附属交代、不是新功能面），也还没做 zh/en 真截图走查；本 PR 只开不合，截图与拍板在合入前补。"
   ]
 }

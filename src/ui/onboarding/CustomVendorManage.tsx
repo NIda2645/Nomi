@@ -22,6 +22,8 @@ import { confirmDialog } from '../../design'
 import { confirmAndDeleteVendor } from './vendorDeleteAction'
 import { VendorBaseUrlField } from './VendorBaseUrlField'
 import { VendorConnectionNotice } from './VendorConnectionNotice'
+import { VendorFieldLossNotice } from './VendorFieldLossNotice'
+import { withoutVendorFieldLossNotice } from '../../../electron/catalog/vendorFieldLossRepair'
 import type { VendorConnection } from './useVendorHealth'
 import type { ModelSettingsConnectionFocus } from './modelSettingsNavigation'
 
@@ -33,6 +35,10 @@ type CustomVendorManageProps = {
   modelCount: number
   /** 连接健康（由 CustomVendorCard 持有，与卡片胶囊同一份，不各自探）。 */
   connection: VendorConnection | null
+  /** v12→v13 迁移盖的「这家的声明我补不了」标记时间戳；空 = 没盖过。 */
+  fieldLossNoticeAt?: string | null
+  /** 这家 vendor 记录当前的 meta（关掉提示时要把它原样写回、只去掉那一个键）。 */
+  vendorMetaRaw?: unknown
   onRecheck: () => void
   /** 变更后刷新外层目录。 */
   onChanged: () => void
@@ -46,6 +52,8 @@ export function CustomVendorManage({
   hasApiKey,
   modelCount,
   connection,
+  fieldLossNoticeAt,
+  vendorMetaRaw,
   onRecheck,
   onChanged,
   focus,
@@ -123,6 +131,20 @@ export function CustomVendorManage({
     }
   }, [vendorKey, vendorName, onChanged, t])
 
+  // 关掉提示 = 把 meta 原样写回、只去掉那一个键。走现成的 upsertVendor，不新造 IPC。
+  const handleDismissFieldLoss = React.useCallback(async () => {
+    setBusy(true)
+    try {
+      await getDesktopBridge()?.modelCatalog.upsertVendor({
+        key: vendorKey,
+        meta: withoutVendorFieldLossNotice(vendorMetaRaw) ?? null,
+      })
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }, [vendorKey, vendorMetaRaw, onChanged])
+
   const handleDeleteVendor = React.useCallback(async () => {
     setBusy(true)
     setError('')
@@ -135,6 +157,7 @@ export function CustomVendorManage({
     <section className="flex flex-col gap-2" data-vendor-connection-group>
       {/* 连接失败最先说：它是用户点进这一页的理由，且治它的地址/凭证就在紧接着的两行里。 */}
       <VendorConnectionNotice connection={connection} onRecheck={onRecheck} disabled={busy} />
+      <VendorFieldLossNotice noticeAt={fieldLossNoticeAt} onDismiss={handleDismissFieldLoss} disabled={busy} />
 
       <h3 className="text-caption font-semibold text-nomi-ink-60">
         {t('onboardingProviders.customVendor.connectionSection')}

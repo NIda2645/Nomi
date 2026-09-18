@@ -715,6 +715,10 @@ export const zhOnboardingProviders = {
     modelsSection: '模型',
     addressLabel: '接入地址',
     editAddress: '修改',
+    fieldLossTitle: '这家的两项声明可能在旧版本里丢了',
+    fieldLossBody:
+      '旧版本每次保存连接都会抹掉「本地素材怎么上传」和「Authorization 方案词」。内置供应商的已经自动补回来了；这家是你自己接入的，我们没有出处补不了。如果你当初是用接入包接的它，重新导入一次那份包就能恢复——手动接入的连接不受影响（那两项本来就只有内置种子和接入包写得了）。',
+    fieldLossDismiss: '知道了',
   },
   modelControls: {
     unlisted: '供应商已不再列出',
@@ -1944,6 +1948,10 @@ export const enOnboardingProviders = {
     modelsSection: 'Models',
     addressLabel: 'Address',
     editAddress: 'Edit',
+    fieldLossTitle: 'Two settings on this provider may have been lost',
+    fieldLossBody:
+      'An older version wiped "how local assets are uploaded" and the Authorization scheme word every time a connection was saved. Built-in providers have been restored automatically. This one you added yourself, and we have no source to restore it from. If you added it from a connection package, re-import that package to get the settings back — connections added by hand are unaffected (only built-in seeds and connection packages could ever set those two).',
+    fieldLossDismiss: 'Got it',
   },
   modelControls: {
     unlisted: 'No longer listed by provider',
