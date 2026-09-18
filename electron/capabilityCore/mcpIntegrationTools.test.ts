@@ -270,6 +270,7 @@ describe("MCP integration tool contract", () => {
 
     const adapterDraft = JSON.stringify({
       sources: [{ url: "https://docs.relay.example/images", evidence: "POST /images returns data[0].url" }],
+      assetIngestion: { strategy: "none", sourceUrl: "https://docs.relay.example/images" },
       models: [{
         modelKey: "relay-paint",
         labelZh: "Relay Paint",

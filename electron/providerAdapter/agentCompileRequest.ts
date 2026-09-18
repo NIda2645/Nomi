@@ -60,7 +60,17 @@ export function draftFromSuppliedContract(input: {
     };
   });
   return validateProviderAdapterDraft(
-    { provider: input.provider, sources: input.contract.sources, models },
+    {
+      provider: input.provider,
+      sources: input.contract.sources,
+      models,
+      // 卡顶层那几格原样带过去（§5）。**不许在这里给默认值**：`assetIngestion` 缺省就是
+      // 「这张卡不合格」，在这里补一个 `none` 等于替 Agent 做了它没做的声明。
+      assetIngestion: input.contract.assetIngestion,
+      ...(input.contract.selfCheck ? { selfCheck: input.contract.selfCheck } : {}),
+      ...(input.contract.omitted ? { omitted: input.contract.omitted } : {}),
+      ...(input.contract.openapi ? { openapi: input.contract.openapi } : {}),
+    },
     {
       providerBaseUrl: input.provider.baseUrl,
       selectedModelKeys: input.models.map((model) => model.modelKey),

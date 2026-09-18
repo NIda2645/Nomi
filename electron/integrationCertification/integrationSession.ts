@@ -92,11 +92,22 @@ export type IntegrationProposal = {
  */
 export type IntegrationCompileRequest = {
   schemaVersion: 1;
-  reasonCode: "adapter_contract_required";
+  /**
+   * 为什么这次要外部交卡。
+   *  - `adapter_contract_required`：本机没有可读文档的文本模型（鸡生蛋），交给驱动 Agent 写。
+   *  - `private_host_needs_declaration`：自建 / 内网端点。**以前这里是静默落回 OpenAI 兼容模板**
+   *    （`compileRequestFor` 返回 undefined → `builtinOpenAiCompatibleDraft`），于是「我们猜了一个
+   *    形状」和「这家真的长这样」在界面上长得一模一样。09-18 拍板：模板变成 Agent **显式选**，
+   *    不再静默——它可以在卡里直接引用内置模板，但那是它的一次声明，不是我们的一次兜底。
+   *    （设置页填表路不变：那是人在选「中转站」预设，他知道自己在选什么。）
+   */
+  reasonCode: "adapter_contract_required" | "private_host_needs_declaration";
   field: "proposal.adapterDraft";
   provider: { baseUrl: string; authType: AdapterAuthType; providerKind?: string };
   models: Array<{ modelKey: string; kind: string }>;
   docs: { provided: boolean; bytes: number };
+  /** `private_host_needs_declaration` 时给模型的那条出路（内置模板 id），不是我们替它选。 */
+  suggestedTemplate?: string;
 };
 export type IntegrationSession = {
   schemaVersion: 1;

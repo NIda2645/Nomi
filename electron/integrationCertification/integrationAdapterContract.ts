@@ -32,7 +32,26 @@ export function compileRequestFor(
   } catch {
     return undefined;
   }
-  if (!canHostPublicDocs(hostname)) return undefined;
+  // 自建 / 内网端点：**不再静默落回 OpenAI 兼容模板**（发现 4）。外部驱动的那条路上，
+  // 「我们猜了一个形状」与「这家真的长这样」必须能被分辨——把选择交回给交卡的那一方，
+  // 并把内置模板 id 作为一条**明写的出路**递过去（它选，不是我们替它选）。
+  // Nomi 内部编译器那条路（compilerAvailable）不受影响：那时本机有模型能真读文档。
+  if (!canHostPublicDocs(hostname)) {
+    if (compilerAvailable()) return undefined;
+    return {
+      schemaVersion: 1,
+      reasonCode: "private_host_needs_declaration",
+      field: "proposal.adapterDraft",
+      suggestedTemplate: "openai-compatible/chat-completions",
+      provider: {
+        baseUrl,
+        authType: session.config.authType || "bearer",
+        ...(session.config.providerKind ? { providerKind: session.config.providerKind } : {}),
+      },
+      models: media.map((item) => ({ modelKey: item.modelKey, kind: item.kind })),
+      docs: { provided: Boolean(session.config.docs), bytes: Buffer.byteLength(session.config.docs || "", "utf8") },
+    };
+  }
   // 本次选中的文本模型自己就能当编译器（key 已在手上），与 serviceLanguageModels 同一条判据。
   if (selections.some((item) => item.kind === "text")) return undefined;
   if (compilerAvailable()) return undefined;
