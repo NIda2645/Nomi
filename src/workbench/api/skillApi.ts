@@ -48,11 +48,12 @@ function requireDesktopRuntime(feature: string): DesktopBridge {
   return desktop
 }
 
-export function listWorkbenchSkills(): SkillListItemDto[] {
-  return requireDesktopRuntime('skill library').skill.list() as SkillListItemDto[]
+/** 每次调用主进程都重扫技能目录（pi 的加载器，async）：刚导入/删除的技能这一次就是新的。 */
+export async function listWorkbenchSkills(): Promise<SkillListItemDto[]> {
+  return (await requireDesktopRuntime('skill library').skill.list()) as SkillListItemDto[]
 }
 
-export function exportWorkbenchSkill(dirName: string): unknown {
+export function exportWorkbenchSkill(dirName: string): Promise<unknown> {
   return requireDesktopRuntime('skill export').skill.exportPackage(dirName)
 }
 

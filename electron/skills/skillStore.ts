@@ -1,23 +1,36 @@
+// 技能目录的 **Nomi 投影与策略**（CJS 这一半）。
+//
+// 发现与解析不在这里了（2026-09-18）：那是 pi 的 `loadSourcedSkills`，住在岛上
+// `electron/agentLane/laneSkillCatalog.mts`。这个文件留下的每一样都是 pi 不管的：
+//   · `SkillRecord`——Nomi 投影类型，CJS 两侧（IPC / MCP / 制作 Run）都要看见它，岛只 `import type`；
+//   · 根在哪（`getSkillDiscoveryRoots`）——宿主的事；
+//   · 受众（`isSkillVisibleTo` / MCP 两档）、Workbench 可选性、查找 key 归一、内容寻址读取——全是策略。
+//
+// `readSkillRecords()` 是 **async** 的，经 `laneNativeLoader.cts` 那座桥到岛上（pi 是 ESM-only，主进程只能
+// 动态 `import()` 摸到它）。每次调用都重扫盘：目录没有快照，「刚导入的技能」下一次读就在。
+// 吃 `records` 的函数一律显式收参数，不再默认偷偷读盘——谁要新鲜数据谁 `await readSkillRecords()`。
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { readSkillCuration, type SkillCuration } from "../shared/skillCuration";
+import type { SkillCuration } from "../shared/skillCuration";
 
 import { getSkillsRoots, getUserSkillsRoot } from "../runtimePaths";
-import { frontmatterString, parseSkillFrontmatter, type SkillFrontmatter } from "./skillFrontmatter";
-import { migrateLegacySkillManifest } from "./skillManifestMigration";
-import { computeSkillContentHash, isSafeSkillFilePath, readSkillDirFiles, SKILL_PACKAGE_VERSION } from "./skillPackage";
-import {
-  parseSkillManifest,
-  type SkillAudience,
-  type SkillManifest,
-} from "./skillManifestSchema";
+import { computeSkillContentHash, isSafeSkillFilePath, readSkillPackageFiles, SKILL_PACKAGE_VERSION } from "./skillPackage";
+import type { SkillAudience, SkillManifest } from "./skillManifestSchema";
 
 export type SkillRecord = {
   curation?: SkillCuration;
   name: string;
+  /** 包句柄：`<dir>/SKILL.md` 的目录名，或根目录下 `<stem>.md` 技能的文件名去掉 `.md`。IPC / MCP / 查找都认它。 */
   directoryName: string;
+  /** 技能文件的绝对路径（`SKILL.md`，或根目录下的 `<stem>.md`）。 */
   filePath: string;
+  /** 包根：技能目录；根 `.md` 技能则是它所在的技能根目录。lane 的可信读根就是它。 */
+  packageDir: string;
   description: string;
+  /** pi 给的方法正文——**已去 frontmatter**。进提示词的只有它。 */
+  content: string;
+  /** 整份文件原文（含 frontmatter）。MCP `resources/read` 与导出要的是它（R31：外部读者期待完整的 SKILL.md）。 */
   body: string;
   manifest: SkillManifest | null;
   manifestError?: string;
@@ -27,6 +40,8 @@ export type SkillRecord = {
   audience: SkillAudience;
   packageVersion: typeof SKILL_PACKAGE_VERSION;
   contentHash: string;
+  /** 这条技能要不要 coding 工具（自带 `scripts/`/`bin/`/`hooks/`，或 frontmatter 写了 `tools: coding`）。 */
+  requiresCodingTools: boolean;
 };
 
 /**
@@ -42,6 +57,8 @@ export type SkillDiscoveryRoot = {
 
 export type SkillDiscoveryDiagnostic = {
   type: "warning" | "error";
+  /** pi 的稳定诊断码（`file_info_failed` / `list_failed` / `read_failed` / `parse_failed` / `invalid_metadata`），或 Nomi 投影层的（`shadowed` / `symlink` / `escaped` / `corrupt` / `legacy_manifest`）。 */
+  code?: string;
   message: string;
   path?: string;
 };
@@ -101,131 +118,21 @@ export function normalizeSkillLookupKey(value: unknown): string {
 }
 
 /**
- * Read the Nomi extension block out of `metadata.nomi`.
- *
- * Three outcomes, and the middle one is the security-relevant one: a block that
- * exists but does not validate returns `manifest: null` **with** an error, and
- * `electron/ai/agentChatV2.ts` turns that into an empty capability list (zero
- * tools).  A missing block is not an error — most skills are pure knowledge and
- * declare nothing beyond the two required frontmatter fields.
+ * 全部根 → 目录。**每次都重扫盘**（目录没有快照）。实现在岛上（pi 的 `loadSourcedSkills`），这里只是桥。
+ * 形状在这里手抄一遍而不是 `typeof import('…laneNativeLoader.cjs')`：那样会把岛的 .mts 拖进 CJS 工程
+ * （`feedbackIpc.ts:57` 试过，不行）。漂移守卫在桥那一侧：`laneNativeLoader.cts` 把它声明成返回 `SkillRecord[]`。
  */
-export function readSkillManifest(front: SkillFrontmatter): { manifest: SkillManifest | null; error?: string } {
-  if (front.error) return { manifest: null, error: front.error };
-  const metadata = front.values.metadata;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return { manifest: null };
-  const nomi = (metadata as Record<string, unknown>).nomi;
-  if (nomi === undefined) return { manifest: null };
-  const parsed = parseSkillManifest(nomi);
-  return parsed.ok ? { manifest: parsed.manifest } : { manifest: null, error: `metadata.nomi 校验失败：${parsed.error}` };
-}
-
-/**
- * Discover only direct Skill packages (`root/<dir>/SKILL.md`).  Pi's generic
- * loader also accepts loose markdown files and recursively discovers nested
- * roots; that is useful for a generic coding agent but is not Nomi's package
- * contract.  All transports call this function so metadata, hash and
- * directory precedence cannot drift.
- */
-export function discoverSkillRecordsFromRoots(
-  roots: readonly SkillDiscoveryRoot[],
-): SkillDiscoveryResult {
-  const records: SkillRecord[] = [];
-  const diagnostics: SkillDiscoveryDiagnostic[] = [];
-  const seenDirs = new Set<string>();
-  const normalizedRoots = roots
-    .filter((root) => typeof root?.path === "string" && path.isAbsolute(root.path))
-    .map((root) => ({
-      path: path.resolve(root.path),
-      origin: root.origin === "user" ? "user" as const : "builtin" as const,
-    }));
-  for (const root of normalizedRoots) {
-    if (!fs.existsSync(root.path)) continue;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(root.path, { withFileTypes: true })
-        .sort((left, right) => left.name.localeCompare(right.name));
-    } catch (error) {
-      diagnostics.push({
-        type: "warning",
-        message: `Could not read Skill root: ${(error as Error).message}`,
-        path: root.path,
-      });
-      continue;
-    }
-    for (const entry of entries) {
-      const directoryKey = entry.name.normalize("NFC").toLowerCase();
-      if (!entry.isDirectory() || seenDirs.has(directoryKey)) continue;
-      const skillDir = path.join(root.path, entry.name);
-      if (!fs.existsSync(path.join(skillDir, "SKILL.md"))) continue;
-      // 存量 `skill.json` 只可能出现在用户目录（内置的已在 2026-09-07 的收敛里改写完）。
-      // 迁移一次就没有下一次：迁完目录里没有那个文件了。失败不阻断加载。
-      if (root.origin === "user") {
-        const migration = migrateLegacySkillManifest(skillDir);
-        if (migration.message) {
-          diagnostics.push({ type: migration.migrated ? "warning" : "error", message: migration.message, path: skillDir });
-        }
-      }
-      let files: Record<string, string>;
-      try {
-        files = readSkillDirFiles(skillDir);
-      } catch (error) {
-        diagnostics.push({
-          type: "warning",
-          message: `Skill package could not be read, skipped: ${(error as Error).message}`,
-          path: skillDir,
-        });
-        continue;
-      }
-      const body = files["SKILL.md"].trim();
-      if (!body) continue;
-      // 损坏包（正文含 NUL 等 C0 控制字符 = 二进制/截断/写坏）不许「占坑遮蔽」：若它优先级更高，
-      // 加进 seenDirs 就会把同目录名下一个合法包（如 user 覆盖）挡掉。故这里当损坏处理——记一条 warning
-      // 且**不**加 seenDirs，让后续 root 里同名的合法包顶上（skillStore.test.ts 的 shadow 优先级测试钉死）。
-      // 只拦真正的控制字符（放行 \t\n\r，它们在 markdown 里合法）。字符类里的控制字符是刻意的。
-      // eslint-disable-next-line no-control-regex
-      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(body)) {
-        diagnostics.push({
-          type: "warning",
-          message: "Skill package SKILL.md contains control characters, skipped as corrupt",
-          path: skillDir,
-        });
-        continue;
-      }
-      seenDirs.add(directoryKey);
-      const front = parseSkillFrontmatter(body);
-      const { manifest, error } = readSkillManifest(front);
-      records.push({
-        curation: front.error ? undefined : readSkillCuration(front.values),
-        // `name` and `description` have exactly one owner now: the two required
-        // frontmatter fields the Agent Skills spec defines.  The extension block
-        // may not restate them, so the two-manifest drift cannot come back.
-        name: frontmatterString(front, "name") || entry.name,
-        directoryName: entry.name,
-        filePath: path.join(skillDir, "SKILL.md"),
-        description: frontmatterString(front, "description"),
-        body,
-        manifest,
-        manifestError: error,
-        disableModelInvocation: front.values["disable-model-invocation"] === true,
-        origin: root.origin,
-        // Imported Skills cannot publish themselves through package metadata.
-        audience: root.origin === "user" ? "internal" : (manifest?.audience ?? "internal"),
-        packageVersion: SKILL_PACKAGE_VERSION,
-        contentHash: computeSkillContentHash(files),
-      });
-    }
-  }
-  return { records, diagnostics };
-}
-
-export function readSkillRecords(): SkillRecord[] {
-  return discoverSkillRecordsFromRoots(getSkillDiscoveryRoots()).records;
+export async function readSkillRecords(): Promise<SkillRecord[]> {
+  const native = createRequire(__filename)("../agentLane/laneNativeLoader.cjs") as {
+    readSkillRecords(): Promise<SkillRecord[]>;
+  };
+  return native.readSkillRecords();
 }
 
 export function findSkillRecord(
   skillKey: string,
   skillName: string,
-  records: SkillRecord[] = readSkillRecords(),
+  records: readonly SkillRecord[],
 ): SkillRecord | null {
   if (!records.length) return null;
   const normalizedKey = normalizeSkillLookupKey(skillKey);
@@ -296,7 +203,7 @@ export function findExactSkillRecord(key: string, records: readonly SkillRecord[
 
 export function listSkillSummaries(
   audience: SkillAudience,
-  records: SkillRecord[] = readSkillRecords(),
+  records: readonly SkillRecord[],
 ): SkillSummary[] {
   return records.filter((record) => isSkillVisibleTo(record, audience)).map((record) => ({
     name: record.name,
@@ -311,9 +218,8 @@ export function listSkillSummaries(
 /** Re-read through the canonical package reader; a changed package never answers an old identity. */
 function currentMcpSkillFiles(record: SkillRecord): Record<string, string> | null {
   try {
-    const root = path.dirname(record.filePath);
-    if (!path.isAbsolute(root) || fs.lstatSync(root).isSymbolicLink()) return null;
-    const files = readSkillDirFiles(root);
+    if (!path.isAbsolute(record.packageDir) || fs.lstatSync(record.packageDir).isSymbolicLink()) return null;
+    const files = readSkillPackageFiles(record);
     return computeSkillContentHash(files) === record.contentHash ? files : null;
   } catch {
     return null;
@@ -321,8 +227,8 @@ function currentMcpSkillFiles(record: SkillRecord): Record<string, string> | nul
 }
 
 export function listSkillSummariesForMcp(
-  access: SkillMcpAccess = "public",
-  records: SkillRecord[] = readSkillRecords(),
+  access: SkillMcpAccess,
+  records: readonly SkillRecord[],
 ): Array<SkillSummary & { filePaths: string[] }> {
   return records.filter((record) => isSkillVisibleToMcp(record, access)).flatMap((record) => {
     const files = currentMcpSkillFiles(record);
@@ -343,7 +249,7 @@ export type SkillContent = SkillSummary & { body: string };
 export function readSkillContent(
   key: string,
   audience: SkillAudience,
-  records: SkillRecord[] = readSkillRecords(),
+  records: readonly SkillRecord[],
   expected?: Readonly<{ packageVersion: string; contentHash: string }>,
 ): SkillContent | null {
   const record = findExactSkillRecord(key, records);
@@ -364,8 +270,8 @@ export function readSkillContent(
 
 export function readSkillContentForMcp(
   key: string,
-  access: SkillMcpAccess = "public",
-  records: SkillRecord[] = readSkillRecords(),
+  access: SkillMcpAccess,
+  records: readonly SkillRecord[],
   expected?: Readonly<{ packageVersion: string; contentHash: string }>,
   filePath = "SKILL.md",
 ): SkillContent | null {
