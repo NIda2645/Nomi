@@ -154,14 +154,14 @@ export function readVerbs(): VerbDeclaration[] {
     name: "list_models", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.context.read", effect: "read", nextAction: "none", internalGroup: "models",
     describe: {
       does: "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots.",
-      useWhen: "Before choosing a modelKey or any parameter in draft_shots, and when the user asks which models can do something.",
-      notWhen: "It cannot connect a model or take an API key (start_model_setup). Never invent a modelKey — use the exact strings returned here.",
-      params: "kind (image, video or audio) narrows the catalog; modelKey returns one model in full.",
+      useWhen: "Before choosing a modelId or any parameter in draft_shots, and when the user asks which models can do something.",
+      notWhen: "It cannot connect a model or take an API key (start_model_setup). Never invent a modelId — use the exact strings returned here.",
+      params: "kind (image, video or audio) narrows the catalog; modelId returns one model in full.",
     },
     promptGuidelines: READ_GUIDELINES,
     schema: z.object({
       kind: z.enum(["image", "video", "audio"]).optional().describe("Only models that produce this kind of media."),
-      modelKey: z.string().trim().min(1).optional().describe("Catalog key of one model to read in full."),
+      modelId: z.string().trim().min(1).optional().describe("Catalog id of one model to read in full — the same modelId this verb returns and draft_shots takes."),
     }).strict(),
     examples: [{ when: "Which models can make video:", arguments: { kind: "video" } }],
     prepareArguments: modelArgumentTolerance({}),

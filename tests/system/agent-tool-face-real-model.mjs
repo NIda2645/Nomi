@@ -104,8 +104,8 @@ function fakePorts(world = 'default') {
     ...createExtendedLaneTools({ execute: async (call) => {
       const a = call.args ?? {}
       switch (call.toolName) {
-        case 'draft_shots': return { ok: true, result: { operation: { operationId: a.draftId ?? 'op-1', state: 'draft', cardHidden: true, shots: (a.shots ?? []).map((s, i) => ({ shotId: s.shotId ?? `shot-${7 + i}`, candidate: { prompt: s.prompt } })) }, clamps: [] } }
-        case 'generate': return { ok: true, result: { operation: { operationId: a.draftId, state: 'draft' }, shots: a.shotIds ?? ['shot-1'], nextAction: 'await_user' } }
+        case 'draft_shots': return { ok: true, result: { operation: { operationId: a.operationId ?? 'op-1', state: 'draft', cardHidden: true, shots: (a.shots ?? []).map((s, i) => ({ shotId: s.shotId ?? `shot-${7 + i}`, candidate: { prompt: s.prompt } })) }, clamps: [] } }
+        case 'generate': return { ok: true, result: { operation: { operationId: a.operationId, state: 'draft' }, shots: a.shotIds ?? ['shot-1'], nextAction: 'await_user' } }
         case 'check_job': return { ok: true, result: { operation: { operationId: a.jobId, state: 'submitted', progress: 40, spent: { amount: 0.2, currency: 'CNY' } } } }
         case 'cancel_job': return { ok: true, result: { operation: { operationId: a.jobId, state: 'cancelled' } } }
         case 'edit_timeline': return { ok: true, result: { applied: true, revision: 'r2', undoToken: 'undo-1' } }

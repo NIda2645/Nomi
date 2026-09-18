@@ -5,10 +5,10 @@
 // 多镜）。字段怎么落位由 `projectByFieldMap` 执行那张表。
 //
 // 为什么这么改（2026-09-18，用户原话「该有两遍，不该有四遍」）：一个能力原本被重述四遍——动词声明、
-// 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的名字，宿主要内部名，而且
+// 这里的翻译、契约 schema、handler 及下游投影。头两遍该有（模型要对它友好的形状，宿主要内部形状，而且
 // 宿主那道校验是跨进程 + 花钱闸的准入规定，必须继续独立跑）。这一遍不该手写：它承载的全部信息就是
 // 前两遍之间的对应关系。手写它的代价当天量到过两次——`durationSec` 被改名成宿主没有的顶层字段（整条
-// 拒收），`modelKey` 与逐镜 `candidate.providerId/modelId` 压根没被列进解构（**静默**丢掉，模型点名的
+// 拒收），平铺的模型字段与逐镜 `candidate.providerId/modelId` 压根没被列进解构（**静默**丢掉，模型点名的
 // 模型被换成用户默认的那个去花钱）。这两种病因是同一个：对应关系只活在一段手写代码里，没有东西能核对
 // 它完不完整、指向的宿主字段存不存在。
 //
@@ -70,8 +70,8 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
       const shots = (Array.isArray(args.shots) ? args.shots : [])
         .map((shot) => applyDefaultsByFieldMap(args, DRAFT_SHOTS_FIELD_MAP, shot as Args))
       // 分支判断是真逻辑（改草稿 / 单镜摊平 / 多镜），不是字段名单——它留在代码里。
-      const draftId = typeof args.draftId === 'string' ? args.draftId : undefined
-      if (draftId) {
+      const operationId = typeof args.operationId === 'string' ? args.operationId : undefined
+      if (operationId) {
         // 修改已有草稿：单镜草稿按顶层候选 patch（多镜按 shotId 的 patch 不在本刀，返回值会说清）。
         // 信封字段落不进候选 patch，这一条写在表的 `absentOn.patch` 里，不在这里摘。
         const patch = draftShotToPlanShot(shots[0] ?? {}, 'patch')

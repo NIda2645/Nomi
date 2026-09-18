@@ -41,7 +41,7 @@ const canvas = (id: string, name: string, args: Record<string, unknown>, semanti
   resultText: `Applied directly (undoable).\nUser sees: ${userSees}`,
 });
 const DRAFT_USER_SEES = 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.';
-/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到 draftId（jobId=）。 */
+/** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到 operationId（回执末行印成 jobId=）。 */
 const draft = (id: string, args: Record<string, unknown>, operationId: string): L1Call =>
   domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (jobId=${operationId})`);
 const turn = (prompt: string, ...frames: L1Frame[]): L1Turn => ({ prompt, frames });
@@ -102,7 +102,7 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
       'The job was cancelled; credit already spent is not refunded.')), say('Cancellation was requested once.'))]),
   scenario('G3', 'generation', 'Preserve scalar parameters while drafting and revising', [turn('Revise this structured draft.',
     calls(draft('create-g3', { shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')),
-    calls(draft('patch-g3', { draftId: 'gen-3', shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')), say('Nested parameters survived the revision.'))]),
+    calls(draft('patch-g3', { operationId: 'gen-3', shots: [{ prompt: 'Sunrise', parameters: nestedParameters }] }, 'gen-3')), say('Nested parameters survived the revision.'))]),
   scenario('K1', 'task', 'A draft task progresses without duplicating state', [turn('Start a reviewable short-film draft.',
     calls(draft('start-k1', { shots: [{ prompt: 'A short film opening' }] }, 'run-k1')), say('The draft task was created.'))],
     { task: { productionRunId: 'run-k1', operationId: 'start-k1', facts: [queued, running, complete] } }),

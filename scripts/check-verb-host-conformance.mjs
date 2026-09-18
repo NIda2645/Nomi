@@ -83,8 +83,6 @@ const TRANSLATOR_CONSUMED = {
   'stage_shot/staging': '包裹对象摊平进 create_staging_reference 的字段',
   'stage_shot/cameraMove': '包裹对象摊平进 create_camera_move 的字段',
   'make_artifact/fileType': '折进 artifact.fileType（节点内部结构），值仍在 payload 里',
-  'edit_timeline/revision': '翻成 baseRevision，值仍在 payload 里',
-  'undo/changeId': '翻成 undoToken，值仍在 payload 里',
 }
 
 /** 每个 lane 的宿主桥 = 各传输适配器**真正调用的那个函数**，不是另写一份校验。 */

@@ -107,7 +107,7 @@ describe('工具回执从真实审批结论派生', () => {
   }
 
   const editArgs = {
-    revision: 'revision-1', summary: '劈成两半',
+    baseRevision: 'revision-1', summary: '劈成两半',
     operations: [{ kind: 'split', clipId: 'clip-1', atFrame: 30 }],
   }
 
@@ -140,7 +140,7 @@ describe('工具回执从真实审批结论派生', () => {
       drafted: { operation: { operationId: 'op-7' } },
       spendDecision: { decidedBy: 'policy:full_auto', receiptId: 'receipt-1' },
       started: { ok: true },
-    }, 'auto-granted', { draftId: 'op-7' })
+    }, 'auto-granted', { operationId: 'op-7' })
     expect(outcome.ok).toBe(true)
     expect(outcome.nextAction?.kind).toBe('job_running')
     expect(outcome.nextAction?.jobId).toBe('op-7')
@@ -150,7 +150,7 @@ describe('工具回执从真实审批结论派生', () => {
   it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
     const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
       .find(candidate => candidate.name === 'generate')!
-    const outcome = await tool.execute(tool.schema.parse({ draftId: 'op-7' }), { toolCallId: 'call-1', signal }) as
+    const outcome = await tool.execute(tool.schema.parse({ operationId: 'op-7' }), { toolCallId: 'call-1', signal }) as
       { ok: boolean; failure?: { code: string; message: string } }
     expect(outcome.ok).toBe(false)
     expect(outcome.failure?.code).toBe('user_sees_spend_card')

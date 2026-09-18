@@ -159,19 +159,19 @@ try {
           : { type: 'text', text: '这一笔要花多少钱，等你点头之前我不会动手。' },
       })
       if (sample.expectsDraft) {
-        // 20 动词：卡在 generate 那一刻出现；draftId 由宿主生成，从草稿结果里读回再释放 generate。
-        let draftId
+        // 20 动词：卡在 generate 那一刻出现；operationId 由宿主生成，从草稿结果里读回再释放 generate。
+        let operationId
         const drafted = walk.fixture.expectText({
           label: `${sample.id} drafted`,
           match: (body) => {
             const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === callId)
             if (!result) return false
-            draftId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+            operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
             return true
           },
           reply: { type: 'hold' },
         })
-        drafted.received.then(() => drafted.release({ type: 'tool', id: `${callId}-generate`, name: 'generate', args: { draftId } }))
+        drafted.received.then(() => drafted.release({ type: 'tool', id: `${callId}-generate`, name: 'generate', args: { operationId } }))
         walk.fixture.expectText({
           label: `${sample.id} settles`,
           match: (body) => (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === `${callId}-generate`),

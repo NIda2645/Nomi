@@ -62,14 +62,14 @@ export function normalizeStoryboardAnchorDefaults(plan: StoryboardPlan, entries:
     const kind = shot.shotKind ?? (shot.durationSec > 0 ? 'video' : 'image')
     const candidates = entries.filter(candidate => !shot.modelVendor || candidate.vendor === shot.modelVendor)
     const entry = shot.modelKey
-      ? candidates.find(candidate => candidate.kind === kind && candidate.modelKey === shot.modelKey)
+      ? candidates.find(candidate => candidate.kind === kind && candidate.modelId === shot.modelKey)
       : pickStoryboardDefaultModel(candidates, kind)
     if (!entry) throw new Error(i18n.t('storyboardEditor.anchorPolicy.catalogMissing', { index: shot.index }))
-    const archetype = resolveArchetypeForModel({ modelKey: entry.modelKey, modelAlias: entry.modelAlias,
+    const archetype = resolveArchetypeForModel({ modelKey: entry.modelId, modelAlias: entry.modelAlias,
       vendorKey: entry.vendor, meta: { archetypeId: entry.archetypeId } })
     const modes = archetype?.modes.filter(mode => entry.modes.some(candidate => candidate.modeId === mode.id)) ?? []
     const referenceModes = modes.filter(mode => mode.slots.some(slot => slot.kind === 'image_ref' || slot.kind === 'first_frame'))
-    if (!referenceModes.length) return { ...shot, modelKey: entry.modelKey, ...(entry.vendor ? { modelVendor: entry.vendor } : {}), modeId: shot.modeId ?? entry.defaultModeId }
+    if (!referenceModes.length) return { ...shot, modelKey: entry.modelId, ...(entry.vendor ? { modelVendor: entry.vendor } : {}), modeId: shot.modeId ?? entry.defaultModeId }
     // The model may put an anchor in an edge-named/unknown bucket. Only an
     // exact anchor-id + URL proof allows rebinding it; authored declared slots
     // and unrelated unknown inputs retain their original semantics.
@@ -112,7 +112,7 @@ export function normalizeStoryboardAnchorDefaults(plan: StoryboardPlan, entries:
         return count < required.min || (required.max !== undefined && count > required.max)
       })) continue
       if (mode.maxTotalReferences !== undefined && mode.slots.reduce((sum, slot) => sum + bindingsOf(bindings, slot.kind).length, 0) > mode.maxTotalReferences) continue
-      return { ...shot, modelKey: entry.modelKey, ...(entry.vendor ? { modelVendor: entry.vendor } : {}), modeId: mode.id, referenceBindings: bindings }
+      return { ...shot, modelKey: entry.modelId, ...(entry.vendor ? { modelVendor: entry.vendor } : {}), modeId: mode.id, referenceBindings: bindings }
     }
     throw new Error(i18n.t('storyboardEditor.anchorPolicy.capacityExceeded', { index: shot.index }))
   })

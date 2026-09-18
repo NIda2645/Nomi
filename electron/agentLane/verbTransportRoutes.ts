@@ -1,8 +1,14 @@
 // 延迟组动词 → 传输层调用的**对应关系**，作为数据。翻译函数从这里生成（`laneVerbTransport.ts`）。
 //
-// 用户的原话是「该有两遍，不该有四遍」。该有的两遍是：动词声明（模型看的，`modelKey` / `durationSec`）
-// 与契约 schema（宿主收的，`modelId` / `parameters.duration`，且它是跨进程 + 花钱闸那一侧的准入规定，
-// 必须继续独立校验）。这个文件是把**第三遍**——手写的翻译——变成前两遍之间的一张对应表。
+// 用户的原话是「该有两遍，不该有四遍」。该有的两遍是：动词声明（模型看的，`durationSec`）与契约
+// schema（宿主收的，`parameters.duration`，且它是跨进程 + 花钱闸那一侧的准入规定，必须继续独立校验）。
+// 这个文件是把**第三遍**——手写的翻译——变成前两遍之间的一张对应表。
+//
+// **2026-09-18 起这张表只剩四个名字对。** 原来的九对里有五对的理由是「模型面叫 A、宿主面叫 B」——
+// 纯命名偏好，按 R5.5（偏差理由只许领域约束）不合法。那五对已经在模型面改成同名：
+// `modelKey→modelId`、`draftId→operationId`（两处）、`changeId→undoToken`、`revision→baseRevision`。
+// 剩下的四条**都有领域理由**：`durationSec` 改的是嵌套层级（宿主读时长只认 `parameters.duration`），
+// `candidate.providerId` / `candidate.modelId` 是拍平嵌套，`jobId` 是**双域**（见 SIMPLE_VERB_ROUTES）。
 //
 // 名单一个都不许手抄：源字段名单取自动词自己的 schema，目标字段名单取自宿主自己的 schema
 // （`objectFieldKeys`）。所以「动词加了字段没加对应关系」「对应关系指向宿主没有的字段」两种漂移
@@ -121,7 +127,7 @@ const skillWriteKeys = objectFieldKeys(skillWriteSemanticInputSchema, 'skill wri
 /**
  * 信封字段在这两个形状上没有位置。**处置必须逐条写明**，因为「送不到」与「可以丢」长得一模一样：
  *   · `title` / `role` → `refuse`：模型填了它就是想让它生效，这条路送不到就当场说，别让它无声消失；
- *   · `shotId` → `drop`：带 draftId 时模型用它指哪一镜，而宿主的候选 patch 不寻址单镜（多镜逐镜 patch
+ *   · `shotId` → `drop`：带 operationId 时模型用它指哪一镜，而宿主的候选 patch 不寻址单镜（多镜逐镜 patch
  *     还没做）。这一条是**有意**的丢弃，返回值里会说清究竟改了哪一镜，所以不抛。
  */
 const REFUSE_ON_PATCH = '改草稿递给宿主的是候选 patch（提示词/模型/参数/参考），信封不在那份形状里'
@@ -138,7 +144,7 @@ const SHOT_ID_ABSENT = Object.freeze({
 /**
  * `draft_shots` 的一镜 → 宿主的一镜。今天挖到的每一处缺陷都在这张表里有一行：
  *   · `durationSec → parameters.duration`（曾被改名成宿主没有的顶层 `durationSeconds`，整条拒收）
- *   · `modelKey → modelId` 与 `candidate.modelId → modelId`（两条抢同一个落点，优先级是**声明**出来的）
+ *   · `modelId` 与 `candidate.modelId` 都落在宿主的 `modelId`（两条抢同一个落点，优先级是**声明**出来的）
  *   · `candidate` 的两个子字段（曾整只不在解构里 = 静默丢，模型点名的模型被换成用户默认的那个）
  *   · `references` 是**有损**那一档：形状变了，身份由宿主补，显式标成 `resolved` 而不是同名透传
  */
@@ -158,13 +164,14 @@ export const DRAFT_SHOT_FIELD_MAP: VerbFieldMap = assertProvenanceResolvable(ass
       kind: 'rename', to: 'parameters.duration', from: ['model-authored'],
       why: '宿主读时长只有一处（mcpGenerationVideoResolve.shotDurationSeconds 认 parameters.duration），顶层没有时长字段',
     },
-    modelKey: { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelKey'], why: '模型面叫 modelKey，宿主面叫 modelId', priority: 1 },
+    // 平铺的那个与 `candidate.modelId` 同名同落点，靠声明出来的优先级分胜负（逐镜点名的 candidate 赢）。
+    modelId: { kind: 'same', from: ['from-read:list_models.modelId'], priority: 1 },
     candidate: {
       kind: 'expanded', into: ['candidate.providerId', 'candidate.modelId'],
       why: '宿主的逐镜 candidate 是完整的内部候选（candidateId/revision/传输接线），模型给不出；它给的两件按目录身份分别落位',
     },
-    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '模型按目录点名的供应商' },
-    'candidate.modelId': { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelKey'], why: '模型按目录点名的模型，优先于 modelKey', priority: 2 },
+    'candidate.providerId': { kind: 'rename', to: 'providerId', from: ['from-read:list_models.vendor'], why: '拍平嵌套：模型按目录点名的供应商，宿主收在顶层' },
+    'candidate.modelId': { kind: 'rename', to: 'modelId', from: ['from-read:list_models.modelId'], why: '拍平嵌套：宿主收在顶层，优先于平铺的 modelId', priority: 2 },
     references: {
       kind: 'resolved', to: 'references',
       // 两档都真：assetId 是模型从 look_at_media 拿的，内容哈希与版本由宿主补。
@@ -176,22 +183,32 @@ export const DRAFT_SHOT_FIELD_MAP: VerbFieldMap = assertProvenanceResolvable(ass
   },
 }))
 
-/** `draft_shots` 顶层：两个缺省折进每一镜，`draftId` 选分支并翻成 `operationId`。 */
+/** `draft_shots` 顶层：两个缺省折进每一镜，`operationId` 在场即选「改草稿」那一支。 */
 export const DRAFT_SHOTS_FIELD_MAP: VerbFieldMap = assertProvenanceResolvable(assembleVerbFieldMap({
   label: 'draft_shots → generation plan',
   sourceKeys: verbKeys('draft_shots'),
   targets: { patch: planPatchKeys, create: planCreateKeys },
   relations: {
-    draftId: {
-      kind: 'rename', to: 'operationId', from: ['from-read:draft_shots.operationId'],
-      why: '草稿 id 是宿主发的 operationId；在场即改草稿，缺省即新建',
-      absentOn: { create: { disposition: 'drop', why: '新建时还没有草稿，operationId 由宿主发——走到 create 分支就说明模型没给 draftId' } },
+    operationId: {
+      kind: 'same', from: ['from-read:draft_shots.operationId'],
+      absentOn: { create: { disposition: 'drop', why: '新建时还没有草稿，operationId 由宿主发——走到 create 分支就说明模型没给它' } },
     },
     taskKind: { kind: 'defaults', into: 'shots', from: ['model-authored'], why: '这一批镜头的缺省任务类型；逐镜自己写的优先' },
-    candidate: { kind: 'defaults', into: 'shots', from: ['from-read:list_models.modelKey'], why: '这一批镜头的缺省目录身份；逐镜自己写的优先' },
+    candidate: { kind: 'defaults', into: 'shots', from: ['from-read:list_models.modelId'], why: '这一批镜头的缺省目录身份；逐镜自己写的优先' },
     shots: { kind: 'elements', map: DRAFT_SHOT_FIELD_MAP, why: '逐镜按上面那张表翻' },
   },
 }))
+
+/**
+ * `jobId` 这一条**不是命名偏好**，是这张表上最后一条真正的翻译：`check_job` / `cancel_job` 是**双域**
+ * 动词（`readVerbs.ts` 的 `alsoCovers: ["export.read"]`、`writeVerbs.ts` 的 `alsoCovers: ["generation.control"]`）。
+ * 同一个 `jobId` 在导出域**同名直传**（`EXPORT_JOB_ROUTES`，宿主字段真的叫 `jobId`，而且它是
+ * `<projectDir>/.../jobs/<jobId>/` 的目录名），在生成域才翻成 `operationId`（那边它是
+ * `.nomi/runs/<operationId>/` 的目录名）。**两个域的宿主各有一份持久化，用的是两个不同的词**——
+ * 模型面只能有一个名字，所以两个之中必有一个是翻译。把模型面改叫 `operationId` 不会让表变短：
+ * 导出那半边会从「同名」变成「另一条 rename」，表反而更长。
+ */
+const JOB_ID_IS_DUAL_DOMAIN = '双域动词：导出域宿主字段真叫 jobId（jobs/<jobId>/ 目录名），生成域叫 operationId（.nomi/runs/<id>/ 目录名）；模型面只能有一个名字'
 
 /** 一条纯对应关系的路线：目标形状固定，字段全由表生成。 */
 export type SimpleVerbRoute = Readonly<{ map: VerbFieldMap; target: string }>
@@ -208,24 +225,24 @@ const simple = (label: string, verb: string, target: string, targetKeys: readonl
  */
 export const SIMPLE_VERB_ROUTES: Readonly<Record<string, SimpleVerbRoute>> = Object.freeze({
   generate: simple('generate → generation plan present', 'generate', 'present', planPresentKeys, {
-    draftId: { kind: 'rename', to: 'operationId', from: ['from-read:draft_shots.operationId'], why: '草稿 id 在宿主面是 operationId' },
+    operationId: { kind: 'same', from: ['from-read:draft_shots.operationId'] },
     shotIds: { kind: 'same', from: ['from-read:look_at_canvas.id'] },
   }),
   check_job: simple('check_job → generation status read', 'check_job', 'status', statusKeys, {
-    jobId: { kind: 'rename', to: 'operationId', from: ['from-read:generate.jobId'], why: '模型面叫 jobId，生成域的同一件东西叫 operationId' },
+    jobId: { kind: 'rename', to: 'operationId', from: ['from-read:generate.jobId'], why: JOB_ID_IS_DUAL_DOMAIN },
   }),
   cancel_job: simple('cancel_job → generation status cancel', 'cancel_job', 'status', statusKeys, {
-    jobId: { kind: 'rename', to: 'operationId', from: ['from-read:generate.jobId'], why: '同 check_job' },
+    jobId: { kind: 'rename', to: 'operationId', from: ['from-read:generate.jobId'], why: JOB_ID_IS_DUAL_DOMAIN },
   }),
   undo: simple('undo → timeline undo', 'undo', 'undo', undoKeys, {
-    // 契约声明的返回字段叫 `undoToken`；模型看到的是 `changeId`，因为 lane 在
-    // `laneExtendedTools.ts` 的 nextAction 投影里把它改了名。来源要指向**契约声明的那个字段**，
-    // 否则这条核不动——第一次写成 changeId 时门岗当场红，那正是它该红的地方。
-    changeId: { kind: 'rename', to: 'undoToken', from: ['from-read:edit_timeline.undoToken'], why: '模型拿到的是 changeId，时间轴域用它换 undoToken' },
+    // `edit_timeline` 的结果里那个字段叫 `undoToken`（契约 `timelineWrite.ts` 声明的），模型面收的
+    // 也叫 `undoToken`——出来进去同一个词。2026-09-18 之前模型面叫 `changeId`，而结果正文里印的是
+    // `undoToken`：一条工具结果里两个名字都在，模型得自己猜哪个是 `undo` 要的。
+    undoToken: { kind: 'same', from: ['from-read:edit_timeline.undoToken'] },
     expectedRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
   }),
   edit_timeline: simple('edit_timeline → timeline edit plan', 'edit_timeline', 'applyPlan', applyPlanKeys, {
-    revision: { kind: 'rename', to: 'baseRevision', from: ['from-read:read_timeline.revision'], why: '模型从 read_timeline 拿到的 revision，就是这次编辑的 baseRevision' },
+    baseRevision: { kind: 'same', from: ['from-read:read_timeline.revision'] },
     summary: { kind: 'same', from: ['model-authored'] },
     operations: { kind: 'same', from: ['model-authored', 'from-read:read_timeline.clips'] },
   }),
