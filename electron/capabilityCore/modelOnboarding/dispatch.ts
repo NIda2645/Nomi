@@ -209,6 +209,25 @@ export function rejectionsFromError(error: unknown, card: unknown): OnboardingRe
   }];
 }
 
+/**
+ * 「这家需要的东西，声明卡表达不了」——**唯一**的出口是人写调用脚本（方案 §5 末段）。
+ *
+ * 四类表达不了的：请求签名 / HMAC / OAuth 换 token；非 HTTP（gRPC / WebSocket / 流式媒体）；
+ * SDK-only；超出「（上传初始化 →）create → query → result」的多请求编排；自定义编码。
+ *
+ * `nextAction` **不许**指向 OpenAI 兼容模板：那正是 09-11 那条「静默落回模板」在人话层的复发——
+ * 把「这条路本来就不通」说成「用那个模板试试」，用户会一直试，而每一次都必然在同一堵墙上。
+ * `noGenericContract.test.ts` 逐字核这一条。
+ */
+export function noGenericContractFailure(what: string): OnboardingFailure {
+  return {
+    ok: false,
+    code: "no_generic_contract",
+    message: `${what} needs something a declaration card cannot express: a request signature, a non-HTTP transport, an SDK, a custom encoding, or more request steps than (upload init ->) create -> query -> result.`,
+    nextAction: "This provider is not reachable by declaring it. In Nomi, open Settings > that model > Call script and write the call by hand; that path is exactly for this case.",
+  };
+}
+
 /** 卡**自己声明**的出处（不是我们猜的那一条）。 */
 function cardSourceUrl(card: unknown): string | undefined {
   if (!isJsonRecord(card)) return undefined;
@@ -282,6 +301,11 @@ async function submitDeclaration(
   try {
     settled = await deps.sessions.start(setupId, withCompileRequest.revision, deps.owner, changeIdFor(setupId, "submit_declaration", args));
   } catch (error) {
+    // 「这个 kind 在通用协议上根本没有端点」与「这张卡写错了」是两种处境，给的下一步相反：
+    // 前者改卡一万次都没用，出口是人写脚本（`serviceFallback` 的 no_generic_contract 一路传到这里）。
+    if (/no_generic_contract|no generic contract/i.test(error instanceof Error ? error.message : String(error))) {
+      return noGenericContractFailure(candidates.map((candidate) => candidate.modelKey).join(", "));
+    }
     return fail({
       ok: false, code: "provider_failed",
       message: "The free self-check did not pass.",
