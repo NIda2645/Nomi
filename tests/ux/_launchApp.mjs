@@ -113,6 +113,10 @@ export function buildNomiLaunchEnv({ extraEnv = {}, userDataDir, settingsDir, pr
     //   不变量靠代码成立，不靠每个脚本作者自觉抄全（抄漏就是静默超时）。
     NOMI_E2E: '1',
     NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
+    // 主进程日志镜像到 stderr。走查跑的是**打包形态也可能命中**的那条判据（`mirrorToStderr`
+    // 在 isPackaged 时默认只落盘），于是 CI 的 job 日志里一条 WARN 都没有——
+    // 2026-09-18 C9 那条间歇红的唯一诊断就是这么丢的。走查环境里日志必须看得见。
+    NOMI_LOG_STDERR: '1',
     // ↓ 三隔离：不碰用户真实的 userData/设置/项目库。
     //   传 null（isolate:false）时整条不设——写进 env 的 undefined 会变成字符串 "undefined"，
     //   主进程当成真路径去建目录，比不设更糟。
@@ -281,7 +285,9 @@ export async function launchNomiApp(options = {}) {
     for (const line of String(chunk).split('\n')) {
       if (line.trim()) logTail.push(line)
     }
-    if (logTail.length > 40) logTail.splice(0, logTail.length - 40)
+    // 400 行而不是 40：40 行只够回答「窗口为什么没起来」（失败就在最后几行）。
+    // 一条**跑到半路才断言红**的旅程，线索在几十秒前的主进程日志里，40 行根本追不到。
+    if (logTail.length > 400) logTail.splice(0, logTail.length - 400)
   }
 
   let app
@@ -370,6 +376,8 @@ export async function launchNomiApp(options = {}) {
     settingsDir,
     projectsDir,
     capabilityDir,
+    /** 主进程 stdout+stderr 的尾巴（最多 400 行）。断言红时给调用方看，不必只在启动失败时才有。 */
+    mainLogTail: () => logTail.slice(),
     close: () => closeNomiApp(app),
   }
 }

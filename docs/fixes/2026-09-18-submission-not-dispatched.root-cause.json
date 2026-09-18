@@ -1,0 +1,221 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-submission-not-dispatched",
+  "problem_type": "出站失败分不清「没写出去」和「结果未知」，于是一次没发生过的付费提交被永久冻成人工对账，并带走整批",
+  "symptom": "main 568b58272 上 `E2E Walkthroughs (Linux)` 间歇红在 tests/ux/mcp-l2-journeys.e2e.mjs:556「C9 run_events 轮询观察到粗剪审核终态」（2 红 1 绿，带仪器复现 3/3）。四镜里 shot-3 写成 submission_unknown（不带 errorCode），shot-1/2 停在 polling 再没人轮询，shot-4 从未派发，Run 永远停在 running 到不了终态。",
+  "direct_cause": "electron/productionRun/submissionOutbox.ts 的 submitOnce catch-all 一律走 markSubmissionUnknown()。CI run 35322059157 的夹具连接账本证明那次失败里请求一个字节都没写出去：服务端按 keep-alive 超时（Node 默认 5s）干净关掉两条空闲连接（close 08:06:56.856 / 08:06:59.281，hadError=false），客户端随后从池里取到其中一条发第三镜，08:06:57.733 写成 submission_unknown，而那段时间服务端一个请求都没收到（下一条 hit 要到 08:07:06.341，且属于另一个 Run）。",
+  "class_root": "「这次出站请求到底有没有发出去」此前没有任何一层回答——fetch() 抛出来的永远是 TypeError: fetch failed，真相全在 error.cause 里而没人看。于是整类出站失败（连不上 / DNS 解不出 / 取到对面已关的 keep-alive 连接 / 写出去后才断 / 响应头超时）被压成同一档「供应商可能已经收下」。任何按此判定去写耐久账本、去决定能不能重试的地方，都会把「没发生过」记成「可能已扣费」。",
+  "migration": "新增唯一判据 electron/outboundDispatchEvidence.ts；APIMart 适配器把 undici cause 摊平进消息并原样挂上 cause；提交层按判据分流（markNotDispatched / markSubmissionUnknown）。旧路径同 commit 删除：submissionOutbox 里那段从未有 producer、且真接上就会炸（对已 committed 的意图调 abort，意图日志明令禁止）的「重发一次」实现已删除，由一条独立 commit 用正确形态重新实现。",
+  "affected_population": [
+    "所有经 ProductionRun 提交的付费生成（多镜批次与单镜），任何供应商：一次瞬时出站抖动就把这一镜冻成人工对账",
+    "多镜批次里已经付过钱、真在飞的兄弟镜：一镜派发失败会逐出 runToQuiescence，它们停在 polling 再没人轮询",
+    "从 MCP 宿主或 GUI 发起的批次：Run 停在 running 不进 needs_attention，用户看不到任何失败信号（CI 里表现为 25 轮轮询等到超时）"
+  ],
+  "scope_paths": [
+    "electron/productionRun/",
+    "electron/outboundDispatchEvidence.ts",
+    "electron/capabilityCore/apimartGenerationProvider.ts"
+  ],
+  "entry_points": [
+    "electron/productionRun/submissionOutbox.ts:299 markSubmissionUnknown（catch-all 出口，本次红就从这里写下去的）",
+    "electron/productionRun/submissionOutbox.ts:181 markSubmissionUnknown（重入时 job 已 submitting）",
+    "electron/productionRun/submissionOutbox.ts:191 markSubmissionUnknown（已 committed 的提交意图）",
+    "electron/productionRun/productionGenerationSubmission.ts:474 outboundRequestWasNeverWritten（供应商异常进入提交层的唯一收口）",
+    "electron/productionRun/multiShotBatchScheduler.ts:258 dispatchUnit（锚派发）",
+    "electron/productionRun/multiShotBatchScheduler.ts:274 dispatchUnit（镜派发，失败此前逐出整批）"
+  ],
+  "invariants": [
+    "只有能证明「一个字节都没写出去」的失败才记成确定态；拿不出证据一律 submission_unknown（fail-closed）",
+    "submission_unknown 只出现在「供应商可能已经收下」的情形，它永远不自动重提",
+    "确定没写出去时预算预留 provider-safe 释放，绝不挂成 unsettled（钱一分没花）",
+    "重发最多一次，且必须复用逐字相同的幂等键；第二次仍失败即落确定态交给人",
+    "一镜派发失败不得逐出 runToQuiescence：兄弟镜继续派发与轮询，整批再无可派可轮时 Run 如实落到 needs_attention"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "line": 181,
+      "symbol": "markSubmissionUnknown"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "line": 191,
+      "symbol": "markSubmissionUnknown"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "line": 296,
+      "symbol": "markNotDispatched"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "line": 299,
+      "symbol": "markSubmissionUnknown"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "line": 474,
+      "symbol": "outboundRequestWasNeverWritten"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "line": 258,
+      "symbol": "dispatchUnit"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "line": 274,
+      "symbol": "dispatchUnit"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "line": 72,
+      "symbol": "JOB_TRANSITIONS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "line": 464,
+      "symbol": "describeOutboundFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/outboundDispatchEvidence.ts",
+      "line": 70,
+      "symbol": "outboundRequestWasNeverWritten"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 10,
+    "why_not": "门数没减、反而从 8 扇多到 10 扇，这正是这次修复的核心：原来 8 扇入口里有 3 扇（submissionOutbox 的三处 markSubmissionUnknown）把两种性质相反的失败写进同一个耐久档位，「少一扇门」就是缺陷本身。新增的两扇是 markNotDispatched（确定没写出去 → 确定态 + 预留安全释放）与 outboundRequestWasNeverWritten（判据的产生点，全仓唯一读 undici cause 链的地方，此前 0 个 owner）。其余各扇必须各自存在：181/191 是重入与崩溃恢复两个不同时机（job 已 submitting / 意图已 committed），299 是出站真失败；dispatchUnit 两扇分别是锚与镜（派生规则不同）；JOB_TRANSITIONS 是状态机这份真相的唯一读入口。"
+  },
+  "regression_tests": [
+    "electron/outboundDispatchEvidence.test.ts",
+    "electron/productionRun/submissionNotDispatched.test.ts",
+    "electron/productionRun/submissionOutbox.test.ts"
+  ],
+  "residual_risks": [
+    "判据认的是 undici 现有的错误码（syscall=connect / ENOTFOUND / EAI_AGAIN / UND_ERR_CONNECT_TIMEOUT / UND_ERR_SOCKET）。上游换形状时判据会退化成 unknown——方向是安全的那一边（多一次人工对账，不会多扣一次钱），且 electron/outboundDispatchEvidence.test.ts 用真实形状钉住了这几条。",
+    "`UND_ERR_SOCKET`（对面在没给出任何响应字节的情况下关了连接）按 RFC 9112 §9.6 判为「未被处理」。理论上仍存在「服务端收下并开始处理后才关连接、且一个响应字节都没发」的情形；那种情形下重发会到达供应商，但幂等键逐字不变且供应商档案声明 submitIdempotency，会被对面去重。不看 socket 字节计数是因为它们是整条连接累计的——keep-alive 复用时永远不是 0，第一版按它判，PR #810 第一轮 CI 当场证伪。",
+    "「写出去之后才断」（响应头超时、读体中断）仍然只能是 unknown，这一档依旧要人去供应商核对——这是该领域的真实约束，不是可以修掉的东西。"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/nodejs/undici/blob/main/lib/core/errors.js",
+      "checked_at": "2026-09-18",
+      "purpose": "核对 SocketError 的 code(UND_ERR_SOCKET) 与它携带的 socket 字节计数字段，以及 ConnectTimeoutError/HeadersTimeoutError 的 code，确认判据用的是上游真实形状而不是我们猜的"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://nodejs.org/api/http.html#serverkeepalivetimeout",
+      "checked_at": "2026-09-18",
+      "purpose": "确认 Node http.Server 默认 keepAliveTimeout=5000ms —— 现场那段 4~7 秒空窗正好跨过它，这是竞态窗口的来源"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.rfc-editor.org/rfc/rfc9112#section-9.6",
+      "checked_at": "2026-09-18",
+      "purpose": "HTTP/1.1 连接关闭与重试：对端在 keep-alive 边界关闭且未给出响应时，请求未被处理，客户端可在新连接上重试——这是把 UND_ERR_SOCKET 判为「没写出去」的领域依据"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "这不是某一个供应商的一处手滑：任何经 ProductionRun 提交的付费生成，只要遇到一次瞬时出站失败就会走同一条路。CI 上同一条断言 2 红 1 绿、带仪器复现 3/3，形态每次逐位相同，说明它由时序触发、会反复发生。",
+    "same_class_scan": [
+      "全仓扫 SubmissionNotDispatchedError 的 producer：修之前 0 个（只有 electron/productionRun/submissionOutbox.ts:8 的类定义与两处消费），即「确定没写出去」这一档在生产上根本不存在",
+      "electron/productionRun/submissionOutbox.ts:181/191/299 三处 markSubmissionUnknown：全部是把「不知道」与「没发生」合并的同一写法",
+      "electron/productionRun/multiShotBatchScheduler.ts:255 对非预算错误 throw error；同文件 observeUnitOnce（轮询那条路）早就把同类错误吞成 pending 并写明理由——同一份文件里两条路对同一类风险给了相反的答案",
+      "electron/integrationCertification/providerAdapterCoordinator.ts:388/411/438/511 同名 markSubmissionUnknown 管的是认证台账、不是 Run 的 job 状态，是另一份状态的门，不在本类边界内（逐处读过）"
+    ]
+  },
+  "generality_proof": "判据收成一个纯函数（electron/outboundDispatchEvidence.ts），它不认识供应商也不认识 Run：任何出站调用方拿同一个函数得到同一个答案。提交层只剩两条互斥出口（markNotDispatched / markSubmissionUnknown），两者都在 submissionOutbox 这一个文件里，新增供应商不可能长出第三种处置；调度层的「一镜失败不带走整批」写在批次驱动的唯一派发点上，与镜数、供应商、宿主无关。因此再来一个新供应商、新的瞬时出站失败形态，走的仍是这三条同样的路。",
+  "shared_boundaries": [
+    {
+      "path": "electron/outboundDispatchEvidence.ts",
+      "symbol": "outboundDispatchEvidence",
+      "responsibility": "回答「这次出站请求有没有写出去」这唯一一个问题；拿不出证据就答 unknown（fail-closed），不允许第二个地方各自判"
+    },
+    {
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "markNotDispatched",
+      "responsibility": "把「确定没写出去」写成确定态：job → needs_attention(provider_not_reached)，预算预留 provider-safe 释放；与 markSubmissionUnknown 互斥，杜绝两种性质相反的失败落进同一档"
+    },
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "dispatchUnit",
+      "responsibility": "一镜派发失败只带走这一镜：兄弟镜继续派发与轮询，整批再无可派可轮时 Run 如实落到 needs_attention"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "entry_point": "submitOnce",
+      "disposition": "enforced",
+      "evidence": "出站异常先过 outboundRequestWasNeverWritten 分流（productionGenerationSubmission.ts:474），确定没写出去的走 markNotDispatched，其余仍走 markSubmissionUnknown；electron/productionRun/submissionOutbox.test.ts 两条断言分别钉住两端"
+    },
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "runToQuiescence",
+      "disposition": "enforced",
+      "evidence": "非预算失败不再 throw，改为记入 failedShots + logWarn 并继续；electron/productionRun/submissionNotDispatched.test.ts 断言兄弟镜仍全部落地、Run 落 needs_attention（修前该测试红，且红的方式就是整个 runToQuiescence 抛出去）"
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "resumeUnfinishedRuns",
+      "disposition": "not-affected",
+      "evidence": "它写的是「重启后无法确认供应商状态」（errorCode restart_recovery_required），那是真正的未知——进程重启前有没有发出去我们确实不知道，与本类「能证明没写出去」互斥；逐行读过，不经过出站层"
+    },
+    {
+      "path": "electron/integrationCertification/providerAdapterCoordinator.ts",
+      "entry_point": "markSubmissionUnknown",
+      "disposition": "not-affected",
+      "evidence": "同名但管的是认证台账 checkpoint，不写 Run 的 job 状态、不读出站异常；operationLedger.ts:167 要求 checkpoint=submission_unknown 时 submissionState 必须是 unknown，是另一份状态的规则"
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/outboundDispatchEvidence.ts",
+    "invariant": "「这次出站请求有没有写出去」只有一个答案来源，且拿不出证据一律 unknown",
+    "failure_mode": "任何新的调用方想自己判，就得复制这份 cause 链解析；electron/outboundDispatchEvidence.test.ts 用 undici 真实错误形状钉住每一条判据（含 fail-closed 的三条），改判据必先改测试",
+    "exception_policy": "none",
+    "strategy": "判据收成一个纯函数当唯一 owner，提交层只留两条互斥出口，调度层不再让一镜的失败逐出整批",
+    "artifacts": [
+      "electron/outboundDispatchEvidence.ts",
+      "electron/outboundDispatchEvidence.test.ts",
+      "electron/productionRun/submissionOutbox.ts",
+      "electron/productionRun/multiShotBatchScheduler.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/outboundDispatchEvidence.test.ts",
+    "electron/productionRun/submissionNotDispatched.test.ts"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/outboundDispatchEvidence.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/outboundDispatchEvidence.test.ts"
+    ],
+    "rationale": "「一次出站请求到底有没有写出去」这条不变量归出站证据层管：它是唯一读 undici cause 链的地方，提交层与调度层都只消费它的答案。该层有自己的测试，且每一条判据（含 fail-closed 的字节计数缺失、响应头超时、成环 cause）都有断言。"
+  },
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有整个文件/路径的旧实现可删，所以这里留空：旧实现是 submissionOutbox.submitOnce 函数内那段「abort 已提交的意图 + 重备 + 再发一次」的代码块，已在同 diff 删除（P1 加新删旧）。它全仓零 producer，而且真接上就会炸——意图日志只允许 prepared→aborted，对 committed 调 abort 必抛。它由本 PR 最后一条 commit 用正确形态（不碰意图日志、复用同一幂等键、只一次）重新实现。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或保留任何依赖：判据读的是 Node/undici 运行时已有的错误形状，不新增包、不升级版本。",
+    "exit_criteria": []
+  }
+}
