@@ -1348,6 +1348,7 @@ export const zhGenerationCommon = {
     },
     // P4 S5 画布落地：占位节点三态 + 进度通知 + 组名 + 补齐文案。
     canvasLanding: {
+      groupName: '分镜组·{{name}}',
       groupFallbackName: '分镜组',
       shotFallbackTitle: '镜头 {{shot}}',
       queued: '排队中',
@@ -2768,6 +2769,7 @@ export const enGenerationCommon = {
     },
     // P4 S5 canvas landing: placeholder three states + progress toast + group name + reconcile copy.
     canvasLanding: {
+      groupName: 'Shot group · {{name}}',
       groupFallbackName: 'Shot group',
       shotFallbackTitle: 'Shot {{shot}}',
       queued: 'Queued',

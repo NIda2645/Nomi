@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createStoryboardShotTable, normalizeShotTableMeta, readShotTable, shotTableDocumentSchema } from './shotTable'
+import { createProductionShotTable, createStoryboardShotTable, normalizeShotTableMeta, readShotTable, shotTableDocumentSchema } from './shotTable'
 
 const table = () => createStoryboardShotTable('document-1', 'design-1', '2026-09-10T00:00:00.000Z')
 
@@ -87,5 +87,26 @@ describe('shot time precision is owned by the persistence boundary', () => {
     expect((once.shotTable as { rows: Array<{ startSeconds: number; endSeconds: number }> }).rows[0])
       .toMatchObject({ startSeconds: 0, endSeconds: 2.1, durationSeconds: 2.1 })
     expect(normalizeShotTableMeta(once)).toEqual(once)
+  })
+})
+
+describe('production shot table (Agent 分镜的唯一账本是 Run 落地的节点)', () => {
+  it('round trips only a run reference and view state, with no owned rows', () => {
+    const value = createProductionShotTable('run-1', 'canvas-landing:run-1', '2026-09-18T00:00:00.000Z')
+    expect(value.source).toEqual({ kind: 'production', runId: 'run-1', materializationOperationId: 'canvas-landing:run-1' })
+    const restored = readShotTable(JSON.parse(JSON.stringify({ shotTable: value })))
+    expect(restored).toEqual(value)
+    expect(restored).not.toHaveProperty('rows')
+  })
+
+  it('rejects cached rows for a production table at the shared persistence boundary', () => {
+    const meta = { shotTable: { ...createProductionShotTable('run-1', 'canvas-landing:run-1'), rows: [{ rowId: 'node-1' }] } }
+    expect(readShotTable(meta)).toBeUndefined()
+    expect(() => normalizeShotTableMeta(meta)).toThrow()
+  })
+
+  it('rejects a production source without its run identity', () => {
+    const value = { ...createProductionShotTable('run-1', 'canvas-landing:run-1'), source: { kind: 'production', runId: 'run-1' } }
+    expect(shotTableDocumentSchema.safeParse(value).success).toBe(false)
   })
 })

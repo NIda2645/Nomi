@@ -154,6 +154,20 @@ describe('draft lifecycle notifies the canvas landing', () => {
     expect(onPlanChanged).toHaveBeenCalledWith('proj-1', 'run-1')
   })
 
+  it('改多镜草稿里的一镜 → 命令带 shotId，幂等键跟那一镜的候选 revision 走（顶层候选不动）', async () => {
+    const onPlanChanged = vi.fn()
+    const owner = ownerFor(run({}, [shot('s1'), { ...shot('s2'), candidate: candidate({ candidateId: 's2', revision: 7 }) }]))
+    const store = createProductionGenerationOperationStore(owner as never, { onPlanChanged })
+    await store.patch('proj-1', 'run-1', { prompt: '改第二镜' }, NOW, 's2')
+    expect(owner.command).toHaveBeenCalledWith('proj-1', 'run-1', expect.objectContaining({
+      type: 'generation.patch',
+      commandId: 'generation.patch:run-1:s2:7',
+      payload: { patch: { prompt: '改第二镜' }, shotId: 's2' },
+    }))
+    expect(onPlanChanged).toHaveBeenCalledWith('proj-1', 'run-1')
+    await expect(store.patch('proj-1', 'run-1', { prompt: 'x' }, NOW, 's9')).rejects.toThrow(/s9/)
+  })
+
   it('落地观察者抛错不许把草稿命令带崩（落地是 best-effort，§1 铁律）', async () => {
     const owner = ownerFor(run())
     const store = createProductionGenerationOperationStore(owner as never, {

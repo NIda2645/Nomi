@@ -5,6 +5,9 @@ import { deriveStoryboardBatch, deriveStoryboardRowRuntimes } from '../../../cre
 import { runStoryboardBatch } from '../../../creation/storyboard/exec/storyboardRowActions'
 import type { ModelOption } from '../../../../config/models'
 import type { StoryboardPlan } from '../../agent/storyboardPlan'
+import { buildDependencyWaves } from '../../runner/dependencyWaves'
+import { confirmAndRunPlan } from '../../components/batchPlanPreview'
+import { productionShotNodes } from './productionShotRows'
 
 /** Edits operate on the latest document, preserving unrelated edits and immutable measured fields. */
 export function editShotTableFacts(nodeId: string, edit: (table: DeconstructionShotTableDocument) => DeconstructionShotTableDocument): void {
@@ -20,6 +23,15 @@ export async function generateSelectedTableRows(nodeId: string, imageModelOption
   const canvas = useGenerationCanvasStore.getState()
   const table = readShotTable(canvas.nodes.find(node => node.id === nodeId)?.meta)
   if (!table || !table.view.selectedRowIds.length) return
+  if (table.source.kind === 'production') {
+    // 行就是节点：勾选的行 = 勾选的节点，走节点自己那扇既有的付费门（confirmAndRunPlan → spendConfirm），
+    // 不另造第二条执行通路。
+    const selected = new Set(table.view.selectedRowIds)
+    const nodeIds = productionShotNodes(canvas.nodes, table.source.runId).map(node => node.id).filter(id => selected.has(id))
+    if (!nodeIds.length) return
+    await confirmAndRunPlan(buildDependencyWaves(nodeIds, { nodes: canvas.nodes, edges: canvas.edges }))
+    return
+  }
   const workbench = useWorkbenchStore.getState()
   let source = table.source
   if (source.kind === 'deconstruction' && 'rows' in table && table.rows) {

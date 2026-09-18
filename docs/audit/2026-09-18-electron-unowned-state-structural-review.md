@@ -139,6 +139,10 @@ status statuses state states phase phases stage stages step steps lifecycle life
 29/41 是事后补主人。事后补是对的，但**出生时就没有主人**这件事本身没有被记录，所以看不出「哪些子系统在持续生产无主状态」。
 这一问只加一个字段，用于下次评审做归因，不阻断任何人。
 
+## 5.5 同一形状的渲染层实例：`src/workbench` 的分镜账本（2026-09-18 补）
+
+`src/workbench` 这一层 2026-09-15 → 09-18 也聚到了 ≥3 份合同（`2026-09-15-shot-seconds-precision`、`2026-09-17-*` 六份、`2026-09-18-agent-storyboard-single-ledger`）。最后那份就是本评审 §3 的形状在渲染层的复现：**一份用户看得见的东西（「Agent 刚起的分镜」）声明了两个主人**——Run 的 `generationPlan` 落成画布节点，分镜表却读 `storyboardDesignsByDocumentId`；09-14 删掉 Agent 写账本 B 的动词时没有任何东西核「谁还在读 B」，于是「表里没有 Agent 的镜头」活了四天、五轮真机。修法与 §5 R1 同向：让 owner 成为会红的断言——production 表 `rows: z.never()`（第二份真相在 schema 上不可能）、表只在落地事务里同生（`src/workbench/capability/multiShotCanvasLanding.ts`）、金路径走查只读账本 A。它同时给 R1 提供了一条渲染层的样本：`docs/fixes/2026-09-18-agent-storyboard-single-ledger.root-cause.json` 的 `invariant_owner_layer`。剩下的账本 B（用户手写方案）带到期日 2026-10-16 退役（`docs/roadmap/TODO.md` T-DS-19）——这正是 §3 说的「登记是承诺不是防线」在本仓第一次被写成带日期的承诺。
+
 ## 6. 不建议做的
 
 - **不建议**把 41 份合同回头合并或降级。它们各自都是对的，问题不在单份质量。

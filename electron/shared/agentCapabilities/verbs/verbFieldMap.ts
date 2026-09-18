@@ -33,8 +33,13 @@ import type { ZodTypeAny } from "zod";
  * 「宿主收不下」与「可以丢」是两件完全不同的事，而它们长得一模一样（都是「值没过去」）。
  *   · `refuse` 当场抛：模型填了它，而这条路送不到；静默丢掉就是今天这一整类缺陷的形状。
  *   · `drop`   有意丢，`why` 要写清被谁吃掉、用户怎么仍然知道发生了什么。
+ *   · `lift`   它不是这个形状里的字段，是**包着这个形状的信封**上的字段（寻址：改多镜草稿里的哪一镜）。
+ *              值提到信封的 `to` 上，由 `liftedByFieldMap` 执行；父表（`elements` 的持有者）在装配期核
+ *              `to` 真在它同名目标形状上——信封上没有这个位置，提上来也送不到，那就当场抛。
  */
-export type VerbFieldAbsence = Readonly<{ disposition: "refuse" | "drop"; why: string }>;
+export type VerbFieldAbsence =
+  | Readonly<{ disposition: "refuse" | "drop"; why: string }>
+  | Readonly<{ disposition: "lift"; to: string; why: string }>;
 
 /**
  * 这个值**模型是从哪拿到的**。四档，没有缺省——留空就是没想过。
@@ -155,6 +160,24 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
       }
     }
   }
+  // ③' 子表里声明成 `lift` 的字段，落点必须真在**本表**同名目标形状上（它就是那层信封）。
+  //    信封上没有这个位置，提上来也送不到——和「宿主没有这个字段」是同一种病，同样在装配期抛。
+  for (const [source, relation] of Object.entries(relations)) {
+    if (relation.kind !== "elements") continue;
+    for (const [child, childRelation] of Object.entries(relation.map.relations)) {
+      const absentOn = (childRelation as { absentOn?: Readonly<Record<string, VerbFieldAbsence>> }).absentOn ?? {};
+      for (const [target, absence] of Object.entries(absentOn)) {
+        if (absence.disposition !== "lift") continue;
+        if (absence.to.includes(".") || !absence.to.trim()) {
+          throw new Error(`${label}: "${source}[].${child}" 的 lift 落点 "${absence.to}" 必须是信封上的一个顶层字段`);
+        }
+        if (!targets[target]?.includes(absence.to)) {
+          throw new Error(`${label}: "${source}[].${child}" 说它在目标 "${target}" 上要提到信封的 "${absence.to}"，`
+            + `但本表的 "${target}" 形状没有 "${absence.to}"——信封上没有这个位置，提上来也送不到。`);
+        }
+      }
+    }
+  }
   // ④ 落点必须在宿主那个形状里真的存在；不存在就必须在 `absentOn` 里按目标具名登记并写清理由。
   for (const [source, relation] of Object.entries(relations)) {
     const path = targetPathOf(source, relation);
@@ -242,7 +265,8 @@ export function projectByFieldMap(
     if (path === undefined) continue;
     const raw = readPath(source, sourcePath);
     if (!keys.includes(rootOf(path))) {
-      // 这个形状上没有它的位置。**填了却送不到**必须当场说出来——除非表里明写了这是有意丢弃。
+      // 这个形状上没有它的位置。**填了却送不到**必须当场说出来——除非表里明写了这是有意丢弃，
+      // 或者它是信封上的字段（`lift`：由 `liftedByFieldMap` 提到包着这个形状的那层去）。
       const absence = (relation as { absentOn?: Readonly<Record<string, VerbFieldAbsence>> }).absentOn?.[target];
       if (raw !== undefined && absence?.disposition === "refuse") {
         throw Object.assign(
@@ -280,6 +304,27 @@ export function projectByFieldMap(
     }
     cursor[rest[rest.length - 1]!] = write.value;
     out[head!] = base;
+  }
+  return out;
+}
+
+/**
+ * `lift` 那一档的执行器：这个目标形状上没位置、要提到**信封**上的字段 → `{ [to]: value }`。
+ * 调用方把它 spread 进包着这个形状的那层（`draft_shots` 改草稿：一镜的 `shotId` 提到 plan patch 的信封上）。
+ * 同样没有任何字段名写在这里。
+ */
+export function liftedByFieldMap(
+  source: Record<string, unknown>,
+  map: VerbFieldMap,
+  target: string,
+): Record<string, unknown> {
+  if (!map.targets[target]) throw new Error(`${map.label}: 没有名为 "${target}" 的目标形状`);
+  const out: Record<string, unknown> = {};
+  for (const [sourcePath, relation] of Object.entries(map.relations)) {
+    const absence = (relation as { absentOn?: Readonly<Record<string, VerbFieldAbsence>> }).absentOn?.[target];
+    if (absence?.disposition !== "lift") continue;
+    const raw = readPath(source, sourcePath);
+    if (raw !== undefined) out[absence.to] = raw;
   }
   return out;
 }
