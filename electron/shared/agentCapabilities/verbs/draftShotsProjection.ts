@@ -34,19 +34,20 @@ import { generationPlanInputSchema } from "../generationPlanSchemas";
 import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../../generationShotEnvelope";
 import { draftShotSchema } from "./writeVerbs";
 
-const planCreateSchema = generationPlanInputSchema.options[1];
-const planPatchSchema = generationPlanInputSchema.options[2];
+/** 宿主那两支的类型锚点（只在类型位置用，所以写成类型而不是 const——那会是一条 lint 噪音）。 */
+type PlanCreate = z.infer<(typeof generationPlanInputSchema.options)[1]>;
+type PlanPatch = z.infer<(typeof generationPlanInputSchema.options)[2]>;
 
 /** 模型面的一镜。 */
 export type DraftShot = z.infer<typeof draftShotSchema>;
 /** 模型面的顶层（`draft_shots` 自己的 schema 推出来的，不在这里重列）。 */
 export type DraftShotsArgs = { operationId?: string; taskKind?: DraftShot["taskKind"]; candidate?: DraftShot["candidate"]; shots: DraftShot[] };
 /** 宿主的多镜 create 里的一镜。 */
-type PlanShot = NonNullable<z.infer<typeof planCreateSchema>["shots"]>[number];
+type PlanShot = NonNullable<PlanCreate["shots"]>[number];
 /** 宿主的候选 patch（改草稿那一支）。 */
-type CandidatePatch = z.infer<typeof planPatchSchema>["patch"];
+type CandidatePatch = PlanPatch["patch"];
 /** 宿主的单镜 create：一镜摊成顶层参数。 */
-type PlanFlatCreate = Omit<z.infer<typeof planCreateSchema>, "operation" | "shots" | "scriptText" | "cardHidden" | "candidate">;
+type PlanFlatCreate = Omit<PlanCreate, "operation" | "shots" | "scriptText" | "cardHidden" | "candidate">;
 
 /** 一个字段都不许没人管：新长出来的模型面字段落进这里，而这个类型不接受任何键。 */
 function assertEveryFieldHandled(unhandled: Record<string, never>): void {

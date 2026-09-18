@@ -122,7 +122,7 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
-      "line": 137,
+      "line": 138,
       "symbol": "DraftShotsArgs"
     },
     {
@@ -134,7 +134,7 @@
     {
       "kind": "read",
       "path": "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
-      "line": 27,
+      "line": 31,
       "symbol": "generationStatusInputSchema"
     }
   ],

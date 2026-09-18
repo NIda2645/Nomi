@@ -35,11 +35,18 @@
 //
 // ── 投影**覆盖不到**什么（明说，不静默降级）──
 //
-// 前提是「有且只有一份宿主 schema 是真相」。不满足的三类写在 `verbDualDomain.ts` 与各自动词的注释里：
+// 前提是「有且只有一份宿主 schema 是真相」。不满足的**四类**，一类都不许静默降级：
 //   · **双域**（`check_job` / `cancel_job` 的生成域）：同一个模型面字段要落到另一份 schema 的另一个名字上。
-//     投影只会藏字段和覆写描述，**故意**没有「改名」这个动作 → 那一条留一份带领域理由的声明映射。
-//   · **结构有损**（`draft_shots`）：嵌套层级变了、嵌套被拍平 → `draftShotsProjection.ts` 的显式变换。
-//   · **宿主没有形状**（`look_at_canvas` / `list_models`：契约 `inputSchema` 是 `z.unknown()`）→ 没有可投影的东西。
+//     投影只会藏字段和覆写描述，**故意**没有「改名」这个动作 → `verbDualDomain.ts` 留一份带领域理由的
+//     声明映射。（这两个动词的模型面本身仍是投影——投在**导出域**上，那一半零 rename。）
+//   · **结构有损**（`draft_shots`）：嵌套层级变了、嵌套被拍平、参考素材的身份由宿主补
+//     → `draftShotsProjection.ts` 的显式变换，每个模型字段都解构、剩下的落进 `Record<string, never>`。
+//   · **模型面是构造出来的**（6 个）：`write_script` 的 `where`→`operation` 是**值**重映射；
+//     `read_timeline` / `look_at_media` 按「给了哪些参数」派生走宿主的哪一支；
+//     `arrange_canvas` / `make_artifact` / `stage_shot` 拼出整只节点结构。投影没有「改值」「选分支」
+//     「拼结构」这三个动作 → 它们仍住 `verbSemanticInput.ts`，由 `check:verb-host-conformance` 看着。
+//   · **宿主没有形状**（`look_at_canvas` / `list_models`：契约 `inputSchema` 是 `z.unknown()`）→ 没有可投影的
+//     东西。下一刀先把那两个契约的输入形状收出来，它们才谈得上投影。
 import type { z } from "zod";
 
 import { documentReadSemanticInputSchema, type DocumentReadInput } from "../documentRead";
@@ -211,8 +218,6 @@ export const UNDO_HOST_FILL: HostFill<typeof undoHostSchema, typeof undoModelSch
 
 // ── edit_timeline · timeline.write ───────────────────────────────────────────
 
-const editTimelineHostSchema = timelineWriteSemanticInputSchema.options[0];
-
 /**
  * 这一条的投影比别的多一步，而那一步是**有理由**的：宿主把 `operations` 声明成九支判别联合，
  * 而模型面发布的是**拍平**成一个对象的那一版（`timelineEditPlanModelSchema`，每个字段带
@@ -233,7 +238,7 @@ export const editTimelinePlanId = (toolCallId: string): string => `plan-${toolCa
 
 export function editTimelineHostFill(
   toolCallId: string,
-): HostFill<typeof editTimelineHostSchema, typeof editTimelineModelSchema> {
+): HostFill<(typeof timelineWriteSemanticInputSchema.options)[0], typeof editTimelineModelSchema> {
   return { planId: editTimelinePlanId(toolCallId), operation: TIMELINE_WRITE_ALIASES.applyPlan };
 }
 

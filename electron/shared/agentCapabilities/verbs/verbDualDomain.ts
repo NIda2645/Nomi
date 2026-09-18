@@ -24,12 +24,12 @@ import { generationStatusInputSchema } from "../generationPlanSchemas";
 /** 模型面那一个 id。两个双域动词的模型面都只有它（`verbProjections.ts` 从导出域投出来的）。 */
 type JobIdArgs = Readonly<{ jobId: string }>;
 
-const statusReadHostSchema = generationStatusInputSchema.options[0];
-const statusCancelHostSchema = generationStatusInputSchema.options[1];
-
-/** 生成域的状态读/取消，两支的模型面之外的部分（`operation` 由方法别名承载）。 */
-type StatusReadArgs = Omit<z.infer<typeof statusReadHostSchema>, "operation">;
-type StatusCancelArgs = Omit<z.infer<typeof statusCancelHostSchema>, "operation">;
+/**
+ * 生成域的状态读/取消，两支各自的模型面之外的部分（`operation` 由方法别名承载）。
+ * 类型直接从宿主那份 union 的对应分支取——宿主改名或改类型，下面两个函数当场 tsc 红。
+ */
+type StatusReadArgs = Omit<z.infer<(typeof generationStatusInputSchema.options)[0]>, "operation">;
+type StatusCancelArgs = Omit<z.infer<(typeof generationStatusInputSchema.options)[1]>, "operation">;
 
 /**
  * 这条翻译的**领域理由**，写在一处，被两个动词引用。它不是注释：`verbDualDomain.test.ts` 断言

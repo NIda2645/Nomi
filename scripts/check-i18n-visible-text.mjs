@@ -233,6 +233,9 @@ const ELECTRON_EXCLUDED_FILES = new Set([
   // 顶层调用,也就是模块加载那一刻。红了等于这个模块起不来,到不了任何会话;句子要求的动作
   // ("把那个能力的 outputSchema 收成真形状")也只有契约作者做得了。
   'electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts',
+  // 唯一一条是 objectFieldKeys 的「这不是一份能取出字段名单的对象 schema」:模块加载时的装配期断言,
+  // 读者是正在写投影的人。它比 verbFieldMap.ts 时代那一条还窄(那份排除随文件一起删了,这里净减一条)。
+  'electron/shared/agentCapabilities/verbs/verbProjections.ts',
   // draft_shots 投影里唯一的运行期那条是 refuse,它带 code: 'capability_input_invalid' ——
   // 走的是错误码通道,读者是模型(工具失败原因),界面拿到的是码不是这句话。其余是装配期/开发者报错。
   'electron/shared/agentCapabilities/verbs/draftShotsProjection.ts',
