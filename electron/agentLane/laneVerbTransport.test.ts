@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { isPiGenerationToolName } from "../capabilityCore/generationTransportAdapters";
 import { resolveCapabilityAlias } from "../shared/agentCapabilities/registry";
 import { modelFacingToolSpecs } from "../shared/agentCapabilities/modelFacingToolRegistry";
+import { objectFieldKeys } from "../shared/agentCapabilities/verbs/verbProjections";
 import { LANE_DEFERRED_TOOL_CATALOG } from "./laneToolCatalog";
 import { exportJobTransportCall, verbToTransportCall, type VerbTransportCall } from "./laneVerbTransport";
 
@@ -26,11 +27,24 @@ const ACCEPTED_BY_LANE: Record<VerbTransportCall["lane"], (method: string) => bo
 };
 
 /** 一份能过每个动词 schema 的最小参数：翻译只改形状不改语义，所以这里只要字段齐。 */
-const SAMPLE_ARGS: Record<string, unknown> = {
+const SAMPLE_FIELDS: Record<string, unknown> = {
   shots: [{ prompt: "海上日出" }], operationId: "op-1", jobId: "op-1", name: "ugc-ad", nodeIds: ["node-1"],
-  baseRevision: "revision-1", summary: "move", operations: [], undoToken: "undo-1", expectedRevision: "revision-1",
+  baseRevision: "revision-1", summary: "move", operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }], undoToken: "undo-1", expectedRevision: "revision-1",
   dirName: "talking-head", skillMarkdown: "---\nname: x\n---\nbody", provider: "DeepSeek", query: "rain",
 };
+
+/**
+ * 只把**这个动词自己声明过的**字段喂给它。
+ *
+ * 过去这里是一份大杂烩：20 个动词的字段全塞进同一个对象，每个动词都收到一堆它没声明过的键。
+ * 对照表时代看不出问题（`projectByFieldMap` 只挑表里列过的键），投影之后模型面是 `.strict()` 的，
+ * 一个外来键就该当场被拒——而那正是生产行为，所以要拒的是这份夹具，不是投影。
+ */
+function sampleArgsFor(verb: string): Record<string, unknown> {
+  const spec = modelFacingToolSpecs("internal").find((item) => item.name === verb);
+  const keys = spec ? objectFieldKeys(spec.schema, `verb ${verb}`) : [];
+  return Object.fromEntries(Object.entries(SAMPLE_FIELDS).filter(([key]) => keys.includes(key)));
+}
 
 /** 延迟目录里经领域端口执行的动词 + `check_job`（它是读动词，同样走 `executeRead` 的生成→导出两跳）。 */
 function transportedVerbs(): string[] {
@@ -42,7 +56,7 @@ function transportedVerbs(): string[] {
 describe("verbToTransportCall · every transported verb lands on a method its lane adapter accepts", () => {
   for (const verb of transportedVerbs()) {
     it(`${verb} translates to a routable method`, () => {
-      const translated = verbToTransportCall({ toolCallId: "call-1", toolName: verb, args: SAMPLE_ARGS });
+      const translated = verbToTransportCall({ toolCallId: "call-1", toolName: verb, args: sampleArgsFor(verb) });
       expect(translated, `${verb} has no transport mapping (lane would answer capability_unsupported)`).toBeDefined();
       const { lane, call } = translated!;
       expect(ACCEPTED_BY_LANE[lane](call.toolName),
@@ -113,5 +127,21 @@ describe("verbToTransportCall · every transported verb lands on a method its la
     // 阳性对照：谓词不是恒真。
     expect(isPiGenerationToolName("draft_shots")).toBe(false);
     expect(isPiGenerationToolName("nomi_generation_plan_v9")).toBe(false);
+  });
+});
+
+// 2026-09-18 单一账本：改多镜草稿里的一镜必须能经 Run 账本走通——动词契约的例子就是
+// `{ operationId, shots: [{ shotId, prompt }] }`，翻译层曾把 shotId 声明成 drop，于是「改第 2 镜」永远改的是顶层候选。
+describe("draft_shots with operationId · one shot of a multi-shot draft", () => {
+  it("lifts the shotId onto the plan patch envelope so the host edits that shot, not the top-level candidate", () => {
+    const translated = verbToTransportCall({ toolCallId: "call-1", toolName: "draft_shots",
+      args: { operationId: "op-1", shots: [{ shotId: "shot-2", prompt: "逆光侧脸" }] } });
+    expect(translated?.call.args).toEqual({ operation: "patch", operationId: "op-1", shotId: "shot-2", patch: { prompt: "逆光侧脸" } });
+  });
+
+  it("omits shotId for a single-shot draft (top-level candidate, unchanged)", () => {
+    const translated = verbToTransportCall({ toolCallId: "call-1", toolName: "draft_shots",
+      args: { operationId: "op-1", shots: [{ prompt: "换一句" }] } });
+    expect(translated?.call.args).toEqual({ operation: "patch", operationId: "op-1", patch: { prompt: "换一句" } });
   });
 });

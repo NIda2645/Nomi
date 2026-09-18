@@ -29,28 +29,36 @@ const generationTransportSchema = generationPlanInputSchema.options[1].omit({ op
 });
 const { $schema: _dialect, ...generationInputSchema } = toPublishedJsonSchema(generationTransportSchema);
 
-/** create（无 operationId）用的 candidate/shots/scriptText 字段拷贝（build 里透传）。 */
+/**
+ * 对外 `nomi_operation_plan` 的 create 分支：**字段名单从宿主 schema 取，不在这里抄第二份。**
+ *
+ * 2026-09-18 之前这里是 22 行逐字段拷贝（`prompt` / `taskKind` / `moduleId` / … 一个一个 `typeof` 判断
+ * 再透传）。它与内部面的对照表、宿主自己的 `inherited` 一起，让**同一条 rename 有过三份实现**；更要命的
+ * 是 `createFields` 每加一个字段，这里就**静默**少传一个——编译得过、测试全绿，只有外部宿主在下一次
+ * 付费运行里用一次失败告诉你。内部面那一份已经在同一条分支上被投影取代（`verbs/verbProjections.ts`），
+ * 这是同一手法的外部面同胞。
+ *
+ * **对外已发布的字段名一个都不改**：`vendor` / `modelKey` 是读侧别名，`operationId` / `undoToken` 是
+ * 对外契约，动它们就是在改别人已经写好的调用。别名归一仍然保留，只是同样变成一张声明表。
+ */
+const CREATE_BRANCH_SCHEMA = generationPlanInputSchema.options[1].omit({ operation: true });
+const CREATE_FIELD_NAMES: readonly string[] = Object.freeze(Object.keys(CREATE_BRANCH_SCHEMA.shape));
+
+/** 读侧别名 → 写侧 canonical 名。canonical 名字优先；两个都给时别名被忽略（与改动前逐字相同）。 */
+const READ_SIDE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  vendor: "providerId",
+  modelKey: "modelId",
+});
+
 function buildOperationCreateParams(args: Record<string, unknown>): Record<string, unknown> {
-  return {
-    projectId: args.projectId,
-    leaseHandle: args.leaseHandle,
-    ...(typeof args.prompt === "string" ? { prompt: args.prompt } : {}),
-    ...(typeof args.taskKind === "string" ? { taskKind: args.taskKind } : {}),
-    ...(typeof args.moduleId === "string" ? { moduleId: args.moduleId } : {}),
-    // 归一：读侧别名 vendor/modelKey 折成写侧的 providerId/modelId（canonical 名字优先）。
-    ...(typeof args.providerId === "string" ? { providerId: args.providerId }
-      : typeof args.vendor === "string" ? { providerId: args.vendor } : {}),
-    ...(typeof args.modelId === "string" ? { modelId: args.modelId }
-      : typeof args.modelKey === "string" ? { modelId: args.modelKey } : {}),
-    ...(typeof args.mode === "string" ? { mode: args.mode } : {}),
-    ...(typeof args.modeId === "string" ? { modeId: args.modeId } : {}),
-    ...(typeof args.variantId === "string" ? { variantId: args.variantId } : {}),
-    ...(args.parameters && typeof args.parameters === "object" && !Array.isArray(args.parameters) ? { parameters: args.parameters } : {}),
-    ...(Array.isArray(args.references) ? { references: args.references } : {}),
-    ...(args.candidate !== undefined ? { candidate: args.candidate } : {}),
-    ...(Array.isArray(args.shots) ? { shots: args.shots } : {}),
-    ...(typeof args.scriptText === "string" ? { scriptText: args.scriptText } : {}),
-  };
+  const params: Record<string, unknown> = { projectId: args.projectId, leaseHandle: args.leaseHandle };
+  for (const field of CREATE_FIELD_NAMES) {
+    if (args[field] !== undefined) params[field] = args[field];
+  }
+  for (const [alias, canonical] of Object.entries(READ_SIDE_ALIASES)) {
+    if (params[canonical] === undefined && args[alias] !== undefined) params[canonical] = args[alias];
+  }
+  return params;
 }
 
 export const MCP_GENERATION_TOOL_CATALOG = [

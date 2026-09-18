@@ -6,20 +6,24 @@
 // 一律 `wrong_verb` 拒绝并点名 `draft_shots`（判据 `electron/shared/canvas/nodeExecutionKinds.ts`，不手写名单）。
 // 只有 `generate` 会把报价卡摆到用户面前；它的返回值是 GitHub MCP `issue_write` 的形状：isError + 明文「不要再调工具」。
 import { z } from "zod";
+import { timelineWriteResultSchema } from "../timelineWrite";
+import { exportWriteResultSchema } from "../exportCapabilities";
 
 import {
   cameraMoveParamsObjectSchema, CAMERA_MOVE_MODEL_GUIDELINES, STAGING_MODEL_GUIDELINES, stagingReferenceParamsSchema,
 } from "../canvasModelShapes";
 import { canvasDeletePiInputSchema } from "../canvasDelete";
 import { CANVAS_NODE_PROMPT_GUIDELINES, plannedEdgeSchema } from "../canvasWrite";
-import { timelineEditPlanModelSchema } from "../timelineRead";
 import { modelArgumentTolerance } from "../modelArgumentTolerance";
 import { isGeneratingNodeKind } from "../../canvas/nodeExecutionKinds";
 import { LaneDomainFailure, wrongVerbFailure } from "../../agentLane/laneToolContract";
 import type { VerbDeclaration } from "../verbDeclaration";
 import { DOCUMENT_ID_TRANSPORT_FIELD, READ_GUIDELINES } from "./readVerbs";
 import { canvasWriteInputOf, documentWriteInputOf } from "./verbSemanticInput";
-import { cancelJobModelSchema } from "./cancelJobProjection";
+import {
+  cancelJobModelSchema, editTimelineModelSchema, exportVideoModelSchema, generateModelSchema,
+  saveSkillModelSchema, startModelSetupModelSchema, undoModelSchema,
+} from "./verbProjections";
 
 const shotId = z.string().trim().min(1).max(160);
 const generationParameters = z.record(z.union([z.string(), z.number(), z.boolean()]));
@@ -211,10 +215,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots.`,
       params: "operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots.",
     },
-    schema: z.object({
-      operationId: z.string().trim().min(1).max(160).describe("The operationId returned by draft_shots."),
-      shotIds: z.array(shotId).max(40).optional().describe("Only these shots of the draft; omit for all."),
-    }).strict(),
+    // 模型面 = `generation.plan` 的 `present` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: generateModelSchema,
     examples: [{ when: "Show the card for a draft:", arguments: { operationId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["shotIds"] }),
   };
@@ -331,12 +333,12 @@ export function writeVerbs(): VerbDeclaration[] {
       "Frames, not seconds: every timeline position and duration is an integer frame count at the fps read_timeline returns.",
       "Always plan against a fresh revision: read the timeline, build the plan from what you just read, and pass that same revision back as baseRevision.",
     ],
-    // `planId` 是宿主按这次调用派生的幂等键，模型给不出 → 只 omit 它；`baseRevision` **不改名**，
-    // 模型面与宿主面同一个词（改名过的那一版叫 `revision`，而宿主同一个对象里另有一个 `revision`＝
-    // 编辑之后的新版本号——两个词指两件事，模型面少一个词就把它们叠成了一件）。这里只覆写描述。
-    schema: timelineEditPlanModelSchema.omit({ planId: true }).extend({
-      baseRevision: timelineEditPlanModelSchema.shape.baseRevision.describe("The revision returned by read_timeline; the edit applies only if it is still current."),
-    }),
+    // 模型面 = `timeline.write` 的 `apply_edit_plan` 分支减掉 `planId`（宿主派生的幂等键）与 `operation`，
+    // `operations` 用同一份宿主 schema 机器拍平的那一版。`baseRevision` **不改名**：宿主同一个对象里另有
+    // 一个 `revision`＝编辑之后的新版本号，两个词指两件事，模型面少一个词就把它们叠成了一件。
+    // 见 `verbProjections.ts`。
+    schema: editTimelineModelSchema,
+    outputSchema: timelineWriteResultSchema.options[0],
     examples: [{ when: "Move the opening clip to the start:", arguments: { baseRevision: "revision-1", summary: "Move the opening clip", operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }] } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["operations"] }),
   };
@@ -349,10 +351,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here.",
       params: "undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline.",
     },
-    schema: z.object({
-      undoToken: z.string().trim().min(1).max(160).describe("The undoToken returned by the write you are reverting."),
-      expectedRevision: z.string().trim().min(1).max(64).describe("Current timeline revision from read_timeline."),
-    }).strict(),
+    // 模型面 = `timeline.write` 的 `undo_timeline_edit` 分支减掉 `operation` 与 `reason`（`verbProjections.ts`）。
+    schema: undoModelSchema,
     examples: [{ when: "Revert the last plan:", arguments: { undoToken: "undo-1", expectedRevision: "revision-2" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
@@ -365,6 +365,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Never to clean up on your own initiative (arrange_canvas tidies without removing); never for nodes you did not read in look_at_canvas.",
       params: "nodeIds are exact current ids from look_at_canvas; locked nodes and stale ids are rejected.",
     },
+    // `canvas.delete` 的宿主面就定义成这份 pi schema `.extend({ operation })`——模型面与宿主面只有一份
+    // 定义，宿主自补的那个值在 `verbProjections.ts` 的 `DELETE_FROM_CANVAS_HOST_FILL` 里显式声明。
     schema: canvasDeletePiInputSchema,
     examples: [{ when: "Delete two nodes the user pointed at:", arguments: { nodeIds: ["node-a", "node-b"] } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["nodeIds"] }),
@@ -378,13 +380,9 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Not before reading the current timeline (read_timeline); stale revisions and empty timelines are rejected. To stop a running export use cancel_job; to follow it use check_job.",
       params: "expectedRevision from read_timeline; outputName, aspectRatio, resolution and quality are optional.",
     },
-    schema: z.object({
-      expectedRevision: z.string().trim().min(1).max(64).describe("The timeline revision from read_timeline."),
-      outputName: z.string().trim().min(1).max(120).optional().describe("File name without extension."),
-      aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5", "3:4", "4:3", "21:9"]).optional().describe("Output aspect ratio."),
-      resolution: z.enum(["720p", "1080p"]).optional().describe("Output resolution."),
-      quality: z.enum(["small", "standard", "high"]).optional().describe("Encoding quality preset."),
-    }).strict(),
+    // 模型面 = `export.write` 的 `export_timeline` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: exportVideoModelSchema,
+    outputSchema: z.union([exportWriteResultSchema.options[0], exportWriteResultSchema.options[1]]),
     examples: [{ when: "Export at 1080p:", arguments: { expectedRevision: "revision-3", resolution: "1080p" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
@@ -400,7 +398,7 @@ export function writeVerbs(): VerbDeclaration[] {
     },
     // **投影原型（2026-09-18，只有这一个动词）**：模型面不再手写，而是从它声明的那份宿主契约 schema
     // 派生——`.omit()` 掉宿主自补的分支判别值，只覆写描述。宿主字段改名时这里是 tsc 红。
-    // 为什么只有这一个、它覆盖不到什么（双域动词），见 `verbs/cancelJobProjection.ts` 的文件头与
+    // 为什么只有这一个、它覆盖不到什么（双域动词），见 `verbs/verbProjections.ts` 的文件头与
     // `docs/plan/2026-09-18-tool-projection-cancel-job-prototype.md`。
     schema: cancelJobModelSchema,
     examples: [{ when: "Stop a running export:", arguments: { jobId: "export-1" } }],
@@ -415,10 +413,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "Not for one-off instructions; to follow an existing skill use read_skill.",
       params: "dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body).",
     },
-    schema: z.object({
-      dirName: z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).describe("Directory slug for the skill (ASCII letters, digits, . _ -)."),
-      skillMarkdown: z.string().trim().min(1).max(1024 * 1024).describe("The complete SKILL.md content, frontmatter included."),
-    }).strict(),
+    // 模型面 = `skill.write` 宿主面减掉 `operation`，只覆写描述（`verbProjections.ts`）。
+    schema: saveSkillModelSchema,
     examples: [{ when: "Save a skill:", arguments: { dirName: "talking-head-cut", skillMarkdown: "---\nname: talking-head-cut\ndescription: Cut a talking head.\n---\n1. Read the transcript." } }],
     prepareArguments: modelArgumentTolerance({}),
   };
@@ -431,7 +427,8 @@ export function writeVerbs(): VerbDeclaration[] {
       notWhen: "It never accepts, asks for, or stores an API key; keys are typed by the user in that panel only. To see what is already connected use list_models.",
       params: "provider is an optional hint (free text is fine).",
     },
-    schema: z.object({ provider: z.string().trim().min(1).max(80).optional().describe("Provider name hint, e.g. DeepSeek or Anthropic.") }).strict(),
+    // 模型面 = `model.setup.open` 宿主面 + 一句描述覆写；宿主一个字段都不补（`verbProjections.ts`）。
+    schema: startModelSetupModelSchema,
     examples: [{ when: "Connect DeepSeek:", arguments: { provider: "DeepSeek" } }],
     prepareArguments: modelArgumentTolerance({}),
   };

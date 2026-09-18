@@ -43,7 +43,7 @@ import {
   type IntegrationSessionService,
 } from '../integrationCertification/integrationSession'
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
-import { manageModelCatalogConnection } from '../catalog/catalogManagement'
+import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
@@ -385,7 +385,8 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       return { ...created, projectSelectionHandle: selection.handle.handleId }
     }
     case 'models.list':
-      return { models: listAvailableModels() }
+      // `fingerprint` 与 `nomi_remove_provider` 的 `ifUnchanged` 同一个函数算：读什么、删时比什么，不许两份。
+      return { models: listAvailableModels(), fingerprint: currentCatalogFingerprint() }
     case 'skills.list':
       // 导演/编剧技能库元数据（渐进披露，不含正文）。供 MCP 脊柱 resources/prompts 列表。
       return { skills: listSkillSummariesForMcp(mcpSkillAccess(ctx.origin), await readSkillRecords()) }
@@ -754,15 +755,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         params.expectedRevision,
         ctx.origin?.host || 'external',
       )
-      let ui: { opened: boolean } | void
-      try {
-        ui = await ctx.openCredentialsInNomi?.({ sessionId: opened.id, vendorName: opened.config.name })
-      } catch {
-        // A window can disappear between durable enqueue and the renderer request. Keep the MCP
-        // contract usable; the queued handoff will replay when Nomi is opened next time.
-        ui = { opened: false }
-      }
-      // 附上一次性凭据页（MCP URL 模式 elicitation）。铸在这一层 = 铸在真正持有会话的那个进程里。
+      // 窗口可能在「落盘排队」与「叫渲染层」之间消失：不让 MCP 契约因此不可用，排队的交接单会在
+      // Nomi 下次打开时重放。一次性凭据页（URL 模式 elicitation）铸在这一层 = 铸在持有会话的那个进程里。
+      const ui = await Promise.resolve(ctx.openCredentialsInNomi?.({ sessionId: opened.id, vendorName: opened.config.name })).catch(() => undefined)
       return withCredentialElicitationTicket({ ...opened, credentialUiOpened: ui?.opened === true })
     }
     case 'integration.propose':
@@ -781,19 +776,23 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       )
     // 不带 sessionId = 「我把 id 弄丢了」。修复前这里直接报 Invalid sessionId，而 MCP 面上没有第二条路。
     case 'integration.get':
-      return readIntegrationSession(ctx.integrationSessions || getIntegrationSessionService(), params.sessionId, ctx.origin?.host || 'external')
+      return readIntegrationSession(ctx.integrationSessions || getIntegrationSessionService(), params.setupId ?? params.sessionId, ctx.origin?.host || 'external')
     case 'integration.cancel':
       return (ctx.integrationSessions || getIntegrationSessionService()).cancel(
         params.sessionId,
         params.expectedRevision,
         ctx.origin?.host || 'external',
       )
-    case 'integration.manage.update_vendor':
-    case 'integration.manage.delete_vendor':
-    case 'integration.manage.delete_model':
-    case 'integration.manage.set_proxy':
+    // 接模型：两个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那两个名字同源。
+    case 'model.onboarding.setup':
+    case 'model.onboarding.remove': {
       if (ctx.origin?.host === 'external' || !ctx.origin?.host) throw new RpcError('Signed client identity is required', 403)
-      return manageModelCatalogConnection(params)
+      return dispatchModelOnboarding(method, params, {
+        owner: ctx.origin.host,
+        ...(ctx.integrationSessions ? { sessions: ctx.integrationSessions } : {}),
+        ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
+      })
+    }
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

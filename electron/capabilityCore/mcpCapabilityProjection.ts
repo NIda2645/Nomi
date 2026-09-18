@@ -8,6 +8,10 @@ import { flattenDiscriminatedUnion } from "../shared/agentCapabilities/flatModel
 import { CANVAS_DELETE_CAPABILITY, canvasDeletePiInputSchema, canvasDeleteSemanticInputSchema, canvasDeleteResultSchema } from "../shared/agentCapabilities/canvasDelete";
 import { DOCUMENT_READ_CAPABILITY, documentReadResultSchema } from "../shared/agentCapabilities/documentRead";
 import { DOCUMENT_WRITE_CAPABILITY, documentWriteResultSchema } from "../shared/agentCapabilities/documentWrite";
+import {
+  MODEL_ONBOARDING_REMOVE_CAPABILITY,
+  MODEL_ONBOARDING_SETUP_CAPABILITY,
+} from "../shared/agentCapabilities/modelOnboarding";
 import { ASSET_READ_CAPABILITY } from "../shared/agentCapabilities/assetRead";
 import { EXPORT_READ_CAPABILITY, exportReadPiInputSchemaForAlias } from "../shared/agentCapabilities/exportCapabilities";
 import { TIMELINE_READ_CAPABILITY, timelineEditPlanSchema, timelineEditPlanModelSchema } from "../shared/agentCapabilities/timelineRead";
@@ -172,7 +176,10 @@ function parseDerivedCall(
   tool: McpProfileTool,
   args: Record<string, unknown>,
 ): McpCapabilityCall {
-  const { leaseHandle, projectId } = derivedLeaseEnvelope.parse(args);
+  // App 级能力没有租约信封（`CapabilityContract.scope === "app"`）：它的对象不住在某个项目里。
+  const { leaseHandle, projectId } = contract.scope === "app"
+    ? { leaseHandle: undefined, projectId: undefined }
+    : derivedLeaseEnvelope.parse(args);
   const spec = resolveMcpSpec(tool, args);
   if (!spec) {
     const allowed = Object.entries(tool.discriminators)
@@ -205,7 +212,12 @@ function parseDerivedCall(
   const transportOnly = Object.fromEntries(Object.entries(transportRest).filter(([key]) => tool.transportOnlyFields.includes(key)));
   return {
     semanticInput,
-    transport: { leaseHandle, ...(projectId ? { projectId } : {}), ...transportOnly, ...semanticInput },
+    transport: {
+      ...(leaseHandle ? { leaseHandle } : {}),
+      ...(projectId ? { projectId } : {}),
+      ...transportOnly,
+      ...semanticInput,
+    },
   };
 }
 
@@ -414,9 +426,26 @@ export const DOCUMENT_EDIT_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(DO
   outputSchema: documentWriteResultSchema,
 });
 
+// ── 接模型（App 级：没有 leaseHandle，见 CapabilityContract.scope） ─────────────────────
+// 两个适配器都走 `derivedAdapter`：schema 与描述从同一批动词声明机械派生，`check:tool-face` 的
+// `mcp-transport-catalog` 与 `check:model-schema` 的 `profile-schema-drift` 因此都无话可说——
+// 这正是它们取代手写的 `nomi_integration` / `nomi_integration_manage` 的方式。
+export const MODEL_SETUP_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MODEL_ONBOARDING_SETUP_CAPABILITY, {
+  authority: { kind: "project_session", requiredScope: MODEL_ONBOARDING_SETUP_CAPABILITY.requiredScope },
+  port: { kind: "model-catalog", access: "write" },
+  outputSchema: z.unknown(),
+});
+
+export const MODEL_REMOVE_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MODEL_ONBOARDING_REMOVE_CAPABILITY, {
+  authority: { kind: "project_session", requiredScope: MODEL_ONBOARDING_REMOVE_CAPABILITY.requiredScope },
+  port: { kind: "model-catalog", access: "write" },
+  outputSchema: z.unknown(),
+});
+
 const MCP_SAFE_ADAPTERS = new Set<McpCapabilityAdapter>([
   CANVAS_READ_MCP_ADAPTER, CANVAS_EDIT_MCP_ADAPTER, CANVAS_MAINTENANCE_MCP_ADAPTER,
   DOCUMENT_READ_MCP_ADAPTER, DOCUMENT_EDIT_MCP_ADAPTER, TIMELINE_READ_MCP_ADAPTER, TIMELINE_EDIT_MCP_ADAPTER, EXPORT_JOB_MCP_ADAPTER, MEDIA_QUERY_MCP_ADAPTER,
+  MODEL_SETUP_MCP_ADAPTER, MODEL_REMOVE_MCP_ADAPTER,
 ]);
 
 // Deliberately explicit: do not map CAPABILITY_CONTRACTS, Skills, manifests, or plugin metadata.
@@ -430,4 +459,6 @@ export const MCP_CAPABILITY_RESOLVER = createMcpCapabilityResolver([
   TIMELINE_EDIT_MCP_ADAPTER,
   EXPORT_JOB_MCP_ADAPTER,
   MEDIA_QUERY_MCP_ADAPTER,
+  MODEL_SETUP_MCP_ADAPTER,
+  MODEL_REMOVE_MCP_ADAPTER,
 ]);

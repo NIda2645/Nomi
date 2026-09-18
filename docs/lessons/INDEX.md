@@ -89,7 +89,7 @@
 
 ## B. 测试与 CI 的红绿判读
 
-- [CI 的 E2E 链是串行 fail-fast，本地 gates 一条都不含——push 前先本地跑完整条链](ci-e2e-is-fail-fast-so-run-the-whole-chain-locally-before-push.md) — 连红几轮但每轮红的是不同走查 = 发现被串行化，不是没到根因；正文门岗只读 push payload
+- [CI 的 E2E 链是串行 fail-fast，本地 gates 一条都不含——push 前先本地跑完整条链](ci-e2e-is-fail-fast-so-run-the-whole-chain-locally-before-push.md) — ✅ 已固化（`pnpm run test:e2e:ci-chain` + CI 汇总步 + 正文现取）；连红几轮但每轮红的是不同走查 = 发现被串行化，不是没到根因
 - [启动器默认值不能覆盖调用配置](launcher-defaults-must-not-override-env.md) — GUI 已起但 MCP resources/list 超时：先打印双方 capabilityDir；默认派生只能在显式参数与 env 都未配置时发生。
 - [测试目录必须等资源真正关闭后再删](fixture-teardown-must-await-resource-owners.md) — node:test 红后挂死、临时目录 ENOTEMPTY、kill-only 清理。
 - [停掉一个 agent ≠ 现场清空：子 agent 还在写、哨兵还在跑](stopping-an-agent-leaves-children-and-sentinels.md) — B · TaskStop 只停一个；先 ListAgents 停子 agent，再 pgrep 杀 until 循环，证明无写入后才派接力写手
@@ -121,6 +121,7 @@
 - [门岗的 scope 指到不存在的目录，会安静地报绿](gate-scope-pointing-nowhere-passes-silently.md) — 依赖「登记表+scope+禁令」式门岗、刚搬过目录、或在给新禁令做阳性对照时；附「探针写成注释会被 stripComments 吃掉」一坑
 
 - [技能里的指令会跨代累积，模型服从的是过期那条](stale-directives-outlive-tool-renames.md) — Agent「只回文字不调工具」先翻这条；工具**名**过期有门岗，「该不该调用它」的祈使句过期没有任何机器看得见；删过期禁令要只删过期那半（「不许写画布」作废时「不许花钱」仍成立）
+- [走查手写的模型面调用没有类型，动词一改名它就静默失配](walkthrough-tool-args-are-a-compiler-blind-spot.md) — 改完动词字段名说「引用方都同步了」前；或走查报「某某没有落成」而你没动那条生产代码
 
 ## C. Git 交付、分支与文档改动
 

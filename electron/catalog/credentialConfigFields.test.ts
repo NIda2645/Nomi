@@ -29,6 +29,17 @@ const SAMPLE_VENDOR = {
   providerKind: "openai-compatible",
   network: { proxyUrl: "http://user:pass@127.0.0.1:7897" },
   assetIngestion: { strategy: "none" },
+  // 凭据绑定：全是公开协议元数据。注意这里**没有** proxyUrl——绑定刻意不抄它（它带 user:pass@，
+  // 属 credential-bearing 那一档），也没有「保存时走没走代理」那个布尔（Ponytail 2026-09-18：
+  // 记了却没人判的字段就是这条不变量要杀的形状，已删）。
+  credentialBinding: {
+    origin: "https://relay.example",
+    authType: "bearer",
+    authHeader: "X-Key",
+    authQueryParam: "key",
+    authScheme: "Key",
+    confirmedAt: "2026-09-18T00:00:00.000Z",
+  },
   meta: { extraHeaders: { Authorization: "Bearer leaked-token" } },
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",

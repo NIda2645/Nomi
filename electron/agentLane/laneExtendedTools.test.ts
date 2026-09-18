@@ -8,7 +8,7 @@ import { collectVendorCompatibilityFailures, toPublishedJsonSchema } from '../sh
 import { modelFacingToolSpecs } from '../shared/agentCapabilities/modelFacingToolRegistry'
 import { LANE_MODEL_TOOL_CATALOG, LANE_TOOL_BUDGET, LANE_DEFERRED_TOOL_CATALOG, LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog'
 import { VERB_DECLARATIONS } from '../shared/agentCapabilities/verbDeclarations'
-import { objectFieldKeys } from '../shared/agentCapabilities/verbs/verbFieldMap'
+import { objectFieldKeys } from '../shared/agentCapabilities/verbs/verbProjections'
 import {
   LANE_TOOL_NEXT_ACTION_REFS, renderLaneToolNextAction, type LaneToolNextAction,
 } from '../shared/agentLane/laneToolNextAction'

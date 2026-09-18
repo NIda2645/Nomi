@@ -116,6 +116,9 @@ export type GenerationErrorKind =
   // 请求从未离开本机 → 没有计费、也没有可找回的 taskId，所以下一步是「修网络后重新生成」（免费），
   // 而不是「免费重新拉取」（那需要一个已经存在的任务）。
   | 'outbound-blocked-submit'
+  // 同族第三条：请求带着密钥，但目的地不是用户保存这把 key 时确认过的 origin。没有计费，
+  // 也没有网络要修——下一步是回接入页重新保存一次密钥（那一页是这条连接地址的唯一家）。
+  | 'outbound-blocked-credential-origin'
   | 'server'
   | 'input'
   | 'output-truncated'
@@ -140,6 +143,7 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'asset-too-large': 'assetTooLarge',
   'outbound-blocked': 'outboundBlocked',
   'outbound-blocked-submit': 'outboundBlockedSubmit',
+  'outbound-blocked-credential-origin': 'outboundBlockedCredentialOrigin',
   server: 'server',
   input: 'input',
   'output-truncated': 'outputTruncated',
@@ -158,7 +162,7 @@ export function narrateGenerationError(
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
   // These two failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = kind === 'outbound-blocked-submit' || kind === 'asset-upload-failed'
+  const uncharged = kind === 'outbound-blocked-submit' || kind === 'outbound-blocked-credential-origin' || kind === 'asset-upload-failed'
   return {
     reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
     hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
@@ -219,6 +223,9 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
   // 同样把用户送去网络那一行（NetworkSection 就住在模型接入抽屉里）。这一条的次动作是 retry，
   // 而且这次的 retry 是**诚实的**：请求从未发出、没有计费，修好网络后重来一次不多花一分钱。
   'outbound-blocked-submit': 'open-model-access',
+  // 同样送去模型接入——但要做的是**重新保存密钥**，不是看代理（hint 里写清）。绝不给 retry 当主动作：
+  // 地址没改回来之前，重试一万次都是同一堵墙。
+  'outbound-blocked-credential-origin': 'open-model-access',
   quota: 'retry',
   'poll-timeout': 'retry',
   network: 'retry',

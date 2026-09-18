@@ -35,11 +35,19 @@
 
 **反例**：M1 三线撞车——两个核账班 chip 都指向同一 `-r2` 分支，用户点开后互相踩掉对方的 commit。
 
-### 2.1 交工链：review:branch → 处理 findings → gates → push → PR
+### 2.1 交工链：review:branch → 处理 findings → gates →（碰面分支）ci-chain → push → PR
 
 **原则**（2026-09-15 起）：任务书里的交工链是**一条连续动作**，不许拆散执行、不许跳步：
 
-> `pnpm run review:branch` → 处理 findings（改完就回第一步，树变了收据即失效）→ `pnpm run gates` → `git push` → 开 PR，正文带 `## Ponytail` 节逐条写「已改」/「不改，因为…」。
+> `pnpm run review:branch` → 处理 findings（改完就回第一步，树变了收据即失效）→ `pnpm run gates` →
+> **集成 / 碰面分支再加一步** `pnpm run test:e2e:ci-chain` → `git push` → 开 PR，
+> 正文带 `## Ponytail` 节逐条写「已改」/「不改，因为…」。
+
+**为什么多这一步**（2026-09-18 加）：CI 的 desktop-linux job 那七条走查，`pnpm run gates` **一条都不含**。
+2026-09-17 PR #804 本地连过五轮 gates 全绿，CI 仍连红三轮，每轮红的还是另一条不同的走查。
+`test:e2e:ci-chain` 按 CI 同序把七步一次跑完（红了继续跑，最后一张汇总表），只持一次 gates 锁。
+**判据**：每轮红的是不是同一条——每轮不同 = 发现被串行化了，不是「没找到根因」。
+功能 lane 不必跑它（`gates` 的 focused 档够用），它是给集成 / 碰面 / 开 PR 的分支的。
 
 机制细节在 [R25](../engineering-rules.md#r25-交工前-ponytail-评审)。**为什么写成链**：五门戳 30 分钟过期、评审收据绑的是树——任何一步回头改代码，后面两张凭据同时失效。写成连续步骤，执行体才不会「先审后改」把评审做成摆设，或「先盖戳后改」把戳做成摆设。最后那节逐条表态目前靠纪律（无机器核，债到 2026-10-15），任务书必须把它写进报告格式里。
 

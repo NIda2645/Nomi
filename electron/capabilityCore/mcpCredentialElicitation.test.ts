@@ -15,8 +15,14 @@ function makeInvoke(states: string[]) {
   let index = 0
   const invoke = async (method: string, params: Record<string, unknown>) => {
     calls.push({ method, params })
-    if (method === 'integration.open_credentials') {
-      return { id: TICKET.sessionId, revision: 2, stage: 'needs_credential', credentialStatus: 'missing', credentialEntry: TICKET, credentialUiOpened: false }
+    if (method === SETUP_METHOD) {
+      // 2026-09-18（#754）：开场那一跳返回 §4.3 信封，会话投影在 `state` 里。
+      return {
+        ok: true,
+        setupId: TICKET.sessionId,
+        unverified: [{ claim: 'model_produces_output' }],
+        state: { id: TICKET.sessionId, revision: 2, stage: 'needs_credential', credentialStatus: 'missing', credentialEntry: TICKET, credentialUiOpened: false },
+      }
     }
     const status = states[Math.min(index++, states.length - 1)]
     return { id: TICKET.sessionId, revision: 3, stage: status === 'ready' ? 'draft' : 'needs_credential', credentialStatus: status }
@@ -25,14 +31,18 @@ function makeInvoke(states: string[]) {
 }
 
 const noWait = async () => {}
+const SETUP_METHOD = 'model.onboarding.setup'
+/** 回信是 §4.3 信封：会话投影在 `state` 里。 */
+const state = (result: Record<string, unknown>) => result.state as Record<string, unknown>
 
-describe('nomi_integration credential elicitation (MCP url mode)', () => {
+describe('nomi_model_setup credential elicitation (MCP url mode)', () => {
   it('asks in url mode, waits for the real save, then notifies completion', async () => {
     const { invoke, calls } = makeInvoke(['missing', 'missing', 'ready'])
     const requestUrl = vi.fn(async () => ({ supported: true, action: 'accept' as const }))
     const notifyComplete = vi.fn()
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke,
       elicitation: { requestUrl, notifyComplete },
       wait: noWait,
@@ -46,9 +56,9 @@ describe('nomi_integration credential elicitation (MCP url mode)', () => {
     expect(notifyComplete).toHaveBeenCalledWith(TICKET.elicitationId)
     expect(outcome.kind).toBe('result')
     if (outcome.kind !== 'result') throw new Error('unreachable')
-    expect(outcome.result.credentialStatus).toBe('ready')
+    expect(state(outcome.result).credentialStatus).toBe('ready')
     // The spent single-use URL never rides back out to the model.
-    expect(outcome.result.credentialEntry).toBeUndefined()
+    expect(state(outcome.result).credentialEntry).toBeUndefined()
     expect(JSON.stringify(outcome.result)).not.toContain('integration-credential')
   })
 
@@ -58,14 +68,15 @@ describe('nomi_integration credential elicitation (MCP url mode)', () => {
     // blamed for something they never saw, with no next step.
     const { invoke } = makeInvoke(['missing'])
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke,
       elicitation: { requestUrl: async () => ({ supported: true, action: 'decline' as const }), notifyComplete: vi.fn() },
       wait: noWait,
     })
     expect(outcome.kind).toBe('result')
     if (outcome.kind !== 'result') throw new Error('unreachable')
-    const entry = outcome.result.credentialEntry as { mode: string; reason: string; instructions: string }
+    const entry = state(outcome.result).credentialEntry as { mode: string; reason: string; instructions: string }
     expect(entry).toMatchObject({ mode: 'manual', reason: 'not_opened' })
     expect(entry.instructions).toMatch(/设置|Settings/)
     expect(entry.instructions).not.toMatch(/超时|timed out/)
@@ -76,7 +87,8 @@ describe('nomi_integration credential elicitation (MCP url mode)', () => {
   it('gives up with the manual path when the page is never completed', async () => {
     const { invoke } = makeInvoke(['missing'])
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke,
       elicitation: { requestUrl: async () => ({ supported: true, action: 'accept' as const }), notifyComplete: vi.fn() },
       wait: noWait,
@@ -88,22 +100,24 @@ describe('nomi_integration credential elicitation (MCP url mode)', () => {
   it('withholds the URL from a client that cannot present it, and points at Nomi instead', async () => {
     const { invoke } = makeInvoke(['missing'])
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke,
       elicitation: { requestUrl: async () => ({ supported: false }), notifyComplete: vi.fn() },
       wait: noWait,
     })
     expect(outcome.kind).toBe('result')
     if (outcome.kind !== 'result') throw new Error('unreachable')
-    expect(outcome.result.stage).toBe('needs_credential')
-    expect(outcome.result.credentialEntry).toEqual({ mode: 'manual', instructions: expect.stringMatching(/设置|Settings/) })
+    expect(state(outcome.result).stage).toBe('needs_credential')
+    expect(state(outcome.result).credentialEntry).toEqual({ mode: 'manual', instructions: expect.stringMatching(/设置|Settings/) })
     expect(JSON.stringify(outcome.result)).not.toContain('127.0.0.1')
   })
 
   it('says to start Nomi when the owning process cannot reach a GUI', async () => {
     const { invoke } = makeInvoke(['missing'])
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke,
       elicitation: { requestUrl: async () => ({ supported: false }), notifyComplete: vi.fn() },
       locale: 'en',
@@ -111,24 +125,28 @@ describe('nomi_integration credential elicitation (MCP url mode)', () => {
     })
     expect(outcome.kind).toBe('result')
     if (outcome.kind !== 'result') throw new Error('unreachable')
-    expect((outcome.result.credentialEntry as { instructions: string }).instructions).toMatch(/Nomi is not running/)
+    expect((state(outcome.result).credentialEntry as { instructions: string }).instructions).toMatch(/Nomi is not running/)
   })
 
   it('tells form-only clients that the Nomi window is already on the provider page', async () => {
     const { invoke } = makeInvoke(['missing'])
     const wrappedInvoke = async (method: string, params: Record<string, unknown>) => {
       const value = await invoke(method, params) as Record<string, unknown>
-      return method === 'integration.open_credentials' ? { ...value, credentialUiOpened: true } : value
+      // `credentialUiOpened` 住在信封的 state 里（与其它会话字段同处）。
+      return method === SETUP_METHOD
+        ? { ...value, state: { ...(value.state as Record<string, unknown>), credentialUiOpened: true } }
+        : value
     }
     const outcome = await runIntegrationCredentialElicitation({
-      built: { sessionId: TICKET.sessionId, expectedRevision: 1 },
+      built: { action: 'connect_provider', name: 'APIMart' },
+      method: SETUP_METHOD,
       invoke: wrappedInvoke,
       elicitation: { requestUrl: async () => ({ supported: false }), notifyComplete: vi.fn() },
       wait: noWait,
     })
     expect(outcome.kind).toBe('result')
     if (outcome.kind !== 'result') throw new Error('unreachable')
-    expect((outcome.result.credentialEntry as { instructions: string }).instructions).toMatch(/窗口已经打开|window is open/)
+    expect((state(outcome.result).credentialEntry as { instructions: string }).instructions).toMatch(/窗口已经打开|window is open/)
   })
 })
 

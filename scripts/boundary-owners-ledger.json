@@ -161,6 +161,16 @@
         "symbol": "createLaneSkillIndexSource / LaneSkillIndexSource"
       },
       "reason": "laneInstalledSkills.mts 是迁 pi 时删掉的两份自研遍历器之一；同名函数整体搬进 laneSkillCatalog.mts，签名与「索引是记录集的纯投影」那条不变量一字未动（lane-live-skill-index.test.mts 仍在测它）。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-18-agent-storyboard-single-ledger.root-cause.json",
+      "path": "electron/agentLane/verbTransportRoutes.ts",
+      "symbol": "DRAFT_SHOT_FIELD_MAP",
+      "anchor": {
+        "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+        "symbol": "draftShotToPlanShot"
+      },
+      "reason": "2026-09-18 晚投影铺开：一镜的字段对应表（DRAFT_SHOT_FIELD_MAP）被取代成一个有类型的显式变换。那条不变量一个字没变——三处形状变化（嵌套层级 / 拍平 / 参考素材身份由宿主补）与「信封字段落不进候选 patch」都在新锚里，而且 #813 开通的「shotId 提到 plan patch 信封上」也跟着搬了（draftShotsPatchEnvelope，同文件）。原表连同 verbFieldMap.ts 的 DSL 一起删掉。"
     }
   ],
   "retirements": [
@@ -439,6 +449,12 @@
       "path": "electron/skills/skillFrontmatter.ts",
       "symbol": "skillMarkdownWithoutFrontmatter",
       "reason": "frontmatter 剥离整件事交给了 pi：进提示词的是 pi 给的 SkillRecord.content（已去 frontmatter），我们不再自己剥一遍。全仓零引用，那条「剥得干不干净」的不变量随之不再适用——它现在由 skillFrontmatter.test.ts 对 88 份真技能与 pi parseFrontmatter 的深相等断言兜住。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-11-mcp-onboarding-defects.root-cause.json",
+      "path": "electron/capabilityCore/mcpIntegrationTools.ts",
+      "symbol": "INTEGRATION_REQUIRED_BY_ACTION",
+      "reason": "2026-09-18（#754）：这条不变量的**来源**被删掉了，不是主人搬了家。那份合同守的是「广播的必填表要和运行时校验的那一份一致」，而它之所以需要一张手抄的表，是因为旧面广播 required:['action'] 而实现逐字段抛。新面（nomi_model_setup）的对外 schema 就是契约自己那个按 action 判别的 zod 联合——广播的那份**就是**运行时 parse 的那一份，没有第二张表可对齐，也就没有可漂移的东西。等价断言搬进 electron/capabilityCore/mcpOnboardingDefects.test.ts 的「必填只有一份」，它钉的是这条结构性质而不是那张表。"
     }
   ],
   "unverified": [

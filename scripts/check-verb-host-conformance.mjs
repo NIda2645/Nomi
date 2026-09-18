@@ -4,9 +4,17 @@
  *
  * ── 它在治哪一类真实故障 ──
  *
- * 模型看见的是 20 个动词（`verbDeclarations.ts`），宿主认的是各领域契约的语义输入。两端是**两份
- * 独立写出来的 schema**，中间隔着一层手写翻译（`laneVerbTransport.ts` 的 `verbToTransportCall`、
- * 声明上的 `semanticInputOf`）。没有任何东西检查这个**复合**成不成立，于是同一族故障反复回来：
+ * 模型看见的是 20 个动词（`verbDeclarations.ts`），宿主认的是各领域契约的语义输入。
+ *
+ * **2026-09-18 投影化之后，这两端在 11 个动词上已经是同一份 schema** 了（模型面 = 宿主面
+ * `.omit(宿主自补的字段)`，`verbs/verbProjections.ts`）。对那 11 个，下面 R1–R3 是按构造成立的——
+ * 它们照跑，但跑出来的是恒真，成本是几毫秒。**这道门今天真正在管的是剩下那 9 个**：
+ *   · `draft_shots`：唯一的**有损**投影（嵌套层级 / 拍平 / 参考素材身份由宿主补），
+ *     `verbs/draftShotsProjection.ts`；
+ *   · 七个走 `semanticInputOf` 的动词（读写文稿、时间轴读、五合一素材读、三个画布写）：
+ *     它们把模型面**构造**成宿主的某一支，不是投影；
+ *   · 两个**双域**动词在生成域那一半的那一条改名（`verbs/verbDualDomain.ts`）。
+ * 这三类里那层翻译仍然是手写的，而没有任何东西检查这个**复合**成不成立，于是同一族故障反复回来：
  *
  *   A 类 · 动词声明了宿主 `.strict()` 不认的字段
  *          （2026-09-18 真机：每镜 `title` / `durationSec` → `generation_input_invalid` × 3 次，
@@ -29,7 +37,10 @@
  * 内部面上出现。这道门是它的内部面同胞，不是第二份实现：判据同样是「照着广播出去的 schema 造实例，
  * 喂进运行时真正用的那个校验器」。
  *
- * 五条判据（前四条对每个动词、每个投影出去的面）：
+ * 五条判据（前四条对每个动词、每个投影出去的面）。为什么投影化之后它们没有一起删掉：
+ * 裁决 §3 的判断「投影之后 R1–R3 退化成一句子集断言」只对**纯投影**的那 11 个成立；剩下 9 个里缝还在，
+ * 而 R1/R2/R2b/R3 正是量那条缝的唯一一把尺子（2026-09-18 的 A/B/C/D 四类全出在它们身上）。
+ * 恒真地跑那 11 个的成本是几毫秒，删掉的成本是另外 9 个重新变成盲区——所以留着。
  *   R1 最小实例    只填必填 → 宿主必须收（宿主要的东西，动词必须先告诉过模型）
  *   R2 字段填满    动词允许模型填的每个字段都填上 → 宿主必须收（示例只证「照抄示例能过」）
  *   R3 不丢字段    模型填进去的每个值都要在翻译结果里找得到；丢了就得在下面**具名登记**并写明理由
@@ -61,6 +72,7 @@ const { toSemanticInput, toModelFacingToolSpec } = await load('electron/shared/a
 const { verbToTransportCall, exportJobTransportCall } = await load('electron/agentLane/laneVerbTransport.ts')
 const { generationPlanInputSchema, generationStatusInputSchema } = await load('electron/shared/agentCapabilities/generationPlanSchemas.ts')
 const { GENERATION_METHODS } = await load('electron/shared/agentCapabilities/generation.ts')
+const { PROVENANCE_UNVERIFIABLE } = await load('electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts')
 const { assetReadInputForAlias } = await load('electron/shared/agentCapabilities/assetRead.ts')
 const { exportReadInputForAlias, exportWriteInputForAlias } = await load('electron/shared/agentCapabilities/exportCapabilities.ts')
 const { timelineWriteInputForAlias } = await load('electron/shared/agentCapabilities/timelineWrite.ts')
@@ -75,8 +87,7 @@ const { skillWriteInputForAlias } = await load('electron/shared/agentCapabilitie
  * 忘记登记的成本是门岗当场红——这个方向是故意的（R17：能让门岗拦的别留给人）。
  */
 const TRANSLATOR_CONSUMED = {
-  'draft_shots/shots[].shotId': '改已有草稿走顶层候选 patch，宿主的 candidatePatch 没有逐镜寻址（多镜按 shotId 的 patch 还没做，返回值会说清改了哪一镜）',
-  'draft_shots/shots[].role': '同上：patch 分支按顶层候选改，role 是逐镜信封字段，宿主的 candidatePatch 不收',
+  'draft_shots/shots[].role': 'patch 分支改的是候选，role 是逐镜信封字段，宿主的 candidatePatch 不收（表上是 refuse：填了就当场拒，不会静默丢）',
   'read_script/scope': 'scope 是契约的 operation 判别值，翻译成 full/selection 后由方法名承载',
   'write_script/where': '同上：where 翻成 document.write 的 operation（insert/replace/append）',
   'arrange_canvas/tidy': '布尔开关本身就是 operation 判别（tidy:true → tidy_canvas），不作为字段下传',
@@ -207,11 +218,26 @@ function saturate(seed, published, verbSchema) {
 }
 
 /** 一份载荷里出现过的全部叶子值（R3 按值比对，所以改名不算丢）。 */
-function leafValues(value, out = new Set()) {
-  if (Array.isArray(value)) { for (const item of value) leafValues(item, out); return out }
-  if (isRecord(value)) { for (const item of Object.values(value)) leafValues(item, out); return out }
-  if (value !== undefined) out.add(`${typeof value}:${String(value)}`)
+
+/**
+ * 一份载荷里每个叶子值**第一次出现的路径**（与 `fieldProbes` 同一种路径写法：`shots[].shotId`）。
+ * R3 从示例出发时用它把「丢了哪个值」翻回「丢了哪个字段」，好对得上 TRANSLATOR_CONSUMED 的登记键。
+ */
+function leafPaths(value, keys = [], out = new Map()) {
+  if (Array.isArray(value)) { for (const item of value) leafPaths(item, [...keys, '[]'], out); return out }
+  if (isRecord(value)) { for (const [key, item] of Object.entries(value)) leafPaths(item, [...keys, key], out); return out }
+  if (value === undefined) return out
+  const leaf = `${typeof value}:${String(value)}`
+  if (!out.has(leaf)) out.set(leaf, keys.join('.').replace(/\.\[\]/g, '[]'))
   return out
+}
+
+/**
+ * 同一份载荷的叶子值集合。**从 `leafPaths` 派生**：那张表的键就是叶子身份
+ * （`${typeof}:${值}`），再写一个同形状的递归遍历只会多一份要一起改的东西。
+ */
+function leafValues(value) {
+  return new Set(leafPaths(value).keys())
 }
 
 /** 把一个动词的一次调用走完整条路；返回这次调用的全部问题。 */
@@ -359,6 +385,25 @@ function checkVerb(verb) {
         + '\n        → 要么把它传下去，要么在 TRANSLATOR_CONSUMED 里按这个路径具名登记并写清它被谁吃掉了')
     }
   }
+  // R3 · 从**示例**出发：最小实例一次只加一个字段，够不到那些「只有和另一个字段同在才合法」的字段——
+  // `draft_shots` 的 `shots[].shotId` 没有 `draftId` 就过不了动词自己的 refine，探针于是从不碰它；
+  // 2026-09-18 它就这样被声明成 drop、且门岗全绿了一整天。示例是动词作者亲手写下的「模型会这么调」，
+  // 示例里给了值的每个字段都必须到达宿主——同一把尺子、同一份登记，只是起点换成示例。
+  for (const [index, example] of seeds.entries()) {
+    const args = verb.schema.parse(example.arguments)
+    const outcome = checkCall(verb, spec, contract, `R3 示例#${index + 1}`, args)
+    if (outcome.translated === undefined) continue
+    const kept = leafValues(outcome.translated)
+    const dropped = new Map()
+    for (const [leaf, fieldPath] of leafPaths(args)) {
+      if (kept.has(leaf) || TRANSLATOR_CONSUMED[`${verb.name}/${fieldPath}`]) continue
+      dropped.set(fieldPath, [...(dropped.get(fieldPath) ?? []), leaf])
+    }
+    for (const [fieldPath, leaves] of dropped) {
+      problems.push(`R3 示例#${index + 1}：字段 "${fieldPath}" 在示例里给了值，却没有到达宿主（丢了 ${leaves.slice(0, 3).join(', ')}）`
+        + '\n        → 要么把它传下去，要么在 TRANSLATOR_CONSUMED 里按这个路径具名登记并写清它被谁吃掉了')
+    }
+  }
   return problems
 }
 
@@ -474,7 +519,25 @@ function sourceFiles() {
   return out
 }
 
-const failures = []
+// 来源缺口按动词身份做棘轮，不能删 A 加 B 偷换名额；删掉缺口必须同时缩小基线。
+// 沿用 contracts 现有入口和变异自检，不另建一条会被忘记接线的验证链。
+function provenanceRatchetFailures() {
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/provenance-unverifiable-baseline.json'), 'utf8'))
+  if (!Array.isArray(baseline) || baseline.some((name) => typeof name !== 'string') || new Set(baseline).size !== baseline.length) {
+    return ['PROVENANCE_UNVERIFIABLE 棘轮基线必须是无重复的动词身份数组']
+  }
+  const current = Object.keys(PROVENANCE_UNVERIFIABLE)
+  const added = current.filter((name) => !baseline.includes(name))
+  const stale = baseline.filter((name) => !Object.hasOwn(PROVENANCE_UNVERIFIABLE, name))
+  const problems = [
+    ...added.map((name) => `PROVENANCE_UNVERIFIABLE 棘轮禁止新增身份：${name}`),
+    ...stale.map((name) => `PROVENANCE_UNVERIFIABLE 基线有陈旧身份：${name}；请随修复删掉，不能留给下次回涨`),
+  ]
+  if (!problems.length) console.log(`✅ PROVENANCE_UNVERIFIABLE 棘轮：${current.length} 条，身份基线一致`)
+  return problems
+}
+
+const failures = provenanceRatchetFailures()
 let checked = 0
 for (const verb of VERB_DECLARATIONS) {
   checked += 1

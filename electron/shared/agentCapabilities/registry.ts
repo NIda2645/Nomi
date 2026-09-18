@@ -16,6 +16,7 @@ import {
   GENERATION_RUN_READ_CAPABILITY,
   GENERATION_CONTROL_CAPABILITY,
 } from "./generation";
+import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY } from "./modelOnboarding";
 import { MODEL_SETUP_OPEN_CAPABILITY } from "./modelSetup";
 import {
   PRODUCTION_ARTIFACT_WRITE_CAPABILITY,
@@ -24,6 +25,7 @@ import {
 } from "./productionRun";
 import { SKILL_WRITE_CAPABILITY } from "./skillWrite";
 import { SKILL_READ_CAPABILITY } from "./skillRead";
+import { MCP_READ_TOOL_NAME } from "./mcpTransportNames";
 import type { CapabilityContract, CapabilityEffectClass, CapabilityProjectionSurface } from "./capabilityContract";
 
 type AnyCapabilityContract = CapabilityContract<unknown, unknown>;
@@ -60,9 +62,25 @@ const REGISTERED_CONTRACTS = [
   GENERATION_RUN_READ_CAPABILITY,
   GENERATION_CONTROL_CAPABILITY,
   MODEL_SETUP_OPEN_CAPABILITY,
+  MODEL_ONBOARDING_SETUP_CAPABILITY,
+  MODEL_ONBOARDING_REMOVE_CAPABILITY,
 ] as const satisfies readonly CapabilityContract<unknown, unknown>[];
 
 export const CAPABILITY_CONTRACTS: ContractOnlyRegistry<typeof REGISTERED_CONTRACTS> = REGISTERED_CONTRACTS;
+
+/**
+ * 对外 `tools/list` 上的全部工具名：契约自己声明的 `aliases.mcp`，加上不挂契约的那几个
+ * （`nomi_read` 是收编 10 个读工具后的统一读入口）。
+ *
+ * 动词装配期用它判「说明书里点名的工具存在吗」（`assembleVerbDeclarations` 的 `mcpToolNames`）。
+ * 生产装配与它的阳性对照测试读的是**同一个函数**——这段以前在两处各抄了一遍同样的
+ * cast + flatMap（Ponytail 2026-09-18）。
+ */
+export function mcpToolNames(): readonly string[] {
+  const fromContracts = (CAPABILITY_CONTRACTS as readonly { aliases: { mcp?: string } }[])
+    .flatMap((contract) => (contract.aliases.mcp ? [contract.aliases.mcp] : []));
+  return Object.freeze([...fromContracts, MCP_READ_TOOL_NAME]);
+}
 
 function aliasEntriesFor<Contract extends AnyCapabilityContract>(contract: Contract) {
   const contractView: AnyCapabilityContract = contract;

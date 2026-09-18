@@ -106,6 +106,8 @@ export interface VerbDeclaration {
   readonly describe: VerbDescription;
   /** 模型真正要填的那一部分语义输入。别名定死的字段已经剥掉（见 `aliasBoundInput`）。 */
   readonly schema: ZodTypeAny;
+  /** 宿主返回的真实形状，仅供来源核对；不投影进模型输入面。未声明时沿用能力 outputSchema。 */
+  readonly outputSchema?: ZodTypeAny;
   /** 至少一个，当工具字段数 ≥10 或语义上有分支时（门岗 `missing-example`）。 */
   readonly examples: readonly VerbExample[];
   /** 通道③：进系统提示词的 `Guidelines`，跨工具去重。 */
@@ -275,6 +277,11 @@ export interface VerbAssemblyInput {
   readonly contractById: (id: string) => AnyCapabilityContract | undefined;
   /** 付费边界上的名字（`paidBoundary.isPaidBoundaryAlias`）。A4 用它对账。 */
   readonly isPaidBoundaryName: (name: string) => boolean;
+  /**
+   * 对外 `tools/list` 上的工具名（契约的 `aliases.mcp`）。只投对外 profile 的动词，说明书里
+   * 点名的是它们；A2 的名字解析把这些也算数（见 `assembleVerbDeclarations`）。
+   */
+  readonly mcpToolNames?: readonly string[];
 }
 
 /**
@@ -287,6 +294,12 @@ export function assembleVerbDeclarations(input: VerbAssemblyInput): readonly Ver
     if (names.has(declaration.name)) throw new Error(`Duplicate verb declaration: ${declaration.name}`);
     names.add(declaration.name);
   }
+  // 只投对外 profile 的动词，说明书是写给**外部宿主**读的——它那边看见的名字是契约的 `aliases.mcp`
+  // （`nomi_read` / `nomi_model_setup`），不是内部动词名。这些名字也算「解析得到」：A2 守的那件事
+  // 不变（点名的工具必须真的存在），只是把「存在」扩到它读者那一侧的名字。
+  // 刻意**不**并进 `names`：`notWhen` 里那条「至少点名另一个**动词**」的要求不放宽——
+  // 一个对外工具名不能替一条裁决充数。
+  const alsoResolvable = new Set(input.mcpToolNames ?? []);
   const published = new Map<string, JsonSchemaObject>();
   for (const declaration of input.declarations) {
     const contract = input.contractById(declaration.contractId);
@@ -296,7 +309,7 @@ export function assembleVerbDeclarations(input: VerbAssemblyInput): readonly Ver
     }
     published.set(declaration.name, toPublishedJsonSchema(declaration.schema));
     assertOneEffect(declaration, contract, input.isPaidBoundaryName);
-    assertFiveSlots(declaration, names, published.get(declaration.name)!);
+    assertFiveSlots(declaration, names, published.get(declaration.name)!, alsoResolvable);
     assertEnglish(declaration, published.get(declaration.name)!);
     assertNoPaidContradiction(declaration, input.isPaidBoundaryName);
     if (declaration.profiles && declaration.profiles.length !== 2 && !declaration.profileReason) {
@@ -351,7 +364,12 @@ function assertOneEffect(
 }
 
 /** A2 · 描述五槽齐全；`notWhen` 点名别的动词；名字都解析得到。 */
-function assertFiveSlots(declaration: VerbDeclaration, names: ReadonlySet<string>, schema: JsonSchemaObject): void {
+function assertFiveSlots(
+  declaration: VerbDeclaration,
+  names: ReadonlySet<string>,
+  schema: JsonSchemaObject,
+  alsoResolvable: ReadonlySet<string> = new Set(),
+): void {
   const { does, useWhen, notWhen, params } = declaration.describe;
   for (const [slot, text] of Object.entries({ does, useWhen, notWhen, params })) {
     if (typeof text !== "string" || text.trim().length === 0) {
@@ -363,7 +381,7 @@ function assertFiveSlots(declaration: VerbDeclaration, names: ReadonlySet<string
   }
   const enums = new Set<string>();
   enumValuesOf(schema, enums);
-  const resolvable = (token: string) => names.has(token) || enums.has(token);
+  const resolvable = (token: string) => names.has(token) || enums.has(token) || alsoResolvable.has(token);
   const siblings = [...notWhen.matchAll(NAME_TOKEN)].map((m) => m[0]).filter((token) => names.has(token) && token !== declaration.name);
   if (siblings.length === 0) {
     throw new Error(`Verb ${declaration.name}: describe.notWhen must name at least one other declared verb ("use X instead").`);

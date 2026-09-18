@@ -49,6 +49,7 @@ import { buildCatalogPackage, catalogPackageImportSchema, type CatalogPackage } 
 import { invalidateProviderAdapterRunsForVendors } from "../providerAdapter/store";
 import { invalidateVendorValidation, normalizedConnectionScope } from "./vendorValidationInvalidation";
 import { logWarn } from "../logging/logger";
+import { assertNoCredentialBindingRewrite, bindCredentialDestination } from "./credentialBinding"; // §6.1
 export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./customConfigStore";
 // 各版 relay 迁移各住独立模块（R9 分层：迁移与读写盘/事务无关）。这里只做接线 + 再导出，
 // 测试与既有调用方按原路径 import 不变。
@@ -376,6 +377,7 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const key = sanitizeName(raw.key, "").toLowerCase().replace(/\s+/g, "-");
   if (!key) throw new Error("vendor key is required");
   const existing = state.vendors.find((vendor) => vendor.key === key);
+  assertNoCredentialBindingRewrite(raw.credentialBinding, existing?.credentialBinding);
   const previousScope = normalizedConnectionScope(existing);
   guardAntigravityVendorWrite({ ...raw, key, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
     (request) => antigravityConnection.canEnable(request));
@@ -422,6 +424,8 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
     authScheme: typeof raw.authScheme === "string" ? raw.authScheme.trim() || null : (existing?.authScheme ?? undefined),
     authQueryParam: typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
+    // 绑定只从 existing 继承、永不从 payload 读（§6.1）：改地址不会顺手把绑定改掉。
+    ...(existing?.credentialBinding ? { credentialBinding: existing.credentialBinding } : {}),
     network: proxyEnabled !== undefined ? { proxyEnabled } : undefined,
     // 用户数据（这家怎么传参考图）：不带该键=保留，显式 null=清除。三态同 Model.customCall。
     assetIngestion: raw.assetIngestion === null ? undefined : ((raw.assetIngestion as Vendor["assetIngestion"]) ?? existing?.assetIngestion),
@@ -477,8 +481,9 @@ function applyApiKeyUpsert(state: CatalogState, vendorKey: string, payload: unkn
     ...(existing?.networkConfig ? { networkConfig: existing.networkConfig } : {}),
     ...(existing?.customConfig ? { customConfig: existing.customConfig } : {}),
   };
-  if (!enabled) invalidateVendorValidation(state, key);
-  if (!enabled) depublishVendorForDisabledCredential(state, key, t);
+  // 凭据绑定（§6.1）：全仓唯一的 key 写门，绑定不可能有第二个写入口。判据住 credentialBinding.ts。
+  bindCredentialDestination(state.vendors.find((vendor) => vendor.key === key), t);
+  if (!enabled) { invalidateVendorValidation(state, key); depublishVendorForDisabledCredential(state, key, t); }
 }
 export function upsertModelCatalogVendorApiKey(vendorKey: string, payload: unknown): unknown {
   const state = readCatalog();
