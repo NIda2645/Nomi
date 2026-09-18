@@ -361,15 +361,17 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   const requests = { runId: '', count: 0 };
   const failures = createLaneRepeatedFailureTracker();
 
-  harness.hooks.on('before_request', (event) => {
-    if (event.step !== 'assistant') return undefined;
-    // 重试不消耗预算：`attempt` 在重试时递增，同一步会带着 2、3、4 再来一次。
-    // 把重试算进步数，等于让一次网络抖动吃掉用户的回合。
-    if (event.attempt !== 1) return undefined;
-    if (requests.runId !== event.runId) { requests.runId = event.runId; requests.count = 0; }
-    requests.count += 1;
-    return undefined;
-  });
+  if (maxModelRequests !== undefined) {
+    harness.hooks.on('before_request', (event) => {
+      if (event.step !== 'assistant') return undefined;
+      // 重试不消耗预算：`attempt` 在重试时递增，同一步会带着 2、3、4 再来一次。
+      // 把重试算进步数，等于让一次网络抖动吃掉用户的回合。
+      if (event.attempt !== 1) return undefined;
+      if (requests.runId !== event.runId) { requests.runId = event.runId; requests.count = 0; }
+      requests.count += 1;
+      return undefined;
+    });
+  }
 
   harness.hooks.on('before_payload', (event) => options.input
     ? { payload: options.input.rewritePayload(event.payload, event.model.api) } : undefined);
