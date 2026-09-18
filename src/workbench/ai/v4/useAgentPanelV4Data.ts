@@ -153,11 +153,9 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
   }, [reloadModels])
 
   const reloadSkills = React.useCallback(() => {
-    try {
-      setSkills(listWorkbenchSkills())
-    } catch {
-      setSkills([])
-    }
+    listWorkbenchSkills()
+      .then(setSkills)
+      .catch(() => setSkills([]))
   }, [])
 
   React.useEffect(() => {

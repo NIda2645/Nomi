@@ -114,9 +114,9 @@ export function SkillLibraryContent({
 
   // 导出：技能包对象 → JSON Blob → 浏览器下载，不弹系统对话框。
   const handleExport = React.useCallback(
-    (skill: SkillListItemDto) => {
+    async (skill: SkillListItemDto) => {
       setFeedback({})
-      const pkg = exportPackage(skill.directoryName)
+      const pkg = await exportPackage(skill.directoryName)
       if (!pkg) {
         report(skill.directoryName, t('libraries.skill.exportNotFound'))
         return
@@ -134,9 +134,10 @@ export function SkillLibraryContent({
 
   // 删除可撤销：删前先把包抓在手里，撤销 = 重新导入（落回用户目录，目录名冲突会自动避让）。
   const handleDelete = React.useCallback(
-    (skill: SkillListItemDto) => {
+    async (skill: SkillListItemDto) => {
       setFeedback({})
-      const snapshot = exportPackage(skill.directoryName)
+      // 撤销要的包必须在删之前抓到手（导出走 async 目录，等它落定再删）。
+      const snapshot = await exportPackage(skill.directoryName)
       const res = remove(skill.directoryName)
       if (!res.ok) {
         report(skill.directoryName, res.error ?? t('libraries.skill.deleteFailed'))

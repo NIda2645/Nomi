@@ -18,13 +18,14 @@ import {
   loadPiSkillFormatter,
   renderLaneSkillSection,
   toPiSkills,
-} from '../../electron/agentLane/laneSkillIndex.mjs';
+} from '../../electron/agentLane/laneSkillCatalog.mjs';
 import type { LaneSkillIndexEntry } from '../../electron/shared/agentLane/laneContracts.js';
 
 function entry(overrides: Partial<LaneSkillIndexEntry> & { name: string }): LaneSkillIndexEntry {
   return {
     description: `${overrides.name} 的用途说明。`,
     filePath: `/Users/nobody/Documents/Nomi Skills/${overrides.name}/SKILL.md`,
+    origin: 'user',
     disableModelInvocation: false,
     requiresCodingTools: false,
     ...overrides,
@@ -66,10 +67,12 @@ test('没有技能 = 那一段整个不出现，不是一段空的 <available_sk
   assert.equal(renderLaneSkillSection(await loadPiSkillFormatter(), []), '');
 });
 
-test('映射到 pi 的 Skill 时 baseDir 是技能目录，不是编出来的空值', () => {
+test('映射到 pi 的 Skill 时 baseDir 是技能目录、source 是发现来源，不是编出来的空值或常量', () => {
   const [skill] = toPiSkills([SHUOHAO]);
   assert.equal(skill.baseDir, '/Users/nobody/Documents/Nomi Skills/shuohao-storyboard');
   assert.equal(skill.sourceInfo.path, skill.filePath);
+  assert.equal(skill.sourceInfo.source, 'user');
+  assert.equal(skill.sourceInfo.origin, 'package');
   assert.equal(skill.disableModelInvocation, false);
 });
 

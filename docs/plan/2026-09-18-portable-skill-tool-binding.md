@@ -4,16 +4,6 @@
 > 触发：用户问「外部装进来的 skill 不知道我们的工具名，能不能设计一种通用的东西让 skill 调用该调用的东西？要不然这些 skill 给到 coding agent 他们怎么搞得。」
 > 规则面：R5⑤（对外也读写的契约，先找规范再谈偏差）、P2（修根因）、R17（防线建在最早能拦住的那层）
 
-## 先查别人
-
-正文 §2 是检索本体（规范原文 + 参考实现 + 社区裁决），这一节是它的索引。
-
-- **生态标准怎么说？** Agent Skills 开放规范只有 6 个键，**一个字都不提工具解析**（https://agentskills.io/specification ）；`allowed-tools` 是权限预批不是依赖声明（https://code.claude.com/docs/en/skills ）。
-- **扩展点在哪？** 规范自己指定 `metadata` 为客户端扩展位，所以 `metadata.nomi` 合规——判断依据写在 `electron/skills/skillManifestSchema.ts:16-25`。
-- **仓库里已有？** 事故原句在 `skills/workbench-storyboard-planner/SKILL.md:203`，它禁止的正是 `:204` 要调的 `draft_shots`（`electron/shared/agentCapabilities/generation.ts:87-99`）。
-- **近邻怎么做？** ChatCut 产品技能直呼工具名 + 完整调用示例——做得到是因为技能与 MCP 服务器同一次发版；我们要双向开放，这个前提不成立（正文 §0.5.1）。
-- **反方裁决？** MCP 社区**刚刚明确否掉**「语义能力名 → 工具」那种标准间接层（正文 §0 结论，出处在 §2）。
-
 ## 0. 一句话结论
 
 **业界没有 (b) 那种「语义能力名 → 工具」的标准间接层，而且 MCP 社区刚刚明确否掉了它**；主流做法是 **(a) 技能只描述要做成什么，不提工具名**。
@@ -50,6 +40,14 @@
 **一句话**：他们靠关门保证技能不焊工具名；我们靠门岗保证同一件事，然后把门开着。
 
 ---
+
+## 先查别人（R27 模板四问；§2 是展开版，这里是可复核的索引）
+
+- **依赖里已有？** 没有间接层。pi 的 `Skill` 类型无 tools/capabilities 字段（`node_modules/@earendil-works/pi-coding-agent/dist/core/skills.d.ts:3-16`），`allowed-tools` 在整个 dist 里 grep = 0；工具层 `ToolDefinition` 只有 `name/label/description`（`dist/core/extensions/types.d.ts:344-372`）；唯一宿主适配是 `formatSkillsForPrompt(skills, "read"|"bash")` 的二选一。
+- **仓库里已有？** 间接层已经建好：注册表 `electron/shared/agentCapabilities/registry.ts`（`resolveCapabilityAlias`，模型面名字 → 契约 → effect），`renderLanePromptSections` 从它派生 `Available tools` / `Tool usage`（`electron/agentLane/lanePromptSections.ts:73-86`），后果句只有一份 `verbConsequence(effect, nextAction)`（`electron/shared/agentCapabilities/verbDeclaration.ts:140`）；缺的只是技能没接上（§4.2）。
+- **生态里已有？** 规范正本 <https://agentskills.io/specification>（6 个键，一个字不提工具解析；`metadata` 留给客户端）；MCP 规范 <https://modelcontextprotocol.io/specification/2026-07-28/server/prompts#data-types>（Prompt 无引用工具的字段）与 Skills 扩展 <https://modelcontextprotocol.io/extensions/skills/overview>（SEP-2640，走 Resources，不含工具引用；含工具引用的 SEP-2076 已关）；逐宿主实查见 §2.6 表（pi / Codex parser.rs / Cursor / Cline / Claude Code / LangChain / A2A 等，每行带 URL 或 file:line）。
+- **TikHub 自媒体里怎么说？** 未查 TikHub；社区同类痛点有正式记录：<https://github.com/fworks-tech/agenthood/issues/552>（"No way to check if required tools are available before activation"），第三方只有转译器 <https://github.com/jduncan-rva/skill-porter>，业界正解是「自然语言间接」<https://codex.danielvaughan.com/2026/05/05/agent-skills-open-standard-portable-skills-codex-cli-cross-agent/>。
+- **结论：用已有（注册表）+ 不自造字段。** (a) 技能正文只写要做成的事，(b) 宿主从注册表派生工具事实（§3.1）；提交期门岗 `check:skill-tool-binding` 只管我们自己的技能，外部技能运行时由权威节纠正。
 
 ## 1. 先把事故看准：它不是"硬写工具名"，是"技能正文复述了注册表已经拥有的事实"
 

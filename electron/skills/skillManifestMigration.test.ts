@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { migrateLegacySkillManifest, rewriteSkillMarkdown } from "./skillManifestMigration";
-import { discoverSkillRecordsFromRoots } from "./skillStore";
+// 迁移跑在 pi 读盘**之前**（`laneSkillCatalog.mts` 的 migrateLegacyManifests），所以经目录层验它。
+import { discoverSkillRecords } from "../agentLane/laneSkillCatalog.mjs";
 
 // 全程只在临时目录里跑：迁移会重写 SKILL.md，绝不允许碰用户真实技能库。
 const tmpDirs: string[] = [];
@@ -91,11 +92,11 @@ describe("migrateLegacySkillManifest", () => {
     expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toBe(migrated);
   });
 
-  it("carries every field that still has a consumer through the discovery path", () => {
+  it("carries every field that still has a consumer through the discovery path", async () => {
     const root = mkSkill({ "SKILL.md": LEGACY_MARKDOWN, "skill.json": LEGACY_MANIFEST });
-    const { records, diagnostics } = discoverSkillRecordsFromRoots([{ path: root, origin: "user" }]);
+    const { records, diagnostics } = await discoverSkillRecords([{ path: root, origin: "user" }]);
 
-    expect(diagnostics.map((d) => d.type)).toEqual(["warning"]);
+    expect(diagnostics.map((d) => [d.type, d.code])).toEqual([["warning", "legacy_manifest"]]);
     expect(records).toHaveLength(1);
     const record = records[0];
     expect(record.name).toBe("legacy-skill");
@@ -113,15 +114,15 @@ describe("migrateLegacySkillManifest", () => {
     expect(record.audience).toBe("internal");
   });
 
-  it("never touches built-in roots", () => {
+  it("never touches built-in roots", async () => {
     const root = mkSkill({ "SKILL.md": LEGACY_MARKDOWN, "skill.json": LEGACY_MANIFEST });
-    discoverSkillRecordsFromRoots([{ path: root, origin: "builtin" }]);
+    await discoverSkillRecords([{ path: root, origin: "builtin" }]);
     expect(fs.existsSync(path.join(root, "legacy-skill", "skill.json"))).toBe(true);
   });
 
-  it("loads the skill anyway when the old manifest is unreadable, and says so", () => {
+  it("loads the skill anyway when the old manifest is unreadable, and says so", async () => {
     const root = mkSkill({ "SKILL.md": LEGACY_MARKDOWN, "skill.json": "{ not json" });
-    const { records, diagnostics } = discoverSkillRecordsFromRoots([{ path: root, origin: "user" }]);
+    const { records, diagnostics } = await discoverSkillRecords([{ path: root, origin: "user" }]);
     expect(diagnostics.some((d) => d.type === "error" && d.message.includes("migration failed"))).toBe(true);
     expect(records).toHaveLength(1);
     expect(records[0].description).toBe("frontmatter 那份描述");

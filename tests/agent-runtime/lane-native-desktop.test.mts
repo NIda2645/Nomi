@@ -18,8 +18,8 @@ test('production native resources read installed Skill metadata without widening
   const filePath = path.join(root, 'SKILL.md');
   const body = '---\nname: fixture\ndescription: Temporary metadata fixture\n---\nNo user content.';
   await writeFile(filePath, body);
-  const skill: SkillRecord = { name: 'fixture', directoryName: 'demo', filePath, description: 'Temporary metadata fixture', body,
-    manifest: null, origin: 'user', audience: 'internal', packageVersion: 'nomi-skill-v1', contentHash: 'fixture' };
+  const skill: SkillRecord = { name: 'fixture', directoryName: 'demo', filePath, packageDir: root, description: 'Temporary metadata fixture', body,
+    content: 'No user content.', manifest: null, origin: 'user', audience: 'internal', packageVersion: 'nomi-skill-v1', contentHash: 'fixture', requiresCodingTools: false };
   const desktop = await openLaneNativeDesktop({ projectDir: fixture.projectDir, settingsRoot, skills: [skill] });
   t.after(() => desktop.close());
   assert.equal(desktop.skillIndex.current().entries.length, 1);
