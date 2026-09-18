@@ -47,3 +47,9 @@
 - **同一手法本仓已有先例，不是新发明** —— `electron/catalog/credentialConfigFields.ts:32` 的 `Record<keyof Vendor, VendorConfigFieldClass>`（「加字段不分级就编译不过」），运行期对偶是 `electron/catalog/credentialConfigFields.test.ts:18` 的 `satisfies Required<Vendor>` 全量样本。本刀是同一类型上的另一根轴（那根问「是不是凭据」，这根问「保存时怎么裁决」）。
 - **存量修复的默认形状是带版本号的一次性迁移** —— `electron-store` 的 `migrations` <https://github.com/sindresorhus/electron-store>（`'version': handler`，存量版本落后才跑）；本仓自己的 `migrateCatalogForward` v1→v12 阶梯（`electron/catalog/catalogStore.ts:125`）同形状，其中 v6→v7 还记了「迁移幂等，靠 bump 强制重跑」——要重跑就显式加一级，而不是让它常驻。
 - **常驻补齐的反例与它的前提** —— `seedBuiltins.seedVendor`（`electron/catalog/seedBuiltins.ts:416`）是常驻对账，但它只迁移「仍指向我们旧默认值」的记录、用户改过就绝不覆盖。即常驻补齐必须带一条「什么时候不许碰用户的值」的判据；本刀的判据是 `!(field in vendor)`（键不存在才补）。而由于写路径已被类型闭合，这类丢失不可能再发生，常驻守卫守的是一件不会再来的事 —— 故选一次性迁移。
+
+## #816 合并列车：迁移块拆分（2026-09-19 裁决）
+
+main 的 catalogStore.ts 已到 800 行，合并本 PR 的 v12→v13 迁移后达到 801 行。按主会话裁决把 migrateCatalogForward 整块 move 到 electron/catalog/catalogMigrations.ts；原函数体、迁移顺序、版本号与逐步写盘保持不变。defaultCatalog 与 writeCatalog 通过参数传入；onDiskCatalogVersion 服务所有写盘路径，留在 store。既有 relay 再导出保持原路径。同步机器生成门表与合同路径，不增加运行时行为。
+
+先查别人：复用本仓已拆出的 relayLegacyMigrations.ts、catalogMediaContractMigration.ts 等迁移模块；这是既有内部函数搬移，无新依赖或外部协议。回滚可整体 revert 本条拆分提交。验收：两个文件均 ≤800 行、check:filesize、原有 15 条测试（含真实请求装配的 Bearer→Key 阳性对照）、typecheck、review:branch 与全量 gates；随后普通 push 和原 PR 合并验证。

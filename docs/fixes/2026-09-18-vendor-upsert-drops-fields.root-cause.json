@@ -13,6 +13,7 @@
   ],
   "scope_paths": [
     "electron/catalog/catalogStore.ts",
+    "electron/catalog/catalogMigrations.ts",
     "electron/catalog/upsertDraft.ts",
     "electron/catalog/vendorFieldLossRepair.ts",
     "electron/catalog/customConfigStore.ts",
@@ -40,6 +41,16 @@
     "修复只补「字段键整个不存在」的情况；键存在（哪怕值是 null 或与种子不同）一律不碰——覆盖用户显式改过的值是第二次数据丢失"
   ],
   "doors": [
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogMigrations.ts",
+      "symbol": "hasLegacyCustomConfigField"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogMigrations.ts",
+      "symbol": "CURRENT_CATALOG_VERSION"
+    },
     {
       "kind": "read",
       "path": "electron/catalog/catalogStore.ts",
@@ -112,7 +123,7 @@
     },
     {
       "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
+      "path": "electron/catalog/catalogMigrations.ts",
       "symbol": "migrateVendorFieldLossV13"
     },
     {
@@ -193,8 +204,8 @@
   ],
   "door_reduction": {
     "before": 17,
-    "after": 30,
-    "why_not": "合并列车按同一符号集合（door-map）重扫最新 main 与当前树：17 → 30 个符号入口，替换原来按行号计数的 22/28。生成器跳过声明位置，因此登记函数体真实调用、类型使用和词典派生引用；不使用泛化 const 作为状态符号。原有单条写入与事务入口必须保留各自落盘语义，新增的存量迁移、提示读取及清除入口共同服务同一修复；绑定只从既存记录继承，唯一写门仍是保存密钥。"
+    "after": 32,
+    "why_not": "合并列车按同一符号集合（door-map）重扫最新 main 与当前树：17 → 30 个符号入口，替换原来按行号计数的 22/28。生成器跳过声明位置，因此登记函数体真实调用、类型使用和词典派生引用；不使用泛化 const 作为状态符号。原有单条写入与事务入口必须保留各自落盘语义，新增的存量迁移、提示读取及清除入口共同服务同一修复；绑定只从既存记录继承，唯一写门仍是保存密钥。 迁移块按裁决整块移到 catalogMigrations.ts 后，同一生成器计数为 32：迁移与 store 分别读取版本和遗留配置判据，修复调用从 store 搬到迁移模块；不新增写路径。"
   },
   "generality_proof": "修法不在任何一个具体字段上，而在「怎么组装一条记录」这件事上：sealUpsertDraft 的入参类型 UpsertDraft<T> 用 AllFieldsOf<T> 把目标类型的**全部**键（含可选键）取成联合，再在一个非同态映射里要求每个键都出现。于是 Vendor / Model / Mapping 三个类型中任何一个加字段，三处调用点里对应那一处的对象字面量立刻缺键 → TS2345「Property 'x' is missing」。已用两次变异实测：(A) 把 assetIngestion 从 applyVendorUpsert 的清单里摘掉 → tsc 报 missing；(B) 给 Vendor 加一个从未被引用的 brandNewField、写路径一行不动 → tsc 同样报 missing（并连带打红 credentialConfigFields.ts 那张凭据分级表）。因为拦截点是类型而不是运行期检查，它对所有调用者、所有 payload 形状、所有平台一律成立，且不存在「跑到了才发现」的空窗。",
   "shared_boundaries": [
@@ -261,7 +272,8 @@
       "electron/catalog/upsertDraft.ts",
       "electron/catalog/catalogStore.ts",
       "electron/catalog/vendorFieldLossRepair.ts",
-      "electron/shared/vendorFieldLossNotice.ts"
+      "electron/shared/vendorFieldLossNotice.ts",
+      "electron/catalog/catalogMigrations.ts"
     ]
   },
   "regression_tests": [
