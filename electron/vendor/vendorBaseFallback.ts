@@ -228,6 +228,27 @@ export async function fetchVendorWithBaseFallback(url: string, init: RequestInit
 }
 
 /** 当前生效的 override（无则 null）——供诊断/后续管理卡展示线路。 */
+/**
+ * 这家供应商在**代码里写死**的合法 origin（主域 + 官方公告的备用域）。
+ *
+ * 凭据绑定守卫要它：自愈梯子会把请求改发到备用域，那不是「有人偷偷改了地址」——
+ * 它是编译进包的声明，不是任何一段数据能写的东西（`FAMILIES` 就在本文件上方）。
+ * 不认识的 vendorKey 返回空数组：空 = 没有例外，不是放行。
+ */
+export function codeDeclaredFallbackOrigins(vendorKey: string): string[] {
+  const family = FAMILIES.find((item) => item.vendorKey === vendorKey);
+  if (!family) return [];
+  const origins = new Set<string>();
+  for (const candidate of [family.primary, ...family.alternates]) {
+    try {
+      origins.add(new URL(candidate).origin);
+    } catch {
+      /* 声明写错了就当它不存在——绝不因此放行一个解析不出来的目的地 */
+    }
+  }
+  return [...origins];
+}
+
 export function activeVendorBaseOverride(vendorKey: string): string | null {
   return overrides[vendorKey] ?? null;
 }

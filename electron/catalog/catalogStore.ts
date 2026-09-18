@@ -47,6 +47,7 @@ import { buildCatalogPackage, catalogPackageImportSchema, type CatalogPackage } 
 import { invalidateProviderAdapterRunsForVendors } from "../providerAdapter/store";
 import { invalidateVendorValidation, normalizedConnectionScope } from "./vendorValidationInvalidation";
 import { logWarn } from "../logging/logger";
+import { deriveCredentialBinding, sameCredentialDestination } from "./credentialBinding";
 export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./customConfigStore";
 // 各版 relay 迁移各住独立模块（R9 分层：迁移与读写盘/事务无关）。这里只做接线 + 再导出，
 // 测试与既有调用方按原路径 import 不变。
@@ -378,6 +379,12 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const key = sanitizeName(raw.key, "").toLowerCase().replace(/\s+/g, "-");
   if (!key) throw new Error("vendor key is required");
   const existing = state.vendors.find((vendor) => vendor.key === key);
+  // payload 里带绑定只有两种可能：① `{ ...existingVendor, enabled }` 这种原样转抄（无意图，放行）；
+  // ② 真的想改它（那就是「让数据决定 key 去哪」——大声拒绝，不静默丢掉）。
+  if (raw.credentialBinding !== undefined
+    && JSON.stringify(raw.credentialBinding) !== JSON.stringify(existing?.credentialBinding)) {
+    throw new Error("credentialBinding is written only when a key is saved; it is not part of a vendor upsert payload");
+  }
   const previousScope = normalizedConnectionScope(existing);
   guardAntigravityVendorWrite({ ...raw, key, enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true) }, existing,
     (request) => antigravityConnection.canEnable(request));
@@ -421,6 +428,11 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
     authQueryParam:
       typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
+    // 凭据绑定**只从 existing 继承，永远不从 payload 读**（§6.1）：这一行 upsert 的 payload
+    // 可能来自渲染层、来自导入包、来自任何一条将来加进来的写路径——如果它能带一份绑定进来，
+    // 那么「key 只去用户确认过的地方」就又变成了数据说了算。改绑定只有一扇门：保存密钥。
+    // 也正因如此，改地址**不会**顺手把绑定改掉——那恰恰是判据要抓的那一类（旧数据 / 手改文件）。
+    ...(existing?.credentialBinding ? { credentialBinding: existing.credentialBinding } : {}),
     meta: metaWithoutExtraHeaders(incomingMeta),
     ...(proxyEnabled !== undefined ? { network: { proxyEnabled } } : {}),
     createdAt: existing?.createdAt || t,
@@ -474,6 +486,19 @@ function applyApiKeyUpsert(state: CatalogState, vendorKey: string, payload: unkn
     ...(existing?.networkConfig ? { networkConfig: existing.networkConfig } : {}),
     ...(existing?.customConfig ? { customConfig: existing.customConfig } : {}),
   };
+  // ── 凭据绑定（§6.1，2026-09-18）：保存 key 的**同一个事务**里记下「这把 key 去哪」。 ──
+  // 这是全仓唯一的 key 写门（`upsertModelCatalogVendorApiKey` 与 `mutateCatalog().upsertApiKey`
+  // 都从这里过），所以绑定不可能有第二个写入口。绑定的内容是**当时那行 vendor** 的地址与
+  // 鉴权放法——之后谁再改地址，出站守卫都会发现「这不是用户看过的那个 origin」。
+  const boundVendor = state.vendors.find((vendor) => vendor.key === key);
+  if (boundVendor) {
+    const binding = deriveCredentialBinding(boundVendor, t);
+    // 去向没变就不写：同一条连接重存同一把 key 不该把 updatedAt 抖一下
+    //（`credentialPublication.test.ts` 的「本就停用时不重写它」守的正是这个）。
+    if (!sameCredentialDestination(boundVendor.credentialBinding, binding)) {
+      boundVendor.credentialBinding = binding;
+    }
+  }
   if (!enabled) invalidateVendorValidation(state, key);
   if (!enabled) depublishVendorForDisabledCredential(state, key, t);
 }

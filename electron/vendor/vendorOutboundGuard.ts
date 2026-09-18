@@ -1,6 +1,14 @@
 /**
  * 提交侧的出站授权（付费那一步）。
  *
+ * ── 两条判据，一个 owner ────────────────────────────────────────────────────────────
+ * ① **目的地安不安全**：私网分类 + 声明式精确 origin 例外，问的是同一个
+ *    `authorizeOutboundDestination`（不是第二个分类器，`check:outbound-policy` 盯着）。
+ * ② **这把 key 该不该去那儿**：带用户密钥的请求，origin 必须等于贴 key 页上确认并保存的
+ *    那一个（`catalog/credentialBinding.ts`）。判据挂在这里而不是校验器，是因为校验器只
+ *    看得见「这一次收进来的卡」——旧数据、手改的 catalog 文件、未来第二个写入口都绕得过它；
+ *    这一层是两条执行路（mapping 与 customCall 脚本）共用的最早边界。
+ *
  * ── 病根（P2 类根因，见 docs/plan/2026-09-07-model-generation-core-path.md）──────────────
  * 上一轮把「目的地该不该出站」收进了 `networkOutboundPolicy`，但只有**取回侧**去问它；提交/轮询
  * 仍然对目的地零策略。于是「我们愿意为之付钱的目的地，可能是我们拒绝读取的目的地」这个不对称，
@@ -33,6 +41,9 @@ import {
 } from "../networkOutboundPolicy";
 import { describeOutboundRefusal } from "../networkOutboundMessage";
 import { isApplicationProxyActive } from "../systemProxy";
+import { judgeCredentialDestination, readCredentialBinding } from "../catalog/credentialBinding";
+import { tagNomiError } from "../shared/nomiErrorCodes";
+import { codeDeclaredFallbackOrigins } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 
 /** 用户显式配置的接入 origin。拿不到（没配 / 填了非法值）就是空——空 = 没有例外，不是放行。 */
@@ -78,11 +89,16 @@ export function setSubmitOutboundDepsForTests(next: Partial<SubmitOutboundDeps> 
 }
 
 export type SubmitDestinationInput = {
-  vendor: Pick<Vendor, "baseUrlHint">;
+  vendor: Pick<Vendor, "key" | "baseUrlHint" | "credentialBinding">;
   /** 已拼好鉴权 query 的最终 URL（判的就是真正要请求的那一个）。 */
   url: string;
   /** 这次请求是否由单供应商显式代理承载（`vendor.network.proxyUrl`）。 */
   routedThroughProviderProxy: boolean;
+  /**
+   * 这次请求**带着用户的密钥**吗（`collectRequestSecretValues` 说了算，不在这里重猜）。
+   * 不带 key 的第二步上传（预签名 URL 那类动态目标）照旧只过私网策略。
+   */
+  carriesCredential?: boolean;
 };
 
 /**
@@ -98,6 +114,27 @@ export async function authorizeSubmitDestination(input: SubmitDestinationInput):
     url = new URL(input.url);
   } catch {
     return null;
+  }
+  // ── 判据二：带 key 的请求只能去用户亲眼确认过的那个 origin（§6.1，2026-09-18） ──────────
+  // 放在私网策略**之前**，因为它比私网更具体：一个公网 origin 完全可能通过私网策略，
+  // 却不是用户保存 key 时看见的那一个（Agent 事后改地址、旧数据、手改 catalog 文件、
+  // 说明卡里一条绝对 URL）。这不是第二个目的地分类器——它问的是另一个问题
+  //（「这把 key 的家在哪」），答案由 catalog 的绑定事务给，不重新判「这个地址安不安全」。
+  if (input.carriesCredential) {
+    const verdict = judgeCredentialDestination({
+      binding: readCredentialBinding(input.vendor),
+      url: input.url,
+      codeDeclaredOrigins: codeDeclaredFallbackOrigins(String(input.vendor.key || "")),
+    });
+    if (!verdict.allowed) {
+      // 码由 `tagNomiError` 挂，不手拼字面量——码表是 `shared/nomiErrorCodes.ts` 唯一 owner。
+      // 人话里只放**这次的两个事实**（绑定的是哪个、要去哪个）；「怎么办」由渲染层的词表说，
+      // 那边才有 i18n（这里写死中文 = 英文用户读到半句中文）。
+      return tagNomiError(
+        "outbound-blocked-credential-origin",
+        `bound=${verdict.boundOrigin} attempted=${verdict.attemptedOrigin}`,
+      );
+    }
   }
   const route: OutboundRouteKind =
     input.routedThroughProviderProxy || deps.isApplicationProxyActive() ? "proxy" : "direct";

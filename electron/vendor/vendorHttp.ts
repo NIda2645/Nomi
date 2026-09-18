@@ -177,7 +177,14 @@ async function requestVendor(
     signal?.removeEventListener("abort", relayAbort);
     if (dispatcher) void dispatcher.close().catch(() => undefined);
   };
-  const submitRefusal = await authorizeSubmitDestination({ vendor, url: finalUrl, routedThroughProviderProxy: Boolean(dispatcher) });
+  const submitRefusal = await authorizeSubmitDestination({
+    vendor,
+    url: finalUrl,
+    routedThroughProviderProxy: Boolean(dispatcher),
+    // 「这次带 key 了吗」不在守卫里重猜：`collectRequestSecretValues` 已经按这一次具体请求
+    // 算过一遍（头、鉴权 query、query），复用同一个答案。
+    carriesCredential: requestSecrets.length > 0,
+  });
   // 授权是本轮新插进来的一段 await（要做 DNS），于是**取消有了一个新的落点**：调用方在这段
   // 窗口里 abort，signal 已经是 aborted 而 fetch 还没被调用过。不在这里接住的话，取消要么被
   // 无声吞掉（照旧把付费请求发出去），要么落进一个已经 abort 的 signal 上、事件永不再触发。

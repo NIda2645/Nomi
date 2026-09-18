@@ -40,6 +40,10 @@ export const VENDOR_CONFIG_FIELD_CLASSIFICATION: Record<keyof Vendor, VendorConf
   hasApiKey: "non-credential",
   credentialVerificationPending: "non-credential",
   baseUrlHint: "non-credential",
+  // 凭据**绑定**（§6.1）：记的是「这把 key 去哪、怎么放」，全是公开协议元数据——origin、
+  // authType/authHeader/authQueryParam/authScheme（名字不是值），以及一个「当时走不走代理」的布尔。
+  // 刻意**不**存 proxyUrl：那一条能带 user:pass@，属于上面的 credential-bearing 那一档。
+  credentialBinding: "non-credential",
   authType: "non-credential",
   authHeader: "non-credential",
   // 方案词（"Bearer" / "Key"）是公开协议常量，不是秘密——key 本身仍只走 ApiKeyRecord。

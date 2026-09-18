@@ -29,6 +29,18 @@ const SAMPLE_VENDOR = {
   providerKind: "openai-compatible",
   network: { proxyUrl: "http://user:pass@127.0.0.1:7897" },
   assetIngestion: { strategy: "none" },
+  // 凭据绑定：全是公开协议元数据 + 一个布尔。注意这里**没有** proxyUrl——绑定刻意不抄它
+  // （它带 user:pass@，属 credential-bearing 那一档）；样本里放一个假的会让下面那条
+  // 「只有 meta / network 是凭据类」的断言与真实形状脱节。
+  credentialBinding: {
+    origin: "https://relay.example",
+    authType: "bearer",
+    authHeader: "X-Key",
+    authQueryParam: "key",
+    authScheme: "Key",
+    proxied: true,
+    confirmedAt: "2026-09-18T00:00:00.000Z",
+  },
   meta: { extraHeaders: { Authorization: "Bearer leaked-token" } },
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",

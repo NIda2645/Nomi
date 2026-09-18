@@ -192,6 +192,7 @@
     "check:boundary-owners": "node --test ./scripts/check-boundary-owners.node-test.mjs && node ./scripts/check-boundary-owners.mjs",
     "check:boundaries": "node ./scripts/check-boundaries.mjs",
     "check:outbound-policy": "node ./scripts/check-outbound-policy.mjs",
+    "check:credential-origin": "pnpm exec tsx scripts/check-credential-origin.ts",
     "check:model-availability": "node --test scripts/check-model-availability.node-test.mjs && node scripts/check-model-availability.mjs",
     "check:model-identity": "node ./scripts/check-model-identity.mjs",
     "check:model-schema": "pnpm exec tsx --test ./scripts/check-model-schema.node-test.mjs && pnpm exec tsx scripts/check-model-schema.ts",

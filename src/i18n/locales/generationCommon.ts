@@ -317,6 +317,10 @@ export const zhGenerationCommon = {
         reason: '这次生成没发出去，Nomi 自己的安全策略先拦下了',
         hint: '请求一个字节都没有离开你的电脑，所以服务商没被请求到，**这次没有扣费**。原因是 Nomi 把接入地址判成了内网：最常见的是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式，所有域名都会被解析成 198.18.x 这类合成地址，而 Nomi 这次没能确认那确实是代理。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」，确认后直接重新生成即可（不用找回，也没有东西可找回）。如果这是你自己的本地后端，请把它的完整地址配成供应商接入地址。具体是哪个地址，见下方技术详情。',
       },
+      outboundBlockedCredentialOrigin: {
+        reason: '这次生成没发出去：密钥要去的地址不是你保存它时确认过的那个',
+        hint: '请求一个字节都没有离开你的电脑，服务商没被请求到，**这次没有扣费**。Nomi 在你保存密钥的那一刻把这把密钥和当时那个接入地址绑在了一起，而这次请求要去的是另一个地址——密钥只会去你亲眼确认过的地方。如果你确实换了这家供应商的接入地址，请到「模型接入」找到这条连接，重新保存一次密钥（保存那一下就是新的确认）；如果你并没有改过地址，就更要先看一眼：下方技术详情里写着绑定的是哪个地址、这次要去哪个。',
+      },
       server: { reason: '服务商故障', hint: '服务商服务异常，请稍后重试，或换一个模型。' },
       input: {
         reason: '参数不被接受',
@@ -1749,6 +1753,10 @@ export const enGenerationCommon = {
       outboundBlockedSubmit: {
         reason: "This generation was never sent - Nomi's own network policy stopped it first",
         hint: 'Not a single byte left your machine, so the provider was never called and **nothing was charged**. Nomi classified the endpoint as a private network. The usual cause is Clash / Surge / sing-box running in TUN (fake-IP) mode, where every domain resolves to a synthetic address like 198.18.x and Nomi could not confirm a proxy was running. Check Model Access > Network for a "Local proxy detected" line, then simply generate again - there is nothing to recover. If this is your own local backend, configure its full address as a provider endpoint. The technical details below name the address.',
+      },
+      outboundBlockedCredentialOrigin: {
+        reason: 'This generation was never sent: the key was about to go somewhere you did not confirm',
+        hint: 'Not a single byte left your machine, the provider was never called and **nothing was charged**. When you saved this key, Nomi bound it to the endpoint you confirmed at that moment, and this request was headed somewhere else - a key only ever goes where you have seen it go. If you really did change this provider\'s endpoint, open Model Access, find this connection and save the key again (that save is the new confirmation). If you did not change anything, look closer first: the technical details below name the bound address and the one this request tried.',
       },
       server: {
         reason: 'Provider error',
