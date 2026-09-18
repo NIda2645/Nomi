@@ -1,35 +1,18 @@
 // `check:walkthrough-tool-args` 的判据本体（R17：判据住在 lib 里，才喂得进假仓库验「它会不会红」）。
 //
-// ── 守的不变量 ──
+// **守的不变量**：走查里手写的模型面调用，键必须在那个动词今天发布的 schema 里。
 //
-// **走查里手写的模型面调用，键必须在那个动词今天发布的 schema 里。**
-//
-// 走查用字面量伪造模型的工具调用：
-//
-//   { type: 'tool', name: 'draft_shots', args: { shots: [{ modelKey: '…' }] } }
-//
-// 这个字面量**没有任何类型**——它经 IPC 以 JSON 进宿主，TypeScript 看不见它。
-// 于是动词改一次名字，走查就静默失配一次：宿主按新名读，读到 undefined，
-// 那一步什么也不做，表现为「草稿没有落成 3 个镜头节点」——一个看起来像产品 bug 的现象。
-//
-// 2026-09-18 实证：PR #814 把模型面四对字段改名（`modelKey→modelId`、`draftId→operationId`、
-// `changeId→undoToken`、`revision→baseRevision`）。#814 自己的测试全同步了，
-// `tests/ux/golden-path.e2e.mjs:245` 的 `modelKey` 没人管——它在另一条分支上。
-// 更阴的是追平 main 那一步：git 把 `draftId` 那行标成了冲突（有人看），
-// 把 `modelKey` 那行**自动合并、不报**（没人看）。
-//
-// **为什么门岗建在这里而不是让编译器管**：走查是 `.mjs`，宿主契约是 Zod schema，
-// 中间隔着 JSON 和 IPC——两头都没有共同的静态类型可言。R17 的原话是
+// **为什么建在门岗这层**：走查是 `.mjs`，宿主契约是 Zod schema，中间隔着 JSON 和 IPC——
+// 两头没有共同的静态类型，改名之后字面量不会报错，只会静默少传一个字段。R17 的原话是
 // 「能让编译器拦的别留给门岗」；这一处编译器**结构上**拦不住，才轮到门岗。
-// （能让编译器拦的那一半已经在做：`cancelJobProjection.ts` 的投影原型，
-// 见 `docs/plan/2026-09-18-tool-projection-cancel-job-prototype.md`。）
+// （能让编译器拦的那一半在 `cancelJobProjection.ts` 的投影原型里做。）
 //
-// ── 判据为什么不是「手抄一份字段名单」 ──
+// **真相源只有一个**：`MODEL_FACING_TOOL_SPECS` → `toPublishedJsonSchema()`，也就是模型此刻真正
+// 读到的那份 JSON Schema。本文件里一个动词名、一个字段名都没写死，调用方把 `schemasByVerb` 传进来——
+// 抄一份名单就是又造一份「不会随注册表更新的副本」，那正是这条门岗要防的病。
 //
-// 真相源只有一个：`MODEL_FACING_TOOL_SPECS` → `toPublishedJsonSchema()`，
-// 也就是**模型此刻真正读到的那份 JSON Schema**。本文件里一个动词名、一个字段名都没写死；
-// 调用方把 `schemasByVerb` 传进来。抄一份名单就等于又造一份「不会随注册表更新的副本」——
-// 那正是这条门岗要防的病。
+// 事故与它的形状（#814 改名、git 自动合并不报、5 处失配里 4 处在没人跑的走查里）写在
+// `docs/lessons/walkthrough-tool-args-are-a-compiler-blind-spot.md`，不在这里重述。
 
 import ts from 'typescript'
 
