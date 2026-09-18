@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import type { RuntimeToolCall } from "../shared/agentCapabilities/transportContracts";
 import type { ProjectBinding } from "../shared/projectBinding";
@@ -6,7 +7,6 @@ import type { ProjectLeaseV2 } from "./projectLease";
 import { createPiGenerationTransportAdapter, legacyMethodSchemaForTest } from "./generationTransportAdapters";
 import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import { GENERATION_METHODS } from "../shared/agentCapabilities/generation";
-import { generationPlanInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import { GENERATION_RESOLVE_CAPABILITY } from "../shared/agentCapabilities/generation";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 
@@ -171,7 +171,7 @@ describe('方法别名的入参形状从语义联合现取，不手抄', () => {
   // 今天没爆只是因为常驻 lane 只路由 plan/status，走不到这几支——是埋着的地雷不是无害重复。
   const createBranch = generationPlanInputSchema.options.find(
     (option) => (option.shape.operation as unknown as { _def: { value: string } })._def.value === 'create',
-  )!
+  )! as unknown as z.ZodObject<z.ZodRawShape>
 
   it('create 别名收得下真契约 create 分支的每一个字段（这条红 = 有人又手抄了一份更窄的）', () => {
     // 被替掉的那份手抄只有 5 个键（prompt/candidate/shots/scriptText/cardHidden），

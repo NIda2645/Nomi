@@ -7,8 +7,7 @@ import type { ShotRowExec } from '../../../creation/storyboard/exec/storyboardRo
 import { effectiveShotValue } from '../../../creation/storyboard/shotRow/shotRowModel'
 import { referenceColumnOf, type ShotReferenceColumn } from '../../../creation/storyboard/shotRow/shotReferenceCells'
 import { stableShotId, effectiveShotDurationSec } from '../../agent/storyboardPlan'
-import type { ProductionRun } from '../../../../../electron/productionRun/productionRunTypes'
-import { selectProductionShotRows } from './productionShotRows'
+import { selectProductionShotRows, type LandedRun } from './productionShotRows'
 
 export type ShotTableRowView = {
   id: string
@@ -32,7 +31,7 @@ export function selectShotTableRows(input: {
   imageModelOptions: readonly ModelOption[]
   videoModelOptions: readonly ModelOption[]
   /** 落地 store 缓存的 Run；只有 production 表读它（占位三态）。 */
-  run?: ProductionRun | null
+  run?: LandedRun | null
 }): ShotTableRowView[] {
   const { table, designs, nodes, imageModelOptions, videoModelOptions } = input
   if (table.source.kind === 'production') {

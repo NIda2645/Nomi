@@ -71,7 +71,7 @@ describe('materializeShots undo transaction', () => {
     const operationId = 'canvas-landing:unit-undo'
     const result = await materializeShots({
       materializationOperationId: operationId,
-      groupName: '一批镜头',
+      planName: '一批镜头',
       shots: [
         { shotId: 'anchor-1', role: 'anchor', kind: 'image' },
         { shotId: 'shot-1', role: 'shot', kind: 'video' },

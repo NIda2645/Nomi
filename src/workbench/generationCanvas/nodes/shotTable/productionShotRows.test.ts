@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'
-import type { ProductionRun } from '../../../../../electron/productionRun/productionRunTypes'
 import { createProductionShotTable } from '../../../../../electron/shared/canvas/shotTable'
 import { selectShotTableRows } from './selectShotTableRows'
+import type { LandedRun } from './productionShotRows'
 
 // 分镜表 = Run 落地节点的表格表示版：行从节点 derive，Run 的占位三态只在节点自己没结果时补位。
 
@@ -13,7 +13,7 @@ const landed = (id: string, extra: Partial<GenerationCanvasNode> = {}, role: 'sh
   node(id, { productionRunId: 'run-1', productionShotId: id, productionShotRole: role, materializationOperationId: 'canvas-landing:run-1' }, extra)
 
 const table = createProductionShotTable('run-1', 'canvas-landing:run-1')
-const rows = (nodes: GenerationCanvasNode[], run: ProductionRun | null = null) =>
+const rows = (nodes: GenerationCanvasNode[], run: LandedRun | null = null) =>
   selectShotTableRows({ table, designs: {}, nodes, imageModelOptions: [], videoModelOptions: [], run })
 
 describe('selectShotTableRows · production source', () => {
@@ -32,7 +32,7 @@ describe('selectShotTableRows · production source', () => {
   it('status and thumbnail come from the node: result → done, node running → generating, error → failed, nothing → ready', () => {
     const view = rows([
       landed('done', { result: { id: 'r', type: 'image', url: 'nomi-local://done.png', createdAt: 1 } }),
-      landed('busy', { status: 'running', progress: { percent: 40 } }),
+      landed('busy', { status: 'running', progress: { percent: 40, updatedAt: 1 } }),
       landed('broken', { status: 'error', error: '上游拒了' }),
       landed('fresh'),
     ])
@@ -52,14 +52,14 @@ describe('selectShotTableRows · production source', () => {
         { jobId: 'j2', nodeId: 'finished', status: 'polling', createdAt: '2026-09-18T00:00:00.000Z' },
       ],
       generationPlan: { shots: [{ shotId: 'queued-shot', nodeId: 'queued-shot' }, { shotId: 'finished', nodeId: 'finished' }] },
-    } as unknown as ProductionRun
+    } as unknown as LandedRun
     const view = rows([
       landed('queued-shot'),
       landed('finished', { result: { id: 'r', type: 'image', url: 'nomi-local://f.png', createdAt: 1 } }),
     ], run)
     expect(view.map((row) => row.exec?.status)).toEqual(['generating', 'done'])
     // 不是这个 Run 的缓存 → 只看节点。
-    expect(rows([landed('queued-shot')], { ...run, runId: 'run-9' } as ProductionRun)[0].exec?.status).toBe('ready')
+    expect(rows([landed('queued-shot')], { ...run, runId: 'run-9' } as LandedRun)[0].exec?.status).toBe('ready')
   })
 
   it('duration reads the node\'s declared duration and never invents one', () => {

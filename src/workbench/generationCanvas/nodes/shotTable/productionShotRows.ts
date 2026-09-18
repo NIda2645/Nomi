@@ -1,6 +1,5 @@
 import type { ModelOption } from '../../../../config/models'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'
-import type { ProductionRun } from '../../../../../electron/productionRun/productionRunTypes'
 import { deriveNodeRowExec } from '../../../creation/storyboard/exec/storyboardRowStatus'
 import { referenceColumnOf } from '../../../creation/storyboard/shotRow/shotReferenceCells'
 import type { ReferenceBindingMap } from '../../../creation/storyboard/shotRow/shotReferenceSlots'
@@ -8,6 +7,9 @@ import { resolveShotArchetypeMode } from '../../../creation/storyboard/shotRow/s
 import { referenceSlotStorage } from '../controls/archetypeMeta'
 import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
 import { deriveShotPlaceholderState } from '../../../production/shotPlaceholderState'
+
+/** 落地 store 缓存的那份 Run。类型从渲染层自己的占位派生函数取，渲染层不直接引主进程模块（check:boundaries）。 */
+export type LandedRun = NonNullable<Parameters<typeof deriveShotPlaceholderState>[0]>
 import type { ShotTableRowView } from './selectShotTableRows'
 
 /**
@@ -69,7 +71,7 @@ export function selectProductionShotRows(input: {
   imageModelOptions: readonly ModelOption[]
   videoModelOptions: readonly ModelOption[]
   /** 落地 store 里缓存的 Run（占位三态的来源）；不是这个 Run 或没有 → 只看节点。 */
-  run?: ProductionRun | null
+  run?: LandedRun | null
 }): ShotTableRowView[] {
   const { runId, nodes, imageModelOptions, videoModelOptions } = input
   const run = input.run && input.run.runId === runId ? input.run : null

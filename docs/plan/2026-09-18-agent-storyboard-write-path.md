@@ -93,6 +93,15 @@
 
 顺带一条事实澄清（不是判断）：09-11 合同把 `propose_storyboard_plan` 描述成「一次落一整排永不出卡的生成类节点」；**在 HEAD 上**账本 B 的投影只建一张 `shot_table`、只更新已绑定节点（`ensureStoryboardShotTable.ts:14-17`；`storyboardProjection.ts:72-82`），生成类节点由行内动作按需建并经 spendConfirm。也就是说今天的 B 并不绕付费门——删它的理由是「一效果一动词」，不是安全。这影响方案 A 的代价评估，不影响判定。
 
+## 先查别人
+
+报告：`docs/research/2026-09-18-storyboard-single-ledger/prior-art.md`（四问全答，自媒体一问如实写「未查」及理由）。结论抄在这里：
+
+- 依赖里已有：`@xyflow/react` 的节点数据就是画布单一真相，官方状态管理指引要求派生视图从 nodes 读、不另存 — https://reactflow.dev/learn/advanced-use/state-management ；`zod` 的 `z.never().optional()` 让「表不存行」在 schema 上不可能（`electron/shared/canvas/shotTable.ts:60`）。
+- 仓库里已有：storyboard 表 `rows: z.never()`（`electron/shared/canvas/shotTable.ts:53`）、表与方案同生（`src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts:16`）、deconstruction 表证明 union 已容纳多种表源（`src/workbench/generationCanvas/nodes/shotTable/factBridge.ts:23`）、reducer 早就按 shotId 改一镜（`electron/productionRun/productionGenerationPlanEdits.ts:105`）、2026-09-01 拍板 `docs/lessons/shot-table-is-a-projection-of-canvas-nodes.md`、09-10 单一账本合同 `docs/fixes/2026-09-10-agent-draft-single-ledger.root-cause.json`。
+- 生态里已有：Automerge 单文档+派生视图 https://automerge.org/docs/concepts/ ；IETF Idempotency-Key（幂等键粒度 = 被改对象粒度）https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/ ；OpenTimelineIO 单结构+投影视图 https://opentimelineio.readthedocs.io/ 。
+- 结论：用已有——Run 账本 + `rows: z.never()` 表源 + reducer 的按镜 patch；自研只有第三种表源的行派生与对应表上 `lift` 一档。不做方案 A（第二份真相）、不做方案 C（两扇门）。
+
 ## 5. 修法选项
 
 ### 前置（不论选哪条都要做）：修多镜 `draft_shots` 的候选合成
