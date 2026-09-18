@@ -40,9 +40,12 @@
 - 模型面 schema 从宿主契约 schema **派生**：`exportWriteSemanticInputSchema.options[1]`
   （`{ jobId, operation: 'cancel_export_job' }`）`.omit({operation})` + 描述覆写。
 - 宿主自己补的那个字段写成**显式常量** `CANCEL_JOB_HOST_FILL`，类型是「宿主面减模型面」的差集
-  ——多补一个字段、少补一个字段、补错一个值，都是 tsc 红。
-- 补完**重过同一份宿主 schema**（`cancelJobHostArgs`），再交给既有的 `exportWriteInputForAlias`
-  走那道跨进程准入。准入那道**不删**：它是花钱/不可逆闸那一侧的规定（裁决 §0「对的一半」）。
+  ——上游给宿主 schema 加一个必填字段而没人补它，tsc 当场红。
+- 「补完**重过同一份宿主 schema**」这一步**不另写**：宿主自己早就有那一步——`exportWriteInputForAlias`
+  做的就是 `exportWriteSemanticInputSchema.parse({ operation: alias, ...})`。`CANCEL_JOB_HOST_FILL`
+  是那件事的**声明**，测试拿它去和那条真路逐字节对账，所以常量不是注释、是被机器核过的规格。
+  （初版在传输层又拼了一次、parse 一次、再把补上的字段摘掉——同一件事的第二份实现。交工前的
+  Ponytail 评审点了这一条，已删；详见 PR 正文 `## Ponytail`。）
 - `RuntimeToolCall` 收成 `RuntimeToolCall<TArgs = unknown>`，**只在这一条路上**带上推断出来的参数类型。
 - 同 commit 删掉 `EXPORT_JOB_ROUTES.cancel_job` 那条对应关系（P1：投影替代了它）。
 
@@ -101,7 +104,7 @@
    | | 错误数 | 红在哪 |
    |---|---|---|
    | **投影之前**（模型面是手写的 `z.object({ jobId: … })`） | 2 | 全在**宿主侧**消费点 `src/workbench/timeline/agent/phase4CapabilityTargets.ts:51,77`。**模型面一个字都不红**——模型继续被告知 `jobId`，宿主已经改收 `jobIdRenamed`，没有任何一层报这件事。这正是 Codex `timeout_ms` 的形状。 |
-   | **投影之后** | 3 | 多的那一条就是模型面自己：`electron/shared/agentCapabilities/verbs/cancelJobProjection.ts(49,36): error TS2339: Property 'jobId' does not exist on type '{ jobIdRenamed: ZodString; } & { operation: ZodLiteral<"cancel_export_job">; }'` |
+   | **投影之后** | 3 | 多的那一条就是模型面自己：`electron/shared/agentCapabilities/verbs/cancelJobProjection.ts(49,36): error TS2339: Property 'jobId' does not exist on type '{ jobIdRenamed: ZodString; } & { operation: ZodLiteral<"cancel_export_job">; }'`（按 Ponytail 意见简化掉那次多余的 round trip **之后**重跑过，结论不变） |
 
    结论：**「宿主改了名、模型面没跟上」这件事第一次成为一个编译错误**，而不是一次付费运行里的失败。
    验完已改回，工作区干净。

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { EXPORT_WRITE_ALIASES, exportWriteInputForAlias, exportWriteSemanticInputSchema } from "../exportCapabilities";
-import { CANCEL_JOB_HOST_FILL, cancelJobHostArgs, cancelJobModelSchema } from "./cancelJobProjection";
+import { CANCEL_JOB_HOST_FILL, cancelJobModelSchema } from "./cancelJobProjection";
 import { objectFieldKeys } from "./verbFieldMap";
 
 const hostSchema = exportWriteSemanticInputSchema.options[1];
@@ -19,17 +19,14 @@ describe("cancel_job 的模型面是宿主面的投影，不是第二份 schema"
     expect([...modelKeys, ...filled].sort()).toEqual([...hostKeys].sort());
   });
 
-  it("补完重过同一份宿主 schema：藏掉的字段确实只有宿主补得出的那些", () => {
+  it("补完重过同一份宿主 schema：这一步由宿主自己那条准入路跑，声明的 fill 与它逐字节相同", () => {
     const modelArgs = cancelJobModelSchema.parse({ jobId: "export-1" });
-    expect(cancelJobHostArgs(modelArgs)).toEqual({ jobId: "export-1", operation: EXPORT_WRITE_ALIASES.cancel });
+    // 生产路径上「补值 + 重过同一份 schema」只有一处：`exportWriteInputForAlias`。这条断言把
+    // 声明的 `CANCEL_JOB_HOST_FILL` 与那条真路的产物对账——所以常量不是注释，是被机器核过的规格。
+    expect(exportWriteInputForAlias(EXPORT_WRITE_ALIASES.cancel, modelArgs))
+      .toEqual({ ...modelArgs, ...CANCEL_JOB_HOST_FILL });
     // 反向：模型那一半单独喂给宿主 schema 必须过不了（否则 `operation` 根本不是宿主自补的字段，
     // 这条投影就是在藏一个模型本该给的值）。
     expect(hostSchema.safeParse(modelArgs).success).toBe(false);
-  });
-
-  it("投影出来的宿主输入与既有跨进程准入那条路逐字节相同（换真相源，不换行为）", () => {
-    const modelArgs = cancelJobModelSchema.parse({ jobId: "export-1" });
-    const { operation: _filled, ...modelHalf } = cancelJobHostArgs(modelArgs);
-    expect(exportWriteInputForAlias(EXPORT_WRITE_ALIASES.cancel, modelHalf)).toEqual(cancelJobHostArgs(modelArgs));
   });
 });

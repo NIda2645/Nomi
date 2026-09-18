@@ -54,19 +54,14 @@ type CancelJobHostArgs = z.infer<typeof cancelJobHostSchema>;
 
 /**
  * 宿主补的那份值，**显式**写出来。类型是差集：模型面已经有的字段不许在这里再出现，宿主面缺的字段
- * 也不许漏。改宿主 schema 的分支判别值而忘了改这里 = tsc 红。
+ * 也不许漏——上游给宿主 schema 加一个必填字段而没人补它，这里当场 tsc 红。
+ *
+ * **「补完重过同一份 schema」那一步不在这里跑第二遍**：宿主自己早就有那一步——
+ * `exportWriteInputForAlias` 做的就是 `exportWriteSemanticInputSchema.parse({ operation: alias, ...})`
+ * （`../exportCapabilities.ts`）。这个常量是那件事的**声明**，`cancelJobProjection.test.ts` 拿它去和
+ * 宿主那条真路逐字节对账。在传输层再拼一次、parse 一次、又把补上的字段摘掉，是同一件事的第二份
+ * 实现（P1），Ponytail 评审也点了这一条——删掉。
  */
 export const CANCEL_JOB_HOST_FILL: Omit<CancelJobHostArgs, keyof CancelJobModelArgs> = {
   operation: EXPORT_WRITE_ALIASES.cancel,
 };
-
-/**
- * 模型给的那一份 + 宿主补的那一份 → **重过同一份宿主 schema**。
- *
- * 返回值是宿主形状，但传输层往下只递模型那一半（方法别名承载 `operation`，
- * `exportWriteInputForAlias` 会在跨进程那一侧把它重新拼回来并再验一次）。这里这一次 parse 的职责
- * 不是「再验一遍」，是**断言投影是可逆的**：藏掉的字段确实只有宿主补得出的那些。
- */
-export function cancelJobHostArgs(modelArgs: CancelJobModelArgs): CancelJobHostArgs {
-  return cancelJobHostSchema.parse({ ...modelArgs, ...CANCEL_JOB_HOST_FILL });
-}
