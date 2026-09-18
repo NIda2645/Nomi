@@ -18,6 +18,7 @@ import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import type { ProductionRunRepository } from "./productionRunRepository";
+import { outboundRequestWasNeverWritten } from "../outboundDispatchEvidence";
 import {
   SubmissionNotDispatchedError,
   SubmissionReceiptUnknownError,
@@ -464,7 +465,16 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
             rawReceipt = result.raw;
             return { providerTaskId: result.providerTaskId };
           } catch (error) {
-            if (!(error instanceof SubmissionNotDispatchedError)) prepared.envelope.markSubmittedUnknown();
+            // 「一个字节都没写出去」是**可证明**的一档（连不上 / DNS 解不出 / 从池里取到一条
+            // 对面已关的 keep-alive 连接），它和「写出去了不知道结果」性质完全不同：
+            // 前者供应商那边什么都没发生，后者可能已经在扣费。此前两者都落进
+            // `markSubmittedUnknown()`，于是一次根本没发出去的提交也被记成「可能已收下」
+            // （2026-09-18 C9 间歇红的根因）。判据只有一个 owner：`outboundDispatchEvidence.ts`。
+            if (error instanceof SubmissionNotDispatchedError) throw error;
+            if (outboundRequestWasNeverWritten(error)) {
+              throw new SubmissionNotDispatchedError(error instanceof Error ? error.message : String(error));
+            }
+            prepared.envelope.markSubmittedUnknown();
             throw error;
           }
         },

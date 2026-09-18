@@ -662,6 +662,24 @@ try {
   console.log(`MCP-L2 PASS: ${passed} assertions; mode=${mcpRuntime ? 'packaged' : 'development'}; artifacts=${artifactDir}`)
 } catch (error) {
   console.error(error?.stack || error)
+  // 断言红了就得看见服务端自己的诊断：主连接的 stderr 一直在 `captureStderr` 里攒着，
+  // 从前只在 `call()` 返回 isError 时才打。**断言**红（服务端没报错、只是状态不对）是最需要
+  // 它的那一档——2026-09-18 的 C9 终态红就是这么丢掉了唯一一条 `logWarn` 现场。
+  for (const [label, client] of [['mcp', mcp], ['c9b', c9bClient], ['c10', c10Client]]) {
+    const text = typeof client?.stderrText === 'function' ? client.stderrText() : ''
+    if (text.trim()) console.error(`  --- ${label} server stderr (tail) ---\n${text.split('\n').slice(-200).join('\n')}`)
+  }
+  // GUI 主进程那半同样是现场：多镜批次的驱动可能跑在能力核这一侧，它的 WARN 只会出现在这里。
+  const guiTail = typeof gui?.mainLogTail === 'function' ? gui.mainLogTail() : []
+  if (guiTail.length) console.error(`  --- gui main log (tail) ---\n${guiTail.slice(-200).join('\n')}`)
+  // 供应商那半边的账本：哪些请求**真的到了**、连接什么时候开的关的。
+  // 「出站报 fetch failed」在调用方只是一句话，能分清「请求压根没发出去」和「发了但连接断了」
+  // 的只有这一侧。
+  if (provider) {
+    console.error(`  --- fixture vendor ledger (keepAliveTimeout=${provider.keepAliveTimeoutMs}ms) ---`)
+    console.error(`  hits:\n${(provider.hits || []).map((hit) => `    ${hit.at || ''} ${hit.method} ${hit.url}`).join('\n')}`)
+    console.error(`  sockets:\n${(provider.socketEvents || []).map((line) => `    ${line}`).join('\n')}`)
+  }
   process.exitCode = 1
 } finally {
   await declinedClient?.terminate().catch(() => undefined)
