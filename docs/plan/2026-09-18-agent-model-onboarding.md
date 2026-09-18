@@ -85,7 +85,7 @@
 7. **Higgsfield 已是内置供应商**（`74b27569b`「接入 Higgsfield：旗舰三个」，`seedBuiltins.ts:83-84,345`；`deriveVendorKeyFromBaseUrl` 对已知 host 直接复用内置 key，`catalogCommit.ts:409-410`），且其目录里**没有 GPT Image 2.5**（`higgsfield-onboarding-research.md` §2：76 条无 openai 命名空间）。任务书 §2 的验收「只用 MCP 接 Higgsfield GPT Image 2.5 + Seedance 2.5」按现状**不成立**，要重定（§10、§11 Q9）。
 8. **LiteLLM 那种探针声明本仓已有**：`livenessProbe {request, successPath, source}`（`higgsfieldVendor.ts:36-50`）、`keyValidation: "liveness-probe"`——但只有 curated 种子能声明，卡上没有。
 9. **`authScheme` 在 Vendor 上有、卡上没有**（`catalog/types.ts` Vendor.authScheme；`providerAdapter/types.ts:112-118` provider 块无）；Higgsfield 的 `Authorization: Key id:secret` 经卡接不进来。
-10. **贴 key 页看不到私网 origin**：`safeHandoffOrigin` 把 10./192.168./localhost 剥掉（`integrationHandoffOrigin.ts:23-37`）——用户给 LAN 中转贴 key 时，页面上没有「这把 key 要去哪」。
+10. **贴 key 页看不到私网 origin** ——【2026-09-18 实测推翻】收密钥的那一页显示的是 `descriptor.display.baseUrl`（`credentialElicitationHttp.ts:131`），直接来自会话 config、**没有任何私网剥离**，LAN 地址原样可见（`credentialPageShowsDestination.test.ts` 渲染真页面断言）。`safeHandoffOrigin` 剥的是**另一样东西**：把 Nomi GUI 叫到前台的交接单提示；而那里的剥离是承重的——`handoffQueue.normalizeDisplayOrigin` 对私网 origin 直接抛「Private handoff origin requires authorization」，去掉它会让本地 ComfyUI / LAN 中转连安全页都打不开。真正的缺口是那条提示带不出 origin 导致 GUI 设置面板上不显示，属于交接队列自己的安全判定，是另一条边界。
 11. **「未试跑」由渲染层 duck-typing 决定**（`useDedupedModelSelect.ts:124-131` 读 `meta.adapter.evidence`），而「最近多次失败」由另一条链（`AilingProbe`，`:49-60`）决定——同一个「这个模型能不能信」有两条取值链（R14.1 字段取值来源）。
 12. **`docs/plan/2026-08-04-custom-call-script.md:4` 引用的研究文件不存在**（`find` + `git log --all --diff-filter=A` 零命中，反方报告 §5 已证）；其立论「声明式够不到异步视频」已被本仓自己证伪（`AdapterModeDraft.delivery/query/abandon`；apimart/kie/Higgsfield 异步视频全是声明式）。
 
@@ -279,7 +279,7 @@ type OnboardingFailure = {
 | Q8 | 「已出片 N 次」的 owner `modelRunEvidence` 需要在 `runtime.runTask` 结算处加一扇写门；同时把「最近多次失败」的派生也迁过去（今天在渲染层）——一起迁还是只加正面角标？ | **一起迁**（R14.1.a 对偶路径；只加一半又是「做了一半看着完整」） |
 | Q9 | 验收 A 的供应商：Higgsfield 已内置且无 GPT Image 2.5。候选 (a) 用户给一家他有 key、不在 `seedBuiltins` 的供应商（中转站 / 自建 new-api 也行）；(b) 在隔离 profile 里先 `nomi_remove_provider higgsfield` 再经卡重接（但 `deriveVendorKeyFromBaseUrl` 会复用内置 key、下次启动 `seedVendor` 会重种，需要实施者先证明不会串） | **(a)**，用户提供；没有则 (b) 并把「删内置后不重种」做成验收断言 |
 | Q10 | Higgsfield 上 B 档的视频模型：Seedance 2.5 具体 slug 以 `GET /models` 实查为准（research 只记了命名空间 `bytedance`）——接受实施者按实查定，不预先写死？ | **接受** |
-| Q11 | 贴 key 页对私网 origin 也显示（改 `safeHandoffOrigin` 只管显示、不管判定） | **显示** |
+| Q11 | 贴 key 页对私网 origin 也显示（改 `safeHandoffOrigin` 只管显示、不管判定） | **显示** —— 【2026-09-18 实施时实测】收密钥那一页**本来就显示**（见发现 10 的更正）；`safeHandoffOrigin` 那处剥离承重，改它会让本地 ComfyUI / LAN 中转打不开安全页，故本刀不动，只加断言钉住「已经成立」这件事 |
 | Q12 | `nomi_remove_provider` 删整家时是否连 `suppressedBuiltinModels` 一起写（删内置家 = 永久不重种）？ | **是**，但只对用户显式删的家；升级/重装不视为删 |
 
 ---
