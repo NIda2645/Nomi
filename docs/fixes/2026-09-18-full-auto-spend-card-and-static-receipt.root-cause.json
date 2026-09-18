@@ -72,13 +72,13 @@
     {
       "kind": "write",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
-      "line": 419,
+      "line": 371,
       "symbol": "beginPolicySpendDecision"
     },
     {
       "kind": "write",
       "path": "electron/agentLane/laneExtendedTools.ts",
-      "line": 151,
+      "line": 148,
       "symbol": "nextActionFor"
     },
     {
@@ -90,7 +90,7 @@
     {
       "kind": "write",
       "path": "electron/agentLane/laneHost.mts",
-      "line": 204,
+      "line": 192,
       "symbol": "decisionFor"
     },
     {

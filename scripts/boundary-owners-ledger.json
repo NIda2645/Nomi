@@ -121,6 +121,16 @@
         "symbol": "importLocalFile"
       },
       "reason": "复数入口 importLocalFiles 已并入单数 importLocalFile；单一导入 owner 仍在原文件。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-14-mcp-connection-truthfulness.root-cause.json",
+      "path": "electron/capabilityCore/mcpConfig.ts",
+      "symbol": "sameLauncher / sameProfile / classifyMcpEntry",
+      "anchor": {
+        "path": "electron/capabilityCore/mcpConfig.ts",
+        "symbol": "sameCommand / sameProfile / classifyMcpEntry"
+      },
+      "reason": "`sameLauncher` 在 2026-09-17 `ed7163fdb`（评审意见：重复的启动命令比较包装）被删——它的定义原本就是 `sameCommand(left,right) && sameProfile(left,right)`，`classifyMcpEntry` 现在直接调那两个。边界没搬家也没退役，只是那层包装没了，所以锚换成它真正的两个组成部分。"
     }
   ],
   "retirements": [
@@ -897,6 +907,16 @@
       "contract": "docs/fixes/2026-09-15-media-kind-single-judgment.root-cause.json",
       "path": "scripts/check-media-import-owner.mjs",
       "symbol": "RULES.adhoc-media-kind-branch"
+    },
+    {
+      "contract": "docs/fixes/2026-09-17-creation-left-column-collapse.root-cause.json",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "aside 外框"
+    },
+    {
+      "contract": "docs/fixes/2026-09-17-creation-left-column-collapse.root-cause.json",
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "symbol": "workbench-shell__body 的 p-4 gap-4 与树的挂载条件"
     }
   ]
 }

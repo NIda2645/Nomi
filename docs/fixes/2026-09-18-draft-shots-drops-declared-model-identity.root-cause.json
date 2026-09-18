@@ -139,9 +139,7 @@
   "regression_tests": [
     "scripts/check-verb-host-conformance.node-test.mjs",
     "electron/capabilityCore/semanticGenerationCandidate.test.ts",
-    "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts",
-    "tests/ux/agent-spend-full-auto.walk.mjs",
-    "tests/ux/agent-spend-real-image.paid.mjs"
+    "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts"
   ],
   "residual_risks": [
     "`modelKey` 与 `candidate.modelId` 仍然是同一件事的两个名字（`list_models` 印的是 `modelKey=`，`draft_shots` 的示例演示的是 `candidate`）。本刀只做到「矛盾时当场拒绝、不矛盾时无损」；收敛到一个名字要动 `list_models` 的提示词与模型面，属 R13 第三档的工具面改动（需工具写对率数字），已记为结构性发现。",
@@ -175,7 +173,7 @@
     },
     {
       "path": "scripts/check-verb-host-conformance.mjs",
-      "symbol": "declared-fields-must-survive (R1b/R3)",
+      "symbol": "checkVerb / fieldProbes / TRANSLATOR_CONSUMED",
       "responsibility": "机器判据：按动词声明造实例（最小实例 + 逐字段探针），翻译后核对每个值有没有到达宿主，并把翻译结果喂给宿主真正用的那座桥；丢掉的必须在 `TRANSLATOR_CONSUMED` 带理由登记。"
     }
   ],
@@ -251,8 +249,11 @@
       "scripts/check-verb-host-conformance.node-test.mjs",
       "electron/agentLane/laneVerbTransport.test.ts",
       "electron/capabilityCore/semanticGenerationCandidate.test.ts",
-      "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts"
+      "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts",
+      "tests/ux/agent-spend-full-auto.walk.mjs",
+      "tests/ux/agent-spend-real-image.paid.mjs"
     ],
-    "structural_ticket": "docs/roadmap/TODO.md"
+    "structural_ticket": "docs/roadmap/TODO.md",
+    "note": "这两条真机走查（`agent-spend-full-auto.walk.mjs` / `agent-spend-real-image.paid.mjs`）是 94d0cf7ed 为**那一版**实现取的证：模型点名的模型真的到了供应商、全自动档真的不出卡。合并批次 4 时它们一个字没改，所以不再列进 `regression_tests`——那份名单的意思是「为这次改动背书的测试」，把没跑过这次改动的东西列进去是假话。它们仍在仓里、仍在 e2e 链上跑、仍守着同一条不变量，所以记在这里（这条不变量归哪层管、那层有哪些测试）。"
   }
 }
