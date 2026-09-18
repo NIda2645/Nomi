@@ -1,13 +1,15 @@
 // 这条改名**凭什么还留着**的机器判据。
 //
-// 整条链上只剩这一条 rename（`check_job` / `cancel_job` 的生成域那一半）。它的理由写在
-// `JOB_ID_IS_DUAL_DOMAIN` 里：两个域的宿主各有一份持久化，各用各的目录名。理由是**领域约束**，
-// 按 R5.5 才算合法偏差；哪天两个域同名了，这条映射就该整个删掉，而下面第一条断言会先红。
+// 整条链上只剩这一条 rename（`check_job` / `cancel_job` 的生成域那一半）。理由是**领域约束**：
+// 两个域的宿主各有一份持久化，各用各的目录名（`jobs/<jobId>/` vs `.nomi/runs/<operationId>/`），
+// 按 R5.5 才算合法偏差。哪天两个域同名了，这条映射就该整个删掉——下面第一条断言会先红。
+// （那句理由原来还另存了一份字符串常量，测试去 match 里面的词；那是**循环论证**：字符串里写着
+// 「两个词不一样」证不了两个词真的不一样。证据只能来自两份宿主 schema 自己，所以常量删了。）
 import { describe, expect, it } from "vitest";
 
 import { exportReadSemanticInputSchema } from "../exportCapabilities";
 import { generationStatusInputSchema } from "../generationPlanSchemas";
-import { cancelJobGenerationArgs, checkJobGenerationArgs, JOB_ID_IS_DUAL_DOMAIN } from "./verbDualDomain";
+import { cancelJobGenerationArgs, checkJobGenerationArgs } from "./verbDualDomain";
 import { objectFieldKeys } from "./verbProjections";
 
 describe("双域动词的那条改名", () => {
@@ -17,8 +19,8 @@ describe("双域动词的那条改名", () => {
     expect(exportKeys).toContain("jobId");
     expect(generationKeys).toContain("operationId");
     expect(generationKeys).not.toContain("jobId");
-    expect(JOB_ID_IS_DUAL_DOMAIN).toMatch(/jobId/);
-    expect(JOB_ID_IS_DUAL_DOMAIN).toMatch(/operationId/);
+    // 反过来也要真：导出域**没有** operationId。少了这一句，「两个域用两个词」只证了一半。
+    expect(exportKeys).not.toContain("operationId");
   });
 
   it("翻出来的参数过得了生成域那一支的宿主 schema（补上 operation 之后）", () => {

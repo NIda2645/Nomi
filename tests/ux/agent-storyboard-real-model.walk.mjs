@@ -63,15 +63,21 @@ const LABEL = values.label || 'run'
 const outputDir = path.resolve(repoRoot, values['output-dir'] || `tests/ux/shots/storyboard-real-model/${LABEL}`)
 fs.mkdirSync(outputDir, { recursive: true })
 
-// ── ④ 真实素材：登记表里那条 4K HEVC，抽一帧 4K PNG 到 tmp（不写用户素材目录）。
-const { assets } = requireRealMediaAssets(['video-4k-hevc-10bit'])
+// ── ④ 真实素材：登记表里那条 4K HEVC，加上它**派生**的那张 4K PNG。
+//
+// 派生那条（`image-4k-png`）在登记表里只有 `derivedFrom`、没有 `relativePath`——素材本身不进仓库、
+// 也不写进用户的素材目录，所以 `requireRealMediaAssets` 对它只返回「这是派生素材」，抽帧由调用方做
+// （登记表 `derivedFrom.how` 写的就是这条命令）。这里照那句话抽到 tmp，**规格从登记表读**，不硬写数字。
+const { assets } = requireRealMediaAssets(['video-4k-hevc-10bit', 'image-4k-png'])
 const sourceVideo = assets.get('video-4k-hevc-10bit').file
+const derivedSpec = assets.get('image-4k-png').spec
 const mediaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'storyboard-real-media-'))
 const referenceImage = path.join(mediaTmp, 'reference-4k.png')
 execFileSync(ffmpeg.path, ['-y', '-ss', '00:00:05', '-i', sourceVideo, '-frames:v', '1', referenceImage], { stdio: 'pipe' })
 const referenceBytes = fs.statSync(referenceImage).size
-if (referenceBytes < 8 * 1024 * 1024) {
-  throw new Error(`抽出来的参考帧只有 ${referenceBytes} 字节，登记表要求 ≥8MB——多半抽到了黑帧或抽帧失败`)
+if (referenceBytes < derivedSpec.minBytes) {
+  throw new Error(`抽出来的参考帧只有 ${referenceBytes} 字节，登记表 image-4k-png 要求 ≥${derivedSpec.minBytes}`
+    + '——多半抽到了黑帧或抽帧失败，别拿它当「真实素材」往下跑')
 }
 
 // ── ① 真实应用：隔离 profile + 本机真实 catalog（真模型、真 key；项目与浏览器状态全隔离）。

@@ -27,8 +27,16 @@ import { CAPABILITY_CONTRACTS } from "../registry";
 import { toPublishedJsonSchema } from "../modelVisibleJsonSchema";
 import type { VerbDeclaration } from "../verbDeclaration";
 
-export type VerbFieldProvenance = string;
-const ARCHETYPE = /^(model-authored|host-resolved|from-read:[a-z_]+\.[A-Za-z_][A-Za-z0-9_]*|derived:[A-Za-z_][A-Za-z0-9_.]*)$/;
+/**
+ * 四档**写进类型**，不是写进正则：下面那张表全是静态字面量，让编译器认它比让运行期认它早一步
+ * （R17：能让编译器拦的别留给门岗）。写错一档——`from_read:` 少个横杠、`model-author` 少个 ed——
+ * 是 tsc 红，不用等模块加载。
+ */
+export type VerbFieldProvenance =
+  | "model-authored"
+  | "host-resolved"
+  | `from-read:${string}.${string}`
+  | `derived:${string}`;
 
 /**
  * 一个动词的模型面字段 → 它的来源。点号路径（`shots.prompt`）指数组元素里的字段。
@@ -169,7 +177,6 @@ export function assertVerbFieldProvenance(declarations: readonly VerbDeclaration
     for (const [field, sources] of Object.entries(RAW[name]!)) {
       if (sources.length === 0) throw new Error(`verbFieldProvenance: ${name}.${field} 的来源是空的`);
       for (const source of sources) {
-        if (!ARCHETYPE.test(source)) throw new Error(`verbFieldProvenance: ${name}.${field} 的来源 "${source}" 不是合法的一档`);
         if (!source.startsWith("from-read:")) continue;
         const [verb, output] = source.slice("from-read:".length).split(".");
         const names = outputFieldNames(verb!, declarations);

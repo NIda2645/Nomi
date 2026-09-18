@@ -7,11 +7,9 @@
 // 「两次变异」那张表的 ①：给宿主分支加一个必填字段，投影默认它是模型该填的，当时没有任何东西会红）。
 // 这道门存在的理由就是让它从今天起红。
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
 import { test } from 'node:test'
 
-import { assertGateIsOnContracts, createGateMutationHarness, repoRoot } from './gate-mutation-harness.mjs'
+import { assertGateIsOnContracts, createGateMutationHarness } from './gate-mutation-harness.mjs'
 
 const { runGate, withMutation } = createGateMutationHarness({
   gate: 'scripts/check-model-face-frozen.mjs',

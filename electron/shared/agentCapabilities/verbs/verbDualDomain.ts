@@ -31,13 +31,6 @@ type JobIdArgs = Readonly<{ jobId: string }>;
 type StatusReadArgs = Omit<z.infer<(typeof generationStatusInputSchema.options)[0]>, "operation">;
 type StatusCancelArgs = Omit<z.infer<(typeof generationStatusInputSchema.options)[1]>, "operation">;
 
-/**
- * 这条翻译的**领域理由**，写在一处，被两个动词引用。它不是注释：`verbDualDomain.test.ts` 断言
- * 这两个域的宿主字段名**真的不同**——哪天它们同名了，这条映射就该整个删掉，而那条断言会先红。
- */
-export const JOB_ID_IS_DUAL_DOMAIN =
-  "双域动词：导出域宿主字段真叫 jobId（jobs/<jobId>/ 目录名），生成域叫 operationId（.nomi/runs/<id>/ 目录名）；模型面只能有一个名字";
-
 /** `check_job` 的生成域那一半。 */
 export function checkJobGenerationArgs(args: JobIdArgs): StatusReadArgs {
   return { operationId: args.jobId };
