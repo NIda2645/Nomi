@@ -138,7 +138,7 @@ export function declaredToolsOf(source) {
  * 反引号里的字面量 → JS 值。认不出的返回 `undefined`（=不参与判定，宁可漏报不误报）。
  *
  * `known` 是「这一带认识的名字」：工具名与字段名。裸标识符同时可能是**枚举值**（`text_to_image`）
- * 和**引用**（`list_models`、`draftId`），光看形状分不开——在 `known` 里的一律当引用排掉。
+ * 和**引用**（`list_models`、`operationId`），光看形状分不开——在 `known` 里的一律当引用排掉。
  * 代价是枚举值里恰好与某个字段/工具同名的那些测不到；换来的是不会把「从 X 取值」读成「填 X」。
  */
 function literalValueOf(text, known) {

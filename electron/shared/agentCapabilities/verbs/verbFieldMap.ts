@@ -3,19 +3,23 @@
 // ── 它在解决哪个真实摩擦 ──
 //
 // 一个能力在这条链上被重述四遍：动词声明（模型看的）、翻译层、契约 schema（宿主收的）、handler 及下游投影。
-// 头两遍该有——模型要的是对它友好的名字（`modelKey` / `durationSec`），宿主要的是内部名
-// （`modelId` / `parameters.duration`），而且宿主那道校验是跨进程 + 花钱闸的准入规定，必须独立存在。
+// 头两遍该有——模型要的是对它友好的形状（`durationSec` 摆在顶层），宿主要的是内部形状
+// （`parameters.duration`），而且宿主那道校验是跨进程 + 花钱闸的准入规定，必须独立存在。
 // 第三遍**不该手写**：它承载的全部信息，就是前两套词之间的对应关系。
 //
+// **2026-09-18：这张表上「模型面叫 A、宿主面叫 B」那一类已经全部消掉了**（改的是模型面）。剩下的
+// `rename` 都有领域理由：改嵌套层级、拍平嵌套，或者一个字段真的对着两个域的两份持久化（`jobId`）。
+// 加新的 `rename` 前先问一句：这条的理由是领域约束，还是只是「我们这边习惯叫另一个名字」。
+//
 // 手写它的代价在 2026-09-18 量到过：`durationSec` 被改名成一个宿主没有的顶层字段（整条拒收）、
-// `modelKey` 与逐镜 `candidate.providerId/modelId` 在解构里根本没被列出来（**静默**丢掉，模型点名
+// 平铺的模型字段与逐镜 `candidate.providerId/modelId` 在解构里根本没被列出来（**静默**丢掉，模型点名
 // 「用 apimart 的 image-1」，宿主照用户默认模型去花钱）。两种病因是同一个：**对应关系只存在于一段
 // 手写代码里，没有任何东西能核对它是否完整、是否指向真实存在的宿主字段。**
 //
 // 这个文件把对应关系收成一张表，翻译函数与一致性断言都从它来：
 //   · 动词加了字段而没加对应关系 → 装配期抛（不是运行时静默丢）
 //   · 对应关系指向宿主不存在的字段 → 装配期抛
-//   · 两条对应关系抢同一个宿主字段而没分优先级 → 装配期抛（这正是 `modelKey` 与 `candidate.modelId` 的关系）
+//   · 两条对应关系抢同一个宿主字段而没分优先级 → 装配期抛（`shots[].modelId` 与 `shots[].candidate.modelId` 就是这一对）
 //
 // ── 一条纪律：有损的那一档必须显式 ──
 //
@@ -66,8 +70,12 @@ export function readProvenanceTargets(relation: VerbFieldRelation): ReadonlyArra
 
 /** 一个字段在这条链上的去向。`kind` 是声明，不是注释：执行器按它走，装配期按它核。 */
 export type VerbFieldRelation =
-  /** 同名透传。 */
-  | Readonly<{ kind: "same"; from: readonly VerbFieldProvenance[]; absentOn?: Readonly<Record<string, VerbFieldAbsence>> }>
+  /**
+   * 同名透传。`priority` 与 `rename` 上那个同义：两条关系落在同一个宿主字段上时，谁赢必须是**声明**
+   * 出来的。（`draft_shots` 的 `shots[].modelId` 与 `shots[].candidate.modelId` 就是这样一对——
+   * 名字统一之后平铺那条成了 `same`，但它和 `candidate` 那条仍然抢同一个落点。）
+   */
+  | Readonly<{ kind: "same"; from: readonly VerbFieldProvenance[]; priority?: number; absentOn?: Readonly<Record<string, VerbFieldAbsence>> }>
   /** 改名。`to` 可以是点号路径（`parameters.duration`），落进宿主那个嵌套记录里。 */
   | Readonly<{ kind: "rename"; to: string; why: string; from: readonly VerbFieldProvenance[]; priority?: number; absentOn?: Readonly<Record<string, VerbFieldAbsence>> }>
   /**
@@ -110,7 +118,7 @@ function targetPathOf(source: string, relation: VerbFieldRelation): string | und
 }
 
 function priorityOf(relation: VerbFieldRelation): number {
-  return relation.kind === "rename" ? relation.priority ?? 0 : 0;
+  return relation.kind === "rename" || relation.kind === "same" ? relation.priority ?? 0 : 0;
 }
 
 /**
@@ -184,7 +192,7 @@ export function assembleVerbFieldMap(input: VerbFieldMapInput): VerbFieldMap {
       if (!PROVENANCE.test(entry)) throw new Error(`${label}: "${source}" 的来源 "${entry}" 不是合法的一档`);
     }
   }
-  // ⑤ 同一个目标上两条关系抢同一个落点，必须分出优先级（`modelKey` 与 `candidate.modelId` 就是一对）。
+  // ⑤ 同一个目标上两条关系抢同一个落点，必须分出优先级（`shots[].modelId` 与 `candidate.modelId` 就是一对）。
   for (const target of targetNames) {
     const byPath = new Map<string, Array<{ source: string; priority: number }>>();
     for (const [source, relation] of Object.entries(relations)) {

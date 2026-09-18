@@ -8,7 +8,7 @@ export function formatLaneModelIndex(context: LaneComposerContext): string {
   const entries = (context.availableModels ?? []).filter(entry => entry.kind === 'image' || entry.kind === 'video');
   const lines: string[] = [];
   let kind = '';
-  for (const entry of entries.slice().sort((a, b) => a.kind.localeCompare(b.kind) || a.modelKey.localeCompare(b.modelKey)
+  for (const entry of entries.slice().sort((a, b) => a.kind.localeCompare(b.kind) || a.modelId.localeCompare(b.modelId)
     || (a.vendor ?? '').localeCompare(b.vendor ?? ''))) {
     if (entry.kind !== kind) { kind = entry.kind; lines.push(`[${kind}]`); }
     const byResolution = new Map<string, string[]>();
@@ -19,19 +19,19 @@ export function formatLaneModelIndex(context: LaneComposerContext): string {
       byResolution.set(resolution, names);
     }
     const modes = [...byResolution].map(([resolution, names]) => `${names.join(',')}${resolution ? `[${resolution}]` : ''}`).join('/');
-    lines.push(`${entry.modelKey}: ${modes}`);
+    lines.push(`${entry.modelId}: ${modes}`);
   }
   if (!lines.length && !selected) return '';
   return [
-    '可用模型索引（modelKey: modeId[resolution]；* 是默认模式，逗号并列模式共用同一档位；保留原大小写）：',
+    '可用模型索引（modelId: modeId[resolution]；* 是默认模式，逗号并列模式共用同一档位；保留原大小写）：',
     ...(selected ? [`text ${selected.vendorKey}/${selected.modelKey}（当前对话）`] : []),
     ...lines,
     ...MODEL_ANCHOR_GUIDANCE,
-    '这里只列图片/视频任务。完整类别、参数、参考槽与各模式约束：nomi_request_tools group=models 后 nomi_read target=models（可用 modelKey 缩小）；使用未列参数或参考边前先查。不要猜档位或混用不同模式参数。',
+    '这里只列图片/视频任务。完整类别、参数、参考槽与各模式约束：nomi_request_tools group=models 后 nomi_read target=models（可用 modelId 缩小）；使用未列参数或参考边前先查。不要猜档位或混用不同模式参数。',
   ].join('\n');
 }
 
-function identity(entry: AgentModelEntry): string { return JSON.stringify([entry.vendor, entry.modelKey, entry.kind]) }
+function identity(entry: AgentModelEntry): string { return JSON.stringify([entry.vendor, entry.modelId, entry.kind]) }
 
 /** Pure adjacent-snapshot projection: reopening or projecting a message twice cannot consume its delta. */
 export function formatLaneModelDelta(context: LaneComposerContext, previous?: LaneComposerContext): string {
@@ -43,7 +43,7 @@ export function formatLaneModelDelta(context: LaneComposerContext, previous?: La
   if (!changed.length && !removed.length) return '';
   return ['本回合模型目录变化（覆盖之前的同名条目；失效模型不可再用）：',
     ...(changed.length ? [formatLaneModelIndex({ ...context, availableModels: changed }),
-      ...changed.filter(entry => entry.kind !== 'image' && entry.kind !== 'video').map(entry => `新增/更新 ${entry.kind} ${entry.modelKey}`)] : []),
-    ...removed.map(entry => `失效 ${entry.kind} ${entry.vendor ?? ''}/${entry.modelKey}`),
+      ...changed.filter(entry => entry.kind !== 'image' && entry.kind !== 'video').map(entry => `新增/更新 ${entry.kind} ${entry.modelId}`)] : []),
+    ...removed.map(entry => `失效 ${entry.kind} ${entry.vendor ?? ''}/${entry.modelId}`),
   ].filter(Boolean).join('\n');
 }

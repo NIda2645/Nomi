@@ -18,7 +18,7 @@ vi.mock('../generationCanvas/agent/availableModels', async (importOriginal) => (
   ...(await importOriginal<typeof import('../generationCanvas/agent/availableModels')>()),
   listAvailableModelsForAgent: vi.fn(async () => [
     {
-      modelKey: 'agent-picked-model',
+      modelId: 'agent-picked-model',
       modelAlias: null,
       vendor: 'agent-picked-vendor',
       label: 'Agent picked model',

@@ -35,7 +35,7 @@ describe("buildAgentModelEntries", () => {
     ]);
     expect(entries).toHaveLength(1);
     const e = entries[0];
-    expect(e.modelKey).toBe("seedance-2");
+    expect(e.modelId).toBe("seedance-2");
     expect(e.kind).toBe("video");
     expect(e.archetypeId).toBe("seedance-2");
     expect(e.modes.length).toBeGreaterThan(0);
@@ -65,7 +65,7 @@ describe("buildAgentModelEntries", () => {
       { value: "agent-runtime-text", label: "Fixture 文本", vendor: "loopback", kind: "text" } as ModelOption & { kind: "text" },
     ]);
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ modelKey: "agent-runtime-text", kind: "text", vendor: "loopback" });
+    expect(entries[0]).toMatchObject({ modelId: "agent-runtime-text", kind: "text", vendor: "loopback" });
     expect(entries[0].archetypeId).toBeUndefined();
     expect(entries[0].defaultModeId).toBe("chat");
     expect(entries[0].modes).toEqual([
@@ -99,7 +99,7 @@ describe("formatAvailableModelsForPrompt", () => {
     expect(entries[0]?.modes.every(mode => mode.consumesAnchors?.includes('none'))).toBe(true);
     const prompt = formatAvailableModelsForPrompt(entries);
     expect(prompt).toContain('[consumesAnchors:none]');
-    expect(prompt).toContain('modelKey/modeId 不能留空');
+    expect(prompt).toContain('modelId/modeId 不能留空');
     expect(prompt).toContain('用户点名 t2v 就听用户');
   });
   it("排序稳定且标题不绑定旧工具名", () => {
@@ -117,12 +117,12 @@ describe("formatAvailableModelsForPrompt", () => {
     expect(formatAvailableModelsForPrompt([])).toBe("");
   });
 
-  it("列出 modelKey + 模式 + 参数选项", () => {
+  it("列出 modelId + 模式 + 参数选项", () => {
     const entries = buildAgentModelEntries([
       opt({ value: "seedance-2", label: "即梦 Seedance", meta: { archetypeId: "seedance-2" } }),
     ]);
     const text = formatAvailableModelsForPrompt(entries);
-    expect(text).toContain("modelKey=seedance-2");
+    expect(text).toContain("modelId=seedance-2");
     expect(text).toContain("aspect_ratio[");
     expect(text).toContain("9:16");
     // T8：提示词里带每个模式的参考槽，让 agent 按模型真实能力连边
@@ -147,11 +147,11 @@ describe("默认模型解析：用户保存的偏好优先，正则阶梯只兜�
   ]);
 
   it("用户设了默认 → 用他的（哪怕正则阶梯会挑另一个）", () => {
-    expect(pickStoryboardDefaultModel(entries, "image")?.modelKey).toBe("gpt-image-2");
+    expect(pickStoryboardDefaultModel(entries, "image")?.modelId).toBe("gpt-image-2");
     const picked = pickSavedDefaultModel(entries, "image", {
       text_to_image: { vendorKey: "my-relay", modelKey: "nano-banana" },
     });
-    expect(picked?.modelKey).toBe("nano-banana");
+    expect(picked?.modelId).toBe("nano-banana");
     expect(picked?.vendor).toBe("my-relay");
   });
 

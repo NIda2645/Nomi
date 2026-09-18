@@ -192,7 +192,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         }
       }
     }
-    if (result.ok && normalizedCall.toolName === 'draft_shots' && !(normalizedCall.args as { draftId?: unknown }).draftId) {
+    if (result.ok && normalizedCall.toolName === 'draft_shots' && !(normalizedCall.args as { operationId?: unknown }).operationId) {
       await input.onTaskCreated?.(normalizedCall, result.result)
     }
     return result

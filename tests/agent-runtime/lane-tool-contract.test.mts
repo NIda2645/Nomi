@@ -393,6 +393,6 @@ test('draft_shots：全是锚的计划在动词面就被拒，且告诉模型那
   ] }).success, true, '省掉 role 的纯图片计划必须放行');
 
   // ④ 改已有草稿那条路不受影响——它连 role 都不许带，本来就走另一条判据。
-  const revise = parse({ draftId: 'op-1', shots: [{ shotId: 'shot-1', prompt: '改一下提示词' }] });
+  const revise = parse({ operationId: 'op-1', shots: [{ shotId: 'shot-1', prompt: '改一下提示词' }] });
   assert.equal(revise.success, true, '改草稿这条路不该被新约束连带拦住');
 });
