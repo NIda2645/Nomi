@@ -22,10 +22,9 @@ function collectFiles(dir: string): string[] {
     .map((entry) => path.join(entry.parentPath, entry.name));
 }
 
-const schemasByVerb: Record<string, unknown> = {};
-for (const spec of MODEL_FACING_TOOL_SPECS) {
-  schemasByVerb[spec.name] = toPublishedJsonSchema(spec.schema);
-}
+const schemasByVerb = Object.fromEntries(
+  MODEL_FACING_TOOL_SPECS.map((spec) => [spec.name, toPublishedJsonSchema(spec.schema)]),
+);
 
 const files = collectFiles(walkthroughRoot).map((full) => ({
   path: path.relative(repoRoot, full),
