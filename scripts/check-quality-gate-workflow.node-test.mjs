@@ -136,6 +136,7 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
       selectedSteps['MCP L1 handshake journey'].run,
       selectedSteps['MCP elicitation-first journey'].run,
       selectedSteps['Real user loopback journey gate'].run,
+      selectedSteps['Golden path (Agent storyboard lands on canvas)'].run,
       selectedSteps['Critical canvas acceptance'].run,
     ],
     [
@@ -144,6 +145,7 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
       'xvfb-run -a pnpm run test:mcp-journey',
       'xvfb-run -a pnpm run test:mcp-elicitation',
       'xvfb-run -a pnpm run test:real-user-journeys:ci',
+      'xvfb-run -a pnpm run test:golden',
       'xvfb-run -a pnpm run test:canvas:critical',
     ],
   )
@@ -179,6 +181,7 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
   assert.equal(selectedSteps['MCP L1 handshake journey'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['MCP elicitation-first journey'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['Real user loopback journey gate'].if, "needs.scope.outputs.journeys == 'true'")
+  assert.equal(selectedSteps['Golden path (Agent storyboard lands on canvas)'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['Critical canvas acceptance'].if, "needs.scope.outputs.canvas == 'critical'")
   assert.equal(runCommands(desktop).filter((command) => command === 'pnpm run build').length, 1)
   // full/performance 面已拆到并行 job；本 job 不得再串行执行它们（那是 22 分钟关键路径的根因）。

@@ -34,7 +34,7 @@ function nonBlankString(value: unknown): string {
 function entryArchetype(entry: AgentModelEntry): ModelArchetype | null {
   if (!entry.archetypeId) return null;
   return resolveArchetypeForModel({
-    modelKey: entry.modelKey,
+    modelKey: entry.modelId,
     modelAlias: entry.modelAlias,
     vendorKey: entry.vendor,
     meta: { archetypeId: entry.archetypeId },
@@ -64,8 +64,8 @@ const isValidParamValue = isParamValueAllowed;
 export function buildModelEntryIndex(entries: readonly AgentModelEntry[], orderedVendorKeys: readonly string[] = []): Map<string, AgentModelEntry> {
   const index = new Map<string, AgentModelEntry>();
   for (const entry of orderByVendorPreference(entries, orderedVendorKeys, (row) => row.vendor)) {
-    if (entry.vendor) index.set(`${entry.vendor}::${entry.modelKey}`, entry);
-    if (!index.has(entry.modelKey)) index.set(entry.modelKey, entry);
+    if (entry.vendor) index.set(`${entry.vendor}::${entry.modelId}`, entry);
+    if (!index.has(entry.modelId)) index.set(entry.modelId, entry);
   }
   return index;
 }

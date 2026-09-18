@@ -80,7 +80,9 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
         }];
     seen.add(identity);
     entries.push({
-      modelKey,
+      // 目录状态里这个字段叫 `modelKey`（宿主/持久化的名字）；`AgentModelEntry` 是**模型看的那一面**，
+      // 那边它叫 `modelId`——与 `draft_shots` 收的字段同名。投影就发生在这一行。
+      modelId: modelKey,
       modelAlias: option.modelAlias ?? null,
       vendor: option.vendor ?? null,
       label: option.label,
@@ -133,7 +135,7 @@ export function pickSavedDefaultModel(
     const preferred = defaults[taskKind]
     if (!preferred) continue
     const match = candidates.find(
-      (entry) => entry.vendor === preferred.vendorKey && entry.modelKey === preferred.modelKey,
+      (entry) => entry.vendor === preferred.vendorKey && entry.modelId === preferred.modelKey,
     )
     if (match) return match
   }
@@ -149,7 +151,7 @@ export function pickSavedDefaultModel(
  */
 export function pickStoryboardDefaultModel(entries: readonly AgentModelEntry[], kind: 'image' | 'video'): AgentModelEntry | undefined {
   const candidates = entries.filter(entry => entry.kind === kind)
-  const byName = (re: RegExp) => candidates.find(entry => re.test(`${entry.modelKey} ${entry.modelAlias ?? ''} ${entry.label}`))
+  const byName = (re: RegExp) => candidates.find(entry => re.test(`${entry.modelId} ${entry.modelAlias ?? ''} ${entry.label}`))
   return kind === 'image'
     ? byName(/gpt[\s-]?image/i) ?? byName(/nano[\s-]?banana/i) ?? candidates[0]
     : byName(/seedance/i) ?? candidates[0]
@@ -197,7 +199,7 @@ export async function resolveStoryboardImageDefault(): Promise<{ modelKey?: stri
   const plainMode = prefer.modes.find((m) => m.modeId === prefer.defaultModeId) ?? prefer.modes[0]
   const refMode = prefer.modes.find((m) => m.slots.some((s) => s.kind === 'image_ref'))
   return {
-    modelKey: prefer.modelKey,
+    modelKey: prefer.modelId,
     // vendor 与 key 一起返回：调用方据此写节点，避免落地时按 key 反查命中别家（身份唯一键）。
     ...(prefer.vendor ? { modelVendor: prefer.vendor } : {}),
     ...(plainMode ? { modeId: plainMode.modeId } : {}),
@@ -224,7 +226,7 @@ export async function resolveStoryboardVideoDefault(): Promise<{ modelKey?: stri
   const refMode = prefer.modes.find((m) => m.slots.some((s) => s.kind === 'image_ref' || s.kind === 'first_frame'))
   const mode = refMode ?? prefer.modes.find((m) => m.modeId === prefer.defaultModeId) ?? prefer.modes[0]
   return {
-    modelKey: prefer.modelKey,
+    modelKey: prefer.modelId,
     // vendor 与 key 一起返回（身份唯一键）——见 buildAgentModelEntries 去重键的注释。
     ...(prefer.vendor ? { modelVendor: prefer.vendor } : {}),
     ...(mode ? { modeId: mode.modeId } : {}),

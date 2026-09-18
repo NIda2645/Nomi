@@ -55,13 +55,13 @@ try {
       shots: [{ prompt: '一个悬浮的六棱柱，柔和的演播室灯光', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters: { size: BASE_SIZE } }],
     } },
   })
-  let draftId
+  let operationId
   const plannerDraft = walk.fixture.expectText({
-    label: 'the draft result comes back with the host-generated draftId',
+    label: 'the draft result comes back with the host-generated operationId',
     match: (body) => {
       const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === PLAN_CALL)
       if (!result) return false
-      draftId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+      operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
       return true
     },
     reply: { type: 'hold' },
@@ -74,7 +74,7 @@ try {
   await sendCanvas(win, ASK)
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDraft.received, 'generation draft result')
-  plannerDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { draftId } })
+  plannerDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
   await recorded(plannerDone.received, 'generation draft result')
 
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,

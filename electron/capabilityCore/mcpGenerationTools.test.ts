@@ -828,3 +828,31 @@ describe("semantic MCP generation tools", () => {
     });
   });
 });
+
+// 2026-09-18 单一账本：Agent 改多镜草稿里的一镜走 Run 账本（shots[i].candidate），不碰顶层候选、不碰其它镜。
+describe("plan patch addressed to one shot of a multi-shot draft", () => {
+  function shotFrom(shotId: string, prompt: string, title?: string) {
+    return { shotId, role: "shot" as const, ...(title ? { title } : {}), candidate: candidate({ candidateId: `cand-${shotId}`, prompt }) };
+  }
+
+  it("changes only that shot's candidate and reports the changeset against that shot", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-09-18T00:00:00.000Z" });
+    await handler({ capability: "create", params: { operationId: "op-shot", shots: [shotFrom("shot-1", "一", "开场"), shotFrom("shot-2", "二", "转折"), shotFrom("shot-3", "三")] }, lease });
+    const result = await handler({ capability: "plan", params: { operationId: "op-shot", shotId: "shot-2", patch: { prompt: "逆光侧脸" } }, lease }) as { operation: GenerationOperation; changeset?: unknown };
+    expect(result.changeset).toBeUndefined();
+    expect(result.operation.shots?.map((shot) => shot.candidate.prompt)).toEqual(["一", "逆光侧脸", "三"]);
+    expect(result.operation.candidate.prompt).toBe("一");
+    // 信封整只搬：模型拟的标题不许死在草稿店的 create 里（它曾是逐字段手写、没列 title）。
+    expect(result.operation.shots?.map((shot) => shot.title ?? null)).toEqual(["开场", "转折", null]);
+  });
+
+  it("rejects an unknown shotId instead of silently patching the top-level candidate", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-09-18T00:00:00.000Z" });
+    await handler({ capability: "create", params: { operationId: "op-shot", shots: [shotFrom("shot-1", "一"), shotFrom("shot-2", "二")] }, lease });
+    await expect(handler({ capability: "plan", params: { operationId: "op-shot", shotId: "shot-9", patch: { prompt: "x" } }, lease })).rejects.toThrow(/shot-9/);
+    const after = await operations.read("project-1", "op-shot");
+    expect(after?.shots?.map((shot) => shot.candidate.prompt)).toEqual(["一", "二"]);
+  });
+});

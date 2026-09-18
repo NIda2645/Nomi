@@ -6,7 +6,7 @@ import type { SkillRecord } from '../skills/skillStore.js';
 import { LANE_WRITE_TOOL_TIMEOUT_MS } from '../shared/agentLane/laneToolContract.js';
 import { logWarn } from '../logging/logger.js';
 import { openLaneSandbox, sandboxPolicyFor, type LaneBashOperations } from './laneCodingSandbox.mjs';
-import { createLaneSkillIndexSource } from './laneInstalledSkills.mjs';
+import { createLaneSkillIndexSource } from './laneSkillCatalog.mjs';
 import { createLaneNativeAssembly, type LaneDeferredGroup } from './laneNativeAssembly.mjs';
 
 export async function openLaneNativeDesktop(input: {
@@ -14,9 +14,9 @@ export async function openLaneNativeDesktop(input: {
   settingsRoot: string;
   /**
    * 已安装的技能。**给函数就是活的**：每个回合重读一次，用户会话中途导入的技能下一个回合就在
-   * （见 `laneInstalledSkills.mts` 头部）。给数组仍然合法——影子夹具与单测那样用，它们的技能集不变。
+   * （见 `laneSkillCatalog.mts` 回合边界那一节）。给数组仍然合法——影子夹具与单测那样用，它们的技能集不变。
    */
-  skills: readonly SkillRecord[] | (() => readonly SkillRecord[]);
+  skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>);
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
 }) {

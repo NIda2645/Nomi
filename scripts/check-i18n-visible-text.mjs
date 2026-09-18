@@ -229,19 +229,18 @@ const ELECTRON_EXCLUDED_FILES = new Set([
   // 扁平化派生器对**契约作者**的报错(「这个 union 没有判别字段」这一族)。同样是装配期,
   // 且它的读者按定义是正在写 zod 契约的人。
   'electron/shared/agentCapabilities/flatModelInput.ts',
-  // 字段对应表的**装配期**自检(assembleVerbFieldMap 的五条 + objectFieldKeys)。它们由
-  // verbTransportRoutes.ts:145/180/201 的顶层 const 触发,也就是模块加载那一刻;读者是正在写
-  // 这张表的人,句子本身讲的是「补一条 same/rename/resolved」这类只有作者能执行的动作。
-  // 唯一一条运行期的是 projectByFieldMap 的 refuse,它带 code: 'capability_input_invalid' ——
-  // 走的是错误码通道,读者是模型(工具失败原因),界面拿到的是码不是这句话。
-  'electron/shared/agentCapabilities/verbs/verbFieldMap.ts',
-  // 来源(from-read)可解性的**装配期**核对: outputFieldNames / verbKeys / assertProvenanceResolvable
-  // 三个函数全部只被同文件 145/180/201 行的顶层 const 调用。红了等于这个模块起不来,
-  // 到不了任何会话;句子要求的动作("把那个能力的 outputSchema 收成真形状")也只有契约作者做得了。
-  'electron/agentLane/verbTransportRoutes.ts',
-  // 只有一条: exportJobTransportCall 找不到导出域路由。路由表(verbTransportRoutes.ts:257
-  // EXPORT_JOB_ROUTES)和工具目录是同一批人维护的两份清单,对不上就是接线漏了一项,
-  // 受众是补这张表的开发者。用户走到的是工具失败,不是这句英/中文。
+  // 来源(from-read)可解性的**装配期**核对: assertVerbFieldProvenance 只被 verbDeclarations.ts 的
+  // 顶层调用,也就是模块加载那一刻。红了等于这个模块起不来,到不了任何会话;句子要求的动作
+  // ("把那个能力的 outputSchema 收成真形状")也只有契约作者做得了。
+  'electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts',
+  // 唯一一条是 objectFieldKeys 的「这不是一份能取出字段名单的对象 schema」:模块加载时的装配期断言,
+  // 读者是正在写投影的人。它比 verbFieldMap.ts 时代那一条还窄(那份排除随文件一起删了,这里净减一条)。
+  'electron/shared/agentCapabilities/verbs/verbProjections.ts',
+  // draft_shots 投影里唯一的运行期那条是 refuse,它带 code: 'capability_input_invalid' ——
+  // 走的是错误码通道,读者是模型(工具失败原因),界面拿到的是码不是这句话。其余是装配期/开发者报错。
+  'electron/shared/agentCapabilities/verbs/draftShotsProjection.ts',
+  // 只有一条: exportJobTransportCall 收到一个不是双域动词的名字。受众是接线的开发者,
+  // 用户走到的是工具失败,不是这句英/中文。
   'electron/agentLane/laneVerbTransport.ts',
 ])
 

@@ -58,11 +58,13 @@ function nextActionFor(
 ): LaneToolNextAction | undefined {
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
   const operation = record.operation && typeof record.operation === 'object' ? record.operation as Record<string, unknown> : undefined
-  const draftId = typeof operation?.operationId === 'string' ? operation.operationId : typeof record.operationId === 'string' ? record.operationId : undefined
+  const draftOperationId = typeof operation?.operationId === 'string' ? operation.operationId : typeof record.operationId === 'string' ? record.operationId : undefined
   const confirmed = userAnsweredACard(approvalDecision)
   switch (verb) {
     case 'draft_shots':
-      return { kind: 'none', userSees: 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.', ...(draftId ? { jobId: draftId } : {}) }
+      // 草稿 id 按 `draft_shots` / `generate` 收它的那个名字回给模型（这里曾经印 `jobId=`：
+      // 同一个值出来叫 jobId、进去要填 operationId，而且这一刻根本没有 job 在跑）。
+      return { kind: 'none', userSees: 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.', ...(draftOperationId ? { operationId: draftOperationId } : {}) }
     case 'generate': {
       // 走到这里只有一种可能：档位替用户决了门，这一笔**已经在跑**（没决成的那条走 `spendCardResult`）。
       const jobId = operationIdOf(result)
@@ -73,7 +75,9 @@ function nextActionFor(
       const how = confirmed
         ? 'The user approved the review card, so the planned timeline edit is now applied.'
         : 'The timeline edit applied directly — this approval mode did not ask, and no card is waiting for the user.'
-      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.`, ...(typeof record.undoToken === 'string' ? { changeId: record.undoToken } : {}) }
+      // 契约返回的字段叫 `undoToken`，`undo` 收的字段也叫 `undoToken`——原样带过去，不改名。
+      // （这里曾经改成 `changeId`：一条工具结果里正文印 undoToken、末行印 changeId，模型得自己猜。）
+      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.`, ...(typeof record.undoToken === 'string' ? { undoToken: record.undoToken } : {}) }
     }
     case 'undo':
       return { kind: 'none', userSees: 'The timeline is back to before that change.' }

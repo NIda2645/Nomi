@@ -119,8 +119,10 @@ export const runtimeBridge = {
     },
   },
   skill: {
-    list: () => invokeSync("nomi:skill:list"),
-    exportPackage: (dirName: string) => invokeSync("nomi:skill:export", dirName),
+    // 读目录的两条走 invoke：目录由 pi 的加载器给（async）。改盘的两条仍是 invokeSync，渲染层拿到 {ok,…} 不是 Promise。
+    // 每条通道两侧协议必须一致（`check:skill-ipc-coverage`）。
+    list: () => ipcRenderer.invoke("nomi:skill:list"),
+    exportPackage: (dirName: string) => ipcRenderer.invoke("nomi:skill:export", dirName),
     importPackage: (payload: unknown) => invokeSync("nomi:skill:import", payload),
     deleteByDir: (dirName: string) => invokeSync("nomi:skill:delete", dirName),
     /** 技能盘变了（导入/删除/Agent 写完落盘）。范式与 modelCatalog.onChanged 一致。 */

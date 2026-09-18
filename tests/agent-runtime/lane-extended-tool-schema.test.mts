@@ -18,7 +18,7 @@ test('pi accepts nested JSON generation parameters through the published local r
   const parameters = { seed: 17, enabled: true, aspect_ratio: '16:9' };
   const cases = [
     { shots: [{ prompt: 'A sunrise', parameters }] },
-    { draftId: 'operation-1', shots: [{ shotId: 'shot-1', prompt: 'A sunrise', parameters }] },
+    { operationId: 'operation-1', shots: [{ shotId: 'shot-1', prompt: 'A sunrise', parameters }] },
     { shots: [{ prompt: 'A sunrise', candidate: { providerId: 'loopback', modelId: 'fixture' }, parameters }] },
   ];
   for (const args of cases) {

@@ -17,7 +17,7 @@ buildSync({ entryPoints: [path.resolve('electron/agentLane/laneDesktopInput.ts')
   bundle: true, platform: 'node', format: 'cjs', packages: 'external', logLevel: 'silent' });
 after(() => rmSync(bundle, { force: true }));
 const { createDesktopLaneInput } = require(bundle);
-const model = { modelKey: 'MiniMax-H3', modelAlias: null, vendor: 'fixture', label: 'MiniMax H3', kind: 'video' as const,
+const model = { modelId: 'MiniMax-H3', modelAlias: null, vendor: 'fixture', label: 'MiniMax H3', kind: 'video' as const,
   defaultModeId: 't2v', modes: [{ modeId: 't2v', vendorTerm: '文生视频', intent: '', hint: '', slots: [],
     params: [{ key: 'resolution', type: 'select' as const, label: '分辨率', options: [{ value: '768P', label: '768P' }, { value: '2K', label: '2K' }] }] }] };
 
@@ -39,11 +39,11 @@ test('C59 stable catalog is in system context; user turns contain only catalog c
   const messages = (n: number) => (fixture.http.requests[n]!.body as { messages: Array<{ role: string; content: unknown }> }).messages;
   assert.match(JSON.stringify(messages(0).filter(m => m.role === 'system')), /MiniMax-H3/);
   assert.match(JSON.stringify(messages(0).filter(m => m.role === 'system')), /768P/);
-  assert.match(JSON.stringify(messages(0).filter(m => m.role === 'system')), /modelKey\/modeId 不能留空/);
+  assert.match(JSON.stringify(messages(0).filter(m => m.role === 'system')), /modelId\/modeId 不能留空/);
   assert.match(JSON.stringify(messages(0).filter(m => m.role === 'system')), /用户点名 t2v 就听用户/);
   assert.deepEqual(messages(0).filter(m => m.role === 'system'), messages(1).filter(m => m.role === 'system'));
   assert.doesNotMatch(JSON.stringify(messages(1).filter(m => m.role === 'user')), /MiniMax-H3/);
-  context = { ...context, availableModels: [{ ...model, modelKey: 'New-Video' }] };
+  context = { ...context, availableModels: [{ ...model, modelId: 'New-Video' }] };
   await lane.execute({ kind: 'prompt', text: '重新拆一遍' });
   assert.match(JSON.stringify(messages(2).filter(m => m.role === 'user').at(-1)), /New-Video/);
   assert.match(JSON.stringify(messages(2).filter(m => m.role === 'user').at(-1)), /MiniMax-H3/);
@@ -152,8 +152,8 @@ test('C58 real loopback loads the installed Skill before any coding request and 
   const lane = await fixture.openLane({ ...fixture.options,
     tools: LANE_MODEL_TOOL_CATALOG.map(spec => bindLaneTool(spec, async () => { throw new Error('No domain call expected'); })),
     native: { settingsRoot: path.join(fixture.projectDir, 'settings'), skills: [{ name: 'storyboard', directoryName: 'storyboard',
-      filePath, body, description: 'Split manuscripts into shots', manifest: null, origin: 'user', audience: 'internal',
-      packageVersion: 'nomi-skill-v1', contentHash: 'fixture' }] },
+      filePath, packageDir: path.dirname(filePath), body, content: body, description: 'Split manuscripts into shots', manifest: null, origin: 'user', audience: 'internal',
+      packageVersion: 'nomi-skill-v1', contentHash: 'fixture', requiresCodingTools: false }] },
   });
   await lane.execute({ kind: 'prompt', text: '拆成分镜' });
   const last = JSON.stringify(fixture.http.requests.at(-1)?.body);
@@ -166,13 +166,13 @@ test('C58 real loopback loads the installed Skill before any coding request and 
 
 test('C59 on-demand models returns every mode contract and follows the latest catalog', async () => {
   const { createLaneModelRead } = await import('../../electron/agentLane/laneModelRead.mjs');
-  let entries = [model, { ...model, modelKey: 'Second-Video', modes: [...model.modes,
+  let entries = [model, { ...model, modelId: 'Second-Video', modes: [...model.modes,
     { ...model.modes[0]!, modeId: 'first', params: [{ key: 'resolution', type: 'select' as const, label: '分辨率',
       options: [{ value: '1080P', label: '1080P' }] }] }] }];
   const tool = createLaneModelRead(() => entries);
   const full = await tool.execute('full', {});
   assert.equal(JSON.parse(full.content[0]!.text).models.length, 2);
-  const narrowed = await tool.execute('narrow', { modelKey: 'Second-Video' });
+  const narrowed = await tool.execute('narrow', { modelId: 'Second-Video' });
   assert.match(narrowed.content[0]!.text, /1080P/);
   assert.doesNotMatch(narrowed.content[0]!.text, /MiniMax-H3/);
   entries = [];

@@ -49,6 +49,7 @@ import { resolveGenerationPlan, type PlanShotInput } from "../shared/videoCapabi
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
+import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
 import { GENERATION_RECONCILE_OUTCOMES, generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 
@@ -128,7 +129,8 @@ export type GenerationOperationStore = {
   // P4 S6.5: `shots` seeds a multi-shot draft (anchor + video shots). Absent → single-shot (unchanged).
   create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string; origin?: { host: string; actorId?: string }; shots?: ReadonlyArray<GenerationOperationDraftShot>; cardHidden?: boolean }): GenerationOperation | Promise<GenerationOperation>;
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
-  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string): GenerationOperation | Promise<GenerationOperation>;
+  /** `shotId`：改多镜草稿里的一镜（那一镜的候选 revision +1，其它镜一字不动）；缺省 = 顶层候选。 */
+  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string, shotId?: string): GenerationOperation | Promise<GenerationOperation>;
   /** `generate` 动词：清掉 `cardHidden`，报价卡从这一刻起可投影。只对 draft 合法。 */
   present(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   // P4 S6.5: `multiShot` seals per-shot sub-contracts + planHash (reducer freezes the whole batch). Absent
@@ -176,7 +178,7 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
         // P4 S6.5: seed draft shots (candidate/role/included, no sub-contract). Single-shot omits shots.
         ...(input.shots && input.shots.length > 0
-          ? { shots: input.shots.map((shot) => ({ shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}), candidate: structuredClone(shot.candidate) })) }
+          ? { shots: input.shots.map((shot) => ({ ...generationShotEnvelopeOf(shot), candidate: structuredClone(shot.candidate) })) }
           : {}),
         updatedAt: input.now,
       });
@@ -184,10 +186,17 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       return operation;
     },
     read,
-    patch(projectId, operationId, patch, now) {
+    patch(projectId, operationId, patch, now, shotId) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
       if (current.state !== "draft") throw new Error("new_draft_required: edit a new generation draft");
+      if (shotId) {
+        if (!current.shots?.some((shot) => shot.shotId === shotId)) throw new Error(`Generation shot not found: ${shotId}`);
+        const shots = current.shots.map((shot) => shot.shotId === shotId ? { ...shot, candidate: applyPlanCandidatePatch(shot.candidate, patch) } : shot);
+        const next = freeze({ ...current, shots, updatedAt: now });
+        operations.set(keyFor(projectId, operationId), next);
+        return next;
+      }
       const candidate = applyPlanCandidatePatch(current.candidate, patch);
       const next = freeze({ ...current, candidate, updatedAt: now });
       operations.set(keyFor(projectId, operationId), next);
@@ -592,23 +601,29 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // caller; it is recomputed from the selected archetype mode/variant.
       const { transportModelId: _ignoredTransportModelId, references: patchedReferences, ...patchRest } = rawPatch as
         Partial<Omit<PlanCandidate, "candidateId" | "revision">> & { references?: unknown };
-      // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 draftId 时走这里）。不在这里补身份，
+      // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 operationId 时走这里）。不在这里补身份，
       // 一次 patch 就会把一条缺 contentHash 的参考写进已存候选——类型说它齐了，运行时不是（静默假数据）。
       const userPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">> = patchedReferences === undefined
         ? patchRest
         : { ...patchRest, references: resolvePatchReferences(input.lease.projectId, patchedReferences) };
-      const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : current.candidate.providerId;
-      const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : current.candidate.modelId;
-      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(current.candidate.providerId)
-        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(current.candidate.modelId);
-      const modeChanged = typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(current.candidate.mode);
+      // 多镜草稿改一镜：`shotId` 指到 shots[] 里那一镜，合并与变更集都对着**它的**候选算（顶层候选是
+      // 第一镜的镜像，拿它当基准会把别的镜的模型/模式当成「变了」）。缺省 = 顶层候选（单镜草稿，逐字不变）。
+      const shotId = typeof params.shotId === "string" && params.shotId.trim() ? params.shotId.trim() : undefined;
+      const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
+      if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
+      const baseCandidate = targetShot?.candidate ?? current.candidate;
+      const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : baseCandidate.providerId;
+      const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : baseCandidate.modelId;
+      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(baseCandidate.providerId)
+        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(baseCandidate.modelId);
+      const modeChanged = typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(baseCandidate.mode);
       const mergedCandidate = {
-        ...current.candidate,
+        ...baseCandidate,
         ...userPatch,
         ...(modelChanged && userPatch.variantId === undefined ? { variantId: undefined } : {}),
         ...((modelChanged || modeChanged) && userPatch.modeId === undefined ? { modeId: undefined } : {}),
-        parameters: userPatch.parameters ?? current.candidate.parameters,
-        references: userPatch.references ?? current.candidate.references,
+        parameters: userPatch.parameters ?? baseCandidate.parameters,
+        references: userPatch.references ?? baseCandidate.references,
       } as PlanCandidate;
       const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
       const normalizedPatch = {
@@ -616,13 +631,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
         ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
       };
-      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now());
+      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now(), shotId);
       // J05 — 模型/模式切换时返回 changeset，让调用方知道哪些字段被静默重置。
       const changeset = (modelChanged || modeChanged) ? {
         modelChanged, modeChanged,
-        ...(modelChanged && userPatch.variantId === undefined && current.candidate.variantId ? { clearedVariantId: current.candidate.variantId } : {}),
-        ...((modelChanged || modeChanged) && userPatch.modeId === undefined && current.candidate.modeId ? { clearedModeId: current.candidate.modeId } : {}),
-        previousModel: `${current.candidate.providerId}/${current.candidate.modelId}`,
+        ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
+        ...((modelChanged || modeChanged) && userPatch.modeId === undefined && baseCandidate.modeId ? { clearedModeId: baseCandidate.modeId } : {}),
+        previousModel: `${baseCandidate.providerId}/${baseCandidate.modelId}`,
         nextModel: `${nextProviderId}/${nextModelId}`,
       } : undefined;
       return { operation, nextAction: "preview", ...(changeset ? { changeset } : {}) };

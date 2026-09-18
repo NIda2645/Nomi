@@ -95,19 +95,24 @@ test('案例二（付费收据）：收据门的签发方只有一个，核验�
   assert.ok(verifyPaths.has('electron/capabilityCore/productionTrustGrantChallenge.ts'))
 })
 
+// 2026-09-18 技能目录迁到 pi 之后（docs/plan/2026-09-18-skill-loading-migration.md）：读盘的那扇门叫
+// `discoverSkillRecords`（岛上），CJS 侧经 `readSkillRecords()` 拿；curatedPrompts / skillPreview 改成显式收
+// records、不再自己读盘，读盘的消费者因此挪到了它们的调用方（builtinPacks / localProtocol）。案例仍是
+// 「同一份状态 ≥7 个消费者」，只是门的名字与住址跟着 owner 走。
 test('案例三（技能事实）：SkillRecord 的消费者 ≥7 个模块（docs/audit/2026-09-11-skill-fact-projections-structure.md）', () => {
-  const doors = doorsFor(['readSkillRecords', 'discoverSkillRecordsFromRoots'], new Map([
+  const doors = doorsFor(['readSkillRecords', 'discoverSkillRecords'], new Map([
     ['readSkillRecords', 'read'],
-    ['discoverSkillRecordsFromRoots', 'read'],
+    ['discoverSkillRecords', 'read'],
   ]))
   assert.ok(doors.every((entry) => entry.kind === 'read'), '显式 --read= 必须压过默认启发式')
   const consumers = new Set(doors.map((entry) => entry.path).filter((file) => file !== 'electron/skills/skillStore.ts'))
   assert.ok(consumers.size >= 7, `期望 ≥7 个消费者模块，实得 ${consumers.size}：${[...consumers].join(', ')}`)
   for (const expected of [
     'electron/agentLane/laneDesktopRuntime.ts',
-    'electron/promptLibrary/curatedPrompts.ts',
+    'electron/agentLane/laneNativeLoader.cts',
+    'electron/promptLibrary/builtinPacks.ts',
     'electron/skills/skillIpc.ts',
-    'electron/skills/skillPreview.ts',
+    'electron/protocol/localProtocol.ts',
     'electron/skills/skillExecutionEvidence.ts',
   ]) assert.ok(consumers.has(expected), `漏数了消费者：${expected}`)
 })

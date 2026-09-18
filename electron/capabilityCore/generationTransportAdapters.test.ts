@@ -173,7 +173,7 @@ describe('方法别名的入参形状从语义联合现取，不手抄', () => {
   // 联合成员的静态类型里没有 .omit，要先收到 ZodObject 才拿得到。
   const createBranch = (generationPlanInputSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>).find(
     (option) => (option.shape.operation as unknown as { _def: { value: string } })._def.value === 'create',
-  )!
+  )! as unknown as z.ZodObject<z.ZodRawShape>
 
   it('create 别名收得下真契约 create 分支的每一个字段（这条红 = 有人又手抄了一份更窄的）', () => {
     // 被替掉的那份手抄只有 5 个键（prompt/candidate/shots/scriptText/cardHidden），
@@ -207,6 +207,28 @@ describe('方法别名的入参形状从语义联合现取，不手抄', () => {
     const present = legacyMethodSchemaForTest(GENERATION_METHODS.present) as unknown as { shape: Record<string, unknown> }
     expect(Object.keys(present.shape).sort()).toEqual(['operationId', 'shotIds'])
     const patch = legacyMethodSchemaForTest(GENERATION_METHODS.patch) as unknown as { shape: Record<string, unknown> }
-    expect(Object.keys(patch.shape).sort()).toEqual(['operationId', 'patch'])
+    expect(Object.keys(patch.shape).sort()).toEqual(['operationId', 'patch', 'shotId'])
   })
 })
+
+describe("plan patch addressed to one shot survives the canonical seam", () => {
+  it("forwards shotId with the patch (the transport's only way to edit one shot of a multi-shot draft)", async () => {
+    const planning = vi.fn(async ({ capability, params }) => ({ capability, params }));
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const result = await adapter.tryExecute(
+      call("nomi_generation_plan", { operation: "patch", operationId: "op-1", shotId: "shot-2", patch: { prompt: "逆光侧脸" } }),
+      new AbortController().signal,
+    );
+    expect(result).toMatchObject({ ok: true, result: { capability: "plan", params: { operationId: "op-1", shotId: "shot-2", patch: { prompt: "逆光侧脸" } } } });
+  });
+
+  it("the canonical method name accepts shotId too (the semantic and canonical doors are the same seam)", async () => {
+    const planning = vi.fn(async ({ capability, params }) => ({ capability, params }));
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const result = await adapter.tryExecute(
+      call("nomi_submit_generation_plan", { operationId: "op-1", shotId: "shot-2", patch: { prompt: "逆光侧脸" } }),
+      new AbortController().signal,
+    );
+    expect(result).toMatchObject({ ok: true, result: { capability: "plan", params: { operationId: "op-1", shotId: "shot-2" } } });
+  });
+});

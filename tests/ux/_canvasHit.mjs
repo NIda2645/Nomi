@@ -346,6 +346,27 @@ export async function findFrameDrawRectAround(page, { nodeSelectors, margin = 56
 
 
 /** Fail on a clipped card instead of moving the canvas or choosing a forgiving click offset. */
+/**
+ * 等画布视口**停下来**。落节点之后画布会自己发一次「适应视图」（`useCanvasFitSignal`：挂载后 360ms 起一段
+ * 200ms 动画），重开项目补齐重放也会发。人是看着画布自己缩好了才去点缩放/重置的；走查若在这个窗口里点，
+ * 那次延迟 fit 会把用户的动作盖回去（2026-09-18 金路径真机：重置视图 → 滑块 70→95 → 又被拉回 59）。
+ * 判据是稳定性，不是睡够多久：缩放滑块（产品自己的控件）连续 `holdMs` 内一格没动才算停。
+ */
+export async function waitForCanvasViewportSettled(page, { holdMs = 800, stepMs = 100 } = {}) {
+  const slider = page.getByRole('slider', { name: '缩放比例', exact: true })
+  await expect(slider, '画布上没有缩放滑块').toBeVisible()
+  const needed = Math.ceil(holdMs / stepMs)
+  let last = null
+  let stableFor = 0
+  await expect.poll(async () => {
+    const value = await slider.inputValue()
+    stableFor = value === last ? stableFor + 1 : 0
+    last = value
+    return stableFor >= needed
+  }, { message: `画布视口 ${holdMs}ms 内一直在动，没有停下来`, intervals: Array.from({ length: needed * 4 }, () => stepMs) }).toBe(true)
+  return Number(last)
+}
+
 export async function expectNodeInsideCanvas(page, node, message = '新卡完整位于舞台内') {
   await expect(node, message).toBeVisible()
   const geometry = await node.evaluate((element, stageSelector) => {

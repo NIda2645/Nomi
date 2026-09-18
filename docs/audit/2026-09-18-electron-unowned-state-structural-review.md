@@ -139,6 +139,10 @@ status statuses state states phase phases stage stages step steps lifecycle life
 29/41 是事后补主人。事后补是对的，但**出生时就没有主人**这件事本身没有被记录，所以看不出「哪些子系统在持续生产无主状态」。
 这一问只加一个字段，用于下次评审做归因，不阻断任何人。
 
+## 5.5 同一形状的渲染层实例：`src/workbench` 的分镜账本（2026-09-18 补）
+
+`src/workbench` 这一层 2026-09-15 → 09-18 也聚到了 ≥3 份合同（`2026-09-15-shot-seconds-precision`、`2026-09-17-*` 六份、`2026-09-18-agent-storyboard-single-ledger`）。最后那份就是本评审 §3 的形状在渲染层的复现：**一份用户看得见的东西（「Agent 刚起的分镜」）声明了两个主人**——Run 的 `generationPlan` 落成画布节点，分镜表却读 `storyboardDesignsByDocumentId`；09-14 删掉 Agent 写账本 B 的动词时没有任何东西核「谁还在读 B」，于是「表里没有 Agent 的镜头」活了四天、五轮真机。修法与 §5 R1 同向：让 owner 成为会红的断言——production 表 `rows: z.never()`（第二份真相在 schema 上不可能）、表只在落地事务里同生（`src/workbench/capability/multiShotCanvasLanding.ts`）、金路径走查只读账本 A。它同时给 R1 提供了一条渲染层的样本：`docs/fixes/2026-09-18-agent-storyboard-single-ledger.root-cause.json` 的 `invariant_owner_layer`。剩下的账本 B（用户手写方案）带到期日 2026-10-16 退役（`docs/roadmap/TODO.md` T-DS-19）——这正是 §3 说的「登记是承诺不是防线」在本仓第一次被写成带日期的承诺。
+
 ## 6. 不建议做的
 
 - **不建议**把 41 份合同回头合并或降级。它们各自都是对的，问题不在单份质量。
@@ -230,3 +234,18 @@ status statuses state states phase phases stage stages step steps lifecycle life
    「六份手抄同步齐」的现场；正解是把六份收敛成一份 derive，收敛完这 13 条自然消失，不用登记。
 2. **`code`/`codes` + `error`/`errors`（合计 ≈70，去重后更少）**次之，多半能并进同一次码表收敛。
 3. **`field`/`fields` + `capability` + `identity`（+47）**最后，与镜头信封收敛一起做。
+
+## 9. 补记（2026-09-18 晚）：`electron/harness` / `electron/skills` 的技能加载层是同一形状的第三例
+
+同一天 `electron/harness` 收到本周第三份合同（`2026-09-15-selected-skill-injection`、`2026-09-18-skill-restates-registry-facts`、
+`2026-09-18-skill-loader-diverges-from-ecosystem`），三份都落在**技能加载 → 进提示词**这一条链上。结构结论与 §3 一致，
+只是主人不是「声明了没人看」，而是**声明了两次**：`electron/skills/skillStore.ts` 与 `electron/agentLane/laneInstalledSkills.mts`
+各写了一份技能遍历器，两份都比 pi 自带的 `loadSkills` 窄一点、窄在不同的轴上（一份只认 `root/<dir>/SKILL.md`，一份对不叫
+SKILL.md 的路径直接抛）；`electron/harness/context/agentContext.ts` 又逐字手抄了 pi 的 `<skill>` 信封，因为那一层被钉死不许摸 pi。
+「一个 Skill 别的宿主读得到、Nomi 也读得到」这条不变量在 22 份合同里被记了 59 次，却没有一个机械的主人。
+
+这一层的结构评审正本是 `docs/plan/2026-09-18-skill-loading-migration.md`（59 条不变量逐条三档判定 + 迁完的分层 + 留下的每个文件
+为什么 pi 取代不了）。处置：主人搬到岛上一处（`electron/agentLane/laneSkillCatalog.mts`，pi 的 `loadSourcedSkills`），
+`electron/harness/context` 只剩身份 / 语言 / 合成，选中技能进提示词的唯一注入点在 `laneSkillPrompt.mts`（pi 的 `formatSkillInvocation`）。
+`check:framework-boundary` 新增 `private-skill-directory-walk` 让两份旧遍历器的名字回不来；`skillFrontmatter.test.ts` 把唯一留下的本地解析
+钉在 pi 的 `parseFrontmatter` 上（88 份真技能逐文件深等）。

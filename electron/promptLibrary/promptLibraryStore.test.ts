@@ -9,11 +9,12 @@ import { getPromptLibrary, resetPromptLibraryCache } from './promptLibraryStore'
 const old = { id: 'old', title: 'Cached', prompt: 'old remote prompt', sourceId: 'remote', mediaType: 'image', promptType: 'image', origin: 'public', source: 'Remote', sourceUrl: '', mediaUrl: '', tags: [] } satisfies LibraryPrompt
 beforeEach(() => { vi.clearAllMocks(); mocks.read.mockReturnValue(null); resetPromptLibraryCache() })
 
+// 远端 fetch 永不落定；库要是等它，这两条会在 vitest 的超时上红。内置包只等磁盘（技能目录自 2026-09-18 起是
+// pi 的 async 加载器），所以不再拿「同一 tick 内落定」的 Promise.resolve 当哨兵——那量的是同步性，不是「不等网络」。
 it('returns bundled expressions without waiting for an unresolved external request', async () => {
   mocks.fetch.mockReturnValue(new Promise(() => {}))
-  const result = await Promise.race([getPromptLibrary(), Promise.resolve('network-blocked')])
-  expect(result).not.toBe('network-blocked')
-  expect((result as LibraryPrompt[]).filter(p => p.sourceId === 'builtin-expressions')).toHaveLength(25)
+  const result = await getPromptLibrary()
+  expect(result.filter(p => p.sourceId === 'builtin-expressions')).toHaveLength(25)
 })
 
 it('serves stale disk content immediately and makes refreshed content available on the next read', async () => {
@@ -23,8 +24,7 @@ it('serves stale disk content immediately and makes refreshed content available 
   let persisted!: () => void
   const saved = new Promise<void>(resolve => { persisted = resolve })
   mocks.write.mockImplementation(() => persisted())
-  const result = await Promise.race([getPromptLibrary(), Promise.resolve('network-blocked')])
-  expect(result).not.toBe('network-blocked')
+  const result = await getPromptLibrary()
   expect(result).toEqual(expect.arrayContaining([old]))
   finish({ text: 'remote content' })
   await saved

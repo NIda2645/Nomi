@@ -205,6 +205,15 @@ handler 及下游各处投影
 
 ## 8. 下一刀（建议顺序，未拍板）
 
+> **2026-09-18 晚更新：1-6 全部做完**（分支 `feat/tool-projection-rollout-20260918`，详见
+> `docs/plan/2026-09-18-tool-projection-rollout.md`）。逐条对账：
+> 1 ✅ 七条偏好 rename 在上一刀改成同名｜2 ✅ `changeId → undoToken` 同上｜3 ✅ `defaults` 随对照表一起删｜
+> 4 ✅ 整张表换成投影（`verbFieldMap.ts` 316 行 + `verbTransportRoutes.ts` 280 行删光）｜
+> 5 ✅ 先在 `cancel_job` 做了原型再铺开｜6 ✅ 外部 MCP 面那 22 行手抄删掉，门岗升级成「可填」。
+> **§9「不许当前提」里那条「投影化之后可以删掉 verbFieldMap.ts 是设计推断，没做原型」现在有答案了**：
+> 能删，但它身上有一条轴不是对应关系（`from:` 来源），那条留下来搬进了 `verbs/verbFieldProvenance.ts`。
+> §7.1「R1–R3 不需要了」**只对纯投影的那 12 个动词成立**，另外 7 个仍是构造，所以 R1–R3 留着（理由写在门岗文件头）。
+
 **方向是减法，不是加法。**
 
 1. **把 7 条偏好 rename 改回同名。** 代价是改宿主内部字段名或模型面字段名（要选一边）。

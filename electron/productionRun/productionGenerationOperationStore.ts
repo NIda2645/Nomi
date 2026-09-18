@@ -99,13 +99,19 @@ export function createProductionGenerationOperationStore(
       return operation;
     },
     read,
-    async patch(projectId, operationId, patch, now) {
+    async patch(projectId, operationId, patch, now, shotId) {
       const current = read(projectId, operationId);
+      // 改一镜：幂等键跟着**那一镜**的候选 revision 走（reducer 只给那一镜 +1，顶层候选不动——
+      // 沿用顶层 revision 会让第二次改同一镜撞上第一次的键、被当成重放吃掉）。
+      const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
+      if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
       const result = await owner.command(projectId, operationId, {
-        commandId: `generation.patch:${operationId}:${current.candidate.revision}`,
+        commandId: targetShot
+          ? `generation.patch:${operationId}:${shotId}:${targetShot.candidate.revision}`
+          : `generation.patch:${operationId}:${current.candidate.revision}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.patch",
-        payload: { patch },
+        payload: { patch, ...(shotId ? { shotId } : {}) },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);
