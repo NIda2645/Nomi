@@ -34,7 +34,16 @@ export type SemanticGenerationCandidateDeps = Readonly<{
    * experience or spend policy.
    */
   allowRegistryFallback?: boolean;
+  /**
+   * assetId → 可引用身份（内容哈希 + 版本）。生产装配点绑 `resolveProjectAssetReferenceIdentity`
+   * 并把 projectId 闭进去。未注入 = 只接受已经带着身份来的参考（逐字节等同接线前），缺身份的当场
+   * 拿到人话拒绝，而不是候选 schema 的 `Required`。
+   */
+  resolveAssetReferenceIdentity?: ResolveAssetReferenceIdentity;
 }>;
+
+/** 一份素材的可引用身份。真解析器住 `electron/assets/projectAssetStore.ts`（全仓唯一算它的地方）。 */
+export type ResolveAssetReferenceIdentity = (assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
 
 const TASK_KINDS = new Set<GenerationDefaultTaskKind>([
   "text_to_image",
@@ -107,10 +116,26 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return { ...(value as Record<string, unknown>) };
 }
 
-function references(value: unknown): unknown[] {
+/**
+ * 参考素材：模型给的是 `assetId`，**身份由宿主补**。
+ *
+ * 2026-09-18 根因：以前这里只是原样拷一遍，于是缺 `contentHash`/`version` 的那条直接撞上候选
+ * schema 的 `Required`——而那两个字段模型根本拿不到。已经带着身份来的（外部宿主、面板自己那条路）
+ * 逐字节不变；缺身份又没接解析器时，报的是人话而不是一个模型看不懂的字段名。
+ */
+function references(value: unknown, resolve?: ResolveAssetReferenceIdentity): unknown[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error("references must be an array");
-  return value.map((item) => (item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item));
+  return value.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const reference = { ...(item as Record<string, unknown>) };
+    if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
+    const assetId = text(reference.assetId);
+    if (!assetId) throw new Error("参考素材需要 assetId（来自 look_at_media）");
+    const identity = resolve?.(assetId);
+    if (!identity) throw new Error(`参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+    return { ...reference, contentHash: identity.contentHash, version: identity.version };
+  });
 }
 
 /** Infer only the semantic task family; model/mode selection remains catalog-owned. */
@@ -222,7 +247,13 @@ function fallbackFromSnapshot(
  * or the live module registry.
  */
 export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDeps): PlanCandidate {
-  if (deps.params.candidate !== undefined) return deps.candidateFrom(deps.params.candidate);
+  if (deps.params.candidate !== undefined) {
+    // 显式候选也走同一条参考解析：否则「给了 candidate」这条路又变成一份不补身份的平行版（P1）。
+    const explicit = record(deps.params.candidate, "candidate");
+    return deps.candidateFrom(explicit.references === undefined
+      ? explicit
+      : { ...explicit, references: references(explicit.references, deps.resolveAssetReferenceIdentity) });
+  }
   const prompt = text(deps.params.prompt);
   if (!prompt) throw new Error("prompt is required when candidate is omitted");
 
@@ -278,6 +309,6 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
     ...(selected.variantId ? { variantId: selected.variantId } : {}),
     prompt,
     parameters: record(deps.params.parameters, "parameters"),
-    references: references(deps.params.references),
+    references: references(deps.params.references, deps.resolveAssetReferenceIdentity),
   });
 }

@@ -104,6 +104,28 @@ describe('canvas.write headless fallback', () => {
     expect(generationPlanning).not.toHaveBeenCalled()
   })
 
+  it('手写产物的正文送不到时当场拒收，而不是建一个空壳节点再说 applied: true', async () => {
+    // 2026-09-18 扫描：这条路把 planned node 逐字段重建成 `NodeSpec`，`artifact` 不在其中。
+    // 它过去**静默**丢正文——外部宿主拿到真节点 id 和 applied: true，画布上是空壳，正文找不回来。
+    const { ctx, leaseHandle, generationPlanning } = await leasedContext()
+    const failure = await failureOf(dispatch('canvas.write', {
+      projectId: 'project-1', leaseHandle, operation: 'create_canvas_nodes', summary: '加一张对比表',
+      nodes: [{ clientId: 'artifact-1', kind: 'agent-artifact', title: '对比表', prompt: '', artifact: { fileType: 'table', content: '| a | b |' } }],
+    }, ctx as never))
+
+    expect(failure.code).toBe('capability_unsupported')
+    expect(String(failure.message)).toContain('artifact-1')
+    expect(String(failure.nextAction ?? '')).toContain('artifact')
+    expect(generationPlanning).not.toHaveBeenCalled()
+    // 阳性对照：同一条路上**不带正文**的节点不会被这条规则拦下——拒收的是送不到的那一样东西，
+    // 不是整个 create_canvas_nodes（否则这条断言在「全拒」的实现上也会绿）。
+    const withoutArtifact = await failureOf(dispatch('canvas.write', {
+      projectId: 'project-1', leaseHandle, operation: 'create_canvas_nodes', summary: '加一段说明',
+      nodes: [{ clientId: 'text-1', kind: 'text', title: '说明', prompt: 'hello' }],
+    }, ctx as never))
+    expect(withoutArtifact.code).not.toBe('capability_unsupported')
+  })
+
   it('tells the host that a renderer-owned operation needs the Nomi creation surface', async () => {
     const { ctx, leaseHandle, generationPlanning } = await leasedContext()
     const failure = await failureOf(dispatch('canvas.write', {

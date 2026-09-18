@@ -31,6 +31,7 @@ import {
   type RunEvent,
 } from "./productionRunTypes";
 import type { PlanCandidate } from "../capabilityCore/executionContract";
+import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import { buildProductionRunDraftSummary } from "./productionRunDraftSummary";
 
 type SnapshotEnvelope = {
@@ -346,7 +347,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
         // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
         // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
         ...(input.shots && input.shots.length > 0
-          ? { shots: input.shots.map((shot) => ({ shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}), candidate: structuredClone(shot.candidate), updatedAt: timestamp })) }
+          ? { shots: input.shots.map((shot) => ({ ...generationShotEnvelopeOf(shot), candidate: structuredClone(shot.candidate), updatedAt: timestamp })) }
           : {}),
         updatedAt: timestamp,
       },

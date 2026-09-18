@@ -56,13 +56,17 @@ describe("多镜 plan 入口 · 语义镜（动词交出来的那种形状）", 
     const shots = await helpers().resolveCreateShots("project-1", {
       shots: [
         { shotId: "shot-1", prompt: "海上日出", taskKind: "text_to_image", providerId: "apimart", modelId: "image-model" },
-        { shotId: "shot-2", prompt: "海浪推近", taskKind: "text_to_video", providerId: "apimart", modelId: "video-model", durationSeconds: 5 },
+        { shotId: "shot-2", prompt: "海浪推近", taskKind: "text_to_video", providerId: "apimart", modelId: "video-model", parameters: { duration: 5 } },
       ],
     });
     expect(shots).toHaveLength(2);
     expect(shots![0].candidate).toMatchObject({ providerId: "apimart", modelId: "image-model", prompt: "海上日出" });
     expect(shots![1].candidate).toMatchObject({ providerId: "apimart", modelId: "video-model", prompt: "海浪推近" });
-    // durationSeconds 是计划层的名字，供应商合同用 duration——与 storyboard 路同一条换名规则。
+    // 时长到这一层时**已经**叫 `duration` 了：`durationSec → parameters.duration` 这条换名住在翻译层
+    // 那张表上（`verbTransportRoutes.DRAFT_SHOT_FIELD_MAP`），宿主的 `shots[]` 是 `.strict()` 且没有顶层
+    // `durationSeconds` 的位置——所以这里再写一遍换名就是第二份实现（P1），换名对不对由
+    // `check:verb-host-conformance` 与 `mcpMultiShotCreateEntrance.e2e.test.ts` 各核一次。
+    // 这条守的是它自己那半：模型给的参数**原样活到候选里**。
     expect(shots![1].candidate.parameters).toMatchObject({ duration: 5 });
   });
 

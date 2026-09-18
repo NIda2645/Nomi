@@ -90,6 +90,8 @@ export type GenerationOperationShot = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /** 模型拟的短标题（给人看，不进 provider 请求）。见 GenerationOperationDraftShot.title。 */
+  title?: string;
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
 }>;
@@ -291,6 +293,12 @@ export type GenerationPlanningHandlerDependencies = {
    * 单镜与多镜 create 都过它（一个入口两路都堵，P2 通用性）。抛人话 Error 即拒。Omitted → 不校验（向后兼容）。
    */
   assertReferencesResolvable?: AssertReferencesResolvable;
+  /**
+   * assetId → 可引用身份（内容哈希 + 版本）。生产装配点绑 `resolveProjectAssetReferenceIdentity`。
+   * 模型只知道 assetId（`look_at_media` 返回的就是它），身份归项目素材库管——这条 seam 就是
+   * 2026-09-18「宿主要求动词给不出的字段」那一类的解法，与多镜候选合成同一条纪律。
+   */
+  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
   prepareAuthorization?: (input: {
     lease: ProjectLeaseV2;
     operation: GenerationOperation;
@@ -308,6 +316,25 @@ function record(value: unknown, label: string): Record<string, unknown> {
 
 function candidateFrom(value: unknown): PlanCandidate {
   return generationCandidateSchema.parse(value);
+}
+
+/**
+ * 一条参考素材的身份是否已经钉住。缺 `contentHash`/`version` 的（模型只会给 assetId）由宿主补。
+ * 与 `semanticCandidateFromParams` 里那一段是同一条规则的两个调用点：create 走合成器，patch 走这里。
+ */
+function pinReference(
+  projectId: string,
+  value: unknown,
+  resolve: ((projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined) | undefined,
+): unknown {
+  if (!value || typeof value !== "object") return value;
+  const reference = { ...(value as Record<string, unknown>) };
+  if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
+  const assetId = typeof reference.assetId === "string" ? reference.assetId.trim() : "";
+  if (!assetId) throw new Error("参考素材需要 assetId（来自 look_at_media）");
+  const identity = resolve?.(projectId, assetId);
+  if (!identity) throw new Error(`参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+  return { ...reference, contentHash: identity.contentHash, version: identity.version };
 }
 
 const RECOVERY_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
@@ -363,6 +390,15 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
 
   // P4 S6.5 生产入口: the multi-shot create/seal helpers (resolveCreateShots + sealMultiShotFor) live in
   // mcpGenerationMultiShot.ts; wire them with this handler's shared derivations (all single source of truth).
+  /** patch 入口的参考素材身份补齐。与 create 那条同一个解析器，只是调用点不同。 */
+  const resolvePatchReferences = (projectId: string, value: unknown): PlanCandidate["references"] => {
+    if (!Array.isArray(value)) throw new Error("references must be an array");
+    // 补完身份后过一次候选自己的 schema：钉住的形状是执行契约签名的那一份，不能只靠类型断言说它齐了。
+    return generationCandidateSchema.shape.references.parse(
+      value.map((item) => pinReference(projectId, item, deps.resolveAssetReferenceIdentity)),
+    ) as PlanCandidate["references"];
+  };
+
   const { resolveCreateShots, sealMultiShotFor } = createMultiShotCreateHelpers({
     registry: deps.registry,
     videoModelCandidates: deps.videoModelCandidates,
@@ -374,6 +410,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     effectiveVideoModes,
     ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
     ...(deps.assertReferencesResolvable ? { assertReferencesResolvable: deps.assertReferencesResolvable } : {}),
+    ...(deps.resolveAssetReferenceIdentity ? { resolveAssetReferenceIdentity: deps.resolveAssetReferenceIdentity } : {}),
   });
 
   /**
@@ -397,7 +434,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         const candidate = normalized(shot.candidate);
         return {
           shotId: shot.shotId,
-          sceneOneLiner: candidate.prompt.slice(0, 120),
+          // 用户在这一刻要决定花不花钱，每行读到的应该是「日落前的一分钟」，不是被砍断的提示词。
+          // 模型没拟标题时才退回提示词前缀（120 与动词 `title` 的上限同源）。
+          sceneOneLiner: shot.title?.trim() || candidate.prompt.slice(0, 120),
           providerModelText: providerModelText(candidate),
           candidate,
           durationSeconds: shotDurationSeconds(candidate),
@@ -517,12 +556,16 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // explicit candidate path intact, but compile the short path at this
       // boundary so the model never has to invent internal candidate IDs or
       // provider wiring (the previous behavior surfaced as a false refusal).
+      const singleProjectId = input.lease.projectId;
       const singleCandidate = semanticCandidateFromParams({
         operationId,
         params,
         candidateFrom,
         ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
         ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
+        ...(deps.resolveAssetReferenceIdentity
+          ? { resolveAssetReferenceIdentity: (assetId: string) => deps.resolveAssetReferenceIdentity!(singleProjectId, assetId) }
+          : {}),
       });
       // P4 §5.1.4 锚复用授权面（单镜同守，P2 通用性）：单镜引用外来/不存在资产也当场拒——references 有三个入口，
       // 单镜 candidate 是其一，不能只堵多镜。多镜路已在 resolveCreateShots 内校验过。
@@ -547,7 +590,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const rawPatch = record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
       // The wire model is a derived projection. Never accept it from an MCP
       // caller; it is recomputed from the selected archetype mode/variant.
-      const { transportModelId: _ignoredTransportModelId, ...userPatch } = rawPatch;
+      const { transportModelId: _ignoredTransportModelId, references: patchedReferences, ...patchRest } = rawPatch as
+        Partial<Omit<PlanCandidate, "candidateId" | "revision">> & { references?: unknown };
+      // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 draftId 时走这里）。不在这里补身份，
+      // 一次 patch 就会把一条缺 contentHash 的参考写进已存候选——类型说它齐了，运行时不是（静默假数据）。
+      const userPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">> = patchedReferences === undefined
+        ? patchRest
+        : { ...patchRest, references: resolvePatchReferences(input.lease.projectId, patchedReferences) };
       const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : current.candidate.providerId;
       const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : current.candidate.modelId;
       const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(current.candidate.providerId)

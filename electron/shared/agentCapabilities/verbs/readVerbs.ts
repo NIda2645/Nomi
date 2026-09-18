@@ -25,6 +25,33 @@ export const DOCUMENT_ID_TRANSPORT_FIELD = Object.freeze({
 
 const assetId = z.string().trim().min(1).max(512).describe("Stable asset id from a look_at_media search, a canvas read or a timeline read — never a filename or path.");
 
+/**
+ * 一个范围的两条跨字段约束：**要么都给要么都不给**、且末端大于起点。
+ *
+ * 为什么它必须在动词这一层（2026-09-18 扫描 · R17「防线建在最早能拦住的那层」）：宿主的
+ * `inspect_source_range` / `read_waveform` 两条都强制这两条约束，而动词把两端各自声明成可选。
+ * 模型只给 `startFrame` 时，翻译层过去会替它补一个 `endFrame: 0`，于是宿主回的是
+ * 「Number must be greater than 0」——一个模型没写过的字段、一个它看不懂的数字。约束搬到动词上
+ * 之后，pi 的校验器在**调用发出之前**就用动词自己的字段名说清哪儿不对，翻译层也不必再编造缺省值。
+ */
+function rangeRefinement(startField: string, endField: string) {
+  return (value: Record<string, unknown>, context: z.RefinementCtx): void => {
+    const start = value[startField] as number | undefined;
+    const end = value[endField] as number | undefined;
+    if (start === undefined && end === undefined) return;
+    if (start === undefined || end === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom, path: [start === undefined ? startField : endField],
+        message: `give both ${startField} and ${endField}, or neither`,
+      });
+      return;
+    }
+    if (end <= start) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [endField], message: `${endField} must be greater than ${startField}` });
+    }
+  };
+}
+
 export function readVerbs(): VerbDeclaration[] {
   const lookAtCanvas: VerbDeclaration = {
     name: "look_at_canvas", contractId: "canvas.read", effect: "read", nextAction: "none",
@@ -50,6 +77,12 @@ export function readVerbs(): VerbDeclaration[] {
     examples: [{ when: "Read the whole document:", arguments: {} }, { when: "Resolve \"this part\":", arguments: { scope: "selection" } }],
     mcpTransportFields: DOCUMENT_ID_TRANSPORT_FIELD,
     prepareArguments: modelArgumentTolerance({ knownFields: ["scope"] }),
+    // 「缺省 full」是**声明**的一部分，所以它住在翻译层（两个 profile 共用），不住在某个执行器里。
+    // 2026-09-18 扫描：`document.read` 契约的 `scope` 是必填，而动词说它可选、示例就是 `{}`。
+    // 内部 lane 靠 `laneDocumentTools` 里一句手写的 `?? "full"` 兜住，对外 MCP 面没有那句，
+    // 于是 `nomi_document_read` 只带租约调用时当场 `capability_input_invalid`——同一个默认值，
+    // 一边有一边没有，就是漂移。补在这里之后那句手写兜底已删（P1）。
+    semanticInputOf: (args) => ({ scope: (args as { scope?: "full" | "selection" }).scope ?? "full" }),
   };
   const readTimeline: VerbDeclaration = {
     // 常驻（设计正本 §5.1 / PR A 的常驻 10 个）：读时间轴不需要先请求 timeline 组；执行绑在 laneTimelineTools。
@@ -64,7 +97,7 @@ export function readVerbs(): VerbDeclaration[] {
     schema: z.object({
       startFrame: z.number().int().min(0).optional().describe("First frame of the range, at the project fps."),
       endFrame: z.number().int().min(1).optional().describe("Last frame of the range (exclusive), greater than startFrame."),
-    }).strict(),
+    }).strict().superRefine(rangeRefinement("startFrame", "endFrame")),
     examples: [{ when: "Read the whole timeline and its revision:", arguments: {} }, { when: "Look at the fourth to sixth second at 30fps:", arguments: { startFrame: 120, endFrame: 180 } }],
     prepareArguments: modelArgumentTolerance({}),
     semanticInputOf: (args) => timelineReadInputOf(args) as unknown as Record<string, unknown>,
@@ -90,8 +123,24 @@ export function readVerbs(): VerbDeclaration[] {
         startSeconds: z.number().min(0).optional().describe("Start of the audio range, seconds from the asset start."),
         endSeconds: z.number().positive().optional().describe("End of the audio range, seconds; greater than startSeconds."),
         buckets: z.number().int().min(1).max(256).optional().describe("How many amplitude buckets to return."),
-      }).strict().optional().describe("With assetId: read peak and RMS amplitude buckets for one audio range."),
-    }).strict(),
+      }).strict().superRefine(rangeRefinement("startSeconds", "endSeconds")).optional().describe("With assetId: read peak and RMS amplitude buckets for one audio range."),
+    }).strict().superRefine((value, context) => {
+      rangeRefinement("startFrame", "endFrame")(value as Record<string, unknown>, context);
+      // 五合一读**按参数形状**派生方法名，所以「同时给两套参数」不是更精确，是有一套会被静默忽略。
+      // 2026-09-18 扫描：`{assetId, startFrame, endFrame, waveform}` 过得了动词、翻出来只剩波形那一套，
+      // 帧范围无声消失。把互斥写进声明，模型当场知道该给哪一套。
+      const modes = [
+        value.query !== undefined || value.kinds !== undefined || value.limit !== undefined ? "search" : undefined,
+        value.startFrame !== undefined || value.endFrame !== undefined ? "frame range" : undefined,
+        value.waveform !== undefined ? "waveform" : undefined,
+      ].filter(Boolean);
+      if (modes.length > 1) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `give only one of: search (query/kinds/limit), frame range (startFrame+endFrame), waveform — got ${modes.join(" and ")}` });
+      }
+      if (value.assetId === undefined && modes.length > 0 && modes[0] !== "search") {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `assetId is required to read a ${modes[0]}` });
+      }
+    }),
     examples: [
       { when: "Find rainy footage:", arguments: { query: "雨天", kinds: ["video"] } },
       { when: "Read one asset's record and container facts:", arguments: { assetId: "asset-1" } },

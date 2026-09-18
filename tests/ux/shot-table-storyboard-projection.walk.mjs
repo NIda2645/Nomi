@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { clickOrFail, expect, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
+import { AGENT_PANEL, COMPOSER_MODEL, CREATION_PANEL, MODEL_POPOVER, TOOL_RECEIPT, chooseAssistantModel, waitForV4TurnIdle } from './agent-runtime-walk-support.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/shot-table-storyboard-projection')
@@ -30,19 +31,30 @@ try {
   await clickOrFail(win.getByText('新建空白项目', { exact: true }), '新建空白项目')
   await clickOrFail(win.locator('[contenteditable="true"]').first(), '文稿编辑器')
   await win.keyboard.type(story, { delay: 15 })
-  await clickOrFail(win.locator('[data-v4-control="model"]'), '选择模型')
-  await clickOrFail(win.locator('[data-v4-model-row="对话"] button'), '选择对话模型')
-  await clickOrFail(win.getByRole('option', { name: 'GPT-5.5', exact: true }), 'GPT-5.5')
-  await clickOrFail(win.locator('[data-v4-control="model"]'), '收起模型菜单')
+  // 模型弹层是「每类一行 + 行尾 NomiSelect」，走全仓共用的那把选法（别再手写 option 角色）。
+  await chooseAssistantModel(win, 'GPT-5.5')
+  const modelPopover = win.locator(`${CREATION_PANEL} ${MODEL_POPOVER}`)
+  if (await modelPopover.isVisible().catch(() => false)) await clickOrFail(win.locator(`${CREATION_PANEL} ${COMPOSER_MODEL}`), '收起模型菜单')
   await snap('replay-02-before-document')
-  step = 'real-storyboard-approval'
-  await clickOrFail(win.getByText('新建分镜方案', { exact: true }), '从文稿拆分镜')
+  step = 'real-storyboard'
+  // 侧栏「新建方案」（2b59d13ef 之前叫「新建分镜方案」）= 把「拆分镜」指令直接发给常驻 Agent
+  // （DocumentListSidebar → storyboardPlannerLauncher → actions.send），真模型经保存分镜方案工具
+  // 直接落方案——**没有**计划卡 / 「确认」那一跳（805096d41 删掉了摘要卡与审批）。
+  // 落地的阳性信号 = 侧栏长出一行带状态的方案（`data-storyboard-status`，编辑器里的镜行没有这个属性）。
+  await clickOrFail(win.getByText('新建方案', { exact: true }), '从文稿拆分镜')
+  // 面板不钉 surface：方案一落地工作区就切到分镜页，常驻面板的 data-agent-surface 随之变成 storyboard，
+  // 钉 creation 的定位器会在回合还在跑时就「找不到 running」而假绿。起飞/落地都按 AGENT_PANEL 的 composer 运行态判。
   // User discipline: stop this station at three minutes without a usable UI transition.
-  await expectVisible(win.getByRole('button', { name: '确认', exact: true }), '真实模型保存分镜审批', modelStationBudget)
-  await snap('replay-03-plan-approval')
-  await clickOrFail(win.getByRole('button', { name: '确认', exact: true }), '确认保存分镜')
-  await expectVisible(win.locator('[data-storyboard-row^="storyboard-"]').first(), '已保存的分镜方案', modelStationBudget)
+  await waitForV4TurnIdle(win, { panel: AGENT_PANEL, doneTimeout: modelStationBudget })
+  // 工具回执是折叠的 <details>（默认收起 → toBeVisible 会说 hidden），落地证据看它在不在，不看展开没展开。
+  await expect(win.locator(`${AGENT_PANEL} ${TOOL_RECEIPT}`), '回合结束却没有任何工具回执（方案不是经保存分镜方案工具落的）').not.toHaveCount(0)
+  await expectVisible(win.locator('[data-storyboard-row][data-storyboard-status]').first(), '回合结束后侧栏没有长出方案行')
+  await snap('replay-03-plan-saved')
   step = 'immediate-table'
+  // ⚠️ 2026-09-18：这一步红是**产品真回归**，不是走查过期——方案已落盘（侧栏有行、project.json 里 designs 有内容），
+  // 但 `payload.generationCanvas.nodes` 是空的：Agent 写方案没有建出 shot_table 节点。
+  // `ensureStoryboardShotTable.ts` 写着「Explicit design writes create one view」，`docs/audit/2026-09-10-shot-table-storyboard-walk.md`
+  // 记过「复验立即生成表节点成功」，所以是 09-10 之后退的。断言**刻意保持原样**（改绿=掩盖真 bug）。
   await clickOrFail(win.getByRole('button', { name: '生成', exact: true }).first(), '生成画布')
   await clickOrFail(win.getByRole('button', { name: '适应视图', exact: true }), '适应全部节点')
   const table = win.locator('[data-testid="shot-table-node"]')

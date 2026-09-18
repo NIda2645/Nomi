@@ -10,8 +10,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
-import { createAgentRuntimeFixture, FIXTURE_API_KEY, FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
+import { createAgentRuntimeFixture, FIXTURE_IMAGE_MODEL } from './agent-runtime-fixture.mjs'
 import { assertMockupContract, clickOrFail, expect, expectAbsent, expectCount, expectText, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import storyboardIntentContract from '../../docs/design/mockups/contracts/2026-09-01-storyboard-table-image-first.intent.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -113,28 +114,13 @@ async function closeAppHard(instance) {
   if (child.exitCode === null) child.kill('SIGKILL')
 }
 
-// 首启只做一件事：把 fixture key 经真实 IPC 存成 safeStorage 密文再冷重启。
-// 为什么这么绕（探针 2026-09-02 逐层定位，勿简化回单启动）：
-// ① fixture 文件里的 plain key 执行层够用，但选项管道按 hasApiKey 闸，plain=needs_resave 不算；
-// ② 渲染层选项缓存 boot 即温，手动广播事件不清模块缓存；
-// ③ 渲染层改凭证会按去认证语义**自动禁用已发布 vendor**（fail-closed by design）——
-//    所以存完 key 要再把 vendor 启用回来（fixture 模型 published，sanitizer 放行）。
-{
-  const first = await launchNomiApp({ name: 'storyboard-table-exec-seed', tempRoot, settingsDir, projectsDir, settleMs: 800 })
-  const seeded = await first.win.evaluate(async ({ vendorKey, apiKey }) => {
-    await window.nomiDesktop.modelCatalog.upsertVendorApiKey(vendorKey, { apiKey })
-    await window.nomiDesktop.modelCatalog.upsertVendor({ key: vendorKey, enabled: true })
-    const vendors = await window.nomiDesktop.modelCatalog.listVendors()
-    const vendor = (Array.isArray(vendors) ? vendors : []).find((v) => v.key === vendorKey)
-    return { enabled: vendor?.enabled ?? null, hasApiKey: vendor?.hasApiKey ?? null }
-  }, { vendorKey: FIXTURE_VENDOR, apiKey: FIXTURE_API_KEY })
-  console.log('  · fixture key 种入 →', JSON.stringify(seeded))
-  if (seeded.enabled !== true || seeded.hasApiKey !== true) {
-    throw new Error(`fixture vendor 种入失败（enabled=${seeded.enabled} hasApiKey=${seeded.hasApiKey}）——选项管道起不来，后续全为假红`)
-  }
-  await closeAppHard(first.app)
-}
-
+// 不再「首启种 key → 冷重启」（2026-09-18 复活时删掉的那一段，别加回来）：
+//   · 夹具 vendor 声明 `authType:'none'`，产品侧对这种家**不要求钥匙**——可用性唯一判据
+//     `createCatalogAvailability` 对 authType none 恒 credential ok（catalogModelAvailability.ts），
+//     渲染层也早已不按 `hasApiKey` 闸模型选项（modelCatalogCache.ts 头注释）。
+//   · 经渲染层 IPC 给一个 none 家存 key 是无意义操作，主进程**按设计**拒（validateCandidateCredential.ts:50），
+//     旧种入段因此恒红「暂时无法验证密钥」——那是走查过期，不是产品回归。
+//   镜 3 的 `missing-required` 红态就是「夹具模型经真实选项管道装进来了」的阳性信号，下面照常断言。
 const { app, win } = await launchNomiApp({ name: 'storyboard-table-exec', tempRoot, settingsDir, projectsDir, settleMs: 1200 })
 const failures = []
 // 控制台错误留证（R16 报告用）：只记录不判红——平台/供应商噪音与真回归得由人眼分，
@@ -160,8 +146,7 @@ try {
   }
   await clickOrFail(win.getByRole('button', { name: '创作', exact: true }), '切到创作页')
   await clickOrFail(win.locator(`[data-storyboard-id="${DESIGN}"]`), '侧栏选中分镜设计')
-  // 已建过节点 → committed 语义 derive，摘要卡主按钮是「再次编辑」；未建则「打开分镜」。
-  await clickOrFail(win.getByRole('button', { name: /再次编辑|打开分镜/ }).first(), '从摘要卡进入分镜页')
+  // 侧栏点中方案就直接进分镜页——摘要卡（「再次编辑 / 打开分镜」那一跳）已随 805096d41 删除。
   await expectVisible(win.locator('[data-storyboard-editor="true"]'), '分镜编辑器没有渲染')
 
   // ── 1. 行状态一屏对账（预种 6 态；generating 是瞬态由真跑覆盖，见文件头注）──
@@ -176,7 +161,7 @@ try {
   const warnline = win.locator('[data-storyboard-ref-warnline="8"]')
   const warnProof = await proveProbe(warnline, '镜 8 参考已变警示行')
   await expectText(warnline, /林薇.*旧图/, '警示行没点名是哪张参考卡')
-  await expectVisible(win.getByRole('button', { name: '用新图重跑' }), '缺「用新图重跑」按钮')
+  await expectVisible(win.getByRole('button', { name: '新图重跑' }), '缺「新图重跑」按钮')
   await snap('01-table-all-states.png')
 
   // ── 2. footer：进度 + 排除原因 + 批量计数（F2 同一份 derive）──
@@ -185,10 +170,14 @@ try {
   if (!/1 在等参考卡/.test(footerText || '')) failures.push(`footer 缺「1 在等参考卡」：「${footerText}」`)
   if (!/1 缺参考/.test(footerText || '')) failures.push(`footer 缺「1 缺参考」：「${footerText}」`)
   if (!/1 已锁/.test(footerText || '')) failures.push(`footer 缺「1 已锁」：「${footerText}」`)
-  await expectText(win.locator('[data-storyboard-batch="true"]'), /生成未生成的 3 镜/, '批量按钮计数应为 3（ready×2+failed）')
+  // 批量钮文案 ac2fa59e7 起收成「生成剩余」（按钮 ≤4 字规则），计数不再印在钮上——
+  // 「这一批几镜」现在只在花钱确认卡上说（步骤 11 断言那里）。这里只锁「有可跑的镜 → 钮可点」。
+  await expectText(win.locator('[data-storyboard-batch="true"]'), /生成剩余/, '批量按钮文案不是「生成剩余」')
+  await expect(win.locator('[data-storyboard-batch="true"]'), '有 3 镜可跑（ready×2+failed）时批量钮应可点').toBeEnabled()
 
   // ── 3. 组头小结与折叠 ──
-  const s1Head = win.getByRole('button', { name: /第一场 · 天台对峙/ })
+  // 锚在名字开头：场组头旁还有一枚「播放第一场 · 天台对峙」按钮（data-storyboard-play-scene），不锚就撞 strict mode。
+  const s1Head = win.getByRole('button', { name: /^第一场 · 天台对峙/ })
   await expectVisible(s1Head, '第一场组头没渲染')
   await clickOrFail(s1Head, '折叠第一场')
   // 作用域钉在编辑器内：侧栏的设计行同名 data-storyboard-row（值=design id），不属于表行。
@@ -196,14 +185,19 @@ try {
   await snap('02-scene-fold.png')
   await clickOrFail(s1Head, '展开第一场')
 
-  // ── 4. 参考卡状态 + 「N 镜在等它」derive ──
+  // ── 4. 参考卡状态 + 「N 镜在等它」derive（v6 信息架构 0d5a56d47：参考卡区默认**收起**成一条 chip 带，
+  //      「全部展开」才铺成行；等它的镜数 / 不生成图 / 未锁定提示只印在 chip 上，被引用计数在展开行上是过滤入口）──
+  const anchorChip = (id) => win.locator(`[data-storyboard-anchor-chip="${id}"]`)
+  await expectText(anchorChip('hero'), /被 3 镜引用/, '已锁定锚 chip 应显被引用计数')
+  await expectText(anchorChip('villain'), /1 镜在等它/, '未生成但被等的锚 chip 应显等它的镜数')
+  await expectText(anchorChip('mood'), /不生成图/, '文本锚 chip 应显不生成图')
+  await snap('03a-anchor-strip.png')
+  await clickOrFail(win.getByRole('button', { name: '全部展开', exact: true }), '展开参考卡区')
   const anchorStat = (id) => win.locator(`[data-anchor-stat="${id}"]`)
-  await expectText(anchorStat('hero'), /被 3 镜引用/, '已锁定锚应显被引用计数')
-  await expectText(anchorStat('villain'), /1 镜在等它/, '未生成但被等的锚应显等它的镜数')
-  await expectText(anchorStat('mood'), /不生成图/, '文本锚应显不生成图')
+  await expectText(anchorStat('hero'), /被 3 镜引用/, '展开行上已锁定锚应显被引用计数（也是反查入口）')
   await expectVisible(win.locator('[data-anchor-face="locked"]'), '林薇卡缺锁定面')
   await expectCount(win.locator('[data-anchor-face="empty"]'), 2, '陈默/天台应为两张未生成空卡')
-  await expectVisible(win.locator('[data-anchor-face="text"]'), '全片风格缺文字卡')
+  await expectVisible(win.locator('[data-storyboard-frame="anchor-text"]'), '全片风格缺文字卡（不出图的锚在画面列标 anchor-text）')
   await snap('03-anchor-cards.png')
 
   // ── 5. ⏳ 直达参考卡 ──
@@ -246,26 +240,29 @@ try {
   await clickOrFail(win.locator('[data-anchor-card="rooftop"]').getByRole('button', { name: /^生成参考卡/ }), '点天台夜景就地生成')
   await expectVisible(spendDialog(), '锚生成没有弹花钱确认卡')
   await clickOrFail(spendDialog().getByRole('button', { name: '生成', exact: true }), '确认锚生成（fixture 零额度）')
-  await expectText(anchorStat('rooftop'), /未锁定/, '天台生成后应显未锁定提示')
+  // 「未锁定 · 满意就锁定」只印在收起态的 chip 上；展开行上「生成 → 出图」的证据是 done 面。
+  await expect(win.locator('[data-anchor-card="rooftop"] [data-anchor-face="done"]'), '天台生成后应进入 done 面').toBeVisible({ timeout: stationTimeout({ operations: 2 }) })
+  await expectCount(win.locator('[data-anchor-face="empty"]'), 1, '天台生成后应只剩陈默一张空卡')
   const shot2State = await frame(2).getAttribute('data-storyboard-frame')
   if (shot2State !== 'waiting-refs') failures.push(`镜 2 仍缺陈默参考图，应保持 waiting-refs，实为 ${shot2State}`)
   await snap('10-anchor-generated.png')
 
-  // ── 10. 参考已变一键补跑真跑：镜 8「用新图重跑」→ 确认 → 红标消（快照重打）──
-  await clickOrFail(win.getByRole('button', { name: '用新图重跑' }), '点用新图重跑')
-  await expectVisible(spendDialog(), '用新图重跑没有走花钱确认（执行通路断了）')
-  // B4 R16 修复钉子：确认卡回声用户点的动作（标题/主按钮=「用新图重跑」），
+  // ── 10. 参考已变一键补跑真跑：镜 8「新图重跑」→ 确认 → 红标消（快照重打）──
+  await clickOrFail(win.getByRole('button', { name: '新图重跑' }), '点新图重跑')
+  await expectVisible(spendDialog(), '新图重跑没有走花钱确认（执行通路断了）')
+  // B4 R16 修复钉子：确认卡回声用户点的动作（标题/主按钮=「新图重跑」，ac2fa59e7 前叫「用新图重跑」），
   // 不是通用「重新生成」——退化回通用卡这里就红。
   await snap('11-rerun-fresh-refs-confirm.png')
-  await clickOrFail(spendDialog().getByRole('button', { name: '用新图重跑', exact: true }), '确认重跑（fixture 零额度）')
+  await clickOrFail(spendDialog().getByRole('button', { name: '新图重跑', exact: true }), '确认重跑（fixture 零额度）')
   await expect(frame(8)).toHaveAttribute('data-storyboard-frame', 'done', { timeout: 30_000 })
   await expectAbsent(warnline, { provenBy: warnProof, message: '重跑后参考已变警示行应消失（快照已更新）' })
   await snap('12-ref-changed-cleared.png')
 
   // ── 11. 批量 → 花钱确认 → 取消（不花钱路径；剩 ready 镜 1 + failed 镜 5 = 2）──
-  await expectText(win.locator('[data-storyboard-batch="true"]'), /生成未生成的 2 镜/, '真跑两镜后批量计数应降为 2')
   await clickOrFail(win.locator('[data-storyboard-batch="true"]'), '点批量生成')
   await expectVisible(spendDialog(), '批量后没有弹花钱确认卡')
+  // 计数的家在确认卡上：真跑两镜后剩 ready 镜 1 + failed 镜 5 = 2。
+  await expectText(spendDialog(), /将生成 2 /, '真跑两镜后批量确认卡应说「将生成 2 …」')
   await snap('13-batch-spend-confirm.png')
   await clickOrFail(spendDialog().getByRole('button', { name: /取消|先不/ }).first(), '取消批量（不花钱路径）')
   await expect(spendDialog()).toBeHidden({ timeout: 5000 })
@@ -279,19 +276,23 @@ try {
   await expectVisible(filterBar, '反查后顶部过滤条未出现')
   await expectText(filterBar, /正在看引用「林薇」的 3 镜/, '过滤条没有显示过滤后的镜数')
   await expectCount(win.locator('[data-storyboard-editor="true"] [data-storyboard-row]'), 3, '反查后表应只剩 3 镜')
-  await expectText(win.getByRole('button', { name: /第一场 · 天台对峙/ }), /1\/4 镜/, '过滤态第一场小结没有按过滤后重算')
+  await expectText(s1Head, /1\/4 镜/, '过滤态第一场小结没有按过滤后重算')
   await snap('15-filtered-reference.png')
   await clickOrFail(filterBar.getByRole('button', { name: '退出过滤' }), '退出反查过滤')
   await expectCount(win.locator('[data-storyboard-editor="true"] [data-storyboard-row]'), 8, '退出过滤后应恢复 8 镜')
 
   // ── D1. 顺播：未生成镜自动跳过并提示，结果进入同一个 body-portal AssetPreviewDialog。 ──
-  const sequenceFrameCount = await win.locator('[data-storyboard-frame]').count()
-  const sequenceReadyCount = await win.locator('[data-storyboard-frame="done"], [data-storyboard-frame="locked"]').count()
-  const sequenceSkippedCount = sequenceFrameCount - sequenceReadyCount
+  // 只数镜行：v6 起参考卡行也带 data-storyboard-frame（anchor / anchor-text），不能混进镜数。
+  const shotFrames = win.locator('[data-storyboard-editor="true"] [data-storyboard-row] [data-storyboard-frame]')
+  const sequenceFrameCount = await shotFrames.count()
+  const sequenceReadyCount = await shotFrames.filter({ has: win.locator(':scope[data-storyboard-frame="done"], :scope[data-storyboard-frame="locked"]') }).count()
+  if (sequenceFrameCount !== 8) failures.push(`顺播前应数到 8 个镜行画面格，实为 ${sequenceFrameCount}`)
+  if (sequenceReadyCount !== 4) failures.push(`顺播前应有 4 镜已生成/已锁（4/6/7/8），实为 ${sequenceReadyCount}`)
   await clickOrFail(win.getByRole('button', { name: '按镜序顺播已生成结果' }), '开始按镜序顺播')
   const playbackDialog = win.locator('[role="dialog"][aria-modal="true"]').last()
   await expectVisible(playbackDialog, '顺播没有打开全屏预览')
-  await expectText(win.locator('body'), new RegExp(`已跳过 ${sequenceSkippedCount} 个未生成镜头`), '顺播没有提示被跳过的未生成镜头')
+  // 跳过提示是**逐镜**的（storyboardEditor.playback.notGeneratedShot），顺播从镜 1 起、镜 1 未生成 → 第一帧就该说它被跳过。
+  await expectText(playbackDialog, /镜 1：未生成，已跳过/, '顺播没有提示被跳过的未生成镜头')
   await snap('16-sequence-playback-skipped.png')
   await win.keyboard.press('Escape')
   await expect(playbackDialog).toBeHidden({ timeout: 5000 })
@@ -305,13 +306,24 @@ try {
   await snap('17-result-intake-target-selector.png')
   await intake.selectOption({ label: '镜 1' })
   await clickOrFail(win.locator('[data-storyboard-row="6"]').getByRole('button', { name: '设为首帧' }), '把镜 6 结果设为镜 1 首帧')
-  await expectCount(win.locator('[data-storyboard-row="1"] [data-storyboard-ref-tile="anchor"]'), 2, '设为镜 1 首帧没有把结果参考挂到目标镜')
+  // v6：结果即收 = 把镜 6 的结果提升成一张参考卡（addExternalReferenceAnchor，名字「镜 6」）并绑到目标镜的 anchorIds；
+  // 行 1 没钉模型（契约未知）→ 参考列没有槽位 tile，证据在参考卡区。步骤 4 已经「全部展开」，
+  // 展开态渲染的是锚**行**（chip 带只在收起态存在），卡名住在一个可编辑 input 的 value 里，不是文本节点。
+  const anchorNames = win.locator('[data-storyboard-anchor-row] input[aria-label="参考卡名字"]')
+  await expect
+    .poll(async () => (await anchorNames.evaluateAll((nodes) => nodes.map((node) => node.value))),
+      { message: '设为镜 1 首帧后参考卡区没有长出名为「镜 6」的参考卡' })
+    .toContain('镜 6')
+  // 收进来的素材是**镜 6 已经生成好的结果**（画布上那个节点还在、真出了图），所以镜 1 无可等待。
+  // 修复前这里被判 `waiting-refs`：状态层去找一张永远不会存在的参考卡节点，而执行层早就能从
+  // 镜 6 那个节点连边取图。
+  await expect(frame(1), '收了一张已生成结果当参考的行不该说「等参考图」')
+    .not.toHaveAttribute('data-storyboard-frame', 'waiting-refs')
 
-  // ── D2. 参考 tile / @ 胶囊三层预览：悬停克制浮层，双击走同一 body-portal 全屏。 ──
+  // ── D2. 参考卡 / @ 胶囊预览：双击走同一 body-portal 全屏。 ──
+  // 参考卡的**悬停**浮层随 v6（0d5a56d47）去掉了——`StoryboardHoverPreview` 现在全仓零调用点（遗留死码，
+  // 见 PR 正文），卡面只留双击。@ 胶囊那层悬停预览仍在（AssetMentionChip 自带），下面照常断言。
   const heroFace = win.locator('[data-anchor-card="hero"] [data-anchor-face="locked"]').first()
-  await heroFace.hover()
-  await expectVisible(win.locator('[data-storyboard-hover-preview="true"] > span').last(), '参考 tile 悬停预览没有出现')
-  await snap('18-anchor-hover-preview.png')
   await heroFace.dblclick()
   await expectVisible(win.locator('[role="dialog"][aria-modal="true"]').last(), '参考 tile 双击没有打开全屏预览')
   await snap('19-anchor-double-click-preview.png')
@@ -343,7 +355,9 @@ try {
   await clickOrFail(gripMenu.getByRole('button', { name: '镜头操作' }).last(), '打开镜头 grip 菜单')
   await expectVisible(gripMenu.getByRole('button', { name: '复制镜头' }), 'grip 菜单缺复制镜头')
   await expectVisible(gripMenu.getByRole('button', { name: '第二场 · 巷口追逐' }), 'grip 菜单缺移到场选项')
-  await expectVisible(gripMenu.locator('div.absolute').getByRole('button', { name: '删除镜头' }), 'grip 菜单缺删除镜头')
+  // 菜单项文案 v6（0d5a56d47）收成两字：`rowMenu.deleteUndoable` = 「删除」（旧「删除镜头」）。
+  // 仍钉在弹层（div.absolute）里，免得撞到行外那些同名按钮。
+  await expectVisible(gripMenu.locator('div.absolute').getByRole('button', { name: '删除', exact: true }), 'grip 菜单缺删除项')
   await snap('23-grip-menu.png')
   await win.keyboard.press('Escape')
 
@@ -362,6 +376,15 @@ try {
 
   // ── 形态契约（意图层）：拍板样张里「哪些位置承载设计意图」的二值断言。
   // 放在这里——app 仍活、表已渲染出全部行状态，几何与结构都是真值。
+  //
+  // ① 先收起常驻 Agent 面板：契约量的是分镜面**自己**的版面，而 1280 宽下面板展开时编辑器列只剩
+  //    ~570px（W-03，docs/audit/2026-09-17-post-804-walkthrough.md 记为仍在），量出来的是被挤压的形状。
+  //    收起走面板自己的收起钮（真人手势），不是改视口作弊。
+  await clickOrFail(win.locator('[data-v4-control="collapse"]').first(), '收起常驻 Agent 面板（让分镜面拿回整列宽）')
+  await expect(win.locator('[data-agent-resident="true"][data-agent-collapsed="true"]')).toBeVisible()
+  // ② 契约已迁到 v6（2026-09-18）：条款逐条对着
+  //    docs/design/2026-09-05-storyboard-table-v6-design-contract.md 誊抄，所以整份硬断言，
+  //    不再按名字摘任何一条（上一版那个 SUPERSEDED_BY_V6 过滤是记号，不是修复）。
   await assertMockupContract(win, storyboardIntentContract)
 
   fixture.assertClean()

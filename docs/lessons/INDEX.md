@@ -59,6 +59,7 @@
 
 - [删旧实现里的一道门之前，先问它在保证什么](migration-parity-needs-user-behavior.md) — 磁吸带子的「选中才出」不是实现细节，它保证的是「卡片之间的连线永远点得到」；删门前先把那条保证写成断言并验它会红
 - [跑批渲染必须一格一个浏览上下文，复用同一个到第 34 次就再也起不来](one-browser-context-per-render-or-the-batch-dies-midway.md) — 前几十格都好、从某一格起 `waitForFunction` 恒超时，而单独 `ONLY=` 跑那一格完全正常
+- [不在任何 CI 链里的走查会一批腐烂，而腐烂的走查会把真 bug 一起藏起来](unwired-walks-rot-as-a-batch.md) — 某个面多条走查同时红、要判「产品回归还是走查过期」时读；21 层过期里藏着 1 个真回归，附四条死法对照表与落盘取证法
 - [走查断言必须有真信号](walkthrough-assertions-need-a-real-signal.md) — 写/改走查前必读：用 `tests/ux/_assert.mjs`，假绿是框架缺陷不是手滑
 - [走查取点只信真实光标到位后的那一次](walkthrough-geometry-must-reverify-under-the-real-cursor.md) — stage 一变窄「点空白被磁性 + 吃掉 / 框选 autoPan 永不安定 / 连线点中心被卡拦」一起来；判据是白名单（最顶层元素就是 pane），单一 owner `tests/ux/_canvasHit.mjs`
 - [`waitForFunction` 配 async 判据 = 一个从不等待的等待](wait-for-function-with-async-predicate-never-waits.md) — 判据里有 `await` 就等于没等：Promise 被当 truthy，0ms 返回 null；下游那句 `Cannot read properties of null` 长得像业务 bug。换 `expect.poll`
@@ -118,6 +119,8 @@
 - [参考实现不拆开逐层对照 = 没研究](reference-implementation-not-dissected-is-not-research.md) — 上一条的第二半：四列表只覆盖「已经想到的能力」，照不出「压根没想到还有这一层」；框架自带 coding agent/官方 example 必须按九层拆开并排，判定 `一致`/`有意不同(理由须是领域约束)`/`没想到`，「没想到」清单是实施阶段前置门
 - [写死的墙钟上限会在工作量长大时把 CI 砍在半路](fixed-wall-clock-caps-break-when-work-grows.md) — `exceeded <N>ms and was terminated` 而每条断言都有结果 = 进程被砍不是断言红；上限要从「有多少活」派生，别把 20 改成 40
 - [门岗的 scope 指到不存在的目录，会安静地报绿](gate-scope-pointing-nowhere-passes-silently.md) — 依赖「登记表+scope+禁令」式门岗、刚搬过目录、或在给新禁令做阳性对照时；附「探针写成注释会被 stripComments 吃掉」一坑
+
+- [技能里的指令会跨代累积，模型服从的是过期那条](stale-directives-outlive-tool-renames.md) — Agent「只回文字不调工具」先翻这条；工具**名**过期有门岗，「该不该调用它」的祈使句过期没有任何机器看得见；删过期禁令要只删过期那半（「不许写画布」作废时「不许花钱」仍成立）
 
 ## C. Git 交付、分支与文档改动
 

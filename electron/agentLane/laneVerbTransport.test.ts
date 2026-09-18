@@ -23,7 +23,6 @@ const ACCEPTED_BY_LANE: Record<VerbTransportCall["lane"], (method: string) => bo
   media: (method) => resolveCapabilityAlias(method)?.contract.id === "asset.read",
   skillRead: (method) => resolveCapabilityAlias(method)?.contract.id === "skill.read",
   skillWrite: (method) => resolveCapabilityAlias(method)?.contract.id === "skill.write",
-  modelSetup: (method) => resolveCapabilityAlias(method)?.contract.id === "model.setup.open",
 };
 
 /** 一份能过每个动词 schema 的最小参数：翻译只改形状不改语义，所以这里只要字段齐。 */
@@ -56,6 +55,58 @@ describe("verbToTransportCall · every transported verb lands on a method its la
       const exportCall = exportJobTransportCall({ toolCallId: "call-1", toolName: verb, args: { jobId: "export-1" } });
       expect(resolveCapabilityAlias(exportCall.toolName)?.contract.id, `${verb} export fallback`).toMatch(/^export\./);
     }
+  });
+
+  // ── 2026-09-18 扫描的回归：翻译层**静默丢字段**那一类（`docs/fixes/2026-09-18-verb-host-input-conformance`）──
+  //
+  // 这一族比「被拒收」更险：模型点名「用 apimart 的 image-1」，翻译层把点名整只丢掉，宿主照用户的
+  // 默认模型去**花钱**，而没有任何一层报错。所以这里断的是「值有没有到达宿主」，不是「有没有报错」。
+  it("逐镜目录点名（candidate）到得了宿主，而不是被悄悄换成用户的默认模型", () => {
+    const translated = verbToTransportCall({
+      toolCallId: "call-1", toolName: "draft_shots",
+      args: { shots: [{ prompt: "海上日出", candidate: { providerId: "apimart", modelId: "image-1" } }] },
+    })!;
+    expect(translated.call.args).toMatchObject({ operation: "create", providerId: "apimart", modelId: "image-1" });
+  });
+
+  it("顶层缺省（taskKind / candidate）折进每一镜，逐镜自己写的值优先", () => {
+    const translated = verbToTransportCall({
+      toolCallId: "call-1", toolName: "draft_shots",
+      args: {
+        taskKind: "text_to_video", candidate: { providerId: "apimart", modelId: "video-1" },
+        shots: [
+          { role: "anchor", prompt: "角色卡", taskKind: "text_to_image" },
+          { role: "shot", prompt: "第一镜" },
+        ],
+      },
+    })!;
+    const shots = (translated.call.args as { shots: Array<Record<string, unknown>> }).shots;
+    // 逐镜自己写的 taskKind 赢；没写的那镜拿顶层缺省。两镜都拿到顶层点名的模型身份。
+    expect(shots[0]).toMatchObject({ taskKind: "text_to_image", providerId: "apimart", modelId: "video-1" });
+    expect(shots[1]).toMatchObject({ taskKind: "text_to_video", providerId: "apimart", modelId: "video-1" });
+  });
+
+  it("时长落在 parameters.duration 里（宿主读时长只认这一处），不是一个宿主没有的顶层字段", () => {
+    const translated = verbToTransportCall({
+      toolCallId: "call-1", toolName: "draft_shots",
+      args: { shots: [{ prompt: "第一镜", durationSec: 3 }] },
+    })!;
+    expect(translated.call.args).toMatchObject({ parameters: { duration: 3 } });
+    expect(translated.call.args).not.toHaveProperty("durationSeconds");
+  });
+
+  it("参考素材只带 assetId 递下去——身份由宿主按项目素材库补，不要模型发明", () => {
+    const translated = verbToTransportCall({
+      toolCallId: "call-1", toolName: "draft_shots",
+      args: { shots: [{ prompt: "第一镜", references: ["asset-1"] }] },
+    })!;
+    expect(translated.call.args).toMatchObject({ references: [{ assetId: "asset-1" }] });
+  });
+
+  it("start_model_setup 不经延迟组翻译（它是常驻动词；那条 modelSetup 分支是死的，已删）", () => {
+    // 阳性对照：同一把尺子对真正走延迟组的动词返回的是一次翻译，所以 undefined 不是「恒 undefined」。
+    expect(verbToTransportCall({ toolCallId: "call-1", toolName: "start_model_setup", args: { provider: "DeepSeek" } })).toBeUndefined();
+    expect(verbToTransportCall({ toolCallId: "call-1", toolName: "read_skill", args: { name: "ugc-ad" } })).toBeDefined();
   });
 
   it("a name that is not a generation method is rejected by the generation adapter", () => {

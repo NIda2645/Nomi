@@ -300,3 +300,99 @@ test('每个工具恰好一个效果，而 replay 从中派生', async () => {
     /declares effect "undoable"/,
   );
 });
+
+// ── 动词 → 宿主契约的**贯通**断言（2026-09-18 根因）。
+//
+// 上面那族证的是「模型看到的 schema 自洽」，但模型写对了参数**不等于**宿主收得下：
+// 中间还隔着 `verbToTransportCall` 那层改形状的翻译。2026-09-18 真机实测，用户点「新建方案」让
+// Agent 照剧本出分镜，`draft_shots` 连着三次被宿主判 `generation_input_invalid` —— 因为动词声明了
+// 每镜 `title` 与 `durationSec`，翻译层原样递过去（还把 durationSec 改名成 durationSeconds），
+// 而宿主 `generationPlanInputSchema` 的 `shots[]` 是 `.strict()`，这两个字段一个都不认。
+// 分镜天生带标题和时长，于是这条路 100% 失败，用户看到的是「Agent 出不来分镜表」。
+//
+// 所以这条测试把**动词自己声明的示例**喂过翻译层、再喂进宿主 schema：两端对不上就当场红，
+// 而不是等下一次真模型付费运行时才用一次失败告诉你。
+test('动词 → 宿主契约贯通：声明的示例、以及真实分镜那种「字段填满」的调用，宿主都必须收得下', async () => {
+  const { verbToTransportCall } = await import('../../electron/agentLane/laneVerbTransport.js');
+  const { generationPlanInputSchema, generationStatusInputSchema } = await import('../../electron/shared/agentCapabilities/generationPlanSchemas.js');
+  const { GENERATION_METHODS } = await import('../../electron/shared/agentCapabilities/generation.js');
+  const { VERB_DECLARATIONS } = await import('../../electron/shared/agentCapabilities/verbDeclarations.js');
+  type Parser = { safeParse: (value: unknown) => { success: boolean; error?: { issues: Array<{ path: Array<string | number>; message: string }> } } };
+  const hostSchemaFor = (toolName: string): Parser | undefined =>
+    toolName === GENERATION_METHODS.plan ? generationPlanInputSchema as unknown as Parser
+      : toolName === GENERATION_METHODS.status ? generationStatusInputSchema as unknown as Parser
+        : undefined;
+  const failures: string[] = [];
+  const check = (label: string, toolName: string, args: unknown): void => {
+    const transported = verbToTransportCall({ toolCallId: 't-1', toolName, args });
+    if (!transported) return;
+    const hostSchema = hostSchemaFor(transported.call.toolName);
+    if (!hostSchema) return;
+    const parsed = hostSchema.safeParse(transported.call.args);
+    if (parsed.success) return;
+    const where = (parsed.error?.issues ?? []).map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join(' · ');
+    failures.push(`${label} 被宿主拒收：${where}`);
+  };
+
+  // ① 每个动词自己声明的示例（下限）。
+  for (const verb of VERB_DECLARATIONS) {
+    for (const [index, example] of (verb.examples ?? []).entries()) {
+      check(`${verb.name} 示例 #${index + 1}`, verb.name, example.arguments);
+    }
+  }
+
+  // ② 真实分镜那一形状（上限）。示例只证「照抄示例能过」，而 2026-09-18 真机失败的恰恰是
+  //    示例没覆盖的那条路：**多镜 + 每镜带标题和时长**。分镜天生长这样，所以这条必须单列。
+  check('draft_shots · 照剧本出分镜（多镜 + 标题 + 时长）', 'draft_shots', {
+    shots: [
+      { title: '锚 · 白色纸船', role: 'anchor', prompt: '白色纸船停在水盆里，中性背景', taskKind: 'text_to_image' },
+      { title: '镜 1 · 全景', role: 'shot', prompt: '雨后清晨的窗边水盆，全景', taskKind: 'text_to_image', durationSec: 3 },
+      { title: '镜 2 · 特写', role: 'shot', prompt: '纸船缓慢转向的特写', taskKind: 'text_to_image', durationSec: 3 },
+    ],
+  });
+
+  assert.deepEqual(failures, [], `动词与宿主契约对不上：\n${failures.join('\n')}`);
+});
+
+// ── 「整份计划不能只有锚」这条约束，模型必须在发出调用之前就被告知 ──────────────
+//
+// 2026-09-18 真机 23 轮：`draft_shots` 剩余的 27 次失败里 **11 次**是它。而模型的意图完全正确——
+// 它在做标准分镜流程，先单独立视觉锚再排镜头（标题写着「角色锚｜林野」「陈默·人物设定」），
+// 那正是我们自己的导演技能教它的。宿主拦得对（锚 = 被别的镜头复用的参考卡，全是锚自相矛盾），
+// 但那条拦截住在宿主里，模型只能撞上去才知道。6 次里 5 次靠错误信息自纠了，每次白费一个来回，
+// 还有 1 次整轮没救回来。约束搬到动词面之后，它在调用发出前就知道（R17）。
+test('draft_shots：全是锚的计划在动词面就被拒，且告诉模型那条合法路怎么走', async () => {
+  const { VERB_DECLARATIONS } = await import('../../electron/shared/agentCapabilities/verbDeclarations.js');
+  const draftShots = VERB_DECLARATIONS.find((verb) => verb.name === 'draft_shots');
+  assert.ok(draftShots, 'draft_shots 必须在动词表里');
+  const parse = (args: unknown) => draftShots!.schema.safeParse(args) as
+    { success: boolean; error?: { issues: Array<{ message: string; path: Array<string | number> }> } };
+
+  // ① 全是锚 → 拒
+  const anchorsOnly = parse({ shots: [
+    { role: 'anchor', prompt: '角色锚：林野，25 岁，短发' },
+    { role: 'anchor', prompt: '场景锚：旧房子客厅，午后' },
+  ] });
+  assert.equal(anchorsOnly.success, false, '全是锚的计划必须在动词面被拒');
+  const message = (anchorsOnly.error?.issues ?? []).map((issue) => issue.message).join(' ');
+  // 拒绝必须可行动：说清为什么 + 两条出路（合到一次调用里 / 省掉 role）。
+  assert.match(message, /anchor is a reference card that other shots reuse/);
+  assert.match(message, /this one call/, '要告诉它把锚和镜头放在同一次调用里');
+  assert.match(message, /omit role/, '要告诉它「只想要那几张图本身」时怎么发');
+
+  // ② 锚 + 镜 → 过（这是我们教它的那条路，不能连带拦掉）
+  assert.equal(parse({ shots: [
+    { role: 'anchor', prompt: '角色锚：林野' },
+    { role: 'shot', prompt: '镜 1：林野推开门' },
+  ] }).success, true, '锚 + 镜是标准分镜写法，必须放行');
+
+  // ③ 省掉 role → 过。**这条是合法用例的出路**：用户只要那几张参考图本身时，
+  //    它们没有被任何镜头复用，就不是锚、是普通镜头。拦掉它等于禁掉「给我画三张定妆照」。
+  assert.equal(parse({ shots: [
+    { prompt: '定妆照一：正面' }, { prompt: '定妆照二：侧面' },
+  ] }).success, true, '省掉 role 的纯图片计划必须放行');
+
+  // ④ 改已有草稿那条路不受影响——它连 role 都不许带，本来就走另一条判据。
+  const revise = parse({ draftId: 'op-1', shots: [{ shotId: 'shot-1', prompt: '改一下提示词' }] });
+  assert.equal(revise.success, true, '改草稿这条路不该被新约束连带拦住');
+});

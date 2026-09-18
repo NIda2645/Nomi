@@ -14,11 +14,13 @@ import type { ModuleRegistry } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { SINGLE_SHOT_GENERATION_MODULE_ID } from "../shared/generationModuleId";
+import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../shared/generationShotEnvelope";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import {
   isLongFormGenerationRequest,
   requestedVideoDurationSeconds,
   semanticCandidateFromParams,
+  type SemanticGenerationCandidateDeps,
 } from "./semanticGenerationCandidate";
 import type { ShotPrice } from "../productionRun/shotPricing";
 
@@ -30,6 +32,11 @@ export type GenerationOperationDraftShot = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /**
+   * 模型拟的短标题。放在**信封**上而不是候选里：候选是「发给供应商的那一份」，标题一个字都不进
+   * provider 请求；它是给人看的，随镜头走、改模型不丢。
+   */
+  title?: string;
   candidate: PlanCandidate;
 }>;
 
@@ -38,6 +45,8 @@ export type SealedMultiShotEntry = Readonly<{
   shotId: string;
   role?: "anchor" | "shot";
   included?: boolean;
+  /** 模型拟的短标题（给人看，不进 provider 请求）。见 GenerationOperationDraftShot.title。 */
+  title?: string;
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
 }>;
@@ -88,7 +97,7 @@ export type StoryboardPlanResult = Readonly<{
 const SHOT_ROLES = new Set(["anchor", "shot"]);
 
 /** P4 S6.5: validate a shot's role/included/shotId envelope. Shared by the `plan` and `scriptText` paths. */
-function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: string): { shotId: string; role?: "anchor" | "shot"; included?: boolean } {
+function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: string): GenerationShotEnvelope {
   const rawShotId = typeof raw.shotId === "string" ? raw.shotId.trim() : "";
   const shotId = rawShotId || fallbackId;
   if (!/^[A-Za-z0-9._:-]{1,120}$/.test(shotId)) throw new Error(`Invalid shot id at ${index}`);
@@ -96,7 +105,14 @@ function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: s
   if (role !== undefined && !SHOT_ROLES.has(String(role))) throw new Error(`Invalid shot role at ${index}`);
   const included = raw.included;
   if (included !== undefined && typeof included !== "boolean") throw new Error(`Invalid shot included flag at ${index}`);
-  return { shotId, ...(role === undefined ? {} : { role: role as "anchor" | "shot" }), ...(included === undefined ? {} : { included }) };
+  const rawTitle = typeof raw.title === "string" ? raw.title.trim() : "";
+  if (rawTitle.length > 120) throw new Error(`Shot title at ${index} is longer than 120 characters`);
+  return {
+    shotId,
+    ...(role === undefined ? {} : { role: role as "anchor" | "shot" }),
+    ...(included === undefined ? {} : { included }),
+    ...(rawTitle ? { title: rawTitle } : {}),
+  };
 }
 
 /** Injected candidate parsers (they live in mcpGenerationTools and are also used by the single-shot path). */
@@ -115,27 +131,42 @@ export type MultiShotCandidateParsers = {
 export type AssertReferencesResolvable = (projectId: string, references: ReadonlyArray<PlanCandidate["references"][number]>) => void;
 
 /**
- * P4 S6.5 `plan` 入口: parse one client-supplied shot `{ shotId?, role?, included?, candidate }` into a
- * draft shot. An explicit `candidate` is a FULL PlanCandidate (same shape single-shot create takes) —
- * reusing `candidateFrom` means the `plan` entrance shares the single-shot validation (no second parser).
+ * P4 S6.5 `plan` 入口: parse one client-supplied shot into a draft shot.
  *
- * 一镜**没带** `candidate` 时它就是一份语义镜（prompt + 可选 provider/model/参数/参考）——那正是 20 动词
- * `draft_shots` 交出来的形状。2026-09-18 之前这里直接 `candidateFrom(undefined)`，整条多镜路对着模型
- * 抛一段裸 zod。语义镜交给**单镜那一个**解析器 `semanticCandidateFromParams` 编译（不长第二个解析器，
- * 也就同样继承它「显式身份不借用默认模型的 mode」那条纪律）。
+ * 一个镜可以**整只给 candidate**（PlanCandidate 原样，历史写法），也可以像单镜 create 那样只给语义字段
+ * （`prompt` + 可选 `taskKind`/`modelId`/`modeId`/`parameters`/`references`）。两者都走
+ * `semanticCandidateFromParams` ——它自己第一行就是「给了 candidate 就原样解析」，所以显式候选那条路逐字节
+ * 不变；缺候选时由它按用户保存的默认模型合成，和单镜 create 同一台合成器、同一条报错。
+ *
+ * 为什么必须两种都收：单镜路早就修过这个毛病（`mcpGenerationTools.ts` 单镜分支的注释原话——「让模型不必去
+ * 发明内部 candidate ID 和供应商接线，**之前的行为表现为一次假拒绝**」），但只修了 N=1 那个 arity。N≥2 这条
+ * 仍然硬要 `candidate`，于是 lane 上的 `draft_shots` 一到多镜就被 zod 以 `Required` 拒掉——同一份镜头描述，
+ * 一个镜收、两个镜拒。这里把那条不对称删掉，而不是再长一台合成器（P1）。
+ *
+ * `semantic` 不注入时行为仍然安全：显式 candidate 照常过，缺候选的镜头拿到人话「没有配置可用的模型」，
+ * 而不是 zod 的 `Required`。
+ *
+ * 走同一台合成器还带来第二件事（2026-09-18 另一份根因合同的原话）：它「显式身份不借用默认模型的 mode」
+ * 那条纪律，多镜路逐字继承——不是靠这里再抄一遍。
  */
 export function draftShotFromPlan(
   value: unknown,
   index: number,
   parsers: MultiShotCandidateParsers,
-  compileSemanticShot?: (params: Record<string, unknown>, shotId: string) => PlanCandidate,
+  semantic?: Pick<SemanticGenerationCandidateDeps, "defaultModelForTaskKind" | "registry" | "allowRegistryFallback" | "resolveAssetReferenceIdentity">,
 ): GenerationOperationDraftShot {
   const raw = parsers.record(value, `generation shot ${index}`);
   const env = shotEnvelope(raw, index, `shot-${index + 1}`);
-  if (raw.candidate === undefined && compileSemanticShot) {
-    return { ...env, candidate: compileSemanticShot(raw, env.shotId) };
-  }
-  const candidate = parsers.candidateFrom(raw.candidate);
+  const candidate = semanticCandidateFromParams({
+    // 逐镜 candidateId 跟着 shotId 走（与 `draftShotFromStoryboard` 同一约定），草稿改一镜不动其它镜。
+    operationId: env.shotId,
+    params: raw,
+    candidateFrom: parsers.candidateFrom,
+    ...(semantic?.defaultModelForTaskKind ? { defaultModelForTaskKind: semantic.defaultModelForTaskKind } : {}),
+    ...(semantic?.registry ? { registry: semantic.registry } : {}),
+    ...(semantic?.allowRegistryFallback ? { allowRegistryFallback: semantic.allowRegistryFallback } : {}),
+    ...(semantic?.resolveAssetReferenceIdentity ? { resolveAssetReferenceIdentity: semantic.resolveAssetReferenceIdentity } : {}),
+  });
   return { ...env, candidate };
 }
 
@@ -184,6 +215,7 @@ export function draftShotFromStoryboard(draft: StoryboardShotDraft, index: numbe
 
 /** The shared derivations the multi-shot factory needs (all pure, all single source of truth from S2/S4). */
 export type MultiShotHelperDeps = {
+  /** `resolve` 是密封期用的；`snapshot` 是语义合成期用的（缺省即不做目录兜底）。 */
   registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   videoModelCandidates?: readonly VideoModelCandidate[];
   planStoryboard?: (input: {
@@ -216,6 +248,8 @@ export type MultiShotHelperDeps = {
   allowRegistryFallback?: boolean;
   /** P4 §5.1.4: 校验复用锚（references）存在且属于本项目。未注入 = 不校验（向后兼容）。 */
   assertReferencesResolvable?: AssertReferencesResolvable;
+  /** assetId → 可引用身份。与单镜路同一台解析器；未注入 = 只收已经带身份的参考。 */
+  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */
@@ -227,30 +261,6 @@ type OperationWithShots = { shots?: ReadonlyArray<GenerationOperationDraftShot> 
  * Extracted from the handler closure to keep mcpGenerationTools.ts under the 800-line shell gate (R9).
  */
 export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
-  /**
-   * 一镜没带 `candidate` 时的编译口：交给单镜那一个语义解析器，所以「显式点名的模型算数、
-   * 没点名就只用保存过的默认、都没有就诚实拒绝」这三条在多镜路上逐字相同。
-   * `durationSeconds` 是计划层的名字，供应商合同用 `duration`——与 storyboard 路同一条换名规则。
-   */
-  const compileSemanticShot = (raw: Record<string, unknown>, shotId: string): PlanCandidate => {
-    const declared = raw.parameters && typeof raw.parameters === "object" && !Array.isArray(raw.parameters)
-      ? (raw.parameters as Record<string, unknown>)
-      : undefined;
-    const durationSeconds = typeof raw.durationSeconds === "number" ? raw.durationSeconds : undefined;
-    const parameters = durationSeconds !== undefined
-      && declared?.duration === undefined && declared?.durationSeconds === undefined
-      ? { ...(declared ?? {}), duration: durationSeconds }
-      : declared;
-    return semanticCandidateFromParams({
-      operationId: shotId,
-      params: { ...raw, ...(parameters ? { parameters } : {}) },
-      candidateFrom: deps.parsers.candidateFrom,
-      ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
-      ...(deps.registry.snapshot ? { registry: { snapshot: deps.registry.snapshot } } : {}),
-      ...(deps.allowRegistryFallback ? { allowRegistryFallback: true } : {}),
-    });
-  };
-
   const storyboardDefaults = (taskKind: GenerationDefaultTaskKind): { moduleId: string; providerId: string; modelId: string; mode: string; modeId?: string } => {
     const configured = deps.defaultModelForTaskKind?.(taskKind);
     if (configured) return configured;
@@ -274,7 +284,14 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     let shots: GenerationOperationDraftShot[];
     if (Array.isArray(params.shots)) {
       if (params.shots.length === 0) throw new Error("多镜生成需要至少一个镜头");
-      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers, compileSemanticShot));
+      shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers, {
+        ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
+        ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
+        ...(deps.allowRegistryFallback ? { allowRegistryFallback: deps.allowRegistryFallback } : {}),
+        ...(deps.resolveAssetReferenceIdentity
+          ? { resolveAssetReferenceIdentity: (assetId: string) => deps.resolveAssetReferenceIdentity!(projectId, assetId) }
+          : {}),
+      }));
     } else if (typeof params.scriptText === "string" || isLongFormGenerationRequest(params)) {
       // A minute-scale natural-language request must not silently collapse to
       // one provider clip. Promote it to the same storyboard seam as an
@@ -379,13 +396,11 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     if (!operation.shots || operation.shots.length === 0) return undefined;
     const sealedShots: SealedMultiShotEntry[] = operation.shots.map((shot) => {
       const included = shot.included !== false;
-      if (!included) return { shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), included: false, candidate: shot.candidate };
+      if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
       const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
       return {
-        shotId: shot.shotId,
-        ...(shot.role ? { role: shot.role } : {}),
-        ...(shot.included !== undefined ? { included: shot.included } : {}),
+        ...generationShotEnvelopeOf(shot),
         candidate: { ...normalized, sealedContractHash: contract.contractHash },
         contract,
       };

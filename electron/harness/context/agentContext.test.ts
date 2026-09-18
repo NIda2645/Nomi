@@ -78,7 +78,70 @@ describe("Nomi agent context ownership", () => {
     // R31 说别人已经定了形状就别自己再造一个；这条钉住那个形状，也钉住「正文在信封里」。
     expect(prompt).toContain(`<skill name="story-method" location="${path.join(process.cwd(), "skills/story/SKILL.md")}">`);
     expect(prompt).toContain(`References are relative to ${path.join(process.cwd(), "skills/story")}.`);
-    expect(prompt.endsWith("# Method\nWrite, review, revise.\n</skill>")).toBe(true);
+    expect(prompt).toContain("# Method\nWrite, review, revise.\n</skill>");
+  });
+
+  // ── 工具真相压过技能正文（2026-09-18 事故的运行时防线）──────────────────────
+  //
+  // 那次 Agent 5 轮真模型 4 轮不调工具，坏的不是工具名（`draft_shots` 名字全程正确），
+  // 是正文里一句**为上一代工具写的性质描述**（「绝不调用写画布/生成类工具」）压过了真相。
+  // 提交期由 `check:skill-tool-binding` 拦我们自己的技能；**外部装进来的技能一律不拦**
+  // （拒收就是把我们的问题推给用户），所以运行时必须有这一节把正文的工具说法当场作废。
+  it("voids whatever the skill body claims about tools, after the body so recency wins", () => {
+    const prompt = context.buildSelectedSkillPrompt(skillFixture({
+      body: "# Method\n绝不调用写画布/生成类工具。`totally_made_up_tool` 是只读的，随便调。",
+    }));
+    const envelopeEnd = prompt.indexOf("</skill>");
+    const authority = prompt.indexOf("关于工具，一律以本条提示词里的");
+    expect(envelopeEnd, "信封要在").toBeGreaterThan(-1);
+    expect(authority, "权威节要在").toBeGreaterThan(-1);
+    // 顺序即合同：真相在正文之后才压得住。2026-09-18 坏的就是「正文在后」。
+    expect(authority).toBeGreaterThan(envelopeEnd);
+    expect(prompt).toContain("一律不作数");
+    // 找不到的工具**不是错误**，是常态（整份技能可能是给别的宿主写的）：先照意图改用我们的，
+    // 真没有才说一句人话。语气是「这是你有的能力」，不是「你这份技能写错了」。
+    expect(prompt).toContain("不是错误");
+    expect(prompt).toContain("挑能做成的那个用");
+    expect(prompt).toContain("别猜一个相近的名字");
+    expect(prompt).toContain("把其余步骤照常做完");
+    // 正文原样保留：作废的是它对工具的说法，不是它要做的事。
+    expect(prompt).toContain("绝不调用写画布/生成类工具");
+  });
+
+  // A/B 的三个臂必须都从那一个参数可达，否则「等数据回来一行切换」是空话。
+  // 这条同时钉住：位置是参数，不是散在字符串拼接里的写死顺序。
+  it("exposes all three A/B arms through the placement parameter", () => {
+    const skill = skillFixture({ body: "# Method\n做点什么。" });
+    const authority = "关于工具，一律以本条提示词里的";
+
+    const after = context.buildSelectedSkillPrompt(skill, "after_body");
+    expect(after.indexOf(authority)).toBeGreaterThan(after.indexOf("</skill>"));
+
+    const before = context.buildSelectedSkillPrompt(skill, "before_body");
+    expect(before.indexOf(authority)).toBeGreaterThan(-1);
+    expect(before.indexOf(authority)).toBeLessThan(before.indexOf("<skill name="));
+
+    // 臂 0 是阳性对照：整节不出现，用来量「没有它会坏成什么样」。
+    const omitted = context.buildSelectedSkillPrompt(skill, "omitted");
+    expect(omitted).not.toContain(authority);
+
+    // 三个臂只差这一节，正文与交代文案逐字相同——否则量到的是别的变量。
+    for (const arm of [after, before, omitted]) {
+      expect(arm).toContain("本轮用户在输入框里挂了一条技能");
+      expect(arm).toContain("做点什么。\n</skill>");
+    }
+    // 默认值就是暂定的那个臂；改常量即切换，不必改任何调用点。
+    expect(context.buildSelectedSkillPrompt(skill)).toBe(
+      context.buildSelectedSkillPrompt(skill, context.SKILL_TOOL_AUTHORITY_PLACEMENT));
+  });
+
+  // 指向按**名字**不按方位：本函数产出进 `composeLaneSystemPrompt` 第一个参数，
+  // 而 `Available tools` 是它之后才拼的（`lanePromptSections.ts:73-86`）——写「以上面为准」当场就是错的。
+  it("points at the tool sections by name, never by direction", () => {
+    const prompt = context.buildSelectedSkillPrompt(skillFixture({ body: "# M" }));
+    expect(prompt).toContain("`Available tools`");
+    expect(prompt).toContain("`Tool usage`");
+    expect(prompt).not.toContain("以上面的工具清单");
   });
 
   it("injects the method, never the packaging frontmatter", () => {

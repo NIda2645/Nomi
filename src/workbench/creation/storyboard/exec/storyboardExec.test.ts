@@ -165,6 +165,71 @@ describe('deriveShotRowExec（行状态机）', () => {
     expect(bare.waitingRefs[0]?.anchor.id).toBe('hero')
   })
 
+  // ── 自带素材的锚（外部参考）：@ 引用素材库/上传、或「用作… → 设为首帧/存为参考」建出来的那种。
+  // materialize 对这一族**从不建参考卡节点**（storyboardPlan.ts 的三处判据都是 referenceUrl || referenceSourceNodeId），
+  // 所以状态层去找一个「不会存在的锚节点」再判「等参考图」，是同一件事的第二份真相。
+  const libraryAnchor: PlanAnchor = {
+    id: 'lib', kind: 'prop', name: 'library.png', description: '', carrier: 'visual',
+    referenceUrl: 'nomi-local://asset/p/assets/library.png', referenceKind: 'image',
+  }
+  const intakeAnchor: PlanAnchor = {
+    id: 'intake', kind: 'prop', name: '镜 6', description: '', carrier: 'visual',
+    referenceUrl: 'nomi-local://asset/p/assets/shot6.png', referenceKind: 'image', referenceSourceNodeId: 'n-shot6',
+  }
+  const withAnchor = (anchor: PlanAnchor, shot: PlanShot, nodes: GenerationCanvasNode[] = [], mode: ArchetypeMode | null = i2vMode) =>
+    deriveShotRowExec({ plan: planOf([shot], [anchor, styleAnchor]), shot, designId: DESIGN, nodes, mode })
+
+  it('@ 引用的素材库图：没有 referenceBindings 也不算「等参考图」（素材就在 URL 里）', () => {
+    const shot = shotOf({ anchorIds: ['lib'] })
+    const exec = withAnchor(libraryAnchor, shot)
+    expect(exec.waitingRefs).toEqual([])
+    expect(exec.status).toBe('ready')
+  })
+
+  // 结果即收的锚指着画布上一个**已经出了图**的镜头节点；素材随一条参考边从那个节点走。
+  const intakeSourceNode = nodeOf({
+    id: 'n-shot6', kind: 'image', title: '镜头 6',
+    result: { id: 'r6', type: 'image', url: 'nomi-local://shot6.png', createdAt: 1 },
+    meta: { storyboardDesignId: DESIGN, shotId: 'shot-6' },
+  })
+
+  it('结果即收（设为首帧/存为参考）建出的锚带 referenceSourceNodeId：源节点出了图就不算「等参考图」', () => {
+    const shot = shotOf({ anchorIds: ['intake'] })
+    const exec = withAnchor(intakeAnchor, shot, [intakeSourceNode])
+    expect(exec.waitingRefs).toEqual([])
+    expect(exec.status).toBe('ready')
+  })
+
+  it('源节点被删/还没出图 → 这一行照旧等，且等的就是它（那条参考边接不上，素材真的到不了模型）', () => {
+    const shot = shotOf({ anchorIds: ['intake'] })
+    const dangling = withAnchor(intakeAnchor, shot, [])
+    expect(dangling.status).toBe('waiting-refs')
+    expect(dangling.waitingRefs.map((ref) => ref.anchor.id)).toEqual(['intake'])
+    const pending = withAnchor(intakeAnchor, shot, [nodeOf({ id: 'n-shot6', kind: 'image', title: '镜头 6' })])
+    expect(pending.status).toBe('waiting-refs')
+  })
+
+  it('没钉模型的行（mode=null，参考列只有 @ 入口）也一样：外部参考不把整行拖进等待', () => {
+    const shot = shotOf({ anchorIds: ['lib'] })
+    const exec = withAnchor(libraryAnchor, shot, [], null)
+    expect(exec.waitingRefs).toEqual([])
+    expect(exec.status).toBe('ready')
+  })
+
+  it('类级不变量：要生成的参考卡照旧会等；自带素材的一张都不等（同一份 plan 里混着两种）', () => {
+    const shot = shotOf({ anchorIds: ['hero', 'lib', 'intake'] })
+    const exec = deriveShotRowExec({
+      plan: planOf([shot], [hero, libraryAnchor, intakeAnchor]), shot, designId: DESIGN, nodes: [intakeSourceNode], mode: i2vMode,
+    })
+    expect(exec.waitingRefs.map((ref) => ref.anchor.id)).toEqual(['hero'])
+    expect(exec.status).toBe('waiting-refs')
+  })
+
+  it('自带素材的锚不进 unlockedRefs：批量不该为一张永远不会被「锁定」的外部图停下', () => {
+    const shot = shotOf({ anchorIds: ['lib'] })
+    expect(withAnchor(libraryAnchor, shot).unlockedRefs).toEqual([])
+  })
+
   it('锚出了图但没锁：单跑不拦（ready），批量前经 unlockedRefs 排除', () => {
     const unlockedAnchor = nodeOf({
       ...readyAnchor,

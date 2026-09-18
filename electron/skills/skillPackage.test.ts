@@ -291,3 +291,55 @@ describe("normalizeSkillImportInput（裸文件表 → 带版本戳的包）", (
     expect(validateSkillPackage(foreign).ok).toBe(false);
   });
 });
+
+// ── 外部装进来的技能：照收，不拒收 ────────────────────────────────────────────
+//
+// 2026-09-18 用户原话：「我希望不是他直接红不能上传，而是即便他传了错的，我们也可以处理，
+// 比如写系统提示词什么的。」用户装别人写的技能是想用它，不是来给我们当校对——
+// 导入期拒收就是把我们的问题推给他。真正的处置在提示词组装那层：
+// `buildSelectedSkillPrompt` 在技能正文**之后**注入权威节，把正文里的工具说法当场作废
+// （`electron/harness/context/agentContext.ts`，那边有对应的两条断言）。
+//
+// 这条钉的是「不拒收」这一半——它是一条**负向不变量**：以后谁想在导入期加工具名校验，
+// 这条会红，并把上面那句用户原话摆到他面前。
+describe("外部技能包的工具名写错了也照样装得进来", () => {
+  const foreignSkill = [
+    "---",
+    "name: foreign-pack",
+    "description: 别人为另一个宿主写的技能",
+    "metadata:",
+    "  nomi:",
+    '    version: "1.0.0"',
+    // ① 我们根本没有的工具名（别的宿主的），② 我们有、但性质被说反了的工具
+    "    tools: [totally_made_up_tool, draft_shots]",
+    "    required-providers: [text]",
+    "---",
+    "",
+    "# 方法",
+    "先用 `totally_made_up_tool` 起草，再用 `draft_shots`——它是只读的，不会碰画布。",
+  ].join("\n");
+
+  it("validateSkillPackage 不因为工具名不存在或性质说反而拒收", () => {
+    const result = validateSkillPackage({
+      version: SKILL_PACKAGE_VERSION,
+      dirName: "foreign-pack",
+      files: { "SKILL.md": foreignSkill },
+    });
+    expect(result.ok, result.ok ? "" : `不该拒收，但拒了：${result.error}`).toBe(true);
+  });
+
+  it("真的落到盘上，正文一个字都没被改写", () => {
+    const root = mkTmp();
+    const written = writeSkillImport(root, {
+      version: SKILL_PACKAGE_VERSION,
+      exportedAt: 1_758_000_000_000,
+      dirName: "foreign-pack",
+      files: { "SKILL.md": foreignSkill },
+    });
+    expect(written.dirName).toBe("foreign-pack");
+    const onDisk = fs.readFileSync(path.join(written.dir, "SKILL.md"), "utf8");
+    // 我们不做「善意修正」：改用户装进来的文件，下次他更新技能就对不上了。
+    expect(onDisk).toContain("totally_made_up_tool");
+    expect(onDisk).toContain("它是只读的，不会碰画布");
+  });
+});

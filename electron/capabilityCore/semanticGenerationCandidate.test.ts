@@ -70,6 +70,56 @@ describe("semantic generation candidate", () => {
     });
   });
 
+  // ── 2026-09-18 回归：参考素材的身份归宿主，不归模型（`docs/fixes/2026-09-18-verb-host-input-conformance`）──
+  it("参考素材只给 assetId 时，身份由注入的解析器补齐", () => {
+    const candidate = semanticCandidateFromParams({
+      operationId: "op-ref",
+      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-1", role: "character" }] },
+      candidateFrom: parse,
+      allowRegistryFallback: true,
+      registry,
+      resolveAssetReferenceIdentity: (assetId) => (assetId === "asset-1" ? { contentHash: "a".repeat(64), version: 1 } : undefined),
+    });
+    expect(candidate.references).toEqual([{ assetId: "asset-1", role: "character", contentHash: "a".repeat(64), version: 1 }]);
+  });
+
+  it("已经钉住身份的参考逐字节不变，解析器不会被再叫一次", () => {
+    let calls = 0;
+    const pinned = { assetId: "asset-2", contentHash: "b".repeat(64), version: 3, kind: "image" as const };
+    const candidate = semanticCandidateFromParams({
+      operationId: "op-pinned",
+      params: { prompt: "把这张图改成水彩风", references: [pinned] },
+      candidateFrom: parse,
+      allowRegistryFallback: true,
+      registry,
+      resolveAssetReferenceIdentity: () => { calls += 1; return { contentHash: "c".repeat(64), version: 9 }; },
+    });
+    expect(candidate.references).toEqual([pinned]);
+    expect(calls).toBe(0);
+  });
+
+  it("素材不在本项目时报人话，而不是一个模型看不懂的 Required", () => {
+    const attempt = () => semanticCandidateFromParams({
+      operationId: "op-missing",
+      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-ghost" }] },
+      candidateFrom: parse,
+      allowRegistryFallback: true,
+      registry,
+      resolveAssetReferenceIdentity: () => undefined,
+    });
+    expect(attempt).toThrow(/asset-ghost/);
+    expect(attempt).toThrow(/look_at_media/);
+    // 阳性对照：同一条路在解析得到时是通的，所以上面的红不是「这条路恒抛」。
+    expect(() => semanticCandidateFromParams({
+      operationId: "op-present",
+      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-ghost" }] },
+      candidateFrom: parse,
+      allowRegistryFallback: true,
+      registry,
+      resolveAssetReferenceIdentity: () => ({ contentHash: "d".repeat(64), version: 1 }),
+    })).not.toThrow();
+  });
+
   it("lets explicit fields override saved defaults without exposing internal IDs", () => {
     const candidate = semanticCandidateFromParams({
       operationId: "op-explicit",

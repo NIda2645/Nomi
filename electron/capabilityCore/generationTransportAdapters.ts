@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { GENERATION_METHODS, GENERATION_METHOD_NAMES, isGenerationMethodName, type GenerationMethodName } from "../shared/agentCapabilities/generation";
-import { generationPlanInputSchema, generationStatusInputSchema, GENERATION_RECONCILE_OUTCOMES } from "../shared/agentCapabilities/generationPlanSchemas";
+import { generationPlanInputSchema, generationStatusInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectLeaseV2 } from "./projectLease";
 import type { DispatchContext } from "./dispatcher";
@@ -65,24 +65,72 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
   return { ok: false, code, message };
 }
 
+/**
+ * 每个方法别名（`nomi_operation_create` 等）的入参形状，**从语义联合里现取那一支**，不手抄。
+ *
+ * 2026-09-18 根因：这里原本手写了一份 create/patch/present/reconcile 的形状，而且**比真契约窄**——
+ * create 那支只列了 prompt/candidate/shots/scriptText/cardHidden，真契约的 `createFields` 还有
+ * taskKind、providerId、modelId、mode、modeId、variantId、parameters、references。
+ * 手抄的那份是 `.strict()`，所以模型写对了真契约里的字段，走到这条别名路上反而被拒——
+ * 而且拒得没有道理可讲。今天没爆只是因为常驻 lane 只路由 `plan`/`status` 两个方法，
+ * 走不到这几支；**它是一颗埋着的同类地雷，不是一处无害的重复**。
+ *
+ * 按 `operation` 字面量取分支而不是按下标（`options[1]`）：下标会因为联合重排而**静默指到别的分支**，
+ * 那正是这条 fix 要消灭的失效方式。取不到就抛——宁可装配期炸，也不要悄悄退回一个更窄的形状。
+ */
+const PLAN_BRANCH_FOR_METHOD: Readonly<Record<string, string>> = {
+  [GENERATION_METHODS.create]: "create",
+  [GENERATION_METHODS.patch]: "patch",
+  [GENERATION_METHODS.present]: "present",
+  [GENERATION_METHODS.preview]: "preview",
+  [GENERATION_METHODS.context]: "context",
+};
+
+function branchByOperation(
+  union: typeof generationPlanInputSchema | typeof generationStatusInputSchema,
+  operation: string,
+): z.ZodObject<z.ZodRawShape> {
+  const found = (union.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>).find((option) => {
+    const literal = option.shape.operation as unknown as { _def?: { value?: unknown } } | undefined;
+    return literal?._def?.value === operation;
+  });
+  if (!found) throw new Error(`generation schema has no "${operation}" branch`);
+  return found;
+}
+
+export function legacyMethodSchemaForTest(toolName: string): z.ZodTypeAny {
+  return legacyMethodSchema(toolName);
+}
+
+function legacyMethodSchema(toolName: string): z.ZodTypeAny {
+  const planOperation = PLAN_BRANCH_FOR_METHOD[toolName];
+  if (planOperation) return branchByOperation(generationPlanInputSchema, planOperation).omit({ operation: true });
+  if (toolName === GENERATION_METHODS.reconcile) {
+    return branchByOperation(generationStatusInputSchema, "reconcile").omit({ operation: true });
+  }
+  return z.object({ operationId: z.string().trim().min(1) }).strict();
+}
+
 function parsedArgs(call: RuntimeToolCall): Record<string, unknown> {
   const semanticSchema = call.toolName === GENERATION_METHODS.plan
     ? generationPlanInputSchema
     : call.toolName === GENERATION_METHODS.status
       ? generationStatusInputSchema
       : undefined;
-  const schema = semanticSchema
-    ?? (call.toolName === GENERATION_METHODS.reconcile
-      ? z.object({ operationId: z.string().trim().min(1), outcome: z.enum(GENERATION_RECONCILE_OUTCOMES) }).strict()
-      : call.toolName === GENERATION_METHODS.create
-        ? z.object({ prompt: z.string().trim().min(1).optional(), candidate: z.record(z.unknown()).optional(), shots: z.array(z.unknown()).optional(), scriptText: z.string().trim().min(1).optional(), cardHidden: z.boolean().optional() }).strict()
-        : call.toolName === GENERATION_METHODS.patch
-          ? z.object({ operationId: z.string().trim().min(1), patch: z.record(z.unknown()) }).strict()
-          : call.toolName === GENERATION_METHODS.present
-            ? z.object({ operationId: z.string().trim().min(1), shotIds: z.array(z.string().trim().min(1)).optional() }).strict()
-            : z.object({ operationId: z.string().trim().min(1) }).strict());
+  const schema = semanticSchema ?? legacyMethodSchema(call.toolName);
   const parsed = schema.safeParse(call.args);
-  if (!parsed.success) throw Object.assign(new Error("generation_input_invalid"), { code: "generation_input_invalid" });
+  if (!parsed.success) {
+    // 说清**哪个字段为什么被拒**。2026-09-18 根因：这里原本只抛一个裸码，模型（和人）都看不到
+    // 是哪一项不合法，于是同一份载荷被原样重试三次、回合挂到超时。校验拒收必须自带理由——
+    // 一个说不出自己拒了什么的边界，等于把契约漂移变成静默故障。
+    const where = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw Object.assign(new Error(`generation_input_invalid — ${where}`), {
+      code: "generation_input_invalid",
+      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    });
+  }
   return parsed.data as Record<string, unknown>;
 }
 
