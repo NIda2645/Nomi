@@ -79,18 +79,6 @@ export type CredentialElicitationOutcome =
   | { kind: 'result'; result: Record<string, unknown> }
   | { kind: 'error'; message: string }
 
-/**
- * 新面的返回是 §4.3 的信封（`{ok, setupId, state, …}`），会话投影在 `state` 里；旧面直接就是投影。
- * 这里把两种形状收成一种，下游的取票/剥票逻辑只认一种。
- */
-function unwrapEnvelope(value: unknown): unknown {
-  const record = value as Record<string, unknown> | null
-  if (!record || typeof record !== 'object') return value
-  const state = record.state as Record<string, unknown> | undefined
-  if (!state || typeof state !== 'object') return value
-  return { ...state, ...(record.setupId ? { id: record.setupId } : {}) }
-}
-
 function ticketOf(projection: unknown): Ticket | null {
   const entry = (projection as Record<string, unknown> | null)?.credentialEntry as Record<string, unknown> | undefined
   if (!entry || typeof entry.url !== 'string' || typeof entry.elicitationId !== 'string') return null
@@ -115,10 +103,11 @@ export async function runIntegrationCredentialElicitation(input: {
   built: Record<string, unknown>
   /**
    * 开贴 key 页的那个方法。新面（`nomi_model_setup action=connect_provider`）在**同一跳**里
-   * 就开了页，所以这里要调的是它自己，而不是已经退役的 `integration.open_credentials`——
-   * 后者收的是 `{sessionId, expectedRevision}`，拿新面的入参去调它必然报错（CI 的打包冒烟先撞上了）。
+   * 就开了页，所以这里要调的是它自己——**必填**，没有默认值：留一个指向已退役的
+   * `integration.open_credentials` 的兜底，只会让下一次改名再悄悄走回去一次
+   * （这一轮 CI 的打包冒烟就是这么红的）。
    */
-  method?: string
+  method: string
   invoke: (method: string, params: Record<string, unknown>) => Promise<unknown>
   elicitation: Pick<ElicitationClient, 'requestUrl' | 'notifyComplete'>
   locale?: ResultLocale
@@ -127,18 +116,15 @@ export async function runIntegrationCredentialElicitation(input: {
   signal?: AbortSignal
 }): Promise<CredentialElicitationOutcome> {
   const locale = input.locale ?? 'zh-CN'
-  const envelope = await input.invoke(input.method ?? 'integration.open_credentials', input.built)
-  const opened = unwrapEnvelope(envelope)
+  const envelope = await input.invoke(input.method, input.built) as Record<string, unknown>
+  // 开场那一跳恒是 §4.3 信封（唯一的调用方就是新面），会话投影在它的 `state` 里。
+  const opened = { ...(envelope.state as Record<string, unknown>), ...(envelope.setupId ? { id: envelope.setupId } : {}) }
   /**
    * 回信保持**调用方那一面的形状**：新面收到的必须还是 §4.3 的信封（`ok/setupId/unverified/…`），
    * 只是它的 `state` 已经把用掉的一次性票剥掉了。剥票的逻辑只有一份，两种形状共用。
    */
-  const respond = (view: unknown, extra?: Record<string, unknown>): CredentialElicitationOutcome => {
-    const cleaned = withoutTicket(view, extra)
-    const record = envelope as Record<string, unknown> | null
-    const isEnvelope = Boolean(record && typeof record === 'object' && record.state && typeof record.state === 'object')
-    return { kind: 'result', result: isEnvelope ? { ...(record as Record<string, unknown>), state: cleaned } : cleaned }
-  }
+  const respond = (view: unknown, extra?: Record<string, unknown>): CredentialElicitationOutcome =>
+    ({ kind: 'result', result: { ...envelope, state: withoutTicket(view, extra) } })
   const uiOpened = (opened as Record<string, unknown> | null)?.credentialUiOpened === true
   const ticket = ticketOf(opened)
   // The provider name for the manual instruction: the ticket knows it, and so does the projection when
@@ -177,7 +163,8 @@ export async function runIntegrationCredentialElicitation(input: {
   const deadline = Date.now() + (input.waitMs ?? DEFAULT_WAIT_MS)
   for (;;) {
     if (input.signal?.aborted) throw input.signal.reason instanceof Error ? input.signal.reason : new Error('MCP request cancelled')
-    const current = unwrapEnvelope(await input.invoke('integration.get', { sessionId: ticket.sessionId })) as Record<string, unknown>
+    // 轮询读的是会话投影本体（`integration.get` 不包信封），回信时再按信封形状包回去。
+    const current = await input.invoke('integration.get', { sessionId: ticket.sessionId }) as Record<string, unknown>
     if (current?.credentialStatus === 'ready') {
       input.elicitation.notifyComplete(ticket.elicitationId)
       return respond(current)
