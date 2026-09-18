@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURRENT_CATALOG_VERSION } from "./types";
+import { withoutVendorFieldLossNotice } from "../shared/vendorFieldLossNotice";
 
 const safeStorageState = vi.hoisted(() => ({
   available: true,
@@ -495,7 +496,9 @@ describe("custom-call custom config secure persistence", () => {
     expect(secrets.decryptCustomConfigRecord(state.apiKeysByVendor["signed-relay"])).toEqual({
       shared: "encrypted-wins",
     });
-    expect(state.vendors[0].meta).toBeUndefined();
+    // 这条路径会跑到 v13 迁移，而它给修复前写过的自建连接盖了一条「声明可能丢了」的提示
+    // （vendorFieldLossRepair.ts）。本条断言问的是「旧 customConfig 明文清干净了吗」，剥掉那条再看。
+    expect(withoutVendorFieldLossNotice(state.vendors[0].meta)).toBeUndefined();
     expect(safeStorageState.isEncryptionAvailable).not.toHaveBeenCalled();
   });
 
@@ -521,7 +524,7 @@ describe("custom-call custom config secure persistence", () => {
     expect(store.upsertModelCatalogCustomCallConfig("signed-relay", [])).toEqual([]);
     const state = store.readCatalog();
     expect(state.version).toBe(CURRENT_CATALOG_VERSION);
-    expect(state.vendors.map((item) => item.meta)).toEqual([
+    expect(state.vendors.map((item) => withoutVendorFieldLossNotice(item.meta))).toEqual([
       { label: "first-public" },
       { label: "second-public" },
     ]);

@@ -4,17 +4,14 @@ import { findNonHeaderSafeChar, isJsonRecord, nowIso, type JsonRecord } from "..
 import { sanitizeName } from "../projects/repository";
 import { writeJsonFileAtomic } from "../jsonFile";
 import { CATALOG_FILE, getSettingsRoot, readJson } from "../runtimePaths";
-import { apiKeyDecryptStatus, type ApiKeyRecord, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
+import { apiKeyDecryptStatus, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
 import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
-import { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
-import { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
-import { migrateComfyWorkflowOutputs } from "./comfyuiWorkflowOutputMigration";
-import { migrateCatalogMediaContracts } from "./catalogMediaContractMigration";
-import { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
+import { migrateCatalogForward } from "./catalogMigrations";
 import type { AiSdkProviderKind, BillingModelKind, CatalogState, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./types";
 import { CURRENT_CATALOG_VERSION } from "./types";
 import { normalizeCustomCall } from "./customCallMode";
+import { sealUpsertDraft } from "./upsertDraft";
 import { derivePublishedExecution } from "../shared/modelPublication";
 import type { ModelAvailability } from "../shared/modelAvailability";
 import { createCatalogAvailability } from "./catalogModelAvailability";
@@ -23,9 +20,9 @@ import { depublishVendorForDisabledCredential } from "./credentialPublication";
 import { deleteVendorLineageAndRestore, removeVendorLineage, vendorLineageClosure } from "./vendorLineageLifecycle";
 import { guardAntigravityMappingWrite, guardAntigravityModelWrite, guardAntigravityVendorWrite } from "./antigravityWriteGuard";
 import { antigravityConnection } from "../ai/antigravityConnection";
-import { extractLegacyStages, normalizeLegacyMappings } from "./legacyMappingMigration";
+import { extractLegacyStages } from "./legacyMappingMigration";
 import {
-  applyPlainCustomConfig,
+  applyPlainCustomConfigWrite,
   hasLegacyCustomConfigField,
   legacyCustomConfig,
   migrateLegacyCustomConfigSecrets,
@@ -46,7 +43,6 @@ import {
 import { buildCatalogPackage, catalogPackageImportSchema, type CatalogPackage } from "./catalogPackageFormat";
 import { invalidateProviderAdapterRunsForVendors } from "../providerAdapter/store";
 import { invalidateVendorValidation, normalizedConnectionScope } from "./vendorValidationInvalidation";
-import { logWarn } from "../logging/logger";
 import { assertNoCredentialBindingRewrite, bindCredentialDestination } from "./credentialBinding"; // §6.1
 export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./customConfigStore";
 // 各版 relay 迁移各住独立模块（R9 分层：迁移与读写盘/事务无关）。这里只做接线 + 再导出，
@@ -80,7 +76,7 @@ export function readCatalog(): CatalogState {
 
   // Migrate forward. v1 → v2 tags pre-existing keys as plaintext-encoded;
   // reads preserve those records so catalog access never opens the OS keychain.
-  const migrated = migrateCatalogForward(parsed);
+  const migrated = migrateCatalogForward(parsed, defaultCatalog, writeCatalog);
 
   const apiKeysByVendor = migrated.apiKeysByVendor || {};
   return {
@@ -111,127 +107,9 @@ export function readCatalog(): CatalogState {
  */
 export function ensureBuiltinModelSeeds(): void {
   const current = readJson<CatalogState | null>(catalogPath(), null);
-  const base = current ? migrateCatalogForward(current) : defaultCatalog();
+  const base = current ? migrateCatalogForward(current, defaultCatalog, writeCatalog) : defaultCatalog();
   const { state, changed } = applyBuiltinSeeds(base, new Date().toISOString());
   if (!current || changed) writeCatalog(state);
-}
-
-/**
- * In-place forward migration. Unknown future versions stay untouched. A v8
- * catalog carrying legacy plaintext custom config intentionally stays at v8
- * until an explicit credential write can migrate every secret atomically.
- */
-function migrateCatalogForward(state: CatalogState): CatalogState {
-  let s = state;
-
-  if (!s.version || (s.version as number) < 1) {
-    // Garbled state — fall back to defaults rather than risk corruption.
-    return defaultCatalog();
-  }
-
-  if (s.version === 1) {
-    // v1 → v2: tag every existing API key as plaintext so M5.2 knows what to upgrade.
-    const apiKeysByVendor: Record<string, ApiKeyRecord> = {};
-    for (const [k, rec] of Object.entries(s.apiKeysByVendor || {})) {
-      apiKeysByVendor[k] = { ...rec, enc: rec.enc || "plain" };
-    }
-    s = { ...s, version: 2, apiKeysByVendor };
-    writeCatalog(s);
-  }
-
-  if (s.version === 2) {
-    // v2 → v3: collapse legacy {requestMapping,responseMapping} into flat
-    // {create,query}. Handles three legacy shapes — bare op, v2 envelope, and
-    // split create/query rows — and dedupes by (vendorKey, taskKind).
-    s = { ...s, version: 3, mappings: normalizeLegacyMappings(s.mappings) };
-    writeCatalog(s);
-  }
-
-  if (s.version === 3) {
-    // v3 → v4: 给用户自建中转的旧图像/视频 op 补 paramMap（铁律翻译层），修「档案中性化后比例/清晰度
-    // 发不出去」。只碰非内置 vendor 的 OpenAI 兼容 relay op（见 migrateRelayParamMaps）。
-    const { mappings } = migrateRelayParamMaps(s.mappings);
-    s = { ...s, version: 4, mappings };
-    writeCatalog(s);
-  }
-
-  if (s.version === 4) {
-    // v4 → v5: 存量中转 image 条目补图生图能力（image_edit mapping + supportsReferenceImages +
-    // 老标准参数升级）。此前这些字段只在新接入写，老条目要「删了重加」——迁移根治（见
-    // migrateRelayImageEditCapability 注释 + docs/plan/2026-07-06-i2i-reference-reliability.md）。
-    const migrated = migrateRelayImageEditCapability(s);
-    s = { ...migrated.state, version: 5 };
-    writeCatalog(s);
-  }
-
-  if (s.version === 5) {
-    // v5 → v6：同一中转的不同图片模型按真实 image_edit 协议精确分流；存量 Grok 自动修复，无需删后重加。
-    const migrated = migrateRelayImageEditProtocols(s);
-    s = { ...migrated.state, version: 6 };
-    writeCatalog(s);
-  }
-
-  if (s.version === 6) {
-    // v6 → v7：**重跑**协议分流。v6 迁移跑在「gpt-image/dall-e-2 还没接 OpenAI multipart edits」之前，
-    // 故存量 gpt-image-2 等被留在 chat/completions（图生图在只认 /v1/images/edits 的中转站接不上）。
-    // migrateRelayImageEditProtocols 幂等，重跑即按新智能默认把 gpt-image/dall-e-2 升到 multipart。
-    // 无版本 bump 就不会重跑（v6 已是终版）——所以必须 bump 到 v7 强制存量用户也升级。
-    const migrated = migrateRelayImageEditProtocols(s);
-    s = { ...migrated.state, version: 7 };
-    writeCatalog(s);
-  }
-
-  if (s.version === 7) {
-    // v7 → v8：存量中转 video 条目补「图生视频」通道（image_to_video mapping）。接入路径此前只建
-    // text_to_video，视频节点一连参考图就报「没有配置图生视频通道 · 请删除后重新接入」——而重接
-    // 也不会建（根因在接入路径，已同 commit 修）。迁移让存量直接可用，不必删了重加。
-    const migrated = migrateRelayVideoImageToVideo(s);
-    s = { ...migrated.state, version: 8 };
-    writeCatalog(s);
-  }
-
-  if (s.version === 8) {
-    const hasLegacyCustomConfig = s.vendors.some(hasLegacyCustomConfigField);
-    if (!hasLegacyCustomConfig) {
-      s = { ...s, version: 9 };
-      writeCatalog(s);
-    }
-  }
-
-  if (s.version === 9) {
-    s = { ...migrateComfyWorkflowOutputs(s), version: 10 };
-    writeCatalog(s);
-  }
-
-  if (s.version === 10) {
-    const before = s;
-    const migrated = migrateCatalogMediaContracts(s);
-    s = migrated.unresolved ? migrated.state : { ...migrated.state, version: 11 };
-    if (!migrated.unresolved || migrated.state !== before) writeCatalog(s);
-    if (migrated.unresolved) logWarn("catalog", "v11-media-migration-unresolved");
-  }
-
-  if (s.version === 11) {
-    // v11 → v12: credential-bearing network config (proxyUrl / extraHeaders) moves to the
-    // encrypted credential record. Like v8→v9 customConfig, defer the secret encryption until
-    // an explicit vendor write can migrate every secret atomically — a plain forward read must
-    // not open the keychain to re-encrypt. Advance the version only when nothing legacy remains.
-    const hasLegacyNetworkConfig = s.vendors.some(hasLegacyNetworkConfigField);
-    if (!hasLegacyNetworkConfig) {
-      s = { ...s, version: 12 };
-      writeCatalog(s);
-    }
-  }
-
-  if ((s.version as number) > CURRENT_CATALOG_VERSION) {
-    // Newer file than this app understands — return it untouched so it stays
-    // readable, and let `writeCatalog` REFUSE any write back (read-only guard).
-    // This actually enforces "don't downgrade" instead of only warning about it.
-    logWarn("catalog", "file-newer-than-app-readonly", { fileVersion: s.version, appVersion: CURRENT_CATALOG_VERSION });
-    return s;
-  }
-
-  return s;
 }
 
 /**
@@ -360,17 +238,6 @@ export function getModelCatalogHealth(): unknown {
   return deriveModelCatalogHealth(readCatalog());
 }
 /**
- * 明确的 custom-config 凭据写边界：先加密，再从 vendor.meta 移除旧明文。
- * 全部 legacy 字段都清理完后，才在同一内存事务中升到 v9。
- */
-function applyPlainCustomConfigWrite(state: CatalogState, vendorKey: string, config: Record<string, string>): void {
-  applyPlainCustomConfig(state, vendorKey, config);
-  state.vendors = state.vendors.map((vendor) =>
-    vendor.key === vendorKey ? { ...vendor, meta: withoutLegacyCustomConfig(vendor.meta) } : vendor,
-  );
-  if (state.version === 8 && !state.vendors.some(hasLegacyCustomConfigField)) state.version = 9;
-}
-/**
  * 把一次 vendor upsert 应用到内存 state，不读盘不写盘。
  * 事务化导入与单条公开 upsert 共用它，避免两份合并逻辑漂移。
  */
@@ -412,24 +279,29 @@ function applyVendorUpsert(state: CatalogState, payload: unknown): Vendor {
   const proxyEnabled = typeof rawNetwork?.proxyEnabled === "boolean"
     ? rawNetwork.proxyEnabled
     : existing?.network?.proxyEnabled;
-  const vendor: Vendor = {
+  // 整份覆写：Vendor 的每个字段都要有一条裁决，漏一个编译红（见 upsertDraft.ts 的类根因说明）。
+  const vendor = sealUpsertDraft<Vendor>({
     key,
     name: String(raw.name || existing?.name || key).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     hasApiKey: existing?.hasApiKey ?? false,
+    // readCatalog 每次从 apiKeysByVendor[].verificationPending 现算并覆盖，落盘的值没有意义。
+    credentialVerificationPending: undefined,
     baseUrlHint: typeof raw.baseUrlHint === "string" ? raw.baseUrlHint.trim() || null : (existing?.baseUrlHint ?? null),
     authType: (raw.authType as Vendor["authType"]) || existing?.authType || "bearer",
     authHeader: typeof raw.authHeader === "string" ? raw.authHeader.trim() || null : (existing?.authHeader ?? null),
-    authQueryParam:
-      typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
+    authScheme: typeof raw.authScheme === "string" ? raw.authScheme.trim() || null : (existing?.authScheme ?? undefined),
+    authQueryParam: typeof raw.authQueryParam === "string" ? raw.authQueryParam.trim() || null : (existing?.authQueryParam ?? null),
     providerKind: normalizeProviderKind(raw.providerKind, existing?.providerKind ?? "openai-compatible"),
     // 绑定只从 existing 继承、永不从 payload 读（§6.1）：改地址不会顺手把绑定改掉。
-    ...(existing?.credentialBinding ? { credentialBinding: existing.credentialBinding } : {}),
+    credentialBinding: existing?.credentialBinding,
+    network: proxyEnabled !== undefined ? { proxyEnabled } : undefined,
+    // 用户数据（这家怎么传参考图）：不带该键=保留，显式 null=清除。三态同 Model.customCall。
+    assetIngestion: raw.assetIngestion === null ? undefined : ((raw.assetIngestion as Vendor["assetIngestion"]) ?? existing?.assetIngestion),
     meta: metaWithoutExtraHeaders(incomingMeta),
-    ...(proxyEnabled !== undefined ? { network: { proxyEnabled } } : {}),
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   state.vendors = [vendor, ...state.vendors.filter((item) => item.key !== key)];
   if (existing && previousScope !== normalizedConnectionScope(vendor)) invalidateVendorValidation(state, key);
   // Advance v11→v12 once no vendor still carries legacy plaintext network config
@@ -549,7 +421,7 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
     (request) => antigravityConnection.canEnable(request));
   const t = nowIso();
   const customCall = normalizeCustomCall(raw.customCall, existing?.customCall);
-  const model: Model = {
+  const model = sealUpsertDraft<Model>({
     modelKey,
     vendorKey,
     modelAlias: typeof raw.modelAlias === "string" ? raw.modelAlias.trim() || null : (existing?.modelAlias ?? null),
@@ -561,10 +433,10 @@ function applyModelUpsert(state: CatalogState, payload: unknown): Model {
     meta: raw.meta ?? existing?.meta,
     pricing: (raw.pricing as Model["pricing"]) || existing?.pricing,
     onboarding: (raw.onboarding as Model["onboarding"]) ?? existing?.onboarding,
-    ...(customCall ? { customCall } : {}),
+    customCall: customCall || undefined,
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   state.models = [
     model,
     ...state.models.filter((item) => !(item.vendorKey === vendorKey && item.modelKey === modelKey)),
@@ -630,26 +502,24 @@ function applyMappingUpsert(state: CatalogState, payload: unknown): Mapping {
   const query = (raw.query as HttpOperation | undefined) || legacy.query || legacyResp.query || existing?.query;
   const result = (raw.result as HttpOperation | undefined) || existing?.result;
   if (!create) throw new Error("create operation is required (method + path)");
-  const mapping: Mapping = {
+  const mapping = sealUpsertDraft<Mapping>({
     id,
     vendorKey,
     taskKind,
-    ...(modelKey ? { modelKey } : {}),
-    ...(modeId ? { modeId } : {}),
+    modelKey,
+    modeId,
     name: String(raw.name || existing?.name || taskKind).trim(),
     enabled: normalizeEnabled(raw.enabled, existing?.enabled ?? true),
     create,
-    ...(query ? { query } : {}),
-    ...(result ? { result } : {}),
-    ...(raw.statusMapping || legacy.statusMapping || existing?.statusMapping
-      ? {
-          statusMapping:
-            (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping,
-        }
-      : {}),
+    // 传输契约（同步/异步 + 任务不要了怎么办，见 transportDelivery.ts）：导入包会带，不许落盘即丢。
+    delivery: (raw.delivery as Mapping["delivery"]) ?? existing?.delivery,
+    abandon: (raw.abandon as Mapping["abandon"]) ?? existing?.abandon,
+    query: query || undefined,
+    result: result || undefined,
+    statusMapping: (raw.statusMapping as Record<string, string[]>) || legacy.statusMapping || existing?.statusMapping,
     createdAt: existing?.createdAt || t,
     updatedAt: t,
-  };
+  });
   guardAntigravityMappingWrite(mapping, (request) => Boolean(request && antigravityConnection.hasPassed(request)));
   state.mappings = [mapping, ...state.mappings.filter((item) => item.id !== id)];
   return mapping;
