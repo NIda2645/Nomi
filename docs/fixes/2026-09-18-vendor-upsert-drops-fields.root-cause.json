@@ -127,13 +127,13 @@
     {
       "kind": "write",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 106,
+      "line": 104,
       "symbol": "repairDroppedVendorSeedFields"
     },
     {
       "kind": "read",
       "path": "electron/catalog/vendorFieldLossRepair.ts",
-      "line": 78,
+      "line": 76,
       "symbol": "VENDOR_FIELD_LOSS_CUTOFF_ISO"
     },
     {

@@ -53,9 +53,7 @@ export type VendorFieldLossRepairReport = {
 };
 
 function withNotice(meta: unknown, stampedAt: string): unknown {
-  const base = isJsonRecord(meta) ? { ...meta } : {};
-  base[VENDOR_FIELD_LOSS_NOTICE_META_KEY] = stampedAt;
-  return base;
+  return { ...(isJsonRecord(meta) ? meta : {}), [VENDOR_FIELD_LOSS_NOTICE_META_KEY]: stampedAt };
 }
 
 
