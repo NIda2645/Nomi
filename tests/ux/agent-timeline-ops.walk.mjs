@@ -141,7 +141,7 @@ async function proposePlan({ prompt, readToolId, planToolId, plan, doneText }) {
   const planWire = await recorded(planCall.received, `${planToolId} plan request`)
   planCall.release({
     type: 'tool', id: planToolId, name: 'edit_timeline',
-    args: { summary: plan.summary, operations: plan.operations, revision: revisionFromToolResult(planWire.body, readToolId) },
+    args: { summary: plan.summary, operations: plan.operations, baseRevision: revisionFromToolResult(planWire.body, readToolId) },
   })
   return settled
 }
