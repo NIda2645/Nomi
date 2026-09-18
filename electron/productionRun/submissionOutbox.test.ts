@@ -159,14 +159,31 @@ describe("SubmissionOutbox", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("一个确定没写出去的失败落在确定态 needs_attention，预留被安全释放，且不自动重发", async () => {
+  it("确定没写出去 → 自动重发一次，幂等键逐字不变；用真实意图日志跑（生产形态）", async () => {
+    const repository = setup();
+    const paths = productionRunPaths(root, "run-1");
+    const intentLog = createProductionRunIntentLog({ filePath: paths.intents, macKey: "test-app-owned-key" });
+    const dispatch = vi.fn()
+      .mockRejectedValueOnce(new SubmissionNotDispatchedError("socket failed before write"))
+      .mockResolvedValueOnce({ providerTaskId: "provider-task-1" });
+
+    await outbox({ repository, dispatch, intentLog }).submit(request);
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch.mock.calls[0][0].idempotencyKey).toBe(dispatch.mock.calls[1][0].idempotencyKey);
+    expect(repository.read("project-1", "run-1")?.jobs[0].status).toBe("provider_accepted");
+    // 这一次尝试只有一条意图，且仍是 committed：它覆盖的就是同一个 attempt 的这两次调用。
+    expect(intentLog.list()).toHaveLength(1);
+    expect(intentLog.list()[0].status).toBe("committed");
+  });
+
+  it("重发也没写出去 → 落在确定态 needs_attention，预留被安全释放，且只重发一次", async () => {
     // 与下一条（收据丢了 → submission_unknown）是同一条轴的两端：
     // 「供应商那边什么都没发生」和「供应商可能已经收下」处置必须不同。
     const repository = setup();
     const dispatch = vi.fn().mockRejectedValue(new SubmissionNotDispatchedError("socket failed before write"));
 
     await expect(outbox({ repository, dispatch }).submit(request)).rejects.toBeInstanceOf(SubmissionNotDispatchedError);
-    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(2);
     const run = repository.read("project-1", "run-1")!;
     expect(run.jobs[0].status).toBe("needs_attention");
     expect(run.jobs[0].errorCode).toBe("provider_not_reached");

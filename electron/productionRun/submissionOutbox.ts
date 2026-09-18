@@ -258,7 +258,24 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
 
     let response: ProviderDispatchResult;
     try {
-      response = await deps.dispatch(dispatchInput);
+      try {
+        response = await deps.dispatch(dispatchInput);
+      } catch (error) {
+        // ── 「确定没写出去」→ 自动重发一次（且只有一次）。2026-09-18 拍板 ──
+        //
+        // 只有**能证明一个字节都没写出去**的失败走到这里（判据在
+        // `outboundDispatchEvidence.ts`，拿不出证据一律算 unknown）。这种失败里供应商那边
+        // 什么都没发生：不重发的代价是把一次本可自愈的网络抖动变成一张需要人去供应商核对的
+        // 单子，而这一笔钱用户刚刚在报价卡上点过确认——重发同一笔不需要再问他一次。
+        //
+        // 三重保险让它不可能变成第二次下单：① 证据本身（读写字节都是 0）；
+        // ② 幂等键逐字不变（`dispatchInput.idempotencyKey`，供应商档案声明了 submitIdempotency）；
+        // ③ 只重发一次——第二次再失败就说明不是抖动，落回确定态 `needs_attention` 交给人。
+        // 不碰意图日志：这一次尝试的 `provider.submit` 意图已经 committed，它覆盖的正是
+        // 「同一个 attempt、同一个幂等键」的这两次调用；崩溃恢复看到它仍然正确地说「未知」。
+        if (!(error instanceof SubmissionNotDispatchedError)) throw error;
+        response = await deps.dispatch(dispatchInput);
+      }
       if (!response.providerTaskId.trim()) throw new Error("Provider returned an empty task id");
       await deps.afterDispatch?.(response, dispatchInput);
       run = jobCommand(request, "provider-accepted", "provider_accepted", {

@@ -162,4 +162,30 @@ describe("提交请求根本没写出去时（keep-alive 连接对面已关）",
     }
     expect(run.status).toBe("needs_attention");
   });
+
+  it("只是一次抖动时：同一个幂等键重发一次就过，整批照常跑完（这就是走查里那条红的解）", async () => {
+    // 与上一条的唯一区别：这一镜只在**第一次**失败。真实现场就是这一种——
+    // 池子里那条死连接被用掉之后，第二次就是一条新连接。
+    const shots = [shotEntry("shot-1", "a"), shotEntry("shot-2", "b"), shotEntry("shot-3", "c"), shotEntry("shot-4", "d")];
+    const { root, repository } = setup(shots);
+    const submits: string[] = [];
+    const flaky = provider(submits, (key, index) => key.includes("shot-3") && index === 1);
+
+    await scheduler(root, repository, flaky).runToQuiescence();
+
+    const run = repository.read("project-1", "op-batch")!;
+    for (const shotId of ["shot-1", "shot-2", "shot-3", "shot-4"]) {
+      expect(["ready", "adopted"]).toContain(run.jobs.find((job) => job.metadata?.shotId === shotId)!.status);
+    }
+    expect(run.jobs.filter((job) => job.status === "submission_unknown")).toHaveLength(0);
+    expect(run.status).not.toBe("needs_attention");
+    // 第三镜发了两次，而且是**同一个幂等键**——重发不是第二次下单。
+    const shot3 = submits.filter((key) => key.includes("shot-3"));
+    expect(shot3).toHaveLength(2);
+    expect(new Set(shot3).size).toBe(1);
+    // 别的镜各一次，没有被连累重发。
+    for (const shotId of ["shot-1", "shot-2", "shot-4"]) {
+      expect(submits.filter((key) => key.includes(shotId))).toHaveLength(1);
+    }
+  });
 });
