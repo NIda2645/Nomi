@@ -175,6 +175,22 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     }
   }
 
+  /**
+   * 一镜已经**确定失败**（`needs_attention` / `submission_unknown`）而整批再没有可派可轮的活时，
+   * Run 必须如实落到 `needs_attention`。
+   *
+   * 在这之前它停在 `running` 一动不动：没有终态、没有通知、没有任何一处告诉用户
+   * 「这一镜没成，另外几镜的钱已经花了」。装死比报错更难查——2026-09-18 C9 那条红
+   * 在 CI 上的表现就是 Run 永远 `running`，25 轮轮询等到超时。
+   */
+  function settleAttentionIfUnitsFailed(run: ProductionRun): ProductionRun {
+    if (run.status !== "running") return run;
+    const failed = run.jobs.some((job) => job.stageId === "generate"
+      && (job.status === "needs_attention" || job.status === "submission_unknown"));
+    if (!failed) return run;
+    return command(run, "run.status", { status: "needs_attention" }, `unit-failed-attention-${run.revision}`);
+  }
+
   /** Halt the Run (§3.3): a queryable stop, never a silent over-spend. */
   function haltRun(run: ProductionRun): ProductionRun {
     if (run.status === "needs_attention") return run;
@@ -185,6 +201,8 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
   async function runToQuiescence(): Promise<BatchOutcome> {
     let dispatchedShots = 0;
     let lastResult: BatchDerivationResult | undefined;
+    // 这一趟驱动里已经失败过的镜：不在同一趟里反复重试，也**不让它带走整批**。
+    const failedShots = new Set<string>();
 
     // A confirmed multi-shot plan drives the run. Gate approval already wrote the only budget
     // authorization; the scheduler may start execution but can never mint or raise spend authority.
@@ -245,9 +263,10 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       // 3. Dispatch shots (the derivation only clears them once the checkpoint released / no anchors).
       // Reserve happens inside the Run lock; if the ledger's reserve throws "Budget authorization
       // exceeded", that is the last hard wall → structured halt.
-      if (result.shotDispatch.length > 0) {
+      const pendingDispatch = result.shotDispatch.filter((task) => !failedShots.has(task.shotId));
+      if (pendingDispatch.length > 0) {
         if (!consumeTick()) break;
-        for (const task of result.shotDispatch) {
+        for (const task of pendingDispatch) {
           if (options.maxShotsPerRun !== undefined && dispatchedShots >= options.maxShotsPerRun) {
             return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
           }
@@ -268,7 +287,15 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
               const halt = finalResult.halt ?? buildExhaustedHalt(finalRun, task.shotId, deps.perShotPrice);
               throw new BudgetExhaustedError(halt);
             }
-            throw error;
+            // 预算之外的失败**只带走这一镜**。此前这里 `throw error` 会逐出 `runToQuiescence`，
+            // 上游只剩一行 logWarn、无人重踢——于是一次瞬时出站失败把整批带走：
+            // 已经付过钱、真在飞的兄弟镜停在 `polling` 再没人轮询，剩下的镜从未派发，
+            // Run 连 `needs_attention` 都不进（2026-09-18 C9 间歇红的根因第三层）。
+            // 同文件的 `observeUnitOnce` 早就写着这条防线的理由：「一条抖动不许杀死兄弟镜的长观察」。
+            // 这一镜的耐久状态由提交那层写（未派发→`needs_attention`，未知→`submission_unknown`），
+            // 调度器只负责别死。
+            failedShots.add(task.shotId);
+            logWarn("production-run", "batch-dispatch-failed", { shotId: task.shotId }, error);
           }
         }
         continue; // re-derive: dispatched shots now have jobs; halt/completion decided next
@@ -320,6 +347,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       // callback is only emitted for a fully settled batch; checkpoint waits,
       // budget halts, and partial test drives never trigger it.
       await notifyBatchComplete(result.progress);
+      settleAttentionIfUnitsFailed(requireRun(deps));
       return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
     }
 

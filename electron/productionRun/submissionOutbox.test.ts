@@ -159,15 +159,18 @@ describe("SubmissionOutbox", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("retries only an explicitly known not-dispatched failure", async () => {
+  it("一个确定没写出去的失败落在确定态 needs_attention，预留被安全释放，且不自动重发", async () => {
+    // 与下一条（收据丢了 → submission_unknown）是同一条轴的两端：
+    // 「供应商那边什么都没发生」和「供应商可能已经收下」处置必须不同。
     const repository = setup();
-    const dispatch = vi.fn()
-      .mockRejectedValueOnce(new SubmissionNotDispatchedError("socket failed before write"))
-      .mockResolvedValueOnce({ providerTaskId: "provider-task-1" });
+    const dispatch = vi.fn().mockRejectedValue(new SubmissionNotDispatchedError("socket failed before write"));
 
-    await outbox({ repository, dispatch }).submit(request);
-    expect(dispatch).toHaveBeenCalledTimes(2);
-    expect(dispatch.mock.calls[0][0].idempotencyKey).toBe(dispatch.mock.calls[1][0].idempotencyKey);
+    await expect(outbox({ repository, dispatch }).submit(request)).rejects.toBeInstanceOf(SubmissionNotDispatchedError);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const run = repository.read("project-1", "run-1")!;
+    expect(run.jobs[0].status).toBe("needs_attention");
+    expect(run.jobs[0].errorCode).toBe("provider_not_reached");
+    expect(run.budget).toMatchObject({ reserved: 0, unsettled: 0 });
   });
 
   it("turns a lost receipt into submission_unknown and never submits twice", async () => {

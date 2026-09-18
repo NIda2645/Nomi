@@ -1,5 +1,6 @@
 import type { GenerationProvider, GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
 import { appFetch } from "../appFetch";
+import { describeOutboundFailure } from "../outboundDispatchEvidence";
 import { extractMaterializationOutputs } from "./apimartGenerationOutputs";
 import { joinUrl } from "../ai/requestPipeline";
 import { productionGenerationPayloadHash } from "../productionRun/productionGenerationAuthorization";
@@ -456,7 +457,13 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
         },
       });
     } catch (error) {
-      throw new ApimartGenerationProviderError(`APIMart ${context} failed: ${error instanceof Error ? error.message : String(error)}`);
+      // `fetch failed` 是 undici 的外壳，真正的原因在 cause 链里。两件事都要带出去：
+      // 摊平成人话（否则日志与用户看到的永远只有那四个字），以及把 cause 原样挂上——
+      // 提交那一层要靠它判「这次请求到底写出去没有」（`outboundDispatchEvidence.ts`）。
+      throw new ApimartGenerationProviderError(
+        `APIMart ${context} failed: ${describeOutboundFailure(error)}`,
+        { cause: error },
+      );
     }
     const payload = await readJson(response);
     const code = payload.code;
