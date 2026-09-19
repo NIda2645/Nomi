@@ -1,6 +1,7 @@
 import React from 'react'
 import { NodeGenerationStatus } from '../nodes/NodeGenerationStatus'
 import { NodeLabelRow } from '../nodes/NodeLabelRow'
+import { useShotIdentity } from '../hooks/useNodeRelationships'
 import { ShotPreviewOverlays } from '../nodes/ConvertShotToVideoButton'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
@@ -25,6 +26,7 @@ export function LightweightGenerationNode({
   readOnly?: boolean
 }): JSX.Element {
   const { t } = useTranslation()
+  const shotIdentity = useShotIdentity(node.id)
   const size = getCanvasNodeVisualSize(node)
   const preview = resolveLightweightNodePreview(node)
   return (
@@ -54,7 +56,7 @@ export function LightweightGenerationNode({
       }}
     >
       <NodeLabelRow>
-        <ShotPreviewOverlays shotIndex={node.shotIndex ?? null} />
+        <ShotPreviewOverlays {...shotIdentity} />
         <span className="min-w-0 flex-1 truncate font-normal text-nomi-ink-60">{node.title || t('generationCommon.lightweightNode.untitled')}</span>
       </NodeLabelRow>
       <div data-node-inline-status className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+40px)] z-[4] flex h-7 items-center [&_[data-generation-message]]:truncate [&_[data-generation-status]]:bg-nomi-paper/90">

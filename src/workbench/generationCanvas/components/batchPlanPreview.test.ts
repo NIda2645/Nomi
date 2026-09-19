@@ -4,13 +4,15 @@ import type { DependencyWavePlan } from '../runner/dependencyWaves'
 import { runGenerationNodesByPlan } from '../runner/generationRunController'
 import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { verifyShotsAndReport } from '../agent/shotVerifyStore'
 
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   toastPush: vi.fn(),
   confirmAndMintGrant: vi.fn(async () => 'retry-grant'),
-  nodes: [{ id: 'a', kind: 'image', title: 'A', position: { x: 0, y: 0 } }],
-  edges: [],
+  nodes: [{ id: 'a', kind: 'image', title: 'A', position: { x: 0, y: 0 } }] as GenerationCanvasNode[],
+  edges: [] as GenerationCanvasEdge[],
 }))
 
 vi.mock('../../../ui/toast', () => ({
@@ -74,10 +76,29 @@ describe('runPlanWithToasts concurrency', () => {
   afterEach(() => { vi.unstubAllGlobals(); projectSession.dispose() })
   beforeEach(async () => {
     vi.clearAllMocks()
+    mocks.nodes = [{ id: 'a', kind: 'image', title: 'A', position: { x: 0, y: 0 } }]
+    mocks.edges = []
     projectSession = createProjectSessionTestHarness()
     await projectSession.open('project-a')
     vi.mocked(runGenerationNodesByPlan).mockResolvedValue({ totalCount: 1, successes: [], failures: [] })
     mocks.confirmAndMintGrant.mockResolvedValue('retry-grant')
+  })
+
+  it('verifies generated first frames using derived identity and excludes reference sheets', async () => {
+    mocks.nodes = [
+      { id: 'video', kind: 'video', title: 'Video', position: { x: 0, y: 0 }, shotIndex: 5 },
+      { id: 'frame', kind: 'image', title: 'Frame', position: { x: 0, y: 0 }, meta: { storyboardKeyframe: true } },
+      { id: 'anchor', kind: 'image', title: 'Anchor', position: { x: 0, y: 0 }, shotIndex: 4, meta: { referenceSheet: true } },
+    ]
+    mocks.edges = [{ id: 'pair', source: 'frame', target: 'video', mode: 'first_frame' }]
+    vi.mocked(runGenerationNodesByPlan).mockResolvedValueOnce({
+      totalCount: 2,
+      successes: ['frame', 'anchor'].map(nodeId => ({ nodeId, result: { id: `${nodeId}-r`, type: 'image', url: `nomi-local://${nodeId}.png`, createdAt: 1 } })),
+      failures: [],
+    })
+    const project = openProject()
+    await runPlanWithToasts(plan({ waves: [['frame', 'anchor']] }), { assetUploadConsent: 'not-needed', project })
+    expect(verifyShotsAndReport).toHaveBeenCalledWith(['frame'], project)
   })
 
   it('passes the chosen concurrency to the dependency-wave runner', async () => {

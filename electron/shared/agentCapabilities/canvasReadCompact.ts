@@ -88,11 +88,15 @@ export function formatCanvasForAgent(result: CanvasReadResult): string {
       node.hasResult ? "已有结果" : null,
       node.status !== "idle" && node.status !== "success" ? node.status : null,
     ].filter(Boolean);
+    const role = node.shotRole === "first_frame" ? "首帧图" : node.shotRole === "video" ? "视频" : "";
+    const shotLabel = [typeof node.shotIndex === "number" ? `镜${node.shotIndex}` : "", role].filter(Boolean).join(" · ");
+    const owners = boundedJoin(node.shotOwnerNodeIds ?? [], 260, ", ", (id) => compactHead(id, 120)).text;
     const promptHead = compactHead(node.prompt, 60);
     const resultIds = boundedJoin(node.resultIds ?? [], 260, ", ", (id) => compactHead(id, 120)).text;
     return [
       `- ${compactHead(node.id, 120)} | ${compactHead(node.kind, 40)}`,
-      typeof node.shotIndex === "number" ? ` | 镜${node.shotIndex}` : "",
+      shotLabel ? ` | ${shotLabel}` : "",
+      owners ? ` | shotOwnerNodeIds: ${owners}` : "",
       typeof storyboardDesignId === "string" && storyboardDesignId.trim() ? ` | storyboard:${storyboardDesignId.trim()}` : "",
       ` | ${compactHead(node.title, 80)}`,
       flags.length ? ` | ${flags.join(",")}` : "",

@@ -1,12 +1,13 @@
 // 从画布节点组装镜级 verify 入参(纯函数,显式传入 nodes/edges → 可裸测;runner 层注入 store 快照)。
 // 方案:docs/plan/2026-06-28-storyboard-closed-loop-verify.md（Stage 1 实时编排）。
 //
-// 逐镜:身份锚描述 = 入边(参考边)的源锚节点「标题 + 描述」;连贯对照 = shotIndex-1 的那一镜;
+// 逐镜:身份锚描述 = 入边(参考边)的源锚节点「标题 + 描述」;连贯对照复用能力核的前镜判据;
 // 取帧源 = 该镜 result.url(图片镜=帧本身;视频镜=视频,待抽帧)。无产物的镜跳过(没生成谈不上校验)。
 
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import type { ShotVerifyInput } from './shotVerifyRunner'
+import { previousShotPromptFor } from '../../../../electron/capabilityCore/shotOrder'
 
 function trim(text: string | undefined, max = 160): string {
   const t = (text ?? '').trim()
@@ -27,11 +28,6 @@ export function gatherShotVerifyInputs(
   edges: readonly GenerationCanvasEdge[],
 ): ShotVerifyInput[] {
   const byId = new Map(nodes.map((n) => [n.id, n]))
-  // shotIndex → 节点(连贯轴找前一镜用);只收有 shotIndex 的镜头节点。
-  const byShotIndex = new Map<number, GenerationCanvasNode>()
-  for (const n of nodes) {
-    if (typeof n.shotIndex === 'number') byShotIndex.set(n.shotIndex, n)
-  }
   const inputs: ShotVerifyInput[] = []
   for (const id of shotNodeIds) {
     const node = byId.get(id)
@@ -46,9 +42,8 @@ export function gatherShotVerifyInputs(
       .filter((n): n is GenerationCanvasNode => Boolean(n) && getGenerationNodeExecutionKind(n!.kind) !== 'video')
       .map(anchorDescription)
       .filter(Boolean)
-    // 前一镜(shotIndex-1)提示词 → 连贯对照;首镜或无编号 → 不传。
-    const prevNode = typeof node.shotIndex === 'number' ? byShotIndex.get(node.shotIndex - 1) : undefined
-    const previousShotPrompt = trim(prevNode?.prompt, 160) || undefined
+    // 首帧继承所属镜号，跳过缺号与参考卡；桌面/能力核共享同一个前镜判据。
+    const previousShotPrompt = trim(previousShotPromptFor(nodes, id, edges), 160) || undefined
     inputs.push({
       shotNodeId: id,
       shotTitle: (node.title || '').trim() || id,

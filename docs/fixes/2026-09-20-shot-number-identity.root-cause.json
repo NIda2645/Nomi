@@ -1,0 +1,513 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-shot-number-identity",
+  "problem_type": "Shot identity copied or projected without relationship and uniqueness invariants",
+  "symptom": "Independent canvas shots repeat numbers; Agent sees ambiguous same-number frame/video nodes",
+  "direct_cause": "Template/restoration copy stored numbers, paste retains keyframe number, readers omit role",
+  "class_root": "Existing shot numbering owner does not enforce group identity across clone/recovery and readers duplicate projection",
+  "affected_population": [
+    "Cloned templates, clipboard pairs, restored projects, UI and Agent readers"
+  ],
+  "scope_paths": [
+    "electron/shared/canvas/shotNumbering.ts",
+    "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+    "src/workbench/generationCanvas/store/canvasGraphActions.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+    "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+    "src/workbench/generationCanvas/hooks/useNodeRelationships.ts",
+    "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.tsx",
+    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+    "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+    "electron/shared/agentCapabilities/canvasRead.ts",
+    "electron/shared/agentCapabilities/canvasReadCompact.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+    "src/workbench/generationCanvas/events/canvasEventReducer.ts",
+    "electron/capabilityCore/canvasGraph.ts",
+    "electron/capabilityCore/shotOrder.ts",
+    "electron/capabilityCore/core.ts",
+    "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+    "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts"
+  ],
+  "entry_points": [
+    "Clipboard/template/restore insertion",
+    "UI full and LOD labels",
+    "Agent canvas.read and compact projection"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing internal numbering and first_frame relation define identity; no external API can decide user domain numbering.",
+  "invariants": [
+    "Independent shot owners have valid unique positive numbers",
+    "Paired first frame and video share the owner number with explicit roles across UI and Agent",
+    "Movement never renumbers a shot"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasGraph.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasNodeFactory.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/shotOrder.ts",
+      "symbol": "ShotNumberedNode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/shotOrder.ts",
+      "symbol": "resolveShotIdentities"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/shotOrder.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "resolveShotIdentities"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasReadCompact.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "ShotNumberedNode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "storyboardKeyframe"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "ShotIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/shotTimeline.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/resident/residentReferences.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "symbol": "storyboardKeyframe"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardVariantsDrawer.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "storyboardKeyframe"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardTimelinePlan.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardTimelinePlan.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "resolveShotIdentities"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "symbol": "ShotPreviewOverlays"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/hooks/useNodeRelationships.ts",
+      "symbol": "ShotIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/hooks/useNodeRelationships.ts",
+      "symbol": "resolveShotIdentities"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/hooks/useNodeRelationships.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+      "symbol": "storyboardKeyframe"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "ShotPreviewOverlays"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.tsx",
+      "symbol": "ShotIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/render/CardCommon.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasNodeProjection.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/rendererNodeFactoryDeps.ts",
+      "symbol": "nextShotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/tidyCanvasLayout.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/preview/canvasShotSources.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/preview/PreviewSourcePanel.tsx",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectV51ToV60Migration.ts",
+      "symbol": "shotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasGraph.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasNodeFactory.ts",
+      "symbol": "nextShotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/core.ts",
+      "symbol": "previousShotPromptFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "isValidShotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "nextShotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts",
+      "symbol": "previousShotPromptFor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "symbol": "useShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/events/canvasEventReducer.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/events/canvasEventReducer.ts",
+      "symbol": "changesShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "useShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasGraphActions.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "changesShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "nextShotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "assignClonedShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "symbol": "assignClonedShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/rendererNodeFactoryDeps.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/rendererNodeFactoryDeps.ts",
+      "symbol": "nextShotIndex"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/canvasShotSources.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectPersistenceService.ts",
+      "symbol": "backfillShotIndexes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectV51ToV60Migration.ts",
+      "symbol": "isShotNumberedNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/projectV51ToV60Migration.ts",
+      "symbol": "backfillShotIndexes"
+    }
+  ],
+  "door_reduction": {
+    "before": 17,
+    "after": 68,
+    "why_not": "Factory, clipboard, templates, recovery and UI/Agent need separate entry points but share one owner."
+  },
+  "generality_proof": "One pure shared numbering module is reused by primary creation, bulk insertion, recovery and display/Agent projection.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "backfillShotIndexes",
+      "responsibility": "Repair invalid/missing/conflicting owner identities deterministically"
+    },
+    {
+      "path": "electron/shared/canvas/shotNumbering.ts",
+      "symbol": "resolveShotIdentities",
+      "responsibility": "Project owner number and role through existing first_frame edges"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "entry_point": "pasteNodes",
+      "disposition": "enforced",
+      "evidence": "Bulk copied identities go through shared normalization"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "entry_point": "instantiateWorkflowTemplateSnapshot",
+      "disposition": "enforced",
+      "evidence": "Existing and cloned owners normalized before committing and emitting"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "entry_point": "normalizeStoreSnapshot",
+      "disposition": "enforced",
+      "evidence": "Restored raw values use shared identity repair"
+    },
+    {
+      "path": "electron/capabilityCore/canvasGraph.ts",
+      "entry_point": "normalizeSnapshot",
+      "disposition": "enforced",
+      "evidence": "Disk/headless restoration uses shared owner, duplicate frame/video regression first red then green."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every template reuse or paired clipboard copy reproduces.",
+    "same_class_scan": [
+      "door-map numbering symbols across main and renderer",
+      "Reviewed clipboard/template/restoreGraph/Agent canvasRead/full and LOD labels; independent aspect_review reproduced stale copied keyframe number"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/canvas/shotNumbering.ts",
+    "invariant": "Unique independent shot identities and shared paired role-aware projections.",
+    "failure_mode": "Invalid/conflicting numbers are deterministically reassigned; ambiguous frame ownership returns multiple explicit owner ids, never a false unique owner.",
+    "exception_policy": "none",
+    "strategy": "Extend and move existing numbering owner to shared pure layer, remove mirrored arithmetic and direct raw-number projections.",
+    "artifacts": [
+      "electron/shared/canvas/shotNumbering.ts",
+      "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "src/workbench/generationCanvas/store/canvasGraphActions.ts",
+      "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "src/workbench/generationCanvas/hooks/useNodeRelationships.ts",
+      "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.tsx",
+      "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "electron/shared/agentCapabilities/canvasRead.ts",
+      "electron/shared/agentCapabilities/canvasReadCompact.ts",
+      "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "src/workbench/generationCanvas/events/canvasEventReducer.ts",
+      "electron/capabilityCore/canvasGraph.ts",
+      "electron/capabilityCore/shotOrder.ts",
+      "electron/capabilityCore/core.ts",
+      "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/model/shotNumbering.test.ts",
+    "electron/capabilityCore/canvasGraph.test.ts",
+    "electron/shared/agentCapabilities/canvasReadShotIdentity.test.ts",
+    "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.test.ts",
+    "src/workbench/generationCanvas/hooks/useShotIdentity.test.ts",
+    "electron/capabilityCore/shotOrder.test.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts",
+    "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
+    "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
+    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/model/shotNumbering.test.ts",
+    "electron/capabilityCore/canvasGraph.test.ts",
+    "electron/shared/agentCapabilities/canvasReadShotIdentity.test.ts",
+    "src/workbench/generationCanvas/nodes/ConvertShotToVideoButton.test.ts",
+    "src/workbench/generationCanvas/hooks/useShotIdentity.test.ts",
+    "electron/capabilityCore/shotOrder.test.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts",
+    "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
+    "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
+    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/model/shotNumbering.ts",
+      "electron/capabilityCore/nodeKindDomain.ts"
+    ],
+    "rationale": "Move existing policy once to shared layer; renderer and headless import it, no parallel algorithm. Re-export-only adapters and locale literals have no executable state doors; scope_paths covers implementation and actual consumers, while removal remains recorded here."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Internal domain identity; no runtime dependency change.",
+    "exit_criteria": []
+  },
+  "migration": "Restoration repairs conflicting owners while preserving first valid stored identities. Frame projection uses existing first_frame edges and ignores stale copied frame numbers.",
+  "residual_risks": [
+    "Deleting the maximum number permits future reuse under existing max+1 semantics; this change repairs restore conflicts and does not introduce a permanent project counter."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/canvas/shotNumbering.ts",
+    "tests": [
+      "src/workbench/generationCanvas/model/shotNumbering.test.ts"
+    ],
+    "why": "Number identity is pure domain state shared across main and renderer, not a display-sort concern."
+  }
+}

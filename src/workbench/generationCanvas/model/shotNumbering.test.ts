@@ -95,3 +95,71 @@ describe('shotNumbering（镜头编号 = 存储身份，审计 A2）', () => {
     expect(shot3.shotIndex).toBe(3)
   })
 })
+
+it('repairs duplicate and invalid owner numbers while preserving valid identities', () => {
+  const input = [makeNode({ id: 'kept', kind: 'video', shotIndex: 2 }), makeNode({ id: 'dup', kind: 'image', shotIndex: 2 }),
+    makeNode({ id: 'zero', kind: 'image', shotIndex: 0 }), makeNode({ id: 'bad', kind: 'video', shotIndex: Infinity })]
+  const fixed = backfillShotIndexes(input)
+  expect(fixed.nodes[0].shotIndex).toBe(2)
+  expect(new Set(fixed.nodes.map(n => n.shotIndex)).size).toBe(4)
+  expect(fixed.nodes.every(n => Number.isSafeInteger(n.shotIndex) && n.shotIndex! > 0)).toBe(true)
+  expect(backfillShotIndexes(fixed.nodes).changed).toBe(false)
+})
+
+it('repeated workflow insertion creates new shot identities, not copies of the source number', () => {
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [makeNode({ id: 'original', kind: 'image', shotIndex: 1 })], edges: [], groups: [] })
+  store.selectNode('original')
+  const template = store.saveSelectedAsWorkflowTemplate('reuse')!
+  store.instantiateWorkflowTemplate(template.id, { x: 500, y: 0 })
+  store.instantiateWorkflowTemplate(template.id, { x: 1000, y: 0 })
+  expect(useGenerationCanvasStore.getState().nodes.map(n => n.shotIndex)).toEqual([1, 2, 3])
+})
+
+it('restoring a deleted owner after its number was reused repairs only the arriving conflict', () => {
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [makeNode({ id: 'live', kind: 'image', shotIndex: 1 })], edges: [], groups: [] })
+  store.restoreGraph([makeNode({ id: 'deleted', kind: 'video', shotIndex: 1 })], [])
+  expect(useGenerationCanvasStore.getState().nodes.map(n => n.shotIndex)).toEqual([1, 2])
+})
+
+it('clipboard pairs share the new video identity in projection without storing a second number', async () => {
+  const { resolveShotIdentities } = await import('./shotNumbering')
+  const frame = { ...makeNode({ id: 'frame', kind: 'image', shotIndex: 1 }), meta: { storyboardKeyframe: true } }
+  const video = makeNode({ id: 'video', kind: 'video', shotIndex: 1 })
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [frame, video], edges: [{ id: 'pair', source: 'frame', target: 'video', mode: 'first_frame' }], groups: [] })
+  store.selectNodes(['frame', 'video'])
+  store.copySelectedNodes()
+  store.pasteNodes({ x: 900, y: 0 })
+  const state = useGenerationCanvasStore.getState()
+  const copies = state.nodes.filter(n => !['frame', 'video'].includes(n.id))
+  expect(copies.find(n => n.kind === 'video')?.shotIndex).toBe(2)
+  expect(copies.find(n => n.kind === 'image')?.shotIndex).toBeUndefined()
+  const identities = resolveShotIdentities(state.nodes, state.edges)
+  expect(copies.map(n => identities.get(n.id)?.shotIndex)).toEqual([2, 2])
+  expect(copies.map(n => identities.get(n.id)?.shotRole)).toEqual(['first_frame', 'video'])
+  store.undo()
+  expect(useGenerationCanvasStore.getState().nodes).toHaveLength(2)
+  store.redo()
+  const redone = useGenerationCanvasStore.getState()
+  expect([...resolveShotIdentities(redone.nodes, redone.edges).values()].map(n => n.shotIndex)).toEqual([1, 1, 2, 2])
+})
+
+it('single frame copying cannot retain a false relationship to the old video', async () => {
+  const { resolveShotIdentities } = await import('./shotNumbering')
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [{ ...makeNode({ id: 'frame', kind: 'image', shotIndex: 3 }), meta: { storyboardKeyframe: true } }, makeNode({ id: 'video', kind: 'video', shotIndex: 3 })], edges: [{ id: 'pair', source: 'frame', target: 'video', mode: 'first_frame' }], groups: [] })
+  store.selectNode('frame'); store.copySelectedNodes(); store.pasteNodes()
+  const state = useGenerationCanvasStore.getState()
+  const copy = state.nodes.find(n => !['frame', 'video'].includes(n.id))!
+  expect(resolveShotIdentities(state.nodes, state.edges).get(copy.id)).toEqual({ shotRole: 'first_frame', shotOwnerNodeIds: [] })
+})
+
+it('event recovery repairs conflicting numbered writes and never changes numbers on movement', async () => {
+  const { applyCanvasEvent, emptyCanvasProjection } = await import('../events/canvasEventReducer')
+  let projection = applyCanvasEvent(emptyCanvasProjection(), { type: 'canvas.snapshot.restored', payload: { snapshot: { nodes: [makeNode({ id: 'a', kind: 'video', shotIndex: 1 }), makeNode({ id: 'b', kind: 'image', shotIndex: 1 })], edges: [], groups: [] } } })
+  expect(projection.nodes.map(n => n.shotIndex)).toEqual([1, 2])
+  projection = applyCanvasEvent(projection, { type: 'canvas.node.moved', payload: { nodeId: 'a', position: { x: 500, y: 1000 } } })
+  expect(projection.nodes.map(n => n.shotIndex)).toEqual([1, 2])
+})

@@ -11,6 +11,7 @@
 // per-kind 几何/语义注入自 `nodeKindDomain`（由等价测试钉死 === src registry）。故 MCP 建的节点与
 // UI 建的节点**字段级等价**（meta/categoryId/shotIndex/size 全齐），不再是缺字段的「二等公民」。
 import { randomUUID } from 'node:crypto'
+import { backfillShotIndexes } from '../shared/canvas/shotNumbering'
 import { ANCHOR_META_KEYS, isVisualAnchorKind } from './anchorBible'
 import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } from './canvasNodeFactory'
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
@@ -41,6 +42,7 @@ export type CanvasNode = {
   references?: string[]
   status?: string
   categoryId?: string
+  shotIndex?: number
   meta?: Record<string, unknown>
   [key: string]: unknown
 }
@@ -135,7 +137,7 @@ export function normalizeSnapshot(value: unknown): CanvasSnapshot {
     }
   }
   return {
-    nodes,
+    nodes: backfillShotIndexes(nodes).nodes,
     edges: edges.filter((edge) => edge && typeof edge.id === 'string' && typeof edge.source === 'string' && typeof edge.target === 'string'),
     groups: Array.isArray(raw.groups) ? (raw.groups as unknown[]) : [],
     selectedNodeIds: Array.isArray(raw.selectedNodeIds) ? (raw.selectedNodeIds as string[]) : [],
