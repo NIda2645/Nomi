@@ -3,6 +3,117 @@ import { expect } from '@playwright/test'
 import { chromium } from 'playwright'
 import { scanFeel } from './_feel.mjs'
 
+test('AnchoredPopover owns Escape before React Flow selection, yielding to nested layers', async (t) => {
+  const { createRequire } = await import('node:module')
+  const { readFile } = await import('node:fs/promises')
+  const require = createRequire(import.meta.url)
+  const { build } = createRequire(require.resolve('vite/package.json'))('esbuild')
+  const compiled = await build({
+    stdin: { contents: `
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { createPortal } from 'react-dom';
+      import { ReactFlow, useNodesState } from '@xyflow/react';
+      import { AnchoredPopover } from './src/design/AnchoredPopover';
+      import { NOMI_OVERLAY_Z_INDEX } from './src/design/overlayLayers';
+      function TestNode({ selected }) {
+        const [open, setOpen] = React.useState(false);
+        const [upper, setUpper] = React.useState(null);
+        const anchor = React.useRef(null);
+        const close = () => { setOpen(false); anchor.current?.focus(); };
+        return <div style={{width: 240, height: 100}} data-testid="fixture-node" data-selected={selected}>
+          <span>Canvas node</span>
+          {selected && <div data-testid="fixture-composer">
+            <button ref={anchor} onClick={() => setOpen(!open)}>Effects</button>
+            {open && <AnchoredPopover anchorRef={anchor} onClose={close}>
+              <div role="dialog" aria-label="Effects menu">
+                <input aria-label="Search effects" autoFocus />
+                <button onClick={() => {}}>Effect category</button>
+                <button aria-expanded={upper === 'listbox'} onClick={() => setUpper('listbox')}>Nested options</button>
+                <button onClick={() => setUpper('dialog')}>Confirm effect</button>
+              </div>
+            </AnchoredPopover>}
+            {upper && createPortal(<div role={upper} aria-label="Upper layer"
+              style={{position: 'fixed', top: 350, left: 300, zIndex: NOMI_OVERLAY_Z_INDEX.confirmation}}
+              onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setUpper(null); } }}>
+              <button autoFocus>Upper action</button>
+            </div>, document.body)}
+          </div>}
+        </div>;
+      }
+      const nodeTypes = { fixture: TestNode };
+      function App() {
+        const [nodes, , onNodesChange] = useNodesState([{id:'fixture',type:'fixture',position:{x:100,y:100},selected:true,data:{}}]);
+        return <div style={{width: 800, height: 600}}><ReactFlow nodes={nodes} onNodesChange={onNodesChange} nodeTypes={nodeTypes} /></div>;
+      }
+      createRoot(document.getElementById('root')).render(<App />);
+    `, resolveDir: process.cwd(), loader: 'tsx' },
+    bundle: true, write: false, platform: 'browser', format: 'iife',
+    define: { 'process.env.NODE_ENV': '"development"' },
+  })
+  const css = await readFile(require.resolve('@xyflow/react/dist/style.css'), 'utf8')
+  const browser = await chromium.launch({ headless: true })
+  const withFixture = async (action) => {
+    const page = await browser.newPage()
+    try {
+      await page.setContent('<button>Outside control</button><main id="root"></main>')
+      await page.addStyleTag({ content: css })
+      await page.addScriptTag({ content: compiled.outputFiles[0].text })
+      await page.getByRole('button', { name: 'Effects', exact: true }).click()
+      await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+      await action(page)
+    } finally { await page.close() }
+  }
+  const expectSelected = async (page) => {
+    await expect(page.getByTestId('fixture-node')).toHaveAttribute('data-selected', 'true')
+    await expect(page.getByTestId('fixture-composer')).toBeVisible()
+  }
+  try {
+    for (const focus of ['natural', 'trigger', 'menu-button', 'input']) {
+      await t.test(`Escape from ${focus} closes only the popover`, () => withFixture(async (page) => {
+        if (focus === 'trigger') await page.getByRole('button', { name: 'Effects', exact: true }).focus()
+        if (focus === 'menu-button') await page.getByRole('button', { name: 'Effect category' }).click()
+        if (focus === 'input') await page.getByRole('textbox', { name: 'Search effects' }).click()
+        const active = await page.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent, label: document.activeElement?.getAttribute('aria-label') }))
+        console.log('POPOVER_ESCAPE_FOCUS', JSON.stringify({ focus, active }))
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeHidden()
+        await expectSelected(page)
+      }))
+    }
+    for (const upper of ['listbox', 'dialog']) {
+      await t.test(`upper ${upper} receives the first Escape`, () => withFixture(async (page) => {
+        await page.getByRole('button', { name: upper === 'listbox' ? 'Nested options' : 'Confirm effect' }).click()
+        await expect(page.getByRole(upper, { name: 'Upper layer' })).toBeVisible()
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole(upper, { name: 'Upper layer' })).toBeHidden()
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+        await expectSelected(page)
+        await page.getByRole('textbox', { name: 'Search effects' }).click()
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeHidden()
+        await expectSelected(page)
+      }))
+    }
+    for (const condition of ['composing', 'prevented']) {
+      await t.test(`${condition} Escape leaves the current popover open`, () => withFixture(async (page) => {
+        // Chromium keyboard automation cannot set IME/defaultPrevented; dispatch just these event contracts.
+        await page.getByRole('textbox', { name: 'Search effects' }).evaluate((input, condition) => {
+          const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: condition === 'composing' })
+          if (condition === 'prevented') event.preventDefault()
+          input.dispatchEvent(event)
+        }, condition)
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+        await expectSelected(page)
+      }))
+    }
+    await t.test('ordinary outside click still closes the popover', () => withFixture(async (page) => {
+      await page.getByRole('button', { name: 'Outside control' }).click()
+      await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeHidden()
+    }))
+  } finally { await browser.close() }
+})
+
 const cases = [
   ['text-overlap', '<div><span style="position:absolute;left:20px;top:20px">alpha</span></div><section><span style="position:absolute;left:20px;top:20px">bravo</span></section>', '<div>alpha</div><section>bravo</section>'],
   ['out-of-viewport', '<style>html,body{overflow:hidden}</style><span style="position:absolute;left:310px;width:100px">outside</span>', '<div style="overflow:auto;width:100px;height:60px"><div style="width:800px;height:400px;position:relative"><button style="position:absolute;left:500px">node</button></div></div>'],
