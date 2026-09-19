@@ -1,4 +1,4 @@
-import { backfillShotIndexes, changesShotIdentity } from '../model/shotNumbering'
+import { backfillShotIndexes } from '../model/shotNumbering'
 // 画布事件重放器(harness S5-a):事件 → 投影的纯函数。
 // 这就是"账本算余额"的那只手——S5-a 当 CI 安全网(replay≡snapshot 属性测试),
 // S5-b 翻正后当 hydrate/undo 的正式投影。复用 graphOps 纯算子保证与 store 同语义。
@@ -28,7 +28,7 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
     case 'canvas.node.added': {
       const node = payload.node as GenerationCanvasNode | undefined
       if (!node?.id) return projection
-      return { ...projection, nodes: backfillShotIndexes(upsertNode(projection.nodes, node)).nodes }
+      return { ...projection, nodes: upsertNode(projection.nodes, node) }
     }
     case 'canvas.node.moved': {
       const nodeId = String(payload.nodeId || '')
@@ -59,10 +59,8 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
       const nodeId = String(payload.nodeId || '')
       const patch = payload.patch as Record<string, unknown> | undefined
       if (!nodeId || !patch) return projection
-      let identityChanged = false
       const nodes = projection.nodes.map((node) => {
         if (node.id !== nodeId) return node
-        identityChanged = changesShotIdentity(node, patch as Partial<GenerationCanvasNode>)
         // patch 里 value===null = 「清除该字段」(如离开分镜清 shotIndex)——store 用 delete,
         // 重放必须等价删键才 ≡ snapshot。null 是 JSON-safe 的删除信号(undefined 会被
         // EventLog 的 JSON 序列化吞掉,过不了持久化)。
@@ -73,7 +71,7 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
         }
         return next as GenerationCanvasNode
       })
-      return { ...projection, nodes: identityChanged ? backfillShotIndexes(nodes).nodes : nodes, edges: 'meta' in patch ? normalizeParameterEdges(nodes, projection.edges) : projection.edges }
+      return { ...projection, nodes, edges: 'meta' in patch ? normalizeParameterEdges(nodes, projection.edges) : projection.edges }
     }
     case 'canvas.node.locked':
     case 'canvas.node.unlocked': {
@@ -190,7 +188,7 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
       const snapshot = payload.snapshot as Partial<CanvasProjection> | undefined
       if (!snapshot) return projection
       return {
-        nodes: backfillShotIndexes(Array.isArray(snapshot.nodes) ? snapshot.nodes : []).nodes,
+        nodes: Array.isArray(snapshot.nodes) ? snapshot.nodes : [],
         edges: Array.isArray(snapshot.edges) ? snapshot.edges : [],
         groups: Array.isArray(snapshot.groups) ? snapshot.groups : [],
       }
@@ -205,6 +203,13 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
   }
 }
 
-export function replayCanvasEvents(events: readonly ReplayableEvent[]): CanvasProjection {
-  return events.reduce(applyCanvasEvent, emptyCanvasProjection())
+export function replayCanvasEvents(
+  events: readonly ReplayableEvent[],
+  initial: CanvasProjection = emptyCanvasProjection(),
+): CanvasProjection {
+  // Older batches persist individual patches. Repairing a temporary duplicate
+  // between two number-swap patches would overwrite the batch's final identity.
+  // Full replay, recovery tails and undo prefixes share this completion boundary.
+  const projection = events.reduce(applyCanvasEvent, initial)
+  return { ...projection, nodes: backfillShotIndexes(projection.nodes).nodes }
 }

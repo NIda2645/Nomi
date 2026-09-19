@@ -33,25 +33,28 @@ export function nextShotIndex(nodes: readonly { shotIndex?: number }[]): number 
 /** Preserve the first valid owner; repair missing/invalid/conflicting identities deterministically. */
 export function backfillShotIndexes<T extends ShotNumberedNode>(nodes: readonly T[]): { nodes: T[]; changed: boolean } {
   const used = new Set<number>()
-  const pending: T[] = []
+  const pending: { node: T; index: number }[] = []
   const owners = nodes.filter(isShotNumberedNode)
-  for (const node of owners) {
+  nodes.forEach((node, index) => {
+    if (!isShotNumberedNode(node)) return
     if (isValidShotIndex(node.shotIndex) && !used.has(node.shotIndex)) used.add(node.shotIndex)
-    else pending.push(node)
-  }
-  const assigned = new Map<string, number>()
+    else pending.push({ node, index })
+  })
+  // Number repair must remain idempotent even when an imported graph has duplicate IDs.
+  // Array positions identify individual entries without deciding which graph node to discard.
+  const assigned = new Map<number, number>()
   if (pending.length) {
     let next = nextShotIndex(owners)
-    pending.sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) ||
+    pending.sort(({ node: a }, { node: b }) => (a.position?.y ?? 0) - (b.position?.y ?? 0) ||
       (a.position?.x ?? 0) - (b.position?.x ?? 0) || a.id.localeCompare(b.id))
-    for (const node of pending) {
+    for (const { index } of pending) {
       if (!Number.isSafeInteger(next)) throw new RangeError('Shot number space exhausted')
-      assigned.set(node.id, next++)
+      assigned.set(index, next++)
     }
   }
   let changed = false
-  const result = nodes.map(node => {
-    const number = isShotNumberedNode(node) ? assigned.get(node.id) ?? node.shotIndex : undefined
+  const result = nodes.map((node, index) => {
+    const number = isShotNumberedNode(node) ? assigned.get(index) ?? node.shotIndex : undefined
     if (node.shotIndex === number) return node
     changed = true
     if (number !== undefined) return { ...node, shotIndex: number }
@@ -63,10 +66,11 @@ export function backfillShotIndexes<T extends ShotNumberedNode>(nodes: readonly 
 
 /** A clone is a new owner, even if the old owner was deleted. Paired frames derive their label from edges. */
 export function assignClonedShotIndexes<T extends ShotNumberedNode>(existing: readonly T[], incoming: readonly T[]): T[] {
-  let next = nextShotIndex(existing)
+  let next: number | undefined
   return incoming.map(node => {
     const { shotIndex: _old, ...rest } = node
     if (!isShotNumberedNode(node)) return rest as T
+    next ??= nextShotIndex(existing)
     if (!Number.isSafeInteger(next)) throw new RangeError('Shot number space exhausted')
     return { ...rest, shotIndex: next++ } as T
   })
@@ -101,4 +105,3 @@ export function changesShotIdentity(node: Pick<ShotNumberedNode, 'meta'>, patch:
   return 'shotIndex' in patch || 'kind' in patch || 'categoryId' in patch ||
     ('meta' in patch && (patch.meta?.referenceSheet !== node.meta?.referenceSheet || patch.meta?.storyboardKeyframe !== node.meta?.storyboardKeyframe))
 }
-

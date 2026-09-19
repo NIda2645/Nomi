@@ -312,7 +312,7 @@ export function projectCanvasRead(source: unknown): CanvasReadResult {
     const raw = asRecord(value)!;
     identityInputs.push({
       id: node.id, kind: node.kind, position: node.position,
-      ...(typeof raw.categoryId === "string" ? { categoryId: raw.categoryId.trim() } : {}),
+      ...(typeof raw.categoryId === "string" ? { categoryId: raw.categoryId } : {}),
       ...(typeof raw.shotIndex === "number" ? { shotIndex: raw.shotIndex } : {}),
       meta: asRecord(raw.meta),
     });

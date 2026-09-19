@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backfillShotIndexes, isShotNumberedNode, nextShotIndex, resolveShotIdentities } from './shotNumbering'
+import { assignClonedShotIndexes, backfillShotIndexes, isShotNumberedNode, nextShotIndex, resolveShotIdentities } from './shotNumbering'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode, GenerationNodeKind } from './generationCanvasTypes'
 
@@ -106,6 +106,38 @@ it('repairs duplicate and invalid owner numbers while preserving valid identitie
   expect(backfillShotIndexes(fixed.nodes).changed).toBe(false)
 })
 
+it('repairs repeated node IDs by array entry without changing graph identity or drifting on recovery', () => {
+  const same = makeNode({ id: 'same', kind: 'video', shotIndex: 1 })
+  const input = [same, same, { ...same }, makeNode({ id: 'kept', kind: 'image', shotIndex: 7 })]
+  const once = backfillShotIndexes(input)
+  expect(once.nodes.map(node => node.shotIndex)).toEqual([1, 8, 9, 7])
+  expect(once.nodes.map(node => node.id)).toEqual(['same', 'same', 'same', 'kept'])
+  expect(input.map(node => node.shotIndex)).toEqual([1, 1, 1, 7])
+  expect(backfillShotIndexes(once.nodes)).toEqual({ nodes: once.nodes, changed: false })
+})
+
+it('clones non-owners at maximum number capacity but rejects new owners without mutating input', () => {
+  const existing = [makeNode({ id: 'max', kind: 'video', shotIndex: Number.MAX_SAFE_INTEGER })]
+  const text = makeNode({ id: 'text', kind: 'text' })
+  const frame = { ...makeNode({ id: 'frame', kind: 'image', shotIndex: 1 }), meta: { storyboardKeyframe: true } }
+  expect(assignClonedShotIndexes(existing, [text, frame]).map(node => node.shotIndex)).toEqual([undefined, undefined])
+  expect(assignClonedShotIndexes(existing, [])).toEqual([])
+  const incoming = [text, makeNode({ id: 'video', kind: 'video', shotIndex: 2 })]
+  const before = structuredClone({ existing, incoming })
+  expect(() => assignClonedShotIndexes(existing, incoming)).toThrow('Shot number space exhausted')
+  expect({ existing, incoming }).toEqual(before)
+})
+
+it('allocates the last safe number once and fails atomically when a batch exceeds capacity', () => {
+  const existing = [makeNode({ id: 'max-minus-one', kind: 'video', shotIndex: Number.MAX_SAFE_INTEGER - 1 })]
+  const incoming = [makeNode({ id: 'first', kind: 'video' }), makeNode({ id: 'second', kind: 'video' })]
+  expect(assignClonedShotIndexes(existing, incoming.slice(0, 1))[0].shotIndex).toBe(Number.MAX_SAFE_INTEGER)
+  const before = structuredClone({ existing, incoming })
+  expect(() => assignClonedShotIndexes(existing, incoming)).toThrow('Shot number space exhausted')
+  expect(() => backfillShotIndexes([...existing, ...incoming])).toThrow('Shot number space exhausted')
+  expect({ existing, incoming }).toEqual(before)
+})
+
 it('repeated workflow insertion creates new shot identities, not copies of the source number', () => {
   const store = useGenerationCanvasStore.getState()
   store.restoreSnapshot({ nodes: [makeNode({ id: 'original', kind: 'image', shotIndex: 1 })], edges: [], groups: [] })
@@ -155,8 +187,8 @@ it('single frame copying cannot retain a false relationship to the old video', (
 })
 
 it('event recovery repairs conflicting numbered writes and never changes numbers on movement', async () => {
-  const { applyCanvasEvent, emptyCanvasProjection } = await import('../events/canvasEventReducer')
-  let projection = applyCanvasEvent(emptyCanvasProjection(), { type: 'canvas.snapshot.restored', payload: { snapshot: { nodes: [makeNode({ id: 'a', kind: 'video', shotIndex: 1 }), makeNode({ id: 'b', kind: 'image', shotIndex: 1 })], edges: [], groups: [] } } })
+  const { applyCanvasEvent, replayCanvasEvents } = await import('../events/canvasEventReducer')
+  let projection = replayCanvasEvents([{ type: 'canvas.snapshot.restored', payload: { snapshot: { nodes: [makeNode({ id: 'a', kind: 'video', shotIndex: 1 }), makeNode({ id: 'b', kind: 'image', shotIndex: 1 })], edges: [], groups: [] } } }])
   expect(projection.nodes.map(n => n.shotIndex)).toEqual([1, 2])
   projection = applyCanvasEvent(projection, { type: 'canvas.node.moved', payload: { nodeId: 'a', position: { x: 500, y: 1000 } } })
   expect(projection.nodes.map(n => n.shotIndex)).toEqual([1, 2])

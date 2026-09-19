@@ -26,7 +26,8 @@
     "electron/capabilityCore/core.ts",
     "src/workbench/generationCanvas/components/batchPlanPreview.ts",
     "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts",
-    "electron/shared/canvas/shotOrder.ts"
+    "electron/shared/canvas/shotOrder.ts",
+    "src/workbench/generationCanvas/events/canvasUndoJournal.ts"
   ],
   "entry_points": [
     "Clipboard/template/restore insertion",
@@ -38,7 +39,10 @@
   "invariants": [
     "Independent shot owners have valid unique positive numbers",
     "Paired first frame and video share the owner number with explicit roles across UI and Agent",
-    "Movement never renumbers a shot"
+    "Movement never renumbers a shot",
+    "Legacy event batches repair numbering only after complete replay, never during a temporary collision.",
+    "Number repair is idempotent for duplicate node IDs without changing or discarding graph identities.",
+    "Non-owner cloning requires no shot-number capacity; exhausted owner batches fail without mutating inputs."
   ],
   "doors": [
     {
@@ -274,12 +278,12 @@
     {
       "kind": "write",
       "path": "electron/shared/canvas/shotNumbering.ts",
-      "symbol": "nextShotIndex"
+      "symbol": "isShotNumberedNode"
     },
     {
       "kind": "write",
       "path": "electron/shared/canvas/shotNumbering.ts",
-      "symbol": "isShotNumberedNode"
+      "symbol": "nextShotIndex"
     },
     {
       "kind": "write",
@@ -298,8 +302,8 @@
     },
     {
       "kind": "write",
-      "path": "src/workbench/generationCanvas/events/canvasEventReducer.ts",
-      "symbol": "changesShotIdentity"
+      "path": "src/workbench/generationCanvas/events/canvasUndoJournal.ts",
+      "symbol": "replayCanvasEvents"
     },
     {
       "kind": "write",
@@ -349,7 +353,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
-      "symbol": "backfillShotIndexes"
+      "symbol": "replayCanvasEvents"
     },
     {
       "kind": "write",
@@ -398,6 +402,11 @@
       "path": "electron/shared/canvas/shotNumbering.ts",
       "symbol": "resolveShotIdentities",
       "responsibility": "Project owner number and role through existing first_frame edges"
+    },
+    {
+      "path": "src/workbench/generationCanvas/events/canvasEventReducer.ts",
+      "symbol": "replayCanvasEvents",
+      "responsibility": "Apply complete persisted tails or undo prefixes before repairing final shot identities, preserving legacy multi-event batches."
     }
   ],
   "same_class_entry_points": [
@@ -424,6 +433,18 @@
       "entry_point": "normalizeSnapshot",
       "disposition": "enforced",
       "evidence": "Disk/headless restoration uses shared owner, duplicate frame/video regression first red then green."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "entry_point": "applyEventTail",
+      "disposition": "enforced",
+      "evidence": "Legacy swaps and repeated recovery use replayCanvasEvents completion boundary; red-to-green regression."
+    },
+    {
+      "path": "src/workbench/generationCanvas/events/canvasUndoJournal.ts",
+      "entry_point": "replayTo",
+      "disposition": "enforced",
+      "evidence": "Undo, redo and journal compaction use the same completed replay boundary."
     }
   ],
   "recurrence": {
@@ -459,7 +480,8 @@
       "electron/capabilityCore/core.ts",
       "src/workbench/generationCanvas/components/batchPlanPreview.ts",
       "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts",
-      "electron/shared/canvas/shotOrder.ts"
+      "electron/shared/canvas/shotOrder.ts",
+      "src/workbench/generationCanvas/events/canvasUndoJournal.ts"
     ]
   },
   "regression_tests": [
@@ -473,7 +495,8 @@
     "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
     "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
     "src/workbench/generationCanvas/components/batchPlanPreview.test.ts",
-    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts"
+    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts",
+    "src/workbench/generationCanvas/events/shotNumberingLegacyReplay.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/model/shotNumbering.test.ts",
@@ -486,7 +509,8 @@
     "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
     "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
     "src/workbench/generationCanvas/components/batchPlanPreview.test.ts",
-    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts"
+    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts",
+    "src/workbench/generationCanvas/events/shotNumberingLegacyReplay.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -502,9 +526,10 @@
     "rationale": "Internal domain identity; no runtime dependency change.",
     "exit_criteria": []
   },
-  "migration": "Restoration repairs conflicting owners while preserving first valid stored identities. Frame projection uses existing first_frame edges and ignores stale copied frame numbers.",
+  "migration": "Restoration repairs conflicting owners while preserving first valid stored identities. Frame projection uses existing first_frame edges and ignores stale copied frame numbers. Replay old per-node batches to completion before repair; array-entry assignment keeps duplicate-ID recovery stable. New-owner allocation is lazy so text/reference/frame cloning does not consume a number.",
   "residual_risks": [
-    "Deleting the maximum number permits future reuse under existing max+1 semantics; this change repairs restore conflicts and does not introduce a permanent project counter."
+    "Deleting the maximum number permits future reuse under existing max+1 semantics; this change repairs restore conflicts and does not introduce a permanent project counter.",
+    "Duplicate node IDs remain an invalid/ambiguous graph identity input; numbering repair is stable but does not choose which graph node or edges to discard."
   ],
   "invariant_owner_layer": {
     "layer": "electron/shared/canvas/shotNumbering.ts",

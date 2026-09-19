@@ -21,9 +21,9 @@ import {
 import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
-import { assignClonedShotIndexes, backfillShotIndexes } from '../model/shotNumbering'
+import { assignClonedShotIndexes } from '../model/shotNumbering'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
-import { applyCanvasEvent } from '../events/canvasEventReducer'
+import { replayCanvasEvents } from '../events/canvasEventReducer'
 import { withCanvasWriteBoundary } from '../events/canvasWriteBoundary'
 import type { GenerationCanvasState } from './canvasStoreTypes'
 import { createCanvasNodeActions } from './canvasNodeActions'
@@ -243,9 +243,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     // reducer 全 case 幂等,重看快照内已有事件安全。
     if (!events.length) return
     const state = get()
-    let projection = { nodes: state.nodes, edges: state.edges, groups: state.groups }
-    for (const event of events) projection = applyCanvasEvent(projection, event)
-    projection.nodes = backfillShotIndexes(projection.nodes).nodes
+    const projection = replayCanvasEvents(events, { nodes: state.nodes, edges: state.edges, groups: state.groups })
     set({ nodes: projection.nodes, edges: projection.edges, groups: projection.groups })
   },
   applyExternalGraph: (snapshot) => {

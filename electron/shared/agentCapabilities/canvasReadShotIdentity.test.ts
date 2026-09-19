@@ -37,3 +37,10 @@ describe('Agent shot references match the paired canvas labels', () => {
     for (const node of result.nodes) expect(node).not.toHaveProperty('shotIndex')
   })
 })
+
+
+it('preserves exact category identity instead of trimming an unrelated category into shots', () => {
+  const result = projectCanvasRead({ nodes: [{ ...video, categoryId: ' shots ' }], edges: [] })
+  expect(result.nodes[0]).not.toHaveProperty('shotIndex')
+  expect(result.nodes[0]).not.toHaveProperty('shotRole')
+})
