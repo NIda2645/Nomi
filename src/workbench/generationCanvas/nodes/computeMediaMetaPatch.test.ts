@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeMediaMetaPatch } from './nodeSizing'
+import { computeMediaMetaPatch, resolveNodeVisualSize } from './nodeSizing'
 
 describe('computeMediaMetaPatch 媒体回填', () => {
   it('视频 loadedmetadata 把真实时长写进 meta.videoDuration（修「拖入视频一律 5 秒」的 catch-all）', () => {
@@ -44,8 +44,7 @@ it('measures intrinsic dimensions without changing user-authored geometry', () =
   expect(patch).toEqual({ meta: { imageWidth: 640, imageHeight: 360, imageAspectRatio: 640 / 360 } })
 })
 
-it('newly decoded historical image replaces old dimensions even when nominal geometry is frozen', async () => {
-  const { resolveNodeVisualSize } = await import('./nodeSizing')
+it('newly decoded historical image replaces old dimensions even when nominal geometry is frozen', () => {
   const meta = { imageWidth: 1920, imageHeight: 1080, previewHeight: 240, userResized: true }
   const patch = computeMediaMetaPatch({ resultType: 'image', meta, width: 1080, height: 1920 })
   expect(patch?.meta.imageWidth).toBe(1080)

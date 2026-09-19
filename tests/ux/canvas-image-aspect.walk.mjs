@@ -75,7 +75,7 @@ try {
   await page.locator('[data-project-card]', { hasText: '图片比例回归' }).first().dblclick()
   await page.getByRole('button', { name: '生成', exact: true }).first().click()
   const collapse = page.getByRole('button', { name: '收起面板', exact: true })
-  if (await collapse.isVisible()) await collapse.click()
+  if ((related || lod) && await collapse.isVisible()) await collapse.click()
   if (lod) {
     const zoom = page.getByRole('slider', { name: '缩放比例', exact: true })
     await zoom.focus()
@@ -93,6 +93,7 @@ try {
     if (before) results.push({ id, ...await measure(id) })
     else await assertRatio(id)
     await page.screenshot({ path: path.join(output, `${before ? 'before' : 'after'}-${id}-zh.png`) })
+    if (lod) await page.mouse.click(1100, 180)
   }
   if (!before && !related && !lod) {
     const node = page.locator('.react-flow__node').filter({ has: page.locator('[data-node-id="portrait"]') })
