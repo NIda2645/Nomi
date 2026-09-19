@@ -12,6 +12,11 @@
 
 已检查现有 `scripts/research/tikhub-search.mjs`、`docs/research/tikhub-api-notes.md`、`scripts/feedback-radar.mjs`、本机两份 `automation.toml`、`docs/ARCHITECTURE-NOW.md`、TODO 与在飞 PR。复用检索和调度能力，不新增采集引擎。技能采用 [Agent Skills 规范](https://agentskills.io/specification) 的 SKILL.md + references 布局；沿用仓库 `agent-skills/` 与 `check:skills-format` 的既有落点，无自定义外部格式。官方规范本轮未联网重读，以现有仓库格式门岗和本机 skill-creator 为实施依据；没有变更技能解析协议。
 
+- `scripts/research/tikhub-search.mjs:39` 已有查询/平台/时间窗/输出目录参数，`:135` 固定输出 JSON/Markdown；复用采集器，但每次查询与重试隔离目录，防止覆盖证据。
+- `scripts/feedback-radar.mjs:4` 已把确定性采集和技能分诊分开，`:60` 隔离单渠道失败；采用同样职责划分，竞品分析由技能完成。
+- `scripts/check-skills-format.mjs:17` 已区分创作者技能库与外部宿主技能，`:24` 扫两种技能根；本技能放 agent-skills，避免出现在 Nomi 创作者技能库。
+- [TikHub API 既有对账笔记](../research/tikhub-api-notes.md) 已核对四平台与凭据回显风险；采用现有密钥边界和逐平台检查，不新增接口适配。
+
 ## 取舍与边界
 
 - 采用“全对象变化扫描 + 轮换深挖”，避免每三天重复完整拆解五家，也避免只收藏链接。
