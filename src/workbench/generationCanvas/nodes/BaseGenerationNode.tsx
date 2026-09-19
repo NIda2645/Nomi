@@ -626,7 +626,7 @@ function BaseGenerationNodeImpl({
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
       {selected && !isMultiSelectActive && nodeHasGenerationComposer(node.kind) ? (
-        <div className={cn('contents', (readOnly || resultStackOpen) && 'invisible pointer-events-none')} aria-hidden={readOnly || resultStackOpen || undefined}>
+        <div className={cn('contents', resultStackOpen && 'invisible pointer-events-none')} aria-hidden={resultStackOpen || undefined}>
           <NodeGenerationComposer onFeedback={reportFeedback} node={node} visualSize={visualSize} readOnly={readOnly} />
         </div>
       ) : null}

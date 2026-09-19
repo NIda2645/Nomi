@@ -402,6 +402,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           touchAction: 'auto',
         }}
       >
+      {readOnly ? <div role="status" className="text-caption text-nomi-ink-50">{t('generationCommon.workflowPlugin.readOnly')}</div> : null}
       {hasReferenceControls && !readOnly ? (
         <div data-node-composer-references className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-nomi-line-soft')} style={inPanel ? undefined : { maxHeight: referenceMaxHeight }}>
           <NodeParameterControls node={node} section="references" onInsertMention={insertMention} />
