@@ -40,8 +40,11 @@ describe('ProjectGateway raw canvas document port', () => {
     const disk = await createDiskGateway('project-a').readDoc()
     const renderer = await createRendererGateway('project-a').readDoc()
 
-    expect(disk).toEqual(RAW_DOCUMENT)
-    expect(renderer).toEqual(RAW_DOCUMENT)
+    // Domain repair adds a stable number while retaining the private RMW payload.
+    const repaired = { ...RAW_DOCUMENT, nodes: [{ ...RAW_DOCUMENT.nodes[0], shotIndex: 1 }] }
+    expect(disk).toEqual(repaired)
+    expect(renderer).toEqual(repaired)
+    expect(JSON.stringify(disk)).toContain('private-rmw-data')
     expect(JSON.stringify(renderer)).toContain('private-rmw-data')
     expect(io.readProject).toHaveBeenCalledWith('project-a')
     expect(io.requestRenderer).toHaveBeenCalledWith(

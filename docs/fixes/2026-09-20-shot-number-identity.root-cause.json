@@ -472,7 +472,8 @@
     "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts",
     "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
     "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
-    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts"
+    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts",
+    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/model/shotNumbering.test.ts",
@@ -484,7 +485,8 @@
     "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts",
     "src/workbench/generationCanvas/store/shotNumberingReplay.test.ts",
     "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.test.ts",
-    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts"
+    "src/workbench/generationCanvas/components/batchPlanPreview.test.ts",
+    "electron/capabilityCore/gatewayCanvasReadDoc.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
