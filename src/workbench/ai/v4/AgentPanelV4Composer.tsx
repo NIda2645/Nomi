@@ -1,5 +1,4 @@
-import { LibraryGroup } from '../../library/LibraryGroup'
-import { groupLibraryItems, type LibraryCategory } from '../../library/libraryGroups'
+import { LibraryPicker, type LibraryPickerRow } from '../../library/LibraryPicker'
 import { V4Row } from './AgentPanelV4Row'
 // Agent 面板 v4 · 积木 ⑧ composer（AI Elements PromptInput + MiniMax 底栏）
 //
@@ -395,20 +394,7 @@ export function V4ModelPopover({ rows, onOpenLibrary }: { rows: readonly V4Model
   )
 }
 
-export type V4CommandRow = Readonly<{
-  group?: LibraryCategory
-  id: string
-  name: string
-  /** `/命令`。提示词库那一段也有，它就是把提示词当命令用的那个名字。 */
-  command: string
-  desc: string
-  /** 分段名：技能 / 提示词。同一个菜单两段，各自有名字（2026-09-06 拍板 ⑤）。 */
-  section: string
-  /** 来自技能或提示词标准元数据的封面与预览。 */
-  cover?: string
-  preview?: { url: string; type: 'image' | 'video' }
-  selected?: boolean
-}>
+export type V4CommandRow = LibraryPickerRow
 
 /**
  * `/` 命令弹层：搜索 + 分类 chip + 列表（名称 + /命令 + 一句描述）。
@@ -438,82 +424,17 @@ export function V4SkillPopover({
   onManage?: () => void
 }): JSX.Element {
   const { t } = useTranslation()
-  const [localCategory, setLocalCategory] = React.useState(categories[0])
-  const selectedCategory = activeCategory ?? localCategory
-  const visibleRows = rows.filter(row => selectedCategory === categories[0] || row.section === selectedCategory)
-  return (
-    <aside
-      className="w-[330px] overflow-hidden rounded-nomi border border-nomi-line bg-nomi-paper shadow-nomi-md"
-      data-v4-popover="skill"
-    >
-      <input
-        value={query ?? ''}
-        readOnly={!onQueryChange}
-        onChange={(event) => onQueryChange?.(event.target.value)}
-        placeholder={t('agentPanelV4.skillSearch')}
-        aria-label={t('agentPanelV4.skillSearch')}
-        data-v4-control="skill-search"
-        className="mx-2.5 mb-1.5 mt-2 flex h-7 w-[calc(100%-20px)] items-center gap-1.5 rounded-nomi-sm border border-nomi-line bg-transparent px-2 text-caption text-nomi-ink outline-none placeholder:text-nomi-ink-40"
-      />
-      <div className="flex gap-1 overflow-hidden px-2.5 pb-1.5">
-        {categories.map((category) => (
-          <V4Row as="button"
-            type="button"
-            key={category}
-            onClick={() => { setLocalCategory(category); onSelectCategory?.(category) }}
-            className={cn(
-              'h-[22px] shrink-0 whitespace-nowrap rounded-pill px-2 text-micro',
-              selectedCategory === category
-                ? 'bg-nomi-ink text-nomi-paper'
-                : 'bg-nomi-ink-05 text-nomi-ink-60',
-            )}
-          >
-            {category}
-          </V4Row>
-        ))}
-      </div>
-      <div className="max-h-[260px] overflow-y-auto overscroll-contain">
-        {groupLibraryItems(visibleRows, row => row.group ? { ...row.group, id: `${row.section}:${row.group.id}` } : undefined).map(group => (
-          <LibraryGroup key={group.id} group={group}>
-            {group.items.map(row => <TooltipProvider key={row.id} delayDuration={180}><Tooltip>
-              <TooltipTrigger asChild><button
-                type="button"
-                onClick={() => onSelect?.(row)}
-                data-v4-command={row.id}
-                className={cn('flex w-full items-start gap-2.5 px-2.5 py-2 text-left', row.selected && 'bg-nomi-ink-05')}
-              >
-                <SkillMedia cover={row.cover} preview={row.preview} className="h-9 w-14 shrink-0 rounded-nomi-sm object-cover" />
-                <span className="min-w-0">
-                  <span className="block truncate text-caption font-medium text-nomi-ink">
-                    {row.name}
-                    <code className="ml-1 font-nomi-mono text-micro font-normal text-nomi-ink-40">{row.command}</code>
-                  </span>
-                  <span className="block truncate text-micro text-nomi-ink-60">{row.desc}</span>
-                </span>
-              </button></TooltipTrigger>
-              <TooltipContent side="right" className="z-popover whitespace-normal w-80 max-w-[80vw] bg-nomi-paper p-3 text-nomi-ink shadow-nomi-lg">
-                <div data-skill-hover={row.id} className="max-h-[60vh] overflow-y-auto">
-                  <SkillMedia cover={row.cover} preview={row.preview} play className="mb-3 max-h-60 w-full rounded-nomi-sm object-contain" />
-                  <strong className="text-title">{row.name}</strong>
-                  <p className="mt-2 whitespace-pre-wrap text-caption leading-relaxed text-nomi-ink-60">{row.desc}</p>
-                </div>
-              </TooltipContent>
-            </Tooltip></TooltipProvider>)}
-          </LibraryGroup>
-        ))}
-      </div>
-      <V4Row as="button"
-        type="button"
-        onClick={onManage}
-        className="w-full border-t border-nomi-line-soft px-2.5 py-2 text-left text-caption text-nomi-ink-60 hover:bg-nomi-ink-05"
-      >
-        <span>{t('agentPanelV4.skillExplore')}</span>
-
-        <IconPlus size={12} />
-        {t('agentPanelV4.skillManage')}
-      </V4Row>
-    </aside>
-  )
+  return <div data-v4-popover="skill">
+    <LibraryPicker rows={rows} categories={categories} activeCategory={activeCategory} query={query}
+      onQueryChange={onQueryChange} onSelectCategory={onSelectCategory} onSelect={onSelect}
+      searchLabel={t('agentPanelV4.skillSearch')}
+      rowAttributes={row => ({ 'data-v4-command': row.id })}
+      previewAttributes={row => ({ 'data-skill-hover': row.id })}
+      footer={<V4Row as="button" type="button" onClick={onManage}
+        className="w-full border-t border-nomi-line-soft px-2.5 py-2 text-left text-caption text-nomi-ink-60 hover:bg-nomi-ink-05">
+        <span>{t('agentPanelV4.skillExplore')}</span><IconPlus size={12} />{t('agentPanelV4.skillManage')}
+      </V4Row>} />
+  </div>
 }
 
 /**

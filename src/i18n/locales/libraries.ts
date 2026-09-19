@@ -1,6 +1,7 @@
 export const zhLibraries = {
   gallery: { groupCount: '{{name}} · {{count}} 项', all: '全部', skill: '技能', prompt: '提示词', effect: '效果', detail: '技能详情', reference: '引用到 Agent', apply: '用到节点', appended: '已追加到节点', source: '来源', licenseUnknown: '未声明许可', upstream: '原仓配图 · 完整图像不裁切；尚非 Nomi 本次生成验证。' },
   prompt: {
+    publicLibrary: '公共库',
     source: { mine: '我的库', nomi: 'Nomi 精选' },
     category: { all: '全部', image: '图片', video: '视频' },
     sentToCanvas: '已送上画布 · {{kind}}节点',
@@ -171,6 +172,7 @@ type TranslationShape<T> = {
 export const enLibraries = {
   gallery: { groupCount: '{{name}} · {{count}} items', all: 'All', skill: 'Skills', prompt: 'Prompts', effect: 'Effects', detail: 'Skill details', reference: 'In Agent', apply: 'Apply Node', appended: 'Appended to node', source: 'Source', licenseUnknown: 'License not declared', upstream: 'Original repository media · uncropped; not a verified Nomi generation.' },
   prompt: {
+    publicLibrary: 'Public',
     source: { mine: 'My library', nomi: 'Nomi picks' },
     category: { all: 'All', image: 'Image', video: 'Video' },
     sentToCanvas: 'Sent to canvas · {{kind}} node',

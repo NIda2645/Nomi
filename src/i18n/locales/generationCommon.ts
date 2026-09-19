@@ -652,7 +652,7 @@ export const zhGenerationCommon = {
   // A 类（决定出什么/花多少）留底栏；B 类（帮我写提示词）收成提示词框右上角一簇纯 icon；锁回节点浮条。
   composerBarV1: {
     promptTools: '写提示词',
-    effects: '效果与提示词库',
+    effects: '提示词预设',
     seconds: '{{value}}s',
   },
   composer: {
@@ -2079,7 +2079,7 @@ export const enGenerationCommon = {
   },
   composerBarV1: {
     promptTools: 'Prompt helpers',
-    effects: 'Effects & prompt library',
+    effects: 'Prompt presets',
     seconds: '{{value}}s',
   },
   composer: {
