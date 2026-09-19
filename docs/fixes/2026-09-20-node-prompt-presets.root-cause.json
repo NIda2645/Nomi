@@ -1,0 +1,323 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-node-prompt-presets",
+  "problem_type": "Library projection drops compatible presets",
+  "symptom": "节点预设入口难发现且普通公共提示词不在选择列表",
+  "direct_cause": "effect-only 公共库过滤和无预览文字菜单取代旧 picker",
+  "class_root": "推荐子集被误用为可选择的完整库，没有共享的类型兼容投影和选择 UI",
+  "affected_population": [
+    "image/video canvas node users",
+    "public ordinary prompts, curated effects, user prompts"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+    "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+    "src/workbench/library/LibraryPicker.tsx",
+    "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+    "src/workbench/api/promptLibraryApi.ts",
+    "src/workbench/skillLibrary/SkillMedia.tsx"
+  ],
+  "entry_points": [
+    "NodeGenerationComposer image and video canvas hosts"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal library projection and existing Skill UI determine this invariant; no external runtime defect.",
+  "invariants": [
+    "Every compatible public/user prompt remains selectable regardless of recommendation membership.",
+    "List IPC failure is not an empty success."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/promptLibrary/builtinPacks.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/promptLibrary/curatedPrompts.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/promptLibrary/promptLibraryStore.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/promptLibrary/userPromptStore.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/resident/residentPromptSelection.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+      "symbol": "SkillMedia"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+      "symbol": "LibraryPickerRow"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+      "symbol": "LibraryPicker"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Message.tsx",
+      "symbol": "SkillMedia"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/api/promptLibraryApi.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+      "symbol": "LibraryPicker"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/LibraryPicker.tsx",
+      "symbol": "LibraryPickerRow"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/LibraryPicker.tsx",
+      "symbol": "SkillMedia"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/PromptCard.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/promptDisplay.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/PromptLibraryPanel.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/PromptPreviewOverlay.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/usePromptLibrary.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/UserPromptCard.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/UserPromptComposer.tsx",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/promptLibrary/useUserPrompts.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/skillLibrary/SkillCard.tsx",
+      "symbol": "SkillMedia"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/skillLibrary/SkillDetail.tsx",
+      "symbol": "SkillMedia"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/skillLibrary/skillGallery.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/workbenchStore.ts",
+      "symbol": "LibraryPrompt"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/browser/dialog/NomiBrowserDialogModel.tsx",
+      "symbol": "setBroken"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "filterPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/promptLibraryApi.ts",
+      "symbol": "mapUserPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/assetSurfaceMigration.ts",
+      "symbol": "fetchUserPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+      "symbol": "compatibleNodePresets"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+      "symbol": "filterPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "useNodeEffectChips"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/promptLibrary/PromptCard.tsx",
+      "symbol": "setBroken"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/promptLibrary/PromptLibraryPanel.tsx",
+      "symbol": "filterPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/promptLibrary/usePromptLibrary.ts",
+      "symbol": "fetchPromptLibrary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/promptLibrary/useUserPrompts.ts",
+      "symbol": "fetchUserPrompts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/skillLibrary/SkillMedia.tsx",
+      "symbol": "setBroken"
+    }
+  ],
+  "door_reduction": {
+    "before": 41,
+    "after": 41,
+    "why_not": "门表覆盖库 API 的读写消费者、Skill 组件宿主与节点共享投影；这些独立库/Agent/节点/实验室消费者仍需各自存在。本次合并选择壳而不移除业务入口。"
+  },
+  "generality_proof": "Both image and video converge on compatibleNodePresets and the shared LibraryPicker; recommendations do not define selectable rows.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+      "symbol": "compatibleNodePresets",
+      "responsibility": "Complete compatible library projection before category/query filtering"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "image node useNodeEffectChips",
+      "disposition": "enforced",
+      "evidence": "nodeExecutionKind image routed through shared hook"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "video node useNodeEffectChips",
+      "disposition": "enforced",
+      "evidence": "nodeExecutionKind video routed through same hook"
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+      "entry_point": "V4SkillPopover",
+      "disposition": "not-affected",
+      "evidence": "Agent owns separate rows; shares picker presentation but not node compatibility"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any public prompt lacking effect metadata disappears for any node caller.",
+    "same_class_scan": [
+      "git log --follow NodeEffectChips.tsx, git show 981858b719 and 2a3b6d05a",
+      "rg useNodeEffectChips; NodeGenerationComposer canvas/panel hosts inspected",
+      "filterPrompts, usePromptLibrary/useUserPrompts and V4SkillPopover inspected"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+    "invariant": "Prompt compatibility depends on declared media/applicability, never featured membership.",
+    "failure_mode": "Unsupported kinds yield no options; failed IPC reads throw for retry UI.",
+    "exception_policy": "none",
+    "strategy": "Separate complete compatible preset projection from starter recommendations; share selection UI.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+      "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx",
+      "src/workbench/library/LibraryPicker.tsx",
+      "src/workbench/api/promptLibraryApi.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/nodePromptPresets.test.ts",
+    "src/workbench/api/promptLibraryApi.test.ts",
+    "src/workbench/library/LibraryPicker.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/nodePromptPresets.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/NodeEffectChips.tsx"
+    ],
+    "rationale": "Remove effect-only menu projection and custom disclosure menu; preserve starter chips."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Reuse current React, shared popover and tooltip APIs; no dependency defect.",
+    "exit_criteria": []
+  },
+  "migration": "No stored schema change; current prompt bodies, references and append/undo path retained.",
+  "residual_risks": [
+    "生产真实网络故障与付费生成未调用；IPC ok:false 拒绝语义由先红后绿 API 单测验证，真实 UI 走查覆盖正常读取、预览、追加撤销和个人库刷新。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/nodePromptPresets.ts",
+    "tests": [
+      "src/workbench/generationCanvas/nodes/nodePromptPresets.test.ts"
+    ],
+    "why": "All image/video node presets share the compatibility projection."
+  }
+}
