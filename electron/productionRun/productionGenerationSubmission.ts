@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readGenerationExecution } from "./productionGenerationHistory";
 import path from "node:path";
 
 import {
@@ -425,8 +426,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Generation attempt is invalid");
     let jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
     const existingJob = run.jobs.find((job) => job.jobId === jobId);
+    if (existingJob && existingJob.authorizationDigest !== run.generationPlan?.authorizationDigest) {
+      throw new Error("Historical generation execution is observation-only");
+    }
     if (existingJob?.status === "provider_accepted" && existingJob.providerTaskId) {
-      if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, "plan-submit");
+      if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, `plan-submit:v${run.planVersion}`);
       return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: existingJob.providerTaskId, attempt, nextAction: "observe" };
     }
     if (existingJob && ["submission_unknown", "reconciling", "needs_attention", "cancel_requested"].includes(existingJob.status)) {
@@ -499,20 +503,22 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         allowRetryAfterAbort: input.definitelyNotSubmitted === true,
       });
       run = result.run;
-      if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, "plan-submit");
+      if (run.generationPlan?.state !== "submitted") run = command(run, "generation.submit", {}, `plan-submit:v${run.planVersion}`);
       return { operationId: run.runId, runId: run.runId, jobId, providerTaskId: result.providerTaskId, attempt: lockedAttempt, nextAction: "observe" };
     });
   }
 
   async function poll(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionPollResult> {
-    const shotId = input.shotId;
     const run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run, shotId);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
-    const jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
-    const job = run.jobs.find((candidate) => candidate.jobId === jobId);
+    const { job } = readGenerationExecution(deps.repository, run, input);
     if (!job?.providerTaskId) throw new SubmissionReconciliationRequiredError("A provider task id is required before polling");
 
+    // A completed immutable execution is read from its receipt; do not poll or rewrite it again.
+    const stored = envelope(run.runId, job.jobId).read();
+    if (stored?.state === "materialized") return {
+      operationId: run.runId, runId: run.runId, jobId: job.jobId, providerTaskId: job.providerTaskId,
+      providerStatus: stored.lastPoll?.status ?? "succeeded", nextAction: "materialize",
+    };
     const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId });
     const providerStatus = result.providerStatus.trim();
     if (!providerStatus) throw new Error("Provider returned an empty poll status");
@@ -551,12 +557,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   }
 
   async function materialize(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionMaterializeResult> {
-    const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run, shotId);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
-    const jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
-    let job = run.jobs.find((candidate) => candidate.jobId === jobId);
+    const execution = readGenerationExecution(deps.repository, run, input);
+    const { contract } = execution;
+    let job = execution.job;
+    const jobId = job.jobId;
     if (!job?.providerTaskId) throw new GenerationMaterializationError("A provider task id is required before materialization");
     const providerTaskId = job.providerTaskId;
     const existing = run.artifacts.find((artifact) => artifact.jobId === jobId && ["image", "video", "audio"].includes(artifact.kind) && artifact.status === "ready");
@@ -609,24 +614,23 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   async function resume(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResumeResult> {
     const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
-    const contract = requiredContract(run, shotId);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
-    const jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
-    const job = run.jobs.find((candidate) => candidate.jobId === jobId);
+    const { job, currentAuthority } = readGenerationExecution(deps.repository, run, input);
+    const jobId = job.jobId;
     if (!job) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     const currentEnvelope = envelope(run.runId, jobId).read();
     if (!currentEnvelope) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
-    if (input.definitelyNotSubmitted === true && ["submission_unknown", "needs_attention"].includes(job.status)) {
+    if (currentAuthority && input.definitelyNotSubmitted === true && ["submission_unknown", "needs_attention"].includes(job.status)) {
       const committed = intentLog(run.runId).list().some((intent) => intent.key === `${run.runId}:${jobId}:${job.attempt}` && intent.status === "committed");
       if (committed) return { operationId: run.runId, action: "reconcile", reason: "submission_receipt_unknown", nextAction: "reconcile" };
       if (currentEnvelope.state === "submitted_unknown") envelope(run.runId, jobId).markDefinitelyNotSubmitted();
       // Suffix carries jobId so a per-shot explicit retry never dedupes against a sibling shot.
       run = command(run, "job.status", { jobId, status: "submit_intent_persisted", patch: {} }, `explicit-retry:${jobId}`);
-      return { ...(await start({ projectId: run.projectId, operationId: run.runId, definitelyNotSubmitted: true, ...(shotId ? { shotId } : {}) })), action: "dispatch", nextAction: "dispatch" };
+      return { ...(await start({ projectId: run.projectId, operationId: run.runId, definitelyNotSubmitted: true, attempt: job.attempt, ...(shotId ? { shotId } : {}) })), action: "dispatch", nextAction: "dispatch" };
     }
     const decision = classifyGenerationResume({ jobStatus: job.status, providerTaskId: job.providerTaskId, envelopeState: currentEnvelope.state, definitelyNotSubmitted: input.definitelyNotSubmitted });
     if (decision.action === "poll") return { operationId: run.runId, ...decision, nextAction: "poll", providerTaskId: job.providerTaskId };
     if (decision.action === "reconcile") return { operationId: run.runId, ...decision, nextAction: "reconcile" };
+    if (decision.action === "dispatch" && !currentAuthority) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     if (decision.action === "dispatch") return { ...(await start(input)), action: "dispatch", nextAction: "dispatch" };
     return { operationId: run.runId, ...decision, nextAction: "attention" };
   }

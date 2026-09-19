@@ -29,7 +29,7 @@ function shot(id: string, overrides: Partial<PendingSpendShot> = {}): PendingSpe
 
 function pending(shots: PendingSpendShot[]): PendingSpendConfirm {
   return {
-    projectId: 'p', runId: 'r', operationId: 'op', planVersion: 1, candidateRevision: 1, currency: 'CNY',
+    projectId: 'p', runId: 'r', operationId: 'op', planVersion: 1, quoteId: 'fixture-quote', candidateRevision: 1, currency: 'CNY',
     shots, knownSubtotal: shots.reduce((sum, entry) => (entry.price.known ? sum + entry.price.amount : sum), 0),
     unknownShotCount: shots.filter((entry) => !entry.price.known).length,
   }

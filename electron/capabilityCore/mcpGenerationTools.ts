@@ -1,3 +1,4 @@
+import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 import crypto from "node:crypto";
 import {
   applyPlanCandidatePatch,
@@ -69,17 +70,6 @@ export function coldstartEtaForGate(outputKinds: readonly string[], shotCount: n
   return { waitSeconds: Math.round(low * rounds), waitSecondsHigh: Math.round(high * rounds), etaBasis: "coldstart" as const };
 }
 
-/**
- * The semantic MCP surface is deliberately data-only.  These tools are the
- * same vocabulary a GUI adapter uses; neither the catalog nor this handler
- * knows a vendor-specific parameter or calls a provider.
- *
- * 面收敛（surface-16-collapse）：generation-operation 的 8 步 CRUD + get_context 塌成 5 个贴生命周期的工具。
- * get_context 收进 nomi_read（target=generation_context）不在此。收敛只在 catalog 层：build 按 phase/action 分派
- * 到**原 method 字面量**（能力核 handler 的 capability 分支逐字不动，付费 seam 一行不碰）；多态工具带
- * resolveMethod(args)→内部路由键（SEMANTIC_GENERATION_ROUTES 据此选 capability）。
- */
-
 export type GenerationOperationState = "draft" | "sealed" | "cancelled" | "submitted";
 
 /**
@@ -132,7 +122,8 @@ export type GenerationOperationStore = {
   /** `shotId`：改多镜草稿里的一镜（那一镜的候选 revision +1，其它镜一字不动）；缺省 = 顶层候选。 */
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string, shotId?: string): GenerationOperation | Promise<GenerationOperation>;
   /** `generate` 动词：清掉 `cardHidden`，报价卡从这一刻起可投影。只对 draft 合法。 */
-  present(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  present(projectId: string, operationId: string, now: string, shotIds?: readonly string[]): GenerationOperation | Promise<GenerationOperation>;
+  dismiss(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   // P4 S6.5: `multiShot` seals per-shot sub-contracts + planHash (reducer freezes the whole batch). Absent
   // → single-shot seal of the one top-level contract (byte-identical to today).
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string, multiShot?: GenerationSealMultiShot, authorization?: GenerationAuthorizationPreparation): GenerationOperation | Promise<GenerationOperation>;
@@ -202,12 +193,22 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
-    present(projectId, operationId, now) {
+    present(projectId, operationId, now, shotIds) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
       if (current.state !== "draft") throw new Error("new_draft_required: only a draft can be presented");
       const { cardHidden: _cardHidden, ...visible } = current;
-      const next = freeze({ ...visible, updatedAt: now });
+      const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], shotIds);
+      const next = freeze({ ...visible,
+        ...(current.shots ? { shots: current.shots.map((shot) => ({ ...shot, included: scope.includes(shot.shotId) })) } : {}),
+        planVersion: (current.planVersion ?? 0) + 1, updatedAt: now });
+      operations.set(keyFor(projectId, operationId), next);
+      return next;
+    },
+    dismiss(projectId, operationId, now) {
+      const current = read(projectId, operationId);
+      if (!current || current.state !== "draft") throw new Error("No unapproved generation request to dismiss");
+      const next = freeze({ ...current, cardHidden: true, planVersion: (current.planVersion ?? 0) + 1, updatedAt: now });
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
@@ -587,9 +588,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     const current = await deps.operations.read(input.lease.projectId, operationId);
     if (!current) throw new Error(`Generation operation not found: ${operationId}`);
     if (input.capability === "present") {
-      // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
-      if (current.state !== "draft") throw new Error("new_draft_required: only a draft can be presented");
-      const operation = await deps.operations.present(input.lease.projectId, operationId, now());
+      // The durable owner validates lifecycle and preserves prior execution evidence.
+      const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], params.shotIds);
+      const operation = await deps.operations.present(input.lease.projectId, operationId, now(), scope);
       const shots = operation.shots && operation.shots.length > 0
         ? operation.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)
         : [operation.candidate.candidateId];

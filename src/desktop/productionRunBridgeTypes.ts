@@ -30,6 +30,6 @@ export type DesktopProductionRunBridge = {
    */
   pendingSpend: (projectId: string) => Promise<PendingSpendRead>;
   reviseSpend: (input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
-  discardSpend: (projectId: string, operationId: string) => Promise<ProductionActionResult>;
-  confirmSpend: (projectId: string, operationId: string, shotIds?: readonly string[]) => Promise<ProductionActionResult>;
+  discardSpend: (projectId: string, operationId: string, quoteId: string) => Promise<ProductionActionResult>;
+  confirmSpend: (projectId: string, operationId: string, quoteId: string, shotIds?: readonly string[]) => Promise<ProductionActionResult>;
 };

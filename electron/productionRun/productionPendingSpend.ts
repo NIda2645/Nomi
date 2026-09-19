@@ -1,3 +1,5 @@
+import { sumBudgetAmounts } from "./budgetLedger";
+import { createHash } from "node:crypto";
 // 「有一笔生成在等你点头」的**宿主投影**（纯函数，唯一 owner）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -54,6 +56,7 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
     parameters: { ...(entry.candidate.parameters ?? {}) },
+    references: entry.candidate.references.map(reference => ({ ...reference })),
     price: candidatePrice(entry.candidate, resolvePricing),
   }));
 }
@@ -119,12 +122,18 @@ export function projectPendingSpendConfirm(
       { code: "pending_spend_projection_empty" },
     );
   }
-  const knownSubtotal = shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
+  const knownSubtotal = sumBudgetAmounts(shots.map(shot => shot.price.known ? shot.price.amount : 0));
   return Object.freeze({
     projectId: run.projectId,
     runId: run.runId,
     operationId: plan.operationId,
     planVersion: run.planVersion,
+    quoteId: createHash("sha256").update(JSON.stringify({
+      projectId: run.projectId, operationId: plan.operationId, planVersion: run.planVersion,
+      candidateRevision: plan.candidate.revision,
+      revisions: plan.shots?.filter((shot) => shot.included !== false).map((shot) => [shot.shotId, shot.candidate.revision]),
+      shots: shots.map(({ nodeId: _nodeId, ...shot }) => shot), currency: run.budget.currency,
+    })).digest("hex"),
     candidateRevision: plan.candidate.revision,
     ...(gateId ? { gateId } : {}),
     currency: run.budget.currency,

@@ -355,6 +355,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           providers: providerBootstrap.providers,
           resolveShotPrice,
           maximumSpend: authorizationRun?.policy.maxSpend,
+            run: authorizationRun ?? undefined,
           now: new Date().toISOString(),
         })
       },

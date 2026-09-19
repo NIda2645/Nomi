@@ -8,7 +8,8 @@ import {
   type BudgetLedgerEntry,
 } from "./budgetLedger";
 
-function entry(value: Omit<BudgetLedgerEntry, "occurredAt">): BudgetLedgerEntry {
+type WithoutTimestamp<T> = T extends unknown ? Omit<T, "occurredAt"> : never;
+function entry(value: WithoutTimestamp<BudgetLedgerEntry>): BudgetLedgerEntry {
   return { ...value, occurredAt: "2026-08-08T08:00:00.000Z" } as BudgetLedgerEntry;
 }
 
@@ -99,4 +100,14 @@ describe("budget ledger", () => {
       actualAmount: 8,
     }))).toThrow("Settlement exceeds reservation");
   });
+});
+
+it("admits the exact 33-shot decimal total and rejects a real micro-unit overspend", () => {
+  let ledger = applyBudgetEntry(createBudgetLedger("CNY"), entry({ billingEntryId: "auth", kind: "authorize", amount: 9.9 }));
+  for (let i = 0; i < 33; i++) {
+    ledger = applyBudgetEntry(ledger, { billingEntryId: `reserve-${i}`, kind: "reserve", reservationId: `r${i}`, jobId: `j${i}`, amount: 0.3, occurredAt: "now" });
+    ledger = applyBudgetEntry(ledger, { billingEntryId: `settle-${i}`, kind: "settle", reservationId: `r${i}`, actualAmount: 0.3, occurredAt: "now" });
+  }
+  expect(summarizeBudgetLedger(ledger).actual).toBeCloseTo(9.9, 12);
+  expect(() => applyBudgetEntry(ledger, { billingEntryId: "extra", kind: "reserve", reservationId: "extra", jobId: "extra", amount: 0.000001, occurredAt: "now" })).toThrow("Budget authorization exceeded");
 });

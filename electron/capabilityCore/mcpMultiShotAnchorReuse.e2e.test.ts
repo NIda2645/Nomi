@@ -20,7 +20,7 @@ import { createProductionGenerationSubmission } from "../productionRun/productio
 import { prepareProductionGenerationAuthorization } from "../productionRun/prepareProductionGenerationAuthorization";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
-import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+import { currentAnchorCheckpointGate } from "../productionRun/anchorCheckpoint";
 
 // P4 验收门 §5.1 变体 4「用已有锚开新计划」(跨集同脸) — end-to-end over the REAL semantic create entrance +
 // the REAL durable scheduler (NOT test injection). The reused anchor is NOT a role:"anchor" shot (there is
@@ -285,7 +285,7 @@ describe("P4 §5.1.4 — 用已有锚开新计划 (跨集同脸) over a real loo
       expect(submits).toHaveLength(2);
       expect(new Set(submits).size).toBe(submits.length); // 每 Job ≤1 submit
       // No anchor checkpoint gate was ever opened (no anchor-role shot to gate → not_required → 直接连拍).
-      expect(run.gates.some((g) => g.gateId === anchorCheckpointGateId(operationId))).toBe(false);
+      expect(run.gates.some((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)).toBe(false);
       // Both video shots landed a durable artifact; one job per shot, no anchor job.
       const shotJobs = run.jobs.filter((j) => typeof j.metadata?.shotId === "string");
       expect(shotJobs.map((j) => j.metadata!.shotId).sort()).toEqual(["shot-1", "shot-2"]);
@@ -319,7 +319,7 @@ describe("P4 §5.1.4 — 用已有锚开新计划 (跨集同脸) over a real loo
       const run = repository.read("project-1", operationId)!;
       // Fresh anchor → the batch STOPS at the checkpoint after generating the anchor image only: exactly 1 submit.
       expect(submits).toHaveLength(1);
-      const checkpoint = run.gates.find((g) => g.gateId === anchorCheckpointGateId(operationId))!;
+      const checkpoint = run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)!;
       expect(checkpoint.status).toBe("waiting"); // the checkpoint exists AND blocks — the exact opposite of reuse.
       // Contrast the two forms explicitly: reuse = 0 anchor submits + no gate; fresh = 1 anchor submit + gate.
       // (Total for fresh once released = 锚数 1 + 镜数 2 = 3; the release path is covered by mcpMultiShotCreateEntrance.)

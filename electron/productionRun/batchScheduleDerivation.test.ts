@@ -404,3 +404,14 @@ describe("P4 slow-provider observe — in-flight units the orchestrator keeps po
     expect(result.observe.map((t) => t.shotId)).toEqual(["anchor-1", "shot-a"]);
   });
 });
+
+it("reports actual progress for a pure anchor batch and ignores an earlier batch approval", () => {
+  const anchor = shot("anchor", "a".repeat(64), { role: "anchor" });
+  const plan = sealedPlan([anchor]);
+  const pending = deriveBatchPlan(baseInput({ plan, jobs: authorizedJobsFor([anchor]) }));
+  expect(pending.progress).toMatchObject({ total: 1, completed: 0, pending: 1 });
+  const done = deriveBatchPlan(baseInput({ plan, jobs: [jobFor("anchor", "a".repeat(64), "ready")],
+    anchorGate: { ...anchorCheckpointGate("approved"), planHash: "earlier-batch" } }));
+  expect(done.progress).toMatchObject({ total: 1, completed: 1, pending: 0 });
+  expect(done.checkpoint.status).toBe("should_open");
+});

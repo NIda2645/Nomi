@@ -1,3 +1,4 @@
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type {
   BudgetLedgerSummary,
   ProductionGate,
@@ -225,7 +226,8 @@ function deriveCheckpoint(input: BatchDerivationInput, anchors: ProductionGenera
   }
 
   const gate = input.anchorGate;
-  if (!gate) return { status: "should_open", readyAnchorJobIds };
+  if (!gate || gate.jobIds.length !== readyAnchorJobIds.length
+    || gate.jobIds.some((jobId, index) => jobId !== readyAnchorJobIds[index])) return { status: "should_open", readyAnchorJobIds };
   if (gate.status === "approved") return { status: "approved", readyAnchorJobIds };
   if (gate.status === "rejected") return { status: "rejected", readyAnchorJobIds };
   // waiting (or expired/revoked treated as still-blocking). No timeout branch exists on purpose:
@@ -242,18 +244,19 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const anchors = anchorsOf(input.plan);
   const videoShots = videoShotsOf(input.plan);
 
-  // Progress projection over VIDEO shots (always available, even when stopped, for status queries).
+  // Mixed batches retain their video progress; an anchor-only request tracks its actual paid units.
+  const progressShots = videoShots.length > 0 ? videoShots : anchors;
   let completed = 0;
   let inFlight = 0;
-  for (const shot of videoShots) {
+  for (const shot of progressShots) {
     if (shotFinished(input.runId, shot, input.jobs)) completed += 1;
     else if (shotInFlight(input.runId, shot, input.jobs)) inFlight += 1;
   }
   const progress: BatchProgress = {
-    total: videoShots.length,
+    total: progressShots.length,
     completed,
     inFlight,
-    pending: videoShots.length - completed - inFlight,
+    pending: progressShots.length - completed - inFlight,
   };
 
   const checkpoint = deriveCheckpoint(input, anchors);
@@ -291,7 +294,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // shot that would breach `authorized` halts the batch there (that shot and all after are not dispatched).
   const authorized = input.budget.authorized;
   const committed = input.budget.reserved + input.budget.actual + input.budget.unsettled;
-  let running = committed;
+  const liabilities = [committed];
   const shotDispatch: DispatchTask[] = [];
   let halt: BudgetHalt | undefined;
   let dispatchableCount = 0;
@@ -301,7 +304,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     const shot = videoShots[i];
     if (!needsDispatch(input.runId, shot, input.jobs)) continue; // finished or in-flight → skip
     const price = priceAmount(input.perShotPrice(shot.shotId));
-    if (running + price > authorized) {
+    if (budgetExceeds(sumBudgetAmounts([...liabilities, price]), authorized)) {
       // This shot breaches the cap → halt here; do not dispatch it or any later shot.
       haltIndex = i;
       halt = {
@@ -314,7 +317,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
       };
       break;
     }
-    running += price;
+    liabilities.push(price);
     dispatchableCount += 1;
     shotDispatch.push(toTask(input.runId, shot));
   }

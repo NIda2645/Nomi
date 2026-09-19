@@ -120,13 +120,14 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
-    async present(projectId, operationId, now) {
-      const current = read(projectId, operationId);
+    async present(projectId, operationId, now, shotIds) {
+      read(projectId, operationId);
+      const revision = owner.readFull(projectId, operationId).revision;
       const result = await owner.command(projectId, operationId, {
-        commandId: `generation.present:${operationId}:${current.candidate.revision}`,
-        expectedRevision: owner.readFull(projectId, operationId).revision,
+        commandId: `generation.present:${operationId}:${revision}`,
+        expectedRevision: revision,
         type: "generation.present",
-        payload: {},
+        payload: { ...(shotIds === undefined ? {} : { shotIds }) },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);
@@ -135,12 +136,26 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
+    async dismiss(projectId, operationId, now) {
+      const revision = owner.readFull(projectId, operationId).revision;
+      const result = await owner.command(projectId, operationId, {
+        commandId: `generation.dismiss:${operationId}:${revision}`,
+        expectedRevision: revision,
+        type: "generation.dismiss",
+        payload: {},
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      notifyPlanChanged(projectId, operationId);
+      return operation;
+    },
     async seal(projectId, operationId, contract: ExecutionContractV1, now, multiShot, authorization) {
       read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
-        // P4 S6.5: a multi-shot seal keys its commandId on the plan hash (covers the whole batch); a
-        // single-shot seal keeps the contract-hash key (unchanged). This keeps re-seal idempotent per scope.
-        commandId: `generation.seal:${operationId}:${multiShot?.planHash ?? contract.contractHash}`,
+        // The same creative content may be explicitly approved again in a later batch.
+        // Idempotency belongs to this plan version plus frozen content.
+        commandId: `generation.seal:${operationId}:v${owner.readFull(projectId, operationId).planVersion}:${multiShot?.planHash ?? contract.contractHash}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.seal",
         // P4 S6.5: forward the per-shot sub-contracts + planHash + derived shotPrices so the reducer
@@ -160,7 +175,7 @@ export function createProductionGenerationOperationStore(
     async cancel(projectId, operationId, now) {
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
-        commandId: `generation.cancel:${operationId}:${current.state}`,
+        commandId: `generation.cancel:${operationId}:v${current.planVersion}:${current.state}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.cancel",
         payload: {},

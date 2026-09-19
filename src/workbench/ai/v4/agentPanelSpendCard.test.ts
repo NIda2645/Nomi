@@ -28,7 +28,7 @@ function shot(index: number, amount: number | null, modelId = 'kling', mode?: st
 function pending(shots: ReturnType<typeof shot>[]): PendingSpendConfirm {
   const known = shots.filter((entry) => entry.price.known)
   return {
-    projectId: 'p1', runId: 'op-1', operationId: 'op-1', planVersion: 1, candidateRevision: 2,
+    projectId: 'p1', runId: 'op-1', operationId: 'op-1', planVersion: 1, quoteId: 'fixture-quote', candidateRevision: 2,
     currency: 'CNY', shots,
     knownSubtotal: known.reduce((sum, entry) => sum + (entry.price.known ? entry.price.amount : 0), 0),
     unknownShotCount: shots.length - known.length,

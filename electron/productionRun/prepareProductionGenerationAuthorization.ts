@@ -1,3 +1,4 @@
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 import {
   createGenerationRuntimeAdapter,
@@ -86,9 +87,17 @@ function unitsFor(
     });
 }
 
+/** Attempts belong to a durable shot, including executions of earlier candidate revisions. */
+export function nextGenerationAttempt(run: ProductionRun | undefined, shotId?: string): number {
+  return 1 + (run?.jobs ?? [])
+    .filter(job => job.stageId === "generate" && job.metadata?.shotId === shotId)
+    .reduce((latest, job) => Math.max(latest, job.attempt), 0);
+}
+
 export function prepareProductionGenerationAuthorization(input: Readonly<{
   lease: GenerationAuthorizationProjectIdentity;
   projectRevision: number;
+  run?: ProductionRun;
   operation: AuthorizationOperation;
   contract: ExecutionContractV1;
   multiShot?: GenerationSealMultiShot;
@@ -109,22 +118,27 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   if (!Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0) {
     throw new Error("Generation authorization requires the current project revision");
   }
+  if (input.run && (input.run.runId !== input.operation.operationId || input.run.projectId !== input.operation.projectId || input.run.planVersion !== planVersion)) {
+    throw new Error("Generation authorization requires the current Run snapshot");
+  }
   const adapter = createGenerationRuntimeAdapter({ providers: input.providers });
   const units = unitsFor(input.operation, input.contract, input.multiShot);
   const currency = "CNY";
   const jobs = units.map((unit) => {
+    const attempt = nextGenerationAttempt(input.run, unit.jobShotId);
+    if (input.run && attempt > input.run.policy.maxAttemptsPerJob) throw new Error("Generation attempt limit exceeded");
     const price = input.resolveShotPrice(unit.contract);
     assertKnownShotPrice(price, unit.shotId);
     const jobId = productionGenerationJobId(
       input.operation.operationId,
       unit.contract.contractHash,
-      1,
+      attempt,
       unit.jobShotId,
     );
     const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
       input.operation.operationId,
       unit.contract.contractHash,
-      1,
+      attempt,
       unit.jobShotId,
     );
     const prepared = adapter.prepareAuthorization({
@@ -134,7 +148,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     return {
       jobId,
       shotId: unit.shotId,
-      attempt: 1,
+      attempt,
       target: {
         kind: "generation-operation" as const,
         operationId: input.operation.operationId,
@@ -153,14 +167,15 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation authorization time is invalid");
-  const jobMaximum = jobs.reduce((sum, job) => sum + job.price.maximum, 0);
+  const jobMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
   const maximumSpend = input.maximumSpend;
   if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
     throw new Error("Generation authorization spend ceiling is invalid");
   }
-  const initialCeiling = maximumSpend === undefined || maximumSpend === null
-    ? jobMaximum
-    : Math.min(jobMaximum, maximumSpend);
+  const liability = input.run ? sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]) : 0;
+  const headroom = maximumSpend === undefined || maximumSpend === null ? jobMaximum : Math.max(0, maximumSpend - liability);
+  const initialCeiling = budgetExceeds(jobMaximum, headroom) ? headroom : jobMaximum;
+  const ledgerCeiling = Math.max(input.run?.budget.authorized ?? 0, liability + initialCeiling);
   const expiresAt = new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString();
   const runId = input.operation.operationId;
   const envelope = createProductionGenerationAuthorizationEnvelope({
@@ -178,7 +193,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     budget: {
       currency,
       maximum: initialCeiling,
-      ledgerCeiling: initialCeiling,
+      ledgerCeiling,
     },
   });
   return { envelope, authorizationDigest: productionGenerationAuthorizationDigest(envelope) };
@@ -259,7 +274,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation reauthorization time is invalid");
   const shotScope = input.shotId ?? unit.candidate.candidateId;
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   const envelope = createProductionGenerationAuthorizationEnvelope({
     schemaVersion: PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
     immutableProjectUuid: input.lease.immutableProjectUuid,
@@ -374,8 +389,8 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
     });
   if (jobs.length === 0) throw new Error("This generation Run has no unsubmitted jobs to continue");
 
-  const remainingMaximum = jobs.reduce((sum, job) => sum + job.price.maximum, 0);
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
+  const remainingMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   if (input.run.budget.authorized - liability >= remainingMaximum) {
     throw new Error("The current generation authorization already covers the remaining jobs");
   }

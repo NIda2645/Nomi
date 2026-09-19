@@ -169,6 +169,7 @@ describe("P4 S1 multi-shot generation plan schema", () => {
       projectId: "project-1",
       origin: { host: "semantic-mcp" },
       candidate: shotACandidate,
+      shots: [{ shotId: "shot-a", candidate: shotACandidate }, { shotId: "shot-b", candidate: shotBCandidate }],
       policy: {
         trustedHosts: ["semantic-mcp"],
         allowedProviders: ["fixture-provider"],

@@ -27,6 +27,24 @@ export type BudgetLedger = {
   reservations: Record<string, Reservation>;
 };
 
+/** Compensated addition prevents per-shot rounding from accumulating across a large batch. */
+export function sumBudgetAmounts(amounts: readonly number[]): number {
+  let sum = 0;
+  let correction = 0;
+  for (const amount of amounts) {
+    const adjusted = amount - correction;
+    const next = sum + adjusted;
+    correction = (next - sum) - adjusted;
+    sum = next;
+  }
+  return sum;
+}
+
+/** Compare at machine precision, without a currency-sized tolerance or rounding away real costs. */
+export function budgetExceeds(amount: number, ceiling: number): boolean {
+  return amount > ceiling && amount - ceiling > 4 * Number.EPSILON * Math.max(Math.abs(amount), Math.abs(ceiling));
+}
+
 function assertAmount(value: number, label: string): void {
   if (!Number.isFinite(value) || value < 0) throw new Error(`Invalid ${label}`);
 }
@@ -38,14 +56,10 @@ export function createBudgetLedger(currency: string): BudgetLedger {
 }
 
 export function summarizeBudgetLedger(ledger: BudgetLedger): BudgetLedgerSummary {
-  let reserved = 0;
-  let actual = 0;
-  let unsettled = 0;
-  for (const reservation of Object.values(ledger.reservations)) {
-    if (reservation.status === "reserved") reserved += reservation.amount;
-    if (reservation.status === "unsettled") unsettled += reservation.amount;
-    if (reservation.status === "settled") actual += reservation.actualAmount;
-  }
+  const reservations = Object.values(ledger.reservations);
+  const reserved = sumBudgetAmounts(reservations.filter(item => item.status === "reserved").map(item => item.amount));
+  const actual = sumBudgetAmounts(reservations.filter(item => item.status === "settled").map(item => item.actualAmount));
+  const unsettled = sumBudgetAmounts(reservations.filter(item => item.status === "unsettled").map(item => item.amount));
   return { currency: ledger.currency, authorized: ledger.authorized, reserved, actual, unsettled };
 }
 
@@ -72,7 +86,7 @@ export function applyBudgetEntry(ledger: BudgetLedger, entry: BudgetLedgerEntry)
     case "authorize": {
       assertAmount(entry.amount, "budget authorization");
       const liability = summarizeBudgetLedger(ledger);
-      if (liability.reserved + liability.actual + liability.unsettled > entry.amount) {
+      if (budgetExceeds(sumBudgetAmounts([liability.reserved, liability.actual, liability.unsettled]), entry.amount)) {
         throw new Error("Budget authorization below current liability");
       }
       return withEntry(ledger, entry, { authorized: entry.amount });
@@ -80,7 +94,8 @@ export function applyBudgetEntry(ledger: BudgetLedger, entry: BudgetLedgerEntry)
     case "reserve": {
       assertAmount(entry.amount, "budget reservation");
       if (ledger.reservations[entry.reservationId]) throw new Error("Duplicate budget reservation");
-      if (entry.amount > availableBudget(summarizeBudgetLedger(ledger))) {
+      const summary = summarizeBudgetLedger(ledger);
+      if (budgetExceeds(sumBudgetAmounts([summary.reserved, summary.actual, summary.unsettled, entry.amount]), ledger.authorized)) {
         throw new Error("Budget authorization exceeded");
       }
       return withEntry(ledger, entry, {

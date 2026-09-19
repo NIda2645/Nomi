@@ -1,3 +1,4 @@
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type { PlanCandidate } from "../capabilityCore/executionContract";
 
 /**
@@ -173,7 +174,7 @@ export function projectMultiShotPreview(input: ProjectMultiShotPreviewInput): Mu
       : { known: false };
     return { shotId: shot.shotId, price, durationEstimate, degradations: shotDegradations(shot) };
   });
-  const knownSubtotal = shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
+  const knownSubtotal = sumBudgetAmounts(shots.map(shot => shot.price.known ? shot.price.amount : 0));
   const unknownShotCount = shots.reduce((count, shot) => (shot.price.known ? count : count + 1), 0);
   return { shots, total: { knownSubtotal, unknownShotCount, currency } };
 }
@@ -284,7 +285,7 @@ export type SealAffordabilityResult =
  */
 export function checkSealAffordability(input: CheckSealAffordabilityInput): SealAffordabilityResult {
   const hasUnknownPrice = input.shots.some((shot) => !shot.price.known);
-  const knownSubtotal = input.shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
+  const knownSubtotal = sumBudgetAmounts(input.shots.map(shot => shot.price.known ? shot.price.amount : 0));
 
   if (input.maxSpend === null) return { ok: true, hasUnknownPrice };
 
@@ -293,7 +294,7 @@ export function checkSealAffordability(input: CheckSealAffordabilityInput): Seal
   let affordable = 0;
   for (const shot of input.shots) {
     const next = running + (shot.price.known ? shot.price.amount : 0);
-    if (next > maxSpend) break;
+    if (budgetExceeds(next, maxSpend)) break;
     running = next;
     affordable += 1;
   }

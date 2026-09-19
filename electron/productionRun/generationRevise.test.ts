@@ -266,3 +266,46 @@ describe("generation.revise · 卡上换模型与 Run 白名单（#748）", () =
     expect(next.policy.allowedModels).toEqual(["fixture-model"]);
   });
 });
+
+
+describe("generation.present · 同一方案的新付费范围", () => {
+  function present(run: ProductionRun, shotIds: string[]) {
+    return applyProductionCommand(run, { commandId: "present-next", expectedRevision: run.revision,
+      type: "generation.present", payload: { shotIds }, issuedAt: NOW }, NOW).run;
+  }
+
+  it("S04: narrows a waiting sealed card atomically and revokes its old authority", () => {
+    const run = sealedRun();
+    const next = present(run, ["shot-b"]);
+    expect(next.generationPlan?.state).toBe("draft");
+    expect(next.generationPlan?.shots?.map((shot) => [shot.shotId, shot.included])).toEqual([["shot-a", false], ["shot-b", true]]);
+    expect(next.gates[0].status).toBe("revoked");
+    expect(next.jobs).toEqual([]);
+    expect(next.generationPlan?.authorizationEnvelope).toBeUndefined();
+    expect(next.generationPlan?.shots?.every((shot) => !shot.contract && !shot.approvedReceiptId)).toBe(true);
+  });
+
+  it("S06: completed batch leaves the same creative identities available for the next batch", () => {
+    const run = sealedRun();
+    const completed: ProductionRun = { ...run, status: "completed",
+      generationPlan: { ...run.generationPlan!, state: "submitted", approvedReceiptId: "first-batch" },
+      gates: run.gates.map((gate) => ({ ...gate, status: "approved" })),
+      jobs: run.jobs.map((job) => ({ ...job, status: "ready" })) };
+    const next = present(completed, ["shot-b"]);
+    expect(next.runId).toBe(completed.runId);
+    expect(next.jobs).toEqual(completed.jobs);
+    expect(next.gates).toEqual(completed.gates);
+    expect(next.generationPlan?.shots?.map((shot) => shot.shotId)).toEqual(["shot-a", "shot-b"]);
+    expect(next.generationPlan?.state).toBe("draft");
+    expect(next.planVersion).toBe(completed.planVersion + 1);
+    expect(next.generationPlan?.approvedReceiptId).toBeUndefined();
+  });
+
+  it("S07: unknown previous submission cannot be reset by presenting another batch", () => {
+    const run = sealedRun();
+    const uncertain: ProductionRun = { ...run,
+      generationPlan: { ...run.generationPlan!, state: "submitted" },
+      jobs: run.jobs.map((job) => ({ ...job, status: "submission_unknown" })) };
+    expect(() => present(uncertain, ["shot-b"])).toThrow(/reconcil|unsettled|in.flight/i);
+  });
+});

@@ -172,6 +172,11 @@ describe("Run-owned semantic generation submission", () => {
 
     await expect(first.start({ projectId: "project-1", operationId: "op-1" })).rejects.toBeInstanceOf(SubmissionReceiptUnknownError);
     expect(repository.read("project-1", "op-1")).toMatchObject({ jobs: [{ status: "submission_unknown" }] });
+    const unknownRun = repository.read("project-1", "op-1")!;
+    expect(() => repository.execute("project-1", "op-1", { commandId: "unknown-next-batch", expectedRevision: unknownRun.revision,
+      type: "generation.present", payload: {}, issuedAt: "2026-08-23T00:00:00.000Z" })).toThrow(/reconciliation_required|spend gate is decided/);
+    expect(repository.read("project-1", "op-1")).toEqual(unknownRun);
+
 
     const restartedSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
     const restarted = createProductionGenerationSubmission({
@@ -470,5 +475,36 @@ describe("Run-owned semantic generation submission", () => {
     })).toThrow("previous generation attempt is not safely reworkable");
     expect(run.jobs).toEqual([expect.objectContaining({ status: "submission_unknown", attempt: 1 })]);
     expect(firstSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("historical batch observation", () => {
+  it("reads the frozen execution after a new draft and never starts the old authority", async () => {
+    const { root, repository, contract } = setup();
+    const submit = vi.fn(async () => ({ providerTaskId: "historical-task" }));
+    const materializeOutput = vi.fn(async (_input: { contract: unknown }) => ({ artifactId: "historic-artifact", kind: "image" as const, contentHash: "hash", projectRelativePath: "out.png" }));
+    const submission = createProductionGenerationSubmission({
+      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
+      provider: { providerId: "fixture-provider", capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
+        buildRequest: input => input, submit, query: async () => ({ status: "succeeded", raw: {} }),
+        materialize: async () => ({ outputs: [{ kind: "image", url: "https://fixture.invalid/out.png" }] }) },
+    });
+    const input = { projectId: "project-1", operationId: "op-1", attempt: 1 };
+    const started = await submission.start(input);
+    await submission.poll(input);
+    await submission.materialize(input);
+    const run = repository.read(input.projectId, input.operationId)!;
+    repository.execute(input.projectId, input.operationId, { commandId: "next-batch", expectedRevision: run.revision,
+      type: "generation.present", payload: {}, issuedAt: "2026-08-23T00:00:00.000Z" });
+    expect(repository.read(input.projectId, input.operationId)!.generationPlan!.contract).toBeUndefined();
+    await expect(submission.poll(input)).resolves.toMatchObject({ jobId: started.jobId, nextAction: "materialize" });
+    await expect(submission.materialize(input)).resolves.toMatchObject({ jobId: started.jobId, artifactId: "historic-artifact" });
+    await expect(submission.resume(input)).resolves.toMatchObject({ operationId: "op-1" });
+    await expect(submission.start(input)).rejects.toThrow(/Seal and confirm/);
+    expect(materializeOutput.mock.calls[0][0].contract).toEqual(contract);
+    expect(materializeOutput).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 });

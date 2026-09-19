@@ -9,7 +9,7 @@ const NOW = "2026-08-25T00:00:00.000Z";
 describe("P4 S4 anchor checkpoint gate", () => {
   it("derives a stable per-run gate id and recognizes its own gates", () => {
     const gate = buildAnchorCheckpointGate({ runId: "op-1", planHash: "h", anchorJobIds: ["a1"], now: NOW });
-    expect(gate.gateId).toBe(anchorCheckpointGateId("op-1"));
+    expect(gate.gateId).toBe(anchorCheckpointGateId("op-1", ["a1"]));
     expect(gate.scope).toBe("anchor_checkpoint");
     expect(gate.status).toBe("waiting");
     expect(isAnchorCheckpointGate(gate)).toBe(true);
@@ -48,4 +48,10 @@ describe("P4 S4 anchor checkpoint gate", () => {
     expect(effect.run.gates.find((g) => g.gateId === gate.gateId)?.status).toBe("approved");
     expect(effect.run.budget).toEqual(run.budget);
   });
+});
+
+it("isolates quality approval between batches of the same run", () => {
+  const first = buildAnchorCheckpointGate({ runId: "op-1", planHash: "batch-1", anchorJobIds: ["a1"], now: NOW });
+  const second = buildAnchorCheckpointGate({ runId: "op-1", planHash: "batch-2", anchorJobIds: ["a2"], now: NOW });
+  expect(second.gateId).not.toBe(first.gateId);
 });

@@ -1,3 +1,4 @@
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 import {
   createProductionGenerationAuthorizationEnvelope,
@@ -16,6 +17,7 @@ import type {
 } from "./productionRunTypes";
 import {
   REWORKABLE_JOB_STATUSES,
+  nextGenerationAttempt,
   UNSUBMITTED_AUTHORIZATION_STATUSES,
 } from "./prepareProductionGenerationAuthorization";
 
@@ -48,14 +50,12 @@ export type ReauthorizedGenerationState = Readonly<{
   generationPlan: ProductionGenerationPlan;
   job: ProductionJob;
   gate: ProductionGate;
-  policyMaxSpend: number;
 }>;
 
 export type ContinuedGenerationState = Readonly<{
   generationPlan: ProductionGenerationPlan;
   jobs: readonly ProductionJob[];
   gate: ProductionGate;
-  policyMaxSpend: number;
 }>;
 
 function preparationFrom(value: unknown): AuthorizationPreparation {
@@ -123,8 +123,12 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
   if (envelope.budget.currency !== input.run.budget.currency) {
     throw new Error("Generation authorization currency does not match the Run budget");
   }
-  if (input.run.policy.maxSpend !== null && envelope.budget.ledgerCeiling > input.run.policy.maxSpend) {
+  if (input.run.policy.maxSpend !== null && budgetExceeds(envelope.budget.ledgerCeiling, input.run.policy.maxSpend)) {
     throw new Error("Generation authorization exceeds the Run hard spend ceiling");
+  }
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
+  if (budgetExceeds(input.run.budget.authorized, envelope.budget.ledgerCeiling) || budgetExceeds(liability + envelope.budget.maximum, envelope.budget.ledgerCeiling)) {
+    throw new Error("Generation authorization must retain cumulative Run liability");
   }
   if (Date.parse(envelope.expiresAt) <= Date.parse(input.now)) {
     throw new Error("Generation authorization has expired");
@@ -142,7 +146,8 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
     const authorized = envelope.jobs[index];
     if (
       authorized.shotId !== unit.shotId
-      || authorized.attempt !== 1
+      || authorized.attempt !== nextGenerationAttempt(input.run, unit.jobShotId)
+      || authorized.attempt > input.run.policy.maxAttemptsPerJob
       || authorized.contractHash !== unit.contract.contractHash
       || authorized.providerId !== unit.contract.providerId
       || authorized.modelId !== unit.contract.modelId
@@ -298,11 +303,12 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
   if (input.run.jobs.some((job) => UNSUBMITTED_AUTHORIZATION_STATUSES.has(job.status))) {
     throw new Error("Generation rework requires all previously authorized jobs to be submitted or settled");
   }
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   if (
     envelope.budget.currency !== input.run.budget.currency
-    || envelope.budget.ledgerCeiling < input.run.budget.authorized
-    || envelope.budget.ledgerCeiling < liability + envelope.budget.maximum
+    || budgetExceeds(input.run.budget.authorized, envelope.budget.ledgerCeiling)
+    || (input.run.policy.maxSpend !== null && budgetExceeds(envelope.budget.ledgerCeiling, input.run.policy.maxSpend))
+    || budgetExceeds(liability + envelope.budget.maximum, envelope.budget.ledgerCeiling)
   ) {
     throw new Error("Generation reauthorization does not safely extend the Run budget");
   }
@@ -379,7 +385,7 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
       : {}),
     updatedAt: input.now,
   };
-  return { generationPlan, job, gate, policyMaxSpend: envelope.budget.ledgerCeiling };
+  return { generationPlan, job, gate };
 }
 
 /** Validate a fresh budget continuation over existing, current-attempt jobs that have never submitted. */
@@ -402,11 +408,12 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
   }
   if (Date.parse(envelope.expiresAt) <= Date.parse(input.now)) throw new Error("Generation continuation has expired");
   if (input.run.gates.some((gate) => gate.gateId === envelope.gateId)) throw new Error(`Duplicate gate: ${envelope.gateId}`);
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   if (
     envelope.budget.currency !== input.run.budget.currency
     || envelope.budget.ledgerCeiling <= input.run.budget.authorized
-    || envelope.budget.ledgerCeiling < liability + envelope.budget.maximum
+    || (input.run.policy.maxSpend !== null && budgetExceeds(envelope.budget.ledgerCeiling, input.run.policy.maxSpend))
+    || budgetExceeds(liability + envelope.budget.maximum, envelope.budget.ledgerCeiling)
   ) {
     throw new Error("Generation continuation does not safely extend the Run budget");
   }
@@ -480,7 +487,7 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
       : shot),
     updatedAt: input.now,
   };
-  return { generationPlan, jobs, gate, policyMaxSpend: envelope.budget.ledgerCeiling };
+  return { generationPlan, jobs, gate };
 }
 
 export function applyGenerationAuthorizationGateDecision(input: Readonly<{

@@ -12,7 +12,7 @@ import { createProductionGenerationSubmission } from "./productionGenerationSubm
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
-import { anchorCheckpointGateId } from "./anchorCheckpoint";
+import { currentAnchorCheckpointGate } from "./anchorCheckpoint";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
 // P4 S4 — J1/J3 end-to-end over a REAL loopback vendor (zero quota). This drives the FULL durable chain:
@@ -98,7 +98,7 @@ function setup(shots: ProductionGenerationShot[]) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-batch-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
-  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
+  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
   const top = shots[0].contract!;
   sealAndApproveProductionGeneration({
     repository,
@@ -139,7 +139,7 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
 /** 真人批准锚检查点。检查点永不自己放行（2026-09-11 拍板），整批要跑完就得像生产入口那样发 gate.decide。 */
 function approveCheckpoint(repository: ReturnType<typeof createProductionRunRepository>): void {
   const run = repository.read("project-1", "op-batch")!;
-  const gate = run.gates.find((candidate) => candidate.gateId === anchorCheckpointGateId("op-batch") && candidate.status === "waiting");
+  const gate = run.gates.find((candidate) => candidate.gateId === currentAnchorCheckpointGate(run)?.gateId && candidate.status === "waiting");
   if (!gate) throw new Error("expected a waiting anchor checkpoint to approve");
   repository.execute("project-1", "op-batch", {
     commandId: `approve-checkpoint:${run.revision}`, expectedRevision: run.revision,
@@ -166,7 +166,7 @@ describe("P4 S4 J1 — full multi-shot batch over a real loopback vendor", () =>
       expect(phaseA.checkpoint.status).toBe("waiting");
       expect(submits).toHaveLength(1); // only the anchor image submitted
       let run = repository.read("project-1", "op-batch")!;
-      const gate = run.gates.find((g) => g.gateId === anchorCheckpointGateId("op-batch"))!;
+      const gate = run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)!;
       expect(gate.status).toBe("waiting");
       // The anchor produced a real durable artifact (submit→poll→materialize chain ran end-to-end).
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1);

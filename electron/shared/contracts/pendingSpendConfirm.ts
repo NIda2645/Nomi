@@ -28,6 +28,7 @@ export type PendingSpendShot = Readonly<{
   mode?: string;
   modeId?: string;
   parameters: Readonly<Record<string, unknown>>;
+  references?: readonly Readonly<{ assetId: string; contentHash: string; version: number; kind?: string; role?: string }>[];
   price: PendingSpendPrice;
 }>;
 
@@ -37,6 +38,8 @@ export type PendingSpendConfirm = Readonly<{
   operationId: string;
   /** 幂等键的一半：改参数把它推进一版（`generation.revise` 的 commandId 用它）。 */
   planVersion: number;
+  /** Host identity of the exact displayed candidates, scope and quote. */
+  quoteId: string;
   candidateRevision: number;
   /**
    * 付费门已经开着时它就是那道门的 id；还是草稿（没封印）时缺席。

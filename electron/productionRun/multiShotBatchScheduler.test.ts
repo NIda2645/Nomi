@@ -1,3 +1,4 @@
+import { deriveGenerationContinuationAuthorizationState } from "./productionGenerationAuthorizationState";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +58,7 @@ function shotEntry(shotId: string, prompt: string, opts: { role?: "anchor" | "sh
 }
 
 /** Build a sealed+approved multi-shot Run in a fresh temp project. maxSpend caps the plan. */
-function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null): {
+function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null, hardCap = maxSpend): {
   root: string;
   repository: ReturnType<typeof createProductionRunRepository>;
 } {
@@ -74,7 +75,7 @@ function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null):
     origin: { host: "semantic-mcp" },
     candidate: shots[0].candidate,
     shots,
-    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend, maxAttemptsPerJob: 2 },
+    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: hardCap, maxAttemptsPerJob: 2 },
   });
   const topContract = shots[0].contract!;
   sealAndApproveProductionGeneration({
@@ -218,7 +219,7 @@ describe("P4 S4 batch scheduler — budget halt", () => {
 
   it("resumes the halted batch after the cap is raised (same plan, second wave)", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
-    const { root, repository } = setupBatch(shots, 13);
+    const { root, repository } = setupBatch(shots, 13, 18);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     await scheduler(root, repository, submit).runToQuiescence();
@@ -235,6 +236,9 @@ describe("P4 S4 batch scheduler — budget halt", () => {
       resolveShotPrice: () => ({ known: true, amount: 6 }),
       now: NOW,
     });
+    expect(() => deriveGenerationContinuationAuthorizationState({
+      run: { ...run, policy: { ...run.policy, maxSpend: 13 } }, preparation: continuation, now: NOW,
+    })).toThrow(/safely extend/);
     run = repository.execute("project-1", "op-batch", {
       commandId: "continue-authorize", expectedRevision: run.revision, type: "generation.continue_authorization",
       payload: { authorization: continuation }, issuedAt: NOW,

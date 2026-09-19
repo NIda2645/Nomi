@@ -31,15 +31,15 @@ function run(shots: ProductionGenerationShot[], jobs: ProductionJob[] = [], arti
 }
 
 describe('buildMaterializeShotsPayload', () => {
-  it('只投 included 的锚+镜；确认即落时无 result（还没生成）', () => {
+  it('投影完整草稿，included 仅决定付费批次；未生成时无 result', () => {
     const r = run([
       shot('a1', { role: 'anchor' }),
       shot('s1', { role: 'shot' }),
-      shot('s2', { role: 'shot', included: false }), // 未勾选 → 不投
+      shot('s2', { role: 'shot', included: false }), // 未纳入当前批次，草稿仍可见
     ])
     const payload = buildMaterializeShotsPayload(r, { projectRoot: '/tmp/x', previewSecret: 'secret', planName: '雨夜便利店' })
     expect(payload).not.toBeNull()
-    expect(payload!.shots.map((s) => s.shotId)).toEqual(['a1', 's1'])
+    expect(payload!.shots.map((s) => s.shotId)).toEqual(['a1', 's1', 's2'])
     expect(payload!.shots.every((s) => s.result === undefined)).toBe(true)
     expect(payload!.materializationOperationId).toBe(canvasLandingOperationId('run-1'))
     expect(payload!.planName).toBe('雨夜便利店')
@@ -67,7 +67,7 @@ describe('buildMaterializeShotsPayload', () => {
   })
 
   it('单镜 semantic plan 没有 shots[] 时仍投影一个真实图片占位', () => {
-    expect(buildMaterializeShotsPayload(run([shot('s1', { included: false })]), { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+    expect(buildMaterializeShotsPayload(run([shot('s1', { included: false })]), { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
     const catCandidate = { ...shot('cat').candidate, mode: 'text_to_image', prompt: '一只可爱的橘色小猫头像' }
     const noShots = run([shot('cat', { candidate: catCandidate })])
     noShots.generationPlan = { ...noShots.generationPlan!, shots: undefined }

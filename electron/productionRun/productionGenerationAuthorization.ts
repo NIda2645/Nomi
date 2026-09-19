@@ -1,3 +1,4 @@
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import crypto from "node:crypto";
 
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
@@ -195,9 +196,9 @@ export function createProductionGenerationAuthorizationEnvelope(input: Productio
   });
   const maximum = nonNegativeMoney(input.budget.maximum, "Budget ceiling");
   const ledgerCeiling = nonNegativeMoney(input.budget.ledgerCeiling, "Run ledger ceiling");
-  const jobMaximum = jobs.reduce((sum, job) => sum + job.price.maximum, 0);
-  if (maximum > jobMaximum) throw new ProductionGenerationAuthorizationError("Budget ceiling must not exceed the ordered job ceilings");
-  if (ledgerCeiling < maximum) throw new ProductionGenerationAuthorizationError("Run ledger ceiling must cover the approved job ceiling");
+  const jobMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
+  if (budgetExceeds(maximum, jobMaximum)) throw new ProductionGenerationAuthorizationError("Budget ceiling must not exceed the ordered job ceilings");
+  if (budgetExceeds(maximum, ledgerCeiling)) throw new ProductionGenerationAuthorizationError("Run ledger ceiling must cover the approved job ceiling");
   const expiresAt = requiredText(input.expiresAt, "Authorization expiry");
   if (!Number.isFinite(Date.parse(expiresAt))) throw new ProductionGenerationAuthorizationError("Authorization expiry is invalid");
   return Object.freeze({

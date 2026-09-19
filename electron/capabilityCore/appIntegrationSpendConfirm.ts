@@ -1,3 +1,4 @@
+import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // Agent 面板付费确认卡的**编排**（P1 · 2026-09-11）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -124,12 +125,12 @@ export async function revisePendingSpendConfirmation(input: { projectId: string;
   return actions.revisePendingSpend(input);
 }
 
-export async function discardPendingSpendConfirmation(input: { projectId: string; operationId: string }): Promise<ProductionActionResult> {
+export async function discardPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.discardPendingSpend(input);
 }
 
-export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; shotIds?: readonly string[] }): Promise<ProductionActionResult> {
+export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.confirmPendingSpend(input);
 }
@@ -241,13 +242,14 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     }
   };
 
-  /** × = 丢弃这份草稿。取消计划（画布上的占位节点由既有落地链按 detached 收尾）。 */
-  const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string }>): Promise<ProductionActionResult> => {
+  /** Close the current unapproved spend request while retaining its creative draft. */
+  const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
     try {
-      await deps.operations.cancel(input.projectId, input.operationId, now());
+      await deps.operations.dismiss(input.projectId, input.operationId, now());
       return { ok: true, code: "discarded" };
     } catch (error) {
       return failed(error);
@@ -261,34 +263,44 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 收据把手势绑到那个 gateId + digest 上，`authorizeGeneration` 只认对得上的收据，
    * 消费一次之后同一张收据再也批不动第二次。
    */
-  const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
+  const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     let pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
-    // 「逐镜」= 只生成这一镜。它不是一个显示选项，是一次**真的把计划收窄**（同 trial_narrow 的家族）：
-    // 没被选中的镜取消勾选，封印时它们就不进合同，用户付的钱和他看到的那个数一致。
-    if (input.shotIds && input.shotIds.length > 0 && input.shotIds.length < pending.shots.length) {
-      if (!deps.operations.revise) return { ok: false, code: "unavailable" };
-      const keep = new Set(input.shotIds);
-      try {
-        for (const shot of pending.shots) {
-          if (keep.has(shot.shotId)) continue;
-          await deps.operations.revise(input.projectId, input.operationId, { shotId: shot.shotId, patch: {}, included: false }, now());
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
+    try {
+      const selected = resolveGenerationShotScope(pending.shots.map((shot) => shot.shotId), input.shotIds);
+      if (selected.length !== pending.shots.length) {
+        const displayed = pending;
+        const selectedShots = displayed.shots.filter(shot => selected.includes(shot.shotId));
+        await deps.operations.present(input.projectId, input.operationId, now(), selected);
+        pending = pendingFor(input.projectId, input.operationId);
+        const content = (shots: PendingSpendConfirm['shots']) => JSON.stringify(shots.map(({ nodeId: _nodeId, index: _index, ...shot }) => shot));
+        if (!pending || pending.planVersion !== displayed.planVersion + 1
+          || pending.currency !== displayed.currency || content(pending.shots) !== content(selectedShots)) {
+          throw new Error("generation_quote_changed");
         }
-      } catch (error) {
-        return failed(error);
       }
-      pending = pendingFor(input.projectId, input.operationId);
-      if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
-    }
+    } catch (error) { return failed(error); }
+    const acceptedQuote = pending;
     const target = deps.rendererTarget();
     if (!target) return { ok: false, code: "unavailable" };
     try {
       const lease = await leased(input.projectId);
+      if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId) throw new Error("generation_quote_changed");
       // 封印 → 铸收据 → 决门 → 消费 → 开跑：这条链只有一份（`generationSpendDecision.ts`）。
       // 「全自动」档那条免卡放行走的是同一个函数，差别只在那张 attestation 是人点的还是策略代答的。
       await decideGenerationSpend(
-        { requestGenerationGate: deps.requestGenerationGate, authorizeGeneration: deps.authorizeGeneration, planning: deps.planning, receipts: deps.receipts },
+        { requestGenerationGate: async (request) => {
+          const gate = await deps.requestGenerationGate(request);
+          const prepared = gate as { maximumCost?: unknown; currency?: unknown };
+          if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId
+            || acceptedQuote.unknownShotCount > 0 || prepared.currency !== acceptedQuote.currency
+            || typeof prepared.maximumCost !== "number" || prepared.maximumCost > acceptedQuote.knownSubtotal) {
+            throw new Error("generation_quote_changed");
+          }
+          return gate;
+        }, authorizeGeneration: deps.authorizeGeneration, planning: deps.planning, receipts: deps.receipts },
         { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel" },
       );
       return { ok: true, code: "spend_confirmed" };

@@ -1,3 +1,4 @@
+import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // 生成计划的**候选补丁**与**撤未点头的授权**（`generation.patch` / `generation.revise` /
 // `generation.trial_narrow` 三条命令共用的那一段写法）。
 //
@@ -89,6 +90,9 @@ export function unsealedGenerationPlanFields(plan: ProductionGenerationPlan, now
     ...plan,
     state: "draft",
     candidate: { ...plan.candidate, sealedContractHash: undefined },
+    ...(plan.shots ? { shots: plan.shots.map((shot) => ({ ...shot, contract: undefined,
+      candidate: { ...shot.candidate, sealedContractHash: undefined }, approvedReceiptId: undefined,
+      approvedAt: undefined, approvedAttempt: undefined })) } : {}),
     contract: undefined,
     planHash: undefined,
     authorizationEnvelope: undefined,
@@ -188,4 +192,39 @@ function candidateIdentities(
   put("@plan", plan.candidate);
   for (const shot of plan.shots ?? []) put(shot.shotId, shot.candidate);
   return entries;
+}
+
+/** The complete draft survives changes to the current spend request. */
+export function presentGenerationPlan(current: ProductionRun, requested: unknown, now: string): ProductionRun {
+  const plan = current.generationPlan;
+  if (!plan) throw new Error("Generation plan not found");
+  const scope = resolveGenerationShotScope(plan.shots?.map((shot) => shot.shotId) ?? [plan.candidate.candidateId], requested);
+  let reopened = current;
+  if (plan.state === "sealed") {
+    reopened = { ...current, ...revokeWaitingGenerationAuthorization(current, plan, now, "Present") };
+  } else if (plan.state !== "draft") {
+    // A ready output proves the execution finished, not its final bill. Retain its reservation as
+    // cumulative liability. Failed/cancelled jobs need a provider-safe ledger settlement before reuse.
+    const unresolvedReservation = current.budget.reserved > 0 && current.jobs.some(job => !["ready", "adopted"].includes(job.status));
+    const unsettled = unresolvedReservation || current.budget.unsettled > 0 || current.jobs.some((job) =>
+      !["ready", "adopted", "cancelled_remote"].includes(job.status)
+      && !(job.status === "needs_attention" && job.errorCode === "provider_task_failed"));
+    if (unsettled) throw new Error("generation_reconciliation_required: previous batch is unsettled or in flight");
+  }
+  const { cardHidden: _cardHidden, ...visible } = unsealedGenerationPlanFields(plan, now);
+  return { ...reopened,
+    // A settled batch can open a fresh request even after completion/cancellation. Jobs remain immutable.
+    ...(plan.state === "submitted" || plan.state === "cancelled" ? { status: "draft" as const } : {}),
+    planVersion: current.planVersion + 1,
+    generationPlan: { ...visible,
+      ...(visible.shots ? { shots: visible.shots.map((shot) => ({ ...shot, included: scope.includes(shot.shotId) })) } : {}),
+      updatedAt: now }, updatedAt: now };
+}
+
+export function dismissGenerationPlan(current: ProductionRun, now: string): ProductionRun {
+  const plan = current.generationPlan;
+  if (!plan || (plan.state !== "draft" && plan.state !== "sealed")) throw new Error("No unapproved generation request to dismiss");
+  const revoked = plan.state === "sealed" ? revokeWaitingGenerationAuthorization(current, plan, now, "Dismiss") : undefined;
+  return { ...current, ...(revoked ?? { planVersion: current.planVersion + 1 }),
+    generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true }, updatedAt: now };
 }

@@ -124,7 +124,7 @@ function shotKind(shot: ProductionGenerationShot): "image" | "video" {
 }
 
 /**
- * 从 Run 投影出 materialize-shots 载荷。**只投影 included 的锚 + 镜**（试拍/分批只覆盖勾选镜，§3.1）。
+ * 从 Run 投影出 materialize-shots 载荷。投影完整草稿；included 仅表示当前付费范围，不能删除未选镜头。
  * 已完成（ready/adopted）且有本地 artifact 的镜带上 result（打开项目补齐时一并回填；确认即落时通常还没有）。
  * planName = 计划名（渲染层据它拼分镜组名与分镜表标题）。previewSecret/projectRoot 用于把 artifact 投成 nomi-local:// url。
  */
@@ -145,8 +145,6 @@ export function buildMaterializeShotsPayload(
   const sourceShots = plan.shots && plan.shots.length > 0
     ? plan.shots
     : [{ shotId: plan.candidate.candidateId, candidate: plan.candidate, updatedAt: plan.updatedAt }]
-  const included = sourceShots.filter((shot) => shot.included !== false);
-  if (included.length === 0) return null;
 
   // shotId → 已完成镜的本地 result（从 artifacts 投影）。job 谱系：job.metadata.shotId → job → artifact.jobId。
   const jobByShot = new Map<string, string>();
@@ -178,7 +176,7 @@ export function buildMaterializeShotsPayload(
     }
   }
 
-  const shots: MaterializeShotWire[] = included.map((shot) => {
+  const shots: MaterializeShotWire[] = sourceShots.map((shot) => {
     const result = resultByShot.get(shot.shotId);
     return {
       shotId: shot.shotId,

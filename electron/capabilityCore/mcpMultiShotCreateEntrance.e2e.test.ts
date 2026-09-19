@@ -21,7 +21,7 @@ import { prepareProductionGenerationAuthorization } from "../productionRun/prepa
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
-import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+import { currentAnchorCheckpointGate } from "../productionRun/anchorCheckpoint";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { verbToTransportCall } from "../agentLane/laneVerbTransport";
 
@@ -257,7 +257,7 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
       // Anchor generated, checkpoint opened & auto-passed? No — default has no auto-release, so the batch
       // stops at the checkpoint after the anchor. Exactly 1 submit so far (the anchor image).
       expect(submits).toHaveLength(1);
-      const checkpoint = run.gates.find((g) => g.gateId === anchorCheckpointGateId(operationId))!;
+      const checkpoint = run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)!;
       expect(checkpoint.status).toBe("waiting");
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1); // anchor
       const blockedShotJob = run.jobs.find((job) => job.metadata?.shotId === "shot-1");

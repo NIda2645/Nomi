@@ -623,6 +623,7 @@ describe("semantic MCP generation tools", () => {
         approve: () => ({ ...operation, approvedReceiptId: "r" }),
         cancel: () => ({ ...operation, state: "cancelled" as const }),
         present: () => operation,
+        dismiss: () => ({ ...operation, cardHidden: true }),
       };
     }
 

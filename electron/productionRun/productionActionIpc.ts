@@ -16,8 +16,8 @@ type CapabilityActions = {
   /** 2026-09-11 Agent 面板付费确认卡：读 / 改参数 / 丢弃 / 确认并开跑。 */
   listPendingSpendConfirmations: (projectId: string) => PendingSpendRead;
   revisePendingSpendConfirmation: (input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
-  discardPendingSpendConfirmation: (input: { projectId: string; operationId: string }) => Promise<ProductionActionResult>;
-  confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; shotIds?: readonly string[] }) => Promise<ProductionActionResult>;
+  discardPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string }) => Promise<ProductionActionResult>;
+  confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }) => Promise<ProductionActionResult>;
 };
 
 export function registerProductionActionIpc(deps: {
@@ -92,18 +92,20 @@ export function registerProductionActionIpc(deps: {
     assertTrustedSender(event);
     const scoped = spendOperation(payload);
     if ("ok" in scoped) return scoped;
-    return (await deps.loadCore()).discardPendingSpendConfirmation(scoped);
+    return (await deps.loadCore()).discardPendingSpendConfirmation({ ...scoped, quoteId: str(objectOf(payload).quoteId) });
   });
 
   ipcMain.handle("nomi:production-runs:confirm-spend", async (event, payload: unknown): Promise<ProductionActionResult> => {
     assertTrustedSender(event);
     const scoped = spendOperation(payload);
     if ("ok" in scoped) return scoped;
-    const rawShotIds = objectOf(payload).shotIds;
-    const shotIds = Array.isArray(rawShotIds)
-      ? rawShotIds.map((value) => str(value)).filter(Boolean).slice(0, 256)
-      : [];
-    return (await deps.loadCore()).confirmPendingSpendConfirmation({ ...scoped, ...(shotIds.length ? { shotIds } : {}) });
+    const raw = objectOf(payload);
+    const rawShotIds = raw.shotIds;
+    if (rawShotIds !== undefined && (!Array.isArray(rawShotIds) || rawShotIds.some((id) => typeof id !== "string"))) {
+      return { ok: false, code: "failed", message: "generation_scope_invalid" };
+    }
+    return (await deps.loadCore()).confirmPendingSpendConfirmation({ ...scoped, quoteId: str(raw.quoteId),
+      ...(rawShotIds === undefined ? {} : { shotIds: rawShotIds as string[] }) });
   });
 
   ipcMain.handle("nomi:production-runs:resume-batch", async (event, payload: unknown): Promise<ProductionActionResult> => {

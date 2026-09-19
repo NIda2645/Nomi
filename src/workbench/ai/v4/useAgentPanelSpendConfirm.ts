@@ -271,20 +271,22 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
      *
      * 顺序是硬的：**先把账本落进候选，再封印**。反了就会封上一份用户已经改掉的合同。
      * 落完先读一次宿主的**正式报价**：与本地估算不一致时以它为准、卡上原地换数（不弹第二张卡），
-     * 然后照常往下走——用户按的那一下不该被一个四舍五入拦住。
+     * 报价不同则停在更新后的卡上，等用户再次确认。
      */
     confirm: () => act(async (target) => {
       const currentShot = target.shots[index]
       const single = scope === 'each' && target.shots.length > 1 && currentShot
       const shotIds = single && currentShot ? [currentShot.shotId] : undefined
+      let approved = target
       if (!draftIsEmpty(draft)) {
         for (const revision of revisionsForConfirm(target.shots, draft, shotIds)) {
-          await productionRunApi.reviseSpend({
+          const revised = await productionRunApi.reviseSpend({
             projectId: target.projectId,
             operationId: target.operationId,
             ...(target.shots.length > 1 ? { shotId: revision.shotId } : {}),
             patch: { ...revision.patch },
           })
+          if (!revised.ok) return revised
         }
         const authoritative = await refresh()
         const local = repricePendingSpend(target, draft, resolvePricing)
@@ -293,24 +295,16 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
           setDisagreements(gaps)
           // 主进程已经把改动落进候选了：账本清空，卡上从此显示的就是宿主那一份（正式报价）。
           setDraft(EMPTY_SPEND_DRAFT)
-        }
+          if (gaps.length > 0) return { ok: false, message: 'generation_quote_changed' }
+          approved = authoritative
+        } else return { ok: false, message: 'generation_quote_changed' }
       }
-      return productionRunApi.confirmSpend(target.projectId, target.operationId, shotIds)
+      return productionRunApi.confirmSpend(approved.projectId, approved.operationId, approved.quoteId, shotIds)
     }),
-    /**
-     * × = **丢弃这份草稿**，两件事一起做：取消 durable 计划 + 撤掉它已经落到画布上的占位节点。
-     *
-     * 少做后一件就是把「我不要了」做成一半：Run 里没有它了，画布上却还留着一排没人认领的空节点，
-     * 而用户按那颗 × 时看着的正是它们。撤节点走的是画布自己的删除动作（同一条撤销栈），
-     * 不新建第二条删除路径。
-     */
+    /** Close this spend request; creative content belongs to explicit editing commands. */
     discard: () => act(async (target) => {
-      const result = await productionRunApi.discardSpend(target.projectId, target.operationId)
+      const result = await productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)
       if (result.ok) {
-        const canvas = useGenerationCanvasStore.getState()
-        for (const entry of target.shots) {
-          if (entry.nodeId) canvas.deleteNode(entry.nodeId)
-        }
         setDraft(EMPTY_SPEND_DRAFT)
       }
       return result
