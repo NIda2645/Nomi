@@ -57,7 +57,7 @@
 | T-CV-03 | 节点下面东西太多：只留 icon + hover 名称，运镜/更多挪右上，下面只放模型生成相关 | todo | [原文 09-10 #12](sources/2026-09-14-filehelper-transcript.md#09-10) | 与 #784 同一面；#784 样张已被退回「只收宽不改摆法」 |
 | T-CV-04 | 视频节点却显示「几个图片」→ 要通用 ×1 ×2 数量控件 | todo | [原文 09-10 #11](sources/2026-09-14-filehelper-transcript.md#09-10) | 小 |
 | T-CV-05 | 点节点后下方输入框来回漂移、被截断；参数挤在一起 | done | [原文 09-10 #10](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修：输入框位置改成 stage/anchor/自然尺寸的纯函数（`anchoredPlacement.ts`，走查 `node-composer-placement.walk.mjs`）；参数面板摊开选项、浮层宽由内容派生（829e884cd + #784） |
-| T-CV-06 | 画布里图片比例不对、上下有透明边 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 要核 |
+| T-CV-06 | 画布里图片比例不对、上下有透明边 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已复现并修复，待 PR 合入；含视频、卡片与 LOD，[验收](../plan/2026-09-20-canvas-image-aspect.md) |
 | T-CV-07 | 徽标/角标看不清：分镜头左上右上徽标、技能卡黑胶囊 | todo | [截图](sources/screenshots/2026-09-12-0047-skill-card-badge.jpg) | 09-09 拍过「镜头 N 标签行在图上方」，黑胶囊是另一处 |
 | T-CV-08 | 常用文本节点被收进加号；左侧工具栏 hover 加号挡住后面节点 | todo | [原文 09-10 #5 #16](sources/2026-09-14-filehelper-transcript.md#09-10) | 过设计系统 §1.5 控件层级 |
 | T-CV-09 | 声音节点连不上视频节点（有些视频能参考音频，如 Seedance 2.0） | done | [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修（f03b949e0 + d1b1a8e82，早于 #802）：参考边分类器认音频、音频参考槽三选一门岗；「写死的共享规则」那句已陈旧——视频档案已按模型声明 `audio_ref`，剩余只是给更多模型补槽 |
