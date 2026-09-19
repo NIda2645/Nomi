@@ -1,6 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NOMI_OVERLAY_Z_INDEX, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
+import { NOMI_OVERLAY_Z_INDEX, hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -125,7 +125,14 @@ export function AnchoredPopover({
     // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
-      if (popRef.current && hasOpenPopupAbove(popRef.current)) return
+      const pop = popRef.current
+      if (!pop || hasOpenPopupAbove(pop)) return
+      // The content may declare this popover's own dialog; it is not a layer above us.
+      if (hasOpenDialogAbove(pop.querySelector<HTMLElement>('[role="dialog"]') ?? pop)) return
+      // Claim Escape before React Portal bubbling reaches the owning React Flow node.
+      // A document bubble listener is too late: the node has already been unselected.
+      event.preventDefault()
+      event.stopPropagation()
       onClose()
     }
     const onDown = (event: MouseEvent) => {
@@ -135,10 +142,10 @@ export function AnchoredPopover({
       if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     document.addEventListener('mousedown', onDown)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('mousedown', onDown)
     }
   }, [anchorRef, onClose])
