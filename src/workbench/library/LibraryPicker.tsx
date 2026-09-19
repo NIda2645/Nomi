@@ -19,7 +19,7 @@ export type LibraryPickerRow = Readonly<{
 
 /** Skill and node presets share the same chooser; hosts own data, filtering and application. */
 export function LibraryPicker({ rows, categories, activeCategory, query, onQueryChange, onSelectCategory,
-  onSelect, searchLabel, autoFocus, disabled, mediaFallback, status, empty, footer, rowAttributes, previewAttributes,
+  onSelect, searchLabel, autoFocus, mediaFallback, status, empty, footer, rowAttributes, previewAttributes,
 }: {
   rows: readonly LibraryPickerRow[]
   categories: readonly string[]
@@ -30,7 +30,6 @@ export function LibraryPicker({ rows, categories, activeCategory, query, onQuery
   onSelect?: (row: LibraryPickerRow) => void
   searchLabel: string
   autoFocus?: boolean
-  disabled?: boolean
   mediaFallback?: React.ReactNode
   status?: React.ReactNode
   empty?: React.ReactNode
@@ -60,9 +59,9 @@ export function LibraryPicker({ rows, categories, activeCategory, query, onQuery
       {groupLibraryItems(visibleRows, row => row.group ? { ...row.group, id: `${row.section}:${row.group.id}` } : undefined).map(group => (
         <LibraryGroup key={`${group.id}:${Boolean(query?.trim())}`} group={query?.trim() ? { ...group, collapsed: false } : group}>
           {group.items.map(row => <TooltipProvider key={row.id} delayDuration={180}><Tooltip>
-            <TooltipTrigger asChild><button type="button" disabled={disabled} onClick={() => onSelect?.(row)}
+            <TooltipTrigger asChild><button type="button" onClick={() => onSelect?.(row)}
               data-library-option={row.id} {...rowAttributes?.(row)}
-              className={cn('flex w-full items-start gap-2.5 px-2.5 py-2 text-left hover:bg-nomi-ink-05 focus-visible:bg-nomi-ink-05 disabled:opacity-40', row.selected && 'bg-nomi-ink-05')}>
+              className={cn('flex w-full items-start gap-2.5 px-2.5 py-2 text-left hover:bg-nomi-ink-05 focus-visible:bg-nomi-ink-05', row.selected && 'bg-nomi-ink-05')}>
               <SkillMedia cover={row.cover} preview={row.preview} fallback={mediaFallback} className="h-9 w-14 shrink-0 rounded-nomi-sm object-cover" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-caption font-medium text-nomi-ink">{row.name}

@@ -25,9 +25,8 @@ describe('shared library picker', () => {
   })
   it('preserves host row anchors and management actions without taking ownership of them', () => {
     const html = render({ rowAttributes: row => ({ 'data-v4-command': row.id }),
-      footer: React.createElement('button', null, 'Manage library'), disabled: true })
+      footer: React.createElement('button', null, 'Manage library') })
     expect(html).toContain('data-v4-command="preset-0"')
     expect(html).toContain('Manage library')
-    expect(html).toContain('disabled=""')
   })
 })
