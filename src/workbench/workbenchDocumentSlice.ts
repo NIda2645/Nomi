@@ -16,6 +16,8 @@ export type WorkbenchDocumentSlice = {
   activeDocumentId: string
   /** 每篇原稿的分镜设计（唯一领域真相源，按 documentId 索引）。随项目持久化。 */
   storyboardDesignsByDocumentId: Record<string, StoryboardDesign[]>
+  activeCreationRunId: string | null
+  setActiveCreationRunId: (id: string | null, documentId?: string) => void
   activeStoryboardId: string | null
   storyboardRowFocus: { designId: string; rowId: string } | null
   setStoryboardRowFocus: (focus: { designId: string; rowId: string } | null) => void
@@ -95,6 +97,7 @@ export const createWorkbenchDocumentSlice = (
   activeDocumentId: INITIAL_DOCUMENT.id,
   storyboardDesignsByDocumentId: {},
   activeStoryboardId: null,
+  activeCreationRunId: null,
   storyboardRowFocus: null,
   setStoryboardRowFocus: (storyboardRowFocus) => set({ storyboardRowFocus }),
   setWorkbenchDocument: (workbenchDocument) => {
@@ -117,6 +120,7 @@ export const createWorkbenchDocumentSlice = (
       workbenchDocuments: [...state.workbenchDocuments, doc],
       activeDocumentId: doc.id,
       activeStoryboardId: null,
+      activeCreationRunId: null,
       persistRevision: state.persistRevision + 1,
     }))
     return doc
@@ -137,6 +141,7 @@ export const createWorkbenchDocumentSlice = (
         activeDocumentId: nextActive,
         storyboardDesignsByDocumentId: nextDesigns,
         activeStoryboardId,
+        activeCreationRunId: state.activeDocumentId === id ? null : state.activeCreationRunId,
         persistRevision: state.persistRevision + 1,
       }
     })
@@ -152,23 +157,28 @@ export const createWorkbenchDocumentSlice = (
       }
     })
   },
+  setActiveCreationRunId: (id, documentId) => {
+    const target = documentId ?? get().activeDocumentId
+    if (!get().workbenchDocuments.some((document) => document.id === target)) return
+    set({ activeDocumentId: target, activeCreationRunId: id, activeStoryboardId: null, storyboardRowFocus: null })
+  },
   setActiveDocumentId: (id) => {
     if (typeof id !== 'string' || !id.trim()) return
     set((state) => {
       if (!state.workbenchDocuments.some((d) => d.id === id)) return state
       if (state.activeDocumentId === id) return state
-      return { activeDocumentId: id, activeStoryboardId: null }
+      return { activeDocumentId: id, activeStoryboardId: null, activeCreationRunId: null }
     })
   },
   hydrateWorkbenchDocuments: (documents, activeId) => {
     const normalized = documents.map(normalizeWorkbenchDocument)
     const safe = normalized.length ? normalized : [createDefaultWorkbenchDocument()]
     const active = safe.some((d) => d.id === activeId) ? (activeId as string) : safe[0].id
-    set({ workbenchDocuments: safe, activeDocumentId: active, activeStoryboardId: null, storyboardRowFocus: null })
+    set({ workbenchDocuments: safe, activeDocumentId: active, activeStoryboardId: null, activeCreationRunId: null, storyboardRowFocus: null })
   },
   setActiveStoryboardId: (id, documentId) => {
     if (id === null) {
-      set({ activeStoryboardId: null })
+      set({ activeStoryboardId: null, activeCreationRunId: null })
       return
     }
     const target = resolveTargetDocumentId(documentId, get)
@@ -179,6 +189,7 @@ export const createWorkbenchDocumentSlice = (
       return {
         activeDocumentId: target,
         activeStoryboardId: id,
+        activeCreationRunId: null,
       }
     })
   },
@@ -200,6 +211,7 @@ export const createWorkbenchDocumentSlice = (
       },
       activeDocumentId: target,
       activeStoryboardId: design.id,
+      activeCreationRunId: null,
       persistRevision: current.persistRevision + 1,
     }))
     projectPlan(design)
