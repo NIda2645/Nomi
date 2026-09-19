@@ -97,6 +97,7 @@ export type AgentPanelV4Actions = Readonly<{
 export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPanelV4Data): AgentPanelV4Actions {
   const { t } = useTranslation()
   const [error, setError] = React.useState('')
+  const pendingAdmission = React.useRef<{ id: string; address: ReturnType<typeof laneClient.conversation>; dispatched: boolean } | null>(null)
   const selectedLibraryPrompt = useWorkbenchStore((state) => state.selectedLibraryPrompt)
   const setSelectedLibraryPrompt = useWorkbenchStore((state) => state.setSelectedLibraryPrompt)
   const setDraft = useWorkbenchStore((state) => state.setProjectAgentDraft)
@@ -144,17 +145,21 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     }
     const admissionId = crypto.randomUUID()
     useWorkbenchStore.setState({ projectAgentAdmissionId: admissionId })
+    pendingAdmission.current = { id: admissionId, address: laneClient.conversation(), dispatched: false }
     try {
       const captured = captureSendContext(surface)
       // Start both reads in this synchronous input turn; prepareInput binds its own
       // opening epoch before either promise can settle or the user can switch projects.
-      const [conversation, availableModels] = await Promise.all([laneClient.prepareInput(), listAvailableModelsForAgent()])
+      const [conversation, availableModels] = await Promise.all([laneClient.prepareInput().then(address => {
+        if (pendingAdmission.current?.id === admissionId) pendingAdmission.current.address = address
+        return address
+      }), listAvailableModelsForAgent()])
       const stillCurrent = () => {
         const current = laneClient.conversation()
         return conversation !== null && current !== null && current.laneName === conversation.laneName
           && current.sessionId === conversation.sessionId && current.workspaceId === conversation.workspaceId
       }
-      if (!stillCurrent()) return false
+      if (!stillCurrent() || useWorkbenchStore.getState().projectAgentAdmissionId !== admissionId) return false
       // 文稿前提永远带上（owner 给的）；target 仍按「用户此刻站在哪个面」选。
       const preconditions: PreconditionSet = { document: {
         revision: captured.documentState.revision, contentHash: captured.documentState.contentHash,
@@ -165,6 +170,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
       const surfacePrompt = surface === 'generation' ? buildStaticAgentSystemPrompt('agent')
         : surface === 'preview' ? buildStaticAgentSystemPrompt('agent', 'timeline')
           : !capturedSkill ? getCreationAiMode(state.creationAiModeId).prompt : undefined
+      pendingAdmission.current!.dispatched = true
       await checked(laneClient.say(text, options?.choice ?? 'primary', {
         ...(data.selectedModel ? { model: { vendorKey: data.selectedModel.vendorKey, modelKey: data.selectedModel.modelKey } } : {}),
         approvalPolicy: state.projectAgentApprovalPolicy,
@@ -195,8 +201,12 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
         projectAgentDraftRevision: current.projectAgentDraftRevision + 1,
       }))
       return true
-    } catch (caught) { setError(friendlyError(caught, t)); return false }
+    } catch (caught) {
+      if (!(caught instanceof LaneCommandFailure && caught.laneCode === 'agent_lane_input_cancelled')) setError(friendlyError(caught, t))
+      return false
+    }
     finally {
+      if (pendingAdmission.current?.id === admissionId) pendingAdmission.current = null
       if (useWorkbenchStore.getState().projectAgentAdmissionId === admissionId) {
         useWorkbenchStore.setState({ projectAgentAdmissionId: null })
       }
@@ -227,7 +237,17 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
   }
   return {
     error, clearError: () => setError(''), send,
-    stop: () => { if (visibleAddress) run(() => checked(laneClient.abort(visibleAddress))) },
+    stop: () => {
+      if (!visibleAddress) return
+      const pending = pendingAdmission.current
+      if (pending?.address?.workspaceId === visibleAddress.workspaceId && pending.address.laneName === visibleAddress.laneName
+        && pending.address.sessionId === visibleAddress.sessionId && !pending.dispatched
+        && useWorkbenchStore.getState().projectAgentAdmissionId === pending.id) {
+        useWorkbenchStore.setState({ projectAgentAdmissionId: null })
+        pendingAdmission.current = null
+      }
+      run(() => checked(laneClient.abort(visibleAddress)))
+    },
     approve: () => answer('allow-once'),
     reject: (reason) => answer('deny', reason),
     stopAsking: () => answer('allow-session'),

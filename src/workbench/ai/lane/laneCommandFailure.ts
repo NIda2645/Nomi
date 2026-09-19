@@ -36,6 +36,7 @@ export const LANE_ERROR_TEXT_KEY = {
   agent_skill_unavailable: 'agentLaneError.agent_skill_unavailable',
   agent_skill_version_changed: 'agentLaneError.agent_skill_version_changed',
   agent_lane_input_reference_invalid: 'agentLaneError.agent_lane_input_reference_invalid',
+  agent_lane_input_cancelled: 'agentLaneError.agent_lane_input_cancelled',
   agent_lane_original_media_unavailable: 'agentLaneError.agent_lane_original_media_unavailable',
   project_binding_stale: 'agentLaneError.project_binding_stale',
   project_identity_unavailable: 'agentLaneError.project_identity_unavailable',

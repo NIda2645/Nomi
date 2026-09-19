@@ -19,7 +19,7 @@ describe('desktop lane lifecycle', () => {
   ])('rejects a stale conversation identity for $kind before execution', async command => {
     const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     const execute = vi.fn(async () => ({}))
-    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'new-session' }], active: { lane: 'main', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'new-session' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(), execute } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure: vi.fn(),
       receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
@@ -43,7 +43,7 @@ describe('desktop lane lifecycle', () => {
         cost: unknownMetric, contextTokens: unknownMetric, reasoningTokens: unknownMetric },
       thinking: { supportedLevels: ['off'], level: 'off', canTurnOff: true },
     } }
-    const workspace = { projection: () => initial, subscribe: (listener: typeof publish) => { publish = listener; return unsubscribe },
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => initial, subscribe: (listener: typeof publish) => { publish = listener; return unsubscribe },
       close: vi.fn(async () => { publish({ ...initial, closed: true }) }), execute: vi.fn() } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure: vi.fn(), receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
     const send = (wire: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, wire)
@@ -66,7 +66,7 @@ describe('desktop lane lifecycle', () => {
     const projection = (lane: string) => ({ lanes: [], active: { lane, parts: [] } })
     const makeWorkspace = (lane: string) => {
       const unsubscribe = vi.fn()
-      return { projection: () => projection(lane), subscribe: vi.fn(() => unsubscribe),
+      return { captureInputSignal: () => new AbortController().signal, projection: () => projection(lane), subscribe: vi.fn(() => unsubscribe),
         close: vi.fn(), execute: vi.fn(async () => ({})), unsubscribe }
     }
     const first = makeWorkspace('first')
@@ -93,7 +93,7 @@ describe('desktop lane lifecycle', () => {
     const owner = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     const stranger = { id: 2, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     const execute = vi.fn(async () => ({}))
-    const workspace = { projection: () => ({ lanes: [], active: { lane: 'private', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [], active: { lane: 'private', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(), execute } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure: vi.fn(), receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
     const send = (sender: typeof owner, wire: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, wire)
@@ -107,7 +107,7 @@ describe('desktop lane lifecycle', () => {
   it('closes the owned workspace after its committed Surface has already been released', async () => {
     const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
     const close = vi.fn()
-    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close, execute: vi.fn() } as unknown as LaneWorkspaceHandle
     const validate = vi.fn(() => { throw new Error('surface_port_suspended') })
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate, configure: vi.fn(), receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
@@ -130,7 +130,7 @@ describe('desktop lane lifecycle', () => {
     const prompt = new Promise<void>((resolve) => { finishPrompt = resolve })
     const seen: string[] = []
     let context = ''
-    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(), execute: vi.fn(async (command) => {
         if (command.kind === 'prompt') { seen.push(`${command.text}:${context}`); await prompt }
         else seen.push(command.kind)
@@ -164,7 +164,7 @@ describe('desktop lane lifecycle', () => {
     let entered!: () => void
     const blocked = new Promise<void>((resolve) => { release = resolve })
     const configuring = new Promise<void>((resolve) => { entered = resolve })
-    const make = () => ({ projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+    const make = () => ({ captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(), execute: vi.fn(async () => ({})) })
     const first = make(), second = make()
     const registration = registerAgentLaneIpc({ openWorkspace: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
@@ -189,7 +189,7 @@ describe('desktop lane lifecycle', () => {
     let release!: () => void
     const blocked = new Promise<void>((resolve) => { release = resolve })
     const execute = vi.fn(async () => ({}))
-    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(), execute } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({
       openWorkspace: async () => { await blocked; return workspace },
@@ -211,7 +211,7 @@ describe('desktop lane lifecycle', () => {
   // 类边界：桥上任何一条失败都只出**已登记的码**，`diagnostic` 那一格永远不是给用户看的话。
   it('reports every failure as a registered code, never as prose', async () => {
     const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
-    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+    const workspace = { captureInputSignal: () => new AbortController().signal, projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
       subscribe: () => () => {}, close: vi.fn(),
       execute: vi.fn(async () => { throw new Error('Native PDF was not preserved by the provider payload adapter') }) } as unknown as LaneWorkspaceHandle
     const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace,
@@ -232,4 +232,41 @@ describe('desktop lane lifecycle', () => {
     } finally { await registration.dispose() }
   })
 
+})
+
+
+describe('F12 IPC pre-admission cancellation', () => {
+  it('invalidates both configuring and waiting inputs before they enter the workspace', async () => {
+    let release!: () => void, entered!: () => void
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    const configuring = new Promise<void>(resolve => { entered = resolve })
+    let admission = new AbortController()
+    const sender = { id: 1, send: vi.fn(), isDestroyed: () => false, once: vi.fn(), removeListener: vi.fn() }
+    const executed: string[] = []
+    const workspace = { projection: () => ({ lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', parts: [] } }),
+      captureInputSignal: () => admission.signal,
+      subscribe: () => () => {}, close: vi.fn(), execute: vi.fn(async command => {
+        if (command.kind === 'abort') { admission.abort(new Error('agent_lane_input_cancelled')); admission = new AbortController() }
+        else executed.push(command.text)
+        return {}
+      }) } as unknown as LaneWorkspaceHandle
+    const configure = vi.fn(async () => { if (configure.mock.calls.length === 1) { entered(); await blocked } })
+    const registration = registerAgentLaneIpc({ openWorkspace: async () => workspace, validate: vi.fn(), configure,
+      receipt: vi.fn(), singleShot: vi.fn(), updatePolicy: vi.fn(), restoreInput: vi.fn() })
+    const send = (wire: unknown) => ipc.handlers.get(LANE_IPC_CHANNELS.command)!({ sender }, wire)
+    try {
+      const opened = await send({ kind: 'workspace-open' }) as { workspaceId: string }
+      const common = { workspaceId: opened.workspaceId, expectedLane: 'main', expectedSessionId: 'session-main' }
+      const first = send({ ...common, kind: 'prompt', text: 'configuring' })
+      await configuring
+      const second = send({ ...common, kind: 'follow-up', text: 'waiting behind configure' })
+      await send({ ...common, kind: 'abort' })
+      release()
+      expect(await first).toMatchObject({ ok: false, code: 'agent_lane_input_cancelled' })
+      expect(await second).toMatchObject({ ok: false, code: 'agent_lane_input_cancelled' })
+      expect(executed).toEqual([])
+      expect(await send({ ...common, kind: 'prompt', text: 'after Stop' })).toMatchObject({ ok: true })
+      expect(executed).toEqual(['after Stop'])
+    } finally { release(); await registration.dispose() }
+  })
 })

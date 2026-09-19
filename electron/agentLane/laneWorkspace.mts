@@ -1,3 +1,4 @@
+import { createLaneInputAdmission } from './laneInputAdmission.mjs';
 // Agent lane · 一个项目的多条对话（方案 §2.2 G2「多线程 = 多 lane」）
 //
 // ── 它解决的真实摩擦（D1）──
@@ -20,7 +21,7 @@
 // 四条命令里只有「切换」是我们的活，而它就是「关掉这条、打开那条」。**没有第二份对话索引**：
 // 索引文件会和盘上的真相分叉（用户手动删掉一个会话文件之后，索引仍然说它在），表头不会。
 // 项目只另存当前选择的 laneName/sessionId 指针；恢复时必须重新对上 pi 的真实会话列表。
-import { BACKGROUND_CONTEXT, type Context } from '@earendil-works/pi-agent-core/harness/context';
+import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from '@earendil-works/pi-agent-core/harness/context';
 
 import type {
   LaneCommand, LaneCommandOutcome, LaneHandle, LaneSummary, LaneWorkspaceHandle, LaneWorkspaceProjection,
@@ -44,6 +45,7 @@ export async function openLaneWorkspace(
   openOne: LaneOpener = (next) => next.model ? openLane({ ...next, model: next.model }) : openLaneHistory(next),
 ): Promise<LaneWorkspaceHandle> {
   const context: Context = BACKGROUND_CONTEXT;
+  const inputs = createLaneInputAdmission(context);
   const listeners = new Set<(projection: LaneWorkspaceProjection) => void>();
   let closed = false;
   let structuralPending = 0;
@@ -220,6 +222,7 @@ export async function openLaneWorkspace(
 
   let closing: Promise<void> | undefined;
   return {
+    captureInputSignal: () => { assertOpen(); return inputs.capture().abortSignal!; },
     configureModel: (model) => changeStructure(async () => {
       if (active.projection().running) throw new Error('agent_lane_busy_running');
       await switchTo(active.laneName, { ...options, model });
@@ -237,12 +240,26 @@ export async function openLaneWorkspace(
         await changeStructure(() => handleLaneCommand(command), true);
         return {};
       }
-      await awaitReady();
       const expected = executionOptions?.expectedConversation;
+      if (command.kind === 'abort') {
+        // Retire preparation before waiting for a same-session model reopen. A stale
+        // caller must not cancel the conversation currently occupying the workspace.
+        if (expected && (expected.laneName !== active.laneName || expected.sessionId !== active.sessionId)) {
+          throw new Error('agent_lane_workspace_stale');
+        }
+        inputs.cancel();
+      }
+      const admission = command.kind === 'prompt' || command.kind === 'steer' || command.kind === 'follow-up'
+        ? inputs.capture(executionOptions?.admissionSignal) : undefined;
+      if (admission) await awaitWithContext(awaitReady(), admission);
+      else await awaitReady();
       if (expected && (expected.laneName !== active.laneName || expected.sessionId !== active.sessionId)) {
         throw new Error('agent_lane_workspace_stale');
       }
-      const outcome = await active.execute(command, executionOptions);
+      admission?.abortSignal?.throwIfAborted();
+      const outcome = await active.execute(command, { ...executionOptions,
+        ...(admission ? { admissionSignal: admission.abortSignal } : {}),
+      });
       publish();
       return outcome;
     },
@@ -250,6 +267,7 @@ export async function openLaneWorkspace(
     refreshTasks: () => { if (!closed && !structuralPending) active.refreshTasks(); },
     close: () => {
       if (closing) return closing;
+      inputs.cancel();
       closing = Promise.resolve().then(async () => {
         await structure;
         await active.close();

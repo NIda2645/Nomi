@@ -612,7 +612,7 @@ export interface LaneHandle {
   receiptAuthority(proposalId: string): CanvasWriteApprovalAuthority | undefined
   projection(): LaneProjection
   subscribe(listener: (projection: LaneProjection) => void): () => void
-  execute(command: LaneCommand, options?: { onAccepted?(): void }): Promise<LaneCommandOutcome>
+  execute(command: LaneCommand, options?: { onAccepted?(): void; admissionSignal?: AbortSignal }): Promise<LaneCommandOutcome>
   /**
    * 领域侧在这条对话里记下「这儿有一张生成任务卡」（G13 的承接点）。
    *
@@ -644,12 +644,14 @@ export interface LaneHandle {
 export type LaneConversationRef = Readonly<{ laneName: string; sessionId: string }>
 
 export interface LaneWorkspaceHandle {
+  /** Main-only: capture before async configuration; Stop retires this conversation admission scope. */
+  captureInputSignal(): AbortSignal
   /** Main-only configuration; credentials never enter the IPC projection. */
   configureModel(model: NomiModelConfig): Promise<void>
   receiptAuthority(proposalId: string): CanvasWriteApprovalAuthority | undefined
   projection(): LaneWorkspaceProjection
   subscribe(listener: (projection: LaneWorkspaceProjection) => void): () => void
-  execute(command: LaneCommand, options?: { onAccepted?(): void; expectedConversation?: LaneConversationRef }): Promise<LaneCommandOutcome>
+  execute(command: LaneCommand, options?: { onAccepted?(): void; expectedConversation?: LaneConversationRef; admissionSignal?: AbortSignal }): Promise<LaneCommandOutcome>
   /** 把任务卡记进**当前打开的那条**对话。领域侧只认识工作区，不该自己去挑 lane。 */
   appendTaskNote(note: LaneTaskNote): Promise<void>
   /** 见 `LaneHandle.refreshTasks`。 */

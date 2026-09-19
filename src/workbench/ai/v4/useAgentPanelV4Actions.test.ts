@@ -403,3 +403,81 @@ describe('independent recovery review probes', () => {
     if (afterTake === 'keep this draft') expect(fixture.state.projectAgentRecoveredDrafts.some(entry => entry.id === 'recovered-a')).toBe(true)
   })
 })
+
+
+describe('F12 stop cancels pending input admission', () => {
+  it('keeps the draft and never sends after Stop during the model catalog wait', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    fixture.abort.mockResolvedValue({ ok: true })
+    const actions = mountActions()
+    const sending = actions.send('keep this draft')
+    actions.stop()
+    release([])
+    expect(await sending).toBe(false)
+    expect(fixture.say).not.toHaveBeenCalled()
+    expect(fixture.state.projectAgentDraft).toBe('keep this draft')
+    expect(fixture.state.projectAgentAdmissionId).toBeNull()
+    expect(await actions.send('keep this draft')).toBe(true)
+  })
+
+  it('does not let an old visible conversation Stop cancel another workspace admission', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.abort.mockResolvedValue({ ok: true })
+    const actions = mountActions()
+    const sending = actions.send('keep this draft')
+    fixture.owner = { subscriptionId: 'workspace-b', binding: { immutableProjectUuid: 'uuid-b' } }
+    fixture.state.projectAgentAdmissionId = 'new-workspace-admission'
+    actions.stop()
+    release([])
+    expect(await sending).toBe(false)
+    expect(fixture.state.projectAgentAdmissionId).toBe('new-workspace-admission')
+    expect(fixture.say).not.toHaveBeenCalled()
+  })
+})
+
+
+it('F12: an old cancelled send finally never clears the next same-conversation admission', async () => {
+  let releaseOld!: (models: never[]) => void, releaseNew!: (models: never[]) => void
+  fixture.models.mockReturnValueOnce(new Promise<never[]>(resolve => { releaseOld = resolve }))
+    .mockReturnValueOnce(new Promise<never[]>(resolve => { releaseNew = resolve }))
+  fixture.abort.mockResolvedValue({ ok: true })
+  fixture.say.mockResolvedValue({ ok: true })
+  const actions = mountActions()
+  const old = actions.send('keep this draft')
+  actions.stop()
+  fixture.state.setProjectAgentDraft('new draft')
+  const next = actions.send('new draft')
+  const nextId = fixture.state.projectAgentAdmissionId
+  expect(nextId).not.toBeNull()
+  releaseOld([])
+  expect(await old).toBe(false)
+  expect(fixture.state.projectAgentAdmissionId).toBe(nextId)
+  expect(fixture.state.projectAgentDraft).toBe('new draft')
+  releaseNew([])
+  expect(await next).toBe(true)
+  expect(fixture.say).toHaveBeenCalledOnce()
+  expect(fixture.say.mock.calls[0][0]).toBe('new draft')
+})
+
+it('F12: Stop after IPC dispatch keeps the recovery exchange locked until its admission ACK', async () => {
+  let dispatched!: () => void
+  const entered = new Promise<void>(resolve => { dispatched = resolve })
+  const ack = deferred()
+  fixture.say.mockImplementation(() => { dispatched(); return ack.promise })
+  fixture.abort.mockResolvedValue({ ok: true })
+  fixture.state.projectAgentRecoveredDrafts = [{ id: 'recovered-a', projectUuid: 'uuid-a',
+    conversation: { laneName: 'main', sessionId: 'session-main' }, text: 'Recovered A', displayText: null,
+    skill: null, template: null, attachments: [], references: [], intent: null }]
+  const actions = mountActions()
+  const sending = actions.send('keep this draft')
+  await entered
+  actions.stop()
+  takeRecoveredAgentDraft('recovered-a', 'uuid-a', { laneName: 'main', sessionId: 'session-main' })
+  ack.resolve({ ok: true })
+  expect(await sending).toBe(true)
+  expect(fixture.state.projectAgentRecoveredDrafts.some(draft => draft.text === 'keep this draft')).toBe(false)
+  expect(fixture.state.projectAgentAdmissionId).toBeNull()
+})

@@ -174,15 +174,18 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
       assertCurrent()
       let execution: Promise<Awaited<ReturnType<LaneWorkspaceHandle['execute']>>>
       if (command.kind === 'prompt' || command.kind === 'steer' || command.kind === 'follow-up') {
+        const admissionSignal = owner.workspace.captureInputSignal()
         // Serialize only configure + synchronous message capture. A running prompt must never
         // hold an approval, abort or the next queued input behind its model request.
         const preparation = inputPreparation.then(async () => {
+          admissionSignal.throwIfAborted()
           assertCurrent()
           await dependencies.configure(event, wire, owner.workspace)
+          admissionSignal.throwIfAborted()
           assertCurrent()
           let acknowledge!: (value: Awaited<ReturnType<LaneWorkspaceHandle['execute']>>) => void
           const accepted = new Promise<Awaited<ReturnType<LaneWorkspaceHandle['execute']>>>((resolve) => { acknowledge = resolve })
-          const settled = owner.workspace.execute(command, { expectedConversation, onAccepted: () => acknowledge({}) })
+          const settled = owner.workspace.execute(command, { expectedConversation, admissionSignal, onAccepted: () => acknowledge({}) })
           return { execution: command.kind === 'prompt' ? Promise.race([accepted, settled]) : settled }
         })
         inputPreparation = preparation.then(() => undefined, () => undefined)
