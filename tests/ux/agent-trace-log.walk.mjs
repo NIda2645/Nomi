@@ -53,23 +53,23 @@ try {
   }
   // The real shell is called; only record the argument while retaining actual Finder behavior.
   await app.evaluate(({ shell }) => {
-    const original = shell.openPath.bind(shell)
+    const original = shell.showItemInFolder.bind(shell)
     globalThis.traceOpenedPaths = []
-    shell.openPath = async directory => { globalThis.traceOpenedPaths.push(directory); return original(directory) }
+    shell.showItemInFolder = file => { globalThis.traceOpenedPaths.push(file); return original(file) }
   })
   await clickOrFail(win.locator(`${CREATION_PANEL} ${HISTORY_BUTTON}`), '会话菜单')
   await walk.snap('session-menu-after')
   await clickOrFail(win.locator('[data-agent-trace-open="session"]'), '查看轨迹')
-  await expect.poll(() => app.evaluate(() => globalThis.traceOpenedPaths)).toEqual([traceDirectory])
+  await expect.poll(() => app.evaluate(() => globalThis.traceOpenedPaths)).toEqual([path.join(traceDirectory, 'trace.md')])
   await clickOrFail(win.getByRole('button', { name: '设置', exact: true }), '设置')
   const dialog = win.getByRole('dialog')
   await clickOrFail(dialog.locator('aside button').filter({ hasText: '通用' }), '通用设置')
   await walk.snap('settings-after')
   await clickOrFail(win.locator('[data-agent-trace-open="project"]'), '日志打开目录')
-  await expect.poll(() => app.evaluate(() => globalThis.traceOpenedPaths)).toEqual([traceDirectory, path.join(projectRoot, '.nomi', 'agent-sessions')])
+  await expect.poll(() => app.evaluate(() => globalThis.traceOpenedPaths)).toEqual([path.join(traceDirectory, 'trace.md'), path.join(projectRoot, '.nomi', 'agent-sessions', 'index.md')])
   expect(fs.readFileSync(path.join(projectRoot, '.nomi', 'agent-sessions', 'index.md'), 'utf8')).toContain('3 turns')
   for (const name of ['trace.md', 'trace.jsonl']) fs.copyFileSync(path.join(traceDirectory, name), path.join(walk.outputDir, name))
   fs.copyFileSync(native[0].path, path.join(walk.outputDir, 'native-session.jsonl'))
   Object.assign(walk.report, { traceRows: rows().length, toolWriteRate: '3/3', turnSuccessRate: '3/3',
-    openedDirectories: await app.evaluate(() => globalThis.traceOpenedPaths) })
+    requestedRevealedFiles: await app.evaluate(() => globalThis.traceOpenedPaths) })
 } catch (error) { failure = error } finally { await walk.finish(failure) }
