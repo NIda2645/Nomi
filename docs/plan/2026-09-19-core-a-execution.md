@@ -2,6 +2,8 @@
 
 Status: implementation in progress; no release approval.
 
+Coordinator checkpoint: the complete K0-K7 / C01-C30 / CJ1-CJ4 contract remains active. User refinements to creation are additions within K4, never substitutes for payment, task identity, persistence/Undo, message lifecycle, T7 or final delivery. The coordinator owns overall judgment, dependencies, progress and independent acceptance; executors supply scoped commits and evidence. For efficiency, retain one meaningful red reproduction per root cause, then affected and safety-adjacent regressions; run integrated delivery checks and candidate journeys after convergence. Repeat checks only for changes, failures or unresolved risk. No discretionary visual polish or full-plan expansion.
+
 ## Authority and baseline
 
 The user approved execution of `Nomi_plan_A_core_fixes_2026-09-19.md`, with the coordinator owning decisions, task issuance and acceptance, and GPT-6 medium subagents implementing. The source specification's K0-K7, C01-C30 and CJ1-CJ4 remain the acceptance contract. Paid providers, real user project mutation, publishing and merging are not authorized.
