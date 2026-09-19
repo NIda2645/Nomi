@@ -1,6 +1,6 @@
 ---
 name: workbench-storyboard-planner
-description: 将故事规划成有序分镜方案落在画布上供用户审阅，保持角色、场景、风格和用户约束一致；只出草稿，不出报价卡、不花额度。
+description: 将故事规划成有序分镜方案保存到当前文档供用户审阅；用户明确放到画布后才投放，保持角色、场景、风格和用户约束一致；只出草稿，不出报价卡、不花额度。
 metadata:
   nomi:
     version: 1.0.0
