@@ -1,6 +1,6 @@
 # 画布镜头身份结构复核
 
-状态：已实现未推送。七日同层重复修复的结构复核，范围为镜头身份写入、恢复、投影及 Agent 操作；不宣称其他画布问题已审计。
+状态：已合入 main（PR #825，b5cf48bc0）。七日同层重复修复的结构复核，范围为镜头身份写入、恢复、投影及 Agent 操作；不宣称其他画布问题已审计。
 
 既有 renderer 编号 owner 与 headless nodeKindDomain 复制了资格/递增规则；模板、粘贴、恢复及读面各自解释裸 shotIndex。现只保留 electron/shared/canvas/shotNumbering.ts 一份纯领域定义，renderer 原模块转导出，headless 删除镜像。
 
