@@ -171,6 +171,16 @@
         "symbol": "draftShotToPlanShot"
       },
       "reason": "2026-09-18 晚投影铺开：一镜的字段对应表（DRAFT_SHOT_FIELD_MAP）被取代成一个有类型的显式变换。那条不变量一个字没变——三处形状变化（嵌套层级 / 拍平 / 参考素材身份由宿主补）与「信封字段落不进候选 patch」都在新锚里，而且 #813 开通的「shotId 提到 plan patch 信封上」也跟着搬了（draftShotsPatchEnvelope，同文件）。原表连同 verbFieldMap.ts 的 DSL 一起删掉。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-02-canvas-media-derived-persistence-performance.root-cause.json",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "updateMediaDimensions",
+      "anchor": {
+        "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+        "symbol": "useNodeMediaMeasurement"
+      },
+      "reason": "现有解码回填统一移到所有full/LOD/card宿主共用的hook，继续使用MEDIA_DIMENSION_UPDATE_OPTIONS禁止save/event/undo。"
     }
   ],
   "retirements": [

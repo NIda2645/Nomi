@@ -1,3 +1,4 @@
+import { isCardRenderKind, resolveNodeRenderKind } from '../nodes/resolveRenderKind'
 import React from 'react'
 import {
   BaseEdge,
@@ -17,7 +18,7 @@ import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { getGenerationNodeComponentForNode } from '../nodes/renderRegistry'
 import { canvasPluginRegistry } from '../plugins/defaultCanvasPluginRegistry'
-import { getNodeSizeBounds, resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { CARD_FIXED_WIDTH, getNodeResizeBounds, readNodeMediaAspectRatio, resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { availableEdgeModes } from '../components/edgeModeMenu'
 import { LightweightGenerationNode } from '../components/LightweightGenerationNode'
@@ -147,7 +148,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
   const NodeComponent = getGenerationNodeComponentForNode(node)
   const size = resolveNodeVisualSize(node)
-  const bounds = getNodeSizeBounds(node.kind)
+  const bounds = getNodeResizeBounds(node)
+  const keepMediaAspect = Boolean(readNodeMediaAspectRatio(node)) && !isCardRenderKind(resolveNodeRenderKind(node))
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
@@ -200,7 +202,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
       aria-hidden={collapsedGroupProxy || undefined}
     >
       <NodeResizer
-        isVisible={selected && !data.readOnly}
+        isVisible={selected && !data.readOnly && CARD_FIXED_WIDTH[resolveNodeRenderKind(node) ?? ''] === undefined}
+        keepAspectRatio={keepMediaAspect}
         minWidth={bounds.minWidth}
         minHeight={bounds.minHeight}
         maxWidth={bounds.maxWidth}
