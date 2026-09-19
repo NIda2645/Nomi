@@ -28,4 +28,11 @@ NOMI_REAL_MEDIA_DIR=/Users/aoqimin/Desktop/视频 node tests/ux/canvas-shot-iden
 - `mcp-trace.jsonl`：真实工具轨迹，临时 leaseHandle 脱敏。
 - `journey.json`：每个真实任务的断言结果。
 
-验收限制：providerCalls=0、paidCalls=0；没有付费生成、没有 LLM 决策回合。本走查不覆盖模板插入、LOD 及 compact prompt 投影，这些不能以本组截图替代测试。首次构建末尾遇到并行源码变化导致 build stamp 拒绝；最终精确构建与补跑结果需与主交付记录对应。
+验收限制：providerCalls=0、paidCalls=0；没有付费生成、没有 LLM 决策回合。本走查不覆盖模板插入、LOD 及 compact prompt 投影，这些不能以本组截图替代测试。最终生产基线为 `dbd907cd9be41b605627882d9eef5106a14cbd72`（已含媒体比例修复）。`pnpm run build` exit 0；完整走查 exit 0。构建日志 `/tmp/nomi-shot-identity-walk-build-merged.log`。
+
+
+## 亲眼核验与结果
+
+2026-09-20 在 macOS Electron 本构建亲眼查看复制后的中文、英文、重开截图：原配对“1”在上方，独立图片“2”在左下，副本配对“3”在右下。五个身份徽标全部可见，首帧图/视频文字不截断；拖动后的截图已等多选浮条关闭，未以被遮挡 DOM 当作视觉验收。
+
+真实 MCP 共执行 2 次 tools/call：`nomi_session_open` 成功，`nomi_read` 成功（2/2）；canvas.read 返回 5 个节点、2 条 first_frame 边。脚本硬断言副本首帧和副本视频都是镜头 3，首帧 role 为 first_frame，owner 只为副本视频 id。工具读取/指代正确；不报告 LLM 回合成功率，因为本轮没有模型回合。
