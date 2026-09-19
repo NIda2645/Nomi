@@ -62,6 +62,12 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       return false;
     }
     if (!run) return false;
+    // Document-admitted plans land only after the user explicitly chooses
+    // "put on canvas". Historical runs that already have a binding remain
+    // reconcilable so reopening a project does not strand their nodes.
+    const hasCanvasBinding = Boolean(run.generationPlan?.nodeId)
+      || Boolean(run.generationPlan?.shots?.some((shot) => shot.nodeId));
+    if (run.origin.sourceDocument && run.generationPlan?.canvasPlacement !== 'explicit' && !hasCanvasBinding) return false;
     return landCanvasForRun(run, {
       requestRenderer: deps.requestRenderer,
       projectRoot: deps.resolveProjectRoot(projectId),

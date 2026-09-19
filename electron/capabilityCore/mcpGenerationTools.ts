@@ -1,5 +1,6 @@
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
+import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext';
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 import crypto from "node:crypto";
 import {
@@ -792,5 +793,6 @@ export type GenerationPlanningHandler = (input: {
   capability: string;
   params: Record<string, unknown>;
   lease?: ProjectLeaseV2;
-  origin?: { host: string; actorId?: string };
+  origin?: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
+  selectedPlan?: GenerationInvocationContext['selectedPlan'];
 }) => unknown | Promise<unknown>;

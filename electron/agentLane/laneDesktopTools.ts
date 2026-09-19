@@ -212,7 +212,7 @@ export function createDesktopLaneTools(input: {
         generation = factory?.(input.binding, input.approvalPolicy)
       }
       return generation
-    }, onTaskCreated: input.onTaskCreated,
+    }, onTaskCreated: input.onTaskCreated, context: input.context,
   })
   return {
     tools: [...tools, ...extended.tools],

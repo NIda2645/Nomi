@@ -17,6 +17,7 @@ import { applyProfileToRequestBody, getModelProfile } from '../ai/modelProfiles'
 const text = z.string().max(128 * 1024)
 const intentSchema = z.object({
   documentId: z.string().max(256).optional(),
+  admissionSurface: z.enum(['document', 'canvas']).optional(),
   // These are untrusted selectors. The verified Surface factories validate their domain schema.
   target: z.record(z.unknown()).optional(),
   preconditions: z.record(z.unknown()).optional(),

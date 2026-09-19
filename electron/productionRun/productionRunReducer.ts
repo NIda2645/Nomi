@@ -212,6 +212,16 @@ export function applyProductionCommand(
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
     case "generation.dismiss":
       return { run: dismissGenerationPlan(current, now), eventType: "generation.plan.updated", message: current.runId };
+    case "generation.place_canvas": {
+      const currentPlan = current.generationPlan;
+      if (!currentPlan || currentPlan.state === "cancelled") throw new Error("A generation draft is required before canvas placement");
+      if (currentPlan.canvasPlacement === "explicit") return { run: current, eventType: "generation.plan.canvas-placement", message: current.runId };
+      return {
+        run: { ...current, generationPlan: { ...currentPlan, canvasPlacement: "explicit", updatedAt: now }, updatedAt: now },
+        eventType: "generation.plan.canvas-placement",
+        message: current.runId,
+      };
+    }
     case "generation.seal": {
       const currentPlan = current.generationPlan;
       if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");

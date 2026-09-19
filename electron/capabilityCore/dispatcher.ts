@@ -35,6 +35,7 @@ import { issueTrustGrantChallenge } from './productionTrustGrantChallenge'
 export { RpcError } from './rpcError'
 export type { RpcPolicyErrorCode, RpcPolicyErrorDetails } from './rpcError'
 import type { ProjectLeaseV2 } from './projectLease'
+import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
 import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from './approvalReceipt'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import type { ProjectSessionAuthority } from './projectSessionAuthority'
@@ -79,7 +80,7 @@ export type DispatchContext = {
   /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   /** Shared semantic planning/editing seam. MCP and GUI must provide the same handler; no provider call here. */
-  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV2; origin?: { host: CapabilityOriginHost; actorId?: string } }) => unknown | Promise<unknown>
+  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV2; origin?: { host: CapabilityOriginHost; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } }; selectedPlan?: GenerationInvocationContext['selectedPlan'] }) => unknown | Promise<unknown>
   /** Main-process approval-receipt authority. Gate routes verify receipts here; the Run owner consumes them. */
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   /** Run-owned challenge projection. It must recompute model/cost/contract from main-process state. */

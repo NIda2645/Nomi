@@ -19,6 +19,8 @@ import { createExtendedLaneTools } from './laneExtendedTools'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
 import { verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
 import { taskReferenceSchema } from '../shared/agentCapabilities/taskReference'
+import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
+import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
 
 type Prepared =
   | { kind: 'timeline'; value: PreparedTimelineWrite }
@@ -27,7 +29,7 @@ type Prepared =
   | { kind: 'skill'; value: PreparedSkillWrite }
   | { kind: 'direct'; value: { call: RuntimeToolCall } }
 
-type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true }
+type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true; generationContext?: GenerationInvocationContext }
 
 export interface LaneExtendedDesktopPortsInput {
   binding: ProjectBinding
@@ -42,6 +44,7 @@ export interface LaneExtendedDesktopPortsInput {
   generation(): PiGenerationTransportAdapter | undefined
   receipts: Pick<ProjectAgentProposalReceiptService, 'read'>
   onTaskCreated?(call: RuntimeToolCall, result: unknown): Promise<void>
+  context?(): LaneComposerContext
 }
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
@@ -63,6 +66,18 @@ function rejectPreparation(code: string): never {
     nextAction: 'Read the task result or canvas and copy domain and jobId from taskRef. Do not infer a task ID from a node ID.' })
   throw new LaneDomainFailure({ code, message: `Nomi could not prepare this domain action (${code}).`,
     nextAction: 'Read the current project again and request a new action with its current identifiers and revision.' })
+}
+
+function captureGenerationContext(context: LaneComposerContext | undefined): GenerationInvocationContext | undefined {
+  if (!context) return undefined;
+  const source = context.admissionSurface === 'document' && context.documentId && context.preconditions?.document
+    && typeof context.preconditions.document.contentHash === 'string'
+    ? { documentId: context.documentId, revision: context.preconditions.document.revision, contentHash: context.preconditions.document.contentHash }
+    : undefined;
+  const selected = context.target?.kind === 'production' && context.preconditions?.run && context.target.runId === context.preconditions.run.runId
+    ? { runId: context.target.runId, revision: context.preconditions.run.revision }
+    : undefined;
+  return source || selected ? { ...(source ? { sourceDocument: source } : {}), ...(selected ? { selectedPlan: selected } : {}) } : undefined;
 }
 
 /**
@@ -117,7 +132,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         prepared = { kind: 'direct', value: { call } }
       }
       if (disposed || signal.aborted) rejectPreparation('capability_cancelled')
-      pending.set(call.toolCallId, { call, prepared })
+      pending.set(call.toolCallId, { call, prepared, generationContext: captureGenerationContext(input.context?.()) })
     },
     async approved(call, record) {
       const entry = pending.get(call.toolCallId)
@@ -173,7 +188,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     if (prepared.kind === 'direct') {
       // 传输方法名同样由声明翻（`translate`），不按组名手写；生成面不在 → #785 那句「此刻是哪个相」。
       const { call: transport } = translate(normalizedCall)
-      result = await input.generation()?.tryExecute(transport, signal) ?? generationSurfaceUnavailable()
+      result = await input.generation()?.tryExecute(transport, signal, entry.generationContext) ?? generationSurfaceUnavailable()
     } else {
       if (approved === true) return failure('capability_authority_invalid')
       switch (prepared.kind) {

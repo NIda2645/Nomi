@@ -236,6 +236,8 @@ export type ProductionGenerationPlan = {
    * 缺省/旧 Run 没有这个字段 = 卡可见，行为逐字不变。
    */
   cardHidden?: boolean;
+  /** Canvas landing is opt-in for document-admitted generation plans. */
+  canvasPlacement?: 'explicit';
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;
@@ -354,7 +356,7 @@ export type ProductionRun = {
   status: ProductionRunStatus;
   stageId: string;
   playbook: { name: string; version: string };
-  origin: { host: string; actorId?: string };
+  origin: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   brief?: ProductionBrief;
   policy: AutomationPolicy;
   budget: BudgetLedgerSummary;
@@ -436,7 +438,7 @@ export type CreateProductionRunInput = {
   runId?: string;
   projectId: string;
   playbook: { name: string; version: string };
-  origin: { host: string; actorId?: string };
+  origin: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   brief?: ProductionBrief;
   policy?: Partial<AutomationPolicy>;
   currency?: string;

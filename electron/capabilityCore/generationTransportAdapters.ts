@@ -13,6 +13,7 @@ import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from "./approva
 import { decideGenerationSpend, generationChallengeTokenOf } from "./generationSpendDecision";
 import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { beginPolicySpendDecision } from "./policySpendDecision";
+import type { GenerationInvocationContext } from "../shared/agentCapabilities/generationInvocationContext";
 
 /**
  * Main-process transport for the semantic generation vocabulary.
@@ -23,7 +24,7 @@ import { beginPolicySpendDecision } from "./policySpendDecision";
  * provider directly and never exposes a lease or receipt in a tool result.
  */
 export type PiGenerationTransportAdapter = Readonly<{
-  tryExecute(call: RuntimeToolCall, signal: AbortSignal): Promise<RuntimeToolDecision | null>;
+  tryExecute(call: RuntimeToolCall, signal: AbortSignal, context?: GenerationInvocationContext): Promise<RuntimeToolDecision | null>;
   dispose(): void;
 }>;
 
@@ -283,12 +284,14 @@ export function createPiGenerationTransportAdapter(
     args: Record<string, unknown>,
     currentLease: ProjectLeaseV2,
     signal: AbortSignal,
+    context?: GenerationInvocationContext,
   ): Promise<unknown> => abortable(
     Promise.resolve(deps.planning({
       capability,
       params: { ...args },
       lease: currentLease,
-      origin: { host: "nomi", actorId: "project-agent-host" },
+      origin: { host: "nomi", actorId: "project-agent-host", ...(context?.sourceDocument ? { sourceDocument: context.sourceDocument } : {}) },
+      ...(context?.selectedPlan ? { selectedPlan: context.selectedPlan } : {}),
     })),
     signal,
   );
@@ -392,7 +395,7 @@ export function createPiGenerationTransportAdapter(
   };
 
   return Object.freeze({
-    async tryExecute(call, signal) {
+    async tryExecute(call, signal, context) {
       if (!GENERATION_TOOL_NAMES.has(call.toolName)) return null;
       if (disposed) return { ok: false, code: "surface_port_unavailable", message: "surface_port_unavailable" };
       if (signal.aborted) return { ok: false, code: "generation_cancelled", message: "generation_cancelled", denied: true };
@@ -429,7 +432,7 @@ export function createPiGenerationTransportAdapter(
         // 释放放在 `finally`：代答**失败**时卡要回到原处等用户（「策略答不了才问人」）。
         let releasePolicyClaim = claimPolicyDecision(claimed);
         try {
-          const result = await plan(capability, args, currentLease, signal);
+        const result = await plan(capability, args, currentLease, signal, context);
           // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
           // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
           const cardShown = capability === "present"

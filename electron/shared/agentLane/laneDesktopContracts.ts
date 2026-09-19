@@ -14,6 +14,8 @@ export interface LaneComposerContext {
   model?: { vendorKey: string; modelKey: string }
   approvalPolicy: ProjectAgentApprovalPolicy
   documentId?: string
+  /** Verified admission surface; generation source provenance is captured only for documents. */
+  admissionSurface?: 'document' | 'canvas'
   target?: TargetRef
   preconditions?: PreconditionSet
   contextSnapshot?: AgentContextSnapshot
