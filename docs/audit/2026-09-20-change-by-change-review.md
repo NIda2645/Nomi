@@ -14,9 +14,9 @@
 
 | 问题 | 旧代码 / 本轮错误 | 用户影响 | 修复位置与证据 | 状态 |
 |---|---|---|---|---|
-| P1 旧事件日志恢复被中间态改号 | 旧 reducer 原样应用一批事件；本轮在每个事件之后修重号，A1/B2 的 B→1、A→2 被改成 A2/B3 | 重开或撤销重放后，原本合法的镜头身份变化被破坏 | 复用 `replayCanvasEvents`，整段重放完成后统一校正；store tail 和 undo 共用。旧日志红测 4/5 失败，修后 legacy/live/property 18 项通过 | 已修，等待最终整合验证 |
-| P2 缩略图覆盖原图尺寸 | 旧 LOD 不写尺寸；本轮复用 onLoad 时没有核对真正解码的是原图还是 thumbnail | 原图 4001×3001 被写成 1024×768，原始分辨率丢失、切 LOD 时抖动 | 共享 measurement 检查 DOM src 与当前结果 url；新增 3 项先红，4 套件 42 项绿，真实 DOM 原图写1次/缩略图写0次 | 已修，等待最终整合验证 |
-| P2 Escape 抢内部输入控件的取消动作 | 原 bubble 允许子控件先处理，却来不及阻止 React Flow 取消选中；初修 document capture 又比内部 handler 更早 | 预设关闭时整个节点输入区消失，或内部编辑未取消就把外层关掉 | 既有 AnchoredPopover 内部走 portal bubble，外部焦点走 capture，共用关闭判据；原场景与内部控件/上层焦点对偶共14子例通过，feel整文件27项通过 | 已修，等待完整桌面复核 |
+| P1 旧事件日志恢复被中间态改号 | 旧 reducer 原样应用一批事件；本轮在每个事件之后修重号，A1/B2 的 B→1、A→2 被改成 A2/B3 | 重开或撤销重放后，原本合法的镜头身份变化被破坏 | 复用 `replayCanvasEvents`，整段重放完成后统一校正；store tail 和 undo 共用。旧日志红测 4/5 失败，修后 legacy/live/property 18 项通过 | 已修；最终整合检查见PR |
+| P2 缩略图覆盖原图尺寸 | 旧 LOD 不写尺寸；本轮复用 onLoad 时没有核对真正解码的是原图还是 thumbnail | 原图 4001×3001 被写成 1024×768，原始分辨率丢失、切 LOD 时抖动 | 共享 measurement 检查 DOM src 与当前结果 url；新增 3 项先红，4 套件 42 项绿，真实 DOM 原图写1次/缩略图写0次 | 已修；最终整合检查见PR |
+| P2 Escape 抢内部输入控件的取消动作 | 原 bubble 允许子控件先处理，却来不及阻止 React Flow 取消选中；初修 document capture 又比内部 handler 更早 | 预设关闭时整个节点输入区消失，或内部编辑未取消就把外层关掉 | 既有 AnchoredPopover 内部走 portal bubble，外部焦点走 capture，共用关闭判据；原场景与内部控件/上层焦点对偶共14子例通过，feel整文件27项通过 | 已修；真实Electron smoke17条通过 |
 | P2 UI / Agent 对分类身份理解不一致 | UI 及旧 owner 精确匹配 categoryId；本轮 Agent 新加 trim，把 `' shots '` 当 shots | Agent 报有镜号，画布却没有 | 删除新增 trim；实际 projector 回归先红1项、修后读取套件绿 | 已修 |
 | P2 重复 nodeId 的坏数据反复恢复会持续变号 | 旧坏图虽有重复id但号稳定；本轮按id存分配值导致两节点同取新号，再恢复继续增长 | 打开同一坏项目会持续改变镜头号 | 只修编号分配索引，不擅自修复图id；独立探针先红；编号相关12文件141项全绿 | 已修 |
 | P3 编号上限阻止无关文本复制 | 本轮新增安全整数检查在实际需要镜号之前执行 | 已有 MAX_SAFE_INTEGER 镜号时复制纯文本也异常 | 只在确有新镜头需要时索取编号；不取消安全检查；安全上限回归全绿 | 已修 |
@@ -52,4 +52,4 @@
 
 ## 最终验证与交付
 
-审计修复整合中。完成后补充最终分支 commit、PR、检查与真实 merge-SHA 收据；此行存在时不得将本报告称为已合入完成。
+审计修复已整合进 `fix/canvas-image-aspect-20260920`，统一通过 PR #825 交付。审计修复提交：`513833bc2`（旧日志/编号/category与逐项说明）、`402ed21e8`（原图测量与Escape）。送审时尚未合入；最终 CI、Ponytail 逐条裁决及合并身份记录在 PR，真实 merged-main 收据由 `delivery:verify-merged` 生成。不能用本报告的静态文字替代合并后验证。

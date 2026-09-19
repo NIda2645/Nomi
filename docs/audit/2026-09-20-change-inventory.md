@@ -103,4 +103,10 @@
 | `tests/ux/design-lab/__baselines__/process-feedback/pf-fx-final-reveal.png` | 媒体/编号及审计修复 | 替换视觉基线：揭示阶段按最终媒体比例缩短盒高，像素化内容及状态保留；静态图不证明动画时序。 |
 | `tests/ux/node-prompt-presets.walk.mjs` | 预设 #824 | 新增真实UI创建项目/个人提示词，公共追加撤销、个人刷新、兼容过滤和Agent共用选择器；历史LinuxEscape漏项已补。 |
 
+| `docs/audit/2026-09-20-change-by-change-review.md` | 审计修复 | 新增逐项审计与红绿证据：分别覆盖生产修改、完整文件清单、旧行为与新回归；最终结论以总报告及PR验证为准。 |
+| `docs/audit/2026-09-20-change-inventory.md` | 审计修复 | 新增逐项审计与红绿证据：分别覆盖生产修改、完整文件清单、旧行为与新回归；最终结论以总报告及PR验证为准。 |
+| `docs/audit/2026-09-20-media-change-by-change-review.md` | 审计修复 | 新增逐项审计与红绿证据：分别覆盖生产修改、完整文件清单、旧行为与新回归；最终结论以总报告及PR验证为准。 |
+| `docs/audit/2026-09-20-numbering-change-by-change-review.md` | 审计修复 | 新增逐项审计与红绿证据：分别覆盖生产修改、完整文件清单、旧行为与新回归；最终结论以总报告及PR验证为准。 |
+| `docs/audit/2026-09-20-popover-escape-change-by-change-review.md` | 审计修复 | 新增逐项审计与红绿证据：分别覆盖生产修改、完整文件清单、旧行为与新回归；最终结论以总报告及PR验证为准。 |
+
 本机非Git配置另审：`~/.agents/skills/nomi-competitive-radar`符号链接改指稳定主仓；`~/.codex/automations/nomi-competitive-radar/automation.toml`删除临时source fallback，ACTIVE/三日cron与2026-09-22 10:00锚点不变。TOML读回通过；实际调度仍未验证。
