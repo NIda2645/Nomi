@@ -1,0 +1,32 @@
+[
+  {
+    "name": "director-action",
+    "visible": true,
+    "label": "动作编排/director-action\n非对抗性动作场景（跑酷/追逐/攀爬/特技/坠落）的动作编排知识——专业动作词汇、环境交互、动作节奏、FPV 追拍、身体力学约束、怎么把动作精确物理化地描述进视频提示词；Nomi 写动作戏 shot 时参考。",
+    "shot": "shots/q4-director-action.png"
+  },
+  {
+    "name": "director-guzhuang",
+    "visible": true,
+    "label": "古装形制/director-guzhuang\n中国古装题材形制知识——服饰造型(朝代/身份/发冠/妆容/色彩等级)、建筑形制(屋顶等级/开间/斗拱/院落/衙门公堂)、礼仪调度、穿帮自检，以及古装参考图/视频提示词要点(古匾汉字放开、现代穿帮 avoid)；Nomi 做古装短片/微短剧时参考。",
+    "shot": "shots/q4-director-guzhuang.png"
+  },
+  {
+    "name": "director-transitions",
+    "visible": true,
+    "label": "创意转场/director-transitions\n创意转场方法论。AI 视频逐条生成、帧天然对不齐，硬切会露缝——用遮挡/甩镜/入暗/匹配剪辑/物体擦过镜头等创意转场把相邻两条缝合成一气呵成，同时把转场当叙事工具用（场景切换/时间跳转/角色替换/情绪转折）。Nomi 里设计跨镜衔接、给相邻 shot 写首尾帧提示词时参考。",
+    "shot": "shots/q4-director-transitions.png"
+  },
+  {
+    "name": "director-performance",
+    "visible": true,
+    "label": "表演指导/director-performance\n非武打文戏的表演指导——微表情/肢体语言/视线设计/沉默表演/角色行为模式。AI 不会自己「演」，情绪必须在 prompt 里精确物理化成可拍的身体信号（眉/眼/嘴/手/肩/呼吸/停顿）。Nomi 写文戏 shot 的 prompt 时参考，让画面演得出「情绪」而不是只写情绪词。",
+    "shot": "shots/q4-director-performance.png"
+  },
+  {
+    "name": "director-sound",
+    "visible": true,
+    "label": "声音设计/director-sound\n声音设计知识——环境音/音效/配乐情绪/沉默设计/听觉记号（leitmotif）/声画对位，仅供叙事规划与后期剪辑参考；⚠️视频生成提示词不含音频，这些内容不写进 shot 的 prompt，是给 Nomi 时间轴后期配音/配乐用的。",
+    "shot": "shots/q4-director-sound.png"
+  }
+]

@@ -1,0 +1,236 @@
+{
+  "id": "S03-ablated",
+  "bucket": "should",
+  "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+  "acceptableSkills": [
+    "director-consistency"
+  ],
+  "outputRubric": "参考锚、稳定特征、跨镜状态",
+  "omit": "director-consistency",
+  "timedOut": true,
+  "trace": {
+    "schemaVersion": 1,
+    "sessionId": "01a0b6b0-4c7e-712e-ba30-b77522987a51",
+    "turnId": "01a0b6b0-4df2-712e-ba30-b778f6d35519",
+    "timestamp": 1789771402738,
+    "spanName": "invoke_agent Nomi",
+    "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+    "response": "我来为你建立一个角色一致性检查方法。这需要先了解当前项目的具体情况，让我看看画布上现有的镜头和角色设定。\n\n画布是空的，这说明你需要从源头建立一致性控制方法。让我为你创建一个完整的角色一致性检查系统，包括设定图生成、检查清单和跨镜引用方法。\n\n## 角色一致性控制系统\n\n### 1. 先建视觉锚（角色设定图）\n这是跨镜头一致性的核心——一张参考图被所有后续镜头引用。\n\n\n\n我需要同时创建设定图和用它作为参考的镜头。让我设计一套完整的检查流程：\n\n\n\n我需要修正格式问题。让我重新构建：\n\n让我先看看有什么可用的模型：\n\n\n\n很好，我看到有很多图像模型可用。让我选择一个支持图生图（i2i）模式的模型，这样后续镜头可以引用设定图。我选择 **gpt-image-2**，它有 i2i 模式，最多支持 16 张参考图。\n\n同时让我看看视频模型，因为后续镜头需要生成视频：\n\n\n\n很好！现在我来为你创建一套完整的角色一致性检查系统，先从核心的视觉锚开始。\n\n## 角色一致性检查系统\n\n### 第一步：创建设定图（视觉锚）\n\n\n\n\n\n### 第二步：创建一致性检查清单\n\n现在让我创建一个角色一致性检查清单作为人工制品，你可以直接使用：\n\n\n\n\n\n### 第三步：创建示例镜头（展示正确引用方法）\n\n让我创建两个正确引用设定图的镜头，展示一致性工作流：\n\n\n\n\n\n\n\n现在我来创建几个引用设定图的视频镜头：\n\n\n\n\n\n\n\n",
+    "models": [
+      {
+        "provider": "apimart",
+        "model": "deepseek-v3.2"
+      }
+    ],
+    "tokens": {
+      "input": 69159,
+      "cacheRead": 321152,
+      "cacheWrite": 0,
+      "output": 2876
+    },
+    "estimatedCostUsd": null,
+    "pricing": "unpriced",
+    "durationMs": 180481,
+    "status": "aborted",
+    "tools": [
+      {
+        "toolCallId": "call_d45fb8ca2c894f9db9da176a",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布当前为空。",
+        "durationMs": 97.98433399992064,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_c3673d67e0964867bc013c3c",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "role": "anchor"
+            }
+          ],
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "[\n  {\n    \"code\": \"custom\",\n    \"path\": [\n      \"shots\",\n      0,\n      \"role\"\n    ],\n    \"message\": \"an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — put the anchors and the shots that reuse them in this one call. If the user only wants those reference images themselves, omit role so they are ordinary shots.\"\n  }\n]",
+        "durationMs": 0.05554099986329675,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_6bd3bae8ec354d07a065f99a",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": "[{\"title\": \"主角·林夏设定图\", \"prompt\": \"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\", \"taskKind\": \"text_to_image\", \"role\": \"anchor\"}, {\"title\": \"镜1：会议室交谈\", \"prompt\": \"会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。\", \"taskKind\": \"text_to_video\", \"durationSec\": 4, \"role\": \"shot\"}, {\"title\": \"镜2：走廊行走\", \"prompt\": \"公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。\", \"taskKind\": \"text_to_video\", \"durationSec\":, \"role\": \"shot\"}]",
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "Validation failed for tool \"draft_shots\":\n  - shots: must be array\n\nReceived arguments:\n{\n  \"shots\": \"[{\\\"title\\\": \\\"主角·林夏设定图\\\", \\\"prompt\\\": \\\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\\\", \\\"taskKind\\\": \\\"text_to_image\\\", \\\"role\\\": \\\"anchor\\\"}, {\\\"title\\\": \\\"镜1：会议室交谈\\\", \\\"prompt\\\": \\\"会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\": 4, \\\"role\\\": \\\"shot\\\"}, {\\\"title\\\": \\\"镜2：走廊行走\\\", \\\"prompt\\\": \\\"公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\":, \\\"role\\\": \\\"shot\\\"}]\",\n  \"candidate\": {\n    \"providerId\": \"doubao\",\n    \"modelId\": \"seedream/5-pro-text-to-image\"\n  }\n}",
+        "durationMs": 0.05270800017751753,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_2d64cf09d6924995ac3ac776",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "role": "anchor"
+            },
+            {
+              "title": "镜1：会议室交谈",
+              "prompt": "会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。",
+              "taskKind": "text_to_video",
+              "durationSec": 4,
+              "role": "shot"
+            },
+            {
+              "title": "镜2：走廊行走",
+              "prompt": "公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。",
+              "taskKind": "text_to_video",
+              "durationSec": 3,
+              "role": "shot"
+            }
+          ],
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "draft_shots could not complete the requested action (generation_execution_failed). 没有配置可用的图片模型。请在设置里选一个默认图片模型；或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。\nNext: Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.",
+        "durationMs": 417.57125000003725,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_1491cef05bf0424e96f70c31",
+        "name": "list_models",
+        "spanName": "execute_tool list_models",
+        "arguments": {
+          "kind": "image"
+        },
+        "resultSummary": "{\"models\":[{\"modelId\":\"z-image-turbo\",\"modelAlias\":null,\"vendor\":\"apimart\",\"label\":\"Z-Image Turbo\",\"kind\":\"image\",\"archetypeId\":\"z-image-turbo\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"极速文生图\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"size\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"}],\"defaultValue\":\"1:1\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]}]},{\"modelId\":\"gpt-image-2\",\"modelAlias\":\"gpt-image-2\",\"vendor\":\"code-newcli-com\",\"label\":\"Gpt Image 2\",\"kind\":\"image\",\"archetypeId\":\"gpt-image-2\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"纯文字生成图像\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"5:4\",\"label\":\"5:4\"},{\"value\":\"4:5\",\"label\":\"4:5\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"2:1\",\"label\":\"2:1\"},{\"value\":\"1:2\",\"label\":\"1:2\"},{\"value\":\"3:1\",\"label\":\"3:1\"},{\"value\":\"1:3\",\"label\":\"1:3\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"9:21\",\"label\":\"9:21\"}],\"defaultValue\":\"auto\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"},{\"value\":\"4K\",\"label\":\"4K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]},{\"modeId\":\"i2i\",\"vendorTerm\":\"图生图\",\"intent\":\"edit\",\"hint\":\"给图 + 提示词改图\",\"consumesAnchors\":[\"scene\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\"",
+        "durationMs": 3.3776660000439733,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_50588641b02a4a44b9142d67",
+        "name": "list_models",
+        "spanName": "execute_tool list_models",
+        "arguments": {
+          "kind": "video"
+        },
+        "resultSummary": "{\"models\":[{\"modelId\":\"bytedance/seedance-2\",\"modelAlias\":null,\"vendor\":\"kie\",\"label\":\"Seedance 2.0\",\"kind\":\"video\",\"archetypeId\":\"seedance-2\",\"defaultModeId\":\"t2v\",\"modes\":[{\"modeId\":\"t2v\",\"vendorTerm\":\"文生视频\",\"intent\":\"text\",\"hint\":\"纯文字描述生成视频，无需参考图\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"480p\",\"label\":\"480p\"},{\"value\":\"720p\",\"label\":\"720p\"},{\"value\":\"1080p\",\"label\":\"1080p\"},{\"value\":\"4k\",\"label\":\"4k\"}],\"defaultValue\":\"720p\"},{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"adaptive\",\"label\":\"adaptive\"}],\"defaultValue\":\"16:9\"},{\"key\":\"duration\",\"label\":\"时长\",\"type\":\"number\",\"options\":[],\"defaultValue\":5,\"min\":4,\"max\":15},{\"key\":\"generate_audio\",\"label\":\"生成音频\",\"type\":\"boolean\",\"options\":[],\"defaultValue\":true}],\"slots\":[]},{\"modeId\":\"first\",\"vendorTerm\":\"首帧\",\"intent\":\"single\",\"hint\":\"单张首帧图驱动生成\",\"consumesAnchors\":[\"firstFrame\"],\"params\":[{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"480p\",\"label\":\"480p\"},{\"value\":\"720p\",\"label\":\"720p\"},{\"value\":\"1080p\",\"label\":\"1080p\"},{\"value\":\"4k\",\"label\":\"4k\"}],\"defaultValue\":\"720p\"},{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"adaptive\",\"label\":\"adaptive\"}],\"defaultValue\":\"16:9\"},{\"key\":\"duration\",\"label\":\"时长\",\"type\":\"number\",\"options\":[],\"defaultValue\":5,\"min\":4,\"max\":15},{\"key\":\"generate_audio\",\"label\":\"生成音频\",\"type\":\"boolean\",\"options\":[],\"defaultValue\":true}],\"slots\":[{\"kind\":\"first_frame\",\"label\":\"首帧\",\"max\":1}]},{\"modeId\":\"firstlast\",\"vendorTerm\":\"首尾帧\",\"intent\":\"firstlast\",\"hint\":\"首帧 + 尾帧，过渡更可控\",\"consumesAnchors\":[\"firstF",
+        "durationMs": 2.634749999968335,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_8443dfc798ee49918808ba6e",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "modelId": "gpt-image-2"
+            }
+          ]
+        },
+        "resultSummary": "{\"operation\":{\"operationId\":\"op-506eb547-e078-432d-a70d-88fed46b7956\",\"projectId\":\"project-1789771402265-p3b44c\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"apimart\",\"modelId\":\"gpt-image-2\",\"mode\":\"text_to_image\",\"prompt\":\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\",\"parameters\":{},\"references\":[]},\"state\":\"draft\",\"cardHidden\":true,\"planVersion\":1,\"shots\":[{\"shotId\":\"shot-1\",\"title\":\"主角·林夏设定图\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"apimart\",\"modelId\":\"gpt-image-2\",\"mode\":\"text_to_image\",\"prompt\":\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\",\"parameters\":{},\"references\":[]}}],\"updatedAt\":\"2026-09-18T22:45:48.012Z\"},\"nextAction\":\"preview\"}\nUser sees: Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made. (operationId=op-506eb547-e078-432d-a70d-88fed46b7956)\n\nApplied directly (undoable)",
+        "durationMs": 712.9549589999951,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_75ca1334d74d4420901a4a30",
+        "name": "make_artifact",
+        "spanName": "execute_tool make_artifact",
+        "arguments": {
+          "fileType": "markdown",
+          "title": "角色一致性检查清单",
+          "content": "# 角色一致性检查清单\n\n## 📋 核心原则\n**「先建锚，后引用」**\n1. 每个主要角色先建一张「设定图」（中性姿势，清晰展示外貌特征）\n2. 所有后续镜头必须引用这张设定图（使用视频模型的「图生视频」模式）\n\n## 🔧 技术方案（Nomi 内）\n\n### 1. 设定图生成\n- **模型**：`gpt-image-2` 或 `nano-banana-2`\n- **模式**：文生图 (t2i)\n- **比例**：1:1（全身照）\n- **关键特征锁定**：\n  - 发型/发色\n  - 脸型/五官\n  - 服饰（颜色/款式）\n  - 身高/体型\n\n### 2. 视频生成方法\n**必须使用图生视频模式，禁止纯文字生成：**\n\n| 模型 | 最佳模式 | 参考槽 | 说明 |\n|------|----------|--------|------|\n| Seedance 2.0 | `omni` | 角色参考 (image_ref) | 强身份一致性 |\n| HappyHorse 1.1 | `ref` | 角色参考 (image_ref) | 1-9张参考图融合 |\n| Kling 3.0 | `i2v` | 首/尾帧 (image_ref) | 首帧驱动 |\n| Wan 2.7 | `ref` | 参考图 (image_ref) | 多参考图融合 |\n\n### 3. 提示词规范\n```\n[场景描述] + [林夏]（保持设定图外观：齐肩黑发、白衬衫、卡其裤） + [动作描述] + [运镜]\n```\n\n**正确示例**：\n> 会议室场景，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持笔记本与同事交谈，微微前倾身体，眼神专注。中景推入镜头。\n\n**错误示例**：\n> 一个黑发女性在会议室（模型会重新发明长相）\n\n## 🧪 跨镜检查项\n\n### 1. 外貌一致性\n- [ ] 发型长度/样式相同\n- [ ] 发色一致\n- [ ] 脸型/五官相似度 >80%\n- [ ] 妆容风格统一\n- [ ] 体型/身高比例合理\n\n### 2. 服饰一致性\n- [ ] 上衣颜色/款式相同\n- [ ] 裤子/裙子样式匹配\n- [ ] 配饰（皮带/鞋/包）存在且一致\n- [ ] 服装材质感相似\n\n### 3. 动作连贯性\n- [ ] 姿势变化符合物理逻辑\n- [ ] 表情演变自然\n- [ ] 视线方向合理\n- [ ] 手持物位置连续\n\n## 🚨 常见翻车点\n\n### 翻车1：只用文字描述角色\n**症状**：每个镜头都重新描述角色外貌\n**修复**：删掉文字外貌描述，改用参考图\n\n### 翻车2：换参考图\n**症状**：不同镜头用了不同设定图\n**修复**：全片统一用同一张设定图\n\n### 翻车3：模式选错\n**症状**：选了 `t2v`（纯文字）而非 `i2v`/`ref`（图生视频）\n**修复**：确保模式带参考槽（image_ref / first_frame）\n\n### 翻车4：参考图质量差\n**症状**：设定图模糊/角度怪/特征不明显\n**修复**：\n1. 用中性姿势（站立/正面）\n2. 清晰展示全身\n3. 背景简单（白底优先）\n4. 生成2-3张选最佳\n\n## 📈 工作流\n\n### A. 新项目\n```\n创作区写剧本 → 识别主要角色 → \n为每个角色生成设定图（1:1全身） → \n所有镜头引用对应设定图 → \n批量生成预览 → \n抽查一致性 → 调整\n```\n\n### B. 修复现有项目\n```\n1. 识别变脸镜头\n2. 为每个角色补设定图\n3. 修改问题镜头：换模型/模式\n4. 重生成问题镜头\n5. 时间轴替换\n```\n\n## 🛠 快速修复模板\n\n### 问题：镜3的林夏换了发型\n**修复步骤**：\n1. 找到「主角·林夏设定图」节点\n2. 复制其 `shotId`\n3. 编辑镜3：\n   ```json\n   {\n     \"shotId\": \"镜3的id\",\n     \"modelId\": \"bytedance/seedance-2\",\n     \"modeId\": \"omni\",\n     \"references\": [\"设定图的shotId\"]\n   }\n   ```\n\n### 问题：角色衣服颜色变了\n**修复步骤**：\n1. 在设定图提示词中强化颜色描述\n2. 在所有镜头提示词中重复颜色关键词\n3. 使用模型的 `negative_prompt` 排除错误颜色\n\n## 📊 监控指标\n\n| 指标 | 目标 | 检查方法 |\n|------|------|----------|\n| 人脸相似度 | >80% | 逐帧截图对比 |\n| 服饰一致性 | 100% | 颜色/款式比对 |\n| 跨镜衔接 | 自然 | 预览连续播放 |\n| 生成时间 | 统一 | 同模型/同参数 |\n\n## 🔄 多角色场景\n\n### 3人以上同框\n**方法**：为每个角色建设定图，视频用 `omni` / `ref` 模式引用多张\n\n**提示词结构**：\n```\n会议室场景，林夏（@image1 外观）、王明（@image2 外观）、李华（@image3 外观）围坐讨论...\n```\n\n**模型选择**：`bytedance/seedance-2` (omni) 支持最多9张角色参考\n\n---\n\n## 🎯 一句话总结\n**每个角色一张设定图，每个镜头必须引用它。模式选错，一切白费。**\n\n保存此清单至画布，每次生成前对照检查。"
+        },
+        "resultSummary": "Applied directly (undoable).\nCreated 1 node(s). Use look_at_canvas to inspect them before further edits.\nUser sees: The canvas shows the new artifact node; the user can undo it with Cmd+Z. Nothing was generated and nothing was spent.\n\nApplied directly (undoable)",
+        "durationMs": 127.42987499991432,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_19318de88c4643f7a6288fad",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布节点 2 个(id | 类型 | 标题 | 状态 | prompt 摘要 | 结果身份):\n当前选中: gen-v2-agent-artifact-mu7js928-cyge\n- gen-v2-image-mu7jrou2-88d5 | image | 镜1 | 主角·林夏设定图 | prompt: 亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色…\n- gen-v2-agent-artifact-mu7js928-cyge | agent-artifact | 角色一致性检查清单\n引用边: 无",
+        "durationMs": 104.11612499994226,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_07b12c58414d485a9b54a5ff",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {},
+        "resultSummary": null,
+        "durationMs": null,
+        "failed": null
+      }
+    ],
+    "approvals": [
+      {
+        "toolCallId": "call_d45fb8ca2c894f9db9da176a",
+        "toolName": "look_at_canvas",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_2d64cf09d6924995ac3ac776",
+        "toolName": "draft_shots",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_1491cef05bf0424e96f70c31",
+        "toolName": "list_models",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_50588641b02a4a44b9142d67",
+        "toolName": "list_models",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_8443dfc798ee49918808ba6e",
+        "toolName": "draft_shots",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_75ca1334d74d4420901a4a30",
+        "toolName": "make_artifact",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_19318de88c4643f7a6288fad",
+        "toolName": "look_at_canvas",
+        "decision": "auto-granted"
+      }
+    ],
+    "errors": [
+      "[\n  {\n    \"code\": \"custom\",\n    \"path\": [\n      \"shots\",\n      0,\n      \"role\"\n    ],\n    \"message\": \"an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — put the anchors and the shots that reuse them in this one call. If the user only wants those reference images themselves, omit role so they are ordinary shots.\"\n  }\n]",
+      "Validation failed for tool \"draft_shots\":\n  - shots: must be array\n\nReceived arguments:\n{\n  \"shots\": \"[{\\\"title\\\": \\\"主角·林夏设定图\\\", \\\"prompt\\\": \\\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\\\", \\\"taskKind\\\": \\\"text_to_image\\\", \\\"role\\\": \\\"anchor\\\"}, {\\\"title\\\": \\\"镜1：会议室交谈\\\", \\\"prompt\\\": \\\"会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\": 4, \\\"role\\\": \\\"shot\\\"}, {\\\"title\\\": \\\"镜2：走廊行走\\\", \\\"prompt\\\": \\\"公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\":, \\\"role\\\": \\\"shot\\\"}]\",\n  \"candidate\": {\n    \"providerId\": \"doubao\",\n    \"modelId\": \"seedream/5-pro-text-to-image\"\n  }\n}",
+      "draft_shots could not complete the requested action (generation_execution_failed). 没有配置可用的图片模型。请在设置里选一个默认图片模型；或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。\nNext: Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.",
+      "Assistant request was cancelled"
+    ],
+    "source": "/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/projects/未命名项目 09_19 06_43-mu7jokd5-fe386e9c/.nomi/agent-sessions/--nomi-lane-main--/01a0b6b0-4c7e-712e-ba30-b77522987a51.trace/trace.jsonl"
+  },
+  "uiText": "Nomi\n0%\n\n角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。\n\n准备生成\n\n我来为你建立一个角色一致性检查方法。这需要先了解当前项目的具体情况，让我看看画布上现有的镜头和角色设定。\n\n画布是空的，这说明你需要从源头建立一致性控制方法。让我为你创建一个完整的角色一致性检查系统，包括设定图生成、检查清单和跨镜引用方法。\n\n角色一致性控制系统\n1. 先建视觉锚（角色设定图）\n\n这是跨镜头一致性的核心——一张参考图被所有后续镜头引用。\n\n我需要同时创建设定图和用它作为参考的镜头。让我设计一套完整的检查流程：\n\n我需要修正格式问题。让我重新构建：\n\n让我先看看有什么可用的模型：\n\n很好，我看到有很多图像模型可用。让我选择一个支持图生图（i2i）模式的模型，这样后续镜头可以引用设定图。我选择 gpt-image-2，它有 i2i 模式，最多支持 16 张参考图。\n\n同时让我看看视频模型，因为后续镜头需要生成视频：\n\n很好！现在我来为你创建一套完整的角色一致性检查系统，先从核心的视觉锚开始。\n\n角色一致性检查系统\n第一步：创建设定图（视觉锚）\n第二步：创建一致性检查清单\n\n现在让我创建一个角色一致性检查清单作为人工制品，你可以直接使用：\n\n第三步：创建示例镜头（展示正确引用方法）\n\n让我创建两个正确引用设定图的镜头，展示一致性工作流：\n\n现在我来创建几个引用设定图的视频镜头：\n\n继续\nDeepSeek V3.2\nSkill\n自动改"
+}

@@ -1,0 +1,267 @@
+<available_skills>
+  <skill>
+    <name>brand-promo</name>
+    <description>做产品/品牌宣传片。当用户要把产品文案、卖点或品牌介绍做成一条短宣传视频，或提到「宣传片 / 产品视频 / 品牌短片 / promo / 广告片」时用我。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/brand-promo/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>creation-edit</name>
+    <description>Direct creation-area document editing: read current content, append or replace text, and maintain the shot-list format.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/creation-edit/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-candle-mood</name>
+    <description>用点火、暖光与烟雾营造安静氛围。 用户要求烛光氛围短片时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-candle-mood/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-coffee-pour</name>
+    <description>把注入、油脂和蒸汽拆成清楚的镜头节拍。 用户要求咖啡倾注特写时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-coffee-pour/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-cross-view</name>
+    <description>把参考画面转成另一机位，核对空间关系。 用户要求跨视角构图时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-cross-view/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-expression-reference</name>
+    <description>参考第二张图的表情，保留第一张图的人物。 用户要求参考表情迁移时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-expression-reference/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-expression-sheet</name>
+    <description>按姿势参考生成同一角色的多种表情。 用户要求表情设定表时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-expression-sheet/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-eyewear-light</name>
+    <description>用移动光线表现镜片与镜架材质。 用户要求眼镜光轨广告时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-eyewear-light/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-film-storyboard</name>
+    <description>把用户提供的剧本文字整理成宽屏分镜。 用户要求电影分镜时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-film-storyboard/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-multi-view</name>
+    <description>把同一主体整理成一致的多面设定。 用户要求多视图设定时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-multi-view/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-outpaint</name>
+    <description>补齐边缘空白，核对纹理与透视衔接。 用户要求自然扩图时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-outpaint/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-product-before-after</name>
+    <description>通过擦镜转场展示同一产品的清洁变化。 用户要求清洁前后对比时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-product-before-after/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-product-condensation</name>
+    <description>用微距、水滴和环绕镜头展示产品质感。 用户要求凝露产品广告时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-product-condensation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-product-exploded-view</name>
+    <description>让部件分离展示后归位，保持产品结构。 用户要求产品爆炸视图时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-product-exploded-view/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-product-turntable</name>
+    <description>保持鞋型和细节，完成转台环绕展示。 用户要求转台产品广告时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-product-turntable/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-product-unboxing</name>
+    <description>按揭盖、取出和定格组织一次开箱。 用户要求产品开箱时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-product-unboxing/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>curated-restore-image</name>
+    <description>重新诠释旧图细节；结果可能改变原纹理。 用户要求旧图重新绘制时使用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/curated-restore-image/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-action</name>
+    <description>非对抗性动作场景（跑酷/追逐/攀爬/特技/坠落）的动作编排知识——专业动作词汇、环境交互、动作节奏、FPV 追拍、身体力学约束、怎么把动作精确物理化地描述进视频提示词；Nomi 写动作戏 shot 时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-action/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-art-design</name>
+    <description>服化道——设计「人物设定图」与「场景环境图」的生图提示词，含顶部「风格前缀块」（摄影机/胶片/调色/画幅等烧进画面的统一风格）+ 生图 avoid（多指/文字水印/穿帮等）+ identity DNA（角色跨图一致的关键特征锁定）。Nomi 为角色/场景等视觉 anchor（`carrier: visual`）生成参考图、写它的生图 prompt 时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-art-design/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-cinematography</name>
+    <description>镜头语言与摄影技法方法论——统一景别体系/构图规则/运镜的情绪语言/打光方案/景深控制/色温光源/镜头特性，以及这些怎么翻译成视频提示词该怎么写。Nomi 拆镜头或写视频 shot 的 prompt 时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-cinematography/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-consistency</name>
+    <description>治 AI 视频多镜头「同角色换脸 / 同道具换形 / 同场景换景」三大顽疾的方法论——五维一致性检查、参考图锚定、场内状态表、段间承接。Nomi 拆镜头与跨镜生成时参考：把每个跨镜元素落成画布 anchor 节点（角色/场景/道具/风格），镜头用 anchorIds 引用、系统连参考边，段间用首尾帧承接。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-consistency/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-guzhuang</name>
+    <description>中国古装题材形制知识——服饰造型(朝代/身份/发冠/妆容/色彩等级)、建筑形制(屋顶等级/开间/斗拱/院落/衙门公堂)、礼仪调度、穿帮自检，以及古装参考图/视频提示词要点(古匾汉字放开、现代穿帮 avoid)；Nomi 做古装短片/微短剧时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-guzhuang/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-keyframe-review</name>
+    <description>参考图（角色/场景设定图）的 Go/No-Go 审图清单——逐项检查 + 判定规则 + 反馈模板，帮用户快速识别设定图是否合格、不合格时怎么反馈调整重抽；Nomi 生成参考图后审核时用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-keyframe-review/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-performance</name>
+    <description>非武打文戏的表演指导——微表情/肢体语言/视线设计/沉默表演/角色行为模式。AI 不会自己「演」，情绪必须在 prompt 里精确物理化成可拍的身体信号（眉/眼/嘴/手/肩/呼吸/停顿）。Nomi 写文戏 shot 的 prompt 时参考，让画面演得出「情绪」而不是只写情绪词。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-performance/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-shot-translation</name>
+    <description>把「镜头意图」翻译成视频提示词的手册——运镜翻译表（推/拉/摇/跟/环绕…→提示词措辞）、焦点翻译、复合镜头(多 clip)模式、污染词替换铁律、把抽象动作/情绪换成物理动作。Nomi 写视频 shot 的 `prompt` 字段时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-shot-translation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-sound</name>
+    <description>声音设计知识——环境音/音效/配乐情绪/沉默设计/听觉记号（leitmotif）/声画对位，仅供叙事规划与后期剪辑参考；⚠️视频生成提示词不含音频，这些内容不写进 shot 的 prompt，是给 Nomi 时间轴后期配音/配乐用的。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-sound/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-staging</name>
+    <description>多角色调度方法论——3 人以上同框的站位设计/视线网络/注意力引导/前后景分层/AI 生成中的多角色一致性控制；Nomi 写多人 shot 的 prompt（谁站哪/朝向/视线/谁是焦点）时参考，走应用内 Seedance/可灵生成。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-staging/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-style-otomo-wright</name>
+    <description>导演风格融合招式·大友启史 × 埃德加·赖特（时尚动作怪盗 DNA）——按情节类型（飙车/打斗/跑酷/盗窃潜入/文戏温情/时尚换装登场）分别配运镜 + 剪辑节奏 + 声画卡点；Nomi 做高燃动作 / 时尚怪盗戏、想要这种质感时套用。运镜写进镜头 prompt，卡点节奏当时间轴剪辑参考，经应用内 Seedance / 可灵生成。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-style-otomo-wright/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>director-transitions</name>
+    <description>创意转场方法论。AI 视频逐条生成、帧天然对不齐，硬切会露缝——用遮挡/甩镜/入暗/匹配剪辑/物体擦过镜头等创意转场把相邻两条缝合成一气呵成，同时把转场当叙事工具用（场景切换/时间跳转/角色替换/情绪转折）。Nomi 里设计跨镜衔接、给相邻 shot 写首尾帧提示词时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/director-transitions/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>drama-short</name>
+    <description>做剧情类短剧/短片。当用户要把一个故事、梗概、小说片段或「深夜便利店发生了什么」这类情境做成有人物、有转折的短剧，或提到「短剧 / 微短剧 / 剧情短片 / 小说改编」时用我。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/drama-short/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>model-integration</name>
+    <description>Connect HTTP models or a native ComfyUI workflow through Nomi&apos;s verified certification path.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/model-integration/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>release-media-pack</name>
+    <description>为 Nomi 桌面端发版制作故事先行的双语宣传片、更新图文与发布文案，并把版本事实、TikHub 样片研究、Nomi 生成和本地后期串成可回溯的素材包。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/release-media-pack/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>skill-author</name>
+    <description>把用户给的任意东西（别家的 skill、一段流程文档、或一句需求）转写成一个能用的 Nomi 技能：映射工具、声明能力、换不了的标缺口。用户说「帮我把这个 skill 变成 Nomi 能用的」「照这个做一个技能」时用我。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/skill-author/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>workbench-creation</name>
+    <description>Creation-area AI assistant for writing, rewriting, screenwriting, prompt generation, and shot-list drafting. Returns documentAction proposals for user confirmation before any write.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/workbench-creation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>workbench-fixation-planner</name>
+    <description>定妆/定景规划师。从一段剧本里识别主要角色与关键场景，为每个建一张卡节点，并注入「身份板/场景板」提示词（剧本驱动、逐字标注、身份锁定），写入生成画布。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/workbench-fixation-planner/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>workbench-generation</name>
+    <description>Generation-area AI assistant. Plans image/video canvas nodes with prompts; never auto-executes generation.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/workbench-generation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>workbench-storyboard-planner</name>
+    <description>将故事规划成有序分镜方案落在画布上供用户审阅，保持角色、场景、风格和用户约束一致；只出草稿，不出报价卡、不花额度。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/workbench-storyboard-planner/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-adaptation</name>
+    <description>改编顾问——原著分析 / 改编策略 / 戏剧点提炼 / 结构映射 / 人物迁移。Nomi 创作区把小说/原著改编成剧本时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-adaptation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-behavior-psychology</name>
+    <description>行为心理学编剧工具——把认知失调 / 依恋理论 / 防御机制 / 微表情等心理学工具转化为角色行为设计与观众心理操控。Nomi 创作区设计角色行为/心理转折时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-behavior-psychology/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-dialogue</name>
+    <description>对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-dialogue/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-improv</name>
+    <description>即兴生台词——让角色在设定好的世界里即兴对戏，长出编剧预设不出的真实口语与情节；再把即兴原料按「剪水→留金→上结构→转场景」消化成可拍剧本。Nomi 创作区想要自然口语/真实关系张力时用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-improv/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-incubation</name>
+    <description>创意孵化——在有故事骨架之前，基于 Truby 有机结构 + 宋方金人物先于情节 + Kasdan 核心信念检验，通过多轮追问帮用户从碎片里长出故事的根系（主题/人物内核/核心信念/世界）。Nomi 创作区立项初期、还没想清楚要写什么时用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-incubation/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-novel-digester</name>
+    <description>小说消化——把原著文本按 Truby/Mamet/McKee/Gilroy 方法论拆解，输出结构分析/对白范例/场景范例/叙事技法/本剧对标映射。Nomi 创作区改编或从原著取养分时参考，分层读取不必一次读完全本。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-novel-digester/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-review</name>
+    <description>剧本审查·导演视角——用视觉叙事/节奏把控/镜头语言/空间调度/情绪曲线等导演维度审一份剧本，找出「读着顺但拍不出/立不住」的问题。Nomi 创作区写完剧本回头检查时用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-review/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-screenwriter</name>
+    <description>专业编剧（Lawrence Kasdan《星战》《肖申克》× Tony Gilroy《谍影重重》方法论）——故事结构/场景写作/对白/质量审查，含格式变体（长片/剧集/短片/超短）与严肃叙事风格。Nomi 创作区写剧本时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-screenwriter/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-songfangjin</name>
+    <description>宋方金编剧方法论（中国编剧《手机》《给青年编剧的信》）——人物先于情节 / 生活质感 / 关系即戏剧 / 对白零废话。Nomi 创作区写剧本时参考，尤其中式现实题材。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-songfangjin/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-structure</name>
+    <description>结构师（John Truby 方法论）——故事有机结构设计 / 对手网络构建 / 场景编织 / 节奏控制 / 钩子编排。Nomi 创作区搭故事骨架时参考。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-structure/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>writer-style-schrader</name>
+    <description>保罗·施拉德（Paul Schrader，《出租车司机》编剧、《美国舞男》《第一归正会》导演）的叙事风格——超验电影式的极简、克制与蓄压，写孤独主角在平庸日常里被侵蚀、由偶遇而非选择推向转折，意义在&quot;一切照旧&quot;中悄然位移。适用于都市孤独、边缘人物、慢节奏内心戏、生活流的现实题材。Nomi 创作区想要这种冷峻克制、不解释情绪、靠并置而非因果说话的剧本质感时套用。</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/skills/writer-style-schrader/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>brand-guidelines</name>
+    <description>Applies Anthropic&apos;s official brand colors and typography to any sort of artifact that may benefit from having Anthropic&apos;s look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/settings/skills/brand-guidelines/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>internal-comms</name>
+    <description>A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/settings/skills/internal-comms/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>pdf</name>
+    <description>Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/settings/skills/pdf/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>semgrep-rule-creator</name>
+    <description>Creates custom Semgrep rules for detecting security vulnerabilities, bug patterns, and code patterns. Use when writing Semgrep rules or building custom static analysis detections.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/settings/skills/semgrep-rule-creator/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>transformers-js</name>
+    <description>Use Transformers.js to run state-of-the-art machine learning models directly in JavaScript/TypeScript. Supports NLP (text classification, translation, summarization), computer vision (image classification, object detection), audio (speech recognition, audio classification), and multimodal tasks. Works in browsers and server-side runtimes (Node.js, Bun, Deno) with WebGPU/WASM using pre-trained models from Hugging Face Hub.</description>
+    <location>/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/settings/skills/transformers-js/SKILL.md</location>
+  </skill>
+</available_skills>

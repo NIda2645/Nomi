@@ -1,0 +1,1546 @@
+[
+  {
+    "id": "S01",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "selection"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S02",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "video"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "秘密掌握者-角色卡",
+              "prompt": "商务谈判角色，男性，30-35岁，西装革履，面容沉稳自信，眼神锐利，略带神秘微笑，手握一份蓝色文件夹。短发打理整齐，金丝眼镜，手腕佩戴高档手表。面部特征：高颧骨，薄嘴唇，下巴线条清晰。身份：掌握关键商业秘密的谈判代表，气场强大但含蓄克制。",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "甲方谈判代表-角色卡",
+              "prompt": "商务谈判角色，男性，45-50岁，资深企业高管，深色西装，斑白鬓角，额头有皱纹，眼神沉稳但急切，双手交叉置于桌面。头发向后梳，面容严肃，佩戴无框眼镜。身份：急于获取秘密信息的企业代表，表情焦虑但保持表面冷静。",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "乙方谈判代表-角色卡",
+              "prompt": "商务谈判角色，女性，35-40岁，精明干练的职业经理人，剪裁合体的灰色西装套装，中长发挽起，妆容精致，眼神机敏审视，手指轻轻敲击桌面。佩戴珍珠耳环，手表简约。身份：怀疑论者，对秘密真实性持怀疑态度，警惕但保持谈判姿态。",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "谈判会议室-场景卡",
+              "prompt": "高级商务会议室，长方形实木谈判桌，黑色皮革座椅，大理石桌面。背景是落地玻璃窗，城市夜景，玻璃窗上倒映着室内灯光。桌上放置：笔记本电脑打开，几份文件散开，水晶烟灰缸（未使用），一瓶矿泉水，几个玻璃杯。灯光：顶棚LED筒灯柔和照亮桌面，侧边壁灯提供环境光，窗外霓虹灯点缀。风格：现代简约商务空间，严肃氛围，空镜无人物。",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"秘密掌握者-角色卡\", \"prompt\": \"商务谈判角色，男性，30-35岁，西装革履，面容沉稳自信，眼神锐利，略带神秘微笑，手握一份蓝色文件夹。短发打理整齐，金丝眼镜，手腕佩戴高档手表。面部特征：高颧骨，薄嘴唇，下巴线条清晰。身份：掌握关键商业秘密的谈判代表，气场强大但含蓄克制。\", \"taskKind\": \"text_to_image\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}}, {\"title\": \"甲方谈判代表-角色卡\", \"prompt\": \"商务谈判角色，男性，45-50岁，资深企业高管，深色西装，斑白鬓角，额头有皱纹，眼神沉稳但急切，双手交叉置于桌面。头发向后梳，面容严肃，佩戴无框眼镜。身份：急于获取秘密信息的企业代表，表情焦虑但保持表面冷静。\", \"taskKind\": \"text_to_image\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}}, {\"title\": \"乙方谈判代表-角色卡\", \"prompt\": \"商务谈判角色，女性，35-40岁，精明干练的职业经理人，剪裁合体的灰色西装套装，中长发挽起，妆容精致，眼神机敏审视，手指轻轻敲击桌面。佩戴珍珠耳环，手表简约。身份：怀疑论者，对秘密真实性持怀疑态度，警惕但保持谈判姿态。\", \"taskKind\": \"text_to_image\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}}, {\"title\": \"谈判会议室-场景卡\", \"prompt\": \"高级商务会议室，长方形实木谈判桌，黑色皮革座椅，大理石桌面。背景是落地玻璃窗，城市夜景，玻璃窗上倒映着室内灯光。桌上放置：笔记本电脑打开，几份文件散开，水晶烟灰缸（未使用），一瓶矿泉水，几个玻璃杯。灯光：顶棚LED筒灯柔和照亮桌面，侧边壁灯提供环境光，窗外霓虹灯点缀。风格：现代简约商务空间，严肃氛围，空镜无人物。\", \"taskKind\": \"text_to_image\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}}, {\"title\": \"三人谈判-全景调度\", \"prompt\": \"商务谈判会议室，夜晚，柔和顶光与壁灯。秘密掌握者坐在谈判桌主位，双手交叠放在蓝色文件夹上，眼神自信地扫视对面两人。甲方代表（中年男性）身体微微前倾，双手撑在桌面，急切地看着秘密掌握者。乙方代表（女性）靠在椅背上，双臂交叉，怀疑地审视秘密掌握者。秘密掌握者处于视觉中心，甲方代表在画面左侧（观众视角），乙方代表在画面右侧。镜头：中景，从侧面拍摄三人对话，突出权力动态。\", \"durationSec\":裁退后修改， \"taskKind\": \"text_to_video\", \"modelId\": \"bytedance/seedance-2\", \"modeId\": \"omni\", \"parameters\": {\"resolution\": \"720p\", \"aspect_ratio\": \"16:9\", \"duration\": 6, \"generate_audio\": true}, \"references\": [\"引用角色的参考ID\"]}]"
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "秘密掌握者-角色卡",
+              "prompt": "商务谈判角色，男性，30-35岁，西装革履，面容沉稳自信，眼神锐利，略带神秘微笑，手握一份蓝色文件夹。短发打理整齐，金丝眼镜，手腕佩戴高档手表。面部特征：高颧骨，薄嘴唇，下巴线条清晰。身份：掌握关键商业秘密的谈判代表，气场强大但含蓄克制。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "甲方谈判代表-角色卡",
+              "prompt": "商务谈判角色，男性，45-50岁，资深企业高管，深色西装，斑白鬓角，额头有皱纹，眼神沉稳但急切，双手交叉置于桌面。头发向后梳，面容严肃，佩戴无框眼镜。身份：急于获取秘密信息的企业代表，表情焦虑但保持表面冷静。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "乙方谈判代表-角色卡",
+              "prompt": "商务谈判角色，女性，35-40岁，精明干练的职业经理人，剪裁合体的灰色西装套装，中长发挽起，妆容精致，眼神机敏审视，手指轻轻敲击桌面。佩戴珍珠耳环，手表简约。身份：怀疑论者，对秘密真实性持怀疑态度，警惕但保持谈判姿态。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "谈判会议室-场景卡",
+              "prompt": "高级商务会议室，长方形实木谈判桌，黑色皮革座椅，大理石桌面。背景是落地玻璃窗，城市夜景，玻璃窗上倒映着室内灯光。桌上放置：笔记本电脑打开，几份文件散开，水晶烟灰缸（未使用），一瓶矿泉水，几个玻璃杯。灯光：顶棚LED筒灯柔和照亮桌面，侧边壁灯提供环境光，窗外霓虹灯点缀。风格：现代简约商务空间，严肃氛围，空镜无人物。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "秘密掌握者-角色卡",
+              "prompt": "商务谈判角色，男性，30-35岁，西装革履，面容沉稳自信，眼神锐利，略带神秘微笑，手握一份蓝色文件夹。短发打理整齐，金丝眼镜，手腕佩戴高档手表。面部特征：高颧骨，薄嘴唇，下巴线条清晰。身份：掌握关键商业秘密的谈判代表，气场强大但含蓄克制。",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "甲方谈判代表-角色卡",
+              "prompt": "商务谈判角色，男性，45-50岁，资深企业高管，深色西装，斑白鬓角，额头有皱纹，眼神沉稳但急切，双手交叉置于桌面。头发向后梳，面容严肃，佩戴无框眼镜。身份：急于获取秘密信息的企业代表，表情焦虑但保持表面冷静。",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "乙方谈判代表-角色卡",
+              "prompt": "商务谈判角色，女性，35-40岁，精明干练的职业经理人，剪裁合体的灰色西装套装，中长发挽起，妆容精致，眼神机敏审视，手指轻轻敲击桌面。佩戴珍珠耳环，手表简约。身份：怀疑论者，对秘密真实性持怀疑态度，警惕但保持谈判姿态。",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "谈判会议室-场景卡",
+              "prompt": "高级商务会议室，长方形实木谈判桌，黑色皮革座椅，大理石桌面。背景是落地玻璃窗，城市夜景，玻璃窗上倒映着室内灯光。桌上放置：笔记本电脑打开，几份文件散开，水晶烟灰缸（未使用），一瓶矿泉水，几个玻璃杯。灯光：顶棚LED筒灯柔和照亮桌面，侧边壁灯提供环境光，窗外霓虹灯点缀。风格：现代简约商务空间，严肃氛围，空镜无人物。",
+              "taskKind": "text_to_image"
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "image"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "秘密掌握者-角色卡",
+              "prompt": "商务谈判角色，男性，30-35岁，西装革履，面容沉稳自信，眼神锐利，略带神秘微笑，手握一份蓝色文件夹。短发打理整齐，金丝眼镜，手腕佩戴高档手表。面部特征：高颧骨，薄嘴唇，下巴线条清晰。身份：掌握关键商业秘密的谈判代表，气场强大但含蓄克制。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "z-image-turbo"
+              },
+              "parameters": {
+                "resolution": "2K",
+                "size": "1:1"
+              }
+            },
+            {
+              "title": "甲方谈判代表-角色卡",
+              "prompt": "商务谈判角色，男性，45-50岁，资深企业高管，深色西装，斑白鬓角，额头有皱纹，眼神沉稳但急切，双手交叉置于桌面。头发向后梳，面容严肃，佩戴无框眼镜。身份：急于获取秘密信息的企业代表，表情焦虑但保持表面冷静。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "z-image-turbo"
+              },
+              "parameters": {
+                "resolution": "2K",
+                "size": "1:1"
+              }
+            },
+            {
+              "title": "乙方谈判代表-角色卡",
+              "prompt": "商务谈判角色，女性，35-40岁，精明干练的职业经理人，剪裁合体的灰色西装套装，中长发挽起，妆容精致，眼神机敏审视，手指轻轻敲击桌面。佩戴珍珠耳环，手表简约。身份：怀疑论者，对秘密真实性持怀疑态度，警惕但保持谈判姿态。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "z-image-turbo"
+              },
+              "parameters": {
+                "resolution": "2K",
+                "size": "1:1"
+              }
+            },
+            {
+              "title": "谈判会议室-场景卡",
+              "prompt": "高级商务会议室，长方形实木谈判桌，黑色皮革座椅，大理石桌面。背景是落地玻璃窗，城市夜景，玻璃窗上倒映着室内灯光。桌上放置：笔记本电脑打开，几份文件散开，水晶烟灰缸（未使用），一瓶矿泉水，几个玻璃杯。灯光：顶棚LED筒灯柔和照亮桌面，侧边壁灯提供环境光，窗外霓虹灯点缀。风格：现代简约商务空间，严肃氛围，空镜无人物。",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "z-image-turbo"
+              },
+              "parameters": {
+                "resolution": "2K",
+                "size": "16:9"
+              }
+            }
+          ]
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"三角形对峙-三人谈判\", \"prompt\": \"商务谈判会议室，夜晚，柔和顶光与壁灯。秘密掌握者坐在谈判桌主位，双手交叠放在蓝色文件夹上，眼神自信地扫视对面两人。甲方代表（中年男性）身体微微前倾，双手撑在桌面，急切地看着秘密掌握者。乙方代表（女性）靠在椅背上，双臂交叉，怀疑地审视秘密掌握者。三人形成三角形构图，秘密掌握者处于视觉中心，甲方代表在画面左侧（观众视角），乙方代表在画面右侧。镜头：中景，从侧面拍摄三人对话，突出权力动态。\", \"durationSec\": 6, \"taskKind\": \"text_to_video\", \"modelId\": \"bytedance/seedance-2\", \"modeId\": \"omni\", \"parameters\": {\"resolution\": \"720p\", \"aspect_ratio\": \"16:9\", \"duration\": 6, \"generate_audio\": true}, \"references\": [\"gen-v2-image-mu7j6uur-u0mu\", \"gen-v2-image-mu7j6uus-74yn\", \"gen-v2-image-mu7j6uus-g0k0\", \"gen-v2-image-mu7j6uut-nomw\"]}, {\"title\": \"过肩镜头-秘密掌握者视角\", \"prompt\": \"商务谈判会议室，夜晚。镜头从秘密掌握者肩膀后方拍摄，焦点在甲方代表。甲方代表身体前倾，双手紧张地握着，急切地询问。秘密掌握者（前景模糊）微微转头，冷静回应。背景中，乙方代表坐在谈判桌另一端，双手交叉胸前，观察两人互动。灯光：顶光强调甲方代表的面部表情，秘密掌握者处于暗部轮廓。\", \"durationSec\": CAS 5, \"taskKind\": \"text_to_video\", \"modelId\": \"bytedance/seedance-2\", \"modeId\": \"omni\", \"parameters\": {\"resolution\": \"720p\", \"aspect_ratio\": \"16:9\", \"duration\": 5, \"generate_audio\": true}, \"references\": [\"gen-v2-image-mu7j6uur-u0mu\", \"gen-v2-image-mu7j6uus-74yn\", \"gen-v2-image-mu7j6uus-g0k0\", \"gen-v2-image-mu7j6uut-nomw\"]}, {\"title\": \"权力对比-秘密掌握者主导\", \"prompt\": \"商务谈判会议室，夜晚。秘密掌握者坐在谈判桌中央，占据画面70%空间。甲方代表和乙方代表被挤压在画面两侧边缘。秘密掌握者身体放松向后靠，手指轻轻敲击蓝色文件夹。甲方代表几乎出画，只有侧脸可见，表情焦虑。乙方代表也处于画面边缘，但依然保持警惕观察。镜头：低角度，仰视秘密掌握者，强调权力对比。\", \"durationSec\": 5, \"taskKind\": \"text_to_video\", \"modelId\": \"bytedance/seedance-2\", \"modeId\": \"omni\", \"parameters\": {\"resolution\": \"720p\", \"aspect_ratio\": \"16:9\", \"duration\": 5, \"generate_audio\": true}, \"references\": [\"gen-v2-image-mu7j6uur-u0mu\", \"gen-v2-image-mu7j6uus-74yn\", \"gen-v2-image-mu7j6uus-g0k0\", \"gen-v2-image-mu7j6uut-nomw\"]}]"
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "三角形对峙-三人谈判",
+              "prompt": "商务谈判会议室，夜晚，柔和顶光与壁灯。秘密掌握者坐在谈判桌主位，双手交叠放在蓝色文件夹上，眼神自信地扫视对面两人。甲方代表（中年男性）身体微微前倾，双手撑在桌面，急切地看着秘密掌握者。乙方代表（女性）靠在椅背上，双臂交叉，怀疑地审视秘密掌握者。三人形成三角形构图，秘密掌握者处于视觉中心，甲方代表在画面左侧（观众视角），乙方代表在画面右侧。镜头：中景，从侧面拍摄三人对话，突出权力动态。",
+              "durationSec": 6,
+              "taskKind": "text_to_video",
+              "modelId": "bytedance/seedance-2",
+              "modeId": "omni",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "duration": 6,
+                "generate_audio": true
+              },
+              "references": [
+                "gen-v2-image-mu7j6uur-u0mu",
+                "gen-v2-image-mu7j6uus-74yn",
+                "gen-v2-image-mu7j6uus-g0k0",
+                "gen-v2-image-mu7j6uut-nomw"
+              ]
+            },
+            {
+              "title": "过肩镜头-秘密掌握者视角",
+              "prompt": "商务谈判会议室，夜晚。镜头从秘密掌握者肩膀后方拍摄，焦点在甲方代表。甲方代表身体前倾，双手紧张地握着，急切地询问。秘密掌握者（前景模糊）微微转头，冷静回应。背景中，乙方代表坐在谈判桌另一端，双手交叉胸前，观察两人互动。灯光：顶光强调甲方代表的面部表情，秘密掌握者处于暗部轮廓。",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "modelId": "bytedance/seedance-2",
+              "modeId": "omni",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "duration": 5,
+                "generate_audio": true
+              },
+              "references": [
+                "gen-v2-image-mu7j6uur-u0mu",
+                "gen-v2-image-mu7j6uus-74yn",
+                "gen-v2-image-mu7j6uus-g0k0",
+                "gen-v2-image-mu7j6uut-nomw"
+              ]
+            },
+            {
+              "title": "权力对比-秘密掌握者主导",
+              "prompt": "商务谈判会议室，夜晚。秘密掌握者坐在谈判桌中央，占据画面70%空间。甲方代表和乙方代表被挤压在画面两侧边缘。秘密掌握者身体放松向后靠，手指轻轻敲击蓝色文件夹。甲方代表几乎出画，只有侧脸可见，表情焦虑。乙方代表也处于画面边缘，但依然保持警惕观察。镜头：低角度，仰视秘密掌握者，强调权力对比。",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "modelId": "bytedance/seedance-2",
+              "modeId": "omni",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "duration": 5,
+                "generate_audio": true
+              },
+              "references": [
+                "gen-v2-image-mu7j6uur-u0mu",
+                "gen-v2-image-mu7j6uus-74yn",
+                "gen-v2-image-mu7j6uus-g0k0",
+                "gen-v2-image-mu7j6uut-nomw"
+              ]
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "generate",
+        "args": {
+          "operationId": "op-12a92271-7533-4bff-8aa7-7a62aa4afd0d"
+        },
+        "failed": true
+      }
+    ]
+  },
+  {
+    "id": "S03",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "director-consistency"
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S04",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "director-guzhuang"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S05",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "selection"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "write_script",
+        "args": {
+          "content": "# 深夜恐惧\n\n**场景**：深夜的公寓客厅，灯光昏暗，窗外偶尔有闪电划过。\n\n**角色**：林夏，25岁，独自在家\n\n---\n\n## 镜头1：听到声响\n林夏正坐在沙发上刷手机，突然听到厨房传来玻璃碰撞的轻微声响。\n\n**表演动作**：\n- 刷手机的手突然停住，指尖微微发白（握紧手机）\n- 脖颈微微后缩，头部保持不动，但眼睛快速瞟向声音来源\n- 屏住呼吸3秒，然后缓慢而刻意地恢复正常呼吸节奏\n\n## 镜头2：假装镇定\n林夏放下手机，站起身，走向厨房。\n\n**表演动作**：\n- 站起时用一只手撑住沙发扶手，看似随意，实则借力（肌肉紧张时的伪装）\n- 走向厨房时步伐平稳但有轻微的\"迟疑步态\"：每步都比平常略慢0.2秒\n- 双手在身侧自然下垂，但手指有轻微的无意识屈伸\n- 经过餐桌时\"不经意地\"轻触桌面边缘，确认物理支撑的存在\n\n## 镜头3：检查厨房\n站在厨房门口，往里看去。\n\n**表演动作**：\n- 肩膀保持放松姿态，但背部肌肉略微僵硬\n- 眨眼频率降低，长时间睁大眼睛观察（过度警惕的伪装）\n- 嘴唇微抿，嘴角试图上扬一个\"没事\"的微笑，但上唇微微颤抖\n- 喉结轻轻吞咽一次，暴露了喉咙的紧张感\n\n## 镜头4：自我安慰\n发现只是风吹动了窗台上的玻璃杯。\n\n**表演动作**：\n- 肩膀微微下沉1厘米（紧张的瞬间释放）\n- 抬手抚过额头，假装擦汗，实则是掩饰刚才的僵硬\n- 轻声自言自语：\"只是风啊\"，声音比平常低半个调，说完迅速清嗓子\n- 转身回客厅时，步伐明显比来时轻快0.5倍速，泄露了刚才的真实状态\n\n---\n\n## 表演要点总结\n\n**恐惧的物理信号**（要隐藏但会泄露）：\n1. 呼吸：屏息或浅快呼吸\n2. 肌肉：细微的紧张、僵硬\n3. 微动作：手指颤抖、吞咽、瞳孔变化\n4. 声音：音调变化、语速异常\n\n**镇定的伪装动作**：\n1. 刻意放慢的动作节奏\n2. 维持\"正常\"的身体姿态\n3. 制造\"随意\"的肢体接触\n4. 用\"有事可做\"掩饰僵立\n\n**关键：每个镇定动作都要带有一丝\"过度\"或\"延迟\"，暗示它是表演出来的。**",
+          "where": "end"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S06",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "director-transitions"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S07",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "writer-style-schrader"
+        },
+        "failed": false
+      },
+      {
+        "name": "write_script",
+        "args": {
+          "content": "# 夜班\n\n## 场景1 早八点，交接\n\n空荡的岗亭。白班老陈收好保温杯，钥匙串叮当一响。\n王峰接过门禁卡，没说话。\n\n走廊长，尽头有扇绿漆门。老陈推着电瓶车出来：\n“昨儿那家的狗又跑了，闹腾。”\n王峰点点头。\n\n他把烟揣回兜里，目送老陈拐过街角。\n岗亭玻璃上贴着一周前的班表，边角卷了。\n\n## 场景2 九点，巡逻\n\n小区东南角，儿童滑梯空着。\n秋千慢晃，铁链吱呀。\n\n王峰停在第六栋楼前，看墙上新贴的物业告示。\n“各位业主，国庆期间……”\n红色印章盖歪了。\n\n他伸手捋平边角。\n水泥地上，蚂蚁搬着半片饼干碎屑，绕开一道水渍。\n\n## 场景3 十一点，监控室\n\n十六个屏幕，九个黑着。\n七个亮着：大门、中庭、垃圾站、三个电梯间、地下车库入口。\n\n王峰盯着三号电梯的监控。\n镜头里，一个女人牵着狗等电梯。狗突然回头，朝摄像头方向看了一眼。\n\n王峰伸手，碰了碰屏幕。\n静电“啪”一声轻响。\n\n## 场景4 午后，岗亭内\n\n盒饭搁在窗台。\n王峰掰开一次性筷子，木刺扎进拇指。\n\n他抽出刺，拇指肚渗出一粒血珠。\n窗外，送水工扛着桶经过，桶身撞在铁门上，“哐”一声闷响。\n\n王峰继续吃饭。\n米饭黏在饭盒角落，他用筷子刮了三下。\n\n## 场景5 下午三点，中庭\n\n喷泉没开，池底沉着几枚硬币。\n阳光斜进中庭，光斑爬过瓷砖缝。\n\n王峰坐在花坛边，手里捏着打火机。\n“咔嗒”一声，没火。\n\n他抬头，看对面楼十七层的阳台。\n晾着一件白衬衫，下摆滴水，在阳光里折射出细小的虹。\n\n## 场景6 黄昏，登记外来车辆\n\n一辆黑色轿车停在门口。\n司机摇下车窗：“3栋902，搬家具。”\n\n王峰低头写登记表。\n笔尖在“902”上顿了顿——墨水淡了，他用力摁了摁。\n\n车开进去，尾灯扫过他脚面。\n他蹲下身，系紧松开的鞋带。\n\n## 场景7 晚七点，夜灯亮起\n\n路灯一盏接一盏苏醒。\n岗亭的荧光灯管“嗡”一声轻颤，亮了。\n\n王峰打开手电，光束划破渐浓的夜色。\n光柱尽头，一只黑猫蹲在垃圾桶盖上，绿眼睛眨了眨。\n\n手电灭了。\n猫消失在黑暗里。\n\n王峰退回岗亭，拉上玻璃门。\n门上，他前天擦过的那块水渍，又蔓延开了。\n\n---\n【开场遵循的施拉德规则】\n\n1. **日常骨架**：七个场景锚定门卫一天的可重复节律（交接-巡逻-监控-吃饭-中庭-登记-夜灯），节奏来自空间自身的作息而非事件。\n\n2. **偶遇叙事**：所有“事件”（狗跑、蚂蚁搬屑、狗看摄像头、送水工撞门、衬衫滴水、登记车辆、猫出现）都是王峰在日常动线上自然碰到的，不是他主动寻找的。\n\n3. **面具与真实**：\n   - 对外：他捋平告示、写登记表、巡逻——尽职的门卫\n   - 真实：他碰屏幕静电、看血珠、摁笔尖、擦水渍——缝隙里的暗线\n\n4. **暗线蓄压**：不在台词里说孤独/失控，通过细节传达：\n   - 物理：木刺扎手、静电轻响、鞋带松开、水渍蔓延\n   - 空间：九个黑屏幕、秋千空晃、喷泉没开、荧光灯嗡鸣\n   - 凝视：他看蚂蚁、看衬衫、看猫——这些注视都是暗线在缝隙里闪\n\n5. **不解释原则**：没有“王峰感到孤独”的旁白。观众从并置的画面自己读出来：他系鞋带时车灯扫过脚面，那一秒的停顿里有什么东西在底下动了动。\n\n---\n\n【后续发展提示】\n\n失控不会来自“他突然发疯”。施拉德式的失控是暗线在偶遇的裂缝处裂开：\n- 可能是某天登记表上同一个房号出现太多次\n- 可能是监控里某扇门一直没关\n- 可能是那只猫再也不出现了\n- 可能是水渍终于蔓延到整个玻璃门\n\n转折点不是他的决定，是他碰巧遇到了什么，容器就那样破了。一切照旧，但意义变了。",
+          "where": "end"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S08",
+    "status": "aborted",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "director-action"
+        },
+        "failed": false
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "video"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"角色卡·追逐者\", \"prompt\": \"青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k\", \"role\": \"anchor\"}, {\"title\": \"场景卡·雨夜城市巷道\", \"prompt\": \"雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium\", \"role\": \"anchor\"}, {\"title\": \"镜1·屋顶跨越追逐\", \"prompt\": \"雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远\", \"durationSec\": stage_shot\": {\"shotId\": \"这里需要shotId\", \"cameraMove\": {\"move\": \"track_left\", \"speed\": \"fast\", \"sceneTemplate\": \"street\", \"subjectPose\": \"run\"}}}, {\"title\": \"镜2·墙体跑动攀上\", \"prompt\": \"雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间\", \"durationSec\": stage_shot\": {\"shotId\": \"这里需要shotId\", \"cameraMove\": {\"customMove\": \"镜头从巷道地面快速升起，先特写蹬墙的左脚与水花，上移至双手抓缘的特写，最后升至空中俯瞰视角，展示人物翻上墙顶的完整动作弧线\", \"speed\": \"medium\", \"sceneTemplate\": \"street\"}}}, {\"title\": \"镜3·栏杆摆荡冲刺\", \"prompt\": \"雨夜·露天楼梯平台·金属栏杆湿滑反光→追逐者从平台冲出，右手抓住栏杆，身体顺势右摆荡→摆荡至最高点（动量峰值）松手释放，身体呈抛物线飞出→空中旋转180°，雨衣在空中展开如黑翼→跨越下方2米落差，空中调整姿态准备着地→慢动作展示双手离杆瞬间，指尖与栏杆最后接触，雨滴从杆上被甩出→镜头在栏杆右侧固定，人物从前景冲过，焦点跟随主体移动\", \"durationSec\": stage_shot\": {\"shotId\": \"这里需要shotId\", \"cameraMove\": {\"move\": \"push_in\", \"speed\": \"medium\", \"sceneTemplate\": \"street\", \"subjectPose\": \"jump\"}}}, {\"title\": \"镜4·FPV背后追拍\", \"prompt\": \"雨夜·楼顶追逐→胸前高度POV，画面下沿可见角色背部局部（雨衣下摆湿透紧贴背部轮廓，雨水顺流而下）→镜头距离保持1.5米，速度匹配→前方障碍物逼近：女儿墙、空调外机、晾衣绳→镜头微晃动模拟奔跑呼吸节奏，雨点击打在镜头表面形成水渍→霓虹灯快速掠过两侧，形成拖影光轨→突然前方出现2米宽间隙，追逐者不减速冲刺→呼吸暂停瞬间，即将跳跃前\", \"durationSec\": stage_shot\": {\"shotId\": \"这里需要shotId\", \"cameraMove\": {\"customMove\": \"第一人称POV追拍，距离1.5米，同步速度，镜头微晃动模拟奔跑呼吸与步伐节奏，雨水击打镜头表面形成实时水渍与模糊效果\", \"speed\": \"fast\", \"sceneTemplate\": \"street\", \"subjectPose\": \"run\"}}}, {\"title\": \"镜5·水洼溅落特写\", \"prompt\": \"雨夜·地面水洼·霓虹灯倒影→追逐者右脚精准踩入水洼，水面波纹炸开，彩色倒影破碎→水花四溅，形成透明水珠弧线，最大直径1米→特写镜头在水面下方仰拍，水花遮挡镜头瞬间，透过水幕可见人物腿部轮廓→水珠在空中缓慢旋转坠落，每颗独立反光→雨滴与水花交织，形成多层透明质感→瞬间后水花落下，水面恢复平静，倒影重新形成\", \"durationSec\": stage_shot\": {\"shotId\": \"这里需要shotId\", \"cameraMove\": {\"move\": \"crane_up\", \"speed\": \"slow\", \"sceneTemplate\": \"street\", \"subjectPose\": \"stand\"}}}]",
+          "taskKind": "text_to_video",
+          "candidate": {
+            "providerId": "apimart",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"角色卡·追逐者\", \"prompt\": \"青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k\", \"role\": \"anchor\"}, {\"title\": \"场景卡·雨夜城市巷道\", \"prompt\": \"雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium\", \"role\": \"anchor\"}, {\"title\": \"镜1·屋顶跨越追逐\", \"prompt\": \"雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远\", \"durationSec\": 4}, {\"title\": \"镜2·墙体跑动攀上\", \"prompt\": \"雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间\", \"durationSec\": , \"modeId\": \"first\"}]",
+          "taskKind": "text_to_video",
+          "candidate": {
+            "providerId": "apimart",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"角色卡·追逐者\", \"prompt\": \"青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k\", \"role\": \"anchor\"}, {\"title\": \"场景卡·雨夜城市巷道\", \"prompt\": \"雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium\", \"role\": \"anchor\"}, {\"title\": \"镜1·屋顶跨越追逐\", \"prompt\": \"雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远\", \"durationSec\": 4}, {\"title\": \"镜2·墙体跑动攀上\", \"prompt\": \"雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间\", \"durationSec\": 5}, {\"title\": \"镜3·栏杆摆荡冲刺\", \"prompt\": \"雨夜·露天楼梯平台·金属栏杆湿滑反光→追逐者从平台冲出，右手抓住栏杆，身体顺势右摆荡→摆荡至最高点（动量峰值）松手释放，身体呈抛物线飞出→空中旋转180°，雨衣在空中展开如黑翼→跨越下方2米落差，空中调整姿态准备着地→慢动作展示双手离杆瞬间，指尖与栏杆最后接触，雨滴从杆上被甩出→镜头在栏杆右侧固定，人物从前景冲过，焦点跟随主体移动\", \"durationSec\": intrinsic properties\", \"durationSec\": 4}, {\"title\": \"镜4·FPV背后追拍\", \"prompt\": \"雨夜·楼顶追逐→胸前高度POV，画面下沿可见角色背部局部（雨衣下摆湿透紧贴背部轮廓，雨水顺流而下）→镜头距离保持1.5米，速度匹配→前方障碍物逼近：女儿墙、空调外机、晾衣绳→镜头微晃动模拟奔跑呼吸节奏，雨点击打在镜头表面形成水渍→霓虹灯快速掠过两侧，形成拖影光轨→突然前方出现2米宽间隙，追逐者不减速冲刺→呼吸暂停瞬间，即将跳跃前\", \"durationSec\": 5}, {\"title\": \"镜5·水洼溅落特写\", \"prompt\": \"雨夜·地面水洼·霓虹灯倒影→追逐者右脚精准踩入水洼，水面波纹炸开，彩色倒影破碎→水花四溅，形成透明水珠弧线，最大直径1米→特写镜头在水面下方仰拍，水花遮挡镜头瞬间，透过水幕可见人物腿部轮廓→水珠在空中缓慢旋转坠落，每颗独立反光→雨滴与水花交织，形成多层透明质感→瞬间后水花落下，水面恢复平静，倒影重新形成\", \"durationSec\": 3}]",
+          "taskKind": "text_to_video",
+          "candidate": {
+            "providerId": "apimart",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "角色卡·追逐者",
+              "prompt": "青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k",
+              "role": "anchor"
+            },
+            {
+              "title": "场景卡·雨夜城市巷道",
+              "prompt": "雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium",
+              "role": "anchor"
+            },
+            {
+              "title": "镜1·屋顶跨越追逐",
+              "prompt": "雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远",
+              "durationSec": 4
+            },
+            {
+              "title": "镜2·墙体跑动攀上",
+              "prompt": "雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间",
+              "durationSec": 5
+            },
+            {
+              "title": "镜3·栏杆摆荡冲刺",
+              "prompt": "雨夜·露天楼梯平台·金属栏杆湿滑反光→追逐者从平台冲出，右手抓住栏杆，身体顺势右摆荡→摆荡至最高点（动量峰值）松手释放，身体呈抛物线飞出→空中旋转180°，雨衣在空中展开如黑翼→跨越下方2米落差，空中调整姿态准备着地→慢动作展示双手离杆瞬间，指尖与栏杆最后接触，雨滴从杆上被甩出→镜头在栏杆右侧固定，人物从前景冲过，焦点跟随主体移动",
+              "durationSec": 4
+            },
+            {
+              "title": "镜4·FPV背后追拍",
+              "prompt": "雨夜·楼顶追逐→胸前高度POV，画面下沿可见角色背部局部（雨衣下摆湿透紧贴背部轮廓，雨水顺流而下）→镜头距离保持1.5米，速度匹配→前方障碍物逼近：女儿墙、空调外机、晾衣绳→镜头微晃动模拟奔跑呼吸节奏，雨点击打在镜头表面形成水渍→霓虹灯快速掠过两侧，形成拖影光轨→突然前方出现2米宽间隙，追逐者不减速冲刺→呼吸暂停瞬间，即将跳跃前",
+              "durationSec": 5
+            },
+            {
+              "title": "镜5·水洼溅落特写",
+              "prompt": "雨夜·地面水洼·霓虹灯倒影→追逐者右脚精准踩入水洼，水面波纹炸开，彩色倒影破碎→水花四溅，形成透明水珠弧线，最大直径1米→特写镜头在水面下方仰拍，水花遮挡镜头瞬间，透过水幕可见人物腿部轮廓→水珠在空中缓慢旋转坠落，每颗独立反光→雨滴与水花交织，形成多层透明质感→瞬间后水花落下，水面恢复平静，倒影重新形成",
+              "durationSec": 3
+            }
+          ],
+          "taskKind": "text_to_video",
+          "candidate": {
+            "providerId": "apimart",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "角色卡·追逐者",
+              "prompt": "青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k",
+              "role": "anchor",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "场景卡·雨夜城市巷道",
+              "prompt": "雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium",
+              "role": "anchor",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "镜1·屋顶跨越追逐",
+              "prompt": "雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远",
+              "durationSec": 4,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜2·墙体跑动攀上",
+              "prompt": "雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜3·栏杆摆荡冲刺",
+              "prompt": "雨夜·露天楼梯平台·金属栏杆湿滑反光→追逐者从平台冲出，右手抓住栏杆，身体顺势右摆荡→摆荡至最高点（动量峰值）松手释放，身体呈抛物线飞出→空中旋转180°，雨衣在空中展开如黑翼→跨越下方2米落差，空中调整姿态准备着地→慢动作展示双手离杆瞬间，指尖与栏杆最后接触，雨滴从杆上被甩出→镜头在栏杆右侧固定，人物从前景冲过，焦点跟随主体移动",
+              "durationSec": 4,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜4·FPV背后追拍",
+              "prompt": "雨夜·楼顶追逐→胸前高度POV，画面下沿可见角色背部局部（雨衣下摆湿透紧贴背部轮廓，雨水顺流而下）→镜头距离保持1.5米，速度匹配→前方障碍物逼近：女儿墙、空调外机、晾衣绳→镜头微晃动模拟奔跑呼吸节奏，雨点击打在镜头表面形成水渍→霓虹灯快速掠过两侧，形成拖影光轨→突然前方出现2米宽间隙，追逐者不减速冲刺→呼吸暂停瞬间，即将跳跃前",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜5·水洼溅落特写",
+              "prompt": "雨夜·地面水洼·霓虹灯倒影→追逐者右脚精准踩入水洼，水面波纹炸开，彩色倒影破碎→水花四溅，形成透明水珠弧线，最大直径1米→特写镜头在水面下方仰拍，水花遮挡镜头瞬间，透过水幕可见人物腿部轮廓→水珠在空中缓慢旋转坠落，每颗独立反光→雨滴与水花交织，形成多层透明质感→瞬间后水花落下，水面恢复平静，倒影重新形成",
+              "durationSec": 3,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "image"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "角色卡·追逐者",
+              "prompt": "青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "gpt-image-2"
+              }
+            },
+            {
+              "title": "场景卡·雨夜城市巷道",
+              "prompt": "雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "gpt-image-2"
+              }
+            },
+            {
+              "title": "镜1·屋顶跨越追逐",
+              "prompt": "雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远",
+              "durationSec": 4,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜2·墙体跑动攀上",
+              "prompt": "雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜3·栏杆摆荡冲刺",
+              "prompt": "雨夜·露天楼梯平台·金属栏杆湿滑反光→追逐者从平台冲出，右手抓住栏杆，身体顺势右摆荡→摆荡至最高点（动量峰值）松手释放，身体呈抛物线飞出→空中旋转180°，雨衣在空中展开如黑翼→跨越下方2米落差，空中调整姿态准备着地→慢动作展示双手离杆瞬间，指尖与栏杆最后接触，雨滴从杆上被甩出→镜头在栏杆右侧固定，人物从前景冲过，焦点跟随主体移动",
+              "durationSec": 4,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜4·FPV背后追拍",
+              "prompt": "雨夜·楼顶追逐→胸前高度POV，画面下沿可见角色背部局部（雨衣下摆湿透紧贴背部轮廓，雨水顺流而下）→镜头距离保持1.5米，速度匹配→前方障碍物逼近：女儿墙、空调外机、晾衣绳→镜头微晃动模拟奔跑呼吸节奏，雨点击打在镜头表面形成水渍→霓虹灯快速掠过两侧，形成拖影光轨→突然前方出现2米宽间隙，追逐者不减速冲刺→呼吸暂停瞬间，即将跳跃前",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜5·水洼溅落特写",
+              "prompt": "雨夜·地面水洼·霓虹灯倒影→追逐者右脚精准踩入水洼，水面波纹炸开，彩色倒影破碎→水花四溅，形成透明水珠弧线，最大直径1米→特写镜头在水面下方仰拍，水花遮挡镜头瞬间，透过水幕可见人物腿部轮廓→水珠在空中缓慢旋转坠落，每颗独立反光→雨滴与水花交织，形成多层透明质感→瞬间后水花落下，水面恢复平静，倒影重新形成",
+              "durationSec": 3,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "bytedance/seedance-2"
+              }
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "角色卡·追逐者",
+              "prompt": "青年男性跑酷选手，黑色冲锋衣，兜帽拉下，头发湿透贴在额头，面容坚毅，眼神专注，脸颊有水珠滑落。暗巷追逐者，身着防水材质冲锋衣，肩部剪裁贴合，便于大幅动作，双手戴露指战术手套。多地形跑鞋，鞋面防水溅，鞋底抓地纹理深。雨中能见度低，仅霓虹灯反射勾勒轮廓，眼神锁定前方目标。立姿全身图，雨夜城市背景虚化，Cinematic，shot on Arri Alexa 35，kodak vision3 500T film，cinematic lighting，artwork by greg rutkowski，shot on 85mm，f/2.8，dof ultra-shallow，8k",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "gpt-image-2"
+              }
+            },
+            {
+              "title": "场景卡·雨夜城市巷道",
+              "prompt": "雨夜城市巷道，霓虹灯牌、商店招牌反射在湿漉漉的石板路面上。两侧砖砌建筑老旧，涂鸦墙、防火梯、空调外机。雨水在灯牌上流淌形成光柱，地面水洼倒映霓虹彩色。远处街道雾蒙蒙，可见车辆驶过光轨。雨丝在路灯照射下清晰可见，冷色调（蓝/紫/绿）主调，暖色霓虹点缀。夜雨氛围，雨水在屋顶檐口形成水帘，空调外机滴水。wide establishing shot，雨夜 cityscape，moody lighting，shot on panavision，cinematography by roger deakins，8k，dof medium",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "apimart",
+                "modelId": "gpt-image-2"
+              }
+            },
+            {
+              "title": "镜1·屋顶跨越追逐",
+              "prompt": "雨夜·建筑屋顶·霓虹灯反射光→追逐者从右侧入画，冲刺三步蹬地，身体前倾，双膝深屈起跳→雨丝迎面斜落，衣摆飞扬→跨越楼间1.5米间隙，空中身体伸展呈弓形，双腿前收准备着地→背面视角跟拍，镜头在背后1米处同步前移，距离保持→跨越瞬间慢动作，看清脚趾扣住对侧屋顶边缘，膝盖吸震着地，雨水从地面溅起→危险感，霓虹灯在身后渐远",
+              "durationSec": 4,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            },
+            {
+              "title": "镜2·墙体跑动攀上",
+              "prompt": "雨夜·狭窄巷道·两侧墙面水流淌→追逐者冲刺至墙面，左脚前蹬，身体前倾15°，双手张开→垂直跑墙两步（墙面潮湿，水花飞溅），膝盖高抬，鞋底橡胶与墙面摩擦有声→双手抓顶缘，指节发白用力，雨滴从边缘滴落→左腿甩上墙顶，髋部发力上翻，雨衣在动作中展开→特写镜头先对腿部蹬墙，上移至手抓顶缘，最后跟随翻上墙顶的全过程→雨滴在灯光下形成透明串珠，坠落瞬间",
+              "durationSec": 5,
+              "taskKind": "text_to_video",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              }
+            }
+          ]
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {},
+        "failed": null
+      }
+    ]
+  },
+  {
+    "id": "S09",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "writer-structure"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S10",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "selection"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S11",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "nomi_request_tools",
+        "args": {
+          "group": "coding"
+        },
+        "failed": false
+      },
+      {
+        "name": "ls",
+        "args": {
+          "path": "."
+        },
+        "failed": false
+      },
+      {
+        "name": "find",
+        "args": {
+          "pattern": "*.md"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_skill",
+        "args": {
+          "name": "director-sound"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S12",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "A01",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "selection"
+        },
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "A02",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "nomi_request_tools",
+        "args": {
+          "group": "models"
+        },
+        "failed": false
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "image"
+        },
+        "failed": false
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "kind": "video"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"温暖厨房场景参考\", \"prompt\": \"清晨厨房，暖黄色阳光从窗外斜射进来，木质餐桌，摆放着咖啡壶、面包和果酱瓶，墙上有挂钟，温馨的家庭氛围，柔和的自然光，写实风格，明亮温暖色调\", \"role\": \"anchor\", \"taskKind\": \"text_to_image\"}, {\"title\": \"镜1：晨曦推入厨房\", \"prompt\": \"清晨，阳光从窗外缓慢推入厨房，光线逐渐照亮室内，木质餐桌和墙上的挂钟逐渐清晰，咖啡壶冒着热气，温馨的家庭氛围\", \"durationSec\": externalData,\"references\": [\"#场景参考图的shotId，建好后再补\"], \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"modeId\": \"firstlast\"}, {\"title\": \"镜2：咖啡壶特写\", \"prompt\": \"咖啡壶倒咖啡特写，热气从壶嘴缓缓升起，温暖的棕色调液体流入马克杯，阳光穿过蒸汽形成光晕，慢动作，柔焦\", \"durationSec\": externalData,\"references\": [\"#场景参考图的shotId\"], \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"modeId\": \"firstlast\"}, {\"title\": \"镜3：餐桌面包与光斑\", \"prompt\": \"餐桌上的面包切片和果酱瓶，阳光光斑在桌面上缓慢移动，温暖的金色光线，面包屑细节，生活感的温暖瞬间\", \"durationSec\": externalData,\"references\": [\"#场景参考图的shotId\"], \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"modeId\": \"firstlast\"}]",
+          "candidate": {
+            "providerId": "kie",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "温暖厨房场景参考",
+              "prompt": "清晨厨房，暖黄色阳光从窗外斜射进来，木质餐桌，摆放着咖啡壶、面包和果酱瓶，墙上有挂钟，温馨的家庭氛围，柔和的自然光，写实风格，明亮温暖色调",
+              "role": "anchor",
+              "taskKind": "text_to_image"
+            }
+          ],
+          "candidate": {
+            "providerId": "kie",
+            "modelId": "bytedance/seedance-2"
+          }
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": "[{\"title\": \"温暖厨房场景参考\", \"prompt\": \"清晨厨房，暖黄色阳光从窗外斜射进来，木质餐桌，摆放着咖啡壶、面包和果酱瓶，墙上有挂钟，温馨的家庭氛围，柔和的自然光，写实风格，明亮温暖色调\", \"taskKind\": \"text_to_image\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"seedream\"}}, {\"title\": \"镜1：晨曦推入厨房\", \"prompt\": \"清晨，阳光从窗外缓慢推入厨房，光线逐渐照亮室内，木质餐桌和墙上的挂钟逐渐清晰，咖啡壶冒着热气，温馨的家庭氛围\", \"durationSec\": 5, \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}, \"modeId\": \"firstlast\"}, {\"title\": \"镜2：咖啡壶特写\", \"prompt\": \"咖啡壶倒咖啡特写，热气从壶嘴缓缓升起，温暖的棕色调液体流入马克杯，阳光穿过蒸汽形成光晕，慢动作，柔焦\", \"durationSec\": Chủ nhật, \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}, \"modeId\": \"firstlast\"}, {\"title\": \"镜3：餐桌面包与光斑\", \"prompt\": \"餐桌上的面包切片和果酱瓶，阳光光斑在桌面上缓慢移动，温暖的金色光线，面包屑细节，生活感的温暖瞬间\", \"durationSec\": Chủ nhật, \"role\": \"shot\", \"taskKind\": \"image_to_video\", \"candidate\": {\"providerId\": \"kie\", \"modelId\": \"bytedance/seedance-2\"}, \"modeId\": \"firstlast\"}]"
+        },
+        "failed": true
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "温暖厨房场景参考",
+              "prompt": "清晨厨房，暖黄色阳光从窗外斜射进来，木质餐桌，摆放着咖啡壶、面包和果酱瓶，墙上有挂钟，温馨的家庭氛围，柔和的自然光，写实风格，明亮温暖色调",
+              "taskKind": "text_to_image",
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "seedream"
+              }
+            }
+          ]
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "list_models",
+        "args": {
+          "modelId": "bytedance/seedance-2"
+        },
+        "failed": false
+      },
+      {
+        "name": "draft_shots",
+        "args": {
+          "shots": [
+            {
+              "title": "镜1：晨曦推入厨房",
+              "prompt": "清晨，阳光从窗外缓慢推入厨房，光线逐渐照亮室内，木质餐桌和墙上的挂钟逐渐清晰，咖啡壶冒着热气，温馨的家庭氛围",
+              "durationSec": 5,
+              "taskKind": "image_to_video",
+              "references": [
+                "gen-v2-image-mu7jk5fa-kt06"
+              ],
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              },
+              "modeId": "firstlast",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "generate_audio": true
+              }
+            },
+            {
+              "title": "镜2：咖啡壶特写",
+              "prompt": "咖啡壶倒咖啡特写，热气从壶嘴缓缓升起，温暖的棕色调液体流入马克杯，阳光穿过蒸汽形成光晕，慢动作，柔焦",
+              "durationSec": 4,
+              "taskKind": "image_to_video",
+              "references": [
+                "gen-v2-image-mu7jk5fa-kt06"
+              ],
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              },
+              "modeId": "firstlast",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "generate_audio": true
+              }
+            },
+            {
+              "title": "镜3：餐桌面包与光斑",
+              "prompt": "餐桌上的面包切片和果酱瓶，阳光光斑在桌面上缓慢移动，温暖的金色光线，面包屑细节，生活感的温暖瞬间",
+              "durationSec": 4,
+              "taskKind": "image_to_video",
+              "references": [
+                "gen-v2-image-mu7jk5fa-kt06"
+              ],
+              "candidate": {
+                "providerId": "kie",
+                "modelId": "bytedance/seedance-2"
+              },
+              "modeId": "firstlast",
+              "parameters": {
+                "resolution": "720p",
+                "aspect_audio": "16:9",
+                "generate_audio": true
+              }
+            }
+          ]
+        },
+        "failed": true
+      },
+      {
+        "name": "generate",
+        "args": {
+          "operationId": "op-84ac333c-6a50-495c-a711-488b5889b961"
+        },
+        "failed": true
+      }
+    ]
+  },
+  {
+    "id": "A03",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "read_script",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      },
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_timeline",
+        "args": {},
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "A04",
+    "status": "completed",
+    "tools": [
+      {
+        "name": "look_at_canvas",
+        "args": {},
+        "failed": false
+      },
+      {
+        "name": "read_script",
+        "args": {
+          "scope": "full"
+        },
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "N01",
+    "status": "completed",
+    "tools": []
+  },
+  {
+    "id": "N02",
+    "status": "completed",
+    "tools": []
+  },
+  {
+    "id": "N03",
+    "status": "completed",
+    "tools": []
+  },
+  {
+    "id": "N04",
+    "status": "completed",
+    "tools": [
+      {
+        "toolCallId": "call_860a012f412f4de7af531908",
+        "name": "read_script",
+        "spanName": "execute_tool read_script",
+        "arguments": {
+          "scope": "selection"
+        },
+        "resultSummary": "",
+        "durationMs": 98.74120799987577,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_3655a1fd82084554afb5d314",
+        "name": "read_script",
+        "spanName": "execute_tool read_script",
+        "arguments": {
+          "scope": "full"
+        },
+        "resultSummary": "",
+        "durationMs": 103.84533300017938,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_d8505e1306a64edba875d53f",
+        "name": "write_script",
+        "spanName": "execute_tool write_script",
+        "arguments": {
+          "content": "apple, banana, pear",
+          "where": "end"
+        },
+        "resultSummary": "Applied append to the document. New revision 1789771387286.\nUser sees: The document now contains the new text (append); the user can undo it with Cmd+Z.\n\nApplied directly (undoable)",
+        "durationMs": 86.17212500004098,
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "N05",
+    "status": "completed",
+    "tools": []
+  },
+  {
+    "id": "N06",
+    "status": "completed",
+    "tools": []
+  },
+  {
+    "id": "S03-ablated",
+    "status": "aborted",
+    "tools": [
+      {
+        "toolCallId": "call_d45fb8ca2c894f9db9da176a",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布当前为空。",
+        "durationMs": 97.98433399992064,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_c3673d67e0964867bc013c3c",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "role": "anchor"
+            }
+          ],
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "[\n  {\n    \"code\": \"custom\",\n    \"path\": [\n      \"shots\",\n      0,\n      \"role\"\n    ],\n    \"message\": \"an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — put the anchors and the shots that reuse them in this one call. If the user only wants those reference images themselves, omit role so they are ordinary shots.\"\n  }\n]",
+        "durationMs": 0.05554099986329675,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_6bd3bae8ec354d07a065f99a",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": "[{\"title\": \"主角·林夏设定图\", \"prompt\": \"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\", \"taskKind\": \"text_to_image\", \"role\": \"anchor\"}, {\"title\": \"镜1：会议室交谈\", \"prompt\": \"会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。\", \"taskKind\": \"text_to_video\", \"durationSec\": 4, \"role\": \"shot\"}, {\"title\": \"镜2：走廊行走\", \"prompt\": \"公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。\", \"taskKind\": \"text_to_video\", \"durationSec\":, \"role\": \"shot\"}]",
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "Validation failed for tool \"draft_shots\":\n  - shots: must be array\n\nReceived arguments:\n{\n  \"shots\": \"[{\\\"title\\\": \\\"主角·林夏设定图\\\", \\\"prompt\\\": \\\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\\\", \\\"taskKind\\\": \\\"text_to_image\\\", \\\"role\\\": \\\"anchor\\\"}, {\\\"title\\\": \\\"镜1：会议室交谈\\\", \\\"prompt\\\": \\\"会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\": 4, \\\"role\\\": \\\"shot\\\"}, {\\\"title\\\": \\\"镜2：走廊行走\\\", \\\"prompt\\\": \\\"公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。\\\", \\\"taskKind\\\": \\\"text_to_video\\\", \\\"durationSec\\\":, \\\"role\\\": \\\"shot\\\"}]\",\n  \"candidate\": {\n    \"providerId\": \"doubao\",\n    \"modelId\": \"seedream/5-pro-text-to-image\"\n  }\n}",
+        "durationMs": 0.05270800017751753,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_2d64cf09d6924995ac3ac776",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "role": "anchor"
+            },
+            {
+              "title": "镜1：会议室交谈",
+              "prompt": "会议室场景，林夏（参考设定图外观）坐在会议桌旁，与同事交谈。她身体微微前倾，手搭在笔记本上，眼神专注地看着对面的人。自然光线，中景。",
+              "taskKind": "text_to_video",
+              "durationSec": 4,
+              "role": "shot"
+            },
+            {
+              "title": "镜2：走廊行走",
+              "prompt": "公司走廊，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持文件快步走过。步伐轻盈，发丝随动作微动，表情认真。走廊灯光，跟拍镜头。",
+              "taskKind": "text_to_video",
+              "durationSec": 3,
+              "role": "shot"
+            }
+          ],
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream/5-pro-text-to-image"
+          }
+        },
+        "resultSummary": "draft_shots could not complete the requested action (generation_execution_failed). 没有配置可用的图片模型。请在设置里选一个默认图片模型；或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。\nNext: Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.",
+        "durationMs": 417.57125000003725,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_1491cef05bf0424e96f70c31",
+        "name": "list_models",
+        "spanName": "execute_tool list_models",
+        "arguments": {
+          "kind": "image"
+        },
+        "resultSummary": "{\"models\":[{\"modelId\":\"z-image-turbo\",\"modelAlias\":null,\"vendor\":\"apimart\",\"label\":\"Z-Image Turbo\",\"kind\":\"image\",\"archetypeId\":\"z-image-turbo\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"极速文生图\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"size\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"}],\"defaultValue\":\"1:1\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]}]},{\"modelId\":\"gpt-image-2\",\"modelAlias\":\"gpt-image-2\",\"vendor\":\"code-newcli-com\",\"label\":\"Gpt Image 2\",\"kind\":\"image\",\"archetypeId\":\"gpt-image-2\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"纯文字生成图像\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"5:4\",\"label\":\"5:4\"},{\"value\":\"4:5\",\"label\":\"4:5\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"2:1\",\"label\":\"2:1\"},{\"value\":\"1:2\",\"label\":\"1:2\"},{\"value\":\"3:1\",\"label\":\"3:1\"},{\"value\":\"1:3\",\"label\":\"1:3\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"9:21\",\"label\":\"9:21\"}],\"defaultValue\":\"auto\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"},{\"value\":\"4K\",\"label\":\"4K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]},{\"modeId\":\"i2i\",\"vendorTerm\":\"图生图\",\"intent\":\"edit\",\"hint\":\"给图 + 提示词改图\",\"consumesAnchors\":[\"scene\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\"",
+        "durationMs": 3.3776660000439733,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_50588641b02a4a44b9142d67",
+        "name": "list_models",
+        "spanName": "execute_tool list_models",
+        "arguments": {
+          "kind": "video"
+        },
+        "resultSummary": "{\"models\":[{\"modelId\":\"bytedance/seedance-2\",\"modelAlias\":null,\"vendor\":\"kie\",\"label\":\"Seedance 2.0\",\"kind\":\"video\",\"archetypeId\":\"seedance-2\",\"defaultModeId\":\"t2v\",\"modes\":[{\"modeId\":\"t2v\",\"vendorTerm\":\"文生视频\",\"intent\":\"text\",\"hint\":\"纯文字描述生成视频，无需参考图\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"480p\",\"label\":\"480p\"},{\"value\":\"720p\",\"label\":\"720p\"},{\"value\":\"1080p\",\"label\":\"1080p\"},{\"value\":\"4k\",\"label\":\"4k\"}],\"defaultValue\":\"720p\"},{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"adaptive\",\"label\":\"adaptive\"}],\"defaultValue\":\"16:9\"},{\"key\":\"duration\",\"label\":\"时长\",\"type\":\"number\",\"options\":[],\"defaultValue\":5,\"min\":4,\"max\":15},{\"key\":\"generate_audio\",\"label\":\"生成音频\",\"type\":\"boolean\",\"options\":[],\"defaultValue\":true}],\"slots\":[]},{\"modeId\":\"first\",\"vendorTerm\":\"首帧\",\"intent\":\"single\",\"hint\":\"单张首帧图驱动生成\",\"consumesAnchors\":[\"firstFrame\"],\"params\":[{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"480p\",\"label\":\"480p\"},{\"value\":\"720p\",\"label\":\"720p\"},{\"value\":\"1080p\",\"label\":\"1080p\"},{\"value\":\"4k\",\"label\":\"4k\"}],\"defaultValue\":\"720p\"},{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"adaptive\",\"label\":\"adaptive\"}],\"defaultValue\":\"16:9\"},{\"key\":\"duration\",\"label\":\"时长\",\"type\":\"number\",\"options\":[],\"defaultValue\":5,\"min\":4,\"max\":15},{\"key\":\"generate_audio\",\"label\":\"生成音频\",\"type\":\"boolean\",\"options\":[],\"defaultValue\":true}],\"slots\":[{\"kind\":\"first_frame\",\"label\":\"首帧\",\"max\":1}]},{\"modeId\":\"firstlast\",\"vendorTerm\":\"首尾帧\",\"intent\":\"firstlast\",\"hint\":\"首帧 + 尾帧，过渡更可控\",\"consumesAnchors\":[\"firstF",
+        "durationMs": 2.634749999968335,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_8443dfc798ee49918808ba6e",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "主角·林夏设定图",
+              "prompt": "亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。",
+              "taskKind": "text_to_image",
+              "modelId": "gpt-image-2"
+            }
+          ]
+        },
+        "resultSummary": "{\"operation\":{\"operationId\":\"op-506eb547-e078-432d-a70d-88fed46b7956\",\"projectId\":\"project-1789771402265-p3b44c\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"apimart\",\"modelId\":\"gpt-image-2\",\"mode\":\"text_to_image\",\"prompt\":\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\",\"parameters\":{},\"references\":[]},\"state\":\"draft\",\"cardHidden\":true,\"planVersion\":1,\"shots\":[{\"shotId\":\"shot-1\",\"title\":\"主角·林夏设定图\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"apimart\",\"modelId\":\"gpt-image-2\",\"mode\":\"text_to_image\",\"prompt\":\"亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色系穿搭，淡妆，表情温和自然。站立姿势，全身照，中性光线，白色背景。\",\"parameters\":{},\"references\":[]}}],\"updatedAt\":\"2026-09-18T22:45:48.012Z\"},\"nextAction\":\"preview\"}\nUser sees: Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made. (operationId=op-506eb547-e078-432d-a70d-88fed46b7956)\n\nApplied directly (undoable)",
+        "durationMs": 712.9549589999951,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_75ca1334d74d4420901a4a30",
+        "name": "make_artifact",
+        "spanName": "execute_tool make_artifact",
+        "arguments": {
+          "fileType": "markdown",
+          "title": "角色一致性检查清单",
+          "content": "# 角色一致性检查清单\n\n## 📋 核心原则\n**「先建锚，后引用」**\n1. 每个主要角色先建一张「设定图」（中性姿势，清晰展示外貌特征）\n2. 所有后续镜头必须引用这张设定图（使用视频模型的「图生视频」模式）\n\n## 🔧 技术方案（Nomi 内）\n\n### 1. 设定图生成\n- **模型**：`gpt-image-2` 或 `nano-banana-2`\n- **模式**：文生图 (t2i)\n- **比例**：1:1（全身照）\n- **关键特征锁定**：\n  - 发型/发色\n  - 脸型/五官\n  - 服饰（颜色/款式）\n  - 身高/体型\n\n### 2. 视频生成方法\n**必须使用图生视频模式，禁止纯文字生成：**\n\n| 模型 | 最佳模式 | 参考槽 | 说明 |\n|------|----------|--------|------|\n| Seedance 2.0 | `omni` | 角色参考 (image_ref) | 强身份一致性 |\n| HappyHorse 1.1 | `ref` | 角色参考 (image_ref) | 1-9张参考图融合 |\n| Kling 3.0 | `i2v` | 首/尾帧 (image_ref) | 首帧驱动 |\n| Wan 2.7 | `ref` | 参考图 (image_ref) | 多参考图融合 |\n\n### 3. 提示词规范\n```\n[场景描述] + [林夏]（保持设定图外观：齐肩黑发、白衬衫、卡其裤） + [动作描述] + [运镜]\n```\n\n**正确示例**：\n> 会议室场景，林夏（保持设定图外观：齐肩黑发、白衬衫、卡其裤）手持笔记本与同事交谈，微微前倾身体，眼神专注。中景推入镜头。\n\n**错误示例**：\n> 一个黑发女性在会议室（模型会重新发明长相）\n\n## 🧪 跨镜检查项\n\n### 1. 外貌一致性\n- [ ] 发型长度/样式相同\n- [ ] 发色一致\n- [ ] 脸型/五官相似度 >80%\n- [ ] 妆容风格统一\n- [ ] 体型/身高比例合理\n\n### 2. 服饰一致性\n- [ ] 上衣颜色/款式相同\n- [ ] 裤子/裙子样式匹配\n- [ ] 配饰（皮带/鞋/包）存在且一致\n- [ ] 服装材质感相似\n\n### 3. 动作连贯性\n- [ ] 姿势变化符合物理逻辑\n- [ ] 表情演变自然\n- [ ] 视线方向合理\n- [ ] 手持物位置连续\n\n## 🚨 常见翻车点\n\n### 翻车1：只用文字描述角色\n**症状**：每个镜头都重新描述角色外貌\n**修复**：删掉文字外貌描述，改用参考图\n\n### 翻车2：换参考图\n**症状**：不同镜头用了不同设定图\n**修复**：全片统一用同一张设定图\n\n### 翻车3：模式选错\n**症状**：选了 `t2v`（纯文字）而非 `i2v`/`ref`（图生视频）\n**修复**：确保模式带参考槽（image_ref / first_frame）\n\n### 翻车4：参考图质量差\n**症状**：设定图模糊/角度怪/特征不明显\n**修复**：\n1. 用中性姿势（站立/正面）\n2. 清晰展示全身\n3. 背景简单（白底优先）\n4. 生成2-3张选最佳\n\n## 📈 工作流\n\n### A. 新项目\n```\n创作区写剧本 → 识别主要角色 → \n为每个角色生成设定图（1:1全身） → \n所有镜头引用对应设定图 → \n批量生成预览 → \n抽查一致性 → 调整\n```\n\n### B. 修复现有项目\n```\n1. 识别变脸镜头\n2. 为每个角色补设定图\n3. 修改问题镜头：换模型/模式\n4. 重生成问题镜头\n5. 时间轴替换\n```\n\n## 🛠 快速修复模板\n\n### 问题：镜3的林夏换了发型\n**修复步骤**：\n1. 找到「主角·林夏设定图」节点\n2. 复制其 `shotId`\n3. 编辑镜3：\n   ```json\n   {\n     \"shotId\": \"镜3的id\",\n     \"modelId\": \"bytedance/seedance-2\",\n     \"modeId\": \"omni\",\n     \"references\": [\"设定图的shotId\"]\n   }\n   ```\n\n### 问题：角色衣服颜色变了\n**修复步骤**：\n1. 在设定图提示词中强化颜色描述\n2. 在所有镜头提示词中重复颜色关键词\n3. 使用模型的 `negative_prompt` 排除错误颜色\n\n## 📊 监控指标\n\n| 指标 | 目标 | 检查方法 |\n|------|------|----------|\n| 人脸相似度 | >80% | 逐帧截图对比 |\n| 服饰一致性 | 100% | 颜色/款式比对 |\n| 跨镜衔接 | 自然 | 预览连续播放 |\n| 生成时间 | 统一 | 同模型/同参数 |\n\n## 🔄 多角色场景\n\n### 3人以上同框\n**方法**：为每个角色建设定图，视频用 `omni` / `ref` 模式引用多张\n\n**提示词结构**：\n```\n会议室场景，林夏（@image1 外观）、王明（@image2 外观）、李华（@image3 外观）围坐讨论...\n```\n\n**模型选择**：`bytedance/seedance-2` (omni) 支持最多9张角色参考\n\n---\n\n## 🎯 一句话总结\n**每个角色一张设定图，每个镜头必须引用它。模式选错，一切白费。**\n\n保存此清单至画布，每次生成前对照检查。"
+        },
+        "resultSummary": "Applied directly (undoable).\nCreated 1 node(s). Use look_at_canvas to inspect them before further edits.\nUser sees: The canvas shows the new artifact node; the user can undo it with Cmd+Z. Nothing was generated and nothing was spent.\n\nApplied directly (undoable)",
+        "durationMs": 127.42987499991432,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_19318de88c4643f7a6288fad",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布节点 2 个(id | 类型 | 标题 | 状态 | prompt 摘要 | 结果身份):\n当前选中: gen-v2-agent-artifact-mu7js928-cyge\n- gen-v2-image-mu7jrou2-88d5 | image | 镜1 | 主角·林夏设定图 | prompt: 亚洲女性，25岁，齐肩黑发，大眼睛，中等身材。身穿白色衬衫搭配卡其色长裤，棕色皮带，黑色乐福鞋。简约日常都市风格，中性色…\n- gen-v2-agent-artifact-mu7js928-cyge | agent-artifact | 角色一致性检查清单\n引用边: 无",
+        "durationMs": 104.11612499994226,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_07b12c58414d485a9b54a5ff",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {},
+        "resultSummary": null,
+        "durationMs": null,
+        "failed": null
+      }
+    ]
+  },
+  {
+    "id": "S01-fresh",
+    "status": "completed",
+    "tools": [
+      {
+        "toolCallId": "call_825a5c68ae994495a51dbcf2",
+        "name": "read_script",
+        "spanName": "execute_tool read_script",
+        "arguments": {
+          "scope": "full"
+        },
+        "resultSummary": "",
+        "durationMs": 87.21904100012034,
+        "failed": false
+      }
+    ]
+  },
+  {
+    "id": "S02-fresh",
+    "status": "completed",
+    "tools": [
+      {
+        "toolCallId": "call_3fda1af01b284fe7aab9f2c8",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布当前为空。",
+        "durationMs": 94.69241699995473,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_47653a458a2b4edf889e44be",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "谈判三人组设定",
+              "prompt": "三个商务人士的参考卡：\n\n角色A（掌握秘密者）：40岁男性，短发干净，深蓝色西装，金边眼镜，神情自信但略带防备，嘴角微扬。\n\n角色B（谈判对手）：45岁男性，灰白短发，黑色西装，表情严肃，眉头微皱，双手交叉放在桌上。\n\n角色C（调解者/观察者）：35岁女性，齐肩卷发，灰色职业套装，表情中立但专注，微微侧身观察双方。\n\n摄影风格：商务谈判氛围，柔和室内光，深色木质长桌，简约会议室背景。",
+              "role": "anchor",
+              "taskKind": "text_to_image"
+            },
+            {
+              "title": "餐桌谈判站位",
+              "prompt": "三人围坐在长方形餐桌边谈判，其中一人掌握秘密：\n\n餐桌中央摆放着文件和水杯，柔和顶光从上方洒下，在桌面上形成光斑。\n\n掌握秘密者（角色A）坐在餐桌一侧中央位置，身体微微后仰靠在椅背上，双手手指交叉放在桌面文件上，视线在另外两人之间游移，嘴角带着若有若无的微笑。\n\n谈判对手（角色B）坐在掌握秘密者左侧，身体前倾，双手紧握放在桌边，眉头紧锁盯着对方，表现出压迫感和急切。\n\n调解者（角色C）坐在掌握秘密者右侧，保持中立位置，身体略微转向左侧观察双方，右手轻抚下巴做思考状。\n\n景深：前景是餐桌一角的水杯和文件堆，中景是三人对峙，背景是简约会议室墙面和装饰画。",
+              "role": "shot",
+              "taskKind": "text_to_image"
+            }
+          ],
+          "candidate": {
+            "providerId": "doubao",
+            "modelId": "seedream-v4.5"
+          }
+        },
+        "resultSummary": "draft_shots could not complete the requested action (generation_execution_failed). 没有配置可用的图片模型。请在设置里选一个默认图片模型；或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。\nNext: Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.",
+        "durationMs": 434.4301670000423,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_0632084df2424a9daa9f9d70",
+        "name": "list_models",
+        "spanName": "execute_tool list_models",
+        "arguments": {
+          "kind": "image"
+        },
+        "resultSummary": "{\"models\":[{\"modelId\":\"z-image-turbo\",\"modelAlias\":null,\"vendor\":\"apimart\",\"label\":\"Z-Image Turbo\",\"kind\":\"image\",\"archetypeId\":\"z-image-turbo\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"极速文生图\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"size\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"}],\"defaultValue\":\"1:1\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]}]},{\"modelId\":\"gpt-image-2\",\"modelAlias\":\"gpt-image-2\",\"vendor\":\"code-newcli-com\",\"label\":\"Gpt Image 2\",\"kind\":\"image\",\"archetypeId\":\"gpt-image-2\",\"defaultModeId\":\"t2i\",\"modes\":[{\"modeId\":\"t2i\",\"vendorTerm\":\"文生图\",\"intent\":\"text\",\"hint\":\"纯文字生成图像\",\"consumesAnchors\":[\"none\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\":\"3:2\",\"label\":\"3:2\"},{\"value\":\"2:3\",\"label\":\"2:3\"},{\"value\":\"4:3\",\"label\":\"4:3\"},{\"value\":\"3:4\",\"label\":\"3:4\"},{\"value\":\"5:4\",\"label\":\"5:4\"},{\"value\":\"4:5\",\"label\":\"4:5\"},{\"value\":\"16:9\",\"label\":\"16:9\"},{\"value\":\"9:16\",\"label\":\"9:16\"},{\"value\":\"2:1\",\"label\":\"2:1\"},{\"value\":\"1:2\",\"label\":\"1:2\"},{\"value\":\"3:1\",\"label\":\"3:1\"},{\"value\":\"1:3\",\"label\":\"1:3\"},{\"value\":\"21:9\",\"label\":\"21:9\"},{\"value\":\"9:21\",\"label\":\"9:21\"}],\"defaultValue\":\"auto\"},{\"key\":\"resolution\",\"label\":\"清晰度\",\"type\":\"select\",\"options\":[{\"value\":\"1K\",\"label\":\"1K\"},{\"value\":\"2K\",\"label\":\"2K\"},{\"value\":\"4K\",\"label\":\"4K\"}],\"defaultValue\":\"1K\"}],\"slots\":[]},{\"modeId\":\"i2i\",\"vendorTerm\":\"图生图\",\"intent\":\"edit\",\"hint\":\"给图 + 提示词改图\",\"consumesAnchors\":[\"scene\"],\"params\":[{\"key\":\"aspect_ratio\",\"label\":\"比例\",\"type\":\"select\",\"options\":[{\"value\":\"auto\",\"label\":\"auto\"},{\"value\":\"1:1\",\"label\":\"1:1\"},{\"value\"",
+        "durationMs": 3.647707999916747,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_fd3f3c1bd1f34265984a97ae",
+        "name": "draft_shots",
+        "spanName": "execute_tool draft_shots",
+        "arguments": {
+          "shots": [
+            {
+              "title": "谈判三人组设定",
+              "prompt": "三个商务人士的参考卡：\n\n角色A（掌握秘密者）：40岁男性，短发干净，深蓝色西装，金边眼镜，神情自信但略带防备，嘴角微扬。\n\n角色B（谈判对手）：45岁男性，灰白短发，黑色西装，表情严肃，眉头微皱，双手交叉放在桌上。\n\n角色C（调解者/观察者）：35岁女性，齐肩卷发，灰色职业套装，表情中立但专注，微微侧身观察双方。\n\n摄影风格：商务谈判氛围，柔和室内光，深色木质长桌，简约会议室背景。",
+              "role": "anchor",
+              "taskKind": "text_to_image",
+              "modelId": "seedream-v4.5",
+              "modeId": "text",
+              "parameters": {
+                "resolution": "2k"
+              }
+            },
+            {
+              "title": "餐桌谈判站位",
+              "prompt": "三人围坐在长方形餐桌边谈判，其中一人掌握秘密：\n\n餐桌中央摆放着文件和水杯，柔和顶光从上方洒下，在桌面上形成光斑。\n\n掌握秘密者（角色A）坐在餐桌一侧中央位置，身体微微后仰靠在椅背上，双手手指交叉放在桌面文件上，视线在另外两人之间游移，嘴角带着若有若无的微笑。\n\n谈判对手（角色B）坐在掌握秘密者左侧，身体前倾，双手紧握放在桌边，眉头紧锁盯着对方，表现出压迫感和急切。\n\n调解者（角色C）坐在掌握秘密者右侧，保持中立位置，身体略微转向左侧观察双方，右手轻抚下巴做思考状。\n\n景深：前景是餐桌一角的水杯和文件堆，中景是三人对峙，背景是简约会议室墙面和装饰画。\n\n构图：三人形成三角形布局，掌握秘密者位于视觉中心点。",
+              "role": "shot",
+              "taskKind": "text_to_image",
+              "modelId": "seedream-v4.5",
+              "modeId": "text",
+              "parameters": {
+                "resolution": "2k"
+              }
+            }
+          ]
+        },
+        "resultSummary": "{\"operation\":{\"operationId\":\"op-d27393d4-a48b-4aa8-aa97-d6864c474183\",\"projectId\":\"project-1789771600291-7yp9re\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"runninghub\",\"modelId\":\"seedream-v4.5\",\"mode\":\"text_to_image\",\"modeId\":\"text\",\"prompt\":\"三个商务人士的参考卡：\\n\\n角色A（掌握秘密者）：40岁男性，短发干净，深蓝色西装，金边眼镜，神情自信但略带防备，嘴角微扬。\\n\\n角色B（谈判对手）：45岁男性，灰白短发，黑色西装，表情严肃，眉头微皱，双手交叉放在桌上。\\n\\n角色C（调解者/观察者）：35岁女性，齐肩卷发，灰色职业套装，表情中立但专注，微微侧身观察双方。\\n\\n摄影风格：商务谈判氛围，柔和室内光，深色木质长桌，简约会议室背景。\",\"parameters\":{\"resolution\":\"2k\"},\"references\":[]},\"state\":\"draft\",\"cardHidden\":true,\"planVersion\":1,\"shots\":[{\"shotId\":\"shot-1\",\"role\":\"anchor\",\"title\":\"谈判三人组设定\",\"candidate\":{\"candidateId\":\"cand-shot-1\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"runninghub\",\"modelId\":\"seedream-v4.5\",\"mode\":\"text_to_image\",\"modeId\":\"text\",\"prompt\":\"三个商务人士的参考卡：\\n\\n角色A（掌握秘密者）：40岁男性，短发干净，深蓝色西装，金边眼镜，神情自信但略带防备，嘴角微扬。\\n\\n角色B（谈判对手）：45岁男性，灰白短发，黑色西装，表情严肃，眉头微皱，双手交叉放在桌上。\\n\\n角色C（调解者/观察者）：35岁女性，齐肩卷发，灰色职业套装，表情中立但专注，微微侧身观察双方。\\n\\n摄影风格：商务谈判氛围，柔和室内光，深色木质长桌，简约会议室背景。\",\"parameters\":{\"resolution\":\"2k\"},\"references\":[]}},{\"shotId\":\"shot-2\",\"role\":\"shot\",\"title\":\"餐桌谈判站位\",\"candidate\":{\"candidateId\":\"cand-shot-2\",\"revision\":1,\"moduleId\":\"generation.single-shot\",\"providerId\":\"runninghub\",\"modelId\":\"seedream-v4.5\",\"mode\":\"text_to_image\",\"modeId\":\"text\",\"prompt\":\"三人围坐在长方形餐桌边谈判，其中一人掌握秘密：\\n\\n餐桌中央摆放着文件和水杯，柔和顶光从上方洒下，在桌面上形成光斑。\\n\\n掌握秘密者（角色A）坐在餐桌一侧中央位置，身体微微后仰靠在椅背上，双手手指交叉放在桌面文件上，视线在另外两人之间游移，嘴角带着若有若无的微笑。\\n\\n谈判对手（角色B）坐在掌握秘密者左侧，身体前倾，双手紧握放在桌边，眉头紧锁盯着对方，表现出压迫感和急切。\\n\\n调解者（角色C）坐在掌握秘密者右侧，保持中立位置，身体略微转向左侧观察双方，右手轻抚下巴做思考状。\\n\\n景深：前景是餐桌一角的水杯和文件堆，中景是三人对峙，背景是简约会议室墙面和装饰画。\\n\\n构图：三人形成三角形布局，掌握秘密者位于视觉中心点。\",\"parameters\":{\"resolution\":\"2k\"},\"references\":[]}}],\"updatedAt\":\"2026-09-18T22:47:12.842Z\"},\"nextAction\":\"preview\"}\nUser sees: Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made. (operationId=op-d27393d4-a48b-4aa8",
+        "durationMs": 1514.6565829999745,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_dcefdd6d90664cc3ac0e42ba",
+        "name": "stage_shot",
+        "spanName": "execute_tool stage_shot",
+        "arguments": {
+          "shotId": "shot-2",
+          "staging": "{\"characters\": [{\"name\": \"角色A（掌握秘密者）\", \"pose\": \"sitting\", \"facing\": \"camera\"}, {\"name\": \"角色B（谈判对手）\", \"pose\": \"sitting\", \"facing\": \"toward\"}, {\"name\": \"角色C（调解者/观察者）\", \"pose\": \"sitting\", \"facing\": \"left\"}], \"layout\": \"circle\", \"camera\": {\"angle\": \"three-quarter\", \"height\": \"eye\", \"shot\": \"medium\"}, \"environment\": \"studio\", \"props\": [{\"kind\": \"diningTable\", \"position\": [0, 0], \"rotationY\": 0, \"scale\":相对来说}, {\"kind\": \"sofa\", \"position\": [2, 0], \"rotationY\": 180}, {\"kind\": \"sofa\", \"position\": [-2, 0], \"rotationY\": 0}]}"
+        },
+        "resultSummary": "Validation failed for tool \"stage_shot\":\n  - staging: must be object\n\nReceived arguments:\n{\n  \"shotId\": \"shot-2\",\n  \"staging\": \"{\\\"characters\\\": [{\\\"name\\\": \\\"角色A（掌握秘密者）\\\", \\\"pose\\\": \\\"sitting\\\", \\\"facing\\\": \\\"camera\\\"}, {\\\"name\\\": \\\"角色B（谈判对手）\\\", \\\"pose\\\": \\\"sitting\\\", \\\"facing\\\": \\\"toward\\\"}, {\\\"name\\\": \\\"角色C（调解者/观察者）\\\", \\\"pose\\\": \\\"sitting\\\", \\\"facing\\\": \\\"left\\\"}], \\\"layout\\\": \\\"circle\\\", \\\"camera\\\": {\\\"angle\\\": \\\"three-quarter\\\", \\\"height\\\": \\\"eye\\\", \\\"shot\\\": \\\"medium\\\"}, \\\"environment\\\": \\\"studio\\\", \\\"props\\\": [{\\\"kind\\\": \\\"diningTable\\\", \\\"position\\\": [0, 0], \\\"rotationY\\\": 0, \\\"scale\\\":相对来说}, {\\\"kind\\\": \\\"sofa\\\", \\\"position\\\": [2, 0], \\\"rotationY\\\": 180}, {\\\"kind\\\": \\\"sofa\\\", \\\"position\\\": [-2, 0], \\\"rotationY\\\": 0}]}\"\n}",
+        "durationMs": 0.08775000018067658,
+        "failed": true
+      },
+      {
+        "toolCallId": "call_56c197d141af455fbd530a0c",
+        "name": "stage_shot",
+        "spanName": "execute_tool stage_shot",
+        "arguments": {
+          "shotId": "shot-2",
+          "staging": {
+            "characters": [
+              {
+                "name": "角色A（掌握秘密者）",
+                "pose": "sit",
+                "facing": "camera"
+              },
+              {
+                "name": "角色B（谈判对手）",
+                "pose": "sit",
+                "facing": "toward"
+              },
+              {
+                "name": "角色C（调解者/观察者）",
+                "pose": "sit",
+                "facing": "left"
+              }
+            ],
+            "layout": "circle",
+            "camera": {
+              "angle": "three-quarter",
+              "height": "eye",
+              "shot": "medium"
+            },
+            "environment": "studio",
+            "props": [
+              {
+                "kind": "diningTable",
+                "position": [
+                  0,
+                  0
+                ],
+                "rotationY": 0,
+                "scale": 1.5
+              },
+              {
+                "kind": "sofa",
+                "position": [
+                  2,
+                  0
+                ],
+                "rotationY": 180
+              },
+              {
+                "kind": "sofa",
+                "position": [
+                  -2,
+                  0
+                ],
+                "rotationY": 0
+              }
+            ]
+          }
+        },
+        "resultSummary": "Applied directly (undoable).\nUser sees: The canvas shows the new director reference node next to the shot; the user can undo it with Cmd+Z. Nothing was generated and nothing was spent.\n\nApplied directly (undoable)",
+        "durationMs": 99.69054099987261,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_5be35d71071f4531926db7b7",
+        "name": "make_artifact",
+        "spanName": "execute_tool make_artifact",
+        "arguments": {
+          "fileType": "table",
+          "title": "三人谈判站位分析",
+          "content": "| 元素 | 角色A（掌握秘密者） | 角色B（谈判对手） | 角色C（调解者/观察者） |\n|------|----------------------|------------------|------------------------|\n| **位置** | 餐桌中央（焦点位） | 角色A左侧 | 角色A右侧 |\n| **姿势** | 后仰、交叉手指、放松 | 前倾、双手握桌边、紧张 | 中立、身体向左转、右手托下巴 |\n| **视线方向** | 在B和C之间游移，偶尔看文件 | 紧盯角色A，试图施加压力 | 观察A和B，判断局势 |\n| **情绪表现** | 自信、防备、有优越感 | 急切、焦虑、压迫感 | 专注、冷静、分析中 |\n| **前后景关系** | **中景-视觉中心** | **中景-前景感（前倾）** | **中景-稍微靠后** |\n| **心理距离** | 保持距离（后仰） | 试图拉近距离（前倾） | 保持观察距离 |\n| **权力动态** | **权力顶点**（掌握秘密） | **挑战者**（试图夺取） | **仲裁者**（观察评估） |\n\n---\n\n## 站位构图要点\n\n1. **三角形布局**：三人围绕餐桌形成稳定的三角形，角色A位于顶端，B和C位于底边两端。\n\n2. **视线网络**：\n   - A↔B：对峙关系，权力博弈\n   - A↔C：观察与被观察，潜在同盟\n   - B↔C：间接冲突，通过A形成三角张力\n\n3. **前后景层次**：\n   - **前景**：餐桌边缘的水杯、文件堆（环境道具）\n   - **中景**：三人对峙的核心区域\n   - **后景**：会议室墙面、装饰画、柔和灯光\n\n4. **景深控制**：前景文件模糊，中景三人清晰，后景略微虚化，引导视线到人物关系。\n\n5. **光线设计**：顶光在桌面上形成光斑，突出谈判文件和手部动作；人物面部半明半暗，增强戏剧张力。\n\n---\n\n## 推荐镜头角度\n\n1. **过肩镜头**：从C的肩后拍摄A和B的对峙\n2. **俯拍视角**：展示三人位置关系和桌面文件\n3. **特写交叉**：A的自信微笑 ↔ B的焦虑皱眉\n4. **推镜头**：从全景推向A手中的秘密文件"
+        },
+        "resultSummary": "Applied directly (undoable).\nCreated 1 node(s). Use look_at_canvas to inspect them before further edits.\nUser sees: The canvas shows the new artifact node; the user can undo it with Cmd+Z. Nothing was generated and nothing was spent.\n\nApplied directly (undoable)",
+        "durationMs": 146.6241250000894,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_61d2088684cb47d5b63d9e1b",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布节点 6 个(id | 类型 | 标题 | 状态 | prompt 摘要 | 结果身份):\n当前选中: gen-v2-agent-artifact-mu7ju250-ib1y\n- gen-v2-image-mu7jtiae-pkjw | image | 谈判三人组设定 | prompt: 三个商务人士的参考卡： 角色A（掌握秘密者）：40岁男性，短发干净，深蓝色西装，金边眼镜，神情自信但略带防备，嘴角微扬。…\n- gen-v2-image-mu7jtiae-2k5c | image | 镜1 | 餐桌谈判站位 | prompt: 三人围坐在长方形餐桌边谈判，其中一人掌握秘密： 餐桌中央摆放着文件和水杯，柔和顶光从上方洒下，在桌面上形成光斑。 掌握秘…\n- gen-v2-shot_table-mu7jtiaj-9kfm | shot_table | 分镜表\n- gen-v2-director-mu7jtsg0-8dsh | director | 站位参考\n- gen-v2-image-mu7jtus3-7vx7 | image | 镜2 | 站位参考 | 已有结果 | prompt: 3D 站位参考（站位 + 动作 + 机位） | currentResultId: staging-shot-gen-v2-image-mu7jtus3-7vx7-1789771649042 | resultIds: staging-shot-gen-v2-image-mu7jtus3-7vx7-1789771649042\n- gen-v2-agent-artifact-mu7ju250-ib1y | agent-artifact | 三人谈判站位分析\n引用边: 站位参考→站位参考, 站位参考→餐桌谈判站位",
+        "durationMs": 104.47054199990816,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_349cca25f4cd4a32bc609901",
+        "name": "arrange_canvas",
+        "spanName": "execute_tool arrange_canvas",
+        "arguments": {
+          "links": [
+            {
+              "fromId": "gen-v2-image-mu7jtiae-pkjw",
+              "toId": "gen-v2-image-mu7jtiae-2k5c",
+              "role": "character_ref"
+            }
+          ]
+        },
+        "resultSummary": "Applied directly (undoable).\nUser sees: The canvas shows the new reference links; the user can undo it with Cmd+Z. Nothing was generated and nothing was spent.\n\nApplied directly (undoable)",
+        "durationMs": 119.30166599992663,
+        "failed": false
+      }
+    ]
+  }
+]

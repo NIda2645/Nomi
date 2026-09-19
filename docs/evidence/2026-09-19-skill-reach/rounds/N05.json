@@ -1,0 +1,38 @@
+{
+  "id": "N05",
+  "bucket": "should_not",
+  "prompt": "用一句话解释什么是质数。",
+  "acceptableSkills": [],
+  "outputRubric": "大于1且仅1和自身两个正因数",
+  "timedOut": false,
+  "trace": {
+    "schemaVersion": 1,
+    "sessionId": "01a0b6b0-1dcd-712e-ba30-b759f4b92385",
+    "turnId": "01a0b6b0-1f50-712e-ba30-b75d411e8a65",
+    "timestamp": 1789771390800,
+    "spanName": "invoke_agent Nomi",
+    "prompt": "用一句话解释什么是质数。",
+    "response": "质数是大于1且只能被1和自身整除的自然数。\n\n例如：2、3、5、7、11都是质数。",
+    "models": [
+      {
+        "provider": "apimart",
+        "model": "deepseek-v3.2"
+      }
+    ],
+    "tokens": {
+      "input": 215,
+      "cacheRead": 22528,
+      "cacheWrite": 0,
+      "output": 29
+    },
+    "estimatedCostUsd": null,
+    "pricing": "unpriced",
+    "durationMs": 6451,
+    "status": "completed",
+    "tools": [],
+    "approvals": [],
+    "errors": [],
+    "source": "/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/projects/未命名项目 09_19 06_43-mu7job4s-865c44be/.nomi/agent-sessions/--nomi-lane-main--/01a0b6b0-1dcd-712e-ba30-b759f4b92385.trace/trace.jsonl"
+  },
+  "uiText": "Nomi\n17%\n\n用一句话解释什么是质数。\n\n质数是大于1且只能被1和自身整除的自然数。\n\n例如：2、3、5、7、11都是质数。\n\nDeepSeek V3.2\nSkill\n自动改"
+}
