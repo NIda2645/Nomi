@@ -239,7 +239,7 @@ describe('applyCanvasToolCall canonical nomi_canvas_plan patch_shots', () => {
 })
 
 // 图片+视频分镜落画布的镜号语义：首帧图带 storyboardKeyframe 标记不自动领号，
-// 落地后按 first_frame 边共用所属视频的镜号（与手动「转视频」桥继承号同语义）——
+// 落地后 UI/Agent 按 first_frame 边共用所属视频的镜号，不存第二份号码——
 // 否则 N 镜领出 1..2N 交错编号，角标与「镜头 N 首帧」标题错位（A2 类编号 bug）。
 describe('applyCanvasToolCall 图片+视频分镜镜号', () => {
   beforeEach(resetCanvas)
@@ -268,8 +268,12 @@ describe('applyCanvasToolCall 图片+视频分镜镜号', () => {
     // 视频是镜位本体：连续 1..2，不被首帧图挤号
     expect([video1?.shotIndex, video2?.shotIndex]).toEqual([1, 2])
     // 首帧图与所属视频共用镜号；身份标记落进 meta（isShotNumberedNode 据此长期跳过）
-    expect(kf1?.shotIndex).toBe(1)
-    expect(kf2?.shotIndex).toBe(2)
+    expect(kf1?.shotIndex).toBeUndefined()
+    expect(kf2?.shotIndex).toBeUndefined()
+    const { projectCanvasRead } = await import('../../../../electron/shared/agentCapabilities/canvasRead')
+    const read = projectCanvasRead(useGenerationCanvasStore.getState())
+    expect(read.nodes.find(n => n.id === kf1?.id)).toMatchObject({ shotIndex: 1, shotRole: 'first_frame', shotOwnerNodeIds: [video1!.id] })
+    expect(read.nodes.find(n => n.id === kf2?.id)).toMatchObject({ shotIndex: 2, shotRole: 'first_frame', shotOwnerNodeIds: [video2!.id] })
     expect((kf1?.meta as Record<string, unknown>)?.storyboardKeyframe).toBe(true)
   })
 })

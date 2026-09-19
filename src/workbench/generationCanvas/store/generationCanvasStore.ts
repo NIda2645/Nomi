@@ -21,9 +21,9 @@ import {
 import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
-import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
+import { assignClonedShotIndexes } from '../model/shotNumbering'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
-import { applyCanvasEvent } from '../events/canvasEventReducer'
+import { replayCanvasEvents } from '../events/canvasEventReducer'
 import { withCanvasWriteBoundary } from '../events/canvasWriteBoundary'
 import type { GenerationCanvasState } from './canvasStoreTypes'
 import { createCanvasNodeActions } from './canvasNodeActions'
@@ -114,10 +114,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     const cloned = cloneClipboardPayload(clipboardPayload)
     if (!cloned.nodes.length) return
     // 粘贴产物是新身份：镜头节点逐个领新编号，不复制原号（编号唯一，审计 A2）。
-    let nextIndex = nextShotIndex(currentState.nodes)
-    const numberedNodes = cloned.nodes.map((node) =>
-      isShotNumberedNode(node) ? { ...node, shotIndex: nextIndex++ } : node,
-    )
+    const numberedNodes = assignClonedShotIndexes(currentState.nodes, cloned.nodes)
     const positionedNodes = basePosition
       ? (() => {
           const minX = Math.min(...numberedNodes.map((node) => node.position.x))
@@ -246,8 +243,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     // reducer 全 case 幂等,重看快照内已有事件安全。
     if (!events.length) return
     const state = get()
-    let projection = { nodes: state.nodes, edges: state.edges, groups: state.groups }
-    for (const event of events) projection = applyCanvasEvent(projection, event)
+    const projection = replayCanvasEvents(events, { nodes: state.nodes, edges: state.edges, groups: state.groups })
     set({ nodes: projection.nodes, edges: projection.edges, groups: projection.groups })
   },
   applyExternalGraph: (snapshot) => {

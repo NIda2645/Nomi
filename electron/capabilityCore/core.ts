@@ -727,7 +727,7 @@ export async function generateOnProject(
             // 对外说三轴、实际只跑了两轴——而「接不接得上」正是短剧最容易崩的那一轴（L3-F1 实测抓出）。
             // 判不出上一镜时返回 undefined → 判分器按「首镜不评 continuity」处理，不拿错参照物硬比。
             ...(() => {
-              const prev = previousShotPromptFor(snapshot.nodes, nodeId)
+              const prev = previousShotPromptFor(snapshot.nodes, nodeId, snapshot.edges)
               return prev ? { previousShotPrompt: prev } : {}
             })(),
             frameSourceUrl: primary!.url as string,

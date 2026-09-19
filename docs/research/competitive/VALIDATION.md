@@ -8,7 +8,7 @@
 - `node scripts/check-skills-format.mjs`：创作者技能 88/88、研发宿主技能 2/2，pi 真实加载器零 diagnostics。
 - 技能与 competitive 目录中的本地 Markdown 引用：5 个文件，失效目标 0。
 - 本机自动化：TOML 可解析，kind=cron、ACTIVE、主仓 cwd 有效，DTSTART 显式固定 Asia/Shanghai 的 2026-09-22 10:00，RRULE 间隔 3 天。这里只证明配置已准备，调度器接纳与首次执行须另看本机运行记录；不把配置测试当完整周期。
-- 本机发现入口：`~/.agents/skills/nomi-competitive-radar` 链接本任务 worktree 的技能正本。PR 合入并清理该 worktree 前，须改指稳定主仓中同路径；不复制技能正文。
+- 本机发现入口：2026-09-20 全量审计已将 `~/.agents/skills/nomi-competitive-radar` 改指稳定主仓 `/Users/aoqimin/Desktop/Nomi/agent-skills/nomi-competitive-radar`；主仓快进到已合入的 #823/#824 时逐文件校验原有研究改动未变。自动化移除临时 worktree 路径，规则正文没有复制。首次调度仍未验证。
 
 ## 独立六视角审阅
 

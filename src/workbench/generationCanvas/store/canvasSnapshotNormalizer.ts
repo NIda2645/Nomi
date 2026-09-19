@@ -1,3 +1,4 @@
+import { backfillShotIndexes } from '../model/shotNumbering'
 // 画布快照归一化 + 种子节点。从 generationCanvasStore.ts 抽出。
 // 注意：这是 store 专用的深度归一化（过滤未知 kind、position 兜底、groups 走 zod、edges 校验端点），
 // 与 workbenchPersistence.ts 的轻量直通版 normalizeGenerationCanvasSnapshot 行为不同，故改名 normalizeStoreSnapshot。
@@ -137,7 +138,7 @@ export function normalizeStoreSnapshot(input: unknown): GenerationCanvasSnapshot
     ? raw.workflowTemplates.filter(isCanvasWorkflowTemplate)
     : []
   return {
-    nodes,
+    nodes: backfillShotIndexes(nodes).nodes,
     edges: normalizeParameterEdges(nodes, edges),
     groups,
     selectedNodeIds,

@@ -5,7 +5,7 @@ import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { resolveNodeVisualSize } from '../nodes/nodeSizing'
-import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
+import { assignClonedShotIndexes, backfillShotIndexes, changesShotIdentity, isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
 import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeFactory'
 import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
 import { CLIPBOARD_OFFSET, createClipboardNodeId, createNodeId } from './canvasIds'
@@ -112,6 +112,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const existing = get().nodes.find((candidate) => candidate.id === nodeId)
     if (!existing) return
     if (options?.origin !== 'storyboard-projection' && options?.history !== false) patch = markStoryboardOverrides(existing, patch)
+    const identityChanged = changesShotIdentity(existing, patch)
     // 用户态内容与插件 envelope 编辑按统一撤销边界落点；状态机等运行态 patch 不打。
     // 插件只能通过这个 action 请求 state patch，因此不会产生绕过 undo 的第二条写路径。
     if (options?.history !== false && ('prompt' in patch || 'meta' in patch || 'title' in patch)) {
@@ -124,11 +125,17 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       if (!node) return
       const declarationChanged = 'meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots
       Object.assign(node, patch)
+      if (identityChanged) state.nodes = backfillShotIndexes(state.nodes).nodes
       if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
     if (shouldEmitCanvasMutation(options)) {
-      emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+      if (identityChanged) {
+        const { nodes, edges, groups } = get()
+        emitCanvasGesture([{ type: 'canvas.snapshot.restored', payload: { snapshot: { nodes, edges, groups } } }])
+      } else {
+        emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
+      }
     }
   },
   updateNodes: (updates) => {
@@ -136,6 +143,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const existingIds = new Set(currentState.nodes.map((node) => node.id))
     const applicable = updates.filter((update) => existingIds.has(update.nodeId)).map(update => ({ ...update, patch: markStoryboardOverrides(currentState.nodes.find(node => node.id === update.nodeId)!, update.patch) }))
     if (applicable.length === 0) return
+    const identityChanged = applicable.some(({ nodeId, patch }) => changesShotIdentity(currentState.nodes.find(node => node.id === nodeId)!, patch))
     pushUndoSnapshot(currentState)
     set((state) => {
       const patches = new Map(applicable.map((update) => [update.nodeId, update.patch]))
@@ -147,13 +155,19 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
           Object.assign(node, patch)
         }
       }
+      if (identityChanged) state.nodes = backfillShotIndexes(state.nodes).nodes
       if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })
-    emitCanvasGesture(
-      applicable.map(({ nodeId, patch }) => ({ type: 'canvas.node.updated', payload: { nodeId, patch } })),
-    )
+    if (identityChanged) {
+      // Repair runs once on the batch's final state. Replaying individual intermediate
+      // patches could consume a number before another patch releases it (number swaps).
+      const { nodes, edges, groups } = get()
+      emitCanvasGesture([{ type: 'canvas.snapshot.restored', payload: { snapshot: { nodes, edges, groups } } }])
+    } else {
+      emitCanvasGesture(applicable.map(({ nodeId, patch }) => ({ type: 'canvas.node.updated', payload: { nodeId, patch } })))
+    }
   },
   updateNodePrompt: (nodeId, prompt, promptOverridden) => {
     const existing = get().nodes.find((candidate) => candidate.id === nodeId)
@@ -418,7 +432,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     // （编号变更不入事件，重放出残留 shotIndex——S5-a 安全网抓出的真分叉）。
     // 编号跟随分镜成员身份：离开分镜清号（patch 用 null=删除信号），进入分镜领新号
     // （不复用旧号——旧号可能已被后续节点顶替语义）。
-    const willBeShotNumbered = isShotNumberedNode({ kind: existing.kind, categoryId: id })
+    const willBeShotNumbered = isShotNumberedNode({ ...existing, categoryId: id })
     const patch: Record<string, unknown> = { categoryId: id }
     if (willBeShotNumbered) {
       patch.shotIndex = nextShotIndex(get().nodes)
@@ -459,7 +473,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
       position: copyPosition,
       categoryId: id,
       // 跨分类副本是新身份：落分镜则领新号，不复制原号（编号唯一）。
-      ...(isShotNumberedNode({ kind: source.kind, categoryId: id })
+      ...(isShotNumberedNode({ ...source, categoryId: id })
         ? { shotIndex: nextShotIndex(get().nodes) }
         : {}),
       derivedFrom: source.id,
@@ -530,6 +544,7 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const currentState = get()
     const instantiated = instantiateCanvasWorkflowTemplate(template, position, createNodeId, createEdgeId)
     if (!instantiated.nodes.length) return []
+    instantiated.nodes = assignClonedShotIndexes(currentState.nodes, instantiated.nodes)
     pushUndoSnapshot(currentState)
     set((state) => {
       state.nodes = [...state.nodes, ...instantiated.nodes]

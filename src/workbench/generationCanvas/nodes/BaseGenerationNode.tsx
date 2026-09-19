@@ -17,7 +17,7 @@ import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, Too
 import { useNodeImageEditing } from './useNodeImageEditing'
 import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
-import { useHasFrameSourceEdge, useShotIndex, useMountedCards } from '../hooks/useNodeRelationships'
+import { useHasFrameSourceEdge, useShotIdentity, useMountedCards } from '../hooks/useNodeRelationships'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import {
   PendingGenerationPlaceholder,
@@ -228,7 +228,7 @@ function BaseGenerationNodeImpl({
         : t('generationCommon.node.copySourceMissing')
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
   // L3：待生成卡给镜头序号，让未选中的占位卡也能一眼分清哪个镜头（非 shots 返回 null）。
-  const shotIndex = useShotIndex(node.id, node.categoryId)
+  const shotIdentity = useShotIdentity(node.id)
   // 切片2：镜头「挂了哪些设定卡」——不选中也能一眼看出挂了林夏/咖啡馆（可审计，免数连线）。
   const mountedCards = useMountedCards(node.id)
   const displayPrompt = useNodeDisplayPrompt(node)
@@ -410,7 +410,7 @@ function BaseGenerationNodeImpl({
       ) : null}
       {mediaPreviewControls}
       <NodeLabelRow>
-        <ShotPreviewOverlays shotIndex={shotIndex} />
+        <ShotPreviewOverlays {...shotIdentity} />
         {!isCardKind && !isTextKind ? <NodeInlineImageTitle nodeId={node.id} value={node.title || ''} readOnly={readOnly} /> : null}
         {!isCardKind ? <ShotMountBadges cards={mountedCards} /> : null}
         <TechnicalReviewBadge meta={node.meta} />
