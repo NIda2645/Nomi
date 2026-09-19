@@ -40,3 +40,5 @@ CTO：几何所有消费者从共享 owner 推导。设计：完整图像，无�
 
 - 追加真机：旧项目重开与英文截图通过；83节点画布的未选中 LOD 与选中完整态尺寸一致，横竖媒体像素比误差低于0.001px。走查先取消上一节点选择再选择相邻节点，避免测试动作被已有 composer 覆盖。
 - Ponytail 首轮只建议测试静态导入替代动态导入，已采纳。
+
+- contracts首轮发现两张process-feedback旧基线把圆形拉成椭圆，已亲眼核对actual/diff，更新仅这两张符合完整比例修复的基线（小UI bug修复沿用既有设计，按mockup-approval-gates-only-big-ui规则无需另等大UI拍板）。补齐测试title类型及回填owner搬家reanchor。

@@ -3,7 +3,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { computeNodeMediaMeasurementPatch } from './useNodeMediaMeasurement'
 import { getNodeResizeBounds, getNodeSizeBounds, readNodeMediaAspectRatio, resolveNodeVisualSize } from './nodeSizing'
 const image = { id: 'image', type: 'image' as const, url: 'image.png', createdAt: 1 }
-const node: GenerationCanvasNode = { id: 'n', kind: 'image', position: { x: 12, y: 30 }, result: image }
+const node: GenerationCanvasNode = { id: 'n', title: 'Media', kind: 'image', position: { x: 12, y: 30 }, result: image }
 
 describe('current media measurement shared by full, lightweight and card renderers', () => {
   it('ignores late decode and footer events after result replacement', () => {
