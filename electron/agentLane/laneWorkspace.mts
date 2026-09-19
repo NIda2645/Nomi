@@ -238,6 +238,10 @@ export async function openLaneWorkspace(
         return {};
       }
       await awaitReady();
+      const expected = executionOptions?.expectedConversation;
+      if (expected && (expected.laneName !== active.laneName || expected.sessionId !== active.sessionId)) {
+        throw new Error('agent_lane_workspace_stale');
+      }
       const outcome = await active.execute(command, executionOptions);
       publish();
       return outcome;

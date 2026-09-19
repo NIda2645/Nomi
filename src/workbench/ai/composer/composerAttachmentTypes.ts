@@ -11,6 +11,7 @@ export type ComposerAttachment = {
   id: string
   /** Stable project-asset identity returned by the main-process storage boundary. */
   assetId?: string
+  version?: number
   contentHash?: string
   fileName: string
   contentType: string

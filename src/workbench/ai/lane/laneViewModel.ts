@@ -344,15 +344,16 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     if (part.kind === 'user') {
       // 用户说话 = 新回合开始。这是转录里唯一硬的回合分界（模型一轮回复内部没有分界可言）。
       turn += 1
-      if (part.skillKey) skillOfTurn.set(turn, part.skillKey)
+      if (part.skillSnapshot) skillOfTurn.set(turn, part.skillSnapshot.name)
       const chip: V4Chip | undefined = part.skillKey
-        ? { kind: 'skill', label: labels.skillLabel(part.skillKey), ...labels.skillMedia?.(part.skillKey) } : undefined
+        ? { kind: 'skill', label: part.skillSnapshot?.name ?? labels.skillLabel(part.skillKey), ...labels.skillMedia?.(part.skillKey) } : undefined
       push({ kind: 'user', text: part.text, ...(chip ? { chips: [chip] } : {}) })
       continue
     }
     if (part.kind === 'assistant-text') {
       push({ kind: 'assistant', text: part.text, status: part.interrupted ? 'interrupted' : part.streaming ? 'streaming' : 'complete',
-        ...(part.continuationEntryId ? { continuationEntryId: part.continuationEntryId } : {}) })
+        ...(part.continuationEntryId ? { continuationEntryId: part.continuationEntryId } : {}),
+        ...(part.retryInputEntryId ? { retryInputEntryId: part.retryInputEntryId } : {}) })
       continue
     }
     if (part.kind === 'thinking') {
@@ -377,6 +378,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     const { summary: _summary, ...withoutSummary } = existing.receipt
     const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
     items[slot.index] = {
+      ...existing,
       kind: 'tool',
       receipt: denial !== undefined
         ? { ...withoutSummary, status: 'output-denied' }
@@ -409,7 +411,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
   return {
     items: mergeAssistantTextPerTurn(items, turnOf, (at) => {
       const skillKey = skillOfTurn.get(at)
-      return skillKey ? labels.skillLabel(skillKey) : undefined
+      return skillKey
     }),
     running: projection.running,
     // 队列原样带出去：这一层不合并、不去重、不改顺序——pi 的 FIFO 就是用户打字的顺序。

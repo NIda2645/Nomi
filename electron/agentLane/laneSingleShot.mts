@@ -15,19 +15,21 @@ export async function runLaneSingleShot(options: {
   signal?: AbortSignal;
 }): Promise<LaneProjection> {
   options.signal?.throwIfAborted();
+  let captured = options.input?.capture();
+  if (captured?.restoredIntent) throw new Error('agent_lane_invalid_command');
   const { provider, model, credentials, pricingBasis } = await createNomiProvider(options.model, options.fetch, {
     firstResponseMs: 90_000, idleMs: 120_000,
   });
   const models = createModels({ credentials });
   models.setProvider(provider);
-  const captured = options.input?.capture();
+  if (captured && options.input?.prepare) captured = await options.input.prepare(captured);
   if (captured) options.input?.activate(captured);
   const content = captured && options.input
     ? await options.input.providerContent({ role: 'nomi.input', content: options.prompt, context: captured, timestamp: Date.now() })
     : options.prompt;
   options.signal?.throwIfAborted();
   const message = await models.streamSimple(model, {
-    systemPrompt: options.systemPrompt,
+    systemPrompt: [options.systemPrompt, captured?.systemPrompt, captured?.skillPrompt].filter(Boolean).join('\n\n'),
     messages: [{ role: 'user', content, timestamp: Date.now() }],
     tools: [],
   }, {

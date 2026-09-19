@@ -90,7 +90,7 @@ export type PermissionTier = ProjectAgentApprovalPolicy['mode']
 export type ComposerPopover = 'model' | 'skill' | 'permission'
 
 export type V4ChipKind = 'file' | 'skill' | 'clip'
-export type V4Chip = Readonly<{ kind: V4ChipKind; label: string; description?: string; cover?: string; preview?: { url: string; type: 'image' | 'video' } }>
+export type V4Chip = Readonly<{ id?: string; kind: V4ChipKind; label: string; description?: string; cover?: string; preview?: { url: string; type: 'image' | 'video' } }>
 
 export type ToolReceipt = Readonly<{
   /** Exact call identity for row actions; never an authorization record. */
@@ -244,7 +244,7 @@ export type V4FlowItem = { readonly identity?: string } & (
   // 一回合**一个**气泡：模型一轮回复在传输上是「一条消息里的若干块」（text / tool-call / text…），
   // 一块一个气泡等于把一个人说的一段话切成三句话（`laneViewModel.mergeAssistantTextPerTurn` 是唯一产地）。
   // `skill` = 这一轮挂着的技能名，印在气泡头上当凭据；缺席 = 这一轮没挂技能，不是「不知道」。
-  | { kind: 'assistant'; text: string; status: V4AssistantStatus; continuationEntryId?: string; skill?: string }
+  | { kind: 'assistant'; text: string; status: V4AssistantStatus; continuationEntryId?: string; retryInputEntryId?: string; skill?: string }
   | { kind: 'thinking'; label: string; meta: string; text?: string; streaming?: boolean }
   | { kind: 'tool'; receipt: ToolReceipt }
   // 同一个工具连着调 N 次时，N 行收据折成的那一行（`agentPanelV4Collapse.ts` 是唯一产地）。
@@ -270,9 +270,10 @@ export type V4FlowItem = { readonly identity?: string } & (
 
 export type QueueRowData = Readonly<{
   title: string
-  status: 'queued' | 'running' | 'complete'
+  status: 'queued' | 'running' | 'complete' | 'draft'
   /** 行尾动作（插队 / 删 / 立即中断）。 */
   actions?: readonly string[]
+  actionsDisabled?: boolean
   destructiveAction?: string
 }>
 

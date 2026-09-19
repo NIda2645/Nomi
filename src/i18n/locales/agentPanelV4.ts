@@ -10,6 +10,10 @@ export const zhAgentPanelV4 = {
   legacyMissingArguments: '旧工具参数未保存',
   legacySeparator: '；',
   queueHint: '排队的指令可以取消后重发',
+  recoveredDraftTakeBack: '取回编辑',
+  attachmentUnavailable: '附件不可用',
+  recoveredDraftDiscard: '丢弃这条草稿',
+  recoveredDraftHint: '取回编辑会保留当前输入',
   newConversation: '新对话 {{number}}',
   // 壳
   history: '历史会话',
@@ -125,7 +129,7 @@ export const zhAgentPanelV4 = {
   cancel: '取消',
 
   // 队列
-  queueStatus: { queued: '排队', running: '进行中', complete: '完成' },
+  queueStatus: { draft: '未发送', queued: '排队', running: '进行中', complete: '完成' },
   queueJumpAhead: '插队',
   processSummary: '用了 {{count}} 个工具',
   processSummaryWithRetries: '用了 {{count}} 个工具 · {{retries}} 次重试',
@@ -163,7 +167,7 @@ export const zhAgentPanelV4 = {
   fixtureProcessTwo: '我把 JSON 字符串化两次了，这次直接传数组。',
 
   // 「这一轮真的按这套方法做了」的凭据。挂在助手气泡头上，不是第九个积木。
-  skillUsed: '已使用技能：{{name}}',
+  skillUsed: '已载入技能：{{name}}',
   thinkingLabel: '正在想…',
   thinkingDone: '思考过程',
   thinkingSeconds: '{{count}}s',
@@ -442,6 +446,10 @@ export const enAgentPanelV4 = {
   legacyMissingArguments: 'earlier tool arguments were not saved',
   legacySeparator: '; ',
   queueHint: 'Cancel a queued instruction to edit and resend it.',
+  recoveredDraftTakeBack: 'Edit draft',
+  attachmentUnavailable: 'Attachment unavailable',
+  recoveredDraftDiscard: 'Discard this draft',
+  recoveredDraftHint: 'Your current input is kept when you take back a draft.',
   newConversation: 'New conversation {{number}}',
   history: 'Conversation history',
   historyLoadFailed: 'Could not load earlier messages. Reopen this conversation.',
@@ -547,7 +555,7 @@ export const enAgentPanelV4 = {
   planKeepOnly: 'Only do these: {{kept}}',
   cancel: 'Cancel',
 
-  queueStatus: { queued: 'Queued', running: 'Running', complete: 'Done' },
+  queueStatus: { draft: 'Unsent', queued: 'Queued', running: 'Running', complete: 'Done' },
   queueJumpAhead: 'Move up',
   processSummary: '{{count}} tools',
   processSummaryWithRetries: '{{count}} tools · {{retries}} retries',
@@ -579,7 +587,7 @@ export const enAgentPanelV4 = {
   fixtureProcessOne: 'I see the parameter needs to be an array, not a string — let me fix that.',
   fixtureProcessTwo: 'I serialized the JSON twice; sending the array directly this time.',
 
-  skillUsed: 'Skill used: {{name}}',
+  skillUsed: 'Skill loaded: {{name}}',
   thinkingLabel: 'Thinking…',
   thinkingDone: 'Thought process',
   thinkingSeconds: '{{count}}s',

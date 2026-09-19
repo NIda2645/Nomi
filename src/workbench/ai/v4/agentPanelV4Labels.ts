@@ -25,6 +25,7 @@ export function useV4Labels() {
     stopped: t('agentPanelV4.taskStatus.stopped'),
   }
   const queue: Record<QueueRowData['status'], string> = {
+    draft: t('agentPanelV4.queueStatus.draft'),
     queued: t('agentPanelV4.queueStatus.queued'),
     running: t('agentPanelV4.queueStatus.running'),
     complete: t('agentPanelV4.queueStatus.complete'),

@@ -4,6 +4,9 @@ import { createLaneFixture } from './laneFixture.mjs';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
 import { openLaneSession } from '../../electron/agentLane/laneSession.mjs';
 import { isLaneInputMessage } from '../../electron/shared/agentLane/laneInputMessage.js';
+import { prepareLaneSkillContext } from '../../electron/agentLane/laneInputPreparation.js';
+import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDesktopContracts.js';
+import type { SkillRecord } from '../../electron/skills/skillStore.js';
 
 test('R02 actual SDK compaction retains original branch IDs and visible skill history', async (t) => {
   const f = await createLaneFixture(t, [
@@ -77,7 +80,11 @@ test('R04 active run intent and skill survive two summaries that omit both', asy
     { type: 'text', text: 'summary deliberately omits task' },
     { type: 'text', text: 'finished' },
   ]);
-  const input = { capture: () => ({ approvalPolicy: { mode: 'safe-auto' as const, spend: 'confirm' as const }, skillKey: 'storyboard' }),
+  const skill = { name: 'Storyboard', contentHash: 'hash-original', content: 'EXACT_PREPARED_SKILL' } as SkillRecord;
+  const input = { capture: () => ({ approvalPolicy: { mode: 'safe-auto' as const, spend: 'confirm' as const },
+    skillKey: 'storyboard', systemPrompt: 'EXACT_ORIGINAL_TEMPLATE' }),
+    prepare: (context: LaneComposerContext) => prepareLaneSkillContext(context,
+      { resolve: async () => skill, render: async resolved => resolved.content }),
     activate: () => {}, providerContent: async (m: { content: string }) => m.content, rewritePayload: (p: unknown) => p };
   const lane = await f.openLane({ ...f.options, input, model: { ...f.options.model, contextWindow: 1000000 } });
   await lane.execute({ kind: 'prompt', text: 'ONLY_THREE_CHARACTERS' });
@@ -85,6 +92,8 @@ test('R04 active run intent and skill survive two summaries that omit both', asy
   assert.ok(assistantRequests.length >= 2);
   assert.match(JSON.stringify(assistantRequests.at(-1)!.body), /ONLY_THREE_CHARACTERS/);
   assert.match(JSON.stringify(assistantRequests.at(-1)!.body), /storyboard/);
+  assert.match(JSON.stringify(assistantRequests.at(-1)!.body), /EXACT_ORIGINAL_TEMPLATE/);
+  assert.match(JSON.stringify(assistantRequests.at(-1)!.body), /EXACT_PREPARED_SKILL/);
   const visible = lane.projection().parts;
   await lane.close();
   const reopened = await openLaneSession({ projectDir: f.projectDir }, BACKGROUND_CONTEXT);
@@ -116,6 +125,7 @@ test('S25 explicit Continue still addresses the original stopped entry after com
     activate: () => {}, providerContent: async (m: { content: string }) => m.content, rewritePayload: (p: unknown) => p };
   const host = await f.openLane({ ...f.options, input, model: { ...f.options.model, contextWindow: 1000000 } });
   const lane = await harness.lane('main', BACKGROUND_CONTEXT);
+  await lane.appendMessage({ role: 'user', content: 'ORIGINAL_TASK_BEFORE_STOP', timestamp: 0 }, BACKGROUND_CONTEXT);
   const id = await lane.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'STOPPED_ORIGINAL' }],
     api: 'openai-completions', provider: 'fixture', model: 'fixture', timestamp: 1, stopReason: 'aborted',
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }, BACKGROUND_CONTEXT);
@@ -127,4 +137,35 @@ test('S25 explicit Continue still addresses the original stopped entry after com
   reference = id;
   await host.execute({ kind: 'prompt', text: 'Continue the selected stopped response' });
   assert.match(JSON.stringify(f.http.requests.at(-1)!.body), /STOPPED_ORIGINAL/);
+});
+
+test('independent R04 live lifecycle: short steer survives two lossy SDK compactions with long seed', async t => {
+  const f = await createLaneFixture(t, [
+    { type: 'message', parts: [{ type: 'text', text: 'material '.repeat(18000) }, { type: 'toolCall', id: 'read-one', name: 'read_script', arguments: { scope: 'full' } }], usage: { input: 81000, output: 100 } },
+    { type: 'text', text: 'summary deliberately omits task' },
+    { type: 'message', parts: [{ type: 'text', text: 'material '.repeat(18000) }, { type: 'toolCall', id: 'read-two', name: 'read_script', arguments: { scope: 'full' } }], usage: { input: 81000, output: 100 } },
+    { type: 'text', text: 'summary deliberately omits task' },
+    { type: 'text', text: 'finished' },
+  ]);
+  const input = { capture: () => ({ approvalPolicy: { mode: 'safe-auto' as const, spend: 'confirm' as const }, skillKey: 'storyboard' }), activate: () => {}, providerContent: async (m: { content: string }) => m.content, rewritePayload: (p: unknown) => p };
+  const host = await f.openLane({ ...f.options, input, model: { ...f.options.model, contextWindow: 1000000 } });
+  let queued: ReturnType<typeof host.execute> | undefined;
+  await host.execute({ kind: 'prompt', text: 'ORIGINAL_LONG_MANUSCRIPT ' + 'x'.repeat(17000) }, { onAccepted: () => { queued = host.execute({ kind: 'steer', text: 'LATEST_SCOPE_ONLY_THREE_CHARACTERS' }); } });
+  await queued;
+  const assistantRequests = f.http.requests.filter(r => Array.isArray(r.body.tools) && r.body.tools.length);
+  const finalBody = JSON.stringify(assistantRequests.at(-1)!.body);
+  await host.close();
+  const { openLaneSession } = await import('../../electron/agentLane/laneSession.mjs');
+  const opened = await openLaneSession({ projectDir: f.projectDir }, BACKGROUND_CONTEXT);
+  f.after(async () => { await opened.session.close(BACKGROUND_CONTEXT); await opened.release(BACKGROUND_CONTEXT); });
+  const branch = await opened.session.branch('main', BACKGROUND_CONTEXT);
+  assert.ok(branch);
+  const entries = await branch.findEntries({ order: 'oldestFirst' }, BACKGROUND_CONTEXT);
+  const compactCount = entries.filter(e => e.type === 'compaction').length;
+  const steerStillStored = entries.some(e => e.type === 'message' && 'content' in e.message && JSON.stringify(e.message.content).includes('LATEST_SCOPE_ONLY_THREE_CHARACTERS'));
+  t.diagnostic(JSON.stringify({ compactions: compactCount, assistantRequests: assistantRequests.length, steerStillStored,
+    finalHasLatestSteer: finalBody.includes('LATEST_SCOPE_ONLY_THREE_CHARACTERS'), finalHasSeed: finalBody.includes('ORIGINAL_LONG_MANUSCRIPT') }));
+  assert.ok(compactCount >= 2);
+  assert.ok(steerStillStored);
+  assert.ok(finalBody.includes('LATEST_SCOPE_ONLY_THREE_CHARACTERS'), 'latest restriction must remain in final assistant request');
 });

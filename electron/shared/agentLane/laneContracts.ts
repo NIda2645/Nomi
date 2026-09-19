@@ -16,6 +16,7 @@ import type { LaneLegacyFacts } from './laneLegacyNote'
 import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
 import type { LaneToolNextAction } from './laneToolNextAction'
 import type { LaneToolPublicFailure } from './laneToolFailureEnvelope'
+import type { LaneDraftIntent } from './laneDesktopContracts'
 
 /** 一段 = 模型一轮回复里的一个小块，或转录里的一条记录。顺序由 `sequence` 唯一决定。 */
 export interface LanePartIdentity {
@@ -48,8 +49,9 @@ export type LanePart =
        * 对话里一个字都看不到它，用户只能猜「到底用上没有」（2026-09-10 用户反馈 #6）。
        */
       readonly skillKey?: string
+      readonly skillSnapshot?: { name: string; contentHash: string }
     })
-  | (LanePartIdentity & { readonly kind: 'assistant-text'; readonly text: string; readonly streaming: boolean; readonly interrupted?: true; readonly continuationEntryId?: string })
+  | (LanePartIdentity & { readonly kind: 'assistant-text'; readonly text: string; readonly streaming: boolean; readonly interrupted?: true; readonly continuationEntryId?: string; readonly retryInputEntryId?: string })
   | (LanePartIdentity & { readonly kind: 'thinking'; readonly text: string; readonly streaming: boolean })
   | (LanePartIdentity & {
       readonly kind: 'tool-call'
@@ -271,6 +273,10 @@ export interface LaneThinking {
  */
 export interface LaneDraftInput {
   readonly text: string
+  readonly displayText?: string
+  readonly skillKey?: string
+  readonly skillSnapshot?: { name: string; contentHash: string }
+  readonly intent?: LaneDraftIntent
   readonly attachments?: readonly ProjectAgentAttachmentClaim[]
 }
 
@@ -635,13 +641,15 @@ export interface LaneHandle {
  * 不是同时开着好几条：pi 的单打开者名单（#8852）是按会话算的，同时开两条同名会话会写坏文件；
  * 而同时开两条**不同**会话虽然安全，却意味着两条对话同时在跑、同时在花钱，而用户只看得见一条。
  */
+export type LaneConversationRef = Readonly<{ laneName: string; sessionId: string }>
+
 export interface LaneWorkspaceHandle {
   /** Main-only configuration; credentials never enter the IPC projection. */
   configureModel(model: NomiModelConfig): Promise<void>
   receiptAuthority(proposalId: string): CanvasWriteApprovalAuthority | undefined
   projection(): LaneWorkspaceProjection
   subscribe(listener: (projection: LaneWorkspaceProjection) => void): () => void
-  execute(command: LaneCommand, options?: { onAccepted?(): void }): Promise<LaneCommandOutcome>
+  execute(command: LaneCommand, options?: { onAccepted?(): void; expectedConversation?: LaneConversationRef }): Promise<LaneCommandOutcome>
   /** 把任务卡记进**当前打开的那条**对话。领域侧只认识工作区，不该自己去挑 lane。 */
   appendTaskNote(note: LaneTaskNote): Promise<void>
   /** 见 `LaneHandle.refreshTasks`。 */

@@ -102,7 +102,7 @@ export function collapseV4Flow(
     const duration = turn ? (running ? timing!.elapsedSeconds : (Date.parse(turn.updatedAt) - Date.parse(turn.createdAt)) / 1000) : undefined
     const elapsed = duration !== undefined && Number.isFinite(duration) ? `${Math.max(0, Math.round(duration))}s` : undefined
     out.push({
-      identity: stretch[0]?.identity, kind: 'process', running, toolCount: receipts.length, retries: retried.length,
+      identity: stretch[0]?.identity ? `${stretch[0].identity}:process` : undefined, kind: 'process', running, toolCount: receipts.length, retries: retried.length,
       label: running ? last.label : t(retried.length ? 'agentPanelV4.processSummaryWithRetries' : 'agentPanelV4.processSummary', { count: receipts.length, retries: retried.length }),
       ...(elapsed ? { elapsed } : {}), details,
       segments: work.flatMap(item => item.kind === 'thinking' ? [item.meta || item.label] : []),

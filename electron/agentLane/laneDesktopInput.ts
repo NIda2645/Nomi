@@ -15,21 +15,26 @@ import { rewritePdfPayload, type NativePdf } from '../ai/nativePdfPayload'
 import { applyProfileToRequestBody, getModelProfile } from '../ai/modelProfiles'
 
 const text = z.string().max(128 * 1024)
-const composerSchema = z.object({
-  model: z.object({ vendorKey: z.string().min(1).max(256), modelKey: z.string().min(1).max(256) }).strict().optional(),
-  approvalPolicy: z.object({ mode: z.enum(PROJECT_AGENT_APPROVAL_MODES), spend: z.enum(PROJECT_AGENT_SPEND_POLICIES) }).strict(),
+const intentSchema = z.object({
   documentId: z.string().max(256).optional(),
   // These are untrusted selectors. The verified Surface factories validate their domain schema.
   target: z.record(z.unknown()).optional(),
   preconditions: z.record(z.unknown()).optional(),
   contextSnapshot: z.object({ version: z.literal(AGENT_CONTEXT_SNAPSHOT_VERSION), handles: z.array(z.record(z.unknown())).max(256) }).strict().optional(),
+  systemPrompt: text.optional(),
+}).strict()
+const composerSchema = intentSchema.extend({
+  model: z.object({ vendorKey: z.string().min(1).max(256), modelKey: z.string().min(1).max(256) }).strict().optional(),
+  approvalPolicy: z.object({ mode: z.enum(PROJECT_AGENT_APPROVAL_MODES), spend: z.enum(PROJECT_AGENT_SPEND_POLICIES) }).strict(),
   availableModels: z.array(agentModelEntrySchema).max(2048).optional(),
   attachments: z.array(z.object({ assetId: z.string().min(1).max(256), version: z.number().int().positive() }).strict()).max(64).optional(),
-  systemPrompt: text.optional(),
   displayText: text.optional(),
   skillKey: z.string().max(256).optional(),
+  expectedSkillHash: z.string().min(1).max(256).optional(),
   continueFromEntryId: z.string().min(1).max(256).optional(),
-}).strict()
+  retryFromEntryId: z.string().min(1).max(256).optional(),
+  restoredIntent: intentSchema.optional(),
+}).strict().refine(value => !value.restoredIntent || !(value.retryFromEntryId || value.continueFromEntryId))
 
 export function parseLaneComposerContext(value: unknown): LaneComposerContext {
   if (Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8') > 256 * 1024) throw new Error('agent_lane_invalid_command')
@@ -41,11 +46,16 @@ export function createDesktopLaneInput(input: {
   projectId: string
   capture(): LaneComposerContext
   activate(context: LaneComposerContext): void
+  prepare(context: LaneComposerContext): Promise<LaneComposerContext>
   model(): { model: Model; kind: string } | undefined
 }): NonNullable<OpenLaneOptions['input']> {
   const pdfs = new Map<string, NativePdf>()
   return {
     capture: input.capture,
+    prepare: (context) => {
+      resolveProjectAgentAttachmentClaims(input.projectId, context.attachments ?? [])
+      return input.prepare(context)
+    },
     activate: (context) => { pdfs.clear(); input.activate(context) },
     providerContent: async (message, previous) => {
       const selected = input.model()

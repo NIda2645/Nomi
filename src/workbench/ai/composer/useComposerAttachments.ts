@@ -53,15 +53,22 @@ export type UseComposerAttachments = {
 export function useComposerAttachments(opts: {
   attachments: ComposerAttachment[]
   setAttachments: SetAttachments
+  /** A resident host may have moved this upload into a recovered draft while it awaited I/O. */
+  settleAttachment?: (context: ProjectExecutionContext, id: string, update: (item: ComposerAttachment) => ComposerAttachment) => void
   onError?: (message: string) => void
 }): UseComposerAttachments {
-  const { setAttachments, onError } = opts
+  const { setAttachments, settleAttachment, onError } = opts
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [dragDepth, setDragDepth] = React.useState(0)
   const onErrorRef = React.useRef(onError)
   onErrorRef.current = onError
 
   const uploadOne = React.useCallback(async (id: string, file: File, context: ProjectExecutionContext) => {
+    const settle = (update: (item: ComposerAttachment) => ComposerAttachment) => {
+      if (settleAttachment) settleAttachment(context, id, update)
+      else setAttachments(prev => !isProjectExecutionContextCurrent(context) ? prev
+        : prev.map(item => item.id === id ? update(item) : item))
+    }
     try {
       context.assertCurrent()
       const asset = await importWorkbenchLocalAssetFile(file, file.name, { projectBinding: context.binding, assertCurrent: context.assertCurrent })
@@ -69,31 +76,27 @@ export function useComposerAttachments(opts: {
       const url = readAssetUrl(asset)
       const contentHash = readAssetContentHash(asset)
       if (!asset.id || !url || !contentHash) throw new Error(i18n.t('runtime.attachments.uploadNoUrl'))
-      setAttachments((prev) =>
-        !isProjectExecutionContextCurrent(context) ? prev : prev.map((item) => {
-          if (item.id !== id) return item
-          if (item.previewUrl) {
-            try { URL.revokeObjectURL(item.previewUrl) } catch { /* noop */ }
-          }
-          return {
-            ...item,
-            status: 'ready',
-            assetId: asset.id,
-            contentHash,
-            url,
-            previewUrl: undefined,
-          }
-        }),
-      )
+      settle(item => {
+        if (item.previewUrl) {
+          try { URL.revokeObjectURL(item.previewUrl) } catch { /* noop */ }
+        }
+        return { ...item, status: 'ready', assetId: asset.id, contentHash, url, previewUrl: undefined }
+      })
     } catch (caught: unknown) {
-      if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(caught)) return
+      if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(caught)) {
+        // The active composer belongs to another project now. Only its resident
+        // owner can settle an original recovered claim; never append to a new input.
+        settleAttachment?.(context, id, item => {
+          if (item.previewUrl) { try { URL.revokeObjectURL(item.previewUrl) } catch { /* noop */ } }
+          return { ...item, status: 'error', previewUrl: undefined, error: i18n.t('runtime.attachments.uploadFailed') }
+        })
+        return
+      }
       const message = caught instanceof Error ? caught.message : i18n.t('runtime.attachments.uploadFailed')
-      setAttachments((prev) =>
-        !isProjectExecutionContextCurrent(context) ? prev : prev.map((item) => (item.id === id ? { ...item, status: 'error', error: message } : item)),
-      )
+      settle(item => ({ ...item, status: 'error', error: message }))
       onErrorRef.current?.(i18n.t('runtime.attachments.uploadFailedWithName', { name: file.name, message }))
     }
-  }, [setAttachments])
+  }, [setAttachments, settleAttachment])
 
   const addFiles = React.useCallback((files: FileList | File[] | null | undefined) => {
     const list = files ? Array.from(files) : []

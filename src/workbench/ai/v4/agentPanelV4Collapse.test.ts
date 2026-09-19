@@ -223,3 +223,14 @@ describe('C77 process thinking projection', () => {
     expect(JSON.stringify(input)).toBe(before)
   })
 })
+
+
+it('R03 gives a process and its retained assistant distinct stable identities', () => {
+  const flow = collapseV4Flow([
+    { ...assistant('Reading'), identity: 'entry-a:0' },
+    { ...tool('read_script', 'output-available'), identity: 'entry-a:1' },
+  ], t)
+  const ids = flow.map(row => row.identity)
+  expect(ids.every(Boolean)).toBe(true)
+  expect(new Set(ids).size).toBe(ids.length)
+})

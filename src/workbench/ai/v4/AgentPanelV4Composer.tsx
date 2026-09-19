@@ -79,6 +79,7 @@ function ComposerChip({ chip, removeLabel, onRemove }: { chip: V4Chip; removeLab
 export type AgentPanelV4ComposerProps = {
   panelHeight?: number
   mode?: ComposerMode
+  admitting?: boolean
   permission?: PermissionTier
   chips?: readonly V4Chip[]
   /** 受控文本。没有 `onValueChange` 时框是只读的展示件（设计实验室取景用）。 */
@@ -106,6 +107,7 @@ export type AgentPanelV4ComposerProps = {
 export function AgentPanelV4Composer({
   panelHeight = 620,
   mode = 'idle',
+  admitting = false,
   permission = DEFAULT_PERMISSION_TIER,
   chips,
   value = '',
@@ -164,7 +166,7 @@ export function AgentPanelV4Composer({
   const running = mode === 'running'
   // 「有东西可发」是**一个**判据，发送钮的长相、它的 disabled、以及 Enter 那条路都从这里取，
   // 免得三处各判一次、以后有人只改了其中一处（长相灰着但 Enter 还能发＝还是在假装能发）。
-  const canSend = Boolean(value.trim() || chips?.length)
+  const canSend = !admitting && Boolean(value.trim() || chips?.length)
   return (
     <form
       className={cn(
@@ -301,6 +303,7 @@ export function AgentPanelV4Composer({
         <button
           type={running ? 'button' : 'submit'}
           disabled={!running && !canSend}
+          aria-busy={admitting || undefined}
           onClick={running ? onStop : undefined}
           aria-label={running ? t('agentPanelV4.stop') : t('agentPanelV4.send')}
           className={cn(

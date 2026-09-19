@@ -28,9 +28,11 @@ test('R01/R04 public fixed SDK exports, run metadata lifetime and consumed steer
   assert.equal(meta.intent.kind, 'run');
   const queued = await lane.steer('STEER_ONLY_THREE', undefined, context);
   assert.ok(queued.ok);
+  assert.doesNotMatch((await laneInputIntent(session, 'main', id, [], context)).quote, /STEER_ONLY_THREE/,
+    'unconsumed queued input is not a current instruction');
   let observed = '';
   harness.hooks.on('transform_context', async (event, hookContext) => {
-    observed = await laneInputIntent(session, 'main', event.runId, [], hookContext);
+    observed = (await laneInputIntent(session, 'main', event.runId, [], hookContext)).quote;
     return undefined;
   });
   const driven = await lane.drive({ operationId: id, waitForRetry: true }, context);
@@ -39,12 +41,13 @@ test('R01/R04 public fixed SDK exports, run metadata lifetime and consumed steer
   assert.match(observed, /STEER_ONLY_THREE/);
   assert.ok(meta.intent.kind === 'run' && !meta.intent.promptEntryIds.includes(queued.value.entryId), 'steer does not mutate initial prompt IDs');
   assert.equal(await session.getValue(operationMeta(id), context), undefined, 'terminal cleanup removes operation metadata');
-  assert.equal(await laneInputIntent(session, 'main', id, [], context), '', 'completed operation is not revived');
+  assert.deepEqual(await laneInputIntent(session, 'main', id, [], context), { quote: '' }, 'completed operation is not revived');
   const next = await lane.accept({ kind: 'prompt', prompt: 'NEW_JOB' }, context);
   assert.ok(next.ok);
   const nextIntent = await laneInputIntent(session, 'main', next.value.operationId, [], context);
-  assert.match(nextIntent, /NEW_JOB/);
-  assert.doesNotMatch(nextIntent, /ORIGINAL_INTENT|STEER_ONLY_THREE/);
+  assert.match(nextIntent.quote, /NEW_JOB/);
+  assert.doesNotMatch(nextIntent.quote, /ORIGINAL_INTENT|STEER_ONLY_THREE/);
+  assert.equal(nextIntent.input, undefined, 'plain new input does not inherit prepared context');
   await lane.abort(context);
 });
 

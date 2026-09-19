@@ -7,6 +7,7 @@ import { LaneCommandError, parseLaneCommand } from './laneCommandCodec'
 import { laneErrorCodeOf } from '../shared/agentLane/laneErrorCodes'
 import { logError } from '../logging/logger'
 import type { LaneDesktopResult, LaneRestoredDesktopInput } from '../shared/agentLane/laneDesktopContracts'
+import { laneConversationOf } from '../shared/agentLane/laneConversation'
 
 export interface LaneIpcDependencies {
   /** Open the main-issued window/project session and resolve credentials in main. */
@@ -158,15 +159,21 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
       }
       const command = parseLaneCommand(wire)
       const owner = active
+      const changesLane = command.kind === 'lane-select' || command.kind === 'lane-create' || command.kind === 'lane-delete'
+      const address = wire as { expectedLane?: unknown; expectedSessionId?: unknown }
+      const expectedConversation = !changesLane && typeof address.expectedLane === 'string' && typeof address.expectedSessionId === 'string'
+        ? { laneName: address.expectedLane, sessionId: address.expectedSessionId } : undefined
+      const assertCurrent = () => {
+        const conversation = laneConversationOf(owner.workspace.projection())
+        if (disposed || switching || active !== owner || (!changesLane && (!expectedConversation || !conversation
+          || conversation.laneName !== expectedConversation.laneName || conversation.sessionId !== expectedConversation.sessionId))) {
+          throw new Error('agent_lane_workspace_stale')
+        }
+        dependencies.validate(event)
+      }
+      assertCurrent()
       let execution: Promise<Awaited<ReturnType<LaneWorkspaceHandle['execute']>>>
       if (command.kind === 'prompt' || command.kind === 'steer' || command.kind === 'follow-up') {
-        const expectedLane = (wire as { expectedLane?: unknown }).expectedLane
-        const assertCurrent = () => {
-          if (disposed || switching || active !== owner || owner.workspace.projection().active.lane !== expectedLane) {
-            throw new Error('agent_lane_workspace_stale')
-          }
-          dependencies.validate(event)
-        }
         // Serialize only configure + synchronous message capture. A running prompt must never
         // hold an approval, abort or the next queued input behind its model request.
         const preparation = inputPreparation.then(async () => {
@@ -175,12 +182,12 @@ export function registerAgentLaneIpc(dependencies: LaneIpcDependencies): LaneIpc
           assertCurrent()
           let acknowledge!: (value: Awaited<ReturnType<LaneWorkspaceHandle['execute']>>) => void
           const accepted = new Promise<Awaited<ReturnType<LaneWorkspaceHandle['execute']>>>((resolve) => { acknowledge = resolve })
-          const settled = owner.workspace.execute(command, { onAccepted: () => acknowledge({}) })
+          const settled = owner.workspace.execute(command, { expectedConversation, onAccepted: () => acknowledge({}) })
           return { execution: command.kind === 'prompt' ? Promise.race([accepted, settled]) : settled }
         })
         inputPreparation = preparation.then(() => undefined, () => undefined)
         execution = (await preparation).execution
-      } else execution = owner.workspace.execute(command)
+      } else execution = owner.workspace.execute(command, { expectedConversation })
       const outcome = await execution
       return { ok: true as const, ...outcome,
         ...(outcome.restoredInput

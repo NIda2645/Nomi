@@ -315,17 +315,26 @@ describe('laneViewModel', () => {
   it('技能随消息落盘：用户气泡带 chip，这一轮的回复头上带凭据', () => {
     next = 0
     const model = laneViewModel(projection([
-      { ...part({ kind: 'user', text: '拆分镜。' }), skillKey: 'workbench.storyboard.planner' } as LanePart,
+      { ...part({ kind: 'user', text: '拆分镜。' }), skillKey: 'workbench.storyboard.planner', skillSnapshot: { name: 'Original skill label', contentHash: 'hash-a' } } as LanePart,
       part({ kind: 'assistant-text', text: '好的。', streaming: false }),
       part({ kind: 'user', text: '再来一句。' }),
       part({ kind: 'assistant-text', text: '这轮没挂技能。', streaming: false }),
     ]), labels)
     expect(model.items[0]).toEqual({ kind: 'user', text: '拆分镜。',
-      chips: [{ kind: 'skill', label: '[skill:workbench.storyboard.planner]' }] })
-    expect(model.items[1]).toMatchObject({ kind: 'assistant', skill: '[skill:workbench.storyboard.planner]' })
+      chips: [{ kind: 'skill', label: 'Original skill label' }] })
+    expect(model.items[1]).toMatchObject({ kind: 'assistant', skill: 'Original skill label' })
     // 没挂技能的那一轮**整行不出**：印一个空凭据等于说「用了个说不出名字的技能」。
     expect(model.items[2]).toEqual({ kind: 'user', text: '再来一句。' })
     expect(JSON.stringify(model.items[3])).not.toContain('skill')
+  })
+
+  it('S20: selected-only legacy skills keep their chip without claiming verified injection', () => {
+    const model = laneViewModel(projection([
+      { ...part({ kind: 'user', text: 'selected' }), skillKey: 'old-skill' } as LanePart,
+      part({ kind: 'assistant-text', text: 'reply', streaming: false }),
+    ]), labels)
+    expect(model.items[0]).toMatchObject({ chips: [{ kind: 'skill', label: '[skill:old-skill]' }] })
+    expect(model.items[1]).not.toHaveProperty('skill')
   })
 
   it('refuses a projection whose parts are out of order instead of quietly sorting them', () => {
@@ -582,4 +591,12 @@ describe('thinking content is not status metadata', () => {
     expect(model.items[1]).toEqual({ kind: 'thinking', label: '[thinking]', meta: '', text, streaming })
     expect(model.items.map((item) => item.kind)).toEqual(['user', 'thinking', 'assistant'])
   })
+})
+
+
+it('R03 preserves a tool row identity when its result settles', () => {
+  const call = { ...part({ kind: 'tool-call', toolCallId: 'stable-call', toolName: 'read_script', args: { scope: 'full' }, running: true }), entryId: 'native-assistant' } as LanePart
+  const result = part({ kind: 'tool-result', toolCallId: 'stable-call', toolName: 'read_script', text: 'read', isError: false })
+  expect(laneViewModel(projection([call, result]), labels).items[0].identity)
+    .toBe(laneViewModel(projection([call]), labels).items[0].identity)
 })

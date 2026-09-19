@@ -59,6 +59,10 @@ export const workbenchStoreLifetime = declareStoreLifetime({
     activeStoryboardId: 'project',
     storyboardRowFocus: 'project',
     projectAgentDraft: 'project',
+    projectAgentDraftRevision: 'project',
+    // Unsent recovered buffers are keyed by immutable project UUID + pi session; late ACKs
+    // remain accessible after returning to that project, without entering the new composer.
+    projectAgentRecoveredDrafts: 'window', projectAgentDraftIntent: 'project', projectAgentDraftDisplayText: 'project', projectAgentAdmissionId: 'project',
     projectAgentAttachments: 'project',
     projectAgentReferences: 'project',
     projectAgentApprovalPolicy: 'project',
@@ -95,6 +99,8 @@ export const workbenchStoreLifetime = declareStoreLifetime({
       activeStoryboardId: null,
       storyboardRowFocus: null,
       projectAgentDraft: '',
+      projectAgentDraftRevision: 0,
+      projectAgentDraftIntent: null, projectAgentDraftDisplayText: null, projectAgentAdmissionId: null,
       projectAgentAttachments: [],
       projectAgentReferences: [],
       projectAgentApprovalPolicy: DEFAULT_PROJECT_AGENT_APPROVAL_POLICY,

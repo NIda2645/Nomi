@@ -45,12 +45,13 @@ function textOf(content: unknown): string {
 
 function pushAssistantParts(
   message: AssistantMessage, entrySeq: number, streaming: boolean,
-  runningToolCallIds: ReadonlySet<string>, out: LanePart[], entryId?: string,
+  runningToolCallIds: ReadonlySet<string>, out: LanePart[], entryId?: string, inputEntryId?: string,
 ): void {
   message.content.forEach((part, contentIndex) => {
     const identity = { sequence: out.length, entrySeq, contentIndex, ...(entryId ? { entryId } : {}) };
     if (part.type === 'text') {
       out.push({ ...identity, kind: 'assistant-text', text: part.text, streaming,
+        ...(inputEntryId ? { retryInputEntryId: inputEntryId } : {}),
         ...(message.stopReason === 'aborted' ? { interrupted: true as const,
           ...(entryId && part.text.trim() ? { continuationEntryId: entryId } : {}) } : {}) });
       return;
@@ -74,7 +75,8 @@ function pushAssistantParts(
   if (!streaming && message.stopReason === 'aborted'
     && !message.content.some((part) => part.type === 'text')) {
     out.push({ sequence: out.length, entrySeq, ...(entryId ? { entryId } : {}), contentIndex: message.content.length,
-      kind: 'assistant-text', text: '', streaming: false, interrupted: true });
+      kind: 'assistant-text', text: '', streaming: false, interrupted: true,
+      ...(inputEntryId ? { retryInputEntryId: inputEntryId } : {}) });
   }
 }
 
@@ -213,8 +215,10 @@ export function projectLaneSnapshot(
    */
   tasks?: (productionRunId: string) => LaneTaskFacts | undefined,
   history?: readonly LaneSnapshot['transcript'][number][],
+  previousInputId?: string,
 ): LaneProjection {
   const parts: LanePart[] = [];
+  let inputEntryId = previousInputId;
   let legacy: ReturnType<typeof laneLegacyFacts>;
   const running = snapshot.operation?.runningTools ?? [];
   const runningToolCallIds = new Set(running.filter((tool) => tool.status === 'running').map((tool) => tool.toolCallId));
@@ -242,16 +246,18 @@ export function projectLaneSnapshot(
     if (entry.type !== 'message') continue;
     const message = entry.message;
     if (message.role === 'user' || isLaneInputMessage(message)) {
+      inputEntryId = entry.id;
       // 技能只从**这条消息自己**的 context 读。用「当前选中的技能」去补历史那几条，
       // 会把今天选的技能追认到昨天那句话上——那是编一个用户没做过的操作。
       const skillKey = isLaneInputMessage(message) ? message.context.skillKey : undefined;
       parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0,
         kind: 'user', text: isLaneInputMessage(message) ? message.context.displayText ?? message.content : textOf(message.content),
-        ...(skillKey ? { skillKey } : {}) });
+        ...(skillKey ? { skillKey } : {}),
+        ...(isLaneInputMessage(message) && message.context.skillSnapshot ? { skillSnapshot: message.context.skillSnapshot } : {}) });
       continue;
     }
     if (message.role === 'assistant') {
-      pushAssistantParts(message, entry.seq, false, runningToolCallIds, parts, entry.id);
+      pushAssistantParts(message, entry.seq, false, runningToolCallIds, parts, entry.id, inputEntryId);
       if (message.stopReason === 'error' && message.errorMessage) {
         parts.push({ kind: 'error', text: message.errorMessage, sequence: parts.length,
           entryId: entry.id, entrySeq: entry.seq, contentIndex: message.content.length });

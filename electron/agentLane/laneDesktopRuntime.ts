@@ -1,4 +1,6 @@
 import { appFetch } from '../appFetch'
+import { prepareLaneSkillContext } from './laneInputPreparation'
+import { restoreLaneDraftInputs } from './laneRestoredInput'
 import { resolveProjectAgentAttachmentClaims } from '../assets/projectAssetStore'
 import type { IpcMainInvokeEvent } from 'electron'
 import { createRequire } from 'node:module'
@@ -38,6 +40,11 @@ function renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> {
   const native = createRequire(__filename)('./laneNativeLoader.cjs') as { renderSelectedSkillPrompt(skill: SkillRecord): Promise<string> }
   return native.renderSelectedSkillPrompt(skill)
 }
+
+const prepareInput = (context: LaneComposerContext) => prepareLaneSkillContext(context, {
+  resolve: key => resolveRequestedSkill({ chatContext: { skill: { key } } }),
+  render: renderSelectedSkillPrompt,
+})
 
 /**
  * 这一刻的项目记忆。读不出来就当没有——记忆是锦上添花的事实，缺了它 lane 仍然要能说话，
@@ -84,11 +91,10 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
   return {
     validate,
     restoreInput: (workspace, entries) => {
-      if (!current || current.workspace !== workspace) throw new Error('agent_lane_workspace_stale')
-      return entries.map((entry) => ({ text: entry.text,
-        ...(entry.attachments?.length ? { attachments: resolveProjectAgentAttachmentClaims(current!.binding.projectId, entry.attachments)
-          .map((ref, index) => ({ ...ref, version: entry.attachments![index].version })) } : {}),
-      }))
+      // pi already cancelled these inputs. Never borrow another project's asset resolver,
+      // and never turn that completed cancellation into a failure that loses the input.
+      if (!current || current.workspace !== workspace) return structuredClone(entries)
+      return restoreLaneDraftInputs(entries, claims => resolveProjectAgentAttachmentClaims(current!.binding.projectId, claims))
     },
     singleShot: async (event, wire, signal) => {
       const request = wire as { prompt?: unknown; projectId?: unknown; context?: unknown }
@@ -102,14 +108,11 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       const actionSignal = AbortSignal.any([signal, sessionSignal])
       const context = parseLaneComposerContext(request.context)
       const model = selectModel(context.model)
-      const skill = context.skillKey ? await resolveRequestedSkill({ chatContext: { skill: { key: context.skillKey } } }) : null
-      if (context.skillKey && !skill) throw new Error('agent_skill_unavailable')
-      const selectedSkillPrompt = skill ? await renderSelectedSkillPrompt(skill) : ''
       const input = createDesktopLaneInput({ projectId: binding.projectId,
-        capture: () => context, activate: () => undefined, model: () => model })
+        capture: () => context, prepare: prepareInput, activate: () => undefined, model: () => model })
       const { runLaneSingleShot } = createRequire(__filename)('./laneNativeLoader.cjs') as { runLaneSingleShot: RunLaneSingleShot }
       const result = await runLaneSingleShot({ fetch: appFetch, model: model.config, prompt: command.text, input, signal: actionSignal,
-        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY, context.systemPrompt, selectedSkillPrompt].filter(Boolean).join('\n\n') })
+        systemPrompt: [buildLanguageRule(), NOMI_AGENT_IDENTITY].filter(Boolean).join('\n\n') })
       actionSignal.throwIfAborted()
       surface.surfaceCapture.assertProjectSession(event, session)
       return result
@@ -155,7 +158,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       // 或者 Agent 自己写下一条偏好，都发生在这条 lane 活着的时候。所以这里**不预先算好**——
       // 读放在下面 `systemPrompt` 的函数体里，由宿主在每个回合边界求值一次。
       const input = createDesktopLaneInput({ projectId: binding.projectId,
-        capture: () => composer, activate: (context) => { activeInput = context }, model: () => selected })
+        capture: () => composer, prepare: prepareInput, activate: (context) => { activeInput = context }, model: () => selected })
       try {
         const { openDesktopLaneWorkspace } = createRequire(__filename)('./laneNativeLoader.cjs') as { openDesktopLaneWorkspace: OpenDesktopLaneWorkspace }
         workspace = await openDesktopLaneWorkspace({ projectDir, fetch: appFetch,
@@ -182,12 +185,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
             selected = model
             try { await opened.configureModel(model.config) } catch (error) { selected = previous; throw error }
           }
-          const skill = next.skillKey ? await resolveRequestedSkill({ chatContext: { skill: { key: next.skillKey } } }) : null
-          if (next.skillKey && !skill) throw new Error('agent_skill_unavailable')
-          // 技能正文的组装只有一个 owner（岛上的 `renderSelectedSkillPrompt`）：这里和 singleShot 都调它，
-          // 不各自拼一遍。上一版两处各写 `skill?.body`，于是「交代文案」这件事在两处同时缺席。
-          composer = { ...next, systemPrompt: [next.systemPrompt,
-            skill ? await renderSelectedSkillPrompt(skill) : ''].filter(Boolean).join('\n\n') }
+          composer = { ...next }
         },
       }
       let exposed: LaneWorkspaceHandle

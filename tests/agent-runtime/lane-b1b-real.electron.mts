@@ -111,7 +111,7 @@ async function main() {
   const { createDesktopLaneInput } = require(desktopBundle);
   process.env.NOMI_SETTINGS_DIR = settings;
   process.env.NOMI_PROJECTS_DIR = path.join(root, 'projects');
-  const input = createDesktopLaneInput({ projectId: 'b1b-real', capture: () => context, activate: () => {},
+  const input = createDesktopLaneInput({ projectId: 'b1b-real', capture: () => context, activate: () => {}, prepare: async (captured: LaneComposerContext) => captured,
     model: () => ({ model: { modelKey: model.modelId, vendorKey: model.providerId, kind: 'text' } as never, kind: model.kind }) });
   const projectDir = await mkdtemp(path.join(root, 'project-'));
   const lane = await openLane({ projectDir, tools, model, fetch: guardedFetch, input,
@@ -173,3 +173,4 @@ async function main() {
   } finally { unsubscribe(); await lane.close(); }
 }
 void app.whenReady().then(main).then(() => app.exit(0), () => { console.error('B1B_REAL_SAMPLE_FAILED; inspect isolated budget and transcript, no credential output'); app.exit(1); });
+import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDesktopContracts.js';

@@ -305,13 +305,13 @@ describe('⑤ 介入槽 · 八种内容体', () => {
 
 describe('⑥ 队列行', () => {
   it('空队列不渲染——一个空框比没有框更吵', () => {
-    expect(html(el(V4Queue, { rows: [], labels: { queued: '排队', running: '进行中', complete: '完成' } }))).toBe('')
+    expect(html(el(V4Queue, { rows: [], labels: { draft: '', queued: '排队', running: '进行中', complete: '完成' } }))).toBe('')
   })
 
   it('完成的划掉，进行中的点是 accent', () => {
     const markup = html(el(V4Queue, {
       rows: [{ title: 'a', status: 'complete' }, { title: 'b', status: 'running' }],
-      labels: { queued: '排队', running: '进行中', complete: '完成' },
+      labels: { draft: '', queued: '排队', running: '进行中', complete: '完成' },
     }))
     expect(markup).toContain('line-through')
     expect(markup).toContain('bg-nomi-accent')

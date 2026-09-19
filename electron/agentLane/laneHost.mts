@@ -1,3 +1,4 @@
+import { originalLaneEntry, precedingLaneInput, resolveLaneReplay, laneOriginalText } from './laneOriginalInput.mjs';
 import { laneInputIntent } from './laneInputIntent.mjs';
 import { openLaneHistoryPage } from './laneHistoryPage.mjs';
 import { attachLaneTrace } from './laneTraceRecorder.mjs';
@@ -268,7 +269,11 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
       }
       if (!isLaneInputMessage(message)) return message;
       if (!options.input) throw new Error('This lane cannot resolve its recorded input context.');
-      const content = await options.input.providerContent(message, messages.slice(0, index).reverse().find(isLaneInputMessage)?.context);
+      const source = message.context.continueFromEntryId && message.context.retryFromEntryId
+        ? await session.getEntry(message.context.retryFromEntryId, context) : undefined;
+      const originalText = source ? laneOriginalText(source) : undefined;
+      const providerInput = originalText ? { ...message, content: message.content + '\n\nOriginal task to continue:\n' + originalText } : message;
+      const content = await options.input.providerContent(providerInput, messages.slice(0, index).reverse().find(isLaneInputMessage)?.context);
       const reference = message.context.continueFromEntryId;
       return { role: 'user' as const, content: reference === undefined ? content
         : appendLaneContinuation(content, laneContinuationText(await session.getEntry(reference, context))),
@@ -328,10 +333,10 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // 快照的函数，也不该进 `projectLaneSnapshot` 的参数表——那个纯函数的入参每多一个，
   // 「这次投影为什么和上次不一样」的可能来源就多一个。这里摊进去，投影层一个字都不用改。
   const sandboxFacts = native?.sandboxInactive ? { sandboxInactive: native.sandboxInactive.code } : {};
-  let projection: LaneProjection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries()), history: history.state(), ...sandboxFacts };
+  let projection: LaneProjection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries(), history.previousInputId()), history: history.state(), ...sandboxFacts };
   const listeners = new Set<(next: LaneProjection) => void>();
   const publish = () => {
-    projection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries()), history: history.state(), ...sandboxFacts };
+    projection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries(), history.previousInputId()), history: history.state(), ...sandboxFacts };
     for (const listener of listeners) listener(projection);
   };
   watch.start(async (event, eventContext) => {
@@ -385,11 +390,9 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
 
   let consumedContext: LaneComposerContext | undefined;
   harness.hooks.on('transform_context', async (event, hookContext) => {
-    const intent = await laneInputIntent(session, laneName, event.runId, event.messages, hookContext);
-    const input = [...event.messages].reverse().find(isLaneInputMessage);
+    const { quote, input, catalogInput } = await laneInputIntent(session, laneName, event.runId, event.messages, hookContext);
     consumedContext = input?.context;
     if (input && options.input) options.input.activate(input.context);
-    const catalogBase = event.messages.find(isLaneInputMessage);
     const authority = gate ? tools.filter(tool => options.tools.some(spec => spec.name === tool.name))
       .flatMap(tool => {
         const operation = (tool.parameters as unknown as { properties?: Record<string, { enum?: unknown[] }> }).properties?.operation;
@@ -398,7 +401,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
           toolCallId: '', toolName: tool.name, args: value ? { operation: value } : {},
         })}`);
       }).join('\n') : '';
-    return { systemPrompt: [await systemPromptForRun(event.runId), catalogBase ? formatLaneModelIndex(catalogBase.context) : '', input?.context.systemPrompt, intent, authority].filter(Boolean).join('\n\n') };
+    return { systemPrompt: [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority].filter(Boolean).join('\n\n') };
   });
 
   harness.hooks.on('before_tool', async (event, hookContext) => {
@@ -415,7 +418,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     const spec = options.tools.find(tool => tool.name === event.toolName);
     const contract = spec ? capabilityContractById(modelToolCapabilityId(spec, event.args)) : undefined;
     if (options.input && contract?.effect === 'destructive' && contract.execution.availability === 'renderer_required'
-      && consumedContext?.target?.kind !== contract.targetKind) {
+      && consumedContext?.admissionSurface !== contract.targetKind) {
       return { block: { reason: `surface_authority_denied: This action requires the ${contract.targetKind} surface. `
         + 'Ask the user to switch to that surface and send the action again; approval cannot grant another surface.' } };
     }
@@ -506,14 +509,22 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   async function inputMessage(text: string): Promise<string | LaneInputMessage> {
     if (!options.input) return text;
     const captured = structuredClone(options.input.capture());
-    // Validate the actual selected branch before pi persists or acknowledges any input.
-    // An older stopped card on this branch remains selectable; IDs from other lanes do not.
-    if (captured.continueFromEntryId !== undefined) {
-      const ancestry = await lane.findEntries({ order: 'newestFirst', stopAtId: captured.continueFromEntryId }, context);
-      const entry = ancestry.at(-1);
-      laneContinuationText(entry?.id === captured.continueFromEntryId ? entry : undefined);
-    }
-    return { role: 'nomi.input', content: text, timestamp: Date.now(), context: captured };
+    const { restoredIntent, ...currentAdmission } = captured;
+    if (restoredIntent && (captured.continueFromEntryId || captured.retryFromEntryId)) throw new Error('agent_lane_invalid_command');
+    let message: LaneInputMessage;
+    if (captured.continueFromEntryId) {
+      const stopped = await originalLaneEntry(lane, captured.continueFromEntryId, context);
+      laneContinuationText(stopped);
+      const original = await precedingLaneInput(lane, stopped.parentId, context);
+      if (!original) throw new Error('agent_lane_input_reference_invalid');
+      message = await resolveLaneReplay(lane, original, captured, text, context);
+    } else if (captured.retryFromEntryId) {
+      message = await resolveLaneReplay(lane, await originalLaneEntry(lane, captured.retryFromEntryId, context), captured, text, context);
+    } else message = { role: 'nomi.input', content: text, timestamp: Date.now(),
+      context: { ...currentAdmission, ...restoredIntent, ...(captured.target ? { admissionSurface: captured.target.kind } : {}) } };
+    if (message.context.continueFromEntryId) laneContinuationText(await originalLaneEntry(lane, message.context.continueFromEntryId, context));
+    if (options.input.prepare) message.context = await options.input.prepare(message.context);
+    return message;
   }
 
   const trace = attachLaneTrace({ harness, session, pricing: pricingBasis,

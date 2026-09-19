@@ -44,6 +44,26 @@ const projection = (text: string): LaneProjection => ({
 })
 
 describe('laneClient', () => {
+  it('does not borrow B authority when A command waits for its opening promise', async () => {
+    const { bridge, sent, push } = fakeBridge()
+    let finishA!: (result: { ok: true; workspaceId: string }) => void
+    bridge.send = async command => {
+      sent.push(command)
+      if (command.kind !== 'workspace-open') return { ok: true }
+      if (command.binding.projectId === 'a') return new Promise(resolve => { finishA = resolve })
+      return { ok: true, workspaceId: 'workspace-b' }
+    }
+    const client = createLaneClient(bridge)
+    const openingA = client.open({ projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 })
+    const pending = client.prompt('belongs to A')
+    await client.open({ projectId: 'b', immutableProjectUuid: 'uuid-b', projectGeneration: 1 })
+    push({ ...workspace(projection('B')), workspaceId: 'workspace-b' })
+    finishA({ ok: true, workspaceId: 'workspace-a' })
+    await openingA
+    expect(await pending).toMatchObject({ ok: false, code: 'agent_lane_workspace_stale' })
+    expect(sent.filter(command => command.kind === 'prompt')).toEqual([])
+  })
+
   it('retires a main-closed workspace and requests fresh authority only for the next new prompt', async () => {
     const binding = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
     const { bridge, push } = fakeBridge()

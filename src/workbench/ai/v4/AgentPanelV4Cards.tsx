@@ -571,7 +571,7 @@ export function V4Queue({
           </span>
           <span className="flex shrink-0 items-center gap-1.5 text-micro text-nomi-ink-40">
             {row.actions?.map((action) => (
-              <button type="button" key={action} className="font-medium text-nomi-ink-80" onClick={() => onAction?.(rowIndex, action)}>
+              <button type="button" key={action} disabled={row.actionsDisabled} className="font-medium text-nomi-ink-80 disabled:opacity-40" onClick={() => onAction?.(rowIndex, action)}>
                 {action}
               </button>
             ))}
@@ -580,7 +580,7 @@ export function V4Queue({
                 <IconX size={14} aria-hidden="true" />
               </button>
             ) : null}
-            {row.actions?.length || row.destructiveAction ? null : labels[row.status]}
+            {row.status === 'draft' || (!row.actions?.length && !row.destructiveAction) ? labels[row.status] : null}
           </span>
         </V4Row>
       ))}

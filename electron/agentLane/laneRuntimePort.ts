@@ -156,6 +156,7 @@ export interface OpenLaneOptions {
   /** Snapshot the composer per message; activate only after pi consumes that message. */
   input?: {
     capture(): LaneComposerContext
+    prepare?(context: LaneComposerContext): LaneComposerContext | Promise<LaneComposerContext>
     activate(context: LaneComposerContext): void
     rewritePayload(payload: unknown, api: string): unknown
     providerContent(message: LaneInputMessage, previous?: LaneComposerContext): Promise<string | Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>>

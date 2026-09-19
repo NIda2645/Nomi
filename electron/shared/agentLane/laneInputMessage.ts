@@ -18,5 +18,14 @@ export function draftInputFromMessage(message: AgentMessage): LaneDraftInput {
   const text = typeof content === 'string' ? content : Array.isArray(content)
     ? content.flatMap((part) => part.type === 'text' ? [part.text] : []).join('') : ''
   const attachments = isLaneInputMessage(message) ? message.context.attachments : undefined
-  return { text, ...(attachments?.length ? { attachments: structuredClone(attachments) } : {}) }
+  const context = isLaneInputMessage(message) ? message.context : undefined
+  const intent = context && Object.fromEntries(['documentId', 'target', 'preconditions', 'contextSnapshot', 'systemPrompt']
+    .filter(key => context[key as keyof typeof context] !== undefined)
+    .map(key => [key, structuredClone(context[key as keyof typeof context])]))
+  return { text,
+    ...(intent && Object.keys(intent).length ? { intent } : {}),
+    ...(context?.displayText ? { displayText: context.displayText } : {}),
+    ...(context?.skillKey ? { skillKey: context.skillKey } : {}),
+    ...(context?.skillSnapshot ? { skillSnapshot: structuredClone(context.skillSnapshot) } : {}),
+    ...(attachments?.length ? { attachments: structuredClone(attachments) } : {}) }
 }

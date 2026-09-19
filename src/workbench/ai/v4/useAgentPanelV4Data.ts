@@ -260,7 +260,7 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
 
   const liveChips = React.useMemo(() => {
     const chips: V4Chip[] = []
-    for (const attachment of attachments) chips.push({ kind: 'file', label: attachment.fileName })
+    for (const attachment of attachments) chips.push({ id: attachment.id, kind: 'file', label: attachment.fileName, description: attachment.error })
     if (activeSkill) {
       const skill = skills.find(s => s.name === activeSkill.key)
       chips.push({ kind: 'skill', label: activeSkill.name, cover: skill?.cover, preview: skill?.preview, description: skill?.description ?? undefined })
