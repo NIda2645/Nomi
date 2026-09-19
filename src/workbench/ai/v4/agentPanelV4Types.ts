@@ -239,7 +239,7 @@ export type InterventionData = Readonly<{
  * 那个槽是给「要不要让我做」这类问题的，而缺参数只是 Nomi 少问了一句话。
  * 用户点 chip 或直接在 composer 里回答，两条路都回填同一个参数。
  */
-export type V4FlowItem =
+export type V4FlowItem = { readonly identity?: string } & (
   | { kind: 'user'; text: string; chips?: readonly V4Chip[] }
   // 一回合**一个**气泡：模型一轮回复在传输上是「一条消息里的若干块」（text / tool-call / text…），
   // 一块一个气泡等于把一个人说的一段话切成三句话（`laneViewModel.mergeAssistantTextPerTurn` 是唯一产地）。
@@ -266,6 +266,7 @@ export type V4FlowItem =
   | { kind: 'task'; task: TaskCardData }
   | { kind: 'suggestion'; text: string; options: readonly string[] }
   | { kind: 'error'; reason: string; action?: string }
+)
 
 export type QueueRowData = Readonly<{
   title: string

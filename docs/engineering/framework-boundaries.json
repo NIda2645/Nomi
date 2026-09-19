@@ -124,11 +124,66 @@
       ],
       "version": "0.85.1",
       "fourColumnTable": "docs/plan/2026-09-07-agent-runtime-rebuild.md",
+      "historyContextConformance": "docs/research/2026-09-19-pi-history-read-side/prior-art.md",
       "why": "2026-09-06 #546 架构评审：接入时只接了最底层的 agent loop，pi 已提供的会话持久化、有序转录、重试、价格与 steer/followUp 各被我们重写了一份，而且更差。这张表把那次评审的结论钉成机器判据。",
       "surface": {
         "why": "2026-09-07 真实事故：electron/agentLane/laneTools.mts:175 给所有 lane 工具硬写 executionMode:'sequential'，而 pi 的 AgentHarnessTool.executionMode 逐工具可选；同一个对象字面量里 replay 已经改成从 mutates 派生。四列表与逐层对照都看的是「层」，看不见「字段」，所以两份都没拦住。",
         "scope": ["electron/agentLane/", "electron/harness/runtime/pi/", "electron/projectAgentHost/"],
         "sources": [
+          {
+            "package": "@earendil-works/pi-agent-core",
+            "dtsPath": "node_modules/@earendil-works/pi-agent-core/dist/harness/session/types.d.ts",
+            "types": [
+              {
+                "name": "BranchScan",
+                "why": "Read-side paging; fixed-version field evidence in docs/research/2026-09-19-pi-history-read-side/prior-art.md.",
+                "declaredIn": [
+                  "node_modules/@earendil-works/pi-agent-core/"
+                ],
+                "anchors": [
+                  {
+                    "kind": "typeAnnotation",
+                    "name": "BranchScan"
+                  }
+                ],
+                "fields": {
+                  "start": {
+                    "verdict": "derived",
+                    "at": "electron/agentLane/laneHistoryPage.mts:17"
+                  },
+                  "cursor": {
+                    "verdict": "derived",
+                    "at": "electron/agentLane/laneHistoryPage.mts:17"
+                  },
+                  "limit": {
+                    "verdict": "derived",
+                    "at": "electron/agentLane/laneHistoryPage.mts:17"
+                  },
+                  "order": {
+                    "verdict": "constant",
+                    "value": "'newestFirst'",
+                    "reason": "Read latest entries via original SDK cursors; reverse once for chronological display."
+                  },
+                  "stopAtType": {
+                    "verdict": "unused",
+                    "why": "UI paging includes every original entry kind and does not stop at compaction."
+                  },
+                  "stopAtId": {
+                    "verdict": "unused",
+                    "why": "UI paging includes every original entry kind and does not stop at compaction."
+                  },
+                  "type": {
+                    "verdict": "unused",
+                    "why": "UI paging includes every original entry kind and does not stop at compaction."
+                  },
+                  "customType": {
+                    "verdict": "unused",
+                    "why": "UI paging includes every original entry kind and does not stop at compaction."
+                  }
+                }
+              }
+            ]
+          },
           {
             "package": "@earendil-works/pi-agent-core",
             "dtsPath": "node_modules/@earendil-works/pi-agent-core/dist/harness/types.d.ts",
@@ -426,7 +481,7 @@
       "capabilities": [
         {
           "id": "session-persistence",
-          "provides": "SessionManager 负责会话的落盘、追加与恢复（含 CURRENT_SESSION_VERSION 迁移）",
+          "provides": "AgentHarness lanes use public Session/Branch persistence and paged history; legacy coding-agent uses SessionManager. Runtime transcript is a compacted working set, not UI history.",
           "evidence": "@earendil-works/pi-coding-agent@0.85.1 dist/core/session-manager.d.ts:184 `export declare class SessionManager`；dist/core/session-manager.d.ts:334 `static inMemory`",
           "scope": ["electron/harness/runtime/pi/", "electron/agentLane/"],
           "forbidden": [
@@ -503,7 +558,7 @@
         },
         {
           "id": "ordered-transcript",
-          "provides": "AgentSession 的有序事件流与会话条目：按段（文本 / 思考 / 工具调用 / 结果）保序，宿主订阅即可拿到结构",
+          "provides": "AgentHarness lane.watch and reduceLaneSnapshot own ordered runtime state; Branch.findEntries owns original history order. UI page caches never feed model context or replace the reducer.",
           "evidence": "@earendil-works/pi-coding-agent@0.85.1 dist/core/agent-session.d.ts:40 `AgentSessionEvent`、:103 `AgentSessionEventListener`",
           "scope": ["electron/harness/runtime/pi/", "electron/agentLane/"],
           "forbidden": [

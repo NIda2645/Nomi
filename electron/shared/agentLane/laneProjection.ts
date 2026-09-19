@@ -48,7 +48,7 @@ function pushAssistantParts(
   runningToolCallIds: ReadonlySet<string>, out: LanePart[], entryId?: string,
 ): void {
   message.content.forEach((part, contentIndex) => {
-    const identity = { sequence: out.length, entrySeq, contentIndex };
+    const identity = { sequence: out.length, entrySeq, contentIndex, ...(entryId ? { entryId } : {}) };
     if (part.type === 'text') {
       out.push({ ...identity, kind: 'assistant-text', text: part.text, streaming,
         ...(message.stopReason === 'aborted' ? { interrupted: true as const,
@@ -73,7 +73,7 @@ function pushAssistantParts(
   // 空正文不给 `continuationEntryId`：没有半句话可接，「继续」在那里就是一颗按下去没有去处的钮。
   if (!streaming && message.stopReason === 'aborted'
     && !message.content.some((part) => part.type === 'text')) {
-    out.push({ sequence: out.length, entrySeq, contentIndex: message.content.length,
+    out.push({ sequence: out.length, entrySeq, ...(entryId ? { entryId } : {}), contentIndex: message.content.length,
       kind: 'assistant-text', text: '', streaming: false, interrupted: true });
   }
 }
@@ -81,10 +81,8 @@ function pushAssistantParts(
 /**
  * 把一份 lane 快照摊成有序段。
  *
- * 没有排序、没有 join 第二真相、没有缓存正文——三条都是刻意的：
- * 排序会引入第二个顺序来源；join 会引入第二份真相；缓存正文就是今天
- * `residentToolProjection` 把工具正文写进 localStorage 的那条路（清浏览器存储 =
- * 历史收据静默清空）。
+ * 历史行可来自同一 pi 分支的只读分页缓存；运行状态和用量仍只读原运行快照。
+ * 缓存不落盘、不回灌模型，不创建另一个转录 owner。原 entry ID 是跨页身份。
  */
 export interface LaneModelFacts {
   /**
@@ -186,8 +184,8 @@ const QUEUE_KIND: Readonly<Record<'steer' | 'followUp' | 'nextRun', LaneQueueKin
 };
 
 function contextMetric(walk: ReturnType<typeof walkUsage>): LaneMetric {
-  if (!walk.sawSettledTurn) return { state: 'unknown', reason: 'no-settled-turn' };
   if (walk.compactedAfterLastTurn) return { state: 'unknown', reason: 'just-compacted' };
+  if (!walk.sawSettledTurn) return { state: 'unknown', reason: 'no-settled-turn' };
   return walk.lastPrompt === undefined ? { state: 'unknown', reason: 'no-settled-turn' } : KNOWN(walk.lastPrompt);
 }
 
@@ -214,12 +212,13 @@ export function projectLaneSnapshot(
    * 不传 = 卡上只有标题，那是诚实的「这一刻没 join 到」。
    */
   tasks?: (productionRunId: string) => LaneTaskFacts | undefined,
+  history?: readonly LaneSnapshot['transcript'][number][],
 ): LaneProjection {
   const parts: LanePart[] = [];
   let legacy: ReturnType<typeof laneLegacyFacts>;
   const running = snapshot.operation?.runningTools ?? [];
   const runningToolCallIds = new Set(running.filter((tool) => tool.status === 'running').map((tool) => tool.toolCallId));
-  for (const entry of snapshot.transcript) {
+  for (const entry of history ?? snapshot.transcript) {
     if (entry.type === 'custom') {
       if (entry.customType === LANE_LEGACY_NOTE) {
         const facts = laneLegacyFacts(entry.data);
@@ -230,13 +229,13 @@ export function projectLaneSnapshot(
       // 其余宿主记录仍是 `host-note`：它们不占行，只用来修正别的行的状态（审批那条）。
       if (entry.customType === LANE_TASK_NOTE_TYPE && isLaneTaskNote(entry.data)) {
         const facts = tasks?.(entry.data.productionRunId);
-        parts.push({ sequence: parts.length, entrySeq: entry.seq, contentIndex: 0, kind: 'task',
+        parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0, kind: 'task',
           productionRunId: entry.data.productionRunId,
           ...(entry.data.operationId === undefined ? {} : { operationId: entry.data.operationId }),
           ...(facts === undefined ? {} : { facts }) });
         continue;
       }
-      parts.push({ sequence: parts.length, entrySeq: entry.seq, contentIndex: 0,
+      parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0,
         kind: 'host-note', noteType: entry.customType, data: entry.data });
       continue;
     }
@@ -246,7 +245,7 @@ export function projectLaneSnapshot(
       // 技能只从**这条消息自己**的 context 读。用「当前选中的技能」去补历史那几条，
       // 会把今天选的技能追认到昨天那句话上——那是编一个用户没做过的操作。
       const skillKey = isLaneInputMessage(message) ? message.context.skillKey : undefined;
-      parts.push({ sequence: parts.length, entrySeq: entry.seq, contentIndex: 0,
+      parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0,
         kind: 'user', text: isLaneInputMessage(message) ? message.context.displayText ?? message.content : textOf(message.content),
         ...(skillKey ? { skillKey } : {}) });
       continue;
@@ -255,7 +254,7 @@ export function projectLaneSnapshot(
       pushAssistantParts(message, entry.seq, false, runningToolCallIds, parts, entry.id);
       if (message.stopReason === 'error' && message.errorMessage) {
         parts.push({ kind: 'error', text: message.errorMessage, sequence: parts.length,
-          entrySeq: entry.seq, contentIndex: message.content.length });
+          entryId: entry.id, entrySeq: entry.seq, contentIndex: message.content.length });
       }
       continue;
     }
@@ -267,7 +266,7 @@ export function projectLaneSnapshot(
       // 而它必须拿到**结构**才翻得了——否则只能去正则那段英文散文，那条老路只认得出
       // schema 校验一种，其余一律落回英文（C5 / 审计 §5）。
       const failure = laneToolFailureOf(message.details);
-      parts.push({ sequence: parts.length, entrySeq: entry.seq, contentIndex: 0, kind: 'tool-result',
+      parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0, kind: 'tool-result',
         toolCallId: message.toolCallId, toolName: message.toolName,
         text: textOf(message.content), isError: message.isError,
         ...(nextAction ? { nextAction } : {}),

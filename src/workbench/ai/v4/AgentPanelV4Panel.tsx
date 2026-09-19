@@ -112,6 +112,7 @@ export type AgentPanelV4PanelProps = {
   slotHandlers: V4InterventionHandlers
   queueHandlers?: V4QueueHandlers
   onHistory?: () => void
+  onLoadOlder?: () => Promise<void>
   onCollapse?: () => void
   /**
    * 「用户读到哪儿了」的存放处（09-01 定稿 §11.2：点角标 = 原宽**原状态**还原）。
@@ -222,6 +223,7 @@ export function AgentPanelV4Panel({
   slotHandlers,
   queueHandlers,
   onHistory,
+  onLoadOlder,
   onCollapse,
   scrollMemory,
 }: AgentPanelV4PanelProps): JSX.Element {
@@ -235,6 +237,16 @@ export function AgentPanelV4Panel({
     ...(legacy.missingToolArguments ? [t('agentPanelV4.legacyMissingArguments')] : []),
   ].join(t('agentPanelV4.legacySeparator')) : undefined
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const paging = React.useRef(false)
+  const pageAnchor = React.useRef<{ height: number; top: number; first?: string } | null>(null)
+  const [historyError, setHistoryError] = React.useState(false)
+  React.useLayoutEffect(() => {
+    const node = scrollRef.current
+    if (node && pageAnchor.current && flow[0]?.identity !== pageAnchor.current.first) {
+      node.scrollTop = pageAnchor.current.top + node.scrollHeight - pageAnchor.current.height
+      pageAnchor.current = null
+    }
+  }, [flow])
   // 跟到底：只有用户本来就在底部时才跟。他往上翻着看历史的时候把他拽回来，
   // 比不跟更糟——那是把「我在读」当成「我想看新的」。
   // 初值取自宿主记下的那次：展开回来时先恢复「他当时在不在底」，再决定跟不跟。
@@ -270,10 +282,19 @@ export function AgentPanelV4Panel({
     if (!node) return
     const onScroll = (): void => {
       atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
+      if (node.scrollTop <= 24 && onLoadOlder && !paging.current) {
+        paging.current = true
+        pageAnchor.current = { height: node.scrollHeight, top: node.scrollTop, first: flow[0]?.identity }
+        atBottomRef.current = false
+        setHistoryError(false)
+        void onLoadOlder().catch(() => { pageAnchor.current = null; setHistoryError(true) })
+          .finally(() => { paging.current = false })
+      }
     }
     node.addEventListener('scroll', onScroll, { passive: true })
+    if (node.scrollHeight <= node.clientHeight) onScroll()
     return () => node.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [onLoadOlder, flow])
   React.useEffect(() => {
     const node = scrollRef.current
     if (node && atBottomRef.current) node.scrollTop = node.scrollHeight
@@ -305,10 +326,11 @@ export function AgentPanelV4Panel({
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-3 py-2.5 [&>*]:shrink-0" data-v4-flow="true">
         {/* 空态只在**流为空**时占这块地方：来了第一条消息它就永远不再出现，
             所以它不是常驻件、不参与控件预算（设计系统 §1.5）。 */}
+        {historyError ? <div role="alert">{t('agentPanelV4.historyLoadFailed')}</div> : null}
         {flow.length === 0 ? <V4EmptyState surface={surface} onStarter={onStarter} /> : null}
         {flow.map((item, index) => (
           <V4FlowRow
-            key={`${item.kind}-${index}`}
+            key={item.identity ?? `${item.kind}-${index}`}
             item={item}
             index={index}
             darkMode={darkMode}

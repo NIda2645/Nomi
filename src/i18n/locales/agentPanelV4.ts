@@ -13,6 +13,7 @@ export const zhAgentPanelV4 = {
   newConversation: '新对话 {{number}}',
   // 壳
   history: '历史会话',
+  historyLoadFailed: '历史消息加载失败，请重新打开此对话。',
   collapsePanel: '收起面板',
   // 收起坞 · 右上角那枚 Nomi logo 钮（2026-09-06 用户改：收起态回到 logo + 状态叠加）
   dockOpen: '展开 Nomi',
@@ -443,6 +444,7 @@ export const enAgentPanelV4 = {
   queueHint: 'Cancel a queued instruction to edit and resend it.',
   newConversation: 'New conversation {{number}}',
   history: 'Conversation history',
+  historyLoadFailed: 'Could not load earlier messages. Reopen this conversation.',
   collapsePanel: 'Collapse panel',
   dockOpen: 'Open Nomi',
   dockClose: 'Close input dock',

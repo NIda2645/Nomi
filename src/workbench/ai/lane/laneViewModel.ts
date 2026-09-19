@@ -313,10 +313,12 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
   /** 这一回合挂着的技能（来自开启这一回合的那条用户消息）。缺席 = 这一轮没挂技能。 */
   const skillOfTurn = new Map<number, string>()
   let turn = 0
-  const push = (item: V4FlowItem): void => { turnOf.push(turn); items.push(item) }
+  let identity: string | undefined
+  const push = (item: V4FlowItem): void => { turnOf.push(turn); items.push({ ...item, ...(identity ? { identity } : {}) }) }
 
   let previous = -1
   for (const part of projection.parts) {
+    identity = part.entryId ? `${part.entryId}:${part.contentIndex}` : undefined
     if (part.sequence <= previous) {
       throw new Error(`Lane projection is out of order at sequence ${part.sequence} (previous ${previous})`)
     }

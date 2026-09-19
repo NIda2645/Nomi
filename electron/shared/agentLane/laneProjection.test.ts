@@ -18,7 +18,7 @@ describe('lane provider failure visibility', () => {
     }
     const projection = projectLaneSnapshot(snapshot, { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
     expect(projection.parts).toEqual([{
-      kind: 'error', text: 'Connection closed before a response.', sequence: 0, entrySeq: 1, contentIndex: 0,
+      kind: 'error', text: 'Connection closed before a response.', entryId: 'failed', sequence: 0, entrySeq: 1, contentIndex: 0,
     }])
     expect(projection.running).toBe(false)
   })
@@ -79,7 +79,7 @@ describe('lane stop visibility', () => {
     const projection = projectLaneSnapshot(abortedLane([]), { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
     expect(projection.parts).toEqual([{
       kind: 'assistant-text', text: '', interrupted: true, streaming: false,
-      sequence: 0, entrySeq: 1, contentIndex: 0,
+      sequence: 0, entryId: 'stopped', entrySeq: 1, contentIndex: 0,
     }])
   })
 

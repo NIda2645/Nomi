@@ -326,3 +326,20 @@ describe('laneClient', () => {
   })
 
 })
+
+it('R05 withholds old workspace pushes during a new open until its identity is acknowledged', async () => {
+  const { bridge, push } = fakeBridge()
+  let finish!: (value: { ok: true; workspaceId: string }) => void
+  bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
+    .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const client = createLaneClient(bridge)
+  await client.open({ projectId: 'a', immutableProjectUuid: 'a', projectGeneration: 1 })
+  const opening = client.open({ projectId: 'b', immutableProjectUuid: 'b', projectGeneration: 1 })
+  push({ ...workspace(projection('old secret')), workspaceId: 'old' })
+  expect(client.projection().parts).toEqual([])
+  push({ ...workspace(projection('new history')), workspaceId: 'new' })
+  expect(client.projection().parts).toEqual([])
+  finish({ ok: true, workspaceId: 'new' })
+  await opening
+  expect(client.projection().parts).toEqual(projection('new history').parts)
+})

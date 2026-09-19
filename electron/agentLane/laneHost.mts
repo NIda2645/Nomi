@@ -1,3 +1,5 @@
+import { laneInputIntent } from './laneInputIntent.mjs';
+import { openLaneHistoryPage } from './laneHistoryPage.mjs';
 import { attachLaneTrace } from './laneTraceRecorder.mjs';
 import { logWarn } from '../logging/logger.js';
 import { capabilityContractById } from '../shared/agentCapabilities/registry.js';
@@ -320,24 +322,27 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // 宿主自己维护，和快照一起被 `publish()` 摊平成同一份 `LaneProjection`。
   const watch = await lane.watch(context);
   let snapshot: LaneSnapshot = watch.snapshot;
+  const history = await openLaneHistoryPage(session, laneName, context, snapshot.tipId);
   let pending: LanePendingApproval | undefined;
   // 沙箱状态**整条 lane 只测一次**（`openLaneNativeDesktop` 开 lane 那一刻），所以它不是
   // 快照的函数，也不该进 `projectLaneSnapshot` 的参数表——那个纯函数的入参每多一个，
   // 「这次投影为什么和上次不一样」的可能来源就多一个。这里摊进去，投影层一个字都不用改。
   const sandboxFacts = native?.sandboxInactive ? { sandboxInactive: native.sandboxInactive.code } : {};
-  let projection: LaneProjection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks), ...sandboxFacts };
+  let projection: LaneProjection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries()), history: history.state(), ...sandboxFacts };
   const listeners = new Set<(next: LaneProjection) => void>();
   const publish = () => {
-    projection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks), ...sandboxFacts };
+    projection = { ...projectLaneSnapshot(snapshot, modelFacts, pending, options.tasks, history.entries()), history: history.state(), ...sandboxFacts };
     for (const listener of listeners) listener(projection);
   };
-  watch.start((event, eventContext) => {
-    if (reduceLaneSnapshot(snapshot, event) !== 'rebase') {
-      publish();
-      return;
+  watch.start(async (event, eventContext) => {
+    if (reduceLaneSnapshot(snapshot, event) === 'rebase') {
+      // pi buffers and serializes events until this listener installs the returned snapshot.
+      snapshot = await watch.resnapshot(eventContext);
+      await history.reset(snapshot.tipId);
+    } else if (event.type === 'entry_added') {
+      history.append(event.entry);
     }
-    // 导航（切分支）之后局部归约不成立，pi 明说要一份新快照。照做，不猜。
-    void watch.resnapshot(eventContext).then((fresh) => { snapshot = fresh; publish(); });
+    publish();
   });
 
   const approval = options.approval;
@@ -379,7 +384,8 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     ? { payload: options.input.rewritePayload(event.payload, event.model.api) } : undefined);
 
   let consumedContext: LaneComposerContext | undefined;
-  harness.hooks.on('transform_context', async (event) => {
+  harness.hooks.on('transform_context', async (event, hookContext) => {
+    const intent = await laneInputIntent(session, laneName, event.runId, event.messages, hookContext);
     const input = [...event.messages].reverse().find(isLaneInputMessage);
     consumedContext = input?.context;
     if (input && options.input) options.input.activate(input.context);
@@ -392,7 +398,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
           toolCallId: '', toolName: tool.name, args: value ? { operation: value } : {},
         })}`);
       }).join('\n') : '';
-    return { systemPrompt: [await systemPromptForRun(event.runId), catalogBase ? formatLaneModelIndex(catalogBase.context) : '', input?.context.systemPrompt, authority].filter(Boolean).join('\n\n') };
+    return { systemPrompt: [await systemPromptForRun(event.runId), catalogBase ? formatLaneModelIndex(catalogBase.context) : '', input?.context.systemPrompt, intent, authority].filter(Boolean).join('\n\n') };
   });
 
   harness.hooks.on('before_tool', async (event, hookContext) => {
@@ -497,13 +503,15 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     return details ? { details: details as never } : undefined;
   });
 
-  function inputMessage(text: string): string | LaneInputMessage {
+  async function inputMessage(text: string): Promise<string | LaneInputMessage> {
     if (!options.input) return text;
     const captured = structuredClone(options.input.capture());
     // Validate the actual selected branch before pi persists or acknowledges any input.
     // An older stopped card on this branch remains selectable; IDs from other lanes do not.
     if (captured.continueFromEntryId !== undefined) {
-      laneContinuationText(snapshot.transcript.find((entry) => entry.id === captured.continueFromEntryId));
+      const ancestry = await lane.findEntries({ order: 'newestFirst', stopAtId: captured.continueFromEntryId }, context);
+      const entry = ancestry.at(-1);
+      laneContinuationText(entry?.id === captured.continueFromEntryId ? entry : undefined);
     }
     return { role: 'nomi.input', content: text, timestamp: Date.now(), context: captured };
   }
@@ -563,8 +571,9 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     // 想要的效果，代价就是需要有人来说这一句。
     refreshTasks: () => publish(),
     execute: async (command: LaneCommand, executionOptions): Promise<LaneCommandOutcome> => {
+      if (command.kind === 'history-older') { await history.older(command.before); publish(); return {}; }
       if (command.kind === 'prompt' && !projection.running && !pending) {
-        const message = inputMessage(command.text);
+        const message = await inputMessage(command.text);
         // 「这条技能要不要 coding 工具」判在准入这一刻，而用户可能就是刚导入它的——
         // 所以先把索引刷到这个回合，再问。不刷的症状是模型说「我去跑它的 selftest」，然后说它没有工具。
         await native?.skillIndex.refresh();
@@ -592,8 +601,8 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
         const steering = command.kind !== 'follow-up';
         failures.reset();
         const queued = steering
-          ? await lane.steer(inputMessage(command.text), undefined, context)
-          : await lane.followUp(inputMessage(command.text), undefined, context);
+          ? await lane.steer(await inputMessage(command.text), undefined, context)
+          : await lane.followUp(await inputMessage(command.text), undefined, context);
         // 错误只报 `_tag`（`Closed` / `InvalidMessage`），不报 `message`：那句话是 pi 写给
         // 开发者的，直接弹给用户等于把内部词表当文案用。人话在调用方按 `_tag` 选。
         if (!queued.ok) throw new Error(`This agent lane refused the message: ${queued.error._tag}`);

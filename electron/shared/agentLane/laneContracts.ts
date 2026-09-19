@@ -19,9 +19,11 @@ import type { LaneToolPublicFailure } from './laneToolFailureEnvelope'
 
 /** 一段 = 模型一轮回复里的一个小块，或转录里的一条记录。顺序由 `sequence` 唯一决定。 */
 export interface LanePartIdentity {
+  /** Original pi entry identity; absent only for unsettled streaming parts. */
+  readonly entryId?: string
   /**
-   * 这一段在这条 lane 转录里的位置。**唯一的顺序真相。**
-   * 由主进程按 pi 转录的走序赋值，冷重启后重放同一条转录得到同一串数字。
+   * 这一段在当前已加载历史页里的位置，由主进程按 pi 分支走序赋值。
+   * 加载较早页时序号会平移；跨分页/重开身份使用 entryId + contentIndex。
    */
   readonly sequence: number
   /** 这一段所属条目在 pi 存储里的序号（`Entry.seq`）。用来 join 与排错，**不用来排序**。 */
@@ -326,6 +328,7 @@ export interface LaneProjection {
   /** Current runtime identity only; credentials never enter the projection. */
   readonly model?: { readonly provider: string; readonly modelId: string }
   readonly parts: readonly LanePart[]
+  readonly history?: { readonly hasMore: boolean; readonly before?: string }
   /** 这条 lane 现在有没有在跑（`LaneSnapshot.operation !== null`）。 */
   readonly running: boolean
   readonly usage: LaneUsage
@@ -528,6 +531,7 @@ export const LANE_MODEL_OUTPUT_MAX_BYTES = 50 * 1024
 export type LaneCommand =
   | { readonly kind: 'prompt'; readonly text: string }
   | { readonly kind: 'abort' }
+  | { readonly kind: 'history-older'; readonly before: string }
   /**
    * 对某一张审批卡的答复。`toolCallId` 是 pi 铸的，渲染层只是把它原样送回来——
    * 它证明「用户答的是这一张卡」，而不是答完之后又来了一张、答案落到了新的那张上。

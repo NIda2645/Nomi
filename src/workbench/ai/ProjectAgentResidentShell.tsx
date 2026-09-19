@@ -527,6 +527,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         height={actions.error ? size.height - 20 : size.height}
         legacy={data.snapshot.active.legacy}
         flow={data.flow}
+        onLoadOlder={data.loadOlder}
         flowTail={shotVerifyFeedback}
         surface={surface}
         onStarter={startFromStarter}

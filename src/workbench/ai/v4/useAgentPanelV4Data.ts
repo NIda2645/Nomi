@@ -38,6 +38,7 @@ export type AgentPanelV4Data = Readonly<{
   snapshot: LaneWorkspaceProjection
   activeThreadId: string | null
   flow: readonly V4FlowItem[]
+  loadOlder?: () => Promise<void>
   slot: InterventionData | undefined
   /**
    * 计划槽的两件交互状态 + 它们的写口。住在读侧，是因为「哪几行还勾着」是**投影的输入**
@@ -281,6 +282,10 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     snapshot,
     activeThreadId,
     flow,
+    loadOlder: snapshot.active.history?.hasMore ? async () => {
+      const result = await laneClient.loadOlder()
+      if (!result.ok) throw new Error(result.code)
+    } : undefined,
     slot,
     plan: { ...plan, kept: (slot?.plan ?? []).filter((row) => row.checked).map((row) => row.label) },
     queue,

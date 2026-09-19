@@ -115,6 +115,7 @@ export interface LaneClient {
   deny(toolCallId: string, reason?: string): Promise<LaneCommandResult>
   /** 停。回值里可能带着用户没送出去的话——调用方**必须**把它放回输入框。 */
   abort(): Promise<LaneCommandResult>
+  loadOlder(): Promise<LaneCommandResult>
   dispose(): void
 }
 
@@ -129,17 +130,23 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
   let current: Readonly<{ subscriptionId: string; binding: ProjectBinding }> | null = null
   let reopen: { binding: ProjectBinding; model?: LaneComposerContext['model'] } | null = null
   let openedModel: LaneComposerContext['model']
-  let closedWhileOpening: LaneWorkspaceProjection | null = null
+  const openingProjections = new Map<string, LaneWorkspaceProjection>()
+  let openingEpoch: number | null = null
   let epoch = 0
+  let connectionEpoch = 0
   const listeners = new Set<(projection: LaneWorkspaceProjection) => void>()
   // `useSyncExternalStore` 的 getter 必须**引用稳定**：只在真收到新投影时换对象。
   // 这条不是风格问题——仓库里 6 个手写 store 之一因为每次 getter 新建对象，
   // 在「有待决工具」时把整页打成「工作台加载失败」（G6 判据②）。
   const publish = (projection: LaneWorkspaceProjection) => {
+    if (projection.workspaceId && !current) {
+      if (openingEpoch === epoch) openingProjections.set(projection.workspaceId, projection)
+      return
+    }
     if (projection.workspaceId && current && projection.workspaceId !== current.subscriptionId) return
     if (projection.closed) {
       // Closing an older workspace during open/close cannot seed reauthorization.
-      if (!current) { closedWhileOpening = projection; return }
+      if (!current) return
       reopen = { binding: current.binding, model: openedModel }
       current = null
     }
@@ -152,10 +159,16 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     bridge = next
     current = null
     reopen = null
-    closedWhileOpening = null
+    openingProjections.clear()
+    openingEpoch = null
     epoch += 1
     publish(EMPTY_LANE_WORKSPACE)
-    unsubscribe = bridge?.onProjection(publish)
+    const connectedEpoch = ++connectionEpoch
+    const connectedBridge = bridge
+    unsubscribe = bridge?.onProjection((projection) => {
+      if (connectedBridge !== bridge || connectedEpoch !== connectionEpoch) return
+      publish(projection)
+    })
   }
   connect(bridge)
   // 「这次 open 还没落定」。面板刚打开的那一两秒里用户就打字/点按钮是常态：以前这些命令
@@ -191,7 +204,8 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     const generation = ++epoch
     current = null
     reopen = null
-    closedWhileOpening = null
+    openingProjections.clear()
+    openingEpoch = generation
     openedModel = model
     publish(EMPTY_LANE_WORKSPACE)
     const inFlight = send({ kind: 'workspace-open', binding, ...(model ? { model } : {}) })
@@ -200,11 +214,14 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
       const result = await inFlight
       if (generation === epoch && result.ok && result.workspaceId) {
         current = Object.freeze({ subscriptionId: result.workspaceId, binding: Object.freeze({ ...binding }) })
-        const terminal = closedWhileOpening as LaneWorkspaceProjection | null
-        if (terminal?.workspaceId === result.workspaceId) publish(terminal)
+        const buffered = openingProjections.get(result.workspaceId)
+        if (buffered) publish(buffered)
       }
       return result
-    } finally { if (opening === inFlight) opening = undefined }
+    } finally {
+      if (opening === inFlight) opening = undefined
+      if (openingEpoch === generation) { openingEpoch = null; openingProjections.clear() }
+    }
   }
 
   return {
@@ -254,6 +271,12 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     approveForSession: (toolCallId: string) => approval(toolCallId, 'allow-session'),
     deny: (toolCallId: string, reason?: string) => approval(toolCallId, 'deny', reason),
     abort: () => send({ kind: 'abort' }),
+    loadOlder: () => {
+      const before = latest.active.history?.before
+      return before && latest.active.history?.hasMore
+        ? send({ kind: 'history-older', before, expectedLane: latest.active.lane })
+        : Promise.resolve({ ok: true })
+    },
     dispose: () => {
       unsubscribe?.()
       listeners.clear()
