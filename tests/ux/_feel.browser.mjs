@@ -19,6 +19,16 @@ test('AnchoredPopover owns Escape before React Flow selection, yielding to neste
       function TestNode({ selected }) {
         const [open, setOpen] = React.useState(false);
         const [upper, setUpper] = React.useState(null);
+        const [draft, setDraft] = React.useState('draft');
+        React.useEffect(() => {
+          if (!upper) return;
+          const onKey = event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault(); event.stopPropagation(); setUpper(null);
+          };
+          document.addEventListener('keydown', onKey);
+          return () => document.removeEventListener('keydown', onKey);
+        }, [upper]);
         const anchor = React.useRef(null);
         const close = () => { setOpen(false); anchor.current?.focus(); };
         return <div style={{width: 240, height: 100}} data-testid="fixture-node" data-selected={selected}>
@@ -28,6 +38,13 @@ test('AnchoredPopover owns Escape before React Flow selection, yielding to neste
             {open && <AnchoredPopover anchorRef={anchor} onClose={close}>
               <div role="dialog" aria-label="Effects menu">
                 <input aria-label="Search effects" autoFocus />
+                {['prevent', 'stop'].map(mode => <input key={mode} aria-label={'Owned Escape ' + mode} value={draft}
+                  onChange={event => setDraft(event.target.value)} onKeyDown={event => {
+                    if (event.key !== 'Escape' || !draft) return;
+                    if (mode === 'prevent') event.preventDefault();
+                    else event.stopPropagation();
+                    setDraft('');
+                  }} />)}
                 <button onClick={() => {}}>Effect category</button>
                 <button aria-expanded={upper === 'listbox'} onClick={() => setUpper('listbox')}>Nested options</button>
                 <button onClick={() => setUpper('dialog')}>Confirm effect</button>
@@ -69,6 +86,30 @@ test('AnchoredPopover owns Escape before React Flow selection, yielding to neste
     await expect(page.getByTestId('fixture-composer')).toBeVisible()
   }
   try {
+    for (const mode of ['prevent', 'stop']) {
+      await t.test(`inner input ${mode} handles its own Escape before popover dismissal`, () => withFixture(async (page) => {
+        const input = page.getByRole('textbox', { name: `Owned Escape ${mode}` })
+        await input.click()
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+        await expect(input).toHaveValue('')
+        await expectSelected(page)
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeHidden()
+        await expectSelected(page)
+      }))
+    }
+    await t.test('native input handler can prevent Escape before the portal bubble handler', () => withFixture(async (page) => {
+      const input = page.getByRole('textbox', { name: 'Search effects' })
+      await input.evaluate(input => input.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); input.value = 'handled'; }
+      }, { once: true }))
+      await input.click()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+      await expect(input).toHaveValue('handled')
+      await expectSelected(page)
+    }))
     for (const focus of ['natural', 'trigger', 'menu-button', 'input']) {
       await t.test(`Escape from ${focus} closes only the popover`, () => withFixture(async (page) => {
         if (focus === 'trigger') await page.getByRole('button', { name: 'Effects', exact: true }).focus()
@@ -82,6 +123,15 @@ test('AnchoredPopover owns Escape before React Flow selection, yielding to neste
       }))
     }
     for (const upper of ['listbox', 'dialog']) {
+      await t.test(`upper ${upper} still receives Escape when focus remains in the lower input`, () => withFixture(async (page) => {
+        await page.getByRole('button', { name: upper === 'listbox' ? 'Nested options' : 'Confirm effect' }).click()
+        await expect(page.getByRole(upper, { name: 'Upper layer' })).toBeVisible()
+        await page.getByRole('textbox', { name: 'Search effects' }).focus()
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole(upper, { name: 'Upper layer' })).toBeHidden()
+        await expect(page.getByRole('dialog', { name: 'Effects menu' })).toBeVisible()
+        await expectSelected(page)
+      }))
       await t.test(`upper ${upper} receives the first Escape`, () => withFixture(async (page) => {
         await page.getByRole('button', { name: upper === 'listbox' ? 'Nested options' : 'Confirm effect' }).click()
         await expect(page.getByRole(upper, { name: 'Upper layer' })).toBeVisible()

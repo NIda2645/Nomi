@@ -8,17 +8,40 @@ const node: GenerationCanvasNode = { id: 'n', title: 'Media', kind: 'image', pos
 describe('current media measurement shared by full, lightweight and card renderers', () => {
   it('ignores late decode and footer events after result replacement', () => {
     const current = { ...node, result: { ...image, id: 'new', url: 'new.png' } }
-    expect(computeNodeMediaMeasurementPatch(current, image, { kind: 'image', width: 1920, height: 1080 })).toBeNull()
+    expect(computeNodeMediaMeasurementPatch(current, image, { kind: 'image', sourceUrl: image.url, width: 1920, height: 1080 })).toBeNull()
     expect(computeNodeMediaMeasurementPatch(current, image, { kind: 'card-info', height: 36 })).toBeNull()
   })
   it('never mistakes a video poster for intrinsic video dimensions', () => {
     const video = { ...image, type: 'video' as const }
     const current = { ...node, result: video, meta: { imageWidth: 10, imageHeight: 10 } }
-    expect(computeNodeMediaMeasurementPatch(current, video, { kind: 'image', width: 320, height: 180 })).toBeNull()
+    expect(computeNodeMediaMeasurementPatch(current, video, { kind: 'image', sourceUrl: image.url, width: 320, height: 180 })).toBeNull()
     const patch = computeNodeMediaMeasurementPatch(current, video, { kind: 'video', width: 1080, height: 1920, durationSeconds: 12 })
     expect(patch?.meta.videoDuration).toBe(12)
     const size = resolveNodeVisualSize({ ...current, ...patch })
     expect(size.width / size.height).toBeCloseTo(9 / 16, 8)
+  })
+  it.each([undefined, { imageWidth: 4001, imageHeight: 3001 }])('never writes thumbnail dimensions as original dimensions (%j)', meta => {
+    const result = { ...image, thumbnailUrl: 'preview.png' }
+    const current = { ...node, result, meta }
+    expect(computeNodeMediaMeasurementPatch(current, result, {
+      kind: 'image', sourceUrl: result.thumbnailUrl, width: 1024, height: 768,
+    })).toBeNull()
+    const patch = computeNodeMediaMeasurementPatch(current, result, {
+      kind: 'image', sourceUrl: result.url, width: 4001, height: 3001,
+    })
+    expect(patch?.meta.imageWidth ?? meta?.imageWidth).toBe(4001)
+    expect(patch?.meta.imageHeight ?? meta?.imageHeight).toBe(3001)
+  })
+  it('rejects a stale DOM image source even if its callback captures the latest result', () => {
+    expect(computeNodeMediaMeasurementPatch(node, image, {
+      kind: 'image', sourceUrl: 'previous.png', width: 320, height: 180,
+    })).toBeNull()
+  })
+  it('accepts the original relative src attribute without requiring DOM absolute URL conversion', () => {
+    const patch = computeNodeMediaMeasurementPatch(node, image, {
+      kind: 'image', sourceUrl: 'image.png', width: 4001, height: 3001,
+    })
+    expect(patch?.meta.imageWidth).toBe(4001)
   })
   it('footer callbacks merge current measurements and do not cause update loops', () => {
     const current = { ...node, kind: 'character' as const, meta: { imageWidth: 1920, imageHeight: 1080, cardInfoHeight: 36 } }

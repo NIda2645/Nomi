@@ -25,7 +25,8 @@
   "internal_only_reason": "Internal state ownership; external references documented in the implementation plan.",
   "invariants": [
     "Media area follows measured intrinsic ratio; card footers add their measured content height",
-    "All geometry consumers share the same size; original media bytes and node positions remain unchanged"
+    "All geometry consumers share the same size; original media bytes and node positions remain unchanged",
+    "Only the decoded original image source may update original image dimensions; thumbnails and stale source events cannot write them."
   ],
   "doors": [
     {
@@ -215,6 +216,11 @@
       "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
       "symbol": "resolveNodeVisualSize",
       "responsibility": "Own intrinsic image geometry for all canvas consumers"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+      "symbol": "computeNodeMediaMeasurementPatch",
+      "responsibility": "Validate result identity, media kind and decoded image src before writing original dimensions."
     }
   ],
   "same_class_entry_points": [
@@ -248,7 +254,8 @@
     "reason": "Every mismatched image result, restored node or arbitrary resize can reproduce.",
     "same_class_scan": [
       "door-map computeMediaMetaPatch resolveNodeVisualSize and both renderer files",
-      "Reviewed nodeRunOutcome, rollbackNodeHistory, RF NodeResizer, grid asset creation and thumbnail scale filter"
+      "Reviewed nodeRunOutcome, rollbackNodeHistory, RF NodeResizer, grid asset creation and thumbnail scale filter",
+      "2026-09-20 audit: door-map computeMediaMetaPatch (1 writer) and useNodeMediaMeasurement (5 callers); LOD chooses thumbnailUrl, Base and dedicated cards choose result.url. NomiImage forwards src unchanged into the DOM; NodeVideoPlaybackGuard can heal playback URLs, so image source validation is image-specific."
     ]
   },
   "prevention": {
@@ -276,7 +283,8 @@
     "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.test.ts"
   ],
   "class_regression_tests": [
-    "src/workbench/generationCanvas/nodes/nodeSizing.visualSize.test.ts"
+    "src/workbench/generationCanvas/nodes/nodeSizing.visualSize.test.ts",
+    "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -294,7 +302,8 @@
   },
   "migration": "Pure geometry derivation repairs old stored previewHeight on render; current image decoding refreshes old dimensions. No source asset or project file rewrite.",
   "residual_risks": [
-    "Source files with intentional alpha retain it; this fixes container letterboxing, not authored transparent pixels."
+    "Source files with intentional alpha retain it; this fixes container letterboxing, not authored transparent pixels.",
+    "LOD with only a thumbnail and no original dimension metadata remains unmeasured until full source decoding; thumbnail rounding is not treated as original geometry."
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generationCanvas/nodes/nodeSizing.ts",

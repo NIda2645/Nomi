@@ -4,7 +4,8 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { computeMediaMetaPatch, MEDIA_DIMENSION_UPDATE_OPTIONS } from './nodeSizing'
 
 type Measurement =
-  | { kind: 'image' | 'video'; width: number; height: number; durationSeconds?: number }
+  | { kind: 'image'; sourceUrl: string | null; width: number; height: number }
+  | { kind: 'video'; width: number; height: number; durationSeconds?: number }
   | { kind: 'card-info'; height: number }
 
 /** A delayed decode/footer observer must never write dimensions into a newer result. */
@@ -19,6 +20,8 @@ export function computeNodeMediaMeasurementPatch(
     return { meta: { ...node.meta, cardInfoHeight: measurement.height } }
   }
   if (measurement.kind !== node.result.type) return null // Video posters are not decoded video dimensions.
+  // A thumbnail can have rounded dimensions; only the original image can own original metadata.
+  if (measurement.kind === 'image' && measurement.sourceUrl !== node.result.url) return null
   return computeMediaMetaPatch({ resultType: node.result.type, meta: node.meta || {}, ...measurement })
 }
 
@@ -42,7 +45,7 @@ export function useNodeMediaMeasurement(node: GenerationCanvasNode) {
   }, [infoElement, measure])
   return {
     infoRef,
-    onImageLoad: (event: React.SyntheticEvent<HTMLImageElement>) => measure({ kind: 'image', width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }),
+    onImageLoad: (event: React.SyntheticEvent<HTMLImageElement>) => measure({ kind: 'image', sourceUrl: event.currentTarget.getAttribute('src'), width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }),
     onVideoMetadata: (event: React.SyntheticEvent<HTMLVideoElement>) => measure({ kind: 'video', width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight, durationSeconds: event.currentTarget.duration }),
   }
 }
