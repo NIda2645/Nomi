@@ -1,4 +1,5 @@
 import { hasRealCharacterReferences, normalizeStoryboardAnchorDefaults, validateAnchorModelFit } from './storyboardAnchorPolicy'
+import { getUndoJournalGeneration } from '../events/canvasUndoJournal'
 import { captureCurrentProjectCanvasReadSurfaceBinding } from '../../project/projectCanvasReadSurface'
 import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type {
@@ -291,14 +292,23 @@ export async function applyCanvasToolCall(
   if (operation === 'propose_storyboard_plan') {
     // 规划写入唯一 owner 并同步表节点投影；不生成媒体。间接画布写也继承本提议的上下文。
     // 校验失败 throw → 调用方映射成 tool error,回喂 LLM 自我修正(与 gate deny 同语义)。
+    const before = useWorkbenchStore.getState()
+    const targetDocumentId = documentId ?? before.activeDocumentId
+    const sourceDocument = before.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const sourceDesign = storyboardId ? before.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    const canvasGeneration = getUndoJournalGeneration()
     const parsedPlan = parseStoryboardPlan(record)
     const plan = hasRealCharacterReferences(parsedPlan)
       ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent())
       : parsedPlan
     const store = useWorkbenchStore.getState()
-    // P4:按 documentId 存方案。documentId 由调用方在发起拆镜头时捕获，异步期间切文档不串稿。
-    // 缺 documentId（如旧调用方）回退 activeDocumentId，保证至少落到当前激活文档。
-    const targetDocumentId = documentId ?? store.activeDocumentId
+    const currentDocument = store.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const currentDesign = storyboardId ? store.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    if (getUndoJournalGeneration() !== canvasGeneration
+      || (currentDocument && currentDocument !== sourceDocument)
+      || (currentDesign && currentDesign !== sourceDesign)) {
+      throw new SurfacePortWireError('capability_target_stale')
+    }
     if (!store.workbenchDocuments.some((document) => document.id === targetDocumentId)) {
       return {
         status: 'obsolete',

@@ -1,0 +1,43 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-core-storyboard-write-ownership",
+  "problem_type": "Late asynchronous writes lose their original content owner",
+  "symptom": "A model catalog lookup can write a pending plan into another document or overwrite a newer draft.",
+  "direct_cause": "The proposal writer reads activeDocumentId after await and does not compare the original plan or loaded canvas.",
+  "class_root": "The shared asynchronous write boundary lacks captured target and content identity.",
+  "affected_population": ["Existing storyboard proposal callers with visual references", "Projects replaced while catalog lookup is pending"],
+  "scope_paths": ["src/workbench/generationCanvas/agent/applyCanvasToolCall.ts"],
+  "entry_points": ["Existing proposal transaction", "Existing direct canvas tool calls"],
+  "external_sources": [],
+  "internal_only_reason": "Application write ownership is independent of the model catalog implementation.",
+  "invariants": ["Await never retargets a write to current focus", "A late result never replaces content edited after it started", "Loaded canvas replacement invalidates pending writes"],
+  "doors": [
+    { "kind": "write", "path": "src/workbench/capability/capabilityApplyHandler.ts", "symbol": "applyCanvasToolCall" },
+    { "kind": "write", "path": "src/workbench/capability/multiShotCanvasLanding.ts", "symbol": "applyCanvasToolCall" },
+    { "kind": "write", "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts", "symbol": "applyCanvasToolCall" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/agent/proposalTxn.ts", "symbol": "applyCanvasToolCall" },
+    { "kind": "write", "path": "src/workbench/onboarding/journeyTourStore.ts", "symbol": "applyCanvasToolCall" },
+    { "kind": "read", "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx", "symbol": "setStoryboardPlan" },
+    { "kind": "write", "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts", "symbol": "setStoryboardPlan" },
+    { "kind": "write", "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx", "symbol": "setStoryboardPlan" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts", "symbol": "setStoryboardPlan" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts", "symbol": "setStoryboardPlan" },
+    { "kind": "write", "path": "src/workbench/onboarding/journeyTourStore.ts", "symbol": "setStoryboardPlan" }
+  ],
+  "door_reduction": { "before": 11, "after": 11, "why_not": "Production materialization, multishot landing, row execution, proposal admission and onboarding retain distinct callers; all already converge on applyCanvasToolCall. Synchronous editor, override and table writes retain their existing owner. Only the existing asynchronous storyboard operation is changed." },
+  "generality_proof": "Document focus, source edits, explicit plan edits and project replacement are validated at the existing shared writer before mutation, regardless of caller or catalog model.",
+  "shared_boundaries": [{ "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts", "symbol": "applyCanvasToolCall", "responsibility": "Capture the original document and explicit plan and compare them before the existing write." }],
+  "same_class_entry_points": [
+    { "path": "src/workbench/generationCanvas/agent/proposalTxn.ts", "entry_point": "applyCanvasToolCall", "disposition": "enforced", "evidence": "Proposal transaction reaches the same captured-target writer." },
+    { "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts", "entry_point": "applyCanvasToolCall", "disposition": "not-affected", "evidence": "Existing row materialization creates nodes, not the asynchronous storyboard proposal operation." }
+  ],
+  "recurrence": { "classification": "recurring", "reason": "Any asynchronous catalog lookup permits navigation or newer authoring before completion.", "same_class_scan": ["node scripts/door-map.mjs applyCanvasToolCall: five direct callers", "node scripts/door-map.mjs setStoryboardPlan: five write and one read entries", "Inspected project save queue ownedPayload and proposal beforeApply guards"] },
+  "prevention": { "kind": "centralized-boundary", "enforcement_path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts", "invariant": "An existing proposal writes only its captured live content owner.", "failure_mode": "Stale project or changed content rejects with capability_target_stale before mutation.", "exception_policy": "none", "strategy": "Capture before await; compare immutable content and existing canvas lifecycle before committing.", "artifacts": ["src/workbench/generationCanvas/agent/applyCanvasToolCall.ts"] },
+  "regression_tests": ["src/workbench/generationCanvas/agent/storyboardWriteOwnership.test.ts"],
+  "class_regression_tests": ["src/workbench/generationCanvas/agent/storyboardWriteOwnership.test.ts"],
+  "invariant_owner_layer": { "layer": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts", "tests": ["src/workbench/generationCanvas/agent/storyboardWriteOwnership.test.ts"] },
+  "legacy_paths": { "status": "removed", "removed_paths": ["src/workbench/generationCanvas/agent/applyCanvasToolCall.ts"], "rationale": "Removes after-await fallback to current document; no new legacy Agent writer is introduced." },
+  "dependency_lifecycle": { "decision": "not-applicable", "rationale": "Existing Zustand immutable state and canvas generation identity own this application invariant.", "exit_criteria": [] },
+  "migration": "No persisted shape changes.",
+  "residual_risks": ["Run-to-creation authoring owner gap is separate and is not fixed by this guard.", "Provider and packaged application acceptance are not established by unit tests."]
+}
