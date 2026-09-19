@@ -109,7 +109,7 @@ export function formatCanvasForAgent(result: CanvasReadResult): string {
     `${titleById.get(edge.source) || compactHead(edge.source, 120)}→${titleById.get(edge.target) || compactHead(edge.target, 120)}`);
   const selected = boundedJoin(result.selectedNodeIds ?? [], SELECTED_IDS_BUDGET, ", ", (id) => compactHead(id, 120));
   const writer = createPromptWriter(MAX_CANVAS_PROMPT_CHARACTERS);
-  writer.appendLine(`画布节点 ${result.nodes.length} 个(id | 类型 | 标题 | 状态 | prompt 摘要 | 结果身份):`);
+  writer.appendLine(`画布节点 ${result.nodes.length} 个(id | 类型 | 镜头号与角色 | 归属节点 | 标题 | 状态 | prompt 摘要 | 结果身份):`);
   writer.appendLine(`当前选中: ${selected.text || "无"}`);
   writer.appendLine(nodes.text);
   writer.appendLine(`引用边: ${edges.text || "无"}`);

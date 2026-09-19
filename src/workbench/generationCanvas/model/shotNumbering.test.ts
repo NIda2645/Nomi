@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backfillShotIndexes, isShotNumberedNode, nextShotIndex } from './shotNumbering'
+import { backfillShotIndexes, isShotNumberedNode, nextShotIndex, resolveShotIdentities } from './shotNumbering'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode, GenerationNodeKind } from './generationCanvasTypes'
 
@@ -123,8 +123,7 @@ it('restoring a deleted owner after its number was reused repairs only the arriv
   expect(useGenerationCanvasStore.getState().nodes.map(n => n.shotIndex)).toEqual([1, 2])
 })
 
-it('clipboard pairs share the new video identity in projection without storing a second number', async () => {
-  const { resolveShotIdentities } = await import('./shotNumbering')
+it('clipboard pairs share the new video identity in projection without storing a second number', () => {
   const frame = { ...makeNode({ id: 'frame', kind: 'image', shotIndex: 1 }), meta: { storyboardKeyframe: true } }
   const video = makeNode({ id: 'video', kind: 'video', shotIndex: 1 })
   const store = useGenerationCanvasStore.getState()
@@ -146,8 +145,7 @@ it('clipboard pairs share the new video identity in projection without storing a
   expect([...resolveShotIdentities(redone.nodes, redone.edges).values()].map(n => n.shotIndex)).toEqual([1, 1, 2, 2])
 })
 
-it('single frame copying cannot retain a false relationship to the old video', async () => {
-  const { resolveShotIdentities } = await import('./shotNumbering')
+it('single frame copying cannot retain a false relationship to the old video', () => {
   const store = useGenerationCanvasStore.getState()
   store.restoreSnapshot({ nodes: [{ ...makeNode({ id: 'frame', kind: 'image', shotIndex: 3 }), meta: { storyboardKeyframe: true } }, makeNode({ id: 'video', kind: 'video', shotIndex: 3 })], edges: [{ id: 'pair', source: 'frame', target: 'video', mode: 'first_frame' }], groups: [] })
   store.selectNode('frame'); store.copySelectedNodes(); store.pasteNodes()

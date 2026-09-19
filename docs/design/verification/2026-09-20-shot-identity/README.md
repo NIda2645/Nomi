@@ -36,3 +36,5 @@ NOMI_REAL_MEDIA_DIR=/Users/aoqimin/Desktop/视频 node tests/ux/canvas-shot-iden
 2026-09-20 在 macOS Electron 本构建亲眼查看复制后的中文、英文、重开截图：原配对“1”在上方，独立图片“2”在左下，副本配对“3”在右下。五个身份徽标全部可见，首帧图/视频文字不截断；拖动后的截图已等多选浮条关闭，未以被遮挡 DOM 当作视觉验收。
 
 真实 MCP 共执行 2 次 tools/call：`nomi_session_open` 成功，`nomi_read` 成功（2/2）；canvas.read 返回 5 个节点、2 条 first_frame 边。脚本硬断言副本首帧和副本视频都是镜头 3，首帧 role 为 first_frame，owner 只为副本视频 id。工具读取/指代正确；不报告 LLM 回合成功率，因为本轮没有模型回合。
+
+等待门岗收尾：移除走查内两处固定 20 秒预算，采用现有 Page / expect 默认等待。`pnpm run check:test-waits` exit 0（new/stale=0），同一完整 walk 补跑 exit 0；没有提高基线或改测试基础设施。

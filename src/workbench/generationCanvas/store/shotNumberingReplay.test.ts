@@ -5,7 +5,7 @@ import { setCanvasEventSinkForTests, type CanvasShadowEvent } from '../events/ca
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 function shot(id: string, shotIndex?: number): GenerationCanvasNode {
-  return { id, kind: 'image', categoryId: 'shots', position: { x: 0, y: 0 }, ...(shotIndex ? { shotIndex } : {}) }
+  return { id, title: id, kind: 'image', categoryId: 'shots', position: { x: 0, y: 0 }, ...(shotIndex ? { shotIndex } : {}) }
 }
 function record(nodes: GenerationCanvasNode[]) {
   const store = useGenerationCanvasStore.getState()

@@ -23,10 +23,10 @@
     "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
     "src/workbench/generationCanvas/events/canvasEventReducer.ts",
     "electron/capabilityCore/canvasGraph.ts",
-    "electron/capabilityCore/shotOrder.ts",
     "electron/capabilityCore/core.ts",
     "src/workbench/generationCanvas/components/batchPlanPreview.ts",
-    "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts"
+    "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts",
+    "electron/shared/canvas/shotOrder.ts"
   ],
   "entry_points": [
     "Clipboard/template/restore insertion",
@@ -49,21 +49,6 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/canvasNodeFactory.ts",
-      "symbol": "shotIndex"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/shotOrder.ts",
-      "symbol": "ShotNumberedNode"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/shotOrder.ts",
-      "symbol": "resolveShotIdentities"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/shotOrder.ts",
       "symbol": "shotIndex"
     },
     {
@@ -105,6 +90,21 @@
       "kind": "read",
       "path": "electron/shared/canvas/shotNumbering.ts",
       "symbol": "ShotIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotOrder.ts",
+      "symbol": "ShotNumberedNode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotOrder.ts",
+      "symbol": "resolveShotIdentities"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotOrder.ts",
+      "symbol": "shotIndex"
     },
     {
       "kind": "read",
@@ -456,10 +456,10 @@
       "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
       "src/workbench/generationCanvas/events/canvasEventReducer.ts",
       "electron/capabilityCore/canvasGraph.ts",
-      "electron/capabilityCore/shotOrder.ts",
       "electron/capabilityCore/core.ts",
       "src/workbench/generationCanvas/components/batchPlanPreview.ts",
-      "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts"
+      "src/workbench/generationCanvas/agent/gatherShotVerifyInputs.ts",
+      "electron/shared/canvas/shotOrder.ts"
     ]
   },
   "regression_tests": [
@@ -492,7 +492,8 @@
     "status": "removed",
     "removed_paths": [
       "src/workbench/generationCanvas/model/shotNumbering.ts",
-      "electron/capabilityCore/nodeKindDomain.ts"
+      "electron/capabilityCore/nodeKindDomain.ts",
+      "electron/capabilityCore/shotOrder.ts"
     ],
     "rationale": "Move existing policy once to shared layer; renderer and headless import it, no parallel algorithm. Re-export-only adapters and locale literals have no executable state doors; scope_paths covers implementation and actual consumers, while removal remains recorded here."
   },

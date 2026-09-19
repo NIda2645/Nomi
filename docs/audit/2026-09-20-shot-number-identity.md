@@ -11,3 +11,10 @@
 独立反方实测发现模板重复、复制旧首帧、默认分类/参考卡漂移；补充发现batch交换号与逐条事件归一不等价，以及分类迁移漏meta。以真实store与event replay测试验证，不以字符串断言代替链路。
 
 既有Zustand存储、React Flow节点身份、事件手势/快照和Agent能力schema继续使用；没有新状态容器、编号服务或并行投影。依赖无需升级。
+
+
+## electron/capabilityCore 结构复核
+
+能力核原先在nodeKindDomain镜像资格与max+1，又由shotOrder私读存储镜号；渲染审片另外持有index-1映射。这与本周多份“投影/写入丢语义”合同属于同一边界症状：读写方自己重建领域规则。此次实扫canvasGraph.normalizeSnapshot、nodeKindDomain、core审片、renderer gather与canvas.read；恢复与投影收敛到electron/shared/canvas，前镜判据也移动原实现到shared（旧入口仅转导出），渲染层不导入主进程代码。
+
+对偶核验：disk/renderer gateway都保留raw私有RMW内容同时修复编号；create后read返回同一nodeId+编号+角色；UI与Agent首帧归属相同；live/batch/replay/redo相同。未引入第二个协议或读取服务。其他能力核合同涉及认证/支出/模型调度，其防线保持原owner，本审计只确认此次改动未绕开它们，不宣称整层重新认证。

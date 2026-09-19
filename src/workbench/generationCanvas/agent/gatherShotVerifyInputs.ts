@@ -7,7 +7,7 @@
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import type { ShotVerifyInput } from './shotVerifyRunner'
-import { previousShotPromptFor } from '../../../../electron/capabilityCore/shotOrder'
+import { previousShotPromptFor } from '../../../../electron/shared/canvas/shotOrder'
 
 function trim(text: string | undefined, max = 160): string {
   const t = (text ?? '').trim()

@@ -33,7 +33,6 @@ const run = await launchNomiApp({ name: 'canvas-shot-identity', projectsDir, set
   'nomi:locale:v1': 'zh-CN', 'nomi-color-scheme': 'light', 'nomi:splash:v1': 'seen', 'nomi:journey-tour:v1': 'seen', 'nomi:canvas-gesture-hint:v1': 'seen',
 } })
 const page = run.win
-page.setDefaultTimeout(20_000)
 const labels = () => page.locator('[data-node-id]').evaluateAll(elements => elements.map(el => ({ id: el.getAttribute('data-node-id'), label: el.querySelector('[data-shot-number]')?.textContent ?? '' })))
 let mcp
 const results = { paidCalls: 0, providerCalls: 0, limitation: 'Persisted legacy graph and real photographed media; no paid generation or LLM turn. MCP reads are real tools.', tasks: [] }
@@ -109,7 +108,7 @@ try {
   await expect.poll(() => {
     const saved = JSON.parse(fs.readFileSync(path.join(projectRoot, '.nomi/project.json')))
     return saved.payload?.generationCanvas?.nodes?.length
-  }, { timeout: 20_000 }).toBe(5)
+  }).toBe(5)
   const beforeReload = await labels()
   await page.reload()
   await openProject()
