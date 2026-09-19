@@ -116,8 +116,10 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
     // 两个**双域**动词的生成域那一半：模型面的 `jobId` 在这边落到 `operationId` 上。这是整条链上仅剩的
     // 一条改名，理由是领域约束（两个域各有一份持久化，各用各的目录名），写在 `verbDualDomain.ts`。
     case 'check_job':
+      if (checkJobModelSchema.parse(args).domain === 'export') return { lane: 'export', call: exportJobTransportCall(call) }
       return generationCall(base, GENERATION_METHODS.status, { operation: 'read', ...checkJobGenerationArgs(checkJobModelSchema.parse(args)) })
     case 'cancel_job':
+      if (cancelJobModelSchema.parse(args).domain === 'export') return { lane: 'export', call: exportJobTransportCall(call) }
       return generationCall(base, GENERATION_METHODS.status, { operation: 'cancel', ...cancelJobGenerationArgs(cancelJobModelSchema.parse(args)) })
     case 'look_at_media': {
       // 五合一读 → 契约五个方法之一（`assetReadInputOf`，与对外 MCP 同一张表）；方法名就是 phase4 读适配器认的别名。
@@ -158,7 +160,8 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
  * 实现就是 P1 说的并行版）。返回类型带上推断出来的参数类型，`RuntimeToolCall<TArgs>` 的收窄从这里起步。
  */
 function cancelJobExportCall(call: RuntimeToolCall): RuntimeToolCall<CancelJobModelArgs> {
-  return { toolCallId: call.toolCallId, toolName: EXPORT_WRITE_ALIASES.cancel, args: cancelJobModelSchema.parse(call.args) }
+  const { domain: _domain, ...args } = cancelJobModelSchema.parse(call.args)
+  return { toolCallId: call.toolCallId, toolName: EXPORT_WRITE_ALIASES.cancel, args }
 }
 
 /**
@@ -174,6 +177,6 @@ export function exportJobTransportCall(call: RuntimeToolCall): RuntimeToolCall {
   return {
     toolCallId: call.toolCallId,
     toolName: EXPORT_READ_ALIASES.inspect,
-    args: checkJobModelSchema.parse(call.args),
+    args: { jobId: checkJobModelSchema.parse(call.args).jobId },
   }
 }

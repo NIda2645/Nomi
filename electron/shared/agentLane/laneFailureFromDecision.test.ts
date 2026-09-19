@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { isBareCodeMessage, laneFailureFromDecision } from "./laneFailureFromDecision";
 
 describe("传输判决 → 模型看得懂的失败", () => {
+  it('C18: generation failure ignores raw provider text and forbids repayment before reconciliation', () => {
+    const failure = laneFailureFromDecision({ toolName: 'generate', code: 'generation_execution_failed',
+      message: 'synthetic-secret-token /private/project/prompt', fallbackCode: 'tool_execution_failed', nextAction: 'Retry and pay again.' });
+    expect(JSON.stringify(failure)).not.toContain('synthetic-secret');
+    expect(failure.nextAction).toContain('Do not request payment');
+    expect(failure.nextAction).toContain('reconcile');
+  });
   // 2026-09-18 根因：传输适配器里有 9 处写着 `message: code`。前人诊断过后果并留在
   // `laneRuntimePort.ts` 头部：「`[error] E_DENIED` 对一个要自纠的模型等于什么都没说……
   // 模型据此没法自纠，只会把同一个调用再发一遍，用户撞到的『连续 6 次被自己拒收』就是这么来的」。

@@ -46,6 +46,15 @@ export function laneFailureFromDecision(input: {
   reason?: unknown;
 }): LaneToolFailureShape {
   const code = input.code ?? input.fallbackCode;
+  const taskAdvice: Record<string, LaneFailureAdvice> = {
+    task_reference_required: { message: 'This task reference has no verified domain.', nextAction: 'Read the task result or canvas again and copy both domain and jobId from taskRef. Do not guess a task ID from a node ID.' },
+    generation_operation_not_found: { message: 'No generation task exists for this reference in the authorized project.', nextAction: 'Read the current task list or canvas and use its taskRef. Do not create another paid request to recover an unknown outcome.' },
+    production_run_not_found: { message: 'This run is not available in the authorized project.', nextAction: 'Read the project task list again. Do not switch domains or automatically submit a replacement.' },
+    generation_execution_failed: { message: 'The generation action could not be completed; its submission outcome may be unknown.', nextAction: 'Query the same domain-qualified task and reconcile its existing submission. Do not request payment or submit again until its outcome is known.' },
+    generation_provider_unavailable: { message: 'The configured generation provider cannot perform this action.', nextAction: 'Check provider configuration and query any existing task before requesting a new paid submission.' },
+  };
+  const safeAdvice = taskAdvice[code];
+  if (safeAdvice) return { code, ...safeAdvice };
   const detail = isBareCodeMessage(input.message, input.code) ? "" : ` ${(input.message ?? "").trim()}`;
   const message = input.advice?.message
     ?? `${input.toolName} could not complete the requested action (${code}).${detail}`;

@@ -1,3 +1,4 @@
+import { taskDomainSchema } from '../taskReference';
 // 模型看到的那一面 = 宿主契约 schema 的**投影**。20 个动词里有 11 个的模型面在这里从宿主那一份派生
 // 出来，而不是在动词声明里再手写一遍（`draft_shots` 是第 12 个，但它有损，住在
 // `draftShotsProjection.ts`）。剩下 8 个投不了，原因在文件末尾「投影覆盖不到什么」里逐类写明。
@@ -137,6 +138,7 @@ export const READ_SKILL_HOST_FILL: HostFill<typeof readSkillHostSchema, typeof r
 const cancelJobHostSchema = exportWriteSemanticInputSchema.options[1];
 
 export const cancelJobModelSchema = cancelJobHostSchema.omit({ operation: true }).extend({
+  domain: taskDomainSchema.optional().describe('Copy domain from the taskRef returned by the task owner. Required for cancellation.'),
   jobId: cancelJobHostSchema.shape.jobId.describe("The job to cancel."),
 });
 
@@ -265,6 +267,7 @@ export const GENERATE_HOST_FILL: HostFill<typeof generateHostSchema, typeof gene
 const checkJobHostSchema = exportReadSemanticInputSchema.options[0];
 
 export const checkJobModelSchema = checkJobHostSchema.omit({ operation: true }).extend({
+  domain: taskDomainSchema.optional().describe('Copy domain from the taskRef returned by the task owner. Never infer it from a node ID.'),
   jobId: checkJobHostSchema.shape.jobId
     .describe("The job id returned by generate or export_video, or shown on a canvas node."),
 });

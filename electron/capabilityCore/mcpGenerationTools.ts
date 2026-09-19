@@ -1,3 +1,5 @@
+import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
+import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 import crypto from "node:crypto";
 import {
@@ -560,7 +562,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         // 顶层 candidate = 第一个 shot 的 candidate (reducer seal 硬要顶层 contract 匹配顶层 draft candidate,
         // productionRunReducer.ts generation.seal). 与 S4 e2e setup 同构 (top = shots[0]).
         const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
-        return { operation, nextAction: "preview" };
+        return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
       }
       // A natural-language create request only needs `prompt`.  Keep the
       // explicit candidate path intact, but compile the short path at this
@@ -583,10 +585,10 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         deps.assertReferencesResolvable(input.lease.projectId, singleCandidate.references);
       }
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
-      return { operation, nextAction: "preview" };
+      return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);
-    if (!current) throw new Error(`Generation operation not found: ${operationId}`);
+    if (!current) throw new GenerationOperationNotFoundError();
     if (input.capability === "present") {
       // The durable owner validates lifecycle and preserves prior execution evidence.
       const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], params.shotIds);
@@ -594,7 +596,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const shots = operation.shots && operation.shots.length > 0
         ? operation.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)
         : [operation.candidate.candidateId];
-      return { operation, shots, nextAction: "await_user" };
+      return { operation, taskRef: generationTaskReference(operation.operationId), shots, nextAction: "await_user" };
     }
     if (input.capability === "plan") {
       const rawPatch = record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
@@ -641,7 +643,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         previousModel: `${baseCandidate.providerId}/${baseCandidate.modelId}`,
         nextModel: `${nextProviderId}/${nextModelId}`,
       } : undefined;
-      return { operation, nextAction: "preview", ...(changeset ? { changeset } : {}) };
+      return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview", ...(changeset ? { changeset } : {}) };
     }
     if (input.capability === "preview") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
@@ -769,7 +771,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // committed. A model may still issue its explicit start tool on the next
       // turn; treat that replay as an observation instead of attempting a
       // second provider submission.
-      if (current.state === "submitted") return { operation: current, operationId, nextAction: "observe" };
+      if (current.state === "submitted") return { operation: current, taskRef: generationTaskReference(operationId), operationId, nextAction: "observe" };
       if (current.state !== "sealed" || !current.contract || !current.approvedReceiptId) throw new Error("Confirm the generation plan before starting");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
@@ -779,7 +781,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       if (!outcome) throw new Error("Reconciliation outcome is required");
       return deps.reconcile?.(current, outcome, input.lease) ?? { operationId, outcome, nextAction: outcome === "found" ? "observe" : "manual_review" };
     }
-    if (input.capability === "read" || input.capability === "events" || input.capability === "steer") return { operation: current, nextAction: current.state === "draft" ? "preview" : "observe" };
+    if (input.capability === "read" || input.capability === "events" || input.capability === "steer") return { operation: current, taskRef: generationTaskReference(operationId), executionState: current.state === "draft" ? "not_started" : current.state, nextAction: current.state === "draft" ? "preview" : "observe" };
     throw new Error(`Unsupported semantic generation capability: ${input.capability}`);
   };
 }

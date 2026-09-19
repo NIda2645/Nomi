@@ -10,6 +10,12 @@ Next: displayed quote CAS for close and subset confirmation; typed domain task r
 
 ## Payment verification
 
+## Task identity verification
+
+K3 baseline: three focused tests failed on actual cancellation preparation and provider-code assertions. The fix removes all cross-domain probing: callers copy domain/jobId from taskRef; raw legacy IDs return task_reference_required with refresh instructions and zero writes. Creation, generation reads, export creation/reads and canvas projections produce taskRef. Explicit domain routing tests include colliding raw IDs and export permission failure. Owners issue typed absence; unknown provider errors expose stable codes without raw text, and generation failures instruct reconciliation before repayment. A draft reports not_started.
+
+Six affected identity/schema/advice/export suites: 67 tests initially passed plus one fixture used an invalid legacy tool name; after correcting the fixture to the existing get_production_run API its four tests passed. Four owner/projection adjacent suites passed 57 tests. Latest focused generation failure/payment regression slice passed five tests; error-surface and typecheck passed. No live provider, package or GUI screenshots were used for these assertions.
+
 2026-09-19: C09 red slice added to the reused implementation. Old close returned discarded for a stale quote; subset confirm returned spend_confirmed after an unseen prompt change during present. Both tests executed and failed on their target assertion (exit 1, 49 ms test duration). Following the fix, the four core payment suites passed 50 tests (exit 0, 25.95 s), including both C09 tests, 33-to-3, later batches, unknown submission and confirmation races. Eighteen adjacent suites passed 183 tests (exit 0, 2.36 s). typecheck and check:root-cause-contracts passed (48 checker tests).
 
 Tests used only temporary projects and controlled loopback HTTP; no provider billing proof. The first sandboxed broad run was stopped after the loopback tests stalled; the focused rerun outside the sandbox completed. C08 full renderer reopen, C19 explicit delete/Undo, final installed package and live supplier tests remain for integration acceptance.

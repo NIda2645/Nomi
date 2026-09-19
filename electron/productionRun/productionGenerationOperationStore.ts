@@ -1,3 +1,4 @@
+import { GenerationOperationNotFoundError, ProductionRunNotFoundError } from './productionRunErrors';
 import type { GenerationOperation, GenerationOperationStore } from "../capabilityCore/mcpGenerationTools";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
@@ -63,8 +64,14 @@ export function createProductionGenerationOperationStore(
     }
   };
   const read = (projectId: string, operationId: string): GenerationOperation => {
-    const operation = operationFromRun(owner.readFull(projectId, operationId));
-    if (!operation) throw new Error(`Generation operation not found: ${operationId}`);
+    let run;
+    try { run = owner.readFull(projectId, operationId); }
+    catch (error) {
+      if (error instanceof ProductionRunNotFoundError) throw new GenerationOperationNotFoundError();
+      throw error;
+    }
+    const operation = operationFromRun(run);
+    if (!operation) throw new GenerationOperationNotFoundError();
     return operation;
   };
   return {

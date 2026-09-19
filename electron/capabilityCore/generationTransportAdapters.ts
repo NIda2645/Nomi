@@ -1,3 +1,7 @@
+import { productionTaskAbsenceCode } from '../productionRun/productionRunErrors';
+import { GenerationProviderCapabilityError, GenerationProviderObservationError, GenerationRuntimeBindingError } from './generationRuntimeAdapter';
+import { GenerationPricingUnavailableError } from '../productionRun/shotPricing';
+import { ProductionGenerationAuthorizationError } from '../productionRun/productionGenerationAuthorization';
 import { z } from "zod";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { GENERATION_METHODS, GENERATION_METHOD_NAMES, isGenerationMethodName, type GenerationMethodName } from "../shared/agentCapabilities/generation";
@@ -58,11 +62,15 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
   const rawCode = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
     : "generation_execution_failed";
-  const message = error instanceof Error && error.message ? error.message : rawCode;
-  // Keep provider/credential internals out of the transcript while retaining
-  // actionable semantic codes for the resident failure item.
-  const code = /provider|catalog|credential|model/i.test(rawCode) ? "generation_provider_unavailable" : rawCode;
-  return { ok: false, code, message };
+  const localCodes = new Set(['generation_input_invalid', 'generation_cancelled', 'project_binding_stale',
+    'generation_approval_unavailable', 'generation_approval_required']);
+  const code = productionTaskAbsenceCode(error)
+    ? 'generation_operation_not_found'
+    : error instanceof GenerationProviderCapabilityError || error instanceof GenerationProviderObservationError
+      ? 'generation_provider_unavailable'
+      : error instanceof GenerationPricingUnavailableError || error instanceof ProductionGenerationAuthorizationError || error instanceof GenerationRuntimeBindingError
+        ? error.code : localCodes.has(rawCode) ? rawCode : 'generation_execution_failed';
+  return { ok: false, code, message: code };
 }
 
 /**

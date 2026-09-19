@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { z } from "zod";
 
 import type { RuntimeToolCall } from "../shared/agentCapabilities/transportContracts";
@@ -55,6 +56,23 @@ function authority() {
 }
 
 describe("resident semantic generation transport", () => {
+  it('C18: only typed owner absence is exposed as missing', async () => {
+    const adapter = createPiGenerationTransportAdapter(binding, {
+      planning: async () => { throw new GenerationOperationNotFoundError(); }, leaseFor: () => lease,
+    });
+    expect(await adapter.tryExecute(call('nomi_generation_status', { operation: 'read', operationId: 'missing' }), new AbortController().signal))
+      .toMatchObject({ ok: false, code: 'generation_operation_not_found', message: 'generation_operation_not_found' });
+  });
+  it('C18: provider forged absence and synthetic secrets never become public failures', async () => {
+    const adapter = createPiGenerationTransportAdapter(binding, {
+      planning: async () => { throw Object.assign(new Error('synthetic-secret-token /private/project/prompt'), { code: 'generation_operation_not_found' }); },
+      leaseFor: () => lease,
+    });
+    const result = await adapter.tryExecute(call('nomi_generation_status', { operation: 'read', operationId: 'same-id' }), new AbortController().signal);
+    expect(result).toMatchObject({ ok: false, code: 'generation_execution_failed' });
+    expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+    expect(JSON.stringify(result)).not.toContain('/private/project');
+  });
   it("keeps unrelated tools out of the generation adapter", async () => {
     const planning = vi.fn();
     const adapter = createPiGenerationTransportAdapter(binding, {

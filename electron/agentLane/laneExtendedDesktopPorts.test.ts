@@ -40,6 +40,43 @@ function setup() {
 }
 
 describe('deferred desktop domain authority', () => {
+  it.each(['generation', 'export'] as const)('C17: explicit %s reads and cancels only its owner even when raw IDs collide', async domain => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
+    vi.mocked(f.input.generation).mockReturnValue(generation)
+    await f.execute(call('check_job', { domain, jobId: 'same-id' }))
+    const value = call('cancel_job', { domain, jobId: 'same-id' })
+    await f.prepareAndApprove(value)
+    await f.execute(value)
+    expect(generation.tryExecute).toHaveBeenCalledTimes(domain === 'generation' ? 2 : 0)
+    expect(f.input.phase4.tryExecuteRead).toHaveBeenCalledTimes(domain === 'export' ? 1 : 0)
+    expect(f.input.phase4.prepareWrite).toHaveBeenCalledTimes(domain === 'export' ? 1 : 0)
+    expect(f.input.phase4.executeWrite).toHaveBeenCalledTimes(domain === 'export' ? 1 : 0)
+  })
+  it('C17: explicit export permission failure never prepares or cancels generation', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(), dispose: vi.fn() }
+    vi.mocked(f.input.generation).mockReturnValue(generation)
+    vi.mocked(f.input.phase4.prepareWrite).mockRejectedValue(new Error('permission denied'))
+    await expect(f.prepareAndApprove(call('cancel_job', { domain: 'export', jobId: 'same-id' }))).rejects.toThrow('permission denied')
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(f.input.phase4.executeWrite).not.toHaveBeenCalled()
+  })
+  it('C17: a legacy raw ID never chooses one of two domains for cancellation', async () => {
+    const f = setup(), value = call('cancel_job', { jobId: 'same-id' })
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
+    vi.mocked(f.input.generation).mockReturnValue(generation)
+    await expect(f.prepareAndApprove(value)).rejects.toThrow('task_reference_required')
+    expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
+    expect(f.input.phase4.executeWrite).not.toHaveBeenCalled()
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+  })
+  it('C17: an unavailable export read cannot route a raw ID to a generation write', async () => {
+    const f = setup(), value = call('cancel_job', { jobId: 'node-1' })
+    vi.mocked(f.input.phase4.prepareWrite).mockRejectedValue(new Error('permission denied'))
+    await expect(f.prepareAndApprove(value)).rejects.toThrow('task_reference_required')
+    expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
+  })
   it('never executes an unprepared or unapproved timeline write', async () => {
     const f = setup(), value = call('edit_timeline')
     expect(await f.execute(value)).toMatchObject({ ok: false, failure: { code: 'capability_authority_invalid' } })

@@ -62,7 +62,10 @@ export type PendingSpendActionDeps = Readonly<{
 }>;
 
 function failed(error: unknown): ProductionActionResult {
-  return { ok: false, code: "failed", message: error instanceof Error ? error.message : String(error) };
+  // Provider text is private diagnostics, never renderer or model copy.
+  const safe = error instanceof Error && ['generation_quote_changed', 'run_not_open', 'generation_scope_invalid'].includes(error.message)
+    ? error.message : 'generation_execution_failed';
+  return { ok: false, code: "failed", message: safe };
 }
 
 /**

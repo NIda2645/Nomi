@@ -49,6 +49,7 @@ export type {
   MaterializeStoryboardResult,
 } from './productionRunProjections'
 import { logError } from '../logging/logger'
+import { ProductionRunNotFoundError } from './productionRunErrors'
 
 
 type ServiceDeps = {
@@ -138,7 +139,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     const safeProjectId = identifier(projectId, 'project')
     const safeRunId = identifier(runId, 'run')
     const run = repository.read(safeProjectId, safeRunId)
-    if (!run) throw new Error(`Production run not found: ${safeRunId}`)
+    if (!run) throw new ProductionRunNotFoundError()
     if (run.projectId !== safeProjectId) throw new Error('Production run project mismatch')
     return run
   }

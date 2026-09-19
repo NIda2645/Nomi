@@ -89,6 +89,7 @@ function compactJob(snapshot: ExportJobSnapshot): Record<string, unknown> {
   const outputBytes = snapshot.result?.bytes
   return {
     jobId: snapshot.id,
+    taskRef: { domain: 'export', jobId: snapshot.id },
     status: snapshot.status,
     progress: {
       ratio: Math.max(0, Math.min(1, snapshot.progress.ratio)),
@@ -190,6 +191,7 @@ export async function applyExportToolCall(
       operation: toolName,
       accepted: true,
       jobId: started.jobId,
+      taskRef: { domain: 'export', jobId: started.jobId },
       backend: started.backend,
       timelineRevision: currentRevision,
       durationFrames,
@@ -215,7 +217,7 @@ export async function applyExportToolCall(
       return { operation: toolName, jobId, cancelled: false, status: snapshot.status, code: 'export_not_cancellable' }
     }
     await runtime.cancelJob(jobId)
-    return { operation: toolName, jobId, cancelled: true, status: 'cancelled' }
+    return { operation: toolName, jobId, taskRef: { domain: 'export', jobId }, cancelled: true, status: 'cancelled' }
   }
   throw new Error(`unknown export tool ${toolName}`)
 }

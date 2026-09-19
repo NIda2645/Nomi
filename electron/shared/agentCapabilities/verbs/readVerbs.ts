@@ -180,13 +180,13 @@ export function readVerbs(): VerbDeclaration[] {
       does: "Read one generation or export job: its stage, progress, result reference and what it has cost so far.",
       useWhen: "The user asks whether something is done, what is still running, or what it cost; before cancel_job.",
       notWhen: "It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit.",
-      params: "jobId comes from the result of generate or export_video, or from look_at_canvas.",
+      params: "Copy domain and jobId from taskRef returned by generate, export_video or look_at_canvas. A node ID is never a task ID. A draft has not executed; do not treat it as a failed execution.",
     },
     promptGuidelines: READ_GUIDELINES,
     // **双域动词**：模型面投在导出域上（`export.read` 的 `inspect_export_job` 分支减掉 `operation`，
     // 零 rename 的真投影）；生成域那一半的改名在 `verbDualDomain.ts`，理由是两个域各有一份持久化。
     schema: checkJobModelSchema,
-    examples: [{ when: "Check a running job:", arguments: { jobId: "op-1" } }],
+    examples: [{ when: "Check a running job:", arguments: { domain: 'generation', jobId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
   const readSkill: VerbDeclaration = {

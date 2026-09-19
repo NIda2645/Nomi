@@ -65,6 +65,11 @@ export const LANE_TOOL_OWN_FAILURE_CODE_LIST = [
   "wrong_verb",
   "generation_surface_unavailable",
   "user_sees_spend_card",
+  "task_reference_required",
+  "generation_operation_not_found",
+  "production_run_not_found",
+  "generation_execution_failed",
+  "generation_provider_unavailable",
 ] as const;
 
 export type LaneToolOwnFailureCode = (typeof LANE_TOOL_OWN_FAILURE_CODE_LIST)[number];

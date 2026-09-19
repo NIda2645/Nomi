@@ -17,7 +17,8 @@ import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuth
 import { LANE_DEFERRED_TOOL_CATALOG, LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog'
 import { createExtendedLaneTools } from './laneExtendedTools'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
-import { exportJobTransportCall, verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
+import { verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
+import { taskReferenceSchema } from '../shared/agentCapabilities/taskReference'
 
 type Prepared =
   | { kind: 'timeline'; value: PreparedTimelineWrite }
@@ -57,12 +58,12 @@ function generationSurfaceUnavailable(): Extract<RuntimeToolDecision, { ok: fals
 }
 
 function rejectPreparation(code: string): never {
+  if (code === 'task_reference_required') throw new LaneDomainFailure({ code,
+    message: 'The task reference has no verified domain (task_reference_required).',
+    nextAction: 'Read the task result or canvas and copy domain and jobId from taskRef. Do not infer a task ID from a node ID.' })
   throw new LaneDomainFailure({ code, message: `Nomi could not prepare this domain action (${code}).`,
     nextAction: 'Read the current project again and request a new action with its current identifiers and revision.' })
 }
-
-/** 生成域说「不认识这个 operationId」的那一族码；`check_job` / `cancel_job` 据此转问导出域。 */
-const UNKNOWN_GENERATION_JOB = new Set(['generation_operation_not_found', 'capability_execution_failed', 'generation_surface_unavailable'])
 
 /**
  * One lane boundary over existing executors; it owns no second domain store or mutation path.
@@ -74,6 +75,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
   let disposed = false
 
   const translate = (wire: RuntimeToolCall): VerbTransportCall => {
+    if ((wire.toolName === 'check_job' || wire.toolName === 'cancel_job') && !taskReferenceSchema.safeParse(wire.args).success) {
+      rejectPreparation('task_reference_required')
+    }
     const translated = verbToTransportCall(wire)
     if (!translated) rejectPreparation('capability_unsupported')
     return translated
@@ -108,11 +112,6 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         const value = await input.skillWrite.prepare(transport, { target: { kind: 'skill', dirName }, preconditions: {} }, signal)
         if (!value) rejectPreparation('capability_unsupported')
         prepared = { kind: 'skill', value }
-      } else if (lane === 'generation' && call.toolName === 'cancel_job') {
-        // 取消一个任务：先问导出域认不认这个 id；不认就是生成任务，走生成域的取消（直接路径，审批由闸管）。
-        const exportCall = exportJobTransportCall(call)
-        const value: PreparedExportWrite | null = await input.phase4.prepareWrite(exportCall, signal).catch(() => null)
-        prepared = value ? { kind: 'export', value } : { kind: 'direct', value: { call } }
       } else {
         // Draft creation, generation planning and the model-setup panel have their own durable domain owner.
         prepared = { kind: 'direct', value: { call } }
@@ -142,12 +141,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
   async function executeRead(call: RuntimeToolCall, signal: AbortSignal): Promise<RuntimeToolDecision> {
     const { lane, call: transport } = translate(call)
     if (lane === 'skillRead') return await input.skillRead.tryExecute(transport, signal) ?? failure('capability_unsupported')
-    if (lane === 'media') return await input.phase4.tryExecuteRead(transport, signal) ?? failure('capability_unsupported')
+    if (lane === 'media' || lane === 'export') return await input.phase4.tryExecuteRead(transport, signal) ?? failure('capability_unsupported')
     if (lane === 'generation') {
-      // `check_job`：生成域先答；它不认识这个 id 就问导出域（同一个动词，用户不需要知道任务住哪个域）。
-      const generation = await input.generation()?.tryExecute(transport, signal)
-      if (generation?.ok || (generation && !UNKNOWN_GENERATION_JOB.has(generation.code ?? ''))) return generation
-      return await input.phase4.tryExecuteRead(exportJobTransportCall(call), signal) ?? generation ?? generationSurfaceUnavailable()
+      return await input.generation()?.tryExecute(transport, signal) ?? generationSurfaceUnavailable()
     }
     return failure('capability_unsupported')
   }

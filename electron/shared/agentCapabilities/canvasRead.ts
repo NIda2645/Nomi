@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskReferenceSchema } from './taskReference';
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
 import type { CapabilityContract } from "./capabilityContract";
 
@@ -45,6 +46,7 @@ const canvasReadNodeSchema = z
     hasResult: z.boolean(),
     currentResultId: opaqueResultIdSchema.optional(),
     resultIds: z.array(opaqueResultIdSchema).optional(),
+    taskRef: taskReferenceSchema.optional(),
   })
   .strict();
 
@@ -216,6 +218,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
   const currentResultId = resultId(node.result);
   const resultIds = stableResultIds(node);
   const prompt = typeof node.prompt === "string" ? node.prompt : "";
+  const runId = nonEmptyString(asRecord(node.meta)?.productionRunId);
 
   return {
     id,
@@ -229,6 +232,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
     hasResult: asRecord(node.result) !== undefined,
     ...(currentResultId ? { currentResultId } : {}),
     ...(resultIds.length ? { resultIds } : {}),
+    ...(runId ? { taskRef: { domain: 'generation' as const, jobId: runId } } : {}),
   };
 }
 
