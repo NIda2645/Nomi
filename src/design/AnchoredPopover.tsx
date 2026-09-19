@@ -1,6 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NOMI_OVERLAY_Z_INDEX, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
+import { NOMI_OVERLAY_Z_INDEX, hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -118,15 +118,29 @@ export function AnchoredPopover({
     }
   }, [reposition])
 
+  const dismissOnEscape = React.useCallback((event: KeyboardEvent) => {
+    if (!onClose || event.key !== 'Escape') return false
+    const pop = popRef.current
+    if (!pop || hasOpenPopupAbove(pop)) return false
+    // The content may declare this popover's own dialog; it is not a layer above us.
+    if (hasOpenDialogAbove(pop.querySelector<HTMLElement>('[role="dialog"]') ?? pop)) return false
+    if (event.isComposing || event.defaultPrevented) return true
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+    return true
+  }, [onClose])
+
   React.useEffect(() => {
     if (!onClose) return undefined
     // 「关掉我」这件事有两条路（Esc / 点外面），两条都必须给**我自己弹出来的那一层**让位：
     // 下拉和菜单 Portal 到 body，DOM 上不在我里面，不让位就会出现「浮层里的选择器改不了值」
     // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
-      if (popRef.current && hasOpenPopupAbove(popRef.current)) return
-      onClose()
+      // Internal controls receive Escape first, then the portal's React bubble handler.
+      // External focus (e.g. the trigger) still needs capture before React Flow unselects it.
+      if (event.target instanceof Node && popRef.current?.contains(event.target)) return
+      dismissOnEscape(event)
     }
     const onDown = (event: MouseEvent) => {
       const target = event.target as globalThis.Node
@@ -135,13 +149,13 @@ export function AnchoredPopover({
       if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     document.addEventListener('mousedown', onDown)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('mousedown', onDown)
     }
-  }, [anchorRef, onClose])
+  }, [anchorRef, dismissOnEscape, onClose])
 
   const layer = (
     <div
@@ -154,6 +168,12 @@ export function AnchoredPopover({
         visibility: placement ? 'visible' : 'hidden',
       }}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (!onClose || event.key !== 'Escape' || !event.currentTarget.contains(event.target as Node)) return
+        // A child may prevent dismissal without stopping propagation. Keep even that
+        // Escape inside this portal; it must not cancel the ancestor node's selection.
+        if (dismissOnEscape(event.nativeEvent)) event.stopPropagation()
+      }}
     >
       {children}
     </div>

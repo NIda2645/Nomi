@@ -1,12 +1,15 @@
 import React from 'react'
 import { NodeGenerationStatus } from '../nodes/NodeGenerationStatus'
 import { NodeLabelRow } from '../nodes/NodeLabelRow'
+import { useShotIdentity } from '../hooks/useNodeRelationships'
 import { ShotPreviewOverlays } from '../nodes/ConvertShotToVideoButton'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getCanvasNodeVisualSize } from './generationCanvasGeometry'
 import { resolveLightweightNodePreview } from './canvasNodeLevelOfDetail'
+import { useNodeMediaMeasurement } from '../nodes/useNodeMediaMeasurement'
+import { readNodeCardInfoHeight } from '../nodes/nodeSizing'
 import { DeferredNodeImage, DeferredNodeVideo } from '../nodes/DeferredNodeMedia'
 
 /**
@@ -25,8 +28,10 @@ export function LightweightGenerationNode({
   readOnly?: boolean
 }): JSX.Element {
   const { t } = useTranslation()
+  const shotIdentity = useShotIdentity(node.id)
   const size = getCanvasNodeVisualSize(node)
   const preview = resolveLightweightNodePreview(node)
+  const mediaMeasurement = useNodeMediaMeasurement(node)
   return (
     <article
       className={cn(
@@ -54,7 +59,7 @@ export function LightweightGenerationNode({
       }}
     >
       <NodeLabelRow>
-        <ShotPreviewOverlays shotIndex={node.shotIndex ?? null} />
+        <ShotPreviewOverlays {...shotIdentity} />
         <span className="min-w-0 flex-1 truncate font-normal text-nomi-ink-60">{node.title || t('generationCommon.lightweightNode.untitled')}</span>
       </NodeLabelRow>
       <div data-node-inline-status className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+40px)] z-[4] flex h-7 items-center [&_[data-generation-message]]:truncate [&_[data-generation-status]]:bg-nomi-paper/90">
@@ -62,28 +67,30 @@ export function LightweightGenerationNode({
       </div>
       <div
         className={cn(
-          'w-full h-full overflow-hidden rounded-nomi border',
-          selected ? 'border-nomi-accent ring-2 ring-nomi-accent' : 'border-nomi-line',
+          'w-full h-full overflow-hidden rounded-nomi ring-1 ring-inset',
+          selected ? 'ring-2 ring-nomi-accent' : 'ring-nomi-line',
           'bg-nomi-paper/90 shadow-nomi-sm',
           'grid',
         )}
       >
-        <div className="relative min-w-0 min-h-0 overflow-hidden bg-nomi-ink-05">
+        <div className="relative min-w-0 min-h-0 overflow-hidden bg-nomi-ink-05" style={{ height: size.height - readNodeCardInfoHeight(node) }}>
           {preview?.kind === 'image' ? (
             <DeferredNodeImage
               src={preview.src}
               alt=""
-              className="absolute inset-0 size-full object-cover pointer-events-none"
+              onLoad={mediaMeasurement.onImageLoad}
+              className="absolute inset-0 size-full object-contain pointer-events-none"
             />
           ) : preview?.kind === 'video' ? (
             <DeferredNodeVideo
               src={preview.src}
-              className="absolute inset-0 size-full object-cover pointer-events-none"
+              className="absolute inset-0 size-full object-contain pointer-events-none"
               crossOrigin="use-credentials"
               muted
               playsInline
               preload="metadata"
               controls={false}
+              onLoadedMetadata={mediaMeasurement.onVideoMetadata}
             />
           ) : null}
 

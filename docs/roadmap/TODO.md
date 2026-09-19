@@ -57,7 +57,7 @@
 | T-CV-03 | 节点下面东西太多：只留 icon + hover 名称，运镜/更多挪右上，下面只放模型生成相关 | todo | [原文 09-10 #12](sources/2026-09-14-filehelper-transcript.md#09-10) | 与 #784 同一面；#784 样张已被退回「只收宽不改摆法」 |
 | T-CV-04 | 视频节点却显示「几个图片」→ 要通用 ×1 ×2 数量控件 | todo | [原文 09-10 #11](sources/2026-09-14-filehelper-transcript.md#09-10) | 小 |
 | T-CV-05 | 点节点后下方输入框来回漂移、被截断；参数挤在一起 | done | [原文 09-10 #10](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修：输入框位置改成 stage/anchor/自然尺寸的纯函数（`anchoredPlacement.ts`，走查 `node-composer-placement.walk.mjs`）；参数面板摊开选项、浮层宽由内容派生（829e884cd + #784） |
-| T-CV-06 | 画布里图片比例不对、上下有透明边 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 要核 |
+| T-CV-06 | 画布里图片比例不对、上下有透明边 | todo | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已复现并修复，待 PR 合入；含视频、卡片与 LOD，[验收](../plan/2026-09-20-canvas-image-aspect.md) |
 | T-CV-07 | 徽标/角标看不清：分镜头左上右上徽标、技能卡黑胶囊 | todo | [截图](sources/screenshots/2026-09-12-0047-skill-card-badge.jpg) | 09-09 拍过「镜头 N 标签行在图上方」，黑胶囊是另一处 |
 | T-CV-08 | 常用文本节点被收进加号；左侧工具栏 hover 加号挡住后面节点 | todo | [原文 09-10 #5 #16](sources/2026-09-14-filehelper-transcript.md#09-10) | 过设计系统 §1.5 控件层级 |
 | T-CV-09 | 声音节点连不上视频节点（有些视频能参考音频，如 Seedance 2.0） | done | [原文 09-10 19:43](sources/2026-09-14-filehelper-transcript.md#09-10) | 已修（f03b949e0 + d1b1a8e82，早于 #802）：参考边分类器认音频、音频参考槽三选一门岗；「写死的共享规则」那句已陈旧——视频档案已按模型声明 `audio_ref`，剩余只是给更多模型补槽 |
@@ -66,6 +66,7 @@
 | T-CV-12 | 「默认加入运镜很难受」：先查是不是自动加的，能删就删 | done | [原文 09-12 15:38](sources/2026-09-14-filehelper-transcript.md#09-12) | 不是自动加的：运镜控件已整个删除（c1b1c9e02 删 `NodeCameraMoveControl.tsx` -284 行），画布节点默认值里零命中 |
 | T-CV-13 | Group / Frame 命名双轨：UI 叫 Frame，数据类型仍叫 `NodeGroup` | todo | [设计实扫](designs-not-yet-built.md) | 卫生项 |
 | T-CV-14 | 画布「按屏幕尺寸判 LOD（S5）」重做：#787 的这半在列车里被撤出（`3a72f0ce7` 由 `fae43a80e` + `29e232a31` 撤回），main 仍是「节点数 > 80 且 zoom < 0.55」的老判据 | todo | #787 · #802 正文「进过批次又撤出去的」 | 2026-09-17 查清根因是**两条**：① 契约漏了一格——`data-status` 只长在全套 chrome 上，卡片掉档就没了（已在 `integration/release-20260917` 修：轻量档补齐身份三件套 + 测试钉住，走查的「等不到 success」自此不再是假红）；② 产品行为——那一刀规定「有结果媒体才准进轻量档」，于是卡片**生成完成那一刻外观掉档**，掉档时机是设计决策（R8 要样张拍板），这半仍未做 |
+| T-CV-15 | 独立镜头号重复，首帧/视频与 Agent 指代一致性 | todo | 2026-09-20 用户会话，共号并区分角色已拍板 | [方案](../plan/2026-09-20-shot-number-identity.md)：已实现未推送，模板/粘贴/恢复和 UI/Agent 复用共享 owner |
 
 ## D. 设计落地（界面大改）
 

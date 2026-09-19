@@ -396,6 +396,8 @@ export const zhGenerationCommon = {
   },
   shotConversion: {
     shot: '镜头 {{index}}',
+    firstFrame: '首帧图',
+    video: '视频',
   },
   clipNode: {
     addMaterial: '添加素材',
@@ -1835,6 +1837,8 @@ export const enGenerationCommon = {
   },
   shotConversion: {
     shot: 'Shot {{index}}',
+    firstFrame: 'First frame',
+    video: 'Video',
   },
   clipNode: {
     addMaterial: 'Add material',

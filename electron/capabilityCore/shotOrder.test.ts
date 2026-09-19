@@ -5,7 +5,7 @@ import { previousShotPromptFor } from './shotOrder'
 // 反向铁律同样重要：判不出上一镜时宁可不评，也不要拿错的镜去比（会凭空判出断裂 + 触发白烧的重滚）。
 
 const shot = (id: string, shotIndex: number | undefined, prompt: string, categoryId = 'shots') => ({
-  id, shotIndex, prompt, categoryId,
+  id, shotIndex, prompt, categoryId, kind: 'video',
 })
 
 describe('previousShotPromptFor', () => {
@@ -30,7 +30,7 @@ describe('previousShotPromptFor', () => {
 
   it('★不占镜号的节点（参考卡/首帧图）→ 无上一镜，且自己也不会被当成别人的上一镜', () => {
     const withCard = [
-      { id: 'card', prompt: '小周定妆：短发圆脸', categoryId: 'cast' },
+      { id: 'card', kind: 'image', prompt: '小周定妆：短发圆脸', categoryId: 'cast' },
       ...CANVAS,
     ]
     expect(previousShotPromptFor(withCard, 'card')).toBeUndefined()
@@ -51,4 +51,15 @@ describe('previousShotPromptFor', () => {
     expect(previousShotPromptFor(CANVAS, 'nope')).toBeUndefined()
     expect(previousShotPromptFor([], 's1')).toBeUndefined()
   })
+})
+
+
+it('paired first frame uses its video owner number and previous owner prompt, even across a gap', () => {
+  const nodes = [shot('v1', 1, 'previous video'), shot('v3', 3, 'current video'),
+    { id: 'f1', kind: 'image', meta: { storyboardKeyframe: true }, prompt: 'previous frame' },
+    { id: 'f3', kind: 'image', meta: { storyboardKeyframe: true }, prompt: 'current frame' }]
+  const edges = [{ source: 'f1', target: 'v1', mode: 'first_frame' }, { source: 'f3', target: 'v3', mode: 'first_frame' }]
+  expect(previousShotPromptFor(nodes, 'f3', edges)).toBe('previous video')
+  expect(previousShotPromptFor(nodes, 'v3', edges)).toBe('previous video')
+  expect(previousShotPromptFor(nodes, 'f3', [])).toBeUndefined()
 })
