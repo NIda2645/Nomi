@@ -26,6 +26,8 @@ export function resolveAnchoredPlacement(input: {
   /** 内容的自然宽高；两者都会被视口收窄。 */
   width: number
   height: number
+  /** Controls must retain a usable scrollport even when the anchor fills both sides. */
+  minHeight?: number
   /** 锚点与浮层之间的间距。 */
   gap: number
   /** 翻到上方时要给锚点自己的浮动工具条让出来的高度。 */
@@ -45,7 +47,10 @@ export function resolveAnchoredPlacement(input: {
   const aboveSpace = clamp((anchor.top - gap - aboveClearance) - stage.top, 0, stageHeight)
   // 先要下方（阅读顺序），下方装不下才翻上去；两边都装不下就取大的那侧并压高度。
   const side: AnchoredPlacement['side'] = belowSpace >= Math.min(height, stageHeight) || belowSpace >= aboveSpace ? 'below' : 'above'
-  const resolvedHeight = Math.min(height, side === 'below' ? belowSpace : aboveSpace)
+  // A large/zoomed anchor can cover both sides. Keep the editor reachable inside
+  // the stage in that case; its existing scrollport owns overflow.
+  const sideSpace = side === 'below' ? belowSpace : aboveSpace
+  const resolvedHeight = Math.min(height, sideSpace > 0 && sideSpace >= (input.minHeight ?? 0) ? sideSpace : stageHeight)
   const desiredTop = side === 'below'
     ? anchor.bottom + gap
     : anchor.top - gap - aboveClearance - resolvedHeight

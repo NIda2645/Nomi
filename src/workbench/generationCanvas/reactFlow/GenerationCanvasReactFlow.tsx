@@ -50,7 +50,7 @@ import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
 import { hasPendingDirectorCameraMoveCapture, hasPendingDirectorStagingCapture } from '../components/directorCaptureHostActivation'
 import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import CanvasToolbar from '../components/CanvasToolbar'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
@@ -96,6 +96,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hostRef = React.useRef<HTMLDivElement>(null)
   const duplicateDragIdsRef = React.useRef(new Map<string, string>())
   const draggingRef = React.useRef(false)
+  const dragLeaseRef = React.useRef<CanvasDragLease | null>(null)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
@@ -509,13 +510,34 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     setSelectedEdgeId(null)
   }, [disconnectEdge, readOnly, selectedEdgeId])
 
+  const cancelNodeDrag = React.useCallback(() => {
+    dragLeaseRef.current?.release()
+    dragLeaseRef.current = null
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    setNodeDragActive(false)
+    dragStartPositionsRef.current.clear()
+    dragDraftNodesRef.current = []
+    duplicateDragIdsRef.current.clear()
+    frameMembership.cancelPreview()
+    restoreCanvasDragKernelOwnership(flowStore)
+    flowStore.getState().setNodes(flowNodes)
+  }, [flowNodes, flowStore, frameMembership])
+  const cancelNodeDragRef = React.useRef(cancelNodeDrag)
+  cancelNodeDragRef.current = cancelNodeDrag
+  React.useEffect(() => () => cancelNodeDragRef.current(), [activeCategoryId, readOnly])
+  React.useEffect(() => {
+    if (draggingRef.current && [...dragStartPositionsRef.current.keys()].some(id => !allNodes.some(node => node.id === id))) cancelNodeDragRef.current()
+  }, [allNodes])
+
   const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
     setNodeDragActive(true) // #5：冻结 minimap（纯渲染门，不碰写入路径）
     dragDraftNodesRef.current = flowNodes
     flowStore.setState({ hasDefaultNodes: false })
-    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
+    dragLeaseRef.current?.release()
+    dragLeaseRef.current = beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowNode, { onCancel: () => cancelNodeDragRef.current(), ...('pointerId' in event && typeof event.pointerId === 'number' ? { pointerId: event.pointerId } : {}) })
     const originalIds = selectedSet.has(draggedNode.id) ? selectedNodeIds : [draggedNode.id]
     duplicateDragIdsRef.current = 'altKey' in event && event.altKey
       ? useGenerationCanvasStore.getState().duplicateNodesForDrag(originalIds) : new Map()
@@ -542,16 +564,18 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   // 拖动中算「松手会发生什么」——进框/出框的反馈就在这里产生（只写本地预览，不碰 store）。
   const handleNodeDrag: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode, draggedNodes) => {
-    if (readOnly) return
+    if (readOnly || !draggingRef.current) return
     frameMembership.handleNodeDrag((draggedNodes.length ? draggedNodes : [draggedNode])
       .map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })))
   }, [frameMembership, readOnly])
 
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) {
-      frameMembership.cancelPreview()
+      cancelNodeDrag()
       return
     }
+    dragLeaseRef.current?.release()
+    dragLeaseRef.current = null
     setNodeDragActive(false) // #5：解冻 minimap（在所有退出路径之前，含时间轴投放早退；draggingRef 由 writeback 清）
     commitCanvasNodeDragStop({
       event,
@@ -559,7 +583,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       draggedNodes: draggedNodes.map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })),
       readOnly,
       t,
-      hostRef,
       draggingRef,
       dragStartPositionsRef,
       dragDraftNodesRef,
@@ -571,7 +594,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     duplicateDragIdsRef.current.clear()
     // 还原拖动内核关掉的 hasDefaultNodes，恢复 RF 对选择/投影变更的自应用（机制见 helper JSDoc）。
     restoreCanvasDragKernelOwnership(flowStore)
-  }, [commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
+  }, [cancelNodeDrag, commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return

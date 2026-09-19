@@ -30,7 +30,7 @@ import { canvasViewportFromFlow, isFiniteFlowViewport } from './generationCanvas
 import { edgeTypes, nodeTypes } from './GenerationCanvasReactFlowNodes'
 import { expandSelectionBoundsToOwningFrame, resolveSelectionToolbarPlacement } from './selectionToolbarPlacement'
 import { useCanvasBottomDockRects } from './useCanvasBottomDockRects'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 import { syncCanvasNodeProjection } from './canvasNodeProjectionSync'
 
 type GenerationCanvasReactFlowViewportProps = {
@@ -152,6 +152,14 @@ export function GenerationCanvasReactFlowViewport({
   onClearSelection,
   isNodeDragging,
 }: GenerationCanvasReactFlowViewportProps): JSX.Element {
+  const viewportCancelledRef = React.useRef(false)
+  const viewportLeaseRef = React.useRef<CanvasDragLease | null>(null)
+  React.useEffect(() => () => {
+    if (viewportLeaseRef.current) viewportCancelledRef.current = true
+    viewportLeaseRef.current?.release()
+    viewportLeaseRef.current = null
+    canvasPanMovedRef.current = false
+  }, [activeCategoryId, canvasPanMovedRef, readOnly])
   // 「画布手势」设置（#832）订阅式读：设置页改完，这块画布当场换语义，不用重开。
   // 翻译成内核开关的那一步住在 canvasViewportGestureProps（真值表仍归 resolveWheelIntent）。
   const wheelGestures = canvasWheelGestureProps(useCanvasGestureScheme())
@@ -223,17 +231,22 @@ export function GenerationCanvasReactFlowViewport({
       onConnectStart={onConnectStart}
       onConnectEnd={onConnectEnd}
       onMoveStart={() => {
+        viewportCancelledRef.current = false
         if (!canvasPointerStartRef.current) canvasPanMovedRef.current = false
       }}
       onMove={() => {
         if (!canvasPanMovedRef.current) return
-        setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)
+        viewportLeaseRef.current ??= beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowViewport, { onCancel: () => {
+          viewportLeaseRef.current = null
+          viewportCancelledRef.current = true
+          canvasPanMovedRef.current = false
+        } })
       }}
       onMoveEnd={(_event, nextViewport) => {
-        if (canvasPanMovedRef.current) {
-          setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)
-        }
+        viewportLeaseRef.current?.release()
+        viewportLeaseRef.current = null
         canvasPanMovedRef.current = false
+        if (viewportCancelledRef.current) return
         if (!isFiniteFlowViewport(nextViewport)) {
           // React Flow 自己的 d3 过渡撞上 0×0 的 extent 缓存会吐出 NaN 视口（见 GenerationCanvasReactFlow
           // 的 animateViewportTo 头注释）。NaN 一旦被记进分类视口，同步 effect 会把它写回去，画布永久空白。

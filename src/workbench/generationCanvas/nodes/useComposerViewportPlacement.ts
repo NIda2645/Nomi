@@ -48,7 +48,7 @@ export function useComposerViewportPlacement(input: {
   React.useLayoutEffect(() => {
     const anchor = anchorRef.current
     const stage = anchor?.closest('.generation-canvas-v2__stage')
-    const nodeEl = anchor?.parentElement
+    const nodeEl = anchor?.closest<HTMLElement>('.generation-canvas-v2-node')
     if (!anchor || !stage || !nodeEl) return
 
     const recompute = () => {
@@ -91,6 +91,7 @@ export function useComposerViewportPlacement(input: {
         anchor: nodeRect,
         width: Math.min(COMPOSER_MAX_WIDTH, naturalSize.width),
         height: Math.min(preferredMaxHeight, naturalSize.height),
+        minHeight: Math.max(minUsableHeight, fixedHeight),
         gap: gap * canvasZoom,
         aboveClearance: toolbarClearanceInCanvasUnits(toolbar?.getBoundingClientRect().height ?? 0, canvasZoom, TOOLBAR_CLEARANCE_GAP) * canvasZoom,
       })
@@ -102,6 +103,8 @@ export function useComposerViewportPlacement(input: {
     // 卡片内容变高变宽 → 自然尺寸变了，要重算。这条只有 ResizeObserver 办得到。
     const resizeObserver = new ResizeObserver(recompute)
     resizeObserver.observe(anchor)
+    resizeObserver.observe(stage)
+    resizeObserver.observe(nodeEl)
 
     // 另外两个入参（节点矩形、舞台矩形）**不能**只靠 ResizeObserver：
     //  · RO 报的是 border-box 的布局尺寸，看不见 transform——节点入场是一段 scale 动画，

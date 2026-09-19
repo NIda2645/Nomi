@@ -3,7 +3,7 @@ import React from 'react'
 import type { Viewport } from '@xyflow/react'
 import { canvasViewportFromFlow } from './generationCanvasReactFlowAdapter'
 import { createPanZoomTakeoverReconciler } from './panZoomTakeoverReconciler'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 
 type CanvasStoredViewport = { zoom: number; offset: { x: number; y: number } }
 type FlowViewportApi = {
@@ -28,6 +28,10 @@ export function useGenerationCanvasReactFlowPointer({
   rememberCategoryViewport,
   setLiveViewport,
 }: UseGenerationCanvasReactFlowPointerArgs) {
+  const panLeaseRef = React.useRef<CanvasDragLease | null>(null)
+  const captureRef = React.useRef<{ target: HTMLDivElement; pointerId: number } | null>(null)
+  const panOriginRef = React.useRef<HTMLDivElement | null>(null)
+  const cancelPanRef = React.useRef<() => void>(() => {})
   const canvasPanMovedRef = React.useRef(false)
   const canvasPointerStartRef = React.useRef<{ x: number; y: number } | null>(null)
   const spaceHeldRef = React.useRef(false)
@@ -72,6 +76,9 @@ export function useGenerationCanvasReactFlowPointer({
       event.target instanceof Element &&
       Boolean(event.target.closest('.react-flow__pane'))
     if (isBlankPrimaryPan) {
+      cancelPanRef.current()
+      panOriginRef.current = event.currentTarget
+      panLeaseRef.current = beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.reactFlowPan, { pointerId: event.pointerId, active: false, onCancel: () => cancelPanRef.current() })
       // React Flow owns the ordinary left-drag until a wheel zoom interrupts it.
       // Its drag baseline is invalid after that zoom, so the host takes over the
       // remainder of this pointer gesture using the current viewport incrementally.
@@ -87,6 +94,10 @@ export function useGenerationCanvasReactFlowPointer({
     if (!isAuxiliaryPan || !event.isPrimary) return
     event.preventDefault()
     event.stopPropagation()
+    cancelPanRef.current()
+    panOriginRef.current = event.currentTarget
+    panLeaseRef.current = beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.reactFlowPan, { pointerId: event.pointerId, active: false, onCancel: () => cancelPanRef.current() })
+    captureRef.current = { target: event.currentTarget, pointerId: event.pointerId }
     auxiliaryPanRef.current = {
       pointerId: event.pointerId,
       lastX: event.clientX,
@@ -118,11 +129,11 @@ export function useGenerationCanvasReactFlowPointer({
     event.stopPropagation()
     if (deltaX === 0 && deltaY === 0) return
     canvasPanMovedRef.current = true
-    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
+    panLeaseRef.current?.activate()
     // React Flow's native drag listener may still apply this move after capture.
     // Reconcile once on the next frame so the delta has one final owner.
     nativePanReconciler.queueDelta({ x: deltaX, y: deltaY })
-  }, [hostRef, nativePanReconciler])
+  }, [nativePanReconciler])
 
   const handleCanvasWheelCapture = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const nativeLeftPan = nativeLeftPanRef.current
@@ -143,7 +154,7 @@ export function useGenerationCanvasReactFlowPointer({
       auxiliaryPan.lastY = event.clientY
       if (!auxiliaryPan.moved && distance >= 2) {
         auxiliaryPan.moved = true
-        setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)
+        panLeaseRef.current?.activate()
       }
       if (deltaX === 0 && deltaY === 0) return
       const current = flow.getViewport()
@@ -156,33 +167,37 @@ export function useGenerationCanvasReactFlowPointer({
     if (!start || canvasPanMovedRef.current) return
     if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < 2) return
     canvasPanMovedRef.current = true
-  }, [flow, hostRef, setLiveViewport])
+  }, [flow, setLiveViewport])
 
-  const handleCanvasPointerEnd = React.useCallback(() => {
-    const nativeLeftPan = nativeLeftPanRef.current
+  const finishPan = React.useCallback((commit: boolean) => {
+    const native = nativeLeftPanRef.current
+    const auxiliary = auxiliaryPanRef.current
     nativeLeftPanRef.current = null
-    if (nativeLeftPan?.takeoverAfterWheel) {
-      setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowPan)
+    auxiliaryPanRef.current = null
+    canvasPointerStartRef.current = null
+    panLeaseRef.current?.release()
+    panLeaseRef.current = null
+    panOriginRef.current?.removeAttribute('data-panning')
+    panOriginRef.current = null
+    const capture = captureRef.current
+    captureRef.current = null
+    if (commit && !readOnly && (native?.takeoverAfterWheel || auxiliary)) {
       const current = nativePanReconciler.flush() ?? flow.getViewport()
       setLiveViewport(current)
       rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
+    } else {
+      nativePanReconciler.cancel()
+      if (!commit) canvasPanMovedRef.current = false
     }
-    const auxiliaryPan = auxiliaryPanRef.current
-    if (auxiliaryPan) {
-      auxiliaryPanRef.current = null
-      hostRef.current?.removeAttribute('data-panning')
-      setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowPan)
-      const current = flow.getViewport()
-      setLiveViewport(current)
-      rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
-      try {
-        hostRef.current?.releasePointerCapture(auxiliaryPan.pointerId)
-      } catch {
-        // Pointer capture can be unavailable in test DOMs.
-      }
-    }
-    canvasPointerStartRef.current = null
-  }, [activeCategoryId, flow, hostRef, nativePanReconciler, rememberCategoryViewport, setLiveViewport])
+    try { capture?.target.releasePointerCapture(capture.pointerId) } catch { /* capture may already be lost */ }
+  }, [activeCategoryId, flow, nativePanReconciler, readOnly, rememberCategoryViewport, setLiveViewport])
+  cancelPanRef.current = () => finishPan(false)
+  const handleCanvasPointerEnd = React.useCallback((event?: { type: string; pointerId?: number }) => {
+    const pointerId = auxiliaryPanRef.current?.pointerId ?? nativeLeftPanRef.current?.pointerId
+    if (event?.pointerId !== undefined && pointerId !== undefined && event.pointerId !== pointerId) return
+    finishPan(!event || event.type === 'pointerup')
+  }, [finishPan])
+  React.useEffect(() => () => cancelPanRef.current(), [activeCategoryId, readOnly])
 
   const shouldSuppressContextMenu = React.useCallback(() => {
     const auxiliaryPan = auxiliaryPanRef.current
@@ -205,7 +220,7 @@ export function useGenerationCanvasReactFlowPointer({
     const handleBlur = () => {
       spaceHeldRef.current = false
       hostRef.current?.removeAttribute('data-space-pan')
-      if (auxiliaryPanRef.current) handleCanvasPointerEnd()
+      cancelPanRef.current()
     }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
@@ -214,6 +229,7 @@ export function useGenerationCanvasReactFlowPointer({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
+      handleBlur()
     }
   }, [handleCanvasPointerEnd, hostRef, readOnly])
 

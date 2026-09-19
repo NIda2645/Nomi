@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import type { MutableRefObject, RefObject } from 'react'
+import type { MutableRefObject } from 'react'
 import type { OnNodeDrag } from '@xyflow/react'
 import { toast } from '../../../ui/toast'
 import { useWorkbenchStore } from '../../workbenchStore'
@@ -11,7 +11,6 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { findTimelineDropTarget } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import type { GenerationFlowNode } from './generationCanvasReactFlowAdapter'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
 
 type DragPosition = { x: number; y: number }
 
@@ -21,7 +20,6 @@ type CanvasDragWritebackContext = {
   draggedNodes: Parameters<OnNodeDrag<GenerationFlowNode>>[2]
   readOnly: boolean
   t: TFunction
-  hostRef: RefObject<HTMLDivElement>
   draggingRef: MutableRefObject<boolean>
   dragStartPositionsRef: MutableRefObject<Map<string, DragPosition>>
   dragDraftNodesRef: MutableRefObject<GenerationFlowNode[]>
@@ -35,16 +33,19 @@ export function commitCanvasNodeDragStop({
   draggedNodes,
   readOnly,
   t,
-  hostRef,
   draggingRef,
   dragStartPositionsRef,
   dragDraftNodesRef,
   moveNode,
   commitPersistedChange,
 }: CanvasDragWritebackContext): void {
-  if (readOnly || !draggingRef.current) return
+  const wasDragging = draggingRef.current
   draggingRef.current = false
-  setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowNode)
+  if (readOnly || !wasDragging) {
+    dragStartPositionsRef.current.clear()
+    dragDraftNodesRef.current = []
+    return
+  }
   const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
   const timelineDropTarget = pointer ? findTimelineDropTarget(pointer.clientX, pointer.clientY) : null
   if (timelineDropTarget) {

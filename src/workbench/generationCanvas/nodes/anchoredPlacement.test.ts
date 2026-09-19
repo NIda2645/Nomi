@@ -103,3 +103,18 @@ describe('resolveAnchoredPlacement', () => {
     expect(Object.keys(base)).toEqual(['stage', 'anchor', 'width', 'height', 'gap', 'aboveClearance'])
   })
 })
+
+ it('keeps controls reachable when a zoomed node covers the entire nonzero stage', () => {
+   const result = resolveAnchoredPlacement({ ...base, anchor: { left: -100, right: 1500, top: -100, bottom: 1000 } })
+   expect(result.height).toBe(200)
+   expect(contains(result, stage)).toBe(true)
+ })
+ it('recovers after a hidden zero-sized stage is expanded', () => {
+   expect(resolveAnchoredPlacement({ ...base, stage: { left: 0, top: 0, right: 0, bottom: 0 } }).height).toBe(0)
+   expect(resolveAnchoredPlacement(base).height).toBe(200)
+ })
+ it('keeps a minimum usable control area when both sides are only slivers', () => {
+   const result = resolveAnchoredPlacement({ ...base, minHeight: 160, anchor: { left: 100, right: 400, top: 15, bottom: 785 } })
+   expect(result.height).toBe(200)
+   expect(contains(result, stage)).toBe(true)
+ })

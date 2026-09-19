@@ -1,10 +1,13 @@
 import React from 'react'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from './canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from './canvasDraggingFlag'
 import type { GenerationCanvasState } from '../store/canvasStoreTypes'
 
 type DragRecord = {
+  origin: HTMLDivElement
+  pointerId: number
+  lease?: CanvasDragLease
   clientX: number
   clientY: number
   moved: boolean
@@ -129,11 +132,15 @@ export function useCanvasSelectionDrag({
     flushPendingDragMove()
   }, [flushPendingDragMove])
 
-  React.useEffect(() => () => {
-    if (dragMoveFrameRef.current !== null) {
-      window.cancelAnimationFrame(dragMoveFrameRef.current)
-      dragMoveFrameRef.current = null
-    }
+  const cancelDrag = React.useCallback(() => {
+    draggingGroupRef.current?.lease?.release()
+    draggingSelectionRef.current?.lease?.release()
+    draggingGroupRef.current = null
+    draggingSelectionRef.current = null
+    if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current)
+    dragMoveFrameRef.current = null
+    pendingGroupDeltaRef.current = null
+    pendingSelectionDeltaRef.current = null
   }, [])
 
   React.useEffect(() => {
@@ -142,6 +149,7 @@ export function useCanvasSelectionDrag({
       const drag = draggingGroupRef.current
       const scale = zoomRef.current || 1
       if (drag) {
+        if (event.pointerId !== drag.pointerId) return
         const delta = { x: (event.clientX - drag.clientX) / scale, y: (event.clientY - drag.clientY) / scale }
         if (delta.x === 0 && delta.y === 0) return
         if (!drag.historyCaptured) {
@@ -149,12 +157,12 @@ export function useCanvasSelectionDrag({
           drag.historyCaptured = true
         }
         Object.assign(drag, { clientX: event.clientX, clientY: event.clientY, moved: true })
-        setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.group) // 拖组框 = 组里的节点在动：浮层与拖单个节点一样收起
+        drag.lease?.activate() // 拖组框 = 组里的节点在动：浮层与拖单个节点一样收起
         scheduleGroupMove(drag.groupId, delta)
         return
       }
       const selectionDrag = draggingSelectionRef.current
-      if (!selectionDrag) return
+      if (!selectionDrag || event.pointerId !== selectionDrag.pointerId) return
       const delta = {
         x: (event.clientX - selectionDrag.clientX) / scale,
         y: (event.clientY - selectionDrag.clientY) / scale,
@@ -165,14 +173,16 @@ export function useCanvasSelectionDrag({
         selectionDrag.historyCaptured = true
       }
       Object.assign(selectionDrag, { clientX: event.clientX, clientY: event.clientY, moved: true })
-      setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.selection)
+      selectionDrag.lease?.activate()
       scheduleSelectionMove(delta)
     }
-    const handleUp = () => {
+    const handleUp = (event: PointerEvent) => {
+      const active = draggingGroupRef.current ?? draggingSelectionRef.current
+      if (!active || event.pointerId !== active.pointerId) return
       const drag = draggingGroupRef.current
       const selectionDrag = draggingSelectionRef.current
-      if (drag) setCanvasDragging(null, false, CANVAS_DRAGGING_OWNER.group)
-      if (selectionDrag) setCanvasDragging(null, false, CANVAS_DRAGGING_OWNER.selection)
+      drag?.lease?.release()
+      selectionDrag?.lease?.release()
       if (drag?.moved || selectionDrag?.moved) flushScheduledDragMove()
       if (drag) {
         draggingGroupRef.current = null
@@ -191,13 +201,15 @@ export function useCanvasSelectionDrag({
     }
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
-    window.addEventListener('blur', handleUp)
+    window.addEventListener('blur', cancelDrag)
     return () => {
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
-      window.removeEventListener('blur', handleUp)
+      window.removeEventListener('blur', cancelDrag)
+      cancelDrag()
     }
   }, [
+    cancelDrag,
     captureHistory,
     commitPersistedChange,
     emitGroupDragSettled,
@@ -228,16 +240,18 @@ export function useCanvasSelectionDrag({
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
     pendingGroupDeltaRef.current = null
-    draggingGroupRef.current = { groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
-  }, [readOnly, selectNodes])
+    cancelDrag()
+    draggingGroupRef.current = { lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.group, { pointerId: event.pointerId, active: false, onCancel: cancelDrag }), origin: event.currentTarget, pointerId: event.pointerId, groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
+  }, [cancelDrag, readOnly, selectNodes])
 
   const handleSelectionBoundsPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || event.button !== 0 || selectedNodeCount < 2) return
     event.preventDefault()
     event.stopPropagation()
     pendingSelectionDeltaRef.current = null
-    draggingSelectionRef.current = { clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
-  }, [readOnly, selectedNodeCount])
+    cancelDrag()
+    draggingSelectionRef.current = { lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.selection, { pointerId: event.pointerId, active: false, onCancel: cancelDrag }), origin: event.currentTarget, pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
+  }, [cancelDrag, readOnly, selectedNodeCount])
 
   return { handleGroupFramePointerDown, handleSelectionBoundsPointerDown }
 }

@@ -29,33 +29,68 @@ export const CANVAS_DRAGGING_OWNER = {
 
 export type CanvasDraggingOwner = (typeof CANVAS_DRAGGING_OWNER)[keyof typeof CANVAS_DRAGGING_OWNER]
 
-const draggingOwnersByStage = new WeakMap<Element, Set<CanvasDraggingOwner>>()
+export type CanvasDragLease = { activate: () => void; release: () => void; cancel: () => void }
+const draggingOwnersByStage = new WeakMap<Element, Set<symbol>>()
 
-/**
- * @param origin 拖动发起处的元素（节点/组框/stage）。用它 closest 到自己那张画布——
- *               多画布并存时不会误伤别的 stage；取不到就退回文档里的第一张。
- */
-export function setCanvasDragging(
+/** One lease captures one stage and one gesture. Late cleanup never looks up a new stage. */
+export function beginCanvasDragging(
   origin: Element | null | undefined,
-  dragging: boolean,
   owner: CanvasDraggingOwner,
-): void {
-  if (typeof document === 'undefined') return
-  const stage = origin?.closest(STAGE_SELECTOR) ?? document.querySelector(STAGE_SELECTOR)
-  if (!stage) return
-  let owners = draggingOwnersByStage.get(stage)
-  if (dragging) {
-    if (!owners) {
-      owners = new Set()
-      draggingOwnersByStage.set(stage, owners)
-    }
-    owners.add(owner)
-    if (!stage.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)) {
-      stage.setAttribute(CANVAS_DRAGGING_ATTRIBUTE, 'true')
-    }
-    return
+  options: { onCancel?: () => void; pointerId?: number; active?: boolean } = {},
+): CanvasDragLease {
+  const stage = origin?.closest(STAGE_SELECTOR)
+  const token = Symbol(owner)
+  let released = false
+  const cleanup: Array<() => void> = []
+  const activate = () => {
+    if (!stage || released) return
+    const owners = draggingOwnersByStage.get(stage) ?? new Set<symbol>()
+    draggingOwnersByStage.set(stage, owners)
+    owners.add(token)
+    stage.setAttribute(CANVAS_DRAGGING_ATTRIBUTE, 'true')
   }
-  if (!owners?.delete(owner) || owners.size > 0) return
-  draggingOwnersByStage.delete(stage)
-  stage.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
+  if (options.active !== false) activate()
+  const release = () => {
+    if (released) return
+    released = true
+    cleanup.forEach(dispose => dispose())
+    const owners = stage && draggingOwnersByStage.get(stage)
+    if (!owners?.delete(token) || owners.size) return
+    draggingOwnersByStage.delete(stage!)
+    stage!.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
+  }
+  const cancel = () => {
+    if (released) return
+    release()
+    options.onCancel?.()
+  }
+  if (origin && typeof window !== 'undefined') {
+    const interrupted = (event: Event) => {
+      if (event.type !== 'blur') {
+        if ('pointerId' in event && options.pointerId !== undefined) {
+          if (event.pointerId !== options.pointerId) return
+        } else if (!(typeof Node !== 'undefined' && event.target instanceof Node && (origin.contains(event.target) || stage?.contains(event.target)))) return
+      }
+      cancel()
+    }
+    for (const name of ['blur', 'pointercancel', 'lostpointercapture']) {
+      window.addEventListener(name, interrupted, true)
+      cleanup.push(() => window.removeEventListener(name, interrupted, true))
+    }
+    const visibility = () => { if (document.hidden) cancel() }
+    document.addEventListener('visibilitychange', visibility)
+    cleanup.push(() => document.removeEventListener('visibilitychange', visibility))
+    // Workspace slots stay mounted while hidden. Observe only this origin's ancestor chain;
+    // no global scan, timer, or other stage can release this lease.
+    if (typeof MutationObserver !== 'undefined') {
+      const ancestors: Element[] = []
+      for (let element: Element | null = origin; element; element = element.parentElement) ancestors.push(element)
+      const observer = new MutationObserver(() => {
+        if (!origin.isConnected || ancestors.some(element => element.hasAttribute('hidden') || getComputedStyle(element).display === 'none' || getComputedStyle(element).visibility === 'hidden')) cancel()
+      })
+      for (const element of ancestors) observer.observe(element, { attributes: true, attributeFilter: ['hidden', 'style', 'class'], childList: true })
+      cleanup.push(() => observer.disconnect())
+    }
+  }
+  return { activate, release, cancel }
 }

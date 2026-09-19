@@ -1,3 +1,4 @@
+import { nodeHasResultStack, productionMetaOf } from './useNodeResultHistory'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -29,14 +30,6 @@ import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeRe
 import { getGenerationNodeIcon } from './renderRegistry'
 
 const INITIAL_VISIBLE_RESULTS = 12
-
-function productionMetaOf(node: GenerationCanvasNode): { runId: string; shotId?: string } | null {
-  const meta = node.meta as Record<string, unknown> | undefined
-  const runId = typeof meta?.productionRunId === 'string' ? meta.productionRunId.trim() : ''
-  if (!runId) return null
-  const shotId = typeof meta?.productionShotId === 'string' ? meta.productionShotId.trim() : ''
-  return { runId, ...(shotId ? { shotId } : {}) }
-}
 
 /**
  * 版本堆叠伪卡上的媒体示能。复用 `getGenerationNodeIcon` 这个唯一出口，所以
@@ -240,13 +233,15 @@ export function NodeResultStack({
   node,
   readOnly,
   selected,
+  open,
   onOpenChange,
 }: {
   onFeedback: (message: string) => void
   node: GenerationCanvasNode
   readOnly: boolean
   selected: boolean
-  onOpenChange?: (open: boolean) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }): JSX.Element | null {
   const feedbackOwnerRef = React.useRef<string | null>(node.id)
   feedbackOwnerRef.current = node.id
@@ -259,7 +254,6 @@ export function NodeResultStack({
 
   const { t } = useTranslation()
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const [open, setOpen] = React.useState(false)
   const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_RESULTS)
   const [hoveredId, setHoveredId] = React.useState('')
   const [preview, setPreview] = React.useState<GenerationNodeResult | null>(null)
@@ -270,16 +264,7 @@ export function NodeResultStack({
   const currentId = node.result ? resultIdentity(node.result) : ''
   const production = productionMetaOf(node)
   const showSingleProductionAction = Boolean(production && selected && entries.length === 1)
-  const showStack = entries.length >= 2 || showSingleProductionAction
-
-  React.useEffect(() => {
-    if (showStack) return
-    setOpen(false)
-  }, [showStack])
-
-  React.useEffect(() => {
-    onOpenChange?.(open)
-  }, [onOpenChange, open])
+  const showStack = nodeHasResultStack(node) && (selected || entries.length >= 2)
 
   React.useEffect(() => {
     if (!open) {
@@ -362,7 +347,7 @@ export function NodeResultStack({
         count={entries.length}
         label={t('generationCommon.resultStack.versionCount', { count: entries.length })}
         expanded={open}
-        onToggle={() => setOpen((value) => !value)}
+        onToggle={() => onOpenChange(!open)}
         forceTrigger={showSingleProductionAction}
         mediaGlyph={<StackMediaGlyph kind={node.kind} />}
         mediaKind={node.kind}
