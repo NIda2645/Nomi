@@ -1,0 +1,147 @@
+{
+  "run": "https://github.com/aqm857886159/Nomi/actions/runs/35497170584",
+  "job": 106042241901,
+  "timeoutMs": 2010000,
+  "completedSamples": 18,
+  "stoppedAt": "media-error setup",
+  "samples": [
+    {
+      "scenario": "waiting-effects",
+      "elapsedMs": 53429,
+      "measurementMs": 30278,
+      "error": null
+    },
+    {
+      "scenario": "cold-open",
+      "elapsedMs": 19353,
+      "measurementMs": null,
+      "error": null
+    },
+    {
+      "scenario": "blank-pan",
+      "elapsedMs": 51379,
+      "measurementMs": 2425,
+      "error": null
+    },
+    {
+      "scenario": "node-drag-image",
+      "elapsedMs": 51350,
+      "measurementMs": 2362,
+      "error": null
+    },
+    {
+      "scenario": "node-drag-video",
+      "elapsedMs": 52267,
+      "measurementMs": 3180,
+      "error": null
+    },
+    {
+      "scenario": "multi-node-drag",
+      "elapsedMs": 22024,
+      "measurementMs": 2159,
+      "error": null
+    },
+    {
+      "scenario": "drag-nodes-all",
+      "elapsedMs": 89004,
+      "measurementMs": 37554,
+      "error": null
+    },
+    {
+      "scenario": "drag-group-frame-60",
+      "elapsedMs": 95446,
+      "measurementMs": 40350,
+      "error": null
+    },
+    {
+      "scenario": "zoom-slider-drag",
+      "elapsedMs": 57357,
+      "measurementMs": 7548,
+      "error": null
+    },
+    {
+      "scenario": "drag-at-low-zoom",
+      "elapsedMs": 52046,
+      "measurementMs": 1411,
+      "error": null
+    },
+    {
+      "scenario": "drag-over-dense-edges",
+      "elapsedMs": 50451,
+      "measurementMs": 1393,
+      "error": null
+    },
+    {
+      "scenario": "marquee-select",
+      "elapsedMs": 53473,
+      "measurementMs": 2615,
+      "error": null
+    },
+    {
+      "scenario": "click-select",
+      "elapsedMs": 50052,
+      "measurementMs": 1042,
+      "error": null
+    },
+    {
+      "scenario": "wheel-zoom",
+      "elapsedMs": 52260,
+      "measurementMs": 3270,
+      "error": null
+    },
+    {
+      "scenario": "pan-zoom-mix",
+      "elapsedMs": 50631,
+      "measurementMs": 1658,
+      "error": null
+    },
+    {
+      "scenario": "resize",
+      "elapsedMs": 54231,
+      "measurementMs": 5199,
+      "error": null
+    },
+    {
+      "scenario": "media-reveal",
+      "elapsedMs": 56520,
+      "measurementMs": 7526,
+      "error": null
+    },
+    {
+      "scenario": "low-zoom-preview",
+      "elapsedMs": 51588,
+      "measurementMs": 1020,
+      "error": null
+    }
+  ],
+  "warmupFailures": [
+    {
+      "scale": "M",
+      "scenario": "drag-nodes-all",
+      "runIndex": 0,
+      "failures": [
+        "drag-nodes-all @ M: 261 次长任务 > 3（§6 规模档硬门岗）"
+      ],
+      "advisoryOnly": true
+    },
+    {
+      "scale": "M",
+      "scenario": "drag-group-frame-60",
+      "runIndex": 0,
+      "failures": [
+        "drag-group-frame-60 @ M: 354 次长任务 > 3（§6 规模档硬门岗）"
+      ],
+      "advisoryOnly": true
+    },
+    {
+      "scale": "M",
+      "scenario": "zoom-slider-drag",
+      "runIndex": 0,
+      "failures": [
+        "zoom-slider-drag @ M: 8 次长任务 > 3（§6 规模档硬门岗）"
+      ],
+      "advisoryOnly": true
+    }
+  ],
+  "conclusion": "Incomplete overall run; operation samples completed are not an overall performance pass. Most elapsed time is outside interaction windows. Duplicate project-open click is removed, but causal attribution awaits remote rerun."
+}
