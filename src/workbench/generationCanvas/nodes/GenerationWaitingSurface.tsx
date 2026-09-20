@@ -3,36 +3,6 @@ import { ImageGeneration, type ImageGenerationHandle, type ImageGenerationCycleE
 import { cn } from '../../../utils/cn'
 import { useReducedProcessMotion } from './useReducedProcessMotion'
 import { ProgressRevealCanvas } from './ProgressRevealCanvas'
-// 兜底扫光带的样式由这个组件自己带：等待层会被画布以外的宿主挂载（设计实验室、节点直挂），
-// 指望「反正 GenerationCanvas 会 import 整份画布样式」，结果就是实验室里那格根本看不到带子；
-// 而把整份画布样式挂到等待层上又会改到别的面，所以只带自己这一条。
-import './generationWaitingSurface.css'
-
-const MAX_EFFECTS = 4
-const effectOwners = new Set<symbol>()
-const effectListeners = new Set<() => void>()
-function notifyEffects(): void { for (const listener of effectListeners) listener() }
-
-/** First mounted visible nodes own the four slots; releasing one wakes static waiters. */
-function useEffectSlot(eligible: boolean): boolean {
-  const owner = React.useRef(Symbol('waiting-effect'))
-  const [admitted, setAdmitted] = React.useState(false)
-  React.useEffect(() => {
-    const token = owner.current
-    const claim = () => {
-      if (eligible && !effectOwners.has(token) && effectOwners.size < MAX_EFFECTS) effectOwners.add(token)
-      setAdmitted(effectOwners.has(token))
-    }
-    effectListeners.add(claim)
-    claim()
-    return () => {
-      effectListeners.delete(claim)
-      if (effectOwners.delete(token)) notifyEffects()
-    }
-  }, [eligible])
-  return eligible && admitted
-}
-
 function readPalette() {
   const style = getComputedStyle(document.documentElement)
   const read = (name: string) => style.getPropertyValue(name).trim()
@@ -100,7 +70,8 @@ export function GenerationWaitingSurface({ audio = false, previewUrl, finalUrl, 
   label?: string
 }): JSX.Element {
   const reduced = useReducedProcessMotion() || motion === 'reduced'
-  const admitted = useEffectSlot(!audio && !reduced && inViewport && zoom >= 0.4)
+  // Visible nodes keep the chosen grid effect; measured workloads replace the old four-owner quota.
+  const admitted = typeof window !== 'undefined' && !audio && !reduced && inViewport && zoom >= 0.4
   const [documentHidden, setDocumentHidden] = React.useState(false)
   React.useEffect(() => {
     const update = () => setDocumentHidden(document.hidden)
@@ -121,7 +92,7 @@ export function GenerationWaitingSurface({ audio = false, previewUrl, finalUrl, 
     className="absolute inset-0 overflow-hidden rounded-nomi bg-nomi-ink-05 pointer-events-none">
     {admitted ? <WaitingEffect key={completed ? 'final' : 'preview'} source={source} final={completed && !progressReveal}
       paused={documentHidden || !inViewport} preset={preset} onComplete={onComplete} />
-      : <div data-process-static-band className="generation-canvas-v2-node__waiting-band absolute inset-x-0 top-1/2 h-8 -translate-y-1/2" />}
+      : !audio ? <div data-process-static-grid aria-hidden className="absolute inset-0 bg-[linear-gradient(135deg,var(--nomi-ink-20),var(--nomi-ink-05)_70%)] [mask-image:repeating-linear-gradient(90deg,var(--nomi-ink)_0_14px,transparent_14px_16px),repeating-linear-gradient(0deg,var(--nomi-ink)_0_14px,transparent_14px_16px)] [mask-composite:intersect]" /> : null}
     {progressReveal && admitted ? <ProgressRevealCanvas imageUrl={progressReveal.imageUrl} ratio={progressReveal.ratio} /> : null}
     {audio ? <div data-process-audio-waiting className="absolute inset-x-4 top-1/2 flex h-8 -translate-y-1/2 items-center justify-center gap-1" aria-hidden>
       {Array.from({ length: 24 }, (_, index) => <span key={index} className="h-6 w-1 shrink-0 rounded-full bg-nomi-ink-30" />)}
