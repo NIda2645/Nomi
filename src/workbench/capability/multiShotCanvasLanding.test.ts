@@ -5,12 +5,97 @@ import { useGenerationCanvasStore } from '../generationCanvas/store/generationCa
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { resetClientIdRegistry } from '../generationCanvas/agent/applyCanvasToolCall'
 import { readShotTable } from '../../../electron/shared/canvas/shotTable'
+import { useWorkbenchStore } from '../workbenchStore'
 
 // P4 S5 — attach-shot-result 的运行时断言（result.url 必须 nomi-local://）+ 节点已删静默跳过。
 
 function shotNode(id: string): GenerationCanvasNode {
   return { id, kind: 'video', title: id, position: { x: 0, y: 0 }, prompt: '', categoryId: 'shots' }
 }
+
+describe('materializeShots preserves the reading viewport on existing content', () => {
+  const materializationOperationId = 'canvas-landing:viewport'
+  const runId = 'viewport-run'
+  const shots = [1, 2, 3].map(index => ({
+    shotId: `shot-${index}`, kind: 'image' as const, prompt: `原提示词 ${index}`,
+    candidate: { candidateId: `candidate-${index}`, revision: 1 },
+  }))
+  const land = (items = shots) => materializeShots({ materializationOperationId, runId, shots: items })
+
+  beforeEach(() => {
+    resetClientIdRegistry()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+    useWorkbenchStore.setState({ canvasFitNonce: 0, canvasFitCategoryId: null, activeCategoryId: 'shots' })
+  })
+
+  it('rebinds only shot 2 without requesting fit or changing node/table selection or active category', async () => {
+    const initial = await land()
+    const store = useGenerationCanvasStore.getState()
+    const secondId = initial.bindings[1].nodeId
+    store.selectNode(secondId)
+    const table = store.nodes.find(node => node.id === initial.shotTableNodeId)!
+    const document = readShotTable(table.meta)!
+    store.updateNode(table.id, { meta: { ...table.meta, shotTable: { ...document, view: { ...document.view, selectedRowIds: [secondId] } } } })
+    // A background projection must not navigate out of a category the user opened.
+    useWorkbenchStore.setState({ activeCategoryId: 'cast' })
+    const beforeFit = useWorkbenchStore.getState().canvasFitNonce
+    const beforeSelection = [...useGenerationCanvasStore.getState().selectedNodeIds]
+    const result = await land(shots.map((shot, index) => index === 1
+      ? { ...shot, prompt: '逆光下的侧脸', candidate: { ...shot.candidate, revision: 2 } } : shot))
+
+    expect(result.createdNodeIds).toEqual([])
+    expect(result.bindings.map(binding => binding.nodeId)).toEqual(initial.bindings.map(binding => binding.nodeId))
+    const after = useGenerationCanvasStore.getState()
+    expect(initial.bindings.map(binding => after.nodes.find(node => node.id === binding.nodeId)?.prompt))
+      .toEqual(['原提示词 1', '逆光下的侧脸', '原提示词 3'])
+    expect(after.selectedNodeIds).toEqual(beforeSelection)
+    expect(readShotTable(after.nodes.find(node => node.id === table.id)?.meta)?.view.selectedRowIds).toEqual([secondId])
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(beforeFit)
+    expect(useWorkbenchStore.getState().activeCategoryId).toBe('cast')
+  })
+
+  it.each(['replay', 'result'] as const)('%s on existing shots does not issue a navigation request', async mode => {
+    const initial = await land()
+    const beforeFit = useWorkbenchStore.getState().canvasFitNonce
+    const items = mode === 'result' ? shots.map(shot => ({ ...shot, result: {
+      id: `result-${shot.shotId}`, type: 'image' as const, url: `nomi-local://test/${shot.shotId}.png`, createdAt: 1,
+    } })) : shots
+    await land(items)
+    if (mode === 'result') {
+      expect(useGenerationCanvasStore.getState().nodes.find(node => node.id === initial.bindings[0].nodeId)?.result?.url)
+        .toBe('nomi-local://test/shot-1.png')
+    }
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(beforeFit)
+  })
+
+  it('reveals newly created nodes, group and table', async () => {
+    const result = await land()
+    expect(result.createdNodeIds).toHaveLength(3)
+    expect(result.groupId).toBeTruthy()
+    expect(result.shotTableNodeId).toBeTruthy()
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBeGreaterThan(0)
+  })
+
+  it('reveals a newly added group even when all nodes already exist', async () => {
+    await land()
+    useGenerationCanvasStore.setState({ groups: [] })
+    const beforeFit = useWorkbenchStore.getState().canvasFitNonce
+    const result = await land()
+    expect(result.createdNodeIds).toEqual([])
+    expect(result.groupId).toBeTruthy()
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBeGreaterThan(beforeFit)
+  })
+
+  it('reveals added shots and the first table when a single shot becomes a multi-shot plan', async () => {
+    const first = await land(shots.slice(0, 1))
+    expect(first.shotTableNodeId).toBeNull()
+    const beforeFit = useWorkbenchStore.getState().canvasFitNonce
+    const next = await land()
+    expect(next.createdNodeIds).toHaveLength(2)
+    expect(next.shotTableNodeId).toBeTruthy()
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBeGreaterThan(beforeFit)
+  })
+})
 
 describe('attachShotResult', () => {
   beforeEach(() => {

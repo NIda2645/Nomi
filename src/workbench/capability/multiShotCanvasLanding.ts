@@ -309,8 +309,12 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
     if (nodeId && shot.result) inLandingTxn(() => attachShotResult({ nodeId, shotId: shot.shotId, result: shot.result! }))
   }
 
-  // 落完把整块揭进视口（同批量/切图的既有 fit 信号），否则多半一半落在视口外。
-  useWorkbenchStore.getState().requestCanvasFit(groupCategoryId)
+  // 只有新增内容才揭进视口。候选重绑定、重放和结果回填是同步已有内容，
+  // 不能打断用户的阅读缩放/分类（例如 full 分镜表会被自动 fit 收成 compact）。
+  // changedCanvasStructure 还包含 rebindable，只能用于撤销/落盘，不能据它导航。
+  if (missing.length > 0 || willCreateGroup || willCreateTable) {
+    useWorkbenchStore.getState().requestCanvasFit(groupCategoryId)
+  }
 
   const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
   const bindings = ordered
