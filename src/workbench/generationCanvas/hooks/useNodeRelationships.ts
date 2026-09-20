@@ -9,6 +9,7 @@
  * 现在用 WeakMap 缓存 keyed on (nodes, edges) 引用：相同输入只 build 一次，
  * 每张卡 O(1) Map.get 查询。zustand immer 保证未改的数组引用稳定 → 缓存命中率高。
  */
+import { resolveShotIdentities, type ShotIdentity } from '../../../../electron/shared/canvas/shotNumbering'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode, GenerationCanvasEdge } from '../model/generationCanvasTypes'
 
@@ -168,24 +169,34 @@ export function useHasFrameSourceEdge(nodeId: string, enabled: boolean): boolean
   return useGenerationCanvasStore((state) => enabled && Boolean(buildFrameSourceMap(state.edges).get(nodeId)))
 }
 
-const shotIndexCache = new WeakMap<readonly GenerationCanvasNode[], Map<string, number | null>>()
+const shotIdentityCache = new WeakMap<readonly GenerationCanvasNode[], WeakMap<readonly GenerationCanvasEdge[], Map<string, ShotIdentity>>>()
+const EMPTY_SHOT_IDENTITY: ShotIdentity = Object.freeze({})
 
-/**
- * 当前分镜节点的 1-based 镜头编号。
- *
- * 编号 = 节点上的存储身份 `shotIndex`（创建时一次性分配，hydrate 时为存量回填，
- * 见 model/shotNumbering.ts），不再按 position.y + 随机 id 实时重排——旧实现下
- * 同行编号实质随机、加一个无关节点会改写所有既有编号（审计 A2）。
- * 非 shots 分类或未编号 kind（text/panorama 等）返回 null（不显徽标）。
- */
-export function useShotIndex(nodeId: string, categoryId: string | undefined): number | null {
-  return useGenerationCanvasStore((state) => {
-    if (categoryId !== 'shots') return null
-    const cached = shotIndexCache.get(state.nodes)
-    const indexes =
-      cached ||
-      new Map(state.nodes.map((node) => [node.id, typeof node.shotIndex === 'number' ? node.shotIndex : null]))
-    if (!cached) shotIndexCache.set(state.nodes, indexes)
-    return indexes.get(nodeId) ?? null
-  })
+let latestShotIdentities = new Map<string, ShotIdentity>()
+
+/** Full and lightweight renderers use the same owner number and first-frame relation. */
+export function selectShotIdentity(state: { nodes: readonly GenerationCanvasNode[]; edges: readonly GenerationCanvasEdge[] }, nodeId: string): ShotIdentity {
+  let byEdges = shotIdentityCache.get(state.nodes)
+  if (!byEdges) {
+    byEdges = new WeakMap()
+    shotIdentityCache.set(state.nodes, byEdges)
+  }
+  let identities = byEdges.get(state.edges)
+  if (!identities) {
+    identities = resolveShotIdentities(state.nodes, state.edges)
+    // Movement/progress changes the node array, but must not repaint every label.
+    for (const [id, identity] of identities) {
+      const previous = latestShotIdentities.get(id)
+      if (previous && previous.shotIndex === identity.shotIndex && previous.shotRole === identity.shotRole &&
+          (previous.shotOwnerNodeIds?.length ?? 0) === (identity.shotOwnerNodeIds?.length ?? 0) &&
+          (previous.shotOwnerNodeIds ?? []).every((owner, index) => owner === identity.shotOwnerNodeIds?.[index])) identities.set(id, previous)
+    }
+    latestShotIdentities = identities
+    byEdges.set(state.edges, identities)
+  }
+  return identities.get(nodeId) ?? EMPTY_SHOT_IDENTITY
+}
+
+export function useShotIdentity(nodeId: string): ShotIdentity {
+  return useGenerationCanvasStore((state) => selectShotIdentity(state, nodeId))
 }

@@ -13,6 +13,7 @@ import { resolveGenerationReferences } from '../runner/generationReferenceResolv
 import { buildDependencyWaves, type DependencyWavePlan } from '../runner/dependencyWaves'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { verifyShotsAndReport } from '../agent/shotVerifyStore'
+import { resolveShotIdentities } from '../model/shotNumbering'
 import i18n from '../../../i18n'
 import { normalizeCanvasBatchConcurrency } from './canvasProductionScope'
 
@@ -244,14 +245,15 @@ export async function runPlanWithToasts(
         },
       })
     }
-    // Stage 1:生成完成 → 对成功的「镜头」节点(有 shotIndex,排除锚卡)跑画面校验(fire-and-forget,
+    // Stage 1:生成完成 → 对成功的镜头/首帧(共享身份判据,排除锚卡)跑画面校验(fire-and-forget,
     // 不阻塞完成 toast;verify 失败静默,绝不把生成完成拖红)。
     // 审片只给仍在前台的原项目：发起动作的项目生命周期还在（切走再切回 A→B→A 不复活）。
     if (okCount > 0 && isProjectExecutionContextCurrent(options.project)) {
-      const nodes = useGenerationCanvasStore.getState().nodes
+      const { nodes, edges } = useGenerationCanvasStore.getState()
+      const identities = resolveShotIdentities(nodes, edges)
       const shotIds = result.successes
         .map((s) => s.nodeId)
-        .filter((id) => typeof nodes.find((n) => n.id === id)?.shotIndex === 'number')
+        .filter((id) => identities.has(id))
       if (shotIds.length > 0) void verifyShotsAndReport(shotIds, options.project)
     }
   } catch (error: unknown) {

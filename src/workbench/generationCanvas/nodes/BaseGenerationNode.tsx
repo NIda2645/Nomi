@@ -19,7 +19,7 @@ import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, Too
 import { useNodeImageEditing } from './useNodeImageEditing'
 import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
-import { useHasFrameSourceEdge, useShotIndex, useMountedCards } from '../hooks/useNodeRelationships'
+import { useHasFrameSourceEdge, useShotIdentity, useMountedCards } from '../hooks/useNodeRelationships'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import {
   PendingGenerationPlaceholder,
@@ -62,14 +62,13 @@ import {
   RESIZE_DIRECTIONS,
   getNodeSizeBounds,
   FOCUS_GENERATION_NODE_EVENT,
-  computeMediaMetaPatch,
-  MEDIA_DIMENSION_UPDATE_OPTIONS,
   resolveNodeVisualSize,
 } from './nodeSizing'
 import { useNodeVideoHoverPreview } from './useNodeVideoHoverPreview'
 import { NodeLabelRow } from './NodeLabelRow'
 import { NodeInlineImageTitle } from './NodeImagePreviewActions'
 import { useNodeDisplayPrompt } from './useNodeDisplayPrompt'
+import { useNodeMediaMeasurement } from './useNodeMediaMeasurement'
 import { useNodeMediaPreview } from './useNodeMediaPreview'
 export type BaseGenerationNodeProps = {
   node: GenerationCanvasNode
@@ -167,18 +166,7 @@ function BaseGenerationNodeImpl({
     void addGenerationNodeToTimelineEnd(liveNode)
   }
 
-  const updateMediaDimensions = (width: number, height: number, durationSeconds?: number) => {
-    const patch = computeMediaMetaPatch({
-      resultType: node.result?.type,
-      preserveSize: Boolean(node.runs?.some((run) => run.resultId === node.result?.id)),
-      meta: node.meta || {},
-      currentSize: node.size,
-      width,
-      height,
-      durationSeconds,
-    })
-    if (patch) updateNode(node.id, patch, MEDIA_DIMENSION_UPDATE_OPTIONS) // 加载完才量得到的派生尺寸不是用户编辑，别自成一个撤销点（否则刚建的一批节点按 Cmd+Z，撤掉的是「某张图量了尺寸」）
-  }
+  const mediaMeasurement = useNodeMediaMeasurement(node)
 
   const { handleVideoNodePointerEnter, handleVideoNodePointerLeave } = useNodeVideoHoverPreview(node.result?.type)
 
@@ -245,7 +233,7 @@ function BaseGenerationNodeImpl({
         : t('generationCommon.node.copySourceMissing')
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
   // L3：待生成卡给镜头序号，让未选中的占位卡也能一眼分清哪个镜头（非 shots 返回 null）。
-  const shotIndex = useShotIndex(node.id, node.categoryId)
+  const shotIdentity = useShotIdentity(node.id)
   // 切片2：镜头「挂了哪些设定卡」——不选中也能一眼看出挂了林夏/咖啡馆（可审计，免数连线）。
   const mountedCards = useMountedCards(node.id)
   const displayPrompt = useNodeDisplayPrompt(node)
@@ -421,7 +409,7 @@ function BaseGenerationNodeImpl({
       ) : null}
       {mediaPreviewControls}
       <NodeLabelRow>
-        <ShotPreviewOverlays shotIndex={shotIndex} />
+        <ShotPreviewOverlays {...shotIdentity} />
         {!isCardKind && !isTextKind ? <NodeInlineImageTitle nodeId={node.id} value={node.title || ''} readOnly={readOnly} /> : null}
         {!isCardKind ? <ShotMountBadges cards={mountedCards} /> : null}
         <TechnicalReviewBadge meta={node.meta} />
@@ -546,13 +534,7 @@ function BaseGenerationNodeImpl({
               playsInline
               preload="auto"
               draggable={false}
-              onLoadedMetadata={(event) => {
-                updateMediaDimensions(
-                  event.currentTarget.videoWidth,
-                  event.currentTarget.videoHeight,
-                  event.currentTarget.duration,
-                )
-              }}
+              onLoadedMetadata={mediaMeasurement.onVideoMetadata}
             />
           ) : (
             <DeferredNodeImage
@@ -565,9 +547,7 @@ function BaseGenerationNodeImpl({
               src={node.result.url}
               priority={mediaPreviewPriority}
               alt=""
-              onLoad={(event) => {
-                updateMediaDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
-              }}
+              onLoad={mediaMeasurement.onImageLoad}
             />
           )
         ) : localImageOpPending ? (

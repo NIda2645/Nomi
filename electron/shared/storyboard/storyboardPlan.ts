@@ -213,4 +213,3 @@ export type StoryboardPlan = {
   sourceScriptVersion?: number
   sourceScriptHash?: string
 }
-

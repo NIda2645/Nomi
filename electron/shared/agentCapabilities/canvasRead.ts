@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { taskReferenceSchema } from './taskReference';
+import { resolveShotIdentities } from "../canvas/shotNumbering";
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
 import type { CapabilityContract } from "./capabilityContract";
 
@@ -42,7 +43,9 @@ const canvasReadNodeSchema = z
     status: generationNodeStatusSchema,
     position: canvasReadPositionSchema,
     locked: z.boolean(),
-    shotIndex: nonnegativeSafeIntegerSchema.optional(),
+    shotIndex: z.number().int().positive().safe().optional(),
+    shotRole: z.enum(["first_frame", "video", "image"]).optional(),
+    shotOwnerNodeIds: z.array(trimmedNonEmptyStringSchema).optional(),
     hasResult: z.boolean(),
     currentResultId: opaqueResultIdSchema.optional(),
     resultIds: z.array(opaqueResultIdSchema).optional(),
@@ -148,6 +151,12 @@ export const canvasReadResultSchema = z
       }
     });
     result.nodes.forEach((node, nodeIndex) => {
+      for (const ownerIndex of duplicateIndexes(node.shotOwnerNodeIds ?? [])) {
+        context.addIssue({ code: "custom", message: "Shot owner IDs must be unique", path: ["nodes", nodeIndex, "shotOwnerNodeIds", ownerIndex] });
+      }
+      node.shotOwnerNodeIds?.forEach((ownerId, ownerIndex) => {
+        if (!nodeIds.has(ownerId)) context.addIssue({ code: "custom", message: "Shot owner must reference a node", path: ["nodes", nodeIndex, "shotOwnerNodeIds", ownerIndex] });
+      });
       for (const resultIndex of duplicateIndexes(node.resultIds ?? [])) {
         context.addIssue({
           code: "custom",
@@ -214,7 +223,6 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
   };
   const rawStatus = nonEmptyString(node.status);
   const status = parseGenerationNodeStatus(rawStatus) ?? "idle";
-  const shotIndex = node.shotIndex;
   const currentResultId = resultId(node.result);
   const resultIds = stableResultIds(node);
   const prompt = typeof node.prompt === "string" ? node.prompt : "";
@@ -228,7 +236,6 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
     status,
     position,
     locked: node.locked === true,
-    ...(isNonnegativeSafeInteger(shotIndex) ? { shotIndex } : {}),
     hasResult: asRecord(node.result) !== undefined,
     ...(currentResultId ? { currentResultId } : {}),
     ...(resultIds.length ? { resultIds } : {}),
@@ -301,16 +308,27 @@ export function projectCanvasRead(source: unknown): CanvasReadResult {
     const node = asRecord(value);
     return typeof node?.prompt === "string" && node.prompt.length > 8_192;
   });
+  const identityInputs: Array<Parameters<typeof resolveShotIdentities>[0][number]> = [];
   const seenNodeIds = new Set<string>();
   const nodes = (Array.isArray(canvas?.nodes) ? canvas.nodes : []).flatMap((value): CanvasReadNode[] => {
     const node = projectNode(value, seenNodeIds);
-    return node ? [node] : [];
+    if (!node) return [];
+    const raw = asRecord(value)!;
+    identityInputs.push({
+      id: node.id, kind: node.kind, position: node.position,
+      ...(typeof raw.categoryId === "string" ? { categoryId: raw.categoryId } : {}),
+      ...(typeof raw.shotIndex === "number" ? { shotIndex: raw.shotIndex } : {}),
+      meta: asRecord(raw.meta),
+    });
+    return [node];
   });
   const survivingNodeIds = new Set(nodes.map((node) => node.id));
+  const edges = projectEdges(canvas?.edges, survivingNodeIds);
+  const identities = resolveShotIdentities(identityInputs, edges);
 
   return canvasReadResultSchema.parse({
-    nodes,
-    edges: projectEdges(canvas?.edges, survivingNodeIds),
+    nodes: nodes.map((node) => ({ ...node, ...identities.get(node.id) })),
+    edges,
     groups: projectGroups(canvas?.groups, survivingNodeIds),
     selectedNodeIds: survivingReferences(canvas?.selectedNodeIds, survivingNodeIds),
     ...(truncated ? { truncated: true } : {}),

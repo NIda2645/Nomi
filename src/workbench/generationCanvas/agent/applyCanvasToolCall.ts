@@ -527,30 +527,7 @@ export async function applyCanvasToolCall(
       connectedCount = outcome.connected
       skippedEdges = outcome.skipped
     }
-    // 图片+视频分镜：首帧图与所属视频共用镜号（同手动「转视频」桥的继承号语义，见 convertShotToVideo）。
-    // 首帧图带 meta.storyboardKeyframe 创建时不自动领号（shotNumbering 跳过），此处按计划里的
-    // first_frame 边把视频已领的编号写回 → 18 镜就是 1..18，角标与「镜头 N 首帧」标题一致。
-    const keyframeClientIds = new Set(
-      incoming
-        .filter((raw) => raw && typeof raw === 'object' && (raw as Record<string, unknown>).storyboardKeyframe === true)
-        .map((raw) => String((raw as Record<string, unknown>).clientId || '')),
-    )
-    if (keyframeClientIds.size) {
-      const canvasStore = useGenerationCanvasStore.getState()
-      const nodeById = new Map(canvasStore.nodes.map((node) => [node.id, node]))
-      for (const rawEdge of rawPlanEdges) {
-        const edge = rawEdge && typeof rawEdge === 'object' ? (rawEdge as Record<string, unknown>) : {}
-        if (edge.mode !== 'first_frame') continue
-        const sourceClientId = String(edge.sourceClientId || '')
-        if (!keyframeClientIds.has(sourceClientId)) continue
-        const keyframeId = clientIdToNodeId[sourceClientId]
-        const videoId = clientIdToNodeId[String(edge.targetClientId || '')]
-        const videoShotIndex = videoId ? nodeById.get(videoId)?.shotIndex : undefined
-        if (keyframeId && typeof videoShotIndex === 'number') {
-          canvasStore.updateNode(keyframeId, { shotIndex: videoShotIndex })
-        }
-      }
-    }
+    // 首帧号由共享身份投影沿 first_frame 边读取视频 owner，不复制第二份编号。
     // 批量落节点后统一请求适应视图。AI 直接建卡、方案确认和示例引导都走这里，
     // 避免调用方漏触发后只看到被视口裁断的一部分新节点。单节点不重排全局视口，
     // 但要把刚创建的卡居中：布局原点在已有内容下方，若时间轴占据底部，单卡可能

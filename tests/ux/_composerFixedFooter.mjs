@@ -84,6 +84,7 @@ export async function checkComposerFixedFooter(win, { composer, promptInput, flo
       await expect(effectMenu).toBeVisible()
       await win.keyboard.press('Escape')
       await expect(effectMenu).toBeHidden()
+      await expect(flowNode).toHaveClass(/\bselected\b/)
       await expect(composer).toBeVisible()
       await expect(effectTrigger).toBeFocused()
       const value = await read()

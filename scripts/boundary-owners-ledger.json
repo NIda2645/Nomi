@@ -191,6 +191,16 @@
         "symbol": "anchorCarriesOwnMaterial"
       },
       "reason": "原分镜纯函数已原样搬至共享模块，renderer 原路径只 re-export 同一实现；不变量与原调用者保留，未另造编译器。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-02-canvas-media-derived-persistence-performance.root-cause.json",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "updateMediaDimensions",
+      "anchor": {
+        "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+        "symbol": "useNodeMediaMeasurement"
+      },
+      "reason": "现有解码回填统一移到所有full/LOD/card宿主共用的hook，继续使用MEDIA_DIMENSION_UPDATE_OPTIONS禁止save/event/undo。"
     }
   ],
   "retirements": [

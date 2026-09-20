@@ -232,85 +232,78 @@ export function mediaNodeSize(
     )
         return null;
     const aspectRatio = width / height;
-    const nodeWidth = clampNumber(
-        preferredWidth || nodeWidthForAspectRatio(aspectRatio),
-        240,
-        680,
-    );
-    const previewHeight = clampNumber(
-        Math.round(nodeWidth / aspectRatio),
-        120,
-        520,
-    );
-    return {
-        width: nodeWidth,
-        height: previewHeight,
-        previewHeight,
-    };
+    const bounds = mediaAspectSizeBounds(aspectRatio, getNodeSizeBounds("image"));
+    const nodeWidth = clampNumber(preferredWidth || nodeWidthForAspectRatio(aspectRatio), bounds.minWidth, bounds.maxWidth);
+    const previewHeight = nodeWidth / aspectRatio;
+    return { width: nodeWidth, height: previewHeight, previewHeight };
 }
 
-export type MediaMetaPatch = {
-  size?: { width: number; height: number };
-  meta: Record<string, unknown>;
-};
+export type MediaMetaPatch = { meta: Record<string, unknown> };
 
-/** Runtime media measurement is derived from the loaded asset, not a user edit.
- * Keep it out of the durable project/event paths so viewport reveals cannot
- * schedule a full-project save for every image/video load. */
-export const MEDIA_DIMENSION_UPDATE_OPTIONS = {
-  persist: false,
-  emit: false,
-  history: false,
-} as const;
+/** Decoded dimensions are derived state, not a user edit or a full-project save. */
+export const MEDIA_DIMENSION_UPDATE_OPTIONS = { persist: false, emit: false, history: false } as const;
 
-/**
- * 媒体（图片/视频）loadedmetadata 回填的纯计算：据真实 W/H（视频再带真实时长）算出
- * 节点尺寸 + meta 补丁；无变化返回 null（调用方不发空 update）。从 BaseGenerationNode 抽出
- * 保持壳瘦身（R9）+ 可裸测。视频回填 meta.videoDuration 是「拖入视频一律 5 秒」的 catch-all 修复键。
- */
+/** Only measure here; resolveNodeVisualSize owns geometry, including restored legacy sizes. */
 export function computeMediaMetaPatch(params: {
-  preserveSize?: boolean;
   resultType: string | undefined;
   meta: Record<string, unknown>;
-  currentSize: { width?: number; height?: number } | undefined;
   width: number;
   height: number;
   durationSeconds?: number;
 }): MediaMetaPatch | null {
-  const { resultType, meta, currentSize, width, height, durationSeconds } = params;
-  const nextSize = mediaNodeSize(width, height, currentSize?.width);
-  if (!nextSize) return null;
+  const { resultType, meta, width, height, durationSeconds } = params;
+  if (!readFiniteNumber(width) || !readFiniteNumber(height)) return null;
   const isVideo = resultType === "video";
-  const previousWidth = readFiniteNumber(meta.imageWidth ?? meta.videoWidth);
-  const previousHeight = readFiniteNumber(meta.imageHeight ?? meta.videoHeight);
-  const previousDuration = readFiniteNumber(meta.videoDuration);
-  const userResized = meta.userResized === true;
-  const nextDuration =
-    isVideo && Number.isFinite(durationSeconds) && (durationSeconds as number) > 0
-      ? Math.round((durationSeconds as number) * 1000) / 1000
-      : null;
-  const mediaPatch = isVideo
-    ? {
-        videoWidth: width,
-        videoHeight: height,
-        videoAspectRatio: width / height,
-        ...(nextDuration !== null ? { videoDuration: nextDuration } : {}),
-      }
-    : { imageWidth: width, imageHeight: height, imageAspectRatio: width / height };
-  const shouldPatchSize =
-    !params.preserveSize && !userResized &&
-    (currentSize?.width !== nextSize.width || currentSize?.height !== nextSize.height);
-  if (
-    previousWidth === width &&
-    previousHeight === height &&
-    (nextDuration === null || previousDuration === nextDuration) &&
-    !shouldPatchSize
-  )
-    return null;
-  return {
-    ...(shouldPatchSize ? { size: { width: nextSize.width, height: nextSize.height } } : {}),
-    meta: { ...meta, ...mediaPatch, previewHeight: params.preserveSize ? currentSize?.height ?? nextSize.previewHeight : nextSize.previewHeight },
-  };
+  const nextDuration = isVideo && readFiniteNumber(durationSeconds)
+    ? Math.round(durationSeconds! * 1000) / 1000 : null;
+  const previousWidth = readFiniteNumber(isVideo ? meta.videoWidth : meta.imageWidth);
+  const previousHeight = readFiniteNumber(isVideo ? meta.videoHeight : meta.imageHeight);
+  if (previousWidth === width && previousHeight === height &&
+      (nextDuration === null || readFiniteNumber(meta.videoDuration) === nextDuration)) return null;
+  return { meta: { ...meta, ...(isVideo
+    ? { videoWidth: width, videoHeight: height, videoAspectRatio: width / height,
+        ...(nextDuration !== null ? { videoDuration: nextDuration } : {}) }
+    : { imageWidth: width, imageHeight: height, imageAspectRatio: width / height }) } };
+}
+
+/** Feasible ratio-locked bounds; extreme frames may have a short edge below the generic minimum. */
+function mediaAspectSizeBounds(ratio: number, bounds: NodeSizeBounds): NodeSizeBounds {
+    const maxWidth = Math.min(bounds.maxWidth, bounds.maxHeight * ratio);
+    const minWidth = Math.min(maxWidth, Math.max(bounds.minWidth, bounds.minHeight * ratio));
+    return { minWidth, maxWidth, minHeight: minWidth / ratio, maxHeight: maxWidth / ratio };
+}
+
+type VisualMediaNode = Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">;
+
+export function readNodeMediaAspectRatio(node: VisualMediaNode): number | null {
+    // These nodes render an editor/table/viewer, not a frame-sized media surface.
+    if (node.kind === "clip" || node.kind === "shot_table" || node.kind === "panorama" ||
+        node.kind === "director" || node.kind === "text" || node.kind === "whiteboard" ||
+        node.kind === "audio" || node.kind === "model3d" || node.kind === "agent-artifact") return null;
+    if (!node.result?.url || (node.result.type !== "image" && node.result.type !== "video")) return null;
+    const video = node.result.type === "video";
+    const width = readFiniteNumber(video ? node.meta?.videoWidth : node.meta?.imageWidth);
+    const height = readFiniteNumber(video ? node.meta?.videoHeight : node.meta?.imageHeight);
+    const ratio = width && height ? width / height : null;
+    return ratio && Number.isFinite(ratio) ? ratio : null;
+}
+
+export function readNodeCardInfoHeight(node: VisualMediaNode): number {
+    const kind = resolveNodeRenderKind(node);
+    return kind === "character-card" || kind === "prop-card"
+        ? readFiniteNumber(node.meta?.cardInfoHeight) ?? 0 : 0;
+}
+
+function isImageGridSplit(node: VisualMediaNode): boolean {
+    return node.result?.type === "image" && typeof node.meta?.source === "string" && node.meta.source.startsWith("image-grid-split-");
+}
+
+export function getNodeResizeBounds(node: VisualMediaNode): NodeSizeBounds {
+    const bounds = getNodeSizeBounds(node.kind);
+    const ratio = readNodeMediaAspectRatio(node);
+    if (!ratio || isCardRenderKind(resolveNodeRenderKind(node))) return bounds;
+    if (isImageGridSplit(node)) return { ...bounds, minHeight: bounds.minWidth / ratio, maxHeight: bounds.maxWidth / ratio };
+    return mediaAspectSizeBounds(ratio, bounds);
 }
 
 // 卡片模式（角色/场景/道具/音轨卡）按 cards-design-v1 §4 的固定宽度；高度部分卡固定、部分动态。
@@ -414,10 +407,13 @@ export function resolveNodeVisualSize(
     const bounds = getNodeSizeBounds(node.kind);
     const { width: cardFixedWidth, height: cardFixedHeight } = cardFixedSize(renderKind, isCardKind);
     const hasResult = Boolean(node.result?.url);
-    const isImageGridSplitNode =
-        node.kind === "image" &&
-        typeof node.meta?.source === "string" &&
-        node.meta.source.startsWith("image-grid-split-");
+    const mediaAspect = readNodeMediaAspectRatio(node);
+    if (mediaAspect && (!isCardKind || (cardFixedWidth !== null && cardFixedHeight === null))) {
+        const mediaBounds = getNodeResizeBounds(node);
+        const width = cardFixedWidth ?? clampNumber(size.width, mediaBounds.minWidth, mediaBounds.maxWidth);
+        return { width, height: width / mediaAspect + readNodeCardInfoHeight(node) };
+    }
+    const isImageGridSplitNode = isImageGridSplit(node);
     const storedPreviewHeight =
         typeof node.meta?.previewHeight === "number" && Number.isFinite(node.meta.previewHeight)
             ? isImageGridSplitNode
