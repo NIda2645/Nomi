@@ -19,7 +19,7 @@
 
 ## 先查别人
 
-- 仓库内唯一共享入口：`src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx`，机器数门两个消费者 `NodeGeneratingOverlay` 与 `NodeImportingOverlay`，无需再造一套。
+- 仓库内唯一共享入口：`src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx:48`，机器数门两个消费者 `NodeGeneratingOverlay` 与 `NodeImportingOverlay`，无需再造一套。
 - 已安装上游源码：`node_modules/img-fx/dist/index.es.js:1170` 每实例 shader 绘制后复制至 2D canvas；`:1209` 共用 renderer 循环；默认约 10fps。共享 renderer 并不等于多个实例免费，须实测。
 - 已安装上游 API：`node_modules/img-fx/dist/index.d.ts:593` 与 `index.es.js:1219`：没有无 WebGL 的静态格子快照入口，paused 仍需 WebGL 初始化；降级采用纯静态 CSS 纹理，不 fork shader。
 - 原方案：`docs/plan/2026-09-09-process-feedback-imgfx.md`，历史 120FPS 是四动画场景的 UI 帧率，不等于动画帧率，不能据此声称无限节点安全。

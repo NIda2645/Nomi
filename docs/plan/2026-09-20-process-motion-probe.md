@@ -20,3 +20,10 @@
 - scoped eslint与App tsc通过。根因合同checker本合同无错误；父任务waiting-grid合同的生产/测试尚未落地时曾红，统一变更就绪后由父任务重验。
 
 - 浏览器生命周期场景归入既有 `tests/ux/process-feedback-imgfx.e2e.mjs` 的 `PF_FX_ONLY=probe` 分支；普通Vitest不import/launch Playwright。该分支直接bundle真实hook，不依赖design-lab服务；整套默认运行也执行该场景。
+
+## 先查别人
+
+- 已有共享调用边界：`src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts:1`，能力读取与系统偏好由该hook统一，不新建事件引擎。
+- 已安装上游源码：`node_modules/img-fx/dist/index.es.js:1128` 自有renderer.dispose，无法释放应用另建的探测context；本轮只处理应用的临时context。
+- 已有直接序列化消费者：`tests/ux/canvas-perf/waitingFxScenario.mjs:12` 调用page.evaluate(reader)，因此保留reader自包含，缓存置于现役hook。
+- 本次为内部资源生命周期纠错；未把TikHub内容或未查过的外部资料当成依据。
