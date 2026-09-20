@@ -2,6 +2,14 @@
 
 状态：方案评估完成，修复未完成，未改变原验收标准。范围仍为简化 A＋完整 T7；不新建页面、执行系统、付款流程、模块加载器或 Electron 分叉。关联[当前修复方案](2026-09-20-pr828-review-remediation.md)。
 
+## 先查别人
+
+- 仓库原 [chunkBoundary](../../src/ui/chunkBoundary.tsx) 已拥有 lazy 与错误边界的局部重试；本次实测证明其 React 实例重建不能恢复当前内核缓存的资源失败，不新增同义加载 owner。
+- 原 [窗口生命周期](../../src/workbench/project/useProjectWindowLifecycle.ts) 是项目保存与重载的接入边界；下文已核的聊天、Run、付款草稿覆盖缺口不能由一次项目保存成功代替。
+- Chromium 官方[启用提交](https://chromium.googlesource.com/chromium/src/third_party/+/382c8f6acce2454704415f6d4f340db6bf72a3de) 已改失败获取缓存策略；开发主线不等于当前 Electron 包已包含，保留具体运行时验证要求。
+
+以上整理本轮已经核查的来源，没有追加新的外部研究或恢复成功结论。取舍仍以下文实测为准。
+
 ## 已证事实与边界
 
 - macOS Electron 43.4.1 / Chromium 150.0.7871.224，实际构建通过 `file://` 加载。测试在 `webRequest` 暂时取消真实 composer 入口，错误为 `ERR_BLOCKED_BY_CLIENT`；解除取消后点击原 Retry 仍不能编辑。这是资源获取失败，非 HTTP 状态码、语法错误、执行异常或永久文件损坏测试。
