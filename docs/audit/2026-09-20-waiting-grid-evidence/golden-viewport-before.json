@@ -1,0 +1,33 @@
+{
+  "name": "golden-path",
+  "mode": "development",
+  "tempRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-Tv8u5I",
+  "outputDir": "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250",
+  "launches": [
+    {
+      "packaged": false,
+      "appPath": "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920",
+      "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-Tv8u5I/user-data",
+      "node": "24.18.1",
+      "electron": "43.4.1",
+      "pid": 46984
+    }
+  ],
+  "screenshots": [
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/01-new-empty-project.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/02-script-written.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/03-plan-landed-three-shots.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/04-canvas-opened-after-landing.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/05-shot-table-three-rows.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890636250/06-shot2-selected.png"
+  ],
+  "paidCalls": 0,
+  "positiveControl": false,
+  "projectId": "project-1789890637889-35xcf1",
+  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-Tv8u5I/projects/未命名项目 09_20 15_50-mu9io75v-f697b6b8",
+  "textRequests": 4,
+  "imageRequests": 0,
+  "unexpected": [],
+  "result": "failed",
+  "error": "Error: 仅改已有镜头提示词不应移动或缩放画布\n\nexpect(locator).toHaveCSS(expected) failed\n\nLocator:  locator('.react-flow__viewport')\nExpected: \"matrix(0.8, 0, 0, 0.8, -81.3092, -443.694)\"\nReceived: \"matrix(0.589109, 0, 0, 0.589109, -28.6931, 19.7327)\"\nTimeout:  5000ms\n\nCall log:\n  - Expect \"to.have.css\" with timeout 5000ms\n  - waiting for locator('.react-flow__viewport')\n    14 × locator resolved to <div class=\"react-flow__viewport xyflow__viewport react-flow__container generation-canvas-v2__canvas\">…</div>\n       - unexpected value \"matrix(0.589109, 0, 0, 0.589109, -28.6931, 19.7327)\"\n\n    at captureRawStack (/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/node_modules/.pnpm/playwright-core@1.60.0/node_modules/playwright-core/lib/coreBundle.js:3130:17)\n    at callMatcherAsStep (/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright/lib/matchers/expect.js:12873:57)\n    at Object.toHaveCSS (/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright/lib/matchers/expect.js:12863:23)\n    at Proxy.<anonymous> (/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/tests/ux/_collect.mjs:18:32)\n    at stepAgentPatchShot2 (/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/tests/ux/golden-path.e2e.mjs:359:48)\n    at async file:///Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/tests/ux/golden-path.e2e.mjs:504:3"
+}

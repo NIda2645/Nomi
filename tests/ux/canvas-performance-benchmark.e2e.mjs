@@ -2,6 +2,7 @@ import { captureScenarioFailure } from './canvas-perf/failureDiagnostics.mjs'
 import { prepareWaitingFx, sampleWaitingFx, cleanupWaitingFx } from './canvas-perf/waitingFxScenario.mjs'
 import { launchNomiApp, closeNomiApp } from './_launchApp.mjs'
 import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
+import { expect } from './_assert.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -588,15 +589,12 @@ async function openProject(app, page, fixture) {
     }
     await card.waitFor({ timeout: 12_000 * openScale })
     await card.click()
-    await sleep(page, 1000)
-    page = getTargetWindow(app, page)
-    const continueButton = page
-      .locator(`[data-project-card][data-project-id="${fixture.record.id}"]`)
-      .getByText('继续创作')
-      .first()
-    if (await continueButton.count().catch(() => 0)) await continueButton.click().catch(() => {})
   }
-  page = getTargetWindow(app, page)
+  // 卡片已经发出打开请求；等待真实目标窗口，不能再点击导航中的旧项目库。
+  await expect.poll(() => {
+    page = getTargetWindow(app, page)
+    return page.url()
+  }, { timeout: 20_000 * openScale, message: '性能夹具目标项目窗口必须就绪' }).toContain(`projectId=${encodeURIComponent(fixture.record.id)}`)
   await page.locator('.generation-canvas-v2__stage').waitFor({ timeout: 20_000 * openScale })
   const firstCanvasMs = Date.now() - startedAt
   const settleStartedAt = Date.now()
@@ -1198,6 +1196,7 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
         elapsedMs: Date.now() - startedAt,
       }
     }
+    const setupMs = Date.now() - startedAt
     const cdpBefore = await getCdpMetrics(cdp)
     const probeSurvivesAction = scenario !== 'reload-heavy'
     const traceChunks = []
@@ -1256,6 +1255,7 @@ async function runScenario({ scale, scenario, runIndex, rootDir }) {
       beforePage,
       page: afterPage,
       actionDetails,
+      setupMs, openMs: opened.firstCanvasMs + opened.mediaSettledMs,
       offCanvasRender,
       nodeIdentity,
       appMetrics: await getAppMetrics(app),

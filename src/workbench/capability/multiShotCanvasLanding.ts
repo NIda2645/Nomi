@@ -328,8 +328,11 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
     if (nodeId && shot.result) inLandingTxn(() => attachShotResult({ nodeId, shotId: shot.shotId, result: shot.result! }))
   }
 
-  // 落完把整块揭进视口（同批量/切图的既有 fit 信号），否则多半一半落在视口外。
-  inLandingTxn(() => useWorkbenchStore.getState().requestCanvasFit(groupCategoryId))
+  // 只有新增内容才揭进视口；重绑定和结果回填不打断用户的缩放/分类。
+  // 原项目事务仍须校验，changedCanvasStructure 的 rebindable 不属于导航理由。
+  if (missing.length > 0 || willCreateGroup || willCreateTable) {
+    inLandingTxn(() => useWorkbenchStore.getState().requestCanvasFit(groupCategoryId))
+  }
 
   const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
   const bindings = ordered

@@ -197,7 +197,7 @@ try {
   await shot('07-video-generating-no-history')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(video.locator('[data-process-dot]')).toHaveCSS('opacity', '1')
-  await expect(video.locator('[data-process-static-band]')).toHaveCSS('transform', 'none')
+  await expect(video.locator('[data-process-static-grid]')).toHaveCSS('transform', 'none')
   await shot('08-video-generating-reduced-motion')
   await setZoom(60)
   const renderedFont = await video.locator('[data-generation-message]').evaluate(el => {

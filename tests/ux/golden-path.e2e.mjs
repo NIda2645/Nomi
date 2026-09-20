@@ -338,6 +338,9 @@ async function stepAgentPatchShot2(win, projectId, runId, nodeIds) {
 
   const input = win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`)
   await expectVisible(input, '画布 Agent 面板没有输入框')
+  await waitForCanvasViewportSettled(win)
+  const viewport = win.locator('.react-flow__viewport')
+  const beforeViewport = await viewport.evaluate(element => getComputedStyle(element).transform)
   const beforePrompts = shotPrompts((await readProject(win, projectId)).payload)
   expect(beforePrompts, '发指令之前第 2 镜就已经变了').toEqual(SHOT_PROMPTS)
   await input.fill(PATCH_INSTRUCTION)
@@ -351,6 +354,10 @@ async function stepAgentPatchShot2(win, projectId, runId, nodeIds) {
   const after = shotPrompts((await readProject(win, projectId)).payload)
   expect(after[0], '第 1 镜被误改').toBe(SHOT_PROMPTS[0])
   expect(after[2], '第 3 镜被误改').toBe(SHOT_PROMPTS[2])
+  // 等待既有视口稳定窗口，避免断言抢在落地层延迟fit前误绿；改提示词应保留阅读位置。
+  await waitForCanvasViewportSettled(win)
+  await expect(viewport, '仅改已有镜头提示词不应移动或缩放画布').toHaveCSS('transform', beforeViewport)
+  await expect(win.locator(SHOT_TABLE), '改提示词后完整表格应继续可读').toHaveAttribute('data-density', 'full')
   await expect(win.locator(SHOT_TABLE).locator(row(nodeIds[1])), '分镜表第 2 行没有显示改后的提示词').toContainText('逆光下的侧脸')
   say('第 2 镜提示词已经 Agent 改掉（Run 账本 → 节点 → 表），1/3 镜逐字未变')
   await shot('shot2-prompt-patched')

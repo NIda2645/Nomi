@@ -2,7 +2,7 @@
 //
 // 合同（2026-09-11 用户拍板恢复）：
 //   · 未选中的卡片 = 两个 28px 圆点，卡片外侧**没有**捕获指针的带子；
-//   · 选中的图片类卡片（且只有它）= 左右各一条 112×168 的带子，加号在带内跟着指针走；
+//   · 选中的图片类卡片（且只有它）= 左右各一条 112×min(168, 卡高+28) 的带子，加号在带内跟着指针走；
 //   · 拖线进入目标卡片外侧热区 → 端点吸到该侧边缘，离开就放开；
 //   · 因为同一时刻只有一张卡有带子，卡片之间的连线始终点得到（这条是回归的那一条）。
 import fs from 'node:fs'
@@ -24,7 +24,7 @@ const images = fixture.record.payload.generationCanvas.nodes.filter((node) => no
 images.forEach((node, index) => {
   node.position = [{ x: 130, y: 120 }, { x: 130, y: 460 }, { x: 520, y: 120 }][index]
   node.title = ['参考图一', '参考图二', '目标图片'][index]
-  node.size = { width: 240, height: 180 }
+  node.size = { width: index === 1 ? 320 : 240, height: 180 }
   node.meta = { ...node.meta, previewHeight: 180, userResized: true }
 })
 fixture.record.payload.generationCanvas = { nodes: images, edges: [], groups: [], selectedNodeIds: [] }
@@ -166,18 +166,24 @@ try {
   })
 
   await task('02-selected-band-follows', async () => {
-    await select(images[0].id)
-    await expect(magneticBands(images[0].id), '选中的图片卡左右各一条带子').toHaveCount(2)
-    // Decoded media now owns card aspect ratio; a 240px-wide 16:9 card is 135px high.
-    // The approved band contract is min(168, actual card height + 28), not always 168.
-    const card = await win.locator(selector(images[0].id)).boundingBox()
-    for (const side of ['left', 'right']) {
-      const hit = handle(images[0].id, 'source', side).locator('.generation-canvas-react-flow__handle-hit')
-      const box = await hit.boundingBox()
-      expect(Math.round(box.width), '带子 112px 宽').toBe(112)
-      expect(Math.round(box.height), '带子 min(168, 实际卡高+28) 高').toBe(Math.round(Math.min(168, card.height + 28)))
+    // 夹具图像均为16:9；名义存储高度不覆盖图片自身比例。两张卡分别覆盖短卡与168px上限。
+    for (const [index, expectedCardHeight] of [[0, 135], [1, 180]]) {
+      const id = images[index].id
+      await select(id)
+      await expect(magneticBands(id), '选中的图片卡左右各一条带子').toHaveCount(2)
+      const card = await win.locator(selector(id)).boundingBox()
+      expect(Math.round(card.height), '卡片按真实图片比例显示').toBe(expectedCardHeight)
+      for (const side of ['left', 'right']) {
+        const hit = handle(id, 'source', side).locator('.generation-canvas-react-flow__handle-hit')
+        const box = await hit.boundingBox()
+        expect(Math.round(box.width), '带子112px宽').toBe(112)
+        expect(Math.round(box.height), '带子高度遵循min(168,卡高+28)').toBe(Math.min(168, expectedCardHeight + 28))
+      }
+
     }
+    await select(images[0].id)
     // 加号跟着指针走：在带内取一个**不是静止位**的点，图标中心要追上来。
+    const card = await win.locator(selector(images[0].id)).boundingBox()
     const follow = { x: card.x + card.width + 78, y: card.y + card.height / 2 - 46 }
     await win.mouse.move(follow.x - 30, follow.y + 20)
     await win.mouse.move(follow.x, follow.y, { steps: 8 })

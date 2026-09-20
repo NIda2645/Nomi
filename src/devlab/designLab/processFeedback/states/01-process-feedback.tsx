@@ -57,7 +57,7 @@ export const PROCESS_FEEDBACK_STATES: readonly LabState[] = [
   },
   {
     id: 'pf-import-reduced',
-    name: '导入中 · 无 GPU 兜底（扫光带，无进度线）',
+    name: '导入中 · 减弱动态（静态格子，无进度线）',
     source: IMPORT_SOURCE,
     coverage: 'shell',
     render: () => <ProcessFeedbackImportStage ratio={0.42} reduced />,

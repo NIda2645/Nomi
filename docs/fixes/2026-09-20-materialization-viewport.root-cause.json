@@ -1,0 +1,156 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-materialization-viewport",
+  "problem_type": "Existing content projection unexpectedly navigates the canvas",
+  "symptom": "Golden Path Agent prompt patch hides the shot-table visual column after zoom drops below 80 percent",
+  "direct_cause": "materializeShots unconditionally requests fit, including rebind-only and idempotent replay; the delayed consumer shrinks the viewport",
+  "class_root": "Data synchronization and creation-driven reveal share an unconditional navigation side effect",
+  "affected_population": [
+    "Agent draft revisions",
+    "Project-open materialization replay",
+    "Completed-result backfill"
+  ],
+  "scope_paths": [
+    "src/workbench/capability/multiShotCanvasLanding.ts"
+  ],
+  "entry_points": [
+    "production.materialize-shots via capabilityApplyHandler",
+    "Agent candidate revision rebind",
+    "Project reopen and result replay"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned navigation intent. Existing requestCanvasFit producers and consumer establish the distinction; no new framework API or dependency is introduced.",
+  "invariants": [
+    "Rebinding and replay of existing content do not change viewport or active category",
+    "New nodes, groups and tables retain automatic reveal",
+    "Node identities, prompts, result attachment, selection, undo and persistence keep their existing owners"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "symbol": "requestCanvasFit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "requestCanvasFit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "requestCanvasFit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "symbol": "requestCanvasFit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "symbol": "requestCanvasFit"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 5,
+    "why_not": "Asset import and image splitting reveal created media; applyCanvasToolCall reveals newly created nodes; production status open-stage is explicit user navigation; materializeShots is the shared projection boundary. These distinct user intents must remain accessible."
+  },
+  "generality_proof": "All draft edits, project replay and result backfill reach materializeShots. A single creation predicate prevents fit for every non-creating projection, independent of source, model, candidate version or platform.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "materializeShots",
+      "responsibility": "Separate creation-driven reveal from existing-content synchronization"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "materializeShots/rebindLandedShots",
+      "disposition": "enforced",
+      "evidence": "Candidate revision changes update existing nodes without requesting fit"
+    },
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "materializeShots/attachShotResult replay",
+      "disposition": "enforced",
+      "evidence": "Existing-node replay and result attachment do not request fit when no new group/table/node is created"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "entry_point": "create_canvas_nodes",
+      "disposition": "not-affected",
+      "evidence": "Fit guarded by created.length > 1; single new node uses focus event; reused nodes do not navigate"
+    },
+    {
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "entry_point": "import media completion",
+      "disposition": "not-affected",
+      "evidence": "Fit only after result.created contains a new node"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "entry_point": "split image into tiles",
+      "disposition": "not-affected",
+      "evidence": "Fit after creation of at least two image tiles"
+    },
+    {
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "entry_point": "open-stage",
+      "disposition": "not-affected",
+      "evidence": "Explicit user navigation intentionally switches workspace and fits"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every revision, result backfill or reopen replay could interrupt an existing reading viewport",
+    "same_class_scan": [
+      "door-map requestCanvasFit: all five production write doors inspected",
+      "ShotTableGrid renders prompt in span only at full density; no input-value mismatch",
+      "capabilityApplyHandler dispatches materialization to the shared owner; useCanvasFitSignal consumes nonce after 360ms"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/capability/multiShotCanvasLanding.ts",
+    "invariant": "Only newly created canvas content requests automatic fit during materialization",
+    "failure_mode": "A non-creating projection issues no navigation request; existing persistence and result writes still proceed",
+    "exception_policy": "none",
+    "strategy": "Guard the existing fit call with creation intent, excluding rebindable from the navigation predicate",
+    "artifacts": [
+      "src/workbench/capability/multiShotCanvasLanding.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "tests/ux/golden-path.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/capability/multiShotCanvasLanding.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/capability/multiShotCanvasLanding.ts"
+    ],
+    "rationale": "Replace unconditional projection-triggered fit; retain the single navigation signal and React Flow consumer"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The application dispatches an unnecessary navigation command; no upstream runtime behavior or version change is required",
+    "exit_criteria": []
+  },
+  "migration": "No data or persisted schema changes.",
+  "residual_risks": [
+    "Linux CI rerun pending after local verification; local Electron viewport evidence belongs to the parent integration run."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/capability/multiShotCanvasLanding.ts",
+    "tests": [
+      "src/workbench/capability/multiShotCanvasLanding.test.ts"
+    ],
+    "why": "Every projection entry reaches materializeShots; this owner distinguishes creation from existing content synchronization before issuing viewport navigation."
+  }
+}

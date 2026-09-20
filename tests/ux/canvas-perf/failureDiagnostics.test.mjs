@@ -9,7 +9,7 @@ afterEach(() => vi.restoreAllMocks())
 it('persists the complete assertion and DOM counts even when the screenshot fails', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'canvas-failure-'))
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  const message = 'expect(locator).toHaveCount(expected) failed\nLocator: [data-process-static-band]\nExpected: 8\nReceived: 4\nCall log:\n  retry'
+  const message = 'expect(locator).toHaveCount(expected) failed\nLocator: [data-process-static-grid]\nExpected: 8\nReceived: 4\nCall log:\n  retry'
   try {
     const counts = { fxCanvas: 0, staticShells: 4, nodes: 8 }
     const result = await captureScenarioFailure({
