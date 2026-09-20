@@ -227,6 +227,7 @@ export async function applyCanvasToolCall(
   canWrite?: () => boolean,
   documentId?: string,
   storyboardId?: string,
+  assertTargetCurrent?: () => Promise<void>,
 ): Promise<unknown> {
   const assertWritable = () => {
     if (canWrite) assertTurnCanWrite(canWrite)
@@ -297,7 +298,9 @@ export async function applyCanvasToolCall(
     const sourceDocument = before.workbenchDocuments.find(document => document.id === targetDocumentId)
     const sourceDesign = storyboardId ? before.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
     const canvasGeneration = getUndoJournalGeneration()
-    const parsedPlan = parseStoryboardPlan(record)
+    // The command discriminator belongs to this boundary, not author content.
+    const { operation: _operation, ...authorPlan } = record
+    const parsedPlan = parseStoryboardPlan(authorPlan)
     const plan = hasRealCharacterReferences(parsedPlan)
       ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent())
       : parsedPlan
@@ -340,6 +343,14 @@ export async function applyCanvasToolCall(
 
   if (operation === 'create_canvas_nodes') {
     const requested = Array.isArray(record.nodes) ? record.nodes : []
+    // Finish all asynchronous reads before checking stamps. Lookup and creation
+    // must share one synchronous segment so concurrent retries see each other.
+    const needsModels = requested.some(
+      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
+    )
+    const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
+    if (assertTargetCurrent) await assertTargetCurrent()
+    assertWritable()
     // 幂等（判据的唯一 owner 在这条写边界，不在调用方）：带物化章的节点，章已经在画布上就**不再建
     // 第二个**，直接把已有节点 id 回给调用方并登记进 clientId 注册表（后续连边/set_prompt 照样指得到）。
     // 此前 capabilityApplyHandler 与 multiShotCanvasLanding 各自手写了一份同样的去重（P1 违规）：
@@ -368,11 +379,6 @@ export async function applyCanvasToolCall(
       if (requestedAnchorCount !== null && index < requestedAnchorCount) retainedAnchorCount += 1
       return true
     })
-    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
-    const needsModels = incoming.some(
-      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
-    )
-    const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
     const total = incoming.length
     // T4 轨迹分层布局：层由 kind 推导（参考/关键帧/视频三列），原点避让画布已有节点
     // 包围盒（修审计 bug D）；单层/不可推导退网格（同样避让）。忽略 LLM 像素坐标。
@@ -499,6 +505,7 @@ export async function applyCanvasToolCall(
         ...(meta ? { meta } : {}),
       }
     })
+    assertWritable()
     const created = inputs.length > 0 ? inCtx(() => generationCanvasTools.create_nodes(inputs)) : []
     // 复用的（本次没建、章已在画布上的）先进映射，再让本次真建的覆盖同名键。
     const clientIdToNodeId: Record<string, string> = { ...reusedByClientId }

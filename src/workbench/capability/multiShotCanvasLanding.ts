@@ -9,6 +9,11 @@
 //   3. production.detach-canvas-nodes 的渲染半：见 registerCanvasDetachReporter（撤销/删节点 → 通知主进程记账）。
 //
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
+import { withProjectAction } from '../project/projectCanvasReadSurface'
+import { productionRunApi } from '../production/productionRunApi'
+import { storyboardContentToken, storyboardPlanFromGeneration } from '../../../electron/shared/storyboard/generationPlanEditorial'
+import { projectStoryboardDesign } from '../creation/storyboard/exec/storyboardProjection'
+import { storyboardRunBindings } from '../creation/storyboard/exec/storyboardNodeBinding'
 import i18n from '../../i18n'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
@@ -57,6 +62,9 @@ export type MaterializeShotInput = {
 }
 
 export type MaterializeShotsPayload = {
+  /** Document authoring never recreates nodes during save/open/reconciliation. */
+  existingOnly?: boolean
+  authorContentToken?: string
   projectId?: string
   runId?: string
   materializationOperationId?: string
@@ -177,7 +185,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   )
 
   // 分锚/镜：参考行（锚）在上、镜头折行网格（复用 storyboard 布局的 anchorCount 约定）。构造序=先锚后镜。
-  const ordered = [...incoming].sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
+  const ordered = incoming.filter(shot => !payload.existingOnly || existingByShot.has(shot.shotId)).sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
   // 全部落进同一分类（分镜组），锚按 kind、镜落 shots。跨分类混编时以「镜头组」为主分类。
   const groupCategoryId: BuiltinCanvasCategoryId = 'shots'
 
@@ -188,7 +196,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // 这条闸是「打开项目补齐」这类幂等重放不会覆盖用户手改的原因。
   const rebindable = ordered.filter((shot) => {
     const nodeId = existingByShot.get(shot.shotId)
-    if (!nodeId || !shot.candidate) return false
+    if (payload.existingOnly || !nodeId || !shot.candidate) return false
     const node = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)
     const stored = nodeCandidateRevision(node?.meta as Record<string, unknown> | undefined)
     return stored === null || shot.candidate.revision > stored
@@ -203,7 +211,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // 只在本次真会落东西时打 barrier（有缺失节点 / 有要重绑定的 / 要新建分镜组）——纯回填/幂等空跑不该占一个撤销步。
   // 节点全落 groupCategoryId(shots) → ≥2 个就够建组（锚+镜同组，靠 referenceSheet 区分）。
   const groupExists = useGenerationCanvasStore.getState().groups.some((group) => group.materializationOperationId === materializationOperationId)
-  const willCreateGroup = !groupExists && ordered.length >= 2
+  const willCreateGroup = !payload.existingOnly && !groupExists && ordered.length >= 2
   // 分镜表与分镜组同生：**只在这次真建了节点时**建（`missing.length > 0`）。纯补齐重放不建——
   // 用户删掉这张表是删掉一个视图（同 storyboard 表「删除仅移除视图」），重开项目不许把它复活。
   // 表本身不存行：行从画布上 meta.productionRunId 的节点 derive（Agent 分镜只有 Run 这一份账本）。
@@ -247,7 +255,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
       groupCategoryId,
       anchorCount: missingAnchorCount,
     }
-    const applied = await inLandingTxn(() => applyCanvasToolCall('create_canvas_nodes', args)) as {
+    const applied = await applyCanvasToolCall('create_canvas_nodes', args, ctx) as {
       clientIdToNodeId?: Record<string, unknown>
       createdNodeIds?: unknown
     }
@@ -278,7 +286,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   const existingGroup = useGenerationCanvasStore.getState().groups.find((group) => group.materializationOperationId === materializationOperationId)
   if (existingGroup) {
     groupId = existingGroup.id
-  } else if (shotsCategoryNodeIds.length >= 2) {
+  } else if (!payload.existingOnly && shotsCategoryNodeIds.length >= 2) {
     const planName = (payload.planName || '').trim()
     const groupName = planName
       ? i18n.t('generationCommon.production.canvasLanding.groupName', { name: planName })
@@ -375,6 +383,18 @@ export function attachShotResult(payload: AttachShotResultPayload): AttachShotRe
 export async function handleMultiShotCanvasLandingOp(op: string, data: Record<string, unknown>): Promise<unknown | null> {
   switch (op) {
     case 'production.materialize-shots':
+      if (typeof data.authorContentToken === 'string' && typeof data.projectId === 'string' && typeof data.runId === 'string') {
+        return withProjectAction(async project => {
+          const { projectId, runId, authorContentToken } = data as { projectId: string; runId: string; authorContentToken: string }
+          if (project.binding.projectId !== projectId) throw new Error('storyboard_project_changed')
+          const run = await productionRunApi.read(projectId, runId)
+          project.assertCurrent()
+          if (!run || run.projectId !== projectId || run.runId !== runId || storyboardContentToken(run) !== authorContentToken) throw new Error('storyboard_content_conflict')
+          const canvas = useGenerationCanvasStore.getState()
+          projectStoryboardDesign({ id: runId, plan: storyboardPlanFromGeneration(run) }, canvas, storyboardRunBindings(run.generationPlan, canvas.edges))
+          return { bindings: [], createdNodeIds: [], groupId: null, shotTableNodeId: null }
+        }, () => { throw new Error('storyboard_project_unavailable') })
+      }
       return materializeShots(data as MaterializeShotsPayload)
     case 'production.attach-shot-result':
       return attachShotResult(data as AttachShotResultPayload)

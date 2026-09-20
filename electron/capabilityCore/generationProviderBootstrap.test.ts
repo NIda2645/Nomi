@@ -1,11 +1,29 @@
+import { projectReferenceUrls } from "./apimartGenerationProjection";
+import { prepareProductionGenerationAuthorizationWithReferences } from "../productionRun/prepareProductionGenerationAuthorization";
+import { createGenerationRuntimeAdapter } from "./generationRuntimeAdapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createGenerationProviderBootstrap } from "./generationProviderBootstrap";
 import { createCatalogModuleRegistry } from "./moduleCatalogBootstrap";
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 import type { GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
 import type { CatalogState } from "../catalog/types";
 import type { ProductionExecutionBinding } from "../productionRun/productionExecutionBinding";
+
+const referencePorts = vi.hoisted(() => ({
+  catalog: vi.fn(), settings: vi.fn(), list: vi.fn(), identity: vi.fn(), read: vi.fn(),
+  post: vi.fn(), multipart: vi.fn(), put: vi.fn(),
+}));
+vi.mock('../catalog/catalogStore', async importOriginal => ({ ...(await importOriginal<typeof import('../catalog/catalogStore')>()), readCatalog: referencePorts.catalog }));
+vi.mock('../settings/automationPolicySettings', async importOriginal => ({ ...(await importOriginal<typeof import('../settings/automationPolicySettings')>()), readAutomationPolicySettings: referencePorts.settings }));
+vi.mock('./pendingSpendReferences', async importOriginal => ({ ...(await importOriginal<typeof import('./pendingSpendReferences')>()),
+  projectSpendReferenceAssets: { list: referencePorts.list, identity: referencePorts.identity, import: vi.fn() },
+}));
+vi.mock('../assets/localAssetFile', async importOriginal => ({ ...(await importOriginal<typeof import('../assets/localAssetFile')>()),
+  readNomiLocalAsset: referencePorts.read, postJsonForAssetUpload: referencePorts.post,
+  postMultipartForAssetUpload: referencePorts.multipart, putBinaryForAssetUpload: referencePorts.put,
+}));
 
 const CONTRACT_HASH = "a".repeat(64);
 const REQUEST_FINGERPRINT = "b".repeat(64);
@@ -165,6 +183,55 @@ describe("generation provider bootstrap", () => {
     }));
     expect(body).toMatchObject({ image_urls: ["https://cdn.example/asset-1.png"] });
     expect(resolveReferenceUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the durable approved reference snapshot without a fixture resolver after restart", () => {
+    const fixture = state("test-key");
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
+    const input = { ...generationInput({ mode: "image-to-image", references: [reference] }),
+      referenceUrls: { [spendReferenceKey(reference)]: "https://cdn.example/approved.png" } };
+    const boot = () => createGenerationProviderBootstrap(fixture, {
+      connectionResolver: () => ({ apiKey: "test-key" }), catalogReader: () => fixture,
+    });
+    const first = boot().providers[0]!.buildRequest(input);
+    expect(first).toMatchObject({ image_urls: ["https://cdn.example/approved.png"] });
+    expect(boot().providers[0]!.buildRequest(JSON.parse(JSON.stringify(input)))).toEqual(first);
+  });
+
+  it("localizes only included shots and seals the same snapshot used after restart", async () => {
+    const fixture = state("test-key");
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
+    const candidate = { candidateId: "candidate", revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId: "gpt-image-2", mode: "image-to-image", prompt: "edit", parameters: {}, references: [reference] };
+    const contract = { ...candidate, schemaVersion: 1 as const, candidateRevision: 1, moduleVersion: "1", contractHash: CONTRACT_HASH, warnings: [], droppedFields: [] };
+    const boot = () => createGenerationProviderBootstrap(fixture, { connectionResolver: () => ({ apiKey: "test-key" }), catalogReader: () => fixture });
+    const resolve = vi.fn(async (_input: Parameters<typeof import("./productionReferenceUrls").resolveProductionReferenceUrls>[0]) => ({ [spendReferenceKey(reference)]: "https://cdn.example/approved.png" }));
+    const prepared = await prepareProductionGenerationAuthorizationWithReferences({
+      lease: { projectId: "p", immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
+      projectRevision: 1, operation: { operationId: "run", projectId: "p", candidate, planVersion: 1 }, contract,
+      multiShot: { planHash: "plan", shots: [{ shotId: "included", candidate, contract }, { shotId: "excluded", candidate: { ...candidate, references: [{ ...reference, assetId: "outside-scope" }] }, included: false }] },
+      providers: boot().providers, resolveShotPrice: () => ({ known: true, amount: 1 }), now: "2026-09-20T00:00:00Z", assertCurrent() {},
+    }, resolve);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve.mock.calls[0]?.[0]).toMatchObject({ projectId: "p", references: [reference] });
+    const job = JSON.parse(JSON.stringify(prepared.envelope)).jobs[0];
+    expect(job.referenceUrls).toEqual({ [spendReferenceKey(reference)]: "https://cdn.example/approved.png" });
+    const restarted = createGenerationRuntimeAdapter({ providers: boot().providers }).prepareAuthorization({ contract, providerIdempotencyKey: job.providerIdempotencyKey, referenceUrls: job.referenceUrls });
+    expect(restarted.providerRequestHash).toBe(job.providerWirePayloadHash);
+  });
+
+  it("preserves first/last frame and mixed-media channels from the approved snapshot", () => {
+    const references = [
+      { assetId: "first", kind: "image" as const, role: "first_frame" as const },
+      { assetId: "last", kind: "image" as const, role: "last_frame" as const },
+      { assetId: "video", kind: "video" as const },
+      { assetId: "audio", kind: "audio" as const },
+    ].map(reference => ({ ...reference, contentHash: CONTRACT_HASH, version: 1 }));
+    const referenceUrls = Object.fromEntries(references.map(reference => [spendReferenceKey(reference), `https://cdn.example/${reference.assetId}`]));
+    const mapping = state().mappings[0]!;
+    const projected = projectReferenceUrls({ ...generationInput({ references }), referenceUrls }, undefined, {
+      ...mapping, create: { ...mapping.create, body: { first_frame_image: "{{request.params.first_frame_image}}", last_frame_image: "{{request.params.last_frame_image}}", video_urls: "{{request.params.video_urls}}", audio_urls: "{{request.params.audio_urls}}" } },
+    });
+    expect(projected.parameters).toEqual({ first_frame_image: "https://cdn.example/first", last_frame_image: "https://cdn.example/last", video_urls: ["https://cdn.example/video"], audio_urls: ["https://cdn.example/audio"] });
   });
 
   it("registers an enabled encrypted credential without resolving it until the first network request", async () => {
@@ -349,4 +416,59 @@ describe("generation provider bootstrap", () => {
       expect(fetchImpl).not.toHaveBeenCalled();
     },
   );
+});
+
+
+it.each(['first_frame', 'last_frame'] as const)('rejects unsupported %s rather than changing it into an ordinary image reference', (role) => {
+  const reference = { assetId: 'frame', contentHash: CONTRACT_HASH, version: 1, kind: 'image' as const, role: 'first_frame' as const };
+  {
+    const ref = { ...reference, role };
+    expect(() => projectReferenceUrls({ ...generationInput({ references: [ref] }), referenceUrls: { [spendReferenceKey(ref)]: 'https://cdn.example/frame.png' } }, undefined,
+      { ...state().mappings[0]!, create: { ...state().mappings[0]!.create, body: { image_urls: '{{request.params.image_urls}}' } } })).toThrow(/unsupported.*role/);
+  }
+});
+
+
+it.each(['ask', 'deny', 'allow'] as const)('real authorization wrapper preserves %s upload consent before any paid provider call', async consent => {
+  secretMocks.decryptApiKeyRecord.mockReset().mockImplementation(record => record?.apiKey ?? '');
+  secretMocks.apiKeyDecryptStatus.mockReset().mockReturnValue('ok');
+  const fixture = state('test-key');
+  const uploadCatalog = structuredClone(fixture);
+  uploadCatalog.vendors[0]!.assetIngestion = { strategy: 'upload-multipart', endpoint: 'https://upload.fixture.test/reference', fileField: 'file', urlPath: 'url', visibility: 'public-anonymous', accepts: ['image'], ttlSeconds: 3600 };
+  referencePorts.catalog.mockReturnValue(uploadCatalog);
+  referencePorts.settings.mockReturnValue({ anonymousAssetHosting: consent, minimizeUploads: true });
+  const reference = { assetId: 'asset-1', contentHash: CONTRACT_HASH, version: 1, kind: 'image' as const };
+  referencePorts.list.mockReturnValue([{ id: reference.assetId, data: { url: 'nomi-local://asset/p/reference.png', contentType: 'image/png' } }]);
+  referencePorts.identity.mockReturnValue({ contentHash: CONTRACT_HASH, version: 1 });
+  referencePorts.read.mockReturnValue({ bytes: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'), contentType: 'image/png', fileName: 'reference.png' });
+  referencePorts.post.mockReset().mockResolvedValue({ url: 'https://cdn.fixture.test/reference.png' });
+  referencePorts.multipart.mockReset().mockResolvedValue({ url: 'https://cdn.fixture.test/reference.png' }); referencePorts.put.mockReset();
+  const paidFetch = vi.fn().mockRejectedValue(new Error('Unapproved paid submission is forbidden'));
+  const bootstrap = createGenerationProviderBootstrap(fixture, { connectionResolver: () => ({ apiKey: 'test-key' }), catalogReader: () => fixture, fetchImpl: paidFetch });
+  expect(bootstrap.providers).toHaveLength(1);
+  const candidate = { candidateId: 'candidate', revision: 1, moduleId: 'generation.single-shot', providerId: 'apimart', modelId: 'gpt-image-2', mode: 'image-to-image', prompt: 'edit', parameters: {}, references: [reference] };
+  const contract = { ...candidate, schemaVersion: 1 as const, candidateRevision: 1, moduleVersion: '1', contractHash: CONTRACT_HASH, warnings: [], droppedFields: [] };
+  // No resolver seam: actual wrapper -> indexed asset identity -> localization -> catalog provider -> durable envelope.
+  const preparing = prepareProductionGenerationAuthorizationWithReferences({
+    lease: { projectId: 'p', immutableProjectUuid: 'uuid', projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 1,
+    operation: { operationId: 'run', projectId: 'p', candidate, planVersion: 1 }, contract,
+    providers: bootstrap.providers, resolveShotPrice: () => ({ known: true, amount: 1 }), now: '2026-09-20T00:00:00Z', assertCurrent() {},
+  });
+  const prepared = await preparing;
+  if (consent === 'allow') {
+    expect(referencePorts.post).not.toHaveBeenCalled();
+    expect(referencePorts.multipart).toHaveBeenCalledTimes(1);
+    expect(referencePorts.multipart.mock.calls[0]?.[0]).toBe('https://upload.fixture.test/reference');
+  } else {
+    // Existing public-provider relay remains available; ask/deny blocks anonymous hosting only.
+    expect(referencePorts.post).not.toHaveBeenCalled();
+    expect(referencePorts.multipart).toHaveBeenCalledTimes(1);
+    expect(referencePorts.multipart.mock.calls[0]?.[0]).toContain('/v1/assets');
+  }
+  const job = JSON.parse(JSON.stringify(prepared.envelope)).jobs[0];
+  expect(job.referenceUrls).toEqual({ [spendReferenceKey(reference)]: 'https://cdn.fixture.test/reference.png' });
+  const restarted = createGenerationRuntimeAdapter({ providers: bootstrap.providers }).prepareAuthorization({ contract, providerIdempotencyKey: job.providerIdempotencyKey, referenceUrls: job.referenceUrls });
+  expect(restarted.providerRequestHash).toBe(job.providerWirePayloadHash);
+  expect(referencePorts.put).not.toHaveBeenCalled();
+  expect(paidFetch).not.toHaveBeenCalled();
 });

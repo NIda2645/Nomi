@@ -40,7 +40,7 @@ const canvas = (id: string, name: string, args: Record<string, unknown>, semanti
   domainResult: { applied: true, proposalId: `receipt-${id}`, operation: semantic.operation, result: {}, reconciliation: { ok: true, deviationCount: 0 } },
   resultText: `Applied directly (undoable).\nUser sees: ${userSees}`,
 });
-const DRAFT_USER_SEES = 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.';
+const DRAFT_USER_SEES = 'Draft changes are saved in the project. Saving does not imply canvas placement or a new generation start.';
 /** `draft_shots` 建草稿（卡藏着）：返回 durable operation；模型手里拿到的 id，末行按它下一步要填的名字印成 `operationId=`。 */
 const draft = (id: string, args: Record<string, unknown>, operationId: string): L1Call =>
   domain(id, 'draft_shots', args, { operation: { operationId, state: 'draft', cardHidden: true } }, args, `${DRAFT_USER_SEES} (operationId=${operationId})`);
@@ -96,8 +96,8 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
   scenario('G1', 'generation', 'Draft a shot without spending', [turn('Draft a sunrise image.',
     calls(draft('create-g1', { shots: [{ prompt: 'Sunrise' }] }, 'gen-1')), say('The draft awaits the user; nothing was spent.'))]),
   scenario('G2', 'generation', 'Read a submitted job then cancel it', [turn('Stop the existing generation.',
-    calls(domain('read-g2', 'check_job', { jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'submitted' } })),
-    calls(domain('cancel-g2', 'cancel_job', { jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'cancelled' } }, { jobId: 'gen-2' },
+    calls(domain('read-g2', 'check_job', { domain: 'generation', jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'submitted' } })),
+    calls(domain('cancel-g2', 'cancel_job', { domain: 'generation', jobId: 'gen-2' }, { operation: { operationId: 'gen-2', state: 'cancelled' } }, { domain: 'generation', jobId: 'gen-2' },
       // 同上：「after the user confirmed」原来是写死的，本场景没摆批准，断言的就该是不带这半句的那一支。
       'The job was cancelled; credit already spent is not refunded.')), say('Cancellation was requested once.'))]),
   scenario('G3', 'generation', 'Preserve scalar parameters while drafting and revising', [turn('Revise this structured draft.',
@@ -107,10 +107,10 @@ export const L1_SCENARIOS: readonly L1Scenario[] = [
     calls(draft('start-k1', { shots: [{ prompt: 'A short film opening' }] }, 'run-k1')), say('The draft task was created.'))],
     { task: { productionRunId: 'run-k1', operationId: 'start-k1', facts: [queued, running, complete] } }),
   scenario('K2', 'task', 'An unavailable task joins no invented progress', [turn('Read the old task.',
-    calls(domain('read-k2', 'check_job', { jobId: 'gen-k2' }, { operation: { operationId: 'gen-k2' } })), say('Only its saved identity is available.'))],
+    calls(domain('read-k2', 'check_job', { domain: 'generation', jobId: 'gen-k2' }, { operation: { operationId: 'gen-k2' } })), say('Only its saved identity is available.'))],
     { task: { productionRunId: 'run-k2', facts: [undefined] } }),
   scenario('K3', 'task', 'Task identity and completed artifacts survive restart', [turn('Record the completed task.',
-    calls(domain('read-k3', 'check_job', { jobId: 'run-k3' }, { operation: { operationId: 'run-k3', state: 'submitted' } })), say('The completed task is recorded.'))],
+    calls(domain('read-k3', 'check_job', { domain: 'generation', jobId: 'run-k3' }, { operation: { operationId: 'run-k3', state: 'submitted' } })), say('The completed task is recorded.'))],
     { task: { productionRunId: 'run-k3', operationId: 'gen-k3', facts: [complete] } }),
   scenario('F1', 'interaction', 'User steers the next step while a real read is running', [turn('Read then update the format.',
     calls(read('hold-f1')), calls(write('write-f1', 'append', ' Landscape.', 1)), say('The next step uses landscape.'))],

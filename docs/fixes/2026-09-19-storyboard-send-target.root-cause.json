@@ -1,0 +1,384 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-storyboard-send-target",
+  "problem_type": "Asynchronous storyboard writes follow mutable selection",
+  "symptom": "A generation request has no fixed Run until the model creates it",
+  "direct_cause": "Resident send captures document but not Run; create allocates operationId later",
+  "class_root": "Admission does not bind generation writes to one immutable document and Run target",
+  "affected_population": [
+    "Creation composer requests and storyboard launcher requests"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+    "src/workbench/ai/ProjectAgentResidentShell.tsx",
+    "electron/shared/agentLane/laneDesktopContracts.ts",
+    "electron/shared/agentCapabilities/generationInvocationContext.ts",
+    "electron/agentLane/laneDesktopInput.ts",
+    "electron/agentLane/laneExtendedDesktopPorts.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/capabilityCore/dispatcher.ts",
+    "electron/shared/agentLane/laneContracts.ts",
+    "electron/shared/agentLane/laneInputMessage.ts",
+    "electron/shared/agentLane/laneProjection.ts"
+  ],
+  "entry_points": [
+    "Creation composer",
+    "Storyboard launcher"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal Run identity and CAS contract; no external framework behavior changes",
+  "invariants": [
+    "Generation writes use the send-time project, document, Run and expected revision",
+    "Captured request identity stays internal; the original Agent panel has no extra target/revision header in either expanded or collapsed hosts."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "GenerationInvocationContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneInputPreparation.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneModelContext.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneOriginalInput.mts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "GenerationInvocationContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationInvocationContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationInvocationContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpSemanticBatchStart.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationInvocationContext.ts",
+      "symbol": "StoryboardRequestTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "StoryboardRequestTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "LaneDraftIntent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+      "symbol": "StoryboardRequestTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+      "symbol": "LaneDraftIntent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/agentResident.ts",
+      "symbol": "zhAgentResident"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhAgentResident"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "enAgentResident"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "LaneComposerContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+      "symbol": "LaneDraftIntent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "getDocumentSessionPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "StoryboardRequestTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "readCreationRunSelection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "getDocumentSessionPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
+      "symbol": "readCreationRunSelection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/documentSessionPort.ts",
+      "symbol": "getDocumentSessionPort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "captureGenerationContext"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "useAgentPanelV4Actions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "captureSendContext"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "creationRunTitle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
+      "symbol": "creationRunTitle"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "LaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneInputIntent.mts",
+      "symbol": "LaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneOriginalInput.mts",
+      "symbol": "LaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "symbol": "LaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneInputMessage.ts",
+      "symbol": "LaneInputMessage"
+    }
+  ],
+  "door_reduction": {
+    "before": 56,
+    "after": 52,
+    "why_not": "The existing renderer admission, durable lane input/replay/projection, generation transport and Run persistence each retain their own role. All writes to generation candidates converge on the Run CAS owner; read-only consumers cannot mint a target."
+  },
+  "generality_proof": "Both launcher and composer converge on send, then generation transport and durable operation store enforce the same target.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "useAgentPanelV4Actions",
+      "responsibility": "Capture all target fields before asynchronous admission"
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "createPiGenerationTransportAdapter",
+      "responsibility": "Bind write operation ID to immutable target"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "entry_point": "storyboardPlannerLauncher",
+      "disposition": "enforced",
+      "evidence": "Calls actions.send with newStoryboard flag"
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "entry_point": "send",
+      "disposition": "enforced",
+      "evidence": "Ordinary composer and selected Run edits share capture"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every asynchronous generation can cross document or Run selection changes",
+    "same_class_scan": [
+      "rg storyboardPlannerLauncher src",
+      "rg sourceDocument selectedPlan electron/agentLane electron/capabilityCore",
+      "door-map captureGenerationContext and useAgentPanelV4Actions"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/generationTransportAdapters.ts",
+    "invariant": "The operation ID cannot differ from the target captured on send",
+    "failure_mode": "Reject mismatched project, Run or stale revision before durable mutation",
+    "exception_policy": "none",
+    "strategy": "Capture before await and validate at the shared generation owner",
+    "artifacts": [
+      "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "electron/productionRun/productionGenerationOperationStore.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/productionRun/productionGenerationOperationStore.test.ts",
+    "electron/shared/agentLane/laneProjection.test.ts",
+    "tests/ux/core-a-creation-runs.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "tests/ux/core-a-creation-runs.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Existing lane and generation owners remain. The uncommitted display-only CreationAgentTarget addition and its exclusive pendingTarget state were withdrawn; they were never part of the merge-base and therefore are not deleted legacy paths in the delivery diff."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Internal request identity and repository CAS; no dependency changes",
+    "exit_criteria": []
+  },
+  "migration": "Historical input retains its recorded target through replay and restored intent. Existing Runs without known source document are never assigned to the active document.",
+  "residual_risks": [
+    "Live paid generation intentionally unverified; focused local and Electron acceptance required."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionGenerationOperationStore.ts",
+    "tests": [
+      "electron/productionRun/productionGenerationOperationStore.test.ts"
+    ]
+  }
+}

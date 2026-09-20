@@ -22,6 +22,16 @@ function runWithCandidateScript(): ProductionRun {
 }
 
 describe('production run script review reducer', () => {
+  it('accepts an exact-cap decimal budget summary', () => {
+    const effect = applyProductionCommand(runWithCandidateScript(), {
+      commandId: 'budget-decimal-exact-cap', expectedRevision: 1, type: 'budget.set',
+      payload: { budget: { currency: 'CNY', authorized: 0.3, reserved: 0.1, actual: 0.2, unsettled: 0 } },
+      issuedAt: now,
+    }, now)
+
+    expect(effect.run.budget).toEqual({ currency: 'CNY', authorized: 0.3, reserved: 0.1, actual: 0.2, unsettled: 0 })
+  })
+
   it('adopts a script only after an approved review', () => {
     const effect = applyProductionCommand(runWithCandidateScript(), {
       commandId: 'script-review-approved', expectedRevision: 1, type: 'script.review',

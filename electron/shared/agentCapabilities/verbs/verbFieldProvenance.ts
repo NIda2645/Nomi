@@ -73,6 +73,7 @@ const RAW: Readonly<Record<string, Readonly<Record<string, readonly VerbFieldPro
   check_job: { jobId: ["from-read:generate.taskRef.jobId"], domain: ["from-read:generate.taskRef.domain"] },
   cancel_job: { jobId: ["from-read:generate.taskRef.jobId"], domain: ["from-read:generate.taskRef.domain"] },
   draft_shots: {
+    "shots.storyboard": ["model-authored"],
     operationId: ["from-read:draft_shots.operationId"],
     taskKind: ["model-authored"],
     candidate: ["from-read:list_models.modelId"],

@@ -87,6 +87,8 @@ const { skillWriteInputForAlias } = await load('electron/shared/agentCapabilitie
  * 忘记登记的成本是门岗当场红——这个方向是故意的（R17：能让门岗拦的别留给人）。
  */
 const TRANSLATOR_CONSUMED = {
+  'check_job/domain': 'laneVerbTransport.verbToTransportCall 消费为 generation/export lane；域内宿主只接收自己的 jobId/operationId，不再次选择任务域',
+  'cancel_job/domain': 'laneVerbTransport.verbToTransportCall 消费为 generation/export lane；laneExtendedDesktopPorts 先要求明确任务域，禁止用取消失败探测另一个域',
   'draft_shots/shots[].role': 'patch 分支改的是候选，role 是逐镜信封字段，宿主的 candidatePatch 不收（表上是 refuse：填了就当场拒，不会静默丢）',
   'read_script/scope': 'scope 是契约的 operation 判别值，翻译成 full/selection 后由方法名承载',
   'write_script/where': '同上：where 翻成 document.write 的 operation（insert/replace/append）',

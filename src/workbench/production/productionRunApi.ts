@@ -21,7 +21,7 @@ export const productionRunApi = {
   resumeBatch: (projectId: string, runId: string, reason: 'budget' | 'manual'): Promise<ProductionActionResult> => bridge().resumeBatch(projectId, runId, reason) as Promise<ProductionActionResult>,
   // 2026-09-11 Agent 面板付费确认卡。读是投影（价格由宿主算），三个动作都回结构化 { ok, code }。
   pendingSpend: (projectId: string) => bridge().pendingSpend(projectId),
-  reviseSpend: (input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }) => bridge().reviseSpend(input),
+  reviseSpend: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => bridge().reviseSpend(input),
   discardSpend: (projectId: string, operationId: string, quoteId: string) => bridge().discardSpend(projectId, operationId, quoteId),
   confirmSpend: (projectId: string, operationId: string, quoteId: string, shotIds?: readonly string[]) => bridge().confirmSpend(projectId, operationId, quoteId, shotIds),
 }

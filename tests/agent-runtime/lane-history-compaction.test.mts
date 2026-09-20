@@ -7,6 +7,53 @@ import { isLaneInputMessage } from '../../electron/shared/agentLane/laneInputMes
 import { prepareLaneSkillContext } from '../../electron/agentLane/laneInputPreparation.js';
 import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDesktopContracts.js';
 import type { SkillRecord } from '../../electron/skills/skillStore.js';
+import { openLaneHistory } from '../../electron/agentLane/laneHistory.mjs';
+import { openLaneWorkspace } from '../../electron/agentLane/laneWorkspace.mjs';
+
+test('C23 a real history page completing after lane selection publishes only the new conversation', async t => {
+  const f = await createLaneFixture(t, []);
+  const context = BACKGROUND_CONTEXT;
+  const opened = await openLaneSession({ projectDir: f.projectDir }, context);
+  const branch = await opened.session.createBranch('main', null, context);
+  for (let i = 0; i < 90; i++) await branch.appendMessage({ role: 'user', content: `OLD_MAIN_${i}`, timestamp: i }, context);
+  await opened.session.close(context); await opened.release(context);
+  let entered!: () => void;
+  let release!: () => void;
+  const pageEntered = new Promise<void>(resolve => { entered = resolve; });
+  const delivery = new Promise<void>(resolve => { release = resolve; });
+  t.after(() => release());
+  const workspace = await openLaneWorkspace(f.options, async options => {
+    const real = await openLaneHistory(options);
+    return { ...real, execute: async (command, executionOptions) => {
+      const result = await real.execute(command, executionOptions);
+      if (command.kind === 'history-older') { entered(); await delivery; }
+      return result;
+    } };
+  });
+  t.after(() => workspace.close());
+  await workspace.execute({ kind: 'lane-create', laneName: 'research' });
+  await workspace.execute({ kind: 'lane-select', laneName: 'main' });
+  const original = workspace.projection();
+  const sessionId = original.lanes.find(lane => lane.laneName === 'main')!.sessionId;
+  assert.equal(original.active.parts.length, 80, 'positive control: this is an actually paged native history');
+  const loading = workspace.execute({ kind: 'history-older', before: original.active.history!.before! },
+    { expectedConversation: { laneName: 'main', sessionId } });
+  await pageEntered;
+  assert.equal(workspace.projection().active.parts.length, 90, 'real page read completed; only its command delivery remains held');
+  await workspace.execute({ kind: 'lane-select', laneName: 'research' });
+  const selected = workspace.projection().active;
+  const published: string[] = [];
+  const unsubscribe = workspace.subscribe(value => published.push(value.active.lane));
+  t.after(unsubscribe);
+  release();
+  await loading;
+  assert.equal(workspace.projection().active, selected);
+  assert.deepEqual(published, ['research'], 'late completion re-reads the current owner instead of publishing the old page');
+  assert.doesNotMatch(JSON.stringify(workspace.projection().active), /OLD_MAIN/);
+  await assert.rejects(workspace.execute({ kind: 'approval', toolCallId: 'old-card', action: 'allow-once' },
+    { expectedConversation: { laneName: 'main', sessionId } }), /agent_lane_workspace_stale/);
+  assert.equal(f.http.requests.length, 0, 'history and stale approvals cannot invoke a provider');
+});
 
 test('R02 actual SDK compaction retains original branch IDs and visible skill history', async (t) => {
   const f = await createLaneFixture(t, [

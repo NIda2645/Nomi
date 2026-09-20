@@ -3,6 +3,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { CANVAS_DRAGGING_ATTRIBUTE } from '../components/canvasDraggingFlag'
 import { resolveAnchoredPlacement } from './anchoredPlacement'
+import { collectBottomDockRects } from '../../generation/workspaceBottomDocks'
 
 export const NODE_FLOATING_TOOLBAR_SELECTOR = '[data-node-floating-toolbar="true"]'
 /** 画布左缘常驻工具条（`CanvasToolbar`）自己挂的标记——同 `useCanvasBottomDockRects.ts` 底部停靠的机制。 */
@@ -25,11 +26,12 @@ export function toolbarClearanceInCanvasUnits(screenHeight: number, zoom: number
  * workspace 子树 MutationObserver」，任何无关元素动一下都会重排浮框，那就是用户报的漂移
  * （2026-09-10 反馈 #10）。
  *
- * 要观测的因此**正好是那两个入参**：节点自己的屏幕矩形，和舞台的屏幕矩形。
+ * 要观测的是节点自己的屏幕矩形和可用舞台：舞台矩形扣除固定外壳停靠区。
  * 观测方式见下面 `recompute` 后面那段——`ResizeObserver` 一个人办不到。
  *
  * 「舞台矩形」本身不等于「可用区」：画布左缘常驻着 `CanvasToolbar`，是固定停靠的画布
- * chrome，不随视口滚动。`recompute` 里量它的真实矩形来收窄 `stage.left`（2026-09-10
+ * chrome，不随视口滚动；底部停靠区由 workspaceBottomDocks 统一声明。
+ * `recompute` 里量真实矩形来收窄可用区（左侧修复来自 2026-09-10
  * 反馈 #10 复核：截图里浮框左缘、「生成方式」标签被它压住，根因是可用区算漏了这一块）。
  */
 export function useComposerViewportPlacement(input: {
@@ -86,7 +88,7 @@ export function useComposerViewportPlacement(input: {
       const leftDockRect = stage.querySelector<HTMLElement>(CANVAS_LEFT_DOCK_SELECTOR)?.getBoundingClientRect()
       const leftDockUsable = leftDockRect && leftDockRect.width > 0 && leftDockRect.bottom > stageRect.top && leftDockRect.top < stageRect.bottom
       const stageLeft = stageRect.left + (leftDockUsable ? Math.max(VIEWPORT_MARGIN, leftDockRect.right - stageRect.left + LEFT_DOCK_GAP) : VIEWPORT_MARGIN)
-      const result = resolveAnchoredPlacement({
+      const placementInput = {
         stage: { left: stageLeft, right: stageRect.right - VIEWPORT_MARGIN, top: stageRect.top + VIEWPORT_MARGIN, bottom: stageRect.bottom - VIEWPORT_MARGIN },
         anchor: nodeRect,
         width: Math.min(COMPOSER_MAX_WIDTH, naturalSize.width),
@@ -94,7 +96,17 @@ export function useComposerViewportPlacement(input: {
         minHeight: Math.max(minUsableHeight, fixedHeight),
         gap: gap * canvasZoom,
         aboveClearance: toolbarClearanceInCanvasUnits(toolbar?.getBoundingClientRect().height ?? 0, canvasZoom, TOOLBAR_CLEARANCE_GAP) * canvasZoom,
-      })
+      }
+      const initial = resolveAnchoredPlacement(placementInput)
+      // Fixed workspace chrome narrows the usable viewport, just like the left dock.
+      // Horizontal placement is independent of stage.bottom, so this second resolve
+      // cannot introduce new horizontal intersections or an iterative layout loop.
+      const bottom = collectBottomDockRects(stage, { left: 0, top: 0 })
+        .filter(dock => dock.left < initial.left + initial.width && dock.right > initial.left
+          && dock.bottom > placementInput.stage.top && dock.top < placementInput.stage.bottom)
+        .reduce((edge, dock) => Math.min(edge, Math.max(placementInput.stage.top, dock.top - VIEWPORT_MARGIN)), placementInput.stage.bottom)
+      const result = bottom === placementInput.stage.bottom ? initial
+        : resolveAnchoredPlacement({ ...placementInput, stage: { ...placementInput.stage, bottom } })
       const next = { left: (result.left - nodeRect.left) / canvasZoom, top: (result.top - nodeRect.top) / canvasZoom, maxWidth: result.width, maxHeight: result.height, referenceMaxHeight: Math.max(0, result.height - fixedHeight), flipUp: result.side === 'above' }
       setPlacement(previous => Object.keys(next).every(key => previous[key as keyof typeof next] === next[key as keyof typeof next]) ? previous : next)
     }
@@ -106,23 +118,26 @@ export function useComposerViewportPlacement(input: {
     resizeObserver.observe(stage)
     resizeObserver.observe(nodeEl)
 
-    // 另外两个入参（节点矩形、舞台矩形）**不能**只靠 ResizeObserver：
+    // 节点和可用舞台的几何**不能**只靠 ResizeObserver：
     //  · RO 报的是 border-box 的布局尺寸，看不见 transform——节点入场是一段 scale 动画，
     //    动画期间量到的节点矩形比最终小 11%，照它算出来的位置会永久偏掉（实测偏 22.7px，
     //    见 tests/ux/node-composer-placement.walk.mjs 的探针记录）；
     //  · RO 也看不见「尺寸没变、位置变了」——外壳面板开合会把整个 stage 平移走。
     // 生态里的标准答案就是每帧比对矩形（Floating UI `autoUpdate` 的 animationFrame 策略）。
-    // 代价被两件事夹住：每帧只读两个 rect，值没变一个字都不写；画布拖动期间直接跳过——
+    // 代价被两件事夹住：每帧只读节点、舞台及固定停靠区 rect，值没变一个字都不写；画布拖动期间直接跳过——
     // 那时浮框本来就 invisible（见 NodeGenerationComposer 的 data-dragging 注释），
     // 而拖动是全仓最吃帧的动作，不该为一个看不见的浮框付 layout 读。
     const signatureOf = (rect: DOMRect) => `${rect.left},${rect.top},${rect.right},${rect.bottom}`
-    let lastSignature = `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}`
+    // Reuse the same rect watcher for fixed chrome mounting, resizing and removal.
+    // The workspace owner supplies the list; no second selector registry or observer.
+    const signature = () => `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}|${collectBottomDockRects(stage, { left: 0, top: 0 }).map(rect => `${rect.left},${rect.top},${rect.right},${rect.bottom}`).join('|')}`
+    let lastSignature = signature()
     let frame = window.requestAnimationFrame(function watch() {
       frame = window.requestAnimationFrame(watch)
       if (stage.getAttribute(CANVAS_DRAGGING_ATTRIBUTE) === 'true') return
-      const signature = `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}`
-      if (signature === lastSignature) return
-      lastSignature = signature
+      const nextSignature = signature()
+      if (nextSignature === lastSignature) return
+      lastSignature = nextSignature
       recompute()
     })
     return () => { window.cancelAnimationFrame(frame); resizeObserver.disconnect() }

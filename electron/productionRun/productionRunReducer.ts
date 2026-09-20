@@ -1,6 +1,7 @@
 import type { ArtifactReviewDecision } from "../shared/agentCapabilities/productionRun";
 import { transitionJob, transitionRun } from "./productionRunState";
 import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
+import { saveStoryboardAuthoring } from "./productionStoryboardAuthoring";
 import type {
   BudgetLedgerSummary,
   ProductionArtifact,
@@ -24,6 +25,7 @@ import {
 } from "./productionGenerationAuthorizationState";
 import { generationSealShotPrices, sealGenerationShots, isShotIncluded, SealBudgetExceededError } from "./productionGenerationSeal";
 import { checkSealAffordability } from "./shotPricing";
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import {
   applyGenerationCandidatePatch,
   presentGenerationPlan,
@@ -177,7 +179,7 @@ function validateBudget(value: Record<string, unknown>, current: BudgetLedgerSum
     next[key] = amount;
   }
   if (typeof value.currency === "string" && value.currency.trim()) next.currency = value.currency.trim();
-  if (next.reserved + next.actual + next.unsettled > next.authorized) {
+  if (budgetExceeds(sumBudgetAmounts([next.reserved, next.actual, next.unsettled]), next.authorized)) {
     throw new Error("Budget liability exceeds authorization");
   }
   return next;
@@ -189,6 +191,8 @@ export function applyProductionCommand(
   now: string,
 ): ProductionCommandEffect {
   switch (command.type) {
+    case "generation.save_storyboard":
+      return { run: saveStoryboardAuthoring(current, command, now), eventType: "generation.plan.updated", message: current.runId };
     case "run.status": {
       const status = text(command.payload, "status") as ProductionRunStatus;
       return { run: transitionRun(current, status, now), eventType: "run.status.changed", message: status };
@@ -212,16 +216,7 @@ export function applyProductionCommand(
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
     case "generation.dismiss":
       return { run: dismissGenerationPlan(current, now), eventType: "generation.plan.updated", message: current.runId };
-    case "generation.place_canvas": {
-      const currentPlan = current.generationPlan;
-      if (!currentPlan || currentPlan.state === "cancelled") throw new Error("A generation draft is required before canvas placement");
-      if (currentPlan.canvasPlacement === "explicit") return { run: current, eventType: "generation.plan.canvas-placement", message: current.runId };
-      return {
-        run: { ...current, generationPlan: { ...currentPlan, canvasPlacement: "explicit", updatedAt: now }, updatedAt: now },
-        eventType: "generation.plan.canvas-placement",
-        message: current.runId,
-      };
-    }
+
     case "generation.seal": {
       const currentPlan = current.generationPlan;
       if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
@@ -246,7 +241,11 @@ export function applyProductionCommand(
         const orderedShots = sealedShots
           ? sealedShots.filter(isShotIncluded).map((shot) => ({ shotId: shot.shotId, price: shotPrices.get(shot.shotId) ?? { known: false as const } }))
           : [{ shotId: currentPlan.candidate.candidateId, price: shotPrices.get(currentPlan.candidate.candidateId) ?? { known: false as const } }];
-        const affordability = checkSealAffordability({ shots: orderedShots, maxSpend: current.policy.maxSpend === null ? null : Math.max(0, current.policy.maxSpend - current.budget.actual - current.budget.reserved - current.budget.unsettled) });
+        const affordability = checkSealAffordability({
+          shots: orderedShots,
+          maxSpend: current.policy.maxSpend,
+          existingLiability: [current.budget.reserved, current.budget.actual, current.budget.unsettled],
+        });
         if (!affordability.ok) throw new SealBudgetExceededError(affordability.maxAffordableShots, affordability.knownSubtotal, affordability.maxSpend);
         costCertainty = affordability.hasUnknownPrice ? "partial" : "known";
       }

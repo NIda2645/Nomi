@@ -3,6 +3,7 @@ export const zhCreationAi = {
     aria: '创作区',
   },
   documentList: {
+    deleteStoryboard: '删除方案',
     title: '创作内容',
     aria: '创作内容列表',
     count: '原稿 · {{count}} 篇',
@@ -21,7 +22,6 @@ export const zhCreationAi = {
     moreActions: '更多操作',
     rename: '重命名',
     duplicateStoryboard: '复制方案',
-    deleteStoryboard: '删除方案',
     keepOneDocument: '项目至少需要保留一篇原稿',
   },
   editor: {
@@ -122,6 +122,7 @@ export const enCreationAi = {
     aria: 'Creation workspace',
   },
   documentList: {
+    deleteStoryboard: 'Delete plan',
     title: 'Creation content',
     aria: 'Creation content list',
     count: 'Drafts · {{count}}',
@@ -140,7 +141,6 @@ export const enCreationAi = {
     moreActions: 'More actions',
     rename: 'Rename',
     duplicateStoryboard: 'Duplicate Storyboard',
-    deleteStoryboard: 'Delete Storyboard',
     keepOneDocument: 'A project must keep at least one draft',
   },
   editor: {

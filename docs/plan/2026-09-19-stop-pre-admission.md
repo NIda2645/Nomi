@@ -13,3 +13,14 @@ Workspace owns the main pre-admission cancellation scope. IPC captures its signa
 Evidence before implementation: `/tmp/nomi-recovery-stop-independent.log` (live hook fails), `/tmp/nomi-stop-preparation-native-review.log` (two real pi/local HTTP failures). Repository tests additionally exercise configuring and waiting IPC inputs, same-session model readiness, Stop then new input, stale visible Stop/new token safety.
 
 Rollback: revert only the F12 incremental commit after the temporary T5/T6 baseline. Acceptance: original three failures become green; cancelled inputs preserve draft; new inputs after Stop succeed; existing IPC/client/workspace/native suites remain green. Tests run under with-gates-lock. Real Electron/paid model are outside this isolated implementation proof.
+
+## 先查别人
+
+本节补齐已有源码调查索引；不新建模型运行队列或取消协议。
+
+- [已有单一账本调查](../research/2026-09-18-storyboard-single-ledger/prior-art.md) 支持派生视图与唯一执行 owner 分离；本轮同样不让 renderer admission 成为第二份已接受任务队列。
+- [laneInputAdmission.mts](../../electron/agentLane/laneInputAdmission.mts) 直接复用已安装 pi 的 withCancel/withAbortSignal；cancel 终止准备期 context 并创建下一份输入的 context，已接受执行仍归 pi。
+- [Stop 根因合同](../fixes/2026-09-19-stop-pre-admission.root-cause.json) 已列 workspace、host、IPC 和 renderer 入口及 regression tests，区分取消未准入等待与已分派 ACK 的归属。
+- [已有输入重放合同](../fixes/2026-09-19-original-input-replay.root-cause.json) 规定从原始 branch input 解析技能和附件，不从可见文本重建；Stop 的草稿恢复沿用同一输入身份。
+
+结论：复用 SDK cancellation context 与现有 admission token，不重复实现 pi 队列。无新增网络研究；真实 Electron 与平台验收单独报告。

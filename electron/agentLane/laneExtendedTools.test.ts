@@ -152,6 +152,43 @@ describe('工具回执从真实审批结论派生', () => {
     expect(outcome.nextAction?.userSees).toMatch(/generation has started/)
   })
 
+  it.each(['document-create', 'document-patch', 'canvas-create'])('%s reports saved draft facts without inventing placement', async kind => {
+    const result = { operation: { operationId: 'op-draft', state: 'draft',
+      ...(kind.startsWith('document') ? { sourceDocumentId: 'doc-1' } : {}) } }
+    const args = { shots: [{ prompt: 'saved prompt' }],
+      ...(kind === 'document-patch' ? { operationId: 'op-draft' } : {}) }
+    const outcome = await runVerb('draft_shots', result, 'auto-granted', args)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-draft' })
+    expect(outcome.nextAction?.userSees).toMatch(/saved in the project/)
+    expect(outcome.nextAction?.userSees).not.toMatch(/are on the canvas|price badge|generation has started/)
+  })
+
+  it('a draft patch reports actual policy-started spend through the same receipt as generate', async () => {
+    const result = { drafted: { operation: { operationId: 'op-7', sourceDocumentId: 'doc-1' } },
+      spendDecision: { decidedBy: 'policy:full_auto', receiptId: 'receipt-1' }, started: { ok: true } }
+    const generated = await runVerb('generate', result, 'auto-granted', { operationId: 'op-7' })
+    const patched = await runVerb('draft_shots', result, 'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(patched.nextAction).toMatchObject({ kind: 'job_running', jobId: 'op-7', operationId: 'op-7' })
+    expect(patched.nextAction?.userSees).toBe(generated.nextAction?.userSees)
+    expect(patched.nextAction?.userSees).not.toMatch(/nothing has been spent/)
+  })
+
+  it('a presented draft patch reports only saved facts when transport returns no new spend decision', async () => {
+    const outcome = await runVerb('draft_shots', { operation: { operationId: 'op-7', state: 'draft' } },
+      'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-7' })
+    expect(outcome.nextAction?.userSees).toMatch(/saved in the project/)
+    expect(outcome.nextAction?.userSees).not.toMatch(/call generate|no card|generation has started/)
+  })
+
+  it('historical submitted state without a current spendDecision does not claim this edit started generation', async () => {
+    const outcome = await runVerb('draft_shots', { operation: { operationId: 'op-7', state: 'submitted' } },
+      'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-7' })
+    expect(outcome.nextAction?.userSees).not.toMatch(/generation has started|nothing has been spent/)
+  })
+
   it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
     const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
       .find(candidate => candidate.name === 'generate')!

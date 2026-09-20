@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyBudgetEntry,
   availableBudget,
+  budgetExceeds,
+  sumBudgetAmounts,
   createBudgetLedger,
   summarizeBudgetLedger,
   type BudgetLedgerEntry,
@@ -110,4 +112,25 @@ it("admits the exact 33-shot decimal total and rejects a real micro-unit overspe
   }
   expect(summarizeBudgetLedger(ledger).actual).toBeCloseTo(9.9, 12);
   expect(() => applyBudgetEntry(ledger, { billingEntryId: "extra", kind: "reserve", reservationId: "extra", jobId: "extra", amount: 0.000001, occurredAt: "now" })).toThrow("Budget authorization exceeded");
+});
+
+
+it("rejects finite reservation inputs whose cumulative liability overflows without mutating the ledger", () => {
+  let ledger = applyBudgetEntry(createBudgetLedger("CNY"), entry({ billingEntryId: "max-auth", kind: "authorize", amount: Number.MAX_VALUE }));
+  ledger = applyBudgetEntry(ledger, entry({ billingEntryId: "max-first", kind: "reserve", reservationId: "first", jobId: "first", amount: Number.MAX_VALUE }));
+  const before = structuredClone(ledger);
+  expect(() => applyBudgetEntry(ledger, entry({ billingEntryId: "max-extra", kind: "reserve", reservationId: "extra", jobId: "extra", amount: Number.MAX_VALUE }))).toThrow();
+  expect(ledger).toEqual(before);
+  expect(summarizeBudgetLedger(ledger).reserved).toBe(Number.MAX_VALUE);
+});
+
+it("rejects nonfinite amounts at both the shared aggregation and comparison boundaries", () => {
+  expect(() => sumBudgetAmounts([Number.MAX_VALUE, Number.MAX_VALUE, 1])).toThrow();
+  for (const invalid of [Infinity, -Infinity, NaN]) {
+    expect(() => sumBudgetAmounts([invalid])).toThrow();
+    expect(() => budgetExceeds(invalid, 1)).toThrow();
+    expect(() => budgetExceeds(1, invalid)).toThrow();
+  }
+  expect(sumBudgetAmounts([Number.MAX_VALUE])).toBe(Number.MAX_VALUE);
+  expect(budgetExceeds(Number.MAX_VALUE, Number.MAX_VALUE)).toBe(false);
 });

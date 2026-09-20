@@ -32,7 +32,8 @@
     "electron/shared/agentLane/laneToolFailureEnvelope.ts",
     "src/workbench/ai/lane/laneToolFailureText.ts",
     "src/i18n/locales/agentToolFailure.ts",
-    "electron/capabilityCore/appIntegrationSpendConfirm.ts"
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "src/workbench/ai/lane/laneClient.ts"
   ],
   "entry_points": [
     "check_job/cancel_job",
@@ -1315,12 +1316,47 @@
       "kind": "write",
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
       "symbol": "productionTaskAbsenceCode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/agentLoopMode.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneReceiptClient.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "createLaneClient"
     }
   ],
   "door_reduction": {
-    "before": 254,
-    "after": 254,
-    "why_not": "Production owners retain storage authority, transports retain authorization, and shared schemas serve their existing independent hosts."
+    "before": 261,
+    "after": 261,
+    "why_not": "The existing task domain routers and public-error boundaries remain necessary consumers; renderer auto-reopen now retains the same safe-code-only projection rather than copying diagnostics."
   },
   "generality_proof": "Both task verbs share domain resolution; all generation/production transport failures use safe provenance-based classification.",
   "shared_boundaries": [
@@ -1333,6 +1369,11 @@
       "path": "electron/capabilityCore/generationTransportAdapters.ts",
       "symbol": "createPiGenerationTransportAdapter",
       "responsibility": "Safe public failure classification."
+    },
+    {
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "createLaneClient",
+      "responsibility": "Automatic reopen returns only a safe error code, without recopying provider diagnostics into the renderer result."
     }
   ],
   "same_class_entry_points": [
@@ -1397,16 +1438,19 @@
       "electron/shared/agentLane/laneToolFailureEnvelope.ts",
       "src/workbench/ai/lane/laneToolFailureText.ts",
       "src/i18n/locales/agentToolFailure.ts",
-      "electron/capabilityCore/appIntegrationSpendConfirm.ts"
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "src/workbench/ai/lane/laneClient.ts"
     ]
   },
   "regression_tests": [
     "electron/agentLane/laneExtendedDesktopPorts.test.ts",
-    "electron/capabilityCore/generationTransportAdapters.test.ts"
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "src/workbench/ai/lane/laneClient.test.ts"
   ],
   "class_regression_tests": [
     "electron/agentLane/laneExtendedDesktopPorts.test.ts",
-    "electron/capabilityCore/generationTransportAdapters.test.ts"
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "src/workbench/ai/lane/laneClient.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",

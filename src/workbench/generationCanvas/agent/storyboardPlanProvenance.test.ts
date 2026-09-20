@@ -31,10 +31,9 @@ const PLAN: StoryboardPlan = {
 describe('StoryboardPlan provenance', () => {
   it('does not project legacy editorial fields into generation or accept them as shot fields', () => {
     const legacy = { ...PLAN, shots: [{ ...PLAN.shots[0], subtitle: '旧字幕', dialogue: '旧台词', transition: { type: 'fade' } }] }
-    const parsed = parseStoryboardPlan(legacy)
+    expect(() => parseStoryboardPlan(legacy)).toThrow(/Unrecognized key/)
     const metadata = storyboardPlanToCreateNodesArgs(legacy).nodes.find((node) => node.clientId === 'shot-stable-1')?.metadata
     for (const key of ['subtitle', 'dialogue', 'transition']) {
-      expect(parsed.shots[0]).not.toHaveProperty(key)
       expect(metadata).not.toHaveProperty(key)
     }
   })

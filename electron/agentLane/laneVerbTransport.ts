@@ -97,7 +97,7 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
           ...draftShotsPatchEnvelope(draft, first), operation: 'patch', patch: draftShotToCandidatePatch(first),
         })
       }
-      // 草稿建即落画布、带单价角标，但报价卡先藏着（`cardHidden`）——出卡是 `generate` 的事，不是建草稿的副作用。
+      // 新草稿先保存且隐藏报价卡（`cardHidden`）；文稿方案不自动落画布，放置由现有落地入口负责。
       if (shots.length === 1 && !shots[0]?.role && !shots[0]?.title) {
         // 单镜：走单镜 create（宿主从 prompt/taskKind 合成候选），与「一句话生成一张图」同一条路。
         // **带 role 或 title 的不走这条**：这两个都是镜头信封上的字段，而顶层没有它们的位置。
@@ -159,7 +159,7 @@ export function verbToTransportCall(call: RuntimeToolCall): VerbTransportCall | 
  * 补上它并重过同一份宿主 schema（那道准入是花钱/不可逆闸，不删；也不在这边再做一遍——同一件事两份
  * 实现就是 P1 说的并行版）。返回类型带上推断出来的参数类型，`RuntimeToolCall<TArgs>` 的收窄从这里起步。
  */
-function cancelJobExportCall(call: RuntimeToolCall): RuntimeToolCall<CancelJobModelArgs> {
+function cancelJobExportCall(call: RuntimeToolCall): RuntimeToolCall<Omit<CancelJobModelArgs, 'domain'>> {
   const { domain: _domain, ...args } = cancelJobModelSchema.parse(call.args)
   return { toolCallId: call.toolCallId, toolName: EXPORT_WRITE_ALIASES.cancel, args }
 }

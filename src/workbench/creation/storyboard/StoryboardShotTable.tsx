@@ -1,3 +1,4 @@
+import { resolveStoryboardOverride } from './exec/storyboardOverrideActions'
 import React from 'react'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useTranslation } from 'react-i18next'
@@ -162,7 +163,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
   const tableRef = React.useRef<HTMLDivElement>(null)
   const rowFocus = useWorkbenchStore((state) => state.storyboardRowFocus)
   const workspaceMode = useWorkbenchStore((state) => state.workspaceMode)
-  const activeDesignId = useWorkbenchStore((state) => state.activeStoryboardId)
+  const activeDesignId = useWorkbenchStore((state) => state.activeCreationRunId ?? state.activeStoryboardId)
   const focusShot = rowFocus?.designId === activeDesignId ? plan.shots.find((shot) => stableShotId(shot) === rowFocus.rowId) : undefined
   React.useLayoutEffect(() => {
     if (workspaceMode !== 'storyboard' || !focusShot) return
@@ -342,6 +343,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                     frameBox: tableBox,
                     aspectOverridden: isAspectOverridden(plan, shot),
                     aspectOptions: ASPECT_OPTIONS,
+                    onResolveOverride: runtime?.exec.node ? (field: string, action: 'adopt' | 'discard') => resolveStoryboardOverride(runtime.exec.node!.id, field, action, { plan, shot, change: onChange }) : undefined,
                     onChangeAspect: (next: string | null) => onChange(setShotAspectOverride(plan, pos, next)),
                     skipped: skippedShotIds?.has(shotKey) ?? false,
                     onToggleSkip: onToggleSkip ? () => onToggleSkip(shotKey) : undefined,

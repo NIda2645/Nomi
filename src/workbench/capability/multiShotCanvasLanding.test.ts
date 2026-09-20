@@ -163,3 +163,11 @@ describe('production shot table is born with the landed nodes', () => {
     expect(tables()).toHaveLength(0)
   })
 })
+
+it('document reconciliation only updates existing nodes and cannot recreate deleted structure', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  await materializeShots({ runId: 'run', materializationOperationId: 'canvas-landing:run', existingOnly: true,
+    shots: [{ shotId: 'a', prompt: 'A' }, { shotId: 'b', prompt: 'B' }] })
+  expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  expect(useGenerationCanvasStore.getState().groups).toEqual([])
+})

@@ -1,0 +1,332 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-draft-receipt-facts",
+  "problem_type": "Static tool receipts contradict saved document plans and actual policy decisions",
+  "symptom": "Successful document draft tool text says shots are on canvas although no nodes were placed.",
+  "direct_cause": "draft_shots nextAction and descriptors unconditionally describe automatic canvas placement.",
+  "class_root": "Model-visible consequences must report current execution result facts, not assumed placement or prior Run status.",
+  "affected_population": [
+    "Document draft creation and patch",
+    "Ordinary canvas draft",
+    "Visible draft patch with an actual policy spendDecision"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneExtendedTools.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/shared/agentCapabilities/verbDeclaration.ts",
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts"
+  ],
+  "entry_points": [
+    "createExtendedLaneTools draft_shots create/patch result",
+    "Shared draft and generate descriptions"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal receipt semantics evidenced by real tool transcript and current canvas landing owner.",
+  "invariants": [
+    "Saving a draft never claims canvas placement without evidence.",
+    "Only this call spendDecision can claim policy-started generation.",
+    "Existing operationId addressing and generation execution remain unchanged."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "nextActionFor"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionGenerationOperationStoreHooks"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneTools.mts",
+      "symbol": "VERB_EFFECTS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingToolRegistry.ts",
+      "symbol": "ToolProfile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "MODEL_TOOL_READ_TIMEOUT_MS_VALUE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "MODEL_TOOL_WRITE_TIMEOUT_MS_VALUE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "ToolProfile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VERB_EFFECTS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VERB_NEXT_ACTIONS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbEffect"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbDescription"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbExample"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "LaneDomainToolGroup"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "ToolProfile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbProfileReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbEffectGroup"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "VerbAssemblyInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/onboardingVerbs.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "NO_ARGUMENTS_SCHEMA"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "VerbDeclaration"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "symbol": "VerbNextAction"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "renderVerbDescription"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/modelFacingTools.ts",
+      "symbol": "verbMutates"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "verbConsequence"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "verbEffectExpectedByContract"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+      "symbol": "proseWithoutQuotedExamples"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "assembleVerbDeclarations"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "writeVerbs"
+    }
+  ],
+  "door_reduction": {
+    "before": 44,
+    "after": 44,
+    "why_not": "Existing descriptor assembly/transport callers remain because only their model-visible prose changes. Original store and transport comments remain at their owners; nextActionFor remains the single executed receipt boundary. No runtime owner is consolidated or duplicated by this wording correction."
+  },
+  "generality_proof": "All create and patch draft tool returns converge on nextActionFor; actual policy-started results reuse the generate receipt.",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "nextActionFor",
+      "responsibility": "Derive model-visible next action from saved draft and explicit current spend decision."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "draft_shots create",
+      "disposition": "enforced",
+      "evidence": "Document and canvas creation return through the same descriptor callback."
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "draft_shots patch",
+      "disposition": "enforced",
+      "evidence": "operationId revision returns through the same callback; nested drafted operation identity is retained."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Static placement claims misdescribe every unplaced document draft and update.",
+    "same_class_scan": [
+      "door-map nextActionFor: one createExtendedLaneTools call",
+      "Reviewed writeVerbs draft/generate descriptions and verbDeclaration shared consequences",
+      "Verified actual paid transcript includes sourceDocumentId and false canvas claim"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneExtendedTools.ts",
+    "invariant": "Receipt uses explicit current spendDecision or saved-draft facts without invented placement.",
+    "failure_mode": "Absent spendDecision cannot claim running/spending from history.",
+    "exception_policy": "none",
+    "strategy": "Reuse the existing started-generation receipt and preserve operationId in draft results.",
+    "artifacts": [
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "electron/shared/agentCapabilities/verbDeclaration.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/laneExtendedTools.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/laneExtendedTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "electron/shared/agentCapabilities/verbDeclaration.ts"
+    ],
+    "rationale": "Remove unconditional canvas-placement prose in the existing receipt and declarations; no execution path replacement."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party behavior controls these result descriptions.",
+    "exit_criteria": []
+  },
+  "migration": "No state or schema changes; historical transcripts stay historical.",
+  "residual_risks": [
+    "Real model response following revised receipt is not rerun in these unit tests."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneExtendedTools.ts",
+    "tests": [
+      "electron/agentLane/laneExtendedTools.test.ts"
+    ]
+  }
+}

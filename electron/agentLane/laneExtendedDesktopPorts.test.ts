@@ -66,7 +66,7 @@ describe('deferred desktop domain authority', () => {
     const f = setup(), value = call('cancel_job', { jobId: 'same-id' })
     const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation)
-    await expect(f.prepareAndApprove(value)).rejects.toThrow('task_reference_required')
+    await expect(f.prepareAndApprove(value)).rejects.toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({ path: ['domain'], code: 'invalid_type' })]) })
     expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
     expect(f.input.phase4.executeWrite).not.toHaveBeenCalled()
     expect(generation.tryExecute).not.toHaveBeenCalled()
@@ -74,7 +74,7 @@ describe('deferred desktop domain authority', () => {
   it('C17: an unavailable export read cannot route a raw ID to a generation write', async () => {
     const f = setup(), value = call('cancel_job', { jobId: 'node-1' })
     vi.mocked(f.input.phase4.prepareWrite).mockRejectedValue(new Error('permission denied'))
-    await expect(f.prepareAndApprove(value)).rejects.toThrow('task_reference_required')
+    await expect(f.prepareAndApprove(value)).rejects.toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({ path: ['domain'], code: 'invalid_type' })]) })
     expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
   })
   it('never executes an unprepared or unapproved timeline write', async () => {

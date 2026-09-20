@@ -1,3 +1,4 @@
+import { storyboardShotIdsForTarget, isStoryboardReference } from '../resident/residentReferences'
 import { listAvailableModelsForAgent } from "../../generationCanvas/agent/availableModels"
 // Composer intent and input remain local; the lane owns execution and approvals.
 import React from 'react'
@@ -22,6 +23,8 @@ import type { PermissionTier } from './agentPanelV4Types'
 import { approvalPolicyForTier } from './agentPanelV4Logic'
 import type { AgentPanelV4Data } from './useAgentPanelV4Data'
 import type { LibraryPrompt } from '../../api/promptLibraryApi'
+import { readCreationRunSelection } from '../../creation/storyboard/useCreationRunPlans'
+import type { StoryboardRequestTarget } from '../../../../electron/shared/agentCapabilities/generationInvocationContext'
 import { laneConversationOf } from '../../../../electron/shared/agentLane/laneConversation'
 
 type ResidentSendContext = Readonly<{
@@ -75,7 +78,7 @@ export type AgentPanelV4Actions = Readonly<{
   error: string
   clearError: () => void
   /** True means the lane accepted the input, not that the model or generation succeeded. */
-  send: (text: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => Promise<boolean>
+  send: (text: string, options?: { newStoryboard?: boolean; skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => Promise<boolean>
   stop: () => void
   approve: () => void
   reject: (reason?: string) => void
@@ -105,8 +108,8 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
   const setApprovalPolicy = useWorkbenchStore((state) => state.setProjectAgentApprovalPolicy)
   const owner = laneClient.context()
   const visibleConversation = laneConversationOf(data.snapshot)
-  const visibleAddress = owner && visibleConversation && data.snapshot.workspaceId === owner.subscriptionId
-    ? { ...visibleConversation, workspaceId: owner.subscriptionId } : undefined
+  const visibleAddress = React.useMemo(() => owner && visibleConversation && data.snapshot.workspaceId === owner.subscriptionId
+    ? { ...visibleConversation, workspaceId: owner.subscriptionId } : undefined, [owner, visibleConversation, data.snapshot.workspaceId])
   const checked = React.useCallback(async (command: Promise<LaneCommandResult>) => {
     const draftRevision = useWorkbenchStore.getState().projectAgentDraftRevision
     const result = await command
@@ -123,7 +126,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     void command().catch((caught: unknown) => setError(friendlyError(caught, t)))
   }, [t])
 
-  const send = React.useCallback(async (rawText: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => {
+  const send = React.useCallback(async (rawText: string, options?: { newStoryboard?: boolean; skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => {
     const text = rawText.trim()
     if (!text) return false
     setError('')
@@ -148,6 +151,18 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     pendingAdmission.current = { id: admissionId, address: laneClient.conversation(), dispatched: false }
     try {
       const captured = captureSendContext(surface)
+      const projectId = laneClient.context()?.binding.projectId
+      const selectedRun = surface === 'creation' && !options?.newStoryboard ? readCreationRunSelection(projectId) : null
+      const capturedReferences = selectedRun ? state.projectAgentReferences.filter(isStoryboardReference) : []
+      const selectedShotIds = selectedRun ? storyboardShotIdsForTarget(capturedReferences, {documentId:captured.activeDocumentId,runId:selectedRun.runId}) : undefined
+      const storyboardTarget: StoryboardRequestTarget | undefined = surface === 'creation' && projectId && captured.activeDocumentId ? Object.freeze({
+        projectId, sourceDocumentId: captured.activeDocumentId,
+        sourceDocumentRevision: selectedRun?.sourceDocumentRevision ?? captured.documentState.revision,
+        sourceDocumentContentHash: selectedRun?.sourceDocumentContentHash ?? captured.documentState.contentHash,
+        targetRunId: selectedRun?.runId ?? `op-${crypto.randomUUID()}`, targetKind: 'storyboard', requestId: admissionId,
+        ...(selectedRun ? { expectedRevision: selectedRun.revision } : {}),
+        ...(selectedShotIds ? {shotIds:selectedShotIds} : {}),
+      }) : undefined
       // Start both reads in this synchronous input turn; prepareInput binds its own
       // opening epoch before either promise can settle or the user can switch projects.
       const [conversation, availableModels] = await Promise.all([laneClient.prepareInput().then(address => {
@@ -175,6 +190,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
         ...(data.selectedModel ? { model: { vendorKey: data.selectedModel.vendorKey, modelKey: data.selectedModel.modelKey } } : {}),
         approvalPolicy: state.projectAgentApprovalPolicy,
         documentId: captured.activeDocumentId,
+        ...(storyboardTarget ? { storyboardTarget } : {}),
         target, preconditions,
         contextSnapshot: captured.snapshot,
         availableModels,
@@ -189,10 +205,12 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
       }, conversation!))
       if (!stillCurrent()) return false
       if (replaying) return true
+      const sentReferences = new Set(capturedReferences)
       const sentAttachments = new Set(capturedAttachments)
       // Commit one cleanup after the ACK. Its own attachment changes must not
       // advance the revision before checking whether the user edited the buffer.
       useWorkbenchStore.setState(current => ({
+        projectAgentReferences: current.projectAgentReferences.filter(reference => !sentReferences.has(reference)),
         projectAgentAttachments: current.projectAgentAttachments.filter(attachment => !sentAttachments.has(attachment)),
         ...(current.creationActiveSkill === capturedSkill && current.selectedLibraryPrompt === capturedPrompt
           ? { creationActiveSkill: null, selectedLibraryPrompt: null } : {}),
@@ -211,7 +229,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
         useWorkbenchStore.setState({ projectAgentAdmissionId: null })
       }
     }
-  }, [checked, data.selectedModel, selectedLibraryPrompt, setDraft, surface, t])
+  }, [checked, data.selectedModel, surface, t])
 
   const answer = (action: 'allow-once' | 'allow-session' | 'deny', reason?: string) => {
     const pending = data.primaryPending

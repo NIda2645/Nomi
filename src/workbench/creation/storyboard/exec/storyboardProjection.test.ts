@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectShotNode } from './storyboardProjection'
+import { projectShotNode, projectStoryboardDesign } from './storyboardProjection'
 import type { StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 
@@ -62,4 +62,19 @@ describe('projectShotNode · 整片默认写回节点', () => {
   it('视频镜的 duration 仍照旧写回（resolver 不挤掉它）', () => {
     expect(meta(planOf('9:16'), 0).duration).toBe(5)
   })
+})
+
+it('projects saved Run author edits into existing bound nodes only, retaining canvas overrides', async () => {
+  const { useGenerationCanvasStore } = await import('../../../generationCanvas/store/generationCanvasStore')
+  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [{ id: 'bound', kind: 'video', title: 'Existing', position: { x: 0, y: 0 }, prompt: 'Canvas edit',
+    meta: { productionRunId: 'run', productionShotId: 'shot-1', overriddenFields: ['prompt'] } }], edges: [], groups: [] })
+  const generation = { candidate: { candidateId: 'c' }, shots: [{ shotId: 'shot-1', nodeId: 'bound' }] } as unknown as Parameters<typeof storyboardRunBindings>[0]
+  projectStoryboardDesign({ id: 'run', plan: planOf('9:16') }, useGenerationCanvasStore.getState(), storyboardRunBindings(generation, []))
+  const nodes = useGenerationCanvasStore.getState().nodes
+  expect(nodes).toHaveLength(1)
+  expect(nodes[0].id).toBe('bound')
+  expect(nodes[0].prompt).toBe('Canvas edit')
+  expect(nodes[0].meta?.aspect_ratio).toBe('9:16')
 })

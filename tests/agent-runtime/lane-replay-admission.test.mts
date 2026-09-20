@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { originalLaneEntry, precedingLaneInput, replayLaneInput } from '../../electron/agentLane/laneOriginalInput.mjs';
-import { createLaneFixture } from './laneFixture.mjs';
+import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDesktopContracts.js';
+import { createLaneFixture, type LaneFixture } from './laneFixture.mjs';
 import { openLaneSession } from '../../electron/agentLane/laneSession.mjs';
 import { MemorySessionRepo } from '@earendil-works/pi-agent-core/harness/session';
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/pi-agent-core/harness/context';
@@ -30,7 +31,7 @@ test('text-array user entries exposed as Retry targets can actually be replayed'
   assert.equal(replayed.content, 'LEGACY_TEXT_ARRAY');
 });
 
-async function seedContinueChain(f: any) {
+async function seedContinueChain(f: LaneFixture) {
   const opened = await openLaneSession({ projectDir: f.projectDir }, context);
   const branch = await opened.session.createBranch('main', null, context);
   const originalId = await branch.appendMessage({ role: 'nomi.input', content: 'ORIGINAL_TASK_ONLY_THREE_CHARACTERS', timestamp: 1, context: { approvalPolicy: policy, skillKey: 'original-skill' } }, context);
@@ -46,9 +47,9 @@ for (const action of ['continue-again', 'retry-continue'] as const) {
     const f = await createLaneFixture(t, [{ type: 'text', text: 'done' }]);
     const ids = await seedContinueChain(f);
     const captured = { approvalPolicy: policy, ...(action === 'continue-again' ? { continueFromEntryId: ids.stopped2 } : { retryFromEntryId: ids.continue1 }) };
-    const host = await f.openLane({ ...f.options, input: { capture: () => captured, activate: () => {}, providerContent: async (m: any) => m.content, rewritePayload: (p: any) => p } });
+    const host = await f.openLane({ ...f.options, input: { capture: () => captured, activate: () => {}, providerContent: async (m) => m.content, rewritePayload: (p) => p } });
     await host.execute({ kind: 'prompt', text: action === 'continue-again' ? 'Continue' : 'Retry' });
-    const users = (f.http.requests.at(-1)!.body.messages as any[]).filter(m => m.role === 'user');
+    const users = (f.http.requests.at(-1)!.body.messages as Array<{ role: string }>).filter(m => m.role === 'user');
     const lastUser = JSON.stringify(users.at(-1));
     t.diagnostic(JSON.stringify({ action, lastProviderUser: users.at(-1) }));
     assert.ok(lastUser.includes('ORIGINAL_TASK_ONLY_THREE_CHARACTERS'), 'new input must contain the root task even after previous inputs are compacted away');
@@ -59,20 +60,20 @@ for (const action of ['continue-again', 'retry-continue'] as const) {
 test('replaying an old canvas target must not grant current document surface destructive authority', async t => {
   const f = await createLaneFixture(t, [{ type: 'text', text: 'original done' },
     { type: 'tool', calls: [{ id: 'delete-on-replay', name: 'mutate_surface', arguments: {} }] }, { type: 'text', text: 'done' }]);
-  let captured: any = { approvalPolicy: policy, target: { kind: 'canvas', nodeIds: ['old-node'] } };
+  let captured: LaneComposerContext = { approvalPolicy: policy, target: { kind: 'canvas', nodeIds: ['old-node'] } };
   let executions = 0;
-  const host = await f.openLane({ ...f.options, input: { capture: () => captured, activate: () => {}, providerContent: async (m: any) => m.content, rewritePayload: (p: any) => p },
+  const host = await f.openLane({ ...f.options, input: { capture: () => captured, activate: () => {}, providerContent: async (m) => m.content, rewritePayload: (p) => p },
     tools: [{ name: 'mutate_surface', contractId: 'canvas.delete', description: 'Counter only.', promptSnippet: 'Counter only.', nextAction: 'none',
       describe: { does: 'Counter only.', useWhen: 'Test.', notWhen: 'Production.', params: 'None.' }, schema: z.object({}), examples: [], effect: 'irreversible', execution: { timeoutMs: 30000 },
       execute: async () => { executions++; return { ok: true, text: 'applied' }; } }],
     toolLifecycle: { prepare: async () => {}, approved: async () => {}, settled: () => {} },
   });
   await host.execute({ kind: 'prompt', text: 'Original canvas instruction' });
-  const original = host.projection().parts.find((p: any) => p.kind === 'user');
+  const original = host.projection().parts.find((p) => p.kind === 'user');
   assert.ok(original?.entryId);
   captured = { approvalPolicy: policy, target: { kind: 'document', documentId: 'current-doc', anchor: { kind: 'whole-document' } }, retryFromEntryId: original.entryId };
   await host.execute({ kind: 'prompt', text: 'Retry' });
-  t.diagnostic(JSON.stringify({ currentSurface: captured.target.kind, executions }));
+  t.diagnostic(JSON.stringify({ currentSurface: captured.target?.kind, executions }));
   assert.equal(executions, 0, 'historical target is a selector, not a fresh surface grant');
 });
 
@@ -83,15 +84,15 @@ test('a recovered draft preserves its old target without borrowing its surface a
     { type: 'text', text: 'done' },
   ]);
   let executions = 0;
-  let admitted: any;
-  const captured: any = { approvalPolicy: policy,
+  let admitted: LaneComposerContext | undefined;
+  const captured: LaneComposerContext = { approvalPolicy: policy,
     target: { kind: 'document', documentId: 'current-doc', anchor: { kind: 'whole-document' } },
     systemPrompt: 'CURRENT_TEMPLATE',
     restoredIntent: { target: { kind: 'canvas', nodeIds: ['old-node'] }, systemPrompt: 'ORIGINAL_TEMPLATE' },
   };
   const host = await f.openLane({ ...f.options,
     input: { capture: () => captured, activate: () => {},
-      providerContent: async (message: any) => { admitted = message.context; return message.content; }, rewritePayload: (p: any) => p },
+      providerContent: async (message) => { admitted = message.context; return message.content; }, rewritePayload: (p) => p },
     tools: [{ name: 'mutate_surface', contractId: 'canvas.delete', description: 'Counter only.', promptSnippet: 'Counter only.', nextAction: 'none',
       describe: { does: 'Counter only.', useWhen: 'Test.', notWhen: 'Production.', params: 'None.' }, schema: z.object({}), examples: [], effect: 'irreversible', execution: { timeoutMs: 30000 },
       execute: async () => { executions++; return { ok: true, text: 'applied' }; } }],
@@ -99,6 +100,7 @@ test('a recovered draft preserves its old target without borrowing its surface a
   });
   await host.execute({ kind: 'prompt', text: 'Recovered input' });
   assert.equal(executions, 0);
+  assert.ok(admitted);
   assert.equal(admitted.admissionSurface, 'document');
   assert.deepEqual(admitted.target, { kind: 'canvas', nodeIds: ['old-node'] });
   assert.equal(admitted.systemPrompt, 'ORIGINAL_TEMPLATE');

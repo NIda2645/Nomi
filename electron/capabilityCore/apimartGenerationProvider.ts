@@ -280,7 +280,7 @@ function projectionRequest(
   resolver: ApimartReferenceUrlResolver | undefined,
 ): JsonRecord {
   if (!input.prompt || !input.prompt.trim()) throw new ApimartGenerationProviderError("APIMart prompt is required");
-  const projected = projectReferenceUrls(input, resolver);
+  const projected = projectReferenceUrls(input, resolver, selection.mapping);
   const parameters = normalizeParameters(projected.parameters, selection.mapping);
   mirrorApimartReferenceParameterAliases(parameters, selection.mapping.create.body, sameJson);
   const archetypeId = selection.model.meta && typeof selection.model.meta === "object" && !Array.isArray(selection.model.meta)

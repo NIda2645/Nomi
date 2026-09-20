@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { spendReferenceInputSchema, type SpendReferenceInput } from '../../../../electron/shared/contracts/pendingSpendConfirm'
+import { applySpendReferences, pendingReferenceInputs, referenceInputsFromNode } from './spendCardReferences'
 // 付费确认卡上「用户改了什么」的**纯账本**（无 React、无 store、可裸测）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -24,23 +27,30 @@
 // `镜 ⊕ 全部层 ⊕ 这一镜层`。不这么分会出一个很坏的手感——在「全部」模式下改一个
 // 已经有逐镜覆写的字段，按优先级它改了也看不见，用户读到的是「改了又弹回去」。
 // 价格与最终落盘一律按**优先级后的有效值**算，显示层的分层只影响「你此刻在编哪一层」。
-import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
+import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveRenderedControls } from '../../generationCanvas/nodes/nodeModelArchetype'
+import type { ModelOption } from '../../../config/models'
+import { isGenerationNodeKind } from '../../generationCanvas/model/generationNodeKinds'
+import type { PendingSpendConfirm, PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 
 /** 候选里用户能在卡上改的那几件（就是「供应商会收到的那份载荷」的可编辑面）。 */
-export type SpendCandidatePatch = Readonly<{
-  prompt?: string
-  modelId?: string
-  providerId?: string
-  modeId?: string
-  parameters?: Readonly<Record<string, unknown>>
-}>
+const spendCandidatePatchSchema = z.object({
+  prompt: z.string().optional(),
+  modelId: z.string().optional(),
+  providerId: z.string().optional(),
+  modeId: z.string().optional(),
+  parameters: z.record(z.unknown()).readonly().optional(),
+  referenceInputs: z.array(spendReferenceInputSchema).readonly().optional(),
+}).strict().readonly()
+export type SpendCandidatePatch = z.infer<typeof spendCandidatePatchSchema>
 
-/** 两层覆写。`all` = 在「全部」模式下改出来的公共层；`perShot` = 在「逐镜」模式下改出来的那一镜层。 */
-export type SpendDraft = Readonly<{
-  all: SpendCandidatePatch
-  perShot: Readonly<Record<string, SpendCandidatePatch>>
-}>
+/** Both editable layers share the same persistence contract. Parameter values remain model-owned. */
+const spendDraftSchema = z.object({
+  all: spendCandidatePatchSchema,
+  perShot: z.record(spendCandidatePatchSchema).readonly(),
+}).strict().readonly()
+export type SpendDraft = z.infer<typeof spendDraftSchema>
 
 export const EMPTY_SPEND_DRAFT: SpendDraft = Object.freeze({ all: Object.freeze({}), perShot: Object.freeze({}) })
 
@@ -105,21 +115,22 @@ export function applyPatchToNode(node: GenerationCanvasNode, patch: SpendCandida
   if (patch.providerId) meta.modelVendor = patch.providerId
   if (patch.modeId) meta.archetype = { ...archetypeOf(meta), modeId: patch.modeId }
   for (const [key, value] of Object.entries(patch.parameters ?? {})) meta[key] = value
+  const referencedNode = patch.referenceInputs ? applySpendReferences({ ...node, meta }, patch.referenceInputs) : { ...node, meta }
   return {
-    ...node,
+    ...referencedNode,
     ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
-    meta,
+    meta: referencedNode.meta,
   }
 }
 
 /**
- * 节点现在的样子 → 候选补丁。**只送候选已经认识的那些键**：
- * 参数面到底有哪些键是模型档案说了算的（`archetypeMeta`），在这里再判一次就是第二份词表。
- * 候选自己带的键 + 模型身份 + 提示词，正好是「供应商会收到的那份载荷」里用户能在卡上改的全部。
+ * 节点现在的样子 → 候选补丁。复用参数条的控件解析，保留原候选字段并收集新声明字段。
  */
 export function candidatePatchFromNode(
   node: GenerationCanvasNode,
   shot: PendingSpendShot,
+  option?: ModelOption,
+  baselineReferenceInputs?: readonly SpendReferenceInput[],
 ): SpendCandidatePatch | undefined {
   const meta = (node.meta ?? {}) as Record<string, unknown>
   const patch: Record<string, unknown> = {}
@@ -131,9 +142,15 @@ export function candidatePatchFromNode(
   if (providerId && providerId !== shot.providerId) patch.providerId = providerId
   const modeId = text(archetypeOf(meta).modeId)
   if (modeId && modeId !== (shot.modeId ?? '')) patch.modeId = modeId
+  const referenceInputs = referenceInputsFromNode(node, shot)
+  const baselineReferences = referenceInputsFromNode(applySpendReferences(node, baselineReferenceInputs ?? pendingReferenceInputs(shot)), shot)
+  if (JSON.stringify(referenceInputs) !== JSON.stringify(baselineReferences)) patch.referenceInputs = referenceInputs
   const parameters: Record<string, unknown> = {}
   let parametersChanged = false
-  for (const key of Object.keys(shot.parameters)) {
+  const selected = option ?? { modelKey: text(meta.modelKey), vendor: text(meta.modelVendor), value: text(meta.modelKey), label: text(meta.modelKey), kind: node.kind }
+  const controls = resolveRenderedControls(selected as ModelOption, meta, node.kind === 'image', node.kind === 'video')
+  const keys = new Set([...Object.keys(shot.parameters), ...controls.map(control => control.binding === 'parameter' ? control.key : control.binding)])
+  for (const key of keys) {
     const next = meta[key]
     parameters[key] = next === undefined ? shot.parameters[key] : next
     if (next !== undefined && next !== shot.parameters[key]) parametersChanged = true
@@ -146,17 +163,19 @@ export function candidatePatchFromNode(
  * 用户在卡上动了一下之后的新账本。
  *
  * `scope` 决定这一下落到哪一层：「全部」落公共层、「逐镜」落这一镜层——**另一层原样留着**
- * （切模式不丢覆写）。落进去的是「这个节点相对于宿主那一镜的差」，所以改回原值等于把
- * 那个字段从这一层里去掉，不会留下一个和原值相等的空覆写。
+ * （切模式不丢覆写）。每层相对下层计算：全部对宿主，逐镜对「宿主＋全部」。
+ * 因此逐镜改回宿主原值时，仍能明确盖过全部层的不同值。
  */
 export function draftAfterNodeEdit(
   draft: SpendDraft,
   shot: PendingSpendShot,
   node: GenerationCanvasNode,
   scope: SpendScope,
+  option?: ModelOption,
 ): SpendDraft {
-  const patch = candidatePatchFromNode(node, shot) ?? {}
-  if (scope === 'all') return { all: patch, perShot: draft.perShot }
+  if (scope === 'all') return { all: candidatePatchFromNode(node, shot, option) ?? {}, perShot: draft.perShot }
+  const inherited = { ...shot, ...draft.all, parameters: { ...shot.parameters, ...draft.all.parameters } }
+  const patch = candidatePatchFromNode(node, inherited, option, draft.all.referenceInputs) ?? {}
   return { all: draft.all, perShot: { ...draft.perShot, [shot.shotId]: patch } }
 }
 
@@ -181,6 +200,127 @@ export function revisionsForConfirm(
   const wanted = targetShotIds ? new Set(targetShotIds) : undefined
   return shots
     .filter((shot) => !wanted || wanted.has(shot.shotId))
-    .map((shot) => ({ shotId: shot.shotId, patch: effectivePatchForShot(draft, shot.shotId) }))
+    .map((shot) => {
+      const patch = effectivePatchForShot(draft, shot.shotId)
+      if (!patch.referenceInputs) return { shotId: shot.shotId, patch }
+      // The 'all' layer may carry the visible shot's pinned reference. Other shots
+      // request the same media by URL; they cannot claim that identity was theirs.
+      const referenceInputs = patch.referenceInputs.map(input => {
+        if (!('reference' in input) || !input.url || !input.reference.kind) return input
+        const retained = shot.references?.some(reference => reference.assetId === input.reference.assetId
+          && reference.contentHash === input.reference.contentHash && reference.version === input.reference.version
+          && reference.kind === input.reference.kind && reference.role === input.reference.role)
+        return retained ? input : { url: input.url, kind: input.reference.kind,
+          ...(input.reference.role ? { role: input.reference.role } : {}) }
+      })
+      return { shotId: shot.shotId, patch: { ...patch, referenceInputs } }
+    })
     .filter((entry) => Object.keys(entry.patch).length > 0)
+}
+
+/** Candidate data is the editor input; a placed canvas node supplies geometry only. */
+export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption): GenerationCanvasNode | undefined {
+  const archetype = resolveArchetypeForModel({ modelKey: shot.modelId, vendorKey: shot.providerId, meta: option?.meta })
+  const kind = option?.kind ?? archetype?.kind ?? placed?.kind
+  if (!isGenerationNodeKind(kind)) return undefined
+  return applySpendReferences({
+    id: shot.nodeId ?? `spend:${shot.shotId}`,
+    kind,
+    title: placed?.title ?? '',
+    position: placed?.position ?? { x: 0, y: 0 },
+    prompt: shot.prompt,
+    meta: {
+      ...shot.parameters,
+      modelKey: shot.modelId,
+      modelVendor: shot.providerId,
+      ...(option ? { modelLabel: option.label } : {}),
+      ...(archetype ? { archetype: { id: archetype.id, modeId: shot.modeId ?? archetype.defaultModeId } } : {}),
+    },
+  }, pendingReferenceInputs(shot))
+}
+
+/** Card-local unapproved edits, bound to the exact displayed request. Never a plan write. */
+export function spendDraftKey(pending: { projectId: string; runId: string; operationId: string; quoteId: string; planVersion: number; candidateRevision: number }): string {
+  return 'nomi:spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId, pending.quoteId, pending.planVersion, pending.candidateRevision])
+}
+export function readSpendDraft(key: string): SpendDraft {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return EMPTY_SPEND_DRAFT
+    const value: unknown = JSON.parse(raw)
+    // Validate without applying reference-schema transforms to saved user input.
+    return spendDraftSchema.safeParse(value).success ? value as SpendDraft : EMPTY_SPEND_DRAFT
+  } catch { return EMPTY_SPEND_DRAFT }
+}
+export function retainSpendDraft(key: string, draft: SpendDraft, pending?: PendingSpendConfirm): void {
+  if (draftIsEmpty(draft)) localStorage.removeItem(key)
+  else localStorage.setItem(key, JSON.stringify(draft))
+  // Keep existing partial-recovery entries current when the user edits again.
+  // Ordinary dismissed drafts retain their original whole-scope recovery policy.
+  for (const shot of pending?.shots ?? []) {
+    const recoveryKey = dismissedSpendDraftKey({ ...pending!, shots: [shot] })
+    if (draftIsEmpty(readSpendDraft(recoveryKey))) continue
+    const patch = effectivePatchForShot(draft, shot.shotId)
+    retainSpendDraft(recoveryKey, { all: {}, perShot: { [shot.shotId]: patch } })
+  }
+}
+
+/** Recovery is input-bound, never price/quote-bound; the live writer remains quote-bound. */
+function dismissedSpendDraftKey(pending: PendingSpendConfirm): string {
+  const shots = pending.shots.map(({ shotId, modelId, providerId, mode, modeId, prompt, parameters, references }) => ({
+    shotId, modelId, providerId, mode, modeId, prompt, parameters,
+    references: references?.map(({ url: _url, ...identity }) => identity) ?? [],
+  }))
+  return 'nomi:dismissed-spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId, shots])
+}
+export function retainDismissedSpendDraft(pending: PendingSpendConfirm, draft: SpendDraft): void {
+  retainSpendDraft(dismissedSpendDraftKey(pending), draft, pending)
+  retainSpendDraft(spendDraftKey(pending), EMPTY_SPEND_DRAFT)
+}
+export function restoreSpendDraft(pending: PendingSpendConfirm): SpendDraft {
+  const exact = readSpendDraft(spendDraftKey(pending))
+  if (!draftIsEmpty(exact)) return exact
+  const key = dismissedSpendDraftKey(pending)
+  const recovered = readSpendDraft(key)
+  if (!draftIsEmpty(recovered)) {
+    retainSpendDraft(spendDraftKey(pending), recovered)
+    retainSpendDraft(key, EMPTY_SPEND_DRAFT)
+  }
+  if (!draftIsEmpty(recovered)) return recovered
+  // Partial consumption keeps only unsubmitted shots under this same input-bound
+  // key. A later batch can have a different scope, but each shot must still match.
+  const perShot: Record<string, SpendCandidatePatch> = {}
+  for (const shot of pending.shots) {
+    const saved = readSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }))
+    const patch = effectivePatchForShot(saved, shot.shotId)
+    if (Object.keys(patch).length) perShot[shot.shotId] = patch
+  }
+  const remaining = { all: {}, perShot }
+  retainSpendDraft(spendDraftKey(pending), remaining)
+  return remaining
+}
+export function clearConsumedSpendDraft(pending: PendingSpendConfirm): void {
+  retainSpendDraft(spendDraftKey(pending), EMPTY_SPEND_DRAFT)
+  retainSpendDraft(dismissedSpendDraftKey(pending), EMPTY_SPEND_DRAFT)
+  for (const shot of pending.shots) retainSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }), EMPTY_SPEND_DRAFT)
+}
+
+/** Consume exactly the durable/approved set, retaining all other input in this ledger. */
+export function consumeSpendDraft(
+  pending: PendingSpendConfirm, draft: SpendDraft, shotIds?: readonly string[],
+  successor: PendingSpendConfirm = pending,
+): SpendDraft {
+  const consumed = new Set(shotIds ?? pending.shots.map(shot => shot.shotId))
+  const perShot: Record<string, SpendCandidatePatch> = {}
+  clearConsumedSpendDraft(pending)
+  for (const shot of pending.shots) {
+    if (consumed.has(shot.shotId)) continue
+    const patch = effectivePatchForShot(draft, shot.shotId)
+    if (!Object.keys(patch).length) continue
+    perShot[shot.shotId] = patch
+    retainSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }), { all: {}, perShot: { [shot.shotId]: patch } })
+  }
+  const remaining = { all: {}, perShot }
+  retainSpendDraft(spendDraftKey(successor), remaining)
+  return remaining
 }

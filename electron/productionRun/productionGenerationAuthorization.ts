@@ -1,3 +1,4 @@
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import crypto from "node:crypto";
 
@@ -30,6 +31,7 @@ export type ProductionGenerationAuthorizationJobV1 = Readonly<{
   mode: string;
   parameters: Readonly<Record<string, unknown>>;
   references: readonly ExecutionContractV1["references"][number][];
+  referenceUrls?: Readonly<Record<string, string>>;
   providerWirePayloadHash: string;
   providerIdempotencyKey: string;
   price: Readonly<{ currency: string; maximum: number }>;
@@ -178,6 +180,13 @@ export function createProductionGenerationAuthorizationEnvelope(input: Productio
       throw new ProductionGenerationAuthorizationError("Generation target evidence is invalid");
     }
     if (job.price.currency.trim() !== currency) throw new ProductionGenerationAuthorizationError("Job price currency must match the batch budget");
+    if (job.referenceUrls) {
+      const keys = new Set(job.references.map(spendReferenceKey));
+      if (Object.keys(job.referenceUrls).length !== keys.size || Object.entries(job.referenceUrls).some(([key, value]) => {
+        if (!keys.has(key) || typeof value !== "string") return true;
+        try { return !["http:", "https:"].includes(new URL(value).protocol); } catch { return true; }
+      })) throw new ProductionGenerationAuthorizationError("Reference URL snapshot does not match the authorized assets");
+    }
     return Object.freeze({
       jobId,
       shotId: requiredText(job.shotId, "Shot id"),
@@ -189,6 +198,7 @@ export function createProductionGenerationAuthorizationEnvelope(input: Productio
       mode: requiredText(job.mode, "Generation mode"),
       parameters: Object.freeze(structuredClone(job.parameters)),
       references: Object.freeze(structuredClone(job.references)),
+      ...(job.referenceUrls ? { referenceUrls: Object.freeze(structuredClone(job.referenceUrls)) } : {}),
       providerWirePayloadHash: requiredText(job.providerWirePayloadHash, "Provider wire payload hash"),
       providerIdempotencyKey: requiredText(job.providerIdempotencyKey, "Provider idempotency key"),
       price: Object.freeze({ currency, maximum: nonNegativeMoney(job.price.maximum, "Job price ceiling") }),

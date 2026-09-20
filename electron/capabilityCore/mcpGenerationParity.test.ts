@@ -59,10 +59,10 @@ describe('MCP generation draft schema parity', () => {
         args: { operation: 'create', shots: [shot] } }, new AbortController().signal)
       const external = tool.build({ leaseHandle: 'lease', projectId: binding.projectId, shots: [shot] })
       expect(planning).toHaveBeenCalledWith(expect.objectContaining({ capability: 'create', params: expect.objectContaining({ shots: external.shots }) }))
-      // 这台夹具没注入 defaultModelForTaskKind（= 用户没配过模型），两边都该给同一句人话。
+      // 两个入口调用同一解析器；运输边界只发布安全码，不泄露内部异常文本。
       expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed' })
-      expect(() => draftShotFromPlan((external.shots as unknown[])[0], 0, parsers)).toThrow(laneResult && !laneResult.ok ? laneResult.message : 'Expected shared failure')
-      expect(laneResult && !laneResult.ok ? laneResult.message : '').toMatch(/没有配置可用的/)
+      expect(() => draftShotFromPlan((external.shots as unknown[])[0], 0, parsers)).toThrow(/没有配置可用的图片模型/)
+      expect(laneResult).toMatchObject({ message: 'generation_execution_failed' })
     } finally { adapter.dispose() }
   })
 

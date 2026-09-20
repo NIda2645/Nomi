@@ -1,0 +1,169 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-run-storyboard-overrides",
+  "problem_type": "Run-bound original loses canvas field ownership",
+  "symptom": "Generating an existing Run shot resets an explicit canvas prompt edit",
+  "direct_cause": "Override identity recognizes only original storyboard metadata",
+  "class_root": "Original-node ownership predicate omits durable production Run shot identity",
+  "affected_population": [
+    "Previously materialized Run originals"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/model/storyboardOverrides.ts"
+  ],
+  "entry_points": [
+    "Canvas updateNode",
+    "Agent set_node_prompt",
+    "Original storyboard generation"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned canvas identity and projection boundaries",
+  "invariants": [
+    "Original Run shot canvas edits retain field ownership",
+    "Variants derived nodes and keyframes never own plan overrides"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "nodeShotField"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
+      "symbol": "nodeShotField"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "isStoryboardOriginal"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+      "symbol": "isStoryboardOriginal"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+      "symbol": "nodeShotField"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/StoryboardOverrideBadge.tsx",
+      "symbol": "overriddenShotFields"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/StoryboardOverrideBadge.tsx",
+      "symbol": "nodeShotField"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "markStoryboardOverrides"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "overriddenShotFields"
+    }
+  ],
+  "door_reduction": {
+    "before": 14,
+    "after": 14,
+    "why_not": "Existing canvas mutation and projection readers all share one identity predicate"
+  },
+  "generality_proof": "All user and Agent canvas mutations use the same existing override predicate",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+      "symbol": "isStoryboardOriginal",
+      "responsibility": "Recognize stable original shot identity across both persisted formats"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "entry_point": "updateNode",
+      "disposition": "enforced",
+      "evidence": "Shared markStoryboardOverrides call"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "entry_point": "projectShotNode",
+      "disposition": "enforced",
+      "evidence": "Shared overriddenShotFields call"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every existing Run node without legacy storyboard metadata loses edits",
+    "same_class_scan": [
+      "Machine door map of storyboardOverrides.ts",
+      "Canvas updateNode and Agent mutation projection share original-node predicate"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+    "invariant": "Original Run shot canvas edits retain field ownership",
+    "failure_mode": "Partial identities and branch nodes remain excluded",
+    "exception_policy": "none",
+    "strategy": "Extend existing original identity predicate to stable Run and shot IDs",
+    "artifacts": [
+      "src/workbench/generationCanvas/model/storyboardOverrides.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardOverrides.integration.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardOverrides.integration.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Same mutation and projection boundary; no alternate owner"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Local filesystem and shared application schema invariant",
+    "exit_criteria": []
+  },
+  "migration": "Recognize existing durable Run identity without rewriting nodes",
+  "residual_risks": [
+    "Controlled filesystem/service tests do not establish packaged Electron or Windows acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/model/storyboardOverrides.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/exec/storyboardOverrides.integration.test.ts"
+    ]
+  }
+}

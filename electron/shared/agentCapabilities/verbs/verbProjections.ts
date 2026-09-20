@@ -138,7 +138,7 @@ export const READ_SKILL_HOST_FILL: HostFill<typeof readSkillHostSchema, typeof r
 const cancelJobHostSchema = exportWriteSemanticInputSchema.options[1];
 
 export const cancelJobModelSchema = cancelJobHostSchema.omit({ operation: true }).extend({
-  domain: taskDomainSchema.optional().describe('Copy domain from the taskRef returned by the task owner. Required for cancellation.'),
+  domain: taskDomainSchema.describe('Copy domain from the taskRef returned by the task owner. Required for cancellation.'),
   jobId: cancelJobHostSchema.shape.jobId.describe("The job to cancel."),
 });
 
@@ -267,7 +267,7 @@ export const GENERATE_HOST_FILL: HostFill<typeof generateHostSchema, typeof gene
 const checkJobHostSchema = exportReadSemanticInputSchema.options[0];
 
 export const checkJobModelSchema = checkJobHostSchema.omit({ operation: true }).extend({
-  domain: taskDomainSchema.optional().describe('Copy domain from the taskRef returned by the task owner. Never infer it from a node ID.'),
+  domain: taskDomainSchema.describe('Copy domain from the taskRef returned by the task owner. Never infer it from a node ID.'),
   jobId: checkJobHostSchema.shape.jobId
     .describe("The job id returned by generate or export_video, or shown on a canvas node."),
 });

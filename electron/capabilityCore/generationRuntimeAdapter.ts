@@ -17,6 +17,7 @@ export type ResolvedTaskRequestV1 = {
   prompt: string;
   parameters: Record<string, unknown>;
   references: ExecutionContractV1["references"];
+  referenceUrls?: Readonly<Record<string, string>>;
   contractHash: string;
   idempotencyKey: string;
   requestFingerprint: string;
@@ -235,11 +236,12 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
   function prepareAuthorization(input: {
     contract: ExecutionContractV1;
     providerIdempotencyKey: string;
+    referenceUrls?: Readonly<Record<string, string>>;
   }): Readonly<{
     providerRequest: unknown;
     providerRequestHash: string;
   }> {
-    const request = stableRequestFor(input.contract, input.providerIdempotencyKey);
+    const request = { ...stableRequestFor(input.contract, input.providerIdempotencyKey), ...(input.referenceUrls ? { referenceUrls: structuredClone(input.referenceUrls) } : {}) };
     const provider = providers.get(request.providerId);
     if (!provider) throw new GenerationProviderCapabilityError(request.providerId, ["registered_provider"]);
     assertGenerationProviderCanSubmit(provider);

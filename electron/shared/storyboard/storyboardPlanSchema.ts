@@ -1,0 +1,102 @@
+import { z } from 'zod'
+import type { StoryboardPlan } from './storyboardPlan'
+import { jsonTolerantArray } from '../agentCapabilities/jsonArgTolerance'
+
+const referenceBindingsSchema = z.record(z.array(z.object({
+  url: z.string().min(1), name: z.string().optional(), sourceNodeId: z.string().min(1).optional(),
+  anchorId: z.string().min(1).optional(), ignore: z.string().optional(),
+}).strict()))
+
+// schema 与手写类型分层，避免方案转换器继续膨胀；编译期守卫仍固定在同一份 schema owner。
+export const planAnchorSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['character', 'scene', 'prop', 'style']),
+  name: z.string().min(1),
+  description: z.string(),
+  staticFeatures: z.string().optional().describe('Identity features that must remain consistent across shots, such as face shape, hair, bone structure and distinguishing marks.'),
+  dynamicFeatures: z.string().optional().describe('Clothing, accessories and temporary state; may vary between shots and do not define identity.'),
+  carrier: z.enum(['visual', 'text']),
+  scope: z.enum(['all', 'selective']).optional(),
+  variants: z.array(z.string()).optional().describe('Variants or states of the same anchor; omit when none are needed.'),
+  referenceUrl: z.string().min(1).optional(),
+  referenceKind: z.enum(['image', 'video', 'audio']).optional(),
+  referenceSourceNodeId: z.string().min(1).optional(),
+  modelKey: z.string().optional(), modelVendor: z.string().optional(), modeId: z.string().optional(),
+  params: z.record(z.unknown()).optional(), referenceBindings: referenceBindingsSchema.optional(),
+}).strict()
+
+const promptSegmentRangeSchema = z.object({
+  key: z.string().min(1),
+  start: z.number().int().min(0),
+  end: z.number().int().min(0),
+})
+
+const storyboardProfileSchema = z.object({
+  aspect: z.string().min(1),
+  dialogue: z.boolean(),
+  promptSkeleton: z.array(z.object({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    kind: z.literal('enum'),
+    options: z.array(z.string().min(1)),
+  })),
+})
+
+export const planShotSchema = z.object({
+  index: z.number().int(),
+  shotId: z.string().min(1).optional().describe('Stable shot id; the host assigns one when omitted.'),
+  sceneId: z.string().min(1).optional().describe('Scene id; omit when the story has no scene grouping.'),
+  shotKind: z.enum(['image', 'video']).optional().describe('Shot media kind: image or video; defaults to image.'),
+  durationSec: z.number(),
+  anchorIds: z.array(z.string()),
+  /** 按槽的参考绑定：键 = 槽 kind（未知键原样保留，前向兼容），值 = 有序素材。 */
+  referenceBindings: referenceBindingsSchema.optional(),
+  prompt: z.string(),
+  promptSegments: z.array(promptSegmentRangeSchema).optional(),
+  modelKey: z.string().optional(),
+  modelVendor: z.string().optional(),
+  modeId: z.string().optional(),
+  params: z.record(z.unknown()).optional(),
+  variationType: z.enum(['large', 'medium', 'small']).optional(),
+  camIdx: z.number().int().min(0).optional(),
+  ffDesc: z.string().optional(),
+  lfDesc: z.string().optional(),
+  motionDesc: z.string().optional(),
+  continuity: z.union([z.string(), z.number(), z.record(z.unknown())]).optional(),
+  keyframe: z.object({
+    enabled: z.boolean().optional(),
+    prompt: z.string().optional(),
+    modelKey: z.string().optional(),
+    modelVendor: z.string().optional(),
+    modeId: z.string().optional(),
+    params: z.record(z.unknown()).optional(),
+  }).strict().optional(),
+}).strict()
+
+export const storyboardPlanSchema = z.object({
+  title: z.string(),
+  // 容错的 owner 在 `electron/shared/agentCapabilities/jsonArgTolerance.ts`。
+  // 这里以前有一份逐字重复的 `parseJsonArrayString`，而且只包了 `shots`——
+  // 两份实现意味着两次要记得同时改，一次漏掉就是「主进程收得下、渲染层解不开」。
+  anchors: jsonTolerantArray(z.array(planAnchorSchema)),
+  shots: jsonTolerantArray(z.array(planShotSchema)),
+  scenes: z.array(z.object({ id: z.string().min(1), title: z.string() })).optional(),
+  // 整片默认画幅。**必须在 schema 里**：zod 默认静默丢未知键，少这一行就等于规划师在方案顶层
+  // 写的整片画幅在 parseStoryboardPlan 那一刻消失（2026-09-12 根因合同）。
+  aspectRatio: z.string().min(1).optional(),
+  profileKey: z.string().min(1).optional(),
+  storyboardProfile: storyboardProfileSchema.optional(),
+  sourceScriptArtifactId: z.string().min(1).optional(),
+  sourceScriptVersion: z.number().int().positive().optional(),
+  sourceScriptHash: z.string().min(1).optional(),
+}).strict()
+
+// 编译期漂移守卫：schema 和手写类型必须互相赋值，防止运行时契约静默漂移。
+const _schemaToType = (plan: z.infer<typeof storyboardPlanSchema>): StoryboardPlan => plan
+const _typeToSchema = (plan: StoryboardPlan): z.infer<typeof storyboardPlanSchema> => plan
+void _schemaToType
+void _typeToSchema
+
+export function parseStoryboardPlan(raw: unknown): StoryboardPlan {
+  return storyboardPlanSchema.parse(raw)
+}

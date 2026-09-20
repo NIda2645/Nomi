@@ -1,3 +1,4 @@
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · app 集成（见 docs/plan/2026-06-20-capability-core-headless-exposure.md §S4）。
 //
 // 把 RPC server + token + 实例广告接到运行中的 Nomi app：启动时拉起 RPC（127.0.0.1）、ensureToken、
@@ -23,14 +24,15 @@ import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
-import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
+import { requestRenderer, requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { installGuiResolveNarrowIpc } from './generationResolveIpc'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import {
-  prepareProductionGenerationAuthorization,
+  prepareProductionGenerationAuthorizationWithReferences,
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
@@ -186,11 +188,6 @@ export async function startCapabilityCore(
       bootstrap: (state, options) => createGenerationProviderBootstrap(state, {
         ...options,
         ...(fixtureBaseUrlOverride ? { fixtureBaseUrlOverride } : {}),
-        ...(fixtureReferenceUrl ? {
-          resolveReferenceUrls: (input) => ({
-            imageUrls: input.references.filter((reference) => reference.kind === 'image').map(() => fixtureReferenceUrl),
-          }),
-        } : {}),
       }),
     })
     const readProviderBootstrap = liveGenerationRuntime.readBootstrap
@@ -326,6 +323,8 @@ export async function startCapabilityCore(
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: operationStore,
+        requestRendererDecision,
+        resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
         get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).
         defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
@@ -345,8 +344,16 @@ export async function startCapabilityCore(
           const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
           if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
           const authorizationRun = generationService.repository.read(lease.projectId, operation.operationId)
-          return prepareProductionGenerationAuthorization({
+          return prepareProductionGenerationAuthorizationWithReferences({
             lease,
+            assertCurrent: () => {
+              const currentProject = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
+              const currentRun = generationService.repository.read(lease.projectId, operation.operationId)
+              if (!currentProject || currentProject.revision !== projectRecord.revision
+                || currentProject.immutableProjectUuid !== lease.immutableProjectUuid
+                || currentProject.projectGeneration !== lease.projectGeneration
+                || currentRun?.revision !== authorizationRun?.revision) throw new Error('generation_reference_scope_changed')
+            },
             projectRevision: projectRecord.revision,
             operation,
             contract,
@@ -356,7 +363,7 @@ export async function startCapabilityCore(
             maximumSpend: authorizationRun?.policy.maxSpend,
             run: authorizationRun ?? undefined,
             now: new Date().toISOString(),
-          })
+          }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
         },
         start: async (operation, lease) => {
           // Settings can save APIMart while this process is already running.

@@ -1,3 +1,4 @@
+import { hardenedFetch } from '../hardenedFetch';
 import fs from "node:fs";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
 import http from "node:http";
@@ -96,11 +97,11 @@ async function startLoopbackVendor() {
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       try { bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); } catch { bodies.push({}); }
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(200, { "content-type": "application/json", connection: "close" });
       res.end(JSON.stringify({ created: 1, data: [{ task_id: `task-${bodies.length}`, status: "succeeded", url: pngDataUrl }] }));
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => resolve()); });
   const { port } = server.address() as { port: number };
   return { origin: `http://127.0.0.1:${port}`, bodies, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
@@ -117,11 +118,14 @@ function loopbackProvider(origin: string, submits: string[]): GenerationProvider
     submit: async (request, idempotencyKey) => {
       submits.push(idempotencyKey);
       const contract = (request ?? {}) as { modelId?: string; parameters?: Record<string, unknown> };
-      const res = await fetch(`${origin}/v1/images/generations`, {
+      const res = await hardenedFetch(`${origin}/v1/images/generations`, {
+        // Exact origin belongs to this test server; redirects remain forbidden.
+        allowedPrivateOrigins: [origin],
+        allowContentTypes: ["application/json"],
         method: "POST",
         body: JSON.stringify({ idempotencyKey, model: contract.modelId, parameters: contract.parameters ?? {} }),
       });
-      const json = await res.json() as { data: Array<{ task_id: string }> };
+      const json = JSON.parse(res.bytes.toString("utf8")) as { data: Array<{ task_id: string }> };
       return { providerTaskId: json.data[0].task_id, raw: json };
     },
     query: async (providerTaskId) => ({ status: "succeeded", raw: { id: providerTaskId, status: "succeeded" } }),

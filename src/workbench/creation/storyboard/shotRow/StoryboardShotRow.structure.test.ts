@@ -43,8 +43,9 @@ describe('分镜行：参考区复用画布那套参考槽（不许再造一套�
     expect(zone).toContain("from './shotReferenceSlots'")
     // 供应商名字不该出现在分镜行的任何一层（P4：按声明渲染，不为具体模型写 if）。
     for (const source of [row, zone]) {
-      expect(source.toLowerCase()).not.toContain('seedance')
-      expect(source.toLowerCase()).not.toContain('veo')
+      expect(source).not.toMatch(/\bseedance(?:[-\d.]|\b)/i)
+      // Identifier substrings such as onResolveOverride are not model names.
+      expect(source).not.toMatch(/\bveo(?:[-\d.]|\b)/i)
     }
   })
 })

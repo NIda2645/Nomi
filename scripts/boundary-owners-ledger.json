@@ -171,6 +171,26 @@
         "symbol": "draftShotToPlanShot"
       },
       "reason": "2026-09-18 晚投影铺开：一镜的字段对应表（DRAFT_SHOT_FIELD_MAP）被取代成一个有类型的显式变换。那条不变量一个字没变——三处形状变化（嵌套层级 / 拍平 / 参考素材身份由宿主补）与「信封字段落不进候选 patch」都在新锚里，而且 #813 开通的「shotId 提到 plan patch 信封上」也跟着搬了（draftShotsPatchEnvelope，同文件）。原表连同 verbFieldMap.ts 的 DSL 一起删掉。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-12-storyboard-plan-defaults-passthrough.root-cause.json",
+      "path": "src/workbench/generationCanvas/agent/storyboardShotScope.ts",
+      "symbol": "FILM_DEFAULTS / resolveShotParams / resolveKeyframeParams / unsupportedFilmDefaultKeys",
+      "anchor": {
+        "path": "electron/shared/storyboard/storyboardShotScope.ts",
+        "symbol": "FILM_DEFAULTS / resolveShotParams / resolveKeyframeParams / unsupportedFilmDefaultKeys"
+      },
+      "reason": "原分镜纯函数已原样搬至共享模块，renderer 原路径只 re-export 同一实现；不变量与原调用者保留，未另造编译器。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-18-storyboard-external-reference-waiting.root-cause.json",
+      "path": "src/workbench/generationCanvas/agent/storyboardPromptCompiler.ts",
+      "symbol": "anchorCarriesOwnMaterial",
+      "anchor": {
+        "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+        "symbol": "anchorCarriesOwnMaterial"
+      },
+      "reason": "原分镜纯函数已原样搬至共享模块，renderer 原路径只 re-export 同一实现；不变量与原调用者保留，未另造编译器。"
     }
   ],
   "retirements": [

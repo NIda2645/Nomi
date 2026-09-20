@@ -53,7 +53,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       if (inFlightByProject.get(projectId) === merged) inFlightByProject.delete(projectId);
     });
   };
-  const runLanding = async (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> => {
+  const runLanding = async (projectId: string, runId: string, isCurrent?: () => boolean, projectAuthorEdit = false): Promise<boolean> => {
     if (isCurrent && !isCurrent()) return false;
     let run: ProductionRun | null | undefined;
     try {
@@ -67,12 +67,13 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     // reconcilable so reopening a project does not strand their nodes.
     const hasCanvasBinding = Boolean(run.generationPlan?.nodeId)
       || Boolean(run.generationPlan?.shots?.some((shot) => shot.nodeId));
-    if (run.origin.sourceDocument && run.generationPlan?.canvasPlacement !== 'explicit' && !hasCanvasBinding) return false;
+    if (run.origin.sourceDocument && !projectAuthorEdit && !hasCanvasBinding) return false;
     return landCanvasForRun(run, {
       requestRenderer: deps.requestRenderer,
       projectRoot: deps.resolveProjectRoot(projectId),
       previewSecret: deps.previewSecret(),
-      planName: run.brief?.goal,
+      projectAuthorEdit,
+      planName: run.authoring?.title ?? run.brief?.goal,
       ...(isCurrent ? { isCurrent } : {}),
       bindShotNodes: async (boundProjectId, boundRunId, expectedRevision, bindings) => {
         await deps.command(boundProjectId, boundRunId, {
@@ -94,7 +95,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     landCanvasBestEffort,
     landDraftOnCanvas: (projectId, runId) => {
       if (!deps.isProjectOpen(projectId)) return;
-      void landCanvasBestEffort(projectId, runId);
+      track(projectId, runLanding(projectId, runId, undefined, true));
     },
     settleCanvasLanding: async (projectId) => {
       // 等待期间可能又追加了一段（agent 连着改草稿）：等到这条链真的空掉为止。

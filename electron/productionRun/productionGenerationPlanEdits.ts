@@ -217,6 +217,7 @@ export function presentGenerationPlan(current: ProductionRun, requested: unknown
     ...(plan.state === "submitted" || plan.state === "cancelled" ? { status: "draft" as const } : {}),
     planVersion: current.planVersion + 1,
     generationPlan: { ...visible,
+      candidate: visible.shots?.find(shot => scope.includes(shot.shotId))?.candidate ?? visible.candidate,
       ...(visible.shots ? { shots: visible.shots.map((shot) => ({ ...shot, included: scope.includes(shot.shotId) })) } : {}),
       updatedAt: now }, updatedAt: now };
 }

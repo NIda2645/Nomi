@@ -313,7 +313,7 @@
         "export.read"
       ],
       "contractId": "generation.run.read",
-      "description": "Read one generation or export job: its stage, progress, result reference and what it has cost so far. The user asks whether something is done, what is still running, or what it cost; before cancel_job. It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit. jobId comes from the result of generate or export_video, or from look_at_canvas. Nothing changes; it only reads.",
+      "description": "Read one generation or export job: its stage, progress, result reference and what it has cost so far. The user asks whether something is done, what is still running, or what it cost; before cancel_job. It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit. Copy domain and jobId from taskRef returned by generate, export_video or look_at_canvas. A node ID is never a task ID. A draft has not executed; do not treat it as a failed execution. Nothing changes; it only reads.",
       "effect": "read",
       "effectGroups": [
         "job-status-cancel"
@@ -321,6 +321,7 @@
       "examples": [
         {
           "arguments": {
+            "domain": "generation",
             "jobId": "op-1"
           },
           "when": "Check a running job:"
@@ -345,6 +346,14 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "domain": {
+            "description": "Copy domain from the taskRef returned by the task owner. Never infer it from a node ID.",
+            "enum": [
+              "generation",
+              "export"
+            ],
+            "type": "string"
+          },
           "jobId": {
             "description": "The job id returned by generate or export_video, or shown on a canvas node.",
             "maxLength": 160,
@@ -353,7 +362,8 @@
           }
         },
         "required": [
-          "jobId"
+          "jobId",
+          "domain"
         ],
         "type": "object"
       }
@@ -407,7 +417,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "document.write",
-      "description": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end. The user asks you to write, rewrite, tighten or extend script text. Never write a diff, a summary of the change, or a plan to write later. Not for shot prompts (draft_shots). Read the selection first (read_script) unless the user told you exactly what to replace. content is the exact text; where is cursor, selection or end. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end. The user asks you to write, rewrite, tighten or extend script text. Never write a diff, a summary of the change, or a plan to write later. Not for shot prompts (draft_shots). Read the selection first (read_script) unless the user told you exactly what to replace. content is the exact text; where is cursor, selection or end. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -468,7 +478,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.plan",
-      "description": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots. Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create. It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot). shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement. Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create. New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot). shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -518,7 +528,7 @@
         "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork.",
         "High-quality generation prompt, in the SAME language as the user (Chinese user → Chinese prompt). Write it as a STRUCTURED skeleton, not a run-on sentence:\n- character/scene reference card: stable appearance/environment description + unified style keywords (neutral full-body pose for a character, empty wide establishing shot for a scene; no plot action).\n- image / keyframe shot: scene·time·light → subject·action·expression → shot language (wide / close-up / low-angle…) → style keywords.\n- video shot: camera move (push / pull / pan / track…) → on-screen action progression → rhythm & duration feel; do NOT restate the static keyframe description.\nKeep the same subject's appearance description consistent across shots. agent-artifact nodes carry no prompt: send an empty string."
       ],
-      "promptSnippet": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
+      "promptSnippet": "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -632,6 +642,257 @@
                   "minLength": 1,
                   "type": "string"
                 },
+                "storyboard": {
+                  "additionalProperties": false,
+                  "description": "Original author fields; anchors require kind and carrier.",
+                  "properties": {
+                    "anchorIds": {
+                      "description": "Reused anchor ids",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "camIdx": {
+                      "description": "Camera preset index",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "carrier": {
+                      "description": "Visual or text guidance",
+                      "enum": [
+                        "visual",
+                        "text"
+                      ],
+                      "type": "string"
+                    },
+                    "continuity": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "items": {
+                                  "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2/additionalProperties"
+                                },
+                                "type": "array"
+                              },
+                              {
+                                "additionalProperties": {
+                                  "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2/additionalProperties"
+                                },
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "type": "object"
+                        }
+                      ],
+                      "description": "Continuity facts"
+                    },
+                    "durationSec": {
+                      "description": "Seconds for stills too",
+                      "type": "number"
+                    },
+                    "dynamicFeatures": {
+                      "description": "Clothing, accessories and temporary state; may vary between shots and do not define identity.",
+                      "type": "string"
+                    },
+                    "ffDesc": {
+                      "description": "First-frame description",
+                      "type": "string"
+                    },
+                    "keyframe": {
+                      "additionalProperties": false,
+                      "description": "Independent keyframe",
+                      "properties": {
+                        "enabled": {
+                          "description": "Enable",
+                          "type": "boolean"
+                        },
+                        "modeId": {
+                          "description": "Mode",
+                          "type": "string"
+                        },
+                        "modelKey": {
+                          "description": "Model id",
+                          "type": "string"
+                        },
+                        "modelVendor": {
+                          "description": "Provider",
+                          "type": "string"
+                        },
+                        "params": {
+                          "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2",
+                          "description": "Model parameters"
+                        },
+                        "prompt": {
+                          "description": "Prompt",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "kind": {
+                      "description": "Anchor category",
+                      "enum": [
+                        "character",
+                        "scene",
+                        "prop",
+                        "style"
+                      ],
+                      "type": "string"
+                    },
+                    "lfDesc": {
+                      "description": "Last-frame description",
+                      "type": "string"
+                    },
+                    "motionDesc": {
+                      "description": "Frame-to-frame motion",
+                      "type": "string"
+                    },
+                    "promptSegments": {
+                      "description": "Prompt text ranges",
+                      "items": {
+                        "additionalProperties": true,
+                        "properties": {
+                          "end": {
+                            "description": "End offset",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "key": {
+                            "description": "Segment name",
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "start": {
+                            "description": "Start offset",
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "start",
+                          "end"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "referenceBindings": {
+                      "additionalProperties": {
+                        "items": {
+                          "additionalProperties": true,
+                          "properties": {
+                            "anchorId": {
+                              "description": "Source anchor id",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "ignore": {
+                              "description": "Features to ignore",
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "Media name",
+                              "type": "string"
+                            },
+                            "sourceNodeId": {
+                              "description": "Source node id",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "url": {
+                              "description": "Media URL",
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "description": "Ordered slot media",
+                      "type": "object"
+                    },
+                    "referenceKind": {
+                      "description": "Anchor media type",
+                      "enum": [
+                        "image",
+                        "video",
+                        "audio"
+                      ],
+                      "type": "string"
+                    },
+                    "referenceSourceNodeId": {
+                      "description": "Source node id",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "referenceUrl": {
+                      "description": "Anchor media URL",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sceneId": {
+                      "description": "Scene id; omit when the story has no scene grouping.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "scope": {
+                      "description": "All or selected",
+                      "enum": [
+                        "all",
+                        "selective"
+                      ],
+                      "type": "string"
+                    },
+                    "staticFeatures": {
+                      "description": "Identity features that must remain consistent across shots, such as face shape, hair, bone structure and distinguishing marks.",
+                      "type": "string"
+                    },
+                    "variants": {
+                      "description": "Variants or states of the same anchor; omit when none are needed.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "variationType": {
+                      "description": "Variation strength",
+                      "enum": [
+                        "large",
+                        "medium",
+                        "small"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
                 "taskKind": {
                   "description": "What to produce; omit to infer from prompt, references and durationSec.",
                   "enum": [
@@ -679,7 +940,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.plan",
-      "description": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. The draft lands on the canvas and Nomi shows the user a priced confirmation card in its own panel; nothing is generated and nothing is spent until the user approves it there. Never say generation has started — say what the card shows.",
+      "description": "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. Nomi applies the existing spending approval policy. Describe a waiting priced confirmation card only when the result says it is waiting; claim generation started only when the result reports an actual policy decision that started it. This request does not itself prove canvas placement.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -702,7 +963,7 @@
         "internal"
       ],
       "promptGuidelines": null,
-      "promptSnippet": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi.",
+      "promptSnippet": "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -734,7 +995,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout. The user asks to connect, link or tidy. It cannot create shots or any generating node — such a request is rejected and draft_shots is named instead. Not for hand-authored artifacts (make_artifact) or staging and camera references (stage_shot). links[] (fromId, toId, role) connect existing nodes; tidy true re-lays out the canvas (optionally one categoryId). All ids from look_at_canvas. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout. The user asks to connect, link or tidy. It cannot create shots or any generating node — such a request is rejected and draft_shots is named instead. Not for hand-authored artifacts (make_artifact) or staging and camera references (stage_shot). links[] (fromId, toId, role) connect existing nodes; tidy true re-lays out the canvas (optionally one categoryId). All ids from look_at_canvas. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -827,7 +1088,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself. The user wants a chart, table, mood board, comparison sheet or diagram that you can author directly without a generation model. Not for images or video that need a model (draft_shots), not for links or layout (arrange_canvas), not for staging references (stage_shot). fileType, title and content; the content is the whole file. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself. The user wants a chart, table, mood board, comparison sheet or diagram that you can author directly without a generation model. Not for images or video that need a model (draft_shots), not for links or layout (arrange_canvas), not for staging references (stage_shot). fileType, title and content; the content is the whole file. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -896,7 +1157,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it. The user asks for a push-in, a two-shot, a specific blocking, or \"show me the camera move\". It does not generate the shot itself and it is not a prompt edit (draft_shots). Not for links (arrange_canvas) or hand-made artifacts (make_artifact). shotId from look_at_canvas or draft_shots; exactly one of staging (characters, layout, camera, environment, customBlocking) or cameraMove (move, customMove, speed, subjectPose). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it. The user asks for a push-in, a two-shot, a specific blocking, or \"show me the camera move\". It does not generate the shot itself and it is not a prompt edit (draft_shots). Not for links (arrange_canvas) or hand-made artifacts (make_artifact). shotId from look_at_canvas or draft_shots; exactly one of staging (characters, layout, camera, environment, customBlocking) or cameraMove (move, customMove, speed, subjectPose). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -1541,7 +1802,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "timeline.write",
-      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -1734,7 +1995,7 @@
         "generation.control"
       ],
       "contractId": "export.write",
-      "description": "Cancel one running generation or export job. The user asks to stop it. Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded. jobId from generate, export_video, check_job or look_at_canvas. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
+      "description": "Cancel one running generation or export job. The user asks to stop it. Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded. Copy domain and jobId from taskRef returned by generate, export_video, check_job or look_at_canvas. Never guess a task ID from a node ID or retry cancellation in another domain. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
       "effect": "irreversible",
       "effectGroups": [
         "job-status-cancel"
@@ -1742,6 +2003,7 @@
       "examples": [
         {
           "arguments": {
+            "domain": "export",
             "jobId": "export-1"
           },
           "when": "Stop a running export:"
@@ -1764,6 +2026,14 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "domain": {
+            "description": "Copy domain from the taskRef returned by the task owner. Required for cancellation.",
+            "enum": [
+              "generation",
+              "export"
+            ],
+            "type": "string"
+          },
           "jobId": {
             "description": "The job to cancel.",
             "maxLength": 160,
@@ -1772,7 +2042,8 @@
           }
         },
         "required": [
-          "jobId"
+          "jobId",
+          "domain"
         ],
         "type": "object"
       }
@@ -1781,7 +2052,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "skill.write",
-      "description": "Save a validated skill package to the user's library. The user asks to save this way of working as a skill. Not for one-off instructions; to follow an existing skill use read_skill. dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Save a validated skill package to the user's library. The user asks to save this way of working as a skill. Not for one-off instructions; to follow an existing skill use read_skill. dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -1972,7 +2243,7 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass. The key is saved and you have read the provider's API documentation. It never proves a model can produce anything: the reply always keeps whether this model can actually produce something in its unverified list until the user generates once. Send it only after connect_model_provider reports the key is saved. It does not delete anything; use remove_model_provider for that. setupId comes from connect_model_provider. declaration is the card as JSON text; nomi_read target=setup returns the exact schema it must match, and every rejected field comes back with the path and the documentation URL you declared for it. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass. The key is saved and you have read the provider's API documentation. It never proves a model can produce anything: the reply always keeps whether this model can actually produce something in its unverified list until the user generates once. Send it only after connect_model_provider reports the key is saved. It does not delete anything; use remove_model_provider for that. setupId comes from connect_model_provider. declaration is the card as JSON text; nomi_read target=setup returns the exact schema it must match, and every rejected field comes back with the path and the documentation URL you declared for it. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -2027,7 +2298,7 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Show or hide models of a connected provider in Nomi's model pickers. The user asks to tidy up the model list, or to bring a hidden model back. Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration. vendorKey and modelKeys come from nomi_read target=models. visible=false hides them. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Show or hide models of a connected provider in Nomi's model pickers. The user asks to tidy up the model list, or to bring a hidden model back. Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration. vendorKey and modelKeys come from nomi_read target=models. visible=false hides them. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -2096,7 +2367,7 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Abandon an in-flight model setup. The user changes their mind before the declaration is accepted. It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration. setupId comes from connect_model_provider. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Abandon an in-flight model setup. The user changes their mind before the declaration is accepted. It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration. setupId comes from connect_model_provider. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [

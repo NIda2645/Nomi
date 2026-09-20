@@ -1,0 +1,428 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-production-reference-snapshot",
+  "problem_type": "Formal generation reference transport disconnected",
+  "symptom": "Paid generation with asset references cannot resolve provider URLs",
+  "direct_cause": "Only fixture bootstraps provide a URL resolver",
+  "class_root": "Authorization lacks a durable resolved reference snapshot shared with submission",
+  "affected_population": [
+    "Generation operations with pinned project references"
+  ],
+  "scope_paths": [
+    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "electron/productionRun/productionGenerationAuthorization.ts",
+    "electron/productionRun/productionGenerationSubmission.ts",
+    "electron/capabilityCore/generationRuntimeAdapter.ts",
+    "electron/capabilityCore/apimartGenerationProjection.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "electron/capabilityCore/apimartGenerationProvider.ts"
+  ],
+  "entry_points": [
+    "Desktop authorization",
+    "MCP authorization",
+    "Submission replay"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Reuse existing asset localization and authorization owners",
+  "invariants": [
+    "Only included references are localized",
+    "Approved provider URL snapshot survives restart unchanged"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "projectReferenceUrls"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createGenerationRuntimeAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "createGenerationRuntimeAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "createGenerationRuntimeAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "createApimartGenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartImageReferenceWithRole"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartReferenceProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "assertReferenceParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "normalizeParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "assertReferenceParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "assertReferencesReachBody"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationReferenceAliases.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationOutputs.ts",
+      "symbol": "GenerationProviderOutput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "GenerationProviderRequestInputV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "GenerationProviderRequestInputV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationOutputMaterializer.ts",
+      "symbol": "GenerationProviderOutput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "ResolvedTaskRequestV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderOutput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderCapabilities"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderRequestInputV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderReconcileDisposition"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderMaterializationResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderCancelDisposition"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderTaskState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderCapabilityError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationRuntimeBindingError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderRequestError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "resolveExecutionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderQueryResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderObservationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderReconcileResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "GenerationProviderCancelResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationProviderCapabilityError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationProviderObservationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationRuntimeBindingError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationProviderCapabilityError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "symbol": "GenerationProviderCapabilities"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationProviderOutput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "resolveExecutionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationProviderObservationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "GenerationProviderTaskState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "symbol": "normalizeGenerationProviderTaskState"
+    }
+  ],
+  "door_reduction": {
+    "before": 63,
+    "after": 63,
+    "why_not": "Existing desktop, MCP, reducer and fixture callers share durable authorization ownership"
+  },
+  "generality_proof": "Desktop and MCP converge on one async preparation boundary and the existing durable envelope",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "prepareProductionGenerationAuthorization",
+      "responsibility": "Freeze selected reference URLs before wire authorization"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "prepareAuthorization",
+      "disposition": "enforced",
+      "evidence": "Shared async preparation"
+    },
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "prepareAuthorization",
+      "disposition": "enforced",
+      "evidence": "Shared async preparation"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every formal asset reference request lacks the resolver",
+    "same_class_scan": [
+      "Door maps for authorization construction and preparation",
+      "Inspected desktop, MCP, provider bootstrap and submission replay"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "invariant": "Approved provider URL snapshot survives restart unchanged",
+    "failure_mode": "Reject unresolved or changed references before submission",
+    "exception_policy": "none",
+    "strategy": "Reuse asset localization and persist approved URL snapshot in existing envelope",
+    "artifacts": [
+      "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "electron/productionRun/productionGenerationAuthorization.ts",
+      "electron/productionRun/productionGenerationSubmission.ts",
+      "electron/capabilityCore/generationRuntimeAdapter.ts",
+      "electron/capabilityCore/apimartGenerationProjection.ts",
+      "electron/capabilityCore/appIntegration.ts",
+      "electron/capabilityCore/mcpStdioServer.ts",
+      "electron/capabilityCore/apimartGenerationProvider.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/generationProviderBootstrap.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/generationProviderBootstrap.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Removed host fixture-only synchronous resolution; formal paths share existing async asset transport and durable authorization"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Local filesystem and shared application schema invariant",
+    "exit_criteria": []
+  },
+  "migration": "Existing reference-free envelopes unchanged; unresolved old reference requests fail closed",
+  "residual_risks": [
+    "Controlled filesystem/service tests do not establish packaged Electron or Windows acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "tests": [
+      "electron/capabilityCore/generationProviderBootstrap.test.ts"
+    ]
+  }
+}

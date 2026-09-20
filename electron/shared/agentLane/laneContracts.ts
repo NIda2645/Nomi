@@ -1,3 +1,4 @@
+import type { StoryboardRequestTarget } from '../agentCapabilities/generationInvocationContext'
 import type { CanvasWriteApprovalAuthority } from '../agentCapabilities/transportContracts'
 // Agent lane · 中立契约层（阶段 1 影子期）
 //
@@ -48,6 +49,7 @@ export type LanePart =
        * 为什么必须上屏：技能是「这一轮按哪套方法做」的唯一开关，而选完之后
        * 对话里一个字都看不到它，用户只能猜「到底用上没有」（2026-09-10 用户反馈 #6）。
        */
+      readonly storyboardTarget?: StoryboardRequestTarget
       readonly skillKey?: string
       readonly skillSnapshot?: { name: string; contentHash: string }
     })

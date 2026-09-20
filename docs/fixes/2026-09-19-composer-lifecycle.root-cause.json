@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-09-19-composer-lifecycle",
   "problem_type": "Transient presentation ownership survives its interaction lifetime",
-  "symptom": "Selected editable nodes intermittently lose the composer after history, interrupted drag, zero-sized layout or lazy failure.",
-  "direct_cause": "History has two state owners; boolean drag writes rediscover stage and reuse source identity; chunk errors reload the window; geometry can resolve to zero height in a nonzero stage.",
-  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes.",
+  "symptom": "Selected editable nodes intermittently lose the composer after history, interrupted drag, zero-sized layout or lazy failure. At default zoom, a large canvas node places composer parameter actions behind fixed bottom workspace docks. Editing B then confirming only A discarded B unsubmitted payment-card input. Frozen full audit also reproduced an unselected node history button doing nothing, canvas outer-card scrolling against its fixed-footer contract, and normal focus transfer cancelling a new primary pan.",
+  "direct_cause": "History has two state owners; boolean drag writes rediscover stage and reuse source identity; chunk errors reload the window; geometry can resolve to zero height in a nonzero stage. Reference hooks and prompt-library media also bypassed the host writer and modified canvas from panel. The panel writer ignored caller node identity and read current shot/scope after uploads settled; the same node could also belong to a refreshed quote or operation. Composer placement excluded the left dock but treated the full stage bottom as usable; its existing geometry watcher ignored bottom dock mounting and resizing. The newly bounded outer composer scroll card omitted the existing native React Flow nowheel region class; React synthetic stopPropagation alone does not provide that framework contract. Renderer revises only selected shots but cleared the entire two-layer draft after refresh/confirmation. The captured window blur listener accepted child-element blur events; its cancel callback cleared pointer start before movement. The history setter closed over selected=false although the visible trigger stops selection bubbling. The canvas card unconditionally enabled outer overflow-y-auto.",
+  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes. Shared composer content writes lacked explicit host-scoped authority. Asynchronous write authority was rebound to the currently displayed draft rather than the initiating editing visit. Usable-stage geometry must account for intersecting fixed workspace chrome through its existing owner.",
   "affected_population": [
     "Canvas and spend-card composer hosts; all reachable drag sources and canvas visibility transitions"
   ],
@@ -23,12 +23,34 @@
     "src/ui/chunkBoundary.tsx",
     "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
     "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
-    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts"
+    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+    "src/workbench/generationCanvas/nodes/nodeWriteAccess.ts",
+    "src/workbench/generationCanvas/nodes/nodeAssetWrite.ts",
+    "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+    "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/ai/v4/spendCardDraft.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/shared/contracts/pendingSpendConfirm.ts",
+    "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+    "electron/capabilityCore/pendingSpendReferences.ts",
+    "electron/capabilityCore/productionReferenceUrls.ts",
+    "electron/assets/assetReferenceIdentity.ts",
+    "electron/assets/projectAssetStore.ts",
+    "src/workbench/ai/v4/spendCardReferences.ts",
+    "electron/productionRun/productionActionIpc.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "src/desktop/productionRunBridgeTypes.ts",
+    "src/workbench/production/productionRunApi.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "electron/capabilityCore/apimartGenerationProjection.ts"
   ],
   "entry_points": [
     "Canvas node history and composer",
     "React Flow node/pan/viewport and legacy selection/node gestures",
-    "Existing lazy factory and anchored placement"
+    "Existing lazy factory and anchored placement",
+    "Composer media drop, @ current/canvas/library references, and prompt-library reference images share the host writer; browser harness reproduced 2 canvas updates and 1 canvas edge from panel before repair, zero after."
   ],
   "external_sources": [],
   "internal_only_reason": "Internal lifecycle repair; locked React Flow 12.11.5 installed source and existing placement prior-art show NodeToolbar lacks content clamp and flip. No new dependency API.",
@@ -36,7 +58,20 @@
     "History open has one controlled owner valid only for its selected supported node and available results.",
     "A gesture releases only its captured original stage and unique token, independently of permission to persist.",
     "Composer chunk failure recovers locally without losing sibling unpublished input.",
-    "Nonzero usable stage yields usable bounded composer geometry; hidden stages can recover."
+    "Nonzero usable stage yields usable bounded composer geometry; hidden stages can recover.",
+    "All composer reference writes use the host NodeWriteAccess; only canvas authority can create edges. Read-only blocks stale asynchronous write events.",
+    "A panel writer is bound to its captured project, run, operation, quote, candidate revision, shot, node and edit scope; scope changes and unmount retire it permanently before asynchronous results can mutate another draft.",
+    "Unapproved payment-card drafts remain isolated on dismissal and bind to their displayed quote; revisions enforce host CAS.",
+    "Declared model controls round-trip even when absent from prior parameters; inactive reference roles are retained unchanged.",
+    "Unknown payment failures never promise no spend.",
+    "Approved first_frame and last_frame roles must reach role-capable provider channels; unsupported mappings fail closed, never ordinary image fallback.",
+    "Only a successfully dismissed request can recover unapproved input into a later quote with identical project/Run/operation, candidate contents, asset versions and displayed scope. Recovery moves existing draft storage; quote-bound writer authority and new spend approval remain mandatory.",
+    "Canvas composer parameter actions remain above horizontally intersecting workspace bottom docks; dock mount, resize and removal invalidate placement, while horizontally disjoint docks do not compress the composer.",
+    "Canvas outer card never owns scrolling: prompt/reference regions scroll within bounded geometry, while original footer stays reachable; native NODE_SCROLL_REGION_CLASS_NAME isolates all inner scroll regions.",
+    "Only revisions durably written or shots actually confirmed consume their draft edits; unsubmitted shot edits survive partial confirmation, quote refresh and cold reopening under the existing content-bound draft storage owner.",
+    "Per-shot edits are computed relative to the inherited all-layer candidate so explicitly restoring original values remains expressible without tombstones.",
+    "Only actual window blur cancels all captured gestures; a child element losing focus is not a window lifecycle transition.",
+    "Clicking the existing unselected result-history trigger selects its node and records an identity-bound opening intent; selection loss, unavailable results and identity changes still close history."
   ],
   "doors": [
     {
@@ -413,14 +448,2189 @@
       "kind": "write",
       "path": "src/workbench/WorkbenchShell.tsx",
       "symbol": "lazyWithChunkBoundary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "useNodeWriteAccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "useNodeWriteAccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "symbol": "useNodeWriteAccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts",
+      "symbol": "useNodeWriteAccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "addAssetUrlToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "symbol": "addAssetUrlToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/nodeAssetWrite.ts",
+      "symbol": "appendArchetypeArrayValue"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "appendArchetypeArrayValue"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "NodeWriteAccessProvider"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "NodeWriteAccess"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeAssetWrite.ts",
+      "symbol": "NodeWriteAccess"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "NodeWriteAccessProvider"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeWriteAccess.ts",
+      "symbol": "NodeWriteAccess"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "symbol": "NodeWriteAccess"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts",
+      "symbol": "NodeWriteAccess"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "AgentPanelSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "useAgentPanelSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "hasPendingSpendCapability"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "pendingSpendOfRead"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "revisePendingSpendConfirmation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "symbol": "resolveProjectAgentAttachmentClaims"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "resolveProjectAgentAttachmentClaims"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTasks.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "CopyAssetFileOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "findProjectAssetById"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationRunObservation.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "SpendReferenceAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "RendererGestureTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendActionDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendRead"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendSurfaceUnavailableError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "projectSpendReferenceAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "resolveSpendReferenceInputs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "ProductionBrief"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationOutputMaterializer.ts",
+      "symbol": "writeDeterministicAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationOutputMaterializer.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationResolveIpc.ts",
+      "symbol": "GenerationPlanningHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationAuthorizationPreparation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationPlanningHandlerDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationPlanningHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpSemanticBatchStart.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpSemanticBatchStart.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "resolveProjectAssetReferenceIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStoryboardPlanner.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStoryboardPlanner.ts",
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "SpendReferenceAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "resolveProjectAssetReferenceIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "GenerationReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "spendReferenceInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "generationReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionReferenceUrls.ts",
+      "symbol": "GenerationReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionReferenceUrls.ts",
+      "symbol": "SpendReferenceAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionReferenceUrls.ts",
+      "symbol": "projectSpendReferenceAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionTrustGrantChallenge.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/antigravityImageOperation.ts",
+      "symbol": "writeDeterministicAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/antigravityImageOperation.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/processOperation.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/main.ts",
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/onboarding/demoAssetSeed.ts",
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/anchorCheckpoint.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/anchorCheckpoint.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/approvalPolicy.ts",
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/approvalPolicy.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/artifactProjection.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/artifactProjection.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "resolveProductionReferenceUrls"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "PendingSpendRead"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "listPendingSpendConfirmations"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "spendReferenceKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationHistory.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationHistory.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionGenerationOperationStoreHooks"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSeal.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSeal.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionNotifications.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionNotifications.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionNotificationsDesktop.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionNotificationsDesktop.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPlaybooks.ts",
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPolicyReadiness.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPolicyReadiness.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionQaVerdict.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactHelpers.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactHelpers.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunCanvasLandingReducer.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunCanvasLandingReducer.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunControl.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunControl.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunControl.ts",
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunDraftSummary.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunDraftSummary.ts",
+      "symbol": "ProductionRunDraftSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunEventTap.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunEventTap.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunGateIdentity.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjectionSanitizer.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionDirectionCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunStoryboardHashRecovery.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "DEFAULT_TRUST_LEVEL"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionStageStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGateStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionDirectionCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionBrief"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRunDraftSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionStoryboardAuthoring.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionStoryboardAuthoring.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/singleShotRunLifecycle.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/singleShotRunLifecycle.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/singleShotRunLifecycle.ts",
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/runtime.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/runtime.ts",
+      "symbol": "writeDeterministicAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generation.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generation.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "symbol": "generationReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "symbol": "GENERATION_RECONCILE_OUTCOMES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
+      "symbol": "generationStatusInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "GenerationReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "generationReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "spendReferenceInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "PendingSpendReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "PendingSpendPrice"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "symbol": "DesktopProductionRunBridge"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "PendingSpendRead"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhAgentPanelV4"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "enAgentPanelV4"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "SpendReferenceInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "SpendReferenceInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "PendingSpendShot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "PendingSpendConfirm"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "PendingSpendRead"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
+      "symbol": "DesktopProductionRunBridge"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/anchorCheckpointView.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/anchorCheckpointView.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/anchorCheckpointView.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/anchorCheckpointView.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/WorkflowLibraryContent.tsx",
+      "symbol": "copyProjectAsset"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionCanvasLandingStore.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunApi.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunApi.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunCommands.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunCommands.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunStore.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunStore.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/ProductionRunTaskCard.tsx",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunView.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunView.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunView.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotActions.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotActions.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/shotPlaceholderState.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/shotPlaceholderState.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/shotPlaceholderState.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/shotPlaceholderState.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "symbol": "productionRunApi"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/productionRunTaskCenter.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/productionRunTaskCenter.ts",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/TaskCenterButton.tsx",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/TaskCenterPanel.tsx",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/mediaToolCall.ts",
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetReferenceIdentity.ts",
+      "symbol": "iterateProjectAssets"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "symbol": "copyProjectAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localFileImport.ts",
+      "symbol": "copyAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localFileImport.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localizeTaskAsset.ts",
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "copyAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "sanitizeSourceEvidence"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "assetIdentityOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "symbol": "sanitizeSourceEvidence"
+    },
+    {
+      "kind": "write",
+      "path": "electron/browser/media/browserViewMedia.ts",
+      "symbol": "moveAssetFile"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "spendReferenceKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "spendReferenceKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "installPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "pendingSpendDependencies"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "withSpendReferencePreviews"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "coldstartEtaForGate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "spendReferenceKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "iterateProjectAssets"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/productionReferenceUrls.ts",
+      "symbol": "spendReferenceKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/antigravityImageOperation.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/codexCli.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customCallDispatch.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/processOperation.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/image/decomposeLayers.ts",
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/onboarding/demoAssetSeed.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "confirmPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "normalizeTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunGateIdentity.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "normalizeTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "normalizeTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/depthVideoJob.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/extractVideoFrame.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/framesToVideo.ts",
+      "symbol": "writeAsset"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "applySpendReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "referenceInputsFromNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "pendingReferenceInputs"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "pendingReferenceInputs"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/library/WorkflowLibraryContent.tsx",
+      "symbol": "copyProjectAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "projectReferenceUrls"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartImageReferenceWithRole"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartReferenceProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "ApimartReferenceUrlResolver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+      "symbol": "assertReferenceParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "normalizeParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "assertReferenceParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "assertReferencesReachBody"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationReferenceAliases.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "sameJson"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "SpendCandidatePatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "SpendDraft"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "SpendScope"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "EMPTY_SPEND_DRAFT"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "readSpendDraft"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "SpendDraft"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "SpendScope"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "EMPTY_SPEND_DRAFT"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "SpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "mergeCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "candidatePatchFromNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "effectivePatchForShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "draftIsEmpty"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "retainSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "spendDraftKey"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "clearConsumedSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "effectivePatchForShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "effectiveCandidate"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "spendDraftKey"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "restoreSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "projectSpendNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "applyPatchToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "effectivePatchForShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "draftAfterNodeEdit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "retainSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "revisionsForConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "consumeSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "draftIsEmpty"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "retainDismissedSpendDraft"
     }
   ],
   "door_reduction": {
-    "before": 75,
-    "after": 75,
-    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries."
+    "before": 510,
+    "after": 510,
+    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner."
   },
-  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners.",
+  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner.",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
@@ -441,6 +2651,21 @@
       "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
       "symbol": "resolveAnchoredPlacement",
       "responsibility": "Clamp composer into current usable stage"
+    },
+    {
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "projectSpendNode",
+      "responsibility": "Project pending candidate into the existing composer without requiring or mutating a canvas node."
+    },
+    {
+      "path": "electron/capabilityCore/pendingSpendReferences.ts",
+      "symbol": "resolveSpendReferenceInputs",
+      "responsibility": "Validate user reference inputs against exact project asset owner and pin identities before revising."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions",
+      "responsibility": "Resolve visible shot identity against persisted plan; revise before dismiss preserves unsubmitted edits."
     }
   ],
   "same_class_entry_points": [
@@ -461,6 +2686,36 @@
       "entry_point": "NodeGenerationComposer host panel",
       "disposition": "not-affected",
       "evidence": "Panel write access remains owned by spend draft; canvas stage gestures do not apply."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "entry_point": "useNodeAssetDrop",
+      "disposition": "enforced",
+      "evidence": "Uses explicit host NodeWriteAccess and no direct canvas write fallback."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts",
+      "entry_point": "useNodeMentionSource",
+      "disposition": "enforced",
+      "evidence": "Uses explicit host NodeWriteAccess and no direct canvas write fallback."
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "writeAccess",
+      "disposition": "enforced",
+      "evidence": "Real React host/drop integration: positive control passed before repair; seven scope-change/unmount cases failed before and all eight passed after. Scope token captures project/run/operation/quote/candidateRevision/planVersion/shot/node/scope and fences latestNode and updateNode."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CanvasNavigationStack.tsx",
+      "entry_point": "CanvasNavigationStack",
+      "disposition": "enforced",
+      "evidence": "Uses the existing workspace bottom-dock marker; composer geometry reads its actual rectangle through collectBottomDockRects."
+    },
+    {
+      "path": "src/workbench/generation/GenerationWorkspace.tsx",
+      "entry_point": "GenerationWorkspace",
+      "disposition": "enforced",
+      "evidence": "Timeline dock lives at workspace scope outside the stage; reuse collectBottomDockRects preserves that scope, tested with sibling workspace dock."
     }
   ],
   "recurrence": {
@@ -469,7 +2724,14 @@
     "same_class_scan": [
       "Generated setCanvasDragging six-producer door map; inspected stop and cancellation paths.",
       "Generated NodeGenerationComposer doors: canvas, panel, design laboratory.",
-      "Read NodeResultStack state/report effect and BaseGenerationNode conditional mount."
+      "Read NodeResultStack state/report effect and BaseGenerationNode conditional mount.",
+      "2026-09-19 panel ownership audit: door-map useAgentPanelSpendConfirm.ts (4 doors), NodeWriteAccess (5 read doors); upload awaits were project-bound but the injected writer rediscovered current shot/scope and ignored node ID.",
+      "A06/A07: real panel hook requires canvas node and uses visible shot count to omit revision address; backend applyGenerationCandidatePatch treats absent address as representative candidate. Controlled regression 8 ownership passes, 2 new failures captured in /private/tmp/nomi-payment-a06-a07-red.log.",
+      "A05 draft ignores declared reference slots not already in scalar parameters; A08 close calls dismiss before saving. Reference source worktree adapters reused against canonical generation reference schema, no new slot vocabulary.",
+      "node scripts/door-map.mjs src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts: three existing doors already present in this contract; inspected workspaceBottomDocks, CanvasNavigationStack, GenerationWorkspace and useCanvasBottomDockRects.",
+      "Existing unchanged nodeInnerScrollNoWheel test caught the outer card nowheel omission in /private/tmp/nomi-three-test-red.log; shared class restored; 7 files / 74 green in /private/tmp/nomi-core-a-regression-fixed.log.",
+      "2026-09-20 partial-confirm audit: door-map spendCardDraft.ts (28 doors); checked each/all revisionsForConfirm, renderer revise/confirm cleanup, dismissed recovery and quote refresh. Real renderer harness B-edit/A-confirm fails before repair (/private/tmp/nomi-partial-spend-renderer-red.log).",
+      "merge-base b06270627c099394881ca2f8c546d7c7facc5c3c already compares each against original shot and clears whole draft after scoped revisions: baseline bugs, not newly introduced. New quote-bound storage makes interrupted multi-revision restoration a current-change obligation. Original-value regression red: /private/tmp/nomi-spend-original-override-red.log."
     ]
   },
   "prevention": {
@@ -478,7 +2740,7 @@
     "invariant": "Lease ownership is captured at gesture start and cannot be reassigned by late cleanup.",
     "failure_mode": "Invalid origin acquires no stage; repeated release is a no-op; invalid history becomes closed.",
     "exception_policy": "none",
-    "strategy": "Replace boolean/string release API with captured token lease, then close lifecycle exits at each producer.",
+    "strategy": "Replace boolean/string release API with captured token lease, then close lifecycle exits at each producer. Bind panel writers to one editing visit and retire both read/write access on scope change or unmount; uploads stop after await when the captured writer is retired. Pending candidate projection supplies existing composer; host resolves explicit displayed shot identity against actual plan structure. Filter blur at the shared lease ingress by event target; keep selection acquisition at the existing history trigger and permit its captured opening intent without relying on the pre-selection closure; restore original scroll ownership.",
     "artifacts": [
       "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
       "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
@@ -494,18 +2756,50 @@
       "src/ui/chunkBoundary.tsx",
       "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
       "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
-      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts"
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "src/workbench/generationCanvas/nodes/nodeWriteAccess.ts",
+      "src/workbench/generationCanvas/nodes/nodeAssetWrite.ts",
+      "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+      "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts",
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "src/workbench/ai/v4/spendCardDraft.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "electron/shared/contracts/pendingSpendConfirm.ts",
+      "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "electron/capabilityCore/pendingSpendReferences.ts",
+      "electron/capabilityCore/productionReferenceUrls.ts",
+      "electron/assets/assetReferenceIdentity.ts",
+      "electron/assets/projectAssetStore.ts",
+      "src/workbench/ai/v4/spendCardReferences.ts"
     ]
   },
   "regression_tests": [
     "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
     "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
     "tests/ux/composerLifecycle.test.mjs",
-    "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.test.ts"
+    "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.test.ts",
+    "src/workbench/generationCanvas/nodes/nodeAssetWrite.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "src/workbench/ai/v4/spendCardReferences.test.ts",
+    "electron/capabilityCore/pendingSpendReferences.test.ts",
+    "electron/capabilityCore/productionReferenceUrls.test.ts",
+    "electron/assets/assetReferenceIdentity.test.ts",
+    "electron/capabilityCore/generationProviderBootstrap.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
-    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts"
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
+    "src/workbench/generationCanvas/nodes/nodeAssetWrite.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "src/workbench/ai/v4/spendCardReferences.test.ts",
+    "electron/capabilityCore/pendingSpendReferences.test.ts",
+    "electron/capabilityCore/productionReferenceUrls.test.ts",
+    "electron/assets/assetReferenceIdentity.test.ts",
+    "electron/capabilityCore/generationProviderBootstrap.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -527,8 +2821,8 @@
   },
   "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.",
   "residual_risks": [
-    "Real Electron two-host screenshots and interaction walkthrough remain parent-owned; unit DOM evidence is not live platform proof.",
-    "Existing panel media drop and mention references still bypass host NodeWriteAccess; parent owns the follow-up contract repair. See separate runnable red probe and generated reference doors."
+    "Real Electron final two-host screenshots and original smoke/card-stack/gesture walkthrough must be rerun on the repaired build; controlled evidence alone is not live platform proof.",
+    "Formal reference resolver and sealed snapshot integration are implemented; real paid supplier first-frame/reference execution remains to be verified. Windows unverified."
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",

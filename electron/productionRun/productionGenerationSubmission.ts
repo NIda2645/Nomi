@@ -377,6 +377,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     const providerPreparation = adapter.prepareAuthorization({
       contract,
       providerIdempotencyKey: authorized.providerIdempotencyKey,
+      referenceUrls: authorized.referenceUrls,
     });
     if (providerPreparation.providerRequestHash !== authorized.providerWirePayloadHash) {
       throw new Error("Provider wire payload no longer matches the approved authorization");

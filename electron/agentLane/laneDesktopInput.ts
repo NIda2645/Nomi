@@ -1,4 +1,5 @@
 import { formatLaneModelDelta } from "./laneModelContext"
+import { formatStoryboardRequestTarget } from '../shared/agentCapabilities/generationInvocationContext'
 import { agentModelEntrySchema } from "../shared/agentCapabilities/availableModelsSchema"
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
@@ -16,6 +17,13 @@ import { applyProfileToRequestBody, getModelProfile } from '../ai/modelProfiles'
 
 const text = z.string().max(128 * 1024)
 const intentSchema = z.object({
+  storyboardTarget: z.object({
+    projectId: z.string().min(1).max(256), sourceDocumentId: z.string().min(1).max(256),
+    sourceDocumentRevision: z.number().int().nonnegative(), sourceDocumentContentHash: z.string().min(1).max(256),
+    targetRunId: z.string().regex(/^[A-Za-z0-9._:-]{1,240}$/), targetKind: z.literal('storyboard'),
+    shotIds: z.array(z.string().min(1).max(240)).min(1).max(128).optional(),
+    requestId: z.string().min(1).max(256), expectedRevision: z.number().int().nonnegative().optional(),
+  }).strict().optional(),
   documentId: z.string().max(256).optional(),
   admissionSurface: z.enum(['document', 'canvas']).optional(),
   // These are untrusted selectors. The verified Surface factories validate their domain schema.
@@ -54,6 +62,13 @@ export function createDesktopLaneInput(input: {
   return {
     capture: input.capture,
     prepare: (context) => {
+      if (context.storyboardTarget && (context.storyboardTarget.projectId !== input.projectId
+        || context.storyboardTarget.sourceDocumentId !== context.documentId
+        || (context.storyboardTarget.expectedRevision === undefined
+          && (context.storyboardTarget.sourceDocumentRevision !== context.preconditions?.document?.revision
+            || context.storyboardTarget.sourceDocumentContentHash !== context.preconditions?.document?.contentHash)))) {
+        throw new Error('agent_lane_invalid_command')
+      }
       resolveProjectAgentAttachmentClaims(input.projectId, context.attachments ?? [])
       return input.prepare(context)
     },
@@ -68,7 +83,7 @@ export function createDesktopLaneInput(input: {
       }] : [])
       const { model } = selected
       const content = await buildAgentUserContent({
-        prompt: [message.content, formatAgentContextSnapshot(message.context.contextSnapshot), formatLaneModelDelta(message.context, previous)].filter(Boolean).join('\n\n'),
+        prompt: [message.content, formatAgentContextSnapshot(message.context.contextSnapshot), formatStoryboardRequestTarget(message.context.storyboardTarget), formatLaneModelDelta(message.context, previous)].filter(Boolean).join('\n\n'),
         attachments,
         supportsImageInput: modelSupportsImageInput(model.modelKey, model.modelAlias, model.meta),
         supportsPdfInput: selected.kind !== 'openai-compatible' && modelSupportsPdfInput(model.modelKey, model.modelAlias, model.meta),

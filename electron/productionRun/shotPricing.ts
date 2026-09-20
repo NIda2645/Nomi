@@ -1,4 +1,4 @@
-import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
+import { budgetExceeds, createBudgetAmountAccumulator, sumBudgetAmounts } from "./budgetLedger";
 import type { PlanCandidate } from "../capabilityCore/executionContract";
 
 /**
@@ -266,6 +266,8 @@ export type SealAffordabilityShot = {
 export type CheckSealAffordabilityInput = {
   /** Shots in checkbox (selection) order — the order maxAffordableShots is counted in. */
   shots: ReadonlyArray<SealAffordabilityShot>;
+  /** Existing Run liabilities counted before the ordered shot prefix. */
+  existingLiability?: readonly number[];
   /** The hard spend ceiling (policy.maxSpend). null = unbounded. */
   maxSpend: number | null;
 };
@@ -290,12 +292,12 @@ export function checkSealAffordability(input: CheckSealAffordabilityInput): Seal
   if (input.maxSpend === null) return { ok: true, hasUnknownPrice };
 
   const maxSpend = input.maxSpend;
-  let running = 0;
+  const add = createBudgetAmountAccumulator();
+  for (const amount of input.existingLiability ?? []) add(amount);
   let affordable = 0;
   for (const shot of input.shots) {
-    const next = running + (shot.price.known ? shot.price.amount : 0);
+    const next = add(shot.price.known ? shot.price.amount : 0);
     if (budgetExceeds(next, maxSpend)) break;
-    running = next;
     affordable += 1;
   }
   if (affordable < input.shots.length) {

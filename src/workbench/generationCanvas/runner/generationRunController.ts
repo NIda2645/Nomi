@@ -96,6 +96,7 @@ export function spendCostKindForNodes(ids: string[]): GenerationCostKind {
 export type AssetUploadConsentDecision = 'allow' | 'not-needed'
 
 export type RunGenerationNodeOptions = {
+  assertCurrent?: () => Promise<void>
   executor?: GenerationNodeExecutor
   retry?: {
     maxAttempts?: number
@@ -271,8 +272,12 @@ export async function runGenerationNode(
     const baseDelayMs = normalizeBaseDelayMs(options.retry?.baseDelayMs)
     let result: GenerationNodeResult | null = null
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const state = (await readRunGraph(target)) ?? initialState
-      const node = state.nodes.find((candidate) => candidate.id === id) || initialNode
+      await options.assertCurrent?.()
+      const savedGraph = await readRunGraph(target)
+      // Validation and disk reads may outlive deletion. Never resurrect the initial snapshot.
+      const state = isRunTargetLoaded(target) ? useGenerationCanvasStore.getState() : savedGraph
+      const node = state?.nodes.find((candidate) => candidate.id === id)
+      if (!state || !node) throw new Error('node not found')
       const nodeMeta = (node.meta || {}) as Record<string, unknown>
       const dialogueArchetype = resolveTaskArchetype(nodeMeta)
       const dialogueMode = dialogueArchetype ? currentArchetypeMode(dialogueArchetype, nodeMeta) : null
@@ -437,6 +442,7 @@ export async function runGenerationNodesBatch(
       if (isEntryCancelled(options.batchId, nodeId)) continue
       try {
         const result = await runGenerationNode(nodeId, {
+          assertCurrent: options.assertCurrent,
           executor: options.executor,
           retry: options.retry,
           // 整批共用一个托管决定：批量确认卡对整批问了一次（batchPlanPreview），别在波次里逐个再问。
@@ -546,7 +552,7 @@ export async function runGenerationNodesByPlan(
  * 单节点生成/重试/生成变体的轻确认 + 铸令牌 + 跑（付费守卫，务实纵深 A1）。
  * rerun=true 是「基于此生成变体」：先复制出新节点再绑令牌跑；普通重新生成走 regenerateNodeInPlace。
  */
-export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean } = {}): Promise<void> {
+export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean; assertCurrent?: () => Promise<void> } = {}): Promise<void> {
   // 点「生成」即动作起点：签发此刻打开的项目。提交前（确认卡、铸令牌）换了项目 = 取消，没花钱；
   // 一旦提交，运行归原项目（target），之后切页/切项目都不取消它。
   const project = withProjectAction((issued) => issued)
@@ -567,7 +573,9 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
       : i18n.t('generationCommon.spend.generate'),
     ...(hosting.disclosure ? { hostingDisclosure: hosting.disclosure } : {}),
   })
-  if (!ok || !isProjectExecutionContextCurrent(project)) return
+  if (!ok) return
+  await opts.assertCurrent?.()
+  if (!isProjectExecutionContextCurrent(project)) return
   let runId = nodeId
   if (opts.rerun) {
     const dup = useGenerationCanvasStore.getState().duplicateNodeForRegeneration(nodeId)
@@ -584,9 +592,10 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
     reportAuthorizationFailure(error, projectId, runId)
     return
   }
+  await opts.assertCurrent?.()
   if (!isProjectExecutionContextCurrent(project)) return
   try {
-    await runGenerationNode(runId, { grantId, assetUploadConsent: 'allow', target: project.binding })
+    await runGenerationNode(runId, { assertCurrent: opts.assertCurrent ? async () => { await opts.assertCurrent!(); project.assertCurrent() } : undefined, grantId, assetUploadConsent: 'allow', target: project.binding })
   } catch {
     // 失败已记在节点上（卡片渲染人话错误），这里不再弹。
   }
@@ -622,12 +631,17 @@ export async function confirmAndRunNodeVariants(
       confirmLabel: i18n.t('generationCommon.spend.generate'),
       ...(hosting.disclosure ? { hostingDisclosure: hosting.disclosure } : {}),
     })
-    if (!ok || !isProjectExecutionContextCurrent(project)) return
+    if (!ok) return
+    await options.assertCurrent?.()
+    if (!isProjectExecutionContextCurrent(project)) return
     const grantId = await mintSpendGrant([id], total, quoteId)
+    await options.assertCurrent?.()
     if (!isProjectExecutionContextCurrent(project)) return
     for (let index = 0; index < total; index += 1) {
       try {
-        const result = await runGenerationNode(id, { ...options, grantId, assetUploadConsent: 'allow', target: project.binding })
+        await options.assertCurrent?.()
+        if (!isProjectExecutionContextCurrent(project)) return
+        const result = await runGenerationNode(id, { ...options, assertCurrent: options.assertCurrent ? async () => { await options.assertCurrent!(); project.assertCurrent() } : undefined, grantId, assetUploadConsent: 'allow', target: project.binding })
         whenRunTargetLoaded(project.binding, () => useWorkbenchStore.getState().reconcileTimelineForUpdatedNodes(id, result))
       } catch {
         return // 失败已落节点卡片（人话错误）；停发剩余变体
@@ -651,7 +665,7 @@ export async function regenerateNodeInPlace(
   // 确认卡可带调用方的动作名（如分镜表「用新图重跑」）：用户点的是什么，卡上就回声什么，
   // 不让一张通用「重新生成」卡吃掉刚建立的语境（R16 情绪走查：小白在这一步会迟疑
   // 「到底用没用新图」）。缺省仍是「重新生成」，画布 composer 等既有调用方零变化。
-  opts?: { title?: string; confirmLabel?: string },
+  opts?: { title?: string; confirmLabel?: string; assertCurrent?: () => Promise<void> },
 ): Promise<void> {
   const project = withProjectAction((issued) => issued)
   if (!project) return
@@ -669,7 +683,9 @@ export async function regenerateNodeInPlace(
     confirmLabel: opts?.confirmLabel || i18n.t('generationCommon.composer.regenerate'),
     ...(hosting.disclosure ? { hostingDisclosure: hosting.disclosure } : {}),
   })
-  if (!ok || !isProjectExecutionContextCurrent(project)) return
+  if (!ok) return
+  await opts?.assertCurrent?.()
+  if (!isProjectExecutionContextCurrent(project)) return
   let grantId: string
   try {
     grantId = await mintSpendGrant([id], undefined, quoteId)
@@ -677,9 +693,10 @@ export async function regenerateNodeInPlace(
     reportAuthorizationFailure(error, projectId, id)
     return
   }
+  await opts?.assertCurrent?.()
   if (!isProjectExecutionContextCurrent(project)) return
   try {
-    const result = await runGenerationNode(id, { grantId, assetUploadConsent: 'allow', target: project.binding })
+    const result = await runGenerationNode(id, { assertCurrent: opts?.assertCurrent ? async () => { await opts.assertCurrent!(); project.assertCurrent() } : undefined, grantId, assetUploadConsent: 'allow', target: project.binding })
     whenRunTargetLoaded(project.binding, () => useWorkbenchStore.getState().reconcileTimelineForUpdatedNodes(id, result))
   } catch {
     // 失败已记在节点卡片（人话错误），不再弹。

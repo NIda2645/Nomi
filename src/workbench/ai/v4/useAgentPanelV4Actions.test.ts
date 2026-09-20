@@ -14,7 +14,7 @@ import type { ComposerAttachment } from '../composer/composerAttachmentTypes'
 
 const fixture = vi.hoisted(() => {
   const state = {
-    projectAgentDraft: '', projectAgentDraftRevision: 0, projectAgentAdmissionId: null as string | null, projectAgentReferences: [], projectAgentDraftIntent: null as LaneDraftIntent | null, projectAgentDraftDisplayText: null, projectAgentRecoveredDrafts: [] as RecoveredAgentDraft[], projectAgentAttachments: [] as ComposerAttachment[],
+    projectAgentDraft: '', projectAgentDraftRevision: 0, projectAgentAdmissionId: null as string | null, projectAgentReferences: [] as import('../../workbenchStore').ProjectAgentReference[], projectAgentDraftIntent: null as LaneDraftIntent | null, projectAgentDraftDisplayText: null, projectAgentRecoveredDrafts: [] as RecoveredAgentDraft[], projectAgentAttachments: [] as ComposerAttachment[],
     activeDocumentId: 'doc-1', persistRevision: 1,
     workbenchDocuments: [{ id: 'doc-1', title: 'Current document', updatedAt: 42,
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一句。' }] }] } }],
@@ -33,7 +33,7 @@ const fixture = vi.hoisted(() => {
     },
     setProjectAgentApprovalPolicy: vi.fn(),
   }
-  return { state, owner: { subscriptionId: 'workspace-a', binding: { immutableProjectUuid: 'uuid-a' } } as { subscriptionId: string; binding?: { immutableProjectUuid: string } } | null, say: vi.fn(), models: vi.fn(),
+  return { state, selectedRun: null as null | {runId:string;revision:number;sourceDocumentRevision:number;sourceDocumentContentHash:string}, owner: { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } } as { subscriptionId: string; binding?: { projectId?: string; immutableProjectUuid: string } } | null, say: vi.fn(), models: vi.fn(),
     cancelQueued: vi.fn(), abort: vi.fn(),
     record: null as ProjectAgentCommittedProposalRecord | null, undo: vi.fn(), projection: { lane: 'main', parts: [] as LanePart[] } }
 })
@@ -53,13 +53,14 @@ vi.mock('../../workbenchStore', () => ({ useWorkbenchStore: Object.assign(
 vi.mock('../../generationCanvas/store/generationCanvasStore', () => ({ useGenerationCanvasStore: {
   getState: () => ({ persistRevision: 1, nodes: [], selectedNodeIds: [] }),
 } }))
+vi.mock('../../creation/storyboard/useCreationRunPlans', () => ({ readCreationRunSelection: () => fixture.selectedRun }))
 vi.mock('../../generationCanvas/agent/proposalUndo', () => ({ getCommittedProposal: () => fixture.record, runProposalUndo: fixture.undo }))
 vi.mock('../../generationCanvas/agent/canvasSystemPrompt', () => ({ buildStaticAgentSystemPrompt: () => 'generation domain prompt' }))
 
-function mountActions() {
+function mountActions(surface: 'creation' | 'generation' = 'generation') {
   let actions!: AgentPanelV4Actions
   function Consumer() {
-    actions = useAgentPanelV4Actions('generation', { snapshot: { workspaceId: 'workspace-a', lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', queues: [{ entryId: 'queued-1' }] } } } as AgentPanelV4Data)
+    actions = useAgentPanelV4Actions(surface, { snapshot: { workspaceId: 'workspace-a', lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', queues: [{ entryId: 'queued-1' }] } } } as unknown as AgentPanelV4Data)
     return null
   }
   renderToStaticMarkup(React.createElement(Consumer))
@@ -71,7 +72,7 @@ function deferred() {
   return { promise, resolve }
 }
 beforeEach(() => {
-  fixture.owner = { subscriptionId: 'workspace-a', binding: { immutableProjectUuid: 'uuid-a' } }
+  fixture.owner = { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } }
   fixture.state.projectAgentDraft = 'keep this draft'
   fixture.state.projectAgentAdmissionId = null
   fixture.state.projectAgentDraftRevision = 0
@@ -480,4 +481,73 @@ it('F12: Stop after IPC dispatch keeps the recovery exchange locked until its ad
   expect(await sending).toBe(true)
   expect(fixture.state.projectAgentRecoveredDrafts.some(draft => draft.text === 'keep this draft')).toBe(false)
   expect(fixture.state.projectAgentAdmissionId).toBeNull()
+})
+
+
+describe('creation send-time storyboard target', () => {
+  it('keeps the source and preallocated Run when the document changes before admission', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    const sending = mountActions('creation').send('make storyboard')
+    fixture.state.activeDocumentId = 'doc-2'
+    release([])
+    expect(await sending).toBe(true)
+    expect(fixture.say.mock.calls[0][2].storyboardTarget).toMatchObject({
+      projectId: 'project-a', sourceDocumentId: 'doc-1', targetKind: 'storyboard',
+      targetRunId: expect.stringMatching(/^op-/), requestId: expect.any(String),
+      sourceDocumentRevision: expect.any(Number),
+    })
+    fixture.state.activeDocumentId = 'doc-1'
+  })
+  it('preallocates a different Run for each new storyboard request', async () => {
+    fixture.say.mockResolvedValue({ ok: true })
+    const actions = mountActions('creation')
+    await actions.send('first')
+    await actions.send('second')
+    const first = fixture.say.mock.calls[0][2].storyboardTarget
+    const second = fixture.say.mock.calls[1][2].storyboardTarget
+    expect(first?.targetRunId).toEqual(expect.any(String))
+    expect(second?.targetRunId).not.toBe(first?.targetRunId)
+  })
+})
+
+it('captures stable shot references in the selected Run and refuses chips from another Run',async()=>{
+  const {buildStoryboardReference}=await import('../resident/residentReferences')
+  fixture.selectedRun={runId:'run-a',revision:2,sourceDocumentRevision:1,sourceDocumentContentHash:'hash'}
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',runId:'run-a',shotId:'stable-id'})]
+  fixture.say.mockResolvedValue({ok:true})
+  const actions=mountActions('creation')
+  expect(await actions.send('edit selected')).toBe(true)
+  expect(fixture.say.mock.calls[0][2].storyboardTarget.shotIds).toEqual(['stable-id'])
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',runId:'run-a',shotId:'stable-id'})]
+  fixture.selectedRun={...fixture.selectedRun,runId:'run-b'}
+  expect(await actions.send('edit selected')).toBe(false)
+  expect(fixture.say).toHaveBeenCalledTimes(1)
+  expect(await actions.send('new plan',{newStoryboard:true})).toBe(true)
+  expect(fixture.say.mock.calls[1][2].storyboardTarget.shotIds).toBeUndefined()
+  fixture.selectedRun=null;fixture.state.projectAgentReferences=[]
+})
+
+it('ACK consumes only captured storyboard references, preserving a newer selection and failed-send references',async()=>{
+  const {buildStoryboardReference}=await import('../resident/residentReferences')
+  fixture.selectedRun={runId:'run-a',revision:2,sourceDocumentRevision:1,sourceDocumentContentHash:'hash'}
+  const old=buildStoryboardReference('shot',1,'old','selected',{documentId:'doc-1',runId:'run-a',shotId:'old'})
+  const newer=buildStoryboardReference('shot',2,'new','selected',{documentId:'doc-1',runId:'run-a',shotId:'new'})
+  fixture.state.projectAgentReferences=[old]
+  let finish!:(value:{ok:boolean})=>void
+  fixture.say.mockImplementation(()=>new Promise(resolve=>{finish=resolve}))
+  const actions=mountActions('creation')
+  const sending=actions.send('edit old')
+  await vi.waitFor(()=>expect(fixture.say).toHaveBeenCalledTimes(1))
+  fixture.state.projectAgentReferences=[old,newer]
+  finish({ok:true});expect(await sending).toBe(true)
+  expect(fixture.state.projectAgentReferences).toEqual([newer])
+  fixture.say.mockRejectedValue(new Error('transport failed'))
+  expect(await actions.send('edit new')).toBe(false)
+  expect(fixture.state.projectAgentReferences).toEqual([newer])
+  fixture.say.mockResolvedValue({ok:true})
+  expect(await actions.send('new plan',{newStoryboard:true})).toBe(true)
+  expect(fixture.state.projectAgentReferences).toEqual([newer])
+  fixture.selectedRun=null;fixture.state.projectAgentReferences=[]
 })

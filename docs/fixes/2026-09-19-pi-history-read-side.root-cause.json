@@ -40,7 +40,9 @@
   ],
   "invariants": [
     "Original current-branch entries remain reachable through paged UI history.",
-    "History does not enter the model working set or grant authority."
+    "History does not enter the model working set or grant authority.",
+    "Read projection ownership follows the current mounted consumer identity; late request settlement cannot change another project or conversation UI state.",
+    "A completed pagination ACK does not release single-flight ownership until its pending rendered cursor is committed; filtered pages that advance the cursor without changing the visible first row release ownership without scroll compensation."
   ],
   "doors": [
     {
@@ -312,12 +314,42 @@
       "kind": "write",
       "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
       "symbol": "collapseV4Flow"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "flowScrollMemoryFor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "loadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "onLoadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "onLoadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "loadOlder"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "setHistoryError"
     }
   ],
   "door_reduction": {
-    "before": 54,
-    "after": 54,
-    "why_not": "History active/read-only and legacy/lab readers remain distinct consumers; renderer clients remain separate factory consumers. They converge on the same typed projection and identity admission boundary."
+    "before": 60,
+    "after": 60,
+    "why_not": "Existing sidebar/editor and resident/data/panel consumers retain distinct UI responsibilities; project refresh and panel request lifecycle enforce ownership centrally for all of them."
   },
   "generality_proof": "Branch ancestry and original IDs apply independently of provider, model and compaction count.",
   "shared_boundaries": [
@@ -325,6 +357,11 @@
       "path": "electron/shared/agentLane/laneProjection.ts",
       "symbol": "projectLaneSnapshot",
       "responsibility": "Separate runtime accounting from historical rows"
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "AgentPanelV4Panel",
+      "responsibility": "Bind pagination tokens, anchors and errors to workspace/lane/session lifecycle; immediately release prior-session paging without accepting late settlements."
     }
   ],
   "same_class_entry_points": [
@@ -346,32 +383,37 @@
     "reason": "Every compaction repeats the same truncation.",
     "same_class_scan": [
       "rg projectLaneSnapshot electron src",
-      "Inspected laneHistory, laneHost, laneClient and pi reducer"
+      "Inspected laneHistory, laneHost, laneClient and pi reducer",
+      "2026-09-20 door-map onLoadOlder/loadOlder/setHistoryError/flowScrollMemoryFor plus laneClient→laneIpc→laneWorkspace→laneHistoryPage: admission identity protects history data, but late UI settlement requires a Panel lifecycle token; ordinary session switches, A-B-A, workspace reopens and unmount share this boundary."
     ]
   },
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "electron/shared/agentLane/laneProjection.ts",
-    "invariant": "Original current-branch entries remain reachable through paged UI history.",
+    "invariant": "Original current-branch entries remain reachable through paged UI history. Pagination errors, locks and anchors belong to one mounted workspace/lane/session lifecycle.",
     "failure_mode": "Missing branch or stale cursor fails explicitly.",
     "exception_policy": "none",
-    "strategy": "Require explicit history read view independently from runtime snapshot.",
+    "strategy": "Require explicit history read view independently from runtime snapshot. Panel identity transitions invalidate old request tokens before passive loading, allowing the new short list to load immediately. Shell returns the live host cursor after ACK; unchanged cursor proves empty prepend, while changed cursor retains the anchor until the actual projection commits. Retain the request lock across ACK-to-render gaps; rendered cursor advancement consumes even an invisible page, and settlement releases only its own consumed anchor. If React commits a filtered short page before ACK, completion schedules the original short-list effect only after proven cursor advancement; unchanged-cursor responses cannot cause an automatic retry loop.",
     "artifacts": [
       "electron/agentLane/laneHost.mts",
       "electron/agentLane/laneHistory.mts",
-      "electron/shared/agentLane/laneProjection.ts"
+      "electron/shared/agentLane/laneProjection.ts",
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "src/workbench/ai/ProjectAgentResidentShell.tsx"
     ]
   },
   "regression_tests": [
     "tests/agent-runtime/lane-history-compaction.test.mts",
     "tests/agent-runtime/lane-pi-reuse.test.mts",
     "src/workbench/ai/lane/laneClient.test.ts",
-    "electron/shared/agentLane/laneProjection.test.ts"
+    "electron/shared/agentLane/laneProjection.test.ts",
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
   ],
   "class_regression_tests": [
     "tests/agent-runtime/lane-history-compaction.test.mts",
     "tests/agent-runtime/lane-pi-reuse.test.mts",
-    "src/workbench/ai/lane/laneClient.test.ts"
+    "src/workbench/ai/lane/laneClient.test.ts",
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",

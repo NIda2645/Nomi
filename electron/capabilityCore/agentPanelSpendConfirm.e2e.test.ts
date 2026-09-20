@@ -1,8 +1,12 @@
+import { createPendingSpendActions } from './appIntegrationSpendConfirm';
+import { createProductionRunService } from '../productionRun/productionRunService';
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore';
 import { afterEach, describe, expect, it } from "vitest";
+import { verbToTransportCall } from "../agentLane/laneVerbTransport";
 import { createPiGenerationTransportAdapter } from "./generationTransportAdapters";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { canvasLandingOperationId } from "../productionRun/multiShotCanvasLanding";
-import { PROJECT_ID, OPERATION_ID, lease, now, candidate, startLoopbackVendor, harness, buildActions, callTool, draft, resetSpendFixture, advanceClock } from "./agentPanelSpendConfirmTestUtils";
+import { PROJECT_ID, OPERATION_ID, lease, now, PRICING, candidate, startLoopbackVendor, harness, buildActions, callTool, draft, resetSpendFixture, advanceClock } from "./agentPanelSpendConfirmTestUtils";
 
 afterEach(resetSpendFixture);
 
@@ -28,7 +32,7 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
       // ── 用户在卡上换模型 + 改尺寸，然后按主按钮 ──
       // `confirm` 之前的 `revise` 是面板 hook 在按下那一刻做的同一件事（useAgentPanelSpendConfirm.confirm）。
       advanceClock(1000);
-      const revised = await withWindow.revisePendingSpend({
+      const revised = await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId,
         projectId: PROJECT_ID, operationId: OPERATION_ID,
         patch: { parameters: { size: "1536x1024" } },
       });
@@ -145,7 +149,7 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
       const nodeId = [...base.renderer.nodes.values()][0];
 
       advanceClock(1000);
-      expect(await withWindow.revisePendingSpend({
+      expect(await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId,
         projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { modelId: "image-model-pro" },
       })).toMatchObject({ ok: true, code: "revised" });
       await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
@@ -186,7 +190,7 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
     try {
       await draft(base);
       advanceClock(1000);
-      expect(await withWindow.revisePendingSpend({
+      expect(await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId,
         projectId: PROJECT_ID, operationId: OPERATION_ID,
         patch: { modelId: "video-model", mode: "image-to-video" },
       })).toMatchObject({ ok: true });
@@ -374,7 +378,7 @@ it('C09: a delayed close cannot dismiss a newer displayed quote', async () => {
   const { withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
   await draft(base);
   const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
-  await withWindow.revisePendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { prompt: 'new version' } });
+  await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { prompt: 'new version' } });
   const before = base.repository.read(PROJECT_ID, OPERATION_ID);
   const action = { projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId };
   expect(await withWindow.discardPendingSpend(action)).toMatchObject({ ok: false });
@@ -438,6 +442,25 @@ describe('reliability: scoped presentation and dismissal', () => {
       expect(base.repository.read(PROJECT_ID, OPERATION_ID)).toEqual(before);
     });
 
+  it('one presented shot revises and saves only that shot, then survives dismissal', async () => {
+    const base = harness();
+    await mixedDraft(base);
+    const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
+    await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-17'] }, lease });
+    const before = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
+    expect(withWindow.listPendingSpend(PROJECT_ID)[0].shots).toHaveLength(1);
+    expect(await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId,projectId:PROJECT_ID, operationId:OPERATION_ID,
+      shotId:'shot-17', patch:{prompt:'edited seventeenth'}})).toMatchObject({ok:true});
+    const after = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
+    expect(after.candidate).toEqual(before.candidate);
+    expect(after.shots?.filter(shot => shot.shotId !== 'shot-17')).toEqual(before.shots?.filter(shot => shot.shotId !== 'shot-17'));
+    expect(after.shots?.find(shot => shot.shotId === 'shot-17')?.candidate.prompt).toBe('edited seventeenth');
+    const pending = withWindow.listPendingSpend(PROJECT_ID)[0];
+    expect(await withWindow.discardPendingSpend({projectId:PROJECT_ID,operationId:OPERATION_ID,quoteId:pending.quoteId})).toMatchObject({ok:true});
+    expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!.shots).toEqual(after.shots);
+    expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.jobs).toEqual([]);
+  });
+
   it('S02: dismisses only the request; durable draft and nodes survive and can be presented again', async () => {
     const base = harness();
     await mixedDraft(base);
@@ -465,11 +488,80 @@ it('S05: an old displayed quote cannot approve a revised candidate or higher pri
   try {
     await draft(base);
     const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
-    await withWindow.revisePendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID,
+    await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID,
       patch: { parameters: { size: '1536x1024' } } });
     const result = await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId });
     expect(result).toMatchObject({ ok: false, message: 'generation_quote_changed' });
     expect(submits).toEqual([]);
     expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!.state).toBe('draft');
   } finally { await vendor.close(); }
+});
+
+it('rejects a revision from an older displayed quote before mutating the current batch', async () => {
+  const base = harness();
+  const { withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
+  await draft(base);
+  const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
+  await base.operations.revise!(PROJECT_ID, OPERATION_ID, { patch: { prompt: 'new batch' } }, new Date().toISOString());
+  const before = base.repository.read(PROJECT_ID, OPERATION_ID);
+  expect(await withWindow.revisePendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId, patch: { prompt: 'old edit' } })).toMatchObject({ ok: false });
+  expect(base.repository.read(PROJECT_ID, OPERATION_ID)).toEqual(before);
+});
+
+
+it('dismiss and present change quote identity while retaining the identical candidate input', async () => {
+  const base = harness(); const submits: string[] = [];
+  const { withWindow, handler } = buildActions(base, 'http://127.0.0.1:1', submits);
+  await draft(base);
+  const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
+  expect(await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId })).toMatchObject({ok:true});
+  expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
+  await handler({capability:'present', params:{operationId:OPERATION_ID}, lease});
+  const reopened = withWindow.listPendingSpend(PROJECT_ID)[0];
+  expect(reopened.quoteId).not.toBe(displayed.quoteId);
+  expect(reopened.planVersion).toBeGreaterThan(displayed.planVersion);
+  expect(reopened.shots).toEqual(displayed.shots);
+  expect(submits).toEqual([]);
+});
+
+
+it('C12/C15: a real node id is not a task; a draft taskRef reports not_started without creating or cancelling execution', async () => {
+  const base = harness(); const submits: string[] = [];
+  const service = createProductionRunService({ repository: base.repository, projectRootResolver: () => base.root, previewSecret: 'test', requestRenderer: base.renderer.requestRenderer });
+  base.operations = createProductionGenerationOperationStore(service, { onPlanChanged: (projectId, operationId) => base.canvasLanding.landDraftOnCanvas(projectId, operationId) });
+  const { transport } = buildActions(base, 'http://127.0.0.1:1', submits);
+  await draft(base);
+  const nodeId = [...base.renderer.nodes.values()][0];
+  expect(nodeId).toBeTruthy(); expect(nodeId).not.toBe(OPERATION_ID);
+  const before = base.repository.read(PROJECT_ID, OPERATION_ID)!;
+  const adapter = transport('step');
+  for (const toolName of ['check_job', 'cancel_job']) {
+    const wrong = verbToTransportCall({ toolCallId: toolName, toolName, args: {domain:'generation', jobId:nodeId} })!;
+    expect(await adapter.tryExecute(wrong.call, new AbortController().signal)).toMatchObject({ok:false,code:'generation_operation_not_found'});
+    expect(base.repository.read(PROJECT_ID, OPERATION_ID)).toEqual(before);
+  }
+  const correct = verbToTransportCall({ toolCallId:'correct', toolName:'check_job', args:{domain:'generation',jobId:OPERATION_ID} })!;
+  const result = await adapter.tryExecute(correct.call,new AbortController().signal);
+  expect(result).toMatchObject({ok:true,result:{executionState:'not_started',taskRef:{domain:'generation',jobId:OPERATION_ID},operation:{operationId:OPERATION_ID,state:'draft'}}});
+  expect(before.jobs).toEqual([]);
+  expect(base.repository.read(PROJECT_ID, OPERATION_ID)).toEqual(before);
+  expect(submits).toEqual([]);
+});
+
+
+for (const pauseAt of ['lease','gate'] as const) it(`project replacement during ${pauseAt} cannot authorize a pending card`,async()=>{
+  const base=harness(); const submits:string[]=[];const built=buildActions(base,'http://127.0.0.1:1',submits);await draft(base);
+  let binding={projectId:PROJECT_ID,immutableProjectUuid:'project-uuid-1',projectGeneration:1};
+  let resume!:()=>void;let entered!:()=>void;
+  const blocked=new Promise<void>(r=>{resume=r});const reached=new Promise<void>(r=>{entered=r});let authorized=0;
+  const pause=async()=>{entered();await blocked};
+  const actions=createPendingSpendActions({isProjectOpen:()=>true,runs:{read:base.repository.read,list:base.repository.list},operations:base.operations,
+    planning:built.handler,receipts:built.receipts,rendererTarget:()=>({webContentsId:1,frameId:0,origin:'app://nomi'}),
+    committedBinding:()=>binding,leaseFor:async()=>{if(pauseAt==='lease')await pause();return lease},resolvePricing:()=>PRICING,now,
+    requestGenerationGate:async input=>{const gate=await built.authority.requestGenerationGate(input);if(pauseAt==='gate')await pause();return gate},
+    authorizeGeneration:async()=>{authorized++;throw new Error('authorization must not be reached')},
+  });
+  const quote=actions.listPendingSpend(PROJECT_ID)[0];const confirming=actions.confirmPendingSpend({projectId:PROJECT_ID,operationId:OPERATION_ID,quoteId:quote.quoteId});
+  await reached;binding={...binding,projectGeneration:2};resume();expect(await confirming).toMatchObject({ok:false});
+  expect(authorized).toBe(0);expect(submits).toEqual([]);
 });

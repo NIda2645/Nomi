@@ -17,7 +17,7 @@ import type { LaneTaskFactsResolver } from '../../electron/agentLane/laneRuntime
 import {
   LANE_TASK_NOTE_TYPE, type LaneProjection, type LaneTaskFacts,
 } from '../../electron/shared/agentLane/laneContracts.js';
-import { createLaneFixture } from './laneFixture.mjs';
+import { createLaneFixture, readFixtureNativeEntries } from './laneFixture.mjs';
 
 const RUN_ID = 'run-7f2c';
 const CLOSING = { type: 'text' as const, text: 'Started the generation.' };
@@ -46,12 +46,14 @@ async function laneWithTaskNote(t: TestContext, tasks?: LaneTaskFactsResolver) {
   const lane = await fixture.openLane({ ...fixture.options, ...(tasks ? { tasks } : {}) });
   await lane.execute({ kind: 'prompt', text: '把第三场戏生成出来。' });
   await lane.appendTaskNote({ productionRunId: RUN_ID, operationId: 'call-generate' });
-  return { lane, http: fixture.http };
+  return { lane, http: fixture.http, projectDir: fixture.projectDir };
 }
 
 test('G13 · 同一条转录 + 三份领域事实 = 三张不同的卡（状态不在转录里）', async (t: TestContext) => {
   let facts: LaneTaskFacts = QUEUED;
-  const { lane } = await laneWithTaskNote(t, () => facts);
+  const { lane, projectDir } = await laneWithTaskNote(t, () => facts);
+  const originalEntryId = taskParts(lane.projection())[0]!.entryId;
+  assert.ok(originalEntryId);
 
   const seen: LaneTaskFacts[] = [];
   for (const next of [QUEUED, RUNNING, COMPLETE]) {
@@ -60,6 +62,7 @@ test('G13 · 同一条转录 + 三份领域事实 = 三张不同的卡（状态�
     lane.refreshTasks();
     const [task] = taskParts(lane.projection());
     assert.equal(task?.productionRunId, RUN_ID);
+    assert.equal(task?.entryId, originalEntryId, 'refresh retains the same native identity');
     assert.equal(task?.operationId, 'call-generate', '卡挂回建它的那次调用，用来在流里定位');
     seen.push(task!.facts!);
   }
@@ -69,7 +72,12 @@ test('G13 · 同一条转录 + 三份领域事实 = 三张不同的卡（状态�
   // 阳性对照：转录里那条记录**自始至终只有两个 id**。多一个字段就是多一处会过期的真相。
   const raw = lane.projection().parts.find((part) => part.kind === 'task');
   assert.deepEqual(Object.keys(raw!).sort(),
-    ['contentIndex', 'entrySeq', 'facts', 'kind', 'operationId', 'productionRunId', 'sequence'].sort());
+    ['contentIndex', 'entryId', 'entrySeq', 'facts', 'kind', 'operationId', 'productionRunId', 'sequence'].sort());
+  await lane.close();
+  const notes = (await readFixtureNativeEntries(projectDir)).filter(entry => entry.customType === LANE_TASK_NOTE_TYPE);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0]!.id, originalEntryId);
+  assert.deepEqual(notes[0]!.data, { productionRunId: RUN_ID, operationId: 'call-generate' });
 });
 
 test('G13 · join 不到就只画标题：不给一个假的「排队中」', async (t: TestContext) => {

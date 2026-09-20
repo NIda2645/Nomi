@@ -19,3 +19,14 @@ Six affected identity/schema/advice/export suites: 67 tests initially passed plu
 2026-09-19: C09 red slice added to the reused implementation. Old close returned discarded for a stale quote; subset confirm returned spend_confirmed after an unseen prompt change during present. Both tests executed and failed on their target assertion (exit 1, 49 ms test duration). Following the fix, the four core payment suites passed 50 tests (exit 0, 25.95 s), including both C09 tests, 33-to-3, later batches, unknown submission and confirmation races. Eighteen adjacent suites passed 183 tests (exit 0, 2.36 s). typecheck and check:root-cause-contracts passed (48 checker tests).
 
 Tests used only temporary projects and controlled loopback HTTP; no provider billing proof. The first sandboxed broad run was stopped after the loopback tests stalled; the focused rerun outside the sandbox completed. C08 full renderer reopen, C19 explicit delete/Undo, final installed package and live supplier tests remain for integration acceptance.
+
+## 先查别人
+
+本节是已复用设计与源码边界的补充索引，不将支付回归扩大为重建执行系统。
+
+- [单一账本 prior art](../research/2026-09-18-storyboard-single-ledger/prior-art.md) 已整理 Run 单一 owner 与幂等修改的依据；付款草稿继续引用原 Run，不另存可写方案。
+- [ProductionRun repository](../../electron/productionRun/productionRunRepository.ts) 在共享执行边界做 revision CAS；关闭和确认必须绑定已展示的报价版本，不能由当前 UI 状态替换。
+- [桌面 production bridge](../../src/desktop/productionRunBridgeTypes.ts) 已把 pendingSpend 定义为只读价格投影，confirmSpend/discardSpend 显式携带 quoteId，确认还传 shotIds。
+- [productionActionIpc](../../electron/productionRun/productionActionIpc.ts) 将 project/operation/quote/scope 传给原能力 owner；沿用现有命令通路，不增第二个扣费授权入口。
+
+结论：沿用 Run、共享报价契约和既有执行通路，修复作用域、CAS 和任务身份。不新增外部调研，不以受控测试声称真实供应商扣费已验证。

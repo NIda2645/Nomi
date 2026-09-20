@@ -13,13 +13,16 @@
 //
 // 只有两件事经过这个接缝：**改这个节点**、**读这个节点的最新样子**（增量 patch 要在最新值上
 // 合并，读渲染快照会丢写）。连边、删节点、建节点那些改的是画布结构而不是这一次生成的载荷，
-// 仍然直接走 store。
+// 必须显式持有 canvas connectNodes 权能；panel 只写自己的参考上传槽。
 import React from 'react'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { CanvasMutationOptions } from '../store/canvasGuards'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 export type NodeWriteAccess = Readonly<{
+  canWrite?: () => boolean
+  /** Structural graph authority is supplied only by the canvas host. */
+  connectNodes?: ReturnType<typeof useGenerationCanvasStore.getState>['connectNodes']
   updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>, options?: CanvasMutationOptions) => void
   /** 这个节点**此刻**的样子。增量 patch 必须基于它合并，不能基于渲染快照 prop。 */
   latestNode: (nodeId: string) => GenerationCanvasNode | undefined
@@ -35,6 +38,7 @@ export function useNodeWriteAccess(): NodeWriteAccess {
   const storeUpdateNode = useGenerationCanvasStore((state) => state.updateNode)
   const storeAccess = React.useMemo<NodeWriteAccess>(() => Object.freeze({
     updateNode: storeUpdateNode,
+    connectNodes: (...args) => useGenerationCanvasStore.getState().connectNodes(...args),
     latestNode: (nodeId: string) => useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId),
   }), [storeUpdateNode])
   return override ?? storeAccess

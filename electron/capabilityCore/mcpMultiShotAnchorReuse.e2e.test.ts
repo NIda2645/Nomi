@@ -285,7 +285,7 @@ describe("P4 §5.1.4 — 用已有锚开新计划 (跨集同脸) over a real loo
       expect(submits).toHaveLength(2);
       expect(new Set(submits).size).toBe(submits.length); // 每 Job ≤1 submit
       // No anchor checkpoint gate was ever opened (no anchor-role shot to gate → not_required → 直接连拍).
-      expect(run.gates.some((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)).toBe(false);
+      expect(run.gates.filter((g) => g.scope === "anchor_checkpoint")).toEqual([]);
       // Both video shots landed a durable artifact; one job per shot, no anchor job.
       const shotJobs = run.jobs.filter((j) => typeof j.metadata?.shotId === "string");
       expect(shotJobs.map((j) => j.metadata!.shotId).sort()).toEqual(["shot-1", "shot-2"]);

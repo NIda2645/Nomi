@@ -1,3 +1,4 @@
+import { planAnchorSchema, planShotSchema } from '../storyboard/storyboardPlanSchema'
 import { z } from "zod";
 
 export const GENERATION_RECONCILE_OUTCOMES = ["found", "not_found"] as const;
@@ -13,6 +14,10 @@ const reference = z.lazy(() => z.object({
   kind: z.enum(["image", "video", "audio"]).optional(),
   role: z.enum(["character", "first_frame", "last_frame", "reference", "audio"]).optional(),
 }).strict());
+
+/** Shared pinned asset identity; UI inputs derive from this exact contract. */
+export const generationReferenceSchema = reference.schema;
+export type GenerationReference = z.infer<typeof generationReferenceSchema>;
 
 /**
  * 一条**模型填的**参考：只要 assetId。
@@ -39,6 +44,30 @@ const generationJsonValueSchema: z.ZodType<GenerationJsonValue> = z.lazy(() => z
 ]));
 const parameters = z.record(generationJsonValueSchema);
 
+/** Original author-only fields; candidate identity and prompt keep their existing input owner. */
+const authorFieldDescriptions: Record<string,string> = {
+  kind:'Anchor category',carrier:'Visual or text guidance',scope:'All or selected',
+  referenceUrl:'Anchor media URL',referenceKind:'Anchor media type',referenceSourceNodeId:'Source node id',
+  anchorIds:'Reused anchor ids',referenceBindings:'Ordered slot media',promptSegments:'Prompt text ranges',
+  variationType:'Variation strength',camIdx:'Camera preset index',ffDesc:'First-frame description',lfDesc:'Last-frame description',
+  motionDesc:'Frame-to-frame motion',continuity:'Continuity facts',keyframe:'Independent keyframe',
+  enabled:'Enable',prompt:'Prompt',modelKey:'Model id',modelVendor:'Provider',modeId:'Mode',params:'Model parameters',
+  url:'Media URL',name:'Media name',sourceNodeId:'Source node id',anchorId:'Source anchor id',ignore:'Features to ignore',
+  key:'Segment name',start:'Start offset',end:'End offset',durationSec:'Seconds for stills too',
+};
+const describeAuthorFields = <T extends z.ZodRawShape>(shape:T):T => Object.fromEntries(Object.entries(shape).map(([key,value])=>[key,value.description ? value : value.describe(authorFieldDescriptions[key] ?? key)])) as T;
+const originalBindings=planShotSchema.shape.referenceBindings.unwrap();
+const authorBindings=z.record(z.array(z.object(describeAuthorFields(originalBindings.element.element.shape))));
+const authorShape=planAnchorSchema.omit({id:true,name:true,description:true,modelKey:true,modelVendor:true,modeId:true,params:true,referenceBindings:true})
+  .merge(planShotSchema.omit({shotId:true,index:true,prompt:true,shotKind:true,modelKey:true,modelVendor:true,modeId:true,params:true,referenceBindings:true,keyframe:true,continuity:true,promptSegments:true})).partial().extend({
+    referenceBindings:authorBindings.optional(),
+    promptSegments:z.array(z.object(describeAuthorFields(planShotSchema.shape.promptSegments.unwrap().element.shape))).optional(),
+    continuity:z.union([z.string(),z.number(),parameters]).optional(),
+    keyframe:z.object(describeAuthorFields({...planShotSchema.shape.keyframe.unwrap().shape,params:parameters.optional()})).strict().optional(),
+  });
+export const storyboardAuthorFieldsSchema=z.lazy(()=>z.object(describeAuthorFields(authorShape.shape)).strict());
+export type StoryboardAuthorFields=z.infer<typeof storyboardAuthorFieldsSchema>;
+
 /** The explicit candidate accepted by the generation domain owner. */
 export const generationCandidateSchema = z.object({
   candidateId: z.string().trim().min(1), revision: z.number().int().min(1),
@@ -49,6 +78,7 @@ export const generationCandidateSchema = z.object({
 }).strip();
 
 const candidatePatch = z.object({
+  storyboard: storyboardAuthorFieldsSchema.optional(),
   prompt: z.string().optional(),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional(),
   moduleId: z.string().optional(),
@@ -62,6 +92,7 @@ const candidatePatch = z.object({
 }).strict();
 
 const createFields = {
+  storyboard: storyboardAuthorFieldsSchema.optional(),
   prompt: z.string().trim().min(1).optional(),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional(),
   moduleId: z.string().trim().min(1).optional(),
@@ -74,6 +105,7 @@ const createFields = {
   references: z.array(planReferenceInput).optional(),
   candidate: generationCandidateSchema.optional(),
   shots: z.array(z.object({
+    storyboard: storyboardAuthorFieldsSchema.optional(),
     shotId: z.string().trim().min(1).optional(),
     role: z.enum(["anchor", "shot"]).optional(),
     included: z.boolean().optional(),

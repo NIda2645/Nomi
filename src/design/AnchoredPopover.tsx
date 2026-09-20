@@ -1,6 +1,11 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NOMI_OVERLAY_Z_INDEX, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
+import {
+  NOMI_OVERLAY_Z_INDEX,
+  getSettingsEscapeOwnership,
+  hasOpenPopupAbove,
+  isInsidePopupAbove,
+} from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -84,6 +89,7 @@ export function AnchoredPopover({
 }: AnchoredPopoverProps): JSX.Element {
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
   const popRef = React.useRef<HTMLDivElement>(null)
+  const capturedEscapeRef = React.useRef<{ event: Event; delegatedOwnerOpen: boolean } | null>(null)
   const [placement, setPlacement] = React.useState<Placement | null>(null)
 
   const reposition = React.useCallback(() => {
@@ -118,34 +124,82 @@ export function AnchoredPopover({
     }
   }, [reposition])
 
+  const consumeEscape = React.useCallback((event: KeyboardEvent | React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClose || event.key !== 'Escape') return
+    const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event
+    const captured = capturedEscapeRef.current
+    if (nativeEvent.isComposing || event.defaultPrevented) {
+      capturedEscapeRef.current = null
+      event.stopPropagation()
+      return
+    }
+    // 子层若只在 document bubble 接 Escape，必须让原事件继续走到它；`.nokey` 同时阻止
+    // React Flow 把这一下解释成节点取消选择。子层处理后会 preventDefault，window 快捷键随即让位。
+    if ((captured?.event === nativeEvent && captured.delegatedOwnerOpen)
+      || (popRef.current && hasOpenPopupAbove(popRef.current))) {
+      queueMicrotask(() => {
+        if (capturedEscapeRef.current?.event === nativeEvent) capturedEscapeRef.current = null
+      })
+      return
+    }
+    capturedEscapeRef.current = null
+    event.stopPropagation()
+    event.preventDefault()
+    onClose()
+  }, [onClose])
+
   React.useEffect(() => {
     if (!onClose) return undefined
+    const anchor = anchorRef?.current ?? fallbackAnchorRef.current
+    const anchorAlreadyIgnoredByReactFlow = anchor?.classList.contains('nokey') ?? false
+    const snapshotEscapeOwner = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const pop = popRef.current
+      // AnchoredPopover 的定位 wrapper 自己没有 role；有些调用方把 role=dialog 放在第一层内容里。
+      // 层级判定必须以那张真实 surface 为基准，否则会把自己的 child dialog 误认成更高层。
+      const surface = pop?.querySelector<HTMLElement>('[role="dialog"]') ?? pop
+      const ownership = surface ? getSettingsEscapeOwnership(surface, event.target) : null
+      capturedEscapeRef.current = {
+        event,
+        delegatedOwnerOpen: Boolean(ownership?.dialogAbove || ownership?.openPopup || ownership?.targetOwnsEscape),
+      }
+    }
     // 「关掉我」这件事有两条路（Esc / 点外面），两条都必须给**我自己弹出来的那一层**让位：
     // 下拉和菜单 Portal 到 body，DOM 上不在我里面，不让位就会出现「浮层里的选择器改不了值」
     // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
-      if (popRef.current && hasOpenPopupAbove(popRef.current)) return
-      onClose()
-    }
     const onDown = (event: MouseEvent) => {
       const target = event.target as globalThis.Node
-      const anchor = anchorRef?.current ?? fallbackAnchorRef.current
       if (popRef.current?.contains(target) || anchor?.contains(target)) return
       if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
-    document.addEventListener('keydown', onKey)
+    // 锚点在 Portal 外，且可能位于 React Flow 这类绑定 Escape 的宿主内。监听挂在锚点本身，
+    // 才能在事件到达 React 根和宿主之前声明「这一下属于已打开的浮层」。
+    anchor?.classList.add('nokey')
+    anchor?.addEventListener('keydown', consumeEscape)
+    // 保留原有的 focus-outside 关闭语义；锚点和 Portal 内的事件会更早 stopPropagation，不会重复执行。
+    document.addEventListener('keydown', snapshotEscapeOwner, true)
+    document.addEventListener('keydown', consumeEscape)
     document.addEventListener('mousedown', onDown)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      anchor?.removeEventListener('keydown', consumeEscape)
+      if (!anchorAlreadyIgnoredByReactFlow) anchor?.classList.remove('nokey')
+      document.removeEventListener('keydown', snapshotEscapeOwner, true)
+      document.removeEventListener('keydown', consumeEscape)
       document.removeEventListener('mousedown', onDown)
     }
-  }, [anchorRef, onClose])
+  }, [anchorRef, consumeEscape, onClose])
+
+  const onLayerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // Portal 的 React 事件会沿逻辑树冒泡到 React Flow NodeWrapper：普通关闭/IME/已消费事件在这里
+    // 截止；需要 document bubble 的子层保留原事件，由 wrapper 上的 `.nokey` 阻止节点取消选择。
+    consumeEscape(event)
+  }
 
   const layer = (
     <div
       ref={popRef}
+      className="nokey"
       style={{
         position: 'fixed',
         top: placement?.top ?? -9999,
@@ -153,6 +207,7 @@ export function AnchoredPopover({
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
         visibility: placement ? 'visible' : 'hidden',
       }}
+      onKeyDown={onLayerKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}

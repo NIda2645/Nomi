@@ -112,7 +112,11 @@ export type AgentPanelV4PanelProps = {
   slotHandlers: V4InterventionHandlers
   queueHandlers?: V4QueueHandlers
   onHistory?: () => void
-  onLoadOlder?: () => Promise<void>
+  /** Workspace/lane/session identity, distinct from remembered reading position. */
+  historyIdentity?: string
+  historyCursor?: string
+  /** Returns the authoritative cursor after loading, even before React commits its projection. */
+  onLoadOlder?: () => Promise<string | undefined>
   onCollapse?: () => void
   /**
    * 「用户读到哪儿了」的存放处（09-01 定稿 §11.2：点角标 = 原宽**原状态**还原）。
@@ -224,6 +228,8 @@ export function AgentPanelV4Panel({
   queueHandlers,
   onHistory,
   onLoadOlder,
+  historyIdentity,
+  historyCursor,
   onCollapse,
   scrollMemory,
 }: AgentPanelV4PanelProps): JSX.Element {
@@ -237,16 +243,36 @@ export function AgentPanelV4Panel({
     ...(legacy.missingToolArguments ? [t('agentPanelV4.legacyMissingArguments')] : []),
   ].join(t('agentPanelV4.legacySeparator')) : undefined
   const scrollRef = React.useRef<HTMLDivElement>(null)
-  const paging = React.useRef(false)
-  const pageAnchor = React.useRef<{ height: number; top: number; first?: string } | null>(null)
+  const paging = React.useRef<{ settled: boolean } | null>(null)
+  const pageOwner = React.useRef<object>({})
+  const pageAnchor = React.useRef<{ owner: object; request: object; height: number; top: number; first?: string; cursor?: string } | null>(null)
+  const [pageCompletion, setPageCompletion] = React.useState(0)
   const [historyError, setHistoryError] = React.useState(false)
   React.useLayoutEffect(() => {
-    const node = scrollRef.current
-    if (node && pageAnchor.current && flow[0]?.identity !== pageAnchor.current.first) {
-      node.scrollTop = pageAnchor.current.top + node.scrollHeight - pageAnchor.current.height
-      pageAnchor.current = null
+    const owner = {}
+    pageOwner.current = owner
+    paging.current = null
+    pageAnchor.current = null
+    setHistoryError(false)
+    return () => {
+      if (pageOwner.current === owner) {
+        pageOwner.current = {}
+        paging.current = null
+        pageAnchor.current = null
+      }
     }
-  }, [flow])
+  }, [historyIdentity])
+  React.useLayoutEffect(() => {
+    const node = scrollRef.current
+    if (node && pageAnchor.current && (flow[0]?.identity !== pageAnchor.current.first || historyCursor !== pageAnchor.current.cursor)) {
+      // A reset/compaction is not a prepend. Only preserve an existing row's position.
+      if (flow[0]?.identity !== pageAnchor.current.first && pageAnchor.current.owner === pageOwner.current && flow.some(item => item.identity === pageAnchor.current?.first)) {
+        node.scrollTop = pageAnchor.current.top + node.scrollHeight - pageAnchor.current.height
+      }
+      pageAnchor.current = null
+      if (paging.current?.settled) paging.current = null
+    }
+  }, [flow, historyCursor])
   // 跟到底：只有用户本来就在底部时才跟。他往上翻着看历史的时候把他拽回来，
   // 比不跟更糟——那是把「我在读」当成「我想看新的」。
   // 初值取自宿主记下的那次：展开回来时先恢复「他当时在不在底」，再决定跟不跟。
@@ -282,19 +308,42 @@ export function AgentPanelV4Panel({
     if (!node) return
     const onScroll = (): void => {
       atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
-      if (node.scrollTop <= 24 && onLoadOlder && !paging.current) {
-        paging.current = true
-        pageAnchor.current = { height: node.scrollHeight, top: node.scrollTop, first: flow[0]?.identity }
+      if (node.scrollTop <= 24 && historyIdentity && onLoadOlder && !paging.current) {
+        const owner = pageOwner.current
+        const request = { settled: false }
+        paging.current = request
+        pageAnchor.current = { owner, request, height: node.scrollHeight, top: node.scrollTop, first: flow[0]?.identity, cursor: historyCursor }
+        const current = () => pageOwner.current === owner && paging.current === request
         atBottomRef.current = false
         setHistoryError(false)
-        void onLoadOlder().catch(() => { pageAnchor.current = null; setHistoryError(true) })
-          .finally(() => { paging.current = false })
+        let advanced = false
+        void onLoadOlder().then(cursor => {
+          advanced = cursor !== undefined && cursor !== historyCursor
+          // The host has completed its read. An unchanged cursor proves no prepend;
+          // a changed cursor retains the anchor until React commits that projection.
+          if (current() && cursor === historyCursor && pageAnchor.current?.request === request) pageAnchor.current = null
+        }).catch(() => {
+          if (!current()) return
+          pageAnchor.current = null
+          setHistoryError(true)
+        }).finally(() => {
+          if (!current()) return
+          request.settled = true
+          // ACK is not a React commit. Keep the lock while this page still owns
+          // an anchor, so another scroll cannot overwrite its pending geometry.
+          if (pageAnchor.current?.request !== request) {
+            paging.current = null
+            // Commit may precede ACK; let a short filtered page continue only
+            // after actual cursor progress, never retry an empty page in a loop.
+            if (advanced) setPageCompletion(value => value + 1)
+          }
+        })
       }
     }
     node.addEventListener('scroll', onScroll, { passive: true })
     if (node.scrollHeight <= node.clientHeight) onScroll()
     return () => node.removeEventListener('scroll', onScroll)
-  }, [onLoadOlder, flow])
+  }, [onLoadOlder, flow, historyIdentity, historyCursor, pageCompletion])
   React.useEffect(() => {
     const node = scrollRef.current
     if (node && atBottomRef.current) node.scrollTop = node.scrollHeight

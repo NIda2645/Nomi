@@ -1,3 +1,5 @@
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · MCP stdio server（app 自身二进制以 NOMI_MCP_STDIO 模式跑；见 docs/plan/2026-06-24-packaged-mcp-stdio-server.md）。
 //
 // Claude Code / Codex / Cursor 用 `<Nomi 二进制> + env NOMI_MCP_STDIO=1` 把 Nomi 拉起当 MCP server。
@@ -41,7 +43,7 @@ import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
-import { prepareProductionGenerationAuthorization } from '../productionRun/prepareProductionGenerationAuthorization'
+import { prepareProductionGenerationAuthorizationWithReferences } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createLiveGenerationRuntime } from './liveGenerationRuntime'
@@ -309,11 +311,6 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     bootstrap: (state, options) => createGenerationProviderBootstrap(state, {
       ...options,
       ...(fixtureBaseUrlOverride ? { fixtureBaseUrlOverride } : {}),
-      ...(fixtureReferenceUrl ? {
-        resolveReferenceUrls: (input) => ({
-          imageUrls: input.references.filter((reference) => reference.kind === 'image').map(() => fixtureReferenceUrl),
-        }),
-      } : {}),
     }),
   })
   const readProviderBootstrap = liveGenerationRuntime.readBootstrap
@@ -334,6 +331,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       // 参考素材的身份（内容哈希 + 版本）归项目素材库管，模型只给 assetId。接线前 `draft_shots`
       // 只要带一张参考图就 100% 被判 `generation_input_invalid`，而那两个字段模型根本拿不到。
       resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
+      resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
       planStoryboard: planStoryboardFromScript,
       recommendVideoGeneration,
       resolveModelPricing,
@@ -346,8 +344,16 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
         if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
         const authorizationRun = productionRuns.repository.read(lease.projectId, operation.operationId)
-        return prepareProductionGenerationAuthorization({
+        return prepareProductionGenerationAuthorizationWithReferences({
           lease,
+            assertCurrent: () => {
+              const currentProject = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
+              const currentRun = productionRuns.repository.read(lease.projectId, operation.operationId)
+              if (!currentProject || currentProject.revision !== projectRecord.revision
+                || currentProject.immutableProjectUuid !== lease.immutableProjectUuid
+                || currentProject.projectGeneration !== lease.projectGeneration
+                || currentRun?.revision !== authorizationRun?.revision) throw new Error('generation_reference_scope_changed')
+            },
           projectRevision: projectRecord.revision,
           operation,
           contract,
@@ -357,7 +363,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           maximumSpend: authorizationRun?.policy.maxSpend,
             run: authorizationRun ?? undefined,
           now: new Date().toISOString(),
-        })
+        }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
       },
       start: async (operation, lease) => {
         const providerBootstrap = readProviderBootstrap()

@@ -61,3 +61,13 @@ test('C0 settings: explicit catalog choices survive and unspecified settings sta
   assert.match(wire, /未指定/);
   assert.equal(result.parts.filter((p) => p.kind === 'tool-result' && p.isError).length, 0);
 });
+
+
+test('C0 planner examples reach the native tool with author fields and exact update identity intact', async (t) => {
+  const body = await skill();
+  const examples = [...body.matchAll(/```json\n([\s\S]*?)\n```/g)].map((match) => JSON.parse(match[1]) as unknown);
+  assert.equal(examples.length, 2, 'Creation and targeted update examples are executable contracts.');
+  const result = await run(t, examples, body);
+  assert.deepEqual(result.writes, examples);
+  assert.equal(result.parts.filter((part) => part.kind === 'tool-result' && part.isError).length, 0);
+});

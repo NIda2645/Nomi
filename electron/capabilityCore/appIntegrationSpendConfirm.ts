@@ -1,3 +1,6 @@
+import { withSpendReferencePreviews, resolveSpendReferenceInputs, projectSpendReferenceAssets, type SpendReferenceAssets } from './pendingSpendReferences';
+import { generationPlanInputSchema } from '../shared/agentCapabilities/generationPlanSchemas';
+import { sameProjectAgentBinding } from '../shared/projectBinding';
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // Agent 面板付费确认卡的**编排**（P1 · 2026-09-11）。
 //
@@ -45,6 +48,7 @@ type RunReader = Readonly<{
 export type RendererGestureTarget = Readonly<{ webContentsId: number; frameId: number; origin: string }>;
 
 export type PendingSpendActionDeps = Readonly<{
+  referenceAssets?: SpendReferenceAssets;
   isProjectOpen: (projectId: string) => boolean;
   runs: RunReader;
   operations: GenerationOperationStore;
@@ -123,7 +127,7 @@ export function listPendingSpendConfirmations(projectId: string): PendingSpendRe
   }
 }
 
-export async function revisePendingSpendConfirmation(input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }): Promise<ProductionActionResult> {
+export async function revisePendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.revisePendingSpend(input);
 }
@@ -180,6 +184,7 @@ export function pendingSpendDependencies(input: Readonly<{
 }
 
 export function createPendingSpendActions(deps: PendingSpendActionDeps) {
+  const referenceAssets = deps.referenceAssets ?? projectSpendReferenceAssets;
   const now = deps.now ?? (() => new Date().toISOString());
 
   const readRuns = (projectId: string): ProductionRun[] => {
@@ -200,7 +205,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    */
   const listPendingSpend = (projectId: string): readonly PendingSpendConfirm[] => {
     if (!deps.isProjectOpen(projectId)) return Object.freeze([]);
-    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing, spendAnsweredByPolicy);
+    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing, spendAnsweredByPolicy)
+      .map(pending => withSpendReferencePreviews(pending, referenceAssets));
   };
 
   /**
@@ -226,6 +232,7 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
   const revisePendingSpend = async (input: Readonly<{
     projectId: string;
     operationId: string;
+    quoteId: string;
     shotId?: string;
     patch: Readonly<Record<string, unknown>>;
   }>): Promise<ProductionActionResult> => {
@@ -233,13 +240,44 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!deps.operations.revise) return { ok: false, code: "unavailable" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to revise" };
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
+    const capturedRun = deps.runs.read(input.projectId, input.operationId);
+    const plan = capturedRun?.generationPlan;
+    const shotId = input.shotId ?? (!plan?.shots?.length ? plan?.candidate.candidateId : undefined);
+    if (!shotId || !pending.shots.some(shot => shot.shotId === shotId)) {
+      return { ok: false, code: "failed", message: "generation_shot_not_found" };
+    }
+    // The displayed scope can contain one row of a many-shot plan. Only the
+    // persisted structure determines whether this address is a shot or candidate.
     const revision: GenerationReviseInput = {
-      ...(input.shotId ? { shotId: input.shotId } : {}),
+      ...(plan?.shots?.length ? { shotId } : {}),
       patch: input.patch,
+      expectedRevision: capturedRun?.revision,
     };
     try {
-      await deps.operations.revise(input.projectId, input.operationId, revision, now());
-      return { ok: true, code: "revised" };
+      const binding = deps.committedBinding();
+      if (!binding || binding.projectId !== input.projectId) throw new Error('run_not_open');
+      const assertCurrent = (): void => {
+        const currentBinding = deps.committedBinding();
+        if (!deps.isProjectOpen(input.projectId) || !currentBinding || !sameProjectAgentBinding(binding, currentBinding)
+          || pendingFor(input.projectId, input.operationId)?.quoteId !== pending.quoteId) throw new Error('generation_quote_changed');
+      };
+      const { referenceInputs, ...remainingPatch } = input.patch;
+      const patch: Record<string, unknown> = { ...remainingPatch };
+      if (referenceInputs !== undefined && patch.references !== undefined) throw new Error('generation_reference_invalid');
+      if (referenceInputs !== undefined || patch.references !== undefined) {
+        const shot = pending.shots.find(shot => shot.shotId === shotId);
+        if (!shot) throw new Error('generation_reference_scope_required');
+        patch.references = await resolveSpendReferenceInputs({ projectId: input.projectId, binding,
+          values: referenceInputs ?? (Array.isArray(patch.references) ? patch.references.map(reference => ({ reference })) : patch.references), existing: shot.references ?? [], assets: referenceAssets, assertCurrent });
+      }
+      assertCurrent();
+      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch,
+        ...(input.shotId ? { shotId: input.shotId } : {}) });
+      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch }, now());
+      const successor = pendingFor(input.projectId, input.operationId);
+      if (!successor || successor.planVersion !== revised.planVersion || successor.candidateRevision !== revised.candidate.revision) throw new Error('generation_quote_changed');
+      return { ok: true, code: "revised", quoteId: successor.quoteId };
     } catch (error) {
       return failed(error);
     }
@@ -268,6 +306,12 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    */
   const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
+    const binding = deps.committedBinding();
+    if (!binding || binding.projectId !== input.projectId) return { ok: false, code: 'run_not_open' };
+    const assertBindingCurrent = (): void => {
+      const current = deps.committedBinding();
+      if (!deps.isProjectOpen(input.projectId) || !current || !sameProjectAgentBinding(binding, current)) throw new Error('run_not_open');
+    };
     let pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
     if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
@@ -290,12 +334,14 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!target) return { ok: false, code: "unavailable" };
     try {
       const lease = await leased(input.projectId);
+      assertBindingCurrent();
       if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId) throw new Error("generation_quote_changed");
       // 封印 → 铸收据 → 决门 → 消费 → 开跑：这条链只有一份（`generationSpendDecision.ts`）。
       // 「全自动」档那条免卡放行走的是同一个函数，差别只在那张 attestation 是人点的还是策略代答的。
       await decideGenerationSpend(
         { requestGenerationGate: async (request) => {
           const gate = await deps.requestGenerationGate(request);
+          assertBindingCurrent();
           const prepared = gate as { maximumCost?: unknown; currency?: unknown };
           if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId
             || acceptedQuote.unknownShotCount > 0 || prepared.currency !== acceptedQuote.currency
@@ -303,7 +349,10 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
             throw new Error("generation_quote_changed");
           }
           return gate;
-        }, authorizeGeneration: deps.authorizeGeneration, planning: deps.planning, receipts: deps.receipts },
+        }, authorizeGeneration: async request => {
+          assertBindingCurrent();
+          return deps.authorizeGeneration(request);
+        }, planning: deps.planning, receipts: deps.receipts },
         { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel" },
       );
       return { ok: true, code: "spend_confirmed" };

@@ -20,7 +20,7 @@ try {
     const id = `trace-read-${turn}`
     const called = walk.fixture.expectText({ label: `turn ${turn} reads the real document`,
       match: body => flattenRequestText(body).includes(prompt) && !hasToolResult(body, id),
-      reply: { type: 'tool', id, name: 'read_full_text', args: {} } })
+      reply: { type: 'tool', id, name: 'read_script', args: { scope: 'full' } } })
     const done = walk.fixture.expectText({ label: `turn ${turn} receives its tool result`,
       match: body => hasToolResult(body, id), reply: { type: 'text', text: `第 ${turn} 回合：雨后，小猫出门。` } })
     await sendCreation(win, prompt)

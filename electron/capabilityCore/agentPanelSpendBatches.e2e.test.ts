@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import http from "node:http";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
 import { PROJECT_ID, OPERATION_ID, lease, now, candidate, startLoopbackVendor, harness, buildActions, draft, resetSpendFixture } from "./agentPanelSpendConfirmTestUtils";
 
@@ -11,6 +12,34 @@ function barrier() {
   const entered = new Promise<void>(resolve => { reached = resolve; });
   return { release, entered, pause: async () => { reached(); await waiting; } };
 }
+
+it("spend-confirm loopback responses cannot leave sockets eligible for idle expiry", async () => {
+  const vendor = await startLoopbackVendor();
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+  const submit = () => new Promise<{ connection: string | undefined; localPort: number | undefined }>((resolve, reject) => {
+    const request = http.request(`${vendor.origin}/v1/images/generations`, {
+      agent,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    }, response => {
+      const localPort = response.socket.localPort;
+      response.resume();
+      response.once("end", () => resolve({ connection: response.headers.connection, localPort }));
+    });
+    request.once("error", reject);
+    request.end("{}");
+  });
+  try {
+    const first = await submit();
+    const second = await submit();
+    expect(first).toMatchObject({ connection: "close", localPort: expect.any(Number) });
+    expect(second).toMatchObject({ connection: "close", localPort: expect.any(Number) });
+    expect(second.localPort).not.toBe(first.localPort);
+  } finally {
+    agent.destroy();
+    await vendor.close();
+  }
+});
 
 it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run, preserving first execution and nodes", async () => {
   const vendor = await startLoopbackVendor();
@@ -59,7 +88,8 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
     const done = base.repository.read(PROJECT_ID, OPERATION_ID)!;
     expect(done.jobs).toHaveLength(33);
     expect(done.jobs.slice(0, 3)).toEqual(first.jobs);
-    expect(done.jobs.every(job => job.status === "ready")).toBe(true);
+    expect(done.jobs.map(job => ({shotId:job.metadata?.shotId,status:job.status,errorCode:job.errorCode}))).toEqual(
+      shots.map(shot => ({shotId:shot.shotId,status:"ready",errorCode:undefined})));
     expect(done.generationPlan!.shots).toHaveLength(33);
     expect(done.budget.reserved).toBeCloseTo(9.9);
     expect(done.budget.actual).toBe(0);
@@ -90,7 +120,7 @@ describe("S08: pending spend decisions have one durable winner", () => {
           await latch.entered;
           const changed = action === "discard"
             ? await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId })
-            : await withWindow.revisePendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
+            : await withWindow.revisePendingSpend({ quoteId: quote.quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
           latch.release();
           const confirmed = await confirming;
           expect(changed.ok).toBe(phase === "beforeAuthorize");

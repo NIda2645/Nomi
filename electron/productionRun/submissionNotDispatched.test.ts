@@ -94,6 +94,11 @@ function setup(shots: ProductionGenerationShot[]) {
   const repository = createProductionRunRepository({ projectDirResolver: (id) => (id === "project-1" ? root : null), now });
   repository.createGenerationDraft({
     operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate,
+    // Sealing approves existing draft identities; it cannot introduce new shots.
+    shots: shots.map(({ shotId, candidate: sealedCandidate, updatedAt }) => {
+      const { sealedContractHash: _hash, ...candidate } = sealedCandidate;
+      return { shotId, candidate, updatedAt };
+    }),
     policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["video-model"], maxSpend: null, maxAttemptsPerJob: 2 },
   });
   sealAndApproveProductionGeneration({

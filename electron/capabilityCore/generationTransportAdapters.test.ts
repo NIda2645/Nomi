@@ -250,3 +250,44 @@ describe("plan patch addressed to one shot survives the canonical seam", () => {
     expect(result).toMatchObject({ ok: true, result: { capability: "plan", params: { operationId: "op-1", shotId: "shot-2" } } });
   });
 });
+
+
+describe('creation request target enforcement', () => {
+  const target = { projectId: binding.projectId, sourceDocumentId: 'doc-a', sourceDocumentRevision: 3,
+    sourceDocumentContentHash: 'hash-a', targetRunId: 'op-captured', targetKind: 'storyboard' as const, requestId: 'request-a' };
+  it('creates the preallocated Run and advances CAS only from this request successful results', async () => {
+    const planning = vi.fn().mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 0 } })
+      .mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 1 } })
+      .mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 2 } });
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const signal = new AbortController().signal;
+    const context = { storyboardTarget: target };
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'first' }), signal, context)).toMatchObject({ ok: true });
+    expect(planning.mock.calls[0][0]).toMatchObject({ params: { operationId: target.targetRunId }, storyboardTarget: target });
+    for (const prompt of ['second', 'third']) {
+      expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'patch', operationId: target.targetRunId, patch: { prompt } }), signal, context)).toMatchObject({ ok: true });
+    }
+    expect(planning.mock.calls[1][0].storyboardTarget.expectedRevision).toBe(0);
+    expect(planning.mock.calls[2][0].storyboardTarget.expectedRevision).toBe(1);
+  });
+  it('rejects a model-selected foreign Run or project before planning', async () => {
+    const planning = vi.fn();
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const signal = new AbortController().signal;
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', operationId: 'foreign', prompt: 'first' }), signal, { storyboardTarget: target })).toMatchObject({ ok: false });
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'first' }), signal, { storyboardTarget: { ...target, projectId: 'foreign-project' } })).toMatchObject({ ok: false });
+    expect(planning).not.toHaveBeenCalled();
+  });
+});
+
+it('selected stable shot scope refuses unrelated patches and narrows generate before the owner',async()=>{
+  const planning=vi.fn().mockResolvedValue({operation:{runRevision:1}})
+  const adapter=createPiGenerationTransportAdapter(binding,{planning,leaseFor:()=>lease})
+  const context={storyboardTarget:{projectId:binding.projectId,sourceDocumentId:'doc',sourceDocumentRevision:1,sourceDocumentContentHash:'hash',targetRunId:'run',targetKind:'storyboard' as const,requestId:'selected',expectedRevision:0,shotIds:['stable-b']}}
+  const signal=new AbortController().signal
+  expect(await adapter.tryExecute(call('nomi_generation_plan',{operation:'patch',operationId:'run',shotId:'stable-a',patch:{prompt:'wrong'}}),signal,context)).toMatchObject({ok:false})
+  expect(planning).not.toHaveBeenCalled()
+  expect(await adapter.tryExecute(call('nomi_generation_plan',{operation:'patch',operationId:'run',shotId:'stable-b',patch:{prompt:'right'}}),signal,context)).toMatchObject({ok:true})
+  expect(await adapter.tryExecute(call('nomi_generation_plan',{operation:'present',operationId:'run'}),signal,context)).toMatchObject({ok:true})
+  expect(planning.mock.calls[1][0].params.shotIds).toEqual(['stable-b'])
+})

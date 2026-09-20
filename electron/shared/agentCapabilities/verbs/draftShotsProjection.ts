@@ -66,7 +66,7 @@ const REFUSE_ON_FLAT = "单镜 create 把这一镜摊成顶层参数，顶层没
  */
 function semanticsOf(shot: DraftShot): CandidatePatch {
   const {
-    prompt, taskKind, modeId, modelId, candidate, parameters, durationSec, references,
+    storyboard, prompt, taskKind, modeId, modelId, candidate, parameters, durationSec, references,
     // 信封那三件不属于「语义」，由各自的调用点按这条路有没有位置处置。
     shotId: _envelopeShotId, role: _envelopeRole, title: _envelopeTitle,
     ...unhandled
@@ -74,6 +74,7 @@ function semanticsOf(shot: DraftShot): CandidatePatch {
   // 一个字段都不许没人管：新长出来的模型面字段落进 `unhandled`，而这个类型不接受任何键 → tsc 红。
   void (unhandled satisfies Record<string, never>);
   return {
+    ...(storyboard !== undefined ? { storyboard } : {}),
     ...(prompt !== undefined ? { prompt } : {}),
     ...(taskKind !== undefined ? { taskKind } : {}),
     // ① 时长改的是嵌套层级：宿主只在 `parameters.duration` 读它，顶层没有时长字段。

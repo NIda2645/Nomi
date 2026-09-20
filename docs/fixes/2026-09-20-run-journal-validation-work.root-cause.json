@@ -1,0 +1,123 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-run-journal-validation-work",
+  "problem_type": "Repeated deserialization of unchanged complete Run history blocks batch execution",
+  "symptom": "S06 33-shot acceptance exceeded its unchanged 60000ms limit in the full suite; isolated CPU profile attributes 50.4% to readJsonLines and 32.7% to file reads.",
+  "direct_cause": "Every repository read and command reparses all full-Run event payloads, including unchanged historical entries, while each generated job adds further complete Run events.",
+  "class_root": "The shared event journal reader has no reuse boundary for already validated exact decoded UTF-8 content, so hot reads and commands repeat work proportional to the entire growing history.",
+  "affected_population": [
+    "Multi-shot generation and polling on growing durable Runs",
+    "Idempotent command replay and repeated summary reads of the same Run"
+  ],
+  "scope_paths": [
+    "electron/productionRun/productionRunRepository.ts"
+  ],
+  "entry_points": [
+    "ProductionRunRepository.read",
+    "ProductionRunRepository.executeUnlocked",
+    "ProductionRunRepository.readEvents"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The owner is the internal JSONL repository; existing HEAD contains the same full-history parser. CPU profile /private/tmp/nomi-s06-timed-968.cpuprofile establishes the cost without a dependency assumption.",
+  "invariants": [
+    "All current decoded journal content are read from disk and every changed JSON line is validated before returning any result.",
+    "Only an exact unchanged content prefix may reuse prior validation; rewrites, truncation, replacement and unterminated final lines are revalidated.",
+    "One repository retains at most one journal index, and returned Run/event objects cannot mutate the index.",
+    "Crash recovery, command idempotency, complete event history and read-only recovery semantics remain unchanged."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "readEventJournal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "appendDurableJsonLine"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "The existing durable append owner and read owner retain separate responsibilities; all event consumers converge on one in-memory validation index for one journal without adding persisted state."
+  },
+  "generality_proof": "The index compares the complete decoded UTF-8 file content rather than mtime or size, validates all new or changed lines, and reparses selected event payloads for callers. Both normal reads and command replay use this owner, independent of scheduler, vendor or shot count.",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "readEventJournal",
+      "responsibility": "Validate current decoded event content and expose indexed event selection without repeatedly decoding unchanged historical Run payloads."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "entry_point": "read",
+      "disposition": "enforced",
+      "evidence": "Reads current journal and snapshot; all journal validation precedes snapshot or recovered Run return."
+    },
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "entry_point": "executeUnlocked",
+      "disposition": "enforced",
+      "evidence": "Current Run, cursor and idempotent command events come from the same validated index inside the existing command lock."
+    },
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "entry_point": "readEvents",
+      "disposition": "enforced",
+      "evidence": "History consumers select and independently decode events from the same validated journal."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every growing Run and repeated caller can trigger repeated synchronous historical payload parsing regardless of test timing.",
+    "same_class_scan": [
+      "Ran door-map --write=appendDurableJsonLine --read=readJsonLines; found existing shared read/write owner.",
+      "Inspected scheduler requireRun and productionGenerationSubmission repository reads as independent hot consumers.",
+      "Compared HEAD read/executeUnlocked to confirm repeated full-history parsing predates this task.",
+      "Re-ran door-map after implementation with --write=appendDurableJsonLine --read=readEventJournal to register the actual final event reader."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/productionRunRepository.ts",
+    "invariant": "Exact-content validated history is indexed once, while every changed decoded content is validated before any read or command result.",
+    "failure_mode": "Malformed JSON continues throwing ProductionRunParseError; storage errors remain errors and read paths never repair evidence.",
+    "exception_policy": "none",
+    "strategy": "Maintain a bounded single-journal index of line offsets, cursor and command identity; read current bytes each time and reuse only a fully identical validated prefix. Decode selected payloads into fresh objects.",
+    "artifacts": [
+      "electron/productionRun/productionRunRepository.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/productionRunJournalAcceptance.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/productionRunJournalAcceptance.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Existing repository and JSONL format remain the sole owner; event reads are optimized in place and no alternate persisted path is introduced."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The invariant belongs to repository-owned parsing work, not a dependency version or transport implementation.",
+    "exit_criteria": []
+  },
+  "migration": "No storage changes. A fresh repository validates all existing history; the index is disposable process memory.",
+  "residual_risks": [
+    "Each access still reads the full journal bytes; this change removes redundant payload parsing, not all journal-size-dependent I/O.",
+    "Full-suite validation after the fix is owned by the main agent.",
+    "The retained index is bounded to one journal per repository, not a fixed byte budget; its content and offsets grow with that journal.",
+    "Direct command append to an externally edited valid JSONL file lacking a final newline remains the pre-existing writer behavior; this change covers reader revalidation when the final line is extended, not a journal-format repair."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionRunRepository.ts",
+    "tests": [
+      "electron/productionRun/productionRunJournalAcceptance.test.ts"
+    ]
+  }
+}

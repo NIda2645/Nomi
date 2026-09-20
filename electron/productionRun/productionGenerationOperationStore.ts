@@ -1,3 +1,4 @@
+import { storyboardContentToken } from '../shared/storyboard/generationPlanEditorial';
 import { GenerationOperationNotFoundError, ProductionRunNotFoundError } from './productionRunErrors';
 import type { GenerationOperation, GenerationOperationStore } from "../capabilityCore/mcpGenerationTools";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
@@ -11,7 +12,10 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
   if (!plan) return null;
   return {
     operationId: plan.operationId,
+    ...(run.origin.sourceDocument ? { sourceDocumentId: run.origin.sourceDocument.documentId } : {}),
+    ...(plan.editorial ? { editorial: structuredClone(plan.editorial) } : {}),
     projectId: run.projectId,
+    runRevision: run.revision,
     candidate: structuredClone(plan.candidate),
     state: plan.state,
     ...(plan.cardHidden === true ? { cardHidden: true } : {}),
@@ -38,9 +42,8 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
 }
 
 /**
- * Draft-lifecycle observers. A generation draft is the user-visible intent ("the agent said it made
- * one"), so the moment it is created or edited the canvas projection must follow — otherwise the only
- * place the user can see it is a task row, and the nodes appear only on the next project reopen.
+ * Draft-lifecycle observers notify the existing projection owner after create or edit. Document
+ * plans remain unplaced until explicitly placed; the canvas owner decides whether to project.
  *
  * The hook is fire-and-forget by contract: canvas landing is best-effort (§1 铁律) and must never
  * block or fail a durable draft command.
@@ -74,6 +77,13 @@ export function createProductionGenerationOperationStore(
     if (!operation) throw new GenerationOperationNotFoundError();
     return operation;
   };
+  const assertTarget = (run: ReturnType<GenerationRunOwner['readFull']>, target: Parameters<GenerationOperationStore['patch']>[5]): void => {
+    if (target && (target.projectId !== run.projectId || target.targetRunId !== run.runId
+      || target.sourceDocumentId !== run.origin.sourceDocument?.documentId
+      || target.sourceDocumentRevision !== run.origin.sourceDocument?.revision
+      || target.sourceDocumentContentHash !== run.origin.sourceDocument?.contentHash
+      || (target.expectedRevision ?? 0) !== run.revision)) throw new Error('storyboard_target_stale');
+  };
   return {
     create(input) {
       // P4 S6.5: a multi-shot draft scopes its policy to the UNION of every shot's provider/model (anchor
@@ -96,6 +106,7 @@ export function createProductionGenerationOperationStore(
           allowedModels: [...models],
         },
         candidate: input.candidate,
+        ...(input.editorial ? { editorial: input.editorial } : {}),
         ...(input.shots && input.shots.length > 0 ? { shots: input.shots } : {}),
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
       });
@@ -106,8 +117,37 @@ export function createProductionGenerationOperationStore(
       return operation;
     },
     read,
-    async patch(projectId, operationId, patch, now, shotId) {
+    async patch(projectId, operationId, patch, now, shotId, target) {
       const current = read(projectId, operationId);
+      const targetRun = owner.readFull(projectId, operationId);
+      assertTarget(targetRun, target);
+      if (targetRun.generationPlan?.editorial) {
+        if (!patch.storyboard || !shotId || !targetRun.origin.sourceDocument) throw new Error('storyboard_author_patch_required');
+        const plan = structuredClone(targetRun.generationPlan.editorial);
+        const authored = patch.storyboard;
+        if ('description' in authored) {
+          const index = plan.anchors.findIndex(anchor => anchor.id === shotId);
+          if (index < 0 || authored.id !== shotId) throw new Error('Storyboard subject mismatch');
+          plan.anchors[index] = authored;
+        } else {
+          const index = plan.shots.findIndex(shot => shot.shotId === shotId);
+          if (index < 0 || authored.shotId !== shotId) throw new Error('Storyboard subject mismatch');
+          plan.shots[index] = authored;
+        }
+        const source = targetRun.origin.sourceDocument;
+        const result = await owner.command(projectId,operationId,{
+          commandId: `generation.author-patch:${operationId}:${targetRun.revision}`,
+          expectedRevision:targetRun.revision,type:'generation.save_storyboard',issuedAt:now,
+          payload:{projectId,runId:operationId,operationId,sourceDocumentId:source.documentId,sourceDocumentRevision:source.revision,sourceDocumentHash:source.contentHash,
+            expectedContentToken:storyboardContentToken(targetRun),plan},
+        });
+        const operation=operationFromRun(result.run);
+        if (!operation) throw new Error('Production Run lost its generation plan');
+        notifyPlanChanged(projectId,operationId);
+        return operation;
+      }
+      if (patch.storyboard) throw new Error('storyboard_author_body_required');
+
       // 改一镜：幂等键跟着**那一镜**的候选 revision 走（reducer 只给那一镜 +1，顶层候选不动——
       // 沿用顶层 revision 会让第二次改同一镜撞上第一次的键、被当成重放吃掉）。
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
@@ -116,7 +156,7 @@ export function createProductionGenerationOperationStore(
         commandId: targetShot
           ? `generation.patch:${operationId}:${shotId}:${targetShot.candidate.revision}`
           : `generation.patch:${operationId}:${current.candidate.revision}`,
-        expectedRevision: owner.readFull(projectId, operationId).revision,
+        expectedRevision: target ? target.expectedRevision ?? 0 : targetRun.revision,
         type: "generation.patch",
         payload: { patch, ...(shotId ? { shotId } : {}) },
         issuedAt: now,
@@ -127,9 +167,11 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
-    async present(projectId, operationId, now, shotIds) {
+    async present(projectId, operationId, now, shotIds, target) {
       read(projectId, operationId);
-      const revision = owner.readFull(projectId, operationId).revision;
+      const run = owner.readFull(projectId, operationId);
+      assertTarget(run, target);
+      const revision = run.revision;
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.present:${operationId}:${revision}`,
         expectedRevision: revision,
@@ -201,7 +243,7 @@ export function createProductionGenerationOperationStore(
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.revise:${operationId}:v${current.planVersion}:${current.candidate.revision}:${input.shotId ?? "plan"}`,
-        expectedRevision: owner.readFull(projectId, operationId).revision,
+        expectedRevision: input.expectedRevision ?? owner.readFull(projectId, operationId).revision,
         type: "generation.revise",
         payload: {
           patch: input.patch,

@@ -1,3 +1,4 @@
+import { resolveProductionReferenceUrls } from "../capabilityCore/productionReferenceUrls";
 import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 import {
@@ -107,6 +108,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   maximumSpend?: number | null;
   now: string;
   ttlMs?: number;
+  referenceUrlsByContract?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }>): PreparedProductionGenerationAuthorization {
   if (input.operation.projectId !== input.lease.projectId) {
     throw new Error("Generation operation does not belong to the leased project");
@@ -144,6 +146,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     const prepared = adapter.prepareAuthorization({
       contract: unit.contract,
       providerIdempotencyKey,
+      referenceUrls: input.referenceUrlsByContract?.[unit.contract.contractHash],
     });
     return {
       jobId,
@@ -160,6 +163,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
       mode: unit.contract.mode,
       parameters: unit.contract.parameters,
       references: unit.contract.references,
+      ...(input.referenceUrlsByContract?.[unit.contract.contractHash] ? { referenceUrls: input.referenceUrlsByContract[unit.contract.contractHash] } : {}),
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
       price: { currency, maximum: price.amount },
@@ -173,9 +177,10 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     throw new Error("Generation authorization spend ceiling is invalid");
   }
   const liability = input.run ? sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]) : 0;
-  const headroom = maximumSpend === undefined || maximumSpend === null ? jobMaximum : Math.max(0, maximumSpend - liability);
-  const initialCeiling = budgetExceeds(jobMaximum, headroom) ? headroom : jobMaximum;
-  const ledgerCeiling = Math.max(input.run?.budget.authorized ?? 0, liability + initialCeiling);
+  const completeMaximum = sumBudgetAmounts([liability, jobMaximum]);
+  const completeBatchFits = maximumSpend === undefined || maximumSpend === null || !budgetExceeds(completeMaximum, maximumSpend);
+  const initialCeiling = completeBatchFits ? jobMaximum : Math.max(0, maximumSpend - liability);
+  const ledgerCeiling = Math.max(input.run?.budget.authorized ?? 0, sumBudgetAmounts([liability, initialCeiling]));
   const expiresAt = new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString();
   const runId = input.operation.operationId;
   const envelope = createProductionGenerationAuthorizationEnvelope({
@@ -197,6 +202,30 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     },
   });
   return { envelope, authorizationDigest: productionGenerationAuthorizationDigest(envelope) };
+}
+
+/** Reuse asset transport once for the exact included scope, then seal its durable URL snapshot. */
+export async function prepareProductionGenerationAuthorizationWithReferences(
+  input: Parameters<typeof prepareProductionGenerationAuthorization>[0] & { assertCurrent: () => void },
+  resolveReferences: typeof resolveProductionReferenceUrls = resolveProductionReferenceUrls,
+): Promise<PreparedProductionGenerationAuthorization> {
+  input.assertCurrent();
+  if (input.operation.projectId !== input.lease.projectId) throw new Error("Generation operation does not belong to the leased project");
+  if (!Number.isSafeInteger(input.operation.planVersion) || (input.operation.planVersion ?? 0) < 1
+    || !Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0
+    || (input.run && (input.run.runId !== input.operation.operationId || input.run.projectId !== input.lease.projectId || input.run.planVersion !== input.operation.planVersion))) {
+    throw new Error("Generation reference preparation requires the current Run snapshot");
+  }
+  const referenceUrlsByContract: Record<string, Readonly<Record<string, string>>> = {};
+  for (const unit of unitsFor(input.operation, input.contract, input.multiShot)) {
+    if (unit.contract.references.length === 0) continue;
+    referenceUrlsByContract[unit.contract.contractHash] = await resolveReferences({
+      projectId: input.lease.projectId, providerId: unit.contract.providerId,
+      references: unit.contract.references, assertCurrent: input.assertCurrent,
+    });
+  }
+  input.assertCurrent();
+  return prepareProductionGenerationAuthorization({ ...input, referenceUrlsByContract });
 }
 
 function addressedUnit(run: ProductionRun, shotId?: string): {
@@ -270,6 +299,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   const prepared = createGenerationRuntimeAdapter({ providers: input.providers }).prepareAuthorization({
     contract: unit.contract,
     providerIdempotencyKey,
+    referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation reauthorization time is invalid");
@@ -301,6 +331,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
       mode: unit.contract.mode,
       parameters: unit.contract.parameters,
       references: unit.contract.references,
+      referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
       price: { currency: input.run.budget.currency, maximum: price.amount },
@@ -366,7 +397,8 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       if (existing.providerIdempotencyKey !== providerIdempotencyKey) {
         throw new Error(`Generation continuation job identity changed: ${shot.shotId}`);
       }
-      const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey });
+      const referenceUrls = plan.authorizationEnvelope?.jobs.find(job => job.contractHash === contract.contractHash)?.referenceUrls;
+      const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey, referenceUrls });
       return [{
         jobId,
         shotId: shot.shotId,
@@ -382,6 +414,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
         mode: contract.mode,
         parameters: contract.parameters,
         references: contract.references,
+        ...(referenceUrls ? { referenceUrls } : {}),
         providerWirePayloadHash: prepared.providerRequestHash,
         providerIdempotencyKey,
         price: { currency: input.run.budget.currency, maximum: price.amount },
@@ -391,7 +424,8 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
 
   const remainingMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
   const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
-  if (input.run.budget.authorized - liability >= remainingMaximum) {
+  const completeMaximum = sumBudgetAmounts([liability, remainingMaximum]);
+  if (!budgetExceeds(completeMaximum, input.run.budget.authorized)) {
     throw new Error("The current generation authorization already covers the remaining jobs");
   }
   const issuedAt = Date.parse(input.now);
@@ -412,7 +446,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
     budget: {
       currency: input.run.budget.currency,
       maximum: remainingMaximum,
-      ledgerCeiling: Math.max(input.run.budget.authorized, liability + remainingMaximum),
+      ledgerCeiling: Math.max(input.run.budget.authorized, completeMaximum),
     },
   });
   return {

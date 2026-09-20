@@ -45,7 +45,7 @@ try {
   const readRequest = walk.fixture.expectText({
     label: 'turn 1 asks the document read tool',
     match: (body) => flattenRequestText(body).includes(TURN1) && !hasToolResult(body, READ_CALL),
-    reply: { type: 'tool', id: READ_CALL, name: 'read_full_text', args: {} },
+    reply: { type: 'tool', id: READ_CALL, name: 'read_script', args: { scope: 'full' } },
   })
   const readFollowup = walk.fixture.expectText({
     label: 'turn 1 receives the real tool result',
@@ -56,7 +56,7 @@ try {
   await recorded(readRequest.received, 'turn 1 first request')
   const firstResultWire = await recorded(readFollowup.received, 'turn 1 tool-result request')
   expect(hasToolCall(firstResultWire.body, READ_CALL), '第一轮的工具调用进入模型输入').toBe(true)
-  expect(flattenRequestText(firstResultWire.body), '工具结果里带着真实文稿').toContain('F_SEG_B')
+  expect(flattenRequestText(firstResultWire.body), '工具结果里带着完整真实文稿').toContain(STORY)
   await expect(win.locator(CREATION_PANEL)).toContainText('F_D1_DONE')
   await walk.snap('turn-1-tool-result')
 
@@ -103,7 +103,7 @@ try {
   expect(laneMessages(record).filter((message) => message.role === 'nomi.input').map(laneMessageText))
     .toEqual([TURN1, TURN2, TURN3])
   expect(laneMessages(record).filter((message) => message.role === 'toolResult'))
-    .toEqual([expect.objectContaining({ toolName: 'read_full_text', toolCallId: READ_CALL, isError: false })])
+    .toEqual([expect.objectContaining({ toolName: 'read_script', toolCallId: READ_CALL, isError: false })])
 
   // 冷重启：同一条线程重开，第一轮的工具结果仍在。
   const requestsBeforeRestart = walk.fixture.requests.length

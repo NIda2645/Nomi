@@ -43,6 +43,6 @@ describe('分镜方案生命周期（单一 owner）', () => {
 it('waiting-to-start draft actions use the displayed design and catch the pre-submit gate', () => {
   const source = readFileSync(new URL('./StoryboardPlanEditor.tsx', import.meta.url), 'utf8')
   expect(source).not.toContain('if (busy || !activeStoryboardId) return')
-  expect(source).toContain('const designId = activeDesign?.id')
-  expect(source).toMatch(/await runAction\(async \(\) => \{[\s\S]*?resolveGeneratableGate/)
+  expect(source).toContain("const designId = host ? host.designId : activeDesign?.id ?? ''")
+  expect(source).toMatch(/await runAction\(async context => \{[\s\S]*?resolveGeneratableGate/)
 })

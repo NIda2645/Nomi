@@ -1,0 +1,482 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-storyboard-confirmation-target",
+  "problem_type": "Author target can change during human approval",
+  "symptom": "Original runner submits despite changed storyboard after human confirmation; deleting a canvas node while validation is pending still reaches the executor",
+  "direct_cause": "Only project lifetime is checked after asynchronous confirmation; executor reads the graph before the awaited guard and resurrects missing nodes from initialNode; batch dispatch omitted the author guard when forwarding options to each node",
+  "class_root": "Asynchronous approval and validation outlive both author state and the graph node, while submission trusts a stale snapshot",
+  "affected_population": [
+    "Run-hosted original generation actions"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+    "src/workbench/generationCanvas/spend/spendConfirm.ts"
+  ],
+  "entry_points": [
+    "single",
+    "variants",
+    "regenerate",
+    "batch"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing original runner and human confirmation boundaries",
+  "invariants": [
+    "Captured author target is checked after confirmation and grant before submission",
+    "After author validation, each executor attempt must resolve the node from its original project graph; absent nodes or graphs must fail closed, never fall back to the initial snapshot",
+    "Every batch wave forwards the same captured author guard to each node attempt"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "AssetUploadConsentDecision"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "RunGenerationNodeOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "RunGenerationNodesBatchOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "RunGenerationNodesBatchResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "GenerationErrorReport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "confirmAndRunNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "regenerateNodeInPlace"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "confirmAndRunNodeVariants"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "spendCostKindForNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "runGenerationNodesByPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "confirmAndRunNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "canRunGenerationNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "unmetReferenceDependencyForNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "confirmAndRunNodeVariants"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "regenerateNodeInPlace"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "confirmAndRunNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "reconcileNodeModeWithConnectedReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "canRunGenerationNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "runGenerationNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "runGenerationNodesBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "unmetReferenceDependencyForNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeGenerationIndex.ts",
+      "symbol": "canRunGenerationNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/generationFeedback.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/taskCenter/taskCenterEntries.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/taskCenter/TaskCenterPanel.tsx",
+      "symbol": "confirmAndRunNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelinePanel.tsx",
+      "symbol": "regenerateNodeInPlace"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "BATCH_RUN_TOAST_ID"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "useBatchPlanPreviewStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "useBatchPlanPreviewStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/BatchPlanOverlay.tsx",
+      "symbol": "useBatchPlanPreviewStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "runPlanWithToasts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "describeBlockedNotice"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasProductionActions.ts",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "useBatchPlanPreviewStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/taskCenter/TaskCenterPanel.tsx",
+      "symbol": "confirmAndRunPlan"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "GenerationCostKind"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "HostingDisclosure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "GenerationCostContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "HostingDisclosure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "SpendConfirmRequest"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "SpendConfirmState"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "GenerationCostKind"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx",
+      "symbol": "SpendConfirmState"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "spendQuoteDetail"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "confirmAndMintGrant"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "describeGenerationCost"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "symbol": "generationCostContextForNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "symbol": "confirmAndMintGrant"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "symbol": "describeGenerationCost"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "symbol": "generationCostContextForNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "confirmGenerationSpend"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "describeGenerationCost"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "generationCostContextForNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "generationCostContextForNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "confirmGenerationSpend"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "generationSpendsCredits"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+      "symbol": "spendQuoteDetail"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx",
+      "symbol": "useSpendConfirmStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "useSpendConfirmStore"
+    }
+  ],
+  "door_reduction": {
+    "before": 72,
+    "after": 72,
+    "why_not": "Original canvas and storyboard entry points remain; guard converges at shared confirmation and executor boundaries"
+  },
+  "generality_proof": "Optional target guard flows through the original shared runner for every original action",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "runGenerationNode",
+      "responsibility": "Check captured author target before each provider attempt; require a surviving node after the guard on every attempt"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "confirmAndRunNode",
+      "disposition": "enforced",
+      "evidence": "Guard after human approval and grant"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "confirmAndRunNodeVariants",
+      "disposition": "enforced",
+      "evidence": "Guard after human approval and grant"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "regenerateNodeInPlace",
+      "disposition": "enforced",
+      "evidence": "Guard after human approval and grant"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "runGenerationNode",
+      "disposition": "enforced",
+      "evidence": "Deferred guard deletion in foreground/background plus deletion before a retry; original cross-project result delivery remains covered"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every human approval can outlive the captured Run author state",
+    "same_class_scan": [
+      "Machine door maps for runner/batch/spend",
+      "Read quoteSpendLine: price identity does not include author content",
+      "node scripts/door-map.mjs runGenerationNode: four calls in the original single/variant/batch runner, /private/tmp/nomi-run-submit-doors.json",
+      "Red: /private/tmp/nomi-run-delete-red.log; foreground and background deletion during guard both submitted, retry resurrected deleted initialNode",
+      "runGenerationNodesByPlan→runGenerationNodesBatch lost assertCurrent: /private/tmp/nomi-cross-review-red.log proves initial and later-wave rejection missing"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "invariant": "Captured author target is checked after confirmation and grant before submission; After author validation, each executor attempt must resolve the node from its original project graph; absent nodes or graphs must fail closed, never fall back to the initial snapshot",
+    "failure_mode": "Reject stale author target before paid submission",
+    "exception_policy": "none",
+    "strategy": "Propagate original optional target guard through confirmation and executor waits; reread the original graph after validation, take the live store when loaded, and remove initial graph/node fallback",
+    "artifacts": [
+      "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+      "src/workbench/generationCanvas/spend/spendConfirm.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/runner/storyboardConfirmationGuard.test.ts",
+    "src/workbench/generationCanvas/runner/runProjectDelivery.background.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/runner/storyboardConfirmationGuard.test.ts",
+    "src/workbench/generationCanvas/runner/runProjectDelivery.background.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Same mutation and projection boundary; no alternate owner"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Local filesystem and shared application schema invariant",
+    "exit_criteria": []
+  },
+  "migration": "No persisted change or alternate execution path",
+  "residual_risks": [
+    "Controlled filesystem/service tests do not establish packaged Electron or Windows acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "tests": [
+      "src/workbench/generationCanvas/runner/storyboardConfirmationGuard.test.ts"
+    ]
+  }
+}

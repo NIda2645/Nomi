@@ -10,6 +10,7 @@
  * 而不是拿建立前的长度猜——槽位排序（边按 order、上传补空位）不保证新来的就在最后。
  */
 import React from 'react'
+import { useNodeWriteAccess, type NodeWriteAccess } from './nodeWriteAccess'
 import { useTranslation } from 'react-i18next'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { resolveReferenceSlots } from '../runner/referenceSlots'
@@ -21,16 +22,19 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 type LibraryAsset = { id: string; name: string; url: string; kind?: 'image' | 'video' | 'audio' }
 
-export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: readonly LibraryAsset[], reportFeedback: (message: string) => void): {
+export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: readonly LibraryAsset[], reportFeedback: (message: string) => void, writeAccess?: NodeWriteAccess): {
   /** 有序图片参考 url（兼容旧的图片 chip 编号）；视频/音频编号由 mediaReferences 提供。 */
   orderedReferenceUrls: string[]
   orderedMediaReferences: ReturnType<typeof currentReferenceMedia>
   mentionSearch: (query: string) => MentionSuggestionItem[]
   onMentionSelect: (item: MentionSuggestionItem) => number | null
 } {
+  const inheritedAccess = useNodeWriteAccess()
+  const access = writeAccess ?? inheritedAccess
   const { t } = useTranslation()
   const nodes = useGenerationCanvasStore((state) => state.nodes)
-  const edges = useGenerationCanvasStore((state) => state.edges)
+  const canvasEdges = useGenerationCanvasStore((state) => state.edges)
+  const edges = access.connectNodes ? canvasEdges : []
 
   const orderedReferenceUrls = React.useMemo(
     () => currentReferenceUrls(node, nodes, edges),
@@ -43,11 +47,11 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
 
   const mentionSearch = React.useCallback((query: string): MentionSuggestionItem[] => {
     const state = useGenerationCanvasStore.getState()
-    const target = state.nodes.find((candidate) => candidate.id === node.id) ?? node
+    const target = access.latestNode(node.id) ?? node
     return buildMentionCandidates({
       target,
       nodes: state.nodes,
-      edges: state.edges,
+      edges: access.connectNodes ? state.edges : [],
       libraryAssets,
       query,
       currentLabel: (index, kind) => t(
@@ -66,9 +70,10 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
       group: candidate.group as 'current' | 'canvas' | 'library',
       ...(candidate.referenceIndex === undefined ? {} : { index: candidate.referenceIndex }),
     }))
-  }, [libraryAssets, node, t])
+  }, [libraryAssets, node, t, access])
 
   const onMentionSelect = React.useCallback((item: MentionSuggestionItem): number | null => {
+    if (access.canWrite?.() === false) return null
     reportFeedback('')
     const plan = planMentionInsert({
       key: item.key,
@@ -82,10 +87,10 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     if (plan.kind === 'insert') return plan.index
 
     const store = useGenerationCanvasStore.getState()
-    const target = store.nodes.find((candidate) => candidate.id === node.id)
+    const target = access.latestNode(node.id)
     if (!target) return null
 
-    if (plan.kind === 'connect') {
+    if (plan.kind === 'connect' && access.connectNodes) {
       const source = store.nodes.find((candidate) => candidate.id === plan.sourceNodeId)
       if (!source) return null
       // 和手动拖把柄同一把闸：收不下就当场说清，不留假引用。
@@ -97,11 +102,11 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
         return null
       }
       const existingEdgesToTarget = store.edges.filter((edge) => edge.target === node.id)
-      store.connectNodes(plan.sourceNodeId, node.id, selectConnectionEdgeMode(source, target, existingEdgesToTarget))
+      access.connectNodes(plan.sourceNodeId, node.id, selectConnectionEdgeMode(source, target, existingEdgesToTarget))
     } else {
       // 素材库媒体 → 落进对应参考槽的上传位（与拖文件进卡同一条存储路径）。
       const desiredSlotKind = plan.mediaKind === 'video' ? 'video_ref' : plan.mediaKind === 'audio' ? 'audio_ref' : 'image_ref'
-      const slot = resolveReferenceSlots(target, store.nodes, store.edges).find((s) => s.slotKind === desiredSlotKind)
+      const slot = resolveReferenceSlots(target, store.nodes, access.connectNodes ? store.edges : []).find((s) => s.slotKind === desiredSlotKind)
       if (!slot) { reportFeedback(t('connection.unsupported')); return null }
       if (slot.max !== undefined && slot.fills.length >= slot.max) {
         reportFeedback(t('connection.slotsFull', { max: slot.max }))
@@ -112,15 +117,15 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
       const meta = (target.meta || {}) as Record<string, unknown>
       const existing = Array.isArray(meta[storage.metaKey]) ? (meta[storage.metaKey] as string[]) : []
       if (!existing.includes(plan.url)) {
-        store.updateNode(node.id, { meta: { ...meta, [storage.metaKey]: [...existing, plan.url] } })
+        access.updateNode(node.id, { meta: { ...meta, [storage.metaKey]: [...existing, plan.url] } })
       }
     }
 
     // 建立完再问一次最终顺序——槽位排序不保证新来的排在最后（边按 order、上传只补空位）。
     const after = useGenerationCanvasStore.getState()
-    const afterTarget = after.nodes.find((candidate) => candidate.id === node.id)
+    const afterTarget = access.latestNode(node.id)
     if (!afterTarget) return null
-    const media = currentReferenceMedia(afterTarget, after.nodes, after.edges)
+    const media = currentReferenceMedia(afterTarget, after.nodes, access.connectNodes ? after.edges : [])
     const index = media.find((reference) => reference.url === plan.url && reference.kind === plan.mediaKind)?.index ?? -1
     if (index < 0) {
       // 引用没真落进槽（例如被 placeAt 丢弃）→ 不插 chip，且明着说，别静默。
@@ -129,7 +134,7 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     }
     // currentReferenceMedia 已返回每种媒体自己的 1-based 编号；不要再次递增。
     return index
-  }, [node.id, reportFeedback, t])
+  }, [node.id, reportFeedback, t, access])
 
   return { orderedReferenceUrls, orderedMediaReferences, mentionSearch, onMentionSelect }
 }

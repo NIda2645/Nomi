@@ -18,6 +18,7 @@ import { cn } from '../../utils/cn'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { materializedShotIds } from './storyboard/exec/storyboardNodeBinding'
+import { useCreationRunPlans, creationRunTitle, runsForDocument, creationRunStatusKey } from './storyboard/useCreationRunPlans'
 
 type EditingTarget = { kind: 'document' | 'storyboard'; id: string } | null
 type ResourceMenu = {
@@ -27,7 +28,7 @@ type ResourceMenu = {
   y: number
 } | null
 
-export default function DocumentListSidebar(): JSX.Element {
+export default function DocumentListSidebar({ projectId }: { projectId?: string | null }): JSX.Element {
   const { t } = useTranslation()
   const documents = useWorkbenchStore((state) => state.workbenchDocuments)
   const activeDocumentId = useWorkbenchStore((state) => state.activeDocumentId)
@@ -43,10 +44,13 @@ export default function DocumentListSidebar(): JSX.Element {
   const duplicateStoryboardDesign = useWorkbenchStore((state) => state.duplicateStoryboardDesign)
   const renameStoryboardDesign = useWorkbenchStore((state) => state.renameStoryboardDesign)
   const deleteStoryboardDesign = useWorkbenchStore((state) => state.deleteStoryboardDesign)
+  const activeCreationRunId = useWorkbenchStore((state) => state.activeCreationRunId)
+  const setActiveCreationRunId = useWorkbenchStore((state) => state.setActiveCreationRunId)
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({})
   const [editing, setEditing] = React.useState<EditingTarget>(null)
   const [draftTitle, setDraftTitle] = React.useState('')
   const [menu, setMenu] = React.useState<ResourceMenu>(null)
+  const { runs: creationRuns } = useCreationRunPlans(projectId)
   const settledRef = React.useRef(false)
 
   React.useEffect(() => {
@@ -108,14 +112,23 @@ export default function DocumentListSidebar(): JSX.Element {
   // 的话，StoryboardWorkspace 的「没有激活方案就自动选第一个」会立刻把用户弹回方案里。
   const selectDocument = (id: string) => {
     setActiveDocumentId(id)
+    setActiveCreationRunId(null)
     setActiveStoryboardId(null)
     setWorkspaceMode('creation')
   }
 
   const selectStoryboard = (id: string, documentId: string) => {
+    setActiveCreationRunId(null)
     setActiveStoryboardId(id, documentId)
     setWorkspaceMode('storyboard')
     setExpanded((current) => ({ ...current, [documentId]: true }))
+  }
+
+  const selectCreationRun = (runId: string, documentId: string) => {
+    setActiveDocumentId(documentId)
+    setActiveStoryboardId(null)
+    setActiveCreationRunId(runId, documentId)
+    setWorkspaceMode('storyboard')
   }
 
   const createDesignForDocument = (documentId: string) => {
@@ -245,8 +258,9 @@ export default function DocumentListSidebar(): JSX.Element {
           <div className="px-2 py-3 text-caption text-nomi-ink-40">{t('creationAi.documentList.empty')}</div>
         ) : documents.map((doc) => {
           const designs = designsByDocumentId[doc.id] ?? []
+          const runs = runsForDocument(creationRuns, projectId || '', doc.id)
           const isExpanded = expanded[doc.id] !== false
-          const documentActive = doc.id === activeDocumentId && activeStoryboardId === null
+          const documentActive = doc.id === activeDocumentId && activeStoryboardId === null && activeCreationRunId === null
           const documentEditing = editing?.kind === 'document' && editing.id === doc.id
           return (
             <div key={doc.id} className="mb-1">
@@ -302,7 +316,7 @@ export default function DocumentListSidebar(): JSX.Element {
                     <IconFileText size={16} stroke={1.5} className="shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 break-words leading-snug line-clamp-2" data-document-title="true">{doc.title || t('runtime.project.untitled')}</span>
                     <span className="ml-auto shrink-0 text-micro tabular-nums text-nomi-ink-40 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
-                      {designs.length || ''}
+                      {designs.length + runs.length || ''}
                     </span>
                   </button>
                 )}
@@ -392,6 +406,34 @@ export default function DocumentListSidebar(): JSX.Element {
                           data-resource-menu-trigger="storyboard"
                           onClick={(event) => openMenuFromButton(event, { kind: 'storyboard', id: design.id }, doc.id)}
                         />
+                      </div>
+                    )
+                  })}
+                  {runs.map((run) => {
+                    const runActive = run.runId === activeCreationRunId
+                    const title = creationRunTitle(run)
+                    return (
+                      <div
+                        key={`run:${run.runId}`}
+                        className={cn(
+                          'group/run relative flex min-h-10 w-full items-center gap-1 rounded-nomi-sm border border-transparent px-2 py-1.5',
+                          runActive ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-80 hover:bg-nomi-ink-05',
+                        )}
+                        data-storyboard-run-row={run.runId}
+                        data-document-id={doc.id}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectCreationRun(run.runId, doc.id)}
+                          className={cn('flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-caption leading-tight', runActive ? 'text-nomi-accent' : 'text-nomi-ink-80')}
+                          data-storyboard-run-id={run.runId}
+                          data-active={runActive ? 'true' : 'false'}
+                          title={title}
+                        >
+                          <IconMovie size={16} stroke={1.5} className="shrink-0" aria-hidden />
+                          <span className="min-w-0 flex-1 break-words leading-snug line-clamp-2" data-storyboard-title="true">{title}</span>
+                          <span className="shrink-0 text-micro text-nomi-ink-40">{t(creationRunStatusKey(run.status))} · {t('storyboardEditor.runPlan.revision', { revision: run.revision })}</span>
+                        </button>
                       </div>
                     )
                   })}

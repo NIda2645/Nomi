@@ -6,6 +6,7 @@
 // 绝不阻断生成。故所有落点调用点都 try/catch 后继续。
 //
 // 幂等（§3.4）：materializationOperationId = `canvas-landing:{runId}`（每 Run 一个稳定 op），跑两次不重复建节点/组。
+import { storyboardContentToken } from '../shared/storyboard/generationPlanEditorial';
 import { createArtifactProjection } from "./artifactProjection";
 import type { ProductionRun, ProductionGenerationShot } from "./productionRunTypes";
 import { logWarn } from "../logging/logger";
@@ -65,6 +66,8 @@ export type MaterializeShotsWirePayload = {
    */
   planName?: string;
   shots: MaterializeShotWire[];
+  existingOnly?: boolean;
+  authorContentToken?: string;
 };
 
 /** 该 Run 的画布落地稳定 op id（每 Run 一个 → 崩溃/重开补齐都对同一章去重）。 */
@@ -197,6 +200,7 @@ export function buildMaterializeShotsPayload(
     materializationOperationId: canvasLandingOperationId(run.runId),
     ...(planName ? { planName } : {}),
     shots,
+    ...(run.origin.sourceDocument ? { existingOnly: true } : {}),
   };
 }
 
@@ -211,6 +215,7 @@ export type CanvasLandingDeps = {
   /** Optional lifecycle guard for detached observers.  It is checked before
    * touching the renderer and again before the durable Run bind. */
   isCurrent?: () => boolean;
+  projectAuthorEdit?: boolean;
 };
 
 /**
@@ -221,6 +226,7 @@ export async function landCanvasForRun(run: ProductionRun, deps: CanvasLandingDe
   if (deps.isCurrent && !deps.isCurrent()) return false;
   const payload = buildMaterializeShotsPayload(run, { projectRoot: deps.projectRoot, previewSecret: deps.previewSecret, planName: deps.planName, nowMs: deps.nowMs });
   if (!payload) return false;
+  if (deps.projectAuthorEdit && run.generationPlan?.editorial) payload.authorContentToken = storyboardContentToken(run);
   try {
     if (deps.isCurrent && !deps.isCurrent()) return false;
     const rendered = (await deps.requestRenderer("production.materialize-shots", payload, 60_000)) as { bindings?: unknown } | null;

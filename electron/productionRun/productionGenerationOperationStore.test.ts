@@ -123,3 +123,22 @@ describe("ProductionRun-owned generation operation store", () => {
     });
   });
 });
+
+
+it('rejects stale request writes and source mismatches through the durable Run CAS owner', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-storyboard-target-')); roots.push(root);
+  const repository = createProductionRunRepository({ projectDirResolver: () => root });
+  const service = createProductionRunService({ repository, projectRootResolver: () => root, sleep: async () => {} });
+  const operations = createProductionGenerationOperationStore(service);
+  const target = { projectId: 'project-1', sourceDocumentId: 'doc-a', sourceDocumentRevision: 3, sourceDocumentContentHash: 'hash-a',
+    targetRunId: 'op-a', targetKind: 'storyboard' as const, requestId: 'request-a', expectedRevision: 0 };
+  await operations.create({ operationId: 'op-a', projectId: 'project-1', candidate: candidate(), now: '2026-09-19T00:00:00Z',
+    origin: { host: 'nomi', sourceDocument: { documentId: 'doc-a', revision: 3, contentHash: 'hash-a' } } });
+  await operations.patch('project-1', 'op-a', { prompt: 'first saved edit' }, '2026-09-19T00:00:01Z', undefined, target);
+  await expect(operations.patch('project-1', 'op-a', { prompt: 'late overwrite' }, '2026-09-19T00:00:02Z', undefined, target)).rejects.toThrow('storyboard_target_stale');
+  for (const mismatch of [{ sourceDocumentId: 'doc-b' }, { sourceDocumentRevision: 4 }, { sourceDocumentContentHash: 'hash-b' }]) {
+    await expect(operations.patch('project-1', 'op-a', { prompt: 'wrong source' }, '2026-09-19T00:00:03Z', undefined, { ...target, expectedRevision: 1, ...mismatch })).rejects.toThrow('storyboard_target_stale');
+  }
+  const second = await operations.patch('project-1', 'op-a', { prompt: 'second saved edit' }, '2026-09-19T00:00:04Z', undefined, { ...target, expectedRevision: 1 });
+  expect(second).toMatchObject({ runRevision: 2, candidate: { prompt: 'second saved edit' } });
+});

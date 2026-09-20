@@ -222,7 +222,7 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
         const opened = await prepareInput()
         if (scoped && !address) address = opened
       } catch (error) {
-        if (error instanceof LaneCommandFailure) return { ok: false, code: error.laneCode, diagnostic: error.diagnostic }
+        if (error instanceof LaneCommandFailure) return { ok: false, code: error.laneCode, diagnostic: '' }
         throw error
       }
     }

@@ -28,8 +28,8 @@ test('这道门岗进了 contracts 档，不是一个没人跑的脚本', () => 
 const MUTATIONS = [
   ['宿主分支新长出一个必填字段，顺着投影流到模型脸上（原型那次全绿的那条）', [
     ['electron/shared/agentCapabilities/exportCapabilities.ts',
-      'const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema }).strict();',
-      'const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema, requestedBy: z.string() }).strict();'],
+      "const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema, domain: z.literal('export').optional() }).strict();",
+      "const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema, domain: z.literal('export').optional(), requestedBy: z.string() }).strict();"],
   ], /cancel_job|check_job/],
   ['改一句模型读得到的描述（投影里唯一允许手写的东西，也要有人说一声）', [
     ['electron/shared/agentCapabilities/verbs/verbProjections.ts',

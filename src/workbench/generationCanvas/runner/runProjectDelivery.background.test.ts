@@ -6,7 +6,7 @@ import type { GenerationCanvasNode, GenerationNodeResult } from '../model/genera
 import type { WorkbenchProjectRecordV1 } from '../../project/projectRecordSchema'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useGenerationQueueStore } from './generationQueueStore'
-import { runGenerationNodesBatch } from './generationRunController'
+import { runGenerationNode, runGenerationNodesBatch, runGenerationNodesByPlan } from './generationRunController'
 import { runCatalogGenerationTask } from './catalogTaskActions'
 import { setCanvasEventSinkForTests } from '../events/canvasEventEmitter'
 import { __resetCanvasUndoJournalForTests } from '../events/canvasUndoJournal'
@@ -129,4 +129,55 @@ describe('background generation keeps the project identity fixed at submission',
     expect(submissions[0].extras?.projectId).toBeUndefined()
     expect(polls).toEqual(['project-a'])
   })
+})
+
+
+it.each([false, true])('does not submit a node deleted during author validation (background=%s)', async background => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'delete before submit' })
+  const checking = deferred<void>()
+  const resume = deferred<void>()
+  const executor = vi.fn(async (): Promise<GenerationNodeResult> => ({ id: 'forbidden-result', type: 'image', url: 'nomi-local://asset/result.png', createdAt: 1 }))
+  const run = runGenerationNode(node.id, {
+    target, assetUploadConsent: 'not-needed', executor,
+    assertCurrent: async () => { checking.resolve(); await resume.promise },
+  })
+  const rejected = expect(run).rejects.toThrow('node not found')
+  await checking.promise
+  useGenerationCanvasStore.getState().deleteNode(node.id)
+  if (background) {
+    persistOpenCanvasAs(target.projectId)
+    await session.open('project-b')
+  }
+  resume.resolve()
+  await rejected
+  expect(executor).not.toHaveBeenCalled()
+  expect(useGenerationCanvasStore.getState().nodes.find(candidate => candidate.id === node.id)).toBeUndefined()
+})
+
+it('does not resurrect the initial node on a retry after deletion', async () => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'delete during failed attempt' })
+  const executor = vi.fn(async (): Promise<GenerationNodeResult> => {
+    useGenerationCanvasStore.getState().deleteNode(node.id)
+    throw new TypeError('failed to fetch')
+  })
+  await expect(runGenerationNode(node.id, {
+    target, assetUploadConsent: 'not-needed', executor, retry: { maxAttempts: 2, baseDelayMs: 0 },
+  })).rejects.toThrow('node not found')
+  expect(executor).toHaveBeenCalledOnce()
+})
+
+
+it.each([0, 1])('batch validates author target before every wave (allowed attempts=%s)', async allowed => {
+  const target = await session.open('project-a')
+  const ids = [1, 2].map(index => useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: `shot ${index}` }).id)
+  const executor = vi.fn(async (): Promise<GenerationNodeResult> => ({ id: 'result', type: 'image', url: 'nomi-local://asset/result.png', createdAt: 1 }))
+  const outcome = await runGenerationNodesByPlan({ waves: ids.map(id => [id]), blocked: [], edgesUsed: [] }, {
+    target, assetUploadConsent: 'not-needed', executor,
+    assertCurrent: async () => { if (executor.mock.calls.length >= allowed) throw new Error('storyboard_content_conflict') },
+  })
+  expect(executor).toHaveBeenCalledTimes(allowed)
+  expect(outcome.failures.map(item => item.nodeId)).toEqual(ids.slice(allowed))
+  expect(outcome.failures.every(item => item.error.message === 'storyboard_content_conflict')).toBe(true)
 })

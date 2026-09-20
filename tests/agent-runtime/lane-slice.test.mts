@@ -5,14 +5,14 @@
 // 就空了。这里证的是新通路里顺序**根本不需要被算出来**——它落在盘上，关掉进程、重开、
 // 从盘上读回来，段与段的相对位置一个字都不变。
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { laneSessionsRoot } from '../../electron/agentLane/laneSession.mjs';
 import type { LanePart } from '../../electron/shared/agentLane/laneContracts.js';
 import { LANE_APPROVAL_NOTE_TYPE } from '../../electron/shared/agentLane/laneContracts.js';
-import { createLaneFixture } from './laneFixture.mjs';
+import { createLaneFixture, readFixtureNativeEntries } from './laneFixture.mjs';
 
 /** 段的身份 = 「这是哪一种段 + 它是谁」。**刻意不含 sequence**——否则断言就是在自证。 */
 function shape(part: LanePart): string {
@@ -181,9 +181,30 @@ test('the live projection matches the checked-in fixture the renderer layer is t
   await lane.execute({ kind: 'prompt', text: 'Append one paragraph to the document.' });
 
   // 从仓库根解析，不从 `import.meta.url`：编译产物住在 `.tmp/` 下，夹具 JSON 不跟着搬。
-  const expected = JSON.parse(await readFile(
-    join(process.cwd(), 'tests/agent-runtime/__fixtures__/lane-projection.json'), 'utf8')) as unknown;
-  assert.deepEqual(JSON.parse(JSON.stringify(lane.projection())), expected,
+  const projection = lane.projection();
+  await lane.close();
+  const entries = await readFixtureNativeEntries(fixture.projectDir);
+  const ids = new Map(entries.filter(entry => entry.id).map(entry => [entry.id, `native-entry-${entry.seq}`]));
+  assert.equal(ids.size, entries.filter(entry => entry.id).length, 'native ids are unique');
+  for (const part of projection.parts) {
+    const native = entries.find(entry => entry.seq === part.entrySeq);
+    assert.ok(native, 'each projected entrySeq belongs to the native log');
+    assert.equal(part.entryId, native.id, 'projection retains the exact native entry id');
+  }
+  const normalize = (key: string, value: unknown) => {
+    if (['entryId', 'retryInputEntryId', 'continuationEntryId', 'before'].includes(key) && typeof value === 'string') {
+      assert.ok(ids.has(value), `${key} must refer to an actual native entry`);
+      return ids.get(value);
+    }
+    return value;
+  };
+  const actual = JSON.parse(JSON.stringify(projection, normalize));
+  const fixturePath = join(process.cwd(), 'tests/agent-runtime/__fixtures__/lane-projection.json');
+  if (process.env.NOMI_UPDATE_LANE_PROJECTION_FIXTURE === '1') {
+    await writeFile(fixturePath, `${JSON.stringify(actual, null, 2)}\n`);
+  }
+  const expected = JSON.parse(await readFile(fixturePath, 'utf8')) as unknown;
+  assert.deepEqual(actual, expected,
     'regenerate tests/agent-runtime/__fixtures__/lane-projection.json when the wire shape changes on purpose');
 });
 

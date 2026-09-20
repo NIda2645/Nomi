@@ -253,6 +253,7 @@ export function projectLaneSnapshot(
       parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0,
         kind: 'user', text: isLaneInputMessage(message) ? message.context.displayText ?? message.content : textOf(message.content),
         ...(skillKey ? { skillKey } : {}),
+        ...(isLaneInputMessage(message) && message.context.storyboardTarget ? { storyboardTarget: message.context.storyboardTarget } : {}),
         ...(isLaneInputMessage(message) && message.context.skillSnapshot ? { skillSnapshot: message.context.skillSnapshot } : {}) });
       continue;
     }

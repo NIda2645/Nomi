@@ -10,7 +10,25 @@ export async function checkComposerFixedFooter(win, { composer, promptInput, flo
   for (const state of ['short', 'long', 'cramped', 'narrow']) {
     const prompt = state === 'long' ? longPrompt : state === 'short' ? '一只猫坐在窗边，暖色自然光。' : ''
     if (state === 'cramped' || state === 'narrow') {
-      await promptInput.click()
+      // A long contenteditable is taller than its scrollport. Click the visible
+      // editor intersection, not the off-screen centre of the whole document.
+      const point = await promptInput.evaluate(editor => {
+        const scroller = editor.closest('[data-node-composer-prompt]')
+        if (!scroller) throw new Error('Prompt scrollport missing')
+        const content = editor.getBoundingClientRect(), viewport = scroller.getBoundingClientRect()
+        const left = Math.max(content.left, viewport.left, 0)
+        const right = Math.min(content.right, viewport.right, innerWidth)
+        const top = Math.max(content.top, viewport.top, 0)
+        const bottom = Math.min(content.bottom, viewport.bottom, innerHeight)
+        const x = (left + right) / 2, y = (top + bottom) / 2
+        const hit = document.elementFromPoint(x, y)
+        if (right <= left || bottom <= top || !hit || !editor.contains(hit)) {
+          throw new Error('Visible prompt input is obstructed')
+        }
+        return { x, y }
+      })
+      await win.mouse.click(point.x, point.y)
+      await expect(promptInput).toBeFocused()
       await promptInput.press('ControlOrMeta+A')
       await promptInput.press('Backspace')
     } else await promptInput.fill(prompt)
@@ -61,8 +79,13 @@ export async function checkComposerFixedFooter(win, { composer, promptInput, flo
         return value.promptHeight >= 72 && value.outerOverflow === 'hidden' && value.outerScrollTop === 0 && value.generateHit && value.moreHit && value.rowHeight <= 24 && (value.rowHeight >= 24 || value.visibleChips === 0) && value.chipsHit && (state !== 'long' || value.promptScrolls)
       }, { message: `${state}/${scheme}: 输入内滚、底栏可点、推荐行最多一行` }).toBe(true)
       await composer.locator('[data-effect-more]').click()
-      await expect(win.getByTestId('node-effect-menu')).toBeVisible()
+      const effectMenu = win.getByTestId('node-effect-menu')
+      const effectTrigger = composer.locator('[data-effect-more]')
+      await expect(effectMenu).toBeVisible()
       await win.keyboard.press('Escape')
+      await expect(effectMenu).toBeHidden()
+      await expect(composer).toBeVisible()
+      await expect(effectTrigger).toBeFocused()
       const value = await read()
       evidence.push({ state, scheme, nodeWidth: (await flowNode.boundingBox())?.width, ...value })
       await screenshotSettled(win, { path: path.join(dir, `${state}-${scheme}.png`) })

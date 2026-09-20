@@ -13,6 +13,22 @@
  */
 import type { ResidentSurfaceDisabledReason, ResidentSurfaceOffPhase } from "./residentSurfaceLifecycle";
 
+import { z } from 'zod';
+import { generationReferenceSchema, type GenerationReference } from '../agentCapabilities/generationPlanSchemas';
+
+export type PendingSpendReference = GenerationReference & Readonly<{ url?: string }>;
+/** Semantic renderer edit; pinned identities are accepted only when already in this candidate. */
+export const spendReferenceInputSchema = z.union([
+  z.object({ reference: generationReferenceSchema, url: z.string().min(1).optional() }).strict(),
+  generationReferenceSchema.omit({ assetId: true, contentHash: true, version: true })
+    .extend({ url: z.string().trim().min(1) }).required({ kind: true }).strict(),
+]);
+export type SpendReferenceInput = z.infer<typeof spendReferenceInputSchema>;
+
+export function spendReferenceKey(reference: GenerationReference): string {
+  return JSON.stringify([reference.assetId, reference.contentHash, reference.version, reference.kind ?? null, reference.role ?? null]);
+}
+
 export type PendingSpendPrice = { known: true; amount: number } | { known: false };
 
 /** 一镜在付费卡上的全部事实。绝不含 transportModelId、密钥或供应商 URL。 */
@@ -28,7 +44,7 @@ export type PendingSpendShot = Readonly<{
   mode?: string;
   modeId?: string;
   parameters: Readonly<Record<string, unknown>>;
-  references?: readonly Readonly<{ assetId: string; contentHash: string; version: number; kind?: string; role?: string }>[];
+  references?: readonly PendingSpendReference[];
   price: PendingSpendPrice;
 }>;
 

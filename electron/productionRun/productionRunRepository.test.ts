@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ProductionRunRevisionConflictError,
@@ -384,3 +384,37 @@ describe("ProductionRunRepository", () => {
     });
   });
 });
+
+describe('K3 trusted absence boundary', () => {
+  it.each(['missing', 'empty', 'wrong-shape'] as const)('rejects a corrupt snapshot with %s event history without rewriting evidence', (history) => {
+    const paths = productionRunPaths(root, 'run-damaged');
+    fs.mkdirSync(paths.dir, { recursive: true });
+    const damaged = '{synthetic-secret-corrupt-snapshot';
+    fs.writeFileSync(paths.snapshot, damaged);
+    if (history !== 'missing') fs.writeFileSync(paths.events, history === 'empty' ? '' : '{}\n');
+    expect(() => repository().read('project-1', 'run-damaged')).toThrow();
+    expect(fs.readFileSync(paths.snapshot, 'utf8')).toBe(damaged);
+  });
+
+  it('reserves null for absent durable records', () => {
+    expect(repository().read('project-1', 'never-created')).toBeNull();
+  });
+
+  it('does not classify an existing empty event log as an absent Run', () => {
+    const paths = productionRunPaths(root, 'run-damaged');
+    fs.mkdirSync(paths.dir, { recursive: true });
+    fs.writeFileSync(paths.events, '');
+    expect(() => repository().read('project-1', 'run-damaged')).toThrow();
+  });
+});
+
+  it('K3 refuses a storage permission failure instead of minting absence', () => {
+    const realRead = fs.readFileSync;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+      if (String(args[0]).includes('run-unreadable')) throw Object.assign(new Error('synthetic-secret-permission'), { code: 'EACCES' });
+      return realRead(...args);
+    });
+    try {
+      expect(() => repository().read('project-1', 'run-unreadable')).toThrow('Production run storage read failed');
+    } finally { spy.mockRestore(); }
+  });

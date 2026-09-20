@@ -144,13 +144,13 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   const inPanel = host === 'panel'
   // 写到哪儿由宿主接住（见 nodeWriteAccess）：画布宿主写 store，付费确认卡写它自己的草稿账本，
   // 直到用户按下「生成」才由主进程把改动投影回画布。组件这一侧两个宿主一条写入调用。
-  const { updateNode: writeNode, latestNode } = useNodeWriteAccess()
+  const { updateNode: writeNode, latestNode, connectNodes } = useNodeWriteAccess()
   const readOnlyRef = React.useRef(readOnly)
   readOnlyRef.current = readOnly
   const updateNode = React.useCallback((...args: Parameters<typeof writeNode>) => {
     if (!readOnlyRef.current) writeNode(...args)
   }, [writeNode])
-  const writeAccess = React.useMemo(() => ({ updateNode, latestNode }), [updateNode, latestNode])
+  const writeAccess = React.useMemo(() => ({ updateNode, latestNode, canWrite: () => !readOnlyRef.current, ...(!inPanel && connectNodes ? { connectNodes: ((...args: Parameters<typeof connectNodes>) => { if (!readOnlyRef.current) return connectNodes(...args) }) as typeof connectNodes } : {}) }), [updateNode, latestNode, inPanel, connectNodes])
   const status = node.status || 'idle'
   const isGenerating = status === 'queued' || status === 'running'
   const hasResult = Boolean(node.result?.url)
@@ -220,7 +220,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   // 变体张数是会话态、不落盘；显式列出 1–4，避免循环按钮让用户猜下一档。
   const [variantCount, setVariantCount] = React.useState<GenerationVariantCount>(1)
   // 拖文件到卡 → 加为参考（捷径 A）。仅当当前模式有数组参考槽时接管拖拽。
-  const { acceptsDrop, isDragOver, isUploading, dropHandlers } = useNodeAssetDrop(node, reportFeedback)
+  const { acceptsDrop, isDragOver, isUploading, dropHandlers } = useNodeAssetDrop(node, reportFeedback, writeAccess)
   // @ 候选 = 当前模式 image_ref 槽的有序填充（连线在前+上传，option 2 单源），与面板编号①②③、
   // 发送的 reference_image 数组同一口径——连线进来的参考图也在候选里、能被 @（此前只读 meta 漏掉边）。
   // 候选已扩到三组：当前参考 / 画布已出图节点 / 素材库。后两组选中会**先真的建立引用**再插 chip
@@ -234,7 +234,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
     [projectAssets],
   )
   const { orderedReferenceUrls: mentionCandidates, orderedMediaReferences, mentionSearch, onMentionSelect } =
-    useNodeMentionSource(node, mentionLibraryAssets, reportFeedback)
+    useNodeMentionSource(node, mentionLibraryAssets, reportFeedback, writeAccess)
   const insertMention = React.useCallback((url: string) => {
     if (!promptEditor || promptEditor.isDestroyed) return
     const reference = orderedMediaReferences.find((candidate) => candidate.url === url)
@@ -272,8 +272,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
       // 模型任何模式都不吃图参考 → 诚实提示只应用了文本，不写死数据。
       const referenceUrls = (item.referenceImages ?? []).map((reference) => reference.url).filter(Boolean)
       if (referenceUrls.length) {
-        const state = useGenerationCanvasStore.getState()
-        const target = state.nodes.find((candidate) => candidate.id === node.id)
+        const target = latestNode(node.id)
         const archetype = target ? archetypeForNode(target) : null
         if (target && archetype) {
           const promotedModeId = resolveModeForReferenceDemand(
@@ -282,19 +281,19 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
             [{ slots: ['image_ref'], asset: 'image' }],
           )
           if (promotedModeId) {
-            state.updateNode(node.id, {
+            updateNode(node.id, {
               meta: applyArchetypeModeSwitch((target.meta || {}) as Record<string, unknown>, archetype, promotedModeId),
             })
           }
         }
-        const outcomes = referenceUrls.map((url) => addAssetUrlToNode(node.id, 'image', url))
+        const outcomes = referenceUrls.map((url) => addAssetUrlToNode(node.id, 'image', url, writeAccess))
         if (outcomes.every((outcome) => outcome.status === 'no-slot')) {
           reportFeedback(t('generationCommon.composer.promptReferenceUnsupported'))
         }
       }
-      void persistActiveWorkbenchProjectNow().catch(() => {})
+      if (!inPanel) void persistActiveWorkbenchProjectNow().catch(() => {})
     },
-    [mentionCandidates, node.id, node.locked, node.prompt, promptEditor, reportFeedback, t, updateNode],
+    [mentionCandidates, node.id, node.locked, node.prompt, promptEditor, reportFeedback, t, updateNode, latestNode, writeAccess, inPanel],
   )
 
   const handleGenerate = async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -386,9 +385,10 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
       <div
         className={cn(
           'generation-canvas-v2-node__composer-card',
+          NODE_SCROLL_REGION_CLASS_NAME,
           'relative flex flex-col gap-1.5 min-w-0',
           // 面板宿主里**卡壳是介入槽的**：再描一层边就成了框中框，而里外说的是同一张卡。
-          inPanel ? 'w-full p-0' : 'p-3 max-w-[880px] w-max border border-nomi-line rounded-nomi bg-nomi-paper overflow-y-auto overscroll-contain shadow-nomi-md',
+          inPanel ? 'w-full p-0' : 'p-3 max-w-[880px] w-max border border-nomi-line rounded-nomi bg-nomi-paper overflow-hidden shadow-nomi-md',
           'transition-[outline-color] duration-150',
           isDragOver && 'outline-2 outline-dashed outline-nomi-accent outline-offset-[-2px]',
         )}
@@ -402,7 +402,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           touchAction: 'auto',
         }}
       >
-      {readOnly ? <div role="status" className="text-caption text-nomi-ink-50">{t('generationCommon.workflowPlugin.readOnly')}</div> : null}
+      {readOnly ? <div role="status" className="text-caption text-nomi-ink-60">{t('generationCommon.workflowPlugin.readOnly')}</div> : null}
       {hasReferenceControls && !readOnly ? (
         <div data-node-composer-references className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-nomi-line-soft')} style={inPanel ? undefined : { maxHeight: referenceMaxHeight }}>
           <NodeParameterControls node={node} section="references" onInsertMention={insertMention} />

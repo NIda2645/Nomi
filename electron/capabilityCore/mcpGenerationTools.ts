@@ -1,3 +1,5 @@
+import { editorialFromDraftSubjects, presentStoryboardAuthoring, patchStoryboardAuthoring } from './mcpGenerationMultiShot';
+import type { GenerationPlanEditorial } from '../shared/storyboard/generationPlanEditorial';
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext';
@@ -55,7 +57,7 @@ import type { GenerationDefaultTaskKind } from "../settings/generationModelDefau
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
-import { GENERATION_RECONCILE_OUTCOMES, generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
+import { generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 
 // J06 — 诚实 ETA：冷启动给区间（low/high），不再硬编 40/180s 点值。
 // 历史 P50/P90 落盘后可切 etaBasis='historical'；当前全部为 coldstart。
@@ -95,8 +97,11 @@ export type GenerationOperationShot = Readonly<{
 export type { GenerationOperationDraftShot, GenerationSealMultiShot, StoryboardShotDraft, StoryboardPlanResult } from "./mcpGenerationMultiShot";
 
 export type GenerationOperation = Readonly<{
+  editorial?: GenerationPlanEditorial;
+  sourceDocumentId?: string;
   operationId: string;
   projectId: string;
+  runRevision?: number;
   candidate: PlanCandidate;
   state: GenerationOperationState;
   /** 草稿建好但报价卡还没摆到用户面前（见 `ProductionGenerationPlan.cardHidden`）。 */
@@ -120,12 +125,12 @@ export type GenerationAuthorizationPreparation = Readonly<{
 
 export type GenerationOperationStore = {
   // P4 S6.5: `shots` seeds a multi-shot draft (anchor + video shots). Absent → single-shot (unchanged).
-  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string; origin?: { host: string; actorId?: string }; shots?: ReadonlyArray<GenerationOperationDraftShot>; cardHidden?: boolean }): GenerationOperation | Promise<GenerationOperation>;
+  create(input: { operationId: string; projectId: string; candidate: PlanCandidate; now: string; origin?: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } }; shots?: ReadonlyArray<GenerationOperationDraftShot>; editorial?: GenerationPlanEditorial; cardHidden?: boolean }): GenerationOperation | Promise<GenerationOperation>;
   read(projectId: string, operationId: string): GenerationOperation | null | Promise<GenerationOperation | null>;
   /** `shotId`：改多镜草稿里的一镜（那一镜的候选 revision +1，其它镜一字不动）；缺省 = 顶层候选。 */
-  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string, shotId?: string): GenerationOperation | Promise<GenerationOperation>;
+  patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">> & {storyboard?: import('../shared/storyboard/storyboardPlan').PlanAnchor | import('../shared/storyboard/storyboardPlan').PlanShot}, now: string, shotId?: string, target?: GenerationInvocationContext['storyboardTarget']): GenerationOperation | Promise<GenerationOperation>;
   /** `generate` 动词：清掉 `cardHidden`，报价卡从这一刻起可投影。只对 draft 合法。 */
-  present(projectId: string, operationId: string, now: string, shotIds?: readonly string[]): GenerationOperation | Promise<GenerationOperation>;
+  present(projectId: string, operationId: string, now: string, shotIds?: readonly string[], target?: GenerationInvocationContext['storyboardTarget']): GenerationOperation | Promise<GenerationOperation>;
   dismiss(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   // P4 S6.5: `multiShot` seals per-shot sub-contracts + planHash (reducer freezes the whole batch). Absent
   // → single-shot seal of the one top-level contract (byte-identical to today).
@@ -142,6 +147,7 @@ export type GenerationOperationStore = {
 
 /** 卡上那一次改动：改哪一镜（缺省 = 顶层候选）、改了什么。 */
 export type GenerationReviseInput = Readonly<{
+  expectedRevision?: number;
   shotId?: string;
   patch: Readonly<Record<string, unknown>>;
   /** 只对 `shotId` 有意义：把这一镜勾上/取消勾选（「逐镜 / 全部」那个范围切换的落点）。 */
@@ -168,6 +174,8 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
         operationId: input.operationId,
         projectId: input.projectId,
         candidate: structuredClone(input.candidate),
+        ...(input.editorial ? { editorial: structuredClone(input.editorial) } : {}),
+        ...(input.origin?.sourceDocument ? {sourceDocumentId:input.origin.sourceDocument.documentId} : {}),
         state: "draft" as const,
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
         // P4 S6.5: seed draft shots (candidate/role/included, no sub-contract). Single-shot omits shots.
@@ -256,6 +264,8 @@ export type GenerationPlanningHandlerDependencies = {
   registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   operations: GenerationOperationStore;
   now?: () => string;
+  resolveStoryboardReferenceUrl?: (projectId: string, reference: PlanCandidate["references"][number]) => string;
+  requestRendererDecision?: (op: string, payload: unknown) => Promise<unknown>;
   context?: (input: { projectId: string; lease: ProjectLeaseV2 }) => unknown | Promise<unknown>;
   /**
    * Recovery capabilities are descriptive only. This resolver answers the
@@ -508,13 +518,14 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     };
   };
 
-  return async (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV2; origin?: { host: string; actorId?: string } }): Promise<unknown> => {
+  return async (input: Parameters<GenerationPlanningHandler>[0]): Promise<unknown> => {
     const params = input.params;
     // resolve = stateless advisory pass（generation strategy resolver）：纯计算、不落 durable
     // operation、不触生成，本就不需要项目租赁凭证（GUI 窄 IPC 也是无 lease 进来）→ 提前返回。
     // 其余 capability（context/create/preview/gate_*/start…）一律要求已核验 lease。
     if (input.capability === "resolve") return resolvePlanAdvisory(params);
     if (!input.lease) throw new Error("A verified project lease is required");
+    const capturedProjectId = input.lease.projectId;
     if (input.capability === "context") {
       if (deps.context) return deps.context({ projectId: input.lease.projectId, lease: input.lease });
       const providerProfiles = (deps.registry.snapshot?.() ?? []).flatMap((manifest) => manifest.providers.map((provider) => ({
@@ -554,21 +565,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
-      // P4 S6.5 生产入口: a multi-shot draft is created from `shots` (client gives每镜 plan) or `scriptText`
-      // (storyboard planner 拟稿). Both land the same durable draft.shots that S1 patch/preview address and
-      // gate_request seals. Neither `shots` nor `scriptText` → single-shot (today, byte-identical).
       const draftShots = await resolveCreateShots(input.lease.projectId, params);
       if (draftShots) {
         const normalizedShots = draftShots.map((shot) => ({ ...shot, candidate: normalizeVideoCandidate(shot.candidate, deps.videoModelCandidates) }));
-        // 顶层 candidate = 第一个 shot 的 candidate (reducer seal 硬要顶层 contract 匹配顶层 draft candidate,
-        // productionRunReducer.ts generation.seal). 与 S4 e2e setup 同构 (top = shots[0]).
-        const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
+        const editorial = input.origin?.sourceDocument ? editorialFromDraftSubjects(normalizedShots, capturedProjectId, deps.resolveStoryboardReferenceUrl) : undefined;
+        const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, ...(editorial ? {editorial} : {}), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
         return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
       }
-      // A natural-language create request only needs `prompt`.  Keep the
-      // explicit candidate path intact, but compile the short path at this
-      // boundary so the model never has to invent internal candidate IDs or
-      // provider wiring (the previous behavior surfaced as a false refusal).
       const singleProjectId = input.lease.projectId;
       const singleCandidate = semanticCandidateFromParams({
         operationId,
@@ -580,29 +583,32 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
           ? { resolveAssetReferenceIdentity: (assetId: string) => deps.resolveAssetReferenceIdentity!(singleProjectId, assetId) }
           : {}),
       });
-      // P4 §5.1.4 锚复用授权面（单镜同守，P2 通用性）：单镜引用外来/不存在资产也当场拒——references 有三个入口，
-      // 单镜 candidate 是其一，不能只堵多镜。多镜路已在 resolveCreateShots 内校验过。
       if (deps.assertReferencesResolvable && singleCandidate.references.length > 0) {
         deps.assertReferencesResolvable(input.lease.projectId, singleCandidate.references);
       }
-      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
+      const normalizedSingle = normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates);
+      const singleEditorial = input.origin?.sourceDocument ? editorialFromDraftSubjects([{shotId:normalizedSingle.candidateId,candidate:normalizedSingle,storyboard:params.storyboard as GenerationOperationDraftShot['storyboard']}],capturedProjectId,deps.resolveStoryboardReferenceUrl) : undefined;
+      const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedSingle, ...(singleEditorial ? {editorial:singleEditorial} : {}), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
       return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
     }
     const current = await deps.operations.read(input.lease.projectId, operationId);
     if (!current) throw new GenerationOperationNotFoundError();
     if (input.capability === "present") {
+      if (current.editorial) return presentStoryboardAuthoring(current,capturedProjectId,operationId,params.shotIds,deps.requestRendererDecision);
       // The durable owner validates lifecycle and preserves prior execution evidence.
       const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], params.shotIds);
-      const operation = await deps.operations.present(input.lease.projectId, operationId, now(), scope);
+      const operation = await deps.operations.present(input.lease.projectId, operationId, now(), scope, input.storyboardTarget);
       const shots = operation.shots && operation.shots.length > 0
         ? operation.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)
         : [operation.candidate.candidateId];
       return { operation, taskRef: generationTaskReference(operation.operationId), shots, nextAction: "await_user" };
     }
     if (input.capability === "plan") {
+      if (current.editorial) {
+        const operation = await patchStoryboardAuthoring(current,params,capturedProjectId,operationId,now(),deps.operations,resolvePatchReferences,deps.resolveStoryboardReferenceUrl,input.storyboardTarget);
+        return {operation,taskRef:generationTaskReference(operationId),nextAction:'preview'};
+      }
       const rawPatch = record(params.patch, "generation patch") as Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
-      // The wire model is a derived projection. Never accept it from an MCP
-      // caller; it is recomputed from the selected archetype mode/variant.
       const { transportModelId: _ignoredTransportModelId, references: patchedReferences, ...patchRest } = rawPatch as
         Partial<Omit<PlanCandidate, "candidateId" | "revision">> & { references?: unknown };
       // 改草稿这条路的参考同样只带 assetId（`draft_shots` 带 operationId 时走这里）。不在这里补身份，
@@ -610,8 +616,6 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const userPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">> = patchedReferences === undefined
         ? patchRest
         : { ...patchRest, references: resolvePatchReferences(input.lease.projectId, patchedReferences) };
-      // 多镜草稿改一镜：`shotId` 指到 shots[] 里那一镜，合并与变更集都对着**它的**候选算（顶层候选是
-      // 第一镜的镜像，拿它当基准会把别的镜的模型/模式当成「变了」）。缺省 = 顶层候选（单镜草稿，逐字不变）。
       const shotId = typeof params.shotId === "string" && params.shotId.trim() ? params.shotId.trim() : undefined;
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
       if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
@@ -635,8 +639,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
         ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
       };
-      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now(), shotId);
-      // J05 — 模型/模式切换时返回 changeset，让调用方知道哪些字段被静默重置。
+      const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now(), shotId, input.storyboardTarget);
       const changeset = (modelChanged || modeChanged) ? {
         modelChanged, modeChanged,
         ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
@@ -647,6 +650,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview", ...(changeset ? { changeset } : {}) };
     }
     if (input.capability === "preview") {
+      if (current.editorial) return { operation: current, taskRef: generationTaskReference(operationId), nextAction: "present" };
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
       const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
       const readiness = resolveProviderReadiness(deps, candidate);
@@ -682,16 +686,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       };
     }
     if (input.capability === "gate_request") {
+      if (current.editorial) throw new Error("storyboard_present_required: use the original storyboard confirmation");
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
       const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
       const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const gateResolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode }); // J06
-      // P4 S6.5: a multi-shot draft seals its per-shot sub-contracts + planHash (built from the draft
-      // shots) alongside the top-level contract. `sealMultiShotFor` compiles each included shot's contract
-      // and the plan hash; the store forwards them to the reducer (which freezes the batch + hard cap). A
-      // single-shot draft passes no bundle (byte-identical to today). Top contract = shots[0]'s contract
-      // (顶层 candidate = shots[0].candidate), so the reducer's top-level match holds.
+      // Seal compiled execution facts; raw editor candidates remain owned by the draft.
       const multiShotSeal = current.state === "draft" ? sealMultiShotFor(current) : undefined;
       // Preview may honestly show an unknown price, but a paid gate may never
       // turn that unknown into a zero ceiling or an approval prompt. Check all
@@ -795,4 +796,5 @@ export type GenerationPlanningHandler = (input: {
   lease?: ProjectLeaseV2;
   origin?: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   selectedPlan?: GenerationInvocationContext['selectedPlan'];
+  storyboardTarget?: GenerationInvocationContext['storyboardTarget'];
 }) => unknown | Promise<unknown>;

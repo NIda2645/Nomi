@@ -194,6 +194,24 @@ afterEach(() => {
 });
 
 describe("P4 S4 batch scheduler — budget halt", () => {
+  it("does not mint a continuation when decimal authority already covers liability plus the remaining job", () => {
+    const { repository } = setupBatch([shotEntry("shot-a", "a")], null);
+    const run = repository.read("project-1", "op-batch")!;
+    const exactCap = {
+      ...run,
+      budget: { ...run.budget, authorized: 10.1, actual: 10, reserved: 0, unsettled: 0 },
+    };
+
+    expect(() => prepareProductionGenerationContinuationAuthorization({
+      lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
+      projectRevision: 0,
+      run: exactCap,
+      providers: [mockProvider(vi.fn())],
+      resolveShotPrice: () => ({ known: true, amount: 0.1 }),
+      now: NOW,
+    })).toThrow(/already covers the remaining jobs/);
+  });
+
   it("stops at the correct Kth shot (checkbox order) and records structured halt counts", async () => {
     // 3 shots @ ¥6 = ¥18 total, cap ¥13 → only shots a,b (¥12) fit; halt at c.
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];

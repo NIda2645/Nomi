@@ -1,3 +1,4 @@
+import type { GenerationPlanEditorial } from '../shared/storyboard/generationPlanEditorial';
 import type { ProductionExecutionBinding } from "./productionExecutionBinding";
 import type { ProductionGenerationAuthorizationEnvelopeV1 } from "./productionGenerationAuthorization";
 import type { GenerationProviderTaskState } from "../capabilityCore/generationRuntimeAdapter";
@@ -228,6 +229,8 @@ export type ProductionGenerationShot = {
 };
 
 export type ProductionGenerationPlan = {
+  /** Original editor facts absent from candidates; never a second editable plan. */
+  editorial?: GenerationPlanEditorial;
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
   /**
@@ -368,6 +371,8 @@ export type ProductionRun = {
   artifacts: ProductionArtifact[];
   /** Optional single-shot plan owned by this Run; legacy playbooks omit it. */
   generationPlan?: ProductionGenerationPlan;
+  /** Creative metadata only; editable shot content is owned by generationPlan. */
+  authoring?: { title: string };
   createdAt: string;
   updatedAt: string;
 };
@@ -407,6 +412,7 @@ export type ProductionRunSummary = Pick<
   ProductionRun,
   "runId" | "projectId" | "revision" | "status" | "stageId" | "playbook" | "origin" | "budget" | "updatedAt"
 > & {
+  authoring?: ProductionRun['authoring'];
   /** 计划仍是草稿时的候选摘要；已封存/已提交/无计划的 Run 省略。 */
   draft?: ProductionRunDraftSummary;
 };
@@ -417,6 +423,7 @@ export type ProductionRunSummary = Pick<
  * 绝不含任何密钥；`code` 由渲染层 t() 翻译（不拼串穿透 i18n 门）。
  */
 export type ProductionActionResult = {
+  quoteId?: string;
   ok: boolean;
   code:
     | "reworked" // 返工已确认并派发

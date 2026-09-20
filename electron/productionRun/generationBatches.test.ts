@@ -71,7 +71,7 @@ function draftRun(shots: ProductionGenerationShot[], top: PlanCandidate): Produc
 }
 
 
-function prepare(run: ProductionRun) {
+function prepare(run: ProductionRun, priceAmount = 3) {
   const plan = run.generationPlan!;
   const shots = plan.shots!.map(shot => {
     if (shot.included === false) return shot;
@@ -84,7 +84,7 @@ function prepare(run: ProductionRun) {
     lease: { projectId: run.projectId, immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
     projectRevision: 0, operation: { operationId: run.runId, projectId: run.projectId, candidate: plan.candidate, planVersion: run.planVersion },
     contract, multiShot: { shots, planHash: "same-content" }, providers: [provider()],
-    resolveShotPrice: () => ({ known: true, amount: 3 }), maximumSpend: run.policy.maxSpend, now: NOW,
+    resolveShotPrice: () => ({ known: true, amount: priceAmount }), maximumSpend: run.policy.maxSpend, now: NOW,
   });
   return { contract, shots, planHash: "same-content", authorization };
 }
@@ -108,6 +108,14 @@ function settledFirst() {
 }
 
 describe("successive generation batches", () => {
+  it("uses the selected shot as the representative candidate without changing other drafts", () => {
+    const run = initial();
+    const next = apply(run, "generation.present", { shotIds: ["shot-b"] });
+    expect(next.generationPlan!.candidate).toEqual(run.generationPlan!.shots![1].candidate);
+    expect(next.generationPlan!.shots!.map(shot => shot.candidate)).toEqual(run.generationPlan!.shots!.map(shot => shot.candidate));
+    expect(next.jobs).toEqual(run.jobs);
+    expect(next.gates).toEqual(run.gates);
+  });
   it("retains the configured hard cap when the first batch costs less", () => {
     const run = initial();
     expect(apply(run, "generation.seal", prepare(run)).policy.maxSpend).toBe(10);
@@ -121,6 +129,27 @@ describe("successive generation batches", () => {
     expect(next.jobs[0]).toEqual(first.jobs[0]);
     expect(next.jobs[1]).toMatchObject({ attempt: 1, nodeId: "node-b" });
     expect(next.generationPlan!.shots!.map(shot => shot.nodeId)).toEqual(["node-a", "node-b"]);
+  });
+  it("keeps an exact-cap decimal charge whole in the cumulative authorization envelope", () => {
+    const first = settledFirst();
+    const withDecimalLiability = {
+      ...first,
+      budget: { ...first.budget, actual: 10, authorized: 10 },
+      policy: { ...first.policy, maxSpend: 10.1 },
+    };
+    const draft = apply(withDecimalLiability, "generation.present", { shotIds: ["shot-b"] });
+    const payload = prepare(draft, 0.1);
+
+    expect(payload.authorization.envelope.budget).toEqual({
+      currency: "CNY",
+      maximum: 0.1,
+      ledgerCeiling: 10.1,
+    });
+    expect(payload.authorization.envelope.jobs[0].price.maximum).toBe(0.1);
+    expect(() => apply(draft, "generation.seal", {
+      ...payload,
+      shotPrices: [{ shotId: "shot-b", price: { known: true, amount: 0.1 } }],
+    })).not.toThrow();
   });
   it("new execution of the same shot receives a new attempt, even with a revised contract", () => {
     const first = settledFirst();

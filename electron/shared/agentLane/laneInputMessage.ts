@@ -19,7 +19,7 @@ export function draftInputFromMessage(message: AgentMessage): LaneDraftInput {
     ? content.flatMap((part) => part.type === 'text' ? [part.text] : []).join('') : ''
   const attachments = isLaneInputMessage(message) ? message.context.attachments : undefined
   const context = isLaneInputMessage(message) ? message.context : undefined
-  const intent = context && Object.fromEntries(['documentId', 'target', 'preconditions', 'contextSnapshot', 'systemPrompt']
+  const intent = context && Object.fromEntries(['documentId', 'target', 'preconditions', 'contextSnapshot', 'systemPrompt', 'storyboardTarget']
     .filter(key => context[key as keyof typeof context] !== undefined)
     .map(key => [key, structuredClone(context[key as keyof typeof context])]))
   return { text,

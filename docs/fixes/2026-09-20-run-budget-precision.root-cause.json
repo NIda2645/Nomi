@@ -1,0 +1,284 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-run-budget-precision",
+  "problem_type": "Floating-point drift in cumulative Run budget decisions",
+  "symptom": "An exact-cap decimal charge can be rejected or sealed with an undersized authorization, and an exact-cap ordered shot prefix can stop one shot early.",
+  "direct_cause": "Some callers subtract cumulative liability before comparing a charge, while the ordered prefix repeatedly uses ordinary addition instead of the existing compensated budget aggregation. Nonfinite accumulated totals make the tolerance comparison return false for Infinity or NaN, admitting overflow from individually finite inputs.",
+  "class_root": "Every Run budget decision must compare complete cumulative liability plus candidate charges through the budget ledger's compensated aggregation and precision-aware comparison boundary.",
+  "affected_population": [
+    "Paid generation Runs with decimal catalog prices and prior reserved, actual, or unsettled liability",
+    "Multi-shot plans whose ordered decimal prefix lands exactly on the configured hard cap",
+    "Continuation authorization and imported budget summaries at an exact decimal ceiling"
+  ],
+  "scope_paths": [
+    "electron/productionRun/budgetLedger.ts",
+    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/shotPricing.ts"
+  ],
+  "entry_points": [
+    "prepareProductionGenerationAuthorization initial paid envelope",
+    "prepareProductionGenerationContinuationAuthorization existing-authority check",
+    "applyProductionCommand generation.seal and budget.set",
+    "checkSealAffordability ordered prefix"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This is an application-owned JavaScript arithmetic invariant over the existing Run ledger and authorization envelope; no third-party contract controls it.",
+  "invariants": [
+    "A candidate charge that makes complete cumulative liability equal the total hard cap remains fully authorized.",
+    "Any complete cumulative liability that truly exceeds the hard cap remains rejected.",
+    "Ordered affordability uses one compensated pass and reports the exact longest affordable prefix.",
+    "Unknown paid prices still fail closed before paid authority is issued.",
+    "No currency precision constant, rounded money representation, second ledger, or parallel payment framework is introduced.",
+    "Aggregation overflow and nonfinite comparison operands reject before authority or liability changes; finite exact-cap values remain valid."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "summarizeBudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "applyBudgetEntry"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createBudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "summarizeBudgetLedger"
+    }
+  ],
+  "door_reduction": {
+    "before": 25,
+    "after": 25,
+    "why_not": "The existing doors serve distinct Run stages: ledger mutation, seal precheck, envelope construction and validation, pending-spend projection, and dispatch scheduling. Four final-code doors make the shared boundary explicit: reducer budget validation now calls both existing helpers, while budgetLedger and shotPricing share the new single-pass accumulator. Merging lifecycle owners would create a new payment framework."
+  },
+  "generality_proof": "Initial authorization, seal prefix, continuation coverage, budget import validation, ledger reservation, envelope validation and dispatch scheduling all use the same compensated addition and precision-aware comparison owner. Exact-cap decimals therefore behave consistently across callers without changing the cap or currency model.",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "createBudgetAmountAccumulator",
+      "responsibility": "Provide the single compensated aggregation algorithm for whole totals and O(n) ordered prefixes."
+    },
+    {
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "budgetExceeds",
+      "responsibility": "Distinguish real overage from machine-precision drift without a currency-sized tolerance."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "entry_point": "prepareProductionGenerationAuthorization",
+      "disposition": "enforced",
+      "evidence": "Compares complete prior liability plus job maximum before deriving any partial-batch headroom."
+    },
+    {
+      "path": "electron/productionRun/shotPricing.ts",
+      "entry_point": "checkSealAffordability",
+      "disposition": "enforced",
+      "evidence": "Seeds one compensated accumulator with existing liability and advances it once per ordered shot."
+    },
+    {
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "entry_point": "prepareProductionGenerationContinuationAuthorization",
+      "disposition": "enforced",
+      "evidence": "Determines existing coverage from complete liability plus remaining charge rather than subtracting a remainder first."
+    },
+    {
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "entry_point": "validateBudget",
+      "disposition": "enforced",
+      "evidence": "Validates imported cumulative liability with the shared compensated total and overage comparison."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "deriveBatchPlan",
+      "disposition": "not-affected",
+      "evidence": "It already compares a compensated complete liability list plus each next price against the absolute authorized cap."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "entry_point": "deriveSealedGenerationAuthorizationState",
+      "disposition": "not-affected",
+      "evidence": "It validates total envelope ceilings through budgetExceeds and does not derive a smaller approved charge from cap subtraction."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any decimal price list, prior liability mixture, or continuation can reach the same arithmetic mechanism on future Runs.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs budgetExceeds: 6 production files",
+      "node scripts/door-map.mjs sumBudgetAmounts: 7 production files",
+      "node scripts/door-map.mjs prepareProductionGenerationAuthorization and one-hop wrappers",
+      "node scripts/door-map.mjs checkSealAffordability",
+      "rg scan of maxSpend, authorized, reserved, actual, unsettled, knownSubtotal and running additions across electron/productionRun, electron/capabilityCore and src/workbench"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/budgetLedger.ts",
+    "invariant": "All authoritative Run budget totals and ordered prefixes use one compensated accumulator, and all hard-cap decisions compare complete totals with budgetExceeds.",
+    "failure_mode": "Unknown prices and real total overages reject before paid authority; exact-cap totals succeed without relaxing the configured cap.",
+    "exception_policy": "none",
+    "strategy": "Reuse the existing ledger arithmetic owner, remove subtract-first decisions, and expose only a minimal O(n) compensated accumulator for prefix consumers. Validate finite inputs and accumulated totals in the shared arithmetic owner, before updating accumulator state; reject nonfinite comparator operands.",
+    "artifacts": [
+      "electron/productionRun/budgetLedger.ts",
+      "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/shotPricing.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/generationBatches.test.ts",
+    "electron/productionRun/shotPricing.test.ts",
+    "electron/productionRun/shotPricingWiring.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.test.ts",
+    "electron/productionRun/productionRunReducer.test.ts",
+    "electron/productionRun/budgetLedger.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/shotPricing.test.ts",
+    "electron/productionRun/productionRunReducer.test.ts",
+    "electron/productionRun/generationBatches.test.ts",
+    "electron/productionRun/budgetLedger.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/shotPricing.ts"
+    ],
+    "rationale": "Removes subtract-first cap decisions and ordinary prefix accumulation at their existing callers; no compatibility path remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The repair uses native number arithmetic behind the existing application boundary and changes no dependency.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted schema or money representation changes. Existing ledger entries and authorization envelopes retain their wire shape.",
+  "residual_risks": [
+    "Renderer-only subtotal projections and the separate legacy spendGrant system remain outside this Run hard-cap repair; neither grants Run authority."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/budgetLedger.ts",
+    "tests": [
+      "electron/productionRun/budgetLedger.test.ts",
+      "electron/productionRun/shotPricing.test.ts",
+      "electron/productionRun/generationBatches.test.ts",
+      "electron/productionRun/productionRunReducer.test.ts"
+    ]
+  }
+}

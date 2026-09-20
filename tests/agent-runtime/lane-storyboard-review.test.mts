@@ -6,11 +6,11 @@ import { createExtendedLaneTools } from '../../electron/agentLane/laneExtendedTo
 import type { CanvasWriteInput, CanvasWriteResult } from '../../electron/shared/agentCapabilities/canvasWrite.js';
 import { createLaneFixture } from './laneFixture.mjs';
 
-// 20 动词（设计正本 §5.2 / 拍板 2026-09-11）：分镜不再是「先审阅方案再落画布」的写——`draft_shots` 建的是
-// 草稿（落画布、带单价、不出卡、不花钱），`generate` 才把报价卡摆到用户面前。审阅点从「方案」挪到了「钱」。
+// 草稿保存与付费授权分离；回执只陈述实际结果，不把保存等同于落画布或开跑。
+// 此夹具明确使用 safe-auto + confirm，generate 必须保留等待用户付款确认的 STOP 语义。
 const shots = [{ title: 'Fixture sunrise', prompt: 'Fixture sunrise.', taskKind: 'text_to_image' }];
 
-test('safe-auto lands draft_shots directly without a review card, and nothing is spent', async (t) => {
+test('safe-auto saves draft_shots without a review card or a generation-start claim', async (t) => {
   const fixture = await createLaneFixture(t, [
     { type: 'tool', calls: [{ id: 'fixture-draft', name: 'draft_shots', arguments: { shots } }] },
     { type: 'text', text: 'Fixture complete.' },
@@ -27,7 +27,8 @@ test('safe-auto lands draft_shots directly without a review card, and nothing is
     assert.equal(cards, 0, 'a draft is a reversible local write: no card');
     const result = lane.projection().parts.find((part) => part.kind === 'tool-result');
     assert.ok(result?.kind === 'tool-result' && !result.isError);
-    assert.match(result.text, /Nothing has been generated and nothing has been spent/);
+    assert.match(result.text, /Draft changes are saved in the project/);
+    assert.doesNotMatch(result.text, /are on the canvas|price badge|generation has started/);
   } finally { await lane.close(); }
 });
 

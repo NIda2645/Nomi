@@ -857,3 +857,15 @@ describe("plan patch addressed to one shot of a multi-shot draft", () => {
     expect(after?.shots?.map((shot) => shot.candidate.prompt)).toEqual(["一", "二"]);
   });
 });
+
+it('single and multi Agent creation retain the same original storyboard stable id', async () => {
+  const operations=createInMemoryGenerationOperationStore()
+  const handler=createGenerationPlanningHandler({registry,operations})
+  const authored={anchorIds:[]}
+  const input={candidate:{candidateId:'execution-id',revision:1,moduleId:'generation.single-shot',providerId:'fixture-provider',modelId:'fixture-model',mode:'text-to-image',prompt:'Original',parameters:{},references:[]},storyboard:authored}
+  for(const multi of [false,true]){
+    const result=await handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},params:{operation:'create',...(multi ? {shots:[{...input,shotId:'execution-id'}]} : input)}}) as {operation:GenerationOperation}
+    expect(result.operation.editorial?.shots[0].shotId).toBe('execution-id')
+    expect(result.operation.editorial?.shots[0].prompt).toBe('Original')
+  }
+})

@@ -66,6 +66,8 @@ export function beginCanvasDragging(
   }
   if (origin && typeof window !== 'undefined') {
     const interrupted = (event: Event) => {
+      // Capture also sees descendant focus changes; only window blur interrupts a gesture.
+      if (event.type === 'blur' && event.target !== window) return
       if (event.type !== 'blur') {
         if ('pointerId' in event && options.pointerId !== undefined) {
           if (event.pointerId !== options.pointerId) return

@@ -5,16 +5,15 @@
 // 走查像真人一样点：在面板里打字、看卡、在卡上改参数、按那颗印着价的按钮——
 // 不灌 store、不直调桥、不伪造待决状态。
 //
-// 四条：
-//   ① agent 建草稿 → 草稿落画布 + 面板出付费卡（模型/价格与节点一致）
-//   ② 卡上改参数 → 价格原地刷新（宿主重算，不是渲染层现算）
-//   ③ 等待中切到「全自动」→ 卡仍然在等人答（钱不因档位放行）
-//   ④ × → 草稿取消、画布节点消失
+// T7 双宿主邻接：真实 Agent draft→generate 出卡；真实键盘/参数输入；关闭不删节点或历史；
+// 同一 operation 再 generate 恢复隔离草稿；ZH/EN 截图。远端仅零额度 loopback。
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
+import { checkSpendScopeJourney } from './_agentSpendScopeJourney.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, INTERVENTION_REJECT,
-  PERMISSION_POPOVER, createRuntimeWalk, openCanvas, permissionTier, readProject, recorded, sendCanvas,
+  PERMISSION_POPOVER, permissionTier,
+  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
 } from './agent-runtime-walk-support.mjs'
 
 const ASK = 'S_SPEND_ASK：帮我生成一张六棱柱的图。'
@@ -25,9 +24,10 @@ const PRICE_TOTAL = '[data-v4-price="total"]'
 const walk = await createRuntimeWalk('spend-card')
 let failure
 try {
-  const { win } = await walk.start({ first: true })
-  const { projectId } = await walk.newProject()
+  let { win } = await walk.start({ first: true })
+  const { projectId, name } = await walk.newProject()
   await openCanvas(win)
+  await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="composer"]`)).toHaveAttribute('data-spend-policy', 'confirm')
 
   // ① agent 建草稿。付费能力按设计不在模型工具面里（paidBoundary），所以它能做的只有建草稿——
   // 「这笔钱花不花」必须由面板上那张卡来问，这正是本走查要证明的东西。
@@ -69,58 +69,117 @@ try {
   expect(node.meta.modelKey, '落地的节点必须带 agent 定的模型身份').toBe(FIXTURE_IMAGE_MODEL)
 
   // 面板出卡。它是**介入槽**里的一张卡，不是居中弹窗——单轨化的可见证据。
-  const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
+  let card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   const cardProof = await proveProbe(card, 'The paid confirmation lives in the agent panel intervention slot')
-  await expect(win.locator('div.fixed.inset-0').filter({ hasText: '开始生成' }),
-    'agent 代发的付费确认不许再弹居中卡').toHaveCount(0)
   // 价格是宿主按目录 pricing 算出来的数字，不是标签。
   await expect(card.locator(PRICE_TOTAL)).toContainText('0.30')
   // 卡体就是画布节点那张生成框整件：提示词在卡上，不是留在画布上（v1 被打回的那个窟窿）。
   await expect(card).toContainText('六棱柱')
+  await expect(card.locator('[data-parameter-summary]'), '付款卡沿用原参数 chips，不并存画布摘要 pill').toHaveCount(0)
   await walk.snap('spend-card-in-intervention-slot')
+  await expect(win.locator('div.fixed.inset-0').filter({ hasText: '开始生成' }),
+    'agent 代发的付费确认不许再弹居中卡').toHaveCount(0)
 
-  // ② 卡上的参数条就是画布节点那一条：点开、改一个值，改的是那份**还没落到画布上**的草稿本身。
-  //
-  // 「改完价格当场刷新 + 画布节点在按下之前不动」那三个时刻由**另一条走查**逐拍钉死
-  // （`tests/ux/agent-spend-reprice.walk.mjs`，2026-09-11 P1.1b）。这里只证「参数条是真能点的那一条」，
-  // 两条走查各证一件事，不互相抄断言。
-  // 付费卡这一处的参数条是**逐参数 chip**（`parameterLayout='chips'`，2026-09-11 用户拍板：
-  // 只改付费卡、画布节点那条不动）。所以这里断言的不是「点开摘要 pill 能看到参数」，
-  // 而是「看得见的那个值本身就是可点的控件」——正在确认花多少钱的那一刻，多一次点击最贵。
-  await expect(card.locator('[data-parameter-summary]'),
-    '付费卡不摆摘要 pill：它是 chips 形态，不是画布节点那套').toHaveCount(0)
-  const chips = card.locator('[data-parameter-chip]')
-  await expect(chips.first(), '付费卡底栏至少有一颗逐参数 chip（档案 derive 断了就会一颗都没有）').toBeVisible()
-  // 尺寸在这个夹具模型上是 `size`（角色 aspect）→ 它必须**直接**在底栏上，不藏在 ⚙ 后面。
-  const sizeSelect = card.locator('[data-parameter-chip] button[aria-label="尺寸"]').first()
-  await expect(sizeSelect, '卡体就是画布节点那条参数条的 chips 摆法：尺寸一步可点，不用先点开面板').toBeVisible()
-  await clickOrFail(sizeSelect, '卡上的尺寸 chip')
-  await walk.snap('spend-card-parameters-are-editable')
-  await win.keyboard.press('Escape')
-
-  // ③ 等待中切到「全自动」。钱这条轴与档位正交：卡必须还在等人答。
+  // Existing pending spend keeps its explicit confirmation boundary when permission changes.
   await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_PERMISSION}`), '权限档选择器')
   await expect(win.locator(`${CANVAS_PANEL} ${PERMISSION_POPOVER}`)).toBeVisible()
   await clickOrFail(win.locator(`${CANVAS_PANEL} ${permissionTier('project')}`), '切到「全自动」')
-  // 切「全自动」自己也要过一张确认卡（换档可撤销，所以它是介入槽的可撤销档）。
   const switchCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="approval-reversible"]`)
   await expect(switchCard).toBeVisible()
   await clickOrFail(switchCard.locator(INTERVENTION_CONFIRM), '确认切到全自动')
   await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="auto-mode"]`), '全自动档要有常驻提醒').toBeVisible()
   await expect(card, '付费卡在切档之后仍然等着人答——钱不因档位放行').toBeVisible()
   await expect(card.locator(PRICE_TOTAL), '让位回来之后价格一个字都没变——它没有倒计时，等多久都行').toContainText('0.30')
+  expect(walk.fixture.images, '切档不提交待确认生成').toHaveLength(0)
   await walk.snap('spend-card-still-waiting-under-full-auto')
 
-  // ④ × = 丢弃这份草稿：Run 取消，画布上那个占位节点跟着消失。
-  await clickOrFail(card.locator(INTERVENTION_REJECT), '丢弃这份草稿')
-  await expectAbsent(card, { provenBy: cardProof, message: '丢弃之后付费卡不再可操作' })
-  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
-    { timeout: DEFAULT_TIMEOUT_MS }).toBe(0)
-  expect(walk.fixture.images, '整场走查一次供应商生成都没发生（零额度）').toHaveLength(0)
-  await walk.snap('spend-card-discarded-canvas-clean')
 
-  walk.report.verified = ['draft-lands-on-canvas-and-card-appears', 'card-body-is-the-real-node-composer',
-    'card-still-waits-under-full-auto', 'discard-removes-draft-and-node']
+  const canvasParameters = win.locator('[data-composer-host="canvas"] [data-parameter-summary]')
+  await expect(canvasParameters).toBeVisible()
+  await expect.poll(() => canvasParameters.evaluate(button => {
+    const rect=button.getBoundingClientRect()
+    const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)
+    return Boolean(hit && button.contains(hit))
+  }),{message:'The canvas parameter control must receive clicks above the bottom workspace docks'}).toBe(true)
+  await clickOrFail(canvasParameters,'底部停靠区上方的画布参数控件')
+  const canvasParameterPanel = win.locator('[data-agent-parameter-panel="true"]')
+  await expect(canvasParameterPanel).toBeVisible()
+  await clickOrFail(canvasParameterPanel.locator('[role="radio"][aria-checked="true"]:not([disabled])').first(),'保持原值并验证参数选项实际可点')
+  await win.keyboard.press('Escape')
+
+  const before = structuredClone((await readProject(win, projectId)).payload.generationCanvas.nodes)
+  let input = card.locator('[data-composer-host="panel"] [contenteditable="true"]')
+  await expect(input).toBeVisible()
+  await expect.poll(() => input.evaluate(element => {
+    const rect=element.getBoundingClientRect(), style=getComputedStyle(element)
+    const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)
+    return rect.width>0 && rect.height>0 && style.visibility==='visible' && Boolean(hit && element.contains(hit))
+  })).toBe(true)
+  await input.click()
+  await win.keyboard.press('Meta+A')
+  const draftPrompt = 'T7 isolated payment draft / 未批准草稿'
+  await win.keyboard.insertText(draftPrompt)
+  await expect(input).toHaveText(draftPrompt)
+  let sizeChip = card.locator('[data-parameter-chip] button[aria-label="尺寸"]').first()
+  await clickOrFail(sizeChip, '付款卡真实尺寸参数')
+  await clickOrFail(win.getByRole('option', { name: '1536x1024', exact:true }).first(), '修改未批准尺寸')
+  await expect(sizeChip).toContainText('1536x1024')
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes, '未批准输入不得更改画布内容/历史').toEqual(before)
+  expect(walk.fixture.images, '编辑未批准卡不发媒体请求').toHaveLength(0)
+  await walk.snap('spend-card-zh-edited-isolated')
+
+  await clickOrFail(card.locator(INTERVENTION_REJECT), '关闭付款卡，保留节点及草稿')
+  await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes, '关闭不删除节点、不改内容、不清历史').toEqual(before)
+  expect(walk.fixture.images, '关闭不提交媒体').toHaveLength(0)
+  const requestsBeforeCold = walk.fixture.requests.length
+  await walk.stopApp()
+  ;({ win } = await walk.start())
+  expect(walk.report.launches[1].pid).not.toBe(walk.report.launches[0].pid)
+  const projectCard = win.locator('[data-project-card="true"]').filter({hasText:name})
+  await expect(projectCard).toBeVisible()
+  await projectCard.hover()
+  await clickOrFail(projectCard.getByRole('button',{name:/继续创作/}), '冷启动重开关闭确认卡的项目')
+  await win.waitForFunction(id => location.href.includes(`projectId=${encodeURIComponent(id)}`),projectId)
+  await openCanvas(win)
+  card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
+  input = card.locator('[data-composer-host="panel"] [contenteditable="true"]')
+  sizeChip = card.locator('[data-parameter-chip] button[aria-label="尺寸"]').first()
+  await expectAbsent(card,{provenBy:cardProof,message:'冷启动不会复活已关闭的旧确认卡'})
+  // Existing projectV51ToV60Migration fills this derived renderer hint on reopen.
+  // Keep the full-node comparison: no other field may change across dismissal/restart.
+  const restoredNodes = before.map(node => ({ ...node, renderKind: 'shot-frame' }))
+  expect((await readProject(win,projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  expect(walk.fixture.images,'冷启动不提交媒体').toHaveLength(0)
+  expect(walk.fixture.requests,'冷启动不重新请求模型').toHaveLength(requestsBeforeCold)
+  await walk.snap('spend-card-cold-closed-no-resurrection')
+  const reopen = walk.fixture.expectText({label:'reopen the same generation operation',
+    match:body=>flattenRequestText(body).includes('S_SPEND_REOPEN'),
+    reply:{type:'tool',id:'spend-reopen',name:'generate',args:{operationId}}})
+  const reopened = walk.fixture.expectText({label:'same operation reopening completes',
+    match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id==='spend-reopen'),
+    reply:{type:'text',text:'S_SPEND_REOPEN_DONE：请确认保留的草稿。'}})
+  await sendCanvas(win, 'S_SPEND_REOPEN：重新打开刚才同一笔生成的确认卡，不新建。')
+  await recorded(reopen.received, 'same operation generate request')
+  await recorded(reopened.received, 'same operation reopened')
+  await expect(card).toBeVisible()
+  await expect(input).toHaveText(draftPrompt)
+  await expect(sizeChip).toContainText('1536x1024')
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  expect(walk.fixture.images, '重新展示未批准卡不提交').toHaveLength(0)
+  await walk.snap('spend-card-zh-reopened-draft')
+  // Locale preference only, no project/store mutation. Reload is an explicit renderer-remount case.
+  await win.evaluate(() => localStorage.setItem('nomi:locale:v1','en'))
+  await win.reload()
+  await expect(card).toBeVisible()
+  await expect(input).toHaveText(draftPrompt)
+  await expect(card.locator('[data-parameter-chip]').filter({hasText:'1536x1024'}).first()).toBeVisible()
+  await walk.snap('spend-card-en-reopened-draft')
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
+  walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
+    'close-preserves-node-content-history','cold-process-reopen-no-old-card','same-operation-reopens-draft','zh-en-renderer-remount']
+  await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error
   process.exitCode = 1

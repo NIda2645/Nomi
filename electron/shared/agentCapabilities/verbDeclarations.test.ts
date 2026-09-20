@@ -78,8 +78,15 @@ describe("动词声明 · 装配期不变量", () => {
     expect(() => assemble(mutate("arrange_canvas", (d) => ({ ...d, describe: { ...d.describe, useWhen: `${d.describe.useWhen} It never generates.` } }))))
       .toThrow(/hand-writes a consequence/);
     expect(() => verbConsequence("read", "user_sees_spend_card")).toThrow(/inconsistent/);
-    expect(renderVerbDescription(VERB_DECLARATIONS.find((d) => d.name === "generate")!))
-      .toMatch(/priced confirmation card .* nothing is generated and nothing is spent until the user approves/);
+    const generate = VERB_DECLARATIONS.find((d) => d.name === "generate")!;
+    const description = renderVerbDescription(generate);
+    expect(description).toContain(verbConsequence(generate.effect, generate.nextAction));
+    expect(description).toContain("It does not grant new spending permission");
+    expect(description).toContain("waiting priced confirmation card only when the result says it is waiting");
+    expect(description).toContain("generation started only when the result reports an actual policy decision that started it");
+    expect(description).not.toMatch(/nothing is generated and nothing is spent until the user approves/);
+    expect(verbConsequence("reversible_local", "none"))
+      .toContain("This local edit grants no new spending permission; use the tool result for any generation status.");
   });
 
   it("profile 差异只能来自声明：缺 profileReason 抛；付费边界一个名字都不进内部面", () => {

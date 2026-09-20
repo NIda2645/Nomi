@@ -46,6 +46,18 @@ describe('lane skill provenance', () => {
     message: { role: 'nomi.input', content, timestamp: seq, context },
   } as unknown as LaneSnapshot['transcript'][number])
 
+  it('keeps queued targets out of the active transcript projection', () => {
+    const storyboardTarget = { projectId: 'p', sourceDocumentId: 'a', sourceDocumentRevision: 3,
+      sourceDocumentContentHash: 'h', targetRunId: 'op-a', targetKind: 'storyboard', requestId: 'request-a' }
+    const lane = laneWith([input(1, 'A', { storyboardTarget })])
+    lane.queues = [{ entryId: 'queued-b', kind: 'followUp', message: { role: 'nomi.input', content: 'B', timestamp: 2,
+      context: { approvalPolicy: { mode: 'step', spend: 'confirm' }, storyboardTarget: { ...storyboardTarget, sourceDocumentId: 'b' } } } }] as LaneSnapshot['queues']
+    const projection = projectLaneSnapshot(lane, { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
+    expect(projection.parts).toHaveLength(1)
+    expect(projection.parts[0]).toMatchObject({ kind: 'user', storyboardTarget })
+    expect(projection.queues[0].intent?.storyboardTarget?.sourceDocumentId).toBe('b')
+  })
+
   it('carries the skill recorded on that very message, and nothing when it had none', () => {
     const projection = projectLaneSnapshot(laneWith([
       input(1, '拆分镜。', { approvalPolicy: { mode: 'step', spend: 'confirm' }, skillKey: 'workbench.storyboard.planner' }),

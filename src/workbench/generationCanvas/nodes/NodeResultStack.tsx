@@ -254,6 +254,7 @@ export function NodeResultStack({
 
   const { t } = useTranslation()
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
+  const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_RESULTS)
   const [hoveredId, setHoveredId] = React.useState('')
   const [preview, setPreview] = React.useState<GenerationNodeResult | null>(null)
@@ -347,7 +348,10 @@ export function NodeResultStack({
         count={entries.length}
         label={t('generationCommon.resultStack.versionCount', { count: entries.length })}
         expanded={open}
-        onToggle={() => onOpenChange(!open)}
+        onToggle={() => {
+          if (!open) selectNode(node.id, false)
+          onOpenChange(!open)
+        }}
         forceTrigger={showSingleProductionAction}
         mediaGlyph={<StackMediaGlyph kind={node.kind} />}
         mediaKind={node.kind}

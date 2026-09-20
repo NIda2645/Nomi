@@ -1,0 +1,170 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-spend-confirm-loopback-socket-lifecycle",
+  "problem_type": "loopback fixture keep-alive expiry races a later batch submission",
+  "symptom": "The full unit suite intermittently fails agentPanelSpendBatches S06 after about 49 seconds: shot-33 ends submission_unknown with SubmissionReceiptUnknownError: fetch failed instead of all 33 loopback submissions becoming ready.",
+  "direct_cause": "The shared spend-confirm loopback server advertises Node's default five-second keep-alive window. Under full-suite event-loop stalls, Undici reused one of two pooled sockets 6.121 seconds after its previous response, just after the server's five-second timeout plus one-second keepAliveTimeoutBuffer destroyed it. Request 33 emitted bodySent and then ECONNRESET in one millisecond, but the server never emitted server-request for it.",
+  "class_root": "A deterministic HTTP vendor fixture allowed persistent client sockets even though connection reuse is outside the fixture contract, making test outcomes depend on the race between the server's idle-socket timer and the client's processing of that close.",
+  "affected_population": [
+    "The 33-shot S06 spend-confirm batch under full-suite CPU and event-loop load",
+    "Every spend-confirm test using the shared startLoopbackVendor fixture when a pooled connection is idle near the Node server timeout"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+    "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts"
+  ],
+  "entry_points": [
+    "agentPanelSpendBatches S06 multi-shot submission",
+    "agentPanelSpendConfirm scenarios using startLoopbackVendor"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is the repository's own fixture contract: submissions must exercise HTTP request/response behavior without testing pooled connection reuse. Runtime introspection on the failing Node 22.22.0 process recorded keepAliveTimeout=5000 and keepAliveTimeoutBuffer=1000; the captured Undici/server diagnostic establishes the exact timing without requiring an external behavioral assumption.",
+  "invariants": [
+    "Every response from the shared spend-confirm loopback vendor makes that connection ineligible for a later submission.",
+    "A transport failure whose receipt is uncertain remains submission_unknown; the fixture repair does not retry or reclassify it.",
+    "All spend-confirm callers using startLoopbackVendor receive the same connection lifecycle policy."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "loopbackProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/anchorCheckpointApproval.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/anchorCheckpointApproval.e2e.test.ts",
+      "symbol": "loopbackProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpMultiShotAnchorReuse.e2e.test.ts",
+      "symbol": "loopbackProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpMultiShotAnchorReuse.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts",
+      "symbol": "loopbackProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpMultiShotCreateEntrance.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+      "symbol": "loopbackProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+      "symbol": "startLoopbackVendor"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 11,
+    "why_not": "The generated map includes two true shared-helper consumers plus independent, file-local helpers with the same unqualified symbols. Those local fixtures belong to separate test journeys and do not converge on the spend-confirm helper; consolidating them would expand this transport-lifecycle repair. The shared spend-confirm server remains the single enforcement door for both affected consumers."
+  },
+  "generality_proof": "The response policy is enforced by startLoopbackVendor before any shared spend-confirm caller receives its origin. Both the long batch suite and the individual confirmation suite therefore use non-reusable response connections, so no submission can inherit an idle socket owned by this fixture. Independent same-named fixtures were inspected separately and do not call this boundary.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "startLoopbackVendor",
+      "responsibility": "Own the HTTP server and response connection lifecycle for every shared spend-confirm vendor fixture."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts",
+      "entry_point": "S06 33-shot batch",
+      "disposition": "enforced",
+      "evidence": "Imports the shared startLoopbackVendor; the captured failure occurred after 32 responses on that origin, and the changed regression proves its responses no longer leave a reusable socket."
+    },
+    {
+      "path": "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+      "entry_point": "shared spend-confirm scenarios",
+      "disposition": "enforced",
+      "evidence": "Imports the same startLoopbackVendor for all of its loopback HTTP submissions and therefore inherits the response connection policy."
+    },
+    {
+      "path": "electron/capabilityCore/mcpMultiShotAnchorReuse.e2e.test.ts",
+      "entry_point": "file-local startLoopbackVendor",
+      "disposition": "not-affected",
+      "evidence": "Defines a separate local server and provider rather than importing the spend-confirm helper; the diagnostic origin and failing test do not traverse it."
+    },
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+      "entry_point": "file-local batch scheduler vendor",
+      "disposition": "not-affected",
+      "evidence": "Defines an independent fixture with its own transport lifecycle; no failure from its origins appeared in the captured full-suite diagnostic."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The race depends on machine load and idle timing, so another full-suite run or another shared-helper caller can hit the same closed pooled socket even when focused runs pass.",
+    "same_class_scan": [
+      "Ran node scripts/door-map.mjs --write=startLoopbackVendor,loopbackProvider --include-tests; it found both shared-helper consumers and four suites with independent same-named local helpers.",
+      "Inspected agentPanelSpendConfirm.e2e.test.ts and agentPanelSpendBatches.e2e.test.ts imports to confirm they converge on agentPanelSpendConfirmTestUtils.ts.",
+      "Inspected mcpMultiShotAnchorReuse.e2e.test.ts, mcpMultiShotCreateEntrance.e2e.test.ts, anchorCheckpointApproval.e2e.test.ts, and multiShotBatchScheduler.e2e.test.ts to confirm their helpers are file-local and outside the failing origin."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+    "invariant": "Shared spend-confirm loopback responses explicitly close their HTTP connection, so clients cannot pool a socket until the server's idle timer expires it.",
+    "failure_mode": "A client that ignores the close contract receives a closed connection; the fixture never silently retries a submission or converts an uncertain receipt to ready.",
+    "exception_policy": "none",
+    "strategy": "Declare Connection: close at the fixture server's response boundary, which removes idle socket ownership from the fixture without changing hardenedFetch, the provider adapter, or submission classification.",
+    "artifacts": [
+      "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The shared helper remains the supported spend-confirm fixture. Its response lifecycle is made explicit in place; no alternate server or fallback path is introduced."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Node and Undici exposed the fixture's unspecified connection lifecycle, but the repair neither depends on nor works around a particular dependency release. HTTP Connection: close is the fixture-owned contract across supported runtime versions, so no dependency upgrade or retained fork is involved.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state or production caller changes. Existing spend-confirm tests receive the explicit response policy the next time they start the shared loopback server.",
+  "residual_risks": [
+    "Independent file-local loopback fixtures still use their own connection policies and would require separate evidence if they exhibit the same failure.",
+    "The root agent owns the later full desktop/unit validation; this repair is verified only with affected unit slices here."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+    "tests": [
+      "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts"
+    ]
+  }
+}

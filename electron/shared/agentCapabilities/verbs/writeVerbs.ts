@@ -1,3 +1,4 @@
+import { storyboardAuthorFieldsSchema } from '../generationPlanSchemas'
 // 十三个写动词（设计正本 §5.2）：一个动词一种状态一种效果。执行那一半住 `electron/agentLane/`：常驻的
 // （write_script / 三个画布写 / start_model_setup）在 `laneDocumentTools.ts` / `laneCanvasTools.ts` /
 // `laneDesktopTools.ts` 各自绑定；延迟组的经 `laneVerbTransport.ts` 翻成传输方法，`laneExtendedDesktopPorts.ts` 执行。
@@ -31,6 +32,7 @@ const generationParameters = z.record(z.union([z.string(), z.number(), z.boolean
 /** 一镜草稿：模型填的是**语义**（提示词/模型/参数/参考），候选身份由宿主按目录合成，与单镜路径同一个解析器。 */
 export const draftShotSchema = z.object({
   shotId: shotId.optional().describe("Pass an existing shot id to update that draft; omit to create a new shot."),
+  storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
   title: z.string().trim().min(1).max(120).optional().describe("Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language."),
   prompt: z.string().trim().min(1).max(8_000).describe("Generation prompt in the user's language (Chinese user → Chinese prompt)."),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
@@ -142,10 +144,10 @@ export function writeVerbs(): VerbDeclaration[] {
     name: "draft_shots", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.plan", effect: "reversible_local", nextAction: "none", internalGroup: "generation",
     effectGroups: ["canvas-node-creation"],
     describe: {
-      does: "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
+      does: "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
-      notWhen: "It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
+      notWhen: "New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
@@ -210,9 +212,9 @@ export function writeVerbs(): VerbDeclaration[] {
   const generate: VerbDeclaration = {
     name: "generate", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.plan", effect: "reversible_local", nextAction: "user_sees_spend_card", internalGroup: "generation",
     describe: {
-      does: "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi.",
+      does: "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission.",
       useWhen: `Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts ("run all six").`,
-      notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots.`,
+      notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots.`,
       params: "operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots.",
     },
     // 模型面 = `generation.plan` 的 `present` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。

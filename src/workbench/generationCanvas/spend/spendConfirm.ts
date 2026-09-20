@@ -161,6 +161,7 @@ export const useSpendConfirmStore = create<SpendConfirmState>()((set, get) => ({
  * @param nodeIds 本次要生成的节点 id（grant 绑定它们，主进程按 nodeId 核验消费）。
  */
 export async function confirmAndMintGrant(opts: {
+  assertCurrent?: () => Promise<void>
   nodeIds: string[]
   title: string
   message: string
@@ -180,6 +181,7 @@ export async function confirmAndMintGrant(opts: {
     ...(opts.hostingDisclosure ? { hostingDisclosure: opts.hostingDisclosure } : {}),
   })
   if (!ok) return null
+  await opts.assertCurrent?.()
   return mintSpendGrant(opts.nodeIds, opts.maxAttemptsPerNode, quoteId)
 }
 

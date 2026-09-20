@@ -134,6 +134,23 @@ describe("P4 S2 seal precheck", () => {
     expect(effect.run.generationPlan?.costCertainty).toBe("known");
   });
 
+  it("counts prior liability against the total cap without shrinking an exact-cap decimal shot", () => {
+    const base = threeShotDraft(10.1);
+    const draft = { ...base, budget: { ...base.budget, actual: 10, authorized: 10 } };
+    const exact = applyProductionCommand(draft, sealCommand(draft, [
+      { shotId: "shot-a", price: { known: true, amount: 0.1 } },
+      { shotId: "shot-b", price: { known: true, amount: 0 } },
+      { shotId: "shot-c", price: { known: true, amount: 0 } },
+    ]), now);
+    expect(exact.run.generationPlan?.state).toBe("sealed");
+
+    expect(() => applyProductionCommand(draft, sealCommand(draft, [
+      { shotId: "shot-a", price: { known: true, amount: 0.100001 } },
+      { shotId: "shot-b", price: { known: true, amount: 0 } },
+      { shotId: "shot-c", price: { known: true, amount: 0 } },
+    ]), now)).toThrow(SealBudgetExceededError);
+  });
+
   it("seals and marks costCertainty=partial when a shot price is unknown (cap satisfied by known ones)", () => {
     const draft = threeShotDraft(25);
     const effect = applyProductionCommand(draft, sealCommand(draft, [

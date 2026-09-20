@@ -1,0 +1,1027 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-original-storyboard-host",
+  "problem_type": "Original storyboard behavior lost across Run storage adapters",
+  "symptom": "Run plans lose existing storyboard table, reference and model interactions",
+  "direct_cause": "Run host replaced existing actions with an incomplete present/compiler path and a second landing host; materialization checked stable stamps before awaited model/target reads, allowing concurrent duplicate creation The strict original author schema also received the canvas command operation discriminator, so valid legacy propose_storyboard_plan writes failed; the command envelope must be removed before author parsing.",
+  "class_root": "Storage and binding differences were allowed to replace original executable behavior and duplicate in-flight ownership",
+  "affected_population": [
+    "Run-backed storyboard plans"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+    "src/workbench/creation/storyboard/storyboardEditorHost.ts",
+    "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+    "src/workbench/creation/storyboard/storyboardRunDraftSession.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "electron/productionRun/productionRunService.ts",
+    "src/workbench/capability/storyboardPresent.ts",
+    "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+    "src/workbench/capability/multiShotCanvasLanding.ts",
+    "electron/productionRun/multiShotCanvasLanding.ts",
+    "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+    "electron/productionRun/canvasLandingHost.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "electron/capabilityCore/appIntegration.ts"
+  ],
+  "entry_points": [
+    "StoryboardWorkspace Run selection",
+    "Original editor controls"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing storyboard materializer and original editor define placement; no external API changes",
+  "invariants": [
+    "Original StoryboardPlanEditor and its existing child controls are the only editor UI",
+    "Run editing saves the complete editorial StoryboardPlan through exact source identity and content-token CAS, preserving execution snapshots even after submission.",
+    "Dirty input survives remount and conflicting rereads",
+    "Save flush drains later queued edits before actions",
+    "Storage ports never replace the original single/variant/anchor/batch runner actions",
+    "Captured Run bindings feed the original row materializer; existing nodes, dependencies and user overrides survive",
+    "Node creation uses the existing materialization stamp boundary for concurrent idempotence",
+    "Agent and editor use original batch admission, never rerun locked, completed or recoverable rows implicitly",
+    "After asynchronous resolution, exact author target must still match before node writes and paid confirmation",
+    "All asynchronous model and target reads finish before indexing materialization stamps; stamp lookup and node creation are one synchronous write segment",
+    "Explicit placement includes standalone visual reference cards even when the plan currently has no shot rows; it never submits media",
+    "PR #808 approved sidebar collapse and existing parameter degradation remain the current layout; no new minimum-width or horizontal-scroll strategy is introduced. Expanded-sidebar redesign is deferred.",
+    "Transport operation discriminators are consumed by the original apply boundary and never passed as author fields to the strict shared storyboard schema.",
+    "Explicit Place/View are optional original actions; single/variant/anchor/batch generation keeps on-demand materialization without a new placement gate."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "symbol": "StoryboardPlanEditor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "symbol": "StoryboardWorkspace"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "StoryboardEditorHost"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "StoryboardEditorHost"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "symbol": "useStoryboardRunHost"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/storyboardRunDraftSession.ts",
+      "symbol": "StoryboardDraftSnapshot"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "createStoryboardRunDraftSession"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "createStoryboardRunDraftSession"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/storyboard/storyboardFixtures.ts",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/storyboard/storyboardFixtures.ts",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/storyboard/storyboardLabKit.tsx",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorStrip.tsx",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorZone.tsx",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "StoryboardNodeBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "StoryboardNodeBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "StoryboardRowRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "StoryboardNodeBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "SHOT_ROW_STATUSES"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "ShotRowStatus"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "WaitingRef"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "StoryboardRowRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "StoryboardRowWithExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "StoryboardBatchView"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardFrameActions.tsx",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardShotFrame.tsx",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/storyboardDInteractions.ts",
+      "symbol": "StoryboardRowRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/storyboardEditorHost.ts",
+      "symbol": "StoryboardNodeBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "StoryboardRowRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "StoryboardRowRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "AnchorCardRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "StoryboardNodeBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+      "symbol": "ShotRowExec"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/storyboard/states/03-zone.tsx",
+      "symbol": "deriveStoryboardRowRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "deriveStoryboardRowRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "deriveAnchorCardRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "deriveStoryboardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "rowConsumesReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "rowConsumesReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "deriveShotRowExec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "deriveStoryboardRowRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "deriveStoryboardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "deriveAnchorCardRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/productionShotRows.ts",
+      "symbol": "deriveNodeRowExec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
+      "symbol": "deriveStoryboardRowRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "deriveStoryboardRowRuntimes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "deriveStoryboardBatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "RowActionContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "RowActionContext"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "generateAnchorCard"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "runStoryboardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "materializeShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "regenerateShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "runStoryboardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "generateShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "toggleNodeLock"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "regenerateShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "generateShotRowVariants"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "rerunShotRowWithFreshRefs"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "generateAnchorCard"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "regenerateAnchorCard"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "runStoryboardBatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/artifactPreviewHttpServer.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "MaterializeStoryboardResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionArtifactProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionEventProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionEventProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTestHelpers.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "MaterializeStoryboardResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "presentStoryboard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "symbol": "findShotNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "symbol": "findAnchorNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "symbol": "findShotKeyframeNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "findShotNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "findShotKeyframeNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "findAnchorNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "findShotNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "findShotKeyframeNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "findAnchorNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "findShotKeyframeNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "findShotNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "storyboardRunBindings"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "storyboardRunBindings"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "materializedShotIds"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "symbol": "materializedShotIds"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "storyboardRunBindings"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "StoryboardPlanApplicationResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "STORYBOARD_PLAN_APPLICATION_STATUSES"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "StoryboardPlanApplicationStatus"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/lockGateContext.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "resolveCanvasToolNodeId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "applyCanvasToolCall"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "applyCanvasToolCall"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "applyCanvasToolCall"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "parseStagingSpec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "parseCameraMoveSpec"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "applyCanvasToolCall"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "symbol": "applyCanvasToolCall"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/releaseWorkbenchProjectSession.ts",
+      "symbol": "resetClientIdRegistry"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotsPayload"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotsResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "AttachShotResultOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "AttachShotResultPayload"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "handleMultiShotCanvasLandingOp"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "attachShotResult"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "materializeShots"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "MaterializeShotsWirePayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotCandidateWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotWire"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "MaterializeShotsWirePayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "CanvasLandingDeps"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "landCanvasForRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "canvasLandingOperationId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "buildMaterializeShotsPayload"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "projectStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "symbol": "projectStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "projectShotNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "projectShotNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "projectShotNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "projectStoryboardDesign"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "CanvasLandingHost"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "CanvasLandingHostDeps"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createCanvasLandingHost"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createCanvasLandingHost"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "handleCapabilityApply"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "handleCapabilityApply"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "registerCapabilityApplyHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/main.ts",
+      "symbol": "getCapabilityPort"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "listPendingSpendConfirmations"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "startCapabilityCore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "stopCapabilityCore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "revisePendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "confirmPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useProductionNodeRetry.ts",
+      "symbol": "reworkProductionShot"
+    }
+  ],
+  "door_reduction": {
+    "before": 170,
+    "after": 170,
+    "why_not": "Original UI, Agent IPC and canvas table callers remain necessary. They share original projection and row actions. Existing-only reconciliation and explicit author projection reuse the existing renderer RPC; no second landing factory or runner survives."
+  },
+  "generality_proof": "Both legacy and Run plans mount identical JSX; all original onChange controls resolve through an identity-bound host",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/creation/storyboard/storyboardEditorHost.ts",
+      "symbol": "StoryboardEditorHost",
+      "responsibility": "Separate persistence and execution authority from existing presentation"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "symbol": "useStoryboardRunHost",
+      "responsibility": "Bind original editor mutations to Run authority"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "StoryboardPlanEditor",
+      "disposition": "enforced",
+      "evidence": "Original children and controls preserved"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "entry_point": "useStoryboardRunHost",
+      "disposition": "enforced",
+      "evidence": "Run identity and source identity fixed before writes"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/storyboardRunDraftSession.ts",
+      "entry_point": "createStoryboardRunDraftSession",
+      "disposition": "enforced",
+      "evidence": "Serial saves and local conflict preservation"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any Run selection can lose unsaved state or drift from original UI",
+    "same_class_scan": [
+      "door-map StoryboardPlanEditor",
+      "door-map deriveStoryboardRowRuntimes",
+      "Inspected all original editor callbacks and runtime node binding",
+      "Machine door-map applyCanvasToolCall and storyboardRowActions: /private/tmp/nomi-concurrent-materialize-doors.json and /private/tmp/nomi-anchor-only-doors.json",
+      "Concurrent catalog wait and target wait both reproduced four created nodes instead of two using the real apply boundary and store; after moving awaits before lookup, four files/70 tests passed",
+      "Original batch placement with zero and one shot now both place visual anchors, group once and undo completely; red zero-shot placement returned no nodes"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+    "invariant": "Run authority injected into original editor",
+    "failure_mode": "CAS conflict preserves local draft and original receipt",
+    "exception_policy": "none",
+    "strategy": "Typed host adapter and identity-keyed disposable input session",
+    "artifacts": [
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "src/workbench/creation/storyboard/storyboardEditorHost.ts",
+      "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "src/workbench/creation/storyboard/storyboardRunDraftSession.ts",
+      "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "electron/productionRun/productionRunService.ts",
+      "src/workbench/capability/storyboardPresent.ts",
+      "src/workbench/creation/storyboard/exec/storyboardNodeBinding.ts",
+      "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "src/workbench/capability/multiShotCanvasLanding.ts",
+      "electron/productionRun/multiShotCanvasLanding.ts",
+      "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "electron/productionRun/canvasLandingHost.ts",
+      "src/workbench/capability/capabilityApplyHandler.ts",
+      "electron/capabilityCore/appIntegration.ts"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/original-storyboard-run.test.mjs",
+    "src/workbench/creation/storyboard/storyboardRunDraftSession.test.ts",
+    "src/workbench/creation/storyboard/exec/storyboardBatchLanding.test.ts",
+    "src/workbench/capability/storyboardPresent.test.ts",
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "src/workbench/creation/storyboard/exec/storyboardProjection.test.ts",
+    "src/workbench/generationCanvas/agent/materializationStamp.test.ts",
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts"
+  ],
+  "class_regression_tests": [
+    "tests/ux/original-storyboard-run.test.mjs",
+    "src/workbench/creation/storyboard/storyboardRunDraftSession.test.ts",
+    "src/workbench/creation/storyboard/exec/storyboardBatchLanding.test.ts",
+    "src/workbench/capability/storyboardPresent.test.ts",
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "src/workbench/creation/storyboard/exec/storyboardProjection.test.ts",
+    "src/workbench/generationCanvas/agent/materializationStamp.test.ts",
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "electron/productionRun/productionRunService.ts"
+    ],
+    "rationale": "Remove host present/place execution replacement and service-private landing instance while retaining original runner and current durable owner"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency behavior involved",
+    "exit_criteria": []
+  },
+  "migration": "No data migration or new owner",
+  "residual_risks": [
+    "Real Electron, packaged build and Windows require separate verification; controlled tests alone do not establish them",
+    "Historical anchor execution snapshots lacking kind/carrier cannot be reconstructed without source evidence"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
+    "tests": [
+      "tests/ux/original-storyboard-run.test.mjs",
+      "src/workbench/creation/storyboard/storyboardRunDraftSession.test.ts"
+    ]
+  }
+}

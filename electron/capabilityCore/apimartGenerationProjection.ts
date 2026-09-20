@@ -1,3 +1,4 @@
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 import type { GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
 import { bodyReferencedParamKeys, consumedCanonicalKeys } from "../catalog/paramTranslate";
 import type { Mapping } from "../catalog/types";
@@ -190,6 +191,7 @@ function assertResolvedReferences(input: GenerationProviderRequestInputV1): void
 export function projectReferenceUrls(
   input: GenerationProviderRequestInputV1,
   resolver?: ApimartReferenceUrlResolver,
+  mapping?: Mapping,
 ): GenerationProviderRequestInputV1 {
   const parameters = structuredClone(input.parameters);
   let projection: ApimartReferenceProjection | null | undefined;
@@ -199,6 +201,23 @@ export function projectReferenceUrls(
     } catch {
       throw new ApimartGenerationProviderError("APIMart reference URL resolver failed");
     }
+  }
+  if (input.referenceUrls) {
+    const channels = new Set((mapping ? bodyReferencedParamKeys(mapping.create.body) : []).map(key => PROJECTION_KEYS[key] || key));
+    const snapshot: Record<string, unknown> = {};
+    const append = (key: string, value: unknown) => { (snapshot[key] ??= []); (snapshot[key] as unknown[]).push(value); };
+    for (const reference of input.references) {
+      const url = input.referenceUrls[spendReferenceKey(reference)];
+      if (!isProviderUrl(url)) throw new ApimartGenerationProviderError("Approved reference URL is unavailable");
+      if (reference.kind === "video") append("videoUrls", url);
+      else if (reference.kind === "audio") append("audioUrls", url);
+      else if (channels.has("image_with_roles")) append("imageWithRoles", { url, ...(reference.role ? { role: reference.role } : {}) });
+      else if (reference.role === "first_frame" && channels.has("first_frame_image")) snapshot.firstFrameImage = url;
+      else if (reference.role === "last_frame" && channels.has("last_frame_image")) snapshot.lastFrameImage = url;
+      else if (reference.role === "first_frame" || reference.role === "last_frame") throw new ApimartGenerationProviderError(`APIMart mapping has unsupported reference role: ${reference.role}`);
+      else append("imageUrls", url);
+    }
+    projection = snapshot;
   }
   if (projection !== undefined && projection !== null) {
     if (!projection || typeof projection !== "object" || Array.isArray(projection)) {

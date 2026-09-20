@@ -6,6 +6,7 @@ import { ASSISTANT_MESSAGE, COMPOSER, COMPOSER_MODEL, COMPOSER_SEND, CREATION_PA
   createRuntimeWalk, recorded, sendCreation, waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 import { laneDiskSnapshot, laneMessages, laneMessageText, readLaneTranscripts } from './agent-lane-observer.mjs'
+import { checkOriginalInputJourney } from './_agentOriginalInputJourney.mjs'
 
 const PROMPT = 'STOP_RESUME：先想清楚开头，我随时可能叫停。'
 const PARTIAL = 'STOP_PARTIAL：开头先留一秒钟环境声，再切入主角。'
@@ -68,8 +69,10 @@ try {
   await expect(win.locator(CREATION_PANEL)).toContainText(RESUMED)
   expect(laneDiskSnapshot(projectRoot)).toEqual(durable)
   expect(walk.fixture.requests).toHaveLength(requestsBeforeCold)
+  await checkOriginalInputJourney(walk, win, { projectId, projectRoot })
   walk.fixture.assertClean()
   walk.report.verified = ['stopped-partial-is-native-and-visible', 'continue-button-sends-continue',
-    'next-request-keeps-partial', 'native-prefix-unchanged', 'cold-history-does-not-request-model']
+    'next-request-keeps-partial', 'native-prefix-unchanged', 'cold-history-does-not-request-model',
+    'queued-skill-and-file-cancel-restores-original', 'retry-preserves-original-and-new-composer-draft']
 } catch (error) { failure = error; process.exitCode = 1 }
 finally { await walk.finish(failure) }

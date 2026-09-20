@@ -168,8 +168,9 @@ describe("一条 lane 的系统提示词每回合整体重新求值（2026-09-11
     expect(transform).not.toMatch(/\{\s*systemPrompt:\s*\[systemPrompt,/);
     expect(transform).not.toContain("composeSystemPrompt()");
     // 「这条技能要不要 coding 工具」判在准入那一刻，而用户可能刚导入它——先刷再问。
-    const admission = host.slice(host.indexOf("if (command.kind === 'prompt' && !projection.running"), host.indexOf("const admission = await lane.accept"));
-    expect(admission).toContain("await native?.skillIndex.refresh();");
+    const admission = host.slice(host.indexOf("if (command.kind === 'prompt' && !projection.running"), host.indexOf("const accepted = await lane.accept"));
+    expect(admission).toContain("await awaitWithContext(Promise.resolve(native?.skillIndex.refresh()), admission);");
+    expect(admission.indexOf("skillIndex.refresh()")).toBeLessThan(admission.indexOf("laneSkillUnlockReason(currentSkills()"));
     expect(admission).toContain("laneSkillUnlockReason(currentSkills()");
   });
 

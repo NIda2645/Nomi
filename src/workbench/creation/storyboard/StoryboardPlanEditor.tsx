@@ -1,7 +1,9 @@
 import React from 'react'
+import type { StoryboardEditorHost } from './storyboardEditorHost'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconMovie, IconLockOpen, IconPlayerPlay, IconPlus, IconRobot, IconWand, IconX } from '@tabler/icons-react'
-import { confirmDialog, WorkbenchButton } from '../../../design'
+import { IconAlertTriangle, IconMovie, IconLockOpen, IconPlayerPlay, IconPlus, IconRobot, IconX } from '@tabler/icons-react'
+import { WorkbenchButton } from '../../../design'
 import { notify } from '../../../ui/notificationPolicy'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
@@ -39,6 +41,7 @@ import {
   rerunShotRowWithFreshRefs,
   runStoryboardBatch,
   toggleNodeLock,
+  type RowActionContext,
 } from './exec/storyboardRowActions'
 import { recoverNodeResult } from '../../generationCanvas/runner/recoverTaskActions'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
@@ -46,12 +49,13 @@ import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../assets/AssetPreviewDialog'
 import type { AssetRef } from '../../assets/assetTypes'
 import { buildStoryboardPlaybackQueue, hiddenGeneratingCount, positionsForAnchorFilter } from './storyboardDInteractions'
-import { buildStoryboardReference } from '../../ai/resident/residentReferences'
+import { buildStoryboardReference, isStoryboardReference } from '../../ai/resident/residentReferences'
 import StoryboardPlanStrategyPanel from './StoryboardPlanStrategyPanel'
 import { resolveGeneratableGate, type StoryboardResolveClient } from './strategyGate'
 import { useStoryboardStrategy } from './useStoryboardStrategy'
 import { describeBlocker, describeIssue } from './strategyText'
 import { storyboardShotId } from '../../generationCanvas/agent/storyboardStrategy'
+import { FOCUS_GENERATION_NODE_EVENT } from '../../generationCanvas/nodes/nodeSizing'
 import { getDesktopBridge } from '../../../desktop/bridge'
 
 /**
@@ -64,22 +68,23 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 /** 还没有方案时喂给执行计划 hook 的空方案（hook 顺序不能因方案有无而变；空方案 → idle，不发 IPC）。 */
 const EMPTY_STRATEGY_PLAN: StoryboardPlan = { title: '', anchors: [], shots: [] }
 
-export default function StoryboardPlanEditor({ projectId }: { projectId?: string | null }): JSX.Element | null {
+export default function StoryboardPlanEditor({ projectId, host }: { projectId?: string | null; host?: StoryboardEditorHost }): JSX.Element | null {
   const { t } = useTranslation()
   const activeDesign = useWorkbenchStore((s) => {
     const designs = s.activeDocumentId ? s.storyboardDesignsByDocumentId[s.activeDocumentId] ?? [] : []
     return designs.find((design) => design.id === s.activeStoryboardId) ?? designs[0] ?? null
   })
-  const plan = activeDesign?.plan ?? null
-  const designId = activeDesign?.id ?? ''
-  const setStoryboardPlan = useWorkbenchStore((s) => s.setStoryboardPlan)
-  const deleteStoryboardDesign = useWorkbenchStore((s) => s.deleteStoryboardDesign)
+  const plan = host ? host.plan : activeDesign?.plan ?? null
+  const designId = host ? host.designId : activeDesign?.id ?? ''
+  const legacySetStoryboardPlan = useWorkbenchStore((s) => s.setStoryboardPlan)
+  const setStoryboardPlan = React.useMemo(() => host ? host.change : (next: StoryboardPlan) => {
+    if (activeDesign) legacySetStoryboardPlan(next, activeDesign.documentId, activeDesign.id)
+  }, [host, activeDesign, legacySetStoryboardPlan])
   const setWorkspaceMode = useWorkbenchStore((s) => s.setWorkspaceMode)
   const setActiveStoryboardId = useWorkbenchStore((s) => s.setActiveStoryboardId)
-  const activeDocumentId = useWorkbenchStore((s) => s.activeDocumentId)
+  const selectedDocumentId = useWorkbenchStore((s) => s.activeDocumentId)
+  const activeDocumentId = host ? host.documentId : selectedDocumentId
   const setProjectAgentReferences = useWorkbenchStore((s) => s.setProjectAgentReferences)
-  const setProjectAgentDraft = useWorkbenchStore((s) => s.setProjectAgentDraft)
-  const setProjectAgentDockCollapsed = useWorkbenchStore((s) => s.setProjectAgentDockCollapsed)
   const canvasNodes = useGenerationCanvasStore((s) => s.nodes)
   // 图片/视频模型清单各拉一次，按镜头种类传给镜行的模型选择器 + 参数控件（完整 option 供解析 archetype 参数）。
   const videoModelOptions = useModelOptionsState('video').options
@@ -126,14 +131,14 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
 
   // 行执行态：plan × 画布节点的实时 derive（F2：组头/标题/footer 计数同一份，禁静态快照）。
   const rows = React.useMemo(
-    () => (plan ? deriveStoryboardRowRuntimes({ plan, designId, imageModelOptions, videoModelOptions, nodes: canvasNodes }) : []),
-    [plan, designId, imageModelOptions, videoModelOptions, canvasNodes],
+    () => (plan ? deriveStoryboardRowRuntimes({ plan, designId, imageModelOptions, videoModelOptions, nodes: canvasNodes, bindings: host?.bindings }) : []),
+    [plan, designId, imageModelOptions, videoModelOptions, canvasNodes, host?.bindings],
   )
   const batch = React.useMemo(() => deriveStoryboardBatch(rows, skippedShotIds), [rows, skippedShotIds])
   // 参考卡执行态（B3 图卡）：与行同一份 derive（「N 镜在等它」直接聚合 rows 的 waitingRefs）。
   const anchorCards = React.useMemo(
-    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows }) : []),
-    [plan, designId, canvasNodes, rows],
+    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows, bindings: host?.bindings }) : []),
+    [plan, designId, canvasNodes, rows, host?.bindings],
   )
 
   React.useEffect(() => {
@@ -157,6 +162,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
 
   React.useEffect(() => {
     const onUndo = (event: KeyboardEvent): void => {
+      const target = event.target
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z' || !deletedPlanUndoRef.current) return
       event.preventDefault()
       const undo = deletedPlanUndoRef.current
@@ -230,36 +237,40 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     return rendered
   }, [strategyState, t])
 
-  if (!plan) return null
+  if (!plan) return host ? <div role={host.error ? 'alert' : 'status'} className="p-4 text-caption text-nomi-ink-60">{t(host.error ? 'storyboardEditor.runPlan.loadFailed' : 'storyboardEditor.runPlan.loading')}{host.error ? <WorkbenchButton onClick={() => { void host.recover().catch(() => {}) }}>{t('storyboardEditor.runPlan.reload')}</WorkbenchButton> : null}</div> : null
 
   const issues = validatePlan(plan).filter(issue => issue.kind !== 'anchor-not-consumable')
   const emptyPromptShots = new Set(issues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
   const noNameAnchorIds = new Set(issues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
 
-  const onDiscard = async () => {
-    const targetDocumentId = activeDocumentId
-    const targetStoryboardId = designId
-    if (!targetStoryboardId) return
-    const ok = await confirmDialog({
-      title: t('storyboardEditor.discardTitle'),
-      message: t('storyboardEditor.discardMessage'),
-      confirmLabel: t('storyboardEditor.discard'),
-      danger: true,
-    })
-    if (ok) deleteStoryboardDesign(targetStoryboardId, targetDocumentId)
-  }
-
   // 动作统一包一层：失败原因回当前方案（生成失败本身落在节点卡片，这里只兜 materialize/确认前异常）。
-  const runAction = async (action: () => Promise<void>): Promise<void> => {
+  const runAction = async (action: (context: RowActionContext) => Promise<void>): Promise<void> => {
     if (busy) {
       return
     }
     setBusy(true)
     setActionFeedback(null)
     try {
-      await action()
+      await withProjectAction(async project => {
+        project.assertCurrent()
+        if (projectId && project.binding.projectId !== projectId) throw new Error('Storyboard project changed')
+        await host?.flush()
+        project.assertCurrent()
+        const gesture = { source: 'user' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } }
+        const assertCurrent = async () => {
+          project.assertCurrent()
+          if (host) await host.assertCurrent()
+          else {
+            const current = useWorkbenchStore.getState().storyboardDesignsByDocumentId[activeDocumentId]?.find(value => value.id === designId)
+            if (!current || current.plan !== plan) throw new Error('Storyboard target changed')
+          }
+          project.assertCurrent()
+        }
+        await assertCurrent()
+        await action({ ...execCtx, gesture, assertCurrent })
+      }, () => { throw new Error(t('storyboardEditor.exec.actionFailed')) })
     } catch (error: unknown) {
-      reportFailure(error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
+      reportFailure(!host && error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -280,40 +291,52 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const resolveClient = (): StoryboardResolveClient | null => getDesktopBridge()?.generationStrategy ?? null
   const guardMaterialize = async (
     scope: readonly StoryboardRowRuntime[],
-    action: () => Promise<void>,
+    action: (context: RowActionContext) => Promise<void>,
   ): Promise<void> => {
-    await runAction(async () => {
+    await runAction(async context => {
       const shotIds = scope.map((runtime) => storyboardShotId(runtime.shot))
       const blocker = await resolveGeneratableGate(plan, projectId, resolveClient(), shotIds)
       if (blocker) {
         reportFailure(describeBlocker(t, blocker))
         return
       }
-      await action()
+      await action(context)
     })
   }
 
-  const execCtx = { documentId: activeDocumentId, designId, plan }
+  const execCtx = { documentId: activeDocumentId, designId, plan, bindings: host?.bindings }
   const onStoryboardShotSelect = (shot: StoryboardPlan['shots'][number]): void => {
-    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot')
+    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot', host && shot.shotId ? {documentId:activeDocumentId,runId:host.designId,shotId:shot.shotId} : undefined)
     setProjectAgentReferences((current) => [
-      ...current.filter((item) => !/^storyboard:(?:shot|result):\d+$/.test(item.value ?? '')),
+      ...current.filter((item) => !isStoryboardReference(item)),
       reference,
     ])
   }
+  const placed = rows.length > 0 && rows.every(row => row.exec.node &&
+    (!(row.shot.shotKind !== 'image' && row.shot.keyframe?.enabled) || row.exec.keyframeNode)) &&
+    anchorCards.every(card => card.anchor.carrier === 'text' || card.anchor.referenceUrl || card.anchor.referenceSourceNodeId || card.node)
+  const onPlaceOnCanvas = (): void => {
+    if (placed) {
+      const nodeId = rows[0]?.exec.node?.id
+      flushSync(() => setWorkspaceMode('generation'))
+      if (nodeId) window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId } }))
+      return
+    }
+    void runAction(context => runStoryboardBatch(context, rows, { groupTitle: plan.title, placementOnly: true }))
+  }
   const onGenerateRow = (runtime: StoryboardRowRuntime): void => {
-    void guardMaterialize([runtime], () => generateShotRow(execCtx, runtime.shot, runtime.mode))
+    void guardMaterialize([runtime], context => generateShotRow(context, runtime.shot, runtime.mode))
   }
   const onRunBatch = (): void => {
     const running = batch.runnable
     // 「本次跳过」的作用域就是这一批：批次一发出去，标记立刻清空（§2.10）。
     setSkippedShotIds(new Set())
-    void guardMaterialize(running, () => runStoryboardBatch(execCtx, running))
+    void guardMaterialize(running, context => runStoryboardBatch(context, running))
   }
   const onRunSelected = (selected: StoryboardRowRuntime[]): void => {
     if (selected.length === 0) return
     setSkippedShotIds(new Set())
-    void guardMaterialize(selected, () => runStoryboardBatch(execCtx, selected))
+    void guardMaterialize(selected, context => runStoryboardBatch(context, selected))
   }
   const onToggleSkip = (shotId: string): void => {
     setSkippedShotIds((previous) => {
@@ -331,26 +354,22 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const onAgentHandoff = (runtimes: StoryboardRowRuntime[]): void => {
     if (runtimes.length === 0) return
     setProjectAgentReferences((current) => [
-      ...current.filter((item) => !/^storyboard:(?:shot|result):\d+$/.test(item.value ?? '')),
+      ...current.filter((item) => !isStoryboardReference(item)),
       ...runtimes.map((runtime) => buildStoryboardReference(
         'shot',
         runtime.shot.index,
         t('storyboardEditor.row.selectAria', { index: runtime.shot.index }),
         'agent handoff',
+        host && runtime.shot.shotId ? {documentId:activeDocumentId,runId:host.designId,shotId:runtime.shot.shotId} : undefined,
       )),
     ])
   }
   const onLockSelected = (runtimes: StoryboardRowRuntime[]): void => {
     for (const runtime of runtimes) if (runtime.exec.node) toggleNodeLock(runtime.exec.node.id)
   }
-  /** 「从原稿重新拆分镜」：把请求交给常驻 Agent（分镜规划 Skill），不在这里另写一条拆镜逻辑。 */
-  const onResplitFromScript = (): void => {
-    setProjectAgentDockCollapsed(false)
-    setProjectAgentDraft(t('storyboardEditor.resplitDraft'))
-  }
   const onRegenerateRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.node
-    if (node) void runAction(() => regenerateShotRow(execCtx, runtime.shot, node, runtime.mode))
+    if (node) void runAction(context => regenerateShotRow(context, runtime.shot, node, runtime.mode))
   }
   /**
    * 可找回行的**免费**续查：走画布同一条 `recoverNodeResult`（query IPC，不铸付费令牌、不弹花费确认）。
@@ -363,7 +382,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   }
   const onVariantsRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.node
-    if (node) void runAction(() => generateShotRowVariants(execCtx, runtime.shot, node, runtime.mode))
+    if (node) void runAction(context => generateShotRowVariants(context, runtime.shot, node, runtime.mode))
   }
   // 锁定开关：同步写 meta（不花钱不确认）；状态经 derive 立刻回流行/组头/footer。
   const onToggleLockRow = (runtime: StoryboardRowRuntime): void => {
@@ -371,16 +390,16 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   }
   // 参考已变「用新图重跑」：一键补跑（花钱确认照过；首帧行按波次连跑），绝不自动跑。
   const onRerunFreshRefsRow = (runtime: StoryboardRowRuntime): void => {
-    void runAction(() => rerunShotRowWithFreshRefs(execCtx, runtime.shot, runtime.exec, runtime.mode))
+    void runAction(context => rerunShotRowWithFreshRefs(context, runtime.shot, runtime.exec, runtime.mode))
   }
   // 参考卡就地生成/重生成/锁定（B3）：同一执行通路；重生成后引用镜经「参考已变」提示补跑。
   const onGenerateAnchor = (runtime: AnchorCardRuntime): void => {
-    void runAction(() => generateAnchorCard(execCtx, runtime.anchor))
+    void runAction(context => generateAnchorCard(context, runtime.anchor))
   }
   const onRegenerateAnchor = (runtime: AnchorCardRuntime): void => {
     const node = runtime.node
-    if (node) void runAction(() => regenerateAnchorCard(execCtx, runtime.anchor, node))
-    else void runAction(() => generateAnchorCard(execCtx, runtime.anchor))
+    if (node) void runAction(context => regenerateAnchorCard(context, runtime.anchor, node))
+    else void runAction(context => generateAnchorCard(context, runtime.anchor))
   }
   const onRecoverAnchor = (runtime: AnchorCardRuntime): void => {
     const node = runtime.node
@@ -453,6 +472,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
       // `grid-cols-1` = `repeat(1, minmax(0,1fr))`，把列钉回容器宽，各行自己去 truncate / 滚动。
       className="relative w-full h-full min-h-0 grid grid-cols-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
       data-storyboard-editor="true"
+      data-creation-run-editor={host?.designId}
     >
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
         <div className="flex items-center gap-2 min-w-0">
@@ -469,29 +489,15 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
           <span className="shrink-0 text-micro text-nomi-ink-40 bg-nomi-ink-05 px-2 py-0.5 rounded-full">{t('storyboardEditor.shotCount', { count: plan.shots.length })}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* 「从原稿重新拆分镜」（§2.7 入口 1）：旧分镜表"写完剧本一键转化"的心智在这里延续——
-              只是执行者从确定性代码换成了 Agent，入口位置不变。 */}
-          <WorkbenchButton
-            variant="default"
-            size="sm"
-            data-storyboard-script-to-shots="true"
-            onClick={onResplitFromScript}
-          >
-            <IconWand size={14} stroke={1.7} />
-            {t('storyboardEditor.resplitFromScript')}
-          </WorkbenchButton>
-          <WorkbenchButton
-            variant="default"
-            size="sm"
-            onClick={onDiscard}
-          >
-            {t('storyboardEditor.discardPlan')}
+          <WorkbenchButton size="sm" disabled={busy || rows.length === 0} onClick={onPlaceOnCanvas} data-place-storyboard={designId} data-place-storyboard-run={host?.designId}>
+            {t(placed ? 'storyboardEditor.viewOnCanvas' : 'storyboardEditor.placeOnCanvas')}
           </WorkbenchButton>
         </div>
       </header>
 
       <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-nomi-line-soft text-caption text-nomi-ink-40">
         <IconLockOpen size={14} stroke={1.6} className="shrink-0" />
+        {host?.error ? <span role="alert" className="text-workbench-danger">{t('storyboardEditor.runPlan.localRetained')}<WorkbenchButton size="sm" disabled={busy || host.saving} onClick={() => { void host.recover().catch(() => reportFailure(t('storyboardEditor.exec.actionFailed'))) }}>{t('storyboardEditor.runPlan.saveLocal')}</WorkbenchButton></span> : null}
         <span className="truncate"><span className="text-nomi-ink-60">{t('storyboardEditor.draftEditable')}</span> · {t('storyboardEditor.spendHint')}</span>
       </div>
 
@@ -590,8 +596,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
               onGenerateSelected={(selected) => onRunSelected(selected)}
               onDeleteSelected={(selected) => {
                 const ids = selected.flatMap((runtime) => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
-                deletedPlanUndoRef.current = { plan, canvasSteps: ids.length }
-                ids.forEach((id) => useGenerationCanvasStore.getState().deleteNode(id))
+                deletedPlanUndoRef.current = { plan, canvasSteps: host ? 0 : ids.length }
+                if (!host) ids.forEach((id) => useGenerationCanvasStore.getState().deleteNode(id))
                 const selectedIds = new Set(selected.map((runtime) => runtime.shot.shotId ?? `index:${runtime.shot.index}`))
                 setStoryboardPlan({ ...plan, shots: plan.shots.filter((shot) => !selectedIds.has(shot.shotId ?? `index:${shot.index}`)).map((shot, index) => ({ ...shot, index: index + 1 })) })
               }}
@@ -613,7 +619,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
       <footer className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-nomi-line bg-nomi-paper">
         <div className="flex items-center gap-2 min-w-0">
           <WorkbenchButton variant="default" size="sm" onClick={() => {
-            setActiveStoryboardId(null)
+            if (host) useWorkbenchStore.getState().setActiveCreationRunId(null)
+            else setActiveStoryboardId(null)
             setWorkspaceMode('creation')
           }}>
             {t('storyboardEditor.backToCreation')}

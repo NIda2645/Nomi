@@ -28,6 +28,12 @@ const TASK_KINDS_BY_MODEL_KIND: Record<Exclude<BillingModelKind, "text">, Readon
   audio: new Set(["text_to_audio", "transcribe"]),
   model3d: new Set(["text_to_3d", "image_to_3d"]),
 };
+/** Media output kind derives from the same task-kind owner used by model admission. */
+export function modelKindForTaskKind(taskKind: string): Exclude<BillingModelKind, 'text'> | undefined {
+  const canonical = taskKind.replace(/-/g, '_')
+  return (Object.entries(TASK_KINDS_BY_MODEL_KIND) as Array<[Exclude<BillingModelKind, 'text'>, ReadonlySet<string>]>).find(([, tasks]) => tasks.has(canonical))?.[0]
+}
+
 const DEFAULT_CUSTOM_CALL_TASK_BY_KIND: Record<BillingModelKind, ProfileKind> = {
   text: "chat",
   image: "text_to_image",

@@ -38,6 +38,12 @@ function operationIdOf(result: unknown): string | undefined {
   return typeof drafted.operationId === 'string' ? drafted.operationId : undefined
 }
 
+/** One receipt for an explicit policy decision that already started generation. */
+function startedGenerationAction(result: unknown): LaneToolNextAction {
+  const jobId = operationIdOf(result)
+  return { kind: 'job_running', userSees: 'The user is in full-auto approval mode, so Nomi approved the spend on the authorisation they gave when switching in: generation has started and their provider credit is being spent. No card is waiting for them; progress shows in the task list.', ...(jobId ? { jobId } : {}) }
+}
+
 /**
  * 写动词成功时用户接下来看到什么（设计正本 §6.2）。
  *
@@ -57,19 +63,16 @@ function nextActionFor(
   verb: string, result: unknown, approvalDecision: LaneApprovalDecision | undefined,
 ): LaneToolNextAction | undefined {
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
-  const operation = record.operation && typeof record.operation === 'object' ? record.operation as Record<string, unknown> : undefined
-  const draftOperationId = typeof operation?.operationId === 'string' ? operation.operationId : typeof record.operationId === 'string' ? record.operationId : undefined
+  const draftOperationId = operationIdOf(result)
   const confirmed = userAnsweredACard(approvalDecision)
   switch (verb) {
     case 'draft_shots':
       // 草稿 id 按 `draft_shots` / `generate` 收它的那个名字回给模型（这里曾经印 `jobId=`：
-      // 同一个值出来叫 jobId、进去要填 operationId，而且这一刻根本没有 job 在跑）。
-      return { kind: 'none', userSees: 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.', ...(draftOperationId ? { operationId: draftOperationId } : {}) }
-    case 'generate': {
-      // 走到这里只有一种可能：档位替用户决了门，这一笔**已经在跑**（没决成的那条走 `spendCardResult`）。
-      const jobId = operationIdOf(result)
-      return { kind: 'job_running', userSees: 'The user is in full-auto approval mode, so Nomi approved the spend on the authorisation they gave when switching in: generation has started and their provider credit is being spent. No card is waiting for them; progress shows in the task list.', ...(jobId ? { jobId } : {}) }
-    }
+      // 草稿的寻址字段仍为 operationId；只有本次结果明确已开跑时，才另带执行回执）。
+      return { ...(policyStartedGeneration(result) ? startedGenerationAction(result) : { kind: 'none' as const, userSees: 'Draft changes are saved in the project. Saving does not imply canvas placement or a new generation start.' }), ...(draftOperationId ? { operationId: draftOperationId } : {}) }
+    case 'generate':
+      // Non-started results are handled by the existing spendCardResult boundary.
+      return startedGenerationAction(result)
     case 'edit_timeline': {
       // 闸跑在执行**之前**，所以能走到这一行就说明编辑已经落到时间轴上了。回执讲的是那件事。
       const how = confirmed

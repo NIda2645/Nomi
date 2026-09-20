@@ -15,7 +15,7 @@ type CapabilityActions = {
   resumeProductionBatch: (input: { projectId: string; runId: string; reason: "budget" | "manual" }) => Promise<ProductionActionResult>;
   /** 2026-09-11 Agent 面板付费确认卡：读 / 改参数 / 丢弃 / 确认并开跑。 */
   listPendingSpendConfirmations: (projectId: string) => PendingSpendRead;
-  revisePendingSpendConfirmation: (input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
+  revisePendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
   discardPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string }) => Promise<ProductionActionResult>;
   confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }) => Promise<ProductionActionResult>;
 };
@@ -85,7 +85,7 @@ export function registerProductionActionIpc(deps: {
     const shotId = str(raw.shotId) || undefined;
     const patch = objectOf(raw.patch);
     if (Object.keys(patch).length === 0) return { ok: false, code: "failed", message: "empty revision" };
-    return (await deps.loadCore()).revisePendingSpendConfirmation({ ...scoped, ...(shotId ? { shotId } : {}), patch });
+    return (await deps.loadCore()).revisePendingSpendConfirmation({ ...scoped, quoteId: str(raw.quoteId), ...(shotId ? { shotId } : {}), patch });
   });
 
   ipcMain.handle("nomi:production-runs:discard-spend", async (event, payload: unknown): Promise<ProductionActionResult> => {

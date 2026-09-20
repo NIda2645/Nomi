@@ -70,6 +70,12 @@ function rejectPreparation(code: string): never {
 
 function captureGenerationContext(context: LaneComposerContext | undefined): GenerationInvocationContext | undefined {
   if (!context) return undefined;
+  if (context.admissionSurface === 'document' && context.storyboardTarget) {
+    const target = structuredClone(context.storyboardTarget);
+    return { storyboardTarget: target, sourceDocument: { documentId: target.sourceDocumentId,
+      revision: target.sourceDocumentRevision, contentHash: target.sourceDocumentContentHash },
+      ...(target.expectedRevision === undefined ? {} : { selectedPlan: { runId: target.targetRunId, revision: target.expectedRevision } }) };
+  }
   const source = context.admissionSurface === 'document' && context.documentId && context.preconditions?.document
     && typeof context.preconditions.document.contentHash === 'string'
     ? { documentId: context.documentId, revision: context.preconditions.document.revision, contentHash: context.preconditions.document.contentHash }

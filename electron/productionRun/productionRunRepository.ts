@@ -1,3 +1,5 @@
+import { storyboardContentToken } from '../shared/storyboard/generationPlanEditorial';
+import { validateStoryboardSavePayload } from './productionStoryboardAuthoring';
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -99,10 +101,19 @@ function appendDurableJsonLine(filePath: string, value: unknown): void {
   }
 }
 
-function readJsonLines<T>(filePath: string): T[] {
-  if (!fs.existsSync(filePath)) return [];
+function readOptionalRecord(filePath: string): string | null {
+  try { return fs.readFileSync(filePath, "utf8"); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    // Never turn permissions, I/O failure or an inaccessible path into trusted absence.
+    throw Object.assign(new Error("Production run storage read failed"), { cause: error });
+  }
+}
+
+function readJsonLines<T>(filePath: string, content = readOptionalRecord(filePath)): T[] {
+  if (content === null) return [];
   const values: T[] = [];
-  for (const [index, line] of fs.readFileSync(filePath, "utf8").split("\n").entries()) {
+  for (const [index, line] of content.split("\n").entries()) {
     if (!line.trim()) continue;
     try {
       values.push(JSON.parse(line) as T);
@@ -139,9 +150,10 @@ function budgetEntryFromPayload(value: unknown): BudgetLedgerEntry {
   return record as BudgetLedgerEntry;
 }
 
-function validSnapshot(filePath: string): SnapshotEnvelope | null {
+function validSnapshot(content: string | null): SnapshotEnvelope | null {
+  if (content === null) return null;
   try {
-    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as SnapshotEnvelope;
+    const raw = JSON.parse(content) as SnapshotEnvelope;
     const value = { schemaVersion: raw.schemaVersion, snapshotCursor: raw.snapshotCursor, run: raw.run };
     return raw.checksum === checksum(value) ? raw : null;
   } catch {
@@ -153,6 +165,7 @@ function summarize(run: ProductionRun): ProductionRunSummary {
   const draft = buildProductionRunDraftSummary(run);
   return {
     ...(draft ? { draft } : {}),
+    ...(run.authoring ? { authoring: run.authoring } : {}),
     runId: run.runId,
     projectId: run.projectId,
     revision: run.revision,
@@ -178,9 +191,51 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     return dir;
   }
 
+  type EventPosition = { start: number; end: number; cursor: number; commandId: string };
+  // One disposable journal index per repository, never a Run/object cache. Disk bytes remain
+  // authoritative on every access; the full decoded UTF-8 content is compared, never size/mtime.
+  let indexedJournal: { filePath: string; content: string; positions: EventPosition[] } | undefined;
+
+  function readEventJournal(filePath: string, content = readOptionalRecord(filePath)) {
+    const bytes = content ?? "";
+    const previous = indexedJournal?.filePath === filePath ? indexedJournal : undefined;
+    let positions: EventPosition[];
+    if (previous?.content === bytes) positions = previous.positions;
+    else {
+      // A final line without a newline can still be extended, so never reuse its validation.
+      const prefixEnd = previous ? previous.content.lastIndexOf("\n") + 1 : 0;
+      const reuse = previous && bytes.startsWith(previous.content.slice(0, prefixEnd));
+      const start = reuse ? prefixEnd : 0;
+      positions = reuse ? previous.positions.filter(position => position.end < prefixEnd) : [];
+      let lineNumber = reuse ? previous.content.slice(0, prefixEnd).split("\n").length : 1;
+      let offset = start;
+      while (offset < bytes.length) {
+        const newline = bytes.indexOf("\n", offset);
+        const end = newline === -1 ? bytes.length : newline;
+        const line = bytes.slice(offset, end);
+        if (line.trim()) {
+          let event: RunEvent;
+          try { event = JSON.parse(line) as RunEvent; }
+          catch { throw new ProductionRunParseError(filePath, lineNumber); }
+          positions.push({ start: offset, end, cursor: event?.cursor, commandId: event?.commandId });
+        }
+        offset = end + 1;
+        lineNumber += 1;
+      }
+      // Commit only after every changed line validates. A malformed append cannot poison the index.
+      indexedJournal = { filePath, content: bytes, positions };
+    }
+    const decode = (position: EventPosition): RunEvent => JSON.parse(bytes.slice(position.start, position.end)) as RunEvent;
+    return {
+      latest: () => positions.length ? decode(positions[positions.length - 1]) : undefined,
+      forCommand: (commandId: string) => positions.filter(position => position.commandId === commandId).map(decode),
+      after: (cursor: number) => positions.filter(position => position.cursor > cursor).map(decode),
+    };
+  }
+
   function readEvents(projectId: string, runId: string, afterCursor = 0): RunEvent[] {
     const paths = productionRunPaths(projectDir(projectId), runId);
-    return readJsonLines<RunEvent>(paths.events).filter((event) => event.cursor > afterCursor);
+    return readEventJournal(paths.events).after(afterCursor);
   }
 
   function readApprovals(projectId: string, runId: string): Approval[] {
@@ -208,15 +263,18 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
   function read(projectId: string, runId: string): ProductionRun | null {
     const dir = projectDir(projectId);
     const paths = productionRunPaths(dir, runId);
-    if (!fs.existsSync(paths.events) && !fs.existsSync(paths.snapshot)) return null;
-    const events = readJsonLines<RunEvent>(paths.events);
-    const latestEvent = events.at(-1);
-    const snapshot = fs.existsSync(paths.snapshot) ? validSnapshot(paths.snapshot) : null;
+    const eventContent = readOptionalRecord(paths.events);
+    const snapshotContent = readOptionalRecord(paths.snapshot);
+    if (eventContent === null && snapshotContent === null) return null;
+    const latestEvent = readEventJournal(paths.events, eventContent).latest();
+    const snapshot = validSnapshot(snapshotContent);
     if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return snapshot.run;
     // Reads may rebuild an in-memory projection for callers, but never repair
     // durable bytes. Backup/migration/rewrite belongs to an explicit command;
     // a projection read must be safe to retry after a crash and side-effect free.
-    return runFromEvent(latestEvent);
+    const recovered = runFromEvent(latestEvent);
+    if (!recovered) throw new ProductionRunParseError(paths.snapshot, 0);
+    return recovered;
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {
@@ -291,7 +349,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
   function createGenerationDraft(input: {
     operationId: string;
     projectId: string;
-    origin: { host: string; actorId?: string };
+    origin: ProductionRun['origin'];
     candidate: PlanCandidate;
     currency?: string;
     policy?: Partial<AutomationPolicy>;
@@ -303,6 +361,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
      */
     shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
     /** 见 `ProductionGenerationPlan.cardHidden`。 */
+    editorial?: import('../shared/storyboard/generationPlanEditorial').GenerationPlanEditorial
     cardHidden?: boolean;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();
@@ -321,6 +380,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       stageId: "generate",
       playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: input.origin,
+      ...(input.origin.sourceDocument ? { authoring: { title: input.candidate.prompt.split('\n')[0].trim().slice(0, 500) || input.operationId } } : {}),
       policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
       budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
       planVersion: 1,
@@ -344,6 +404,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
         state: "draft",
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
         candidate: structuredClone(input.candidate),
+        ...(input.editorial ? { editorial: structuredClone(input.editorial) } : {}),
         // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
         // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
         ...(input.shots && input.shots.length > 0
@@ -376,17 +437,21 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
   function executeUnlocked(projectId: string, runId: string, command: RunCommand): RunCommandResult {
     const dir = projectDir(projectId);
     const paths = productionRunPaths(dir, runId);
-    const allEvents = readJsonLines<RunEvent>(paths.events);
-    const priorEvents = allEvents.filter((event) => event.commandId === command.commandId);
+    const journal = readEventJournal(paths.events);
+    const priorEvents = journal.forCommand(command.commandId);
     if (priorEvents.length > 0) {
       const priorRun = runFromEvent(priorEvents.at(-1));
       if (!priorRun) throw new Error(`Production command result is corrupt: ${command.commandId}`);
       return { run: priorRun, events: priorEvents };
     }
-    const current = runFromEvent(allEvents.at(-1));
+    const latestEvent = journal.latest();
+    const current = runFromEvent(latestEvent);
     if (!current) throw new Error(`Production run not found: ${runId}`);
     if (current.projectId !== projectId) throw new Error("Production run project mismatch");
-    if (current.revision !== command.expectedRevision) {
+    if (command.type === "generation.save_storyboard") {
+      const payload = validateStoryboardSavePayload(command.payload);
+      if (payload.expectedContentToken !== storyboardContentToken(current)) throw new Error("storyboard_content_conflict");
+    } else if (current.revision !== command.expectedRevision) {
       throw new ProductionRunRevisionConflictError(command.expectedRevision, current.revision);
     }
     const timestamp = now();
@@ -487,7 +552,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     } else {
       effect = applyProductionCommand(current, command, timestamp);
     }
-    const cursor = (allEvents.at(-1)?.cursor ?? 0) + 1;
+    const cursor = (latestEvent?.cursor ?? 0) + 1;
     const next: ProductionRun = {
       ...effect.run,
       revision: current.revision + 1,

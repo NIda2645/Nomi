@@ -27,21 +27,34 @@ export type BudgetLedger = {
   reservations: Record<string, Reservation>;
 };
 
-/** Compensated addition prevents per-shot rounding from accumulating across a large batch. */
-export function sumBudgetAmounts(amounts: readonly number[]): number {
+/** One compensated pass for both complete totals and ordered budget prefixes. */
+export function createBudgetAmountAccumulator(): (amount: number) => number {
   let sum = 0;
   let correction = 0;
-  for (const amount of amounts) {
+  return (amount: number) => {
+    if (!Number.isFinite(amount)) throw new Error("Budget amount must be finite");
     const adjusted = amount - correction;
     const next = sum + adjusted;
+    if (!Number.isFinite(next)) throw new Error("Budget total must be finite");
     correction = (next - sum) - adjusted;
     sum = next;
+    return sum;
+  };
+}
+
+/** Compensated addition prevents per-shot rounding from accumulating across a large batch. */
+export function sumBudgetAmounts(amounts: readonly number[]): number {
+  const add = createBudgetAmountAccumulator();
+  let sum = 0;
+  for (const amount of amounts) {
+    sum = add(amount);
   }
   return sum;
 }
 
 /** Compare at machine precision, without a currency-sized tolerance or rounding away real costs. */
 export function budgetExceeds(amount: number, ceiling: number): boolean {
+  if (!Number.isFinite(amount) || !Number.isFinite(ceiling)) throw new Error("Budget comparison must be finite");
   return amount > ceiling && amount - ceiling > 4 * Number.EPSILON * Math.max(Math.abs(amount), Math.abs(ceiling));
 }
 

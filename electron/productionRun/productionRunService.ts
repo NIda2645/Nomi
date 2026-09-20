@@ -94,6 +94,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     const bridge = await import('../capabilityCore/rendererBridge')
     return bridge.requestRenderer(op, payload, timeoutMs)
   })
+
   const executeProductionExport = deps.executeProductionExport ?? (async (input) => {
     const prepared = await requestRenderer('production.export', input, 5 * 60_000) as { manifest?: unknown }
     const exports = await import('../export/exportJobs')
@@ -170,6 +171,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     currency?: string
     policy?: Partial<AutomationPolicy>
     shots?: ReadonlyArray<Pick<ProductionGenerationShot, 'shotId' | 'role' | 'included' | 'candidate'>>
+    editorial?: import('../shared/storyboard/generationPlanEditorial').GenerationPlanEditorial
     cardHidden?: boolean
   }): ProductionRun {
     // Semantic generation drafts must use the same live automation policy as

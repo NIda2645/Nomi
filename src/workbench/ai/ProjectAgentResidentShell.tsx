@@ -230,6 +230,9 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
    * 按线程记：位置属于那条对话，换项目/换线程各记各的，切回来还在原处。
    */
   const flowScroll = flowScrollMemoryFor(surface, data.activeThreadId)
+  const historyConversation = laneConversationOf(data.snapshot)
+  const historyIdentity = data.snapshot.workspaceId && historyConversation
+    ? JSON.stringify([data.snapshot.workspaceId, historyConversation.laneName, historyConversation.sessionId, surface]) : undefined
   const [popover, setPopover] = React.useState<ComposerPopover | null>(null)
   // 系统提示词编辑器（2026-09-14 从设置 → AI 策略搬来）：权限弹层底部那一行打开，Mantine 弹窗承载。
   const [systemPromptOpen, setSystemPromptOpen] = React.useState(false)
@@ -268,6 +271,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     const launch = (displayPrompt?: string): void => {
       void actions.send([t('agentResident.storyboardRequest'), displayPrompt].filter(Boolean).join('\n\n'), {
         skillKey: STORYBOARD_PLANNER_SKILL.key,
+        newStoryboard: true,
         ...(displayPrompt ? { displayText: displayPrompt } : {}),
       })
     }
@@ -557,7 +561,12 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         height={actions.error ? size.height - 20 : size.height}
         legacy={data.snapshot.active.legacy}
         flow={data.flow}
-        onLoadOlder={data.loadOlder}
+        historyIdentity={historyIdentity}
+        historyCursor={data.snapshot.active.history?.before}
+        onLoadOlder={historyIdentity && data.loadOlder ? async () => {
+          await data.loadOlder!()
+          return laneClient.projection().history?.before
+        } : undefined}
         flowTail={shotVerifyFeedback}
         surface={surface}
         onStarter={startFromStarter}

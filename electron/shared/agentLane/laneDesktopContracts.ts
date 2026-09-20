@@ -1,4 +1,5 @@
 import type { AgentModelEntry } from "../agentCapabilities/availableModels"
+import type { StoryboardRequestTarget } from '../agentCapabilities/generationInvocationContext'
 import type { ProjectAgentAttachmentRef } from '../workbenchInput'
 import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
 import type { ProjectBinding } from '../projectBinding'
@@ -11,6 +12,7 @@ import type { ProjectAgentProposalReceiptWrite, ProjectAgentProposalReceiptTrans
 
 /** User input only. Model credentials and capability authority are resolved in main. */
 export interface LaneComposerContext {
+  storyboardTarget?: StoryboardRequestTarget
   model?: { vendorKey: string; modelKey: string }
   approvalPolicy: ProjectAgentApprovalPolicy
   documentId?: string
@@ -54,7 +56,7 @@ export interface LaneSingleShotRequest {
 
 export type LaneConversationAddress = LaneConversationRef & Readonly<{ workspaceId: string }>
 /** Restorable user intent; current model, policy and capability authority are deliberately excluded. */
-export type LaneDraftIntent = Pick<LaneComposerContext, 'documentId' | 'target' | 'preconditions' | 'contextSnapshot' | 'systemPrompt'>
+export type LaneDraftIntent = Pick<LaneComposerContext, 'documentId' | 'target' | 'preconditions' | 'contextSnapshot' | 'systemPrompt' | 'storyboardTarget'>
 
 export type LaneDesktopCommand = (LaneCommand | LaneReceiptCommand
   | ({ kind: 'single-shot' } & LaneSingleShotRequest)
