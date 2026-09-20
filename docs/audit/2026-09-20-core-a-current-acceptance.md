@@ -40,3 +40,10 @@
 - [候选包原MP4导出](evidence/core-a-20260920/candidate-v17-zh-export-complete.png)
 
 主代理已亲看以上截图。完整日志当前在/private/tmp，PR引用持久收据/源码hash，不把本地路径当远程附件。逐处审查见 [最终账本](evidence/core-a-20260920/final-semantic-audit.json)，账本的自排除和身份边界见同目录 README。
+
+
+## 交付工具补记：Ponytail 读取阻断
+
+产品提交 `b65ce1c74` 已推任务分支，未合并。实际 `review:branch` 在模型调用前读 8,106,786 字节 diff 超过原 8,064,000 缓冲而 ENOBUFS，最初已留 deferred；这不是模型审查通过。随后继续修原适配器读取边界，见 [最小方案](../plan/2026-09-20-ponytail-bounded-diff-read.md) 和 [根因合同](../fixes/2026-09-20-ponytail-bounded-diff-read.root-cause.json)。
+
+原 stdout 改为私有临时文件、固定64KiB读取、原150KB单元/80行上下文/超时不变。真实大分支及单8.4MB行先复现 ENOBUFS；独立复审另抓到新读取器UTF-16切半问题，补逐字节红测后修复。定点20/20通过；根因门岗48/48、31高风险文件通过。原实际分支已能生成40块，2块明确截断仅为大型审计JSON，生产代码未过滤。此补记冻结时真实模型重跑尚未完成，旧deferred不能提前accept；以PR随后实际收据为准。app src/electron未因工具修复变化，原包及付费证据边界不变。

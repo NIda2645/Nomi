@@ -20,6 +20,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { pathToFileURL } from 'node:url'
 
 /** 单次喂给模型的上限。超过就分块——这是分块器的触发线，不再是给人的报错。 */
@@ -62,12 +63,12 @@ possible.". Then emit exactly one final line marker: PONYTAIL_REVIEW: PASS
 or PONYTAIL_REVIEW: FINDINGS. Do not echo this prompt or the diff.
 `
 
-export function runGit(repoRoot, args) {
+export function runGit(repoRoot, args, { stdoutFd = 'pipe' } = {}) {
   return execFileSync('git', args, {
     cwd: repoRoot,
     encoding: 'utf8',
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', stdoutFd, 'pipe'],
     maxBuffer: MAX_GIT_OUTPUT_BYTES,
   })
 }
@@ -156,14 +157,13 @@ export function summarizeBinaryChanges({ repoRoot, git = runGit, selector }) {
  * 装一个评审单元（一段范围 / 一个提交 / 一个文件）。单元自己就超限时按 UTF-8 安全边界
  * 截断并明说截断了——「让人去拆提交」正是这次要删掉的东西，分块器不许把问题推回给人。
  */
-function makeUnit(label, body) {
+function makeUnit(label, body, totalBytes = byteLength(body)) {
   const header = `### ${label}\n`
   const room = MAX_REVIEW_DIFF_BYTES - byteLength(header)
-  if (byteLength(body) <= room) return { label, text: `${header}${body}`, truncated: false }
-  const notice = `[TRUNCATED: ${byteLength(body)} bytes of diff; only the first part is shown]\n`
+  if (totalBytes <= room) return { label, text: `${header}${body}`, truncated: false }
+  const notice = `[TRUNCATED: ${totalBytes} bytes of diff; only the first part is shown]\n`
   const buffer = Buffer.from(String(body), 'utf8').subarray(0, room - byteLength(notice))
-  // toString 在半个多字节字符上会产生 U+FFFD，不会抛；末行截半对精简评审无影响。
-  return { label, text: `${header}${notice}${buffer.toString('utf8')}`, truncated: true }
+  return { label, text: `${header}${notice}${new StringDecoder('utf8').write(buffer)}`, truncated: true }
 }
 
 /**
@@ -195,10 +195,65 @@ function packUnits(units) {
   return chunks
 }
 
-/** `diff --git` 之前的位置就是每份文件补丁的边界；range diff 里已经有全部文件，
- *  逐文件再 shell out 一次是白跑。 */
-function splitFilePatches(textDiff) {
-  return String(textDiff).split(/^(?=diff --git )/m).map((patch) => patch.trim()).filter(Boolean)
+/** 固定缓冲读取；连单行也不积攒，只保留文件前缀和完整计数供原截断策略使用。 */
+function readPatchUnits(fd, range) {
+  const units = []
+  const buffer = Buffer.alloc(64 * 1024)
+  const decoder = new StringDecoder('utf8')
+  const prefix = Buffer.alloc(MAX_REVIEW_DIFF_BYTES)
+  let stored = 0
+  let total = 0
+  let trailing = 0
+  let linePrefix = ''
+  let atLineStart = true
+  const append = (text) => {
+    if (total === 0) text = text.trimStart()
+    const bytes = Buffer.from(text, 'utf8')
+    const trimmed = text.trimEnd()
+    trailing = trimmed ? bytes.length - byteLength(trimmed) : trailing + bytes.length
+    total += bytes.length
+    stored += bytes.copy(prefix, stored, 0, Math.min(bytes.length, prefix.length - stored))
+  }
+  const flush = () => {
+    const totalBytes = total - trailing
+    if (totalBytes > 0) {
+      const body = new StringDecoder('utf8').write(prefix.subarray(0, Math.min(stored, totalBytes)))
+      units.push(makeUnit(`${range} · ${patchLabel(body)}`, body, totalBytes))
+    }
+    stored = total = trailing = 0
+  }
+  const consume = (text) => {
+    const parts = text.split('\n')
+    for (let i = 0; i < parts.length; i += 1) {
+      let part = parts[i]
+      const newline = i < parts.length - 1
+      if (atLineStart) {
+        linePrefix += part
+        part = ''
+        if (linePrefix.length >= 11 || newline || !'diff --git '.startsWith(linePrefix)) {
+          if (linePrefix.startsWith('diff --git ')) flush()
+          append(linePrefix)
+          linePrefix = ''
+          atLineStart = false
+        }
+      }
+      append(part)
+      if (newline) {
+        append('\n')
+        atLineStart = true
+      }
+    }
+  }
+  let offset = 0
+  let count
+  while ((count = fs.readSync(fd, buffer, 0, buffer.length, offset)) > 0) {
+    offset += count
+    consume(decoder.write(buffer.subarray(0, count)))
+  }
+  consume(decoder.end())
+  append(linePrefix)
+  flush()
+  return units
 }
 
 /** `diff --git a/<p> b/<p>` 的 b 侧就是文件名；名字被 git 引号括起来时退回整行当标签。 */
@@ -220,8 +275,17 @@ function patchLabel(patch) {
  */
 export function chunkBranchDiff({ repoRoot, mergeBase, headSha, runGit: git = runGit }) {
   const range = `${mergeBase}..${headSha}`
-  const textDiff = String(git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--']) || '')
-  const units = splitFilePatches(textDiff).map((patch) => makeUnit(`${range} · ${patchLabel(patch)}`, patch))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-diff-'))
+  let fd
+  let units
+  try {
+    fd = fs.openSync(path.join(directory, 'range.diff'), 'wx+', 0o600)
+    git(repoRoot, ['diff', '--no-ext-diff', '--unified=80', range, '--'], { stdoutFd: fd })
+    units = readPatchUnits(fd, range)
+  } finally {
+    try { if (fd !== undefined) fs.closeSync(fd) }
+    finally { fs.rmSync(directory, { recursive: true, force: true }) }
+  }
   const binarySummary = summarizeBinaryChanges({ repoRoot, git, selector: [range] })
   if (binarySummary) units.push(makeUnit(`binary changes ${range}`, binarySummary))
   return packUnits(units)

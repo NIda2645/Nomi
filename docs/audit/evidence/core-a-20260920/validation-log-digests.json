@@ -80,6 +80,31 @@
       "source": "/private/tmp/nomi-core-a-walkthrough-gate-final-v17.log",
       "sha256": "7f49087f84efa775dfa993c177c24d82c68b414c3f16bbe5f45434c30f58dde8",
       "bytes": 11693
+    },
+    "ponytail-initial-failure": {
+      "source": "/private/tmp/nomi-core-a-ponytail-final-v19.log",
+      "sha256": "aa69cd7f9fddff2ca0ca5e88864c4c4250aff050fa7fc8eae4dbfde2e6f77c24",
+      "bytes": 211
+    },
+    "ponytail-bounded-red": {
+      "source": "/private/tmp/nomi-ponytail-bounded-red.log",
+      "sha256": "3c6b908fbee68b89e165c98b1b4a26591d2a8f34d015ef282dcd8dc09504ec47",
+      "bytes": 3678
+    },
+    "ponytail-utf8-red": {
+      "source": "/private/tmp/nomi-ponytail-bounded-utf8-red.log",
+      "sha256": "dd548a1ba51c64c5f454262af59cfa99b94edabaab6f439e2015e0e46accf542",
+      "bytes": 1069
+    },
+    "ponytail-bounded-green": {
+      "source": "/private/tmp/nomi-ponytail-bounded-green.log",
+      "sha256": "fc037118dcb9882e34c289690f9566e50577df41dc5b13423d64f8c3362a48cc",
+      "bytes": 4433
+    },
+    "ponytail-root-contracts": {
+      "source": "/private/tmp/nomi-ponytail-bounded-contracts.log",
+      "sha256": "3f7a9ae1879510417d1ebf9fb7856e05a92aaee8e9556850a91d11043ea2b58a",
+      "bytes": 11093
     }
   }
 }
