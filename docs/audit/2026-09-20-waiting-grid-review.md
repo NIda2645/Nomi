@@ -69,3 +69,12 @@ PR Linux画布验收和本机Electron均复现：旧测试期望168，实际163�
 共享落地函数现只在新增节点、分组或表时请求既有fit，复用现役信号；不改变镜号、绑定、选择、结果写入、撤销或持久化。六个新增单测覆盖rebind/replay/result不导航，以及初次落点、补组、扩展为多镜仍导航。生产diff只收紧原fit调用条件；各调用入口审计、v3门表和不变量在`2026-09-20-materialization-viewport.root-cause.json`。
 
 `golden-path.e2e.mjs`复用现有视口稳定等待，记录改前transform，改后仍要求同一transform与full密度，再执行原提示词断言，不重新缩放掩盖问题。旧dist确定性红：matrix缩放0.8变0.589109；新构建完整七阶段任务通过（包括只改第二镜、生成落盘、冷重启），5次文本和1次图像均由loopback响应，付费0。红绿报告为`golden-viewport-before.json`/`golden-viewport-after.json`，真实截图`golden-viewport-preserved.png`已人工查看。远端Linux再次验收待交付检查，不能由本机通过代替。
+
+
+## CI发现：整套性能流程超时与重复导航
+
+远端21场景串行任务在33.5分钟上限中止，完成18个sample，不能记整体验收通过。Linux等待场景是SwiftShader静态格子（8/8），因此这次超时没有证明GPU格子过载。已完成普通交互采样通常2–7秒，场景总耗时多为50–56秒；报告摘要见`ci-performance-timeout.json`。
+
+`canvas-performance-benchmark.e2e.mjs`旧版单击项目卡后，盲等1秒，再点击同一打开入口的“继续创作”并吞错。产品卡片与按钮均直接openProject，第二次打开没有产品语义；导航竞态下可能等待旧窗口的按钮。本机临時計时未复现这次空等（count=0），所以不能说已证明Linux超时全部来自这里。
+
+现删除重复点击/盲等/吞错，用既有getTargetWindow和expect.poll等待fixture指定项目窗口，再执行原舞台/节点/媒体稳定断言；sample新增setupMs/openMs用于远端归因，不修改任何性能预算、场景、warmup或采样数量。本机同一真实Electron的cold-open、blank-pan、waiting-effects三个场景通过，8个动画/结束剩4/离屏/卸载通过；原始结果`performance-single-open.json`。独立复核未发现弱化验收。远端全套仍须重跑才能关闭该项。
