@@ -1,8 +1,8 @@
 {
   "baseRef": "origin/main",
   "base": "96d368c26c2e5c1f0534861be9b9100630275097",
-  "head": "b65ce1c743f7a518ffe1e816e99a40d883d3dde2",
-  "tree": "d2584e76b9e7df1de294b2945b0a5c420c06c7ac",
+  "head": "7e372c5b1a5bd5390b54a254b19aa96feb49a158",
+  "tree": "1c17323bf5d9485037a2d703c7fd1b4d332e3bb7",
   "dirty": true,
   "branch": "codex/core-a-integration-20260919",
   "files": [
@@ -1769,7 +1769,7 @@
     {
       "status": "A",
       "path": "docs/fixes/2026-09-20-ponytail-bounded-diff-read.root-cause.json",
-      "untracked": true,
+      "untracked": false,
       "baseBlob": null,
       "currentBlob": "4075a7c74b69d6db463f98d4e3659a080df0a7fc",
       "patchFile": "patches/0071.patch",
@@ -2194,17 +2194,17 @@
     {
       "status": "A",
       "path": "docs/plan/2026-09-20-ponytail-bounded-diff-read.md",
-      "untracked": true,
+      "untracked": false,
       "baseBlob": null,
-      "currentBlob": "0b2bb741ed7d5dcc4f9cfad1f1c979908af7555e",
+      "currentBlob": "8baa28ff371b7aab7fe3e23868061a24eab00c07",
       "patchFile": "patches/0088.patch",
-      "patchSha256": "b6efafb58604219a3114c4443b7f34ce1dc8569d26730c00be19e0e8c9286fdb",
+      "patchSha256": "553e8baec7bb09a5e6547dc66ff1580ad3a8df3ecf1601e945cbb71d3a286800",
       "testChanged": false,
       "policyChanged": false,
       "hunks": [
         {
           "id": "88.1",
-          "header": "@@ -0,0 +1,30 @@",
+          "header": "@@ -0,0 +1,31 @@",
           "verdict": "correct",
           "attribution": "not-a-defect",
           "priorBehavior": "No document/receipt at this path in merge-base; original reviewed earlier snapshot preserved where described.",
@@ -14933,7 +14933,7 @@
       "attribution": "not-a-defect"
     }
   ],
-  "startedAt": "2026-09-20T08:03:28.937Z",
+  "startedAt": "2026-09-20T08:04:47.860Z",
   "validationStatus": "not-run",
   "stages": [
     {
