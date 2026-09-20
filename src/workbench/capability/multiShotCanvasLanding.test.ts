@@ -1,9 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { attachShotResult, materializeShots } from './multiShotCanvasLanding'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { resetClientIdRegistry } from '../generationCanvas/agent/applyCanvasToolCall'
+import * as modelLookup from '../generationCanvas/agent/availableModels'
+import * as projectPersistence from '../project/workbenchProjectSession'
+import * as canvasTools from '../generationCanvas/agent/applyCanvasToolCall'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../project/projectSessionTestHarness'
 import { readShotTable } from '../../../electron/shared/canvas/shotTable'
 
 // P4 S5 — attach-shot-result 的运行时断言（result.url 必须 nomi-local://）+ 节点已删静默跳过。
@@ -170,4 +174,93 @@ it('document reconciliation only updates existing nodes and cannot recreate dele
     shots: [{ shotId: 'a', prompt: 'A' }, { shotId: 'b', prompt: 'B' }] })
   expect(useGenerationCanvasStore.getState().nodes).toEqual([])
   expect(useGenerationCanvasStore.getState().groups).toEqual([])
+})
+
+
+let landingProject: ProjectSessionTestHarness
+beforeEach(async () => { landingProject = createProjectSessionTestHarness(); await landingProject.open('project-a') })
+afterEach(() => { vi.restoreAllMocks(); landingProject.dispose() })
+
+function pauseLanding() {
+  let resume!: () => void
+  let enter!: () => void
+  const waiting = new Promise<void>(resolve => { resume = resolve })
+  const entered = new Promise<void>(resolve => { enter = resolve })
+  return { entered, resume, wait: async () => { enter(); await waiting } }
+}
+
+it.each(['same', 'switch', 'reopen'] as const)('model-await landing keeps the captured project lifetime: %s', async change => {
+  const operation = 'landing-project-lease'
+  const makeNodes = (prompt: string) => [1, 2].map(index => ({ ...shotNode(`shared-${index}`), prompt,
+    meta: { materializationOperationId: operation, materializationClientId: `shot-${index}`, productionCandidateRevision: 1 } }))
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: makeNodes('project-a'), edges: [], groups: [] })
+  const paused = pauseLanding()
+  vi.spyOn(modelLookup, 'listAvailableModelsForAgent').mockImplementation(async () => { await paused.wait(); return [] })
+  const landing = materializeShots({ projectId: 'project-a', materializationOperationId: operation,
+    shots: [1, 2].map(index => ({ shotId: `shot-${index}`, prompt: 'new-author-text',
+      candidate: { candidateId: `candidate-${index}`, revision: 2, modelKey: 'model' },
+      result: { id: `result-${index}`, type: 'video' as const, url: 'nomi-local://fixture/result.mp4', createdAt: 1 } })) })
+  await paused.entered
+  if (change !== 'same') {
+    await landingProject.open('project-b')
+    if (change === 'reopen') await landingProject.open('project-a')
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: makeNodes('new-project-sentinel'), edges: [], groups: [] })
+  }
+  paused.resume()
+  if (change === 'same') {
+    await expect(landing).resolves.toMatchObject({ bindings: expect.any(Array) })
+    expect(useGenerationCanvasStore.getState().nodes.map(node => node.prompt)).toEqual(['new-author-text', 'new-author-text'])
+  } else {
+    await expect(landing).rejects.toThrow()
+    const canvas = useGenerationCanvasStore.getState()
+    expect(canvas.nodes.map(node => node.prompt)).toEqual(['new-project-sentinel', 'new-project-sentinel'])
+    expect(canvas.nodes.every(node => !node.result)).toBe(true)
+    expect(canvas.groups).toEqual([])
+  }
+})
+
+it('project switch after node creation cannot add the old group table or result to the new canvas', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  const paused = pauseLanding()
+  const original = canvasTools.applyCanvasToolCall
+  vi.spyOn(canvasTools, 'applyCanvasToolCall').mockImplementation(async (...args) => {
+    const result = await original(...args)
+    await paused.wait()
+    return result
+  })
+  const landing = materializeShots({ projectId: 'project-a', runId: 'run-a', materializationOperationId: 'landing-creation-lease',
+    shots: [{ shotId: 'shot-1', kind: 'image' }, { shotId: 'shot-2', kind: 'image' }] })
+  await paused.entered
+  expect(useGenerationCanvasStore.getState().nodes).toHaveLength(2)
+  await landingProject.open('project-b')
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [shotNode('new-project-sentinel')], edges: [], groups: [] })
+  paused.resume()
+  await expect(landing).rejects.toThrow()
+  expect(useGenerationCanvasStore.getState().nodes.map(node => node.id)).toEqual(['new-project-sentinel'])
+  expect(useGenerationCanvasStore.getState().groups).toEqual([])
+})
+
+
+it('does not publish stale node bindings when project changes during captured persistence', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  const paused = pauseLanding()
+  vi.spyOn(projectPersistence, 'persistActiveWorkbenchProjectNow').mockImplementation(async () => { await paused.wait(); return null })
+  const landing = materializeShots({ projectId: 'project-a', materializationOperationId: 'landing-persist-lease',
+    shots: [{ shotId: 'shot-1', kind: 'image' }] })
+  await paused.entered
+  expect(useGenerationCanvasStore.getState().nodes).toHaveLength(1)
+  await landingProject.open('project-b')
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [shotNode('new-project-sentinel')], edges: [], groups: [] })
+  paused.resume()
+  await expect(landing).rejects.toThrow()
+  expect(useGenerationCanvasStore.getState().nodes.map(node => node.id)).toEqual(['new-project-sentinel'])
+})
+
+it('rejects an explicitly different project and an unavailable project before any canvas write', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [shotNode('entry-sentinel')], edges: [], groups: [] })
+  const payload = { projectId: 'project-b', materializationOperationId: 'landing-entry-lease', shots: [{ shotId: 'shot-1', kind: 'image' as const }] }
+  await expect(materializeShots(payload)).rejects.toThrow('storyboard_project_changed')
+  landingProject.close()
+  await expect(materializeShots({ ...payload, projectId: undefined })).rejects.toThrow('storyboard_project_unavailable')
+  expect(useGenerationCanvasStore.getState().nodes.map(node => node.id)).toEqual(['entry-sentinel'])
 })

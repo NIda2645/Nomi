@@ -13,7 +13,7 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); await server?.close() })
 it('keeps a captured gesture when focus moves between elements, but releases on window blur', async () => {
   await page.reload()
-  await page.locator('input').focus()
+  await page.locator('#unpublished-draft').focus()
   await startPan()
   await page.locator('#readonly').focus()
   expect(await page.locator('#stage').getAttribute('data-dragging')).toBe('true')
@@ -47,13 +47,13 @@ it('invalidates the single history owner across selection, results, kind and ide
 })
 it('recovers a failed import locally without reloading or replacing unpublished input', async () => {
   await page.locator('[role="alert"]').waitFor()
-  await page.locator('input').fill('still unpublished')
+  await page.locator('#unpublished-draft').fill('still unpublished')
   await page.evaluate(() => { window.savedInput = document.querySelector('input'); window.composerFixture.load() })
   await page.locator('[role="alert"] button').click()
   await page.locator('[data-loaded]').waitFor()
   expect(await page.evaluate(() => window.composerFixture.snapshot())).toEqual({ calls: 4, reloads: 0 })
   expect(await page.evaluate(() => window.savedInput === document.querySelector('input'))).toBe(true)
-  expect(await page.locator('input').inputValue()).toBe('still unpublished')
+  expect(await page.locator('#unpublished-draft').inputValue()).toBe('still unpublished')
 })
 
 async function openEscapePopover() {
@@ -219,14 +219,14 @@ it('cancelling one stage keeps another active stage owned', async () => {
 
 it('history A to B to A restores composer without replacing a typed draft', async () => {
   await page.reload()
-  await page.locator('input').fill('unpublished across A B A')
+  await page.locator('#unpublished-draft').fill('unpublished across A B A')
   await page.locator('#history').click()
   expect(await page.locator('#history').textContent()).toBe('history')
   await page.locator('#identity').click()
   expect(await page.locator('#history').textContent()).toBe('composer')
   await page.locator('#identity').click()
   expect(await page.locator('#history').textContent()).toBe('composer')
-  expect(await page.locator('input').inputValue()).toBe('unpublished across A B A')
+  expect(await page.locator('#unpublished-draft').inputValue()).toBe('unpublished across A B A')
 })
 it('geometry owner keeps controls inside each viewport edge after real resize observation', async () => {
   await page.reload()
@@ -276,4 +276,52 @@ it('keeps parameter actions clickable when intersecting workspace bottom docks m
   })
   await page.locator('#geometry-action').click()
   expect(await page.locator('#geometry-action').getAttribute('data-clicks')).toBe('3')
+})
+
+
+it('keeps a slider keyboard edit projected through the original React Flow ownership boundary', async () => {
+  await page.reload()
+  const slider = page.getByRole('slider', { name: 'projection duration' })
+  await slider.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => page.locator('[data-projection-duration]').textContent()).toBe('6')
+  expect(await page.evaluate(() => window.projectionSnapshot())).toEqual({ ownsNodes: true, position: { x: 40, y: 40 } })
+  await expect.poll(() => slider.getAttribute('aria-valuenow')).toBe('6')
+})
+
+it('keeps original node keyboard movement from disabling subsequent projection updates', async () => {
+  await page.reload()
+  await page.locator('.react-flow__node[data-id="projection-node"]').focus()
+  await page.keyboard.press('ArrowRight')
+  const snapshot = await page.evaluate(() => window.projectionSnapshot())
+  expect(snapshot.position.x).toBeGreaterThan(40)
+  expect(snapshot.ownsNodes).toBe(true)
+  const slider = page.getByRole('slider', { name: 'projection duration' })
+  await slider.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => page.locator('[data-projection-duration]').textContent()).toBe('6')
+  await expect.poll(() => slider.getAttribute('aria-valuenow')).toBe('6')
+})
+
+
+it('opens an unselected history through the real delayed React Flow selection projection', async () => {
+  await page.reload()
+  const a = page.locator('[data-projected-history="history-a"]')
+  const b = page.locator('[data-projected-history="history-b"]')
+  expect(await a.locator('[data-projected-tray]').count()).toBe(0)
+  await a.locator('[data-history-trigger]').click()
+  await expect.poll(() => a.getAttribute('data-selected')).toBe('true')
+  await expect.poll(() => a.locator('[data-projected-tray]').count()).toBe(1)
+  await b.locator('[data-history-trigger]').click()
+  await expect.poll(() => b.locator('[data-projected-tray]').count()).toBe(1)
+  await expect.poll(() => a.locator('[data-projected-tray]').count()).toBe(0)
+  await a.locator('[data-history-trigger]').click()
+  await expect.poll(() => a.locator('[data-projected-tray]').count()).toBe(1)
+  await a.locator('[data-history-trigger]').click()
+  await expect.poll(() => a.locator('[data-projected-tray]').count()).toBe(0)
+  await page.locator('[data-history-availability]').click()
+  await a.locator('[data-history-trigger]').click()
+  expect(await a.locator('[data-projected-tray]').count()).toBe(0)
+  await page.locator('[data-history-availability]').click()
+  expect(await a.locator('[data-projected-tray]').count()).toBe(0)
 })

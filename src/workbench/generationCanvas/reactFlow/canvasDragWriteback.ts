@@ -14,6 +14,26 @@ import type { GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 
 type DragPosition = { x: number; y: number }
 
+/** RF owns keyboard movement. Only its synchronous key dispatch may commit outside a drag. */
+export function commitCanvasKeyboardPositions(
+  positions: readonly { nodeId: string; position: DragPosition }[],
+  canWrite: boolean,
+): boolean {
+  if (!canWrite) return false
+  const state = useGenerationCanvasStore.getState()
+  const moved = positions.filter(change => {
+    const node = state.nodes.find(candidate => candidate.id === change.nodeId)
+    return node && (node.position.x !== change.position.x || node.position.y !== change.position.y)
+  })
+  if (moved.length) {
+    state.captureHistory()
+    for (const change of moved) state.moveNode(change.nodeId, change.position, { persist: false, emit: false })
+    emitCanvasGesture(moved.map(change => ({ type: 'canvas.node.moved', payload: { nodeId: change.nodeId, position: change.position } })))
+    state.commitPersistedChange()
+  }
+  return true
+}
+
 type CanvasDragWritebackContext = {
   event: Parameters<OnNodeDrag<GenerationFlowNode>>[0]
   draggedNode: Parameters<OnNodeDrag<GenerationFlowNode>>[1]

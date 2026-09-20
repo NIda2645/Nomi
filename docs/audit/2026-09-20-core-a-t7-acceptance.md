@@ -1,5 +1,7 @@
 # T7 acceptance audit (2026-09-20)
 
+> **现行状态请读[统一验收表](2026-09-20-core-a-current-acceptance.md)。** 本页保留历次执行快照及失败，不把旧状态作为最终结论。
+
 Authority: Downloads/Nomi_Plan_B_Full_Reviewed_Taskbook_2026-09-19.md T7 only; Downloads/Nomi_simplified_A_plus_T7_original_storyboard_plan_2026-09-20.md P01–P08; repository restart plan.
 
 | Item | Current concrete evidence | Still unverified |
@@ -38,3 +40,8 @@ Adjacent original-runner author target review found price quotes contain provide
 - Keep the earlier `canvas.node.removed` event **unexplained**. A later broad-locator correction and subsequent passing runs do not identify its caller. Final zh/en screenshots and feel findings require root's human review; PR #808's approved sidebar behavior stays authoritative.
 
 Delivery is not complete: cross-model attempts returned unsupported/404 and did not run; current upstream comparison is 17 behind / 18 ahead, with overlap evidence in `/private/tmp/nomi-upstream-overlap.json`. Integration, final-tree checks, candidate-package evidence and independent PR review are still pending. The current consolidated matrix is [remaining acceptance](2026-09-20-core-a-remaining-acceptance.md#最新验收状态2026-09-20交付前中间快照); older controlled counts above remain tied to their original executions.
+
+
+## 历史记录与现行状态
+
+以上为各次审查和验收的历史快照，保留当时的源码身份、失败、判断及未验证项，不作为当前进度。唯一现行结果见[统一验收表](2026-09-20-core-a-current-acceptance.md)；后续修复、最终构建、真实测试与仍未验证范围均以该表及其证据为准。

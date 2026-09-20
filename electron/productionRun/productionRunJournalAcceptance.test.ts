@@ -20,16 +20,25 @@ it('does not reparse unchanged historical Run payloads on reads, new commands or
   const repo = makeRepository();
   for (let i = 0; i < 12; i++) repo.execute('project-1', 'run-1', command(i));
   repo.read('project-1', 'run-1');
-  const parse = vi.spyOn(JSON, 'parse');
-  const historicalParses = () => parse.mock.calls.filter(([value]) => typeof value === 'string' && value.includes('"eventId":')).length;
+  const originalParse = JSON.parse;
+  let historicalParses = 0;
+  vi.spyOn(JSON, 'parse').mockImplementation((text, reviver) => {
+    const value = originalParse(text, reviver);
+    if (value && typeof value === 'object' && typeof value.eventId === 'string') historicalParses += 1;
+    return value;
+  });
+  // Positive control: a cold owner must validate the actual historical journal.
+  expect(makeRepository().read('project-1', 'run-1')?.revision).toBe(12);
+  expect(historicalParses).toBeGreaterThanOrEqual(13);
+  historicalParses = 0;
   expect(repo.read('project-1', 'run-1')?.revision).toBe(12);
-  expect(historicalParses()).toBeLessThanOrEqual(1);
-  parse.mockClear();
+  expect(historicalParses).toBeLessThanOrEqual(1);
+  historicalParses = 0;
   expect(repo.execute('project-1', 'run-1', command(12)).run.revision).toBe(13);
-  expect(historicalParses()).toBeLessThanOrEqual(1);
-  parse.mockClear();
+  expect(historicalParses).toBeLessThanOrEqual(1);
+  historicalParses = 0;
   expect(repo.execute('project-1', 'run-1', command(0)).run.revision).toBe(1);
-  expect(historicalParses()).toBeLessThanOrEqual(2);
+  expect(historicalParses).toBeLessThanOrEqual(2);
 });
 
 it.each(['rewrite', 'truncate', 'replace'] as const)('detects %s of previously validated history and preserves evidence', (kind) => {
@@ -61,9 +70,9 @@ it('revalidates an unterminated last line when more bytes arrive, while acceptin
 it('returns isolated objects and observes deletion, restoration and stale snapshot recovery', () => {
   const repo = makeRepository(); const paths = productionRunPaths(root, 'run-1');
   const first = repo.execute('project-1', 'run-1', command(0));
-  first.run.status = 'cancelled'; first.events[0].payload.run = null;
+  first.run.status = 'cancelled'; first.events[0].payload = { run: null };
   expect(repo.execute('project-1', 'run-1', command(0)).run.status).toBe('running');
-  const events = repo.readEvents('project-1', 'run-1'); events.at(-1)!.payload.run = null;
+  const events = repo.readEvents('project-1', 'run-1'); events.at(-1)!.payload = { run: null };
   const original = fs.readFileSync(paths.events, 'utf8');
   fs.rmSync(paths.snapshot);
   expect(repo.read('project-1', 'run-1')?.status).toBe('running');

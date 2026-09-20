@@ -1,0 +1,137 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-parameter-slider-accessible-name",
+  "problem_type": "Shared numeric slider labels must identify the interactive control",
+  "symptom": "The visible duration label is absent from the slider accessibility name in real Electron and the original numeric-panel fixture.",
+  "direct_cause": "Mantine Slider receives aria-label on its root; its role=slider thumb obtains aria-label from thumbLabel, which remains empty.",
+  "class_root": "The application labels a component wrapper instead of the framework-owned interactive element.",
+  "affected_population": [
+    "Bounded numeric parameter sliders in canvas and unapproved payment composers",
+    "Numeric panels containing multiple controls or a single bounded numeric control"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx"
+  ],
+  "entry_points": [
+    "NodeGenerationComposer canvas host -> NodeParameterControls -> InlineParameterBar",
+    "NodeGenerationComposer panel host -> NodeParameterControls -> InlineParameterBar"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Context7 is unavailable. Inspected installed official @mantine/core 8.3.18 Slider.d.ts:42, Slider.mjs and SliderThumb sources directly; thumbLabel is the supported API. No dependency/API layer or model contract is introduced.",
+  "invariants": [
+    "The localized parameter label names the actual role=slider control.",
+    "Keyboard changes use the existing writer with unchanged range, step and ownership."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+      "symbol": "ParameterControlWiring"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+      "symbol": "ParameterOptionGroup"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+      "symbol": "ParameterControlBody"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "ParameterControlBody"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "ParameterOptionGroup"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "ParameterPanelGroup"
+    }
+  ],
+  "door_reduction": {
+    "before": 6,
+    "after": 6,
+    "why_not": "Shared body, option/group renderers and grouped/solo callers remain necessary. All numeric controls converge on the single Mantine Slider call site."
+  },
+  "generality_proof": "One Mantine Slider creation site serves every bounded numeric model parameter through the shared control body. Existing canvas and panel hosts share it, independent of control count and model identity. Test covers a multi-parameter panel and a panel with only the numeric range; numeric controls do not use soloOptionControl, which requires options.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+      "symbol": "ParameterControlBody",
+      "responsibility": "Name the framework interactive numeric control while retaining the original writer."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "host canvas parameter controls",
+      "disposition": "enforced",
+      "evidence": "Canvas composer uses NodeParameterControls and its shared InlineParameterBar. Numeric fixture checks names/keyboard/range; core-a-composer checks actual Electron host."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "host panel parameter controls",
+      "disposition": "enforced",
+      "evidence": "Payment composer shares NodeParameterControls while supplying isolated writer. Numeric rendering uses the same ParameterControlBody; no host-specific naming branch."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "All bounded numeric controls lose the name across models and both hosts.",
+    "same_class_scan": [
+      "rg -n \"<Slider|thumbLabel\" src -g \"*.tsx\": one Mantine Slider; director SliderNumberField has its own native input.",
+      "Read InlineParameterBar grouped/solo branches and NodeGenerationComposer panel/canvas usage."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+    "invariant": "Every shared parameter Slider supplies the translated label to its actual thumb.",
+    "failure_mode": "Named-slider lookup fails before keyboard mutation assertions if the name regresses; no unnamed lookup fallback.",
+    "exception_policy": "none",
+    "strategy": "Replace the root-only aria-label with official thumbLabel at the shared numeric renderer.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/param-panel-numeric.e2e.mjs",
+    "tests/ux/core-a-composer.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/param-panel-numeric.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx"
+    ],
+    "rationale": "Remove misplaced root-only label; no parallel renderer or accessibility state."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "@mantine/core 8.3.18",
+    "target": "Retain installed Slider with supported thumbLabel",
+    "rationale": "Framework already supports correct naming; an upgrade does not fix our prop choice.",
+    "exit_criteria": [
+      "On Mantine upgrade run named-slider keyboard/range tests and actual Electron duration path; adapt if upstream naming contract changes."
+    ]
+  },
+  "migration": "No data, model, price, layout or parameter behavior migration; the original translated label reaches the interactive element.",
+  "residual_risks": [
+    "Accessible naming is verified separately from host keyboard ownership. Composer v12 passed its then-current checks, but v13 added node-position invariance and exposed parameter portal arrow-key leakage; see composer-lifecycle contract and current acceptance. Windows remains unverified."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/controls/ParameterControlBody.tsx",
+    "tests": [
+      "tests/ux/param-panel-numeric.e2e.mjs"
+    ],
+    "rationale": "Shared numeric rendering owns framework label placement."
+  }
+}

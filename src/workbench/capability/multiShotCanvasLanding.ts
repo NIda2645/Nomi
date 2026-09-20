@@ -9,7 +9,7 @@
 //   3. production.detach-canvas-nodes 的渲染半：见 registerCanvasDetachReporter（撤销/删节点 → 通知主进程记账）。
 //
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
-import { withProjectAction } from '../project/projectCanvasReadSurface'
+import { withProjectAction, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
 import { productionRunApi } from '../production/productionRunApi'
 import { storyboardContentToken, storyboardPlanFromGeneration } from '../../../electron/shared/storyboard/generationPlanEditorial'
 import { projectStoryboardDesign } from '../creation/storyboard/exec/storyboardProjection'
@@ -176,6 +176,11 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   const incoming = Array.isArray(payload.shots) ? payload.shots.filter((shot) => shot && typeof shot.shotId === 'string' && shot.shotId.trim()) : []
   if (!materializationOperationId || incoming.length === 0) return { bindings: [], createdNodeIds: [], groupId: null, shotTableNodeId: null }
 
+  // Renderer projection belongs to this project lifetime, not whichever canvas is focused
+  // after a model/tool/persistence await. Main-process paid execution continues independently.
+  const project = withProjectAction(current => current, () => { throw new Error('storyboard_project_unavailable') })
+  if (payload.projectId && payload.projectId !== project.binding.projectId) throw new Error('storyboard_project_changed')
+  project.assertCurrent()
   interruptPendingCanvasWrite()
   // 本 op 章已经落过的 shotId → 节点 id。**只用来决定撤销步与重绑定**：
   // 「这次要不要真建节点」的判据不在这里，在写边界 applyCanvasToolCall（P1 一个 owner）。
@@ -207,7 +212,10 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // create_canvas_nodes 一次建 N 个节点（内部 N 次 addNode），若不整体抑制会打 N 个 barrier（撤一次只退一个）。
   const txnId = `txn_materialize_shots_${materializationOperationId}`
   const ctx = { source: 'runtime' as const, txnId, suppressUndoBarriers: true }
-  const inLandingTxn = <T,>(fn: () => T): T => withCanvasGestureContext(ctx, fn)
+  const inLandingTxn = <T,>(fn: () => T): T => {
+    project.assertCurrent()
+    return withCanvasGestureContext(ctx, fn)
+  }
   // 只在本次真会落东西时打 barrier（有缺失节点 / 有要重绑定的 / 要新建分镜组）——纯回填/幂等空跑不该占一个撤销步。
   // 节点全落 groupCategoryId(shots) → ≥2 个就够建组（锚+镜同组，靠 referenceSheet 区分）。
   const groupExists = useGenerationCanvasStore.getState().groups.some((group) => group.materializationOperationId === materializationOperationId)
@@ -255,10 +263,12 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
       groupCategoryId,
       anchorCount: missingAnchorCount,
     }
-    const applied = await applyCanvasToolCall('create_canvas_nodes', args, ctx) as {
+    const applied = await applyCanvasToolCall('create_canvas_nodes', args, ctx,
+      () => isProjectExecutionContextCurrent(project), undefined, undefined, async () => project.assertCurrent()) as {
       clientIdToNodeId?: Record<string, unknown>
       createdNodeIds?: unknown
     }
+    project.assertCurrent()
     const rawMap = applied?.clientIdToNodeId && typeof applied.clientIdToNodeId === 'object' && !Array.isArray(applied.clientIdToNodeId)
       ? applied.clientIdToNodeId as Record<string, unknown>
       : {}
@@ -275,6 +285,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // generation.patch 之后：把已落节点的 prompt / 模型同步到新候选。**草稿只有一个账本**——
   // 候选是意图，节点是它的投影，改了意图就该在用户眼前变，而不是等下次重开项目。
   if (rebindable.length > 0) await rebindLandedShots(rebindable, existingByShot, inLandingTxn)
+  project.assertCurrent()
 
   // 编组（幂等章）：先按 op 章找已建的分镜组复用；没有才建。名字即时命名「分镜组·<计划名>」。
   const allNodeIds = ordered.map((shot) => clientIdToNodeId[shot.shotId]).filter((id): id is string => Boolean(id))
@@ -318,7 +329,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   }
 
   // 落完把整块揭进视口（同批量/切图的既有 fit 信号），否则多半一半落在视口外。
-  useWorkbenchStore.getState().requestCanvasFit(groupCategoryId)
+  inLandingTxn(() => useWorkbenchStore.getState().requestCanvasFit(groupCategoryId))
 
   const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
   const bindings = ordered
@@ -342,7 +353,9 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // 主进程侧的 settleCanvasLanding 等的就是这条 await——它必须在 revision 定下来之后才 resolve。
   // 落盘 owner 只此一个（canonicalCanvasPlanPatch 走的同一个 persistActiveWorkbenchProjectNow，P1）；
   // 幂等空跑绝不落盘，否则重开项目补齐会白白推高 revision。
+  project.assertCurrent()
   if (changedCanvasStructure) await persistActiveWorkbenchProjectNow().catch(() => {})
+  project.assertCurrent()
 
   return { bindings, createdNodeIds, groupId, shotTableNodeId }
 }

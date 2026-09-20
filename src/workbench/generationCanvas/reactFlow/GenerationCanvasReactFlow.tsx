@@ -70,7 +70,7 @@ import {
   overlayCanvasDragDraft,
   restoreCanvasDragKernelOwnership,
 } from './canvasDragDraft'
-import { commitCanvasNodeDragStop } from './canvasDragWriteback'
+import { commitCanvasKeyboardPositions, commitCanvasNodeDragStop } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
@@ -96,6 +96,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hostRef = React.useRef<HTMLDivElement>(null)
   const duplicateDragIdsRef = React.useRef(new Map<string, string>())
   const draggingRef = React.useRef(false)
+  const keyboardDispatchRef = React.useRef<KeyboardEvent | null>(null)
   const dragLeaseRef = React.useRef<CanvasDragLease | null>(null)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
@@ -461,10 +462,13 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (duplicateDragIdsRef.current.size) changes = changes.map((change) => change.type === 'position' && duplicateDragIdsRef.current.has(change.id)
       ? { ...change, id: duplicateDragIdsRef.current.get(change.id)! } : change)
     const positionChanges = collectFlowPositionChanges(changes)
-    if (positionChanges.length) {
+    if (positionChanges.length && draggingRef.current) {
       const draftNodes = dragDraftNodesRef.current.length ? dragDraftNodesRef.current : flowNodes
       dragDraftNodesRef.current = applyCanvasDragPositionChanges(draftNodes, changes)
       applyCanvasDragKernelPositionChanges(flowStore, changes)
+    } else if (positionChanges.length && !commitCanvasKeyboardPositions(positionChanges, Boolean(keyboardDispatchRef.current?.eventPhase) && !readOnly)) {
+      // XYDrag can emit after blur cancellation; it no longer owns these positions.
+      flowStore.getState().setNodes(flowNodes)
     }
 
     const selectionChanges = collectFlowSelectionChanges(changes)
@@ -481,7 +485,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       nextSelection.every((nodeId, index) => nodeId === currentSelection[index])
     ) return
     selectNodes(nextSelection)
-  }, [flowNodes, flowStore, selectNodes])
+  }, [flowNodes, flowStore, readOnly, selectNodes])
 
   // React Flow's selection store is internal while the persisted selection lives
   // in Zustand. Syncing on every internal selection notification causes a
@@ -657,6 +661,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
+      onKeyDownCapture={event => { keyboardDispatchRef.current = event.nativeEvent }}
       onPointerDownCapture={handleStagePointerDownCapture}
       onPointerMoveCapture={handleCanvasPointerMoveCapture}
       onWheelCapture={handleCanvasWheelCapture}

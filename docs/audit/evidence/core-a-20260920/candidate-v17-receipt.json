@@ -1,0 +1,257 @@
+{
+  "result": "passed",
+  "mode": "packaged",
+  "candidate": {
+    "executable": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/MacOS/Nomi",
+    "executableSha256": "9946a684f1b88f61fee366aa5c4fe15882972e915fc79c4553aa26b805be8996",
+    "appAsar": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+    "appAsarSha256": "9fe6e867e2c1114fb0e6aa0a711932c37226a7c01dad5ee913a7d95568747c0f"
+  },
+  "launches": [
+    {
+      "packaged": true,
+      "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+      "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-project-asqaHG/user-data",
+      "node": "24.18.1",
+      "electron": "43.4.1",
+      "pid": 22357
+    },
+    {
+      "packaged": true,
+      "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+      "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-project-asqaHG/user-data",
+      "node": "24.18.1",
+      "electron": "43.4.1",
+      "pid": 22425
+    }
+  ],
+  "checks": {
+    "originalEditor": true,
+    "completeAuthorFields": true,
+    "graphAndResults": true,
+    "coldRestart": true,
+    "actualJpgDecoded": true,
+    "originalMp4Export": true,
+    "unsupportedManifestVersionsRejected": true,
+    "partialMainAndBackupIdentityRejected": true
+  },
+  "unverified": [
+    "Windows",
+    "Historical root/project.json legacy migration; unsupported fixtures are not historical legacy projects"
+  ],
+  "historicalRunFilesUnchangedAfterShutdown": true,
+  "sourceUntouched": true,
+  "rejectedFormatFilesUntouchedAfterShutdown": true,
+  "textRequests": 0,
+  "imageRequests": 0,
+  "unexpected": [],
+  "sourceReportSha256": "2a3ed301e8e38ddee6db6b29c20804bd2c8aa0371435e4f99abb1b87d7c48508",
+  "sourceBoundary": "Historical workspace v2 copy; separate synthetic fixtures exercise unsupported manifest versions and partial identity rejection. Root/project.json legacy migration remains unverified.",
+  "sourceManifestSha256": "3f4068714c1fc375c751f0a8e757d43c8b35ad46011b9669c04f896be6b2cb9c",
+  "export": {
+    "sha256": "360c2b9c68c21ea24baae137f863b3df5b5f47cdf9295ccca9c559559197cab4",
+    "probe": {
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "h264",
+          "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+          "profile": "High",
+          "codec_type": "video",
+          "codec_tag_string": "avc1",
+          "codec_tag": "0x31637661",
+          "width": 1920,
+          "height": 1080,
+          "coded_width": 1920,
+          "coded_height": 1080,
+          "closed_captions": 0,
+          "has_b_frames": 2,
+          "sample_aspect_ratio": "1:1",
+          "display_aspect_ratio": "16:9",
+          "pix_fmt": "yuv420p",
+          "level": 40,
+          "chroma_location": "left",
+          "refs": 1,
+          "is_avc": "true",
+          "nal_length_size": "4",
+          "r_frame_rate": "30/1",
+          "avg_frame_rate": "30/1",
+          "time_base": "1/15360",
+          "start_pts": 0,
+          "start_time": "0.000000",
+          "duration_ts": 61440,
+          "duration": "4.000000",
+          "bit_rate": "207000",
+          "bits_per_raw_sample": "8",
+          "nb_frames": "120",
+          "disposition": {
+            "default": 1,
+            "dub": 0,
+            "original": 0,
+            "comment": 0,
+            "lyrics": 0,
+            "karaoke": 0,
+            "forced": 0,
+            "hearing_impaired": 0,
+            "visual_impaired": 0,
+            "clean_effects": 0,
+            "attached_pic": 0,
+            "timed_thumbnails": 0
+          },
+          "tags": {
+            "language": "und",
+            "handler_name": "VideoHandler",
+            "vendor_id": "[0][0][0][0]"
+          }
+        }
+      ],
+      "format": {
+        "duration": "4.000000"
+      }
+    },
+    "sourceNodeId": "n-shot8",
+    "sourceResultId": "n-shot8-task-12d21063-7ced-4317-8c03-156d19bb3304"
+  },
+  "rejections": [
+    {
+      "key": "workspace-version-1",
+      "originalLibraryRetained": true,
+      "unregistered": true,
+      "filesUnchanged": true
+    },
+    {
+      "key": "workspace-version-999",
+      "originalLibraryRetained": true,
+      "unregistered": true,
+      "filesUnchanged": true
+    },
+    {
+      "key": "identity-uuid-only",
+      "originalLibraryRetained": true,
+      "unregistered": true,
+      "filesUnchanged": true
+    },
+    {
+      "key": "identity-generation-only",
+      "originalLibraryRetained": true,
+      "unregistered": true,
+      "filesUnchanged": true
+    },
+    {
+      "key": "partial-backup-identity",
+      "originalLibraryRetained": true,
+      "unregistered": true,
+      "filesUnchanged": true
+    }
+  ],
+  "oldStoryboardFormats": [
+    {
+      "shape": "retired-map",
+      "fixtureBoundary": "Synthetic retired storyboard field shape over an exact historical project copy; original ids/assets retained",
+      "result": "passed",
+      "checks": {
+        "originalEditor": true,
+        "correctOwner": true,
+        "completePlanSaved": true,
+        "retiredFieldsNotWritten": true,
+        "noRunCreationOrMutation": true,
+        "coldRestart": true
+      },
+      "sourceUntouched": true,
+      "textRequests": 0,
+      "imageRequests": 0,
+      "unexpected": [],
+      "sourceReportSha256": "dccebb8b7900884e2ab7576cec234e0f0c52b02aa6be84140b6e376a97c80877",
+      "launches": [
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-retired-map-HUE8to/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22444
+        },
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-retired-map-HUE8to/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22454
+        }
+      ]
+    },
+    {
+      "shape": "retired-single",
+      "fixtureBoundary": "Synthetic retired storyboard field shape over an exact historical project copy; original ids/assets retained",
+      "result": "passed",
+      "checks": {
+        "originalEditor": true,
+        "correctOwner": true,
+        "completePlanSaved": true,
+        "retiredFieldsNotWritten": true,
+        "noRunCreationOrMutation": true,
+        "coldRestart": true
+      },
+      "sourceUntouched": true,
+      "textRequests": 0,
+      "imageRequests": 0,
+      "unexpected": [],
+      "sourceReportSha256": "99083905271c149cd252537fff24e54798198f6c4dfd8483ddafe1bb8f4883b6",
+      "launches": [
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-retired-single-9xBiCg/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22471
+        },
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-retired-single-9xBiCg/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22478
+        }
+      ]
+    },
+    {
+      "shape": "owner-with-conflicting-retired-map",
+      "fixtureBoundary": "Synthetic retired storyboard field shape over an exact historical project copy; original ids/assets retained",
+      "result": "passed",
+      "checks": {
+        "originalEditor": true,
+        "correctOwner": true,
+        "completePlanSaved": true,
+        "retiredFieldsNotWritten": true,
+        "noRunCreationOrMutation": true,
+        "coldRestart": true
+      },
+      "sourceUntouched": true,
+      "textRequests": 0,
+      "imageRequests": 0,
+      "unexpected": [],
+      "sourceReportSha256": "1379e2d6879fce0ac05cfb716d815637d35beafd68e635dfaf404557de90833d",
+      "launches": [
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-owner-with-conflicting-retired-map-C7cV0i/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22486
+        },
+        {
+          "packaged": true,
+          "appPath": "/Users/aoqimin/Desktop/Nomi-core-a-0919/release/mac-arm64/Nomi.app/Contents/Resources/app.asar",
+          "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-core-a-old-storyboard-owner-with-conflicting-retired-map-C7cV0i/user-data",
+          "node": "24.18.1",
+          "electron": "43.4.1",
+          "pid": 22505
+        }
+      ]
+    }
+  ]
+}

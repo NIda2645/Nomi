@@ -62,6 +62,7 @@ const options = {
 const { createProductionRunRepository } = tsxRequire('../../electron/productionRun/productionRunRepository.ts', import.meta.url)
 let gui, win, projectRoot, projectId, runId, repository, failure
 const editedPrompt = 'A small white ceramic cup beside a sunlit window, warm morning light, clean editorial photograph, no text.'
+const keyframePrompt = 'Static wide composition: one white ceramic cup on a wooden table beside a sunlit window, warm morning light, no text.'
 const run = () => repository.read(projectId, runId)
 const nodes = () => readProjectPayload(projectRoot)?.payload?.generationCanvas?.nodes ?? []
 const boundNodes = () => nodes().filter(node => node.meta?.storyboardDesignId === runId)
@@ -107,6 +108,11 @@ async function start() {
   assert.equal(info.packaged, Boolean(values.packaged))
   assert.equal(info.userData, iso.chromiumDir)
   assert.ok(win.url().startsWith('file:'), 'Acceptance must use the built application')
+  if (!values.packaged) {
+    assert.equal(path.resolve(info.appPath), repoRoot)
+    info.buildStamp = JSON.parse(fs.readFileSync(path.join(repoRoot, 'dist', 'build-stamp.json'), 'utf8'))
+    assert.deepEqual(info.buildStamp, JSON.parse(fs.readFileSync(path.join(repoRoot, 'dist-electron', 'build-stamp.json'), 'utf8')))
+  }
   report.launches.push(info)
 }
 async function openPlan() {
@@ -155,6 +161,7 @@ function validateDraft() {
   assert.equal((draft.editorial?.anchors ?? []).length, 0)
 }
 async function approve(label) {
+  assert.equal(values['verify-only'], false, 'Read-only verification cannot approve spending')
   validateDraft()
   await expect(dialog()).toBeVisible()
   report[label] = await dialog().innerText() // Real quotation; no fixture price or inferred final cost.
@@ -173,6 +180,7 @@ async function assertRestored(expected) {
 }
 // Optional second paid journey: original row -> original two-wave confirmation.
 async function firstFrameJourney() {
+  assert.equal(values['verify-only'], false, 'Read-only verification cannot create or submit a new journey')
   const model = catalog.models.find(item => item.vendorKey === 'apimart' && item.modelKey === 'doubao-seedance-2.0' && item.enabled)
   assert.ok(model, 'The configured Seedance 2.0 model must be enabled')
   const imageRunId = runId
@@ -228,7 +236,6 @@ async function firstFrameJourney() {
   }
   validate()
   await openPlan()
-  const keyframePrompt = 'Static wide composition: one white ceramic cup on a wooden table beside a sunlit window, warm morning light, no text.'
   await editor().getByRole('textbox', { name: '镜 1 首帧图提示词', exact: true }).fill(keyframePrompt)
   await expect.poll(() => run().generationPlan.editorial.shots[0].keyframe.prompt).toBe(keyframePrompt)
   validate()
@@ -260,6 +267,16 @@ async function verifyFirstFrameResults(keyframePrompt) {
   const frameDone = done.find(node => node.id === report.firstFrame.keyframeNodeId)
   const videoDone = done.find(node => node.id === report.firstFrame.videoNodeId)
   assert.ok(frameDone?.result?.url && videoDone?.result?.url)
+  const plan = run().generationPlan
+  assert.equal(plan.shots.length, 1)
+  assert.equal(plan.editorial.shots.length, 1)
+  assert.equal(plan.editorial.shots[0].keyframe.prompt, keyframePrompt)
+  for (const params of [plan.shots[0].candidate.parameters, plan.editorial.shots[0].params, videoDone.result.provenance?.params?.extras]) {
+    assert.equal(params.resolution, '480p')
+    assert.equal(params.duration, 4)
+    assert.equal(params.generate_audio, false)
+    assert.equal(params.model, 'doubao-seedance-2.0-fast')
+  }
   const dependency = readProjectPayload(projectRoot).payload.generationCanvas.edges.filter(edge => edge.target === videoDone.id)
   assert.equal(dependency.length, 1)
   assert.equal(dependency[0].source, frameDone.id)
@@ -295,7 +312,16 @@ async function verifyFirstFrameResults(keyframePrompt) {
   assert.equal(videoProbe.kind, 'video')
   assert.ok(videoProbe.width > 0 && videoProbe.height > 0 && videoProbe.durationSeconds > 0)
   assert.ok(Math.abs(videoProbe.durationSeconds - 4) < 0.5, 'Provider output must match the authorized four seconds')
-  assert.equal(Math.min(videoProbe.width, videoProbe.height), 480)
+  // The vendor documents a resolution preset, not an exact pixel-size mapping.
+  // Preserve the actual dimensions and mismatch; do not resize the product or
+  // infer exact-pixel compliance from the locally recorded execution parameters.
+  report.firstFrame.resolution = {
+    requestedPreset: '480p', width: videoProbe.width, height: videoProbe.height,
+    exactShortEdgeMatch: Math.min(videoProbe.width, videoProbe.height) === 480,
+    pixelMapping: 'not-defined-in-provider-documentation',
+    source: 'https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md',
+    checkedAt: '2026-09-20',
+  }
   assert.equal(videoProbe.hasAudio, false)
   const saved = identity()
   const executionBefore = execution()
@@ -324,6 +350,7 @@ try {
     validateDraft()
     assert.equal(run().generationPlan.editorial.shots[0].prompt, editedPrompt)
     const completedCount = boundNodes().filter(node => node.result?.url).length
+    if (values['verify-only']) assert.equal(completedCount, 2, 'Read-only verification requires both original completed images; never submit missing work')
     if (completedCount === 1) assertRemainingImage()
     else {
       assert.equal(completedCount, 2, 'Resume requires one or two completed authorized images')
@@ -443,7 +470,7 @@ try {
     assert.deepEqual(completedResults(), resumed.results)
     await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'zh-CN'))
     await win.reload({ waitUntil: 'domcontentloaded' })
-    await verifyFirstFrameResults(run().generationPlan.editorial.shots[0].keyframe.prompt)
+    await verifyFirstFrameResults(keyframePrompt)
     assert.deepEqual(completedResults(), resumed.results, 'Read-only verification must not add paid tasks')
   } else if (values['first-frame']) await firstFrameJourney()
 } catch (error) {

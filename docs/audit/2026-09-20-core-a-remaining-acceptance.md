@@ -1,5 +1,7 @@
 # A 剩余验收证据清单（只读审计）
 
+> **现行状态请读[统一验收表](2026-09-20-core-a-current-acceptance.md)。** 本页保留历次执行快照及失败，不把旧状态作为最终结论。
+
 本记录按 `Nomi_plan_A_core_fixes_2026-09-19.md` 的 C 编号核对；测试标题中历史 C17/C18 等编号不是本表编号。范围仍为简化 A＋完整 T7：复用原 `StoryboardPlanEditor → storyboardRowActions → canvas runner`，不得新增页面、付款服务或执行框架。用户再次强调的“尽可能复用，不新造另一页面”是硬约束。
 
 本轮先核源码与受控测试，现补核 root 已执行的真实 Electron 日志及当前脚本；本审计没有自行启动应用。绿灯仅代表对应执行时的文件与依赖边界，不能把此文当作整个最终树或安装包验收收据。
@@ -109,3 +111,33 @@ root 授权后仅追加现有测试，无生产修改：
 交付审查：`/private/tmp/nomi-core-a-final-delta-review.md` 记录 v5 相对 v3 的逐 hash 复审，当前修改后需重新冻结。中等模型／跨模型尝试返回 unsupported/404，未执行，不能声称独立跨池通过。当前 `git rev-list --left-right --count origin/main...HEAD` 为 **17 behind / 18 ahead**；上游重叠路径见 `/private/tmp/nomi-upstream-overlap.json`，主代理将处理集成与相关复验，尚未完成。最终须 scoped commit/push/PR 与用户指定的独立 PR 审查，不自动合并。
 
 历史未归因 `canvas.node.removed` 继续保留，随后绿灯不能确定其调用者；另一次 locator 重复计数修正不是它的根因。feel findings 由 root 逐项人工裁决，脚本 passed 不代表全部视觉通过；原左栏继续以 PR #808 获批交互为准。
+
+
+## 2026-09-20 集成后验收更新（仍在执行）
+
+本节更新前述历史快照，不抹除旧失败。当前分支已整合 `origin/main` 的 `96d368c26`，HEAD `15195e2f9`，整合时为 0 behind / 20 ahead。
+
+- 全量 `pnpm run test` 已通过：1516 个 Vitest 文件、13954 项通过、3 skipped；原生 SDK 482/482、janitor 13/13、stats 8/8。日志 `/private/tmp/nomi-core-a-unit-integrated-v6.log`。S06 修复已在全量复验通过，不再处于仅定点通过状态；保留 v5 超时记录。
+- 完整 contracts v6 为 94/99 通过、2 阻断、3 advisory。两项阻断均为新增 journal 测试的类型/计数阳性对照问题，已修并定点通过，未修改生产代码或提高预算。最终 contracts v7 正在执行，不能把 v6 报告改写为全绿。
+- 构建 v6 成功，dist/dist-electron 核验 source tree `30aaa144ea821efb0830997f9289798ec921de42`；之后测试/证据文档增量另记，不冒称属于该构建戳。
+- 双宿主原控件受控测试在集成树重跑 2 文件、45 项通过：`/private/tmp/nomi-core-a-t7-controlled-integrated-v6.log`。
+- 扩展 Electron v6 的“切 Create 必须卸载 composer DOM”断言失败。原 WorkbenchShell 的 keep-alive 使用 hidden，不承诺卸载；仅修新增 oracle 为隐藏及切回草稿保持。另发现锁定态参数测试错误要求 prompt 可编辑；原锁定 prompt 禁编辑、参数可编辑的行为应保留。真实复验尚在进行，不能将此静态判断写成通过。
+- 真实供应商已经产生两张图片、一张首帧及一个视频，每项仅一次付费 attempt。总媒体费用 1.8936 credits，Agent 费用 unknown。实际首帧 PNG 1280×720，视频 h264 864×496、4.041667 秒、24fps、无音轨。先前测试自行要求480p短边精确480与供应商文档无契约依据；现保留请求 preset/实际像素差异并严格核请求、解码、时长、音轨、参考身份。最终只读恢复复验待完成，不再重复付费。
+- [逐文件逐差异块审计账本](evidence/core-a-20260920/README.md)已入库，368 文件/790 hunks。该快照之后的测试修正与证据增量须单独审；中等模型不可用和未完成跨模型审查如实保留。
+
+仍待：扩展 Electron 最终结果及截图人工复核、已有付费产物 verify-only 冷恢复、画布/性能/旅程、候选包历史项目副本、最终分支评审与 PR。Windows 未验证；历史未知 node.removed 事件仍未归因；原 ×3 页面基线缺口没有擅自扩范围。仅交 PR，不合并。
+
+
+### 上述快照之后的新发现与修复进展
+
+- F15 逐项核源码发现普通多镜落地仍可在等待后写入新项目，不能沿用“已关”。现以原 project lifetime 保护工具创建、重绑、组/表/结果、fit 和持久化返回；三项红测已复现，相关4文件32项及48合同检查通过，root已亲核生产diff。详见 [F01–F15处置表](2026-09-20-core-a-findings-closure.md)。
+- 参数 Slider 原接口误把名称加在容器，已改为 Mantine 原 thumbLabel；原数值输入fixture增加实际名称/ArrowRight/Home/End/落值与多参数、单数值参数两种面板，红测为命名查找失败，修后10项通过。无新增控件或改值语义。
+- 实际 Electron 另证时长键盘写入6但节点显示5；外层flowNodes已6、ReactFlow内部节点仍5，正在追原投影/位置变更生命周期，尚不能关闭。独立数值控件通过不能替代此宿主问题。
+- 真实供应商 v9 verify-only 完整通过，热恢复/两次新进程、原两图和首帧视频身份、媒体解码与参数回执保持，无新付费。持久证据见 [付费收据](evidence/core-a-20260920/paid-v9-receipt.json)。root已亲看中英文图：功能恢复通过；英文原底条在左栏已收起时仍有裁切/碰撞，不判视觉全通过。三相关owner在#808、刷新基线与当前HEAD字节相同；该空间策略按用户已明确延期的 T-DS-01/A-2 记录真实复现，不擅自隐藏不可降级控件或重画布局。
+- contracts v7 已结束：99门中96通过、0阻断、3 advisory（`/private/tmp/nomi-core-a-contracts-final-v7.log`）。F15与Slider生产修补在其后，仍须关联复验和最终构建，不能给旧收据换hash。
+
+### C19 开场 oracle 修正（受控静态复核，待真实重跑）
+
+`/private/tmp/nomi-core-a-canvas-final-v8.log:242` 的 C19 差异是开场、尚未删除/Undo 时将原磁盘 fixture 与 hydrated live graph 强等：旧组打开时由 `canvasSnapshotNormalizer/backfillGroupFrameBounds` 补 `frameBounds`，只随下一次用户持久化保存；图片解码经 `MEDIA_DIMENSION_UPDATE_OPTIONS={persist:false,emit:false,history:false}` 添加 `imageWidth/imageHeight/imageAspectRatio`。这不足以证明 Undo 丢用户数据，不能据此修改正常生产代码。
+
+本次仅改 `canvas-shortcuts.walk.mjs` 的开场判据：磁盘与启动前原 fixture 完整比较；live graph 的组边界使用原 `backfillGroupFrameBounds` 和原尺寸解析计算，只允许原 fixture 未声明的三个解码测量字段新增。删除/真实键盘 Undo 后的完整 live graph 与完整磁盘比较全部保留，未全程过滤 `frameBounds`、未放宽用户字段/结果/绑定。没有改生产，真实 Electron 重跑由主代理负责；本记录不声称 C19 已通过。

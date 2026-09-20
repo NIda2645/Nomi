@@ -356,7 +356,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
     <NodeWriteAccessProvider value={writeAccess}><div
       ref={anchorRef}
       className={cn(
-        'generation-canvas-v2-node__composer',
+        'generation-canvas-v2-node__composer nokey',
         // 面板里的卡由介入槽定位，这里只是一段普通内容流；画布上才是浮在节点下沿的绝对定位层。
         inPanel ? 'w-full' : 'absolute z-[8] w-max',
         // 画布拖动期间隐身（拖节点、拖选区/组框、拖画布平移都算；状态源=stage 的 data-dragging，见 canvasDraggingFlag）。

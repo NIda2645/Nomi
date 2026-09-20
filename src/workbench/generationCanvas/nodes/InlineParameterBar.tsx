@@ -449,7 +449,7 @@ export default function InlineParameterBar({
           role="group"
           aria-label={surfaceLabel}
           data-agent-parameter-panel="true"
-          className="w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
+          className="nokey w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
           style={{ boxShadow: 'var(--workbench-shadow-pop)' }}
         >
           {content}
@@ -462,7 +462,7 @@ export default function InlineParameterBar({
         role="group"
         aria-label={surfaceLabel}
         data-agent-parameter-panel="true"
-        className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
+        className="nokey fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
         style={{
           zIndex: 600,
           left: hugsContent ? panelInit?.anchorLeft : panelInit?.left,

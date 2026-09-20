@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-09-19-composer-lifecycle",
   "problem_type": "Transient presentation ownership survives its interaction lifetime",
-  "symptom": "Selected editable nodes intermittently lose the composer after history, interrupted drag, zero-sized layout or lazy failure. At default zoom, a large canvas node places composer parameter actions behind fixed bottom workspace docks. Editing B then confirming only A discarded B unsubmitted payment-card input. Frozen full audit also reproduced an unselected node history button doing nothing, canvas outer-card scrolling against its fixed-footer contract, and normal focus transfer cancelling a new primary pan.",
-  "direct_cause": "History has two state owners; boolean drag writes rediscover stage and reuse source identity; chunk errors reload the window; geometry can resolve to zero height in a nonzero stage. Reference hooks and prompt-library media also bypassed the host writer and modified canvas from panel. The panel writer ignored caller node identity and read current shot/scope after uploads settled; the same node could also belong to a refreshed quote or operation. Composer placement excluded the left dock but treated the full stage bottom as usable; its existing geometry watcher ignored bottom dock mounting and resizing. The newly bounded outer composer scroll card omitted the existing native React Flow nowheel region class; React synthetic stopPropagation alone does not provide that framework contract. Renderer revises only selected shots but cleared the entire two-layer draft after refresh/confirmation. The captured window blur listener accepted child-element blur events; its cancel callback cleared pointer start before movement. The history setter closed over selected=false although the visible trigger stops selection bubbling. The canvas card unconditionally enabled outer overflow-y-auto.",
-  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes. Shared composer content writes lacked explicit host-scoped authority. Asynchronous write authority was rebound to the currently displayed draft rather than the initiating editing visit. Usable-stage geometry must account for intersecting fixed workspace chrome through its existing owner.",
+  "symptom": "Selected editable nodes intermittently lose the composer after history, interrupted drag, zero-sized layout or lazy failure. At default zoom, a large canvas node places composer parameter actions behind fixed bottom workspace docks. Editing B then confirming only A discarded B unsubmitted payment-card input. Frozen full audit also reproduced an unselected node history button doing nothing, canvas outer-card scrolling against its fixed-footer contract, and normal focus transfer cancelling a new primary pan. Real Electron video duration keyboard edits persisted but the visible slider stayed stale, and control arrow keys also moved the canvas node.",
+  "direct_cause": "History has two state owners; boolean drag writes rediscover stage and reuse source identity; chunk errors reload the window; geometry can resolve to zero height in a nonzero stage. Reference hooks and prompt-library media also bypassed the host writer and modified canvas from panel. The panel writer ignored caller node identity and read current shot/scope after uploads settled; the same node could also belong to a refreshed quote or operation. Composer placement excluded the left dock but treated the full stage bottom as usable; its existing geometry watcher ignored bottom dock mounting and resizing. The newly bounded outer composer scroll card omitted the existing native React Flow nowheel region class; React synthetic stopPropagation alone does not provide that framework contract. Renderer revises only selected shots but cleared the entire two-layer draft after refresh/confirmation. The captured window blur listener accepted child-element blur events; its cancel callback cleared pointer start before movement. The history setter closed over selected=false although the visible trigger stops selection bubbling. The canvas card unconditionally enabled outer overflow-y-auto. Every React Flow position event, including keyboard movement outside a drag, disabled hasDefaultNodes and only populated a drag draft. Without drag-stop the ownership flag never recovered; batched projection updates stopped applying. Composer lacked the existing React Flow nokey scope. History open intent triggered its own invalidation effect while selected was still false in React Flow: domain selection updates pass through a passive projection effect and the framework batch. The synchronous selected-state harness had missed this intermediate render. The initial keyboard writeback also accepted late XYDrag position packets after cancellation; keyboard and mouse-end both carry dragging=false. Electron blur then mouseup reproduced a discarded position being saved and persistRevision incrementing. Final Electron v13 proved the duration panel portal escapes the composer DOM nokey ancestor while React synthetic keydown still bubbles to the node wrapper, moving the selected node by 5px during a valid slider edit.",
+  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes. Shared composer content writes lacked explicit host-scoped authority. Asynchronous write authority was rebound to the currently displayed draft rather than the initiating editing visit. Usable-stage geometry must account for intersecting fixed workspace chrome through its existing owner. Framework input exclusion must follow each actual DOM interaction surface, including portals, rather than only the React component ancestor.",
   "affected_population": [
     "Canvas and spend-card composer hosts; all reachable drag sources and canvas visibility transitions"
   ],
@@ -44,7 +44,10 @@
     "src/workbench/production/productionRunApi.ts",
     "electron/capabilityCore/mcpGenerationTools.ts",
     "electron/productionRun/productionRunTypes.ts",
-    "electron/capabilityCore/apimartGenerationProjection.ts"
+    "electron/capabilityCore/apimartGenerationProjection.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+    "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+    "src/design/NomiSelect.tsx"
   ],
   "entry_points": [
     "Canvas node history and composer",
@@ -2623,14 +2626,214 @@
       "kind": "write",
       "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
       "symbol": "retainDismissedSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "applyCanvasDragKernelPositionChanges"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "overlayCanvasDragDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "applyCanvasDragPositionChanges"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "restoreCanvasDragKernelOwnership"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+      "symbol": "applyCanvasDragKernelPositionChanges"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "commitCanvasKeyboardPositions"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/nodeComposerBar/nodeComposerBarLabKit.tsx",
+      "symbol": "InlineParameterBar"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "InlineParameterBar"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/primitivesForms/states/02-selection.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/vendorOrder/vendorOrderLabKit.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CapabilityModeEditor.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/ComfyuiWorkflowImportPanel.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomCallEditor.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/CustomCallScopeSelector.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/DirectScriptDraftForm.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/ModelEnableEditor.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/ModelPickerScreen.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/ModelSettingsWorkspacePages.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/useAntigravityModelWorkspace.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/workflowPage/WorkflowCanvasPreview.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/BulkModelPicker.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/ShotParamControls.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotComposerBar.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardBulkBar.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardSelectionToolbar.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CanvasProductionControls.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/inspector/ActionClipInspector.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/inspector/CloseupClipInspector.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/inspector/LookAtClipInspector.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/inspector/WaypointAimField.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/panels/viewport/PipViewport.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/timeline/TimelineHeader.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/preview/inspector/PreviewInspector.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/preview/inspector/TextClipFields.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/settings/DefaultGenerationModelsSection.tsx",
+      "symbol": "NomiSelect"
+    },
+    {
+      "kind": "write",
+      "path": "src/design/NomiSelect.tsx",
+      "symbol": "useCombobox"
     }
   ],
   "door_reduction": {
-    "before": 510,
-    "after": 510,
-    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner."
+    "before": 515,
+    "after": 550,
+    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points."
   },
-  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner.",
+  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner. History intent invalidates on selection/availability/identity lifecycle changes, not on opening intent itself; delayed framework selection can therefore complete without discarding the original click. InlineParameterBar renders both single/multiple controls and canvas portal/payment inline surfaces through renderParameterPanel; each surface root supplies the installed framework nokey contract.",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
@@ -2666,6 +2869,21 @@
       "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
       "symbol": "createPendingSpendActions",
       "responsibility": "Resolve visible shot identity against persisted plan; revise before dismiss preserves unsubmitted edits."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragDraft.ts",
+      "symbol": "applyCanvasDragKernelPositionChanges",
+      "responsibility": "Update drag geometry while preserving the existing lifecycle-owned React Flow ownership flag."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "InlineParameterBar",
+      "responsibility": "Apply framework keyboard input exclusion to actual inline and portal parameter surface DOM roots, preserving control keyboard behavior."
+    },
+    {
+      "path": "src/design/NomiSelect.tsx",
+      "symbol": "NomiSelect",
+      "responsibility": "Keep dropdown keyboard events within control semantics using the existing framework input-exclusion class on its actual portal root."
     }
   ],
   "same_class_entry_points": [
@@ -2716,6 +2934,24 @@
       "entry_point": "GenerationWorkspace",
       "disposition": "enforced",
       "evidence": "Timeline dock lives at workspace scope outside the stage; reuse collectBottomDockRects preserves that scope, tested with sibling workspace dock."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "entry_point": "renderParameterPanel portal",
+      "disposition": "enforced",
+      "evidence": "Canvas single/multiple controls render into document.body; React portal propagation reaches NodeWrapper, so the actual portal root must opt out via installed isInputDOMNode nokey."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "entry_point": "renderParameterPanel inline",
+      "disposition": "enforced",
+      "evidence": "Payment inline surface and optional slot portal use the same surface renderer; input exclusion must survive either DOM placement."
+    },
+    {
+      "path": "src/design/NomiSelect.tsx",
+      "entry_point": "Combobox.Dropdown provider chip",
+      "disposition": "enforced",
+      "evidence": "Dropdown provider chips are focusable buttons outside the composer DOM ancestry; Mantine only captures Escape. Search input already uses native INPUT exclusion. Shared dropdown-root nokey spans both."
     }
   ],
   "recurrence": {
@@ -2731,7 +2967,13 @@
       "node scripts/door-map.mjs src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts: three existing doors already present in this contract; inspected workspaceBottomDocks, CanvasNavigationStack, GenerationWorkspace and useCanvasBottomDockRects.",
       "Existing unchanged nodeInnerScrollNoWheel test caught the outer card nowheel omission in /private/tmp/nomi-three-test-red.log; shared class restored; 7 files / 74 green in /private/tmp/nomi-core-a-regression-fixed.log.",
       "2026-09-20 partial-confirm audit: door-map spendCardDraft.ts (28 doors); checked each/all revisionsForConfirm, renderer revise/confirm cleanup, dismissed recovery and quote refresh. Real renderer harness B-edit/A-confirm fails before repair (/private/tmp/nomi-partial-spend-renderer-red.log).",
-      "merge-base b06270627c099394881ca2f8c546d7c7facc5c3c already compares each against original shot and clears whole draft after scoped revisions: baseline bugs, not newly introduced. New quote-bound storage makes interrupted multi-revision restoration a current-change obligation. Original-value regression red: /private/tmp/nomi-spend-original-override-red.log."
+      "merge-base b06270627c099394881ca2f8c546d7c7facc5c3c already compares each against original shot and clears whole draft after scoped revisions: baseline bugs, not newly introduced. New quote-bound storage makes interrupted multi-revision restoration a current-change obligation. Original-value regression red: /private/tmp/nomi-spend-original-override-red.log.",
+      "2026-09-20 keyboard ownership audit: applyCanvasDragKernelPositionChanges has one caller, handleNodesChange; hasDefaultNodes is disabled at drag-start and restored at stop/cancel. Real ReactFlow+Mantine browser fixture reproduced slider store=6/UI=5 and node keyboard movement leaving ownership false. Non-drag movements now retain ownership and use one original history barrier, event transaction and persistence commit.",
+      "2026-09-20 history projection audit: door-map useNodeResultHistory reports BaseGenerationNode as the one caller. CardStackPeeks stops pointer/click propagation; NodeResultStack selects the domain node then opens local history. Actual ReactFlow+syncCanvasNodeProjection browser fixture reproduces selection=true with no tray from one click; first mount, unavailable results and A/B/A/close are checked alongside original kind/identity tests.",
+      "2026-09-20 cancellation red: /private/tmp/nomi-core-a-cancelled-drag-red.log, persistRevision 23→24 and coordinates changed after blur/mouseup. Installed RF useMoveSelectedNodes and XYDrag both call updateNodePositions; its default dragging=false cannot distinguish origin. No new parentId/extent policy; retain original projection for non-keyboard, non-active-drag changes. door-map canvasDragWriteback.ts found original commitCanvasNodeDragStop caller.",
+      "2026-09-20 final v13 Electron red: Slider duration 5→6 moved selected video x925→930. Generated InlineParameterBar two-consumer door map and canvasDragWriteback two-writer door map. Read NodeParameterControls host wiring and installed RF NodeWrapper isInputDOMNode before key handling. Earlier literal nokey fixture did not exercise the real parameter portal.",
+      "NomiSelect dropdown/chip has no original nokey; generated all NomiSelect consumer doors. Existing AnchoredPopover wrapper and trigger already carry nokey; no change required there. NomiSelect outside React Flow receives no behavior from the framework marker.",
+      "Followed NomiSelect consumer one hop to original Mantine state owner: generated useCombobox door map identifies NomiSelect.tsx as the sole caller. No second select state owner introduced."
     ]
   },
   "prevention": {
@@ -2740,7 +2982,7 @@
     "invariant": "Lease ownership is captured at gesture start and cannot be reassigned by late cleanup.",
     "failure_mode": "Invalid origin acquires no stage; repeated release is a no-op; invalid history becomes closed.",
     "exception_policy": "none",
-    "strategy": "Replace boolean/string release API with captured token lease, then close lifecycle exits at each producer. Bind panel writers to one editing visit and retire both read/write access on scope change or unmount; uploads stop after await when the captured writer is retired. Pending candidate projection supplies existing composer; host resolves explicit displayed shot identity against actual plan structure. Filter blur at the shared lease ingress by event target; keep selection acquisition at the existing history trigger and permit its captured opening intent without relying on the pre-selection closure; restore original scroll ownership.",
+    "strategy": "Replace boolean/string release API with captured token lease, then close lifecycle exits at each producer. Bind panel writers to one editing visit and retire both read/write access on scope change or unmount; uploads stop after await when the captured writer is retired. Pending candidate projection supplies existing composer; host resolves explicit displayed shot identity against actual plan structure. Filter blur at the shared lease ingress by event target; keep selection acquisition at the existing history trigger and permit its captured opening intent without relying on the pre-selection closure; restore original scroll ownership. History invalidation uses lifecycle dependencies only, not openedFor. Non-drag position writeback requires the current synchronous React keydown dispatch; the installed RF still owns key filtering, selection and displacement. Out-of-lifetime pointer positions restore the current projection without an Undo/event/save. Reuse canvasDragWriteback for business commits, keeping the canvas shell below its existing limit. Parameter surface roots carry native framework nokey exclusion for both portal and inline modes; no synthetic keyboard algorithm or document-level handler is added.",
     "artifacts": [
       "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
       "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
@@ -2770,7 +3012,9 @@
       "electron/capabilityCore/productionReferenceUrls.ts",
       "electron/assets/assetReferenceIdentity.ts",
       "electron/assets/projectAssetStore.ts",
-      "src/workbench/ai/v4/spendCardReferences.ts"
+      "src/workbench/ai/v4/spendCardReferences.ts",
+      "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "src/design/NomiSelect.tsx"
     ]
   },
   "regression_tests": [
@@ -2786,7 +3030,10 @@
     "electron/capabilityCore/pendingSpendReferences.test.ts",
     "electron/capabilityCore/productionReferenceUrls.test.ts",
     "electron/assets/assetReferenceIdentity.test.ts",
-    "electron/capabilityCore/generationProviderBootstrap.test.ts"
+    "electron/capabilityCore/generationProviderBootstrap.test.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts",
+    "tests/ux/core-a-composer.e2e.mjs",
+    "tests/ux/param-panel-numeric.e2e.mjs"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
@@ -2799,7 +3046,9 @@
     "electron/capabilityCore/pendingSpendReferences.test.ts",
     "electron/capabilityCore/productionReferenceUrls.test.ts",
     "electron/assets/assetReferenceIdentity.test.ts",
-    "electron/capabilityCore/generationProviderBootstrap.test.ts"
+    "electron/capabilityCore/generationProviderBootstrap.test.ts",
+    "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts",
+    "tests/ux/param-panel-numeric.e2e.mjs"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -2814,15 +3063,17 @@
     "decision": "retain-with-exit",
     "current": "@xyflow/react 12.11.5",
     "target": "Existing React Flow renderer plus anchoredPlacement adapter",
-    "rationale": "NodeToolbar source provides portal and inverse zoom but no measured flip/clamp. Replacement would remove required behavior.",
+    "rationale": "NodeToolbar source provides portal and inverse zoom but no measured flip/clamp. Replacement would remove required behavior. Installed @xyflow/react 12.11.5 NodeWrapper and NodesSelection use the same synchronous useMoveSelectedNodes → updateNodePositions → triggerNodeChanges → onNodesChange path. The adapter observes the native keydown eventPhase only during that dispatch; @xyflow/system isInputDOMNode excludes .nokey descendants, preserving control keyboard handling without replacing framework key, selection or movement logic.",
     "exit_criteria": [
-      "Revisit if placement requires virtual anchors, auto-placement or scrolling-container middleware; migrate whole owner with geometry and draft-preservation tests."
+      "Revisit if placement requires virtual anchors, auto-placement or scrolling-container middleware; migrate whole owner with geometry and draft-preservation tests.",
+      "On React Flow or event integration upgrades, inspect the installed keyboard dispatch and .nokey implementations and rerun both node and multi-selection keyboard entry paths, composer slider edits without node movement, read-only refusal, cancelled pointer late-event zero-write behavior, single-Undo grouping and cold-restart persistence.",
+      "If keyboard position changes become asynchronous or .nokey stops excluding control events, the current eventPhase adapter is no longer valid: revise the shared adapter against the new framework contract and prove those regressions before retaining or upgrading it; do not widen the event lifetime with timers."
     ]
   },
   "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.",
   "residual_risks": [
-    "Real Electron final two-host screenshots and original smoke/card-stack/gesture walkthrough must be rerun on the repaired build; controlled evidence alone is not live platform proof.",
-    "Formal reference resolver and sealed snapshot integration are implemented; real paid supplier first-frame/reference execution remains to be verified. Windows unverified."
+    "Final v13 strengthened Electron assertion exposed parameter-portal key leakage; fix and real-host rerun are required before delivery. Current acceptance and exact evidence live in docs/audit/2026-09-20-core-a-current-acceptance.md.",
+    "Paid-v9 first-frame video and two-image receipts verify the exercised supplier paths only; other supplier/reference combinations and Windows remain unverified. Full-app lazy failure and all native OS interrupt combinations are not established by controlled fixtures."
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",

@@ -168,14 +168,16 @@ try {
   await task('02-selected-band-follows', async () => {
     await select(images[0].id)
     await expect(magneticBands(images[0].id), '选中的图片卡左右各一条带子').toHaveCount(2)
+    // Decoded media now owns card aspect ratio; a 240px-wide 16:9 card is 135px high.
+    // The approved band contract is min(168, actual card height + 28), not always 168.
+    const card = await win.locator(selector(images[0].id)).boundingBox()
     for (const side of ['left', 'right']) {
       const hit = handle(images[0].id, 'source', side).locator('.generation-canvas-react-flow__handle-hit')
       const box = await hit.boundingBox()
       expect(Math.round(box.width), '带子 112px 宽').toBe(112)
-      expect(Math.round(box.height), '带子 168px 高（min(168, 卡高+28)）').toBe(168)
+      expect(Math.round(box.height), '带子 min(168, 实际卡高+28) 高').toBe(Math.round(Math.min(168, card.height + 28)))
     }
     // 加号跟着指针走：在带内取一个**不是静止位**的点，图标中心要追上来。
-    const card = await win.locator(selector(images[0].id)).boundingBox()
     const follow = { x: card.x + card.width + 78, y: card.y + card.height / 2 - 46 }
     await win.mouse.move(follow.x - 30, follow.y + 20)
     await win.mouse.move(follow.x, follow.y, { steps: 8 })

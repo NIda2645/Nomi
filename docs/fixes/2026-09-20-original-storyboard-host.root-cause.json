@@ -3,7 +3,7 @@
   "id": "2026-09-20-original-storyboard-host",
   "problem_type": "Original storyboard behavior lost across Run storage adapters",
   "symptom": "Run plans lose existing storyboard table, reference and model interactions",
-  "direct_cause": "Run host replaced existing actions with an incomplete present/compiler path and a second landing host; materialization checked stable stamps before awaited model/target reads, allowing concurrent duplicate creation The strict original author schema also received the canvas command operation discriminator, so valid legacy propose_storyboard_plan writes failed; the command envelope must be removed before author parsing.",
+  "direct_cause": "Run host replaced existing actions with an incomplete present/compiler path and a second landing host; materialization checked stable stamps before awaited model/target reads, allowing concurrent duplicate creation The strict original author schema also received the canvas command operation discriminator, so valid legacy propose_storyboard_plan writes failed; the command envelope must be removed before author parsing. F15: ordinary renderer landing checked only the entry project; model lookup and create-node awaits resumed with unguarded node, group, table and result writes against a replacement canvas.",
   "class_root": "Storage and binding differences were allowed to replace original executable behavior and duplicate in-flight ownership",
   "affected_population": [
     "Run-backed storyboard plans"
@@ -47,7 +47,8 @@
     "Explicit placement includes standalone visual reference cards even when the plan currently has no shot rows; it never submits media",
     "PR #808 approved sidebar collapse and existing parameter degradation remain the current layout; no new minimum-width or horizontal-scroll strategy is introduced. Expanded-sidebar redesign is deferred.",
     "Transport operation discriminators are consumed by the original apply boundary and never passed as author fields to the strict shared storyboard schema.",
-    "Explicit Place/View are optional original actions; single/variant/anchor/batch generation keeps on-demand materialization without a new placement gate."
+    "Explicit Place/View are optional original actions; single/variant/anchor/batch generation keeps on-demand materialization without a new placement gate.",
+    "Every renderer materialization write and its returned bindings belong to the captured project lifetime; switching A-to-B-to-A never revives stale landing, while main-process approved execution is unaffected."
   ],
   "doors": [
     {
@@ -899,12 +900,17 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/useProductionNodeRetry.ts",
       "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "rebindLandedShots"
     }
   ],
   "door_reduction": {
     "before": 170,
-    "after": 170,
-    "why_not": "Original UI, Agent IPC and canvas table callers remain necessary. They share original projection and row actions. Existing-only reconciliation and explicit author projection reuse the existing renderer RPC; no second landing factory or runner survives."
+    "after": 171,
+    "why_not": "Original UI, Agent IPC and canvas table callers remain necessary. They share original projection and row actions. Existing-only reconciliation and explicit author projection reuse the existing renderer RPC; no second landing factory or runner survives. The 170-to-171 inventory change corrects a pre-existing omission: rebindLandedShots already existed and was called before F15. The final generated door map records that original write entrance; this repair does not add a new production entrance."
   },
   "generality_proof": "Both legacy and Run plans mount identical JSX; all original onChange controls resolve through an identity-bound host",
   "shared_boundaries": [
@@ -917,6 +923,11 @@
       "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
       "symbol": "useStoryboardRunHost",
       "responsibility": "Bind original editor mutations to Run authority"
+    },
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "materializeShots",
+      "responsibility": "Capture the existing project execution context at entry, validate any explicit projectId, and guard awaited tool creation, local writes, viewport fit, persistence and result publication."
     }
   ],
   "same_class_entry_points": [
@@ -937,6 +948,18 @@
       "entry_point": "createStoryboardRunDraftSession",
       "disposition": "enforced",
       "evidence": "Serial saves and local conflict preservation"
+    },
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "rebindLandedShots",
+      "disposition": "enforced",
+      "evidence": "Model lookup may yield; every subsequent update runs through the captured lifetime guard in inLandingTxn."
+    },
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "materializeShots create/group/table/result path",
+      "disposition": "enforced",
+      "evidence": "create_canvas_nodes receives the existing canWrite/assertTargetCurrent hooks; after it returns, the captured project is rechecked before follow-up writes and before returning bindings."
     }
   ],
   "recurrence": {
@@ -948,7 +971,8 @@
       "Inspected all original editor callbacks and runtime node binding",
       "Machine door-map applyCanvasToolCall and storyboardRowActions: /private/tmp/nomi-concurrent-materialize-doors.json and /private/tmp/nomi-anchor-only-doors.json",
       "Concurrent catalog wait and target wait both reproduced four created nodes instead of two using the real apply boundary and store; after moving awaits before lookup, four files/70 tests passed",
-      "Original batch placement with zero and one shot now both place visual anchors, group once and undo completely; red zero-shot placement returned no nodes"
+      "Original batch placement with zero and one shot now both place visual anchors, group once and undo completely; red zero-shot placement returned no nodes",
+      "F15: generated door-map --write=materializeShots,rebindLandedShots,attachShotResult; followed model lookup, applyCanvasToolCall and persistence awaits plus synchronous fit and returned bindings. Reviewed canvasLandingHost best-effort behavior: renderer refusal does not cancel main-process approved jobs."
     ]
   },
   "prevention": {
@@ -957,7 +981,7 @@
     "invariant": "Run authority injected into original editor",
     "failure_mode": "CAS conflict preserves local draft and original receipt",
     "exception_policy": "none",
-    "strategy": "Typed host adapter and identity-keyed disposable input session",
+    "strategy": "Typed host adapter and identity-keyed disposable input session Ordinary renderer materialization uses the original project lifetime and existing tool write guards across every await; stale renderer projection fails closed without changing paid background execution.",
     "artifacts": [
       "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
       "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
@@ -986,7 +1010,8 @@
     "src/workbench/capability/multiShotCanvasLanding.test.ts",
     "src/workbench/creation/storyboard/exec/storyboardProjection.test.ts",
     "src/workbench/generationCanvas/agent/materializationStamp.test.ts",
-    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts"
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts",
+    "src/workbench/capability/agentDraftSingleLedger.test.ts"
   ],
   "class_regression_tests": [
     "tests/ux/original-storyboard-run.test.mjs",
@@ -996,7 +1021,8 @@
     "src/workbench/capability/multiShotCanvasLanding.test.ts",
     "src/workbench/creation/storyboard/exec/storyboardProjection.test.ts",
     "src/workbench/generationCanvas/agent/materializationStamp.test.ts",
-    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts"
+    "src/workbench/generationCanvas/agent/canvasWriteTarget.integration.test.ts",
+    "src/workbench/capability/agentDraftSingleLedger.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",

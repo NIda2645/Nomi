@@ -6,10 +6,10 @@
 
 请独立审查这个 PR：`<交付时填入 PR URL>`。不要把作者报告或测试数量当结论；核对实际源码、差异、测试质量及截图。先读目标仓库 AGENTS.md、其引用的工程规则，以及下列范围依据：
 
-- `Nomi_plan_A_core_fixes_2026-09-19.md`
-- `Nomi_Plan_B_Full_Reviewed_Taskbook_2026-09-19.md` 中完整 T7（其余章节不是本次范围）
-- `Nomi_simplified_A_plus_T7_original_storyboard_plan_2026-09-20.md`
-- 仓库 `docs/plan/2026-09-20-core-a-restart.md`、`docs/audit/2026-09-20-core-a-full-review.md`、T7 和 remaining-acceptance 记录。
+- `docs/audit/evidence/core-a-20260920/scope/Nomi_plan_A_core_fixes_2026-09-19.md`
+- `docs/audit/evidence/core-a-20260920/scope/B-T7-excerpt.md`（指定 B 的完整 T7；其余章节不是本次范围）
+- `docs/audit/evidence/core-a-20260920/scope/Nomi_simplified_A_plus_T7_original_storyboard_plan_2026-09-20.md`
+- 仓库 `docs/plan/2026-09-20-core-a-restart.md` 为实施范围依据；`docs/audit/2026-09-20-core-a-full-review.md` 为历史发现及结构复核依据，T7 和 remaining-acceptance 保留历史记录。唯一现行结果见 `docs/audit/2026-09-20-core-a-current-acceptance.md`，勿把旧快照的运行中或待验措辞当现状。
 
 先获取真实 PR base/head SHA 并计算 merge-base，审完整分支 diff，检查所有新增文件；不要把主线前进造成的两点差异当成回滚。若缺少任务书或证据，明确缺失项，不猜范围。
 

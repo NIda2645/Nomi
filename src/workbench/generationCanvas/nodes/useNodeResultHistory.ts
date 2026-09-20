@@ -12,8 +12,8 @@ export function useNodeResultHistory({ id, kind, selected, available }: {
   const valid = selected && available
   const open = valid && openedFor === identity
   React.useEffect(() => {
-    if (!valid || (openedFor !== null && openedFor !== identity)) setOpenedFor(null)
-  }, [valid, identity, openedFor])
+    setOpenedFor(previous => valid && previous === identity ? previous : null)
+  }, [valid, identity])
   // The trigger selects this node in the same event; selection here is the previous render.
   const setOpen = React.useCallback((next: boolean) => setOpenedFor(next && available ? identity : null), [identity, available])
   return [open, setOpen]

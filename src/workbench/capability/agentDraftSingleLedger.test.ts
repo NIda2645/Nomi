@@ -5,7 +5,7 @@
 // 这条不变量没有 owner——落地报文不带模型身份、去重判据散在调用方。
 //
 // 这里钉的是**渲染半**：落地报文带上候选身份后，节点必须以候选为准；同 op 重放必须幂等。
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // 落盘 owner 用 spy 换掉：这条不变量要证的是「真写了画布就当场落盘」，不是落盘本身怎么写。
 const { persistNowSpy } = vi.hoisted(() => ({ persistNowSpy: vi.fn(async () => null) }))
@@ -181,3 +181,10 @@ describe('agent draft lands on the canvas as one ledger', () => {
     expect(meta[CANDIDATE_META_KEYS.candidateModelVendor]).toBe('agent-picked-vendor')
   })
 })
+
+
+// Production landing requires the original project lifetime even in a controlled canvas fixture.
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../project/projectSessionTestHarness'
+let landingProject: ProjectSessionTestHarness
+beforeEach(async () => { landingProject = createProjectSessionTestHarness(); await landingProject.open('project-a') })
+afterEach(() => landingProject.dispose())

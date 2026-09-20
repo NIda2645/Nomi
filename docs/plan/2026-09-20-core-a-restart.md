@@ -198,3 +198,17 @@ v2 HEAD `81020ceced424be6272049f9c1dc4793fac80d85`、tree `7fd43d9c34157ca31eb9d
 - 全量 v5 的 S06 超时仍保留失败。CPU profile 证明原基线也存在反复解析完整 Run 事件历史的热点；本轮仅在原 repository 保留每次读盘并复用已验证 UTF-8 内容索引，变化、损坏及末行扩展均重新验证，返回对象独立。新类级红测、35 项邻接测试及48合同检查通过，S06 定点24.53秒→13.06秒；没有调整60秒上限。完整套件仍待最终集成树。
 - 真实付费已生成两张图片、一张首帧及一个4秒视频，共1.8936 credits供应商回执，工具3/3、回合2/2；v7 后续媒体探测脚本错误保留，改为原 ffprobe owner 在测试 Node 进程只读校验并重启，不重付。最终通过收据另列。
 - `git fetch origin` 已刷新到 `96d368c26`，当前18 ahead/17 behind。先保存完整施工快照及本地检查点，再逐hunk合并；保上游镜头/媒体唯一owner与本轮任务身份、保存、参数条语义。四处dirty冲突分别核对，不整文件选边。合并后重新验相关组合和全量门禁，PR不合并。
+
+
+### 最终审计追加：参数滑块名称与 F15
+
+T7 实测发现原共享数值控件将名称传到 Mantine 容器而非滑块。先以原 numeric-panel 夹具新增名称/键盘/范围与多参数、单数值参数面板红测，再在 ParameterControlBody 将 aria-label 改为框架 thumbLabel；保留值、布局与写入接口，不新增组件。原 Electron ArrowRight 写入失败独立调查，不拿名称修复冒充值恢复。F15 普通多镜落地的异步项目复验由原 owner 定点补红测核实，禁止标记关闭或新增落地服务。
+
+### v8 真实整套验收追加修复
+
+原 canvas full 为11/14，阻断为历史未选中直接打开、C19首次hydrate与磁盘比较、磁吸带固定168断言。历史以原hook生命周期effect修复，真实RF延迟投影红测后29项通过。C19首次hydrate允许原owner补frameBounds及非持久化媒体测量，保真实Undo全内容和持久化断言；磁吸沿原min(168,实际卡高+28)合同核值，不能为上游intrinsic aspect变更改生产。另真实Electron证明取消拖动后late mouseup会误保存（revision23→24）；非拖动位置仅接当前同步框架keyboard dispatch，RF继续决定键与移动，不重写算法；原canvasDragWriteback承接事务避免巨壳超800行。初次v8合同仅filesize阻断，旧失败保留。新构建后重跑这些旅程与整体画布，尚未完成。
+
+
+### 最终宿主复验：参数 portal 的框架键盘边界
+
+真实参数输入新增“所有节点位置不变”断言，发现duration改变时选中节点也移动5px。原外composer的nokey不覆盖document.body portal，但React事件仍回到NodeWrapper。同类原NomiSelect供应商按钮也缺此边界。按原InlineParameterBar表面根（inline/portal）和原NomiSelect.Dropdown补框架nokey；不改节点移动算法、参数值、付款权限或布局。真实RF原组件五路红测先行，原节点Arrow阳性及真实Electron旅程验修后结果，截图和完整差异账本再核。

@@ -408,7 +408,12 @@ try {
   await applyColorSchemeForShot(win, 'dark')
   await screenshotSettled(win, { path: path.join(outputDir, '05-real-collapsed-group-dark.png') })
 
-  await clickOrFail(win.locator('g[data-aggregate-group="reference-group"] path[role="button"]'), '重新选中编组输入线')
+  // Reopening changes the path geometry; sample its actual hit target again.
+  const reopenedAggregatePoint = await findEdgeHitPoint(win, {
+    edgeSelector: 'g[data-aggregate-group="reference-group"] path[role="button"]',
+  })
+  check('重开后聚合编组输入线仍有真实可点击点', Boolean(reopenedAggregatePoint), JSON.stringify(reopenedAggregatePoint))
+  await win.mouse.click(reopenedAggregatePoint.x, reopenedAggregatePoint.y)
   await clickOrFail(win.getByRole('button', { name: '断开整条编组连接' }), '一次断开完整编组关系')
   await expectAbsent(win.locator('g[data-aggregate-group="reference-group"]'), {
     provenBy: await proveProbe(collapsed, '断开后编组卡仍存在'),

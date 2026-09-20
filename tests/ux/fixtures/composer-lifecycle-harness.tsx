@@ -1,8 +1,8 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createPortal } from 'react-dom'
-import { MantineProvider } from '@mantine/core'
-import { ReactFlow, applyNodeChanges, type Node, type NodeProps } from '@xyflow/react'
+import { MantineProvider, Slider } from '@mantine/core'
+import { ReactFlow, ReactFlowProvider, useReactFlow, useStoreApi, applyNodeChanges, type Node, type NodeProps } from '@xyflow/react'
 import '@mantine/core/styles.css'
 import '@xyflow/react/dist/style.css'
 import { AnchoredPopover } from '../../../src/design/AnchoredPopover'
@@ -13,6 +13,10 @@ import { beginCanvasDragging, CANVAS_DRAGGING_OWNER } from '../../../src/workben
 import { useComposerViewportPlacement } from '../../../src/workbench/generationCanvas/nodes/useComposerViewportPlacement'
 import { useWorkbenchStore } from '../../../src/workbench/workbenchStore'
 import { useNodeResultHistory } from '../../../src/workbench/generationCanvas/nodes/useNodeResultHistory'
+
+import { syncCanvasNodeProjection } from '../../../src/workbench/generationCanvas/reactFlow/canvasNodeProjectionSync'
+import { applyCanvasDragKernelPositionChanges } from '../../../src/workbench/generationCanvas/reactFlow/canvasDragDraft'
+import type { GenerationFlowNode, GenerationFlowEdge } from '../../../src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter'
 
 let loaded = false
 let reloads = 0
@@ -124,6 +128,66 @@ function EscapeOwnershipHarness() {
     </div>
   </MantineProvider>
 }
+
+function ProjectionSliderNode({ data }: NodeProps<GenerationFlowNode>) {
+  return <div className="nokey"><Slider thumbLabel="projection duration" min={4} max={15} step={1}
+    value={Number(data.generationNode.meta?.duration)}
+    onChange={(duration) => (data as typeof data & { change: (value: number) => void }).change(duration)} /></div>
+}
+const projectionNodeTypes = { generation: ProjectionSliderNode }
+function ProjectionKeyboardHarness() {
+  const flow = useReactFlow<GenerationFlowNode, GenerationFlowEdge>()
+  const store = useStoreApi<GenerationFlowNode, GenerationFlowEdge>()
+  const [duration, setDuration] = React.useState(5)
+  const nodes = React.useMemo<GenerationFlowNode[]>(() => [{ id: 'projection-node', type: 'generation',
+    position: { x: 40, y: 40 }, selected: true, style: { width: 240 },
+    data: { generationNode: { id: 'projection-node', kind: 'video', title: 'video', position: { x: 40, y: 40 }, meta: { duration } },
+      readOnly: false, primarySelection: true, appear: false, focusFlash: false, change: setDuration } }], [duration])
+  React.useEffect(() => {
+    Object.assign(window, { projectionSnapshot: () => {
+      const state = store.getState()
+      return { ownsNodes: state.hasDefaultNodes, position: state.nodeLookup.get('projection-node')?.position }
+    } })
+  }, [store])
+  const previous = React.useRef<readonly GenerationFlowNode[] | null>(null)
+  React.useEffect(() => syncCanvasNodeProjection(flow, nodes, previous, false), [flow, nodes])
+  return <><output data-projection-duration>{duration}</output><div style={{ width: 640, height: 240 }}>
+    <ReactFlow defaultNodes={nodes} nodeTypes={projectionNodeTypes}
+      onNodesChange={(changes) => applyCanvasDragKernelPositionChanges(store, changes)} />
+  </div></>
+}
+
+
+type HistoryProjectionData = GenerationFlowNode['data'] & { choose: (id: string) => void; available: boolean }
+function ProjectedHistoryNode({ id, data, selected }: NodeProps<GenerationFlowNode>) {
+  const historyData = data as HistoryProjectionData
+  const [open, setOpen] = useNodeResultHistory({ id, kind: data.generationNode.kind, selected: Boolean(selected), available: historyData.available })
+  return <div data-projected-history={id} data-selected={String(selected)}>
+    <button data-history-trigger onPointerDown={event => event.stopPropagation()} onClick={event => {
+      event.stopPropagation()
+      if (!open) historyData.choose(id)
+      setOpen(!open)
+    }}>versions</button>
+    {open ? <div data-projected-tray>history</div> : null}
+  </div>
+}
+const historyProjectionNodeTypes = { generation: ProjectedHistoryNode }
+function HistoryProjectionHarness() {
+  const flow = useReactFlow<GenerationFlowNode, GenerationFlowEdge>()
+  const [selectedId, choose] = React.useState('')
+  const [available, setAvailable] = React.useState(true)
+  const nodes = React.useMemo<GenerationFlowNode[]>(() => ['history-a', 'history-b'].map((id, index) => ({
+    id, type: 'generation', position: { x: 30 + index * 250, y: 30 }, selected: selectedId === id,
+    data: { generationNode: { id, kind: 'video', title: id, position: { x: 30 + index * 250, y: 30 } },
+      readOnly: false, primarySelection: selectedId === id, appear: false, focusFlash: false, choose, available },
+  })), [selectedId, available])
+  const previous = React.useRef<readonly GenerationFlowNode[] | null>(null)
+  React.useEffect(() => syncCanvasNodeProjection(flow, nodes, previous, false), [flow, nodes])
+  return <><button data-history-availability onClick={() => setAvailable(value => !value)}>availability</button>
+    <button data-history-deselect onClick={() => choose('')}>deselect</button>
+    <div style={{ width: 640, height: 200 }}><ReactFlow defaultNodes={nodes} nodeTypes={historyProjectionNodeTypes} /></div></>
+}
+
 function Harness() {
   const [selected, select] = React.useState(true)
   const [available, availability] = React.useState(true)
@@ -131,7 +195,7 @@ function Harness() {
   const [id, identity] = React.useState('a')
   const [open, setOpen] = useNodeResultHistory({ id, kind, available, selected })
   return <>
-    <input defaultValue="unpublished" />
+    <input id="unpublished-draft" defaultValue="unpublished" />
     <button id="select" onClick={() => select(value => !value)}>selection</button>
     <button id="available" onClick={() => availability(value => !value)}>results</button>
     <button id="kind" onClick={() => type('video')}>type</button>
@@ -141,6 +205,8 @@ function Harness() {
     <GestureHarness />
     <PlacementHarness />
     <EscapeOwnershipHarness />
+    <ReactFlowProvider><HistoryProjectionHarness /></ReactFlowProvider>
+    <MantineProvider><ReactFlowProvider><ProjectionKeyboardHarness /></ReactFlowProvider></MantineProvider>
   </>
 }
 Object.assign(window, { composerFixture: { fail: () => failFirstImport?.(), load: () => { loaded = true }, snapshot: () => ({ calls, reloads }), gesture: () => gestureState,

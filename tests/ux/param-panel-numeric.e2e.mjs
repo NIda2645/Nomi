@@ -98,6 +98,81 @@ try {
   )
   ok('有可用步长的区间参数仍然是滑杆')
 
+  // The accessible name must belong to the interactive thumb, not its wrapper.
+  // Keep the invariant when the panel contains several parameters or just one.
+  async function checkNamedDuration() {
+    const slider = page.getByRole('slider', { name: '时长', exact: true })
+    await slider.waitFor({ state: 'visible' })
+    assert.equal(await slider.getAttribute('aria-valuenow'), '5')
+    await slider.focus()
+    await slider.press('ArrowRight')
+    await page.waitForFunction(() => document.querySelector('[data-testid="duration-value"]')?.textContent === '6')
+    assert.equal(await slider.getAttribute('aria-valuenow'), '6')
+    await slider.press('Home')
+    await page.waitForFunction(() => document.querySelector('[data-testid="duration-value"]')?.textContent === '1')
+    await slider.press('End')
+    await page.waitForFunction(() => document.querySelector('[data-testid="duration-value"]')?.textContent === '10')
+    assert.equal(await slider.getAttribute('aria-valuenow'), '10')
+  }
+  await checkNamedDuration()
+  ok('面板滑块有真实名称，键盘写入参数且遵守范围')
+  await page.goto(`http://127.0.0.1:${address.port}${fixturePath}?single=1`)
+  await page.locator('button[aria-expanded]').first().click()
+  await checkNamedDuration()
+  ok('仅一个数值参数的面板仍保留名称和键盘写入边界')
+
+  const keyboardFailures = []
+  for (const surface of ['portal', 'inline']) {
+    for (const single of [false, true]) {
+      try {
+        const query = `?flow=1${surface === 'inline' ? '&inline=1' : ''}${single ? '&single=1' : ''}`
+        await page.goto(`http://127.0.0.1:${address.port}${fixturePath}${query}`)
+        await page.locator('button[aria-expanded]').first().click()
+        const slider = page.getByRole('slider', { name: '时长', exact: true })
+        await slider.waitFor({ state: 'visible' })
+        assert.equal(await slider.evaluate(element => Boolean(element.closest('.react-flow__node'))), surface === 'inline',
+          `${surface} must exercise the actual component's declared DOM placement`)
+        const before = await page.evaluate(() => window.numericFlowSnapshot())
+        assert.deepEqual(before, { ownsNodes: true, position: { x: 80, y: 80 } })
+        await slider.focus()
+        await slider.press('ArrowRight')
+        await page.waitForFunction(() => document.querySelector('[data-testid="duration-value"]')?.textContent === '6')
+        assert.equal(await slider.getAttribute('aria-valuenow'), '6')
+        assert.deepEqual(await page.evaluate(() => window.numericFlowSnapshot()), before,
+          `${surface}/${single ? 'single' : 'multiple'} slider ArrowRight must change only the parameter, preserving node position and ownership`)
+        await slider.press('Escape')
+        const node = page.locator('.react-flow__node[data-id="numeric-node"]')
+        await node.focus()
+        await node.press('ArrowRight')
+        assert.deepEqual(await page.evaluate(() => window.numericFlowSnapshot()),
+          { ownsNodes: true, position: { x: 85, y: 80 } }, 'Original node keyboard movement must remain enabled')
+        ok(`真实 React Flow ${surface}/${single ? '单参数' : '多参数'} 滑块键盘不移动节点，节点自身键盘仍可用`)
+      } catch (error) { keyboardFailures.push(error) }
+    }
+  }
+
+  try {
+    await page.goto(`http://127.0.0.1:${address.port}${fixturePath}?flow=1&providers=1`)
+    await page.getByRole('button', { name: '模型', exact: true }).click()
+    const dropdown = page.locator('[data-nomi-select-dropdown]:visible')
+    const provider = dropdown.getByRole('button', { name: 'Remote fixture', exact: true })
+    await provider.waitFor({ state: 'visible' })
+    assert.equal(await provider.evaluate(element => Boolean(element.closest('.react-flow__node'))), false,
+      'Provider choice must be in the real NomiSelect body portal')
+    const before = await page.evaluate(() => window.numericFlowSnapshot())
+    await provider.focus()
+    await provider.press('ArrowRight')
+    const afterArrow = await page.evaluate(() => window.numericFlowSnapshot())
+    await provider.press('Enter')
+    await page.waitForFunction(() => document.querySelector('[data-testid="selected-provider"]')?.textContent === 'fixture-remote')
+    const selected = await page.locator('.react-flow__node[data-id="numeric-node"]').evaluate(element => element.classList.contains('selected'))
+    assert.deepEqual(afterArrow, before, 'NomiSelect portal provider ArrowRight must not move the node')
+    assert.equal(selected, true, 'NomiSelect provider Enter must retain canvas selection while changing provider')
+    assert.deepEqual(await page.evaluate(() => window.numericFlowSnapshot()), before)
+    ok('真实 NomiSelect 供应商按钮 Arrow 不移动节点，Enter 保留选中并执行原换家动作')
+  } catch (error) { keyboardFailures.push(error) }
+  if (keyboardFailures.length) throw new AggregateError(keyboardFailures, 'Framework portal keyboard ownership regressions')
+
   assert.deepEqual(pageErrors, [], '页面不应有运行时错误')
   ok('无运行时错误')
 

@@ -1,4 +1,4 @@
-import { proveProbe, expectAbsent } from './_assert.mjs'
+import { proveProbe, expectAbsent, waitForVisualQuiescence } from './_assert.mjs'
 // Partial CJ4 / T7: real Electron UI and project persistence, no provider submissions.
 // Bundled history and terminal blur/result clearing are explicitly controlled setup;
 // navigation, locks, parameter edits, history deletion and pointer input use original UI.
@@ -79,10 +79,13 @@ async function openCanvas(win) {
 }
 
 async function selectNode(win,id,{multi=false}={}) {
-  const point=await findNodeHitPoint(win,{nodeSelector:` .generation-canvas-v2-node[data-node-id="${id}"]`})
-  assert(point,`Node ${id} must expose a real pointer target`)
   if(multi)await win.keyboard.down('Shift')
-  try { await win.mouse.click(point.x,point.y) }
+  try {
+    await waitForVisualQuiescence(win)
+    const point=await findNodeHitPoint(win,{nodeSelector:` .generation-canvas-v2-node[data-node-id="${id}"]`})
+    assert(point,`Node ${id} must expose a real pointer target`)
+    await win.mouse.click(point.x,point.y)
+  }
   finally { if(multi)await win.keyboard.up('Shift') }
 }
 
@@ -111,15 +114,30 @@ async function checkEditor(win) {
   return { composer, input }
 }
 
-async function editParameter(win, item) {
+async function editParameter(win, item, control = 'option') {
   const before = await win.evaluate(id => window.__nomiCanvasStore.getState().nodes.find(node => node.id === id)?.meta, item.id)
-  const { composer } = await checkEditor(win)
+  const composer = win.locator(composerSelector)
+  await expect(composer).toBeVisible()
   await composer.locator('[data-parameter-summary]').click()
   const panel = win.locator('[data-agent-parameter-panel="true"]')
   await expect(panel).toBeVisible()
-  const option = panel.locator('[role="radio"][aria-checked="false"]:not([disabled])').first()
-  await expect(option).toBeVisible()
-  await option.click()
+  if (control === 'duration') {
+    const slider = panel.getByRole('slider', { name: '时长(秒)', exact: true })
+    await expect(slider).toBeVisible()
+    const previous = Number(await slider.getAttribute('aria-valuenow'))
+    const positionsBefore = await win.evaluate(() => window.__nomiCanvasStore.getState().nodes.map(node => ({ id: node.id, position: node.position })))
+    await slider.focus()
+    await win.keyboard.press('ArrowRight')
+    await expect(slider).toHaveAttribute('aria-valuenow', String(previous + 1))
+    assert.deepEqual(await win.evaluate(() => window.__nomiCanvasStore.getState().nodes.map(node => ({ id: node.id, position: node.position }))), positionsBefore,
+      'Actual canvas parameter ArrowRight must not move any node')
+  } else {
+    const option = panel.locator('[role="radio"][aria-checked="false"]:not([disabled])').first()
+    await expect(option).toBeVisible()
+    const optionName = await option.getAttribute('aria-label') || await option.textContent()
+    await option.click()
+    await expect(panel.locator('[role="radio"][aria-checked="true"]', { hasText: optionName.trim() })).toBeVisible()
+  }
   await win.keyboard.press('Escape')
   await expect.poll(() => win.evaluate(id => window.__nomiCanvasStore.getState().nodes.find(node => node.id === id)?.meta, item.id)).not.toEqual(before)
   item.meta = await win.evaluate(id => window.__nomiCanvasStore.getState().nodes.find(node => node.id === id)?.meta, item.id)
@@ -142,7 +160,7 @@ try {
   await openCanvas(win)
   await observeCanvasInputs(win)
   for (const kind of ['image', 'video']) {
-    const beforeIds = new Set(await win.locator('.generation-canvas-v2-node[data-node-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id'))))
+    const beforeIds = await win.evaluate(() => window.__nomiCanvasStore.getState().nodes.map(node => node.id))
     const toolbar = win.locator('.generation-canvas-v2-toolbar')
     const add = toolbar.locator(`[data-node-kind="${kind}"]`)
     if (await add.isVisible()) await add.click()
@@ -150,9 +168,11 @@ try {
       await toolbar.locator('[data-canvas-add-more="true"]').click()
       await win.locator(`.generation-canvas-v2-toolbar__more-menu [data-node-kind="${kind}"]`).click()
     }
-    await expect(win.locator('.generation-canvas-v2-node[data-node-id]')).toHaveCount(beforeIds.size + 1)
-    const id = (await win.locator('.generation-canvas-v2-node[data-node-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id')))).find(value => !beforeIds.has(value))
-    assert(id, 'UI creation must produce a new node identity')
+    const newlyCreatedIds = () => win.evaluate(previous => window.__nomiCanvasStore.getState().nodes
+      .map(node => node.id).filter(id => !previous.includes(id)), beforeIds)
+    await expect.poll(newlyCreatedIds, { message: 'Original add action creates exactly one canonical store identity' }).toHaveLength(1)
+    const [id] = await newlyCreatedIds()
+    await expect(win.locator(`.generation-canvas-v2-node[data-node-id="${id}"]`)).toBeVisible()
     const { composer, input } = await checkEditor(win)
     const prompt = `Core A ${kind} 保存后重开 / keep this draft`
     await input.click()
@@ -175,9 +195,11 @@ try {
     await expect.poll(() => readNodes().find(node => node.id === id)?.meta,
       { message: 'Wait for the parameter edit itself to reach project persistence' }).toEqual(expectedMeta)
     edited.push({ id, kind, prompt, meta: expectedMeta })
-    const mountedProof = await proveProbe(win.locator(composerSelector), 'composer mounted before original view switch')
+    await expect(win.locator(composerSelector)).toBeVisible()
     await win.getByRole('button', { name: /^(创作|Create)$/ }).click()
-    await expectAbsent(win.locator(composerSelector), { provenBy: mountedProof, message: 'Create unmounts canvas composer' })
+    // Original WorkbenchShell keeps each workspace mounted via hidden={!active}.
+    await expect(win.locator(composerSelector)).toBeHidden()
+    await expect.poll(() => readNodes().find(node => node.id === id)?.prompt).toBe(prompt)
     await openCanvas(win)
     await selectNode(win, id)
     await expect((await checkEditor(win)).input).toHaveText(prompt)
@@ -202,24 +224,28 @@ try {
   await win.mouse.click(blank.x, blank.y)
   await selectNode(win,edited[0].id)
   await expect((await checkEditor(win)).input).toHaveText(edited[0].prompt)
-  // Original lock protects against AI writes; it does not prohibit user parameter edits.
+  // Original lock makes the prompt read-only while parameter controls remain available.
   const imageItem = edited[0]
   const imageNode = win.locator(`.generation-canvas-v2-node[data-node-id="${imageItem.id}"]`)
   await imageNode.locator('[data-node-lock="unlocked"]').click()
   await expect(imageNode.locator('[data-node-lock="locked"]')).toBeVisible()
   await expect.poll(() => win.evaluate(id => window.__nomiCanvasStore.getState().nodes.find(node => node.id === id)?.locked, imageItem.id)).toBe(true)
+  await expect(win.locator(composerSelector).locator('[contenteditable="false"]')).toBeVisible()
+  await expect(win.locator(composerSelector).locator('[contenteditable="false"]')).toHaveText(imageItem.prompt)
   await editParameter(win, imageItem)
   await imageNode.locator('[data-node-lock="locked"]').click()
   await expect(imageNode.locator('[data-node-lock="unlocked"]')).toBeVisible()
   await editParameter(win, imageItem)
-  // Use the original first-frame mode. Fail visibly if this model no longer exposes it;
+  // Original Dreamina Seedance labels its single-first-frame mode 图生视频 (i2v).
+  // Select the real mode, whose required slot is first_frame; no metadata injection.
+  // Fail visibly if this model no longer exposes it;
   // do not fabricate model identity or weaken the missing-reference precondition.
   await selectNode(win, edited[1].id)
   const videoComposer = (await checkEditor(win)).composer
-  await videoComposer.getByRole('group', { name: '生成方式', exact: true }).getByRole('button', { name: '首帧', exact: true }).click()
+  await videoComposer.getByRole('group', { name: '生成方式', exact: true }).getByRole('button', { name: '图生视频', exact: true }).click()
   await expect(videoComposer.locator('[data-bar-segment="generate"]')).toBeDisabled()
   await expect(videoComposer.locator('[data-bar-segment="generate"]').locator('..')).toHaveAttribute('title', /参考素材|首帧/)
-  await editParameter(win, edited[1])
+  await editParameter(win, edited[1], 'duration')
   await expect(videoComposer.locator('[data-bar-segment="generate"]')).toBeDisabled()
   await selectNode(win, imageItem.id)
   // Controlled result attachment using real bundled media. History requires two
@@ -258,17 +284,91 @@ try {
   await replacePrompt(win, imageItem, ' / after controlled final-result removal')
   const dragPoint = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${imageItem.id}"]` })
   assert(dragPoint, 'Interrupted gesture needs a real original node hit target')
+  const beforeCancelledDrag = await win.evaluate(id => {
+    const state = window.__nomiCanvasStore.getState()
+    return { position: state.nodes.find(node => node.id === id).position, persistRevision: state.persistRevision }
+  }, imageItem.id)
   await win.mouse.move(dragPoint.x, dragPoint.y)
   await win.mouse.down()
   await win.mouse.move(dragPoint.x + 32, dragPoint.y + 24, { steps: 5 })
   await expect(win.locator('.generation-canvas-v2__stage')).toHaveAttribute('data-dragging', 'true')
   // Controlled blur termination after real pointer down/move; not native OS focus loss.
   await win.evaluate(() => window.dispatchEvent(new Event('blur')))
-  await win.mouse.up()
   await expect(win.locator('.generation-canvas-v2__stage')).not.toHaveAttribute('data-dragging', 'true')
+  await win.mouse.move(dragPoint.x + 48, dragPoint.y + 36, { steps: 2 })
+  await win.mouse.up()
+  await expect.poll(() => win.evaluate(id => {
+    const state = window.__nomiCanvasStore.getState()
+    return { position: state.nodes.find(node => node.id === id).position, persistRevision: state.persistRevision }
+  }, imageItem.id), { message: 'Late mouseup after cancellation must not commit the discarded drag' }).toEqual(beforeCancelledDrag)
   await selectNode(win, imageItem.id)
   await replacePrompt(win, imageItem, ' / after interrupted drag')
   await win.screenshot({path:path.join(shotsDir,'history-switch-and-blur.png')})
+  // Alt-drag uses copied identities internally. Cancellation must not leak its
+  // late coordinates back into either the original or the already-created copy.
+  const altPoint = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${imageItem.id}"]` })
+  assert(altPoint)
+  await win.keyboard.down('Alt')
+  await win.mouse.move(altPoint.x, altPoint.y)
+  await win.mouse.down()
+  await win.mouse.move(altPoint.x + 35, altPoint.y + 25, { steps: 5 })
+  await expect(win.locator('.generation-canvas-v2__stage')).toHaveAttribute('data-dragging', 'true')
+  const altSnapshot = () => win.evaluate(() => {
+    const state = window.__nomiCanvasStore.getState()
+    return { positions: state.nodes.map(node => ({ id: node.id, position: node.position })), persistRevision: state.persistRevision }
+  })
+  const afterDuplication = await altSnapshot()
+  await win.evaluate(() => window.dispatchEvent(new Event('blur')))
+  await expect(win.locator('.generation-canvas-v2__stage')).not.toHaveAttribute('data-dragging', 'true')
+  await win.mouse.move(altPoint.x + 60, altPoint.y + 40, { steps: 2 })
+  await win.mouse.up()
+  await win.keyboard.up('Alt')
+  await expect.poll(altSnapshot).toEqual(afterDuplication)
+  const copyIds = afterDuplication.positions.map(node => node.id).filter(id => !edited.some(item => item.id === id))
+  assert.equal(copyIds.length, 1, 'Alt-drag created exactly one copy')
+  await win.locator(`.react-flow__node[data-id="${copyIds[0]}"]`).focus()
+  await win.keyboard.press('Meta+Z')
+  await expect.poll(() => win.evaluate(() => window.__nomiCanvasStore.getState().nodes.map(node => node.id).sort())).toEqual(edited.map(item => item.id).sort())
+  // NodeWrapper owns arrow-key movement; Composer's native nokey scope must not
+  // disable keyboard access on the node itself. Use the original multi-selection.
+  await win.getByRole('button', { name: /^(适应视图|Fit view)$/ }).click()
+  await selectNode(win, edited[0].id)
+  await selectNode(win, edited[1].id, { multi: true })
+  const ids = edited.map(item => item.id).sort()
+  const selectedIds = () => win.evaluate(() => [...window.__nomiCanvasStore.getState().selectedNodeIds].sort())
+  await expect.poll(selectedIds).toEqual(ids)
+  const positions = () => win.evaluate(nodeIds => nodeIds.map(id => {
+    const node = window.__nomiCanvasStore.getState().nodes.find(candidate => candidate.id === id)
+    return { id, position: node?.position }
+  }), ids)
+  const originalPositions = await positions()
+  const keyboardNode = win.locator(`.react-flow__node[data-id="${edited[0].id}"]`)
+  await expect(keyboardNode).toHaveAttribute('tabindex', '0')
+  await keyboardNode.focus()
+  await expect(keyboardNode).toBeFocused()
+  await expect.poll(selectedIds).toEqual(ids)
+  await win.keyboard.press('ArrowRight')
+  await expect.poll(async () => (await positions()).every((node, index) =>
+    node.position.x > originalPositions[index].position.x && node.position.y === originalPositions[index].position.y),
+  { message: 'One actual node arrow key moves both canonical selected nodes' }).toBe(true)
+  const movedPositions = await positions()
+  const firstDelta = movedPositions[0].position.x - originalPositions[0].position.x
+  assert.equal(movedPositions[1].position.x - originalPositions[1].position.x, firstDelta, 'Multi-selection moves by one shared keyboard delta')
+  await win.keyboard.press('Meta+Z')
+  await expect.poll(positions, { message: 'One real Undo restores both selected nodes' }).toEqual(originalPositions)
+  // Undo may rebuild mounted node wrappers. Refocus the original node identity.
+  await expect.poll(selectedIds).toEqual(ids)
+  await keyboardNode.focus()
+  await expect(keyboardNode).toBeFocused()
+  await win.keyboard.press('ArrowRight')
+  await expect.poll(positions).toEqual(movedPositions)
+  for (const item of edited) {
+    item.position = movedPositions.find(node => node.id === item.id).position
+    await expect.poll(() => readNodes().find(node => node.id === item.id)?.position,
+      { message: 'Keyboard movement reaches original project persistence before restart' }).toEqual(item.position)
+  }
+  diagnostics.push({ keyboardMultiSelection: { originalPositions, movedPositions, singleUndoRestoredBoth: true } })
+  await win.screenshot({ path: path.join(shotsDir, 'zh-keyboard-multiselect-after-undo.png') })
   fs.writeFileSync(path.join(shotsDir, 'composer-diagnostics.json'), JSON.stringify(diagnostics, null, 2))
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await saveCanvasObservations(win)
@@ -284,12 +384,27 @@ try {
     await expect((await checkEditor(win)).input).toHaveText(item.prompt)
     const restored = readNodes().find(node => node.id === item.id)
     assert.deepEqual(restored.meta, item.meta, 'Parameter values must survive a fresh Electron process')
+    assert.deepEqual(restored.position, item.position, 'Keyboard movement must remain on disk after restart')
+    await expect.poll(() => win.evaluate(id => window.__nomiCanvasStore.getState().nodes.find(node => node.id === id)?.position, item.id),
+      { message: 'Fresh Electron hydrates the exact keyboard-moved node position' }).toEqual(item.position)
     await win.screenshot({ path: path.join(shotsDir, `en-restored-${item.kind}.png`) })
   }
-  console.log(JSON.stringify({ status: 'passed', scope: 'partial CJ4: original view unmount, user edits while AI locked, missing first-frame reference, history deletion; controlled final-result clear and blur interruption; restart', platform: process.platform, tempRoot, shotsDir }))
+  console.log(JSON.stringify({ status: 'passed', scope: 'partial CJ4: original view hiding/recovery, locked prompt read-only with parameter edits, missing first-frame reference, history deletion, multi-node keyboard movement and single Undo with persisted restart positions; controlled final-result clear and blur interruption; restart', platform: process.platform, tempRoot, shotsDir }))
   await saveCanvasObservations(win)
 } catch(error) {
   console.error('Composer walk main-process diagnostics:',gui?.mainLogTail())
+  if (gui?.win) console.error('Composer read-only React props diagnostic:', JSON.stringify(await gui.win.evaluate(() => {
+    const slider = document.querySelector('[data-agent-parameter-panel] [role="slider"]')
+    let fiber = slider && slider[Object.keys(slider).find(key => key.startsWith('__reactFiber$'))]
+    const props = []
+    while (fiber) {
+      const p = fiber.memoizedProps
+      const name = fiber.type?.displayName || fiber.type?.name || fiber.elementType?.displayName || fiber.elementType?.name
+      if (p && (p.node || p.meta || p.value !== undefined || p.control || p.data || p.flowNodes || p.defaultNodes)) props.push({name, duration:p.node?.meta?.duration ?? p.meta?.duration ?? p.data?.generationNode?.meta?.duration, value:typeof p.value === 'object' ? undefined : p.value, control:p.control?.key, nodeId:p.node?.id, projected:(p.flowNodes ?? p.defaultNodes)?.map(n => ({id:n.id,duration:n.data?.generationNode?.meta?.duration})), alternateDuration:fiber.alternate?.memoizedProps?.node?.meta?.duration})
+      fiber = fiber.return
+    }
+    return { props, nodes: window.__nomiCanvasStore.getState().nodes.map(node => ({id:node.id,duration:node.meta?.duration})) }
+  })))
   if (gui?.win) await saveCanvasObservations(gui.win)
   await gui?.win.screenshot({path:path.join(shotsDir,'failure.png')})
   throw error

@@ -58,8 +58,11 @@ describe('generation canvas control structure', () => {
     const dragHandler = generationCanvas.match(/const handleNodesChange:[\s\S]*?\n\x20\x20}, \[[^\n]+\]\)/)?.[0] || ''
 
     expect(dragDraft).toContain('applyNodeChanges')
-    expect(dragHandler).toContain('dragDraft')
-    expect(dragHandler).not.toContain('moveNode(')
+    const activeDrag = dragHandler.split('if (positionChanges.length && draggingRef.current) {')[1]?.split('} else if')[0] ?? ''
+    expect(activeDrag).toContain('dragDraft')
+    expect(activeDrag).toContain('applyCanvasDragKernelPositionChanges')
+    expect(activeDrag).not.toContain('moveNode(')
+    expect(activeDrag).not.toContain('commitPersistedChange(')
   })
 
   it('lets React Flow exclusively own mounted node placement and interaction controls', () => {
