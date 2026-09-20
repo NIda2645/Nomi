@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { ModelCatalogHealthDto, ProfileKind } from '../workbench/api/modelCatalogApi'
+import type { ModelCatalogHealthDto } from '../workbench/api/modelCatalogApi'
 import type { ModelOption, NodeKind } from './models'
 import {
   deriveModelCatalogStatus,
   normalizeCatalogLoadError,
   type ModelCatalogStatus,
 } from './modelCatalogStatus'
-import { MODEL_REFRESH_EVENT, getCatalogHealth, preloadModelOptions } from './modelCatalogCache'
+import { MODEL_REFRESH_EVENT, getCatalogHealth, preloadModelOptions, type ModelQueryMode } from './modelCatalogCache'
 
 // 重导出：实现已拆到兄弟模块（resolvers / mappers / status / cache），
 // 但 useModelOptions.ts 对外公共导出面保持不变，外部 import 路径无需改动。
@@ -45,7 +45,7 @@ export type ModelOptionsState = {
  * 拿到的永远是「现在就能跑」的那一份：没接入的供应商在 catalog 派生层就被
  * `keepUsableModelRows` 挡掉了（2026-09-06 用户拍板），这里没有放宽口，调用方也不需要自己再滤。
  */
-export function useModelOptionsState(kind?: NodeKind, requiredMode?: ProfileKind): ModelOptionsState {
+export function useModelOptionsState(kind?: NodeKind, requiredMode?: ModelQueryMode): ModelOptionsState {
   const [options, setOptions] = useState<ModelOption[]>([])
   const [error, setError] = useState<Error | null>(null)
   const [healthError, setHealthError] = useState<Error | null>(null)
@@ -120,7 +120,7 @@ export function useModelOptionsState(kind?: NodeKind, requiredMode?: ProfileKind
   }
 }
 
-export function useModelOptions(kind?: NodeKind, requiredMode?: ProfileKind): ModelOption[] {
+export function useModelOptions(kind?: NodeKind, requiredMode?: ModelQueryMode): ModelOption[] {
   const state = useModelOptionsState(kind, requiredMode)
   if (state.error) throw state.error
 

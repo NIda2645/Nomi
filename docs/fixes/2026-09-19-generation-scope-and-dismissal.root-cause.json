@@ -509,11 +509,6 @@
     },
     {
       "kind": "write",
-      "path": "electron/productionRun/batchScheduleDerivation.ts",
-      "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
       "path": "electron/productionRun/budgetLedger.ts",
       "symbol": "sumBudgetAmounts"
     },
@@ -956,6 +951,11 @@
       "kind": "write",
       "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
       "symbol": "confirmPendingSpend"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "createBudgetAmountAccumulator"
     }
   ],
   "door_reduction": {

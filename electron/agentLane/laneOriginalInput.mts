@@ -59,10 +59,7 @@ export async function resolveLaneReplay(reader: Reader, source: Entry, current: 
   const sourceMessage = source.type === 'message' && isLaneInputMessage(source.message) ? source.message : undefined;
   const continueFromEntryId = current.continueFromEntryId ?? sourceMessage?.context.continueFromEntryId;
   let original = source;
-  const seen = new Set<string>();
   for (;;) {
-    if (seen.has(original.id)) throw new Error('agent_lane_input_reference_invalid');
-    seen.add(original.id);
     const next = original.type === 'message' && isLaneInputMessage(original.message)
       ? original.message.context.retryFromEntryId : undefined;
     if (!next) break;

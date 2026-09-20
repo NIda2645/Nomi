@@ -14,21 +14,10 @@ it('does not release another canvas when the original gesture element is detache
   } as unknown as Element
   const detached = { closest: () => null } as unknown as Element
   vi.stubGlobal('document', { querySelector: () => stage })
-  const api = dragging as unknown as {
-    setCanvasDragging?: (origin: Element, active: boolean, owner: string) => void
-    beginCanvasDragging: (origin: Element, owner: string) => { release(): void }
-  }
-  if (api.setCanvasDragging) {
-    api.setCanvasDragging(stage, true, dragging.CANVAS_DRAGGING_OWNER.node)
-    api.setCanvasDragging(detached, false, dragging.CANVAS_DRAGGING_OWNER.node)
-  } else {
-    const original = api.beginCanvasDragging(stage, dragging.CANVAS_DRAGGING_OWNER.node)
-    api.beginCanvasDragging(detached, dragging.CANVAS_DRAGGING_OWNER.node).release()
-    expect(attributes.get(dragging.CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
-    original.release()
-    return
-  }
+  const original = dragging.beginCanvasDragging(stage, dragging.CANVAS_DRAGGING_OWNER.node)
+  dragging.beginCanvasDragging(detached, dragging.CANVAS_DRAGGING_OWNER.node).release()
   expect(attributes.get(dragging.CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
+  original.release()
 })
 
 it('keeps the editor measurable when the selected node fills the stage', () => {

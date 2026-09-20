@@ -1,0 +1,397 @@
+{
+  "format": 1,
+  "purpose": "Selected fields from existing reports; not a new test execution or release receipt",
+  "reports": [
+    {
+      "source": "/private/tmp/nomi-blank-plan-electron-red/report.json",
+      "sourceSha256": "d2d2d9906fd63bfe35a5bed96b652abe449abcb743353116f073e5c3a7673241",
+      "status": "failed",
+      "boundary": "built Electron, original sidebar/editor/IPC/disk; isolated loopback vendor; no paid calls",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "7eed1f2be9781b3ce8721138b49c5524a521e947",
+        "dirty": true
+      },
+      "requests": {
+        "text": 1,
+        "image": 0,
+        "unexpected": 1
+      },
+      "limitations": [
+        "Windows and installed package unverified"
+      ],
+      "checks": [],
+      "runtime": [
+        {
+          "electron": "43.4.1",
+          "chromium": "150.0.7871.224",
+          "platform": "darwin"
+        }
+      ],
+      "error": "Error: Original New Storyboard button must append a local blank plan\n\nOriginal New Storyboard button must append a local blank plan\n\nexpect(received).toBe(expected) // Object.is equality\n\nExpected: 1\nReceived: 0\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate",
+      "screenshots": [
+        "failure.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-blank-plan-electron-green/report.json",
+      "sourceSha256": "47b29aa2814d639eb97ed362a5ff3200d8b5860df453f69fdbac767c5c8bafc4",
+      "status": "failed",
+      "boundary": "built Electron, original sidebar/editor/IPC/disk; isolated loopback vendor; no paid calls",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "1a40e09c22497204acb3a565efd02a445b7152ab",
+        "dirty": true
+      },
+      "requests": {
+        "text": 0,
+        "image": 0,
+        "unexpected": 0
+      },
+      "limitations": [
+        "Windows and installed package unverified"
+      ],
+      "checks": [
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        }
+      ],
+      "runtime": [
+        {
+          "electron": "43.4.1",
+          "chromium": "150.0.7871.224",
+          "platform": "darwin"
+        },
+        {
+          "electron": "43.4.1",
+          "chromium": "150.0.7871.224",
+          "platform": "darwin"
+        }
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: Cold reopen preserves original table identities without creating nodes\n+ actual - expected\n... Skipped lines\n\n  [\n    {\n      categoryId: 'shots',\n      history: [],\n      id: 'gen-v2-shot_table-mu9xs19a-go91',\n...\n      references: [],\n+     renderKind: 'shot-frame',\n      size: {\n        height: 420,\n        width: 960\n      },\n      status: 'idle',\n...\n      references: [],\n+     renderKind: 'shot-frame',\n      size: {\n        height: 420,\n        width: 960\n      },\n      status: 'idle',\n...\n      references: [],\n+     renderKind: 'shot-frame',\n      size: {\n        height: 420,\n        width: 960\n      },\n      status: 'idle',\n...\n      references: [],\n+     renderKind: 'shot-frame',\n      size: {\n        height: 420,\n        width: 960\n      },\n      status: 'idle',\n",
+      "screenshots": [
+        "zh-document-a-1-blank.png",
+        "zh-document-a-2-blank.png",
+        "zh-document-b-1-blank.png",
+        "zh-document-b-2-blank.png",
+        "zh-four-plans-saved.png",
+        "en-four-plans-reopened.png",
+        "failure.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-blank-plan-electron-green-v2/report.json",
+      "sourceSha256": "754064036eab7f385c4cbf649069372d3790f2954930a585577d1a0d5b9213ba",
+      "status": "passed",
+      "boundary": "built Electron, original sidebar/editor/IPC/disk; isolated loopback vendor; no paid calls",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "1a40e09c22497204acb3a565efd02a445b7152ab",
+        "dirty": true
+      },
+      "requests": {
+        "text": 0,
+        "image": 0,
+        "unexpected": 0
+      },
+      "limitations": [
+        "Windows and installed package unverified"
+      ],
+      "checks": [
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "manual new / original editor / saved to original document / zero requests"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        },
+        {
+          "scenario": "cold process / exact identity and content restored through original sidebar"
+        }
+      ],
+      "runtime": [
+        {
+          "electron": "43.4.1",
+          "chromium": "150.0.7871.224",
+          "platform": "darwin"
+        },
+        {
+          "electron": "43.4.1",
+          "chromium": "150.0.7871.224",
+          "platform": "darwin"
+        }
+      ],
+      "screenshots": [
+        "zh-document-a-1-blank.png",
+        "zh-document-a-2-blank.png",
+        "zh-document-b-1-blank.png",
+        "zh-document-b-2-blank.png",
+        "zh-four-plans-saved.png",
+        "en-four-plans-reopened.png",
+        "en-reopened-sidebar-collapsed.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-workflow-variants-current/report.json",
+      "sourceSha256": "3a7a5ede475f9ff66c5ee39e3a59804e45028a50f8d13ab769d2ccd17945e82b",
+      "result": "passed",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "1a40e09c22497204acb3a565efd02a445b7152ab",
+        "dirty": true
+      },
+      "mode": "variants",
+      "expectedRequests": 3,
+      "entry": "original-canvas-generation",
+      "provider": "loopback-http",
+      "paidCalls": 0,
+      "bCanvasSha256Before": "422e6abfedb5376511ccfc70d08dd3c4d72792f019428f72739879346c8b69f0",
+      "bCanvasSha256After": "422e6abfedb5376511ccfc70d08dd3c4d72792f019428f72739879346c8b69f0",
+      "checks": [
+        "renderer和main构建身份一致",
+        "项目 project-1789916446555-wb0jbe 落在隔离项目目录里",
+        "确认卡明确覆盖本次全部执行数量",
+        "原动作创建预期数量的绑定节点",
+        "请求就是 A 节点的提示词",
+        "切到的是另一个项目",
+        "项目 project-1789916449471-c0x8jf 落在隔离项目目录里",
+        "所有执行记录归原项目A",
+        "A 节点结果已本地化为项目素材",
+        "A 项目目录里有这张图",
+        "B 的盘上完整画布 SHA-256 零变化",
+        "B 项目媒体文件零变化",
+        "执行次数与确认数量一致，切项目没有重发或少发",
+        "全部请求只使用原项目A的提示词",
+        "返回原项目未产生新请求",
+        "页面无 pageerror"
+      ],
+      "wireCalls": [
+        {
+          "model": "switch-image",
+          "prompt": "切项目后仍属于原项目的后台图",
+          "hasFirstFrame": false,
+          "firstFrameSha256": null,
+          "route": "/v1/images/generations",
+          "at": 1789916449010
+        },
+        {
+          "model": "switch-image",
+          "prompt": "切项目后仍属于原项目的后台图",
+          "hasFirstFrame": false,
+          "firstFrameSha256": null,
+          "route": "/v1/images/generations",
+          "at": 1789916450816
+        },
+        {
+          "model": "switch-image",
+          "prompt": "切项目后仍属于原项目的后台图",
+          "hasFirstFrame": false,
+          "firstFrameSha256": null,
+          "route": "/v1/images/generations",
+          "at": 1789916450994
+        }
+      ],
+      "screenshots": [
+        "01-original-confirmation.png",
+        "02-a-generation-in-flight.png",
+        "03-b-untouched-after-a-result.png",
+        "04-a-result-on-return.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-workflow-undo-current/report.json",
+      "sourceSha256": "070c42679e298c74f5c855cc919df91ae10b63443923011c5cc3892fe113d5ad",
+      "status": "passed",
+      "boundary": "actual built Electron; synthetic isolated repository setup; real local JPEG; no suppliers",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "1a40e09c22497204acb3a565efd02a445b7152ab",
+        "dirty": true
+      },
+      "requests": {
+        "text": 0,
+        "image": 0,
+        "unexpected": 0
+      },
+      "limitations": [
+        "Windows unverified"
+      ],
+      "checks": [
+        {
+          "scenario": "immediate Undo after deletion, no additional focus or click",
+          "host": "legacy"
+        },
+        {
+          "scenario": "hidden editor / real canvas move Undo Redo",
+          "host": "legacy"
+        },
+        {
+          "scenario": "sidebar/input/Redo ownership; local Undo preserves later title/prompt/canvas result",
+          "host": "legacy"
+        },
+        {
+          "scenario": "immediate Undo after deletion, no additional focus or click",
+          "host": "run"
+        },
+        {
+          "scenario": "hidden editor / real canvas move Undo Redo",
+          "host": "run"
+        },
+        {
+          "scenario": "sidebar/input/Redo ownership; local Undo preserves later title/prompt/canvas result",
+          "host": "run"
+        },
+        {
+          "scenario": "new Electron process / English / exact plan and node identities restored",
+          "host": "legacy"
+        },
+        {
+          "scenario": "new Electron process / English / exact plan and node identities restored",
+          "host": "run"
+        }
+      ],
+      "runtime": [
+        {
+          "electron": "43.4.1",
+          "platform": "darwin"
+        },
+        {
+          "electron": "43.4.1",
+          "platform": "darwin"
+        }
+      ],
+      "screenshots": [
+        "zh-legacy-canvas-redo.png",
+        "zh-legacy-restored-later-edits.png",
+        "zh-run-canvas-redo.png",
+        "zh-run-restored-later-edits.png",
+        "en-legacy-cold-restored.png",
+        "en-run-cold-restored.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-t7-canvas-zh-final-v1/report.json",
+      "sourceSha256": "82db1ed4de13de9e0323b363fa78d9ceac34e7e3d89468b640f405e76ce6027c",
+      "status": "failed",
+      "boundary": "real Electron; actual built file resource; isolated project; no suppliers",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "c458c7b78e834f424de6985d62246957560f7325",
+        "dirty": true
+      },
+      "limitations": [
+        "Windows unverified"
+      ],
+      "scenarios": [
+        {
+          "name": "canvas real chunk failure stays local",
+          "status": "passed"
+        }
+      ],
+      "chunkName": "NodeGenerationComposer-BQt-BYQu.js",
+      "chunkSha256": "8476721ddd96393b6d6d7e324cd16d4080e4e084aa035fffba38a86d3964c3d1",
+      "locale": "zh-CN",
+      "error": "expect(locator).toBeVisible() failed\n\nLocator: locator('[data-composer-host=\"canvas\"] [contenteditable=\"true\"]')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"to.be.visible\" with timeout 5000ms\n  - waiting for locator('[data-composer-host=\"canvas\"] [contenteditable=\"true\"]')\n",
+      "screenshots": [
+        "zh-resource-failure.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-t7-panel-en-final-v2/report.json",
+      "sourceSha256": "3361805d79f89dcf7b48dbac55246db9df69db9782f71a025ea2a5134f30ceeb",
+      "status": "failed",
+      "boundary": "real Electron; actual built file resource; isolated project; no suppliers",
+      "buildStamp": {
+        "version": 1,
+        "head": "9cb822c7ad0e952e8df748d3cbb075f12e026da3",
+        "tree": "e1d021bb7767575fa36408873bce0ab2fa0c7ef6",
+        "dirty": true
+      },
+      "mediaRequests": 0,
+      "unexpectedRequests": [],
+      "limitations": [
+        "Windows unverified"
+      ],
+      "scenarios": [
+        {
+          "name": "canvas and payment real chunk failure stays local",
+          "status": "passed"
+        }
+      ],
+      "chunkName": "NodeGenerationComposer-CcQ01a8D.js",
+      "chunkSha256": "a3435b885c5b7f416c42cf83ebaa5161c8654e87d9355a13388e2a0f04201f6d",
+      "locale": "en",
+      "error": "expect(locator).toBeVisible() failed\n\nLocator: locator('[data-agent-resident=\"true\"][data-agent-panel=\"true\"][data-agent-surface=\"generation\"] [data-v4-block=\"intervention\"][data-kind=\"spend\"]').locator('[data-composer-host=\"panel\"] [contenteditable=\"true\"]')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"to.be.visible\" with timeout 5000ms\n  - waiting for locator('[data-agent-resident=\"true\"][data-agent-panel=\"true\"][data-agent-surface=\"generation\"] [data-v4-block=\"intervention\"][data-kind=\"spend\"]').locator('[data-composer-host=\"panel\"] [contenteditable=\"true\"]')\n",
+      "screenshots": [
+        "en-resource-failure.png"
+      ]
+    },
+    {
+      "source": "/private/tmp/nomi-workflow-agent-current.log",
+      "sourceSha256": "5a346ea24e6fec2177dd3414b7f6b3bc73f709c6595c0ead3839f9994b7d0f50",
+      "kind": "log-extract-not-original-structured-report",
+      "resultLine": "Core A creation: 13 checks passed. Evidence: /private/tmp/nomi-blank-plan-build-20260920/tests/ux/shots/core-a-creation-runs. Isolated data: /var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-core-a-creation-YmSGAm",
+      "checks": [
+        "✓ UI-created a1 owns the selected document",
+        "✓ UI-created a2 owns the selected document",
+        "✓ UI-created b1 owns the selected document",
+        "✓ UI-created b2 owns the selected document",
+        "✓ Both documents display two UI-created plans after the Run list refresh",
+        "✓ Selecting plans loads each exact Run without sibling content",
+        "✓ Save only changes selected Run",
+        "✓ Original sidebar collapse frees the controls and expansion preserves every plan and edited prompt",
+        "✓ Original explicit placement creates one node",
+        "✓ View on canvas retains node identity",
+        "✓ Fresh Electron process restores complete author fields and placement",
+        "✓ Run single-shot generation uses the original runner and decodes the returned real JPG",
+        "✓ Original batch creates its node on demand without requiring explicit placement"
+      ],
+      "limits": [
+        "No standalone report or build stamp in this log; execution context is documented in handoff",
+        "loopback supplier, not paid vendor acceptance",
+        "feel recorder findings are not all resolved by this successful functional run"
+      ]
+    }
+  ]
+}

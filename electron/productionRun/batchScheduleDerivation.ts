@@ -1,4 +1,4 @@
-import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
+import { budgetExceeds, createBudgetAmountAccumulator } from "./budgetLedger";
 import type {
   BudgetLedgerSummary,
   ProductionGate,
@@ -294,7 +294,8 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // shot that would breach `authorized` halts the batch there (that shot and all after are not dispatched).
   const authorized = input.budget.authorized;
   const committed = input.budget.reserved + input.budget.actual + input.budget.unsettled;
-  const liabilities = [committed];
+  const addLiability = createBudgetAmountAccumulator();
+  addLiability(committed);
   const shotDispatch: DispatchTask[] = [];
   let halt: BudgetHalt | undefined;
   let dispatchableCount = 0;
@@ -304,7 +305,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     const shot = videoShots[i];
     if (!needsDispatch(input.runId, shot, input.jobs)) continue; // finished or in-flight → skip
     const price = priceAmount(input.perShotPrice(shot.shotId));
-    if (budgetExceeds(sumBudgetAmounts([...liabilities, price]), authorized)) {
+    if (budgetExceeds(addLiability(price), authorized)) {
       // This shot breaches the cap → halt here; do not dispatch it or any later shot.
       haltIndex = i;
       halt = {
@@ -317,7 +318,6 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
       };
       break;
     }
-    liabilities.push(price);
     dispatchableCount += 1;
     shotDispatch.push(toTask(input.runId, shot));
   }

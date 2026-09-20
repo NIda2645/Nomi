@@ -1,9 +1,12 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { proveProbe, expectAbsent } from './_assert.mjs'
 // Host integration, not live-provider/Electron acceptance. Only environment ports are replaced.
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
-let server, browser, page
+let server, browser, page, cacheDir
 const ports = {
   projectCanvasReadSurface: `export const withProjectAction = fn => fn({ binding: { projectId: 'project' }, assertCurrent() {} }); export const isProjectExecutionContextCurrent = () => true; export const isProjectImportCancellation = () => false;`,
   bridge: `export const getDesktopBridge = () => ({ productionRuns: { pendingSpend() {} } });`,
@@ -13,7 +16,8 @@ const ports = {
   assetUploadApi: `export const importWorkbenchLocalAssetFile = (...args) => window.spendOwnership.upload(...args);`,
 }
 beforeAll(async () => {
-  server = await createServer({ configFile: false, cacheDir: '/private/tmp/nomi-t7-vite-panel', plugins: [{ name: 'controlled-panel-environment', enforce: 'pre',
+  cacheDir = mkdtempSync(path.join(tmpdir(), 'nomi-t7-vite-panel-'))
+  server = await createServer({ configFile: false, cacheDir, plugins: [{ name: 'controlled-panel-environment', enforce: 'pre',
     resolveId(source, importer) {
       if (!importer || !/\/(useAgentPanelSpendConfirm|useNodeAssetDrop|nodeWriteAccess)\.ts$/.test(importer)) return
       const name = source.split('/').at(-1)
@@ -36,7 +40,7 @@ beforeEach(async () => {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/spend-panel-write-ownership-harness.html`)
   await page.locator('#upload').waitFor({ state: 'visible' })
 })
-afterAll(async () => { await browser?.close(); await server?.close() })
+afterAll(async () => { await browser?.close(); await server?.close(); if (cacheDir) rmSync(cacheDir, { recursive: true, force: true }) })
 async function upload() {
   await page.locator('#upload').click()
   await page.waitForFunction(() => window.spendOwnership.snapshot().uploads === 1)
@@ -136,7 +140,7 @@ it('actual shared panel composer accepts pointer and keyboard input into only th
   const before = await page.evaluate(() => structuredClone({nodes:window.spendOwnership.nodes,shots:window.spendOwnership.pending.shots}))
   expect(await input.evaluate(element => { const r=element.getBoundingClientRect(); const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width>0 && r.height>0 && getComputedStyle(element).visibility==='visible' && element.contains(hit) })).toBe(true)
   await input.click()
-  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.insertText('Actual panel keyboard draft')
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt==='Actual panel keyboard draft')
   expect(await page.evaluate(() => ({nodes:window.spendOwnership.nodes,shots:window.spendOwnership.pending.shots}))).toEqual(before)

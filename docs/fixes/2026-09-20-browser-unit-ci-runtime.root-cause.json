@@ -1,0 +1,373 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-browser-unit-ci-runtime",
+  "problem_type": "Browser integration test runtime differs between developer machines and CI",
+  "symptom": "PR #828 Unit fails on Linux before assertions: Chromium executable missing and macOS-only /private/tmp cache paths fail EACCES.",
+  "direct_cause": "Vitest includes browser-backed test.mjs files but the Unit job never installs Chromium; three new test files hardcode a macOS temporary directory.",
+  "class_root": "Each test execution lane must provision the runtime its selected tests actually use; temporary state must use the host platform and be isolated per fixture.",
+  "affected_population": [
+    "Linux focused and full Unit CI runs",
+    "Browser integration tests on macOS, Linux and Windows"
+  ],
+  "scope_paths": [
+    ".github/workflows/quality-gate.yml"
+  ],
+  "entry_points": [
+    "Unit full lane",
+    "Unit focused lane",
+    "Browser fixture Vite cache setup"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The failure concerns which existing Nomi CI job runs browser-backed tests and where Nomi fixtures create temporary state; the existing desktop lane already provisions the same pinned Playwright browser.",
+  "invariants": [
+    "Both unit selection modes install Chromium before running tests.",
+    "Vite fixture caches use platform tmpdir and are removed after each suite.",
+    "No browser-backed coverage is excluded or downgraded to source-only checks."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "tests/ux/_mcpJourney.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/_mcpL2Fixture.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/agent-runtime-fixture.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/agent-runtime-video-export.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/anchor-real-planner.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/canvas-batch-production.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/canvas-frame.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/canvas-perf/devRendererServer.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/comfy-unknown-combo-feedback.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/comfy-workflow-feedback.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/comfy-workflow-multiref.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/composer-panel-reference-isolation.red.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/composerLifecycle.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/creation-sidebar-delete.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/credential-offline.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/design-lab/labFailureTriage.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/feedback-loop-consent-and-report.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/g1/c0-fixture.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/group-reference-direction.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/integration-session-terminal.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/local-gateway-onboarding.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/local-model-connect.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/marketing-home.visual.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/marketing-quickstart.static.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/mcp-generation-elicitation-first.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/mcp-generation-single-shot-gui-fallback.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/mcp-integration-credential-elicitation.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/model-access-journeys/fixture-server.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/model-box-tidy.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/model-discovery-picker.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/model-integration-trusted-audio.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/notification-local-feedback.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/notification-scene-feedback.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/original-storyboard-run.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/param-panel-numeric.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/process-feedback-real-fixture.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/project-asset-healthcheck.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/project-switch-background-run.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/provider-model-discovery.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/real-user-long-video.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/reference-capture.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/selection-drag-lifecycle.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/spend-panel-write-ownership.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/storyboard-delete-undo.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/text-document-generation-ownership.test.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/tikhub-project-video-breakdown.e2e.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/vendor-baseurl-discoverability.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/vendor-connection-health.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/vendor-preference-order.walk.mjs",
+      "symbol": "createServer"
+    },
+    {
+      "kind": "write",
+      "path": "tests/ux/wire-protocol-walkthrough.mjs",
+      "symbol": "createServer"
+    }
+  ],
+  "door_reduction": {
+    "before": 48,
+    "after": 50,
+    "why_not": "Distinct browser fixture suites retain their own Vite entry points. Shared CI provisioning covers all; the original TextDocumentNode and selection-drag hook integrations are included. Platform-specific cache owners are corrected locally without inventing another test harness."
+  },
+  "generality_proof": "The shared Unit provisioning step precedes both test selection modes. Browser fixtures derive isolated temporary directories from the running OS rather than a developer-specific path.",
+  "shared_boundaries": [
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "symbol": "unit",
+      "responsibility": "Install the browser runtime before both unit test lanes."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "tests/ux/composerLifecycle.test.mjs",
+      "entry_point": "beforeAll",
+      "disposition": "enforced",
+      "evidence": "Vite cache uses mkdtempSync(tmpdir()) and cleanup; runs in Unit with installed Chromium."
+    },
+    {
+      "path": "tests/ux/spend-panel-write-ownership.test.mjs",
+      "entry_point": "beforeAll",
+      "disposition": "enforced",
+      "evidence": "Same platform directory rule; actual editable composer remains browser-tested."
+    },
+    {
+      "path": "tests/ux/original-storyboard-run.test.mjs",
+      "entry_point": "original storyboard width tests",
+      "disposition": "enforced",
+      "evidence": "Per-case isolated cache plus portable evidence destination; keeps four stable layout frames."
+    },
+    {
+      "path": "tests/ux/creation-sidebar-delete.test.mjs",
+      "entry_point": "Chromium launch",
+      "disposition": "enforced",
+      "evidence": "No custom platform cache; receives browser provisioning from Unit owner."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every clean Linux CI machine lacks developer-installed browsers and macOS paths; both selected test lanes reach this class.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs createServer --roots=tests/ux --include-tests",
+      "rg /private/tmp across the four failing browser integration suites",
+      "Checked Unit and desktop-linux install steps; original CI failure log /private/tmp/nomi-pr828-ci-failed.log and original provisioning assertion /private/tmp/nomi-pr828-ci-provision-red.log"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": ".github/workflows/quality-gate.yml",
+    "invariant": "Unit provisions Chromium for every browser integration test before selecting focused or full execution.",
+    "failure_mode": "Browser installation errors fail the job before test claims; no skipped coverage.",
+    "exception_policy": "none",
+    "strategy": "Reuse the desktop lane pinned Playwright installation command at the actual Unit execution owner and replace platform-specific fixture caches with isolated OS temporary directories.",
+    "artifacts": [
+      ".github/workflows/quality-gate.yml"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs",
+    "tests/ux/composerLifecycle.test.mjs",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "tests/ux/original-storyboard-run.test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs",
+    "tests/ux/composerLifecycle.test.mjs",
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "tests/ux/composerLifecycle.test.mjs",
+      "tests/ux/spend-panel-write-ownership.test.mjs",
+      "tests/ux/original-storyboard-run.test.mjs"
+    ],
+    "rationale": "Hardcoded macOS Vite cache paths removed; no fallback paths or test exclusions."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No library behavior or version changes; installs the already-pinned browser runtime in the correct execution lane.",
+    "exit_criteria": []
+  },
+  "migration": "No product state migration. Subsequent CI jobs install their own browser runtime.",
+  "residual_risks": [
+    "Local browser tests do not independently prove the next Linux workflow; final CI run remains required."
+  ],
+  "invariant_owner_layer": {
+    "layer": ".github/workflows/quality-gate.yml",
+    "tests": [
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  }
+}

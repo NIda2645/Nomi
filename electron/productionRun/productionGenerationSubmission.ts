@@ -617,7 +617,6 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
     const { job, currentAuthority } = readGenerationExecution(deps.repository, run, input);
     const jobId = job.jobId;
-    if (!job) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     const currentEnvelope = envelope(run.runId, jobId).read();
     if (!currentEnvelope) return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
     if (currentAuthority && input.definitelyNotSubmitted === true && ["submission_unknown", "needs_attention"].includes(job.status)) {

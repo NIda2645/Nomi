@@ -5,8 +5,8 @@ import { create } from 'zustand'
 import { reportCanvasFeedback } from './canvasFeedback'
 import { notify, revealNotificationTarget } from '../../../ui/notificationPolicy'
 import { isProjectExecutionContextCurrent, isProjectOpen, withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
-import type { RunProjectTarget } from '../runner/runProjectDelivery'
-import { runGenerationNodesByPlan, spendCostKindForNodes } from '../runner/generationRunController'
+import { captureApprovedGenerationInputs, type RunGraph, type RunProjectTarget } from '../runner/runProjectDelivery'
+import { runGenerationNodesByPlan, spendCostKindForNodes, type GenerationConfirmationGuards } from '../runner/generationRunController'
 import { confirmAndMintGrant, describeGenerationCost, generationCostContextForNodes } from '../spend/spendConfirm'
 import { hasLocalAssetReference, resolveAssetUploadConsent } from '../runner/assetUploadConsent'
 import { resolveGenerationReferences } from '../runner/generationReferenceResolver'
@@ -128,7 +128,7 @@ function hostingDisclosureFor(
  */
 export async function confirmAndRunPlan(
   plan: DependencyWavePlan,
-  options: { concurrency?: number; assertCurrent?: () => Promise<void> } = {},
+  options: { concurrency?: number } & GenerationConfirmationGuards = {},
 ): Promise<void> {
   // 点「生成」即动作起点：签发此刻打开的项目。提交前换了项目 = 取消（没花钱）；提交后整批归原项目。
   const project = withProjectAction((issued) => issued)
@@ -139,6 +139,7 @@ export async function confirmAndRunPlan(
     await runPlanWithToasts(plan, { assetUploadConsent: 'not-needed', project })
     return
   }
+  const assertApprovedInputs = captureApprovedGenerationInputs(ids)
   const nodesById = new Map(useGenerationCanvasStore.getState().nodes.map((n) => [n.id, n]))
   const hosting = await resolveBatchHosting(ids)
   if (!hosting) return
@@ -160,7 +161,8 @@ export async function confirmAndRunPlan(
   if (!isProjectExecutionContextCurrent(project)) return
   await runPlanWithToasts(plan, {
     project,
-    assertCurrent: options.assertCurrent,
+    assertAuthorCurrent: options.assertAuthorCurrent,
+    assertApprovedInputs,
     grantId,
     concurrency: options.concurrency,
     // 用户刚在上面那张卡里同意了（或判定无需问）——决定在这里定死，波次里不再问第二次。
@@ -174,7 +176,7 @@ export async function runPlanWithToasts(
   plan: DependencyWavePlan,
   // assetUploadConsent 必填：整批的托管同意在上面那张批量花钱卡里问过了，这里只是把答案带下去。
   // 缺省会让 runner 无从判断「谁问的用户」，那正是 F16b 第二张卡的来源。
-  options: { assertCurrent?: () => Promise<void>; grantId?: string; concurrency?: number; assetUploadConsent: 'allow' | 'not-needed'; project: ProjectExecutionContext },
+  options: { assertAuthorCurrent?: () => Promise<void>; assertApprovedInputs?: (graph: RunGraph, executingNodeId: string) => void; grantId?: string; concurrency?: number; assetUploadConsent: 'allow' | 'not-needed'; project: ProjectExecutionContext },
 ): Promise<void> {
   // 运行属于发起它的项目：身份（target）在这里定死，之后用户切项目也照样落回原项目。
   const target: RunProjectTarget = options.project.binding
@@ -198,7 +200,8 @@ export async function runPlanWithToasts(
   const notificationId = `${BATCH_RUN_TOAST_ID}:${projectId}:${options.grantId ?? waves.flat().slice().sort().map(encodeURIComponent).join(':')}`
   try {
     const result = await runGenerationNodesByPlan(plan, {
-      assertCurrent: options.assertCurrent ? async () => { await options.assertCurrent!(); options.project.assertCurrent() } : undefined,
+      assertAuthorCurrent: options.assertAuthorCurrent,
+      assertApprovedInputs: options.assertApprovedInputs,
       assetUploadConsent: options.assetUploadConsent,
       target,
       ...(options.grantId ? { grantId: options.grantId } : {}),
@@ -240,7 +243,7 @@ export async function runPlanWithToasts(
           const state = useGenerationCanvasStore.getState()
           void confirmAndRunPlan(
             buildDependencyWaves(failureIds, { nodes: state.nodes, edges: state.edges }),
-            { concurrency: options.concurrency, assertCurrent: options.assertCurrent },
+            options.assertAuthorCurrent ? { concurrency: options.concurrency, assertCurrent: options.assertAuthorCurrent, assertAuthorCurrent: options.assertAuthorCurrent } : { concurrency: options.concurrency },
           )
         },
       })

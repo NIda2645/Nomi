@@ -11,15 +11,17 @@ import { runCatalogGenerationTask } from './catalogTaskActions'
 import { setCanvasEventSinkForTests } from '../events/canvasEventEmitter'
 import { __resetCanvasUndoJournalForTests } from '../events/canvasUndoJournal'
 import { resetModelHealthMemory } from './modelHealthMemory'
-import { saveLocalProject } from '../../library/localProjectStore'
-import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import { readRunGraph, deliverRunOutcome } from './runProjectDelivery'
+import { buildTaskCenterView } from '../../taskCenter/taskCenterEntries'
+import { readLocalProjectAsync, saveLocalProject } from '../../library/localProjectStore'
+import { createProjectSessionTestHarness, type ProjectSessionTestHarness, testProjectBinding } from '../../project/projectSessionTestHarness'
 import type { TaskRequestDto } from '../../api/taskApi'
 
 const disk = vi.hoisted(() => new Map<string, unknown>())
 vi.mock('../../library/localProjectStore', () => ({
   readLocalProjectAsync: vi.fn(async (projectId: string) => structuredClone(disk.get(projectId) ?? null)),
   saveLocalProject: vi.fn(async (projectId: string, payload: unknown, name?: string) => {
-    const record = { id: projectId, name, version: 1, payload }
+    const record = { id: projectId, name, version: 1, immutableProjectUuid: testProjectBinding(projectId).immutableProjectUuid, projectGeneration: testProjectBinding(projectId).projectGeneration, payload }
     disk.set(projectId, structuredClone(record))
     return record
   }),
@@ -40,7 +42,7 @@ const canvasBytes = () => {
 /** 用户离开 A 前 A 已保存：它在盘上的样子就是此刻 store 的样子。 */
 function persistOpenCanvasAs(projectId: string): void {
   const state = useGenerationCanvasStore.getState()
-  disk.set(projectId, structuredClone({ id: projectId, name: projectId, version: 1,
+  disk.set(projectId, structuredClone({ id: projectId, name: projectId, version: 1, immutableProjectUuid: testProjectBinding(projectId).immutableProjectUuid, projectGeneration: testProjectBinding(projectId).projectGeneration,
     payload: { generationCanvas: { nodes: state.nodes, edges: state.edges, groups: state.groups, selectedNodeIds: [] } } }))
 }
 
@@ -140,7 +142,7 @@ it.each([false, true])('does not submit a node deleted during author validation 
   const executor = vi.fn(async (): Promise<GenerationNodeResult> => ({ id: 'forbidden-result', type: 'image', url: 'nomi-local://asset/result.png', createdAt: 1 }))
   const run = runGenerationNode(node.id, {
     target, assetUploadConsent: 'not-needed', executor,
-    assertCurrent: async () => { checking.resolve(); await resume.promise },
+    assertAuthorCurrent: async () => { checking.resolve(); await resume.promise },
   })
   const rejected = expect(run).rejects.toThrow('node not found')
   await checking.promise
@@ -175,9 +177,105 @@ it.each([0, 1])('batch validates author target before every wave (allowed attemp
   const executor = vi.fn(async (): Promise<GenerationNodeResult> => ({ id: 'result', type: 'image', url: 'nomi-local://asset/result.png', createdAt: 1 }))
   const outcome = await runGenerationNodesByPlan({ waves: ids.map(id => [id]), blocked: [], edgesUsed: [] }, {
     target, assetUploadConsent: 'not-needed', executor,
-    assertCurrent: async () => { if (executor.mock.calls.length >= allowed) throw new Error('storyboard_content_conflict') },
+    assertAuthorCurrent: async () => { if (executor.mock.calls.length >= allowed) throw new Error('storyboard_content_conflict') },
   })
   expect(executor).toHaveBeenCalledTimes(allowed)
   expect(outcome.failures.map(item => item.nodeId)).toEqual(ids.slice(allowed))
   expect(outcome.failures.every(item => item.error.message === 'storyboard_content_conflict')).toBe(true)
+})
+
+
+it.each(['immutableProjectUuid', 'projectGeneration'] as const)('rejects background reads and writes to a replacement %s', async field => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'original' })
+  persistOpenCanvasAs(target.projectId)
+  await session.open('project-b')
+  const record = disk.get(target.projectId) as WorkbenchProjectRecordV1
+  if (field === 'immutableProjectUuid') record.immutableProjectUuid = '22222222-2222-4222-8222-222222222222'
+  else record.projectGeneration = target.projectGeneration + 1
+  const before = JSON.stringify(record)
+  await expect(readRunGraph(target)).rejects.toThrow('project_binding_stale')
+  await expect(deliverRunOutcome(target, node.id, { kind: 'status', status: 'error' })).rejects.toThrow('project_binding_stale')
+  expect(JSON.stringify(disk.get(target.projectId))).toBe(before)
+  expect(saveLocalProject).not.toHaveBeenCalled()
+})
+
+
+it('settles the original run when a replaced workspace rejects late progress without unhandled rejection or foreign writes', async () => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'approved' })
+  const unhandled: unknown[] = []
+  const listener = (error: unknown) => unhandled.push(error)
+  process.on('unhandledRejection', listener)
+  try {
+    await expect(runGenerationNode(node.id, { target, assetUploadConsent: 'not-needed', executor: async (_node, context) => {
+      persistOpenCanvasAs('project-a')
+      ;(disk.get('project-a') as WorkbenchProjectRecordV1).projectGeneration = target.projectGeneration + 1
+      await session.open('project-b')
+      useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+      context.onProgress?.({ phase: 'generating', message: 'poll', taskId: 'late-task' })
+      // One event-loop boundary observes Node's actual unhandledRejection event, not a timing sleep.
+      await new Promise<void>(resolve => setImmediate(resolve))
+      return { id: 'result', type: 'image', url: 'nomi-local://asset/a/result.png', createdAt: 1 }
+    } })).rejects.toThrow('project_binding_stale')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(unhandled).toEqual([])
+    const queue = useGenerationQueueStore.getState()
+    const taskView = buildTaskCenterView({ entries: queue.entries, batches: queue.batches, nodes: [], fallbackTitle: 'Original task', now: Date.now() })
+    expect(taskView.rows).toEqual([expect.objectContaining({ nodeId: node.id, group: 'done', outcome: 'error', error: 'project_binding_stale' })])
+    expect((taskView.rows[0].phaseText ?? '').length).toBeGreaterThan(0)
+    expect(Object.values(queue.batches).every(batch => batch.projectId === target.projectId)).toBe(true)
+    expect(useGenerationQueueStore.getState().entries).toEqual([expect.objectContaining({ nodeId: node.id, state: 'error' })])
+    expect(Object.values(useGenerationQueueStore.getState().batches)).toEqual([expect.objectContaining({ finishedAt: expect.any(Number) })])
+    expect(saveLocalProject).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  } finally { process.off('unhandledRejection', listener) }
+})
+
+it.each(['cycle', 'missing-upstream'] as const)('awaits blocked %s status delivery and settles the batch if the original workspace was replaced', async reason => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'blocked' })
+  persistOpenCanvasAs('project-a')
+  ;(disk.get('project-a') as WorkbenchProjectRecordV1).projectGeneration = target.projectGeneration + 1
+  await session.open('project-b')
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+  const unhandled: unknown[] = []
+  const listener = (error: unknown) => unhandled.push(error)
+  process.on('unhandledRejection', listener)
+  try {
+    await expect(runGenerationNodesByPlan({ waves: [], edgesUsed: [], blocked: [{ nodeId: node.id, reason, detail: 'blocked' }] },
+      { target, assetUploadConsent: 'not-needed' })).rejects.toThrow('project_binding_stale')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(unhandled).toEqual([])
+    const queue = useGenerationQueueStore.getState()
+    const taskView = buildTaskCenterView({ entries: queue.entries, batches: queue.batches, nodes: [], fallbackTitle: 'Original task', now: Date.now() })
+    expect(taskView.rows).toEqual([expect.objectContaining({ nodeId: node.id, group: 'done', outcome: 'error', error: 'project_binding_stale' })])
+    expect((taskView.rows[0].phaseText ?? '').length).toBeGreaterThan(0)
+    expect(Object.values(queue.batches).every(batch => batch.projectId === target.projectId)).toBe(true)
+    expect(useGenerationQueueStore.getState().entries).toEqual([expect.objectContaining({ nodeId: node.id, state: 'error' })])
+    expect(Object.values(useGenerationQueueStore.getState().batches)).toEqual([expect.objectContaining({ finishedAt: expect.any(Number) })])
+    expect(saveLocalProject).not.toHaveBeenCalled()
+    expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  } finally { process.off('unhandledRejection', listener) }
+})
+
+
+it('settles the queue if workspace identity changes between the graph read and initial run-record write', async () => {
+  const target = await session.open('project-a')
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'approved' })
+  persistOpenCanvasAs('project-a')
+  await session.open('project-b')
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
+  vi.mocked(readLocalProjectAsync).mockImplementationOnce(async () => {
+    const before = structuredClone(disk.get('project-a')) as WorkbenchProjectRecordV1
+    ;(disk.get('project-a') as WorkbenchProjectRecordV1).projectGeneration = target.projectGeneration + 1
+    return before
+  })
+  const executor = vi.fn()
+  await expect(runGenerationNode(node.id, { target, executor, assetUploadConsent: 'not-needed' })).rejects.toThrow('project_binding_stale')
+  expect(executor).not.toHaveBeenCalled()
+  expect(saveLocalProject).not.toHaveBeenCalled()
+  expect(useGenerationCanvasStore.getState().nodes).toEqual([])
+  expect(useGenerationQueueStore.getState().entries).toEqual([expect.objectContaining({ nodeId: node.id, state: 'error' })])
+  expect(Object.values(useGenerationQueueStore.getState().batches)).toEqual([expect.objectContaining({ finishedAt: expect.any(Number) })])
 })

@@ -4,6 +4,16 @@
 
 ## 范围与依据
 
+### 用户实测漏项：原侧栏新建空白方案
+
+用户在当前预览点击“新建方案”仍触发 Agent。原附件明确区分“新建空白方案”和“从当前文稿交给 Agent”；既有 Electron 旅程从 Agent 创建方案开始，未覆盖这个手动入口，不能作为此项通过证据。
+
+最小修复限定为原侧栏和 `workbenchDocumentSlice.addStoryboardDesign`：无 source 时使用既有 `createEmptyStoryboardPlan`，显式 source 的复制行为保留；原侧栏同步创建并选择指定文稿下的新方案，移除延迟调用 planner。沿用原编辑器、保存和节点绑定，不增加新 UI、Run 或执行入口。旧项目不迁移，修改仅影响新建操作。回退仅撤此接线增量。
+
+先跑原按钮的实际 Electron 红测，再验证两文稿各两方案的创建、编辑、磁盘保存、冷重开、稳定 ID、既有内容保留及零 Agent/媒体请求。store 测试覆盖无既有方案、非当前文稿、重复新建、复制、无效文稿及零节点写入。测试使用隔离 profile，不关闭用户正在试用的窗口；截图与构建身份单独记录。这一条通过也不代表整个 A＋T7 验收完成。
+
+基线核对补充：`dc113e712`（2026-09-10）已批准并实现显式方案编辑创建引用原正本的 `shot_table` 视图，`shotTableProjection.integration.test.ts` 明确覆盖；它不是媒体节点或生成提交。新空白创建不调用 projection；已有显式编辑和复制的表视图行为保留。本项断言分别记录创建时零节点、作者编辑后原表视图、零媒体节点/执行请求及冷重开不新增节点，不把删除原表投影当成修复。
+
 以用户指定 `Nomi_plan_A_core_fixes_2026-09-19.md` 全文、B 仅完整 T7、`Nomi_simplified_A_plus_T7_original_storyboard_plan_2026-09-20.md` 和 `docs/audit/2026-09-20-core-a-full-review.md` 的六项澄清为准。K0–K7、C01–C30、CJ1–CJ4、T7.P01–P08 和 W00–W10 均须逐项交证据。历史执行记录是证据，不再发行指令；其中自动转完整 T3 的解释失效。
 
 保留原 `StoryboardPlanEditor → storyboardRowActions → canvas runner`，原表、参考槽、模型参数、单镜、×3、首帧依赖波次、批量、结果历史与 Undo 都保留。新建／保存／重开不自动创建缺失节点；显式放置与纯查看保留，原生成仍按需建节点，不强加先放置步骤。
@@ -212,3 +222,12 @@ T7 实测发现原共享数值控件将名称传到 Mantine 容器而非滑块�
 ### 最终宿主复验：参数 portal 的框架键盘边界
 
 真实参数输入新增“所有节点位置不变”断言，发现duration改变时选中节点也移动5px。原外composer的nokey不覆盖document.body portal，但React事件仍回到NodeWrapper。同类原NomiSelect供应商按钮也缺此边界。按原InlineParameterBar表面根（inline/portal）和原NomiSelect.Dropdown补框架nokey；不改节点移动算法、参数值、付款权限或布局。真实RF原组件五路红测先行，原节点Arrow阳性及真实Electron旅程验修后结果，截图和完整差异账本再核。
+
+
+### PR #828 EV-01：真实资源图补验
+
+独立审查要求应用级资源失败，本轮在旧已测 build tree e96a8390 用 Electron session.webRequest 取消真实 NodeGenerationComposer chunk，截图证明整个工作台失败。Base 的 local lazy 被 resident 静态 import 绕过。最小修复是两生产宿主共用既有 local lazy 入口，删除静态旁路；canvas与付款卡保留各自 loading/error 几何，不改原组件、执行或写入owner。真实资源失败/原位重试与 native window minimize/focus 由 tests/ux/core-a-t7-recovery.e2e.mjs 补证，不以factory mock或dispatch blur替代。最终构建、双宿主恢复、原节点/草稿及零未授权提交仍须实测；应用没有 workspace readOnly 动态入口，该项不伪装为真实UI测试。
+
+### PR #828 Golden 旅程对齐与表专有覆盖保留
+
+旧Golden把文稿draft直接自动production落画布当作前提，与本次已批准“文稿方案保存后按原动作落地”冲突。默认旅程改为原划词建Run且零节点→原editor读完整字段→显式原放置三镜→原画布Agent只改第二镜/视口不变→原editor单镜确认→真实JPG及冷启不丢。原节点按storyboardDesignId/shotId归属，不要求凭空长production元数据；原materializer标题“镜头N”保持，Run模型信封标题另外逐字核保存/恢复。旧production表密度、行选择、表执行、视口和冷启阳性断言保留为同脚本`--production-table`，通过真实画布Agent无文稿目标入口建立原表；`test:golden`在原锁下串行跑两种，两者缺一不通过。只改测试及该命令，不为旧测试反改产品。

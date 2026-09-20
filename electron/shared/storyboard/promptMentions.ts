@@ -89,20 +89,10 @@ function projectPromptMentions(
 }
 
 /** 发给模型前的最终 Prompt：严格按实际参考图数组顺序转成 @imageN。 */
-export function projectPromptForSend(
-  prompt: string,
-  references: readonly string[] | readonly PromptReference[],
-): string {
-  return projectPromptMentions(prompt, references)
-}
+export const projectPromptForSend = projectPromptMentions
 
 /** 非编辑态 Prompt 预览：与最终发送口径相同，绝不显示内部 @[asset:URL] 标记。 */
-export function projectPromptForDisplay(
-  prompt: string,
-  references: readonly string[] | readonly PromptReference[],
-): string {
-  return projectPromptMentions(prompt, references)
-}
+export const projectPromptForDisplay = projectPromptMentions
 
 // 删标记后清理多余空格/标点前空白(「 @image1  走」→「@image1 走」)。最终投影与
 // removeMention 同源调用(对抗评审 must-fix:别两处各清各的导致行为漂移)。

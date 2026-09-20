@@ -49,7 +49,8 @@ export function referencedVisualAnchors(shot: PlanShot, anchors: readonly PlanAn
 
 /**
  * 该镜**缺必填参考**的槽（画面格红态 + 场组头「缺必填」计数的唯一判定）。
- * 判据只有一条：**按声明算** —— `min` 是唯一的必填信号，已绑定数（`shot.referenceBindings`）不足才缺。
+ * 判据只有一条：**按声明算** —— `min` 是唯一的必填信号，已绑定或计划供给的来源不足才缺。
+ * - 非图片镜启用首帧时，原 materializer 会创建 first_frame 依赖；它和已绑定首帧至多算同一个来源；
  * - 图参考数组槽（image_ref）另可被引用的视觉锚满足（落画布时锚连 reference/character_ref 边），两条来源相加；
  * - 无模型/无档案（默认模型）→ 无契约可判，恒 []。
  *
@@ -66,8 +67,9 @@ export function missingRequiredSlots(
   return mode.slots.filter((slot) => {
     if (slot.min < 1) return false
     const bound = shotBindingsOf(shot, slot.kind).length
+    const plannedFirstFrame = slot.kind === 'first_frame' && shot.shotKind !== 'image' && shot.keyframe?.enabled === true
     const anchorCredit = slot.kind === 'image_ref' ? visualCount : 0
-    return bound + anchorCredit < slot.min
+    return Math.max(bound, plannedFirstFrame ? 1 : 0) + anchorCredit < slot.min
   })
 }
 

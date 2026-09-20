@@ -29,10 +29,7 @@ export const STORYBOARD_PROFILES: Record<string, StoryboardProfile> = {
 
 export function storyboardProfileForKey(key?: string): StoryboardProfile {
   const profile = STORYBOARD_PROFILES[key || 'genre.free-form'] ?? STORYBOARD_PROFILES['genre.free-form']
-  return {
-    ...profile,
-    promptSkeleton: profile.promptSkeleton.map((segment) => ({ ...segment, options: [...segment.options] })),
-  }
+  return structuredClone(profile)
 }
 
 export function profileKeyForStoryboardProfile(profile: StoryboardProfile): string | undefined {

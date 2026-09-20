@@ -1,4 +1,4 @@
-import { NomiSkeleton } from '../../../design/status'
+import NodeGenerationComposer from './LazyNodeGenerationComposer'
 import { StoryboardOverrideBadge } from './StoryboardOverrideBadge'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
@@ -67,7 +67,6 @@ import {
 import { useNodeVideoHoverPreview } from './useNodeVideoHoverPreview'
 import { NodeLabelRow } from './NodeLabelRow'
 import { NodeInlineImageTitle } from './NodeImagePreviewActions'
-import { useNodeDisplayPrompt } from './useNodeDisplayPrompt'
 import { useNodeMediaMeasurement } from './useNodeMediaMeasurement'
 import { useNodeMediaPreview } from './useNodeMediaPreview'
 export type BaseGenerationNodeProps = {
@@ -82,9 +81,7 @@ export type BaseGenerationNodeProps = {
 const Model3DViewer = lazyWithChunkBoundary('3D 模型预览', () => import('./model3d/Model3DViewer')) // 生成出的 .glb 卡内可旋转预览（R3F）
 const TextDocumentNode = lazyWithChunkBoundary('文本节点编辑器', () => import('./render/TextDocumentNode'))
 const PanoramaViewer = lazyWithChunkBoundary('全景预览', () => import('./PanoramaViewer'))
-const NodeGenerationComposer = lazyWithChunkBoundary('i18n:generationCommon.chunk.composer', () => import('./NodeGenerationComposer'), {
-  recovery: 'local', errorClassName: 'absolute left-0 top-full h-auto', pending: <div className="absolute left-0 top-full min-h-24 w-full rounded-nomi border border-nomi-line bg-nomi-paper p-4"><NomiSkeleton lines={3} /></div>,
-})
+
 
 function NodeBodyLoading(): JSX.Element {
   return <div className="h-full w-full rounded-nomi bg-nomi-paper shadow-nomi-md ring-1 ring-inset ring-nomi-line" />
@@ -236,7 +233,6 @@ function BaseGenerationNodeImpl({
   const shotIdentity = useShotIdentity(node.id)
   // 切片2：镜头「挂了哪些设定卡」——不选中也能一眼看出挂了林夏/咖啡馆（可审计，免数连线）。
   const mountedCards = useMountedCards(node.id)
-  const displayPrompt = useNodeDisplayPrompt(node)
   const hasFrameSourceEdge = useHasFrameSourceEdge(node.id, nodeExecutionKind === 'video') // A15：已连上游边时占位不再喊「拖图」
   const needsFirstFrame = nodeExecutionKind === 'video' && !canGenerate && !isGenerating
   const { handlePanoramaFileChange, handlePanoramaScreenshot } = useNodePanoramaHandlers(node, visualSize, reportFeedback)

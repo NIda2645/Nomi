@@ -139,8 +139,8 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
 /** 真人批准锚检查点。检查点永不自己放行（2026-09-11 拍板），整批要跑完就得像生产入口那样发 gate.decide。 */
 function approveCheckpoint(repository: ReturnType<typeof createProductionRunRepository>): void {
   const run = repository.read("project-1", "op-batch")!;
-  const gate = run.gates.find((candidate) => candidate.gateId === currentAnchorCheckpointGate(run)?.gateId && candidate.status === "waiting");
-  if (!gate) throw new Error("expected a waiting anchor checkpoint to approve");
+  const gate = currentAnchorCheckpointGate(run);
+  if (!gate || gate.status !== "waiting") throw new Error("expected a waiting anchor checkpoint to approve");
   repository.execute("project-1", "op-batch", {
     commandId: `approve-checkpoint:${run.revision}`, expectedRevision: run.revision,
     type: "gate.decide", payload: { gateId: gate.gateId, status: "approved" }, issuedAt: tickClock(),
@@ -166,7 +166,7 @@ describe("P4 S4 J1 — full multi-shot batch over a real loopback vendor", () =>
       expect(phaseA.checkpoint.status).toBe("waiting");
       expect(submits).toHaveLength(1); // only the anchor image submitted
       let run = repository.read("project-1", "op-batch")!;
-      const gate = run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)!;
+      const gate = currentAnchorCheckpointGate(run)!;
       expect(gate.status).toBe("waiting");
       // The anchor produced a real durable artifact (submit→poll→materialize chain ran end-to-end).
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1);

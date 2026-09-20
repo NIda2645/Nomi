@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand'
-import { isEmptyStoryboardPlan, type StoryboardPlan } from './generationCanvas/agent/storyboardPlan'
+import { createEmptyStoryboardPlan, isEmptyStoryboardPlan, type StoryboardPlan } from './generationCanvas/agent/storyboardPlan'
 import {
   createDefaultWorkbenchDocument,
   mintStoryboardDesignId,
@@ -199,10 +199,9 @@ export const createWorkbenchDocumentSlice = (
     const state = get()
     const document = state.workbenchDocuments.find((item) => item.id === target)
     if (!document) return null
-    const plan = source ?? state.storyboardDesignsByDocumentId[target]?.[0]?.plan
-    if (!plan) return null
+    const plan = source ?? createEmptyStoryboardPlan()
     const nextNumber = (state.storyboardDesignsByDocumentId[target] ?? []).length + 1
-    const title = `${plan.title.trim()} ${nextNumber}`.trim()
+    const title = source ? `${plan.title.trim()} ${nextNumber}`.trim() : plan.title
     const design = createDesign(target, { ...plan, title }, document.updatedAt, title)
     set((current) => ({
       storyboardDesignsByDocumentId: {
@@ -214,7 +213,7 @@ export const createWorkbenchDocumentSlice = (
       activeCreationRunId: null,
       persistRevision: current.persistRevision + 1,
     }))
-    projectPlan(design)
+    if (source) projectPlan(design)
     return design
   },
   duplicateStoryboardDesign: (id, documentId) => {

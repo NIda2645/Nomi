@@ -4,10 +4,13 @@ import { proveProbe, expectAbsent } from './_assert.mjs'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
 import fs from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
 for (const locale of ['zh-CN', 'en']) for (const media of ['image', 'video']) test(`original storyboard ${locale}/${media} keeps loaded-model controls clickable at the established collapsed-sidebar editor width`, async () => {
   const en = locale === 'en'
-  const server = await createServer({ configFile: false, cacheDir: '/private/tmp/nomi-storyboard-width-vite', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } })
+  const cacheDir = fs.mkdtempSync(path.join(tmpdir(), 'nomi-storyboard-width-vite-'))
+  const server = await createServer({ configFile: false, cacheDir, server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } })
   let browser
   try {
     await server.listen()
@@ -64,7 +67,7 @@ for (const locale of ['zh-CN', 'en']) for (const media of ['image', 'video']) te
       if (stable < 4) throw new Error('Original composer layout did not stabilize')
     })
     const after = await read()
-    fs.writeFileSync(`/private/tmp/nomi-storyboard-collapsed-width-${locale}-${media}.json`, JSON.stringify(after, null, 2))
+    fs.writeFileSync(path.join(tmpdir(), `nomi-storyboard-collapsed-width-${locale}-${media}.json`), JSON.stringify(after, null, 2))
     for (const control of after.controls) expect(control.hit, `Composer control ${control.label} must be reachable without scrolling`).toBe(true)
     expect(after.controls.find(control => control.generate)?.hit, 'Original generate control remains reachable at the established editor width').toBe(true)
     expect(after.scroll.left).toBe(0)
@@ -76,7 +79,7 @@ for (const locale of ['zh-CN', 'en']) for (const media of ['image', 'video']) te
     expect(after.prompt.clientWidth, 'Prompt column must retain editable width').toBeGreaterThan(120)
     expect(after.anchor.controls.find(control => control.label === (en ? 'Reference card description' : '参考卡描述'))?.hit, 'Expanded reference description remains reachable at the established editor width').toBe(true)
     expect(after.anchor.controls.find(control => control.label === (en ? 'Delete reference card' : '删除参考卡'))?.hit, 'Expanded reference action must remain reachable').toBe(true)
-  } finally { await browser?.close(); await server.close() }
+  } finally { await browser?.close(); await server.close(); fs.rmSync(cacheDir, { recursive: true, force: true }) }
 })
 test('Run reuses the original full editor and keeps conflicted input across plan switches', async () => {
   const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 } })

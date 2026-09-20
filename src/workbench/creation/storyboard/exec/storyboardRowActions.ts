@@ -21,7 +21,7 @@ import {
 import { applyCanvasToolCall } from '../../../generationCanvas/agent/applyCanvasToolCall'
 import { useGenerationCanvasStore } from '../../../generationCanvas/store/generationCanvasStore'
 import { buildDependencyWaves, hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
-import { confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace } from '../../../generationCanvas/runner/generationRunController'
+import { confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, type GenerationConfirmationGuards } from '../../../generationCanvas/runner/generationRunController'
 import { confirmAndRunPlan } from '../../../generationCanvas/components/batchPlanPreview'
 import i18n from '../../../../i18n'
 import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNodeMeta'
@@ -39,14 +39,16 @@ import { rowConsumesReferences, type StoryboardNodeBindings, type StoryboardRowR
  * 方案是内容正本，行内采纳/丢弃控制字段归属，生成不静默夺回覆写字段。
  */
 
-export type RowActionContext = {
+export type RowActionContext = GenerationConfirmationGuards & {
   documentId: string
   designId: string
   plan: StoryboardPlan
   gesture?: CanvasGestureContext
   bindings?: StoryboardNodeBindings
-  /** Revalidate the captured author target after asynchronous work. */
-  assertCurrent?: () => Promise<void>
+}
+
+function confirmationGuards(ctx: RowActionContext): GenerationConfirmationGuards {
+  return ctx.assertCurrent ? { assertCurrent: ctx.assertCurrent, assertAuthorCurrent: ctx.assertAuthorCurrent } : {}
 }
 
 function anchorNodeFor(ctx: RowActionContext, nodes: GenerationCanvasNode[], anchor: PlanAnchor) {
@@ -180,11 +182,11 @@ export async function generateShotRow(
   const keyframeNode = keyframeNodeId ? nodes.find((node) => node.id === keyframeNodeId) ?? null : null
   if (keyframeNode && !hasUsableResult(keyframeNode)) {
     await ctx.assertCurrent?.()
-    await confirmAndRunPlan(buildDependencyWaves([keyframeNodeId!, shotNodeId], { nodes, edges }), { assertCurrent: ctx.assertCurrent })
+    await confirmAndRunPlan(buildDependencyWaves([keyframeNodeId!, shotNodeId], { nodes, edges }), confirmationGuards(ctx))
     return
   }
   await ctx.assertCurrent?.()
-  await confirmAndRunNode(shotNodeId, { assertCurrent: ctx.assertCurrent })
+  await confirmAndRunNode(shotNodeId, confirmationGuards(ctx))
 }
 
 /** 悬停浮条 ↻：写回行编辑 + 原地重生成（同节点、不换 id、时间轴回填闸沿用）。 */
@@ -197,7 +199,7 @@ export async function regenerateShotRow(
 ): Promise<void> {
   await syncShotNodeWithRow(ctx, shot, node, 'shot', mode)
   await ctx.assertCurrent?.()
-  await regenerateNodeInPlace(node.id, { ...confirmOpts, assertCurrent: ctx.assertCurrent })
+  await regenerateNodeInPlace(node.id, { ...confirmOpts, ...confirmationGuards(ctx) })
 }
 
 /**
@@ -223,14 +225,14 @@ export async function rerunShotRowWithFreshRefs(
   await syncShotNodeWithRow(ctx, shot, exec.node, 'shot', mode)
   const { nodes, edges } = canvasState()
   await ctx.assertCurrent?.()
-  await confirmAndRunPlan(buildDependencyWaves([exec.keyframeNode.id, exec.node.id], { nodes, edges }), { assertCurrent: ctx.assertCurrent })
+  await confirmAndRunPlan(buildDependencyWaves([exec.keyframeNode.id, exec.node.id], { nodes, edges }), confirmationGuards(ctx))
 }
 
 /** 悬停浮条 ×3：写回行编辑 + 同镜连出 3 版（结果堆叠进历史，失败即停不连烧）。 */
 export async function generateShotRowVariants(ctx: RowActionContext, shot: PlanShot, node: GenerationCanvasNode, mode: ArchetypeMode | null): Promise<void> {
   await syncShotNodeWithRow(ctx, shot, node, 'shot', mode)
   await ctx.assertCurrent?.()
-  await confirmAndRunNodeVariants(node.id, 3, { assertCurrent: ctx.assertCurrent })
+  await confirmAndRunNodeVariants(node.id, 3, confirmationGuards(ctx))
 }
 
 /**
@@ -271,13 +273,13 @@ export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnch
     const nodeId = clientIdToNodeId[anchor.id]
     if (!nodeId) throw new Error('materialize failed: anchor node missing')
     await ctx.assertCurrent?.()
-    await confirmAndRunNode(nodeId, { assertCurrent: ctx.assertCurrent })
+    await confirmAndRunNode(nodeId, confirmationGuards(ctx))
     return
   }
   await ctx.assertCurrent?.()
   syncAnchorNodeWithCard(ctx, anchor, node)
   await ctx.assertCurrent?.()
-  await confirmAndRunNode(node.id, { assertCurrent: ctx.assertCurrent })
+  await confirmAndRunNode(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡「重生成」：写回描述编辑 + 原地重出（引用它的镜之后经「参考已变」提示重跑，绝不自动跑）。 */
@@ -285,7 +287,7 @@ export async function regenerateAnchorCard(ctx: RowActionContext, anchor: PlanAn
   await ctx.assertCurrent?.()
   syncAnchorNodeWithCard(ctx, anchor, node)
   await ctx.assertCurrent?.()
-  await regenerateNodeInPlace(node.id, { assertCurrent: ctx.assertCurrent })
+  await regenerateNodeInPlace(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡编辑写回节点（描述/静动特征改了再生成，出的是改后的卡）。 */
@@ -360,5 +362,5 @@ export async function runStoryboardBatch(
   if (landing?.placementOnly) return
   const { nodes, edges } = canvasState()
   await ctx.assertCurrent?.()
-  await confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }), { assertCurrent: ctx.assertCurrent })
+  await confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }), confirmationGuards(ctx))
 }

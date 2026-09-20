@@ -1,16 +1,20 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
 import { expectAbsent, proveProbe } from './_assert.mjs'
-let server, browser, page
+let server, browser, page, cacheDir
 beforeAll(async () => {
-  server = await createServer({ configFile: false, cacheDir: '/private/tmp/nomi-t7-vite-lifecycle', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } })
+  cacheDir = mkdtempSync(path.join(tmpdir(), 'nomi-t7-vite-lifecycle-'))
+  server = await createServer({ configFile: false, cacheDir, server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } })
   await server.listen()
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/composer-lifecycle-harness.html`)
 })
-afterAll(async () => { await browser?.close(); await server?.close() })
+afterAll(async () => { await browser?.close(); await server?.close(); if (cacheDir) rmSync(cacheDir, { recursive: true, force: true }) })
 it('keeps a captured gesture when focus moves between elements, but releases on window blur', async () => {
   await page.reload()
   await page.locator('#unpublished-draft').focus()

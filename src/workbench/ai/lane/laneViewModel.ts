@@ -409,10 +409,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     ? labels.free : metricText(usage.cost, labels.formatCost, labels.unknown)
   const reasoning = metricText(usage.reasoningTokens, labels.formatTokens, labels.unknown)
   return {
-    items: mergeAssistantTextPerTurn(items, turnOf, (at) => {
-      const skillKey = skillOfTurn.get(at)
-      return skillKey
-    }),
+    items: mergeAssistantTextPerTurn(items, turnOf, (at) => skillOfTurn.get(at)),
     running: projection.running,
     // 队列原样带出去：这一层不合并、不去重、不改顺序——pi 的 FIFO 就是用户打字的顺序。
     queues: projection.queues,

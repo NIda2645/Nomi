@@ -92,3 +92,14 @@ it('an obsolete Agent edit cannot project into canvas after a newer author save'
   })).rejects.toThrow('storyboard_content_conflict')
   expect(useGenerationCanvasStore.getState().nodes).toEqual([])
 })
+
+
+it('passes a persistent source check separately from the foreground materialization guard', async () => {
+  await presentStoryboard(input())
+  const guards = calls.confirm.mock.calls[0][1]
+  calls.current = false
+  await expect(guards.assertCurrent()).rejects.toThrow('changed project')
+  await expect(guards.assertAuthorCurrent()).resolves.toBeUndefined()
+  run.generationPlan.editorial.shots[0].prompt = 'changed source after approval'
+  await expect(guards.assertAuthorCurrent()).rejects.toThrow('storyboard_content_conflict')
+})

@@ -1,0 +1,169 @@
+// Original-editor branch of the golden journey. The separate production-table
+// mode remains in golden-path.e2e.mjs with its table-specific assertions intact.
+import fs from 'node:fs'
+import path from 'node:path'
+import { require as tsxRequire } from 'tsx/cjs/api'
+import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
+import { waitForCanvasViewportSettled, findNodeHitPoint } from './_canvasHit.mjs'
+import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
+import { FIXTURE_IMAGE_MODEL, flattenRequestText } from './agent-runtime-fixture.mjs'
+import { CANVAS_PANEL, COMPOSER_INPUT, COMPOSER_SEND, DOCUMENT, hasToolResult, openCanvas, readProject, recorded } from './agent-runtime-walk-support.mjs'
+const { createProductionRunRepository } = tsxRequire('../../electron/productionRun/productionRunRepository.ts', import.meta.url)
+
+export async function runOriginalStoryboardGolden({ walk, win, projectId, projectRoot, shot, setCurrentWin,
+  prompts, titles, newPrompt, instruction, planCall, patchCall, shotId, targetAssertion, positiveControl }) {
+  const repository = createProductionRunRepository({ projectDirResolver: id => id === projectId ? projectRoot : null })
+  const plan = walk.fixture.expectText({ label: 'Original document selection creates a saved storyboard',
+    match: body => flattenRequestText(body).includes('GOLDEN_SCRIPT') && !hasToolResult(body, planCall),
+    reply: { type: 'tool', id: planCall, name: 'draft_shots', args: {
+      shots: prompts.map((prompt, index) => ({ title: titles[index], taskKind: 'text_to_image', modelId: FIXTURE_IMAGE_MODEL,
+        modeId: 't2i', parameters: { size: '1024x1024' }, prompt })),
+    } } })
+  const done = walk.fixture.expectText({ label: 'Original storyboard save returns through the same Agent turn',
+    match: body => hasToolResult(body, planCall), reply: { type: 'text', text: 'GOLDEN_PLAN_DONE：三镜方案已保存。' } })
+  const beforeRunIds = repository.list(projectId).map(run => run.runId)
+  const document = win.locator(DOCUMENT)
+  await document.click()
+  await document.selectText()
+  await clickOrFail(win.locator('.workbench-selection-popover').getByRole('button', { name: '拆成镜头', exact: true }), '原划词拆成三镜')
+  await recorded(plan.received, 'original document storyboard request')
+  await recorded(done.received, 'original storyboard saved')
+  await expect.poll(() => repository.list(projectId).filter(run => !beforeRunIds.includes(run.runId)),
+    { timeout: stationTimeout({ operations: 2 }) }).toHaveLength(1)
+  const runId = repository.list(projectId).find(run => !beforeRunIds.includes(run.runId)).runId
+  const readRun = () => repository.read(projectId, runId)
+  const originalEditorial = structuredClone(readRun().generationPlan.editorial)
+  expect(originalEditorial.shots.map(row => row.prompt)).toEqual(prompts)
+  expect(originalEditorial.shots.map(row => row.shotId)).toEqual(['shot-1', shotId, 'shot-3'])
+  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
+  expect(originalEditorial.shots.map(row => row.modelKey)).toEqual(prompts.map(() => FIXTURE_IMAGE_MODEL))
+  expect(readRun().origin.sourceDocument.documentId).toBeTruthy()
+  expect((await readProject(win, projectId)).payload.generationCanvas.nodes, 'Document drafting must not silently materialize nodes').toHaveLength(0)
+  expect(walk.fixture.images, 'Saving a storyboard submits no media').toHaveLength(0)
+  const openEditor = async () => {
+    await win.getByRole('button', { name: '创作', exact: true }).click()
+    const expand = win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
+    if (await expand.isVisible()) await expand.click()
+    await win.locator(`[data-storyboard-run-id="${runId}"]`).click()
+    const editor = win.locator(`[data-creation-run-editor="${runId}"]`)
+    await expect(editor).toHaveAttribute('data-storyboard-editor', 'true')
+    await expect(editor.locator('[data-storyboard-row]')).toHaveCount(3)
+    return editor
+  }
+  let editor = await openEditor()
+  for (let index = 0; index < 3; index++) {
+    await expect(editor.locator(`[data-storyboard-row="${index + 1}"] [data-storyboard-prompt-block] [contenteditable="true"]`)).toHaveText(prompts[index])
+  }
+  await shot('original-three-shot-editor-before-placement')
+  await editor.locator(`[data-place-storyboard-run="${runId}"]`).click()
+  await expect(editor.locator(`[data-place-storyboard-run="${runId}"]`)).toHaveText('查看画布')
+  const nodesOf = payload => (payload.generationCanvas?.nodes ?? []).filter(node => node.meta?.storyboardDesignId === runId
+    && node.meta?.shotId && node.meta?.storyboardKeyframe !== true && !node.derivedFrom && !node.regeneratedFrom)
+  const readNodes = async () => nodesOf((await readProject(win, projectId)).payload)
+  await expect.poll(async () => (await readNodes()).length).toBe(3)
+  const originalNodes = await readNodes()
+  const nodeIds = originalNodes.map(node => node.id)
+  expect(originalNodes.map(node => node.meta.shotId)).toEqual(['shot-1', shotId, 'shot-3'])
+  expect(originalNodes.map(node => node.prompt)).toEqual(prompts)
+  expect(originalNodes.map(node => node.title), 'Original materializer keeps its established localized shot labels').toEqual(['镜头 1', '镜头 2', '镜头 3'])
+  expect(originalNodes.map(node => node.meta.modelKey)).toEqual(prompts.map(() => FIXTURE_IMAGE_MODEL))
+  const originalGroup = (await readProject(win, projectId)).payload.generationCanvas.groups.find(group => originalNodes.every(node => group.nodeIds?.includes(node.id)))
+  expect(originalGroup, 'Original placement must group the three shot nodes').toBeTruthy()
+  await editor.locator(`[data-place-storyboard-run="${runId}"]`).click()
+  await openCanvas(win)
+  await win.getByRole('button', { name: '适应视图', exact: true }).click()
+  await waitForCanvasViewportSettled(win)
+  const second = originalNodes.find(node => node.meta.shotId === shotId)
+  const point = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${second.id}"]` })
+  expect(point, 'Second original shot has a real hit target').toBeTruthy()
+  await win.mouse.click(point.x, point.y)
+  await expect.poll(() => win.evaluate(() => window.__nomiCanvasStore.getState().selectedNodeIds)).toEqual([second.id])
+  const viewport = win.locator('.react-flow__viewport')
+  await waitForCanvasViewportSettled(win)
+  const beforeViewport = await viewport.evaluate(element => getComputedStyle(element).transform)
+  const patch = walk.fixture.expectText({ label: 'Agent patches the same saved Run and exact second shot',
+    match: body => flattenRequestText(body).includes(instruction) && !hasToolResult(body, patchCall),
+    reply: { type: 'tool', id: patchCall, name: 'draft_shots', args: { operationId: runId, shots: [{ shotId, prompt: newPrompt }] } } })
+  const patched = walk.fixture.expectText({ label: 'Exact storyboard patch returns through original SDK',
+    match: body => hasToolResult(body, patchCall), reply: { type: 'text', text: 'GOLDEN_PATCH_DONE：第二镜已更新。' } })
+  await win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`).fill(instruction)
+  await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`), 'Agent定点改第二镜')
+  const patchWire = await recorded(patch.received, 'exact second shot patch')
+  expect(flattenRequestText(patchWire.body)).toContain(instruction)
+  await recorded(patched.received, 'original author save after Agent patch')
+  await expect.poll(() => readRun().generationPlan.editorial.shots[1].prompt, { timeout: stationTimeout({ operations: 2 }) }).toBe(newPrompt)
+  const expectedEditorial = structuredClone(originalEditorial)
+  expectedEditorial.shots[1].prompt = newPrompt
+  delete expectedEditorial.shots[1].promptSegments
+  expect(readRun().generationPlan.editorial, 'Agent prompt change must preserve every other authored field').toEqual(expectedEditorial)
+  await expect.poll(async () => (await readNodes()).map(node => node.prompt)).toEqual([prompts[0], newPrompt, prompts[2]])
+  expect((await readNodes()).map(node => node.id)).toEqual(nodeIds)
+  await waitForCanvasViewportSettled(win)
+  await expect(viewport, 'Editing an existing shot must not pan or zoom the original canvas').toHaveCSS('transform', beforeViewport)
+  expect((await readNodes())[0]).toEqual(originalNodes[0])
+  expect((await readNodes())[2]).toEqual(originalNodes[2])
+  await shot('original-shot2-agent-patch-keeps-viewport')
+  editor = await openEditor()
+  const secondRow = editor.locator('[data-storyboard-row="2"]')
+  await expect(secondRow.locator('[data-storyboard-prompt-block] [contenteditable="true"]')).toHaveText(newPrompt)
+  const collapse = win.locator('[data-creation-resource-tree-toggle="collapse"]:visible')
+  if (await collapse.isVisible()) await collapse.click()
+  await secondRow.locator('[data-storyboard-frame]').getByRole('button', { name: '生成镜 2', exact: true }).click()
+  const spend = win.locator('[data-spend-confirm-dialog]')
+  const spendProof = await proveProbe(spend, 'Original shot generation must await explicit approval')
+  expect(walk.fixture.images).toHaveLength(0)
+  await shot('original-shot2-awaits-confirmation')
+  await spend.getByRole('button', { name: '生成', exact: true }).click()
+  await expectAbsent(spend, { provenBy: spendProof, message: 'Original approval closes after confirming one shot' })
+  await expect(secondRow.locator('[data-storyboard-frame]')).toHaveAttribute('data-storyboard-frame', 'done', { timeout: stationTimeout({ operations: 4 }) })
+  await expect.poll(async () => (await readNodes()).find(node => node.meta.shotId === shotId)?.result?.url).toMatch(/^nomi-local:\/\//)
+  expect(walk.fixture.images).toHaveLength(1)
+  expect(walk.fixture.images[0].body.prompt).toContain(newPrompt)
+  const completedNodes = await readNodes()
+  expect(completedNodes.map(node => node.id)).toEqual(nodeIds)
+  expect(completedNodes.map(node => node.prompt)).toEqual([prompts[0], newPrompt, prompts[2]])
+  expect(readRun().generationPlan.editorial).toEqual(expectedEditorial)
+  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
+  const resultUrl = completedNodes.find(node => node.meta.shotId === shotId).result.url
+  await expect.poll(() => secondRow.locator('[data-storyboard-frame] img').first().evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+  await shot('original-shot2-generated-real-jpg')
+  const sessions = readLaneTranscripts(projectRoot)
+  expect(sessions).toHaveLength(1)
+  const originalMessages = laneMessages(sessions[0])
+  expect(originalMessages.filter(message => message.role === 'toolResult' && [planCall, patchCall].includes(message.toolCallId))
+    .map(message => [message.toolCallId, message.toolName, message.isError])).toEqual([[planCall, 'draft_shots', false], [patchCall, 'draft_shots', false]])
+  const requestsBefore = walk.fixture.requests.length
+  await walk.stopApp()
+  const projectFile = path.join(projectRoot, '.nomi/project.json')
+  if (positiveControl) {
+    const record = JSON.parse(fs.readFileSync(projectFile, 'utf8'))
+    const node = nodesOf(record.payload).find(node => node.meta.shotId === shotId)
+    if (!node) throw new Error('Positive control cannot find the original bound second node')
+    node.prompt = prompts[1]
+    fs.writeFileSync(projectFile, JSON.stringify(record, null, 2))
+  }
+  ;({ win } = await walk.start())
+  setCurrentWin(win)
+  const persisted = JSON.parse(fs.readFileSync(projectFile, 'utf8')).payload
+  expect(nodesOf(persisted).find(node => node.meta.shotId === shotId)?.prompt, targetAssertion).toBe(newPrompt)
+  expect(nodesOf(persisted).find(node => node.meta.shotId === shotId)?.result?.url).toBe(resultUrl)
+  expect(nodesOf(persisted).map(node => node.id)).toEqual(nodeIds)
+  expect(readRun().generationPlan.editorial).toEqual(expectedEditorial)
+  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
+  const projectCard = win.locator('[data-project-card]').first()
+  await projectCard.hover()
+  await clickOrFail(projectCard.getByText('继续创作', { exact: false }).first(), '冷启动重开原项目')
+  await expect.poll(() => win.url().includes(`projectId=${projectId}`)).toBe(true)
+  editor = await openEditor()
+  const restoredRow = editor.locator('[data-storyboard-row="2"]')
+  await expect(restoredRow.locator('[data-storyboard-prompt-block] [contenteditable="true"]')).toHaveText(newPrompt)
+  await expect(restoredRow.locator('[data-storyboard-frame]')).toHaveAttribute('data-storyboard-frame', 'done')
+  await expect.poll(() => restoredRow.locator('[data-storyboard-frame] img').first().evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+  expect(laneMessages(readLaneTranscripts(projectRoot).find(session => session.sessionId === sessions[0].sessionId))).toEqual(originalMessages)
+  expect(walk.fixture.requests).toHaveLength(requestsBefore)
+  expect(walk.fixture.images).toHaveLength(1)
+  await shot('original-editor-cold-restored-fields-and-result')
+  walk.report.verified = ['document-draft-saves-with-zero-nodes', 'original-editor-complete-author-fields', 'explicit-original-placement-stable-binding',
+    'agent-patches-only-shot2-with-stable-canvas-viewport', 'original-single-shot-approval-exactly-one-image', 'original-editor-cold-restore', 'zero-restart-model-requests']
+}

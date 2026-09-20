@@ -173,28 +173,18 @@ try {
     await expect.poll(newlyCreatedIds, { message: 'Original add action creates exactly one canonical store identity' }).toHaveLength(1)
     const [id] = await newlyCreatedIds()
     await expect(win.locator(`.generation-canvas-v2-node[data-node-id="${id}"]`)).toBeVisible()
-    const { composer, input } = await checkEditor(win)
+    const { input } = await checkEditor(win)
     const prompt = `Core A ${kind} 保存后重开 / keep this draft`
     await input.click()
     await win.keyboard.press('Meta+A')
     await win.keyboard.insertText(prompt)
     await expect(input).toHaveText(prompt)
-    const pill = composer.locator('[data-parameter-summary]')
-    await pill.click()
-    const panel = win.locator('[data-agent-parameter-panel="true"]')
-    await expect(panel).toBeVisible()
-    const option = panel.locator('[role="radio"][aria-checked="false"]:not([disabled])').first()
-    await expect(option).toBeVisible()
-    const optionName = await option.getAttribute('aria-label') || await option.textContent()
-    await option.click()
-    await expect(panel.locator('[role="radio"][aria-checked="true"]', { hasText: optionName.trim() })).toBeVisible()
-    await win.keyboard.press('Escape')
+    const item = { id, kind, prompt }
+    await editParameter(win, item)
     await expect.poll(() => readNodes().find(node => node.id === id)?.prompt).toBe(prompt)
-    const expectedMeta = await win.evaluate(nodeId => window.__nomiCanvasStore.getState().nodes.find(node => node.id === nodeId)?.meta, id)
+    const expectedMeta = item.meta
     assert(expectedMeta, 'The real canvas owner must expose the edited parameter values')
-    await expect.poll(() => readNodes().find(node => node.id === id)?.meta,
-      { message: 'Wait for the parameter edit itself to reach project persistence' }).toEqual(expectedMeta)
-    edited.push({ id, kind, prompt, meta: expectedMeta })
+    edited.push(item)
     await expect(win.locator(composerSelector)).toBeVisible()
     await win.getByRole('button', { name: /^(创作|Create)$/ }).click()
     // Original WorkbenchShell keeps each workspace mounted via hidden={!active}.

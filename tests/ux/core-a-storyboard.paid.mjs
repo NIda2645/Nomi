@@ -289,7 +289,6 @@ async function verifyFirstFrameResults(keyframePrompt) {
   for (const node of done) {
     assert.equal(node.runs.length, 1, 'No retry or extra media task is authorized')
     assert.ok(node.result.taskId)
-    report.results.push({ nodeId: node.id, resultId: node.result.id, taskId: node.result.taskId, cost: node.result.provenance?.cost ?? 'unknown', costSource: 'result.provenance.cost', type: node.result.type })
   }
   // Inspect the actual persisted files with the existing ffprobe owner in Node.
   // Playwright's Electron evaluate context supports neither require nor dynamic import.
@@ -447,7 +446,6 @@ try {
     assert.equal(node.result?.provenance?.provider, 'apimart')
     assert.equal(node.result?.provenance?.modelKey, 'z-image-turbo')
     assert.ok(node.result?.id && node.result?.taskId, 'Provider result/task identity must be persisted')
-    report.results.push({ nodeId: node.id, resultId: node.result.id, taskId: node.result.taskId, cost: node.result.provenance?.cost ?? 'unknown', costSource: 'result.provenance.cost', type: node.result.type })
   }
   const expected = identity()
   await assertRestored(expected)

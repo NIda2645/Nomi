@@ -41,6 +41,7 @@ export default function DocumentListSidebar({ projectId }: { projectId?: string 
   const addWorkbenchDocument = useWorkbenchStore((state) => state.addWorkbenchDocument)
   const deleteWorkbenchDocument = useWorkbenchStore((state) => state.deleteWorkbenchDocument)
   const renameWorkbenchDocument = useWorkbenchStore((state) => state.renameWorkbenchDocument)
+  const addStoryboardDesign = useWorkbenchStore((state) => state.addStoryboardDesign)
   const duplicateStoryboardDesign = useWorkbenchStore((state) => state.duplicateStoryboardDesign)
   const renameStoryboardDesign = useWorkbenchStore((state) => state.renameStoryboardDesign)
   const deleteStoryboardDesign = useWorkbenchStore((state) => state.deleteStoryboardDesign)
@@ -132,9 +133,8 @@ export default function DocumentListSidebar({ projectId }: { projectId?: string 
   }
 
   const createDesignForDocument = (documentId: string) => {
-    selectDocument(documentId)
-    setExpanded((current) => ({ ...current, [documentId]: true }))
-    window.setTimeout(() => useWorkbenchStore.getState().storyboardPlannerLauncher?.(), 0)
+    const design = addStoryboardDesign(documentId)
+    if (design) selectStoryboard(design.id, documentId)
   }
 
   const openMenu = React.useCallback((

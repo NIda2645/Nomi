@@ -12,8 +12,8 @@ beforeEach(() => {
 })
 const assertCurrent = async () => { if (!calls.current) throw new Error('storyboard_content_conflict') }
 it.each(['single','variants','regenerate'])('rejects changed author target after human confirmation before minting on %s', async kind => {
-  const action = kind==='single' ? () => confirmAndRunNode('node',{assertCurrent})
-    : kind==='variants' ? () => confirmAndRunNodeVariants('node',3,{assertCurrent}) : () => regenerateNodeInPlace('node',{assertCurrent})
+  const action = kind==='single' ? () => confirmAndRunNode('node',{assertCurrent,assertAuthorCurrent:assertCurrent})
+    : kind==='variants' ? () => confirmAndRunNodeVariants('node',3,{assertCurrent,assertAuthorCurrent:assertCurrent}) : () => regenerateNodeInPlace('node',{assertCurrent,assertAuthorCurrent:assertCurrent})
   await action().catch(() => {})
   expect(calls.confirm).toHaveBeenCalledOnce()
   expect(calls.mint).not.toHaveBeenCalled()
@@ -22,8 +22,8 @@ it.each(['single','variants','regenerate'])('rechecks author target after asynch
   calls.confirm.mockResolvedValue(true)
   calls.mint.mockImplementation(async () => { calls.current=false; return 'grant' })
   const checked = vi.fn(assertCurrent)
-  const action = kind==='single' ? () => confirmAndRunNode('node',{assertCurrent:checked})
-    : kind==='variants' ? () => confirmAndRunNodeVariants('node',3,{assertCurrent:checked}) : () => regenerateNodeInPlace('node',{assertCurrent:checked})
+  const action = kind==='single' ? () => confirmAndRunNode('node',{assertCurrent:checked,assertAuthorCurrent:checked})
+    : kind==='variants' ? () => confirmAndRunNodeVariants('node',3,{assertCurrent:checked,assertAuthorCurrent:checked}) : () => regenerateNodeInPlace('node',{assertCurrent:checked,assertAuthorCurrent:checked})
   await action().catch(() => {})
   expect(calls.mint).toHaveBeenCalledOnce()
   expect(checked).toHaveBeenCalledTimes(2)

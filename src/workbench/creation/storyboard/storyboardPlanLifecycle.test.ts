@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { createEmptyStoryboardPlan, type StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import type { StoryboardDesign } from '../../workbenchTypes'
+import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
 
 const plan: StoryboardPlan = { title: '测试方案', anchors: [], shots: [{ index: 1, durationSec: 5, anchorIds: [], prompt: '镜一' }] }
 const DOC = 'doc-1'
@@ -19,6 +20,42 @@ function reset() {
 }
 describe('分镜方案生命周期（单一 owner）', () => {
   beforeEach(reset)
+  it('manual creation starts blank, appends independent identities and leaves canvas unchanged', () => {
+    const state = useWorkbenchStore.getState()
+    const graph = useGenerationCanvasStore.getState()
+    const revision = state.persistRevision
+    const first = state.addStoryboardDesign(DOC)
+    expect(first?.plan).toEqual(createEmptyStoryboardPlan())
+    expect(useWorkbenchStore.getState().persistRevision).toBe(revision + 1)
+    expect(useGenerationCanvasStore.getState().nodes).toBe(graph.nodes)
+    state.setStoryboardPlan({ ...first!.plan, title: 'Keep authored draft', shots: first!.plan.shots.map(shot => ({ ...shot, prompt: 'Keep this prompt' })) }, DOC, first!.id)
+    const authored = useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC][0]
+    const authoredGraph = useGenerationCanvasStore.getState()
+    const second = state.addStoryboardDesign(DOC)
+    expect(second?.plan).toEqual(createEmptyStoryboardPlan())
+    expect(second?.id).not.toBe(first?.id)
+    expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC]).toEqual([authored, second])
+    expect(useGenerationCanvasStore.getState().nodes).toBe(authoredGraph.nodes)
+    expect(useGenerationCanvasStore.getState().edges).toBe(authoredGraph.edges)
+  })
+  it('new and duplicate target the explicit document while invalid targets do not mutate', () => {
+    const state = useWorkbenchStore.getState()
+    const other = state.addWorkbenchDocument()
+    state.setActiveCreationRunId('selected-run', other.id)
+    const blank = state.addStoryboardDesign(DOC)
+    expect(blank?.documentId).toBe(DOC)
+    expect(useWorkbenchStore.getState().activeDocumentId).toBe(DOC)
+    expect(useWorkbenchStore.getState().activeStoryboardId).toBe(blank?.id)
+    expect(useWorkbenchStore.getState().activeCreationRunId).toBeNull()
+    state.setStoryboardPlan(plan, DOC, blank!.id)
+    const copy = state.duplicateStoryboardDesign(blank!.id, DOC)
+    expect(copy?.plan.shots).toEqual(plan.shots)
+    expect(copy?.id).not.toBe(blank?.id)
+    const before = useWorkbenchStore.getState()
+    expect(state.addStoryboardDesign('deleted-document')).toBeNull()
+    expect(useWorkbenchStore.getState()).toBe(before)
+    expect(before.storyboardDesignsByDocumentId[other.id]).toBeUndefined()
+  })
   it('setStoryboardPlan = 草稿态', () => { useWorkbenchStore.getState().setStoryboardPlan(plan, DOC); expect(active()?.plan).toEqual(plan); expect(active()?.committed).toBe(false) })
   it('planner replaces the blank structural starter', () => {
     useWorkbenchStore.getState().hydrateStoryboardDesigns({ [DOC]: [design(DOC, createEmptyStoryboardPlan())] })

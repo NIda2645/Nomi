@@ -1,8 +1,10 @@
+import { generationNodeRunRecordSchema } from '../generationCanvas/model/generationCanvasSchema'
+import { textDocumentDigest } from '../generationCanvas/runner/textGenerationDocument'
 import { describe, expect, it } from 'vitest'
 import { normalizePayload, normalizeRecord } from './projectNormalize'
 import { createDefaultWorkbenchProjectPayload } from './projectRecordSchema'
 import type { StoryboardPlan } from '../generationCanvas/agent/storyboardPlan'
-import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
+import type { GenerationCanvasNode, TiptapDocJson } from '../generationCanvas/model/generationCanvasTypes'
 
 function node(overrides: Partial<GenerationCanvasNode> & { id: string }): GenerationCanvasNode {
   return {
@@ -165,4 +167,30 @@ it('rejects malformed persisted layouts before they reach workspace sizing', asy
   for (const assistantWidth of [NaN, Infinity, '310']) {
     expect(() => normalizePayload({ ...createDefaultWorkbenchProjectPayload(), editingPanelLayout: { ...EDITING_PANEL_DEFAULTS, assistantWidth } })).toThrow()
   }
+})
+
+
+it('keeps the existing immutable workspace identity through the original record normalizer', () => {
+  const summary = { id: 'original-project', name: 'Original', createdAt: 1, updatedAt: 1 }
+  const identity = { immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 4 }
+  const normalized = normalizeRecord(summary, { ...summary, ...identity, version: 2, payload: createDefaultWorkbenchProjectPayload() })
+  expect(normalized).toMatchObject({ ...identity, id: summary.id, version: 1 })
+})
+
+
+it('round-trips a generated text body with its exact run/result identity and single run digest through the original project reader', () => {
+  const contentJson: TiptapDocJson = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'generated body' }] }] }
+  const result = { id: 'text-result', type: 'text', text: 'generated body', createdAt: 1 }
+  const run = { id: 'text-run', status: 'success', projectId: 'project-text', resultId: result.id, textDocumentDigest: textDocumentDigest(contentJson), startedAt: 1, updatedAt: 2 }
+  const input = { id: 'project-text', name: 'text', version: 1, createdAt: 1, updatedAt: 2,
+    payload: { ...createDefaultWorkbenchProjectPayload(), generationCanvas: { nodes: [{
+      id: 'text-node', kind: 'text', title: '', position: { x: 0, y: 0 }, contentJson, result, history: [result], runs: [run],
+    }], edges: [], groups: [], selectedNodeIds: [] } } }
+  expect(generationNodeRunRecordSchema.parse(run).projectId).toBe(run.projectId)
+  const reopened = normalizeRecord(input, JSON.parse(JSON.stringify(input))).payload.generationCanvas.nodes[0]
+  expect(reopened.contentJson).toEqual(contentJson)
+  expect(reopened.runs?.[0].textDocumentDigest).toBe(run.textDocumentDigest)
+  expect(reopened.runs?.[0].projectId).toBe(run.projectId)
+  expect(reopened.runs?.[0].resultId).toBe(reopened.result?.id)
+  expect(reopened.history?.[0].id).toBe(result.id)
 })

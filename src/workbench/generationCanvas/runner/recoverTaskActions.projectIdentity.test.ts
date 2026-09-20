@@ -10,14 +10,14 @@ import { fetchWorkbenchTaskResultByVendor, type FetchWorkbenchTaskResultResponse
 import { setCanvasEventSinkForTests } from '../events/canvasEventEmitter'
 import { __resetCanvasUndoJournalForTests } from '../events/canvasUndoJournal'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
-import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import i18n from '../../../i18n'
 
 const disk = vi.hoisted(() => new Map<string, unknown>())
 vi.mock('../../library/localProjectStore', () => ({
   readLocalProjectAsync: vi.fn(async (projectId: string) => structuredClone(disk.get(projectId) ?? null)),
   saveLocalProject: vi.fn(async (projectId: string, payload: unknown, name?: string) => {
-    disk.set(projectId, structuredClone({ id: projectId, name, version: 1, payload }))
+    disk.set(projectId, structuredClone({ id: projectId, name, version: 1, immutableProjectUuid: testProjectBinding(projectId).immutableProjectUuid, projectGeneration: testProjectBinding(projectId).projectGeneration, payload }))
     return disk.get(projectId)
   }),
 }))
@@ -87,7 +87,7 @@ describe('recovery reads only the task identity', () => {
     await vi.waitFor(() => expect(vi.mocked(fetchWorkbenchTaskResultByVendor)).toHaveBeenCalledOnce())
 
     const a = useGenerationCanvasStore.getState()
-    disk.set('project-a', structuredClone({ id: 'project-a', name: 'A', version: 1, payload: { generationCanvas: { nodes: a.nodes, edges: a.edges, groups: a.groups, selectedNodeIds: [] } } }))
+    disk.set('project-a', structuredClone({ id: 'project-a', name: 'A', version: 1, immutableProjectUuid: testProjectBinding('project-a').immutableProjectUuid, projectGeneration: testProjectBinding('project-a').projectGeneration, payload: { generationCanvas: { nodes: a.nodes, edges: a.edges, groups: a.groups, selectedNodeIds: [] } } }))
     await session.open('project-b')
     useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], selectedNodeIds: [], groups: [] })
 

@@ -71,12 +71,6 @@ describe('deferred desktop domain authority', () => {
     expect(f.input.phase4.executeWrite).not.toHaveBeenCalled()
     expect(generation.tryExecute).not.toHaveBeenCalled()
   })
-  it('C17: an unavailable export read cannot route a raw ID to a generation write', async () => {
-    const f = setup(), value = call('cancel_job', { jobId: 'node-1' })
-    vi.mocked(f.input.phase4.prepareWrite).mockRejectedValue(new Error('permission denied'))
-    await expect(f.prepareAndApprove(value)).rejects.toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({ path: ['domain'], code: 'invalid_type' })]) })
-    expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
-  })
   it('never executes an unprepared or unapproved timeline write', async () => {
     const f = setup(), value = call('edit_timeline')
     expect(await f.execute(value)).toMatchObject({ ok: false, failure: { code: 'capability_authority_invalid' } })

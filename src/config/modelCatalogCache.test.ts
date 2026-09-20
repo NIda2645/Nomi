@@ -95,6 +95,20 @@ describe('normal picker verified-only projection', () => {
     await expect(preloadModelOptions('video', 'image_to_video')).resolves.toEqual([])
   })
 
+  it('storyboard queries retain reference-only models without admitting unavailable or unpublished rows', async () => {
+    mocks.listModels.mockImplementation(async ({ kind }: { kind: string }) => kind === 'video'
+      ? [
+          { ...row('i2v-only', ['image_to_video'], { archetypeId: 'minimax-h3-apimart' }), kind: 'video' },
+          { ...row('blocked', ['image_to_video']), kind: 'video', availability: { usable: false, reason: 'credential_missing' } },
+          { ...row('unpublished', []), kind: 'video' },
+        ]
+      : [row('edit-only', ['image_edit'], { archetypeId: 'gpt-image-2' })])
+    await expect(preloadModelOptions('video', 'any-published')).resolves.toMatchObject([{ value: 'i2v-only' }])
+    await expect(preloadModelOptions('image', 'any-published')).resolves.toMatchObject([{ value: 'edit-only' }])
+    await expect(preloadModelOptions('video')).resolves.toEqual([])
+    await expect(preloadModelOptions('image')).resolves.toEqual([])
+  })
+
   it('honors the shared current publication mask through the real DTO-to-picker projection', async () => {
     const source = {
       ...row('shared-image'),

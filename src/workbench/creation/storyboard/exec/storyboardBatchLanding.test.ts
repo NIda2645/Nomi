@@ -176,13 +176,13 @@ it('Run-bound original row actions keep single-shot, three variants and regenera
   const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old prompt' })
   const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: shot.shotId, nodeId: node.id }] } as Parameters<typeof storyboardRunBindings>[0]
   const assertCurrent = vi.fn().mockResolvedValue(undefined)
-  const context = { assertCurrent, documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] }, bindings: storyboardRunBindings(generation, []) }
+  const context = { assertCurrent, assertAuthorCurrent: assertCurrent, documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] }, bindings: storyboardRunBindings(generation, []) }
   await generateShotRow(context, shot, null)
   await generateShotRowVariants(context, shot, node, null)
   await regenerateShotRow(context, shot, node, null)
-  expect(calls.single).toHaveBeenCalledWith(node.id, { assertCurrent })
-  expect(calls.variants).toHaveBeenCalledWith(node.id, 3, { assertCurrent })
-  expect(calls.regenerate).toHaveBeenCalledWith(node.id, { assertCurrent })
+  expect(calls.single).toHaveBeenCalledWith(node.id, { assertCurrent, assertAuthorCurrent: assertCurrent })
+  expect(calls.variants).toHaveBeenCalledWith(node.id, 3, { assertCurrent, assertAuthorCurrent: assertCurrent })
+  expect(calls.regenerate).toHaveBeenCalledWith(node.id, { assertCurrent, assertAuthorCurrent: assertCurrent })
   expect(useGenerationCanvasStore.getState().nodes).toHaveLength(1)
   expect(useGenerationCanvasStore.getState().nodes[0].prompt).toContain('Updated author prompt')
 })
@@ -193,7 +193,7 @@ it('Run-bound original anchor action reuses the durable anchor node and the orig
   const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old description' })
   const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: anchor.id, nodeId: node.id }] } as Parameters<typeof storyboardRunBindings>[0]
   await generateAnchorCard({ documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [anchor], shots: [] }, bindings: storyboardRunBindings(generation, []) }, anchor)
-  expect(calls.single).toHaveBeenCalledWith(node.id, { assertCurrent: undefined })
+  expect(calls.single).toHaveBeenCalledWith(node.id, {})
   expect(useGenerationCanvasStore.getState().nodes).toHaveLength(1)
   expect(useGenerationCanvasStore.getState().nodes[0].prompt).toContain('New description')
 })

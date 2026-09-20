@@ -8,7 +8,7 @@ import { expect } from '@playwright/test'
 import { expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { createAgentRuntimeFixture, FIXTURE_VENDOR, FIXTURE_TEXT_MODEL, FIXTURE_IMAGE_MODEL } from './agent-runtime-fixture.mjs'
-import { waitForV4TurnIdle, recorded, AGENT_PANEL } from './agent-runtime-walk-support.mjs'
+import { waitForV4TurnIdle, recorded, sendCreation, AGENT_PANEL } from './agent-runtime-walk-support.mjs'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 const { createWorkspaceProject } = tsxRequire('../../electron/workspace/workspaceRepository.ts', import.meta.url)
 const { createProductionRunRepository } = tsxRequire('../../electron/productionRun/productionRunRepository.ts', import.meta.url)
@@ -58,7 +58,7 @@ try {
       storyboard:{durationSec:3,anchorIds:[],keyframe:{enabled:false,prompt:`Frame ${label}`,params:{size:'1024x1024'}}},
     }]}}})
     fixture.expectText({label:`created ${label}`,reply:{type:'text',text:`DONE ${label}`}})
-    await win.locator(`[data-add-storyboard="${documentId}"]`).click()
+    await sendCreation(win, `为当前文稿新建一份分镜方案，标题 Plan ${label}，保留已有方案。`)
     await recorded(creationRequest.received,`actual Agent request creating ${label}`)
     await waitForV4TurnIdle(win,{panel:AGENT_PANEL,settledBy:win.locator(AGENT_PANEL).getByText(`DONE ${label}`,{exact:true})})
     await expect.poll(()=>repository.list(projectId).filter(run=>!before.has(run.runId)).length).toBe(1)

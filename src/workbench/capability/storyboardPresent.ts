@@ -26,20 +26,19 @@ export async function presentStoryboard(data: Record<string, unknown>) {
     const plan = storyboardPlanFromGeneration(run)
     const ids = [...plan.anchors.map(anchor => anchor.id), ...plan.shots.map(shot => shot.shotId!)]
     const scope = resolveGenerationShotScope(ids, data.shotIds)
-    const [imageModelOptions, videoModelOptions] = await Promise.all([preloadModelOptions('image'), preloadModelOptions('video')])
+    const [imageModelOptions, videoModelOptions] = await Promise.all([preloadModelOptions('image', 'any-published'), preloadModelOptions('video', 'any-published')])
     project.assertCurrent()
-    const assertCurrent = async () => {
-      project.assertCurrent()
+    const assertAuthorCurrent = async () => {
       const latest = await productionRunApi.read(projectId, runId)
-      project.assertCurrent()
       if (!latest || latest.runId !== runId || latest.projectId !== projectId
         || latest.origin.sourceDocument?.documentId !== sourceDocumentId
         || storyboardContentToken(latest) !== expectedContentToken) throw new Error('storyboard_content_conflict')
     }
+    const assertCurrent = async () => { project.assertCurrent(); await assertAuthorCurrent(); project.assertCurrent() }
     await assertCurrent()
     const canvas = useGenerationCanvasStore.getState()
     const bindings = storyboardRunBindings(run.generationPlan, canvas.edges)
-    const context = { documentId: sourceDocumentId, designId: runId, plan, bindings, assertCurrent,
+    const context = { documentId: sourceDocumentId, designId: runId, plan, bindings, assertCurrent, assertAuthorCurrent,
       gesture: { source: 'agent' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } } }
     const runtimes = () => deriveStoryboardRowRuntimes({ plan, designId: runId,
       nodes: useGenerationCanvasStore.getState().nodes, imageModelOptions, videoModelOptions, bindings })

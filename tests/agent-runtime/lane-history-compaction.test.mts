@@ -104,7 +104,6 @@ test('R03 paged history remains current-branch-only and original IDs survive reo
   const side = await opened.session.createBranch('side', ids[2]!, BACKGROUND_CONTEXT);
   await side.appendMessage({ role: 'user', content: 'SIDE_BRANCH_SECRET', timestamp: 1 }, BACKGROUND_CONTEXT);
   await opened.session.close(BACKGROUND_CONTEXT); await opened.release(BACKGROUND_CONTEXT);
-  const { openLaneHistory } = await import('../../electron/agentLane/laneHistory.mjs');
   const history = await openLaneHistory({ projectDir: f.projectDir });
   f.after(() => history.close());
   assert.equal(history.projection().parts.length, 80);
@@ -202,7 +201,6 @@ test('independent R04 live lifecycle: short steer survives two lossy SDK compact
   const assistantRequests = f.http.requests.filter(r => Array.isArray(r.body.tools) && r.body.tools.length);
   const finalBody = JSON.stringify(assistantRequests.at(-1)!.body);
   await host.close();
-  const { openLaneSession } = await import('../../electron/agentLane/laneSession.mjs');
   const opened = await openLaneSession({ projectDir: f.projectDir }, BACKGROUND_CONTEXT);
   f.after(async () => { await opened.session.close(BACKGROUND_CONTEXT); await opened.release(BACKGROUND_CONTEXT); });
   const branch = await opened.session.branch('main', BACKGROUND_CONTEXT);

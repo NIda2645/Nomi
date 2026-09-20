@@ -14,7 +14,8 @@
     "electron/productionRun/budgetLedger.ts",
     "electron/productionRun/prepareProductionGenerationAuthorization.ts",
     "electron/productionRun/productionRunReducer.ts",
-    "electron/productionRun/shotPricing.ts"
+    "electron/productionRun/shotPricing.ts",
+    "electron/productionRun/batchScheduleDerivation.ts"
   ],
   "entry_points": [
     "prepareProductionGenerationAuthorization initial paid envelope",
@@ -34,9 +35,49 @@
   ],
   "doors": [
     {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
       "kind": "write",
       "path": "electron/productionRun/batchScheduleDerivation.ts",
       "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "summarizeBudgetLedger"
     },
     {
       "kind": "write",
@@ -46,7 +87,17 @@
     {
       "kind": "write",
       "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
       "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
     },
     {
       "kind": "write",
@@ -57,36 +108,6 @@
       "kind": "write",
       "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
       "symbol": "budgetExceeds"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/productionRunReducer.ts",
-      "symbol": "budgetExceeds"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/shotPricing.ts",
-      "symbol": "budgetExceeds"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/batchScheduleDerivation.ts",
-      "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/budgetLedger.ts",
-      "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
-      "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/productionGenerationAuthorization.ts",
-      "symbol": "sumBudgetAmounts"
     },
     {
       "kind": "write",
@@ -101,47 +122,12 @@
     {
       "kind": "write",
       "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
       "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/shotPricing.ts",
-      "symbol": "sumBudgetAmounts"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/budgetLedger.ts",
-      "symbol": "createBudgetAmountAccumulator"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/shotPricing.ts",
-      "symbol": "createBudgetAmountAccumulator"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/budgetLedger.ts",
-      "symbol": "BudgetLedgerEntry"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/budgetLedger.ts",
-      "symbol": "BudgetLedger"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/productionRunRepository.ts",
-      "symbol": "BudgetLedgerEntry"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/productionRunRepository.ts",
-      "symbol": "BudgetLedger"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/budgetLedger.ts",
-      "symbol": "summarizeBudgetLedger"
     },
     {
       "kind": "write",
@@ -157,12 +143,27 @@
       "kind": "write",
       "path": "electron/productionRun/productionRunRepository.ts",
       "symbol": "summarizeBudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "budgetExceeds"
     }
   ],
   "door_reduction": {
     "before": 25,
     "after": 25,
-    "why_not": "The existing doors serve distinct Run stages: ledger mutation, seal precheck, envelope construction and validation, pending-spend projection, and dispatch scheduling. Four final-code doors make the shared boundary explicit: reducer budget validation now calls both existing helpers, while budgetLedger and shotPricing share the new single-pass accumulator. Merging lifecycle owners would create a new payment framework."
+    "why_not": "Distinct Run lifecycle consumers remain at their original owners. The scheduler now advances the existing compensated accumulator once per price, replacing its repeated whole-prefix summation; all authority and cap checks remain."
   },
   "generality_proof": "Initial authorization, seal prefix, continuation coverage, budget import validation, ledger reservation, envelope validation and dispatch scheduling all use the same compensated addition and precision-aware comparison owner. Exact-cap decimals therefore behave consistently across callers without changing the cap or currency model.",
   "shared_boundaries": [
@@ -205,8 +206,8 @@
     {
       "path": "electron/productionRun/batchScheduleDerivation.ts",
       "entry_point": "deriveBatchPlan",
-      "disposition": "not-affected",
-      "evidence": "It already compares a compensated complete liability list plus each next price against the absolute authorized cap."
+      "disposition": "enforced",
+      "evidence": "Ponytail E04: reuse the same compensated accumulator in one ordered pass, seeded with committed liability; stop at the first overage without changing cap or price order."
     },
     {
       "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
@@ -237,7 +238,8 @@
       "electron/productionRun/budgetLedger.ts",
       "electron/productionRun/prepareProductionGenerationAuthorization.ts",
       "electron/productionRun/productionRunReducer.ts",
-      "electron/productionRun/shotPricing.ts"
+      "electron/productionRun/shotPricing.ts",
+      "electron/productionRun/batchScheduleDerivation.ts"
     ]
   },
   "regression_tests": [

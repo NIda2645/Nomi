@@ -190,12 +190,8 @@ export function AnchoredPopover({
     }
   }, [anchorRef, consumeEscape, onClose])
 
-  const onLayerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    // Portal 的 React 事件会沿逻辑树冒泡到 React Flow NodeWrapper：普通关闭/IME/已消费事件在这里
-    // 截止；需要 document bubble 的子层保留原事件，由 wrapper 上的 `.nokey` 阻止节点取消选择。
-    consumeEscape(event)
-  }
-
+  // Portal 的 React 事件沿逻辑树冒泡：consumeEscape 截止普通关闭/IME/已消费事件；
+  // 委托给 document bubble 的子层事件由 wrapper 的 `.nokey` 阻止节点取消选择。
   const layer = (
     <div
       ref={popRef}
@@ -207,7 +203,7 @@ export function AnchoredPopover({
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
         visibility: placement ? 'visible' : 'hidden',
       }}
-      onKeyDown={onLayerKeyDown}
+      onKeyDown={consumeEscape}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}

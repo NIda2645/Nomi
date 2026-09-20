@@ -185,6 +185,8 @@ describe('runPlanWithToasts concurrency', () => {
     expect(runGenerationNodesByPlan).toHaveBeenLastCalledWith(expect.any(Object), {
       target: testProjectBinding('project-a'),
       grantId: 'retry-grant',
+      assertAuthorCurrent: undefined,
+      assertApprovedInputs: expect.any(Function),
       concurrency: 4,
       // 重试走 confirmAndRunPlan → 重新解析托管（不是把上一轮的决定翻出来复用）。
       // 本用例的节点没有本地素材，所以正确答案是 not-needed：压根不碰公共托管。

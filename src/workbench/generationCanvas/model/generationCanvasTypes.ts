@@ -115,6 +115,8 @@ export type GenerationNodeRunRecord = {
   assetRefId?: string
   progress?: GenerationNodeProgress
   resultId?: string
+  /** Sealed atomically with this run's generated document, never ordinary editing. */
+  textDocumentDigest?: string
   error?: string
   raw?: unknown
   startedAt: number

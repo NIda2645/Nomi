@@ -1,5 +1,7 @@
 import React from 'react'
 import type { StoryboardEditorHost } from './storyboardEditorHost'
+import { deleteStoryboardRows, restoreStoryboardDeletion, type StoryboardDeletion } from './storyboardDeleteUndo'
+import { isCanvasTextEditingContext } from '../../generationCanvas/components/useCanvasShortcuts'
 import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconMovie, IconLockOpen, IconPlayerPlay, IconPlus, IconRobot, IconX } from '@tabler/icons-react'
@@ -45,6 +47,8 @@ import {
 } from './exec/storyboardRowActions'
 import { recoverNodeResult } from '../../generationCanvas/runner/recoverTaskActions'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
+import { stableProjectAgentJson } from '../../../../electron/shared/legacyAgentJson'
+import { isRunTargetLoaded, readRunProjectRecord } from '../../generationCanvas/runner/runProjectDelivery'
 import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../assets/AssetPreviewDialog'
 import type { AssetRef } from '../../assets/assetTypes'
@@ -87,8 +91,8 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
   const setProjectAgentReferences = useWorkbenchStore((s) => s.setProjectAgentReferences)
   const canvasNodes = useGenerationCanvasStore((s) => s.nodes)
   // 图片/视频模型清单各拉一次，按镜头种类传给镜行的模型选择器 + 参数控件（完整 option 供解析 archetype 参数）。
-  const videoModelOptions = useModelOptionsState('video').options
-  const imageModelOptions = useModelOptionsState('image').options
+  const videoModelOptions = useModelOptionsState('video', 'any-published').options
+  const imageModelOptions = useModelOptionsState('image', 'any-published').options
   // 行内/批量生成的重入闸（生成本身异步、确认卡在别处；按钮点两下不重复 materialize）。
   const [busy, setBusy] = React.useState(false)
   const [actionFeedback, setActionFeedback] = React.useState<{ designId: string | null; message: string } | null>(null)
@@ -117,7 +121,42 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
   const [skippedShotIds, setSkippedShotIds] = React.useState<ReadonlySet<string>>(new Set())
   // 选中的行（表上报）——footer 的「交给 Agent 改」与多选浮条读同一份，不各存一份。
   const [selectedRuntimes, setSelectedRuntimes] = React.useState<StoryboardRowRuntime[]>([])
-  const deletedPlanUndoRef = React.useRef<{ plan: NonNullable<typeof plan>; canvasSteps: number } | null>(null)
+  const deletedPlanUndoRef = React.useRef<(StoryboardDeletion & { projectId: typeof projectId; documentId: string; designId: string }) | null>(null)
+  const editorRef = React.useRef<HTMLElement>(null)
+  const deletedFocusRef = React.useRef<Element | null>(null)
+  const lastEditorFocusRef = React.useRef<Element | null>(null)
+  React.useLayoutEffect(() => {
+    const removedFocus = deletedFocusRef.current
+    deletedFocusRef.current = null
+    const active = document.activeElement
+    // Original confirmation resolves before its exit animation removes the focused button.
+    // Restore only that departing control or orphaned body focus, never a new live input.
+    const closingConfirmation = removedFocus?.matches('[data-confirm-dialog-confirm="true"]')
+    if (removedFocus && ((!removedFocus.isConnected && active === document.body)
+      || (closingConfirmation && (active === removedFocus || active === document.body)))
+      && editorRef.current?.offsetParent !== null) editorRef.current?.focus({ preventScroll: true })
+  }, [plan])
+  const currentTargetRef = React.useRef({ projectId, activeDocumentId, designId, plan })
+  currentTargetRef.current = { projectId, activeDocumentId, designId, plan }
+  const onUndo = (event: React.KeyboardEvent<HTMLElement>): void => {
+    const root = editorRef.current
+    if (event.defaultPrevented || event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)
+      || event.key.toLowerCase() !== 'z' || !deletedPlanUndoRef.current || !plan
+      || !root || root.offsetParent === null || !(event.target instanceof Node) || !root.contains(event.target)
+      || isCanvasTextEditingContext(event.target, document.activeElement)) return
+    event.preventDefault()
+    if (deletedPlanUndoRef.current.projectId !== projectId || deletedPlanUndoRef.current.documentId !== activeDocumentId
+      || deletedPlanUndoRef.current.designId !== designId) {
+      deletedPlanUndoRef.current = null
+      reportFailure(t('storyboardEditor.exec.actionFailed'))
+      return
+    }
+    try {
+      const next = restoreStoryboardDeletion(plan, deletedPlanUndoRef.current, useGenerationCanvasStore.getState())
+      deletedPlanUndoRef.current = null
+      setStoryboardPlan(next)
+    } catch { reportFailure(t('storyboardEditor.exec.actionFailed')) }
+  }
 
   const firstIssueLabel = (issue: PlanIssue): string => {
     if (issue.kind === 'anchor-not-consumable') return issue.correction
@@ -159,21 +198,6 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
     window.addEventListener('nomi:asset-mention-preview', onMentionPreview)
     return () => window.removeEventListener('nomi:asset-mention-preview', onMentionPreview)
   }, [canvasNodes])
-
-  React.useEffect(() => {
-    const onUndo = (event: KeyboardEvent): void => {
-      const target = event.target
-      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z' || !deletedPlanUndoRef.current) return
-      event.preventDefault()
-      const undo = deletedPlanUndoRef.current
-      deletedPlanUndoRef.current = null
-      for (let index = 0; index < undo.canvasSteps; index += 1) useGenerationCanvasStore.getState().undo()
-      setStoryboardPlan(undo.plan)
-    }
-    window.addEventListener('keydown', onUndo)
-    return () => window.removeEventListener('keydown', onUndo)
-  }, [setStoryboardPlan])
 
   const visiblePositions = React.useMemo(() => positionsForAnchorFilter(plan ?? { title: '', anchors: [], shots: [] }, filterAnchorId), [filterAnchorId, plan])
   const visibleRows = React.useMemo(
@@ -257,17 +281,26 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
         await host?.flush()
         project.assertCurrent()
         const gesture = { source: 'user' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } }
-        const assertCurrent = async () => {
-          project.assertCurrent()
+        const capturedContent = stableProjectAgentJson(JSON.parse(JSON.stringify(plan)))
+        const assertAuthorCurrent = async () => {
           if (host) await host.assertCurrent()
           else {
-            const current = useWorkbenchStore.getState().storyboardDesignsByDocumentId[activeDocumentId]?.find(value => value.id === designId)
-            if (!current || current.plan !== plan) throw new Error('Storyboard target changed')
+            const designs = isRunTargetLoaded(project.binding)
+              ? useWorkbenchStore.getState().storyboardDesignsByDocumentId
+              : (await readRunProjectRecord(project.binding))?.payload.storyboardDesignsByDocumentId
+            const current = designs?.[activeDocumentId]?.find(value => value.id === designId)
+            if (!current || stableProjectAgentJson(JSON.parse(JSON.stringify(current.plan))) !== capturedContent) {
+              throw new Error('Storyboard target changed')
+            }
           }
+        }
+        const assertCurrent = async () => {
+          project.assertCurrent()
+          await assertAuthorCurrent()
           project.assertCurrent()
         }
         await assertCurrent()
-        await action({ ...execCtx, gesture, assertCurrent })
+        await action({ ...execCtx, gesture, assertCurrent, assertAuthorCurrent })
       }, () => { throw new Error(t('storyboardEditor.exec.actionFailed')) })
     } catch (error: unknown) {
       reportFailure(!host && error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
@@ -471,6 +504,10 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
       // 表格自己的 min-content 只有 417px，完全装得下 —— 它是被撑的，不是撑人的那个。
       // `grid-cols-1` = `repeat(1, minmax(0,1fr))`，把列钉回容器宽，各行自己去 truncate / 滚动。
       className="relative w-full h-full min-h-0 grid grid-cols-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
+      ref={editorRef}
+      tabIndex={-1}
+      onKeyDown={onUndo}
+      onFocusCapture={event => { if (event.target instanceof Element) lastEditorFocusRef.current = event.target }}
       data-storyboard-editor="true"
       data-creation-run-editor={host?.designId}
     >
@@ -595,11 +632,21 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
               onSetResultAsFirstFrame={onSetResultAsFirstFrame}
               onGenerateSelected={(selected) => onRunSelected(selected)}
               onDeleteSelected={(selected) => {
-                const ids = selected.flatMap((runtime) => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
-                deletedPlanUndoRef.current = { plan, canvasSteps: host ? 0 : ids.length }
-                if (!host) ids.forEach((id) => useGenerationCanvasStore.getState().deleteNode(id))
-                const selectedIds = new Set(selected.map((runtime) => runtime.shot.shotId ?? `index:${runtime.shot.index}`))
-                setStoryboardPlan({ ...plan, shots: plan.shots.filter((shot) => !selectedIds.has(shot.shotId ?? `index:${shot.index}`)).map((shot, index) => ({ ...shot, index: index + 1 })) })
+                const current = currentTargetRef.current
+                if (current.plan !== plan || current.projectId !== projectId || current.activeDocumentId !== activeDocumentId
+                  || current.designId !== designId || !editorRef.current || editorRef.current.offsetParent === null) {
+                  reportFailure(t('storyboardEditor.exec.actionFailed'))
+                  return
+                }
+                try {
+                  const ids = selected.flatMap(runtime => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
+                  const deletion = deleteStoryboardRows(plan, selected.map(runtime => runtime.shot), ids, host ? null : useGenerationCanvasStore.getState())
+                  const focused = document.activeElement
+                  deletedFocusRef.current = focused && (editorRef.current.contains(focused) || focused.matches('[data-confirm-dialog-confirm="true"]'))
+                    ? focused : focused === document.body ? lastEditorFocusRef.current : null
+                  deletedPlanUndoRef.current = { ...deletion.undo, projectId, documentId: activeDocumentId, designId }
+                  setStoryboardPlan(deletion.plan)
+                } catch { reportFailure(t('storyboardEditor.exec.actionFailed')) }
               }}
               onPlayGroup={onStartPlayback}
               filterAnchorId={filterAnchorId}
