@@ -39,9 +39,9 @@ export function useOnboardingDrawerCatalog(): {
   dreaminaStatus: DreaminaStatus | null
   loaded: boolean
   bridgeMissing: boolean
-  /** 这一次读目录为什么失败。非空时**界面上必须看得见**——上一份数据仍然在上面那些字段里。 */
+  /** 这一次读为什么失败；非空时**上一份数据仍在其余字段里**，不是空目录，界面上必须看得见。 */
   loadError: string | null
-  /** 目录为什么只能读不能改（`newer_on_disk` = 装过新版又装回旧版）。null = 一切正常。 */
+  /** 目录为什么只能读不能改（`newer_on_disk` = 装过新版又装回旧版）。null = 可写。 */
   readOnly: ModelCatalogReadOnlyDto | null
   reloadFromError: () => void
   refresh: () => void
@@ -96,19 +96,25 @@ export function useOnboardingDrawerCatalog(): {
       setModels(projectedCatalog.models)
       setMappings(storedMappings)
       setLoadError(null)
-      setReadOnly((bridge.modelCatalog.health() as { readOnly?: ModelCatalogReadOnlyDto | null } | null)?.readOnly ?? null)
     } catch (error) {
-      // 这里原本是一个裸 catch：三个列表全部置空、一个字都不说。用户看到的就是一个空白的模型设置页
-      // ——那正是「所有模型配置都没了」那句反馈的来源，而盘上的文件一个字节都没少
-      // （根因：scratchpad rootcause-config-loss-on-reinstall.md §0）。
-      // 两件事同时改：① 上一份已知数据留在屏幕上，读失败不等于用户的东西没了；
-      // ② 错误交给界面去说，由 loadError / readOnly 两个状态承载。
+      /**
+       * **读失败不许把界面清空。**
+       *
+       * 用户那句「重装之后所有模型配置都没了」就是从这里出来的：配置一条都没丢，是读通道上
+       * 挂了一次写、写被拒、抛错，而这里把异常吞成了一片空白页。空白页说的是「你什么都没有」，
+       * 而真相是「这一次没读到」——两句话让用户做的事完全相反（一个去重配，一个去看看怎么了）。
+       * 根因合同：`docs/fixes/2026-09-21-config-never-silently-lost.root-cause.json`。
+       *
+       * 所以：**上一份数据原样留着**（不 set 任何一个数据状态），只多出一条说得出原因的错。
+       */
       setLoadError(error instanceof Error ? error.message : String(error))
-      try {
-        setReadOnly((bridge.modelCatalog.health() as { readOnly?: ModelCatalogReadOnlyDto | null } | null)?.readOnly ?? null)
-      } catch {
-        // 连健康度都读不到时，loadError 已经足够说明「这一屏现在不可信」。
-      }
+    }
+    // 健康度**单独读一次**（读成功与读失败两条路共用），所以「目录能不能编辑」只有一个取值点。
+    try {
+      setReadOnly((bridge.modelCatalog.health() as { readOnly?: ModelCatalogReadOnlyDto | null } | null)?.readOnly ?? null)
+    } catch {
+      // 健康度读不到不改变「目录能不能编辑」这个判断——宁可当可写，也不要凭一次失败把用户锁成只读。
+      setReadOnly(null)
     }
     setLoaded(true)
     let alive = true

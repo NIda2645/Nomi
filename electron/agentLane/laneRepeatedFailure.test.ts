@@ -41,4 +41,40 @@ describe('lane repeated-failure tracker', () => {
     for (let index = 0; index < LANE_REPEATED_FAILURE_BLOCK; index += 1) tracker.note('read_script', true, WALL);
     expect(tracker.block('read_script')).not.toBeNull();
   });
+
+  // ── 2026-09-21 撞满转提问 ──────────────────────────────────────────────
+  //
+  // 这一组守的是「三振之后别再让模型自己编一段散文」：此刻缺的是**一个用户答得上来的问题**，
+  // 而拒收信里那几个合法值就是现成的选项。
+
+  it('三振之后点名 ask_user，并把上次拒收给的合法值当成选项交出去', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    for (let index = 0; index < LANE_REPEATED_FAILURE_BLOCK; index += 1) {
+      tracker.note('draft_shots', true, WALL, ['9:16', '16:9', '1:1']);
+    }
+    const blocked = tracker.block('draft_shots');
+    expect(blocked?.reason).toMatch(/ask_user/);
+    expect(blocked?.reason).toMatch(/9:16, 16:9, 1:1/);
+  });
+
+  it('没拿到合法值时也要点名 ask_user，只是不编造选项', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    for (let index = 0; index < LANE_REPEATED_FAILURE_BLOCK; index += 1) tracker.note('read_script', true, WALL);
+    const blocked = tracker.block('read_script');
+    expect(blocked?.reason).toMatch(/ask_user/);
+    expect(blocked?.reason).toMatch(/two to four answers/);
+  });
+
+  it('exhausted() 只在真的撞满之后才说话——没撞满时那张卡不该盖「试了 N 次」', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    expect(tracker.exhausted()).toBeUndefined();
+    tracker.note('draft_shots', true, WALL, ['9:16', '16:9']);
+    tracker.note('draft_shots', true, WALL, ['9:16', '16:9']);
+    expect(tracker.exhausted(), '才两次就盖上「试了 N 次」是替模型说了一句没发生的话').toBeUndefined();
+    tracker.note('draft_shots', true, WALL, ['9:16', '16:9']);
+    expect(tracker.exhausted()).toEqual({ attempts: 3, allowed: ['9:16', '16:9'] });
+    // 用户又说了一句话 = 回合边界：这一条和 block() 用的是同一个归零点，不许各归各的。
+    tracker.reset();
+    expect(tracker.exhausted()).toBeUndefined();
+  });
 });

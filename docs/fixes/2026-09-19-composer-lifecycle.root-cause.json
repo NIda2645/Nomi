@@ -2564,11 +2564,6 @@
     },
     {
       "kind": "write",
-      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
-      "symbol": "retainDismissedSpendDraft"
-    },
-    {
-      "kind": "write",
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
       "symbol": "applyCanvasDragKernelPositionChanges"
     },
@@ -2771,6 +2766,11 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/LazyNodeGenerationComposer.tsx",
       "symbol": "lazyWithChunkBoundary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "rollBackDiscardedSpendNodes"
     }
   ],
   "door_reduction": {

@@ -714,6 +714,7 @@
     },
     {
       "members": [
+        "answered",
         "auto-granted",
         "cancelled",
         "denied",
@@ -721,7 +722,7 @@
         "granted-once",
         "granted-session"
       ],
-      "reason": "一次工具调用的审批**结局**（方案 2026-09-07-agent-rebuild-stage3-5-deep-plan §1.2）。它不是任务状态、不是工具七态、也不是 ProjectAgentStatus：那三个说的是「这件事做到哪一步了」，这一个说的是「用户对这一次调用给了什么答复，以及没给答复的话是被什么打断的」。不能复用现有 owner 的具体理由：projectAgentContracts 的 approvalScope/approvalPolicy 是**用户选的档位**不是**某一次的结局**；V4ToolStatus 只分得出 approval-requested / approval-responded，把「你说了不要」「你按了停」「你关了窗」「重启前没答完」四件事折成同一个词，而它们的用户文案必须不同（G6-④ 那族的成因）。等待态**故意不在这张表里**：它不是发生了的事，只活在 laneHost 内存与 LaneProjection.pending。",
+      "reason": "2026-09-21 加入 answered（通用反问）：用户**回答了一个问题**与他**说了不要**在这张表里必须分开，理由和这张表存在的理由逐字相同——两者的用户文案不同（面板那一行写「已回答 · <他的原话>」而不是「已拒绝」），而在它存在之前反问只能借 deny 送答案，于是转录里留下一条他从没做过的拒绝，渲染层还得靠嗅 args 把它读回来（那是「同一件事两个说法，第二个靠猜」）。它仍然不是等待态：等待态照旧不在这张表里。一次工具调用的审批**结局**（方案 2026-09-07-agent-rebuild-stage3-5-deep-plan §1.2）。它不是任务状态、不是工具七态、也不是 ProjectAgentStatus：那三个说的是「这件事做到哪一步了」，这一个说的是「用户对这一次调用给了什么答复，以及没给答复的话是被什么打断的」。不能复用现有 owner 的具体理由：projectAgentContracts 的 approvalScope/approvalPolicy 是**用户选的档位**不是**某一次的结局**；V4ToolStatus 只分得出 approval-requested / approval-responded，把「你说了不要」「你按了停」「你关了窗」「重启前没答完」四件事折成同一个词，而它们的用户文案必须不同（G6-④ 那族的成因）。等待态**故意不在这张表里**：它不是发生了的事，只活在 laneHost 内存与 LaneProjection.pending。",
       "site": "electron/shared/agentLane/laneContracts.ts::variable:LANE_APPROVAL_DECISIONS/as-const"
     },
     {

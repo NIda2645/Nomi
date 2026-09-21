@@ -20,6 +20,7 @@ import { getCreationAiMode } from '../../creation/creationAiModes'
 import { runProposalUndo, getCommittedProposal } from '../../generationCanvas/agent/proposalUndo'
 import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
 import type { PermissionTier } from './agentPanelV4Types'
+import { answerToolResult, type V4QuestionAnswer } from './agentPanelV4Question'
 import { approvalPolicyForTier } from './agentPanelV4Logic'
 import type { AgentPanelV4Data } from './useAgentPanelV4Data'
 import type { LibraryPrompt } from '../../api/promptLibraryApi'
@@ -83,7 +84,18 @@ export type AgentPanelV4Actions = Readonly<{
   reject: (reason?: string) => void
   /** Allow this capability for this lane session; never widens project policy. */
   stopAsking: () => void
-  answerOption: (option: string) => void
+  /**
+   * 回答上面那张反问卡。
+   *
+   * 它以前叫 `answerOption`，做的事是 `setDraft(option)`——**把标签填进下方输入框**。
+   * 那不是提交：卡上没有第二颗按钮能完成这件事，用户点完 chip 只看见自己的话被打了出来，
+   * 而那张卡还在等。定稿⑤ 写的是「选项本身就是回答」，所以这一层现在真的把答案发回去。
+   *
+   * 载体：`laneClient.deny(toolCallId, text)`。lane 的审批协议只有准 / 不准两个答复，
+   * 带话的那一支会把那句话**一字不改**变成模型看到的 tool result（计划卡的「只留这几条」
+   * 走的也是它）。主进程 lane 接上真正的提问工具之后，只需要换掉这里这一行。
+   */
+  answerQuestion: (answer: V4QuestionAnswer) => void
   queueAction: (rowIndex: number, action: string) => void
   queueInterrupt: (rowIndex: number) => void
   newThread: () => void
@@ -102,7 +114,6 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
   const pendingAdmission = React.useRef<{ id: string; address: ReturnType<typeof laneClient.conversation>; dispatched: boolean } | null>(null)
   const selectedLibraryPrompt = useWorkbenchStore((state) => state.selectedLibraryPrompt)
   const setSelectedLibraryPrompt = useWorkbenchStore((state) => state.setSelectedLibraryPrompt)
-  const setDraft = useWorkbenchStore((state) => state.setProjectAgentDraft)
   const approvalPolicy = useWorkbenchStore((state) => state.projectAgentApprovalPolicy)
   const setApprovalPolicy = useWorkbenchStore((state) => state.setProjectAgentApprovalPolicy)
   const owner = laneClient.context()
@@ -236,12 +247,16 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     }
   }, [checked, data.selectedModel, surface, t])
 
-  const answer = (action: 'allow-once' | 'allow-session' | 'deny', reason?: string) => {
+  const answer = (action: 'allow-once' | 'allow-session' | 'deny' | 'answer', reason?: string) => {
     const pending = data.primaryPending
     if (!pending || !visibleAddress) return
-    run(() => checked(action === 'deny' ? laneClient.deny(pending.toolCallId, reason, visibleAddress)
-      : action === 'allow-session' ? laneClient.approveForSession(pending.toolCallId, visibleAddress)
-        : laneClient.approve(pending.toolCallId, visibleAddress)))
+    run(() => checked(
+      // 回答一张提问卡走它自己那条 action：用户做的是「我告诉你」，不是「别做这个」。
+      // 借 deny 送答案的那一版会在转录里留下一条他从没做过的拒绝（`laneClient.answer` 的注释）。
+      action === 'answer' ? laneClient.answer(pending.toolCallId, reason ?? '', visibleAddress)
+        : action === 'deny' ? laneClient.deny(pending.toolCallId, reason, visibleAddress)
+          : action === 'allow-session' ? laneClient.approveForSession(pending.toolCallId, visibleAddress)
+            : laneClient.approve(pending.toolCallId, visibleAddress)))
   }
   const cancelQueued = async (rowIndex: number) => {
     const queued = data.snapshot.active.queues[rowIndex]
@@ -274,7 +289,8 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     approve: () => answer('allow-once'),
     reject: (reason) => answer('deny', reason),
     stopAsking: () => answer('allow-session'),
-    answerOption: (option) => { setDraft(option) },
+    // 一次答复带的是**一张卡上所有题**的答案；今天卡体一次只交一题，所以包成一条。
+    answerQuestion: (value) => answer('answer', answerToolResult([value])),
     queueAction: (index) => run(() => cancelQueued(index)),
     queueInterrupt: (index) => run(() => cancelQueued(index)),
     newThread: () => run(() => checked(laneClient.createLane(newLaneName()))),

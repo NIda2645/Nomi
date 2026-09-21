@@ -117,6 +117,14 @@ export interface LaneClient {
   approveForSession(toolCallId: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 「不要」+ 可选的一句话。那句话会一字不改成为模型看到的 tool result。 */
   deny(toolCallId: string, reason?: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
+  /**
+   * **回答**一张提问卡。`text` 一字不改成为模型看到的 tool result，同一个回合继续。
+   *
+   * 它和 `deny` 分开是因为用户做的不是同一件事：拒绝是「别做这个」，回答是「我告诉你」。
+   * 走同一个 action 的那一版里，转录留下的是一条「用户拒绝了」，面板那一行只能靠嗅 args
+   * 把它读回成「已回答」——两个说法，第二个还得靠猜。空串会被主进程拒收。
+   */
+  answer(toolCallId: string, text: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 停。回值里可能带着用户没送出去的话——调用方**必须**把它放回输入框。 */
   abort(expected?: LaneConversationAddress): Promise<LaneCommandResult>
   loadOlder(): Promise<LaneCommandResult>
@@ -309,6 +317,7 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     approve: (toolCallId: string, expected) => approval(toolCallId, 'allow-once', undefined, expected),
     approveForSession: (toolCallId: string, expected) => approval(toolCallId, 'allow-session', undefined, expected),
     deny: (toolCallId: string, reason?: string, expected?: LaneConversationAddress) => approval(toolCallId, 'deny', reason, expected),
+    answer: (toolCallId: string, text: string, expected?: LaneConversationAddress) => approval(toolCallId, 'answer', text, expected),
     abort: (expected) => send({ kind: 'abort' }, expected),
     loadOlder: () => {
       const before = latest.active.history?.before

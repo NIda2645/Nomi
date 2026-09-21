@@ -455,6 +455,13 @@ export const LANE_APPROVAL_DECISIONS = [
   'granted-session',
   /** 用户点了「不要」，`reason` 是他自己那句话（或默认文案）。 */
   'denied',
+  /**
+   * 用户**回答了一个问题**（`ask_user`、缺参数、熔断转提问三个生产者共用的那张卡）。
+   * `reason` 是他的原话——点了 chip 就是那颗 chip 的标签，自己打字就是他打的那句。
+   * 它和 `denied` 分开，是因为「他说了不要」和「他回答了我」在用户那里是两件事，
+   * 而转录、工具回执与面板那一行都要说对其中的哪一件。
+   */
+  'answered',
   /** 预检就拒了：工作模式不允许、无 UI 可问、或硬清单。用户从没被问过。 */
   'denied-by-policy',
   /** 等待期被打断：按了停、关了窗、切了项目、或重启前没答完。 */
@@ -485,9 +492,29 @@ export function isLaneApprovalNote(value: unknown): value is LaneApprovalNote {
     && typeof note.decision === 'string' && APPROVAL_DECISIONS.has(note.decision)
 }
 
-/** 一条被拒的记录（含策略拒和取消）——面板据此把那一行从「坏了」改成「被拒了」。 */
+/**
+ * 这次调用**批准并且跑了**吗。三个 grant 值，穷举。
+ *
+ * 它是下面那条判据的唯一依据：判「跑没跑」比判「被怎么拒的」少一个自由度——
+ * 拒法会变多（2026-09-21 就多了一个 `answered`），批法不会。
+ */
+export function laneApprovalWasGranted(note: LaneApprovalNote): boolean {
+  return note.decision === 'auto-granted' || note.decision === 'granted-once' || note.decision === 'granted-session'
+}
+
+/**
+ * 一条**没有跑起来**的记录（拒绝、策略拒、取消，以及「用户回答了一个问题」）——
+ * 面板据此把那一行从「坏了」改成它实际是什么。
+ *
+ * **从 grant 那一侧取反，不再手列**（2026-09-21 真机抓到的 bug）：
+ * 这个函数原来是 `denied || denied-by-policy || cancelled` 一张手列的名单。
+ * 那天给审批协议加了第七个结局 `answered`（用户回答了提问卡），名单没跟上——
+ * 于是面板拿不到那条记录，一次**成功的回答**在用户眼里变成了
+ * 「问你一个问题 ⚠ 失败」。typecheck 绿、单测绿、门岗绿：往一张开放名单里加一个成员，
+ * 没有任何东西会说话。取反之后，以后再加任何一个「没跑起来」的结局都自动落对边。
+ */
 export function laneApprovalWasRefused(note: LaneApprovalNote): boolean {
-  return note.decision === 'denied' || note.decision === 'denied-by-policy' || note.decision === 'cancelled'
+  return !laneApprovalWasGranted(note)
 }
 
 /**
@@ -512,8 +539,16 @@ export interface LanePendingApproval {
   readonly pendingCount: number
 }
 
-/** 用户在审批卡上能做的四件事。「停」不在这里——它是 `abort`，停的是整轮不是这一次。 */
-export const LANE_APPROVAL_ACTIONS = ['allow-once', 'allow-session', 'deny'] as const
+/**
+ * 用户在卡上能做的四件事。「停」不在这里——它是 `abort`，停的是整轮不是这一次。
+ *
+ * `answer` 是 2026-09-21 通用反问加进来的第四件，它**不是** `deny` 的别名：
+ * 提问卡上没有「不要」，用户做的是回答，而回答那句话要原样变成这次工具调用的结果。
+ * 在它存在之前，反问只能借 `deny(toolCallId, 答案)` 送出去，于是转录里留下的是一条
+ * 「用户拒绝了」，而渲染层要靠嗅 args 把它读回成「已回答」（`laneViewModel.ts`）——
+ * 同一件事两个说法，第二个说法还得靠猜。
+ */
+export const LANE_APPROVAL_ACTIONS = ['allow-once', 'allow-session', 'deny', 'answer'] as const
 export type LaneApprovalAction = (typeof LANE_APPROVAL_ACTIONS)[number]
 
 /**

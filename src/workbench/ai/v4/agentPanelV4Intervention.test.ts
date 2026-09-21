@@ -5,17 +5,28 @@
 //    抬全局档会让所有同类能力一起放行，那是扩大授权面。
 // ③ 提案内联编辑器删掉后，槽里只剩确认 / 不要 / 不再问 —— 投影层不再产出任何「可编辑」的东西。
 // ④ `missing_param` 渲成槽里的**反问卡**（2026-09-12 改）。它以前「走对话流的提问 + 建议 chip」，
-//    可那条分支从来没有接过线（`missingParamSuggestion` 全仓零调用方），真实后果是宿主 announce
-//    「有一条在等你」而槽里一片空白。现在缺参数就是一句问题 + 几个现成答案 = 反问格本来的形状。
+//    可那条分支从来没有接过线，真实后果是宿主 announce「有一条在等你」而槽里一片空白。
+//    现在缺参数就是一句问题 + 几个现成答案 = 反问格本来的形状，解析与它共用
+//    `agentPanelV4Question.parseQuestionSheet`（2026-09-21 起是这条交互唯一的解析口）。
 import { describe, expect, it } from 'vitest'
 import {
+  askReasonText,
   canStopAskingFor,
   interventionKindOf,
-  missingParamSuggestion,
   planConfirmDecision,
+  questionText,
   projectV4Intervention,
   type V4InterventionLabels,
 } from './agentPanelV4Intervention'
+import {
+  answerToolResult,
+  parseQuestionSheet,
+  questionAnswerFromInput,
+  questionAnswerFromOption,
+  questionAnswerFromOptions,
+  questionOptionCountIssue,
+  type V4QuestionAsk,
+} from './agentPanelV4Question'
 
 const t = (key: string, options?: Record<string, unknown>): string =>
   options ? `${key}(${Object.values(options).join(',')})` : key
@@ -71,7 +82,7 @@ describe('kind 判定', () => {
 
   it('缺凭证与反问各有自己的家，且优先于 effectClass', () => {
     expect(interventionKindOf({ missingCredential: 'kling' }, 'spend', false)).toBe('credential')
-    expect(interventionKindOf({ question: '用什么画幅？' }, 'irreversible', false)).toBe('question')
+    expect(interventionKindOf({ questions: [{ question: '用什么画幅？' }] }, 'irreversible', false)).toBe('question')
   })
 
   it('④ 缺参数进这个槽，渲成反问卡——**永远不返回空**', () => {
@@ -90,7 +101,7 @@ describe('kind 判定', () => {
     // 「announce 了却什么都没画」在这条链上**编译期**就不可能（R28）。这条测试守的是运行期
     // 那一半：别再有哪一支悄悄回 `undefined as unknown as ...`。
     const shapes: readonly Record<string, unknown>[] = [
-      {}, { question: '?' }, { missingParam: 'duration' }, { missingCredential: 'kling' },
+      {}, { questions: [{ question: '?' }] }, { missingParam: 'duration' }, { missingCredential: 'kling' },
     ]
     for (const args of shapes) {
       for (const effectClass of ['spend', 'reversible_local', 'irreversible', undefined] as const) {
@@ -101,24 +112,112 @@ describe('kind 判定', () => {
   })
 })
 
-describe('④ 缺参数那句问题的措辞（现在由反问卡用同一个函数写出来）', () => {
-  it('工具给了 question 就用它的原话，给了 options 就变成建议 chip', () => {
-    const suggestion = missingParamSuggestion(
-      { missingParam: 'aspectRatio', question: '第 2 镜用什么画幅？', options: ['16:9', '9:16'] },
-      t,
-    )
-    expect(suggestion).toEqual({ text: '第 2 镜用什么画幅？', options: ['16:9', '9:16'] })
+describe('④ 缺参数 / 反问共用同一份解析与同一句问句', () => {
+  it('工具给了 question 就用它的原话，选项照模型写的形状带出来（标签 + 说明 + 推荐）', () => {
+    const ask = parseQuestionSheet({
+      missingParam: 'aspectRatio',
+      questions: [{
+        question: '第 2 镜用什么画幅？',
+        options: [
+          { id: 'wide', label: '16:9 横版', description: '适合横屏平台', recommended: true },
+          '9:16 竖版',
+        ],
+      }],
+    })?.questions[0]
+    expect(ask && questionText(ask, t)).toBe('第 2 镜用什么画幅？')
+    expect(ask?.options).toEqual([
+      { id: 'wide', label: '16:9 横版', description: '适合横屏平台', recommended: true },
+      { id: 'option-2', label: '9:16 竖版' },
+    ])
   })
 
   it('没给 question 就把参数名包进一句人话，但**不编具体建议值**', () => {
-    const suggestion = missingParamSuggestion({ missingParam: 'duration' }, t)
-    expect(suggestion?.text).toBe('agentPanelV4.missingParamAsk(duration)')
-    expect(suggestion?.options).toEqual([])
+    const ask = parseQuestionSheet({ missingParam: 'duration' })?.questions[0]
+    expect(ask && questionText(ask, t)).toBe('agentPanelV4.missingParamAsk(duration)')
+    expect(ask?.options).toEqual([])
   })
 
-  it('不是缺参数就返回 undefined', () => {
-    expect(missingParamSuggestion({ question: '只是反问' }, t)).toBeUndefined()
-    expect(missingParamSuggestion(null, t)).toBeUndefined()
+  it('既不是缺参数也不是提问就返回 undefined——它不该占反问格', () => {
+    expect(parseQuestionSheet({ operation: 'append', content: 'x' })).toBeUndefined()
+    expect(parseQuestionSheet(null)).toBeUndefined()
+  })
+
+  it('反问卡的选项**只**来自反问：别的档带了 options 也不渲染成可点的 chip', () => {
+    const slot = projectV4Intervention(
+      { toolName: 'nomi_generate', args: { options: ['a', 'b'] }, effectClass: 'spend', pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(slot.kind).toBe('spend')
+    expect(slot.options).toBeUndefined()
+  })
+
+  it('反问卡**永远**带卡内那一行自由输入，哪怕一个选项都没有', () => {
+    const slot = projectV4Intervention(
+      { toolName: 'ask', args: { questions: [{ question: '要几秒？' }] }, effectClass: undefined, pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(slot.kind).toBe('question')
+    expect(slot.answerPlaceholder).toBe('agentPanelV4.questionAnswerPlaceholder')
+    expect(slot.answerSubmitLabel).toBe('agentPanelV4.questionAnswerSubmit')
+  })
+
+  it('审批 / 付费 / 计划三档没有卡内作答——那个槽的出口是确认 / 不要', () => {
+    const slot = projectV4Intervention(
+      { toolName: 'nomi_generate', args: {}, effectClass: 'spend', pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(slot.answerPlaceholder).toBeUndefined()
+  })
+
+  it('熔断那句话由渲染层按码出，不收生产者拼好的成句字符串（R15）', () => {
+    const sheet = parseQuestionSheet({ questions: [{ question: '这 2 个镜头当什么用？' }], askReason: { code: 'retry_exhausted', attempts: 3 } })
+    expect(sheet && askReasonText(sheet, t)).toBe('agentPanelV4.questionRetryExhausted(3)')
+    const slot = projectV4Intervention(
+      { toolName: 'ask', args: { questions: [{ question: 'x' }], askReason: { code: 'retry_exhausted', attempts: 3 } }, effectClass: undefined, pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(slot.summary).toContain('agentPanelV4.questionRetryExhausted(3)')
+  })
+})
+
+describe('选项数量的判词（拍板：2–4 个）', () => {
+  const askWith = (count: number): V4QuestionAsk =>
+    ({ question: 'q', options: Array.from({ length: count }, (_, index) => ({ id: `o${index}`, label: `o${index}` })) })
+  it('一个都没有 = 只有自由输入的一张卡，合法', () => {
+    expect(questionOptionCountIssue({ question: 'q', options: [] })).toBeUndefined()
+  })
+  it('2–4 个在区间内；1 个太少、5 个太多——但数据一条都不丢', () => {
+    expect(questionOptionCountIssue(askWith(1))).toBe('too-few')
+    expect(questionOptionCountIssue(askWith(2))).toBeUndefined()
+    expect(questionOptionCountIssue(askWith(4))).toBeUndefined()
+    expect(questionOptionCountIssue(askWith(5))).toBe('too-many')
+    expect(parseQuestionSheet({ questions: [{ question: 'q', options: ['a', 'b', 'c', 'd', 'e'] }] })?.questions[0]?.options).toHaveLength(5)
+  })
+})
+
+describe('答案的形状：chip 与卡内那一行走同一个出口', () => {
+  it('点 chip = 提交，答案带 id 也带那几个字（模型只认字）', () => {
+    expect(questionAnswerFromOption({ id: 'wide', label: '16:9 横版' }))
+      .toEqual({ questionIndex: 0, optionIds: ['wide'], text: '16:9 横版' })
+    // 多选那一支：几颗一起提交，`text` 是它们连起来——模型只认字，一串 id 对它等于没答。
+    expect(questionAnswerFromOptions([{ id: 'a', label: '暖调' }, { id: 'b', label: '慢镜' }], 1))
+      .toEqual({ questionIndex: 1, optionIds: ['a', 'b'], text: '暖调、慢镜' })
+    expect(questionAnswerFromOptions([]), '一颗都没选时不成立').toBeUndefined()
+  })
+  it('卡内为空时回车不提交——这条规则是一个函数，因为它有第二个后果（回车也不外泄）', () => {
+    expect(questionAnswerFromInput('   ')).toBeUndefined()
+    expect(questionAnswerFromInput('  竖版吧  ')).toEqual({ questionIndex: 0, text: '竖版吧' })
+  })
+  it('回给模型的是那句话本身，不是我们这边的 id', () => {
+    expect(answerToolResult([{ questionIndex: 0, optionIds: ['wide'], text: '16:9 横版' }])).toBe('16:9 横版')
+    // 一张卡几题时，回给模型的是**按题一行**：它只认字，题号对它没有意义。
+    expect(answerToolResult([
+      { questionIndex: 0, text: '给同事看' }, { questionIndex: 1, text: '30 秒' },
+    ])).toBe('给同事看\n30 秒')
   })
 })
 

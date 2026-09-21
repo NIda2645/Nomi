@@ -21,7 +21,15 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 export type NodeWriteAccess = Readonly<{
   canWrite?: () => boolean
-  /** Structural graph authority is supplied only by the canvas host. */
+  /**
+   * 连边权能 = **改这张图**的授权，只有画布宿主有。
+   *
+   * ⚠️ 它**不是**「我是哪个宿主」的判别式。2026-09-21 之前 `useNodeMentionSource` 就是这么用的：
+   * 付费确认卡里没有 `connectNodes`，于是「这个节点有哪些参考」被当成**边不存在**来算——
+   * 通过连线接进来的首帧 / 参考卡既不在 @ 候选里，也不进参考槽计数；可执行时那些边照样会被
+   * 读进请求体，结果是**卡上显示的参考数量少于真正会发出去的**。那是花钱边界上的信息不实。
+   * 读边和写边是两件事：两个宿主读同一张图，只有改图要授权。
+   */
   connectNodes?: ReturnType<typeof useGenerationCanvasStore.getState>['connectNodes']
   updateNode: (nodeId: string, patch: Partial<GenerationCanvasNode>, options?: CanvasMutationOptions) => void
   /** 这个节点**此刻**的样子。增量 patch 必须基于它合并，不能基于渲染快照 prop。 */

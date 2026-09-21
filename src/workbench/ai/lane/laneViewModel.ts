@@ -1,5 +1,6 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
+import { isModelControlSignal } from './laneToolControlSignals'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -107,6 +108,16 @@ export interface LaneViewModelLabels {
   formatMoney(currency: string, amount: number): string
   /** join 不到领域事实时卡上那句脚注（「任务详情在任务中心」）。 */
   taskUnknown: string
+  /**
+   * 反问答完之后那一行收据的头两个字（「已回答」）。
+   *
+   * 为什么它不是 `toolStatus` 那张表里的一个词：协议上这一次确实是一次 `output-denied`
+   * ——lane 只有准 / 不准两个答复，带话的那一支是今天唯一能把一句话原样送回模型的路
+   * （`laneClient.deny` 的注释）。但**用户没有拒绝任何东西，他回答了一个问题**。
+   * 在状态词表里加第八个词会让 `V4ToolStatus` 偏离它登记在案的外部参照（AI Elements 七态，
+   * `vocabularies-baseline.json:1449`）；而在这里换一句话，说的正是这一行实际发生的事。
+   */
+  answered: string
   /**
    * 技能 key → 用户在技能库里看到的那个名字。
    *
@@ -309,7 +320,24 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
    */
   const turnOf: number[] = []
   const slots = new Map<string, ToolSlot>()
+  /**
+   * 「这次调用没跑起来」的宿主记录，**先扫一遍收齐，再进主循环**。
+   *
+   * 为什么不能边走边收（2026-09-21 真机抓到）：真实转录里这三条是**这个顺序**——
+   * `assistant(toolCall) → toolResult → nomi.ui.approval → assistant`。
+   * 记录是在 `before_tool` 里 append 的，而 pi 把 toolResult 排在它前面。
+   * 边走边收的那一版在读到 toolResult 那一刻 `denials` 还是空的，于是**每一次**
+   * 拒绝/回答都被读成「坏了」——用户刚刚答完一个问题，屏幕上写着「⚠ 失败」。
+   *
+   * 这条 bug 一直在（不是这次改出来的），而单测看不见它：夹具是手写的，
+   * 顺序按「先 note 后 result」摆，那个顺序真实转录里从来不出现。
+   * 收齐之后顺序就不再是判据的一部分——这类 bug 也就没有地方再长出来。
+   */
   const denials = new Map<string, LaneApprovalNote>()
+  for (const part of projection.parts) {
+    if (part.kind !== 'host-note' || part.noteType !== LANE_APPROVAL_NOTE_TYPE) continue
+    if (isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) denials.set(part.data.toolCallId, part.data)
+  }
   /** 这一回合挂着的技能（来自开启这一回合的那条用户消息）。缺席 = 这一轮没挂技能。 */
   const skillOfTurn = new Map<number, string>()
   let turn = 0
@@ -324,15 +352,10 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     }
     previous = part.sequence
 
-    if (part.kind === 'host-note') {
-      // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
-      // tool result（探针 §4.2 臂 B），所以这里只用它把那一行的状态从「坏了」改成
-      // 「被拒了」——同一句话说两遍是在骗用户，让他以为发生了两件事。
-      if (part.noteType === LANE_APPROVAL_NOTE_TYPE && isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) {
-        denials.set(part.data.toolCallId, part.data)
-      }
-      continue
-    }
+    // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
+    // tool result（探针 §4.2 臂 B），所以它只用来把那一行的状态从「坏了」改成它实际是什么
+    // ——同一句话说两遍是在骗用户，让他以为发生了两件事。收集在上面那一趟预扫里。
+    if (part.kind === 'host-note') continue
     if (part.kind === 'error') {
       push({ kind: 'error', reason: part.text })
       continue
@@ -377,12 +400,26 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // 展开体，同一句话就在面板上出现三次——设计实验室 P6 探针把这一格接上真投影时当场红了。
     const { summary: _summary, ...withoutSummary } = existing.receipt
     const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
+    // 2026-09-21：有些 `isError` 是**给模型的控制信号**（「别谎报，用户面前已经有一张卡了」），
+    // 不是用户的失败。判据收在 `laneToolControlSignals.ts` 一处，闭合名单。
+    // 这里把它落回普通完成态：行不红、下面不挂红条、也不算「还没解决」。
+    // 它说的那句话仍然留在行尾摘要里——那是一句陈述，不是一条警告。
+    const controlSignal = part.isError && isModelControlSignal(part.failure?.code)
     items[slot.index] = {
       ...existing,
       kind: 'tool',
       receipt: denial !== undefined
-        ? { ...withoutSummary, status: 'output-denied' }
-        : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError, false),
+        // 反问答完的那一行不说「已拒绝」，因为**协议现在自己说得清**：用户回答走
+        // `answer` 这条 action，落成 `decision: 'answered'`（2026-09-21）。
+        // 这里原来嗅的是 `parseQuestionAsk(slot.args)`——用「这次 args 长得像不像一次提问」
+        // 去倒推「用户刚才做了什么」。那是两个不同的问题，只是今天恰好同真假：
+        // 一张提问卡上用户也可以按停（那是 `cancelled`），而一次 deny 的理由里也可能
+        // 正好带着话。判据换成协议里那个字之后，这一行读的是事实，不是相貌。
+        ? denial.decision === 'answered' && denial.reason
+          ? { ...withoutSummary, status: 'output-denied', answered: true as const,
+              label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
+          : { ...withoutSummary, status: 'output-denied' }
+        : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError && !controlSignal, false),
           ...(failure ? { summary: redactResidentSensitiveText(failure) } : {}),
           ...(!part.isError && part.toolCallId === undoableToolCallId
             && capabilitySupportsUndo(resolveModelToolCapabilityId(slot.toolName, slot.args) ?? slot.toolName, slot.args) ? { undoable: true } : {}),

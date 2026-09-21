@@ -33,8 +33,9 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
   const access = writeAccess ?? inheritedAccess
   const { t } = useTranslation()
   const nodes = useGenerationCanvasStore((state) => state.nodes)
-  const canvasEdges = useGenerationCanvasStore((state) => state.edges)
-  const edges = access.connectNodes ? canvasEdges : []
+  // 边**照读**，两个宿主读的是同一张图：付费确认卡上印的参考数量必须等于真正会发出去的那些
+  // （连线接进来的首帧/参考卡也算）。只有**改**图的权能才归画布宿主（`access.connectNodes`）。
+  const edges = useGenerationCanvasStore((state) => state.edges)
 
   const orderedReferenceUrls = React.useMemo(
     () => currentReferenceUrls(node, nodes, edges),
@@ -51,7 +52,7 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     return buildMentionCandidates({
       target,
       nodes: state.nodes,
-      edges: access.connectNodes ? state.edges : [],
+      edges: state.edges,
       libraryAssets,
       query,
       currentLabel: (index, kind) => t(
@@ -70,6 +71,9 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
       group: candidate.group as 'current' | 'canvas' | 'library',
       ...(candidate.referenceIndex === undefined ? {} : { index: candidate.referenceIndex }),
     }))
+    // 连不了线的宿主不摆「从画布上接一个」这一组：给一个按下去必然做不成的选项比不给更糟。
+    // 已有的引用（`current` 组）照常摆——它们是这次生成真的会发出去的东西。
+    .filter((candidate) => candidate.group !== 'canvas' || Boolean(access.connectNodes))
   }, [libraryAssets, node, t, access])
 
   const onMentionSelect = React.useCallback((item: MentionSuggestionItem): number | null => {
@@ -90,7 +94,10 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     const target = access.latestNode(node.id)
     if (!target) return null
 
-    if (plan.kind === 'connect' && access.connectNodes) {
+    if (plan.kind === 'connect') {
+      // 没有连边权能就明说，别掉进下面那条「当素材库上传处理」的路——那会把一个画布节点
+      // 的 url 塞进上传槽，看起来成了、发出去的却是另一回事。
+      if (!access.connectNodes) { reportFeedback(t('connection.unsupported')); return null }
       const source = store.nodes.find((candidate) => candidate.id === plan.sourceNodeId)
       if (!source) return null
       // 和手动拖把柄同一把闸：收不下就当场说清，不留假引用。
@@ -106,7 +113,7 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     } else {
       // 素材库媒体 → 落进对应参考槽的上传位（与拖文件进卡同一条存储路径）。
       const desiredSlotKind = plan.mediaKind === 'video' ? 'video_ref' : plan.mediaKind === 'audio' ? 'audio_ref' : 'image_ref'
-      const slot = resolveReferenceSlots(target, store.nodes, access.connectNodes ? store.edges : []).find((s) => s.slotKind === desiredSlotKind)
+      const slot = resolveReferenceSlots(target, store.nodes, store.edges).find((s) => s.slotKind === desiredSlotKind)
       if (!slot) { reportFeedback(t('connection.unsupported')); return null }
       if (slot.max !== undefined && slot.fills.length >= slot.max) {
         reportFeedback(t('connection.slotsFull', { max: slot.max }))
@@ -125,7 +132,7 @@ export function useNodeMentionSource(node: GenerationCanvasNode, libraryAssets: 
     const after = useGenerationCanvasStore.getState()
     const afterTarget = access.latestNode(node.id)
     if (!afterTarget) return null
-    const media = currentReferenceMedia(afterTarget, after.nodes, access.connectNodes ? after.edges : [])
+    const media = currentReferenceMedia(afterTarget, after.nodes, after.edges)
     const index = media.find((reference) => reference.url === plan.url && reference.kind === plan.mediaKind)?.index ?? -1
     if (index < 0) {
       // 引用没真落进槽（例如被 placeAt 丢弃）→ 不插 chip，且明着说，别静默。

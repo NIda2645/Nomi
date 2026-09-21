@@ -19,6 +19,7 @@ import { cn } from '../../../utils/cn'
 import {
   ActionIcon,
   IconAlertTriangle,
+  IconArrowUp,
   IconCheck,
   IconChevronRight,
   IconX,
@@ -26,6 +27,7 @@ import {
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
 import { V4OptionChips } from './AgentPanelV4Message'
+import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
 import type {
   InterventionData,
   QueueRowData,
@@ -294,7 +296,7 @@ export function V4Intervention({
   onReject,
   onEscalate,
   onAlternate,
-  onOption,
+  onAnswer,
   onPlanToggle,
   onCollapsePlan,
   planCollapsed = false,
@@ -325,7 +327,11 @@ export function V4Intervention({
   /** 「不再问 →」——**这一个能力**以后不再问，不是整个项目（2026-09-06 拍板 ②）。 */
   onEscalate?: () => void
   onAlternate?: () => void
-  onOption?: (option: string, index: number) => void
+  /**
+   * 用户回答了这个问题。**chip 和卡内那一行回车走同一个动作**（拍板 ⑤：选项本身就是回答）。
+   * 以前这里是 `onOption`，宿主把标签填进下方 composer 就算完——那不是提交，是帮你打字。
+   */
+  onAnswer?: (answer: V4QuestionAnswer) => void
   /**
    * 计划行的勾选。**必填**（R28：能让编译器拦的别留给门岗）——它曾是可选 prop，
    * 宿主一个都没传，于是「不勾就是不做」这句承诺在界面上点不动
@@ -343,6 +349,9 @@ export function V4Intervention({
   // 一上来就摆一个输入框，等于要求用户为每一次拒绝写作文。
   const [rejecting, setRejecting] = React.useState(false)
   const [reason, setReason] = React.useState('')
+  // 卡内自由作答那一行的值。它**不进 store**：这句话还没提交，而 store 里那份 draft 是
+  // 下方 composer 的（两个输入共用一个值就是「我在卡里打字、composer 跟着变」）。
+  const [answer, setAnswer] = React.useState(data.answerDraft ?? '')
   // 「不再问 →」只在**可撤销**的改动上出现（定稿 §3）：不可逆和花钱的永远逐次问。
   //
   // ⚠️ 作用域：它等价于现役 `approvalScope: 'always'`，即「**这一个能力**以后不用再问」，
@@ -406,7 +415,25 @@ export function V4Intervention({
         ) : null)}
         {data.price ? <V4PriceRow price={data.price} /> : null}
         {data.options?.length ? (
-          <V4OptionChips options={data.options} selectedOption={data.selectedOption} onSelect={onOption} />
+          <V4OptionChips
+            options={data.options}
+            selectedOption={data.selectedOption}
+            onSelect={(option) => onAnswer?.(questionAnswerFromOption(option))}
+          />
+        ) : null}
+        {data.answerPlaceholder ? (
+          // 选项之后、卡内最后一行（2026-09-21 用户拍板，参照 Claude Code 提问卡的
+          // 「若干选项之后最后一项是自己说」）。它**永远在**，不看有没有选项——
+          // 一张只有选项的卡等于在说「你只能从这几个里挑」，而模型问的问题常常不是选择题。
+          <V4SlotInput
+            value={answer}
+            placeholder={data.answerPlaceholder}
+            control="question-answer"
+            onChange={setAnswer}
+            onSubmit={(text) => { const parsed = questionAnswerFromInput(text); if (parsed) onAnswer?.(parsed) }}
+            {...(data.answerSubmitLabel ? { submitLabel: data.answerSubmitLabel } : {})}
+            autoFocus
+          />
         ) : null}
         {data.plan?.length && !planCollapsed ? (
           // 清单自己滚：卡壳是 `overflow-hidden`（圆角要它），所以清单不给自己一个滚动容器
@@ -435,16 +462,12 @@ export function V4Intervention({
             ))}
           </div>
         ) : null}
+        {data.rejectConfirmNote && rejecting ? (
+          <p className="m-0 text-caption text-nomi-danger" data-v4-control="reject-confirm-note">{data.rejectConfirmNote}</p>
+        ) : null}
         {data.reasonPlaceholder && (rejecting || data.kind === 'reject-reason') ? (
-          <input
-            type="text"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder={data.reasonPlaceholder}
-            aria-label={data.reasonPlaceholder}
-            data-v4-control="reject-reason"
-            className="h-7 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2 text-caption text-nomi-ink placeholder:text-nomi-ink-40"
-          />
+          // 这一行不自己提交：拒绝要说的那句话由底栏的「确认不要」收尾（渐进披露的第二下）。
+          <V4SlotInput value={reason} placeholder={data.reasonPlaceholder} control="reject-reason" onChange={setReason} />
         ) : null}
         {data.scope ? <p className="m-0 text-micro text-nomi-ink-60">{data.scope}</p> : null}
       </div>
@@ -521,7 +544,7 @@ export function V4Intervention({
                   aria-label={labels.reject}
                   title={labels.reject}
                   className="grid size-[22px] shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-danger"
-                  onClick={() => (data.reasonPlaceholder ? setRejecting(true) : onReject?.())}
+                  onClick={() => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.())}
                   data-v4-control="reject"
                 >
                   <IconX size={14} aria-hidden="true" />
@@ -533,6 +556,80 @@ export function V4Intervention({
         </footer>
       ) : null}
     </aside>
+  )
+}
+
+/**
+ * 槽里那一条输入。**一份长相，两个用处**：拒绝原因（渐进披露出来的那一行）和反问卡里
+ * 用户自己作答的最后一行。
+ *
+ * 两处各写一份的代价已经算过一次了（同一种 chip 两份 className，R14.1 横扫的东西）：
+ * 同一个槽里出现第二种输入写法，改一次圆角就得改两处，而其中一处永远会被忘掉。
+ * 所以自由作答那一行**不是新造的样式**——它就是这一件，只多了右端那颗 ↑。
+ */
+function V4SlotInput({
+  value,
+  placeholder,
+  control,
+  onChange,
+  onSubmit,
+  submitLabel,
+  autoFocus = false,
+}: {
+  value: string
+  placeholder: string
+  control: string
+  onChange: (value: string) => void
+  /** 缺席 = 这一行不自己提交（拒绝原因那一档由底栏的「确认不要」收尾）。 */
+  onSubmit?: (value: string) => void
+  /** 右端那颗 ↑ 的无障碍名。给了才画那颗钮。 */
+  submitLabel?: string
+  autoFocus?: boolean
+}): JSX.Element {
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  // 卡一出现，光标就落在卡内这一行——这一刻在等你的东西只有它（拍板细则）。
+  // 下面的 composer 没被禁用，点一下焦点就过去，卡原样留着。
+  React.useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+  }, [autoFocus])
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+          // **空的时候回车什么都不做**：不提交，也不把这次回车漏给别人。
+          // `preventDefault` 是那条规则的后半句——这一行住在一张卡里，卡又住在面板里，
+          // 不拦住的话这次回车会被外层当成「发出去」，于是要么发出一条空消息、
+          // 要么把上一条草稿误发（拍板细则原话）。
+          event.preventDefault()
+          if (!onSubmit) return
+          const text = value.trim()
+          if (text) onSubmit(text)
+        }}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        data-v4-control={control}
+        className="h-7 min-w-0 flex-1 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2 text-caption text-nomi-ink placeholder:text-nomi-ink-40"
+      />
+      {onSubmit && submitLabel ? (
+        <button
+          type="button"
+          aria-label={submitLabel}
+          title={submitLabel}
+          // ↑ 和回车是**同一个动作**，不是第二个出口——所以它和回车共用同一条空值判据。
+          onClick={() => { const text = value.trim(); if (text) onSubmit(text) }}
+          data-v4-control={`${control}-submit`}
+          className="grid size-7 shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05 disabled:opacity-40"
+          disabled={!value.trim()}
+        >
+          <IconArrowUp size={14} aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
   )
 }
 

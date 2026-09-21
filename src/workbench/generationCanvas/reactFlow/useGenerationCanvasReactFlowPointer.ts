@@ -181,14 +181,20 @@ export function useGenerationCanvasReactFlowPointer({
     panOriginRef.current = null
     const capture = captureRef.current
     captureRef.current = null
-    if (commit && !readOnly && (native?.takeoverAfterWheel || auxiliary)) {
-      const current = nativePanReconciler.flush() ?? flow.getViewport()
+    // 一次平移只有两种收尾：提交 pending 的那一帧，或者丢掉它。**记不记视口不在这两者之列**——
+    // 只要手真的把画布移过了，屏幕上的视口就已经变了，中断不会把它移回去
+    // （`panZoomTakeoverReconciler.cancel()` 只丢还没应用的 delta，不回滚已应用的视口）。
+    // 所以中断路径也必须把**当前真实视口**记下来：只丢不记 = 记住的 ≠ 屏幕上的，
+    // 下次切分类回来、或任何视口同步 effect 跑一次，画布就跳回中断前的位置
+    // （这正是 blur/pointercancel 之后「画布自己弹回去」的成因）。
+    // 不选「中断就回滚」那一版：手一抖画布就弹回原处，比记住当前位置更难用。
+    const panned = !readOnly && Boolean(native?.takeoverAfterWheel || auxiliary)
+    const current = commit && panned ? (nativePanReconciler.flush() ?? flow.getViewport()) : (nativePanReconciler.cancel(), flow.getViewport())
+    if (panned) {
       setLiveViewport(current)
       rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(current))
-    } else {
-      nativePanReconciler.cancel()
-      if (!commit) canvasPanMovedRef.current = false
     }
+    if (!commit) canvasPanMovedRef.current = false
     try { capture?.target.releasePointerCapture(capture.pointerId) } catch { /* capture may already be lost */ }
   }, [activeCategoryId, flow, nativePanReconciler, readOnly, rememberCategoryViewport, setLiveViewport])
   cancelPanRef.current = () => finishPan(false)

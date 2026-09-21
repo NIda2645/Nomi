@@ -23,7 +23,7 @@ import type { PlanAnchor, PlanAnchorKind } from '../../../generationCanvas/agent
 import { ANCHOR_KINDS } from '../../../generationCanvas/agent/storyboardPlanEdits'
 import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
 import StoryboardRowShell from '../shotRow/StoryboardRowShell'
-import { REFERENCE_COLUMN_WIDTH } from '../shotRow/shotReferenceStackGeometry'
+import { referenceColumnWidthOf, useStoryboardRowNarrow } from '../shotRow/storyboardRowDensity'
 import ShotReferenceZone from '../shotRow/ShotReferenceZone'
 import { frameMediaBox, FRAME_COLUMN_WIDTH } from '../shotRow/shotFrameGeometry'
 import { resolveShotArchetypeMode } from '../shotRow/shotRowModel'
@@ -76,6 +76,21 @@ function ActButton({ label, onClick, children }: { label: string; onClick: () =>
     >
       {children}
     </button>
+  )
+}
+
+/**
+ * 纯文字锚没有参考槽，但它仍要**占住参考列**——否则同一张表里两种行的提示词列起点对不齐。
+ * 列宽跟着行的密度档走（窄档 65px），这一格也就跟着收；单独一层只是为了在组件里读到 context。
+ */
+function AnchorTextRefZone({ minHeight }: { minHeight: number }): JSX.Element {
+  const { t } = useTranslation()
+  const narrow = useStoryboardRowNarrow()
+  const text = t('storyboardEditor.anchor.textNoRefs')
+  return (
+    <div className="flex shrink-0 items-start" style={{ width: referenceColumnWidthOf(narrow), minHeight }} data-storyboard-refzone="anchor-text">
+      <span className={cn('text-micro leading-relaxed text-nomi-ink-30', narrow && 'line-clamp-3')} title={text}>{text}</span>
+    </div>
   )
 }
 
@@ -255,9 +270,7 @@ export default function StoryboardAnchorRow({
             mentionEnabled={false}
           />
         ) : (
-          <div className="flex shrink-0 items-start" style={{ width: REFERENCE_COLUMN_WIDTH, minHeight: box.height }} data-storyboard-refzone="anchor-text">
-            <span className="text-micro leading-relaxed text-nomi-ink-30">{t('storyboardEditor.anchor.textNoRefs')}</span>
-          </div>
+          <AnchorTextRefZone minHeight={box.height} />
         )
       }
       prompt={

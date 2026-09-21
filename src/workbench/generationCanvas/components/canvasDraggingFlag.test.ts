@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { beginCanvasDragging, CANVAS_DRAGGING_ATTRIBUTE, CANVAS_DRAGGING_OWNER } from './canvasDraggingFlag'
+import { beginCanvasDragging, cancelCanvasDraggingWithin, CANVAS_DRAGGING_ATTRIBUTE, CANVAS_DRAGGING_OWNER } from './canvasDraggingFlag'
 
 function stage() {
   const attrs = new Map<string, string>()
   const element = { isConnected: true, parentElement: null, closest: () => element,
+    contains: (other: unknown) => other === element,
     hasAttribute: (key: string) => attrs.has(key), getAttribute: (key: string) => attrs.get(key),
     setAttribute: (key: string, value: string) => attrs.set(key, value), removeAttribute: (key: string) => attrs.delete(key),
   } as unknown as Element
   return element
+}
+/** 一个「工作区槽位」：装着若干 stage，自己不是 stage。 */
+function slot(...children: Element[]) {
+  return { contains: (other: unknown) => children.includes(other as Element) } as unknown as Element
 }
 beforeEach(() => {
   vi.stubGlobal('window', new EventTarget())
@@ -40,6 +45,79 @@ describe('canvas gesture ownership', () => {
     window.dispatchEvent(Object.assign(new Event(name), { pointerId: 4 })); window.dispatchEvent(Object.assign(new Event(name), { pointerId: 4 }))
     expect(cancel).toHaveBeenCalledTimes(1)
     expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+  })
+  it('a deferred lease only takes the stage once it is activated', () => {
+    // 跨过拖拽阈值才升旗（点一下空白不许写属性 → 不让整棵 stage 子树重算样式）。
+    const a = stage()
+    const lease = beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.node, { active: false })
+    expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+    lease.activate()
+    expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(true)
+    lease.release()
+    // 已经结束的租约再 activate 不许把旗重新升起来。
+    lease.activate()
+    expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+  })
+  it('a hidden tab cancels the gesture', () => {
+    const a = stage(); const cancel = vi.fn()
+    beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.viewport, { onCancel: cancel })
+    Object.assign(document, { hidden: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+  })
+  it('descendant focus changes are not a window blur', () => {
+    // capture 也看得见后代的 blur；只有 window 自己失焦才算手势被打断。
+    const a = stage(); const cancel = vi.fn()
+    beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.node, { onCancel: cancel })
+    const descendant = new EventTarget()
+    const event = new Event('blur')
+    Object.defineProperty(event, 'target', { value: descendant })
+    window.dispatchEvent(event)
+    expect(cancel).not.toHaveBeenCalled()
+    expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(true)
+    window.dispatchEvent(new Event('blur'))
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+  it('release makes a later cancel a no-op', () => {
+    const a = stage(); const cancel = vi.fn()
+    const lease = beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.node, { onCancel: cancel })
+    lease.release()
+    lease.cancel()
+    expect(cancel).not.toHaveBeenCalled()
+  })
+  // 2026-09-21：宿主隐藏/卸载走的那条路。它取代了原来「给每次手势装一个扫祖先链的
+  // MutationObserver」——那条回调在 React Flow 拖动时每帧触发、每帧一轮 getComputedStyle。
+  describe('host-driven cancellation (workspace slot hidden or unmounted)', () => {
+    it('cancels only the gestures inside that container', () => {
+      const a = stage(); const b = stage()
+      const cancelA = vi.fn(); const cancelB = vi.fn()
+      beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.node, { onCancel: cancelA })
+      const other = beginCanvasDragging(b, CANVAS_DRAGGING_OWNER.node, { onCancel: cancelB })
+      cancelCanvasDraggingWithin(slot(a))
+      expect(cancelA).toHaveBeenCalledTimes(1)
+      expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+      expect(cancelB).not.toHaveBeenCalled()
+      expect(b.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(true)
+      other.release()
+    })
+    it('is a no-op without a container, and never touches a finished gesture', () => {
+      const a = stage(); const cancel = vi.fn()
+      const lease = beginCanvasDragging(a, CANVAS_DRAGGING_OWNER.node, { onCancel: cancel })
+      cancelCanvasDraggingWithin(null)
+      expect(cancel).not.toHaveBeenCalled()
+      lease.release()
+      cancelCanvasDraggingWithin(slot(a))
+      expect(cancel).not.toHaveBeenCalled()
+    })
+    it('finds the gesture through its stage when the origin is a descendant', () => {
+      const a = stage(); const cancel = vi.fn()
+      const origin = { closest: () => a } as unknown as Element
+      beginCanvasDragging(origin, CANVAS_DRAGGING_OWNER.selection, { onCancel: cancel })
+      cancelCanvasDraggingWithin(slot(a))
+      expect(cancel).toHaveBeenCalledTimes(1)
+      expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+    })
   })
   it('pointer cancellation only releases the matching gesture', () => {
     const a = stage(); const b = stage()

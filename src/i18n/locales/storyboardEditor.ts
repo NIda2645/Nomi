@@ -228,6 +228,9 @@ export const zhStoryboardEditor = {
     anchorDescription: '设定：{{text}}',
     ignorePlaceholder: '这次别跟它的哪些特征（如：背景霓虹）',
     ignoreAria: '这一次引用 {{name}} 时要忽略的特征',
+    moreAria: '还有 {{count}} 个参考槽，点开看全部',
+    moreTitle: '这一镜共 {{total}} 个参考槽，编辑器窄的时候只露第一个——点开看全部',
+    collapseAria: '收起其余参考槽',
   },
   rowMenu: {
     insertAbove: '上方插入',
@@ -588,6 +591,9 @@ export const enStoryboardEditor = {
     anchorDescription: 'Setting: {{text}}',
     ignorePlaceholder: 'What not to copy this time (e.g. the neon background)',
     ignoreAria: 'Features to ignore when referencing {{name}} this time',
+    moreAria: '{{count}} more reference slots — open to see them all',
+    moreTitle: 'This shot has {{total}} reference slots. Only the first one fits while the editor is narrow — open to see them all',
+    collapseAria: 'Collapse the other reference slots',
   },
   rowMenu: {
     insertAbove: 'Insert Above',

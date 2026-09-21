@@ -1,7 +1,11 @@
 import React from 'react'
 import { cn } from '../../../../utils/cn'
-import { FRAME_COLUMN_WIDTH } from './shotFrameGeometry'
-import { REFERENCE_COLUMN_WIDTH } from './shotReferenceStackGeometry'
+import {
+  StoryboardRowNarrowContext,
+  storyboardRowGridTemplate,
+  storyboardRowIsNarrow,
+} from './storyboardRowDensity'
+import { useElementWidth } from './useElementWidth'
 
 /**
  * 行解剖的**唯一实现**（合同 v6 §2.2/§2.3）：`[14px grip | 画面格 | 参考列 | 1fr 提示词块]`。
@@ -16,6 +20,11 @@ import { REFERENCE_COLUMN_WIDTH } from './shotReferenceStackGeometry'
  * 落点线、拖拽区都只有一个 owner。
  *
  * 阅读顺序固定：**画面格（要生成的）→ 参考列（拿来参考的）→ 提示词块（怎么描述）**。
+ *
+ * 2026-09-21 起这一层还多干一件事：**量自己有多宽，定这一行走宽档还是窄档**
+ * （样张 v1，判据与到期条件都在 `storyboardRowDensity.ts`）。量在这里是因为网格的 owner 在这里——
+ * 参考列宽和列模板必须同时换，换成两处就是又一份「同一语义两份定义」。
+ * **T-DS-01 · A-2 落地时把窄档整个收回。**
  */
 
 type Props = {
@@ -35,10 +44,6 @@ type Props = {
   'onClick' | 'onKeyDown' | 'onDragOver' | 'onDrop' | 'tabIndex'
 >
 
-/** 行网格模板（镜头行与锚展开行共用同一份；两处固定列宽都是 derive 出来的）。 */
-export const STORYBOARD_ROW_GRID_TEMPLATE =
-  `14px ${FRAME_COLUMN_WIDTH}px ${REFERENCE_COLUMN_WIDTH}px minmax(0,1fr)`
-
 export default function StoryboardRowShell({
   grip,
   frame,
@@ -50,19 +55,27 @@ export default function StoryboardRowShell({
   dataAttributes,
   ...handlers
 }: Props): JSX.Element {
+  const rowRef = React.useRef<HTMLDivElement | null>(null)
+  // 量的是外框（宽度由编辑器那条 `grid-cols-1` 给），不是内容——所以改列模板不会反过来改它，
+  // 没有测量—布局的回环。首帧 `null` = 还没量到，按宽档（今天的样子）渲染，不闪。
+  const narrow = storyboardRowIsNarrow(useElementWidth(rowRef))
   return (
-    <div
-      {...handlers}
-      {...dataAttributes}
-      className={cn('relative grid items-start gap-3 bg-nomi-paper py-3 pl-1.5 pr-3', className)}
-      style={{ gridTemplateColumns: STORYBOARD_ROW_GRID_TEMPLATE }}
-    >
-      {dropIndicator ? <div className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-nomi-accent" aria-hidden /> : null}
-      <div className="relative self-start justify-self-center text-nomi-ink-20">{grip}</div>
-      <div className="min-w-0">{frame}</div>
-      {references}
-      <div className="flex min-w-0 flex-col gap-1.5">{prompt}</div>
-      {footer ? <div className="col-start-2 col-span-3">{footer}</div> : null}
-    </div>
+    <StoryboardRowNarrowContext.Provider value={narrow}>
+      <div
+        {...handlers}
+        {...dataAttributes}
+        ref={rowRef}
+        data-storyboard-row-density={narrow ? 'narrow' : 'wide'}
+        className={cn('relative grid items-start gap-3 bg-nomi-paper py-3 pl-1.5 pr-3', className)}
+        style={{ gridTemplateColumns: storyboardRowGridTemplate(narrow) }}
+      >
+        {dropIndicator ? <div className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-nomi-accent" aria-hidden /> : null}
+        <div className="relative self-start justify-self-center text-nomi-ink-20">{grip}</div>
+        <div className="min-w-0">{frame}</div>
+        {references}
+        <div className="flex min-w-0 flex-col gap-1.5">{prompt}</div>
+        {footer ? <div className="col-start-2 col-span-3">{footer}</div> : null}
+      </div>
+    </StoryboardRowNarrowContext.Provider>
   )
 }

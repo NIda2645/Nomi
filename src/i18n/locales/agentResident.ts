@@ -31,6 +31,7 @@ export const zhAgentResident = {
   toolModelSetup: '打开模型设置',
   toolModelRemove: '永久删除模型连接',
   toolModelTry: '试跑这个模型（会花钱）',
+  toolAsk: '问你一个问题',
   toolJobCancel: '停止任务',
   toolLayoutRead: '读取画布排布',
   toolLayoutWrite: '调整画布排布',
@@ -50,7 +51,6 @@ export const zhAgentResident = {
   // 校验回执翻成人话：哪个字段、要什么、给了什么（2026-09-06 真机走查）
   issueRoot: '参数',
   issueType: '{{field}}：期望 {{expected}}，收到 {{received}}',
-  issueMessage: '{{field}}：{{message}}',
   // 散文体回执（pi 的 `Validation failed for tool "x": - nodes: Expected array`）只给「期望什么」，没有「收到什么」
   issueExpected: '{{field}}：期望 {{expected}}',
   issueRequired: '{{field}}：缺少必填字段',
@@ -185,6 +185,7 @@ export const enAgentResident = {
   toolModelSetup: 'Open model settings',
   toolModelRemove: 'Permanently delete a model connection',
   toolModelTry: 'Try this model once (spends credit)',
+  toolAsk: 'Ask you a question',
   toolJobCancel: 'Stop a job',
   toolLayoutRead: 'Read canvas layout',
   toolLayoutWrite: 'Rearrange the canvas',
@@ -202,7 +203,6 @@ export const enAgentResident = {
   toolArtifactCount: '{{count}} artifact(s)',
   issueRoot: 'arguments',
   issueType: '{{field}}: expected {{expected}}, received {{received}}',
-  issueMessage: '{{field}}: {{message}}',
   issueExpected: '{{field}}: expected {{expected}}',
   issueRequired: '{{field}}: required field is missing',
   issueInvalidArgs: 'Invalid arguments',

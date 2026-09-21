@@ -22,10 +22,11 @@ import { cn } from '../../../utils/cn'
 import { AgentPanelV4Composer, type AgentPanelV4ComposerProps } from './AgentPanelV4Composer'
 import { V4ContextRing } from './AgentPanelV4Context'
 import { V4Intervention, V4Queue, V4TaskCard } from './AgentPanelV4Cards'
-import { V4AssistantMessage, V4Suggestion, V4Thinking, V4UserBubble } from './AgentPanelV4Message'
+import { V4AssistantMessage, V4Thinking, V4UserBubble } from './AgentPanelV4Message'
 import { V4ErrorBar, V4Process, V4ToolGroup, V4ToolReceipt } from './AgentPanelV4Receipt'
 import { V4EmptyState } from './AgentPanelV4Empty'
 import { IconHistory, IconLayoutSidebarRightCollapse } from './AgentPanelV4Icons'
+import type { V4QuestionAnswer } from './agentPanelV4Question'
 import { useV4Labels } from './agentPanelV4Labels'
 import type { V4FlowScrollMemoryBox } from './agentPanelV4ScrollMemory'
 import type { ResidentSurface } from '../resident/residentShellDisplay'
@@ -52,7 +53,6 @@ export type V4FlowHandlers = Readonly<{
   onErrorAction?: (index: number) => void
   /** 失败行上的「反馈」。宿主接了才画那颗钮（#789 的规矩：画出来的必须接得上）。 */
   onFeedback?: (index: number, reason: string) => void
-  onSuggestion?: (index: number, option: string) => void
 }>
 
 export type V4InterventionHandlers = Readonly<{
@@ -64,7 +64,8 @@ export type V4InterventionHandlers = Readonly<{
   onReject?: (reason?: string) => void
   onEscalate?: () => void
   onAlternate?: () => void
-  onOption?: (option: string, index: number) => void
+  /** 用户答了反问（chip 或卡内那一行，同一个动作）。 */
+  onAnswer?: (answer: V4QuestionAnswer) => void
   /** 计划行勾选 / 收起。**必填**——见 `V4Intervention` 里那段注释（R28）。 */
   onPlanToggle: (label: string, checked: boolean) => void
   onCollapsePlan: () => void
@@ -160,15 +161,6 @@ export function V4FlowRow({
     )
   }
   if (item.kind === 'thinking') return <V4Thinking label={item.label} meta={item.meta} text={item.text} streaming={item.streaming} />
-  if (item.kind === 'suggestion') {
-    return (
-      <V4Suggestion
-        text={item.text}
-        options={item.options}
-        onSelect={(option) => handlers?.onSuggestion?.(at, option)}
-      />
-    )
-  }
   if (item.kind === 'tool') {
     return (
       <V4ToolReceipt

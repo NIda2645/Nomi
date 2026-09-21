@@ -150,6 +150,55 @@ describe('laneViewModel', () => {
     expect(item.receipt.output).not.toContain('could not accept this action')
   })
 
+  /**
+   * 2026-09-21：有些 `isError` 是**给模型的控制信号**，不是用户的失败。
+   *
+   * `generate` 之后宿主把一张付费确认卡摆到了用户面前，于是工具用 `isError` 让模型停下来别谎报
+   * （抄 GitHub MCP 的做法，对模型是对的）。但它一路走到面板上就成了一条**红色危险条**——
+   * 而用户屏幕上那一刻正躺着那张卡。把预期结果画成危险，实测一个回合里出现 3 次。
+   */
+  it('控制信号不画成失败：付费卡那一条落回普通完成态', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c11', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c11', toolName: 'make_artifact', isError: true,
+        text: 'Stop. The user sees a priced confirmation card.',
+        failure: { code: 'user_sees_spend_card' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.status).toBe('output-available')
+    // 它说的那句话仍然留着——那是一句陈述（「已经给你一张卡了」），不是一条警告。
+    expect(item.receipt.summary).toBe('agentToolFailure.user_sees_spend_card')
+    expect(item.receipt.output).not.toContain('Stop.')
+  })
+
+  /** 阳性对照：同一条路上的**真**失败照旧是失败，名单是闭合的，不是「看着不严重就放行」。 */
+  it('控制信号名单是闭合的：别的失败码照旧红', () => {
+    const translate = (key: string) => key
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c12', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c12', toolName: 'make_artifact', isError: true,
+        text: 'boom', failure: { code: 'tool_execution_failed' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.status).toBe('output-error')
+  })
+
   it('C5：码不在闭合集合里也说本地话，把码带出来给排查用——不退回模型正文', () => {
     const translate = (key: string, options?: Record<string, unknown>) =>
       (options ? `${key}(${Object.values(options).join(',')})` : key)
@@ -362,10 +411,11 @@ describe('laneViewModel', () => {
   it('separates a policy denial from a broken tool — they are two different sentences', () => {
     next = 0
     const model = laneViewModel(projection([
-      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
-        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
+      // 同上：记录排在 toolResult **后面**，这是真实转录的顺序。
       part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'append_to_end', args: { content: 'x' }, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'append_to_end', text: 'The document is locked.', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
       part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'read_full_text', args: {}, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'read_full_text', text: 'boom', isError: true }),
     ]), labels)
@@ -376,6 +426,29 @@ describe('laneViewModel', () => {
     const broken = model.items[1]
     expect(denied.kind === 'tool' && denied.receipt.status).toBe('output-denied')
     expect(broken.kind === 'tool' && broken.receipt.status).toBe('output-error')
+  })
+
+  // 2026-09-21 真机抓到的：用户点了 chip 把问题答了，而那一行写着「问你一个问题 ⚠ 失败」。
+  // 协议上那次确实是 `allow:false`（没有东西要执行），面板把「没跑」读成了「坏了」。
+  it('答完一张提问卡的那一行读作「已回答 · 他的原话」，不是「失败」', () => {
+    next = 0
+    const model = laneViewModel(projection([
+      // **顺序照真实转录摆**：记录是在 `before_tool` 里 append 的，而 pi 把 toolResult
+      // 排在它前面（2026-09-21 从真机 transcript 读出来的：assistant → toolResult →
+      // nomi.ui.approval → assistant）。以前的夹具按「先 note 后 result」摆，
+      // 那个顺序真实转录里从来不出现——于是单测全绿而真机上每一次都读成「失败」。
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'ask_user',
+        args: { questions: [{ question: '要删哪一个？' }] }, running: false }),
+      // pi 那一侧这次调用是 `isError`——它没有跑。用户那一侧发生的却是「他回答了」。
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'ask_user', text: '镜 2 · 推门', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'ask_user', decision: 'answered', reason: '镜 2 · 推门' } }),
+    ]), labels)
+    const answered = model.items[0]
+    expect(answered.kind === 'tool' && answered.receipt.status).toBe('output-denied')
+    expect(answered.kind === 'tool' && answered.receipt.answered).toBe(true)
+    expect(answered.kind === 'tool' && answered.receipt.label).toBe(labels.answered)
+    expect(answered.kind === 'tool' && answered.receipt.summary).toBe('镜 2 · 推门')
   })
 
   it('does not turn a host note into a second bubble saying the same thing twice', () => {

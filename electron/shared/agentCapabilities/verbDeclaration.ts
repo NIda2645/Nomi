@@ -51,6 +51,8 @@ export const VERB_NEXT_ACTIONS = [
   "user_sees_review_card",
   "user_sees_confirm_card",
   "user_sees_panel",
+  /** 用户看到一张**提问卡**，这次调用的结果就是他的回答。见 `askUser.ts`。 */
+  "user_sees_question_card",
   "job_running",
 ] as const;
 export type VerbNextAction = (typeof VERB_NEXT_ACTIONS)[number];
@@ -143,6 +145,7 @@ export interface VerbDeclaration {
 const CONSEQUENCE_BY: Readonly<Record<VerbEffect, Partial<Record<VerbNextAction, string>>>> = Object.freeze({
   read: Object.freeze({
     none: "Nothing changes; it only reads.",
+    user_sees_question_card: "Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
   }),
   reversible_local: Object.freeze({
     none: "The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
@@ -340,8 +343,24 @@ function assertOneEffect(
   if (!VERB_NEXT_ACTIONS.includes(declaration.nextAction)) {
     throw new Error(`Verb ${declaration.name} declares nextAction "${String(declaration.nextAction)}"`);
   }
-  if (declaration.effect === "read" && declaration.nextAction !== "none") {
+  // 读动词原则上什么都不给用户看——它读完就回话。**唯一的例外是提问**：一次提问
+  // 同样一个字节都不改，可它的全部内容就是让用户看见一张卡并回答。这条例外**不是放宽**：
+  // 想用 `user_sees_question_card` 的动词，它的契约必须自己声明 `alwaysAsksUser`
+  // （那条声明同时让审批闸永不替用户自动答，`capabilityIsHardGated` ⑥），
+  // 所以第二个动词没法靠改一行说明书就自称「我也在问」。
+  if (declaration.nextAction === "user_sees_question_card" && !contract.alwaysAsksUser) {
+    throw new Error(
+      `Verb ${declaration.name} promises a question card but its capability ${contract.id} does not declare alwaysAsksUser, `
+      + "so nothing stops an approval tier from answering for the user.",
+    );
+  }
+  if (declaration.effect === "read" && declaration.nextAction !== "none" && declaration.nextAction !== "user_sees_question_card") {
     throw new Error(`Verb ${declaration.name} is read-only but promises the user will see "${declaration.nextAction}".`);
+  }
+  if (declaration.nextAction !== "user_sees_question_card" && contract.alwaysAsksUser) {
+    throw new Error(
+      `Capability ${contract.id} always asks the user, but verb ${declaration.name} promises "${declaration.nextAction}" instead of a question card.`,
+    );
   }
   verbConsequence(declaration.effect, declaration.nextAction);
   const expected = verbEffectExpectedByContract(contract);

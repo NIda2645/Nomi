@@ -152,10 +152,17 @@ export function GenerationCanvasReactFlowViewport({
   onClearSelection,
   isNodeDragging,
 }: GenerationCanvasReactFlowViewportProps): JSX.Element {
-  const viewportCancelledRef = React.useRef(false)
+  // 这次视口手势**属于哪个分类**（在 moveStart 那一刻钉住）。
+  //
+  // 2026-09-21：这里原来是一个 `viewportCancelledRef`，被中断时置 true，然后让 `onMoveEnd`
+  // **整段 return**——连 NaN 守卫和 `rememberCategoryViewport` 一起跳过。于是「屏幕上的视口」
+  // 和「记住的视口」分家：中断不会把画布移回去，但没人把它记下来，下一次视口同步 effect
+  // 一跑就跳回中断前的位置（同一个病在 useGenerationCanvasReactFlowPointer 的 finishPan 里也犯过一次）。
+  // 它真正要防的其实只有一件事：**别把这次手势的视口记到另一个分类头上**。
+  // 那就记住分类本身，而不是整段不记。moveStart 缺席（例如 fitView 的过渡）时回落到当前分类。
+  const viewportGestureCategoryRef = React.useRef<string | null>(null)
   const viewportLeaseRef = React.useRef<CanvasDragLease | null>(null)
   React.useEffect(() => () => {
-    if (viewportLeaseRef.current) viewportCancelledRef.current = true
     viewportLeaseRef.current?.release()
     viewportLeaseRef.current = null
     canvasPanMovedRef.current = false
@@ -231,14 +238,13 @@ export function GenerationCanvasReactFlowViewport({
       onConnectStart={onConnectStart}
       onConnectEnd={onConnectEnd}
       onMoveStart={() => {
-        viewportCancelledRef.current = false
+        viewportGestureCategoryRef.current = activeCategoryId
         if (!canvasPointerStartRef.current) canvasPanMovedRef.current = false
       }}
       onMove={() => {
         if (!canvasPanMovedRef.current) return
         viewportLeaseRef.current ??= beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowViewport, { onCancel: () => {
           viewportLeaseRef.current = null
-          viewportCancelledRef.current = true
           canvasPanMovedRef.current = false
         } })
       }}
@@ -246,7 +252,6 @@ export function GenerationCanvasReactFlowViewport({
         viewportLeaseRef.current?.release()
         viewportLeaseRef.current = null
         canvasPanMovedRef.current = false
-        if (viewportCancelledRef.current) return
         if (!isFiniteFlowViewport(nextViewport)) {
           // React Flow 自己的 d3 过渡撞上 0×0 的 extent 缓存会吐出 NaN 视口（见 GenerationCanvasReactFlow
           // 的 animateViewportTo 头注释）。NaN 一旦被记进分类视口，同步 effect 会把它写回去，画布永久空白。
@@ -255,7 +260,9 @@ export function GenerationCanvasReactFlowViewport({
           return
         }
         setLiveViewport(nextViewport)
-        rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(nextViewport))
+        // 记到**这次手势开始时那个分类**头上：被中断、或收尾正好落在切分类之后，都不许写到别人账上。
+        rememberCategoryViewport(viewportGestureCategoryRef.current ?? activeCategoryId, canvasViewportFromFlow(nextViewport))
+        viewportGestureCategoryRef.current = null
       }}
       proOptions={{ hideAttribution: true }}
     >

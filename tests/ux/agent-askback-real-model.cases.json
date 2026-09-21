@@ -1,0 +1,25 @@
+{
+  "$comment": "「模型该不该先问一句」的 18 句真实说法（R13 第三档：Agent/工具/提示词改动要报真实模型数字）。前 16 句与 2026-09-21 那次「反问卡触发 0/16」的实测（scratchpad/investigate-askback.md §3）**逐字相同**，这样修复前后的数字直接可比——换一批句子再报一个好看的数字是自欺。后 2 句（A11/A12）是任务书要求的另外两种问法（参考图不明 / 风格冲突），它们没有修复前的对照，独立记。句子按真实用户的说法写，不是按界面面排 case。",
+  "script": "深夜十一点，招牌灯还亮着。\n她把牛骨汤从锅里舀进碗，热气糊住镜头，面条一根根落下去，最后撒一把葱花。\n她端着碗坐下，吸溜第一口。",
+  "$expect": "shouldAsk=true 表示「这句话该先问一句再动手」；false 表示「有合理默认，该直接做」。judge 只看机器可判的东西：这一轮有没有调 ask_user。",
+  "cases": [
+    { "id": "A1", "surface": "creation", "shouldAsk": true, "kind": "缺关键信息", "text": "帮我做个视频" },
+    { "id": "A2", "surface": "creation", "shouldAsk": true, "kind": "二义（改哪个面）", "text": "把这个改好看点" },
+    { "id": "A3", "surface": "creation", "shouldAsk": true, "kind": "花钱前确认范围", "text": "生成一下" },
+    { "id": "A9", "surface": "creation", "shouldAsk": true, "kind": "多方案取舍", "text": "把开头改一下" },
+    { "id": "A4", "surface": "canvas", "shouldAsk": true, "kind": "指代不清", "text": "把那个删了" },
+    { "id": "A5", "surface": "canvas", "shouldAsk": true, "kind": "花钱前确认范围", "text": "帮我把这些都生成了" },
+    { "id": "A6", "surface": "canvas", "shouldAsk": true, "kind": "缺关键信息", "text": "加个镜头" },
+    { "id": "A7", "surface": "canvas", "shouldAsk": true, "kind": "指代不清", "text": "改成竖的" },
+    { "id": "A8", "surface": "canvas", "shouldAsk": true, "kind": "多方案取舍", "text": "换个模型重做" },
+    { "id": "A10", "surface": "canvas", "shouldAsk": true, "kind": "多方案取舍", "text": "帮我导出" },
+    { "id": "N1", "surface": "creation", "shouldAsk": false, "kind": "完全清楚", "text": "读一遍我的文稿，告诉我哪一段最长" },
+    { "id": "N2", "surface": "creation", "shouldAsk": false, "kind": "完全清楚", "text": "在文稿最后加一句「灯灭了」" },
+    { "id": "N6", "surface": "creation", "shouldAsk": false, "kind": "完全清楚", "text": "把文稿里所有的「碗」都换成「大碗」" },
+    { "id": "N3", "surface": "canvas", "shouldAsk": false, "kind": "完全清楚", "text": "画布上现在有几个节点？" },
+    { "id": "N4", "surface": "canvas", "shouldAsk": false, "kind": "完全清楚", "text": "镜头 2 是什么内容？" },
+    { "id": "N5", "surface": "canvas", "shouldAsk": false, "kind": "完全清楚", "text": "列一下现在能用的视频模型" },
+    { "id": "A11", "surface": "canvas", "shouldAsk": true, "kind": "参考图不明", "text": "用素材库那张图做参考，排两个镜头" },
+    { "id": "A12", "surface": "canvas", "shouldAsk": true, "kind": "风格冲突", "text": "我要赛博朋克的冷调，但要拍得像九十年代港片那种暖胶片感" }
+  ]
+}

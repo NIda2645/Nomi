@@ -99,6 +99,14 @@ export type AgentPanelV4ComposerProps = {
   dock?: boolean
   skillSelected?: boolean
   focused?: boolean
+  /**
+   * 上面那张反问卡正在等答案（2026-09-21 用户拍板：「有问题待答时下方 composer 降一档」）。
+   *
+   * **降一档不是禁用**：框变淡、占位改成「先回答上面的问题，或继续说别的」，但它照常能用
+   * ——用户本来就可以不理那个问题、先说别的。禁用会把「这一刻该答上面那张卡」变成
+   * 「你现在什么都不能说」，而那不是真的。
+   */
+  awaitingAnswer?: boolean
   /** 输入框本体。容器要能把光标交给它（空态起手 chip 填完那句话就聚焦）。 */
   inputRef?: React.Ref<HTMLTextAreaElement>
 }
@@ -122,6 +130,7 @@ export function AgentPanelV4Composer({
   dock = false,
   skillSelected = false,
   focused = false,
+  awaitingAnswer = false,
   inputRef,
 }: AgentPanelV4ComposerProps): JSX.Element {
   const { t } = useTranslation()
@@ -170,6 +179,8 @@ export function AgentPanelV4Composer({
     <form
       className={cn(
         'relative flex shrink-0 flex-col overflow-visible rounded-nomi border border-nomi-line bg-nomi-paper',
+        // 降一档只改**注意力**，不改能力：边框与文字淡下去，聚焦（用户真的点进来了）就复原。
+        awaitingAnswer && !focused && 'border-nomi-line-soft opacity-60',
         focused && 'border-nomi-accent shadow-[0_0_0_3px_var(--nomi-accent-soft)]',
         running && 'shadow-[0_0_0_1px_var(--nomi-accent-soft)]',
         dock && 'shadow-nomi-lg',
@@ -183,6 +194,7 @@ export function AgentPanelV4Composer({
       data-mode={mode}
       data-height={height}
       data-permission={permission}
+      data-awaiting-answer={awaitingAnswer ? 'true' : undefined}
       data-approval-mode={policy.mode}
       data-spend-policy={policy.spend}
     >
@@ -226,7 +238,9 @@ export function AgentPanelV4Composer({
             if (canSend) onSubmit?.(event.altKey ? 'secondary' : 'primary')
           }
         }}
-        placeholder={running ? t('agentPanelV4.placeholderRunning') : t('agentPanelV4.placeholder')}
+        placeholder={awaitingAnswer
+          ? t('agentPanelV4.placeholderAwaitingAnswer')
+          : running ? t('agentPanelV4.placeholderRunning') : t('agentPanelV4.placeholder')}
         aria-label={t('agentPanelV4.message')}
         rows={1}
         data-v4-control="input"

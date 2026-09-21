@@ -268,15 +268,96 @@ function buildFixtures(t: TFunction) {
       confirmLabel: t('agentPanelV4.slotGenerate'),
       alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
+    // 反问三格共用同一张卡（2026-09-21：反问是**通用**能力，不为某一种问题写死）。
+    // 长相差别只来自数据：有没有说明 / 有没有熔断那句话 / 卡内那一行有没有字。
     question: {
       kind: 'question',
       title: t('agentPanelV4.slotQuestionTitle'),
       options: [
-        t('agentPanelV4.slotOptionLandscape'),
-        t('agentPanelV4.slotOptionPortrait'),
-        t('agentPanelV4.slotOptionSquare'),
+        { id: 'calm', label: t('agentPanelV4.slotOptionVoiceCalm'), description: t('agentPanelV4.slotOptionVoiceCalmWhy'), recommended: true },
+        { id: 'urgent', label: t('agentPanelV4.slotOptionVoiceUrgent'), description: t('agentPanelV4.slotOptionVoiceUrgentWhy') },
+        { id: 'warm', label: t('agentPanelV4.slotOptionVoiceWarm') },
       ],
-      selectedOption: 0,
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    // ── 通用性的六种问法（2026-09-21 用户：「只有那一种反问就离谱了」）──
+    // 每一格换一个**题目**，不是换一套皮肤：证的是同一张卡什么都能问。
+    // 上面那格（3 个选项 · 有说明 · 有推荐）原本问的是画幅，已换成口吻——
+    // 契约里从来没有「画幅」这个字段，夹具里也不该有，否则读代码的人会以为它是专用的。
+    /** ① 一个选项都没有：纯自由作答。缺参数、开放式问题常常就是这样。 */
+    questionFree: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionFreeTitle'),
+      summary: t('agentPanelV4.slotQuestionFreeNote'),
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ② 只有 2 个选项（拍板区间的下界）。 */
+    questionTwo: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionTwoTitle'),
+      options: [
+        { id: 'shot-3', label: t('agentPanelV4.slotQuestionTwoOptionA'), description: t('agentPanelV4.slotQuestionTwoOptionAWhy'), recommended: true },
+        { id: 'shot-5', label: t('agentPanelV4.slotQuestionTwoOptionB'), description: t('agentPanelV4.slotQuestionTwoOptionBWhy') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /**
+     * ③ 4 个选项（上界），且标签与说明**长短差得很远**——其中一条 EN 说明是刻意写长的。
+     * 这一格是为换行准备的：英文串本来就比中文长 1.5–2 倍，截断只有眼睛看得出来。
+     */
+    questionFourMixed: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMixedTitle'),
+      options: [
+        { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+        { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+        { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+        { id: 'both', label: t('agentPanelV4.slotQuestionMixedOptionD'), description: t('agentPanelV4.slotQuestionMixedOptionDWhy') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ④ 只有标签、一条说明都没有（模型不写我们就不替它编）。 */
+    questionLabelsOnly: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionLabelsTitle'),
+      options: [
+        { id: 'v1', label: t('agentPanelV4.slotQuestionLabelsOptionA') },
+        { id: 'v2', label: t('agentPanelV4.slotQuestionLabelsOptionB') },
+        { id: 'v3', label: t('agentPanelV4.slotQuestionLabelsOptionC') },
+        { id: 'none', label: t('agentPanelV4.slotQuestionLabelsOptionD') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ⑥ 缺参数这个**生产者**（⑤ 熔断在下面）：同一张卡，只是问句由宿主补一句人话。 */
+    questionMissingParam: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMissingTitle'),
+      summary: t('agentPanelV4.slotQuestionMissingNote'),
+      options: [
+        { id: '3s', label: t('agentPanelV4.slotQuestionMissingOptionA') },
+        { id: '5s', label: t('agentPanelV4.slotQuestionMissingOptionB'), description: t('agentPanelV4.slotQuestionMissingOptionBWhy'), recommended: true },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    // 熔断转提问：同一字段连着 3 次没过，就别再撞了。**复用同一张卡**——
+    // 它只是这张卡的第三个生产者，不是第二种长相。
+    questionRetry: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionRetryTitle'),
+      summary: t('agentPanelV4.questionRetryExhausted', { count: 3 }),
+      options: [
+        { id: 'reference', label: t('agentPanelV4.slotOptionAsReference') },
+        { id: 'shot', label: t('agentPanelV4.slotOptionAsShot') },
+        { id: 'mixed', label: t('agentPanelV4.slotOptionMixed') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     plan: {
       kind: 'plan',
@@ -301,7 +382,12 @@ function buildFixtures(t: TFunction) {
     deviation: {
       kind: 'deviation',
       title: t('agentPanelV4.slotDeviationTitle'),
-      options: [t('agentPanelV4.slotDeviationDraw'), t('agentPanelV4.slotDeviationSkip')],
+      // 「有出入」这一格今天只活在实验室里（投影层没有任何一条路产出 `deviation`）。
+      // 选项形状跟着反问那份契约走——同一个组件读同一份数据，不为一格开第二种写法。
+      options: [
+        { id: 'draw', label: t('agentPanelV4.slotDeviationDraw') },
+        { id: 'skip', label: t('agentPanelV4.slotDeviationSkip') },
+      ],
       selectedOption: 1,
     },
     spendOneClip: {

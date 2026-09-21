@@ -135,8 +135,12 @@ describe('generation canvas control structure', () => {
     expect(generationCanvas).toContain('onMoveStart={() => {')
     expect(generationCanvas).toContain('beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowViewport, { onCancel:')
     expect(generationCanvas).toMatch(/onMoveEnd=\{[^]*?viewportLeaseRef\.current\?\.release\(\)/)
-    expect(generationCanvas).toContain('viewportCancelledRef.current = true')
-    expect(generationCanvas).toContain('if (viewportCancelledRef.current) return')
+    // 2026-09-21：中断路径不许再整段 return。它原来跳过的是**整个** onMoveEnd —— 连 NaN 守卫
+    // 和 rememberCategoryViewport 一起——于是「屏幕上的视口」和「记住的视口」分家，下一次视口
+    // 同步 effect 一跑画布就跳回中断前的位置。现在中断照样记，只是记到手势开始时那个分类头上。
+    expect(generationCanvas).not.toContain('if (viewportCancelledRef.current) return')
+    expect(generationCanvas).toContain('viewportGestureCategoryRef.current = activeCategoryId')
+    expect(generationCanvas).toMatch(/rememberCategoryViewport\(viewportGestureCategoryRef\.current \?\? activeCategoryId,/)
   })
 
   it('replaces the persistent hint with one contextual help entry', () => {

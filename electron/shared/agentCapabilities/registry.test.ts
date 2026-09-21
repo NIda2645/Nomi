@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { CAPABILITY_EFFECT_CLASSES, type CapabilityContract } from "./capabilityContract";
+import { AGENT_ASK_CAPABILITY } from "./askUser";
 import { ASSET_READ_CAPABILITY } from "./assetRead";
 import { CANVAS_DELETE_CAPABILITY } from "./canvasDelete";
 import { CANVAS_READ_CAPABILITY } from "./canvasRead";
@@ -62,6 +63,7 @@ it("derives fresh storyboard review from operation metadata without making ordin
 describe("capability contract registry", () => {
   it("registers canonical contracts exactly once with globally unique aliases", () => {
     expect(CAPABILITY_CONTRACTS).toEqual([
+      AGENT_ASK_CAPABILITY,
       ASSET_READ_CAPABILITY,
       CANVAS_DELETE_CAPABILITY,
       CANVAS_READ_CAPABILITY,
@@ -104,6 +106,7 @@ describe("capability contract registry", () => {
 
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([
+      "agent.ask",
       "asset.read",
       "canvas.delete",
       "canvas.read",
@@ -136,6 +139,7 @@ describe("capability contract registry", () => {
     // `no-orphan-alias`），`method` 放宿主/dispatcher 方法名，`mcp` 放对外名，`ui` 放渲染层入口名。
     const aliases = CAPABILITY_CONTRACTS.flatMap((contract) => Object.values(contract.aliases));
     expect(aliases).toEqual([
+      "ask_user",
       "look_at_media", "nomi_media_query", "get_media",
       "delete_from_canvas", "nomi_canvas_maintenance", "delete_canvas_nodes",
       "look_at_canvas", "nomi_canvas_read", "nomi_canvas_read",

@@ -22,8 +22,9 @@ import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabil
 //    槽里却什么都没有。缺参数本来就是一句问题 + 几个现成答案，那正是反问格的形状；
 //    它没有「不要」这个出口也成立——反问格本来就只有选项 chip，没有确认/不要（见下 `hasActions`）。
 import type { CapabilityEffectClass } from '../../../../electron/shared/agentCapabilities/capabilityContract'
-import { residentPlanShots, residentQuestionOptions, residentProposalParameters } from '../resident/residentExceptionProjections'
+import { residentPlanShots, residentProposalParameters } from '../resident/residentExceptionProjections'
 import { readableToolName, readableToolPreview } from '../resident/residentToolDisplay'
+import { parseQuestionSheet, type V4QuestionAsk, type V4QuestionOption, type V4QuestionSheet } from './agentPanelV4Question'
 import type { InterventionData, PlanRow, V4InterventionKind } from './agentPanelV4Types'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -70,17 +71,26 @@ function stringField(record: Readonly<Record<string, unknown>>, key: string): st
 }
 
 /**
- * ④ 缺参数：返回「问什么 + 有哪些现成答案」，或 `undefined`（这不是缺参数）。
- * 建议 chip 用工具自己给的 `options`；没给就只有问题，用户直接打字答。
+ * 这次提问在卡上印的那句问题。
+ *
+ * 模型写了 `question` 就用它的原话；只说了「缺 duration」时把参数名包进一句人话里
+ * ——但**不编具体建议值**，那得工具自己给。两条路都不在这里造第二份问句。
  */
-export function missingParamSuggestion(args: unknown, t: Translate): Readonly<{ text: string; options: readonly string[] }> | undefined {
-  const record = asRecord(args)
-  const missing = stringField(record, 'missingParam')
-  if (!missing) return undefined
-  // 工具通常只说「缺 duration」，那对用户不是一句话。有 `question` 就用它的原话，
-  // 没有就把参数名包进一句人话里——但**不编具体建议值**，那得工具自己给。
-  const text = stringField(record, 'question') ?? t('agentPanelV4.missingParamAsk', { name: missing })
-  return Object.freeze({ text, options: residentQuestionOptions(record).map((option) => option.label) })
+export function questionText(ask: V4QuestionAsk & { missingParamName?: string }, t: Translate): string {
+  if (ask.question) return ask.question
+  return ask.missingParamName ? t('agentPanelV4.missingParamAsk', { name: ask.missingParamName }) : ''
+}
+
+/**
+ * 卡上问句下面那一行**我们自己**要说的话（熔断）。
+ *
+ * 文案按码出，不接受生产者传成句的字符串——那样它就绕过了 i18n，英文用户会看到中文
+ * （或者反过来）。生产者只说「这是第几次没过」，怎么讲是渲染层的事。
+ */
+export function askReasonText(sheet: V4QuestionSheet, t: Translate): string | undefined {
+  // 熔断那一句挂在**整张卡**上，不是某一题上：它解释的是「为什么这一刻在问」。
+  if (!sheet.reason) return undefined
+  return t('agentPanelV4.questionRetryExhausted', { count: sheet.reason.attempts })
 }
 
 /**
@@ -114,8 +124,9 @@ function proposalContent(record: Readonly<Record<string, unknown>>): string | un
 export function interventionKindOf(args: unknown, effectClass: CapabilityEffectClass | undefined, isPlan: boolean): V4InterventionKind {
   const record = asRecord(args)
   if (stringField(record, 'missingCredential')) return 'credential'
-  if (stringField(record, 'missingParam')) return 'question'
-  if (stringField(record, 'question')) return 'question'
+  // 缺参数与提问是同一张卡的两个生产者（2026-09-12 并档），判据也只有一条：
+  // `parseQuestionAsk` 认得出就是提问。这里不再各嗅一次 key。
+  if (parseQuestionSheet(args)) return 'question'
   if (isPlan) return 'plan'
   if (effectClass === 'spend') return 'spend'
   // 认不出的能力 fail-closed 到**不可逆**：把一个未知操作当成可撤销的，等于替用户
@@ -143,8 +154,17 @@ export function projectV4Intervention(
   const isPlan = Boolean(source.planLines?.length) || residentPlanShots(source.args).length > 0
   const kind = interventionKindOf(source.args, source.effectClass, isPlan)
   const more = source.pendingCount > 1 ? t('agentPanelV4.interventionMore', { count: source.pendingCount - 1 }) : ''
+  // 一张卡 1–3 题、一次显示一题（2026-09-21 版式拍板）。今天的卡体还只画得了第一题，
+  // 所以这里取 `questions[0]`——**整张卡仍然在 `sheet` 里**，版式换成 Approval Card 之后
+  // 卡体自己翻页，这一行跟着删掉即可，不用再回来改解析。
+  const sheet = kind === 'question' ? parseQuestionSheet(source.args) : undefined
+  const ask = sheet?.questions[0]
   const summaryParts = [
-    kind === 'question' ? (missingParamSuggestion(source.args, t)?.text ?? stringField(record, 'question')) : readableToolPreview(t, source.toolName, source.args),
+    ask ? questionText(ask, t) : readableToolPreview(t, source.toolName, source.args),
+    // 熔断那一句（「试了 3 次都没通过，交给你定。」）紧跟问句：它解释的是**为什么这一刻在问**，
+    // 离问句远一格就读成了一条无主的旁白。
+    sheet ? askReasonText(sheet, t) : undefined,
+    ask?.note,
     // 「1 条内容」不足以让人决定要不要——用户在这一刻要判断的是**那句话该不该进文稿**。
     // B2e：完整保留列表、表格和换行；滚动由现有槽外壳管理。
     proposalContent(record),
@@ -154,7 +174,9 @@ export function projectV4Intervention(
   ].filter((part): part is string => Boolean(part))
   const params = residentProposalParameters(source.args)
   const plan: readonly PlanRow[] = planRowsOf(source)
-  const options = residentQuestionOptions(source.args).map((option) => option.label)
+  // 选项**只属于反问**。别的档（审批 / 付费 / 计划）碰巧带了一个 `options` 字段也不渲染成
+  // 可点的 chip——那个槽的出口是确认 / 不要，多一排能点的东西等于多一个说不清的答案。
+  const options: readonly V4QuestionOption[] = ask?.options ?? []
   const badge = capabilitySupportsUndo(source.toolName, source.args) && (kind === 'approval-irreversible' || kind === 'approval-reversible') ? labels.reversible : badgeOf(kind, labels)
   const base = {
     kind,
@@ -166,9 +188,22 @@ export function projectV4Intervention(
     ...(plan.length ? { plan } : {}),
     // 拒绝原因的占位一直给：`V4Intervention` 只在用户按下「不要」之后才把它摊开。
     reasonPlaceholder: t('agentPanelV4.rejectReasonPlaceholder'),
+    // 反问卡**永远**带卡内那一行自由输入（2026-09-21 拍板：照 Claude Code 的提问卡，
+    // 若干选项之后最后一项就是「自己说」）。它不是「没给选项时的兜底」——答不上来的时刻，
+    // 用户的视线和手正停在卡上，把他支去 30cm 外那个 composer 等于把「回答这张卡」
+    // 拆成两个家（§1.5 一功能一个家）。所以这个字段跟着 kind 走，不跟着 options 走。
+    ...(kind === 'question' ? { answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'), answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit') } : {}),
     // 范围那一行是**诚实交代**，不是装饰：可撤销的档才有「不再问」，
     // 所以这里写清楚它到底覆盖什么，别让用户以为按一下就全项目放行。
-    ...(kind === 'plan' ? {} : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
+    //
+    // 2026-09-21 **反问卡也不该有这一行**：`canEscalate`（`AgentPanelV4Cards.tsx:361`）只认
+    // `approval-reversible` / `reject-reason` 两档，提问卡上从来就没有那颗「不再问 →」；
+    // 而闸那边 `alwaysAsksUser` 保证它永远不可能被放行（`capabilityIsHardGated` ⑥）。
+    // 于是这一行在描述一个不存在的按钮——用户第一次看到真卡时读到的就是它。
+    // 一张提问卡的「范围」本来也无话可说：问一句话没有授权面。
+    ...(kind === 'plan' || kind === 'question'
+      ? {}
+      : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
   }
   if (kind === 'credential') {
     return Object.freeze({ ...base, confirmLabel: labels.credentialConfirm, alternateLabel: labels.credentialAlternate })

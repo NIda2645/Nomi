@@ -3,6 +3,7 @@
 > 查文档前先看这张表，按「我要找什么」跳到对应目录；索引仍有历史存量缺口，查不到时必须继续全量 grep。
 > 各目录若有自己的索引（如 plan/），表里直接给出。
 
+- [通用反问：模型自己能问用户一句话（一份契约 · 三振转提问）](plan/2026-09-21-ask-user-tool.md)
 - [交付流程去堵：评审单位、机器锁与合并队列方案](plan/2026-09-08-delivery-flow-unclog.md)
 - [Agent runtime 测试资源生命周期修复](plan/2026-09-08-agent-runtime-flakes.md)
 - [删除未接线的技能 playbook orchestrator](plan/2026-09-08-delete-playbook-orchestrator.md)

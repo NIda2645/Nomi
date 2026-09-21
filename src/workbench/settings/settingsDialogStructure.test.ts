@@ -60,7 +60,10 @@ const APPROVED_NON_MODEL_SECTION_SHA256 = {
   // 2026-09-02: AiModelsSection 按渲染边界收口供应商/模型展示名（translateModelDisplayText）。
   // B4: user explicitly removed the global budget setting; the positive absence assertion is below.
   // 2026-09-14：删「默认模型策略」整栏（说明文字 + 161 个白名单复选框 + 深链聚焦）；已接入即放行。
-  'AiModelsSection.tsx': '85f215f730143c46f1a233b1f293badc3b79e3a50eab53bfce7cd6e7711f3284',
+  // 2026-09-21：目录读失败不再把供应商/模型清空（同形裸 catch 横扫）。清空等于替用户断言
+  //             「你没有这些」，而真相只是「这一次没读到」——用户那句「重装之后配置都没了」
+  //             就是这么来的。正向断言见下方 keeps the last catalog when a read fails。
+  'AiModelsSection.tsx': 'a34e26e3d551756c56eb8adccf19d5df18d8f0e6e894d3a89b0f3b2379cd97d5',
   // 2026-09-03：toggleHost 参数类型从 SettingsHostKey（四值联合）泛化为 string（支持自定义 profile key）；
   // 新增 CustomMcpClientCard UI TODO 注释（底层能力已就绪，UI 面另排样张拍板）。
   // 2026-09-09：声音归通用设置的单一入口，移除这里的旧开关；下方断言保留系统通知策略。
@@ -283,6 +286,18 @@ describe('settings dialog structure', () => {
     const gestureSource = fs.readFileSync(path.join(settingsDirectory, 'CanvasGestureSection.tsx'), 'utf8')
     expect(gestureSource).toContain('duration-nomi-fast ease-nomi-fast')
     expect(gestureSource, '打包成一个值的旧 token 会让 transition-duration 非法、计算值 0s').not.toContain('--nomi-transition-fast')
+  })
+
+  /**
+   * 哈希只证明「变了」，证不了「变成对的」。这一条钉住 2026-09-21 那次改动的**语义**：
+   * 读目录失败时**不许**把已经在屏上的供应商/模型清成空。
+   * 退回 `setProviders([])` / `setModels([])` 不会让任何快照变红，但用户会再一次看到空白页
+   * 并得出「我的配置没了」这个错误结论。
+   */
+  it('keeps the last catalog when a read fails', () => {
+    expect(aiModelsSource, '读失败不许清空供应商').not.toContain('setProviders([])')
+    expect(aiModelsSource, '读失败不许清空模型').not.toContain('setModels([])')
+    expect(aiModelsSource).toContain('if (Array.isArray(values)) setModels(values)')
   })
 
   it('keeps all five non-model sections at their explicitly approved content baseline', () => {

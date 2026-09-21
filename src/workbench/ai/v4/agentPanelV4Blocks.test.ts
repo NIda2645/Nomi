@@ -37,6 +37,12 @@ const taskLabels = {
   adopt: '采用',
   undo: '撤销',
 }
+/** 模型自己写的那几个选项（标签 + 一句说明 + 可标推荐）——契约在 agentPanelV4Question.ts。 */
+const QUESTION_OPTIONS = [
+  { id: 'wide', label: '16:9 横版', description: '适合横屏平台', recommended: true as const },
+  { id: 'tall', label: '9:16 竖版' },
+]
+
 const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾' }
 // `unknown` 是「这个数我们没有」的那个字（环上写「—」而不是「0%」）。接线后它是必填的，
 // 因为缺字段是常态：目录没写 contextWindow、供应商不报推理 token，都会走到它。
@@ -286,11 +292,55 @@ describe('⑤ 介入槽 · 八种内容体', () => {
 
   it('反问只有选项 chip，没有确认/不要——选项本身就是回答', () => {
     const markup = html(el(V4Intervention, { ...NO_HANDLERS,
-      data: { kind: 'question', title: '用什么画幅？', options: ['16:9', '9:16'], selectedOption: 0 },
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS, selectedOption: 0 },
       labels: slotLabels,
     }))
-    expect(markup).toContain('16:9')
+    expect(markup).toContain('16:9 横版')
     expect(markup).not.toContain('不要')
+  })
+
+  it('选项带说明与推荐时两样都印出来——模型写了我们就如实显示，但不预选', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('适合横屏平台')
+    expect(markup).toContain('推荐')
+    // 「推荐」是记号不是预选：没有 selectedOption 时一个 chip 都不该是按下态。
+    expect(markup).not.toContain('aria-pressed="true"')
+  })
+
+  it('反问卡里有那一行自由输入，且它和拒绝原因是同一件输入（同一个槽不出现第二种写法）', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: {
+        kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS,
+        answerPlaceholder: '或者直接告诉它…', answerSubmitLabel: '把这句话答给它',
+      },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('data-v4-control="question-answer"')
+    expect(markup).toContain('或者直接告诉它…')
+    expect(markup).toContain('data-v4-control="question-answer-submit"')
+    const reject = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'reject-reason', title: 'x', reasonPlaceholder: '拒绝原因（可选）' },
+      labels: slotLabels,
+    }))
+    const inputClass = /class="([^"]*)" *\/?>/
+    const answerClass = markup.match(/data-v4-control="question-answer" class="([^"]*)"/)?.[1]
+      ?? markup.match(/class="([^"]*)" data-v4-control="question-answer"/)?.[1]
+    const rejectClass = reject.match(/data-v4-control="reject-reason" class="([^"]*)"/)?.[1]
+      ?? reject.match(/class="([^"]*)" data-v4-control="reject-reason"/)?.[1]
+    void inputClass
+    expect(answerClass).toBeTruthy()
+    expect(answerClass).toBe(rejectClass)
+  })
+
+  it('没有选项的反问照样有那一行——模型问的问题常常不是选择题', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '这段想要几秒？', answerPlaceholder: '或者直接告诉它…' },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('data-v4-control="question-answer"')
   })
 
   it('拒绝原因是渐进披露的输入 + 取消/确认不要', () => {
