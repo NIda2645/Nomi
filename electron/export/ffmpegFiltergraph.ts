@@ -1,22 +1,24 @@
 import type { NomiRenderAsset, NomiRenderClip, NomiRenderManifestV1, NomiRenderTrack, NomiRenderTransition } from "./exportManifest";
+import {
+  FfmpegFiltergraphError,
+  formatNumber,
+  formatSeconds,
+  loopedStillInput,
+  secondsFromFrames,
+  type FfmpegFiltergraphErrorCode,
+  type FfmpegFiltergraphPlanInput,
+} from "./ffmpegGraphPrimitives";
+import { buildTextOverlayGraph, type FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
 
-/** 字幕/标题卡叠加：已渲染成全画幅透明 PNG 的临时文件 + 可见区间。 */
-export type FfmpegTextOverlayInput = {
-  path: string;
-  startFrame: number;
-  endFrame: number;
-};
+// 地基与文字链住在各自的文件里（见那两个文件的抬头），这里按既有的 import 路径原样转出去，
+// 让调用方不必关心内部怎么拆的。**只有一份定义**，不是并行版。
+export { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
+export type { FfmpegFiltergraphErrorCode, FfmpegFiltergraphPlanInput } from "./ffmpegGraphPrimitives";
+export type { FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
 
 export type FfmpegFiltergraphInput = {
   manifest: NomiRenderManifestV1;
   textOverlays?: FfmpegTextOverlayInput[];
-};
-
-export type FfmpegFiltergraphPlanInput = {
-  assetId: string;
-  path: string;
-  kind: "image" | "video" | "audio";
-  inputArgs: string[];
 };
 
 export type FfmpegFiltergraphPlan = {
@@ -27,22 +29,6 @@ export type FfmpegFiltergraphPlan = {
   warnings: string[];
 };
 
-export type FfmpegFiltergraphErrorCode =
-  | "missing_asset"
-  | "unsupported_audio"
-  | "unsupported_clip"
-  | "invalid_manifest";
-
-export class FfmpegFiltergraphError extends Error {
-  readonly code: FfmpegFiltergraphErrorCode;
-
-  constructor(code: FfmpegFiltergraphErrorCode, message: string) {
-    super(message);
-    this.name = "FfmpegFiltergraphError";
-    this.code = code;
-  }
-}
-
 type ResolvedClip = {
   track: NomiRenderTrack;
   trackIndex: number;
@@ -50,21 +36,6 @@ type ResolvedClip = {
   asset: NomiRenderAsset;
   inputIndex: number;
 };
-
-function secondsFromFrames(frames: number, fps: number): number {
-  return frames / fps;
-}
-
-function formatSeconds(seconds: number): string {
-  if (Number.isInteger(seconds)) return String(seconds);
-  return Number(seconds.toFixed(6)).toString();
-}
-
-function formatNumber(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  if (Number.isInteger(value)) return String(value);
-  return Number(value.toFixed(6)).toString();
-}
 
 function clipAudioProcessingFilters(clip: NomiRenderClip, fps: number): string {
   const audio = clip.audio;
@@ -323,13 +294,17 @@ function buildInputs(resolvedClips: ResolvedClip[], fps: number): FfmpegFiltergr
 
   return [...byAsset.values()].map((clips) => {
     const { asset } = clips[0];
+    // 静帧的可见窗口 = 用到它的那些 clip 里最长的一个（每个分支后面各自 trim 到自己的时长）。
     const maxDurationSeconds = Math.max(...clips.map(({ clip }) => secondsFromFrames(clip.endFrame - clip.startFrame, fps)));
 
+    if (asset.kind === "image") {
+      return loopedStillInput(asset.id, asset.absolutePath, maxDurationSeconds);
+    }
     return {
       assetId: asset.id,
       path: asset.absolutePath,
       kind: asset.kind,
-      inputArgs: asset.kind === "image" ? ["-loop", "1", "-t", formatSeconds(maxDurationSeconds)] : [],
+      inputArgs: [],
     };
   });
 }
@@ -649,42 +624,6 @@ function buildTransitionVisualGraph(
     baseLabel = outputLabel;
   });
   return { filters, videoLabel: units.length === 0 ? "base" : "vcomposite" };
-}
-
-/**
- * 文字叠加链：每条 overlay PNG 作为新输入（-loop 1 -t 全长），在 [start,end] 区间 overlay 到视频上。
- * PNG 是全画幅透明 → overlay=0:0 对齐。接在视觉链尾（最上层）。返回新增滤镜行 + 输入 + 最终视频 label。
- */
-function buildTextOverlayGraph(
-  textOverlays: FfmpegTextOverlayInput[],
-  assetInputCount: number,
-  baseVideoLabel: string,
-  fps: number,
-  durationSeconds: number,
-  pixelFormat: string,
-): { filters: string[]; inputs: FfmpegFiltergraphPlanInput[]; videoLabel: string } {
-  const filters: string[] = [];
-  const inputs: FfmpegFiltergraphPlanInput[] = [];
-  let label = baseVideoLabel;
-  textOverlays.forEach((overlay, index) => {
-    const inputIndex = assetInputCount + index;
-    inputs.push({
-      assetId: `text_overlay_${index}`,
-      path: overlay.path,
-      kind: "image",
-      inputArgs: ["-loop", "1", "-t", formatSeconds(durationSeconds)],
-    });
-    const start = secondsFromFrames(overlay.startFrame, fps);
-    const end = secondsFromFrames(overlay.endFrame, fps);
-    const isLast = index === textOverlays.length - 1;
-    const out = isLast ? "voutfinal" : `vtxt${index}`;
-    const formatSuffix = isLast ? `,format=${pixelFormat}` : "";
-    filters.push(
-      `[${label}][${inputIndex}:v]overlay=0:0:eof_action=pass:enable='between(t,${formatSeconds(start)},${formatSeconds(end)})'${formatSuffix}[${out}]`,
-    );
-    label = out;
-  });
-  return { filters, inputs, videoLabel: `[${label}]` };
 }
 
 export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegFiltergraphPlan {
