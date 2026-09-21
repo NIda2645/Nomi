@@ -154,6 +154,39 @@ export function dedupeModelOptions(options: ModelOption[]): DedupedModel[] {
 }
 
 /**
+ * 一条**只记了模型名、没记供应商**的已存选择（旧镜头 / 旧锚 / 旧节点），而目录里有好几家同名——读回哪一家。
+ *
+ * 这是全仓的**唯一**判定口：分镜/画布的回显（`findModelOptionByIdentifier` → 模型框）与执行
+ * （`buildModelEntryIndex` 的裸 key 回落 → 真正发请求的那家）都调它，所以**界面上显示哪家，钱就花在哪家**。
+ *
+ * 规则（从强到弱）：
+ *   1. 用户在设置里排的供应商顺序；
+ *   2. `vendorTier`：官方 > 内置中转（apimart/kie/newapi）> 用户自接/未知；
+ *   3. 目录原序（纯为稳定）。
+ *
+ * 为什么不是「目录里第一条」：目录是新接入的在前，用户刚自定义了一个同名模型，它就会悄悄顶掉
+ * 原来那家（2026-09-21 群反馈：自定义 gpt-image-2 之后 APIMart 那条「选不上」、钱花去了自定义那家）。
+ * 为什么不含 `sortModelProviders` 的「显示名字母序」那一级：执行侧的模型清单没有显示名，
+ * 两边必须是逐字同一把尺，否则回显与请求会在同级的两家之间分叉。
+ *
+ * 只在「没记供应商」时才用得上：记了供应商的选择永远按 (modelKey, vendor) 精确命中，不许经这里换家。
+ */
+export function pickImplicitVendorMatch<T>(
+  matches: readonly T[],
+  vendorOf: (match: T) => string | null | undefined,
+  orderedVendorKeys: readonly string[] = [],
+): T | undefined {
+  if (matches.length <= 1) return matches[0]
+  const rank = new Map(orderedVendorKeys.map((key, index) => [key.toLowerCase(), index]))
+  const scored = matches.map((match, index) => {
+    const vendor = (vendorOf(match) || '').toLowerCase()
+    return { match, index, pref: rank.get(vendor) ?? Number.MAX_SAFE_INTEGER, tier: vendorTier(vendor) }
+  })
+  scored.sort((a, b) => (a.pref - b.pref) || (a.tier - b.tier) || (a.index - b.index))
+  return scored[0]!.match
+}
+
+/**
  * 「同一个模型，先走哪家」的**唯一**排序规则——每个模型选择器、自动选家、批量摊平都用这一份。
  *
  * 三级判据，从强到弱：

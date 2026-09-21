@@ -11,6 +11,7 @@ import { parseStoryboardPlan, storyboardPlanSchema } from './storyboardPlanSchem
 import { assertIssuedCanvasReadResult } from './canvasReadResultSeal'
 import { formatCanvasForAgent } from './canvasPromptContext'
 import { listAvailableModelsForAgent } from './availableModels'
+import { getVendorPreference } from '../../api/vendorPreferenceApi'
 
 type StoryboardPlannerInput = {
   target: 'production'
@@ -52,6 +53,6 @@ export async function runStoryboardPlanner(input: StoryboardPlannerInput) {
   if (response.status !== 'finished') return { text: response.text, status: response.status }
   const text = response.text.trim()
   const candidate = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? text
-  const plan = normalizeStoryboardAnchorDefaults(parseStoryboardPlan(JSON.parse(candidate)), entries)
+  const plan = normalizeStoryboardAnchorDefaults(parseStoryboardPlan(JSON.parse(candidate)), entries, (await getVendorPreference()).orderedVendorKeys)
   return { text, status: response.status, plan }
 }
