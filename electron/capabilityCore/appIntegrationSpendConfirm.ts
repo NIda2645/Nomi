@@ -27,6 +27,7 @@ import { resolveGenerationShotScope } from "../shared/agentCapabilities/generati
 //
 // 见 `productionRunReducer.ts` 的 `generation.revise`：改了载荷还沿用旧授权，
 // 面板收据上写的和真正跑的就分叉了，而用户是照着收据点的头。
+import { logWarn } from "../logging/logger";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 import type { DispatchContext } from "./dispatcher";
 import type { GenerationOperationStore, GenerationReviseInput } from "./mcpGenerationTools";
@@ -69,6 +70,10 @@ function failed(error: unknown): ProductionActionResult {
   // Provider text is private diagnostics, never renderer or model copy.
   const safe = error instanceof Error && ['generation_quote_changed', 'run_not_open', 'generation_scope_invalid'].includes(error.message)
     ? error.message : 'generation_execution_failed';
+  // 「私有诊断」此前**谁都拿不到**：原话在这一行被换成 `generation_execution_failed` 就消失了，
+  // 主进程日志里一个字都没有。于是付费卡按下去失败时，能排查的人手上只有一句兜底话
+  // （2026-09-21 Pass 3b：一条真机走查红在这里，查不出为什么，只能靠猜）。原话进日志，不进用户面。
+  if (safe === 'generation_execution_failed') logWarn("capability", "spend-confirm-failed", { code: safe }, error);
   return { ok: false, code: "failed", message: safe };
 }
 

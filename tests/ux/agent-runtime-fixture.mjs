@@ -38,7 +38,12 @@ export const FIXTURE_APIMART_API_KEY = 'agent-runtime-apimart-fixture'
  * 非零基价没有这个歧义。`NOMI_WALK_UNPRICED_MODEL=1` 时整行不种，于是这台机器和今天干净装机
  * 一模一样（内置 204 个生成模型一条价都没有）。
  */
-const APIMART_FIXTURE_PRICING = Object.freeze({ cost: 0.3, enabled: true })
+const APIMART_FIXTURE_PRICING = Object.freeze({
+  cost: 0.3, enabled: true,
+  // 规格加价挂在这个档案真正暴露的参数上（`resolution` 三档 1K/2K/4K）：
+  // 「在卡上改一个参数 → 宿主按目录重新算钱」这条只有靠它才取得到证。
+  specCosts: [{ specKey: 'resolution:2K', cost: 0.2, enabled: true }],
+})
 export const FIXTURE_USAGE = Object.freeze({
   prompt_tokens: 11, completion_tokens: 7, total_tokens: 18,
   prompt_tokens_details: Object.freeze({ cached_tokens: 3 }),
