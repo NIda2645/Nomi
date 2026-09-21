@@ -1,3 +1,4 @@
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · app 集成（见 docs/plan/2026-06-20-capability-core-headless-exposure.md §S4）。
 //
@@ -608,6 +609,8 @@ export async function startCapabilityCore(
       authorizeGeneration: authorities.authorizeGeneration ?? runOwnedGenerationAuthority.authorizeGeneration,
       ...authorities,
       projectRevisionResolver,
+      // 同 mcpStdioServer：档位来自设置里持久化的那一份，宿主只负责递，不自己编。
+      approvalPolicy: readAgentApprovalPolicy,
       proposalReceiptFor: authorities.proposalReceiptFor,
       openCredentialsInNomi: authorities.openCredentialsInNomi ?? (async ({ sessionId }: { sessionId: string; vendorName: string }) => {
         const win = getMainWindow()

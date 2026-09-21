@@ -49,6 +49,7 @@ import { createLiveGenerationRuntime } from './liveGenerationRuntime'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
 import { markSingleShotAttention, markSingleShotCompleted, markSingleShotRunning } from '../productionRun/singleShotRunLifecycle'
 import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
@@ -482,6 +483,10 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     approvalReceiptAuthority,
     projectRevisionResolver,
     generationPlanning,
+    // 用户此刻选的审批档位——**持久化的那一份**（设置里的单一 owner）。
+    // 不递下去的后果不是崩溃，是「全自动」在这个宿主上完全不存在：接入试跑与付费门
+    // 读到 undefined，一律把用户叫回 Nomi 窗口点一次——而他刚刚才授权过「不用再问」。
+    approvalPolicy: readAgentApprovalPolicy,
     proposalReceiptFor,
     ...(authorities.requestGenerationGate ?? runOwnedGenerationAuthority?.requestGenerationGate
       ? { requestGenerationGate: authorities.requestGenerationGate ?? runOwnedGenerationAuthority!.requestGenerationGate }

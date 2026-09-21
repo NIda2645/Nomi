@@ -12,6 +12,7 @@ import { type McpGenerationCapability } from './mcpGenerationPolicy'
 const OPEN_PROJECT_SESSION_NEXT_ACTION = 'Open a new project session and retry'
 import type { HumanApprovalReceiptV1 } from './approvalReceipt'
 import type { ProjectLeaseV2 } from './projectLease'
+import { spendDecidedByPolicy } from '../shared/agentCapabilities/capabilityApprovalPolicy'
 import type { DispatchContext } from './dispatcher'
 import { RpcError, type RpcPolicyErrorCode, type RpcPolicyErrorDetails } from './rpcError'
 
@@ -261,6 +262,22 @@ async function dispatchSemanticStub(
           ...(value?.shots && typeof value.shots === 'object' && !Array.isArray(value.shots) ? { shots: value.shots as never } : {}),
         },
       })
+      // ── 「全自动」档：宿主当场替用户决门（2026-09-12 拍板的那一档，外部 MCP 这一侧 2026-09-21 补上）──
+      //
+      // 闸一步都没少，也没有第二条链：同一张挑战、同一个收据铸造口，只是那张 attestation 来自
+      // **用户此前选的档位**而不是他这一刻的手势（`generationSpendDecision.ts` 文档里的两种来源）。
+      // 判据仍只有一个 owner：`spendDecidedByPolicy`。宿主没递档位 → 读到 undefined → 按默认走，
+      // 绝不替用户花钱（下面那条 `policyDecided` 为 false 的路与改动前逐字相同）。
+      const policyDecided = spendDecidedByPolicy(ctx.approvalPolicy?.())
+      const policyReceipt = policyDecided
+        ? authority.mintReceipt(
+            challenge.token,
+            authority.createPolicyDecisionAttestation(challenge.token, {
+              policyMode: 'project',
+              policySurface: ctx.origin?.host ? `mcp:${ctx.origin.host}` : 'mcp',
+            }),
+          )
+        : undefined
       return {
         ...value,
         challengeId: challenge.challenge.challengeId,
@@ -271,7 +288,19 @@ async function dispatchSemanticStub(
         maximumCost: unknownShotCount > 0 && maximumCost === 0 ? null : challenge.challenge.reservationPreview.maximum,
         ...(unknownShotCount > 0 ? { unknownShotCount } : {}),
         currency: challenge.challenge.reservationPreview.currency,
-        handoff: { challengeToken: challenge.token, clientAttestation: true, contractHash, operationId: value?.operationId },
+        handoff: {
+          challengeToken: challenge.token,
+          clientAttestation: true,
+          contractHash,
+          operationId: value?.operationId,
+          ...(policyReceipt
+            ? {
+              receiptId: policyReceipt.receipt.receiptId,
+              receiptToken: policyReceipt.token,
+              decidedBy: policyReceipt.receipt.decidedBy,
+            }
+            : {}),
+        },
       }
     }
   }

@@ -57,6 +57,12 @@ export type RpcServerOptions = {
   /** One project-session authority; each request adds its freshly verified transport connection. */
   projectSessionAuthority?: ProjectSessionAuthority
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /**
+   * 用户此刻选的审批档位（设置里持久化的那一份）。宿主只负责把它递进调度上下文；
+   * 判据只有一个 owner（`capabilityApprovalPolicy.spendDecidedByPolicy`），这里不作判断。
+   * 缺席 = 这条路读不到档位 → 下游一律 fail-closed，不许替用户花钱。
+   */
+  approvalPolicy?: import('./dispatcher').DispatchContext['approvalPolicy']
   requestGenerationGate?: import('./dispatcher').DispatchContext['requestGenerationGate']
   authorizeGeneration?: import('./dispatcher').DispatchContext['authorizeGeneration']
   /** Internal client→GUI fallback. The callback must verify the challenge before prompting. */
@@ -364,6 +370,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
             ? { projectSession: { authority: options.projectSessionAuthority, connection: projectSessionConnection } }
             : {}),
           approvalReceiptAuthority: options.approvalReceiptAuthority,
+          approvalPolicy: options.approvalPolicy,
           requestGenerationGate: options.requestGenerationGate,
           authorizeGeneration: options.authorizeGeneration,
           // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
