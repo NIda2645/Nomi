@@ -31,12 +31,19 @@ export type BlastRadius = {
   modelsAppearing: number;
   modelsDisappearing: number;
   recordsDeleted: number;
-  /** 本域 `billable` 恒 false——类型上就不给写 true 的机会（09-12 拍板：这条路上没有花钱的动作）。 */
-  outboundRequests: Array<{ origin: string; count: number; billable: false }>;
+  /**
+   * 这一跳往外发了几次请求、花不花钱。
+   *
+   * 2026-09-21 之前 `billable` 的类型是字面量 `false`——那时这张工具面上确实没有花钱的动作。
+   * 试跑（`nomi_try_model`）进来之后它不再成立：一次真实生成就是花钱。类型**必须**能说出
+   * 这件事，否则信封会替我们撒一个不会报错的谎。真正的闸不在类型上，在
+   * `spendGrant` → 渲染层报价确认卡那一条（模型调得动这个工具，但结不了账）。
+   */
+  outboundRequests: Array<{ origin: string; count: number; billable: boolean }>;
 };
 
 export type OnboardingNextActionKind =
-  | "none" | "user_sees_key_page" | "user_sees_confirm_card" | "waiting_for_user" | "working";
+  | "none" | "user_sees_key_page" | "user_sees_confirm_card" | "user_sees_spend_card" | "waiting_for_user" | "working";
 
 export type OnboardingNextAction = {
   kind: OnboardingNextActionKind;
@@ -123,7 +130,34 @@ export function noBlast(): BlastRadius {
   return { modelsAppearing: 0, modelsDisappearing: 0, recordsDeleted: 0, outboundRequests: [] };
 }
 
-/** 自检发出的免费请求（`billable` 由 `BlastRadius` 的类型钉死成 false，写不成 true）。 */
+/** 自检发出的免费请求。 */
 export function freeRequests(origin: string): BlastRadius["outboundRequests"] {
   return origin ? [{ origin, count: 1, billable: false }] : [];
+}
+
+/** 试跑发出的那一次**要花钱**的请求。它是本域唯一能写 `billable: true` 的地方。 */
+export function billableRequests(origin: string): BlastRadius["outboundRequests"] {
+  return origin ? [{ origin, count: 1, billable: true }] : [];
+}
+
+/**
+ * 「这家需要的东西，声明卡表达不了」——**唯一**的出口是人写调用脚本（方案 §5 末段）。
+ *
+ * 四类表达不了的：请求签名 / HMAC / OAuth 换 token；非 HTTP（gRPC / WebSocket / 流式媒体）；
+ * SDK-only；超出「（上传初始化 →）create → query → result」的多请求编排；自定义编码。
+ *
+ * `nextAction` **不许**指向 OpenAI 兼容模板：那正是 09-11 那条「静默落回模板」在人话层的复发——
+ * 把「这条路本来就不通」说成「用那个模板试试」，用户会一直试，而每一次都必然在同一堵墙上。
+ * `noGenericContract.test.ts` 逐字核这一条。
+ *
+ * 住在信封这一层而不是某一个动作里：它是这张工具面的**错误词表**的一格，和 `unverified`
+ * 一样属于「回什么」，不属于「做什么」。
+ */
+export function noGenericContractFailure(what: string): OnboardingFailure {
+  return {
+    ok: false,
+    code: "no_generic_contract",
+    message: `${what} needs something a declaration card cannot express: a request signature, a non-HTTP transport, an SDK, a custom encoding, or more request steps than (upload init ->) create -> query -> result.`,
+    nextAction: "This provider is not reachable by declaring it. In Nomi, open Settings > that model > Call script and write the call by hand; that path is exactly for this case.",
+  };
 }
