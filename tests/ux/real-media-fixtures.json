@@ -141,6 +141,13 @@
       ],
       "status": "live",
       "why": "「用户照文稿让 Agent 出分镜」这条整机走查里，参考图是从登记素材抽的 4K 帧、经**素材库的文件选择器**真导入的。它证的是别的腿证不了的那半件事：Agent 说「用我素材库那张图当参考」时，那张图真的走过导入链路、真的有 assetId、真的能被 look_at_media 读到。合成占位图在这条路上永远不会暴露参考图那一族缺陷（2026-09-18 之前带参考图的分镜 100% 失败，正是这一段）。**注意它不覆盖 walkthrough 那条债**：那条说的是 J4/J5 的冷开成本与 S 规模素材，这里只有一张图。"
+    },
+    {
+      "class": "shot-cut-coverage",
+      "test": null,
+      "assets": [],
+      "status": "debt",
+      "debtId": "shot-cut-coverage-real-media"
     }
   ],
   "requiredClasses": [
