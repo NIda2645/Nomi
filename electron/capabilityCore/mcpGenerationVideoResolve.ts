@@ -248,19 +248,6 @@ export function videoParameterSchema(candidate: PlanCandidate, candidates: reado
   return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
 }
 
-/**
- * 这个候选所指模型声明过的变体 id；认不出这个模型（非视频模型 / 尚未接入）→ `undefined`。
- * `undefined` 的意思是**这条路拿不到清单**，不是「随便填都行」——准入层据此决定核还是不核。
- */
-export function videoAllowedVariantIds(
-  candidate: PlanCandidate,
-  candidates: readonly VideoModelCandidate[] | undefined,
-): string[] | undefined {
-  if (!candidates) return undefined;
-  const selected = videoCandidateForPlan(candidate, candidates);
-  return selected ? videoVariantIdsOf(selected.videoCandidate.archetype) : undefined;
-}
-
 export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
   const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
   if (!selected) return candidate;
@@ -320,9 +307,15 @@ export function videoCompileOptions(
   candidate: PlanCandidate,
   candidates: readonly VideoModelCandidate[] | undefined,
 ): ExecutionContractCompileOptions {
-  const allowedVariantIds = videoAllowedVariantIds(candidate, candidates);
+  // 一次解析出这个候选对应的视频档案，参数表与变体清单都从它来。认不出这个模型
+  // （非视频模型 / 尚未接入）→ 两样都省略：那是**这条路拿不到清单**，不是「随便填都行」。
+  const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
+  if (!selected) return {};
   return {
-    parameterSchema: videoParameterSchema(candidate, candidates),
-    ...(allowedVariantIds ? { allowedVariantIds } : {}),
+    parameterSchema: Object.fromEntries(
+      videoModeForPlan(selected.candidate, selected.videoCandidate).params
+        .map((control) => [control.key, parameterFieldForControl(control)]),
+    ),
+    allowedVariantIds: videoVariantIdsOf(selected.videoCandidate.archetype),
   };
 }
