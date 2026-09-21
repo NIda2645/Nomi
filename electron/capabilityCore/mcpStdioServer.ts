@@ -331,6 +331,9 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       // 参考素材的身份（内容哈希 + 版本）归项目素材库管，模型只给 assetId。接线前 `draft_shots`
       // 只要带一张参考图就 100% 被判 `generation_input_invalid`，而那两个字段模型根本拿不到。
       resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
+      // 今天走不到：stdio 的 origin 只有 `{ host: authenticatedClient }`，没有 `sourceDocument`，
+      // 而分镜正本那两条路都以它为闸。留着是因为它是一个**参数**不是第二份实现——外部 MCP 哪天带上
+      // 文稿来源，缺了它就是悄悄少一份预览 URL。核实日期 2026-09-21。
       resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
       planStoryboard: planStoryboardFromScript,
       recommendVideoGeneration,

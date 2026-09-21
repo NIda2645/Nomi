@@ -194,6 +194,25 @@ function candidateIdentities(
   return entries;
 }
 
+/**
+ * 「这个 Run 还有没有没结清的负债」——重开一次付费请求之前唯一要回答的问题。
+ *
+ * 三个子句分别管三件事，原来挤在一个表达式里，覆盖面互相重叠（`cancelled_remote` 在第三句里被放行，
+ * 又会被第一句在 reserved > 0 时拦住），读代码判断不出「哪些状态允许重开」：
+ *
+ *  ① **预留还挂着，而且有作业还没落定**。一次 ready/adopted 的产出证明执行结束了，**不证明账结清了**，
+ *     它的预留要继续当累计负债；但只要还有作业没落定，这笔预留就既不能释放也不能重算。
+ *  ② **账本自己记着未结清**（供应商已经收了钱、我们还没对上）。
+ *  ③ **还有作业停在既不成功也不是「供应商已明确失败」的状态**。`cancelled_remote` 和
+ *     `needs_attention + provider_task_failed` 是两种**已经有结论**的收尾，它们不挡重开。
+ */
+export function hasUnsettledLiability(run: ProductionRun): boolean {
+  const unresolvedReservation = run.budget.reserved > 0 && run.jobs.some(job => !["ready", "adopted"].includes(job.status));
+  return unresolvedReservation || run.budget.unsettled > 0 || run.jobs.some((job) =>
+    !["ready", "adopted", "cancelled_remote"].includes(job.status)
+    && !(job.status === "needs_attention" && job.errorCode === "provider_task_failed"));
+}
+
 /** The complete draft survives changes to the current spend request. */
 export function presentGenerationPlan(current: ProductionRun, requested: unknown, now: string): ProductionRun {
   const plan = current.generationPlan;
@@ -203,13 +222,7 @@ export function presentGenerationPlan(current: ProductionRun, requested: unknown
   if (plan.state === "sealed") {
     reopened = { ...current, ...revokeWaitingGenerationAuthorization(current, plan, now, "Present") };
   } else if (plan.state !== "draft") {
-    // A ready output proves the execution finished, not its final bill. Retain its reservation as
-    // cumulative liability. Failed/cancelled jobs need a provider-safe ledger settlement before reuse.
-    const unresolvedReservation = current.budget.reserved > 0 && current.jobs.some(job => !["ready", "adopted"].includes(job.status));
-    const unsettled = unresolvedReservation || current.budget.unsettled > 0 || current.jobs.some((job) =>
-      !["ready", "adopted", "cancelled_remote"].includes(job.status)
-      && !(job.status === "needs_attention" && job.errorCode === "provider_task_failed"));
-    if (unsettled) throw new Error("generation_reconciliation_required: previous batch is unsettled or in flight");
+    if (hasUnsettledLiability(current)) throw new Error("generation_reconciliation_required: previous batch is unsettled or in flight");
   }
   const { cardHidden: _cardHidden, ...visible } = unsealedGenerationPlanFields(plan, now);
   return { ...reopened,
