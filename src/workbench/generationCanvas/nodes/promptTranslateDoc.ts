@@ -2,7 +2,7 @@
  * 翻译在编辑器文档这一侧的两件事：「要翻的是哪一段」和「怎么一次换回去」。
  * 与 Tiptap 实例解耦（只吃 ProseMirror 的 doc/state），好在单测里用真 schema 验证替换结果。
  */
-import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { encodeMention, type PromptReference } from '../../assets/promptMentions'
 import { promptToContent } from '../../assets/promptEditorContent'
@@ -31,11 +31,10 @@ export function translateRange(state: EditorState): { from: number; to: number }
  */
 export function replacePromptRange(
   state: EditorState,
-  schema: Schema,
   range: { from: number; to: number },
   prompt: string,
   references: readonly PromptReference[],
 ): Transaction {
   const paragraphs = promptToContent(prompt, references).content ?? []
-  return state.tr.replace(range.from, range.to, new Slice(Fragment.fromJSON(schema, paragraphs), 1, 1))
+  return state.tr.replace(range.from, range.to, new Slice(Fragment.fromJSON(state.schema, paragraphs), 1, 1))
 }

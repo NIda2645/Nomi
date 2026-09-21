@@ -41,7 +41,12 @@ export function NodePromptTranslator({
   const abortRef = React.useRef<AbortController | null>(null)
   const empty = !prompt.trim()
 
-  const run = React.useCallback(async () => {
+  // 一颗按钮一个动作：运行中再点 = 取消；否则开始翻译。
+  const onClick = React.useCallback(async () => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      return
+    }
     if (!editor || editor.isDestroyed) return
     const range = translateRange(editor.state)
     const source = promptTextBetween(editor.state.doc, range.from, range.to)
@@ -88,7 +93,7 @@ export function NodePromptTranslator({
         onFeedback(t('generationCommon.translator.promptChanged'))
         return
       }
-      editor.view.dispatch(replacePromptRange(editor.state, editor.schema, range, `${lead}${restored.prompt}${trail}`, mentionReferences).scrollIntoView())
+      editor.view.dispatch(replacePromptRange(editor.state, range, `${lead}${restored.prompt}${trail}`, mentionReferences).scrollIntoView())
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       onFeedback(e instanceof Error && e.message
@@ -100,14 +105,6 @@ export function NodePromptTranslator({
     }
   }, [editor, mentionReferences, onFeedback, t])
 
-  const onClick = React.useCallback(() => {
-    if (running) {
-      abortRef.current?.abort()
-      return
-    }
-    void run()
-  }, [run, running])
-
   return (
     <NodePromptToolIconButton
       toolId="translate"
@@ -116,7 +113,7 @@ export function NodePromptTranslator({
       active={running}
       disabled={empty && !running}
       disabledReason={t('generationCommon.translator.emptyReason')}
-      onClick={onClick}
+      onClick={() => void onClick()}
     />
   )
 }

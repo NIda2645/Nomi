@@ -56,13 +56,13 @@ describe('translateRange + promptTextBetween', () => {
 describe('replacePromptRange', () => {
   it('局部替换：选中段换成译文，前后文字与 chip 不动', () => {
     const state = selectText(stateOf(`一只橘猫${REF}坐在窗台上`), '坐在窗台上')
-    const tr = replacePromptRange(state, schema, translateRange(state), 'sitting on the windowsill', [])
+    const tr = replacePromptRange(state, translateRange(state), 'sitting on the windowsill', [])
     expect(promptOf(tr.doc)).toBe(`一只橘猫${REF}sitting on the windowsill`)
   })
 
   it('整段替换：多行译文仍是多段，chip 还原成节点', () => {
     const state = stateOf(`第一行${REF}\n第二行`)
-    const tr = replacePromptRange(state, schema, translateRange(state), `Line one ${REF}\nLine two`, [])
+    const tr = replacePromptRange(state, translateRange(state), `Line one ${REF}\nLine two`, [])
     expect(promptOf(tr.doc)).toBe(`Line one ${REF}\nLine two`)
     expect(tr.doc.childCount).toBe(2)
     let chips = 0
@@ -75,14 +75,14 @@ describe('replacePromptRange', () => {
     // 选「甲乙\n丙丁」：段一 "前缀甲乙" 位置 1..5，段二内容从 7 开始。
     const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, 3, 9)))
     expect(promptTextBetween(state.doc, 3, 9)).toBe('甲乙\n丙丁')
-    const tr = replacePromptRange(state, schema, translateRange(state), 'AB\nCD', [])
+    const tr = replacePromptRange(state, translateRange(state), 'AB\nCD', [])
     expect(promptOf(tr.doc)).toBe('前缀AB\nCD后缀')
     expect(tr.doc.childCount).toBe(2)
   })
 
   it('一笔事务：只有一个 step 组（撤销一步回原文的前提）', () => {
     const state = stateOf('一只猫')
-    const tr = replacePromptRange(state, schema, translateRange(state), 'a cat', [])
+    const tr = replacePromptRange(state, translateRange(state), 'a cat', [])
     expect(tr.steps.length).toBe(1)
     expect(promptOf(tr.doc)).toBe('a cat')
   })
