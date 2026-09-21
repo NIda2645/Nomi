@@ -399,6 +399,13 @@ export const zhAgentPanelV4 = {
   spendParamsScopeAria: '生成范围',
   spendParamsDecline: '不要',
   spendParamsScopeUnknown: '价格没取到。要继续就得接受「花多少事后才知道」。',
+  /**
+   * × 撤掉这次请求之后那一句。**只有真撤掉了占位节点时才说**：撤了东西就得说撤了什么、怎么拿回来。
+   * 用户自己建的节点从来不在这个数里（`spendCardRollback.ts` 只认物化章）。
+   */
+  spendDiscardedNodes: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
+  /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
+  spendDiscardEditsWarning: '丢弃这次请求？你在卡上改的内容会一起丢掉。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
   spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
@@ -804,6 +811,8 @@ export const enAgentPanelV4 = {
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
   spendParamsScopeUnknown: 'No price came back. Continuing means you only learn the cost afterwards.',
+  spendDiscardedNodes: 'Request discarded — {{count}} placeholder shot(s) removed · press ⌘Z to undo',
+  spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
   qualityStandard: 'Standard',

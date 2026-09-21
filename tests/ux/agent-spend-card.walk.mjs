@@ -10,8 +10,9 @@
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { checkSpendScopeJourney } from './_agentSpendScopeJourney.mjs'
+import { addCanvasNodeFromRail } from './_canvasRail.mjs'
 import {
-  APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, INTERVENTION_REJECT,
+  APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, INTERVENTION_CONFIRM_REJECT, INTERVENTION_REJECT,
   PERMISSION_POPOVER, permissionTier,
   createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
 } from './agent-runtime-walk-support.mjs'
@@ -107,7 +108,13 @@ try {
   await clickOrFail(canvasParameterPanel.locator('[role="radio"][aria-checked="true"]:not([disabled])').first(),'保持原值并验证参数选项实际可点')
   await win.keyboard.press('Escape')
 
+  // 用户自己从左缘工具条建一个节点：它身上没有物化章，× 那一刻必须一个字都不动。
+  await addCanvasNodeFromRail(win, 'image')
+  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
+    { timeout: DEFAULT_TIMEOUT_MS }).toBe(2)
   const before = structuredClone((await readProject(win, projectId)).payload.generationCanvas.nodes)
+  const userNodeId = before.map(entry => entry.id).find(id => id !== node.id)
+  expect(Boolean(userNodeId), '用户自建节点要真的落在画布上').toBe(true)
   let input = card.locator('[data-composer-host="panel"] [contenteditable="true"]')
   await expect(input).toBeVisible()
   await expect.poll(() => input.evaluate(element => {
@@ -128,10 +135,27 @@ try {
   expect(walk.fixture.images, '编辑未批准卡不发媒体请求').toHaveLength(0)
   await walk.snap('spend-card-zh-edited-isolated')
 
-  await clickOrFail(card.locator(INTERVENTION_REJECT), '关闭付款卡，保留节点及草稿')
+  // ── × = 撤销这次草稿（2026-09-21 用户拍板的单一语义）───────────────────────────
+  // 用户原话：「我不生成，我的所有节点卡片都没了。」所以这里要同时钉住**两面**：
+  //   ① 这次操作自己造出来的占位镜头，× 之后**真的撤掉**（不留孤儿节点等着用户猜）；
+  //   ② **用户自己建的节点一个都不许动**——判据是来源章，不是「卡引用了谁」。
+  // 卡上有没提交的手改，所以 × 第一下先摊开那句确认（D4：撤什么、丢什么明着说）。
+  await clickOrFail(card.locator(INTERVENTION_REJECT), '丢弃付款卡（第一下先出确认）')
+  await expect(card.locator('[data-v4-control="reject-confirm-note"]'),
+    '卡上改过还没提交时，× 必须先说清「改的内容会一起丢」').toBeVisible()
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), '确认丢弃这次请求')
   await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
-  expect((await readProject(win, projectId)).payload.generationCanvas.nodes, '关闭不删除节点、不改内容、不清历史').toEqual(before)
+  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id).sort(),
+    { timeout: DEFAULT_TIMEOUT_MS, message: '× 只撤这次操作建的占位镜头，用户自己建的那个一个字不动' })
+    .toEqual([userNodeId])
   expect(walk.fixture.images, '关闭不提交媒体').toHaveLength(0)
+
+  // 建的时候一个 Cmd+Z，撤的时候也必须是一个 Cmd+Z（与 txn_materialize_shots_* 对称）。
+  await win.locator(`.react-flow__node[data-id="${userNodeId}"]`).focus()
+  await win.keyboard.press('Meta+Z')
+  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id).sort(),
+    { timeout: DEFAULT_TIMEOUT_MS, message: '一次 Cmd+Z 整批回来' })
+    .toEqual(before.map(node => node.id).sort())
   const requestsBeforeCold = walk.fixture.requests.length
   await walk.stopApp()
   ;({ win } = await walk.start())
@@ -147,9 +171,12 @@ try {
   sizeChip = card.locator('[data-parameter-chip] button[aria-label="尺寸"]').first()
   await expectAbsent(card,{provenBy:cardProof,message:'冷启动不会复活已关闭的旧确认卡'})
   // Existing projectV51ToV60Migration fills this derived renderer hint on reopen.
-  // Keep the full-node comparison: no other field may change across dismissal/restart.
-  const restoredNodes = before.map(node => ({ ...node, renderKind: 'shot-frame' }))
-  expect((await readProject(win,projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  // Keep the full-node comparison for the agent's own shot: no other field may change
+  // across dismissal / undo / restart. 用户自建那个只比身份（它的派生提示走别的迁移）。
+  const restoredShot = { ...before.find(entry => entry.id === node.id), renderKind: 'shot-frame' }
+  const nodesAfterRestart = () => readProject(win, projectId).then(record => record.payload.generationCanvas.nodes)
+  expect((await nodesAfterRestart()).map(entry => entry.id).sort()).toEqual(before.map(entry => entry.id).sort())
+  expect((await nodesAfterRestart()).find(entry => entry.id === node.id)).toEqual(restoredShot)
   expect(walk.fixture.images,'冷启动不提交媒体').toHaveLength(0)
   expect(walk.fixture.requests,'冷启动不重新请求模型').toHaveLength(requestsBeforeCold)
   await walk.snap('spend-card-cold-closed-no-resurrection')
@@ -165,7 +192,7 @@ try {
   await expect(card).toBeVisible()
   await expect(input).toHaveText(draftPrompt)
   await expect(sizeChip).toContainText('1536x1024')
-  expect((await readProject(win, projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  expect((await nodesAfterRestart()).find(entry => entry.id === node.id)).toEqual(restoredShot)
   expect(walk.fixture.images, '重新展示未批准卡不提交').toHaveLength(0)
   await walk.snap('spend-card-zh-reopened-draft')
   // Locale preference only, no project/store mutation. Reload is an explicit renderer-remount case.
@@ -175,10 +202,11 @@ try {
   await expect(input).toHaveText(draftPrompt)
   await expect(card.locator('[data-parameter-chip]').filter({hasText:'1536x1024'}).first()).toBeVisible()
   await walk.snap('spend-card-en-reopened-draft')
-  expect((await readProject(win, projectId)).payload.generationCanvas.nodes).toEqual(restoredNodes)
+  expect((await nodesAfterRestart()).find(entry => entry.id === node.id)).toEqual(restoredShot)
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
-    'close-preserves-node-content-history','cold-process-reopen-no-old-card','same-operation-reopens-draft','zh-en-renderer-remount']
+    'discard-removes-only-this-operations-own-shots','discard-is-one-undo-step','user-built-node-survives-discard',
+    'cold-process-reopen-no-old-card','same-operation-reopens-draft','zh-en-renderer-remount']
   await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error

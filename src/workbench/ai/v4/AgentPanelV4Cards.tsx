@@ -435,6 +435,9 @@ export function V4Intervention({
             ))}
           </div>
         ) : null}
+        {data.rejectConfirmNote && rejecting ? (
+          <p className="m-0 text-caption text-nomi-danger" data-v4-control="reject-confirm-note">{data.rejectConfirmNote}</p>
+        ) : null}
         {data.reasonPlaceholder && (rejecting || data.kind === 'reject-reason') ? (
           <input
             type="text"
@@ -521,7 +524,7 @@ export function V4Intervention({
                   aria-label={labels.reject}
                   title={labels.reject}
                   className="grid size-[22px] shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-danger"
-                  onClick={() => (data.reasonPlaceholder ? setRejecting(true) : onReject?.())}
+                  onClick={() => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.())}
                   data-v4-control="reject"
                 >
                   <IconX size={14} aria-hidden="true" />

@@ -162,14 +162,17 @@ it('actual shared composer keeps a visible read-only reason and rejects text edi
 })
 
 
-it('dismissed unapproved input restores on re-present with a new quote without a canonical revise', async () => {
+// 2026-09-21 用户拍板：× = 撤销这次草稿，单一语义。撤了就是撤了——**不留找回账本**
+// （那套 localStorage 账本连同它的键一起删了）。下一次请求是一笔全新的，读不到上一笔的改动。
+it('a discarded request leaves nothing behind for the next quote to recover', async () => {
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
   await page.evaluate(() => window.spendOwnership.discard())
   await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
   await page.evaluate(() => window.spendOwnership.change('quote'))
   await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
-  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nomi:dismissed-spend-draft:')))).toEqual([])
   expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.patch))).toBe(false)
 })
 
@@ -195,7 +198,7 @@ it('confirming A keeps unsubmitted B edits across paging and a cold renderer rel
 })
 
 
-it('an all-scope revision failure preserves the remaining shot after quote refresh and cancel/reopen', async () => {
+it('an all-scope revision failure preserves the remaining shot across quote refresh and paging', async () => {
   await page.evaluate(() => {
     window.spendOwnership.revise = input => {
       if (input.shotId === 'b') return {ok:false, message:'fixture refusal'}
@@ -218,7 +221,7 @@ it('an all-scope revision failure preserves the remaining shot after quote refre
   expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.confirm))).toBe(false)
   await page.evaluate(() => window.spendOwnership.discard())
   await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard) && !window.spendOwnership.snapshot().busy)
-  // Re-present only the untouched B in a later quote; it must recover its own input.
+  // × 之后再来一笔就是**全新**的一笔：撤销没有找回账本，B 回到它自己的原文。
   await page.evaluate(() => {
     window.spendOwnership.pending.shots.splice(0, 1)
     window.spendOwnership.pending.quoteId = 'quote-B-only'
@@ -226,16 +229,16 @@ it('an all-scope revision failure preserves the remaining shot after quote refre
     window.spendOwnership.change('revision')
   })
   await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-B-only')
-  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('edited')
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('b')
 })
 
 // Real hook lifecycle with controlled storage failure; parent runs this browser slice serially.
-it('failed recovery does not publish a new owner with the previous request draft, and retries', async () => {
+// 账本写不进去（配额满 / 隐私模式）只是「关掉再回来还在不在」这件便利失效——
+// **绝不允许**它把用户正在编辑的这张付费卡打断，也不许把上一笔的改动贴到下一笔上。
+it('a storage quota failure never interrupts the card and never leaks the previous draft', async () => {
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
   await page.evaluate(() => {
-    window.spendOwnership.prepareRecovery()
-    window.recoverySource = Object.entries(localStorage).find(([key]) => key.startsWith('nomi:dismissed-spend-draft:'))
     window.recoverySetItem = Storage.prototype.setItem
     window.recoveryFailures = 0
     Storage.prototype.setItem = function(key, value) {
@@ -245,17 +248,17 @@ it('failed recovery does not publish a new owner with the previous request draft
       }
       return window.recoverySetItem.call(this, key, value)
     }
-    window.spendOwnership.refresh()
+    window.spendOwnership.edit()
   })
-  await page.waitForFunction(() => window.recoveryFailures === 1 && !window.spendOwnership.snapshot().operation)
-  await page.evaluate(() => window.spendOwnership.refresh())
-  await page.waitForFunction(() => window.recoveryFailures === 2 && !window.spendOwnership.snapshot().operation)
-  expect(await page.evaluate(() => localStorage.getItem(window.recoverySource[0]))).toBe(await page.evaluate(() => window.recoverySource[1]))
+  await page.waitForFunction(() => window.recoveryFailures >= 1)
+  // 卡还活着、改动还在（它活在 React state 里，存储只是便利）。
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().operation)).toBe('operation')
   await page.evaluate(() => {
     Storage.prototype.setItem = window.recoverySetItem
-    window.spendOwnership.refresh()
+    window.spendOwnership.change('quote')
   })
-  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'recovery-operation')
-  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('recovered B')
+  await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
   expect(await page.evaluate(() => window.spendOwnership.calls)).toEqual([])
 })
