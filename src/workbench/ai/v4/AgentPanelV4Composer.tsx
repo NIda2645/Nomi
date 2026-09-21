@@ -175,6 +175,8 @@ export function AgentPanelV4Composer({
   // 「有东西可发」是**一个**判据，发送钮的长相、它的 disabled、以及 Enter 那条路都从这里取，
   // 免得三处各判一次、以后有人只改了其中一处（长相灰着但 Enter 还能发＝还是在假装能发）。
   const canSend = !admitting && Boolean(value.trim() || chips?.length)
+  /** 这颗圆钮此刻是「停止」：在跑，而且框里没有要发的东西。 */
+  const stopping = running && !canSend
   return (
     <form
       className={cn(
@@ -312,24 +314,31 @@ export function AgentPanelV4Composer({
             取「空框不该假装能发」这一条：它是那格的**论点**，另两处只是背景。
             2026-09-06 用户拍板补齐：灰只是长相，钮还是能按（Enter 也照样触发 submit），
             那就还是在假装能发。空态直接 `disabled`——点不动、键盘跳过、读屏念「已停用」，
-            长相和行为这才是同一件事。running 态是「停止」，永远可按。 */}
+            长相和行为这才是同一件事。
+
+            running 态：**框里有字就是「发送」，空着才是「停止」**（2026-09-22）。此前 running 态这颗钮
+            恒为「停止」——于是有卡在等他、他打了一句话再点这颗钮时，那句话留在框里没发出去，
+            回合反而被停掉（真机走查 `agent-spend-waiting-owner` 当场抓到；提问卡那条也是同一个现象）。
+            回车一直是「发送」（`laneComposerIntent` 的 primary = steer），同一个框上的钮却是相反的意思，
+            就是一功能两个家。想停的人框里本来就是空的；打了字的人要的是把这句话送到。 */}
         <button
-          type={running ? 'button' : 'submit'}
+          type={stopping ? 'button' : 'submit'}
           disabled={!running && !canSend}
           aria-busy={admitting || undefined}
-          onClick={running ? onStop : undefined}
-          aria-label={running ? t('agentPanelV4.stop') : t('agentPanelV4.send')}
+          onClick={stopping ? onStop : undefined}
+          aria-label={stopping ? t('agentPanelV4.stop') : t('agentPanelV4.send')}
           className={cn(
             'grid size-[30px] shrink-0 place-items-center rounded-pill',
-            running
+            stopping
               ? 'border-[1.5px] border-nomi-ink bg-nomi-paper text-nomi-ink'
               : canSend
                 ? 'bg-nomi-ink text-nomi-paper'
                 : 'bg-nomi-ink-10 text-nomi-ink-40',
           )}
           data-v4-control="send"
+          data-v4-send-intent={stopping ? 'stop' : 'send'}
         >
-          {running ? (
+          {stopping ? (
             <span className="size-2.5 rounded-sm bg-nomi-ink" aria-hidden="true" />
           ) : (
             <IconArrowUp size={15} />

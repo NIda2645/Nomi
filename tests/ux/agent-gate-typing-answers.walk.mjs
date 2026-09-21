@@ -15,8 +15,7 @@
 //      排在它后面 = 石沉大海；
 //   ③ 提问卡待答 → 打一句、**点那颗圆钮** → 同上。复现时（2026-09-22）这颗钮此刻是「停止」：回合被停掉、
 //      他打的字原样留在输入框里没发出去——run3 的走查点的就是它，连着 15 句没反应。
-//      这一条的修法在渲染层 composer（`src/workbench/ai/v4/**`），等合并 ④ 之后做；
-//      在那之前用 `NOMI_WALK_GATE_BUTTON=1` 才跑它（**已知红**，不是遗忘）。
+//      已修（2026-09-22，`AgentPanelV4Composer.tsx`）：在跑的时候，框里有字这颗钮就是「发送」，空着才是「停止」。
 //
 // Run: pnpm run build && node tests/ux/agent-gate-typing-answers.walk.mjs
 import path from 'node:path'
@@ -32,9 +31,7 @@ const ASK_ARGS = { questions: [{ question: '这支片子想给谁看？' }] }
 const CASES = [
   { id: 'enter', call: 'q-typing-enter', typed: '给我妈看，她不爱看快剪', done: 'TYPING_ENTER_DONE：好，按她的口味来。', how: 'Enter' },
   { id: 'follow-up', call: 'q-typing-follow', typed: '给同事看的，要短', done: 'TYPING_FOLLOW_DONE：好，做短的。', how: 'Alt+Enter' },
-  ...(process.env.NOMI_WALK_GATE_BUTTON === '1'
-    ? [{ id: 'button', call: 'q-typing-button', typed: '算了先不删，帮我看看镜 2', done: 'TYPING_BUTTON_DONE：好，先看镜 2。', how: 'button' }]
-    : []),
+  { id: 'button', call: 'q-typing-button', typed: '算了先不删，帮我看看镜 2', done: 'TYPING_BUTTON_DONE：好，先看镜 2。', how: 'button' },
 ]
 
 const walk = await createRuntimeWalk('gate-typing-answers')
