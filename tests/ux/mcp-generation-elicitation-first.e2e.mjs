@@ -97,11 +97,10 @@ const check = (condition, message) => {
 
 try {
   provider = await startSemanticProvider()
-  const seededCatalog = writeFakeApimartCatalog(dirs.settingsDir, dirs.userDataDir, provider.origin, { withKey: false })
-  seededCatalog.models = seededCatalog.models.map((model) => model.modelKey === 'gpt-image-2'
-    ? { ...model, pricing: { cost: 0, enabled: true, specCosts: [] } }
-    : model)
-  fs.writeFileSync(path.join(dirs.settingsDir, 'model-catalog.json'), JSON.stringify(seededCatalog), 'utf8')
+  // 2026-09-21：这里曾经给 gpt-image-2 塞一行 `pricing: { cost: 0, enabled: true }` 绕开当时的
+  // 「算不出价就不发付费门」。那是一个**编出来的 0 元价**（三种可能里唯一会被读成「免费」的那种），
+  // 而真实装机上这个模型一条价都没有。闸开了之后绕行没必要，去掉——这条旅程从此跑真实处境。
+  writeFakeApimartCatalog(dirs.settingsDir, dirs.userDataDir, provider.origin, { withKey: false })
   gui = await launchNomiApp({
     name: 'mcp-generation-elicitation-first',
     userDataDir: dirs.userDataDir, settingsDir: dirs.settingsDir, projectsDir: dirs.projectsDir, capabilityDir: dirs.capabilityDir,
