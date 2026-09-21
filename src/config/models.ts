@@ -29,6 +29,11 @@ export interface ModelOption {
   modelAlias?: string | null
   /** Catalog billing kind. Kept alongside the option so non-media models (chat) retain their identity. */
   kind?: BillingModelKind
+  /**
+   * 供应商最近一次给的清单里没有它（旁注，不是停用——见 `ModelCatalogModelDto.unlisted`）。
+   * 模型框据此在那一行后面加一句实话；它**不**影响可选性，用户照样选得了。
+   */
+  unlisted?: true
   meta?: unknown
   pricing?: ModelOptionPricing
   variant?: ModelOptionVariant

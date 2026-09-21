@@ -720,7 +720,9 @@ export const zhOnboardingProviders = {
       '旧版本每次保存连接都会抹掉「本地素材怎么上传」和「Authorization 方案词」。内置供应商的已经自动补回来了；这家是你自己接入的，我们没有出处补不了。如果你当初是用接入包接的它，重新导入一次那份包就能恢复——手动接入的连接不受影响（那两项本来就只有内置种子和接入包写得了）。',
   },
   modelControls: {
-    unlisted: '供应商已不再列出',
+    // 「已不再」断言了永久性，而清单抖动是常态（鉴权降级 / 网关抖动 / 上游改分页形状都会
+    // 回一份不完整的清单）。2026-09-21 起后台对账不会因此停用它，措辞也要跟着说实话。
+    unlisted: '供应商清单里暂时没有它',
     more: '更多',
     kind: {
       text: '文本',
@@ -1952,7 +1954,7 @@ export const enOnboardingProviders = {
       'An older version wiped "how local assets are uploaded" and the Authorization scheme word every time a connection was saved. Built-in providers have been restored automatically. This one you added yourself, and we have no source to restore it from. If you added it from a connection package, re-import that package to get the settings back — connections added by hand are unaffected (only built-in seeds and connection packages could ever set those two).',
   },
   modelControls: {
-    unlisted: 'No longer listed by provider',
+    unlisted: "Not in the provider's list right now",
     more: 'More',
     kind: {
       text: 'Text',
