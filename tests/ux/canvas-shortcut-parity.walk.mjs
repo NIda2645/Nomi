@@ -253,8 +253,11 @@ try {
     await expect.poll(async () => JSON.stringify(await positions()) !== JSON.stringify(before), { message: '⌥⇧F 后卡片位置没变' }).toBe(true)
     await waitForVisualQuiescence(win)
     check(true, '⌥⇧F·整理画布改变了排布', { before, after: await positions() })
-    const frameToolPressed = await win.locator('[aria-pressed="true"]').filter({ has: win.locator('svg.tabler-icon-frame') }).count()
-    check(frameToolPressed === 0, '⌥⇧F 没有顺手把「画框」工具（裸 F）打开', { frameToolPressed })
+    // 正向读那颗按钮自己的开关态（先证明按钮在，再读它是 false），不数「不存在」。
+    const frameToolButton = win.getByRole('button', { name: EN ? 'Draw Frame' : '画框', exact: true }).first()
+    await expect(frameToolButton, '左下「画框」按钮没找到，读不了它的开关态').toBeVisible()
+    const frameToolPressed = await frameToolButton.getAttribute('aria-pressed')
+    check(frameToolPressed === 'false', '⌥⇧F 没有顺手把「画框」工具（裸 F）打开', { frameToolPressed })
     await shot('04-alt-shift-f-tidy')
     await undoOnce()
     check(JSON.stringify(await positions()) === JSON.stringify(before), '⌥⇧F 后 ⌘Z 回到原位置', {})
@@ -273,9 +276,9 @@ try {
       await win.keyboard.press('Escape')
       await expect(confirm).toBeHidden({ timeout: stationTimeout() })
     }
-    const status = await win.locator(sel('img-c')).getAttribute('data-status').catch(() => null)
-    const running = await win.locator(`${sel('img-c')} [data-node-status="running"], ${sel('img-c')}[data-status="running"]`).count()
-    check(running === 0, '⌘Enter·取消确认后没有开始生成（零额度）', { status, running })
+    // 正向证据：取消后这张卡仍停在「还没生成」的空态（生成一旦开始，空态会换成进度 / 结果）。
+    const idle = await win.locator(sel('img-c')).getByText(EN ? 'Enter a prompt below, then generate.' : '在下方输入提示词，点击生成。').first().isVisible()
+    check(idle, '⌘Enter·取消确认后没有开始生成（卡仍是空态，零额度）', { idle })
   }
 
   // ═══ 在提示词编辑器里打 v / h / f / Tab：画布不新建、不开菜单、不开画框 ═══
