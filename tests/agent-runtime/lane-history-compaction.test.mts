@@ -9,6 +9,7 @@ import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDe
 import type { SkillRecord } from '../../electron/skills/skillStore.js';
 import { openLaneHistory } from '../../electron/agentLane/laneHistory.mjs';
 import { openLaneWorkspace } from '../../electron/agentLane/laneWorkspace.mjs';
+import { openLaneHistoryPage } from '../../electron/agentLane/laneHistoryPage.mjs';
 
 test('C23 a real history page completing after lane selection publishes only the new conversation', async t => {
   const f = await createLaneFixture(t, []);
@@ -213,4 +214,34 @@ test('independent R04 live lifecycle: short steer survives two lossy SDK compact
   assert.ok(compactCount >= 2);
   assert.ok(steerStillStored);
   assert.ok(finalBody.includes('LATEST_SCOPE_ONLY_THREE_CHARACTERS'), 'latest restriction must remain in final assistant request');
+});
+
+
+test('an older-page request for a different anchor is refused, not answered with the page in flight', async t => {
+  const f = await createLaneFixture(t, []);
+  const context = BACKGROUND_CONTEXT;
+  const opened = await openLaneSession({ projectDir: f.projectDir }, context);
+  t.after(async () => { await opened.session.close(context); await opened.release(context); });
+  const branch = await opened.session.createBranch('main', null, context);
+  for (let i = 0; i < 170; i++) await branch.appendMessage({ role: 'user', content: `ROW_${i}`, timestamp: i }, context);
+
+  const page = await openLaneHistoryPage(opened.session, 'main', context);
+  assert.equal(page.entries().length, 80, 'positive control: this is an actually paged native history');
+  const before = page.state().before!;
+
+  const inFlight = page.older(before);
+  // 同一个锚点重复点 = 复用同一次读，这是它该做的。
+  assert.equal(page.older(before), inFlight, 'the same anchor reuses the in-flight read');
+  // 另一个锚点**不是**同一次读。把 in-flight 的 promise 还给它，它 resolve 时调用方会以为
+  // 自己要的那一页到了——实际到的是别人那一页。这必须是一次拒绝。
+  await assert.rejects(page.older(branch ? 'not-the-current-anchor' : ''), /agent_lane_workspace_stale/);
+  await inFlight;
+  assert.equal(page.entries().length, 160);
+
+  // reset 之后第一页不该被上一次 in-flight 占住。
+  const pending = page.older(page.state().before!);
+  await page.reset();
+  const afterReset = page.older(page.state().before!);
+  assert.notEqual(afterReset, pending, 'a reset lane does not hand out the page request it just invalidated');
+  await Promise.allSettled([pending, afterReset]);
 });
