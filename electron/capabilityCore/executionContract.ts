@@ -212,20 +212,26 @@ const displayValue = (value: unknown): string => (typeof value === "string" ? va
  * 由 `videoRecommendationInput`（`mcpGenerationVideoResolve.ts`）读走用来推荐模式/模型，
  * 从来不上 wire。
  *
- * 为什么必须写成一份**有名字的表**：旧实现靠「未知键 ⇒ 丢掉」顺手把它们处理掉了——
- * 于是「我们自己的意图键」和「模型写错的键」走同一条无声的路，谁也分不出来。
- * 现在它们是显式的一族，模型写错的键才是 `unknown_parameter`。
- * 改这张表就是改模型面的契约：加键前先问它会不会被误当成供应商参数（`check:vocabularies` 登记）。
+ * **每个键连同它的类型一起声明**（2026-09-22 验收：旧版只有键名，于是
+ * `{quality: 99999, preferredFamily: {a:1}}` 会被原样吞掉、连 warning 都没有——
+ * 比「没有参数表」那条分支还弱）。现在类型不对照样拒，与真参数同一套话术。
+ *
+ * 这张表是**消费方那 12 个键的子集**，子集关系由 `parameterAdmission.class.test.ts` 按行为核：
+ * 表里的每个键都必须真被读走，消费方新读一个键却没进表也要红。
  */
-export const GENERATION_PLANNING_HINT_KEYS = Object.freeze([
-  "cameraIntent",
-  "preferredFamily",
-  "preserveCharacter",
-  "preserveTransition",
-  "quality",
-  "useReferenceAudio",
-] as const);
-const PLANNING_HINT_KEY_SET: ReadonlySet<string> = new Set(GENERATION_PLANNING_HINT_KEYS);
+export const GENERATION_PLANNING_HINTS = Object.freeze({
+  cameraIntent: "string",
+  preferredFamily: "string",
+  preserveCharacter: "boolean",
+  preserveTransition: "boolean",
+  quality: "string",
+  useReferenceAudio: "boolean",
+} as const satisfies Record<string, ParameterField["type"]>);
+
+export const GENERATION_PLANNING_HINT_KEYS = Object.freeze(
+  Object.keys(GENERATION_PLANNING_HINTS) as Array<keyof typeof GENERATION_PLANNING_HINTS>,
+);
+
 
 /**
  * 参数值层的**唯一**准入边界（两个模型面、三个调用点共用这一处）。
@@ -242,8 +248,18 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
   const model = `${module.providerId}/${module.modelId}`;
   for (const [key, value] of Object.entries(candidate.parameters)) {
     const field = module.parameterSchema[key];
-    // 选型意图键：Nomi 的推荐器读它，供应商请求里没有它。不进合同，也不算「填错」。
-    if (!field && PLANNING_HINT_KEY_SET.has(key)) continue;
+    // 选型意图键：Nomi 的推荐器读它，供应商请求里没有它。不进合同，也不算「填错」——
+    // 但**类型照判**：垃圾值无声吞掉与静默丢弃是同一个毛病。
+    const hintType = (GENERATION_PLANNING_HINTS as Record<string, ParameterField["type"]>)[key];
+    if (!field && hintType) {
+      if (!parameterMatches(hintType, value)) {
+        throw new ContractCompilationError(
+          `参数 parameters.${key} 是 Nomi 的选型意图键，类型必须是 ${hintType}，收到的是 ${typeof value}。`,
+          { code: "parameter_type_mismatch", path: `parameters.${key}`, expectedType: hintType, allowedKeys },
+        );
+      }
+      continue;
+    }
     if (!field && allowedKeys.length === 0) {
       // 这个模型在目录里**一个参数都没声明**。那不等于「这个键是错的」，只等于「我们不知道」——
       // 证不出错就不许拒（R17：能判的判，判不了的明说）。但也绝不能像旧实现那样悄悄丢掉：

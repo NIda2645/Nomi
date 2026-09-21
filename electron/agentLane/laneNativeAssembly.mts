@@ -102,6 +102,11 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
     [modelReadSpec.name]: modelReadSpec.effect,
     [LANE_TOOL_REQUEST_TOOL_NAME]: 'read',
   });
+  // 可用性三件（keyStatus/usable/statusReason）**这一面暂缺**：注入它要么把目录
+  // （catalogStore 的磁盘读 + 种子）拖进 agent 运行时的模块图——分层门岗当场红、
+  // 且 lane 此前对目录零依赖；要么让渲染层随清单一起推上来（ModelOption today 不带这三样）。
+  // 两条都不是这一刀该顺手做的，所以**不编一个 usable:true 冒充**：缺就缺，记在
+  // 根因合同 residual_risks 里。对外 MCP 面一直有它们，投影层的 seam 也留着（第二个参数）。
   const modelRead = createLaneModelRead(() => input.availableModels?.() ?? []);
   const promptSources = [...coding, request] as unknown as PiAgentTool[];
   // `nomi_read` 的系统提示词条目直接用注册表那份说明书（全文 + 示例 + 纪律），与领域工具同一条路。

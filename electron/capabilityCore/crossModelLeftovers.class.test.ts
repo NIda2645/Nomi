@@ -32,12 +32,26 @@ const registry = createModuleRegistry([{
 }]);
 
 const lease: ProjectLeaseV2 = {
-  version: PROJECT_LEASE_VERSION, algorithm: PROJECT_LEASE_ALGORITHM, audience: PROJECT_LEASE_AUDIENCE,
-  projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
-  canonicalRootDigest: "digest", manifestDigest: "manifest",
-  scopeSet: ["generation:create", "generation:preview", "generation:gate"],
-  issuedAt: "2026-09-22T00:00:00.000Z", expiresAt: "2099-01-01T00:00:00.000Z",
-  nonce: "nonce", keyId: "key", mac: "mac", sessionId: "session", principal: "mcp:test", connectionNonce: "conn",
+  version: PROJECT_LEASE_VERSION,
+  keyId: "key-1",
+  algorithm: PROJECT_LEASE_ALGORITHM,
+  issuer: "nomi-main",
+  nonce: "nonce-1",
+  scopeHash: "scope-hash-1",
+  mac: "mac-1",
+  projectId: "project-1",
+  immutableProjectUuid: "project-uuid-1",
+  projectGeneration: 1,
+  canonicalRootDigest: "root-1",
+  manifestDigest: "manifest-1",
+  issuedAt: "2026-08-23T00:00:00.000Z",
+  expiresAt: "2026-08-23T01:00:00.000Z",
+  audience: PROJECT_LEASE_AUDIENCE,
+  leasePrincipal: "mcp:codex",
+  sessionId: "session-1",
+  connectionNonce: "connection-1",
+  revocationEpoch: 0,
+  scopeSet: ["generation:create", "generation:plan", "generation:preview", "generation:read", "generation:cancel"],
 };
 
 function candidate(parameters: Record<string, unknown>) {

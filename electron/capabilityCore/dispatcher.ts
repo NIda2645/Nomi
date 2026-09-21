@@ -8,7 +8,6 @@ import {
   deleteProjectNodes,
   importProjectAsset,
   listAllProjects,
-  listAvailableModels,
   setProjectNodePrompt,
   type FetchTaskResultFn,
   type MakeVerifyDeps,
@@ -44,6 +43,7 @@ import {
 } from '../integrationCertification/integrationSession'
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
 import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
+import { dispatchModelSpec } from './modelSpecRead'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
@@ -385,8 +385,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       return { ...created, projectSelectionHandle: selection.handle.handleId }
     }
     case 'models.list':
-      // `fingerprint` 与 `nomi_remove_provider` 的 `ifUnchanged` 同一个函数算：读什么、删时比什么，不许两份。
-      return { models: listAvailableModels(), fingerprint: currentCatalogFingerprint() }
+    case 'models.read':
+      // 模型目录的两档分级披露（薄名单 / 单模型详情），两档都住 modelSpecRead。
+      return dispatchModelSpec(method, params)
     case 'skills.list':
       // 导演/编剧技能库元数据（渐进披露，不含正文）。供 MCP 脊柱 resources/prompts 列表。
       return { skills: listSkillSummariesForMcp(mcpSkillAccess(ctx.origin), await readSkillRecords()) }

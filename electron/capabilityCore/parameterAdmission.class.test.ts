@@ -151,6 +151,14 @@ describe("parameter admission (shared boundary)", () => {
     expect(contract.parameters).toEqual({ resolution: "720p" });
   });
 
+  it("rejects a planning hint whose value is the wrong type", () => {
+    // 2026-09-22 验收：`{quality: 99999, preferredFamily: {a:1}}` 曾被原样吞掉、连 warning 都没有。
+    const error = rejectionOf({ resolution: "720p", quality: 99999 });
+    expect(error.rejection?.code).toBe("parameter_type_mismatch");
+    expect(error.rejection?.path).toBe("parameters.quality");
+    expect(error.rejection?.expectedType).toBe("string");
+  });
+
   it("every declared planning hint is one the recommendation reader actually consumes", () => {
     // 活的判据：逐个键真喂进去，看 videoRecommendationInput 读不读得到它。
     // （把常量再导出一遍然后和自己比，那种断言恒真——它挡不住「这里加了键、那边没加」。）

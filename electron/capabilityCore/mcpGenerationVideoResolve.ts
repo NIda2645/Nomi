@@ -15,7 +15,7 @@ import type {
 } from "../shared/videoCapabilities/recommendation";
 import { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration, videoVariantIdsOf } from "../shared/videoCapabilities/recommendation";
 import { modeTransportFor } from "../shared/videoCapabilities/modeTransport";
-import type { ArchetypeMode, ModelParameterControl } from "../shared/videoCapabilities/types";
+import type { ArchetypeMode } from "../shared/videoCapabilities/types";
 
 // Keep mode/task comparisons tolerant of the wire's kebab/snake aliases.  This
 // local normalizer is intentionally dependency-free so candidate resolution

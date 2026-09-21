@@ -11,7 +11,6 @@ import crypto from "node:crypto";
 
 import { compileExecutionContract, type ExecutionContractCompileOptions, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
-import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { SINGLE_SHOT_GENERATION_MODULE_ID } from "../shared/generationModuleId";
 import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../shared/generationShotEnvelope";

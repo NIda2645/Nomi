@@ -91,6 +91,17 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
       ...(archetype ? { archetypeId: archetype.id } : {}),
       defaultModeId: archetype?.defaultModeId ?? "chat",
       modes,
+      // 变体随档案一起投出去：准入层会拒未知 variantId，不投就是「可被拒、不可发现」。
+      ...(archetype?.variants?.length
+        ? {
+            variants: archetype.variants.map((variant) => ({
+              id: variant.id,
+              label: variant.label,
+              ...(variant.modelKey ? { modelKey: variant.modelKey } : {}),
+            })),
+            ...(archetype.defaultVariantId ? { defaultVariantId: archetype.defaultVariantId } : {}),
+          }
+        : {}),
     });
   }
   return entries;
