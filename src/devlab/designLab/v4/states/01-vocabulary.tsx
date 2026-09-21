@@ -179,7 +179,11 @@ function SlotCell({ pick }: { pick: keyof ReturnType<typeof useV4Fixtures>['slot
  * 待答（选项 + 空的那一行）· 正在自己作答（那一行里有字）· 熔断转提问（多一句「试了 3 次」）。
  * 答完之后长什么样不在这里：它已经不是一张卡了，是对话流里的一行收据（见下一格）。
  */
-function QuestionSlotCell({ pick, draft }: { pick: 'question' | 'questionRetry'; draft?: boolean }): JSX.Element {
+type QuestionPick =
+  | 'question' | 'questionRetry' | 'questionFree' | 'questionTwo' | 'questionFourMixed'
+  | 'questionLabelsOnly' | 'questionMissingParam'
+
+function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
   const labels = useV4Labels()
   const data = draft ? { ...fx.slots[pick], answerDraft: fx.t('agentPanelV4.slotQuestionTyped') } : fx.slots[pick]
@@ -529,6 +533,43 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
     source: '2026-09-21 拍板 ⑤：提交后卡收起成一行收据',
     coverage: 'component-only',
     render: () => <QuestionAnsweredCell />,
+  },
+  // ── 反问卡的通用性（2026-09-21 用户原话：「只有那一种反问就离谱了」）──
+  // 六格换六个题目、六种形状；同一个组件、同一份契约，差别全在数据。
+  {
+    id: 'v4-intervention-question-free',
+    name: '⑤ 介入槽 · 反问 · 一个选项都没有（纯自由作答）',
+    source: '2026-09-21 拍板：反问是通用能力，options 允许为空',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionFree" />,
+  },
+  {
+    id: 'v4-intervention-question-two-options',
+    name: '⑤ 介入槽 · 反问 · 2 个选项（区间下界）',
+    source: '2026-09-21 拍板：一次一题、2–4 个选项',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionTwo" />,
+  },
+  {
+    id: 'v4-intervention-question-four-mixed',
+    name: '⑤ 介入槽 · 反问 · 4 个选项且长短不一（EN 有一条很长的说明）',
+    source: '2026-09-21 拍板：标签 + 一句说明 + 可标推荐；EN 串长 1.5–2 倍',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionFourMixed" />,
+  },
+  {
+    id: 'v4-intervention-question-labels-only',
+    name: '⑤ 介入槽 · 反问 · 只有标签没有说明（模型不写就没有）',
+    source: '2026-09-21 拍板：description 缺席 = 不替它编',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionLabelsOnly" />,
+  },
+  {
+    id: 'v4-intervention-question-missing-param',
+    name: '⑤ 介入槽 · 反问 · 缺参数来源（同一张卡的第二个生产者）',
+    source: '2026-09-12 缺参数并进反问格｜2026-09-21 拍板：宿主生产者不是唯一触发',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionMissingParam" />,
   },
   {
     id: 'v4-intervention-plan',

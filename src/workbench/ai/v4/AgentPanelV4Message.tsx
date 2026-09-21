@@ -226,7 +226,12 @@ export function V4OptionChips({
           className={cn(
             // 有说明的 chip 是两行，所以高度不能写死成 26px（写死的那一版把说明裁在了
             // 药丸外面）：给一个最小高度，让内容决定它到底多高。
-            'inline-flex min-h-[26px] flex-col items-start justify-center rounded-pill border px-3 py-1 text-left text-caption',
+            'inline-flex min-h-[26px] flex-col items-start justify-center border px-3 py-1 text-left text-caption',
+            // 圆角**跟着形状走，不跟着种类走**：药丸只有在它真是一行高的时候才读得出是药丸。
+            // 模型写的说明想多长就多长（2026-09-21 实测 EN 那条能占四行），而一个四行高的
+            // 全圆角盒子两侧的弧会把文字挤向中间、上下两角空一大块——看着像气泡，不像可选项。
+            // 所以：没有说明 = 药丸（定稿里那个长相）；有说明 = 普通圆角卡片。
+            option.description ? 'rounded-nomi' : 'rounded-pill',
             index === selectedOption
               ? 'border-nomi-accent bg-nomi-accent-soft text-nomi-accent'
               : 'border-nomi-line text-nomi-ink-80',

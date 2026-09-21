@@ -274,9 +274,73 @@ function buildFixtures(t: TFunction) {
       kind: 'question',
       title: t('agentPanelV4.slotQuestionTitle'),
       options: [
-        { id: 'landscape', label: t('agentPanelV4.slotOptionLandscape'), description: t('agentPanelV4.slotOptionLandscapeWhy'), recommended: true },
-        { id: 'portrait', label: t('agentPanelV4.slotOptionPortrait'), description: t('agentPanelV4.slotOptionPortraitWhy') },
-        { id: 'square', label: t('agentPanelV4.slotOptionSquare') },
+        { id: 'calm', label: t('agentPanelV4.slotOptionVoiceCalm'), description: t('agentPanelV4.slotOptionVoiceCalmWhy'), recommended: true },
+        { id: 'urgent', label: t('agentPanelV4.slotOptionVoiceUrgent'), description: t('agentPanelV4.slotOptionVoiceUrgentWhy') },
+        { id: 'warm', label: t('agentPanelV4.slotOptionVoiceWarm') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    // ── 通用性的六种问法（2026-09-21 用户：「只有那一种反问就离谱了」）──
+    // 每一格换一个**题目**，不是换一套皮肤：证的是同一张卡什么都能问。
+    // 上面那格（3 个选项 · 有说明 · 有推荐）原本问的是画幅，已换成口吻——
+    // 契约里从来没有「画幅」这个字段，夹具里也不该有，否则读代码的人会以为它是专用的。
+    /** ① 一个选项都没有：纯自由作答。缺参数、开放式问题常常就是这样。 */
+    questionFree: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionFreeTitle'),
+      summary: t('agentPanelV4.slotQuestionFreeNote'),
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ② 只有 2 个选项（拍板区间的下界）。 */
+    questionTwo: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionTwoTitle'),
+      options: [
+        { id: 'shot-3', label: t('agentPanelV4.slotQuestionTwoOptionA'), description: t('agentPanelV4.slotQuestionTwoOptionAWhy'), recommended: true },
+        { id: 'shot-5', label: t('agentPanelV4.slotQuestionTwoOptionB'), description: t('agentPanelV4.slotQuestionTwoOptionBWhy') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /**
+     * ③ 4 个选项（上界），且标签与说明**长短差得很远**——其中一条 EN 说明是刻意写长的。
+     * 这一格是为换行准备的：英文串本来就比中文长 1.5–2 倍，截断只有眼睛看得出来。
+     */
+    questionFourMixed: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMixedTitle'),
+      options: [
+        { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+        { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+        { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+        { id: 'both', label: t('agentPanelV4.slotQuestionMixedOptionD'), description: t('agentPanelV4.slotQuestionMixedOptionDWhy') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ④ 只有标签、一条说明都没有（模型不写我们就不替它编）。 */
+    questionLabelsOnly: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionLabelsTitle'),
+      options: [
+        { id: 'v1', label: t('agentPanelV4.slotQuestionLabelsOptionA') },
+        { id: 'v2', label: t('agentPanelV4.slotQuestionLabelsOptionB') },
+        { id: 'v3', label: t('agentPanelV4.slotQuestionLabelsOptionC') },
+        { id: 'none', label: t('agentPanelV4.slotQuestionLabelsOptionD') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /** ⑥ 缺参数这个**生产者**（⑤ 熔断在下面）：同一张卡，只是问句由宿主补一句人话。 */
+    questionMissingParam: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMissingTitle'),
+      summary: t('agentPanelV4.slotQuestionMissingNote'),
+      options: [
+        { id: '3s', label: t('agentPanelV4.slotQuestionMissingOptionA') },
+        { id: '5s', label: t('agentPanelV4.slotQuestionMissingOptionB'), description: t('agentPanelV4.slotQuestionMissingOptionBWhy'), recommended: true },
       ],
       answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
       answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
