@@ -1132,6 +1132,46 @@ try {
   )
   await snap('08-wheel-pan-scheme.png')
 
+  // 2026-09-22 用户真机回归：平移档下 React Flow 把「平移结束」推迟 150ms，这期间点一下卡，
+  // `data-dragging` 就永远摘不掉，浮框 / 浮条 / 版本托盘全部隐身（docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
+  // 本文件别处每次平移后都等 ≥260ms 才下一步，正好错过那 150ms——所以这里刻意「松手即点」。
+  {
+    await getWin().getByLabel('适应视图', { exact: true }).first().click()
+    await getWin().waitForTimeout(500)
+    const panStart = await findBlankPoint()
+    const target = await getWin().evaluate(() => {
+      for (const node of document.querySelectorAll('.react-flow__node article[data-node-id]')) {
+        const r = node.getBoundingClientRect()
+        const x = r.left + r.width / 2
+        const y = r.top + Math.min(24, r.height / 2)
+        if (node.contains(document.elementFromPoint(x, y))) return { id: node.getAttribute('data-node-id'), x, y }
+      }
+      return null
+    })
+    assert(Boolean(target), '平移档：视口里有一张点得到的卡（松手即点的目标）', JSON.stringify(target))
+    await getWin().mouse.move(panStart.x, panStart.y)
+    await getWin().mouse.down()
+    await getWin().mouse.move(panStart.x + 2, panStart.y + 1)
+    await getWin().mouse.move(panStart.x + 40, panStart.y + 12, { steps: 6 })
+    await getWin().mouse.up()
+    const moved = await getWin().evaluate(({ id, x, y }) => {
+      const node = document.querySelector(`article[data-node-id="${id}"]`)
+      const r = node.getBoundingClientRect()
+      return { x: r.left + r.width / 2, y: r.top + Math.min(24, r.height / 2), dx: x, dy: y }
+    }, target)
+    await getWin().mouse.move(moved.x, moved.y)
+    await getWin().mouse.down()
+    await getWin().waitForTimeout(60)
+    await getWin().mouse.up()
+    let dragging = 'unread'
+    for (let i = 0; i < 20; i += 1) {
+      dragging = await getWin().evaluate(() => document.querySelector('.generation-canvas-v2__stage')?.getAttribute('data-dragging') ?? null)
+      if (dragging === null) break
+      await getWin().waitForTimeout(100)
+    }
+    assert(dragging === null, '平移档：平移松手后 150ms 内点卡，画布不卡在拖动态（浮框/浮条/托盘不会隐身）', `data-dragging=${dragging}`)
+  }
+
   await chooseCanvasGesture('wheel-zoom')
   const zoomSchemeHelp = await readControlsHelp('backfill-a-help-wheel-zoom.png')
   assert(

@@ -60,6 +60,8 @@ type CanvasKeydownHandlerOptions = {
   activeCategoryId: string
   setActiveEdge: (edge: null) => void
   deleteActiveEdge?: () => void
+  /** 选中的空框（框本身就是选区）：删掉返回 true。 */
+  deleteActiveFrame?: () => boolean
   cancelConnection: () => void
   deleteSelectedNodes: () => void
   groupSelectedNodes: () => void
@@ -121,6 +123,7 @@ export function createCanvasKeydownHandler(opts: CanvasKeydownHandlerOptions): (
     activeCategoryId,
     setActiveEdge,
     deleteActiveEdge,
+    deleteActiveFrame,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes,
@@ -153,6 +156,10 @@ export function createCanvasKeydownHandler(opts: CanvasKeydownHandlerOptions): (
     }
     if (event.key === 'Backspace' || event.key === 'Delete') {
       if (!selectedNodeCount) {
+        if (deleteActiveFrame?.()) {
+          event.preventDefault()
+          return
+        }
         if (deleteActiveEdge) {
           event.preventDefault()
           deleteActiveEdge()
@@ -297,6 +304,8 @@ export function useCanvasShortcuts(opts: {
   /** 只用于清空（Escape）；签名收窄到 null 以兼容任意 ActiveEdge setState。 */
   setActiveEdge: (edge: null) => void
   deleteActiveEdge?: () => void
+  /** 选中的空框（框本身就是选区）：删掉返回 true。 */
+  deleteActiveFrame?: () => boolean
   cancelConnection: () => void
   deleteSelectedNodes: () => void
   groupSelectedNodes: () => void
@@ -318,6 +327,7 @@ export function useCanvasShortcuts(opts: {
     activeCategoryId,
     setActiveEdge,
     deleteActiveEdge,
+    deleteActiveFrame,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes,
@@ -351,6 +361,7 @@ export function useCanvasShortcuts(opts: {
       activeCategoryId,
       setActiveEdge,
       deleteActiveEdge,
+    deleteActiveFrame,
       cancelConnection,
       deleteSelectedNodes,
       groupSelectedNodes,
@@ -435,6 +446,7 @@ export function useCanvasShortcuts(opts: {
     cutSelectedNodes,
     deleteSelectedNodes,
     deleteActiveEdge,
+    deleteActiveFrame,
     getPastePlacement,
     groupSelectedNodes,
     pasteNodes,

@@ -32,6 +32,50 @@ export type CanvasDraggingOwner = (typeof CANVAS_DRAGGING_OWNER)[keyof typeof CA
 const draggingOwnersByStage = new WeakMap<Element, Set<CanvasDraggingOwner>>()
 
 /**
+ * 标志的寿命上限 = 这一次指针手势。
+ *
+ * 升起标志的每一位 owner（拖节点 / 拖选区 / 拖框 / 平移）都是**按着指针**才会发生的动作，所以
+ * 指针一松开（pointerup / pointercancel / 窗口失焦），这张画布上就不该再有任何 owner。
+ * 各 owner 自己的收尾照旧做；这里只保证：哪位 owner 的收尾因为时序没走到，标志也**不会活过这次手势**。
+ *
+ * 为什么必须在这一层兜：2026-09-22 用户报「选中节点浮框整个没了 / 点『2 版』没反应」——
+ * 真因是视口平移的收尾被 React Flow 推迟 150ms（`panOnScroll` 时 `createPanZoomEndHandler`
+ * 用 setTimeout 防抖），这 150ms 里任何一次画布内按下都会把「这次平移动过没」重置掉，收尾于是跳过，
+ * `data-dragging` 永远留在 true，浮框 / 浮条 / 版本托盘全部 `invisible`，直到下一次完整拖动画布。
+ * 触发它的是 owner 之间的时序，不是某一位 owner 写错了一行；只要标志的释放还靠 owner 各自记账，
+ * 下一位 owner 就能用另一种时序再漏一次。所以释放的最后一道闸放在标志自己这里。
+ */
+const gestureEndGuardByStage = new WeakMap<Element, () => void>()
+/** 每次升起标志 +1：兜底收尾只收「手势结束那一刻」的 owner，不误伤紧接着开始的下一次手势。 */
+const raiseEpochByStage = new WeakMap<Element, number>()
+
+function armGestureEndGuard(stage: Element): void {
+  if (gestureEndGuardByStage.has(stage) || typeof window === 'undefined') return
+  const events = ['pointerup', 'pointercancel', 'blur'] as const
+  const onGestureEnd = (event: Event) => {
+    // 捕获阶段也看得到后代元素的 blur（焦点在控件间移动）；只有窗口本身失焦才算手势被打断。
+    if (event.type === 'blur' && event.target !== window) return
+    disarm()
+    const epoch = raiseEpochByStage.get(stage)
+    // 等一帧再收：正常路径上各 owner 自己的收尾（React 的 pointerup、React Flow 0ms 的 move-end）先走完，
+    // 属性只摘一次、和它们的状态更新落在同一轮布局里；只有漏收的那位才轮到这里。
+    const settle = () => {
+      if (raiseEpochByStage.get(stage) !== epoch || !draggingOwnersByStage.has(stage)) return
+      draggingOwnersByStage.delete(stage)
+      stage.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
+    }
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(() => settle())
+    else settle()
+  }
+  const disarm = () => {
+    for (const name of events) window.removeEventListener(name, onGestureEnd, true)
+    gestureEndGuardByStage.delete(stage)
+  }
+  for (const name of events) window.addEventListener(name, onGestureEnd, true)
+  gestureEndGuardByStage.set(stage, disarm)
+}
+
+/**
  * @param origin 拖动发起处的元素（节点/组框/stage）。用它 closest 到自己那张画布——
  *               多画布并存时不会误伤别的 stage；取不到就退回文档里的第一张。
  */
@@ -50,12 +94,15 @@ export function setCanvasDragging(
       draggingOwnersByStage.set(stage, owners)
     }
     owners.add(owner)
+    raiseEpochByStage.set(stage, (raiseEpochByStage.get(stage) ?? 0) + 1)
     if (!stage.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)) {
       stage.setAttribute(CANVAS_DRAGGING_ATTRIBUTE, 'true')
     }
+    armGestureEndGuard(stage)
     return
   }
   if (!owners?.delete(owner) || owners.size > 0) return
   draggingOwnersByStage.delete(stage)
+  gestureEndGuardByStage.get(stage)?.()
   stage.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
 }

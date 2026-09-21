@@ -287,6 +287,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     zoomRef,
   })
 
+  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
+  const selectCanvasFrame = frameActions.selectFrame
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -296,6 +298,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     moveGroupNodes,
     moveSelectedNodes,
     selectNodes,
+    onSelectEmptyFrame: frameActions.selectFrame,
   })
   const {
     handleGroupSelectedNodes,
@@ -324,7 +327,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     getNodeRect: getMeasuredNodeRect,
   })
   const frameMembership = useCanvasFrameMembership({ readOnly, frameBoxes: groupBoxes, getNodeRect: getMeasuredNodeRect })
-  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
   const renameGroup = useGenerationCanvasStore((state) => state.renameGroup)
   const setGroupDescription = useGenerationCanvasStore((state) => state.setGroupDescription)
 
@@ -435,7 +437,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     onRename: renameGroup,
     onDescribe: setGroupDescription,
     onOpenMenu: frameActions.openFrameMenu,
+    selectedGroupId: frameActions.selectedFrameId,
   }), [
+    frameActions.selectedFrameId,
     frameActions.editingFrameId,
     frameActions.openFrameMenu,
     frameActions.setEditingFrameId,
@@ -586,8 +590,10 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly, startConnection])
 
   const handlePaneClick = React.useCallback(() => {
-    if (!readOnly && !canvasPanMovedRef.current) clearSelection()
-  }, [canvasPanMovedRef, clearSelection, readOnly])
+    if (readOnly || canvasPanMovedRef.current) return
+    clearSelection()
+    selectCanvasFrame(null)
+  }, [canvasPanMovedRef, clearSelection, readOnly, selectCanvasFrame])
 
   const revealCreatedNodes = useRevealCreatedNodes({ animateViewportTo, readViewportTarget, stageRef: hostRef })
   // ⌘D：副本被整簇避让推开后常落在视口外，由这次手势显式把整簇露出来（副本即复制后的选区）。
@@ -612,6 +618,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     activeCategoryId,
     setActiveEdge: () => setSelectedEdgeId(null),
     deleteActiveEdge,
+    deleteActiveFrame: frameActions.deleteSelectedFrame,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes: handleGroupSelectedNodes,

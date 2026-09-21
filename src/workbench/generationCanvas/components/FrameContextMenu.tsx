@@ -16,10 +16,11 @@ import {
   IconPlayerPlay,
   IconTimeline,
   IconFrameOff,
+  IconTrash,
 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 
-export type FrameContextMenuAction = 'edit' | 'generate' | 'timeline' | 'collapse' | 'dissolve'
+export type FrameContextMenuAction = 'edit' | 'generate' | 'timeline' | 'collapse' | 'dissolve' | 'delete'
 
 type FrameContextMenuProps = {
   className?: string
@@ -50,6 +51,8 @@ export default function FrameContextMenu({
     label: string
     icon: typeof IconPencil
     hint?: string
+    /** 这一项起是「拆掉/删掉框」那一段，前面画一条分隔线。 */
+    separated?: boolean
     disabled?: boolean
     disabledReason?: string
   }[] = [
@@ -73,8 +76,16 @@ export default function FrameContextMenu({
       action: 'dissolve',
       label: t('generationCommon.canvas.group.menuDissolve'),
       icon: IconFrameOff,
+      separated: true,
       // 解散不是删除：这句灰字就是那个区别本身，不写用户不敢点（实测里最容易被误当成删除的一项）。
       hint: t('generationCommon.canvas.group.menuDissolveHint'),
+    },
+    // 删除 = 框连同里面的东西一起删（与选中框按 Delete 同一个动作，⌘Z 一次撤回）。空框只能从这里或 Delete 删。
+    {
+      action: 'delete',
+      label: t('generationCommon.canvas.group.menuDelete'),
+      icon: IconTrash,
+      hint: t('generationCommon.canvas.group.menuDeleteHint'),
     },
   ]
 
@@ -98,7 +109,7 @@ export default function FrameContextMenu({
         const Icon = item.icon
         return (
           <React.Fragment key={item.action}>
-            {index === items.length - 1 ? (
+            {item.separated && index > 0 ? (
               <div className={cn('h-px my-1 mx-2 bg-nomi-line')} aria-hidden="true" />
             ) : null}
             {/* 禁用的 <button> 自己不触发 title（浏览器行为）→ 外层包一层承载它（§1.6 C1）。 */}
