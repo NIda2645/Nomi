@@ -1,7 +1,6 @@
-import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
-import { applyPlanCandidatePatch, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
+import { applyPlanCandidatePatch } from "./executionContract";
 import type { GenerationOperation, GenerationOperationStore } from "./mcpGenerationTools";
 
 /**

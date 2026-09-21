@@ -1,7 +1,6 @@
-import type { PlanAnchor, PlanShot, StoryboardPlan } from '../shared/storyboard/storyboardPlan';
+import type { StoryboardPlan } from '../shared/storyboard/storyboardPlan';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import { storyboardSubjectFromCandidate, storyboardReferenceSlot } from '../shared/storyboard/storyboardSubjectAdapter';
-import { resolveGenerationShotScope } from '../shared/agentCapabilities/generationShotScope';
 import { storyboardAuthorFieldsSchema, type StoryboardAuthorFields } from '../shared/agentCapabilities/generationPlanSchemas';
 // 能力核 · P4 S6.5 语义多镜 create 入口逻辑（从 mcpGenerationTools.ts 抽出，守 800 行门岗 R9）。
 //

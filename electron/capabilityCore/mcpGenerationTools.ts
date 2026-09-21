@@ -5,7 +5,6 @@ import type { GenerationInvocationContext } from '../shared/agentCapabilities/ge
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 import crypto from "node:crypto";
 import {
-  applyPlanCandidatePatch,
   compileExecutionContract,
   type ExecutionContractV1,
   type PlanCandidate,
@@ -54,7 +53,6 @@ import { resolveGenerationPlan, type PlanShotInput } from "../shared/videoCapabi
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
-import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
 import { generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 

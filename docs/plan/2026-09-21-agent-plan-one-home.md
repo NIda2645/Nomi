@@ -79,11 +79,35 @@ Pass 3–6 的任何一项（schema strict、admissionSurface、拖动租约、�
 
 ## 先查别人（R5）
 
-- 本刀的 prior-art 报告 = scratchpad `crosscheck-agent-plan-home.md`：它逐 file:line 核了
-  main / PR head 两个 ref 上两条产出路径的真实归宿，并给出反方（「留 B 修毛病」≈ +350 行、两次产品拍板、结构问题修不掉）。
-- 不引入新框架/新协议/新对外格式：`storyboard.upsert-design` / `storyboard.patch-design` 是**内部**渲染层 op，
-  与既有 `production.materialize-shots` / `storyboard.present` 同一张表、同一条 `requestRenderer` 窄 RPC。
-  模型可见面只减不增（`draft_shots` 的 schema 一字未动；只改描述与 target 提示词）。
+**① 这条机制我们自己早就有了，不是新造。** 报告正本 = scratchpad `crosscheck-agent-plan-home.md`
+（只读核对，逐条给 file:line，并给出反方结论：「留 B 修毛病」≈ +350 行、两次产品拍板、结构问题修不掉）。
+逐条出处：
+
+- `src/workbench/generationCanvas/agent/applyCanvasToolCall.ts:293` —— `propose_storyboard_plan` →
+  `store.setStoryboardPlan(plan, targetDocumentId, storyboardId, true, !storyboardId)`：
+  「Agent 产出 → 侧栏一条方案」在 main 上就是现役的，外部 MCP 宿主的 `nomi_canvas_plan` 天天走它。
+  两个 ref（`origin/main` / PR head）上这一段**一字未改**——所以本刀是接回，不是新造。
+- `src/workbench/workbenchDocumentSlice.ts:196-218` —— `addStoryboardDesign(documentId, source?)`
+  已经接受外部 plan，正是这条路要的入口；本次只加了一个 `identity` 参数让 id 由调用方指定。
+- `src/workbench/creation/DocumentListSidebar.tsx:342-409` vs `:412-439`（PR head）—— 同一个列表里两类行：
+  前者有双击改名、⋮ 菜单删除+二次确认、复制、`stale`/`committed` 徽标；后者一样都没有。
+  用户 09-21 要的「给个删除 icon」在前者上是白送的，在后者上是新命令 + 新拍板。
+- `electron/capabilityCore/mcpGenerationTools.ts:653 / :689` 与 `src/workbench/capability/storyboardPresent.ts:57`
+  （PR head 行号）—— 核实「钱那条路不依赖 `editorial`」：带 editorial 的 `preview` 直接返回**不算价**、
+  `gate_request` 直接抛 `storyboard_present_required`，真正花钱走的是画布 runner 的 `confirmAndRunPlan`。
+  这是决定「能不能扔」的唯一硬门槛，扔之前实核过。
+
+**② 这不是第三方能力，不用 build-vs-buy。** 分镜方案是 Nomi 自己的项目记录结构；
+本刀没有引入任何新框架、新运行时、新协议，也没有新增对外格式：模型可见面（`draft_shots` 的 schema）
+一字未改（`pnpm run check:model-face-frozen` 绿），两个新 op（`storyboard.upsert-design` /
+`storyboard.patch-design`）是**内部**渲染层窄 RPC，与既有的 `production.materialize-shots`
+（`electron/productionRun/multiShotCanvasLanding.ts:232`）、`storyboard.present`
+（`src/workbench/capability/capabilityApplyHandler.ts:405`）同一张表、同一条 `requestRenderer` 通道。
+
+**③ 同族形状我们记过。** `~/.claude/.../memory` 的
+`structural-shape-unowned-semantics-20260918`（「一个语义没有主人就会被重新发明」，
+electron 41 份 + src/workbench 20 份收敛出同一形状）——本条是那个形状的又一实例，
+所以合同按 `recurring` 提交，而不是 one_off。
 
 ## 旧数据
 
