@@ -361,9 +361,11 @@ describe("MCP semantic generation planning journey", () => {
     const firstPreview = await harness.call(23, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const firstPayload = JSON.parse((firstPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string } };
     expect(firstPayload.recommendation.recommendations[0]?.modeId).toBe("omni");
-    const firstHash = firstPayload.contract.contractHash;
 
-    await harness.call(24, "tools/call", {
+    // 调用方**点名**了一个这个模型不接受的参数（`trajectory`）。旧行为是静默丢掉它、计划照样成功
+    // ——于是模型以为自己控制了运镜，实际发出去的请求里根本没有这一项。
+    // 2026-09-22 起这一档在**点名那一刻**就拒（存量残留才走清理+上报，见 preview）。
+    const named = await harness.call(24, "tools/call", {
       name: "nomi_operation_plan",
       arguments: {
         leaseHandle: lease,
@@ -378,12 +380,11 @@ describe("MCP semantic generation planning journey", () => {
         },
       },
     });
-    const secondPreview = await harness.call(25, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
-    const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string; droppedFields: Array<{ path: string }> } };
-    expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
-    expect(secondPayload.contract.contractHash).not.toBe(firstHash);
-    expect(secondPayload.contract.droppedFields).toEqual([{ path: "parameters.trajectory", reason: "unsupported_parameter" }]);
-    expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
+    const rejectionText = JSON.stringify(named);
+    expect(rejectionText).toContain("trajectory");
+    expect(rejectionText).toContain("unknown_parameter");
+    // 合法键清单要跟着一起到模型眼前，否则它下一轮还得猜。
+    expect(rejectionText).toContain("allowedKeys");
     expect(runTask).not.toHaveBeenCalled();
   });
 
@@ -484,13 +485,14 @@ describe("MCP semantic generation planning journey", () => {
     expect(sameModelFast.contract).toMatchObject({ modelId: "doubao-seedance-2.0", variantId: "fast" });
 
     await expect(handler({ capability: "plan", params: { operationId, patch: { variantId: "ghost" } }, lease: verifiedLease }))
-      .rejects.toThrow("Unknown video variant");
-    await harness.call(337, "tools/call", {
-      name: "nomi_operation_plan",
-      arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast", parameters: { duration: 6, resolution: "1080p" } } },
-    });
-    await expect(handler({ capability: "preview", params: { operationId }, lease: verifiedLease }))
-      .rejects.toThrow("parameters.resolution");
+      .rejects.toThrow("变体 ghost 不属于");
+    // `fast` 变体不支持 1080p。调用方**点名**了它，所以拒在点名那一刻（plan），
+    // 不再等到 preview —— 存量残留才走 preview 的清理+上报那一档。
+    await expect(handler({
+      capability: "plan",
+      params: { operationId, patch: { variantId: "fast", parameters: { duration: 6, resolution: "1080p" } } },
+      lease: verifiedLease,
+    })).rejects.toThrow("parameters.resolution");
 
     await harness.call(338, "tools/call", {
       name: "nomi_operation_plan",
@@ -572,7 +574,9 @@ describe("MCP semantic generation planning journey", () => {
       modelId: "gpt-image-2",
       mode: "text-to-image",
       prompt: "A red paper crane",
-      parameters: { aspectRatio: "1:1" },
+      // canonical 键是档案声明的 `aspect_ratio`（gptImage2.ts）。2026-09-22 起 image 档案也真被
+      // 准入层校验，驼峰写法会被当场拒——这条测试的主题是 recovery capability，不是参数，故用真键。
+      parameters: { aspect_ratio: "1:1" },
       references: [],
     };
     const created = await handler({ capability: "create", params: { candidate }, lease });

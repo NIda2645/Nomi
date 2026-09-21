@@ -9,7 +9,7 @@
 // 若在这里另写一份「别家应该可以吧」的乐观判断，就会出现「提示说换到 KIE 能用、换过去发现照样没有」，
 // 那比静默隐藏更糟。本模块只做「换一条渠道再问一遍同一个判据」，不新增任何可达性规则。
 import React from 'react'
-import { modeTransportFor, type ArchetypeMode, type ModelArchetype } from '../../../../config/modelArchetypes'
+import { modeTransportFor, type ArchetypeMode, type ModelArchetype } from '../../../../../electron/shared/modelArchetypes'
 import type { ModelOption } from '../../../../config/models'
 import { archetypeModeIsVisible, type ModeChannelBody } from './channelModeReach'
 import { readModeChannelBody } from './useChannelCreateBody'

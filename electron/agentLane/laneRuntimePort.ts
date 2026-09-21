@@ -19,6 +19,8 @@ import type { LaneComposerContext, LaneInputMessage } from '../shared/agentLane/
 import type { NomiModelConfig } from '../shared/agentLane/laneModelConfig'
 import type { ProjectAgentApprovalPolicy, ProjectAgentWorkMode } from '../shared/agentCapabilities/capabilityApprovalPolicy';
 import type { LaneApprovalSubjectResolver } from '../shared/agentLane/laneApproval'
+import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels'
+import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection'
 import type { SkillRecord } from '../skills/skillStore'
 
 export type { LaneHandle, LaneProjection }
@@ -137,6 +139,12 @@ export interface OpenLaneOptions {
    * 模型看到的索引与 `read` 允许越出项目的技能根始终是同一份。
    */
   native?: { settingsRoot: string; skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>) }
+  /**
+   * 模型可用性（keyStatus/usable/statusReason）的**只读查询**，由持有目录的装配层注入。
+   * lane 自己不 import 目录：那会把 catalogStore 的磁盘读拖进 agent 运行时的模块图（分层门岗会红）。
+   * 不注入 = 这三样不出现，**绝不编一个 usable:true 冒充**。
+   */
+  modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined
   /** 项目目录。会话落在 `<project>/.nomi/agent-sessions/` 下。 */
   projectDir: string
   /** 一条 lane = 一条独立的对话轨。默认 `main`。 */

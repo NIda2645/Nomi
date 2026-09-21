@@ -84,13 +84,19 @@ export const VALID_EDGE_MODES = new Set([
 ])
 
 export class CanvasGraphError extends Error {
-  readonly code: 'unknown_node_kind' | 'invalid_edge_mode' | 'node_not_found'
+  readonly code: 'unknown_node_kind' | 'invalid_edge_mode' | 'node_not_found' | 'unknown_model_identity'
   readonly recovery = 'Refresh the canvas and retry with a current node kind, edge mode, or node id.'
+  /**
+   * 语言中立的事实（模型键、节点 kind、最接近的那个…）。传输层 `buildToolErrorOutcome` 把它
+   * 原样送到模型眼前；人话那一半（zh/en）由错误码表出。两半分工，不让中文散文当唯一出口。
+   */
+  readonly details?: Record<string, string | number>
 
-  constructor(code: CanvasGraphError['code'], message: string) {
+  constructor(code: CanvasGraphError['code'], message: string, details?: Record<string, string | number>) {
     super(message)
     this.name = 'CanvasGraphError'
     this.code = code
+    if (details) this.details = details
   }
 }
 
@@ -170,6 +176,7 @@ const ELECTRON_NODE_FACTORY_DEPS: NodeFactoryDeps = {
 export function addNodes(
   snapshot: CanvasSnapshot,
   specs: NodeSpec[],
+  options: { assertModelIdentity?: NodeFactoryDeps['assertModelIdentity'] } = {},
 ): { snapshot: CanvasSnapshot; ids: string[] } {
   const next = cloneSnapshot(snapshot)
   if (!specs.length) return { snapshot: next, ids: [] }
@@ -201,7 +208,12 @@ export function addNodes(
   const existingShotIndexes = next.nodes.map((node) => ({
     shotIndex: typeof node.shotIndex === 'number' ? node.shotIndex : undefined,
   }))
-  const built = buildCanvasNodes(factorySpecs, positions, existingShotIndexes, ELECTRON_NODE_FACTORY_DEPS)
+  // 模型身份校验器由调用方注入（core 那层才看得到目录）。不注入 = 不校验，与 canvasGraph
+  // 「零副作用纯函数」的定位一致：它自己不去读目录。
+  const built = buildCanvasNodes(factorySpecs, positions, existingShotIndexes, {
+    ...ELECTRON_NODE_FACTORY_DEPS,
+    ...(options.assertModelIdentity ? { assertModelIdentity: options.assertModelIdentity } : {}),
+  })
   for (const node of built) {
     // 角色/场景/道具卡自动带上 referenceSheet 标记——它本来就是参考卡，这是 kind 的推论，不是调用方的选项。
     // 为什么必须在这儿打：冻结门（anchorBible.isVisualAnchorNode）同时要 kind 和这个标记，而渲染层落节点

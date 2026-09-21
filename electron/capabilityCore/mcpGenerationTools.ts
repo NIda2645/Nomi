@@ -24,11 +24,10 @@ import {
   candidateHasCharacterReference,
   candidatesForCurrentVideoModel,
   modelSupportsReferenceImage,
-  normalizedModelIdentity,
   normalizeVideoCandidate,
   shotDurationSeconds,
   videoCandidateForPlan,
-  videoParameterSchema,
+  videoCompileOptions,
   videoRecommendationInput,
 } from "./mcpGenerationVideoResolve";
 import type { ModuleRegistry } from "./moduleRegistry";
@@ -47,6 +46,7 @@ import type {
 import { effectiveVideoModes } from "../shared/videoCapabilities/recommendation";
 import { resolveGenerationPlan, type PlanShotInput } from "../shared/videoCapabilities/planResolver";
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
+import { normalizeStoredDraft, resolvePlanPatch } from "./generationPlanPatch";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
@@ -414,7 +414,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     ...(deps.planStoryboard ? { planStoryboard: deps.planStoryboard } : {}),
     parsers: { candidateFrom, record },
     normalizeVideoCandidate: (candidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates),
-    videoParameterSchema: (candidate) => videoParameterSchema(candidate, deps.videoModelCandidates),
+    videoCompileOptions: (candidate) => videoCompileOptions(candidate, deps.videoModelCandidates),
     priceForCandidate,
     effectiveVideoModes,
     ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
@@ -584,8 +584,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
       return { operation, nextAction: "preview" };
     }
-    const current = await deps.operations.read(input.lease.projectId, operationId);
-    if (!current) throw new Error(`Generation operation not found: ${operationId}`);
+    const stored = await deps.operations.read(input.lease.projectId, operationId);
+    if (!stored) throw new Error(`Generation operation not found: ${operationId}`);
+    // 读盘归一（**唯一**的存量残留清理点）：所有 capability 都经这里，所以读出来的就是干净的、
+    // 而且已落盘。逐入口补会漏——上一轮就漏在 gate_request 上（预览看得见、点确认时炸）。
+    const normalizedDraft = await normalizeStoredDraft({
+      operation: stored, projectId: input.lease.projectId, operationId, now: now(),
+      registry: deps.registry, videoModelCandidates: deps.videoModelCandidates,
+      patch: (projectId, id, patch, at, shotId) => deps.operations.patch(projectId, id, patch, at, shotId),
+    });
+    const current = normalizedDraft.operation as typeof stored;
+    const storedLeftovers = normalizedDraft.clearedParameters;
     if (input.capability === "present") {
       // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
       if (current.state !== "draft") throw new Error("new_draft_required: only a draft can be presented");
@@ -612,39 +621,16 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
       if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
       const baseCandidate = targetShot?.candidate ?? current.candidate;
-      const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : baseCandidate.providerId;
-      const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : baseCandidate.modelId;
-      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(baseCandidate.providerId)
-        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(baseCandidate.modelId);
-      const modeChanged = typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(baseCandidate.mode);
-      const mergedCandidate = {
-        ...baseCandidate,
-        ...userPatch,
-        ...(modelChanged && userPatch.variantId === undefined ? { variantId: undefined } : {}),
-        ...((modelChanged || modeChanged) && userPatch.modeId === undefined ? { modeId: undefined } : {}),
-        parameters: userPatch.parameters ?? baseCandidate.parameters,
-        references: userPatch.references ?? baseCandidate.references,
-      } as PlanCandidate;
-      const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
-      const normalizedPatch = {
-        ...userPatch,
-        ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
-        ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
-      };
+      const { normalizedPatch, changeset } = resolvePlanPatch({
+        baseCandidate, userPatch, registry: deps.registry, videoModelCandidates: deps.videoModelCandidates,
+      });
       const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now(), shotId);
-      // J05 — 模型/模式切换时返回 changeset，让调用方知道哪些字段被静默重置。
-      const changeset = (modelChanged || modeChanged) ? {
-        modelChanged, modeChanged,
-        ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
-        ...((modelChanged || modeChanged) && userPatch.modeId === undefined && baseCandidate.modeId ? { clearedModeId: baseCandidate.modeId } : {}),
-        previousModel: `${baseCandidate.providerId}/${baseCandidate.modelId}`,
-        nextModel: `${nextProviderId}/${nextModelId}`,
-      } : undefined;
       return { operation, nextAction: "preview", ...(changeset ? { changeset } : {}) };
     }
     if (input.capability === "preview") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      // 存量残留已在读盘归一处清掉并落盘（见上方 normalizeStoredDraft），这里只如实报出。
+      const contract = compileExecutionContract(candidate, deps.registry, videoCompileOptions(candidate, deps.videoModelCandidates));
       const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
         moduleId: candidate.moduleId,
@@ -665,6 +651,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
+        ...(storedLeftovers.length ? { clearedParameters: storedLeftovers } : {}),
         ...(recommendation ? { recommendation } : {}),
         pricing: projection,
         providerReady: readiness.providerReady,
@@ -679,7 +666,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "gate_request") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const contract = compileExecutionContract(candidate, deps.registry, videoCompileOptions(candidate, deps.videoModelCandidates));
       const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const gateResolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode }); // J06

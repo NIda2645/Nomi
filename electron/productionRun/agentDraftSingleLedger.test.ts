@@ -254,7 +254,7 @@ describe('封存不许抹掉画布绑定', () => {
       schemaVersion: 1, candidateId: shotId, candidateRevision: source.revision,
       moduleId: source.moduleId, moduleVersion: '1.0.0', providerId: source.providerId, modelId: source.modelId,
       mode: source.mode, prompt: source.prompt, parameters: source.parameters, references: [],
-      contractHash: `hash-${shotId}`, warnings: [], droppedFields: [],
+      contractHash: `hash-${shotId}`, warnings: [],
     } as ExecutionContractV1
   }
   /** capabilityCore 的 sealMultiShotFor 投出来的形状：**逐字段重建，不带 nodeId**。这是引爆点，故照抄。 */

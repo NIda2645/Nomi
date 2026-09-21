@@ -18,7 +18,7 @@ import { orderByVendorPreference } from "../../../../electron/shared/contracts/v
 // （resolveArchetypeForModel 内部已按 vendor 特化）。agent 必须同时选 modelKey + modeId。
 import type { ModelOption } from "../../../config/models";
 import { parseModelParameterControls } from "../../../config/modelCatalogMeta";
-import { resolveArchetypeForModel } from "../../../config/modelArchetypes";
+import { resolveArchetypeForModel } from "../../../../electron/shared/modelArchetypes";
 import { preloadModelOptions } from "../../../config/modelCatalogCache";
 import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 import i18n from "../../../i18n";
@@ -91,6 +91,17 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
       ...(archetype ? { archetypeId: archetype.id } : {}),
       defaultModeId: archetype?.defaultModeId ?? "chat",
       modes,
+      // 变体随档案一起投出去：准入层会拒未知 variantId，不投就是「可被拒、不可发现」。
+      ...(archetype?.variants?.length
+        ? {
+            variants: archetype.variants.map((variant) => ({
+              id: variant.id,
+              label: variant.label,
+              ...(variant.modelKey ? { modelKey: variant.modelKey } : {}),
+            })),
+            ...(archetype.defaultVariantId ? { defaultVariantId: archetype.defaultVariantId } : {}),
+          }
+        : {}),
     });
   }
   return entries;

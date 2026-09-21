@@ -16,7 +16,7 @@ import { buildModelEntryIndex, buildPlannedNodeMeta } from './plannedNodeMeta'
  */
 const entries = buildModelEntryIndex(
   buildAgentModelEntries([
-    // GPT Image 2：档案声明 canonical `aspect_ratio`（`src/config/modelArchetypes/gptImage2.ts`）。
+    // GPT Image 2：档案声明 canonical `aspect_ratio`（`electron/shared/modelArchetypes/gptImage2.ts`）。
     { value: 'gpt-image-2', label: 'GPT Image 2', modelKey: 'gpt-image-2', vendor: 'kie', kind: 'image' },
     // Agnes Image 2.0：档案只声明像素 `size`，**没有** aspect_ratio 控件。
     { value: 'agnes-image-2.0-flash', label: 'Agnes Image', modelKey: 'agnes-image-2.0-flash', vendor: 'agnes', kind: 'image' },

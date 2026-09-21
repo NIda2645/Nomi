@@ -230,9 +230,10 @@ export function GenerationCanvasReactFlowViewport({
         setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)
       }}
       onMoveEnd={(_event, nextViewport) => {
-        if (canvasPanMovedRef.current) {
-          setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)
-        }
+        // 无条件释放本 owner（释放是幂等的，没升起时是空操作）。以前按 `canvasPanMovedRef` 判断要不要释放：
+        // React Flow 在 panOnScroll 下把这次回调推迟 150ms，这期间画布内任何一次按下都会把那个布尔重置成 false，
+        // 于是这里跳过释放、`data-dragging` 卡死（2026-09-22，见 docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
+        setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)
         canvasPanMovedRef.current = false
         if (!isFiniteFlowViewport(nextViewport)) {
           // React Flow 自己的 d3 过渡撞上 0×0 的 extent 缓存会吐出 NaN 视口（见 GenerationCanvasReactFlow

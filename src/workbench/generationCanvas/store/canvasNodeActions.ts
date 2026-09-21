@@ -277,16 +277,27 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     const currentState = get()
     if (!currentState.selectedNodeIds.length) return
     const removedIds = [...currentState.selectedNodeIds]
+    // 成员被整框选中 = 框被选中（点框选中的就是它的全部成员；画布浮条的「已选 N 组」也按这个判据数）。
+    // 删这样的选区时框一起走——否则留下一个删不掉的空框（2026-09-22 用户：「编组框删不掉」）。
+    // 只删了部分成员时框照留：那是在框里删东西，不是删框。
+    const removedSet = new Set(removedIds)
+    const coveredGroupIds = currentState.groups
+      .filter((group) => group.nodeIds.length > 0 && group.nodeIds.every((nodeId) => removedSet.has(nodeId)))
+      .map((group) => group.id)
     pushUndoSnapshot(currentState)
     set((state) => {
       const next = removeNodes(state.nodes, state.edges, state.selectedNodeIds)
       state.nodes = next.nodes
       state.edges = next.edges
       state.selectedNodeIds = []
+      if (coveredGroupIds.length) state.groups = state.groups.filter((group) => !coveredGroupIds.includes(group.id))
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })
-    emitCanvasGesture(removedIds.map((nodeId) => ({ type: 'canvas.node.removed', payload: { nodeId } })))
+    emitCanvasGesture([
+      ...coveredGroupIds.map((groupId) => ({ type: 'canvas.group.removed' as const, payload: { groupId, releasedNodeIds: [] } })),
+      ...removedIds.map((nodeId) => ({ type: 'canvas.node.removed' as const, payload: { nodeId } })),
+    ])
     reconcileTimelineForDeletedNodes(removedIds)
   },
   selectNode: (nodeId, additive = false) => {

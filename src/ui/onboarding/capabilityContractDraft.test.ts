@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MODEL_ARCHETYPES, type CustomCapabilityContractV1, type ModelArchetype } from '../../config/modelArchetypes'
+import { MODEL_ARCHETYPES, type CustomCapabilityContractV1, type ModelArchetype } from '../../../electron/shared/modelArchetypes'
 import {
   createCapabilityContractDraft,
   createCapabilityModeDraft,

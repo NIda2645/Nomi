@@ -125,12 +125,12 @@
     },
     {
       "class": "export",
-      "test": null,
+      "test": "tests/ux/real-media-export-overlay-cost.probe.mjs",
       "assets": [
         "video-4k-hevc-10bit"
       ],
-      "status": "debt",
-      "debtId": "export-real-media"
+      "status": "live",
+      "why": "导出那条链上唯一会随内容规模爆炸的东西是文字叠加层：每条字幕都是一个全画幅 RGBA 输入。2026-09-21 用真实素材量到 60 条字幕把 107 秒的导出拖成 75 分钟、内存 1.01→6.71 GB 且零报错。合成素材证不了这件事——lavfi 色块的解码成本接近零，主链太便宜，叠加层那条链涨多少都被淹掉；这条腿喂的是真 4K 10-bit HEVC，叠加 PNG 也是从它的真帧派生的"
     },
     {
       "class": "walkthrough",

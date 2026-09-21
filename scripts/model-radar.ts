@@ -30,7 +30,7 @@ import { BUILTIN_VENDOR_SEEDS } from "../electron/catalog/builtinVendorSeeds.ts"
 import { probeWeeklyModels, type LivenessReceipt } from "./model-liveness.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODEL_ARCHETYPES } from "../src/config/modelArchetypes/index.ts";
+import { MODEL_ARCHETYPES } from "../electron/shared/modelArchetypes/index.ts";
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins.ts";
 import { billingKindForTaskKind, type CatalogState, type Mapping } from "../electron/catalog/types.ts";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MODEL_ARCHETYPES } from '../../../config/modelArchetypes'
-import { anchorsConsumedBy } from '../../../config/modelArchetypes/anchorPolicy'
+import { MODEL_ARCHETYPES } from '../../../../electron/shared/modelArchetypes'
+import { anchorsConsumedBy } from '../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { validatePlan } from './storyboardPlanEdits'
 import { validateAnchorModelFit } from './storyboardAnchorPolicy'
 import { deriveAnchorCardRuntimes, deriveStoryboardRowRuntimes } from '../../creation/storyboard/exec/storyboardRowStatus'

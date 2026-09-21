@@ -1,5 +1,5 @@
 import type { AssetSlot } from '../../../assets/AssetReference'
-import type { ArchetypeMode, ArchetypeReferenceSlot, ModelArchetype } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ArchetypeReferenceSlot, ModelArchetype } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanReferenceBinding } from '../../../generationCanvas/agent/storyboardPlan'
 import { bindingsOf, storyboardAssetSlots, type ReferenceBindingMap } from './shotReferenceSlots'
 

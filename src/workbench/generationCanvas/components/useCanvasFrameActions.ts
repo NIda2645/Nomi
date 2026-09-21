@@ -29,7 +29,7 @@ export type CanvasFrameMenuState = {
 }
 
 const MENU_WIDTH = 212
-const MENU_HEIGHT = 200
+const MENU_HEIGHT = 250
 const MENU_EDGE_GAP = 8
 
 function frameEligibleIds(groupId: string): string[] {
@@ -52,10 +52,26 @@ export function useCanvasFrameActions({
   editingFrameId: string | null
   setEditingFrameId: (groupId: string | null) => void
   handleFrameMenuAction: (action: FrameContextMenuAction) => void
+  /** 单独选中的**空框**（没有成员可选，框本身就是选区）；有成员的框的选区就是它的成员。 */
+  selectedFrameId: string | null
+  selectFrame: (groupId: string | null) => void
+  /** Delete / Backspace：选中的空框被删掉返回 true，没有就返回 false 让键盘继续往下判。 */
+  deleteSelectedFrame: () => boolean
 } {
   const { t } = useTranslation()
   const [frameMenu, setFrameMenu] = React.useState<CanvasFrameMenuState | null>(null)
   const [editingFrameId, setEditingFrameId] = React.useState<string | null>(null)
+  const [selectedFrameId, setSelectedFrameId] = React.useState<string | null>(null)
+  // 框选区与节点选区互斥：一旦又选中了节点（点卡、框选、Agent 选中……），空框的选中态就退场。
+  const hasNodeSelection = useGenerationCanvasStore((state) => state.selectedNodeIds.length > 0)
+  React.useEffect(() => { if (hasNodeSelection) setSelectedFrameId(null) }, [hasNodeSelection])
+  const deleteSelectedFrame = React.useCallback(() => {
+    if (!selectedFrameId) return false
+    setSelectedFrameId(null)
+    if (!useGenerationCanvasStore.getState().groups.some((group) => group.id === selectedFrameId)) return false
+    useGenerationCanvasStore.getState().deleteGroup(selectedFrameId, true)
+    return true
+  }, [selectedFrameId])
 
   const closeFrameMenu = React.useCallback(() => setFrameMenu(null), [])
 
@@ -90,6 +106,12 @@ export function useCanvasFrameActions({
     }
     if (action === 'collapse') {
       state.setGroupCollapsed(menu.groupId, true)
+      return
+    }
+    if (action === 'delete') {
+      // 与「选中框按 Delete」同一个结果：框和成员一起删，一个撤销点（deleteGroup 自己打快照）。
+      setSelectedFrameId(null)
+      state.deleteGroup(menu.groupId, true)
       return
     }
     if (action === 'dissolve') {
@@ -146,5 +168,8 @@ export function useCanvasFrameActions({
     editingFrameId,
     setEditingFrameId,
     handleFrameMenuAction,
+    selectedFrameId,
+    selectFrame: setSelectedFrameId,
+    deleteSelectedFrame,
   }
 }
