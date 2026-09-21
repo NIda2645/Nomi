@@ -109,6 +109,18 @@ export async function submitDeclaration(
   const existingVendor = state.vendors.find((vendor) => vendor.key === vendorKey);
   const binding = readCredentialBinding(existingVendor);
 
+  // 绑定不符要在校验**之前**判，而且要用自己的码。交给同源判据也拦得住，但它吐的是
+  // `declaration_rejected` + 一句「must use the provider's same origin」——那会把「这条连接的
+  // 密钥绑在别处、只能由用户重绑」说成「你这张卡的字段写错了」，于是 AI 去改一个本来就对的
+  // 字段（K4 那一类分类错误的翻版）。
+  if (binding?.origin && binding.origin !== new URL(declaredBaseUrl).origin) {
+    return {
+      ok: false, code: "credential_origin_mismatch",
+      message: `This connection's saved key is bound to ${binding.origin}; a declaration cannot send it to ${new URL(declaredBaseUrl).origin}. Where a saved key goes is decided by the user on Nomi's credential page.`,
+      nextAction: `Declare provider.baseUrl on ${binding.origin}, or call connect_provider with vendorKey=${vendorKey} and reissueKey=true so the user can rebind the key on Nomi's own page.`,
+    };
+  }
+
   let validated;
   try {
     validated = validateProviderAdapterDraft(card, {

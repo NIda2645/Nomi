@@ -72,6 +72,26 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'This action is missing required fields (all of them are listed in the message)',
     recover: [{ zh: '把消息里列出的字段一次补齐后重试', en: 'Send every field listed in the message, then retry' }],
   },
+  // 2026-09-21：接入路径上最常撞的两个码，22 条 ERROR_HINT 里**一条都没有**——于是外部 AI
+  // 拿到的只有一行裸码：没有字段名、没有合法值、没有下一步（实测 K5/K6，4 次调用全栽在这里）。
+  // 同一个 MCP 面上因此有两套错误质量：`nomi_model_setup` 那一档信封齐全，掉进本函数这一档
+  // 就只剩一个词。补这两条不是补文案，是把那半条路接回来。
+  feature_disabled: {
+    zh: '这台 Nomi 关着「外部 AI 发起单镜生成」这条路，所以这几个工具虽然列出来了，但一个都发不出去',
+    en: 'This Nomi has single-shot generation from external AI turned off, so these tools are listed but none of them can run',
+    recover: [
+      { zh: '让用户在 Nomi 打开 设置 → 自动化 → MCP 生成；返回里的 nextAction 就是那一页的直链', en: "Ask the user to turn it on in Nomi: Settings → Automation → MCP generation. The nextAction in this reply is the direct link to that page" },
+      { zh: '只是想验证刚接进来的模型能不能出片 → 用 nomi_try_model，它不走这条闸', en: 'If you only need to prove a model you just connected can produce something, use nomi_try_model: it does not go through this gate' },
+    ],
+  },
+  capability_input_invalid: {
+    zh: '参数不合法（被拒的字段名在 details 里；最常见的是把读侧的 vendorKey/modelKey 直接当成了生成侧的 providerId/modelId）',
+    en: 'The arguments were rejected (the field names are in details; the usual cause is sending the read side\'s vendorKey/modelKey where the generation side wants providerId/modelId)',
+    recover: [
+      { zh: '用 nomi_read（target=models）重读，按它印出来的字段名原样填', en: 'Re-read with nomi_read (target=models) and use the exact field names it prints' },
+      { zh: 'details 里点名了哪个字段就改哪个，别整包重猜', en: 'Fix the field details names; do not re-guess the whole payload' },
+    ],
+  },
   renderer_or_provider_unknown: {
     zh: '找不到能执行这次生成的渲染器或供应商配置',
     en: 'No renderer or provider configuration can execute this generation',
