@@ -45,6 +45,8 @@ export type CanvasFrameInteraction = {
   onRename: (groupId: string, name: string) => void
   onDescribe: (groupId: string, description: string) => void
   onOpenMenu: (groupId: string, point: { x: number; y: number }) => void
+  /** 单独选中的空框（有成员的框靠成员的选中态表达，不走这里）。 */
+  selectedGroupId?: string | null
 }
 
 export type GroupFrameProps = {
@@ -113,7 +115,9 @@ export default function GroupFrame({
           ? cn('cursor-copy', GROUP_VISUAL_CLASS.dropTarget)
           : readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing',
         membershipClass,
+        frame?.selectedGroupId === box.group.id ? 'border-solid border-nomi-accent' : null,
       )}
+      data-frame-selected={frame?.selectedGroupId === box.group.id ? 'true' : undefined}
       style={{
         left: box.left,
         top: box.top,

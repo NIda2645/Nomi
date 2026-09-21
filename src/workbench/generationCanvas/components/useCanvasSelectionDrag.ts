@@ -27,6 +27,8 @@ type CanvasSelectionDragOptions = {
   moveGroupNodes: GenerationCanvasState['moveGroupNodes']
   moveSelectedNodes: GenerationCanvasState['moveSelectedNodes']
   selectNodes: GenerationCanvasState['selectNodes']
+  /** 点中的框里没有可选的成员：框本身成为选区（交给框动作层记着，Delete / 菜单删它）。 */
+  onSelectEmptyFrame?: (groupId: string | null) => void
 }
 
 export function useCanvasSelectionDrag({
@@ -38,6 +40,7 @@ export function useCanvasSelectionDrag({
   moveGroupNodes,
   moveSelectedNodes,
   selectNodes,
+  onSelectEmptyFrame,
 }: CanvasSelectionDragOptions): {
   handleGroupFramePointerDown: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -229,12 +232,15 @@ export function useCanvasSelectionDrag({
     event.stopPropagation()
     const state = useGenerationCanvasStore.getState()
     const group = state.groups.find((candidate) => candidate.id === groupId)
-    if (options?.selectMembers !== false && group?.nodeIds.length) {
+    if (options?.selectMembers !== false && group) {
       const groupNodeIds = new Set(group.nodeIds)
       const memberIds = state.nodes
         .filter((node) => groupNodeIds.has(node.id) && (node.categoryId || 'shots') === group.categoryId)
         .map((node) => node.id)
-      if (memberIds.length) selectNodes(memberIds)
+      // 空框：以前这里什么都不做，上一次的选区原样留着——点了空框再按 Delete，删掉的是别处的卡。
+      // 现在点空框 = 选中这个框本身（节点选区清空），Delete / 菜单「删除」删的就是它。
+      selectNodes(memberIds)
+      onSelectEmptyFrame?.(memberIds.length ? null : groupId)
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
     pendingGroupDeltaRef.current = null
@@ -246,7 +252,7 @@ export function useCanvasSelectionDrag({
       historyCaptured: false,
       duplicateOnMove: event.altKey,
     }
-  }, [readOnly, selectNodes])
+  }, [onSelectEmptyFrame, readOnly, selectNodes])
 
   const handleSelectionBoundsPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || event.button !== 0 || selectedNodeCount < 2) return
