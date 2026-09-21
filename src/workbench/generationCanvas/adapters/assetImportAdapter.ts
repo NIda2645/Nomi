@@ -121,8 +121,8 @@ function layoutImportPositions(
   const cellWidth = Math.max(...footprints.map((size) => size.width)) + 36
   const cellHeight = Math.max(...footprints.map((size) => size.height)) + 36
   return sizes.map((_, index) => ({
-    x: Math.max(40, Math.round(basePosition.x + (index % columns) * cellWidth)),
-    y: Math.max(40, Math.round(basePosition.y + Math.floor(index / columns) * cellHeight)),
+    x: Math.round(basePosition.x + (index % columns) * cellWidth),
+    y: Math.round(basePosition.y + Math.floor(index / columns) * cellHeight),
   }))
 }
 

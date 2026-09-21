@@ -1,0 +1,283 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-canvas-drop-at-cursor",
+  "problem_type": "Canvas placement point diverges from the user-chosen screen point",
+  "symptom": "User report 2026-09-21: dropping an image/video onto the generation canvas lands offset from where the mouse was released, sometimes outside the viewport (only findable via the minimap).",
+  "direct_cause": "handleCanvasStageDrop hand-computed the canvas point from the stage rect plus viewport offset/zoom, pinned the node's top-left corner to the cursor, clamped x/y to >= 40, and OS/workspace drops went through addNode collision avoidance.",
+  "class_root": "A pre-React-Flow invariant (canvas coordinates are non-negative, clamp to >= 40) survived the kernel migration in three placement writers, and screen-to-canvas conversion was re-implemented outside the kernel. With the viewport in negative coordinates every drop/paste at the cursor is pushed right/down, possibly off-screen.",
+  "affected_population": [
+    "Every user who panned the generation canvas left/up of the origin and then drops OS files, project-tree files, asset-library cards or browser asset-box items, or pastes at the cursor"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx"
+  ],
+  "entry_points": [
+    "Stage drop (OS files / project tree / asset library / browser asset box)",
+    "Import layout for toolbar and context-menu import",
+    "pasteNodes at cursor"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/xyflow/xyflow/blob/main/examples/react/src/examples/AddNodeOnEdgeDrop/index.tsx",
+      "checked_at": "2026-09-21",
+      "purpose": "React Flow places a node created at a drop point via screenToFlowPosition({x: clientX, y: clientY}) with an origin anchor on the node; negative flow coordinates are valid (installed @xyflow/react 12.11.5)."
+    }
+  ],
+  "invariants": [
+    "Screen-to-canvas conversion for drops comes only from the kernel (flow.screenToFlowPosition), passed in as CanvasStageDropContext.toCanvasPoint.",
+    "No placement writer clamps canvas coordinates to a positive floor; negative coordinates are preserved.",
+    "A drop places the first card with the cursor at its anchor (grab point for asset-library cards, center otherwise) and does not run collision avoidance."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/ui/browser/popover/NomiBrowserAssetPopover.tsx",
+      "symbol": "LEGACY_BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/browser/popover/useBrowserAssetActions.ts",
+      "symbol": "LEGACY_BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "BrowserAssetsToCanvasResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "CanvasStageDropContext"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "resolveDropOrigin"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "LEGACY_BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "LEGACY_BROWSER_ASSET_DRAG_MIME"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "layoutBrowserAssetDropPositions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "isAssetLibraryDropAllowed"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "importBrowserAssetsToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "importLocalFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/CanvasToolbar.tsx",
+      "symbol": "importLocalFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "importLocalFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "handleCanvasStageDrop"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
+      "symbol": "importBrowserAssetsToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/AssetLibraryPanel.tsx",
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "importLocalMediaFilesToGenerationCanvas"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "symbol": "pasteNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "symbol": "ImportImageFilesOptions"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "symbol": "ImportImageFilesOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "symbol": "filterImportableMediaFiles"
+    }
+  ],
+  "door_reduction": {
+    "before": 29,
+    "after": 29,
+    "why_not": "The doors are distinct drag sources (browser asset box, asset library, project tree, OS files), import callers (toolbar, context menu, asset library panel, effects) and paste shortcuts; they already converge on handleCanvasStageDrop, layoutImportPositions and pasteNodes, which are the boundaries fixed here."
+  },
+  "generality_proof": "All four drop sources derive their origin from the single resolveDropOrigin(ctx.toCanvasPoint(...)) inside handleCanvasStageDrop, and the only remaining positive-floor clamps (canvasStageDrop layout, assetImportAdapter layout, pasteNodes) are deleted, so no caller can reintroduce the offset through these boundaries.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "symbol": "handleCanvasStageDrop",
+      "responsibility": "Owns the drop point: kernel conversion via toCanvasPoint, anchor via resolveDropOrigin, exact placement for every drop source."
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "symbol": "layoutImportPositions",
+      "responsibility": "Lays imported files out from the given origin without clamping."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "symbol": "pasteNodes",
+      "responsibility": "Pastes at the requested canvas point without clamping."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "entry_point": "handleDrop",
+      "disposition": "enforced",
+      "evidence": "Now passes getCanvasPointFromClientPoint (flow.screenToFlowPosition) as toCanvasPoint; the offset/zoom fields no longer exist on CanvasStageDropContext, so hand math cannot compile."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "entry_point": "pasteNodes",
+      "disposition": "enforced",
+      "evidence": "Same Math.max(40) clamp found by rg 'Math.max(40' src/workbench; removed; regression test pastes at (-800,-300)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/clipboardImagePaste.ts",
+      "entry_point": "pasteClipboardImage",
+      "disposition": "not-affected",
+      "evidence": "Uses Math.round(basePosition) without a floor clamp; its basePosition comes from the shortcut paste position already converted by the kernel."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any user whose viewport sits in negative canvas coordinates hits it on every drop or cursor paste; four drag sources and the paste path share the mechanism.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs src/workbench/generationCanvas/components/canvasStageDrop.ts: 17 doors",
+      "rg 'Math.max(40' src/workbench: canvasStageDrop.ts, assetImportAdapter.ts, generationCanvasStore.ts (all removed)",
+      "rg 'screenToFlowPosition|getBoundingClientRect' src/workbench/generationCanvas: context menu, frame tool and paste already use the kernel; stage drop was the only hand-rolled conversion"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+    "invariant": "Drop placement = kernel-converted cursor point minus the card anchor, unclamped, exact.",
+    "failure_mode": "A caller that tries to pass viewport offset/zoom fails typecheck because CanvasStageDropContext only accepts toCanvasPoint.",
+    "exception_policy": "none",
+    "strategy": "Replace the hand-rolled conversion with a required kernel converter in the context type, route every drop source through resolveDropOrigin, and delete all positive-floor clamps in placement writers.",
+    "artifacts": [
+      "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/canvasStageDrop.test.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+    "src/workbench/generationCanvas/components/canvasStageDrop.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+      "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+      "src/workbench/generationCanvas/store/generationCanvasStore.ts"
+    ],
+    "rationale": "clampNodePos, the offset/zoom hand conversion, resolveAssetLibraryDropPosition and both inline Math.max(40) clamps are deleted in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "@xyflow/react 12.11.5 already provides screenToFlowPosition and negative coordinates; the defect was our code bypassing it.",
+    "exit_criteria": []
+  },
+  "migration": "No data migration: existing node positions are untouched; only new placements change. Nodes previously clamped to 40 stay where they are.",
+  "residual_risks": [
+    "Anchor uses the default asset card size; image cards whose size is set from real dimensions after import are anchored by the default size, so the cursor stays inside the card but may be off-center.",
+    "Native OS drag cannot be driven by automation; the real-app walkthrough dispatches a DOM drop event with a real File."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+    "tests": [
+      "src/workbench/generationCanvas/components/canvasStageDrop.test.ts",
+      "src/workbench/generationCanvas/store/generationCanvasStore.test.ts"
+    ],
+    "why": "「落点=松手点」由 canvasStageDrop.ts 单点持有：屏幕→画布换算只经 CanvasStageDropContext.toCanvasPoint（内核提供，类型上不再有 offset/zoom 可手算），锚点只经 resolveDropOrigin；两个下游布局（layoutImportPositions / pasteNodes）只负责不钳制。两份测试都做过阳性对照：把 ≥40 钳制放回去即红。"
+  }
+}

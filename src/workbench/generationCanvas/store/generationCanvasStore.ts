@@ -124,8 +124,8 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
           return numberedNodes.map((node) => ({
             ...node,
             position: {
-              x: Math.max(40, Math.round(node.position.x + dx)),
-              y: Math.max(40, Math.round(node.position.y + dy)),
+              x: Math.round(node.position.x + dx),
+              y: Math.round(node.position.y + dy),
             },
           }))
         })()
