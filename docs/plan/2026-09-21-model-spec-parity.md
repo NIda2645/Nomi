@@ -135,3 +135,46 @@ UI 面压根不传 `vendor/modelKey`（`src/workbench/generationCanvas/store/can
   **参数与变体两面等价**，因为它们来自准入契约。这条写进合同 `residual_risks`。
 - `ParameterField` 新增 `min/max` 后，onboarding 字段里没有范围声明的模型仍然无范围可判——
   那是目录数据的缺口，不是校验层的缺口，按 R17 记成「能判的就判、判不了的明说」。
+
+---
+
+# 追加（2026-09-22）：独立验收推翻两条判断 → 在本分支把 A 做掉
+
+独立验收（报告见会话 scratchpad `verify-model-spec/REPORT.md`）用实测推翻了上面 §6 的两条：
+
+1. **B 的真实保护面只有 video。** 真实目录里 149/156（95.5%）模块的 `parameterSchema` 为空；
+   video 靠 `videoCompileOptions` 用档案覆盖了这份空表，image 58/61、audio 20/20、3d 5/5 **没有任何覆盖**，
+   全部落进「放行并警告」。同一批 82 个模型实测：main 80/82 静默丢弃 → 本分支 82/82 **原样放行上 wire**。
+   即对 95% 的模型，这一刀把「静默丢」换成了「静默转发」，**拒绝一次都没发生**；
+   而 `contract.warnings` 全仓零读者——正是本刀自己杀掉的 `droppedFields` 形状。
+2. **A 比 §6 说的便宜。** 42/42 档案文件是纯数据，0 个 import React/i18n/图标；
+   35/35 对 `../modelCatalogMeta` 全是 `import type`、0 个值导入。
+   **而那堵「i18n 墙」根本不存在**：`src/config/modelCatalogMeta.ts:4-14` 只是把
+   `ModelParameterControl` 从 `electron/shared/videoCapabilities/types` **再导出**一遍；
+   档案文件对它只取类型。所以「16k 行生成桥 / 先拆渲染层依赖」两条都不成立。
+
+## A-1 搬家：范围、落点、引用、回滚
+
+**照 PR #310（二期 video 档案归一）的先例。** 那次的做法与两条纪律：
+- `docs/fixes/2026-09-02-archetype-video-registry-derivation.root-cause.json`：
+  **搬迁探针**——把全部 `identifierPatterns` / variant `modelKey` / `legacyIds` × raw/lower/upper/
+  `models/` 前缀/裸末段/带前缀末段共 1042 条语料，在新旧两个数组序上跑同一套三趟匹配**逐一比赢家**。
+- **不留 re-export 转发壳**（那次专门删净 33 个）。
+
+| 项 | 内容 |
+|---|---|
+| **搬哪些** | `src/config/modelArchetypes/` 整个目录：42 个非测试文件（`index.ts` 注册表+解析器、`types.ts`、`anchorPolicy.ts`、`customCapabilityContract.ts` + 38 个档案数据）＋ 17 个测试 |
+| **落哪** | `electron/shared/modelArchetypes/`。与 video 的 canonical 家 `electron/shared/videoCapabilities/` 平级——两者都在中立契约层，渲染层与主进程**都** import 得到（`src→electron/shared` 是 R-B1 明确放行的方向） |
+| **谁引用** | 85 处 `config/modelArchetypes`（61 个非测试文件）。**逐个改 import 路径，不留壳**。`src/config/modelArchetypes/` 目录删净 |
+| **i18n 墙** | **不存在，无需处理**。档案对 `../modelCatalogMeta` 只有 `import type { ModelParameterControl }`，而那个类型的家本来就是 `electron/shared/videoCapabilities/types`。搬家后档案直接 `import type ... from "../videoCapabilities/types"`，**少一跳，不多一跳**。`modelCatalogMeta.ts` 的 `i18n`（10 处控件显示文案）留在渲染层不动——它服务的是控件**文案**，与档案声明无关。故档案层存的仍是机器可读标识，不夹带任何语言的文案 |
+| **顺序风险** | `MODEL_ARCHETYPES` 数组字面量顺序**逐字不动**（这次是搬家、不是合并两份登记，与 #310 的风险来源不同）。仍按 #310 先例跑搬迁探针证明三趟匹配赢家 diffs=0 |
+| **回滚** | 搬家自成一个 commit（`git mv` + import 改名，无逻辑改动）。回滚 = `git revert` 该 commit |
+
+## A-2 搬完之后（这才是 A 本体）
+
+- 准入层对 image/audio/3D **同样按档案声明校验**；「放行并警告」只留给真无声明的模型，
+  且那条 warning 必须有**真实读者**（到达调用方的工具结果里），否则删。
+- 两面同一条 `AgentModelEntry` 投影链 + 两面分级（薄名单 / 单模型详情）；
+  MCP 走 `nomi_read` 的 target 扩展、**不新增工具**；`modelCatalogListing` 里重复的知识删除，
+  `keyStatus/usable/statusReason` 并入后两面都有。
+- **`AgentModelEntry` 补 variants**（验收：变体现在「可被拒、不可发现」）。
