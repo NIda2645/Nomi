@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../config/useModelOptions', () => ({
-  getModelOptionRequestAlias: vi.fn(),
   deriveModelCatalogStatus: vi.fn(),
   findModelOptionByIdentifier: vi.fn(),
   useModelOptions: mocks.useModelOptions,

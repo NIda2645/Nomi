@@ -1,0 +1,535 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-storyboard-model-vendor",
+  "problem_type": "Model identity is a (modelKey, vendor) pair, but storyboard writers stored half of it and readers resolved a bare name by list order, so a same-name model from another vendor received the request.",
+  "symptom": "User adds a custom relay model named gpt-image-2 (same modelKey as APIMart). In the storyboard, picking the APIMart row in the shot card, the bulk 'unify model' bar or the anchor row still generates (and bills) through the custom relay; the shot card dropdown even echoes the custom group again.",
+  "direct_cause": "ShotComposerBar called useDedupedModelSelect without the shot's vendor and wrote only modelKey (stale modelVendor survived); StoryboardBulkBar dropped the vendor argument of BulkModelPicker.onPick; StoryboardAnchorRow used a native select whose option value was the bare modelKey (two vendors = two identical values) and wrote only modelKey. Bare-key resolution (buildModelEntryIndex, findModelOptionByIdentifier, the hook's selectedModel, normalizeStoryboardAnchorDefaults, the default-model ladder) then took the first same-name catalog row, and the catalog lists the newest (custom) vendor first.",
+  "class_root": "No single owner for 'storyboard model selection': writes were free-form Partial<PlanShot>/Partial<PlanAnchor> patches that could carry modelKey without modelVendor, and every reader invented its own answer for a vendor-less key (first row, preference order only, or catalog order), so display and execution could disagree and neither matched the user's choice.",
+  "affected_population": [
+    "Users with two or more vendors exposing the same modelKey (custom relay + APIMart/kie, two relays)",
+    "Storyboard shots/anchors edited through the shot card, bulk bar, anchor row, add/insert shot, shot-kind switch",
+    "Legacy plans whose shots store modelKey without modelVendor",
+    "Agent storyboard plans (propose_storyboard_plan, planner) with character anchors and a bare modelKey"
+  ],
+  "scope_paths": [
+    "src/config/modelIdentity.ts",
+    "src/config/modelOptionResolvers.ts",
+    "src/config/useModelOptions.ts",
+    "src/workbench/common/useDedupedModelSelect.ts",
+    "src/workbench/common/useVendorPreference.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+    "src/workbench/generationCanvas/agent/plannedNodeMeta.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+    "src/workbench/generationCanvas/agent/storyboardPatchShots.ts",
+    "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+    "src/workbench/generationCanvas/agent/availableModels.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+    "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+    "src/workbench/generationCanvas/agent/storyboardStrategy.ts",
+    "electron/shared/videoCapabilities/planResolver.ts",
+    "src/workbench/capability/multiShotCanvasLanding.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "src/workbench/creation/storyboard/shotRow/ShotComposerBar.tsx",
+    "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
+    "src/workbench/creation/storyboard/StoryboardBulkBar.tsx",
+    "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+    "src/workbench/creation/storyboard/storyboardBulkModelScope.ts",
+    "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+    "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorZone.tsx",
+    "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+    "src/workbench/generationCanvas/adapters/modelOptionsAdapter.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlanSchema.ts"
+  ],
+  "entry_points": [
+    "Shot card composer model select",
+    "Storyboard bulk bar unify-model picker",
+    "Anchor row image-model select",
+    "Add / insert shot inheritance",
+    "Shot kind switch clearing the model",
+    "Agent patch_shots and plan normalization",
+    "Materialize / row execution bare-key index",
+    "Plan parse boundary (project reload via projectNormalize, materialize/revise capabilities)"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned model identity contract between the renderer catalog, the storyboard plan IR and canvas materialization; no third-party runtime decides which vendor a stored modelKey maps to.",
+  "invariants": [
+    "A storyboard shot/anchor model is written only as the pair (modelKey, modelVendor): PlanShotPatch/PlanAnchorPatch reject a lone half at compile time, and updateShotAt/updateAnchor clear modelVendor at runtime when a patch sets modelKey without it.",
+    "A stored identity with a vendor resolves only to that exact (modelKey, vendor); the model box never shows a different vendor as selected.",
+    "A stored identity without a vendor resolves through pickImplicitVendorMatch (user vendor order > official > built-in relay > custom > catalog order) in the model box, archetype lookup, execution index, Agent normalization and the default ladder alike, so the displayed vendor is the billed vendor.",
+    "A shot/anchor without a modelKey uses the default model of its own kind together with that default's vendor; a leftover modelVendor never pairs with a default model.",
+    "Every key of PlanAnchor/PlanShot/keyframe/StoryboardPlan exists in the parse schema (compile-time key guard), so a persisted model identity cannot be stripped on load."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/shared/videoCapabilities/planResolver.ts",
+      "symbol": "findCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/modelIdentity.ts",
+      "symbol": "vendorTier"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/modelOptionResolvers.ts",
+      "symbol": "pickImplicitVendorMatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/modelOptionResolvers.ts",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "parseStoryboardPlan"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "buildModelEntryIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "symbol": "pickImplicitVendorMatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useVendorPreference.ts",
+      "symbol": "loadVendorPreference"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "symbol": "useDedupedModelSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "buildModelEntryIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "buildModelEntryIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "buildModelEntryIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "peekVendorPreferenceOrder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotComposerBar.tsx",
+      "symbol": "useDedupedModelSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardBulkBar.tsx",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/strategyGate.ts",
+      "symbol": "storyboardPlanToPlanShotInputs"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/useStoryboardStrategy.ts",
+      "symbol": "storyboardPlanToPlanShotInputs"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/adapters/modelOptionsAdapter.ts",
+      "symbol": "findCatalogModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "parseStoryboardPlan"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "buildModelEntryIndex"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "symbol": "pickImplicitVendorMatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/plannedNodeMeta.ts",
+      "symbol": "pickImplicitVendorMatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "storyboardPlanSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "parseStoryboardPlan"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+      "symbol": "pickImplicitVendorMatch"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "symbol": "buildShotRowNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanSchema.ts",
+      "symbol": "planAnchorSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanSchema.ts",
+      "symbol": "storyboardPlanSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardStrategy.ts",
+      "symbol": "effectiveVideoShots"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasProductionActions.ts",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/buildNodeModelChangePatch.ts",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/InlineParameterBar.tsx",
+      "symbol": "useDedupedModelSelect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/spend/planCostEstimate.ts",
+      "symbol": "findModelOptionByIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectNormalize.ts",
+      "symbol": "storyboardPlanSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectRecordSchema.ts",
+      "symbol": "storyboardPlanSchema"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "runProductionTextPlanner"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "symbol": "planModelSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorZone.tsx",
+      "symbol": "StoryboardAnchorRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/ShotComposerBar.tsx",
+      "symbol": "planModelSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardBulkBar.tsx",
+      "symbol": "applyModelToAll"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/storyboardBulkModelScope.ts",
+      "symbol": "planModelSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "updateAnchor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "addShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "applyBulkModelToShots"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "insertShotAt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "updateShotAt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "previewStoryboardPatchShots"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "normalizeStoryboardAnchorDefaults"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "normalizeStoryboardAnchorDefaults"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPatchShots.ts",
+      "symbol": "updateShotAt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "updateAnchor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "updateShotAt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "planModelSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "shotKindPatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "updateAnchor"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/useModelOptions.ts",
+      "symbol": "findModelOptionByIdentifier"
+    }
+  ],
+  "door_reduction": {
+    "before": 61,
+    "after": 61,
+    "why_not": "The doors are distinct user/Agent gestures (shot card, anchor row, bulk bar, multi-select, add/insert, kind switch, Agent patch and normalize) and distinct read surfaces (canvas node box, storyboard boxes, materialize/row execution index). They cannot merge into one call site; instead every write now passes through planModelSelection/updateShotAt/updateAnchor (typed pair + runtime pairing) and every vendor-less read through pickImplicitVendorMatch. ClipNode.tsx updateAnchor hits are a local DOM-rect helper with the same name, not plan writes. One door was followed one hop by hand because door-map counts call sites, not re-exports: src/config/useModelOptions.ts re-exports findModelOptionByIdentifier (and used to re-export the deleted getModelOptionRequestAlias) for the canvas adapter."
+  },
+  "generality_proof": "The bug class is 'half an identity written' or 'a bare name resolved by list position'. Writes: the plan patch types forbid a lone modelKey/modelVendor for every current and future literal patch, and the two plan mutators strip a stale vendor for any untyped caller, so no writer can leave a vendor that belongs to another model. Reads: the only vendor-less resolution rule lives in pickImplicitVendorMatch and is called by the display resolver (findModelOptionByIdentifier, useDedupedModelSelect), the execution index (buildModelEntryIndex) and the Agent paths (normalizeStoryboardAnchorDefaults, pickStoryboardDefaultModel); a new vendor, a new relay or a new model name changes nothing because the rule keys on vendor tier/user order, not on names.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "planModelSelection",
+      "responsibility": "Sole constructor of a storyboard model change: writes modelKey and modelVendor together and clears mode/params; PlanShotPatch/PlanAnchorPatch types and updateShotAt/updateAnchor pairing enforce it for every writer."
+    },
+    {
+      "path": "src/config/modelIdentity.ts",
+      "symbol": "pickImplicitVendorMatch",
+      "responsibility": "Sole rule for which vendor a vendor-less stored modelKey means; shared by display and execution."
+    },
+    {
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "symbol": "useDedupedModelSelect",
+      "responsibility": "Single model-selection owner for canvas nodes, shot cards and anchor rows; reads (value, vendor) and calls back (value, vendor)."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/shotRow/ShotComposerBar.tsx",
+      "entry_point": "onShotModelChange",
+      "disposition": "enforced",
+      "evidence": "Passes shot.modelVendor to useDedupedModelSelect and writes planModelSelection(value, vendor); storyboardModelVendorIdentity.test.ts case 1 red before, green after."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardBulkBar.tsx",
+      "entry_point": "BulkModelPicker onPick",
+      "disposition": "enforced",
+      "evidence": "onPick forwards (value, vendor) to applyModelToAll which uses planModelSelection; case 2 red before, green after."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/anchorZone/StoryboardAnchorRow.tsx",
+      "entry_point": "anchor model select",
+      "disposition": "enforced",
+      "evidence": "Native select replaced by useDedupedModelSelect (vendor-addressed values) writing planModelSelection; case 3 red before (duplicate values, missing vendor), green after."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "entry_point": "addShot / insertShotAt / shotKindPatch / updateShotAt / updateAnchor",
+      "disposition": "enforced",
+      "evidence": "Inheritance copies both halves; kind switch clears both; mutators pair at runtime. Class tests red on 86647f41, green after."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "entry_point": "buildShotRowNodes / anchorVendor",
+      "disposition": "enforced",
+      "evidence": "Model-less image shots used defaultVideoModelVendor and any leftover modelVendor with the default image model; now the kind's default vendor only. Class test red before."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/plannedNodeMeta.ts",
+      "entry_point": "buildModelEntryIndex bare key",
+      "disposition": "enforced",
+      "evidence": "Bare key picked by pickImplicitVendorMatch with the user vendor order passed by storyboardRowActions, applyCanvasToolCall and multiShotCanvasLanding; class test asserts display vendor == executed vendor."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+      "entry_point": "normalizeStoryboardAnchorDefaults",
+      "disposition": "enforced",
+      "evidence": "Persisted modelVendor for a bare modelKey used to be the first same-name entry; now pickImplicitVendorMatch. Class test red before."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "entry_point": "pickStoryboardDefaultModel",
+      "disposition": "enforced",
+      "evidence": "Fallback ladder chose the first same-name entry's vendor; now pickImplicitVendorMatch. Class test red before."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "entry_point": "deriveStoryboardRowRuntimes",
+      "disposition": "enforced",
+      "evidence": "Archetype lookup uses findModelOptionByIdentifier(key, vendor, order) instead of first value match."
+    },
+    {
+      "path": "electron/shared/videoCapabilities/planResolver.ts",
+      "entry_point": "findCandidate",
+      "disposition": "enforced",
+      "evidence": "Pacing review candidate chosen by (modelKey, modelVendor) via storyboardStrategy passing modelVendor; class test red before."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPatchShots.ts",
+      "entry_point": "patchShot",
+      "disposition": "not-affected",
+      "evidence": "canvasWrite schema already requires modelKey and modelVendor together; now also typed PlanShotPatch."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "entry_point": "projectShotNode",
+      "disposition": "not-affected",
+      "evidence": "Builds its index from the shot's own (modelKey, modelVendor) and forwards the vendor to buildPlannedNodeMeta."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanSchema.ts",
+      "entry_point": "planAnchorSchema",
+      "disposition": "enforced",
+      "evidence": "Anchor schema lacked modelKey/modelVendor/modeId/params/referenceBindings, so zod silently stripped the anchor's chosen model on project reload (projectNormalize) and on production.materialize-storyboard; the real-app walk reproduced it (anchor echoed the default model). Fields added plus a key-by-key compile guard (MissingSchemaKeys) for anchors, shots, keyframes and the plan; mutation check: removing modelVendor makes tsc fail."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same half-identity shape was already fixed twice for other doors (2026-09-03 applyModelToAll, 2026-09-12 bulk bar, v0.21.0 canvas node box) and reappeared in three more storyboard components; any new relay with a colliding modelKey or any new picker reproduces it without a shared owner.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs over the plan mutators, pickers and indexes (31 doors, pasted in doors)",
+      "rg 'modelKey' src/workbench/creation/storyboard: found StoryboardShotRow/StoryboardBulkBar/StoryboardAnchorRow/storyboardRowStatus name-only lookups",
+      "rg 'modelVendor ||' storyboardPlan.ts: found default-vendor mixing in buildShotRowNodes/anchorVendor",
+      "rg 'candidates.find|entries.find' agent: found normalizeStoryboardAnchorDefaults and pickStoryboardDefaultModel first-match vendor picks",
+      "rg 'findCandidate' electron/shared/videoCapabilities: found planResolver name-only candidate"
+    ]
+  },
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+    "invariant": "No storyboard write can store modelKey without its modelVendor, and every vendor-less read uses pickImplicitVendorMatch.",
+    "failure_mode": "A literal lone-half patch fails tsc; an untyped lone modelKey patch has its stale vendor cleared at runtime (falls to the documented implicit rule shown in the model box) instead of billing a vendor chosen for a different model; a recorded vendor that no longer offers the model shows no selection and buildPlannedNodeMeta rejects the mismatch.",
+    "exception_policy": "none",
+    "strategy": "Type the plan patch as a paired identity, route all model writes through planModelSelection, and put the single legacy resolution rule next to vendorTier so display and execution import the same function.",
+    "artifacts": [
+      "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "src/config/modelIdentity.ts",
+      "src/config/modelOptionResolvers.ts",
+      "src/workbench/common/useDedupedModelSelect.ts",
+      "src/workbench/generationCanvas/agent/plannedNodeMeta.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlanSchema.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/storyboardModelVendorIdentity.test.ts",
+    "src/workbench/generationCanvas/agent/storyboardModelIdentity.class.test.ts",
+    "src/workbench/common/useDedupedModelSelect.test.ts",
+    "src/workbench/generationCanvas/agent/plannedNodeMeta.test.ts",
+    "tests/ux/storyboard-model-same-name.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/agent/storyboardModelIdentity.class.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/adapters/modelOptionsAdapter.ts",
+      "src/config/modelOptionResolvers.ts",
+      "src/config/useModelOptions.ts"
+    ],
+    "rationale": "Deleted the zero-caller name-only selection path resolveGenerationModelSelection/useGenerationModelSelection/updateNodeModelMeta and its only dependency getModelOptionRequestAlias (plus re-export and test mock); the anchor row's native bare-key select is replaced by the shared owner."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls vendor identity.",
+    "exit_criteria": []
+  },
+  "migration": "No data rewrite. Stored shots/anchors with a vendor resolve exactly as before. Stored shots with only modelKey keep working: a unique match is used directly; multiple same-name vendors resolve by pickImplicitVendorMatch (user vendor order in settings > official > built-in relay > custom > catalog order), and the model box shows exactly that vendor, so the user can see and change it; the first edit persists the pair.",
+  "residual_risks": [
+    "production.revise-storyboard returns a whole plan written by an LLM; the prompt now requires modelKey/modelVendor to move together, but a model that changes modelKey while keeping the old modelVendor is only caught downstream (buildPlannedNodeMeta rejects the mismatched pair, the node falls back to the default model) rather than rejected at parse time.",
+    "Canvas findModelOptionByIdentifier still falls back to another vendor for display when a recorded vendor disappeared (pinned canvas self-heal behavior); the runner refuses the disconnected vendor, the storyboard hook shows no selection."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+    "tests": [
+      "src/workbench/generationCanvas/agent/storyboardModelIdentity.class.test.ts"
+    ]
+  }
+}

@@ -43,6 +43,9 @@ function makeService(dir: string) {
   };
   const sessions = new IntegrationSessionService({
     dir,
+    // 会话文件必须落在这个临时目录里：不传 filePath 时服务写的是真实的 ~/.nomi/capability-core，
+    // 测试会污染用户资料，而且那份文件一过 100 条会话上限，这条测试就在那台机器上永远红。
+    filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
     credentialResolver: () => ({ apiKey: "sk-loopback", vendorKey: "deepseek" }),
     compilerAvailable: () => true,

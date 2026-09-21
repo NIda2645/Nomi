@@ -4,6 +4,8 @@ import { IconStack2 } from '@tabler/icons-react'
 import { NomiSelect } from '../../../design'
 import type { ModelOption } from '../../../config/models'
 import BulkModelPicker from '../../common/BulkModelPicker'
+import { useVendorPreferenceOrder } from '../../common/useVendorPreference'
+import { findModelOptionByIdentifier } from '../../../config/modelOptionResolvers'
 import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import {
   DURATION_OPTIONS_SEC,
@@ -68,6 +70,7 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
   // 落画布时 buildPlannedNodeMeta 按 modelKey 反查厂商，而目录按 modelKey 首次出现去重，
   // 于是落地厂商 = 目录里第一家，与用户所选无关（「选 A 家发去 B 家」）。现在 vendor 与 key 成对写进
   // 每一镜（PlanShot.modelVendor 一直就有这个字段），与镜卡逐镜选模型同口径。
+  const orderedVendorKeys = useVendorPreferenceOrder()
   const onBulkModelPick = React.useCallback(
     (value: string, vendor?: string) => onChange(applyModelToAll(plan, value, vendor)),
     [plan, onChange],
@@ -80,13 +83,13 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
     return plan.shots.filter((shot) => {
       if (!shot.modelKey) return false // 默认模型：此刻无契约可判，不瞎报。
       const pool = optionsByKind[shot.shotKind === 'image' ? 'image' : 'video']
-      const option = pool.find((candidate) => (candidate.modelKey || candidate.value) === shot.modelKey) ?? null
+      const option = findModelOptionByIdentifier(pool, shot.modelKey, shot.modelVendor, orderedVendorKeys)
       const resolved = resolveShotArchetypeMode(option, shot.modeId)
       if (!resolved) return false
       // 判据与执行侧完全一致：buildPlannedNodeMeta 按 control.key 匹配，键不在这份表里就发不出去。
       return unsupportedFilmDefaultKeys(plan, shot, resolved.mode.params).length > 0
     }).length
-  }, [plan, imageModelOptions, videoModelOptions])
+  }, [plan, imageModelOptions, videoModelOptions, orderedVendorKeys])
 
   if (plan.shots.length === 0) return null
 
@@ -151,7 +154,9 @@ export default function StoryboardBulkBar({ plan, imageModelOptions, videoModelO
         // 触发上只显得出固定项（「混合」/「默认模型」）——摊平项的 value 是厂商寻址串，
         // 而 plan 只存 modelKey，对不上；选过具体模型后回落占位「统一模型」（它本就是一次性命令）。
         value={bulkModelKey === null ? MIXED_VALUE : ''}
-        onPick={(value) => onBulkModelPick(value)}
+        // vendor 必须一路带到 applyModelToAll：这里曾经是 `(value) => onBulkModelPick(value)`，把第二个参数丢了，
+        // 于是每一镜都按名字落到「同名里排第一的那家」（2026-09-21：选 APIMart、钱花在自定义中转）。
+        onPick={onBulkModelPick}
         onPickLeadingOption={(value) => applyIfReal(value, () => onBulkModelPick(''))}
       />
       {!isImageKind ? (

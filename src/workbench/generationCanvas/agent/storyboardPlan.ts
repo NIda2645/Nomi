@@ -423,7 +423,9 @@ function storyboardShotMetadata(
 /** 视觉锚 → 定妆卡/场景卡节点（clientId = anchor.id）。整方案落画布与单锚按需 materialize（B）共用。 */
 /** 锚自己选了模型就用它自己的 vendor；没选才回落默认图片模型的 vendor。 */
 function anchorVendor(anchor: PlanAnchor, options: StoryboardPlanToArgsOptions): string | undefined {
-  return anchor.modelKey ? anchor.modelVendor : (anchor.modelVendor || options.defaultImageModelVendor)
+  // 没选模型 = 用默认模型 → 只能用默认模型那一家。锚上残留的 modelVendor 是给**别的**模型记的，
+  // 拿它配默认模型就是「A 模型 × B 家」的混搭（2026-09-21 同类扫描）。
+  return anchor.modelKey ? anchor.modelVendor : options.defaultImageModelVendor
 }
 
 function buildAnchorCardNode(anchor: PlanAnchor, options: StoryboardPlanToArgsOptions): PlanCreatedNode {
@@ -511,7 +513,10 @@ function buildShotRowNodes(
   const modelKey = shot.modelKey || defaultModelKey
   // vendor 与 modelKey 成对流动：用户选了具体模型就用它自己的 vendor；用默认模型时用默认的 vendor。
   // 二者不许混搭——混搭正是「选 A 家发去 B 家」的成因。
-  const modelVendor = shot.modelKey ? shot.modelVendor : (shot.modelVendor || options.defaultVideoModelVendor)
+  // 默认模型那一半也按镜种取：图片镜配图片默认的家、视频镜配视频默认的家。这里曾经对所有镜种都用
+  // defaultVideoModelVendor，并且优先用镜头上残留的 modelVendor——两种都是「A 模型 × B 家」（2026-09-21 同类扫描）。
+  const defaultModelVendor = isImageShot ? options.defaultImageModelVendor : options.defaultVideoModelVendor
+  const modelVendor = shot.modelKey ? shot.modelVendor : defaultModelVendor
   const imageDefaultVendor = options.defaultImageModelVendor
   // 用户为该镜选了具体模型 → 不套默认模型的 modeId（会张冠李戴）；留空让 buildPlannedNodeMeta
   // 按所选模型自己取默认模式。只有用默认模型时才用默认 modeId。

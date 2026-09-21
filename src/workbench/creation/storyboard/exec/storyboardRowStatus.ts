@@ -9,6 +9,8 @@ import { isAnchorFrozen } from '../../../generationCanvas/model/anchorBibleKeys'
 import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
 import { effectiveShotValue, missingRequiredSlots, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
+import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
+import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
 
 /**
  * 分镜行的**执行态 derive 层**（纯函数，v5 B）：行状态不是存的，是从「plan × 画布节点」推出来的
@@ -285,7 +287,8 @@ export function deriveStoryboardRowRuntimes(input: {
     const node = findShotNode(nodes, designId, shot)
     const modelKey = effectiveShotValue(shot, node, 'modelKey')
     const vendor = effectiveShotValue(shot, node, 'modelVendor')
-    const modelOption = options.find((option) => option.value === modelKey && (!vendor || option.vendor === vendor)) ?? null
+    // 与模型框回显、执行落地同一个判定口：记了 vendor 按 (key, vendor)；没记按 pickImplicitVendorMatch。
+    const modelOption = findModelOptionByIdentifier(options, modelKey as string | undefined, vendor as string | undefined, peekVendorPreferenceOrder())
     const mode = resolveShotArchetypeMode(modelOption, effectiveShotValue(shot, node, 'modeId') as string | undefined)?.mode ?? null
     return { shot, mode, exec: deriveShotRowExec({ plan, shot, designId, nodes, mode }) }
   })

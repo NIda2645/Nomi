@@ -19,6 +19,7 @@ import {
   updateShotPrompt,
   updateShotAt,
   type SceneGroup,
+  type PlanShotPatch,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
 import type { AnchorCardRuntime, StoryboardRowRuntime } from './exec/storyboardRowStatus'
 import { useShotMentionSource } from './shotRow/useShotMentionSource'
@@ -386,7 +387,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                       setDragIndex(null); setOverIndex(null)
                     },
                     onDragEnd: () => { setDragIndex(null); setOverIndex(null) },
-                    onUpdate: (patch: Partial<typeof shot>) => {
+                    onUpdate: (patch: PlanShotPatch) => {
                       if (typeof patch.prompt !== 'string') {
                         onChange(updateShotAt(plan, pos, patch))
                         return
