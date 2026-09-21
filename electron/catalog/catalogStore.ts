@@ -42,7 +42,6 @@ import {
 } from "./customConfigStore";
 import {
   applyPlainNetworkConfig,
-  exportableVendorWithNetworkConfig,
   hasLegacyNetworkConfigField,
   metaWithoutExtraHeaders,
   overlayDecryptedNetworkConfig,

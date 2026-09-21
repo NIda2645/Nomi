@@ -173,22 +173,6 @@ export function overlayDecryptedNetworkConfig(vendor: Vendor, record: ApiKeyReco
   return next;
 }
 
-/**
- * A portable vendor for an include-keys export: the effective (decrypted) proxy/extraHeaders are
- * re-attached as plaintext so the destination re-encrypts them on import, mirroring the plaintext
- * apiKey. Reads the resolved values from the record (the overlaid vendor already carries them).
- */
-export function exportableVendorWithNetworkConfig(base: Vendor, record: ApiKeyRecord | undefined): Vendor {
-  const resolved = resolveNetworkConfigForRead(base, record);
-  const meta = isJsonRecord(base.meta) ? { ...base.meta } : undefined;
-  const nextMeta = resolved.extraHeaders ? { ...(meta || {}), extraHeaders: resolved.extraHeaders } : meta;
-  return {
-    ...base,
-    ...(resolved.proxyUrl || resolved.proxyEnabled !== undefined ? { network: { ...(base.network || {}), ...(resolved.proxyUrl ? { proxyUrl: resolved.proxyUrl } : {}) } } : {}),
-    ...(nextMeta ? { meta: nextMeta } : {}),
-  };
-}
-
 /** Drop plaintext extraHeaders from the meta that will be persisted on the vendor row. */
 export function metaWithoutExtraHeaders(meta: unknown): unknown {
   if (!isJsonRecord(meta) || !Object.prototype.hasOwnProperty.call(meta, "extraHeaders")) return meta;
