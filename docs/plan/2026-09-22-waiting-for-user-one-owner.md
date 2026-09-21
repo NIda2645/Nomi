@@ -1,6 +1,6 @@
 # 「等用户」只有一个 owner（花钱路）
 
-状态：🚧 实施中（分支 `integration/core-a-salvage-20260921`，未 push）· 2026-09-22
+状态：🚧 实施中（分支 `integration/core-a-salvage-20260921`，未 push）· 2026-09-22 · 主会话二次裁决 6 条已并入（C 改窄、decline 不发票、ticket 绑定、确认面排序约束、外部等待改短、规范版本更正）
 
 ## 0. 它在解决哪个真实摩擦
 
@@ -18,8 +18,15 @@
 
 ## 1. 主会话已定的裁决（2026-09-22，技术岔路；产品行为与用户此前拍板一致）
 
-A 等用户 = 审批闸一个 owner｜B 待决身份锚 `operationId` 不锚 `quoteId`｜C 重启一律作废待决（含落盘的报价卡）｜
+A 等用户 = 审批闸一个 owner｜B 待决身份锚 `operationId` 不锚 `quoteId`｜
+C **重启作废的是「那一次出价」，不是「那份计划」**（2026-09-22 二次裁决，改窄）：启动时把「已 present、未决」的计划
+**退回 draft / 未 present**——待决、报价卡、内存里的 ticket 作废；计划本身（镜头、参数、锚点）留着，用户再说一句就能重新出价。
+**不写 `cancelled`**：应用重启不是用户说「不」，× 才是。过期清扫同理，一律「退回 draft」｜
 D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支｜E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端证明。
+
+**不变量：金额永远不是闸的判据。** 闸只问「这一次出价（`operationId` + 合同指纹）有没有被一个可追溯的回答者同意过」，
+不问「多少钱」。金额只用于**展示**与「你确认的是不是你看到的那个数」的现时性校验（`quoteId`）；不进任何授权凭据的绑定，
+不作为放行 / 拦截的条件。按额度放行是另一件事（预授权，开放问题），不许从这道闸里长出来。
 
 ## 先查别人
 
@@ -29,12 +36,11 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    （`dist/types.d.ts:37-47`：「Returning `{ block: true }` prevents the tool from executing. The loop emits
    an **error** tool result instead」）。**由此得出一条硬约束**：想要「成功形状的『用户没同意』」，
    不能走 `block`——那一支在 pi 里**只能**产出 error result。只能放行，让工具执行自己返回那句话。
-2. **同类产品怎么表达「用户拒绝」**：MCP elicitation（规范 2025-06-18，
-   https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation）的响应是三值
+2. **同类产品怎么表达「用户拒绝」**：MCP elicitation 的响应是三值
    `action: "accept" | "decline" | "cancel"`，**三个都是正常结果，不是 JSON-RPC error**；
    本仓 `approvalReceipt.ts:136` 的 `APPROVAL_DECIDED_BY` 已经按它建模（`human:elicitation`）。
    Claude Code 的权限提示：用户在提示上打字 = 拒绝 + 这句话作为给模型的反馈，回合继续处理它。
-   → 我们的偏差：无。`declined` 走成功形状、打字即回答，都是对齐。
+   → 我们的偏差：无。`declined` 走成功形状、打字即回答，都是对齐。规范版本与偏差表见 §5c（2026-09-22 联网实查，更正了本节初稿引的 2025-06-18）。
 3. **仓库里有没有**：
    - 等待 owner：`electron/agentLane/laneApprovalGate.ts:250-280`（race signal、resolve-on-abort、`restored` 不复活卡）；
    - 「待决时打字」已有**半个**实现：`laneHost.mts:650-652` 对 steering 消息 `gate.answer(..., 'deny', …)`——
@@ -60,7 +66,8 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    │   · 面板 × → discardPendingSpend 成功           → declined                │
    │   · 用户在 composer 打字（E）                    → declined + 反馈正文     │
    │   · 按停止 / 关窗 / 切项目（cancelAll）          → cancelled（既有）       │
-   │   · 进程重启（C）                                → cancelled{restart}（既有）│
+   │   · 进程重启（C）                                → 回合侧 cancelled{restart}（既有）；│
+   │                                                    计划侧**退回 draft / 未 present**  │
    ▼                                                                          │
  execute（工具真正执行，≤60s 预算，此刻**没有任何等待**）◀──────────────────────┘
    · confirmed  → 返回「已开始生成 N 镜」（成功形状；提交已由 confirm 那条既有链完成）
@@ -69,7 +76,9 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 ```
 
 落盘字段：**不新增等待态字段**。等待只活在内存里的 `waiter` 表（与审批闸的 `waiting` 同性质：进程死则等待死）。
-盘上只有 Run 账本的 `generationPlan.state`：`draft` →（present）→ `draft`（可见）→ `sealed` → `submitted`；× → `cancelled`。
+盘上只有 Run 账本的 `generationPlan.state`：`draft`（`cardHidden`，未 present）→（present）→ `draft`（可见）→ `sealed` → `submitted`；
+× → `cancelled{declined}`（终态）；**重启 / 出价过期 → 退回 `draft`（`cardHidden`，未 present）**——`sealed` 且门还在 waiting 的，
+先按既有的 `revokeWaitingGenerationAuthorization` 撤掉那次未决授权再解封。「未 present」用的就是 `cardHidden` 的 (a) 义，不新增字段。
 
 文稿方案（②）：`presentStoryboardAuthoring` 的「等用户在分镜编辑器里点头」同样挪到 preflight——
 工具执行里只剩「读这次决定的结果」。
@@ -114,13 +123,14 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 
 **Q3 哪条边会让卡变孤儿？**
 (a) 重启：waiter 没了而盘上的计划还是「已 present 的 draft」→ 卡还会被投影出来、还能点确认——**这就是 C 要堵的**。
-    启动（项目打开）时把「已 present、未决」的计划一律 `cancel`；用户重启后要生成，再说一句。
+    启动（项目打开）时把「已 present、未决」的计划**退回 draft / 未 present**（不是 `cancel`）：卡不再投影、旧 ticket 随内存没了；
+    镜头与参数都还在，用户重启后说一句「生成」= 对同一份草稿重新出价，不用重写分镜。× 过的计划不受这条影响——它早已是终态。
 (b) × 之后：`cancelled`，投影与落地都不认。
 (c) lane 被删 / 切对话：`close()` → `cancelAll('window-closed')` → waiter settle cancelled → **同时 cancel 那份计划**（否则卡留在面板上没人等它）。
 
 **Q4 对非 lane 入口（外部 MCP `nomi_operation_gate`、分镜编辑器「提交执行计划」）有没有副作用？**
-它们出的卡没有 waiter——confirm / × 照旧工作，settle 是 no-op。C 的启动作废对它们同样生效（外部宿主重启后重新请求即可），
-这是裁决 C 的字面范围（「含落盘的报价卡」）。
+它们出的卡没有 waiter——confirm / × 照旧工作，settle 是 no-op。C 的启动回退对它们同样生效（外部宿主重启后重新 request 即可，
+草稿还在），这是裁决 C 的字面范围（「含落盘的报价卡」）。
 
 **评审发现的一处要向主会话报备的偏差**：裁决 D 写「删 detach 补救往返」。数门之后：那个观察者同时服务
 「用户手动删占位 → 不复活」（裁决 D 自己的末句要保住的行为），删掉它会把手动删除弄坏。所以**保留观察者**，
@@ -140,15 +150,27 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    面板（人点）              「生成 ¥X」 / ×                           confirmed / declined
    全自动档（策略）           spendDecidedByPolicy                      confirmed（不出卡）
    外部宿主 · elicitation     accept                                    confirmed
-                             decline                                   **不转移**：留在「未决」，回 `spend_pending_confirmation`（reason=client_declined）+ ticket
-                             cancel                                    **不转移**：同上（reason=client_cancelled）——规范原话 cancel=「没做出明确选择」，处置建议是 prompt again later
-                             超时（300 s）                              **不转移**：同上（reason=client_timeout）
-                             宿主不支持 elicitation                     **不转移**：同上（reason=client_unsupported），一个字节都不发
+                             decline                                   **不转移，且这次响应不发 ticket**（reason=client_declined）。正文对 AI 说：
+                                                                       「宿主回了 decline；如果用户其实没看到确认，就把报价转述给他，
+                                                                       拿到他明确的同意后再 request 一次」
+                             cancel                                    **不转移 + ticket**（reason=client_cancelled）——规范原话 cancel=「没做出明确选择」，处置建议是 prompt again later
+                             超时（远短于宿主工具超时，见下）            **不转移 + ticket**（reason=client_timeout）——等待从这一刻起发生在**对话里**，不在一次 `tools/call` 里
+                             宿主不支持 elicitation                     **不转移 + ticket**（reason=client_unsupported），一个字节都不发
+                             （以上四种「不转移」的返回**全部是成功形状**，非 isError：没有任何东西坏了，只是还没人点头。
+                               错误形状会让宿主模型重试 / 进熔断 / 向用户报「出错了」——三样都是错的）
    外部宿主 · ticket          phase=decide + 有效 ticket                confirmed
                              phase=decide + 显式「用户说不」             declined（与 × 同一条边、同一个终态）
                              ticket 过期 / 被用过 / 绑定对不上           不转移；回可行动的拒绝（重新 request）
-   任何回答者                 进程重启（裁决 C）                         cancelled{restart}——ticket 随内存一起没了，盘上的未决计划启动时作废
+   任何回答者                 进程重启 / 出价过期（裁决 C）               **退回 draft / 未 present**——ticket 随内存一起没了；计划本身留着，重新 request 即重新出价
 ```
+
+**为什么 decline 不发 ticket，另外三种发**：cancel / 超时 / 不支持 = 「没有人回答过」，下一步自然是换一条路再问一次，ticket 就是那条路的
+凭据。decline 是「有一个回答者说了不」——哪怕它多半是宿主替人答的，也不能在**同一次响应**里递上一张「拿这个就能花钱」的票：那等于
+对一个「不」回一句「那你自己批吧」。要走下一步，AI 必须先回到对话里拿到用户明确的同意，再 request（那一次才可能拿到 ticket）。
+
+**为什么外部 elicitation 的等待必须很短**：它等在一次 `tools/call` **里面**，而宿主对工具调用有自己的超时（常见量级 ~60 秒）——
+这和 §0 的 ② 是**同一种病**（等人等在工具执行预算里）。所以不写 300 秒；写「远短于宿主工具超时，到点落『不转移 + ticket』，
+让真正的等待发生在对话里」。具体秒数 = 宿主侧那一轮的调研项（逐个宿主实测它的工具超时，不拍脑袋）。
 
 **为什么 decline / cancel / 超时在外部是「不转移」，而在面板上 × 是终态**：面板的 × 是**人的手势**（主进程铸的
 `human-gesture` attestation 带 webContentsId / frameId）；宿主回的 decline 可能是宿主**自己替人答的**（Codex 实测 100% 自动 decline）。
@@ -160,7 +182,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 |---|---|---|
 | 把「同意」变成收据 | `rpcServer.ts:205-215` `nomi_verify_client_generation_gate`（今天铸 `client_elicitation`）；由 `mcpGateConfirmation.ts:153-165` 在 accept 后调 | ticket 验过之后**在同一处**铸收据，attestation 加第三种 `client_relayed`（与 `human-gesture` / `policy-full-auto` 并列，账本上分得清是谁点的头） |
 | 收据 → 决门 → 消费 → 开跑 | `generationSpendDecision.ts:80-99` `decideGenerationSpend`，**全仓只有这一份**（door-map：两扇写口都调它） | 不改。ticket 路是它的**第三个调用方**，不是第二份实现 |
-| 同一张收据批不动第二次 | `consumeReceipt`（一次性）+ `spendGrant.ts:98-110` 出站硬闸 + `providerIdempotencyKey` | 不改。ticket 自己再加一层一次性（绑 `operationId + contractHash + maximumCost + 过期时刻`）：它防「改了参数还用旧授权 / 同一张票批两次」，**不防** AI 自问自答——那条由花费上限与宿主审批面管（PLAN §2.6） |
+| 同一张收据批不动第二次 | `consumeReceipt`（一次性）+ `spendGrant.ts:98-110` 出站硬闸 + `providerIdempotencyKey` | 不改。ticket 自己再加一层一次性，绑 **`operationId + contractHash + 过期时刻 + 发给谁`**（发给谁 = 那个 MCP 客户端身份 / 连接；规范安全节原话：Servers MUST bind elicitation requests to the client and user identity）。**`maximumCost` 不进绑定**，只用于展示——金额不是闸的判据（§1 不变量）；参数变了由 `contractHash` 管，价格单独变了由既有的 `quoteId` 现时性校验管。它防「改了参数还用旧授权 / 同一张票批两次 / 别的连接捡到票」，**不防** AI 自问自答——那条由宿主审批面管（PLAN §2.6） |
 | 第二次 decide（重复调用） | 本方案反方评审 Q1(a)：计划已 `sealed/submitted` → 不再出价，返回「这一笔已经在跑」 | 同一条边：带着已消费的 ticket 再调 = 成功形状的「已在跑」，不是错误、不是第二笔 |
 
 **本刀落地后，宿主侧要接上来时不需要拆我的东西——凭的是这四条**：
@@ -169,17 +191,48 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 3. lane 的 waiter 注册表对「不是 lane 出的卡」是 **no-op**（反方评审 Q4）：外部宿主出的价、它自己 confirm，不会误 settle 任何回合；
 4. 本轮**不碰** `mcpGateConfirmation.ts` / `mcpSemanticGenerationFlow.ts` / `rpcServer.ts` / `mcpTrustDowngrade.ts`，也不碰 `executionContract.ts`、不新增对 `src/config/modelArchetypes/` 的 import（那条会话要搬它）。
 
+**确认出现在哪里——用户已经拍过板（2026-09-22 原话：「在哪里用 mcp 就把东西设计在哪里，不能在 nomi 应用里弹」）**：
+- 目标形态：待决带**来源**（lane / 外部宿主 / 分镜编辑器）；面板**只投影非外部来源**的待决；外部来源的确认只经宿主
+  （elicitation，或对话式两步 + ticket）。
+- **本轮不改这条投影**——今天外部宿主出的价仍会投影到面板上，那张卡是它此刻唯一能被人点头的地方。
+- **P1 排序约束（写死）**：「删掉外部来源的应用内确认」与「宿主侧两步确认落地」必须是**同一个 commit**。先删后补 = 中间那段
+  外部用户没有任何地方能点头（付费路断）；先补后删 = 两个确认面并行（同一笔出价两处可批，违反 P1）。
+
 **开放问题（都是产品行为，要用户拍板，本文不设计）**：
 - 「按次数 / 秒数 / 额度预授权」（PLAN 方案 D、Q2、Q3）：上限的数、有效期、在哪里改、撤销入口；
-- 外部宿主出价时，Nomi 面板上要不要同时出那张兜底卡——用户 09-21 的约束是「别把 MCP 用户指回 Nomi」，
-  但本机 GUI 用户同时开着 Nomi 时这张卡是否还该出现，没有拍过板；
-- ticket 过期后盘上那份「未决」计划由谁收走（惰性：下一次触碰时按 declined 处理；还是定时扫）。
-  在拍板之前，裁决 C 的启动作废是它唯一的兜底清扫。
+- 确认面只剩**一个**没拍的点：外部宿主在出价、而用户本机恰好开着 Nomi 时，面板上要不要出现一条**被动的、不可点的**痕迹
+  （「Claude Code 正在请求生成 ¥X」）。可点的卡已经定了不出。
+- ticket / 出价过期后的清扫节奏（惰性：下一次触碰时退回 draft；还是定时扫）。两种做法的**落点已定**——退回 draft，不是 declined。
+
+## 5c. 规范版本：链接 / 我们的偏差 / 偏差理由（R5⑤，2026-09-22 联网实查原文）
+
+**仓库实际协商的版本**：`electron/capabilityCore/mcpProtocol.ts:86-89`——`PROTOCOL_VERSION = '2025-11-25'`，
+`SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25','2025-06-18','2025-03-26','2024-11-05']`。`mcpElicitation.ts:1-16` 按 2025-11-25 的线形说话
+（`elicitation/create` 服务端主动请求；URL 模式带 `elicitationId` + `notifications/elicitation/complete`）。
+
+| 规范 | 与本方案有关的条文 |
+|---|---|
+| [2025-11-25 · client/elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) | 三值 `accept / decline / cancel`，都是 `result`，不是 JSON-RPC error。decline =「User explicitly declined」，建议处置 offer alternatives；cancel =「dismissed without making an explicit choice」，建议处置 prompt again later。URL 模式是这一版**新增**的，规范自己标了「may change in future protocol revisions」。安全节：**Servers MUST bind elicitation requests to the client and user identity**。 |
+| [2026-07-28 · changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog) + [client/elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation) | **三值语义逐字未变**（Response Actions 一节原文相同）。变的是**怎么送达**：① 服务端主动请求整条废掉，改成 Multi Round-Trip Requests——`tools/call` 先回 `InputRequiredResult`（`resultType:"input_required"` + `inputRequests`），客户端拿到用户回答后**重发原请求**并带 `inputResponses`（SEP-2322）；② 删 `elicitationId` 与 `notifications/elicitation/complete`，跨重试的关联改由服务端自己编进 `requestState`；③ 协议无状态化、删 `initialize` 握手与协议级会话，「需要跨调用状态的服务端，用**服务端铸的显式句柄、当普通工具参数传**」（SEP-2567）；④ 所有 result 必带 `resultType`。 |
+
+**对本方案的含义**：
+- 三值 → 边的映射（§5b 那张表）在两个版本下**都成立**，不用跟着版本改。
+- 2026-07-28 把「等人」从**一次调用里面**挪到了**两次调用之间**——和本文的方向（等待不许住在工具执行预算里）是同一个判断。
+  我们的「不转移 + ticket、等待发生在对话里」在新版下不是权宜，是规范自己选的形状；ticket =「服务端铸的显式句柄、当普通工具参数传」，
+  正是 SEP-2567 指的那种东西。
+- 「发给谁」的绑定：2025-11-25 下可以绑连接 / 会话；2026-07-28 删了协议级会话，届时要绑 `clientInfo` + 传输层身份（stdio = 那个子进程；
+  HTTP = 授权主体）。**绑定项的名字写「发给谁」，不写 sessionId**，就是为了不被这次改版带走。
+
+| 我们的偏差 | 理由（只许是领域约束） |
+|---|---|
+| 最高只协商到 2025-11-25，没跟 2026-07-28 | 不是本方案造成的偏差，也不在本轮范围：升级 = 换掉握手 / 会话 / 订阅整层，走「升版本四步协议」单独立项。本文只保证**不往会被删的东西上绑**（不绑 `elicitationId`、不绑 `Mcp-Session-Id`）。 |
+| decline 在外部**不落终态**（规范建议处置是 offer alternatives，没说不能当终态，但多数实现当「用户拒绝」处理） | 领域约束 = 这一步花真钱，且实测有宿主 **100% 自动回 decline**（Codex）——那个「不」不可证明来自人。把它落成终态 = 付费路在该宿主上永远走不通。规范对 decline 的定义是「**User** explicitly declined」；宿主替人答的不满足这个定义，我们按规范的字面收紧，不是放宽。 |
+| 对话式两步确认（ticket）不是 elicitation | 扩展放在标准的扩展点上：ticket 是**普通工具参数**，返回是**普通成功 result**，不新增方法、不新增 capability、不改线形。宿主不支持 elicitation 时规范本来就要求服务端自己兜（2026-07-28 Error Handling：「Servers SHOULD NOT assume that elicitation requests will always succeed」）。 |
 
 ## 6. 步骤与验收门
 
 1. 复现并修 ③（E）：真 Electron、真页面输入，零额度 loopback。
-2. A + B + F：waiter 注册表、preflight 出卡并等、execute 读结局、`generate` 声明同步；C：启动作废。
+2. A + B + F：waiter 注册表、preflight 出卡并等、execute 读结局、`generate` 声明同步；C：启动时「已 present、未决」退回 draft / 未 present。
 3. D 主进程半：× → cancel，删 dismiss 一支，落地不认 cancelled。
 4. （等主会话通知）合并 ④ + 渲染层调用点。
 5. 验收：spend 全部走查绿 + 新增六条（× 后 5 秒节点数不变 / 同回合再 generate 不出第二笔 / 重启后 pending 作废 /
