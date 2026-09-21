@@ -178,3 +178,47 @@ UI 面压根不传 `vendor/modelKey`（`src/workbench/generationCanvas/store/can
   MCP 走 `nomi_read` 的 target 扩展、**不新增工具**；`modelCatalogListing` 里重复的知识删除，
   `keyStatus/usable/statusReason` 并入后两面都有。
 - **`AgentModelEntry` 补 variants**（验收：变体现在「可被拒、不可发现」）。
+
+## A-3 做完之后的真实保护面（实测，不是估计）
+
+搬家 + 准入接档案之后，对**真实种子目录**重新量了一遍「这个模型有没有可校验的声明」：
+
+| kind | 有声明 / 总数 | 无声明 |
+|---|---|---|
+| image | 57/59 | 2 |
+| video | 53/55 | 2 |
+| audio | 18/20 | 2 |
+| model3d | 4/5 | 1 |
+| text | 1/15 | 14 |
+| **合计** | **133/154 = 86.4%** | 21 |
+
+**只看媒体模型：132/139 = 95.0%。** 改前是 **7/156 = 4.5%**（且那 7 个里没有一个来自档案，见下）。
+
+剩下 21 个「无声明」：14 个是 **text/chat 模型**（本就没有媒体参数，`buildAgentModelEntries`
+给它们的是一个 catalog 定义的 `chat` 壳模式）；7 个是媒体模型，它们的 `fal/*` 前缀键
+档案匹配器认不出来。这 7 个仍走「放行 + warning」。
+
+### 只读事实核查：`parameterSchema` 那条来源今天有没有真实使用者
+
+（协调方 2026-09-22 追加要求。跑真实 `seedBuiltins` 目录 → `createCatalogModuleRegistry`。）
+
+- 非空的是 **6 个**（协调方转述的是 7；我量到 6/154，差异应是解析出的模块集略有出入）：
+  `apimart/MiniMax-H3-Context-IR`(text)、`agnes/agnes-image-2.1-flash`(image)、
+  `agnes/agnes-image-2.0-flash`(image)、`agnes/agnes-video-v2.0`(video)、
+  `agnes/agnes-video-2.5`(video)、`agnes/agnes-video-2.5-flash`(video)。
+- **6 个的非空内容全部来自 `mapping.create.defaultParams`，没有一个来自 `model.onboarding.fields`。**
+- 全部是**内置种子模型**（apimart / agnes 的 builtin 行）。
+- 全目录：带 `onboarding.fields` 的 **0 个**；只有 `defaultParams` 的 6 个；两者皆无 148 个。
+
+**结论**：「接入表单字段」这条来源在内置目录里**今天零使用者**——它只可能由用户/Agent
+自己接入的模型填。故搬家之后的三类分工成立，但要如实写成：
+**内置模型走档案（现在真的走通了）/ 用户接入的模型走 onboarding 表单字段（路径存在、内置目录里为空）
+/ 两者皆无走放行并警告（剩 21 个，其中 14 个是本就无参数的 chat 模型）**。
+
+**当初的设计意图**：`parameterSchema` 由 `c439c56ff`（2026-08-23，*feat: add generic runtime
+module and asset boundaries*）引入，**没有配套的 docs/plan 方案文档**（全仓 `docs/` 里除本刀外
+无任何文件提到 `parameterSchema`）；意图只留在代码注释
+`electron/capabilityCore/moduleCatalogBootstrap.ts:44-46`：
+「Mapping defaults are already user/catalog-owned declarations. They fill the schema only when
+onboarding has no richer field description for that key.」
+即 onboarding 字段本是**首选、更丰富**的那一份，defaults 只是兜底——而实测只有兜底那一条真正生效过。
