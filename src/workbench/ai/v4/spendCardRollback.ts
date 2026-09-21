@@ -14,6 +14,8 @@
 //   ① 身上有物化章（`materializationOperationId`）—— 用户徒手建的节点没有这一章，一律不动；
 //   ② `productionRunId` 就是这张卡那一个 Run —— 别的 Run 落的节点不归这次 × 管；
 //   ③ `productionShotId` 与卡上那一镜对得上，且 `shots[].nodeId` 也指着它 —— 卡上没摆出来的镜不动。
+//   ④ 它**还是个占位**——身上没有任何产物。已经出过图的节点不是「这次请求造的占位」：那是用户花过钱的东西。
+//      （2026-09-22 真机走查实测：确认出图之后同一镜「再来一次」的那张卡被 × 掉，连带把已经出图的节点删了，画布空了。）
 //
 // 判据用 `productionRunId`/`productionShotId` 而不是重新拼一次 `canvas-landing:{runId}`：
 // 那个串的产地在主进程（`electron/productionRun/multiShotCanvasLanding.ts`），渲染层再写一份
@@ -26,7 +28,7 @@ import { MATERIALIZATION_OPERATION_META_KEY } from '../../generationCanvas/agent
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import type { PendingSpendConfirm } from '../../../desktop/productionRunBridgeTypes'
 
-type NodeLike = Pick<GenerationCanvasNode, 'id' | 'meta'>
+type NodeLike = Pick<GenerationCanvasNode, 'id' | 'meta' | 'result' | 'history'>
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -54,6 +56,8 @@ export function ownedSpendNodeIds(
     if (!text(meta[MATERIALIZATION_OPERATION_META_KEY])) continue
     if (text(meta.productionRunId) !== text(pending.runId)) continue
     if (text(meta.productionShotId) !== text(shot.shotId)) continue
+    // 已经有产物的节点不是占位：× 撤的是「这次请求」，不是用户已经付过钱的那张图。
+    if (node.result || (node.history?.length ?? 0) > 0) continue
     seen.add(nodeId)
     out.push(nodeId)
   }

@@ -9,7 +9,8 @@
 //   ③ 卡还挂着的时候**冷重启**（C）→ 那一次出价被收回：重开项目没有卡、没有人在等；
 //      计划是 draft / 未 present（**不是** cancelled——重启不是用户说「不」），节点一个没少。
 //   ④ 重启后用户再说一句「生成」→ 同一个 operationId 的卡 → 点「生成」→ 供应商**恰好收到一次**；
-//      同一回合里模型**再调一次** `generate`（F）→ 不管宿主怎么答它，供应商仍然只收到那一次。
+//      同一回合里模型**再调一次** `generate`（F）→ 宿主当成「再来一次」重新摆卡（要花钱必须再点一次）；× 掉它，
+//      供应商仍然只收到那一次，而且**出过图的节点还在**。
 //
 // 「看卡 >90 秒再确认仍成功」不在这里：`check:test-waits` 不许走查里放墙钟空等，而那条要证的不变量
 // 本来也不是「90 秒」，是「等待不计入工具超时」——由 `tests/agent-runtime/lane-preflight-wait.test.mts`
@@ -153,27 +154,23 @@ try {
   expect(flattenRequestText((await recorded(approved.received, 'generate returns approved')).body),
     '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
 
-  // 同回合第二次 generate：宿主可以拒（上一批还没结清），也可以再摆一张卡——但**不许**自己再花一次。
-  // 再摆出来的卡像人一样关掉；两种走法下供应商收到的都必须还是那一次。
+  // 同回合第二次 generate：上一批已经结清，所以宿主把它当成「同一镜再来一次」——**重新摆一张卡**，要花钱必须再点一次
+  // （这是既有的产品路径：`agentPanelSpendBatches` 的「new confirmation … distinct attempt」）。模型自己花不了第二笔。
+  // 用户不想要第二次 → × 掉。× 撤的是**这次请求**，不是已经花过钱的那张图：出过图的节点必须还在。
+  // （第一版在这里把出过图的节点一起删了、画布空了——本走查当场抓到，修在 `spendCardRollback.ownedSpendNodeIds` 判据 ④。）
   const repeatCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
-  const settled = recorded(secondAnswer.received, 'the repeated generate is answered')
-  const outcome = await Promise.race([
-    settled.then(() => 'answered'),
-    repeatCard.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT_MS }).then(() => 'card').catch(() => 'answered'),
-  ])
-  if (outcome === 'card') await closeSpendCard(repeatCard, '关掉重复出的那张卡')
-  const repeatedResult = String(((await settled).body.messages ?? [])
-    .find((message) => message.role === 'tool' && message.tool_call_id === 'wo-generate-4')?.content ?? '')
-  walk.report.repeatedGenerateResult = repeatedResult.slice(0, 600)
-  expect(repeatedResult, '重复的那次 generate 必须有一句回话').not.toBe('')
-  expect(repeatedResult, '重复的那次 generate 不许说「又开始生成了」').not.toContain('The user approved the priced card')
+  await expect(repeatCard, '「再来一次」要花钱就得再问一次').toBeVisible()
+  expect(walk.fixture.images, '第二张卡摆出来的时候，供应商仍然只收到过那一次').toHaveLength(1)
+  await closeSpendCard(repeatCard, '不要第二次：关掉这张卡')
+  await recorded(secondAnswer.received, 'the repeated generate returns once its card was closed')
+  await expect(win.locator('[data-node-id][data-status="success"]').first(), '花过钱、出过图的那个节点还在画布上').toBeVisible()
+  expect(await nodeIds(), '× 不许撤掉已经出图的节点').toEqual(draftedNodes)
   expect(walk.fixture.images, '同一回合里再调一次 generate，供应商仍然只收到一次（只扣一次）').toHaveLength(1)
   await walk.snap('waiting-owner-05-confirmed-once-charged-once')
 
   walk.report.verified = ['typed-text-answers-the-spend-card-and-withdraws-only-the-quote',
     'same-draft-can-be-presented-again', 'restart-withdraws-the-quote-not-the-plan',
     'confirm-after-restart-reaches-the-vendor-once', 'repeated-generate-in-the-same-turn-charges-nothing-more']
-  walk.report.repeatedGenerate = outcome
 } catch (error) {
   failure = error
   process.exitCode = 1

@@ -55,6 +55,13 @@ describe('ownedSpendNodeIds', () => {
     expect(ownedSpendNodeIds(nodes as GenerationCanvasNode[], card([{ shotId: 's1', nodeId: 'x' }]))).toEqual([])
   })
 
+  it('never removes a node that already holds a generated result — × withdraws a request, not a paid image', () => {
+    // 同一镜「再来一次」的那张卡被 × 掉：第一次已经出了图、花了钱，那个节点不是「这次请求造的占位」。
+    const paid = { ...landed('n1', 's1'), result: { id: 'r1', url: 'nomi-local://x.png', kind: 'image' } } as unknown as GenerationCanvasNode
+    const placeholder = landed('n2', 's2')
+    expect(ownedSpendNodeIds([paid, placeholder], card([{ shotId: 's1', nodeId: 'n1' }, { shotId: 's2', nodeId: 'n2' }]))).toEqual(['n2'])
+  })
+
   it('ignores shots whose node is gone or never bound', () => {
     expect(ownedSpendNodeIds([landed('n1', 's1')], card([{ shotId: 's1' }, { shotId: 's2', nodeId: 'missing' }]))).toEqual([])
   })
