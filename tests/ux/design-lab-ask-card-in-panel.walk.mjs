@@ -20,10 +20,15 @@ const outDir = process.env.ASK_IN_PANEL_OUT || path.join(REPO_ROOT, 'tests/ux/sh
 fs.mkdirSync(outDir, { recursive: true })
 
 /**
- * 暗色**翻的是真 token**（`:root[data-mantine-color-scheme="dark"]`，tailwind.config 的暗色块），
- * 不是 `AgentPanelV4Panel` 的 `darkMode` prop——那个只把用户气泡从 ink 底换成 ink-10 底，
- * 面板底色、卡描边、文字全不动。第一版我拿它当暗色拍，拍出来的四张有两张是一样的浅色，
- * 「暗色下也不突兀」这句话等于没证。
+ * 暗色走实验室**自己的开关** `?scheme=dark`（`designLab.tsx` → `applyNomiColorScheme`），
+ * 它和真 App 同一条路：一次落三样——`data-mantine-color-scheme` 属性、`data-theme`、
+ * 以及根节点的**内联** `color-scheme`。
+ *
+ * 这里走错过两次，都拍出了假证据：
+ * ① 用 `AgentPanelV4Panel` 的 `darkMode` prop——它只换用户气泡底色，面板和卡一点不动；
+ * ② 只手动翻 `data-mantine-color-scheme` 属性——token 翻了，但根上那句内联 `color-scheme: light`
+ *    还在，于是**原生控件**（反问卡的单选圆点、计划卡的勾选框）照旧按浅色方案画：
+ *    暗色卡面上三个实心白圆盘，看起来像三个都选中了。真 App 里不会这样，是取景方式造的假象。
  */
 const STATES = [
   ['v4-panel-question-light', 'question', 'light'],
@@ -34,6 +39,13 @@ const STATES = [
   // 普通确认卡（可撤销档）——同族第三张，验的是「换壳是一处改、全族生效」。
   ['v4-panel-approval-light', 'approval', 'light'],
   ['v4-panel-approval-light', 'approval', 'dark'],
+  // 收尾补的三种：多题反问卡 / 多镜付费卡 / 未知价付费卡。
+  ['v4-panel-question-multi', 'question-multi', 'light'],
+  ['v4-panel-question-multi', 'question-multi', 'dark'],
+  ['v4-panel-spend-batch', 'spend-batch', 'light'],
+  ['v4-panel-spend-batch', 'spend-batch', 'dark'],
+  ['v4-panel-spend-unknown', 'spend-unknown', 'light'],
+  ['v4-panel-spend-unknown', 'spend-unknown', 'dark'],
 ]
 
 const failures = []
@@ -66,12 +78,9 @@ try {
     const page = await context.newPage()
     const tag = locale === 'zh-CN' ? 'zh' : 'en'
     for (const [state, kind, theme] of STATES) {
-      await page.goto(`${BASE}/design-lab.html?screen=agent-panel-v4&frame=1&state=${state}`, { waitUntil: 'networkidle' })
+      await page.goto(`${BASE}/design-lab.html?screen=agent-panel-v4&frame=1&state=${state}&scheme=${theme}`, { waitUntil: 'networkidle' })
       await page.waitForFunction(() => window.__designLabReady === true, null, { timeout: 20000 })
-      await page.evaluate((scheme) => {
-        document.documentElement.setAttribute('data-mantine-color-scheme', scheme)
-      }, theme)
-      // token 翻转带 transition，不等就会拍到插值中的那一帧（灰不灰、蓝不蓝）。
+      // token 翻转带 transition，不等就会读到 / 拍到插值中的那一帧（灰不灰、蓝不蓝）。
       await page.waitForTimeout(400)
       const shot = page.locator(`[data-design-lab-shot="${state}"]`)
       await shot.waitFor({ state: 'visible', timeout: 10000 })
@@ -134,13 +143,28 @@ try {
             where: closeRect.top - rect.top < rect.bottom - closeRect.bottom ? 'top' : 'bottom',
           } : null,
           scheme: document.documentElement.getAttribute('data-mantine-color-scheme'),
+          // 原生单选 / 勾选控件按哪套方案画，由它**继承到的 `color-scheme`** 决定（UA 画的，
+          // 没有 computed background 可读）。它必须等于当前主题，也必须等于同屏 composer 的。
+          nativeSchemes: [...card.querySelectorAll('input[type="radio"], input[type="checkbox"]')].map((node) => getComputedStyle(node).colorScheme),
+          composerScheme: composer ? getComputedStyle(composer).colorScheme : null,
+          uncheckedChecked: [...card.querySelectorAll('input[type="radio"], input[type="checkbox"]')].filter((node) => node.checked).length,
           composerWidth: composerRect ? Math.round(composerRect.width) : null,
           composerGap: composerRect ? Math.round(composerRect.top - rect.bottom) : null,
         }
       })
       measured.push({ locale: tag, theme, kind, ...shape })
+      if (kind === 'spend-unknown') {
+        const enabled = await shot.locator('[data-v4-control="confirm"]').isEnabled()
+        if (!enabled) failures.push(`${tag}/${theme}/${kind}：算不出价时主按钮被禁用了——用户硬性拍板：算不出价绝不拦生成`)
+      }
       if (shape.missing) failures.push(`${tag}/${theme}/${kind}：面板里没渲染出介入槽`)
       if (shape.scheme !== theme) failures.push(`${tag}/${theme}/${kind}：主题没翻过去（量到 ${shape.scheme}）`)
+      for (const native of shape.nativeSchemes ?? []) {
+        if (native !== theme || native !== shape.composerScheme) {
+          failures.push(`${tag}/${theme}/${kind}：原生圆点按「${native}」方案画，主题是 ${theme}、composer 是 ${shape.composerScheme}——暗色下会画成实心白盘，像全选中了`)
+        }
+      }
+      if (shape.uncheckedChecked) failures.push(`${tag}/${theme}/${kind}：卡一挂上来就有 ${shape.uncheckedChecked} 个选项是选中态——「推荐」只是记号，不预选`)
       // **卡是 composer 的兄弟**（用户 2026-09-22 看真机后的验收标准）：底色、描边色、描边粗细、
       // 圆角、阴影的 computed 值必须与同屏 composer **逐字相等**，明暗都是。
       // 读之前已经等过主题 transition（上面那 400ms），否则读到的是插值中的那一帧。
@@ -190,7 +214,7 @@ const report = [
   '# design lab · ask card inside the real panel',
   '',
   `result: ${failures.length ? 'failed' : 'passed'}`,
-  `shots: ${outDir} (question/spend × light/dark × zh/en = 8)`,
+  `shots: ${outDir} (6 kinds × light/dark × zh/en = 24)`,
   `measured: ${JSON.stringify(measured, null, 2)}`,
   'covers: the ask card rendered in its real place (conversation above, composer below, panel shell around) next to the paid confirm card in the same slot, with shell metrics (width, border, radius, shadow, head band, padding, primary button family, close button, composer gap) measured on both so they can be reconciled side by side.',
   failures.length ? `failures: ${failures.join(' | ')}` : 'failures: none',

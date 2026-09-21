@@ -22,10 +22,10 @@
  * 多选与自由输入等主按钮、一条在行间滑动的高亮带（220ms）、`ready` 闸防首帧撑满。
  * 它的颜色、圆角、字号、阴影、按钮长相**一个值都没带过来**。
  *
- * **比 Approval Card 少一颗「Skip」**，这是按 Nomi 自己的规则删的，不是漏了：
- * 设计系统 §1.8 规则 1「一屏一个主动作，不铺第二颗文字按钮」、规则 4「否定动作统一用 ×」，
- * agent 专章 §8.2「文字链不与按钮同排」。而它做的两件事各自已经有家了（§1.5.2 一功能一个家）：
- * 最后一题上的「跳过」＝右上那颗 ×；中间题上的「跳过」＝翻页器的 ›。
+ * **「跳过」与右上 × 是两个动作**（2026-09-22 主会话裁决）：× = 整张卡不答；「跳过」= 跳过
+ * **当前这一题**进下一题。所以只有一题时页脚不放「跳过」（那时它和 × 是同一件事，
+ * §1.5.2 一功能一个家）；多题时才出现，用现役**次按钮**（`WorkbenchButton size="sm"`，描边档——
+ * agent 专章 §8.2：主次只用颜色分；文字链不与按钮同排）。
  *
  * 我们在骨架上只加两样：选项第二行 `description`、「推荐」标（推荐项排第一）。
  */
@@ -40,11 +40,13 @@ import {
   askCardAnswer,
   askOptionIndexForArrow,
   askOptionIndexForKey,
+  askSkipOutcome,
   askQuestionAnswered,
   isLastAskQuestion,
   orderedAskOptions,
   shouldAutoAdvance,
   shouldShowPager,
+  shouldShowSkip,
   toggleAskOption,
   type V4AskAnswer,
   type V4AskDraft,
@@ -54,6 +56,8 @@ import {
 export type V4AskCardLabels = Readonly<{
   /** 右上那颗 × 的无障碍名（= 这次不答）。 */
   dismiss: string
+  /** 多题时页脚那颗「跳过」（= 跳过当前这一题）。只有一题时不渲染。 */
+  skip: string
   continueLabel: string
   send: string
   customPlaceholder: string
@@ -228,6 +232,15 @@ export function V4AskCard({
     advanceTimer.current = setTimeout(() => advance(nextDrafts), ASK_AUTO_ADVANCE_MS)
   }
 
+  const skip = (): void => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current)
+    const outcome = askSkipOutcome(index, drafts)
+    setDrafts(outcome.drafts)
+    if (outcome.next === 'next-question') { setIndex((current) => Math.min(total - 1, current + 1)); setCursor(undefined) }
+    else if (outcome.next === 'submit') submit(outcome.drafts)
+    else onDismiss()
+  }
+
   const goTo = (next: number): void => {
     if (advanceTimer.current) clearTimeout(advanceTimer.current)
     setIndex(Math.min(Math.max(next, 0), total - 1))
@@ -285,7 +298,13 @@ export function V4AskCard({
             <V4Pager pager={{ index, total }} onPage={goTo} />
           ) : null}
           <span className="flex-1" />
-          {/* 右下：**只有一颗主按钮**（设计系统 §1.8 规则 1）。未作答置灰。 */}
+          {/* 「跳过」= 跳过**当前这一题**（不是整张卡——那是右上 ×）。只有一题时不渲染。 */}
+          {shouldShowSkip(total) ? (
+            <WorkbenchButton size="sm" onClick={skip} data-v4-control="ask-skip" className="min-w-20">
+              {labels.skip}
+            </WorkbenchButton>
+          ) : null}
+          {/* 主按钮。未作答置灰。 */}
           <WorkbenchButton
             variant="primary"
             size="sm"

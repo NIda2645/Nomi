@@ -174,14 +174,17 @@ function V4PriceRow({ price }: { price: NonNullable<InterventionData['price']> }
       {/* 合计**紧跟**算式，不用 flex-1 把它推到右缘（2026-09-09 用户拍板：行尾附属信息紧跟内容）。
           推到右缘的代价不是好不好看：算式和它的结果之间会横着一大片空白，
           读的人得把视线甩过去才知道那个数是这一行算出来的。 */}
-      <V4Row as="div" className="text-caption text-nomi-ink-60">
-        <span className="min-w-0 truncate">{price.breakdown}</span>
-        {/* 合计**搬到页脚左下**了（2026-09-22 换壳）：那里离按钮两厘米，是按下去之前
-            最后扫的那一眼。这一行从此只说**算式**——同一个数印两处，改参数时一定有一个先漂。
-            `data-v4-price` 这个锚点跟着那个数一起搬到页脚（见下面 `slot-total`），
-            不在这里留一个 sr-only 的影子：走查断的是「用户看得见的那个价」，
-            挂在看不见的元素上就成了另一种假绿。 */}
-      </V4Row>
+      {/* 单镜时没有算式可说（标题已经说了「这 1 段」），这一行整行不画。 */}
+      {price.breakdown ? (
+        <V4Row as="div" className="text-caption text-nomi-ink-60">
+          <span className="min-w-0 truncate">{price.breakdown}</span>
+          {/* 合计**搬到页脚左下**了（2026-09-22 换壳）：那里离按钮两厘米，是按下去之前
+              最后扫的那一眼。这一行从此只说**算式**——同一个数印两处，改参数时一定有一个先漂。
+              `data-v4-price` 这个锚点跟着那个数一起搬到页脚（见下面 `slot-total`），
+              不在这里留一个 sr-only 的影子：走查断的是「用户看得见的那个价」，
+              挂在看不见的元素上就成了另一种假绿。 */}
+        </V4Row>
+      ) : null}
       {price.perItem?.length ? (
         <details className="group" data-v4-block="price-per-item">
           <summary className="flex cursor-pointer list-none items-center gap-1 text-micro text-nomi-ink-40">

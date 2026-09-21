@@ -360,6 +360,22 @@ export const V4_SPEND_PARAMS_STATES: readonly LabState[] = [
     render: () => <SpendComposerCard shots={1} inPanel />,
   },
   {
+    id: 'v4-panel-spend-batch',
+    name: '⑤ 多镜付费卡在真面板里（逐镜翻页 + 左下「N 镜 · 合计」）',
+    source: '2026-09-22 卡族换壳收尾：多镜批量卡正文沿用现有形态，只换外壳与页脚',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={4} inPanel />,
+  },
+  {
+    id: 'v4-panel-spend-unknown',
+    name: '⑤ 未知价付费卡在真面板里（左下整句交代，主按钮照常可点）',
+    source: '用户 2026-09-21 硬性拍板：算不出价绝不拦生成',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={1} priceUnknown inPanel />,
+  },
+  {
     id: 'v4-spend-params-collapsed',
     name: '付费卡 · 上提示词 / 下参数条（4 镜第 1 页 · 翻页器 · 价格算式）',
     source: SOURCE,

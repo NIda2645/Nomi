@@ -165,6 +165,30 @@ export function isLastAskQuestion(index: number, total: number): boolean {
 }
 
 /**
+ * 「跳过」= **跳过当前这一题**，和右上 × 的「整张卡不答」是两个动作（2026-09-22 主会话裁决）：
+ *
+ * · 只有一题时页脚**不放**「跳过」——那时它和 × 是同一件事，放两个就是一功能两个家；
+ * · 多题时：不是最后一题 → 去下一题；是最后一题 → 前面答过的照发（跳过的题不出现在答复里），
+ *   一题都没答过 → 等同整张卡不答。
+ *
+ * 跳过时**清掉这一题已有的作答**：用户点过一项又按「跳过」，说的是「这题我不答了」，
+ * 留着那一项等于替他答。
+ */
+export function shouldShowSkip(total: number): boolean {
+  return total > 1
+}
+
+export function askSkipOutcome(
+  index: number,
+  drafts: readonly V4AskDraft[],
+): Readonly<{ drafts: readonly V4AskDraft[]; next: 'next-question' | 'submit' | 'dismiss' }> {
+  const cleared = drafts.map((draft, position) => (position === index ? EMPTY_ASK_DRAFT : draft))
+  if (!isLastAskQuestion(index, drafts.length)) return Object.freeze({ drafts: cleared, next: 'next-question' as const })
+  const anyAnswered = cleared.some((draft) => askQuestionAnswered(draft))
+  return Object.freeze({ drafts: cleared, next: anyAnswered ? ('submit' as const) : ('dismiss' as const) })
+}
+
+/**
  * 数字键直选：`1`–`9` → 下标。**越界返回 undefined**，不静默取最后一项。
  * 写成函数是因为「第 9 项以后没有键可按」这件事得有地方被断言。
  */

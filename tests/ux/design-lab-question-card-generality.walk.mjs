@@ -146,6 +146,8 @@ try {
           boxed, distinctWidths: widths.size, answerBordered, pager, markers, squareMarkers, roundMarkers, markerRadii,
           heading: heading ? (heading.textContent || '').trim().slice(0, 40) : '',
           saysDontAskAgain: /不再问|Don.t ask again/.test(text),
+          skipButtons: element.querySelectorAll('[data-v4-control="ask-skip"]').length,
+          dismissButtons: element.querySelectorAll('[data-v4-control="slot-dismiss"]').length,
           // 滑走的那几题必须**真的够不到**：aria-hidden 给读屏，tabIndex=-1 给键盘。
           // 少任何一条，用户按 Tab 就会掉进一张他看不见的卡里。
           reachableHidden: [...element.querySelectorAll('[data-ask-question][data-active="false"]')]
@@ -156,6 +158,18 @@ try {
         }
       })
       measured.push({ locale: tag, state, ...shape })
+      if (state === PAGER_STATE) {
+        const pagerText = async () => (await shot.locator('[data-v4-block="pager"]').innerText()).replace(/\s+/g, '')
+        const beforeSkip = await pagerText()
+        await shot.locator('[data-v4-control="ask-skip"]').click()
+        await page.waitForTimeout(500)
+        const afterSkip = await pagerText()
+        measured.push({ locale: tag, state, step: 'skip', beforeSkip, afterSkip })
+        if (!beforeSkip.includes('1/3') || !afterSkip.includes('2/3')) {
+          failures.push(`${tag}/${state}：点「跳过」应从 1/3 走到 2/3（跳过当前这一题），实际 ${beforeSkip} → ${afterSkip}`)
+        }
+        if (await shot.locator('[data-ask-card="true"]').count() !== 1) failures.push(`${tag}/${state}：点「跳过」把整张卡关了——那是 × 的事`)
+      }
       if (shape.height < 40) failures.push(`${tag}/${state}：卡几乎没有高度（${shape.height}px），这一格什么都没证`)
       if (shape.overflowing.length) failures.push(`${tag}/${state}：${shape.overflowing.length} 处越出卡外 → ${shape.overflowing.join(' / ')}`)
       if (shape.clipped.length) failures.push(`${tag}/${state}：${shape.clipped.length} 处被自己的盒子切掉 → ${shape.clipped.join(' / ')}`)
@@ -178,6 +192,11 @@ try {
       // ⑥ 页码只在多题时出现。
       const wantPager = state === PAGER_STATE ? 1 : 0
       if (shape.pager !== wantPager) failures.push(`${tag}/${state}：页码出现了 ${shape.pager} 次，期望 ${wantPager}（只有一题时「1/1」是废话）`)
+      // 「跳过」与 × 是两个动作：× 每张卡恰好一颗（整张卡不答）；「跳过」只在多题卡上出现
+      //（跳过当前这一题）。只有一题时两者是同一件事，放两个就是一功能两个家。
+      if (shape.dismissButtons !== 1) failures.push(`${tag}/${state}：右上 × 有 ${shape.dismissButtons} 颗，期望恰好 1 颗`)
+      const wantSkip = state === PAGER_STATE ? 1 : 0
+      if (shape.skipButtons !== wantSkip) failures.push(`${tag}/${state}：「跳过」有 ${shape.skipButtons} 颗，期望 ${wantSkip}（只有多题卡才有）`)
       // ⑦ 滑走的那几题够不到（读屏与键盘各一条）。
       if (shape.reachableHidden) failures.push(`${tag}/${state}：滑走的题里还有 ${shape.reachableHidden} 个控件在 Tab 序里——按 Tab 会掉进看不见的一题`)
       if (shape.hiddenNotMarked) failures.push(`${tag}/${state}：${shape.hiddenNotMarked} 道滑走的题没标 aria-hidden，读屏会把它念出来`)

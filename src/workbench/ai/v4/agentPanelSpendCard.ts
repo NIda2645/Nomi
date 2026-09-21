@@ -68,9 +68,18 @@ export function projectSpendCard(
     ? `${t('agentPanelV4.slotSpendBadge')} · ${t('agentPanelV4.spendParamsModelPicked')}`
     : t('agentPanelV4.slotSpendBadge')
   const price: NonNullable<InterventionData['price']> = {
-    breakdown: total === undefined || uniform
-      ? t('agentPanelV4.spendParamsBreakdownNoUnit', { count: shots.length })
-      : t('agentPanelV4.spendParamsBreakdownMixed', { count: shots.length }),
+    // 正文下那一行只在它**说得出页脚说不出的事**时才印（由数据 derive，不写死）：
+    // · 单镜：标题已经写着「生成这 1 段视频？」，再印「1 镜」是把同一件事说两遍；
+    // · 多镜且整齐、报得出合计：页脚左下已经是「N 镜 · 合计 ¥X」，再印「N 镜」同样是重复；
+    // · 多镜但**逐镜不同**：印「N 镜 · 逐镜不同」并带逐镜折叠口——这是页脚说不出的；
+    // · 多镜但**报不出合计**：页脚是「价格未知…」那句、没有镜数，所以这里补一句「N 镜」。
+    breakdown: shots.length <= 1
+      ? ''
+      : total === undefined
+        ? t('agentPanelV4.spendParamsBreakdownNoUnit', { count: shots.length })
+        : uniform
+          ? ''
+          : t('agentPanelV4.spendParamsBreakdownMixed', { count: shots.length }),
     ...(total === undefined
       ? { unavailable: t('agentPanelV4.spendParamsUnavailable') }
       : { totalLabel: t('agentPanelV4.spendParamsTotalLabel'), total: money(t, pending.currency, total) }),

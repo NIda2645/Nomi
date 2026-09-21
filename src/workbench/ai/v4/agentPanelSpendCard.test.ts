@@ -159,6 +159,23 @@ describe('节点 → 候选补丁', () => {
   })
 })
 
+describe('「N 镜」汇总只在多镜时出现', () => {
+  it('单镜：标题已经说了「这 1 段」，正文下不再印一行「1 镜」', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3)]), { page: 0, scope: 'each' }, t)!
+    expect(data.price?.breakdown).toBe('')
+  })
+  it('多镜且整齐：页脚左下已经是「N 镜 · 合计」，正文下不再重复一行「N 镜」', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0, scope: 'each' }, t)!
+    expect(data.price?.breakdown).toBe('')
+    expect(data.totalLead).toContain('count=2')
+  })
+  it('多镜但报不出合计：页脚那句没有镜数，所以正文下补一句「N 镜」', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3), shot(2, null)]), { page: 0, scope: 'each' }, t)!
+    expect(data.price?.breakdown).toContain('spendParamsBreakdownNoUnit')
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalUnknown')
+  })
+})
+
 describe('算不出价**绝不拦**生成（2026-09-21 用户硬性拍板）', () => {
   it('没有价时页脚印一整句话，不是 ¥0，而且主按钮照常给得出来', () => {
     const data = projectSpendCard(pending([shot(1, null)]), { page: 0, scope: 'each' }, t)!

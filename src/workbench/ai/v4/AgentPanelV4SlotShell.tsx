@@ -158,10 +158,11 @@ export function V4Pager({
           onChange={(value) => onScope?.(value === 'all' ? 'all' : 'each')}
           ariaLabel={scope.ariaLabel}
           density="compact"
-          // 宽度写死 w-32（128px）不是凑数：NomiSegmented 的列是 `auto-fit, minmax(56px, 1fr)`，
-          // 容器窄于「2×56 + 列间距 4 + 内边距 8 = 124」时 auto-fit 会塌成一列，
-          // 两档就竖着摞起来（v3 首轮实测就是这样）。128 是能横着放下两档的最小整数格。
-          className="ml-1.5 w-32 shrink-0"
+          // 宽度下限不是凑数：NomiSegmented 的列是 `auto-fit, minmax(56px, 1fr)`，容器窄于
+          // 「2×56 + 列间距 4 + 内边距 8 = 124」时 auto-fit 会塌成一列，两档就竖着摞起来。
+          // 取 `w-36`（144px）而不是刚好够的 128：EN 的「Per shot」在 128 下折成两行
+          //（2026-09-22 EN 真截图看出来的——截断只有眼睛看得出）。390px 的卡里这一行仍放得下。
+          className="ml-1.5 w-36 shrink-0"
           options={[
             { value: 'each', label: scope.eachLabel },
             { value: 'all', label: scope.allLabel },

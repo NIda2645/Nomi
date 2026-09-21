@@ -52,6 +52,7 @@ export function useV4Labels() {
       /** 反问卡（Approval Card 整件）自己的词。它不走确认卡那套动作词——它没有确认/不要。 */
       ask: {
         dismiss: t('agentPanelV4.askDismiss'),
+        skip: t('agentPanelV4.askSkip'),
         continueLabel: t('agentPanelV4.askContinue'),
         send: t('agentPanelV4.askSend'),
         customPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),

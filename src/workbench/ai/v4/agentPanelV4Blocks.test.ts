@@ -44,7 +44,7 @@ const QUESTION_OPTIONS = [
 ]
 
 const askLabels = {
-  dismiss: '这次不答', continueLabel: '继续', send: '发送',
+  dismiss: '这次不答', skip: '跳过', continueLabel: '继续', send: '发送',
   customPlaceholder: '或者直接告诉它…', recommended: '推荐',
 }
 const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾', ask: askLabels }
@@ -423,6 +423,8 @@ describe('⑤ 介入槽 · 八种内容体', () => {
       labels: slotLabels,
     }))
     expect(one).not.toContain('data-v4-block="pager"')
+    // 只有一题：页脚没有「跳过」（右上 × 就是不答）；多题才有，且它和 × 是两颗不同的钮。
+    expect(one).not.toContain('data-v4-control="ask-skip"')
     const three = html(el(V4Intervention, { ...NO_HANDLERS,
       data: {
         kind: 'question', title: '第一题', questions: [
@@ -436,6 +438,8 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     // 页码用的是面板**现役翻页器**（付费卡多镜翻页那一颗），不另画一套。
     expect(three).toContain('data-v4-block="pager"')
     expect(three).toContain('1/3')
+    expect(three).toContain('data-v4-control="ask-skip"')
+    expect(three).toContain('data-v4-control="slot-dismiss"')
   })
 
   it('多选题用原生 checkbox、单选题用原生 radio——形状由控件自己说明「能选几个」', () => {

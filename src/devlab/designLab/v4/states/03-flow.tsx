@@ -136,13 +136,13 @@ function CollapsedScene(): JSX.Element {
  *
  * 用现成夹具就够：这里要看的是**外观在不在一个家族里**，不是模型答得对不对。
  */
-function PanelWithQuestion(): JSX.Element {
+function PanelWithQuestion({ multi = false }: { multi?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
   return (
     <AgentPanelV4Panel
       slotHandlers={V4_LAB_SLOT_HANDLERS}
       flow={fx.flows.creation}
-      slot={fx.slots.question}
+      slot={multi ? fx.slots.questionThree : fx.slots.question}
       context={{ ...fx.context, used: 36000 }}
       height={860}
     />
@@ -179,6 +179,14 @@ export const V4_FLOW_STATES: readonly LabState[] = [
     coverage: 'component-only',
     span: 2,
     render: () => <PanelWithQuestion />,
+  },
+  {
+    id: 'v4-panel-question-multi',
+    name: '⑤ 多题反问卡在真面板里（左下页码、右下「跳过」+ 主按钮）',
+    source: '2026-09-22 裁决：多题时「跳过」= 跳过当前这一题，× = 整张卡不答',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion multi />,
   },
   {
     id: 'v4-panel-approval-light',

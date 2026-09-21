@@ -214,6 +214,8 @@ export const zhAgentPanelV4 = {
   // 反问卡页脚（Approval Card 整件的那四个词）。
   // 「继续」与「发送」分开是它的原设计：不是最后一题就往下走，最后一题才是把答案交出去。
   askDismiss: '这次不答',
+  // 多题卡才有：跳过**当前这一题**（整张卡不答是右上那颗 ×，两个动作不合并）。
+  askSkip: '跳过',
   askContinue: '继续',
   askSend: '发送',
   // 熔断转提问：同一个字段连着 {{count}} 次没过，就别再撞了，交给用户定。
@@ -691,6 +693,7 @@ export const enAgentPanelV4 = {
   questionAnswerPlaceholder: 'Or just tell it…',
   questionRecommended: 'Suggested',
   askDismiss: 'Not this time',
+  askSkip: 'Skip',
   askContinue: 'Continue',
   askSend: 'Send',
   questionRetryExhausted: '{{count}} tries and none went through — your call.',
@@ -891,8 +894,8 @@ export const enAgentPanelV4 = {
   slotDeviationTitle: 'Shot 3 has no first frame — skip it or draw one first?',
   slotDeviationDraw: 'Draw one first (+¥0.12)',
   slotDeviationSkip: 'Skip',
-  spendParamsTitle: 'Generate these {{count}} video shots?',
-  spendParamsTitleImage: 'Generate these {{count}} image(s)?',
+  spendParamsTitle: 'Generate {{count}} video shot(s)?',
+  spendParamsTitleImage: 'Generate {{count}} image(s)?',
   spendParamsModelPicked: 'Nomi picked',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
   spendParamsBreakdownNoUnit: '{{count}} shots',

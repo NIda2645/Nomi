@@ -12,10 +12,12 @@ import {
   askOptionIndexForArrow,
   askOptionIndexForKey,
   askQuestionAnswered,
+  askSkipOutcome,
   isLastAskQuestion,
   orderedAskOptions,
   shouldAutoAdvance,
   shouldShowPager,
+  shouldShowSkip,
   toggleAskOption,
   type V4AskQuestion,
 } from './agentPanelV4AskModel'
@@ -178,6 +180,36 @@ describe('收成回给模型的那一份（契约 §8.4 的形状：一题一条
     const questions: readonly V4AskQuestion[] = [{ question: '要哪几样？', options: [A, B], multiSelect: true }]
     expect(askCardAnswer(questions, [{ picked: [0], custom: '再加一个竖版' }]))
       .toEqual([{ questionIndex: 0, optionIds: ['a'], text: '横版 16:9、再加一个竖版' }])
+  })
+})
+
+describe('「跳过」= 跳过当前这一题，不是整张卡不答（那是右上 ×）', () => {
+  it('只有一题时页脚不放「跳过」——那时它和 × 是同一件事', () => {
+    expect(shouldShowSkip(1)).toBe(false)
+    expect(shouldShowSkip(2)).toBe(true)
+  })
+
+  it('不是最后一题：去下一题，并且**清掉这一题已有的作答**', () => {
+    // 用户点过一项又按「跳过」，说的是「这题我不答了」，留着那一项等于替他答。
+    const drafts = [{ picked: [1], custom: '' }, EMPTY_ASK_DRAFT, EMPTY_ASK_DRAFT]
+    const outcome = askSkipOutcome(0, drafts)
+    expect(outcome.next).toBe('next-question')
+    expect(outcome.drafts[0]).toEqual(EMPTY_ASK_DRAFT)
+  })
+
+  it('最后一题：前面答过的照发，被跳过的题**不出现在答复里**', () => {
+    const questions: readonly V4AskQuestion[] = [
+      { question: '一', options: [A] }, { question: '二', options: [B] }, { question: '三', options: [] },
+    ]
+    const drafts = [{ picked: [0], custom: '' }, EMPTY_ASK_DRAFT, { picked: [], custom: '打了一半' }]
+    const outcome = askSkipOutcome(2, drafts)
+    expect(outcome.next).toBe('submit')
+    // 第 2 题被跳过、第 3 题跳过时清空：答复里只有第 1 题，且 questionIndex 仍是它在卡上的真位置。
+    expect(askCardAnswer(questions, outcome.drafts)).toEqual([{ questionIndex: 0, optionIds: ['a'], text: '横版 16:9' }])
+  })
+
+  it('最后一题且一题都没答过：等同整张卡不答', () => {
+    expect(askSkipOutcome(1, [EMPTY_ASK_DRAFT, { picked: [0], custom: '' }]).next).toBe('dismiss')
   })
 })
 
