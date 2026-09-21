@@ -287,6 +287,31 @@ describe('creation request target enforcement', () => {
     expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'patch', operationId: 'op-existing', shotId: 's', patch: { prompt: 'second' } }), signal, context)).toMatchObject({ ok: true });
     expect(planning.mock.calls[1][0]).toMatchObject({ params: { operationId: 'op-existing' }, storyboardTarget: target });
   });
+  // 2026-09-22 · run2 的 A10 逐字：`draft_shots` 成功返回 op-9b2c…，用户在反问卡上答了「现在生成」，
+  // 紧接着对**同一个 id** 调 `generate`，被回「That plan is not one of the storyboard plans this
+  // request covers」。请求清单是发送那一刻拍下来的，本轮新起草的方案不可能在上面。
+  it('lets the model generate the plan it just drafted from this document, in the same turn', async () => {
+    const planning = vi.fn()
+      .mockResolvedValueOnce({ operation: { operationId: 'op-drafted-this-turn', runRevision: 0, cardHidden: true } })
+      .mockResolvedValueOnce({ operation: { operationId: 'op-drafted-this-turn', runRevision: 1 }, shots: [] });
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const signal = new AbortController().signal;
+    const context = { storyboardTarget: target };
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'first', cardHidden: true }), signal, context)).toMatchObject({ ok: true });
+    const presented = await adapter.tryExecute(call('nomi_generation_plan', { operation: 'present', operationId: 'op-drafted-this-turn' }), signal, context);
+    expect(presented, '刚起草的方案在同一轮里生成不了 = 从文稿面起草再生成这条路在结构上走不通').toMatchObject({ ok: true });
+    expect(planning).toHaveBeenCalledTimes(2);
+  });
+  it('a plan drafted from ANOTHER document is still refused — the door was widened by one fact, not opened', async () => {
+    const planning = vi.fn().mockResolvedValue({ operation: { operationId: 'op-from-doc-b', runRevision: 0, cardHidden: true } });
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+    const signal = new AbortController().signal;
+    const otherDocument = { storyboardTarget: { ...target, sourceDocumentId: 'doc-b', plans: [] } };
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'x', cardHidden: true }), signal, otherDocument)).toMatchObject({ ok: true });
+    // 同一条 lane、同一个 id，但这一次的请求属于 doc-a：doc-b 起草的方案不算它的。
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'present', operationId: 'op-from-doc-b' }), signal, { storyboardTarget: target }))
+      .toMatchObject({ ok: false, code: 'generation_input_invalid' });
+  });
   it('rejects a plan this document does not own, or a foreign project, before planning', async () => {
     const planning = vi.fn();
     const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });

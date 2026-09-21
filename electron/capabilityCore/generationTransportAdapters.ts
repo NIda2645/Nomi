@@ -430,6 +430,13 @@ export function createPiGenerationTransportAdapter(
     throw Object.assign(new Error("generation_approval_required"), { code: "generation_approval_required" });
   };
 
+  /**
+   * 这条 lane **自己**从某份文稿起草出来的方案：operationId → sourceDocumentId。
+   * 它不是缓存也不是第二份真相——它记的是一件只有这里知道的事实（「这一笔 create 是我发的、
+   * 带着哪份文稿的 target」），用来补上请求清单在**同一轮里**必然缺的那一格。随 adapter 活，随 lane 死。
+   */
+  const draftedFromDocument = new Map<string, string>();
+
   return Object.freeze({
     async tryExecute(call, signal, context) {
       if (!GENERATION_TOOL_NAMES.has(call.toolName)) return null;
@@ -444,9 +451,16 @@ export function createPiGenerationTransportAdapter(
         // A document-admitted storyboard call may only address a plan that already belongs to
         // this document. The plan the model names is its own choice (see
         // `formatStoryboardRequestTarget`); the host only refuses a plan that is not on the list.
+        // 「这份方案属于这份文稿」有两种证法：它在这条消息发出时那张清单上；或者**就是这条 lane
+        // 刚刚从这份文稿起草出来的**（`draftedFromDocument`）。2026-09-22 之前只认前一种——
+        // 而清单是用户按发送那一刻拍下来的，**本轮新起草的方案不可能在上面**。后果（run2 的 A10）：
+        // `draft_shots` 成功返回 `op-9b2c…`，用户在反问卡上答了「现在生成」，紧接着对**同一个 id**
+        // 调 `generate`，被我们回「That plan is not one of the storyboard plans this request covers」。
+        // 从文稿面起草再生成，是这条 lane 上最常走的一步，它在结构上走不通。
         if (storyboardTarget && (storyboardTarget.projectId !== binding.projectId
           || (typeof args.operationId === 'string'
-            && !storyboardTarget.plans.some((plan) => plan.id === args.operationId)))) {
+            && !storyboardTarget.plans.some((plan) => plan.id === args.operationId)
+            && draftedFromDocument.get(args.operationId) !== storyboardTarget.sourceDocumentId))) {
           refuseToModel(GENERATION_ARGUMENT_REFUSAL, 'That plan is not one of the storyboard plans this request covers. Use an operationId the request names, or omit it to start a new draft.');
         }
         if (canonicalCall.toolName === GATE_TOOL) {
@@ -486,6 +500,11 @@ export function createPiGenerationTransportAdapter(
         let releasePolicyClaim = claimPolicyDecision(claimed);
         try {
         const result = await plan(capability, args, currentLease, signal, context);
+          // 记下「这份方案是这条 lane 从哪份文稿起草的」。只记 create 成功的那一刻，键是宿主发的 id。
+          if (capability === "create" && storyboardTarget) {
+            const drafted = draftedOperationIdOrNone(result, args);
+            if (drafted) draftedFromDocument.set(drafted, storyboardTarget.sourceDocumentId);
+          }
           // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
           // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
           const cardShown = capability === "present"

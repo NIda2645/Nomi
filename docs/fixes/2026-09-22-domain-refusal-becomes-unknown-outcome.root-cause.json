@@ -30,7 +30,8 @@
   "其它任何异常（上游库、供应商、TypeError）只给码，一个字的正文都不流出去",
   "`error.code` 是可能来自上游的字符串，必须在本条路的放行表里才作数；只有我们自己的 `classify`（错误类 → 码）可以指定放行表之外的码",
   "「提交结果可能未知、先去核对别再提交」这句话只发给**发得出提交**的工具，判据由动词声明的 `effect × nextAction` 派生；认不出的工具名 fail-closed 到「可能提交过」",
-  "一条参考素材的身份补齐全仓只有一份实现"
+  "一条参考素材的身份补齐全仓只有一份实现",
+  "「这份方案属于这份文稿」有两种证法：它在这条消息发出时拍下的清单上，或者它就是**这条 lane 刚刚从这份文稿起草出来的**（`draftedFromDocument`）。只认前一种会让本轮新起草的方案在同一轮里永远生成不了（run2 的 A10：draft_shots 成功 → 用户答「现在生成」→ generate 被拒）；放宽只放这一件事实，别的文稿起草的方案照旧拒绝。"
  ],
  "doors": [
   {
@@ -260,7 +261,8 @@
  "migration": "不需要迁移：只改这一刻产生的失败正文，没有落盘数据。",
  "residual_risks": [
   "`look_at_media` 那 3 次 `capability_execution_failed` 仍然只有码没有正文——phase4 的域侧还没有任何一处改用 `refuseToModel`。管道已经通，内容是下一刀。",
-  "「模型真的因此少重试了吗」要由 run2 的对照数字回答；本合同只证到「那句话现在到得了模型」。"
+  "「模型真的因此少重试了吗」要由 run2 的对照数字回答；本合同只证到「那句话现在到得了模型」。",
+  "2026-09-22 第二轮补记：`draftedFromDocument` 随 adapter 活、随 lane 死。App 重启后上一轮起草的方案不在这张表里，但那时它已经落盘、会出现在下一条消息的请求清单（`storyboardTarget.plans`）上，所以不依赖这张表。"
  ],
  "invariant_owner_layer": {
   "layer": "electron/capabilityCore/transportFailure.ts",
