@@ -304,8 +304,6 @@ export function useCanvasShortcuts(opts: {
   /** 只用于清空（Escape）；签名收窄到 null 以兼容任意 ActiveEdge setState。 */
   setActiveEdge: (edge: null) => void
   deleteActiveEdge?: () => void
-  /** 选中的空框（框本身就是选区）：删掉返回 true。 */
-  deleteActiveFrame?: () => boolean
   cancelConnection: () => void
   deleteSelectedNodes: () => void
   groupSelectedNodes: () => void
@@ -318,7 +316,7 @@ export function useCanvasShortcuts(opts: {
   zoomByStep: (direction: -1 | 1) => void
   undo: () => void
   redo: () => void
-} & Pick<CanvasKeydownHandlerOptions, 'duplicateSelectedNodes' | 'connectSelectedNodes' | 'generateSelectedNodes' | 'openAddNodeMenu' | 'tidyCanvas'>): void {
+} & Pick<CanvasKeydownHandlerOptions, 'deleteActiveFrame' | 'duplicateSelectedNodes' | 'connectSelectedNodes' | 'generateSelectedNodes' | 'openAddNodeMenu' | 'tidyCanvas'>): void {
   const {
     readOnly,
     stageRef,

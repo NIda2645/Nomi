@@ -51,8 +51,6 @@ export default function FrameContextMenu({
     label: string
     icon: typeof IconPencil
     hint?: string
-    /** 这一项起是「拆掉/删掉框」那一段，前面画一条分隔线。 */
-    separated?: boolean
     disabled?: boolean
     disabledReason?: string
   }[] = [
@@ -76,7 +74,6 @@ export default function FrameContextMenu({
       action: 'dissolve',
       label: t('generationCommon.canvas.group.menuDissolve'),
       icon: IconFrameOff,
-      separated: true,
       // 解散不是删除：这句灰字就是那个区别本身，不写用户不敢点（实测里最容易被误当成删除的一项）。
       hint: t('generationCommon.canvas.group.menuDissolveHint'),
     },
@@ -105,11 +102,12 @@ export default function FrameContextMenu({
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
     >
-      {items.map((item, index) => {
+      {items.map((item) => {
         const Icon = item.icon
         return (
           <React.Fragment key={item.action}>
-            {item.separated && index > 0 ? (
+            {/* 「拆掉 / 删掉框」那一段从解散起，前面画一条分隔线。 */}
+            {item.action === 'dissolve' ? (
               <div className={cn('h-px my-1 mx-2 bg-nomi-line')} aria-hidden="true" />
             ) : null}
             {/* 禁用的 <button> 自己不触发 title（浏览器行为）→ 外层包一层承载它（§1.6 C1）。 */}

@@ -64,8 +64,7 @@ function armGestureEndGuard(stage: Element): void {
       draggingOwnersByStage.delete(stage)
       stage.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
     }
-    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(() => settle())
-    else settle()
+    window.requestAnimationFrame(settle)
   }
   const disarm = () => {
     for (const name of events) window.removeEventListener(name, onGestureEnd, true)

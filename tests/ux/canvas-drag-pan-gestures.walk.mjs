@@ -1154,10 +1154,10 @@ try {
     await getWin().mouse.move(panStart.x + 2, panStart.y + 1)
     await getWin().mouse.move(panStart.x + 40, panStart.y + 12, { steps: 6 })
     await getWin().mouse.up()
-    const moved = await getWin().evaluate(({ id, x, y }) => {
+    const moved = await getWin().evaluate(({ id }) => {
       const node = document.querySelector(`article[data-node-id="${id}"]`)
       const r = node.getBoundingClientRect()
-      return { x: r.left + r.width / 2, y: r.top + Math.min(24, r.height / 2), dx: x, dy: y }
+      return { x: r.left + r.width / 2, y: r.top + Math.min(24, r.height / 2) }
     }, target)
     await getWin().mouse.move(moved.x, moved.y)
     await getWin().mouse.down()

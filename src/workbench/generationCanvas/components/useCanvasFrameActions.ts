@@ -62,17 +62,16 @@ export function useCanvasFrameActions({
   const [frameMenu, setFrameMenu] = React.useState<CanvasFrameMenuState | null>(null)
   const [editingFrameId, setEditingFrameId] = React.useState<string | null>(null)
   const [selectedFrameId, setSelectedFrameId] = React.useState<string | null>(null)
-  const selectFrame = React.useCallback((groupId: string | null) => setSelectedFrameId(readOnly ? null : groupId), [readOnly])
   // 框选区与节点选区互斥：一旦又选中了节点（点卡、框选、Agent 选中……），空框的选中态就退场。
   const hasNodeSelection = useGenerationCanvasStore((state) => state.selectedNodeIds.length > 0)
   React.useEffect(() => { if (hasNodeSelection) setSelectedFrameId(null) }, [hasNodeSelection])
   const deleteSelectedFrame = React.useCallback(() => {
-    if (readOnly || !selectedFrameId) return false
+    if (!selectedFrameId) return false
     setSelectedFrameId(null)
     if (!useGenerationCanvasStore.getState().groups.some((group) => group.id === selectedFrameId)) return false
     useGenerationCanvasStore.getState().deleteGroup(selectedFrameId, true)
     return true
-  }, [readOnly, selectedFrameId])
+  }, [selectedFrameId])
 
   const closeFrameMenu = React.useCallback(() => setFrameMenu(null), [])
 
@@ -170,7 +169,7 @@ export function useCanvasFrameActions({
     setEditingFrameId,
     handleFrameMenuAction,
     selectedFrameId,
-    selectFrame,
+    selectFrame: setSelectedFrameId,
     deleteSelectedFrame,
   }
 }

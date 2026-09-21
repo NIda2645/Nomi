@@ -148,13 +148,8 @@ async function fitView() {
   await win.getByLabel(EN ? 'Fit view' : '适应视图', { exact: true }).first().click()
   await waitForVisualQuiescence(win)
 }
-/** 浮层「真的看得见」：计算样式可见 + 有尺寸（`invisible` 的 DOM 仍在，toBeVisible 分不清）。 */
-const overlayVisible = (locator) => locator.first().evaluate((el) => {
-  const r = el.getBoundingClientRect()
-  let visible = r.width > 0 && r.height > 0
-  for (let e = el; e && visible; e = e.parentElement) if (getComputedStyle(e).visibility === 'hidden') visible = false
-  return visible
-}).catch(() => false)
+/** 浮层「真的看得见」：Playwright 的 isVisible 把 `visibility:hidden`（`invisible` 的 DOM 仍在）与零尺寸都算不可见。 */
+const overlayVisible = (locator) => locator.first().isVisible()
 
 try {
   await app.context().addInitScript(() => { localStorage.setItem('__nomiE2E', '1') })
@@ -239,8 +234,7 @@ try {
   check(await overlayVisible(win.locator(`${sel('stack')} [data-node-floating-toolbar="true"]`)), 'P2 卡上浮条看得见', {})
   const pill = win.locator(sel('stack')).getByRole('button', { name: EN ? '2 versions' : '2 版', exact: true })
   try { await expectHittable(pill, 'P3「2 版」胶囊') ; check(true, 'P3「2 版」胶囊点得到', {}) } catch (error) { check(false, 'P3「2 版」胶囊点得到', String(error.message).split('\n')[0]) }
-  const pillBox = await pill.boundingBox()
-  await win.mouse.click(pillBox.x + pillBox.width / 2, pillBox.y + pillBox.height / 2)
+  await pill.click()
   const tray = win.locator('[data-node-result-stack="stack"]')
   await expect.poll(() => overlayVisible(tray), { timeout: 3_000 }).toBe(true).catch(() => undefined)
   check(await overlayVisible(tray), 'P3 点「2 版」弹出结果托盘（看得见）', {})
