@@ -270,18 +270,6 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
   return { parameters, warnings };
 }
 
-/**
- * 这个模型此刻接受哪些参数键——**准入契约**的只读投影。
- * 模型面的「单模型详情」与这里的校验读的是同一个对象，两面因此不可能漂移。
- */
-export function admittedParameterFields(
-  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
-  selector: { moduleId: string; providerId: string; modelId: string; mode: string },
-  override?: Record<string, ParameterField>,
-): Record<string, ParameterField> {
-  return override ?? registry.resolve(selector).parameterSchema;
-}
-
 export type ExecutionContractCompileOptions = {
   /** Optional source-backed parameter projection (for example a selected video variant). */
   parameterSchema?: Record<string, ParameterField>;

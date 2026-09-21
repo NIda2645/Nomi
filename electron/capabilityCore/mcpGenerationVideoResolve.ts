@@ -279,32 +279,6 @@ export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: re
 }
 
 /**
- * 换模型/换模式之后，候选身上**这个新模型不接受**的参数键（字典序）。
- *
- * 读的就是准入层那一份 schema（video 档案投影优先，否则 registry 的那份）——「哪些键合法」
- * 全仓只此一份判据，清理与校验不许各答一次。新模型此刻解析不出来（目录里没有 / 模式不对）
- * → 返回空数组：那不是「参数残留」问题，交给准入层去报它自己的错，这里不抢着替它解释。
- */
-function parametersNotAcceptedBy(
-  candidate: PlanCandidate,
-  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
-  candidates: readonly VideoModelCandidate[] | undefined,
-): string[] {
-  try {
-    const accepted = videoParameterSchema(candidate, candidates)
-      ?? registry.resolve({
-        moduleId: candidate.moduleId,
-        providerId: candidate.providerId,
-        modelId: candidate.modelId,
-        mode: candidate.mode,
-      }).parameterSchema;
-    return Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
-  } catch {
-    return [];
-  }
-}
-
-/**
  * 就地清掉候选身上这个新模型不接受的参数，返回被清掉的键。
  *
  * 换模型/换模式会把上一个模型的参数原封不动带过来。这些残留过去靠准入层「静默丢弃」消化掉
@@ -316,7 +290,20 @@ export function stripParametersNotAccepted(
   registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
   candidates: readonly VideoModelCandidate[] | undefined,
 ): string[] {
-  const cleared = parametersNotAcceptedBy(candidate, registry, candidates);
+  // 「哪些键合法」读的就是准入层那一份 schema（video 档案投影优先，否则 registry 的那份）——
+  // 清理与校验不许各答一次。新模型此刻解析不出来（目录里没有 / 模式不对）→ 什么都不清：
+  // 那不是「参数残留」问题，交给准入层去报它自己的错，这里不抢着替它解释。
+  let accepted: Record<string, ParameterField>;
+  try {
+    accepted = videoParameterSchema(candidate, candidates)
+      ?? registry.resolve({
+        moduleId: candidate.moduleId, providerId: candidate.providerId,
+        modelId: candidate.modelId, mode: candidate.mode,
+      }).parameterSchema;
+  } catch {
+    return [];
+  }
+  const cleared = Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
   if (cleared.length === 0) return cleared;
   candidate.parameters = Object.fromEntries(
     Object.entries(candidate.parameters).filter(([key]) => !cleared.includes(key)),
