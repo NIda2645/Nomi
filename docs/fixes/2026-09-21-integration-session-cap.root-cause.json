@@ -12,10 +12,9 @@
   ],
   "scope_paths": [
     "electron/integrationCertification/integrationSessionRecord.ts",
-    "electron/integrationCertification/integrationSession.ts",
-    "electron/shared/integrationContract.ts",
-    "electron/capabilityCore/mcpToolErrorResults.ts"
+    "electron/integrationCertification/integrationSession.ts"
   ],
+  "scope_note": "The change also touches electron/shared/integrationContract.ts and electron/capabilityCore/mcpToolErrorResults.ts, by one line each: a new member on the canonical INTEGRATION_ERROR_CODES tuple and its registered zh/en recovery hint. They are listed under prevention.artifacts and in doors, but deliberately not in scope_paths, because scope_paths feeds the symptom-cluster module key (scripts/symptom-cluster-lib.mjs) and neither file is where this invariant lives, broke, or is enforced. Appending a member to the vocabulary owner is the intended use of that module, not evidence that its layer is structurally wrong; scoping it here would mean every fix that adds an error code joins the capabilityCore cluster. Neither file is on the high-risk list in scripts/root-cause-contracts.mjs.",
   "entry_points": [
     "readIntegrationSessionState - startup deserialization of integration-sessions.json in all three process entries",
     "IntegrationSessionService.persist - the single write boundary every session mutation funnels through",
