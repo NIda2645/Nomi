@@ -13,11 +13,20 @@
 //
 // 为什么判据是**倍数**不是秒数：教训在 docs/lessons（canvas-perf 预算在 macOS 校准、在 Linux CI 软渲染
 // 下假红 1.3-2x）。这里量的是同一台机器上 N=60 相对 N=2 的倍数，机器快慢同时作用于分子分母。
-// 修复前 45.1x，修复后 2.6x，阈值 8x 落在 17 倍的分离带中间。
+// 新旧交替各跑 3 次的中位数：修复前 **39.1x**、修复后 **3.6x**（15 秒校准段）；
+// 独立验收在另一轮负载下量到 33.7x → 1.6x。阈值 8x 落在这条 10 倍宽的分离带中间。
 //
-// 内存为什么只记不判：15 秒校准段上修复前 5.74 GB、修复后 4.67 GB，分不开——残余内存是
-// 「60 级 overlay 滤镜链各自持有在途帧」，不是本次的类根因（实测：把静帧帧率调稀反而涨到 5.42 GB）。
-// 所以内存留一个宽的绝对上限（能拦住修复前 N=120 的 8.72 GB），真正的判据是上面两条。
+// 内存**只记录、不判定**（2026-09-22 按独立验收的实测改）：
+//   峰值 RSS 在这条链上根本不是本次修复的函数，而是机器负载的函数——
+//   同一份代码、同一段素材，三次之间就能差 ±20%，换台机器差得更多：
+//   我这边新旧交替各 3 次量到 6.06 GB（5.27–6.55）→ 5.07 GB（4.29–5.60）——**范围重叠**；
+//   验收方在他的机器上量到 6.79 GB → 6.92 GB（修复后反而略高）。
+//   残余内存来自「60 级 overlay 滤镜链各自持有在途帧」，
+//   随线程饥饿程度变长——不是类根因，也不随本次改动单调变化
+//   （诊断实测：把静帧帧率调稀，耗时和内存反而一起变差）。
+//   拿这种量当判据只会得到一条时红时绿的腿，而 flaky red 比没有判据更坏：它会把人训练成忽略红灯。
+//   所以这里把每次的峰值打印出来留痕，判定交给上面两条（每条输入的 -t、耗时倍数），
+//   内存的账记在根因合同的 residual_risks 里，由「导出成本二期」去收。
 //
 // 跑法：NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/" node tests/ux/real-media-export-overlay-cost.probe.mjs
 import fs from 'node:fs'
@@ -40,10 +49,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
  * 跟自己的窗口走 ⇒ 差一个余量常数；跟时间轴全长走 ⇒ 差出整条片子（修复前这里是 15 s vs 0.25 s）。
  */
 const STILL_INPUT_SLACK_SECONDS = 1
-/** 判据二：N=60 相对 N=2 的墙钟倍数上限（修复前 45.1x，修复后 2.6x）。 */
+/** 判据二：N=60 相对 N=2 的墙钟倍数上限（新旧交替各 3 次的中位数：修复前 39.1x，修复后 3.6x）。 */
 const WALL_RATIO_CEILING = 8
-/** 只记录不判的宽上限：拦得住修复前 N=120 的 8.72 GB。 */
-const PEAK_RSS_CEILING_BYTES = 8 * 1024 * 1024 * 1024
 
 const SEGMENT_SECONDS = 15
 const TIMELINE_FPS = 30
@@ -211,9 +218,6 @@ async function main() {
     if (frames !== timelineSeconds * TIMELINE_FPS) {
       failures.push(`N=${count}：产物 ${frames} 帧，期望 ${timelineSeconds * TIMELINE_FPS} 帧`)
     }
-    if (measured.peakBytes > PEAK_RSS_CEILING_BYTES) {
-      failures.push(`N=${count}：峰值内存 ${(measured.peakBytes / 2 ** 30).toFixed(2)} GB 超过 ${PEAK_RSS_CEILING_BYTES / 2 ** 30} GB 上限`)
-    }
   }
 
   const base = results[0]
@@ -222,7 +226,7 @@ async function main() {
   if (wallRatio > WALL_RATIO_CEILING) {
     failures.push(
       `N=${worst.count} 相对 N=${base.count} 耗时 ${wallRatio.toFixed(1)}x > 上限 ${WALL_RATIO_CEILING}x`
-      + `（修复前 45.1x，修复后 2.6x）——导出成本又开始随字幕条数涨了`,
+      + `（新旧交替各 3 次的中位数：修复前 39.1x，修复后 3.6x）——导出成本又开始随字幕条数涨了`,
     )
   }
 
@@ -231,7 +235,7 @@ async function main() {
   for (const r of results) {
     console.log(
       `  N=${String(r.count).padStart(3)}  墙钟 ${r.wallSeconds.toFixed(1)}s`
-      + `  峰值内存 ${(r.peakBytes / 2 ** 30).toFixed(2)}GB`
+      + `  峰值内存 ${(r.peakBytes / 2 ** 30).toFixed(2)}GB（只记录，不判定——见文件抬头）`
       + `  静帧输入合计 ${r.stillSeconds.toFixed(1)}s  产物 ${r.frames} 帧`,
     )
   }
