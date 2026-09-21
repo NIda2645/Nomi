@@ -208,42 +208,52 @@ try {
       const running = win.locator(`${panel} ${COMPOSER}[data-mode="running"]`)
       await running.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
 
-      // 反问卡出来的时候回合是**停着**的（审批闸在等人），`running` 不会自己消失。
-      // 所以这里等的是「要么跑完，要么出现一张提问卡」——只等 running 消失会把每一次成功的
-      // 提问都记成一次超时，那正好把这次要量的东西量反。
+      // 有卡在等人的时候回合是**停着**的（审批闸在等），`running` 不会自己消失——所以这里像真人一样：
+      // 看到卡就答，答完接着等，直到这一轮真的走完。run3 作废的原因正是没答卡：第一张卡之后 15 句全压在它后面。
+      //   · 提问卡 → 点第一颗选项（没有选项就在卡上打一句）。**每一张都答**，不再「只答第一张、其余按停」——
+      //     按停量不到「答完之后它走不走得下去」，而 2026-09-22 起同一回合里可能连着问两次；
+      //   · 报价卡 → ×。真人不想花钱时就是这么做的；这条走查量的是「问不问」，不是出片，整场零生成额度。
       const questionCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="question"]`)
-      const deadline = Date.now() + stationTimeout({ turns: 2 })
+      const spendCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="spend"]`)
+      const deadline = Date.now() + stationTimeout({ turns: 3 })
       let sawCard = false
+      row.cardsAnswered = []
       while (Date.now() < deadline) {
-        if (await questionCard.count() > 0) { sawCard = true; break }
+        if (await questionCard.count() > 0) {
+          if (!sawCard) await win.screenshot({ path: path.join(outputDir, `${item.id}-question-card.png`) }).catch(() => {})
+          sawCard = true
+          const chip = questionCard.locator('[data-v4-control="question-option"]').first()
+          if (await chip.count() > 0) {
+            await chip.click({ timeout: stationTimeout({ operations: 2 }) })
+            row.cardsAnswered.push('question:chip')
+          } else {
+            const own = questionCard.locator('input, textarea, [contenteditable="true"]').first()
+            await own.fill('你定就好，按最稳妥的来').catch(() => {})
+            await own.press('Enter').catch(() => {})
+            row.cardsAnswered.push('question:typed')
+          }
+          row.answeredByChip = true
+          answeredOnce = true
+          await win.waitForTimeout(1500)
+          continue
+        }
+        if (await spendCard.count() > 0) {
+          await win.screenshot({ path: path.join(outputDir, `${item.id}-spend-card.png`) }).catch(() => {})
+          const confirmReject = spendCard.locator('[data-v4-control="confirm-reject"]')
+          if (!await confirmReject.isVisible().catch(() => false)) await spendCard.locator('[data-v4-control="slot-dismiss"]').click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+          if (await confirmReject.isVisible().catch(() => false)) await confirmReject.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+          row.cardsAnswered.push('spend:declined')
+          await win.waitForTimeout(1500)
+          continue
+        }
         if (!await running.isVisible().catch(() => false)) break
         await win.waitForTimeout(1000)
       }
       row.questionCardVisible = sawCard
-      if (sawCard) {
-        await win.screenshot({ path: path.join(outputDir, `${item.id}-question-card.png`) }).catch(() => {})
-        // 第一张卡**真的答一次**（点第一颗 chip），量「答完这一轮还走不走得下去」。
-        // 其余的卡按停收尾，省额度：闭环证一次就够，18 轮各答一次只是把同一件事买 18 遍。
-        if (!answeredOnce) {
-          answeredOnce = true
-          const chip = questionCard.locator('[data-v4-control="question-option"]').first()
-          if (await chip.count() > 0) {
-            await chip.click({ timeout: stationTimeout({ operations: 2 }) })
-            row.answeredByChip = true
-            await running.waitFor({ state: 'hidden', timeout: stationTimeout({ turns: 2 }) }).catch(() => {})
-            // 判据写成**正向的**：「composer 回到 idle」而不是「running 不在了」。
-            // 后者是一句「不存在」断言，它和「探针根本没生效」长得一样
-            // （`check:walkthroughs` 拦的正是这个），而这里真正要证的本来就是
-            // 「这一轮走完了、输入框还回来了」——那是一个看得见的状态。
-            row.turnContinuedAfterAnswer = await win.locator(`${panel} ${COMPOSER}[data-mode="idle"]`)
-              .isVisible().catch(() => false)
-            await win.screenshot({ path: path.join(outputDir, `${item.id}-after-answer.png`) }).catch(() => {})
-          }
-        } else {
-          await win.keyboard.press('Escape').catch(() => {})
-          await win.waitForTimeout(500)
-        }
-      }
+      // 判据写成**正向的**：「composer 回到 idle」——这一轮走完了、输入框还回来了。
+      row.turnContinuedAfterAnswer = row.cardsAnswered.length > 0
+        ? await win.locator(`${panel} ${COMPOSER}[data-mode="idle"]`).isVisible().catch(() => false) : undefined
+      if (row.cardsAnswered.length > 0) await win.screenshot({ path: path.join(outputDir, `${item.id}-after-answer.png`) }).catch(() => {})
       await running.waitFor({ state: 'hidden', timeout: stationTimeout({ turns: 1 }) }).catch(() => {})
       await win.waitForTimeout(1200)
     } catch (roundError) {

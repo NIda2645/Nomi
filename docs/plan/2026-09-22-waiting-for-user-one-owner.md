@@ -64,7 +64,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    │   事件（谁能触发）                          结局                          │
    │   · 面板「生成 ¥X」→ confirmPendingSpend 成功   → confirmed               │
    │   · 面板 × → discardPendingSpend 成功           → declined                │
-   │   · 用户在 composer 打字（E）                    → declined + 反馈正文     │
+   │   · 用户在 composer 打字（E）                    → redirected：出价收回、计划留着、原话到模型│
    │   · 按停止 / 关窗 / 切项目（cancelAll）          → cancelled（既有）       │
    │   · 进程重启（C）                                → 回合侧 cancelled{restart}（既有）；│
    │                                                    计划侧**退回 draft / 未 present**  │
@@ -72,6 +72,8 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
  execute（工具真正执行，≤60s 预算，此刻**没有任何等待**）◀──────────────────────┘
    · confirmed  → 返回「已开始生成 N 镜」（成功形状；提交已由 confirm 那条既有链完成）
    · declined   → 返回「用户没同意，这次不生成」（**成功形状**，不是 isError → 不重试、不进熔断）
+   · redirected → 返回「他没答这张卡，而是说了这句话」（**成功形状**）；实现时从 declined 里分出来的第三种：
+                  「把第二镜改短点」不是用户在说「这份方案我不要了」，落成 × 的终态就得让模型把整份分镜重起一遍
    · 全自动     → 既有 `decideByPolicyAfterDraft`（一个字不改）
 ```
 
@@ -194,7 +196,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 **确认出现在哪里——用户已经拍过板（2026-09-22 原话：「在哪里用 mcp 就把东西设计在哪里，不能在 nomi 应用里弹」）**：
 - 目标形态：待决带**来源**（lane / 外部宿主 / 分镜编辑器）；面板**只投影非外部来源**的待决；外部来源的确认只经宿主
   （elicitation，或对话式两步 + ticket）。
-- **本轮不改这条投影**——今天外部宿主出的价仍会投影到面板上，那张卡是它此刻唯一能被人点头的地方。
+- **本轮不改这条投影**。订正（实现时核对代码）：面板那张报价卡的投影今天**已经只认 `origin.host === "nomi"`**（`productionPendingSpend.ts`），外部宿主出的价从来不进它；外部宿主此刻在 Nomi 里的确认面是 `confirmGenerationInNomi`（`mcpGateConfirmation.ts`，本轮没碰）。下面的排序约束说的就是那一个确认面。
 - **P1 排序约束（写死）**：「删掉外部来源的应用内确认」与「宿主侧两步确认落地」必须是**同一个 commit**。先删后补 = 中间那段
   外部用户没有任何地方能点头（付费路断）；先补后删 = 两个确认面并行（同一笔出价两处可批，违反 P1）。
 
