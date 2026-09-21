@@ -110,9 +110,15 @@ try {
   const CARD_ANNOUNCEMENT = tsxRequire('../../src/i18n/locales/agentToolFailure.ts', import.meta.url)
     .zhAgentToolFailure.user_sees_spend_card
   const anyFailure = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
-  const failures = anyFailure.filter({ hasNotText: CARD_ANNOUNCEMENT })
-  await expect(anyFailure.filter({ hasText: CARD_ANNOUNCEMENT }),
-    '出卡本身要留下那句「停下、去看卡」的公告——它是 ③ 的对照基准，不是失败').toHaveCount(1)
+  // 公告那一行现在是普通完成态，所以「除了公告之外的失败」= **任何**失败行：不用再把它滤出去。
+  const failures = anyFailure
+  // 2026-09-22：出卡公告**不再画成失败**。「卡在等你」是给模型的控制信号，不是用户的失败——判据在
+  // 失败信封的 `waiting` 轴上（`laneToolFailureEnvelope.ts`），面板把那一行落回普通完成态。
+  // 这条走查原来到「失败行」里去找那句公告，于是它从合并 ③ 起就红了（死选择器：它钉的是旧长相）。
+  // 现在两面都钉：那句话**还在**（它是 ③ 的对照基准）；而下面那条「零失败」不再把它滤出去，
+  // 所以它一旦又被画成失败行/红条，那一条当场红。
+  await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="tool"]`).filter({ hasText: CARD_ANNOUNCEMENT }),
+    '出卡本身要留下那句「停下、去看卡」的公告——它是 ③ 的对照基准').toHaveCount(1)
   await expect(failures, '「自动改」档下不该去决门，也就不该有任何决门失败').toHaveCount(0)
   await walk.snap('full-auto-01-safe-auto-still-asks')
 
