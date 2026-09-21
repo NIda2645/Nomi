@@ -44,6 +44,9 @@ import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 // 判据与它的阳性对照住 `askback-option-judges.mjs` / `.test.mjs`：一把尺子只能有一个家，
 // 而且它得能在不起 App、不花额度的情况下被喂夹具（用户看到的那张卡就是那份夹具）。
 import { asksPermissionForReversible, judgeAskOptions } from './askback-option-judges.mjs'
+// 轨迹（每次调用的入参/返回/校验错误原文/第几次重试）落 JSONL：用户 2026-09-21 点名
+// 「里面经常有重试、参数出错，这些轨迹都对我们后续优化有帮助」。
+import { writeTrajectories } from './askback-trajectory.mjs'
 import {
   CANVAS_PANEL, COMPOSER, COMPOSER_INPUT, COMPOSER_SEND, CREATION_PANEL, DOCUMENT, HISTORY_BUTTON,
   MODEL_POPOVER, COMPOSER_MODEL, THREAD_MENU, escapeForRegExp, expandResidentPanel,
@@ -304,6 +307,14 @@ try {
   console.log(`report → ${pathToFileURL(path.join(outputDir, 'report.json')).href}`)
   if (app) await closeNomiApp(app).catch(() => {})
   if (report.projectDir && fs.existsSync(report.projectDir)) {
+    // 轨迹先写：它要读隔离目录里那份 transcript，而这个目录马上就要被删掉。
+    try {
+      report.trajectories = writeTrajectories(outputDir, report, report.projectDir)
+      console.log('trajectories →', path.join(outputDir, 'trajectories'))
+    } catch (trajectoryError) {
+      // 轨迹写不出来是**仪器**的问题，不该把整轮评测的数字一起判死；如实记进报告。
+      report.trajectoryError = trajectoryError instanceof Error ? trajectoryError.message : String(trajectoryError)
+    }
     const evidence = path.join(outputDir, 'evidence')
     fs.rmSync(evidence, { recursive: true, force: true })
     fs.mkdirSync(evidence, { recursive: true })

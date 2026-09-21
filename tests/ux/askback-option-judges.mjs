@@ -23,8 +23,18 @@ export const YES_NO_NESTING = /^(是的?|对|不是?|否|不，|不要|yes\b|no\
 export const CANCEL_OPTION = /取消|都不|都别|不用了|算了|放弃|cancel|never ?mind|none of (these|them)|skip/i
 /** ④ 内部标识符：类型名、字段名、id、工具名——带下划线的，以及我们自己那几个词。 */
 export const INTERNAL_IDENTIFIER = /[a-z]+_[a-z_]+|\bnodeId\b|\boperationId\b|\bshotId\b|\bcandidateId\b|\basset node\b|节点 ?id/i
-/** 假选项：卡内本来就永远能自己打字，再列一个「其它」就是在教用户多点一下。 */
-export const FAKE_OPTION = /^(其它|其他|别的|让我说说|自己说|other|something else|let me explain)$/i
+/**
+ * 假选项：卡内本来就永远能自己打字，再列一个「其它」就是在教用户多点一下。
+ *
+ * **不是一张闭合名单**（2026-09-21 实测教训）：第一版写成 `^(其它|其他|…)$` 精确匹配，
+ * 真实模型写出来的是「**你说一个具体场景我来建**」——语义上一模一样的假选项，
+ * 而判据一个字都没报。闭合名单对「模型自己写文案」这件事天然是瞎的。
+ * 所以改成认**句式**：把球踢回给用户的那种说法。
+ */
+export const FAKE_OPTION = /^(其它|其他|别的|以上都不|都不是|other|something else|let me explain)$/i
+  // 「你说…我来…」「我自己说」「让我来说」「由我指定」一族：它说的是「你打字吧」，
+  // 而那件事卡自己一直在做。
+export const FAKE_OPTION_PHRASE = /你(来)?说|我(自己|来)(说|讲|定|指定)|让我(说|来)|自己(填|写|说)|I'?ll (tell|describe|say)|you tell me/i
 /** ⑤ label 长度上限（约 12 个汉字；纯英文按字符数放宽到 24）。 */
 export const LABEL_MAX_CJK = 12
 export const LABEL_MAX_LATIN = 24
@@ -61,7 +71,7 @@ export function judgeAskOptions(args) {
     withDescription: descriptions.filter(Boolean).length,
     recommended,
     atMostOneRecommended: recommended <= 1,
-    fakeOptions: labels.filter((label) => FAKE_OPTION.test(label)),
+    fakeOptions: labels.filter((label) => FAKE_OPTION.test(label) || FAKE_OPTION_PHRASE.test(label)),
     yesNoNesting: labels.filter((label) => YES_NO_NESTING.test(label)),
     cancelOptions: labels.filter((label) => CANCEL_OPTION.test(label)),
     internalIdentifiers: [...labels, ...descriptions].filter((text) => text && INTERNAL_IDENTIFIER.test(text)),

@@ -76,6 +76,23 @@ describe('反问卡内容判据 · 阳性对照', () => {
     })).toBe(true)
   })
 
+  it('假选项认的是句式，不是一张闭合名单（2026-09-21 真实模型漏网的那一条）', () => {
+    // 第一版判据写成 `^(其它|其他|…)$` 精确匹配。真实模型在 A12 那轮写出来的是
+    // 「你说一个具体场景我来建」——语义上一模一样的假选项，判据一个字都没报。
+    // 闭合名单对「模型自己写文案」这件事天然是瞎的。
+    expect(judgeAskOptions({
+      question: '要生成一个什么样的赛博朋克场景？',
+      options: [
+        { label: '霓虹街道雨夜行人' }, { label: '夜市小摊与未来天际线' },
+        { label: '你说一个具体场景我来建' },
+      ],
+    }).fakeOptions).toEqual(['你说一个具体场景我来建'])
+    // 阳性对照的反面：正常的候选不许被这条误伤。
+    expect(judgeAskOptions({
+      question: '要删哪一个？', options: [{ label: '镜 2 · 推门' }, { label: '镜 3 · 走廊' }],
+    }).fakeOptions).toEqual([])
+  })
+
   it('复读题目：label 里原样搬题目里的片段会被抓住', () => {
     expect(judgeAskOptions({
       question: '这一镜要多长？',
