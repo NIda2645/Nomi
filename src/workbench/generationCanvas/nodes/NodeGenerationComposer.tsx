@@ -37,7 +37,7 @@ import {
   isModel3dLikeGenerationNodeKind,
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import { applyArchetypeModeSwitch, currentArchetypeMode } from './controls/archetypeMeta'
 import { archetypeForNode, resolveModeForReferenceDemand } from '../agent/referenceEdgeCapability'
 import { addAssetUrlToNode } from './nodeAssetWrite'

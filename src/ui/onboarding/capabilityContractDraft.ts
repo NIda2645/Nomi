@@ -9,7 +9,7 @@ import {
   type CustomCapabilityContractV1,
   type CustomCapabilityModeV1,
   type ModelArchetype,
-} from '../../config/modelArchetypes'
+} from '../../../electron/shared/modelArchetypes'
 import type { ModelChipKind } from './modelChipGrouping'
 
 export const CAPABILITY_SLOT_KINDS = [

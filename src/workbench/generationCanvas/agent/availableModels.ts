@@ -18,7 +18,7 @@ import { orderByVendorPreference } from "../../../../electron/shared/contracts/v
 // （resolveArchetypeForModel 内部已按 vendor 特化）。agent 必须同时选 modelKey + modeId。
 import type { ModelOption } from "../../../config/models";
 import { parseModelParameterControls } from "../../../config/modelCatalogMeta";
-import { resolveArchetypeForModel } from "../../../config/modelArchetypes";
+import { resolveArchetypeForModel } from "../../../../electron/shared/modelArchetypes";
 import { preloadModelOptions } from "../../../config/modelCatalogCache";
 import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 import i18n from "../../../i18n";

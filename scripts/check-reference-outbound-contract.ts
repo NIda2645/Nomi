@@ -4,7 +4,7 @@
 // 病史（2026-09-08 实测）：模型档案（供应商无关）声明「这个模式有一个输入图槽，键叫 X」，各家渠道的
 // create body 却按**自己的字段名**读参数。两侧各自自洽、各自的测试都绿，只有把两侧对起来才看得见
 // 那条线断了。实测样本：`fal/openai/gpt-image-2[i2i]` 档案声明 `input_urls`（KIE/APIMart 的契约名，
-// src/config/modelArchetypes/gptImage2.ts），fal 的 body 却读 `{{request.params.image_urls}}`
+// electron/shared/modelArchetypes/gptImage2.ts），fal 的 body 却读 `{{request.params.image_urls}}`
 // —— 用户连上的参考图一张也进不了报文，第三闸只好拒发，于是「GPT Image 2 参考图失败」。
 //
 // 为什么既有门岗拦不住：`check:orphan-cables` 查的是「modeId 拼写 / 路由错桶」，即**线缆选不选得中**；
@@ -32,7 +32,7 @@
 // R17：改判据前先验它会红（把 falOfficial.ts 那一 token 改回 `p("image_urls")` → 必须报出那一条）。
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins";
 import type { CatalogState } from "../electron/catalog/types";
-import { resolveArchetypeForModel } from "../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../electron/shared/modelArchetypes";
 import { buildArchetypeInputParams } from "../src/workbench/generationCanvas/nodes/controls/archetypeMeta";
 import { taskTemplateParams } from "../electron/catalog/taskParams";
 import { renderTemplateValue } from "../electron/ai/requestPipeline";

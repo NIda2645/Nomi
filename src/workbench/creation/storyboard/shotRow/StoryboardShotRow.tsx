@@ -1,4 +1,4 @@
-import { anchorsConsumedBy } from '../../../../config/modelArchetypes/anchorPolicy'
+import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { NodeGenerationStatus } from '../../../generationCanvas/nodes/NodeGenerationStatus'
 import { StoryboardOverrideBadge } from '../../../generationCanvas/nodes/StoryboardOverrideBadge'
 import { resolveStoryboardOverride } from '../exec/storyboardOverrideActions'

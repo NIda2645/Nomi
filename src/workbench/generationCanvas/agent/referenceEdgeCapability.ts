@@ -7,7 +7,7 @@
 //   ② character_ref → 不声明任何图片参考槽的纯文生模型(如 imagen-4):到 archetype
 //      input-builder 进不去(buildArchetypeInputParams 只发当前模式声明的槽键),静默丢弃。
 //
-// 唯一真相源 = 模型 archetype 的参考槽声明(src/config/modelArchetypes,supplier-agnostic)。
+// 唯一真相源 = 模型 archetype 的参考槽声明(electron/shared/modelArchetypes,supplier-agnostic)。
 // 这里把「边语义(mode)+源资产类型」对照「目标模型 archetype 任意模式声明的参考槽」校验,
 // 只放行模型真能消费的边;放不行的进 skipped + reason,诚实回报给 LLM(它据此改模型/模式或删边)。
 //
@@ -16,13 +16,13 @@
 // 改模式兜)——避免误伤可恢复的模式选择问题。目标未声明档案(未知/未设模型)一律放行(P4 通用回退)。
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
-import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../config/modelArchetypes'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../../electron/shared/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 
 /** 源节点产出的可参考资产类型;text/shot/output 等无产出 → null(不能作参考源)。 */
-import { SLOT_ACCEPTS, type ReferenceAssetKind } from '../../../config/modelArchetypes/anchorPolicy'
-export { SLOT_ACCEPTS, type ReferenceAssetKind } from '../../../config/modelArchetypes/anchorPolicy'
+import { SLOT_ACCEPTS, type ReferenceAssetKind } from '../../../../electron/shared/modelArchetypes/anchorPolicy'
+export { SLOT_ACCEPTS, type ReferenceAssetKind } from '../../../../electron/shared/modelArchetypes/anchorPolicy'
 
 export type EdgeSkipReason = 'dangling' | 'source_not_referenceable' | 'unsupported_reference'
 

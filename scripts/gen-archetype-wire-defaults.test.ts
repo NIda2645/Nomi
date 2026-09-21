@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildArchetypeWireDefaults, buildWireDefaultsFor, normalizeGeneratedText } from './gen-archetype-wire-defaults'
-import type { ModelArchetype } from '../src/config/modelArchetypes/types'
+import type { ModelArchetype } from '../electron/shared/modelArchetypes/types'
 
 describe('archetype defaults generation', () => {
   it('treats Windows and POSIX line endings as the same generated content', () => {

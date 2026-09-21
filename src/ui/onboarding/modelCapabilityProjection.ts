@@ -8,7 +8,7 @@ import {
   type ArchetypeIntent,
   type ArchetypeReferenceSlotKind,
   type ModelArchetype,
-} from '../../config/modelArchetypes'
+} from '../../../electron/shared/modelArchetypes'
 import {
   selectTaskMapping,
   type Mapping,

@@ -9,7 +9,7 @@ import {
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
   type ModelArchetype,
-} from "../../../config/modelArchetypes";
+} from "../../../../electron/shared/modelArchetypes";
 import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 
 export type PlannedNodeModelInput = {
