@@ -13,9 +13,8 @@ import { storyboardAuthorFieldsSchema, type StoryboardAuthorFields } from '../sh
 
 import crypto from "node:crypto";
 
-import { compileExecutionContract, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
+import { type ExecutionContractV1, type PlanCandidate } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
-import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { SINGLE_SHOT_GENERATION_MODULE_ID } from "../shared/generationModuleId";
 import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../shared/generationShotEnvelope";
@@ -234,7 +233,12 @@ export type MultiShotHelperDeps = {
   }) => StoryboardPlanResult | Promise<StoryboardPlanResult>;
   parsers: MultiShotCandidateParsers;
   normalizeVideoCandidate: (candidate: PlanCandidate) => PlanCandidate;
-  videoParameterSchema: (candidate: PlanCandidate) => Record<string, ParameterField> | undefined;
+  /**
+   * 编译一份执行合同。**故意不在这里自己调 `compileExecutionContract`**：参数表投影与
+   * 提示词投影必须和 preview／gate_request 那两次逐字一致，谁多写一份谁就是第二台发动机。
+   * 由 `mcpGenerationTools` 给唯一的那一个实现。
+   */
+  compileContract: (candidate: PlanCandidate, projectId: string) => ExecutionContractV1;
   priceForCandidate: (candidate: PlanCandidate) => ShotPrice;
   effectiveVideoModes: (candidate: VideoModelCandidate) => Array<{ id?: string; transportTaskKind?: string }>;
   /**
@@ -398,13 +402,13 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
    * anchor sub-contract hashes in order (covers the whole batch, §1). shotPrices = the S2 derived per-shot
    * prices so the reducer enforces the seal-time hard cap. Returns undefined for a single-shot op.
    */
-  const sealMultiShotFor = (operation: OperationWithShots): GenerationSealMultiShot | undefined => {
+  const sealMultiShotFor = (operation: OperationWithShots, projectId: string): GenerationSealMultiShot | undefined => {
     if (!operation.shots || operation.shots.length === 0) return undefined;
     const sealedShots: SealedMultiShotEntry[] = operation.shots.map((shot) => {
       const included = shot.included !== false;
       if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
-      const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
+      const contract = deps.compileContract(normalized, projectId);
       return {
         ...generationShotEnvelopeOf(shot),
         candidate: { ...normalized, sealedContractHash: contract.contractHash },

@@ -120,6 +120,50 @@ describe("ExecutionContract compiler", () => {
     expect(contract.parameters).not.toHaveProperty("preserveCharacter");
   });
 
+  it("projects @ mentions into @imageN before the prompt can reach a provider", () => {
+    // A5：@ 过参考图的镜头交给 Agent／外部 MCP 重拍时，供应商此前收到的是字面
+    // `@[asset:nomi-local%3A%2F%2F…]` —— 花了钱拿回错东西。投影规则与手动画布那条路同一份纯函数。
+    const first = "nomi-local://p/assets/a.png";
+    const second = "nomi-local://p/assets/b.png";
+    const contract = compileExecutionContract(candidate({
+      prompt: `@[asset:${encodeURIComponent(second)}] 牵着 @[asset:${encodeURIComponent(first)}] 走`,
+      references: [
+        { assetId: "asset-a", contentHash: "a".repeat(64), version: 1, kind: "image" },
+        { assetId: "asset-b", contentHash: "b".repeat(64), version: 1, kind: "image" },
+      ],
+    }), registry, { referenceSourceUrls: [first, second] });
+    // 编号跟的是**实际发送的参考数组顺序**，不是句子里出现的顺序。
+    expect(contract.prompt).toBe("@image2 牵着 @image1 走");
+  });
+
+  it("numbers each media kind on its own axis, exactly like the manual canvas path", () => {
+    const image = "nomi-local://p/assets/a.png";
+    const video = "nomi-local://p/assets/c.mp4";
+    const contract = compileExecutionContract(candidate({
+      prompt: `照着 @[asset:${encodeURIComponent(image)}] 的人，动作学 @[asset:${encodeURIComponent(video)}]`,
+      references: [
+        { assetId: "asset-a", contentHash: "a".repeat(64), version: 1, kind: "image" },
+        { assetId: "asset-c", contentHash: "c".repeat(64), version: 1, kind: "video" },
+      ],
+    }), registry, { referenceSourceUrls: [image, video] });
+    expect(contract.prompt).toBe("照着 @image1 的人，动作学 @video1");
+  });
+
+  it("refuses to send an unprojected mention instead of leaking the internal marker", () => {
+    const url = "nomi-local://p/assets/a.png";
+    expect(() => compileExecutionContract(candidate({
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+    }), registry)).toThrow(/@ 内联引用/);
+    expect(() => compileExecutionContract(candidate({
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+    }), registry, { referenceSourceUrls: [undefined, undefined] })).toThrow(/解析不出源地址/);
+  });
+
+  it("leaves a plain prompt byte-identical (no mention, no projection)", () => {
+    const contract = compileExecutionContract(candidate({ prompt: "a red fox in snow" }), registry, { referenceSourceUrls: undefined });
+    expect(contract.prompt).toBe("a red fox in snow");
+  });
+
   it("fails before provider work when a required parameter is missing", () => {
     expect(() => compileExecutionContract(candidate({
       providerId: "provider.video",

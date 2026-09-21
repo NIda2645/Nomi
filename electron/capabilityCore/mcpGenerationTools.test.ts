@@ -498,6 +498,42 @@ describe("semantic MCP generation tools", () => {
     await expect(handler({ capability: "start", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "provider_not_configured" });
   });
 
+  it("projects the node's @ mentions before the prompt is sealed into a contract", async () => {
+    // A5 的入口级回归：@ 过参考图的镜头交给 Agent／外部 MCP 生成时，供应商此前收到的是字面
+    // `@[asset:nomi-local%3A%2F%2F…]`。投影必须发生在**合同编译**这一刻——卡上给用户看的、
+    // 密封进授权信封的、最后发给供应商的，是同一句话。
+    const url = "nomi-local://project-1/assets/hero.png";
+    const handler = createGenerationPlanningHandler({
+      registry,
+      operations: createInMemoryGenerationOperationStore(),
+      now: () => "2026-08-23T00:00:00.000Z",
+      resolveStoryboardReferenceUrl: () => url,
+    });
+    const created = await handler({ capability: "create", params: { candidate: candidate({
+      mode: "image-to-image",
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+      references: [{ assetId: "hero", contentHash: "h".repeat(64), version: 1, kind: "image" }],
+    }) }, lease }) as { operation: { operationId: string } };
+    const preview = await handler({ capability: "preview", params: { operationId: created.operation.operationId }, lease }) as { contract: { prompt: string } };
+    expect(preview.contract.prompt).toBe("画面里 @image1 走过来");
+  });
+
+  it("refuses to seal a mention it cannot project instead of leaking the marker", async () => {
+    const url = "nomi-local://project-1/assets/hero.png";
+    const handler = createGenerationPlanningHandler({
+      registry,
+      operations: createInMemoryGenerationOperationStore(),
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const created = await handler({ capability: "create", params: { candidate: candidate({
+      mode: "image-to-image",
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+      references: [{ assetId: "hero", contentHash: "h".repeat(64), version: 1, kind: "image" }],
+    }) }, lease }) as { operation: { operationId: string } };
+    await expect(handler({ capability: "preview", params: { operationId: created.operation.operationId }, lease }))
+      .rejects.toThrow(/@ 内联引用/);
+  });
+
   it("allows a submit-only provider while making recovery limits explicit", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const handler = createGenerationPlanningHandler({

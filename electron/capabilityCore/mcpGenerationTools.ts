@@ -4,6 +4,7 @@ import { generationTaskReference } from '../shared/agentCapabilities/taskReferen
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext';
 import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 import crypto from "node:crypto";
+import { hasMentions } from "../shared/storyboard/promptMentions";
 import {
   compileExecutionContract,
   type ExecutionContractV1,
@@ -321,6 +322,30 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
 
   // P4 S6.5 生产入口: the multi-shot create/seal helpers (resolveCreateShots + sealMultiShotFor) live in
   // mcpGenerationMultiShot.ts; wire them with this handler's shared derivations (all single source of truth).
+  /**
+   * 一份候选 → 一份执行合同。**全仓唯一的编译口**（preview / gate_request / 多镜密封都走它）。
+   *
+   * 两件投影必须在同一处发生，否则「报价看到的」和「密封发出去的」会是两份东西：
+   *  · 参数表投影（视频候选按档案模式的控件声明，其余按目录派生的线缆声明）；
+   *  · 提示词投影（`@[asset:url]` → `@image1`，规则住共享层，与手动画布那条路同一份）。
+   * 提示词里没有 @ 标记时不去解析素材（绝大多数镜头，逐字节不变）；有标记却解析不出源地址 → 报错，
+   * 不是原样发出去。
+   */
+  const referenceSourceUrlsFor = (projectId: string, candidate: PlanCandidate): readonly (string | undefined)[] | undefined => {
+    if (!hasMentions(candidate.prompt)) return undefined;
+    const resolve = deps.resolveStoryboardReferenceUrl;
+    if (!resolve) return undefined;
+    return candidate.references.map((reference) => resolve(projectId, reference));
+  };
+
+  const contractFor = (candidate: PlanCandidate, projectId: string) => {
+    const referenceSourceUrls = referenceSourceUrlsFor(projectId, candidate);
+    return compileExecutionContract(candidate, deps.registry, {
+      ...(videoParameterSchema(candidate, deps.videoModelCandidates) ? { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates)! } : {}),
+      ...(referenceSourceUrls ? { referenceSourceUrls } : {}),
+    });
+  };
+
   /** patch 入口的参考素材身份补齐。与 create 那条同一个解析器，只是调用点不同。 */
   const resolvePatchReferences = (projectId: string, value: unknown): PlanCandidate["references"] => {
     if (!Array.isArray(value)) throw new Error("references must be an array");
@@ -357,7 +382,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     ...(deps.planStoryboard ? { planStoryboard: deps.planStoryboard } : {}),
     parsers: { candidateFrom, record },
     normalizeVideoCandidate: (candidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates),
-    videoParameterSchema: (candidate) => videoParameterSchema(candidate, deps.videoModelCandidates),
+    compileContract: contractFor,
     priceForCandidate,
     effectiveVideoModes,
     ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
@@ -598,7 +623,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "preview") {
       if (current.sourceDocumentId) return { operation: current, taskRef: generationTaskReference(operationId), nextAction: "present" };
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const contract = contractFor(candidate, input.lease.projectId);
       const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
         moduleId: candidate.moduleId,
@@ -633,7 +658,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "gate_request") {
       if (current.sourceDocumentId) throw new Error("storyboard_present_required: use the original storyboard confirmation");
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const contract = contractFor(candidate, input.lease.projectId);
       const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const gateResolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode }); // J06
@@ -643,7 +668,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // and the plan hash; the store forwards them to the reducer (which freezes the batch + hard cap). A
       // single-shot draft passes no bundle (byte-identical to today). Top contract = shots[0]'s contract
       // (顶层 candidate = shots[0].candidate), so the reducer's top-level match holds.
-      const multiShotSeal = current.state === "draft" ? sealMultiShotFor(current) : undefined;
+      const multiShotSeal = current.state === "draft" ? sealMultiShotFor(current, input.lease.projectId) : undefined;
       // 2026-09-21：这里从前逐镜 `assertKnownShotPrice`，价格算不出就整批拒绝
       // （`generation_pricing_unknown`）。用户拍板删掉：内置 204 个模型一条 pricing 都没有，
       // 这条拒绝等于「我们没建价格标尺 → 你不准干活」。要防的「未知被当成 0 元」由授权信封的

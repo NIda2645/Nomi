@@ -50,11 +50,6 @@
     },
     {
       "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "symbol": "compileExecutionContract"
-    },
-    {
-      "kind": "write",
       "path": "electron/capabilityCore/mcpGenerationTools.ts",
       "symbol": "compileExecutionContract"
     },
@@ -80,19 +75,19 @@
     },
     {
       "kind": "read",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
       "symbol": "ParameterField"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
-      "symbol": "ParameterField"
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "compileContract"
     }
   ],
   "door_reduction": {
     "before": 12,
-    "after": 12,
-    "why_not": "十二扇门里真正写那份状态的只有两扇——modelParameterSchema 派生它、compileParameters 消费它——本次把它们收到同一份线缆声明上。其余各扇都必须继续存在：两处 compileExecutionContract 是同一个纯函数的两个调用时机（报价那次与密封那次必须各编译一次，否则「先看后批」会变成「看的和批的不是同一份」）；ParameterField / parameterFieldSchema 的读门是类型与 zod 定义本身，合并它们等于把类型声明搬家；wireReferencedParamKeys 的渲染层那一扇（useChannelCreateBody）读的正是本次要对齐的同一份线缆声明，它的存在是收敛的证据而不是重复；generationPlanningParameters 的读门是那张登记表自己的定义处。"
+    "after": 11,
+    "why_not": "写那份状态的两扇（modelParameterSchema 派生它、compileParameters 消费它）本次收到了同一份线缆声明上；编译口从两扇（mcpGenerationTools + mcpGenerationMultiShot 各调一次 compileExecutionContract）收成一扇（多镜密封改吃 deps.compileContract）。剩下各扇必须继续存在：ParameterField / parameterFieldSchema 的读门是类型与 zod 定义本身，合并它们等于把类型声明搬家；wireReferencedParamKeys 的渲染层那一扇（useChannelCreateBody）读的正是本次要对齐的同一份线缆声明，是收敛的证据不是重复；generationPlanningParameters 的读门是那张登记表自己的定义处。"
   },
   "generality_proof": "合法参数集不再由「这条目录记录碰巧填没填 onboarding/defaultParams」决定，而由那条 mapping 的线缆模板决定——任何模型、任何供应商、任何模式，只要它的 create op 引用了某个参数键，这个键在 Run 路径上就合法，和手动路径渲染同一批令牌的判据逐字同源。因此新接入的模型（自助接入、AI 直填、未来上新）默认就是对的，不需要谁记得去补 onboarding.fields。",
   "shared_boundaries": [

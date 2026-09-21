@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { ResolvedModule } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
 import { isGenerationPlanningParameter } from "./generationPlanningParameters";
+import { hasMentions, numberPromptReferences, projectPromptForSend } from "../shared/storyboard/promptMentions";
 
 export const EXECUTION_CONTRACT_SCHEMA_VERSION = 1 as const;
 
@@ -154,7 +155,43 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
 export type ExecutionContractCompileOptions = {
   /** Optional source-backed parameter projection (for example a selected video variant). */
   parameterSchema?: Record<string, ParameterField>;
+  /**
+   * 候选的每一条参考在**本项目素材库里的源 URL**，与 `candidate.references` 同序。
+   *
+   * 它只为一件事存在：prompt 里的 `@[asset:<url>]` 内联标记要在发出去之前投影成 `@image1/@video1`。
+   * 手动画布那条路一直这么做（`catalogTaskActions.ts` 调 `projectPromptForSend`），Run 路径从来没做，
+   * 于是 @ 过参考图的镜头交给 Agent／外部 MCP 重拍时，供应商收到的是一串
+   * `@[asset:nomi-local%3A%2F%2F…png]` —— 花了钱拿回错东西。
+   *
+   * 缺省 = 候选没有内联标记时什么都不做（绝大多数镜头，逐字节不变）。带标记却没给这份映射时**报错**，
+   * 不是「投影不了就原样发」——原样发正是那个 bug。
+   */
+  referenceSourceUrls?: readonly (string | undefined)[];
 };
+
+/**
+ * 发给供应商之前的最终 prompt。投影规则与编号规则都住在共享层
+ * （`electron/shared/storyboard/promptMentions.ts`），两条生成路径吃的是同一份。
+ */
+function projectContractPrompt(candidate: PlanCandidate, sourceUrls: readonly (string | undefined)[] | undefined): string {
+  if (!hasMentions(candidate.prompt)) return candidate.prompt;
+  if (!sourceUrls) {
+    throw new ContractCompilationError(
+      "提示词里有 @ 内联引用，但这条路没有提供参考素材的源地址，投影不出 @image1 —— 原样发出去等于把内部标记塞给供应商",
+    );
+  }
+  const ordered = candidate.references.map((reference, index) => ({ url: sourceUrls[index], kind: reference.kind }));
+  const missing = ordered.findIndex((entry) => typeof entry.url !== "string" || !entry.url);
+  if (missing >= 0) {
+    throw new ContractCompilationError(`参考素材 ${candidate.references[missing].assetId} 解析不出源地址，提示词里的 @ 引用无法投影`);
+  }
+  const projected = projectPromptForSend(
+    candidate.prompt,
+    numberPromptReferences(ordered as ReadonlyArray<{ url: string; kind?: "image" | "video" | "audio" }>),
+  );
+  if (!projected.trim()) throw new ContractCompilationError("Prompt is required");
+  return projected;
+}
 
 export function compileExecutionContract(
   candidate: PlanCandidate,
@@ -163,6 +200,7 @@ export function compileExecutionContract(
 ): ExecutionContractV1 {
   if (!Number.isInteger(candidate.revision) || candidate.revision < 1) throw new ContractCompilationError("Candidate revision must be a positive integer");
   if (!candidate.prompt.trim()) throw new ContractCompilationError("Prompt is required");
+  const prompt = projectContractPrompt(candidate, options.referenceSourceUrls);
   if (candidate.variantId !== undefined && !candidate.variantId.trim()) throw new ContractCompilationError("Variant id must not be empty");
   if (candidate.modeId !== undefined && !candidate.modeId.trim()) throw new ContractCompilationError("Mode id must not be empty");
   if (candidate.transportModelId !== undefined && !candidate.transportModelId.trim()) throw new ContractCompilationError("Transport model id must not be empty");
@@ -185,7 +223,7 @@ export function compileExecutionContract(
     ...(candidate.modeId ? { modeId: candidate.modeId.trim() } : {}),
     ...(candidate.transportModelId ? { transportModelId: candidate.transportModelId.trim() } : {}),
     mode: module.mode,
-    prompt: candidate.prompt,
+    prompt,
     parameters,
     references: candidate.references.map((reference) => ({ ...reference })),
   } satisfies Omit<ExecutionContractV1, "contractHash" | "warnings" | "droppedFields">;

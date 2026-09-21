@@ -68,6 +68,26 @@ export function normalizePromptReferences(
   return [...references as readonly PromptReference[]]
 }
 
+/**
+ * **编号规则的唯一 owner**：一串「按实际发送顺序排好的参考」→ `@imageN / @videoN / @audioN` 的编号。
+ * N 是该 url 在**同类**参考里的位置（图第几张、视频第几条），与线缆上那几个数组的下标一一对应。
+ *
+ * 为什么必须共享：手动画布那条路按档案的槽顺序走一遍就得到这串有序参考
+ * （`archetypeMeta.orderedSentMediaReferenceUrls` 末尾那两行做的就是本函数），Run 路径按
+ * `candidate.references` 的数组顺序走。**顺序怎么来的两路可以不同（槽 vs 数组），但「排好之后怎么编号」
+ * 只能有一个答案**——否则同一张参考图在两条路上会被写成 @image1 和 @image2，模型照着句子找图就找错了。
+ */
+export function numberPromptReferences(
+  references: readonly Readonly<{ url: string; kind?: PromptReferenceKind }>[],
+): PromptReference[] {
+  const counts: Record<PromptReferenceKind, number> = { image: 0, video: 0, audio: 0 }
+  return references.map((reference) => {
+    const kind = reference.kind ?? 'image'
+    counts[kind] += 1
+    return { url: reference.url, kind, index: counts[kind] }
+  })
+}
+
 export function promptReferenceForUrl(
   url: string,
   references: readonly string[] | readonly PromptReference[],
