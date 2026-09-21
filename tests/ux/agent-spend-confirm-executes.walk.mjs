@@ -51,6 +51,8 @@ import {
 process.env.NOMI_WALK_UNPRICED_MODEL = '1'
 
 const ASK = 'S_SPEND_EXEC：帮我生成一张六棱柱的图。'
+/** 在卡上接着打的那半句。挑一个原提示词里没有的词，线缆上找得到才算数。 */
+const EDITED_PROMPT_TAIL = '，背景加一层薄雾'
 const PLAN_CALL = 's-spend-exec-1'
 const GENERATE_CALL = `${PLAN_CALL}-generate`
 const PRICE_UNAVAILABLE = '[data-v4-price="unavailable"]'
@@ -136,6 +138,17 @@ try {
     .toHaveAttribute('data-parameter-chip-value', EDITED_RESOLUTION)
   await walk.snap('spend-card-resolution-edited')
 
+  // ②b 在卡上**改一处提示词**（2026-09-22 换壳后补）。卡的正文就是画布节点下面那条参数条 +
+  //     提示词框的同一个组件，所以这里像在节点上一样点进去、接着打字——不往 store 里写值。
+  //     换壳只许动外壳，这一步证的是「壳换了，卡上照样改得动、改的东西照样发得出去」。
+  const promptBox = card.locator('[contenteditable="true"]').first()
+  await expect(promptBox, '卡里的提示词框（与画布节点同一个组件）').toBeVisible()
+  await promptBox.click()
+  await win.keyboard.press('End')
+  await win.keyboard.type(EDITED_PROMPT_TAIL)
+  await expect(promptBox, '打的字真的进了卡里的提示词框').toContainText(EDITED_PROMPT_TAIL.trim())
+  await walk.snap('spend-card-prompt-edited')
+
   // ③ 按主按钮。改动是在**按下那一刻**才写进 durable 候选的（持续双向同步会和落地链拉锯，
   //    见 useAgentPanelSpendConfirm 里的理由）。所以「盘上那份候选里清晰度是 2K」就是
   //    「这一下真的把改动送到了主进程」的证据——它落在盘上，渲染层伪造不了。
@@ -154,6 +167,12 @@ try {
   expect(walk.fixture.images, '按下确认之后，供应商必须真的收到一次生成请求').not.toHaveLength(0)
   const submitted = walk.fixture.images[0].body
   expect(JSON.stringify(submitted), '发出去的就是卡上那一镜').toContain('六棱柱')
+  // 卡上改的那处提示词**真的到了线缆上**（loopback 供应商收到的请求体里就有它）。
+  expect(JSON.stringify(submitted), '卡上补的那半句提示词随请求发到了供应商').toContain(EDITED_PROMPT_TAIL.trim())
+  // 改后的**清晰度**到没到线缆：这条分支上记录、不断言——文件头 ③ 写明了它今天不成立
+  //（`compileParameters` 把档案外的参数丢掉），修复在步骤 A 那条 lane 上、尚未并进本分支。
+  // 记下实测值：并线之后把这一行换成 `expect(...).toContain(EDITED_RESOLUTION)` 即可。
+  walk.report.wireCarriesEditedResolution = JSON.stringify(submitted).toLowerCase().includes(EDITED_RESOLUTION.toLowerCase())
   // 改动真的到了主进程：盘上那份候选（不是渲染层的 store）带着改后的清晰度。
   const revised = readRunCandidate(projectRoot, operationId)
   expect(revised?.parameters?.resolution, '卡上改的那个清晰度真的落进了盘上那份候选').toBe(EDITED_RESOLUTION)
@@ -170,7 +189,7 @@ try {
   expect(nodes[0].id, '还是草稿那一刻建的那个节点').toBe(draftedNodeId)
   await walk.snap('spend-confirm-really-generated')
 
-  walk.report.verified = ['card-waits-in-intervention-slot', 'param-edited-on-the-card',
+  walk.report.verified = ['card-waits-in-intervention-slot', 'param-edited-on-the-card', 'prompt-edited-on-the-card-reaches-the-wire',
     'confirm-pushes-the-edit-into-the-durable-candidate',
     'the-node-really-gets-its-artifact-and-the-card-folds-away']
 } catch (error) {
