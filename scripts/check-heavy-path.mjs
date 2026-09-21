@@ -169,7 +169,109 @@ const RULES = [
   {
     id: 'ffmpeg-still-input-outside-owner',
     label: '手写 ffmpeg `-loop 1` 静帧输入——`-t` 一旦取成时间轴全长，导出成本就随叠加条目数成倍涨',
-    hint: '静帧输入只由 electron/export/ffmpegFiltergraph.ts 的 loopedStillInput() 构造，'
+    hint: '静帧输入只由 electron/export/ffmpegGraphPrimitives.ts 的 loopedStillInput() 构造，'
+      + '`-t` 取**它自己的可见窗口**；enable 只挡混合、不挡上游生成。',
+    scan(code, file) {
+      // 判据按闸不按数（同 unguarded-fsync）：`-loop` 字面量只许出现在收口函数 loopedStillInput 里
+      // ——它一个入参就是「可见窗口」，写不出全片长。按计数会留洞：删掉收口那一处、别处新加一处，
+      // 计数不变、门岗照样绿。范围是门岗收集的全部 src/ + electron/：第一版只扫 electron/export/，
+      // 独立验收的变异测试当场打出洞（同样的违规放 electron/media/ 就漏网）。今天零误报。
+      // 事故经过与实测数字：docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json。
+      const hits = []
+      const lines = code.split('\n')
+      lines.forEach((line, i) => {
+        if (!/\b(url|src)\s*:\s*(data[Uu]rl|base64|pngBase64|b64)\b/.test(line)) return
+        const window = lines.slice(Math.max(0, i - 12), i + 1).join('\n')
+        if (/updateNode\s*\(|addNode\s*\(|result\s*:/.test(window)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
+    id: 'duplicate-node-size-bounds',
+    label: '在 nodeSizing 之外复刻节点尺寸上下界——布局和渲染各算各的，必然错位',
+    hint: '尺寸只有一个真相源：从 nodeSizing 导入常量，卡片实际渲染多大问 resolveNodeVisualSize()。',
+    scan(code, file) {
+      if (file.endsWith(path.join('nodes', 'nodeSizing.ts'))) return []
+      const hits = []
+      code.split('\n').forEach((line, i) => {
+        if (/\b(const|let)\s+(MIN|MAX)_NODE_(WIDTH|HEIGHT)\s*=/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
+    id: 'child-stdin-write-unguarded',
+    label: '往子进程 stdin write/end 但没挂流级 error 监听——子进程先死时 EPIPE 升级成进程级 unhandled',
+    hint: "先 child.stdin?.on('error', () => {}) 再写：真实故障让 child 的 error/exit 事件如实上报，流级 EPIPE 只是回声（复现见 capabilityCore/mcpVerify.stdinError.test.ts）。",
+    scan(code, file) {
+      // 为什么当场看不出来：小包写平时走同步快路，对端刚死也静默成功；只有写入落进 libuv
+      // 异步队列（并行负载/缓冲挤压）、完成时对端已被收尸，EPIPE 才在流上**异步** emit——
+      // write 外面的 try/catch 一律接不住。2026-08-25 真实现场：vitest 3047 全过仍 exit 1；
+      // 真机上同一条路是主进程 uncaughtException。文件级判据：写过 stdin 的文件必须也挂过
+      // stdin 的 error 监听（宁可漏报，不要噪音——同 base64-into-store 的取舍）。
+      if (/\.stdin\??\.\s*(?:on|once)\s*\(\s*['"]error['"]/.test(code)) return []
+      const hits = []
+      code.split('\n').forEach((line, i) => {
+        if (/\bprocess\.stdin\b/.test(line)) return
+        if (/\.stdin\??\.\s*(?:write|end)\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
+    id: 'node-stream-into-response',
+    label: '把 Node 流交给别人管生命周期（new Response(流) / Readable.toWeb）——取消时抛不可捕获的 ERR_INVALID_STATE',
+    hint: '用 createOwnedFileStream()（electron/protocol/fileResponseStream.ts）自己拥有流：'
+      + '它用一个同步置位的 closed 闸，让 close 与 cancel 不可能互相竞争。',
+    scan(code, file) {
+      // 为什么必须拦：undici 的 extractBody 见到「异步可迭代」就转交 ReadableStreamFrom，
+      // 那里的 close 是 queueMicrotask 里的裸调用、cancel() 又不置任何标记，于是
+      // 「in-flight 的 pull 解析出 done → 延迟 close 打在已关闭的 controller 上」→ 从 microtask 抛出，
+      // call site 的 try/catch 一律接不住。该缺陷在 undici 6.19.8 / 7.29.0 / 8.10.0 / main 中一致存在，
+      // 升 Electron 修不掉——唯一的解是别把流交出去。详见
+      // docs/plan/2026-08-24-local-protocol-stream-ownership.md。
+      //
+      // 同族的第二条路：`Readable.toWeb(fs.createReadStream(...))`。它绕开了 undici，
+      // 却换成 Node 自己的适配器——nodejs/node#64529「toWeb(): 背压恢复期间被取消会抛
+      // uncaughtException(ERR_INVALID_STATE)」**至今 OPEN、修复 PR 未合**，抛的是同一个错误码。
+      // 本仓一度就走在这条路上（origin/main 的 fileBody()），所以必须一起拦：
+      // 判据不是「用了哪个 API」，而是「**流的关闭权在不在我们手里**」。
+      //
+      // 只认 createReadStream / Readable.from / Readable.toWeb 这几类**明确的** Node 流来源：
+      // 「任意 Node Readable」静态判不出来，宁可漏报也不要噪音（同 base64-into-store 的取舍）。
+      const hits = []
+      const lines = code.split('\n')
+      const streamVars = new Map()
+      lines.forEach((line, i) => {
+        if (/Readable\.toWeb\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+          return
+        }
+        if (/new Response\s*\(\s*(?:(?:fs|fsp)\.)?(?:createReadStream|Readable\.from)\s*\(/.test(line)) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+          return
+        }
+        const assigned = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^=].*?(?:createReadStream|Readable\.from)\s*\(/.exec(line)
+        if (assigned) streamVars.set(assigned[1], i)
+        const used = /new Response\s*\(\s*([A-Za-z_$][\w$]*)\b/.exec(line)
+        if (used && streamVars.has(used[1]) && i - streamVars.get(used[1]) <= 8) {
+          hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+        }
+      })
+      return hits
+    },
+  },
+  {
+    id: 'ffmpeg-still-input-outside-owner',
+    label: '手写 ffmpeg `-loop 1` 静帧输入——`-t` 一旦取成时间轴全长，导出成本就随叠加条目数成倍涨',
+    hint: '静帧输入只由 electron/export/ffmpegGraphPrimitives.ts 的 loopedStillInput() 构造，'
       + '`-t` 取**它自己的可见窗口**；enable 只挡混合、不挡上游生成。',
     scan(code, file) {
       // 为什么必须拦（2026-09-21 的收口）：`enable='between(t,a,b)'` 看起来像「只在这段时间才干活」，

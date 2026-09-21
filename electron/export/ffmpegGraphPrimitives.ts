@@ -50,16 +50,12 @@ export function formatNumber(value: number): string {
  *
  * > **`-t` 只能是消费这张静帧的那个可见窗口的长度，绝不是时间轴全长。**
  *
- * `enable` 是 libavfilter 的 timeline 开关，只决定「这一帧混不混」（官方文档：disabled 时
- * 「the frame will be sent unchanged to the next filter」），上游那条静帧流照样按 `-t` 逐帧产出、
- * 入队、参与 framesync。`-t` 写成全片长 ⇒ 成本 = 条目数 × 全片帧数 × 全画幅 RGBA：实测 60 条字幕
- * 把 107 秒的导出拖成 75 分钟，且零 ffmpeg 报错。
+ * `enable` 只挡混合、不挡上游生成，`-t` 写成全片长 ⇒ 成本 = 条目数 × 全片帧数 × 全画幅 RGBA。
+ * **不要加 `-framerate`**：它改这条链的 time_base，framesync 取两路的公约数当输出 time_base，
+ * 下游 `enable` 的闭区间端点帧会翻转（试过，被逐帧对照抓到）。
  *
- * **不要加 `-framerate`**（试过，翻车）：它决定这条链的 `time_base`，而 framesync 取两路 `time_base`
- * 的公约数当 overlay 的输出 `time_base`，下游 `enable` 看到的 `t` 跟着变——窗口末帧（`between` 闭区间
- * 端点）会从「不显示」翻成「显示」。帧率不动 ⇒ 边界行为与修复前逐帧一致。
- *
- * 全部实测数字、同类扫描与残余风险：`docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json`。
+ * 事故经过、实测数字、同类扫描、残余风险：
+ * `docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json`。
  * 门岗：`check:heavy-path` 的 `ffmpeg-still-input-outside-owner`（按闸判，基线 0）。
  */
 export function loopedStillInput(

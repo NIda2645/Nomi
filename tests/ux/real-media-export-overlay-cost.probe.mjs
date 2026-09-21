@@ -2,33 +2,20 @@
 //
 //   **导出成本不随文字叠加层的条数成倍涨。**
 //
-// 起因（2026-09-21）：`buildTextOverlayGraph` 给每条字幕 PNG 开一个 `-loop 1 -t <时间轴全长>` 的输入，
-// `enable='between(t,a,b)'` 只挡混合、不挡上游生成，于是成本 = 条目数 × 全片帧数 × 全画幅 RGBA。
-// 真实视频（202.9 s / 1080×1920 / crf23）实测：2 条字幕 107 s，60 条字幕 4524 s（75 分钟）、
-// 峰值内存 1.01 GB → 6.71 GB，**全程零 ffmpeg 报错**，用户只会以为「Nomi 导出很慢」。
-// 根因合同：docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json
+// 事故经过与全部实测数字：docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json
 //
-// 为什么这条腿必须用真实素材：合成素材（lavfi 色块 / 2 秒 crf-35 小片）的解码成本接近零，
-// 叠加层那条链在它上面跑得飞快，60 条和 2 条的差别被主链成本淹掉——正是 R13 第④件说的那种假绿。
+// 为什么必须真素材：合成素材（lavfi 色块 / 2 秒 crf-35 小片）解码成本接近零，主链太便宜，
+// 叠加层那条链涨多少都被淹掉——正是 R13 第④件说的那种假绿。
 //
-// 为什么判据是**倍数**不是秒数：教训在 docs/lessons（canvas-perf 预算在 macOS 校准、在 Linux CI 软渲染
-// 下假红 1.3-2x）。这里量的是同一台机器上 N=60 相对 N=2 的倍数，机器快慢同时作用于分子分母。
-// 新旧交替各跑 3 次的中位数：修复前 **39.1x**、修复后 **3.6x**（15 秒校准段）；
-// 独立验收在另一轮负载下量到 33.7x → 1.6x。阈值 8x 落在这条 10 倍宽的分离带中间。
+// 为什么判据是倍数不是秒数：教训在 docs/lessons（macOS 校准的预算在 Linux CI 上假红 1.3-2x）。
+// 这里量同机的 N=60 相对 N=2，机器快慢同时作用于分子分母。新旧交替各 3 次的中位数：
+// 修复前 39.1x、修复后 3.6x；独立验收另一轮量到 33.7x → 1.6x。阈值 8x 落在分离带中间。
 //
-// 内存**只记录、不判定**（2026-09-22 按独立验收的实测改）：
-//   峰值 RSS 在这条链上根本不是本次修复的函数，而是机器负载的函数——
-//   同一份代码、同一段素材，三次之间就能差 ±20%，换台机器差得更多：
-//   我这边新旧交替各 3 次量到 6.06 GB（5.27–6.55）→ 5.07 GB（4.29–5.60）——**范围重叠**；
-//   验收方在他的机器上量到 6.79 GB → 6.92 GB（修复后反而略高）。
-//   残余内存来自「60 级 overlay 滤镜链各自持有在途帧」，
-//   随线程饥饿程度变长——不是类根因，也不随本次改动单调变化
-//   （诊断实测：把静帧帧率调稀，耗时和内存反而一起变差）。
-//   拿这种量当判据只会得到一条时红时绿的腿，而 flaky red 比没有判据更坏：它会把人训练成忽略红灯。
-//   所以这里把每次的峰值打印出来留痕，判定交给上面两条（每条输入的 -t、耗时倍数），
-//   内存的账记在根因合同的 residual_risks 里，由「导出成本二期」去收。
+// 内存只记录、不判定：峰值 RSS 随机器负载走，不随本次改动走——同一份代码三次就差 ±20%
+// （我这边 6.06→5.07 GB 范围重叠，验收方量到 6.79→6.92 GB）。拿它当判据只会得到 flaky red，
+// 而 flaky red 比没有判据更坏：它把人训练成忽略红灯。内存的账记在合同 residual_risks 里。
 //
-// 跑法：NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/" node tests/ux/real-media-export-overlay-cost.probe.mjs
+// 跑法：NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/" npx tsx tests/ux/real-media-export-overlay-cost.probe.mjs
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -66,8 +53,8 @@ function bundledBinary(packageName) {
 const FFMPEG = bundledBinary('@ffmpeg-installer/ffmpeg')
 const FFPROBE = bundledBinary('@ffprobe-installer/ffprobe')
 
-function run(bin, args, { encoding = 'utf8' } = {}) {
-  const result = spawnSync(bin, args, { encoding, maxBuffer: 128 * 1024 * 1024 })
+function run(bin, args) {
+  const result = spawnSync(bin, args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
   if (result.status !== 0) {
     throw new Error(`${path.basename(bin)} 失败 exit=${result.status}\n  args: ${args.join(' ')}\n${String(result.stderr).slice(-2000)}`)
   }
