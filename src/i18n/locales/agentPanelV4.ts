@@ -430,10 +430,14 @@ export const zhAgentPanelV4 = {
   // 付费卡 · 参数条版（2026-09-10 用户拍板：参数行 = 节点那条参数条，确认前全部可改）
   // 标题是**一句问话**（2026-09-22 换壳，照 Recommendation Card 的形状）：
   // 卡在问「要不要做这件事」，陈述句「生成 N 镜的视频」读起来像它已经决定了。
-  spendParamsTitle: '生成这 {{count}} 段视频？',
+  // 复数走 i18next 的 `_one` / `_other`（本仓现成机制，见 generationCommon）。zh 两条同文，
+  // 键必须成对存在——key-parity 门岗要求 zh/en 键集相同。
+  spendParamsTitle_one: '生成这 {{count}} 段视频？',
+  spendParamsTitle_other: '生成这 {{count}} 段视频？',
   // 同一张卡也用来确认图片生成（agent 建的草稿两种都有）。标题不许一律写「视频」——
   // 用户看着一张图片草稿被说成视频，第一反应是「它是不是搞错了」，而这一刻他正要付钱。
-  spendParamsTitleImage: '生成这 {{count}} 张图片？',
+  spendParamsTitleImage_one: '生成这 {{count}} 张图片？',
+  spendParamsTitleImage_other: '生成这 {{count}} 张图片？',
   /** 模型芯片上的极小徽标：这一项是 Nomi 替你挑的，不是你选的。 */
   spendParamsModelPicked: 'Nomi 选的',
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
@@ -465,7 +469,8 @@ export const zhAgentPanelV4 = {
    * × 撤掉这次请求之后那一句。**只有真撤掉了占位节点时才说**：撤了东西就得说撤了什么、怎么拿回来。
    * 用户自己建的节点从来不在这个数里（`spendCardRollback.ts` 只认物化章）。
    */
-  spendDiscardedNodes: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
+  spendDiscardedNodes_one: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
+  spendDiscardedNodes_other: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   spendDiscardEditsWarning: '丢弃这次请求？你在卡上改的内容会一起丢掉。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
@@ -841,7 +846,7 @@ export const enAgentPanelV4 = {
   slotRejectSample: 'Not this time — keep the shot for review',
   slotSpendTitle: 'Generate these 4 video shots?',
   slotSpendBadge: 'Paid',
-  slotSpendOneTitle: 'Generate this 1 video shot?',
+  slotSpendOneTitle: 'Generate this video shot?',
   slotSpendOneScope: 'Uses the adopted shot-2 image as the first frame · result lands on the canvas and can be dragged onto the timeline',
   slotGenerate: 'Generate',
   slotQuestionTitle: 'What tone should this narration take?',
@@ -894,8 +899,10 @@ export const enAgentPanelV4 = {
   slotDeviationTitle: 'Shot 3 has no first frame — skip it or draw one first?',
   slotDeviationDraw: 'Draw one first (+¥0.12)',
   slotDeviationSkip: 'Skip',
-  spendParamsTitle: 'Generate {{count}} video shot(s)?',
-  spendParamsTitleImage: 'Generate {{count}} image(s)?',
+  spendParamsTitle_one: 'Generate this video shot?',
+  spendParamsTitle_other: 'Generate these {{count}} video shots?',
+  spendParamsTitleImage_one: 'Generate this image?',
+  spendParamsTitleImage_other: 'Generate these {{count}} images?',
   spendParamsModelPicked: 'Nomi picked',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
   spendParamsBreakdownNoUnit: '{{count}} shots',
@@ -914,7 +921,8 @@ export const enAgentPanelV4 = {
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
   spendParamsScopeUnknown: 'No price came back. Continuing means you only learn the cost afterwards.',
-  spendDiscardedNodes: 'Request discarded — {{count}} placeholder shot(s) removed · press ⌘Z to undo',
+  spendDiscardedNodes_one: 'Request discarded — 1 placeholder shot removed · press ⌘Z to undo',
+  spendDiscardedNodes_other: 'Request discarded — {{count}} placeholder shots removed · press ⌘Z to undo',
   spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
