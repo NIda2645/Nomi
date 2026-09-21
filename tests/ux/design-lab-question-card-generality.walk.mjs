@@ -8,6 +8,7 @@
 // 只拍中文那一轨，等于把最容易出事的那一种情况排除在证据之外。
 //
 // 用法: node tests/ux/design-lab-question-card-generality.walk.mjs
+import { stationTimeout } from './_station-budget.mjs'
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -67,9 +68,9 @@ try {
     const tag = locale === 'zh-CN' ? 'zh' : 'en'
     for (const state of STATES) {
       await page.goto(`${BASE}/design-lab.html?screen=agent-panel-v4&frame=1&state=${state}`, { waitUntil: 'networkidle' })
-      await page.waitForFunction(() => window.__designLabReady === true, null, { timeout: 20000 })
+      await page.waitForFunction(() => window.__designLabReady === true, null, { timeout: stationTimeout() })
       const shot = page.locator(`[data-design-lab-shot="${state}"]`)
-      await shot.waitFor({ state: 'visible', timeout: 10000 })
+      await shot.waitFor({ state: 'visible', timeout: stationTimeout() })
       await page.waitForTimeout(250)
       await shot.screenshot({ path: path.join(outDir, `${tag}-${state}.png`) })
 

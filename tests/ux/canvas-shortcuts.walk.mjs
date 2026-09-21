@@ -91,10 +91,11 @@ const c19Candidate = { candidateId: 'c19-candidate', revision: 1, moduleId: 'gen
 const c19Created = c19Repository.createGenerationDraft({ projectId: c19ProjectId, operationId: c19RunId,
   origin: { host: 'nomi' }, candidate: c19Candidate,
   shots: ['one', 'two'].map(id => ({ shotId: `shot-${id}`, candidate: { ...c19Candidate, candidateId: `c19-${id}` } })) })
-c19Repository.execute(c19ProjectId, c19RunId, { commandId: 'c19-dismiss-before-open', expectedRevision: c19Created.revision,
-  type: 'generation.dismiss', payload: {}, issuedAt: new Date().toISOString() })
+// 2026-09-22：× 不再是 `generation.dismiss`（置 cardHidden、仍是 draft），而是真终态 `cancel("declined")`。
+c19Repository.execute(c19ProjectId, c19RunId, { commandId: 'c19-decline-before-open', expectedRevision: c19Created.revision,
+  type: 'generation.cancel', payload: { reason: 'declined' }, issuedAt: new Date().toISOString() })
 const c19AuthorityBefore = { run: c19Repository.read(c19ProjectId, c19RunId), approvals: c19Repository.readApprovals(c19ProjectId, c19RunId) }
-if (!c19AuthorityBefore.run.generationPlan.cardHidden) throw new Error('C19 setup must persist a genuinely dismissed draft')
+if (c19AuthorityBefore.run.generationPlan.cancelReason !== 'declined') throw new Error('C19 setup must persist a genuinely declined request')
 
 // Preserve the actual fixture's durable graph before hydration. Runtime measurement is
 // not a user edit and intentionally does not schedule a project save.

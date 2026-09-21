@@ -332,14 +332,22 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     }
   };
 
-  /** Close the current unapproved spend request while retaining its creative draft. */
+  /**
+   * × = **撤回这一次请求**，真终态（2026-09-22 裁决 D）。
+   *
+   * 此前这里调的是 `operations.dismiss`：只置 `cardHidden`、计划仍是 `draft`。那不是终态，
+   * 落地投影照旧认它——× 删掉的占位节点会被重建，用户看到的是「点了 ×，画布上多出一个节点」
+   * （`agent-spend-card.walk.mjs` 自合并 ③ 起红的就是这条）。现在走 `cancel("declined")`：
+   * 投影不出卡、落地不建占位、同一个 operationId 不再被 present 复活。
+   * **IPC 名（`discardSpend`）不变**，所以渲染层那一侧一行不用动。
+   */
   const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
     if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
     try {
-      await deps.operations.dismiss(input.projectId, input.operationId, now());
+      await deps.operations.cancel(input.projectId, input.operationId, now(), "declined");
       return { ok: true, code: "discarded" };
     } catch (error) {
       return failed(error, false);

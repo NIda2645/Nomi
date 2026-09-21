@@ -121,31 +121,54 @@ export async function checkSpendScopeJourney(walk, win) {
   await expect.poll(async () => (await graph()).nodes.length).toBe(initialGraph.nodes.length + 1)
   const bothGraph = await graph()
   await walk.snap('cj1-two-real-pending-first-stays-visible')
-  await clickOrFail(card.locator(INTERVENTION_REJECT), '关闭第一笔，原介入槽依序显示第二笔')
+  // ── × = 撤回这一次请求，真终态（2026-09-21 用户拍板「× = 撤销这次草稿」；2026-09-22 裁决 D 落成终态）──
+  //
+  // 这一段原来钉的是相反的事：两笔都 × 掉之后，对**同一个** operationId 再 generate，逐镜手改原样回来
+  // （「same-operation-scope-and-draft-recovery」）。它以「× 只是把卡藏起来」为前提，而那个前提正是
+  // 「× 之后占位节点被落地重建」的成因：计划还活着，落地就有理由把它的节点补回来。
+  // 第一笔卡上有没提交的手改，所以 × 第一下先摊开那句确认（像人一样点两下）。
+  const decline = async (label) => {
+    const confirm = card.locator('[data-v4-control="confirm-reject"]')
+    // ⚠️ 2026-09-22 实测：第一张卡 × 掉之后，**第二张卡一出来就已经停在「取消 / 确认不要」那一态**——
+    // 「正在确认丢弃」这个状态挂在介入槽上、没有跟着卡走。真人会看到一张自己还没点过 × 的卡在问他
+    // 「确认不要」。这是渲染层的事（`src/workbench/ai/v4/**`，等合并 ④ 之后修），这里像人一样：
+    // 看到什么点什么，并把它记进报告，不替它遮。
+    if (await confirm.isVisible().catch(() => false)) { await clickOrFail(confirm, `${label}（卡一出来就停在确认态）`); return 'already-confirming' }
+    await clickOrFail(card.locator(INTERVENTION_REJECT), label)
+    if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
+    return 'clicked-reject'
+  }
+  await decline('关闭第一笔，原介入槽依序显示第二笔')
   await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([otherOperationId])
   await expect(input).toHaveText('CJ1_shot_99 原始画面')
   await expect(size).toHaveAttribute('data-parameter-chip-value', '1024x1024')
-  expect(await graph()).toEqual(bothGraph)
+  // × 只撤**卡上摆出来的那三镜**自己造的占位；没摆出来的 30 镜、第二笔的节点、分镜表一个都不动。
+  const requestedNodeIds = new Set(bothGraph.nodes.filter(node => node.meta?.productionRunId === operationId && requestedIds.includes(node.meta?.productionShotId)).map(node => node.id))
+  expect(requestedNodeIds.size, '探针：卡上那三镜各有一个占位节点').toBe(3)
+  await expect.poll(async () => (await graph()).nodes.map(node => node.id).sort())
+    .toEqual(bothGraph.nodes.filter(node => !requestedNodeIds.has(node.id)).map(node => node.id).sort())
+  const afterFirstDecline = (await graph()).nodes.map(node => node.id).sort()
   await walk.snap('cj1-second-operation-has-own-draft')
   const proof = await proveProbe(card, 'Second pending really appears before dismissal')
-  await clickOrFail(card.locator(INTERVENTION_REJECT), '关闭第二笔')
-  await expectAbsent(card, { provenBy: proof, message: 'Both dismissed operations leave the slot' })
-  await present(operationId, requestedIds)
-  await setScope('each')
-  await pageTo(2)
-  await expect(input).toHaveText(editedPrompt)
-  await expect(size).toHaveAttribute('data-parameter-chip-value', '1536x1024')
-  await setScope('all')
-  await expect(size).toHaveAttribute('data-parameter-chip-value', '1536x1024')
-  expect((await pending())[0].shots.map(shot => shot.shotId)).toEqual(requestedIds)
-  expect((await readRun(operationId)).generationPlan.shots).toEqual(presentedShots)
+  const secondDecline = await decline('关闭第二笔')
+  await expectAbsent(card, { provenBy: proof, message: 'Both declined operations leave the slot' })
+  expect((await readRun(operationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
+  expect((await readRun(otherOperationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
+  // 被撤回的请求不许被同一个 id 叫回来：模型再叫一次 generate，读到的是「请重新起草」，介入槽保持空。
+  const afterBothDeclined = (await graph()).nodes.map(node => node.id).sort()
+  expect(afterBothDeclined.every(id => afterFirstDecline.includes(id)), '第二次 × 同样只减不增').toBe(true)
+  await toolTurn('generate', { operationId, shotIds: requestedIds })
+  expect(await pending(), '被撤回的那一笔不复活').toEqual([])
+  // 「× 之后占位不复活」不靠墙钟等：上面这一整个模型回合（两次账本变更 + 一次读 + 回合落定）期间，
+  // 落地对这两份计划各被触发过不止一次（账本每变一次它就重算一遍）。此前的 bug 在这段时间里必然多出节点。
+  expect((await graph()).nodes.map(node => node.id).sort(), '× 之后经过一整个回合，画布节点一个都没多').toEqual(afterBothDeclined)
   expect((await readRun(operationId)).jobs).toHaveLength(0)
   expect((await readRun(otherOperationId)).jobs).toHaveLength(0)
-  expect(await graph()).toEqual(bothGraph)
   expect(walk.fixture.images).toHaveLength(0)
-  await walk.snap('cj1-same-three-shot-scope-restores-both-draft-layers')
+  await walk.snap('cj1-declined-requests-stay-closed')
   walk.report.spendScopeJourney = { projectId, projectRoot, operationId, otherOperationId, requestedIds, planItems: 33,
     pendingOrder: [operationId, otherOperationId], graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
-    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'two-pending-sequential-slot', 'close-isolation', 'same-operation-scope-and-draft-recovery'],
+    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'two-pending-sequential-slot', 'close-isolation', 'declined-requests-stay-closed-and-never-reland'],
+    secondCardArrivedAlreadyConfirming: secondDecline === 'already-confirming',
     mediaSubmissions: 0, boundary: 'Real Electron UI/Agent tools/storage with text loopback. No confirmation execution, generated-history, next-execution-batch or arbitrary pending navigation claim.' }
 }

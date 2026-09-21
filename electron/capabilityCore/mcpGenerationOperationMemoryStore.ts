@@ -70,13 +70,6 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
-    dismiss(projectId, operationId, now) {
-      const current = read(projectId, operationId);
-      if (!current || current.state !== "draft") throw new Error("No unapproved generation request to dismiss");
-      const next = freeze({ ...current, cardHidden: true, planVersion: (current.planVersion ?? 0) + 1, updatedAt: now });
-      operations.set(keyFor(projectId, operationId), next);
-      return next;
-    },
     seal(projectId, operationId, contract, now, multiShot, authorization) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
@@ -103,11 +96,11 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
-    cancel(projectId, operationId, now) {
+    cancel(projectId, operationId, now, reason) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
       if (current.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
-      const next = freeze({ ...current, state: "cancelled" as const, updatedAt: now });
+      const next = freeze({ ...current, state: "cancelled" as const, ...(reason ? { cancelReason: reason } : {}), updatedAt: now });
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },

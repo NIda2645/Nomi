@@ -17,6 +17,7 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     candidate: structuredClone(plan.candidate),
     state: plan.state,
     ...(plan.cardHidden === true ? { cardHidden: true } : {}),
+    ...(plan.cancelReason ? { cancelReason: plan.cancelReason } : {}),
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
     ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
     ...(plan.authorizationEnvelope ? { authorizationEnvelope: structuredClone(plan.authorizationEnvelope) } : {}),
@@ -162,20 +163,6 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
-    async dismiss(projectId, operationId, now) {
-      const revision = owner.readFull(projectId, operationId).revision;
-      const result = await owner.command(projectId, operationId, {
-        commandId: `generation.dismiss:${operationId}:${revision}`,
-        expectedRevision: revision,
-        type: "generation.dismiss",
-        payload: {},
-        issuedAt: now,
-      });
-      const operation = operationFromRun(result.run);
-      if (!operation) throw new Error("Production Run lost its generation plan");
-      notifyPlanChanged(projectId, operationId);
-      return operation;
-    },
     async seal(projectId, operationId, contract: ExecutionContractV1, now, multiShot, authorization) {
       read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
@@ -198,13 +185,13 @@ export function createProductionGenerationOperationStore(
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
-    async cancel(projectId, operationId, now) {
+    async cancel(projectId, operationId, now, reason) {
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.cancel:${operationId}:v${current.planVersion}:${current.state}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.cancel",
-        payload: {},
+        payload: reason ? { reason } : {},
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

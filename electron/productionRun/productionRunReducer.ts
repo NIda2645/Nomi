@@ -28,7 +28,6 @@ import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import {
   applyGenerationCandidatePatch,
   presentGenerationPlan,
-  dismissGenerationPlan,
   policyAdmittingUserRevisedIdentity,
   revokeWaitingGenerationAuthorization,
   unsealedGenerationPlanFields,
@@ -217,9 +216,6 @@ export function applyProductionCommand(
     }
     case "generation.present":
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
-    case "generation.dismiss":
-      return { run: dismissGenerationPlan(current, now), eventType: "generation.plan.updated", message: current.runId };
-
     case "generation.seal": {
       const currentPlan = current.generationPlan;
       if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
@@ -387,8 +383,16 @@ export function applyProductionCommand(
       const currentPlan = current.generationPlan;
       if (!currentPlan) throw new Error("Generation plan not found");
       if (currentPlan.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
+      const declined = command.payload.reason === "declined";
+      // 已封印、门还在等人 → 先把那道门收回（× 从前走的 `dismiss` 做的就是这一步；不收回，
+      // 盘上会留一道永远 `waiting` 的门，挂在一份已经终结的计划上）。
+      const revoked = currentPlan.state === "sealed"
+        ? revokeWaitingGenerationAuthorization(current, currentPlan, now, "Cancel") : undefined;
       return {
-        run: { ...current, generationPlan: { ...currentPlan, state: "cancelled", updatedAt: now }, updatedAt: now },
+        run: { ...current, ...(revoked ?? {}),
+          generationPlan: { ...(revoked ? unsealedGenerationPlanFields(currentPlan, now) : currentPlan),
+            state: "cancelled", ...(declined ? { cancelReason: "declined" as const } : {}), updatedAt: now },
+          updatedAt: now },
         eventType: "generation.plan.cancelled",
         message: currentPlan.operationId,
       };

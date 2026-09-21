@@ -239,6 +239,15 @@ export type ProductionGenerationPlan = {
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
   /**
+   * `cancelled` 是怎么来的。`"declined"` = 用户在报价卡上点了 ×（或打字拒绝）：**他撤回的是这一次请求**。
+   * 这是一个真终态：投影不再出卡、落地不再建占位、同一个 operationId 不再被 present 复活
+   * （要再生成 = 起草一份新的计划）。缺省 = 其它来由的取消（外部宿主撤草稿等），行为逐字不变。
+   *
+   * 2026-09-22 之前 × 走的是 `generation.dismiss`：只置 `cardHidden`、计划仍是 `draft`——
+   * 不是终态，于是落地投影照旧认它，× 删掉的占位节点会被重建（用户看到的是「点了 ×，画布上多出一个节点」）。
+   */
+  cancelReason?: "declined";
+  /**
    * 草稿建好了，但报价卡还没摆到用户面前（Agent lane 的 `draft_shots`：落画布、带单价、不出卡、不花钱）。
    * `generation.present`（`generate` 动词）把它清掉；`projectPendingSpendConfirm` 是唯一读它的投影点。
    * 缺省/旧 Run 没有这个字段 = 卡可见，行为逐字不变。

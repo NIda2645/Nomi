@@ -235,10 +235,3 @@ export function presentGenerationPlan(current: ProductionRun, requested: unknown
       updatedAt: now }, updatedAt: now };
 }
 
-export function dismissGenerationPlan(current: ProductionRun, now: string): ProductionRun {
-  const plan = current.generationPlan;
-  if (!plan || (plan.state !== "draft" && plan.state !== "sealed")) throw new Error("No unapproved generation request to dismiss");
-  const revoked = plan.state === "sealed" ? revokeWaitingGenerationAuthorization(current, plan, now, "Dismiss") : undefined;
-  return { ...current, ...(revoked ?? { planVersion: current.planVersion + 1 }),
-    generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true }, updatedAt: now };
-}

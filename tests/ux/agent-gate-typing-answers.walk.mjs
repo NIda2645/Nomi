@@ -21,7 +21,7 @@
 // Run: pnpm run build && node tests/ux/agent-gate-typing-answers.walk.mjs
 import path from 'node:path'
 
-import { expect } from './_assert.mjs'
+import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
 import { flattenRequestText, FIXTURE_TEXT_MODEL_LABEL } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_INPUT, COMPOSER_SEND, chooseAssistantModel, createRuntimeWalk,
@@ -60,14 +60,14 @@ try {
     await sendCanvas(win, `开始（${item.id}）`)
     await ask.received
     const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="question"]`).first()
-    await card.waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(card, `${item.id}：提问卡出现`).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
     await win.screenshot({ path: path.join(outDir, `zh-${item.id}-card-pending.png`) })
 
     // **像人一样**：不去碰那张卡，直接在下面的 composer 里打字。
     const input = win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`)
     await input.click()
     await win.keyboard.type(item.typed, { delay: 8 })
-    if (item.how === 'button') await win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`).click({ timeout: 10_000 })
+    if (item.how === 'button') await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`), 'composer 上那颗圆钮')
     else await win.keyboard.press(item.how)
 
     await waitForV4TurnIdle(win, {
@@ -78,7 +78,7 @@ try {
     expect(body, `${item.id}：模型必须读到用户打的那句话，而不是什么都没发生`).toContain(item.typed)
     // 面板上那一行：他**回答**了一个问题，不是拒绝了一个动作。
     const receipt = win.locator(`${CANVAS_PANEL} [data-v4-block]`).filter({ hasText: '已回答' }).filter({ hasText: item.typed }).first()
-    await expect(receipt, `${item.id}：答完那一行要读作「已回答 · 原话」`).toBeVisible({ timeout: 15_000 })
+    await expect(receipt, `${item.id}：答完那一行要读作「已回答 · 原话」`).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
     await win.screenshot({ path: path.join(outDir, `zh-${item.id}-after.png`) })
   }
   console.log('gate-typing-answers walk ✅ shots →', outDir)

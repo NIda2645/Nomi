@@ -76,6 +76,24 @@ describe('buildMaterializeShotsPayload', () => {
     expect(payload?.shots[0]).toMatchObject({ shotId: 'cat', kind: 'image', title: '一只可爱的橘色小猫头像' })
   })
 
+  // 2026-09-22 · 用户点了 ×（或打字拒绝）= 撤回这一次请求，真终态。落地**不再为它建任何占位**。
+  // 此前 × 走 dismiss（仍是 draft），这里照旧投影——× 删掉的占位会被落地轮询重建，
+  // 用户看到的是「点了 ×，画布上多出一个节点」（`agent-spend-card.walk.mjs` 自合并 ③ 起红）。
+  it('用户撤回的请求不再落地：单镜、多镜都不建占位', () => {
+    const multi = run([shot('s1'), shot('s2')])
+    multi.generationPlan = { ...multi.generationPlan!, state: 'cancelled', cancelReason: 'declined' }
+    expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+    const single = run([shot('cat')])
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'cancelled', cancelReason: 'declined' }
+    expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+  })
+
+  it('阳性对照：别的来由的 cancelled（没有 declined 章）照旧投影——放行的只有「用户说不」这一格', () => {
+    const cancelled = run([shot('s1')])
+    cancelled.generationPlan = { ...cancelled.generationPlan!, state: 'cancelled' }
+    expect(buildMaterializeShotsPayload(cancelled, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
+  })
+
   it('单镜默认 job 没有 shot metadata 时仍把已物化结果带回同一个占位', () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-s5-single-landing-'))
     const rel = '.nomi/runs/run-1/single.png'

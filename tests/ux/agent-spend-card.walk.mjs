@@ -180,33 +180,64 @@ try {
   expect(walk.fixture.images,'冷启动不提交媒体').toHaveLength(0)
   expect(walk.fixture.requests,'冷启动不重新请求模型').toHaveLength(requestsBeforeCold)
   await walk.snap('spend-card-cold-closed-no-resurrection')
-  const reopen = walk.fixture.expectText({label:'reopen the same generation operation',
+  // ── × 是真终态（2026-09-22 裁决 D）：被撤回的请求**不复活**；要再生成 = 起草一份新的 ─────────
+  //
+  // 这一段原来钉的是相反的事：「对同一个 operationId 再 generate，卡带着他没提交的手改原样回来」。
+  // 那正是 × 不是终态的另一半后果——同一份计划既「被用户撤回了」又「随时能被模型叫回来」，
+  // 而落地投影因此照旧认它，× 删掉的占位节点会被重建（这条走查自合并 ③ 起红的就是那一步）。
+  // 现在：模型对旧 id 叫 generate → 读到一句可行动的话（「用户撤回了，要再生成请重新起草」）→
+  // 它重新起草 → 一张**新的**卡。旧卡不回来，旧占位不复活。
+  const REOPEN_GENERATE = 'spend-reopen'
+  const REDRAFT_CALL = 'spend-redraft'
+  const REDRAFT_GENERATE = 'spend-redraft-generate'
+  const REDRAFT_PROMPT = '一个悬浮的六棱柱，换成清晨的侧光'
+  const reopen = walk.fixture.expectText({label:'the model tries the withdrawn operation again',
     match:body=>flattenRequestText(body).includes('S_SPEND_REOPEN'),
-    reply:{type:'tool',id:'spend-reopen',name:'generate',args:{operationId}}})
-  const reopened = walk.fixture.expectText({label:'same operation reopening completes',
-    match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id==='spend-reopen'),
-    reply:{type:'text',text:'S_SPEND_REOPEN_DONE：请确认保留的草稿。'}})
-  await sendCanvas(win, 'S_SPEND_REOPEN：重新打开刚才同一笔生成的确认卡，不新建。')
-  await recorded(reopen.received, 'same operation generate request')
-  await recorded(reopened.received, 'same operation reopened')
+    reply:{type:'tool',id:REOPEN_GENERATE,name:'generate',args:{operationId}}})
+  const refused = walk.fixture.expectText({label:'it reads why that request is closed, and drafts a fresh one',
+    match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id===REOPEN_GENERATE),
+    reply:{type:'tool',id:REDRAFT_CALL,name:'draft_shots',args:{
+      shots:[{ prompt: REDRAFT_PROMPT, taskKind:'text_to_image', candidate:{ providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters:{ size:'1024x1024' } }] }}})
+  let redraftedOperationId
+  const redrafted = walk.fixture.expectText({label:'the fresh draft comes back with a NEW operationId',
+    match:body=>{
+      const result=(body.messages??[]).find(message=>message.role==='tool' && message.tool_call_id===REDRAFT_CALL)
+      if(!result) return false
+      redraftedOperationId=/"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+      return true
+    },
+    reply:{type:'hold'}})
+  const redraftDone = walk.fixture.expectText({label:'the fresh request reaches its own card',
+    match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id===REDRAFT_GENERATE),
+    reply:{type:'text',text:'S_SPEND_REOPEN_DONE：重新起草好了，等你确认。'}})
+  await sendCanvas(win, 'S_SPEND_REOPEN：还是生成吧。')
+  await recorded(reopen.received, 'generate on the withdrawn operation')
+  const refusal = flattenRequestText((await recorded(refused.received, 'the refusal reaches the model')).body)
+  expect(refusal, '模型必须读到「这次请求被用户撤回了、要重新起草」，而不是一个裸码').toContain('declined this generation request')
+  await recorded(redrafted.received, 'fresh draft result')
+  expect(redraftedOperationId, '重新起草 = 一个新的 operationId，不是把旧的叫回来').not.toBe(operationId)
+  redrafted.release({type:'tool',id:REDRAFT_GENERATE,name:'generate',args:{operationId:redraftedOperationId}})
+  await recorded(redraftDone.received, 'fresh card presented')
   await expect(card).toBeVisible()
-  await expect(input).toHaveText(draftPrompt)
-  await expect(sizeChip).toContainText('1536x1024')
-  expect((await nodesAfterRestart()).find(entry => entry.id === node.id)).toEqual(restoredShot)
-  expect(walk.fixture.images, '重新展示未批准卡不提交').toHaveLength(0)
-  await walk.snap('spend-card-zh-reopened-draft')
+  await expect(card, '新卡上是新起草的那一镜，不是被撤回的那一份').toContainText('清晨的侧光')
+  expect(walk.fixture.images, '重新起草、出卡都不提交').toHaveLength(0)
+  await walk.snap('spend-card-zh-redrafted-after-decline')
   // Locale preference only, no project/store mutation. Reload is an explicit renderer-remount case.
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1','en'))
   await win.reload()
   await expect(card).toBeVisible()
-  await expect(input).toHaveText(draftPrompt)
-  await expect(card.locator('[data-parameter-chip]').filter({hasText:'1536x1024'}).first()).toBeVisible()
-  await walk.snap('spend-card-en-reopened-draft')
-  expect((await nodesAfterRestart()).find(entry => entry.id === node.id)).toEqual(restoredShot)
+  await expect(card, 'the pending card survives a renderer remount').toContainText('清晨的侧光')
+  await walk.snap('spend-card-en-redrafted-after-decline')
+  // 这张新卡也用 × 收掉（像人一样点）：它没有未提交的手改，所以不该再出那句「改的内容会一起丢」。
+  // 顺带把「× 是终态」在**第二个** operation 上再证一遍，并让后面的范围旅程从一块干净的介入槽开始。
+  await clickOrFail(card.locator(INTERVENTION_REJECT), 'decline the redrafted request')
+  const confirmNote = card.locator('[data-v4-control="reject-confirm-note"]')
+  if (await confirmNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), 'confirm declining the redrafted request')
+  await expectAbsent(card, { provenBy: cardProof, message: 'the redrafted card leaves the slot once declined' })
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
     'discard-removes-only-this-operations-own-shots','discard-is-one-undo-step','user-built-node-survives-discard',
-    'cold-process-reopen-no-old-card','same-operation-reopens-draft','zh-en-renderer-remount']
+    'cold-process-reopen-no-old-card','declined-operation-stays-closed-and-redraft-gets-a-new-card','zh-en-renderer-remount']
   await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error

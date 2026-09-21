@@ -15,6 +15,7 @@
 // 模式/时长不缩不降、只有档案枚举能进 ⋯）。所以这里**不**断言「永远零越界」——那会逼人
 // 去改用户拍过板的规则。断言的是：**一旦还有越界，行尾 ⋯ 必须已经在场**，即让位机制已经
 // 走到它的下限，剩下的是几何缺口而不是漏掉的一步；缺口多少像素照实记进 report。
+import { stationTimeout } from './_station-budget.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -166,7 +167,7 @@ async function measureRow(label) {
  */
 async function setSidebar(state) {
   await win.locator('[data-creation-resource-tree-toggle]:visible').first()
-    .waitFor({ state: 'visible', timeout: 15_000 })
+    .waitFor({ state: 'visible', timeout: stationTimeout() })
   const toggle = win.locator(`[data-creation-resource-tree-toggle="${state}"]:visible`)
   if (await toggle.isVisible().catch(() => false)) await toggle.click()
   await win.waitForTimeout(500)
@@ -197,7 +198,7 @@ async function openEditor(locale) {
   // 侧栏点一行方案通常直接就进编辑器；某些态下还要再点一次「打开分镜 / 再次编辑」。
   // 两条路都要能走通：先给编辑器一段真实的渲染时间（问得太早会把「还没画出来」当成「这条路不通」），
   // 真等不到才去找那颗按钮——**两条都不通就报红**，不静默跳过。
-  const appeared = await editor().waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false)
+  const appeared = await editor().waitFor({ state: 'visible', timeout: stationTimeout() }).then(() => true).catch(() => false)
   if (!appeared) {
     await clickOrFail(win.getByRole('button', { name: /打开分镜|再次编辑|Open storyboard|Edit again/ }).first(), '打开分镜页')
   }

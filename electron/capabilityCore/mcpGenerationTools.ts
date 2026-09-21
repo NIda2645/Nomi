@@ -116,6 +116,8 @@ export type GenerationOperation = Readonly<{
   state: GenerationOperationState;
   /** 草稿建好但报价卡还没摆到用户面前（见 `ProductionGenerationPlan.cardHidden`）。 */
   cardHidden?: boolean;
+  /** 见 `ProductionGenerationPlan.cancelReason`。 */
+  cancelReason?: "declined";
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;
   /** P4 S4: multi-shot entries (anchors + video shots). Absent = single-shot (today's flat path). */
@@ -141,11 +143,14 @@ export type GenerationOperationStore = {
   patch(projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string, shotId?: string, target?: GenerationInvocationContext['storyboardTarget']): GenerationOperation | Promise<GenerationOperation>;
   /** `generate` 动词：清掉 `cardHidden`，报价卡从这一刻起可投影。只对 draft 合法。 */
   present(projectId: string, operationId: string, now: string, shotIds?: readonly string[], target?: GenerationInvocationContext['storyboardTarget']): GenerationOperation | Promise<GenerationOperation>;
-  dismiss(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   // P4 S6.5: `multiShot` seals per-shot sub-contracts + planHash (reducer freezes the whole batch). Absent
   // → single-shot seal of the one top-level contract (byte-identical to today).
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string, multiShot?: GenerationSealMultiShot, authorization?: GenerationAuthorizationPreparation): GenerationOperation | Promise<GenerationOperation>;
-  cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  /**
+   * 终结一份还没提交的计划。`reason: "declined"` = 用户在报价卡上点了 ×（或打字拒绝）：真终态，
+   * 投影不出卡、落地不建占位、同一个 operationId 不再被 present 复活。
+   */
+  cancel(projectId: string, operationId: string, now: string, reason?: "declined"): GenerationOperation | Promise<GenerationOperation>;
   /** P4 S4 试拍首镜: invalidate the waiting authority and return a narrowed plan to draft for re-seal. */
   trialNarrow?(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   /**
@@ -582,6 +587,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
       // The durable owner validates lifecycle and preserves prior execution evidence.
       const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], params.shotIds);
+      if (current.state === "cancelled" && current.cancelReason === "declined") {
+        refuseToModel(GENERATION_ARGUMENT_REFUSAL, "The user declined this generation request, so it is closed for good. If he asks again, draft the shots again with draft_shots and call generate on the new draft.");
+      }
       const operation = await deps.operations.present(input.lease.projectId, operationId, now(), scope, input.storyboardTarget);
       const shots = operation.shots && operation.shots.length > 0
         ? operation.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)
