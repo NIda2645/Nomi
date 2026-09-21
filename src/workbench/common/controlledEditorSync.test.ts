@@ -108,7 +108,7 @@ describe('controlled editor sync (2026-09-21 fast typing drops keys)', () => {
     const sync = createControlledEditorSync('a')
     sync.emit('ab')
     sync.reset('xyz')
-    expect(sync.current()).toBe('xyz')
+    expect(sync.receive('xyz')).toBe(false) // 新基线就是编辑器当前文档
     expect(sync.receive('ab')).toBe(true)
   })
 })

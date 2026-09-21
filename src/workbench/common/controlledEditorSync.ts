@@ -32,8 +32,6 @@
  * 纯函数、无 React，两个编辑器内核（`PromptEditor`、`useNomiRichTextEditor`）共用这一份。
  */
 export type ControlledEditorSync = {
-  /** 编辑器文档此刻对应的序列化值。 */
-  readonly current: () => string
   /** 编辑器自己产出了新一版：返回 true 表示要向 owner 回写（内容没变的事务不回写）。 */
   emit: (next: string) => boolean
   /** owner 的值到了：返回 true 表示这是外部改写，调用方要把它写进编辑器。 */
@@ -47,7 +45,6 @@ export function createControlledEditorSync(initial: string): ControlledEditorSyn
   let acknowledged = initial
   let pending: string[] = []
   return {
-    current: () => current,
     emit(next) {
       if (next === current) return false
       current = next
