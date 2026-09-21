@@ -7,7 +7,7 @@
 //
 // 判定必须同时看**连线**与**上传**两个来源：用户连了一个图片节点进来，伴随要求就该算满足，
 // 只读 meta（hasArchetypeArrayReferences 的口径）会把连线来的图当不存在 → 误拦。
-import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../../../electron/shared/modelArchetypes'
 import { currentArchetypeMode, readArchetypeArray, referenceSlotStorage } from './archetypeMeta'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 

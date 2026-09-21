@@ -5,15 +5,17 @@
 // 槽 / candidate 带不带角色参考 / 时长估计。全是纯函数（吃 candidate + 候选快照，零副作用、零 provider 调用），
 // preview/gate/多镜密封都靠它当单一真相源。mcpGenerationTools.ts 与 mcpGenerationMultiShot.ts 单向 import。
 
-import type { PlanCandidate } from "./executionContract";
+import { ContractCompilationError, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
+import type { ResolvedModule } from "./moduleRegistry";
+import { archetypeCompileOptions, catalogRowFor, parameterFieldForControl } from "./modelAdmissionSchema";
 import type {
   VideoGenerationRecommendationInput,
   VideoModelCandidate,
 } from "../shared/videoCapabilities/recommendation";
-import { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration } from "../shared/videoCapabilities/recommendation";
+import { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration, videoVariantIdsOf } from "../shared/videoCapabilities/recommendation";
 import { modeTransportFor } from "../shared/videoCapabilities/modeTransport";
-import type { ArchetypeMode, ModelParameterControl } from "../shared/videoCapabilities/types";
+import type { ArchetypeMode } from "../shared/videoCapabilities/types";
 
 // Keep mode/task comparisons tolerant of the wire's kebab/snake aliases.  This
 // local normalizer is intentionally dependency-free so candidate resolution
@@ -24,6 +26,11 @@ const normalizedMode = (value: unknown): string =>
 const CAMERA_INTENTS = new Set<NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>>([
   "locked", "pan", "tilt", "dolly", "orbit", "handheld", "path",
 ]);
+
+// 本文件是 `GENERATION_PLANNING_HINT_KEYS` 的唯一消费者：那张表列的就是下面
+// `videoRecommendationInput` 从 `candidate.parameters` 里读走、且绝不上 wire 的那几个键。
+// 两边的耦合由 `parameterAdmission.class.test.ts` **按行为**核（逐个键喂进去、看它有没有被读走），
+// 不靠一个把常量再导出一遍的别名——那种断言比较的是它自己，永远绿。
 
 export function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationRecommendationInput | null {
   if (candidate.references.some((reference) => !reference.kind)) return null;
@@ -139,7 +146,16 @@ export function videoCandidateForPlan(candidate: PlanCandidate, candidates: read
     || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId));
   const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
   const requestedCanonical = canonicalVideoVariantId(source.archetype, requested);
-  if (requested && !requestedCanonical) throw new Error(`Unknown video variant: ${candidate.variantId}`);
+  if (requested && !requestedCanonical) {
+    // 旧实现只说「Unknown video variant: X」——模型读完仍然不知道该填什么，于是下一轮换个名字再猜。
+    // 拒绝必须自带出路（合法变体清单），与参数值层同一条纪律（`ParameterRejection`）。
+    const allowedVariantIds = videoVariantIdsOf(source.archetype);
+    throw new ContractCompilationError(
+      `变体 ${requested} 不属于 ${candidate.providerId}/${candidate.modelId}。`
+      + `该模型的变体：${allowedVariantIds.length ? allowedVariantIds.join("、") : "（这个模型没有变体，请不要传 variantId）"}。`,
+      { code: "unknown_variant", path: "variantId", allowedVariantIds },
+    );
+  }
   const variantId = requestedCanonical ?? inferredVariant?.id ?? source.variantId ?? source.archetype.defaultVariantId;
   const baseModelId = source.archetype.catalogModelKey?.trim() || source.modelKey;
   return {
@@ -164,7 +180,10 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
     const mode = modes.find((item) => normalizedMode(item.id) === normalizedMode(requestedModeId));
     if (!mode) throw new Error(`Unknown video mode: ${candidate.modeId}`);
     const requestedTransport = normalizedTaskKind(candidate.mode);
-    if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== normalizedTaskKind(mode.transportTaskKind)) {
+    // 传输键只许经 owner 算（`modeTransport.ts` 自己写着 "Callers **must** route through this helper"）。
+    // 手写 `mode.transportTaskKind` 会漏掉 vendor 特化那一轴，于是**按 owner 算出传输键的调用方反而被拒**。
+    const modeTransport = normalizedTaskKind(modeTransportFor(mode, videoCandidate.archetype, videoCandidate.provider));
+    if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== modeTransport) {
       throw new Error(`Video mode ${candidate.modeId} does not match transport task ${candidate.mode}`);
     }
     return mode;
@@ -200,31 +219,6 @@ export function videoTransportModelIdForPlan(candidate: PlanCandidate, videoCand
   return variant?.modelKey?.trim() || mode.modelEnum?.trim() || videoCandidate.modelKey;
 }
 
-function parameterFieldForControl(control: ModelParameterControl): ParameterField {
-  if (control.type === "select") {
-    const optionValues = control.options.map((option) => option.value);
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "string")) return { type: "enum", enum: optionValues };
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "number" && Number.isFinite(value))) {
-      return { type: "number", enum: optionValues };
-    }
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "boolean")) {
-      return { type: "boolean", enum: optionValues };
-    }
-    return { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
-  }
-  if (control.type === "number") return { type: "number" };
-  if (control.type === "boolean") return { type: "boolean" };
-  return { type: "string" };
-}
-
-export function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
-  if (!candidates) return undefined;
-  const selected = videoCandidateForPlan(candidate, candidates);
-  if (!selected) return undefined;
-  const mode = videoModeForPlan(selected.candidate, selected.videoCandidate);
-  return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
-}
-
 export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
   const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
   if (!selected) return candidate;
@@ -239,5 +233,66 @@ export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: re
       ?? selected.candidate.mode,
     modeId: mode.id,
     transportModelId,
+  };
+}
+
+/**
+ * 编译执行契约时该带的那两样：这个模型此刻的参数表，以及它声明过的变体清单。
+ * 三个编译点（单镜 preview / 单镜 gate_request / 多镜 seal）共用这一处，
+ * 免得「preview 核了变体、gate 没核」这种两道闸不一致。
+ */
+export function videoCompileOptions(
+  candidate: PlanCandidate,
+  candidates: readonly VideoModelCandidate[] | undefined,
+): ExecutionContractCompileOptions {
+  // 一次解析出这个候选对应的视频档案，参数表与变体清单都从它来。
+  // 认不出（image/audio/3D、或尚未接入的视频模型）→ 交给通用档案判据，它对全部 kind 成立。
+  // 2026-09-22 之前这里直接 `return {}`，于是 95% 的模型落进准入层的「没有声明就放行」分支。
+  const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
+  if (!selected) return archetypeCompileOptions(candidate, catalogRowFor(candidate.providerId, candidate.modelId));
+  return {
+    parameterSchema: Object.fromEntries(
+      videoModeForPlan(selected.candidate, selected.videoCandidate).params
+        .map((control) => [control.key, parameterFieldForControl(control)]),
+    ),
+    allowedVariantIds: videoVariantIdsOf(selected.videoCandidate.archetype),
+  };
+}
+
+/**
+ * 去掉候选身上这个模型不接受的参数，返回**新候选**与被清掉的键。
+ *
+ * 不原地改：候选常常来自冻结的持久化对象（preview 读的就是），就地写会当场 TypeError；
+ * 而且「读一份、得一份」比「读一份、它变了」好推理。
+ *
+ * 用在两处、都不是拒绝：换模型那一刻的残留清理，以及 preview 读到的**存量**残留。
+ * 调用方这一次点名的参数不走这里——那一档在 plan 里当场判、错了就拒。
+ */
+export function stripParametersNotAccepted(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  candidates: readonly VideoModelCandidate[] | undefined,
+): { candidate: PlanCandidate; cleared: string[] } {
+  // 「哪些键合法」读的就是准入层那一份（档案投影优先，否则 registry 的那份）——
+  // 清理与校验不许各答一次。解析不出来 → 什么都不清，交给准入层报它自己的错。
+  let accepted: Record<string, ParameterField>;
+  try {
+    accepted = videoCompileOptions(candidate, candidates).parameterSchema
+      ?? registry.resolve({
+        moduleId: candidate.moduleId, providerId: candidate.providerId,
+        modelId: candidate.modelId, mode: candidate.mode,
+      }).parameterSchema;
+  } catch {
+    return { candidate, cleared: [] };
+  }
+  if (Object.keys(accepted).length === 0) return { candidate, cleared: [] };
+  const cleared = Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
+  if (cleared.length === 0) return { candidate, cleared };
+  return {
+    candidate: {
+      ...candidate,
+      parameters: Object.fromEntries(Object.entries(candidate.parameters).filter(([key]) => !cleared.includes(key))),
+    },
+    cleared,
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { archetypeForNode, isTextPromptEdge, referenceAssetKindForNode, validateReferenceEdge, partitionConnectableEdges, resolveTargetModeForEdge } from './referenceEdgeCapability'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { GENERATION_NODE_KINDS, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 
@@ -200,7 +200,7 @@ describe('resolveTargetModeForEdge — 连线后目标自动切到能消费这�
 })
 
 import { findVideoRefMode, resolveModeForConnectedReferences } from './referenceEdgeCapability'
-import { getArchetypeById } from '../../../config/modelArchetypes'
+import { getArchetypeById } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasEdge } from '../model/generationCanvasTypes'
 
 describe('resolveModeForConnectedReferences — 按活边对账「生成方式」(提交/换模型兜底)', () => {

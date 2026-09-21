@@ -37,7 +37,6 @@ function contract(overrides: Partial<ExecutionContractV1> = {}): ExecutionContra
     references: [],
     contractHash: "hash",
     warnings: [],
-    droppedFields: [],
     ...overrides,
   };
 }

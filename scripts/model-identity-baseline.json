@@ -1,8 +1,8 @@
 {
   "entries": [
-    "src/config/modelArchetypes/customCapabilityContract.ts:meta,modelAlias,modelKey",
-    "src/config/modelArchetypes/customCapabilityContract.ts:modelAlias,modelKey",
-    "src/config/modelArchetypes/types.ts:id,identifierPatterns,label,modelKey",
+    "electron/shared/modelArchetypes/customCapabilityContract.ts:meta,modelAlias,modelKey",
+    "electron/shared/modelArchetypes/customCapabilityContract.ts:modelAlias,modelKey",
+    "electron/shared/modelArchetypes/types.ts:id,identifierPatterns,label,modelKey",
     "src/workbench/ai/assistantModelIdentity.ts:modelKey",
     "src/workbench/api/taskApi.ts:modelKey,revisionId,taskKind",
     "src/workbench/api/taskApi.ts:modelKey,revisionId,taskKind",

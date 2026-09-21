@@ -9,9 +9,8 @@
 
 import crypto from "node:crypto";
 
-import { compileExecutionContract, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
+import { compileExecutionContract, type ExecutionContractCompileOptions, type ExecutionContractV1, type PlanCandidate } from "./executionContract";
 import type { ModuleRegistry } from "./moduleRegistry";
-import type { ParameterField } from "./moduleManifest";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { SINGLE_SHOT_GENERATION_MODULE_ID } from "../shared/generationModuleId";
 import { generationShotEnvelopeOf, type GenerationShotEnvelope } from "../shared/generationShotEnvelope";
@@ -228,7 +227,8 @@ export type MultiShotHelperDeps = {
   }) => StoryboardPlanResult | Promise<StoryboardPlanResult>;
   parsers: MultiShotCandidateParsers;
   normalizeVideoCandidate: (candidate: PlanCandidate) => PlanCandidate;
-  videoParameterSchema: (candidate: PlanCandidate) => Record<string, ParameterField> | undefined;
+  /** 编译执行契约要带的参数表 + 变体清单（与单镜两个编译点同一个 seam，见 videoCompileOptions）。 */
+  videoCompileOptions: (candidate: PlanCandidate) => ExecutionContractCompileOptions;
   priceForCandidate: (candidate: PlanCandidate) => ShotPrice;
   effectiveVideoModes: (candidate: VideoModelCandidate) => Array<{ id?: string; transportTaskKind?: string }>;
   /**
@@ -398,7 +398,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
       const included = shot.included !== false;
       if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
-      const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
+      const contract = compileExecutionContract(normalized, deps.registry, deps.videoCompileOptions(normalized));
       return {
         ...generationShotEnvelopeOf(shot),
         candidate: { ...normalized, sealedContractHash: contract.contractHash },

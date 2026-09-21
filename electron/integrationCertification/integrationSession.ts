@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { capabilityCoreDir, type CapabilityOriginHost } from "../capabilityCore/security";
 import { writeCertificationJsonAtomic } from "./certificationPersistence";
@@ -20,6 +19,7 @@ import {
   createIntegrationSessionReaper,
   integrationCertifyingDeadlineAt,
   isTerminalIntegrationStage,
+  persistWatchdogTerminalWrite,
 } from "./integrationSessionTerminal";
 import type { TerminalReaper } from "../providerAdapter/terminalGuarantee";
 import { adapterDraftFromProposal, compileRequestFor } from "./integrationAdapterContract";
@@ -42,9 +42,11 @@ import {
 } from "./integrationProposalValidation";
 import {
   adapterTerminalReasonCode,
+  assertIntegrationSessionCapacity,
   integrationStageFromAdapterRun,
+  persistIntegrationSessionState,
+  readIntegrationSessionState,
   safeCertificationFailureCode,
-  validateState,
 } from "./integrationSessionRecord";
 import {
   assertRecord,
@@ -599,20 +601,13 @@ export class IntegrationSessionService {
     session.revision += 1;
     session.updatedAt = (this.deps.now || (() => new Date().toISOString()))();
     this.state.revision += 1;
-    this.persist();
+    persistWatchdogTerminalWrite(() => this.persist());
   }
   private read(): PersistedState {
-    if (!fs.existsSync(this.filePath)) return { version: 1, revision: 0, sessions: [] };
-    let raw: unknown;
-    try {
-      raw = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-    } catch {
-      throw new Error("Integration session storage is corrupt");
-    }
-    return validateState(raw);
+    return readIntegrationSessionState(this.filePath, (state) => this.save(this.filePath, state));
   }
   private persist(): void {
-    this.save(this.filePath, this.state);
+    persistIntegrationSessionState(this.state, (state) => this.save(this.filePath, state));
   }
   /**
    * A submitted ComfyUI prompt is never safe to create again. When a durable
@@ -923,6 +918,8 @@ export class IntegrationSessionService {
     } else if (input.kind === "http-api-provider") {
       session.stage = "needs_credential";
     }
+    // 容量闸：persist 会挤掉最旧的终态会话，但**挤不动非终态**；全是没做完的活时只能当场拒绝。
+    assertIntegrationSessionCapacity(this.state.sessions, session);
     this.state.sessions.push(session);
     this.state.revision += 1;
     this.persist();

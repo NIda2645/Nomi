@@ -44,7 +44,7 @@ function helpers(overrides: Partial<Parameters<typeof createMultiShotCreateHelpe
     registry,
     parsers,
     normalizeVideoCandidate: (candidate) => candidate,
-    videoParameterSchema: () => undefined,
+    videoCompileOptions: () => ({}),
     priceForCandidate: () => ({ known: true, amount: 0.3 } as never),
     effectiveVideoModes: () => [],
     ...overrides,

@@ -49,6 +49,11 @@ export const INTEGRATION_ERROR_CODES = [
   "integration_stage_not_allowed",
   /** 这个 action 的必填字段没给全——**一次列全**，不逐个抛（实测 22 次失败里 9 次栽在逐个抛上）。 */
   "integration_required_fields_missing",
+  /**
+   * 这台机器上**没做完**的接入会话已经占满容量上限，再建一条就得挤掉其中一条在做的活。
+   * 终态会话会被写侧自动挤掉，所以这个码只在「全是进行中」时出现：出路是取消一条，不是删文件。
+   */
+  "integration_session_limit_reached",
 ] as const;
 
 export type IntegrationErrorCode = typeof INTEGRATION_ERROR_CODES[number];

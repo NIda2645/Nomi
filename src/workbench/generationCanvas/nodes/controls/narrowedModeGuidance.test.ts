@@ -7,7 +7,7 @@ import {
   resolveNarrowedModeGuidance,
   type ModeGuidanceCandidate,
 } from './narrowedModeGuidance'
-import type { ArchetypeMode, ModelArchetype } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode, ModelArchetype } from '../../../../../electron/shared/modelArchetypes'
 import type { ModelOption } from '../../../../config/models'
 import type { ModeChannelBody } from './channelModeReach'
 

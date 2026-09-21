@@ -24,7 +24,7 @@ import type { ModelParameterControl } from "../videoCapabilities/types";
  * 依赖方向（分层纪律 R26）：**catalog 可以 import shared；shared 永远不 import catalog；
  * src/ 只可以 import `electron/shared/`（`.dependency-cruiser.mjs` 的 `src-no-import-electron`
  * 规则显式 `pathNot: '^electron/shared/'` 开了这个口子）。**
- * 图像档案住 `src/config/modelArchetypes/`、传输归一器住 `electron/catalog/`——两侧唯一
+ * 图像档案住 `electron/shared/modelArchetypes/`、传输归一器住 `electron/catalog/`——两侧唯一
  * 都够得着的中立地就是 `electron/shared/`，故这张表住这里。两个消费者：
  *   1. 能力面：各图像档案的 `mode.vendorParams["runway"]` 由 `runwayImageRatioControl()` 等
  *      **构建**（不重打一遍字面量），UI 只给得出合法值；
