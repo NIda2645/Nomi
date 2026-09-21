@@ -83,7 +83,7 @@ UI 面压根不传 `vendor/modelKey`（`src/workbench/generationCanvas/store/can
 4. 两面模型清单字节数改前/改后各量一次；`tools/list` 总字节不增。
 5. 真实模型数字（R13.3）：工具写对率 / 回合成功率改前 vs 改后，只到「计划/预览」为止，不下单。
 
-## 5. 先查别人（R5⑤：外部也读写的契约）
+## 先查别人（第 5 节 · R5⑤：外部也读写的契约）
 
 **这条契约外部宿主也读写**（Claude Code / Codex 当 MCP 宿主时按它写参数），按 R5.5 三列表登记。
 
