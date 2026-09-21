@@ -225,12 +225,10 @@ try {
   await expect(card, '新卡上是新起草的那一镜，不是被撤回的那一份').toContainText('清晨的侧光')
   expect(walk.fixture.images, '重新起草、出卡都不提交').toHaveLength(0)
   await walk.snap('spend-card-zh-redrafted-after-decline')
-  // Locale preference only, no project/store mutation. Reload is an explicit renderer-remount case.
-  await win.evaluate(() => localStorage.setItem('nomi:locale:v1','en'))
-  await win.reload()
-  await expect(card).toBeVisible()
-  await expect(card, 'the pending card survives a renderer remount').toContainText('清晨的侧光')
-  await walk.snap('spend-card-en-redrafted-after-decline')
+  // （这里原来有一段「切 EN → win.reload() → 卡还在」。2026-09-22 裁决 A 之后它不再成立，而且不该成立：
+  //  等这张卡的那个回合住在这扇窗的 lane 里，渲染层重挂 = 那条 lane 关了 = 出价收回（卡不留成没人等的孤儿）。
+  //  EN 轨的长相由 priced-card / unknown-price 两条走查钉；「窗没了 → 出价收回、计划留着」由
+  //  `agent-spend-waiting-owner.walk.mjs` 钉。）
   // 这张新卡也用 × 收掉（像人一样点）：它没有未提交的手改，所以不该再出那句「改的内容会一起丢」。
   // 顺带把「× 是终态」在**第二个** operation 上再证一遍，并让后面的范围旅程从一块干净的介入槽开始。
   await clickOrFail(card.locator(INTERVENTION_REJECT), 'decline the redrafted request')
@@ -241,7 +239,7 @@ try {
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
     'discard-removes-only-this-operations-own-shots','discard-is-one-undo-step','user-built-node-survives-discard',
-    'cold-process-reopen-no-old-card','declined-operation-stays-closed-and-redraft-gets-a-new-card','zh-en-renderer-remount']
+    'cold-process-reopen-no-old-card','declined-operation-stays-closed-and-redraft-gets-a-new-card']
   await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error

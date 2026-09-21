@@ -3,7 +3,7 @@
 import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, INTERVENTION_REJECT,
-  createRuntimeWalk, hasToolResult, newConversation, openCanvas, permissionTier, readProject, recorded, sendCanvas,
+  createRuntimeWalk, hasToolResult, openCanvas, permissionTier, readProject, recorded, sendCanvas,
   waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
@@ -121,17 +121,14 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(walk.fixture.images).toHaveLength(0)
   await walk.snap('cj1-three-of-33-pager-and-two-edit-layers')
 
-  // 第二笔必须来自**另一条对话**：第一条对话的回合此刻正挂在那张卡上等用户，在它里面再打一句话
-  // 就是对那张卡的回答（裁决 E：出价收回）。真人要同时攒两笔待决，也只能是开一条新对话。
-  await newConversation(win, CANVAS_PANEL)
-  const otherOperationId = await draft([makeShot(99)])
-  const otherShots = (await readRun(otherOperationId)).generationPlan.shots
-  const secondTurn = await present(otherOperationId, otherShots.map(shot => shot.shotId))
-  await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([operationId, otherOperationId])
-  await expect(input).toHaveText(editedPrompt)
-  await expect.poll(async () => (await graph()).nodes.length).toBe(initialGraph.nodes.length + 1)
-  const bothGraph = await graph()
-  await walk.snap('cj1-two-real-pending-first-stays-visible')
+  // ── 「两笔同时待决」这一段 2026-09-22 起不再存在，而且不该存在 ──
+  //
+  // 这里原来趁第一张卡还挂着，再起草、再出第二笔，钉「介入槽依序显示两笔」。裁决 A/E 之后这条路走不到：
+  // 第一笔的回合正挂在那张卡上等用户——在同一条对话里再打一句话，就是对那张卡的回答（出价收回）；
+  // 开一条新对话，则是原来那条 lane 关了（出价同样收回，卡不留成没人等的孤儿）。我两种都实跑过。
+  // Agent 出的付费卡现在**天然是串行的**：答完这一张，才会有下一张。所以下面改成先答第一笔、再出第二笔，
+  // 守的仍是原来那几件事——× 只撤卡上那三镜的占位、第二笔有它自己的草稿（不串第一笔的手改）、× 过的不复活。
+  const beforeDeclineGraph = await graph()
   // ── × = 撤回这一次请求，真终态（2026-09-21 用户拍板「× = 撤销这次草稿」；2026-09-22 裁决 D 落成终态）──
   //
   // 这一段原来钉的是相反的事：两笔都 × 掉之后，对**同一个** operationId 再 generate，逐镜手改原样回来
@@ -149,17 +146,26 @@ export async function checkSpendScopeJourney(walk, win) {
     if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
     return 'clicked-reject'
   }
-  await decline('关闭第一笔，原介入槽依序显示第二笔')
-  // × 把结论递回第一条对话里正在等的那个回合：成功形状的「用户没同意」，不是错误。
+  const firstProof = await proveProbe(card, 'the first priced card is really on screen before it is closed')
+  await decline('关闭第一笔')
+  await expectAbsent(card, { provenBy: firstProof, message: '第一笔关掉之后槽里不再留着它' })
+  // × 把结论递回正在等的那个回合：成功形状的「用户没同意」，不是错误。
   expect(await firstTurn.settled(), '第一笔的回合读到的是「他关了这张卡」').toContain('closed the priced card without approving')
-  await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([otherOperationId])
-  await expect(input).toHaveText('CJ1_shot_99 原始画面')
-  await expect(size).toHaveAttribute('data-parameter-chip-value', '1024x1024')
+  await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
+  expect(await pending(), '第一笔关掉之后没有任何待决').toEqual([])
   // × 只撤**卡上摆出来的那三镜**自己造的占位；没摆出来的 30 镜、第二笔的节点、分镜表一个都不动。
+  const bothGraph = beforeDeclineGraph
   const requestedNodeIds = new Set(bothGraph.nodes.filter(node => node.meta?.productionRunId === operationId && requestedIds.includes(node.meta?.productionShotId)).map(node => node.id))
   expect(requestedNodeIds.size, '探针：卡上那三镜各有一个占位节点').toBe(3)
   await expect.poll(async () => (await graph()).nodes.map(node => node.id).sort())
     .toEqual(bothGraph.nodes.filter(node => !requestedNodeIds.has(node.id)).map(node => node.id).sort())
+  // 第二笔：答完第一笔之后才起草、才出卡。它有自己的草稿——第一笔卡上那句手改、那个改过的尺寸一个都不串过来。
+  const otherOperationId = await draft([makeShot(99)])
+  const otherShots = (await readRun(otherOperationId)).generationPlan.shots
+  const secondTurn = await present(otherOperationId, otherShots.map(shot => shot.shotId))
+  await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([otherOperationId])
+  await expect(input).toHaveText('CJ1_shot_99 原始画面')
+  await expect(size).toHaveAttribute('data-parameter-chip-value', '1024x1024')
   const afterFirstDecline = (await graph()).nodes.map(node => node.id).sort()
   await walk.snap('cj1-second-operation-has-own-draft')
   const proof = await proveProbe(card, 'Second pending really appears before dismissal')
@@ -182,8 +188,8 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(walk.fixture.images).toHaveLength(0)
   await walk.snap('cj1-declined-requests-stay-closed')
   walk.report.spendScopeJourney = { projectId, projectRoot, operationId, otherOperationId, requestedIds, planItems: 33,
-    pendingOrder: [operationId, otherOperationId], graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
-    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'two-pending-sequential-slot', 'close-isolation', 'declined-requests-stay-closed-and-never-reland'],
+    pendingOrder: 'serial — one lane-issued card at a time (2026-09-22 ruling A/E)', graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
+    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'declined-requests-stay-closed-and-never-reland'],
     secondCardArrivedAlreadyConfirming: secondDecline === 'already-confirming',
     mediaSubmissions: 0, boundary: 'Real Electron UI/Agent tools/storage with text loopback. No confirmation execution, generated-history, next-execution-batch or arbitrary pending navigation claim.' }
 }
