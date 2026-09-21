@@ -13,8 +13,8 @@
 // 所以注册结果必须回给 UI，让用户知道「这组键没抢到，换一个」。
 import { app, desktopCapturer, globalShortcut, screen, shell, systemPreferences } from "electron";
 import path from "node:path";
-import { getSettingsRoot, ensureDir, readJson } from "../runtimePaths";
-import { writeJsonFileAtomic } from "../jsonFile";
+import { getSettingsRoot, ensureDir } from "../runtimePaths";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import { getMainWindow } from "../appWindowRegistry";
 import { writeAsset } from "../runtime";
 import { logError } from "../logging/logger";
@@ -49,14 +49,14 @@ function prefsPath(): string {
 }
 
 export function readScreenshotHotkeyPrefs(): ScreenshotHotkeyPrefs {
-  return normalizeScreenshotHotkeyPrefs(readJson<unknown>(prefsPath(), DEFAULT_SCREENSHOT_HOTKEY));
+  return normalizeScreenshotHotkeyPrefs(readConfigFileOrDefault<unknown>(prefsPath(), () => DEFAULT_SCREENSHOT_HOTKEY));
 }
 
 export function writeScreenshotHotkeyPrefs(next: unknown): ScreenshotHotkeyPrefs {
   const normalized = normalizeScreenshotHotkeyPrefs(next);
   try {
     ensureDir(getSettingsRoot());
-    writeJsonFileAtomic(prefsPath(), normalized);
+    writeConfigFileAtomic(prefsPath(), normalized);
   } catch {
     /* best-effort：写不进去也不该让设置面板崩 */
   }

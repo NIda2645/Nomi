@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import {
   DEFAULT_SYSTEM_PROMPT_OVERRIDES,
   normalizeSystemPromptOverrides,
@@ -24,15 +24,13 @@ export function systemPromptsSettingsPath(): string {
 }
 
 export function readSystemPromptOverrides(): SystemPromptOverrides {
-  try {
-    return normalizeSystemPromptOverrides(readJsonFile(systemPromptsSettingsPath()));
-  } catch {
-    return normalizeSystemPromptOverrides(DEFAULT_SYSTEM_PROMPT_OVERRIDES);
-  }
+  return normalizeSystemPromptOverrides(
+    readConfigFileOrDefault<unknown>(systemPromptsSettingsPath(), () => DEFAULT_SYSTEM_PROMPT_OVERRIDES),
+  );
 }
 
 export function writeSystemPromptOverrides(value: unknown): SystemPromptOverrides {
   const next = normalizeSystemPromptOverrides(value);
-  writeJsonFileAtomic(systemPromptsSettingsPath(), next);
+  writeConfigFileAtomic(systemPromptsSettingsPath(), next);
   return next;
 }

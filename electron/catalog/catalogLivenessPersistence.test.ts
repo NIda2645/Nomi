@@ -3,8 +3,18 @@ import type { CatalogState, Model } from './types'
 
 const memory = vi.hoisted(() => ({ catalog: null as CatalogState | null, writes: 0 }))
 vi.mock('electron', () => ({ app: { getPath: () => process.cwd(), getAppPath: () => process.cwd() }, safeStorage: { isEncryptionAvailable: () => false } }))
-vi.mock('../runtimePaths', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), getSettingsRoot: () => '/synthetic-catalog', readJson: () => structuredClone(memory.catalog) }))
-vi.mock('../jsonFile', () => ({ writeJsonFileAtomic: (_path: string, value: CatalogState) => { memory.catalog = structuredClone(value); memory.writes += 1 } }))
+vi.mock('../runtimePaths', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), getSettingsRoot: () => '/synthetic-catalog' }))
+// 目录的读写原语 2026-09-21 起住 configFileStore（区分「不存在 / 读不了 / 读到了」，读不了绝不覆盖）。
+// 这份内存替身照同一份契约作答：有目录 = ok，没有 = missing。
+vi.mock('../configFileStore', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  readConfigFile: () => (memory.catalog ? { status: 'ok', value: structuredClone(memory.catalog) } : { status: 'missing' }),
+  configReadFailure: () => null,
+  configQuarantineNotice: () => null,
+  quarantineUnreadableConfigFile: () => null,
+  snapshotConfigVersion: () => null,
+  writeConfigFileAtomic: (_path: string, value: CatalogState) => { memory.catalog = structuredClone(value); memory.writes += 1 },
+}))
 import { deleteModelCatalogModels, ensureBuiltinModelSeeds, mutateCatalog, readCatalog, upsertModelCatalogModel } from './catalogStore'
 import { CURRENT_CATALOG_VERSION } from './types'
 import { modelListReconciliation } from './modelListReconcile'
