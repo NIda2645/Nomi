@@ -487,7 +487,13 @@ export default function InlineParameterBar({
   // summary 形态只有一颗定宽 pill，不存在「装不下」，身份两枚照旧允许压缩（保持 2026-07-17 的样子）。
   const identityChipClass = chipsMode && !stacked ? 'shrink-0' : undefined
   const identityRow = (
-    <div className={cn('flex min-w-0 items-center gap-2', stacked && 'w-full')}>
+    // chips 横排时这层包装**也不许缩**（`identityChipClass` 同一个条件）。它原来是 `min-w-0` 可缩的，
+    // 而里面那颗模型芯片是 `shrink-0`——于是行宽一紧（EN 的「1 outputs」比「1 个」宽），被压缩的
+    // 就只有这层包装：芯片从包装里溢出来、压到后一颗 chip 上（「Kling 3.0」盖住「16:9」），
+    // 而整行的 scrollWidth 并没有超过 clientWidth，`useFittedChipCount` 量不到「装不下」、
+    // 也就不会把多出来的 chip 退到 ⚙ 后面。上面那句注释说的前提——「所有成员都不缩，行才会真的溢出」——
+    // 漏了这一层。只动布局类名，props 与语义不变。
+    <div className={cn('flex min-w-0 items-center gap-2', stacked && 'w-full', identityChipClass)}>
       <NomiSelect
         ariaLabel={t('generationCommon.parameters.model')}
         placeholder={t('generationCommon.parameters.selectModel')}

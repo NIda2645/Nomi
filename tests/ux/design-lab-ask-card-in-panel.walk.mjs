@@ -153,6 +153,26 @@ try {
         }
       })
       measured.push({ locale: tag, theme, kind, ...shape })
+      // 参数条那一行：**任意两颗控件不许相互压住**（EN 下「Kling 3.0」盖住「16:9」就是这个）。
+      // 量的是真矩形——相邻两颗的右缘不许越过下一颗的左缘。
+      const overlaps = await shot.locator('[data-node-composer-footer]').evaluateAll((rows) => {
+        const hits = []
+        for (const row of rows) {
+          const boxes = [...row.querySelectorAll('button, [data-parameter-chip]')]
+            .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+            .filter(({ rect }) => rect.width > 0 && rect.height > 0)
+            // 只比最外层的可点块：chip 的 span 里包着它自己的 button，父子不算相压。
+            .filter(({ node }, _, all) => !all.some((other) => other.node !== node && other.node.contains(node)))
+            .sort((a, b) => a.rect.left - b.rect.left)
+          for (let i = 1; i < boxes.length; i += 1) {
+            if (boxes[i - 1].rect.right > boxes[i].rect.left + 1) {
+              hits.push(`${(boxes[i - 1].node.textContent || '').trim().slice(0, 14)} → ${(boxes[i].node.textContent || '').trim().slice(0, 14)}`)
+            }
+          }
+        }
+        return hits
+      })
+      if (overlaps.length) failures.push(`${tag}/${theme}/${kind}：参数条里控件相互压住：${overlaps.join(' | ')}`)
       // 页脚左下那一格（合计 / 价格未知那句）不许被省略号截断——EN 串长，截断只有眼睛看得出，
       // 所以量它：内容宽不许超过自己的盒子。
       const leadClipped = await shot.locator('[data-v4-block="slot-total"]').evaluateAll((nodes) =>
