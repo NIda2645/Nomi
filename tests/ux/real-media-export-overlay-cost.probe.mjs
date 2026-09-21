@@ -24,6 +24,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
@@ -50,15 +51,9 @@ const OVERLAY_COUNTS = [2, 60]
 
 /** 用仓库打包时随附的那两个二进制（导出链跑的就是它们），不许退回系统 ffmpeg/ffprobe。 */
 function bundledBinary(packageName) {
-  const probe = spawnSync(
-    process.execPath,
-    ['-e', `process.stdout.write(require(${JSON.stringify(packageName)}).path)`],
-    { encoding: 'utf8', cwd: repoRoot },
-  )
-  if (probe.status !== 0 || !probe.stdout.trim()) {
-    throw new Error(`找不到仓库自带的 ${packageName}——导出链跑的就是它，不许换成系统二进制\n${probe.stderr}`)
-  }
-  return probe.stdout.trim()
+  const resolved = createRequire(path.join(repoRoot, 'package.json'))(packageName)?.path
+  if (!resolved) throw new Error(`找不到仓库自带的 ${packageName}——导出链跑的就是它，不许换成系统二进制`)
+  return resolved
 }
 
 const FFMPEG = bundledBinary('@ffmpeg-installer/ffmpeg')
@@ -90,14 +85,12 @@ function deriveOverlayPngs(sourceVideo, outDir, count, exportWidth, exportHeight
   const files = []
   for (let index = 0; index < count; index += 1) {
     const file = path.join(outDir, `overlay-${String(index).padStart(3, '0')}.png`)
-    if (!fs.existsSync(file)) {
-      const seek = (10 + index * 3).toFixed(3)
-      run(FFMPEG, [
-        '-v', 'error', '-ss', seek, '-i', sourceVideo, '-frames:v', '1',
-        '-vf', `scale=${exportWidth}:${exportHeight}:force_original_aspect_ratio=increase,crop=${exportWidth}:${bandHeight},format=rgba,pad=${exportWidth}:${exportHeight}:0:${bandTop}:color=#00000000`,
-        '-y', file,
-      ])
-    }
+    const seek = (10 + index * 3).toFixed(3)
+    run(FFMPEG, [
+      '-v', 'error', '-ss', seek, '-i', sourceVideo, '-frames:v', '1',
+      '-vf', `scale=${exportWidth}:${exportHeight}:force_original_aspect_ratio=increase,crop=${exportWidth}:${bandHeight},format=rgba,pad=${exportWidth}:${exportHeight}:0:${bandTop}:color=#00000000`,
+      '-y', file,
+    ])
     files.push(file)
   }
   return files
