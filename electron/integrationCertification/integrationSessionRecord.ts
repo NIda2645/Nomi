@@ -172,11 +172,9 @@ export function readIntegrationSessionState(
   } catch {
     throw new Error("Integration session storage is corrupt");
   }
-  const onDisk = Array.isArray((raw as { sessions?: unknown[] })?.sessions)
-    ? (raw as { sessions: unknown[] }).sessions.length
-    : 0;
+  // validateState 已经断言过 sessions 是数组，所以它之后这个读取无需再自证一遍。
   const state = validateState(raw);
-  if (state.sessions.length >= onDisk) return state;
+  if (state.sessions.length >= (raw as { sessions: unknown[] }).sessions.length) return state;
   try {
     writeBack(state);
   } catch (error) {
