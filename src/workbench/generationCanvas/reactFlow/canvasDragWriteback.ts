@@ -34,6 +34,33 @@ export function commitCanvasKeyboardPositions(
   return true
 }
 
+/**
+ * XYDrag 在 blur 取消之后还会再吐一批位置：它已经不拥有这些位置了，把内核拉回我们的投影。
+ *
+ * 两条收窄（2026-09-21）：
+ *   ① 只在内核真的和 store **不一致**时才写——新节点刚落画布、React Flow 首次测量时也会发
+ *      position change，那一批和 store 是一致的，写回去纯属白费一次 setNodes；
+ *   ② 按**当前** store 取值，不用调用点闭包里的 `flowNodes` 快照（它可能已经过期，用过期快照
+ *      整体覆盖内核节点表会让刚落的卡停在旧位置——golden 走查量到「第 2 镜没有可点中的位置」
+ *      正是这个形状）。
+ */
+export function restoreDisownedKernelPositions(
+  flowStore: { getState: () => { nodes: GenerationFlowNode[]; setNodes: (nodes: GenerationFlowNode[]) => void } },
+  positions: readonly { nodeId: string; position: DragPosition }[],
+): void {
+  const authoritative = useGenerationCanvasStore.getState().nodes
+  const disagreeing = positions.some(change => {
+    const node = authoritative.find(candidate => candidate.id === change.nodeId)
+    return node && (node.position.x !== change.position.x || node.position.y !== change.position.y)
+  })
+  if (!disagreeing) return
+  const byId = new Map(authoritative.map(node => [node.id, node.position] as const))
+  flowStore.getState().setNodes(flowStore.getState().nodes.map(node => {
+    const position = byId.get(node.id)
+    return position && (node.position.x !== position.x || node.position.y !== position.y) ? { ...node, position } : node
+  }))
+}
+
 type CanvasDragWritebackContext = {
   event: Parameters<OnNodeDrag<GenerationFlowNode>>[0]
   draggedNode: Parameters<OnNodeDrag<GenerationFlowNode>>[1]

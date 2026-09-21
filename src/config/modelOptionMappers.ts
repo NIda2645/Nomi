@@ -63,6 +63,7 @@ export function toCatalogModelOptions(items: ModelCatalogModelDto[]): ModelOptio
       modelKey: modelKey || value,
       modelAlias: alias || null,
       kind: item.kind,
+      ...(item?.unlisted === true ? { unlisted: true as const } : {}),
       meta,
       pricing: toCatalogModelPricing(item?.pricing),
       ...(variant ? { variant } : {}),

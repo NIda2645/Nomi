@@ -121,6 +121,22 @@ function connectVendorOption(): NomiSelectOption {
  * 而不是让用户以为列在这里的东西都验过了（D4）。印记由主进程在发布时写下（promotionMeta.ts）；
  * 老装机上由真实付费生成认证过的行没有这个印记，因此不会被误标。
  */
+/**
+ * 这一行是不是「供应商清单里暂时没有它」。
+ *
+ * **要每一家都没列出才算**：同一个模型可能同时挂在两家上，其中一家的清单抖了一下。
+ * 只要还有一家列着它，这一行就不该标——标了等于对用户说「这个模型没了」，而他点下去
+ * 明明能用。与「最近连败」同一口径（那条也是每家都在避让期才成立）。
+ */
+function unlistedByModel(model: DedupedModel): boolean {
+  return model.providers.length > 0 && model.providers.every((provider) => provider.option.unlisted === true)
+}
+
+/** 行尾那串限定语：厂商短名 + 至多两句实话（未试跑 / 暂未列出）。 */
+function providerTrailing(provider: ModelProviderRef, notes: readonly string[]): string {
+  return [modelProviderLabel(provider), ...notes].join(' · ')
+}
+
 function untriedByModel(model: DedupedModel): boolean {
   return model.providers.some((provider) => {
     const meta = provider.option.meta
@@ -171,9 +187,14 @@ export function buildModelSelectOptions(
       // 「未试跑」附在厂商短名后面，**不另起一个新元素**：2026-09-06 用户拍板过「别把模型名挤没」，
       // 而这一行要说的只是一句限定语（这家、还没真跑过），不是第二条信息。
       // 多家那种情况行尾已经是 chip 排（与 trailing 互斥），就不标——多家里总有真跑过的。
+      // 「暂未列出」和「未试跑」同一个槽、同一种写法：都是附在厂商短名后面的一句限定语，
+      // 不是第二条信息、也不拦使用（2026-09-21：清单里查不到不等于用户不要它了）。
       ...(multiVendor
         ? { chips }
-        : { trailing: untriedByModel(m) ? `${modelProviderLabel(providers[0])} · ${i18n.t('generationCommon.parameters.untried')}` : modelProviderLabel(providers[0]) }),
+        : { trailing: providerTrailing(providers[0], [
+            ...(untriedByModel(m) ? [i18n.t('generationCommon.parameters.untried')] : []),
+            ...(unlistedByModel(m) ? [i18n.t('generationCommon.parameters.unlisted')] : []),
+          ]) }),
     }
     // 「最近多次失败」是行级判断（每一家都在避让期才成立），压过 chip 的换家提示——
     // 这一行现在没有一家能走，摆一排可点的 chip 是在骗人。
@@ -254,7 +275,10 @@ export function buildVendorExplicitModelOptions(
               more: modelCatalogLifecycle(model) === 'legacy',
               label: model.label,
               icon: modelIdentityIcon(model),
-              trailing: modelProviderLabel(representative),
+              // 摊平版一行就是一家，所以「暂未列出」按**这一家**判，不看别家
+              // （折叠版要每家都没列出才标——那一行代表的是所有家）。
+              trailing: providerTrailing(representative, representative.option.unlisted === true
+                ? [i18n.t('generationCommon.parameters.unlisted')] : []),
             },
       })
     }

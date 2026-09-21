@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { EditorContent, type Editor, type JSONContent } from '@tiptap/react'
 import SelectionGeneratePopover from './SelectionGeneratePopover'
 import { WorkbenchIconButton } from '../../design/actions'
+import { TIPTAP_PLACEHOLDER_CLASSES } from '../assets/tiptapPlaceholderClasses'
 import { cn } from '../../utils/cn'
 import { useWorkbenchStore } from '../workbenchStore'
 import { normalizeWorkbenchContentJson } from '../workbenchTypes'
@@ -232,15 +233,10 @@ export default function WorkbenchEditor(): JSX.Element {
         className={cn(
           'workbench-editor__scroll',
           'min-w-0 min-h-0 overflow-auto',
-          // Tiptap Placeholder 渲染：空文档第一段显示 data-placeholder（仿 PromptEditor，
-          // 补上创作编辑器缺失的 ::before 规则——根因，不是只在这一处贴症状）。
-          '[&_.is-editor-empty]:before:content-[attr(data-placeholder)]',
-          '[&_.is-editor-empty]:before:text-nomi-ink-40 [&_.is-editor-empty]:before:float-left',
-          '[&_.is-editor-empty]:before:pointer-events-none [&_.is-editor-empty]:before:h-0',
-          // 左浮动 + 高度 0 的伪元素宽度是「收缩到适合」——对一句长占位文字来说，
-          // 「适合」就是整句的长度，于是它冲出编辑卡右缘（2026-09-17，W-12，zh/en 都有）。
-          // 给它一个真实上限，让它在卡内折行；文档为空时下面没有内容可被它盖住。
-          '[&_.is-editor-empty]:before:max-w-full',
+          // Tiptap Placeholder 渲染：空文档第一段显示 data-placeholder。
+          // 规则只有一份（`tiptapPlaceholderClasses`），提示词框与这里共用——
+          // 2026-09-21 之前这两处各抄一份官方配方，于是纵向溢出那条只在提示词框被发现。
+          TIPTAP_PLACEHOLDER_CLASSES,
         )}
       >
         <EditorContent editor={editor} />

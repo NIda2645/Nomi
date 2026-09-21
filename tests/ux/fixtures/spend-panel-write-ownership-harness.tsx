@@ -3,7 +3,6 @@ import { NodeWriteAccessProvider } from '../../../src/workbench/generationCanvas
 // Controlled host integration: real React lifecycle and real panel/drop/draft writers.
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { retainDismissedSpendDraft } from '../../../src/workbench/ai/v4/spendCardDraft'
 import { useAgentPanelSpendConfirm } from '../../../src/workbench/ai/v4/useAgentPanelSpendConfirm'
 import { useNodeAssetDrop } from '../../../src/workbench/generationCanvas/nodes/useNodeAssetDrop'
 import { resolveNodeArraySlots } from '../../../src/workbench/generationCanvas/model/nodeAssetDrop'
@@ -33,11 +32,6 @@ const feedback: string[] = []
 const calls: unknown[] = []
 const fixture = { nodes, pending, calls,
   refresh: () => refresh?.(),
-  prepareRecovery: () => {
-    const next = { ...pending, operationId: 'recovery-operation', quoteId: 'recovery-quote' }
-    retainDismissedSpendDraft(next, { all: { prompt: 'recovered B' }, perShot: {} })
-    Object.assign(pending, next)
-  },
   edit: () => model.node && model.writeAccess.updateNode(model.node.id, { prompt: 'edited' }),
   confirm: () => model.confirm(),
   discard: () => model.discard(),

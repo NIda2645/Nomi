@@ -278,13 +278,25 @@ export async function deleteModelCatalogMapping(id: string): Promise<void> {
   requireDesktopRuntime('model catalog').modelCatalog.deleteMapping(id)
 }
 
-/** 导出包**永远不含密钥材料**（明文与 safeStorage 密文都不含）——理由在 catalogPackageFormat.ts。 */
+/**
+ * 导出一份可搬走的配置包。**不带参数 = 永不含密钥材料**（明文与 safeStorage 密文都不含，
+ * 理由与实现都在 `electron/catalog/catalogPackageFormat.ts`）。
+ * 密钥不跟着包走是刻意的：包会被发群里、贴进对话、留在下载目录，而密钥一旦出门就收不回来。
+ * 导入方在自己机器上逐条补 key，那一步只花十秒。
+ */
 export async function exportModelCatalogPackage(): Promise<ModelCatalogImportPackageDto> {
   return requireDesktopRuntime('model catalog').modelCatalog.exportPackage() as ModelCatalogImportPackageDto
 }
 
-export async function importModelCatalogPackage(payload: ModelCatalogImportPackageDto): Promise<ModelCatalogImportResultDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload) as ModelCatalogImportResultDto
+/**
+ * 导入一份配置包。**默认合并、不覆盖**：同名条目保留本机已有的，冲突照实列出来交给用户。
+ * 只有他明说「用包里的覆盖」才传 `conflictPolicy: 'replace'`。
+ */
+export async function importModelCatalogPackage(
+  payload: ModelCatalogImportPackageDto,
+  options?: { conflictPolicy?: 'keep' | 'replace' },
+): Promise<ModelCatalogImportResultDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload, options) as ModelCatalogImportResultDto
 }
 
 export async function fetchModelCatalogDocs(payload: { url: string }): Promise<ModelCatalogDocsFetchResultDto> {

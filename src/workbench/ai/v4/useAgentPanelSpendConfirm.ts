@@ -32,7 +32,7 @@ import type { GenerationCanvasNode } from '../../generationCanvas/model/generati
 import type { PendingSpendConfirm, PendingSpendRead } from '../../../desktop/productionRunBridgeTypes'
 import { projectSpendCard, spendCardPage } from './agentPanelSpendCard'
 import {
-  spendDraftKey, restoreSpendDraft, retainSpendDraft, retainDismissedSpendDraft, consumeSpendDraft,
+  spendDraftKey, restoreSpendDraft, retainSpendDraft, consumeSpendDraft,
   applyPatchToNode,
   projectSpendNode,
   draftAfterNodeEdit,
@@ -46,6 +46,7 @@ import {
 import { priceDisagreements, pricingResolverFromModelOptions, repricePendingSpend, type SpendPriceDisagreement } from './spendCardEstimate'
 import type { InterventionData } from './agentPanelV4Types'
 import { missingCardReasonOfReadFailure, missingInterventionCard, type MissingCardReason } from './missingInterventionCard'
+import { rollBackDiscardedSpendNodes } from './spendCardRollback'
 
 /** 和任务中心同一个节拍：付费卡是同一批 Run 事实的另一个读者，不另立一套刷新频率。 */
 const POLL_INTERVAL_MS = 1500
@@ -112,8 +113,8 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       const next = pendingSpendOfRead(read)
       const nextOwner = next ? spendDraftKey(next) : undefined
       if (draftOwner.current !== nextOwner) {
-        // Recovery can write storage and throw. Publish no new identity until it succeeds,
-        // so the next poll retries instead of attaching the previous request's draft.
+        // 账本绑死这一笔的报价身份：换了身份就是换了一本，读不到就是空。
+        // 读永不抛（`readSpendDraft` 自己兜住），所以这里不需要「失败就别换 owner」的回退。
         const restored = next ? restoreSpendDraft(next) : EMPTY_SPEND_DRAFT
         draftOwner.current = nextOwner
         setDraft(restored)
@@ -245,7 +246,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
         setDraft((previous) => {
           const selected = modelOptions.find(option => option.modelKey === nextNode.meta?.modelKey && option.vendor === nextNode.meta?.modelVendor)
           const next = draftAfterNodeEdit(previous, target, nextNode, context.scope, selected)
-          if (draftOwner.current) retainSpendDraft(draftOwner.current, next, pendingRef.current)
+          if (draftOwner.current) retainSpendDraft(draftOwner.current, next)
           return next
         })
       },
@@ -261,10 +262,14 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     }
     if (!repriced) return undefined
     const remembered = originalModelIds.current
-    return projectSpendCard(repriced, { page: index, scope }, t, {
+    const card = projectSpendCard(repriced, { page: index, scope }, t, {
       ...(remembered?.operationId === repriced.operationId ? { agentPickedModelIds: remembered.modelIds } : {}),
     })
-  }, [readFailure, repriced, index, scope, t])
+    // 卡上有还没提交的手改时，× 先问一句（D4：撤什么、丢什么明着说）。没有手改就不打扰。
+    return card && !draftIsEmpty(draft)
+      ? Object.freeze({ ...card, rejectConfirmNote: t('agentPanelV4.spendDiscardEditsWarning') })
+      : card
+  }, [readFailure, repriced, index, scope, draft, t])
 
   /**
    * 卡上四个动作共用的一次执行。**宿主说不行就必须让用户看见**：
@@ -371,10 +376,18 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       }
       return confirmed
     }),
-    /** Dismiss only this request. Unapproved edits remain isolated under its exact identity. */
+    /**
+     * × = **撤销这次草稿**，单一语义（2026-09-21 用户拍板）。
+     *
+     * 宿主那边把这一笔作废，画布这边把**这次操作自己造出来的占位节点**撤掉——判据是来源章，
+     * 不是「卡引用了谁」（见 `spendCardRollback.ts` 顶部；用户自己建的节点一个都不动）。
+     * 整批一个撤销步，一次 ⌘Z 全回来，所以不需要第二套「找回账本」。
+     */
     discard: () => act(async (target) => {
       const result = await productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)
-      if (result.ok) retainDismissedSpendDraft(target, draft)
+      if (!result.ok) return result
+      const removed = rollBackDiscardedSpendNodes(target)
+      if (removed > 0) toast(t('agentPanelV4.spendDiscardedNodes', { count: removed }), 'info')
       return result
     }),
   }

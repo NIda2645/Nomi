@@ -132,9 +132,9 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
         }
       })
       .catch(() => {
+        // 读失败保留上一份模型列表：清空会让模型钮变成一个空壳，看起来像「模型没了」，
+        // 而真相是「这一次没读到」（2026-09-21 同形横扫，配置不许静默消失）。
         if (!alive) return
-        setModels([])
-        setGenerationModels([])
       })
     return () => {
       alive = false
@@ -199,6 +199,7 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     formatStages: (done, total) => t('agentPanelV4.taskStages', { done, total }),
     formatMoney: (currency, amount) => t('agentPanelV4.money', { currency, amount: amount.toFixed(2) }),
     taskUnknown: t('agentPanelV4.taskUnknown'),
+    answered: t('agentPanelV4.questionAnswered'),
     // 名字与 `/` 菜单、技能库画廊同一个 owner（`skillDisplayTitle`）：菜单里选的是「分镜规划」，
     // 气泡上就得也叫「分镜规划」。库里查不到就原样印 key——用户确实挂过它，只是这台机器上
     // 现在没有这份技能；把 chip 藏掉等于抹掉他做过的操作。

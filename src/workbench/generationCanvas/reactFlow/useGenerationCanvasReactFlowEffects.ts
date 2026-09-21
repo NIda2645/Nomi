@@ -52,7 +52,12 @@ export function useGenerationCanvasReactFlowHostEffects({
 
   React.useEffect(() => {
     const handleFocusNode = (event: Event) => {
-      const nodeId = (event as CustomEvent<{ nodeId?: unknown }>).detail?.nodeId
+      const detail = (event as CustomEvent<{ nodeId?: unknown; select?: unknown }>).detail
+      const nodeId = detail?.nodeId
+      // 「跳到这个节点」和「选中它」是两件事。默认两件一起做（「跳到源节点」「刚建好的那一个」
+      // 都要接着就编辑），但**带我去看一批东西**的入口必须能只跳不选——选中会浮出那张
+      // composer，把旁边的镜头盖住（golden 走查量到「第 2 镜没有可点中的位置」就是这么来的）。
+      const select = detail?.select !== false
       if (typeof nodeId !== 'string' || !nodeId) return
       const target = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)
       if (!target) {
@@ -68,7 +73,7 @@ export function useGenerationCanvasReactFlowHostEffects({
       pendingFocusRef.current = focus
       focusedRecoveryRef.current = focus
       setActiveCategoryId(target.categoryId || 'shots')
-      selectNode(nodeId)
+      if (select) selectNode(nodeId)
     }
     window.addEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)
     return () => window.removeEventListener(FOCUS_GENERATION_NODE_EVENT, handleFocusNode)

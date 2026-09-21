@@ -20,7 +20,8 @@ import { V4FlowRow } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { useV4Labels } from '../../../../workbench/ai/v4/agentPanelV4Labels'
 import type { ToolReceipt, V4AssistantStatus } from '../../../../workbench/ai/v4/agentPanelV4Types'
 import { Piece, useV4Fixtures, V4_LAB_SLOT_HANDLERS } from '../agentPanelV4LabKit'
-import { laneDrivenReceipt, laneSnapshotToolDenied, laneSnapshotToolRunning } from '../laneDrivenFixtures'
+import type { LaneViewModelLabels } from '../../../../workbench/ai/lane/laneViewModel'
+import { laneDrivenReceipt, laneSnapshotQuestionAnswered, laneSnapshotToolDenied, laneSnapshotToolRunning } from '../laneDrivenFixtures'
 import type { LabState } from '../../labScreen'
 
 
@@ -106,11 +107,13 @@ function ReceiptCell({ pick, errorBar }: { pick: keyof ReturnType<typeof useV4Fi
  * （摘要要按能力渲染、用时要转录时间戳过桥），接上去就是一张不该被录进基线的红——
  * 见 `laneDrivenFixtures.test.ts` 钉住的缺口清单。
  */
-function LaneReceiptCell({ lane }: { lane: (rejectReason: string) => LaneSnapshot }): JSX.Element {
-  const fx = useV4Fixtures()
-  const labels = useV4Labels()
-  const receipt = laneDrivenReceipt(lane(fx.t('agentPanelV4.slotRejectSample')), {
-    toolLabel: () => fx.t('agentPanelV4.fixtureReadTimeline'),
+/**
+ * 两层投影要的那份词表。**抽出来是因为它有第二个消费者了**（反问答完那一行）——
+ * 原地再抄一份就是同一份词表两个主人，而「类型要求穷尽」这条护栏的价值正好会被抄漏抵消。
+ */
+function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: string): LaneViewModelLabels {
+  return {
+    toolLabel: () => toolLabel,
     toolSummary: () => undefined,
     toolFailure: () => undefined,
     toolFailureDetail: (failure) => failure.code,
@@ -130,10 +133,20 @@ function LaneReceiptCell({ lane }: { lane: (rejectReason: string) => LaneSnapsho
     formatStages: (done, total) => fx.t('agentPanelV4.taskStages', { done, total }),
     formatMoney: (currency, amount) => fx.t('agentPanelV4.money', { currency, amount: amount.toFixed(2) }),
     taskUnknown: fx.t('agentPanelV4.taskUnknown'),
+    answered: fx.t('agentPanelV4.questionAnswered'),
     // 技能名。这一格的转录里一条用户消息都没有，所以永远查不到它——但类型要求穷尽，
     // 哪天这一格接上带技能的那一轮，缺的那句话是编译错误，不是画面上的一块空白。
     skillLabel: (key) => key,
-  })
+  }
+}
+
+function LaneReceiptCell({ lane }: { lane: (rejectReason: string) => LaneSnapshot }): JSX.Element {
+  const fx = useV4Fixtures()
+  const labels = useV4Labels()
+  const receipt = laneDrivenReceipt(
+    lane(fx.t('agentPanelV4.slotRejectSample')),
+    labViewModelLabels(fx, fx.t('agentPanelV4.fixtureReadTimeline')),
+  )
   return (
     <Piece>
       <V4ToolReceipt receipt={receipt} statusLabel={labels.toolStatus[receipt.status]} undoLabel={labels.task.undo} />
@@ -157,6 +170,46 @@ function SlotCell({ pick }: { pick: keyof ReturnType<typeof useV4Fixtures>['slot
   return (
     <Piece>
       <V4Intervention {...V4_LAB_SLOT_HANDLERS} data={fx.slots[pick]} labels={labels.intervention} />
+    </Piece>
+  )
+}
+
+/**
+ * 反问卡的三态（2026-09-21 拍板补画）。同一张卡、同一个组件——**差别只在数据**：
+ * 待答（选项 + 空的那一行）· 正在自己作答（那一行里有字）· 熔断转提问（多一句「试了 3 次」）。
+ * 答完之后长什么样不在这里：它已经不是一张卡了，是对话流里的一行收据（见下一格）。
+ */
+type QuestionPick =
+  | 'question' | 'questionRetry' | 'questionFree' | 'questionTwo' | 'questionFourMixed'
+  | 'questionLabelsOnly' | 'questionMissingParam'
+
+function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean }): JSX.Element {
+  const fx = useV4Fixtures()
+  const labels = useV4Labels()
+  const data = draft ? { ...fx.slots[pick], answerDraft: fx.t('agentPanelV4.slotQuestionTyped') } : fx.slots[pick]
+  return (
+    <Piece>
+      <V4Intervention {...V4_LAB_SLOT_HANDLERS} data={data} labels={labels.intervention} />
+    </Piece>
+  )
+}
+
+/**
+ * 答完那一行收据。**不是手写的**：`laneSnapshotQuestionAnswered` 造一段真转录
+ * （提问工具 → 用户带话的 deny），`laneViewModel` 真跑一遍，取出它投影出来的那一行。
+ * 所以这一格证得了一件事——协议上那次是 `output-denied`，而用户看到的是「已回答 · 他的答案」，
+ * 不红、不打 ×。
+ */
+function QuestionAnsweredCell(): JSX.Element {
+  const fx = useV4Fixtures()
+  const labels = useV4Labels()
+  const receipt = laneDrivenReceipt(
+    laneSnapshotQuestionAnswered(fx.t('agentPanelV4.slotQuestionRetryTitle'), fx.t('agentPanelV4.slotOptionAsReference')),
+    labViewModelLabels(fx, fx.t('agentPanelV4.questionTitle')),
+  )
+  return (
+    <Piece>
+      <V4ToolReceipt receipt={receipt} statusLabel={labels.toolStatus[receipt.status]} />
     </Piece>
   )
 }
@@ -455,10 +508,68 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
   },
   {
     id: 'v4-intervention-question',
-    name: '⑤ 介入槽 · 反问（一行文字 + 选项 chip）',
-    source: '2026-09-06-agent-panel-v4.md · Vocabulary 板',
+    name: '⑤ 介入槽 · 反问 · 待答（选项 chip + 卡内那一行）',
+    source: '2026-09-06-agent-panel-v4.md · Vocabulary 板 ⑩｜2026-09-21 拍板 ⑤（卡内自由作答）',
     coverage: 'component-only',
-    render: () => <SlotCell pick="question" />,
+    render: () => <QuestionSlotCell pick="question" />,
+  },
+  {
+    id: 'v4-intervention-question-typing',
+    name: '⑤ 介入槽 · 反问 · 自己作答中（卡内那一行里有字）',
+    source: '2026-09-21 拍板 ⑤：自由作答放进卡里最后一行，不借用下方 composer',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="question" draft />,
+  },
+  {
+    id: 'v4-intervention-question-retry',
+    name: '⑤ 介入槽 · 反问 · 熔断转提问（同一张卡的第三个生产者）',
+    source: '2026-09-21 拍板 ④：同一字段路径连续 3 次 → 复用反问卡',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionRetry" />,
+  },
+  {
+    id: 'v4-intervention-question-answered',
+    name: '③ 一行收据 · 反问答完（「已回答 · 他的答案」，不红不打 ×）',
+    source: '2026-09-21 拍板 ⑤：提交后卡收起成一行收据',
+    coverage: 'component-only',
+    render: () => <QuestionAnsweredCell />,
+  },
+  // ── 反问卡的通用性（2026-09-21 用户原话：「只有那一种反问就离谱了」）──
+  // 六格换六个题目、六种形状；同一个组件、同一份契约，差别全在数据。
+  {
+    id: 'v4-intervention-question-free',
+    name: '⑤ 介入槽 · 反问 · 一个选项都没有（纯自由作答）',
+    source: '2026-09-21 拍板：反问是通用能力，options 允许为空',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionFree" />,
+  },
+  {
+    id: 'v4-intervention-question-two-options',
+    name: '⑤ 介入槽 · 反问 · 2 个选项（区间下界）',
+    source: '2026-09-21 拍板：一次一题、2–4 个选项',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionTwo" />,
+  },
+  {
+    id: 'v4-intervention-question-four-mixed',
+    name: '⑤ 介入槽 · 反问 · 4 个选项且长短不一（EN 有一条很长的说明）',
+    source: '2026-09-21 拍板：标签 + 一句说明 + 可标推荐；EN 串长 1.5–2 倍',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionFourMixed" />,
+  },
+  {
+    id: 'v4-intervention-question-labels-only',
+    name: '⑤ 介入槽 · 反问 · 只有标签没有说明（模型不写就没有）',
+    source: '2026-09-21 拍板：description 缺席 = 不替它编',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionLabelsOnly" />,
+  },
+  {
+    id: 'v4-intervention-question-missing-param',
+    name: '⑤ 介入槽 · 反问 · 缺参数来源（同一张卡的第二个生产者）',
+    source: '2026-09-12 缺参数并进反问格｜2026-09-21 拍板：宿主生产者不是唯一触发',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionMissingParam" />,
   },
   {
     id: 'v4-intervention-plan',

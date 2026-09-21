@@ -23,6 +23,8 @@ import type { ToolReceipt } from '../../../workbench/ai/v4/agentPanelV4Types'
 const AT = 1_757_154_000_000
 const TOOL = 'nomi_timeline_read'
 const CALL = 'call-timeline-1'
+/** 提问工具的名字。真正的那个由主进程 lane 接（C-1），这里只需要一个不是读时间轴的名字。 */
+const ASK_TOOL = 'nomi_ask_user'
 
 const usage = { input: 62_400, output: 9_800, cacheRead: 2_400, cacheWrite: 0, totalTokens: 74_600, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }
 
@@ -78,6 +80,30 @@ export function laneSnapshotToolDenied(reason: string): LaneSnapshot {
     {
       id: 'e3', parentId: 'e2', seq: 4, timestamp: AT, type: 'message',
       message: { role: 'toolResult', toolCallId: CALL, toolName: TOOL, content: [{ type: 'text', text: reason }], isError: true, timestamp: AT },
+    },
+  ])
+}
+
+/**
+ * **反问答完**：同一条带话的 deny，只是那次调用的 args 是一次提问。
+ *
+ * 形状与上面那条被拒的一模一样——这正是要被钉住的事：协议上它们没有区别，
+ * 区别只在 `parseQuestionAsk` 认不认得出那份 args。认得出，那句话就是**答案**
+ * （行读作「已回答 · …」）；认不出，它才是拒绝的理由（行读作「已拒绝」）。
+ */
+export function laneSnapshotQuestionAnswered(question: string, answer: string): LaneSnapshot {
+  const args = { question, options: [{ id: 'reference', label: answer }] }
+  const call: AssistantMessage = {
+    ...assistantCall(),
+    content: [{ type: 'toolCall', id: CALL, name: ASK_TOOL, arguments: args }],
+  }
+  return snapshot([
+    userEntry,
+    { id: 'n1', parentId: 'e1', seq: 2, timestamp: AT, type: 'custom', customType: LANE_APPROVAL_NOTE_TYPE, data: { toolCallId: CALL, toolName: ASK_TOOL, decision: 'denied', reason: answer } },
+    { id: 'e2', parentId: 'n1', seq: 3, timestamp: AT, type: 'message', message: call },
+    {
+      id: 'e3', parentId: 'e2', seq: 4, timestamp: AT, type: 'message',
+      message: { role: 'toolResult', toolCallId: CALL, toolName: ASK_TOOL, content: [{ type: 'text', text: answer }], isError: true, timestamp: AT },
     },
   ])
 }

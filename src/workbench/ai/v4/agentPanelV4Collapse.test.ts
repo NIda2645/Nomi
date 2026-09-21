@@ -17,6 +17,24 @@ const tool = (label: string, status: V4ToolStatus, summary?: string): V4FlowItem
 
 const assistant = (text: string): V4FlowItem => ({ kind: 'assistant', text, status: 'complete' })
 
+/**
+ * 2026-09-21 起「终态失败的红条」**住在它那一行下面**，不在对话流里另起一块
+ * （定稿 #4「失败留原行不弹窗」＋组件契约注释「它跟着收据或任务卡走，不是独立积木」）。
+ * 所以流里不再有顶层 `error`，要看的是：这一段标了 `failed`，且它的明细里、出错那一行的
+ * **紧后面**挂着一条 error。
+ */
+function errorsUnderRows(item: V4FlowItem | undefined): { after: string; reason: string }[] {
+  if (!item || item.kind !== 'process') throw new Error('expected a process item')
+  const details = item.details ?? []
+  return details.flatMap((detail, at) => {
+    if (detail.item.kind !== 'error') return []
+    const previous = details[at - 1]?.item
+    const after = previous?.kind === 'tool' ? previous.receipt.label
+      : previous?.kind === 'tool-group' ? previous.label : '(nothing)'
+    return [{ after, reason: detail.item.reason }]
+  })
+}
+
 describe('③ 同一个工具连着调 N 次 → 一行', () => {
   it('六次失败折成一行，带次数、「全部失败」和第一条原因', () => {
     const flow = collapseV4Flow(
@@ -25,7 +43,10 @@ describe('③ 同一个工具连着调 N 次 → 一行', () => {
       ),
       t,
     )
-    expect(flow.map(item => item.kind)).toEqual(['process', 'error'])
+    expect(flow.map(item => item.kind)).toEqual(['process'])
+    expect(flow[0]?.kind === 'process' && flow[0].failed).toBe(true)
+    // 红条挂在那一行下面，且一组里只挂第一条（后面五条是同一堵墙的复读）。
+    expect(errorsUnderRows(flow[0])).toEqual([{ after: '创建或修改镜头卡', reason: 'nodes：必须是数组（收到 字符串）' }])
     const group = flow[0]?.kind === 'process' ? flow[0].details?.[0]?.item : undefined
     if (!group) throw new Error('missing process detail')
     expect(group.kind).toBe('tool-group')
@@ -45,10 +66,14 @@ describe('③ 同一个工具连着调 N 次 → 一行', () => {
 
   it('不同工具不合并：相邻同名才是一段', () => {
     const flow = collapseV4Flow(
-      [tool('读取文稿', 'output-available'), tool('创建或修改镜头卡', 'output-error'), tool('创建或修改镜头卡', 'output-error')],
+      [tool('读取文稿', 'output-available'), tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'output-error', '必须是数组')],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error'])
+    expect(flow.map((item) => item.kind)).toEqual(['process'])
+    // 两个不同标签仍然是两行（行的身份是 action + 标签）；红条挂在失败那一行下面，不挂在「读取文稿」下面。
+    const details = flow[0]?.kind === 'process' ? flow[0].details ?? [] : []
+    expect(details.map(detail => detail.item.kind)).toEqual(['tool', 'tool-group', 'error'])
+    expect(errorsUnderRows(flow[0]).map(entry => entry.after)).toEqual(['创建或修改镜头卡'])
   })
 
   it('有成功有失败时不写「全部失败」——那是两件事', () => {
@@ -77,8 +102,9 @@ describe('② 过程自述折起来，最终回答摊开', () => {
       ],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error', 'assistant', 'assistant', 'assistant'])
-    const final = flow[4]!
+    expect(flow.map((item) => item.kind)).toEqual(['process', 'assistant', 'assistant', 'assistant'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
+    const final = flow[3]!
     if (final.kind !== 'assistant') throw new Error('最终回答必须留在流里')
     expect(final.text).toContain('直接把分镜写进文稿')
   })
@@ -89,57 +115,129 @@ describe('② 过程自述折起来，最终回答摊开', () => {
     const flow = collapseV4Flow(
       [
         assistant('我先看看画布。已经按脚本排好了。'),
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
       ],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error', 'assistant'])
+    expect(flow.map((item) => item.kind)).toEqual(['process', 'assistant'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
   })
 
   it('夹在两次调用之间的助手文本不按位置猜成过程', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         assistant('让我修正。'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
       ],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error', 'assistant'])
+    expect(flow.map((item) => item.kind)).toEqual(['process', 'assistant'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
   })
 
   it('没有中间自述时仍用同一个过程摘要', () => {
     const flow = collapseV4Flow(
-      [tool('创建或修改镜头卡', 'output-error'), tool('创建或修改镜头卡', 'output-error'), assistant('失败了')],
+      [tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'output-error', '必须是数组'), assistant('失败了')],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error', 'assistant'])
+    expect(flow.map((item) => item.kind)).toEqual(['process', 'assistant'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
   })
 
   it('用户气泡截断一段：下一轮的收据不会被折进上一轮', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         { kind: 'user', text: '换个方式' },
         tool('修改文稿', 'output-available'),
       ],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error', 'user', 'process'])
+    expect(flow.map((item) => item.kind)).toEqual(['process', 'user', 'process'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
   })
 
   it('思考行接在流尾时收入同一过程明细', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         { kind: 'thinking', label: '正在想…', meta: '4s' },
       ],
       t,
     )
-    expect(flow.map((item) => item.kind)).toEqual(['process', 'error'])
+    expect(flow.map((item) => item.kind)).toEqual(['process'])
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
+  })
+})
+
+// 2026-09-21 用户拍板 ①②：回合中安静披露，终态才出红条。
+// 真截图 v4-reconcile/now-A1-panel.png：停止钮 ■ 还亮着，上面已经排了三条红。
+describe('回合还在跑的时候：安静披露，不弹红条', () => {
+  it('跑着的时候一条红条都不出——那一次只是还没等到它的后继', () => {
+    const flow = collapseV4Flow(
+      [tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'input-available')],
+      t,
+    )
+    expect(flow.map(item => item.kind)).toEqual(['process'])
+    expect(flow[0]?.kind === 'process' && flow[0].running).toBe(true)
+    expect(flow[0]?.kind === 'process' && flow[0].failed).toBeUndefined()
+    expect(errorsUnderRows(flow[0])).toEqual([])
+  })
+
+  it('摘要说「第 N 次尝试」，展开才见那句灰字', () => {
+    const flow = collapseV4Flow(
+      [
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '还是不对'),
+        tool('创建或修改镜头卡', 'input-available'),
+      ],
+      t,
+    )
+    const process = flow[0]
+    if (process?.kind !== 'process') throw new Error('missing process')
+    expect(process.running).toBe(true)
+    expect(process.label).toBe('agentPanelV4.processAttempt(3)')
+    expect(process.retryNote).toBe('agentPanelV4.processRetryingDetail')
+  })
+
+  it('说不出原因就不挂那一条——行尾已经写着「失败」，复述行标签不是信息', () => {
+    // 真实夹具里有这种：宿主只给了「这一步失败了」，没有任何原因字段。
+    // 以前会挂一条写着「停止任务」的红条——把一个**动作名**说成一个原因（设计实验室
+    // v4-wired-failure 那一屏看得见）。行仍然标 failed、过程行仍然自己展开。
+    const flow = collapseV4Flow([tool('停止任务', 'output-error')], t)
+    expect(flow[0]?.kind === 'process' && flow[0].failed).toBe(true)
+    expect(errorsUnderRows(flow[0])).toEqual([])
+  })
+
+  it('回合落定之后同一批收据才出红条，并且标 failed', () => {
+    const flow = collapseV4Flow(
+      [tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'output-error', '还是不对')],
+      t,
+    )
+    expect(flow[0]?.kind === 'process' && flow[0].failed).toBe(true)
+    expect(flow[0]?.kind === 'process' && flow[0].retryNote).toBeUndefined()
+    expect(errorsUnderRows(flow[0])).toHaveLength(1)
+  })
+
+  it('同一次自纠按**动作**认，不按那一次的措辞——换了参数重发仍算一次重试', () => {
+    // label 跟着参数走：模型换个参数重发，label 就变了。按 label 认的话重试数恒为 0，
+    // 被退回的那一次也永远等不到后继，回合结束还挂着一条红条（成功的回合里也挂着）。
+    const flow = collapseV4Flow(
+      [
+        tool('创建镜头卡（10 镜）', 'output-error', '必须是数组'),
+        tool('创建镜头卡（10 镜，数组）', 'output-available'),
+      ],
+      t,
+    )
+    const process = flow[0]
+    if (process?.kind !== 'process') throw new Error('missing process')
+    expect(process.retries).toBe(1)
+    expect(process.failed).toBeUndefined()
+    expect(errorsUnderRows(process)).toEqual([])
   })
 })
 

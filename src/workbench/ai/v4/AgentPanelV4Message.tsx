@@ -14,6 +14,7 @@ import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { ActionIcon, IconCheck, IconChevronRight, IconCopy, IconRefresh } from './AgentPanelV4Icons'
 import { Message, MessageActions, MessageResponse } from './vendor/aiElementsPrimitives'
 import { SkillMedia } from '../../skillLibrary/SkillMedia'
+import type { V4QuestionOption } from './agentPanelV4Question'
 import type { V4AssistantStatus, V4Chip } from './agentPanelV4Types'
 
 /**
@@ -193,66 +194,64 @@ export function V4AssistantMessage({
 }
 
 /**
- * 一排选项 chip。**一份**长相，两个用处：介入槽的「反问」和对话流里的「缺参数」。
- * 早先它只长在介入槽里；缺参数改走对话流（2026-09-06 拍板 ④）时如果照抄一遍，
- * 同一种 chip 就有了两份 className，改一次圆角要改两处——那正是 R14.1 横扫的东西。
+ * 一排选项 chip（反问卡的选项）。
+ *
+ * **点一下就是提交**（2026-09-21 用户拍板；09-06 定稿⑤ 早就写了「反问格没有确认/不要，
+ * 选项本身就是回答」）。它以前只把标签填进下方 composer，用户还得再按一次回车——那等于
+ * 把「答一个选项」做成了「帮你打字」，而卡上根本没有第二颗按钮来完成它。
+ *
+ * chip 按内容定宽（09-01 原始规格：「chip 是内容」），所以说明一多就自己换行；
+ * 卡宽 ≈350px 时两行标签 + 一行说明仍然放得下（EN 串长 1.5–2 倍，见 zh/en 双轨截图）。
  */
 export function V4OptionChips({
   options,
   selectedOption,
   onSelect,
 }: {
-  options: readonly string[]
+  options: readonly V4QuestionOption[]
   selectedOption?: number
-  onSelect?: (option: string, index: number) => void
+  onSelect?: (option: V4QuestionOption, index: number) => void
 }): JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((option, index) => (
         <button
           type="button"
-          key={option}
+          key={option.id}
           aria-pressed={index === selectedOption}
           onClick={() => onSelect?.(option, index)}
+          data-v4-control="question-option"
+          data-option-id={option.id}
           className={cn(
-            'inline-flex h-[26px] items-center rounded-pill border px-2.5 text-caption',
+            // 有说明的 chip 是两行，所以高度不能写死成 26px（写死的那一版把说明裁在了
+            // 药丸外面）：给一个最小高度，让内容决定它到底多高。
+            'inline-flex min-h-[26px] flex-col items-start justify-center border px-3 py-1 text-left text-caption',
+            // 圆角**跟着形状走，不跟着种类走**：药丸只有在它真是一行高的时候才读得出是药丸。
+            // 模型写的说明想多长就多长（2026-09-21 实测 EN 那条能占四行），而一个四行高的
+            // 全圆角盒子两侧的弧会把文字挤向中间、上下两角空一大块——看着像气泡，不像可选项。
+            // 所以：没有说明 = 药丸（定稿里那个长相）；有说明 = 普通圆角卡片。
+            option.description ? 'rounded-nomi' : 'rounded-pill',
             index === selectedOption
               ? 'border-nomi-accent bg-nomi-accent-soft text-nomi-accent'
               : 'border-nomi-line text-nomi-ink-80',
           )}
         >
-          {option}
+          <span className="flex items-center gap-1">
+            {option.label}
+            {/* 「推荐」只是一个记号：不预选、不代答。模型建议哪一个是它的意见，
+                按不按仍然是用户的事（D4：明着说，不替他决定）。 */}
+            {option.recommended ? (
+              <span className="rounded-pill bg-nomi-accent-soft px-1.5 text-micro text-nomi-accent">
+                {t('agentPanelV4.questionRecommended')}
+              </span>
+            ) : null}
+          </span>
+          {option.description ? (
+            <span className="text-micro font-normal text-nomi-ink-60">{option.description}</span>
+          ) : null}
         </button>
       ))}
-    </div>
-  )
-}
-
-/**
- * 缺参数（`missing_param`）的家：**一条助手提问 + 一排建议 chip**，就地长在对话流里。
- *
- * 为什么不进介入槽：那个槽问的是「要不要让我做这件事」——它有确认/不要两个出口，
- * 出现时压在 composer 上方、挡住输入。而缺参数根本不是审批，是 Nomi 少问了一句话；
- * 把「你想要几秒？」放进一个带「不要」按钮的框里，用户得先想明白「不要」是什么意思。
- * 放回对话流，它就长得跟任何一次追问一样：点 chip 是快捷答案，直接打字也一样能答。
- */
-export function V4Suggestion({
-  text,
-  options,
-  onSelect,
-}: {
-  text: string
-  options: readonly string[]
-  onSelect?: (option: string) => void
-}): JSX.Element {
-  return (
-    <div className="flex flex-col gap-1.5" data-v4-block="suggestion">
-      <Message role="assistant">
-        <MessageResponse>
-          <AgentPanelV4Markdown text={text} />
-        </MessageResponse>
-      </Message>
-      <V4OptionChips options={options} onSelect={(option) => onSelect?.(option)} />
     </div>
   )
 }

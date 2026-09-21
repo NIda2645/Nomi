@@ -150,6 +150,55 @@ describe('laneViewModel', () => {
     expect(item.receipt.output).not.toContain('could not accept this action')
   })
 
+  /**
+   * 2026-09-21：有些 `isError` 是**给模型的控制信号**，不是用户的失败。
+   *
+   * `generate` 之后宿主把一张付费确认卡摆到了用户面前，于是工具用 `isError` 让模型停下来别谎报
+   * （抄 GitHub MCP 的做法，对模型是对的）。但它一路走到面板上就成了一条**红色危险条**——
+   * 而用户屏幕上那一刻正躺着那张卡。把预期结果画成危险，实测一个回合里出现 3 次。
+   */
+  it('控制信号不画成失败：付费卡那一条落回普通完成态', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c11', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c11', toolName: 'make_artifact', isError: true,
+        text: 'Stop. The user sees a priced confirmation card.',
+        failure: { code: 'user_sees_spend_card' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.status).toBe('output-available')
+    // 它说的那句话仍然留着——那是一句陈述（「已经给你一张卡了」），不是一条警告。
+    expect(item.receipt.summary).toBe('agentToolFailure.user_sees_spend_card')
+    expect(item.receipt.output).not.toContain('Stop.')
+  })
+
+  /** 阳性对照：同一条路上的**真**失败照旧是失败，名单是闭合的，不是「看着不严重就放行」。 */
+  it('控制信号名单是闭合的：别的失败码照旧红', () => {
+    const translate = (key: string) => key
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c12', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c12', toolName: 'make_artifact', isError: true,
+        text: 'boom', failure: { code: 'tool_execution_failed' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.status).toBe('output-error')
+  })
+
   it('C5：码不在闭合集合里也说本地话，把码带出来给排查用——不退回模型正文', () => {
     const translate = (key: string, options?: Record<string, unknown>) =>
       (options ? `${key}(${Object.values(options).join(',')})` : key)

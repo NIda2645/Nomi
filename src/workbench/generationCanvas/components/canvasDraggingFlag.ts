@@ -32,6 +32,32 @@ export type CanvasDraggingOwner = (typeof CANVAS_DRAGGING_OWNER)[keyof typeof CA
 export type CanvasDragLease = { activate: () => void; release: () => void; cancel: () => void }
 const draggingOwnersByStage = new WeakMap<Element, Set<symbol>>()
 
+/**
+ * 还没结束的那些租约。**只为「宿主把画布藏起来了」这一件事存在**。
+ *
+ * 2026-09-21：这里原来是给每一次手势装一个 MutationObserver，观测整条祖先链的
+ * `attributes` + `childList`，回调里对十几层祖先逐个 `getComputedStyle()`。
+ * React Flow 在拖动过程中持续增删 `.react-flow__viewport` 的子节点，于是那个回调**每帧**都触发，
+ * 每帧强制一轮同步样式重算——正好落在团队把拖图从 49.3ms 压到 12.9ms 的那条热路径上。
+ *
+ * 而它要解决的问题（「工作区槽位隐藏时租约不释放」）根本不需要观测：**槽位隐藏是宿主自己知道的事**。
+ * 所以改成宿主在隐藏路径上显式喊一声（`cancelCanvasDraggingWithin`），热路径上一个观察者都不装。
+ */
+const liveLeases = new Set<{ origin: Element; stage: Element | null | undefined; cancel: () => void }>()
+
+/**
+ * 把这个容器里所有还没结束的手势**当作被打断**收掉（宿主隐藏/卸载画布时调）。
+ *
+ * 与 pointercancel 走同一条 `cancel()`：属性摘掉、`onCancel` 照常回调，
+ * 于是「藏起来」和「手指被系统抢走」在画布看来是同一件事——不需要第二套收尾语义。
+ */
+export function cancelCanvasDraggingWithin(container: Element | null | undefined): void {
+  if (!container) return
+  for (const lease of [...liveLeases]) {
+    if (container.contains(lease.origin) || (lease.stage && container.contains(lease.stage))) lease.cancel()
+  }
+}
+
 /** One lease captures one stage and one gesture. Late cleanup never looks up a new stage. */
 export function beginCanvasDragging(
   origin: Element | null | undefined,
@@ -82,17 +108,11 @@ export function beginCanvasDragging(
     const visibility = () => { if (document.hidden) cancel() }
     document.addEventListener('visibilitychange', visibility)
     cleanup.push(() => document.removeEventListener('visibilitychange', visibility))
-    // Workspace slots stay mounted while hidden. Observe only this origin's ancestor chain;
-    // no global scan, timer, or other stage can release this lease.
-    if (typeof MutationObserver !== 'undefined') {
-      const ancestors: Element[] = []
-      for (let element: Element | null = origin; element; element = element.parentElement) ancestors.push(element)
-      const observer = new MutationObserver(() => {
-        if (!origin.isConnected || ancestors.some(element => element.hasAttribute('hidden') || getComputedStyle(element).display === 'none' || getComputedStyle(element).visibility === 'hidden')) cancel()
-      })
-      for (const element of ancestors) observer.observe(element, { attributes: true, attributeFilter: ['hidden', 'style', 'class'], childList: true })
-      cleanup.push(() => observer.disconnect())
-    }
+    // 工作区槽位隐藏时仍然挂着（`hidden` 不卸载），所以「藏起来了」要由宿主显式喊一声，
+    // 见 `cancelCanvasDraggingWithin`。登记只是一次 Set.add，热路径上零观察者、零 getComputedStyle。
+    const record = { origin, stage, cancel: () => cancel() }
+    liveLeases.add(record)
+    cleanup.push(() => liveLeases.delete(record))
   }
   return { activate, release, cancel }
 }

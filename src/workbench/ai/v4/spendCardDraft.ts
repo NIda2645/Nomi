@@ -252,57 +252,30 @@ export function readSpendDraft(key: string): SpendDraft {
     return spendDraftSchema.safeParse(value).success ? value as SpendDraft : EMPTY_SPEND_DRAFT
   } catch { return EMPTY_SPEND_DRAFT }
 }
-export function retainSpendDraft(key: string, draft: SpendDraft, pending?: PendingSpendConfirm): void {
-  if (draftIsEmpty(draft)) localStorage.removeItem(key)
-  else localStorage.setItem(key, JSON.stringify(draft))
-  // Keep existing partial-recovery entries current when the user edits again.
-  // Ordinary dismissed drafts retain their original whole-scope recovery policy.
-  for (const shot of pending?.shots ?? []) {
-    const recoveryKey = dismissedSpendDraftKey({ ...pending!, shots: [shot] })
-    if (draftIsEmpty(readSpendDraft(recoveryKey))) continue
-    const patch = effectivePatchForShot(draft, shot.shotId)
-    retainSpendDraft(recoveryKey, { all: {}, perShot: { [shot.shotId]: patch } })
-  }
+/**
+ * 写回这一笔的账本。**一个键一笔**（quote 身份），没有第二本。
+ *
+ * 2026-09-21 删掉的那本：× 之后按「输入身份」另存一份 `nomi:dismissed-spend-draft:` 的
+ * 找回账本（含每镜全文 prompt、逐镜再写一条、无回收）。它存在的唯一理由是「× 会把东西弄丢」，
+ * 而那件事已经在根上修掉了——× 只撤这次操作自己造的占位节点，一次 ⌘Z 全回来（`spendCardRollback.ts`）。
+ * 没有东西丢，就没有东西要找回。
+ *
+ * 配额写满时 **吞掉**：这只是「关掉面板再回来还在不在」的便利，炸了不许打断用户正在编辑的这张付费卡。
+ */
+export function retainSpendDraft(key: string, draft: SpendDraft): void {
+  try {
+    if (draftIsEmpty(draft)) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(draft))
+  } catch { /* storage is a convenience here; the live draft lives in React state */ }
 }
 
-/** Recovery is input-bound, never price/quote-bound; the live writer remains quote-bound. */
-function dismissedSpendDraftKey(pending: PendingSpendConfirm): string {
-  const shots = pending.shots.map(({ shotId, modelId, providerId, mode, modeId, prompt, parameters, references }) => ({
-    shotId, modelId, providerId, mode, modeId, prompt, parameters,
-    references: references?.map(({ url: _url, ...identity }) => identity) ?? [],
-  }))
-  return 'nomi:dismissed-spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId, shots])
-}
-export function retainDismissedSpendDraft(pending: PendingSpendConfirm, draft: SpendDraft): void {
-  retainSpendDraft(dismissedSpendDraftKey(pending), draft, pending)
-  retainSpendDraft(spendDraftKey(pending), EMPTY_SPEND_DRAFT)
-}
+/** 这一笔上次留下的未提交改动（换了 quote 身份就是另一笔，读不到就是空）。 */
 export function restoreSpendDraft(pending: PendingSpendConfirm): SpendDraft {
-  const exact = readSpendDraft(spendDraftKey(pending))
-  if (!draftIsEmpty(exact)) return exact
-  const key = dismissedSpendDraftKey(pending)
-  const recovered = readSpendDraft(key)
-  if (!draftIsEmpty(recovered)) {
-    retainSpendDraft(spendDraftKey(pending), recovered)
-    retainSpendDraft(key, EMPTY_SPEND_DRAFT)
-  }
-  if (!draftIsEmpty(recovered)) return recovered
-  // Partial consumption keeps only unsubmitted shots under this same input-bound
-  // key. A later batch can have a different scope, but each shot must still match.
-  const perShot: Record<string, SpendCandidatePatch> = {}
-  for (const shot of pending.shots) {
-    const saved = readSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }))
-    const patch = effectivePatchForShot(saved, shot.shotId)
-    if (Object.keys(patch).length) perShot[shot.shotId] = patch
-  }
-  const remaining = { all: {}, perShot }
-  retainSpendDraft(spendDraftKey(pending), remaining)
-  return remaining
+  return readSpendDraft(spendDraftKey(pending))
 }
+
 export function clearConsumedSpendDraft(pending: PendingSpendConfirm): void {
   retainSpendDraft(spendDraftKey(pending), EMPTY_SPEND_DRAFT)
-  retainSpendDraft(dismissedSpendDraftKey(pending), EMPTY_SPEND_DRAFT)
-  for (const shot of pending.shots) retainSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }), EMPTY_SPEND_DRAFT)
 }
 
 /** Consume exactly the durable/approved set, retaining all other input in this ledger. */
@@ -318,7 +291,6 @@ export function consumeSpendDraft(
     const patch = effectivePatchForShot(draft, shot.shotId)
     if (!Object.keys(patch).length) continue
     perShot[shot.shotId] = patch
-    retainSpendDraft(dismissedSpendDraftKey({ ...pending, shots: [shot] }), { all: {}, perShot: { [shot.shotId]: patch } })
   }
   const remaining = { all: {}, perShot }
   retainSpendDraft(spendDraftKey(successor), remaining)

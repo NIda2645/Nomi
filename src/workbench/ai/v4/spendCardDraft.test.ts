@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import {
-  readSpendDraft, consumeSpendDraft, retainDismissedSpendDraft, restoreSpendDraft, clearConsumedSpendDraft, retainSpendDraft, spendDraftKey,
+  readSpendDraft, consumeSpendDraft, restoreSpendDraft, clearConsumedSpendDraft, retainSpendDraft, spendDraftKey,
   applyPatchToNode,
   candidatePatchFromNode,
   draftAfterNodeEdit,
@@ -132,24 +132,22 @@ it('saves declared model controls that were absent from the original candidate',
 })
 
 
-it('dismissed input moves to a fresh quote only for identical content and scope, then clears after consumption', () => {
+// 2026-09-21：× 之后**没有**第二本账本。× 撤的是这次操作自己造的占位节点（一次 ⌘Z 全回来），
+// 所以「找回被藏起来的草稿」这件事从根上不存在了。这条测试钉住「撤完就真没了」。
+it('discarding a request leaves no recovery ledger behind', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a')] }
     const draft = { all: {}, perShot: { a: { prompt: 'unapproved edit' } } }
     retainSpendDraft(spendDraftKey(pending), draft)
-    retainDismissedSpendDraft(pending, draft)
-    expect(entries.has(spendDraftKey(pending))).toBe(false)
-    const reopened = { ...pending, quoteId: 'q2', planVersion: 3, knownSubtotal: 2 }
-    for (const shots of [[], [shot('b')], [shot('a', { prompt: 'new canonical' })], [shot('a', { parameters: {size:'changed'} })], [shot('a', { references: [{assetId:'ref',contentHash:'hash',version:2,kind:'image'}] })]]) {
-      expect(restoreSpendDraft({ ...reopened, shots })).toEqual(EMPTY_SPEND_DRAFT)
-    }
-    expect(restoreSpendDraft(reopened)).toEqual(draft)
-    expect(entries.size).toBe(1)
-    clearConsumedSpendDraft(reopened)
-    expect(restoreSpendDraft({ ...reopened, quoteId: 'q3', planVersion: 5 })).toEqual(EMPTY_SPEND_DRAFT)
+    expect(restoreSpendDraft(pending)).toEqual(draft)
+    clearConsumedSpendDraft(pending)
     expect(entries.size).toBe(0)
+    // 另一笔（新 quote / 新 plan 版本）永远读不到上一笔的账本：账本绑的是报价身份。
+    for (const reopened of [{ ...pending, quoteId: 'q2' }, { ...pending, planVersion: 3 }, { ...pending, candidateRevision: 9 }]) {
+      expect(restoreSpendDraft(reopened)).toEqual(EMPTY_SPEND_DRAFT)
+    }
   } finally { vi.unstubAllGlobals() }
 })
 
@@ -167,29 +165,27 @@ it('partial consumption keeps all-layer and per-shot edits for remaining shots a
     expect(effectivePatchForShot(remaining, 'c')).toEqual(draft.all)
     expect(restoreSpendDraft(successor)).toEqual(remaining)
     const editedAgain = { ...remaining, perShot: { ...remaining.perShot, b: { ...remaining.perShot.b, prompt: 'B edited again' } } }
-    retainSpendDraft(spendDraftKey(successor), editedAgain, successor)
-    const later = { ...pending, quoteId: 'q3', planVersion: 4, shots: [shot('b')] }
-    expect(restoreSpendDraft(later).perShot.b).toEqual(editedAgain.perShot.b)
-    for (const changed of [{ ...later, runId: 'other' }, { ...later, operationId: 'other' }, { ...later, shots: [shot('b', { prompt: 'changed canonical' })] }]) {
-      expect(draftIsEmpty(restoreSpendDraft({ ...changed, quoteId: 'different' }))).toBe(true)
+    retainSpendDraft(spendDraftKey(successor), editedAgain)
+    expect(restoreSpendDraft(successor).perShot.b).toEqual(editedAgain.perShot.b)
+    // 换一份报价身份 = 换一本账本，一个字都带不过去。
+    for (const changed of [{ ...successor, runId: 'other' }, { ...successor, operationId: 'other' }, { ...successor, quoteId: 'q3' }]) {
+      expect(draftIsEmpty(restoreSpendDraft(changed))).toBe(true)
     }
-    const consumed = consumeSpendDraft(later, restoreSpendDraft(later))
+    const consumed = consumeSpendDraft(successor, restoreSpendDraft(successor))
     expect(draftIsEmpty(consumed)).toBe(true)
-    expect(draftIsEmpty(restoreSpendDraft({ ...later, quoteId: 'q4' }))).toBe(true)
-    expect(restoreSpendDraft({ ...later, quoteId: 'q5', shots: [shot('c')] }).perShot.c).toEqual(draft.all)
+    expect(entries.size).toBe(0)
   } finally { vi.unstubAllGlobals() }
 })
 
-it('cancel preserves both layers and confirming all consumes every shot without resurrecting fragments', () => {
+it('confirming every shot consumes the ledger without resurrecting fragments', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
     const draft = { all: { prompt: 'all edited' }, perShot: { b: { prompt: 'B edited' } } }
-    retainDismissedSpendDraft(pending, draft)
-    const reopened = { ...pending, quoteId: 'q2', planVersion: 3 }
-    expect(restoreSpendDraft(reopened)).toEqual(draft)
-    expect(draftIsEmpty(consumeSpendDraft(reopened, draft))).toBe(true)
+    retainSpendDraft(spendDraftKey(pending), draft)
+    expect(restoreSpendDraft(pending)).toEqual(draft)
+    expect(draftIsEmpty(consumeSpendDraft(pending, draft))).toBe(true)
     expect(draftIsEmpty(restoreSpendDraft({ ...pending, quoteId: 'q3', shots: [shot('b')] }))).toBe(true)
     expect(entries.size).toBe(0)
   } finally { vi.unstubAllGlobals() }
@@ -253,7 +249,9 @@ describe('persisted spend draft validation', () => {
   })
 })
 
-it('failed promotion keeps the dismissed draft for a later recovery attempt', () => {
+// 写不进去（配额满 / 隐私模式）只是「关掉面板回来还在不在」这件便利失效，
+// **绝不允许**它把用户正在编辑的这张付费卡打断。
+it('a storage failure never interrupts the card', () => {
   const entries = new Map<string, string>()
   let failWrite = false
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null,
@@ -262,17 +260,16 @@ it('failed promotion keeps the dismissed draft for a later recovery attempt', ()
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
     const draft = { all: { prompt: 'retained user input' }, perShot: {} }
-    retainDismissedSpendDraft(pending, draft)
-    const saved = [...entries]
     failWrite = true
-    expect(() => restoreSpendDraft(pending)).toThrow('quota')
-    expect([...entries]).toEqual(saved)
+    expect(() => retainSpendDraft(spendDraftKey(pending), draft)).not.toThrow()
+    expect(restoreSpendDraft(pending)).toEqual(EMPTY_SPEND_DRAFT)
     failWrite = false
+    retainSpendDraft(spendDraftKey(pending), draft)
     expect(restoreSpendDraft(pending)).toEqual(draft)
   } finally { vi.unstubAllGlobals() }
 })
 
-it.each(['exact', 'dismissed', 'partial'] as const)('rejects malformed %s recovery without changing another request', kind => {
+it.each(['exact', 'partial'] as const)('rejects malformed %s recovery without changing another request', kind => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null,
     setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
@@ -282,7 +279,6 @@ it.each(['exact', 'dismissed', 'partial'] as const)('rejects malformed %s recove
     const other = { ...pending, operationId: 'other' }
     retainSpendDraft(spendDraftKey(other), draft)
     if (kind === 'exact') retainSpendDraft(spendDraftKey(pending), draft)
-    else if (kind === 'dismissed') retainDismissedSpendDraft(pending, draft)
     else consumeSpendDraft(pending, draft, ['a'])
     const otherKey = spendDraftKey(other)
     const otherRaw = entries.get(otherKey)
