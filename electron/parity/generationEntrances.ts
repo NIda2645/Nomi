@@ -142,6 +142,6 @@ export const BASELINE_ENTRANCE_ID = "canvas-node";
 
 export function entranceById(id: string): GenerationEntrance {
   const hit = GENERATION_ENTRANCES.find((entrance) => entrance.id === id);
-  if (!hit) throw new Error(`未登记的生成入口: ${id}`);
+  if (!hit) throw new Error(`unregistered generation entrance: ${id}`);
   return hit;
 }

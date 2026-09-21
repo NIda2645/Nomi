@@ -74,7 +74,7 @@ export async function seedParityCatalog(vendorKeys: readonly string[] = ["apimar
 }
 
 function recordFromCall(call: CapturedCall | undefined, notes?: Record<string, unknown>): OutboundRecord {
-  if (!call) return { failure: { code: "no_outbound_request", message: "没有任何出站请求" }, ...(notes ? { notes } : {}) };
+  if (!call) return { failure: { code: "no_outbound_request", message: "no outbound request was made" }, ...(notes ? { notes } : {}) };
   const url = new URL(call.url);
   return {
     request: {
@@ -156,7 +156,7 @@ export async function driveEngineB(capture: FetchCapture, input: EngineBTaskInpu
     return {
       failure: {
         code: readiness?.missingForSubmit?.[0] ?? "configured_provider",
-        message: `宿主没有为 ${input.vendorKey} 装配生成供应商`,
+        message: `the host built no generation provider for ${input.vendorKey}`,
       },
       notes: { providersBuilt: bootstrap.providers.map((candidate) => candidate.providerId) },
     };
@@ -195,7 +195,6 @@ export async function driveEngineB(capture: FetchCapture, input: EngineBTaskInpu
       references: contract.references,
       contractHash: contract.contractHash,
       idempotencyKey: "parity-idempotency-key",
-      requestFingerprint: "f".repeat(64),
       ...(input.referenceUrls ? { referenceUrls: input.referenceUrls } : {}),
       ...(contract.transportModelId ? { transportModelId: contract.transportModelId } : {}),
     });
