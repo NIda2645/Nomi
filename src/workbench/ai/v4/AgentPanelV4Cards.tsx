@@ -27,7 +27,7 @@ import {
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
 import { V4AskCard, type V4AskCardLabels } from './AgentPanelV4AskCard'
-import { V4SlotShell } from './AgentPanelV4SlotShell'
+import { V4SlotShell, V4_SLOT_ICON_BUTTON } from './AgentPanelV4SlotShell'
 import { askCardQuestions } from './agentPanelV4AskModel'
 import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
 import type {
@@ -495,7 +495,7 @@ export function V4Intervention({
                   type="button"
                   aria-label={labels.reject}
                   title={labels.reject}
-                  className="grid size-[22px] shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05 hover:text-nomi-danger"
+                  className={cn(V4_SLOT_ICON_BUTTON, 'hover:text-nomi-danger')}
                   onClick={() => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.())}
                   data-v4-control="reject"
                 >

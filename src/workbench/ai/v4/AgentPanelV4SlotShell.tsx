@@ -34,6 +34,15 @@ import type { V4InterventionKind } from './agentPanelV4Types'
  */
 export const V4_SLOT_PRIMARY_BUTTON = 'h-7 rounded-nomi-sm border border-nomi-ink bg-nomi-ink px-2.5 text-nomi-paper disabled:opacity-40'
 
+/**
+ * 槽里那种**只有一个图标**的钮（确认卡页脚那颗 ×、反问卡右上那颗 ×）。
+ *
+ * 尺寸只写在这一处：原来两张卡各写各的（确认卡 22、反问卡 28），并排一量就差 6px。
+ * 语义色不在这里给——确认卡那颗是「不要」（hover 转 danger），反问卡那颗是「这次不答」
+ * （跳过不是破坏性动作，转红会把它说重了）。调用方各自补那一句。
+ */
+export const V4_SLOT_ICON_BUTTON = 'grid size-[22px] shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05'
+
 /** 页脚里那些**安静的**次动作（付费卡的「换模型」、反问卡的「跳过」）。 */
 export const V4_SLOT_QUIET_BUTTON = 'h-7 rounded-nomi-sm px-2.5 text-nomi-ink-60 hover:bg-nomi-ink-05'
 

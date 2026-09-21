@@ -32,7 +32,7 @@
  */
 import React from 'react'
 import { cn } from '../../../utils/cn'
-import { V4SlotShell, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
+import { V4SlotShell, V4_SLOT_ICON_BUTTON, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
 import { IconChevronDown, IconCheck, IconX } from './AgentPanelV4Icons'
 import {
   ASK_AUTO_ADVANCE_MS,
@@ -382,7 +382,7 @@ export function V4AskCard({
             // 贴着卡体这一格的右上角，**不再另加偏移**：外壳已经给了 `px-2.5 py-2`，
             // 再写一次 `top-2.5` 就是把它按两遍内边距往下推，× 会掉到问句和第一个选项中间
             // （真面板截图上量到偏低 25px）。`-mt-0.5` 是把 28px 的命中框对回 21px 那行文字。
-            className="absolute -mt-0.5 right-0 top-0 z-10 grid size-7 place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05 hover:text-nomi-ink"
+            className={cn(V4_SLOT_ICON_BUTTON, 'absolute -mt-0.5 right-0 top-0 z-10 hover:text-nomi-ink')}
           >
             <IconX size={14} aria-hidden="true" />
           </button>
