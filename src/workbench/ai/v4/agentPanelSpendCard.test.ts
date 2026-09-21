@@ -60,6 +60,22 @@ describe('付费卡投影', () => {
     expect(data.scope).toBe('agentPanelV4.spendParamsScopeUnknown')
   })
 
+  // 2026-09-21 未知价开闸之后这张卡是**真能按下去**的（从前按下去必然失败）。所以「屏上不出现
+  // 任何代表未知的 0」从一条显示纪律升级成了一条花钱纪律：用户会照着它做花钱的决定。
+  it('报不出价：整张卡序列化后找不到任何金额位的 0（混合批次也一样）', () => {
+    const allUnknown = projectSpendCard(pending([shot(1, null), shot(2, null)]), { page: 0, scope: 'each' }, t)!
+    // t() 把金额渲染成 `amount=X`，所以金额位的 0 只会长成这两种样子。
+    expect(JSON.stringify(allUnknown)).not.toMatch(/amount=0(?!\.\d*[1-9])/)
+    expect(allUnknown.price?.total).toBeUndefined()
+
+    // 混合：有一镜算得出、一镜算不出 —— 合计仍然不许印（那个数不是合计），
+    // 而算不出的那一行印的是「暂时算不出价格」，不是 ¥0。
+    const mixed = projectSpendCard(pending([shot(1, 0.5), shot(2, null)]), { page: 0, scope: 'each' }, t)!
+    expect(mixed.price?.total).toBeUndefined()
+    expect(mixed.price?.unavailable).toBe('agentPanelV4.spendParamsUnavailable')
+    expect(JSON.stringify(mixed)).not.toMatch(/amount=0(?!\.\d*[1-9])/)
+  })
+
   it('多镜整齐：不出逐镜折叠口（把同一句话抄 N 遍没有信息量）', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0, scope: 'each' }, t)!
     expect(data.price?.perItem).toBeUndefined()

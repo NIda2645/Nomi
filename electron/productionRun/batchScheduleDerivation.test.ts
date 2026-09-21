@@ -133,7 +133,7 @@ function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivati
     runStatus: "running",
     plan: sealedPlan(shots),
     jobs: authorizedJobsFor(shots),
-    budget: { currency: "CNY", authorized: 100, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: "CNY", authorized: 100, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     perShotPrice: () => ({ known: true, amount: 6 }),
     anchorGate: undefined,
     now: NOW,
@@ -284,7 +284,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
       jobs: authorizedJobsFor(shots),
-      budget: { currency: "CNY", authorized: 13, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 13, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     }));
     expect(result.shotDispatch.map((s) => s.shotId)).toEqual(["shot-a", "shot-b"]);
     expect(result.halt).toBeDefined();
@@ -305,7 +305,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
       jobs,
-      budget: { currency: "CNY", authorized: 13, reserved: 6, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 13, reserved: 6, actual: 0, unsettled: 0, unknownInFlight: 0 },
     }));
     // shot-a already has a job; among remaining b,c only b fits the 7 headroom.
     expect(result.shotDispatch.map((s) => s.shotId)).toEqual(["shot-b"]);
@@ -322,7 +322,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
-      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       perShotPrice: (shotId) => (shotId === "shot-b" ? { known: false } : { known: true, amount: 6 }),
     }));
     // a costs 6 (fits exactly), b is unknown (0 toward cap) → both dispatchable.
@@ -414,4 +414,43 @@ it("reports actual progress for a pure anchor batch and ignores an earlier batch
     anchorGate: { ...anchorCheckpointGate("approved"), planHash: "earlier-batch" } }));
   expect(done.progress).toMatchObject({ total: 1, completed: 1, pending: 0 });
   expect(done.checkpoint.status).toBe("should_open");
+});
+
+// ── 未知价开闸（2026-09-21 用户拍板）──
+//
+// 这三条守的是同一件事：**算不出价的镜头不进金额比较**。从前这里写的是
+// `price.known ? amount : 0`——那行被上游的抛点挡着不可达，一开闸就是「一批全是未知价的镜头
+// 被判成 running + 0 ≤ authorized、全部派出去」的静默口：上限证明看起来成立，其实什么都没证明。
+describe("unknown-price shots never enter the budget comparison", () => {
+  it("dispatches an all-unknown batch even when the authorized ceiling is zero, and says how many", () => {
+    const result = deriveBatchPlan(baseInput({
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: () => ({ known: false }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a", "shot-b"]);
+    expect(result.halt).toBeUndefined();
+    // 派出去了，而且账上如实记着「这两镜花多少事后才知道」——不是「这两镜不花钱」。
+    expect(result.unknownDispatchCount).toBe(2);
+  });
+
+  it("still halts the KNOWN shot that breaches the cap while letting the unknown one through", () => {
+    const result = deriveBatchPlan(baseInput({
+      // 额度只够 5：shot-a 未知（不比较、照派），shot-b 已知 6 → 超，halt 在它这里。
+      budget: { currency: "CNY", authorized: 5, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: (shotId) => (shotId === "shot-a" ? { known: false } : { known: true, amount: 6 }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a"]);
+    expect(result.unknownDispatchCount).toBe(1);
+    expect(result.halt).toMatchObject({ haltedAtShotId: "shot-b", authorized: 5, unknownDispatchCount: 1 });
+  });
+
+  it("does not let an unknown shot consume the ceiling a later known shot needs", () => {
+    // 若未知仍被当成某个金额加进去，shot-b 就会被误判超支。它必须完全不影响这趟累加。
+    const result = deriveBatchPlan(baseInput({
+      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: (shotId) => (shotId === "shot-a" ? { known: false } : { known: true, amount: 6 }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a", "shot-b"]);
+    expect(result.halt).toBeUndefined();
+  });
 });

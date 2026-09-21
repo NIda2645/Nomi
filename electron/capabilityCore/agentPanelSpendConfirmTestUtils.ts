@@ -198,6 +198,12 @@ function harness() {
 function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, submits: string[], hooks: {
   beforeAuthorize?: () => Promise<void>;
   afterAuthorize?: () => Promise<void>;
+  /**
+   * 目录一条价都没填的那台机器（干净装机上的 100% 默认状态）。开着它，整条链上的价格全是
+   * `{ known: false }`——付费卡、门、账本、供应商请求都得在「算不出价」下跑通，
+   * 且任何一处都不许出现代表未知的 0（2026-09-21 未知价开闸）。
+   */
+  unpriced?: boolean;
 } = {}) {
   const { root, repository, owner, operations, canvasLanding } = base;
   const provider = loopbackProvider(vendorOrigin, submits);
@@ -217,7 +223,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
   const handler = createGenerationPlanningHandler({
     registry,
     operations,
-    resolveModelPricing: () => PRICING,
+    resolveModelPricing: () => (hooks.unpriced ? undefined : PRICING),
     now,
     prepareAuthorization: ({ lease: projectLease, operation, contract, multiShot }) => prepareProductionGenerationAuthorization({
       lease: projectLease, projectRevision: 0, operation, contract,
@@ -226,6 +232,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
       ...(multiShot ? { multiShot } : {}),
       providers: [provider],
       resolveShotPrice: (shotContract) => {
+        if (hooks.unpriced) return { known: false };
         // 价格按**合同里冻着的那份参数**算，不是按草稿现有的：改完参数重新封印之后，收据的上限
         // 必须跟着新规格走，否则「印在卡上的数」和「冻进合同的数」会分叉。
         const spec = shotContract.parameters ?? {};
@@ -245,7 +252,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
         });
         const scheduler = createMultiShotBatchScheduler({
           repository, submission, projectId: PROJECT_ID, runId: operation.operationId,
-          perShotPrice: () => ({ known: true, amount: PRICING.cost }), now,
+          perShotPrice: () => (hooks.unpriced ? { known: false } : { known: true, amount: PRICING.cost }), now,
         });
         await scheduler.runToQuiescence();
         await canvasLanding.landCanvasBestEffort(PROJECT_ID, operation.operationId);
@@ -287,7 +294,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     rendererTarget,
     committedBinding: () => ({ projectId: PROJECT_ID, immutableProjectUuid: "project-uuid-1", projectGeneration: 1 }),
     leaseFor: async () => lease,
-    resolvePricing: () => PRICING,
+    resolvePricing: () => (hooks.unpriced ? undefined : PRICING),
     now,
   });
   const window = () => ({ webContentsId: 1, frameId: 0, origin: "app://nomi" });
