@@ -416,6 +416,10 @@ export function V4Intervention({
                 size="sm"
                 onClick={onConfirm}
                 data-v4-control="confirm"
+                // `data-v4-price` 这个走查锚点**跟着那个数走**：多镜 / 未知价时它挂在页脚左下那一格上；
+                // 单镜且报得出价时左下留空（同一个数不说两遍），数只印在这颗按钮上，锚点也就挂在这里。
+                // 未知价时不挂——那一档根本没有「合计」可言，走查靠它不存在来认。
+                {...(!data.totalLead && data.price?.total ? { 'data-v4-price': 'total' } : {})}
                 // 单动作最小宽 72px（agent 专章 §8.2），否则两个字的按钮会缩成小方块。尺寸阶梯上没有 72，取上一档 80（`min-w-20`），不写任意值。
                 // `shrink-0`：左下那句话折行时不许来挤主按钮——被挤的永远该是说明，不是动作。
                 className="min-w-20 shrink-0"
