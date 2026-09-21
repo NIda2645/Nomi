@@ -12,6 +12,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { dropKindFromFile } from '../model/nodeAssetDrop'
 import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
+import { placementOrigin, type CanvasPlacementAnchor } from '../model/canvasPlacement'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import {
   admitMediaImport,
@@ -61,7 +62,7 @@ export type ImportImageFilesOptions = {
    * basePosition 压在第一张卡的哪一点（比例）。不传 = 左上角。拖入传中心：卡的真实尺寸
    * （图片按像素比例）只有这里读完尺寸才知道，所以锚点在这里换算，不在调用方按默认尺寸猜。
    */
-  anchor?: { xRatio: number; yRatio: number }
+  anchor?: CanvasPlacementAnchor
   /** 磁盘余量（省一次 IPC 时可注入；不传则现取）。 */
   capacity?: StorageCapacity | null
 }
@@ -116,16 +117,6 @@ function imageMetaForDimensions(dimensions: ImageDimensions | null): Record<stri
 function visibleCardSize(dimensions: ImageDimensions | null): { width: number; height: number } {
   if (!isValidImageDimensions(dimensions)) return getGenerationNodeDefaultSize('asset')
   return { width: nodeWidthForDimensions(dimensions), height: previewHeightForDimensions(dimensions) }
-}
-
-function anchoredImportOrigin(
-  basePosition: { x: number; y: number },
-  firstDimensions: ImageDimensions | null,
-  anchor: ImportImageFilesOptions['anchor'],
-): { x: number; y: number } {
-  if (!anchor) return basePosition
-  const size = visibleCardSize(firstDimensions)
-  return { x: basePosition.x - size.width * anchor.xRatio, y: basePosition.y - size.height * anchor.yRatio }
 }
 
 function layoutColumns(count: number): number {
@@ -398,7 +389,9 @@ async function importFilesInProject(
   }))
   context.assertCurrent()
   const positions = layoutImportPositions(
-    anchoredImportOrigin(options.basePosition, prepared[0]?.dimensions ?? null, options.anchor),
+    options.anchor
+      ? placementOrigin({ point: options.basePosition, anchor: options.anchor }, visibleCardSize(prepared[0]?.dimensions ?? null))
+      : options.basePosition,
     prepared.map((item) => item.size),
   )
 
