@@ -34,7 +34,7 @@ export const draftShotSchema = z.object({
   shotId: shotId.optional().describe("Pass an existing shot id to update that draft; omit to create a new shot."),
   storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
   title: z.string().trim().min(1).max(120).optional().describe("Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language."),
-  prompt: z.string().trim().min(1).max(8_000).describe("Generation prompt in the user's language (Chinese user → Chinese prompt)."),
+  prompt: z.string().trim().min(1).max(8_000).optional().describe("Generation prompt in the user's language (Chinese user → Chinese prompt). Required when you create a shot; when you revise one (operationId + shotId) send it only if you are changing it — leaving it out keeps the prompt the shot already has."),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
   durationSec: z.number().positive().max(600).optional().describe("Video clip length in seconds; omit for stills. This is the only place to set length — never also put duration inside parameters."),
@@ -169,7 +169,7 @@ export function writeVerbs(): VerbDeclaration[] {
       does: "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
       notWhen: "New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Two shapes: creating a shot needs prompt; revising one (operationId + shotId) carries only the fields you are changing — prompt, model, modeId, parameters, references — and leaves the rest out, including title and role, which are fixed when the shot is created. The host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
@@ -184,6 +184,27 @@ export function writeVerbs(): VerbDeclaration[] {
       // `shotId` 只在「改已有草稿」时有意义。少了这条约束，模型发
       // `{shots:[{shotId:"shot-3", prompt:"…"}]}`（忘了 operationId）时会新建一份草稿、把 shot-3 悄悄丢掉——
       // 它以为改好了，用户看到的是画布上多了一个镜头（2026-09-18 扫描的 D 类：静默丢字段）。
+      // 「新建」与「修订」是**两种形状**，而 schema 只有一份（模型面不许长出第二个工具）。
+      // 差别只有一条，就写在这里：新建必须给 `prompt`，修订只带你要改的那几件。
+      //
+      // 2026-09-21 实测里这条是自相矛盾的：`prompt` 在 schema 上是必填，而同一份说明书告诉模型
+      // 「改草稿改的是提示词/模型/参数/参考」。于是只想改一个参数的那次被回了
+      // `shots.0.prompt: must have required properties prompt`——它照做，把整段提示词重抄一遍，
+      // 而重抄的那一遍就是它写坏 JSON 的地方。
+      if (value.operationId === undefined) {
+        const missing = value.shots.findIndex((shot) => shot.prompt === undefined);
+        if (missing >= 0) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", missing, "prompt"],
+            message: "a new shot needs a prompt (only a revision may leave it out, and a revision needs operationId)" });
+        }
+      } else {
+        // 修订一镜却一个字段都没改 = 一次没有意义的往返；当场说清，别让它以为改成功了。
+        const empty = value.shots.findIndex((shot) => Object.keys(shot).filter((key) => key !== "shotId").length === 0);
+        if (empty >= 0) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", empty],
+            message: "this revision changes nothing — include at least one of prompt, modelId/candidate, modeId, parameters, references, durationSec" });
+        }
+      }
       const stray = value.shots.findIndex((shot) => shot.shotId !== undefined);
       if (value.operationId === undefined && stray >= 0) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", stray, "shotId"], message: "shotId only addresses a shot inside an existing draft — pass operationId too, or omit shotId to create" });

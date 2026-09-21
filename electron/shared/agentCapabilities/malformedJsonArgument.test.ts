@@ -69,3 +69,34 @@ describe("一镜把同一件事写了两遍", () => {
     expect(printed).toContain("minus length — length is durationSec");
   });
 });
+
+// 「新建」与「修订」是两种形状，而 schema 只有一份。2026-09-21 实测里这条是自相矛盾的：
+// prompt 在 schema 上必填，同一份说明书却告诉模型「改草稿改的是提示词/模型/参数/参考」。
+describe("draft_shots 的两种形状", () => {
+  const parse = (args: unknown) => {
+    const spec = VERB_DECLARATIONS.find((declaration) => declaration.name === "draft_shots")!;
+    return spec.schema.safeParse(args);
+  };
+  const issues = (args: unknown) => {
+    const result = parse(args);
+    return result.success ? [] : result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+  };
+
+  it("只改一个参数的修订，不必把整段提示词再抄一遍", () => {
+    expect(parse({ operationId: "op-1", shots: [{ shotId: "shot-1", parameters: { resolution: "1080p" } }] }).success).toBe(true);
+  });
+
+  it("新建一镜仍然必须给 prompt——宽容不等于没有形状", () => {
+    expect(issues({ shots: [{ title: "镜 1" }] }).join("\n")).toMatch(/a new shot needs a prompt/);
+  });
+
+  it("修订却一个字段都没改 = 一次没有意义的往返，当场说清", () => {
+    expect(issues({ operationId: "op-1", shots: [{ shotId: "shot-1" }] }).join("\n")).toMatch(/changes nothing/);
+  });
+
+  it("说明书自己承认这两种形状——schema 与描述不许各说各的", () => {
+    const spec = VERB_DECLARATIONS.find((declaration) => declaration.name === "draft_shots")!;
+    expect(spec.describe.params).toMatch(/Two shapes/);
+    expect(JSON.stringify(spec.schema)).toContain("Required when you create a shot");
+  });
+});
