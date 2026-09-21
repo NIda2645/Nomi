@@ -32,19 +32,31 @@ export function assertCatalogModelIdentity(
   const sameKey = listing.filter((entry) => entry.modelKey === modelKey)
   const matched = identity.vendor ? sameKey.filter((entry) => entry.vendor === identity.vendor) : sameKey
   if (matched.length === 0) {
-    const closest = listing.find((entry) => entry.modelKey.toLowerCase() === modelKey.toLowerCase())
-      ?? listing.find((entry) => entry.modelKey.toLowerCase().includes(modelKey.toLowerCase()))
+    // 「最接近的那个」要两个方向都看：调用方可能少写（`gpt-image` → `gpt-image-2`），
+    // 也可能多写（`gpt-image-2-typo` → `gpt-image-2`）。只看一个方向时后者找不到任何东西。
+    const wanted = modelKey.toLowerCase()
+    const closest = listing.find((entry) => entry.modelKey.toLowerCase() === wanted)
+      ?? listing.find((entry) => entry.modelKey.toLowerCase().includes(wanted))
+      ?? listing.find((entry) => wanted.includes(entry.modelKey.toLowerCase()))
     throw new CanvasGraphError(
       'unknown_model_identity',
       `目录里没有${identity.vendor ? ` ${identity.vendor} 的` : ''}模型 ${modelKey}。`
       + (closest ? `最接近的是 ${closest.vendor}/${closest.modelKey}。` : '')
       + '用 nomi_read{target:"models"} 取薄名单，再查那一个的详情。',
+      {
+        modelKey,
+        nodeKind: identity.kind,
+        expectedModelKind,
+        ...(identity.vendor ? { vendor: identity.vendor } : {}),
+        ...(closest ? { closest: `${closest.vendor}/${closest.modelKey}` } : {}),
+      },
     )
   }
   if (!matched.some((entry) => entry.kind === expectedModelKind)) {
     throw new CanvasGraphError(
       'unknown_model_identity',
       `模型 ${modelKey} 是 ${matched[0]!.kind} 模型，挂不到 ${identity.kind} 节点上（这里要 ${expectedModelKind} 模型）。`,
+      { modelKey, modelKind: matched[0]!.kind, nodeKind: identity.kind, expectedModelKind },
     )
   }
 }

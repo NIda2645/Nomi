@@ -86,11 +86,17 @@ export const VALID_EDGE_MODES = new Set([
 export class CanvasGraphError extends Error {
   readonly code: 'unknown_node_kind' | 'invalid_edge_mode' | 'node_not_found' | 'unknown_model_identity'
   readonly recovery = 'Refresh the canvas and retry with a current node kind, edge mode, or node id.'
+  /**
+   * 语言中立的事实（模型键、节点 kind、最接近的那个…）。传输层 `buildToolErrorOutcome` 把它
+   * 原样送到模型眼前；人话那一半（zh/en）由错误码表出。两半分工，不让中文散文当唯一出口。
+   */
+  readonly details?: Record<string, string | number>
 
-  constructor(code: CanvasGraphError['code'], message: string) {
+  constructor(code: CanvasGraphError['code'], message: string, details?: Record<string, string | number>) {
     super(message)
     this.name = 'CanvasGraphError'
     this.code = code
+    if (details) this.details = details
   }
 }
 

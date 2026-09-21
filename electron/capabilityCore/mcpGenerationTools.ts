@@ -626,13 +626,25 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         parameters: userPatch.parameters ?? baseCandidate.parameters,
         references: userPatch.references ?? baseCandidate.references,
       } as PlanCandidate;
-      // 换模型带来的上个模型参数残留，在**换模型这一刻**清掉并如实上报（见 stripParametersNotAccepted）。
-      const clearedParameters = (modelChanged || modeChanged) && userPatch.parameters === undefined
+      // 两种参数，两种待遇（这条分界线是本刀的核心）：
+      //  · 调用方**这一次点名**的参数 → 当场判，错了就结构化拒绝（模型才有得自纠）；
+      //  · 换模型带来的**上个模型的残留** → 清掉并如实上报，不拒（它不是谁刚写错的）。
+      const stripped = userPatch.parameters === undefined
         ? stripParametersNotAccepted(mergedCandidate, deps.registry, deps.videoModelCandidates)
-        : [];
-      const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
+        : { candidate: mergedCandidate, cleared: [] as string[] };
+      const clearedParameters = stripped.cleared;
+      const normalizedCandidate = normalizeVideoCandidate(stripped.candidate, deps.videoModelCandidates);
+      // 判的是**归一之后**的候选：变体别名（`fast-face` → `fast`）要先被认成正名，
+      // 否则合法的别名会被自己的变体清单拒掉。
+      if (userPatch.parameters !== undefined) {
+        compileExecutionContract(normalizedCandidate, deps.registry, videoCompileOptions(normalizedCandidate, deps.videoModelCandidates));
+      }
       const normalizedPatch = {
         ...userPatch,
+        // 清理过就必须**连同清理后的参数一起落盘**。漏掉这一行时 stripParametersNotAccepted
+        // 只是算了一遍、报了一遍，存的还是旧参数——所以「不上报 clearedParameters」那个变异
+        // 当时杀不掉：整件事对持久化没有任何可观测效果（2026-09-22 验收）。
+        ...(clearedParameters.length ? { parameters: stripped.candidate.parameters } : {}),
         ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
         ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
       };
@@ -650,7 +662,12 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "preview") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, videoCompileOptions(candidate, deps.videoModelCandidates));
+      // **存量草稿的跨模型残留**：这些参数是升级前落盘的，不是这一次调用里谁点名的。
+      // 对它们当场拒 = 旧草稿一打开就报错、读不起来（2026-09-22 验收指出的升级暴露面）。
+      // 所以这里**清掉并如实报出**（`clearedParameters`），而不是拒——拒只留给
+      // 调用方**这一次点名**的参数（那一档在 `plan` 里当场判）。
+      const { candidate: cleaned, cleared: clearedParameters } = stripParametersNotAccepted(candidate, deps.registry, deps.videoModelCandidates);
+      const contract = compileExecutionContract(cleaned, deps.registry, videoCompileOptions(cleaned, deps.videoModelCandidates));
       const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
         moduleId: candidate.moduleId,
@@ -671,6 +688,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
+        ...(clearedParameters.length ? { clearedParameters } : {}),
         ...(recommendation ? { recommendation } : {}),
         pricing: projection,
         providerReady: readiness.providerReady,

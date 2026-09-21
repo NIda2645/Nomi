@@ -86,15 +86,46 @@ export type ExecutionContractV1 = {
   warnings: string[];
 };
 
+/**
+ * 把拒绝摊平成**语言中立、机器可读**的一层（键名、取值、范围——没有一个字是散文）。
+ *
+ * 为什么必须摊平：工具错误的渲染层 `buildToolErrorOutcome` 读的是 `error.details`，
+ * 它是那条通路上唯一会被原样送到模型眼前的结构化字段。2026-09-22 验收查到
+ * `rejection` 全仓零消费者——机器可读那一半从未离开进程，到模型那儿的只有一句中文散文。
+ * 人话（zh/en 两版）由错误码表出，事实由这里出，两者分工不混。
+ */
+function rejectionDetails(rejection: ParameterRejection): Record<string, string | number> {
+  return {
+    at: rejection.path,
+    ...(rejection.allowedKeys?.length ? { allowedKeys: rejection.allowedKeys.join(",") } : {}),
+    ...(rejection.closestKey ? { closestKey: rejection.closestKey } : {}),
+    ...(rejection.expectedType ? { expectedType: rejection.expectedType } : {}),
+    ...(rejection.allowedValues?.length ? { allowedValues: rejection.allowedValues.map(String).join(",") } : {}),
+    ...(rejection.min !== undefined ? { min: rejection.min } : {}),
+    ...(rejection.max !== undefined ? { max: rejection.max } : {}),
+    ...(rejection.allowedVariantIds ? { allowedVariantIds: rejection.allowedVariantIds.join(",") || "(none)" } : {}),
+  };
+}
+
 export class ContractCompilationError extends Error {
-  readonly code = "contract_invalid" as const;
+  /**
+   * 带 rejection 时就是那条具体的码（`unknown_parameter` 等），否则是笼统的 `contract_invalid`。
+   * 具体码才让模型知道该改什么；`buildToolErrorOutcome` 按它查 zh/en 文案与恢复动作。
+   */
+  readonly code: ParameterRejectionCode | "contract_invalid";
   /** Present whenever the rejection is about a value the caller sent (see `ParameterRejection`). */
   readonly rejection?: ParameterRejection;
+  /** 语言中立的事实，由传输层原样送到模型眼前。 */
+  readonly details?: Record<string, string | number>;
 
   constructor(message: string, rejection?: ParameterRejection) {
     super(message);
     this.name = "ContractCompilationError";
-    if (rejection) this.rejection = rejection;
+    this.code = rejection?.code ?? "contract_invalid";
+    if (rejection) {
+      this.rejection = rejection;
+      this.details = rejectionDetails(rejection);
+    }
   }
 }
 

@@ -239,39 +239,6 @@ export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: re
 }
 
 /**
- * 就地清掉候选身上这个新模型不接受的参数，返回被清掉的键。
- *
- * 换模型/换模式会把上一个模型的参数原封不动带过来。这些残留过去靠准入层「静默丢弃」消化掉
- * ——那正是本刀要杀的行为。残留该在**换模型这一刻**由调用方清掉并如实上报（进 changeset），
- * 而不是让校验层装聋（P2：修在最早的共享边界，不在最后一道闸打补丁）。
- */
-export function stripParametersNotAccepted(
-  candidate: PlanCandidate,
-  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
-  candidates: readonly VideoModelCandidate[] | undefined,
-): string[] {
-  // 「哪些键合法」读的就是准入层那一份 schema（video 档案投影优先，否则 registry 的那份）——
-  // 清理与校验不许各答一次。新模型此刻解析不出来（目录里没有 / 模式不对）→ 什么都不清：
-  // 那不是「参数残留」问题，交给准入层去报它自己的错，这里不抢着替它解释。
-  let accepted: Record<string, ParameterField>;
-  try {
-    accepted = videoParameterSchema(candidate, candidates)
-      ?? registry.resolve({
-        moduleId: candidate.moduleId, providerId: candidate.providerId,
-        modelId: candidate.modelId, mode: candidate.mode,
-      }).parameterSchema;
-  } catch {
-    return [];
-  }
-  const cleared = Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
-  if (cleared.length === 0) return cleared;
-  candidate.parameters = Object.fromEntries(
-    Object.entries(candidate.parameters).filter(([key]) => !cleared.includes(key)),
-  );
-  return cleared;
-}
-
-/**
  * 编译执行契约时该带的那两样：这个模型此刻的参数表，以及它声明过的变体清单。
  * 三个编译点（单镜 preview / 单镜 gate_request / 多镜 seal）共用这一处，
  * 免得「preview 核了变体、gate 没核」这种两道闸不一致。
@@ -291,5 +258,43 @@ export function videoCompileOptions(
         .map((control) => [control.key, parameterFieldForControl(control)]),
     ),
     allowedVariantIds: videoVariantIdsOf(selected.videoCandidate.archetype),
+  };
+}
+
+/**
+ * 去掉候选身上这个模型不接受的参数，返回**新候选**与被清掉的键。
+ *
+ * 不原地改：候选常常来自冻结的持久化对象（preview 读的就是），就地写会当场 TypeError；
+ * 而且「读一份、得一份」比「读一份、它变了」好推理。
+ *
+ * 用在两处、都不是拒绝：换模型那一刻的残留清理，以及 preview 读到的**存量**残留。
+ * 调用方这一次点名的参数不走这里——那一档在 plan 里当场判、错了就拒。
+ */
+export function stripParametersNotAccepted(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  candidates: readonly VideoModelCandidate[] | undefined,
+): { candidate: PlanCandidate; cleared: string[] } {
+  // 「哪些键合法」读的就是准入层那一份（档案投影优先，否则 registry 的那份）——
+  // 清理与校验不许各答一次。解析不出来 → 什么都不清，交给准入层报它自己的错。
+  let accepted: Record<string, ParameterField>;
+  try {
+    accepted = videoCompileOptions(candidate, candidates).parameterSchema
+      ?? registry.resolve({
+        moduleId: candidate.moduleId, providerId: candidate.providerId,
+        modelId: candidate.modelId, mode: candidate.mode,
+      }).parameterSchema;
+  } catch {
+    return { candidate, cleared: [] };
+  }
+  if (Object.keys(accepted).length === 0) return { candidate, cleared: [] };
+  const cleared = Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
+  if (cleared.length === 0) return { candidate, cleared };
+  return {
+    candidate: {
+      ...candidate,
+      parameters: Object.fromEntries(Object.entries(candidate.parameters).filter(([key]) => !cleared.includes(key))),
+    },
+    cleared,
   };
 }
