@@ -31,6 +31,14 @@ export const FIXTURE_APIMART_MODEL = 'gpt-image-2'
 export const FIXTURE_APIMART_MODEL_LABEL = 'GPT Image 2'
 export const FIXTURE_APIMART_API_KEY = 'agent-runtime-apimart-fixture'
 /**
+ * 非 APIMart 的那一档（BL-1 验收面）：内置 Higgsfield。
+ * 选它是因为它**处处与 APIMart 不同**——鉴权方案词是 `Key` 不是 `Bearer`、create 路径是模型 slug
+ * 本身、受理回的是 `request_id` 而不是 `data[0].task_id`、轮询是 `/requests/<id>/status`、
+ * 产物键是 `images[0].url`。执行器要是还留着任何一处写死的 APIMart 形状，这条走查就过不去。
+ */
+export const FIXTURE_NON_APIMART_VENDOR = 'higgsfield'
+export const FIXTURE_NON_APIMART_MODEL = 'higgsfield-ai/soul/v2/standard'
+/**
  * 目录里的一行价目（基价 0.30，无规格加价）。
  *
  * 它代表的是「**用户这台机器的目录里填了价**」那一档，不是当年那种为了绕过价格闸编出来的 ¥0
@@ -137,7 +145,10 @@ async function builtinApimartSlice(priced) {
 async function modelCatalog(baseURL, { generationProvider, apimartKey }) {
   const common = { vendorKey: FIXTURE_VENDOR, enabled: true, createdAt: NOW, updatedAt: NOW }
   const priced = process.env.NOMI_WALK_UNPRICED_MODEL !== '1'
-  const builtin = generationProvider === 'apimart' ? await builtinApimartSlice(priced) : null
+  const builtinVendorKey = generationProvider === 'higgsfield' ? FIXTURE_NON_APIMART_VENDOR : FIXTURE_APIMART_VENDOR
+  const builtin = generationProvider === 'apimart' || generationProvider === 'higgsfield'
+    ? await builtinApimartSlice(priced)
+    : null
   return {
     version: builtin?.version ?? 8,
     // 顺序有意义：`resolveOnboardingAgentFromCatalog` 按目录顺序取**第一个**可用的文本大脑。
@@ -169,7 +180,7 @@ async function modelCatalog(baseURL, { generationProvider, apimartKey }) {
       // 主进程那条生成路走的是 `NOMI_E2E_PRODUCTION_FIXTURE` 的 key；这一行是给**渲染层的
       // 可用性判据**看的（见 `encryptApimartKey` 的注释），两边必须对同一家给同一个答案。
       ...(builtin && apimartKey
-        ? { [FIXTURE_APIMART_VENDOR]: { vendorKey: FIXTURE_APIMART_VENDOR, enabled: true, createdAt: NOW, updatedAt: NOW, apiKey: apimartKey, enc: 'safeStorage' } }
+        ? { [builtinVendorKey]: { vendorKey: builtinVendorKey, enabled: true, createdAt: NOW, updatedAt: NOW, apiKey: apimartKey, enc: 'safeStorage' } }
         : {}),
     },
   }
@@ -253,12 +264,16 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
   if (!path.isAbsolute(rootDir) || !path.isAbsolute(settingsDir)) {
     throw new TypeError('Fixture rootDir and settingsDir must be absolute paths')
   }
-  if (generationProvider !== 'loopback' && generationProvider !== 'apimart') {
-    throw new TypeError("generationProvider must be 'loopback' or 'apimart'")
+  if (!['loopback', 'apimart', 'higgsfield'].includes(generationProvider)) {
+    throw new TypeError("generationProvider must be 'loopback', 'apimart' or 'higgsfield'")
   }
   const apimartMode = generationProvider === 'apimart'
-  if (apimartMode && (!userDataDir || !appName)) {
-    throw new TypeError("generationProvider 'apimart' needs the launch userDataDir and app name (safeStorage identity)")
+  // 非 APIMart 的那一档（BL-1 的验收面）：内置 Higgsfield，鉴权方案词是 `Key` 不是 `Bearer`，
+  // 端点、轮询路径、产物键全都与 APIMart 不同——正因为处处不同，它才证得了「执行器与供应商无关」。
+  const higgsfieldMode = generationProvider === 'higgsfield'
+  const builtinMode = apimartMode || higgsfieldMode
+  if (builtinMode && (!userDataDir || !appName)) {
+    throw new TypeError(`generationProvider '${generationProvider}' needs the launch userDataDir and app name (safeStorage identity)`)
   }
   const imageBytes = await readFile(path.join(rootDir, 'resources/onboarding-demo/shot-4.jpg'))
   const imageURL = `data:image/jpeg;base64,${imageBytes.toString('base64')}`
@@ -288,6 +303,17 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       response.end(imageBytes)
       return
     }
+    // Higgsfield 轮询：`GET /requests/<id>/status`，产物键是 `images[0].url`（与 apimart 不对称）。
+    const higgsfieldStatus = /^\/requests\/([^/?]+)\/status/.exec(record.path)
+    if (higgsfieldStatus) {
+      const task = tasks.get(higgsfieldStatus[1])
+      if (!task) { jsonResponse(response, 404, { detail: 'unknown request' }); return }
+      jsonResponse(response, 200, {
+        request_id: higgsfieldStatus[1], status: 'completed',
+        images: [{ url: `${fixtureOrigin}/fixture/image.jpg` }],
+      })
+      return
+    }
     const taskQuery = /^\/v1\/tasks\/([^/?]+)/.exec(record.path)
     if (taskQuery) {
       const task = tasks.get(taskQuery[1])
@@ -299,7 +325,7 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       return
     }
     if (record.path === '/v1/chat/completions') requests.push(record)
-    else if (record.path === '/v1/images/generations') images.push(record)
+    else if (record.path === '/v1/images/generations' || record.path.startsWith('/higgsfield-ai/')) images.push(record)
     const chunks = []
     for await (const chunk of request) chunks.push(chunk)
     record.body = Buffer.concat(chunks).toString('utf8')
@@ -318,6 +344,13 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       const taskId = `agent-runtime-${++taskSequence}`
       tasks.set(taskId, { body: record.body })
       jsonResponse(response, 200, { code: 200, data: [{ status: 'submitted', task_id: taskId }] })
+      return
+    }
+    // Higgsfield 的 create：路径是模型 slug 本身，受理回的是 `request_id`（不是 `data[0].task_id`）。
+    if (higgsfieldMode && record.path.startsWith('/higgsfield-ai/')) {
+      const taskId = `higgsfield-${++taskSequence}`
+      tasks.set(taskId, { body: record.body })
+      jsonResponse(response, 200, { request_id: taskId, status: 'queued' })
       return
     }
     if (record.path !== '/v1/chat/completions') {
@@ -379,7 +412,7 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
     await mkdir(settingsDir, { recursive: true })
     const catalog = await modelCatalog(baseURL, {
       generationProvider,
-      ...(apimartMode ? { apimartKey: encryptApimartKey({ rootDir, userDataDir, appName }) } : {}),
+      ...(builtinMode ? { apimartKey: encryptApimartKey({ rootDir, userDataDir, appName }) } : {}),
     })
     await writeFile(path.join(settingsDir, 'model-catalog.json'), `${JSON.stringify(catalog, null, 2)}\n`, { flag: 'wx' })
     return {
