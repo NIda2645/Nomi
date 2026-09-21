@@ -22,12 +22,55 @@ describe('lane repeated-failure tracker', () => {
     expect(tracker.block('write_script')).toBeNull();
   });
 
-  it('counts only the first line, and any other outcome — success or a different wall — clears the streak', () => {
+  it('没有码时按首行认墙；每堵墙各记各的；这个工具成功一次就把它自己的墙全清掉', () => {
     const tracker = createLaneRepeatedFailureTracker();
     expect(tracker.note('read_script', true, 'wall A\nline 2')).toBe(1);
     expect(tracker.note('read_script', true, 'wall A\nsomething else')).toBe(2);
+    // 换一堵墙 → 它从 1 开始；而 wall A 的 2 次**留着**（2026-09-22：旧版会把它抹掉）。
     expect(tracker.note('read_script', true, 'wall B')).toBe(1);
+    expect(tracker.note('read_script', true, 'wall A\nagain')).toBe(3);
+    expect(tracker.block('read_script')).not.toBeNull();
     expect(tracker.note('read_script', false, 'ok')).toBe(0);
+    expect(tracker.block('read_script')).toBeNull();
+  });
+
+  // ── 2026-09-22 · 三条都来自 docs/evidence/2026-09-21-askback-real-model 的真实轨迹 ──
+  //
+  // 拿那 121 次调用重放旧计数器：整轮只有一次摸到 3，而 draft_shots 在 A3 那一轮连错 7 次。
+  // 下面三条各钉住一个洞；每一条的注释里写清它是哪一段轨迹。
+
+  it('A6：同一堵墙的正文首行变了（id / 镜头数 / 字段值），计数不该归零', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    const wall = { code: 'generation_input_invalid', issues: [{ path: 'shots.0.prompt' }] };
+    expect(tracker.note('draft_shots', true, 'shots.0.prompt: Required (op-aaa)', wall)).toBe(1);
+    expect(tracker.note('draft_shots', true, 'shots.0.prompt: Required (op-bbb)', wall)).toBe(2);
+    expect(tracker.note('draft_shots', true, 'shots.0.prompt: Required (op-ccc)', wall)).toBe(3);
+    expect(tracker.block('draft_shots'), '三次同码同字段还不拦 = 熔断在真机上形同不存在').not.toBeNull();
+  });
+
+  it('A3：换个工具不该把上一堵墙的计数冲掉（那 27 次就是在三个工具之间来回）', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    const wall = { code: 'generation_input_invalid' };
+    tracker.note('draft_shots', true, 'x', wall);
+    tracker.note('generate', true, 'y', { code: 'user_sees_spend_card' });
+    tracker.note('draft_shots', true, 'x', wall);
+    tracker.note('check_job', true, 'z', { code: 'generation_operation_not_found' });
+    expect(tracker.note('draft_shots', true, 'x', wall)).toBe(3);
+    expect(tracker.block('draft_shots')).not.toBeNull();
+  });
+
+  it('A3 seq 30：一次无关的读成功，不证明那堵墙倒了', () => {
+    const tracker = createLaneRepeatedFailureTracker();
+    const wall = { code: 'generation_input_invalid' };
+    tracker.note('draft_shots', true, 'x', wall);
+    tracker.note('draft_shots', true, 'x', wall);
+    tracker.note('list_models', false, '{"models":[…]}');
+    expect(tracker.note('draft_shots', true, 'x', wall),
+      'list_models 成功把 draft_shots 的连撞抹平了——真机上它正是这么逃掉熔断的').toBe(3);
+    expect(tracker.block('draft_shots')).not.toBeNull();
+    // 阳性对照：draft_shots **自己**成功了，它自己的墙才倒。
+    tracker.note('draft_shots', false, 'ok');
+    expect(tracker.block('draft_shots')).toBeNull();
   });
 
   // 2026-09-17：用户照着 Agent 的建议去点开文稿页也救不回来——熔断只认工具结果。现在用户再说一句话就解除。

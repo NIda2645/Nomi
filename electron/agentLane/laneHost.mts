@@ -495,7 +495,8 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     // （见 `laneRepeatedFailure.mts` 的 `exhausted()`）。让模型自己回忆拒收信里写了哪几个值，
     // 是在赌它——而它已经连着错了三次的正是这件事。
     const failure = event.isError ? takeLaneToolFailure(event.toolCallId) : undefined;
-    const consecutive = failures.note(event.toolName, event.isError, body, failure?.allowed);
+    // 墙按**语义码 + 出错字段**认，不按正文首行（正文里有 id、镜头数、字段值，同一堵墙每次都不一样）。
+    const consecutive = failures.note(event.toolName, event.isError, body, failure);
     // 工具失败要在**主进程日志**里留一行（2026-09-17）。此前整条失败链只有 lane 自己的会话 JSONL
     // 记得住：真机复现 `surface_port_stale` 那一轮，`read_script` 连挂 3 次、会话里 12 处命中，
     // 而 `logs/nomi-<date>.log` 一共 9 行、**一个字都没提这件事**。排查的人打开日志看到的是「什么都没发生」。
