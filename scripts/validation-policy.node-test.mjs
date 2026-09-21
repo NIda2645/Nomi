@@ -136,6 +136,23 @@ test('ordinary canvas behavior and React Flow performance paths select different
   )
 })
 
+test('lane levels only rise: a later ordinary canvas file never downgrades a full canvas lane', () => {
+  // PR #833 real shape: React Flow files first, ordinary generationCanvas files and canvas walks after them.
+  const reactFlow = 'src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css'
+  const ordinary = [
+    'src/workbench/generationCanvas/store/generationCanvasStore.ts',
+    'tests/ux/canvas-shortcut-parity.walk.mjs',
+  ]
+  const expected = { ...focusedOnly, unit: 'full', desktop: true, canvas: 'full', performance: true }
+  assert.deepEqual(surfaces(classifyValidationPolicy([reactFlow, ...ordinary])), expected)
+  assert.deepEqual(surfaces(classifyValidationPolicy([...ordinary, reactFlow])), expected)
+  // Same class without the performance lane: a full-canvas walkthrough followed by an ordinary canvas file.
+  const fullWalk = 'tests/ux/group-reference-direction.walk.mjs'
+  for (const order of [[fullWalk, ordinary[0]], [ordinary[0], fullWalk]]) {
+    assert.equal(classifyValidationPolicy(order).canvas, 'full', order.join(' -> '))
+  }
+})
+
 test('packaging and native runtime identity paths select package without forcing canvas performance', () => {
   assert.deepEqual(surfaces(classifyValidationPolicy(['electron/preload.ts'])), {
     ...focusedOnly,

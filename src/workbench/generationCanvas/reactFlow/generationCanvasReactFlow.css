@@ -93,10 +93,14 @@
   height: 100% !important;
 }
 
-/* 选中卡的卡面压在自己的磁吸带之上：伸出卡外的版本胶囊（「2 版」）/ 版本托盘落在带子的命中区里，
- * 带子（z 8）若在上面，点「2 版」会变成起一条线，托盘也点不动（2026-09-21 走查发现，带子常驻后必现）。
- * 磁吸带只在卡外侧，卡面本身不和它重叠，所以抬高卡面不会吃掉起线入口。 */
-.generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node[data-selected='true'] {
+/* 卡面与自己把手的上下层，按把手档位分（档位唯一 owner：generationCanvasReactFlowVisualContract.ts）：
+ * - 磁吸档（唯一主选中）：卡面压在自己的磁吸带之上。伸出卡外的版本胶囊（「2 版」）/ 版本托盘落在带子的
+ *   命中区里，带子（z 8）若在上面，点「2 版」会变成起一条线，托盘也点不动（2026-09-21 走查发现，带子常驻后必现）。
+ *   磁吸带在卡外侧，起线入口是卡外那颗常驻「+」圈，抬高卡面不吃它。
+ * - 小圆点档（多选里的每一张、未选中、起线进行中的起点）：卡面**不**抬。圆点骑在卡边上、一半在卡内，
+ *   卡面若压上来，点圆点中心会变成拖卡/选卡——2026-09-22 回归：#833 曾按 data-selected 抬卡面，
+ *   多选时每张卡的圆点内半边都被吞掉（docs/fixes/2026-09-22-card-face-over-own-ports.root-cause.json）。 */
+.generation-canvas-react-flow .generation-canvas-react-flow__node-shell[data-connection-affordance='magnetic'] .generation-canvas-v2-node {
   z-index: 9;
 }
 
