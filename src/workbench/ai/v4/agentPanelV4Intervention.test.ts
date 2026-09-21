@@ -59,15 +59,14 @@ describe('② 「不再问 →」只在可撤销的改动上，且只覆盖这�
       t,
     )
     expect(reversible?.scope).toBe(labels.scopeCapability)
-    // 付费档画不出「不再问 →」（`canStopAskingFor` 对 spend 恒 false），所以它也不该
-    // 印那行作用域——那行解释的就是那颗钮。原来它印「范围：仅这一次」，在一张根本
-    // 没有「不再问」的卡上等于凭空多一句旁白。
+    // 付费档仍然印「范围：仅这一次」——它说的是这次批准的范围，没说错。
+    // 这次只把**反问卡**排除掉（见下一条），不顺手动确认卡那几档。
     const spend = projectV4Intervention(
       { toolName: 'generation.control', args: {}, effectClass: 'spend', pendingCount: 1 },
       labels,
       t,
     )
-    expect(spend?.scope).toBeUndefined()
+    expect(spend?.scope).toBe(labels.scopeOnce)
   })
 
   it('反问卡不许拿到那行作用域——它根本没有「不再问 →」那颗钮', () => {

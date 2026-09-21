@@ -405,7 +405,16 @@ export function V4Intervention({
         questions={askCardQuestions(data)}
         labels={labels.ask}
         {...(data.answerDraft ? { answerDraft: data.answerDraft } : {})}
-        {...(onAnswer ? { onAnswer } : {})}
+        // ⚠️ 合并缝：本分支的 `onAnswer` 还是旧的**单条**答复（`agentPanelV4Question.ts`
+        // 在这条分支上仍是手写单题版，任务书要求只读不改）。卡自己已经按契约 §8.4
+        // 吐「一题一条」的数组。主进程那半并进来之后，把这个 `.map/.join` 删掉、
+        // 让 `onAnswer` 直接收数组即可——卡这一侧一个字都不用动。
+        {...(onAnswer ? {
+          onAnswer: (answers: readonly { optionIds?: readonly string[]; text: string }[]) => onAnswer({
+            ...(answers.length === 1 && answers[0]!.optionIds?.length === 1 ? { optionId: answers[0]!.optionIds![0]! } : {}),
+            text: answers.map((answer) => answer.text).join('\n'),
+          }),
+        } : {})}
         onDismiss={() => onReject?.()}
       />
     )

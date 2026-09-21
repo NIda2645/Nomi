@@ -360,7 +360,7 @@ function buildFixtures(t: TFunction) {
         {
           // 第二题是**多选**：标记从圆点变方框，主按钮等用户按（不自动前进）。
           question: t('agentPanelV4.slotQuestionMixedTitle'),
-          multiple: true,
+          multiSelect: true,
           options: [
             { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
             { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
@@ -380,7 +380,7 @@ function buildFixtures(t: TFunction) {
       title: t('agentPanelV4.slotQuestionMixedTitle'),
       questions: [{
         question: t('agentPanelV4.slotQuestionMixedTitle'),
-        multiple: true,
+        multiSelect: true,
         options: [
           { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
           { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },

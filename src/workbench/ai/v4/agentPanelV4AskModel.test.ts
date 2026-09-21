@@ -111,7 +111,7 @@ describe('一次待决 → 题目表', () => {
   it('已经给了多题就原样用——契约哪天长出 questions[]，只改这一个函数', () => {
     const questions: readonly V4AskQuestion[] = [
       { question: '一', options: [] },
-      { question: '二', options: [A], multiple: true },
+      { question: '二', options: [A], multiSelect: true },
     ]
     const data = { kind: 'question', title: '一', questions } as InterventionData
     expect(askCardQuestions(data)).toBe(questions)
@@ -119,49 +119,65 @@ describe('一次待决 → 题目表', () => {
   })
 })
 
-describe('收成回给模型的那一份', () => {
-  it('单题单选退化成契约收的形状（带 optionId）——那正是 `answerToolResult` 那条路认的东西', () => {
+describe('收成回给模型的那一份（契约 §8.4 的形状：一题一条）', () => {
+  it('单选给出 questionIndex + 一个 optionId + 文字', () => {
     const questions: readonly V4AskQuestion[] = [{ question: '用什么画幅？', options: [A, B] }]
-    expect(askCardAnswer(questions, [{ picked: [1], custom: '' }])).toEqual({ optionId: 'b', text: '竖版 9:16' })
+    expect(askCardAnswer(questions, [{ picked: [1], custom: '' }]))
+      .toEqual([{ questionIndex: 0, optionIds: ['b'], text: '竖版 9:16' }])
   })
 
   it('下标按**排过序之后**的位置算——推荐项排第一之后，点第一行拿到的必须是推荐那一项', () => {
     // 这一条是整份模型里最容易错的地方：排序在渲染层做、取值在这里做，
     // 两边用不同的数组就会把「他点的 C」记成「A」。
     const questions: readonly V4AskQuestion[] = [{ question: '用什么画幅？', options: [A, B, C] }]
-    expect(askCardAnswer(questions, [{ picked: [0], custom: '' }])).toEqual({ optionId: 'c', text: '方版 1:1' })
+    expect(askCardAnswer(questions, [{ picked: [0], custom: '' }]))
+      .toEqual([{ questionIndex: 0, optionIds: ['c'], text: '方版 1:1' }])
   })
 
-  it('自己打字时没有 optionId——那句话就是答案', () => {
+  it('自己打字时没有 optionIds——那句话就是答案', () => {
     const questions: readonly V4AskQuestion[] = [{ question: '几秒？', options: [] }]
-    expect(askCardAnswer(questions, [{ picked: [], custom: '  3 秒  ' }])).toEqual({ text: '3 秒' })
+    expect(askCardAnswer(questions, [{ picked: [], custom: '  3 秒  ' }]))
+      .toEqual([{ questionIndex: 0, text: '3 秒' }])
   })
 
-  it('多选收成一句话，不带 optionId——一个 id 装不下两个答案', () => {
-    const questions: readonly V4AskQuestion[] = [{ question: '要哪几样？', options: [A, B], multiple: true }]
-    expect(askCardAnswer(questions, [{ picked: [0, 1], custom: '' }])).toEqual({ text: '横版 16:9、竖版 9:16' })
+  it('多选给出**多个** optionIds，文字用「、」连起来', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '要哪几样？', options: [A, B], multiSelect: true }]
+    expect(askCardAnswer(questions, [{ picked: [0, 1], custom: '' }]))
+      .toEqual([{ questionIndex: 0, optionIds: ['a', 'b'], text: '横版 16:9、竖版 9:16' }])
   })
 
-  it('多题时每题印成「问题 答案」一行——模型只认字，一堆 id 对它和没答一样', () => {
+  it('多题各成一条，questionIndex 对得上号——多题卡上这是唯一能对号的东西', () => {
     const questions: readonly V4AskQuestion[] = [
       { question: '用什么画幅？', options: [A, B] },
       { question: '几秒？', options: [] },
     ]
-    const answer = askCardAnswer(questions, [{ picked: [0], custom: '' }, { picked: [], custom: '5 秒' }])
-    expect(answer).toEqual({ text: '用什么画幅？ 横版 16:9\n几秒？ 5 秒' })
+    expect(askCardAnswer(questions, [{ picked: [0], custom: '' }, { picked: [], custom: '5 秒' }]))
+      .toEqual([
+        { questionIndex: 0, optionIds: ['a'], text: '横版 16:9' },
+        { questionIndex: 1, text: '5 秒' },
+      ])
   })
 
-  it('一题都没答就没有答案可发——按「继续」不该发一条空的出去', () => {
+  it('一题都没答就是空数组——按「继续」不该发一条空的出去', () => {
     const questions: readonly V4AskQuestion[] = [{ question: '几秒？', options: [A] }]
-    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT])).toBeUndefined()
+    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT])).toEqual([])
   })
 
-  it('跳过的题不进答案，答了的照发——跳过不是一个答案', () => {
+  it('跳过的题**不出现在数组里**，而且后一题的 questionIndex 仍是 1（不是 0）', () => {
+    // 跳过不是一个答案；但下标必须还是它在卡上的真实位置，
+    // 按「第几条答复」重新编号会让主进程把答案对到另一题上。
     const questions: readonly V4AskQuestion[] = [
       { question: '一', options: [A] },
       { question: '二', options: [B] },
     ]
-    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT, { picked: [0], custom: '' }])).toEqual({ text: '二 竖版 9:16' })
+    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT, { picked: [0], custom: '' }]))
+      .toEqual([{ questionIndex: 1, optionIds: ['b'], text: '竖版 9:16' }])
+  })
+
+  it('同一题既选了又打了字：两样都发，选项在前', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '要哪几样？', options: [A, B], multiSelect: true }]
+    expect(askCardAnswer(questions, [{ picked: [0], custom: '再加一个竖版' }]))
+      .toEqual([{ questionIndex: 0, optionIds: ['a'], text: '横版 16:9、再加一个竖版' }])
   })
 })
 

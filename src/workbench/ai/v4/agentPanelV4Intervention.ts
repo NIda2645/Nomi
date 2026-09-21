@@ -185,13 +185,17 @@ export function projectV4Intervention(
     reasonPlaceholder: t('agentPanelV4.rejectReasonPlaceholder'),
     // 范围那一行是**诚实交代**，不是装饰：它解释的是「不再问 →」那颗钮到底覆盖什么。
     //
-    // 所以它只发给**真的画得出那颗钮**的档（`V4Intervention` 的 `canEscalate` 同一条判据）。
-    // 原来写的是「除了计划卡都发」，于是反问卡也拿到了一句「『不再问』只对这一个操作生效」
-    // ——而反问卡根本没有那颗钮（`hasActions` 对 question 恒 false），那行字在解释一个
-    // 不存在的按钮（2026-09-21 用户当场指出来的四样之一）。
-    ...(kind === 'approval-reversible' || kind === 'reject-reason'
-      ? { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }
-      : {}),
+    // 原来写的是「除了计划卡都发」，于是**反问卡**也拿到了一句「『不再问』只对这一个操作
+    // 生效」——而反问卡根本没有那颗钮（`hasActions` 对 question 恒 false，闸那边
+    // `alwaysAsksUser` 也保证它永远不可能被放行）。用户第一次看到真卡时读到的就是它。
+    //
+    // 这里**只多排除 `question` 一档**，不顺手把 spend / irreversible 也排掉：
+    // 那两档上这行印的是「范围：仅这一次」，说的是这次批准的范围，本身没说错，
+    // 而且主进程 lane 的同一处裁决（report-C-ask-tool §10.2）也只排除了 question。
+    // 两边动同一行，口径必须一样，否则合并时会变成一次谁都没打算做的行为改动。
+    ...(kind === 'plan' || kind === 'question'
+      ? {}
+      : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
   }
   if (kind === 'credential') {
     return Object.freeze({ ...base, confirmLabel: labels.credentialConfirm, alternateLabel: labels.credentialAlternate })

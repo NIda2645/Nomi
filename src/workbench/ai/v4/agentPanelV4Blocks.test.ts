@@ -380,7 +380,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
       data: {
         kind: 'question', title: '第一题', questions: [
           { question: '第一题', options: QUESTION_OPTIONS },
-          { question: '第二题', options: QUESTION_OPTIONS, multiple: true },
+          { question: '第二题', options: QUESTION_OPTIONS, multiSelect: true },
           { question: '第三题', options: [] },
         ],
       },

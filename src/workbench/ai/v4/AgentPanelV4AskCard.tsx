@@ -33,7 +33,6 @@
 import React from 'react'
 import { cn } from '../../../utils/cn'
 import { IconChevronDown, IconCheck, IconX } from './AgentPanelV4Icons'
-import type { V4QuestionAnswer } from './agentPanelV4Question'
 import {
   ASK_AUTO_ADVANCE_MS,
   EMPTY_ASK_DRAFT,
@@ -46,6 +45,7 @@ import {
   shouldAutoAdvance,
   shouldShowPager,
   toggleAskOption,
+  type V4AskAnswer,
   type V4AskDraft,
   type V4AskQuestion,
 } from './agentPanelV4AskModel'
@@ -177,7 +177,8 @@ export function V4AskCard({
    * 不拿它给用户预填答案——替他把话写好，他就只能顺着改。
    */
   answerDraft?: string
-  onAnswer?: (answer: V4QuestionAnswer) => void
+  /** 用户把整张卡答完了。**一题一条**（契约 §8.4），没答的题不出现。 */
+  onAnswer?: (answers: readonly V4AskAnswer[]) => void
   /**
    * × 与「跳过」走这里（= 这次不答）。**必填**，和 `V4Intervention.onPlanToggle` 同一条规矩
    * （R28：能让编译器拦的别留给门岗）。
@@ -218,7 +219,7 @@ export function V4AskCard({
   const question = questions[index]
   const options = React.useMemo(() => orderedAskOptions(question?.options ?? []), [question])
   const draft = drafts[index] ?? EMPTY_ASK_DRAFT
-  const multiple = question?.multiple === true
+  const multiSelect = question?.multiSelect === true
   const answered = askQuestionAnswered(draft)
   const last = isLastAskQuestion(index, total)
 
@@ -243,8 +244,8 @@ export function V4AskCard({
 
   const submit = (nextDrafts: readonly V4AskDraft[]): void => {
     if (advanceTimer.current) clearTimeout(advanceTimer.current)
-    const answer = askCardAnswer(questions, nextDrafts)
-    if (answer) onAnswer?.(answer)
+    const answers = askCardAnswer(questions, nextDrafts)
+    if (answers.length) onAnswer?.(answers)
   }
 
   const advance = (nextDrafts: readonly V4AskDraft[]): void => {
@@ -254,11 +255,11 @@ export function V4AskCard({
   }
 
   const pick = (position: number): void => {
-    const next = toggleAskOption(draft, position, multiple)
+    const next = toggleAskOption(draft, position, multiSelect)
     const nextDrafts = drafts.map((item, at) => (at === index ? next : item))
     setDrafts(nextDrafts)
     setCursor(position)
-    if (!shouldAutoAdvance(multiple)) return
+    if (!shouldAutoAdvance(multiSelect)) return
     if (advanceTimer.current) clearTimeout(advanceTimer.current)
     advanceTimer.current = setTimeout(() => advance(nextDrafts), ASK_AUTO_ADVANCE_MS)
   }
@@ -382,7 +383,7 @@ export function V4AskCard({
                             active && cursor === optionIndex ? 'bg-nomi-ink-05' : '',
                           )}
                         >
-                          <span className="mt-px shrink-0"><AskMarker on={on} multiple={item.multiple === true} /></span>
+                          <span className="mt-px shrink-0"><AskMarker on={on} multiple={item.multiSelect === true} /></span>
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <span className="flex min-w-0 items-center gap-1.5">
                               <span className={cn('min-w-0 text-body-sm transition-colors duration-200', on ? 'text-nomi-ink' : 'text-nomi-ink-80')}>
@@ -418,7 +419,7 @@ export function V4AskCard({
                           if (!active) return
                           const value = event.target.value
                           setDraft(Object.freeze({
-                            picked: item.multiple === true ? itemDraft.picked : (Object.freeze([]) as readonly number[]),
+                            picked: item.multiSelect === true ? itemDraft.picked : (Object.freeze([]) as readonly number[]),
                             custom: value,
                           }))
                         }}

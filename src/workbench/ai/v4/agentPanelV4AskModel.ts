@@ -24,7 +24,24 @@
  * 被退回的原因。结构整件留着、由实验室取景，缺的是生产者；字段差异见本次报告。
  */
 import type { InterventionData } from './agentPanelV4Types'
-import type { V4QuestionAnswer, V4QuestionOption } from './agentPanelV4Question'
+import type { V4QuestionOption } from './agentPanelV4Question'
+
+/**
+ * 用户答了什么。**形状逐字段照抄对外契约**
+ * （`electron/shared/agentCapabilities/askUser.ts` → `agentPanelV4Question.ts` 的
+ * `V4QuestionAnswer`，见主进程 lane 报告 §8.4）。
+ *
+ * 这里为什么暂时自己声明一份：那份契约类型住在 `agentPanelV4Question.ts`，
+ * 而那个文件正由主进程 lane 改成从 owner 派生（本分支上还是旧的手写单题版），
+ * 任务书要求本分支**只读不改**它。合并时把这个 type 删掉、改成
+ * `import type { V4QuestionAnswer } from './agentPanelV4Question'` 即可——
+ * 字段名和可选性是对齐的，改动只有一行 import。
+ */
+export type V4AskAnswer = Readonly<{
+  questionIndex: number
+  optionIds?: readonly string[]
+  text: string
+}>
 
 /** 卡上的一题。`multiple` = 这题可以多选（Approval Card 的 `type: "check"`）。 */
 export type V4AskQuestion = Readonly<{
@@ -32,7 +49,7 @@ export type V4AskQuestion = Readonly<{
   question: string
   options: readonly V4QuestionOption[]
   /** 多选。缺席 = 单选（Approval Card 的 `type: "radio"`）。 */
-  multiple?: boolean
+  multiSelect?: boolean
   /** 问句下面那一句补充（模型写的 `note`，或我们自己的熔断说明）。 */
   note?: string
 }>
@@ -114,36 +131,37 @@ export function isLastAskQuestion(index: number, total: number): boolean {
 }
 
 /**
- * 把全部作答收成**回给模型的那一份**。
+ * 把全部作答收成**回给模型的那一份**（契约 §8.4 的形状）。
  *
- * 单题单选时退化成今天的 `V4QuestionAnswer`（`optionId` + `text`），因为那正是契约收的形状；
- * 多题 / 多选 / 自己打字时把每一条按「问题：答案」印成几行——模型只认字，一堆 id 对它
- * 和没答一样（`agentPanelV4Question.ts` 的 `answerToolResult` 注释已经把这条说死了）。
- */
-export function askCardAnswer(
+ * 一题一条 `{ questionIndex, optionIds?, text }`：
+ * · `questionIndex` 让主进程知道这条答的是第几题（多题卡上这是唯一能对上号的东西）；
+ * · `optionIds` 是结构化的「他点了哪几颗」，多选时不止一个；
+ * · `text` **永远有**——模型只认字，一个光秃秃的 id 对它和没答一样。
+ *
+ * 没答的题**不出现在数组里**：跳过不是一个答案。
+ */export function askCardAnswer(
   questions: readonly V4AskQuestion[],
   drafts: readonly V4AskDraft[],
-): V4QuestionAnswer | undefined {
-  const lines: string[] = []
-  let onlyOptionId: string | undefined
-  let optionCount = 0
-  let customCount = 0
-  questions.forEach((question, index) => {
-    const draft = drafts[index] ?? EMPTY_ASK_DRAFT
+): readonly V4AskAnswer[] {
+  const answers: V4AskAnswer[] = []
+  questions.forEach((question, questionIndex) => {
+    const draft = drafts[questionIndex] ?? EMPTY_ASK_DRAFT
     const ordered = orderedAskOptions(question.options)
-    const picked = draft.picked.map((position) => ordered[position]).filter((option): option is V4QuestionOption => Boolean(option))
+    // 下标按**排过序之后**的位置算：排序在渲染层做、取值在这里做，
+    // 两边用不同的数组就会把「他点的 C」记成「A」。
+    const picked = draft.picked
+      .map((position) => ordered[position])
+      .filter((option): option is V4QuestionOption => Boolean(option))
     const custom = draft.custom.trim()
     const parts = [...picked.map((option) => option.label), ...(custom ? [custom] : [])]
     if (!parts.length) return
-    optionCount += picked.length
-    if (custom) customCount += 1
-    if (picked.length === 1 && !custom) onlyOptionId = picked[0]!.id
-    lines.push(questions.length > 1 ? `${question.question} ${parts.join('、')}` : parts.join('、'))
+    answers.push(Object.freeze({
+      questionIndex,
+      ...(picked.length ? { optionIds: Object.freeze(picked.map((option) => option.id)) as readonly string[] } : {}),
+      text: parts.join('、'),
+    }))
   })
-  if (!lines.length) return undefined
-  const text = lines.join('\n')
-  const structured = questions.length === 1 && optionCount === 1 && customCount === 0 && onlyOptionId
-  return Object.freeze(structured ? { optionId: onlyOptionId, text } : { text })
+  return Object.freeze(answers)
 }
 
 /**
