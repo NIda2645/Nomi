@@ -191,6 +191,9 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   return (
     <div
       className="generation-canvas-react-flow__node-shell"
+      // 卡面与自己把手的上下层由把手档位派生（见 generationCanvasReactFlow.css 的同名选择器）：
+      // 只有磁吸档才把卡面抬到带子之上，小圆点档的把手必须压在卡面上。
+      data-connection-affordance={connectionAffordance}
       style={{
         width: size.width,
         height: size.height,

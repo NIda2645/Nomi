@@ -252,8 +252,47 @@ try {
     await expect(win.locator('.generation-canvas-react-flow__edge-label').first(), '点连线打开连线模式药丸').toBeVisible()
     await snap('04-close-edge-stays-clickable')
   })
+
+  // 卡面与自己把手的上下层（docs/fixes/2026-09-22-card-face-over-own-ports.root-cause.json）：
+  // 磁吸档把卡面抬到带子之上（版本胶囊/托盘点得到），小圆点档的圆点必须整颗压在卡面上。
+  // 2026-09-22 回归：卡面按 data-selected 抬，多选时每张卡的圆点内半边和正中都归卡面，按下去是拖卡。
+  await task('05-card-face-and-own-ports-stacking', async () => {
+    await select(images[0].id)
+    const single = await win.locator(selector(images[0].id)).boundingBox()
+    const insideEdge = await ownerAt({ x: single.x + single.width - 2, y: single.y + single.height / 2 })
+    expect(insideEdge.inHandle, `磁吸档：卡边内侧 2px 归卡面，不归带子 → ${insideEdge.className}`).toBe(false)
+    await win.keyboard.down('Shift')
+    const second = await findNodeHitPoint(win, { nodeSelector: selector(images[1].id) })
+    expect(second, `node ${images[1].id} hittable for shift-select`).not.toBeNull()
+    await win.mouse.click(second.x, second.y)
+    await win.keyboard.up('Shift')
+    await expect(win.locator('.react-flow__node.selected')).toHaveCount(2)
+    await waitForVisualQuiescence(win)
+    for (const [id, side] of [[images[0].id, 'left'], [images[0].id, 'right'], [images[1].id, 'left'], [images[1].id, 'right']]) {
+      const source = handle(id, 'source', side)
+      await expect(source, `多选时是圆点把手：${id}/${side}`).toHaveAttribute('data-affordance', 'dot')
+      const dot = await iconCenter(id, side)
+      const inward = side === 'left' ? 1 : -1
+      for (const [label, dx] of [['正中', 0], ['内半边', inward * dot.width / 3], ['外半边', -inward * dot.width / 3]]) {
+        const owner = await ownerAt({ x: dot.x + dx, y: dot.y })
+        expect(owner.inHandle, `多选圆点${label}归把手：${id}/${side} → ${owner.className}`).toBe(true)
+      }
+    }
+    // 真手势：按在多选卡的圆点正中，拉出去是一条待连线，不是拖卡。
+    const cardBefore = await win.locator(selector(images[0].id)).boundingBox()
+    const dot = await iconCenter(images[0].id, 'right')
+    await win.mouse.move(dot.x, dot.y)
+    await win.mouse.down()
+    await win.mouse.move(dot.x + 60, dot.y + 40, { steps: 10 })
+    await expect(win.locator('.react-flow__connection-path'), '按圆点正中拉出待连线').toHaveCount(1)
+    const cardDuring = await win.locator(selector(images[0].id)).boundingBox()
+    expect(Math.hypot(cardDuring.x - cardBefore.x, cardDuring.y - cardBefore.y), '卡片没被拖动').toBeLessThan(1)
+    await snap('05-multi-selected-dot-starts-connection')
+    await win.keyboard.press('Escape')
+    await win.mouse.up()
+  })
 } finally {
   fs.writeFileSync(path.join(evidence, `${phase}-results.json`), JSON.stringify(results, null, 2))
   await app.close()
 }
-if (results.length !== 4 || results.some((result) => !result.pass)) process.exitCode = 1
+if (results.length !== 5 || results.some((result) => !result.pass)) process.exitCode = 1

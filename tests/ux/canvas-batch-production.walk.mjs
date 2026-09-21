@@ -2,7 +2,7 @@ import { expectComposerFooterHit } from './_composerFixedFooter.mjs'
 // Real Electron journey for canvas batch production. The UI, spend gate, IPC, queue, HTTP transport,
 // persistence, retry, and screenshots are real; only the remote vendor is replaced by a loopback fixture.
 import { launchNomiApp, ACCEPTANCE_WIDE_VIEWPORT } from './_launchApp.mjs'
-import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
+import { findCanvasBlankPoint, findConnectionStartPoint, findNodeHitPoint } from './_canvasHit.mjs'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -300,10 +300,11 @@ try {
   await win.mouse.click(sourceHit.x, sourceHit.y)
   await win.waitForTimeout(500)
   const target = win.locator(`.react-flow__node[data-id="${targetId}"]`)
-  const handleBox = await source.locator('.generation-canvas-react-flow__handle[data-side="right"]').last().boundingBox()
+  // 按人按的地方起线：卡外那颗「+」圈（见 _canvasHit.mjs findConnectionStartPoint 的根因注释）。
+  const startPoint = await findConnectionStartPoint(win, { handleSelector: `.react-flow__node[data-id="${sourceId}"] .generation-canvas-react-flow__handle--source[data-side="right"]` })
   const targetBox = await target.boundingBox()
-  check(Boolean(handleBox && targetBox), '连接点和目标节点都有可点击区域')
-  await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  check(Boolean(startPoint && targetBox), '连接点和目标节点都有可点击区域', JSON.stringify(startPoint))
+  await win.mouse.move(startPoint.x, startPoint.y)
   await win.mouse.down()
   await win.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 12 })
   await win.waitForTimeout(300)
