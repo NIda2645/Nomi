@@ -40,7 +40,7 @@ function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
     status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
     origin: { host: "nomi", actorId: "project-agent-host" },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1, snapshotCursor: 3, stages: [], gates: [], jobs: [], artifacts: [],
     generationPlan: { operationId: "op-a", state: "draft", candidate: top, nodeId: "node-a", updatedAt: NOW },
     createdAt: NOW, updatedAt: NOW,

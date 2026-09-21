@@ -12,7 +12,7 @@ function runWithCandidateScript(): ProductionRun {
     status: 'awaiting_script_review', stageId: 'script', playbook: { name: 'brand.promo', version: '1.0.0' },
     origin: { host: 'codex' }, brief: { goal: 'review fixture' },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 1, minimizeUploads: true },
-    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 }, planVersion: 1, snapshotCursor: 1,
+    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 }, planVersion: 1, snapshotCursor: 1,
     stages: ['brief', 'direction', 'script', 'storyboard'].map((stageId, order) => ({ stageId, title: stageId, status: 'completed' as const, order })),
     gates: [], jobs: [], artifacts: [{
       artifactId: 'artifact-script-v1', stageId: 'script', kind: 'script', status: 'candidate', version: 1,
@@ -29,7 +29,7 @@ describe('production run script review reducer', () => {
       issuedAt: now,
     }, now)
 
-    expect(effect.run.budget).toEqual({ currency: 'CNY', authorized: 0.3, reserved: 0.1, actual: 0.2, unsettled: 0 })
+    expect(effect.run.budget).toEqual({ currency: 'CNY', authorized: 0.3, reserved: 0.1, actual: 0.2, unsettled: 0, unknownInFlight: 0 })
   })
 
   it('adopts a script only after an approved review', () => {

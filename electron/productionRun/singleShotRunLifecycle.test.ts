@@ -27,7 +27,7 @@ function fixture(status: ProductionRun["status"] = "draft"): ProductionRun {
       maxAttemptsPerJob: 1,
       minimizeUploads: true,
     },
-    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1,
     snapshotCursor: 0,
     stages: [{ stageId: "generate", title: "Generate", status: "pending", order: 0 }],

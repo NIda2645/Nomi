@@ -35,7 +35,7 @@ describe("P4 S4 anchor checkpoint gate", () => {
       status: "running", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: { host: "semantic-mcp" },
       policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: 10, maxAttemptsPerJob: 2, minimizeUploads: true },
-      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1, snapshotCursor: 3, stages: [], gates: [gate], jobs: [], artifacts: [],
       createdAt: NOW, updatedAt: NOW,
     };

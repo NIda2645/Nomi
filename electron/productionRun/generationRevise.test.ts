@@ -63,7 +63,7 @@ function draftRun(shots: ProductionGenerationShot[], top: PlanCandidate): Produc
     status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
     origin: { host: "nomi" },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1, snapshotCursor: 5, stages: [], gates: [], jobs: [], artifacts: [],
     generationPlan: { operationId: "op-r", state: "draft", candidate: top, shots, updatedAt: NOW },
     createdAt: NOW, updatedAt: NOW,

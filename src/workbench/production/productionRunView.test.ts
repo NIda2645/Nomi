@@ -23,7 +23,7 @@ function run(patch: Partial<ProductionRun> = {}): ProductionRun {
       maxAttemptsPerJob: 2,
       minimizeUploads: true,
     },
-    budget: { currency: 'CNY', authorized: 20, reserved: 5, actual: 3, unsettled: 0 },
+    budget: { currency: 'CNY', authorized: 20, reserved: 5, actual: 3, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1,
     snapshotCursor: 2,
     stages: [{ stageId: 'production', title: 'Production', status: 'running', order: 1 }],
@@ -215,7 +215,7 @@ describe('production run view', () => {
   it('shows a durable contract refusal and states that no spend occurred', () => {
     const value = run({
       status: 'awaiting_contract',
-      budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       gates: [{
         gateId: 'gate-contract-v1', scope: 'budget_envelope', status: 'rejected', planHash: 'plan-1', jobIds: ['job-1'],
         title: 'Production contract', summary: '5 shots', createdAt: '2026-08-08T08:00:00.000Z', expiresAt: '2026-08-08T09:00:00.000Z', decidedAt: '2026-08-08T08:05:00.000Z',

@@ -148,6 +148,17 @@ function budgetEntryFromPayload(value: unknown): BudgetLedgerEntry {
   return record as BudgetLedgerEntry;
 }
 
+/**
+ * 2026-09-21 未知价开闸加了 `budget.unknownInFlight`（价格未知的在途笔数）。开闸前封存的快照与
+ * 事件里没有这个字段，而当时未知价根本发不出授权，所以它对旧数据恒 0——在**读**的这一层补齐，
+ * 不改盘上字节（投影读永远无副作用）。不补的话它会以 `undefined` 的身份流进一个声明为 number
+ * 的字段，下游每一处读它的地方都得再猜一次。
+ */
+function withBudgetDefaults(run: ProductionRun): ProductionRun {
+  if (Number.isSafeInteger(run.budget?.unknownInFlight)) return run;
+  return { ...run, budget: { ...run.budget, unknownInFlight: 0 } };
+}
+
 function validSnapshot(content: string | null): SnapshotEnvelope | null {
   if (content === null) return null;
   try {
@@ -266,13 +277,13 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     if (eventContent === null && snapshotContent === null) return null;
     const latestEvent = readEventJournal(paths.events, eventContent).latest();
     const snapshot = validSnapshot(snapshotContent);
-    if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return snapshot.run;
+    if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return withBudgetDefaults(snapshot.run);
     // Reads may rebuild an in-memory projection for callers, but never repair
     // durable bytes. Backup/migration/rewrite belongs to an explicit command;
     // a projection read must be safe to retry after a crash and side-effect free.
     const recovered = runFromEvent(latestEvent);
     if (!recovered) throw new ProductionRunParseError(paths.snapshot, 0);
-    return recovered;
+    return withBudgetDefaults(recovered);
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {

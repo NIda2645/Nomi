@@ -239,7 +239,7 @@ describe("P4 S1 reducer shot addressing", () => {
       status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: { host: "semantic-mcp" },
       policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1, snapshotCursor: 5, stages: [], gates: [], jobs: [], artifacts: [],
       generationPlan: {
         operationId: "op-x",
@@ -380,7 +380,7 @@ describe("P4 S1 reducer shot addressing", () => {
       status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: { host: "semantic-mcp" },
       policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1, snapshotCursor: 3, stages: [], gates: [], jobs: [], artifacts: [],
       generationPlan: {
         operationId: "op-patch", state: "draft", candidate: shotACandidate,
@@ -417,7 +417,7 @@ describe("P4 S1 reducer shot addressing", () => {
       status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: { host: "semantic-mcp" },
       policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1, snapshotCursor: 2, stages: [], gates: [], jobs: [], artifacts: [],
       generationPlan: {
         operationId: "op-inc", state: "draft", candidate: shotACandidate,
@@ -484,7 +484,7 @@ describe("P4 S1 reducer shot addressing", () => {
       status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: { host: "semantic-mcp" },
       policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 2, minimizeUploads: true },
-      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1, snapshotCursor: 4, stages: [], gates: [], jobs: [], artifacts: [],
       generationPlan: {
         operationId: "op-anchor", state: "draft", candidate: anchorCandidate,
