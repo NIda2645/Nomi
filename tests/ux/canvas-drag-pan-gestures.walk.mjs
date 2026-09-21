@@ -436,6 +436,26 @@ try {
   const before = await readTransform()
   assert(before.willChange.includes('transform'), '变换层已提升为合成层（will-change: transform）', before.willChange)
 
+  // 这一笔平移偶发「画布反向跳 (+322,+177)」（2026-09-22 两个会话各见过一次，之后 30+ 次复跑未再现）。
+  // 失败时要有证据：被动记下视口 transform 的每次改写、指针事件落点、选中变化（只观察、不改时序），
+  // 断言红了就把这份轨迹连同截图一起交出去。
+  await getWin().evaluate(() => {
+    const trace = []
+    window.__walkPanTrace = trace
+    const t0 = performance.now()
+    const at = () => Math.round(performance.now() - t0)
+    const viewportLayer = document.querySelector('.react-flow__viewport')
+    if (viewportLayer) new MutationObserver(() => trace.push(['viewport', at(), viewportLayer.style.transform])).observe(viewportLayer, { attributes: true, attributeFilter: ['style'] })
+    for (const type of ['pointerdown', 'pointerup', 'click']) {
+      window.addEventListener(type, (event) => trace.push([type, at(), String(event.target?.className ?? '').slice(0, 60)]), true)
+    }
+    const nodeLayer = document.querySelector('.react-flow__nodes')
+    if (nodeLayer) {
+      new MutationObserver((records) => {
+        for (const record of records) trace.push(['node-class', at(), record.target.getAttribute('data-id'), record.target.classList.contains('selected')])
+      }).observe(nodeLayer, { attributes: true, attributeFilter: ['class'], subtree: true })
+    }
+  })
   await getWin().mouse.move(blank.x, blank.y)
   await getWin().mouse.down()
   await getWin().mouse.move(blank.x - 140, blank.y - 90, { steps: 14 })
@@ -457,6 +477,8 @@ try {
   await getWin().mouse.up()
   await getWin().waitForTimeout(220)
   const afterPan = await readTransform()
+  const panMoved = Math.round(afterPan.x - before.x) <= -100 && Math.round(afterPan.y - before.y) <= -60
+  if (!panMoved) console.log('  · 平移轨迹（失败证据）', JSON.stringify({ before, afterPan, trace: await getWin().evaluate(() => window.__walkPanTrace.slice(-120)) }))
 
   assert(duringPan.cursor === 'grabbing', '拖动中光标是 grabbing', duringPan.cursor)
   assert(duringPan.panningAttr === null, '左键平移不写 data-panning（光标交给 CSS :active）')
@@ -464,7 +486,7 @@ try {
   assert(duringPan.visibleOverlays === 0, '平移期间浮层也收起来了', JSON.stringify(duringPan))
   assert(duringPan.marquee === 0, '空白左键拖不再拉出框选矩形')
   assert(
-    Math.round(afterPan.x - before.x) <= -100 && Math.round(afterPan.y - before.y) <= -60,
+    panMoved,
     '画布确实跟着鼠标移动了',
     `Δ=(${Math.round(afterPan.x - before.x)}, ${Math.round(afterPan.y - before.y)})`,
   )
