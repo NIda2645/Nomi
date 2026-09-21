@@ -177,7 +177,8 @@
   "migration": "No persisted state changes.",
   "residual_risks": [
     "An external writer that, within the one-to-two-frame echo window, writes back exactly a value still on the ledger is treated as an echo; the editor's next emission rewrites the owner, so the document and store do not silently diverge",
-    "Not verified on Windows IME in this run; the ledger is platform-independent"
+    "Not verified on Windows IME in this run; the ledger is platform-independent",
+    "Visible side-effect change, verified 2026-09-21 on origin/main 5f17a7d17 vs this branch with the same probe: after Cmd+Z undoes a translation, main leaves a collapsed caret at the document end (selection 34-34) because the stale echo made PromptEditor setContent the whole document; with the ledger the editor keeps ProseMirror's native undo selection (the restored range, 18-29), focus stays in the editor in both. tests/ux/prompt-translate.walk.mjs relied on the old collapse plus the End key, which does not move the caret in Chromium on macOS; it now clicks after the last character like a user"
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/common/controlledEditorSync.ts",

@@ -111,6 +111,31 @@ function readPrompt(win) {
 const chipCount = (text) => (text.match(/⟪chip⟫/g) ?? []).length
 
 /** 真人拖选：量出子串在屏幕上的首尾坐标，鼠标按下 → 拖到尾 → 松开。 */
+/**
+ * 真人收起选区：鼠标点在提示词最后一个字的右边，光标落到文末。
+ *
+ * 不用 End 键：macOS 的 Chromium 里 End 只滚动、不移动光标（系统约定是 Cmd+→）。
+ * 这条走查以前能靠 End「收起」选区，其实是旧回写 bug 的副作用——撤回之后外部同步把整篇
+ * setContent 了一遍，选区被冲成文末光标；修掉回写之后撤回按 ProseMirror 的本义把原选区还回来，
+ * End 就什么都不做了（2026-09-21 实测：main 撤回后选区 34–34，修后 18–29；两边按 End 都不变）。
+ */
+async function clickAtTextEnd(win) {
+  const point = await win.locator(EDITOR).evaluate((root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let last = null
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent.length) last = node
+    if (!last) return null
+    const range = document.createRange()
+    range.setStart(last, last.textContent.length - 1)
+    range.setEnd(last, last.textContent.length)
+    const rect = range.getBoundingClientRect()
+    return { x: rect.right + 2, y: rect.top + rect.height / 2 }
+  })
+  if (!point) throw new Error('提示词里没有文字，点不到文末')
+  await win.mouse.click(point.x, point.y)
+  await expect.poll(() => win.evaluate(() => window.getSelection()?.isCollapsed ?? false), { message: '点在文末之后选区已收起' }).toBe(true)
+}
+
 async function dragSelect(win, needle) {
   const box = await win.locator(EDITOR).evaluate((root, target) => {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -229,7 +254,7 @@ try {
   console.log('  ✓ Cmd+Z 一步回到原文')
 
   // ③ 不选中 → 整段翻成英文。
-  await win.keyboard.press('End')
+  await clickAtTextEnd(win)
   const whole = await clickTranslate(win, '整段（中→英）')
   expect(CJK.test(whole.after), `整段已无中文：${whole.after}`).toBe(false)
   expect(chipCount(whole.after), '整段翻译后 chip 仍在且只有 1 个').toBe(1)
