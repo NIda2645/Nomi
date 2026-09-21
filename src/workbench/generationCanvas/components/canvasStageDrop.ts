@@ -18,7 +18,7 @@ import { importLocalMediaFilesToGenerationCanvas } from '../adapters/assetImport
 import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { CENTER_PLACEMENT_ANCHOR } from '../model/canvasPlacement'
+import { CENTER_PLACEMENT_ANCHOR, placementOrigin } from '../model/canvasPlacement'
 import { CANVAS_RESULT_DRAG_MIME, createNodeFromDraggedResult, parseCanvasResultDrag } from './canvasResultDrag'
 import { reportCanvasFeedback } from './canvasFeedback'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
@@ -67,16 +67,11 @@ export function layoutBrowserAssetDropPositions(
 }
 
 /** 放下时光标该压在第一张卡的哪一点：素材库卡带着「抓在哪」就按它，其余来源（系统文件 / 文件树 / 浏览器素材盒）按卡中心。 */
-
 export function resolveDropOrigin(
   cursorPosition: { x: number; y: number },
   dragAnchor: AssetLibraryDragPayload['dragAnchor'] = CENTER_PLACEMENT_ANCHOR,
 ): { x: number; y: number } {
-  const size = getGenerationNodeDefaultSize('asset')
-  return {
-    x: cursorPosition.x - size.width * dragAnchor.xRatio,
-    y: cursorPosition.y - size.height * dragAnchor.yRatio,
-  }
+  return placementOrigin({ point: cursorPosition, anchor: dragAnchor }, getGenerationNodeDefaultSize('asset'))
 }
 
 function cleanBrowserAssetTitle(value: unknown, fallback: string): string {

@@ -290,8 +290,7 @@ export function useCanvasShortcuts(opts: {
         pasteFallbackTimerRef.current = window.setTimeout(() => {
           pasteFallbackTimerRef.current = null
           const placement = getPastePlacement()
-          if (placement) pasteNodes(placement.point, placement.anchor)
-          else pasteNodes()
+          pasteNodes(placement?.point, placement?.anchor)
         }, 120)
       },
       zoomByStep,
@@ -305,10 +304,7 @@ export function useCanvasShortcuts(opts: {
       if (shouldIgnoreCanvasShortcut(event.target, stageRef)) return
       // 节点粘贴与剪贴板媒体粘贴共用这一个落点来源（不留两套）。
       const placement = getPastePlacement()
-      const pasteCanvasNodes = () => {
-        if (placement) pasteNodes(placement.point, placement.anchor)
-        else pasteNodes()
-      }
+      const pasteCanvasNodes = () => pasteNodes(placement?.point, placement?.anchor)
       if (shouldPreferCanvasClipboard(event.clipboardData)) {
         event.preventDefault()
         pasteCanvasNodes()

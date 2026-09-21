@@ -320,7 +320,7 @@ async function importMediaFiles(files: File[], options: ClipboardMediaPasteOptio
   const result = await importLocalMediaFilesToGenerationCanvas(files, {
     basePosition: options.basePosition,
     categoryId: options.categoryId,
-    ...(options.anchor ? { anchor: options.anchor } : {}),
+    anchor: options.anchor,
     ...options.importOptions,
     projectContext: options.projectContext,
     exactPosition: options.importOptions?.exactPosition ?? true,
@@ -349,17 +349,15 @@ function createClipboardMediaNodeShell(input: {
 }): string {
   const { options, titleUrl } = input
   const store = useGenerationCanvasStore.getState()
+  // 链接媒体下载前只有默认卡面尺寸可用；锚点按它换算（与拖入的非系统文件来源同一残留，见结构评审）。
+  const origin = options.anchor
+    ? placementOrigin({ point: options.basePosition, anchor: options.anchor }, getGenerationNodeDefaultSize('asset'))
+    : options.basePosition
   const node = store.addNode({
     kind: 'asset',
     title: titleFromUrl(titleUrl),
     prompt: '',
-    position: (() => {
-      // 链接媒体下载前只有默认卡面尺寸可用；锚点按它换算（与拖入的非系统文件来源同一残留，见结构评审）。
-      const origin = options.anchor
-        ? placementOrigin({ point: options.basePosition, anchor: options.anchor }, getGenerationNodeDefaultSize('asset'))
-        : options.basePosition
-      return { x: Math.round(origin.x), y: Math.round(origin.y) }
-    })(),
+    position: { x: Math.round(origin.x), y: Math.round(origin.y) },
     categoryId: options.categoryId,
     exactPosition: true,
   })

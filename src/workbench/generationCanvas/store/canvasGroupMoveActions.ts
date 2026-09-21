@@ -89,10 +89,9 @@ export const createCanvasGroupMoveActions: CanvasSliceCreator<CanvasGroupMoveAct
     const now = Date.now()
     const nextGroupId = createGroupId(source.categoryId)
     // clone 统一偏移 CLIPBOARD_OFFSET；这里要「原地」出生（松手点由随后的拖动决定），所以按原件位置还原。
-    const originalPositionById = new Map((payload?.nodes ?? []).map((node) => [node.id, node.position]))
     const copies = assignClonedShotIndexes(current.nodes, cloned.nodes).map((node, index) => ({
       ...node,
-      position: { ...(originalPositionById.get(payload!.nodes[index].id) ?? node.position) },
+      position: { ...payload!.nodes[index].position },
       groupId: nextGroupId,
     }))
     const group: NodeGroup = {

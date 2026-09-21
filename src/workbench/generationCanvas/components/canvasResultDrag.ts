@@ -79,9 +79,8 @@ export function createNodeFromDraggedResult(
   // 与 addNode 出生时同一份默认尺寸（节点工厂取 kind 默认）+ 真实比例 → 卡面尺寸唯一真相源换算。
   const size = resolveNodeVisualSize({ kind: 'asset', size: getGenerationNodeDefaultSize('asset'), meta, result })
   const origin = placementOrigin({ point: cursor, anchor: CENTER_PLACEMENT_ANCHOR }, size)
-  const txnId = `result-copy-${source.id}-${createdAt}`
   // 建卡 + 填结果是两次 store 写入；第一次放行撤销点，第二次压住——⌘Z 一次撤掉整张卡（同切图 useNodeImageEditing）。
-  const created = withCanvasGestureContext({ source: 'user', txnId }, () => store.addNode({
+  const created = withCanvasGestureContext({ source: 'user', txnId: result.id }, () => store.addNode({
     kind: 'asset',
     title: `${source.title || ''} · ${index + 1}`.trim(),
     prompt: '',
@@ -90,7 +89,7 @@ export function createNodeFromDraggedResult(
     meta,
     exactPosition: true,
   }))
-  withCanvasGestureContext({ source: 'user', txnId, suppressUndoBarriers: true }, () => {
+  withCanvasGestureContext({ source: 'user', txnId: result.id, suppressUndoBarriers: true }, () => {
     useGenerationCanvasStore.getState().updateNode(created.id, {
       result,
       history: [result],
