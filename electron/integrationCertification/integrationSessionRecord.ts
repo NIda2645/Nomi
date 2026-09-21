@@ -118,25 +118,23 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
 export function capIntegrationSessions<T extends { id: string; stage: string; createdAt?: string; updatedAt?: string }>(
   sessions: readonly T[],
   limit: number = MAX_INTEGRATION_SESSIONS,
-): { sessions: T[]; dropped: T[]; overCapacity: boolean } {
-  if (sessions.length <= limit) return { sessions: [...sessions], dropped: [], overCapacity: false };
+): { sessions: T[]; overCapacity: boolean } {
+  if (sessions.length <= limit) return { sessions: [...sessions], overCapacity: false };
   const touchedAt = (entry: T): number => {
     const stamp = Date.parse(entry.updatedAt || entry.createdAt || "");
     return Number.isFinite(stamp) ? stamp : 0;
   };
-  const evictable = sessions
-    .map((entry, order) => ({ entry, order }))
-    .filter(({ entry }) => isTerminalIntegrationStage(entry.stage))
-    // 最旧的先走；同一时刻的按原始顺序，保证结果与输入顺序无关地可复现。
-    .sort((left, right) => touchedAt(left.entry) - touchedAt(right.entry) || left.order - right.order)
-    .slice(0, sessions.length - limit);
-  const doomed = new Set(evictable.map(({ entry }) => entry));
+  const doomed = new Set(
+    sessions
+      .map((entry, order) => ({ entry, order }))
+      .filter(({ entry }) => isTerminalIntegrationStage(entry.stage))
+      // 最旧的先走；同一时刻的按原始顺序，保证结果与输入顺序无关地可复现。
+      .sort((left, right) => touchedAt(left.entry) - touchedAt(right.entry) || left.order - right.order)
+      .slice(0, sessions.length - limit)
+      .map(({ entry }) => entry),
+  );
   const kept = sessions.filter((entry) => !doomed.has(entry));
-  return {
-    sessions: kept,
-    dropped: evictable.map(({ entry }) => entry),
-    overCapacity: kept.length > limit,
-  };
+  return { sessions: kept, overCapacity: kept.length > limit };
 }
 
 /**
