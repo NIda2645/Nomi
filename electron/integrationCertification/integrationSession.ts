@@ -19,6 +19,7 @@ import {
   createIntegrationSessionReaper,
   integrationCertifyingDeadlineAt,
   isTerminalIntegrationStage,
+  persistWatchdogTerminalWrite,
 } from "./integrationSessionTerminal";
 import type { TerminalReaper } from "../providerAdapter/terminalGuarantee";
 import { adapterDraftFromProposal, compileRequestFor } from "./integrationAdapterContract";
@@ -42,8 +43,8 @@ import {
 import {
   adapterTerminalReasonCode,
   assertIntegrationSessionCapacity,
-  capIntegrationSessions,
   integrationStageFromAdapterRun,
+  persistIntegrationSessionState,
   readIntegrationSessionState,
   safeCertificationFailureCode,
 } from "./integrationSessionRecord";
@@ -600,15 +601,13 @@ export class IntegrationSessionService {
     session.revision += 1;
     session.updatedAt = (this.deps.now || (() => new Date().toISOString()))();
     this.state.revision += 1;
-    this.persist();
+    persistWatchdogTerminalWrite(() => this.persist());
   }
   private read(): PersistedState {
     return readIntegrationSessionState(this.filePath, (state) => this.save(this.filePath, state));
   }
-  /** 容量合同的写侧执行点：放在每一次写都过的 persist，新增会话的路径日后不必再各自记得封顶。 */
   private persist(): void {
-    this.state.sessions = capIntegrationSessions(this.state.sessions).sessions;
-    this.save(this.filePath, this.state);
+    persistIntegrationSessionState(this.state, (state) => this.save(this.filePath, state));
   }
   /**
    * A submitted ComfyUI prompt is never safe to create again. When a durable

@@ -17,6 +17,7 @@ import {
   type IntegrationStage,
 } from "../shared/integrationContract";
 import { logWarn } from "../logging/logger";
+import { CERTIFICATION_MAX_FILE_BYTES, certificationJsonBytes } from "./certificationPersistence";
 import { BUILTIN_MCP_CLIENTS, type CapabilityOriginHost } from "../capabilityCore/security";
 import {
   integrationCertifyingDeadlineAt,
@@ -105,6 +106,51 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
 }
 
 /**
+ * 字节预算。留 20% 余量的理由：`CERTIFICATION_MAX_FILE_BYTES` 是**兜底**——撞上它的调用方
+ * 只拿到一句 `oversized`，而在启动路径上（看门狗收尾 → persist）那一抛会一路走到
+ * `main.ts` 的 `.catch` → `app.quit()`，与「超过 100 条」那次静默退出是同一种死法。
+ * 预算比兜底先响，兜底才保得住「fail-closed 最后一道」的身份。0.8 这个系数与同族的
+ * promotionJournal 压缩触发同源（见其 compact()）。
+ */
+const INTEGRATION_SESSION_BYTE_BUDGET = Math.floor(CERTIFICATION_MAX_FILE_BYTES * 0.8);
+
+/** 裁剪结果的可诊断摘要。**只放聚合量与时间**：id / URL / 供应商字段一概不进日志。 */
+export type IntegrationSessionCapReport = {
+  from: number;
+  to: number;
+  dropped: number;
+  /** 被裁记录的 stage 分布，形如 `completed:9,failed:1`。 */
+  stages: string;
+  oldestDroppedAt?: string;
+  newestDroppedAt?: string;
+  reason: "count" | "bytes" | "count+bytes";
+};
+
+function sessionTouchedAt(entry: IntegrationSession): number {
+  const stamp = Date.parse(entry.updatedAt || entry.createdAt || "");
+  return Number.isFinite(stamp) ? stamp : 0;
+}
+
+function capReport(
+  before: readonly IntegrationSession[],
+  dropped: readonly IntegrationSession[],
+  reason: IntegrationSessionCapReport["reason"],
+): IntegrationSessionCapReport {
+  const stages = new Map<string, number>();
+  for (const entry of dropped) stages.set(entry.stage, (stages.get(entry.stage) || 0) + 1);
+  const stamps = dropped.map(sessionTouchedAt).filter((value) => value > 0).sort((left, right) => left - right);
+  return {
+    from: before.length,
+    to: before.length - dropped.length,
+    dropped: dropped.length,
+    stages: [...stages].map(([stage, count]) => `${stage}:${count}`).join(","),
+    ...(stamps.length ? { oldestDroppedAt: new Date(stamps[0]).toISOString() } : {}),
+    ...(stamps.length ? { newestDroppedAt: new Date(stamps[stamps.length - 1]).toISOString() } : {}),
+    reason,
+  };
+}
+
+/**
  * 容量合同的唯一执行者：超限时**只**挤掉终态会话，最旧的先走；非终态（还在进行中的）
  * 一条都不动。
  *
@@ -112,26 +158,67 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
  * 手上还没做完的活（甚至挂着一条在飞的 child run）。把它悄悄删掉＝用户填到一半的接入凭空消失，
  * 而这正是上限本来要保护他免于遇到的那种事。终态会话则只是历史，挤掉只丢一条记录。
  *
- * `overCapacity` = 光非终态就已经超限，裁剪救不回来。这时读侧照样把它们**全部**还回去
- * （宁可状态偏大，也不丢用户在做的事），由写侧据此拒绝新建——见 `IntegrationSessionService.begin`。
+ * `overCapacity` = 光非终态就已经越界（条数或字节），裁剪救不回来。这时照样把它们**全部**还回去
+ * （宁可状态偏大，也不丢用户在做的事），由写侧据此拒绝新建——见 `assertIntegrationSessionCapacity`。
+ *
+ * **两根轴合在一个函数里**：条数与落盘字节是同一条不变量的两种越界方式——「这份状态必须始终
+ * 写得回、也读得起」。分开写就会长出第二个裁剪器，两边迟早对同一份状态给出不同答案，
+ * 而那正是本次根因（上限只在读侧断言、写侧无人执行）的同一个形状。
  */
 export function capIntegrationSessions(
   sessions: readonly IntegrationSession[],
-): { sessions: IntegrationSession[]; overCapacity: boolean } {
-  if (sessions.length <= MAX_INTEGRATION_SESSIONS) return { sessions: [...sessions], overCapacity: false };
-  const touchedAt = (entry: IntegrationSession): number => {
-    const stamp = Date.parse(entry.updatedAt || entry.createdAt || "");
-    return Number.isFinite(stamp) ? stamp : 0;
+): { sessions: IntegrationSession[]; overCapacity: boolean; report?: IntegrationSessionCapReport } {
+  const overCount = Math.max(0, sessions.length - MAX_INTEGRATION_SESSIONS);
+  // 常规路径只量一次，和写盘那一次同量级；绝大多数时候到此为止。
+  if (overCount === 0 && stateBytes(sessions) <= INTEGRATION_SESSION_BYTE_BUDGET)
+    return { sessions: [...sessions], overCapacity: false };
+  // 终态会话排成「最旧先走」的队；Array#sort 规范保证稳定，同一时刻的几条保持盘上原始顺序。
+  const queue = sessions
+    .filter((entry) => isTerminalIntegrationStage(entry.stage))
+    .sort((left, right) => sessionTouchedAt(left) - sessionTouchedAt(right));
+  const doomed = new Set(queue.slice(0, overCount));
+  let kept = sessions.filter((entry) => !doomed.has(entry));
+  const overBytes = stateBytes(kept) > INTEGRATION_SESSION_BYTE_BUDGET;
+  // 字节轴沿同一条队列继续挤：一条超大记录就能顶翻整份状态，所以逐条复量，不按估算批量丢。
+  for (let index = overCount; index < queue.length && stateBytes(kept) > INTEGRATION_SESSION_BYTE_BUDGET; index += 1) {
+    doomed.add(queue[index]);
+    kept = sessions.filter((entry) => !doomed.has(entry));
+  }
+  return {
+    sessions: kept,
+    overCapacity: kept.length > MAX_INTEGRATION_SESSIONS || stateBytes(kept) > INTEGRATION_SESSION_BYTE_BUDGET,
+    ...(doomed.size ? { report: capReport(sessions, [...doomed], overCount > 0 && overBytes ? "count+bytes" : overBytes ? "bytes" : "count") } : {}),
   };
-  const doomed = new Set(
-    sessions
-      .filter((entry) => isTerminalIntegrationStage(entry.stage))
-      // 最旧的先走；Array#sort 规范保证稳定，同一时刻的几条自然保持盘上原始顺序。
-      .sort((left, right) => touchedAt(left) - touchedAt(right))
-      .slice(0, sessions.length - MAX_INTEGRATION_SESSIONS),
-  );
-  const kept = sessions.filter((entry) => !doomed.has(entry));
-  return { sessions: kept, overCapacity: kept.length > MAX_INTEGRATION_SESSIONS };
+}
+
+function stateBytes(sessions: readonly IntegrationSession[]): number {
+  return certificationJsonBytes({ version: 1, revision: 0, sessions });
+}
+
+/**
+ * 裁剪留痕。**丢了记录才写**——没丢就是例行检查，写了只会把日志淹掉。
+ *
+ * 为什么非写不可：裁剪是我们背着用户删他的数据。不留痕＝他下次问「我那条接入记录呢」时，
+ * 没有任何东西能把「盘被我们改过」和「盘本来就那样」分开。字段只放聚合量与时间，
+ * 不放 id / URL / 供应商字段——日志是会被贴进 issue 的。
+ */
+function logIntegrationSessionCompaction(report: IntegrationSessionCapReport | undefined): void {
+  if (!report || report.dropped <= 0) return;
+  logWarn("onboarding", "integration-sessions-compacted", { ...report });
+}
+
+/**
+ * 写这份状态的唯一出口：先过容量合同（两根轴），再落盘，丢了记录就留痕。
+ * 每一次写都过，所以日后任何新增会话的路径都不必自己记得封顶。
+ */
+export function persistIntegrationSessionState(
+  state: PersistedIntegrationState,
+  save: (state: PersistedIntegrationState) => void,
+): void {
+  const capped = capIntegrationSessions(state.sessions);
+  state.sessions = capped.sessions;
+  save(state);
+  logIntegrationSessionCompaction(capped.report);
 }
 
 /**
@@ -143,12 +230,17 @@ export function assertIntegrationSessionCapacity(
   existing: readonly IntegrationSession[],
   incoming: IntegrationSession,
 ): void {
-  if (!capIntegrationSessions([...existing, incoming]).overCapacity) return;
+  const capped = capIntegrationSessions([...existing, incoming]);
+  if (!capped.overCapacity) return;
+  // 两根轴的说法不能混：条数满和「存不下了」对用户是两件事，但出路是同一条（取消一条）。
+  const byCount = capped.sessions.length > MAX_INTEGRATION_SESSIONS;
+  const escape = "Cancel one you no longer need (nomi_model_setup action=cancel) before starting another";
   throw new IntegrationRequestError(
     "integration_session_limit_reached",
-    `This machine already holds ${MAX_INTEGRATION_SESSIONS} unfinished model setups. `
-      + "Cancel one you no longer need (nomi_model_setup action=cancel) before starting another",
-    { limit: MAX_INTEGRATION_SESSIONS },
+    byCount
+      ? `This machine already holds ${MAX_INTEGRATION_SESSIONS} unfinished model setups. ${escape}`
+      : `The unfinished model setups on this machine already fill the space reserved for them. ${escape}`,
+    byCount ? { limit: MAX_INTEGRATION_SESSIONS } : { limitBytes: INTEGRATION_SESSION_BYTE_BUDGET },
   );
 }
 
@@ -172,23 +264,27 @@ export function readIntegrationSessionState(
   } catch {
     throw new Error("Integration session storage is corrupt");
   }
-  // validateState 已经断言过 sessions 是数组，所以它之后这个读取无需再自证一遍。
-  const state = validateState(raw);
-  if (state.sessions.length >= (raw as { sessions: unknown[] }).sessions.length) return state;
+  const validated = validateState(raw);
+  const capped = capIntegrationSessions(validated.sessions);
+  const state = { ...validated, sessions: capped.sessions };
+  if (!capped.report) return state;
   try {
     writeBack(state);
   } catch (error) {
     logWarn("onboarding", "integration-session-compaction-writeback-failed", {
-      reason: error instanceof Error ? error.name : "unknown",
+      ...capped.report,
+      failure: error instanceof Error ? error.name : "unknown",
     });
+    return state;
   }
+  logIntegrationSessionCompaction(capped.report);
   return state;
 }
 
 /**
- * 读侧只判**形状**，不再判条数：条数多是我们自己写出来的，不是文件坏了，
- * 把两件事共用一句 `throw` 正是「启动静默退出」的成因。超限的旧盘就地裁剪，
- * 调用方（`IntegrationSessionService.read`）负责把裁剪结果回写。
+ * 读侧只判**形状**，不判容量：条数多、字节大都是我们自己写出来的，不是文件坏了，
+ * 把两件事共用一句 `throw` 正是「启动静默退出」的成因。容量交给
+ * `capIntegrationSessions`，回写与留痕交给 `readIntegrationSessionState`。
  */
 export function validateState(raw: unknown): PersistedIntegrationState {
   assertRecord(raw);
@@ -244,6 +340,5 @@ export function validateState(raw: unknown): PersistedIntegrationState {
     )
       throw new Error("Invalid integration session record");
   }
-  const capped = capIntegrationSessions(raw.sessions as IntegrationSession[]);
-  return { version: 1, revision: Number(raw.revision), sessions: capped.sessions };
+  return { version: 1, revision: Number(raw.revision), sessions: raw.sessions as IntegrationSession[] };
 }

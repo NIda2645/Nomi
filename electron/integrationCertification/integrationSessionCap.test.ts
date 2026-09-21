@@ -7,11 +7,29 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { IntegrationSessionService } from "./integrationSession";
 import { validateState } from "./integrationSessionRecord";
 
+const { logWarnSpy } = vi.hoisted(() => ({ logWarnSpy: vi.fn() }));
+vi.mock("../logging/logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../logging/logger")>()),
+  logWarn: logWarnSpy,
+}));
+
 const CAP = 100;
+/** 写盘真实上限的 80%（integrationSessionRecord 的 INTEGRATION_SESSION_BYTE_BUDGET）。 */
+const BYTE_BUDGET = Math.floor(1_048_576 * 0.8);
+/** 三条这么大的会话就顶穿预算；单条声明卡上限 512KB，所以这不是臆造的形状。 */
+const FAT_DRAFT_CHARS = 300_000;
+
+function compactionLogs(): Array<Record<string, unknown>> {
+  return logWarnSpy.mock.calls
+    .filter((call) => call[1] === "integration-sessions-compacted")
+    .map((call) => call[2] as Record<string, unknown>);
+}
+
+afterEach(() => logWarnSpy.mockClear());
 
 let capabilityDir: string;
 let previousCapabilityDir: string | undefined;
@@ -51,6 +69,22 @@ function sessionFixture(index: number, stage = "completed"): Record<string, unkn
     candidates: [],
     selections: [],
   };
+}
+
+/**
+ * 条数远低于 100、但序列化后顶穿字节预算的一条会话。撑大它的是 `adapterDraft`——
+ * 外部 Agent 交进来的说明卡，单张上限 512KB，所以这不是臆造的形状。
+ * 形状要照着真的写（`models` 数组是投影读的），否则夹具自己会先炸，把真结论盖掉。
+ */
+function fatSessionFixture(index: number, stage = "completed"): Record<string, unknown> {
+  return {
+    ...sessionFixture(index, stage),
+    adapterDraft: { models: [{ modelKey: `fat-${index}` }], sources: "d".repeat(FAT_DRAFT_CHARS) },
+  };
+}
+
+function fileBytes(filePath: string): number {
+  return fs.statSync(filePath).size;
 }
 
 function writeDisk(sessions: Record<string, unknown>[]): string {
@@ -135,6 +169,67 @@ describe("integration session capacity", () => {
       .toThrowError(expect.objectContaining({ code: "integration_session_limit_reached" }));
     // 拒绝必须是干净的：不许留下半条会话。
     expect(readDisk(filePath).sessions).toHaveLength(CAP);
+  });
+
+  it("leaves a diagnosable trace whenever trimming really dropped records, and stays quiet when it did not", () => {
+    const filePath = writeDisk(Array.from({ length: CAP + 2 }, (_, index) => sessionFixture(index)));
+    makeService(filePath);
+    const logs = compactionLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ from: CAP + 2, to: CAP, dropped: 2, stages: "completed:2", reason: "count" });
+    expect(logs[0].oldestDroppedAt).toBe(at(0));
+    expect(logs[0].newestDroppedAt).toBe(at(1));
+    // 日志会被贴进 issue：只许聚合量与时间，不许带 id / URL / 供应商字段。
+    const serialized = JSON.stringify(logs[0]);
+    expect(serialized).not.toContain("integration-fixture");
+    expect(serialized).not.toContain("fixture-0.example");
+
+    logWarnSpy.mockClear();
+    const quiet = writeDisk(Array.from({ length: 3 }, (_, index) => sessionFixture(index)));
+    makeService(quiet).begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex");
+    expect(compactionLogs()).toHaveLength(0);
+  });
+
+  it("loads a file that is small in records but too large in bytes, instead of failing app start", () => {
+    // 条数 3 « 100，但落盘 >1MiB：与条数轴是同一条不变量的另一种越界方式。
+    const filePath = writeDisk(Array.from({ length: 3 }, (_, index) => fatSessionFixture(index)));
+    expect(fileBytes(filePath)).toBeGreaterThan(BYTE_BUDGET);
+    const service = makeService(filePath);
+    expect(service.list("codex", 1_000).sessions.length).toBeLessThan(3);
+    expect(fileBytes(filePath)).toBeLessThanOrEqual(BYTE_BUDGET);
+    expect(compactionLogs()[0]).toMatchObject({ from: 3, reason: "bytes" });
+    // 挤掉的仍然是最旧的那条终态记录。
+    expect(service.list("codex", 1_000).sessions.map((entry) => entry.id)).not.toContain("integration-fixture-000");
+  });
+
+  it("survives the startup watchdog write on an oversized disk instead of quitting the app", () => {
+    // 全是非终态、且**超过写盘硬上限 1MiB** 的盘：读侧一条都裁不动（裁剪只碰终态），
+    // 所以第一次写发生在 resumeInterrupted 的看门狗收尾里。修复前那一步抛 oversized，
+    // 一路走到 main.ts 的 .catch → app.quit()，与「超过 100 条」是同一种死法。
+    const filePath = writeDisk(
+      Array.from({ length: 5 }, (_, index) => ({
+        ...fatSessionFixture(index, "certifying"),
+        certifyingDeadlineAt: at(index),
+      })),
+    );
+    expect(fileBytes(filePath)).toBeGreaterThan(1_048_576);
+    const service = makeService(filePath);
+    let reaped: string[] = [];
+    expect(() => { reaped = service.resumeInterrupted(); }).not.toThrow();
+    service.stopWatchdog();
+    // 五条全部被收成终态，且盘最终落回预算内——中途那次真的写不下的，留痕重试后由下一次写补上。
+    expect(reaped).toHaveLength(5);
+    expect(fileBytes(filePath)).toBeLessThanOrEqual(BYTE_BUDGET);
+    expect(logWarnSpy.mock.calls.some((call) => call[1] === "integration-session-timeout-write-failed")).toBe(true);
+  });
+
+  it("refuses a new session when unfinished work alone already fills the byte budget", () => {
+    const filePath = writeDisk(Array.from({ length: 3 }, (_, index) => fatSessionFixture(index, "draft")));
+    const service = makeService(filePath);
+    expect(() => service.begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex"))
+      .toThrowError(expect.objectContaining({ code: "integration_session_limit_reached" }));
+    // 进行中的三条一条不少，拒绝没有留下半条新会话。
+    expect(readDisk(filePath).sessions).toHaveLength(3);
   });
 
   it("still fails closed on a genuinely malformed record, which is a different problem from too many", () => {
