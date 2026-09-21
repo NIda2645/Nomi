@@ -131,13 +131,8 @@ describe("integration session capacity", () => {
   it("refuses a new session with a structured code when the cap is full of unfinished work", () => {
     const filePath = writeDisk(Array.from({ length: CAP }, (_, index) => sessionFixture(index, "draft")));
     const service = makeService(filePath);
-    let thrown: unknown;
-    try {
-      service.begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex");
-    } catch (error) {
-      thrown = error;
-    }
-    expect((thrown as { code?: string } | undefined)?.code).toBe("integration_session_limit_reached");
+    expect(() => service.begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex"))
+      .toThrowError(expect.objectContaining({ code: "integration_session_limit_reached" }));
     // 拒绝必须是干净的：不许留下半条会话。
     expect(readDisk(filePath).sessions).toHaveLength(CAP);
   });

@@ -126,12 +126,10 @@ export function capIntegrationSessions<T extends { id: string; stage: string; cr
   };
   const doomed = new Set(
     sessions
-      .map((entry, order) => ({ entry, order }))
-      .filter(({ entry }) => isTerminalIntegrationStage(entry.stage))
-      // 最旧的先走；同一时刻的按原始顺序，保证结果与输入顺序无关地可复现。
-      .sort((left, right) => touchedAt(left.entry) - touchedAt(right.entry) || left.order - right.order)
-      .slice(0, sessions.length - limit)
-      .map(({ entry }) => entry),
+      .filter((entry) => isTerminalIntegrationStage(entry.stage))
+      // 最旧的先走；Array#sort 规范保证稳定，同一时刻的几条自然保持盘上原始顺序。
+      .sort((left, right) => touchedAt(left) - touchedAt(right))
+      .slice(0, sessions.length - limit),
   );
   const kept = sessions.filter((entry) => !doomed.has(entry));
   return { sessions: kept, overCapacity: kept.length > limit };
