@@ -15,6 +15,7 @@
 //   · 一次性粘贴长文本逐字相同；
 //   · 外部改写（优化 → 应用提示）确实写进编辑器，且之后继续快打不丢字；
 //   · 追加 A：翻到节点上方的浮框卡片不压节点自己的浮动工具条 / 标签行（zh/en）；
+//   · 追加 C：卡片压到最小高度时「生成方式」模式栏完整在卡内、不被参考区滚动口裁、不与提示词区相交、tab 点得中（zh/en）；
 //   · 追加 B：底栏芯片文字不被裁断——只允许「有意省略号 + title 全名 + 省略后仍 ≥24px」（1100×720 EN 是现场）。
 // 另记一个探针：输入过程中编辑器文字「倒退」（纯插入却变短）的次数——那就是旧值回流覆盖文档的现场。
 //
@@ -226,7 +227,22 @@ async function assertFooterClearOfDocks(win, label) {
         else if (span.clientWidth < 24) clipped.push({ control: name, text, why: `省略后只剩 ${span.clientWidth}px，读不出字` })
       }
     }
+    // 追加 C：「生成方式」模式栏属于最小高度——整块在卡片内、在参考区滚动口的可见范围内、不与提示词区相交。
+    // 按用户看得到的结构找（参考区里那组「生成方式」分段），不依赖实现侧标记——修前修后同一把尺。
+    const modeBar = card?.querySelector('[data-node-composer-mode-bar] [role="group"][aria-label], [data-node-composer-references] [role="group"][aria-label]')?.parentElement
+    let modeBarIssues = null
+    if (modeBar) {
+      const m = modeBar.getBoundingClientRect()
+      const c = card.getBoundingClientRect()
+      const scrollport = modeBar.closest('[data-node-composer-references]')?.getBoundingClientRect()
+      const prompt = card.querySelector('[data-node-composer-prompt]')?.getBoundingClientRect()
+      modeBarIssues = []
+      if (m.top < c.top - 0.5 || m.bottom > c.bottom + 0.5) modeBarIssues.push(`模式栏超出卡片 ${Math.round(m.top)}–${Math.round(m.bottom)} vs 卡 ${Math.round(c.top)}–${Math.round(c.bottom)}`)
+      if (scrollport && (m.top < scrollport.top - 0.5 || m.bottom > scrollport.bottom + 0.5)) modeBarIssues.push(`模式栏被参考区滚动口裁掉 ${Math.round(m.top)}–${Math.round(m.bottom)} vs 口 ${Math.round(scrollport.top)}–${Math.round(scrollport.bottom)}`)
+      if (prompt && m.bottom > prompt.top + 0.5 && m.top < prompt.bottom) modeBarIssues.push(`模式栏与提示词区相交 ${Math.round(m.bottom)} > ${Math.round(prompt.top)}`)
+    }
     return {
+      modeBarIssues,
       chromeIntersections,
       clipped,
       card: card ? rect(card) : null,
@@ -242,13 +258,18 @@ async function assertFooterClearOfDocks(win, label) {
     .filter((dock) => dock.right > geometry.footer.left && dock.left < geometry.footer.right)
     .map((dock) => dock.top - geometry.footer.bottom), Infinity) : null
   report.overlap.push({ label, ...geometry, footerToDockGapPx: Number.isFinite(minGap) ? minGap : null })
-  console.log(`  · ${label}：浮框在节点${geometry.side === 'above' ? '上' : '下'}方，card=${JSON.stringify(geometry.card)}，停靠区 ${geometry.docks.length} 块，底栏控件 ${geometry.controls.length} 颗，相交 ${geometry.intersections.length} 处，压节点浮条/标签行 ${geometry.chromeIntersections.length} 处，芯片裁断 ${geometry.clipped.length} 处，底栏到横向重叠停靠区的最小竖直间距 ${Number.isFinite(minGap) ? `${minGap}px` : '（无横向重叠停靠区）'}`)
+  console.log(`  · ${label}：浮框在节点${geometry.side === 'above' ? '上' : '下'}方，card=${JSON.stringify(geometry.card)}，停靠区 ${geometry.docks.length} 块，底栏控件 ${geometry.controls.length} 颗，相交 ${geometry.intersections.length} 处，压节点浮条/标签行 ${geometry.chromeIntersections.length} 处，模式栏 ${geometry.modeBarIssues === null ? '无' : geometry.modeBarIssues.length ? '被裁' : '完整'}，芯片裁断 ${geometry.clipped.length} 处，底栏到横向重叠停靠区的最小竖直间距 ${Number.isFinite(minGap) ? `${minGap}px` : '（无横向重叠停靠区）'}`)
   expect(geometry.footer, `${label}：底栏在`).not.toBeNull()
   expect(geometry.docks.length, `${label}：现场里至少有缩放条与时间轴胶囊两块停靠区（证明是在对的现场断言）`).toBeGreaterThanOrEqual(2)
   expect(geometry.controls.length, `${label}：底栏里有控件`).toBeGreaterThan(0)
   expect(geometry.intersections, `${label}：底栏控件与底部停靠区矩形不相交`).toEqual([])
   expect(geometry.chromeIntersections, `${label}：浮框卡片不压节点自己的浮动工具条 / 标签行`).toEqual([])
   expect(geometry.clipped, `${label}：底栏芯片文字没有被裁断`).toEqual([])
+  if (geometry.modeBarIssues) {
+    expect(geometry.modeBarIssues, `${label}：「生成方式」模式栏完整可见`).toEqual([])
+    const tabs = win.locator(`${COMPOSER} [data-node-composer-mode-bar] [role="group"][aria-label] button, ${COMPOSER} [data-node-composer-references] [role="group"][aria-label] button`)
+    for (let index = 0; index < await tabs.count(); index += 1) await expectHittable(tabs.nth(index), `${label}：模式 tab #${index + 1}`)
+  }
   const footerControls = win.locator(`${FOOTER} button, ${FOOTER} [role="button"], ${FOOTER} [role="combobox"]`)
   const count = await footerControls.count()
   for (let index = 0; index < count; index += 1) {
@@ -264,8 +285,8 @@ async function assertFooterClearOfDocks(win, label) {
  * 节点底边落在「浮框刚好还放得进视口底」的高度——正是截图里被盖住的那个现场。
  * 真人手势：在节点卡片上按下、分步挪、松开（不灌 store）。
  */
-async function dragNodeToBottomLeft(win, nodeSelector, label) {
-  const plan = await win.evaluate(({ nodeSelector: selector, composerSelector }) => {
+async function dragNodeToBottomLeft(win, nodeSelector, label, { bottomInset } = {}) {
+  const plan = await win.evaluate(({ nodeSelector: selector, composerSelector, bottomInset: inset }) => {
     const node = document.querySelector(selector)
     const stage = document.querySelector('.generation-canvas-v2__stage')
     const zoomBar = [...document.querySelectorAll('[data-canvas-bottom-dock]')]
@@ -280,10 +301,11 @@ async function dragNodeToBottomLeft(win, nodeSelector, label) {
     return {
       from: { x: n.left + n.width / 2, y: n.top + n.height * 0.35 },
       targetCenterX: zoomBar.right - 20,
-      targetBottom: s.bottom - 12 - gap - composerHeight,
+      // bottomInset：把节点直接压到视口底边附近，逼浮框翻到上方（翻转那一格的现场）。
+      targetBottom: inset === undefined ? s.bottom - 12 - gap - composerHeight : s.bottom - inset,
       nodeBottom: n.bottom, nodeCenterX: n.left + n.width / 2,
     }
-  }, { nodeSelector, composerSelector: COMPOSER_CARD })
+  }, { nodeSelector, composerSelector: COMPOSER_CARD, bottomInset })
   expect(plan, `${label}：量得到节点、舞台与缩放条`).not.toBeNull()
   const dx = plan.targetCenterX - plan.nodeCenterX
   const dy = plan.targetBottom - plan.nodeBottom
@@ -350,6 +372,13 @@ try {
   await assertFooterClearOfDocks(win, '中文·左下角（默认窗口）')
   await shot(win, '01-zh-bottom-left-default-window')
 
+  // 翻到上方：节点压到视口底边附近，下方放不下，浮框必须翻上去——模式栏、底栏、节点浮条都得完好。
+  await dragNodeToBottomLeft(win, imageNode, '中文·翻上方', { bottomInset: 90 })
+  await ensureComposerOpen(win, imageNode, '中文·翻上方')
+  await expect(win.locator(`${COMPOSER}[data-flipped="true"]`), '中文·翻上方：浮框确实翻到了节点上方').toHaveCount(1)
+  await assertFooterClearOfDocks(win, '中文·翻上方（默认窗口）')
+  await shot(win, '01b-zh-flipped-above')
+
   await setViewport(current.app, win, MIN_VIEWPORT)
   report.viewport.min = MIN_VIEWPORT
   await dragNodeToBottomLeft(win, imageNode, '中文·最小窗口')
@@ -404,6 +433,11 @@ try {
   await assertFooterClearOfDocks(win, 'EN·左下角（默认窗口）')
   await typeAndCompare(win, 'EN·图片节点·0ms', MIXED, 0)
   await shot(win, '06-en-bottom-left-typed')
+  await dragNodeToBottomLeft(win, imageNode, 'EN·翻上方', { bottomInset: 90 })
+  await ensureComposerOpen(win, imageNode, 'EN·翻上方')
+  await expect(win.locator(`${COMPOSER}[data-flipped="true"]`), 'EN·翻上方：浮框确实翻到了节点上方').toHaveCount(1)
+  await assertFooterClearOfDocks(win, 'EN·翻上方（默认窗口）')
+  await shot(win, '06b-en-flipped-above')
   await setViewport(current.app, win, MIN_VIEWPORT)
   await dragNodeToBottomLeft(win, imageNode, 'EN·最小窗口')
   await ensureComposerOpen(win, imageNode, 'EN·最小窗口')

@@ -42,6 +42,15 @@ export function aboveClearanceFromNodeChrome(
 }
 
 /**
+ * 参考区滚动口的高度：卡片高度扣掉其它固定内容后剩下的，**但不低于参考区下限**（第一行参考格）。
+ * `fixedHeight` 已经含下限本身，所以剩余量要把它加回来。下限同时进了放置层的 `minHeight`，
+ * 卡片至少这么高，于是这里的下限永远装得下、不会把底栏挤出卡外。
+ */
+export function referenceScrollportHeight(cardHeight: number, fixedHeight: number, referencesFloor: number): number {
+  return Math.max(referencesFloor, cardHeight - fixedHeight + referencesFloor)
+}
+
+/**
  * One placement owner for every composer: all measurements are screen pixels.
  *
  * 位置只跟着**这个节点**走：视口内 clamp + below/above 翻转，别的什么都不看
@@ -103,7 +112,18 @@ export function useComposerViewportPlacement(input: {
       const children = Array.from(card.children).filter((child): child is HTMLElement => child instanceof HTMLElement)
       const cardStyle = getComputedStyle(card)
       const pixels = (value: string) => Number.parseFloat(value) || 0
-      const fixedHeight = pixels(cardStyle.paddingTop) + pixels(cardStyle.paddingBottom)
+      // 参考区可以压成滚动口，但不能压没：改图 / 首帧这些模式下参考是必填，一行参考格都露不出来，
+      // 用户连「加参考」都点不到。所以滚动口有下限 = 露出第一行参考格（或整块参考区，若它更矮），
+      // 在无约束状态下现量；它和模式栏一起进卡片的「非收不可」高度。
+      const referencesFloor = references ? (() => {
+        const referencesRect = references.getBoundingClientRect()
+        const firstTile = references.querySelector<HTMLElement>('[data-asset-tile], [data-asset-add-tile]')
+        const edge = pixels(getComputedStyle(references).borderBottomWidth)
+        const natural = references.offsetHeight
+        if (!firstTile) return natural
+        return Math.min(natural, firstTile.getBoundingClientRect().bottom - referencesRect.top + references.scrollTop + edge)
+      })() : 0
+      const fixedHeight = referencesFloor + pixels(cardStyle.paddingTop) + pixels(cardStyle.paddingBottom)
         + pixels(cardStyle.borderTopWidth) + pixels(cardStyle.borderBottomWidth)
         + pixels(cardStyle.rowGap) * Math.max(0, children.length - 1)
         + children.reduce((sum, child) => {
@@ -132,14 +152,28 @@ export function useComposerViewportPlacement(input: {
         gap: gap * canvasZoom,
         aboveClearance: aboveClearanceFromNodeChrome(nodeRect.top, aboveChromeElements().map((element) => element.getBoundingClientRect())),
       })
-      const next = { left: (result.left - nodeRect.left) / canvasZoom, top: (result.top - nodeRect.top) / canvasZoom, maxWidth: result.width, maxHeight: result.height, referenceMaxHeight: Math.max(0, result.height - fixedHeight), flipUp: result.side === 'above' }
+      const next = { left: (result.left - nodeRect.left) / canvasZoom, top: (result.top - nodeRect.top) / canvasZoom, maxWidth: result.width, maxHeight: result.height, referenceMaxHeight: referenceScrollportHeight(result.height, fixedHeight, referencesFloor), flipUp: result.side === 'above' }
       setPlacement(previous => Object.keys(next).every(key => previous[key as keyof typeof next] === next[key as keyof typeof next]) ? previous : next)
     }
 
-    recompute()
     // 卡片内容变高变宽 → 自然尺寸变了，要重算。这条只有 ResizeObserver 办得到。
-    const resizeObserver = new ResizeObserver(recompute)
-    resizeObserver.observe(anchor)
+    // 只盯外壳不够：卡片被 maxHeight 夹住时，里面长出一行参考格（切到改图模式）外壳一个像素都不变，
+    // 滚动口却还按「没有参考格」时的下限摆着，参考格整行看不见（2026-09-21 走查）。所以同时盯
+    // 卡片的每一行与参考区的内容块；这些元素会随模式挂上摘下，每次重算后对一遍名单，变了才重挂
+    // （重挂会立刻触发一次回调，名单不变就不重挂，免得自己喂自己）。
+    const resizeObserver = new ResizeObserver(() => recomputeAndObserve())
+    let observed: Element[] = []
+    const observeContent = () => {
+      const card = anchor.querySelector<HTMLElement>('.generation-canvas-v2-node__composer-card')
+      const references = card?.querySelector<HTMLElement>('[data-node-composer-references]')
+      const next = [anchor, ...(card ? Array.from(card.children) : []), ...(references ? Array.from(references.children) : [])]
+      if (next.length === observed.length && next.every((element, index) => element === observed[index])) return
+      resizeObserver.disconnect()
+      for (const element of next) resizeObserver.observe(element)
+      observed = next
+    }
+    const recomputeAndObserve = () => { recompute(); observeContent() }
+    recomputeAndObserve()
 
     // 另外两个入参（节点矩形、舞台矩形）**不能**只靠 ResizeObserver：
     //  · RO 报的是 border-box 的布局尺寸，看不见 transform——节点入场是一段 scale 动画，
@@ -161,12 +195,12 @@ export function useComposerViewportPlacement(input: {
       const signature = currentSignature()
       if (signature === lastSignature) return
       lastSignature = signature
-      recompute()
+      recomputeAndObserve()
       lastSignature = currentSignature()
     })
     // 停靠区挂上/摘下（批量条出现、胶囊换位置）：同 useCanvasBottomDockRects 的订阅面，只看直接子节点。
     const scope = resolveBottomDockScope(stage)
-    const mutationObserver = new MutationObserver(recompute)
+    const mutationObserver = new MutationObserver(() => recomputeAndObserve())
     mutationObserver.observe(scope, { childList: true })
     if (scope !== stage) mutationObserver.observe(stage, { childList: true })
     return () => { window.cancelAnimationFrame(frame); resizeObserver.disconnect(); mutationObserver.disconnect() }

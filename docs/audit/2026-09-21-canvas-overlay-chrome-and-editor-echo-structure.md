@@ -25,6 +25,7 @@
 
 - 可用下沿：`generation/workspaceBottomDocks.ts` 新增 `resolveUsableBottomAboveDocks`，与停靠区名单同住；`reactFlow/selectionToolbarPlacement.ts` 的私有副本删除；`nodes/anchoredPlacement.ts` 在定宽定横向之后用它算下沿；`nodes/useComposerViewportPlacement.ts` 从名单收集停靠区并把它们的矩形并入每帧签名。孤儿 `nodeSizing.ts:getUnobstructedComposerSpaceBelow`（旧障碍系统遗留、只剩测试在用）删除。
 - 节点自己画在上沿之外的 chrome（追加 A）：翻到上方的浮框以前只让出「浮条高度 + 18」，漏了浮条与节点之间那条标签行带；改为量浮条 / 标签行 / 行内状态的真实矩形取最高顶（`aboveClearanceFromNodeChrome`）。同时 `resolveAnchoredPlacement` 收 `minHeight`：两侧都放不下「提示词最小高 + 底栏」时保持这个高度推回可用区（可盖住节点一截），不再把底栏挤出卡外压到 chrome 上。
+- 卡片的「非收不可」内容（追加 C）：「生成方式」模式栏原本住在参考区滚动口里、滚动口没有下限，于是卡片一压到最小高度，模式 tab 被裁成半截（main 上默认位置与 1100×720 同样存在）。模式栏挪成卡片的独立一行（`NodeParameterControls` 的 `section="mode"`），参考区滚动口下限 = 第一行参考格（`referenceScrollportHeight`），两者都进放置层量出的固定高度；放置层的 ResizeObserver 同时盯卡片各行与参考区内容，被 maxHeight 夹住时长出的新行也能触发重算。
 - 底栏芯片让位（追加 B，同层另一份合同 `2026-09-21-composer-footer-chip-clipping`）：summary 形态里只有模型芯片可缩，变体短枚举不缩，与分镜底栏同一条规则。
 - 文本归属：`common/controlledEditorSync.ts` 一本「已发出 / 已确认」账，两个内核都只经它裁决；删除 `shouldApplyExternalPromptSync`、`shouldEmitPromptUpdate`、渲染期 `latestValueRef` 赋值与 `lastEditorJsonRef`。
 

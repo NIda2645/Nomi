@@ -101,7 +101,7 @@ const ASPECT_RATIO_KEY_SET = new Set<string>(ASPECT_RATIO_KEYS)
 
 type NodeParameterControlsProps = {
   node: GenerationCanvasNode
-  section?: 'all' | 'references' | 'parameters' | 'model' | 'controls'
+  section?: 'all' | 'mode' | 'references' | 'parameters' | 'model' | 'controls'
   /** 点参考 tile → 在描述框光标处插入 @ 引用 chip(主路径,由 composer 注入 editor 命令)。 */
   onInsertMention?: (url: string) => void
   /** 当前 composer 连在节点哪条边；比例切换用它保持同一连接锚点。 */
@@ -690,6 +690,13 @@ export default function NodeParameterControls({
     )
   }
 
+  // section="mode"：「生成方式」分段单独成一行，住在参考区滚动口**之外**（2026-09-21 走查 01/07）。
+  // 它决定下面有哪些参考槽，属于浮框「非收不可」的高度：放在滚动口里，卡片一压到最小高度它就被裁成半截、
+  // 点不中；放在外面，放置层量固定高度时自然把它算进去（useComposerViewportPlacement 的 fixedHeight）。
+  if (section === 'mode') {
+    return showModeBar ? <ModeBar choices={modeChoices} activeId={archMode?.id || ''} onSelect={handleModeSwitch} /> : null
+  }
+
   // 模式分段切换要常驻（即便当前模式无参考槽，如纯文生）——有 modeBar / 数组槽 / 源视频槽都不空返回。
   // 变体（型号）已从这里挪到底栏 InlineParameterBar 的小下拉（用户拍板：和模型并排在最下面），不再占顶部一排。
   // 处理类 ComfyUI 工作流（去背景/超分/补帧）图里没有提示词槽——诚实说一句，
@@ -719,7 +726,7 @@ export default function NodeParameterControls({
 
   return (
     <div className={rootClassName} aria-label={t('generationCommon.parameters.referencesAria')}>
-      {showReferences && showModeBar ? (
+      {section === 'all' && showModeBar ? (
         <ModeBar choices={modeChoices} activeId={archMode?.id || ''} onSelect={handleModeSwitch} />
       ) : null}
 

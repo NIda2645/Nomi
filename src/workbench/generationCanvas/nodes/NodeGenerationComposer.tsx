@@ -395,6 +395,13 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           touchAction: 'auto',
         }}
       >
+      {/* 「生成方式」在参考区滚动口之外、紧贴在它上面：仍是参考区的头，但属于卡片的固定内容，
+          压到最小高度也整行可见可点（2026-09-21，见 NodeParameterControls 的 section="mode"）。 */}
+      {hasReferenceControls ? (
+        <div data-node-composer-mode-bar className={cn('shrink-0')}>
+          <NodeParameterControls node={node} section="mode" />
+        </div>
+      ) : null}
       {hasReferenceControls ? (
         <div data-node-composer-references className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-nomi-line-soft')} style={inPanel ? undefined : { maxHeight: referenceMaxHeight }}>
           <NodeParameterControls node={node} section="references" onInsertMention={insertMention} />
