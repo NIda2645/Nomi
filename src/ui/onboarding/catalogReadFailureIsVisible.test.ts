@@ -23,15 +23,12 @@ const SCANNED = [
 ]
 
 /**
- * 存量登记（棘轮，只减不增）。这三处是同一个裸 catch 的复制品，归**渲染层 lane**的范围
- * （它们各自还要配横幅与文案）。本条 lane 只修主进程与 useOnboardingDrawerCatalog 那一处接线，
- * 所以先把另外三处登记成债，让它们看得见、且不许再长出第四处。
+ * 存量登记（棘轮，只减不增）。**2026-09-22 归零**：原本登记的三处（`useWorkflowCatalog` /
+ * `AiModelsSection` / `useAgentPanelV4Data`）已由渲染层 lane 各自改成「留住上一份数据 + 把错误
+ * 交给界面」，合并进集成分支后扫描结果为空。按这条棘轮自己写的程序（「修好的请把那一行删掉，
+ * 棘轮不留永久豁免」）把登记清空——留着就是一张永久豁免票。
  */
-const REGISTERED_SILENT_RESETS = [
-  'src/ui/onboarding/workflowPage/useWorkflowCatalog.ts',
-  'src/workbench/settings/AiModelsSection.tsx',
-  'src/workbench/ai/v4/useAgentPanelV4Data.ts',
-]
+const REGISTERED_SILENT_RESETS: readonly string[] = []
 
 /** catch 块里把 state 清空，且同一个块里没有任何「把错误说出去」的动作。 */
 const EMPTY_RESET = /set[A-Z]\w*\(\s*(?:\[\]|new Map\(\)|\{\}|null)\s*\)/
@@ -71,7 +68,9 @@ describe('a failed catalog read is never silently turned into an empty screen', 
     expect(catchBodies('try { a() } catch (e) { setError(e); setModels([]) }').some(
       (body) => EMPTY_RESET.test(body) && !SURFACES_ERROR.test(body),
     )).toBe(false)
-    expect(REGISTERED_SILENT_RESETS.length).toBeGreaterThan(0)
+    // 登记归零之后，「空集通过」的风险改由**扫描范围**来挡：扫的文件必须真的在盘上，
+    // 否则 found 恒空而断言恒绿（路径打错、文件被改名都属于这一种）。
+    for (const file of SCANNED) expect(fs.existsSync(path.join(process.cwd(), file)), `扫描范围里的 ${file} 不在盘上`).toBe(true)
   })
 
   it('keeps the model settings drawer out of the silent-reset list', () => {

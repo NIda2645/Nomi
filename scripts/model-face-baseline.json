@@ -587,7 +587,7 @@
                   "type": "object"
                 },
                 "durationSec": {
-                  "description": "Video clip length in seconds; omit for stills.",
+                  "description": "Video clip length in seconds; omit for stills. This is the only place to set length — never also put duration inside parameters.",
                   "exclusiveMinimum": 0,
                   "maximum": 600,
                   "type": "number"
@@ -610,7 +610,7 @@
                       "boolean"
                     ]
                   },
-                  "description": "Parameter values the model's profile declares; the host clamps them to real limits and reports every clamp.",
+                  "description": "Parameter values the model's profile declares, minus length — length is durationSec. The host clamps them to real limits and reports every clamp.",
                   "type": "object"
                 },
                 "prompt": {

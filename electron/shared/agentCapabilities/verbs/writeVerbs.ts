@@ -37,14 +37,14 @@ export const draftShotSchema = z.object({
   prompt: z.string().trim().min(1).max(8_000).describe("Generation prompt in the user's language (Chinese user → Chinese prompt)."),
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
-  durationSec: z.number().positive().max(600).optional().describe("Video clip length in seconds; omit for stills."),
+  durationSec: z.number().positive().max(600).optional().describe("Video clip length in seconds; omit for stills. This is the only place to set length — never also put duration inside parameters."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
   modeId: z.string().trim().min(1).optional().describe("Mode id of that model from list_models."),
   candidate: z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
   }).optional().describe("Catalog candidate identity when known."),
-  parameters: generationParameters.optional().describe("Parameter values the model's profile declares; the host clamps them to real limits and reports every clamp."),
+  parameters: generationParameters.optional().describe("Parameter values the model's profile declares, minus length — length is durationSec. The host clamps them to real limits and reports every clamp."),
   references: z.array(z.string().trim().min(1)).max(30).optional().describe("Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references."),
 }).strict();
 
@@ -97,20 +97,42 @@ const prepareWriteScriptArguments = (() => {
  * 2026-09-18 之前平铺的那个叫 `modelKey`，于是这条拒绝还得先解释「这两个名字是同一件事」；
  * 名字统一之后它只剩本来的职责：同一件事被说了两遍且说法不一致。
  */
-function rejectConflictingModelIdentity(args: unknown): Record<string, unknown> {
+/**
+ * 一镜把**同一件事写了两遍且说法不一样** → 当场拒绝并点名两处。
+ *
+ * 两条判据同一个形状，所以住同一个函数（它们不是两个功能，是一条规则的两格）：
+ *   · 模型身份：`modelId` 与 `candidate.modelId`；
+ *   · 时长：`durationSec` 与 `parameters.duration`。
+ *
+ * 时长这一条是 2026-09-21 实测加的：A3 那一镜同时写了 `durationSec: 43.7` 与
+ * `parameters.duration: 5`（投影里 `durationSec` 赢，于是用户会拿到一段 43.7 秒的片子）。
+ * 更要命的是它和当天 12 次「shots: must be array」在**同一个 token 上**断掉——
+ * 那 12 段坏掉的 JSON 全部坏在 `"durationSec": ` 之后。两个家的字段正是模型最容易卡住的地方。
+ *
+ * **能宽容就宽容**：两处写的是同一个数 → 放行（不是歧义）；只写了一处 → 放行。
+ */
+function rejectDuplicateShotIdentity(args: unknown): Record<string, unknown> {
   const record = (args && typeof args === "object" && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
   const shots = Array.isArray(record.shots) ? record.shots : [];
+  const refuse = (because: string): never => {
+    throw new LaneDomainFailure(wrongVerbFailure({ attempted: "draft_shots", useInstead: "draft_shots", because }));
+  };
   for (const shot of shots) {
     if (!shot || typeof shot !== "object") continue;
-    const { modelId, candidate } = shot as { modelId?: unknown; candidate?: { modelId?: unknown } };
+    const { modelId, candidate, durationSec, parameters } = shot as {
+      modelId?: unknown; candidate?: { modelId?: unknown };
+      durationSec?: unknown; parameters?: { duration?: unknown };
+    };
     const declared = candidate && typeof candidate === "object" ? candidate.modelId : undefined;
     if (typeof modelId === "string" && typeof declared === "string" && modelId.trim() && declared.trim()
       && modelId.trim() !== declared.trim()) {
-      throw new LaneDomainFailure(wrongVerbFailure({
-        attempted: "draft_shots", useInstead: "draft_shots",
-        because: `A shot names two different models: modelId="${modelId.trim()}" and candidate.modelId="${declared.trim()}". `
-          + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.",
-      }));
+      refuse(`A shot names two different models: modelId="${modelId.trim()}" and candidate.modelId="${declared.trim()}". `
+        + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.");
+    }
+    const nestedDuration = parameters && typeof parameters === "object" ? parameters.duration : undefined;
+    if (typeof durationSec === "number" && typeof nestedDuration === "number" && durationSec !== nestedDuration) {
+      refuse(`A shot names two different lengths: durationSec=${durationSec} and parameters.duration=${nestedDuration}. `
+        + "Length has one home: set durationSec and leave duration out of parameters.");
     }
   }
   return record;
@@ -206,7 +228,7 @@ export function writeVerbs(): VerbDeclaration[] {
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
       { when: "Change one existing shot's prompt:", arguments: { operationId: "op-1", shots: [{ shotId: "shot-3", prompt: "夜景，霓虹灯下的街道" }] } },
     ],
-    prepareArguments: (args: unknown) => rejectConflictingModelIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
+    prepareArguments: (args: unknown) => rejectDuplicateShotIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
   };
 
   const generate: VerbDeclaration = {
