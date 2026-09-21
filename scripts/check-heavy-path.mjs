@@ -181,7 +181,13 @@ const RULES = [
       // 判据按闸不按数（同 unguarded-fsync）：`-loop` 这个字面量只许出现在收口函数 loopedStillInput 里。
       // 收口函数一个入参就是「可见窗口」，写不出全片长；任何别处手搓输入参数当场报红。
       // 按计数就会留洞：删掉收口里那一处、别处新加一处，计数不变，门岗照样绿。
-      if (!file.startsWith(`${path.join(repoRoot, 'electron', 'export')}${path.sep}`)) return []
+      //
+      // 范围 = 门岗收集的全部 src/ + electron/，不限于 electron/export/。
+      // 第一版只扫 electron/export/，独立验收的变异测试当场打出洞：同样的违规写法放到
+      // electron/media/ 就漏网。拼 ffmpeg argv 的地方今天确实只有 electron/export/，
+      // 但别处已经有 ffmpeg 输入构造（electron/video/framesToVideoArgs.ts 的 image2 序列、
+      // electron/ai/antigravityArtifacts.ts 的 image2pipe），缩略图/预览哪天多一条就漏。
+      // 扫全集不会误报：实测 src/ + electron/ 里 `-loop` 字面量只有收口函数那一处。
       const hits = []
       const lines = code.split('\n')
       lines.forEach((line, i) => {

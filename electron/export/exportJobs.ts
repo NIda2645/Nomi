@@ -21,7 +21,8 @@ import {
 } from "./exportAuditManifest";
 import { planExport } from "./exportPlanner";
 import { ExportCancelledError, renderFiltergraphToMp4, transcodeWebmFileToMp4, transcodeWebmToMp4, type TimelineMp4ExportResult } from "./ffmpegRunner";
-import { compileFfmpegFiltergraph, type FfmpegFiltergraphPlan, type FfmpegTextOverlayInput } from "./ffmpegFiltergraph";
+import { compileFfmpegFiltergraph, FfmpegFiltergraphError, type FfmpegFiltergraphPlan, type FfmpegTextOverlayInput } from "./ffmpegFiltergraph";
+import { logError } from "../logging/logger";
 import { probeMediaMetadata } from "./mediaProbe";
 import { appendExportTempInputChunk, finishExportTempInput as finishExportTempInputFile, removeExportTempInput } from "./exportTempInput";
 import { ensureProjectFolders, projectDirById, resolveProjectRelativePath } from "../projects/repository";
@@ -198,8 +199,20 @@ async function tryBuildFiltergraphExport(
       };
     }
     return { manifest, plan };
-  } catch {
-    return null; // 校验/编译失败 → 回退 WebM
+  } catch (error) {
+    // 「不适用」与「编译失败」是两件事，别混成一个静默降级。
+    //
+    // 不适用（素材不是本地文件、没有轨、fps/时长不合法…）在上面每一处都是直接 `return null`，
+    // 那是正常分流，本来就该静音。走到这里的只剩**编译失败**：manifest 过了 assertValidManifest，
+    // 却没能编出滤镜图——那是我们自己的 bug 或者一条没想到的时间轴形态。
+    // 从前这里是 `catch { return null }`：用户看到的只是「导出走了 WebM 路径」，画质与所见即所得
+    // 都降一档，而**盘上不留任何痕迹**。这正是本仓今天反复抓的那一族：零报错的降级。
+    // 现在退回照旧（退回本身是安全的，用户仍拿得到片子），但留一行可诊断的 ERROR。
+    logError("export", "filtergraph_compile_failed_fell_back_to_webm", error, {
+      projectId,
+      code: error instanceof FfmpegFiltergraphError ? error.code : "unknown",
+    });
+    return null;
   }
 }
 

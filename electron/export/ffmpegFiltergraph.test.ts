@@ -453,11 +453,23 @@ describe("compileFfmpegFiltergraph", () => {
 
     it("叠加层输入的时长只由它自己的窗口决定，与时间轴有多长无关", () => {
       const windows = [{ startFrame: 300, endFrame: 390 }, { startFrame: 600, endFrame: 700 }];
-      // 10 秒的片子 和 10 分钟的片子，同样两条字幕 → 输入参数必须一模一样。
-      const short = overlayPlan(300, windows);
+      // 30 秒的片子 和 10 分钟的片子，同样两条字幕（都落在片长以内）→ 输入参数必须一模一样。
+      const short = overlayPlan(900, windows);
       const long = overlayPlan(18_000, windows);
       expect(short.inputs.slice(1).map((input) => input.inputArgs)).toEqual(long.inputs.slice(1).map((input) => input.inputArgs));
       expect(inputSeconds(long.inputs[1].inputArgs)).toBeCloseTo((390 - 300) / FPS + 2 * MARGIN_SECONDS, 5);
+    });
+
+    it("窗口伸出片尾时按片尾夹住——不许比旧写法还多生成", () => {
+      // 旧写法按全片长封顶（每条 = 片长），新写法按窗口算；窗口比片子长时不夹就会反过来更贵
+      // （验收实测的 B3 形态：静帧合计旧 16.0s → 新 17.1s）。生产今天造不出这种 manifest
+      // （computeTimelineDuration 会被字幕自己撑长），这条是纵深。
+      const timelineSeconds = 900 / FPS;
+      const plan = overlayPlan(900, [{ startFrame: 600, endFrame: 3000 }]);
+      expect(inputSeconds(plan.inputs[1].inputArgs)).toBeCloseTo(timelineSeconds + MARGIN_SECONDS - (600 / FPS - MARGIN_SECONDS), 5);
+      expect(inputSeconds(plan.inputs[1].inputArgs)).toBeLessThan(timelineSeconds);
+      // enable 的区间仍然按真实窗口写，夹的只是上游生成多久。
+      expect(plan.filterComplex).toContain("enable='between(t,20,100)'");
     });
 
     it("200 条字幕的输入总时长 ≈ 各自窗口之和，而不是 200 × 全片长", () => {
@@ -489,8 +501,9 @@ describe("compileFfmpegFiltergraph", () => {
       const overlayInputs = plan.inputs.slice(1);
       // 逐条写死，不用公式反推（公式反推会把实现的错一起抄过来）：
       //   窗口秒 = [0~1, 4~5, 4.666667~8.666667, 16.666667~16.7, 29.333333~32]
-      //   流 = [max(0,起-0.2), 止+0.2] → -t 依次是 1.2 / 1.4 / 4.4 / 0.433333 / 3.066667
-      expect(overlayInputs.map((input) => inputSeconds(input.inputArgs))).toEqual([1.2, 1.4, 4.4, 0.433333, 3.066667]);
+      //   流 = [max(0,起-0.2), min(止,片长)+0.2] → -t 依次是 1.2 / 1.4 / 4.4 / 0.433333 / 1.066667
+      //   最后一条窗口伸出片尾（29.333333~32s，片长 30s），末端被夹到 30.2s
+      expect(overlayInputs.map((input) => inputSeconds(input.inputArgs))).toEqual([1.2, 1.4, 4.4, 0.433333, 1.066667]);
       expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+3.8/TB[vtxtsrc1]");
       expect(plan.filterComplex).toContain("[4:v]setpts=PTS-STARTPTS+16.466667/TB[vtxtsrc3]");
       expect(plan.filterComplex).toContain("[5:v]setpts=PTS-STARTPTS+29.133333/TB[vtxtsrc4]");

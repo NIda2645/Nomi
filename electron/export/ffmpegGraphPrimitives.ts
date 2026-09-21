@@ -1,0 +1,82 @@
+// 导出滤镜图的地基：错误类型、输入描述、时间格式化，以及「循环静帧输入」的唯一构造口。
+// 独立成文件是为了让文字叠加链（ffmpegTextOverlayGraph.ts）与主图（ffmpegFiltergraph.ts）
+// 共用同一份地基而不互相 import（运行期循环依赖会把 FfmpegFiltergraphError 变成 undefined）。
+
+export type FfmpegFiltergraphPlanInput = {
+  assetId: string;
+  path: string;
+  kind: "image" | "video" | "audio";
+  inputArgs: string[];
+};
+
+export type FfmpegFiltergraphErrorCode =
+  | "missing_asset"
+  | "unsupported_audio"
+  | "unsupported_clip"
+  | "invalid_manifest";
+
+export class FfmpegFiltergraphError extends Error {
+  readonly code: FfmpegFiltergraphErrorCode;
+
+  constructor(code: FfmpegFiltergraphErrorCode, message: string) {
+    super(message);
+    this.name = "FfmpegFiltergraphError";
+    this.code = code;
+  }
+}
+
+export function secondsFromFrames(frames: number, fps: number): number {
+  return frames / fps;
+}
+
+/**
+ * 秒数写进滤镜表达式的**唯一**格式。只保留 6 位小数：这一点是有语义的——
+ * `enable='between(t,a,b)'` 的端点就是这样写出去的，200/30 = 6.666666… 截成 6.666667 之后
+ * 够不够得着那一帧，取决于滤镜链的 time_base 取整。改这里等于改所有窗口的边界帧。
+ */
+export function formatSeconds(seconds: number): string {
+  if (Number.isInteger(seconds)) return String(seconds);
+  return Number(seconds.toFixed(6)).toString();
+}
+
+export function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (Number.isInteger(value)) return String(value);
+  return Number(value.toFixed(6)).toString();
+}
+
+/**
+ * 全仓唯一构造「循环静帧输入」（`-loop 1`）的地方。守一条不变量：
+ *
+ * > **`-t` 只能是消费这张静帧的那个可见窗口的长度，绝不是时间轴全长。**
+ *
+ * `enable` 是 libavfilter 的 timeline 开关，只决定「这一帧混不混」（官方文档：disabled 时
+ * 「the frame will be sent unchanged to the next filter」），上游那条静帧流照样按 `-t` 逐帧产出、
+ * 入队、参与 framesync。`-t` 写成全片长 ⇒ 成本 = 条目数 × 全片帧数 × 全画幅 RGBA：实测 60 条字幕
+ * 把 107 秒的导出拖成 75 分钟，且零 ffmpeg 报错。
+ *
+ * **不要加 `-framerate`**（试过，翻车）：它决定这条链的 `time_base`，而 framesync 取两路 `time_base`
+ * 的公约数当 overlay 的输出 `time_base`，下游 `enable` 看到的 `t` 跟着变——窗口末帧（`between` 闭区间
+ * 端点）会从「不显示」翻成「显示」。帧率不动 ⇒ 边界行为与修复前逐帧一致。
+ *
+ * 全部实测数字、同类扫描与残余风险：`docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json`。
+ * 门岗：`check:heavy-path` 的 `ffmpeg-still-input-outside-owner`（按闸判，基线 0）。
+ */
+export function loopedStillInput(
+  assetId: string,
+  absolutePath: string,
+  windowSeconds: number,
+): FfmpegFiltergraphPlanInput {
+  if (!Number.isFinite(windowSeconds) || windowSeconds <= 0) {
+    throw new FfmpegFiltergraphError(
+      "invalid_manifest",
+      `Still input ${assetId} needs a positive visible window, got ${windowSeconds}`,
+    );
+  }
+  return {
+    assetId,
+    path: absolutePath,
+    kind: "image",
+    inputArgs: ["-loop", "1", "-t", formatSeconds(windowSeconds)],
+  };
+}
