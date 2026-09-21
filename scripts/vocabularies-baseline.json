@@ -176,15 +176,6 @@
     },
     {
       "members": [
-        "e0_zero_credit",
-        "e1_paid",
-        "schema_only"
-      ],
-      "reason": "McpGenerationPhase 是 MCP 语义生成能力的发布策略阶段：schema_only 只暴露合同，e0_zero_credit 开放零额度规划，e1_paid 才开放付费执行；它由 flag/checkpoint 派生并决定 effectiveScope，不是生成 operation 生命周期。",
-      "site": "electron/capabilityCore/mcpGenerationPolicy.ts::type:McpGenerationPhase/type-union"
-    },
-    {
-      "members": [
         "cancelled",
         "draft",
         "sealed",
