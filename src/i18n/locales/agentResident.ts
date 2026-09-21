@@ -49,7 +49,6 @@ export const zhAgentResident = {
   // 校验回执翻成人话：哪个字段、要什么、给了什么（2026-09-06 真机走查）
   issueRoot: '参数',
   issueType: '{{field}}：期望 {{expected}}，收到 {{received}}',
-  issueMessage: '{{field}}：{{message}}',
   // 散文体回执（pi 的 `Validation failed for tool "x": - nodes: Expected array`）只给「期望什么」，没有「收到什么」
   issueExpected: '{{field}}：期望 {{expected}}',
   issueRequired: '{{field}}：缺少必填字段',
@@ -200,7 +199,6 @@ export const enAgentResident = {
   toolArtifactCount: '{{count}} artifact(s)',
   issueRoot: 'arguments',
   issueType: '{{field}}: expected {{expected}}, received {{received}}',
-  issueMessage: '{{field}}: {{message}}',
   issueExpected: '{{field}}: expected {{expected}}',
   issueRequired: '{{field}}: required field is missing',
   issueInvalidArgs: 'Invalid arguments',

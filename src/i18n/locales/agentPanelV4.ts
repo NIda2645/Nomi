@@ -159,6 +159,10 @@ export const zhAgentPanelV4 = {
   toolGroupSomeFailed: '{{count}} 次失败',
   toolGroupAllDone: '全部完成',
   processAttempts: '尝试了 {{count}} 次',
+  /** 回合**进行中**的过程行摘要：这一步正在第几次试（2026-09-21 用户拍板②：回合中要把重试说出来）。 */
+  processAttempt: '第 {{count}} 次尝试',
+  /** 展开过程行才看见的那句灰字。说的是「参数不合适」，不是「出错了」——它还在自己修。 */
+  processRetryingDetail: '这一步的参数不合适，正在重来',
   // 实验室夹具：2026-09-06 打包版那次「重拆 10 镜」的六连失败
   fixtureShotCard: '创建或修改镜头卡',
   fixtureShotCardReason: 'nodes：必须是数组（收到 字符串）',
@@ -589,6 +593,8 @@ export const enAgentPanelV4 = {
   toolGroupSomeFailed: '{{count}} failed',
   toolGroupAllDone: 'all done',
   processAttempts: 'Tried {{count}} times',
+  processAttempt: 'Attempt {{count}}',
+  processRetryingDetail: 'Those arguments did not fit — trying again',
   fixtureShotCard: 'Create or edit shot cards',
   fixtureShotCardReason: 'nodes: expected array, received string',
   fixtureShotCardInput: '{ "operation": "create_canvas_nodes", "nodes": "[{…}]" }',

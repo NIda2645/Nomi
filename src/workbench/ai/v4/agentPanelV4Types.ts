@@ -270,7 +270,15 @@ export type V4FlowItem = { readonly identity?: string } & (
       receipts: readonly ToolReceipt[]
     }
   // 反复试的过程里，模型说给自己听的那几段。收起态就是助手文本的一个状态。
-  | { kind: 'process'; label: string; segments: readonly string[]; running?: boolean; toolCount?: number; retries?: number; elapsed?: string; details?: readonly { item: V4FlowItem; index: number }[] }
+  | {
+      kind: 'process'; label: string; segments: readonly string[]; running?: boolean; toolCount?: number; retries?: number; elapsed?: string
+      /** 这一段里有**还没解决**的失败（只在回合落定后才为真）。带它的过程行默认展开——
+       *  定稿要求「错误留在它那一行」，而收起的过程行会把那一行连同红条一起藏掉。 */
+      failed?: true
+      /** 回合**进行中**、这一步正在重来时，展开过程行才看见的那句灰字。 */
+      retryNote?: string
+      details?: readonly { item: V4FlowItem; index: number }[]
+    }
   | { kind: 'task'; task: TaskCardData }
   | { kind: 'suggestion'; text: string; options: readonly string[] }
   | { kind: 'error'; reason: string; action?: string }
