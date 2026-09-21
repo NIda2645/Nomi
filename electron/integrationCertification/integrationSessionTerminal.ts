@@ -5,6 +5,7 @@ import {
   terminalWriteBudgetMs,
 } from "../providerAdapter/terminalGuarantee";
 import { INTEGRATION_STAGES, type IntegrationStage } from "../shared/integrationContract";
+import { logWarn } from "../logging/logger";
 
 /**
  * 「每个接入会话都在有限时间内落终态，cancel 在任何非终态都可达」——这条不变量归
@@ -78,6 +79,25 @@ export function integrationCertifyingDeadlineAt(
 ): string {
   assertSessionDeadlineOutlastsRunSettlement(budgetMs);
   return new Date(Date.parse(startedAt) + budgetMs).toISOString();
+}
+
+/**
+ * 看门狗把会话收成终态之后那一次落盘，**不许拖垮进程**：它在启动期（`resumeInterrupted()`）
+ * 和周期定时器里各跑一次，两处抛出去都没人接——前者会把整个 app 静默退掉。
+ *
+ * 为什么降级是安全的、不是吞错：内存里这条会话**已经是** `failed`，投影、cancel 与之后
+ * 任何一次写都按 failed 走；盘上那条仍是非终态，所以下次启动看门狗会再判一次——
+ * 这是一次有界的、幂等的重试，不是状态回退。失败带原因落日志，不静默。
+ * 它只覆盖看门狗自己那一次写：用户动作的写失败照旧抛给调用方，那是他必须知道的事。
+ */
+export function persistWatchdogTerminalWrite(write: () => void): void {
+  try {
+    write();
+  } catch (error) {
+    logWarn("onboarding", "integration-session-timeout-write-failed", {
+      failure: error instanceof Error ? error.name : "unknown",
+    });
+  }
 }
 
 export type ReapableIntegrationSession = {

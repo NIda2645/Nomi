@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ArchetypeMode, ModelArchetype } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ModelArchetype } from '../../../../../electron/shared/modelArchetypes/types'
 import { composerBarParams, composerBarPlan, composerModeOptions } from './composerBarModel'
 import { resolveArchetypeForModel } from '../../../generationCanvas/nodes/controls/archetypeMeta'
 import { resolveRenderedControls } from '../../../generationCanvas/nodes/nodeModelArchetype'

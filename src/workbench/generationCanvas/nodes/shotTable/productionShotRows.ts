@@ -5,7 +5,7 @@ import { referenceColumnOf } from '../../../creation/storyboard/shotRow/shotRefe
 import type { ReferenceBindingMap } from '../../../creation/storyboard/shotRow/shotReferenceSlots'
 import { resolveShotArchetypeMode } from '../../../creation/storyboard/shotRow/shotRowModel'
 import { referenceSlotStorage } from '../controls/archetypeMeta'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import { deriveShotPlaceholderState } from '../../../production/shotPlaceholderState'
 
 /** 落地 store 缓存的那份 Run。类型从渲染层自己的占位派生函数取，渲染层不直接引主进程模块（check:boundaries）。 */

@@ -98,7 +98,7 @@ const EXCLUDED_FILES = new Set([
 // 都误报成漏译(2026-09-01 摘掉整目录豁免后,泛化 object-prop 规则一次照出 648 个这类误报)。
 // 于是:泛化 object-prop 规则**跳过**这些目录,改由 collector 按翻译契约校验(严格更强,不是更弱)。
 const MODEL_SPEC_PREFIXES = [
-  'src/config/modelArchetypes/',
+  'electron/shared/modelArchetypes/',
   'electron/shared/videoCapabilities/',
   'electron/shared/audioCapabilities/', // 音频侧的 wire 事实表(档案 params 由它构建),同走 model-display 边界
   'electron/catalog/', // 供应商目录里的档案标签,与 modelArchetypes 同走 model-display 边界
@@ -412,7 +412,7 @@ function readTranslatedLabels() {
 
 function collectUntranslatedModelLabels() {
   const sourceRoots = [
-    path.join(SRC_ROOT, 'config', 'modelArchetypes'),
+    path.join(ELECTRON_ROOT, 'shared', 'modelArchetypes'),
     path.join(ELECTRON_ROOT, 'catalog'),
     path.join(ELECTRON_ROOT, 'shared', 'videoCapabilities'),
     path.join(ELECTRON_ROOT, 'shared', 'audioCapabilities'),

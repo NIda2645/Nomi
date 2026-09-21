@@ -22,6 +22,58 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'The edge mode is invalid; Nomi did not silently downgrade it',
     recover: [{ zh: '改用当前支持的 reference 模式重试', en: 'Retry with a supported reference mode' }],
   },
+  // ── 准入层的拒绝（2026-09-21 那一刀新增，2026-09-22 接到这里）────────────────────────
+  // 这一族的事实全在 `details`（allowedKeys / closestKey / allowedValues / min / max /
+  // allowedVariantIds）——它们是键名与取值，语言中立；这里只出人话那一半，zh/en 两版。
+  // MCP 2026-07-28：input validation error 归 tool execution error，客户端 SHOULD 交给模型自纠，
+  // 而能自纠的前提正是这两半都到得了模型眼前。
+  unknown_parameter: {
+    zh: '这个模型不接受你写的那个参数键',
+    en: 'This model does not accept the parameter key you sent',
+    recover: [{ zh: '改用 allowedKeys 里的键（有 closestKey 就用它）后重试', en: 'Retry using a key from allowedKeys (prefer closestKey when present)' }],
+  },
+  parameter_type_mismatch: {
+    zh: '参数类型不对',
+    en: 'The parameter value has the wrong type',
+    recover: [{ zh: '按 expectedType 改写该参数的值后重试', en: 'Rewrite the value to match expectedType, then retry' }],
+  },
+  parameter_not_in_enum: {
+    zh: '参数取值不在这个模型的合法取值里',
+    en: 'The parameter value is not one this model allows',
+    recover: [{ zh: '从 allowedValues 里挑一个后重试', en: 'Pick one of allowedValues, then retry' }],
+  },
+  parameter_out_of_range: {
+    zh: '参数取值超出这个模型声明的范围',
+    en: 'The parameter value is outside the range this model declares',
+    recover: [{ zh: '取 min 与 max 之间的值后重试', en: 'Use a value between min and max, then retry' }],
+  },
+  missing_required_parameter: {
+    zh: '缺少这个模型的必填参数',
+    en: 'A parameter this model requires is missing',
+    recover: [{ zh: '补上 at 指出的那个参数后重试', en: 'Supply the parameter named in `at`, then retry' }],
+  },
+  unknown_variant: {
+    zh: '这个变体不属于该模型',
+    en: 'That variant does not belong to this model',
+    recover: [{ zh: '从 allowedVariantIds 里挑一个；为空表示该模型没有变体，别传 variantId', en: 'Pick one of allowedVariantIds; empty means this model has no variants, so omit variantId' }],
+  },
+  contract_invalid: {
+    zh: '这份生成计划过不了准入校验',
+    en: 'This generation plan failed admission validation',
+    recover: [{ zh: '按 details 指出的字段修正后重试', en: 'Fix the field named in details, then retry' }],
+  },
+  ambiguous_model_vendor: {
+    zh: '这个模型名下有好几家供应商，没说是哪一家就取不出说明书',
+    en: 'Two or more providers carry that modelId, so it is ambiguous which model you mean',
+    recover: [{ zh: '补上 vendor（details.vendorsForModelId 列出了有哪几家）再查一次', en: 'Retry with vendor set to one of details.vendorsForModelId' }],
+  },
+  unknown_model_identity: {
+    zh: '目录里没有这个模型，或它的类型挂不到这个节点上',
+    en: 'The catalog has no such model, or its kind does not fit this node',
+    recover: [
+      { zh: '先用 nomi_read{target:"models"} 取薄名单，再用 target:"model" 查那一个的详情', en: 'Call nomi_read{target:"models"} for the thin list, then target:"model" for that one\'s detail' },
+    ],
+  },
   document_not_found: {
     zh: '找不到目标剧本文档',
     en: 'The target creation document was not found',
@@ -72,6 +124,14 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'This action is missing required fields (all of them are listed in the message)',
     recover: [{ zh: '把消息里列出的字段一次补齐后重试', en: 'Send every field listed in the message, then retry' }],
   },
+  integration_session_limit_reached: {
+    zh: '这台机器上没做完的接入会话已经占满上限，再建一条就会挤掉一条在做的活',
+    en: 'This machine is at its limit of unfinished model setups; another one would evict work in progress',
+    recover: [
+      { zh: '用 nomi_read（target=setup）看你的接入会话', en: 'List your setups with nomi_read (target=setup)' },
+      { zh: '用 nomi_model_setup action=cancel 取消不再需要的那条后重试', en: 'Cancel one you no longer need with nomi_model_setup action=cancel, then retry' },
+    ],
+  },
   renderer_or_provider_unknown: {
     zh: '找不到能执行这次生成的渲染器或供应商配置',
     en: 'No renderer or provider configuration can execute this generation',
@@ -120,7 +180,15 @@ const SAFE_CANVAS_READ_CODES = new Set<string>([
   ...NOT_FOUND_CODES,
 ])
 
+/** 准入层拒绝码（`ParameterRejectionCode` + 画布模型身份）。登记进策略码表，`errorCode` 才不是 null。 */
+const ADMISSION_CODES = [
+  'unknown_parameter', 'parameter_type_mismatch', 'parameter_not_in_enum',
+  'parameter_out_of_range', 'missing_required_parameter', 'unknown_variant',
+  'contract_invalid', 'unknown_model_identity', 'ambiguous_model_vendor',
+] as const
+
 const POLICY_CODES = new Set<string>([
+  ...ADMISSION_CODES,
   ...SAFE_CANVAS_READ_CODES,
   ...PROJECT_SESSION_CODES,
   ...INTEGRATION_ERROR_CODES,
@@ -144,9 +212,12 @@ export function buildToolErrorOutcome(
   const code = structuredCode && POLICY_CODES.has(structuredCode)
     ? structuredCode
     : Object.keys(ERROR_HINT).find((key) => rawMessage.includes(key)) || null
+  const hintForMessage = code ? ERROR_HINT[code] : null
   const message = structuredCode && SAFE_CANVAS_READ_CODES.has(structuredCode)
     ? structuredCode
-    : rawMessage
+    // 有登记过 zh/en 人话时 `message` 也跟着 locale 走：否则 en 宿主拿到的是中文原句（R15）。
+    // 没登记的码仍原样透传 rawMessage（不编内容）。
+    : hintForMessage ? L(ctx, hintForMessage.zh, hintForMessage.en) : rawMessage
   const nextAction = typeof errorRecord.nextAction === 'string'
     ? errorRecord.nextAction
     : structuredCode && USER_ACTION_HINT[structuredCode]?.action === 'reselect_project'

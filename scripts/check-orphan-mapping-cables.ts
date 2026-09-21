@@ -35,7 +35,7 @@
 // R17：改判据前先验它会红（把任一条修复回退 → 本门岗必须报出那一条）。
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins";
 import type { CatalogState } from "../electron/catalog/types";
-import { resolveArchetypeForModel } from "../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../electron/shared/modelArchetypes";
 import { modeTransportFor } from "../electron/shared/videoCapabilities";
 
 type Orphan = {

@@ -38,7 +38,7 @@ vi.mock("electron", () => ({
 import { buildOpenAiCompatibleDraft } from "./builtinOpenAiCompatibleDraft";
 import { newapiTransportFor } from "../catalog/newapiTransport";
 import { PROFILE_KIND_REFERENCE_CHANNEL } from "../shared/contracts/modelAccessCapabilities";
-import { AUDIO_ARCHETYPE } from "../../src/config/modelArchetypes/audioArchetype";
+import { AUDIO_ARCHETYPE } from "../shared/modelArchetypes/audioArchetype";
 import { archetypeModeIsVisible } from "../../src/workbench/generationCanvas/nodes/controls/channelModeReach";
 import { selectTaskMapping, type Mapping } from "../catalog/types";
 

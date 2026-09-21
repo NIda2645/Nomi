@@ -1,5 +1,5 @@
 import type { GenerationCanvasNode } from './generationCanvasTypes'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 
 /** Variants are independent branches; only original shot nodes own plan overrides. */
 export function isStoryboardOriginal(node: GenerationCanvasNode): boolean {
