@@ -442,8 +442,22 @@ export type ProductionActionResult = {
     | "discarded" // 付费卡上按了 ×：这份草稿被丢弃
     | "spend_confirmed" // 付费卡上确认了：收据已签、门已批、已开跑
     | "unavailable" // 能力核未就绪 / provider 未配置
-    | "failed"; // 其它失败（人话原因在 message，供日志）
+    | "failed"; // 其它失败（账本事实在 message，语义码在 reason）
+  /**
+   * **账本事实**：这一笔到底有没有发起过。只有两个值有意义——`generation_not_started`
+   * （账本里没有任何提交意图，没花钱，改一下再按）与 `generation_execution_failed`
+   * （提交意图已落盘，供应商可能已经拿到这一笔，先去核对）。渲染层据它挑那两句话之一。
+   */
   message?: string;
+  /**
+   * **语义码**：到底哪一步不成（`generation_reference_identity_changed` 这一族）。
+   *
+   * 2026-09-21 分出来的第二个字段。此前这两件事挤在 `message` 一个格子里，于是
+   * 「参考图校验失败、一个字节都没出去」这类自家语义码**进不来**——把它写进 `message`
+   * 会让渲染层照着挑出「暂时无法确认结果」，比不说更糟（见 Pass 3c 第 4 条「没做的那半」）。
+   * 只放 Nomi 自己的码，供应商与凭据文本照旧只进主进程日志。
+   */
+  reason?: string;
 };
 
 export type CreateProductionRunInput = {

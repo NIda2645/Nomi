@@ -77,18 +77,35 @@ export type PendingSpendActionDeps = Readonly<{
  *
  * `started` 由调用方从 Run 的作业状态里读出来——是可验证的事实，不是猜。
  */
+/**
+ * Nomi 自己的语义码前缀。只有这些才允许出现在 `reason` 里——供应商与凭据文本照旧只进日志
+ * （收敛本身没有放松：`message` 这一格仍然只有那两个账本事实）。
+ */
+const NOMI_FAILURE_CODE = /^[a-z][a-z0-9_]{2,63}$/;
+const NOMI_FAILURE_PREFIXES = ['generation_', 'run_', 'storyboard_', 'capability_', 'project_'];
+
+/** 这次失败的**语义码**（哪一步不成），与账本事实分开。认不出来的一律不带出去。 */
+export function spendFailureReason(error: unknown): string | undefined {
+  const raw = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+    ? (error as { code: string }).code
+    : error instanceof Error ? error.message : undefined;
+  if (!raw || !NOMI_FAILURE_CODE.test(raw)) return undefined;
+  return NOMI_FAILURE_PREFIXES.some((prefix) => raw.startsWith(prefix)) ? raw : undefined;
+}
+
 function failed(error: unknown, started = true): ProductionActionResult {
   // Provider text is private diagnostics, never renderer or model copy.
   const safe = error instanceof Error && ['generation_quote_changed', 'run_not_open', 'generation_scope_invalid'].includes(error.message)
     ? error.message
     : started ? 'generation_execution_failed' : 'generation_not_started';
+  const reason = spendFailureReason(error);
   // 「私有诊断」此前**谁都拿不到**：原话在这一行被换成兜底码就消失了，主进程日志里一个字都没有。
   // 于是付费卡按下去失败时，能排查的人手上只有一句兜底话（2026-09-21 Pass 3b：一条真机走查红在
   // 这里，查不出为什么，只能靠猜）。原话进日志，不进用户面。
   if (safe === 'generation_execution_failed' || safe === 'generation_not_started') {
     logWarn("capability", "spend-confirm-failed", { code: safe }, error);
   }
-  return { ok: false, code: "failed", message: safe };
+  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}) };
 }
 
 /** 这条线之前，一个字节都没有离开过这台机器（`submissionOutbox` 先落 intent 再出站）。 */
