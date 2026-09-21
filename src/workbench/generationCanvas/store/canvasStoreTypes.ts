@@ -1,3 +1,4 @@
+import type { CanvasPlacementAnchor } from '../model/canvasPlacement'
 import type { StateCreator } from 'zustand'
 import type { CanvasFrameRect } from '../model/canvasFrameBounds'
 import type {
@@ -93,6 +94,11 @@ export type CanvasGraphActions = {
   /** 单槽编辑解除该编组输入关系、保留其它槽；缺省仍按线菜单语义整组断开。 */
   disconnectEdge: (edgeId: string, options?: { scope: 'parameter' }) => void
   moveGroupNodes: (groupId: string, delta: { x: number; y: number }, options?: CanvasMutationOptions) => void
+  /**
+   * Alt/⌥ 拖框：在原地复制一个框（成员 + 成员之间的连线 + 框自己的矩形），返回新框 id。
+   * 一次撤销点；随后的拖动只搬新框（useCanvasSelectionDrag）。空框也能复制。
+   */
+  duplicateGroupForDrag: (groupId: string) => string | null
   createGroup: (categoryId: string, name?: string, options?: { materializationOperationId?: string; nodeIds?: string[]; frameBounds?: CanvasFrameRect }) => NodeGroup | null
   /**
    * 画一个**空框**（框工具第一档）：边界就是用户拖出来的那个矩形，成员为空。
@@ -152,7 +158,11 @@ export type GenerationCanvasState = {
   duplicateNodesForDrag: (nodeIds: string[]) => Map<string, string>
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (basePosition?: { x: number; y: number }) => void
+  /**
+   * 粘贴剪贴板里的节点。`basePosition` = 画布坐标点；`anchor` = 这一点压在粘贴簇外接盒的哪一处（比例），
+   * 不传 = 左上角（旧约定，右键菜单之外的调用方都应传 anchor，见 model/canvasPlacement.ts）。
+   */
+  pasteNodes: (basePosition?: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   undo: () => void
   redo: () => void
   readSnapshot: () => GenerationCanvasSnapshot

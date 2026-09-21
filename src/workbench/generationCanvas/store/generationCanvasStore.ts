@@ -22,6 +22,8 @@ import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
 import { assignClonedShotIndexes } from '../model/shotNumbering'
+import { placementOrigin } from '../model/canvasPlacement'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { replayCanvasEvents } from '../events/canvasEventReducer'
 import { withCanvasWriteBoundary } from '../events/canvasWriteBoundary'
@@ -107,7 +109,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     })
     emitCanvasGesture(removedIds.map((nodeId) => ({ type: 'canvas.node.removed', payload: { nodeId } })))
   },
-  pasteNodes: (basePosition) => {
+  pasteNodes: (basePosition, anchor) => {
     const currentState = get()
     const clipboardPayload = getClipboard()
     if (!clipboardPayload) return
@@ -119,8 +121,16 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
       ? (() => {
           const minX = Math.min(...numberedNodes.map((node) => node.position.x))
           const minY = Math.min(...numberedNodes.map((node) => node.position.y))
-          const dx = Math.round(basePosition.x - minX)
-          const dy = Math.round(basePosition.y - minY)
+          // 锚点按粘贴簇**看得见的**外接盒算（卡面尺寸唯一真相源 resolveNodeVisualSize），
+          // 「中心压在光标下」才是真的中心，不是按默认尺寸猜的。
+          const origin = anchor
+            ? placementOrigin({ point: basePosition, anchor }, {
+                width: Math.max(...numberedNodes.map((node) => node.position.x + resolveNodeVisualSize(node).width)) - minX,
+                height: Math.max(...numberedNodes.map((node) => node.position.y + resolveNodeVisualSize(node).height)) - minY,
+              })
+            : basePosition
+          const dx = Math.round(origin.x - minX)
+          const dy = Math.round(origin.y - minY)
           return numberedNodes.map((node) => ({
             ...node,
             position: {

@@ -31,6 +31,8 @@ import { projectCollapsedGroups } from '../model/canvasCardStackModel'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
 import { useCanvasGroupActions } from '../components/useCanvasGroupActions'
 import { measuredRectFromInternalNode } from './canvasMeasuredNodeRect'
+import { useCanvasPastePlacement } from './useCanvasPastePlacement'
+import { CANVAS_RESULT_DRAG_MIME } from '../components/canvasResultDrag'
 import { useCanvasFrameTool } from '../components/useCanvasFrameTool'
 import { useCanvasFrameMembership } from '../components/useCanvasFrameMembership'
 import { useCanvasFrameActions } from '../components/useCanvasFrameActions'
@@ -361,6 +363,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const getCanvasPointFromClientPoint = React.useCallback((clientX: number, clientY: number) => {
     return flow.screenToFlowPosition({ x: clientX, y: clientY })
   }, [flow])
+  const getPastePlacement = useCanvasPastePlacement(hostRef, getCanvasPointFromClientPoint)
   const {
     contextNodeMenu,
     closeContextNodeMenu,
@@ -599,7 +602,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     copySelectedNodes,
     cutSelectedNodes,
     pasteNodes,
-    getPastePosition: getInsertionPosition,
+    getPastePlacement,
     zoomByStep: handleZoomByStep,
     undo,
     redo,
@@ -607,7 +610,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   const handleDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (readOnly) return
-    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME]
+    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME, CANVAS_RESULT_DRAG_MIME]
     if (droppableTypes.some((type) => event.dataTransfer.types.includes(type))) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'

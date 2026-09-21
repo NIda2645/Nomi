@@ -1,12 +1,12 @@
 import type { CanvasGestureScheme } from '../../../utils/canvasGesturePreference'
-import { platformModifier } from '../../../design/platformShortcut'
+import { platformAltKey, platformModifier } from '../../../design/platformShortcut'
 
 export type CanvasControlsHelpSectionId = 'selection' | 'pan' | 'zoom' | 'node'
 
 export type CanvasControlsHelpRow = {
   shortcutKey: string
   actionKey: string
-  shortcutValues?: { mod: '⌘' | 'Ctrl' }
+  shortcutValues?: { mod: '⌘' | 'Ctrl'; alt: '⌥ Option' | 'Alt' }
 }
 
 export type CanvasControlsHelpSection = {
@@ -18,7 +18,7 @@ export function canvasControlsHelpSections(
   scheme: CanvasGestureScheme,
   platform: string,
 ): CanvasControlsHelpSection[] {
-  const shortcutValues = { mod: platformModifier(platform) }
+  const shortcutValues = { mod: platformModifier(platform), alt: platformAltKey(platform) }
   // 平移排第一行：它是默认手势（空白左键拖），其余三个是「压在节点上也要平移」的补充入口。
   const panRows: CanvasControlsHelpRow[] = [
     { shortcutKey: 'blankDrag', actionKey: 'pan' },
@@ -56,6 +56,8 @@ export function canvasControlsHelpSections(
       rows: [
         { shortcutKey: 'modA', actionKey: 'selectAll', shortcutValues },
         { shortcutKey: 'modCopyPaste', actionKey: 'copyPaste', shortcutValues },
+        // 松手处即副本落点——节点、框、结果堆叠里的单个版本都一样（LibTV「Option + 拖动节点」同款）。
+        { shortcutKey: 'altDrag', actionKey: 'duplicateDrag', shortcutValues },
         { shortcutKey: 'delete', actionKey: 'deleteSelection' },
         { shortcutKey: 'escape', actionKey: 'cancel' },
       ],

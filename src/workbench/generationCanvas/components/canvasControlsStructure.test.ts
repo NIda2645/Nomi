@@ -70,14 +70,15 @@ describe('generation canvas control structure', () => {
     expect(dragResize).toContain('return { flowManagedDrag, handlePointerDown')
     expect(baseNode).toContain("flowManagedLayout ? 'relative' : 'absolute'")
     expect(baseNode).toContain('transform: flowManagedLayout ? undefined : `translate(')
-    expect(baseNode).toContain("!flowManagedLayout && !readOnly && node.kind !== 'panorama'")
     expect(baseNode).toContain('selected && !readOnly && !flowManagedLayout')
-    expect(flowStyles).toContain(
-      '.generation-canvas-react-flow__node-shell .generation-canvas-v2-node__magnetic-handle',
-    )
-    expect(flowStyles).not.toMatch(
-      /\.generation-canvas-react-flow \.generation-canvas-v2-node__magnetic-handle[,{]/,
-    )
+    // 连线把手只有一份：React Flow 节点壳里的 GenerationFlowConnectionHandle（2026-09-21 删掉了
+    // 节点卡内那几份靠 CSS display:none 挡住的旧磁吸把手——P1，不留两套）。
+    for (const file of ['../nodes/BaseGenerationNode.tsx', '../nodes/ClipNode.tsx', '../nodes/director/DirectorNode.tsx']) {
+      expect(source(file)).not.toContain('MagneticConnectionHandle')
+      expect(source(file)).not.toContain('generation-canvas-v2-node__handle')
+    }
+    expect(flowStyles).not.toContain('.generation-canvas-v2-node__magnetic-handle')
+    expect(flowStyles).not.toContain('.generation-canvas-v2-node__handle,')
   })
 
   it('routes every duplicated variant through the shared focus recovery contract', () => {

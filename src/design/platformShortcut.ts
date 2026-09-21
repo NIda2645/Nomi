@@ -17,3 +17,11 @@ export function isMacPlatform(platform: string): boolean {
 export function platformModifier(platform: string): '⌘' | 'Ctrl' {
   return isMacPlatform(platform) ? '⌘' : 'Ctrl'
 }
+
+/**
+ * Alt 键在提示里的写法：Mac 键帽印的是 ⌥ 和 Option（LibTV 快捷键面板同样写「Option 选项」），
+ * Windows / Linux 是 Alt。事件层两者都是 `event.altKey`。
+ */
+export function platformAltKey(platform: string): '⌥ Option' | 'Alt' {
+  return isMacPlatform(platform) ? '⌥ Option' : 'Alt'
+}

@@ -6,6 +6,7 @@ import {
   extractClipboardMediaUrl,
   showClipboardMediaPasteNotes,
 } from '../adapters/clipboardImagePaste'
+import type { CanvasPlacement, CanvasPlacementAnchor } from '../model/canvasPlacement'
 import { hasClipboardContent } from '../store/canvasClipboard'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { showUndoToast } from '../../../utils/showUndoToast'
@@ -231,8 +232,9 @@ export function useCanvasShortcuts(opts: {
   ungroupSelectedNodes: () => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (basePosition?: { x: number; y: number }) => void
-  getPastePosition: () => { x: number; y: number }
+  pasteNodes: (basePosition?: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
+  /** 鼠标在舞台里 → 那一点；否则舞台中央。`null` = 舞台还没量到尺寸（走 store 的默认落点）。 */
+  getPastePlacement: () => CanvasPlacement | null
   zoomByStep: (direction: -1 | 1) => void
   undo: () => void
   redo: () => void
@@ -252,7 +254,7 @@ export function useCanvasShortcuts(opts: {
     copySelectedNodes,
     cutSelectedNodes,
     pasteNodes,
-    getPastePosition,
+    getPastePlacement,
     zoomByStep,
     undo,
     redo,
@@ -287,7 +289,9 @@ export function useCanvasShortcuts(opts: {
         clearPasteFallback()
         pasteFallbackTimerRef.current = window.setTimeout(() => {
           pasteFallbackTimerRef.current = null
-          pasteNodes(getPastePosition())
+          const placement = getPastePlacement()
+          if (placement) pasteNodes(placement.point, placement.anchor)
+          else pasteNodes()
         }, 120)
       },
       zoomByStep,
@@ -299,10 +303,15 @@ export function useCanvasShortcuts(opts: {
       // fallback before the editing guard so stale canvas clipboard nodes cannot appear later.
       clearPasteFallback()
       if (shouldIgnoreCanvasShortcut(event.target, stageRef)) return
-      const pastePosition = getPastePosition()
+      // 节点粘贴与剪贴板媒体粘贴共用这一个落点来源（不留两套）。
+      const placement = getPastePlacement()
+      const pasteCanvasNodes = () => {
+        if (placement) pasteNodes(placement.point, placement.anchor)
+        else pasteNodes()
+      }
       if (shouldPreferCanvasClipboard(event.clipboardData)) {
         event.preventDefault()
-        pasteNodes(pastePosition)
+        pasteCanvasNodes()
         return
       }
       event.preventDefault()
@@ -311,16 +320,17 @@ export function useCanvasShortcuts(opts: {
         void pasteClipboardMediaToGenerationCanvas({
           projectContext,
           clipboardData: event.clipboardData,
-          basePosition: pastePosition,
+          basePosition: placement?.point ?? { x: 240, y: 240 },
+          anchor: placement?.anchor,
           categoryId: activeCategoryId,
         }).then((result) => {
           if (!result.handled) {
-            pasteNodes(pastePosition)
+            pasteCanvasNodes()
             return
           }
           showClipboardMediaPasteNotes(result, projectContext.binding.projectId)
         }).catch(() => {
-          pasteNodes(pastePosition)
+          pasteCanvasNodes()
         })
       })
     }
@@ -343,7 +353,7 @@ export function useCanvasShortcuts(opts: {
     cutSelectedNodes,
     deleteSelectedNodes,
     deleteActiveEdge,
-    getPastePosition,
+    getPastePlacement,
     groupSelectedNodes,
     pasteNodes,
     readOnly,

@@ -18,6 +18,8 @@ import { importLocalMediaFilesToGenerationCanvas } from '../adapters/assetImport
 import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import { CENTER_PLACEMENT_ANCHOR } from '../model/canvasPlacement'
+import { CANVAS_RESULT_DRAG_MIME, createNodeFromDraggedResult, parseCanvasResultDrag } from './canvasResultDrag'
 import { reportCanvasFeedback } from './canvasFeedback'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import type { BrowserAssetCanvasImportItem } from '../../../ui/browser/overlay/globalAssetPopoverEvents'
@@ -65,11 +67,10 @@ export function layoutBrowserAssetDropPositions(
 }
 
 /** 放下时光标该压在第一张卡的哪一点：素材库卡带着「抓在哪」就按它，其余来源（系统文件 / 文件树 / 浏览器素材盒）按卡中心。 */
-const CENTER_DROP_ANCHOR = { xRatio: 0.5, yRatio: 0.5 }
 
 export function resolveDropOrigin(
   cursorPosition: { x: number; y: number },
-  dragAnchor: AssetLibraryDragPayload['dragAnchor'] = CENTER_DROP_ANCHOR,
+  dragAnchor: AssetLibraryDragPayload['dragAnchor'] = CENTER_PLACEMENT_ANCHOR,
 ): { x: number; y: number } {
   const size = getGenerationNodeDefaultSize('asset')
   return {
@@ -253,6 +254,15 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   const cursor = ctx.toCanvasPoint(event.clientX, event.clientY)
   const dropOrigin = resolveDropOrigin(cursor)
 
+  // 0) 结果堆叠里 Alt/⌥ 拖出的某个版本：在松手点复制出一张独立素材卡（components/canvasResultDrag.ts）。
+  const resultDrag = parseCanvasResultDrag(event.dataTransfer.getData(CANVAS_RESULT_DRAG_MIME))
+  if (resultDrag) {
+    event.preventDefault()
+    event.stopPropagation()
+    createNodeFromDraggedResult(resultDrag, cursor, ctx.activeCategoryId)
+    return
+  }
+
   // 1) 项目文件树拖入：文件已在项目里，直接用 nomi-local 协议引用，按 kind 建图片/视频 asset 节点。
   const workspaceDrag = parseWorkspaceFileDrag(event.dataTransfer.getData(WORKSPACE_FILE_DRAG_MIME))
   if (workspaceDrag) {
@@ -369,7 +379,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   event.preventDefault()
   event.stopPropagation()
   // 系统文件的卡面尺寸要读完文件才知道（图片按像素比例），锚点交给导入适配器按真实尺寸换算。
-  void importLocalFilesToGenerationCanvas(files, { basePosition: cursor, anchor: CENTER_DROP_ANCHOR, categoryId: ctx.activeCategoryId, exactPosition: true })
+  void importLocalFilesToGenerationCanvas(files, { basePosition: cursor, anchor: CENTER_PLACEMENT_ANCHOR, categoryId: ctx.activeCategoryId, exactPosition: true })
 }
 
 /**

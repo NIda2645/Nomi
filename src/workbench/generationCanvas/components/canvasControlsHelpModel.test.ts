@@ -61,8 +61,16 @@ describe('canvas controls help model', () => {
     const macRows = canvasControlsHelpSections('modifier-zoom', 'MacIntel').flatMap((section) => section.rows)
     const windowsRows = canvasControlsHelpSections('modifier-zoom', 'Win32').flatMap((section) => section.rows)
 
-    expect(macRows.find((row) => row.shortcutKey === 'modWheel')?.shortcutValues).toEqual({ mod: '⌘' })
-    expect(windowsRows.find((row) => row.shortcutKey === 'modWheel')?.shortcutValues).toEqual({ mod: 'Ctrl' })
+    expect(macRows.find((row) => row.shortcutKey === 'modWheel')?.shortcutValues).toEqual({ mod: '⌘', alt: '⌥ Option' })
+    expect(windowsRows.find((row) => row.shortcutKey === 'modWheel')?.shortcutValues).toEqual({ mod: 'Ctrl', alt: 'Alt' })
     expect(macRows.map((row) => row.actionKey)).toEqual(windowsRows.map((row) => row.actionKey))
+  })
+
+  it('lists Alt/⌥ drag-to-duplicate next to copy / paste, with the platform key name', () => {
+    const macNode = canvasControlsHelpSections('wheel-zoom', 'MacIntel').find((section) => section.id === 'node')?.rows
+    const winNode = canvasControlsHelpSections('wheel-zoom', 'Win32').find((section) => section.id === 'node')?.rows
+    expect(macNode?.map((row) => row.shortcutKey)).toEqual(['modA', 'modCopyPaste', 'altDrag', 'delete', 'escape'])
+    expect(macNode?.find((row) => row.shortcutKey === 'altDrag')?.shortcutValues?.alt).toBe('⌥ Option')
+    expect(winNode?.find((row) => row.shortcutKey === 'altDrag')?.shortcutValues?.alt).toBe('Alt')
   })
 })

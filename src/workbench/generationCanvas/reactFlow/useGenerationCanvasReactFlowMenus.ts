@@ -1,4 +1,5 @@
 import React from 'react'
+import type { CanvasPlacementAnchor } from '../model/canvasPlacement'
 import type { OnConnectEnd, OnConnectStart } from '@xyflow/react'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
@@ -47,7 +48,7 @@ type UseGenerationCanvasReactFlowMenusArgs = {
   startConnection: (nodeId: string, side: ConnectionSide) => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (position: { x: number; y: number }) => void
+  pasteNodes: (position: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   groupSelectedNodes: () => void
   deleteSelectedNodes: () => void
   /** 画布指针层（useGenerationCanvasReactFlowPointer）的原始回调，菜单层在它们之前插一脚。 */

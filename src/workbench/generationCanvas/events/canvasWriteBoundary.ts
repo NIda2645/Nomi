@@ -22,7 +22,7 @@ const documentActions = {
   duplicateNodeForRegeneration: true, reassignNodeCategory: true, copyNodeToCategory: true, deleteNode: true,
   saveSelectedAsWorkflowTemplate: true, instantiateWorkflowTemplate: true, instantiateWorkflowTemplateSnapshot: true,
   startConnection: false, startGroupConnection: false, cancelConnection: false, connectToNode: true, connectNodes: true,
-  connectToGroup: true, updateEdgeMode: true, disconnectEdge: true, moveGroupNodes: true,
+  connectToGroup: true, updateEdgeMode: true, disconnectEdge: true, moveGroupNodes: true, duplicateGroupForDrag: true,
   createGroup: true, createFrame: true, groupSelectedNodes: true, renameGroup: true, setGroupDescription: true,
   setGroupColor: true, setGroupCollapsed: true,
   ungroup: true, ungroupGroups: true, deleteGroup: true, moveNodeToGroup: true,
