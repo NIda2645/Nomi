@@ -1,4 +1,13 @@
+// 核心流程冒烟（2026-09-22 用户拍板，docs/plan/2026-09-22-core-flow-smoke-three-defenses.md）：
+// **除了纯文档，一律跑**，两种夹具各一遍。它不跟任何路径模式挂钩——09-22 那次回归坏在共享的 CSS 开关上，
+// 画布套件因为「没改到 generationCanvas」被分类器跳过，核心流程三件事全坏、CI 全绿。
+// 夹具清单的唯一 owner 在这里（CI matrix、合后收据要的 check 名都从它派生，check-quality-gate-workflow 钉死）。
+export const CORE_SMOKE_FIXTURES = Object.freeze(['empty', 'used'])
+export const coreSmokeCheckName = (fixture) => `Core Flow Smoke (${fixture})`
+export const CORE_SMOKE_CHECK_NAMES = Object.freeze(CORE_SMOKE_FIXTURES.map(coreSmokeCheckName))
+
 const FULL_POLICY = Object.freeze({
+  coreSmoke: true,
   unit: 'full',
   desktop: true,
   journeys: true,
@@ -11,6 +20,7 @@ const FULL_POLICY = Object.freeze({
 // the full functional lanes, but performance and packaging are separate risk
 // surfaces and must not turn runner variance into an unrelated merge blocker.
 const VALIDATION_INFRASTRUCTURE_POLICY = Object.freeze({
+  coreSmoke: true,
   unit: 'full',
   desktop: true,
   journeys: true,
@@ -23,6 +33,8 @@ const VALIDATION_INFRASTRUCTURE_PATTERNS = [
   /^\.github\/(?:actions|workflows)\//,
   /^scripts\/(?:validation-policy|select-quality-gate-profile|check-quality-gate-workflow|real-user-test-gates|test-system|test-focused|git-delivery|canvas-performance-verdict|eval-journey|.*walkthrough)(?:\.|$)/,
   /^tests\/system(?:\/|$)/,
+  // 核心冒烟的清单 / 夹具 / 跑法：改它等于改每个 PR 都要过的那道闸。
+  /^tests\/ux\/core-smoke\//,
   /^tests\/ux\/(?:canvas-real-suite|canvas-performance-(?:benchmark|verdict))(?:\.|$)/,
   // 走查的**共享 harness**（下划线前缀那一族：_launchApp / _assert / _canvasHit / _feel …）。
   // 它们是所有 Electron 走查的启动器、断言库和命中判据——改一行等于改全部走查的地基，
@@ -181,6 +193,7 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
         files,
       }
     : {
+        coreSmoke: !docsOnly,
         unit: 'focused',
         desktop: false,
         journeys: false,
@@ -244,6 +257,7 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
 }
 
 export const VALIDATION_POLICY_OUTPUTS = Object.freeze([
+  'coreSmoke',
   'unit',
   'desktop',
   'journeys',

@@ -4,6 +4,9 @@ import path from 'node:path'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { gitNameStatus } from './lib/gitPaths.mjs'
+import { classifyValidationPolicy, CORE_SMOKE_CHECK_NAMES } from './validation-policy.mjs'
+
 export const DEFAULT_FETCH_TIMEOUT_MS = 45_000
 export const DEFAULT_CI_EVIDENCE_TIMEOUT_MS = 30 * 60_000
 export const DEFAULT_CI_POLL_INTERVAL_MS = 10_000
@@ -324,7 +327,22 @@ function receiptCheck(check) {
   }
 }
 
-export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS) {
+/**
+ * 这个 merge SHA 要哪些 check（2026-09-22，核心冒烟第三道防线）。
+ * 与 CI 同一个分类器、同一个 diff（相对第一父提交，也就是 main push 的 before..after）：
+ * 只要不是纯文档，核心冒烟两份 check 就**必须是 success**——skipped / neutral / 缺席一律拒绝，
+ * 否则「上一个合入没验过 main」会被一张写着「跳过」的收据掩盖过去。
+ */
+export function mergedCheckRequirement({ cwd, commitSha }) {
+  const parents = gitOutput(cwd, ['rev-list', '--parents', '-n', '1', commitSha]).split(/\s+/).slice(1)
+  const entries = parents.length > 0 ? gitNameStatus(['diff', '--name-status', parents[0], commitSha], { cwd }) : []
+  const policy = classifyValidationPolicy(entries, { eventName: 'push' })
+  return policy.coreSmoke
+    ? { names: [...REQUIRED_MERGED_CHECKS, ...CORE_SMOKE_CHECK_NAMES], successOnly: [...CORE_SMOKE_CHECK_NAMES], coreSmoke: { required: true, reason: policy.reason } }
+    : { names: [...REQUIRED_MERGED_CHECKS], successOnly: [], coreSmoke: { required: false, reason: policy.reason } }
+}
+
+export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS, { successOnly = [] } = {}) {
   const checks = []
   const missing = []
   const pending = []
@@ -339,7 +357,9 @@ export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGE
     const projected = receiptCheck(check)
     checks.push(projected)
     if (check.status !== 'completed') pending.push(projected)
-    else if (!ACCEPTED_CHECK_CONCLUSIONS.has(check.conclusion)) failed.push(projected)
+    else if (successOnly.includes(name) && check.conclusion !== 'success') {
+      failed.push({ ...projected, rejection: `${name} 必须是 success（实际 ${check.conclusion}）：核心冒烟没真跑过的 merge 不发收据` })
+    } else if (!ACCEPTED_CHECK_CONCLUSIONS.has(check.conclusion)) failed.push(projected)
   }
   return {
     state: failed.length > 0 ? 'failed' : missing.length > 0 || pending.length > 0 ? 'pending' : 'passed',
@@ -389,6 +409,7 @@ export async function waitForRequiredChecks({
   requestTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
   pollIntervalMs = DEFAULT_CI_POLL_INTERVAL_MS,
   requiredNames = REQUIRED_MERGED_CHECKS,
+  successOnly = [],
   listCheckRuns = listCommitCheckRuns,
   nowMs = () => Date.now(),
   sleep = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs)),
@@ -399,10 +420,11 @@ export async function waitForRequiredChecks({
   const deadline = nowMs() + timeoutMs
   while (true) {
     const checkRuns = await listCheckRuns({ repository, commitSha, timeoutMs: requestTimeoutMs })
-    const evaluation = evaluateRequiredChecks(checkRuns, requiredNames)
+    const evaluation = evaluateRequiredChecks(checkRuns, requiredNames, { successOnly })
     if (evaluation.state === 'passed') return evaluation
     if (evaluation.state === 'failed') {
-      throw new DeliveryError('required_checks_failed', `Required checks failed for ${commitSha}`, evaluation)
+      const reasons = evaluation.failed.map((check) => check.rejection ?? `${check.name}=${check.conclusion}`).join('; ')
+      throw new DeliveryError('required_checks_failed', `Required checks failed for ${commitSha}: ${reasons}`, evaluation)
     }
     const remainingMs = deadline - nowMs()
     if (remainingMs <= 0) {
@@ -503,6 +525,7 @@ export async function verifyMergedDelivery({
   await fetchRemote({ cwd, remote, base, timeoutMs })
   const state = assertMergedState(inspectDeliveryState({ cwd, remote, base }), { expectedSha, cwd })
   const receiptPath = receiptPathFor(state, expectedSha)
+  const requirement = mergedCheckRequirement({ cwd, commitSha: expectedSha })
   const existing = readReceipt(receiptPath)
   if (
     existing &&
@@ -510,7 +533,7 @@ export async function verifyMergedDelivery({
     existing.tip === state.remoteCommit &&
     existing.relation === state.verificationRelation &&
     existing.treeSha === gitOutput(cwd, ['rev-parse', `${expectedSha}^{tree}`]) &&
-    evaluateRequiredChecks(existing.checks).state === 'passed'
+    evaluateRequiredChecks(existing.checks, requirement.names, { successOnly: requirement.successOnly }).state === 'passed'
   ) {
     return { state, receiptPath, receipt: existing, reused: true }
   }
@@ -524,6 +547,8 @@ export async function verifyMergedDelivery({
       timeoutMs: ciTimeoutMs,
       requestTimeoutMs: timeoutMs,
       pollIntervalMs,
+      requiredNames: requirement.names,
+      successOnly: requirement.successOnly,
       listCheckRuns,
       ...(sleep ? { sleep } : {}),
     })
@@ -537,7 +562,10 @@ export async function verifyMergedDelivery({
       relation: state.verificationRelation,
       repository: resolvedRepository,
       observedAt: now().toISOString(),
-      requiredChecks: [...REQUIRED_MERGED_CHECKS],
+      requiredChecks: requirement.names,
+      coreSmoke: requirement.coreSmoke.required
+        ? { required: true, checks: requirement.successOnly }
+        : { required: false, reason: requirement.coreSmoke.reason },
       checks: evidence.checks,
     }
     writeReceipt(receiptPath, receipt)

@@ -70,6 +70,8 @@
 | T-CV-16 | 拖入/粘贴不落在松手处、跑出视线（群反馈 09-21） | done #833 | 用户 09-21 截图反馈 | 分支 `fix/canvas-drop-at-cursor-20260921` 已修根因（删 ≥40 钳制、落点只经 `screenToFlowPosition`、中心对准光标），随下一批集成合入。残留：视频卡元数据回填后中心上移 44px；结构提议「放置意图 {point, anchor}」见 [`docs/audit/2026-09-21-canvas-node-placement-structure.md`](../audit/2026-09-21-canvas-node-placement-structure.md) §3，待排期 |
 | T-CV-17 | 画布「可用视口」四边 chrome 统一登记：左缘工具条也进停靠名单，所有锚定浮层（浮框/结果堆叠/节点菜单）只读一份 `resolveUsableStage` | todo | [结构评审](../audit/2026-09-21-canvas-overlay-chrome-and-editor-echo-structure.md) | 09-21 底部 chrome 已收成单 owner（`workspaceBottomDocks.ts`），左缘仍是浮框里就地测量 |
 | T-CV-18 | 节点内受控输入门岗：`value={node.*}` 直绑 React Flow 投影的受控控件必须经本地草稿或 `controlledEditorSync` | todo | [结构评审](../audit/2026-09-21-canvas-overlay-chrome-and-editor-echo-structure.md) | 09-21 0ms 连打丢字的同族风险；本次实扫标题编辑走本地 draft 未中招 |
+| T-CV-19 | 小窗（1280×800、时间轴展开、Agent 面板开）里画布只剩约 800 宽：底部居中的批量生成栏压住左下角缩放条，「画布操作」帮助等按钮点不到 | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 两个 bottom dock 相撞：批量栏让开导航栈（或挪到导航栈上方），出样张后改 |
+| T-CV-20 | 同一小窗里选中卡，浮框被小地图 / 画面小窗挤得放不下，clamp 后盖住卡本身和连线握把；clamp 状态下平移每帧重排 | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 产品取舍：底部停靠物让位，还是浮框改成侧放；先出样张 |
 
 ## D. 设计落地（界面大改）
 
@@ -199,6 +201,8 @@
 | T-QA-18 | 同一条不变量「任何非终态在有限时间内必须落到终态」在 run 层与 session 层各实现了一次，没有任何机器判据保证它们同源 | todo | 09-18 批次 3 收尾（providerAdapter 结构评审 §3） | 09-12 修在 `terminalGuarantee.ts`、09-15 又修在 `serviceLifecycle.ts`；两处的退避预算、看门狗周期、逃生口各写各的，改一处另一处不会红。停止层（一条）：凡声明了非终态集合的模块必须在同一处声明 ① 终态化保证 ② 看门狗 ③ 逃生口，缺一即红；两层各自声明时判据要能看出指向同一份定义。**加规则前先验它会红**（R17）——今天至少这两处会红 |
 | T-QA-19 | agent-runtime 的 L1 T3 / G2 两条场景现在只覆盖「没问就直接做了」那一支，「出了确认卡」那一支没有场景摆批准动作 | todo | 09-18 批次 3 收尾 gates 翻红后定位 | T-ED-02 把 `userSees` 从写死改成**由真实批准结论派生**之后，这两条场景的期望文本才对上——但它们本来就没摆批准，所以覆盖的是「不问」那支。要把「出卡」那支也钉住，得在 `tests/agent-runtime/laneL1Scenarios.mts` 里真的摆一次批准，不是把话写回去。**连带的过程问题**：这两条只在 `pnpm run gates` 的全量档跑，功能 lane 只跑 focused，所以改行为的那条 lane 当时看不见自己把夹具改废了——与 T-QA-15「默认 SKIP 没有红灯」是同一族 |
 | T-QA-20 | Ponytail 对批次 3 提了约 90 条 shrink/yagni，两族是真账：① 一个导入函数被改名成 8 个别名（`sameOwner` / `sameProjectSelection` / `matchesCommittedSelection` / `sameExportProjectIdentity` / `sameSelection` / `sameProjectIdentity` / `sameSurfaceAuthority` / `sameIdentity`）；② `safeFailure` 在 4 个 transport adapter 里逐字相同 | todo | 09-18 批次 3 交工前 Ponytail（findings 存 `.claude/ponytail-findings/`） | ① 正是 R14.1「同一语义几个名字」的活样本，而且本批刚立了 `check:identity-compare`——把别名族做成它的一条判据，加规则前先验它会红；② 抽一份共享 `safeFailure(error, codes)`。其余条目多是新增代码的行数建议，本轮逐条表态在 PR 正文 `## Ponytail`，不在收尾窗口改（改一行就要重跑整条分支的评审与五门） |
+| T-QA-21 | 反馈层（警告 toast）z 序高于弹窗：常驻的「模型当前不可用」提醒压住设置弹窗的关闭钮 | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 确定 toast 与模态的层级规则（模态打开时 toast 让位或下移） |
+| T-QA-22 | 核心冒烟花钱路最小一条：由「Draft PR 代码审查与整合」会话在其集成分支进 main 的同一个 PR 里登记进 `CORE_SMOKE_SCENARIOS` | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 登记方式见方案「如何登记新场景」；needs=`loopbackProvider`+`fixtureTextModel` 已就绪 |
 
 ## J. 官网与发布
 

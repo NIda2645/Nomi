@@ -13,12 +13,14 @@ import {
   evaluateRequiredChecks,
   inspectDeliveryState,
   listCommitCheckRuns,
+  mergedCheckRequirement,
   parseCli,
   parseGitHubRepository,
   preflightDelivery,
   runBoundedCommand,
   verifyMergedDelivery,
 } from './git-delivery.mjs'
+import { CORE_SMOKE_CHECK_NAMES } from './validation-policy.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '..')
 
@@ -225,7 +227,9 @@ function checkRun(name, conclusion, overrides = {}) {
   }
 }
 
-const passedChecks = () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped')]
+const coreSmokeChecks = (conclusion = 'success') => CORE_SMOKE_CHECK_NAMES.map((name) => checkRun(name, conclusion))
+// 夹具里的 merge 改的是 tracked.txt（不是文档）→ 核心冒烟两份 check 必须在、必须 success。
+const passedChecks = () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped'), ...coreSmokeChecks()]
 
 test('GitHub repository parsing accepts canonical HTTPS and SSH remotes only', () => {
   assert.equal(parseGitHubRepository('https://github.com/aqm857886159/Nomi.git'), 'aqm857886159/Nomi')
@@ -268,7 +272,7 @@ test('check-run loader queries the exact commit endpoint and rejects malformed e
     commitSha: '0123456789abcdef0123456789abcdef01234567',
     runCommand,
   })
-  assert.equal(checks.length, 2)
+  assert.equal(checks.length, passedChecks().length)
   assert.match(invocation[1].at(-1), /commits\/0123456789abcdef0123456789abcdef01234567\/check-runs/)
   await assert.rejects(
     listCommitCheckRuns({
@@ -311,7 +315,9 @@ test('merged verification records exact-SHA CI evidence once and reuses its rece
   assert.deepEqual(first.receipt.checks.map(({ name, conclusion }) => ({ name, conclusion })), [
     { name: 'Quality Gate', conclusion: 'success' },
     { name: 'Mac Package', conclusion: 'skipped' },
+    ...CORE_SMOKE_CHECK_NAMES.map((name) => ({ name, conclusion: 'success' })),
   ])
+  assert.deepEqual(first.receipt.coreSmoke, { required: true, checks: [...CORE_SMOKE_CHECK_NAMES] })
   assert.match(first.receiptPath, /nomi-delivery.*ci-evidence\.json$/)
 })
 
@@ -331,7 +337,7 @@ test('merged verification waits for missing checks and never converts a failed c
     sleep: async () => {},
     pollIntervalMs: 1,
   })
-  assert.equal(waiting.receipt.checks.length, 2)
+  assert.equal(waiting.receipt.checks.length, 2 + CORE_SMOKE_CHECK_NAMES.length)
   fs.rmSync(waiting.receiptPath)
 
   await assert.rejects(
@@ -340,7 +346,7 @@ test('merged verification waits for missing checks and never converts a failed c
       expectedSha,
       repository: 'example/nomi',
       fetchRemote: async () => {},
-      listCheckRuns: async () => [checkRun('Quality Gate', 'failure'), checkRun('Mac Package', 'success')],
+      listCheckRuns: async () => [checkRun('Quality Gate', 'failure'), checkRun('Mac Package', 'success'), ...coreSmokeChecks()],
     }),
     (error) => error instanceof DeliveryError && error.code === 'required_checks_failed',
   )
@@ -362,6 +368,7 @@ test('merged verification fails closed when required checks remain incomplete', 
       listCheckRuns: async () => [
         checkRun('Quality Gate', null, { status: 'in_progress' }),
         checkRun('Mac Package', 'skipped'),
+        ...coreSmokeChecks(),
       ],
       ciTimeoutMs: 1,
       pollIntervalMs: 1,
@@ -369,6 +376,57 @@ test('merged verification fails closed when required checks remain incomplete', 
     }),
     (error) => error instanceof DeliveryError && error.code === 'required_checks_timeout',
   )
+})
+
+test('core flow smoke must be success on a non-docs merge: skipped or missing never becomes a receipt', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+  const base = { cwd: f.work, expectedSha, repository: 'example/nomi', fetchRemote: async () => {} }
+
+  await assert.rejects(
+    verifyMergedDelivery({
+      ...base,
+      listCheckRuns: async () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped'), ...coreSmokeChecks('skipped')],
+    }),
+    (error) => error instanceof DeliveryError && error.code === 'required_checks_failed'
+      && /Core Flow Smoke \(empty\) 必须是 success（实际 skipped）/.test(error.message),
+  )
+  await assert.rejects(
+    verifyMergedDelivery({
+      ...base,
+      listCheckRuns: async () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped')],
+      ciTimeoutMs: 1,
+      pollIntervalMs: 1,
+      sleep: async () => {},
+    }),
+    (error) => error instanceof DeliveryError && error.code === 'required_checks_timeout'
+      && error.details.missing.join(',') === CORE_SMOKE_CHECK_NAMES.join(','),
+  )
+})
+
+test('a docs-only merge does not require the core flow smoke and says so in the receipt', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  write(path.join(f.seed, 'docs', 'note.md'), 'docs only\n')
+  git(f.seed, ['add', 'docs/note.md'])
+  git(f.seed, ['commit', '-m', 'docs only'])
+  git(f.seed, ['push', 'origin', 'main'])
+  git(f.work, ['fetch', 'origin'])
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+  assert.deepEqual(mergedCheckRequirement({ cwd: f.work, commitSha: expectedSha }).coreSmoke, { required: false, reason: 'docs_only' })
+
+  const result = await verifyMergedDelivery({
+    cwd: f.work,
+    expectedSha,
+    repository: 'example/nomi',
+    fetchRemote: async () => {},
+    listCheckRuns: async () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped')],
+  })
+  assert.deepEqual(result.receipt.requiredChecks, ['Quality Gate', 'Mac Package'])
+  assert.deepEqual(result.receipt.coreSmoke, { required: false, reason: 'docs_only' })
 })
 
 test('evidence lock prevents concurrent collectors for one merged SHA', async (t) => {

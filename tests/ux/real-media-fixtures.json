@@ -33,6 +33,35 @@
       "whyThisOne": "真实照片熵高，压缩率与解码成本比合成色块 PNG 高两个数量级；testsrc2 + drawbox 出来的平坦色块解码几乎免费"
     },
     {
+      "id": "video-ai-shot-640x360",
+      "kind": "video",
+      "repoPath": "tests/ux/fixtures/real-shot-640x360.mp4",
+      "spec": {
+        "codec": "h264",
+        "bitDepth": 8,
+        "width": 640,
+        "height": 360,
+        "bytes": 134406
+      },
+      "source": "真 AI 生成镜头（雨衣人物持手电走进仓库），2026-09-06 随 e3951cd41 进公开仓库，editing-real-user-pass / video-depth-real-task 走查一直拿它当真实素材",
+      "whyThisOne": "唯一一件 CI 上也在的真实素材：核心冒烟每个非文档 PR 都跑，而本机素材库（1.38 GB、含用户私人拍摄）不能进公开仓库。它是真实镜头的熵与编码（非合成色块），守的是「浮层看得见点得到」，不承担 4K 解码成本——那条归 canvas-performance 腿"
+    },
+    {
+      "id": "image-ai-shot-frame-png",
+      "kind": "image",
+      "derivedFrom": {
+        "assetId": "video-ai-shot-640x360",
+        "how": "ffmpeg -ss <秒> -frames:v 1 抽帧，PNG 无损，落到测试自己的项目目录（tests/ux/core-smoke/fixture.mjs）"
+      },
+      "spec": {
+        "format": "png",
+        "width": 640,
+        "height": 360,
+        "minBytes": 200000
+      },
+      "whyThisOne": "多版本结果卡要的是「看得出是两张不同的真实画面」的图：同一镜头不同时刻的帧熵高、彼此不同；实测每帧 26–31 万字节，黑帧或解码失败会远小于下限"
+    },
+    {
       "id": "speech-zh-mixed-hevc",
       "kind": "video",
       "relativePath": "9月12日(1)/9月12日(1).mov",
@@ -141,6 +170,16 @@
       ],
       "status": "live",
       "why": "「用户照文稿让 Agent 出分镜」这条整机走查里，参考图是从登记素材抽的 4K 帧、经**素材库的文件选择器**真导入的。它证的是别的腿证不了的那半件事：Agent 说「用我素材库那张图当参考」时，那张图真的走过导入链路、真的有 assetId、真的能被 look_at_media 读到。合成占位图在这条路上永远不会暴露参考图那一族缺陷（2026-09-18 之前带参考图的分镜 100% 失败，正是这一段）。**注意它不覆盖 walkthrough 那条债**：那条说的是 J4/J5 的冷开成本与 S 规模素材，这里只有一张图。"
+    },
+    {
+      "class": "core-smoke",
+      "test": "tests/ux/core-smoke/fixture.mjs",
+      "assets": [
+        "video-ai-shot-640x360",
+        "image-ai-shot-frame-png"
+      ],
+      "status": "live",
+      "why": "核心流程冒烟（每个非文档 PR + main push 都跑，空项目 / 用过的项目两遍）。卡上的结果、多版本 history、时间轴 clip 全部指向这件真实镜头及其抽帧；缺文件即红，不退回合成素材"
     }
   ],
   "requiredClasses": [

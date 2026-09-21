@@ -13,64 +13,59 @@
 //
 // 驱动：真实 Electron + 真实鼠标/键盘/滚轮。两处写明是**模拟**：触控板平移（带 deltaX 的 wheel，ctrlKey=false），
 // 系统打断（窗口上派发 pointercancel / blur——Playwright 造不出真的系统打断）。
-// 媒体：登记表里的真实 4K HEVC 视频抽两帧（缺素材即红，不退回合成图）。
+// 夹具：核心冒烟清单的一员（tests/ux/core-smoke/scenarios.mjs），empty / used 两遍都跑；
+// 项目与素材由 tests/ux/core-smoke/fixture.mjs 用真实素材写成 App 自己的项目文件，再从项目库点开。
 //
 // 用法：
-//   export NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/"
-//   pnpm run build && node tests/ux/node-params-and-version-pill.walk.mjs [zh-CN|en] [label]
+//   pnpm run build && pnpm run test:core-smoke -- --fixture used      （清单里全部场景）
+//   pnpm run build && node tests/ux/node-params-and-version-pill.walk.mjs [zh-CN|en] [label]   （单跑，默认 empty）
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import ffmpeg from '@ffmpeg-installer/ffmpeg'
-import { launchNomiApp, repoRoot } from './_launchApp.mjs'
+import { repoRoot } from './_launchApp.mjs'
 import { expect, expectAbsent, expectHittable, proveProbe, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
 import { findCanvasBlankPoint, findFrameDragHandlePoint, findNodeHitPoint, CANVAS_STAGE_SELECTOR } from './_canvasHit.mjs'
 import { stationTimeout } from './_station-budget.mjs'
-import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
-import { createCanvasPerformanceFixture } from './fixtures/canvas-performance-fixture.mjs'
+import { launchCoreSmoke } from './core-smoke/fixture.mjs'
 
-const LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
+const REQUESTED_LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
 const LABEL = process.argv[3] || 'run'
+
+// ── 场景自带的最少节点（两种夹具都有）：两版结果卡、空图片卡、带两张卡的编组、空编组框
+const base = { prompt: '', categoryId: 'shots', references: [], runs: [] }
+const seed = ({ imageResult, imageMeta }) => {
+  const v1 = imageResult('stack-v1', 1, 1)
+  const v2 = imageResult('stack-v2', 4, 2)
+  return {
+    nodes: [
+      { ...base, id: 'stack', kind: 'image', title: '两个版本', position: { x: 80, y: 80 }, status: 'success', result: v2, history: [v2, v1], meta: imageMeta() },
+      { ...base, id: 'empty-image', kind: 'image', title: '空图片', position: { x: 620, y: 80 }, status: 'idle', history: [] },
+      ...['frame-m1', 'frame-m2'].map((id, index) => ({
+        ...base, id, kind: 'image', title: `框内 ${index + 1}`, groupId: 'frame-rain', position: { x: 120 + index * 420, y: 620 },
+        status: 'success', result: imageResult(`${id}-r`, 4, 1), history: [imageResult(`${id}-r`, 4, 1)], meta: imageMeta(),
+      })),
+    ],
+    groups: [
+      { id: 'frame-rain', name: '雨夜', categoryId: 'shots', nodeIds: ['frame-m1', 'frame-m2'], frameBounds: { x: 80, y: 520, w: 860, h: 420 }, createdAt: 1, updatedAt: 1 },
+      { id: 'frame-empty', name: '空框', categoryId: 'shots', nodeIds: [], frameBounds: { x: 1100, y: 520, w: 420, h: 300 }, createdAt: 1, updatedAt: 1 },
+    ],
+  }
+}
+
+const smoke = await launchCoreSmoke({
+  name: 'node-params-pill',
+  seed,
+  locale: REQUESTED_LOCALE,
+  // 用户窗口实测 1440×859（osascript 读的真实窗口外框），内容区 1440×831；used 夹具换成 1280×800 小窗。
+  emptyViewport: { width: 1440, height: 831 },
+  // 用户真实资料库里就是这一档（Figma 式：滚轮平移、⌘/Ctrl+滚轮缩放）。卡死标记的 150ms 窗口只在这一档出现。
+  preferences: { 'nomi.canvasGesture.scheme': 'modifier-zoom' },
+})
+const { app, tempRoot } = smoke
+const LOCALE = smoke.locale
 const EN = LOCALE === 'en'
-const shotsDir = path.join(repoRoot, 'tests/ux/shots/node-params-and-version-pill', `${LABEL}-${LOCALE}`)
+const shotsDir = path.join(repoRoot, 'tests/ux/shots/node-params-and-version-pill', `${LABEL}-${smoke.fixture}-${LOCALE}`)
 fs.rmSync(shotsDir, { recursive: true, force: true })
 fs.mkdirSync(shotsDir, { recursive: true })
-
-// ── 真实素材
-const { assets } = requireRealMediaAssets(['video-4k-hevc-10bit', 'image-4k-png'])
-const sourceVideo = assets.get('video-4k-hevc-10bit').file
-const derivedSpec = assets.get('image-4k-png').spec
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-params-pill-'))
-const PROJECT_ID = 'project-params-pill'
-const fixture = createCanvasPerformanceFixture({ projectsDir: path.join(temp, 'projects'), scale: 'empty', projectId: PROJECT_ID, projectName: '浮框与版本托盘验收' })
-const mediaDir = path.join(fixture.projectRoot, 'assets', 'imported')
-fs.mkdirSync(mediaDir, { recursive: true })
-for (const [name, at] of [['frame-a.png', '00:00:05'], ['frame-b.png', '00:00:40']]) {
-  const file = path.join(mediaDir, name)
-  execFileSync(ffmpeg.path, ['-y', '-ss', at, '-i', sourceVideo, '-frames:v', '1', file], { stdio: 'pipe' })
-  if (fs.statSync(file).size < derivedSpec.minBytes) throw new Error(`抽帧 ${name} 过小，多半黑帧`)
-}
-const url = (name) => `nomi-local://asset/${PROJECT_ID}/assets/imported/${name}`
-const imageResult = (id, name, createdAt) => ({ id, type: 'image', url: url(name), thumbnailUrl: url(name), createdAt })
-const IMAGE_META = { imageWidth: 3840, imageHeight: 2160, imageAspectRatio: 16 / 9 }
-const base = { prompt: '', categoryId: 'shots', references: [], runs: [] }
-const v1 = imageResult('stack-v1', 'frame-a.png', 1)
-const v2 = imageResult('stack-v2', 'frame-b.png', 2)
-const nodes = [
-  { ...base, id: 'stack', kind: 'image', title: '两个版本', position: { x: 80, y: 80 }, status: 'success', result: v2, history: [v2, v1], meta: { ...IMAGE_META } },
-  { ...base, id: 'empty-image', kind: 'image', title: '空图片', position: { x: 620, y: 80 }, status: 'idle', history: [] },
-  ...['frame-m1', 'frame-m2'].map((id, index) => ({
-    ...base, id, kind: 'image', title: `框内 ${index + 1}`, groupId: 'frame-rain', position: { x: 120 + index * 420, y: 620 },
-    status: 'success', result: imageResult(`${id}-r`, 'frame-b.png', 1), history: [imageResult(`${id}-r`, 'frame-b.png', 1)], meta: { ...IMAGE_META },
-  })),
-]
-const groups = [
-  { id: 'frame-rain', name: '雨夜', categoryId: 'shots', nodeIds: ['frame-m1', 'frame-m2'], frameBounds: { x: 80, y: 520, w: 860, h: 420 }, createdAt: 1, updatedAt: 1 },
-  { id: 'frame-empty', name: '空框', categoryId: 'shots', nodeIds: [], frameBounds: { x: 1100, y: 520, w: 420, h: 300 }, createdAt: 1, updatedAt: 1 },
-]
-fixture.record.payload.generationCanvas = { nodes, edges: [], groups, selectedNodeIds: [] }
-fs.writeFileSync(path.join(fixture.projectRoot, '.nomi/project.json'), JSON.stringify(fixture.record))
 
 const failures = []
 function check(ok, label, detail) {
@@ -80,22 +75,8 @@ function check(ok, label, detail) {
   return ok
 }
 
-const { app, win: first, tempRoot } = await launchNomiApp({
-  name: `node-params-pill-${LOCALE}`,
-  projectsDir: fixture.projectsDir,
-  settleMs: 0,
-  // 用户窗口实测 1440×859（osascript 读的真实窗口外框），内容区 1440×831。
-  viewportSize: { width: 1440, height: 831 },
-  initialLocalStorage: {
-    'nomi:locale:v1': LOCALE,
-    'nomi:splash:v1': 'seen',
-    'nomi:journey-tour:v1': 'seen',
-    'nomi:canvas-gesture-hint:v1': 'seen',
-    // 用户真实资料库里就是这一档（Figma 式：滚轮平移、⌘/Ctrl+滚轮缩放）。卡死标记的 150ms 窗口只在这一档出现。
-    'nomi.canvasGesture.scheme': 'modifier-zoom',
-  },
-})
-let win = first
+let win = smoke.win
+const first = win
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 const sel = (id) => `.react-flow__node[data-id="${id}"]`
 const frameSel = (id) => `.generation-canvas-v2__group-box[data-group-id="${id}"]`
@@ -152,13 +133,7 @@ async function fitView() {
 const overlayVisible = (locator) => locator.first().isVisible()
 
 try {
-  await app.context().addInitScript(() => { localStorage.setItem('__nomiE2E', '1') })
-  await win.locator('[data-project-card]', { hasText: fixture.record.name }).click({ timeout: stationTimeout({ operations: 2 }) })
-  await expect.poll(() => app.windows().some((page) => /projectId=/.test(page.url())), { timeout: stationTimeout() }).toBe(true)
-  win = app.windows().find((page) => /projectId=/.test(page.url()))
-  const bw = await app.browserWindow(win)
-  await bw.evaluate((window) => { window.setContentSize(1440, 831); window.setIgnoreMouseEvents(true) })
-  await win.locator(CANVAS_STAGE_SELECTOR).waitFor({ timeout: stationTimeout() })
+  win = await smoke.openProject()
   await expect(win.locator(sel('stack')), '项目打开后看不到两版卡').toBeVisible({ timeout: stationTimeout() })
   await fitView()
   await shot('00-canvas-ready')
@@ -321,11 +296,11 @@ try {
   failures.push(`走查中断：${String(error?.stack || error).split('\n').slice(0, 3).join(' | ')}`)
   await shot('zz-crash').catch(() => undefined)
 } finally {
-  fs.writeFileSync(path.join(shotsDir, 'results.json'), JSON.stringify({ locale: LOCALE, label: LABEL, failures, consoleErrors }, null, 2))
-  await app.close().catch(() => undefined)
+  fs.writeFileSync(path.join(shotsDir, 'results.json'), JSON.stringify({ locale: LOCALE, label: LABEL, fixture: smoke.fixture, failures, consoleErrors }, null, 2))
+  await smoke.close()
 }
 if (failures.length) {
   console.error(`\n✖ ${failures.length} 条失败：\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`\n✓ node-params-and-version-pill [${LOCALE}] 全部通过，截图：${shotsDir}`)
+console.log(`\n✓ node-params-and-version-pill [${smoke.fixture} · ${LOCALE}] 全部通过，截图：${shotsDir}`)

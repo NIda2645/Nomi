@@ -9,6 +9,7 @@ import { classifyValidationPolicy } from './validation-policy.mjs'
 
 function surfaces(result) {
   return {
+    coreSmoke: result.coreSmoke,
     unit: result.unit,
     desktop: result.desktop,
     journeys: result.journeys,
@@ -21,6 +22,7 @@ function surfaces(result) {
 }
 
 const focusedOnly = {
+  coreSmoke: true,
   unit: 'focused',
   desktop: false,
   journeys: false,
@@ -31,8 +33,10 @@ const focusedOnly = {
   failClosed: false,
 }
 
+const docsOnly = { ...focusedOnly, coreSmoke: false }
+
 test('documentation and isolated renderer changes pay only focused-unit cost', () => {
-  assert.deepEqual(surfaces(classifyValidationPolicy(['README.md'])), focusedOnly)
+  assert.deepEqual(surfaces(classifyValidationPolicy(['README.md'])), docsOnly)
   assert.deepEqual(surfaces(classifyValidationPolicy(['src/workbench/timeline/TimelinePanel.tsx'])), focusedOnly)
 })
 
@@ -47,7 +51,7 @@ test('docs-only deletions, including the historical README QR replacement, stay 
   for (const files of [qrFiles, [{ status: 'D', path: 'docs/中文.md' }],
     [{ status: 'D', path: 'marketing/old.png' }], [{ status: 'D', path: 'README.old.md' }]]) {
     const result = classifyValidationPolicy(files)
-    assert.deepEqual(surfaces(result), focusedOnly)
+    assert.deepEqual(surfaces(result), docsOnly)
     assert.equal(result.reason, 'docs_only')
   }
   // The historical commit also edited a test: its complete diff must stay full.
@@ -196,10 +200,31 @@ test('canvas group/reference walkthroughs belong to functional canvas without fo
   })
 })
 
+test('core flow smoke is on for every non-docs diff — including the shared CSS / generation-workspace shape that escaped on 09-22', () => {
+  // 09-22 回归坏在共享 CSS 开关：画布套件因为「没改到 generationCanvas」被跳过。冒烟不跟路径挂钩。
+  for (const file of [
+    'src/styles/workbench.css',
+    'src/workbench/generation/GenerationWorkspace.tsx',
+    'src/workbench/timeline/TimelinePanel.tsx',
+    'src/i18n/locales/generationCommon.ts',
+    'electron/tasks/taskAdmission.ts',
+  ]) {
+    for (const eventName of ['pull_request', 'push', 'merge_group']) {
+      assert.equal(classifyValidationPolicy([file], { eventName }).coreSmoke, true, `${file} (${eventName})`)
+    }
+  }
+  // 文档混进一个非文档文件 = 不是纯文档。
+  assert.equal(classifyValidationPolicy(['docs/a.md', 'src/styles/workbench.css']).coreSmoke, true)
+  // 只有纯文档关掉它。
+  assert.equal(classifyValidationPolicy(['docs/a.md', 'README.md']).coreSmoke, false)
+  // 冒烟自身的清单 / 夹具 / 跑法算验证基础设施：改它就全跑。
+  assert.equal(classifyValidationPolicy(['tests/ux/core-smoke/scenarios.mjs']).failClosed, true)
+})
+
 test('main pushes reuse changed-file risk instead of becoming full only because they are pushes', () => {
   assert.deepEqual(
     surfaces(classifyValidationPolicy(['README.md'], { eventName: 'push' })),
-    focusedOnly,
+    docsOnly,
   )
 })
 
@@ -213,6 +238,7 @@ test('empty, delete, rename, and explicit full requests fail closed across every
   ]
   for (const result of cases) {
     assert.deepEqual(surfaces(result), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -233,6 +259,7 @@ test('validation infrastructure changes exercise functional coverage without unr
     ['scripts/real-user-test-gates.mjs'],
   ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -252,6 +279,7 @@ test('performance-instrument changes re-run the performance lane on themselves s
     ['scripts/canvas-performance-verdict.mjs'],
   ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -273,6 +301,7 @@ test('validation infrastructure composes monotonically with real product and pac
       ]),
     ),
     {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -284,6 +313,7 @@ test('validation infrastructure composes monotonically with real product and pac
     },
   )
   assert.deepEqual(surfaces(classifyValidationPolicy(['scripts/select-quality-gate-profile.mjs', 'package.json'])), {
+    coreSmoke: true,
     unit: 'full',
     desktop: true,
     journeys: true,
@@ -295,6 +325,7 @@ test('validation infrastructure composes monotonically with real product and pac
   })
   // The perf instrument composes with packaging risk and still forces its own lane.
   assert.deepEqual(surfaces(classifyValidationPolicy(['scripts/validation-policy.mjs', 'package.json'])), {
+    coreSmoke: true,
     unit: 'full',
     desktop: true,
     journeys: true,
@@ -333,6 +364,7 @@ test('GitHub output exposes every policy dimension with stable snake-case names'
     fs.readFileSync(outputPath, 'utf8').trim().split('\n').map((line) => line.split('=')),
   )
   assert.deepEqual(output, {
+    core_smoke: 'true',
     unit: 'full',
     desktop: 'true',
     journeys: 'false',
