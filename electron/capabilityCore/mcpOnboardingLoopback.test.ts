@@ -46,12 +46,17 @@ function makeService(dir: string) {
       childRunRef: { runId: "run-loopback", revisionDigest: "f".repeat(64) },
     })),
   };
+  // 这个服务的选项叫 `filePath`，不是 `dir`（`integrationSession.ts` 的 `Dependencies`）。
+  // 整个对象上原先套了一层 `as never`，于是编译器对这个不存在的键一个字都没说，服务退回默认值
+  // —— **用户真实的** `~/.nomi/capability-core/integration-sessions.json`。这份测试因此会读到
+  // 用户本人的会话；他那份有 101 条、超过 MAX_SESSIONS=100，于是它在这台机器上红，在别的机器上绿。
+  // 测试不许读写用户真实目录：给足真路径，`as never` 只留在那两个确实需要放宽的成员上。
   const sessions = new IntegrationSessionService({
-    dir,
+    filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
-    credentialResolver: () => ({ apiKey: "sk-loopback", vendorKey: "deepseek" }),
+    credentialResolver: (() => ({ apiKey: "sk-loopback", vendorKey: "deepseek" })) as never,
     compilerAvailable: () => true,
-  } as never);
+  });
   return { sessions, certification };
 }
 
