@@ -122,21 +122,32 @@ function manifestFor(sourceVideo, exportWidth, exportHeight) {
   }
 }
 
-/** 墙钟 + 峰值常驻内存。macOS `time -l` 报字节，GNU `time -v` 报 KB；两种都认，认不出就抛。 */
+/**
+ * 墙钟（判据）+ 峰值常驻内存（**尽力而为的留痕**，判不判都不影响结论）。
+ *
+ * 内存走 `/usr/bin/time`：macOS `-l` 报字节、GNU `-v` 报 KB。两种都不认时返回 null 而不是抛——
+ * 峰值内存在这条腿里只是证据链（喂 residual_risk 与「导出成本二期」），
+ * 为一个不参与判定的量把整条腿弄红，就是 flaky red 的另一种长法。
+ * 墙钟只量 ffmpeg 自己，`/usr/bin/time` 起不来就直接 spawn，判据一天都不缺。
+ */
 function runMeasured(args) {
+  const timeFlag = os.platform() === 'linux' ? '-v' : '-l'
   const started = Date.now()
-  const gnu = os.platform() === 'linux'
-  const timeArgs = gnu ? ['-v', FFMPEG, ...args] : ['-l', FFMPEG, ...args]
-  const result = spawnSync('/usr/bin/time', timeArgs, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
+  let result = spawnSync('/usr/bin/time', [timeFlag, FFMPEG, ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
+  let measuredMemory = true
+  if (result.error) {
+    measuredMemory = false
+    result = spawnSync(FFMPEG, args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 })
+  }
   const wallSeconds = (Date.now() - started) / 1000
   if (result.status !== 0) {
     throw new Error(`导出失败 exit=${result.status}\n${String(result.stderr).slice(-3000)}`)
   }
+  if (!measuredMemory) return { wallSeconds, peakBytes: null }
   const text = String(result.stderr)
   const mac = /(\d+)\s+maximum resident set size/.exec(text)
   const linux = /Maximum resident set size \(kbytes\):\s*(\d+)/.exec(text)
-  if (!mac && !linux) throw new Error(`读不出峰值内存——/usr/bin/time 的输出不认识:\n${text.slice(-800)}`)
-  const peakBytes = mac ? Number(mac[1]) : Number(linux[1]) * 1024
+  const peakBytes = mac ? Number(mac[1]) : linux ? Number(linux[1]) * 1024 : null
   return { wallSeconds, peakBytes }
 }
 
@@ -222,7 +233,7 @@ async function main() {
   for (const r of results) {
     console.log(
       `  N=${String(r.count).padStart(3)}  墙钟 ${r.wallSeconds.toFixed(1)}s`
-      + `  峰值内存 ${(r.peakBytes / 2 ** 30).toFixed(2)}GB（只记录，不判定——见文件抬头）`
+      + `  峰值内存 ${r.peakBytes === null ? '未测到' : `${(r.peakBytes / 2 ** 30).toFixed(2)}GB`}（只记录，不判定——见文件抬头）`
       + `  静帧输入合计 ${r.stillSeconds.toFixed(1)}s  产物 ${r.frames} 帧`,
     )
   }

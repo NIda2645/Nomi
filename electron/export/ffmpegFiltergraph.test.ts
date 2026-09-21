@@ -472,6 +472,9 @@ describe("compileFfmpegFiltergraph", () => {
       expect(plan.filterComplex).toContain("enable='between(t,20,100)'");
     });
 
+    // 这条是全套里**唯一让 N 自己变大**的：其余几条都把 N 固定在 1–5，钉的是「每条怎么算」。
+    // 类根因是「成本随 N 成倍涨」，所以必须有一条真的把 N 拉到现实上限（一条 10 分钟片子的字幕数）
+    // 去看总量。删了它，回归到「每条都对、加起来仍然爆炸」这种形状就没人拦。
     it("200 条字幕的输入总时长 ≈ 各自窗口之和，而不是 200 × 全片长", () => {
       const durationFrames = 18_000; // 10 分钟
       const windows = Array.from({ length: 200 }, (_, index) => ({ startFrame: index * 90, endFrame: index * 90 + 90 }));
@@ -514,6 +517,9 @@ describe("compileFfmpegFiltergraph", () => {
       for (const input of overlayInputs) expect(inputSeconds(input.inputArgs)).toBeLessThan(durationFrames / FPS);
     });
 
+    // 除了层序，这条还钉着**六位小数截断**下的 enable 端点（3.333333 / 6.666667 / 13.333333 /
+    // 16.666667）。那几个数字正是 `-framerate` 那次回归翻车的地方：time_base 一变，
+    // 闭区间端点帧就从「不显示」翻成「显示」。别的测试用的都是整秒，翻不出这一档。
     it("层序 = 数组序：第 k 条叠在第 k-1 条的输出上，最后一条收口 format", () => {
       const plan = overlayPlan(900, [
         { startFrame: 0, endFrame: 300 },
