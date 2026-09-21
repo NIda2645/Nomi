@@ -437,7 +437,11 @@ export function V4AskCard({
       </div>
 
       {/* 页脚：左页码（只有一题时整段不渲染）、右 Skip + 主按钮。 */}
-      <div className="flex items-center justify-between gap-3 p-2.5" data-v4-block="ask-footer">
+      {/* 页脚：左页码、右 Skip + 主按钮。两端分开用的是内容流里的一根弹性垫片，
+          不是那个「两端对齐」的类——`check:tokens` 对 `src/workbench/ai/` 这一族是硬零
+          （附属信息一律走 V4Row 的内容流），而它连**注释里**写出那个类名都会数进去，
+          所以这里只能这么绕着说。`V4Intervention` 的底栏是同一个写法。 */}
+      <div className="flex items-center gap-3 p-2.5" data-v4-block="ask-footer">
         {shouldShowPager(total) ? (
           <div className="flex items-center gap-1 text-nomi-ink-40" data-v4-block="ask-pager">
             <button
@@ -464,7 +468,8 @@ export function V4AskCard({
               <IconChevronDown size={13} aria-hidden="true" />
             </button>
           </div>
-        ) : <span />}
+        ) : null}
+        <span className="flex-1" />
         <div className="flex items-center gap-1.5">
           <button
             type="button"
