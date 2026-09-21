@@ -1,4 +1,4 @@
-import { argumentFailure } from './laneTools.mjs';
+import { argumentFailure } from '../shared/agentLane/laneArgumentFailure';
 import { ZodError } from "zod";
 import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/transportContracts'
 import { randomUUID } from 'node:crypto'

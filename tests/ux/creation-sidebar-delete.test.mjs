@@ -4,7 +4,7 @@ import { expect } from '@playwright/test'
 import { expectAbsent, proveProbe } from './_assert.mjs'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
-test('sidebar preserves legacy plan and document deletion with confirmation', async () => {
+test('sidebar deletes a plan at once (undo is the net) and still confirms document deletion', async () => {
   const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 } })
   let browser
   try {
@@ -17,13 +17,12 @@ test('sidebar preserves legacy plan and document deletion with confirmation', as
     const planProof = await proveProbe(plan, 'existing sidebar plan before deletion')
     await plan.click({ button: 'right' })
     await expect(page.locator('[data-resource-action="delete"]')).toBeVisible()
+    // 删方案**不再弹确认**（2026-09-21 渲染层第四程，用户拍板：当场删 + 撤销条，接仓库现成的 `showUndoToast`；
+    // 撤销复原到原位由 `storyboardDeleteUndoRestore.test.ts` 与真机走查 `creation-plan-delete-undo.walk.mjs` 钉）。
+    // 这里守的是它的另一半：点下去就没了，而且中间**没有**一个对话框把它拦住。文稿删除仍然要确认（不可撤销）。
     await page.locator('[data-resource-action="delete"]').click()
-    await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
-    await expect(plan).toHaveCount(1)
-    await plan.click({ button: 'right' })
-    await page.locator('[data-resource-action="delete"]').click()
-    await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click()
-    await expectAbsent(plan, { provenBy: planProof, message: 'confirmed deletion removes the previously visible plan' })
+    await expectAbsent(plan, { provenBy: planProof, message: 'deleting a plan removes it at once — the undo toast is the safety net, not a dialog' })
+    await expect(page.getByRole('dialog'), '删方案不该再有确认框').toBeHidden()
     await expect(page.locator('[data-document-row]')).toHaveCount(2)
     await page.locator('button[data-document-id="b"]').click({ button: 'right' })
     await page.locator('[data-resource-action="delete"]').click()

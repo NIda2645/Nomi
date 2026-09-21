@@ -13,7 +13,9 @@ import path from 'node:path'
 import { REPO_ROOT } from './design-lab/labStates.mjs'
 import { assertLabPortOwnership, labPortFor } from './design-lab/labServer.mjs'
 
-const ROLE = 'walk-agent-panel-v4'
+// 自己的角色 = 自己的端口（原来借的是 `walk-agent-panel-v4`：三份入口并行跑会抢同一口）。
+const LAB = { role: 'walk-ask-card-in-panel' }
+const ROLE = LAB.role
 const PORT = labPortFor(ROLE)
 const BASE = `http://127.0.0.1:${PORT}`
 const outDir = process.env.ASK_IN_PANEL_OUT || path.join(REPO_ROOT, 'tests/ux/shots/design-lab-ask-card-in-panel')
