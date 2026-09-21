@@ -241,11 +241,8 @@ function parameterFieldForControl(control: ModelParameterControl): ParameterFiel
 }
 
 export function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
-  if (!candidates) return undefined;
-  const selected = videoCandidateForPlan(candidate, candidates);
-  if (!selected) return undefined;
-  const mode = videoModeForPlan(selected.candidate, selected.videoCandidate);
-  return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
+  // 参数表与变体清单是同一次档案解析的两个产物，主人是 videoCompileOptions；这里只取其中一样。
+  return videoCompileOptions(candidate, candidates).parameterSchema;
 }
 
 export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
