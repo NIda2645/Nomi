@@ -21,7 +21,9 @@ import {
 } from "./exportAuditManifest";
 import { planExport } from "./exportPlanner";
 import { ExportCancelledError, renderFiltergraphToMp4, transcodeWebmFileToMp4, transcodeWebmToMp4, type TimelineMp4ExportResult } from "./ffmpegRunner";
-import { compileFfmpegFiltergraph, FfmpegFiltergraphError, type FfmpegFiltergraphPlan, type FfmpegTextOverlayInput } from "./ffmpegFiltergraph";
+import { compileFfmpegFiltergraph, type FfmpegFiltergraphPlan } from "./ffmpegFiltergraph";
+import { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
+import type { FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
 import { logError } from "../logging/logger";
 import { probeMediaMetadata } from "./mediaProbe";
 import { appendExportTempInputChunk, finishExportTempInput as finishExportTempInputFile, removeExportTempInput } from "./exportTempInput";

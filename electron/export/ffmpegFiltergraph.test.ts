@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { NomiRenderManifestV1 } from "./exportManifest";
 import type { ExportProfile } from "./exportTypes";
-import { compileFfmpegFiltergraph, FfmpegFiltergraphError } from "./ffmpegFiltergraph";
+import { compileFfmpegFiltergraph } from "./ffmpegFiltergraph";
+import { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
 
 const profile: ExportProfile = {
   preset: "publish",

@@ -10,12 +10,6 @@ import {
 } from "./ffmpegGraphPrimitives";
 import { buildTextOverlayGraph, type FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
 
-// 地基与文字链住在各自的文件里（见那两个文件的抬头），这里按既有的 import 路径原样转出去，
-// 让调用方不必关心内部怎么拆的。**只有一份定义**，不是并行版。
-export { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
-export type { FfmpegFiltergraphErrorCode, FfmpegFiltergraphPlanInput } from "./ffmpegGraphPrimitives";
-export type { FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
-
 export type FfmpegFiltergraphInput = {
   manifest: NomiRenderManifestV1;
   textOverlays?: FfmpegTextOverlayInput[];

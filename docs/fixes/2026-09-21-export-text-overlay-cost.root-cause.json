@@ -145,7 +145,7 @@
   "door_reduction": {
     "before": 11,
     "after": 17,
-    "why_not": "门数从 11 涨到 17，是**拆文件**带来的记账变化，不是新增了控制点：地基与文字链搬进 ffmpegGraphPrimitives.ts / ffmpegTextOverlayGraph.ts 之后，ffmpegFiltergraph.ts 按原 import 路径把公开符号转出去，于是同一个符号在「定义处」和「转出处」各被数了一次。真正的控制面没变：写门仍只有一扇（exportJobs 三处调用同一个 compileFfmpegFiltergraph），滤镜图的内容完全由它一家产出；其余全是「拿到已编好的 plan 去拼 argv / 跑 ffmpeg / 声明类型」的读门，读的是结果不是决策，读门再多也改不了 `-t` 取什么值。收口发生在写门内部：`-loop 1` 的构造从两处收成一处 loopedStillInput（现居 ffmpegGraphPrimitives.ts），由 check:heavy-path 的 ffmpeg-still-input-outside-owner 按闸盯住，扫描范围是门岗收集的全部 src/ + electron/。"
+    "why_not": "门数从 11 涨到 17，是**拆文件**带来的记账变化，不是新增了控制点：地基与文字链搬进 ffmpegGraphPrimitives.ts / ffmpegTextOverlayGraph.ts 之后，ffmpegFiltergraph.ts 从那两个文件 import 这些符号来用（不转发 re-export，调用方直接从定义处 import），于是同一个符号在「定义处」和「使用处」各被数了一次。真正的控制面没变：写门仍只有一扇（exportJobs 三处调用同一个 compileFfmpegFiltergraph），滤镜图的内容完全由它一家产出；其余全是「拿到已编好的 plan 去拼 argv / 跑 ffmpeg / 声明类型」的读门，读的是结果不是决策，读门再多也改不了 `-t` 取什么值。收口发生在写门内部：`-loop 1` 的构造从两处收成一处 loopedStillInput（现居 ffmpegGraphPrimitives.ts），由 check:heavy-path 的 ffmpeg-still-input-outside-owner 按闸盯住，扫描范围是门岗收集的全部 src/ + electron/。"
   },
   "invariant_owner_layer": {
     "layer": "electron/export/ffmpegFiltergraph.ts",
