@@ -315,8 +315,15 @@ function collectVisualTransitionGroups(
   return { groups, warnings };
 }
 
-/** 叠加层输入在自己窗口前后各留的余量帧数（见 `loopedStillInput` 的注释）。 */
-const OVERLAY_INPUT_MARGIN_FRAMES = 2;
+/**
+ * 叠加层输入在自己窗口前后各留的余量（秒）。
+ *
+ * 作用：保证 `enable` 区间的**端点帧**在 framesync 里一定取得到一张叠加帧。
+ * 为什么按秒而不是按帧：静帧输入的帧率不是我们定的（见 `loopedStillInput`：**不能**加 `-framerate`），
+ * 0.2 s 在 ffmpeg image2 的默认 25 fps 下是 5 帧，对任何 ≥5 fps 的输入都至少有一帧落在余量里。
+ * 代价可以忽略：120 条字幕总共多生成 120 × 0.4 s 的静帧，对照修复前的 120 × 全片长。
+ */
+const OVERLAY_INPUT_MARGIN_SECONDS = 0.2;
 
 /**
  * 全仓唯一构造「循环静帧输入」（`-loop 1`）的地方。守一条不变量：
@@ -330,15 +337,18 @@ const OVERLAY_INPUT_MARGIN_FRAMES = 2;
  * 峰值内存 1.01 GB → 6.71 GB，而且全程零 ffmpeg 报错，用户只会以为「Nomi 导出很慢」。
  * 根因合同：`docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json`。
  *
- * `framerate` 传了就把静帧的时间网格钉到时间轴 fps。不传时 ffmpeg 的 image2 demuxer 默认 25 fps,
- * 那是一个隐式上游默认值，会让「窗口前后留几帧余量」算不准（60 fps 时间轴上 2 帧只有 33 ms,
- * 比 25 fps 的一个帧周期还短）。
+ * **不要在这里加 `-framerate`**（试过，翻车了）：静帧输入的帧率决定它那条链的 `time_base`，
+ * 而 `ff_framesync_configure` 拿两路输入的 `time_base` 求公约数当 overlay 的输出 `time_base`,
+ * 于是下游 `enable='between(t,…)'` 看到的 `t` 跟着变。把静帧从 image2 默认的 25 fps 改成时间轴的
+ * 30 fps 之后，窗口末帧（`between` 闭区间的那个端点）从「不显示」翻成「显示」：`formatSeconds`
+ * 只留 6 位小数，200/30 = 6.666666… 与表达式里的 6.666667 差在第 7 位，够不够得着完全由 time_base
+ * 的取整决定。实测 gaps 形态第 200 帧就是这么多叠了一帧出来（逐帧对照抓到的）。
+ * 帧率不动 ⇒ 边界行为与修复前逐帧一致。
  */
 function loopedStillInput(
   assetId: string,
   absolutePath: string,
   windowSeconds: number,
-  framerate?: number,
 ): FfmpegFiltergraphPlanInput {
   if (!Number.isFinite(windowSeconds) || windowSeconds <= 0) {
     throw new FfmpegFiltergraphError(
@@ -350,13 +360,7 @@ function loopedStillInput(
     assetId,
     path: absolutePath,
     kind: "image",
-    inputArgs: [
-      "-loop",
-      "1",
-      ...(framerate === undefined ? [] : ["-framerate", formatNumber(framerate)]),
-      "-t",
-      formatSeconds(windowSeconds),
-    ],
+    inputArgs: ["-loop", "1", "-t", formatSeconds(windowSeconds)],
   };
 }
 
@@ -734,20 +738,11 @@ function buildTextOverlayGraph(
     const inputIndex = assetInputCount + index;
     const start = secondsFromFrames(overlay.startFrame, fps);
     const end = secondsFromFrames(overlay.endFrame, fps);
-    const streamStartFrame = Math.max(0, overlay.startFrame - OVERLAY_INPUT_MARGIN_FRAMES);
-    const streamEndFrame = overlay.endFrame + OVERLAY_INPUT_MARGIN_FRAMES;
-    inputs.push(
-      loopedStillInput(
-        `text_overlay_${index}`,
-        overlay.path,
-        secondsFromFrames(streamEndFrame - streamStartFrame, fps),
-        fps,
-      ),
-    );
+    const streamStart = Math.max(0, start - OVERLAY_INPUT_MARGIN_SECONDS);
+    const streamEnd = end + OVERLAY_INPUT_MARGIN_SECONDS;
+    inputs.push(loopedStillInput(`text_overlay_${index}`, overlay.path, streamEnd - streamStart));
     const placedLabel = `vtxtsrc${index}`;
-    filters.push(
-      `[${inputIndex}:v]setpts=PTS-STARTPTS+${formatSeconds(secondsFromFrames(streamStartFrame, fps))}/TB[${placedLabel}]`,
-    );
+    filters.push(`[${inputIndex}:v]setpts=PTS-STARTPTS+${formatSeconds(streamStart)}/TB[${placedLabel}]`);
     const isLast = index === textOverlays.length - 1;
     const out = isLast ? "voutfinal" : `vtxt${index}`;
     const formatSuffix = isLast ? `,format=${pixelFormat}` : "";

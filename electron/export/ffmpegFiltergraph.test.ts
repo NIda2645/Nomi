@@ -386,13 +386,13 @@ describe("compileFfmpegFiltergraph", () => {
     });
 
     // 两条 overlay PNG 作为新输入接在素材输入之后（index 1、2）。
-    // -t **只覆盖自己的窗口**（前后各留 2 帧余量），不是时间轴全长 5s：
-    //   #0 窗口 0~90 帧 → 流 0~92 帧 = 3.066667s；#1 窗口 30~150 帧 → 流 28~152 帧 = 4.133333s。
-    expect(plan.inputs[1]).toEqual({ assetId: "text_overlay_0", path: "/tmp/job/text-overlay-0.png", kind: "image", inputArgs: ["-loop", "1", "-framerate", "30", "-t", "3.066667"] });
-    expect(plan.inputs[2]).toEqual({ assetId: "text_overlay_1", path: "/tmp/job/text-overlay-1.png", kind: "image", inputArgs: ["-loop", "1", "-framerate", "30", "-t", "4.133333"] });
-    // 每条流先 setpts 落到时间轴位置（窗口起点减 2 帧余量，夹到 ≥0）
+    // -t **只覆盖自己的窗口**（前后各留 0.2s 余量），不是时间轴全长 5s：
+    //   #0 窗口 0~3s → 流 0~3.2s；#1 窗口 1~5s → 流 0.8~5.2s。
+    expect(plan.inputs[1]).toEqual({ assetId: "text_overlay_0", path: "/tmp/job/text-overlay-0.png", kind: "image", inputArgs: ["-loop", "1", "-t", "3.2"] });
+    expect(plan.inputs[2]).toEqual({ assetId: "text_overlay_1", path: "/tmp/job/text-overlay-1.png", kind: "image", inputArgs: ["-loop", "1", "-t", "4.4"] });
+    // 每条流先 setpts 落到时间轴位置（窗口起点减余量，夹到 ≥0）
     expect(plan.filterComplex).toContain("[1:v]setpts=PTS-STARTPTS+0/TB[vtxtsrc0]");
-    expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+0.933333/TB[vtxtsrc1]");
+    expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+0.8/TB[vtxtsrc1]");
     // 第一条 overlay：base=vcomposite（视觉链尾，未定型），区间 0~3s
     expect(plan.filterComplex).toContain("[vcomposite][vtxtsrc0]overlay=0:0:eof_action=pass:enable='between(t,0,3)'[vtxt0]");
     // 第二条 overlay：base=vtxt0，区间 1~5s，末条补 format=yuv420p，输出 voutfinal
@@ -425,7 +425,7 @@ describe("compileFfmpegFiltergraph", () => {
   // 所以这一族断言看的是**输入时长与什么相关**，不是某一条的字面值。
   describe("文字叠加层的输入预算", () => {
     const FPS = 30;
-    const MARGIN_FRAMES = 2;
+    const MARGIN_SECONDS = 0.2;
 
     function overlayPlan(
       durationFrames: number,
@@ -457,7 +457,7 @@ describe("compileFfmpegFiltergraph", () => {
       const short = overlayPlan(300, windows);
       const long = overlayPlan(18_000, windows);
       expect(short.inputs.slice(1).map((input) => input.inputArgs)).toEqual(long.inputs.slice(1).map((input) => input.inputArgs));
-      expect(inputSeconds(long.inputs[1].inputArgs)).toBeCloseTo((390 - 300 + 2 * MARGIN_FRAMES) / FPS, 5);
+      expect(inputSeconds(long.inputs[1].inputArgs)).toBeCloseTo((390 - 300) / FPS + 2 * MARGIN_SECONDS, 5);
     });
 
     it("200 条字幕的输入总时长 ≈ 各自窗口之和，而不是 200 × 全片长", () => {
@@ -470,7 +470,7 @@ describe("compileFfmpegFiltergraph", () => {
       const totalSeconds = overlayInputs.reduce((sum, input) => sum + inputSeconds(input.inputArgs), 0);
       const timelineSeconds = durationFrames / FPS;
       const windowSeconds = windows.reduce((sum, w) => sum + (w.endFrame - w.startFrame) / FPS, 0);
-      const marginSeconds = (200 * 2 * MARGIN_FRAMES) / FPS;
+      const marginSeconds = 200 * 2 * MARGIN_SECONDS;
       expect(totalSeconds).toBeLessThanOrEqual(windowSeconds + marginSeconds + 0.01);
       // 旧写法会是 200 × 600s = 120000s；这条断言就是它与新写法的分水岭。
       expect(totalSeconds).toBeLessThan(timelineSeconds * 2);
@@ -487,10 +487,13 @@ describe("compileFfmpegFiltergraph", () => {
       ];
       const plan = overlayPlan(durationFrames, windows);
       const overlayInputs = plan.inputs.slice(1);
-      const expected = windows.map((w) => (w.endFrame + MARGIN_FRAMES - Math.max(0, w.startFrame - MARGIN_FRAMES)) / FPS);
-      expect(overlayInputs.map((input) => inputSeconds(input.inputArgs))).toEqual(
-        expected.map((seconds) => Number(seconds.toFixed(6))),
-      );
+      // 逐条写死，不用公式反推（公式反推会把实现的错一起抄过来）：
+      //   窗口秒 = [0~1, 4~5, 4.666667~8.666667, 16.666667~16.7, 29.333333~32]
+      //   流 = [max(0,起-0.2), 止+0.2] → -t 依次是 1.2 / 1.4 / 4.4 / 0.433333 / 3.066667
+      expect(overlayInputs.map((input) => inputSeconds(input.inputArgs))).toEqual([1.2, 1.4, 4.4, 0.433333, 3.066667]);
+      expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+3.8/TB[vtxtsrc1]");
+      expect(plan.filterComplex).toContain("[4:v]setpts=PTS-STARTPTS+16.466667/TB[vtxtsrc3]");
+      expect(plan.filterComplex).toContain("[5:v]setpts=PTS-STARTPTS+29.133333/TB[vtxtsrc4]");
       // 片头那条的落位偏移被夹到 0，不会出现负的 setpts。
       expect(plan.filterComplex).toContain("[1:v]setpts=PTS-STARTPTS+0/TB[vtxtsrc0]");
       expect(plan.filterComplex).not.toContain("setpts=PTS-STARTPTS+-");
