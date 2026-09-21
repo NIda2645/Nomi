@@ -43,8 +43,10 @@ describe("capShotCutsByScore —— 超上限时压的是「给多少」，不�
     const { kept, capped, appliedThreshold } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
 
     expect(capped).toBe(true);
-    expect(kept.length).toBeLessThanOrEqual(MAX_CUTS);
     expect(appliedThreshold).toBeGreaterThan(SHOT_CUT_DETECT_THRESHOLD);
+    // 分数互不相同的片子上，名额要用满——阈值取高一档就会白白少给一刀，
+    // 而「≤ 上限」这条弱断言放得过去（少给一刀也 ≤ 上限）。并列分数那条用例另测「可以少给」。
+    expect(kept).toHaveLength(MAX_CUTS);
 
     // 核心不变量：最后一刀仍然靠近片尾。旧做法在这里是 55.4s / 361s ≈ 15%。
     const covered = kept[kept.length - 1].seconds;

@@ -164,13 +164,10 @@ export function capShotCutsByScore(
   detectThreshold: number,
 ): { kept: RawShotCut[]; appliedThreshold: number; capped: boolean } {
   if (cuts.length <= cap) return { kept: [...cuts], appliedThreshold: detectThreshold, capped: false };
-  // 从高到低扫分数，找**最小**的那个阈值使得「严格大于它」的刀数 <= cap。
-  const descending = [...new Set(cuts.map((cut) => cut.score))].sort((a, b) => b - a);
-  let appliedThreshold = descending[0] ?? detectThreshold;
-  for (const score of descending) {
-    if (cuts.filter((cut) => cut.score > score).length <= cap) appliedThreshold = score;
-    else break;
-  }
+  // 分数从高到低排，取第 cap+1 名当阈值：严格大于它的顶多 cap 条（前 cap 名里与它并列的那些
+  // 会一起被排除），而再低一档就必然超上限——所以它就是「最小的可行阈值」，一次排序拿到，
+  // 不必逐个候选阈值回扫一遍。
+  const appliedThreshold = cuts.map((cut) => cut.score).sort((a, b) => b - a)[cap];
   return { kept: cuts.filter((cut) => cut.score > appliedThreshold), appliedThreshold, capped: true };
 }
 
