@@ -214,7 +214,7 @@ export function buildDetectFilter(threshold: number): string {
 /**
  * 联系表的 filtergraph：按**整数 pts 点名选帧**（不按分数重筛，理由见文件头）。
  * 逗号要转义成 `\,`，否则会被 filtergraph 当成 filter 分隔符。
- * 表达式长度由 `MAX_CUTS` 封顶（实测 1994 字节、ffmpeg 8.0.1 接受、2.54s）；抬高 MAX_CUTS 要重验。
+ * 表达式长度由 `MAX_CUTS` 封顶；随附 ffmpeg 4.4 的执行覆盖见真素材测试，抬高 MAX_CUTS 要重验。
  */
 export function buildSheetFilter(ptsList: readonly number[], columns: number, rows: number, tileHeight: number): string {
   const picks = ptsList.map((pts) => `eq(pts\\,${pts})`).join("+");

@@ -207,9 +207,9 @@ describe("联系表行数只有一个 owner（2026-09-22 阻断 B）", () => {
     expect(shotSheetRowsFor(0, 8)).toBe(1);
   });
 
-  // 结构守卫：渲染层不许再长出第二份行数算式。这条不是风格检查——
-  // 两份算式同时存在正是 B 的成因，而两份都「各自正确」时任何单元测试都发现不了分叉。
-  it("渲染层没有任何行数/格子数的自算逻辑", () => {
+  // 廉价的回归提醒：换个变量名或写法即可绕过；真正起作用的是结构——
+  // sheetRows 只在 shotSheetRowsFor 算一次并随结果下发。
+  it("廉价回归提醒：扫描已知行数/格子数写法，换写法可绕过", () => {
     const root = path.resolve(__dirname, "../../src/workbench/generationCanvas/nodes");
     for (const file of ["shotCutSelection.ts", "NodeShotCutPanel.tsx"]) {
       const source = fs.readFileSync(path.join(root, file), "utf8");

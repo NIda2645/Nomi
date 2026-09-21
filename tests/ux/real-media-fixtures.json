@@ -65,6 +65,26 @@
       "whyThisOne": "纯中文长口播（9 分钟），用来验分段接缝：一条要切成两段以上的音轨，接缝处那句话有没有被腰斩或重复，只有真实连续语流看得出来"
     },
     {
+      "id": "shot-cut-aug12-hevc",
+      "kind": "video",
+      "relativePath": "8月12日.mov",
+      "spec": {
+        "codec": "hevc",
+        "width": 1980,
+        "height": 1080,
+        "bytes": 175405597,
+        "durationSeconds": 547.202,
+        "fps": 30,
+        "bFrames": 2,
+        "frameCount": 16414,
+        "rawDetectedCuts": 390,
+        "dedupedCuts": 320,
+        "keptCuts": 120
+      },
+      "source": "用户 2026-08-12 真机录屏；素材不进仓库，本机在 localDefaultDir",
+      "whyThisOne": "HEVC 长片含 B 帧重排，约 547 秒；随附 ffmpeg 实测原始切点 390、两帧去重后 320、按分数封顶 120，直接覆盖 shot-cut 的真实上限路径"
+    },
+    {
       "id": "video-fastcut-derived",
       "kind": "video",
       "derivedFrom": {
@@ -79,7 +99,7 @@
         "durationSeconds": 70,
         "minDetectedCuts": 121
       },
-      "whyThisOne": "「切点超上限」那条路只有 >120 刀的片子才走得到，而登记的真素材都是平稳口播、远不到上限。这里**派生**而不是另找素材有两个理由：① 画面仍是真实拍摄内容（真实熵、真实 H.264 编码、真实 scene_score 分布），合成色块/testsrc2 的分数分布是退化的，长不出 2026-09-22 那条边界；② 不必把有版权的第三方片段拖进仓库或素材目录。实测这条派生片 146 刀 / 去重后 133 刀，且**恰好有一帧的打印分数等于压上限算出的阈值**——正是第一版与 ffmpeg 分道扬镳的那个点"
+      "whyThisOne": "保留短间隔接缝的 H.264 回归样本，画面来自真实录制；原片的 HEVC / B 帧重排另由 shot-cut-aug12-hevc 覆盖。测试要求派生片去重后仍超过 120 刀，并有打印分数恰好等于封顶阈值的帧。派生过程使用生产 resolver 的随附二进制，缓存身份包含源文件与二进制身份"
     }
   ],
   "coverage": [
@@ -164,7 +184,8 @@
       "test": "electron/video/shotCutSheetAlignment.realMedia.test.ts",
       "assets": [
         "speech-zh-only-hevc",
-        "video-fastcut-derived"
+        "video-fastcut-derived",
+        "shot-cut-aug12-hevc"
       ],
       "status": "live",
       "why": "联系表「第 i 格 = 第 i 刀」这条只有真 ffmpeg 才证得了：第一版单测全绿、合成夹具零发现，而真实素材上 120 刀里 21 刀指向错误格子（JS 只看得到 scene_score 的 6 位打印值，ffmpeg 的 gt() 比内部 double，恰好等于阈值那一帧两边判断相反）。这条测试不看中间量，只逐格比对『格子里的画面 vs 原片在该刀时间戳上的帧』（16x12 灰度平均绝对差，同帧 ≤2.4 / 错帧普遍 >20）。实测：按 pts 点名 0/120 错；退回按分数重筛 90/120 错"

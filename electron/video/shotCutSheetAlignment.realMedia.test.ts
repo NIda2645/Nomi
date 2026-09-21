@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveFfmpegPath } from "../export/ffmpegRunner";
+import { resolveFfprobePath } from "../export/mediaProbe";
 // 真实素材的执行层（R13「四件真实」第④件）。登记表：tests/ux/real-media-fixtures.json。
 // @ts-expect-error -- helper 是 .mjs，没有类型声明
 import { requireRealMediaAssets } from "../../tests/ux/fixtures/realMedia.mjs";
@@ -19,6 +21,13 @@ import {
   parseShotCutOutput,
   shotSheetRowsFor,
 } from "./detectShotCuts";
+
+const FFMPEG_PATH = resolveFfmpegPath();
+const FFPROBE_PATH = resolveFfprobePath(undefined, FFMPEG_PATH);
+
+if (!FFMPEG_PATH || !FFPROBE_PATH) {
+  throw new Error("随附 ffmpeg/ffprobe 未解析到：真实素材测试必须与生产使用同一 resolver");
+}
 
 /**
  * 联系表逐格核对 —— 这一条只有**真 ffmpeg + 真素材**才证得了。
@@ -40,24 +49,27 @@ const FRAME_BYTES = TILE_W * TILE_H;
 const SAME_FRAME_MAD = 12;
 
 function ffmpeg(args: string[]): Buffer {
-  return execFileSync("ffmpeg", ["-v", "error", ...args], { maxBuffer: 1 << 28 });
+  return execFileSync(FFMPEG_PATH, ["-v", "error", ...args], { maxBuffer: 1 << 28 });
 }
 
 /**
  * 从登记的真实素材**派生**一条快剪片：按时间跳着截 175 段各 0.4 秒再首尾相接，
  * 每个接缝就是一次真实硬切。画面是真实拍摄内容（真实熵、真实编码），不是合成色块/测试图样。
  *
- * 为什么要派生而不是直接用原片：原片是一条平稳的口播，切点远不到上限，跑不到「压上限」那条路——
- * 而本次要守的不变量恰恰只在那条路上有行为。派生物落 tmp（按源文件身份缓存），不进仓库。
+ * 派生片保留短间隔接缝的回归样本；原片也直接作为独立参数化用例跑上限路径。
+ * 派生物落 tmp（按源文件和二进制身份缓存），不进仓库。
  */
 function deriveFastCutClip(source: string): string {
   const stat = fs.statSync(source);
-  const id = crypto.createHash("sha1").update(`${source}:${stat.size}:${stat.mtimeMs}:v1`).digest("hex").slice(0, 12);
+  const binary = fs.statSync(FFMPEG_PATH);
+  const id = crypto.createHash("sha1")
+    .update(`${source}:${stat.size}:${stat.mtimeMs}:${FFMPEG_PATH}:${binary.size}:${binary.mtimeMs}:v2`)
+    .digest("hex").slice(0, 12);
   const out = path.join(os.tmpdir(), `nomi-fastcut-derived-${id}.mp4`);
   if (fs.existsSync(out) && fs.statSync(out).size > 0) return out;
 
   const duration = Number(
-    execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", source], { encoding: "utf8" }).trim(),
+    execFileSync(FFPROBE_PATH, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", source], { encoding: "utf8" }).trim(),
   );
   const segments = 175;
   const segSeconds = 0.4;
@@ -81,25 +93,47 @@ function deriveFastCutClip(source: string): string {
 }
 
 describe("联系表逐格对得上原片（真实素材）", () => {
-  const { assets } = requireRealMediaAssets(["speech-zh-only-hevc"]) as { assets: Map<string, { file: string }> };
-  const source = assets.get("speech-zh-only-hevc")!.file;
+  const { assets } = requireRealMediaAssets(["speech-zh-only-hevc", "shot-cut-aug12-hevc"]) as { assets: Map<string, { file: string }> };
+  const cases = [
+    {
+      name: "派生快剪片",
+      source: assets.get("speech-zh-only-hevc")!.file,
+      prepare: deriveFastCutClip,
+      expectedCounts: undefined,
+    },
+    {
+      name: "8月12日原片（390 刀 → 去重 320 刀 → 封顶 120 刀）",
+      source: assets.get("shot-cut-aug12-hevc")!.file,
+      prepare: (source: string) => source,
+      expectedCounts: { raw: 390, deduped: 320 },
+    },
+  ];
 
-  it(
-    "每一格都是它所标的那一刀那一帧",
+  it.each(cases)(
+    "$name：每一格都是它所标的那一刀那一帧",
     { timeout: 20 * 60_000 },
-    () => {
-      const clip = deriveFastCutClip(source);
-      const fps = 30;
+    ({ source, prepare, expectedCounts }) => {
+      const clip = prepare(source);
+      const [numerator, denominator] = execFileSync(FFPROBE_PATH,
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", clip],
+        { encoding: "utf8" }).trim().split("/").map(Number);
+      const fps = numerator / denominator;
+      expect(fps).toBeGreaterThan(0);
 
       // ① 真检测：生产同款 filtergraph，真解码。
       const detectOut = execFileSync(
-        "ffmpeg",
+        FFMPEG_PATH,
         ["-hide_banner", "-nostats", "-i", clip, "-vf", buildDetectFilter(SHOT_CUT_DETECT_THRESHOLD), "-an", "-f", "null", "-"],
         { encoding: "utf8", maxBuffer: 1 << 26 },
       );
       const parsed = parseShotCutOutput(detectOut);
       const deduped = dedupeShotCuts(parsed, fps);
       const { kept, appliedThreshold, capped } = capShotCutsByScore(deduped, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
+
+      if (expectedCounts) {
+        expect(parsed).toHaveLength(expectedCounts.raw);
+        expect(deduped).toHaveLength(expectedCounts.deduped);
+      }
 
       // 这条素材必须真的走到「压上限」那条路，否则整条测试是在证明一件没发生的事。
       expect(capped).toBe(true);
@@ -115,7 +149,7 @@ describe("联系表逐格对得上原片（真实素材）", () => {
           "-vf", buildSheetFilter(kept.map((cut) => cut.pts), SHOT_SHEET_COLUMNS, rows, SHOT_SHEET_TILE_HEIGHT),
           "-frames:v", "1", "-q:v", "4", "-an", sheet]);
 
-        const [sheetW, sheetH] = execFileSync("ffprobe",
+        const [sheetW, sheetH] = execFileSync(FFPROBE_PATH,
           ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", sheet], { encoding: "utf8" })
           .trim().split(",").map(Number);
         const tileW = Math.floor(sheetW / SHOT_SHEET_COLUMNS);

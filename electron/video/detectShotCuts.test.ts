@@ -58,7 +58,7 @@ describe("filtergraph", () => {
 
   it("表达式长度由 MAX_CUTS 封顶，不随片长增长", () => {
     const worst = buildSheetFilter(Array.from({ length: MAX_CUTS }, (_, i) => 999_999_999 - i), 8, 15, 90);
-    // 实测 ffmpeg 8.0.1 接受 1994 字节那条；留足余量并钉住「不会失控」。
+    // 此处只检查字符串长度；随附 ffmpeg 4.4 的执行覆盖见真素材测试。
     expect(worst.length).toBeLessThan(4096);
   });
 });

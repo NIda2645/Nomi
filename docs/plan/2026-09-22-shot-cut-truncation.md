@@ -72,7 +72,7 @@ deconstructVideo:              → filter(score >= payload.threshold)  ← 用�
 
 ## 5. 三种压法的实测对比
 
-**素材**：三条真实片子，本地 ffmpeg 8.0.1，生产同款 filtergraph `select='gt(scene,0.1)',metadata=print`，零模型花费。
+**素材**：三条真实片子，历史对比使用本机 PATH ffmpeg，生产同款 filtergraph `select='gt(scene,0.1)',metadata=print`，零模型花费。随附二进制现场 `-version` 为 **ffmpeg 4.4**；此表历史数字不冒充随附版本的重新测量。
 
 | | F1 `demo-video.mp4` | F2 `demo-en.mp4` | F3 快剪电影开场 |
 |---|---|---|---|
@@ -204,10 +204,10 @@ ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，�
 - [x] `shotCutCoverage` 整块往返、老表兼容、半块拒绝
 - [x] 变异验证：逐个回退 → 逐个变红（§11）
 - [x] 联系表第 i 格 = 第 i 刀：按 pts 点名，**真实素材逐格比对 0/120 错**
-- [x] 联系表行数只有一个 owner，渲染层重新长出算式即红
+- [x] 联系表行数只有一个 owner；源码扫描只是廉价的回归提醒，换写法可绕过
 - [x] 并列分数下限：全同分也给满名额，不塌回一镜到底
 - [x] **真实快剪素材上的端到端**：`electron/video/shotCutSheetAlignment.realMedia.test.ts`
-      （从登记素材 `speech-zh-only-hevc` 派生 175 段快剪片；缺素材硬红不 skip）
+      （175 段派生快剪片与未派生 `shot-cut-aug12-hevc` 参数化执行；统一用生产 resolver，缺素材硬红不 skip）
 - [ ] 分镜表节点的用户可见提示：§9 出选项，等拍板
 
 ## 10.5 返工：第一版被验收打回的两条阻断（2026-09-22）
@@ -240,7 +240,7 @@ pts 是整数，没有精度可言，于是「第 i 格 = 第 i 刀」**由构�
 按身份点名是把这条缝**消掉**，不是调窄。
 
 **表达式长度**：一条 `eq(pts\,NNNNNNN)+` 约 16 字节，条数由 `MAX_CUTS`=120 封顶 ⇒ 最长约 2KB。
-实测 1994 字节那条 ffmpeg 8.0.1 跑通、2.54s。长度**不随片长增长**，只随 MAX_CUTS——
+历史 PATH 版本实测 1994 字节、2.54s；这不是随附版本的耗时证据。随附 ffmpeg 4.4 的执行覆盖由真素材测试提供。长度**不随片长增长**，只随 MAX_CUTS——
 抬高 MAX_CUTS 时要重新验（已写进合同的 residual_risks）。
 
 ### 阻断 B：联系表格子数是双真相源（第一版新引入的回归）
@@ -252,8 +252,8 @@ pts 是整数，没有精度可言，于是「第 i 格 = 第 i 刀」**由构�
 
 **修法：行数只留一个算式** `shotSheetRowsFor(cutCount, columns)`（`detectShotCuts.ts`），
 同一个数既喂 `tile=CxR` 也随结果下发（`sheetRows`）。渲染层的 `shotSheetRows` / `shotSheetTileCount`
-**同 commit 删除**。另加一条结构守卫测试：渲染层一旦重新长出行数/格子数算式就红——
-因为两份算式**各自都正确**时，任何普通单元测试都发现不了分叉。
+**同 commit 删除**。另加一条廉价的回归提醒：源码扫描匹配已知的行数/格子数算式；换个变量名或写法即可绕过，不能证明不可能分叉。
+真正起作用的是结构：`sheetRows` 只在 `shotSheetRowsFor` 算一次并随结果下发。
 
 ### 顺带修掉的两条建议项
 
@@ -302,7 +302,7 @@ AssertionError: expected 0.2678567966744304 to be greater than 0.9
 | MB 并列下限拿掉（退回「宁少勿超」） | **2 failed** / 24 passed |
 | MC 行数 owner 改成各算各的（差一行） | **1 failed** / 25 passed |
 | MD 解析丢掉 `pts`（退回只认秒数） | **3 failed** / 23 passed |
-| ME 渲染层重新长出行数算式（结构守卫） | **1 failed** / 17 passed |
+| ME 渲染层重新长出行数算式（廉价的回归提醒，可被换写法绕过） | **1 failed** / 17 passed |
 | 还原 | **26 passed** |
 
 **真实素材那一条**（`shotCutSheetAlignment.realMedia.test.ts`）：
@@ -319,7 +319,7 @@ M5 是 Ponytail 那条简化之后**补上的**：第一轮跑它时全绿——
 
 ## 12. 残余风险
 
-1. ~~真实素材那一格是空的~~ **已补**：`electron/video/shotCutSheetAlignment.realMedia.test.ts` 从登记素材派生快剪片、真跑 ffmpeg 拼联系表并逐格核对（0/120 错；退回按分数重筛即 90/120 错）。剩下的口子是：素材是**派生**的，用户自己的真实 MV / 预告片上仍未验。
+1. ~~真实素材那一格是空的~~ **已补**：`electron/video/shotCutSheetAlignment.realMedia.test.ts` 参数化覆盖派生快剪片与未派生 `8月12日.mov`，使用生产 resolver 的随附 ffmpeg 4.4 拼联系表并逐格核对。原片 probe 为 HEVC、B 帧重排深度 2、547.202 秒；切点 390 → 去重 320 → 封顶 120。真实 MV / 预告片等其他内容类型仍未验。
 2. ~~联系表对齐只由单测证明~~ **已补**（同上，逐格图像比对）。剩下的口子是：返工后的 zh/en 文案**没有重新跑真截图走查**（第一版验收跑过并通过，本次只改数据来源不改文案）。
 3. 分镜表节点仍然没有任何「这张表被并过刀」的提示——数据备好了，UI 等拍板。
 4. 渲染层 0.2 秒合并与引擎 2 帧去重的粗/细两层并存（见「不动项」）。
