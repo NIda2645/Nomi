@@ -242,4 +242,4 @@ Evidence: Read frozen v5-to-integrated delta and complete post-15195e2f9 diff th
 
 ## Handoff
 
-semantic-audit.json is the complete repository-ready ledger with per-file identity and per-hunk original/current/reason/evidence/attribution. semantic-reviews.json is compatible with audit-core-a-changes.mjs applyReviews. drift-reviews.json contains only the final two changes. The original inventory report.json remains unmodified as raw capture.
+semantic-audit.json is the complete repository-ready ledger with per-file identity and per-hunk original/current/reason/evidence/attribution. semantic-reviews.json was produced for the one-off audit-core-a-changes.mjs applyReviews helper, which does not ship to main (see this directory README). drift-reviews.json contains only the final two changes. The original inventory report.json remains unmodified as raw capture.

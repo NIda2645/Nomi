@@ -239,8 +239,6 @@ export type ProductionGenerationPlan = {
    * 缺省/旧 Run 没有这个字段 = 卡可见，行为逐字不变。
    */
   cardHidden?: boolean;
-  /** Canvas landing is opt-in for document-admitted generation plans. */
-  canvasPlacement?: 'explicit';
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyBudgetEntry,
-  availableBudget,
   budgetExceeds,
   sumBudgetAmounts,
   createBudgetLedger,
@@ -37,7 +36,6 @@ describe("budget ledger", () => {
       actualAmount: 6,
     }));
     expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 20, reserved: 0, actual: 6, unsettled: 0 });
-    expect(availableBudget(summarizeBudgetLedger(ledger))).toBe(14);
   });
 
   it("rejects a reservation that would exceed the authorized ceiling", () => {

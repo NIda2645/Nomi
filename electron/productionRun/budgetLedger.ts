@@ -76,10 +76,6 @@ export function summarizeBudgetLedger(ledger: BudgetLedger): BudgetLedgerSummary
   return { currency: ledger.currency, authorized: ledger.authorized, reserved, actual, unsettled };
 }
 
-export function availableBudget(summary: BudgetLedgerSummary): number {
-  return summary.authorized - summary.reserved - summary.actual - summary.unsettled;
-}
-
 function withEntry(
   ledger: BudgetLedger,
   entry: BudgetLedgerEntry,
