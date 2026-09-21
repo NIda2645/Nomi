@@ -273,7 +273,7 @@ function buildFixtures(t: TFunction) {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendTitle'),
       badge: t('agentPanelV4.slotSpendBadge'),
-      totalLead: t('agentPanelV4.spendTotalLead', { amount: '¥1.20' }),
+      totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: 4, amount: '¥1.20' }),
       params: ['Kling O1', '4 × 3s', 'std', '¥1.20'],
       confirmLabel: t('agentPanelV4.slotGenerate'),
     },
@@ -438,7 +438,6 @@ function buildFixtures(t: TFunction) {
     spendOneClip: {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendOneTitle'),
-      totalLead: t('agentPanelV4.spendTotalLead', { amount: '¥0.90' }),
       badge: t('agentPanelV4.slotSpendBadge'),
       params: ['Kling O1', '3s', 'std', '16:9', '¥0.90'],
       scope: t('agentPanelV4.slotSpendOneScope'),

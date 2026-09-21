@@ -451,8 +451,6 @@ export const zhAgentPanelV4 = {
   spendParamsShot: '镜头 {{number}}',
   /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
   spendParamsConfirm: '生成 {{amount}}',
-  /** 合计那一格（页脚左下）。 */
-  spendTotalLead: '合计 {{amount}}',
   spendTotalLeadBatch: '{{count}} 镜 · 合计 {{amount}}',
   /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
   spendTotalUnknown: '价格未知 · 以供应商账单为准',
@@ -464,7 +462,6 @@ export const zhAgentPanelV4 = {
   spendParamsScopeAll: '全部',
   spendParamsScopeAria: '生成范围',
   spendParamsDecline: '不要',
-  spendParamsScopeUnknown: '价格没取到。要继续就得接受「花多少事后才知道」。',
   /**
    * × 撤掉这次请求之后那一句。**只有真撤掉了占位节点时才说**：撤了东西就得说撤了什么、怎么拿回来。
    * 用户自己建的节点从来不在这个数里（`spendCardRollback.ts` 只认物化章）。
@@ -911,7 +908,6 @@ export const enAgentPanelV4 = {
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
   spendParamsConfirm: 'Generate {{amount}}',
-  spendTotalLead: '{{amount}} total',
   spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
   spendTotalUnknown: 'Price unknown · billed by provider',
   spendParamsConfirmUnknown: 'Generate anyway',
@@ -920,7 +916,6 @@ export const enAgentPanelV4 = {
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
-  spendParamsScopeUnknown: 'No price came back. Continuing means you only learn the cost afterwards.',
   spendDiscardedNodes_one: 'Request discarded — 1 placeholder shot removed · press ⌘Z to undo',
   spendDiscardedNodes_other: 'Request discarded — {{count}} placeholder shots removed · press ⌘Z to undo',
   spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',

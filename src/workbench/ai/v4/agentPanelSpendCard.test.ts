@@ -57,7 +57,9 @@ describe('付费卡投影', () => {
     expect(JSON.stringify(data)).not.toContain('amount=0.00')
     expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmUnknown')
     expect(data.pager?.scope).toBeUndefined()
-    expect(data.scope).toBe('agentPanelV4.spendParamsScopeUnknown')
+    // 这句交代**只说一遍**，住在页脚左下；正文下不再有第二句同义的话。
+    expect(data.scope).toBeUndefined()
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalUnknown')
   })
 
   // 2026-09-21 未知价开闸之后这张卡是**真能按下去**的（从前按下去必然失败）。所以「屏上不出现
@@ -173,6 +175,22 @@ describe('「N 镜」汇总只在多镜时出现', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, null)]), { page: 0, scope: 'each' }, t)!
     expect(data.price?.breakdown).toContain('spendParamsBreakdownNoUnit')
     expect(data.totalLead).toBe('agentPanelV4.spendTotalUnknown')
+  })
+})
+
+describe('页脚左下只印主按钮说不出的那件事', () => {
+  it('单镜且报得出价：左下**留空**——主按钮上已经是同一个数', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3)]), { page: 0, scope: 'each' }, t)!
+    expect(data.totalLead).toBeUndefined()
+    expect(data.confirmLabel).toContain('amount=0.30')
+  })
+  it('多镜：左下「N 镜 · 合计」，主按钮印这一下实际会花的数', () => {
+    const each = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1, scope: 'each' }, t)!
+    expect(each.totalLead).toContain('count=2')
+    expect(each.totalLead).toContain('amount=0.80')
+    expect(each.confirmLabel).toContain('amount=0.30')
+    const all = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1, scope: 'all' }, t)!
+    expect(all.confirmLabel).toContain('amount=0.80')
   })
 })
 

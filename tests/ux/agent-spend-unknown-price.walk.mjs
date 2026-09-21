@@ -109,8 +109,9 @@ try {
   await expect(card.locator(INTERVENTION_CONFIRM), '主按钮上不印金额').not.toContainText('¥')
   // 算不出价**绝不拦**生成（用户 2026-09-21 硬性拍板）：按钮必须是可点的。
   await expect(card.locator(INTERVENTION_CONFIRM), '算不出价时主按钮照样可点').toBeEnabled()
-  await expect(card, '多一句诚实交代：继续就得接受花多少事后才知道')
-    .toContainText('花多少事后才知道')
+  // 那句交代**只说一遍**（2026-09-22）：页脚左下已经是「价格未知 · 以供应商账单为准」，
+  // 正文下原来那句「…花多少事后才知道」是同一件事的第二遍，已删。这里改钉「没有第二遍」。
+  await expect(card, '同一件事不说两遍').not.toContainText('花多少事后才知道')
   // **整张卡上不许有 ¥0 / 0.00**：三种可能（免费 / 算不出 / 真的零元）里，只有印 0 会被读成「这次免费」。
   const zhCardText = (await card.innerText()).replace(/\s+/g, ' ')
   expect(zhCardText, `卡上不许出现任何代表未知的 0（实际文本：${zhCardText}）`).not.toMatch(/[¥￥$]\s?0(?!\d)/)
@@ -203,7 +204,7 @@ try {
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：Generate anyway').toContainText('Generate anyway')
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上不印金额').not.toContainText('¥')
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：算不出价时主按钮照样可点').toBeEnabled()
-  await expect(enCard, 'EN：the honest sentence is there too').toContainText('only learn the cost afterwards')
+  await expect(enCard, 'EN：said once, in the footer').not.toContainText('only learn the cost afterwards')
   const enCardText = (await enCard.innerText()).replace(/\s+/g, ' ')
   expect(enCardText, `EN 卡上同样不许出现 ¥0（实际文本：${enCardText}）`).not.toMatch(/[¥￥$]\s?0(?!\d)/)
   expect(enCardText, 'EN 也不许是 0.00 那种写法').not.toContain('0.00')

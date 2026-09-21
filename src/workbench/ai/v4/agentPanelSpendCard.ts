@@ -123,20 +123,18 @@ export function projectSpendCard(
         }
       : {}),
     price,
-    // 正常那两档一句话都不多说：卡上每一样东西都能改、改完价格就变，这件事**看得见**。
-    // 只有报不出价那一档必须说话——那是用户在按下去之前唯一没法自己看出来的事。
-    ...(total === undefined ? { scope: t('agentPanelV4.spendParamsScopeUnknown') } : {}),
-    // 页脚**左下** = **这一单合计**；主按钮 = **这一下花多少**。两格说的是两件事：
-    // · 单镜时两个数相同；
-    // · 多镜「逐镜」档时，按钮印这一页的价、左下印整单「N 镜 · 合计 ¥X」——
-    //   用户一边逐镜确认，一边始终看得见整单要花多少；
-    // · 算不出价时左下是一整句话，不是 `¥0`（印 0 是三种可能里唯一会被读成「这次免费」的），
-    //   **而且按钮照常可点**（用户 2026-09-21 硬性拍板：不能因为算不出价拦住任何东西）。
-    totalLead: total !== undefined
-      ? shots.length > 1
-        ? t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(t, pending.currency, total) })
-        : t('agentPanelV4.spendTotalLead', { amount: money(t, pending.currency, total) })
-      : t('agentPanelV4.spendTotalUnknown'),
+    // 算不出价的那句交代**只说一遍**，住在页脚左下（`totalLead`）。这里原来还有一句
+    // 「…继续就得接受花多少事后才知道」印在正文下——两句说的是同一件事（用户 2026-09-22 看图指出）。
+    // 页脚**左下** = 主按钮说不出的那件事（由数据 derive，不写死）：
+    // · 单镜且报得出价 → **留空**：主按钮上已经印着这一下的价，左下再印「合计」是同一个数说两遍；
+    // · 多镜且报得出合计 → 「N 镜 · 合计 ¥X」：逐镜档时按钮印的是当前这一镜，整单要花多少只有这里看得见；
+    // · 报不出价 → 整句「价格未知 · 以供应商账单为准」，不是 `¥0`（印 0 是三种可能里唯一会被读成
+    //   「这次免费」的）；**按钮照常可点**（用户 2026-09-21 硬性拍板：算不出价绝不拦生成）。
+    ...(total === undefined
+      ? { totalLead: t('agentPanelV4.spendTotalUnknown') }
+      : shots.length > 1
+        ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(t, pending.currency, total) }) }
+        : {}),
     // 主按钮**带后果**：设计系统 §1.8 规则 1「带后果时把后果写进标签（生成 ¥1.20）」。
     // 上一版我把金额从按钮上拿掉了（照 Recommendation Card 的排法），那是拿别人的版式
     // 压过了自己的规则——按下去的那颗钮上就该印着要花的钱。
