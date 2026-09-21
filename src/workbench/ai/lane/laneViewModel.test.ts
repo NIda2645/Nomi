@@ -168,9 +168,12 @@ describe('laneViewModel', () => {
     next = 0
     const model = laneViewModel(projection([
       part({ kind: 'tool-call', toolCallId: 'c11', toolName: 'make_artifact', args: {}, running: false }),
+      // 2026-09-22：`waiting` 是**主进程信封里的字段**（`laneToolFailureEnvelope.ts`），
+      // 不再由渲染层按码猜。夹具照真实生产者摆——`laneTools.mts` 的 `rememberToolFailure`
+      // 对这个码就是这么写的（主进程那半由 `laneToolWaitingAxis.test.ts` 钉住）。
       part({ kind: 'tool-result', toolCallId: 'c11', toolName: 'make_artifact', isError: true,
         text: 'Stop. The user sees a priced confirmation card.',
-        failure: { code: 'user_sees_spend_card' } }),
+        failure: { code: 'user_sees_spend_card', waiting: true } }),
     ]), display)
     const item = model.items[0]
     if (item.kind !== 'tool') throw new Error('missing receipt')

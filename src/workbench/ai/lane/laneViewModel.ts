@@ -1,6 +1,5 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
-import { isModelControlSignal } from './laneToolControlSignals'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -401,10 +400,14 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     const { summary: _summary, ...withoutSummary } = existing.receipt
     const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
     // 2026-09-21：有些 `isError` 是**给模型的控制信号**（「别谎报，用户面前已经有一张卡了」），
-    // 不是用户的失败。判据收在 `laneToolControlSignals.ts` 一处，闭合名单。
-    // 这里把它落回普通完成态：行不红、下面不挂红条、也不算「还没解决」。
+    // 不是用户的失败。这里把它落回普通完成态：行不红、下面不挂红条、也不算「还没解决」。
     // 它说的那句话仍然留在行尾摘要里——那是一句陈述，不是一条警告。
-    const controlSignal = part.isError && isModelControlSignal(part.failure?.code)
+    //
+    // 2026-09-22：判据**从信封里读**（`failure.waiting`），渲染层那份权宜的码名单
+    // （`laneToolControlSignals.ts`）同 commit 删掉。它当初就在文件头登记了这件事：
+    // 「主进程补上那条轴之后，这份名单整个删掉」。名单住在渲染层的代价是主进程再加一个
+    // 这样的码时没有任何东西会红——而渲染层不可能知道主进程新长了什么。
+    const controlSignal = part.isError && part.failure?.waiting === true
     items[slot.index] = {
       ...existing,
       kind: 'tool',

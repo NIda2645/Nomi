@@ -25,7 +25,7 @@ import {
   LANE_READ_TOOL_TIMEOUT_MS, laneToolBillable, laneToolModelDescription, laneToolMutates, renderLaneToolFailure,
   renderLaneToolNextAction, type LaneToolFailureShape,
 } from '../shared/agentLane/laneToolContract.js';
-import type { LaneToolPublicFailure } from '../shared/agentLane/laneToolFailureEnvelope.js';
+import { laneToolWaitsForUser, type LaneToolPublicFailure } from '../shared/agentLane/laneToolFailureEnvelope.js';
 import { VERB_EFFECTS } from '../shared/agentCapabilities/verbDeclaration.js';
 import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts.js';
 import type { LaneToolDescriptor } from './laneRuntimePort.js';
@@ -62,8 +62,14 @@ function rememberToolFailure(toolCallId: string, failure: LaneToolFailureShape):
     ...(failure.allowed ? { allowed: failure.allowed } : {}),
     ...(failure.issues ? { issues: failure.issues } : {}),
     ...(failure.useInstead ? { useInstead: failure.useInstead } : {}),
+    // 「这条给模型看，不是用户的失败」那条轴在**这里**判一次，不在每个生产者各写一遍：
+    // 信封只有这一个组装点，判据只有 `laneToolWaitsForUser` 一份。
+    ...(laneToolWaitsForUser(failure.code) ? { waiting: true as const } : {}),
   })
 }
+
+/** 测试用：让「信封里真的带上了 waiting」这件事可以被直接打一枪（生产者本身，不是手写夹具）。 */
+export const __rememberLaneToolFailureForTest = rememberToolFailure;
 
 /** `after_tool` 侧的取件口：取走即删（见上）。 */
 export function takeLaneToolFailure(toolCallId: string): LaneToolPublicFailure | undefined {

@@ -31,6 +31,38 @@ export interface LaneToolPublicFailure {
   readonly issues?: readonly { readonly path: string; readonly expected: string; readonly receivedType: string }[];
   /** `code === "wrong_verb"` 时正确的动词名。 */
   readonly useInstead?: string;
+  /**
+   * **这条 `isError` 是给模型看的控制信号，不是用户的失败**（2026-09-22 补的那条轴）。
+   *
+   * 有些工具故意用 `isError` 回给模型，为的是让它停下来别谎报：`generate` 之后宿主把一张付费
+   * 确认卡摆到了用户面前，模型这一刻既不能说「已经生成了」也不该接着往下做（抄 GitHub MCP 的做法，
+   * `laneExtendedTools.ts:115-130`）。对模型是对的，但它一路走到面板上变成了**红色危险条**——
+   * 用户读到的是一条红色警告，而实际发生的事是「Nomi 按规矩问了你一句」，卡就在上面的介入槽里。
+   * 2026-09-21 真实回合里实测出现 3 次；主会话在步骤 B 的截图里亲眼看到那条红条。
+   *
+   * 渲染层此前用一张**自己维护的码名单**（`src/workbench/ai/lane/laneToolControlSignals.ts`）
+   * 权宜地认这一档，并在文件头登记「主进程补上这条轴之后，这份名单整个删掉」。这就是那条轴。
+   */
+  readonly waiting?: true;
+}
+
+/**
+ * 「等用户」那一档的码。加一个码进来必须同时答得出两件事（判据逐字沿用渲染层那份权宜名单，
+ * 它想清楚了、只是住错了地方）：
+ *   ① 它出现时，用户屏幕上**已经**有一个该看的东西（一张卡、一个面板），不需要再报一次错；
+ *   ② 用户此刻**没有**要修的东西——没有参数要改、没有步骤要重来。
+ * 两条都成立才叫等用户；只要用户还得动手，那就是一条真错误，红着才对。
+ */
+export const LANE_TOOL_WAITING_FOR_USER_CODE_LIST = [
+  // 付费确认卡已经在介入槽里了。用户要做的就是答那张卡，而卡自己会说话。
+  "user_sees_spend_card",
+] as const;
+
+const WAITING_CODES: ReadonlySet<string> = new Set<string>(LANE_TOOL_WAITING_FOR_USER_CODE_LIST);
+
+/** 这个失败码是不是「卡在等他」那一档。**唯一判据**，主进程与渲染层同吃。 */
+export function laneToolWaitsForUser(code: string | undefined): boolean {
+  return Boolean(code && WAITING_CODES.has(code));
 }
 
 /** 从工具结果的 `details` 里读回信封。形状不对就当没有——历史转录里什么版本都可能有。 */
@@ -46,6 +78,7 @@ export function laneToolFailureOf(details: unknown): LaneToolPublicFailure | und
       ? { allowed: record.allowed as string[] } : {}),
     ...(Array.isArray(record.issues) ? { issues: record.issues as LaneToolPublicFailure["issues"] } : {}),
     ...(typeof record.useInstead === "string" ? { useInstead: record.useInstead } : {}),
+    ...(record.waiting === true ? { waiting: true as const } : {}),
   };
 }
 
