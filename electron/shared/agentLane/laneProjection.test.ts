@@ -48,10 +48,10 @@ describe('lane skill provenance', () => {
 
   it('keeps queued targets out of the active transcript projection', () => {
     const storyboardTarget = { projectId: 'p', sourceDocumentId: 'a', sourceDocumentRevision: 3,
-      sourceDocumentContentHash: 'h', targetRunId: 'op-a', targetKind: 'storyboard', requestId: 'request-a' }
+      sourceDocumentContentHash: 'h', targetKind: 'storyboard', requestId: 'request-a', plans: [] }
     const lane = laneWith([input(1, 'A', { storyboardTarget })])
     lane.queues = [{ entryId: 'queued-b', kind: 'followUp', message: { role: 'nomi.input', content: 'B', timestamp: 2,
-      context: { approvalPolicy: { mode: 'step', spend: 'confirm' }, storyboardTarget: { ...storyboardTarget, sourceDocumentId: 'b' } } } }] as LaneSnapshot['queues']
+      context: { approvalPolicy: { mode: 'step', spend: 'confirm' }, storyboardTarget: { ...storyboardTarget, sourceDocumentId: 'b' } } } }] as unknown as LaneSnapshot['queues']
     const projection = projectLaneSnapshot(lane, { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
     expect(projection.parts).toHaveLength(1)
     expect(projection.parts[0]).toMatchObject({ kind: 'user', storyboardTarget })

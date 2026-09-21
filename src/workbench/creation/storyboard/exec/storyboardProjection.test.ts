@@ -64,14 +64,12 @@ describe('projectShotNode · 整片默认写回节点', () => {
   })
 })
 
-it('projects saved Run author edits into existing bound nodes only, retaining canvas overrides', async () => {
+it('projects saved author edits into existing bound nodes only, retaining canvas overrides', async () => {
   const { useGenerationCanvasStore } = await import('../../../generationCanvas/store/generationCanvasStore')
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
   const store = useGenerationCanvasStore.getState()
   store.restoreSnapshot({ nodes: [{ id: 'bound', kind: 'video', title: 'Existing', position: { x: 0, y: 0 }, prompt: 'Canvas edit',
-    meta: { productionRunId: 'run', productionShotId: 'shot-1', overriddenFields: ['prompt'] } }], edges: [], groups: [] })
-  const generation = { candidate: { candidateId: 'c' }, shots: [{ shotId: 'shot-1', nodeId: 'bound' }] } as unknown as Parameters<typeof storyboardRunBindings>[0]
-  projectStoryboardDesign({ id: 'run', plan: planOf('9:16') }, useGenerationCanvasStore.getState(), storyboardRunBindings(generation, []))
+    meta: { storyboardDesignId: 'run', shotId: 'shot-1', overriddenFields: ['prompt'] } }], edges: [], groups: [] })
+  projectStoryboardDesign({ id: 'run', plan: planOf('9:16') }, useGenerationCanvasStore.getState())
   const nodes = useGenerationCanvasStore.getState().nodes
   expect(nodes).toHaveLength(1)
   expect(nodes[0].id).toBe('bound')

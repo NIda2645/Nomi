@@ -129,40 +129,33 @@ it('placement fills a missing keyframe without duplicating or rewriting its exis
 })
 
 
-it('uses captured Run bindings for the original placement instead of duplicating its existing node', async () => {
+it('reuses the node already bound to this plan instead of duplicating it', async () => {
   const shot = { index: 1, shotId: 'run-shot', shotKind: 'image' as const, durationSec: 2, anchorIds: [], prompt: 'Author' }
-  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Canvas override', meta: { productionRunId: 'run', productionShotId: 'run-shot' } })
+  useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Canvas override', meta: { storyboardDesignId: 'run', shotId: 'run-shot' } })
   const before = structuredClone(useGenerationCanvasStore.getState().nodes)
-  const bindings = { shot: () => node, keyframe: () => null, anchor: () => null }
-  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] }, bindings }, runtimeRows([shot]), { groupTitle: 'Run', placementOnly: true })
+  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] } }, runtimeRows([shot]), { groupTitle: 'Run', placementOnly: true })
   expect(useGenerationCanvasStore.getState().nodes).toEqual(before)
   expect(calls.confirm).not.toHaveBeenCalled()
 })
 
-it('uses actual durable Run bindings across repeated original actions and preserves the bound node', async () => {
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+it('keeps the bound node and its canvas override across repeated placements', async () => {
   const shot = { index: 1, shotId: 'durable-shot', shotKind: 'image' as const, durationSec: 2, anchorIds: [], prompt: 'Original author' }
-  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Canvas override', meta: { productionRunId: 'run', productionShotId: shot.shotId } })
-  const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: shot.shotId, nodeId: node.id }] } as Parameters<typeof storyboardRunBindings>[0]
-  const bindings = storyboardRunBindings(generation, [])
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Canvas override', meta: { storyboardDesignId: 'run', shotId: shot.shotId } })
   const plan = { title: 'Run', anchors: [], shots: [shot] }
-  const rows = deriveStoryboardRowRuntimes({ plan, designId: 'run', nodes: useGenerationCanvasStore.getState().nodes, imageModelOptions: [], videoModelOptions: [], bindings })
+  const rows = deriveStoryboardRowRuntimes({ plan, designId: 'run', nodes: useGenerationCanvasStore.getState().nodes, imageModelOptions: [], videoModelOptions: [] })
   expect(rows[0].exec.node?.id).toBe(node.id)
-  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan, bindings }, rows, { groupTitle: 'Run', placementOnly: true })
-  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan, bindings }, rows, { groupTitle: 'Run', placementOnly: true })
+  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan }, rows, { groupTitle: 'Run', placementOnly: true })
+  await runStoryboardBatch({ documentId: 'doc', designId: 'run', plan }, rows, { groupTitle: 'Run', placementOnly: true })
   expect(useGenerationCanvasStore.getState().nodes.map(value => value.id)).toEqual([node.id])
   expect(useGenerationCanvasStore.getState().nodes[0].prompt).toBe('Canvas override')
   expect(calls.confirm).not.toHaveBeenCalled()
 })
 
-it('original actions find newly materialized Run shots through original metadata on the next call', async () => {
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+it('finds a newly materialized shot through its own metadata on the next call', async () => {
   const shot = { index: 1, shotId: 'new-run-shot', shotKind: 'image' as const, durationSec: 2, anchorIds: [], prompt: 'Author' }
-  const generation = { candidate: { candidateId: 'candidate' }, shots: [] } as unknown as Parameters<typeof storyboardRunBindings>[0]
-  const bindings = storyboardRunBindings(generation, [])
   const plan = { title: 'Run', anchors: [], shots: [shot] }
-  const rows = deriveStoryboardRowRuntimes({ plan, designId: 'run', nodes: [], imageModelOptions: [], videoModelOptions: [], bindings })
-  const context = { documentId: 'doc', designId: 'run', plan, bindings }
+  const rows = deriveStoryboardRowRuntimes({ plan, designId: 'run', nodes: [], imageModelOptions: [], videoModelOptions: [] })
+  const context = { documentId: 'doc', designId: 'run', plan }
   await runStoryboardBatch(context, rows, { groupTitle: 'Run', placementOnly: true })
   const first = useGenerationCanvasStore.getState().nodes[0].id
   await runStoryboardBatch(context, rows, { groupTitle: 'Run', placementOnly: true })
@@ -170,13 +163,11 @@ it('original actions find newly materialized Run shots through original metadata
 })
 
 
-it('Run-bound original row actions keep single-shot, three variants and regeneration on the original runner', async () => {
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+it('bound row actions keep single-shot, three variants and regeneration on the original runner', async () => {
   const shot = { index: 1, shotId: 'action-shot', shotKind: 'image' as const, durationSec: 2, anchorIds: [], prompt: 'Updated author prompt' }
-  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old prompt' })
-  const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: shot.shotId, nodeId: node.id }] } as Parameters<typeof storyboardRunBindings>[0]
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old prompt', meta: { storyboardDesignId: 'run', shotId: 'action-shot' } })
   const assertCurrent = vi.fn().mockResolvedValue(undefined)
-  const context = { assertCurrent, assertAuthorCurrent: assertCurrent, documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] }, bindings: storyboardRunBindings(generation, []) }
+  const context = { assertCurrent, assertAuthorCurrent: assertCurrent, documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [], shots: [shot] } }
   await generateShotRow(context, shot, null)
   await generateShotRowVariants(context, shot, node, null)
   await regenerateShotRow(context, shot, node, null)
@@ -187,12 +178,10 @@ it('Run-bound original row actions keep single-shot, three variants and regenera
   expect(useGenerationCanvasStore.getState().nodes[0].prompt).toContain('Updated author prompt')
 })
 
-it('Run-bound original anchor action reuses the durable anchor node and the original single runner', async () => {
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+it('a bound anchor action reuses that anchor node and the original single runner', async () => {
   const anchor = { id: 'actor', kind: 'character' as const, carrier: 'visual' as const, name: 'Actor', description: 'New description' }
-  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old description' })
-  const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: anchor.id, nodeId: node.id }] } as Parameters<typeof storyboardRunBindings>[0]
-  await generateAnchorCard({ documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [anchor], shots: [] }, bindings: storyboardRunBindings(generation, []) }, anchor)
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'Old description', meta: { storyboardDesignId: 'run', anchorId: 'actor' } })
+  await generateAnchorCard({ documentId: 'doc', designId: 'run', plan: { title: 'Run', anchors: [anchor], shots: [] } }, anchor)
   expect(calls.single).toHaveBeenCalledWith(node.id, {})
   expect(useGenerationCanvasStore.getState().nodes).toHaveLength(1)
   expect(useGenerationCanvasStore.getState().nodes[0].prompt).toContain('New description')

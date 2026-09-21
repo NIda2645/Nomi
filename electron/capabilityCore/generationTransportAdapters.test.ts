@@ -254,27 +254,24 @@ describe("plan patch addressed to one shot survives the canonical seam", () => {
 
 describe('creation request target enforcement', () => {
   const target = { projectId: binding.projectId, sourceDocumentId: 'doc-a', sourceDocumentRevision: 3,
-    sourceDocumentContentHash: 'hash-a', targetRunId: 'op-captured', targetKind: 'storyboard' as const, requestId: 'request-a' };
-  it('creates the preallocated Run and advances CAS only from this request successful results', async () => {
-    const planning = vi.fn().mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 0 } })
-      .mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 1 } })
-      .mockResolvedValueOnce({ operation: { operationId: target.targetRunId, runRevision: 2 } });
+    sourceDocumentContentHash: 'hash-a', targetKind: 'storyboard' as const, requestId: 'request-a',
+    plans: [{ id: 'op-existing', title: 'Existing plan' }] };
+  it('lets the model create a new plan or name an existing one, and never rewrites its choice', async () => {
+    const planning = vi.fn().mockResolvedValue({ operation: { operationId: 'op-existing', runRevision: 0 } });
     const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
     const signal = new AbortController().signal;
     const context = { storyboardTarget: target };
     expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'first' }), signal, context)).toMatchObject({ ok: true });
-    expect(planning.mock.calls[0][0]).toMatchObject({ params: { operationId: target.targetRunId }, storyboardTarget: target });
-    for (const prompt of ['second', 'third']) {
-      expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'patch', operationId: target.targetRunId, patch: { prompt } }), signal, context)).toMatchObject({ ok: true });
-    }
-    expect(planning.mock.calls[1][0].storyboardTarget.expectedRevision).toBe(0);
-    expect(planning.mock.calls[2][0].storyboardTarget.expectedRevision).toBe(1);
+    // A create without an id stays without one: the host assigns it, and it never inherits a plan the user did not name.
+    expect(planning.mock.calls[0][0].params.operationId).toBeUndefined();
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'patch', operationId: 'op-existing', shotId: 's', patch: { prompt: 'second' } }), signal, context)).toMatchObject({ ok: true });
+    expect(planning.mock.calls[1][0]).toMatchObject({ params: { operationId: 'op-existing' }, storyboardTarget: target });
   });
-  it('rejects a model-selected foreign Run or project before planning', async () => {
+  it('rejects a plan this document does not own, or a foreign project, before planning', async () => {
     const planning = vi.fn();
     const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
     const signal = new AbortController().signal;
-    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', operationId: 'foreign', prompt: 'first' }), signal, { storyboardTarget: target })).toMatchObject({ ok: false });
+    expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'patch', operationId: 'foreign', shotId: 's', patch: { prompt: 'first' } }), signal, { storyboardTarget: target })).toMatchObject({ ok: false });
     expect(await adapter.tryExecute(call('nomi_generation_plan', { operation: 'create', prompt: 'first' }), signal, { storyboardTarget: { ...target, projectId: 'foreign-project' } })).toMatchObject({ ok: false });
     expect(planning).not.toHaveBeenCalled();
   });
@@ -283,7 +280,7 @@ describe('creation request target enforcement', () => {
 it('selected stable shot scope refuses unrelated patches and narrows generate before the owner',async()=>{
   const planning=vi.fn().mockResolvedValue({operation:{runRevision:1}})
   const adapter=createPiGenerationTransportAdapter(binding,{planning,leaseFor:()=>lease})
-  const context={storyboardTarget:{projectId:binding.projectId,sourceDocumentId:'doc',sourceDocumentRevision:1,sourceDocumentContentHash:'hash',targetRunId:'run',targetKind:'storyboard' as const,requestId:'selected',expectedRevision:0,shotIds:['stable-b']}}
+  const context={storyboardTarget:{projectId:binding.projectId,sourceDocumentId:'doc',sourceDocumentRevision:1,sourceDocumentContentHash:'hash',targetKind:'storyboard' as const,requestId:'selected',plans:[{id:'run',title:'Plan'}],designId:'run',shotIds:['stable-b']}}
   const signal=new AbortController().signal
   expect(await adapter.tryExecute(call('nomi_generation_plan',{operation:'patch',operationId:'run',shotId:'stable-a',patch:{prompt:'wrong'}}),signal,context)).toMatchObject({ok:false})
   expect(planning).not.toHaveBeenCalled()

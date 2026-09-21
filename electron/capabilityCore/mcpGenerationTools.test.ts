@@ -858,14 +858,33 @@ describe("plan patch addressed to one shot of a multi-shot draft", () => {
   });
 });
 
-it('single and multi Agent creation retain the same original storyboard stable id', async () => {
+it('a document-admitted draft saves its author body into that document\'s plan, keeping the draft id as the plan id', async () => {
   const operations=createInMemoryGenerationOperationStore()
-  const handler=createGenerationPlanningHandler({registry,operations})
+  const saved:Array<{op:string;payload:Record<string,unknown>}>=[]
+  const requestRenderer=async(op:string,payload:unknown)=>{saved.push({op,payload:payload as Record<string,unknown>});return {status:'saved',designId:(payload as {designId:string}).designId}}
+  const handler=createGenerationPlanningHandler({registry,operations,requestRenderer})
   const authored={anchorIds:[]}
   const input={candidate:{candidateId:'execution-id',revision:1,moduleId:'generation.single-shot',providerId:'fixture-provider',modelId:'fixture-model',mode:'text-to-image',prompt:'Original',parameters:{},references:[]},storyboard:authored}
   for(const multi of [false,true]){
+    saved.length=0
     const result=await handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},params:{operation:'create',...(multi ? {shots:[{...input,shotId:'execution-id'}]} : input)}}) as {operation:GenerationOperation}
-    expect(result.operation.editorial?.shots[0].shotId).toBe('execution-id')
-    expect(result.operation.editorial?.shots[0].prompt).toBe('Original')
+    expect(saved).toHaveLength(1)
+    expect(saved[0].op).toBe('storyboard.upsert-design')
+    expect(saved[0].payload.designId).toBe(result.operation.operationId)
+    expect(saved[0].payload.documentId).toBe('doc')
+    const plan=saved[0].payload.plan as {shots:Array<{shotId:string;prompt:string}>}
+    expect(plan.shots[0].shotId).toBe('execution-id')
+    expect(plan.shots[0].prompt).toBe('Original')
+    // The Run keeps no second copy of the author body — the document's plan is the only one.
+    expect(result.operation).not.toHaveProperty('editorial')
+    expect(result.operation.sourceDocumentId).toBe('doc')
   }
+})
+
+it('refuses a document-admitted draft when the renderer that owns plans is unreachable', async () => {
+  const operations=createInMemoryGenerationOperationStore()
+  const handler=createGenerationPlanningHandler({registry,operations})
+  await expect(handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},
+    params:{operation:'create',candidate:{candidateId:'c',revision:1,moduleId:'generation.single-shot',providerId:'fixture-provider',modelId:'fixture-model',mode:'text-to-image',prompt:'Original',parameters:{},references:[]}}}))
+    .rejects.toThrow('storyboard_renderer_required')
 })

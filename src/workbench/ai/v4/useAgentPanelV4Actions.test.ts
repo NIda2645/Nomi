@@ -16,6 +16,8 @@ const fixture = vi.hoisted(() => {
   const state = {
     projectAgentDraft: '', projectAgentDraftRevision: 0, projectAgentAdmissionId: null as string | null, projectAgentReferences: [] as import('../../workbenchStore').ProjectAgentReference[], projectAgentDraftIntent: null as LaneDraftIntent | null, projectAgentDraftDisplayText: null, projectAgentRecoveredDrafts: [] as RecoveredAgentDraft[], projectAgentAttachments: [] as ComposerAttachment[],
     activeDocumentId: 'doc-1', persistRevision: 1,
+    storyboardDesignsByDocumentId: {} as Record<string, Array<{ id: string; title: string }>>,
+    activeStoryboardId: null as string | null,
     workbenchDocuments: [{ id: 'doc-1', title: 'Current document', updatedAt: 42,
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一句。' }] }] } }],
     creationActiveSkill: null as { key: string; name: string } | null, selectedLibraryPrompt: null as { id: string } | null,
@@ -33,7 +35,7 @@ const fixture = vi.hoisted(() => {
     },
     setProjectAgentApprovalPolicy: vi.fn(),
   }
-  return { state, selectedRun: null as null | {runId:string;revision:number;sourceDocumentRevision:number;sourceDocumentContentHash:string}, owner: { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } } as { subscriptionId: string; binding?: { projectId?: string; immutableProjectUuid: string } } | null, say: vi.fn(), models: vi.fn(),
+  return { state, owner: { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } } as { subscriptionId: string; binding?: { projectId?: string; immutableProjectUuid: string } } | null, say: vi.fn(), models: vi.fn(),
     cancelQueued: vi.fn(), abort: vi.fn(),
     record: null as ProjectAgentCommittedProposalRecord | null, undo: vi.fn(), projection: { lane: 'main', parts: [] as LanePart[] } }
 })
@@ -53,7 +55,6 @@ vi.mock('../../workbenchStore', () => ({ useWorkbenchStore: Object.assign(
 vi.mock('../../generationCanvas/store/generationCanvasStore', () => ({ useGenerationCanvasStore: {
   getState: () => ({ persistRevision: 1, nodes: [], selectedNodeIds: [] }),
 } }))
-vi.mock('../../creation/storyboard/useCreationRunPlans', () => ({ readCreationRunSelection: () => fixture.selectedRun }))
 vi.mock('../../generationCanvas/agent/proposalUndo', () => ({ getCommittedProposal: () => fixture.record, runProposalUndo: fixture.undo }))
 vi.mock('../../generationCanvas/agent/canvasSystemPrompt', () => ({ buildStaticAgentSystemPrompt: () => 'generation domain prompt' }))
 
@@ -485,7 +486,7 @@ it('F12: Stop after IPC dispatch keeps the recovery exchange locked until its ad
 
 
 describe('creation send-time storyboard target', () => {
-  it('keeps the source and preallocated Run when the document changes before admission', async () => {
+  it('keeps the source captured at input time when the document changes before admission', async () => {
     let release!: (models: never[]) => void
     fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
     fixture.say.mockResolvedValue({ ok: true })
@@ -495,45 +496,46 @@ describe('creation send-time storyboard target', () => {
     expect(await sending).toBe(true)
     expect(fixture.say.mock.calls[0][2].storyboardTarget).toMatchObject({
       projectId: 'project-a', sourceDocumentId: 'doc-1', targetKind: 'storyboard',
-      targetRunId: expect.stringMatching(/^op-/), requestId: expect.any(String),
-      sourceDocumentRevision: expect.any(Number),
+      requestId: expect.any(String), plans: [], sourceDocumentRevision: expect.any(Number),
     })
+    // No Run is preallocated any more: a turn that does not name a plan is a turn that has not
+    // decided yet, and the model — not the host — decides between creating and editing.
+    expect(fixture.say.mock.calls[0][2].storyboardTarget).not.toHaveProperty('targetRunId')
     fixture.state.activeDocumentId = 'doc-1'
   })
-  it('preallocates a different Run for each new storyboard request', async () => {
+  it('hands the model this document\'s existing plans so it can name one', async () => {
     fixture.say.mockResolvedValue({ ok: true })
-    const actions = mountActions('creation')
-    await actions.send('first')
-    await actions.send('second')
-    const first = fixture.say.mock.calls[0][2].storyboardTarget
-    const second = fixture.say.mock.calls[1][2].storyboardTarget
-    expect(first?.targetRunId).toEqual(expect.any(String))
-    expect(second?.targetRunId).not.toBe(first?.targetRunId)
+    fixture.state.storyboardDesignsByDocumentId = { 'doc-1': [{ id: 'op-a', title: 'Seaside' }, { id: 'op-b', title: 'Night' }] }
+    await mountActions('creation').send('change the second shot')
+    expect(fixture.say.mock.calls[0][2].storyboardTarget.plans)
+      .toEqual([{ id: 'op-a', title: 'Seaside' }, { id: 'op-b', title: 'Night' }])
+    fixture.state.storyboardDesignsByDocumentId = {}
   })
 })
 
-it('captures stable shot references in the selected Run and refuses chips from another Run',async()=>{
+it('captures stable shot references against the plan they name and refuses chips from another plan',async()=>{
   const {buildStoryboardReference}=await import('../resident/residentReferences')
-  fixture.selectedRun={runId:'run-a',revision:2,sourceDocumentRevision:1,sourceDocumentContentHash:'hash'}
-  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',runId:'run-a',shotId:'stable-id'})]
+  fixture.state.storyboardDesignsByDocumentId={'doc-1':[{id:'plan-a',title:'A'},{id:'plan-b',title:'B'}]}
+  fixture.state.activeStoryboardId='plan-a'
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',designId:'plan-a',shotId:'stable-id'})]
   fixture.say.mockResolvedValue({ok:true})
   const actions=mountActions('creation')
   expect(await actions.send('edit selected')).toBe(true)
   expect(fixture.say.mock.calls[0][2].storyboardTarget.shotIds).toEqual(['stable-id'])
-  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',runId:'run-a',shotId:'stable-id'})]
-  fixture.selectedRun={...fixture.selectedRun,runId:'run-b'}
+  expect(fixture.say.mock.calls[0][2].storyboardTarget.designId).toBe('plan-a')
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',designId:'plan-a',shotId:'stable-id'})]
+  fixture.state.activeStoryboardId='plan-b'
   expect(await actions.send('edit selected')).toBe(false)
   expect(fixture.say).toHaveBeenCalledTimes(1)
-  expect(await actions.send('new plan',{newStoryboard:true})).toBe(true)
-  expect(fixture.say.mock.calls[1][2].storyboardTarget.shotIds).toBeUndefined()
-  fixture.selectedRun=null;fixture.state.projectAgentReferences=[]
+  fixture.state.activeStoryboardId=null;fixture.state.storyboardDesignsByDocumentId={};fixture.state.projectAgentReferences=[]
 })
 
 it('ACK consumes only captured storyboard references, preserving a newer selection and failed-send references',async()=>{
   const {buildStoryboardReference}=await import('../resident/residentReferences')
-  fixture.selectedRun={runId:'run-a',revision:2,sourceDocumentRevision:1,sourceDocumentContentHash:'hash'}
-  const old=buildStoryboardReference('shot',1,'old','selected',{documentId:'doc-1',runId:'run-a',shotId:'old'})
-  const newer=buildStoryboardReference('shot',2,'new','selected',{documentId:'doc-1',runId:'run-a',shotId:'new'})
+  fixture.state.storyboardDesignsByDocumentId={'doc-1':[{id:'plan-a',title:'A'}]}
+  fixture.state.activeStoryboardId='plan-a'
+  const old=buildStoryboardReference('shot',1,'old','selected',{documentId:'doc-1',designId:'plan-a',shotId:'old'})
+  const newer=buildStoryboardReference('shot',2,'new','selected',{documentId:'doc-1',designId:'plan-a',shotId:'new'})
   fixture.state.projectAgentReferences=[old]
   let finish!:(value:{ok:boolean})=>void
   fixture.say.mockImplementation(()=>new Promise(resolve=>{finish=resolve}))
@@ -546,8 +548,5 @@ it('ACK consumes only captured storyboard references, preserving a newer selecti
   fixture.say.mockRejectedValue(new Error('transport failed'))
   expect(await actions.send('edit new')).toBe(false)
   expect(fixture.state.projectAgentReferences).toEqual([newer])
-  fixture.say.mockResolvedValue({ok:true})
-  expect(await actions.send('new plan',{newStoryboard:true})).toBe(true)
-  expect(fixture.state.projectAgentReferences).toEqual([newer])
-  fixture.selectedRun=null;fixture.state.projectAgentReferences=[]
+  fixture.state.activeStoryboardId=null;fixture.state.storyboardDesignsByDocumentId={};fixture.state.projectAgentReferences=[]
 })

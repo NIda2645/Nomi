@@ -96,13 +96,11 @@ it('prompt event replay retains the same override ownership as the live node', a
   } finally { setCanvasEventSinkForTests(null) }
 })
 
-it('durably Run-bound legacy nodes retain later canvas prompt overrides when original row generates', async () => {
-  const { storyboardRunBindings } = await import('./storyboardNodeBinding')
+it('plan-bound nodes retain later canvas prompt overrides when the original row generates', async () => {
   const store = useGenerationCanvasStore.getState()
-  store.restoreSnapshot({ nodes: [{ id: 'run-node', kind: 'video', title: 'Run shot', position: { x: 0, y: 0 }, prompt: '傍晚', meta: { productionRunId: 'run', productionShotId: 's3' } }], edges: [], groups: [], selectedNodeIds: [] })
-  const generation = { candidate: { candidateId: 'candidate' }, shots: [{ shotId: 's3', nodeId: 'run-node' }] } as unknown as Parameters<typeof storyboardRunBindings>[0]
+  store.restoreSnapshot({ nodes: [{ id: 'run-node', kind: 'video', title: 'Run shot', position: { x: 0, y: 0 }, prompt: '傍晚', meta: { storyboardDesignId: 'run', shotId: 's3' } }], edges: [], groups: [], selectedNodeIds: [] })
   store.updateNode('run-node', { prompt: '用户画布夜景' })
-  await generateShotRow({ ...ctx, designId: 'run', bindings: storyboardRunBindings(generation, []) }, shot, null)
+  await generateShotRow({ ...ctx, designId: 'run' }, shot, null)
   expect(submitted.prompts).toEqual(['用户画布夜景'])
   expect(node().meta?.overriddenFields).toContain('prompt')
 })

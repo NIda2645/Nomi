@@ -14,9 +14,8 @@ import { useGenerationCanvasStore } from '../../../generationCanvas/store/genera
 import { generateShotRow, runStoryboardBatch } from './storyboardRowActions'
 import { deriveStoryboardBatch, deriveStoryboardRowRuntimes } from './storyboardRowStatus'
 import { presentStoryboard } from '../../../capability/storyboardPresent'
-import { storyboardContentToken } from '../../../../../electron/shared/storyboard/generationPlanEditorial'
 
-const calls = vi.hoisted(() => ({ execute: vi.fn<GenerationNodeExecutor>(), confirm: vi.fn(), mint: vi.fn(), read: vi.fn() }))
+const calls = vi.hoisted(() => ({ execute: vi.fn<GenerationNodeExecutor>(), confirm: vi.fn(), mint: vi.fn() }))
 const models: ModelCatalogModelDto[] = [
   { modelKey: 'approval-image', labelZh: 'Image', kind: 'image', vendorKey: 'approval-fixture', meta: { archetypeId: 'agnes-image' },
     enabled: true, published: true, publishedModes: ['text_to_image'], availability: { usable: true }, createdAt: 't', updatedAt: 't' },
@@ -35,7 +34,6 @@ vi.mock('../../../api/modelCatalogApi', () => ({
 }))
 vi.mock('../../../api/vendorPreferenceApi', () => ({ getVendorPreference: async () => ({ orderedVendorKeys: [] }) }))
 vi.mock('../../../api/taskApi', () => ({ mintSpendGrant: calls.mint }))
-vi.mock('../../../production/productionRunApi', () => ({ productionRunApi: { read: calls.read } }))
 vi.mock('../../../generationCanvas/runner/generationNodeExecutor', () => ({ generationNodeExecutor: calls.execute }))
 
 const shot: PlanShot = {
@@ -46,6 +44,8 @@ const shot: PlanShot = {
 const plan: StoryboardPlan = { title: 'Original first-frame action', anchors: [], shots: [shot] }
 const context = { documentId: 'doc', designId: 'design', plan }
 const state = () => useGenerationCanvasStore.getState()
+/** 方案写入会顺带建它的分镜表视图（与手建方案同一条路）；这里数的是生成类节点。 */
+const shotNodes = () => state().nodes.filter(node => node.kind !== 'shot_table')
 const video = () => state().nodes.find(node => node.kind === 'video')!
 let session: ProjectSessionTestHarness
 
@@ -62,7 +62,6 @@ beforeEach(async () => {
   })
   calls.confirm.mockReset().mockResolvedValue(true)
   calls.mint.mockReset().mockResolvedValue('approved-frame-and-video')
-  calls.read.mockReset()
   vi.spyOn(useSpendConfirmStore.getState(), 'requestConfirm').mockImplementation(calls.confirm)
   session = createProjectSessionTestHarness()
   await session.open('project-a')
@@ -74,16 +73,12 @@ beforeEach(async () => {
 })
 afterEach(() => { session.dispose(); vi.restoreAllMocks() })
 
+/** Agent 要生成的就是用户那份方案本身；这里只把它改成 Agent 刚写进去的样子。 */
 function agentInput(referenceUrl?: string) {
   const agentShot: PlanShot = { ...shot, keyframe: { enabled: false },
     ...(referenceUrl ? { referenceBindings: { first_frame: [{ url: referenceUrl }] } } : {}) }
-  const run = { runId: 'design', projectId: 'project-a', origin: { sourceDocument: { documentId: 'doc' } },
-    generationPlan: { candidate: { candidateId: 'candidate', revision: 1, moduleId: 'generation.single-shot',
-      providerId: 'approval-fixture', modelId: 'approval-video', mode: 'image_to_video' as const,
-      prompt: shot.prompt, parameters: {}, references: [] }, editorial: { ...plan, shots: [agentShot] } } }
-  calls.read.mockImplementation(async () => structuredClone(run))
-  return { projectId: run.projectId, runId: run.runId, sourceDocumentId: 'doc',
-    expectedContentToken: storyboardContentToken(run), shotIds: [shot.shotId!] }
+  useWorkbenchStore.getState().setStoryboardPlan({ ...plan, shots: [agentShot] }, 'doc', 'design')
+  return { projectId: 'project-a', designId: 'design', sourceDocumentId: 'doc', shotIds: [shot.shotId!] }
 }
 
 it('original Agent presentation rejects a missing required first frame before confirmation', async () => {
@@ -91,7 +86,7 @@ it('original Agent presentation rejects a missing required first frame before co
   expect(calls.confirm).not.toHaveBeenCalled()
   expect(calls.mint).not.toHaveBeenCalled()
   expect(calls.execute).not.toHaveBeenCalled()
-  expect(state().nodes).toHaveLength(0)
+  expect(shotNodes()).toHaveLength(0)
 })
 
 it.each(['fresh', 'existing'] as const)('original Agent presentation projects the selected first frame onto a %s node', async existing => {
@@ -108,7 +103,7 @@ it.each(['fresh', 'existing'] as const)('original Agent presentation projects th
   expect(calls.execute).toHaveBeenCalledOnce()
   const [submitted, execution] = calls.execute.mock.calls[0]
   expect(resolveGenerationReferences(submitted, execution).firstFrameUrl).toBe('https://fixture.invalid/frame.jpg')
-  expect(state().nodes).toHaveLength(1)
+  expect(shotNodes()).toHaveLength(1)
   expect(video().status).toBe('success')
   if (nodeId) expect(submitted.id).toBe(nodeId)
 })
