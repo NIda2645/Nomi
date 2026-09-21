@@ -103,7 +103,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     customCallScripts,
     dreaminaStatus,
     loaded,
-    bridgeMissing,
+    bridgeMissing, loadError, readOnly,
     reloadFromError,
     refresh,
   } = useOnboardingDrawerCatalog()
@@ -755,6 +755,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       mappings={mappings}
       loaded={loaded}
       bridgeMissing={bridgeMissing}
+      loadError={loadError} readOnly={readOnly} onImported={refresh}
       taskCount={visibleAdapterTaskRuns.length}
       taskContent={
         <AdapterTaskList

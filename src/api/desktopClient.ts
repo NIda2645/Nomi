@@ -170,6 +170,13 @@ export type ModelCatalogImportResultDto = {
     mappings: number
   }
   errors: string[]
+  /**
+   * 「本机已有、这次**没有**被包里的覆盖」的条目数。
+   * 写成可选的，是因为产出它的那一半（配置安全 lane）还没并进来；并进来之后这里不用改。
+   */
+  kept?: { vendors: number; models: number; mappings: number }
+  /** 同名但内容不同的条目清单：导入前摆给用户看，由他决定保留还是覆盖。 */
+  conflicts?: Array<{ kind: 'vendor' | 'model' | 'mapping'; key: string; label?: string }>
 }
 
 export type ModelCatalogDocsFetchResultDto = {
@@ -263,12 +270,24 @@ export async function deleteModelCatalogMapping(id: string): Promise<void> {
   requireDesktopRuntime('model catalog').modelCatalog.deleteMapping(id)
 }
 
-export async function exportModelCatalogPackage(params?: { includeApiKeys?: boolean }): Promise<ModelCatalogImportPackageDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage(params) as ModelCatalogImportPackageDto
+/**
+ * 导出一份可搬走的配置包。**不带参数 = 永不含密钥材料**。
+ * 密钥不跟着包走是刻意的：包会被发群里、贴进对话、留在下载目录，而密钥一旦出门就收不回来。
+ * 导入方在自己机器上逐条补 key，那一步只花十秒。
+ */
+export async function exportModelCatalogPackage(): Promise<ModelCatalogImportPackageDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage() as ModelCatalogImportPackageDto
 }
 
-export async function importModelCatalogPackage(payload: ModelCatalogImportPackageDto): Promise<ModelCatalogImportResultDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload) as ModelCatalogImportResultDto
+/**
+ * 导入一份配置包。**默认合并、不覆盖**：同名条目保留本机已有的，冲突照实列出来交给用户。
+ * 只有他明说「用包里的覆盖」才传 `conflictPolicy: 'replace'`。
+ */
+export async function importModelCatalogPackage(
+  payload: ModelCatalogImportPackageDto,
+  options?: { conflictPolicy?: 'keep' | 'replace' },
+): Promise<ModelCatalogImportResultDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload, options) as ModelCatalogImportResultDto
 }
 
 export async function fetchModelCatalogDocs(payload: { url: string }): Promise<ModelCatalogDocsFetchResultDto> {

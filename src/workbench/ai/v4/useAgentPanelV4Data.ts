@@ -132,9 +132,9 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
         }
       })
       .catch(() => {
+        // 读失败保留上一份模型列表：清空会让模型钮变成一个空壳，看起来像「模型没了」，
+        // 而真相是「这一次没读到」（2026-09-21 同形横扫，配置不许静默消失）。
         if (!alive) return
-        setModels([])
-        setGenerationModels([])
       })
     return () => {
       alive = false

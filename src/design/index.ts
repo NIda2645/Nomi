@@ -26,7 +26,7 @@ export type {
 export { DesignModal } from './overlays'
 export type { DesignModalProps } from './overlays'
 export { ConfirmDialogHost } from './confirmDialog'
-export { alertDialog, confirmDialog, promptDialog } from './confirmDialogStore'
+export { alertDialog, confirmDialog, confirmDialogWithToggle, promptDialog } from './confirmDialogStore'
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 export { WorkbenchMenu } from './menu'
 export type {

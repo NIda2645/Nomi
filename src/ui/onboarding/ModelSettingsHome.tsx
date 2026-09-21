@@ -8,6 +8,8 @@ import {
   IconServerBolt,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
+import { CatalogPackageActions, CatalogStatusNotices } from './ModelCatalogNotices'
+import type { OnboardingCatalogReadOnly } from './useOnboardingDrawerCatalog'
 
 import type { Mapping } from '../../../electron/catalog/types'
 import { DesignButton, DesignSearchInput, NomiLoadingMark, VendorLogoImage } from '../../design'
@@ -332,6 +334,8 @@ export function ModelSettingsHome({
   mappings,
   loaded,
   bridgeMissing,
+  loadError,
+  readOnly,
   taskCount,
   taskContent,
   diagnostic,
@@ -341,12 +345,17 @@ export function ModelSettingsHome({
   onReload,
   onCustomApi,
   onDirectScript,
+  onImported,
 }: {
   connections: ModelSettingsHomeConnection[]
   availableConnections: ModelSettingsHomeConnection[]
   mappings: readonly Mapping[]
   loaded: boolean
   bridgeMissing: boolean
+  /** 这一次读为什么失败；非空时列表里仍是上一份数据，不是空目录。 */
+  loadError: string | null
+  /** 目录只能读不能改的原因；null = 可写。 */
+  readOnly: OnboardingCatalogReadOnly | null
   taskCount: number
   taskContent?: React.ReactNode
   diagnostic?: React.ReactNode
@@ -357,6 +366,8 @@ export function ModelSettingsHome({
   onReload: () => void
   onCustomApi: () => void
   onDirectScript: () => void
+  /** 导入写盘之后重新拉一次目录。 */
+  onImported: () => void
 }): JSX.Element {
   const { t } = useTranslation()
   const [search, setSearch] = React.useState('')
@@ -555,6 +566,9 @@ export function ModelSettingsHome({
           </div>
         ) : (
           <>
+            {/* 「这份配置怎么了」先说清楚，再谈接哪家模型——用户看到空白页时第一个问题就是这个。 */}
+            <CatalogStatusNotices readOnly={readOnly} loadError={loadError} onRetry={onReload} />
+
             {/* 「用 AI 帮我接入」：想接模型的人一定会到这一屏，所以入口就放在这一屏的最上面
                 （搜索框正下方）。它不是一个模型家，也不接 MCP——只把「跟助手说什么」交到手上。 */}
             <section className="mt-4" data-model-home-assisted>
@@ -598,6 +612,9 @@ export function ModelSettingsHome({
                   dataMarker="direct-script"
                   directScript
                 />
+                {/* 配置的搬家（导出 / 导入）：整份目录级的动作，和「直连脚本 / 网络」同属高级组，
+                    不挂在任何一家连接行上——它不是某一家的事（§1.5 一功能一个家）。 */}
+                <CatalogPackageActions onImported={onImported} />
                 {networkContent ? <div className="px-3 py-1">{networkContent}</div> : null}
               </RowGroup>
             </section>
