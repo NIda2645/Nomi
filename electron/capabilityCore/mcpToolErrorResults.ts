@@ -199,9 +199,12 @@ export function buildToolErrorOutcome(
   const code = structuredCode && POLICY_CODES.has(structuredCode)
     ? structuredCode
     : Object.keys(ERROR_HINT).find((key) => rawMessage.includes(key)) || null
+  const hintForMessage = code ? ERROR_HINT[code] : null
   const message = structuredCode && SAFE_CANVAS_READ_CODES.has(structuredCode)
     ? structuredCode
-    : rawMessage
+    // 有登记过 zh/en 人话时 `message` 也跟着 locale 走：否则 en 宿主拿到的是中文原句（R15）。
+    // 没登记的码仍原样透传 rawMessage（不编内容）。
+    : hintForMessage ? L(ctx, hintForMessage.zh, hintForMessage.en) : rawMessage
   const nextAction = typeof errorRecord.nextAction === 'string'
     ? errorRecord.nextAction
     : structuredCode && USER_ACTION_HINT[structuredCode]?.action === 'reselect_project'

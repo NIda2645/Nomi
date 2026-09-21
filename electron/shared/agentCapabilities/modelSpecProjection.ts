@@ -103,15 +103,31 @@ export function modelSpecDetail(entry: AgentModelEntry, availability?: ModelAvai
   };
 }
 
-/** 按标识找一个模型（大小写不敏感；`vendor` 给了就一起比，同名模型来自两家是两个模型）。 */
+/**
+ * 按标识找一个模型（大小写不敏感）。
+ *
+ * **`vendor` 给了就必须匹配，不匹配返回 undefined——不静默回退到第一条。**
+ * 旧实现末尾的 `?? matches[0]` 与这一刀要杀的静默丢弃同构：调用方点名了 A 家，
+ * 拿回 B 家的说明书，然后照 B 家的参数表去写 A 家的请求，中间没有任何提示。
+ * 同名模型跨供应商在本仓是**两个模型**（2026-08-18 已记录的身份坍缩：去重键是 (vendor, modelKey)）。
+ */
 export function findModelEntry(
   entries: readonly AgentModelEntry[],
   modelId: string,
   vendor?: string | null,
 ): AgentModelEntry | undefined {
-  const wanted = modelId.trim().toLowerCase();
-  const matches = entries.filter((entry) =>
-    entry.modelId.toLowerCase() === wanted || (entry.modelAlias ?? "").toLowerCase() === wanted);
+  const matches = entriesWithId(entries, modelId);
   if (!vendor) return matches[0];
-  return matches.find((entry) => entry.vendor === vendor) ?? matches[0];
+  return matches.find((entry) => entry.vendor === vendor);
+}
+
+function entriesWithId(entries: readonly AgentModelEntry[], modelId: string): AgentModelEntry[] {
+  const wanted = modelId.trim().toLowerCase();
+  return entries.filter((entry) =>
+    entry.modelId.toLowerCase() === wanted || (entry.modelAlias ?? "").toLowerCase() === wanted);
+}
+
+/** 这个 modelId 名下有哪几家供应商——拒绝时点名它们，调用方才知道该补哪个 vendor。 */
+export function vendorsCarrying(entries: readonly AgentModelEntry[], modelId: string): string[] {
+  return [...new Set(entriesWithId(entries, modelId).map((entry) => entry.vendor).filter((v): v is string => Boolean(v)))];
 }

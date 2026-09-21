@@ -10,8 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import { applyBuiltinSeeds } from "../catalog/seedBuiltins";
 import { agentModelEntriesFromCatalog } from "../catalog/agentModelEntriesFromCatalog";
+import { getArchetypeById, specializeArchetypeForVendor } from "../shared/modelArchetypes";
 import { createLaneModelRead } from "../agentLane/laneModelRead.mjs";
 import { findModelEntry, modelSpecDetail, modelSpecRow } from "../shared/agentCapabilities/modelSpecProjection";
+import { catalogAvailabilityFor } from "./modelSpecRead";
 
 const state = applyBuiltinSeeds(
   { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} },
@@ -22,29 +24,89 @@ const entries = catalog.map((row) => row.entry);
 const availabilityOf = (entry: typeof entries[number]) =>
   catalog.find((row) => row.entry.modelId === entry.modelId && row.entry.vendor === entry.vendor)?.availability;
 
-/** 应用内那一面：真的 lane 工具，不是手写的等价物。 */
-const laneTool = createLaneModelRead(() => entries, availabilityOf);
-const laneCall = async (args: { kind?: string; modelId?: string }) =>
+/**
+ * 应用内那一面：真的 lane 工具，而且**按生产接线注入可用性**
+ * （`laneDesktopRuntime` 注入 `catalogAvailabilityFor`，lane 自己不 import 目录）。
+ * 上一轮这里给两面各注入一个本地函数，测的是「函数对等」不是「生产对等」——
+ * 于是生产接线漏传 availabilityOf 这件事测不出来（2026-09-22 第二轮验收）。
+ */
+const laneTool = createLaneModelRead(
+  () => entries,
+  // 生产里 state 缺省读真实目录；测试喂同一份种子状态，接线逐字相同。
+  (entry) => catalogAvailabilityFor(entry.vendor, entry.modelId, state),
+);
+const laneCall = async (args: { kind?: string; modelId?: string; vendor?: string }) =>
   (await laneTool.execute("call-1", args)).details as Record<string, unknown>;
 
 /** 外部 MCP 那一面：与 `dispatcher` 的 `models.list` / `models.read` 用的是同一对函数。 */
 const mcpThin = () => entries.map((entry) => modelSpecRow(entry, availabilityOf(entry)));
-const mcpDetail = (modelId: string) => {
-  const entry = findModelEntry(entries, modelId);
+const mcpDetail = (modelId: string, vendor?: string | null) => {
+  const entry = findModelEntry(entries, modelId, vendor);
   return entry ? modelSpecDetail(entry, availabilityOf(entry)) : null;
 };
 
-const sampleIds = ["gpt-image-2", "doubao-seedance-2.0"].filter((id) => findModelEntry(entries, id));
+/** **全量**：156 个模型逐个比，不抽样。抽 2 个挡不住「5/156 不一致」那种缺陷。 */
+const allIdentities = entries.map((entry) => [entry.modelId, entry.vendor] as const);
 
 describe("model spec parity across the two model faces", () => {
   it("the seeded catalog really carries the models this test is about", () => {
-    expect(entries.length).toBeGreaterThan(50);
-    expect(sampleIds.length).toBeGreaterThan(0);
+    expect(entries.length).toBeGreaterThan(150);
   });
 
-  it.each(sampleIds)("%s reads field-for-field identical through both faces", async (modelId) => {
-    const lane = (await laneCall({ modelId })).model;
-    expect(lane).toEqual(mcpDetail(modelId));
+  it("every one of the catalog's models reads field-for-field identical through both faces", async () => {
+    const mismatches: string[] = [];
+    for (const [modelId, vendor] of allIdentities) {
+      const lane = (await laneCall({ modelId, vendor: vendor ?? undefined })).model;
+      if (JSON.stringify(lane) !== JSON.stringify(mcpDetail(modelId, vendor))) mismatches.push(`${vendor}/${modelId}`);
+    }
+    expect(mismatches, `${mismatches.length}/${allIdentities.length} models differ between the two faces`).toEqual([]);
+    expect(allIdentities.length).toBeGreaterThan(150);
+  });
+
+  it("keeps same-name models from different providers apart (identity is (vendor, modelId))", async () => {
+    // 2026-09-22 第二轮验收的新缺陷：不传 vendor 时应用内 Agent 永远拿第一家的说明书，
+    // 实测 apimart/MiniMax-H3 拿回 kie 的（modeIds 4→3、params 与 hint 全不同）。
+    const byId = new Map<string, string[]>();
+    for (const [modelId, vendor] of allIdentities) {
+      if (vendor) byId.set(modelId, [...(byId.get(modelId) ?? []), vendor]);
+    }
+    const shared = [...byId.entries()].filter(([, vendors]) => new Set(vendors).size > 1);
+    expect(shared.length, "the seeded catalog no longer has a same-name cross-vendor model — premise gone").toBeGreaterThan(0);
+    for (const [modelId, vendors] of shared) {
+      const details = await Promise.all([...new Set(vendors)].map(async (vendor) =>
+        JSON.stringify((await laneCall({ modelId, vendor })).model)));
+      // 各家取各家：两份详情必须不同 vendor 字段，且不能全都等于第一家。
+      expect(new Set(details).size, `${modelId}: every vendor returned the same detail`).toBeGreaterThan(1);
+    }
+  });
+
+  it("refuses instead of silently falling back when the named vendor does not carry the model", async () => {
+    const [modelId] = allIdentities[0]!;
+    const payload = await laneCall({ modelId, vendor: "no-such-vendor" });
+    expect(payload.model).toBeNull();
+    expect(payload.vendorsForModelId).toBeTruthy();
+  });
+
+  it("the detail really carries this model's declared parameters (not an empty shell)", async () => {
+    // M3：把详情里每个 mode 的 params 清空，上一轮 65/65 全绿——而 params 正是这一刀的理由。
+    // 判据用**真实档案**：详情里的参数键必须与档案声明逐项一致。
+    let checked = 0;
+    for (const entry of entries) {
+      const base = entry.archetypeId ? getArchetypeById(entry.archetypeId) : null;
+      if (!base) continue;
+      // 参数是**按供应商特化**的（同一档案在不同家参数枚举不同），所以比之前先特化一次。
+      const archetype = specializeArchetypeForVendor(base, entry.vendor);
+      const detail = (await laneCall({ modelId: entry.modelId, vendor: entry.vendor ?? undefined })).model as
+        { modes: Array<{ modeId: string; params: Array<{ key: string }> }> };
+      for (const mode of archetype.modes) {
+        const declared = mode.params.map((p) => p.key).sort();
+        if (declared.length === 0) continue;
+        const got = (detail.modes.find((m) => m.modeId === mode.id)?.params ?? []).map((p) => p.key).sort();
+        expect(got, `${entry.vendor}/${entry.modelId} mode ${mode.id}`).toEqual(declared);
+        checked += 1;
+      }
+    }
+    expect(checked, "no model/mode pair carried declared parameters — the assertion would be vacuous").toBeGreaterThan(100);
   });
 
   it("the thin list is identical through both faces", async () => {
@@ -61,7 +123,7 @@ describe("model spec parity across the two model faces", () => {
   });
 
   it("the detail tier carries what the thin tier withheld", async () => {
-    const modelId = sampleIds[0]!;
+    const modelId = allIdentities[0]![0];
     const detail = (await laneCall({ modelId })).model as Record<string, unknown>;
     expect(Array.isArray(detail.modes)).toBe(true);
     expect((detail.modes as unknown[]).length).toBeGreaterThan(0);

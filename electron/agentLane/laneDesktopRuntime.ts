@@ -27,6 +27,7 @@ import { createProjectAgentProposalReceiptService } from '../capabilityCore/proj
 import { executeLaneReceiptCommand } from './laneReceiptCommands'
 import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residentGenerationAdapterFactory'
 import { canvasReadSurfaceRuntime } from '../capabilityCore/canvasReadSurfaceRuntime'
+import { catalogAvailabilityFor } from '../capabilityCore/modelSpecRead'
 import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceRegistry'
 import { parseLaneCommand } from './laneCommandCodec'
 import { readSkillRecords, isSkillSelectableInWorkbench } from '../skills/skillStore'
@@ -162,6 +163,8 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
           // 给函数不给快照（下同）：用户在 Agent 面板旁边导入一个技能包、或者让 Agent 自己写一个落盘，
           // 都发生在这条 lane 活着的时候。传数组时那条技能要关掉项目重开才出现（2026-09-11 走查）。
           native: { settingsRoot: getSettingsRoot(), skills: async () => (await readSkillRecords()).filter(isSkillSelectableInWorkbench) },
+          // 可用性三件由这一层给：它本来就持有目录，而 lane 模块不许 import 目录（分层）。
+          modelAvailability: (entry) => catalogAvailabilityFor(entry.vendor, entry.modelId),
           // 给函数不给快照：回复语言铁律跟界面语言走、项目记忆跟用户和 Agent 的改动走，
           // 这条已经开着的 lane 下一个回合就该跟上，而不是等冷启动（2026-09-11 走查）。
           // 宿主每个回合求值一次（`laneHost` 的 `systemPromptForRun`），不是每次模型请求。

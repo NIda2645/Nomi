@@ -8,7 +8,7 @@
 import { ContractCompilationError, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 import type { ResolvedModule } from "./moduleRegistry";
-import { archetypeCompileOptions, parameterFieldForControl } from "./modelAdmissionSchema";
+import { archetypeCompileOptions, catalogRowFor, parameterFieldForControl } from "./modelAdmissionSchema";
 import type {
   VideoGenerationRecommendationInput,
   VideoModelCandidate,
@@ -180,7 +180,10 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
     const mode = modes.find((item) => normalizedMode(item.id) === normalizedMode(requestedModeId));
     if (!mode) throw new Error(`Unknown video mode: ${candidate.modeId}`);
     const requestedTransport = normalizedTaskKind(candidate.mode);
-    if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== normalizedTaskKind(mode.transportTaskKind)) {
+    // 传输键只许经 owner 算（`modeTransport.ts` 自己写着 "Callers **must** route through this helper"）。
+    // 手写 `mode.transportTaskKind` 会漏掉 vendor 特化那一轴，于是**按 owner 算出传输键的调用方反而被拒**。
+    const modeTransport = normalizedTaskKind(modeTransportFor(mode, videoCandidate.archetype, videoCandidate.provider));
+    if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== modeTransport) {
       throw new Error(`Video mode ${candidate.modeId} does not match transport task ${candidate.mode}`);
     }
     return mode;
@@ -216,11 +219,6 @@ export function videoTransportModelIdForPlan(candidate: PlanCandidate, videoCand
   return variant?.modelKey?.trim() || mode.modelEnum?.trim() || videoCandidate.modelKey;
 }
 
-export function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
-  // 参数表与变体清单是同一次档案解析的两个产物，主人是 videoCompileOptions；这里只取其中一样。
-  return videoCompileOptions(candidate, candidates).parameterSchema;
-}
-
 export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {
   const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
   if (!selected) return candidate;
@@ -251,7 +249,7 @@ export function videoCompileOptions(
   // 认不出（image/audio/3D、或尚未接入的视频模型）→ 交给通用档案判据，它对全部 kind 成立。
   // 2026-09-22 之前这里直接 `return {}`，于是 95% 的模型落进准入层的「没有声明就放行」分支。
   const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
-  if (!selected) return archetypeCompileOptions(candidate);
+  if (!selected) return archetypeCompileOptions(candidate, catalogRowFor(candidate.providerId, candidate.modelId));
   return {
     parameterSchema: Object.fromEntries(
       videoModeForPlan(selected.candidate, selected.videoCandidate).params

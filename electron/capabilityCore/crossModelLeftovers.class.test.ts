@@ -64,7 +64,7 @@ function candidate(parameters: Record<string, unknown>) {
 
 async function draft(parameters: Record<string, unknown>) {
   const operations = createInMemoryGenerationOperationStore();
-  const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-09-22T00:00:00.000Z" });
+  const handler = createGenerationPlanningHandler({ registry, operations, resolveModelPricing: () => ({ cost: 0, enabled: true, specCosts: [] }), now: () => "2026-09-22T00:00:00.000Z" });
   const created = await handler({ capability: "create", params: { candidate: candidate(parameters) }, lease }) as { operation: { operationId: string } };
   return { handler, operationId: created.operation.operationId, operations };
 }
@@ -98,6 +98,27 @@ describe("cross-model parameter leftovers", () => {
     expect(preview.clearedParameters).toEqual(["legacy_knob"]);
     // 而且清掉的东西不会上 wire。
     expect(preview.contract.parameters).toEqual({ aspect_ratio: "1:1" });
+  });
+
+  it("preview -> gate_request on the SAME untouched legacy draft: the cleanup is persisted, the paid gate does not explode", async () => {
+    // 2026-09-22 第二轮验收的阻断项①：上一轮 preview 只在局部清、不回写，gate_request 压根不清
+    // ⇒ 同一张未改动的草稿**预览看得见、点确认时炸**。破坏没关闭，只是从预览挪到了付费闸。
+    const { handler, operationId, operations } = await draft({ aspect_ratio: "1:1", legacy_knob: 9 });
+
+    const preview = await handler({ capability: "preview", params: { operationId }, lease }) as { clearedParameters?: string[] };
+    expect(preview.clearedParameters).toEqual(["legacy_knob"]);
+
+    // ① **读盘验证**，不只看返回值：清理必须已经落盘。
+    const afterPreview = await operations.read("project-1", operationId);
+    expect(afterPreview?.candidate.parameters).toEqual({ aspect_ratio: "1:1" });
+
+    // ② 再 preview 一次不该再报同一批（报了就说明还是没落盘）。
+    const again = await handler({ capability: "preview", params: { operationId }, lease }) as { clearedParameters?: string[] };
+    expect(again.clearedParameters).toBeUndefined();
+
+    // ③ 同一张草稿、什么都没改，直接走付费闸——这一步以前抛 unknown_parameter。
+    //    （gate_request 会密封草稿，所以它放在最后。）
+    await expect(handler({ capability: "gate_request", params: { operationId }, lease })).resolves.toBeTruthy();
   });
 
   it("still refuses a parameter the caller names in this very call", async () => {

@@ -3,12 +3,15 @@
 // 住在自己的文件里而不是 core.ts：core 贴着 800 行门岗（R9），而这两支本身是一个完整单元
 // ——它们是「模型说明书」这份知识的唯一出口，两个模型面都从这里取。
 import { readCatalog } from '../catalog/catalogStore'
+import type { CatalogState } from '../catalog/types'
+import { setCatalogRowLookup } from './modelAdmissionSchema'
 import { currentCatalogFingerprint } from './modelOnboarding/dispatch'
 import { agentModelEntriesFromCatalog } from '../catalog/agentModelEntriesFromCatalog'
 import {
   findModelEntry,
   modelSpecDetail,
   modelSpecRow,
+  type ModelAvailabilityFacts,
   type ModelSpecDetail,
   type ModelSpecRow,
 } from '../shared/agentCapabilities/modelSpecProjection'
@@ -60,4 +63,26 @@ export function dispatchModelSpec(method: string, params: Record<string, unknown
   }
   // `fingerprint` 与 `nomi_remove_provider` 的 `ifUnchanged` 同一个函数算，不许两份。
   return { models: listModelSpecRows(), fingerprint: currentCatalogFingerprint() }
+}
+
+/**
+ * 一个模型此刻的可用性三件。给应用内那一面用——它的清单由渲染层推上来、不带这三样。
+ * 由 `laneDesktopRuntime`（已持有目录的装配层）注入给 lane，**lane 自己不 import 目录**。
+ * 读的就是对外面同一份目录，故两面这三样同源。
+ */
+export function catalogAvailabilityFor(vendor: string | null, modelId: string, state: CatalogState = readCatalog()): ModelAvailabilityFacts | undefined {
+  const match = agentModelEntriesFromCatalog(state)
+    .find((row) => row.entry.modelId === modelId && (vendor === null || row.entry.vendor === vendor))
+  return match?.availability
+}
+
+/**
+ * 把「按 (providerId, modelId) 取目录行」接给准入层的档案解析。
+ * 在**装配期**调一次；`modelAdmissionSchema` 自己是纯函数、不读盘。
+ */
+export function installCatalogRowLookup(): void {
+  setCatalogRowLookup((providerId, modelId) => {
+    const model = readCatalog().models.find((row) => row.vendorKey === providerId && row.modelKey === modelId)
+    return model ? { modelAlias: model.modelAlias ?? null, meta: model.meta } : undefined
+  })
 }

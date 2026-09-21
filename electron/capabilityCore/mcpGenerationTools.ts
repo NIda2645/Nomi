@@ -27,7 +27,6 @@ import {
   normalizeVideoCandidate,
   shotDurationSeconds,
   videoCandidateForPlan,
-  stripParametersNotAccepted,
   videoCompileOptions,
   videoRecommendationInput,
 } from "./mcpGenerationVideoResolve";
@@ -47,7 +46,7 @@ import type {
 import { effectiveVideoModes } from "../shared/videoCapabilities/recommendation";
 import { resolveGenerationPlan, type PlanShotInput } from "../shared/videoCapabilities/planResolver";
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
-import { resolvePlanPatch } from "./generationPlanPatch";
+import { normalizeStoredDraft, resolvePlanPatch } from "./generationPlanPatch";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
@@ -585,8 +584,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates), now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
       return { operation, nextAction: "preview" };
     }
-    const current = await deps.operations.read(input.lease.projectId, operationId);
-    if (!current) throw new Error(`Generation operation not found: ${operationId}`);
+    const stored = await deps.operations.read(input.lease.projectId, operationId);
+    if (!stored) throw new Error(`Generation operation not found: ${operationId}`);
+    // 读盘归一（**唯一**的存量残留清理点）：所有 capability 都经这里，所以读出来的就是干净的、
+    // 而且已落盘。逐入口补会漏——上一轮就漏在 gate_request 上（预览看得见、点确认时炸）。
+    const normalizedDraft = await normalizeStoredDraft({
+      operation: stored, projectId: input.lease.projectId, operationId, now: now(),
+      registry: deps.registry, videoModelCandidates: deps.videoModelCandidates,
+      patch: (projectId, id, patch, at, shotId) => deps.operations.patch(projectId, id, patch, at, shotId),
+    });
+    const current = normalizedDraft.operation as typeof stored;
+    const storedLeftovers = normalizedDraft.clearedParameters;
     if (input.capability === "present") {
       // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
       if (current.state !== "draft") throw new Error("new_draft_required: only a draft can be presented");
@@ -621,12 +629,8 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "preview") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      // **存量草稿的跨模型残留**：这些参数是升级前落盘的，不是这一次调用里谁点名的。
-      // 对它们当场拒 = 旧草稿一打开就报错、读不起来（2026-09-22 验收指出的升级暴露面）。
-      // 所以这里**清掉并如实报出**（`clearedParameters`），而不是拒——拒只留给
-      // 调用方**这一次点名**的参数（那一档在 `plan` 里当场判）。
-      const { candidate: cleaned, cleared: clearedParameters } = stripParametersNotAccepted(candidate, deps.registry, deps.videoModelCandidates);
-      const contract = compileExecutionContract(cleaned, deps.registry, videoCompileOptions(cleaned, deps.videoModelCandidates));
+      // 存量残留已在读盘归一处清掉并落盘（见上方 normalizeStoredDraft），这里只如实报出。
+      const contract = compileExecutionContract(candidate, deps.registry, videoCompileOptions(candidate, deps.videoModelCandidates));
       const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
         moduleId: candidate.moduleId,
@@ -647,7 +651,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
-        ...(clearedParameters.length ? { clearedParameters } : {}),
+        ...(storedLeftovers.length ? { clearedParameters: storedLeftovers } : {}),
         ...(recommendation ? { recommendation } : {}),
         pricing: projection,
         providerReady: readiness.providerReady,

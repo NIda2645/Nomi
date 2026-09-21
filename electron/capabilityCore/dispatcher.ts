@@ -42,7 +42,7 @@ import {
   type IntegrationSessionService,
 } from '../integrationCertification/integrationSession'
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
-import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
+import { dispatchModelOnboarding } from './modelOnboarding/dispatch'
 import { dispatchModelSpec } from './modelSpecRead'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */

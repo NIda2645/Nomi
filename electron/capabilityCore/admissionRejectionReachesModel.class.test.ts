@@ -72,6 +72,9 @@ describe("admission rejections reach the model", () => {
     const en = buildToolErrorOutcome("nomi_operation_preview", reject({ resolutionn: "720p" }), "en").text;
     expect(zh).not.toBe(en);
     expect(en).toContain("does not accept the parameter key");
+    // `outcome.message` 也得跟着 locale 走——en 宿主拿到中文原句就是 R15 的老毛病。
+    expect(String(buildToolErrorOutcome("nomi_operation_preview", reject({ resolutionn: "720p" }), "en").outcome.message))
+      .toBe("This model does not accept the parameter key you sent");
     // 事实那一半两种语言逐字相同——它是键名，不是文案。
     for (const text of [zh, en]) expect(text).toContain("closestKey=resolution");
   });

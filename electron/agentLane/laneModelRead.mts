@@ -3,7 +3,7 @@
 // 唯一一个手写 TypeBox 定义的模型可见工具（审计 C5 / 设计 T9）。
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels.js';
 import {
-  findModelEntry, modelSpecDetail, modelSpecRow,
+  findModelEntry, modelSpecDetail, modelSpecRow, vendorsCarrying,
   type ModelAvailabilityFacts,
 } from '../shared/agentCapabilities/modelSpecProjection.js';
 import { modelFacingToolSpecs } from '../shared/agentCapabilities/modelFacingToolRegistry.js';
@@ -46,17 +46,18 @@ export function createLaneModelRead(
   resolve: () => readonly AgentModelEntry[],
   availabilityOf?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined,
 ) {
-  return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelId?: string }) => {
+  return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelId?: string; vendor?: string }) => {
     const all = resolve();
     if (args.modelId !== undefined) {
-      const entry = findModelEntry(all, args.modelId);
+      const entry = findModelEntry(all, args.modelId, args.vendor);
       const payload = entry
         ? { model: modelSpecDetail(entry, availabilityOf?.(entry)) }
         : {
             model: null,
-            error: `Unknown model: ${args.modelId}`,
-            // 拒绝自带出路（与准入层那族同一条纪律）。
-            recoveryActions: ['Call list_models with no modelId for the thin list, then retry with one of its modelId values.'],
+            error: `Unknown model: ${args.modelId}${args.vendor ? ` (vendor ${args.vendor})` : ''}`,
+            // 拒绝自带出路（与准入层那族同一条纪律）：同名模型跨供应商时点名有哪几家。
+            vendorsForModelId: vendorsCarrying(all, args.modelId),
+            recoveryActions: ['Call list_models with no modelId for the thin list, then retry with one of its modelId values (add vendor when the same modelId appears under two providers).'],
           };
       return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }], details: payload };
     }

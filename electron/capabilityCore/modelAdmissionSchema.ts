@@ -19,6 +19,17 @@ import type { ModelParameterControl } from "../shared/videoCapabilities/types";
 import type { ExecutionContractCompileOptions, PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 
+/** 目录行里档案解析要用到的两样（`meta.archetypeId` 是非常规模型键钉档案的唯一凭据）。 */
+export type CatalogRowIdentity = { modelAlias?: string | null; meta?: unknown };
+/** 注入的「按 (providerId, modelId) 取目录行」缝——本模块不自己读目录（它是纯函数）。 */
+export type CatalogRowLookup = (providerId: string, modelId: string) => CatalogRowIdentity | undefined;
+let catalogRowLookup: CatalogRowLookup | undefined;
+/** 装配期注入（见 `modelSpecRead.installCatalogRowLookup`）。不注入 = 退回「没有目录行」，行为与注入前一致。 */
+export function setCatalogRowLookup(lookup: CatalogRowLookup | undefined): void { catalogRowLookup = lookup; }
+export function catalogRowFor(providerId: string, modelId: string): CatalogRowIdentity | undefined {
+  return catalogRowLookup?.(providerId, modelId);
+}
+
 const normalized = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase().replace(/-/g, "_") : "";
 
@@ -75,12 +86,19 @@ export function archetypeModeForCandidate(archetype: ModelArchetype, candidate: 
  * 由准入层按「没有声明」处理（放行 + warning），而不是拿一份不确定的表去拒人。
  * 拿到了就是真判据：档案里声明了什么参数、什么取值，准入层照它判。
  */
-export function archetypeCompileOptions(candidate: PlanCandidate): ExecutionContractCompileOptions {
+export function archetypeCompileOptions(
+  candidate: PlanCandidate,
+  catalogRow?: CatalogRowIdentity,
+): ExecutionContractCompileOptions {
+  // `meta` / `modelAlias` **必须带上**：目录正是用 `meta.archetypeId` 给非常规键（`fal/...` 这种
+  // 带斜杠的供应商键）钉档案的。2026-09-22 第二轮验收前这里写死 `meta: undefined`，
+  // 于是 5 个 fal 模型在准入层「认不出档案」——而界面上它们的参数面板一直是满的。
+  // 那不是固有缺口，是这两行丢了信息。
   const base = resolveArchetypeForModel({
     modelKey: candidate.modelId,
-    modelAlias: null,
+    modelAlias: catalogRow?.modelAlias ?? null,
     vendorKey: candidate.providerId,
-    meta: undefined,
+    meta: catalogRow?.meta,
   });
   if (!base) return {};
   // 变体会覆盖参数（paramOverrides），所以先按候选选中的变体特化，再取模式参数。

@@ -8,6 +8,13 @@ import { normalizeVideoCandidate, stripParametersNotAccepted, videoCompileOption
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 
+/** 读盘归一只需要草稿的这几样（避免把 handler 的大类型拖进来）。 */
+type GenerationOperationLike = {
+  state: string;
+  candidate: PlanCandidate;
+  shots?: ReadonlyArray<{ shotId: string; candidate: PlanCandidate }>;
+};
+
 const normalizedModelIdentity = (value: string): string => value.trim().toLowerCase();
 
 export type PlanPatchResolution = {
@@ -70,4 +77,43 @@ export function resolvePlanPatch(input: {
       },
     } : {}),
   };
+}
+
+/**
+ * **读盘归一**：把一张**存量草稿**身上这个模型已经不接受的参数清掉，并**落盘一次**。
+ *
+ * 为什么在读点做而不是逐入口补（2026-09-22 第二轮验收）：上一轮只在 `plan` 那条路清理，
+ * 于是 `preview` 算了一遍但不回写、`gate_request` 压根不清——同一张未改动的草稿
+ * **预览看得见、点确认时炸**（`unknown_parameter`）。破坏没关闭，只是从预览挪到了付费闸。
+ * 所有 capability 都经 `operations.read` 这一个读点，所以归一放这里：
+ * 读出来的就是干净的，下游不必各自记得清一次。
+ *
+ * 只动 `draft`：已密封/已提交的操作是花钱闸的凭据，一个字都不能改。
+ */
+export async function normalizeStoredDraft(input: {
+  operation: GenerationOperationLike;
+  projectId: string;
+  operationId: string;
+  now: string;
+  registry: Pick<ModuleRegistry, "resolve">;
+  videoModelCandidates?: readonly VideoModelCandidate[];
+  patch: (projectId: string, operationId: string, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>, now: string, shotId?: string) => GenerationOperationLike | Promise<GenerationOperationLike>;
+}): Promise<{ operation: GenerationOperationLike; clearedParameters: string[] }> {
+  const { operation, registry, videoModelCandidates } = input;
+  if (operation.state !== "draft") return { operation, clearedParameters: [] };
+  const strip = (candidate: PlanCandidate) => stripParametersNotAccepted(candidate, registry, videoModelCandidates);
+  const cleared = new Set<string>();
+  let current = operation;
+  const top = strip(operation.candidate);
+  if (top.cleared.length > 0) {
+    for (const key of top.cleared) cleared.add(key);
+    current = await input.patch(input.projectId, input.operationId, { parameters: top.candidate.parameters }, input.now);
+  }
+  for (const shot of operation.shots ?? []) {
+    const shotStrip = strip(shot.candidate);
+    if (shotStrip.cleared.length === 0) continue;
+    for (const key of shotStrip.cleared) cleared.add(key);
+    current = await input.patch(input.projectId, input.operationId, { parameters: shotStrip.candidate.parameters }, input.now, shot.shotId);
+  }
+  return { operation: current, clearedParameters: [...cleared].sort() };
 }
