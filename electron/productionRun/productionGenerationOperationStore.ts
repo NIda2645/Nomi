@@ -1,4 +1,3 @@
-import { storyboardContentToken } from '../shared/storyboard/generationPlanEditorial';
 import { GenerationOperationNotFoundError, ProductionRunNotFoundError } from './productionRunErrors';
 import type { GenerationOperation, GenerationOperationStore } from "../capabilityCore/mcpGenerationTools";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
@@ -13,7 +12,6 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
   return {
     operationId: plan.operationId,
     ...(run.origin.sourceDocument ? { sourceDocumentId: run.origin.sourceDocument.documentId } : {}),
-    ...(plan.editorial ? { editorial: structuredClone(plan.editorial) } : {}),
     projectId: run.projectId,
     runRevision: run.revision,
     candidate: structuredClone(plan.candidate),
@@ -78,11 +76,10 @@ export function createProductionGenerationOperationStore(
     return operation;
   };
   const assertTarget = (run: ReturnType<GenerationRunOwner['readFull']>, target: Parameters<GenerationOperationStore['patch']>[5]): void => {
-    if (target && (target.projectId !== run.projectId || target.targetRunId !== run.runId
+    if (target && (target.projectId !== run.projectId
       || target.sourceDocumentId !== run.origin.sourceDocument?.documentId
       || target.sourceDocumentRevision !== run.origin.sourceDocument?.revision
-      || target.sourceDocumentContentHash !== run.origin.sourceDocument?.contentHash
-      || (target.expectedRevision ?? 0) !== run.revision)) throw new Error('storyboard_target_stale');
+      || target.sourceDocumentContentHash !== run.origin.sourceDocument?.contentHash)) throw new Error('storyboard_target_stale');
   };
   return {
     create(input) {
@@ -106,7 +103,6 @@ export function createProductionGenerationOperationStore(
           allowedModels: [...models],
         },
         candidate: input.candidate,
-        ...(input.editorial ? { editorial: input.editorial } : {}),
         ...(input.shots && input.shots.length > 0 ? { shots: input.shots } : {}),
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
       });
@@ -121,33 +117,6 @@ export function createProductionGenerationOperationStore(
       const current = read(projectId, operationId);
       const targetRun = owner.readFull(projectId, operationId);
       assertTarget(targetRun, target);
-      if (targetRun.generationPlan?.editorial) {
-        if (!patch.storyboard || !shotId || !targetRun.origin.sourceDocument) throw new Error('storyboard_author_patch_required');
-        const plan = structuredClone(targetRun.generationPlan.editorial);
-        const authored = patch.storyboard;
-        if ('description' in authored) {
-          const index = plan.anchors.findIndex(anchor => anchor.id === shotId);
-          if (index < 0 || authored.id !== shotId) throw new Error('Storyboard subject mismatch');
-          plan.anchors[index] = authored;
-        } else {
-          const index = plan.shots.findIndex(shot => shot.shotId === shotId);
-          if (index < 0 || authored.shotId !== shotId) throw new Error('Storyboard subject mismatch');
-          plan.shots[index] = authored;
-        }
-        const source = targetRun.origin.sourceDocument;
-        const result = await owner.command(projectId,operationId,{
-          commandId: `generation.author-patch:${operationId}:${targetRun.revision}`,
-          expectedRevision:targetRun.revision,type:'generation.save_storyboard',issuedAt:now,
-          payload:{projectId,runId:operationId,operationId,sourceDocumentId:source.documentId,sourceDocumentRevision:source.revision,sourceDocumentHash:source.contentHash,
-            expectedContentToken:storyboardContentToken(targetRun),plan},
-        });
-        const operation=operationFromRun(result.run);
-        if (!operation) throw new Error('Production Run lost its generation plan');
-        notifyPlanChanged(projectId,operationId);
-        return operation;
-      }
-      if (patch.storyboard) throw new Error('storyboard_author_body_required');
-
       // 改一镜：幂等键跟着**那一镜**的候选 revision 走（reducer 只给那一镜 +1，顶层候选不动——
       // 沿用顶层 revision 会让第二次改同一镜撞上第一次的键、被当成重放吃掉）。
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
@@ -156,7 +125,7 @@ export function createProductionGenerationOperationStore(
         commandId: targetShot
           ? `generation.patch:${operationId}:${shotId}:${targetShot.candidate.revision}`
           : `generation.patch:${operationId}:${current.candidate.revision}`,
-        expectedRevision: target ? target.expectedRevision ?? 0 : targetRun.revision,
+        expectedRevision: targetRun.revision,
         type: "generation.patch",
         payload: { patch, ...(shotId ? { shotId } : {}) },
         issuedAt: now,

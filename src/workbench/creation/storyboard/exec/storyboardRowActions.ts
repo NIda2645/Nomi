@@ -27,7 +27,7 @@ import i18n from '../../../../i18n'
 import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNodeMeta'
 import { ANCHOR_META_KEYS, isAnchorFrozen, type AnchorFrozenMark } from '../../../generationCanvas/model/anchorBibleKeys'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
-import { rowConsumesReferences, type StoryboardNodeBindings, type StoryboardRowRuntime } from './storyboardRowStatus'
+import { rowConsumesReferences, type StoryboardRowRuntime } from './storyboardRowStatus'
 
 /**
  * 分镜表的**执行动作层**（v5 B）：行内/批量生成 = 按需 materialize（没建过的节点此刻建）+
@@ -44,7 +44,6 @@ export type RowActionContext = GenerationConfirmationGuards & {
   designId: string
   plan: StoryboardPlan
   gesture?: CanvasGestureContext
-  bindings?: StoryboardNodeBindings
 }
 
 function confirmationGuards(ctx: RowActionContext): GenerationConfirmationGuards {
@@ -52,7 +51,7 @@ function confirmationGuards(ctx: RowActionContext): GenerationConfirmationGuards
 }
 
 function anchorNodeFor(ctx: RowActionContext, nodes: GenerationCanvasNode[], anchor: PlanAnchor) {
-  return (ctx.bindings?.anchor ?? findAnchorNode)(nodes, ctx.designId, anchor)
+  return findAnchorNode(nodes, ctx.designId, anchor)
 }
 
 async function resolveDefaults(): Promise<Pick<StoryboardShotRowArgsOptions,
@@ -93,8 +92,8 @@ function existingRowBindings(ctx: RowActionContext, shot: PlanShot): {
     if (node) anchorNodeIdByAnchorId[anchorId] = node.id
   }
   return {
-    shotNode: (ctx.bindings?.shot ?? findShotNode)(nodes, ctx.designId, shot),
-    keyframeNode: (ctx.bindings?.keyframe ?? findShotKeyframeNode)(nodes, ctx.designId, shot),
+    shotNode: findShotNode(nodes, ctx.designId, shot),
+    keyframeNode: findShotKeyframeNode(nodes, ctx.designId, shot),
     anchorNodeIdByAnchorId,
   }
 }

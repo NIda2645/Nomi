@@ -44,6 +44,7 @@ import { executeAssetReadTarget, executeExportReadTarget } from '../timeline/age
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
 import { presentStoryboard } from './storyboardPresent'
+import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -403,6 +404,8 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   const landed = await handleMultiShotCanvasLandingOp(op, data)
   if (landed !== null) return landed
   if (op === 'storyboard.present') return presentStoryboard(data)
+  if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
+  if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)
 
   // 外部 MCP 宿主触发的纯渲染层副作用（打开凭据页 / 宿主配置已修复提示），落点住在 mcpHostSurfaceOps。
   const hostSurface = handleMcpHostSurfaceOp(op, data)

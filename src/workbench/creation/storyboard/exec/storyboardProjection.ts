@@ -1,4 +1,3 @@
-import type { StoryboardNodeBindings } from './storyboardRowStatus'
 import type { StoryboardDesign } from '../../../workbenchTypes'
 import type { useGenerationCanvasStore } from '../../../generationCanvas/store/generationCanvasStore'
 import { findShotNode, findShotKeyframeNode } from './storyboardNodeBinding'
@@ -70,14 +69,14 @@ export function projectShotNode(
 }
 
 /** Called only for explicit plan edits, never project hydration. Dependency supplied by the composition root. */
-export function projectStoryboardDesign(design: Pick<StoryboardDesign, 'id' | 'plan'>, canvas: ReturnType<typeof useGenerationCanvasStore.getState>, bindings?: StoryboardNodeBindings): void {
+export function projectStoryboardDesign(design: Pick<StoryboardDesign, 'id' | 'plan'>, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
   for (const shot of design.plan.shots) {
     const entries = buildModelEntryIndex(buildAgentModelEntries(shot.modelKey ? [{ value: shot.modelKey, label: shot.modelKey, vendor: shot.modelVendor, kind: shot.shotKind ?? 'video' }] : []))
     const profile = resolveArchetypeForModel({ modelKey: shot.modelKey ?? '', vendorKey: shot.modelVendor })
     const mode = profile?.modes.find(candidate => candidate.id === (shot.modeId ?? profile.defaultModeId)) ?? null
-    const node = (bindings?.shot ?? findShotNode)(canvas.nodes, design.id, shot)
+    const node = findShotNode(canvas.nodes, design.id, shot)
     if (node && !node.regeneratedFrom && !node.derivedFrom) canvas.updateNode(node.id, projectShotNode(design.plan, shot, node, 'shot', entries, mode), { origin: 'storyboard-projection', history: false })
-    const keyframe = (bindings?.keyframe ?? findShotKeyframeNode)(canvas.nodes, design.id, shot)
+    const keyframe = findShotKeyframeNode(canvas.nodes, design.id, shot)
     if (keyframe) canvas.updateNode(keyframe.id, projectShotNode(design.plan, shot, keyframe, 'keyframe', entries), { origin: 'storyboard-projection', history: false })
   }
 }

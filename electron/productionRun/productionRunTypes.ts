@@ -1,4 +1,3 @@
-import type { GenerationPlanEditorial } from '../shared/storyboard/generationPlanEditorial';
 import type { ProductionExecutionBinding } from "./productionExecutionBinding";
 import type { ProductionGenerationAuthorizationEnvelopeV1 } from "./productionGenerationAuthorization";
 import type { GenerationProviderTaskState } from "../capabilityCore/generationRuntimeAdapter";
@@ -229,8 +228,6 @@ export type ProductionGenerationShot = {
 };
 
 export type ProductionGenerationPlan = {
-  /** Original editor facts absent from candidates; never a second editable plan. */
-  editorial?: GenerationPlanEditorial;
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
   /**

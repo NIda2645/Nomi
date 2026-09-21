@@ -324,6 +324,7 @@ export async function startCapabilityCore(
         registry: generationRegistry,
         operations: operationStore,
         requestRendererDecision,
+        requestRenderer,
         resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
         get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).

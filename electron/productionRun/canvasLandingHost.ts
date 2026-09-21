@@ -4,7 +4,8 @@
 // 这条 best-effort 链装配成两个可调用的口子，让能力核那边保持是接线而不是实现。
 //
 // 三个落地时机共用同一条链、同一个 operationId（`canvas-landing:{runId}`）：
-//   ① agent 建/改草稿（landDraftOnCanvas）——用户当场看见，不必等重开项目；
+//   ① 画布 agent 建/改草稿（landDraftOnCanvas）——用户当场看见，不必等重开项目；
+//      （文稿来源的草稿走不到这里：它的方案住在项目记录里，由用户点「放入画布」才落。）
 //   ② 付费确认即落；③ 打开项目补齐（reconcile）。
 // 共用是刻意的（P1 一个家）：三条各写一份的话，任何一份漏了幂等章就会堆出重复节点。
 import { landCanvasForRun } from "./multiShotCanvasLanding";
@@ -53,7 +54,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       if (inFlightByProject.get(projectId) === merged) inFlightByProject.delete(projectId);
     });
   };
-  const runLanding = async (projectId: string, runId: string, isCurrent?: () => boolean, projectAuthorEdit = false): Promise<boolean> => {
+  const runLanding = async (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> => {
     if (isCurrent && !isCurrent()) return false;
     let run: ProductionRun | null | undefined;
     try {
@@ -63,16 +64,17 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     }
     if (!run) return false;
     // Document-admitted plans land only after the user explicitly chooses
-    // "put on canvas". Historical runs that already have a binding remain
-    // reconcilable so reopening a project does not strand their nodes.
+    // "put on canvas" — that gesture runs through the plan's own row actions, not through here.
+    // Historical runs that already have a binding remain reconcilable so reopening a project
+    // does not strand their nodes. **This gate has no bypass**: a bypass is the difference
+    // between "the agent drafted a plan for you" and "the agent rearranged your canvas".
     const hasCanvasBinding = Boolean(run.generationPlan?.nodeId)
       || Boolean(run.generationPlan?.shots?.some((shot) => shot.nodeId));
-    if (run.origin.sourceDocument && !projectAuthorEdit && !hasCanvasBinding) return false;
+    if (run.origin.sourceDocument && !hasCanvasBinding) return false;
     return landCanvasForRun(run, {
       requestRenderer: deps.requestRenderer,
       projectRoot: deps.resolveProjectRoot(projectId),
       previewSecret: deps.previewSecret(),
-      projectAuthorEdit,
       planName: run.authoring?.title ?? run.brief?.goal,
       ...(isCurrent ? { isCurrent } : {}),
       bindShotNodes: async (boundProjectId, boundRunId, expectedRevision, bindings) => {
@@ -95,7 +97,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     landCanvasBestEffort,
     landDraftOnCanvas: (projectId, runId) => {
       if (!deps.isProjectOpen(projectId)) return;
-      track(projectId, runLanding(projectId, runId, undefined, true));
+      track(projectId, runLanding(projectId, runId));
     },
     settleCanvasLanding: async (projectId) => {
       // 等待期间可能又追加了一段（agent 连着改草稿）：等到这条链真的空掉为止。

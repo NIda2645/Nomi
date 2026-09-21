@@ -1,5 +1,3 @@
-import { storyboardContentToken } from '../shared/storyboard/generationPlanEditorial';
-import { validateStoryboardSavePayload } from './productionStoryboardAuthoring';
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -361,7 +359,6 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
      */
     shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
     /** 见 `ProductionGenerationPlan.cardHidden`。 */
-    editorial?: import('../shared/storyboard/generationPlanEditorial').GenerationPlanEditorial
     cardHidden?: boolean;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();
@@ -380,7 +377,6 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       stageId: "generate",
       playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: input.origin,
-      ...(input.origin.sourceDocument ? { authoring: { title: input.candidate.prompt.split('\n')[0].trim().slice(0, 500) || input.operationId } } : {}),
       policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
       budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
       planVersion: 1,
@@ -404,7 +400,6 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
         state: "draft",
         ...(input.cardHidden === true ? { cardHidden: true } : {}),
         candidate: structuredClone(input.candidate),
-        ...(input.editorial ? { editorial: structuredClone(input.editorial) } : {}),
         // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
         // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
         ...(input.shots && input.shots.length > 0
@@ -448,10 +443,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     const current = runFromEvent(latestEvent);
     if (!current) throw new Error(`Production run not found: ${runId}`);
     if (current.projectId !== projectId) throw new Error("Production run project mismatch");
-    if (command.type === "generation.save_storyboard") {
-      const payload = validateStoryboardSavePayload(command.payload);
-      if (payload.expectedContentToken !== storyboardContentToken(current)) throw new Error("storyboard_content_conflict");
-    } else if (current.revision !== command.expectedRevision) {
+    if (current.revision !== command.expectedRevision) {
       throw new ProductionRunRevisionConflictError(command.expectedRevision, current.revision);
     }
     const timestamp = now();

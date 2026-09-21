@@ -11,9 +11,7 @@
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
 import { withProjectAction, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
 import { productionRunApi } from '../production/productionRunApi'
-import { storyboardContentToken, storyboardPlanFromGeneration } from '../../../electron/shared/storyboard/generationPlanEditorial'
 import { projectStoryboardDesign } from '../creation/storyboard/exec/storyboardProjection'
-import { storyboardRunBindings } from '../creation/storyboard/exec/storyboardNodeBinding'
 import i18n from '../../i18n'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
@@ -399,18 +397,6 @@ export function attachShotResult(payload: AttachShotResultPayload): AttachShotRe
 export async function handleMultiShotCanvasLandingOp(op: string, data: Record<string, unknown>): Promise<unknown | null> {
   switch (op) {
     case 'production.materialize-shots':
-      if (typeof data.authorContentToken === 'string' && typeof data.projectId === 'string' && typeof data.runId === 'string') {
-        return withProjectAction(async project => {
-          const { projectId, runId, authorContentToken } = data as { projectId: string; runId: string; authorContentToken: string }
-          if (project.binding.projectId !== projectId) throw new Error('storyboard_project_changed')
-          const run = await productionRunApi.read(projectId, runId)
-          project.assertCurrent()
-          if (!run || run.projectId !== projectId || run.runId !== runId || storyboardContentToken(run) !== authorContentToken) throw new Error('storyboard_content_conflict')
-          const canvas = useGenerationCanvasStore.getState()
-          projectStoryboardDesign({ id: runId, plan: storyboardPlanFromGeneration(run) }, canvas, storyboardRunBindings(run.generationPlan, canvas.edges))
-          return { bindings: [], createdNodeIds: [], groupId: null, shotTableNodeId: null }
-        }, () => { throw new Error('storyboard_project_unavailable') })
-      }
       return materializeShots(data as MaterializeShotsPayload)
     case 'production.attach-shot-result':
       return attachShotResult(data as AttachShotResultPayload)

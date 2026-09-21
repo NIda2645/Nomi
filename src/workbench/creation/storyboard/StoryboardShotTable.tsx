@@ -163,7 +163,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
   const tableRef = React.useRef<HTMLDivElement>(null)
   const rowFocus = useWorkbenchStore((state) => state.storyboardRowFocus)
   const workspaceMode = useWorkbenchStore((state) => state.workspaceMode)
-  const activeDesignId = useWorkbenchStore((state) => state.activeCreationRunId ?? state.activeStoryboardId)
+  const activeDesignId = useWorkbenchStore((state) => state.activeStoryboardId)
   const focusShot = rowFocus?.designId === activeDesignId ? plan.shots.find((shot) => stableShotId(shot) === rowFocus.rowId) : undefined
   React.useLayoutEffect(() => {
     if (workspaceMode !== 'storyboard' || !focusShot) return

@@ -16,8 +16,6 @@ export type WorkbenchDocumentSlice = {
   activeDocumentId: string
   /** 每篇原稿的分镜设计（唯一领域真相源，按 documentId 索引）。随项目持久化。 */
   storyboardDesignsByDocumentId: Record<string, StoryboardDesign[]>
-  activeCreationRunId: string | null
-  setActiveCreationRunId: (id: string | null, documentId?: string) => void
   activeStoryboardId: string | null
   storyboardRowFocus: { designId: string; rowId: string } | null
   setStoryboardRowFocus: (focus: { designId: string; rowId: string } | null) => void
@@ -32,7 +30,12 @@ export type WorkbenchDocumentSlice = {
   /** 切换激活文档（id 不存在则忽略）。 */
   setActiveDocumentId: (id: string) => void
   setActiveStoryboardId: (id: string | null, documentId?: string) => void
-  addStoryboardDesign: (documentId?: string, source?: StoryboardPlan) => StoryboardDesign | null
+  /**
+   * 新增一条方案。`identity` 只有 Agent 产出那条路会传：它让方案的 id **就是**模型手里那个
+   * draft id，于是「模型指名的那份」与「用户在侧栏看到的那一行」是同一个身份，多轮改的是同一份。
+   * 传了 identity 就按模型给的标题原样命名（不追加序号——给「海边日落」加个 2 是胡说）。
+   */
+  addStoryboardDesign: (documentId?: string, source?: StoryboardPlan, identity?: { id: string; title: string }) => StoryboardDesign | null
   duplicateStoryboardDesign: (id: string, documentId?: string) => StoryboardDesign | null
   renameStoryboardDesign: (id: string, title: string) => void
   deleteStoryboardDesign: (id: string, documentId?: string) => void
@@ -97,7 +100,6 @@ export const createWorkbenchDocumentSlice = (
   activeDocumentId: INITIAL_DOCUMENT.id,
   storyboardDesignsByDocumentId: {},
   activeStoryboardId: null,
-  activeCreationRunId: null,
   storyboardRowFocus: null,
   setStoryboardRowFocus: (storyboardRowFocus) => set({ storyboardRowFocus }),
   setWorkbenchDocument: (workbenchDocument) => {
@@ -120,7 +122,6 @@ export const createWorkbenchDocumentSlice = (
       workbenchDocuments: [...state.workbenchDocuments, doc],
       activeDocumentId: doc.id,
       activeStoryboardId: null,
-      activeCreationRunId: null,
       persistRevision: state.persistRevision + 1,
     }))
     return doc
@@ -141,7 +142,6 @@ export const createWorkbenchDocumentSlice = (
         activeDocumentId: nextActive,
         storyboardDesignsByDocumentId: nextDesigns,
         activeStoryboardId,
-        activeCreationRunId: state.activeDocumentId === id ? null : state.activeCreationRunId,
         persistRevision: state.persistRevision + 1,
       }
     })
@@ -157,28 +157,23 @@ export const createWorkbenchDocumentSlice = (
       }
     })
   },
-  setActiveCreationRunId: (id, documentId) => {
-    const target = documentId ?? get().activeDocumentId
-    if (!get().workbenchDocuments.some((document) => document.id === target)) return
-    set({ activeDocumentId: target, activeCreationRunId: id, activeStoryboardId: null, storyboardRowFocus: null })
-  },
   setActiveDocumentId: (id) => {
     if (typeof id !== 'string' || !id.trim()) return
     set((state) => {
       if (!state.workbenchDocuments.some((d) => d.id === id)) return state
       if (state.activeDocumentId === id) return state
-      return { activeDocumentId: id, activeStoryboardId: null, activeCreationRunId: null }
+      return { activeDocumentId: id, activeStoryboardId: null }
     })
   },
   hydrateWorkbenchDocuments: (documents, activeId) => {
     const normalized = documents.map(normalizeWorkbenchDocument)
     const safe = normalized.length ? normalized : [createDefaultWorkbenchDocument()]
     const active = safe.some((d) => d.id === activeId) ? (activeId as string) : safe[0].id
-    set({ workbenchDocuments: safe, activeDocumentId: active, activeStoryboardId: null, activeCreationRunId: null, storyboardRowFocus: null })
+    set({ workbenchDocuments: safe, activeDocumentId: active, activeStoryboardId: null, storyboardRowFocus: null })
   },
   setActiveStoryboardId: (id, documentId) => {
     if (id === null) {
-      set({ activeStoryboardId: null, activeCreationRunId: null })
+      set({ activeStoryboardId: null })
       return
     }
     const target = resolveTargetDocumentId(documentId, get)
@@ -189,20 +184,22 @@ export const createWorkbenchDocumentSlice = (
       return {
         activeDocumentId: target,
         activeStoryboardId: id,
-        activeCreationRunId: null,
       }
     })
   },
-  addStoryboardDesign: (documentId, source) => {
+  addStoryboardDesign: (documentId, source, identity) => {
     const target = resolveTargetDocumentId(documentId, get)
     if (!target) return null
     const state = get()
     const document = state.workbenchDocuments.find((item) => item.id === target)
     if (!document) return null
+    if (identity && findDesign(state, identity.id, target)) return null
     const plan = source ?? createEmptyStoryboardPlan()
     const nextNumber = (state.storyboardDesignsByDocumentId[target] ?? []).length + 1
-    const title = source ? `${plan.title.trim()} ${nextNumber}`.trim() : plan.title
-    const design = createDesign(target, { ...plan, title }, document.updatedAt, title)
+    const title = identity
+      ? identity.title.trim() || createEmptyStoryboardPlan().title
+      : source ? `${plan.title.trim()} ${nextNumber}`.trim() : plan.title
+    const design = { ...createDesign(target, { ...plan, title }, document.updatedAt, title), ...(identity ? { id: identity.id } : {}) }
     set((current) => ({
       storyboardDesignsByDocumentId: {
         ...current.storyboardDesignsByDocumentId,
@@ -210,7 +207,6 @@ export const createWorkbenchDocumentSlice = (
       },
       activeDocumentId: target,
       activeStoryboardId: design.id,
-      activeCreationRunId: null,
       persistRevision: current.persistRevision + 1,
     }))
     if (source) projectPlan(design)

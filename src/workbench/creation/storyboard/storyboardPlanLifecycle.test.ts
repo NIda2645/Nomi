@@ -41,12 +41,11 @@ describe('分镜方案生命周期（单一 owner）', () => {
   it('new and duplicate target the explicit document while invalid targets do not mutate', () => {
     const state = useWorkbenchStore.getState()
     const other = state.addWorkbenchDocument()
-    state.setActiveCreationRunId('selected-run', other.id)
+    state.setActiveStoryboardId(null)
     const blank = state.addStoryboardDesign(DOC)
     expect(blank?.documentId).toBe(DOC)
     expect(useWorkbenchStore.getState().activeDocumentId).toBe(DOC)
     expect(useWorkbenchStore.getState().activeStoryboardId).toBe(blank?.id)
-    expect(useWorkbenchStore.getState().activeCreationRunId).toBeNull()
     state.setStoryboardPlan(plan, DOC, blank!.id)
     const copy = state.duplicateStoryboardDesign(blank!.id, DOC)
     expect(copy?.plan.shots).toEqual(plan.shots)

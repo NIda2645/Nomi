@@ -20,9 +20,11 @@ const intentSchema = z.object({
   storyboardTarget: z.object({
     projectId: z.string().min(1).max(256), sourceDocumentId: z.string().min(1).max(256),
     sourceDocumentRevision: z.number().int().nonnegative(), sourceDocumentContentHash: z.string().min(1).max(256),
-    targetRunId: z.string().regex(/^[A-Za-z0-9._:-]{1,240}$/), targetKind: z.literal('storyboard'),
+    targetKind: z.literal('storyboard'),
+    plans: z.array(z.object({ id: z.string().min(1).max(240), title: z.string().max(500) }).strict()).max(256),
+    designId: z.string().min(1).max(240).optional(),
     shotIds: z.array(z.string().min(1).max(240)).min(1).max(128).optional(),
-    requestId: z.string().min(1).max(256), expectedRevision: z.number().int().nonnegative().optional(),
+    requestId: z.string().min(1).max(256),
   }).strict().optional(),
   documentId: z.string().max(256).optional(),
   admissionSurface: z.enum(['document', 'canvas']).optional(),
@@ -64,9 +66,9 @@ export function createDesktopLaneInput(input: {
     prepare: (context) => {
       if (context.storyboardTarget && (context.storyboardTarget.projectId !== input.projectId
         || context.storyboardTarget.sourceDocumentId !== context.documentId
-        || (context.storyboardTarget.expectedRevision === undefined
-          && (context.storyboardTarget.sourceDocumentRevision !== context.preconditions?.document?.revision
-            || context.storyboardTarget.sourceDocumentContentHash !== context.preconditions?.document?.contentHash)))) {
+        || context.storyboardTarget.sourceDocumentRevision !== context.preconditions?.document?.revision
+        || context.storyboardTarget.sourceDocumentContentHash !== context.preconditions?.document?.contentHash
+        || (context.storyboardTarget.shotIds !== undefined && context.storyboardTarget.designId === undefined))) {
         throw new Error('agent_lane_invalid_command')
       }
       resolveProjectAgentAttachmentClaims(input.projectId, context.attachments ?? [])

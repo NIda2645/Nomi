@@ -1,5 +1,4 @@
 import React from 'react'
-import type { StoryboardEditorHost } from './storyboardEditorHost'
 import { deleteStoryboardRows, restoreStoryboardDeletion, type StoryboardDeletion } from './storyboardDeleteUndo'
 import { isCanvasTextEditingContext } from '../../generationCanvas/components/useCanvasShortcuts'
 import { flushSync } from 'react-dom'
@@ -72,22 +71,22 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 /** 还没有方案时喂给执行计划 hook 的空方案（hook 顺序不能因方案有无而变；空方案 → idle，不发 IPC）。 */
 const EMPTY_STRATEGY_PLAN: StoryboardPlan = { title: '', anchors: [], shots: [] }
 
-export default function StoryboardPlanEditor({ projectId, host }: { projectId?: string | null; host?: StoryboardEditorHost }): JSX.Element | null {
+export default function StoryboardPlanEditor({ projectId }: { projectId?: string | null }): JSX.Element | null {
   const { t } = useTranslation()
   const activeDesign = useWorkbenchStore((s) => {
     const designs = s.activeDocumentId ? s.storyboardDesignsByDocumentId[s.activeDocumentId] ?? [] : []
     return designs.find((design) => design.id === s.activeStoryboardId) ?? designs[0] ?? null
   })
-  const plan = host ? host.plan : activeDesign?.plan ?? null
-  const designId = host ? host.designId : activeDesign?.id ?? ''
+  const plan = activeDesign?.plan ?? null
+  const designId = activeDesign?.id ?? ''
   const legacySetStoryboardPlan = useWorkbenchStore((s) => s.setStoryboardPlan)
-  const setStoryboardPlan = React.useMemo(() => host ? host.change : (next: StoryboardPlan) => {
+  const setStoryboardPlan = React.useMemo(() => (next: StoryboardPlan) => {
     if (activeDesign) legacySetStoryboardPlan(next, activeDesign.documentId, activeDesign.id)
-  }, [host, activeDesign, legacySetStoryboardPlan])
+  }, [activeDesign, legacySetStoryboardPlan])
   const setWorkspaceMode = useWorkbenchStore((s) => s.setWorkspaceMode)
   const setActiveStoryboardId = useWorkbenchStore((s) => s.setActiveStoryboardId)
   const selectedDocumentId = useWorkbenchStore((s) => s.activeDocumentId)
-  const activeDocumentId = host ? host.documentId : selectedDocumentId
+  const activeDocumentId = selectedDocumentId
   const setProjectAgentReferences = useWorkbenchStore((s) => s.setProjectAgentReferences)
   const canvasNodes = useGenerationCanvasStore((s) => s.nodes)
   // 图片/视频模型清单各拉一次，按镜头种类传给镜行的模型选择器 + 参数控件（完整 option 供解析 archetype 参数）。
@@ -170,14 +169,14 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
 
   // 行执行态：plan × 画布节点的实时 derive（F2：组头/标题/footer 计数同一份，禁静态快照）。
   const rows = React.useMemo(
-    () => (plan ? deriveStoryboardRowRuntimes({ plan, designId, imageModelOptions, videoModelOptions, nodes: canvasNodes, bindings: host?.bindings }) : []),
-    [plan, designId, imageModelOptions, videoModelOptions, canvasNodes, host?.bindings],
+    () => (plan ? deriveStoryboardRowRuntimes({ plan, designId, imageModelOptions, videoModelOptions, nodes: canvasNodes }) : []),
+    [plan, designId, imageModelOptions, videoModelOptions, canvasNodes],
   )
   const batch = React.useMemo(() => deriveStoryboardBatch(rows, skippedShotIds), [rows, skippedShotIds])
   // 参考卡执行态（B3 图卡）：与行同一份 derive（「N 镜在等它」直接聚合 rows 的 waitingRefs）。
   const anchorCards = React.useMemo(
-    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows, bindings: host?.bindings }) : []),
-    [plan, designId, canvasNodes, rows, host?.bindings],
+    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows }) : []),
+    [plan, designId, canvasNodes, rows],
   )
 
   React.useEffect(() => {
@@ -261,7 +260,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
     return rendered
   }, [strategyState, t])
 
-  if (!plan) return host ? <div role={host.error ? 'alert' : 'status'} className="p-4 text-caption text-nomi-ink-60">{t(host.error ? 'storyboardEditor.runPlan.loadFailed' : 'storyboardEditor.runPlan.loading')}{host.error ? <WorkbenchButton onClick={() => { void host.recover().catch(() => {}) }}>{t('storyboardEditor.runPlan.reload')}</WorkbenchButton> : null}</div> : null
+  if (!plan) return null
 
   const issues = validatePlan(plan).filter(issue => issue.kind !== 'anchor-not-consumable')
   const emptyPromptShots = new Set(issues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
@@ -278,20 +277,16 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
       await withProjectAction(async project => {
         project.assertCurrent()
         if (projectId && project.binding.projectId !== projectId) throw new Error('Storyboard project changed')
-        await host?.flush()
         project.assertCurrent()
         const gesture = { source: 'user' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } }
         const capturedContent = stableProjectAgentJson(JSON.parse(JSON.stringify(plan)))
         const assertAuthorCurrent = async () => {
-          if (host) await host.assertCurrent()
-          else {
-            const designs = isRunTargetLoaded(project.binding)
-              ? useWorkbenchStore.getState().storyboardDesignsByDocumentId
-              : (await readRunProjectRecord(project.binding))?.payload.storyboardDesignsByDocumentId
-            const current = designs?.[activeDocumentId]?.find(value => value.id === designId)
-            if (!current || stableProjectAgentJson(JSON.parse(JSON.stringify(current.plan))) !== capturedContent) {
-              throw new Error('Storyboard target changed')
-            }
+          const designs = isRunTargetLoaded(project.binding)
+            ? useWorkbenchStore.getState().storyboardDesignsByDocumentId
+            : (await readRunProjectRecord(project.binding))?.payload.storyboardDesignsByDocumentId
+          const current = designs?.[activeDocumentId]?.find(value => value.id === designId)
+          if (!current || stableProjectAgentJson(JSON.parse(JSON.stringify(current.plan))) !== capturedContent) {
+            throw new Error('Storyboard target changed')
           }
         }
         const assertCurrent = async () => {
@@ -303,7 +298,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
         await action({ ...execCtx, gesture, assertCurrent, assertAuthorCurrent })
       }, () => { throw new Error(t('storyboardEditor.exec.actionFailed')) })
     } catch (error: unknown) {
-      reportFailure(!host && error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
+      reportFailure(error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -337,9 +332,9 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
     })
   }
 
-  const execCtx = { documentId: activeDocumentId, designId, plan, bindings: host?.bindings }
+  const execCtx = { documentId: activeDocumentId, designId, plan }
   const onStoryboardShotSelect = (shot: StoryboardPlan['shots'][number]): void => {
-    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot', host && shot.shotId ? {documentId:activeDocumentId,runId:host.designId,shotId:shot.shotId} : undefined)
+    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot', shot.shotId ? {documentId:activeDocumentId,designId,shotId:shot.shotId} : undefined)
     setProjectAgentReferences((current) => [
       ...current.filter((item) => !isStoryboardReference(item)),
       reference,
@@ -393,7 +388,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
         runtime.shot.index,
         t('storyboardEditor.row.selectAria', { index: runtime.shot.index }),
         'agent handoff',
-        host && runtime.shot.shotId ? {documentId:activeDocumentId,runId:host.designId,shotId:runtime.shot.shotId} : undefined,
+        runtime.shot.shotId ? {documentId:activeDocumentId,designId,shotId:runtime.shot.shotId} : undefined,
       )),
     ])
   }
@@ -509,7 +504,6 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
       onKeyDown={onUndo}
       onFocusCapture={event => { if (event.target instanceof Element) lastEditorFocusRef.current = event.target }}
       data-storyboard-editor="true"
-      data-creation-run-editor={host?.designId}
     >
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
         <div className="flex items-center gap-2 min-w-0">
@@ -526,7 +520,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
           <span className="shrink-0 text-micro text-nomi-ink-40 bg-nomi-ink-05 px-2 py-0.5 rounded-full">{t('storyboardEditor.shotCount', { count: plan.shots.length })}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <WorkbenchButton size="sm" disabled={busy || rows.length === 0} onClick={onPlaceOnCanvas} data-place-storyboard={designId} data-place-storyboard-run={host?.designId}>
+          <WorkbenchButton size="sm" disabled={busy || rows.length === 0} onClick={onPlaceOnCanvas} data-place-storyboard={designId}>
             {t(placed ? 'storyboardEditor.viewOnCanvas' : 'storyboardEditor.placeOnCanvas')}
           </WorkbenchButton>
         </div>
@@ -534,7 +528,6 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
 
       <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-nomi-line-soft text-caption text-nomi-ink-40">
         <IconLockOpen size={14} stroke={1.6} className="shrink-0" />
-        {host?.error ? <span role="alert" className="text-workbench-danger">{t('storyboardEditor.runPlan.localRetained')}<WorkbenchButton size="sm" disabled={busy || host.saving} onClick={() => { void host.recover().catch(() => reportFailure(t('storyboardEditor.exec.actionFailed'))) }}>{t('storyboardEditor.runPlan.saveLocal')}</WorkbenchButton></span> : null}
         <span className="truncate"><span className="text-nomi-ink-60">{t('storyboardEditor.draftEditable')}</span> · {t('storyboardEditor.spendHint')}</span>
       </div>
 
@@ -640,7 +633,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
                 }
                 try {
                   const ids = selected.flatMap(runtime => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
-                  const deletion = deleteStoryboardRows(plan, selected.map(runtime => runtime.shot), ids, host ? null : useGenerationCanvasStore.getState())
+                  const deletion = deleteStoryboardRows(plan, selected.map(runtime => runtime.shot), ids, useGenerationCanvasStore.getState())
                   const focused = document.activeElement
                   deletedFocusRef.current = focused && (editorRef.current.contains(focused) || focused.matches('[data-confirm-dialog-confirm="true"]'))
                     ? focused : focused === document.body ? lastEditorFocusRef.current : null
@@ -666,8 +659,7 @@ export default function StoryboardPlanEditor({ projectId, host }: { projectId?: 
       <footer className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-nomi-line bg-nomi-paper">
         <div className="flex items-center gap-2 min-w-0">
           <WorkbenchButton variant="default" size="sm" onClick={() => {
-            if (host) useWorkbenchStore.getState().setActiveCreationRunId(null)
-            else setActiveStoryboardId(null)
+            setActiveStoryboardId(null)
             setWorkspaceMode('creation')
           }}>
             {t('storyboardEditor.backToCreation')}

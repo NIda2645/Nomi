@@ -259,8 +259,6 @@ export function createPiGenerationTransportAdapter(
   deps: GenerationTransportAdapterDependencies,
 ): PiGenerationTransportAdapter {
   let disposed = false;
-  // Only revisions returned by this request may advance its original CAS precondition.
-  const requestRevisions = new Map<string, number>();
 
   const lease = async (signal: AbortSignal): Promise<ProjectLeaseV2> => {
     if (disposed || signal.aborted) throw abortError();
@@ -400,8 +398,12 @@ export function createPiGenerationTransportAdapter(
         const args = canonicalCall.args as Record<string, unknown>;
         const currentLease = await lease(signal);
         const storyboardTarget = context?.storyboardTarget;
+        // A document-admitted storyboard call may only address a plan that already belongs to
+        // this document. The plan the model names is its own choice (see
+        // `formatStoryboardRequestTarget`); the host only refuses a plan that is not on the list.
         if (storyboardTarget && (storyboardTarget.projectId !== binding.projectId
-          || (args.operationId !== undefined && args.operationId !== storyboardTarget.targetRunId))) {
+          || (typeof args.operationId === 'string'
+            && !storyboardTarget.plans.some((plan) => plan.id === args.operationId)))) {
           throw new Error('storyboard_target_mismatch');
         }
         if (canonicalCall.toolName === GATE_TOOL) {
@@ -417,6 +419,9 @@ export function createPiGenerationTransportAdapter(
         if (storyboardTarget?.shotIds) {
           if (capability === 'plan' && (typeof args.shotId !== 'string' || !storyboardTarget.shotIds.includes(args.shotId))) throw new Error('storyboard_shot_target_mismatch');
           if (capability === 'present') args.shotIds = resolveGenerationShotScope(storyboardTarget.shotIds,args.shotIds);
+          // The selection names its plan, so a call that addresses a different one is refused
+          // rather than silently retargeted.
+          if ((capability === 'plan' || capability === 'present') && args.operationId !== storyboardTarget.designId) throw new Error('storyboard_target_mismatch');
         }
         // operationId is required by every non-create descriptor. Parsing it
         // here keeps malformed model calls out of the durable operation store.
@@ -430,12 +435,6 @@ export function createPiGenerationTransportAdapter(
         // `create` 的 id 由宿主生成、这一刻还不存在：它在**紧接着 `plan()` 的同步语句里**补占
         // （中间没有 await，IPC 读进不来）。桌面 lane 的 `create` 本来就带 `cardHidden`、不出卡，
         // 那一支是给外部宿主与夹具留的。
-        if (storyboardTarget && capability !== 'context' && capability !== 'read') {
-          if (capability === 'create' && storyboardTarget.expectedRevision !== undefined) {
-            throw new Error('storyboard_target_requires_patch');
-          }
-          args.operationId = storyboardTarget.targetRunId;
-        }
         const policyAnswers = spendDecidedByPolicy(deps.approvalPolicy?.());
         const claimPolicyDecision = (operation: string | undefined): (() => void) | undefined =>
           policyAnswers && operation ? beginPolicySpendDecision(currentLease.projectId, operation) : undefined;
@@ -443,17 +442,7 @@ export function createPiGenerationTransportAdapter(
         // 释放放在 `finally`：代答**失败**时卡要回到原处等用户（「策略答不了才问人」）。
         let releasePolicyClaim = claimPolicyDecision(claimed);
         try {
-        const requestRevision = storyboardTarget && requestRevisions.get(storyboardTarget.requestId);
-        const writeContext = storyboardTarget && requestRevision !== undefined
-          ? { ...context, storyboardTarget: { ...storyboardTarget, expectedRevision: requestRevision } } : context;
-        const result = await plan(capability, args, currentLease, signal, writeContext);
-        if (storyboardTarget && (capability === 'create' || capability === 'plan' || capability === 'present')) {
-          const operation = (result as { operation?: { runRevision?: number } })?.operation;
-          if (typeof operation?.runRevision === 'number') {
-            requestRevisions.set(storyboardTarget.requestId, operation.runRevision);
-            if (requestRevisions.size > 128) requestRevisions.delete(requestRevisions.keys().next().value!);
-          }
-        }
+        const result = await plan(capability, args, currentLease, signal, context);
           // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
           // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
           const cardShown = capability === "present"
@@ -471,6 +460,6 @@ export function createPiGenerationTransportAdapter(
         return safeFailure(error);
       }
     },
-    dispose() { disposed = true; requestRevisions.clear(); },
+    dispose() { disposed = true; },
   });
 }

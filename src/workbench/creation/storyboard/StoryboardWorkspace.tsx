@@ -6,7 +6,6 @@ import { cn } from '../../../utils/cn'
 import { DesignEmptyState, WorkbenchButton } from '../../../design'
 import { useWorkbenchStore } from '../../workbenchStore'
 import StoryboardPlanEditor from './StoryboardPlanEditor'
-import { useStoryboardRunHost } from './useStoryboardRunHost'
 import { CreationResourceTreeToggle } from '../CreationResourceTreeToggle'
 
 /**
@@ -27,7 +26,6 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
   const setWorkspaceMode = useWorkbenchStore((state) => state.setWorkspaceMode)
   const workspaceMode = useWorkbenchStore((state) => state.workspaceMode)
   const activeDocumentId = useWorkbenchStore((state) => state.activeDocumentId)
-  const activeCreationRunId = useWorkbenchStore(state => state.activeCreationRunId)
   const activeStoryboardId = useWorkbenchStore((state) => state.activeStoryboardId)
   const assistantWidth = useWorkbenchStore((state) => state.editingPanelLayout.assistantWidth)
   const designsForActiveDocument = useWorkbenchStore((state) => state.storyboardDesignsByDocumentId[state.activeDocumentId] ?? [])
@@ -35,12 +33,12 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
   // 直接进分镜页（URL/前进后退）没有激活方案时自动选该稿第一个（原住 CreationWorkspace，随挂载点搬家）。
   // workspaceMode 闸必须保留：本组件在切走后仍隐藏挂载，去掉闸会把「返回原稿」刚置空的激活又抢回来。
   React.useEffect(() => {
-    if (workspaceMode === 'storyboard' && !activeCreationRunId && !activeStoryboardId && designsForActiveDocument[0]) {
+    if (workspaceMode === 'storyboard' && !activeStoryboardId && designsForActiveDocument[0]) {
       setActiveStoryboardId(designsForActiveDocument[0].id, activeDocumentId)
     }
-  }, [activeDocumentId, activeCreationRunId, activeStoryboardId, designsForActiveDocument, setActiveStoryboardId, workspaceMode])
+  }, [activeDocumentId, activeStoryboardId, designsForActiveDocument, setActiveStoryboardId, workspaceMode])
 
-  if (plan || activeCreationRunId) {
+  if (plan) {
     return (
       <section
         className={cn('workbench-storyboard relative w-full h-full min-w-0 min-h-0', 'grid min-h-0 gap-4 bg-workbench-bg', agentDockRef && !aiCollapsed ? 'grid-cols-[minmax(0,1fr)_var(--storyboard-assistant-width)]' : 'grid-cols-[minmax(0,1fr)]')}
@@ -48,7 +46,7 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
         aria-label={t('workspace.storyboard')}
       >
         <div className="min-w-0 min-h-0 overflow-hidden">
-          {activeCreationRunId && projectId ? <RunStoryboardHost key={`${projectId}:${activeDocumentId}:${activeCreationRunId}`} projectId={projectId} documentId={activeDocumentId} runId={activeCreationRunId} /> : <StoryboardPlanEditor key={activeStoryboardId} projectId={projectId} />}
+          <StoryboardPlanEditor key={activeStoryboardId} projectId={projectId} />
         </div>
         {agentDockRef ? <AssistantPane dockRef={agentDockRef} collapsed={aiCollapsed} /> : null}
       </section>
@@ -78,10 +76,4 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
       {agentDockRef ? <AssistantPane dockRef={agentDockRef} collapsed={aiCollapsed} /> : null}
     </section>
   )
-}
-
-/** Storage adapter only: the original editor owns every visible control. */
-function RunStoryboardHost({ projectId, documentId, runId }: { projectId: string; documentId: string; runId: string }) {
-  const host = useStoryboardRunHost(projectId, documentId, runId)
-  return <StoryboardPlanEditor projectId={projectId} host={host} />
 }

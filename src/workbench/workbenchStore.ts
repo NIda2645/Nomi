@@ -405,7 +405,6 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
       activeDocumentId: doc.id,
       storyboardDesignsByDocumentId: {},
       activeStoryboardId: null,
-      activeCreationRunId: null,
       timeline: normalizeTimeline(timeline),
       timelinePlaying: false,
       selectedTimelineClipIds: [],

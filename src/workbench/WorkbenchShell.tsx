@@ -369,7 +369,7 @@ export default function WorkbenchShell({
                 {/* 创作资源树（原稿 + 各自的分镜方案）：写剧本和编分镜表是同一批资源的两个视图，
                     所以树归 shell 所有、跨这两个模式常驻——挂在任一工作区里都会让另一个工作区
                     没有树（2026-09-06 回归：点开一个方案就再也点不到别的剧本/分镜）。 */}
-                {workspaceModeCarriesCreationResourceTree(workspaceMode) && !creationResourceTreeCollapsed ? <DocumentListSidebar projectId={projectId} /> : null}
+                {workspaceModeCarriesCreationResourceTree(workspaceMode) && !creationResourceTreeCollapsed ? <DocumentListSidebar /> : null}
                 <div className='flex-1 min-w-0 min-h-0 relative'>
                     {mountedWorkspaceModes.includes("creation") ? (
                         <WorkspaceSlot

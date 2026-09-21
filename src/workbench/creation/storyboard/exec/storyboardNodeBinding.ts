@@ -1,8 +1,6 @@
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 import type { PlanAnchor, PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { stableShotId } from '../../../generationCanvas/agent/storyboardPlan'
-import type { ProductionRunProjection } from '../../../../desktop/productionRunBridgeTypes'
-import type { GenerationCanvasEdge } from '../../../generationCanvas/model/generationCanvasTypes'
 
 /**
  * 分镜表 ↔ 画布节点的**绑定层**（纯函数，v5 B）：表是节点的表格表示版，绑定键落在节点 meta 里
@@ -92,27 +90,4 @@ export function designCommittedNow(
   nodes: readonly GenerationCanvasNode[],
 ): boolean {
   return materializedShotIds(nodes, design.id).size > 0 || design.committed
-}
-
-/** Durable Run bindings and the original materializer's exact keys describe the same nodes. */
-export function storyboardRunBindings(generation: ProductionRunProjection['generationPlan'], edges: readonly GenerationCanvasEdge[]) {
-  const bound = (nodes: readonly GenerationCanvasNode[], id: string) => {
-    const subject = generation?.shots?.find(shot => shot.shotId === id)
-    const nodeId = subject?.canvasDetached ? undefined : subject?.nodeId
-      ?? (generation?.candidate.candidateId === id ? generation.nodeId : undefined)
-    return nodeId ? nodes.find(node => node.id === nodeId && !node.regeneratedFrom && !node.derivedFrom) ?? null : null
-  }
-  return {
-    shot: (nodes: readonly GenerationCanvasNode[], design: string, shot: PlanShot) =>
-      (shot.shotId ? bound(nodes, shot.shotId) : null) ?? findShotNode(nodes, design, shot),
-    anchor: (nodes: readonly GenerationCanvasNode[], design: string, anchor: PlanAnchor) =>
-      bound(nodes, anchor.id) ?? findAnchorNode(nodes, design, anchor),
-    keyframe: (nodes: readonly GenerationCanvasNode[], design: string, shot: PlanShot) => {
-      const original = findShotKeyframeNode(nodes, design, shot)
-      if (original) return original
-      const node = shot.shotId ? bound(nodes, shot.shotId) : null
-      const edge = node && edges.find(value => value.target === node.id && value.mode === 'first_frame')
-      return edge ? nodes.find(value => value.id === edge.source) ?? null : null
-    },
-  }
 }

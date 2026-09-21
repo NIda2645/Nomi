@@ -1,20 +1,15 @@
 import type { StoryboardAuthorFields } from '../agentCapabilities/generationPlanSchemas'
-import { generationShotEnvelopeOf } from '../generationShotEnvelope'
-import { stableProjectAgentJson } from '../legacyAgentJson'
 import { modelKindForTaskKind } from '../capabilityModeManifest'
 import type { PlanCandidate } from '../../capabilityCore/executionContract'
-import type { ProductionGenerationPlan, ProductionGenerationShot, ProductionRun } from '../../productionRun/productionRunTypes'
 import type { PlanAnchor, PlanShot, StoryboardPlan } from './storyboardPlan'
-import { planAnchorSchema, planShotSchema, storyboardPlanSchema } from './storyboardPlanSchema'
+import { planAnchorSchema, planShotSchema } from './storyboardPlanSchema'
 
-/** The original editor contract is the sole mutable author body. */
-export type GenerationPlanEditorial = StoryboardPlan
-export type StoryboardGenerationSource = {
-  generationPlan?: Pick<ProductionGenerationPlan, 'candidate' | 'editorial'> & { shots?: ReadonlyArray<Pick<ProductionGenerationShot, 'shotId' | 'role' | 'title' | 'candidate'>> }
-  storyboardReferenceUrls?: StoryboardReferenceUrls
-  authoring?: ProductionRun['authoring']
-}
-export type StoryboardReferenceUrls = Readonly<Record<string, string>>
+/**
+ * 一个 Agent 草稿镜头 ↔ 原编辑器契约（`StoryboardPlan`）之间的**纯适配层**。
+ *
+ * 这里没有存储：一份文稿来源的分镜方案只有一个家——项目记录里的 `storyboardDesign`，
+ * 和用户手建的那种完全同一份。本文件只负责把一个已准入的候选翻成编辑器认的主体形状。
+ */
 
 function shotKindOf(candidate: PlanCandidate): Pick<PlanShot, 'shotKind'> {
   const kind = modelKindForTaskKind(candidate.mode)
@@ -28,53 +23,6 @@ function candidateFields(candidate: PlanCandidate) {
     ...(candidate.modeId ? { modeId: candidate.modeId } : {}),
     ...(Object.keys(candidate.parameters).length ? { params: structuredClone(candidate.parameters) } : {}),
   }
-}
-
-/** A read projection, never a second plan owner or a canvas-derived recovery path. */
-export function storyboardPlanFromGeneration(run: StoryboardGenerationSource, referenceUrls: StoryboardReferenceUrls = run.storyboardReferenceUrls ?? {}): StoryboardPlan {
-  const generation = run.generationPlan
-  if (!generation) throw new Error('Storyboard generation plan missing')
-  if (generation.editorial) return structuredClone(storyboardPlanSchema.parse(generation.editorial))
-  const subjects = generation.shots?.length ? generation.shots : [{shotId:generation.candidate.candidateId,candidate:generation.candidate}]
-  const anchors: PlanAnchor[] = []
-  const shots: PlanShot[] = []
-  for (const subject of subjects) {
-    const authored=storyboardSubjectFromCandidate(subject,shots.length+1,undefined,referenceUrls)
-    if ('description' in authored) anchors.push(authored); else shots.push(authored)
-  }
-  return {title:run.authoring?.title ?? '',anchors,shots}
-}
-
-/** Saving author content never rewrites a submitted or pending execution snapshot. */
-export function generationDraftFromStoryboard(raw: StoryboardPlan, existing: ProductionGenerationPlan, now = existing.updatedAt): ProductionGenerationPlan {
-  const editorial = storyboardPlanSchema.parse(raw)
-  const ids = [...editorial.anchors.map(anchor => anchor.id), ...editorial.shots.map(shot => shot.shotId)]
-  if (ids.some(id => !id) || new Set(ids).size !== ids.length) throw new Error('Invalid or duplicate storyboard shot identity')
-  return { ...existing, editorial: structuredClone(editorial), updatedAt: now }
-}
-
-/** Content comparison excludes job progress, placement bindings and payment selection.
- * This is an opaque canonical token, not a persisted second version database. */
-export function storyboardContentToken(run: StoryboardGenerationSource): string {
-  const generation = run.generationPlan
-  if (!generation) throw new Error('Storyboard generation plan missing')
-  if (generation.editorial) return stableProjectAgentJson(JSON.parse(JSON.stringify(generation.editorial)))
-  const content = (candidate: PlanCandidate) => ({
-    candidateId: candidate.candidateId, prompt: candidate.prompt,
-    providerId: candidate.providerId, modelId: candidate.modelId,
-    modeId: candidate.modeId, variantId: candidate.variantId,
-    mode: candidate.mode, moduleId: candidate.moduleId,
-    parameters: candidate.parameters, references: candidate.references,
-  })
-  return stableProjectAgentJson(JSON.parse(JSON.stringify({
-    title: run.authoring?.title ?? '', editorial: generation.editorial,
-    subjects: generation.shots?.length
-      ? generation.shots.map(shot => {
-        const {included:_paymentSelection,...envelope}=generationShotEnvelopeOf(shot)
-        return {...envelope,role:shot.role ?? 'shot',candidate:content(shot.candidate)}
-      })
-      : [{...generationShotEnvelopeOf({shotId:generation.candidate.candidateId}),role:'shot',candidate:content(generation.candidate)}],
-  })))
 }
 
 /** Adapt an admitted Agent subject into the existing editor contract exactly once, at author creation. */

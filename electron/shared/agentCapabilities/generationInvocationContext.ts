@@ -4,24 +4,39 @@ export type StoryboardRequestTarget = Readonly<{
   sourceDocumentId: string;
   sourceDocumentRevision: number;
   sourceDocumentContentHash: string;
-  targetRunId: string;
   targetKind: 'storyboard';
   requestId: string;
-  expectedRevision?: number;
+  /**
+   * Every plan already saved on this document (id + title), captured in the same synchronous
+   * input turn as the rest of this target. It exists so the model **names** the plan it is
+   * editing instead of the host inferring one from "whichever plan is open right now":
+   * a storyboard plan is the user's document, and guessing which one to overwrite is the
+   * kind of silent write that has no undo affordance in the sidebar.
+   */
+  plans: readonly Readonly<{ id: string; title: string }>[];
+  /** The plan the attached shot references belong to. Present only together with `shotIds`. */
+  designId?: string;
   shotIds?: readonly string[];
 }>;
 
 /** Model guidance describes the same immutable target enforced by the host. */
 export function formatStoryboardRequestTarget(target: StoryboardRequestTarget | undefined): string {
   if (!target) return '';
+  const plans = target.plans.map((plan) => `"${plan.title}" (id: ${plan.id})`).join(', ');
   return [
     '[Storyboard request target]',
-    ...(target.shotIds ? [`Selected stable shot IDs: ${JSON.stringify(target.shotIds)}. Only these shots may be edited or generated; do not infer identity from display row numbers.`] : []),
     `Source document: ${target.sourceDocumentId}; source revision: ${target.sourceDocumentRevision}.`,
-    `Target Run: ${target.targetRunId}. Keep all storyboard results on this Run; never select another document or Run.`,
-    target.expectedRevision === undefined
-      ? 'This is a new plan. Use draft_shots without operationId to create it; the host assigns the target Run. Save the plan without placing it on the canvas.'
-      : `This edits the selected plan at Run revision ${target.expectedRevision}. Read it with check_job using domain="generation" and jobId="${target.targetRunId}", then use draft_shots with operationId="${target.targetRunId}" to edit its shots. Do not create another plan.`,
+    plans
+      ? `Plans already saved on this document: ${plans}.`
+      : 'This document has no saved plan yet.',
+    ...(target.shotIds
+      ? [`The user selected these stable shot IDs on plan ${target.designId}: ${JSON.stringify(target.shotIds)}. `
+        + 'Only these shots may be edited or generated; do not infer identity from display row numbers.']
+      : []),
+    'To change a plan that already exists, pass its id as draft_shots operationId together with the shotId you are changing. '
+      + 'To start a new plan, call draft_shots without operationId. Never rewrite a plan the user did not name: '
+      + 'if it is not clear which plan they mean, ask them first.',
+    'A saved plan is never placed on the canvas by you — the user does that from the plan itself.',
   ].join('\n');
 }
 

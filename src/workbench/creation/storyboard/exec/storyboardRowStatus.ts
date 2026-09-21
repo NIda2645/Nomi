@@ -10,8 +10,6 @@ import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWave
 import { effectiveShotValue, missingRequiredSlots, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
 
-export type StoryboardNodeBindings = { shot: typeof findShotNode; keyframe: typeof findShotKeyframeNode; anchor: typeof findAnchorNode }
-const legacyBindings: StoryboardNodeBindings = { shot: findShotNode, keyframe: findShotKeyframeNode, anchor: findAnchorNode }
 
 /**
  * 分镜行的**执行态 derive 层**（纯函数，v5 B）：行状态不是存的，是从「plan × 画布节点」推出来的
@@ -107,14 +105,13 @@ export function deriveShotRowExec(input: {
   shot: PlanShot
   designId: string
   nodes: readonly GenerationCanvasNode[]
-  bindings?: StoryboardNodeBindings
   /** 该行当前解析的档案模式（shotRowModel.resolveShotArchetypeMode；默认模型 → null）。 */
   mode: ArchetypeMode | null
 }): ShotRowExec {
-  const { plan, shot, designId, nodes, mode, bindings = legacyBindings } = input
-  const node = bindings.shot(nodes, designId, shot)
+  const { plan, shot, designId, nodes, mode } = input
+  const node = findShotNode(nodes, designId, shot)
   const keyframeEnabled = shot.shotKind !== 'image' && shot.keyframe?.enabled === true
-  const keyframeNode = keyframeEnabled ? bindings.keyframe(nodes, designId, shot) : null
+  const keyframeNode = keyframeEnabled ? findShotKeyframeNode(nodes, designId, shot) : null
 
   // 引用锚就绪度（等参考图 / 待锁定）：吃参考的行才看；镜像批量波次的判据
   // （hasUsableResult + frozen），footer 排除原因与真实批次行为不打架。
@@ -141,7 +138,7 @@ export function deriveShotRowExec(input: {
         waitingRefs.push({ anchor, node: sourceNode })
         continue
       }
-      const anchorNode = bindings.anchor(nodes, designId, anchor)
+      const anchorNode = findAnchorNode(nodes, designId, anchor)
       if (!anchorNode || !hasUsableResult(anchorNode)) {
         waitingRefs.push({ anchor, node: anchorNode })
       } else if (!isAnchorFrozen(anchorNode)) {
@@ -186,7 +183,7 @@ export function deriveShotRowExec(input: {
       : null
     if (snapshot) {
       for (const anchor of referencedVisualAnchors(shot, plan.anchors)) {
-        const anchorNode = bindings.anchor(nodes, designId, anchor)
+        const anchorNode = findAnchorNode(nodes, designId, anchor)
         const currentResultId = anchorNode?.result?.id
         const usedResultId = anchorNode ? snapshot[anchorNode.id] : undefined
         if (
@@ -282,17 +279,16 @@ export function deriveStoryboardRowRuntimes(input: {
   imageModelOptions: readonly ModelOption[]
   videoModelOptions: readonly ModelOption[]
   nodes: readonly GenerationCanvasNode[]
-  bindings?: StoryboardNodeBindings
 }): StoryboardRowRuntime[] {
-  const { plan, designId, imageModelOptions, videoModelOptions, nodes, bindings = legacyBindings } = input
+  const { plan, designId, imageModelOptions, videoModelOptions, nodes } = input
   return plan.shots.map((shot) => {
     const options = shot.shotKind === 'image' ? imageModelOptions : videoModelOptions
-    const node = bindings.shot(nodes, designId, shot)
+    const node = findShotNode(nodes, designId, shot)
     const modelKey = effectiveShotValue(shot, node, 'modelKey')
     const vendor = effectiveShotValue(shot, node, 'modelVendor')
     const modelOption = options.find((option) => option.value === modelKey && (!vendor || option.vendor === vendor)) ?? null
     const mode = resolveShotArchetypeMode(modelOption, effectiveShotValue(shot, node, 'modeId') as string | undefined)?.mode ?? null
-    return { shot, mode, exec: deriveShotRowExec({ plan, shot, designId, nodes, mode, bindings }) }
+    return { shot, mode, exec: deriveShotRowExec({ plan, shot, designId, nodes, mode }) }
   })
 }
 
@@ -324,14 +320,13 @@ export function deriveAnchorCardRuntimes(input: {
   plan: StoryboardPlan
   designId: string
   nodes: readonly GenerationCanvasNode[]
-  bindings?: StoryboardNodeBindings
   /** 行 runtime（deriveStoryboardRowRuntimes 的输出；等待计数与行状态同一份）。 */
   rows: readonly StoryboardRowRuntime[]
 }): AnchorCardRuntime[] {
-  const { plan, designId, nodes, rows, bindings = legacyBindings } = input
+  const { plan, designId, nodes, rows } = input
   return plan.anchors.map((anchor) => {
     const visual = isVisualAnchor(anchor)
-    const node = visual ? bindings.anchor(nodes, designId, anchor) : null
+    const node = visual ? findAnchorNode(nodes, designId, anchor) : null
     const generating = isNodeActive(node)
     const failed = !generating && isNodeFailed(node)
     const recoverable = !generating && !failed && isNodeRecoverable(node)

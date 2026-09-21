@@ -271,7 +271,6 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     const launch = (displayPrompt?: string): void => {
       void actions.send([t('agentResident.storyboardRequest'), displayPrompt].filter(Boolean).join('\n\n'), {
         skillKey: STORYBOARD_PLANNER_SKILL.key,
-        newStoryboard: true,
         ...(displayPrompt ? { displayText: displayPrompt } : {}),
       })
     }

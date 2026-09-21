@@ -1,9 +1,8 @@
-import type { PlanAnchor, PlanShot } from '../shared/storyboard/storyboardPlan';
+import type { PlanAnchor, PlanShot, StoryboardPlan } from '../shared/storyboard/storyboardPlan';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
-import { storyboardContentToken, storyboardSubjectFromCandidate, patchStoryboardSubject, storyboardReferenceSlot } from '../shared/storyboard/generationPlanEditorial';
+import { storyboardSubjectFromCandidate, storyboardReferenceSlot } from '../shared/storyboard/storyboardSubjectAdapter';
 import { resolveGenerationShotScope } from '../shared/agentCapabilities/generationShotScope';
 import { storyboardAuthorFieldsSchema, type StoryboardAuthorFields } from '../shared/agentCapabilities/generationPlanSchemas';
-import type { GenerationPlanEditorial } from '../shared/storyboard/generationPlanEditorial';
 // 能力核 · P4 S6.5 语义多镜 create 入口逻辑（从 mcpGenerationTools.ts 抽出，守 800 行门岗 R9）。
 //
 // 这份文件是「语义多镜生产入口」的单一职责家：把 `nomi_operation_create` 收到的 `shots`（client 逐镜计划）
@@ -261,7 +260,7 @@ export type MultiShotHelperDeps = {
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */
-type OperationWithShots = { candidate?: PlanCandidate; editorial?: GenerationPlanEditorial; shots?: ReadonlyArray<GenerationOperationDraftShot> };
+type OperationWithShots = { candidate?: PlanCandidate; shots?: ReadonlyArray<GenerationOperationDraftShot> };
 
 /**
  * P4 S6.5: build the multi-shot create/seal helpers bound to `deps`. `resolveCreateShots` turns a create's
@@ -428,9 +427,9 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
 }
 
 /** Creation adapter only: execution remains owned by the original renderer runner. */
-export function editorialFromDraftSubjects(subjects: readonly GenerationOperationDraftShot[], projectId: string,
-  resolveUrl?: (projectId:string,reference:PlanCandidate['references'][number])=>string): GenerationPlanEditorial {
-  const plan: GenerationPlanEditorial = {title:subjects[0].candidate.prompt.split('\n')[0].slice(0,500),anchors:[],shots:[]};
+export function storyboardPlanFromDraftSubjects(subjects: readonly GenerationOperationDraftShot[], projectId: string,
+  resolveUrl?: (projectId:string,reference:PlanCandidate['references'][number])=>string): StoryboardPlan {
+  const plan: StoryboardPlan = {title:subjects[0].candidate.prompt.split('\n')[0].slice(0,500),anchors:[],shots:[]};
   subjects.forEach((subject,index)=>{
     const urls=Object.fromEntries(subject.candidate.references.map(reference=>[reference.assetId,resolveUrl?.(projectId,reference) ?? '']));
     const authored=storyboardSubjectFromCandidate(subject,index+1,subject.storyboard,urls);
@@ -439,24 +438,44 @@ export function editorialFromDraftSubjects(subjects: readonly GenerationOperatio
   return plan;
 }
 
-export async function presentStoryboardAuthoring(current: {candidate:PlanCandidate;editorial?:GenerationPlanEditorial;sourceDocumentId?:string},
-  projectId:string,runId:string,requested:unknown,request?: (op:string,payload:unknown)=>Promise<unknown>) {
-  if (!current.editorial || !request || !current.sourceDocumentId) throw new Error('storyboard_renderer_required');
-  const ids=[...current.editorial.anchors.map(anchor=>anchor.id),...current.editorial.shots.map(shot=>shot.shotId).filter((id):id is string=>Boolean(id))];
-  const shotIds=resolveGenerationShotScope(ids,requested);
-  const reply=await request('storyboard.present',{projectId,runId,sourceDocumentId:current.sourceDocumentId,expectedContentToken:storyboardContentToken({generationPlan:current}),shotIds});
-  const receipt=reply as {status?:unknown;runId?:unknown;shotIds?:unknown} | null;
-  if (!receipt || receipt.status!=='presented' || receipt.runId!==runId || JSON.stringify(receipt.shotIds)!==JSON.stringify(shotIds)) throw new Error('storyboard_presentation_receipt_mismatch');
-  return {taskRef:generationTaskReference(runId),status:'presented',shots:shotIds,nextAction:'inspect_canvas'};
+type RequestRenderer = (op: string, payload: unknown, timeoutMs: number) => Promise<unknown>;
+/** Author bodies are small; a renderer that cannot answer inside this window is not going to. */
+const STORYBOARD_RENDERER_TIMEOUT_MS = 15_000;
+
+/**
+ * Hand a freshly drafted author body to the project record that already owns hand-made plans.
+ * The reply is checked, not assumed: a silent no-op here would leave the model believing it
+ * saved a plan the user never receives.
+ */
+export async function upsertStoryboardDesign(request: RequestRenderer,
+  input: {projectId:string;documentId:string;designId:string;plan:StoryboardPlan}): Promise<void> {
+  const reply = await request('storyboard.upsert-design', input, STORYBOARD_RENDERER_TIMEOUT_MS) as {status?:unknown;designId?:unknown} | null;
+  if (!reply || reply.status!=='saved' || reply.designId!==input.designId) throw new Error('storyboard_design_save_rejected');
 }
 
-export async function patchStoryboardAuthoring<Result>(current: {editorial?:GenerationPlanEditorial}, params:Record<string,unknown>, projectId:string,operationId:string,now:string,
-  operations: { patch(projectId: string, operationId: string, patch: { storyboard: PlanAnchor | PlanShot }, now: string, shotId: string, target?: import('../shared/agentCapabilities/generationInvocationContext').StoryboardRequestTarget): Result | Promise<Result> },
+export async function presentStoryboardAuthoring(current: {candidate:PlanCandidate;sourceDocumentId?:string},
+  projectId:string,designId:string,requested:unknown,request?: (op:string,payload:unknown)=>Promise<unknown>) {
+  if (!request || !current.sourceDocumentId) throw new Error('storyboard_renderer_required');
+  const reply=await request('storyboard.present',{projectId,designId,sourceDocumentId:current.sourceDocumentId,
+    ...(Array.isArray(requested) ? {shotIds:requested} : {})});
+  const receipt=reply as {status?:unknown;designId?:unknown;shotIds?:unknown} | null;
+  if (!receipt || receipt.status!=='presented' || receipt.designId!==designId || !Array.isArray(receipt.shotIds)) throw new Error('storyboard_presentation_receipt_mismatch');
+  return {taskRef:generationTaskReference(designId),status:'presented',shots:receipt.shotIds as string[],nextAction:'inspect_canvas'};
+}
+
+/**
+ * Edit one subject of a document-admitted plan. The plan body lives in the project record, so the
+ * merge happens where the body is; this boundary only resolves reference identity and addresses
+ * the subject. It never creates a plan — `storyboard_shot_id_required` is how the model learns it
+ * has to name the shot instead of quietly getting a second plan.
+ */
+export async function patchStoryboardAuthoring(current: {sourceDocumentId?:string}, params:Record<string,unknown>, projectId:string,designId:string,
   resolveReferences:(projectId:string,value:unknown)=>PlanCandidate['references'],
   resolveUrl:((projectId:string,reference:PlanCandidate['references'][number])=>string) | undefined,
-  target: import('../shared/agentCapabilities/generationInvocationContext').GenerationInvocationContext['storyboardTarget']) {
-  if (!current.editorial || typeof params.shotId!=='string') throw new Error('storyboard_shot_id_required');
+  request?: RequestRenderer): Promise<void> {
+  if (!current.sourceDocumentId || typeof params.shotId!=='string') throw new Error('storyboard_shot_id_required');
   if (!params.patch || typeof params.patch!=='object' || Array.isArray(params.patch)) throw new Error('Invalid generation patch');
+  if (!request) throw new Error('storyboard_renderer_required');
   const patch=params.patch as Record<string,unknown>;
   const references:Record<string,Array<{url:string}>> | undefined=patch.references===undefined ? undefined : {};
   for (const reference of patch.references===undefined ? [] : resolveReferences(projectId,patch.references)) {
@@ -464,6 +483,8 @@ export async function patchStoryboardAuthoring<Result>(current: {editorial?:Gene
     if (!url) throw new Error('storyboard_reference_preview_unavailable');
     (references![storyboardReferenceSlot(reference)] ??= []).push({url});
   }
-  const storyboard=patchStoryboardSubject(current.editorial,params.shotId,patch,references);
-  return operations.patch(projectId,operationId,{storyboard},now,params.shotId,target);
+  const reply = await request('storyboard.patch-design',
+    {projectId,documentId:current.sourceDocumentId,designId,shotId:params.shotId,patch,...(references ? {references} : {})},
+    STORYBOARD_RENDERER_TIMEOUT_MS) as {status?:unknown;shotId?:unknown} | null;
+  if (!reply || reply.status!=='saved' || reply.shotId!==params.shotId) throw new Error('storyboard_design_save_rejected');
 }

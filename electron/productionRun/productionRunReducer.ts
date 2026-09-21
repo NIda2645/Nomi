@@ -1,7 +1,6 @@
 import type { ArtifactReviewDecision } from "../shared/agentCapabilities/productionRun";
 import { transitionJob, transitionRun } from "./productionRunState";
 import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
-import { saveStoryboardAuthoring } from "./productionStoryboardAuthoring";
 import type {
   BudgetLedgerSummary,
   ProductionArtifact,
@@ -191,8 +190,6 @@ export function applyProductionCommand(
   now: string,
 ): ProductionCommandEffect {
   switch (command.type) {
-    case "generation.save_storyboard":
-      return { run: saveStoryboardAuthoring(current, command, now), eventType: "generation.plan.updated", message: current.runId };
     case "run.status": {
       const status = text(command.payload, "status") as ProductionRunStatus;
       return { run: transitionRun(current, status, now), eventType: "run.status.changed", message: status };

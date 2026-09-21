@@ -23,7 +23,6 @@ import type { PermissionTier } from './agentPanelV4Types'
 import { approvalPolicyForTier } from './agentPanelV4Logic'
 import type { AgentPanelV4Data } from './useAgentPanelV4Data'
 import type { LibraryPrompt } from '../../api/promptLibraryApi'
-import { readCreationRunSelection } from '../../creation/storyboard/useCreationRunPlans'
 import type { StoryboardRequestTarget } from '../../../../electron/shared/agentCapabilities/generationInvocationContext'
 import { laneConversationOf } from '../../../../electron/shared/agentLane/laneConversation'
 
@@ -78,7 +77,7 @@ export type AgentPanelV4Actions = Readonly<{
   error: string
   clearError: () => void
   /** True means the lane accepted the input, not that the model or generation succeeded. */
-  send: (text: string, options?: { newStoryboard?: boolean; skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => Promise<boolean>
+  send: (text: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => Promise<boolean>
   stop: () => void
   approve: () => void
   reject: (reason?: string) => void
@@ -126,7 +125,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     void command().catch((caught: unknown) => setError(friendlyError(caught, t)))
   }, [t])
 
-  const send = React.useCallback(async (rawText: string, options?: { newStoryboard?: boolean; skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => {
+  const send = React.useCallback(async (rawText: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => {
     const text = rawText.trim()
     if (!text) return false
     setError('')
@@ -152,16 +151,22 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     try {
       const captured = captureSendContext(surface)
       const projectId = laneClient.context()?.binding.projectId
-      const selectedRun = surface === 'creation' && !options?.newStoryboard ? readCreationRunSelection(projectId) : null
-      const capturedReferences = selectedRun ? state.projectAgentReferences.filter(isStoryboardReference) : []
-      const selectedShotIds = selectedRun ? storyboardShotIdsForTarget(capturedReferences, {documentId:captured.activeDocumentId,runId:selectedRun.runId}) : undefined
+      // 这份文稿现有方案的清单随请求一起走：模型**指名**要改哪一份（决策 2），
+      // 宿主不替它按「当前打开的是哪份」猜——猜错就是悄悄覆盖用户另一份方案。
+      // 选中的镜头 chip 自带它所属的方案 id，所以它也是「用户指名的」，不是推断。
+      const designsForDocument = surface === 'creation' && captured.activeDocumentId
+        ? state.storyboardDesignsByDocumentId[captured.activeDocumentId] ?? [] : []
+      const capturedReferences = state.projectAgentReferences.filter(isStoryboardReference)
+      const referenceDesignId = designsForDocument.find(design => design.id === state.activeStoryboardId)?.id
+      const selectedShotIds = capturedReferences.length && referenceDesignId
+        ? storyboardShotIdsForTarget(capturedReferences, {documentId:captured.activeDocumentId,designId:referenceDesignId}) : undefined
       const storyboardTarget: StoryboardRequestTarget | undefined = surface === 'creation' && projectId && captured.activeDocumentId ? Object.freeze({
         projectId, sourceDocumentId: captured.activeDocumentId,
-        sourceDocumentRevision: selectedRun?.sourceDocumentRevision ?? captured.documentState.revision,
-        sourceDocumentContentHash: selectedRun?.sourceDocumentContentHash ?? captured.documentState.contentHash,
-        targetRunId: selectedRun?.runId ?? `op-${crypto.randomUUID()}`, targetKind: 'storyboard', requestId: admissionId,
-        ...(selectedRun ? { expectedRevision: selectedRun.revision } : {}),
-        ...(selectedShotIds ? {shotIds:selectedShotIds} : {}),
+        sourceDocumentRevision: captured.documentState.revision,
+        sourceDocumentContentHash: captured.documentState.contentHash,
+        targetKind: 'storyboard', requestId: admissionId,
+        plans: Object.freeze(designsForDocument.map(design => Object.freeze({ id: design.id, title: design.title }))),
+        ...(selectedShotIds && referenceDesignId ? {designId:referenceDesignId,shotIds:selectedShotIds} : {}),
       }) : undefined
       // Start both reads in this synchronous input turn; prepareInput binds its own
       // opening epoch before either promise can settle or the user can switch projects.
