@@ -42,7 +42,10 @@ function makeService(dir: string) {
     })),
   };
   const sessions = new IntegrationSessionService({
-    dir,
+    // 服务认的是 filePath（Dependencies 里没有 dir）；`as never` 曾把这个拼错藏住，
+    // 于是测试读写的是本机真实的 capability 目录下的 integration-sessions.json——
+    // 机器上那份一旦超过 100 条会话，这条测试就在所有人的 main 上一起红。
+    filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
     credentialResolver: () => ({ apiKey: "sk-loopback", vendorKey: "deepseek" }),
     compilerAvailable: () => true,
