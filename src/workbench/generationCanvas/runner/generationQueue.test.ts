@@ -6,7 +6,8 @@
 // 各处 assetUploadConsent:'not-needed'（F16b 起必填）：本文件测的是队列机制，节点都不带本地素材，
 // 压根不碰公共临时托管——'not-needed' 就是这批节点的诚实答案，不是为了过类型随手填的占位。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runGenerationNodesBatch, runGenerationNodesByPlan } from './generationRunController'
+import { runGenerationNodesBatch } from './generationRunController'
+import { runGenerationNodesByPlan } from './generationRunWaves'
 import { QUEUE_BRAKE_THRESHOLD, useGenerationQueueStore } from './generationQueueStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { createDefaultTimeline } from '../../timeline/timelineMath'

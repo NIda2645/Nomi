@@ -11,6 +11,7 @@
   ],
   "scope_paths": [
     "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "src/workbench/generationCanvas/runner/generationRunWaves.ts",
     "src/workbench/generationCanvas/components/batchPlanPreview.ts",
     "src/workbench/generationCanvas/spend/spendConfirm.ts",
     "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
@@ -1209,6 +1210,11 @@
     },
     {
       "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunWaves.ts",
+      "symbol": "runGenerationNodesByPlan"
+    },
+    {
+      "kind": "write",
       "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
       "symbol": "confirmAndRunPlan"
     },
@@ -1565,7 +1571,7 @@
   ],
   "door_reduction": {
     "before": 72,
-    "after": 302,
+    "after": 303,
     "why_not": "Original canvas, storyboard actions, UI reads, background deliveries and repository readers have distinct callers; converge phase validation in original runner and persisted identity validation in original delivery owner instead of removing product entry points."
   },
   "generality_proof": "Original confirmations freeze inputs before approval/minting awaits and forward durable guards to the original runner. Background delivery validates persistent binding and atomic save. Text body digests have exactly one owner: the existing run record. Original stream/final content writes atomically update body and that run digest via nodeRunOutcomePatch; original editor rewrite application updates the matching resultId run digest and triggers the existing persistence boundary. Ordinary editing cannot reseal it. No second editable document, result digest, selection replay, or new execution/context owner is introduced.",
@@ -1671,6 +1677,7 @@
     "strategy": "Separate pre-submit interaction and durable author guard types; keep per-attempt durable validation inside original runner; retain existing workspace identity in normalized records and validate it in original background read/write owner. Own streamed text is admitted only when its digest belongs to the same approved noncompleted run; mode and selection remain independent approved inputs. After validation against the actual surviving node, text retries use the run's original document as executor input so failed partial output cannot become a new prompt or append base.",
     "artifacts": [
       "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "src/workbench/generationCanvas/runner/generationRunWaves.ts",
       "src/workbench/generationCanvas/components/batchPlanPreview.ts",
       "src/workbench/generationCanvas/spend/spendConfirm.ts",
       "src/workbench/generationCanvas/runner/runProjectDelivery.ts",

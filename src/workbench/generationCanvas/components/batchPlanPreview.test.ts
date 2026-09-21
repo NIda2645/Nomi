@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_RUN_TOAST_ID, describeBlockedNotice, runPlanWithToasts } from './batchPlanPreview'
 import type { DependencyWavePlan } from '../runner/dependencyWaves'
-import { runGenerationNodesByPlan } from '../runner/generationRunController'
+import { runGenerationNodesByPlan } from '../runner/generationRunWaves'
 import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -33,8 +33,11 @@ vi.mock('../store/generationCanvasStore', () => ({
 vi.mock('../agent/shotVerifyStore', () => ({ verifyShotsAndReport: vi.fn() }))
 
 vi.mock('../runner/generationRunController', () => ({
-  runGenerationNodesByPlan: vi.fn(async () => ({ totalCount: 1, successes: [], failures: [] })),
   spendCostKindForNodes: vi.fn(() => 'image'),
+}))
+
+vi.mock('../runner/generationRunWaves', () => ({
+  runGenerationNodesByPlan: vi.fn(async () => ({ totalCount: 1, successes: [], failures: [] })),
 }))
 
 function plan(over: Partial<DependencyWavePlan>): DependencyWavePlan {
