@@ -1,6 +1,7 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
 import { isModelControlSignal } from './laneToolControlSignals'
+import { parseQuestionAsk } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -108,6 +109,16 @@ export interface LaneViewModelLabels {
   formatMoney(currency: string, amount: number): string
   /** join 不到领域事实时卡上那句脚注（「任务详情在任务中心」）。 */
   taskUnknown: string
+  /**
+   * 反问答完之后那一行收据的头两个字（「已回答」）。
+   *
+   * 为什么它不是 `toolStatus` 那张表里的一个词：协议上这一次确实是一次 `output-denied`
+   * ——lane 只有准 / 不准两个答复，带话的那一支是今天唯一能把一句话原样送回模型的路
+   * （`laneClient.deny` 的注释）。但**用户没有拒绝任何东西，他回答了一个问题**。
+   * 在状态词表里加第八个词会让 `V4ToolStatus` 偏离它登记在案的外部参照（AI Elements 七态，
+   * `vocabularies-baseline.json:1449`）；而在这里换一句话，说的正是这一行实际发生的事。
+   */
+  answered: string
   /**
    * 技能 key → 用户在技能库里看到的那个名字。
    *
@@ -387,7 +398,13 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
       ...existing,
       kind: 'tool',
       receipt: denial !== undefined
-        ? { ...withoutSummary, status: 'output-denied' }
+        // 反问答完的那一行不说「已拒绝」：那次 deny 承载的是用户的**答案**（`answerToolResult`），
+        // 不是一次否决。同一个判据（`parseQuestionAsk` 认不认得出这次 args）既决定槽里画不画
+        // 反问卡，也决定这一行怎么读——两处读同一份规则，不会出现「问的时候是反问、答完变成拒绝」。
+        ? parseQuestionAsk(slot.args) && denial.decision === 'denied' && denial.reason
+          ? { ...withoutSummary, status: 'output-denied', answered: true as const,
+              label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
+          : { ...withoutSummary, status: 'output-denied' }
         : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError && !controlSignal, false),
           ...(failure ? { summary: redactResidentSensitiveText(failure) } : {}),
           ...(!part.isError && part.toolCallId === undoableToolCallId

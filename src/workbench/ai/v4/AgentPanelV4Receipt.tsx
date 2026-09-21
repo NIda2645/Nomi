@@ -11,7 +11,7 @@ import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { V4Row, V4Shimmer } from './AgentPanelV4Row'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
-import { ActionIcon, IconAlertTriangle, IconChevronRight, ToolStatusIcon } from './AgentPanelV4Icons'
+import { ActionIcon, IconAlertTriangle, IconCheck, IconChevronRight, ToolStatusIcon } from './AgentPanelV4Icons'
 import type { ToolReceipt, V4FlowItem } from './agentPanelV4Types'
 
 // The base :root :focus-visible selector is more specific than a utility class.
@@ -36,7 +36,10 @@ export function V4ToolReceipt({
   onUndo?: () => void
 }): JSX.Element {
   const expandable = Boolean(receipt.input || receipt.output)
-  const tone = STATUS_TONE[receipt.status] ?? 'text-nomi-accent'
+  // 答完的反问不红：协议上它是一次 `output-denied`（lane 只有准 / 不准），但用户没有拒绝
+  // 任何东西——他回答了一个问题。红色在这条面板上只说一件事「这里出问题了」，
+  // 给一次正常的作答打上它，等于每答一个问题就在历史里留一条假警报。
+  const tone = receipt.answered ? 'text-nomi-ink-60' : STATUS_TONE[receipt.status] ?? 'text-nomi-accent'
   const row = (
     <>
       <span className="shrink-0 text-nomi-ink-60">
@@ -45,7 +48,7 @@ export function V4ToolReceipt({
       <span className="shrink-0 font-medium text-nomi-ink-80">{receipt.label}</span>
       {receipt.summary ? <div className="min-w-0 line-clamp-1 text-micro text-nomi-ink-40"><AgentPanelV4Markdown text={receipt.summary} /></div> : null}
       <span className={cn('flex shrink-0 items-center gap-1 text-micro', tone)}>
-        <ToolStatusIcon status={receipt.status} />
+        {receipt.answered ? <IconCheck size={12} aria-hidden="true" /> : <ToolStatusIcon status={receipt.status} />}
         {receipt.trailing ?? statusLabel}
         {receipt.undoable && undoLabel ? (
           // `<details>` 的 summary 里点这个钮会连带把展开体折起来——那是浏览器默认行为，
@@ -78,6 +81,7 @@ export function V4ToolReceipt({
         className="min-h-7 rounded-nomi-sm px-2 text-caption text-nomi-ink-60"
         data-v4-block="tool"
         data-status={receipt.status}
+        {...(receipt.answered ? { 'data-answered': 'true' } : {})}
       >
         {row}
       </V4Row>

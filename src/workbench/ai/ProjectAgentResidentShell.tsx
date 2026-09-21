@@ -197,7 +197,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         onConfirm: confirmLaneSlot,
         onReject: actions.reject,
         onEscalate: actions.stopAsking,
-        onOption: (option: string) => actions.answerOption(option),
+        onAnswer: actions.answerQuestion,
         onAlternate: () => window.dispatchEvent(new Event('nomi-open-model-catalog')),
         ...planSlotHandlers,
       }
@@ -615,7 +615,6 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
               () => openFeedbackFor(request),
             )
           },
-          onSuggestion: (_index, option) => actions.answerOption(option),
         }}
         slotHandlers={slotHandlers}
         queueHandlers={queueHandlers}
@@ -633,6 +632,10 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
           onRemoveChip: removeComposerChip,
           modelLabel: data.modelLabel,
           skillSelected: Boolean(activeSkill || actions.selectedLibraryPrompt),
+          // 上面那张卡是在**问**用户（不是在求批准）时，composer 降一档（2026-09-21 拍板）。
+          // 降的是注意力不是能力：淡下去、占位改口，仍然能用——用户本来就可以不理那个问题、
+          // 先说别的。判据只有一个（槽的 kind），和卡自己画不画那一行自由输入同源。
+          awaitingAnswer: activeSlot?.kind === 'question',
           openPopover: popover,
           onTogglePopover: (next) => setPopover((current) => (current === next ? null : next)),
           ...(composerPopover ? { popover: composerPopover } : {}),

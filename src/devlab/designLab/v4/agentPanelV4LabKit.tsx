@@ -268,15 +268,32 @@ function buildFixtures(t: TFunction) {
       confirmLabel: t('agentPanelV4.slotGenerate'),
       alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
+    // 反问三格共用同一张卡（2026-09-21：反问是**通用**能力，不为某一种问题写死）。
+    // 长相差别只来自数据：有没有说明 / 有没有熔断那句话 / 卡内那一行有没有字。
     question: {
       kind: 'question',
       title: t('agentPanelV4.slotQuestionTitle'),
       options: [
-        t('agentPanelV4.slotOptionLandscape'),
-        t('agentPanelV4.slotOptionPortrait'),
-        t('agentPanelV4.slotOptionSquare'),
+        { id: 'landscape', label: t('agentPanelV4.slotOptionLandscape'), description: t('agentPanelV4.slotOptionLandscapeWhy'), recommended: true },
+        { id: 'portrait', label: t('agentPanelV4.slotOptionPortrait'), description: t('agentPanelV4.slotOptionPortraitWhy') },
+        { id: 'square', label: t('agentPanelV4.slotOptionSquare') },
       ],
-      selectedOption: 0,
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    // 熔断转提问：同一字段连着 3 次没过，就别再撞了。**复用同一张卡**——
+    // 它只是这张卡的第三个生产者，不是第二种长相。
+    questionRetry: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionRetryTitle'),
+      summary: t('agentPanelV4.questionRetryExhausted', { count: 3 }),
+      options: [
+        { id: 'reference', label: t('agentPanelV4.slotOptionAsReference') },
+        { id: 'shot', label: t('agentPanelV4.slotOptionAsShot') },
+        { id: 'mixed', label: t('agentPanelV4.slotOptionMixed') },
+      ],
+      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     plan: {
       kind: 'plan',
@@ -301,7 +318,12 @@ function buildFixtures(t: TFunction) {
     deviation: {
       kind: 'deviation',
       title: t('agentPanelV4.slotDeviationTitle'),
-      options: [t('agentPanelV4.slotDeviationDraw'), t('agentPanelV4.slotDeviationSkip')],
+      // 「有出入」这一格今天只活在实验室里（投影层没有任何一条路产出 `deviation`）。
+      // 选项形状跟着反问那份契约走——同一个组件读同一份数据，不为一格开第二种写法。
+      options: [
+        { id: 'draw', label: t('agentPanelV4.slotDeviationDraw') },
+        { id: 'skip', label: t('agentPanelV4.slotDeviationSkip') },
+      ],
       selectedOption: 1,
     },
     spendOneClip: {

@@ -10,6 +10,7 @@
 // 既违反 R15（可见文字必须走 i18n），又凭空多了一份要和合同对齐的词表。
 import type { ProjectAgentApprovalPolicy } from '../../../../electron/shared/agentCapabilities/capabilityApprovalPolicy';
 import type { LaneTaskCandidate, LaneTaskStatus } from '../../../../electron/shared/agentLane/laneContracts'
+import type { V4QuestionOption } from './agentPanelV4Question'
 
 /** AI Elements Tool 的七态协议（vendor/aiElementsContract.ts 是它的外部参照）。 */
 export type V4ToolStatus =
@@ -111,6 +112,15 @@ export type ToolReceipt = Readonly<{
   expanded?: boolean
   /** 可撤销的改动在行尾多一个「撤销」。 */
   undoable?: boolean
+  /**
+   * 这一行是**答完的反问**（`laneViewModel` 是唯一产地）。
+   *
+   * 协议上它仍然是 `output-denied`（lane 只有准 / 不准，带话的 deny 是今天唯一能把一句话
+   * 原样送回模型的路），但用户没有拒绝任何东西——他回答了一个问题。所以这一行不红、
+   * 不打 ×，读作「已回答 · <他的答案>」。加一个 `V4ToolStatus` 成员会让那个 union 偏离
+   * 它登记在案的外部参照（AI Elements 七态），而这一行要改的本来就只是**怎么读**。
+   */
+  answered?: true
 }>
 
 export type TaskCandidate = Readonly<{ tag: string; pending?: boolean } & Partial<LaneTaskCandidate>>
@@ -147,8 +157,32 @@ export type InterventionData = Readonly<{
   summary?: string
   scope?: string
   params?: readonly string[]
-  options?: readonly string[]
+  /**
+   * 反问的选项。**模型自己写**（标签 + 一句说明 + 可标推荐），形状与解析在
+   * `agentPanelV4Question.ts`——那是这条交互的对外契约，不为某一种问题写死。
+   */
+  options?: readonly V4QuestionOption[]
   selectedOption?: number
+  /**
+   * 卡内最后一行那个自由输入的占位（「或者直接告诉它…」）。
+   *
+   * **反问卡永远带它**（2026-09-21 用户拍板，照 Claude Code 提问卡「若干选项之后最后一项
+   * 是自己说」）。它不是「没给选项时的兜底」：答不上来的那一刻，用户的视线和手正停在卡上，
+   * 让他挪到 30cm 外那个 composer 等于把「回答这张卡」拆成两个家（§1.5 一功能一个家）。
+   * 缺席 = 这一档没有卡内作答（审批 / 付费 / 计划三档就没有）。
+   */
+  answerPlaceholder?: string
+  /** 那一行右端那颗 ↑ 的 aria 名。和回车是**同一个动作**，不是第二个出口。 */
+  answerSubmitLabel?: string
+  /**
+   * 卡挂载时那一行里已经有的字。**缺席 = 空**，这也是生产侧唯一的取值。
+   *
+   * 它存在是为了让「正在打字」这一态在设计实验室里**画得出来**：那一行的值是组件自己的
+   * state（它还没提交，不该进 store），而实验室是静态取景，没有手去敲键盘。同一个理由下
+   * `reject-reason` 早就是一个独立 kind（把渐进披露的第二步固定下来），这一条是同一套做法。
+   * 不拿它给用户预填答案——替他把话写好，他就只能顺着改（D1）。
+   */
+  answerDraft?: string
   plan?: readonly PlanRow[]
   /**
    * 付费卡的**价格行**（形态 9 · B-02「逐项单价 + 合计」）。
@@ -242,10 +276,10 @@ export type InterventionData = Readonly<{
 /**
  * 对话流里的一条 = 一个积木。壳不认识内容，只按 `kind` 派发。
  *
- * `suggestion` 是**缺参数**那一档的家（2026-09-06 拍板 ④）：它不是第九个积木，
- * 而是「助手文本 + 一排选项 chip」两件已有件的组合——缺参数不该占用介入槽，
- * 那个槽是给「要不要让我做」这类问题的，而缺参数只是 Nomi 少问了一句话。
- * 用户点 chip 或直接在 composer 里回答，两条路都回填同一个参数。
+ * 这里**没有** `suggestion`（2026-09-21 按 P1 删）：它曾是「缺参数」想象中的第二个家
+ * ——助手文本 + 一排 chip，长在对话流里。但缺参数 2026-09-12 起就走介入槽的反问卡了
+ * （`interventionKindOf`），这一支从此**零生产者**：类型在、组件在、`AgentPanelV4Panel`
+ * 里的分支也在，只是全仓没有任何一行代码构造得出它。反问已经有家了，这是第二份。
  */
 export type V4FlowItem = { readonly identity?: string } & (
   | { kind: 'user'; text: string; chips?: readonly V4Chip[] }
@@ -280,7 +314,6 @@ export type V4FlowItem = { readonly identity?: string } & (
       details?: readonly { item: V4FlowItem; index: number }[]
     }
   | { kind: 'task'; task: TaskCardData }
-  | { kind: 'suggestion'; text: string; options: readonly string[] }
   | { kind: 'error'; reason: string; action?: string }
 )
 

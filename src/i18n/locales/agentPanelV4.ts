@@ -31,6 +31,7 @@ export const zhAgentPanelV4 = {
   // composer
   placeholder: '继续告诉 Nomi 要改什么… @ 引用素材或技能',
   placeholderRunning: '可继续输入，将排队发送…',
+  placeholderAwaitingAnswer: '先回答上面的问题，或继续说别的',
   message: '给 Nomi 的消息',
   addAnyFile: '添加任意文件',
   removeChip: '移除',
@@ -206,6 +207,17 @@ export const zhAgentPanelV4 = {
     },
   },
   missingParamAsk: '还差一个「{{name}}」才能往下做，你想要哪种？',
+  // 反问卡（2026-09-21 拍板：反问是**通用**能力——模型自己写问题、自己写选项）。
+  // 卡内最后一行那句占位照用户原话；它永远在，不看有没有选项。
+  questionAnswerPlaceholder: '或者直接告诉它…',
+  questionAnswerSubmit: '把这句话答给它',
+  questionRecommended: '推荐',
+  // 熔断转提问：同一个字段连着 {{count}} 次没过，就别再撞了，交给用户定。
+  // 数由生产者给、话由这里说——生产者传成句的字符串就等于绕开了 i18n。
+  questionRetryExhausted: '试了 {{count}} 次都没通过，交给你定。',
+  // 答完那一行收据的头两个字。协议上那次是 deny（lane 只有准/不准），
+  // 但用户没有拒绝任何东西，他回答了一个问题。
+  questionAnswered: '已回答',
   credentialSummary: '在 Nomi 自己的窗口里填，模型看不到。',
   credentialTitle: '这个模型还没配密钥',
   credentialConfirm: '去配置',
@@ -361,6 +373,15 @@ export const zhAgentPanelV4 = {
   slotOptionLandscape: '16:9 横版',
   slotOptionPortrait: '9:16 竖版',
   slotOptionSquare: '1:1',
+  // 实验室取景用：选项的「一句说明」——模型写不写由它自己决定，我们只负责有地方放。
+  slotOptionLandscapeWhy: '给横屏平台',
+  slotOptionPortraitWhy: '给手机竖屏',
+  // 熔断转提问那一格（同一张卡的第三个生产者）。
+  slotQuestionRetryTitle: '这 2 个镜头是当参考图用，还是当正片镜头？',
+  slotOptionAsReference: '当参考图',
+  slotOptionAsShot: '当正片镜头',
+  slotOptionMixed: '一个参考一个正片',
+  slotQuestionTyped: '横版吧，但把人物再放大一点',
   slotPlanTitle: '拆出 4 镜，勾选要生成的',
   slotPlanConfirm: '生成 3 镜',
   slotPlanAlternate: '改一下',
@@ -476,6 +497,7 @@ export const enAgentPanelV4 = {
 
   placeholder: 'Tell Nomi what to change… @ to reference assets or skills',
   placeholderRunning: 'Keep typing — it will be queued…',
+  placeholderAwaitingAnswer: 'Answer the question above, or say something else',
   message: 'Message Nomi',
   addAnyFile: 'Add any file',
   removeChip: 'Remove',
@@ -633,6 +655,11 @@ export const enAgentPanelV4 = {
     },
   },
   missingParamAsk: 'I still need a “{{name}}” before I can continue — which one?',
+  questionAnswerPlaceholder: 'Or just tell it…',
+  questionAnswerSubmit: 'Send this answer',
+  questionRecommended: 'Suggested',
+  questionRetryExhausted: '{{count}} tries and none went through — your call.',
+  questionAnswered: 'Answered',
   credentialSummary: 'Enter it in Nomi\u2019s own window; the model never sees it.',
   credentialTitle: 'This model has no API key yet',
   credentialConfirm: 'Set it up',
@@ -785,6 +812,13 @@ export const enAgentPanelV4 = {
   slotOptionLandscape: '16:9 landscape',
   slotOptionPortrait: '9:16 portrait',
   slotOptionSquare: '1:1',
+  slotOptionLandscapeWhy: 'For landscape platforms',
+  slotOptionPortraitWhy: 'For phone screens',
+  slotQuestionRetryTitle: 'Are these 2 shots reference images, or shots in the film?',
+  slotOptionAsReference: 'As reference images',
+  slotOptionAsShot: 'As shots in the film',
+  slotOptionMixed: 'One reference, one shot',
+  slotQuestionTyped: 'Landscape, but make the character bigger',
   slotPlanTitle: '4 shots drafted — tick the ones to generate',
   slotPlanConfirm: 'Generate 3 shots',
   slotPlanAlternate: 'Adjust',
