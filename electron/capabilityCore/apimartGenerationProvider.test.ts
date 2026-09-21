@@ -708,12 +708,31 @@ describe("APIMart observe-only generation provider", () => {
       referenceUrls: approvedUrls([[reference, "https://cdn.example/character.png"]]),
       parameters: { duration: 3 },
     }));
-    // 这个 mapping 的图片通道是 image_with_roles，所以投影落在那里——通道由 mapping 决定，
-    // 不由调用方挑，这正是删掉外部 resolver 之后唯一的那条口径。
-    expect(body).toMatchObject({ image_with_roles: [{ url: "https://cdn.example/character.png" }] });
-    expect(body).not.toHaveProperty("image_urls");
+    // 2026-09-21 更正（NEW-1）：这条 mapping 的 body **同时**声明 image_urls 与 image_with_roles
+    // （官方互斥，由档案模式区分）。旧口径「通道由 mapping 决定」在这里答不出来，于是无条件选了
+    // image_with_roles——手动路同一张图走的却是 image_urls。没有 modeId = 没有模式 = 扁平族键。
+    expect(body).toMatchObject({ image_urls: ["https://cdn.example/character.png"] });
+    expect(body).not.toHaveProperty("image_with_roles");
     expect(body).not.toHaveProperty("video_urls");
     expect(body).not.toHaveProperty("audio_urls");
+  });
+
+  it("首尾帧模式声明了合并槽 → 同一条 mapping 改走 image_with_roles（通道由档案模式决定）", () => {
+    const provider = createApimartGenerationProvider({
+      resolveConnection: () => ({ apiKey: "test-key" }),
+      fetchImpl: vi.fn(),
+    });
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const, role: "first_frame" as const };
+    const body = provider.buildRequest(input({
+      modelId: "doubao-seedance-2.0",
+      mode: "image_to_video",
+      modeId: "firstlast",
+      references: [reference],
+      referenceUrls: approvedUrls([[reference, "https://cdn.example/character.png"]]),
+      parameters: { duration: 3 },
+    }));
+    expect(body).toMatchObject({ image_with_roles: [{ url: "https://cdn.example/character.png", role: "first_frame" }] });
+    expect(body).not.toHaveProperty("image_urls");
   });
 
   it("fails closed when references have no resolved provider URL", () => {

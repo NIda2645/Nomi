@@ -33,6 +33,7 @@ import {
   projectReferenceUrls,
   sameJson,
 } from "./apimartGenerationProjection";
+import { referenceCombineChannelFor } from "../shared/videoCapabilities/referenceChannels";
 import { ApimartGenerationProviderError } from "./apimartGenerationErrors";
 
 export type {
@@ -276,7 +277,14 @@ function projectionRequest(
   selection: CatalogSelection,
 ): JsonRecord {
   if (!input.prompt || !input.prompt.trim()) throw new ApimartGenerationProviderError("APIMart prompt is required");
-  const projected = projectReferenceUrls(input, selection.mapping);
+  // 参考图落哪条通道由**用户选的档案模式**回答（与渲染层合并槽同一个 owner），不由 body 猜。
+  const combineChannel = referenceCombineChannelFor({
+    meta: selection.model.meta,
+    kind: selection.model.kind,
+    ...(input.modeId ? { modeId: input.modeId } : {}),
+    createBody: selection.mapping.create.body,
+  });
+  const projected = projectReferenceUrls(input, selection.mapping, combineChannel);
   const parameters = normalizeParameters(projected.parameters, selection.mapping);
   mirrorApimartReferenceParameterAliases(parameters, selection.mapping.create.body, sameJson);
   const archetypeId = selection.model.meta && typeof selection.model.meta === "object" && !Array.isArray(selection.model.meta)

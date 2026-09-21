@@ -128,6 +128,12 @@ export type EngineBTaskInput = {
   modelId: string;
   /** 目录任务种类（`text_to_image` / `image_edit` / `image_to_video` …）。 */
   mode: string;
+  /**
+   * 用户选的那一档**档案模式**（`first` / `firstlast` / `omni` …）。真实宿主由
+   * `normalizeVideoCandidate`（`mcpGenerationVideoResolve.ts:240`）写进合同；参考图落哪条
+   * wire 通道由它决定，所以夹具必须带得动它，否则测的是一个没有模式的假世界。
+   */
+  modeId?: string;
   prompt: string;
   parameters: Record<string, unknown>;
   references?: Array<{ assetId: string; contentHash: string; version: number; kind?: "image" | "video" | "audio"; role?: "character" | "first_frame" | "last_frame" | "reference" | "audio" }>;
@@ -179,6 +185,7 @@ export async function driveEngineB(capture: FetchCapture, input: EngineBTaskInpu
       providerId: input.vendorKey,
       modelId: input.modelId,
       mode: input.mode,
+      ...(input.modeId ? { modeId: input.modeId } : {}),
       prompt: input.prompt,
       parameters: input.parameters,
       references,
@@ -198,6 +205,7 @@ export async function driveEngineB(capture: FetchCapture, input: EngineBTaskInpu
       providerId: contract.providerId,
       modelId: contract.modelId,
       mode: contract.mode,
+      ...(contract.modeId ? { modeId: contract.modeId } : {}),
       prompt: contract.prompt,
       parameters: contract.parameters,
       references: contract.references,

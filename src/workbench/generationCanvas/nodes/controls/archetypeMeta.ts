@@ -18,6 +18,7 @@ import {
   type ArchetypeReferenceSlotKind,
   type ModelArchetype,
   type ModelArchetypeVariant,
+  combineChannelForMode,
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
 } from '../../../../config/modelArchetypes'
@@ -754,8 +755,9 @@ export function buildArchetypeInputParams(
   // 角色数组合并（通用原语）：把本模式有值的槽 → [{url, role}] 落在 combineSlotsInto.key，删被合并的
   // 扁平键（M2 互斥）。role = slot.roleName ?? 由 kind 派生（单源）。键名来自档案声明，不写死/不 if-vendor。
   // 必须在此构造层拼好整个数组——模板引擎丢得掉 undefined 键/元素，但丢不掉 {url:undefined} 对象（坑）。
-  if (mode.combineSlotsInto) {
-    const flat = mode.combineSlotsInto.flat === true
+  const combineChannel = combineChannelForMode(mode)
+  if (combineChannel) {
+    const flat = combineChannel.flat
     // 扁平模式（Veo 首尾帧）：有序 string[]，[0]=首 [1]=尾。非扁平（Seedance）：[{url,role}]。
     const combinedFlat: string[] = []
     const combinedRoles: Array<{ url: string; role: string }> = []
@@ -776,7 +778,7 @@ export function buildArchetypeInputParams(
       delete out[inputKey]
     }
     const combined = flat ? combinedFlat : combinedRoles
-    if (combined.length) out[mode.combineSlotsInto.key] = combined
+    if (combined.length) out[combineChannel.key] = combined
   }
   // 模式级固定 body 参数（generation_type 等不需用户选的常量）。在 model 字段之前并入，键不与槽/参数冲突。
   if (mode.fixedParams) {
