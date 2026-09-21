@@ -237,3 +237,46 @@ onboarding has no richer field description for that key.」
 
 **③ 声明覆盖的最终数字**（修完 `fal/*` 丢 meta 那个 bug 之后）：
 **138/154 = 89.6%**，媒体模型 **137/139 = 98.6%**，无声明 16 个（14 个是 text/chat）。
+
+---
+
+## 集成期裁决（2026-09-22）：省略 vendor 时维持「拒绝」，不改成按排序解析
+
+集成到 `integration/fixes-20260922` 时复核了一条尾巴：`resolveModelEntry`
+（`electron/shared/agentCapabilities/modelSpecProjection.ts:118`）在「没传 vendor 且这个
+modelId 名下有 ≥2 家」时是**结构化拒绝**（`ambiguous_model_vendor`），而不是按某个排序挑一家。
+提出的改法是「按执行侧同一把尺解析出一家，返回 `resolvedVendor` / `otherVendors`」。
+
+**实测下来这个改法今天做不了，因为仓库里是两把规则不同的尺：**
+
+| | 实现 | 规则 |
+|---|---|---|
+| 执行侧 | `orderByVendorPreference`（`electron/shared/contracts/vendorPreference.ts:24`，调用点 `electron/catalog/executableModel.ts:105`） | 用户顺序 → 目录原序。**没有 `vendorTier` 这一级** |
+| 渲染层 | `pickImplicitVendorMatch`（`src/config/modelIdentity.ts:174`，`vendorTier` 在 `:114`） | 用户顺序 → 官方 > 内置中转 > 自接 → 目录原序 |
+
+而**真正决定「裸 modelId 落到哪家」的是渲染层那把**——计划写回时用的就是它
+（`src/workbench/generationCanvas/agent/plannedNodeMeta.ts:76`、
+`src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts:72`、
+`src/workbench/common/useDedupedModelSelect.ts:394`）。
+
+**实测数据**（真实 `applyBuiltinSeeds` 目录，156 个模型 / 152 个不同 modelKey）：
+
+- 同名多家的 modelKey 只有 **4 个**：`suno-v5.5`（kie, apimart，同 tier1）、
+  `MiniMax-H3`（apimart tier1, minimax tier2）、`eleven_v3` 与 `eleven_text_to_sound_v2`
+  （elevenlabs, runway，同 tier2）。
+- 两把尺在这 4 个上 **4/4 一致**，且在「默认无用户顺序」「用户顺序 `[kie]`」「用户顺序
+  `[apimart]`」三档下都一致——因为同 tier 的那三个本来就退化成目录序，
+  而 `MiniMax-H3` 的 tier 更优的那家恰好也排在目录前面。
+- **分叉出现在用户自接中转那一档**，也正是 #832 要修的那个场景：给 `gpt-image-2`
+  加一家自接的 `myrelay` 并让它排在目录前面 → 执行侧那把尺挑 **myrelay**，
+  渲染层那把尺挑 **apimart**。
+
+所以照「执行侧那把尺」实现，会让详情页说的供应商和计划真正会落到的那家在这一档上对不上，
+等于把 #832 刚修掉的毛病换个地方再造一遍。
+
+**裁决：本刀维持现状——省略 vendor 且同名多家时结构化拒绝并列出各家，`ambiguous_model_vendor` 保留。**
+它已验收，且最差也只是让调用方多说一句话，不会悄悄给错说明书。
+
+**待办（归属持有 #828 的会话，已排期）**：把两把尺收成 `electron/shared/` 里的一份
+（注意本仓不留转发式 re-export，收尺时要一并改调用点）。收完之后，这里再改成
+按那把唯一的尺解析，并在返回里给出 `resolvedVendor` 与 `otherVendors`。
