@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createApimartGenerationProvider as createProvider } from "./apimartGenerationProvider";
+import { createCatalogGenerationProvider as createProvider } from "./apimartGenerationProvider";
 import type { CatalogState } from "../catalog/types";
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
 import { APIMART_VIDEO_MODELS } from "../catalog/apimartVideos";
@@ -92,8 +92,38 @@ function dualModeCatalogFixture(): CatalogState {
   return { ...base, models: sharedModels, mappings: sharedMappings };
 }
 
-function createApimartGenerationProvider(options: Parameters<typeof createProvider>[0] & { catalogReader?: () => CatalogState }) {
-  return createProvider({ catalogReader: () => catalogFixture(), ...options });
+/**
+ * 一家**用户自己接的**供应商（非内置 direct-key）：`Authorization: Key <k>` 的方案词、
+ * 自己的 base、自己的轮询路径。BL-1 的整条判据就是靠它证明「执行器与供应商无关」。
+ */
+function acmeCatalog(): CatalogState {
+  const base = catalogFixture();
+  return {
+    ...base,
+    vendors: [
+      ...base.vendors,
+      { key: "acme", name: "Acme", enabled: true, baseUrlHint: "https://acme.example", authType: "bearer", authHeader: "Authorization", authScheme: "Key", createdAt: "now", updatedAt: "now" },
+    ],
+    models: [
+      ...base.models,
+      { vendorKey: "acme", modelKey: "acme-image", kind: "image", enabled: true, labelZh: "Acme 图", createdAt: "now", updatedAt: "now" },
+    ],
+    mappings: [
+      ...base.mappings,
+      {
+        id: "acme-text_to_image", vendorKey: "acme", modelKey: "acme-image", taskKind: "text_to_image",
+        name: "Acme 文生图", enabled: true,
+        create: { method: "POST", path: "/v2/jobs", body: { model: "{{model.modelKey}}", prompt: "{{request.prompt}}" }, response_mapping: { task_id: "id" } },
+        query: { method: "GET", path: "/v2/jobs/{{providerMeta.task_id}}", response_mapping: { status: "status" } },
+        createdAt: "now", updatedAt: "now",
+      },
+    ],
+    apiKeysByVendor: { ...base.apiKeysByVendor },
+  } as CatalogState;
+}
+
+function createApimartGenerationProvider(options: Omit<Parameters<typeof createProvider>[0], "vendorKey"> & { vendorKey?: string; catalogReader?: () => CatalogState }) {
+  return createProvider({ vendorKey: "apimart", catalogReader: () => catalogFixture(), ...options });
 }
 
 function input(overrides: Record<string, unknown> = {}) {
@@ -136,13 +166,13 @@ describe("APIMart observe-only generation provider", () => {
       meta: { adapter: { state: "verified", activeRevision: "certified-revision" } },
     };
     const fetchImpl = vi.fn();
-    const provider = createProvider({
+    const provider = createProvider({ vendorKey: "apimart",
       resolveConnection: () => ({ apiKey: "test-key" }),
       catalogReader: () => base,
       fetchImpl,
     });
 
-    expect(() => provider.buildRequest(input())).toThrow("APIMart certification-owned connection requires its certified transport");
+    expect(() => provider.buildRequest(input())).toThrow("apimart certification-owned connection requires its certified transport");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -152,7 +182,7 @@ describe("APIMart observe-only generation provider", () => {
       catalogReader: () => catalogFixture({ mappings: [] }),
       fetchImpl: vi.fn(),
     } as Parameters<typeof createApimartGenerationProvider>[0] & { catalogReader: () => CatalogState });
-    expect(() => provider.buildRequest(input())).toThrow("APIMart catalog mapping is unavailable");
+    expect(() => provider.buildRequest(input())).toThrow("apimart catalog mapping is unavailable");
   });
 
   it("uses the catalog vendor endpoint and rejects a missing base URL", () => {
@@ -164,7 +194,7 @@ describe("APIMart observe-only generation provider", () => {
       catalogReader: () => state,
       fetchImpl: vi.fn(),
     });
-    expect(() => provider.buildRequest(input())).toThrow("APIMart catalog vendor base URL is missing");
+    expect(() => provider.buildRequest(input())).toThrow("apimart catalog vendor base URL is missing");
   });
 
   it("rejects a certification-owned endpoint even when its path could be normalized", () => {
@@ -175,21 +205,40 @@ describe("APIMart observe-only generation provider", () => {
       catalogReader: () => base,
       fetchImpl,
     });
-    expect(() => provider.buildRequest(input())).toThrow("APIMart certification-owned connection requires its certified transport");
+    expect(() => provider.buildRequest(input())).toThrow("apimart certification-owned connection requires its certified transport");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects an endpoint that is not declared by the APIMart catalog mapping", () => {
+  // 2026-09-21（BL-1）：旧判据是「create path 必须是那两条 APIMart 串之一」——对任何别家都必假，
+  // 所以它不是这里该守的不变量。守的是「这条 mapping 声明了路径」与「渲染出来的 origin
+  // 还在用户保存的那个 base 上」（合同被改成把钱发去别的域名时当场拒）。
+  it("rejects a catalog mapping that declares no create path", () => {
     const base = catalogFixture();
     const mappings = base.mappings.map((mapping) => mapping.modelKey === "gpt-image-2" && mapping.taskKind === "text_to_image"
-      ? { ...mapping, create: { ...mapping.create, path: "/v1/guess" } }
+      ? { ...mapping, create: { ...mapping.create, path: "" } }
       : mapping);
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
       catalogReader: () => ({ ...base, mappings }),
       fetchImpl: vi.fn(),
     });
-    expect(() => provider.buildRequest(input())).toThrow("has an unsupported create path");
+    expect(() => provider.buildRequest(input())).toThrow("has no create path");
+  });
+
+  it("发得出去的路径必须还在用户保存的那个域名上（合同被改成发去别处 → 当场拒）", async () => {
+    const base = catalogFixture();
+    const mappings = base.mappings.map((mapping) => mapping.modelKey === "gpt-image-2" && mapping.taskKind === "text_to_image"
+      ? { ...mapping, create: { ...mapping.create, path: "https://evil.example/v1/images/generations", pathFrom: undefined } }
+      : mapping);
+    const fetchImpl = vi.fn();
+    const provider = createApimartGenerationProvider({
+      resolveConnection: () => ({ apiKey: "test-key" }),
+      catalogReader: () => ({ ...base, mappings }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const request = provider.buildRequest(input());
+    await expect(provider.submit(structuredClone(request), "stable-key")).rejects.toThrow("off-origin");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects catalog identity drift between authorization and submission", async () => {
@@ -207,7 +256,7 @@ describe("APIMart observe-only generation provider", () => {
       create: { ...state.mappings[mappingIndex]!.create, defaultParams: { resolution: "2K" } },
     };
     await expect(provider.submit(structuredClone(request), "stable-key"))
-      .rejects.toThrow("APIMart catalog changed after authorization");
+      .rejects.toThrow("apimart catalog changed after authorization");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -219,7 +268,7 @@ describe("APIMart observe-only generation provider", () => {
       }],
     });
     const fetchImpl = vi.fn();
-    const provider = createProvider({
+    const provider = createProvider({ vendorKey: "apimart",
       resolveConnection: () => ({ apiKey: "test-key" }),
       catalogReader: () => base,
       fetchImpl,
@@ -227,34 +276,41 @@ describe("APIMart observe-only generation provider", () => {
     const request = provider.buildRequest(input());
     base.vendors[0] = { ...base.vendors[0]!, meta: { extraHeaders: { "X-Tenant": "tenant-b" } } };
     await expect(provider.submit(structuredClone(request), "stable-key"))
-      .rejects.toThrow("APIMart catalog changed after authorization");
+      .rejects.toThrow("apimart catalog changed after authorization");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-canonical query mapping before any paid request", () => {
-    const base = catalogFixture();
-    const mappings = base.mappings.map((mapping) => mapping.modelKey === "gpt-image-2" && mapping.taskKind === "text_to_image"
-      ? { ...mapping, query: { ...mapping.query!, path: "/v1/tasks/{{providerMeta.id}}" } }
-      : mapping);
+  // 2026-09-21（BL-1）：轮询路径不再有「唯一合法串」这回事——它由**这条 mapping 的 query op**
+  // 声明。下面两条守的是新不变量：声明什么就问什么；一条都没声明时不谎称有轮询能力。
+  it("轮询用的是这条 mapping 自己声明的 query op，不是某条写死的串（非内置家）", async () => {
+    // 用户自己接的一家（非内置 direct-key）：端点、鉴权方案词、轮询路径全部来自他保存的那条连接
+    // 与 mapping 声明。BL-1 之前这条路根本造不出 provider，更谈不上按声明去问。
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: "task-9", status: "processing" }), { status: 200, headers: { "content-type": "application/json" } }));
     const provider = createProvider({
-      resolveConnection: () => ({ apiKey: "test-key" }),
-      catalogReader: () => ({ ...base, mappings }),
-      fetchImpl: vi.fn(),
+      vendorKey: "acme",
+      resolveConnection: () => ({ apiKey: "acme-key" }),
+      catalogReader: () => acmeCatalog(),
+      initialState: acmeCatalog(),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    expect(() => provider.buildRequest(input())).toThrow("unsupported query path");
+    expect(provider.capabilities.query).toBe(true);
+    await expect(provider.query?.("task-9")).resolves.toMatchObject({ status: "processing" });
+    expect(fetchImpl).toHaveBeenCalledWith("https://acme.example/v2/jobs/task-9", expect.objectContaining({ method: "GET" }));
+    // 方案词来自那条连接（`Key`），不是写死的 Bearer —— 这正是「key 是对的啊，画布能跑」那条。
+    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Key acme-key" });
   });
 
-  it("rejects a catalog mapping that omits the task query operation", () => {
+  it("一条 query op 都没声明的家：不谎称有轮询能力，也问不出去", async () => {
     const base = catalogFixture();
-    const mappings = base.mappings.map((mapping) => mapping.modelKey === "gpt-image-2" && mapping.taskKind === "text_to_image"
-      ? { ...mapping, query: undefined }
-      : mapping);
-    const provider = createProvider({
+    const mappings = base.mappings.map((mapping) => ({ ...mapping, query: undefined }));
+    const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
       catalogReader: () => ({ ...base, mappings }),
+      initialState: { ...base, mappings },
       fetchImpl: vi.fn(),
     });
-    expect(() => provider.buildRequest(input())).toThrow("unsupported query path");
+    expect(provider.capabilities.query).toBe(false);
+    await expect(provider.query?.("task-1")).rejects.toThrow("without the model it was submitted with");
   });
 
   it("projects a selected variant into mappings that explicitly consume request.params.model", () => {
@@ -283,7 +339,11 @@ describe("APIMart observe-only generation provider", () => {
     expect(() => provider.buildRequest(input({
       references: [reference],
       referenceUrls: approvedUrls([[reference, "https://cdn.example/orphan.png"]]),
-    }))).toThrow("APIMart catalog mapping dropped a resolved reference");
+      // 2026-09-21（BL-1）：现在**更早**一步就被拦住了——引擎 A 那把共享尺子
+      // （`imageEditGuardError` 的第三闸「这条 wire 的 body 读不读得到我带的参考」）
+      // 在渲染之前就说了人话。两条判据说的是同一件事，留更早、更好读的那条；
+      // `assertReferencesReachBody` 仍在渲染之后守着，是纵深防御不是重复判据。
+    }))).toThrow("发不出：参考图");
   });
 
   it("maps a generic image contract to APIMart's flat image request", () => {
@@ -595,7 +655,7 @@ describe("APIMart observe-only generation provider", () => {
         first_frame_image: "https://cdn.example/first-a.png",
         first_frame_url: "https://cdn.example/first-b.png",
       },
-    }))).toThrow("APIMart reference URL projection conflicts with canonical parameters");
+    }))).toThrow("catalog reference URL projection conflicts with canonical parameters");
   });
 
   it("honors an explicit catalog drop instead of guessing a replacement wire field", () => {
@@ -627,14 +687,14 @@ describe("APIMart observe-only generation provider", () => {
   it("fails closed instead of forwarding an unknown semantic video parameter", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(() => provider.buildRequest(input({ modelId: "sora-2", mode: "text-to-video", parameters: { duration: 4, mysteryKnob: true } })))
-      .toThrow("APIMart generation parameter is unsupported: mysteryKnob");
+      .toThrow("catalog generation parameter is unsupported: mysteryKnob");
   });
 
   it("fails closed for direct submit calls that bypass catalog preparation", async () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl });
     await expect(provider.submit({ model: "video-model-v1", prompt: "a cat", duration: 3 }, "stable-key"))
-      .rejects.toThrow("APIMart sealed catalog identity is missing");
+      .rejects.toThrow("apimart sealed catalog identity is missing");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -646,14 +706,14 @@ describe("APIMart observe-only generation provider", () => {
       fetchImpl,
     });
     expect(() => provider.buildRequest(input({ modelId: "shared-model", mode: "text-to-image", parameters: {} })))
-      .toThrow("APIMart certification-owned connection requires its certified transport");
+      .toThrow("apimart certification-owned connection requires its certified transport");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown semantic mode instead of defaulting to image submission", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(() => provider.buildRequest(input({ mode: "mystery-output", parameters: {} })))
-      .toThrow("APIMart generation mode is unsupported: mystery-output");
+      .toThrow("apimart generation mode is unsupported: mystery-output");
   });
 
   it("keeps canonical image-to-video references in the real APIMart body and endpoint", async () => {
@@ -742,7 +802,7 @@ describe("APIMart observe-only generation provider", () => {
       mode: "image_to_video",
       references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
       parameters: { duration: 3 },
-    }))).toThrow("APIMart references must be resolved to provider URLs before submission");
+    }))).toThrow("catalog references must be resolved to provider URLs before submission");
   });
 
   it("fails closed when fewer resolved URLs than references survive canonical projection", () => {
@@ -757,7 +817,7 @@ describe("APIMart observe-only generation provider", () => {
         { assetId: "asset-2", contentHash: "b".repeat(64), version: 1 },
       ],
       parameters: { duration: 3, imageUrls: ["https://cdn.example/only-one.png"] },
-    }))).toThrow("APIMart references must be resolved to provider URLs before submission");
+    }))).toThrow("catalog references must be resolved to provider URLs before submission");
   });
 
   it("rejects local-only reference URLs instead of sending an unreachable paid request", () => {
@@ -767,7 +827,7 @@ describe("APIMart observe-only generation provider", () => {
       mode: "image_to_video",
       references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
       parameters: { duration: 3, imageUrls: ["nomi-local://project/assets/asset-1.png"] },
-    }))).toThrow("APIMart references must be resolved to provider URLs before submission");
+    }))).toThrow("catalog references must be resolved to provider URLs before submission");
   });
 
   // 批准的是 A、要发出去的是 B —— 在花钱这条轴上这件事不许悄悄发生。
@@ -783,7 +843,7 @@ describe("APIMart observe-only generation provider", () => {
       references: [reference],
       referenceUrls: approvedUrls([[reference, "https://cdn.example/from-approval.png"]]),
       parameters: { duration: 3, imageUrls: ["https://cdn.example/explicit.png"] },
-    }))).toThrow("APIMart reference URL projection conflicts with canonical parameters");
+    }))).toThrow("catalog reference URL projection conflicts with canonical parameters");
   });
 
   it("blocks direct submission when a caller bypasses buildRequest with a local-only URL", async () => {
@@ -793,7 +853,7 @@ describe("APIMart observe-only generation provider", () => {
       model: "sora-2",
       prompt: "a cat",
       image_urls: ["file:///Users/me/character.png"],
-    }, "stable-key")).rejects.toThrow("APIMart sealed catalog identity is missing");
+    }, "stable-key")).rejects.toThrow("apimart sealed catalog identity is missing");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -801,7 +861,7 @@ describe("APIMart observe-only generation provider", () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl });
     await expect(provider.submit({ model: "sora-2", prompt: "a cat", duration: 3, mysteryKnob: true }, "stable-key"))
-      .rejects.toThrow("APIMart sealed catalog identity is missing");
+      .rejects.toThrow("apimart sealed catalog identity is missing");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

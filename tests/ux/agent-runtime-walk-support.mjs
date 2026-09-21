@@ -399,7 +399,7 @@ export async function createRuntimeWalk(name, { generationProvider = 'loopback' 
         // 这三个是同一个口子的三把钥匙（`safeFixtureBaseUrl` 只接受 http(s) 的 127.0.0.1/localhost/::1）：
         // 少一把就装不出可提交的生成供应商。默认仍是 '0'，老走查一个字都不变。
         ...(generationProvider === 'apimart'
-          ? { NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_APIMART_BASE_URL: fixture.baseURL, NOMI_E2E_APIMART_API_KEY: FIXTURE_APIMART_API_KEY }
+          ? { NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_FIXTURE_BASE_URL: fixture.baseURL, NOMI_E2E_FIXTURE_API_KEY: FIXTURE_APIMART_API_KEY }
           : { NOMI_E2E_PRODUCTION_FIXTURE: '0' }),
       },
       args: ['--no-proxy-server', ...extraArgs],

@@ -51,14 +51,21 @@ const ENGINE_B_MODULES = [
  * 七项差异的身份表：每一条记「引擎 A 用哪个符号做这一步」。
  * `engineBSymbols` 是引擎 B 里会出现这一步的符号——为空表示今天它根本没有这一步。
  */
+/**
+ * 2026-09-21（BL-1 铺开之后）：这七项各自有了裁决，**不再是一张「都没有」的清单**。
+ * `disposition` 三种：
+ *   · `shared`   —— 引擎 B 现在也走这一步（符号出现在 B 的模块图里）；
+ *   · `refused`  —— 引擎 B 做不到这一步，于是在选型时 fail closed，绝不发一个上游读不懂的请求；
+ *   · `own-guard`—— 这一步引擎 B 用**自己那套更严的**机制覆盖，重造一份反而会有两个答案。
+ */
 const ENGINE_DIFFERENCES = [
-  { id: "result-cache", zh: "结果缓存（同一配方不重发、不重扣）", symbol: "readCachedTaskResult" },
-  { id: "multipart-upload", zh: "multipart 上传分支", symbol: "runMultipartProfileOperation" },
-  { id: "custom-call", zh: "自定义调用脚本", symbol: "resolveCustomCallExecution" },
-  { id: "image-edit-guard", zh: "图生图/图生视频的空参考护栏", symbol: "imageEditGuardError" },
-  { id: "chat-image-fallback", zh: "chat/completions 图片路的失败回落", symbol: "chatImageFallbackOperation" },
-  { id: "async-transform", zh: "异步 request_transform 的付费前预飞", symbol: "validateProfileRequestBeforeSpend" },
-  { id: "antigravity-preflight", zh: "antigravity 的创建前预检", symbol: "prepareAntigravityCreateOperation" },
+  { id: "multipart-upload", zh: "multipart 上传分支", symbol: "runMultipartProfileOperation", disposition: "refused", refusal: "needs a multipart transport this executor cannot send" },
+  { id: "antigravity-preflight", zh: "antigravity 的创建前预检（process op）", symbol: "prepareAntigravityCreateOperation", disposition: "refused", refusal: "needs a local process transport this executor cannot run" },
+  { id: "custom-call", zh: "自定义调用脚本", symbol: "resolveCustomCallExecution", disposition: "shared", refusal: "" },
+  { id: "image-edit-guard", zh: "图生图/图生视频的空参考护栏", symbol: "imageEditGuardError", disposition: "shared", refusal: "" },
+  { id: "result-cache", zh: "结果缓存（同一配方不重发、不重扣）", symbol: "readCachedTaskResult", disposition: "own-guard", refusal: "" },
+  { id: "chat-image-fallback", zh: "chat/completions 图片路的失败回落", symbol: "chatImageFallbackOperation", disposition: "own-guard", refusal: "" },
+  { id: "async-transform", zh: "异步 request_transform 的付费前预飞", symbol: "validateProfileRequestBeforeSpend", disposition: "own-guard", refusal: "" },
 ] as const;
 
 const readSources = (files: readonly string[]): string =>
@@ -90,16 +97,42 @@ describe("七项引擎差异 · 每项一条最小用例", () => {
     }
   });
 
-  it.each(ENGINE_DIFFERENCES.map((entry) => [entry.id, entry.zh, entry.symbol] as const))(
-    "已知红 · %s（%s）：引擎 B 今天没有这一步——接进去的那一刻这条会红，届时必须给矩阵补一个跑得起来的用例",
+  it.each(ENGINE_DIFFERENCES.filter((entry) => entry.disposition === "shared")
+    .map((entry) => [entry.id, entry.zh, entry.symbol] as const))(
+    "已收 · %s（%s）：引擎 B 现在走的是引擎 A 那一份，不是自己新写的一份",
     (_id, _zh, symbol) => {
-      expect(engineBSource.includes(symbol)).toBe(false);
+      expect(engineBSource.includes(symbol)).toBe(true);
     },
   );
+
+  it.each(ENGINE_DIFFERENCES.filter((entry) => entry.disposition === "refused")
+    .map((entry) => [entry.id, entry.zh, entry.refusal] as const))(
+    "拒发 · %s（%s）：引擎 B 做不到这一步，于是在选型时当场拒，绝不把它当普通 JSON 发出去",
+    (_id, _zh, refusal) => {
+      expect(engineBSource.includes(refusal)).toBe(true);
+    },
+  );
+
+  /**
+   * `own-guard` 三条**故意**不在引擎 B 里复制引擎 A 的符号：
+   *   · 结果缓存 —— B 有授权信封 + `budgetLedger` + `providerIdempotencyKey`，同一笔授权只花一次；
+   *     再塞一份指纹缓存就是两个「这次算不算重复」的答案。
+   *   · chat-image 回落 —— A 那条是「先按图片端点发，被拒了再换 chat 端点」；B 的合同在授权时就
+   *     封死了端点，换端点等于发一个用户没批准的请求。失败照实报，不偷偷换。
+   *   · 异步 request_transform 预飞 —— B 的 `buildRequest` 是同步的，共享桥**直接拒**异步 transform
+   *     （`validateRequestTransformSync`），比 A 的「先跑一遍看看」更早也更严。
+   * 这条断言钉住的是「没人偷偷把它们复制过来」——复制了就是第二个答案，会红。
+   */
+  it("own-guard 三条没有被复制进引擎 B（复制 = 同一个问题两个答案）", () => {
+    const copied = ENGINE_DIFFERENCES
+      .filter((entry) => entry.disposition === "own-guard" && engineBSource.includes(entry.symbol))
+      .map((entry) => entry.id);
+    expect(copied).toEqual([]);
+  });
 });
 
 describe("活的行为对照（一条真跑，一条只钉住前提）", () => {
-  it("image-edit 护栏：一张参考图都没有时，引擎 A 一个字节都不发；引擎 B 照发不误", async () => {
+  it("image-edit 护栏：一张参考图都没有时，两台发动机都在付费前拒发（BL-1 之前只有 A 拒）", async () => {
     const engineA = await driveEngineA(capture, {
       vendorKey: "apimart",
       kind: "image_edit",
@@ -113,7 +146,8 @@ describe("活的行为对照（一条真跑，一条只钉住前提）", () => {
       vendorKey: "apimart", modelId: "gpt-image-2", mode: "image_edit",
       prompt: "把这张图里的人换成侧脸", parameters: {}, references: [],
     });
-    expect(engineB.request, "引擎 B 今天没有这道护栏，照样把请求发出去了（已知红）").toBeDefined();
+    expect(engineB.request, "引擎 B 也必须在付费前拒发——它读的是同一把尺子（imageEditGuardError）").toBeUndefined();
+    expect(engineB.failure?.code).toBeTruthy();
   }, 60_000);
 
   /**

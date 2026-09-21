@@ -47,8 +47,8 @@
     },
     {
       "site": "electron/capabilityCore/apimartGenerationProvider.ts::buildProfileHttpRequest",
-      "count": 1,
-      "reason": "引擎 B 的请求骨架构造——与引擎 A 共用同一个 buildProfileHttpRequest，分歧全在骨架外面那几步。"
+      "count": 2,
+      "reason": "引擎 B 的请求骨架构造，与引擎 A 共用同一个 buildProfileHttpRequest。2026-09-21（BL-1）从 1 处涨到 2 处，两处各有裁决：①projectionRequest 用占位密钥渲染，产出拿去封印/给用户批准的那份 body（密钥绝不进 body，assertNoProjectionCredential 守着）；②renderOperation 在提交/轮询那一刻用真密钥渲染，只取 method/url/headers/query——端点、鉴权方案词、网关额外头、query 式鉴权因此与引擎 A 逐字同源，而发出去的 body 仍是①封存的那一份。两处不是两个入口，是同一次提交的「批准形状」与「传输形状」。"
     },
     {
       "site": "electron/runtime.ts::buildProfileHttpRequest",

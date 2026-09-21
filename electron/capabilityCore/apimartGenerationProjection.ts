@@ -101,28 +101,28 @@ function referenceParameter(parameters: Record<string, unknown>, key: ReferenceW
 function assertReferenceValue(key: ReferenceWireKey, value: unknown): void {
   if (key === "image_with_roles") {
     if (!Array.isArray(value) || value.length === 0) {
-      throw new ApimartGenerationProviderError("APIMart reference URL projection must contain a non-empty image_with_roles array");
+      throw new ApimartGenerationProviderError("catalog reference URL projection must contain a non-empty image_with_roles array");
     }
     for (const item of value) {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
-        throw new ApimartGenerationProviderError("APIMart reference URL projection contains an invalid image_with_roles entry");
+        throw new ApimartGenerationProviderError("catalog reference URL projection contains an invalid image_with_roles entry");
       }
       const entry = item as Record<string, unknown>;
       if (Object.keys(entry).some((entryKey) => entryKey !== "url" && entryKey !== "role") || !isProviderUrl(entry.url)) {
-        throw new ApimartGenerationProviderError("APIMart reference URL projection contains an invalid image_with_roles URL");
+        throw new ApimartGenerationProviderError("catalog reference URL projection contains an invalid image_with_roles URL");
       }
       if (entry.role !== undefined && (typeof entry.role !== "string" || !entry.role.trim())) {
-        throw new ApimartGenerationProviderError("APIMart reference URL projection contains an invalid image_with_roles role");
+        throw new ApimartGenerationProviderError("catalog reference URL projection contains an invalid image_with_roles role");
       }
     }
     return;
   }
   if (key === "first_frame_image" || key === "last_frame_image") {
-    if (!isProviderUrl(value)) throw new ApimartGenerationProviderError("APIMart references must be resolved to provider URLs before submission");
+    if (!isProviderUrl(value)) throw new ApimartGenerationProviderError("catalog references must be resolved to provider URLs before submission");
     return;
   }
   if (!Array.isArray(value) || value.length === 0 || value.some((entry) => !isProviderUrl(entry))) {
-    throw new ApimartGenerationProviderError("APIMart references must be resolved to provider URLs before submission");
+    throw new ApimartGenerationProviderError("catalog references must be resolved to provider URLs before submission");
   }
 }
 
@@ -133,7 +133,7 @@ function assertReferenceAliasConsistency(parameters: Record<string, unknown>, ke
   if (values.length < 2) return;
   const first = values[0];
   if (values.some((value) => !sameJson(value, first))) {
-    throw new ApimartGenerationProviderError("APIMart reference URL projection conflicts with canonical parameters");
+    throw new ApimartGenerationProviderError("catalog reference URL projection conflicts with canonical parameters");
   }
 }
 
@@ -189,10 +189,10 @@ function assertResolvedReferences(
     else required.unknown += 1;
   }
   if (required.image > imageAvailable || required.video > videoAvailable || required.audio > audioAvailable) {
-    throw new ApimartGenerationProviderError("APIMart references must be resolved to provider URLs before submission");
+    throw new ApimartGenerationProviderError("catalog references must be resolved to provider URLs before submission");
   }
   if (required.unknown > 0 && required.unknown > imageAvailable + videoAvailable + audioAvailable) {
-    throw new ApimartGenerationProviderError("APIMart references must be resolved to provider URLs before submission");
+    throw new ApimartGenerationProviderError("catalog references must be resolved to provider URLs before submission");
   }
 }
 
@@ -231,7 +231,7 @@ export function projectReferenceUrls(
       else if (combineKey) combined.push({ url, ...(reference.role ? { role: reference.role } : {}) });
       else if (reference.role === "first_frame" && channels.has("first_frame_image")) snapshot.firstFrameImage = url;
       else if (reference.role === "last_frame" && channels.has("last_frame_image")) snapshot.lastFrameImage = url;
-      else if (reference.role === "first_frame" || reference.role === "last_frame") throw new ApimartGenerationProviderError(`APIMart mapping has unsupported reference role: ${reference.role}`);
+      else if (reference.role === "first_frame" || reference.role === "last_frame") throw new ApimartGenerationProviderError(`catalog mapping has unsupported reference role: ${reference.role}`);
       else append("imageUrls", url);
     }
     const merge = (targetKey: string, value: unknown): void => {
@@ -242,7 +242,7 @@ export function projectReferenceUrls(
         : parameters[targetKey];
       // 合同里显式写死的 URL 与授权时封存的那一份不一致 = 批准的是 A、要发出去的是 B。拒。
       if (referenceValuePresent(existing) && !sameJson(existing, value)) {
-        throw new ApimartGenerationProviderError("APIMart reference URL projection conflicts with canonical parameters");
+        throw new ApimartGenerationProviderError("catalog reference URL projection conflicts with canonical parameters");
       }
       if (!referenceValuePresent(existing)) parameters[targetKey] = structuredClone(value);
     };
@@ -280,7 +280,7 @@ const PARAMETER_ALIASES: Record<string, string> = {
 
 export function normalizeParameters(parameters: Record<string, unknown>, mapping: Mapping): Record<string, unknown> {
   if (!parameters || typeof parameters !== "object" || Array.isArray(parameters)) {
-    throw new ApimartGenerationProviderError("APIMart generation parameters are invalid");
+    throw new ApimartGenerationProviderError("catalog generation parameters are invalid");
   }
   const mappingKeys = new Set([
     ...bodyReferencedParamKeys(mapping.create.body),
@@ -305,10 +305,10 @@ export function normalizeParameters(parameters: Record<string, unknown>, mapping
     if (value === undefined || (PROJECTION_KEYS[key] && !referenceValuePresent(value))) continue;
     const canonical = PARAMETER_ALIASES[key] || key;
     if (!isDeclared(key, canonical)) {
-      throw new ApimartGenerationProviderError(`APIMart generation parameter is unsupported: ${key}`);
+      throw new ApimartGenerationProviderError(`catalog generation parameter is unsupported: ${key}`);
     }
     if (Object.prototype.hasOwnProperty.call(normalized, canonical) && !sameJson(normalized[canonical], value)) {
-      throw new ApimartGenerationProviderError(`APIMart generation parameter aliases conflict: ${key}`);
+      throw new ApimartGenerationProviderError(`catalog generation parameter aliases conflict: ${key}`);
     }
     normalized[key] = structuredClone(value);
     if (canonical !== key) normalized[canonical] = structuredClone(value);
@@ -331,6 +331,20 @@ function collectProviderUrls(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * 这份参数里已经落位的**全部**参考 URL（跨所有参考通道）。
+ * 空参考护栏（`imageEditGuardError`）读的是 headless extras 的标准键，而 Run 路的参考
+ * 此刻已经投影成了 wire 键（`image_urls` / `image_with_roles` / `first_frame_image`…），
+ * 所以要把它们捞回来喂给那把共享的尺子——而不是在 Run 路另写一份「带没带参考」的判据。
+ */
+export function resolvedReferenceUrls(parameters: Record<string, unknown>): string[] {
+  const urls: string[] = [];
+  for (const key of Object.keys(REFERENCE_PARAMETER_ALIASES) as ReferenceWireKey[]) {
+    collectProviderUrls(referenceParameter(parameters, key), urls);
+  }
+  return [...new Set(urls)];
+}
+
 /** A resolved reference must survive the catalog renderer. */
 export function assertReferencesReachBody(
   input: GenerationProviderRequestInputV1,
@@ -343,12 +357,12 @@ export function assertReferencesReachBody(
     collectProviderUrls(referenceParameter(parameters, key), parameterUrls);
   }
   if (parameterUrls.length < input.references.length) {
-    throw new ApimartGenerationProviderError("APIMart references must be resolved to provider URLs before submission");
+    throw new ApimartGenerationProviderError("catalog references must be resolved to provider URLs before submission");
   }
   const bodyUrls = new Set(collectProviderUrls(body));
   for (const url of new Set(parameterUrls)) {
     if (!bodyUrls.has(url)) {
-      throw new ApimartGenerationProviderError("APIMart catalog mapping dropped a resolved reference");
+      throw new ApimartGenerationProviderError("catalog mapping dropped a resolved reference");
     }
   }
 }

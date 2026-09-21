@@ -176,10 +176,10 @@ export async function startCapabilityCore(
     })
     const projectRevisionResolver = authorities.projectRevisionResolver ?? defaults.projectRevisionResolver!
     const fixtureBaseUrlOverride = process.env.NOMI_E2E_PRODUCTION_FIXTURE === '1'
-      ? process.env.NOMI_E2E_APIMART_BASE_URL
+      ? process.env.NOMI_E2E_FIXTURE_BASE_URL
       : undefined
-    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_APIMART_REFERENCE_URL
-      ? process.env.NOMI_E2E_APIMART_REFERENCE_URL
+    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
+      ? process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
       : undefined
     const liveGenerationRuntime = createLiveGenerationRuntime({
       bootstrap: (state, options) => createGenerationProviderBootstrap(state, {

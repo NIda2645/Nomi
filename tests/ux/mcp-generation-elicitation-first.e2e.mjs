@@ -57,8 +57,8 @@ async function driveGate(dirs, token, { capabilities, clientName, providerOrigin
     capabilities,
     syntheticCredentialStorage: true,
     env: {
-      NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_APIMART_BASE_URL: providerOrigin,
-      NOMI_E2E_APIMART_API_KEY: 'semantic-fixture-key',
+      NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_FIXTURE_BASE_URL: providerOrigin,
+      NOMI_E2E_FIXTURE_API_KEY: 'semantic-fixture-key',
       NOMI_MCP_CLIENT: 'codex', NOMI_MCP_CLIENT_PROOF: proofFor(token, 'codex'),
     },
   })
@@ -105,7 +105,7 @@ try {
     userDataDir: dirs.userDataDir, settingsDir: dirs.settingsDir, projectsDir: dirs.projectsDir, capabilityDir: dirs.capabilityDir,
     env: {
       NOMI_CAPABILITY_DIR: dirs.capabilityDir, NOMI_E2E_PRODUCTION_FIXTURE: '1',
-      NOMI_E2E_APIMART_BASE_URL: provider.origin, NOMI_E2E_APIMART_API_KEY: 'semantic-fixture-key',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin, NOMI_E2E_FIXTURE_API_KEY: 'semantic-fixture-key',
     },
     args: ['--disable-gpu', '--disable-software-rasterizer'], settleMs: 0, syntheticCredentialStorage: true,
   })

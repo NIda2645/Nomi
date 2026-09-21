@@ -311,7 +311,7 @@ describe("generation provider bootstrap", () => {
     const request = generationInput();
     const providerRequest = provider?.buildRequest(request);
     await expect(provider?.submit(providerRequest, request.idempotencyKey))
-      .rejects.toMatchObject({ code: "apimart_provider_error", message: "APIMart catalog direct-key contract is unavailable; restore the built-in Settings connection" });
+      .rejects.toMatchObject({ code: "apimart_provider_error", message: "apimart catalog direct-key contract is unavailable; restore the built-in Settings connection" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -331,7 +331,7 @@ describe("generation provider bootstrap", () => {
     const request = generationInput();
     const providerRequest = provider?.buildRequest(request);
     await expect(provider?.submit(providerRequest, request.idempotencyKey))
-      .rejects.toMatchObject({ code: "apimart_provider_error", message: "APIMart connection is disabled, missing, or locked" });
+      .rejects.toMatchObject({ code: "apimart_provider_error", message: "apimart connection is disabled, missing, or locked" });
     expect(connectionResolver).toHaveBeenCalledTimes(1);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -384,7 +384,7 @@ describe("generation provider bootstrap", () => {
     const providerRequest = provider?.buildRequest(request);
     current.vendors[0] = { ...current.vendors[0], enabled: false };
     await expect(provider?.submit(providerRequest, request.idempotencyKey))
-      .rejects.toMatchObject({ code: "apimart_provider_error", message: "APIMart catalog vendor is unavailable" });
+      .rejects.toMatchObject({ code: "apimart_provider_error", message: "apimart catalog vendor is unavailable" });
     expect(catalogReader).toHaveBeenCalledTimes(2);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -406,7 +406,7 @@ describe("generation provider bootstrap", () => {
         delete current.apiKeysByVendor.apimart;
       }
       await expect(provider?.submit(providerRequest, request.idempotencyKey))
-        .rejects.toMatchObject({ code: "apimart_provider_error", message: "APIMart connection is disabled, missing, or locked" });
+        .rejects.toMatchObject({ code: "apimart_provider_error", message: "apimart connection is disabled, missing, or locked" });
       expect(catalogReader).toHaveBeenCalledTimes(3);
       expect(fetchImpl).not.toHaveBeenCalled();
     },
