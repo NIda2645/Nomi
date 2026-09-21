@@ -355,8 +355,14 @@ export default function DocumentListSidebar(): JSX.Element {
                         label={title}
                         deleteLabel={t('creationAi.documentList.deleteStoryboard')}
                         deletedAnnouncement={t('creationAi.documentList.storyboardDeleted', { title })}
-                        actionWidth={64}
-                        hoverPeek={36}
+                        // 这两个数是量出来的，不是抄的：方案行住在 240px 侧栏里、还要再缩进
+                        // 一层，可用宽只有 ~190px。行往左推多少，左端就有多少被裁掉——
+                        // 推 36px 时那颗片型图标整个没了（真机截图上看得很清楚），
+                        // 行看起来像坏了，而不是像让开了。推 28px 时图标还在，
+                        // 而删除区仍给到 56px：图标永远居中在**已经露出来的那一段**里
+                        //（`exposed`），所以探头只露一半也照样看得见、点得到。
+                        actionWidth={56}
+                        hoverPeek={28}
                         onDelete={() => onDeleteStoryboard(design.id, doc.id)}
                         className="mb-0.5"
                       >
