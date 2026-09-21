@@ -5,7 +5,7 @@ import { createServer } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
 import { screenshotSettled } from './_assert.mjs'
-import { findEdgeHitPoint } from './_canvasHit.mjs'
+import { findConnectionStartPoint, findEdgeHitPoint } from './_canvasHit.mjs'
 const repoRoot = process.cwd()
 const tempRoot = path.join(repoRoot, '.tmp', 'nomi-group-reference-direction')
 const settingsDir = path.join(tempRoot, 'settings')
@@ -136,11 +136,11 @@ try {
   await win.waitForTimeout(900)
   await screenshotSettled(win, { path: path.join(shotsDir, '01-before.png') })
 
-  const handle = win.locator('.react-flow__node[data-id="target"] .generation-canvas-react-flow__handle[data-side="left"]').last()
-  const handleBox = await handle.boundingBox()
+  // 按人按的地方起线：目标卡左侧那颗常驻「+」圈（见 _canvasHit.mjs findConnectionStartPoint 的根因注释）。
+  const startPoint = await findConnectionStartPoint(win, { handleSelector: '.react-flow__node[data-id="target"] .generation-canvas-react-flow__handle--source[data-side="left"]' })
   const groupBox = await win.locator('[data-group-id="reference-group"]').first().boundingBox()
-  check('目标左输入端和编组框均可见', Boolean(handleBox && groupBox))
-  if (!handleBox || !groupBox) throw new Error('连接手势缺少可见端点')
+  check('目标左输入端和编组框均可见', Boolean(startPoint && groupBox), JSON.stringify(startPoint))
+  if (!startPoint || !groupBox) throw new Error('连接手势缺少可见端点')
   const dropPoint = await win.evaluate((box) => {
     for (let y = box.y + 12; y < box.y + box.height - 8; y += 8) {
       for (let x = box.x + 12; x < box.x + box.width - 8; x += 8) {
@@ -153,7 +153,7 @@ try {
   check('编组内存在不压节点的真实落点', Boolean(dropPoint))
   if (!dropPoint) throw new Error('没有可用编组落点')
 
-  await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await win.mouse.move(startPoint.x, startPoint.y)
   await win.mouse.down()
   await win.mouse.move(dropPoint.x, dropPoint.y, { steps: 12 })
   await win.waitForTimeout(350)

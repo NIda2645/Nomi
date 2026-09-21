@@ -258,6 +258,35 @@ export async function findNodeHitPoint(page, { nodeSelector, withinSelector = CA
 }
 
 /**
+ * 找「从这张卡起一条线」时**人按下去的那一点**：起线把手上露出来的那颗图标
+ * （磁吸档 = 卡外常驻的「+」圈；小圆点档 = 骑在卡边上的圆点）的中心，且那一点的最顶层元素
+ * 必须归这个把手（`hit.closest(handle) === handle`）。
+ *
+ * 为什么不按 React Flow 把手元素自己的盒子中心按：那个盒子是 1px 的**测量锚点**，
+ * 中心恰好压在卡边上。卡面和把手谁在上、卡边那条线的亚像素归谁，是两件和「人能不能起线」
+ * 无关的事——2026-09-22 两条走查就是按在这条缝上：左侧把手的缝归卡（确定性红），
+ * 右侧把手的缝在 Linux 字体度量下偶尔归卡（只在 CI 红）。人按的是看得见的图标。
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ handleSelector: string }} options 选到**一个**起线把手（`.generation-canvas-react-flow__handle--source[...]`）
+ * @returns {Promise<{ x: number, y: number, affordance: string | null } | null>} 找不到返回 null（调用方须 fail-closed）
+ */
+export async function findConnectionStartPoint(page, { handleSelector }) {
+  return page.evaluate((selector) => {
+    const handle = document.querySelector(selector)
+    const icon = handle?.querySelector('.generation-canvas-react-flow__handle-icon')
+    if (!handle || !icon) return null
+    const rect = icon.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+    const hit = document.elementFromPoint(x, y)
+    if (hit?.closest('.generation-canvas-react-flow__handle') !== handle) return null
+    return { x, y, affordance: handle.getAttribute('data-affordance') }
+  }, handleSelector)
+}
+
+/**
  * 找框体上**真的抓得住**的那一点——「把整个框搬走」这个手势的起点。
  *
  * 判据和本文件其它两个一样是**白名单**：那一点的最顶层元素**就是框体那个 div 本身**

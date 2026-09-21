@@ -122,6 +122,16 @@ function matchesAny(path, patterns) {
   return patterns.some((pattern) => pattern.test(path))
 }
 
+// 每条 lane 只许往上抬、不许被后面的文件压回去：分档是「整个 diff 里风险最高的那个文件」决定的，
+// 与文件在 diff 里的先后无关。canvas 是唯一的多档 lane（none < critical < full），
+// 2026-09-22 之前它是直接赋值——reactFlow/ 文件先抬到 full，排在后面的普通画布文件又把它写回 critical，
+// PR #833（改了 reactFlow 把手层级）因此跳过了 Canvas Acceptance，回归在 main 上才被下一个 PR 撞出来。
+const CANVAS_LEVELS = Object.freeze(['none', 'critical', 'full'])
+
+function raiseCanvas(policy, level) {
+  if (CANVAS_LEVELS.indexOf(level) > CANVAS_LEVELS.indexOf(policy.canvas)) policy.canvas = level
+}
+
 function failClosed(files, reason, { release = false } = {}) {
   return {
     ...FULL_POLICY,
@@ -188,7 +198,7 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
     if (matchesAny(path, PERFORMANCE_INSTRUMENT_PATTERNS)) {
       policy.unit = 'full'
       policy.desktop = true
-      policy.canvas = 'full'
+      raiseCanvas(policy, 'full')
       policy.performance = true
       policy.reasons.push(`performance-instrument:${path}`)
     }
@@ -210,13 +220,13 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
     }
     if (matchesAny(path, CANVAS_PATTERNS)) {
       policy.unit = 'full'
-      policy.canvas = matchesAny(path, FULL_CANVAS_PATTERNS) ? 'full' : 'critical'
+      raiseCanvas(policy, matchesAny(path, FULL_CANVAS_PATTERNS) ? 'full' : 'critical')
       policy.reasons.push(`canvas:${path}`)
     }
     if (matchesAny(path, PERFORMANCE_PATTERNS)) {
       policy.unit = 'full'
       policy.desktop = true
-      policy.canvas = 'full'
+      raiseCanvas(policy, 'full')
       policy.performance = true
       policy.reasons.push(`performance:${path}`)
     }
