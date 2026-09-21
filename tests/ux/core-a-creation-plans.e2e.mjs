@@ -7,6 +7,9 @@ import { require as tsxRequire } from 'tsx/cjs/api'
 import { expect } from '@playwright/test'
 import { expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
+
+/** 「一次都没问」的观察窗口：旧侧栏轮询是 1500ms 一次，这段窗口里它至少会问三次。 */
+const RUN_LIST_OBSERVATION_MS = 5_000
 import { createAgentRuntimeFixture, FIXTURE_VENDOR, FIXTURE_TEXT_MODEL, FIXTURE_IMAGE_MODEL } from './agent-runtime-fixture.mjs'
 import { waitForV4TurnIdle, recorded, sendCreation, readProject, AGENT_PANEL } from './agent-runtime-walk-support.mjs'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
@@ -90,7 +93,16 @@ try {
     const original = bridge.list.bind(bridge)
     bridge.list = (...args) => { window.__nomiRunListCalls += 1; return original(...args) }
   })
-  await expect.poll(async () => win.evaluate(() => window.__nomiRunListCalls), { timeout: 6_000, intervals: [5_000, 500] }).toBe(0)
+  // 2026-09-21 合并 ①：这条原先是 `expect.poll(...).toBe(0)` 配一个私有的 6 秒墙钟，两处都不对——
+  // ① 计数器本来就是 0，**第一次取样就过**，那段窗口根本没等（走查假绿的经典形状）；
+  // ② 6 秒是写死在这里的第二份预算，`check:test-waits` 因此报红。
+  // 判据是「一段窗口里一次都没问」，所以窗口必须**等满**才算数：把「等够了没有」也放进被判的值里，
+  // 中途冒出一次调用就再也凑不齐 `{observedFullWindow:true, calls:0}`，到上限红。上限取共享 owner。
+  const pollWatchStartedAt = Date.now()
+  await expect.poll(async () => ({
+    observedFullWindow: Date.now() - pollWatchStartedAt >= RUN_LIST_OBSERVATION_MS,
+    calls: await win.evaluate(() => window.__nomiRunListCalls),
+  }), { timeout: stationTimeout({ operations: 1 }), intervals: [500] }).toEqual({ observedFullWindow: true, calls: 0 })
   check(true, 'The creation surface polls the Run list zero times while showing its plans')
   for (const id of ['a1', 'a2', 'b1', 'b2', 'a1']) {
     const expandTree = win.locator('[data-creation-resource-tree-toggle="expand"]:visible')

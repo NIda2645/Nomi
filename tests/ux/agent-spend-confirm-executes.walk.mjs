@@ -39,6 +39,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
@@ -157,9 +158,9 @@ try {
 
   // ④ 产物真的落回草稿那一刻建的那个节点；卡答完就收起来；一分钱没花。
   await expect.poll(() => (readRun(projectRoot, operationId)?.artifacts ?? []).filter((item) => item.status === 'ready').length,
-    { message: '产物必须真的落盘 —— 这就是用户说的「出图」', timeout: 90_000 }).toBeGreaterThan(0)
+    { message: '产物必须真的落盘 —— 这就是用户说的「出图」', timeout: stationTimeout({ operations: 6 }) }).toBeGreaterThan(0)
   await expect(win.locator(`[data-node-id="${draftedNodeId}"][data-status="success"]`),
-    '还是草稿那一刻建的那个节点，屏上变成 success').toBeVisible({ timeout: 90_000 })
+    '还是草稿那一刻建的那个节点，屏上变成 success').toBeVisible({ timeout: stationTimeout({ operations: 6 }) })
   await expectAbsent(card, { provenBy: cardProbe, message: '答完的卡要收起来（问题答完了就不该还在等人答）' })
   const nodes = (await readProject(win, projectId)).payload.generationCanvas.nodes
   expect(nodes, '全程只有一个节点（落地幂等：建草稿 / 改参数 / 出图共用同一个章）').toHaveLength(1)

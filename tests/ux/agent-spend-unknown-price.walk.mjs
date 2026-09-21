@@ -21,6 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
@@ -144,9 +145,9 @@ try {
 
   // ②-d **节点真的拿到产物**：盘上有一份 ready 的产物，屏上那个节点变成 success（不是还挂着「排队中」）
   await expect.poll(() => (readRunEnvelope(projectRoot, operationId)?.artifacts ?? []).filter((item) => item.status === 'ready').length,
-    { message: '产物必须真的落盘 —— 这就是用户说的「出图」', timeout: 90_000 }).toBeGreaterThan(0)
+    { message: '产物必须真的落盘 —— 这就是用户说的「出图」', timeout: stationTimeout({ operations: 6 }) }).toBeGreaterThan(0)
   await expect(win.locator(`[data-node-id="${nodeId}"][data-status="success"]`),
-    '草稿那一刻建的那个节点在屏上变成 success').toBeVisible({ timeout: 90_000 })
+    '草稿那一刻建的那个节点在屏上变成 success').toBeVisible({ timeout: stationTimeout({ operations: 6 }) })
   await expectAbsent(card, { provenBy: cardProbe, message: '答完的卡要收起来（问题答完了就不该还在等人答）' })
   await walk.snap('unknown-price-after-confirm-zh')
 
