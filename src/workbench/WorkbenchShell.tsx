@@ -13,6 +13,7 @@ import {
 } from "./workbenchStore";
 import { assistantWidthMaxFor } from "./assistantWidthBounds";
 import { cn } from "../utils/cn";
+import { cancelCanvasDraggingWithin } from "./generationCanvas/components/canvasDraggingFlag";
 import ProjectExplorerSidebar from "./explorer/ProjectExplorerSidebar";
 import DocumentListSidebar from "./creation/DocumentListSidebar";
 import { workspaceModeCarriesCreationResourceTree } from "./creation/creationResourceTreeModes";
@@ -99,8 +100,19 @@ function WorkspaceSlot({
     children,
     label,
 }: WorkspaceSlotProps): JSX.Element {
+    const slot = React.useRef<HTMLDivElement>(null);
+    // 槽位被藏起来 = 这里面还没结束的手势被打断。**隐藏是宿主自己知道的事**，
+    // 所以由它显式喊一声；画布那边因此不用给每次手势装一个扫祖先链的 MutationObserver
+    // （那条路每帧一轮 getComputedStyle，正压在拖图热路径上，见 canvasDraggingFlag 顶部注释）。
+    React.useEffect(() => {
+        if (active) return;
+        cancelCanvasDraggingWithin(slot.current);
+    }, [active]);
+    // 卸载同理：租约记着那张 stage，走掉了就没人再来收尾。
+    React.useEffect(() => () => cancelCanvasDraggingWithin(slot.current), []);
     return (
         <div
+            ref={slot}
             className={cn(
                 "workbench-shell__workspace",
                 "w-full h-full min-w-0 min-h-0",

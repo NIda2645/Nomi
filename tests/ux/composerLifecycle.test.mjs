@@ -23,7 +23,9 @@ it('keeps a captured gesture when focus moves between elements, but releases on 
   expect(await page.locator('#stage').getAttribute('data-dragging')).toBe('true')
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
   expect(await page.locator('#stage').getAttribute('data-dragging')).toBeNull()
-  expect(await page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(0)
+  // 手势被 blur 收掉，但画布已经移过去了：记的是此刻屏幕上那一份（2026-09-21，见下面那条
+  // 「records the viewport that is actually on screen」的长注释）。
+  await expect.poll(() => page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(1)
 })
 it('opens history when the original trigger selects an unselected node in the same event', async () => {
   await page.reload()
@@ -164,20 +166,27 @@ async function startPan() {
   await page.locator('#stage').dispatchEvent('pointermove', { pointerId: 4, pointerType: 'mouse', buttons: 4, clientX: 50, clientY: 40 })
   expect(await page.locator('#stage').getAttribute('data-dragging')).toBe('true')
 }
-it.each(['pointercancel', 'lostpointercapture', 'blur', 'hidden', 'readonly', 'unmount'])('releases pan state without remembering a successful move on %s', async (reason) => {
+// 2026-09-21：中断收尾**必须落一个真相**。
+//
+// 中断不会把画布移回去（reconciler.cancel() 只丢还没应用的那一帧 delta），所以「只丢不记」
+// 会让记住的视口 ≠ 屏幕上的视口——下次切分类回来、或任何视口同步 effect 跑一次，
+// 画布就跳回中断前的位置。这条 case 因此从「一次都不许记」改成「记的是此刻真实的那一份」。
+// 只读那一档仍然一次都不记：只读画布本来就不写视口。
+it.each([
+  ['pointercancel', 1], ['lostpointercapture', 1], ['blur', 1], ['hidden', 1], ['readonly', 0], ['unmount', 1],
+])('releases pan state on %s and records the viewport that is actually on screen', async (reason, remembers) => {
   await page.reload()
   await startPan()
   const activeGesture = page.locator('#stage[data-dragging]')
   const activeProof = await proveProbe(activeGesture, 'pan enters the active dragging state before interruption')
-  if (reason === 'hidden') await page.locator('#stage').evaluate(element => { element.hidden = true })
-  else if (reason === 'readonly' || reason === 'unmount') await page.locator(`#${reason}`).click()
+  if (reason === 'hidden' || reason === 'readonly' || reason === 'unmount') await page.locator(`#${reason}`).click()
   else await page.locator('#stage').dispatchEvent(reason, { pointerId: 4 })
-  if (reason !== 'unmount') {
+  if (reason !== 'unmount' && reason !== 'hidden') {
     await page.waitForFunction(() => !document.querySelector('#stage')?.hasAttribute('data-dragging'))
     expect(await page.locator('#stage').getAttribute('data-panning')).toBeNull()
   }
   await expectAbsent(activeGesture, { provenBy: activeProof, message: `${reason} releases the active gesture and it stays released` })
-  expect(await page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(0)
+  await expect.poll(() => page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(remembers)
 })
 it('ignores a different pointer cancellation, and normal pointerup persists exactly once', async () => {
   await page.reload(); await startPan()
@@ -202,7 +211,8 @@ it('remeasures a zero-sized stage after reopening and clamps at both zoom extrem
   }
 })
 
-it('wheel takeover is cancelled on blur without persisting a viewport', async () => {
+// 同上：滚轮接管被 blur 打断时，画布已经移过去了，所以记的是此刻真实的那一份（不是「不记」）。
+it('wheel takeover is cancelled on blur and keeps the on-screen viewport as the remembered one', async () => {
   await page.reload()
   await page.locator('#stage .react-flow__pane').dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, clientX: 20, clientY: 20 })
   await page.locator('#stage').dispatchEvent('wheel', { clientX: 30, clientY: 30, deltaY: 10 })
@@ -213,7 +223,7 @@ it('wheel takeover is cancelled on blur without persisting a viewport', async ()
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
   expect(await page.locator('#stage').getAttribute('data-dragging')).toBeNull()
   await expectAbsent(activeGesture, { provenBy: activeProof, message: 'blur releases wheel takeover and it stays released' })
-  expect(await page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(0)
+  await expect.poll(() => page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(1)
 })
 it('cancelling one stage keeps another active stage owned', async () => {
   await page.reload(); await startPan()

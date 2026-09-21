@@ -9,7 +9,7 @@ import { AnchoredPopover } from '../../../src/design/AnchoredPopover'
 import { NomiSelect } from '../../../src/design/NomiSelect'
 import { lazyWithChunkBoundary } from '../../../src/ui/chunkBoundary'
 import { useGenerationCanvasReactFlowPointer } from '../../../src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer'
-import { beginCanvasDragging, CANVAS_DRAGGING_OWNER } from '../../../src/workbench/generationCanvas/components/canvasDraggingFlag'
+import { beginCanvasDragging, cancelCanvasDraggingWithin, CANVAS_DRAGGING_OWNER } from '../../../src/workbench/generationCanvas/components/canvasDraggingFlag'
 import { useComposerViewportPlacement } from '../../../src/workbench/generationCanvas/nodes/useComposerViewportPlacement'
 import { useWorkbenchStore } from '../../../src/workbench/workbenchStore'
 import { useNodeResultHistory } from '../../../src/workbench/generationCanvas/nodes/useNodeResultHistory'
@@ -45,9 +45,15 @@ function PanHarness({ readOnly }: { readOnly: boolean }) {
 function GestureHarness() {
   const [readOnly, setReadOnly] = React.useState(false)
   const [mounted, setMounted] = React.useState(true)
+  const [hidden, setHidden] = React.useState(false)
+  // 和 WorkbenchShell 的 WorkspaceSlot 同一段：槽位藏起来 = 里面的手势被打断，
+  // 由**宿主**显式喊一声（画布那边因此不用给每次手势装一个扫祖先链的 MutationObserver）。
+  const slot = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => { if (hidden) cancelCanvasDraggingWithin(slot.current) }, [hidden])
   return <><button id="readonly" onClick={() => setReadOnly(value => !value)}>readonly</button>
     <button id="unmount" onClick={() => setMounted(value => !value)}>mount</button>
-    {mounted && <PanHarness readOnly={readOnly} />}</>
+    <button id="hidden" onClick={() => setHidden(value => !value)}>hidden</button>
+    <div ref={slot} hidden={hidden}>{mounted && <PanHarness readOnly={readOnly} />}</div></>
 }
 const geometryNode = { id: 'geometry', kind: 'image' as const, title: 'fixture', position: { x: 0, y: 0 } }
 function PlacementHarness() {

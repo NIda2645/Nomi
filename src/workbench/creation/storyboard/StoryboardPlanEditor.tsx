@@ -347,7 +347,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     if (placed) {
       const nodeId = rows[0]?.exec.node?.id
       flushSync(() => setWorkspaceMode('generation'))
-      if (nodeId) window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId } }))
+      // 「查看画布」= 带我去看**这一批**落在哪儿，不是「打开第 1 镜开始改」。
+      // 所以只跳不选（`select: false`）：选中第 1 镜会浮出它那张 composer，
+      // 而 composer 比卡本身宽，正好盖住紧挨着的第 2 镜——用户点「查看」却看不见第二个。
+      if (nodeId) window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId, select: false } }))
       return
     }
     void runAction(context => runStoryboardBatch(context, rows, { groupTitle: plan.title, placementOnly: true }))
