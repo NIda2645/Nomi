@@ -35,11 +35,14 @@ export const draftShotSchema = z.object({
   storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
   title: z.string().trim().min(1).max(120).optional().describe("Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language."),
   prompt: z.string().trim().min(1).max(8_000).optional().describe("Generation prompt in the user's language (Chinese user → Chinese prompt). Required when you create a shot; when you revise one (operationId + shotId) send it only if you are changing it — leaving it out keeps the prompt the shot already has."),
-  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
+  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec, or from modeId when you name one."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
   durationSec: z.number().positive().max(600).optional().describe("Video clip length in seconds; omit for stills. This is the only place to set length — never also put duration inside parameters."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
-  modeId: z.string().trim().min(1).optional().describe("Mode id of that model from list_models."),
+  // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
+  // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
+  // 两个都填正是它自己给自己造矛盾的地方（run2 A3/A6 三次）。
+  modeId: z.string().trim().min(1).optional().describe("Mode id of that model from list_models. Naming a mode already decides the kind of job, so leave taskKind out when you name one."),
   candidate: z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),

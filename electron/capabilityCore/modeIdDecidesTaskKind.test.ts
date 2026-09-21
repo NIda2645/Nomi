@@ -1,0 +1,46 @@
+// 模型明说了模式，就别再去猜种类——`taskKind` 与 `modeId` 是同一件事实的两种写法。
+//
+// run2 的 A3/A6 三次：模型写了 `modeId: "i2v"` / `"t2v"` 而**没写** taskKind，我们按提示词猜了一个，
+// 再拿自己猜的那个去和它明说的模式比对，然后把冲突算在它头上——错误正文写着
+// 「this shot asks for text_to_video」，而模型一个字都没这么说。
+import { describe, expect, it } from "vitest";
+
+import { inferGenerationTaskKind } from "./semanticGenerationCandidate";
+import { transportTaskKindForModeId } from "../shared/videoCapabilities";
+
+describe("modeId 定了，taskKind 就定了", () => {
+  it("i2v / t2v / firstlast 各自决定种类（从档案扫出来，不是手抄的表）", () => {
+    expect(transportTaskKindForModeId("i2v")).toBe("image_to_video");
+    expect(transportTaskKindForModeId("t2v")).toBe("text_to_video");
+    expect(transportTaskKindForModeId("firstlast")).toBe("image_to_video");
+  });
+
+  it("`omni` **确实**说不准，所以不许编一个——一张手抄的表在这里会答错", () => {
+    // `seedance-2.5-runway` 的 omni 声明的是 `text_to_video`，而别家的 omni 是 `image_to_video`。
+    // 扫出来的答案是「说不准」；手抄一张表的人多半会写 image_to_video，然后在 Runway 那一路上答错。
+    expect(transportTaskKindForModeId("omni")).toBeUndefined();
+  });
+
+  it("认不出的 id 不编答案（上游换了种类也会落到这里）", () => {
+    expect(transportTaskKindForModeId("no-such-mode")).toBeUndefined();
+    expect(transportTaskKindForModeId("  ")).toBeUndefined();
+  });
+
+  it("A3：写了 i2v 没写 taskKind → 推出 image_to_video，而不是按提示词猜 text_to_video", () => {
+    expect(inferGenerationTaskKind({ modeId: "i2v", prompt: "深夜街道，一位夜归人走近摊位，镜头缓慢拉远" }))
+      .toBe("image_to_video");
+  });
+
+  it("A6：写了 t2v 没写 taskKind → 推出 text_to_video，而不是 text_to_image", () => {
+    expect(inferGenerationTaskKind({ modeId: "t2v", prompt: "招牌灯还亮着" })).toBe("text_to_video");
+  });
+
+  it("模型自己写了 taskKind 就听它的——派生只补它没说的那一格", () => {
+    expect(inferGenerationTaskKind({ modeId: "i2v", taskKind: "text_to_video", prompt: "x" })).toBe("text_to_video");
+  });
+
+  it("阳性对照：没有 modeId 时提示词启发式原样保留（这次只补了一格，没改别的）", () => {
+    expect(inferGenerationTaskKind({ prompt: "一只猫" })).toBe("text_to_image");
+    expect(inferGenerationTaskKind({ prompt: "一段视频，镜头推近" })).toBe("text_to_video");
+  });
+});

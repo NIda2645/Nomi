@@ -593,7 +593,7 @@
                   "type": "number"
                 },
                 "modeId": {
-                  "description": "Mode id of that model from list_models.",
+                  "description": "Mode id of that model from list_models. Naming a mode already decides the kind of job, so leave taskKind out when you name one.",
                   "minLength": 1,
                   "type": "string"
                 },
@@ -894,7 +894,7 @@
                   "type": "object"
                 },
                 "taskKind": {
-                  "description": "What to produce; omit to infer from prompt, references and durationSec.",
+                  "description": "What to produce; omit to infer from prompt, references and durationSec, or from modeId when you name one.",
                   "enum": [
                     "text_to_image",
                     "image_edit",

@@ -1,3 +1,4 @@
+import { transportTaskKindForModeId } from "../shared/videoCapabilities";
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import type { PlanCandidate } from "./executionContract";
@@ -164,6 +165,12 @@ export function inferGenerationTaskKind(params: SemanticGenerationCandidateParam
   }
   const mode = normalized(params.mode);
   if (isTaskKind(mode)) return mode;
+  // 模型明说了模式，就别再去猜种类——模式定了，种类就定了（`transportTaskKindForModeId` 从档案扫出来，
+  // 不手抄）。2026-09-22 之前这里直接跳到下面的提示词启发式：模型写了 `modeId: "i2v"`，我们猜了
+  // `text_to_video`，再拿自己猜的那个去和它明说的模式比对，然后把冲突算在它头上
+  // （run2 A3/A6 三次，正文写着「this shot asks for text_to_video」——模型一个字都没这么说）。
+  const declaredByModeId = transportTaskKindForModeId(text(params.modeId));
+  if (declaredByModeId && isTaskKind(declaredByModeId)) return declaredByModeId;
   const prompt = text(params.prompt).toLowerCase();
   const hasReferences = Array.isArray(params.references) && params.references.length > 0;
   const videoIntent = /(视频|短片|镜头|分镜|动画|video|clip|film|animate|motion)/i.test(prompt);
