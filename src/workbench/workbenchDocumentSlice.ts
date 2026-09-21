@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import i18n from '../i18n'
 import { createEmptyStoryboardPlan, isEmptyStoryboardPlan, type StoryboardPlan } from './generationCanvas/agent/storyboardPlan'
 import {
   createDefaultWorkbenchDocument,
@@ -73,6 +74,23 @@ function resolveTargetDocumentId(documentId: string | undefined, get: () => Work
 
 function findDesign(state: WorkbenchState, id: string | null | undefined, documentId: string): StoryboardDesign | undefined {
   return state.storyboardDesignsByDocumentId[documentId]?.find((design) => design.id === id)
+}
+
+/**
+ * 侧栏上那一行叫什么。**同一篇原稿里两行不许同名**——同名的两行在用户眼里就是「同一个」，
+ * 而空白新建的 plan.title 本来就是空串，于是第二次新建看起来和第一次一模一样
+ * （2026-09-21 真机截图：左栏两行都写着「分镜方案」）。
+ *
+ * 规则：基名没被占就用基名，占了就取**最小可用**序号（不是「已有几个 + 1」——删掉中间一个之后
+ * 那个算法会重新发出一个已经在用的号）。
+ */
+function uniqueDesignTitle(existing: readonly StoryboardDesign[], base: string): string {
+  const taken = new Set(existing.map((design) => design.title.trim()).filter(Boolean))
+  if (!taken.has(base)) return base
+  for (let index = 2; ; index += 1) {
+    const candidate = `${base} ${index}`
+    if (!taken.has(candidate)) return candidate
+  }
 }
 
 function createDesign(documentId: string, plan: StoryboardPlan, sourceDocumentUpdatedAt: number, title?: string): StoryboardDesign {
@@ -195,11 +213,16 @@ export const createWorkbenchDocumentSlice = (
     if (!document) return null
     if (identity && findDesign(state, identity.id, target)) return null
     const plan = source ?? createEmptyStoryboardPlan()
-    const nextNumber = (state.storyboardDesignsByDocumentId[target] ?? []).length + 1
-    const title = identity
-      ? identity.title.trim() || createEmptyStoryboardPlan().title
-      : source ? `${plan.title.trim()} ${nextNumber}`.trim() : plan.title
-    const design = { ...createDesign(target, { ...plan, title }, document.updatedAt, title), ...(identity ? { id: identity.id } : {}) }
+    const existing = state.storyboardDesignsByDocumentId[target] ?? []
+    const fallback = i18n.t('storyboardEditor.planCard.defaultTitle')
+    // 模型给了名字就用模型的（2026-09-21 拍板：Agent 方案标题 = 模型给的）；
+    // 没给、或者是手动新建 / 复制，就沿用同一套编号，两条路一个 owner。
+    const title = identity?.title.trim() || uniqueDesignTitle(existing, (source ? plan.title.trim() : '') || fallback)
+    // 空白新建**只给行一个名字，不写进 plan**：`isEmptyStoryboardPlan` 判「这还是那个空白起手式吗」
+    // 靠的就是 plan.title 为空（`storyboardPlan.ts:38`）。往 plan 里写名字，Agent 下一份方案就不再
+    // 替换这个起手式，而是**再开一份**——那正是上一轮「每轮新开一份」的病。
+    const nextPlan = source ? { ...plan, title } : plan
+    const design = { ...createDesign(target, nextPlan, document.updatedAt, title), ...(identity ? { id: identity.id } : {}) }
     set((current) => ({
       storyboardDesignsByDocumentId: {
         ...current.storyboardDesignsByDocumentId,

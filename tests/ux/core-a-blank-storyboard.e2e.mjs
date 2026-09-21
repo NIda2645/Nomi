@@ -9,6 +9,7 @@ import { expect } from '@playwright/test'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { createAgentRuntimeFixture } from './agent-runtime-fixture.mjs'
+import { expectAbsent, proveProbe } from './_assert.mjs'
 
 const { createWorkspaceProject } = tsxRequire('../../electron/workspace/workspaceRepository.ts', import.meta.url)
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-blank-storyboard-'))
@@ -32,6 +33,8 @@ const report = { status: 'running', boundary: 'built Electron, original sidebar/
 const disk = () => JSON.parse(fs.readFileSync(path.join(projectRoot, '.nomi/project.json'), 'utf8')).payload
 const savedPlans = () => Object.values(disk().storyboardDesignsByDocumentId ?? {}).flat()
 let gui, win
+/** 「底栏那条红」的探针基线：上一轮真的看见过它，下一轮的「没看见」才算数。 */
+let issuesProof = null
 const editor = () => win.locator('[data-storyboard-editor="true"]:visible')
 async function start() {
   gui = await launchNomiApp(options); win = gui.win
@@ -79,11 +82,28 @@ try {
       await expect(prompt).toHaveText('')
       const blank = savedPlans().find(plan => !expected.some(previous => previous.id === plan.id))
       assert.equal(blank.documentId, document.id)
+      // 2026-09-21：一个字都还没写的空白起手式**不报错**。那两条「提示词为空」说的是真的，
+      // 但此刻它们不是「你做错了」，是「你还没开始」——在用户动手之前先给一片红，是把起点说成了失败。
+      // 基线由**上一轮**给：写了第 1 镜、第 2 镜还空着时那条红真的浮出来过（proveProbe），
+      // 所以这里的「没看到红」不是恒真的空话。第一份方案没有基线可用，跳过这一条。
+      if (issuesProof) {
+        await expectAbsent(editor().locator('[data-storyboard-issues]'),
+          { provenBy: issuesProof, message: '一个字都没写的空白方案不许先给一片红' })
+      }
+      // 侧栏那一行必须有自己的名字：两次空白新建不许长成同一行（`uniqueDesignTitle`）。
+      assert.ok(blank.title.trim(), 'A blank plan still needs a row label of its own')
+      for (const previous of expected.filter(plan => plan.documentId === document.id)) {
+        assert.notEqual(previous.title.trim(), blank.title.trim(), 'Two rows in one document must not share a label')
+      }
       assertNoExecution(count)
       await screenshot(`zh-${document.id}-${index}-blank`)
       const title = `${document.id} plan ${index}`, text = `Keep ${document.id} prompt ${index}`
       await editor().locator('header input').fill(title)
       await prompt.fill(text)
+      // 阳性对照：写了第 1 镜、第 2 镜还空着 → 那条红必须回来，而且数得对。
+      // 它同时是上面那条「不该有红」的基线——同一个选择器、同一屏。
+      issuesProof = await proveProbe(editor().locator('[data-storyboard-issues]'), '写了一镜、另一镜还空着时，底栏那条红真的浮出来')
+      await expect(editor().locator('[data-storyboard-issues]')).toHaveAttribute('data-storyboard-issues', '1')
       await expect.poll(() => savedPlans().find(plan => plan.id === blank.id)?.plan.shots[0].prompt).toBe(text)
       const saved = savedPlans().find(plan => plan.id === blank.id)
       assert.equal(saved.plan.title, title)

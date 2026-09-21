@@ -130,7 +130,19 @@ export function useComposerViewportPlacement(input: {
     const signatureOf = (rect: DOMRect) => `${rect.left},${rect.top},${rect.right},${rect.bottom}`
     // Reuse the same rect watcher for fixed chrome mounting, resizing and removal.
     // The workspace owner supplies the list; no second selector registry or observer.
-    const signature = () => `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}|${collectBottomDockRects(stage, { left: 0, top: 0 }).map(rect => `${rect.left},${rect.top},${rect.right},${rect.bottom}`).join('|')}`
+    // 节点自己那条浮动工具条**也要进指纹**（2026-09-21）。
+    //
+    // 它是 `aboveClearance` 的输入（浮框翻到上面时要让开它），但它绝对定位在节点内部：
+    // 选中时才挂、还带一段入场动画，而这期间 `nodeEl` 的 border-box 一个像素都没变——
+    // ResizeObserver 看不见它，指纹里也没有它，于是**让位量在算完之后才变大，没人再算一次**。
+    // 屏幕上就是那条工具条压在 composer 的提示词上（真机截图
+    // `.tmp/pi-spend-confirm-executes-development-1789974658827/02-spend-confirm-really-generated.png`：
+    // 「一个悬浮的六棱柱，柔和的演播室灯光」那一行被工具条切掉一半）。main 上同病。
+    const toolbarSignature = () => {
+      const rect = nodeEl.querySelector<HTMLElement>(NODE_FLOATING_TOOLBAR_SELECTOR)?.getBoundingClientRect()
+      return rect ? signatureOf(rect) : ''
+    }
+    const signature = () => `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}|${toolbarSignature()}|${collectBottomDockRects(stage, { left: 0, top: 0 }).map(rect => `${rect.left},${rect.top},${rect.right},${rect.bottom}`).join('|')}`
     let lastSignature = signature()
     let frame = window.requestAnimationFrame(function watch() {
       frame = window.requestAnimationFrame(watch)

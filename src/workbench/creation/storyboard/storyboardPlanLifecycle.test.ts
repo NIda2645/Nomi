@@ -26,6 +26,9 @@ describe('分镜方案生命周期（单一 owner）', () => {
     const revision = state.persistRevision
     const first = state.addStoryboardDesign(DOC)
     expect(first?.plan).toEqual(createEmptyStoryboardPlan())
+    // 空白新建也要有**自己的名字**：两行都叫「分镜方案」时，用户在左栏看到的是同一个东西
+    // （2026-09-21 真机截图）。名字只落在行上，plan.title 仍是空——起手式判据靠的就是它。
+    expect(first?.title).toBe('分镜方案')
     expect(useWorkbenchStore.getState().persistRevision).toBe(revision + 1)
     expect(useGenerationCanvasStore.getState().nodes).toBe(graph.nodes)
     state.setStoryboardPlan({ ...first!.plan, title: 'Keep authored draft', shots: first!.plan.shots.map(shot => ({ ...shot, prompt: 'Keep this prompt' })) }, DOC, first!.id)
@@ -34,9 +37,22 @@ describe('分镜方案生命周期（单一 owner）', () => {
     const second = state.addStoryboardDesign(DOC)
     expect(second?.plan).toEqual(createEmptyStoryboardPlan())
     expect(second?.id).not.toBe(first?.id)
+    expect(second?.title).not.toBe(authored.title)
+    expect(second?.title).toBe('分镜方案')
     expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC]).toEqual([authored, second])
     expect(useGenerationCanvasStore.getState().nodes).toBe(authoredGraph.nodes)
     expect(useGenerationCanvasStore.getState().edges).toBe(authoredGraph.edges)
+  })
+  // 2026-09-21 真机截图：连开两个空白方案，左栏两行一模一样。
+  it('two blank creations in a row never share a row label', () => {
+    const state = useWorkbenchStore.getState()
+    const titles = [1, 2, 3].map(() => state.addStoryboardDesign(DOC)?.title)
+    expect(titles).toEqual(['分镜方案', '分镜方案 2', '分镜方案 3'])
+    expect(new Set(titles).size).toBe(3)
+    // 删掉中间那个之后，再新建拿回的是**最小可用**号，不是「已有几个 + 1」（那会重发一个在用的号）。
+    const designs = useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC]
+    useWorkbenchStore.getState().deleteStoryboardDesign(designs[1].id, DOC)
+    expect(useWorkbenchStore.getState().addStoryboardDesign(DOC)?.title).toBe('分镜方案 2')
   })
   it('new and duplicate target the explicit document while invalid targets do not mutate', () => {
     const state = useWorkbenchStore.getState()

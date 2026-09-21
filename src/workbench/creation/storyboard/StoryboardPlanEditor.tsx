@@ -20,7 +20,7 @@ import {
   validatePlan,
   type PlanIssue,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
-import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
+import { isEmptyStoryboardPlan, type StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import { planDefaultAspect } from '../../generationCanvas/agent/storyboardShotScope'
 import { CreationResourceTreeToggle } from '../CreationResourceTreeToggle'
 import StoryboardAnchorZone from './anchorZone/StoryboardAnchorZone'
@@ -263,8 +263,14 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   if (!plan) return null
 
   const issues = validatePlan(plan).filter(issue => issue.kind !== 'anchor-not-consumable')
-  const emptyPromptShots = new Set(issues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
-  const noNameAnchorIds = new Set(issues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
+  // 刚建出来、一个字都还没写的空白起手式**不报错**（2026-09-21 真机截图：新建方案一落地，
+  // 底栏立刻红着「2 处待处理」、两行也带红边）。那两条「提示词为空」说的是真的，但此刻它们
+  // 不是「你做错了」，而是「你还没开始」——在用户动手之前先给一片红，是把起点说成了失败。
+  // 拦截不变：`issues` 仍然拦住生成（下面的生成动作照读它），只是**不在这一刻冲他喊**。
+  const untouched = isEmptyStoryboardPlan(plan)
+  const visibleIssues = untouched ? [] : issues
+  const emptyPromptShots = new Set(visibleIssues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
+  const noNameAnchorIds = new Set(visibleIssues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
 
   // 动作统一包一层：失败原因回当前方案（生成失败本身落在节点卡片，这里只兜 materialize/确认前异常）。
   const runAction = async (action: (context: RowActionContext) => Promise<void>): Promise<void> => {
@@ -678,10 +684,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
             <IconRobot size={14} stroke={1.7} />
             {t('storyboardEditor.agentHandoff.footer', { count: selectedRuntimes.length })}
           </WorkbenchButton>
-          {issues.length > 0 ? (
-            <span className="text-caption text-workbench-danger inline-flex items-center gap-[5px] min-w-0">
+          {visibleIssues.length > 0 ? (
+            <span className="text-caption text-workbench-danger inline-flex items-center gap-[5px] min-w-0" data-storyboard-issues={visibleIssues.length}>
               <IconAlertTriangle size={14} stroke={1.8} className="shrink-0" />
-              <span className="truncate">{t('storyboardEditor.issuesSummary', { count: issues.length, issue: firstIssueLabel(issues[0]) })}</span>
+              <span className="truncate">{t('storyboardEditor.issuesSummary', { count: visibleIssues.length, issue: firstIssueLabel(visibleIssues[0]) })}</span>
             </span>
           ) : (
             <span className="text-caption text-nomi-ink-60 min-w-0 truncate" data-storyboard-progress="true">

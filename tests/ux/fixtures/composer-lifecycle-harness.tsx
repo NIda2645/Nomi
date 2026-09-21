@@ -56,10 +56,20 @@ function GestureHarness() {
     <div ref={slot} hidden={hidden}>{mounted && <PanHarness readOnly={readOnly} />}</div></>
 }
 const geometryNode = { id: 'geometry', kind: 'image' as const, title: 'fixture', position: { x: 0, y: 0 } }
+const TOOLBAR_HEIGHT = 40
 function PlacementHarness() {
   const placement = useComposerViewportPlacement({ node: geometryNode, visualSize: { width: 320, height: 200 }, gap: 12, preferredMaxHeight: 400, minUsableHeight: 160 })
-  return <div className="workbench-generation"><div id="geometry-stage" className="generation-canvas-v2__stage" style={{ position: 'relative', width: 1000, height: 800 }}>
-    <div className="generation-canvas-v2-node" style={{ position: 'absolute', left: 100, top: 100, width: 320, height: 200, transform: `scale(${placement.canvasZoom})`, transformOrigin: 'top left' }}>
+  // 节点靠底 → 浮框翻到上面；这时节点自己那条浮动工具条就在浮框和节点之间，必须被让开。
+  const [low, setLow] = React.useState(false)
+  const [toolbar, setToolbar] = React.useState(false)
+  return <div className="workbench-generation">
+    <button id="geometry-low" onClick={() => setLow(value => !value)}>low</button>
+    <button id="geometry-toolbar" onClick={() => setToolbar(value => !value)}>toolbar</button>
+    <div id="geometry-stage" className="generation-canvas-v2__stage" style={{ position: 'relative', width: 1000, height: 800 }}>
+    <div className="generation-canvas-v2-node" style={{ position: 'absolute', left: 100, top: low ? 560 : 100, width: 320, height: 200, transform: `scale(${placement.canvasZoom})`, transformOrigin: 'top left' }}>
+      {/* 选中才挂、绝对定位在节点内部：`nodeEl` 的 border-box 一个像素都不变，
+          所以 ResizeObserver 看不见它——它必须自己进 rAF 指纹。 */}
+      {toolbar ? <div data-node-floating-toolbar="true" style={{ position: 'absolute', left: 0, top: -TOOLBAR_HEIGHT, width: 320, height: TOOLBAR_HEIGHT }}>toolbar</div> : null}
       <div ref={placement.anchorRef} style={{ position: 'absolute', left: placement.left, top: placement.top, transform: `scale(${1 / placement.canvasZoom})`, transformOrigin: 'top left' }}>
         <div id="geometry-card" className="generation-canvas-v2-node__composer-card" style={{ width: 400, height: 200, maxWidth: placement.maxWidth, maxHeight: placement.maxHeight, position: 'relative' }}>controls<button id="geometry-action" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 32 }} onClick={event => { event.currentTarget.dataset.clicks = String(Number(event.currentTarget.dataset.clicks ?? 0) + 1) }}>parameter action</button></div>
       </div>

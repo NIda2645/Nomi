@@ -197,6 +197,27 @@ it('ignores a different pointer cancellation, and normal pointerup persists exac
   expect(await page.evaluate(() => window.composerFixture.gesture().remembers)).toBe(1)
 })
 
+// 2026-09-21 真机截图（.tmp/pi-spend-confirm-executes-development-1789974658827/
+// 02-spend-confirm-really-generated.png）：浮框翻到节点上面时，节点自己那条浮动工具条压在
+// 提示词那一行上，「一个悬浮的六棱柱，柔和的演播室灯光」被切掉一半。
+// 根因不是让位算错，是**让位量变了没人再算一次**：工具条绝对定位在节点内部、选中才挂，
+// nodeEl 的 border-box 一个像素没变，ResizeObserver 看不见它，rAF 指纹里也没有它。
+it('re-places the composer when the node toolbar appears above it', async () => {
+  await page.reload()
+  const cardTop = () => page.locator('#geometry-card').evaluate(element => Math.round(element.getBoundingClientRect().top))
+  const nodeTop = () => page.locator('#geometry-stage .generation-canvas-v2-node').evaluate(element => Math.round(element.getBoundingClientRect().top))
+  // 把节点挪到舞台下缘 → 浮框只能翻到节点上面去。
+  await page.locator('#geometry-low').click()
+  await expect.poll(async () => (await cardTop()) < (await nodeTop())).toBe(true)
+  const before = await cardTop()
+  await page.locator('#geometry-toolbar').click()
+  // 工具条一挂上，浮框必须再往上让一整条的高度（40px）以上；只要没重算，这个数就是 0。
+  await expect.poll(async () => before - (await cardTop()) >= 40, { timeout: 5_000 }).toBe(true)
+  // 拿掉工具条要让回来，否则每选一次就往上漂一次。
+  await page.locator('#geometry-toolbar').click()
+  await expect.poll(cardTop, { timeout: 5_000 }).toBe(before)
+})
+
 it('remeasures a zero-sized stage after reopening and clamps at both zoom extremes', async () => {
   await page.locator('#geometry-stage').evaluate(element => { element.style.display = 'none' })
   await page.waitForFunction(() => document.querySelector('#geometry-card').style.maxHeight === '0px')

@@ -70,7 +70,7 @@ import {
   overlayCanvasDragDraft,
   restoreCanvasDragKernelOwnership,
 } from './canvasDragDraft'
-import { commitCanvasKeyboardPositions, commitCanvasNodeDragStop } from './canvasDragWriteback'
+import { commitCanvasKeyboardPositions, commitCanvasNodeDragStop, restoreDisownedKernelPositions } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
@@ -96,12 +96,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hostRef = React.useRef<HTMLDivElement>(null)
   const duplicateDragIdsRef = React.useRef(new Map<string, string>())
   const draggingRef = React.useRef(false)
-  // 「此刻还在这一次 keydown 的同步派发里吗」。
-  //
-  // 2026-09-21：这里原来存的是那个 native KeyboardEvent，判据是 `Boolean(event.eventPhase)`
-  // ——拿一个未文档化的 DOM 细节（派发结束后归 0）当同步栈探测器，而且这个 ref 从不清空，
-  // 长期持有一个 KeyboardEvent 连带它的 target 元素。改成一个自己说了算的布尔：
-  // 进 keydown 捕获时置 true，同一轮派发结束的微任务里翻回 false。
+  // 「此刻还在这一次 keydown 的同步派发里吗」。2026-09-21：原来存的是那个 native KeyboardEvent，
+  // 判据 `Boolean(event.eventPhase)` —— 拿未文档化的 DOM 细节（派发完归 0）当同步栈探测器，
+  // 且 ref 从不清空、长期持有一个 KeyboardEvent 连带它的 target。改成自己说了算的布尔。
   const keyboardDispatchRef = React.useRef(false)
   const dragLeaseRef = React.useRef<CanvasDragLease | null>(null)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
@@ -473,24 +470,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       dragDraftNodesRef.current = applyCanvasDragPositionChanges(draftNodes, changes)
       applyCanvasDragKernelPositionChanges(flowStore, changes)
     } else if (positionChanges.length && !commitCanvasKeyboardPositions(positionChanges, keyboardDispatchRef.current && !readOnly)) {
-      // XYDrag 在 blur 取消之后还会再吐一批位置：它已经不拥有这些位置了，把内核拉回我们的投影。
-      //
-      // 两条收窄（2026-09-21）：① 只在内核真的和 store **不一致**时才写——新节点刚落画布、
-      // React Flow 首次测量时也会发 position change，那一批和 store 是一致的，写回去纯属白费；
-      // ② 按**当前** store 取值，不用闭包里的 `flowNodes`（它可能已经过期，用过期快照整体覆盖
-      // 内核节点表会让刚落的卡停在旧位置——golden 走查量到「第 2 镜没有可点中的位置」正是这个形状）。
-      const authoritative = useGenerationCanvasStore.getState().nodes
-      const disagreeing = positionChanges.some(change => {
-        const node = authoritative.find(candidate => candidate.id === change.nodeId)
-        return node && (node.position.x !== change.position.x || node.position.y !== change.position.y)
-      })
-      if (disagreeing) {
-        const positions = new Map(authoritative.map(node => [node.id, node.position] as const))
-        flowStore.getState().setNodes(flowStore.getState().nodes.map(node => {
-          const position = positions.get(node.id)
-          return position && (node.position.x !== position.x || node.position.y !== position.y) ? { ...node, position } : node
-        }))
-      }
+      restoreDisownedKernelPositions(flowStore, positionChanges)
     }
 
     const selectionChanges = collectFlowSelectionChanges(changes)
@@ -683,12 +663,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
-      onKeyDownCapture={() => {
-        keyboardDispatchRef.current = true
-        // 微任务跑在这一轮事件派发之后、下一帧之前：React Flow 的键盘移动就在这一轮里发出
-        // position change，所以它读到的一定是 true，而派发一结束就不再为真。
-        queueMicrotask(() => { keyboardDispatchRef.current = false })
-      }}
+      // 微任务跑在这一轮派发之后、下一帧之前：React Flow 的键盘移动就在这一轮里发 position change。
+      onKeyDownCapture={() => { keyboardDispatchRef.current = true; queueMicrotask(() => { keyboardDispatchRef.current = false }) }}
       onPointerDownCapture={handleStagePointerDownCapture}
       onPointerMoveCapture={handleCanvasPointerMoveCapture}
       onWheelCapture={handleCanvasWheelCapture}

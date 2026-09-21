@@ -72,10 +72,16 @@ describe('the agent writes into the same plan list a hand-made plan lives in', (
   })
 
   it('falls back to exactly the name a hand-made new plan gets when the model gives no title', () => {
-    // 决策 3：标题缺省时与手动新建**同一套**命名。今天那一套本身还是空标题（审计 D 主题 A 的编号 bug，
-    // 排在体验档），所以这里钉的是**两条路一致**，而不是把一个临时名字偷偷塞进 Agent 这一条路。
+    // 决策 3：标题缺省时与手动新建**同一套**命名。2026-09-21 那一套长出了编号
+    // （`uniqueDesignTitle`：基名没被占就用基名，占了取最小可用序号），所以「一致」
+    // 现在钉的是**同一条规则**：手动拿基名，紧接着的 Agent 方案拿下一个号——
+    // 两行不许同名，而这个号也不是 Agent 这条路自己编出来的。
     const manual = useWorkbenchStore.getState().addStoryboardDesign('doc')!
+    expect(manual.title).toBe('分镜方案')
     upsert('op-1', plan('', 'A'))
-    expect(designs().find(design => design.id === 'op-1')!.title).toBe(manual.title)
+    expect(designs().find(design => design.id === 'op-1')!.title).toBe('分镜方案 2')
+    // 模型给了名字就用模型的，不套编号。
+    upsert('op-2', plan('海边黄昏', 'A'))
+    expect(designs().find(design => design.id === 'op-2')!.title).toBe('海边黄昏')
   })
 })
