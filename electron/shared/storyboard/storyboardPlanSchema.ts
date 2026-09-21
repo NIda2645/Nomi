@@ -5,8 +5,14 @@ import { jsonTolerantArray } from '../agentCapabilities/jsonArgTolerance'
 const referenceBindingsSchema = z.record(z.array(z.object({
   url: z.string().min(1), name: z.string().optional(), sourceNodeId: z.string().min(1).optional(),
   anchorId: z.string().min(1).optional(), ignore: z.string().optional(),
-}).strict()))
+})))
 
+// **这份 schema 是持久化 / 迁移 / 规划模型输出的读口，所以它永远剥离未知键、绝不因为多一个键
+// 判整份无效。** 加过一轮 `.strict()`，代价是：项目记录里任何一份带历史字段的方案会让
+// `workbenchProjectPayloadSchema` 整个 safeParse 失败 → `normalizePayload` 抛 corruptPayload →
+// **整个项目打不开**；旧键迁移那条路则直接 `return []`，分镜方案静默消失。要严的是「模型入参」
+// 那一面（`agentCapabilities/generationPlanSchemas.ts` 的作者 schema 自带 `.strict()`，
+// 并且拒收时逐字段说明理由），不是这一面。
 // schema 与手写类型分层，避免方案转换器继续膨胀；编译期守卫仍固定在同一份 schema owner。
 export const planAnchorSchema = z.object({
   id: z.string().min(1),
@@ -23,7 +29,7 @@ export const planAnchorSchema = z.object({
   referenceSourceNodeId: z.string().min(1).optional(),
   modelKey: z.string().optional(), modelVendor: z.string().optional(), modeId: z.string().optional(),
   params: z.record(z.unknown()).optional(), referenceBindings: referenceBindingsSchema.optional(),
-}).strict()
+})
 
 const promptSegmentRangeSchema = z.object({
   key: z.string().min(1),
@@ -70,8 +76,8 @@ export const planShotSchema = z.object({
     modelVendor: z.string().optional(),
     modeId: z.string().optional(),
     params: z.record(z.unknown()).optional(),
-  }).strict().optional(),
-}).strict()
+  }).optional(),
+})
 
 export const storyboardPlanSchema = z.object({
   title: z.string(),
@@ -89,7 +95,7 @@ export const storyboardPlanSchema = z.object({
   sourceScriptArtifactId: z.string().min(1).optional(),
   sourceScriptVersion: z.number().int().positive().optional(),
   sourceScriptHash: z.string().min(1).optional(),
-}).strict()
+})
 
 // 编译期漂移守卫：schema 和手写类型必须互相赋值，防止运行时契约静默漂移。
 const _schemaToType = (plan: z.infer<typeof storyboardPlanSchema>): StoryboardPlan => plan

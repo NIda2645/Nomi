@@ -1,6 +1,6 @@
 import { generationNodeRunRecordSchema } from '../generationCanvas/model/generationCanvasSchema'
 import { textDocumentDigest } from '../generationCanvas/runner/textGenerationDocument'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizePayload, normalizeRecord } from './projectNormalize'
 import { createDefaultWorkbenchProjectPayload } from './projectRecordSchema'
 import type { StoryboardPlan } from '../generationCanvas/agent/storyboardPlan'
@@ -49,6 +49,45 @@ describe('normalizePayload — storyboard design owner', () => {
   it('returns an empty owner when no storyboard exists', () => {
     const out = normalizePayload(createDefaultWorkbenchProjectPayload())
     expect(out.storyboardDesignsByDocumentId).toBeUndefined()
+  })
+  // 旧项目按定义带着历史字段。一份方案多一个键，不该让这个项目的分镜消失，更不该让
+  // `normalizePayload` 抛 corruptPayload 把**整个项目**变成打不开。
+  it('opens a stored record whose plans carry unknown historical keys, with every plan intact', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const withUnknown = {
+      ...plan, retiredTopLevelField: 'from an older build',
+      anchors: [{ ...plan.anchors[0], retiredAnchorField: 1 }],
+      shots: [{ ...plan.shots[0], retiredShotField: true, keyframe: { enabled: true, retiredKeyframeField: 'x' },
+        referenceBindings: { character: [{ url: 'https://example/a.png', retiredBindingField: 'x' }] } }],
+    }
+    const stored = { ...design(documentId), plan: withUnknown }
+    const out = normalizePayload({ ...base, storyboardDesignsByDocumentId: { [documentId]: [stored] } })
+    const designs = out.storyboardDesignsByDocumentId?.[documentId]
+    expect(designs).toHaveLength(1)
+    expect(designs?.[0].plan.shots).toHaveLength(1)
+    expect(designs?.[0].plan.shots[0].prompt).toBe(plan.shots[0].prompt)
+    expect(designs?.[0].plan.anchors[0].name).toBe(plan.anchors[0].name)
+    expect(designs?.[0].plan.shots[0].keyframe?.enabled).toBe(true)
+    expect(designs?.[0].plan.shots[0].referenceBindings?.character?.[0].url).toBe('https://example/a.png')
+  })
+  it('migrates a retired map whose plan carries unknown historical keys', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const legacyKey = ['storyboard', 'Plans'].join('')
+    const out = normalizePayload({ ...base,
+      [legacyKey]: { [documentId]: { plan: { ...plan, retiredTopLevelField: 'x' }, committed: true } } })
+    expect(out.storyboardDesignsByDocumentId?.[documentId]?.[0].plan.shots).toHaveLength(1)
+  })
+  it('says which document and which field when a legacy plan is genuinely unreadable', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const legacyKey = ['storyboard', 'Plans'].join('')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const out = normalizePayload({ ...base, [legacyKey]: { [documentId]: { plan: { title: 'broken', anchors: [], shots: [{ index: 1 }] }, committed: true } } })
+      expect(out.storyboardDesignsByDocumentId).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(JSON.stringify(warn.mock.calls[0]))).toContain(documentId)
+      expect(String(JSON.stringify(warn.mock.calls[0]))).toContain('shots')
+    } finally { warn.mockRestore() }
   })
   it('retains canvas event cursor', () => {
     const out = normalizePayload({ ...createDefaultWorkbenchProjectPayload(), generationCanvasLastSeq: 37 })
