@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMcpProtocol, type McpTransport } from "./mcpProtocol";
 import { dispatch } from "./dispatcher";
 import type { McpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createGenerationPlanningHandler } from "./mcpGenerationTools";
 import { createModuleRegistry } from "./moduleRegistry";
 import { createCatalogModuleRegistry } from "./moduleCatalogBootstrap";
@@ -149,12 +148,10 @@ async function makeLease(
 
 function makeProjectSession(
   leaseAuthority: ReturnType<typeof makeAuthority>,
-  generationPolicy: ReturnType<typeof createMcpGenerationPolicy>,
 ) {
   return {
     authority: createProjectSessionAuthority({
       leaseAuthority,
-      generationPolicy,
       resolveProjectSelection: async () => ({ ...projectIdentity, manifestDigest: "manifest" }),
     }),
     connection,
@@ -238,15 +235,13 @@ describe("MCP semantic generation planning journey", () => {
     const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
     const authority = makeAuthority(root);
     const lease = (await makeLease(authority, ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"])).token;
-    const generationPolicy = createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } });
     const runTask = vi.fn(async () => { throw new Error("semantic planning must not call runTask"); });
     const context = {
       runTask,
       makeGateway: () => { throw new Error("semantic planning must not create a gateway"); },
       productionRuns: service,
       origin: { host: "codex" as const },
-      generationPolicy,
-      projectSession: makeProjectSession(authority, generationPolicy),
+      projectSession: makeProjectSession(authority),
       generationPlanning: handler,
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
@@ -275,14 +270,12 @@ describe("MCP semantic generation planning journey", () => {
     const handler = createGenerationPlanningHandler({ registry: editableRegistry, operations, now: () => "2026-08-23T00:00:00.000Z" });
     const authority = makeAuthority(root);
     const lease = (await makeLease(authority, ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"])).token;
-    const generationPolicy = createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } });
     const context = {
       runTask: vi.fn(async () => { throw new Error("editable semantic journey must not call runTask"); }),
       makeGateway: () => { throw new Error("editable semantic journey must not create a gateway"); },
       productionRuns: service,
       origin: { host: "codex" as const },
-      generationPolicy,
-      projectSession: makeProjectSession(authority, generationPolicy),
+      projectSession: makeProjectSession(authority),
       generationPlanning: handler,
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
@@ -325,14 +318,12 @@ describe("MCP semantic generation planning journey", () => {
     });
     const authority = makeAuthority(root);
     const lease = (await makeLease(authority, ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"])).token;
-    const generationPolicy = createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } });
     const context = {
       runTask,
       makeGateway: () => { throw new Error("video planning must not create a gateway"); },
       productionRuns: service,
       origin: { host: "codex" as const },
-      generationPolicy,
-      projectSession: makeProjectSession(authority, generationPolicy),
+      projectSession: makeProjectSession(authority),
       generationPlanning: handler,
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));
@@ -415,14 +406,12 @@ describe("MCP semantic generation planning journey", () => {
     const authority = makeAuthority(root);
     const lease = (await makeLease(authority, ["context:read", "generation:create", "generation:plan", "generation:preview", "generation:read"])).token;
     const verifiedLease = await authority.verifyLease(lease, { connection });
-    const generationPolicy = createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true } });
     const context = {
       runTask,
       makeGateway: () => { throw new Error("real catalog planning must not create a gateway"); },
       productionRuns: service,
       origin: { host: "codex" as const },
-      generationPolicy,
-      projectSession: makeProjectSession(authority, generationPolicy),
+      projectSession: makeProjectSession(authority),
       generationPlanning: handler,
     };
     const harness = new McpJourneyHarness((method, params) => dispatch(method, params, context));

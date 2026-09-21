@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CANVAS_READ_CAPABILITY } from "../shared/agentCapabilities/canvasRead";
 import type { WorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
 import { createMcpConnectionContext, type McpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createCanvasReadSurfaceRegistry, createSurfaceOwnerAuthority } from "./canvasReadSurfaceRegistry";
 import {
   ProjectBindingStaleError,
@@ -106,7 +105,6 @@ function makeSessionHarness() {
     canonicalRootDigest: identity.canonicalRootDigest,
   });
   const runtime = createProjectSessionRuntime({
-    generationPolicy: createMcpGenerationPolicy({ env: {} }),
     leaseFilePath: path.join(dir, "project-leases-v2"),
     leaseMacKey: "verified-invocation-lease-key",
     leaseStoreMacKey: "verified-invocation-store-key",

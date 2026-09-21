@@ -74,8 +74,6 @@ try {
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
       NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
     },
     args: ['--disable-gpu', '--disable-software-rasterizer'], settleMs: 0, syntheticCredentialStorage: true,
     ...(mcpRuntime ? { executablePath: mcpRuntime.executablePath } : {}),
@@ -110,8 +108,6 @@ try {
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
       NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
     }, syntheticCredentialStorage: true,
   })
   const initialized = await mcp.initialize()
@@ -465,8 +461,6 @@ try {
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
       NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
     },
   })
   await c9bClient.initialize()
@@ -539,8 +533,6 @@ try {
       NOMI_E2E_APIMART_BASE_URL: provider.origin,
       NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
       NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
     },
   })
   await c10Client.initialize()

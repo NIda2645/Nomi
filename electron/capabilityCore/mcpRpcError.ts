@@ -46,7 +46,6 @@ export function rpcErrorWirePayload(error: unknown): RpcErrorWirePayload {
     message,
     code: error.code,
     nextAction: error.nextAction,
-    phase: error.phase,
     capability: error.capability,
   }
 }

@@ -98,8 +98,6 @@ try {
     projectsDir: dirs.projectsDir,
     env: {
       NOMI_CAPABILITY_DIR: dirs.capabilityDir,
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
     },
     args: ['--disable-gpu', '--disable-software-rasterizer'],
     settleMs: 0,
@@ -116,8 +114,6 @@ try {
     clientInfo: { name: 'Codex semantic GUI fallback', version: 'e2e' },
     capabilities: {},
     env: {
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
       NOMI_MCP_CLIENT: 'codex',
       NOMI_MCP_CLIENT_PROOF: proofFor(token, 'codex'),
     },

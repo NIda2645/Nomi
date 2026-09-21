@@ -36,7 +36,6 @@ import {
   ensureCapabilitySigningKey,
 } from './security'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
-import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
@@ -76,7 +75,6 @@ export type McpStdioServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   requestGenerationGate?: DispatchContext['requestGenerationGate']
   authorizeGeneration?: DispatchContext['authorizeGeneration']
-  generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   generationPlanning?: DispatchContext['generationPlanning']
   generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
@@ -256,12 +254,11 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
   if (process.env.NOMI_E2E_SYNTHETIC_CREDENTIAL_STORAGE === '1' && process.platform === 'linux') {
     safeStorage.setUsePlainTextEncryption(true)
   }
-  const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
-  const defaultAuthorities = createDefaultAuthorities(generationPolicy)
+  const defaultAuthorities = createDefaultAuthorities()
   const projectRevisionResolver = authorities.projectRevisionResolver ?? defaultAuthorities.projectRevisionResolver!
   const approvalReceiptAuthority = authorities.approvalReceiptAuthority ?? defaultAuthorities.approvalReceiptAuthority
   let verifiedSession: VerifiedProjectSessionBinding | undefined
-  const projectSession = () => verifiedSession ??= createProductionMcpStdioProjectSessionBinding(generationPolicy)
+  const projectSession = () => verifiedSession ??= createProductionMcpStdioProjectSessionBinding()
   const proposalReceiptFor = authorities.proposalReceiptFor ?? createDefaultMcpProposalReceiptResolver()
   const canvasReadExecutionRuntime = createHeadlessCanvasReadExecutionRuntime()
   // 无窗口进程：mac 别在 dock 弹图标。
@@ -485,7 +482,6 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     approvalReceiptAuthority,
     projectRevisionResolver,
     generationPlanning,
-    generationPolicy,
     proposalReceiptFor,
     ...(authorities.requestGenerationGate ?? runOwnedGenerationAuthority?.requestGenerationGate
       ? { requestGenerationGate: authorities.requestGenerationGate ?? runOwnedGenerationAuthority!.requestGenerationGate }

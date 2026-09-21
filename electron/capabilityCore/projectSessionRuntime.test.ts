@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { WorkspaceProjectRecordV2 } from "../workspace/workspaceTypes";
 import type { McpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createProjectSessionRuntime } from "./projectSessionRuntime";
 
 const tempDirs: string[] = [];
@@ -55,7 +54,6 @@ describe("project-session production runtime factory", () => {
   it("shares one immutable per-token authority store across direct and loopback runtimes without a shared RMW lock", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-project-session-runtime-"));
     tempDirs.push(dir);
-    const generationPolicy = createMcpGenerationPolicy({ env: {} });
     let rootAvailable = true;
     const committedSelection = Object.freeze({
       projectId: identity.projectId,
@@ -65,7 +63,6 @@ describe("project-session production runtime factory", () => {
     });
     const makeRuntime = () =>
       createProjectSessionRuntime({
-        generationPolicy,
         leaseFilePath: path.join(dir, "project-leases-v2"),
         leaseMacKey: "shared-lease-key",
         leaseStoreMacKey: "shared-lease-store-key",

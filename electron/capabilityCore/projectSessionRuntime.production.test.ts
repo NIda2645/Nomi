@@ -40,7 +40,6 @@ vi.mock("./security", () => ({
 import type { WorkspaceProjectRecordV2 } from "../workspace/workspaceTypes";
 import type { CurrentProjectSelection } from "./currentProjectResolver";
 import type { McpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createProductionProjectSessionRuntime } from "./projectSessionRuntime";
 
 const tempDirs: string[] = [];
@@ -105,7 +104,6 @@ describe("production project-session runtime repository composition", () => {
       canonicalRootDigest: "root-digest-a",
     });
     const runtime = createProductionProjectSessionRuntime({
-      generationPolicy: createMcpGenerationPolicy({ env: {} }),
       getOpenProjectSelection: () => committedSelection,
       isServerAllowlisted: () => false,
     });

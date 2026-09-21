@@ -10,7 +10,6 @@ import {
 import type { WorkspaceProjectRecordV2 } from "../workspace/workspaceTypes";
 import { createProjectSelectionResolver, type CurrentProjectSelection } from "./currentProjectResolver";
 import { assertVerifiedMcpConnectionContext, type McpConnectionContext } from "./mcpConnectionContext";
-import type { McpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createProjectLeaseAuthority } from "./projectLease";
 import { createProjectLeaseStore } from "./projectLeaseStore";
 import { createProjectSessionAuthority, type ProjectSessionAuthority } from "./projectSessionAuthority";
@@ -48,7 +47,6 @@ const projectSessionAuthorityStates = new WeakMap<object, ProjectSessionRuntimeS
 const verifiedProjectSessionBindingStates = new WeakMap<object, ProjectSessionLeaseVerification>();
 
 export type ProjectSessionRuntimeDeps = Readonly<{
-  generationPolicy: McpGenerationPolicy;
   leaseFilePath: string;
   leaseMacKey: string | NodeJS.TypedArray;
   leaseStoreMacKey: string | NodeJS.TypedArray;
@@ -64,7 +62,6 @@ export type ProjectSessionRuntimeDeps = Readonly<{
 }>;
 
 export type ProductionProjectSessionRuntimeOptions = Readonly<{
-  generationPolicy: McpGenerationPolicy;
   getOpenProjectSelection: () => CurrentProjectSelection | null;
   isServerAllowlisted: (projectId: string, connection: McpConnectionContext) => boolean;
 }>;
@@ -115,12 +112,10 @@ export function createProjectSessionRuntime(deps: ProjectSessionRuntimeDeps) {
     createProjectSessionAuthority({
       leaseAuthority,
       resolveProjectSelection,
-      generationPolicy: deps.generationPolicy,
     }),
   );
   const runtime = Object.freeze({
     authority,
-    generationPolicy: deps.generationPolicy,
   });
   const runtimeState = Object.freeze({
     authority,
@@ -135,7 +130,6 @@ export function createProjectSessionRuntime(deps: ProjectSessionRuntimeDeps) {
 export function createProductionProjectSessionRuntime(options: ProductionProjectSessionRuntimeOptions) {
   const authorityDir = capabilityCoreDir();
   return createProjectSessionRuntime({
-    generationPolicy: options.generationPolicy,
     leaseFilePath: path.join(authorityDir, "project-leases-v2"),
     legacyLeaseFilePath: path.join(authorityDir, "project-leases.json"),
     leaseMacKey: ensureCapabilitySigningKey("project-lease"),

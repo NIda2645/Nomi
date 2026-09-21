@@ -23,7 +23,6 @@ import { ensureWorkspaceProjectIdentity } from "../workspace/workspaceProjectIde
 import { workspaceProjectBackupFile, workspaceProjectFile } from "../workspace/workspacePaths";
 import type { CurrentProjectSelection } from "./currentProjectResolver";
 import { createMcpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { ProjectBindingStaleError } from "./projectLease";
 import { createProductionProjectSessionRuntime } from "./projectSessionRuntime";
 import { CAPABILITY_DIR_ENV, ensureToken, signMcpClient } from "./security";
@@ -86,7 +85,6 @@ async function makeProductionHarness(rootName = "original") {
     randomSecret: () => "R".repeat(43),
   });
   const runtime = createProductionProjectSessionRuntime({
-    generationPolicy: createMcpGenerationPolicy({ env: {} }),
     getOpenProjectSelection: () => committedSelection,
     isServerAllowlisted: () => false,
   });

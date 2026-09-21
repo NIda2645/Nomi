@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApprovalReceiptAuthority } from "./approvalReceipt";
 import { dispatch } from "./dispatcher";
 import type { McpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createMcpProtocol, type McpTransport } from "./mcpProtocol";
 import { createGenerationPlanningHandler } from "./mcpGenerationTools";
 import { createModuleRegistry } from "./moduleRegistry";
@@ -156,20 +155,17 @@ describe("semantic MCP one-confirmation journey", () => {
       now: () => "2026-08-23T00:00:00.000Z",
     });
     const runTask = vi.fn(async () => ({ status: "succeeded" }));
-    const policy = createMcpGenerationPolicy({ env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: "1" }, checkpoints: { p0Passed: true, p2Passed: true, p3Passed: true } });
     const context = {
       runTask,
       makeGateway: vi.fn(() => { throw new Error("semantic confirmation must not create a gateway"); }),
       productionRuns: { createDraft: vi.fn(), readProjection: vi.fn(), readEvents: vi.fn(), readArtifactProjection: vi.fn(), readFull: vi.fn(), command: vi.fn() },
       origin: { host: "codex" as const },
-      generationPolicy: policy,
       generationPlanning: planning,
       requestGenerationGate: generationAuthority.requestGenerationGate,
       authorizeGeneration: generationAuthority.authorizeGeneration,
       projectSession: {
         authority: createProjectSessionAuthority({
           leaseAuthority: leases,
-          generationPolicy: policy,
           resolveProjectSelection: async () => ({ ...projectIdentity, manifestDigest: "manifest" }),
         }),
         connection,

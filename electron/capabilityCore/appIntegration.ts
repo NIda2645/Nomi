@@ -22,7 +22,6 @@ import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
-import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { requestRenderer, requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
 import { resolveIndexedReferencePreview } from './pendingSpendReferences'
@@ -130,7 +129,6 @@ export async function startCapabilityCore(
     requestGenerationGate?: DispatchContext['requestGenerationGate']
     authorizeGeneration?: DispatchContext['authorizeGeneration']
     confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
-    generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     generationPlanning?: DispatchContext['generationPlanning']
     generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
@@ -169,9 +167,8 @@ export async function startCapabilityCore(
     const operationStore = createProductionGenerationOperationStore(generationService, {
       onPlanChanged: (projectId, operationId) => landDraftOnCanvas?.(projectId, operationId),
     })
-    const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
     // P4 S4: trialFirst narrows the durable plan to shot 1 and re-seals it.
-    const defaults = createDefaultAuthorities(generationPolicy, {
+    const defaults = createDefaultAuthorities({
       onTrialFirst: async ({ projectId, operationId }) => {
         if (!operationStore.trialNarrow) return
         await operationStore.trialNarrow(projectId, operationId, new Date().toISOString())
@@ -627,7 +624,6 @@ export async function startCapabilityCore(
         await requestRenderer('integration.open-credentials', { sessionId }, 30_000)
         return { opened: true }
       }),
-      generationPolicy,
       generationPlanning,
     })
     const location = getProjectLocationState()

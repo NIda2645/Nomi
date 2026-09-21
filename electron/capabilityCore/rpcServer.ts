@@ -27,7 +27,6 @@ import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
 import { rpcErrorWirePayload } from './mcpRpcError'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import { bindMcpConnectionContext, McpConnectionAuthenticationError } from './mcpConnectionContext'
 import type { ProjectSessionAuthority } from './projectSessionAuthority'
 import { assertLocalBearerProjectSessionRoute } from './localProjectSessionTransportPolicy'
@@ -69,7 +68,6 @@ export type RpcServerOptions = {
    * `nomi_verify_client_generation_gate`.
    */
   verifyClientGenerationGateInMain?: (input: { challengeToken: string; authenticatedClient: string }) => Promise<unknown>
-  generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   generationPlanning?: import('./dispatcher').DispatchContext['generationPlanning']
   projectRevisionResolver?: (projectId: string) => number | undefined
@@ -358,7 +356,6 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           makeGateway,
           productionRuns,
           origin: { host: origin },
-          generationPolicy: options.generationPolicy,
           generationContext: options.generationContext,
           generationPlanning: options.generationPlanning,
           projectRevisionResolver: options.projectRevisionResolver,

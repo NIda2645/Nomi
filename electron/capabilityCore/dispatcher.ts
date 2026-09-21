@@ -27,7 +27,7 @@ import { withPreApprovedPlan, type ProjectGateway } from './gateway'
 import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import { isBuiltinMcpClient } from './security'
 import type { CapabilityOriginHost } from './security'
-import { createMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import { classifyMcpGenerationRoute } from './mcpGenerationPolicy'
 import { dispatchSemanticGeneration, guardLegacyGenerationRoute, isSemanticGenerationRoute } from './generationDispatcher'
 import { RpcError, type RpcPublicErrorCode } from './rpcError'
 import { assertOnlyFields, optionalText, requiredIdentifier } from './dispatcherParams'
@@ -67,7 +67,6 @@ export type DispatchContext = {
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
   /** The frozen server-side generation policy. Omit in legacy callers to build the default snapshot. */
-  generationPolicy?: McpGenerationPolicy
   /** One cohesive, transport-owned project-session authority for every leased MCP capability. */
   projectSession?: Readonly<{
     authority: ProjectSessionAuthority
@@ -334,8 +333,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       throw projectSessionOpenPublicError(error)
     }
   }
-  const generationPolicy = ctx.generationPolicy ?? createMcpGenerationPolicy()
-  const classifiedRoute = generationPolicy.classifyRoute(method)
+  const classifiedRoute = classifyMcpGenerationRoute(method)
   const legacyRoute = classifiedRoute.kind === 'legacy'
     ? classifiedRoute.route
     : method.startsWith('production.')
@@ -347,7 +345,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
   // 付费门仍 403 回 Nomi）。generationBindingGuard 把通用字段 `gateId` 也列作 marker（防生成路夹带），于是
   // 这条只带 gateId 的门表态被 legacy 防火墙误伤（legacy_path_forbidden）。故此路显式豁免：marker 集不动
   //（生成路仍拦），仅把「决门」这条正当可逆路径放行到它自己的 case 守卫。
-  if (legacyRoute && legacyRoute !== 'production.decide-gate') guardLegacyGenerationRoute(generationPolicy, legacyRoute, params)
+  if (legacyRoute && legacyRoute !== 'production.decide-gate') guardLegacyGenerationRoute(legacyRoute, params)
   if (isSemanticGenerationRoute(method)) return dispatchSemanticGeneration(method, params, ctx)
 
   switch (method) {

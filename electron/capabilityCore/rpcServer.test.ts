@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startRpcServer, type RpcServerHandle } from "./rpcServer";
 import { ensureToken, signMcpClient, type AuthenticatedMcpClient } from "./security";
 import { createProjectSessionRuntime } from "./projectSessionRuntime";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createMcpConnectionContext, getMcpConnectionAttestation } from "./mcpConnectionContext";
 import { getWorkspaceRepositoryDeps } from "../runtimePaths";
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from "../workspace/workspaceRepository";
@@ -361,9 +360,7 @@ describe("capabilityCore/rpcServer", () => {
     await server!.close();
     const authorityDir = makeTempDir("nomi-rpc-project-session-");
     const repositoryDeps = getWorkspaceRepositoryDeps();
-    const generationPolicy = createMcpGenerationPolicy({ env: {} });
     const runtime = createProjectSessionRuntime({
-      generationPolicy,
       leaseFilePath: path.join(authorityDir, "project-leases-v2"),
       leaseMacKey: "rpc-project-session-key",
       leaseStoreMacKey: "rpc-project-session-store-key",
@@ -375,7 +372,6 @@ describe("capabilityCore/rpcServer", () => {
     });
     server = await startRpcServer({
       runTask: async () => ({ id: "t", status: "succeeded", assets: [] }),
-      generationPolicy,
       projectSessionAuthority: runtime.authority,
       canvasReadExecutionRuntime: canvasReadRuntime("mcp-executor-node"),
     });
@@ -455,9 +451,7 @@ describe("capabilityCore/rpcServer", () => {
     await server!.close();
     const authorityDir = makeTempDir("nomi-rpc-project-session-replay-");
     const repositoryDeps = getWorkspaceRepositoryDeps();
-    const generationPolicy = createMcpGenerationPolicy({ env: {} });
     const runtime = createProjectSessionRuntime({
-      generationPolicy,
       leaseFilePath: path.join(authorityDir, "project-leases-v2"),
       leaseMacKey: "rpc-project-session-replay-key",
       leaseStoreMacKey: "rpc-project-session-replay-store-key",
@@ -469,7 +463,6 @@ describe("capabilityCore/rpcServer", () => {
     });
     server = await startRpcServer({
       runTask: async () => ({ id: "t", status: "succeeded", assets: [] }),
-      generationPolicy,
       projectSessionAuthority: runtime.authority,
       canvasReadExecutionRuntime: canvasReadRuntime("must-not-read-stolen-lease"),
     });
@@ -806,12 +799,13 @@ describe("capabilityCore/rpcServer", () => {
   });
 
   it("keeps typed generation policy details in the local RPC error payload", async () => {
+    // 2026-09-21：`feature_disabled` 与 `phase` 随 env flag 一起删除。语义路现在一路走到真正
+    // 该停的地方——缺一张有效的项目租约——而结构化细节（码 / 下一步 / 能力名）照常带出来。
     const res = await rpc("nomi_operation_create", {});
     expect(res.status).toBe(403);
     expect(res.body.error).toMatchObject({
-      code: "feature_disabled",
+      code: "lease_required",
       nextAction: expect.any(String),
-      phase: "schema_only",
       capability: "create",
     });
   });

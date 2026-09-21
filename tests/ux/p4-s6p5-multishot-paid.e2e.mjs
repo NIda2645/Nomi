@@ -56,8 +56,6 @@ const capDir = path.join(isoDir, 'capability-core')
 fs.mkdirSync(capDir, { recursive: true })
 
 const SEMANTIC_ENV = {
-  NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-  NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
   APIMART_E2E: '1',
   NOMI_SPEND_OK: '1',
   NOMI_CAPABILITY_DIR: capDir,

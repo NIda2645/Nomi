@@ -28,12 +28,14 @@ describe('structured local RPC errors', () => {
   })
 
   it('serializes policy RpcErrors with typed recovery details and ordinary errors as strings', () => {
-    const policyError = new RpcError('generation.single-shot phase_not_ready', 403, {
-      code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+    // 2026-09-21：`phase_not_ready` / `feature_disabled` 与 `phase` 字段随 env flag 一起删除，
+    // 这里换成仍然存在的那一族策略码（缺一张有效的项目租约）。
+    const policyError = new RpcError('generation.single-shot lease_required', 403, {
+      code: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
     })
     expect(rpcErrorWirePayload(policyError)).toEqual({
-      message: 'generation.single-shot phase_not_ready', code: 'phase_not_ready',
-      nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+      message: 'generation.single-shot lease_required', code: 'lease_required',
+      nextAction: 'Open a new project session and retry', capability: 'start',
     })
     expect(rpcErrorWirePayload(new Error('legacy failure'))).toBe('legacy failure')
     expect(rpcErrorWirePayload(new RpcError('bad request', 400))).toBe('bad request')
