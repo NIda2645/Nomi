@@ -8,6 +8,7 @@
 import { ContractCompilationError, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 import type { ResolvedModule } from "./moduleRegistry";
+import { archetypeCompileOptions, parameterFieldForControl } from "./modelAdmissionSchema";
 import type {
   VideoGenerationRecommendationInput,
   VideoModelCandidate,
@@ -215,31 +216,6 @@ export function videoTransportModelIdForPlan(candidate: PlanCandidate, videoCand
   return variant?.modelKey?.trim() || mode.modelEnum?.trim() || videoCandidate.modelKey;
 }
 
-/** 档案控件声明过的数值范围——带过来，准入层才判得了「越界」（没声明就不判，不许现编一个范围）。 */
-function controlBounds(control: ModelParameterControl): Pick<ParameterField, "min" | "max"> {
-  return {
-    ...(typeof control.min === "number" && Number.isFinite(control.min) ? { min: control.min } : {}),
-    ...(typeof control.max === "number" && Number.isFinite(control.max) ? { max: control.max } : {}),
-  };
-}
-
-function parameterFieldForControl(control: ModelParameterControl): ParameterField {
-  if (control.type === "select") {
-    const optionValues = control.options.map((option) => option.value);
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "string")) return { type: "enum", enum: optionValues };
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "number" && Number.isFinite(value))) {
-      return { type: "number", enum: optionValues };
-    }
-    if (optionValues.length > 0 && optionValues.every((value) => typeof value === "boolean")) {
-      return { type: "boolean", enum: optionValues };
-    }
-    return { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
-  }
-  if (control.type === "number") return { type: "number", ...controlBounds(control) };
-  if (control.type === "boolean") return { type: "boolean" };
-  return { type: "string" };
-}
-
 export function videoParameterSchema(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): Record<string, ParameterField> | undefined {
   // 参数表与变体清单是同一次档案解析的两个产物，主人是 videoCompileOptions；这里只取其中一样。
   return videoCompileOptions(candidate, candidates).parameterSchema;
@@ -304,10 +280,11 @@ export function videoCompileOptions(
   candidate: PlanCandidate,
   candidates: readonly VideoModelCandidate[] | undefined,
 ): ExecutionContractCompileOptions {
-  // 一次解析出这个候选对应的视频档案，参数表与变体清单都从它来。认不出这个模型
-  // （非视频模型 / 尚未接入）→ 两样都省略：那是**这条路拿不到清单**，不是「随便填都行」。
+  // 一次解析出这个候选对应的视频档案，参数表与变体清单都从它来。
+  // 认不出（image/audio/3D、或尚未接入的视频模型）→ 交给通用档案判据，它对全部 kind 成立。
+  // 2026-09-22 之前这里直接 `return {}`，于是 95% 的模型落进准入层的「没有声明就放行」分支。
   const selected = candidates ? videoCandidateForPlan(candidate, candidates) : null;
-  if (!selected) return {};
+  if (!selected) return archetypeCompileOptions(candidate);
   return {
     parameterSchema: Object.fromEntries(
       videoModeForPlan(selected.candidate, selected.videoCandidate).params

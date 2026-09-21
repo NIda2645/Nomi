@@ -573,7 +573,9 @@ describe("MCP semantic generation planning journey", () => {
       modelId: "gpt-image-2",
       mode: "text-to-image",
       prompt: "A red paper crane",
-      parameters: { aspectRatio: "1:1" },
+      // canonical 键是档案声明的 `aspect_ratio`（gptImage2.ts）。2026-09-22 起 image 档案也真被
+      // 准入层校验，驼峰写法会被当场拒——这条测试的主题是 recovery capability，不是参数，故用真键。
+      parameters: { aspect_ratio: "1:1" },
       references: [],
     };
     const created = await handler({ capability: "create", params: { candidate }, lease });
