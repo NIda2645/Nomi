@@ -21,6 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { addCanvasNodeFromRail } from './_canvasRail.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { clickOrFail, expect, expectVisible, screenshotSettled, DEFAULT_TIMEOUT_MS } from './_assert.mjs'
 
 const API_KEY = process.env.DEEPSEEK_API_KEY
@@ -37,7 +38,8 @@ const TRANSLATE = '[data-prompt-tool="translate"]'
 const OPTIMIZE = '[data-prompt-tool="optimize"]'
 const COMPOSER = '.generation-canvas-v2-node__composer'
 const EDITOR = `${COMPOSER} .generation-canvas-v2-node__prompt-input`
-const MODEL_TIMEOUT = 90_000
+// 一次真模型翻译的等待预算：按站点预算算（6 个操作档 = 90s），不私设墙钟。
+const MODEL_TIMEOUT = stationTimeout({ operations: 6 })
 const CJK = /[㐀-鿿]/
 const LATIN_WORD = /[A-Za-z]{3,}/
 
@@ -140,7 +142,7 @@ async function clickTranslate(win, label, idleLabel = '翻译提示词（中英�
   let ok = false
   try {
     await expect.poll(async () => { after = await readPrompt(win); return after !== before },
-      { message: `${label}：${MODEL_TIMEOUT / 1000}s 内提示词应被译文替换`, timeout: MODEL_TIMEOUT, intervals: [250] }).toBe(true)
+      { message: `${label}：${MODEL_TIMEOUT / 1000}s 内提示词应被译文替换`, timeout: stationTimeout({ operations: 6 }), intervals: [250] }).toBe(true)
     ok = true
   } finally {
     report.calls.push({ label, ok, ms: Date.now() - started })
