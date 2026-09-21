@@ -66,7 +66,11 @@ function modelCatalog(baseURL) {
       // 走查根本无从取证。加价键选 size 是因为它就是这个夹具模型真正暴露的那个参数。
       { ...common, modelKey: FIXTURE_IMAGE_MODEL, labelZh: FIXTURE_IMAGE_MODEL_LABEL, kind: 'image', published: true,
         meta: { archetypeId: 'agnes-image' },
-        pricing: { cost: 0.3, enabled: true, specCosts: [{ specKey: 'size:1536x1024', cost: 0.2, enabled: true }] } },
+        // NOMI_WALK_UNPRICED_MODEL=1：**不种这一行**，于是这个夹具模型和今天内置目录里 204 个
+        // 生成模型处境一模一样（一条 pricing 都没有）。未知价开闸走查要的就是这台「干净装机」。
+        ...(process.env.NOMI_WALK_UNPRICED_MODEL === '1'
+          ? {}
+          : { pricing: { cost: 0.3, enabled: true, specCosts: [{ specKey: 'size:1536x1024', cost: 0.2, enabled: true }] } }) },
     ],
     mappings: ['text_to_image', 'image_edit'].map(imageMapping),
     apiKeysByVendor: {

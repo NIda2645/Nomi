@@ -117,9 +117,12 @@ export function writeFakeApimartCatalog(settingsDir, userDataDir, _origin = '', 
   const { applyBuiltinSeeds } = tsxRequire('../../electron/catalog/seedBuiltins.ts', import.meta.url)
   const seeded = applyBuiltinSeeds({ version: currentCatalogVersion(), vendors: [], models: [], mappings: [], apiKeysByVendor: {} }, new Date().toISOString()).state
   const encrypted = encryptFixtureKey(userDataDir)
-  const models = seeded.models.map((model) => model.vendorKey === 'apimart' && model.kind === 'video'
-    ? { ...model, pricing: { cost: 0, enabled: true, specCosts: [] } }
-    : model)
+  // 2026-09-21：这里曾经给 apimart 的视频模型塞一行 `pricing: { cost: 0, enabled: true }`——
+  // 那是为了绕过当时的「算不出价就不发付费门」（`assertKnownShotPrice`）而**编出来的一个 0 元价**。
+  // 编出来的 0 恰好是三种可能（免费 / 算不出 / 真的零元）里唯一会被读成「这次免费」的那一种，
+  // 而且它让这条旅程一直在测一个「所有模型都标着 ¥0」的世界——**真实装机上一个模型都没有价目**。
+  // 闸开了之后那个绕行没有存在的理由了：去掉它，这条旅程从此跑的是真实处境（价格未知）。
+  const models = seeded.models
   const catalog = {
     ...seeded,
     // Keep the shipped APIMart scope intact. The explicit loopback fixture
