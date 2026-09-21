@@ -5,7 +5,7 @@
 // 槽 / candidate 带不带角色参考 / 时长估计。全是纯函数（吃 candidate + 候选快照，零副作用、零 provider 调用），
 // preview/gate/多镜密封都靠它当单一真相源。mcpGenerationTools.ts 与 mcpGenerationMultiShot.ts 单向 import。
 
-import { ContractCompilationError, GENERATION_PLANNING_HINT_KEYS, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
+import { ContractCompilationError, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 import type { ResolvedModule } from "./moduleRegistry";
 import type {
@@ -26,10 +26,10 @@ const CAMERA_INTENTS = new Set<NonNullable<VideoGenerationRecommendationInput["c
   "locked", "pan", "tilt", "dolly", "orbit", "handheld", "path",
 ]);
 
-// 本文件是 `GENERATION_PLANNING_HINT_KEYS` 的**唯一消费者**：那张表列的就是下面
+// 本文件是 `GENERATION_PLANNING_HINT_KEYS` 的唯一消费者：那张表列的就是下面
 // `videoRecommendationInput` 从 `candidate.parameters` 里读走、且绝不上 wire 的那几个键。
-// 两边对不上时是这里先改了——`parameterAdmission.class.test.ts` 的同名断言会当场红。
-export const PLANNING_HINT_KEYS_CONSUMED_HERE = GENERATION_PLANNING_HINT_KEYS;
+// 两边的耦合由 `parameterAdmission.class.test.ts` **按行为**核（逐个键喂进去、看它有没有被读走），
+// 不靠一个把常量再导出一遍的别名——那种断言比较的是它自己，永远绿。
 
 export function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationRecommendationInput | null {
   if (candidate.references.some((reference) => !reference.kind)) return null;

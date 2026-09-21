@@ -16,7 +16,7 @@ import {
   compileExecutionContract,
   type PlanCandidate,
 } from "./executionContract";
-import { PLANNING_HINT_KEYS_CONSUMED_HERE } from "./mcpGenerationVideoResolve";
+import { videoRecommendationInput } from "./mcpGenerationVideoResolve";
 import type { ModuleManifest } from "./moduleManifest";
 
 const manifest: ModuleManifest = {
@@ -151,8 +151,19 @@ describe("parameter admission (shared boundary)", () => {
     expect(contract.parameters).toEqual({ resolution: "720p" });
   });
 
-  it("keeps the vocabulary of planning hints in one place", () => {
-    expect([...PLANNING_HINT_KEYS_CONSUMED_HERE]).toEqual([...GENERATION_PLANNING_HINT_KEYS]);
+  it("every declared planning hint is one the recommendation reader actually consumes", () => {
+    // 活的判据：逐个键真喂进去，看 videoRecommendationInput 读不读得到它。
+    // （把常量再导出一遍然后和自己比，那种断言恒真——它挡不住「这里加了键、那边没加」。）
+    const sample: Record<string, unknown> = {
+      cameraIntent: "orbit", preferredFamily: "seedance", preserveCharacter: true,
+      preserveTransition: true, quality: "final", useReferenceAudio: true,
+    };
+    for (const key of GENERATION_PLANNING_HINT_KEYS) {
+      const withHint = videoRecommendationInput(candidate({ [key]: sample[key] }));
+      const without = videoRecommendationInput(candidate({}));
+      expect(JSON.stringify(withHint), `planning hint ${key} is declared but nothing reads it`)
+        .not.toBe(JSON.stringify(without));
+    }
   });
 
   it("carries a value through unvalidated — never drops it — when the model declares no parameters at all", () => {

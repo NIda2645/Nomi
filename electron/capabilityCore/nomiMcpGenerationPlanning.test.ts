@@ -361,7 +361,6 @@ describe("MCP semantic generation planning journey", () => {
     const firstPreview = await harness.call(23, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const firstPayload = JSON.parse((firstPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string } };
     expect(firstPayload.recommendation.recommendations[0]?.modeId).toBe("omni");
-    const firstHash = firstPayload.contract.contractHash;
 
     await harness.call(24, "tools/call", {
       name: "nomi_operation_plan",
@@ -387,7 +386,6 @@ describe("MCP semantic generation planning journey", () => {
     expect(rejectionText).toContain("duration");
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
     expect(runTask).not.toHaveBeenCalled();
-    void firstHash;
   });
 
   it("walks the real GUI catalog profiles through model, mode, reference and parameter switches", async () => {
