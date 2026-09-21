@@ -273,8 +273,7 @@ export async function findNodeHitPoint(page, { nodeSelector, withinSelector = CA
  */
 export async function findConnectionStartPoint(page, { handleSelector }) {
   return page.evaluate((selector) => {
-    const handles = [...document.querySelectorAll(selector)]
-    const handle = handles.at(-1)
+    const handle = document.querySelector(selector)
     const icon = handle?.querySelector('.generation-canvas-react-flow__handle-icon')
     if (!handle || !icon) return null
     const rect = icon.getBoundingClientRect()
