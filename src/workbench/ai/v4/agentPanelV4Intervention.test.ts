@@ -37,7 +37,6 @@ const labels: V4InterventionLabels = {
   credentialTitle: '这个模型还没配密钥',
   credentialConfirm: '去配置',
   credentialAlternate: '换个模型',
-  questionTitle: '需要你定一下',
   planTitle: '这些要做吗？',
   more: '还有 1 条',
   scopeOnce: '范围：仅这一次',
@@ -60,12 +59,37 @@ describe('② 「不再问 →」只在可撤销的改动上，且只覆盖这�
       t,
     )
     expect(reversible?.scope).toBe(labels.scopeCapability)
+    // 付费档画不出「不再问 →」（`canStopAskingFor` 对 spend 恒 false），所以它也不该
+    // 印那行作用域——那行解释的就是那颗钮。原来它印「范围：仅这一次」，在一张根本
+    // 没有「不再问」的卡上等于凭空多一句旁白。
     const spend = projectV4Intervention(
       { toolName: 'generation.control', args: {}, effectClass: 'spend', pendingCount: 1 },
       labels,
       t,
     )
-    expect(spend?.scope).toBe(labels.scopeOnce)
+    expect(spend?.scope).toBeUndefined()
+  })
+
+  it('反问卡不许拿到那行作用域——它根本没有「不再问 →」那颗钮', () => {
+    // 2026-09-21 用户当场点名的四样之一：卡底印着「『不再问』只对这一个操作生效」，
+    // 而这张卡上压根没有那颗按钮。判据钉死在投影层，改回去当场红。
+    const ask = projectV4Intervention(
+      { toolName: 'ask_user', args: { question: '用什么画幅？' }, effectClass: 'reversible_local', pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(ask.kind).toBe('question')
+    expect(ask.scope).toBeUndefined()
+  })
+
+  it('反问卡的标题**就是**那句问题，没有第二行卡头，也不在正文里印第二遍', () => {
+    const ask = projectV4Intervention(
+      { toolName: 'ask_user', args: { question: '这段想要几秒？' }, effectClass: undefined, pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(ask.title).toBe('这段想要几秒？')
+    expect(ask.summary ?? '').not.toContain('这段想要几秒？')
   })
 })
 
@@ -93,7 +117,8 @@ describe('kind 判定', () => {
     )
     // 宿主 announce 了「有一条在等你」，这里就必须画出点什么。空白是这一族 bug 的样子。
     expect(slot.kind).toBe('question')
-    expect(slot.summary).toContain('duration')
+    // 问句现在是**标题**（反问卡没有卡头，问题本身就是那行标题）。
+    expect(slot.title).toContain('duration')
   })
 
   it('这个函数的返回值不可空：所有登记形状都解得出一个 kind', () => {
@@ -155,18 +180,21 @@ describe('④ 缺参数 / 反问共用同一份解析与同一句问句', () => 
       labels,
       t,
     )
+    // 那一行的占位不再经投影层下发：它是 Approval Card 这件东西**自带**的一行
+    //（`V4AskCard` 的 `labels.ask.customPlaceholder`），不是某一档才有的可选字段。
+    // 投影层这里只要证「一个选项都没有也照样是一张反问卡」。
     expect(slot.kind).toBe('question')
-    expect(slot.answerPlaceholder).toBe('agentPanelV4.questionAnswerPlaceholder')
-    expect(slot.answerSubmitLabel).toBe('agentPanelV4.questionAnswerSubmit')
+    expect(slot.options ?? []).toHaveLength(0)
+    expect(slot.title).toBe('要几秒？')
   })
 
-  it('审批 / 付费 / 计划三档没有卡内作答——那个槽的出口是确认 / 不要', () => {
+  it('审批 / 付费 / 计划三档不是反问——它们的出口是确认 / 不要', () => {
     const slot = projectV4Intervention(
       { toolName: 'nomi_generate', args: {}, effectClass: 'spend', pendingCount: 1 },
       labels,
       t,
     )
-    expect(slot.answerPlaceholder).toBeUndefined()
+    expect(slot.kind).toBe('spend')
   })
 
   it('熔断那句话由渲染层按码出，不收生产者拼好的成句字符串（R15）', () => {

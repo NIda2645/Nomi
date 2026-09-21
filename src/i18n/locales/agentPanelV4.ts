@@ -210,8 +210,16 @@ export const zhAgentPanelV4 = {
   // 反问卡（2026-09-21 拍板：反问是**通用**能力——模型自己写问题、自己写选项）。
   // 卡内最后一行那句占位照用户原话；它永远在，不看有没有选项。
   questionAnswerPlaceholder: '或者直接告诉它…',
-  questionAnswerSubmit: '把这句话答给它',
   questionRecommended: '推荐',
+  // 反问卡页脚（Approval Card 整件的那四个词）。
+  // 「继续」与「发送」分开是它的原设计：不是最后一题就往下走，最后一题才是把答案交出去。
+  askDismiss: '这次不答',
+  askSkip: '跳过',
+  askContinue: '继续',
+  askSend: '发送',
+  askStep: '第 {{index}} 题，共 {{total}} 题',
+  askPrev: '上一题',
+  askNext: '下一题',
   // 熔断转提问：同一个字段连着 {{count}} 次没过，就别再撞了，交给用户定。
   // 数由生产者给、话由这里说——生产者传成句的字符串就等于绕开了 i18n。
   questionRetryExhausted: '试了 {{count}} 次都没通过，交给你定。',
@@ -222,7 +230,6 @@ export const zhAgentPanelV4 = {
   credentialTitle: '这个模型还没配密钥',
   credentialConfirm: '去配置',
   credentialAlternate: '换个模型',
-  questionTitle: '需要你定一下',
   planTitle: '这些要做吗？不勾就是不做',
   badgeIrreversible: '不可逆',
   badgeReversible: '可撤销',
@@ -683,15 +690,20 @@ export const enAgentPanelV4 = {
   },
   missingParamAsk: 'I still need a “{{name}}” before I can continue — which one?',
   questionAnswerPlaceholder: 'Or just tell it…',
-  questionAnswerSubmit: 'Send this answer',
   questionRecommended: 'Suggested',
+  askDismiss: 'Not this time',
+  askSkip: 'Skip',
+  askContinue: 'Continue',
+  askSend: 'Send',
+  askStep: 'Question {{index}} of {{total}}',
+  askPrev: 'Previous question',
+  askNext: 'Next question',
   questionRetryExhausted: '{{count}} tries and none went through — your call.',
   questionAnswered: 'Answered',
   credentialSummary: 'Enter it in Nomi\u2019s own window; the model never sees it.',
   credentialTitle: 'This model has no API key yet',
   credentialConfirm: 'Set it up',
   credentialAlternate: 'Use another model',
-  questionTitle: 'One thing to decide',
   planTitle: 'Which of these should I do? Unticked means skip',
   badgeIrreversible: 'Irreversible',
   badgeReversible: 'Undoable',

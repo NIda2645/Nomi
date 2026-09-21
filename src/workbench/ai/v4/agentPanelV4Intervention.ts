@@ -36,7 +36,6 @@ export type V4InterventionLabels = Readonly<{
   credentialTitle: string
   credentialConfirm: string
   credentialAlternate: string
-  questionTitle: string
   planTitle: string
   more: string
   scopeOnce: string
@@ -155,7 +154,8 @@ export function projectV4Intervention(
   const more = source.pendingCount > 1 ? t('agentPanelV4.interventionMore', { count: source.pendingCount - 1 }) : ''
   const ask = kind === 'question' ? parseQuestionAsk(source.args) : undefined
   const summaryParts = [
-    ask ? questionText(ask, t) : readableToolPreview(t, source.toolName, source.args),
+    // 反问那一档的问句已经是标题了（`titleOf`），这里不再印第二遍。
+    ask ? undefined : readableToolPreview(t, source.toolName, source.args),
     // 熔断那一句（「试了 3 次都没通过，交给你定。」）紧跟问句：它解释的是**为什么这一刻在问**，
     // 离问句远一格就读成了一条无主的旁白。
     ask ? askReasonText(ask, t) : undefined,
@@ -183,14 +183,15 @@ export function projectV4Intervention(
     ...(plan.length ? { plan } : {}),
     // 拒绝原因的占位一直给：`V4Intervention` 只在用户按下「不要」之后才把它摊开。
     reasonPlaceholder: t('agentPanelV4.rejectReasonPlaceholder'),
-    // 反问卡**永远**带卡内那一行自由输入（2026-09-21 拍板：照 Claude Code 的提问卡，
-    // 若干选项之后最后一项就是「自己说」）。它不是「没给选项时的兜底」——答不上来的时刻，
-    // 用户的视线和手正停在卡上，把他支去 30cm 外那个 composer 等于把「回答这张卡」
-    // 拆成两个家（§1.5 一功能一个家）。所以这个字段跟着 kind 走，不跟着 options 走。
-    ...(kind === 'question' ? { answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'), answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit') } : {}),
-    // 范围那一行是**诚实交代**，不是装饰：可撤销的档才有「不再问」，
-    // 所以这里写清楚它到底覆盖什么，别让用户以为按一下就全项目放行。
-    ...(kind === 'plan' ? {} : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
+    // 范围那一行是**诚实交代**，不是装饰：它解释的是「不再问 →」那颗钮到底覆盖什么。
+    //
+    // 所以它只发给**真的画得出那颗钮**的档（`V4Intervention` 的 `canEscalate` 同一条判据）。
+    // 原来写的是「除了计划卡都发」，于是反问卡也拿到了一句「『不再问』只对这一个操作生效」
+    // ——而反问卡根本没有那颗钮（`hasActions` 对 question 恒 false），那行字在解释一个
+    // 不存在的按钮（2026-09-21 用户当场指出来的四样之一）。
+    ...(kind === 'approval-reversible' || kind === 'reject-reason'
+      ? { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }
+      : {}),
   }
   if (kind === 'credential') {
     return Object.freeze({ ...base, confirmLabel: labels.credentialConfirm, alternateLabel: labels.credentialAlternate })
@@ -235,7 +236,13 @@ function planRowsOf(source: V4InterventionSource): readonly PlanRow[] {
 
 function titleOf(kind: V4InterventionKind, source: V4InterventionSource, labels: V4InterventionLabels, translate: Translate): string {
   if (kind === 'credential') return labels.credentialTitle
-  if (kind === 'question') return labels.questionTitle
+  // 反问卡**没有卡头**（2026-09-21 用户退回自拼版）：问题本身就是标题，这是 Approval Card
+  // 的形状，也是唯一诚实的形状——「需要你定一下」那句套话不含一丝信息，却把模型真正问的
+  // 那句话挤进了正文，于是用户先读一句废话、再去别处找问题。那句词条已随本次改动删除。
+  if (kind === 'question') {
+    const ask = parseQuestionAsk(source.args)
+    return ask ? questionText(ask, translate) : ''
+  }
   if (kind === 'plan') return labels.planTitle
   return readableToolName(translate, source.toolName, source.args)
 }

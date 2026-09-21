@@ -1,0 +1,188 @@
+// 反问卡视图模型（Approval Card 整件的那几条判断）。
+//
+// 这个文件钉的不是「长得对不对」，是**卡会出错的那几处**：单选点了该不该自己往下走、
+// 最后一题的主按钮印什么、没答完能不能按、推荐项排第几、键盘按下去落到哪一项。
+// 它们原来散在组件的 onClick 里，只有真人点过才知道对不对。
+import { describe, expect, it } from 'vitest'
+import {
+  ASK_AUTO_ADVANCE_MS,
+  EMPTY_ASK_DRAFT,
+  askCardAnswer,
+  askCardQuestions,
+  askOptionIndexForArrow,
+  askOptionIndexForKey,
+  askQuestionAnswered,
+  isLastAskQuestion,
+  orderedAskOptions,
+  shouldAutoAdvance,
+  shouldShowPager,
+  toggleAskOption,
+  type V4AskQuestion,
+} from './agentPanelV4AskModel'
+import type { InterventionData } from './agentPanelV4Types'
+
+const A = { id: 'a', label: '横版 16:9', description: '适合横屏平台' } as const
+const B = { id: 'b', label: '竖版 9:16' } as const
+const C = { id: 'c', label: '方版 1:1', recommended: true as const }
+
+describe('「推荐」排第一，其余保持模型给的次序', () => {
+  it('推荐项被提到最前面，剩下的**相对次序不变**', () => {
+    // 模型写选项的顺序本身有意义（常常是从保守排到激进），所以只提一项、不重排全表。
+    expect(orderedAskOptions([A, B, C]).map((option) => option.id)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('推荐项已经在第一位时原样返回——不做无谓的新数组', () => {
+    const options = [C, A, B]
+    expect(orderedAskOptions(options)).toBe(options)
+  })
+
+  it('一个都没标推荐时原样返回', () => {
+    const options = [A, B]
+    expect(orderedAskOptions(options)).toBe(options)
+  })
+
+  it('标了不止一个推荐时只提最前面那一个——多标一个不该让排序变成随机', () => {
+    const second = { id: 'b2', label: '第二个推荐', recommended: true as const }
+    expect(orderedAskOptions([A, second, C]).map((option) => option.id)).toEqual(['b2', 'a', 'c'])
+  })
+})
+
+describe('单选 / 多选：点一下之后这一题变成什么', () => {
+  it('单选只留这一项，并且**清掉自己打的字**——一个答案不能既是「选了 B」又是「我另有说法」', () => {
+    const typed = { picked: [] as readonly number[], custom: '我想要别的' }
+    expect(toggleAskOption(typed, 1, false)).toEqual({ picked: [1], custom: '' })
+  })
+
+  it('单选再点另一项是替换，不是累加', () => {
+    expect(toggleAskOption({ picked: [0], custom: '' }, 2, false)).toEqual({ picked: [2], custom: '' })
+  })
+
+  it('多选有则去、无则增，且**不动**那一行自己打的字', () => {
+    const start = { picked: [0] as readonly number[], custom: '还有别的' }
+    expect(toggleAskOption(start, 1, true)).toEqual({ picked: [0, 1], custom: '还有别的' })
+    expect(toggleAskOption({ picked: [0, 1], custom: '' }, 0, true)).toEqual({ picked: [1], custom: '' })
+  })
+
+  it('单选点了就自己往下走，多选等「继续」——用户 2026-09-21 的原话', () => {
+    expect(shouldAutoAdvance(false)).toBe(true)
+    expect(shouldAutoAdvance(true)).toBe(false)
+    // 延时照搬 Approval Card 的 `advanceTimer`，不自己调一个数。
+    expect(ASK_AUTO_ADVANCE_MS).toBe(480)
+  })
+})
+
+describe('答没答上 / 第几题 / 要不要页码', () => {
+  it('选了任意一项算答上，只打了字也算，两样都没有就没答上（主按钮置灰的判据）', () => {
+    expect(askQuestionAnswered(EMPTY_ASK_DRAFT)).toBe(false)
+    expect(askQuestionAnswered({ picked: [1], custom: '' })).toBe(true)
+    expect(askQuestionAnswered({ picked: [], custom: '3 秒' })).toBe(true)
+    // 只打了空格不算：那是一次误触，不是一个答案。
+    expect(askQuestionAnswered({ picked: [], custom: '   ' })).toBe(false)
+  })
+
+  it('只有一题时不显示页码——「1/1」是一句废话', () => {
+    expect(shouldShowPager(1)).toBe(false)
+    expect(shouldShowPager(0)).toBe(false)
+    expect(shouldShowPager(3)).toBe(true)
+  })
+
+  it('最后一题的主按钮印「发送」，之前都印「继续」', () => {
+    expect(isLastAskQuestion(0, 3)).toBe(false)
+    expect(isLastAskQuestion(2, 3)).toBe(true)
+    expect(isLastAskQuestion(0, 1)).toBe(true)
+  })
+})
+
+describe('一次待决 → 题目表', () => {
+  it('契约今天只有一题，所以摊成长度 1，页码因此自动不显示', () => {
+    const data = { kind: 'question', title: '用什么画幅？', options: [A, B] } as InterventionData
+    const questions = askCardQuestions(data)
+    expect(questions).toHaveLength(1)
+    expect(questions[0]!.question).toBe('用什么画幅？')
+    expect(questions[0]!.options).toEqual([A, B])
+    expect(shouldShowPager(questions.length)).toBe(false)
+  })
+
+  it('summary（熔断那句 / 模型的 note）落到问句下面那一行，不是第二个题目', () => {
+    const data = { kind: 'question', title: '这 2 个镜头当什么用？', summary: '试了 3 次都没通过，交给你定。' } as InterventionData
+    expect(askCardQuestions(data)[0]!.note).toBe('试了 3 次都没通过，交给你定。')
+  })
+
+  it('已经给了多题就原样用——契约哪天长出 questions[]，只改这一个函数', () => {
+    const questions: readonly V4AskQuestion[] = [
+      { question: '一', options: [] },
+      { question: '二', options: [A], multiple: true },
+    ]
+    const data = { kind: 'question', title: '一', questions } as InterventionData
+    expect(askCardQuestions(data)).toBe(questions)
+    expect(shouldShowPager(askCardQuestions(data).length)).toBe(true)
+  })
+})
+
+describe('收成回给模型的那一份', () => {
+  it('单题单选退化成契约收的形状（带 optionId）——那正是 `answerToolResult` 那条路认的东西', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '用什么画幅？', options: [A, B] }]
+    expect(askCardAnswer(questions, [{ picked: [1], custom: '' }])).toEqual({ optionId: 'b', text: '竖版 9:16' })
+  })
+
+  it('下标按**排过序之后**的位置算——推荐项排第一之后，点第一行拿到的必须是推荐那一项', () => {
+    // 这一条是整份模型里最容易错的地方：排序在渲染层做、取值在这里做，
+    // 两边用不同的数组就会把「他点的 C」记成「A」。
+    const questions: readonly V4AskQuestion[] = [{ question: '用什么画幅？', options: [A, B, C] }]
+    expect(askCardAnswer(questions, [{ picked: [0], custom: '' }])).toEqual({ optionId: 'c', text: '方版 1:1' })
+  })
+
+  it('自己打字时没有 optionId——那句话就是答案', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '几秒？', options: [] }]
+    expect(askCardAnswer(questions, [{ picked: [], custom: '  3 秒  ' }])).toEqual({ text: '3 秒' })
+  })
+
+  it('多选收成一句话，不带 optionId——一个 id 装不下两个答案', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '要哪几样？', options: [A, B], multiple: true }]
+    expect(askCardAnswer(questions, [{ picked: [0, 1], custom: '' }])).toEqual({ text: '横版 16:9、竖版 9:16' })
+  })
+
+  it('多题时每题印成「问题 答案」一行——模型只认字，一堆 id 对它和没答一样', () => {
+    const questions: readonly V4AskQuestion[] = [
+      { question: '用什么画幅？', options: [A, B] },
+      { question: '几秒？', options: [] },
+    ]
+    const answer = askCardAnswer(questions, [{ picked: [0], custom: '' }, { picked: [], custom: '5 秒' }])
+    expect(answer).toEqual({ text: '用什么画幅？ 横版 16:9\n几秒？ 5 秒' })
+  })
+
+  it('一题都没答就没有答案可发——按「继续」不该发一条空的出去', () => {
+    const questions: readonly V4AskQuestion[] = [{ question: '几秒？', options: [A] }]
+    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT])).toBeUndefined()
+  })
+
+  it('跳过的题不进答案，答了的照发——跳过不是一个答案', () => {
+    const questions: readonly V4AskQuestion[] = [
+      { question: '一', options: [A] },
+      { question: '二', options: [B] },
+    ]
+    expect(askCardAnswer(questions, [EMPTY_ASK_DRAFT, { picked: [0], custom: '' }])).toEqual({ text: '二 竖版 9:16' })
+  })
+})
+
+describe('键盘', () => {
+  it('数字键 1–9 直选，越界返回 undefined——不静默取最后一项', () => {
+    expect(askOptionIndexForKey('1', 3)).toBe(0)
+    expect(askOptionIndexForKey('3', 3)).toBe(2)
+    expect(askOptionIndexForKey('4', 3)).toBeUndefined()
+    expect(askOptionIndexForKey('0', 3)).toBeUndefined()
+    expect(askOptionIndexForKey('a', 3)).toBeUndefined()
+    expect(askOptionIndexForKey('Enter', 3)).toBeUndefined()
+  })
+
+  it('↑↓ 环形走，没选中时 ↓ 落第一项、↑ 落最后一项', () => {
+    expect(askOptionIndexForArrow(undefined, 1, 3)).toBe(0)
+    expect(askOptionIndexForArrow(undefined, -1, 3)).toBe(2)
+    expect(askOptionIndexForArrow(2, 1, 3)).toBe(0)
+    expect(askOptionIndexForArrow(0, -1, 3)).toBe(2)
+  })
+
+  it('一个选项都没有时方向键不接管——纯自由作答的卡上 ↑↓ 该留给别人', () => {
+    expect(askOptionIndexForArrow(undefined, 1, 0)).toBeUndefined()
+  })
+})

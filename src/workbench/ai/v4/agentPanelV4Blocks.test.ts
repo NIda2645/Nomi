@@ -43,7 +43,13 @@ const QUESTION_OPTIONS = [
   { id: 'tall', label: '9:16 竖版' },
 ]
 
-const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾' }
+const askLabels = {
+  dismiss: '这次不答', skip: '跳过', continueLabel: '继续', send: '发送',
+  customPlaceholder: '或者直接告诉它…', recommended: '推荐',
+  step: (index: number, total: number) => `第 ${index} 题，共 ${total} 题`,
+  prev: '上一题', next: '下一题',
+}
+const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾', ask: askLabels }
 // `unknown` 是「这个数我们没有」的那个字（环上写「—」而不是「0%」）。接线后它是必填的，
 // 因为缺字段是常态：目录没写 contextWindow、供应商不报推理 token，都会走到它。
 const contextLabels = { context: '上下文用量', input: '输入', output: '输出', reasoning: '推理', cache: '缓存命中', threadCost: '本线程花费', unknown: '—', usedOnly: '已用 {{amount}}' }
@@ -290,13 +296,33 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).not.toContain('取消')
   })
 
-  it('反问只有选项 chip，没有确认/不要——选项本身就是回答', () => {
+  it('反问走 Approval Card 那只壳：没有确认/不要，也没有确认卡的卡头与边框', () => {
     const markup = html(el(V4Intervention, { ...NO_HANDLERS,
-      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS, selectedOption: 0 },
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
+    expect(markup).toContain('data-ask-card="true"')
     expect(markup).toContain('16:9 横版')
     expect(markup).not.toContain('不要')
+    // 确认卡的三件零件一件都不许漏过来（2026-09-21 用户退回自拼版时点名的那几样）。
+    expect(markup).not.toContain('border-nomi-accent')
+    expect(markup).not.toContain('bg-nomi-accent-soft px-2.5')
+    expect(markup).not.toContain('不再问')
+    // 问题**就是**标题，不再有第二行卡头，也不印两遍。
+    expect(markup.match(/用什么画幅？/g)).toHaveLength(1)
+    expect(markup).toContain('data-v4-block="ask-question"')
+  })
+
+  it('选项是整行可点的 radio 行——没有方框，也没有一排宽度参差的药丸', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    // 每个选项一个标记 + 一整行的按钮；chip 版那两个类名（自带 border、按内容定宽）绝迹。
+    expect((markup.match(/data-ask-marker=/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect((markup.match(/data-v4-control="question-option"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(markup).toMatch(/data-v4-control="question-option"[^>]*class="[^"]*w-full/)
+    expect(markup).not.toMatch(/data-v4-control="question-option"[^>]*class="[^"]*inline-flex/)
   })
 
   it('选项带说明与推荐时两样都印出来——模型写了我们就如实显示，但不预选', () => {
@@ -306,41 +332,64 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     }))
     expect(markup).toContain('适合横屏平台')
     expect(markup).toContain('推荐')
-    // 「推荐」是记号不是预选：没有 selectedOption 时一个 chip 都不该是按下态。
+    // 「推荐」是记号不是预选：卡一挂上来一个都不该是按下态。
     expect(markup).not.toContain('aria-pressed="true"')
   })
 
-  it('反问卡里有那一行自由输入，且它和拒绝原因是同一件输入（同一个槽不出现第二种写法）', () => {
+  it('末行自由输入是**无边框内联**的，和拒绝原因那条带框输入不是同一件', () => {
     const markup = html(el(V4Intervention, { ...NO_HANDLERS,
-      data: {
-        kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS,
-        answerPlaceholder: '或者直接告诉它…', answerSubmitLabel: '把这句话答给它',
-      },
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
     expect(markup).toContain('data-v4-control="question-answer"')
     expect(markup).toContain('或者直接告诉它…')
-    expect(markup).toContain('data-v4-control="question-answer-submit"')
+    const answerClass = markup.match(/data-v4-control="question-answer" class="([^"]*)"/)?.[1]
+      ?? markup.match(/class="([^"]*)" data-v4-control="question-answer"/)?.[1]
+    expect(answerClass).toBeTruthy()
+    // 这一条就是用户骂的「蓝色粗框输入」的机器判据：它**不许**再长边框或底色。
+    expect(answerClass).toContain('border-0')
+    expect(answerClass).toContain('bg-transparent')
+    expect(answerClass).not.toMatch(/\bborder-nomi-/)
+    // 拒绝原因那条仍然有框——渐进披露出来的输入需要被看见，两者本来就不是一件。
     const reject = html(el(V4Intervention, { ...NO_HANDLERS,
       data: { kind: 'reject-reason', title: 'x', reasonPlaceholder: '拒绝原因（可选）' },
       labels: slotLabels,
     }))
-    const inputClass = /class="([^"]*)" *\/?>/
-    const answerClass = markup.match(/data-v4-control="question-answer" class="([^"]*)"/)?.[1]
-      ?? markup.match(/class="([^"]*)" data-v4-control="question-answer"/)?.[1]
     const rejectClass = reject.match(/data-v4-control="reject-reason" class="([^"]*)"/)?.[1]
       ?? reject.match(/class="([^"]*)" data-v4-control="reject-reason"/)?.[1]
-    void inputClass
-    expect(answerClass).toBeTruthy()
-    expect(answerClass).toBe(rejectClass)
+    expect(rejectClass).toContain('border-nomi-line')
+    expect(answerClass).not.toBe(rejectClass)
   })
 
   it('没有选项的反问照样有那一行——模型问的问题常常不是选择题', () => {
     const markup = html(el(V4Intervention, { ...NO_HANDLERS,
-      data: { kind: 'question', title: '这段想要几秒？', answerPlaceholder: '或者直接告诉它…' },
+      data: { kind: 'question', title: '这段想要几秒？' },
       labels: slotLabels,
     }))
     expect(markup).toContain('data-v4-control="question-answer"')
+    expect(markup).toContain('data-ask-card="true"')
+  })
+
+  it('只有一题时不显示页码——「1/1」是一句废话', () => {
+    const one = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '这段想要几秒？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    expect(one).not.toContain('data-v4-block="ask-pager"')
+    const three = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: {
+        kind: 'question', title: '第一题', questions: [
+          { question: '第一题', options: QUESTION_OPTIONS },
+          { question: '第二题', options: QUESTION_OPTIONS, multiple: true },
+          { question: '第三题', options: [] },
+        ],
+      },
+      labels: slotLabels,
+    }))
+    expect(three).toContain('data-v4-block="ask-pager"')
+    expect(three).toContain('1 / 3')
+    // 多选那一题的标记是方的、单选是圆的——形状本身就说明了能选几个。
+    expect(three).toContain('rounded-nomi-sm')
   })
 
   it('拒绝原因是渐进披露的输入 + 取消/确认不要', () => {

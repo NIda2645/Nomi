@@ -10,6 +10,7 @@
 // 既违反 R15（可见文字必须走 i18n），又凭空多了一份要和合同对齐的词表。
 import type { ProjectAgentApprovalPolicy } from '../../../../electron/shared/agentCapabilities/capabilityApprovalPolicy';
 import type { LaneTaskCandidate, LaneTaskStatus } from '../../../../electron/shared/agentLane/laneContracts'
+import type { V4AskQuestion } from './agentPanelV4AskModel'
 import type { V4QuestionOption } from './agentPanelV4Question'
 
 /** AI Elements Tool 的七态协议（vendor/aiElementsContract.ts 是它的外部参照）。 */
@@ -162,18 +163,16 @@ export type InterventionData = Readonly<{
    * `agentPanelV4Question.ts`——那是这条交互的对外契约，不为某一种问题写死。
    */
   options?: readonly V4QuestionOption[]
-  selectedOption?: number
   /**
-   * 卡内最后一行那个自由输入的占位（「或者直接告诉它…」）。
+   * 多题时的题目表（Approval Card 的「一张卡、若干题、一次一题」）。
    *
-   * **反问卡永远带它**（2026-09-21 用户拍板，照 Claude Code 提问卡「若干选项之后最后一项
-   * 是自己说」）。它不是「没给选项时的兜底」：答不上来的那一刻，用户的视线和手正停在卡上，
-   * 让他挪到 30cm 外那个 composer 等于把「回答这张卡」拆成两个家（§1.5 一功能一个家）。
-   * 缺席 = 这一档没有卡内作答（审批 / 付费 / 计划三档就没有）。
+   * **缺席 = 一题**，由 `askCardQuestions()` 从 `title` / `options` / `summary` 摊成长度 1，
+   * 页码因此自动不显示。今天永远缺席：对外契约（`electron/shared/agentCapabilities/askUser.ts`
+   * 的 `askUserInputSchema`）一次只收一题，没有生产者写得出第二题。留着这个字段是因为
+   * 卡的整件里本来就有多题，把它从组件里砍掉等于下次要多题时重拼一张卡。
    */
-  answerPlaceholder?: string
-  /** 那一行右端那颗 ↑ 的 aria 名。和回车是**同一个动作**，不是第二个出口。 */
-  answerSubmitLabel?: string
+  questions?: readonly V4AskQuestion[]
+  selectedOption?: number
   /**
    * 卡挂载时那一行里已经有的字。**缺席 = 空**，这也是生产侧唯一的取值。
    *

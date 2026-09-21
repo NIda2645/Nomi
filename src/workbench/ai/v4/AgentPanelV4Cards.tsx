@@ -26,7 +26,8 @@ import {
   StatusSpinner,
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
-import { V4OptionChips } from './AgentPanelV4Message'
+import { V4AskCard, type V4AskCardLabels } from './AgentPanelV4AskCard'
+import { askCardQuestions } from './agentPanelV4AskModel'
 import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
 import type {
   InterventionData,
@@ -315,7 +316,7 @@ export function V4Intervention({
    * 又摆一条能点的参数条（那是同一件事的两个说法）。
    */
   composer?: React.ReactNode
-  labels: { confirm: string; reject: string; escalate: string; cancel: string; confirmReject: string; collapsePlan: string; expandPlan: string }
+  labels: { confirm: string; reject: string; escalate: string; cancel: string; confirmReject: string; collapsePlan: string; expandPlan: string; ask: V4AskCardLabels }
   /** 确认。计划槽传的是当前勾选集，其余档传 `undefined`。 */
   onConfirm?: () => void
   /** 翻到第几张卡（`data.pager` 在时才有意义）。 */
@@ -349,9 +350,6 @@ export function V4Intervention({
   // 一上来就摆一个输入框，等于要求用户为每一次拒绝写作文。
   const [rejecting, setRejecting] = React.useState(false)
   const [reason, setReason] = React.useState('')
-  // 卡内自由作答那一行的值。它**不进 store**：这句话还没提交，而 store 里那份 draft 是
-  // 下方 composer 的（两个输入共用一个值就是「我在卡里打字、composer 跟着变」）。
-  const [answer, setAnswer] = React.useState(data.answerDraft ?? '')
   // 「不再问 →」只在**可撤销**的改动上出现（定稿 §3）：不可逆和花钱的永远逐次问。
   //
   // ⚠️ 作用域：它等价于现役 `approvalScope: 'always'`，即「**这一个能力**以后不用再问」，
@@ -386,6 +384,33 @@ export function V4Intervention({
     event.preventDefault()
     onPage((pager.index + delta + pager.total) % pager.total)
   }
+  // ⑤ 的**反问那一档不走这只外壳**（2026-09-21 用户退回自拼版后的裁决）。
+  //
+  // 这只外壳是**确认卡**的：accent 边框 + accent 底色的槽头 + 底部那句「不再问」的作用域、
+  // 以及带边框的 `V4SlotInput`（它本来是拒绝原因那一行）。反问卡从来没有「不再问 →」那颗钮
+  // （`hasActions` 对 question 恒 false），于是那句作用域解释的是一个不存在的按钮；
+  // 卡头也没有「这次要动什么」可印，只能塞一句「需要你定一下」的套话，把模型真正问的那句话
+  // 挤到了正文里。三样都是确认卡的零件漏了过来。
+  //
+  // 反问卡整件用 Beautiful UI 的 Approval Card（`AgentPanelV4AskCard.tsx` 文件头有逐件对照）。
+  // 它自带 ×、页脚、跳过与主按钮，所以在这里**整支早返回**——不是在外壳里加一堆
+  // `kind === 'question' ? null : …`（那样两张卡会继续互相牵制，改一张永远要担心另一张）。
+  //
+  // ⚠️ 这一支**必须排在本组件全部 hook 之后**：同一个实例上 `data.kind` 是会变的
+  // （待决队列换了一条），提前 return 会让下一次渲染少调两个 `useState`，
+  // 那是 hook 顺序错位，不是样式问题。
+  if (data.kind === 'question') {
+    return (
+      <V4AskCard
+        questions={askCardQuestions(data)}
+        labels={labels.ask}
+        {...(data.answerDraft ? { answerDraft: data.answerDraft } : {})}
+        {...(onAnswer ? { onAnswer } : {})}
+        {...(onReject ? { onDismiss: () => onReject() } : {})}
+      />
+    )
+  }
+
   return (
     <aside
       className="overflow-hidden rounded-nomi border border-nomi-accent bg-nomi-paper"
@@ -414,27 +439,6 @@ export function V4Intervention({
           </div>
         ) : null)}
         {data.price ? <V4PriceRow price={data.price} /> : null}
-        {data.options?.length ? (
-          <V4OptionChips
-            options={data.options}
-            selectedOption={data.selectedOption}
-            onSelect={(option) => onAnswer?.(questionAnswerFromOption(option))}
-          />
-        ) : null}
-        {data.answerPlaceholder ? (
-          // 选项之后、卡内最后一行（2026-09-21 用户拍板，参照 Claude Code 提问卡的
-          // 「若干选项之后最后一项是自己说」）。它**永远在**，不看有没有选项——
-          // 一张只有选项的卡等于在说「你只能从这几个里挑」，而模型问的问题常常不是选择题。
-          <V4SlotInput
-            value={answer}
-            placeholder={data.answerPlaceholder}
-            control="question-answer"
-            onChange={setAnswer}
-            onSubmit={(text) => { const parsed = questionAnswerFromInput(text); if (parsed) onAnswer?.(parsed) }}
-            {...(data.answerSubmitLabel ? { submitLabel: data.answerSubmitLabel } : {})}
-            autoFocus
-          />
-        ) : null}
         {data.plan?.length && !planCollapsed ? (
           // 清单自己滚：卡壳是 `overflow-hidden`（圆角要它），所以清单不给自己一个滚动容器
           // 就等于「第 9 行起不存在」——用户 2026-09-11 报的 8 镜计划卡正是这样，
