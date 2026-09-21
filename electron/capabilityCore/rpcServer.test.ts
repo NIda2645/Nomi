@@ -3,6 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// 2026-09-21：测试不许读写用户真实目录。这份文件此前经默认路径读到了**用户本人的**
+// `~/.nomi/capability-core`（token / 签名密钥 / 接入会话 / handoff 队列都住那里）——
+// 读到的是真人数据，写下去就是改真人数据，而且一台机器一个结果：`mcpOnboardingLoopback`
+// 就是这么在这台机器上红、在别处绿的。给它一个本轮独有的空目录。
+const capabilityRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-rpc-server-cap-"));
+process.env.NOMI_CAPABILITY_DIR = capabilityRoot;
+
 import { startRpcServer, type RpcServerHandle } from "./rpcServer";
 import { ensureToken, signMcpClient, type AuthenticatedMcpClient } from "./security";
 import { createProjectSessionRuntime } from "./projectSessionRuntime";
