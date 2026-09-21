@@ -206,11 +206,6 @@
       "symbol": "listModelSpecRows"
     },
     {
-      "kind": "read",
-      "path": "electron/capabilityCore/modelSpecRead.ts",
-      "symbol": "readModelSpecDetail"
-    },
-    {
       "kind": "write",
       "path": "electron/capabilityCore/modelSpecRead.ts",
       "symbol": "agentModelEntriesFromCatalog"
@@ -314,6 +309,11 @@
       "kind": "write",
       "path": "electron/catalog/agentModelEntriesFromCatalog.ts",
       "symbol": "deriveModelListing"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelSpecRead.ts",
+      "symbol": "requireModelSpecDetail"
     }
   ],
   "door_reduction": {

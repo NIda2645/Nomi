@@ -62,6 +62,11 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'This generation plan failed admission validation',
     recover: [{ zh: '按 details 指出的字段修正后重试', en: 'Fix the field named in details, then retry' }],
   },
+  ambiguous_model_vendor: {
+    zh: '这个模型名下有好几家供应商，没说是哪一家就取不出说明书',
+    en: 'Two or more providers carry that modelId, so it is ambiguous which model you mean',
+    recover: [{ zh: '补上 vendor（details.vendorsForModelId 列出了有哪几家）再查一次', en: 'Retry with vendor set to one of details.vendorsForModelId' }],
+  },
   unknown_model_identity: {
     zh: '目录里没有这个模型，或它的类型挂不到这个节点上',
     en: 'The catalog has no such model, or its kind does not fit this node',
@@ -171,7 +176,7 @@ const SAFE_CANVAS_READ_CODES = new Set<string>([
 const ADMISSION_CODES = [
   'unknown_parameter', 'parameter_type_mismatch', 'parameter_not_in_enum',
   'parameter_out_of_range', 'missing_required_parameter', 'unknown_variant',
-  'contract_invalid', 'unknown_model_identity',
+  'contract_invalid', 'unknown_model_identity', 'ambiguous_model_vendor',
 ] as const
 
 const POLICY_CODES = new Set<string>([

@@ -12,8 +12,8 @@ import { applyBuiltinSeeds } from "../catalog/seedBuiltins";
 import { agentModelEntriesFromCatalog } from "../catalog/agentModelEntriesFromCatalog";
 import { getArchetypeById, specializeArchetypeForVendor } from "../shared/modelArchetypes";
 import { createLaneModelRead } from "../agentLane/laneModelRead.mjs";
-import { findModelEntry, modelSpecDetail, modelSpecRow } from "../shared/agentCapabilities/modelSpecProjection";
-import { catalogAvailabilityFor } from "./modelSpecRead";
+import { findModelEntry, modelSpecDetail, modelSpecRow, vendorsCarrying } from "../shared/agentCapabilities/modelSpecProjection";
+import { catalogAvailabilityFor, requireModelSpecDetail } from "./modelSpecRead";
 
 const state = applyBuiltinSeeds(
   { version: 4, vendors: [], models: [], mappings: [], apiKeysByVendor: {} },
@@ -48,6 +48,16 @@ const mcpDetail = (modelId: string, vendor?: string | null) => {
 /** **全量**：156 个模型逐个比，不抽样。抽 2 个挡不住「5/156 不一致」那种缺陷。 */
 const allIdentities = entries.map((entry) => [entry.modelId, entry.vendor] as const);
 
+/** 同一个 modelId 名下有 ≥2 家供应商的那些（身份唯一键是 (vendor, modelId)）。 */
+function sharedModelIds(): Array<readonly [string, Set<string>]> {
+  const byId = new Map<string, Set<string>>();
+  for (const [modelId, vendor] of allIdentities) {
+    if (!vendor) continue;
+    byId.set(modelId, (byId.get(modelId) ?? new Set()).add(vendor));
+  }
+  return [...byId.entries()].filter(([, vendors]) => vendors.size > 1).map(([id, v]) => [id, v] as const);
+}
+
 describe("model spec parity across the two model faces", () => {
   it("the seeded catalog really carries the models this test is about", () => {
     expect(entries.length).toBeGreaterThan(150);
@@ -78,6 +88,34 @@ describe("model spec parity across the two model faces", () => {
       // 各家取各家：两份详情必须不同 vendor 字段，且不能全都等于第一家。
       expect(new Set(details).size, `${modelId}: every vendor returned the same detail`).toBeGreaterThan(1);
     }
+  });
+
+  it("refuses as ambiguous when vendor is omitted and two providers carry that modelId", async () => {
+    // 与「vendor 不匹配时静默回退」同一类：调用方没点名哪一家，我们**悄悄挑了第一家**，
+    // 于是它以为拿到的是它要的那家，然后照另一家的参数表下单（2026-09-22 主管自查）。
+    const shared = sharedModelIds();
+    expect(shared.length, "the seeded catalog no longer has a same-name cross-vendor model — premise gone").toBeGreaterThan(0);
+    const [modelId, vendors] = shared[0]!;
+
+    // 应用内面
+    const lane = await laneCall({ modelId });
+    expect(lane.model).toBeNull();
+    expect(String(lane.errorCode)).toBe("ambiguous_model_vendor");
+    expect(lane.vendorsForModelId).toEqual(expect.arrayContaining([...vendors]));
+    expect(String(lane.recoveryActions)).toMatch(/vendor/i);
+
+    // MCP 面：同一条出路
+    let mcpError: { code?: string; details?: Record<string, unknown> } | undefined;
+    try { requireModelSpecDetail(modelId, undefined, state); } catch (error) { mcpError = error as typeof mcpError; }
+    expect(mcpError?.code).toBe("ambiguous_model_vendor");
+    expect(String(mcpError?.details?.vendorsForModelId)).toContain([...vendors][0]!);
+  });
+
+  it("still answers straight away when only one provider carries that modelId", async () => {
+    const soloId = allIdentities.find(([modelId]) => vendorsCarrying(entries, modelId).length === 1)?.[0];
+    expect(soloId, "every model is multi-vendor — premise gone").toBeTruthy();
+    expect((await laneCall({ modelId: soloId! })).model).toBeTruthy();
+    expect(requireModelSpecDetail(soloId!, undefined, state)).toBeTruthy();
   });
 
   it("refuses instead of silently falling back when the named vendor does not carry the model", async () => {

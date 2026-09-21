@@ -8,7 +8,7 @@ import { setCatalogRowLookup } from './modelAdmissionSchema'
 import { currentCatalogFingerprint } from './modelOnboarding/dispatch'
 import { agentModelEntriesFromCatalog } from '../catalog/agentModelEntriesFromCatalog'
 import {
-  findModelEntry,
+  resolveModelEntry,
   modelSpecDetail,
   modelSpecRow,
   type ModelAvailabilityFacts,
@@ -24,26 +24,56 @@ export function listModelSpecRows(): ModelSpecRow[] {
   return agentModelEntriesFromCatalog(readCatalog()).map((row) => modelSpecRow(row.entry, row.availability))
 }
 
-/** 对外模型面的**单模型详情**：全部模式、参数、参考槽、变体。找不到 → null（协议层转 error）。 */
-export function readModelSpecDetail(modelId: string, vendor?: string | null): ModelSpecDetail | null {
-  const rows = agentModelEntriesFromCatalog(readCatalog())
-  const entry = findModelEntry(rows.map((row) => row.entry), modelId, vendor)
-  if (!entry) return null
-  const availability = rows.find((row) => row.entry === entry)!.availability
-  return modelSpecDetail(entry, availability)
+/**
+ * 取详情，取不到就**带出路地拒**——与准入层那族同一条纪律：
+ * 事实进 `details`（语言中立，两个面给的出路一致），人话由码表按 locale 出。
+ *
+ * 两种拒绝，不许合成一种：`ambiguous_model_vendor`（没点名哪一家、而它有好几家）
+ * 与 `unknown_model_identity`（点名的那家没有它 / 压根没这个模型）。
+ * 第一种以前会**悄悄返回第一家**。
+ *
+ * @param state 缺省读真实目录；测试喂同一份种子状态，接线逐字相同。
+ */
+export function requireModelSpecDetail(modelId: string, vendor: unknown, state: CatalogState = readCatalog()): ModelSpecDetail {
+  const rows = agentModelEntriesFromCatalog(state)
+  const named = typeof vendor === 'string' ? vendor : undefined
+  const found = resolveModelEntry(rows.map((row) => row.entry), modelId, named)
+  if (found.ok) {
+    return modelSpecDetail(found.entry, rows.find((row) => row.entry === found.entry)!.availability)
+  }
+  const vendorsForModelId = found.vendors.join(',') || '(none)'
+  if (found.reason === 'ambiguous') {
+    throw Object.assign(new Error(`Ambiguous model: ${modelId} is carried by ${found.vendors.length} providers`), {
+      code: 'ambiguous_model_vendor',
+      details: { modelKey: modelId, vendorsForModelId },
+    })
+  }
+  throw Object.assign(new Error(`Unknown model: ${modelId}`), {
+    code: 'unknown_model_identity',
+    details: { modelKey: modelId, vendorsForModelId, ...(named ? { vendor: named } : {}) },
+  })
 }
 
 /**
- * 取详情，取不到就**带出路地拒**——与准入层那族同一条纪律：
- * 事实进 `details`（语言中立），人话由 `buildToolErrorOutcome` 的码表按 locale 出。
+ * 把「按 (providerId, modelId) 取目录行」接给准入层的档案解析。
+ * 在**装配期**调一次；`modelAdmissionSchema` 自己是纯函数、不读盘。
  */
-export function requireModelSpecDetail(modelId: string, vendor: unknown): ModelSpecDetail {
-  const detail = readModelSpecDetail(modelId, typeof vendor === 'string' ? vendor : undefined)
-  if (detail) return detail
-  throw Object.assign(new Error(`Unknown model: ${modelId}`), {
-    code: 'unknown_model_identity',
-    details: { modelKey: modelId, ...(typeof vendor === 'string' ? { vendor } : {}) },
+export function installCatalogRowLookup(): void {
+  setCatalogRowLookup((providerId, modelId) => {
+    const model = readCatalog().models.find((row) => row.vendorKey === providerId && row.modelKey === modelId)
+    return model ? { modelAlias: model.modelAlias ?? null, meta: model.meta } : undefined
   })
+}
+
+/**
+ * 一个模型此刻的可用性三件。给应用内那一面用——它的清单由渲染层推上来、不带这三样。
+ * 由 `laneDesktopRuntime`（已持有目录的装配层）注入给 lane，**lane 自己不 import 目录**。
+ * 读的就是对外面同一份目录，故两面这三样同源。
+ */
+export function catalogAvailabilityFor(vendor: string | null, modelId: string, state: CatalogState = readCatalog()): ModelAvailabilityFacts | undefined {
+  const match = agentModelEntriesFromCatalog(state)
+    .find((row) => row.entry.modelId === modelId && (vendor === null || row.entry.vendor === vendor))
+  return match?.availability
 }
 
 /**
@@ -63,26 +93,4 @@ export function dispatchModelSpec(method: string, params: Record<string, unknown
   }
   // `fingerprint` 与 `nomi_remove_provider` 的 `ifUnchanged` 同一个函数算，不许两份。
   return { models: listModelSpecRows(), fingerprint: currentCatalogFingerprint() }
-}
-
-/**
- * 一个模型此刻的可用性三件。给应用内那一面用——它的清单由渲染层推上来、不带这三样。
- * 由 `laneDesktopRuntime`（已持有目录的装配层）注入给 lane，**lane 自己不 import 目录**。
- * 读的就是对外面同一份目录，故两面这三样同源。
- */
-export function catalogAvailabilityFor(vendor: string | null, modelId: string, state: CatalogState = readCatalog()): ModelAvailabilityFacts | undefined {
-  const match = agentModelEntriesFromCatalog(state)
-    .find((row) => row.entry.modelId === modelId && (vendor === null || row.entry.vendor === vendor))
-  return match?.availability
-}
-
-/**
- * 把「按 (providerId, modelId) 取目录行」接给准入层的档案解析。
- * 在**装配期**调一次；`modelAdmissionSchema` 自己是纯函数、不读盘。
- */
-export function installCatalogRowLookup(): void {
-  setCatalogRowLookup((providerId, modelId) => {
-    const model = readCatalog().models.find((row) => row.vendorKey === providerId && row.modelKey === modelId)
-    return model ? { modelAlias: model.modelAlias ?? null, meta: model.meta } : undefined
-  })
 }

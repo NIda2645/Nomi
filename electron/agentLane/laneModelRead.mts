@@ -3,7 +3,7 @@
 // 唯一一个手写 TypeBox 定义的模型可见工具（审计 C5 / 设计 T9）。
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels.js';
 import {
-  findModelEntry, modelSpecDetail, modelSpecRow, vendorsCarrying,
+  modelSpecDetail, modelSpecRow, resolveModelEntry,
   type ModelAvailabilityFacts,
 } from '../shared/agentCapabilities/modelSpecProjection.js';
 import { modelFacingToolSpecs } from '../shared/agentCapabilities/modelFacingToolRegistry.js';
@@ -49,16 +49,26 @@ export function createLaneModelRead(
   return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelId?: string; vendor?: string }) => {
     const all = resolve();
     if (args.modelId !== undefined) {
-      const entry = findModelEntry(all, args.modelId, args.vendor);
-      const payload = entry
-        ? { model: modelSpecDetail(entry, availabilityOf?.(entry)) }
-        : {
-            model: null,
-            error: `Unknown model: ${args.modelId}${args.vendor ? ` (vendor ${args.vendor})` : ''}`,
-            // 拒绝自带出路（与准入层那族同一条纪律）：同名模型跨供应商时点名有哪几家。
-            vendorsForModelId: vendorsCarrying(all, args.modelId),
-            recoveryActions: ['Call list_models with no modelId for the thin list, then retry with one of its modelId values (add vendor when the same modelId appears under two providers).'],
-          };
+      const found = resolveModelEntry(all, args.modelId, args.vendor);
+      const payload = found.ok
+        ? { model: modelSpecDetail(found.entry, availabilityOf?.(found.entry)) }
+        : found.reason === 'ambiguous'
+          // 没点名哪一家、而这个 modelId 有好几家：**不许替调用方挑**。
+          ? {
+              model: null,
+              errorCode: 'ambiguous_model_vendor',
+              error: `Ambiguous model: ${args.modelId} is carried by ${found.vendors.length} providers`,
+              vendorsForModelId: found.vendors,
+              recoveryActions: [`Retry with vendor set to one of: ${found.vendors.join(', ')} — same modelId under two providers is two different models.`],
+            }
+          : {
+              model: null,
+              errorCode: 'unknown_model_identity',
+              error: `Unknown model: ${args.modelId}${args.vendor ? ` (vendor ${args.vendor})` : ''}`,
+              // 拒绝自带出路（与准入层那族同一条纪律）：同名模型跨供应商时点名有哪几家。
+              vendorsForModelId: found.vendors,
+              recoveryActions: ['Call list_models with no modelId for the thin list, then retry with one of its modelId values (add vendor when the same modelId appears under two providers).'],
+            };
       return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }], details: payload };
     }
     const rows = all
