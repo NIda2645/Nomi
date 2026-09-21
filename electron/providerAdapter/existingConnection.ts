@@ -7,6 +7,8 @@ import type {
   Vendor,
 } from "../catalog/types";
 import type { ModelListFailureKind, ModelListResult } from "../ai/onboarding/modelListProbe";
+import type { VendorAuthSpec } from "../ai/requestPipeline";
+import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
 import { modelListErrorRedactor, publicModelListUrl } from "../ai/onboarding/modelListSafety";
 import type { CertificationContractBinding } from "../integrationCertification/types";
 import type { ProviderAdapterRun } from "./types";
@@ -91,9 +93,12 @@ export type ExistingConnectionActionsDependencies = {
     providerKind: AiSdkProviderKind;
     baseUrl: string;
     apiKey: string;
-    authType: "none" | "bearer" | "x-api-key" | "query";
-    authHeader?: string;
-    authQueryParam?: string;
+    /**
+     * 这条已保存连接的**整份**鉴权说法（含 `authScheme`）。2026-09-21 之前这里是
+     * `authType` / `authHeader` / `authQueryParam` 三个散字段，方案词在契约上根本没有位置：
+     * 于是 Higgsfield 那把 key 生成能跑、列模型 401。字段一起走，别再拆开。
+     */
+    auth: VendorAuthSpec;
     headers: Record<string, string>;
     proxyUrl?: string;
     signal: AbortSignal;
@@ -313,9 +318,7 @@ export function createExistingConnectionActions(
           providerKind: providerKind(connection.vendor.providerKind),
           baseUrl: connection.baseUrl,
           apiKey: connection.apiKey,
-          authType: connection.vendor.authType || "bearer",
-          ...(connection.vendor.authHeader ? { authHeader: connection.vendor.authHeader } : {}),
-          ...(connection.vendor.authQueryParam ? { authQueryParam: connection.vendor.authQueryParam } : {}),
+          auth: vendorAuthSpec(connection.vendor),
           headers: connection.headers || {},
           ...(connection.vendor.network?.proxyUrl ? { proxyUrl: connection.vendor.network.proxyUrl } : {}),
           signal: controller.signal,

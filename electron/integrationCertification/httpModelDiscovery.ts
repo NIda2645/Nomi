@@ -1,6 +1,6 @@
 import { authHeaders } from "../ai/requestPipeline";
-import { extractVendorExtraHeaders, readCatalog, normalizeProviderKind } from "../catalog/catalogStore";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { extractVendorExtraHeaders, normalizeProviderKind } from "../catalog/catalogStore";
+import { connectionAuthSpec, savedVendorForBaseUrl } from "../catalog/vendorAuthSpec";
 import { desktopT } from "../i18n";
 import type { AiSdkProviderKind } from "../catalog/types";
 import type { ConnectionCertificationService } from "./service";
@@ -18,18 +18,22 @@ export async function discoverHttpCandidates(input: {
   if (!apiKey) throw new Error(desktopT("integration.discoveryMissingCredential"));
   const providerKind = normalizeProviderKind(session.config.providerKind) as AiSdkProviderKind;
   const authType = session.config.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer");
-  const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-  const vendor = readCatalog().vendors.find((candidate) => candidate.key === vendorKey);
+  const vendor = savedVendorForBaseUrl(session.config.baseUrl);
+  // 方案词（Higgsfield 的 `Key id:secret`）只存在于已保存的那条连接上；接入向导没有填它的格子。
+  const auth = connectionAuthSpec({
+    baseUrl: session.config.baseUrl,
+    authType,
+    ...(session.config.authHeader ? { authHeader: session.config.authHeader } : {}),
+    ...(session.config.authQueryParam ? { authQueryParam: session.config.authQueryParam } : {}),
+  });
   try {
     const candidates = await input.certification.discoverHttpModels({
       baseUrl: session.config.baseUrl,
       providerKind,
-      authType,
       apiKey,
-      ...(session.config.authHeader ? { authHeader: session.config.authHeader } : {}),
-      ...(session.config.authQueryParam ? { authQueryParam: session.config.authQueryParam } : {}),
+      auth,
       headers: {
-        ...authHeaders(authType, apiKey, session.config.authHeader),
+        ...authHeaders(auth, apiKey),
         ...(vendor ? extractVendorExtraHeaders(vendor) || {} : {}),
       },
     });

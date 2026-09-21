@@ -19,6 +19,7 @@
  */
 import type { AiSdkProviderKind, Model, Vendor } from "../catalog/types";
 import { authHeaders, authQueryParams } from "../ai/requestPipeline";
+import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
 import { fetchModelList, readExtraHeaders } from "../ai/onboarding/modelListProbe";
 import { isJsonRecord, mergeHeadersCaseInsensitive } from "../jsonUtils";
 import { providerProxyUrl } from "../providerNetwork";
@@ -71,12 +72,12 @@ export async function probeAdapterCredential(
   const headers = mergeHeadersCaseInsensitive(
     providerKind === "anthropic" ? { "anthropic-version": "2023-06-01" } : {},
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
-    authHeaders(authType, input.apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
+    authHeaders({ ...vendorAuthSpec(vendor), authType }, input.apiKey),
   );
   let result;
   try {
     result = await probe(providerKind, baseUrl, headers, input.signal || AbortSignal.timeout(15_000), {
-      query: authQueryParams(authType, input.apiKey, vendor.authQueryParam ?? undefined),
+      query: authQueryParams({ ...vendorAuthSpec(vendor), authType }, input.apiKey),
       ...(providerProxyUrl(vendor) ? { proxyUrl: providerProxyUrl(vendor) as string } : {}),
     });
   } catch (error) {

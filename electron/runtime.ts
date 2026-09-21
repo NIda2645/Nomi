@@ -15,7 +15,8 @@ import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallT
 import { localizeTaskAsset } from "./assets/localizeTaskAsset";
 export { localizeTaskAsset };
 import { localizedTaskAssetFileName } from "./assets/localizedAsset";
-import { type AuthType, authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline";
+import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline";
+import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
 import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation"; import type { AntigravityProcessStage } from "./catalog/antigravityCatalog";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
@@ -168,11 +169,6 @@ export function admitTask(id: string, entry: CachedTask): void {
 export { findExecutableModel, findExecutableModelForTask } from "./catalog/executableModel";
 import { findExecutableModel } from "./catalog/executableModel";
 
-// Thin Vendor→primitive adapters over the shared requestPipeline auth logic
-// (the shared module is electron-free and doesn't know the Vendor shape).
-function authHeaders(vendor: Vendor, apiKey: string): Record<string, string> {
-  return buildAuthHeaders(vendor.authType as AuthType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined);
-}
 
 // billingKindForTaskKind 下沉到 catalog/types（R12 净减）；re-export 保住既有消费方 import 面。
 export { billingKindForTaskKind } from "./catalog/types";
@@ -432,7 +428,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const fallbackExtraHeaders = extractVendorExtraHeaders(vendor);
   const fallbackHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    ...authHeaders(vendor, apiKey),
+    ...buildAuthHeaders(vendorAuthSpec(vendor), apiKey),
     ...(fallbackExtraHeaders || {}),
   };
   const providerResponse = await requestJson(
