@@ -23,6 +23,7 @@ import {
   type TranscriptSegment,
 } from "./shotTimeline";
 import { quantizeShotSeconds } from "../shared/canvas/shotTime";
+import type { ShotCutCoverage } from "../shared/canvas/shotTable";
 import { firstString, isJsonRecord, parseLooseJsonObject, trim } from "../jsonUtils";
 // main 上 chooseTextModel/resolveTextBrainKeys 已从 agentChatV2 抽到 textBrainResolver（1040 commit 间的重构）；
 // 旧分支从 agentChatV2 import 已失效，port 时改指真源（docs/ARCHITECTURE-NOW 的「文本大脑」判据同一处）。
@@ -133,6 +134,11 @@ export type DeconstructVideoResult = {
   shots: DeconstructShot[];
   durationSeconds: number;
   hasAudio: boolean;
+  /**
+   * 这张表是不是整条片子。**必填**——这正是 2026-09-22 修的那条：
+   * 做成可选字段，读侧「忘了带」就又会变成一次静默截断，而编译器帮不上忙。
+   */
+  cutCoverage: ShotCutCoverage;
   /** 整次失败的**类别**（机器可读）。`local-speech` = 本地离线转写那一路挂了，UI 据此给「改用云端重试」。 */
   failureKind?: "local-speech";
   /** 画面分析失败的镜号（诚实回报，UI 据此提示「这几镜没读出来，可单独重试」）。 */
@@ -369,6 +375,17 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
     .map((cut) => cut.seconds);
   const boundaries = buildShotBoundaries(cutSeconds, durationSeconds);
   if (!boundaries.length) throw new DeconstructError("没能切出任何镜头");
+  // 「这张表是不是整条片子」跟着结果一路走到底。
+  //
+  // 2026-09-22 之前这一行不存在：`detectShotCuts` 早就把 `truncated` 算好了，而这里只取了 `cuts`，
+  // 于是 447 刀的片子拆出一张「看着齐、其实只覆盖到第 55 秒」的表，**一句提示都没有**。
+  // 用户自己的灵敏度过滤会让采用数再少一些，所以 `keptCuts` 以**这里**的实际条数为准，
+  // 不照抄检测层那个数——两个数不一致时，说谎的一定是照抄的那个。
+  const cutCoverage: ShotCutCoverage = {
+    ...detected.coverage,
+    keptCuts: cutSeconds.length,
+    coveredSeconds: cutSeconds.length ? cutSeconds[cutSeconds.length - 1] : 0,
+  };
 
   const brain = resolveTextBrainKeys({ preferImageInput: true });
   if (!brain) throw new DeconstructError("还没有能读图的文本模型。去「接入模型」启用一个（如 Gemini 3.5 Flash）。");
@@ -501,6 +518,7 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
     shots,
     durationSeconds: quantizeShotSeconds(durationSeconds),
     hasAudio,
+    cutCoverage,
     failedShotIndexes,
     ...(audio.failureReason ? { failureReason: audio.failureReason } : {}),
     ...(audio.failureKind ? { failureKind: audio.failureKind } : {}),

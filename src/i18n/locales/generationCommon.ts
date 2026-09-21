@@ -534,7 +534,9 @@ export const zhGenerationCommon = {
       evenFrames: '均匀抽 {{count}} 帧',
       filteredOut: '当前灵敏度太高，这段的切点都被筛掉了。',
       relaxAction: '放宽到 {{count}} 个',
-      truncated: '切点太多，只取了前 {{count}} 个',
+      // 旧文案是「只取了前 N 个」——那句话描述的正是 2026-09-22 修掉的那个行为（按时间砍、后半段整段消失）。
+      // 现在按分数抬阈值，整条片子都还在，所以这句话必须跟着改，否则它会成为一句准确描述着旧 bug 的文案。
+      capped: '这段片子切点太密（{{detected}} 个），已自动把灵敏度提到 {{threshold}}，取了其中 {{kept}} 个——整条片子都在，只是保留了变化最强的那些。想要更细就把滑杆往左拉。',
       sensitivity: '灵敏度',
       hintMany: '偏多 · 会切进运镜',
       hintFew: '偏少 · 只留硬切',
@@ -2017,7 +2019,7 @@ export const enGenerationCommon = {
       evenFrames: 'Grab {{count}} Frames',
       filteredOut: 'Sensitivity is too high — every cut in this clip is filtered out.',
       relaxAction: 'Show {{count}}',
-      truncated: 'Too many cuts; kept the first {{count}}',
+      capped: 'This clip cuts fast ({{detected}} changes). Sensitivity was raised to {{threshold}} automatically, keeping the {{kept}} strongest — the whole clip is still covered. Drag the slider left for finer detail.',
       sensitivity: 'Sensitivity',
       hintMany: 'High · catches camera moves',
       hintFew: 'Low · hard cuts only',

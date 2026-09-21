@@ -3,6 +3,7 @@
 // 关键设计：拆解结果按**源视频节点身份（nodeId）**建槽，而不是按「面板 open 布尔」。
 // 这样同一条视频无论从哪个入口拆——v1 的节点浮条、M 线后的 Agent 工具——都写回**同一个槽**、
 // 渲染进**同一张卡**（R-C-7 双入口汇聚同一张卡）。现在把这个接缝留对，M 线接线不返工。
+import type { ShotCutCoverage } from '../../../../electron/shared/canvas/shotTable'
 
 /** 引擎回来的单镜结构（镜像 electron/video/deconstructVideo.ts 的 DeconstructShot，桥的投影形状）。 */
 export type DeconstructionShot = {
@@ -33,6 +34,11 @@ export type DeconstructionResult = {
   shots: DeconstructionShot[]
   durationSeconds: number
   hasAudio: boolean
+  /**
+   * 这张表是不是整条片子。**必填**，和引擎那边一样——可选字段就是给「忘了带」留后路，
+   * 而 2026-09-22 修的正是一次「忘了带」（引擎算好了 truncated，拆解读侧整个没接）。
+   */
+  cutCoverage: ShotCutCoverage
   /** 画面分析失败的镜号（诚实回报，UI 据此提示可单独重试）。 */
   failedShotIndexes: number[]
   /** 整次拆解层面的失败原因（顶部一行显示；不是每格一句「没读出」）。 */
