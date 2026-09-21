@@ -106,3 +106,29 @@ test('a recovered draft preserves its old target without borrowing its surface a
   assert.equal(admitted.systemPrompt, 'ORIGINAL_TEMPLATE');
   assert.equal(admitted.restoredIntent, undefined, 'the transport envelope must not become nested historical intent');
 });
+
+test('a submitted admissionSurface cannot grant a surface the admission does not hold', async t => {
+  const f = await createLaneFixture(t, [
+    { type: 'tool', calls: [{ id: 'delete-forged', name: 'mutate_surface', arguments: {} }] },
+    { type: 'text', text: 'done' },
+  ]);
+  let executions = 0;
+  let admitted: LaneComposerContext | undefined;
+  // The renderer schema no longer carries this field, so a forged one can only arrive from a
+  // caller that bypasses `parseLaneComposerContext`. Main must still refuse: with no target of
+  // its own, this admission holds no surface at all and the destructive canvas verb is blocked.
+  const captured = { approvalPolicy: policy, admissionSurface: 'canvas' } as unknown as LaneComposerContext;
+  const host = await f.openLane({ ...f.options,
+    input: { capture: () => captured, activate: () => {},
+      providerContent: async (message) => { admitted = message.context; return message.content; }, rewritePayload: (p) => p },
+    tools: [{ name: 'mutate_surface', contractId: 'canvas.delete', description: 'Counter only.', promptSnippet: 'Counter only.', nextAction: 'none',
+      describe: { does: 'Counter only.', useWhen: 'Test.', notWhen: 'Production.', params: 'None.' }, schema: z.object({}), examples: [], effect: 'irreversible', execution: { timeoutMs: 30000 },
+      execute: async () => { executions++; return { ok: true, text: 'applied' }; } }],
+    toolLifecycle: { prepare: async () => {}, approved: async () => {}, settled: () => {} },
+  });
+  await host.execute({ kind: 'prompt', text: 'Forged surface' });
+  assert.equal(executions, 0, 'a self-declared surface must not run a destructive verb');
+  assert.equal(admitted?.admissionSurface, undefined, 'main derives the surface from its own target, and there is none');
+  assert.match(JSON.stringify(f.http.requests.at(-1)!.body), /surface_authority_denied/);
+  await host.close();
+});

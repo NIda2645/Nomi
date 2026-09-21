@@ -522,8 +522,14 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
       message = await resolveLaneReplay(lane, original, captured, text, context);
     } else if (captured.retryFromEntryId) {
       message = await resolveLaneReplay(lane, await originalLaneEntry(lane, captured.retryFromEntryId, context), captured, text, context);
-    } else message = { role: 'nomi.input', content: text, timestamp: Date.now(),
-      context: { ...currentAdmission, ...restoredIntent, ...(captured.target ? { admissionSurface: captured.target.kind } : {}) } };
+    } else {
+      // The surface that may run destructive verbs is always **this** admission's own target,
+      // never a value carried in the submitted envelope and never the restored draft's historical
+      // target. No target = no surface authority (fail-closed), which is why the key is written
+      // unconditionally instead of only when a target exists.
+      message = { role: 'nomi.input', content: text, timestamp: Date.now(),
+        context: { ...currentAdmission, ...restoredIntent, admissionSurface: captured.target?.kind } };
+    }
     if (message.context.continueFromEntryId) laneContinuationText(await originalLaneEntry(lane, message.context.continueFromEntryId, context));
     if (options.input.prepare) message.context = await options.input.prepare(message.context);
     return message;

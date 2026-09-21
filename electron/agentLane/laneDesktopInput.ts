@@ -27,7 +27,9 @@ const intentSchema = z.object({
     requestId: z.string().min(1).max(256),
   }).strict().optional(),
   documentId: z.string().max(256).optional(),
-  admissionSurface: z.enum(['document', 'canvas']).optional(),
+  // `admissionSurface` is deliberately absent: it decides whether a destructive verb may run
+  // (laneHost before_tool), so it is main-derived from this admission's own target — never
+  // submitted. Same discipline as `skillPrompt`/`skillSnapshot`: type-only, not in this schema.
   // These are untrusted selectors. The verified Surface factories validate their domain schema.
   target: z.record(z.unknown()).optional(),
   preconditions: z.record(z.unknown()).optional(),
