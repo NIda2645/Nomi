@@ -636,7 +636,24 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
       // 插话两条。**回值带 pi 铸的 `entryId`**：没有它，用户点「撤回」时面板只能靠
       // 「队里最后那条」去猜，而队列随时会被消费——猜出来的那条可能是别人的话。
       if (command.kind === 'steer' || command.kind === 'follow-up' || command.kind === 'prompt') {
-        const steering = command.kind !== 'follow-up';
+        // ── 有一道闸在等人时，用户在 composer 里打的这句话 = **对这道闸的回答**（2026-09-22 裁决 E）──
+        //
+        // 提问卡待答 → 这句话**就是那道题的答案**：走 `answer`（落成 `decision: 'answered'`，面板印「已回答 · 原话」），
+        // 它一字不改成为那次 `ask_user` 的 tool result，回合在同一轮里继续。**不再另排一条插话**——
+        // 同一句话既当答案又当新消息，模型会读到两遍。
+        // 此前这里对提问卡也走 deny：话送到了，但面板上那一行读作「✕ 已拒绝」——用户明明刚回答了一个问题
+        // （`tests/ux/agent-gate-typing-answers.walk.mjs` 的第一张截图就是它）。
+        const question = gate?.pending();
+        if (gate && question?.toolName === ASK_USER_VERB_NAME && command.text.trim()
+          && gate.answer(question.toolCallId, 'answer', command.text)) {
+          failures.reset();
+          executionOptions?.onAccepted?.();
+          return {};
+        }
+        // 「排在这一轮之后」在有卡等人的时候是一句空话：这一轮不等他答就永远结束不了，
+        // 于是那条 follow-up 会安静地排在一张他以为已经答过的卡后面（裁决 E：绝不允许石沉大海）。
+        // 所以只要有闸在等，两种手势同义——都是「先别做那件事，听我这句」。
+        const steering = command.kind !== 'follow-up' || Boolean(gate?.pending());
         failures.reset();
         const message = await awaitWithContext(inputMessage(command.text), admission);
         admission.abortSignal?.throwIfAborted();
