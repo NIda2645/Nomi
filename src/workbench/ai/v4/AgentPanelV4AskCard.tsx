@@ -308,6 +308,8 @@ export function V4AskCard({
       data-ask-card="true"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      // × 的位置由外壳定死（三张卡一处），反问卡不再自己摆那颗钮。
+      dismiss={{ label: labels.dismiss, onClick: onDismiss }}
       // **没有卡头条**：问题本身就是标题（Approval Card 的形状，也是这次把
       // 「需要你定一下」那句套话删掉的原因）。外壳把 `head` 做成可缺席的正是为了这一档；
       // 描边 / 圆角 / 底色 / 内边距 / 页脚那条分隔线全部由外壳给，与付费确认卡同一份。
@@ -372,21 +374,6 @@ export function V4AskCard({
       )}
     >
       <div className="relative">
-        {(
-          <button
-            type="button"
-            aria-label={labels.dismiss}
-            title={labels.dismiss}
-            onClick={onDismiss}
-            data-v4-control="ask-dismiss"
-            // 贴着卡体这一格的右上角，**不再另加偏移**：外壳已经给了 `px-2.5 py-2`，
-            // 再写一次 `top-2.5` 就是把它按两遍内边距往下推，× 会掉到问句和第一个选项中间
-            // （真面板截图上量到偏低 25px）。`-mt-0.5` 是把 28px 的命中框对回 21px 那行文字。
-            className={cn(V4_SLOT_ICON_BUTTON, 'absolute -mt-0.5 right-0 top-0 z-10 hover:text-nomi-ink')}
-          >
-            <IconX size={14} aria-hidden="true" />
-          </button>
-        )}
         {/* 题轨：所有题竖着摞在一条轨上，靠 translate3d 把当前那一题推到视口里；
             外层的高度跟着当前题动。这就是 Approval Card 的「卡高随题滑动」。 */}
         <div

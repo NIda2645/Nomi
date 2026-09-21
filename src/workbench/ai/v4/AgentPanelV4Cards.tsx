@@ -27,7 +27,7 @@ import {
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
 import { V4AskCard, type V4AskCardLabels } from './AgentPanelV4AskCard'
-import { V4SlotShell, V4_SLOT_ICON_BUTTON } from './AgentPanelV4SlotShell'
+import { V4SlotShell, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
 import { askCardQuestions } from './agentPanelV4AskModel'
 import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
 import type {
@@ -158,24 +158,10 @@ export function V4TaskCard({
   )
 }
 
-/** 槽头 icon 按 kind 取的是**这件事是什么**，不是状态（定稿 ⑤ 六张槽各自的 icon）。 */
-const SLOT_ACTION: Record<V4InterventionKind, Parameters<typeof ActionIcon>[0]['action']> = {
-  'approval-irreversible': 'think',
-  'approval-reversible': 'think',
-  'reject-reason': 'think',
-  spend: 'spend',
-  question: 'question',
-  plan: 'plan',
-  credential: 'credential',
-  deviation: 'think',
-  'missing-card': 'think',
-}
-
-function SlotIcon({ kind }: { kind: V4InterventionKind }): JSX.Element {
-  if (kind === 'approval-irreversible' || kind === 'deviation' || kind === 'missing-card') return <IconAlertTriangle size={13} aria-hidden="true" />
-  if (kind === 'approval-reversible' || kind === 'reject-reason') return <IconCheck size={13} aria-hidden="true" />
-  return <ActionIcon action={SLOT_ACTION[kind]} size={13} />
-}
+// 槽头那排 icon 随**带底色的卡头条**一起删掉了（2026-09-22 换壳）。
+// 参照物（Beautiful UI 的 Approval / Recommendation Card）没有它：标题就是一句问话，
+// 一句话自己说得清这是什么事，再加一个图标只是把同一件事说两遍。
+// `SLOT_ACTION` 那张 kind→动词家族的表也随之退役——它只有 `SlotIcon` 一个消费者。
 
 /**
  * 翻页器（`‹ 2/4 ›`）+ 范围切换（`逐镜 | 全部`）+ 键盘提示（`←→`）。
@@ -258,15 +244,10 @@ function V4PriceRow({ price }: { price: NonNullable<InterventionData['price']> }
           读的人得把视线甩过去才知道那个数是这一行算出来的。 */}
       <V4Row as="div" className="text-caption text-nomi-ink-60">
         <span className="min-w-0 truncate">{price.breakdown}</span>
-        {known && price.totalLabel ? (
-          <span className="shrink-0 text-micro text-nomi-ink-40">{price.totalLabel}</span>
-        ) : null}
-        <span
-          className={cn('shrink-0 tabular-nums', known ? 'font-semibold text-nomi-ink' : 'text-nomi-warning')}
-          data-v4-price={known ? 'total' : 'unavailable'}
-        >
-          {price.total ?? price.unavailable}
-        </span>
+        {/* 合计**搬到页脚左下**了（2026-09-22 换壳）：那里离按钮两厘米，是按下去之前
+            最后扫的那一眼。这一行从此只说**算式**——同一个数印两处，改参数时一定有一个先漂。
+            `data-v4-price` 这个锚点留着：走查靠它认「这张卡报不报得出价」。 */}
+        <span className="sr-only" data-v4-price={known ? 'total' : 'unavailable'}>{price.total ?? price.unavailable}</span>
       </V4Row>
       {price.perItem?.length ? (
         <details className="group" data-v4-block="price-per-item">
@@ -453,28 +434,27 @@ export function V4Intervention({
             </>
           ) : (
             <>
-              <V4Row as="button"
-                type="button"
-                onClick={onConfirm}
-                data-v4-control="confirm"
-                className="h-7 rounded-nomi-sm border border-nomi-ink bg-nomi-ink px-2.5 text-nomi-paper"
-              >
-                {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
-                  <IconCheck size={12} aria-hidden="true" />
-                ) : null}
-                {data.confirmLabel ?? labels.confirm}
-              </V4Row>
+              {/* ── 左下：**元信息**（2026-09-22 换壳后的新排布）──
+                  徽章（「不可逆」「付费」）、价格行、「不再问 →」、「收起清单」都在这一侧。
+                  它们的共同点是**读的东西 / 次要的东西**，不是这张卡要人按的那一下。 */}
+              {data.badge ? (
+                <span className="shrink-0 text-micro text-nomi-ink-60" data-v4-block="slot-badge">{data.badge}</span>
+              ) : null}
+              {/* 这次要花多少。放在这里而不是按钮上：按钮只说动作，金额只印一处。
+                  算不出价时这里是一整句话，**按钮照常可点**（花钱边界的产品拍板）。 */}
+              {data.totalLead ? (
+                <span
+                  className={cn('min-w-0 truncate tabular-nums', data.price?.total ? 'font-semibold text-nomi-ink' : 'text-nomi-warning')}
+                  data-v4-block="slot-total"
+                >
+                  {data.totalLead}
+                </span>
+              ) : null}
               {canEscalate ? (
                 <button type="button" className="text-micro text-nomi-ink-40" onClick={onEscalate} data-v4-control="escalate">
                   {labels.escalate}
                 </button>
               ) : null}
-              {data.alternateLabel ? (
-                <button type="button" className="h-7 rounded-nomi-sm px-2.5 text-nomi-ink-60" onClick={onAlternate} data-v4-control="alternate">
-                  {data.alternateLabel}
-                </button>
-              ) : null}
-              <span className="flex-1" />
               {isPlan ? (
                 <button
                   type="button"
@@ -485,23 +465,26 @@ export function V4Intervention({
                   {planCollapsed ? labels.expandPlan : labels.collapsePlan}
                 </button>
               ) : null}
-              {(
-                // 否定动作 = 一颗 ×（2026-09-10 拍板的按钮规则：一屏一个主动作、否定动作用 ×）。
-                // 它和「生成」并排在同一行，仍是同一个决定的两面；但**不是第二颗文字按钮**——
-                // 两颗一样重的文字钮会让人在花钱的卡上多想一秒「哪颗是往前」。
-                // 它也不直接发拒绝：有原因输入时先把那一行摊开（渐进披露），
-                // 第二下「确认不要」才真的回给宿主。文案没消失，它是这颗 × 的无障碍名与 tooltip。
-                <button
-                  type="button"
-                  aria-label={labels.reject}
-                  title={labels.reject}
-                  className={cn(V4_SLOT_ICON_BUTTON, 'hover:text-nomi-danger')}
-                  onClick={() => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.())}
-                  data-v4-control="reject"
-                >
-                  <IconX size={14} aria-hidden="true" />
+              <span className="flex-1" />
+              {/* ── 右下：**动作**。安静次按钮在左、深色主按钮在右（参照物的排法）。
+                  否定动作那颗 × 已经搬到卡右上角，由外壳统一摆，这里不再有它。 */}
+              {data.alternateLabel ? (
+                <button type="button" className={V4_SLOT_QUIET_BUTTON} onClick={onAlternate} data-v4-control="alternate">
+                  {data.alternateLabel}
                 </button>
-              )}
+              ) : null}
+              <button
+                type="button"
+                onClick={onConfirm}
+                data-v4-control="confirm"
+                className={V4_SLOT_PRIMARY_BUTTON}
+              >
+                {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
+                  <IconCheck size={12} aria-hidden="true" />
+                ) : null}
+                {data.confirmLabel ?? labels.confirm}
+                <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
+              </button>
             </>
           )}
         </V4Row>
@@ -512,13 +495,17 @@ export function V4Intervention({
       kind={data.kind}
       // 有翻页器才可聚焦：焦点是「← → 归谁管」的唯一凭据，没有翻页器的卡不该抢 Tab 序。
       {...(pager ? { tabIndex: 0, onKeyDown: handleKeyDown } : {})}
-      head={(
-        <>
-          {data.hideIcon ? null : <SlotIcon kind={data.kind} />}
-          <AgentPanelV4Markdown text={data.title} />
-          {data.badge ? <span className="shrink-0 font-normal opacity-85">{data.badge}</span> : null}
-        </>
-      )}
+      // 标题就是**一句话**，不再是带底色卡头条里的一行小字（2026-09-22 换壳）。
+      // icon 与徽章跟着卡头条一起走了：icon 在参照物里本来就没有，
+      // 徽章（「不可逆」「付费」）是**元信息**，它的新家在页脚左下。
+      title={<AgentPanelV4Markdown text={data.title} />}
+      // × 统一钉在右上（三张卡一处），不再蹲在页脚右端。
+      {...(hasActions ? {
+        dismiss: {
+          label: labels.reject,
+          onClick: () => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.()),
+        },
+      } : {})}
       {...(slotFooter ? { footer: slotFooter } : {})}
     >
         {data.summary ? <AgentPanelV4Markdown text={data.summary} /> : null}

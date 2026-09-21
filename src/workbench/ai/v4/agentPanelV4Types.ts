@@ -157,6 +157,14 @@ export type InterventionData = Readonly<{
   badge?: string
   summary?: string
   scope?: string
+  /**
+   * 页脚**左下**那一格：这次要花多少（「合计 ¥0.90」/「价格未知 · 以供应商账单为准」）。
+   *
+   * 2026-09-22 换壳把金额从主按钮上挪到这里——按钮只说动作。为什么不复用 `price.total`：
+   * `price` 那一格是**算式**（怎么算出来的、逐镜多少），它住在卡体里；这一格是**结论**，
+   * 它要和按钮同排，用户按下去之前最后扫的那一眼就是它。
+   */
+  totalLead?: string
   params?: readonly string[]
   /**
    * 反问的选项。**模型自己写**（标签 + 一句说明 + 可标推荐），形状与解析在

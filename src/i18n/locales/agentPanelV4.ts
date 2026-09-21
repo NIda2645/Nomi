@@ -370,12 +370,11 @@ export const zhAgentPanelV4 = {
   slotTrimScope: '已在时间轴高亮，未落盘 · 不计费',
   slotRejectReason: '拒绝原因（可选）',
   slotRejectSample: '这次先不删，保留镜头待复核',
-  slotSpendTitle: '要花 ¥1.20 生成 4 段视频',
+  slotSpendTitle: '生成这 4 段视频？',
   slotSpendBadge: '付费',
-  slotSpendOneTitle: '要花 ¥0.90 生成 1 段视频',
+  slotSpendOneTitle: '生成这 1 段视频？',
   slotSpendOneScope: '用镜头 2 采用的那张当首帧 · 结果落画布并可拖进时间轴',
   slotGenerate: '生成',
-  slotSwitchModel: '换模型',
   slotQuestionTitle: '这段旁白用哪种口吻？',
   slotOptionVoiceCalm: '平静叙述',
   slotOptionVoiceUrgent: '紧绷、压着说',
@@ -431,10 +430,12 @@ export const zhAgentPanelV4 = {
   slotDeviationDraw: '先生图（+¥0.12）',
   slotDeviationSkip: '跳过',
   // 付费卡 · 参数条版（2026-09-10 用户拍板：参数行 = 节点那条参数条，确认前全部可改）
-  spendParamsTitle: '生成 {{count}} 镜的视频',
+  // 标题是**一句问话**（2026-09-22 换壳，照 Recommendation Card 的形状）：
+  // 卡在问「要不要做这件事」，陈述句「生成 N 镜的视频」读起来像它已经决定了。
+  spendParamsTitle: '生成这 {{count}} 段视频？',
   // 同一张卡也用来确认图片生成（agent 建的草稿两种都有）。标题不许一律写「视频」——
   // 用户看着一张图片草稿被说成视频，第一反应是「它是不是搞错了」，而这一刻他正要付钱。
-  spendParamsTitleImage: '生成 {{count}} 张图片',
+  spendParamsTitleImage: '生成这 {{count}} 张图片？',
   /** 模型芯片上的极小徽标：这一项是 Nomi 替你挑的，不是你选的。 */
   spendParamsModelPicked: 'Nomi 选的',
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
@@ -448,10 +449,16 @@ export const zhAgentPanelV4 = {
   spendParamsPerItem: '逐镜 · {{count}} 镜',
   spendParamsShot: '镜头 {{number}}',
   /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
-  spendParamsConfirm: '生成 {{amount}}',
+  // 金额从按钮上挪到了页脚**左下**（同一行、离按钮两厘米），所以按钮只说动作。
+  // 两处印同一个数一定有一个先漂——这条原则本来就写在 projectSpendCard 的注释里。
+  spendParamsConfirm: '生成',
+  /** 合计那一格（页脚左下）。 */
+  spendTotalLead: '合计 {{amount}}',
+  /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
+  spendTotalUnknown: '价格未知 · 以供应商账单为准',
   spendParamsConfirmUnknown: '仍要生成',
   /** 范围切到「全部」后的同一颗主按钮：多印一句「几镜」，因为这时的数不再是眼前这一页的。 */
-  spendParamsConfirmAll: '生成 {{count}} 镜 {{amount}}',
+  spendParamsConfirmAll: '生成 {{count}} 镜',
   /** 范围切换两档（2026-09-10 v3：批量不再是第二颗文字按钮，是同一个决定的范围）。 */
   spendParamsScopeEach: '逐镜',
   spendParamsScopeAll: '全部',
@@ -841,12 +848,11 @@ export const enAgentPanelV4 = {
   slotTrimScope: 'Highlighted on the timeline, not written · no charge',
   slotRejectReason: 'Reason for declining (optional)',
   slotRejectSample: 'Not this time — keep the shot for review',
-  slotSpendTitle: 'Spend ¥1.20 to generate 4 video clips',
+  slotSpendTitle: 'Generate these 4 video shots?',
   slotSpendBadge: 'Paid',
-  slotSpendOneTitle: 'Spend ¥0.90 to generate 1 video clip',
+  slotSpendOneTitle: 'Generate this 1 video shot?',
   slotSpendOneScope: 'Uses the adopted shot-2 image as the first frame · result lands on the canvas and can be dragged onto the timeline',
   slotGenerate: 'Generate',
-  slotSwitchModel: 'Switch model',
   slotQuestionTitle: 'What tone should this narration take?',
   slotOptionVoiceCalm: 'Plain and steady',
   slotOptionVoiceUrgent: 'Tight, held back',
@@ -897,8 +903,8 @@ export const enAgentPanelV4 = {
   slotDeviationTitle: 'Shot 3 has no first frame — skip it or draw one first?',
   slotDeviationDraw: 'Draw one first (+¥0.12)',
   slotDeviationSkip: 'Skip',
-  spendParamsTitle: 'Generate video for {{count}} shots',
-  spendParamsTitleImage: 'Generate {{count}} image(s)',
+  spendParamsTitle: 'Generate these {{count}} video shots?',
+  spendParamsTitleImage: 'Generate these {{count}} image(s)?',
   spendParamsModelPicked: 'Nomi picked',
   spendParamsBreakdown: '{{count}} shots × {{seconds}}s · {{quality}} · {{unit}}/s',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
@@ -907,9 +913,11 @@ export const enAgentPanelV4 = {
   spendParamsUnavailable: 'Price unavailable right now',
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
-  spendParamsConfirm: 'Generate {{amount}}',
+  spendParamsConfirm: 'Generate',
+  spendTotalLead: '{{amount}} total',
+  spendTotalUnknown: 'Price unknown — your provider bills it',
   spendParamsConfirmUnknown: 'Generate anyway',
-  spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
+  spendParamsConfirmAll: 'Generate {{count}} shots',
   spendParamsScopeEach: 'Per shot',
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',

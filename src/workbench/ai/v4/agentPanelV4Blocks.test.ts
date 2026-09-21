@@ -270,7 +270,9 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).toContain('收起 ▴')
     // 否定动作永远是那颗 ×（文字只当无障碍名），计划卡不再是唯一没有它的档
     // ——2026-09-11 用户实测「8 镜计划卡无法取消」。
-    expect(markup).toContain('data-v4-control="reject"')
+    // 2026-09-22 换壳后它由外壳统一摆在**右上**，锚点随之改名；断言一条没少。
+    expect(markup).toContain('data-v4-control="slot-dismiss"')
+    expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-2[^"]*top-2/)
     expect(markup).not.toContain('>不要<')
   })
 
@@ -315,13 +317,21 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(shellOf(ask)).toBeTruthy()
     expect(shellOf(ask)).toBe(shellOf(spend))
 
-    // ② 但**没有卡头条**：问题本身就是标题，不再有「需要你定一下」那句套话。
-    expect(ask).not.toContain('bg-nomi-accent-soft px-2.5 py-2')
-    expect(spend).toContain('bg-nomi-accent-soft px-2.5 py-2')
+    // ② **两张卡都没有带底色的卡头条了**（2026-09-22 换壳：用户说旧外壳不优雅）。
+    //    这一条以前断的是「只有反问卡没有」，现在是「一张都不许有」。
+    for (const markup of [ask, spend]) {
+      expect(markup).not.toContain('bg-nomi-accent-soft px-2.5 py-2')
+      expect(markup).not.toContain('border-nomi-accent')
+    }
     expect(ask.match(/用什么画幅？/g)).toHaveLength(1)
     expect(ask).toContain('data-v4-block="ask-question"')
 
-    // ③ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
+    // ③ × 由外壳统一钉在右上——两张卡同一处，不再一个在右上一个在页脚。
+    for (const markup of [ask, spend]) {
+      expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-2[^"]*top-2/)
+    }
+
+    // ④ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
     expect(ask).not.toContain('不要')
     expect(ask).not.toContain('不再问')
   })

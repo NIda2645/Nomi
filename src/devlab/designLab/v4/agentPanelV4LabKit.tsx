@@ -266,13 +266,16 @@ function buildFixtures(t: TFunction) {
       scope: t('agentPanelV4.slotRejectReason'),
       reasonPlaceholder: t('agentPanelV4.slotRejectSample'),
     },
+    // 夹具的字段要和**生产投影** `projectSpendCard` 对得上，否则实验室画的是另一张卡
+    // ——这个坑这条 lane 上已经踩过两次（卡头「需要你定一下」、幽灵的「换模型」按钮）。
+    // 生产投影今天产出：问话式 `title` + `badge` + `totalLead` + `confirmLabel`，**没有** alternateLabel。
     spend: {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendTitle'),
       badge: t('agentPanelV4.slotSpendBadge'),
+      totalLead: t('agentPanelV4.spendTotalLead', { amount: '¥1.20' }),
       params: ['Kling O1', '4 × 3s', 'std', '¥1.20'],
       confirmLabel: t('agentPanelV4.slotGenerate'),
-      alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
     // 反问三格共用同一张卡（2026-09-21：反问是**通用**能力，不为某一种问题写死）。
     // 长相差别只来自数据：有没有说明 / 有没有熔断那句话 / 卡内那一行有没有字。
@@ -435,11 +438,11 @@ function buildFixtures(t: TFunction) {
     spendOneClip: {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendOneTitle'),
+      totalLead: t('agentPanelV4.spendTotalLead', { amount: '¥0.90' }),
       badge: t('agentPanelV4.slotSpendBadge'),
       params: ['Kling O1', '3s', 'std', '16:9', '¥0.90'],
       scope: t('agentPanelV4.slotSpendOneScope'),
       confirmLabel: t('agentPanelV4.slotGenerate'),
-      alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
     threeEdits: {
       kind: 'approval-reversible',

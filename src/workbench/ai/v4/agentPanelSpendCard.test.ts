@@ -86,14 +86,19 @@ describe('付费卡投影', () => {
     const data = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1, scope: 'each' }, t)!
     expect(data.price?.breakdown).toContain('spendParamsBreakdownMixed')
     expect(data.price?.perItem).toHaveLength(2)
-    // 翻到第 2 页时主按钮印的是**那一页**的价，不是第一页的。
-    expect(data.confirmLabel).toContain('amount=0.30')
+    // 翻到第 2 页时印的是**那一页**的价，不是第一页的。
+    // 2026-09-22 换壳后这个数搬到了页脚左下（`totalLead`），按钮只说动作——
+    // 断言跟着数走，不是跟着控件走。
+    expect(data.totalLead).toContain('amount=0.30')
+    expect(data.confirmLabel).not.toContain('amount=')
   })
 
   it('切到「全部」：主按钮改口印合计，动作行仍然只有一颗填色按钮', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0, scope: 'all' }, t)!
     expect(data.pager?.scope?.value).toBe('all')
-    expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmAll(count=2,amount=agentPanelV4.money(currency=CNY,amount=0.60))')
+    expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmAll(count=2)')
+    // 合计仍然要印，只是印在页脚左下那一格。
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLead(amount=agentPanelV4.money(currency=CNY,amount=0.60))')
     expect(data.alternateLabel).toBeUndefined()
   })
 
@@ -153,3 +158,17 @@ describe('节点 → 候选补丁', () => {
     expect(patch.modelId).toBe('seedance')
   })
 })
+
+describe('算不出价**绝不拦**生成（2026-09-21 用户硬性拍板）', () => {
+  it('没有价时页脚印一整句话，不是 ¥0，而且主按钮照常给得出来', () => {
+    const data = projectSpendCard(pending([shot(1, null)]), { page: 0, scope: 'each' }, t)!
+    // 三种可能（免费 / 算不出 / 真的零元）里，印 0 恰好是唯一会让用户
+    // 误以为「这次不花钱」的那一种。
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalUnknown')
+    expect(data.totalLead).not.toContain('0')
+    // 按钮**存在且有文案** —— 「算不出价格就不让生成」那条闸已经被用户否掉：
+    // 「不能因为这个拦截其他任何东西，我们现在都没有建立价格的标尺」。
+    expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmUnknown')
+  })
+})
+
