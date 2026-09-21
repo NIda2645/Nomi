@@ -7,7 +7,6 @@ import type { GenerationProvider } from "./generationRuntimeAdapter";
 import {
   createApimartGenerationProvider,
   type ApimartGenerationProviderOptions,
-  type ApimartReferenceUrlResolver,
 } from "./apimartGenerationProvider";
 import type { GenerationProviderReadiness, GenerationProviderReadinessMap } from "./moduleCatalogBootstrap";
 import { modelHasPublishedExecution } from "../shared/modelPublication";
@@ -16,8 +15,6 @@ export type GenerationProviderBootstrapOptions = {
   connectionResolver?: (vendorKey: string) => ReturnType<ApimartGenerationProviderOptions["resolveConnection"]>;
   catalogReader?: () => CatalogState;
   fetchImpl?: typeof fetch;
-  /** Optional project-scoped resolver; URLs must be localized before buildRequest/approval. */
-  resolveReferenceUrls?: ApimartReferenceUrlResolver;
   /**
    * Zero-cost Electron journey seam: keep the catalog's built-in APIMart
    * scope and curated mapping intact while routing the decrypted Settings key
@@ -141,7 +138,6 @@ export function createGenerationProviderBootstrap(
       // changed in the desktop app.
       catalogReader,
       fetchImpl: options.fetchImpl,
-      resolveReferenceUrls: options.resolveReferenceUrls,
     });
     providers.push(provider);
     readinessByProvider.apimart = readiness(true, provider.capabilities);

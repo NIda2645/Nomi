@@ -28,10 +28,6 @@ export type ApimartReferenceProjection = Readonly<{
   lastFrameUrl?: string;
 }>;
 
-export type ApimartReferenceUrlResolver = (
-  input: GenerationProviderRequestInputV1,
-) => ApimartReferenceProjection | null | undefined;
-
 function parameter(parameters: Record<string, unknown>, ...keys: string[]): unknown {
   return keys.map((key) => parameters[key]).find((value) => value !== undefined && value !== null && value !== "");
 }
@@ -188,20 +184,19 @@ function assertResolvedReferences(input: GenerationProviderRequestInputV1): void
   }
 }
 
+/**
+ * 参考素材 → 供应商线缆字段，**一条路**：`input.referenceUrls` 是授权时封存的那份 URL 快照。
+ *
+ * 这里曾经并排站着第二条路（`ApimartReferenceUrlResolver`：调用方注入一个函数现算 URL）。
+ * 新路接上之后没人再注入它，但类型、bootstrap 选项、provider 选项和六处测试都还留着，
+ * 而且新分支**无条件覆盖**旧 resolver 的结果——也就是说旧路只剩「被测试养着」这一个作用。
+ * 留着的代价不是多几行：下一个人会以为它是一条可选路径，于是两条路各自演化、口径慢慢分开。
+ */
 export function projectReferenceUrls(
   input: GenerationProviderRequestInputV1,
-  resolver?: ApimartReferenceUrlResolver,
   mapping?: Mapping,
 ): GenerationProviderRequestInputV1 {
   const parameters = structuredClone(input.parameters);
-  let projection: ApimartReferenceProjection | null | undefined;
-  if (resolver) {
-    try {
-      projection = resolver(structuredClone(input));
-    } catch {
-      throw new ApimartGenerationProviderError("APIMart reference URL resolver failed");
-    }
-  }
   if (input.referenceUrls) {
     const channels = new Set((mapping ? bodyReferencedParamKeys(mapping.create.body) : []).map(key => PROJECTION_KEYS[key] || key));
     const snapshot: Record<string, unknown> = {};
@@ -217,18 +212,12 @@ export function projectReferenceUrls(
       else if (reference.role === "first_frame" || reference.role === "last_frame") throw new ApimartGenerationProviderError(`APIMart mapping has unsupported reference role: ${reference.role}`);
       else append("imageUrls", url);
     }
-    projection = snapshot;
-  }
-  if (projection !== undefined && projection !== null) {
-    if (!projection || typeof projection !== "object" || Array.isArray(projection)) {
-      throw new ApimartGenerationProviderError("APIMart reference URL projection is invalid");
-    }
-    for (const [sourceKey, value] of Object.entries(projection as Record<string, unknown>)) {
-      // Empty resolver channels are absent, not optional wire values.
+    for (const [sourceKey, value] of Object.entries(snapshot)) {
+      // Empty channels are absent, not optional wire values.
       if (!referenceValuePresent(value)) continue;
-      const targetKey = Object.prototype.hasOwnProperty.call(PROJECTION_KEYS, sourceKey) ? PROJECTION_KEYS[sourceKey] : undefined;
-      if (!targetKey) throw new ApimartGenerationProviderError(`APIMart reference URL projection field is unsupported: ${sourceKey}`);
+      const targetKey = PROJECTION_KEYS[sourceKey];
       const existing = referenceParameter(parameters, targetKey);
+      // 合同里显式写死的 URL 与授权时封存的那一份不一致 = 批准的是 A、要发出去的是 B。拒。
       if (referenceValuePresent(existing) && !sameJson(existing, value)) {
         throw new ApimartGenerationProviderError("APIMart reference URL projection conflicts with canonical parameters");
       }

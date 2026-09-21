@@ -32,14 +32,12 @@ import {
   normalizeParameters,
   projectReferenceUrls,
   sameJson,
-  type ApimartReferenceUrlResolver,
 } from "./apimartGenerationProjection";
 import { ApimartGenerationProviderError } from "./apimartGenerationErrors";
 
 export type {
   ApimartImageReferenceWithRole,
   ApimartReferenceProjection,
-  ApimartReferenceUrlResolver,
 } from "./apimartGenerationProjection";
 export { ApimartGenerationProviderError } from "./apimartGenerationErrors";
 
@@ -64,7 +62,6 @@ export type ApimartGenerationProviderOptions = {
    * persists credentials.  Returning `undefined` leaves canonical URL
    * parameters untouched.
    */
-  resolveReferenceUrls?: ApimartReferenceUrlResolver;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -277,10 +274,9 @@ function selectCatalogSelection(
 function projectionRequest(
   input: GenerationProviderRequestInputV1,
   selection: CatalogSelection,
-  resolver: ApimartReferenceUrlResolver | undefined,
 ): JsonRecord {
   if (!input.prompt || !input.prompt.trim()) throw new ApimartGenerationProviderError("APIMart prompt is required");
-  const projected = projectReferenceUrls(input, resolver, selection.mapping);
+  const projected = projectReferenceUrls(input, selection.mapping);
   const parameters = normalizeParameters(projected.parameters, selection.mapping);
   mirrorApimartReferenceParameterAliases(parameters, selection.mapping.create.body, sameJson);
   const archetypeId = selection.model.meta && typeof selection.model.meta === "object" && !Array.isArray(selection.model.meta)
@@ -565,7 +561,7 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
         rememberPrepared(cached.body, cached.prepared);
         return structuredClone(cached.body);
       }
-      const body = projectionRequest(input, selection, options.resolveReferenceUrls);
+      const body = projectionRequest(input, selection);
       const prepared = preparedForSelection(selection);
       projectionCache.set(key, { inputHash: hash, body: structuredClone(body), prepared });
       while (projectionCache.size > 128) {

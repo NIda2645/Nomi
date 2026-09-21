@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createApimartGenerationProvider as createProvider } from "./apimartGenerationProvider";
-import type { ApimartReferenceUrlResolver } from "./apimartGenerationProjection";
 import type { CatalogState } from "../catalog/types";
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
 import { APIMART_VIDEO_MODELS } from "../catalog/apimartVideos";
 import { APIMART_IMAGE_QUERY_OP, APIMART_STATUS_MAPPING, APIMART_VENDOR_SEED } from "../catalog/apimartVendor";
 import { registerRequestTransform } from "../tasks/requestTransforms";
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
+
+/** 授权时封存的那份 URL 快照，键就是付费卡上那一条参考的身份。 */
+function approvedUrls(entries: ReadonlyArray<readonly [Record<string, unknown>, string]>): Record<string, string> {
+  return Object.fromEntries(entries.map(([reference, url]) =>
+    [spendReferenceKey(reference as Parameters<typeof spendReferenceKey>[0]), url]));
+}
 
 function catalogFixture(overrides: Partial<CatalogState> = {}): CatalogState {
   const now = "now";
@@ -271,11 +277,12 @@ describe("APIMart observe-only generation provider", () => {
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
       catalogReader: () => ({ ...base, mappings }),
-      resolveReferenceUrls: () => ({ imageUrls: ["https://cdn.example/orphan.png"] }),
       fetchImpl: vi.fn(),
     });
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
     expect(() => provider.buildRequest(input({
-      references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
+      references: [reference],
+      referenceUrls: approvedUrls([[reference, "https://cdn.example/orphan.png"]]),
     }))).toThrow("APIMart catalog mapping dropped a resolved reference");
   });
 
@@ -674,36 +681,37 @@ describe("APIMart observe-only generation provider", () => {
     }))).resolves.toMatchObject({ providerTaskId: "i2v-task-1" });
   });
 
-  it("projects references through the explicit resolver contract before building the body", () => {
-    const resolveReferenceUrls = vi.fn<ApimartReferenceUrlResolver>((request) => ({
-      referenceImageUrls: request.references.map((reference) => `https://cdn.example/${reference.assetId}.png`),
-    }));
+  it("projects the approved reference snapshot into the body's image channel", () => {
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
-      resolveReferenceUrls,
       fetchImpl: vi.fn(),
     });
     const references = [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const, role: "reference" as const }];
-    expect(provider.buildRequest(input({ modelId: "sora-2", mode: "image_to_video", references, parameters: { duration: 3 } }))).toMatchObject({
+    expect(provider.buildRequest(input({ modelId: "sora-2", mode: "image_to_video", references,
+      referenceUrls: approvedUrls([[references[0], "https://cdn.example/asset-1.png"]]),
+      parameters: { duration: 3 } }))).toMatchObject({
       image_urls: ["https://cdn.example/asset-1.png"],
       duration: 3,
     });
-    expect(resolveReferenceUrls).toHaveBeenCalledWith(expect.objectContaining({ references, mode: "image_to_video" }));
   });
 
-  it("does not serialize empty resolver channels as optional APIMart fields", () => {
+  it("does not serialize unused reference channels as optional APIMart fields", () => {
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
-      resolveReferenceUrls: () => ({ imageUrls: ["https://cdn.example/character.png"], videoUrls: [], audioUrls: [] }),
       fetchImpl: vi.fn(),
     });
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
     const body = provider.buildRequest(input({
       modelId: "doubao-seedance-2.0",
       mode: "image_to_video",
-      references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
+      references: [reference],
+      referenceUrls: approvedUrls([[reference, "https://cdn.example/character.png"]]),
       parameters: { duration: 3 },
     }));
-    expect(body).toMatchObject({ image_urls: ["https://cdn.example/character.png"] });
+    // 这个 mapping 的图片通道是 image_with_roles，所以投影落在那里——通道由 mapping 决定，
+    // 不由调用方挑，这正是删掉外部 resolver 之后唯一的那条口径。
+    expect(body).toMatchObject({ image_with_roles: [{ url: "https://cdn.example/character.png" }] });
+    expect(body).not.toHaveProperty("image_urls");
     expect(body).not.toHaveProperty("video_urls");
     expect(body).not.toHaveProperty("audio_urls");
   });
@@ -743,16 +751,18 @@ describe("APIMart observe-only generation provider", () => {
     }))).toThrow("APIMart references must be resolved to provider URLs before submission");
   });
 
-  it("rejects a resolver projection that conflicts with an explicit canonical URL", () => {
+  // 批准的是 A、要发出去的是 B —— 在花钱这条轴上这件事不许悄悄发生。
+  it("rejects an approved reference snapshot that conflicts with an explicit canonical URL", () => {
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
-      resolveReferenceUrls: () => ({ imageUrls: ["https://cdn.example/from-resolver.png"] }),
       fetchImpl: vi.fn(),
     });
+    const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
     expect(() => provider.buildRequest(input({
       modelId: "sora-2",
       mode: "image_to_video",
-      references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
+      references: [reference],
+      referenceUrls: approvedUrls([[reference, "https://cdn.example/from-approval.png"]]),
       parameters: { duration: 3, imageUrls: ["https://cdn.example/explicit.png"] },
     }))).toThrow("APIMart reference URL projection conflicts with canonical parameters");
   });

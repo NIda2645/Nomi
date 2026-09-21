@@ -167,25 +167,9 @@ describe("generation provider bootstrap", () => {
     expect(boot.readinessByProvider.apimart).toMatchObject({ providerReady: true, capabilities: { query: true, reconcile: true, cancel: false } });
   });
 
-  it("passes the project-scoped reference URL resolver into the semantic adapter", () => {
-    const fixture = state("test-key");
-    const resolveReferenceUrls = vi.fn(() => ({ imageUrls: ["https://cdn.example/asset-1.png"] }));
-    const boot = createGenerationProviderBootstrap(fixture, {
-      connectionResolver: () => ({ apiKey: "test-key" }),
-      catalogReader: () => fixture,
-      resolveReferenceUrls,
-    });
-    const provider = boot.providers[0];
-    const body = provider?.buildRequest(generationInput({
-      mode: "image-to-image",
-      prompt: "edit",
-      references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
-    }));
-    expect(body).toMatchObject({ image_urls: ["https://cdn.example/asset-1.png"] });
-    expect(resolveReferenceUrls).toHaveBeenCalledTimes(1);
-  });
-
-  it("uses the durable approved reference snapshot without a fixture resolver after restart", () => {
+  // 「注入一个 resolver 现算 URL」那条路已经删干净（P1）：现在只有一份授权时封存的快照，
+  // 下面这条就是它的全部覆盖。
+  it("uses the durable approved reference snapshot after restart", () => {
     const fixture = state("test-key");
     const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
     const input = { ...generationInput({ mode: "image-to-image", references: [reference] }),
@@ -228,7 +212,7 @@ describe("generation provider bootstrap", () => {
     ].map(reference => ({ ...reference, contentHash: CONTRACT_HASH, version: 1 }));
     const referenceUrls = Object.fromEntries(references.map(reference => [spendReferenceKey(reference), `https://cdn.example/${reference.assetId}`]));
     const mapping = state().mappings[0]!;
-    const projected = projectReferenceUrls({ ...generationInput({ references }), referenceUrls }, undefined, {
+    const projected = projectReferenceUrls({ ...generationInput({ references }), referenceUrls }, {
       ...mapping, create: { ...mapping.create, body: { first_frame_image: "{{request.params.first_frame_image}}", last_frame_image: "{{request.params.last_frame_image}}", video_urls: "{{request.params.video_urls}}", audio_urls: "{{request.params.audio_urls}}" } },
     });
     expect(projected.parameters).toEqual({ first_frame_image: "https://cdn.example/first", last_frame_image: "https://cdn.example/last", video_urls: ["https://cdn.example/video"], audio_urls: ["https://cdn.example/audio"] });
@@ -423,7 +407,7 @@ it.each(['first_frame', 'last_frame'] as const)('rejects unsupported %s rather t
   const reference = { assetId: 'frame', contentHash: CONTRACT_HASH, version: 1, kind: 'image' as const, role: 'first_frame' as const };
   {
     const ref = { ...reference, role };
-    expect(() => projectReferenceUrls({ ...generationInput({ references: [ref] }), referenceUrls: { [spendReferenceKey(ref)]: 'https://cdn.example/frame.png' } }, undefined,
+    expect(() => projectReferenceUrls({ ...generationInput({ references: [ref] }), referenceUrls: { [spendReferenceKey(ref)]: 'https://cdn.example/frame.png' } },
       { ...state().mappings[0]!, create: { ...state().mappings[0]!.create, body: { image_urls: '{{request.params.image_urls}}' } } })).toThrow(/unsupported.*role/);
   }
 });
