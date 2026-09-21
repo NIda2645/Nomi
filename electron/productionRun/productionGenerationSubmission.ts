@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { readGenerationExecution } from "./productionGenerationHistory";
+import { findGenerationExecutionJob, readGenerationExecution } from "./productionGenerationHistory";
 import path from "node:path";
 
 import {
@@ -616,6 +616,12 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   async function resume(input: GenerationSubmissionStartInput): Promise<GenerationSubmissionResumeResult> {
     const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
+    // 恢复路径的既有契约：**找不到这次执行的那条 job 是一个可分诊的状态，不是异常。**
+    // 主干上它返回 `attention/invalid_recovery_state`，让上层把这次恢复交回给用户处置；
+    // 一路抛出去会把它变成一次没人接得住的失败。（冻结合同缺失仍然抛，主干也抛。）
+    if (!findGenerationExecutionJob(run, input)) {
+      return { operationId: run.runId, action: "attention", reason: "invalid_recovery_state", nextAction: "attention" };
+    }
     const { job, currentAuthority } = readGenerationExecution(deps.repository, run, input);
     const jobId = job.jobId;
     const currentEnvelope = envelope(run.runId, jobId).read();

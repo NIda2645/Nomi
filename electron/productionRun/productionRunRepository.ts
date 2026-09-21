@@ -239,12 +239,23 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       latest: () => positions.length ? decode(positions[positions.length - 1]) : undefined,
       forCommand: (commandId: string) => positions.filter(position => position.commandId === commandId).map(decode),
       after: (cursor: number) => positions.filter(position => position.cursor > cursor).map(decode),
+      // Lazy and newest-first: a reader looking for one archived snapshot decodes until it finds
+      // it, instead of paying `JSON.parse` for every event in the journal to look at the last one.
+      reverse: function* (): Generator<RunEvent> {
+        for (let index = positions.length - 1; index >= 0; index -= 1) yield decode(positions[index]);
+      },
     };
   }
 
   function readEvents(projectId: string, runId: string, afterCursor = 0): RunEvent[] {
     const paths = productionRunPaths(projectDir(projectId), runId);
     return readEventJournal(paths.events).after(afterCursor);
+  }
+
+  /** Newest first, decoded on demand. The journal index is the same one `readEvents` uses. */
+  function readEventsReverse(projectId: string, runId: string): Iterable<RunEvent> {
+    const paths = productionRunPaths(projectDir(projectId), runId);
+    return readEventJournal(paths.events).reverse();
   }
 
   function readApprovals(projectId: string, runId: string): Approval[] {
@@ -617,7 +628,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  return { create, createGenerationDraft, read, list, execute, readEvents, readApprovals, readBudgetLedger, rebuild };
+  return { create, createGenerationDraft, read, list, execute, readEvents, readEventsReverse, readApprovals, readBudgetLedger, rebuild };
 }
 
 export type ProductionRunRepository = ReturnType<typeof createProductionRunRepository>;
