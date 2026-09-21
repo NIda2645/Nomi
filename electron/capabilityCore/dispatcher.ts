@@ -49,10 +49,6 @@ import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboa
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
   (typeof sessionId === 'string' && sessionId.trim() ? sessions.get(sessionId, owner) : sessions.list(owner))
-export function projectIdOf(params: Record<string, unknown>): string {
-  return typeof params.projectId === 'string' ? params.projectId : ''
-}
-
 /**
  * makeGateway：按 projectId 解析该用哪个网关——A 模式（app 开着且该项目正打开）→ 渲染层网关（实时）；
  * 否则 → 磁盘网关（直写盘）。rpcServer 据 isProjectOpen + 渲染层可达性提供；headless host 恒磁盘网关。
@@ -100,8 +96,9 @@ export type DispatchContext = {
   /** Project-owner revision lookup. Receipt bindings never trust a revision supplied by the caller. */
   projectRevisionResolver?: (projectId: string) => number | undefined
   /**
-   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
-   * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
+   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ `canvas.write`
+   * 的 create_canvas_nodes 预批准方案门、不再弹渲染层卡（免双问）。只作用于建节点那一步的 confirmPlan，
+   * 钱路（confirmSpend）不受影响。
    */
   planConfirmed?: boolean
   /**
@@ -707,23 +704,6 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       const input = documentWriteSemanticInputSchema.parse({ operation: params.operation, content: params.content })
       return writeProjectDocument(lease.projectId, typeof params.documentId === 'string' ? params.documentId : undefined, input.operation, input.content)
     }
-    case 'canvas.addNodes': {
-      // 方案已被协议层 elicitation-first 批准 → 预批准方案门（不再弹渲染层卡，免双问）；否则原网关照常确认。
-      const base = ctx.makeGateway(projectIdOf(params))
-      const gateway = ctx.planConfirmed ? withPreApprovedPlan(base) : base
-      return addProjectNodes(gateway, Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
-    }
-    case 'canvas.connect':
-      return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
-    case 'canvas.setPrompt':
-      return setProjectNodePrompt(
-        ctx.makeGateway(projectIdOf(params)),
-        String(params.nodeId || ''),
-        String(params.prompt || ''),
-        typeof params.title === 'string' ? params.title : undefined,
-      )
-    case 'canvas.deleteNodes':
-      return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
     case 'brief.intake': {
       // W3 幕 0：只组题/给默认，**不落任何状态**——真正的「问」由协议层弹 elicitation（enum 候选），
       // 客户端不支持表单时协议层退化成把题面交给模型在对话里一次问全。

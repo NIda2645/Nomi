@@ -77,14 +77,13 @@ node scripts/nomi.mjs project create "咖啡广告"
 # → { "id": "workspace-xxxx", "name": "咖啡广告" }
 ```
 
-**③ 批量加 3 个镜头节点**（一次加一个；记下每个返回的 `nodeId`）
+**③ 批量加 3 个镜头节点** —— **不走这条 CLI**
 
-```bash
-node scripts/nomi.mjs canvas add workspace-xxxx image "晨光中的咖啡杯特写，蒸汽升腾，暖色调"
-node scripts/nomi.mjs canvas add workspace-xxxx image "咖啡师拉花的手部特写，浅景深"
-node scripts/nomi.mjs canvas add workspace-xxxx image "咖啡馆窗边，一个人捧着杯子微笑，逆光"
-# 每条 → { "ids": ["node-aaaa"] } / { "ids": ["node-bbbb"] } / { "ids": ["node-cccc"] }
-```
+画布的**写**只在 MCP 语义面上：`nomi_canvas_edit`（建节点 / 连边 / 改提示词）与
+`nomi_canvas_maintenance`（删节点，带确认与 `undoToken`）。两者都要 `leaseHandle`，
+而租约只发给验证过的项目会话传输。`scripts/nomi.mjs` 拿的是裸 bearer——它只证明
+「这台机器上的某个进程读到了 token」，证不出「哪个客户端、哪次会话、哪个项目」，
+所以它读得到画布，写不了画布（2026-09-21 删掉了 `canvas add/connect/prompt/delete` 四个子命令）。
 
 **④ 看一眼画布，确认都加上了**
 

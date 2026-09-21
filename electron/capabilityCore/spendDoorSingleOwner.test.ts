@@ -83,7 +83,9 @@ describe('付费放行单一 owner（删掉客户端自报的第二扇门）', (
       token: 't',
       clientProof: 'proof',
       connection,
-      method: 'canvas.addNodes',
+      // legacy `canvas.addNodes` 已于 2026-09-21 删除；这里换成还活着的画布写路由，
+      // 断言的是线上没有付费自报位，与方法名无关。
+      method: 'canvas.write',
       params: {},
       // 旧协议位：即便调用方硬塞，也不许出现在线上。
       ...({ spendConfirmed: true } as Record<string, unknown>),
