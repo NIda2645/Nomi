@@ -253,6 +253,25 @@ function candidateFrom(value: unknown): PlanCandidate {
 }
 
 /**
+ * 报价卡上**哪些镜成为价格行、哪些成为锚 chip**。一条规则，一个家。
+ *
+ * 常规批次：行 = 非锚镜，锚在 `anchorChips` 里各自标价（它们也要花钱，只是不占行）。
+ * **只有参考卡的批次**（2026-09-22 起合法）：行 = 那些锚本身。
+ * 此前这一支返回 undefined，而 present/seal 的范围**本来就含锚**——卡会静默退回单镜路、
+ * 只把第一张摆出来，其余照样跑、照样扣钱。**每一笔要花的钱都必须在卡上看得见**，
+ * 这是钱那条路的不变量，不是显示偏好。
+ */
+export function gateRowsFor<T extends { role?: "anchor" | "shot"; included?: boolean }>(
+  shots: readonly T[],
+): { rows: readonly T[]; anchorChipShots: readonly T[] } {
+  const included = shots.filter((shot) => shot.included !== false);
+  const nonAnchors = included.filter((shot) => shot.role !== "anchor");
+  return nonAnchors.length > 0
+    ? { rows: nonAnchors, anchorChipShots: included.filter((shot) => shot.role === "anchor") }
+    : { rows: included, anchorChipShots: [] };
+}
+
+/**
  * 一条参考素材的身份是否已经钉住。缺 `contentHash`/`version` 的（模型只会给 assetId）由宿主补。
  * 与 `semanticCandidateFromParams` 里那一段是同一条规则的两个调用点：create 走合成器，patch 走这里。
  */
@@ -393,8 +412,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
    */
   const multiShotGateProjectionFor = (operation: GenerationOperation): MultiShotGateProjection | undefined => {
     if (!operation.shots || operation.shots.length === 0) return undefined;
-    const includedVideo = operation.shots.filter((shot) => shot.role !== "anchor" && shot.included !== false);
-    const anchors = operation.shots.filter((shot) => shot.role === "anchor" && shot.included !== false);
+    const { rows: includedVideo, anchorChipShots: anchors } = gateRowsFor(operation.shots);
     if (includedVideo.length === 0) return undefined;
     const normalized = (candidate: PlanCandidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates);
     const durationValues = includedVideo.map((shot) => shotDurationSeconds(normalized(shot.candidate)));
@@ -524,7 +542,12 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         // productionRunReducer.ts generation.seal). 与 S4 e2e setup 同构 (top = shots[0]).
         const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
         await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId, normalizedShots);
-        return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
+        // 「这份草稿只有参考卡」是一条**安静提示**，不是一次拒绝（2026-09-22，用户 09-21 点名）。
+        // 它照样会生成、照样在报价卡上逐张标价；缺的只是「还没有镜头用到它们」这件事实，
+        // 说一句就够——模型据此可以接着补镜头，也可以照用户的意思就停在这里。
+        const anchorsOnly = normalizedShots.every((shot) => shot.role === "anchor");
+        return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview",
+          ...(anchorsOnly ? { note: "This draft has only reference cards; no shot reuses them yet. That is fine — add the shots that reuse them in a later draft_shots call, or generate the cards on their own." } : {}) };
       }
       // A natural-language create request only needs `prompt`.  Keep the
       // explicit candidate path intact, but compile the short path at this

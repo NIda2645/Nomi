@@ -300,13 +300,20 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
     }
   });
 
-  it("rejects a plan with no video shot (only an anchor) with a human error", async () => {
+  // 2026-09-22 改判：这条原来是「只有形象参考 → 拒绝」。拦的理由是**投影管道**（报价行按「非锚」筛），
+  // 不是领域：锚本身有候选、有价，`present`/`seal` 的范围本来就含它，调度器也早就有
+  // 「an anchor-only request tracks its actual paid units」那一支。而「先建参考卡、镜头下一轮补」
+  // 是用户与 Agent 都会走的正常路径——用户 2026-09-21 亲自点名过这条报错。
+  // 现在放行，并且草稿上带一条**安静提示**说清「还没有镜头用到它们」。
+  it("accepts a plan with only reference cards, and says so quietly instead of refusing", async () => {
     const vendor = await startLoopbackVendor();
     const { handler } = harness(vendor.origin, []);
     try {
-      await expect(handler({ capability: "create", lease, params: { shots: [
+      const created = await handler({ capability: "create", lease, params: { shots: [
         { role: "anchor", candidate: shotCandidate("anchor-1", "只有形象", "anchor") },
-      ] } })).rejects.toThrow(/至少需要一个视频镜头/);
+      ] } }) as { operation: { shots?: unknown[] }; note?: string };
+      expect(created.operation.shots).toHaveLength(1);
+      expect(created.note, "放行不等于沉默：模型要知道还没有镜头用到它们").toMatch(/only reference cards/);
     } finally {
       await vendor.close();
     }

@@ -289,7 +289,8 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
   /**
    * `params.shots` (client `plan` entrance) or `params.scriptText` (storyboard planner entrance) → draft
    * shots; neither → undefined (single-shot). Validation failures are human-readable (client-visible).
-   * Enforces ≥1 video shot so a pure-anchor plan (nothing to render) is rejected up front.
+   * 2026-09-22 起**不再**要求至少一个非锚镜头：锚本身要生成、有价、会被 seal，「只有参考卡」是一条
+   * 正常的中间状态（镜头下一轮补）。草稿上给一条安静提示，不拒绝。
    */
   const resolveCreateShots = async (projectId: string, params: Record<string, unknown>): Promise<GenerationOperationDraftShot[] | undefined> => {
     let shots: GenerationOperationDraftShot[];
@@ -392,7 +393,9 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
         deps.assertReferencesResolvable(projectId, shot.candidate.references);
       }
     }
-    if (!shots.some((shot) => shot.role !== "anchor")) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "多镜计划至少需要一个视频镜头（不能只有形象参考）");
+    // 2026-09-22：原来这里拒绝「只有形象参考」的计划。拦的理由是投影管道（报价行按「非锚」筛），
+    // 不是领域——锚本身有候选、有价，present/seal 的范围本来就含它。而「先建参考卡、镜头下一轮补」
+    // 是正常路径（用户 2026-09-21 亲自点名过这条报错）。放行；管道那一处同 commit 修好。
     return shots;
   };
 

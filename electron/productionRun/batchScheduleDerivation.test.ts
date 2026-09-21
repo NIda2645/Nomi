@@ -454,3 +454,27 @@ describe("unknown-price shots never enter the budget comparison", () => {
     expect(result.halt).toBeUndefined();
   });
 });
+
+
+// ── 2026-09-22 · 只有参考卡的批次 ────────────────────────────────────────────
+//
+// `draft_shots` 从今天起允许「只建几张参考卡、镜头下一轮再补」（用户 2026-09-21 亲自点名过
+// 那条拒绝）。这一组钉住的是：**调度器本来就支持这一支**，本次放行校验没有把它弄坏。
+// （原话在 `deriveBatchPlan`："Mixed batches retain their video progress; an anchor-only request
+// tracks its actual paid units"。）
+describe("anchor-only batch（校验放行之后仍然照旧工作）", () => {
+  it("锚照常派发，进度按锚算", () => {
+    const anchors = [anchorShot("anchor-1"), anchorShot("anchor-2")];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(anchors), jobs: authorizedJobsFor(anchors) }));
+    expect(result.anchorDispatch.map((task) => task.shotId)).toEqual(["anchor-1", "anchor-2"]);
+    expect(result.progress).toMatchObject({ total: 2, completed: 0, pending: 2 });
+    expect(result.shotDispatch, "这一批没有镜头可派").toEqual([]);
+  });
+
+  it("阳性对照：同一批里只要还有一个镜头，检查点照旧要开、镜头照旧被挡在它后面", () => {
+    const mixed = [anchorShot("anchor-1"), shot("shot-a", "a".repeat(64))];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(mixed), jobs: [anchorJobReady("anchor-1")] }));
+    expect(result.checkpoint.status).toBe("should_open");
+    expect(result.shotDispatch, "检查点没放行之前，镜头一个都不许派").toEqual([]);
+  });
+});
