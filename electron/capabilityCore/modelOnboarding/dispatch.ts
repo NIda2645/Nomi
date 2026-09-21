@@ -430,12 +430,17 @@ export function dispatchModelOnboarding(
     sessions?: IntegrationSessionService;
     openCredentialsInNomi?: OnboardingDispatchDeps["openCredentialsInNomi"];
     runTask?: TryModelDeps["runTask"];
+    approvalPolicy?: TryModelDeps["approvalPolicy"];
   },
 ): Promise<OnboardingResult | OnboardingFailure> | OnboardingResult | OnboardingFailure {
   if (method === "model.onboarding.remove") return removeProvider(params);
   if (method === "model.onboarding.try") {
     if (!ctx.runTask) throw new Error("model.onboarding.try needs the task runner; it runs on the same executor as the canvas.");
-    return tryModel({ runTask: ctx.runTask }, params);
+    return tryModel({
+      runTask: ctx.runTask,
+      // 档位从宿主一路传下来。**不传 = 不猜 = 照旧问人**，与 Run 侧那条同一条纪律。
+      ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
+    }, params);
   }
   return dispatchModelSetup({
     sessions: () => ctx.sessions || getIntegrationSessionService(),

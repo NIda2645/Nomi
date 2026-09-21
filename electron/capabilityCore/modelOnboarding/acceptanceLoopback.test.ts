@@ -52,6 +52,8 @@ describe("验收 · 接一家 Higgsfield 形状的供应商要几跳（基线 14
   let origin: string;
   let root: string;
   const calls: Array<{ tool: string; ok: boolean; code?: string }> = [];
+  /** 第一条测试登记出来的连接 id（由卡的 baseUrl 派生，不是我们猜的）。 */
+  let vendorKey = "";
 
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-onboarding-acceptance-"));
@@ -140,6 +142,7 @@ describe("验收 · 接一家 Higgsfield 形状的供应商要几跳（基线 14
     }) as { ok: boolean; vendorKey: string; state: { hasApiKey: boolean } };
     expect(submitted.ok).toBe(true);
     expect(submitted.state.hasApiKey).toBe(false);
+    vendorKey = submitted.vendorKey;
 
     // ③ 用户把 key 交给了他的 AI，AI 走同一扇写门填进去。
     const keyed = await call("nomi_model_setup", {
@@ -188,5 +191,58 @@ describe("验收 · 接一家 Higgsfield 形状的供应商要几跳（基线 14
     expect(calls.filter((entry) => !entry.ok)).toEqual([]);
     expect(tried.ok).toBe(true);
     console.log(`[验收] tools/call=${calls.length} 被拒=${calls.filter((c) => !c.ok).length} 试跑成功=${tried.ok ? 1 : 0}（基线 14 / 6 / 0）`);
+  });
+
+  /**
+   * 「该不该问人」由**用户的档位**决定，不由入口决定（09-21 用户拍板）。这三条把三种处境各钉一次，
+   * 判据全部来自同一个函数 `spendDecidedByPolicy`——试跑不自己再答一遍。
+   */
+  it("全自动档：不弹卡、直接跑，账本上写着是策略代答的", async () => {
+    const { dispatch } = await import("../dispatcher");
+    const { setRendererTarget } = await import("../rendererBridge");
+    const { runTask } = await import("../../runtime");
+    // 窗口**根本不存在**：全自动档下这一跳也必须跑得完，否则「不弹卡」就是假的。
+    setRendererTarget(null);
+    const tried = await dispatch("model.onboarding.try", {
+      vendorKey, modelKey: "relay-paint", prompt: "a second apple",
+    }, {
+      origin: { host: "claude" },
+      runTask,
+      approvalPolicy: () => ({ mode: "project", spend: "confirm" }),
+    } as never) as { ok: boolean; state?: { spendDecidedBy: string; assets: unknown[] } };
+    expect(tried.ok, JSON.stringify(tried)).toBe(true);
+    expect(tried.state!.spendDecidedBy).toBe("policy:full_auto");
+    expect(tried.state!.assets.length).toBeGreaterThan(0);
+  });
+
+  it("非全自动档 + 没有 Nomi 窗口：诚实失败，不偷偷放行", async () => {
+    const { dispatch } = await import("../dispatcher");
+    const { setRendererTarget } = await import("../rendererBridge");
+    const { runTask } = await import("../../runtime");
+    setRendererTarget(null);
+    const refused = await dispatch("model.onboarding.try", {
+      vendorKey, modelKey: "relay-paint", prompt: "a third apple",
+    }, {
+      origin: { host: "claude" },
+      runTask,
+      approvalPolicy: () => ({ mode: "step", spend: "confirm" }),
+    } as never) as { ok: boolean; code: string; nextAction: string };
+    expect(refused.ok).toBe(false);
+    expect(refused.code).toBe("needs_input");
+    expect(refused.nextAction).toMatch(/confirm/i);
+  });
+
+  it("模型永远拿不到「替用户批准」的参数：任何 approve/confirm/trust 字段都进不了这张 schema", async () => {
+    const { MCP_TOOL_RESOLVER } = await import("../mcpToolCatalog");
+    const { validateToolArguments } = await import("../mcpArgValidation");
+    const tool = MCP_TOOL_RESOLVER.resolve("nomi_try_model")!;
+    for (const field of ["approved", "approve", "confirmed", "confirm", "trusted", "trust", "grantId", "receipt", "autoApprove", "skipConfirmation"]) {
+      const invalid = validateToolArguments(tool.name, tool.inputSchema, {
+        vendorKey, modelKey: "relay-paint", [field]: true,
+      });
+      expect(invalid, `${field} 不该被这张 schema 接受`).not.toBeNull();
+    }
+    // 阳性对照：合法入参过得去，所以上面那些红不是因为整张 schema 都在拒。
+    expect(validateToolArguments(tool.name, tool.inputSchema, { vendorKey, modelKey: "relay-paint" })).toBeNull();
   });
 });

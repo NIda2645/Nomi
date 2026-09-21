@@ -21,6 +21,8 @@
  */
 import { readCatalog } from "../../catalog/catalogStore";
 import { selectTaskMapping, type ProfileKind } from "../../catalog/types";
+import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../../shared/agentCapabilities/capabilityApprovalPolicy";
+import { quoteSpendLine } from "../../spendQuote";
 import { mintSpendGrant, isSpendAuthorizationError } from "../../spendGrant";
 import { sanitizedAdapterJson, redactAdapterSecrets } from "../../providerAdapter/redaction";
 import type { RunTaskFn } from "../core";
@@ -31,7 +33,20 @@ const text = (value: unknown): string => (typeof value === "string" ? value.trim
 /** 没给提示词时用的那一句：短、中性、任何模型都答得出来。 */
 const NEUTRAL_PROMPT = "A single red apple on a plain white table, soft daylight";
 
-export type TryModelDeps = { runTask: RunTaskFn };
+export type TryModelDeps = {
+  runTask: RunTaskFn;
+  /**
+   * 用户此刻选的审批档位（宿主持有的那一份快照，与 `generationTransportAdapters` 读的是同一份）。
+   *
+   * **这一跳不自己回答「该不该问人」**：那个问题全仓只有 `spendDecidedByPolicy` 回答
+   * （`shared/agentCapabilities/capabilityApprovalPolicy.ts:144`，2026-09-12 用户拍板的单一 owner）。
+   * 是否弹卡由**档位**决定，不由入口决定——同一个用户在「全自动」下从画布点一下生成不弹卡，
+   * 那么他让自己的 AI 试跑一个刚接进来的模型也不该弹卡。
+   *
+   * 缺席 = 按默认档走 = 照旧弹卡（与 `decideByPolicyAfterDraft` 的「不猜档位」逐字同义）。
+   */
+  approvalPolicy?: () => ProjectAgentApprovalPolicy | undefined;
+};
 
 export async function tryModel(
   deps: TryModelDeps,
@@ -77,9 +92,21 @@ export async function tryModel(
     };
   }
 
-  // 一个节点、一次机会：试跑不给重试预算。想再试一次就再调一次，而那会再问用户一次。
+  // 一个节点、一次机会：试跑不给重试预算。想再试一次就再调一次。
   const nodeId = `try-${vendorKey}-${Date.now()}`;
-  const grantId = mintSpendGrant({ nodeIds: [nodeId], maxAttemptsPerNode: 1, ttlMs: 30 * 60 * 1000 });
+  // 档位代答（「全自动」）与逐次问人（其余档）的**区别只有一处**：令牌上带不带这次的报价。
+  //   · 带 → `assertAndConsumeQuotedSpend` 认得出这笔就是已授权的那一笔，直接扣、直接发；
+  //   · 不带 → 它一定会走到 `confirm()`，也就是一定会去问用户（报价卡在用户自己的 Nomi 窗口里，
+  //     未知价那一档的措辞由渲染层的报价卡负责，见 i18n `spendParamsConfirmUnknown`）。
+  // 两条路都经同一个钱闸，这里没有第二套判据，也没有任何「跳过闸」的分支。
+  const policyAnswers = spendDecidedByPolicy(deps.approvalPolicy?.());
+  const quoted = quoteSpendLine({ vendorKey, modelKey, parameters: {} });
+  const grantId = mintSpendGrant({
+    nodeIds: [nodeId],
+    maxAttemptsPerNode: 1,
+    ttlMs: 30 * 60 * 1000,
+    ...(policyAnswers ? { quote: { lines: [quoted], amount: quoted.amount } } : {}),
+  });
   const params = (args.params && typeof args.params === "object" && !Array.isArray(args.params))
     ? (args.params as Record<string, unknown>)
     : {};
@@ -131,6 +158,8 @@ export async function tryModel(
       modelKey,
       taskKind,
       status: result.status,
+      /** 这笔钱是用户在 Nomi 窗口里按的，还是「全自动」档位代答的（与 Run 侧收据同一套说法）。 */
+      spendDecidedBy: policyAnswers ? "policy:full_auto" : "user",
       assets: assets.map((asset) => ({ type: asset.type, url: asset.url })),
       /** 上游原文（脱敏后原样）。AI 自己收敛靠的就是这一段，不是我们的分类码。 */
       providerResponse: upstream,
@@ -139,6 +168,7 @@ export async function tryModel(
     unverified: unverified("asset_upload_works"),
     changes: [{ state: "S11.5", summary: `${modelKey} produced one artifact on ${taskKind}.` }],
     blastRadius: { ...noBlast(), outboundRequests: billableRequests(origin) },
+    // 账本上分得清这笔是谁点的头：策略代答，还是用户在窗口里按的。
     nextAction: {
       kind: "none",
       userSees: `${model.labelZh || modelKey} produced an artifact. It is usable in Nomi's model pickers now.`,

@@ -115,6 +115,12 @@ export type DispatchContext = {
   integrationSessions?: IntegrationSessionService
   /** GUI-owned credential handoff effect. Called after the durable handoff is queued. */
   openCredentialsInNomi?: (input: { sessionId: string; vendorName: string }) => { opened: boolean } | void | Promise<{ opened: boolean } | void>
+  /**
+   * 用户此刻选的审批档位（宿主持有的那一份快照）。**它只被读，不被这一层解释**——
+   * 「该不该弹卡」全仓只有 `spendDecidedByPolicy` 回答（capabilityApprovalPolicy.ts:144）。
+   * 不传 = 不猜档位 = 照旧弹卡，与 `generationTransportAdapters.decideByPolicyAfterDraft` 同一条纪律。
+   */
+  approvalPolicy?: () => import('../shared/agentCapabilities/capabilityApprovalPolicy').ProjectAgentApprovalPolicy | undefined
 }
 
 const PROJECT_SESSION_RETRY = 'Open a new project session and retry'
@@ -801,6 +807,9 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
         // 试跑走的就是画布那条执行器；这里只是把同一个 runTask 递过去，不另起一条。
         runTask: ctx.runTask,
+        // 「该不该问人」由用户的档位决定，不由入口决定：档位原样往下递，判据只有
+        // `spendDecidedByPolicy` 一处。宿主没给 = 不猜 = 照旧问人。
+        ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
       })
     }
     default:
