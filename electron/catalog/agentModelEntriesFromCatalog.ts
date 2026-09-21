@@ -11,16 +11,11 @@
 import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import type { AgentModelEntry } from "../shared/agentCapabilities/availableModels";
 import type { ModelAvailabilityFacts } from "../shared/agentCapabilities/modelSpecProjection";
-import { deriveModelListing, type ModelListingEntry } from "./modelCatalogListing";
+import { deriveModelListing } from "./modelCatalogListing";
 import type { CatalogState } from "./types";
 import type { KeyStatusProbe } from "./secrets";
 
 export type CatalogAgentModel = { entry: AgentModelEntry; availability: ModelAvailabilityFacts };
-
-/** 目录行的可用性那三样——`ModelListingEntry` 已经算好，这里只是取出来，不重算。 */
-function availabilityOf(row: ModelListingEntry): ModelAvailabilityFacts {
-  return { keyStatus: row.keyStatus, usable: row.usable, statusReason: row.statusReason };
-}
 
 /**
  * 目录 → `AgentModelEntry` + 可用性。没有档案的模型**照列**（`modes` 给一个 catalog 定义的
@@ -79,7 +74,8 @@ export function agentModelEntriesFromCatalog(
           }
         : {}),
     };
-    out.push({ entry, availability: availabilityOf(row) });
+    // 可用性那三样 `ModelListingEntry` 已经算好，取出来即可，不重算。
+    out.push({ entry, availability: { keyStatus: row.keyStatus, usable: row.usable, statusReason: row.statusReason } });
   }
   return out;
 }

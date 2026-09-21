@@ -101,19 +101,15 @@ export async function normalizeStoredDraft(input: {
 }): Promise<{ operation: GenerationOperationLike; clearedParameters: string[] }> {
   const { operation, registry, videoModelCandidates } = input;
   if (operation.state !== "draft") return { operation, clearedParameters: [] };
-  const strip = (candidate: PlanCandidate) => stripParametersNotAccepted(candidate, registry, videoModelCandidates);
   const cleared = new Set<string>();
   let current = operation;
-  const top = strip(operation.candidate);
-  if (top.cleared.length > 0) {
-    for (const key of top.cleared) cleared.add(key);
-    current = await input.patch(input.projectId, input.operationId, { parameters: top.candidate.parameters }, input.now);
-  }
-  for (const shot of operation.shots ?? []) {
-    const shotStrip = strip(shot.candidate);
-    if (shotStrip.cleared.length === 0) continue;
-    for (const key of shotStrip.cleared) cleared.add(key);
-    current = await input.patch(input.projectId, input.operationId, { parameters: shotStrip.candidate.parameters }, input.now, shot.shotId);
+  // 顶层候选与每一镜是同一段逻辑，走同一个循环（`shotId` 缺省 = 顶层）。
+  const units = [{ candidate: operation.candidate, shotId: undefined as string | undefined }, ...(operation.shots ?? [])];
+  for (const unit of units) {
+    const stripped = stripParametersNotAccepted(unit.candidate, registry, videoModelCandidates);
+    if (stripped.cleared.length === 0) continue;
+    for (const key of stripped.cleared) cleared.add(key);
+    current = await input.patch(input.projectId, input.operationId, { parameters: stripped.candidate.parameters }, input.now, unit.shotId);
   }
   return { operation: current, clearedParameters: [...cleared].sort() };
 }

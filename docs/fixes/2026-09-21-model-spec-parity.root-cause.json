@@ -251,11 +251,6 @@
       "symbol": "resolveArchetypeForModel"
     },
     {
-      "kind": "write",
-      "path": "electron/catalog/agentModelEntriesFromCatalog.ts",
-      "symbol": "availabilityOf"
-    },
-    {
       "kind": "read",
       "path": "electron/shared/modelArchetypes/index.ts",
       "symbol": "resolveArchetypeForModel"
@@ -314,6 +309,11 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/usableVendorModel.ts",
       "symbol": "modelMatchesModelKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/agentModelEntriesFromCatalog.ts",
+      "symbol": "deriveModelListing"
     }
   ],
   "door_reduction": {

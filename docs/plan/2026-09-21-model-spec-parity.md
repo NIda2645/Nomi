@@ -128,13 +128,9 @@ UI 面压根不传 `vendor/modelKey`（`src/workbench/generationCanvas/store/can
   那会变成第四份。正解是接到**准入契约**这一份上——它才是真正决定成败的那份。
 
 ## 6. 残余风险 / 没做的
-- `src/config/modelArchetypes`（image/audio/3d 共 58 个档案）仍住渲染层，主进程够不到；
-  video 那 39 个已在 `electron/shared/videoCapabilities`（index.ts 自称 *canonical home*）。
-  **本刀不做这次搬家**（42 个数据文件 + 17 个测试 + 85 个消费方，是它自己的一刀）。
-  代价：模型面详情里的**人话文案**（`vendorTerm`/`intent`/`hint`/`slots`）在外部面仍只对 video 齐全；
-  **参数与变体两面等价**，因为它们来自准入契约。这条写进合同 `residual_risks`。
-- `ParameterField` 新增 `min/max` 后，onboarding 字段里没有范围声明的模型仍然无范围可判——
-  那是目录数据的缺口，不是校验层的缺口，按 R17 记成「能判的就判、判不了的明说」。
+
+> **这一节的原内容（「本刀不做档案搬家」）已被下面 2026-09-22 的附录推翻——搬家做了。**
+> 当前的残余风险以根因合同 `residual_risks` 为准。
 
 ---
 
