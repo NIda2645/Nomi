@@ -119,7 +119,9 @@ try {
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   const cardProbe = await proveProbe(card, 'The paid confirmation lives in the agent panel intervention slot')
   await expect(card.locator(PRICE_UNAVAILABLE), '这台机器的目录里没有价目，卡上如实说算不出')
-    .toHaveText('暂时算不出价格')
+    // 2026-09-22 换壳：这句话搬到页脚左下，措辞按用户拍板换成下面这一句
+    // （它比「暂时算不出」多说了一件事：钱还是会扣，只是由供应商算）。锚点没变。
+    .toHaveText('价格未知 · 以供应商账单为准')
   expect(walk.fixture.images, '卡还没按之前，一次供应商生成都没发生').toHaveLength(0)
 
   // ② 在卡上把清晰度换掉。这是真的点开下拉再选一项——不是往 store 里写一个值。

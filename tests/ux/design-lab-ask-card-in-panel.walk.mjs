@@ -93,7 +93,7 @@ try {
         })
         const primary = card.querySelector('[data-v4-control="confirm"], [data-v4-control="ask-continue"]')
         const primaryRect = primary?.getBoundingClientRect()
-        const close = card.querySelector('[data-v4-control="reject"], [data-v4-control="ask-dismiss"]')
+        const close = card.querySelector('[data-v4-control="slot-dismiss"]')
         const closeRect = close?.getBoundingClientRect()
         const body = card.querySelector('[data-v4-block="ask-question"]')?.closest('div[class*="p-"]')
           ?? [...card.children].find((child) => child.querySelector('[data-v4-row]') || child.querySelector('p'))

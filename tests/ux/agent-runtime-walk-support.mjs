@@ -76,7 +76,12 @@ export const EMPTY_STARTER = '[data-v4-starter]'
 export const APPROVAL_CARD = '[data-v4-block="intervention"]'
 export const INTERVENTION_SLOT = APPROVAL_CARD
 export const INTERVENTION_CONFIRM = '[data-v4-control="confirm"]'
-export const INTERVENTION_REJECT = '[data-v4-control="reject"]'
+/**
+ * 卡上那颗否定动作（×）。2026-09-22 换壳后它由 `V4SlotShell` 统一摆在**右上**，
+ * 锚点随之从 `reject` 改成 `slot-dismiss`——它不再是页脚里的一颗钮，而是外壳的零件。
+ * 常量在这里改一次，全部走查跟着走（这就是它当初被抽成常量的理由）。
+ */
+export const INTERVENTION_REJECT = '[data-v4-control="slot-dismiss"]'
 export const INTERVENTION_CONFIRM_REJECT = '[data-v4-control="confirm-reject"]'
 export const INTERVENTION_CANCEL_REJECT = '[data-v4-control="cancel-reject"]'
 export const INTERVENTION_ESCALATE = '[data-v4-control="escalate"]'

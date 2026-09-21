@@ -246,8 +246,9 @@ function V4PriceRow({ price }: { price: NonNullable<InterventionData['price']> }
         <span className="min-w-0 truncate">{price.breakdown}</span>
         {/* 合计**搬到页脚左下**了（2026-09-22 换壳）：那里离按钮两厘米，是按下去之前
             最后扫的那一眼。这一行从此只说**算式**——同一个数印两处，改参数时一定有一个先漂。
-            `data-v4-price` 这个锚点留着：走查靠它认「这张卡报不报得出价」。 */}
-        <span className="sr-only" data-v4-price={known ? 'total' : 'unavailable'}>{price.total ?? price.unavailable}</span>
+            `data-v4-price` 这个锚点跟着那个数一起搬到页脚（见下面 `slot-total`），
+            不在这里留一个 sr-only 的影子：走查断的是「用户看得见的那个价」，
+            挂在看不见的元素上就成了另一种假绿。 */}
       </V4Row>
       {price.perItem?.length ? (
         <details className="group" data-v4-block="price-per-item">
@@ -446,6 +447,9 @@ export function V4Intervention({
                 <span
                   className={cn('min-w-0 truncate tabular-nums', data.price?.total ? 'font-semibold text-nomi-ink' : 'text-nomi-warning')}
                   data-v4-block="slot-total"
+                  // 走查认「这张卡报不报得出价」靠的就是这个属性（`PRICE_TOTAL` /
+                  // `PRICE_UNAVAILABLE` 两个共享选择器）。它跟着那个数从卡体搬到页脚。
+                  data-v4-price={data.price?.total ? 'total' : 'unavailable'}
                 >
                   {data.totalLead}
                 </span>

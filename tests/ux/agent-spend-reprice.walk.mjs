@@ -97,8 +97,11 @@ try {
   // 时刻②之一：价格**当场**变了。这是本轮修的那件事——本地按同一条算式重算，不等一个来回。
   await expect(card.locator(PRICE_TOTAL), '改完参数，价格行当场跟着动（基价 + 规格加价）')
     .toContainText(UPGRADED_PRICE, { timeout: DEFAULT_TIMEOUT_MS })
-  // 主按钮上印的是同一个数：两个地方印同一件事，任何一个先漂都是在骗按下去的那个人。
-  await expect(card.locator(INTERVENTION_CONFIRM)).toContainText(UPGRADED_PRICE)
+  // 2026-09-22 换壳：这个数只印**一处**了（页脚左下，上一条已经断过）。
+  // 原来它同时印在主按钮上，靠这条断言盯着两处别漂；现在的做法更直接——
+  // 只有一处可漂。所以这里改成断言按钮**不印金额**，那正是「只印一处」的机器判据。
+  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮只说动作，金额只在页脚那一处')
+    .not.toContainText(UPGRADED_PRICE)
   await walk.snap('reprice-02-price-follows-the-chip')
 
   // 时刻②之二：**画布节点一个字都没动**。价格已经变了 = 改动确实落下了，
