@@ -43,6 +43,9 @@ function makeService(dir: string) {
   };
   const sessions = new IntegrationSessionService({
     dir,
+    // 不给 filePath 就落到 capabilityCoreDir()——本机真实的 ~/.nomi/capability-core，
+    // 那份文件被真 app 写到 101 条时这里恒红（与 mcpOnboardingDefects.test.ts 同样隔离）。
+    filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
     credentialResolver: () => ({ apiKey: "sk-loopback", vendorKey: "deepseek" }),
     compilerAvailable: () => true,
