@@ -181,6 +181,26 @@
         "symbol": "useNodeMediaMeasurement"
       },
       "reason": "现有解码回填统一移到所有full/LOD/card宿主共用的hook，继续使用MEDIA_DIMENSION_UPDATE_OPTIONS禁止save/event/undo。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-11-audio-reference-slot-gate.root-cause.json",
+      "path": "src/config/modelArchetypes/anchorPolicy.ts",
+      "symbol": "SLOT_ACCEPTS",
+      "anchor": {
+        "path": "electron/shared/modelArchetypes/anchorPolicy.ts",
+        "symbol": "SLOT_ACCEPTS"
+      },
+      "reason": "2026-09-21 档案整体从渲染层搬进 electron/shared（主进程要读得到档案才能在准入层校验参数），59 个文件原样搬、零转发壳。anchorPolicy.ts 与 SLOT_ACCEPTS 都没改名也没改内容，槽位接受哪些素材类型这条不变量仍归它管。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-09-storyboard-anchor-policy.root-cause.json",
+      "path": "src/config/modelArchetypes/anchorPolicy.ts",
+      "symbol": "anchorsConsumedBy",
+      "anchor": {
+        "path": "electron/shared/modelArchetypes/anchorPolicy.ts",
+        "symbol": "anchorsConsumedBy"
+      },
+      "reason": "同上，2026-09-21 档案搬家：anchorsConsumedBy 原样跟着 anchorPolicy.ts 搬到 electron/shared/modelArchetypes，函数名与函数体都没动，「一个模式消费哪些锚」仍由它说了算。"
     }
   ],
   "retirements": [
