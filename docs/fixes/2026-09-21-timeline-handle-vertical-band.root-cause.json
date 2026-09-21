@@ -1,0 +1,116 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-timeline-handle-vertical-band",
+  "problem_type": "Obstacle avoidance modeled in one dimension: docks in a different horizontal band treated as blocking",
+  "symptom": "2026-09-21 real-app walkthrough (canvas-handles-alt-drag, screenshot 09a, 1280 wide with the Agent panel open): the collapsed timeline pill sat on top of the canvas tool cluster and covered the canvas controls help button.",
+  "direct_cause": "resolveTimelineHandleLeft received every bottom dock as a horizontal interval. The batch-generate bar floats one row above the pill and spans almost the whole narrow canvas, so the merged intervals left no free gap; the function then fell back to the ideal centered position, which overlapped the tool cluster.",
+  "class_root": "The avoidance rule answered 'which horizontal spans are taken' without asking 'taken at the height where the handle lives'. collectBottomDockRects already returns top/bottom, but the placement layer dropped them, so any dock stacked above the bottom row (batch bar, selection bar, collapsed Agent dock lifted by transport clearance) can starve the gap search.",
+  "affected_population": [
+    "Users on narrow canvases (small windows, Agent panel open) whenever the batch-generate bar is showing"
+  ],
+  "scope_paths": [
+    "src/workbench/generation/timelineHandlePlacement.ts",
+    "src/workbench/generation/GenerationWorkspace.tsx"
+  ],
+  "entry_points": [
+    "Collapsed timeline handle placement (GenerationWorkspace useTimelineHandleLeft)"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection",
+      "checked_at": "2026-09-21",
+      "purpose": "Axis-aligned rectangles collide only when they overlap on both axes; testing one axis over-reports collisions."
+    }
+  ],
+  "invariants": [
+    "Only docks that overlap the handle's own vertical band constrain its horizontal placement; without a band (legacy callers) every dock counts, never fewer."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/generation/timelineHandlePlacement.ts",
+      "symbol": "resolveTimelineHandleLeft"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generation/GenerationWorkspace.tsx",
+      "symbol": "resolveTimelineHandleLeft"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "Definition (pure geometry) and its only caller (measurement); already one owner."
+  },
+  "generality_proof": "The filter is by geometry, not by dock identity, so any current or future dock above or below the pill's row is ignored and any dock on the row is avoided. Unit test includes a positive control: without the band the same input overlaps the tool cluster.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generation/timelineHandlePlacement.ts",
+      "symbol": "resolveTimelineHandleLeft",
+      "responsibility": "Pure horizontal placement of the collapsed timeline handle among bottom docks."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generation/GenerationWorkspace.tsx",
+      "entry_point": "collapsed timeline handle",
+      "disposition": "enforced",
+      "evidence": "Passes the handle's measured vertical band; unit test with positive control; walkthrough asserts the help button stays hittable at 1100x720 with the batch bar showing."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/useCanvasBottomDockRects.ts",
+      "entry_point": "selection toolbar placement over bottom docks",
+      "disposition": "not-affected",
+      "evidence": "Its consumer (selectionToolbarPlacement / resolveUsableBottomAboveDocks) already tests both axes (dock.bottom <= top || dock.top >= bottom)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Third placement bug on the same handle (2026-09-10 blind centering, 2026-09-13 scope too small, 2026-09-21 one-dimensional obstacles).",
+    "same_class_scan": [
+      "node scripts/door-map.mjs resolveTimelineHandleLeft: 1 door",
+      "node scripts/door-map.mjs collectBottomDockRects: 2 doors (timeline handle, selection toolbar); the toolbar side already filters by both axes"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generation/timelineHandlePlacement.ts",
+    "invariant": "Dock avoidance for the handle is band-aware.",
+    "failure_mode": "Dropping the band filter turns the new timelineHandlePlacement.test.ts case red (it asserts the legacy result overlaps the tool cluster and the band-aware result does not).",
+    "exception_policy": "none",
+    "strategy": "Pass the handle's measured vertical band and ignore docks outside it.",
+    "artifacts": [
+      "src/workbench/generation/timelineHandlePlacement.ts",
+      "src/workbench/generation/timelineHandlePlacement.test.ts",
+      "tests/ux/canvas-shortcut-parity.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generation/timelineHandlePlacement.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generation/timelineHandlePlacement.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Same function, stricter obstacle set; no parallel path."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency change.",
+    "exit_criteria": []
+  },
+  "migration": "None.",
+  "residual_risks": [
+    "The batch bar itself can still overlap the minimap on very narrow canvases (seen in 09a); the batch bar's own placement is not changed here."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generation/timelineHandlePlacement.ts",
+    "tests": [
+      "src/workbench/generation/timelineHandlePlacement.test.ts"
+    ],
+    "why": "避让规则只住在这一个纯函数里；测试用同一组输入对照「不给带」与「给带」两种结果。"
+  }
+}

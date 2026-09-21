@@ -29,7 +29,7 @@ import {
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
-import { resolveGenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
+import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
 
@@ -64,7 +64,7 @@ function resetMagneticHandlePosition(event: React.PointerEvent<HTMLSpanElement>)
 type GenerationFlowConnectionHandleProps = {
   side: 'left' | 'right'
   type: 'source' | 'target'
-  affordance: 'dot' | 'magnetic' | 'hidden'
+  affordance: GenerationFlowConnectionAffordance
   active: boolean
   /** `null` = 没有连线在进行；`''` = 有连线但端点不在这张卡上；否则是这张卡上被吸住的把手 id。 */
   activeHandleId: string | null
@@ -171,9 +171,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     selected,
     primarySelection,
   })
-  const connectionAffordance = collapsedGroupProxy
-    ? 'hidden'
-    : resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
+  const connectionAffordance = resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
   const isPendingConnectionSource = pendingConnectionSourceId === node.id
   const isPendingConnectionTarget = Boolean(pendingConnectionSourceId && !isPendingConnectionSource)
   const startConnectionLabel = t('generationCommon.node.startConnection')

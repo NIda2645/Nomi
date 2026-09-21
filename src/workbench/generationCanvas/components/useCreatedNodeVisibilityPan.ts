@@ -199,3 +199,26 @@ export function useCreatedNodeVisibilityPan(input: {
     [],
   )
 }
+
+/**
+ * 「一次手势建出好几张卡」之后把它们整簇露出来（目前的调用方：Cmd/Ctrl+D 复制）。
+ *
+ * 上面的自动露出只认「单张新增」——多张一起进来通常是加载 / 批量落节点，那些不该抢视口。
+ * 但 ⌘D 是用户**这一下**亲手要的一簇：整簇避让把副本推到原件右边，stage 一窄它就整个落在视口外，
+ * React Flow 又只渲染可见的卡——用户看到的是「按了没反应」（2026-09-21 真机走查实拍）。
+ * 所以由发起手势的一方显式要求露出，几何仍走同一个 `revealCreatedSequenceViewport`（不另写一份）。
+ */
+export function useRevealCreatedNodes(input: {
+  animateViewportTo: (zoom: number, offset: Offset, duration?: number) => void
+  readViewportTarget: () => { zoom: number; offset: Offset }
+  stageRef: React.RefObject<HTMLDivElement | null>
+}): (nodes: readonly GenerationCanvasNode[]) => void {
+  const { animateViewportTo, readViewportTarget, stageRef } = input
+  return React.useCallback((created) => {
+    const newest = created[created.length - 1]
+    const rect = stageRef.current?.getBoundingClientRect()
+    if (!newest || !rect) return
+    const next = revealCreatedSequenceViewport(created, newest, readViewportTarget(), rect.width, rect.height)
+    if (next) animateViewportTo(next.zoom, next.offset, 200)
+  }, [animateViewportTo, readViewportTarget, stageRef])
+}

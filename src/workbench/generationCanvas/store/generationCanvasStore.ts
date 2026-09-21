@@ -22,6 +22,8 @@ import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
 import { assignClonedShotIndexes } from '../model/shotNumbering'
+import { placementOrigin } from '../model/canvasPlacement'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { replayCanvasEvents } from '../events/canvasEventReducer'
 import { withCanvasWriteBoundary } from '../events/canvasWriteBoundary'
@@ -31,6 +33,20 @@ import { createCanvasGraphActions } from './canvasGraphActions'
 import { createCanvasRunActions } from './canvasRunActions'
 
 export { __resetCanvasUndoJournalForTests as __resetGenerationCanvasHistoryForTests } from '../events/canvasUndoJournal'
+
+/**
+ * 复制类动作（拖动复制 / Cmd+D）借用剪贴板走 pasteNodes，这样复制与粘贴只有一条落地路径；
+ * 借完必须还——用户刚 ⌘C 的内容不能被一次复制悄悄换掉。
+ */
+function pasteThroughBorrowedClipboard<T>(payload: NonNullable<ReturnType<typeof getClipboard>>, run: () => T): T {
+  const previousClipboard = getClipboard()
+  try {
+    setClipboard(payload)
+    return run()
+  } finally {
+    setClipboard(previousClipboard)
+  }
+}
 
 export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscribeWithSelector(immer((set, get, store) => withCanvasWriteBoundary({
   isReady: false,
@@ -72,17 +88,20 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   duplicateNodesForDrag: (nodeIds) => {
     const payload = buildSelectedClipboard({ ...get(), selectedNodeIds: nodeIds })
     if (!payload) return new Map()
-    const previousClipboard = getClipboard()
-    try {
-      setClipboard(payload)
+    return pasteThroughBorrowedClipboard(payload, () => {
       get().pasteNodes({ x: Math.min(...payload.nodes.map((node) => node.position.x)), y: Math.min(...payload.nodes.map((node) => node.position.y)) })
       const copies = get().selectedNodeIds
       const mapping = new Map(payload.nodes.map((node, index) => [node.id, copies[index]]))
       for (const original of payload.nodes) get().moveNode(mapping.get(original.id)!, original.position)
       return mapping
-    } finally {
-      setClipboard(previousClipboard)
-    }
+    })
+  },
+  duplicateSelectedNodes: () => {
+    // Cmd/Ctrl+D：所选节点 + 它们**之间**的边原地偏移复制（LibTV「复制节点和连线」）。
+    // 与拖动复制同一套原语：借剪贴板走 pasteNodes（一个撤销点、镜头领新号、整簇避让），用完把用户的 ⌘C 还回去。
+    const payload = buildSelectedClipboard(get())
+    if (!payload) return
+    pasteThroughBorrowedClipboard(payload, () => get().pasteNodes())
   },
   copySelectedNodes: () => {
     const nextClipboard = buildSelectedClipboard(get())
@@ -107,7 +126,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     })
     emitCanvasGesture(removedIds.map((nodeId) => ({ type: 'canvas.node.removed', payload: { nodeId } })))
   },
-  pasteNodes: (basePosition) => {
+  pasteNodes: (basePosition, anchor) => {
     const currentState = get()
     const clipboardPayload = getClipboard()
     if (!clipboardPayload) return
@@ -119,13 +138,21 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
       ? (() => {
           const minX = Math.min(...numberedNodes.map((node) => node.position.x))
           const minY = Math.min(...numberedNodes.map((node) => node.position.y))
-          const dx = Math.round(basePosition.x - minX)
-          const dy = Math.round(basePosition.y - minY)
+          // 锚点按粘贴簇**看得见的**外接盒算（卡面尺寸唯一真相源 resolveNodeVisualSize），
+          // 「中心压在光标下」才是真的中心，不是按默认尺寸猜的。
+          const origin = anchor
+            ? placementOrigin({ point: basePosition, anchor }, {
+                width: Math.max(...numberedNodes.map((node) => node.position.x + resolveNodeVisualSize(node).width)) - minX,
+                height: Math.max(...numberedNodes.map((node) => node.position.y + resolveNodeVisualSize(node).height)) - minY,
+              })
+            : basePosition
+          const dx = Math.round(origin.x - minX)
+          const dy = Math.round(origin.y - minY)
           return numberedNodes.map((node) => ({
             ...node,
             position: {
-              x: Math.max(40, Math.round(node.position.x + dx)),
-              y: Math.max(40, Math.round(node.position.y + dy)),
+              x: Math.round(node.position.x + dx),
+              y: Math.round(node.position.y + dy),
             },
           }))
         })()

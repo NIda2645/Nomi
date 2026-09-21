@@ -1,5 +1,5 @@
 /**
- * 「搬一整块」——把一个框/组连同它装的东西一起挪走。
+ * 「搬一整块」——把一个框/组连同它装的东西一起挪走（以及 Alt/⌥ 拖框时先在原地复制出来的那一块）。
  *
  * 从 canvasGraphActions 拆出来是结构不是行为（R9：那个文件顶到了 800 行门岗）。
  * 拆的边界选在这一个动作上，因为它自己带着一条别处没有的不变量：
@@ -8,9 +8,15 @@
  */
 import { bumpPersistRevision, shouldEmitCanvasMutation, shouldPersistCanvasMutation } from './canvasGuards'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
+import { getHistoryFlags, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { buildSelectedClipboard, cloneClipboardPayload } from './canvasClipboard'
+import { assignClonedShotIndexes } from '../model/shotNumbering'
+import { createGroupId } from './canvasIds'
+import type { NodeGroup } from '../model/generationCanvasTypes'
 import type { CanvasGraphActions, CanvasSliceCreator } from './canvasStoreTypes'
+import i18n from '../../../i18n'
 
-type CanvasGroupMoveActions = Pick<CanvasGraphActions, 'moveGroupNodes'>
+type CanvasGroupMoveActions = Pick<CanvasGraphActions, 'moveGroupNodes' | 'duplicateGroupForDrag'>
 
 export const createCanvasGroupMoveActions: CanvasSliceCreator<CanvasGroupMoveActions> = (set, get) => ({
   moveGroupNodes: (groupId, delta, options) => {
@@ -67,5 +73,54 @@ export const createCanvasGroupMoveActions: CanvasSliceCreator<CanvasGroupMoveAct
         ...(postGroup ? [{ type: 'canvas.group.updated', payload: { group: postGroup } }] : []),
       ])
     }
+  },
+  duplicateGroupForDrag: (groupId) => {
+    // 复制原语与节点 Alt 拖、⌘C/⌘V 同一份（canvasClipboard 的 build/clone：新身份、镜号重领、
+    // 只带成员之间的连线）；这里只多做一件节点复制做不到的事——**同一次事务里**建出新框并把副本装进去，
+    // 这样 ⌘Z 一次就撤掉整个副本（先粘贴再 createGroup 会是两个撤销点）。
+    const current = get()
+    const source = current.groups.find((candidate) => candidate.id === groupId)
+    if (!source) return null
+    const memberIds = current.nodes
+      .filter((node) => source.nodeIds.includes(node.id) && (node.categoryId || 'shots') === source.categoryId)
+      .map((node) => node.id)
+    const payload = memberIds.length ? buildSelectedClipboard({ ...current, selectedNodeIds: memberIds }) : null
+    const cloned = payload ? cloneClipboardPayload(payload) : { nodes: [], edges: [], selectedNodeIds: [] }
+    const now = Date.now()
+    const nextGroupId = createGroupId(source.categoryId)
+    // clone 统一偏移 CLIPBOARD_OFFSET；这里要「原地」出生（松手点由随后的拖动决定），所以按原件位置还原。
+    const copies = assignClonedShotIndexes(current.nodes, cloned.nodes).map((node, index) => ({
+      ...node,
+      position: { ...payload!.nodes[index].position },
+      groupId: nextGroupId,
+    }))
+    const group: NodeGroup = {
+      id: nextGroupId,
+      name: i18n.t('generationCommon.whiteboard.copyName', { name: source.name }),
+      categoryId: source.categoryId,
+      nodeIds: copies.map((node) => node.id),
+      ...(source.frameBounds ? { frameBounds: { ...source.frameBounds } } : {}),
+      ...(source.description ? { description: source.description } : {}),
+      ...(source.collapsed ? { collapsed: true } : {}),
+      // 组入参/出参不复制：它们声明的是和组外节点的连线，而复制只带成员之间的连线（与节点复制同一边界）。
+      createdAt: now,
+      updatedAt: now,
+    }
+    pushUndoSnapshot(current)
+    set((state) => {
+      state.nodes = [...state.nodes, ...copies]
+      state.edges = [...state.edges, ...cloned.edges]
+      state.groups.push(group)
+      state.selectedNodeIds = copies.map((node) => node.id)
+      state.pendingConnectionSourceId = ''
+      bumpPersistRevision(state)
+      Object.assign(state, getHistoryFlags())
+    })
+    emitCanvasGesture([
+      ...copies.map((node) => ({ type: 'canvas.node.added', payload: { node } })),
+      ...cloned.edges.map((edge) => ({ type: 'canvas.edge.added', payload: { edge } })),
+      { type: 'canvas.group.created', payload: { group } },
+    ])
+    return nextGroupId
   },
 })
