@@ -167,6 +167,34 @@ const RULES = [
     },
   },
   {
+    id: 'ffmpeg-still-input-outside-owner',
+    label: '手写 ffmpeg `-loop 1` 静帧输入——`-t` 一旦取成时间轴全长，导出成本就随叠加条目数成倍涨',
+    hint: '静帧输入只由 electron/export/ffmpegFiltergraph.ts 的 loopedStillInput() 构造，'
+      + '`-t` 取**它自己的可见窗口**；enable 只挡混合、不挡上游生成。',
+    scan(code, file) {
+      // 为什么必须拦（2026-09-21 的收口）：`enable='between(t,a,b)'` 看起来像「只在这段时间才干活」，
+      // 但 libavfilter 的 timeline 开关只决定这一帧混不混，上游那条 `-loop 1` 的静帧流照样按 `-t`
+      // 逐帧产出、入队、参与 framesync。`-t` 写成全片长时成本 = 条目数 × 全片帧数 × 全画幅 RGBA：
+      // 60 条字幕把 107 秒的导出拖成 75 分钟、内存 1.01 GB → 6.71 GB，**而且零 ffmpeg 报错**。
+      // 典型的「写的人当场看不出来」：两三条字幕的时间轴上完全正常。
+      //
+      // 判据按闸不按数（同 unguarded-fsync）：`-loop` 这个字面量只许出现在收口函数 loopedStillInput 里。
+      // 收口函数一个入参就是「可见窗口」，写不出全片长；任何别处手搓输入参数当场报红。
+      // 按计数就会留洞：删掉收口里那一处、别处新加一处，计数不变，门岗照样绿。
+      if (!file.startsWith(`${path.join(repoRoot, 'electron', 'export')}${path.sep}`)) return []
+      const hits = []
+      const lines = code.split('\n')
+      lines.forEach((line, i) => {
+        if (!/['"`]-loop['"`]/.test(line)) return
+        let start = i - 1
+        while (start >= 0 && !/^\}/.test(lines[start])) start -= 1
+        if (/function\s+loopedStillInput\b/.test(lines.slice(start + 1, i).join('\n'))) return
+        hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+      })
+      return hits
+    },
+  },
+  {
     id: 'unguarded-fsync',
     label: '绕过落盘屏障直接 fsync——测试里关不掉，productionRun 的 flake 从这里长回来',
     hint: '文件 fd 用 fsyncIfDurable(fd)（electron/durability.ts）；'

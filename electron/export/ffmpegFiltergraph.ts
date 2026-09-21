@@ -315,6 +315,51 @@ function collectVisualTransitionGroups(
   return { groups, warnings };
 }
 
+/** 叠加层输入在自己窗口前后各留的余量帧数（见 `loopedStillInput` 的注释）。 */
+const OVERLAY_INPUT_MARGIN_FRAMES = 2;
+
+/**
+ * 全仓唯一构造「循环静帧输入」（`-loop 1`）的地方。守一条不变量：
+ *
+ * > **`-t` 只能是消费这张静帧的那个可见窗口的长度，绝不是时间轴全长。**
+ *
+ * `enable` 是 libavfilter 的 timeline 开关，只决定「这一帧混不混」——官方文档原话是 disabled 时
+ * 「the frame will be sent unchanged to the next filter」；上游那条 `-loop 1` 的静帧流照样按 `-t`
+ * 逐帧产出、入队、参与 framesync。所以 `-t` 一旦写成全片长，成本就是
+ * **条目数 × 全片帧数 × 全画幅 RGBA**：2026-09-21 实测 60 条字幕把 107 秒的导出拖成 75 分钟、
+ * 峰值内存 1.01 GB → 6.71 GB，而且全程零 ffmpeg 报错，用户只会以为「Nomi 导出很慢」。
+ * 根因合同：`docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json`。
+ *
+ * `framerate` 传了就把静帧的时间网格钉到时间轴 fps。不传时 ffmpeg 的 image2 demuxer 默认 25 fps,
+ * 那是一个隐式上游默认值，会让「窗口前后留几帧余量」算不准（60 fps 时间轴上 2 帧只有 33 ms,
+ * 比 25 fps 的一个帧周期还短）。
+ */
+function loopedStillInput(
+  assetId: string,
+  absolutePath: string,
+  windowSeconds: number,
+  framerate?: number,
+): FfmpegFiltergraphPlanInput {
+  if (!Number.isFinite(windowSeconds) || windowSeconds <= 0) {
+    throw new FfmpegFiltergraphError(
+      "invalid_manifest",
+      `Still input ${assetId} needs a positive visible window, got ${windowSeconds}`,
+    );
+  }
+  return {
+    assetId,
+    path: absolutePath,
+    kind: "image",
+    inputArgs: [
+      "-loop",
+      "1",
+      ...(framerate === undefined ? [] : ["-framerate", formatNumber(framerate)]),
+      "-t",
+      formatSeconds(windowSeconds),
+    ],
+  };
+}
+
 function buildInputs(resolvedClips: ResolvedClip[], fps: number): FfmpegFiltergraphPlanInput[] {
   const byAsset = new Map<string, ResolvedClip[]>();
   for (const resolvedClip of resolvedClips) {
@@ -323,13 +368,17 @@ function buildInputs(resolvedClips: ResolvedClip[], fps: number): FfmpegFiltergr
 
   return [...byAsset.values()].map((clips) => {
     const { asset } = clips[0];
+    // 静帧的可见窗口 = 用到它的那些 clip 里最长的一个（每个分支后面各自 trim 到自己的时长）。
     const maxDurationSeconds = Math.max(...clips.map(({ clip }) => secondsFromFrames(clip.endFrame - clip.startFrame, fps)));
 
+    if (asset.kind === "image") {
+      return loopedStillInput(asset.id, asset.absolutePath, maxDurationSeconds);
+    }
     return {
       assetId: asset.id,
       path: asset.absolutePath,
       kind: asset.kind,
-      inputArgs: asset.kind === "image" ? ["-loop", "1", "-t", formatSeconds(maxDurationSeconds)] : [],
+      inputArgs: [],
     };
   });
 }
@@ -652,35 +701,58 @@ function buildTransitionVisualGraph(
 }
 
 /**
- * 文字叠加链：每条 overlay PNG 作为新输入（-loop 1 -t 全长），在 [start,end] 区间 overlay 到视频上。
+ * 文字叠加链：每条 overlay PNG 作为新输入，**只生成它自己可见的那一段**（`loopedStillInput`），
+ * 再用 `setpts` 落到时间轴上的位置，最后在 [start,end] 区间 overlay 到视频上。
  * PNG 是全画幅透明 → overlay=0:0 对齐。接在视觉链尾（最上层）。返回新增滤镜行 + 输入 + 最终视频 label。
+ *
+ * 窗口前后各留 `OVERLAY_INPUT_MARGIN_FRAMES` 帧余量，为的是 `enable` 那个**闭区间**的两个端点帧
+ * （t=start 与 t=end）在 framesync 里一定取得到叠加帧。两端之外不会「多叠」，因为 `enable` 关着：
+ * 窗口开始之前 framesync 按 `in[1].before = EXT_NULL` 直接把主帧放过去
+ * （`libavfilter/framesync.c` `ff_framesync_init_dualinput`），EOF 之后按 `eof_action=pass` 同样直通。
  */
 function buildTextOverlayGraph(
   textOverlays: FfmpegTextOverlayInput[],
   assetInputCount: number,
   baseVideoLabel: string,
   fps: number,
-  durationSeconds: number,
   pixelFormat: string,
 ): { filters: string[]; inputs: FfmpegFiltergraphPlanInput[]; videoLabel: string } {
   const filters: string[] = [];
   const inputs: FfmpegFiltergraphPlanInput[] = [];
   let label = baseVideoLabel;
   textOverlays.forEach((overlay, index) => {
+    if (
+      !Number.isFinite(overlay.startFrame)
+      || !Number.isFinite(overlay.endFrame)
+      || overlay.endFrame <= overlay.startFrame
+    ) {
+      throw new FfmpegFiltergraphError(
+        "invalid_manifest",
+        `Text overlay ${index} needs endFrame > startFrame, got ${overlay.startFrame}..${overlay.endFrame}`,
+      );
+    }
     const inputIndex = assetInputCount + index;
-    inputs.push({
-      assetId: `text_overlay_${index}`,
-      path: overlay.path,
-      kind: "image",
-      inputArgs: ["-loop", "1", "-t", formatSeconds(durationSeconds)],
-    });
     const start = secondsFromFrames(overlay.startFrame, fps);
     const end = secondsFromFrames(overlay.endFrame, fps);
+    const streamStartFrame = Math.max(0, overlay.startFrame - OVERLAY_INPUT_MARGIN_FRAMES);
+    const streamEndFrame = overlay.endFrame + OVERLAY_INPUT_MARGIN_FRAMES;
+    inputs.push(
+      loopedStillInput(
+        `text_overlay_${index}`,
+        overlay.path,
+        secondsFromFrames(streamEndFrame - streamStartFrame, fps),
+        fps,
+      ),
+    );
+    const placedLabel = `vtxtsrc${index}`;
+    filters.push(
+      `[${inputIndex}:v]setpts=PTS-STARTPTS+${formatSeconds(secondsFromFrames(streamStartFrame, fps))}/TB[${placedLabel}]`,
+    );
     const isLast = index === textOverlays.length - 1;
     const out = isLast ? "voutfinal" : `vtxt${index}`;
     const formatSuffix = isLast ? `,format=${pixelFormat}` : "";
     filters.push(
-      `[${label}][${inputIndex}:v]overlay=0:0:eof_action=pass:enable='between(t,${formatSeconds(start)},${formatSeconds(end)})'${formatSuffix}[${out}]`,
+      `[${label}][${placedLabel}]overlay=0:0:eof_action=pass:enable='between(t,${formatSeconds(start)},${formatSeconds(end)})'${formatSuffix}[${out}]`,
     );
     label = out;
   });
@@ -715,7 +787,6 @@ export function compileFfmpegFiltergraph(input: FfmpegFiltergraphInput): FfmpegF
       inputs.length,
       visual.videoLabel,
       fps,
-      durationSeconds,
       manifest.profile.pixelFormat,
     );
     filters.push(...overlayGraph.filters);
