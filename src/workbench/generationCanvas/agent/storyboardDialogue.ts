@@ -1,4 +1,4 @@
-import type { ArchetypeMode } from '../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../electron/shared/modelArchetypes/types'
 
 const SPEAKING_PARAMETER_KEYS = new Set(['audio', 'generate_audio'])
 

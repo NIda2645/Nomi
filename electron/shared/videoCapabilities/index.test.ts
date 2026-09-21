@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { APIMART_VIDEO_MODELS } from "../../catalog/apimartVideos";
 import { applyBuiltinSeeds } from "../../catalog/seedBuiltins";
 import type { CatalogState } from "../../catalog/types";
-import { getArchetypeById } from "../../../src/config/modelArchetypes";
+import { getArchetypeById } from "../modelArchetypes";
 import {
   SEEDANCE_2_APIMART_ARCHETYPE,
   buildVideoModelCandidates,

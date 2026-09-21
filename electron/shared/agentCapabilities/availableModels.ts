@@ -23,6 +23,15 @@ export type AgentModelMode = {
   consumesAnchors?: readonly string[];
 };
 
+/** 档案声明的一个变体（`Seedance 2.0` 的 standard/fast/mini 这种）。 */
+export type AgentModelVariant = {
+  /** 下单时填进 `variantId` 的那个词。 */
+  id: string;
+  label: string;
+  /** 这个变体在供应商那边的真实模型名（诊断用；下单不填它）。 */
+  modelKey?: string;
+};
+
 export type AgentModelEntry = {
   /**
    * 目录里这个模型的 id。**模型面与宿主面同名**（`draft_shots` 的 `shots[].modelId`、
@@ -41,6 +50,15 @@ export type AgentModelEntry = {
   archetypeId?: string;
   defaultModeId: string;
   modes: AgentModelMode[];
+  /**
+   * 这个模型的变体。2026-09-22 之前**根本不投**，而准入层已经会拒未知 `variantId`
+   * ——即「可被拒、不可发现」：模型被要求填一个它无从知道的值（验收实测 P01「用 Seedance 2.0
+   * 的 Mini 档」两次都写不出 `variantId:"mini"`）。这正是 OpenAI 那条
+   * *"Don't make the model fill arguments you already know"* 的反面。
+   */
+  variants?: AgentModelVariant[];
+  /** 不填 `variantId` 时落到哪个（模型据此知道默认是什么，不必猜）。 */
+  defaultVariantId?: string;
 };
 
 /** Shared instruction text for the full catalog and the stable discovery index. */

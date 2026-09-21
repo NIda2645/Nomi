@@ -1,0 +1,456 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-model-spec-parity",
+  "problem_type": "A value the model named is neither validated nor observable: the shared admission boundary drops unknown generation parameters silently, and the canvas write path stores an unchecked model identity that the canvas read projection never returns.",
+  "symptom": "An external MCP host asks Nomi to plan 'Seedance 2.5, 720p, no audio'. Its parameter key is not one this model declares, so the plan succeeds, the spend card shows a normal price, and the delivered clip is 1080p with audio. Nothing reports an error anywhere. The same host can also create a canvas node with a model key the catalog does not have; the node is created, looks normal, and no read tool ever shows which model it carries.",
+  "direct_cause": "compileParameters pushed unknown keys onto contract.droppedFields and continued; droppedFields had no production reader. bindModelIdentity stored vendor/modelKey verbatim with a comment deferring validation to the UI, and canvasRead's strict node schema declared no model field at all.",
+  "class_root": "Nomi has no single owner for 'which parameters and which model identity this model accepts', and the one place that could still have caught a wrong value was built to discard it instead of refusing it. The deeper reason the admission layer could not do its job is physical: image/audio/3D archetypes (the curated declaration the UI parameter panel is drawn from) lived in the renderer, so the main process could not read them. Measured on the real seeded catalog before this change: 149/156 resolved modules had an EMPTY parameterSchema, so 95.5% of models reached the admission boundary with nothing to validate against.",
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/executionContract.ts",
+    "tests": [
+      "electron/capabilityCore/parameterAdmission.class.test.ts",
+      "electron/capabilityCore/executionContract.test.ts"
+    ],
+    "note": "参数值层这条不变量从此归 compileParameters/compileExecutionContract 这一层管，它有自己的类级测试。画布那半条（模型身份写入校验 + 读回）的 owner 是 canvasNodeFactory 的注入点加 core.assertCatalogModelIdentity，测试是 electron/capabilityCore/nodeModelIdentity.class.test.ts。两半合起来才是这份合同的不变量，主 owner 填参数那一层，因为它是花钱那条路上的最后一道闸。"
+  },
+  "affected_population": [
+    "Every external MCP host (Claude Code, Codex) driving generation through nomi_operation_plan / nomi_operation_preview — it has no read tool returning parameter names, so every parameter it sends is a guess.",
+    "The in-app Agent for image/audio/3d models: it is told the archetype's params while the spend path validates against the catalog's onboarding-derived schema, so an archetype-declared key absent from onboarding fields was silently discarded.",
+    "Every caller of nomi_canvas_edit / add_nodes that names vendor+modelKey: unknown identities were stored and were unreadable afterwards."
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/canvasGraph.ts",
+    "electron/capabilityCore/canvasNodeFactory.ts",
+    "electron/capabilityCore/core.ts",
+    "electron/capabilityCore/executionContract.ts",
+    "electron/capabilityCore/generationPlanPatch.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+    "electron/capabilityCore/mcpToolErrorResults.ts",
+    "electron/capabilityCore/mcpToolResults.ts",
+    "electron/capabilityCore/modelAdmissionSchema.ts",
+    "electron/capabilityCore/modelSpecRead.ts",
+    "electron/capabilityCore/moduleManifest.ts",
+    "electron/catalog/agentModelEntriesFromCatalog.ts",
+    "electron/catalog/agnesImages.ts",
+    "electron/catalog/archetypeIdentity.ts",
+    "electron/catalog/kieImages2026.ts",
+    "electron/catalog/nativeWireProfiles.ts",
+    "electron/catalog/types.ts",
+    "electron/shared/agentCapabilities/canvasRead.ts",
+    "electron/shared/agentCapabilities/modelSpecProjection.ts",
+    "electron/shared/modelArchetypes/index.ts",
+    "electron/shared/videoCapabilities/recommendation.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+    "src/workbench/generationCanvas/runner/referenceSlots.ts",
+    "src/workbench/generationCanvas/runner/usableVendorModel.ts"
+  ],
+  "entry_points": [
+    "Single-shot preview and gate_request compile a contract through compileExecutionContract.",
+    "Multi-shot draft sealing compiles one sub-contract per included shot through the same function.",
+    "MCP canvas writes create nodes through canvasGraph.addNodes, which builds them with the shared canvasNodeFactory.",
+    "The MCP canvas read projects nodes through projectCanvasRead."
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools",
+      "checked_at": "2026-09-21",
+      "purpose": "Decides how a rejected parameter must be reported: 'Input validation errors (e.g., date in wrong format, value out of range)' are Tool Execution Errors, and 'Clients SHOULD provide tool execution errors to language models to enable self-correction.' Also 'Servers MUST: Validate all tool inputs', and the Stateful Tools guidance that an unknown handle 'should return a tool execution error that says so, so the model can recover'. This is why the rejection carries the legal keys, the nearest key and the legal values instead of a generic message."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.solo.io/blog/mcp-progressive-disclosure",
+      "checked_at": "2026-09-21",
+      "purpose": "Prior art for tiered disclosure: a gateway 'replaces the upstream tool list with two meta-tools (get_tool and invoke_tool) so clients see only a lightweight index', and the article states this is a pattern layered on top of MCP rather than a protocol feature. Basis for keeping the rejection message free of a 100-model dump and pointing at the thin list instead."
+    }
+  ],
+  "invariants": [
+    "A generation parameter the caller named is either accepted into the contract or refused with a structured reason; it is never discarded while the call reports success.",
+    "A refusal carries what the caller needs to be right next time: the legal keys (or the nearest key), the legal values, the declared range, or the declared variants.",
+    "A key that cannot be proven wrong is not refused, and is not discarded either: it stays in the contract with a warning that says it was not validated.",
+    "Parameter keys that are Nomi's own planning intent rather than provider parameters are a named vocabulary, not an accident of the unknown-key path.",
+    "Leftover parameters from a previous model are removed where the model changes, and the change is reported, instead of being absorbed by the admission layer.",
+    "A model identity written onto a canvas node exists in the catalog and matches the node's media kind, and is readable back through the canvas read projection."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "compileExecutionContract"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "compileExecutionContract"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasNodeFactory.ts",
+      "symbol": "bindModelIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasNodeFactory.ts",
+      "symbol": "buildCanvasNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "buildCanvasNode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/core.ts",
+      "symbol": "deriveModelListing"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/connectedModelScope.ts",
+      "symbol": "deriveModelListing"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "buildAgentModelEntries"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "buildAgentModelEntries"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "symbol": "buildAgentModelEntries"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "listAvailableModelsForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/moduleManifest.ts",
+      "symbol": "moduleManifestSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "projectNodeModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/videoCapabilities/recommendation.ts",
+      "symbol": "effectiveVideoModes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "symbol": "canonicalVideoVariantId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "symbol": "videoVariantIdsOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasGraph.ts",
+      "symbol": "buildCanvasNodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/core.ts",
+      "symbol": "addNodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "dispatchModelSpec"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelSpecRead.ts",
+      "symbol": "listModelSpecRows"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelSpecRead.ts",
+      "symbol": "agentModelEntriesFromCatalog"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/modelSpecProjection.ts",
+      "symbol": "modelSpecRow"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneModelRead.mts",
+      "symbol": "modelSpecRow"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "symbol": "archetypeCompileOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "resolvePlanPatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelAdmissionSchema.ts",
+      "symbol": "resolveArchetypeForModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelAdmissionSchema.ts",
+      "symbol": "parameterFieldForControl"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/agentModelEntriesFromCatalog.ts",
+      "symbol": "resolveArchetypeForModel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/modelArchetypes/index.ts",
+      "symbol": "resolveArchetypeForModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpToolResults.ts",
+      "symbol": "acceptsTag"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolErrorResults.ts",
+      "symbol": "ERROR_HINT"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "stripParametersNotAccepted"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/archetypeIdentity.ts",
+      "symbol": "matchesExact"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "symbol": "resolveTaskArchetype"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/agnesImages.ts",
+      "symbol": "imageCreateOp"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/kieImages2026.ts",
+      "symbol": "createOp"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/nativeWireProfiles.ts",
+      "symbol": "volcengineSeedanceProfiles"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
+      "symbol": "assignEdgeToSlot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "symbol": "requestedMode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/usableVendorModel.ts",
+      "symbol": "modelMatchesModelKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/agentModelEntriesFromCatalog.ts",
+      "symbol": "deriveModelListing"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelSpecRead.ts",
+      "symbol": "requireModelSpecDetail"
+    }
+  ],
+  "door_reduction": {
+    "before": 48,
+    "after": 48,
+    "why_not": "This change closes the value-layer holes at the doors that already existed; it does not merge any door, so the count is unchanged and every surviving door is justified here. The three compileExecutionContract doors are three lifecycle moments (single-shot preview, single-shot gate_request, multi-shot seal) that must each compile their own contract because each is a separate spend-boundary decision; they already converge on the one compileParameters they all call, which is where the invariant now lives. The two buildCanvasNode doors are the renderer and the Electron/MCP path of the same shared factory — that is the intended single factory with two dependency injections, not two implementations; only the MCP door receives an external model identity, and the renderer door passes an already-assembled meta, so only the MCP door needs the validator. The deriveModelListing / buildAgentModelEntries doors are the two model-catalog projections that this change deliberately did NOT unify (see residual_risks): the renderer-side archetype registry is not reachable from the main process because .dependency-cruiser.mjs rule electron-no-import-src is a hard zero, so unifying them is an architectural move of its own and is out of this change's scope. The 2026-09-22 rework adds the model-spec doors: the projection has exactly one owner (modelSpecProjection) and two export points (modelSpecRead for the external MCP face, laneModelRead for the in-app face), which is the intended one-source-two-outlets shape rather than two implementations; the archetype resolver has one owner (electron/shared/modelArchetypes) now read by both the admission schema and the catalog entry builder, which is the whole point of the move."
+  },
+  "generality_proof": "Every generation path that can spend money compiles its contract through compileExecutionContract, and every one of them reaches compileParameters — single-shot preview, single-shot gate_request, and multi-shot seal. Putting the refusal in compileParameters therefore covers the whole class rather than the reported example: it does not matter which face (in-app lane or external MCP), which provider, which model kind, or whether the parameter schema came from the catalog module manifest or from the video archetype override, because all of those are already funnelled into the single `module.parameterSchema` this function reads. The same argument holds for the canvas half: both the renderer and the MCP path build nodes through the one canvasNodeFactory, and only the MCP path supplies an external identity, so injecting the validator into that factory covers every caller that can supply an unvalidated identity, while projectCanvasRead is the single projection every canvas read of every face goes through.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters",
+      "responsibility": "The one admission boundary for generation parameter values. Accepts a declared key whose value matches its declared type, enum and range; refuses anything provably wrong with a ParameterRejection naming the legal keys, the nearest key, the legal values or the range; passes through, with a warning, only what it cannot prove wrong; and treats the named planning-hint vocabulary as neither a parameter nor a mistake."
+    },
+    {
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileExecutionContract",
+      "responsibility": "Refuses a variantId that is not one of the variants the selected model declares, listing the ones it has. Callers that can resolve the variant list must pass it; not passing it means the list is unavailable, never that any value is acceptable."
+    },
+    {
+      "path": "electron/capabilityCore/canvasNodeFactory.ts",
+      "symbol": "bindModelIdentity",
+      "responsibility": "Binds an externally supplied vendor/modelKey onto a node only after the injected assertModelIdentity accepts it. The factory keeps its zero-import purity, so the catalog-backed judgement is injected rather than imported."
+    },
+    {
+      "path": "electron/capabilityCore/core.ts",
+      "symbol": "assertCatalogModelIdentity",
+      "responsibility": "The catalog-backed judgement itself: the named model must exist in listAvailableModels() (the one App-wide answer to 'which models exist and can be used') and its kind must match the node's media kind."
+    },
+    {
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "projectCanvasRead",
+      "responsibility": "Returns each node's bound model identity so a wrong identity is observable, reading the same meta keys the generation resolver reads, and carrying identity only — parameters stay in the per-model detail tier."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "capability \"preview\"",
+      "disposition": "enforced",
+      "evidence": "Calls compileExecutionContract with the video parameter schema and now also with videoAllowedVariantIds; nomiMcpGenerationPlanning.test.ts drives it through the real MCP protocol harness and observes the refusal of an unsupported parameter that this test previously asserted was dropped."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "capability \"gate_request\"",
+      "disposition": "enforced",
+      "evidence": "Second compileExecutionContract call site in the same file, wired identically; it is the spend boundary, so it must refuse the same values preview refuses rather than re-deriving its own judgement."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "sealMultiShotFor",
+      "disposition": "enforced",
+      "evidence": "Compiles one sub-contract per included shot through the same function and now receives videoAllowedVariantIds through its deps; the multi-shot entrance e2e test exercises this path."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "entry_point": "buildCanvasNode (renderer store.addNode)",
+      "disposition": "not-affected",
+      "evidence": "The renderer never passes spec.vendor/spec.modelKey — it passes an already-assembled input.meta built from the catalog by the UI — so bindModelIdentity's external-identity branch is unreachable from this door and the validator is intentionally not injected there."
+    },
+    {
+      "path": "electron/productionRun/connectedModelScope.ts",
+      "entry_point": "connectedModelScope",
+      "disposition": "not-affected",
+      "evidence": "Reads only vendor and modelKey off the listing to compute the run-level allowed set; it consumes no parameter or reference-capability knowledge, so the three-source parameter split does not reach it."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The mechanism is not tied to one model or one provider. Any parameter key any face sends for any of the 100+ catalog models went through the same discard branch, and the discard was invisible by construction because the ledger recording it had no reader. The same is true of the canvas identity: every MCP caller naming a model reached the same unchecked binding. New providers, new models and new callers all inherit the mechanism until the shared boundary owns the rule.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs compileExecutionContract compileParameters — 3 write doors, 0 read doors; all three compile sites now pass through the hardened function.",
+      "node scripts/door-map.mjs bindModelIdentity buildCanvasNode — 3 write doors; the renderer door was inspected and shown not to carry an external identity (canvasNodeActions.ts passes input.meta, never vendor/modelKey).",
+      "node scripts/door-map.mjs deriveModelListing listAvailableModels buildAgentModelEntries listAvailableModelsForAgent — 5 write doors and 7 read doors, which is the evidence for the three-source parameter split recorded in class_root and for the residual risk below.",
+      "grep -rn droppedFields across electron/ src/ scripts/ tests/ — the only non-test occurrences were the definition and the two push sites, confirming the ledger had no production reader before it was removed.",
+      "Running the full electron suite surfaced two further populations that had been riding the same silent-discard path and are now named explicitly: Nomi's own planning hints read by videoRecommendationInput, and models whose catalog row declares no parameter schema at all."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/executionContract.ts",
+    "invariant": "A caller-named generation parameter is accepted, or refused with the facts needed to correct it, or explicitly carried through as unvalidated — never discarded behind a successful response. A caller-named model identity on a canvas node exists in the catalog, matches the node kind, and is readable back.",
+    "failure_mode": "ContractCompilationError carrying a ParameterRejection (unknown_parameter / parameter_type_mismatch / parameter_not_in_enum / parameter_out_of_range / missing_required_parameter / unknown_variant), and CanvasGraphError('unknown_model_identity') on the canvas write path. Both fail closed before any provider call or any durable write.",
+    "exception_policy": "none",
+    "strategy": "The rule lives in the one function all three spend paths already funnel through, and in the one node factory both canvas write paths already share, so no caller can opt out and no new caller can be added that bypasses it. The two legitimate non-provider key populations are named vocabularies rather than holes: GENERATION_PLANNING_HINT_KEYS is asserted to equal what the recommendation reader consumes, and an empty declared schema keeps the value plus a warning instead of dropping it. Cross-model leftovers are cleaned where the model changes and reported in the existing changeset, so the admission layer never has to be deaf to make model switching work.",
+    "artifacts": [
+      "electron/capabilityCore/canvasGraph.ts",
+      "electron/capabilityCore/canvasNodeFactory.ts",
+      "electron/capabilityCore/core.ts",
+      "electron/capabilityCore/executionContract.ts",
+      "electron/capabilityCore/mcpGenerationTools.ts",
+      "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "electron/capabilityCore/mcpToolErrorResults.ts",
+      "electron/capabilityCore/modelAdmissionSchema.ts",
+      "electron/capabilityCore/moduleManifest.ts",
+      "electron/catalog/agentModelEntriesFromCatalog.ts",
+      "electron/shared/agentCapabilities/canvasRead.ts",
+      "electron/shared/agentCapabilities/modelSpecProjection.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/admissionRejectionReachesModel.class.test.ts",
+    "electron/capabilityCore/canvasModelIdentity.real.test.ts",
+    "electron/capabilityCore/crossModelLeftovers.class.test.ts",
+    "electron/capabilityCore/executionContract.test.ts",
+    "electron/capabilityCore/modelSpecParity.class.test.ts",
+    "electron/capabilityCore/nodeModelIdentity.class.test.ts",
+    "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts",
+    "electron/capabilityCore/parameterAdmission.class.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/admissionRejectionReachesModel.class.test.ts",
+    "electron/capabilityCore/canvasModelIdentity.real.test.ts",
+    "electron/capabilityCore/crossModelLeftovers.class.test.ts",
+    "electron/capabilityCore/modelSpecParity.class.test.ts",
+    "electron/capabilityCore/nodeModelIdentity.class.test.ts",
+    "electron/capabilityCore/parameterAdmission.class.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/executionContract.ts"
+    ],
+    "rationale": "The DroppedField type, the droppedFields field on ExecutionContractV1 and both push sites are deleted in the same change; there is no flag, fallback or compatibility branch that can still reach the old discard behaviour. The fixtures that carried droppedFields in test data were updated in the same commit."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The invariant is owned entirely by Nomi's own admission boundary and catalog. No third-party runtime decides whether a parameter key is legal; the MCP specification informed the shape of the error but is not a dependency version that can drift this behaviour.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes shape, and the archetype move is a file move only: a migration probe ran all 1171 identifier/variant/legacy-id corpus entries through the three-pass matcher before and after, diffs=0. Drafts persisted before this change can carry parameters the selected model does not declare; preview now CLEANS those stored leftovers and reports them as clearedParameters rather than refusing, so a legacy draft still opens. A parameter the caller names in this very call is still refused, at plan time. Contracts persisted with a droppedFields field remain readable because nothing reads that field.",
+  "residual_risks": [
+    "MEASURED: after the archetype move AND restoring meta/modelAlias to the archetype resolver, 138/154 catalog modules have a real declaration (89.6%); media models alone are 137/139 (98.6%). The 16 without one are 14 text/chat models (no media parameters by nature) plus local-speech/whisper-cpp-local and modelscope/Qwen-Image-Edit-2511.",
+    "DEBT WITH A DUE DATE (2026-10-31): `contract.warnings` still has no production reader. The pass-through-with-warning branch now covers only ~10% of modules (mostly chat), so it no longer hides a wide hole, but a caller still cannot see that a value went unvalidated. Either wire warnings into the tool result or delete the field by that date.",
+    "The value of refusing a wrong parameter is NOT demonstrated by the real-model evaluation and must not be claimed from it. Across 40 runs on 10 prompts that wrote illegal values into the user's own words, the admission layer was triggered ZERO times: DeepSeek reads list_models first and then tells the user it cannot be done. The refusal's job is to stop a caller that does NOT consult the catalog or does not cooperate; the only evidence for it today is unit tests.",
+    "STRUCTURAL, should be its own piece of work: the UI's generate button does not pass through the admission layer at all (compileExecutionContract has three call sites, all inside createGenerationPlanningHandler). UI and the two AI faces therefore still judge parameters by different rules.",
+    "`ParameterField.min/max` is populated only where the source declares a range (archetype numeric controls do; catalog onboarding fields do not), so out-of-range stays unjudgeable for declarations without bounds.",
+    "assertCatalogModelIdentity reads listAvailableModels() on every node creation, re-reading the catalog from disk; no performance measurement was taken for large batch node creation."
+  ]
+}

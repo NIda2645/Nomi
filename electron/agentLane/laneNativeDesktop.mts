@@ -2,6 +2,7 @@
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { createLocalBashOperations } from '@earendil-works/pi-coding-agent';
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels.js';
+import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection.js';
 import type { SkillRecord } from '../skills/skillStore.js';
 import { LANE_WRITE_TOOL_TIMEOUT_MS } from '../shared/agentLane/laneToolContract.js';
 import { logWarn } from '../logging/logger.js';
@@ -19,6 +20,8 @@ export async function openLaneNativeDesktop(input: {
   skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>);
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
+  /** 见 laneNativeAssembly：上层注入，lane 不 import 目录。 */
+  modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
 }) {
   const source = input.skills;
   const skillIndex = createLaneSkillIndexSource(typeof source === 'function' ? source : () => source);
@@ -47,6 +50,7 @@ export async function openLaneNativeDesktop(input: {
       bashTimeoutMs: LANE_WRITE_TOOL_TIMEOUT_MS,
       deferredGroups: input.deferredGroups,
       availableModels: input.availableModels,
+      modelAvailability: input.modelAvailability,
     });
     return { ...assembly, skillIndex, sandboxActive: sandbox.active,
       ...(sandbox.inactive ? { sandboxInactive: sandbox.inactive } : {}),

@@ -1,6 +1,6 @@
 // kie 2026-08 代图像模型的 curated 传输配方（Nano Banana 2 族 / Seedream 5.0 族 / FLUX.2 Pro）。
 // 契约来自官方文档实查（2026-08-26），逐条出处记在对应档案的 `sources` 字段里（门岗 check:archetype-sources）：
-//   src/config/modelArchetypes/nanoBanana2.ts · kieSeedream5.ts · flux2Pro.ts
+//   electron/shared/modelArchetypes/nanoBanana2.ts · kieSeedream5.ts · flux2Pro.ts
 //
 // 为什么新开这个文件而不是往 kieNanoBanana.ts / kieSeedream.ts 里塞：那两份是「一个模型一份手写 op」的
 // 老形状（各自重复 QUERY_OP + STATUS_MAPPING），本轮一次进 5 个模型 × 2 模式 = 10 条 mapping，

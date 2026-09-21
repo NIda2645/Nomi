@@ -84,11 +84,11 @@ describe("ExecutionContract compiler", () => {
     expect(changed.references.map((reference) => reference.assetId)).toEqual(["asset-c"]);
   });
 
-  it("explains unsupported fields instead of silently dropping them", () => {
-    const contract = compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry);
-    expect(contract.droppedFields).toEqual([{ path: "parameters.unknownKnob", reason: "unsupported_parameter" }]);
-    expect(contract.warnings[0]).toContain("unknownKnob");
-    expect(contract.parameters).not.toHaveProperty("unknownKnob");
+  it("refuses an unsupported field instead of silently dropping it", () => {
+    // 2026-09-21 行为反转：旧实现把未知键记进 `droppedFields` 就放行，而那个字段全仓没有生产读者
+    // ——模型点名的参数与真正发出去的参数可以不一样，且没有任何地方会红。
+    expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
+      .toThrow(ContractCompilationError);
   });
 
   it("fails before provider work when a required parameter is missing", () => {

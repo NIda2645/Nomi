@@ -37,6 +37,7 @@ import { previousShotPromptFor } from './shotOrder'
 import { MediaImportRejectedError, importLocalFile } from '../assets/localFileImport'
 import { mcpImportRejectionMessage } from './mcpImportRejectionMessage'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
+import { assertCatalogModelIdentity } from './canvasModelIdentity'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -311,7 +312,9 @@ export async function addProjectNodes(gateway: ProjectGateway, specs: NodeSpec[]
     })
     if (!approved) return { ids: [], cancelled: true }
   }
-  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs)
+  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs, {
+    assertModelIdentity: (identity) => assertCatalogModelIdentity(listAvailableModels(), identity),
+  })
   await gateway.apply(snapshot)
   return { ids }
 }
