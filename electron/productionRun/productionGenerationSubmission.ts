@@ -315,7 +315,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     envelope: ReturnType<typeof createProductionRunRuntimeEnvelope>;
     approvalId: string;
     authorizationDigest: string;
-    costCeiling: number;
+    /** `null` = 目录算不出价（2026-09-21 开闸）。绝不是 0 元。 */
+    costCeiling: number | null;
     currency: string;
     expectedProviderRequestHash: string;
     preparedProviderRequest: unknown;

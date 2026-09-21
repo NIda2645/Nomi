@@ -212,6 +212,8 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
       authorizationDigest,
       costScope: envelope.costScope,
       requestedSpend: envelope.budget.maximum,
+    ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
+      ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
       jobIds: jobs.map((job) => job.jobId),
       title: "Confirm generation spend",
       summary: "Approve the frozen provider requests and their maximum total cost.",
@@ -353,6 +355,7 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
     authorizationDigest,
     costScope: envelope.costScope,
     requestedSpend: envelope.budget.maximum,
+    ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
     jobIds: [job.jobId],
     title: "Confirm generation spend",
     summary: "Approve the frozen provider request for this rework.",
@@ -411,7 +414,9 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
   const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   if (
     envelope.budget.currency !== input.run.budget.currency
-    || envelope.budget.ledgerCeiling <= input.run.budget.authorized
+    // 续批必须**抬高**已授权的上限——除非它要续的全是价格未知的镜头：那种续批一分钱的已知负债
+    // 都不加（未知不进金额），上限当然不动，但它仍然是一次真实的、需要人点头的新授权。
+    || (envelope.budget.unknownJobCount === 0 && envelope.budget.ledgerCeiling <= input.run.budget.authorized)
     || (input.run.policy.maxSpend !== null && budgetExceeds(envelope.budget.ledgerCeiling, input.run.policy.maxSpend))
     || budgetExceeds(liability + envelope.budget.maximum, envelope.budget.ledgerCeiling)
   ) {
@@ -466,6 +471,7 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
     authorizationDigest,
     costScope: envelope.costScope,
     requestedSpend: envelope.budget.maximum,
+    ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
     jobIds: envelope.jobs.map((job) => job.jobId),
     title: "Confirm generation continuation spend",
     summary: "Approve the frozen remaining provider requests and their maximum additional cost.",

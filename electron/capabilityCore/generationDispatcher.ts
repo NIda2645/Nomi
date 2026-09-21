@@ -239,7 +239,11 @@ async function dispatchSemanticStub(
       }
       const verifiedProjectRevision = projectRevision as number
       const model = typeof value?.model === 'string' ? value.model : '当前模型'
+      // 「算不出价」不是 0 元：已知那部分记下来，未知的镜数单独带走（2026-09-21 开闸）。
       const maximumCost = typeof value?.maximumCost === 'number' && Number.isFinite(value.maximumCost) ? value.maximumCost : 0
+      const unknownShotCount = typeof value?.unknownShotCount === 'number' && Number.isSafeInteger(value.unknownShotCount) && value.unknownShotCount > 0
+        ? value.unknownShotCount
+        : 0
       const challenge = authority.requestChallenge({
         challengeKey: `generation.single-shot:${leased.lease.projectId}:${String(value?.operationId || '')}:${contractHash}`,
         immutableProjectUuid: leased.lease.immutableProjectUuid,
@@ -256,6 +260,7 @@ async function dispatchSemanticStub(
         reservationPreview: {
           currency: typeof value?.currency === 'string' ? value.currency : 'CNY',
           maximum: maximumCost,
+          ...(unknownShotCount > 0 ? { unknownJobCount: unknownShotCount } : {}),
         },
         display: {
           model,
@@ -273,7 +278,8 @@ async function dispatchSemanticStub(
         expiresAt: challenge.challenge.expiresAt,
         model,
         costScope: challenge.challenge.costScope,
-        maximumCost: challenge.challenge.reservationPreview.maximum,
+        maximumCost: unknownShotCount > 0 && maximumCost === 0 ? null : challenge.challenge.reservationPreview.maximum,
+        ...(unknownShotCount > 0 ? { unknownShotCount } : {}),
         currency: challenge.challenge.reservationPreview.currency,
         handoff: { challengeToken: challenge.token, clientAttestation: true, contractHash, operationId: value?.operationId },
       }

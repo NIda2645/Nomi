@@ -302,7 +302,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       origin: input.origin,
       brief,
       policy: { ...DEFAULT_POLICY, ...input.policy },
-      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1,
       snapshotCursor: 1,
       stages,
@@ -378,7 +378,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       playbook: { name: "generation.single-shot", version: "1.0.0" },
       origin: input.origin,
       policy: { ...DEFAULT_POLICY, ...(input.policy || {}) },
-      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: input.currency || "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       planVersion: 1,
       snapshotCursor: 1,
       // A semantic multi-shot generation is one durable production pipeline.  Seed the

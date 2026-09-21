@@ -380,7 +380,7 @@ function buildExhaustedHalt(run: ProductionRun, haltedAtShotId: string, perShotP
     if (reachedHalt && !(job && (job.status === "ready" || job.status === "adopted"))) remaining += 1;
   }
   void perShotPrice;
-  return { haltedAtShotId, completedCount: completed, dispatchableCount: 0, remainingCount: remaining, authorized: run.budget.authorized, currency: run.budget.currency };
+  return { haltedAtShotId, completedCount: completed, dispatchableCount: 0, unknownDispatchCount: 0, remainingCount: remaining, authorized: run.budget.authorized, currency: run.budget.currency };
 }
 
 export type MultiShotBatchScheduler = ReturnType<typeof createMultiShotBatchScheduler>;

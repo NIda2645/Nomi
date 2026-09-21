@@ -381,6 +381,7 @@ describe("ProductionRunRepository", () => {
       reserved: 7,
       actual: 0,
       unsettled: 0,
+      unknownInFlight: 0,
     });
   });
 });

@@ -586,14 +586,19 @@ describe("semantic MCP generation tools", () => {
         .resolves.toMatchObject({ maximumCost: 14, costKnown: true, currency: "CNY", nextAction: "confirm" });
     });
 
-    it("fails closed instead of authorizing an unpriced model", async () => {
+    // 2026-09-21 用户拍板：价格未知不许挡住生成（内置 204 个模型一条 pricing 都没有）。
+    // 这条从前钉的是 `rejects generation_pricing_unknown`；今天钉的是「门照开、价照实说」。
+    it("opens the gate for an unpriced model and reports the cost as unknown, never ¥0", async () => {
       const operations = createInMemoryGenerationOperationStore();
       const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
       const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
       const operationId = (created as { operation: { operationId: string } }).operation.operationId;
-      await expect(handler({ capability: "gate_request", params: { operationId }, lease }))
-        .rejects.toMatchObject({ code: "generation_pricing_unknown", shotId: "candidate-1" });
-      expect((await operations.read("project-1", operationId))?.state).toBe("draft");
+      const gate = await handler({ capability: "gate_request", params: { operationId }, lease }) as
+        { maximumCost: number | null; costKnown: boolean; unknownShotCount?: number; nextAction: string };
+      expect(gate).toMatchObject({ maximumCost: null, costKnown: false, unknownShotCount: 1, nextAction: "confirm" });
+      // 绝不把「算不出」写成 0：这是三种可能里唯一会被读成「这次免费」的那一种。
+      expect(gate.maximumCost).not.toBe(0);
+      expect((await operations.read("project-1", operationId))?.state).toBe("sealed");
     });
   });
 

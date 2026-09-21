@@ -238,7 +238,22 @@ describe("P4 S2 real-number ledger on submission", () => {
     expect(approval?.maxSpend).toBe(12);
   });
 
-  it("fails closed before the gate when the provider price is unknown", () => {
-    expect(() => sealedApprovedSingleShot(null)).toThrow("Cannot authorize paid generation without a known price");
+  // 2026-09-21 未知价开闸：这条从前钉的是「算不出价 → 封印前就抛」。今天钉的是整条链**跑得通**，
+  // 而且账本里那一笔是「未知」不是「0 元」——两件事必须同时成立，缺一条这次改动就白做了。
+  it("submits an unpriced shot and books it as an unknown-price liability, never ¥0", async () => {
+    const { repository, runner, submit } = sealedApprovedSingleShot(null);
+    await runner.start({ projectId: "project-1", operationId: "op-1" });
+    expect(submit).toHaveBeenCalledTimes(1);
+
+    const run = repository.read("project-1", "op-1")!;
+    const envelope = run.generationPlan!.authorizationEnvelope!;
+    expect(envelope.jobs[0].price.maximum).toBeNull();
+    expect(envelope.budget.unknownJobCount).toBe(1);
+    // 已知价之和是 0 —— 因为**一笔已知的都没有**，不是因为这一笔是免费的。那句话由 unknownJobCount 说。
+    expect(run.budget.reserved).toBe(0);
+    expect(run.budget.unknownInFlight).toBe(1);
+    const ledger = repository.readBudgetLedger("project-1", "op-1");
+    const reserve = ledger.entries.find((entry) => entry.kind === "reserve");
+    expect(reserve).toMatchObject({ kind: "reserve", amount: null });
   });
 });

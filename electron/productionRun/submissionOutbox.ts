@@ -49,7 +49,8 @@ export type ProviderDispatchInput = {
   run: ProductionRun;
   job: ProductionJob;
   idempotencyKey: string;
-  costCeiling: number;
+  /** `null` = 目录算不出价。绝不是 0 元。 */
+  costCeiling: number | null;
 };
 
 export type ProviderDispatchResult = {
@@ -207,7 +208,10 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       runId: request.runId,
     });
     if (!authorization.ok) throw new SubmissionAuthorizationError(authorization.reason);
-    if (request.costCeiling === null) throw new SubmissionAuthorizationError("unknown-cost");
+    // 2026-09-21：`costCeiling === null`（目录算不出价）不再是拒绝的理由。它当初存在是因为
+    // 账本只收金额，未知只能落成 0 —— 那才是真正要防的事。现在预留自己带「未知」这一档
+    // （`amount: null`），于是「不当 0」和「能生成」同时成立，这道拒绝没有剩余的合法用途。
+    // 已知价那条硬上限由 `authorizeSubmission` + 账本 reserve 原样守着。
 
     const reservationId = `${request.runId}:${request.jobId}:${job.attempt}`;
     const ledger = deps.repository.readBudgetLedger(request.projectId, request.runId);

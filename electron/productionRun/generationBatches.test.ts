@@ -144,6 +144,7 @@ describe("successive generation batches", () => {
       currency: "CNY",
       maximum: 0.1,
       ledgerCeiling: 10.1,
+      unknownJobCount: 0,
     });
     expect(payload.authorization.envelope.jobs[0].price.maximum).toBe(0.1);
     expect(() => apply(draft, "generation.seal", {

@@ -1,7 +1,6 @@
 import { resolveGenerationShotScope } from '../shared/agentCapabilities/generationShotScope';
 import { productionTaskAbsenceCode } from '../productionRun/productionRunErrors';
 import { GenerationProviderCapabilityError, GenerationProviderObservationError, GenerationRuntimeBindingError } from './generationRuntimeAdapter';
-import { GenerationPricingUnavailableError } from '../productionRun/shotPricing';
 import { ProductionGenerationAuthorizationError } from '../productionRun/productionGenerationAuthorization';
 import { z } from "zod";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
@@ -70,7 +69,7 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
     ? 'generation_operation_not_found'
     : error instanceof GenerationProviderCapabilityError || error instanceof GenerationProviderObservationError
       ? 'generation_provider_unavailable'
-      : error instanceof GenerationPricingUnavailableError || error instanceof ProductionGenerationAuthorizationError || error instanceof GenerationRuntimeBindingError
+      : error instanceof ProductionGenerationAuthorizationError || error instanceof GenerationRuntimeBindingError
         ? error.code : localCodes.has(rawCode) ? rawCode : 'generation_execution_failed';
   return { ok: false, code, message: code };
 }

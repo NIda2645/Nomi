@@ -81,7 +81,10 @@ type GenerationGateConfirmPayload = {
   shotSummary?: string
   model?: string
   referenceCount?: number
-  maximumCost?: number
+  /** `null`/缺席 = 目录算不出价。绝不是 0 元。 */
+  maximumCost?: number | null
+  /** 这批里价格未知的镜数（> 0 时卡上如实说出来）。 */
+  unknownShotCount?: number
   currency?: string
   expiresAt?: string
   /**
@@ -257,12 +260,18 @@ async function confirmGenerationGateForAgent(
     typeof info.shotSummary === 'string' && info.shotSummary.trim()
       ? info.shotSummary.trim()
       : i18n.t('runtime.capability.generationGateShotFallback')
-  const maximumCost = Number.isFinite(info.maximumCost) ? Number(info.maximumCost) : 0
-  const cost = `${typeof info.currency === 'string' ? info.currency : ''}${maximumCost}`
+  // 「算不出价」和「0 元」是两件事：只有后者才该印出一个数。缺席/非数 → 走未知那一档的文案，
+  // 绝不落成 ¥0（2026-09-21 未知价开闸；三种可能里只有 0 会被读成「这次免费」）。
+  const costKnown = typeof info.maximumCost === 'number' && Number.isFinite(info.maximumCost)
+  const cost = costKnown
+    ? `${typeof info.currency === 'string' ? info.currency : ''}${Number(info.maximumCost)}`
+    : i18n.t('runtime.capability.generationGateCostUnknown')
   const ok = await useSpendConfirmStore.getState().requestConfirm({
     kind: 'generation',
     title: i18n.t('runtime.capability.generationGateTitle'),
-    message: i18n.t('runtime.capability.generationGateMessage', { model, cost, shot }),
+    message: costKnown
+      ? i18n.t('runtime.capability.generationGateMessage', { model, cost, shot })
+      : i18n.t('runtime.capability.generationGateMessageUnknownCost', { model, shot }),
     confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
     source: 'agent',
     details: [

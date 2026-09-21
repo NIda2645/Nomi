@@ -27,7 +27,7 @@ describe("budget ledger", () => {
     });
     ledger = applyBudgetEntry(ledger, reserve);
     expect(applyBudgetEntry(ledger, reserve)).toEqual(ledger);
-    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 20, reserved: 8, actual: 0, unsettled: 0 });
+    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 20, reserved: 8, actual: 0, unsettled: 0, unknownInFlight: 0 });
 
     ledger = applyBudgetEntry(ledger, entry({
       billingEntryId: "settle-1",
@@ -35,7 +35,50 @@ describe("budget ledger", () => {
       reservationId: "reservation-1",
       actualAmount: 6,
     }));
-    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 20, reserved: 0, actual: 6, unsettled: 0 });
+    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 20, reserved: 0, actual: 6, unsettled: 0, unknownInFlight: 0 });
+  });
+
+  // 2026-09-21 未知价开闸：`amount: null` = 目录算不出价。它不占额度、不参与比较，
+  // 但要在账本上**数得出来**——绝不当 0 混进 reserved（那会读成「这几笔不花钱」）。
+  it("books an unknown-price reservation as a counted liability instead of a fabricated zero", () => {
+    let ledger = createBudgetLedger("CNY");
+    ledger = applyBudgetEntry(ledger, entry({ billingEntryId: "auth-1", kind: "authorize", amount: 5 }));
+    ledger = applyBudgetEntry(ledger, entry({
+      billingEntryId: "reserve-known",
+      kind: "reserve",
+      reservationId: "reservation-known",
+      jobId: "job-known",
+      amount: 5,
+    }));
+    // 已知那笔已经把额度用满；未知那笔仍然进得来（它不参与金额比较）。
+    ledger = applyBudgetEntry(ledger, entry({
+      billingEntryId: "reserve-unknown",
+      kind: "reserve",
+      reservationId: "reservation-unknown",
+      jobId: "job-unknown",
+      amount: null,
+    }));
+    expect(summarizeBudgetLedger(ledger)).toEqual({
+      currency: "CNY", authorized: 5, reserved: 5, actual: 0, unsettled: 0, unknownInFlight: 1,
+    });
+    // 已知价的硬上限一个字没松：再来一分钱的已知预留仍然被拒。
+    expect(() => applyBudgetEntry(ledger, entry({
+      billingEntryId: "reserve-over",
+      kind: "reserve",
+      reservationId: "reservation-over",
+      jobId: "job-over",
+      amount: 0.01,
+    }))).toThrow("Budget authorization exceeded");
+    // 实付是我们**第一次**知道这笔花了多少，不是超支——未知那笔没有上限可比。
+    ledger = applyBudgetEntry(ledger, entry({
+      billingEntryId: "settle-unknown",
+      kind: "settle",
+      reservationId: "reservation-unknown",
+      actualAmount: 12.5,
+    }));
+    const summary = summarizeBudgetLedger(ledger);
+    expect(summary.actual).toBe(12.5);
+    expect(summary.unknownInFlight).toBe(0);
   });
 
   it("rejects a reservation that would exceed the authorized ceiling", () => {
@@ -66,7 +109,7 @@ describe("budget ledger", () => {
       reservationId: "reservation-1",
     }));
 
-    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 10, reserved: 0, actual: 0, unsettled: 7 });
+    expect(summarizeBudgetLedger(ledger)).toEqual({ currency: "CNY", authorized: 10, reserved: 0, actual: 0, unsettled: 7, unknownInFlight: 0 });
     expect(() => applyBudgetEntry(ledger, entry({
       billingEntryId: "release-unsafe",
       kind: "release",

@@ -42,9 +42,17 @@ export type AutomationPolicy = {
 export type BudgetLedgerSummary = {
   currency: string;
   authorized: number;
+  /** 已知价的在途预留之和。价格未知的那几笔**不在这个数里**（它们在 `unknownInFlight`）。 */
   reserved: number;
   actual: number;
   unsettled: number;
+  /**
+   * 价格未知、已经派出去还没结清的笔数（2026-09-21 未知价开闸）。
+   *
+   * 为什么是笔数不是金额：我们不知道那个金额。把它当 0 加进 `reserved` 会让账本读起来像
+   * 「这几笔不花钱」，而那正是三种可能里唯一会骗人的那一种。旧账本没有这个数 → 0。
+   */
+  unknownInFlight: number;
 };
 
 export type ProductionRunStatus =
@@ -299,6 +307,8 @@ export type ProductionGate = {
   costScope?: string;
   receiptId?: string;
   requestedSpend?: number;
+  /** 这道门里价格未知的 job 数（2026-09-21）。`requestedSpend` 只说已知的那部分。 */
+  requestedUnknownJobs?: number;
   jobIds: string[];
   title: string;
   summary: string;

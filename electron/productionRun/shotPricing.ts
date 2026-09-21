@@ -27,25 +27,17 @@ export type {
 export { deriveShotPrice };
 
 /**
- * A paid gate cannot be issued when the catalog cannot prove a price.  Keep
- * this error at the pricing boundary so preview may still surface an honest
- * `{ known: false }`, while every authorization caller shares the same
- * fail-closed code/message instead of silently treating unknown as zero.
+ * 这里曾经住着 `GenerationPricingUnavailableError` / `assertKnownShotPrice`（`generation_pricing_unknown`）：
+ * 目录证明不了价格 → 整条付费门拒绝。2026-09-21 用户拍板删除，**没有留 fallback**（P1）。
+ *
+ * 它当初要防的是「把未知静默当成 0 元放行」，而拒绝生成只是当时选的手段——同一个仓库里另一条
+ * 钱闸（`electron/spendGrant.ts` 的 `unknownRemaining` 名额位）从来没这么选，证明「不当 0」和
+ * 「能生成」可以同时成立。现在这件事由**类型**守：授权信封的 `price.maximum: number | null` +
+ * `budget.unknownJobCount`，让编译器在每一处求和/比较的地方拦住「顺手当 0」（R17）。
+ *
+ * 这条不变量的 owner 从「一个抛点」变成了「信封的形状」，见
+ * `electron/productionRun/productionGenerationAuthorization.ts`。
  */
-export class GenerationPricingUnavailableError extends Error {
-  readonly code = "generation_pricing_unknown" as const;
-  readonly shotId: string;
-
-  constructor(shotId: string) {
-    super(`Cannot authorize paid generation without a known price: ${shotId}`);
-    this.name = "GenerationPricingUnavailableError";
-    this.shotId = shotId;
-  }
-}
-
-export function assertKnownShotPrice(price: ShotPrice, shotId: string): asserts price is { known: true; amount: number } {
-  if (!price.known) throw new GenerationPricingUnavailableError(shotId);
-}
 
 function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -290,6 +282,8 @@ export function checkSealAffordability(input: CheckSealAffordabilityInput): Seal
   const knownSubtotal = sumBudgetAmounts(input.shots.map(shot => shot.price.known ? shot.price.amount : 0));
 
   if (input.maxSpend === null) return { ok: true, hasUnknownPrice };
+  // 下面这一趟只累加**已知**价：`shot.price.known ? amount : 0` 读作「未知不加钱」，
+  // 不是「未知是 0 元」——未知是否存在由上面的 `hasUnknownPrice` 单独如实回报。
 
   const maxSpend = input.maxSpend;
   const add = createBudgetAmountAccumulator();

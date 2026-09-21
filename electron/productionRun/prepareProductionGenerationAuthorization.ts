@@ -9,13 +9,26 @@ import type { ProjectLeaseV2 } from "../capabilityCore/projectLease";
 import type { GenerationSealMultiShot } from "../capabilityCore/mcpGenerationMultiShot";
 import {
   PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
+  countUnknownJobPrices,
   createProductionGenerationAuthorizationEnvelope,
   productionGenerationAuthorizationDigest,
   productionGenerationJobId,
   productionGenerationProviderIdempotencyKey,
+  sumKnownJobCeilings,
   type ProductionGenerationAuthorizationEnvelopeV1,
 } from "./productionGenerationAuthorization";
-import { assertKnownShotPrice, type ShotPrice } from "./shotPricing";
+import type { ShotPrice } from "./shotPricing";
+
+/**
+ * 一镜的授权上限。**目录算不出 → `null`，不是 0**（2026-09-21 用户拍板：价格未知不许挡住生成）。
+ *
+ * 这一行就是从前 `assertKnownShotPrice` 抛 `generation_pricing_unknown` 的那个位置。抛点删掉了，
+ * 因为它防的从来不是「未知的生成」，是「未知被静默当成 0 元放行」——而这件事现在由类型防：
+ * `price.maximum` 一旦是 `number | null`，任何求和/比较都得先回答「未知怎么办」。
+ */
+function jobPriceCeiling(price: ShotPrice): number | null {
+  return price.known ? price.amount : null;
+}
 import type { ProductionGenerationShot, ProductionJob, ProductionRun } from "./productionRunTypes";
 
 type AuthorizationOperation = Readonly<{
@@ -130,7 +143,6 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     const attempt = nextGenerationAttempt(input.run, unit.jobShotId);
     if (input.run && attempt > input.run.policy.maxAttemptsPerJob) throw new Error("Generation attempt limit exceeded");
     const price = input.resolveShotPrice(unit.contract);
-    assertKnownShotPrice(price, unit.shotId);
     const jobId = productionGenerationJobId(
       input.operation.operationId,
       unit.contract.contractHash,
@@ -166,12 +178,14 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
       ...(input.referenceUrlsByContract?.[unit.contract.contractHash] ? { referenceUrls: input.referenceUrlsByContract[unit.contract.contractHash] } : {}),
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
-      price: { currency, maximum: price.amount },
+      price: { currency, maximum: jobPriceCeiling(price) },
     };
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation authorization time is invalid");
-  const jobMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
+  // 已知价之和；未知的那几镜单独数一次，两个数都不许折进对方。
+  const jobMaximum = sumKnownJobCeilings(jobs);
+  const unknownJobCount = countUnknownJobPrices(jobs);
   const maximumSpend = input.maximumSpend;
   if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
     throw new Error("Generation authorization spend ceiling is invalid");
@@ -199,6 +213,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
       currency,
       maximum: initialCeiling,
       ledgerCeiling,
+      unknownJobCount,
     },
   });
   return { envelope, authorizationDigest: productionGenerationAuthorizationDigest(envelope) };
@@ -287,7 +302,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
     throw new Error("Generation rework exceeds the Run attempt limit");
   }
   const price = input.resolveShotPrice(unit.contract);
-  assertKnownShotPrice(price, input.shotId ?? unit.contract.candidateId);
+  const priceCeiling = jobPriceCeiling(price);
 
   const jobId = productionGenerationJobId(input.run.runId, unit.contract.contractHash, attempt, input.shotId);
   const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
@@ -334,12 +349,15 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
       referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
-      price: { currency: input.run.budget.currency, maximum: price.amount },
+      price: { currency: input.run.budget.currency, maximum: priceCeiling },
     }],
     budget: {
       currency: input.run.budget.currency,
-      maximum: price.amount,
-      ledgerCeiling: Math.max(input.run.budget.authorized, liability + price.amount),
+      // 重拍这一镜价格未知 → 这次决定覆盖的**已知**负债是 0，但那不是「免费」：
+      // `unknownJobCount: 1` 才是这份信封在说的话。
+      maximum: priceCeiling ?? 0,
+      ledgerCeiling: Math.max(input.run.budget.authorized, liability + (priceCeiling ?? 0)),
+      unknownJobCount: priceCeiling === null ? 1 : 0,
     },
   });
   return {
@@ -387,7 +405,6 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       const existing = input.run.jobs.find((job) => job.jobId === jobId);
       if (!existing || existing.status !== "authorized" || existing.providerTaskId) return [];
       const price = input.resolveShotPrice(contract);
-      assertKnownShotPrice(price, shot.shotId);
       const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
         input.run.runId,
         contract.contractHash,
@@ -417,15 +434,19 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
         ...(referenceUrls ? { referenceUrls } : {}),
         providerWirePayloadHash: prepared.providerRequestHash,
         providerIdempotencyKey,
-        price: { currency: input.run.budget.currency, maximum: price.amount },
+        price: { currency: input.run.budget.currency, maximum: jobPriceCeiling(price) },
       }];
     });
   if (jobs.length === 0) throw new Error("This generation Run has no unsubmitted jobs to continue");
 
-  const remainingMaximum = sumBudgetAmounts(jobs.map(job => job.price.maximum));
+  const remainingMaximum = sumKnownJobCeilings(jobs);
+  const unknownJobCount = countUnknownJobPrices(jobs);
   const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   const completeMaximum = sumBudgetAmounts([liability, remainingMaximum]);
-  if (!budgetExceeds(completeMaximum, input.run.budget.authorized)) {
+  // 「已经覆盖了」这句话过去只问金额。价格未知的续批**金额永远是 0**，于是它会被这条判据当成
+  // 「不用再开门」而卡死在这里——续批那条路因此对未知价永远走不通。判据补上未知那根轴：
+  // 还有未知价的镜头要跑，就仍然需要一次人的决定（或全自动档的代答）。
+  if (unknownJobCount === 0 && !budgetExceeds(completeMaximum, input.run.budget.authorized)) {
     throw new Error("The current generation authorization already covers the remaining jobs");
   }
   const issuedAt = Date.parse(input.now);
@@ -447,6 +468,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       currency: input.run.budget.currency,
       maximum: remainingMaximum,
       ledgerCeiling: Math.max(input.run.budget.authorized, completeMaximum),
+      unknownJobCount,
     },
   });
   return {

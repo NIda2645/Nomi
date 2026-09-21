@@ -343,9 +343,16 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
           const gate = await deps.requestGenerationGate(request);
           assertBindingCurrent();
           const prepared = gate as { maximumCost?: unknown; currency?: unknown };
+          // 现时性校验：门算出来的金额不许**高于**用户刚在卡上看到的那个数。
+          //
+          // 这里曾经还有一条 `|| acceptedQuote.unknownShotCount > 0`——它把「价格未知」当成拒绝
+          // 的理由，而且报成 `generation_quote_changed`（一句假话：报价没变，是从来就没有）。
+          // 2026-09-21 用户拍板未知价不许挡生成，这条外层重复拒绝随之删除；未知价的门
+          // `maximumCost` 回 null（不是 0），对它做金额比较没有意义，所以只比已知的那一档。
           if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId
-            || acceptedQuote.unknownShotCount > 0 || prepared.currency !== acceptedQuote.currency
-            || typeof prepared.maximumCost !== "number" || prepared.maximumCost > acceptedQuote.knownSubtotal) {
+            || prepared.currency !== acceptedQuote.currency
+            || (prepared.maximumCost !== null
+              && (typeof prepared.maximumCost !== "number" || prepared.maximumCost > acceptedQuote.knownSubtotal))) {
             throw new Error("generation_quote_changed");
           }
           return gate;

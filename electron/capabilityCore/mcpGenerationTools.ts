@@ -12,7 +12,6 @@ import {
 import {
   buildMultiShotGateProjection,
   deriveShotPrice,
-  assertKnownShotPrice,
   type ModelPricing,
   type MultiShotGateProjection,
   type ShotPrice,
@@ -204,8 +203,8 @@ export type GenerationPlanningHandlerDependencies = {
    * P4 S2: resolve the catalog pricing row for a provider/model identity (candidate.providerId maps
    * to the catalog vendorKey). preview derives per-shot single prices from it; gate_request feeds the
    * derived amount into the receipt's maximumCost (replacing the ¥0 placeholder). Omitted → preview
-   * reports the price as unknown and gate_request blocks until a catalog price
-   * is available; an unknown price is never represented as a zero ceiling.
+   * 与 gate_request 都如实报「价格未知」（`maximumCost: null` + `unknownShotCount`），生成照常进行；
+   * an unknown price is never represented as a zero ceiling.
    */
   resolveModelPricing?: (providerId: string, modelId: string) => ModelPricing | undefined;
   /**
@@ -627,8 +626,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         recoveryNotice: readiness.recoveryNotice,
         ...(readiness.providerCapabilitiesMissing.length ? { providerCapabilitiesMissing: readiness.providerCapabilitiesMissing } : {}),
         // Keep the established action vocabulary for renderer/MCP clients;
-        // an unknown price remains visible in `pricing.total` and the gate
-        // itself fails closed with `generation_pricing_unknown`.
+        // an unknown price remains visible in `pricing.total`，门照开、卡上如实写「价格未知」。
         ...(readiness.providerReady ? { nextAction: "request_gate" } : { nextAction: "provider_configure" }),
       };
     }
@@ -646,25 +644,19 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // single-shot draft passes no bundle (byte-identical to today). Top contract = shots[0]'s contract
       // (顶层 candidate = shots[0].candidate), so the reducer's top-level match holds.
       const multiShotSeal = current.state === "draft" ? sealMultiShotFor(current) : undefined;
-      // Preview may honestly show an unknown price, but a paid gate may never
-      // turn that unknown into a zero ceiling or an approval prompt. Check all
-      // included shots before any durable seal/authorization write so the
-      // failure is atomic and the user receives an actionable pricing error.
-      if (multiShotSeal) {
-        for (const shot of multiShotSeal.shotPrices ?? []) {
-          assertKnownShotPrice(shot.price, shot.shotId);
-        }
-      }
+      // 2026-09-21：这里从前逐镜 `assertKnownShotPrice`，价格算不出就整批拒绝
+      // （`generation_pricing_unknown`）。用户拍板删掉：内置 204 个模型一条 pricing 都没有，
+      // 这条拒绝等于「我们没建价格标尺 → 你不准干活」。要防的「未知被当成 0 元」由授权信封的
+      // 类型守（`price.maximum: number | null` + `budget.unknownJobCount`），不靠拒绝生成来防。
       const price = priceForCandidate(candidate);
-      if (!multiShotSeal) assertKnownShotPrice(price, candidate.candidateId);
       const authorization = current.state === "draft" && deps.prepareAuthorization
         ? await deps.prepareAuthorization({ lease: input.lease, operation: current, contract, ...(multiShotSeal ? { multiShot: multiShotSeal } : {}) })
         : undefined;
       const sealed = current.state === "draft"
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now(), multiShotSeal, authorization)
         : current;
-      // P4 S2: the receipt's cost ceiling is the known derived price. Unknown
-      // pricing was rejected above and can never become a fabricated ¥0.
+      // P4 S2: the receipt's cost ceiling is the known derived price. 价格算不出 → `null`，
+      // 卡上走「暂时算不出价格」那一档；**永远不是 ¥0**。
       const expiresAt = new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString();
       // P4 S4: for a multi-shot operation, build the real display.shots (the S3a card's data) and use the
       // PLAN-LEVEL cost as the receipt ceiling. A single-shot op omits `shots` → flat card, unchanged.
@@ -681,8 +673,12 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
           model: `${contract.providerId}/${contract.modelId}`,
           referenceCount: contract.references.length,
           costScope: sealed.authorizationEnvelope?.costScope ?? `generation.multi-shot:${operationId}`,
-          maximumCost: sealed.authorizationEnvelope?.budget.maximum ?? knownSubtotal,
+          // 一批**全部**算不出价：没有任何已知金额可报，如实回 null（不是 0）。
+          maximumCost: multiShot.shots.every((shot) => !shot.price.known)
+            ? null
+            : sealed.authorizationEnvelope?.budget.maximum ?? knownSubtotal,
           costKnown: multiShot.shots.every((shot) => shot.price.known),
+          unknownShotCount: multiShot.shots.reduce((count, shot) => (shot.price.known ? count : count + 1), 0),
           currency: "CNY",
           expiresAt,
           shotSummary: multiShot.shots[0]?.sceneOneLiner ?? contract.prompt.slice(0, 120),
@@ -705,8 +701,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         model: `${contract.providerId}/${contract.modelId}`,
         referenceCount: contract.references.length,
         costScope: sealed.authorizationEnvelope?.costScope ?? `generation.single-shot:${operationId}`,
-        maximumCost: sealed.authorizationEnvelope?.budget.maximum ?? (price.known ? price.amount : 0),
+        maximumCost: price.known ? sealed.authorizationEnvelope?.budget.maximum ?? price.amount : null,
         costKnown: price.known,
+        ...(price.known ? {} : { unknownShotCount: 1 }),
         currency: "CNY",
         expiresAt,
         shotSummary: contract.prompt.slice(0, 120),

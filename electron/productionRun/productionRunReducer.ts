@@ -177,6 +177,12 @@ function validateBudget(value: Record<string, unknown>, current: BudgetLedgerSum
     if (!Number.isFinite(amount) || amount < 0) throw new Error(`Invalid budget ${key}`);
     next[key] = amount;
   }
+  // 未知价在途笔数是**计数**不是金额，所以它走自己的校验（整数、非负），绝不进上面那个金额循环。
+  if (value.unknownInFlight !== undefined) {
+    const count = Number(value.unknownInFlight);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid budget unknownInFlight");
+    next.unknownInFlight = count;
+  }
   if (typeof value.currency === "string" && value.currency.trim()) next.currency = value.currency.trim();
   if (budgetExceeds(sumBudgetAmounts([next.reserved, next.actual, next.unsettled]), next.authorized)) {
     throw new Error("Budget liability exceeds authorization");
