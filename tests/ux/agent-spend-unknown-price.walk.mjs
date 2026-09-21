@@ -194,8 +194,8 @@ try {
 
   const enCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   // 同上：换壳后这一格在页脚左下，措辞是新的那一句（zh/en 一起改的）。
-  await expect(enCard.locator(PRICE_UNAVAILABLE), 'EN：Price unknown — your provider bills it')
-    .toHaveText('Price unknown — your provider bills it')
+  await expect(enCard.locator(PRICE_UNAVAILABLE), 'EN：Price unknown · billed by provider')
+    .toHaveText('Price unknown · billed by provider')
   const enPriceProbe = await proveProbe(enCard.locator(PRICE_UNAVAILABLE), 'EN：the card renders a data-v4-price slot at all')
   await expectAbsent(enCard.locator(PRICE_TOTAL), { provenBy: enPriceProbe, message: 'EN：算不出价时没有 Total 那一格' })
   // 按钮上多了一个 ⏎ 字形（换壳后主按钮的固定后缀），所以 `toHaveText` 换成

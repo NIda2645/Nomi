@@ -906,7 +906,7 @@ export const enAgentPanelV4 = {
   spendParamsConfirm: 'Generate {{amount}}',
   spendTotalLead: '{{amount}} total',
   spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
-  spendTotalUnknown: 'Price unknown — your provider bills it',
+  spendTotalUnknown: 'Price unknown · billed by provider',
   spendParamsConfirmUnknown: 'Generate anyway',
   spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
   spendParamsScopeEach: 'Per shot',

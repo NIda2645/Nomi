@@ -311,7 +311,7 @@ export function V4AskCard({
             disabled={!answered}
             onClick={() => advance(drafts)}
             data-v4-control="ask-continue"
-            className="min-w-20"
+            className="min-w-20 shrink-0"
           >
             {last ? labels.send : labels.continueLabel}
             <span aria-hidden="true" className="text-micro opacity-70">⏎</span>

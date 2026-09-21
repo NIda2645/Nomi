@@ -374,7 +374,10 @@ export function V4Intervention({
                   如实交代，不是报错，而且**按钮照常可点**（花钱边界的产品拍板）。 */}
               {data.totalLead ? (
                 <span
-                  className={cn('min-w-0 truncate tabular-nums', data.price?.total ? 'text-nomi-ink' : 'text-nomi-ink-60')}
+                  // **不 truncate**：这一格在算不出价时是一整句交代（「价格未知 · 以供应商账单为准」），
+                  // 截成「Price unknown — your provider…」等于把唯一要说的话切掉一半（EN 真截图上看到的）。
+                  // 放不下就折行，不省略。
+                  className={cn('min-w-0 tabular-nums', data.price?.total ? 'text-nomi-ink' : 'text-nomi-ink-60')}
                   data-v4-block="slot-total"
                   // 走查认「这张卡报不报得出价」靠的就是这个属性（`PRICE_TOTAL` /
                   // `PRICE_UNAVAILABLE` 两个共享选择器）。它跟着那个数从卡体搬到页脚。
@@ -414,7 +417,8 @@ export function V4Intervention({
                 onClick={onConfirm}
                 data-v4-control="confirm"
                 // 单动作最小宽 72px（agent 专章 §8.2），否则两个字的按钮会缩成小方块。尺寸阶梯上没有 72，取上一档 80（`min-w-20`），不写任意值。
-                className="min-w-20"
+                // `shrink-0`：左下那句话折行时不许来挤主按钮——被挤的永远该是说明，不是动作。
+                className="min-w-20 shrink-0"
               >
                 {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
                   <IconCheck aria-hidden="true" />

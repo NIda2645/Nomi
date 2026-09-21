@@ -153,6 +153,11 @@ try {
         }
       })
       measured.push({ locale: tag, theme, kind, ...shape })
+      // 页脚左下那一格（合计 / 价格未知那句）不许被省略号截断——EN 串长，截断只有眼睛看得出，
+      // 所以量它：内容宽不许超过自己的盒子。
+      const leadClipped = await shot.locator('[data-v4-block="slot-total"]').evaluateAll((nodes) =>
+        nodes.filter((node) => node.scrollWidth - node.clientWidth > 1).length)
+      if (leadClipped) failures.push(`${tag}/${theme}/${kind}：页脚左下那句被截断了`)
       if (kind === 'spend-unknown') {
         const enabled = await shot.locator('[data-v4-control="confirm"]').isEnabled()
         if (!enabled) failures.push(`${tag}/${theme}/${kind}：算不出价时主按钮被禁用了——用户硬性拍板：算不出价绝不拦生成`)
