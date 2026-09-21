@@ -28,10 +28,12 @@
 //   · 参数改完，下面那行价格当场重算——因为它就是从同一份 meta 读出来的。
 import React from 'react'
 import { V4Intervention } from '../../../../workbench/ai/v4/AgentPanelV4Cards'
+import { AgentPanelV4Panel } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { V4AutoModeBanner } from '../../../../workbench/ai/v4/AgentPanelV4AutoMode'
 import { AgentPanelV4Composer } from '../../../../workbench/ai/v4/AgentPanelV4Composer'
 import { useV4Labels } from '../../../../workbench/ai/v4/agentPanelV4Labels'
-import type { InterventionData } from '../../../../workbench/ai/v4/agentPanelV4Types'
+import { projectSpendCard } from '../../../../workbench/ai/v4/agentPanelSpendCard'
+import type { PendingSpendConfirm } from '../../../../desktop/productionRunBridgeTypes'
 import NodeGenerationComposer from '../../../../workbench/generationCanvas/nodes/NodeGenerationComposer'
 import { useGenerationCanvasStore } from '../../../../workbench/generationCanvas/store/generationCanvasStore'
 import { useWorkbenchStore } from '../../../../workbench/workbenchStore'
@@ -98,9 +100,6 @@ function quoteShot(meta: Record<string, unknown> | undefined): ShotQuote | null 
   return { unit, seconds, amount: unit * seconds }
 }
 
-function money(amount: number): string {
-  return `¥${amount.toFixed(2)}`
-}
 
 function baseMeta(): Record<string, unknown> {
   return {
@@ -170,7 +169,8 @@ function SpendComposerCard({
   priceUnknown = false,
   scope = 'each',
   openTrigger,
-}: CardFixture): JSX.Element {
+  inPanel = false,
+}: CardFixture & { inPanel?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
   const labels = useV4Labels()
   const [ready, setReady] = React.useState(false)
@@ -227,81 +227,68 @@ function SpendComposerCard({
   if (!ready || !node) return <Piece><div /></Piece>
 
   const quotes = nodes.map((candidate) => (priceUnknown ? null : quoteShot(candidate.meta)))
-  const current = quotes[index]
-  const total = quotes.every((quote) => quote) ? quotes.reduce((sum, quote) => sum + (quote?.amount ?? 0), 0) : null
-  // 逐镜参数可以各不相同，所以「N 段 × 3s · ¥0.10/秒」这句算式**只有在真的整齐时才成立**。
-  // 一旦有一镜被改长了，还印那句就是在报一个不存在的算法——那时改印「N 镜 · 逐镜不同」，
-  // 具体数字交给下面那个逐镜折叠口。
-  const uniform = quotes.every((quote) => quote && quote.seconds === quotes[0]?.seconds && quote.unit === quotes[0]?.unit)
-  const quality = String(node.meta?.mode) === 'std' ? fx.t('agentPanelV4.qualityStandard') : fx.t('agentPanelV4.qualityPro')
-
-  const price: InterventionData['price'] = {
-    breakdown: total === null
-      ? fx.t('agentPanelV4.spendParamsBreakdownNoUnit', { count: shots })
-      : uniform && quotes[0]
-        ? fx.t('agentPanelV4.spendParamsBreakdown', { count: shots, seconds: quotes[0].seconds, quality, unit: money(quotes[0].unit) })
-        : fx.t('agentPanelV4.spendParamsBreakdownMixed', { count: shots }),
-    ...(total === null
-      ? { unavailable: fx.t('agentPanelV4.spendParamsUnavailable') }
-      : { totalLabel: fx.t('agentPanelV4.spendParamsTotalLabel'), total: money(total) }),
-    // 逐镜摊开只在「不整齐」时才有信息量：整齐时每一行都是同一个数，摊开等于把同一句话抄 4 遍。
-    ...(total !== null && shots > 1 && !uniform
-      ? {
-          perItemLabel: fx.t('agentPanelV4.spendParamsPerItem', { count: shots }),
-          perItem: quotes.map((quote, i) => ({
-            label: fx.t('agentPanelV4.spendParamsShot', { number: i + 1 }),
-            amount: money(quote?.amount ?? 0),
-          })),
-        }
-      : {}),
+  // **ShellStage 手法**：卡上印的一切由**生产投影** `projectSpendCard` 算，这里只负责把
+  // 取景台的画布节点 + 报价喂成主进程那份待确认单的形状（`PendingSpendConfirm`）。
+  //
+  // 这里原来是一份手抄的投影（标题 / 徽章 / 价格行 / 主按钮各算一遍）。它和生产投影
+  // 已经分过四次叉：卡头「需要你定一下」、幽灵的「换模型」按钮、页脚左下说的不是一件事、
+  // 还有一句生产侧**从来不印**的算式「1 镜 × 3s · 标准画质 · ¥0.10/秒」（生产没有单价可报）。
+  // 每一次都是用户在真机上先看出来的——实验室画的是一张不存在的卡，拍板就拍在了空处。
+  // 现在只有一份投影，实验室这一格想分叉也没地方分。
+  const pendingSpend: PendingSpendConfirm = {
+    projectId: 'design-lab', runId: 'design-lab-run', operationId: 'design-lab-op',
+    planVersion: 1, quoteId: 'design-lab-quote', candidateRevision: 1,
+    currency: 'CNY',
+    shots: nodes.map((candidate, i) => {
+      const quote = quotes[i]
+      return {
+        shotId: `lab-shot-${i + 1}`,
+        nodeId: candidate.id,
+        index: i + 1,
+        prompt: String(candidate.prompt ?? ''),
+        providerId: String(KLING.vendor ?? ''),
+        modelId: String(candidate.meta?.modelKey || ''),
+        mode: 'text_to_video',
+        parameters: {},
+        price: quote ? { known: true as const, amount: quote.amount } : { known: false as const },
+      }
+    }),
+    knownSubtotal: quotes.reduce((sum, quote) => sum + (quote?.amount ?? 0), 0),
+    unknownShotCount: quotes.filter((quote) => !quote).length,
   }
+  const data = projectSpendCard(pendingSpend, { page: index, scope: activeScope }, fx.t, {
+    // 「Nomi 选的」= 模型还是 Nomi 当初挑的那个。用户在卡上一改模型，这句话跟着消失。
+    locale: fx.locale,
+    agentPickedModelIds: [String(KLING.modelKey ?? '')],
+  })
+  if (!data) return <Piece><div /></Piece>
 
-  // 「Nomi 选的」只在**模型还是 Nomi 挑的那个**时印。用户一改模型这句话就成了假话，
-  // 所以它是从当前 meta 现算的，不是卡上写死的一行小字。
-  const pickedByNomi = String(node.meta?.modelKey || '') === KLING.modelKey
-  const badge = pickedByNomi
-    ? `${fx.t('agentPanelV4.slotSpendBadge')} · ${fx.t('agentPanelV4.spendParamsModelPicked')}`
-    : fx.t('agentPanelV4.slotSpendBadge')
+  const composer = (
+    <NodeGenerationComposer
+      node={node}
+      visualSize={node.size ?? { width: 340, height: 192 }}
+      host="panel"
+      onFeedback={() => undefined}
+    />
+  )
+  const cardLabels = { ...labels.intervention, reject: fx.t('agentPanelV4.spendParamsDecline') }
 
-  // 报不出价时没有「全部合计」可印，范围切换也就无从谈起——那一档退回逐镜。
-  const batchScope = activeScope === 'all' && shots > 1 && total !== null
-  const data: InterventionData = {
-    kind: 'spend',
-    // 标题里**不再印金额**：金额随参数变，两个地方印同一个数就一定有一个先漂。
-    // 它只说「要做什么」，钱归价格行与那两颗钮（后者是用户按下去时的那句承诺）。
-    title: fx.t('agentPanelV4.spendParamsTitle', { count: shots }),
-    badge,
-    ...(shots > 1
-      ? {
-          pager: {
-            index,
-            total: shots,
-            keyHint: fx.t('agentPanelV4.pagerKeyHint'),
-            ...(total !== null
-              ? {
-                  scope: {
-                    value: batchScope ? ('all' as const) : ('each' as const),
-                    eachLabel: fx.t('agentPanelV4.spendParamsScopeEach'),
-                    allLabel: fx.t('agentPanelV4.spendParamsScopeAll'),
-                    ariaLabel: fx.t('agentPanelV4.spendParamsScopeAria'),
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
-    price,
-    // 正常那两档一句话都不多说：卡上每一样东西都能改、改完价格就变，这件事**看得见**，
-    // 不需要再写一行「确认前都能改」（D1：让用户多读的默认砍掉）。
-    // 只有报不出价那一档必须说话——那是用户在按下去之前唯一没法自己看出来的事。
-    ...(total === null ? { scope: fx.t('agentPanelV4.spendParamsScopeUnknown') } : {}),
-    // 主按钮只有一颗，标签跟着**范围**走：逐镜印这一页的价，全部印合计 + 几镜。
-    // v2 那颗「全部生成 ¥1.20」次按钮已删（2026-09-10 按钮规则：批量不是第二颗文字按钮）。
-    confirmLabel: batchScope && total !== null
-      ? fx.t('agentPanelV4.spendParamsConfirmAll', { count: shots, amount: money(total) })
-      : current
-        ? fx.t('agentPanelV4.spendParamsConfirm', { amount: money(current.amount) })
-        : fx.t('agentPanelV4.spendParamsConfirmUnknown'),
+  // 「放进真面板里」那一格（上面对话流、下面 composer、外面面板壳）。**同一张真卡**——
+  // 同一份生产投影、同一个正文组件，只是换了宿主。原来面板里那格付费卡用的是一排静态
+  // 文字 chip 当正文，那不是真卡的形态，用户拍板看的就成了一个不存在的东西。
+  if (inPanel) {
+    return (
+      <div ref={cardRef}>
+        <AgentPanelV4Panel
+          slotHandlers={{ ...V4_LAB_SLOT_HANDLERS, onPage: setIndex, onScope: setActiveScope }}
+          flow={fx.flows.creation}
+          slot={data}
+          slotComposer={composer}
+          context={{ ...fx.context, used: 36000 }}
+          height={860}
+        />
+      </div>
+    )
   }
 
   return (
@@ -310,17 +297,10 @@ function SpendComposerCard({
         <V4Intervention
           {...V4_LAB_SLOT_HANDLERS}
           data={data}
-          labels={{ ...labels.intervention, reject: fx.t('agentPanelV4.spendParamsDecline') }}
+          labels={cardLabels}
           onPage={setIndex}
           onScope={setActiveScope}
-          composer={
-            <NodeGenerationComposer
-              node={node}
-              visualSize={node.size ?? { width: 340, height: 192 }}
-              host="panel"
-              onFeedback={() => undefined}
-            />
-          }
+          composer={composer}
         />
       </div>
     </Piece>
@@ -372,6 +352,30 @@ function AutoModeReminderCell(): JSX.Element {
 }
 
 export const V4_SPEND_PARAMS_STATES: readonly LabState[] = [
+  {
+    id: 'v4-panel-spend-light',
+    name: '⑤ 付费确认卡**在真面板里**（真卡：正文是节点参数条，数据走生产投影）',
+    source: '2026-09-22 用户：「卡族换壳，主要是要用我们的设计系统」；对账物 = 同屏 composer',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={1} inPanel />,
+  },
+  {
+    id: 'v4-panel-spend-batch',
+    name: '⑤ 多镜付费卡在真面板里（逐镜翻页 + 左下「N 镜 · 合计」）',
+    source: '2026-09-22 卡族换壳收尾：多镜批量卡正文沿用现有形态，只换外壳与页脚',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={4} inPanel />,
+  },
+  {
+    id: 'v4-panel-spend-unknown',
+    name: '⑤ 未知价付费卡在真面板里（左下整句交代，主按钮照常可点）',
+    source: '用户 2026-09-21 硬性拍板：算不出价绝不拦生成',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={1} priceUnknown inPanel />,
+  },
   {
     id: 'v4-spend-params-collapsed',
     name: '付费卡 · 上提示词 / 下参数条（4 镜第 1 页 · 翻页器 · 价格算式）',

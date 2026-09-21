@@ -97,7 +97,9 @@ try {
   // 时刻②之一：价格**当场**变了。这是本轮修的那件事——本地按同一条算式重算，不等一个来回。
   await expect(card.locator(PRICE_TOTAL), '改完参数，价格行当场跟着动（基价 + 规格加价）')
     .toContainText(UPGRADED_PRICE, { timeout: DEFAULT_TIMEOUT_MS })
-  // 主按钮上印的是同一个数：两个地方印同一件事，任何一个先漂都是在骗按下去的那个人。
+  // 主按钮上印的是同一个数（设计系统 §1.8 规则 1：带后果时把后果写进标签）。
+  // 页脚左下那一格是**整单合计**、按钮是**这一下花多少**——单镜时两者必须相等，
+  // 任何一个先漂都是在骗按下去的那个人。
   await expect(card.locator(INTERVENTION_CONFIRM)).toContainText(UPGRADED_PRICE)
   await walk.snap('reprice-02-price-follows-the-chip')
 

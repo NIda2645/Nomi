@@ -20,7 +20,7 @@ import { getCreationAiMode } from '../../creation/creationAiModes'
 import { runProposalUndo, getCommittedProposal } from '../../generationCanvas/agent/proposalUndo'
 import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
 import type { PermissionTier } from './agentPanelV4Types'
-import { answerToolResult, type V4QuestionAnswer } from './agentPanelV4Question'
+import { answerToolResult, type V4QuestionReply } from './agentPanelV4Question'
 import { approvalPolicyForTier } from './agentPanelV4Logic'
 import type { AgentPanelV4Data } from './useAgentPanelV4Data'
 import type { LibraryPrompt } from '../../api/promptLibraryApi'
@@ -95,7 +95,7 @@ export type AgentPanelV4Actions = Readonly<{
    * 带话的那一支会把那句话**一字不改**变成模型看到的 tool result（计划卡的「只留这几条」
    * 走的也是它）。主进程 lane 接上真正的提问工具之后，只需要换掉这里这一行。
    */
-  answerQuestion: (answer: V4QuestionAnswer) => void
+  answerQuestion: (reply: V4QuestionReply, questions: readonly string[]) => void
   queueAction: (rowIndex: number, action: string) => void
   queueInterrupt: (rowIndex: number) => void
   newThread: () => void
@@ -289,8 +289,8 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     approve: () => answer('allow-once'),
     reject: (reason) => answer('deny', reason),
     stopAsking: () => answer('allow-session'),
-    // 一次答复带的是**一张卡上所有题**的答案；今天卡体一次只交一题，所以包成一条。
-    answerQuestion: (value) => answer('answer', answerToolResult([value])),
+    // 一次答复带的是**一张卡上所有题**：答了的 + 明说跳过的。写成字的那一步归 owner。
+    answerQuestion: (reply, questions) => answer('answer', answerToolResult(questions, reply)),
     queueAction: (index) => run(() => cancelQueued(index)),
     queueInterrupt: (index) => run(() => cancelQueued(index)),
     newThread: () => run(() => checked(laneClient.createLane(newLaneName()))),

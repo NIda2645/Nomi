@@ -107,6 +107,8 @@
 | T-DS-20 | 外部 MCP 宿主产出的分镜进不进左侧栏 | todo | 用户 09-21 拍板「这轮不动，记待办」（`scratchpad/user-decisions.md` Q4） | 一个家之后，应用内 Agent 与用户手建共用 `storyboardDesign`；外部 MCP 宿主的 `nomi_canvas_plan` 走的**也是**这条路（`applyCanvasToolCall` 的 `propose_storyboard_plan`），所以它产出的方案本来就会出现在左栏。真正没有的是**按方案 id 读回**那一口：外部宿主今天只能经 `nomi_read` 的画布投影看它。要不要给它一个读口（以及要不要让它改），属产品取舍，先问用户 |
 | T-DS-21 | 「给已有方案再补两镜」仍做不到 | todo | 批次 A Pass 2 residual（合同 `2026-09-21-agent-plan-one-home` 的 residual_risks 第 1 条） | `draft_shots` 带 `operationId` 只能改**一镜**（`shotId` 必填），没有 append 语义。main 与 PR head 都不支持，本次未回归也未修复。后果：用户说「再加一镜」时模型要么只能改已有镜，要么新建一份方案（新流程下它会先被要求指名，拿不准就问人，所以不会静默刷出一串）。修它要动模型可见面，先出方案 |
 
+| T-DS-22 | 其余列表还没有「删除是一个手势」这一档：排队消息、素材/参考图、文稿行 | todo | 09-21 反问卡+删除手势 lane（任务书只划了「创作内容」方案行一处） | 手势件已经是通用的：`src/design/SwipeToDeleteRow.tsx`（整件取自 Spectrum UI Swipe to Delete），撤销接仓库现成 owner `showUndoToast`。铺到别的列表**只差两件**：① 那份数据要有一条「放回原位」的复原路径（方案那条是 `restoreStoryboardDesign`，按 index 插回、id 不变）；② 行宽要够——方案行住在 240px 侧栏里，推 28px 时行首图标已经被裁出视口（`scratchpad/lane-renderer4/plan-delete/02-hover-peek.png` 看得见），更窄的列表得先量再定 `actionWidth/hoverPeek`。别直接抄 64/36 那组数。 |
+
 ## E. 素材与导入
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |

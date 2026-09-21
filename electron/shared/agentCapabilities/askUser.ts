@@ -108,6 +108,42 @@ export const askUserAnswerSchema = z.object({
 export type AskUserAnswer = z.infer<typeof askUserAnswerSchema>;
 
 /**
+ * **整张卡**的答复 = 答了的那几题 + 明说「这几题他跳过了」。
+ *
+ * 为什么跳过要显式（2026-09-22，渲染层报告 §10.4-2 登记的契约缺口）：多题卡上用户可以只跳过其中一题。
+ * 原来的形状里被跳过的题只是**不出现**在 `answers` 里——模型要知道「第 2 题被跳过」只能靠发现
+ * `questionIndex: 1` 缺席，而回给它的那段字连题号都没有（几条 `text` 用换行连起来），
+ * 于是「答了 1、3，跳过 2」和「答了 1、2，没有第 3 题」读起来一模一样。
+ * 一条答复要么在 `answers` 里、要么在 `skippedQuestionIndexes` 里，不许两头都不在。
+ */
+export const askUserReplySchema = z.object({
+  answers: z.array(askUserAnswerSchema),
+  skippedQuestionIndexes: z.array(z.number().int().nonnegative()).optional(),
+}).strict();
+
+export type AskUserReply = z.infer<typeof askUserReplySchema>;
+
+/**
+ * 回给模型的那段字——**唯一一份**写法（渲染层的 `answerToolResult` 只是调它）。
+ *
+ * · 一题、答了：只回他的原话。那是最常见的一支，包一层「Question 1:」只会让模型多读一句废话。
+ * · 其余（多题，或有跳过）：按卡上的次序逐题写，带题号与问句。跳过的那题**明说是跳过**，
+ *   并告诉模型该怎么办——不许替他编一个答案。
+ * 只发 `text` 不发 `optionIds`：id 是我们这边的东西，选项的字本来就是模型自己写的。
+ */
+export function askUserReplyText(questions: readonly string[], reply: AskUserReply): string {
+  const skipped = new Set(reply.skippedQuestionIndexes ?? []);
+  if (questions.length <= 1 && skipped.size === 0) return reply.answers.map(answer => answer.text).join("\n");
+  const byIndex = new Map(reply.answers.map(answer => [answer.questionIndex, answer.text]));
+  return questions.map((question, index) => {
+    const head = `Question ${index + 1}${question ? ` (${question})` : ""}: `;
+    const text = byIndex.get(index);
+    if (text !== undefined && !skipped.has(index)) return `${head}${text}`;
+    return `${head}the user skipped this question. He chose not to answer it — do not invent an answer for him. Go on without it, or pick the safest default and tell him which one you picked.`;
+  }).join("\n");
+}
+
+/**
  * 我们**自己**要说的那句话（不是模型写的），所以只传一个码 + 一个数：文案在渲染层 i18n。
  * 生产者传成句的字符串就绕过了 i18n，英文用户会读到中文。
  */
@@ -155,7 +191,7 @@ export const AGENT_ASK_CAPABILITY = {
   version: 1,
   aliases: { pi: "ask_user" },
   inputSchema: askUserInputSchema,
-  outputSchema: z.object({ answers: z.array(askUserAnswerSchema) }).strict(),
+  outputSchema: askUserReplySchema,
   effect: "read",
   effectClass: "reversible_local",
   alwaysAsksUser: true,
@@ -163,7 +199,7 @@ export const AGENT_ASK_CAPABILITY = {
   exposure: "internal_only",
   requiredScope: "agent:ask",
   targetKind: "project",
-} as const satisfies CapabilityContract<AskUserInput, { answers: AskUserAnswer[] }>;
+} as const satisfies CapabilityContract<AskUserInput, AskUserReply>;
 
 /**
  * 内部面上这个动词叫什么。**从契约的别名取，不在别处手打字符串**——

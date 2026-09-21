@@ -40,6 +40,16 @@ export type WorkbenchDocumentSlice = {
   duplicateStoryboardDesign: (id: string, documentId?: string) => StoryboardDesign | null
   renameStoryboardDesign: (id: string, title: string) => void
   deleteStoryboardDesign: (id: string, documentId?: string) => void
+  /**
+   * 把刚删掉的那条方案放回**原来的位置**（撤销那条路）。
+   *
+   * 为什么不是「再 add 一条」：`addStoryboardDesign` 会发一个新 id、追加到队尾、
+   * 重新起标题。用户点「撤销」要的是「刚才那下没发生」，不是「给我一条长得像的」——
+   * 位置变了他就得重新找，id 变了画布上已落的节点绑定就断了。
+   *
+   * 同名 id 已经在表里就**什么都不做**：撤销只负责撤自己那一笔，绝不覆盖别人后来写的。
+   */
+  restoreStoryboardDesign: (design: StoryboardDesign, documentId: string, index: number) => void
   /** 恢复整套文档集合 + 激活 id（项目载入专用，不标脏）。 */
   hydrateWorkbenchDocuments: (documents: WorkbenchDocument[], activeId: string | null) => void
   /** 写入/改写分镜方案对象（planner 落库、编辑器逐字段编辑）：置草稿态。按 documentId 索引；缺省回退 activeDocumentId。 */
@@ -273,6 +283,19 @@ export const createWorkbenchDocumentSlice = (
       return {
         storyboardDesignsByDocumentId: { ...state.storyboardDesignsByDocumentId, [target]: nextDesigns },
         activeStoryboardId: nextActive,
+        persistRevision: state.persistRevision + 1,
+      }
+    })
+  },
+  restoreStoryboardDesign: (design, documentId, index) => {
+    set((state) => {
+      const designs = state.storyboardDesignsByDocumentId[documentId] ?? []
+      // 已经在了 = 这一笔撤过了，或者别人把同一个 id 写回来了。两种情况都不该再插一遍。
+      if (designs.some((item) => item.id === design.id)) return state
+      const next = [...designs]
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, design)
+      return {
+        storyboardDesignsByDocumentId: { ...state.storyboardDesignsByDocumentId, [documentId]: next },
         persistRevision: state.persistRevision + 1,
       }
     })

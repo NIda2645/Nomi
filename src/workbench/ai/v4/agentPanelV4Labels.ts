@@ -49,6 +49,15 @@ export function useV4Labels() {
       confirmReject: t('agentPanelV4.confirmReject'),
       collapsePlan: t('agentPanelV4.collapsePlan'),
       expandPlan: t('agentPanelV4.expandPlan'),
+      /** 反问卡（Approval Card 整件）自己的词。它不走确认卡那套动作词——它没有确认/不要。 */
+      ask: {
+        dismiss: t('agentPanelV4.askDismiss'),
+        skip: t('agentPanelV4.askSkip'),
+        continueLabel: t('agentPanelV4.askContinue'),
+        send: t('agentPanelV4.askSend'),
+        customPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
+        recommended: t('agentPanelV4.questionRecommended'),
+      },
     },
     context: {
       context: t('agentPanelV4.context'),
@@ -70,7 +79,6 @@ export function useV4Labels() {
       credentialTitle: t('agentPanelV4.credentialTitle'),
       credentialConfirm: t('agentPanelV4.credentialConfirm'),
       credentialAlternate: t('agentPanelV4.credentialAlternate'),
-      questionTitle: t('agentPanelV4.questionTitle'),
       planTitle: t('agentPanelV4.planTitle'),
       more: t('agentPanelV4.interventionMore', { count: 1 }),
       scopeOnce: t('agentPanelV4.scopeOnce'),

@@ -189,7 +189,6 @@ export const zhAgentPanelV4 = {
   laneOptionQueueSteer: '排到下一步',
   laneOptionQueueFollowUp: '等它做完再说',
   laneOptionNewTurn: '发送',
-  money: '{{currency}} {{amount}}',
   costUsd: 'USD {{amount}}',
   waitingApproval: '等你确认',
   ready: '就绪',
@@ -210,8 +209,14 @@ export const zhAgentPanelV4 = {
   // 反问卡（2026-09-21 拍板：反问是**通用**能力——模型自己写问题、自己写选项）。
   // 卡内最后一行那句占位照用户原话；它永远在，不看有没有选项。
   questionAnswerPlaceholder: '或者直接告诉它…',
-  questionAnswerSubmit: '把这句话答给它',
   questionRecommended: '推荐',
+  // 反问卡页脚（Approval Card 整件的那四个词）。
+  // 「继续」与「发送」分开是它的原设计：不是最后一题就往下走，最后一题才是把答案交出去。
+  askDismiss: '这次不答',
+  // 多题卡才有：跳过**当前这一题**（整张卡不答是右上那颗 ×，两个动作不合并）。
+  askSkip: '跳过',
+  askContinue: '继续',
+  askSend: '发送',
   // 熔断转提问：同一个字段连着 {{count}} 次没过，就别再撞了，交给用户定。
   // 数由生产者给、话由这里说——生产者传成句的字符串就等于绕开了 i18n。
   questionRetryExhausted: '试了 {{count}} 次都没通过，交给你定。',
@@ -222,7 +227,6 @@ export const zhAgentPanelV4 = {
   credentialTitle: '这个模型还没配密钥',
   credentialConfirm: '去配置',
   credentialAlternate: '换个模型',
-  questionTitle: '需要你定一下',
   planTitle: '这些要做吗？不勾就是不做',
   badgeIrreversible: '不可逆',
   badgeReversible: '可撤销',
@@ -363,12 +367,11 @@ export const zhAgentPanelV4 = {
   slotTrimScope: '已在时间轴高亮，未落盘 · 不计费',
   slotRejectReason: '拒绝原因（可选）',
   slotRejectSample: '这次先不删，保留镜头待复核',
-  slotSpendTitle: '要花 ¥1.20 生成 4 段视频',
+  slotSpendTitle: '生成这 4 段视频？',
   slotSpendBadge: '付费',
-  slotSpendOneTitle: '要花 ¥0.90 生成 1 段视频',
+  slotSpendOneTitle: '生成这 1 段视频？',
   slotSpendOneScope: '用镜头 2 采用的那张当首帧 · 结果落画布并可拖进时间轴',
   slotGenerate: '生成',
-  slotSwitchModel: '换模型',
   slotQuestionTitle: '这段旁白用哪种口吻？',
   slotOptionVoiceCalm: '平静叙述',
   slotOptionVoiceUrgent: '紧绷、压着说',
@@ -424,14 +427,19 @@ export const zhAgentPanelV4 = {
   slotDeviationDraw: '先生图（+¥0.12）',
   slotDeviationSkip: '跳过',
   // 付费卡 · 参数条版（2026-09-10 用户拍板：参数行 = 节点那条参数条，确认前全部可改）
-  spendParamsTitle: '生成 {{count}} 镜的视频',
+  // 标题是**一句问话**（2026-09-22 换壳，照 Recommendation Card 的形状）：
+  // 卡在问「要不要做这件事」，陈述句「生成 N 镜的视频」读起来像它已经决定了。
+  // 复数走 i18next 的 `_one` / `_other`（本仓现成机制，见 generationCommon）。zh 两条同文，
+  // 键必须成对存在——key-parity 门岗要求 zh/en 键集相同。
+  spendParamsTitle_one: '生成这 {{count}} 段视频？',
+  spendParamsTitle_other: '生成这 {{count}} 段视频？',
   // 同一张卡也用来确认图片生成（agent 建的草稿两种都有）。标题不许一律写「视频」——
   // 用户看着一张图片草稿被说成视频，第一反应是「它是不是搞错了」，而这一刻他正要付钱。
-  spendParamsTitleImage: '生成 {{count}} 张图片',
+  spendParamsTitleImage_one: '生成这 {{count}} 张图片？',
+  spendParamsTitleImage_other: '生成这 {{count}} 张图片？',
   /** 模型芯片上的极小徽标：这一项是 Nomi 替你挑的，不是你选的。 */
   spendParamsModelPicked: 'Nomi 选的',
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
-  spendParamsBreakdown: '{{count}} 镜 × {{seconds}}s · {{quality}} · {{unit}}/秒',
   /** 逐镜参数已经不一样了：那句算式不再成立，改说「逐镜不同」，数字交给下面的逐镜折叠口。 */
   spendParamsBreakdownMixed: '{{count}} 镜 · 逐镜不同',
   /** 报不出价时的算式：**不印单价、不印时长**。报不出价却印着 ¥0.10/秒，等于自己编了一个数。 */
@@ -442,6 +450,9 @@ export const zhAgentPanelV4 = {
   spendParamsShot: '镜头 {{number}}',
   /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
   spendParamsConfirm: '生成 {{amount}}',
+  spendTotalLeadBatch: '{{count}} 镜 · 合计 {{amount}}',
+  /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
+  spendTotalUnknown: '价格未知 · 以供应商账单为准',
   spendParamsConfirmUnknown: '仍要生成',
   /** 范围切到「全部」后的同一颗主按钮：多印一句「几镜」，因为这时的数不再是眼前这一页的。 */
   spendParamsConfirmAll: '生成 {{count}} 镜 {{amount}}',
@@ -450,19 +461,17 @@ export const zhAgentPanelV4 = {
   spendParamsScopeAll: '全部',
   spendParamsScopeAria: '生成范围',
   spendParamsDecline: '不要',
-  spendParamsScopeUnknown: '价格没取到。要继续就得接受「花多少事后才知道」。',
   /**
    * × 撤掉这次请求之后那一句。**只有真撤掉了占位节点时才说**：撤了东西就得说撤了什么、怎么拿回来。
    * 用户自己建的节点从来不在这个数里（`spendCardRollback.ts` 只认物化章）。
    */
-  spendDiscardedNodes: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
+  spendDiscardedNodes_one: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
+  spendDiscardedNodes_other: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   spendDiscardEditsWarning: '丢弃这次请求？你在卡上改的内容会一起丢掉。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
   spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
-  qualityStandard: '标准画质',
-  qualityPro: '高画质',
 
   // 「全自动」档（2026-09-10 用户拍板 · 增量 2）
   autoModeConfirmTitle: '切到「全自动」？',
@@ -665,7 +674,6 @@ export const enAgentPanelV4 = {
   laneOptionQueueSteer: 'Queue it for the next step',
   laneOptionQueueFollowUp: 'Wait until it finishes',
   laneOptionNewTurn: 'Send',
-  money: '{{currency}} {{amount}}',
   costUsd: 'USD {{amount}}',
   waitingApproval: 'Waiting for you',
   ready: 'Ready',
@@ -683,15 +691,17 @@ export const enAgentPanelV4 = {
   },
   missingParamAsk: 'I still need a “{{name}}” before I can continue — which one?',
   questionAnswerPlaceholder: 'Or just tell it…',
-  questionAnswerSubmit: 'Send this answer',
   questionRecommended: 'Suggested',
+  askDismiss: 'Not this time',
+  askSkip: 'Skip',
+  askContinue: 'Continue',
+  askSend: 'Send',
   questionRetryExhausted: '{{count}} tries and none went through — your call.',
   questionAnswered: 'Answered',
   credentialSummary: 'Enter it in Nomi\u2019s own window; the model never sees it.',
   credentialTitle: 'This model has no API key yet',
   credentialConfirm: 'Set it up',
   credentialAlternate: 'Use another model',
-  questionTitle: 'One thing to decide',
   planTitle: 'Which of these should I do? Unticked means skip',
   badgeIrreversible: 'Irreversible',
   badgeReversible: 'Undoable',
@@ -829,12 +839,11 @@ export const enAgentPanelV4 = {
   slotTrimScope: 'Highlighted on the timeline, not written · no charge',
   slotRejectReason: 'Reason for declining (optional)',
   slotRejectSample: 'Not this time — keep the shot for review',
-  slotSpendTitle: 'Spend ¥1.20 to generate 4 video clips',
+  slotSpendTitle: 'Generate these 4 video shots?',
   slotSpendBadge: 'Paid',
-  slotSpendOneTitle: 'Spend ¥0.90 to generate 1 video clip',
+  slotSpendOneTitle: 'Generate this video shot?',
   slotSpendOneScope: 'Uses the adopted shot-2 image as the first frame · result lands on the canvas and can be dragged onto the timeline',
   slotGenerate: 'Generate',
-  slotSwitchModel: 'Switch model',
   slotQuestionTitle: 'What tone should this narration take?',
   slotOptionVoiceCalm: 'Plain and steady',
   slotOptionVoiceUrgent: 'Tight, held back',
@@ -885,10 +894,11 @@ export const enAgentPanelV4 = {
   slotDeviationTitle: 'Shot 3 has no first frame — skip it or draw one first?',
   slotDeviationDraw: 'Draw one first (+¥0.12)',
   slotDeviationSkip: 'Skip',
-  spendParamsTitle: 'Generate video for {{count}} shots',
-  spendParamsTitleImage: 'Generate {{count}} image(s)',
+  spendParamsTitle_one: 'Generate this video shot?',
+  spendParamsTitle_other: 'Generate these {{count}} video shots?',
+  spendParamsTitleImage_one: 'Generate this image?',
+  spendParamsTitleImage_other: 'Generate these {{count}} images?',
   spendParamsModelPicked: 'Nomi picked',
-  spendParamsBreakdown: '{{count}} shots × {{seconds}}s · {{quality}} · {{unit}}/s',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
   spendParamsBreakdownNoUnit: '{{count}} shots',
   spendParamsTotalLabel: 'Total',
@@ -896,19 +906,19 @@ export const enAgentPanelV4 = {
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
   spendParamsConfirm: 'Generate {{amount}}',
+  spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
+  spendTotalUnknown: 'Price unknown · billed by provider',
   spendParamsConfirmUnknown: 'Generate anyway',
   spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
   spendParamsScopeEach: 'Per shot',
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
-  spendParamsScopeUnknown: 'No price came back. Continuing means you only learn the cost afterwards.',
-  spendDiscardedNodes: 'Request discarded — {{count}} placeholder shot(s) removed · press ⌘Z to undo',
+  spendDiscardedNodes_one: 'Request discarded — 1 placeholder shot removed · press ⌘Z to undo',
+  spendDiscardedNodes_other: 'Request discarded — {{count}} placeholder shots removed · press ⌘Z to undo',
   spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
-  qualityStandard: 'Standard',
-  qualityPro: 'High quality',
 
   autoModeConfirmTitle: 'Switch to Full auto?',
   autoModeConfirmBody: 'Nomi will make undoable edits directly and **paid generation will run without showing you a quote each time** — this confirmation is your authorisation for them. Irreversible actions are still confirmed every time.',

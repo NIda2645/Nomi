@@ -26,7 +26,7 @@ import { V4AssistantMessage, V4Thinking, V4UserBubble } from './AgentPanelV4Mess
 import { V4ErrorBar, V4Process, V4ToolGroup, V4ToolReceipt } from './AgentPanelV4Receipt'
 import { V4EmptyState } from './AgentPanelV4Empty'
 import { IconHistory, IconLayoutSidebarRightCollapse } from './AgentPanelV4Icons'
-import type { V4QuestionAnswer } from './agentPanelV4Question'
+import type { V4QuestionReply } from './agentPanelV4Question'
 import { useV4Labels } from './agentPanelV4Labels'
 import type { V4FlowScrollMemoryBox } from './agentPanelV4ScrollMemory'
 import type { ResidentSurface } from '../resident/residentShellDisplay'
@@ -65,7 +65,7 @@ export type V4InterventionHandlers = Readonly<{
   onEscalate?: () => void
   onAlternate?: () => void
   /** 用户答了反问（chip 或卡内那一行，同一个动作）。 */
-  onAnswer?: (answer: V4QuestionAnswer) => void
+  onAnswer?: (reply: V4QuestionReply, questions: readonly string[]) => void
   /** 计划行勾选 / 收起。**必填**——见 `V4Intervention` 里那段注释（R28）。 */
   onPlanToggle: (label: string, checked: boolean) => void
   onCollapsePlan: () => void

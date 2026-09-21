@@ -35,8 +35,8 @@
  * 槽里这张卡今天就是靠嗅 `args` 认出来的（`agentPanelV4Intervention.ts` 顶上那段注释）。
  * 嗅探规则只有一份、是纯函数、逐条可单测——多一份就是「同一个语义两个主人」。
  */
-import type { AskUserHostReason, AskUserOption, AskUserQuestion } from '../../../../electron/shared/agentCapabilities/askUser'
-import { ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE } from '../../../../electron/shared/agentCapabilities/askUser'
+import type { AskUserAnswer, AskUserHostReason, AskUserOption, AskUserQuestion, AskUserReply } from '../../../../electron/shared/agentCapabilities/askUser'
+import { ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE, askUserReplyText } from '../../../../electron/shared/agentCapabilities/askUser'
 
 export type V4QuestionOption = Readonly<Omit<AskUserOption, 'id'> & {
   /** 卡上必须有一个稳定的 id；模型没给就由 `questionOptions()` 按位置补 `option-N`。 */
@@ -80,7 +80,16 @@ export type V4QuestionSheet = Readonly<{
  * 卡内打字时 `optionId` 缺席、`text` 是他打的那句话。**永远有 `text`**——模型只认字，
  * 一个光秃秃的 id 对它来说和没答一样。
  */
-export type V4QuestionAnswer = Readonly<{ questionIndex: number; optionIds?: readonly string[]; text: string }>
+export type V4QuestionAnswer = Readonly<Omit<AskUserAnswer, 'optionIds'> & { optionIds?: readonly string[] }>
+
+/**
+ * **整张卡**的答复：答了的那几题 + 明说跳过了哪几题（形状派生自 owner `askUserReplySchema`）。
+ * 跳过必须显式——缺席读不出「跳过」，详见 owner 那边的注释。
+ */
+export type V4QuestionReply = Readonly<{
+  answers: readonly V4QuestionAnswer[]
+  skippedQuestionIndexes?: Readonly<NonNullable<AskUserReply['skippedQuestionIndexes']>>
+}>
 
 /**
  * 拍板的选项数量区间（2026-09-21：2–4 个）与题数区间（1–3 题）。超出不丢数据，只由调用方决定怎么说。
@@ -216,12 +225,16 @@ export function questionAnswerFromOption(option: V4QuestionOption, questionIndex
 }
 
 /**
- * 回给模型的那段字。
- *
- * 只发 `text`：id 是我们这边的东西，模型给的选项本来就是它自己写的那几个字，
- * 把 `option-2` 这种内部 id 发回去只会让它去猜我们在说哪一个。带 id 的那一半留在
- * `V4QuestionAnswer` 里，等主进程 lane 接上真正的提问工具时由结构化字段承载。
+ * 回给模型的那段字。**写法只有一份，住在 owner**（`askUserReplyText`）——这里只是把卡上的
+ * 问句表与答复递过去。渲染层自己再拼一遍，就是第二份「模型读到什么」。
  */
-export function answerToolResult(answers: readonly V4QuestionAnswer[]): string {
-  return answers.map((answer) => answer.text).join('\n')
+export function answerToolResult(questions: readonly string[], reply: V4QuestionReply): string {
+  return askUserReplyText(questions, {
+    answers: reply.answers.map((answer) => ({
+      questionIndex: answer.questionIndex,
+      ...(answer.optionIds ? { optionIds: [...answer.optionIds] } : {}),
+      text: answer.text,
+    })),
+    ...(reply.skippedQuestionIndexes?.length ? { skippedQuestionIndexes: [...reply.skippedQuestionIndexes] } : {}),
+  })
 }

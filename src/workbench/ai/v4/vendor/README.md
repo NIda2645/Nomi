@@ -7,3 +7,9 @@ Tailwind 4 syntax, no React 19 APIs, and no new dependency are introduced.
 
 `aiElementsContract.ts` freezes the imported building-block/status vocabulary so
 future wiring can replace fixture data without changing the visual components.
+
+## Beautiful UI（MIT）
+
+介入槽卡族的外壳与版式骨架另取自 Beautiful UI 的 Approval Card / Recommendation Card。
+许可与「取了什么、没取什么」见 `BEAUTIFUL-UI-LICENSE.md`；同样是 Nomi 侧改写
+（换成我们的 token / 图标 / i18n，不引新依赖），运行时组件住在上一级目录。

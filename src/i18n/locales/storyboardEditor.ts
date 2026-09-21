@@ -1,6 +1,5 @@
 export const zhStoryboardEditor = {
   placeOnCanvas: '放入画布', viewOnCanvas: '查看画布',
-  discardTitle: '删除方案',
   anchorPolicy: {
     ignoredReason: '模式 {{mode}} 没有图片参考槽，参考图不会被使用',
     switchMode: '第 {{index}} 镜按 {{mode}} 生成，「{{anchors}}」参考图不会被使用；要使用它们，请换同模型的 {{alternative}} 模式，或去掉该镜视觉锚。',
@@ -301,7 +300,6 @@ export const zhStoryboardEditor = {
     },
   },
   planCard: {
-    discardMessage: '删除此分镜方案？画布中已有的节点和生成结果将保留。',
     defaultTitle: '分镜方案',
     committed: '已落画布',
     draft: '草稿',
@@ -368,7 +366,6 @@ type TranslationShape<T> = {
 
 export const enStoryboardEditor = {
   placeOnCanvas: 'Place on canvas', viewOnCanvas: 'View canvas',
-  discardTitle: 'Delete plan',
   anchorPolicy: {
     modelUnsupported: 'This model does not accept references',
     catalogMissing: 'Shot {{index}} has no matching available model for character references. Choose an available model and retry.',
@@ -668,7 +665,6 @@ export const enStoryboardEditor = {
     },
   },
   planCard: {
-    discardMessage: 'Delete this storyboard plan? Existing canvas nodes and generated results will be retained.',
     defaultTitle: 'Storyboard plan',
     committed: 'On canvas',
     draft: 'Draft',

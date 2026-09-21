@@ -19,6 +19,7 @@ import { V4ErrorBar, V4ToolReceipt } from '../../../../workbench/ai/v4/AgentPane
 import { V4FlowRow } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { useV4Labels } from '../../../../workbench/ai/v4/agentPanelV4Labels'
 import type { ToolReceipt, V4AssistantStatus } from '../../../../workbench/ai/v4/agentPanelV4Types'
+import { formatMoney } from '../../../../workbench/ai/v4/formatMoney'
 import { Piece, useV4Fixtures, V4_LAB_SLOT_HANDLERS } from '../agentPanelV4LabKit'
 import type { LaneViewModelLabels } from '../../../../workbench/ai/lane/laneViewModel'
 import { laneDrivenReceipt, laneSnapshotQuestionAnswered, laneSnapshotToolDenied, laneSnapshotToolRunning } from '../laneDrivenFixtures'
@@ -131,7 +132,7 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     // 不是画面上的一块空白。
     taskTitle: fx.t('agentPanelV4.taskRun'),
     formatStages: (done, total) => fx.t('agentPanelV4.taskStages', { done, total }),
-    formatMoney: (currency, amount) => fx.t('agentPanelV4.money', { currency, amount: amount.toFixed(2) }),
+    formatMoney: (currency, amount) => formatMoney(fx.locale, currency, amount),
     taskUnknown: fx.t('agentPanelV4.taskUnknown'),
     answered: fx.t('agentPanelV4.questionAnswered'),
     // 技能名。这一格的转录里一条用户消息都没有，所以永远查不到它——但类型要求穷尽，
@@ -181,7 +182,7 @@ function SlotCell({ pick }: { pick: keyof ReturnType<typeof useV4Fixtures>['slot
  */
 type QuestionPick =
   | 'question' | 'questionRetry' | 'questionFree' | 'questionTwo' | 'questionFourMixed'
-  | 'questionLabelsOnly' | 'questionMissingParam'
+  | 'questionLabelsOnly' | 'questionMissingParam' | 'questionThree' | 'questionMulti'
 
 function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
@@ -203,9 +204,12 @@ function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean
 function QuestionAnsweredCell(): JSX.Element {
   const fx = useV4Fixtures()
   const labels = useV4Labels()
+  // 收据那一行印的就是**那句问题**——反问卡的身份是它问了什么，不是一句「需要你定一下」
+  // （那句套话随整件还原一起删了）。所以这里和上面那张卡取同一个字符串。
+  const askedQuestion = fx.t('agentPanelV4.slotQuestionRetryTitle')
   const receipt = laneDrivenReceipt(
-    laneSnapshotQuestionAnswered(fx.t('agentPanelV4.slotQuestionRetryTitle'), fx.t('agentPanelV4.slotOptionAsReference')),
-    labViewModelLabels(fx, fx.t('agentPanelV4.questionTitle')),
+    laneSnapshotQuestionAnswered(askedQuestion, fx.t('agentPanelV4.slotOptionAsReference')),
+    labViewModelLabels(fx, askedQuestion),
   )
   return (
     <Piece>
@@ -508,7 +512,7 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
   },
   {
     id: 'v4-intervention-question',
-    name: '⑤ 介入槽 · 反问 · 待答（选项 chip + 卡内那一行）',
+    name: '⑤ 介入槽 · 反问 · 待答（整行选项 + 末行自由作答）',
     source: '2026-09-06-agent-panel-v4.md · Vocabulary 板 ⑩｜2026-09-21 拍板 ⑤（卡内自由作答）',
     coverage: 'component-only',
     render: () => <QuestionSlotCell pick="question" />,
@@ -563,6 +567,20 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
     source: '2026-09-21 拍板：description 缺席 = 不替它编',
     coverage: 'component-only',
     render: () => <QuestionSlotCell pick="questionLabelsOnly" />,
+  },
+  {
+    id: 'v4-intervention-question-three',
+    name: '⑤ 介入槽 · 反问 · 多题一张卡（第 1 题，左下 1/3）',
+    source: 'Beautiful UI Approval Card 整件：一次一题、卡高随题滑动、左下页码',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionThree" />,
+  },
+  {
+    id: 'v4-intervention-question-multi',
+    name: '⑤ 介入槽 · 反问 · 多选（标记是方的，等「继续」不自动前进）',
+    source: 'Approval Card 的 type: "check"；单选点了就走、多选等按钮（2026-09-21 拍板）',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionMulti" />,
   },
   {
     id: 'v4-intervention-question-missing-param',

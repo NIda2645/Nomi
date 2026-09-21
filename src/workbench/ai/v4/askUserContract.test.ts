@@ -33,12 +33,13 @@ import { describe, expect, it } from 'vitest'
 import { MODEL_FACING_TOOL_SPECS } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
 import { toPublishedJsonSchema } from '../../../../electron/shared/agentCapabilities/modelVisibleJsonSchema'
 import {
-  ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE, askUserInputSchema, askUserPendingArgsSchema,
+  ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE, askUserInputSchema, askUserPendingArgsSchema, askUserReplySchema,
 } from '../../../../electron/shared/agentCapabilities/askUser'
 import {
   parseQuestionSheet, questionCountIssue, questionOptionCountIssue, questionOptions,
   V4_QUESTION_COUNT_RANGE, V4_QUESTION_OPTION_RANGE,
 } from './agentPanelV4Question'
+import { askCardAnswer, EMPTY_ASK_DRAFT } from './agentPanelV4AskModel'
 
 const spec = MODEL_FACING_TOOL_SPECS.find(candidate => candidate.name === 'ask_user')
 
@@ -104,7 +105,7 @@ describe('ask_user：一份契约，两端对拍', () => {
     const source = fs.readFileSync(file, 'utf8')
     expect(source, '渲染层那份类型必须从共享 owner 派生，不许手写一份平行的')
       .toContain("from '../../../../electron/shared/agentCapabilities/askUser'")
-    for (const handWritten of ['V4QuestionOption = Readonly<{', 'V4QuestionAskReason = Readonly<{ code:']) {
+    for (const handWritten of ['V4QuestionOption = Readonly<{', 'V4QuestionAskReason = Readonly<{ code:', 'V4QuestionAnswer = Readonly<{']) {
       expect(source, `「${handWritten}」是手写形状的长相——它一出现就说明派生被冲掉了`).not.toContain(handWritten)
     }
   })
@@ -197,5 +198,22 @@ describe('ask_user：一份契约，两端对拍', () => {
     expect(sheet?.questions).toHaveLength(1)
     expect(sheet?.questions[0]?.missingParamName).toBe('duration')
     expect(sheet?.questions[0]?.question, '问句由调用方按参数名补一句人话，解析层不编').toBe('')
+  })
+
+  it('⑨ 卡吐出来的答复，owner 的 schema 逐字段收得下——含「这题被跳过」的显式标记', () => {
+    // 反向验红（2026-09-22 亲跑）：把 owner 的 `skippedQuestionIndexes` 那一行删掉 → 这里红在
+    // 「Unrecognized key: "skippedQuestionIndexes"」（schema 是 strict 的）；把卡那侧的 skipped 收集删掉 →
+    // 红在「跳过必须点名」那一句。两端任何一边先走一步，另一边当场知道。
+    const questions = [
+      { question: '给谁看？', options: [{ id: 'a', label: '同事' }] },
+      { question: '多长？', options: [] },
+    ]
+    const reply = askCardAnswer(questions, [{ picked: [0], custom: '' }, EMPTY_ASK_DRAFT])
+    const parsed = askUserReplySchema.safeParse(JSON.parse(JSON.stringify(reply)))
+    expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues)).toBe(true)
+    expect(reply.skippedQuestionIndexes, '跳过必须点名，不能靠 questionIndex 缺席去猜').toEqual([1])
+    // 一道题要么答了、要么点名跳过，不许两头都不在。
+    const accounted = new Set([...reply.answers.map((answer) => answer.questionIndex), ...(reply.skippedQuestionIndexes ?? [])])
+    expect([...accounted].sort()).toEqual(questions.map((_, index) => index))
   })
 })

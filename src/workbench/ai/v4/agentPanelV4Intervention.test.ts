@@ -38,7 +38,6 @@ const labels: V4InterventionLabels = {
   credentialTitle: '这个模型还没配密钥',
   credentialConfirm: '去配置',
   credentialAlternate: '换个模型',
-  questionTitle: '需要你定一下',
   planTitle: '这些要做吗？',
   more: '还有 1 条',
   scopeOnce: '范围：仅这一次',
@@ -61,12 +60,36 @@ describe('② 「不再问 →」只在可撤销的改动上，且只覆盖这�
       t,
     )
     expect(reversible?.scope).toBe(labels.scopeCapability)
+    // 付费档仍然印「范围：仅这一次」——它说的是这次批准的范围，没说错。
+    // 这次只把**反问卡**排除掉（见下一条），不顺手动确认卡那几档。
     const spend = projectV4Intervention(
       { toolName: 'generation.control', args: {}, effectClass: 'spend', pendingCount: 1 },
       labels,
       t,
     )
     expect(spend?.scope).toBe(labels.scopeOnce)
+  })
+
+  it('反问卡不许拿到那行作用域——它根本没有「不再问 →」那颗钮', () => {
+    // 2026-09-21 用户当场点名的四样之一：卡底印着「『不再问』只对这一个操作生效」，
+    // 而这张卡上压根没有那颗按钮。判据钉死在投影层，改回去当场红。
+    const ask = projectV4Intervention(
+      { toolName: 'ask_user', args: { questions: [{ question: '用什么画幅？' }] }, effectClass: 'reversible_local', pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(ask.kind).toBe('question')
+    expect(ask.scope).toBeUndefined()
+  })
+
+  it('反问卡的标题**就是**那句问题，没有第二行卡头，也不在正文里印第二遍', () => {
+    const ask = projectV4Intervention(
+      { toolName: 'ask_user', args: { questions: [{ question: '这段想要几秒？' }] }, effectClass: undefined, pendingCount: 1 },
+      labels,
+      t,
+    )
+    expect(ask.title).toBe('这段想要几秒？')
+    expect(ask.summary ?? '').not.toContain('这段想要几秒？')
   })
 })
 
@@ -94,7 +117,8 @@ describe('kind 判定', () => {
     )
     // 宿主 announce 了「有一条在等你」，这里就必须画出点什么。空白是这一族 bug 的样子。
     expect(slot.kind).toBe('question')
-    expect(slot.summary).toContain('duration')
+    // 问句现在是**标题**（反问卡没有卡头，问题本身就是那行标题）。
+    expect(slot.title).toContain('duration')
   })
 
   it('这个函数的返回值不可空：所有登记形状都解得出一个 kind', () => {
@@ -158,18 +182,21 @@ describe('④ 缺参数 / 反问共用同一份解析与同一句问句', () => 
       labels,
       t,
     )
+    // 那一行的占位不再经投影层下发：它是 Approval Card 这件东西**自带**的一行
+    //（`V4AskCard` 的 `labels.ask.customPlaceholder`），不是某一档才有的可选字段。
+    // 投影层这里只要证「一个选项都没有也照样是一张反问卡」。
     expect(slot.kind).toBe('question')
-    expect(slot.answerPlaceholder).toBe('agentPanelV4.questionAnswerPlaceholder')
-    expect(slot.answerSubmitLabel).toBe('agentPanelV4.questionAnswerSubmit')
+    expect(slot.options ?? []).toHaveLength(0)
+    expect(slot.title).toBe('要几秒？')
   })
 
-  it('审批 / 付费 / 计划三档没有卡内作答——那个槽的出口是确认 / 不要', () => {
+  it('审批 / 付费 / 计划三档不是反问——它们的出口是确认 / 不要', () => {
     const slot = projectV4Intervention(
       { toolName: 'nomi_generate', args: {}, effectClass: 'spend', pendingCount: 1 },
       labels,
       t,
     )
-    expect(slot.answerPlaceholder).toBeUndefined()
+    expect(slot.kind).toBe('spend')
   })
 
   it('熔断那句话由渲染层按码出，不收生产者拼好的成句字符串（R15）', () => {
@@ -213,11 +240,34 @@ describe('答案的形状：chip 与卡内那一行走同一个出口', () => {
     expect(questionAnswerFromInput('  竖版吧  ')).toEqual({ questionIndex: 0, text: '竖版吧' })
   })
   it('回给模型的是那句话本身，不是我们这边的 id', () => {
-    expect(answerToolResult([{ questionIndex: 0, optionIds: ['wide'], text: '16:9 横版' }])).toBe('16:9 横版')
-    // 一张卡几题时，回给模型的是**按题一行**：它只认字，题号对它没有意义。
-    expect(answerToolResult([
-      { questionIndex: 0, text: '给同事看' }, { questionIndex: 1, text: '30 秒' },
-    ])).toBe('给同事看\n30 秒')
+    expect(answerToolResult(['用什么画幅？'], { answers: [{ questionIndex: 0, optionIds: ['wide'], text: '16:9 横版' }] })).toBe('16:9 横版')
+    // 一张卡几题时**带题号与问句**按题一行：几条光秃秃的 text 连起来，模型对不上哪句答的是哪题。
+    expect(answerToolResult(['给谁看？', '多长？'], {
+      answers: [{ questionIndex: 0, text: '给同事看' }, { questionIndex: 1, text: '30 秒' }],
+    })).toBe('Question 1 (给谁看？): 给同事看\nQuestion 2 (多长？): 30 秒')
+  })
+
+  it('被跳过的那题明说是跳过——「答了 1、3 跳过 2」不许读成「答了 1、2」', () => {
+    const text = answerToolResult(['给谁看？', '多长？', '横的竖的？'], {
+      answers: [{ questionIndex: 0, text: '给同事看' }, { questionIndex: 2, text: '竖的' }],
+      skippedQuestionIndexes: [1],
+    })
+    const lines = text.split('\n')
+    expect(lines).toHaveLength(3)
+    expect(lines[1]).toContain('Question 2 (多长？)')
+    expect(lines[1]).toContain('skipped')
+    expect(lines[2]).toBe('Question 3 (横的竖的？): 竖的')
+  })
+
+  it('多题投影：整张卡的题都摊进 `questions`，熔断那一句只在第一题下面说一遍', () => {
+    const card = projectV4Intervention({
+      toolName: 'ask_user', effectClass: undefined, pendingCount: 1,
+      args: { questions: [{ question: '给谁看？', note: '决定语气' }, { question: '多长？', multiSelect: true }], askReason: { code: 'retry_exhausted', attempts: 3 } },
+    }, labels, t)
+    expect(card.questions?.map((question) => question.question)).toEqual(['给谁看？', '多长？'])
+    expect(card.questions?.[0]?.note).toContain('决定语气')
+    expect(card.questions?.[1]?.note).toBeUndefined()
+    expect(card.questions?.[1]?.multiSelect).toBe(true)
   })
 })
 

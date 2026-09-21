@@ -229,7 +229,7 @@ test('every panel selector lives in the shared support module, not hand-copied i
   expect(support.COMPOSER_INPUT).toBe('[data-v4-control="input"]')
   expect(support.COMPOSER_SEND).toBe('[data-v4-control="send"]')
   expect(support.INTERVENTION_CONFIRM).toBe('[data-v4-control="confirm"]')
-  expect(support.INTERVENTION_REJECT).toBe('[data-v4-control="reject"]')
+  expect(support.INTERVENTION_REJECT).toBe('[data-v4-control="slot-dismiss"]')
   expect(support.INTERVENTION_CONFIRM_REJECT).toBe('[data-v4-control="confirm-reject"]')
   expect(support.COMPOSER_STOP).toContain('[data-mode="running"]')
   expect(typeof support.waitForV4TurnIdle).toBe('function')

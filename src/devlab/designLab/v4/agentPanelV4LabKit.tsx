@@ -33,6 +33,12 @@ import type { V4CommandRow, V4ModelRow } from '../../../workbench/ai/v4/AgentPan
 export const V4_LAB_SLOT_HANDLERS = Object.freeze({
   onPlanToggle: () => undefined,
   onCollapsePlan: () => undefined,
+  /**
+   * 反问卡那颗 ×（与「跳过」）的去处。实验室没有宿主可跳过，但仍要**显式**接上——
+   * 不接就等于那颗钮在取景里整个消失，而我是靠这些截图去和 Approval Card 实物对账的。
+   * 一颗没接线的钮和一颗设计上就没有的钮，在截图里长得一模一样（2026-09-21 实测栽过）。
+   */
+  onReject: () => undefined,
 })
 
 export const V4_PANEL_WIDTH = 390
@@ -62,8 +68,9 @@ export function Piece({
 }
 
 export function useV4Fixtures() {
-  const { t } = useTranslation()
-  return React.useMemo(() => buildFixtures(t), [t])
+  const { t, i18n } = useTranslation()
+  // `locale` 跟着夹具一起给出去：金额怎么印看界面语言（`formatMoney`），实验室与生产同一条路。
+  return React.useMemo(() => ({ ...buildFixtures(t), locale: i18n.language }), [t, i18n.language])
 }
 
 /** 夹具照定稿画布逐格抄：同一句话、同一个数字，才比得出实现有没有走样。 */
@@ -260,13 +267,16 @@ function buildFixtures(t: TFunction) {
       scope: t('agentPanelV4.slotRejectReason'),
       reasonPlaceholder: t('agentPanelV4.slotRejectSample'),
     },
+    // 夹具的字段要和**生产投影** `projectSpendCard` 对得上，否则实验室画的是另一张卡
+    // ——这个坑这条 lane 上已经踩过两次（卡头「需要你定一下」、幽灵的「换模型」按钮）。
+    // 生产投影今天产出：问话式 `title` + `badge` + `totalLead` + `confirmLabel`，**没有** alternateLabel。
     spend: {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendTitle'),
       badge: t('agentPanelV4.slotSpendBadge'),
+      totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: 4, amount: '¥1.20' }),
       params: ['Kling O1', '4 × 3s', 'std', '¥1.20'],
       confirmLabel: t('agentPanelV4.slotGenerate'),
-      alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
     // 反问三格共用同一张卡（2026-09-21：反问是**通用**能力，不为某一种问题写死）。
     // 长相差别只来自数据：有没有说明 / 有没有熔断那句话 / 卡内那一行有没有字。
@@ -278,8 +288,6 @@ function buildFixtures(t: TFunction) {
         { id: 'urgent', label: t('agentPanelV4.slotOptionVoiceUrgent'), description: t('agentPanelV4.slotOptionVoiceUrgentWhy') },
         { id: 'warm', label: t('agentPanelV4.slotOptionVoiceWarm') },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     // ── 通用性的六种问法（2026-09-21 用户：「只有那一种反问就离谱了」）──
     // 每一格换一个**题目**，不是换一套皮肤：证的是同一张卡什么都能问。
@@ -290,8 +298,6 @@ function buildFixtures(t: TFunction) {
       kind: 'question',
       title: t('agentPanelV4.slotQuestionFreeTitle'),
       summary: t('agentPanelV4.slotQuestionFreeNote'),
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     /** ② 只有 2 个选项（拍板区间的下界）。 */
     questionTwo: {
@@ -301,8 +307,6 @@ function buildFixtures(t: TFunction) {
         { id: 'shot-3', label: t('agentPanelV4.slotQuestionTwoOptionA'), description: t('agentPanelV4.slotQuestionTwoOptionAWhy'), recommended: true },
         { id: 'shot-5', label: t('agentPanelV4.slotQuestionTwoOptionB'), description: t('agentPanelV4.slotQuestionTwoOptionBWhy') },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     /**
      * ③ 4 个选项（上界），且标签与说明**长短差得很远**——其中一条 EN 说明是刻意写长的。
@@ -317,8 +321,6 @@ function buildFixtures(t: TFunction) {
         { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
         { id: 'both', label: t('agentPanelV4.slotQuestionMixedOptionD'), description: t('agentPanelV4.slotQuestionMixedOptionDWhy') },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     /** ④ 只有标签、一条说明都没有（模型不写我们就不替它编）。 */
     questionLabelsOnly: {
@@ -330,8 +332,6 @@ function buildFixtures(t: TFunction) {
         { id: 'v3', label: t('agentPanelV4.slotQuestionLabelsOptionC') },
         { id: 'none', label: t('agentPanelV4.slotQuestionLabelsOptionD') },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     /** ⑥ 缺参数这个**生产者**（⑤ 熔断在下面）：同一张卡，只是问句由宿主补一句人话。 */
     questionMissingParam: {
@@ -342,8 +342,56 @@ function buildFixtures(t: TFunction) {
         { id: '3s', label: t('agentPanelV4.slotQuestionMissingOptionA') },
         { id: '5s', label: t('agentPanelV4.slotQuestionMissingOptionB'), description: t('agentPanelV4.slotQuestionMissingOptionBWhy'), recommended: true },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
+    },
+    /**
+     * ⑦ **多题一张卡**（Approval Card 的「一次一题、卡高随题滑动、左下 1/3」）。
+     *
+     * 今天**没有生产者**：对外契约 `askUserInputSchema` 一次只收一题。这一格是
+     * 卡的能力取景，不是一条已接线的旅程——所以它只进实验室，不进真机走查的断言。
+     * 契约哪天长出 `questions[]`，`askCardQuestions()` 改一个函数就接上了。
+     */
+    questionThree: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionTwoTitle'),
+      questions: [
+        {
+          question: t('agentPanelV4.slotQuestionTwoTitle'),
+          options: [
+            { id: 'shot-3', label: t('agentPanelV4.slotQuestionTwoOptionA'), description: t('agentPanelV4.slotQuestionTwoOptionAWhy'), recommended: true },
+            { id: 'shot-5', label: t('agentPanelV4.slotQuestionTwoOptionB'), description: t('agentPanelV4.slotQuestionTwoOptionBWhy') },
+          ],
+        },
+        {
+          // 第二题是**多选**：标记从圆点变方框，主按钮等用户按（不自动前进）。
+          question: t('agentPanelV4.slotQuestionMixedTitle'),
+          multiSelect: true,
+          options: [
+            { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+            { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+            { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+          ],
+        },
+        {
+          // 第三题一个选项都没有：末题的主按钮印「发送」，卡高缩到只剩一行输入。
+          question: t('agentPanelV4.slotQuestionFreeTitle'),
+          options: [],
+        },
+      ],
+    },
+    /** ⑧ 多选**单独**一格（上面那格要翻到第二题才看得到，静态取景看不见）。 */
+    questionMulti: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMixedTitle'),
+      questions: [{
+        question: t('agentPanelV4.slotQuestionMixedTitle'),
+        multiSelect: true,
+        options: [
+          { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+          { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+          { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+          { id: 'both', label: t('agentPanelV4.slotQuestionMixedOptionD'), description: t('agentPanelV4.slotQuestionMixedOptionDWhy') },
+        ],
+      }],
     },
     // 熔断转提问：同一字段连着 3 次没过，就别再撞了。**复用同一张卡**——
     // 它只是这张卡的第三个生产者，不是第二种长相。
@@ -356,8 +404,6 @@ function buildFixtures(t: TFunction) {
         { id: 'shot', label: t('agentPanelV4.slotOptionAsShot') },
         { id: 'mixed', label: t('agentPanelV4.slotOptionMixed') },
       ],
-      answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'),
-      answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit'),
     },
     plan: {
       kind: 'plan',
@@ -397,7 +443,6 @@ function buildFixtures(t: TFunction) {
       params: ['Kling O1', '3s', 'std', '16:9', '¥0.90'],
       scope: t('agentPanelV4.slotSpendOneScope'),
       confirmLabel: t('agentPanelV4.slotGenerate'),
-      alternateLabel: t('agentPanelV4.slotSwitchModel'),
     },
     threeEdits: {
       kind: 'approval-reversible',

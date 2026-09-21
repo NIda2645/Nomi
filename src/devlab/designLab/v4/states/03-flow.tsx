@@ -127,7 +127,75 @@ function CollapsedScene(): JSX.Element {
   )
 }
 
+/**
+ * **反问卡放进真面板里**（2026-09-21 用户问「有弄我们的设计系统不？会不会格格不入？」）。
+ *
+ * 单件取景框里那张卡是浅色底、孤零零一格，看不出它和邻居合不合得来。这两格把它放回
+ * 它真正出现的位置——上面是对话流、下面是 composer、外面是面板壳——并且**和付费确认卡
+ * 用同一个取景**，好让两张卡的外框/圆角/内边距/按钮族能并排对账。
+ *
+ * 用现成夹具就够：这里要看的是**外观在不在一个家族里**，不是模型答得对不对。
+ */
+function PanelWithQuestion({ multi = false }: { multi?: boolean }): JSX.Element {
+  const fx = useV4Fixtures()
+  return (
+    <AgentPanelV4Panel
+      slotHandlers={V4_LAB_SLOT_HANDLERS}
+      flow={fx.flows.creation}
+      slot={multi ? fx.slots.questionThree : fx.slots.question}
+      context={{ ...fx.context, used: 36000 }}
+      height={860}
+    />
+  )
+}
+
+/**
+ * 同一个取景、同一条对话，槽里换成**普通确认卡**（可撤销档）。
+ * 付费卡那一格不在这里：它的正文是节点参数条那个真组件，要先给画布 store 播种，
+ * 住在 `07-spend-params.tsx`（`v4-panel-spend-light`）。
+ *
+ * 暗色**不另立一格**：暗色是翻真 token（`data-mantine-color-scheme`），由走查在同一格上翻。
+ * 这里原来有过 `-dark` 两格，用的是面板的 `darkMode` prop——那个 prop 只换用户气泡的底色，
+ * 面板和卡一点不动，拍出来的「暗色」和亮色是同一张。
+ */
+function PanelWithApproval(): JSX.Element {
+  const fx = useV4Fixtures()
+  return (
+    <AgentPanelV4Panel
+      slotHandlers={V4_LAB_SLOT_HANDLERS}
+      flow={fx.flows.creation}
+      slot={fx.slots.reversible}
+      context={{ ...fx.context, used: 36000 }}
+      height={860}
+    />
+  )
+}
+
 export const V4_FLOW_STATES: readonly LabState[] = [
+  {
+    id: 'v4-panel-question-light',
+    name: '⑤ 反问卡**在真面板里**——和对话流、composer、面板壳一起看',
+    source: '2026-09-21 用户：「有弄我们的设计系统不？会不会格格不入？」；对账物 = 同屏 composer',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion />,
+  },
+  {
+    id: 'v4-panel-question-multi',
+    name: '⑤ 多题反问卡在真面板里（左下页码、右下「跳过」+ 主按钮）',
+    source: '2026-09-22 裁决：多题时「跳过」= 跳过当前这一题，× = 整张卡不答',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion multi />,
+  },
+  {
+    id: 'v4-panel-approval-light',
+    name: '⑤ 普通确认卡在真面板里（同族第三张）',
+    source: '2026-09-22 卡族换壳：一处改、全族生效',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithApproval />,
+  },
   {
     id: 'v4-flow-creation',
     name: 'FlowCreation · 读文稿 → 载技能 → 起草分镜 → 计划槽',
