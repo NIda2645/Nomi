@@ -74,6 +74,8 @@ import { createDesktopProposalReceiptResolver } from "./capabilityCore/projectAg
 import { installContentSecurityPolicy } from "./contentSecurityPolicy";
 import { registerSkillIpc } from "./skills/skillIpc";
 import { logError, logInfo, logWarn } from "./logging/logger";
+import { getSettingsRoot } from "./settings/settingsRoot";
+import { seedFromStableInstall } from "./settings/sideBySideInstallSeed";
 import { registerDevDiagnostics } from "./logging/devDiagnostics";
 import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
 import { issueChildWindowProject } from "./assets/windowProjectCapture";
@@ -649,6 +651,20 @@ if (hasSingleInstanceLock)
         .then(() => import("./vendor/vendorBaseFallbackBoot"))
         .then((m) => m.configureVendorBaseFallbackAtBoot())
         .catch((error) => logError("main", "network-boot-failed", error));
+      // Preview / RC 与稳定版并存：它们的 userData 由 electron-builder 的 extraMetadata.name 分家，
+      // 首次启动把稳定版那份配置**拷**一份过来（共用不行——装一次 Preview 就把稳定版的目录升到新版本号，
+      // 回到稳定版就进「读得出来、改不了、界面空白」的事故态；rootcause-config-loss-on-reinstall.md §4）。
+      // 必须排在种子对账与任何一次配置读之前：它要判断的正是「自己这份是不是全新的」。
+      try {
+        const seeded = seedFromStableInstall({
+          appName: app.getName(),
+          settingsRoot: getSettingsRoot(),
+          appDataRoot: app.getPath("appData"),
+        });
+        if (seeded.seeded.length) logInfo("main", "side-by-side-seeded", { files: seeded.seeded.length, source: seeded.source });
+      } catch (error) {
+        logError("main", "side-by-side-seed-failed", error);
+      }
       // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
       // sync 且渲染层一进库就读 catalog → 须在 createWindow 前完成。
       try {
