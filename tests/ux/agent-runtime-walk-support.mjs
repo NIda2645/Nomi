@@ -115,7 +115,7 @@ export const COLLAPSE_BUTTON = '[data-v4-control="collapse"]'
 /** The real desktop assembly publishes domain and native schemas from the first request. */
 export function residentToolNames() {
   return [...LANE_MODEL_TOOL_CATALOG, ...LANE_DEFERRED_TOOL_CATALOG].map(tool => tool.name)
-    .concat([...LANE_CODING_TOOL_NAMES, 'nomi_read', 'nomi_request_tools']).sort()
+    .concat([...LANE_CODING_TOOL_NAMES, 'list_models', 'nomi_request_tools']).sort()
 }
 
 export function toolNames(body) {

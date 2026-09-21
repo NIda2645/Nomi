@@ -582,7 +582,10 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // **故意不 await**：`resume()` 会等一次真实的模型往返，而 `openLane()` 是打开一个面板的动作。
   // 进度通过 `watch` 照常流出去，和任何一轮没有区别。
   if (watch.snapshot.operation !== null) {
-    void lane.resume(context).then(flushApprovalNotes).catch(() => undefined);
+    // 失败要留一行：吞掉它的后果是这条对话永远停在「在跑」，用户之后打的每一句都安静地排在后面。
+    void lane.resume(context).then(flushApprovalNotes).catch((error: unknown) => {
+      logWarn('agent', 'lane-resume-failed', { lane: laneName }, error);
+    });
   }
 
   /**

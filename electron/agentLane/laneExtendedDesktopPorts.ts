@@ -220,8 +220,15 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       // × 那条路上计划已经由 `discardPendingSpend` 写成真终态，这里不再动它。
       if (outcome.kind === 'declined') return decided({ outcome: 'declined' })
       // 另外两种结局（用户打了字 / 回合被停下）都不是用户说「不」：收回的只是这一次出价，计划留着。
-      await generation.withdrawPresentation(operationId)
-      if (outcome.kind === 'redirected') return decided({ outcome: 'redirected', userSaid: outcome.text })
+      if (outcome.kind === 'redirected') {
+        await generation.withdrawPresentation(operationId)
+        return decided({ outcome: 'redirected', userSaid: outcome.text })
+      }
+      // 回合被停下 / 窗口关了：**不等**收回落盘就把钩子还给 pi。这一支多半跑在退出路上，等它就是让 pi 的
+      // abort 收不了尾——进程带着一个 `cancel_requested` 的半截回合退出，重开后这条对话永远停在「在跑」，
+      // 用户之后打的每一句都安静地排在后面（走查 agent-spend-waiting-owner 实测）。收回本身是幂等的，
+      // 这里没赶上的那一次由启动清扫（`stalePresentationSweep`）兜住。
+      void generation.withdrawPresentation(operationId).catch(() => undefined)
       return { ok: false, code: 'generation_cancelled', message: 'generation_cancelled', denied: true }
     } finally {
       release()

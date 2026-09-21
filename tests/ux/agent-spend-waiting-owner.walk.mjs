@@ -103,6 +103,7 @@ try {
   const pendingCardProof = await proveProbe(card, 'the re-presented card is on screen before the restart')
   await walk.snap('waiting-owner-03-same-draft-presented-again')
 
+  // 正常退出：等那张卡的回合在退出路上被收尾成「已中止」，不留半截回合给下一次启动。
   const requestsBeforeCold = walk.fixture.requests.length
   await walk.stopApp()
   ;({ win } = await walk.start())
@@ -121,7 +122,7 @@ try {
   expect(readPlan(projectRoot, operationId).cancelReason).toBeUndefined()
   expect(await nodeIds(), '重启前后画布节点一个没少、一个没多').toEqual(draftedNodes)
   expect(walk.fixture.images, '重启不提交媒体').toHaveLength(0)
-  expect(walk.fixture.requests, '重启不重新请求模型').toHaveLength(requestsBeforeCold)
+  expect(walk.fixture.requests, '重启不重新请求模型：那个回合在退出时已经收尾了').toHaveLength(requestsBeforeCold)
   await walk.snap('waiting-owner-04-restart-withdrew-the-quote')
 
   // ── ④ 重启后再说一句 → 同一份草稿出价 → 确认 → 同回合再 generate，钱只花一次 ─────────
@@ -161,8 +162,11 @@ try {
     repeatCard.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT_MS }).then(() => 'card').catch(() => 'answered'),
   ])
   if (outcome === 'card') await closeSpendCard(repeatCard, '关掉重复出的那张卡')
-  const repeatedText = flattenRequestText((await settled).body)
-  expect(repeatedText, '重复的那次 generate 不许说「又开始生成了」').not.toMatch(/generation has started[^]*generation has started/)
+  const repeatedResult = String(((await settled).body.messages ?? [])
+    .find((message) => message.role === 'tool' && message.tool_call_id === 'wo-generate-4')?.content ?? '')
+  walk.report.repeatedGenerateResult = repeatedResult.slice(0, 600)
+  expect(repeatedResult, '重复的那次 generate 必须有一句回话').not.toBe('')
+  expect(repeatedResult, '重复的那次 generate 不许说「又开始生成了」').not.toContain('The user approved the priced card')
   expect(walk.fixture.images, '同一回合里再调一次 generate，供应商仍然只收到一次（只扣一次）').toHaveLength(1)
   await walk.snap('waiting-owner-05-confirmed-once-charged-once')
 
