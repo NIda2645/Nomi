@@ -1,185 +1,220 @@
 {
-  "schema_version": 3,
-  "id": "2026-09-21-run-path-prompt-projection",
-  "problem_type": "A final send-time projection is performed by one entry point only, so the persisted internal format leaks to the provider through every other entry",
-  "symptom": "在画布节点的描述框里 @ 了一张参考图之后，手动按生成时供应商收到「画面里 @image1 走过来」；同一个镜头交给 Agent 付款卡 / 外部 MCP / 全自动 Run 时，供应商收到的是「画面里 @[asset:nomi-local%3A%2F%2F…%2Fassets%2Fabc.png] 走过来」——一串内部标记原样进了提示词，钱照花，图照错。",
-  "direct_cause": "projectPromptForSend 只在渲染层 src/workbench/generationCanvas/runner/catalogTaskActions.ts 被调用一次；Run 路径从 candidate.prompt 一路原样透传到 apimartGenerationProvider 的请求体，全链路零次投影（grep -rn projectPromptForSend electron/ 除定义处外零命中）。",
-  "class_root": "`@[asset:url]` 是持久化格式，`@imageN` 是发送格式——两者之间的那一步投影没有 owner，被放在「碰巧第一个做这件事的那个入口」里。于是任何新入口默认都是错的，而且错法是静默的：请求发得出去、图也生得出来，只有内容不对。",
-  "affected_population": [
-    "所有 prompt 里带 @ 内联引用的镜头，经 Agent 付款卡 / 分镜提交执行计划 / 外部 MCP 单镜生成 / 全自动 Run / 续批提交时",
-    "手动画布节点与分镜行那条路不受影响（它本来就投影）"
-  ],
-  "scope_paths": [
-    "electron/capabilityCore/executionContract.ts",
-    "electron/capabilityCore/mcpGenerationTools.ts",
-    "electron/capabilityCore/mcpGenerationMultiShot.ts",
-    "electron/shared/storyboard/promptMentions.ts"
-  ],
-  "entry_points": [
-    "generation.preview（报价卡上那句话）",
-    "generation.gate_request（密封进授权信封的那句话）",
-    "多镜草稿密封 sealMultiShotFor（每一镜的子合同）"
-  ],
-  "external_sources": [],
-  "internal_only_reason": "`@[asset:url]` / `@imageN` 是 Nomi 自己的提示词内联引用格式（规范 §4 R6），没有任何外部规范裁决它；供应商只看到投影后的最终字符串。",
-  "invariants": [
-    "任何一条离开 Nomi 的提示词都不得包含 `@[asset:…]` 内联标记",
-    "`@imageN / @videoN / @audioN` 的编号必须与实际发送的同类参考数组下标一一对应，且两条路用同一个编号函数",
-    "投影不出来时拒绝，不得原样发送"
-  ],
-  "doors": [
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/executionContract.ts",
-      "symbol": "projectPromptForSend"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
-      "symbol": "projectPromptForSend"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/executionContract.ts",
-      "symbol": "numberPromptReferences"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "symbol": "compileExecutionContract"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/executionContract.ts",
-      "symbol": "hasMentions"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "symbol": "hasMentions"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
-      "symbol": "hasMentions"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "symbol": "compileContract"
-    },
-    {
-      "kind": "write",
-      "path": "electron/shared/storyboard/promptMentions.ts",
-      "symbol": "encodeMention"
-    }
-  ],
-  "door_reduction": {
-    "before": 10,
-    "after": 9,
-    "why_not": "compileExecutionContract 的门从 2 扇（mcpGenerationTools + mcpGenerationMultiShot 各编译一次）收成 1 扇：多镜密封改成调用 mcpGenerationTools 里唯一的那个 contractFor，于是参数表投影与提示词投影不可能在单镜与多镜之间漂开。剩下的 projectPromptForSend 两扇是有意的：主进程那扇（Run 路径）与渲染层那扇（手动路径）吃的是同一个共享纯函数，它们是同一份实现的两个调用点，不是两份实现；hasMentions 的三扇都是「这句话里有没有标记」的只读判断，各自的语义不同（编译前要不要解析素材 / 编辑分镜时要不要重排参考）。"
+ "schema_version": 3,
+ "id": "2026-09-21-run-path-prompt-projection",
+ "problem_type": "A final send-time projection is performed by one entry point only, so the persisted internal format leaks to the provider through every other entry",
+ "symptom": "在画布节点的描述框里 @ 了一张参考图之后，手动按生成时供应商收到「画面里 @image1 走过来」；同一个镜头交给 Agent 付款卡 / 外部 MCP / 全自动 Run 时，供应商收到的是「画面里 @[asset:nomi-local%3A%2F%2F…%2Fassets%2Fabc.png] 走过来」——一串内部标记原样进了提示词，钱照花，图照错。",
+ "direct_cause": "projectPromptForSend 只在渲染层 src/workbench/generationCanvas/runner/catalogTaskActions.ts 被调用一次；Run 路径从 candidate.prompt 一路原样透传到 apimartGenerationProvider 的请求体，全链路零次投影（grep -rn projectPromptForSend electron/ 除定义处外零命中）。",
+ "class_root": "`@[asset:url]` 是持久化格式，`@imageN` 是发送格式——两者之间的那一步投影没有 owner，被放在「碰巧第一个做这件事的那个入口」里。于是任何新入口默认都是错的，而且错法是静默的：请求发得出去、图也生得出来，只有内容不对。",
+ "affected_population": [
+  "所有 prompt 里带 @ 内联引用的镜头，经 Agent 付款卡 / 分镜提交执行计划 / 外部 MCP 单镜生成 / 全自动 Run / 续批提交时",
+  "手动画布节点与分镜行那条路不受影响（它本来就投影）"
+ ],
+ "scope_paths": [
+  "electron/capabilityCore/executionContract.ts",
+  "electron/capabilityCore/mcpGenerationTools.ts",
+  "electron/capabilityCore/mcpGenerationMultiShot.ts",
+  "electron/shared/storyboard/promptMentions.ts",
+  "electron/runtime.ts",
+  "electron/catalog/taskParams.ts"
+ ],
+ "entry_points": [
+  "generation.preview（报价卡上那句话）",
+  "generation.gate_request（密封进授权信封的那句话）",
+  "多镜草稿密封 sealMultiShotFor（每一镜的子合同）"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "`@[asset:url]` / `@imageN` 是 Nomi 自己的提示词内联引用格式（规范 §4 R6），没有任何外部规范裁决它；供应商只看到投影后的最终字符串。",
+ "invariants": [
+  "任何一条离开 Nomi 的提示词都不得包含 `@[asset:…]` 内联标记",
+  "`@imageN / @videoN / @audioN` 的编号必须与实际发送的同类参考数组下标一一对应，且两条路用同一个编号函数",
+  "投影不出来时拒绝，不得原样发送"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/executionContract.ts",
+   "symbol": "projectPromptForSend"
   },
-  "generality_proof": "投影被挪进 `compileExecutionContract` —— Run 路径上**唯一**产出执行合同的那个纯函数（door-map compileExecutionContract 现在只有 1 扇门）。合同就是「用户批准的那份、密封进授权信封的那份、发给供应商的那份」，三者同一。因此任何未来的新入口只要还要编译合同，就自动做对；想绕过它就得自己造一份合同，而那会被授权信封的逐字段比对当场拒掉。",
-  "shared_boundaries": [
-    {
-      "path": "electron/shared/storyboard/promptMentions.ts",
-      "symbol": "projectPromptForSend / numberPromptReferences",
-      "responsibility": "`@[asset:url]` → `@imageN` 的替换规则与按媒介分轴的编号规则，主进程与渲染层共用同一份实现（渲染层经 src/workbench/assets/promptMentions.ts 再导出）。"
-    },
-    {
-      "path": "electron/capabilityCore/executionContract.ts",
-      "symbol": "projectContractPrompt",
-      "responsibility": "合同编译时执行最终投影；带标记却给不出源地址时抛错，绝不原样发送。"
-    },
-    {
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "symbol": "contractFor",
-      "responsibility": "Run 路径上唯一的合同编译口，同时给参数表投影与参考源地址，preview / gate_request / 多镜密封三处共用。"
-    }
-  ],
-  "same_class_entry_points": [
-    {
-      "path": "electron/capabilityCore/mcpGenerationTools.ts",
-      "entry_point": "preview / gate_request",
-      "disposition": "enforced",
-      "evidence": "两处都改成调用 contractFor；mcpGenerationTools.test.ts 新增两条：带 @ 的候选 preview 出来的 contract.prompt 是「画面里 @image1 走过来」，没有解析器时 preview 直接抛错。"
-    },
-    {
-      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "entry_point": "sealMultiShotFor",
-      "disposition": "enforced",
-      "evidence": "自己那次 compileExecutionContract 删除，改成 deps.compileContract（就是 contractFor）；door-map compileExecutionContract 由 2 扇降到 1 扇即证明它不再是第二个编译口。"
-    },
-    {
-      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
-      "entry_point": "buildCatalogTaskRequest",
-      "disposition": "not-affected",
-      "evidence": "手动画布那条路一直在调同一个共享 projectPromptForSend（它 import 的 src/workbench/assets/promptMentions.ts 第 1 行就是对本次这份共享实现的再导出）。本 lane 一个字没改它。"
-    },
-    {
-      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
-      "entry_point": "projectionRequest",
-      "disposition": "not-affected",
-      "evidence": "它收到的 input.prompt 来自已经投影过的合同；在这一层再投影一次既拿不到素材源地址（那时参考已被换成供应商 https URL），也会变成第二个 owner。"
-    }
-  ],
-  "recurrence": {
-    "classification": "recurring",
-    "reason": "同一个机制对每一个带 @ 引用的镜头、每一个入口都成立；而且 @ 引用是画布上的常规用法（参考图连线与上传都会产生它），不是边角场景。",
-    "same_class_scan": [
-      "grep -rn \"projectPromptForSend\" electron/ → 改前：除定义处外零命中（即主进程全链路零投影）",
-      "node scripts/door-map.mjs compileExecutionContract → 改前 2 扇（mcpGenerationTools / mcpGenerationMultiShot），改后 1 扇",
-      "node scripts/door-map.mjs hasMentions → 3 扇，逐扇核过语义（编译前判断 / 分镜编辑重排 / 共享定义）",
-      "grep -rn \"promptSuffix|stagingComposition\" electron/ src/ → 只在 src/ 命中：构图指令与 QA 重试后缀今天没有主进程生产者，未随本次下沉（见 residual_risks）"
-    ]
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+   "symbol": "projectPromptForSend"
   },
-  "prevention": {
-    "kind": "centralized-boundary",
-    "enforcement_path": "electron/capabilityCore/executionContract.ts",
-    "invariant": "compileExecutionContract 产出的 contract.prompt 永远是投影后的发送格式；prompt 含 `@[asset:…]` 而调用方没给出参考源地址时抛 ContractCompilationError。",
-    "failure_mode": "fail-closed：不编译、不密封、不提交、不花钱，错误里写明「原样发出去等于把内部标记塞给供应商」。",
-    "exception_policy": "none",
-    "strategy": "把投影挪到「产出用户批准的那份合同」这一刻，于是『卡上看到的 / 密封的 / 发出去的』天然是同一句话；Run 路径上唯一的编译口再收成一个函数，新入口不可能漏掉这一步。",
-    "artifacts": [
-      "electron/capabilityCore/executionContract.ts",
-      "electron/capabilityCore/mcpGenerationTools.ts",
-      "electron/capabilityCore/mcpGenerationMultiShot.ts",
-      "electron/shared/storyboard/promptMentions.ts"
-    ]
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/executionContract.ts",
+   "symbol": "numberPromptReferences"
   },
-  "invariant_owner_layer": {
-    "layer": "electron/capabilityCore/executionContract.ts",
-    "tests": [
-      "electron/capabilityCore/executionContract.test.ts",
-      "electron/capabilityCore/mcpGenerationTools.test.ts",
-      "src/workbench/assets/promptMentions.test.ts"
-    ],
-    "notes": "「离开 Nomi 的提示词长什么样」从此由执行合同这一层负责，编号与替换规则由共享纯函数负责。五条新断言在改动前全部实测为红。"
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "symbol": "compileExecutionContract"
   },
-  "regression_tests": [
-    "electron/capabilityCore/executionContract.test.ts",
-    "electron/capabilityCore/mcpGenerationTools.test.ts"
-  ],
-  "class_regression_tests": [
-    "electron/capabilityCore/executionContract.test.ts",
-    "electron/capabilityCore/mcpGenerationTools.test.ts"
-  ],
-  "legacy_paths": {
-    "status": "removed",
-    "removed_paths": [
-      "electron/capabilityCore/mcpGenerationMultiShot.ts"
-    ],
-    "rationale": "多镜密封里那次自己调 compileExecutionContract 的第二编译口同 commit 删除，改成吃唯一那一个 contractFor；没有留开关也没有留回退。"
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/executionContract.ts",
+   "symbol": "hasMentions"
   },
-  "dependency_lifecycle": {
-    "decision": "not-applicable",
-    "rationale": "内联引用格式与投影规则完全由本仓拥有，没有第三方运行时参与。",
-    "exit_criteria": []
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "symbol": "hasMentions"
   },
-  "migration": "不需要迁移：节点与草稿里持久化的仍是 `@[asset:url]`（未变），投影只发生在发送前。存量草稿在 preview 时才被投影，用户看到的卡上那句话从此与发出去的一致。",
-  "residual_risks": [
-    "构图指令（staging composition）与 QA 重试后缀今天只有渲染层的生产者，未随本次下沉到共享层——不是不下沉，是 Run 路径上没有任何东西会产出它们，现在下沉等于造两个空参数。步骤 B 给 Run 路径加重试指令时必须同时把这两段收进同一个函数。",
-    "投影的**顺序**在两条路上来源不同：手动路按档案槽顺序（orderedSentMediaReferenceUrls），Run 路按 candidate.references 的数组顺序。编号规则已共享（numberPromptReferences），但「排序怎么来的」还是两段代码；对等矩阵里带参考图的用例是唯一能证明两者一致的地方。",
-    "渲染层的 orderedSentMediaReferenceUrls 末尾那两行做的就是 numberPromptReferences，本 lane 按任务书不改渲染层，留给渲染层 lane 换成调用共享实现（纯机械替换）。"
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+   "symbol": "hasMentions"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+   "symbol": "compileContract"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/storyboard/promptMentions.ts",
+   "symbol": "encodeMention"
+  },
+  {
+   "kind": "write",
+   "path": "electron/runtime.ts",
+   "symbol": "projectPromptForSend"
+  },
+  {
+   "kind": "write",
+   "path": "electron/runtime.ts",
+   "symbol": "numberPromptReferences"
+  },
+  {
+   "kind": "write",
+   "path": "electron/runtime.ts",
+   "symbol": "hasMentions"
+  },
+  {
+   "kind": "write",
+   "path": "electron/runtime.ts",
+   "symbol": "carriedPromptReferences"
+  },
+  {
+   "kind": "write",
+   "path": "electron/catalog/taskParams.ts",
+   "symbol": "carriedPromptReferences"
+  }
+ ],
+ "door_reduction": {
+  "before": 15,
+  "after": 14,
+  "why_not": "compileExecutionContract 的门从 2 扇（mcpGenerationTools + mcpGenerationMultiShot 各编译一次）收成 1 扇：多镜密封改成调用 mcpGenerationTools 里唯一的那个 contractFor，于是参数表投影与提示词投影不可能在单镜与多镜之间漂开。剩下的 projectPromptForSend 两扇是有意的：主进程那扇（Run 路径）与渲染层那扇（手动路径）吃的是同一个共享纯函数，它们是同一份实现的两个调用点，不是两份实现；hasMentions 的三扇都是「这句话里有没有标记」的只读判断，各自的语义不同（编译前要不要解析素材 / 编辑分镜时要不要重排参考）。 2026-09-21 补（A5 残留两条）：引擎 A 那边此前有两个**没有投影**的入口（外部 MCP 单发 core.ts:580、接入试跑 tryModel.ts:115）。修法不是各自补一行，而是把判据收进 `runTask` —— 引擎 A 唯一的出口。于是引擎 A 的投影门从「每个入口一扇（5 扇，其中 2 扇是空的）」收成 1 扇。runtime.ts 这边新增的四个符号是同一处调用点（`runtime.ts:334-335` 一条 if）的四个被调函数，door-map 按符号数，不是四个独立的门。`carriedPromptReferences` 在 taskParams 里是定义处、在 runtime 里是唯一调用处：编号用的参考序列与真正上线缆的那份（referenceInputParams）同源。"
+ },
+ "generality_proof": "投影被挪进 `compileExecutionContract` —— Run 路径上**唯一**产出执行合同的那个纯函数（door-map compileExecutionContract 现在只有 1 扇门）。合同就是「用户批准的那份、密封进授权信封的那份、发给供应商的那份」，三者同一。因此任何未来的新入口只要还要编译合同，就自动做对；想绕过它就得自己造一份合同，而那会被授权信封的逐字段比对当场拒掉。",
+ "shared_boundaries": [
+  {
+   "path": "electron/shared/storyboard/promptMentions.ts",
+   "symbol": "projectPromptForSend / numberPromptReferences",
+   "responsibility": "`@[asset:url]` → `@imageN` 的替换规则与按媒介分轴的编号规则，主进程与渲染层共用同一份实现（渲染层经 src/workbench/assets/promptMentions.ts 再导出）。"
+  },
+  {
+   "path": "electron/capabilityCore/executionContract.ts",
+   "symbol": "projectContractPrompt",
+   "responsibility": "合同编译时执行最终投影；带标记却给不出源地址时抛错，绝不原样发送。"
+  },
+  {
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "symbol": "contractFor",
+   "responsibility": "Run 路径上唯一的合同编译口，同时给参数表投影与参考源地址，preview / gate_request / 多镜密封三处共用。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "entry_point": "preview / gate_request",
+   "disposition": "enforced",
+   "evidence": "两处都改成调用 contractFor；mcpGenerationTools.test.ts 新增两条：带 @ 的候选 preview 出来的 contract.prompt 是「画面里 @image1 走过来」，没有解析器时 preview 直接抛错。"
+  },
+  {
+   "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+   "entry_point": "sealMultiShotFor",
+   "disposition": "enforced",
+   "evidence": "自己那次 compileExecutionContract 删除，改成 deps.compileContract（就是 contractFor）；door-map compileExecutionContract 由 2 扇降到 1 扇即证明它不再是第二个编译口。"
+  },
+  {
+   "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+   "entry_point": "buildCatalogTaskRequest",
+   "disposition": "not-affected",
+   "evidence": "手动画布那条路一直在调同一个共享 projectPromptForSend（它 import 的 src/workbench/assets/promptMentions.ts 第 1 行就是对本次这份共享实现的再导出）。本 lane 一个字没改它。"
+  },
+  {
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "entry_point": "projectionRequest",
+   "disposition": "not-affected",
+   "evidence": "它收到的 input.prompt 来自已经投影过的合同；在这一层再投影一次既拿不到素材源地址（那时参考已被换成供应商 https URL），也会变成第二个 owner。"
+  },
+  {
+   "path": "electron/runtime.ts",
+   "entry_point": "runTask（引擎 A 的唯一出口：画布节点 / 分镜行 / 重拍 / 外部 MCP nomi_generate / 接入试跑 nomi_try_model）",
+   "disposition": "enforced",
+   "evidence": "对等矩阵 A5 两条（prompt-mentions-reference × external-mcp-generate / try-model）在这一刀之前是已登记的分裂，改后消失，known-splits.json 57 → 55；夹具刻意**不**替这两条入口预投影（generationEntrances 的 projectsPromptMentions 仍为 false），所以绿的是生产代码而不是夹具。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "同一个机制对每一个带 @ 引用的镜头、每一个入口都成立；而且 @ 引用是画布上的常规用法（参考图连线与上传都会产生它），不是边角场景。",
+  "same_class_scan": [
+   "grep -rn \"projectPromptForSend\" electron/ → 改前：除定义处外零命中（即主进程全链路零投影）",
+   "node scripts/door-map.mjs compileExecutionContract → 改前 2 扇（mcpGenerationTools / mcpGenerationMultiShot），改后 1 扇",
+   "node scripts/door-map.mjs hasMentions → 3 扇，逐扇核过语义（编译前判断 / 分镜编辑重排 / 共享定义）",
+   "grep -rn \"promptSuffix|stagingComposition\" electron/ src/ → 只在 src/ 命中：构图指令与 QA 重试后缀今天没有主进程生产者，未随本次下沉（见 residual_risks）"
   ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/capabilityCore/executionContract.ts",
+  "invariant": "compileExecutionContract 产出的 contract.prompt 永远是投影后的发送格式；prompt 含 `@[asset:…]` 而调用方没给出参考源地址时抛 ContractCompilationError。",
+  "failure_mode": "fail-closed：不编译、不密封、不提交、不花钱，错误里写明「原样发出去等于把内部标记塞给供应商」。",
+  "exception_policy": "none",
+  "strategy": "把投影挪到「产出用户批准的那份合同」这一刻，于是『卡上看到的 / 密封的 / 发出去的』天然是同一句话；Run 路径上唯一的编译口再收成一个函数，新入口不可能漏掉这一步。",
+  "artifacts": [
+   "electron/capabilityCore/executionContract.ts",
+   "electron/capabilityCore/mcpGenerationTools.ts",
+   "electron/capabilityCore/mcpGenerationMultiShot.ts",
+   "electron/shared/storyboard/promptMentions.ts"
+  ]
+ },
+ "invariant_owner_layer": {
+  "layer": "electron/capabilityCore/executionContract.ts",
+  "tests": [
+   "electron/capabilityCore/executionContract.test.ts",
+   "electron/capabilityCore/mcpGenerationTools.test.ts",
+   "src/workbench/assets/promptMentions.test.ts"
+  ],
+  "notes": "「离开 Nomi 的提示词长什么样」从此由执行合同这一层负责，编号与替换规则由共享纯函数负责。五条新断言在改动前全部实测为红。"
+ },
+ "regression_tests": [
+  "electron/capabilityCore/executionContract.test.ts",
+  "electron/capabilityCore/mcpGenerationTools.test.ts",
+  "electron/parity/generationParity.matrix.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/capabilityCore/executionContract.test.ts",
+  "electron/capabilityCore/mcpGenerationTools.test.ts",
+  "electron/parity/generationParity.matrix.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/capabilityCore/mcpGenerationMultiShot.ts"
+  ],
+  "rationale": "多镜密封里那次自己调 compileExecutionContract 的第二编译口同 commit 删除，改成吃唯一那一个 contractFor；没有留开关也没有留回退。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "内联引用格式与投影规则完全由本仓拥有，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：节点与草稿里持久化的仍是 `@[asset:url]`（未变），投影只发生在发送前。存量草稿在 preview 时才被投影，用户看到的卡上那句话从此与发出去的一致。",
+ "residual_risks": [
+  "构图指令（staging composition）与 QA 重试后缀今天只有渲染层的生产者，未随本次下沉到共享层——不是不下沉，是 Run 路径上没有任何东西会产出它们，现在下沉等于造两个空参数。步骤 B 给 Run 路径加重试指令时必须同时把这两段收进同一个函数。",
+  "投影的**顺序**在两条路上来源不同：手动路按档案槽顺序（orderedSentMediaReferenceUrls），Run 路按 candidate.references 的数组顺序。编号规则已共享（numberPromptReferences），但「排序怎么来的」还是两段代码；对等矩阵里带参考图的用例是唯一能证明两者一致的地方。",
+  "渲染层的 orderedSentMediaReferenceUrls 末尾那两行做的就是 numberPromptReferences，本 lane 按任务书不改渲染层，留给渲染层 lane 换成调用共享实现（纯机械替换）。"
+ ]
 }

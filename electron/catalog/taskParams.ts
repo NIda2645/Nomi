@@ -352,15 +352,15 @@ function referenceLabelForKey(key: string): string {
  * 用户连了参考图、模板发不出、闸门不吭声，于是生成成功、扣费成功、和参考图毫无关系
  * （正是本条被报的体感）。改读 refInput 后，任何新增参考键自动纳管，不需要回来补名单。
  */
-function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSelection): Array<{ label: string; url: string }> {
-  const out: Array<{ label: string; url: string }> = [];
+function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSelection): Array<{ label: string; url: string; family: ReferenceFamily }> {
+  const out: Array<{ label: string; url: string; family: ReferenceFamily }> = [];
   const seen = new Set<string>();
   const walk = (key: string, value: unknown): void => {
     if (typeof value === "string") {
       const url = value.trim();
       if (!url || !REF_URL_RE.test(url) || seen.has(url)) return;
       seen.add(url);
-      out.push({ label: referenceLabelForKey(key), url });
+      out.push({ label: referenceLabelForKey(key), url, family: classifyReferenceKey(key) ?? "image" });
       return;
     }
     // 数组沿用父键名（image_urls[0] 仍是「参考图」）；对象用子键名（volcengine content 项等嵌套结构）。
@@ -376,9 +376,23 @@ function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSele
   for (const reference of declaredComfyReferences(extras, selected)) {
     if (seen.has(reference.url)) continue
     seen.add(reference.url)
-    out.push({ label: referenceLabelForKey(reference.family), url: reference.url })
+    out.push({ label: referenceLabelForKey(reference.family), url: reference.url, family: reference.family })
   }
   return out;
+}
+
+/**
+ * 本次请求真正携带的参考素材，**按发送顺序**，带族别——供 `@[asset:url]` 投影成 `@imageN` 用。
+ *
+ * 为什么复用 `carriedReferences` 而不是另数一遍：编号必须与「真的发出去的那几条」一一对应，
+ * 而那份真相源就是 `referenceInputParams`（wire 铺的就是它）。另写一份 = 编号与实际发送顺序
+ * 慢慢对不上，而那种错**不报错**：供应商收到 `@image2` 却只拿到一张图。
+ */
+export function carriedPromptReferences(
+  extras: JsonRecord,
+  selected?: ParameterReferenceSelection,
+): Array<{ url: string; kind: ReferenceFamily }> {
+  return carriedReferences(extras, selected).map((reference) => ({ url: reference.url, kind: reference.family }));
 }
 
 /**

@@ -1,23 +1,5 @@
 [
  {
-  "caseId": "prompt-mentions-reference",
-  "entranceId": "external-mcp-generate",
-  "field": "body.prompt",
-  "baseline": "让 @image1 走进画面右侧",
-  "actual": "让 @[asset:https%3A%2F%2Fassets.example.com%2Fparity%2Fcharacter-a.png] 走进画面右侧",
-  "blocker": "A5",
-  "why": "@ 引用的最终投影（projectPromptForSend：@[asset:url] → @imageN）只在渲染层 catalogTaskActions.ts:304 做过一次；主进程全链路零命中，core.ts:580 与 apimart provider 都把 node.prompt 原样发出去。供应商收到的是一串 URL 编码的内部标记。"
- },
- {
-  "caseId": "prompt-mentions-reference",
-  "entranceId": "try-model",
-  "field": "body.prompt",
-  "baseline": "让 @image1 走进画面右侧",
-  "actual": "让 @[asset:https%3A%2F%2Fassets.example.com%2Fparity%2Fcharacter-a.png] 走进画面右侧",
-  "blocker": "A5",
-  "why": "@ 引用的最终投影（projectPromptForSend：@[asset:url] → @imageN）只在渲染层 catalogTaskActions.ts:304 做过一次；主进程全链路零命中，core.ts:580 与 apimart provider 都把 node.prompt 原样发出去。供应商收到的是一串 URL 编码的内部标记。"
- },
- {
   "caseId": "non-apimart-vendor",
   "entranceId": "agent-panel-spend-confirm",
   "field": "authorization",

@@ -23,7 +23,15 @@ export type GenerationEntrance = {
   entrySite: string;
   /** 真正发出请求的那个函数。 */
   dispatchSite: string;
-  /** 发送前是否做 `@[asset:…]` → `@imageN` 的最终投影（A5 那条轴）。 */
+  /**
+   * 这条入口**在自己那一段**就做了 `@[asset:…]` → `@imageN` 的投影（A5 那条轴）。
+   *
+   * 2026-09-21 起投影本身收在引擎的出口上（引擎 A 在 `runtime.ts:334 runTask`，
+   * 引擎 B 在 `executionContract.projectContractPrompt`），所以这里为 `false`
+   * **不代表**这条路会把内部标记外泄——它只说明「入口自己没做，靠出口那一份」。
+   * 矩阵刻意保持这个区分：夹具只替 `true` 的入口预投影，于是 `false` 的那几条绿了
+   * 证明的是生产代码真的投影了，而不是夹具替它投影了。
+   */
   projectsPromptMentions: boolean;
   /** QA 定向重试追加的指令（只此一路有）。 */
   appendsRetryDirective: boolean;
