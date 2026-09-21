@@ -1,11 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import {
-  NOMI_OVERLAY_Z_INDEX,
-  getSettingsEscapeOwnership,
-  hasOpenPopupAbove,
-  isInsidePopupAbove,
-} from './overlayLayers'
+import { NOMI_OVERLAY_Z_INDEX, hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -89,7 +84,6 @@ export function AnchoredPopover({
 }: AnchoredPopoverProps): JSX.Element {
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
   const popRef = React.useRef<HTMLDivElement>(null)
-  const capturedEscapeRef = React.useRef<{ event: Event; delegatedOwnerOpen: boolean } | null>(null)
   const [placement, setPlacement] = React.useState<Placement | null>(null)
 
   const reposition = React.useCallback(() => {
@@ -124,77 +118,52 @@ export function AnchoredPopover({
     }
   }, [reposition])
 
-  const consumeEscape = React.useCallback((event: KeyboardEvent | React.KeyboardEvent<HTMLDivElement>) => {
-    if (!onClose || event.key !== 'Escape') return
-    const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event
-    const captured = capturedEscapeRef.current
-    if (nativeEvent.isComposing || event.defaultPrevented) {
-      capturedEscapeRef.current = null
-      event.stopPropagation()
-      return
-    }
-    // 子层若只在 document bubble 接 Escape，必须让原事件继续走到它；`.nokey` 同时阻止
-    // React Flow 把这一下解释成节点取消选择。子层处理后会 preventDefault，window 快捷键随即让位。
-    if ((captured?.event === nativeEvent && captured.delegatedOwnerOpen)
-      || (popRef.current && hasOpenPopupAbove(popRef.current))) {
-      queueMicrotask(() => {
-        if (capturedEscapeRef.current?.event === nativeEvent) capturedEscapeRef.current = null
-      })
-      return
-    }
-    capturedEscapeRef.current = null
-    event.stopPropagation()
+  const dismissOnEscape = React.useCallback((event: KeyboardEvent) => {
+    if (!onClose || event.key !== 'Escape') return false
+    const pop = popRef.current
+    if (!pop || hasOpenPopupAbove(pop)) return false
+    // The content may declare this popover's own dialog; it is not a layer above us.
+    if (hasOpenDialogAbove(pop.querySelector<HTMLElement>('[role="dialog"]') ?? pop)) return false
+    if (event.isComposing || event.defaultPrevented) return true
     event.preventDefault()
+    event.stopPropagation()
     onClose()
+    return true
   }, [onClose])
 
   React.useEffect(() => {
     if (!onClose) return undefined
-    const anchor = anchorRef?.current ?? fallbackAnchorRef.current
-    const anchorAlreadyIgnoredByReactFlow = anchor?.classList.contains('nokey') ?? false
-    const snapshotEscapeOwner = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      const pop = popRef.current
-      // AnchoredPopover 的定位 wrapper 自己没有 role；有些调用方把 role=dialog 放在第一层内容里。
-      // 层级判定必须以那张真实 surface 为基准，否则会把自己的 child dialog 误认成更高层。
-      const surface = pop?.querySelector<HTMLElement>('[role="dialog"]') ?? pop
-      const ownership = surface ? getSettingsEscapeOwnership(surface, event.target) : null
-      capturedEscapeRef.current = {
-        event,
-        delegatedOwnerOpen: Boolean(ownership?.dialogAbove || ownership?.openPopup || ownership?.targetOwnsEscape),
-      }
-    }
     // 「关掉我」这件事有两条路（Esc / 点外面），两条都必须给**我自己弹出来的那一层**让位：
     // 下拉和菜单 Portal 到 body，DOM 上不在我里面，不让位就会出现「浮层里的选择器改不了值」
     // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
+    const onKey = (event: KeyboardEvent) => {
+      // Internal controls receive Escape first, then the portal's React bubble handler.
+      // External focus (e.g. the trigger) still needs capture before React Flow unselects it.
+      if (event.target instanceof Node && popRef.current?.contains(event.target)) return
+      dismissOnEscape(event)
+    }
     const onDown = (event: MouseEvent) => {
       const target = event.target as globalThis.Node
+      const anchor = anchorRef?.current ?? fallbackAnchorRef.current
       if (popRef.current?.contains(target) || anchor?.contains(target)) return
       if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
-    // 锚点在 Portal 外，且可能位于 React Flow 这类绑定 Escape 的宿主内。监听挂在锚点本身，
-    // 才能在事件到达 React 根和宿主之前声明「这一下属于已打开的浮层」。
-    anchor?.classList.add('nokey')
-    anchor?.addEventListener('keydown', consumeEscape)
-    // 保留原有的 focus-outside 关闭语义；锚点和 Portal 内的事件会更早 stopPropagation，不会重复执行。
-    document.addEventListener('keydown', snapshotEscapeOwner, true)
-    document.addEventListener('keydown', consumeEscape)
+    document.addEventListener('keydown', onKey, true)
     document.addEventListener('mousedown', onDown)
     return () => {
-      anchor?.removeEventListener('keydown', consumeEscape)
-      if (!anchorAlreadyIgnoredByReactFlow) anchor?.classList.remove('nokey')
-      document.removeEventListener('keydown', snapshotEscapeOwner, true)
-      document.removeEventListener('keydown', consumeEscape)
+      document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('mousedown', onDown)
     }
-  }, [anchorRef, consumeEscape, onClose])
+  }, [anchorRef, dismissOnEscape, onClose])
 
-  // Portal 的 React 事件沿逻辑树冒泡：consumeEscape 截止普通关闭/IME/已消费事件；
-  // 委托给 document bubble 的子层事件由 wrapper 的 `.nokey` 阻止节点取消选择。
   const layer = (
     <div
       ref={popRef}
+      // 浮层让位给自己弹出的下拉/菜单时不会 stopPropagation，那一下 Escape 会继续走到
+      // React Flow 的 NodeWrapper 并取消选中 —— 节点的 composer 连同这张浮层一起消失。
+      // `.nokey` 是 @xyflow/system `isInputDOMNode` 认的排除边界：声明在**自己**的 Portal
+      // 根上（不写进调用方锚点的 className，那会被调用方下一次渲染冲掉）。
       className="nokey"
       style={{
         position: 'fixed',
@@ -203,8 +172,13 @@ export function AnchoredPopover({
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
         visibility: placement ? 'visible' : 'hidden',
       }}
-      onKeyDown={consumeEscape}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (!onClose || event.key !== 'Escape' || !event.currentTarget.contains(event.target as Node)) return
+        // A child may prevent dismissal without stopping propagation. Keep even that
+        // Escape inside this portal; it must not cancel the ancestor node's selection.
+        if (dismissOnEscape(event.nativeEvent)) event.stopPropagation()
+      }}
     >
       {children}
     </div>

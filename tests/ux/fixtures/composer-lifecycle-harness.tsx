@@ -27,7 +27,7 @@ const Composer = lazyWithChunkBoundary('composer', () => {
   calls++
   if (calls === 1) return new Promise<{ default: () => JSX.Element }>((_, reject) => { failFirstImport = () => reject(new TypeError('Failed to fetch dynamically imported module')) })
   return loaded ? Promise.resolve({ default: () => <span data-loaded>composer ready</span> }) : Promise.reject(new TypeError('Failed to fetch dynamically imported module'))
-}, { recovery: 'local', pending: <span role="status">pending</span> })
+})
 const gestureState = { remembers: 0, viewport: { x: 0, y: 0, zoom: 1 } }
 const flow = { getViewport: () => gestureState.viewport, setViewport: async (next: typeof gestureState.viewport) => { gestureState.viewport = next; return true } }
 const remember = () => { gestureState.remembers++ }
@@ -201,7 +201,7 @@ function Harness() {
     <button id="kind" onClick={() => type('video')}>type</button>
     <button id="identity" onClick={() => identity(value => value === 'a' ? 'b' : 'a')}>identity</button>
     <button id="history" onClick={() => { select(true); setOpen(true) }}>{open ? 'history' : 'composer'}</button>
-    <Composer />
+    <React.Suspense fallback={<span role="status">pending</span>}><Composer /></React.Suspense>
     <GestureHarness />
     <PlacementHarness />
     <EscapeOwnershipHarness />

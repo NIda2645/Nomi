@@ -49,14 +49,16 @@ it('invalidates the single history owner across selection, results, kind and ide
     await page.locator('#history').click()
   }
 })
-it('recovers a failed import locally without reloading or replacing unpublished input', async () => {
+it('degrades only its own region and reaches for the one recovery that can work: a full reload', async () => {
+  // React.lazy 一旦 reject 会永久缓存失败，且浏览器 module map 对「取失败的模块 URL」也按
+  // 错误缓存：同一 specifier 再 import 立刻重抛原错误、根本不发第二次请求。换新 lazy 实例
+  // 只解开两层缓存里的一层，所以恢复只能靠拿到全新 JS 上下文的整页重载。
   await page.locator('[role="alert"]').waitFor()
   await page.locator('#unpublished-draft').fill('still unpublished')
-  await page.evaluate(() => { window.savedInput = document.querySelector('input'); window.composerFixture.load() })
+  expect(await page.locator('#stage').count()).toBe(1)
+  await expect.poll(() => page.evaluate(() => window.composerFixture.snapshot().reloads)).toBe(1)
   await page.locator('[role="alert"] button').click()
-  await page.locator('[data-loaded]').waitFor()
-  expect(await page.evaluate(() => window.composerFixture.snapshot())).toEqual({ calls: 4, reloads: 0 })
-  expect(await page.evaluate(() => window.savedInput === document.querySelector('input'))).toBe(true)
+  expect(await page.evaluate(() => window.composerFixture.snapshot().reloads)).toBe(2)
   expect(await page.locator('#unpublished-draft').inputValue()).toBe('still unpublished')
 })
 
