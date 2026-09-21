@@ -105,14 +105,8 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
     [modelReadSpec.name]: modelReadSpec.effect,
     [LANE_TOOL_REQUEST_TOOL_NAME]: 'read',
   });
-  // 可用性三件（keyStatus/usable/statusReason）由**上层装配时注入**一个只读函数：
-  // lane 模块自己**不 import 目录**（那会把 catalogStore 的磁盘读拖进 agent 运行时模块图，
-  // 分层门岗当场红），而 `laneDesktopRuntime` 本来就持有目录，由它来给。
-  // 于是两个模型面都有这三样，且分层不破。
-  const modelRead = createLaneModelRead(
-    () => input.availableModels?.() ?? [],
-    input.modelAvailability,
-  );
+  // 可用性三件由上层注入（见 `OpenLaneOptions.modelAvailability`）：lane 不 import 目录。
+  const modelRead = createLaneModelRead(() => input.availableModels?.() ?? [], input.modelAvailability);
   const promptSources = [...coding, request] as unknown as PiAgentTool[];
   // `nomi_read` 的系统提示词条目直接用注册表那份说明书（全文 + 示例 + 纪律），与领域工具同一条路。
   const promptTools = [

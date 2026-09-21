@@ -83,11 +83,7 @@ export function modelSpecRow(entry: AgentModelEntry, availability?: ModelAvailab
     modeIds: entry.modes.map((mode) => mode.modeId),
     ...(entry.variants?.length ? { variantIds: entry.variants.map((variant) => variant.id) } : {}),
     accepts: acceptsOf(entry),
-    ...(availability ? {
-      keyStatus: availability.keyStatus,
-      usable: availability.usable,
-      statusReason: availability.statusReason,
-    } : {}),
+    ...availability,
   };
 }
 

@@ -93,9 +93,7 @@ export function getArchetypeById(id: string | null | undefined): ModelArchetype 
 
 /** 归一模型标识：去掉 "models/" 前缀、trim、小写。 */
 function normalizeIdentifier(value: unknown): string {
-  const raw = typeof value === "string" ? value.trim() : "";
-  const noPrefix = raw.startsWith("models/") ? raw.slice("models/".length) : raw;
-  return noPrefix.toLowerCase();
+  return rawIdentifier(value).toLowerCase();
 }
 
 /** 去掉 models/ 前缀但保留原始大小写；APIMart/KIE 的同名模型靠大小写区分官方 key。 */
