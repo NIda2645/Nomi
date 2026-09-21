@@ -56,7 +56,6 @@ export const AGENT_TOOL_FAILURE_TEXT_KEY = {
   tool_timed_out: 'agentToolFailure.tool_timed_out',
   wrong_verb: 'agentToolFailure.wrong_verb',
   generation_surface_unavailable: 'agentToolFailure.generation_surface_unavailable',
-  user_sees_spend_card: 'agentToolFailure.user_sees_spend_card',
   task_reference_required: 'agentToolFailure.task_reference_required',
   generation_operation_not_found: 'agentToolFailure.generation_operation_not_found',
   production_run_not_found: 'agentToolFailure.production_run_not_found',

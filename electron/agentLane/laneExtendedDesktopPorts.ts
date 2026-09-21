@@ -21,6 +21,8 @@ import { createExtendedLaneTools } from './laneExtendedTools'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
 import { verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
 import { taskReferenceSchema } from '../shared/agentCapabilities/taskReference'
+import { registerSpendWaiter, type SpendDecision } from '../capabilityCore/spendDecisionWaiters'
+import { GENERATE_USER_DECISION_KEY, type GenerateUserDecision } from '../shared/agentLane/generateUserDecision'
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
 import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
 
@@ -31,7 +33,14 @@ type Prepared =
   | { kind: 'skill'; value: PreparedSkillWrite }
   | { kind: 'direct'; value: { call: RuntimeToolCall } }
 
-type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true; generationContext?: GenerationInvocationContext }
+type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true; generationContext?: GenerationInvocationContext
+  /** `generate` 在预检期就已经有了结局（见 `preflightGenerate`）：execute 只把它交出去，不再碰领域、不再等任何人。 */
+  decided?: RuntimeToolDecision }
+
+/** 「这份结果说的是：报价卡已经摆到用户面前，在等他点头」（`mcpGenerationTools` present 分支的 `nextAction`）。 */
+function awaitsUserOnSpendCard(result: unknown): boolean {
+  return Boolean(result && typeof result === 'object' && (result as { nextAction?: unknown }).nextAction === 'await_user')
+}
 
 export interface LaneExtendedDesktopPortsInput {
   binding: ProjectBinding
@@ -152,13 +161,14 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       if (disposed || signal.aborted) rejectPreparation('capability_cancelled')
       pending.set(call.toolCallId, { call, prepared, generationContext: captureGenerationContext(input.context?.()) })
     },
-    async approved(call, record) {
+    async approved(call, record, host) {
       const entry = pending.get(call.toolCallId)
       if (!entry) return
       if (entry.approved || disposed || entry.call.toolName !== call.toolName) rejectPreparation('capability_authority_invalid')
       if (entry.prepared.kind === 'direct') {
         // The lane's approval note is already durable before this callback; no G5 journal is fabricated.
         entry.approved = true
+        if (entry.call.toolName === 'generate' && host) entry.decided = await preflightGenerate(entry, host)
         return
       }
       const approval: CanvasWriteApprovalAuthority = { approvalId: `approval-${randomUUID()}`,
@@ -169,6 +179,53 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       entry.approved = approval
     },
     settled(call) { pending.delete(call.toolCallId) },
+  }
+
+  /**
+   * `generate` 的全部「等人」都发生在这里——`before_tool` 里，**不计入工具超时**（2026-09-22 裁决 A）。
+   *
+   * 此前这一步住在 execute 里：报价卡那条路以「错误 + STOP」把回合当场结束（用户点完「生成」之后没有回合接结果），
+   * 文稿方案那条路干脆在工具执行里等用户点头，撞 60 秒写类预算——三轮实测一次没成过。
+   *
+   * 顺序：先登记「我在等这一笔」→ 再 present（卡出现）→ 卡真的在等人才向闸借一次等待。
+   * 先登记后出卡，是因为卡一落盘面板就读得到：晚一步，用户手快的那一下点击就没人接。
+   * 全自动档由策略当场决完、文稿方案在它自己的确认里等完——这两条路 present 返回时就已经有结局，不借等待。
+   */
+  async function preflightGenerate(entry: Pending, host: NonNullable<Parameters<NonNullable<OpenLaneOptions['toolLifecycle']>['approved']>[2]>): Promise<RuntimeToolDecision> {
+    const generation = input.generation()
+    if (!generation) return generationSurfaceUnavailable()
+    const { call: transport } = translate(entry.call)
+    const operationId = String((entry.call.args as { operationId?: unknown }).operationId ?? '')
+    let early: SpendDecision | undefined
+    let forward: ((decision: SpendDecision) => void) | undefined
+    const release = registerSpendWaiter(input.binding.projectId, operationId, (decision) => { if (forward) forward(decision); else early = decision })
+    try {
+      const presented = await generation.tryExecute(transport, host.signal, entry.generationContext) ?? generationSurfaceUnavailable()
+      if (!presented.ok || !awaitsUserOnSpendCard(presented.result)) return presented
+      const decided = (userDecision: GenerateUserDecision): RuntimeToolDecision =>
+        ({ ok: true, result: { ...(presented.result as Record<string, unknown>), [GENERATE_USER_DECISION_KEY]: userDecision } })
+      if (!host.canAskUser) {
+        // 卡摆出去了却没有人能点它（没有窗口的 lane）：收回这次出价，照实说。这是真错误，error 形状是对的。
+        await generation.withdrawPresentation(operationId)
+        return { ok: false, code: 'generation_approval_unavailable', message: 'This session has no window where the user could approve the spend, so nothing was generated.' }
+      }
+      let outcome: Awaited<ReturnType<typeof host.waitForUser>['outcome']>
+      if (early) outcome = early
+      else {
+        const wait = host.waitForUser()
+        forward = (decision) => { wait.settle(decision) }
+        outcome = await wait.outcome
+      }
+      if (outcome.kind === 'confirmed') return decided({ outcome: 'approved' })
+      // × 那条路上计划已经由 `discardPendingSpend` 写成真终态，这里不再动它。
+      if (outcome.kind === 'declined') return decided({ outcome: 'declined' })
+      // 另外两种结局（用户打了字 / 回合被停下）都不是用户说「不」：收回的只是这一次出价，计划留着。
+      await generation.withdrawPresentation(operationId)
+      if (outcome.kind === 'redirected') return decided({ outcome: 'redirected', userSaid: outcome.text })
+      return { ok: false, code: 'generation_cancelled', message: 'generation_cancelled', denied: true }
+    } finally {
+      release()
+    }
   }
 
   async function executeRead(call: RuntimeToolCall, signal: AbortSignal): Promise<RuntimeToolDecision> {
@@ -204,6 +261,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     const { prepared, approved } = entry
     let result: RuntimeToolDecision
     if (prepared.kind === 'direct') {
+      // `generate` 的结局在预检期就定了（`preflightGenerate`）：这里**没有任何等待**，也不再碰一次领域——
+      // 再 present 一次会把用户刚答完的那张卡重新摆出来。
+      if (entry.decided) return entry.decided
       // 传输方法名同样由声明翻（`translate`），不按组名手写；生成面不在 → #785 那句「此刻是哪个相」。
       const { call: transport } = translate(normalizedCall)
       result = await input.generation()?.tryExecute(transport, signal, entry.generationContext) ?? generationSurfaceUnavailable()

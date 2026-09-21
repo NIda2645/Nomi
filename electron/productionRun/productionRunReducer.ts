@@ -28,6 +28,7 @@ import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import {
   applyGenerationCandidatePatch,
   presentGenerationPlan,
+  withdrawGenerationPresentation,
   policyAdmittingUserRevisedIdentity,
   revokeWaitingGenerationAuthorization,
   unsealedGenerationPlanFields,
@@ -216,6 +217,10 @@ export function applyProductionCommand(
     }
     case "generation.present":
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
+    case "generation.withdraw": {
+      const withdrawn = withdrawGenerationPresentation(current, now);
+      return { run: withdrawn, eventType: "generation.plan.withdrawn", message: current.generationPlan?.operationId ?? current.runId };
+    }
     case "generation.seal": {
       const currentPlan = current.generationPlan;
       if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");

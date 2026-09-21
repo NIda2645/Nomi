@@ -474,6 +474,26 @@ export type LaneApprovalDecision = (typeof LANE_APPROVAL_DECISIONS)[number]
 export const LANE_APPROVAL_CANCEL_CAUSES = ['stopped', 'window-closed', 'restart'] as const
 export type LaneApprovalCancelCause = (typeof LANE_APPROVAL_CANCEL_CAUSES)[number]
 
+/**
+ * 一次「卡画在别处」的等待的结局（2026-09-22 · 裁决 A：等用户只有这一个 owner）。
+ *
+ * 付费报价卡不是闸自己的卡——它由 Run 账本投影（`productionPendingSpend.ts`），用户在那张卡上点头。
+ * 但**等**这件事必须住在审批闸（`laneApprovalGate.hold`）：只有这里的等待不受工具超时管、被打断时兑现而不是抛、关窗 / 切项目 /
+ * 按停止有统一的收尾、待决时用户打的字认得出是对它的回答。此前那次等待住在工具执行里
+ * （撞 60 秒写类预算）或者干脆没有（回合直接结束，确认之后没有回合接结果）。
+ */
+export type LaneHoldOutcome =
+  | Readonly<{ kind: "confirmed" }>
+  /** 用户在那张卡上点了 ×：明确的「不」，那份请求到此为止（真终态）。 */
+  | Readonly<{ kind: "declined" }>
+  /**
+   * 卡待决时用户在输入框里打了字（裁决 E：那句话就是对这道闸的回答，绝不石沉大海）。
+   * 它**不是** ×：「把第二镜改短点」不是在说「这份方案我不要了」。所以收回的只是这一次出价，
+   * 计划留着——模型照那句话改完，对同一份草稿再出一次价。
+   */
+  | Readonly<{ kind: "redirected"; text: string }>
+  | Readonly<{ kind: "cancelled"; cause: LaneApprovalCancelCause }>
+
 export interface LaneApprovalNote {
   readonly toolCallId: string
   readonly toolName: string

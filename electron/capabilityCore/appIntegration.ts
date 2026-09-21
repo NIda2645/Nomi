@@ -31,6 +31,7 @@ import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { installGuiResolveNarrowIpc } from './generationResolveIpc'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { withdrawStalePresentations } from '../productionRun/stalePresentationSweep'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import {
   prepareProductionGenerationAuthorizationWithReferences,
@@ -522,6 +523,20 @@ export async function startCapabilityCore(
     // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度。best-effort：异步、逐 run try/catch，不阻塞项目打开。
     reconcileOpenProjectHook = (projectId: string) => {
       void (async () => {
+        // 裁决 C：上一个进程摆出去、还没人答的那几次出价先撤回（回 draft / 未 present，计划留着）。
+        // 排在补落画布之前：占位节点照旧补，但那张「没人在等」的卡不该再闪出来一次。
+        try {
+          const runs = (typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : [])
+            .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
+          const withdrawn = await withdrawStalePresentations({
+            listRuns: () => runs,
+            withdraw: (owner, operationId, now) => operationStore.withdraw(owner, operationId, now),
+            onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
+          }, projectId)
+          if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })
+        } catch (error) {
+          logWarn('production-run', 'stale-presentation-sweep-failed', undefined, error)
+        }
         try {
           const summaries = typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : []
           for (const summary of summaries) {

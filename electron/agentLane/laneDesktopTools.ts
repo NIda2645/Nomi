@@ -232,7 +232,7 @@ export function createDesktopLaneTools(input: {
     tools: [...tools, ...extended.tools],
     toolLifecycle: {
       prepare: async (call, signal) => { await toolLifecycle.prepare(call, signal); await extended.toolLifecycle.prepare(call, signal) },
-      approved: async (call, record) => { await toolLifecycle.approved(call, record); await extended.toolLifecycle.approved(call, record) },
+      approved: async (call, record, host) => { await toolLifecycle.approved(call, record, host); await extended.toolLifecycle.approved(call, record, host) },
       settled: (call) => { toolLifecycle.settled(call); extended.toolLifecycle.settled(call) },
     } satisfies NonNullable<OpenLaneOptions['toolLifecycle']>,
     dispose: () => {

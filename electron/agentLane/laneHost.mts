@@ -479,8 +479,17 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     // ③ 连续撞同一堵墙。判在闸之后：被闸拒收不是工具坏了，那条路有自己的文案。
     const wall = failures.block(event.toolName);
     if (wall) return { block: { ...(wall.terminate ? { terminate: true } : {}), reason: wall.reason } };
+    const preflightSignal = hookContext.abortSignal ?? new AbortController().signal;
     await options.toolLifecycle?.approved(event, async (type, data) => {
       await lane.appendCustomEntry(type, data, hookContext);
+    }, {
+      signal: preflightSignal,
+      canAskUser: Boolean(gate) && approval?.hasUserInterface === true,
+      // 等待的 owner 是闸：端口只说「替我等这一次」。没装闸的夹具没有人可等——当场以「被停下」收尾。
+      waitForUser: () => gate
+        ? { outcome: gate.hold({ toolCallId: event.toolCallId, toolName: event.toolName }, preflightSignal),
+            settle: (outcome) => gate.settleHold(event.toolCallId, outcome) }
+        : { outcome: Promise.resolve({ kind: 'cancelled' as const, cause: 'stopped' as const }), settle: () => false },
     });
     return undefined;
   });
@@ -646,6 +655,15 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
         const question = gate?.pending();
         if (gate && question?.toolName === ASK_USER_VERB_NAME && command.text.trim()
           && gate.answer(question.toolCallId, 'answer', command.text)) {
+          failures.reset();
+          executionOptions?.onAccepted?.();
+          return {};
+        }
+        // 报价卡待答（闸替那张画在别处的卡等着）→ 这句话同样是对它的回答：这一次出价收回，那句话一字不改
+        // 成为 `generate` 的结果，回合在同一轮里照它继续。不另排插话，理由同上。
+        const held = gate?.holding();
+        if (gate && held && command.text.trim()
+          && gate.settleHold(held.toolCallId, { kind: 'redirected', text: command.text.trim() })) {
           failures.reset();
           executionOptions?.onAccepted?.();
           return {};

@@ -6,6 +6,8 @@ import type { PreparedExportWrite } from '../capabilityCore/phase4SurfaceTranspo
 import type { PreparedSkillWrite } from '../capabilityCore/skillWriteTransportAdapters'
 import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContracts'
 import type { ProjectAgentProposalReceiptView } from '../shared/projectAgentProposalReceipt'
+import { createLaneApprovalGate } from './laneApprovalGate'
+import { settleSpendWaiter, spendDecisionAwaited } from '../capabilityCore/spendDecisionWaiters'
 
 const binding = { projectId: 'project-1', immutableProjectUuid: '00000000-0000-4000-8000-000000000001', projectGeneration: 1 }
 const signal = new AbortController().signal
@@ -42,7 +44,7 @@ function setup() {
 describe('deferred desktop domain authority', () => {
   it.each(['generation', 'export'] as const)('C17: explicit %s reads and cancels only its owner even when raw IDs collide', async domain => {
     const f = setup()
-    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation)
     await f.execute(call('check_job', { domain, jobId: 'same-id' }))
     const value = call('cancel_job', { domain, jobId: 'same-id' })
@@ -55,7 +57,7 @@ describe('deferred desktop domain authority', () => {
   })
   it('C17: explicit export permission failure never prepares or cancels generation', async () => {
     const f = setup()
-    const generation = { tryExecute: vi.fn(), dispose: vi.fn() }
+    const generation = { tryExecute: vi.fn(), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation)
     vi.mocked(f.input.phase4.prepareWrite).mockRejectedValue(new Error('permission denied'))
     await expect(f.prepareAndApprove(call('cancel_job', { domain: 'export', jobId: 'same-id' }))).rejects.toThrow('permission denied')
@@ -64,7 +66,7 @@ describe('deferred desktop domain authority', () => {
   })
   it('C17: a legacy raw ID never chooses one of two domains for cancellation', async () => {
     const f = setup(), value = call('cancel_job', { jobId: 'same-id' })
-    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation)
     // 2026-09-22：这里原来断的是**裸 ZodError** 的形状（`issues[].code/path` 是 zod 内部结构）。
     // 裸 ZodError 的 `message` 就是 `JSON.stringify(issues, null, 2)`，模型收到的是一整段 JSON 数组
@@ -133,7 +135,7 @@ describe('deferred desktop domain authority', () => {
     // boot 过，所以是 starting。正文前半截由 laneExtendedTools 拼上动词名。
     expect(await f.execute(value)).toMatchObject({ ok: false,
       failure: { code: 'generation_surface_unavailable', message: expect.stringMatching(/still starting/) } })
-    const adapter = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'run-1' } })), dispose: vi.fn() }
+    const adapter = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'run-1' } })), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(adapter)
     await f.assembly.toolLifecycle.prepare(value, signal)
     await f.assembly.toolLifecycle.approved(value, f.record)
@@ -154,9 +156,113 @@ describe('deferred desktop domain authority', () => {
   })
   it('joins a successfully created draft to the domain task projection', async () => {
     const f = setup(), value = call('draft_shots', { shots: [{ prompt: 'Create a short film' }] })
-    vi.mocked(f.input.generation).mockReturnValue({ tryExecute: vi.fn(async () => ({ ok: true as const, result: { runId: 'run-1' } })), dispose: vi.fn() })
+    vi.mocked(f.input.generation).mockReturnValue({ tryExecute: vi.fn(async () => ({ ok: true as const, result: { runId: 'run-1' } })), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() })
     await f.prepareAndApprove(value)
     expect(await f.execute(value)).toMatchObject({ ok: true })
     expect(f.input.onTaskCreated).toHaveBeenCalledWith(value, { runId: 'run-1' })
+  })
+})
+
+// ── 2026-09-22 裁决 A：`generate` 的「等用户」住在预检期（审批闸 hold），execute 里没有任何等待 ──
+describe('generate：等用户住在预检期，结局以成功形状交给 execute', () => {
+  const presentedCard = { ok: true as const, result: { operation: { operationId: 'op-1' }, shots: ['shot-1'], nextAction: 'await_user' } }
+  const generateCall: RuntimeToolCall = { toolName: 'generate', args: { operationId: 'op-1' }, toolCallId: 'call-generate' }
+
+  function withGate(f: ReturnType<typeof setup>, generation: { tryExecute: ReturnType<typeof vi.fn>; withdrawPresentation: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }) {
+    vi.mocked(f.input.generation).mockReturnValue(generation as never)
+    const gate = createLaneApprovalGate({ specs: [], hasUserInterface: true })
+    const controller = new AbortController()
+    const host = { signal: controller.signal, canAskUser: true,
+      waitForUser: () => ({ outcome: gate.hold({ toolCallId: generateCall.toolCallId, toolName: 'generate' }, controller.signal),
+        settle: (outcome: Parameters<typeof gate.settleHold>[1]) => gate.settleHold(generateCall.toolCallId, outcome) }) }
+    return { gate, controller, host }
+  }
+  const untilHolding = async (gate: ReturnType<typeof createLaneApprovalGate>) => { await vi.waitFor(() => expect(gate.holding()).toBeDefined()) }
+
+  it('面板点了「生成」→ 回合拿到 approved；execute 不再碰领域（不会把答完的卡重新摆出来）', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { gate, host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
+    await untilHolding(gate)
+    expect(gate.pending(), '这次等待不投影成闸卡——那张报价卡已经有人画了').toBeUndefined()
+    expect(settleSpendWaiter('project-1', 'op-1', { kind: 'confirmed' })).toBe(true)
+    await approving
+    const outcome = await f.execute(generateCall) as { ok: boolean; details?: { userDecision?: unknown } }
+    expect(outcome.ok).toBe(true)
+    expect(outcome.details?.userDecision).toEqual({ outcome: 'approved' })
+    expect(generation.tryExecute, '整条链上领域只被碰一次（present）').toHaveBeenCalledTimes(1)
+    expect(generation.withdrawPresentation).not.toHaveBeenCalled()
+    expect(spendDecisionAwaited('project-1', 'op-1')).toBe(false)
+  })
+
+  it('× → declined：成功形状，计划已由那条 IPC 写成终态，这里不再动它', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { gate, host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
+    await untilHolding(gate)
+    settleSpendWaiter('project-1', 'op-1', { kind: 'declined' })
+    await approving
+    const outcome = await f.execute(generateCall) as { ok: boolean; details?: { userDecision?: unknown } }
+    expect(outcome.ok, '「用户没同意」不是错误——不重试、不进熔断').toBe(true)
+    expect(outcome.details?.userDecision).toEqual({ outcome: 'declined' })
+    expect(generation.withdrawPresentation).not.toHaveBeenCalled()
+  })
+
+  it('卡待决时用户打了字（E）→ redirected：出价收回、计划留着，那句话一字不改交给模型', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { gate, host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
+    await untilHolding(gate)
+    expect(gate.settleHold(gate.holding()!.toolCallId, { kind: 'redirected', text: '第二镜改成竖版' })).toBe(true)
+    await approving
+    const outcome = await f.execute(generateCall) as { ok: boolean; details?: { userDecision?: unknown }; nextAction?: { userSees: string } }
+    expect(outcome.ok).toBe(true)
+    expect(outcome.details?.userDecision).toEqual({ outcome: 'redirected', userSaid: '第二镜改成竖版' })
+    expect(outcome.nextAction?.userSees).toContain('第二镜改成竖版')
+    expect(generation.withdrawPresentation).toHaveBeenCalledWith('op-1')
+  })
+
+  it('按停止 / 关窗 → 等待兑现成 cancelled，出价收回（卡不许留成孤儿），注册表清干净', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { gate, host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
+    await untilHolding(gate)
+    gate.cancelAll('window-closed')
+    await approving
+    expect(generation.withdrawPresentation).toHaveBeenCalledWith('op-1')
+    expect(spendDecisionAwaited('project-1', 'op-1')).toBe(false)
+    expect(await f.execute(generateCall)).toMatchObject({ ok: false })
+  })
+
+  it('全自动代答 / 文稿方案：present 返回时已有结局，不借等待', async () => {
+    const f = setup()
+    const started = { ok: true as const, result: { drafted: { operation: { operationId: 'op-1' } }, spendDecision: { decidedBy: 'policy:full_auto' }, started: {} } }
+    const generation = { tryExecute: vi.fn(async () => started), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { gate, host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    await f.assembly.toolLifecycle.approved(generateCall, f.record, host)
+    expect(gate.holding()).toBeUndefined()
+    const outcome = await f.execute(generateCall) as { ok: boolean; nextAction?: { kind: string } }
+    expect(outcome.ok).toBe(true)
+    expect(outcome.nextAction?.kind).toBe('job_running')
+    expect(generation.tryExecute).toHaveBeenCalledTimes(1)
+  })
+
+  it('没有窗口能问人：出价收回，照实报错（这是真错误，error 形状是对的）', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), dispose: vi.fn() }
+    const { host } = withGate(f, generation)
+    await f.assembly.toolLifecycle.prepare(generateCall, signal)
+    await f.assembly.toolLifecycle.approved(generateCall, f.record, { ...host, canAskUser: false })
+    expect(generation.withdrawPresentation).toHaveBeenCalledWith('op-1')
+    expect(await f.execute(generateCall)).toMatchObject({ ok: false })
   })
 })

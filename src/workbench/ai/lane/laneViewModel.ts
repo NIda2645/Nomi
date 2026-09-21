@@ -399,15 +399,8 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // 展开体，同一句话就在面板上出现三次——设计实验室 P6 探针把这一格接上真投影时当场红了。
     const { summary: _summary, ...withoutSummary } = existing.receipt
     const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
-    // 2026-09-21：有些 `isError` 是**给模型的控制信号**（「别谎报，用户面前已经有一张卡了」），
-    // 不是用户的失败。这里把它落回普通完成态：行不红、下面不挂红条、也不算「还没解决」。
-    // 它说的那句话仍然留在行尾摘要里——那是一句陈述，不是一条警告。
-    //
-    // 2026-09-22：判据**从信封里读**（`failure.waiting`），渲染层那份权宜的码名单
-    // （`laneToolControlSignals.ts`）同 commit 删掉。它当初就在文件头登记了这件事：
-    // 「主进程补上那条轴之后，这份名单整个删掉」。名单住在渲染层的代价是主进程再加一个
-    // 这样的码时没有任何东西会红——而渲染层不可能知道主进程新长了什么。
-    const controlSignal = part.isError && part.failure?.waiting === true
+    // 「等用户」不再以失败的形状出现（2026-09-22 裁决 A：`generate` 在预检期等、以成功形状返回），
+    // 所以这里不再有「这条 isError 其实不是失败」那条旁路——`isError` 就是失败。
     items[slot.index] = {
       ...existing,
       kind: 'tool',
@@ -422,7 +415,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
           ? { ...withoutSummary, status: 'output-denied', answered: true as const,
               label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
           : { ...withoutSummary, status: 'output-denied' }
-        : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError && !controlSignal, false),
+        : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError, false),
           ...(failure ? { summary: redactResidentSensitiveText(failure) } : {}),
           ...(!part.isError && part.toolCallId === undoableToolCallId
             && capabilitySupportsUndo(resolveModelToolCapabilityId(slot.toolName, slot.args) ?? slot.toolName, slot.args) ? { undoable: true } : {}),

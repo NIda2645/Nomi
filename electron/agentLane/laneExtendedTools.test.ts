@@ -189,14 +189,19 @@ describe('工具回执从真实审批结论派生', () => {
     expect(outcome.nextAction?.userSees).not.toMatch(/generation has started|nothing has been spent/)
   })
 
-  it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
-    const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
-      .find(candidate => candidate.name === 'generate')!
-    const outcome = await tool.execute(tool.schema.parse({ operationId: 'op-7' }), { toolCallId: 'call-1', signal }) as
-      { ok: boolean; failure?: { code: string; message: string } }
-    expect(outcome.ok).toBe(false)
-    expect(outcome.failure?.code).toBe('user_sees_spend_card')
-    expect(outcome.failure?.message).toMatch(/for 2 shot\(s\)/)
+  // 2026-09-22 裁决 A：等用户住在预检期，`generate` 返回时用户**已经答完了**。三种结局都是成功形状——
+  // 错误形状会让模型重试、进熔断、向用户报「出错了」，对一个「他说不」或「他想先改一下」三样都是错的。
+  it.each([
+    ['approved', { outcome: 'approved' }, 'job_running', /generation has started/],
+    ['declined', { outcome: 'declined' }, 'none', /closed for good/],
+    ['redirected', { outcome: 'redirected', userSaid: '第二镜改成竖版' }, 'none', /第二镜改成竖版/],
+  ] as const)('用户在报价卡上 %s → 成功形状的回执，照实说', async (_name, userDecision, kind, says) => {
+    const outcome = await runVerb('generate', { operation: { operationId: 'op-7' }, nextAction: 'await_user', userDecision },
+      'auto-granted', { operationId: 'op-7' })
+    expect(outcome.ok, '「用户没同意」不是错误').toBe(true)
+    expect(outcome.nextAction).toMatchObject({ kind })
+    expect(outcome.nextAction?.userSees).toMatch(says)
+    if (userDecision.outcome !== 'approved') expect(outcome.nextAction?.userSees).toMatch(/[Nn]othing was (generated|spent)/)
   })
 })
 

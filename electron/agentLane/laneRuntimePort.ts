@@ -16,6 +16,7 @@ import { LaneDomainFailure } from '../shared/agentLane/laneToolContract'
 import type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec } from '../shared/agentLane/laneToolContract'
 import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContracts'
 import type { LaneComposerContext, LaneInputMessage } from '../shared/agentLane/laneDesktopContracts'
+import type { LaneHoldOutcome } from '../shared/agentLane/laneContracts'
 import type { NomiModelConfig } from '../shared/agentLane/laneModelConfig'
 import type { ProjectAgentApprovalPolicy, ProjectAgentWorkMode } from '../shared/agentCapabilities/capabilityApprovalPolicy';
 import type { LaneApprovalSubjectResolver } from '../shared/agentLane/laneApproval'
@@ -125,6 +126,18 @@ export interface LaneApprovalOptions {
   onPendingChange?(pending: LanePendingApproval | undefined): void
 }
 
+/**
+ * 领域端口在预检期能向宿主借的两样东西。等待的 owner 是审批闸（`laneApprovalGate.hold`）；
+ * 端口只说「替我等这一次」，拿回结局——它自己不 race signal、不管关窗。
+ */
+export type LaneToolPreflightHost = Readonly<{
+  signal: AbortSignal
+  /** 这条 lane 此刻有没有一个能问的人（没装闸 / MCP stdio / 后台批 = false）。 */
+  canAskUser: boolean
+  /** 开始替一张画在别处的卡等用户。`settle` 把那张卡上的结论递进来（只认第一次）。 */
+  waitForUser(): Readonly<{ outcome: Promise<LaneHoldOutcome>; settle(outcome: Exclude<LaneHoldOutcome, { kind: 'cancelled' }>): boolean }>
+}>
+
 export interface OpenLaneOptions {
   fetch: typeof globalThis.fetch
   /**
@@ -165,7 +178,11 @@ export interface OpenLaneOptions {
   /** Domain ports prepare before confirmation, then persist the accepted authority in the lane. */
   toolLifecycle?: {
     prepare(call: RuntimeToolCall, signal: AbortSignal): Promise<void>
-    approved(call: RuntimeToolCall, record: (type: string, data: Record<string, string | number>) => Promise<void>): Promise<void>
+    /**
+     * 闸放行之后、工具执行之前。它跑在 `before_tool` 里，所以**不计入工具超时**——需要等用户的那一步
+     * （`generate` 的报价卡）只许住在这里，不许住在 execute 里（2026-09-22 裁决 A）。
+     */
+    approved(call: RuntimeToolCall, record: (type: string, data: Record<string, string | number>) => Promise<void>, host?: LaneToolPreflightHost): Promise<void>
     settled(call: RuntimeToolCall): void
   }
   /**

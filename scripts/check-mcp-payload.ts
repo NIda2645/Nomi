@@ -70,7 +70,7 @@ async function run(): Promise<void> {
     const payloadBytesByLocale = measureMcpToolsListPayloadByLocale(MCP_TOOL_RESOLVER.list())
     const actualBytes = measureMcpToolsListPayload(MCP_TOOL_RESOLVER.list())
     console.log(`MCP tools/list payload: ${actualBytes} bytes (zh-CN ${payloadBytesByLocale['zh-CN']}, en ${payloadBytesByLocale.en}; ratchet max ${maxBytes})`)
-    assertLedgerExplainsBaseline(new Set((MCP_TOOL_RESOLVER.list() as { name?: unknown }[])
+    assertLedgerExplainsBaseline(new Set((MCP_TOOL_RESOLVER.list() as unknown as { name?: unknown }[])
       .map((tool) => (typeof tool.name === 'string' ? tool.name : ''))))
     if (actualBytes > maxBytes) {
       throw new Error(`MCP payload ratchet failed: ${actualBytes} > ${maxBytes}`)

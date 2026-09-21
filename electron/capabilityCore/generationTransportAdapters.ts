@@ -27,6 +27,11 @@ import type { GenerationInvocationContext } from "../shared/agentCapabilities/ge
  */
 export type PiGenerationTransportAdapter = Readonly<{
   tryExecute(call: RuntimeToolCall, signal: AbortSignal, context?: GenerationInvocationContext): Promise<RuntimeToolDecision | null>;
+  /**
+   * 宿主内部：收回对 `operationId` 的**这一次出价**（回 draft / 未 present，计划留着）。模型够不着——
+   * 它不是一个工具。等用户的那个回合没了（按停止 / 关窗）或用户改了主意（待决时打字）时由 lane 端口调。
+   */
+  withdrawPresentation(operationId: string): Promise<void>;
   dispose(): void;
 }>;
 
@@ -521,6 +526,12 @@ export function createPiGenerationTransportAdapter(
       } catch (error) {
         return safeFailure(error);
       }
+    },
+    async withdrawPresentation(operationIdToWithdraw) {
+      if (disposed) return;
+      // 不挂调用方的 signal：这一步多半正是在 abort 之后跑的，而它要做的恰恰是把那次 abort 留下的卡收走。
+      const signal = new AbortController().signal;
+      await plan("withdraw", { operationId: operationIdToWithdraw }, await lease(signal), signal);
     },
     dispose() { disposed = true; },
   });

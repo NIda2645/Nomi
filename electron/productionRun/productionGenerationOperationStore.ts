@@ -185,6 +185,22 @@ export function createProductionGenerationOperationStore(
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
+    async withdraw(projectId, operationId, now) {
+      const current = read(projectId, operationId);
+      const revision = owner.readFull(projectId, operationId).revision;
+      const result = await owner.command(projectId, operationId, {
+        commandId: `generation.withdraw:${operationId}:v${current.planVersion}:${current.state}:${revision}`,
+        expectedRevision: revision,
+        type: "generation.withdraw",
+        payload: {},
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      // 卡从「可见」回到「藏着」同样是一次 plan 变化：面板的报价卡读通道据此收卡。
+      notifyPlanChanged(operation.projectId, operation.operationId);
+      return operation;
+    },
     async cancel(projectId, operationId, now, reason) {
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {

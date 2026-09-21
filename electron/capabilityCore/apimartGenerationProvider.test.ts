@@ -297,7 +297,7 @@ describe("APIMart observe-only generation provider", () => {
     await expect(provider.query?.("task-9")).resolves.toMatchObject({ status: "processing" });
     expect(fetchImpl).toHaveBeenCalledWith("https://acme.example/v2/jobs/task-9", expect.objectContaining({ method: "GET" }));
     // 方案词来自那条连接（`Key`），不是写死的 Bearer —— 这正是「key 是对的啊，画布能跑」那条。
-    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Key acme-key" });
+    expect((fetchImpl.mock.calls[0] as unknown as [string, RequestInit] | undefined)?.[1]?.headers).toMatchObject({ Authorization: "Key acme-key" });
   });
 
   it("一条 query op 都没声明的家：不谎称有轮询能力，也问不出去", async () => {

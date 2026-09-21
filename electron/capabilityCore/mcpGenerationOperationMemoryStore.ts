@@ -96,6 +96,19 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
+    withdraw(projectId, operationId, now) {
+      const current = read(projectId, operationId);
+      if (!current) throw new Error(`Generation operation not found: ${operationId}`);
+      // 内存版没有门：sealed 即「已出价未决」。与 durable reducer 同一条边——回 draft、未 present。
+      if (current.state !== "draft" && current.state !== "sealed") return current;
+      if (current.state === "draft" && current.cardHidden === true) return current;
+      const { contract: _contract, planHash: _planHash, authorizationEnvelope: _envelope, authorizationDigest: _digest,
+        authorizationGateId: _gateId, ...draft } = current;
+      const next = freeze({ ...draft, candidate: { ...current.candidate, sealedContractHash: undefined },
+        state: "draft" as const, cardHidden: true, updatedAt: now });
+      operations.set(keyFor(projectId, operationId), next);
+      return next;
+    },
     cancel(projectId, operationId, now, reason) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);

@@ -82,8 +82,9 @@ describe("动词声明 · 装配期不变量", () => {
     const description = renderVerbDescription(generate);
     expect(description).toContain(verbConsequence(generate.effect, generate.nextAction));
     expect(description).toContain("It does not grant new spending permission");
-    expect(description).toContain("waiting priced confirmation card only when the result says it is waiting");
-    expect(description).toContain("generation started only when the result reports an actual policy decision that started it");
+    // 2026-09-22 裁决 A：这次调用**等**用户答完那张卡再返回，结果里写着他做了什么。
+    expect(description).toContain("this call waits for him");
+    expect(description).toContain("Say generation started only when the result says so");
     expect(description).not.toMatch(/nothing is generated and nothing is spent until the user approves/);
     expect(verbConsequence("reversible_local", "none"))
       .toContain("This local edit grants no new spending permission; use the tool result for any generation status.");

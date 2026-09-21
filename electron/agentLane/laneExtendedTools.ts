@@ -2,6 +2,7 @@ import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabi
 import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts'
 import type { LaneToolNextAction } from '../shared/agentLane/laneToolContract'
 import { laneFailureFromDecision } from '../shared/agentLane/laneFailureFromDecision'
+import { generateUserDecisionOf } from '../shared/agentLane/generateUserDecision'
 import { LANE_DEFERRED_TOOL_CATALOG } from './laneToolCatalog'
 import { bindLaneTool, LaneDomainFailure, type LaneToolDescriptor } from './laneRuntimePort'
 
@@ -71,8 +72,7 @@ function nextActionFor(
       // 草稿的寻址字段仍为 operationId；只有本次结果明确已开跑时，才另带执行回执）。
       return { ...(policyStartedGeneration(result) ? startedGenerationAction(result) : { kind: 'none' as const, userSees: 'Draft changes are saved in the project. Saving does not imply canvas placement or a new generation start.' }), ...(draftOperationId ? { operationId: draftOperationId } : {}) }
     case 'generate':
-      // Non-started results are handled by the existing spendCardResult boundary.
-      return startedGenerationAction(result)
+      return generateReceipt(result)
     case 'edit_timeline': {
       // 闸跑在执行**之前**，所以能走到这一行就说明编辑已经落到时间轴上了。回执讲的是那件事。
       const how = confirmed
@@ -104,37 +104,34 @@ function nextActionFor(
 }
 
 /**
- * `generate` 的返回值抄 GitHub MCP `issue_write` 弹表单时的形状：**isError + 明文停下**。模型读到的是一条
- * 错误结果，所以它不会把「卡已经出了」说成「已经生成了」，也不会接着调下一个工具。
+ * `generate` 成功返回时，用户在那张报价卡上**已经答完了**（等待住在预检期，见 `laneExtendedDesktopPorts.preflightGenerate`）。
+ * 回执从那个真实结论派生，三种都是成功形状——没有任何东西坏了：
  *
- * **只在真的有一张卡在等人时才走这条**：全自动档由策略代答的那一笔已经开跑了
- * （`policyStartedGeneration`），对它说「停下来等用户点卡」是双重错误——卡不存在，钱也已经花了。
+ *   · approved   → 钱的那条链已经跑完，任务开跑；
+ *   · declined   → 他点了 ×。这份请求到此为止，**不要重试**，也不要替他再起一份；
+ *   · redirected → 卡还没答他就打了字。这一次出价收回、草稿留着，那句话就是下一步的输入。
  *
- * ── 为什么条件写在函数里，而不是只写在调用点（2026-09-18）──
- *
- * F 块的合同把这条列进 `residual_risks`：`code: 'user_sees_spend_card'` 只靠调用点那个 `if` 保证，
- * 门岗看不见。`check:announced-card` 的 `hardcoded-card-claim` 是**正则**，它分不清「写死且无条件」
- * 和「写死但被真实结论守着」——把它扩到 `code:` 会对这一行报**假红**，而假红只会教人绕开门岗
- * （R17：门岗红了先读它红在哪条判据，不是改判据）。所以这条不变量往**更早**一层搬：函数自己拿着
- * 那份结果，宣称「有一张卡在等你」之前先核对它。第二个调用点再出现时，它也带着同一道核对。
+ * 2026-09-22 之前这里是一条 `isError + STOP`（`user_sees_spend_card`）：回合当场结束，用户点完「生成」
+ * 之后没有任何回合接得住结果；而 × 在模型眼里和「工具坏了」是同一个形状，于是它重试、进熔断。
  */
-function spendCardResult(result: unknown): never {
-  if (policyStartedGeneration(result)) {
-    // 程序员错误，不是用户错误：这一笔已经开跑、钱已经花了，任何「卡在等你」都是假话。
-    throw new Error('spendCardResult called for a generation the approval policy already started'
-      + ' — no card is waiting and credit is already being spent (see nextActionFor: job_running).')
+function generateReceipt(result: unknown): LaneToolNextAction {
+  const decision = generateUserDecisionOf(result)
+  const operationId = operationIdOf(result)
+  const id = operationId ? { operationId } : {}
+  if (decision?.outcome === 'approved') {
+    return { kind: 'job_running', ...(operationId ? { jobId: operationId } : {}),
+      userSees: 'The user approved the priced card, so generation has started and their provider credit is being spent. No card is waiting any more; progress shows in the task list. Do not call generate again for this draft.' }
   }
-  const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
-  const shots = Array.isArray(record.shots) ? record.shots.length : undefined
-  throw new LaneDomainFailure({
-    code: 'user_sees_spend_card',
-    message: `The user now sees a priced confirmation card in Nomi${shots ? ` for ${shots} shot(s)` : ''}. Generation has NOT started and nothing has been spent; only the user can approve the card.`,
-    nextAction: 'STOP. Do not call any other tools and do not claim generation has started or completed. Tell the user what the card shows and wait for their decision.',
-  })
+  if (decision?.outcome === 'declined') {
+    return { kind: 'none', ...id,
+      userSees: 'The user closed the priced card without approving it. Nothing was generated and nothing was spent, and this request is closed for good. Do not call generate again for it and do not redraft on your own: acknowledge it briefly and ask what he would like instead.' }
+  }
+  if (decision?.outcome === 'redirected') {
+    return { kind: 'none', ...id,
+      userSees: `While the priced card was waiting, the user wrote: "${decision.userSaid}". That is his answer to the card: this quote was withdrawn, nothing was generated and nothing was spent, and the draft is kept as it was. Do what he wrote (revise the draft with draft_shots if he asked for changes), then call generate again only if he still wants it generated.` }
+  }
+  return startedGenerationAction(result)
 }
-
-/** 测试用：让「卡在等你」这句话的守卫本身可以被直接打上一枪（R17 阳性对照）。 */
-export const __spendCardResultForTest = spendCardResult;
 
 export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescriptor[] {
   // Visibility groups do not transfer execution ownership: timeline reads keep their typed port
@@ -152,8 +149,6 @@ export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescrip
         fallbackCode: 'capability_execution_failed',
         nextAction: 'Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.',
       }))
-      // 卡真的在等人时才停下模型；全自动档代答的那一笔已经开跑，回执照实说（见 `nextActionFor`）。
-      if (spec.name === 'generate' && !policyStartedGeneration(decision.result)) spendCardResult(decision.result)
       const text = JSON.stringify(decision.result ?? null)
       const nextAction = nextActionFor(spec.name, decision.result, context.approvalDecision)
       return { ok: true, text, details: decision.result, ...(nextAction ? { nextAction } : {}) }

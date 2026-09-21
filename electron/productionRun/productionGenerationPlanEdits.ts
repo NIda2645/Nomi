@@ -213,6 +213,32 @@ export function hasUnsettledLiability(run: ProductionRun): boolean {
     && !(job.status === "needs_attention" && job.errorCode === "provider_task_failed"));
 }
 
+/**
+ * 撤回**这一次出价**，计划留着：回到 draft / 未 present（裁决 C，2026-09-22 二次裁决改窄）。
+ *
+ * 它和 `generation.cancel{declined}` 是两件事：× 是用户说「不」，终态；这里是「问这句话的那个回合没了」
+ * ——应用重启、用户按了停止、关了窗。没有人拒绝过什么，所以镜头 / 参数 / 锚点一个不动，
+ * 只把「正摆在用户面前等他点头」这件事收回去：卡不再投影，封印了的先把那道还在等的门撤掉。
+ * 用户再说一句「生成」= 对同一份草稿重新出价（新的 planVersion、新的 quoteId）。
+ *
+ * 「未 present」用的就是 `cardHidden` 的本义（草稿还没摆到用户面前），不新增字段。
+ * 幂等：已经是未 present / 已提交 / 已终结 / 门已经决过（钱的事已经定了）→ 原样返回。
+ */
+export function withdrawGenerationPresentation(current: ProductionRun, now: string): ProductionRun {
+  const plan = current.generationPlan;
+  if (!plan) throw new Error("Generation plan not found");
+  if (plan.state === "draft") {
+    if (plan.cardHidden === true) return current;
+    return { ...current, generationPlan: { ...plan, cardHidden: true, updatedAt: now }, updatedAt: now };
+  }
+  if (plan.state !== "sealed") return current;
+  const gate = current.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
+  if (!gate || gate.status !== "waiting") return current;
+  const revoked = revokeWaitingGenerationAuthorization(current, plan, now, "Withdraw");
+  return { ...current, ...revoked,
+    generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true, updatedAt: now }, updatedAt: now };
+}
+
 /** The complete draft survives changes to the current spend request. */
 export function presentGenerationPlan(current: ProductionRun, requested: unknown, now: string): ProductionRun {
   const plan = current.generationPlan;

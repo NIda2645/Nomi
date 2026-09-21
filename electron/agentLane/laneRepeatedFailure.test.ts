@@ -52,7 +52,7 @@ describe('lane repeated-failure tracker', () => {
     const tracker = createLaneRepeatedFailureTracker();
     const wall = { code: 'generation_input_invalid' };
     tracker.note('draft_shots', true, 'x', wall);
-    tracker.note('generate', true, 'y', { code: 'user_sees_spend_card' });
+    tracker.note('generate', true, 'y', { code: 'generation_approval_unavailable' });
     tracker.note('draft_shots', true, 'x', wall);
     tracker.note('check_job', true, 'z', { code: 'generation_operation_not_found' });
     expect(tracker.note('draft_shots', true, 'x', wall)).toBe(3);

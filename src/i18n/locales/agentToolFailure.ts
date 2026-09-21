@@ -47,7 +47,6 @@ export const zhAgentToolFailure = {
   tool_timed_out: '这一步等太久被停掉了。看一眼当前状态再决定要不要重来。',
   wrong_verb: '它用错了方式，这一步没有执行——它会换一种再来。',
   generation_surface_unavailable: '生成面现在用不了，打开画布再让它生成。',
-  user_sees_spend_card: '这次生成要花钱，已经给你一张确认卡，答了它才会开始。',
   // ── 兜底 ──
   unknown: '这一步没做成（{{code}}）。看一眼当前状态，再决定要不要让它重试。',
   // ── 结构化细节（不是散文，是把信封里的字段摆出来）──
@@ -85,7 +84,6 @@ export const enAgentToolFailure = {
   tool_timed_out: 'That step took too long and was stopped. Check the current state before retrying.',
   wrong_verb: 'It used the wrong action, so nothing ran — it will try a different one.',
   generation_surface_unavailable: 'Generation is unavailable right now. Open the canvas, then ask it to generate.',
-  user_sees_spend_card: 'That generation costs credits. A confirmation card is waiting for your answer.',
   unknown: 'That step did not go through ({{code}}). Check the current state before deciding whether to retry.',
   fieldExpected: '{{field}}: expected {{expected}}, got {{received}}',
   allowedValues: 'Allowed: {{values}}',

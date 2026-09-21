@@ -937,7 +937,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.plan",
-      "description": "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. Nomi applies the existing spending approval policy. Describe a waiting priced confirmation card only when the result says it is waiting; claim generation started only when the result reports an actual policy decision that started it. This request does not itself prove canvas placement.",
+      "description": "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. Nomi applies the user's spending approval mode. In full-auto mode that mode approves the spend and generation starts at once. In every other mode the user sees a priced confirmation card and this call waits for him; its result is what he did with the card — approved (generation has started), closed it (the request is over), or wrote something else instead (the quote is withdrawn and his words are in the result). Say generation started only when the result says so. This request does not itself prove canvas placement.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -945,7 +945,7 @@
           "arguments": {
             "operationId": "op-1"
           },
-          "when": "Show the card for a draft:"
+          "when": "Ask the user to approve a draft, and learn what he decided:"
         }
       ],
       "execution": {
@@ -960,7 +960,7 @@
         "internal"
       ],
       "promptGuidelines": null,
-      "promptSnippet": "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission.",
+      "promptSnippet": "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,

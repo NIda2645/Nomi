@@ -7,6 +7,7 @@
 // 除了拍照，还**量**同槽两张卡的外壳：外框色/粗细、圆角、内边距、卡头条、按钮族、
 // 卡宽是否与 composer 对齐。「用了 token」不等于「放进去不突兀」——差异要量得出来才谈得上统一。
 import { chromium } from 'playwright'
+import { stationTimeout } from './_station-budget.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -81,11 +82,11 @@ try {
     const tag = locale === 'zh-CN' ? 'zh' : 'en'
     for (const [state, kind, theme] of STATES) {
       await page.goto(`${BASE}/design-lab.html?screen=agent-panel-v4&frame=1&state=${state}&scheme=${theme}`, { waitUntil: 'networkidle' })
-      await page.waitForFunction(() => window.__designLabReady === true, null, { timeout: 20000 })
+      await page.waitForFunction(() => window.__designLabReady === true, null, { timeout: stationTimeout() })
       // token 翻转带 transition，不等就会读到 / 拍到插值中的那一帧（灰不灰、蓝不蓝）。
       await page.waitForTimeout(400)
       const shot = page.locator(`[data-design-lab-shot="${state}"]`)
-      await shot.waitFor({ state: 'visible', timeout: 10000 })
+      await shot.waitFor({ state: 'visible', timeout: stationTimeout() })
       await page.waitForTimeout(300)
       await shot.screenshot({ path: path.join(outDir, `${tag}-${theme}-${kind}.png`) })
 

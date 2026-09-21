@@ -1,4 +1,6 @@
 import { createPendingSpendActions } from './appIntegrationSpendConfirm';
+import { registerSpendWaiter, spendDecisionAwaited } from './spendDecisionWaiters';
+import { withdrawStalePresentations } from '../productionRun/stalePresentationSweep';
 import { createProductionRunService } from '../productionRun/productionRunService';
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore';
 import { afterEach, describe, expect, it } from "vitest";
@@ -485,6 +487,72 @@ describe('reliability: scoped presentation and dismissal', () => {
     await expect(handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease }))
       .rejects.toThrow(/declined this generation request/);
     expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
+  });
+
+  // ── 裁决 C（2026-09-22 二次裁决）：重启作废的是「那一次出价」，不是「那份计划」──
+  it('C: 收回出价 ≠ ×——卡没了，计划、镜头、节点都在，同一个 operationId 还能再出价', async () => {
+    const base = harness();
+    await mixedDraft(base);
+    const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
+    await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1', 'shot-2'] }, lease });
+    expect(withWindow.listPendingSpend(PROJECT_ID)).toHaveLength(1);
+    const nodes = [...base.renderer.nodes.entries()];
+    await handler({ capability: 'withdraw', params: { operationId: OPERATION_ID }, lease });
+    expect(withWindow.listPendingSpend(PROJECT_ID), '收回之后面板上不许再有那张卡').toEqual([]);
+    const plan = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
+    expect(plan.state, '不是 cancelled：没有人说过「不」').toBe('draft');
+    expect(plan.cardHidden).toBe(true);
+    expect(plan.cancelReason).toBeUndefined();
+    expect(plan.shots).toHaveLength(33);
+    expect([...base.renderer.nodes.entries()]).toEqual(nodes);
+    // 幂等：再收一次什么都不变（重启清扫与「按停止」可能先后各来一次）。
+    const revision = base.repository.read(PROJECT_ID, OPERATION_ID)!.revision;
+    await handler({ capability: 'withdraw', params: { operationId: OPERATION_ID }, lease });
+    expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!.cardHidden).toBe(true);
+    expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.revision).toBeGreaterThanOrEqual(revision);
+    // 用户再说一句「生成」= 对同一份草稿重新出价。
+    await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease });
+    expect(withWindow.listPendingSpend(PROJECT_ID)).toHaveLength(1);
+  });
+
+  it('C: 启动清扫只收「早于本进程」的出价；本进程里摆出去的卡有人在等，不许抽走；× 过的不在范围里', async () => {
+    const base = harness();
+    await mixedDraft(base);
+    const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
+    await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease });
+    const runs = () => [base.repository.read(PROJECT_ID, OPERATION_ID)!];
+    const withdraw = (projectId: string, operationId: string, at: string) => base.operations.withdraw(projectId, operationId, at);
+    const presentedAt = runs()[0].generationPlan!.updatedAt;
+    // 本进程启动早于这次出价 → 有人在等 → 不动。
+    expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: '2000-01-01T00:00:00.000Z' }, PROJECT_ID)).toEqual([]);
+    expect(withWindow.listPendingSpend(PROJECT_ID)).toHaveLength(1);
+    // 本进程启动晚于这次出价（= 上一个进程摆的）→ 收回。
+    const later = new Date(Date.parse(presentedAt) + 1000).toISOString();
+    expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: later, now }, PROJECT_ID)).toEqual([OPERATION_ID]);
+    expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
+    expect(runs()[0].generationPlan!.state).toBe('draft');
+    // 已经收回的 / × 过的：再扫一遍是 no-op。
+    expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: later, now }, PROJECT_ID)).toEqual([]);
+  });
+
+  // ── 裁决 A/B：报价卡上的结论递给正在等的那个回合，身份锚 operationId ──
+  it('A/B: 确认成功才递「confirmed」，× 递「declined」；改参数换了 quoteId 也递得到；没人等是 no-op', async () => {
+    const vendor = await startLoopbackVendor();
+    try {
+      const base = harness();
+      const { withWindow } = buildActions(base, vendor.origin, []);
+      await draft(base);
+      const heard: string[] = [];
+      const release = registerSpendWaiter(PROJECT_ID, OPERATION_ID, (decision) => heard.push(decision.kind));
+      const shown = withWindow.listPendingSpend(PROJECT_ID)[0];
+      // 旧报价确认 → 失败 → **不递**：卡还在等，等的那个回合也该继续等。
+      expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: 'stale-quote' })).toMatchObject({ ok: false });
+      expect(heard).toEqual([]);
+      expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: shown.quoteId })).toMatchObject({ ok: true });
+      expect(heard).toEqual(['confirmed']);
+      expect(spendDecisionAwaited(PROJECT_ID, OPERATION_ID), '递完即注销：同一笔不会被递第二次').toBe(false);
+      release();
+    } finally { await vendor.close(); }
   });
 });
 

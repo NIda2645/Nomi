@@ -255,14 +255,14 @@ export function writeVerbs(): VerbDeclaration[] {
   const generate: VerbDeclaration = {
     name: "generate", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.plan", effect: "reversible_local", nextAction: "user_sees_spend_card", internalGroup: "generation",
     describe: {
-      does: "Request generation through the existing approval policy; the result reports a waiting confirmation card or generation started under prior user permission.",
+      does: "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else.",
       useWhen: `Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts ("run all six").`,
       notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots.`,
       params: "operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots.",
     },
     // 模型面 = `generation.plan` 的 `present` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
     schema: generateModelSchema,
-    examples: [{ when: "Show the card for a draft:", arguments: { operationId: "op-1" } }],
+    examples: [{ when: "Ask the user to approve a draft, and learn what he decided:", arguments: { operationId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["shotIds"] }),
   };
 

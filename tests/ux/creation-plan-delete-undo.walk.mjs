@@ -14,6 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { clickOrFail, expectAbsent, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { ensureCreationResourceTree } from './_creationResourceTree.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -171,7 +172,7 @@ try {
   await win.waitForTimeout(900)
   // 撤销条自己消失之后才算「真的提交了」。这里等的是它的存续时间（5s）+ 一点余量。
   const undoProof = await proveProbe(win.locator('[data-notification-reason="undo-operation"]'), '删完确实会出现一条撤销')
-  await expectAbsent(win.locator('[data-notification-reason="undo-operation"]'), { provenBy: undoProof, message: '撤销条到点了还不走' }, 15000)
+  await expectAbsent(win.locator('[data-notification-reason="undo-operation"]'), { provenBy: undoProof, message: '撤销条到点了还不走' }, stationTimeout({ operations: 2 }))
   const afterExpire = await planTitles()
   measured.push({ step: '到时提交', titles: afterExpire })
   if (afterExpire.length !== 2) failures.push(`没点撤销、等它到时之后应剩 2 条，实际 ${afterExpire.length} 条`)

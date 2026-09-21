@@ -40,6 +40,7 @@ import { decideGenerationSpend } from "./generationSpendDecision";
 import { spendAnsweredByPolicy } from "./policySpendDecision";
 import type { PendingSpendConfirm, PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 import { readResidentSurfaceLifecycle } from "./residentSurfaceLifecycle";
+import { settleSpendWaiter } from "./spendDecisionWaiters";
 
 type RunReader = Readonly<{
   read(projectId: string, runId: string): ProductionRun | null;
@@ -348,6 +349,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
     try {
       await deps.operations.cancel(input.projectId, input.operationId, now(), "declined");
+      // 有回合在等这一笔（lane 的 `generate` 挂在审批闸上）→ 把「他说不」递过去；没人等 = no-op。
+      settleSpendWaiter(input.projectId, input.operationId, { kind: "declined" });
       return { ok: true, code: "discarded" };
     } catch (error) {
       return failed(error, false);
@@ -420,6 +423,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
         }, planning: deps.planning, receipts: deps.receipts },
         { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel" },
       );
+      // **成功之后**才递：链上任何一步失败，卡都还在原处等用户，等的那个回合也就该继续等。
+      settleSpendWaiter(input.projectId, input.operationId, { kind: "confirmed" });
       return { ok: true, code: "spend_confirmed" };
     } catch (error) {
       return failed(error, anySubmissionStarted(input.projectId, input.operationId));

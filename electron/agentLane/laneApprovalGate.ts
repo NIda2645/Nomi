@@ -30,6 +30,7 @@ import type {
   LaneApprovalCancelCause,
   LaneApprovalDecision,
   LaneApprovalNote,
+  LaneHoldOutcome,
   LanePendingApproval,
 } from "../shared/agentLane/laneContracts";
 import { modelToolCapabilityId } from "../shared/agentCapabilities/modelFacingTools";
@@ -97,6 +98,16 @@ export interface LaneApprovalGate {
   /** 这次调用结束了，忘掉它的结论（宿主在 `after_tool` 调）。 */
   forget(toolCallId: string): void;
   describe(request: LaneApprovalRequest): string;
+  /**
+   * 替一张**画在别处的卡**等用户（见 `LaneHoldOutcome`）。与 `preflight` 的等待同性质：race 那个 signal、
+   * 被打断时兑现成 `cancelled`、不设超时、`cancelAll` 一并收尾。**不投影成闸卡**——那张卡已经有人画了，
+   * 再投影一张就是同一个问题问两遍。
+   */
+  hold(request: Pick<LaneApprovalRequest, "toolCallId" | "toolName">, signal: AbortSignal | undefined): Promise<LaneHoldOutcome>;
+  /** 那张卡上的结论到了（面板点了「生成」/ ×，或用户打了字）。只认第一次；没有这笔等待返回 `false`。 */
+  settleHold(toolCallId: string, outcome: Exclude<LaneHoldOutcome, { kind: "cancelled" }>): boolean;
+  /** 此刻替哪次调用等着（E：宿主据此把用户打的字送给它）。 */
+  holding(): Readonly<{ toolCallId: string; toolName: string }> | undefined;
   /** 关窗 / 切项目 / 按停止：等待中的卡一律以 `cancelled` 收尾。 */
   cancelAll(cause: LaneApprovalCancelCause): void;
   /** 还没落盘的结局记录（只有 `cancelled` 会走这里，理由见文件头 ③）。取走即清空。 */
@@ -130,6 +141,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
   const sessionGrants = new Set<string>();
   const restored = new Set<string>(options.restoredToolCallIds ?? []);
   const waiting = new Map<string, WaitingCard>();
+  /** 「卡画在别处」的等待（`hold`）。键同样是 toolCallId；不进 `waiting`——那张表是要投影成闸卡的。 */
+  const holds = new Map<string, { toolName: string; settle: (outcome: LaneHoldOutcome) => void }>();
   const undrained: LaneApprovalNote[] = [];
   /**
    * 已经记过一条结局的调用。
@@ -325,7 +338,44 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       return settleWaiting(toolCallId, { allow: true, decision: "granted-once" });
     },
 
+    hold: async (request, signal) => {
+      let settle!: (outcome: LaneHoldOutcome) => void;
+      const answered = new Promise<LaneHoldOutcome>((resolve) => { settle = resolve; });
+      holds.set(request.toolCallId, { toolName: request.toolName, settle });
+      const detach = new AbortController();
+      const stopped = new Promise<LaneHoldOutcome>((resolve) => {
+        if (!signal) return;
+        const cancelled: LaneHoldOutcome = { kind: "cancelled", cause: "stopped" };
+        if (signal.aborted) { resolve(cancelled); return; }
+        signal.addEventListener("abort", () => resolve(cancelled), { once: true, signal: detach.signal });
+      });
+      try {
+        return await Promise.race([answered, stopped]);
+      } finally {
+        detach.abort();
+        holds.delete(request.toolCallId);
+      }
+    },
+
+    settleHold: (toolCallId, outcome) => {
+      const held = holds.get(toolCallId);
+      if (!held) return false;
+      // 只认第一次：面板确认与「用户打字」同时到时，先到的那个算数（方案反方评审 Q1-b）。
+      holds.delete(toolCallId);
+      held.settle(outcome);
+      return true;
+    },
+
+    holding: () => {
+      const first = holds.entries().next();
+      return first.done ? undefined : { toolCallId: first.value[0], toolName: first.value[1].toolName };
+    },
+
     cancelAll: (cause) => {
+      for (const [toolCallId, held] of [...holds]) {
+        holds.delete(toolCallId);
+        held.settle({ kind: "cancelled", cause });
+      }
       for (const [toolCallId, card] of [...waiting]) {
         waiting.delete(toolCallId);
         // 记录不在这里写：abort 不是一个转录边界，钩子里追加的条目会悬在 `queues` 里

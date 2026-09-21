@@ -149,7 +149,7 @@ const CONSEQUENCE_BY: Readonly<Record<VerbEffect, Partial<Record<VerbNextAction,
   }),
   reversible_local: Object.freeze({
     none: "The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
-    user_sees_spend_card: "Nomi applies the existing spending approval policy. Describe a waiting priced confirmation card only when the result says it is waiting; claim generation started only when the result reports an actual policy decision that started it. This request does not itself prove canvas placement.",
+    user_sees_spend_card: "Nomi applies the user's spending approval mode. In full-auto mode that mode approves the spend and generation starts at once. In every other mode the user sees a priced confirmation card and this call waits for him; its result is what he did with the card — approved (generation has started), closed it (the request is over), or wrote something else instead (the quote is withdrawn and his words are in the result). Say generation started only when the result says so. This request does not itself prove canvas placement.",
     user_sees_review_card: "The user sees the plan highlighted with a review card before it applies (in full-auto mode it applies and the result says so). The edit is reversible.",
     user_sees_panel: "A Nomi panel opens for the user; this call stores nothing by itself.",
   }),
