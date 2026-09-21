@@ -25,7 +25,7 @@ import { ensureExecutable } from "../export/ensureExecutable";
 import { probeMediaMetadata } from "../export/mediaProbe";
 import { writeProjectCacheFile } from "../assets/projectCacheFile";
 import { resolveVideoLocalPath } from "./extractVideoFrame";
-import { logError } from "../logging/logger";
+import { logInfo } from "../logging/logger";
 // 「给全了没有」这份状态的 owner 在 shared（三个跨进程读侧共用同一份类型与 schema）。
 import type { ShotCutCoverage } from "../shared/canvas/shotTable";
 
@@ -261,10 +261,18 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
       coveredSeconds: cuts.length ? cuts[cuts.length - 1].seconds : 0,
       durationSeconds,
     };
+    // 压上限是**正常事件**，不是错误：用 logInfo 带结构化字段，别造一个假 Error 去挤错误通道
+    // （那会让「真的出错了」和「按设计压了一下」在日志里长得一样）。
     if (capped) {
-      logError("tasks", "shotCuts.capped", new ShotCutError(
-        `切点 ${deduped.length} 刀超过上限 ${MAX_CUTS}，阈值自动提到 ${appliedThreshold}，采用 ${cuts.length} 刀，覆盖到 ${coverage.coveredSeconds}s / ${durationSeconds}s`,
-      ), { projectId });
+      logInfo("tasks", "shotCuts.capped", {
+        projectId,
+        detected: String(deduped.length),
+        kept: String(cuts.length),
+        cap: String(MAX_CUTS),
+        appliedThreshold: String(appliedThreshold),
+        coveredSeconds: String(coverage.coveredSeconds),
+        durationSeconds: String(durationSeconds),
+      });
     }
     if (!cuts.length) {
       return {

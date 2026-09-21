@@ -151,13 +151,11 @@ describe("联系表选帧 —— 第 i 格 = 第 i 刀必须由构造保证（20
 
   it("阈值恰好等于某一帧的分数 —— 这是必然发生的情形，不是刁钻构造", () => {
     const cuts = spreadCuts(447, duration);
-    const { appliedThreshold, kept } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
-    // 阈值取自第 cap+1 名，所以它一定是某一帧的分数——这正是 A 的成因。
+    const { appliedThreshold } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
+    // 阈值取自第 cap+1 名，所以它一定是**某一帧的分数**——这就是 A 的成因：
+    // JS 拿打印值判、ffmpeg 拿全精度判，恰好落在这个值上的那一帧两边判断相反。
+    // 所以「让两边各判一次再指望结果相同」这条路从一开始就是错的，只能按身份点名。
     expect(cuts.some((cut) => cut.score === appliedThreshold)).toBe(true);
-    // 而**我们不再拿这个阈值去跟 ffmpeg 对齐**：联系表按 pts 点名。
-    const filter = buildSheetFilter(kept.map((cut) => cut.pts), SHOT_SHEET_COLUMNS, 15, 90);
-    expect(filter).not.toContain("scene");
-    expect(filter).not.toContain(String(appliedThreshold));
   });
 
   it("联系表的 select 逐条点名，顺序与条数与切点清单**完全一致**", () => {

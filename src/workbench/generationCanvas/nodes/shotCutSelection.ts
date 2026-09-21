@@ -112,9 +112,6 @@ export function shotSheetTileStyle(
   }
 }
 
-// 联系表行数/格子数的 owner 在主进程（`shotSheetRowsFor`），随结果下发；这里再长一份就会分叉，
-// 有结构守卫测试盯着（electron/video/shotCutCoverage.test.ts「渲染层没有任何行数/格子数的自算逻辑」）。
-
 /** 秒 → `m:ss` / 超过一小时 `h:mm:ss`。 */
 export function formatShotTimestamp(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
