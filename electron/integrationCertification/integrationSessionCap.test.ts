@@ -149,6 +149,8 @@ describe("integration session capacity", () => {
     const filePath = writeDisk(Array.from({ length: CAP + 3 }, (_, index) => sessionFixture(index, "draft")));
     expect(() => makeService(filePath)).not.toThrow();
     expect(makeService(filePath).list("codex", 1_000).sessions).toHaveLength(CAP + 3);
+    // 超了容量、但一条都挤不动：这是「没丢记录」的另一种长相，同样不许打日志。
+    expect(compactionLogs()).toHaveLength(0);
   });
 
   it("bounds the file on the write side: begin() trims instead of growing past the cap", () => {
@@ -179,6 +181,7 @@ describe("integration session capacity", () => {
     expect(logs[0]).toMatchObject({ from: CAP + 2, to: CAP, dropped: 2, stages: "completed:2", reason: "count" });
     expect(logs[0].oldestDroppedAt).toBe(at(0));
     expect(logs[0].newestDroppedAt).toBe(at(1));
+    expect(logs[0].outcome).toBe("persisted");
     // 日志会被贴进 issue：只许聚合量与时间，不许带 id / URL / 供应商字段。
     const serialized = JSON.stringify(logs[0]);
     expect(serialized).not.toContain("integration-fixture");
@@ -188,6 +191,29 @@ describe("integration session capacity", () => {
     const quiet = writeDisk(Array.from({ length: 3 }, (_, index) => sessionFixture(index)));
     makeService(quiet).begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex");
     expect(compactionLogs()).toHaveLength(0);
+  });
+
+  it("records the deletion even when the write that followed it failed, because memory already lost them", () => {
+    // 裁剪先改内存、再落盘。落盘抛出时记录已经不在内存里了，而下一次 cap 看到的已是裁剪后的
+    // 数组、不会再生成 report——痕迹一旦这时丢掉，就是**永远**丢掉。真机 byteC 实测删 3 条只记了 2 条。
+    const filePath = writeDisk(Array.from({ length: CAP + 2 }, (_, index) => sessionFixture(index)));
+    const service = new IntegrationSessionService({
+      filePath,
+      now: () => "2026-09-21T00:00:00.000Z",
+      compilerAvailable: () => true,
+      save: () => { throw new Error("disk is full"); },
+    });
+    // 构造时读侧已经自愈过一轮（它的回写同样失败、同样留了痕）；这里只看 begin 那一次写。
+    expect(compactionLogs()).toMatchObject([{ dropped: 2, outcome: "memory-only" }]);
+    logWarnSpy.mockClear();
+    expect(() => service.begin({ kind: "http-api-provider", name: "New", baseUrl: "https://new.example" }, "codex"))
+      .toThrow(/disk is full/);
+    const logs = compactionLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ from: CAP + 1, to: CAP, dropped: 1, stages: "completed:1", reason: "count" });
+    // 落盘没成＝盘上仍是旧内容，内存与盘分叉。日志必须说得出是哪一种，不能两种长一样。
+    expect(logs[0].outcome).toBe("memory-only");
+    expect(logs[0].failure).toBe("Error");
   });
 
   it("loads a file that is small in records but too large in bytes, instead of failing app start", () => {

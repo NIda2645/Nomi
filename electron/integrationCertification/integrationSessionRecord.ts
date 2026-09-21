@@ -187,6 +187,9 @@ export function capIntegrationSessions(
   return {
     sessions: kept,
     overCapacity: kept.length > MAX_INTEGRATION_SESSIONS || stateBytes(kept) > INTEGRATION_SESSION_BYTE_BUDGET,
+    // 「有没有丢记录」的**唯一**判据。越界不等于丢得动：全是非终态时一条都挤不掉，
+    // `doomed` 是空的，于是没有 report、也就没有日志。日志那头不再重复判一次
+    // （重复的守卫拆掉也不会红，等于看着在守、其实永远走不到）。
     ...(doomed.size ? { report: capReport(sessions, [...doomed], overCount > 0 && overBytes ? "count+bytes" : overBytes ? "bytes" : "count") } : {}),
   };
 }
@@ -196,20 +199,37 @@ function stateBytes(sessions: readonly IntegrationSession[]): number {
 }
 
 /**
- * 裁剪留痕。**丢了记录才写**——没丢就是例行检查，写了只会把日志淹掉。
+ * 裁剪留痕。**丢了记录才写**——没丢就是例行检查，写了只会把日志淹掉；
+ * 「没丢」的判据在 `capIntegrationSessions` 里（不生成 report），这里只认它的结论。
  *
  * 为什么非写不可：裁剪是我们背着用户删他的数据。不留痕＝他下次问「我那条接入记录呢」时，
  * 没有任何东西能把「盘被我们改过」和「盘本来就那样」分开。字段只放聚合量与时间，
  * 不放 id / URL / 供应商字段——日志是会被贴进 issue 的。
+ *
+ * `outcome` 分两种，**不能长一样**：`persisted` = 内存与盘都少了这些记录；
+ * `memory-only` = 只有内存少了，盘上还是旧内容（内存与盘就此分叉，分叉本身另案，
+ * 这里如实说出来就是它唯一的线索）。
  */
-function logIntegrationSessionCompaction(report: IntegrationSessionCapReport | undefined): void {
-  if (!report || report.dropped <= 0) return;
-  logWarn("onboarding", "integration-sessions-compacted", { ...report });
+function logIntegrationSessionCompaction(
+  report: IntegrationSessionCapReport | undefined,
+  outcome: "persisted" | "memory-only",
+  failure?: unknown,
+): void {
+  if (!report) return;
+  logWarn("onboarding", "integration-sessions-compacted", {
+    ...report,
+    outcome,
+    ...(failure === undefined ? {} : { failure: failure instanceof Error ? failure.name : "unknown" }),
+  });
 }
 
 /**
- * 写这份状态的唯一出口：先过容量合同（两根轴），再落盘，丢了记录就留痕。
+ * 写这份状态的唯一出口：先过容量合同（两根轴），再落盘。
  * 每一次写都过，所以日后任何新增会话的路径都不必自己记得封顶。
+ *
+ * **留痕放在 `finally`**：裁剪一执行，记录就已经从内存里没了；而下一次 cap 看到的已经是裁剪后的
+ * 数组、不会再生成 report。所以写日志这件事一旦押在 `save` 成功上，`save` 抛出的那一次删除就
+ * **永远**不会被记录（2026-09-21 验收实测：盘上删了 3 条、日志只有 2 条）。`save` 的异常照旧抛出去。
  */
 export function persistIntegrationSessionState(
   state: PersistedIntegrationState,
@@ -217,8 +237,17 @@ export function persistIntegrationSessionState(
 ): void {
   const capped = capIntegrationSessions(state.sessions);
   state.sessions = capped.sessions;
-  save(state);
-  logIntegrationSessionCompaction(capped.report);
+  let failure: unknown;
+  let persisted = false;
+  try {
+    save(state);
+    persisted = true;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    logIntegrationSessionCompaction(capped.report, persisted ? "persisted" : "memory-only", failure);
+  }
 }
 
 /**
@@ -266,16 +295,14 @@ export function readIntegrationSessionState(
   const capped = capIntegrationSessions(validated.sessions);
   const state = { ...validated, sessions: capped.sessions };
   if (!capped.report) return state;
+  // 和写侧同一个事件、同一套字段：丢了记录这件事只有一个说法，`outcome` 区分盘有没有跟上。
   try {
     writeBack(state);
   } catch (error) {
-    logWarn("onboarding", "integration-session-compaction-writeback-failed", {
-      ...capped.report,
-      failure: error instanceof Error ? error.name : "unknown",
-    });
+    logIntegrationSessionCompaction(capped.report, "memory-only", error);
     return state;
   }
-  logIntegrationSessionCompaction(capped.report);
+  logIntegrationSessionCompaction(capped.report, "persisted");
   return state;
 }
 
