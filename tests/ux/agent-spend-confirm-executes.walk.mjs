@@ -27,15 +27,13 @@
 //   ① 卡在介入槽里等着（这台机器算不出价，主按钮是「仍要生成」）
 //   ② 在卡上把清晰度换成 2K——真的点开下拉再选一项，不是往 store 里写值
 //   ③ 按主按钮 → **改动真的到了宿主**：盘上那份候选里清晰度就是改后的那个
-//      ⚠️ 这里本来还该断言「改后的清晰度真的随请求发到了供应商」——**今天不成立，而且是个真 bug**：
-//      `executionContract.ts:compileParameters` 把候选里每个不在 `module.parameterSchema` 的参数
-//      整个丢掉，而 `moduleCatalogBootstrap.ts:modelParameterSchema` 只从 `onboarding.fields` 和
-//      `mapping.create.defaultParams` 派生——内置目录里 248 个 mapping 只有 12 个带 defaultParams、
-//      156 个模型**一个**都没有 onboarding。于是 Agent 这条路上用户在卡上改的参数全被静默丢弃，
-//      线缆上跑的是 archetypeWireDefaults 的默认值（实测：卡上选了 2K，供应商收到的是 1k）。
-//      档案（archetype）才是「这个模型有哪些参数」的主人，而合同这一侧读的是另一份几乎空的声明。
-//      2026-09-21 Pass 3b 实测发现，**没有在这一轮修**（它不是本轮那个发版阻断项，且改动面涉及
-//      全部内置模型，属架构裁决）。报告与 TODO 记在案；修好之后请把这条走查的断言改成认线缆值。
+//   ③-b **而且它真的随请求发到了供应商**：出站报文里 resolution 逐字是 2K。
+//      这一条 2026-09-21 之前不成立，而且是个真 bug：`executionContract.compileParameters` 把候选里
+//      每个不在 `module.parameterSchema` 的参数整包丢掉，而 `moduleCatalogBootstrap.modelParameterSchema`
+//      只从 `onboarding.fields` + `mapping.create.defaultParams` 派生——真目录里 165 个模型只有 3 个有
+//      前者、270 条 mapping 只有 12 条有后者。于是 Agent 这条路上用户改的参数全被静默丢弃，线缆上跑的
+//      是档案默认值（实测：卡上选 2K、供应商收到 1k、节点还印着 2K）。参数表改从那条 mapping 自己的
+//      create body 派生之后它成立了，所以这条断言从注释升成硬断言。
 //   ④ 产物真的落回**草稿那一刻建的那个节点**，卡收起来；一分钱没花（供应商是本机 loopback）
 import fs from 'node:fs'
 import path from 'node:path'
@@ -166,10 +164,32 @@ try {
   const nodes = (await readProject(win, projectId)).payload.generationCanvas.nodes
   expect(nodes, '全程只有一个节点（落地幂等：建草稿 / 改参数 / 出图共用同一个章）').toHaveLength(1)
   expect(nodes[0].id, '还是草稿那一刻建的那个节点').toBe(draftedNodeId)
+  // ③-b **卡上改的那个清晰度真的随请求发到了供应商**（2026-09-21 补上的那条硬断言）。
+  //
+  // 这条此前是这份走查文件头里明写着「今天不成立，而且是个真 bug」的那一条：合同编译的合法参数表
+  // 只从 onboarding.fields + defaultParams 派生，而真目录里几乎没有模型填过它们，于是用户在卡上改的
+  // 每个参数都被当成「这个模型不支持」丢掉，线缆上跑的是档案默认值（实测卡上选 2K、供应商收到 1k、
+  // 节点还印着 2K）。参数表改从那条 mapping 自己的 create body 派生之后它成立了。
+  //
+  // 放在产物断言**之后**：上面那一轮等待已经证明请求发出去且回来了，这里不另起一个墙钟等待
+  //（`check:test-waits` 的 station-fixed-timeout 条款——多一个固定超时就是多一处会漂的判分）。
+  // 与「盘上那份候选里是 2K」是两件不同的事：那一条证改动进了主进程，这一条证它上了线缆。
+  expect(walk.fixture.images.length, '供应商必须真的收到过那一次生成请求').toBeGreaterThan(0)
+  const outbound = walk.fixture.images[0].body
+  // 线缆上的写法是小写档位串（`1k/2k/4k`）：档案暴露的是全站中性的 `1K/2K/4K`，apimart 那条 mapping 的
+  // paramMap 有一条 `resolution … transform: toLowerCase`（apimartImages.ts:41）。所以按大小写归一之后比
+  // ——钉字面大写会把一条**正确**的翻译判成错（实测第一轮就红在这里）。
+  expect(String(outbound?.resolution ?? '').toLowerCase(), '卡上选的清晰度必须真的出现在发给供应商的报文里')
+    .toBe(EDITED_RESOLUTION.toLowerCase())
+  // 阳性对照：修之前这里跑的是档案默认值 `1k`（用户改的那一档被整包丢掉了）。
+  expect(String(outbound?.resolution ?? '').toLowerCase(), '不能还是档案默认的那一档——那正是「你批准的是 A、我们发出去的是 B」')
+    .not.toBe('1k')
+
   await walk.snap('spend-confirm-really-generated')
 
   walk.report.verified = ['card-waits-in-intervention-slot', 'param-edited-on-the-card',
     'confirm-pushes-the-edit-into-the-durable-candidate',
+    'the-edit-really-reaches-the-provider-on-the-wire',
     'the-node-really-gets-its-artifact-and-the-card-folds-away']
 } catch (error) {
   failure = error
