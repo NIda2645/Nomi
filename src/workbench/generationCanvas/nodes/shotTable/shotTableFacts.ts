@@ -19,15 +19,7 @@ export function createDeconstructionShotTable(sourceNodeId: string, title: strin
   })
 }
 
-/**
- * 引擎结果 → 分镜表。
- *
- * 入参收 `StoredDeconstructionResult`（`DeconstructionResult` 可直接赋值给它）：前者是**这次刚拆出来的**（`cutCoverage` 必填），
- * 后者是**从老节点 meta 读回来的**（2026-09-22 之前落盘的没有这一块）。
- * 缺了就让 `source.cutCoverage` 也缺着——schema 那边是 `.optional()`，读得回来；
- * **绝不在这里编一个默认值**：老数据里已经没有任何依据能还原它当时是不是被压过上限，
- * 补一个 `capped:false` 就是把「不知道」伪造成「完整」。
- */
+/** 引擎结果 → 分镜表。`cutCoverage` 缺失时原样缺着，理由见 `StoredDeconstructionResult`。 */
 export function deconstructionResultToShotTable(
   table: DeconstructionShotTableDocument,
   result: StoredDeconstructionResult,

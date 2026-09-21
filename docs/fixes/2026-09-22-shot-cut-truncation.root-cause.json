@@ -281,11 +281,6 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
-      "symbol": "DeconstructionResult"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
       "symbol": "StoredDeconstructionResult"
     },
     {
@@ -322,6 +317,11 @@
       "kind": "read",
       "path": "src/i18n/locales/generationCommon.ts",
       "symbol": "enGenerationCommon"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "symbol": "deconstructionResultToShotTable"
     }
   ],
   "door_reduction": {

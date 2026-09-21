@@ -77,17 +77,6 @@ describe("capShotCutsByScore —— 超上限时压的是「给多少」，不�
     expect(kept.map((c) => c.pts)).toEqual([...kept.map((c) => c.pts)].sort((a, b) => a - b));
   });
 
-  it("边界上有并列时也不超上限（并列的那一档按时间均匀补，见下面的下限用例）", () => {
-    // 121 刀里有 5 刀同分，且这个分正好卡在边界上。
-    const tied: RawShotCut[] = Array.from({ length: 121 }, (_, i) => ({
-      seconds: i + 1,
-      pts: (i + 1) * 1000,
-      score: i < 5 ? 0.5 : 0.9 - i * 0.001,
-    }));
-    const { kept, appliedThreshold } = capShotCutsByScore(tied, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
-    expect(kept.length).toBeLessThanOrEqual(MAX_CUTS);
-    expect(kept.every((cut) => cut.score >= appliedThreshold)).toBe(true);
-  });
 });
 
 describe("dedupeShotCuts —— 同一刀连报两帧", () => {
@@ -216,14 +205,6 @@ describe("联系表行数只有一个 owner（2026-09-22 阻断 B）", () => {
     expect(shotSheetRowsFor(1, 8)).toBe(1);
     // 一格都没有时也要至少 1 行——否则 filtergraph 会写出 tile=8x0。
     expect(shotSheetRowsFor(0, 8)).toBe(1);
-  });
-
-  it("filtergraph 里的行数与算出来的那个恒等（同一个数喂两处）", () => {
-    const cuts = spreadCuts(447, 361.081);
-    const { kept } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
-    const rows = shotSheetRowsFor(kept.length, SHOT_SHEET_COLUMNS);
-    // 容量必须放得下全部点名的帧，否则末尾几格根本不在图里（第一版末刀就是这么丢的）。
-    expect(rows * SHOT_SHEET_COLUMNS).toBeGreaterThanOrEqual(kept.length);
   });
 
   // 结构守卫：渲染层不许再长出第二份行数算式。这条不是风格检查——

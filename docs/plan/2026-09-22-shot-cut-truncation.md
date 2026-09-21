@@ -104,9 +104,18 @@ deconstructVideo:              → filter(score >= payload.threshold)  ← 用�
 
 1. **准确率并列第一**（与 B 相同，F1 0.638 vs A 的 0.314）。
 2. **它是一个用户能看懂、能动的数**。「灵敏度自动提到了 0.21，想更细就往左拉」——直接接上面板里**已经存在**的灵敏度滑杆。B 的「前 120 高分」不对应滑杆任何一个位置，说不清也调不动。
-3. **只有它能让联系表保持一趟 ffmpeg 拼出来**。联系表是 `select='gt(scene,T)',tile=8xN` 一趟生成的，格子与切点 1:1。C 的结果集恰好等于 `score > appliedThreshold`，所以把同一个阈值喂给 sheet filter 就能**原样复现**这批帧；而 B/D 选的是 ffmpeg 的 `select` 表达不出来的任意子集，要拼图就得逐刀 seek 解码 N 次——正是原设计「两趟 ffmpeg 封顶」要避免的。
+~~3. 只有它能让联系表保持一趟 ffmpeg 拼出来。~~ **这条理由已被 §10.5 推翻，作废。**
+当时的论证是「C 的结果集恰好等于 `score > T`，把同一个阈值喂给 sheet filter 就能原样复现这批帧，
+而 B/D 选的是 `select` 表达不出来的任意子集」。§10.5 证明了**这个前提本身是错的**——
+让 ffmpeg 按阈值再筛一遍根本复现不了同一批帧（浮点打印值 vs 内部精度）。返工后联系表按 **pts 点名**，
+于是**任何**子集都能一趟拼出来，B 和 D 在这一项上和 C 完全同等。保留这段删除线是因为：
+它是「一条听起来很硬的技术理由，其实建立在一个没验过的前提上」的现成样本。
 
-D（并短镜）在「时间上更均匀」这项上最好，但它用召回换，且同样表达不成阈值。**它更适合作为一个用户可见的「最短镜长」控件**（Kdenlive 正是这么给的），而不是一个自动兜底——见 §8。
+D（并短镜）在「时间上更均匀」这项上最好，但它用召回换（F1 .551 vs .638）。
+**它更适合作为一个用户可见的「最短镜长」控件**（Kdenlive 正是这么给的），而不是一个自动兜底——见 §8。
+
+**去掉那条作废理由后，选 C 仍然成立**，靠的是剩下两条：准确率并列第一，且它是一个用户看得懂、
+能直接在现有灵敏度滑杆上调的数。
 
 ## 6. ≤2 帧去重
 
@@ -176,10 +185,10 @@ ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，�
 ## 10. 范围 / 不动项 / 回滚 / 验收门
 
 ### 改了什么
-- `electron/video/detectShotCuts.ts`：`slice(0,MAX_CUTS)` → `capShotCutsByScore`（按分数抬阈值）；新增 `dedupeShotCuts`（≤2 帧）、`assignSheetIndexes`（显式格子号）；`truncated: boolean` → `coverage: ShotCutCoverage`；联系表改用 `appliedThreshold` 重放；压上限时打日志。
+- `electron/video/detectShotCuts.ts`：① 压上限从 `slice(0,MAX_CUTS)`（按时间砍）改为 `capShotCutsByScore`（按分数抬阈值，并列时 `pickEvenlyByTime` 按时间补齐到上限）；② 新增 `dedupeShotCuts`（≤2 帧）；③ 联系表改为 `buildSheetFilter` **按整数 pts 点名选帧**，不再按分数重筛；④ 行数收成唯一算式 `shotSheetRowsFor` 并随结果下发（`sheetRows`）；⑤ `truncated: boolean` → `coverage: ShotCutCoverage`；⑥ 压上限走 `logInfo`（正常事件，不是错误）。
 - `electron/shared/canvas/shotTable.ts`：新增 `shotCutCoverageSchema` —— 这份状态的唯一 owner；`source.cutCoverage` 可选（只为读回老表）。
 - `electron/video/deconstructVideo.ts`：构造 `cutCoverage`（**必填**），按本层实际采用条数算，不照抄检测层。
-- 渲染层：`deconstructionTypes.ts` / `shotTableFacts.ts` / `bridgeMedia.ts` 类型镜像与落盘映射；`shotCutSelection.ts` 新增 `shotSheetTileCount`；`NodeShotCutPanel.tsx` 改读 `coverage.capped` 并用 `sheetIndex` 切格；i18n `shotCuts.truncated` → `shotCuts.capped`（旧文案「只取了前 N 个」正是在准确描述旧 bug，不改就留下一句谎话）。
+- 渲染层：`deconstructionTypes.ts`（新增 `StoredDeconstructionResult`，legacy 读回不再无校验强转）/ `shotTableFacts.ts` / `bridgeMedia.ts` 类型镜像与落盘映射；`shotCutSelection.ts` **删掉**自己那份行数算式；`NodeShotCutPanel.tsx` 改读 `coverage.capped` 与下发的 `sheetRows`；i18n `shotCuts.truncated` → `shotCuts.capped`。
 
 ### 不动项
 - `MAX_CUTS` 仍然是 120（压的是「一次给多少」，不是「看多长」）。
@@ -195,7 +204,6 @@ ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，�
 ### 验收门
 - [x] `capShotCutsByScore` 超上限时覆盖率 > 0.9、无巨镜、kept 恰等于 `score > appliedThreshold`
 - [x] `dedupeShotCuts` 并相邻两帧、不吃 0.3s 快剪、fps 缺失时恒等
-- [x] `assignSheetIndexes` 去重后格子号仍指向 ffmpeg 真正铺的那一格
 - [x] `shotCutCoverage` 整块往返、老表兼容、半块拒绝
 - [x] 变异验证：逐个回退 → 逐个变红（§11）
 - [x] 联系表第 i 格 = 第 i 刀：按 pts 点名，**真实素材逐格比对 0/120 错**

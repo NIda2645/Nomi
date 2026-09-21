@@ -34,10 +34,7 @@ export type DeconstructionResult = {
   shots: DeconstructionShot[]
   durationSeconds: number
   hasAudio: boolean
-  /**
-   * 这张表是不是整条片子。**必填**，和引擎那边一样——可选字段就是给「忘了带」留后路，
-   * 而 2026-09-22 修的正是一次「忘了带」（引擎算好了 truncated，拆解读侧整个没接）。
-   */
+  /** 这张表是不是整条片子。**必填**——可选字段就是给「忘了带」留后路。 */
   cutCoverage: ShotCutCoverage
   /** 画面分析失败的镜号（诚实回报，UI 据此提示可单独重试）。 */
   failedShotIndexes: number[]
@@ -54,19 +51,10 @@ export type DeconstructionResult = {
 export const NODE_DECONSTRUCTION_META_KEY = 'videoDeconstruction'
 
 /**
- * 从节点 meta 读回拆解结果（供收起态角标 / 重开面板复用，绝不重复拆）。
- *
- * 返回类型**故意**是 `StoredDeconstructionResult` 而不是 `DeconstructionResult`：
- * 2026-09-22 之前落盘的节点里没有 `cutCoverage`，而这里读的是**旧数据**。
- * 原来这一行是无校验强转（`raw as DeconstructionResult`），于是类型上写着「必填」的字段
- * 在这条 legacy 路上运行时就是 `undefined`——「编译期拦得住」这句话在这里是假的，
- * 而那正是这次要消灭的「可选信号」形状：类型说了谎，读侧就会理直气壮地拿它去渲染。
- *
- * 现在把「可能没有」写进类型，读侧被迫自己处理缺失。**不在这里补一个默认 coverage**：
- * 老节点里已经没有任何依据能还原它当时是不是被压过上限，编一个数就是伪造证据。
+ * 老节点 meta 里可能没有 `cutCoverage`（2026-09-22 之前落盘的）。缺失 = **不知道这张表完不完整**，
+ * 不等于完整——所以是可选字段，且**不补默认值**（编一个 `capped:false` 就是伪造证据）。
  */
 export type StoredDeconstructionResult = Omit<DeconstructionResult, 'cutCoverage'> & {
-  /** 老节点没有这一块。缺失就是缺失——意味着「不知道这张表完不完整」，不等于「完整」。 */
   cutCoverage?: ShotCutCoverage
 }
 

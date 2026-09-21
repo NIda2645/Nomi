@@ -90,7 +90,6 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
           durationSeconds: Number(result.durationSeconds) || 0,
           sheetUrl: result.sheetUrl ?? null,
           sheetColumns: result.sheetColumns || 8,
-          // 行数原样收下，**不在这里重算**：格子数只有主进程一个 owner（见 shotCutSelection.ts 的说明）。
           sheetRows: result.sheetRows,
           coverage: result.coverage,
         })
@@ -270,7 +269,6 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
             >
               {visible.map((cut) => {
                 const isOn = !excluded.has(cut.index)
-                // 第 i 格 = cuts[i]：联系表是按这份数组的 pts 点名拼的，下标就是格子号（由构造保证）。
                 const tile = shotSheetTileStyle(cut.index, state.sheetColumns, state.sheetRows)
                 return (
                   <button
