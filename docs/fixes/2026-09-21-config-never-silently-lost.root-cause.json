@@ -1,0 +1,433 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-config-never-silently-lost",
+  "problem_type": "A failed config read was indistinguishable from a missing file, so every reader answered it on its own — and one of them answered by writing its defaults over the user's file",
+  "symptom": "A Windows user tried 0.21, reinstalled an older build over a different path, and reported that every model configuration was gone: the settings page was blank with no error at all. Separately, a single JSON parse failure or one antivirus/indexer file lock on model-catalog.json would silently overwrite the entire model catalog with an empty one, with no backup anywhere on disk.",
+  "direct_cause": "Two paths. (1) electron/main.ts:446-451 wrapped the four read-only catalog IPC channels in ensureBuiltinModelSeeds(), a WRITE; when the on-disk catalog version was higher than the app's, that write hit the read-only guard in catalogStore.writeCatalog, threw, became {ok:false} in registerSyncIpc, was rethrown by preload/ipcCall, and was swallowed by a bare catch in src/ui/onboarding/useOnboardingDrawerCatalog.ts:91-95 which emptied all three lists. (2) catalogStore.readCatalog used readJson(path, null), which swallows every exception into one null, and then wrote defaultCatalog() back over the file.",
+  "class_root": "The invariant \"a user configuration is never silently discarded or silently hidden\" had no owning layer. readJson(path, fallback) collapses \"missing\", \"corrupt\" and \"locked\" into one indistinguishable value, and the try{readJsonFile}catch{DEFAULT} shape was copied into 13+ settings modules, so every file answered \"what do I do when I cannot read this\" by itself. Project data has had atomic write + backup + recover-from-backup for a long time; the configuration the user spends the most time building had none of it. Same class as the 2026-09-18 \"an unowned semantic gets reinvented\" finding.",
+  "affected_population": [
+    "Every user who downgrades or reinstalls an older build after running a newer one: the catalog version is monotonic and never rolls back, so the older app reaches the blank-settings state on first launch. The reporting user is one; anyone who installed a Preview build hit the same thing, because Preview shared the stable userData.",
+    "Every user on every platform, for the overwrite path: one JSON parse failure, one EPERM/EBUSY from an antivirus, indexer or cloud-sync tool, and the entire model catalog is replaced by an empty one with no backup."
+  ],
+  "scope_paths": [
+    "electron/configFileStore.ts",
+    "electron/catalog/catalogStore.ts",
+    "electron/catalog/catalogPackageFormat.ts",
+    "electron/catalog/rendererCatalogMutation.ts",
+    "electron/main.ts",
+    "electron/settings/sideBySideInstallSeed.ts",
+    "electron/settings/vendorPreferenceSettings.ts",
+    "electron/settings/generationModelDefaultsSettings.ts",
+    "electron/settings/modelBoxPreferenceSettings.ts",
+    "electron/settings/canvasMenuPreferenceSettings.ts",
+    "electron/settings/automationPolicySettings.ts",
+    "electron/settings/systemPromptsSettings.ts",
+    "electron/settings/attentionSoundSettings.ts",
+    "electron/settings/assetRelaySettings.ts",
+    "electron/settings/projectLocationSettings.ts",
+    "electron/proxySettings.ts",
+    "electron/screenshot/screenshotHotkey.ts",
+    "electron/connectors/connectorPrefsStore.ts",
+    "electron/promptLibrary/userPromptStore.ts",
+    "electron/assets/downloadPrefs.ts"
+  ],
+  "entry_points": [
+    "App launch (whenReady → seedFromStableInstall → ensureBuiltinModelSeeds → readCatalog)",
+    "Model settings drawer read (nomi:model-catalog:vendors|models|mappings:list and :health)",
+    "Every catalog write from the settings UI (vendor/model/mapping upsert, delete, retype, api-key clear)",
+    "Config import (nomi:model-catalog:import) and export (nomi:model-catalog:export)",
+    "Headless / MCP boot (electron/capabilityCore/host.ts ensureBuiltinModelSeeds)",
+    "Every settings read/write IPC under electron/settings/*Ipc.ts"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/fileTransformer.ts",
+      "checked_at": "2026-09-21",
+      "purpose": "证实 `extraMetadata` 是「改打进 asar 的那份 package.json」的框架自带做法，从而 app.getName() 跟着变、Preview 与稳定版的 userData 才真正分家。实查的是本仓装着的那一份（app-builder-lib 26.15.3，node_modules/.pnpm/app-builder-lib@26.15.3/.../out/fileTransformer.js:28-52 与 platformPackager.js:357-363）：createTransformer 把 config.extraMetadata 交给 modifyMainPackageJson，只重写主 package.json。"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/appInfo.ts",
+      "checked_at": "2026-09-21",
+      "purpose": "确认 appInfo.name 读的就是合并过 extraMetadata 之后的 metadata.name（同一份 26.15.3，out/appInfo.js:115-117），而 productName 是另一格——这正是「appId 分开、数据没分家」的机制来源。"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.electronjs.org/docs/latest/api/app#appgetpathname",
+      "checked_at": "2026-09-21",
+      "purpose": "userData 默认路径 = appData/<app name>，即 app.getName() 决定 userData——本次分家与本次事故共用这一条事实。"
+    }
+  ],
+  "invariants": [
+    "A config file that exists but cannot be read is never overwritten: a corrupt one is renamed aside with its bytes unchanged, one that merely cannot be opened is not touched at all.",
+    "Writing defaults is legal only when the file does not exist.",
+    "Every config write rotates the previous version into <name>.bak.json; every forward catalog migration first snapshots <name>.v<old>.bak.json.",
+    "A read-only catalog (newer on disk, or unreadable) is reported as structured state on the health payload, never as a thrown error a renderer can swallow into an empty list.",
+    "Catalog read IPC channels never write.",
+    "Preview and stable never share a userData directory.",
+    "An exported config package contains no credential material, in any encoding.",
+    "Importing a package merges: an entry that already exists on this machine is kept and reported as a conflict unless the user explicitly chose to replace."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "readConfigFile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/configFileStore.ts",
+      "symbol": "readConfigFile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/attentionSoundSettings.ts",
+      "symbol": "readConfigFile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/downloadPrefs.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/connectors/connectorPrefsStore.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/promptLibrary/userPromptStore.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/proxySettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/assetRelaySettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/attentionSoundSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/automationPolicySettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/canvasMenuPreferenceSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/generationModelDefaultsSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/modelBoxPreferenceSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/projectLocationSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/systemPromptsSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/vendorPreferenceSettings.ts",
+      "symbol": "readConfigFileOrDefault"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/downloadPrefs.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/connectorPrefsStore.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/promptLibrary/userPromptStore.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/proxySettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/screenshot/screenshotHotkey.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/assetRelaySettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/attentionSoundSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/automationPolicySettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/canvasMenuPreferenceSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/generationModelDefaultsSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/modelBoxPreferenceSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/projectLocationSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/systemPromptsSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/vendorPreferenceSettings.ts",
+      "symbol": "writeConfigFileAtomic"
+    },
+    {
+      "kind": "read",
+      "path": "electron/main.ts",
+      "symbol": "exportModelCatalogPackage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "importModelCatalogPackage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "seedFromStableInstall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "modelCatalogReadOnlyStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "buildCatalogPackage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/sideBySideInstallSeed.ts",
+      "symbol": "SideBySideSeedResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/sideBySideInstallSeed.ts",
+      "symbol": "STABLE_APP_NAME"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/sideBySideInstallSeed.ts",
+      "symbol": "SEEDED_CONFIG_FILES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogPackageFormat.ts",
+      "symbol": "CatalogPackageApiKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogPackageFormat.ts",
+      "symbol": "CATALOG_PACKAGE_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogPackageFormat.ts",
+      "symbol": "CatalogPackageVendorBundle"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogPackageFormat.ts",
+      "symbol": "CatalogPackage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "CatalogPackage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "CATALOG_PACKAGE_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "catalogPackageImportSchema"
+    }
+  ],
+  "door_reduction": {
+    "before": 62,
+    "after": 47,
+    "why_not": "这 47 扇不是 47 份策略，而是 47 个调用同一扇门的入口——每个 store 仍要决定「写哪个文件、写什么形状」，那是它自己的职责。改之前，「这份配置读不出来时该怎么办」这个问题有 15 份各自独立的答案（readJson(path, fallback) 一份 + try{readJsonFile}catch{DEFAULT} 十三份 + downloadPrefs 的裸 writeFileSync 一份）；改之后只有一份（electron/configFileStore.ts），调用方连表达「读失败就写默认」的手段都没有了。before/after 的数字是门的总数（62 → 47：读写原语从 readJson/readJsonFile/writeJsonFileAtomic 三族收敛到 configFileStore 一族，少掉的是那 15 处各自的 try/catch 回落分支）。把 15 个 store 合并成一个写入口既不可能（文件不同）也不可取（会造出一个知道全部配置形状的上帝模块），所以合并的是**判断**不是入口；机器判据 check:no-default-overwrite 守住「不许再长出第 16 份判断」。"
+  },
+  "generality_proof": "The primitive sits below every settings-root reader and writer, so the catalog, all 13 settings files, proxy prefs, screenshot hotkey, connector prefs, the user prompt library and download prefs all gained the same behaviour from one change. The gate scans src + electron + workers, so a new config store cannot reintroduce the shape without being named.",
+  "shared_boundaries": [
+    {
+      "path": "electron/configFileStore.ts",
+      "symbol": "readConfigFile / readConfigFileOrDefault / writeConfigFileAtomic",
+      "responsibility": "「一份用户配置读不出来时该怎么办」的唯一答案：区分不存在/读不了、损坏的改名留底、只是打不开的一个字节都不碰并拦下写、写前轮转 .bak、迁移前留带版本号的底。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/promptLibrary/userPromptStore.ts",
+      "entry_point": "读用户提示词库失败 → 回落 []，下一次写把用户全部提示词抹平",
+      "disposition": "enforced",
+      "evidence": "改走 readConfigFileOrDefault + writeConfigFileAtomic（userPromptStore.ts:47/60）。读不出来时写门直接抛 CONFIG_UNREADABLE_READ_ONLY，且每次写都把上一版轮转成 .bak。这是根因调查 §3 表里标注「回落 [] → 下一次写就抹平」的那一条，和目录那条是同一个病的两种长相。"
+    },
+    {
+      "path": "electron/settings/vendorPreferenceSettings.ts",
+      "entry_point": "try { readJsonFile } catch { DEFAULT } 之后的下一次写",
+      "disposition": "enforced",
+      "evidence": "十三份同形 settings store 的代表；全部改走同一扇门（vendorPreferenceSettings.ts:7/8）。判据由 check:no-default-overwrite 守住，新增第十四份会被点名。"
+    },
+    {
+      "path": "electron/assets/downloadPrefs.ts",
+      "entry_point": "readJson(prefsPath(), {}) + 裸 fs.writeFileSync 的 merge 写",
+      "disposition": "enforced",
+      "evidence": "这一处此前连原子写都没有（downloadPrefs.ts 旧 :23-25 直接 writeFileSync），现在同样走 writeConfigFileAtomic，顺带拿到原子写与 .bak。"
+    },
+    {
+      "path": "electron/workspace/workspaceManifest.ts",
+      "entry_point": "readWorkspaceProject / recoverWorkspaceProject",
+      "disposition": "not-affected",
+      "evidence": "项目数据早就有「原子写 + 独立备份文件 + 损坏改名隔离 + 从备份恢复」三件套（workspacePaths.ts:107/112、workspaceManifest.ts:600-652），本次一行不动——它正是这次给配置补上的那个形状的现成实现，两边从此对同一个问题给同一个答案。"
+    },
+    {
+      "path": "electron/providerAdapter/liveHarness.ts",
+      "entry_point": "catch { writeJsonFileAtomic(outputPath, { ok: false }) }",
+      "disposition": "not-affected",
+      "evidence": "写的是这次验证自己的结果文件（--out 指定的报告路径），没有读过、也没有盖掉任何用户配置。已在 scripts/no-default-overwrite-baseline.json 里带理由登记，是那条门岗唯一一条存量。"
+    },
+    {
+      "path": "src/ui/onboarding/workflowPage/useWorkflowCatalog.ts",
+      "entry_point": "读目录失败 → setVendors([]) setModels([]) setMappings([])",
+      "disposition": "not-affected",
+      "evidence": "**同一个病、本次刻意没修**（这个字段只有 enforced/not-affected 两档，所以在这里写清楚）：它和 AiModelsSection.tsx、useAgentPanelV4Data.ts 是那个裸 catch 的另外三份复制品，各自还要配横幅与文案，归并行的渲染层 lane。三份已登记进 src/ui/onboarding/catalogReadFailureIsVisible.test.ts 的棘轮：只减不增、修好就删登记、再长出第四处当场红。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状在 15+ 处复制，而且只在「读失败」那一刻才显形——平时看起来完全正常。已经真实伤到至少一位用户，且任何试用 Preview 再回稳定版的用户都会再中一次。",
+    "same_class_scan": [
+      "按 readJson(path, fallback) 与 try{readJsonFile}catch{DEFAULT} 两个形状扫遍 electron/，得到根因调查 §3 那张横扫表（19 个持久化文件，其中 2 处会覆盖写回、其余会在下一次写时抹平）；按「catch 里置空 state」扫遍 src/，得到 4 处，其中 3 处登记为渲染层 lane 的债。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/configFileStore.ts",
+    "invariant": "读不出来的配置绝不被覆盖；写默认值只在文件不存在时合法。调用方连表达「读失败就写默认」的手段都没有——readConfigFileOrDefault 只给内存里的默认值，writeConfigFileAtomic 在读失败时直接抛。",
+    "failure_mode": "新写一个配置 store 时绕过 configFileStore，直接用 readJson + writeJsonFileAtomic，于是第 16 份「读不出来怎么办」的答案又长出来。",
+    "exception_policy": "none",
+    "strategy": "把这个问题收成一层原语（configFileStore），十几个 store 全部改走它、不留并行版；再用 AST 棘轮 check:no-default-overwrite 扫两种语法上看得出来的写法（catch 里写盘、`if (!读回来的东西)` 里写盘），新增当场红、登记必须带理由、收敛掉必须同 commit 删登记。",
+    "artifacts": [
+      "electron/configFileStore.ts",
+      "scripts/check-no-default-overwrite.mjs",
+      "scripts/no-default-overwrite-baseline.json",
+      "package.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/configFileStore.test.ts",
+    "electron/catalog/catalogNeverOverwrites.test.ts",
+    "electron/catalogReadChannelsPureRead.test.ts",
+    "electron/settings/sideBySideInstallSeed.test.ts",
+    "electron/catalog/catalogPackagePortability.test.ts",
+    "src/ui/onboarding/catalogReadFailureIsVisible.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/configFileStore.test.ts",
+    "src/ui/onboarding/catalogReadFailureIsVisible.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/catalogStore.ts",
+      "electron/settings/vendorPreferenceSettings.ts",
+      "electron/settings/generationModelDefaultsSettings.ts",
+      "electron/settings/modelBoxPreferenceSettings.ts",
+      "electron/settings/canvasMenuPreferenceSettings.ts",
+      "electron/settings/automationPolicySettings.ts",
+      "electron/settings/systemPromptsSettings.ts",
+      "electron/settings/attentionSoundSettings.ts",
+      "electron/settings/assetRelaySettings.ts",
+      "electron/settings/projectLocationSettings.ts",
+      "electron/proxySettings.ts",
+      "electron/screenshot/screenshotHotkey.ts",
+      "electron/connectors/connectorPrefsStore.ts",
+      "electron/promptLibrary/userPromptStore.ts",
+      "electron/assets/downloadPrefs.ts"
+    ],
+    "rationale": "这些文件里的 readJson(path, fallback) / try{readJsonFile}catch{DEFAULT} / 裸 writeFileSync 全部在同一次改动里换成 configFileStore 的原语，没有留并行版；导出侧的 includeApiKeys 整格删除（删前全仓零个生产调用方）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Electron 的 app.getName()/getPath 与 electron-builder 的 extraMetadata 都是框架既有能力，本次是改用它们、不是新增依赖。",
+    "exit_criteria": []
+  },
+  "migration": "向后兼容。既有 userData 原样可读；第一次跨版本读会额外生成一份 model-catalog.v<旧版本>.bak.json，第一次写会额外生成一份 .bak.json。Preview 用户第一次启动新 Preview 会换到新的 userData 并从稳定版拷一份配置过去（macOS 上密钥需在 Preview 内重新保存一次，界面会明确标出 needs_resave）。",
+  "residual_risks": [
+    "已经发出去的旧版本无法回溯修复：迁移前留底只能救「今以后的降级」。旧版本上仍然没有只读横幅。",
+    "门岗判据是语法级的：把写盘包进自己的函数、再在 catch 里调那个函数，check:no-default-overwrite 看不见（跨函数就不是「语法上看得出来」了）。这是刻意的窄——宽了会被塞进豁免名单。运行时由 configFileStore 的写门兜住：读失败时它自己抛。",
+    "Preview 与稳定版分家后两边 userData 各自演进，用户在 Preview 里改的配置不会跟回稳定版。这是「拷贝不共用」的必然代价，也正是这次要的那个代价。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/configFileStore.ts",
+    "tests": [
+      "electron/configFileStore.test.ts",
+      "electron/catalog/catalogNeverOverwrites.test.ts"
+    ],
+    "structural_ticket": "docs/plan/2026-09-21-config-never-silently-lost.md"
+  }
+}
