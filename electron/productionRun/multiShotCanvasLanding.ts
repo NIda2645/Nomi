@@ -66,7 +66,6 @@ export type MaterializeShotsWirePayload = {
   planName?: string;
   shots: MaterializeShotWire[];
   existingOnly?: boolean;
-  authorContentToken?: string;
 };
 
 /** 该 Run 的画布落地稳定 op id（每 Run 一个 → 崩溃/重开补齐都对同一章去重）。 */

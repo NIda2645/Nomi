@@ -62,7 +62,6 @@ export type MaterializeShotInput = {
 export type MaterializeShotsPayload = {
   /** Document authoring never recreates nodes during save/open/reconciliation. */
   existingOnly?: boolean
-  authorContentToken?: string
   projectId?: string
   runId?: string
   materializationOperationId?: string
