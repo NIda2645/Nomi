@@ -126,6 +126,56 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 「用户手动删占位 → 不复活」（裁决 D 自己的末句要保住的行为），删掉它会把手动删除弄坏。所以**保留观察者**，
 只保证 × 不再依赖它（落地不认 `cancelled`）。
 
+## 5b. 外部 MCP 宿主作为「回答者」——同一道闸的对外投影（**本轮不实现，只留好这一格**）
+
+另一条会话的方案 `~/Desktop/nomi-scratch-0921/_video-breakdown-mcp-session/mcp-paid-path/PLAN.md`（缺口 1）要把
+「elicitation 非 accept 一律当拒绝」改成三态，并在宿主接不住 elicitation 时回落到对话式两步确认（报价 + 一次性 ticket）。
+它**不是第二套状态机**：内部 lane 与外部宿主的差别只有一处——**谁在等**。内部是 Nomi 的回合挂在审批闸上等；
+外部是宿主那边的模型在等，Nomi 这边只有一份「已出价、未决」的计划。两边共用的是下面这张图的**右半**。
+
+```
+                         已出价 · 未决（身份 = operationId；盘上 = draft 可见 / sealed 且门 waiting）
+   回答者                      事件                                   落到哪条边
+   ─────────────────────────────────────────────────────────────────────────────────────────
+   面板（人点）              「生成 ¥X」 / ×                           confirmed / declined
+   全自动档（策略）           spendDecidedByPolicy                      confirmed（不出卡）
+   外部宿主 · elicitation     accept                                    confirmed
+                             decline                                   **不转移**：留在「未决」，回 `spend_pending_confirmation`（reason=client_declined）+ ticket
+                             cancel                                    **不转移**：同上（reason=client_cancelled）——规范原话 cancel=「没做出明确选择」，处置建议是 prompt again later
+                             超时（300 s）                              **不转移**：同上（reason=client_timeout）
+                             宿主不支持 elicitation                     **不转移**：同上（reason=client_unsupported），一个字节都不发
+   外部宿主 · ticket          phase=decide + 有效 ticket                confirmed
+                             phase=decide + 显式「用户说不」             declined（与 × 同一条边、同一个终态）
+                             ticket 过期 / 被用过 / 绑定对不上           不转移；回可行动的拒绝（重新 request）
+   任何回答者                 进程重启（裁决 C）                         cancelled{restart}——ticket 随内存一起没了，盘上的未决计划启动时作废
+```
+
+**为什么 decline / cancel / 超时在外部是「不转移」，而在面板上 × 是终态**：面板的 × 是**人的手势**（主进程铸的
+`human-gesture` attestation 带 webContentsId / frameId）；宿主回的 decline 可能是宿主**自己替人答的**（Codex 实测 100% 自动 decline）。
+把一个不可证明来自人的「不」落成终态，就是今天那条根因（链路当场结束、报价被丢）。只有**显式**的「用户说不」才走 declined。
+
+**「只扣一次」这条不变量怎么共用**——ticket **不是**第二条花钱路，它是收据之前的那一张凭据：
+
+| 环节 | owner（今天就在） | ticket 接在哪 |
+|---|---|---|
+| 把「同意」变成收据 | `rpcServer.ts:205-215` `nomi_verify_client_generation_gate`（今天铸 `client_elicitation`）；由 `mcpGateConfirmation.ts:153-165` 在 accept 后调 | ticket 验过之后**在同一处**铸收据，attestation 加第三种 `client_relayed`（与 `human-gesture` / `policy-full-auto` 并列，账本上分得清是谁点的头） |
+| 收据 → 决门 → 消费 → 开跑 | `generationSpendDecision.ts:80-99` `decideGenerationSpend`，**全仓只有这一份**（door-map：两扇写口都调它） | 不改。ticket 路是它的**第三个调用方**，不是第二份实现 |
+| 同一张收据批不动第二次 | `consumeReceipt`（一次性）+ `spendGrant.ts:98-110` 出站硬闸 + `providerIdempotencyKey` | 不改。ticket 自己再加一层一次性（绑 `operationId + contractHash + maximumCost + 过期时刻`）：它防「改了参数还用旧授权 / 同一张票批两次」，**不防** AI 自问自答——那条由花费上限与宿主审批面管（PLAN §2.6） |
+| 第二次 decide（重复调用） | 本方案反方评审 Q1(a)：计划已 `sealed/submitted` → 不再出价，返回「这一笔已经在跑」 | 同一条边：带着已消费的 ticket 再调 = 成功形状的「已在跑」，不是错误、不是第二笔 |
+
+**本刀落地后，宿主侧要接上来时不需要拆我的东西——凭的是这四条**：
+1. 待决身份锚 `operationId`（裁决 B）：ticket 绑的也是它，不会和 `quoteId` 的刷新打架；
+2. 「用户说不」只有一个终态：`generation.cancel`。`dismiss` / `cardHidden` 的 (b) 义删掉之后，宿主侧的显式拒绝直接复用这条边；
+3. lane 的 waiter 注册表对「不是 lane 出的卡」是 **no-op**（反方评审 Q4）：外部宿主出的价、它自己 confirm，不会误 settle 任何回合；
+4. 本轮**不碰** `mcpGateConfirmation.ts` / `mcpSemanticGenerationFlow.ts` / `rpcServer.ts` / `mcpTrustDowngrade.ts`，也不碰 `executionContract.ts`、不新增对 `src/config/modelArchetypes/` 的 import（那条会话要搬它）。
+
+**开放问题（都是产品行为，要用户拍板，本文不设计）**：
+- 「按次数 / 秒数 / 额度预授权」（PLAN 方案 D、Q2、Q3）：上限的数、有效期、在哪里改、撤销入口；
+- 外部宿主出价时，Nomi 面板上要不要同时出那张兜底卡——用户 09-21 的约束是「别把 MCP 用户指回 Nomi」，
+  但本机 GUI 用户同时开着 Nomi 时这张卡是否还该出现，没有拍过板；
+- ticket 过期后盘上那份「未决」计划由谁收走（惰性：下一次触碰时按 declined 处理；还是定时扫）。
+  在拍板之前，裁决 C 的启动作废是它唯一的兜底清扫。
+
 ## 6. 步骤与验收门
 
 1. 复现并修 ③（E）：真 Electron、真页面输入，零额度 loopback。
