@@ -21,15 +21,6 @@
       "due": "2026-10-14"
     },
     {
-      "id": "export-real-media",
-      "class": "export",
-      "why": "导出类走查用的是 640×360 / 2 秒的 lavfi 合成片（tests/ux/agent-runtime-video-export.walk.mjs:24），证明不了真实 4K 10-bit 素材的导出成本与编码路径",
-      "plan": "导出走查改用登记素材；至少一条跑到用户真正拿到 MP4",
-      "owner": "canvas-media-rework",
-      "registeredAt": "2026-09-14",
-      "due": "2026-10-14"
-    },
-    {
       "id": "walkthrough-real-media",
       "class": "walkthrough",
       "why": "J1-J5 旅程里碰媒体的那几步用的都是小占位素材，量不到打开项目阶段的真实成本（用户撞到的第二件事：S 规模 20 秒进不了画布）",
