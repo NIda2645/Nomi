@@ -115,12 +115,11 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
  * `overCapacity` = 光非终态就已经超限，裁剪救不回来。这时读侧照样把它们**全部**还回去
  * （宁可状态偏大，也不丢用户在做的事），由写侧据此拒绝新建——见 `IntegrationSessionService.begin`。
  */
-export function capIntegrationSessions<T extends { id: string; stage: string; createdAt?: string; updatedAt?: string }>(
-  sessions: readonly T[],
-  limit: number = MAX_INTEGRATION_SESSIONS,
-): { sessions: T[]; overCapacity: boolean } {
-  if (sessions.length <= limit) return { sessions: [...sessions], overCapacity: false };
-  const touchedAt = (entry: T): number => {
+export function capIntegrationSessions(
+  sessions: readonly IntegrationSession[],
+): { sessions: IntegrationSession[]; overCapacity: boolean } {
+  if (sessions.length <= MAX_INTEGRATION_SESSIONS) return { sessions: [...sessions], overCapacity: false };
+  const touchedAt = (entry: IntegrationSession): number => {
     const stamp = Date.parse(entry.updatedAt || entry.createdAt || "");
     return Number.isFinite(stamp) ? stamp : 0;
   };
@@ -129,10 +128,10 @@ export function capIntegrationSessions<T extends { id: string; stage: string; cr
       .filter((entry) => isTerminalIntegrationStage(entry.stage))
       // 最旧的先走；Array#sort 规范保证稳定，同一时刻的几条自然保持盘上原始顺序。
       .sort((left, right) => touchedAt(left) - touchedAt(right))
-      .slice(0, sessions.length - limit),
+      .slice(0, sessions.length - MAX_INTEGRATION_SESSIONS),
   );
   const kept = sessions.filter((entry) => !doomed.has(entry));
-  return { sessions: kept, overCapacity: kept.length > limit };
+  return { sessions: kept, overCapacity: kept.length > MAX_INTEGRATION_SESSIONS };
 }
 
 /**
