@@ -28,6 +28,7 @@ import {
   normalizeVideoCandidate,
   shotDurationSeconds,
   videoCandidateForPlan,
+  videoAllowedVariantIds,
   videoParameterSchema,
   videoRecommendationInput,
 } from "./mcpGenerationVideoResolve";
@@ -397,6 +398,29 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     return candidate.mode ? `${candidate.providerId} · ${model}（${candidate.mode}）` : `${candidate.providerId} · ${model}`;
   };
 
+  /**
+   * 换模型/换模式之后，候选身上**这个新模型不接受**的参数键（字典序）。
+   *
+   * 读的就是准入层那一份 schema（`videoParameterSchema` 覆盖优先，否则 registry 的那份）——
+   * 「哪些键合法」全仓只此一份判据，清理与校验不许各答一次。新模型此刻解析不出来
+   * （目录里没有 / 模式不对）→ 返回空数组：那不是「参数残留」问题，交给准入层去报它自己的错，
+   * 这里不抢着替它解释。
+   */
+  const parametersNotAcceptedBy = (candidate: PlanCandidate): string[] => {
+    try {
+      const accepted = videoParameterSchema(candidate, deps.videoModelCandidates)
+        ?? deps.registry.resolve({
+          moduleId: candidate.moduleId,
+          providerId: candidate.providerId,
+          modelId: candidate.modelId,
+          mode: candidate.mode,
+        }).parameterSchema;
+      return Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
+    } catch {
+      return [];
+    }
+  };
+
   // P4 S6.5 生产入口: the multi-shot create/seal helpers (resolveCreateShots + sealMultiShotFor) live in
   // mcpGenerationMultiShot.ts; wire them with this handler's shared derivations (all single source of truth).
   /** patch 入口的参考素材身份补齐。与 create 那条同一个解析器，只是调用点不同。 */
@@ -415,6 +439,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     parsers: { candidateFrom, record },
     normalizeVideoCandidate: (candidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates),
     videoParameterSchema: (candidate) => videoParameterSchema(candidate, deps.videoModelCandidates),
+    videoAllowedVariantIds: (candidate) => videoAllowedVariantIds(candidate, deps.videoModelCandidates),
     priceForCandidate,
     effectiveVideoModes,
     ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
@@ -625,6 +650,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         parameters: userPatch.parameters ?? baseCandidate.parameters,
         references: userPatch.references ?? baseCandidate.references,
       } as PlanCandidate;
+      // 换模型/换模式会把**上一个模型的参数**原封不动带过来。这些残留过去靠准入层「静默丢弃」
+      // 消化掉——那正是本刀要杀的行为。残留该在**换模型这一刻**由调用方清掉并如实上报，
+      // 而不是让校验层装聋（P2：修在最早的共享边界，不在最后一道闸打补丁）。
+      const clearedParameters = (modelChanged || modeChanged) && userPatch.parameters === undefined
+        ? parametersNotAcceptedBy(mergedCandidate)
+        : [];
+      if (clearedParameters.length > 0) {
+        mergedCandidate.parameters = Object.fromEntries(
+          Object.entries(mergedCandidate.parameters).filter(([key]) => !clearedParameters.includes(key)),
+        );
+      }
       const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
       const normalizedPatch = {
         ...userPatch,
@@ -637,6 +673,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         modelChanged, modeChanged,
         ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
         ...((modelChanged || modeChanged) && userPatch.modeId === undefined && baseCandidate.modeId ? { clearedModeId: baseCandidate.modeId } : {}),
+        ...(clearedParameters.length ? { clearedParameters } : {}),
         previousModel: `${baseCandidate.providerId}/${baseCandidate.modelId}`,
         nextModel: `${nextProviderId}/${nextModelId}`,
       } : undefined;
@@ -644,7 +681,11 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "preview") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const allowedVariantIds = videoAllowedVariantIds(candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, {
+        parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates),
+        ...(allowedVariantIds ? { allowedVariantIds } : {}),
+      });
       const readiness = resolveProviderReadiness(deps, candidate);
       const resolved = deps.registry.resolve({
         moduleId: candidate.moduleId,
@@ -679,7 +720,11 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "gate_request") {
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = compileExecutionContract(candidate, deps.registry, { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates) });
+      const allowedVariantIds = videoAllowedVariantIds(candidate, deps.videoModelCandidates);
+      const contract = compileExecutionContract(candidate, deps.registry, {
+        parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates),
+        ...(allowedVariantIds ? { allowedVariantIds } : {}),
+      });
       const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const gateResolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode }); // J06

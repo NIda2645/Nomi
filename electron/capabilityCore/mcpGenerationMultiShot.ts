@@ -229,6 +229,8 @@ export type MultiShotHelperDeps = {
   parsers: MultiShotCandidateParsers;
   normalizeVideoCandidate: (candidate: PlanCandidate) => PlanCandidate;
   videoParameterSchema: (candidate: PlanCandidate) => Record<string, ParameterField> | undefined;
+  /** 该候选所指模型的变体清单；`undefined` = 这条路拿不到清单（不是「随便填都行」）。 */
+  videoAllowedVariantIds?: (candidate: PlanCandidate) => string[] | undefined;
   priceForCandidate: (candidate: PlanCandidate) => ShotPrice;
   effectiveVideoModes: (candidate: VideoModelCandidate) => Array<{ id?: string; transportTaskKind?: string }>;
   /**
@@ -398,7 +400,11 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
       const included = shot.included !== false;
       if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
-      const contract = compileExecutionContract(normalized, deps.registry, { parameterSchema: deps.videoParameterSchema(normalized) });
+      const allowedVariantIds = deps.videoAllowedVariantIds?.(normalized);
+      const contract = compileExecutionContract(normalized, deps.registry, {
+        parameterSchema: deps.videoParameterSchema(normalized),
+        ...(allowedVariantIds ? { allowedVariantIds } : {}),
+      });
       return {
         ...generationShotEnvelopeOf(shot),
         candidate: { ...normalized, sealedContractHash: contract.contractHash },

@@ -39,7 +39,7 @@ export { WAN_3_0_APIMART_ARCHETYPE } from "./wan30Apimart";
 export { modeTransportFor } from "./modeTransport";
 export { applyMergeProposal, applySplitProposal, resolveGenerationPlan } from "./planResolver";
 export { GenerationResolveErrorCode } from "./planResolutionContracts";
-export { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration } from "./recommendation";
+export { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration, videoVariantIdsOf } from "./recommendation";
 export type {
   VideoCatalogModel,
 } from "./registry";

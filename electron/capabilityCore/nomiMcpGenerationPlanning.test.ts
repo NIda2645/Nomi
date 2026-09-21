@@ -378,13 +378,16 @@ describe("MCP semantic generation planning journey", () => {
         },
       },
     });
+    // 调用方**点名**了一个这个模型不接受的参数（`trajectory`）。旧行为是静默丢掉它、preview 照样成功
+    // ——于是模型以为自己控制了运镜，实际发出去的请求里根本没有这一项。现在 preview 当场拒，
+    // 并把合法键报出来，模型下一轮才写得对（MCP：input validation error 要能让模型自纠）。
     const secondPreview = await harness.call(25, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
-    const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string; droppedFields: Array<{ path: string }> } };
-    expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
-    expect(secondPayload.contract.contractHash).not.toBe(firstHash);
-    expect(secondPayload.contract.droppedFields).toEqual([{ path: "parameters.trajectory", reason: "unsupported_parameter" }]);
+    const rejectionText = JSON.stringify(secondPreview);
+    expect(rejectionText).toContain("trajectory");
+    expect(rejectionText).toContain("duration");
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
     expect(runTask).not.toHaveBeenCalled();
+    void firstHash;
   });
 
   it("walks the real GUI catalog profiles through model, mode, reference and parameter switches", async () => {
@@ -484,7 +487,7 @@ describe("MCP semantic generation planning journey", () => {
     expect(sameModelFast.contract).toMatchObject({ modelId: "doubao-seedance-2.0", variantId: "fast" });
 
     await expect(handler({ capability: "plan", params: { operationId, patch: { variantId: "ghost" } }, lease: verifiedLease }))
-      .rejects.toThrow("Unknown video variant");
+      .rejects.toThrow("变体 ghost 不属于");
     await harness.call(337, "tools/call", {
       name: "nomi_operation_plan",
       arguments: { leaseHandle: lease, operationId, patch: { variantId: "fast", parameters: { duration: 6, resolution: "1080p" } } },

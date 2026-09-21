@@ -5,13 +5,13 @@
 // 槽 / candidate 带不带角色参考 / 时长估计。全是纯函数（吃 candidate + 候选快照，零副作用、零 provider 调用），
 // preview/gate/多镜密封都靠它当单一真相源。mcpGenerationTools.ts 与 mcpGenerationMultiShot.ts 单向 import。
 
-import type { PlanCandidate } from "./executionContract";
+import { ContractCompilationError, GENERATION_PLANNING_HINT_KEYS, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 import type {
   VideoGenerationRecommendationInput,
   VideoModelCandidate,
 } from "../shared/videoCapabilities/recommendation";
-import { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration } from "../shared/videoCapabilities/recommendation";
+import { canonicalVideoVariantId, effectiveVideoModes, recommendVideoGeneration, videoVariantIdsOf } from "../shared/videoCapabilities/recommendation";
 import { modeTransportFor } from "../shared/videoCapabilities/modeTransport";
 import type { ArchetypeMode, ModelParameterControl } from "../shared/videoCapabilities/types";
 
@@ -24,6 +24,11 @@ const normalizedMode = (value: unknown): string =>
 const CAMERA_INTENTS = new Set<NonNullable<VideoGenerationRecommendationInput["cameraIntent"]>>([
   "locked", "pan", "tilt", "dolly", "orbit", "handheld", "path",
 ]);
+
+// 本文件是 `GENERATION_PLANNING_HINT_KEYS` 的**唯一消费者**：那张表列的就是下面
+// `videoRecommendationInput` 从 `candidate.parameters` 里读走、且绝不上 wire 的那几个键。
+// 两边对不上时是这里先改了——`parameterAdmission.class.test.ts` 的同名断言会当场红。
+export const PLANNING_HINT_KEYS_CONSUMED_HERE = GENERATION_PLANNING_HINT_KEYS;
 
 export function videoRecommendationInput(candidate: PlanCandidate): VideoGenerationRecommendationInput | null {
   if (candidate.references.some((reference) => !reference.kind)) return null;
@@ -139,7 +144,16 @@ export function videoCandidateForPlan(candidate: PlanCandidate, candidates: read
     || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId));
   const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
   const requestedCanonical = canonicalVideoVariantId(source.archetype, requested);
-  if (requested && !requestedCanonical) throw new Error(`Unknown video variant: ${candidate.variantId}`);
+  if (requested && !requestedCanonical) {
+    // 旧实现只说「Unknown video variant: X」——模型读完仍然不知道该填什么，于是下一轮换个名字再猜。
+    // 拒绝必须自带出路（合法变体清单），与参数值层同一条纪律（`ParameterRejection`）。
+    const allowedVariantIds = videoVariantIdsOf(source.archetype);
+    throw new ContractCompilationError(
+      `变体 ${requested} 不属于 ${candidate.providerId}/${candidate.modelId}。`
+      + `该模型的变体：${allowedVariantIds.length ? allowedVariantIds.join("、") : "（这个模型没有变体，请不要传 variantId）"}。`,
+      { code: "unknown_variant", path: "variantId", allowedVariantIds },
+    );
+  }
   const variantId = requestedCanonical ?? inferredVariant?.id ?? source.variantId ?? source.archetype.defaultVariantId;
   const baseModelId = source.archetype.catalogModelKey?.trim() || source.modelKey;
   return {
@@ -200,6 +214,14 @@ export function videoTransportModelIdForPlan(candidate: PlanCandidate, videoCand
   return variant?.modelKey?.trim() || mode.modelEnum?.trim() || videoCandidate.modelKey;
 }
 
+/** 档案控件声明过的数值范围——带过来，准入层才判得了「越界」（没声明就不判，不许现编一个范围）。 */
+function controlBounds(control: ModelParameterControl): Pick<ParameterField, "min" | "max"> {
+  return {
+    ...(typeof control.min === "number" && Number.isFinite(control.min) ? { min: control.min } : {}),
+    ...(typeof control.max === "number" && Number.isFinite(control.max) ? { max: control.max } : {}),
+  };
+}
+
 function parameterFieldForControl(control: ModelParameterControl): ParameterField {
   if (control.type === "select") {
     const optionValues = control.options.map((option) => option.value);
@@ -212,7 +234,7 @@ function parameterFieldForControl(control: ModelParameterControl): ParameterFiel
     }
     return { type: control.options.some((option) => typeof option.value === "number") ? "number" : "string" };
   }
-  if (control.type === "number") return { type: "number" };
+  if (control.type === "number") return { type: "number", ...controlBounds(control) };
   if (control.type === "boolean") return { type: "boolean" };
   return { type: "string" };
 }
@@ -223,6 +245,19 @@ export function videoParameterSchema(candidate: PlanCandidate, candidates: reado
   if (!selected) return undefined;
   const mode = videoModeForPlan(selected.candidate, selected.videoCandidate);
   return Object.fromEntries(mode.params.map((control) => [control.key, parameterFieldForControl(control)]));
+}
+
+/**
+ * 这个候选所指模型声明过的变体 id；认不出这个模型（非视频模型 / 尚未接入）→ `undefined`。
+ * `undefined` 的意思是**这条路拿不到清单**，不是「随便填都行」——准入层据此决定核还是不核。
+ */
+export function videoAllowedVariantIds(
+  candidate: PlanCandidate,
+  candidates: readonly VideoModelCandidate[] | undefined,
+): string[] | undefined {
+  if (!candidates) return undefined;
+  const selected = videoCandidateForPlan(candidate, candidates);
+  return selected ? videoVariantIdsOf(selected.videoCandidate.archetype) : undefined;
 }
 
 export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: readonly VideoModelCandidate[] | undefined): PlanCandidate {

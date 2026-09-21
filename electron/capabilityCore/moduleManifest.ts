@@ -7,6 +7,13 @@ const parameterFieldSchema = z.object({
   required: z.boolean().optional(),
   enum: z.array(primitiveEnumValueSchema).min(1).optional(),
   description: z.string().optional(),
+  /**
+   * Declared numeric bounds. Absent means the catalog row never published a
+   * range for this key — the admission boundary then says so instead of
+   * inventing one (R17: judge what is judgeable, state the rest honestly).
+   */
+  min: z.number().finite().optional(),
+  max: z.number().finite().optional(),
 }).strict();
 
 const recoveryCapabilitiesSchema = z.object({
