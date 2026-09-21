@@ -3,6 +3,7 @@ import { productionTaskAbsenceCode } from '../productionRun/productionRunErrors'
 import { GenerationProviderCapabilityError, GenerationProviderObservationError, GenerationRuntimeBindingError } from './generationRuntimeAdapter';
 import { ProductionGenerationAuthorizationError } from '../productionRun/productionGenerationAuthorization';
 import { z } from "zod";
+import { logWarn } from "../logging/logger";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { GENERATION_METHODS, GENERATION_METHOD_NAMES, isGenerationMethodName, type GenerationMethodName } from "../shared/agentCapabilities/generation";
 import { generationPlanInputSchema, generationStatusInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
@@ -59,6 +60,24 @@ export function isPiGenerationToolName(toolName: string): toolName is Generation
   return isGenerationMethodName(toolName);
 }
 
+/**
+ * 我们自己 schema 产生的逐字段拒收理由。**不是**供应商文本：`issue.path` 是我们契约里的字段名。
+ */
+export type GenerationSchemaIssue = Readonly<{ path: string; message: string }>;
+
+function schemaIssuesOf(error: unknown): readonly GenerationSchemaIssue[] {
+  const raw = error && typeof error === "object" ? (error as { issues?: unknown }).issues : undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((issue) => (issue && typeof issue === "object"
+    && typeof (issue as { message?: unknown }).message === "string"
+    ? [{ path: String((issue as { path?: unknown }).path ?? ""), message: (issue as { message: string }).message }]
+    : []));
+}
+
+export function describeSchemaIssues(issues: readonly GenerationSchemaIssue[]): string {
+  return issues.map((issue) => `${issue.path || "(root)"}: ${issue.message}`).join("; ");
+}
+
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
   const rawCode = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
@@ -71,7 +90,13 @@ function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }
       ? 'generation_provider_unavailable'
       : error instanceof ProductionGenerationAuthorizationError || error instanceof GenerationRuntimeBindingError
         ? error.code : localCodes.has(rawCode) ? rawCode : 'generation_execution_failed';
-  return { ok: false, code, message: code };
+  // 收敛成码挡住的应当只有**供应商 / 凭据的原始文本**。连我们自己 schema 的字段级理由一起抹掉，
+  // 模型拿到的就是一个说不出拒了什么的裸码，于是同一份载荷原样重试到回合超时——那正是
+  // 2026-09-18 那份根因合同修掉的失效方式（`generation_input_invalid — shots.0.prompt: Required`）。
+  const issues = schemaIssuesOf(error);
+  // 兜底码盖住的也可能是我们自己的缺陷（TypeError 这类）。不留痕 = 把 bug 洗成产品结论。
+  if (code === 'generation_execution_failed') logWarn("capability", "generation-transport-failed", { rawCode }, error);
+  return { ok: false, code, message: issues.length ? `${code} — ${describeSchemaIssues(issues)}` : code };
 }
 
 /**
@@ -129,7 +154,15 @@ function parsedArgs(call: RuntimeToolCall): Record<string, unknown> {
   const schema = semanticSchema ?? legacyMethodSchema(call.toolName);
   const parsed = schema.safeParse(call.args);
   if (!parsed.success) {
-    throw Object.assign(new Error("generation_input_invalid"), { code: "generation_input_invalid" });
+    // 说清**哪个字段为什么被拒**。2026-09-18 根因：这里原本只抛一个裸码，模型（和人）都看不到
+    // 是哪一项不合法，于是同一份载荷被原样重试三次、回合挂到超时。校验拒收必须自带理由——
+    // 一个说不出自己拒了什么的边界，等于把契约漂移变成静默故障。这些 path 是我们契约里的
+    // 字段名，不是供应商文本，所以 redaction 不该碰它们。
+    const issues = parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message }));
+    throw Object.assign(new Error(`generation_input_invalid — ${describeSchemaIssues(issues)}`), {
+      code: "generation_input_invalid",
+      issues,
+    });
   }
   return parsed.data as Record<string, unknown>;
 }

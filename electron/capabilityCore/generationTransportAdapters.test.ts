@@ -172,6 +172,26 @@ describe("resident semantic generation transport", () => {
     expect(planning).not.toHaveBeenCalled();
   });
 
+  // 2026-09-18 根因合同：只抛一个裸码，模型（和人）都看不到是**哪一项**不合法，于是同一份载荷
+  // 被原样重试三次、回合挂到超时。zod 的 path 是我们自己契约里的字段名，不是供应商文本——
+  // 收敛成码该挡的是后者。把理由删掉，下面两条会同时变绿，那正是缺陷的样子。
+  it("says which field was rejected and why, without leaking anything but our own contract", async () => {
+    const planning = vi.fn(async () => ({}));
+    const adapter = createPiGenerationTransportAdapter(binding, { planning, leaseFor: () => lease });
+
+    const result = await adapter.tryExecute(
+      call("nomi_generation_plan", { operation: "create", shots: [{ prompt: 42 }] }),
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({ ok: false, code: "generation_input_invalid" });
+    const message = (result as { message: string }).message;
+    expect(message).toMatch(/^generation_input_invalid — /);
+    expect(message).toContain("shots");
+    expect(message.length).toBeGreaterThan("generation_input_invalid".length + 8);
+    expect(planning).not.toHaveBeenCalled();
+  });
+
   it("the resolve capability contract is the single generation point for its input schema", () => {
     // 反向断言：契约在（能解析同一份输入），旧 manifest 不在（上一条已证）——避免两处都有的并行版。
     expect(GENERATION_RESOLVE_CAPABILITY.inputSchema.safeParse({

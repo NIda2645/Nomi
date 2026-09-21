@@ -49,8 +49,11 @@ describe('MCP generation draft schema parity', () => {
       candidateFrom: (value: unknown) => generationCandidateSchema.parse(value),
     }
     const binding = { projectId: 'project', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }
-    const planning = vi.fn(async ({ params }: { params: Record<string, unknown> }) =>
-      draftShotFromPlan((params.shots as unknown[])[0], 0, parsers))
+    let refusedOnTheLane: unknown
+    const planning = vi.fn(async ({ params }: { params: Record<string, unknown> }) => {
+      try { return draftShotFromPlan((params.shots as unknown[])[0], 0, parsers) }
+      catch (error) { refusedOnTheLane = error; throw error }
+    })
     const adapter = createPiGenerationTransportAdapter(binding, {
       planning, leaseFor: () => ({ ...binding } as ProjectLeaseV2),
     })
@@ -59,10 +62,17 @@ describe('MCP generation draft schema parity', () => {
         args: { operation: 'create', shots: [shot] } }, new AbortController().signal)
       const external = tool.build({ leaseHandle: 'lease', projectId: binding.projectId, shots: [shot] })
       expect(planning).toHaveBeenCalledWith(expect.objectContaining({ capability: 'create', params: expect.objectContaining({ shots: external.shots }) }))
-      // 两个入口调用同一解析器；运输边界只发布安全码，不泄露内部异常文本。
-      expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed' })
-      expect(() => draftShotFromPlan((external.shots as unknown[])[0], 0, parsers)).toThrow(/没有配置可用的图片模型/)
-      expect(laneResult).toMatchObject({ message: 'generation_execution_failed' })
+      // Parity 不是「两边各自失败」——那两条断言互不相干，删掉任意一条另一条照样绿。守得住的
+      // 不变量是**同一份入参在同一个 owner 上被同一个理由拒掉**：外部入口直接调用抛出来的那句话，
+      // 必须逐字等于 lane 这条路收敛成码之前拿到的那一句。
+      let refusedExternally: unknown
+      try { draftShotFromPlan((external.shots as unknown[])[0], 0, parsers) } catch (error) { refusedExternally = error }
+      expect(refusedExternally).toBeInstanceOf(Error)
+      expect((refusedExternally as Error).message).toMatch(/没有配置可用的图片模型/)
+      expect((refusedOnTheLane as Error).message).toBe((refusedExternally as Error).message)
+      // 收敛的那一半同样要钉：这一句是宿主内部异常文本，**不是**我们 schema 的字段级理由，
+      // 所以运输边界只发布安全码，一个字都不带出去。
+      expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed', message: 'generation_execution_failed' })
     } finally { adapter.dispose() }
   })
 
