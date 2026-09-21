@@ -735,7 +735,7 @@ try {
     (point) => {
       const hit = document.elementFromPoint(point.x, point.y)
       return {
-        magnetic: Boolean(hit?.closest('.generation-canvas-react-flow__handle, .generation-canvas-v2-node__magnetic-handle, .generation-canvas-v2-node__handle--output')),
+        magnetic: Boolean(hit?.closest('.generation-canvas-react-flow__handle, .generation-canvas-v2-node__magnetic-handle')),
         label: hit?.getAttribute('aria-label') || hit?.className?.toString().slice(0, 60) || hit?.tagName,
       }
     },

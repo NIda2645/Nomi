@@ -298,26 +298,6 @@
   color: var(--nomi-paper);
 }
 
-.generation-canvas-v2-node__handle {
-  pointer-events: auto;
-}
-
-.generation-canvas-v2-node__handle-dot {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--workbench-surface-solid);
-  border-radius: 999px;
-  background: var(--workbench-muted-soft);
-  box-shadow: 0 4px 12px rgba(18, 24, 38, 0.14);
-  transition: transform 150ms ease, background 150ms ease, opacity 150ms ease;
-}
-
-.generation-canvas-v2-node__handle:hover .generation-canvas-v2-node__handle-dot,
-.generation-canvas-v2-node__handle[data-active='true'] .generation-canvas-v2-node__handle-dot {
-  background: var(--workbench-accent);
-  transform: scale(1.08);
-}
-
 .generation-canvas-v2-node__magnetic-handle-icon {
   --connection-handle-reveal-x: 0px;
   opacity: 0;

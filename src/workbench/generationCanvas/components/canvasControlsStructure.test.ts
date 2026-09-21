@@ -70,14 +70,15 @@ describe('generation canvas control structure', () => {
     expect(dragResize).toContain('return { flowManagedDrag, handlePointerDown')
     expect(baseNode).toContain("flowManagedLayout ? 'relative' : 'absolute'")
     expect(baseNode).toContain('transform: flowManagedLayout ? undefined : `translate(')
-    expect(baseNode).toContain("!flowManagedLayout && !readOnly && node.kind !== 'panorama'")
     expect(baseNode).toContain('selected && !readOnly && !flowManagedLayout')
-    expect(flowStyles).toContain(
-      '.generation-canvas-react-flow__node-shell .generation-canvas-v2-node__magnetic-handle',
-    )
-    expect(flowStyles).not.toMatch(
-      /\.generation-canvas-react-flow \.generation-canvas-v2-node__magnetic-handle[,{]/,
-    )
+    // 连线把手只有一份：React Flow 节点壳里的 GenerationFlowConnectionHandle（2026-09-21 删掉了
+    // 节点卡内那几份靠 CSS display:none 挡住的旧磁吸把手——P1，不留两套）。
+    for (const file of ['../nodes/BaseGenerationNode.tsx', '../nodes/ClipNode.tsx', '../nodes/director/DirectorNode.tsx']) {
+      expect(source(file)).not.toContain('MagneticConnectionHandle')
+      expect(source(file)).not.toContain('generation-canvas-v2-node__handle')
+    }
+    expect(flowStyles).not.toContain('.generation-canvas-v2-node__magnetic-handle')
+    expect(flowStyles).not.toContain('.generation-canvas-v2-node__handle,')
   })
 
   it('routes every duplicated variant through the shared focus recovery contract', () => {
@@ -362,13 +363,19 @@ describe('generation canvas control structure', () => {
     )
   })
 
-  it('keeps help actions and keycaps legible in the two-column panel', () => {
+  it('keeps the help panel above every canvas chrome layer and its rows overlap-free in any locale', () => {
     const helpPopover = source('./CanvasControlsHelpPopover.tsx')
 
-    // 布局断言随 2026-08-08 溢出修复更新：w-96 → w-[30rem]（长 kbd 如「Delete / Backspace」
-    // 在 174px 列宽下必溢出右缘）、right-0 → left-1/2 -translate-x-1/2（居中防左右遮挡）。
-    expect(helpPopover).toContain("'absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 z-[12] w-[30rem] p-3'")
-    expect(helpPopover).toContain('text-caption whitespace-nowrap text-nomi-ink-60')
+    // 层级：走 design 层的 AnchoredPopover（Portal + overlayLayers.popover），不在导航竖列里原地 absolute——
+    // 原地写法被困在竖列 z-8 的层叠上下文里，Agent 收起坞 / 批量生成条一出现就把它盖住半截（2026-09-21 实拍）。
+    expect(helpPopover).toContain('<AnchoredPopover anchorRef={anchorRef}')
+    expect(helpPopover).not.toMatch(/absolute bottom-\[calc\(100%/)
+    expect(helpPopover).not.toMatch(/z-\[\d+\]/)
+    // 行布局：说明列可以折行（minmax(0,1fr) + min-w-0），键位列不折行。两边都 nowrap 时英文长说明
+    // 会压到键位上（2026-09-21 EN「Box select」行实拍；2026-08-08 那次只加宽了面板，治的是同一个症状）。
+    expect(helpPopover).toContain('grid-cols-[minmax(0,1fr)_auto]')
+    expect(helpPopover).toContain('min-w-0 text-caption text-nomi-ink-60')
+    expect(helpPopover).not.toContain('text-caption whitespace-nowrap text-nomi-ink-60')
     expect(helpPopover).toContain('text-caption font-medium leading-none whitespace-nowrap text-nomi-ink')
   })
 

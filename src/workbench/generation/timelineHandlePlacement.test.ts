@@ -43,4 +43,18 @@ describe('resolveTimelineHandleLeft', () => {
     expect(resolveTimelineHandleLeft(0, [], handle)).toBeGreaterThanOrEqual(0)
     expect(resolveTimelineHandleLeft(1000, [], 0)).toBeGreaterThanOrEqual(0)
   })
+
+  it('只避开同一水平带的停靠区：浮在底排上方、横跨全宽的批量条不算障碍（2026-09-21 1280 宽实拍）', () => {
+    // 画布 800 宽：左下工具簇 16–370 与胶囊同排；批量条 16–780 浮在上一排。
+    const band = { top: 880, bottom: 916 }
+    const toolCluster = { left: 16, right: 370, top: 700, bottom: 916 }
+    const batchDock = { left: 16, right: 780, top: 828, bottom: 862 }
+    const left = resolveTimelineHandleLeft(800, [toolCluster, batchDock], handle, 12, band)
+    expect(left).toBeGreaterThanOrEqual(370 + 12)
+    expect(left + handle).toBeLessThanOrEqual(800)
+    // 阳性对照：不给带（旧的一维规则）时批量条吃掉全部间隙，胶囊退回居中、压在工具簇上。
+    const legacy = resolveTimelineHandleLeft(800, [toolCluster, batchDock], handle, 12)
+    expect(legacy).toBeLessThan(370)
+  })
 })
+

@@ -1044,6 +1044,7 @@ showUndoToast({ message, onUndo, isUndoable, watchUndoable })
 | 主角形象确认（锚定妆照检查点·免费质量门）| `IconUser` | `SpendConfirmDialog` 的 `kind: 'anchorCheckpoint'` 头部（§3.5，与 cast 分类同图标）|
 | 正在放量（广告花费档高，仅 TikTok 广告库有此数据）| `IconTrendingUp` | `FindReferencePanel` 参考卡的「放量」角标。**选趋势上升不选火苗**：隐喻要诚实——它表达的是「投放在加码」，不是「热门」|
 | 这一步**还没轮到**（多步进度里尚未开始的那几行）| `IconCircleDashed` | `AssistedIntegrationProgress` 五步进度的 `pending` 行（§Progress）。词典里没有现成的：`IconCircleFilled` 是「有内容/已占位」、`IconCircleCheck` 是已完成、`IconAlertCircle` 是出事了——虚线圈才说得出「位置留着、还没发生」，而实心或空心圆都会被读成一个已存在的状态 |
+| 中英互译提示词（选中段或整段，原地替换）| `IconLanguage` | 生成节点浮框 B 簇 `NodePromptTranslator`，在「优化」左边。词典里没有现成的：`IconWorld` 读成「联网/公开」、`IconAbc`/`IconLetterCase` 读成「大小写/字体」——「文/A」双字形是各家翻译按钮的通用图形，遮住文字也说得出是翻译 |
 
 ### 选图规则
 

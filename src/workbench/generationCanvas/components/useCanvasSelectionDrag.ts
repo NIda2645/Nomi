@@ -11,7 +11,11 @@ type DragRecord = {
   historyCaptured: boolean
 }
 
-type GroupDragRecord = DragRecord & { groupId: string }
+/**
+ * `duplicateOnMove`：按下时按着 Alt/⌥（LibTV「Option + 拖动」同款）。第一次真的移动时才复制——
+ * 只点一下不拖不会凭空多出一个框（tldraw Translating.startCloning / Excalidraw 同样在移动时才复制）。
+ */
+type GroupDragRecord = DragRecord & { groupId: string; duplicateOnMove: boolean }
 type Delta = { x: number; y: number }
 
 type CanvasSelectionDragOptions = {
@@ -144,6 +148,12 @@ export function useCanvasSelectionDrag({
       if (drag) {
         const delta = { x: (event.clientX - drag.clientX) / scale, y: (event.clientY - drag.clientY) / scale }
         if (delta.x === 0 && delta.y === 0) return
+        if (drag.duplicateOnMove) {
+          drag.duplicateOnMove = false
+          // 复制本身就是这次手势的撤销点（duplicateGroupForDrag 打了 barrier），后面的搬动不再另打。
+          const copyId = useGenerationCanvasStore.getState().duplicateGroupForDrag(drag.groupId)
+          if (copyId) Object.assign(drag, { groupId: copyId, historyCaptured: true })
+        }
         if (!drag.historyCaptured) {
           captureHistory()
           drag.historyCaptured = true
@@ -228,7 +238,14 @@ export function useCanvasSelectionDrag({
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
     pendingGroupDeltaRef.current = null
-    draggingGroupRef.current = { groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
+    draggingGroupRef.current = {
+      groupId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      moved: false,
+      historyCaptured: false,
+      duplicateOnMove: event.altKey,
+    }
   }, [readOnly, selectNodes])
 
   const handleSelectionBoundsPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
