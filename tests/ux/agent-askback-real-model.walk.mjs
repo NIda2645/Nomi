@@ -1,0 +1,327 @@
+#!/usr/bin/env node
+// 「模型该不该先问一句」——**真模型、真应用、真素材**的整机走查（R13 第三档）。
+//
+// ── 它补的是哪一格 ──
+//
+// 2026-09-21 实测（`scratchpad/investigate-askback.md` §3.3）：16 句该反问的话，**反问卡触发 0/16**。
+// 那次是真机跑出来的，但剧本没进仓库，于是「模型现在会不会问」在每一次提示词/工具面改动之后
+// 都得靠人重跑一遍手工操作。这个文件把那次走查落成可重跑的脚本，**句子逐字照抄那 16 句**——
+// 换一批句子再报一个好看的数字是自欺。
+//
+// ── 四件真实（R13，缺一条这条测试不成立）──
+//
+//   ① 真实应用    真 Electron（`launchNomiApp`），渲染层 / IPC / AgentLane / pi SDK / 落盘全走生产路径；
+//   ② 真实页面输入 文稿敲进编辑器、指令打进 composer、模型从下拉里选、素材从素材库的文件选择器导入；
+//   ③ 真实工具轨迹 工具调用从磁盘上的 lane transcript 读（`.nomi/agent-sessions/*.jsonl`），
+//                 **不信 Agent 的自述**——它说「我问问你」和它真的调了 `ask_user` 是两件事；
+//   ④ 真实素材    A11 那句「用素材库那张图做参考」要求库里真有一张图，取自登记表的 4K HEVC 抽帧。
+//
+// ── 它量五个数（这五个就是 PR 正文要写的）──
+//
+//   该问时问了       shouldAsk=true 的轮次里，真的调了 ask_user 的比例（对照：修复前 0/10）
+//   不该问时没问     shouldAsk=false 的轮次里，**没有**调 ask_user 的比例（误问率的反面）
+//   选项质量         2–4 个、互不重复、至多一个 recommended、没有「其它/让我说说」这种假选项
+//   工具参数写对率   这一轮没有任何一次工具调用因为参数被拒
+//   答后回合成功率   答完那张卡之后，这一轮有没有真的继续下去（而不是原地停住）
+//
+// ── 跑法（要花钱：真模型，18 轮对话，DeepSeek 便宜档约 ¥0.x）──
+//
+//   pnpm run build
+//   export NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/"
+//   node tests/ux/agent-askback-real-model.walk.mjs [--rounds 18] [--model "DeepSeek V3.2"] [--label run1]
+import { stationTimeout } from './_station-budget.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { parseArgs } from 'node:util'
+import ffmpeg from '@ffmpeg-installer/ffmpeg'
+
+import { closeNomiApp, launchNomiApp } from './_launchApp.mjs'
+import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
+import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
+import {
+  CANVAS_PANEL, COMPOSER, COMPOSER_INPUT, COMPOSER_SEND, CREATION_PANEL, DOCUMENT, HISTORY_BUTTON,
+  MODEL_POPOVER, COMPOSER_MODEL, THREAD_MENU, escapeForRegExp, expandResidentPanel,
+} from './agent-runtime-walk-support.mjs'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(here, '../..')
+const { values } = parseArgs({ options: {
+  rounds: { type: 'string' }, model: { type: 'string' }, 'output-dir': { type: 'string' }, label: { type: 'string' },
+} })
+
+const CASES = JSON.parse(fs.readFileSync(path.join(here, 'agent-askback-real-model.cases.json'), 'utf8'))
+const ROUNDS = Number(values.rounds || CASES.cases.length)
+const MODEL_LABEL = values.model || 'DeepSeek V3.2'
+const LABEL = values.label || 'run'
+const outputDir = path.resolve(repoRoot, values['output-dir'] || `tests/ux/shots/askback-real-model/${LABEL}`)
+fs.mkdirSync(outputDir, { recursive: true })
+
+const ASK_TOOL = 'ask_user'
+/** 「参数被拒」的机器判据。与 agent-storyboard-real-model.walk.mjs 逐字相同——同一个指标只能有一把尺子。 */
+const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
+/** 假选项：卡内本来就永远能自己打字，再列一个「其它」就是在教用户多点一下。 */
+const FAKE_OPTION = /^(其它|其他|别的|让我说说|自己说|other|something else|let me explain)$/i
+
+// ── ④ 真实素材 ────────────────────────────────────────────────────────────
+const { assets } = requireRealMediaAssets(['video-4k-hevc-10bit', 'image-4k-png'])
+const sourceVideo = assets.get('video-4k-hevc-10bit').file
+const derivedSpec = assets.get('image-4k-png').spec
+const mediaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'askback-real-media-'))
+const referenceImage = path.join(mediaTmp, 'reference-4k.png')
+execFileSync(ffmpeg.path, ['-y', '-ss', '00:00:05', '-i', sourceVideo, '-frames:v', '1', referenceImage], { stdio: 'pipe' })
+const referenceBytes = fs.statSync(referenceImage).size
+if (referenceBytes < derivedSpec.minBytes) {
+  throw new Error(`抽出来的参考帧只有 ${referenceBytes} 字节，登记表 image-4k-png 要求 ≥${derivedSpec.minBytes}`)
+}
+
+// ── ① 真实应用：隔离 profile + 本机真实 catalog（真模型、真 key；项目与浏览器状态全隔离）。
+const { prepareIsolation } = await import(path.join(repoRoot, 'evals/lib/isoApp.mjs'))
+const isoDir = path.join(os.tmpdir(), `askback-real-model-${Date.now()}`)
+const iso = prepareIsolation(isoDir)
+
+const report = {
+  label: LABEL, model: MODEL_LABEL, rounds: ROUNDS,
+  sourceSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(),
+  baseline: '2026-09-21 修复前同样这 16 句：反问卡触发 0/16（scratchpad/investigate-askback.md §3.3）',
+  startedAt: new Date().toISOString(), cases: [],
+}
+
+/** 这一轮的工具轨迹：从磁盘上的 lane transcript 读，不信面板文字、不信 Agent 自述。 */
+function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
+  const calls = []
+  const results = []
+  for (const session of readLaneTranscripts(projectDir)) {
+    for (const message of laneMessages(session)) {
+      if (message.role === 'assistant' && Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (part?.type !== 'toolCall' || seenToolCallIds.has(part.id)) continue
+          seenToolCallIds.add(part.id)
+          calls.push({ id: part.id, name: part.name, args: part.arguments })
+        }
+      } else if (message.role === 'toolResult') {
+        if (seenResultIds.has(message.toolCallId)) continue
+        seenResultIds.add(message.toolCallId)
+        const text = (Array.isArray(message.content) ? message.content : [])
+          .filter((part) => part?.type === 'text').map((part) => part.text).join('\n')
+        results.push({ id: message.toolCallId, name: message.toolName, isError: message.isError === true, text })
+      }
+    }
+  }
+  return { calls, results }
+}
+
+/**
+ * 选项质量：**机器判得了的那几条**。
+ * 「互斥」判不了全部（语义），但判得了「字面重复」和「假选项」，而那两条正是真实模型最常犯的。
+ */
+function judgeOptions(args) {
+  const options = Array.isArray(args?.options) ? args.options : []
+  const labels = options.map((option) => String(option?.label ?? option ?? '').trim()).filter(Boolean)
+  const recommended = options.filter((option) => option?.recommended === true).length
+  return {
+    count: labels.length,
+    inRange: labels.length === 0 || (labels.length >= 2 && labels.length <= 4),
+    distinct: new Set(labels).size === labels.length,
+    withDescription: options.filter((option) => String(option?.description ?? '').trim()).length,
+    recommended,
+    atMostOneRecommended: recommended <= 1,
+    fakeOptions: labels.filter((label) => FAKE_OPTION.test(label)),
+  }
+}
+
+let app, win, failure
+try {
+  ;({ app, win } = await launchNomiApp({ name: 'askback-real-model', userDataDir: iso.chromiumDir,
+    projectsDir: iso.projectsDir, settingsDir: iso.settingsDir, capabilityDir: iso.capabilityDir }))
+  const { dismissSplashIfPresent, createBlankProject } = await import(path.join(repoRoot, 'evals/lib/isoApp.mjs'))
+  await dismissSplashIfPresent(win)
+  const projectDir = await createBlankProject(win, iso.projectsDir)
+  report.projectDir = projectDir
+
+  const consent = win.getByRole('button', { name: '不分享', exact: true }).first()
+  if (await consent.count()) { await consent.click({ timeout: stationTimeout({ operations: 2 }) }); await win.waitForTimeout(600) }
+
+  // ② 真实页面输入 · 导入真实素材（A11 那句话要求库里真有一张图）
+  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
+  await win.waitForTimeout(2000)
+  await win.getByRole('button', { name: '素材库', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
+  const uploadInput = win.locator('section[aria-label="素材库"] input[type="file"]').first()
+  await uploadInput.waitFor({ state: 'attached', timeout: stationTimeout({ operations: 2 }) })
+  await uploadInput.setInputFiles(referenceImage)
+  const importDeadline = Date.now() + stationTimeout({ operations: 8 })
+  let importedAssets = 0
+  while (Date.now() < importDeadline) {
+    const dir = path.join(projectDir, 'assets')
+    importedAssets = fs.existsSync(dir) ? fs.readdirSync(dir).length : 0
+    if (importedAssets > 0) break
+    await win.waitForTimeout(1000)
+  }
+  report.importedAssets = importedAssets
+  if (importedAssets === 0) throw new Error('真实素材导入没落盘——A11 那一轮就不成立了')
+  const closeLibrary = win.locator('section[aria-label="素材库"] button[aria-label*="关闭"]').first()
+  if (await closeLibrary.count()) await closeLibrary.click({ timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
+
+  // ② 真实页面输入 · 文稿敲进编辑器
+  await win.getByRole('button', { name: '创作', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
+  await win.waitForTimeout(1200)
+  const doc = win.locator(DOCUMENT)
+  await doc.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
+  await doc.fill(CASES.script)
+
+  // ② 真实页面输入 · 模型从下拉里选（两个面各选一次：面板是分面的）
+  async function pickModelOn(panel) {
+    await expandResidentPanel(win)
+    await win.locator(`${panel} ${COMPOSER_MODEL}`).click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.locator(`${panel} ${MODEL_POPOVER} [data-v4-model-row]`).first().locator('button').first()
+      .click({ timeout: stationTimeout({ operations: 2 }) })
+    const option = win.locator('[data-nomi-select-dropdown] [data-nomi-select-option-label]')
+      .filter({ hasText: new RegExp(escapeForRegExp(MODEL_LABEL)) }).first()
+    await option.click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.waitForTimeout(800)
+  }
+  await pickModelOn(CREATION_PANEL)
+  await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
+  await win.waitForTimeout(1500)
+  await pickModelOn(CANVAS_PANEL)
+
+  /** 面板被模态挡住时解除；解除不了就明说（别让 30s 超时冒充产品结论）。 */
+  async function ensureComposerUsable(panel) {
+    const input = win.locator(`${panel} ${COMPOSER_INPUT}`)
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const usable = await input.click({ trial: true, timeout: 3_000 }).then(() => true).catch(() => false)
+      if (usable) return attempt
+      await win.keyboard.press('Escape')
+      await win.waitForTimeout(800)
+    }
+    return -1
+  }
+
+  const seenToolCallIds = new Set()
+  const seenResultIds = new Set()
+  let answeredOnce = false
+  for (const item of CASES.cases.slice(0, ROUNDS)) {
+    const panel = item.surface === 'creation' ? CREATION_PANEL : CANVAS_PANEL
+    const row = { id: item.id, kind: item.kind, shouldAsk: item.shouldAsk, surface: item.surface, text: item.text }
+    const started = Date.now()
+    try {
+      await win.getByRole('button', { name: item.surface === 'creation' ? '创作' : '生成', exact: true })
+        .first().click({ timeout: stationTimeout({ operations: 2 }) })
+      await win.waitForTimeout(1200)
+      row.unblockedByEscape = await ensureComposerUsable(panel)
+      if (row.unblockedByEscape === -1) throw new Error('这一轮开始前 composer 就不可用——仪器故障，不是产品结论')
+      // 每一轮都是**新对话**：量的是「这句话单独说出来时它会怎么做」。
+      await win.locator(`${panel} ${HISTORY_BUTTON}`).click({ timeout: stationTimeout({ operations: 2 }) })
+      await win.locator(THREAD_MENU).getByRole('button', { name: '新对话', exact: true })
+        .click({ timeout: stationTimeout({ operations: 2 }) })
+      await win.waitForTimeout(500)
+      const input = win.locator(`${panel} ${COMPOSER_INPUT}`)
+      await input.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
+      await input.fill(item.text)
+      await win.locator(`${panel} ${COMPOSER_SEND}`).click({ timeout: stationTimeout({ operations: 2 }) })
+      const running = win.locator(`${panel} ${COMPOSER}[data-mode="running"]`)
+      await running.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+
+      // 反问卡出来的时候回合是**停着**的（审批闸在等人），`running` 不会自己消失。
+      // 所以这里等的是「要么跑完，要么出现一张提问卡」——只等 running 消失会把每一次成功的
+      // 提问都记成一次超时，那正好把这次要量的东西量反。
+      const questionCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="question"]`)
+      const deadline = Date.now() + stationTimeout({ turns: 2 })
+      let sawCard = false
+      while (Date.now() < deadline) {
+        if (await questionCard.count() > 0) { sawCard = true; break }
+        if (!await running.isVisible().catch(() => false)) break
+        await win.waitForTimeout(1000)
+      }
+      row.questionCardVisible = sawCard
+      if (sawCard) {
+        await win.screenshot({ path: path.join(outputDir, `${item.id}-question-card.png`) }).catch(() => {})
+        // 第一张卡**真的答一次**（点第一颗 chip），量「答完这一轮还走不走得下去」。
+        // 其余的卡按停收尾，省额度：闭环证一次就够，18 轮各答一次只是把同一件事买 18 遍。
+        if (!answeredOnce) {
+          answeredOnce = true
+          const chip = questionCard.locator('[data-v4-control="question-option"]').first()
+          if (await chip.count() > 0) {
+            await chip.click({ timeout: stationTimeout({ operations: 2 }) })
+            row.answeredByChip = true
+            await running.waitFor({ state: 'hidden', timeout: stationTimeout({ turns: 2 }) }).catch(() => {})
+            // 判据写成**正向的**：「composer 回到 idle」而不是「running 不在了」。
+            // 后者是一句「不存在」断言，它和「探针根本没生效」长得一样
+            // （`check:walkthroughs` 拦的正是这个），而这里真正要证的本来就是
+            // 「这一轮走完了、输入框还回来了」——那是一个看得见的状态。
+            row.turnContinuedAfterAnswer = await win.locator(`${panel} ${COMPOSER}[data-mode="idle"]`)
+              .isVisible().catch(() => false)
+            await win.screenshot({ path: path.join(outputDir, `${item.id}-after-answer.png`) }).catch(() => {})
+          }
+        } else {
+          await win.keyboard.press('Escape').catch(() => {})
+          await win.waitForTimeout(500)
+        }
+      }
+      await running.waitFor({ state: 'hidden', timeout: stationTimeout({ turns: 1 }) }).catch(() => {})
+      await win.waitForTimeout(1200)
+    } catch (roundError) {
+      row.roundError = roundError.message
+    }
+    const { calls, results } = readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds)
+    row.ms = Date.now() - started
+    row.toolCalls = calls.map((call) => call.name)
+    row.firstTool = calls[0]?.name ?? null
+    const askCalls = calls.filter((call) => call.name === ASK_TOOL)
+    row.askedUser = askCalls.length > 0
+    row.askCount = askCalls.length
+    row.askArgs = askCalls.map((call) => call.args)
+    row.optionQuality = askCalls.map((call) => judgeOptions(call.args))
+    row.correct = row.askedUser === item.shouldAsk
+    row.rejectedArgs = results.filter((result) => ARG_REJECTED.test(result.text)).map((result) => result.name)
+    row.argsOkFirstTry = calls.length > 0 && row.rejectedArgs.length === 0
+    report.cases.push(row)
+    console.log(`${item.id} shouldAsk=${item.shouldAsk} asked=${row.askedUser} card=${row.questionCardVisible === true} tools=[${row.toolCalls.join(',')}] ${row.ms}ms`)
+    fs.writeFileSync(path.join(outputDir, 'report.json'), JSON.stringify(report, null, 2))
+  }
+
+  const count = (predicate) => report.cases.filter(predicate).length
+  const should = report.cases.filter((c) => c.shouldAsk)
+  const shouldNot = report.cases.filter((c) => !c.shouldAsk)
+  const allQualities = report.cases.flatMap((c) => c.optionQuality ?? [])
+  report.summary = {
+    rounds: report.cases.length,
+    askedWhenShould: `${should.filter((c) => c.askedUser).length}/${should.length}`,
+    didNotAskWhenShouldNot: `${shouldNot.filter((c) => !c.askedUser).length}/${shouldNot.length}`,
+    questionCardRendered: `${count((c) => c.questionCardVisible === true)}/${report.cases.length}`,
+    optionSets: allQualities.length,
+    optionsInRange: `${allQualities.filter((q) => q.inRange).length}/${allQualities.length}`,
+    optionsDistinct: `${allQualities.filter((q) => q.distinct).length}/${allQualities.length}`,
+    atMostOneRecommended: `${allQualities.filter((q) => q.atMostOneRecommended).length}/${allQualities.length}`,
+    fakeOptionSets: allQualities.filter((q) => q.fakeOptions.length > 0).length,
+    argsOkFirstTry: `${count((c) => c.argsOkFirstTry)}/${report.cases.length}`,
+    askToolArgsRejected: count((c) => (c.rejectedArgs ?? []).includes(ASK_TOOL)),
+    answeredTurnContinued: report.cases.filter((c) => c.answeredByChip).map((c) => `${c.id}:${c.turnContinuedAfterAnswer}`),
+    roundErrors: count((c) => c.roundError),
+  }
+  console.log('SUMMARY', JSON.stringify(report.summary))
+} catch (error) {
+  failure = error
+  process.exitCode = 1
+  report.error = error instanceof Error ? error.stack : String(error)
+  if (win) await win.screenshot({ path: path.join(outputDir, 'failure.png') }).catch(() => {})
+} finally {
+  report.endedAt = new Date().toISOString()
+  fs.writeFileSync(path.join(outputDir, 'report.json'), JSON.stringify(report, null, 2))
+  console.log(`report → ${pathToFileURL(path.join(outputDir, 'report.json')).href}`)
+  if (app) await closeNomiApp(app).catch(() => {})
+  if (report.projectDir && fs.existsSync(report.projectDir)) {
+    const evidence = path.join(outputDir, 'evidence')
+    fs.rmSync(evidence, { recursive: true, force: true })
+    fs.mkdirSync(evidence, { recursive: true })
+    for (const relative of ['.nomi/agent-sessions', '.nomi/project.json']) {
+      const source = path.join(report.projectDir, relative)
+      if (fs.existsSync(source)) fs.cpSync(source, path.join(evidence, path.basename(relative)), { recursive: true })
+    }
+  }
+  fs.rmSync(mediaTmp, { recursive: true, force: true })
+  fs.rmSync(isoDir, { recursive: true, force: true })
+  if (failure) console.error(failure)
+}
