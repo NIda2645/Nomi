@@ -3,6 +3,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { CANVAS_DRAGGING_ATTRIBUTE } from '../components/canvasDraggingFlag'
 import { resolveAnchoredPlacement } from './anchoredPlacement'
+import { collectBottomDockElements, resolveBottomDockScope } from '../../generation/workspaceBottomDocks'
 
 export const NODE_FLOATING_TOOLBAR_SELECTOR = '[data-node-floating-toolbar="true"]'
 /** 画布左缘常驻工具条（`CanvasToolbar`）自己挂的标记——同 `useCanvasBottomDockRects.ts` 底部停靠的机制。 */
@@ -31,6 +32,10 @@ export function toolbarClearanceInCanvasUnits(screenHeight: number, zoom: number
  * 「舞台矩形」本身不等于「可用区」：画布左缘常驻着 `CanvasToolbar`，是固定停靠的画布
  * chrome，不随视口滚动。`recompute` 里量它的真实矩形来收窄 `stage.left`（2026-09-10
  * 反馈 #10 复核：截图里浮框左缘、「生成方式」标签被它压住，根因是可用区算漏了这一块）。
+ * 底部同理：缩放条、时间轴胶囊、Nomi 收起坞等自己声明 `data-canvas-bottom-dock`，名单与让位
+ * 判据的 owner 在 `generation/workspaceBottomDocks.ts`（画布多选浮条读同一份）。2026-09-21
+ * 用户截图：浮框底栏被缩放条与时间轴胶囊压住——那次只补了左缘，底部这一排漏了。
+ * 它们同样只随外壳布局变，不随别的节点动，所以不破坏「不漂移」。
  */
 export function useComposerViewportPlacement(input: {
   node: GenerationCanvasNode
@@ -51,6 +56,8 @@ export function useComposerViewportPlacement(input: {
     const nodeEl = anchor?.parentElement
     if (!anchor || !stage || !nodeEl) return
 
+    // 底部停靠区的元素缓存：每次 recompute 重新收集（挂上/摘下），每帧只读它们的矩形。
+    let dockElements: Element[] = []
     const recompute = () => {
       const stageRect = stage.getBoundingClientRect()
       const nodeRect = nodeEl.getBoundingClientRect()
@@ -86,8 +93,11 @@ export function useComposerViewportPlacement(input: {
       const leftDockRect = stage.querySelector<HTMLElement>(CANVAS_LEFT_DOCK_SELECTOR)?.getBoundingClientRect()
       const leftDockUsable = leftDockRect && leftDockRect.width > 0 && leftDockRect.bottom > stageRect.top && leftDockRect.top < stageRect.bottom
       const stageLeft = stageRect.left + (leftDockUsable ? Math.max(VIEWPORT_MARGIN, leftDockRect.right - stageRect.left + LEFT_DOCK_GAP) : VIEWPORT_MARGIN)
+      dockElements = collectBottomDockElements(stage)
       const result = resolveAnchoredPlacement({
         stage: { left: stageLeft, right: stageRect.right - VIEWPORT_MARGIN, top: stageRect.top + VIEWPORT_MARGIN, bottom: stageRect.bottom - VIEWPORT_MARGIN },
+        bottomDocks: dockElements.map((element) => element.getBoundingClientRect()),
+        dockClearance: VIEWPORT_MARGIN,
         anchor: nodeRect,
         width: Math.min(COMPOSER_MAX_WIDTH, naturalSize.width),
         height: Math.min(preferredMaxHeight, naturalSize.height),
@@ -112,17 +122,26 @@ export function useComposerViewportPlacement(input: {
     // 代价被两件事夹住：每帧只读两个 rect，值没变一个字都不写；画布拖动期间直接跳过——
     // 那时浮框本来就 invisible（见 NodeGenerationComposer 的 data-dragging 注释），
     // 而拖动是全仓最吃帧的动作，不该为一个看不见的浮框付 layout 读。
+    // 底部停靠区也是入参：胶囊会因为 Nomi 坞收起而横移、缩放条会因为小地图开合而变高——
+    // 位置变化 RO 看不见，所以把它们的矩形并进同一个每帧签名（只读缓存里那几块，不每帧查询 DOM）。
     const signatureOf = (rect: DOMRect) => `${rect.left},${rect.top},${rect.right},${rect.bottom}`
-    let lastSignature = `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}`
+    const currentSignature = () => [nodeEl, stage, ...dockElements].map((element) => signatureOf(element.getBoundingClientRect())).join('|')
+    let lastSignature = currentSignature()
     let frame = window.requestAnimationFrame(function watch() {
       frame = window.requestAnimationFrame(watch)
       if (stage.getAttribute(CANVAS_DRAGGING_ATTRIBUTE) === 'true') return
-      const signature = `${signatureOf(nodeEl.getBoundingClientRect())}|${signatureOf(stage.getBoundingClientRect())}`
+      const signature = currentSignature()
       if (signature === lastSignature) return
       lastSignature = signature
       recompute()
+      lastSignature = currentSignature()
     })
-    return () => { window.cancelAnimationFrame(frame); resizeObserver.disconnect() }
+    // 停靠区挂上/摘下（批量条出现、胶囊换位置）：同 useCanvasBottomDockRects 的订阅面，只看直接子节点。
+    const scope = resolveBottomDockScope(stage)
+    const mutationObserver = new MutationObserver(recompute)
+    mutationObserver.observe(scope, { childList: true })
+    if (scope !== stage) mutationObserver.observe(stage, { childList: true })
+    return () => { window.cancelAnimationFrame(frame); resizeObserver.disconnect(); mutationObserver.disconnect() }
   }, [canvasOffset, canvasZoom, gap, minUsableHeight, node.id, node.position?.x, node.position?.y, node.result?.url, preferredMaxHeight, visualSize.height, visualSize.width])
 
   return { anchorRef, canvasZoom, ...placement }

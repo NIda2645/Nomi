@@ -103,3 +103,45 @@ describe('resolveAnchoredPlacement', () => {
     expect(Object.keys(base)).toEqual(['stage', 'anchor', 'width', 'height', 'gap', 'aboveClearance'])
   })
 })
+
+/**
+ * 2026-09-21 用户截图：图片节点浮框底栏被画布左下的缩放条与底部「时间轴」胶囊压住。
+ * 那两块是固定停靠的画布 chrome（DOM 上自带 `data-canvas-bottom-dock`），不随视口滚动、
+ * 也不随别的节点移动——它们是「可用视口」的一部分边界，不是要躲的邻居。
+ */
+describe('resolveAnchoredPlacement × bottom docks', () => {
+  // 1280×933 窗口里量到的真实几何（stage 已扣 12px 边距）。
+  const shotStage: AnchoredRect = { left: 134, top: 68, right: 848, bottom: 921 }
+  const shotNode: AnchoredRect = { left: 363, top: 301, right: 703, bottom: 641 }
+  const zoomBar: AnchoredRect = { left: 76, top: 880, right: 434, bottom: 920 }
+  const timelinePill: AnchoredRect = { left: 440, top: 887, right: 622, bottom: 918 }
+  const shot = { stage: shotStage, anchor: shotNode, width: 574, height: 265, gap: 14, aboveClearance: 60 }
+  const intersects = (placement: { left: number; top: number; width: number; height: number }, dock: AnchoredRect) =>
+    placement.left < dock.right && placement.left + placement.width > dock.left
+    && placement.top < dock.bottom && placement.top + placement.height > dock.top
+
+  it('reported case: the card never lands on the zoom bar or the timeline pill', () => {
+    const placement = resolveAnchoredPlacement({ ...shot, bottomDocks: [zoomBar, timelinePill], dockClearance: 12 })
+    expect(intersects(placement, zoomBar)).toBe(false)
+    expect(intersects(placement, timelinePill)).toBe(false)
+    expect(contains(placement, shotStage)).toBe(true)
+  })
+
+  it('a dock that does not share the card\'s horizontal span does not move it', () => {
+    const farRightDock: AnchoredRect = { left: 1000, top: 880, right: 1200, bottom: 920 }
+    expect(resolveAnchoredPlacement({ ...shot, bottomDocks: [farRightDock], dockClearance: 12 }))
+      .toEqual(resolveAnchoredPlacement(shot))
+  })
+
+  it('class: for any anchor row and any dock band, the card is outside every dock and inside the stage', () => {
+    const docks = [zoomBar, timelinePill]
+    for (let top = shotStage.top; top <= shotStage.bottom - 40; top += 37) {
+      for (let left = shotStage.left - 80; left <= shotStage.right; left += 61) {
+        const anchor: AnchoredRect = { left, top, right: left + 200, bottom: top + 200 }
+        const placement = resolveAnchoredPlacement({ ...shot, anchor, bottomDocks: docks, dockClearance: 12 })
+        for (const dock of docks) expect(intersects(placement, dock), JSON.stringify({ anchor, placement })).toBe(false)
+        expect(contains(placement, shotStage)).toBe(true)
+      }
+    }
+  })
+})

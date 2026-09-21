@@ -67,6 +67,8 @@
 | T-CV-13 | Group / Frame 命名双轨：UI 叫 Frame，数据类型仍叫 `NodeGroup` | todo | [设计实扫](designs-not-yet-built.md) | 卫生项 |
 | T-CV-14 | 画布「按屏幕尺寸判 LOD（S5）」重做：#787 的这半在列车里被撤出（`3a72f0ce7` 由 `fae43a80e` + `29e232a31` 撤回），main 仍是「节点数 > 80 且 zoom < 0.55」的老判据 | todo | #787 · #802 正文「进过批次又撤出去的」 | 2026-09-17 查清根因是**两条**：① 契约漏了一格——`data-status` 只长在全套 chrome 上，卡片掉档就没了（已在 `integration/release-20260917` 修：轻量档补齐身份三件套 + 测试钉住，走查的「等不到 success」自此不再是假红）；② 产品行为——那一刀规定「有结果媒体才准进轻量档」，于是卡片**生成完成那一刻外观掉档**，掉档时机是设计决策（R8 要样张拍板），这半仍未做 |
 | T-CV-15 | 独立镜头号重复，首帧/视频与 Agent 指代一致性 | done | 2026-09-20 用户会话，共号并区分角色已拍板 | [方案](../plan/2026-09-20-shot-number-identity.md)：已合入 #825（b5cf48bc0）；模板/粘贴/恢复和 UI/Agent 复用共享 owner，旧日志回放已审计修复 |
+| T-CV-17 | 画布「可用视口」四边 chrome 统一登记：左缘工具条也进停靠名单，所有锚定浮层（浮框/结果堆叠/节点菜单）只读一份 `resolveUsableStage` | todo | [结构评审](../audit/2026-09-21-canvas-overlay-chrome-and-editor-echo-structure.md) | 09-21 底部 chrome 已收成单 owner（`workspaceBottomDocks.ts`），左缘仍是浮框里就地测量 |
+| T-CV-18 | 节点内受控输入门岗：`value={node.*}` 直绑 React Flow 投影的受控控件必须经本地草稿或 `controlledEditorSync` | todo | [结构评审](../audit/2026-09-21-canvas-overlay-chrome-and-editor-echo-structure.md) | 09-21 0ms 连打丢字的同族风险；本次实扫标题编辑走本地 draft 未中招 |
 
 ## D. 设计落地（界面大改）
 
