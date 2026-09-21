@@ -41,6 +41,7 @@ import { buildClipNodeOutputPatch } from './clipNodeOutput'
 import { formatClipNodeDuration, resolveClipNodeVisualMode } from './clipNodeVisual'
 import { buildClipNodeExportTasks, type ClipNodeExportScope } from './clipNodeExport'
 import { dispatchTimelineShortcut } from '../../timeline/timelineShortcuts'
+import { SHORTCUT_SURFACE_ATTRIBUTE } from '../../shortcutSurface'
 import { useTimelinePlaybackClock } from '../../timeline/useTimelinePlaybackClock'
 import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
 
@@ -439,7 +440,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
           case 'exit-split-mode':
           case 'remove-text-selection': break
         }
-      })
+      }, articleRef.current?.closest(`[${SHORTCUT_SURFACE_ATTRIBUTE}]`) ?? null)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)

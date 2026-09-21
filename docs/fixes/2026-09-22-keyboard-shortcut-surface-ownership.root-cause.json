@@ -1,0 +1,197 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-keyboard-shortcut-surface-ownership",
+  "problem_type": "Two on-screen surfaces claim the same global keyboard shortcut from window-level listeners, and no rule decides which one owns a key press",
+  "symptom": "The core smoke 'used project' fixture (1280x800 window, timeline expanded, Agent panel open) reproduces this on main accc93b82. The user selects a group frame on the generation canvas and presses Delete; the frame and its cards are removed. The user then presses Cmd+Z and nothing returns, because the canvas deletion is not undone. With the timeline collapsed, the same Cmd+Z restores everything. tests/ux/node-params-and-version-pill.walk.mjs F1/F2 under NOMI_CORE_SMOKE_FIXTURE=used fails with 'Cmd+Z 一次全部回来' red.",
+  "direct_cause": "TimelinePanel registers a window keydown listener whose resolveTimelineShortcut maps mod+z to the timeline undo unconditionally. It calls preventDefault and ignores only text inputs. The canvas handler (createCanvasKeydownHandler) also listens on window but returns early when event.defaultPrevented. When the timeline panel is mounted, its listener runs first and consumes Cmd+Z even though the user's last interaction was on the canvas. The panel is mounted when the user expands it on the generation page, or when a keep-alive preview TimelinePanel is still attached (hidden) after the user once visited the Preview page.",
+  "class_root": "Keyboard shortcut ownership between surfaces had no single rule. Each surface decided on its own whether a key belongs to it: the canvas checked only its own visibility, and the timeline checked only for text inputs. So whichever listener registered first won every shared key (Cmd+Z, Shift+Cmd+Z, Delete/Backspace, arrows), regardless of which surface the user was working in, and a hidden keep-alive surface could still win.",
+  "affected_population": [
+    "Every user who expands the timeline under the generation canvas and then edits the canvas: Cmd+Z / Shift+Cmd+Z go to the timeline history instead",
+    "Every user who has visited the Preview page once in the session: the keep-alive preview TimelinePanel stays mounted (hidden) and keeps claiming Cmd+Z / Delete / arrows even with the generation timeline collapsed",
+    "Users with both a canvas selection and a timeline selection: Delete could remove both"
+  ],
+  "scope_paths": [
+    "src/workbench/shortcutSurface.ts",
+    "src/workbench/timeline/timelineShortcuts.ts",
+    "src/workbench/timeline/TimelinePanel.tsx",
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+    "src/workbench/generationCanvas/nodes/ClipNode.tsx"
+  ],
+  "entry_points": [
+    "Canvas window keydown handler (createCanvasKeydownHandler) — Cmd+Z / Delete / arrows on the generation canvas",
+    "Generation-page TimelinePanel (compact) window keydown via dispatchTimelineShortcut",
+    "Preview-page TimelinePanel (full, keep-alive) window keydown via dispatchTimelineShortcut",
+    "ClipNode in-node clip timeline capture-phase keydown via dispatchTimelineShortcut"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The ownership rule concerns how Nomi's own surfaces share window-level keydown listeners; no third-party library decides which Nomi surface owns a shortcut. React Flow's own keyboard handling (deleteKeyCode etc.) is disabled in favour of createCanvasKeydownHandler, so its documentation cannot settle this invariant.",
+  "invariants": [
+    "A surface that is not shown (offsetParent === null, e.g. a hidden keep-alive workspace) never claims a keyboard shortcut",
+    "When two surfaces are shown, the surface that received the most recent pointerdown owns shortcuts; the other yields without preventDefault",
+    "A pointerdown outside every surface (Agent panel, app bar) does not change ownership"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "createCanvasKeydownHandler"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "shortcutSurfaceMayHandle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "installShortcutSurfaceTracker"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/timelineShortcuts.ts",
+      "symbol": "shortcutSurfaceMayHandle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelinePanel.tsx",
+      "symbol": "dispatchTimelineShortcut"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/TimelinePanel.tsx",
+      "symbol": "installShortcutSurfaceTracker"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "dispatchTimelineShortcut"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/shortcutSurface.ts",
+      "symbol": "lastPointerSurface"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "data-shortcut-surface"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/TimelinePanel.tsx",
+      "symbol": "data-shortcut-surface"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "SHORTCUT_SURFACE_ATTRIBUTE"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 11,
+    "why_not": "Before the change there were three unguarded keyboard doors. They were the canvas createCanvasKeydownHandler, the TimelinePanel dispatchTimelineShortcut and the ClipNode dispatchTimelineShortcut, and each made its own ownership decision. The count rises to eleven, but the new doors are the parts of one boundary, not new decision points. Two surfaces mark their roots with data-shortcut-surface (GenerationCanvasReactFlow, TimelinePanel) and ClipNode resolves its root through the same attribute. The two listening surfaces install the idempotent tracker. The canvas and timelineShortcuts call shortcutSurfaceMayHandle, and shortcutSurface.ts alone reads the recorded state. Folding the three keyboard doors into one would merge three different key maps and histories: the canvas graph, the timeline shared by the Generation and Preview pages, and a clip node's in-node editor. Door lines come from node scripts/door-map.mjs for dispatchTimelineShortcut, createCanvasKeydownHandler, shortcutSurfaceMayHandle, installShortcutSurfaceTracker, lastPointerSurface, data-shortcut-surface and SHORTCUT_SURFACE_ATTRIBUTE."
+  },
+  "generality_proof": "Ownership is decided in one module, shortcutSurface.ts. A capture-phase pointerdown tracker records the last surface the user touched, and the tracker is marked by data-shortcut-surface. Every keyboard door asks shortcutSurfaceMayHandle(itsRoot) before doing anything: the canvas via shouldIgnoreCanvasShortcut, and the timeline and ClipNode via dispatchTimelineShortcut, whose surface parameter is required. A new surface only needs the attribute and the same call. A hidden keep-alive surface fails the shown check whatever its registration order, so listener order no longer decides the outcome.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/shortcutSurface.ts",
+      "symbol": "shortcutSurfaceMayHandle",
+      "responsibility": "Single owner of the rule: hidden surfaces never claim, and the most recently touched shown surface owns shared keys"
+    },
+    {
+      "path": "src/workbench/timeline/timelineShortcuts.ts",
+      "symbol": "dispatchTimelineShortcut",
+      "responsibility": "Timeline-side door. The surface argument is required, so no caller can skip the ownership check"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "entry_point": "createCanvasKeydownHandler",
+      "disposition": "enforced",
+      "evidence": "shouldIgnoreCanvasShortcut now asks shortcutSurfaceMayHandle(stageRef.current). This replaces the old offsetParent-only check, and useCanvasShortcuts.test.ts proves the canvas yields Cmd+Z after a pointer lands on the timeline."
+    },
+    {
+      "path": "src/workbench/timeline/TimelinePanel.tsx",
+      "entry_point": "dispatchTimelineShortcut",
+      "disposition": "enforced",
+      "evidence": "The panel root carries data-shortcut-surface=timeline and passes panelRef.current. shortcutSurface.test.ts proves it yields after a canvas pointerdown and never claims while hidden."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "entry_point": "dispatchTimelineShortcut",
+      "disposition": "enforced",
+      "evidence": "It passes its closest data-shortcut-surface ancestor, which is the canvas stage, so the in-node clip editor yields exactly as the canvas does."
+    },
+    {
+      "path": "src/workbench/preview/PreviewWorkspace.tsx",
+      "entry_point": "editing panel layout Cmd+Z",
+      "disposition": "not-affected",
+      "evidence": "It fires only while the Preview workspace is the visible page and only when undoEditingPanelLayout() has a layout history entry to consume. The canvas is hidden on that page, so shortcutSurfaceMayHandle already makes the canvas yield. Only one surface is shown there, so no cross-surface race exists."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/useWhiteboardSelectionActions.ts",
+      "entry_point": "whiteboard Delete/Backspace",
+      "disposition": "not-affected",
+      "evidence": "The whiteboard is a modal ([data-nomi-whiteboard-modal]). shouldIgnoreCanvasShortcut returns before any ownership check while it is open, and the timeline is covered by the modal, so no pointerdown can reach it."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new surface with window-level shortcuts, or any other keep-alive workspace, would reintroduce the first-listener-wins race. The same mechanism already affected three distinct entry paths: an expanded generation timeline, a keep-alive preview timeline, and double selection with Delete.",
+    "same_class_scan": [
+      "rg \"addEventListener\\('keydown'\" src — 56 listeners; the shared-key claimers on a shared screen are the canvas (useCanvasShortcuts), the two TimelinePanel instances and ClipNode (dispatchTimelineShortcut); the rest are modal/popover-scoped (Popover, InlineParameterBar capture while open, director hotkeys inside the director modal)",
+      "node scripts/door-map.mjs dispatchTimelineShortcut → TimelinePanel.tsx, ClipNode.tsx; node scripts/door-map.mjs createCanvasKeydownHandler → useCanvasShortcuts.ts",
+      "rg \"key === 'z'|mod && key === 'z'\" src — useCanvasShortcuts.ts, timelineShortcuts.ts, PreviewWorkspace.tsx (checked above)"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/shortcutSurface.ts",
+    "invariant": "No keyboard door claims a key unless shortcutSurfaceMayHandle(itsSurface) is true",
+    "failure_mode": "A surface root that is null (not mounted) or hidden returns false and the key is left for the owning surface; a door cannot pass no surface because the argument is required",
+    "exception_policy": "none",
+    "strategy": "One tracker and one predicate. Surfaces declare themselves with data-shortcut-surface, and doors call the predicate before claiming a key. The old per-surface visibility check in shouldIgnoreCanvasShortcut is removed in the same change.",
+    "artifacts": [
+      "src/workbench/shortcutSurface.ts",
+      "src/workbench/timeline/timelineShortcuts.ts",
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/shortcutSurface.test.ts",
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts",
+    "tests/ux/node-params-and-version-pill.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/shortcutSurface.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.ts"
+    ],
+    "rationale": "The canvas-only 'stageRef.current.offsetParent === null' ownership check in shouldIgnoreCanvasShortcut is replaced by the shared predicate in the same change. No surface keeps its own visibility rule."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime decides which Nomi surface owns a key; all listeners involved are Nomi's own.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state is involved. Ownership starts empty on every launch, so before any pointerdown on a surface each shown surface behaves as it did before this change.",
+  "residual_risks": [
+    "Before the first pointerdown on either surface in a session, an expanded timeline still wins a Cmd+Z pressed on the canvas. The canvas cannot have been edited by pointer at that point, but an edit made through the Agent or a menu shortcut without a pointerdown on the stage would still undo the timeline. This case is not covered by a walkthrough yet.",
+    "Keyboard-only users who move focus with Tab without any pointerdown keep the previous behaviour; focus-based ownership is not added in this change"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/shortcutSurface.ts",
+    "tests": [
+      "src/workbench/shortcutSurface.test.ts",
+      "src/workbench/generationCanvas/components/useCanvasShortcuts.test.ts",
+      "tests/ux/node-params-and-version-pill.walk.mjs"
+    ],
+    "why": "The module is the only place that records which surface was touched last and the only predicate every keyboard door asks. The unit tests cover the reported case (a timeline yields after a canvas pointerdown), a hidden keep-alive surface, and the rule that a pointerdown outside every surface keeps ownership. The core smoke walkthrough is the behavioural positive control: under the used fixture it is red on accc93b82 and green after the fix."
+  }
+}

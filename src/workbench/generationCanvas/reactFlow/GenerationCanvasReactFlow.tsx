@@ -661,6 +661,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       ref={hostRef}
       className={cn('generation-canvas-react-flow', 'generation-canvas-v2__stage', 'group/canvas', 'relative w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink')}
       aria-label={t('generationCommon.canvas.aria')}
+      data-shortcut-surface="canvas"
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
