@@ -33,11 +33,9 @@ import { catalogFingerprint, changeIdFor } from "./fingerprint";
 import { submitDeclaration } from "./submitDeclaration";
 import { tryModel, type TryModelDeps } from "./tryModel";
 import {
-  freeRequests,
   noBlast,
   unverified,
   type OnboardingFailure,
-  type OnboardingRejection,
   type OnboardingResult,
 } from "./envelope";
 

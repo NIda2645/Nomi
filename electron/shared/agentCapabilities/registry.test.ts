@@ -10,7 +10,7 @@ import { EXPORT_READ_CAPABILITY, EXPORT_WRITE_CAPABILITY } from "./exportCapabil
 import { TIMELINE_READ_CAPABILITY } from "./timelineRead";
 import { TIMELINE_WRITE_CAPABILITY } from "./timelineWrite";
 import { LAYOUT_READ_CAPABILITY, LAYOUT_WRITE_CAPABILITY } from "./layout";
-import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY } from "./modelOnboarding";
+import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY, MODEL_ONBOARDING_TRY_CAPABILITY } from "./modelOnboarding";
 import { MODEL_SETUP_OPEN_CAPABILITY } from "./modelSetup";
 import {
   PRODUCTION_ARTIFACT_WRITE_CAPABILITY,
@@ -87,6 +87,7 @@ describe("capability contract registry", () => {
       GENERATION_CONTROL_CAPABILITY,
       MODEL_SETUP_OPEN_CAPABILITY,
       MODEL_ONBOARDING_SETUP_CAPABILITY,
+      MODEL_ONBOARDING_TRY_CAPABILITY,
       MODEL_ONBOARDING_REMOVE_CAPABILITY,
     ]);
 
@@ -128,6 +129,7 @@ describe("capability contract registry", () => {
       "generation.control",
       "model.setup.open",
       "model.onboarding.setup",
+      "model.onboarding.try",
       "model.onboarding.remove",
     ]);
     // 主别名按 surface 摆平：`pi` 只放模型可见动词名（与 `verbDeclarations.ts` 对账，门岗
@@ -150,6 +152,8 @@ describe("capability contract registry", () => {
       "check_job", "nomi_operation_read", "nomi_generation_status",
       "start_model_setup", "nomi_open_model_setup",
       "connect_model_provider", "nomi_model_setup",
+      // 试跑是付费能力，所以它有自己的契约与自己的名字（付费边界的判据全挂在 effect 上）。
+      "try_model", "nomi_try_model",
       "remove_model_provider", "nomi_remove_provider",
     ]);
     expect(CAPABILITY_CONTRACTS.find((contract) => contract.id === "canvas.read")?.exposure).toBe("mcp_safe");
