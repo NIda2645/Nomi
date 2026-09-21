@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
 import { resolveFfprobePath } from "../export/mediaProbe";
 // 真实素材的执行层（R13「四件真实」第④件）。登记表：tests/ux/real-media-fixtures.json。
-// @ts-expect-error -- helper 是 .mjs，没有类型声明
 import { requireRealMediaAssets } from "../../tests/ux/fixtures/realMedia.mjs";
 import {
   MAX_CUTS,
