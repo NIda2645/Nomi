@@ -70,9 +70,17 @@ describe('MCP generation draft schema parity', () => {
       expect(refusedExternally).toBeInstanceOf(Error)
       expect((refusedExternally as Error).message).toMatch(/没有配置可用的图片模型/)
       expect((refusedOnTheLane as Error).message).toBe((refusedExternally as Error).message)
-      // 收敛的那一半同样要钉：这一句是宿主内部异常文本，**不是**我们 schema 的字段级理由，
-      // 所以运输边界只发布安全码，一个字都不带出去。
-      expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed', message: 'generation_execution_failed' })
+      // 2026-09-22 改判：这一句**不是**宿主内部异常文本，是我们自己写给模型的一句可行动的话
+      // （抛出点的注释写着它为什么这么写：DeepSeek 连调 6 次都不知道自己可以点名一个模型）。
+      // 旧断言把它当成「要收敛掉的内部文本」，于是运输边界只发一个裸码——run2 的轨迹里，
+      // 这一句正是 6 次「draft_shots failed inside Nomi」的真身。
+      //
+      // parity 因此更强了，不是更弱：lane 这条路发布的正文现在**逐字等于**外部入口抛出来的那一句，
+      // 两边连措辞都不再有分歧。真正要守的「不泄露」由 `transportFailure` 的另一条轴保证：
+      // 只有我们有意抛的 `ModelFacingRefusal` 才带正文，别人抛的一个字都不带
+      // （阳性对照在 `generationDomainRefusalReachesModel.test.ts`）。
+      expect(laneResult).toMatchObject({ ok: false, code: 'generation_input_invalid' })
+      expect((laneResult as { message?: string }).message).toBe((refusedExternally as Error).message)
     } finally { adapter.dispose() }
   })
 

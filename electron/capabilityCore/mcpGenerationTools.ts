@@ -244,7 +244,7 @@ export type GenerationPlanningHandlerDependencies = {
 };
 
 function record(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${label}`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `${label} must be an object.`);
   return value as Record<string, unknown>;
 }
 
@@ -749,7 +749,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     if (input.capability === "cancel") return { operation: await deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };
     if (input.capability === "reconcile") {
       const outcome = params.outcome === "found" || params.outcome === "not_found" ? params.outcome : null;
-      if (!outcome) throw new Error("Reconciliation outcome is required");
+      if (!outcome) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Reconciliation needs an outcome: pass \"found\" or \"not_found\".");
       return deps.reconcile?.(current, outcome, input.lease) ?? { operationId, outcome, nextAction: outcome === "found" ? "observe" : "manual_review" };
     }
     if (input.capability === "read" || input.capability === "events" || input.capability === "steer") return { operation: current, taskRef: generationTaskReference(operationId), executionState: current.state === "draft" ? "not_started" : current.state, nextAction: current.state === "draft" ? "preview" : "observe" };

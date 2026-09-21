@@ -484,8 +484,8 @@ export async function patchStoryboardAuthoring(current: {sourceDocumentId?:strin
   resolveReferences:(projectId:string,value:unknown)=>PlanCandidate['references'],
   resolveUrl:((projectId:string,reference:PlanCandidate['references'][number])=>string) | undefined,
   request?: RequestRenderer): Promise<void> {
-  if (!current.sourceDocumentId || typeof params.shotId!=='string') throw new Error('storyboard_shot_id_required');
-  if (!params.patch || typeof params.patch!=='object' || Array.isArray(params.patch)) throw new Error('Invalid generation patch');
+  if (!current.sourceDocumentId || typeof params.shotId!=='string') refuseToModel(GENERATION_ARGUMENT_REFUSAL, 'This storyboard revision needs the shotId of the shot you are changing.');
+  if (!params.patch || typeof params.patch!=='object' || Array.isArray(params.patch)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, 'patch must be an object holding the fields you are changing.');
   if (!request) throw new Error('storyboard_renderer_required');
   const patch=params.patch as Record<string,unknown>;
   const references:Record<string,Array<{url:string}>> | undefined=patch.references===undefined ? undefined : {};

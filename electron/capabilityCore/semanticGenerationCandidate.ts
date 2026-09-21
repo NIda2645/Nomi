@@ -113,7 +113,7 @@ function isTaskKind(value: unknown): value is GenerationDefaultTaskKind {
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (value === undefined) return {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `${label} must be an object`);
   return { ...(value as Record<string, unknown>) };
 }
 
@@ -153,7 +153,7 @@ function references(value: unknown, resolve?: ResolveAssetReferenceIdentity): un
 export function inferGenerationTaskKind(params: SemanticGenerationCandidateParams): GenerationDefaultTaskKind {
   const explicit = params.taskKind;
   if (explicit !== undefined) {
-    if (!isTaskKind(explicit)) throw new Error("taskKind must be text_to_image, image_edit, text_to_video or image_to_video");
+    if (!isTaskKind(explicit)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "taskKind must be text_to_image, image_edit, text_to_video or image_to_video");
     return explicit;
   }
   const mode = normalized(params.mode);
@@ -271,7 +271,7 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
       : { ...explicit, references: references(explicit.references, deps.resolveAssetReferenceIdentity) });
   }
   const prompt = text(deps.params.prompt);
-  if (!prompt) throw new Error("prompt is required when candidate is omitted");
+  if (!prompt) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "prompt is required when candidate is omitted");
 
   const taskKind = inferGenerationTaskKind(deps.params);
   const configured = deps.defaultModelForTaskKind?.(taskKind);
@@ -292,7 +292,7 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
     // 只写「请先在设置中选择模型」时，DeepSeek 连着调了 6 次 `draft_shots`、每次收到同一句话，
     // 它看得见 `list_models` 里那个能用的模型却不知道自己可以点名它——一条本可恢复的路被说成了死路。
     const kind = taskKind.includes("video") ? "视频" : "图片";
-    throw new Error(`没有配置可用的${kind}模型。请在设置里选一个默认${kind}模型；`
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, `没有配置可用的${kind}模型。请在设置里选一个默认${kind}模型；`
       + `或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。`);
   }
   // A saved mode/variant belongs to the saved provider+model identity.  If the
