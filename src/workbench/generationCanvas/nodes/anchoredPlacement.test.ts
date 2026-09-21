@@ -145,3 +145,36 @@ describe('resolveAnchoredPlacement × bottom docks', () => {
     }
   })
 })
+
+/**
+ * 最小窗口（1100×720）里节点本身就占了大半屏：上下两侧都放不下浮框「非收不可」的那部分
+ * （内边距 + 提示词最小高 + 底栏）。旧算法把卡压到可用空间那么矮，底栏被挤出卡外、落到停靠区上。
+ * 放不下时宁可压住节点下半截（Floating UI shift 的标准行为：留在边界内，可以盖住参照物），
+ * 也不许压 chrome、不许把底栏挤出卡片。
+ */
+describe('resolveAnchoredPlacement × minimum content height', () => {
+  const stage: AnchoredRect = { left: 134, top: 68, right: 728, bottom: 708 }
+  const zoomBar: AnchoredRect = { left: 76, top: 665, right: 434, bottom: 705 }
+  const tallNode: AnchoredRect = { left: 239, top: 200, right: 579, bottom: 540 }
+  const input = { stage, anchor: tallNode, width: 574, height: 200, gap: 14, aboveClearance: 81, bottomDocks: [zoomBar], dockClearance: 12 }
+
+  it('reported case: never shorter than the fixed content, never onto the dock', () => {
+    const placement = resolveAnchoredPlacement({ ...input, minHeight: 150 })
+    expect(placement.height).toBeGreaterThanOrEqual(150)
+    expect(placement.top + placement.height).toBeLessThanOrEqual(zoomBar.top - 12)
+    expect(placement.top).toBeGreaterThanOrEqual(stage.top)
+  })
+
+  it('class: for any anchor and minimum, the card keeps its minimum and stays in the usable stage', () => {
+    for (let top = 40; top <= 660; top += 31) {
+      for (const minHeight of [0, 90, 150, 200]) {
+        const anchor: AnchoredRect = { left: 239, top, right: 579, bottom: top + 340 }
+        const placement = resolveAnchoredPlacement({ ...input, anchor, minHeight })
+        const usableBottom = zoomBar.top - 12
+        expect(placement.height, JSON.stringify({ top, minHeight })).toBeGreaterThanOrEqual(Math.min(minHeight, usableBottom - stage.top))
+        expect(placement.top + placement.height, JSON.stringify({ top, minHeight })).toBeLessThanOrEqual(usableBottom)
+        expect(placement.top).toBeGreaterThanOrEqual(stage.top)
+      }
+    }
+  })
+})

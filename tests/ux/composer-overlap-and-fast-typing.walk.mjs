@@ -13,7 +13,9 @@
 //     默认窗口测一次，缩到最小窗口（1100×720 内容区）再测一次；
 //   · 0ms / 5ms 逐键键入 ≥80 字符中英混合串（含空格与标点）后，编辑器与输入逐字相同（图片 + 视频节点）；
 //   · 一次性粘贴长文本逐字相同；
-//   · 外部改写（优化 → 应用提示）确实写进编辑器，且之后继续快打不丢字。
+//   · 外部改写（优化 → 应用提示）确实写进编辑器，且之后继续快打不丢字；
+//   · 追加 A：翻到节点上方的浮框卡片不压节点自己的浮动工具条 / 标签行（zh/en）；
+//   · 追加 B：底栏芯片文字不被裁断——只允许「有意省略号 + title 全名 + 省略后仍 ≥24px」（1100×720 EN 是现场）。
 // 另记一个探针：输入过程中编辑器文字「倒退」（纯插入却变短）的次数——那就是旧值回流覆盖文档的现场。
 //
 // 用法：先 pnpm run build；DEEPSEEK_API_KEY 取自 env（`set -a; . ~/.nomi-secrets.env; set +a`）。
@@ -195,7 +197,38 @@ async function assertFooterClearOfDocks(win, label) {
         if (overlapX > 0 && overlapY > 0) intersections.push({ control: describe(control), dock: describe(dock), overlap: [Math.round(overlapX), Math.round(overlapY)] })
       }
     }
+    // 追加 A：浮框卡片不许压在它所属节点画在上沿之外的 chrome 上（浮动工具条、标签行）。
+    const node = card?.closest('[data-node-id]')
+    const nodeChrome = node ? [...node.querySelectorAll('[data-node-floating-toolbar="true"], [data-node-label-row="true"]')]
+      .filter((el) => !card.contains(el) && el.getBoundingClientRect().width > 0) : []
+    const chromeIntersections = []
+    if (card) {
+      const c = card.getBoundingClientRect()
+      for (const el of nodeChrome) {
+        const b = el.getBoundingClientRect()
+        const overlapX = Math.min(c.right, b.right) - Math.max(c.left, b.left)
+        const overlapY = Math.min(c.bottom, b.bottom) - Math.max(c.top, b.top)
+        if (overlapX > 0 && overlapY > 0) chromeIntersections.push({ chrome: el.getAttribute('aria-label') || (el.hasAttribute('data-node-label-row') ? 'label-row' : el.tagName), overlap: [Math.round(overlapX), Math.round(overlapY)] })
+      }
+    }
+    // 追加 B：底栏芯片的文字不许被裁断。允许的只有「有意的省略号 + title 能看全名」，且省略后仍留得下字。
+    const clipped = []
+    for (const control of controls) {
+      const name = describe(control)
+      if (control.scrollWidth > control.clientWidth + 1) clipped.push({ control: name, why: `内容溢出按钮 ${control.scrollWidth}>${control.clientWidth}` })
+      for (const span of control.querySelectorAll('span')) {
+        const text = span.textContent?.trim() ?? ''
+        if (!text || span.children.length) continue
+        if (span.scrollWidth <= span.clientWidth + 1) continue
+        const ellipsis = getComputedStyle(span).textOverflow === 'ellipsis'
+        const titled = Boolean(control.getAttribute('title')) && control.getAttribute('title').includes(text.replace(/…$/, ''))
+        if (!ellipsis || !titled) clipped.push({ control: name, text, why: ellipsis ? '省略号但 title 看不到全名' : '无省略号的硬裁断' })
+        else if (span.clientWidth < 24) clipped.push({ control: name, text, why: `省略后只剩 ${span.clientWidth}px，读不出字` })
+      }
+    }
     return {
+      chromeIntersections,
+      clipped,
       card: card ? rect(card) : null,
       footer: footer ? rect(footer) : null,
       side: footer?.closest('[data-flipped]')?.getAttribute('data-flipped') === 'true' ? 'above' : 'below',
@@ -209,11 +242,13 @@ async function assertFooterClearOfDocks(win, label) {
     .filter((dock) => dock.right > geometry.footer.left && dock.left < geometry.footer.right)
     .map((dock) => dock.top - geometry.footer.bottom), Infinity) : null
   report.overlap.push({ label, ...geometry, footerToDockGapPx: Number.isFinite(minGap) ? minGap : null })
-  console.log(`  · ${label}：浮框在节点${geometry.side === 'above' ? '上' : '下'}方，card=${JSON.stringify(geometry.card)}，停靠区 ${geometry.docks.length} 块，底栏控件 ${geometry.controls.length} 颗，相交 ${geometry.intersections.length} 处，底栏到横向重叠停靠区的最小竖直间距 ${Number.isFinite(minGap) ? `${minGap}px` : '（无横向重叠停靠区）'}`)
+  console.log(`  · ${label}：浮框在节点${geometry.side === 'above' ? '上' : '下'}方，card=${JSON.stringify(geometry.card)}，停靠区 ${geometry.docks.length} 块，底栏控件 ${geometry.controls.length} 颗，相交 ${geometry.intersections.length} 处，压节点浮条/标签行 ${geometry.chromeIntersections.length} 处，芯片裁断 ${geometry.clipped.length} 处，底栏到横向重叠停靠区的最小竖直间距 ${Number.isFinite(minGap) ? `${minGap}px` : '（无横向重叠停靠区）'}`)
   expect(geometry.footer, `${label}：底栏在`).not.toBeNull()
   expect(geometry.docks.length, `${label}：现场里至少有缩放条与时间轴胶囊两块停靠区（证明是在对的现场断言）`).toBeGreaterThanOrEqual(2)
   expect(geometry.controls.length, `${label}：底栏里有控件`).toBeGreaterThan(0)
   expect(geometry.intersections, `${label}：底栏控件与底部停靠区矩形不相交`).toEqual([])
+  expect(geometry.chromeIntersections, `${label}：浮框卡片不压节点自己的浮动工具条 / 标签行`).toEqual([])
+  expect(geometry.clipped, `${label}：底栏芯片文字没有被裁断`).toEqual([])
   const footerControls = win.locator(`${FOOTER} button, ${FOOTER} [role="button"], ${FOOTER} [role="combobox"]`)
   const count = await footerControls.count()
   for (let index = 0; index < count; index += 1) {

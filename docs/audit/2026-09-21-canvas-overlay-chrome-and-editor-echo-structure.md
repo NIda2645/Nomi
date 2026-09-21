@@ -1,7 +1,7 @@
 # 画布浮层「可用视口」与受控编辑器「文本归谁」的结构评审（2026-09-21）
 
 > 状态：📎 结构评审（`check:symptom-cluster` 触发：模块 `src/workbench` 7 天内又两份根因合同）
-> 触发合同：[`2026-09-21-composer-bottom-dock-overlap`](../fixes/2026-09-21-composer-bottom-dock-overlap.root-cause.json)、[`2026-09-21-controlled-editor-stale-echo`](../fixes/2026-09-21-controlled-editor-stale-echo.root-cause.json)
+> 触发合同：[`2026-09-21-composer-bottom-dock-overlap`](../fixes/2026-09-21-composer-bottom-dock-overlap.root-cause.json)、[`2026-09-21-composer-footer-chip-clipping`](../fixes/2026-09-21-composer-footer-chip-clipping.root-cause.json)、[`2026-09-21-controlled-editor-stale-echo`](../fixes/2026-09-21-controlled-editor-stale-echo.root-cause.json)
 > 同层近邻：`2026-09-09-process-feedback-composer-obstacles`、`2026-09-10-node-composer-placement`（浮框避让与漂移）；`2026-09-21-canvas-node-placement-structure.md`（新卡几何无主人，另一份评审）
 
 ## 1. 这一簇是不是同一个结构问题
@@ -24,6 +24,8 @@
 ## 2. 本单做了什么（file 级）
 
 - 可用下沿：`generation/workspaceBottomDocks.ts` 新增 `resolveUsableBottomAboveDocks`，与停靠区名单同住；`reactFlow/selectionToolbarPlacement.ts` 的私有副本删除；`nodes/anchoredPlacement.ts` 在定宽定横向之后用它算下沿；`nodes/useComposerViewportPlacement.ts` 从名单收集停靠区并把它们的矩形并入每帧签名。孤儿 `nodeSizing.ts:getUnobstructedComposerSpaceBelow`（旧障碍系统遗留、只剩测试在用）删除。
+- 节点自己画在上沿之外的 chrome（追加 A）：翻到上方的浮框以前只让出「浮条高度 + 18」，漏了浮条与节点之间那条标签行带；改为量浮条 / 标签行 / 行内状态的真实矩形取最高顶（`aboveClearanceFromNodeChrome`）。同时 `resolveAnchoredPlacement` 收 `minHeight`：两侧都放不下「提示词最小高 + 底栏」时保持这个高度推回可用区（可盖住节点一截），不再把底栏挤出卡外压到 chrome 上。
+- 底栏芯片让位（追加 B，同层另一份合同 `2026-09-21-composer-footer-chip-clipping`）：summary 形态里只有模型芯片可缩，变体短枚举不缩，与分镜底栏同一条规则。
 - 文本归属：`common/controlledEditorSync.ts` 一本「已发出 / 已确认」账，两个内核都只经它裁决；删除 `shouldApplyExternalPromptSync`、`shouldEmitPromptUpdate`、渲染期 `latestValueRef` 赋值与 `lastEditorJsonRef`。
 
 ## 3. 判断与后续

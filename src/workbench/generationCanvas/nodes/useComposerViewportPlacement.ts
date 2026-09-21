@@ -6,16 +6,39 @@ import { resolveAnchoredPlacement } from './anchoredPlacement'
 import { collectBottomDockElements, resolveBottomDockScope } from '../../generation/workspaceBottomDocks'
 
 export const NODE_FLOATING_TOOLBAR_SELECTOR = '[data-node-floating-toolbar="true"]'
+/**
+ * 节点画在自己上沿**之外**的 chrome：浮动工具条、标签行（「镜头 1 · 图片」）、行内状态条。
+ * 三者各自在 DOM 上声明标记（`NodeFloatingToolbar` / `NodeLabelRow` / `BaseGenerationNode`），这里不抄尺寸。
+ */
+const NODE_ABOVE_CHROME_SELECTOR = `${NODE_FLOATING_TOOLBAR_SELECTOR}, [data-node-label-row="true"], [data-node-inline-status]`
 /** 画布左缘常驻工具条（`CanvasToolbar`）自己挂的标记——同 `useCanvasBottomDockRects.ts` 底部停靠的机制。 */
 const CANVAS_LEFT_DOCK_SELECTOR = '[data-canvas-left-dock="true"]'
 const VIEWPORT_MARGIN = 12
 const LEFT_DOCK_GAP = 12
-const TOOLBAR_CLEARANCE_GAP = 18
 const COMPOSER_MAX_WIDTH = 880
 const COMPOSER_MIN_WIDTH = 360
 
-export function toolbarClearanceInCanvasUnits(screenHeight: number, zoom: number, gap: number): number {
-  return screenHeight > 0 ? screenHeight / (zoom || 1) + gap : 0
+/**
+ * 翻到上方时要让出的高度（屏幕 px）= 节点顶 − 它上沿之外那堆 chrome 里最高的那个顶。
+ *
+ * 为什么量「顶」而不是「浮条高度」：浮条并不贴着节点——它下面还隔着标签行那条 40 画布单位的带
+ * （有行内状态时是 72）。2026-09-21 之前按「浮条高度 + 18」算，漏了这条带，翻上去的浮框压住浮条 6px。
+ * 实测每一块的真实矩形，缩放、行内状态、浮条有没有挂上都自动算对，不抄 CSS 里的 40 / 72。
+ *
+ * 规则：只算**有尺寸**且**顶在节点顶之上**的块；一块都量不到（浮条还没挂上、节点没有标签行）就一格
+ * 不让——浮框与节点之间只剩调用方那个 gap。浮框与最高那块之间的间距同样是 gap。缩放 < 0.4 时标签行
+ * 是 `visibility: hidden`，矩形仍在，照样让出：多留一条空带无害，压上去才有害。
+ */
+export function aboveClearanceFromNodeChrome(
+  nodeTop: number,
+  chrome: readonly Readonly<{ top: number; width: number; height: number }>[],
+): number {
+  let highest = nodeTop
+  for (const rect of chrome) {
+    if (!(rect.width > 0 && rect.height > 0)) continue
+    if (rect.top < highest) highest = rect.top
+  }
+  return Math.max(0, nodeTop - highest)
 }
 
 /**
@@ -58,6 +81,10 @@ export function useComposerViewportPlacement(input: {
 
     // 底部停靠区的元素缓存：每次 recompute 重新收集（挂上/摘下），每帧只读它们的矩形。
     let dockElements: Element[] = []
+    // 节点上沿之外的 chrome 只在节点自己的子树里找（几十个元素），每帧现查：浮条会在浮框之后才挂上、
+    // 行内状态出现时浮条会整体上移 32，这两件都不改节点矩形，只能靠它们自己的矩形进签名。
+    const aboveChromeElements = () => Array.from(nodeEl.querySelectorAll(NODE_ABOVE_CHROME_SELECTOR))
+      .filter((element) => !anchor.contains(element))
     const recompute = () => {
       const stageRect = stage.getBoundingClientRect()
       const nodeRect = nodeEl.getBoundingClientRect()
@@ -85,7 +112,6 @@ export function useComposerViewportPlacement(input: {
         }, 0)
       Object.assign(card.style, previousStyle)
       if (references) references.style.maxHeight = previousReferenceMaxHeight
-      const toolbar = nodeEl.querySelector<HTMLElement>(NODE_FLOATING_TOOLBAR_SELECTOR)
       // 可用区要再扣掉画布左缘那条常驻工具条（`CanvasToolbar`）——它是固定停靠的画布 chrome，
       // 不是浮框要避让的「障碍物」（那套已经删了，见文件头注释）。现量它的真实矩形，
       // 不是抄一份硬编码宽度：工具条宽度由它自己的图标数、内边距决定，会随设计改动漂移。
@@ -98,11 +124,13 @@ export function useComposerViewportPlacement(input: {
         stage: { left: stageLeft, right: stageRect.right - VIEWPORT_MARGIN, top: stageRect.top + VIEWPORT_MARGIN, bottom: stageRect.bottom - VIEWPORT_MARGIN },
         bottomDocks: dockElements.map((element) => element.getBoundingClientRect()),
         dockClearance: VIEWPORT_MARGIN,
+        // 提示词最小高 + 底栏 + 内边距是「非收不可」的：放不下时宁可盖住节点一截，也不把底栏挤出卡外。
+        minHeight: Math.max(fixedHeight, Math.min(minUsableHeight, naturalSize.height)),
         anchor: nodeRect,
         width: Math.min(COMPOSER_MAX_WIDTH, naturalSize.width),
         height: Math.min(preferredMaxHeight, naturalSize.height),
         gap: gap * canvasZoom,
-        aboveClearance: toolbarClearanceInCanvasUnits(toolbar?.getBoundingClientRect().height ?? 0, canvasZoom, TOOLBAR_CLEARANCE_GAP) * canvasZoom,
+        aboveClearance: aboveClearanceFromNodeChrome(nodeRect.top, aboveChromeElements().map((element) => element.getBoundingClientRect())),
       })
       const next = { left: (result.left - nodeRect.left) / canvasZoom, top: (result.top - nodeRect.top) / canvasZoom, maxWidth: result.width, maxHeight: result.height, referenceMaxHeight: Math.max(0, result.height - fixedHeight), flipUp: result.side === 'above' }
       setPlacement(previous => Object.keys(next).every(key => previous[key as keyof typeof next] === next[key as keyof typeof next]) ? previous : next)
@@ -125,7 +153,7 @@ export function useComposerViewportPlacement(input: {
     // 底部停靠区也是入参：胶囊会因为 Nomi 坞收起而横移、缩放条会因为小地图开合而变高——
     // 位置变化 RO 看不见，所以把它们的矩形并进同一个每帧签名（只读缓存里那几块，不每帧查询 DOM）。
     const signatureOf = (rect: DOMRect) => `${rect.left},${rect.top},${rect.right},${rect.bottom}`
-    const currentSignature = () => [nodeEl, stage, ...dockElements].map((element) => signatureOf(element.getBoundingClientRect())).join('|')
+    const currentSignature = () => [nodeEl, stage, ...dockElements, ...aboveChromeElements()].map((element) => signatureOf(element.getBoundingClientRect())).join('|')
     let lastSignature = currentSignature()
     let frame = window.requestAnimationFrame(function watch() {
       frame = window.requestAnimationFrame(watch)

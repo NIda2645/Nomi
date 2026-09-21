@@ -1,10 +1,10 @@
 {
   "schema_version": 3,
   "id": "2026-09-21-composer-bottom-dock-overlap",
-  "problem_type": "Anchored canvas overlay placed over fixed canvas chrome because the usable viewport omitted the bottom docks",
-  "symptom": "2026-09-21 screenshot tests/ux/shots/prompt-translate/04-zh-image-icon-and-result.png: an image node's generation composer opened toward the bottom-left of the canvas and its footer (variant/parameter chips, count, generate) sat under the zoom toolbar and the 'Timeline 0 clips' pill; on main the walkthrough measured 4 to 7 footer-control/dock intersections at 1280x933 and at the 1100x720 minimum window.",
-  "direct_cause": "useComposerViewportPlacement passed resolveAnchoredPlacement a stage that was only inset by a 12px margin and the left rail; the bottom docks (CanvasNavigationStack, the timeline pill, the collapsed Nomi dock, the batch dock, the timeline mini preview) are drawn above the React Flow viewport (the composer lives inside the transformed viewport, so no z-index can lift it over them) and were never subtracted, so 'below fits' was judged against stage.bottom.",
-  "class_root": "The bottom-dock registry (workspaceBottomDocks.ts, data-canvas-bottom-dock) had one consumer for floating canvas overlays (the multi-select toolbar, with a private copy of the usable-bottom rule); the 2026-09-10 drift fix removed all obstacles from composer placement, including fixed chrome, and only the left rail was re-added. There was no single usable-bottom rule that every anchored canvas overlay reads.",
+  "problem_type": "Anchored canvas overlay placed over fixed chrome (canvas bottom docks, the node's own toolbar/label row) because its usable area and above-clearance were not measured from the real obstacles",
+  "symptom": "2026-09-21 screenshot tests/ux/shots/prompt-translate/04-zh-image-icon-and-result.png: an image node's generation composer opened toward the bottom-left of the canvas and its footer (variant/parameter chips, count, generate) sat under the zoom toolbar and the 'Timeline 0 clips' pill; on main the walkthrough measured 4 to 7 footer-control/dock intersections at 1280x933 and at the 1100x720 minimum window. Follow-up A (same branch, same class): a composer flipped ABOVE its node overlapped the node's floating toolbar by 8px (walkthrough: card bottom 268, toolbar top 262 at zoom 1; zh and en). Follow-up found while verifying: at 1100x720 when neither side fits, the card was shortened below its fixed content so the footer spilled out of the card onto the zoom bar (-2px).",
+  "direct_cause": "useComposerViewportPlacement passed resolveAnchoredPlacement a stage that was only inset by a 12px margin and the left rail; the bottom docks (CanvasNavigationStack, the timeline pill, the collapsed Nomi dock, the batch dock, the timeline mini preview) are drawn above the React Flow viewport (the composer lives inside the transformed viewport, so no z-index can lift it over them) and were never subtracted, so 'below fits' was judged against stage.bottom. For the flipped side, aboveClearance was toolbar HEIGHT + 18, but the toolbar sits 40 canvas units above the node (72 with an inline status) over the label row; that band was never reserved. When both sides were short the card height went to the available space even if that was below the prompt+footer minimum.",
+  "class_root": "The bottom-dock registry (workspaceBottomDocks.ts, data-canvas-bottom-dock) had one consumer for floating canvas overlays (the multi-select toolbar, with a private copy of the usable-bottom rule); the 2026-09-10 drift fix removed all obstacles from composer placement, including fixed chrome, and only the left rail was re-added. There was no single usable-bottom rule that every anchored canvas overlay reads. The same shape applies above the node: what the node itself draws outside its top edge (toolbar, label row, inline status) was approximated from one element's height instead of measured.",
   "affected_population": [
     "Every generation composer (image, video, audio, text and plugin nodes) whose horizontal span crosses a bottom dock: default insertion position at common window sizes, nodes near the bottom-left, and the 1100x720 minimum window, in zh and en"
   ],
@@ -27,7 +27,9 @@
     }
   ],
   "invariants": [
-    "An anchored canvas overlay's rectangle never intersects any element that declares data-canvas-bottom-dock and shares its horizontal span; the usable bottom for a horizontal span is computed by exactly one function (resolveUsableBottomAboveDocks)"
+    "An anchored canvas overlay's rectangle never intersects any element that declares data-canvas-bottom-dock and shares its horizontal span; the usable bottom for a horizontal span is computed by exactly one function (resolveUsableBottomAboveDocks)",
+    "A flipped composer ends a gap above the highest node-owned chrome (toolbar, label row, inline status) measured from real rects",
+    "The card is never resolved shorter than its fixed content (padding, prompt minimum, footer); when that does not fit, it shifts within the usable stage and may cover the anchor, never the chrome"
   ],
   "doors": [
     {
@@ -54,6 +56,11 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
       "symbol": "collectBottomDockElements"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
+      "symbol": "aboveClearanceFromNodeChrome"
     },
     {
       "kind": "read",
@@ -87,14 +94,24 @@
     },
     {
       "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeFloatingToolbar.tsx",
+      "symbol": "data-node-floating-toolbar"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeLabelRow.tsx",
+      "symbol": "data-node-label-row"
+    },
+    {
+      "kind": "write",
       "path": "src/workbench/timeline/TimelineMiniPreview.tsx",
       "symbol": "data-canvas-bottom-dock"
     }
   ],
   "door_reduction": {
-    "before": 12,
-    "after": 12,
-    "why_not": "Generated by node scripts/door-map.mjs resolveUsableBottomAboveDocks collectBottomDockElements collectBottomDockRects data-canvas-bottom-dock. The five data-canvas-bottom-dock writers are the docks declaring themselves (the registry's marker discipline); GenerationWorkspace/AgentPanelV4Dock/useCanvasBottomDockRects are the dock-avoiders that already read the owner; the usable-bottom rule itself now has one implementation (workspaceBottomDocks.ts) read by both floating overlays, and the private copy in selectionToolbarPlacement.ts was deleted."
+    "before": 15,
+    "after": 15,
+    "why_not": "Generated by node scripts/door-map.mjs resolveUsableBottomAboveDocks collectBottomDockElements collectBottomDockRects data-canvas-bottom-dock aboveClearanceFromNodeChrome data-node-label-row data-node-floating-toolbar. Writers are elements declaring themselves as chrome (marker discipline, no size copied); readers are the dock-avoiders and the two floating overlays. The usable-bottom rule and the above-clearance rule each have exactly one implementation."
   },
   "generality_proof": "The rule no longer lives in a caller: resolveAnchoredPlacement derives the usable bottom from bottomDocks after it fixes the horizontal span, and the only producer of those rects is collectBottomDockElements over the workspace scope. Any new dock that declares the marker, any window size, any node kind, and both locales flow through the same function; the class test sweeps anchors across the whole stage against the real measured dock band.",
   "shared_boundaries": [
@@ -107,6 +124,11 @@
       "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
       "symbol": "resolveAnchoredPlacement",
       "responsibility": "Anchored overlay geometry: width/left first, then usable bottom from bottomDocks, then below/above flip inside that usable stage"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
+      "symbol": "aboveClearanceFromNodeChrome",
+      "responsibility": "Above-side clearance = node top minus the highest measured node-owned chrome top"
     }
   ],
   "same_class_entry_points": [
@@ -133,6 +155,12 @@
       "entry_point": "FloatingToolbarShell",
       "disposition": "not-affected",
       "evidence": "Sits above its node; the composer reserves its height as aboveClearance and there are no top docks"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeLabelRow.tsx",
+      "entry_point": "NodeLabelRow (data-node-label-row)",
+      "disposition": "enforced",
+      "evidence": "Measured as node-owned chrome; walkthrough asserts no card/label-row intersection in zh and en"
     }
   ],
   "recurrence": {
@@ -148,7 +176,7 @@
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "src/workbench/generation/workspaceBottomDocks.ts",
-    "invariant": "Floating canvas overlays compute their usable bottom only through resolveUsableBottomAboveDocks over the declared docks",
+    "invariant": "Floating canvas overlays compute their usable bottom only through resolveUsableBottomAboveDocks over the declared docks; flipped overlays reserve the measured node-owned chrome; the card never drops below its fixed content height",
     "failure_mode": "When neither side can hold the natural height the card is shortened inside the usable stage (prompt and references scroll); it never extends into a dock",
     "exception_policy": "none",
     "strategy": "Move the rule to the dock registry owner, make resolveAnchoredPlacement take the dock rects, and delete the second copy and the orphaned helper",
@@ -161,17 +189,19 @@
   },
   "regression_tests": [
     "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
+    "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.test.ts",
     "tests/ux/composer-overlap-and-fast-typing.walk.mjs"
   ],
   "class_regression_tests": [
-    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts"
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
+    "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
     "removed_paths": [
       "src/workbench/generationCanvas/reactFlow/selectionToolbarPlacement.ts"
     ],
-    "rationale": "Deleted the selection toolbar's private resolveUsableBottom and the test-only getUnobstructedComposerSpaceBelow left over from the removed obstacle system (the orphan lived in src/workbench/generationCanvas/nodes/nodeSizing.ts)"
+    "rationale": "Deleted the selection toolbar's private resolveUsableBottom and the test-only getUnobstructedComposerSpaceBelow left over from the removed obstacle system (the orphan lived in src/workbench/generationCanvas/nodes/nodeSizing.ts); deleted toolbarClearanceInCanvasUnits (height-based clearance) and TOOLBAR_CLEARANCE_GAP from useComposerViewportPlacement.ts"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -181,7 +211,8 @@
   "migration": "No persisted state; placement is recomputed on every open.",
   "residual_risks": [
     "Layout-rule choice: the composer yields to the chrome (shortens or flips) instead of chrome fading. The chrome-fades alternative was rejected because the composer lives inside the React Flow transform and cannot sit above the chrome, and hiding the zoom bar and timeline pill while a node is selected removes working controls; recorded in the report for the user to overrule",
-    "When the node itself sits inside the dock band at the minimum window, the card may be shortened to its minimum usable height; the walkthrough covers 1100x720 only"
+    "When the node itself sits inside the dock band at the minimum window, the card may be shortened to its minimum usable height; the walkthrough covers 1100x720 only",
+    "When the fixed content cannot fit on either side (1100x720 with a 340px node) the card covers the lower part of its own node; accepted Floating UI shift behavior, the node image stays partly visible and the composer stays fully usable"
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generation/workspaceBottomDocks.ts",

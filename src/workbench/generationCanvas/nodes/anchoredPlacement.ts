@@ -43,8 +43,14 @@ export function resolveAnchoredPlacement(input: {
   bottomDocks?: readonly AnchoredRect[]
   /** 与底部停靠区之间留出的间距（和视口边距同一口径）。 */
   dockClearance?: number
+  /**
+   * 内容「非收不可」的高度（内边距 + 提示词最小高 + 底栏）。两侧都放不下它时，卡片不再被压得更矮
+   * （那会把底栏挤出卡外），而是保持这个高度、推回可用区内——可以盖住锚点自己的一截，
+   * 这是 Floating UI `shift` 的标准行为；绝不越出可用区（不压 chrome）。
+   */
+  minHeight?: number
 }): AnchoredPlacement {
-  const { anchor, width, height, gap, aboveClearance, bottomDocks = [], dockClearance = 0 } = input
+  const { anchor, width, height, gap, aboveClearance, bottomDocks = [], dockClearance = 0, minHeight = 0 } = input
   const viewport = input.stage
   const stageWidth = Math.max(0, viewport.right - viewport.left)
 
@@ -70,7 +76,10 @@ export function resolveAnchoredPlacement(input: {
   const aboveSpace = clamp((anchor.top - gap - aboveClearance) - stage.top, 0, stageHeight)
   // 先要下方（阅读顺序），下方装不下才翻上去；两边都装不下就取大的那侧并压高度。
   const side: AnchoredPlacement['side'] = belowSpace >= Math.min(height, stageHeight) || belowSpace >= aboveSpace ? 'below' : 'above'
-  const resolvedHeight = Math.min(height, side === 'below' ? belowSpace : aboveSpace)
+  const resolvedHeight = Math.max(
+    Math.min(height, side === 'below' ? belowSpace : aboveSpace),
+    Math.min(minHeight, height, stageHeight),
+  )
   const desiredTop = side === 'below'
     ? anchor.bottom + gap
     : anchor.top - gap - aboveClearance - resolvedHeight
