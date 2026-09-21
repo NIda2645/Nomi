@@ -12,7 +12,7 @@ import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContrac
 import type { NomiModelConfig } from '../shared/agentLane/laneModelConfig'
 import type { LaneWorkspaceHandle } from '../shared/agentLane/laneContracts'
 import { assertProjectAgentBinding, type ProjectBinding } from '../shared/projectBinding'
-import { DEFAULT_PROJECT_AGENT_APPROVAL_POLICY } from '../shared/agentCapabilities/capabilityApprovalPolicy';
+import { readAgentApprovalPolicy, writeAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings';
 import { getSettingsRoot, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
@@ -132,8 +132,10 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
         labels: (locale) => ({ summaryPrefix: desktopT('agent.legacySummary', {}, locale),
           unverifiedToolResult: desktopT('agent.legacyUnverifiedTool', {}, locale) }),
       })
+      // 权限档是**用户设置**，不是这条 lane 的会话状态：开项目的那一刻就按主进程持有的那份权威值起，
+      // 不再从硬编码默认档起、等渲染层把它推上来（那一小段时间里主进程答的是别人的档位）。
       let composer: LaneComposerContext = parseLaneComposerContext({
-        ...(request.model ? { model: request.model } : {}), approvalPolicy: DEFAULT_PROJECT_AGENT_APPROVAL_POLICY,
+        ...(request.model ? { model: request.model } : {}), approvalPolicy: readAgentApprovalPolicy(),
       })
       let activeInput = composer
       // Credentials are resolved on send. Opening a project must always permit reading its saved conversation.
@@ -177,7 +179,11 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       } catch (error) { ports.dispose(); tasks.dispose(); throw error }
       const opened = workspace
       const owner = { binding, session, workspace, receipts,
-        setPolicy: (policy: LaneComposerContext['approvalPolicy']) => { composer = { ...composer, approvalPolicy: policy } },
+        // 用户切档 → 主进程那份权威值当场跟着变（写口只有这一个）。外部 MCP、全自动调度、
+        // 下一次开项目读到的都是它；调用方永远没有第二条路把档位「说」出来。
+        setPolicy: (policy: LaneComposerContext['approvalPolicy']) => {
+          composer = { ...composer, approvalPolicy: writeAgentApprovalPolicy(policy) }
+        },
         configure: async (next: LaneComposerContext) => {
           const model = selectModel(next.model)
           if (JSON.stringify(selected?.config) !== JSON.stringify(model.config)) {
@@ -185,7 +191,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
             selected = model
             try { await opened.configureModel(model.config) } catch (error) { selected = previous; throw error }
           }
-          composer = { ...next }
+          composer = { ...next, approvalPolicy: writeAgentApprovalPolicy(next.approvalPolicy) }
         },
       }
       let exposed: LaneWorkspaceHandle

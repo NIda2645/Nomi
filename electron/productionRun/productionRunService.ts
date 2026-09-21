@@ -19,10 +19,11 @@ import { assertStoryboardSourceFresh, createArtifactOperations } from './product
 import { assertStoryboardSourceApproved } from './productionRunReducer'
 import { MEANINGFUL_EVENT_TYPES } from './productionRunMeaningfulEvents'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { readConnectedModelScope } from './connectedModelScope'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
-import { assertCallerDeclaredTrustLevel } from './productionRunTrustAuthority'
+import { assertCallerDeclaredTrustLevel, trustLevelFromApprovalPolicy } from './productionRunTrustAuthority'
 import { createGateApprovalOwner } from './productionRunApprovalReceipt'
 import { isAnchorCheckpointGate } from './anchorCheckpoint'
 import { kickBatchSchedulerForRun } from './batchSchedulerKick'
@@ -115,6 +116,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       ...readConnectedModelScope(),
       maxAttemptsPerJob: settings.maxAttemptsPerJob,
       minimizeUploads: settings.minimizeUploads,
+      // 信任档不是这一层自己的设置，而是**用户权限档的投影**（唯一那座桥）。少了这一行，
+      // `normalizeTrustLevel(undefined)` 恒给 `key_confirm`：用户在 Agent 面板选了「全自动」，
+      // Run 这一侧永远不知道，外部入口只能靠调用方自报——而自报那条路已经被堵死了。
+      trustLevel: trustLevelFromApprovalPolicy(readAgentApprovalPolicy()),
     }
   })
   // 装配不变量：service 内部**没有**「没有人证持有者」这个状态。缺权威时持有的是 fail-closed 的那份，

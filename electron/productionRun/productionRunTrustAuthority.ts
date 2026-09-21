@@ -1,4 +1,5 @@
 import { HumanApprovalRequiredError } from '../capabilityCore/approvalReceipt'
+import { projectAgentApprovalPolicyOf, type ProjectAgentApprovalPolicy } from '../shared/agentCapabilities/capabilityApprovalPolicy'
 import { normalizeTrustLevel, type AutomationPolicy, type TrustLevel } from './productionRunTypes'
 
 /**
@@ -24,6 +25,32 @@ export const TRUST_LEVEL_STRICTNESS: Readonly<Record<TrustLevel, number>> = Obje
   key_confirm: 1,
   confirm_all: 2,
 })
+
+/**
+ * **两套词表之间唯一的那座桥**（2026-09-21）。
+ *
+ * 用户只在一个地方表达过「Nomi 还问不问我」：Agent 面板上的权限档（每步问 / 自动改 / 全自动，
+ * 词表 `ProjectAgentApprovalPolicy`）。Run 这一侧另有一套 `TrustLevel`，而两者之间此前**没有任何
+ * 转换函数**（第一轮横扫 B3 的原始发现）：`policyResolver()` 不产出 trustLevel，`normalizeTrustLevel`
+ * 于是恒给 `key_confirm`，外部入口要不到「全自动」，只能靠调用方在请求体里自报——那条路已经在
+ * 2026-09-21 被 `assertCallerDeclaredTrustLevel` 堵死了，堵完之后就再也没有任何办法表达「全自动」。
+ *
+ * 所以档位只能**派生**，不能各答一次：
+ *   · `step`（每步都问）   → `confirm_all`：每镜提交给供应商前都在 Nomi 停下。
+ *   · `safe-auto`（自动改） → `key_confirm`：默认档，方向门与样片门都停。
+ *   · `project`（全自动）   → `budget_only`：跳过创意门与样片门，只留预算门与不可逆动作。
+ *
+ * `spend` 那根轴**故意不参与**：它今天没有预算撑着（见 `capabilityApprovalPolicy.spendDecidedByPolicy`
+ * 的说明），拿它去放松 Run 的门等于用一张没有额度的通行证开门。钱门在任何档位都不跳
+ * （`productionRunService` 的 `autoApproveGate` 对 `isSpendGate` 硬抛）。
+ */
+export function trustLevelFromApprovalPolicy(policy: ProjectAgentApprovalPolicy | undefined): TrustLevel {
+  switch (projectAgentApprovalPolicyOf(policy).mode) {
+    case 'step': return 'confirm_all'
+    case 'project': return 'budget_only'
+    case 'safe-auto': return 'key_confirm'
+  }
+}
 
 /** 往「少问」的方向走（= 需要一次真人答过的确认）。 */
 export function isTrustDowngrade(from: TrustLevel, to: TrustLevel): boolean {

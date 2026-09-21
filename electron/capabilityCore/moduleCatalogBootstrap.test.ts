@@ -24,7 +24,7 @@ describe("createCatalogModuleRegistry", () => {
         { key: "provider-b", name: "Provider B", enabled: true, createdAt: "t", updatedAt: "t" },
       ],
       models: [
-        model({ modelKey: "image-model", vendorKey: "provider-a", onboarding: { addedVia: "manual", addedAt: "t", fields: [{ key: "aspectRatio", displayName: "Aspect", type: "select", options: [{ value: "1:1", label: "Square" }, { value: "16:9", label: "Wide" }] }] } }),
+        model({ modelKey: "image-model", vendorKey: "provider-a", onboarding: { addedVia: "manual", addedAt: "t", fields: [{ key: "aspectRatio", displayName: "Aspect", type: "select", options: [{ value: "1:1", label: "Square" }, { value: "16:9", label: "Wide" }], evidence: { field: "aspectRatio", evidence: "doc", evidence_location: "fixture", confidence: "high" as const } }] } }),
         model({ modelKey: "video-model", vendorKey: "provider-b", kind: "video" }),
       ],
       mappings: [mapping({}), mapping({ id: "mapping-2", vendorKey: "provider-b", modelKey: "video-model", taskKind: "image_to_video", create: { method: "POST", path: "/video", body: {} } })],
@@ -68,7 +68,7 @@ describe("createCatalogModuleRegistry", () => {
       vendors: [{ key: "kie", name: "kie", enabled: true, createdAt: "t", updatedAt: "t" }],
       models: [model({
         vendorKey: "kie", modelKey: "gpt-image-2-text-to-image",
-        onboarding: { addedVia: "manual", addedAt: "t", fields: [{ key: "resolution", displayName: "Resolution", type: "select", options: [{ value: "1K", label: "1K" }, { value: "2K", label: "2K" }] }] },
+        onboarding: { addedVia: "manual", addedAt: "t", fields: [{ key: "resolution", displayName: "Resolution", type: "select", options: [{ value: "1K", label: "1K" }, { value: "2K", label: "2K" }], evidence: { field: "resolution", evidence: "kie docs 1K/2K/4K", evidence_location: "kieGptImage2.ts", confidence: "high" as const } }] },
       })],
       mappings: [mapping({
         vendorKey: "kie", modelKey: "gpt-image-2-text-to-image", taskKind: "text_to_image",

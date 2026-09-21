@@ -43,7 +43,7 @@ describe('鉴权方案词：读路与写路同一个答案', () => {
   it('接入向导「列出这家的模型」把整份鉴权说法交给传输层（原来这里没有方案词的位置）', async () => {
     const { createExistingConnectionActions } = await import('../providerAdapter/existingConnection')
     for (const [vendor, expected] of [[HIGGSFIELD, `Key ${KEY}`], [PLAIN_BEARER, `Bearer ${KEY}`]] as const) {
-      const fetchModels = vi.fn(async () => ({ ok: true as const, models: ['m-1'], statuses: [200] }))
+      const fetchModels = vi.fn(async (..._args: unknown[]) => ({ ok: true as const, models: ['m-1'], statuses: [200] }))
       const actions = createExistingConnectionActions({
         readCatalog: () => ({
           version: 8,
@@ -80,7 +80,7 @@ describe('鉴权方案词：读路与写路同一个答案', () => {
     vi.doMock('./catalogCommit', () => ({ deriveVendorKeyFromBaseUrl: () => 'higgsfield' }))
     vi.doMock('../i18n', () => ({ desktopT: (key: string) => key }))
     const { discoverHttpCandidates } = await import('../integrationCertification/httpModelDiscovery')
-    const discoverHttpModels = vi.fn(async () => [])
+    const discoverHttpModels = vi.fn(async (..._args: unknown[]) => [] as unknown[])
     await discoverHttpCandidates({
       session: { config: { baseUrl: HIGGSFIELD.baseUrlHint, providerKind: 'openai-compatible', authType: 'bearer' } } as never,
       certification: { discoverHttpModels } as never,
