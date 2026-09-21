@@ -1,0 +1,222 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-integration-session-cap",
+  "problem_type": "A persisted state declares a capacity limit on the read side that no layer enforces on the write side, so the application eventually writes a file it can no longer read",
+  "symptom": "After the 101st model-integration session lands on disk, launching Nomi does nothing: the main process logs main/start-failed and calls app.quit() before the first window exists, so the user sees a dock bounce and no window. The only known workaround was deleting integration-sessions.json by hand.",
+  "direct_cause": "validateState threw \"Invalid integration session state\" whenever raw.sessions.length exceeded MAX_SESSIONS (100). IntegrationSessionService.read() calls it from the constructor, installIntegrationSessionRuntime() constructs the service inside registerIpc(), and registerIpc() runs synchronously inside the app-ready chain in electron/main.ts, whose .catch logs and quits.",
+  "class_root": "The 100-session cap had no owner. It existed only as a read-side assertion, while the single growth path (IntegrationSessionService.begin) appended without bound and every write went through persist() unchecked. A limit that nothing enforces is not a limit; it is a delayed self-inflicted corruption, and because the read side also conflated \"this file has too many records\" with \"this file is malformed\", the over-capacity state had no self-healing path either.",
+  "affected_population": [
+    "Every Nomi user whose machine accumulates more than 100 model-integration sessions; the reporting user's disk held 101 sessions (99 completed, 2 failed, all terminal) and observed up to 36 new sessions created in a single day",
+    "All three main-process entries that install the service: the GUI (electron/main.ts), the packaged MCP stdio server, and the one-shot CLI host - each dies the same way",
+    "Any owner client (codex, claude, cursor, pi, workbuddy, nomi) because the cap is counted across all owners, not per owner"
+  ],
+  "scope_paths": [
+    "electron/integrationCertification/integrationSessionRecord.ts",
+    "electron/integrationCertification/integrationSession.ts",
+    "electron/shared/integrationContract.ts",
+    "electron/capabilityCore/mcpToolErrorResults.ts"
+  ],
+  "entry_points": [
+    "readIntegrationSessionState - startup deserialization of integration-sessions.json in all three process entries",
+    "IntegrationSessionService.persist - the single write boundary every session mutation funnels through",
+    "IntegrationSessionService.begin - the only path that grows the session array"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The capacity contract of a Nomi-owned JSON state file is decided entirely by this repository: no third-party runtime, specification, or vendor document governs how many integration sessions may be retained or which ones may be evicted. The comparable prior art used to settle the eviction rule is in-repo (handoffQueue.ts, promotionJournal.ts, operationLedger.ts).",
+  "invariant_owner_layer": {
+    "layer": "electron/integrationCertification/integrationSessionRecord.ts",
+    "tests": [
+      "electron/integrationCertification/integrationSessionCap.test.ts",
+      "electron/integrationCertification/integrationSession.test.ts"
+    ],
+    "rationale": "The record module is the layer that already owns what a persisted session may look like (shape validation, retired-stage migration, deadline backfill). Capacity is the same kind of statement about the stored array, so it belongs here rather than in the service, and both the read boundary and the service's write boundary now call into it. Before this change the layer owned the assertion but not the enforcement, and it had no test at all covering the cap: grep for MAX_SESSIONS across the repository returned only the two production references."
+  },
+  "invariants": [
+    "The persisted session array never exceeds MAX_INTEGRATION_SESSIONS as a result of anything Nomi itself writes",
+    "Eviction only ever removes terminal sessions (completed, partial, failed, cancelled), oldest first by updatedAt then createdAt; a session that is still in progress is never dropped to make room",
+    "A session file that is over capacity but otherwise well-formed loads successfully, is trimmed in place, and the trimmed result is written back, so the user is never asked to delete a file by hand",
+    "A malformed session record still fails closed; too many records and a broken shape are separate outcomes with separate behavior",
+    "When unfinished sessions alone fill the cap, creating another one is refused with the structured code integration_session_limit_reached rather than evicting live work or silently exceeding the limit"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "readIntegrationSessionState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "MAX_INTEGRATION_SESSIONS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "adapterTerminalReasonCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "capIntegrationSessions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "integrationStageFromAdapterRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "assertIntegrationSessionCapacity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "safeCertificationFailureCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "capIntegrationSessions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "validateState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolErrorResults.ts",
+      "symbol": "INTEGRATION_ERROR_CODES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/integrationContract.ts",
+      "symbol": "INTEGRATION_ERROR_CODES"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 11,
+    "why_not": "The count grew rather than shrank, and that growth is the fix rather than a miss. Before, `node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts` reported 4 write doors and 0 read doors: the capacity rule had exactly one enforcement site (validateState, on the read side) and the write side did not consult the module at all - which is precisely why the limit was never enforced. After the fix the same command reports capIntegrationSessions on both sides plus the two new entry helpers, so every added door is previously missing enforcement pointing at one function. The surviving doors each have to exist: adapterTerminalReasonCode, integrationStageFromAdapterRun and safeCertificationFailureCode are unrelated reason-code mappers that share the module and touch no capacity state; readIntegrationSessionState (read) and assertIntegrationSessionCapacity (write) are deliberately separate because a read must self-heal while a creation request must be refused, and both delegate the number and the policy to capIntegrationSessions; validateState stays separate from capIntegrationSessions because shape validation must keep failing closed while capacity must not; the two INTEGRATION_ERROR_CODES doors are the canonical error-code owner and its single consumer, a split C4 already settled by making mcpToolErrorResults spread the owner instead of copying it.",
+    "after_scan_command": "node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts ; node scripts/door-map.mjs INTEGRATION_ERROR_CODES"
+  },
+  "generality_proof": "capIntegrationSessions is the single definition of both the number and the eviction rule, and it is called from the only two places this state can change shape: validateState (every read of integration-sessions.json, in every process entry) and IntegrationSessionService.persist (every write, since all fifteen mutation sites funnel through it). Enforcing at persist rather than at begin means a future caller that appends a session by another route is capped automatically, so the class cannot be reintroduced by adding a growth path. Enforcing at validateState rather than at the service means every reader - including a future second reader of the same file - self-heals instead of throwing. The read side no longer throws on count at all, which removes the mechanism that reached app.quit(); the only remaining startup throw is genuine shape corruption, which is a different class with a different, correct behavior.",
+  "shared_boundaries": [
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "capIntegrationSessions",
+      "responsibility": "Owns the capacity number and the eviction policy for the persisted session array: drop only terminal sessions, oldest first, and report overCapacity when unfinished sessions alone exceed the limit."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "readIntegrationSessionState",
+      "responsibility": "Read boundary: the only way this state is loaded. Validates shape and fails closed on a malformed record, delegates count to capIntegrationSessions, and writes the trimmed result back so an over-capacity disk heals itself."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "assertIntegrationSessionCapacity",
+      "responsibility": "Creation boundary: refuses a new session with integration_session_limit_reached when unfinished sessions alone fill the cap, which is the one case eviction cannot resolve without destroying live work."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "persist",
+      "responsibility": "Write boundary: applies the capacity owner on every persisted mutation, so no caller can grow the file past the cap."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/integrationCertification/handoffQueue.ts",
+      "entry_point": "enqueueIntegrationHandoff",
+      "disposition": "not-affected",
+      "evidence": "Same module, same MAX_ENTRIES = 100 shape, same read-side rejection in readState. Its write side already splices the oldest entries out before persisting, so the read assertion can never fire on state it produced. This is the in-repo prior art the fix follows; it proves the paired shape was already understood here and simply missing from the session record."
+    },
+    {
+      "path": "electron/integrationCertification/promotionJournal.ts",
+      "entry_point": "PromotionJournal.mutate",
+      "disposition": "not-affected",
+      "evidence": "readState rejects entries/tombstones/archives over MAX_ENTRIES = 1000, but every mutate() runs compact() before persist(), which moves finalized entries to tombstones and archives overflow to segment files. Checked both sides: the read cap is paired with a write-side compaction."
+    },
+    {
+      "path": "electron/integrationCertification/operationLedger.ts",
+      "entry_point": "OperationLedger.mutate",
+      "disposition": "not-affected",
+      "evidence": "readState rejects operations/tombstones/archives over MAX_OPERATIONS = 1000, and mutate() calls compactOperationLedgerState with maxOperations before writing. Paired on both sides."
+    },
+    {
+      "path": "electron/shared/contracts/modelBoxPreference.ts",
+      "entry_point": "normalizeModelBoxPreference",
+      "disposition": "not-affected",
+      "evidence": "MODEL_BOX_PREFERENCE_MAX_ENTRIES = 1000 is applied by truncating during normalization (break at the limit), never by throwing, so an over-long stored value degrades instead of failing a read."
+    },
+    {
+      "path": "electron/settings/systemPromptsContract.ts",
+      "entry_point": "normalize custom prompts",
+      "disposition": "not-affected",
+      "evidence": "CUSTOM_PROMPT_MAX_COUNT = 50 truncates during normalization (break at the limit); the UI additionally derives its create-disabled reason from the same constant, so the limit has a single owner and a visible refusal."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "entry_point": "readIntegrationSessionState",
+      "disposition": "enforced",
+      "evidence": "The reported entry. The whole read body moved out of the service into the record module, so the count is now delegated to capIntegrationSessions and the trimmed result is written back; IntegrationSessionService.read is a one-line delegation and the giant-shell file shrank from 1396 to 1394 lines."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "entry_point": "IntegrationSessionService.persist",
+      "disposition": "enforced",
+      "evidence": "Every session mutation in the service persists through this method; it now applies capIntegrationSessions before saving, which bounds the file regardless of which caller grew it."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The failure is produced by ordinary use rather than by an unusual input: every successful or failed model setup appends one record, the reporting machine produced up to 36 in a day, and nothing ever removed one. Any user, any owner client, and all three process entries reach it on the same schedule, and a machine that already crossed the line stays broken on every subsequent launch until the file is edited by hand.",
+    "same_class_scan": [
+      "grep -rn 'MAX_[A-Z_]*\\s*=\\s*[0-9_]' electron/ excluding tests - enumerated every numeric cap in the main process and separated byte caps from record-count caps",
+      "grep -rn '\\.length > MAX_\\|length > [A-Z_]{3,}' electron/ src/ excluding tests - isolated the caps that gate a stored array, then read the write side of each one",
+      "Read the write path of all four persisted capability-core states with a record cap (handoffQueue, promotionJournal, operationLedger, integrationSessionRecord) and both renderer-facing preference contracts (modelBoxPreference, systemPromptsContract); only integrationSessionRecord had a read-side cap with no write-side counterpart",
+      "grep -rn 'MAX_SESSIONS' across the repository - confirmed the constant had exactly two references, both in integrationSessionRecord.ts, and no test covered it",
+      "node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts - 4 write doors, 0 read doors before the fix, confirming the write side never consulted the module",
+      "git log -S 'MAX_SESSIONS' - the cap arrived in 529188045 (2026-08-28) already unpaired; 13588c1ac (2026-09-11) only moved it between files"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/integrationCertification/integrationSessionRecord.ts",
+    "invariant": "The persisted session array never exceeds MAX_INTEGRATION_SESSIONS because of a Nomi write, and eviction never removes a session that is not in a terminal stage.",
+    "failure_mode": "Over-capacity state produced by an older build is trimmed on read and written back; a write that would exceed the cap evicts the oldest terminal session; a creation request that cannot be satisfied without evicting unfinished work is refused with IntegrationRequestError code integration_session_limit_reached and a message naming the cancel action. Malformed records still throw.",
+    "exception_policy": "none",
+    "strategy": "One exported function owns the number and the policy, and both the read boundary and the write boundary call it. There is no second definition of the cap, no caller-side conditional, and no path that appends to the array without passing through persist(). The read boundary no longer conflates capacity with corruption, so the class can no longer reach the process-start failure path at all.",
+    "artifacts": [
+      "electron/integrationCertification/integrationSessionRecord.ts",
+      "electron/integrationCertification/integrationSession.ts",
+      "electron/shared/integrationContract.ts",
+      "electron/capabilityCore/mcpToolErrorResults.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/integrationCertification/integrationSessionCap.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/integrationCertification/integrationSessionCap.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/integrationCertification/integrationSessionRecord.ts"
+    ],
+    "rationale": "The unpaired read-side count assertion (raw.sessions.length > MAX_SESSIONS throwing \"Invalid integration session state\") is deleted in the same change, and the private MAX_SESSIONS constant is replaced by the exported MAX_INTEGRATION_SESSIONS that the new owner function uses. No fallback keeps the old rejection reachable."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The invariant is entirely internal: a Nomi-authored JSON file, a Nomi-authored validator, and a Nomi-authored write path. No third-party runtime, version, or platform controls how many sessions are retained or when the file is read.",
+    "exit_criteria": []
+  },
+  "migration": "Existing over-capacity files migrate themselves on first read: validateState trims to the newest 100 terminal-plus-all-unfinished sessions and IntegrationSessionService.read writes the compacted state back. No user action, no manual file deletion, and no separate migration script. A file whose unfinished sessions alone exceed the cap is loaded intact rather than trimmed, and is bounded afterwards by the begin() refusal; it converges as those sessions reach a terminal stage, whether by completing, being cancelled, or being timed out by the session watchdog. If the write-back itself fails, the in-memory state is already correct and the next launch retries, so a failed compaction cannot block startup.",
+  "residual_risks": [
+    "File size is a second, independent axis. writeCertificationJsonAtomic rejects a serialized state over 1 MiB, and a session may carry an adapterDraft of up to 512 KiB, so a small number of very large sessions can still exceed the byte cap. That failure surfaces on a write (a thrown CertificationPersistenceError reaching the caller that made the change), not on startup, so it is outside this class - but it is unowned in the same way the count cap was, and deserves its own remediation.",
+    "A malformed integration-sessions.json still throws during registerIpc() and still reaches the main.ts start-failed catch, so the user still sees a silent quit for that class. Making a non-critical state's initialization failure visible and degradable is deliberately out of scope here: the generic mechanism is being built in a parallel session (the single-instance-lock silent-quit line). This fix deliberately does not add a local swallow, because hiding genuine data corruption would trade a visible failure for an invisible one; it only removes capacity from the set of things that can trigger that path.",
+    "The eviction order depends on updatedAt (falling back to createdAt, then to insertion order). A session whose timestamps were never written by a Nomi build sorts as oldest and is evicted first among terminal records. That is the intended ordering for untimestamped legacy rows, but it has not been observed on a real disk.",
+    "The begin() refusal has been proven by unit test only. Reaching it in the real product requires 100 simultaneously unfinished setups, which no walkthrough or real machine has produced, so the user-facing wording of the MCP recovery hint is unverified in a live client."
+  ]
+}

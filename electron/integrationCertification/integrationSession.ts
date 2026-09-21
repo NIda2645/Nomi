@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { capabilityCoreDir, type CapabilityOriginHost } from "../capabilityCore/security";
 import { writeCertificationJsonAtomic } from "./certificationPersistence";
@@ -42,9 +41,11 @@ import {
 } from "./integrationProposalValidation";
 import {
   adapterTerminalReasonCode,
+  assertIntegrationSessionCapacity,
+  capIntegrationSessions,
   integrationStageFromAdapterRun,
+  readIntegrationSessionState,
   safeCertificationFailureCode,
-  validateState,
 } from "./integrationSessionRecord";
 import {
   assertRecord,
@@ -602,16 +603,11 @@ export class IntegrationSessionService {
     this.persist();
   }
   private read(): PersistedState {
-    if (!fs.existsSync(this.filePath)) return { version: 1, revision: 0, sessions: [] };
-    let raw: unknown;
-    try {
-      raw = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-    } catch {
-      throw new Error("Integration session storage is corrupt");
-    }
-    return validateState(raw);
+    return readIntegrationSessionState(this.filePath, (state) => this.save(this.filePath, state));
   }
+  /** 容量合同的写侧执行点：放在每一次写都过的 persist，新增会话的路径日后不必再各自记得封顶。 */
   private persist(): void {
+    this.state.sessions = capIntegrationSessions(this.state.sessions).sessions;
     this.save(this.filePath, this.state);
   }
   /**
@@ -923,6 +919,8 @@ export class IntegrationSessionService {
     } else if (input.kind === "http-api-provider") {
       session.stage = "needs_credential";
     }
+    // 容量闸：persist 会挤掉最旧的终态会话，但**挤不动非终态**；全是没做完的活时只能当场拒绝。
+    assertIntegrationSessionCapacity(this.state.sessions, session);
     this.state.sessions.push(session);
     this.state.revision += 1;
     this.persist();

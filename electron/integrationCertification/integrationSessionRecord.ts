@@ -5,22 +5,34 @@
  * 里只会继续喂那个巨壳（R9/R12）。原因码尤其不能散落：上游错误字符串一旦被原样落盘，
  * 投影就会把供应商的内部信息带给调用方。
  */
+import fs from "node:fs";
 import type { ProviderAdapterRun } from "../providerAdapter/types";
 import { assertRecord } from "./integrationWorkflowBinding";
 import type { IntegrationSession, PersistedIntegrationState } from "./integrationSession";
 import {
   INTEGRATION_CREDENTIAL_STATUSES,
   INTEGRATION_STAGES,
+  IntegrationRequestError,
   type IntegrationCredentialStatus,
   type IntegrationStage,
 } from "../shared/integrationContract";
+import { logWarn } from "../logging/logger";
 import { BUILTIN_MCP_CLIENTS, type CapabilityOriginHost } from "../capabilityCore/security";
 import {
   integrationCertifyingDeadlineAt,
   isCertifyingIntegrationStage,
+  isTerminalIntegrationStage,
 } from "./integrationSessionTerminal";
 
-const MAX_SESSIONS = 100;
+/**
+ * 这份状态的**容量合同**。修复前它只是读侧的一句断言：写侧（`begin`）无限追加，
+ * 于是 app 自己生产出一份自己读不了的盘——第 101 条落盘后主进程启动即 `app.quit()`，
+ * 用户看到的是「双击没反应」。一个上限只在读侧断言、没有任何一层负责让它成立，
+ * 就不是上限，是一颗定时炸弹（handoffQueue 同模块早就是写时挤掉最旧的，见其 MAX_ENTRIES）。
+ *
+ * 现在这个数字有唯一 owner：`capIntegrationSessions` 既在读侧自愈旧盘，也在写侧封顶。
+ */
+export const MAX_INTEGRATION_SESSIONS = 100;
 
 /** Convert connector/runtime failures into the closed, localizable reason-code
  * set exposed by the session projection. Never persist upstream error strings. */
@@ -92,14 +104,102 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
   item.certifyingDeadlineAt = integrationCertifyingDeadlineAt(anchor);
 }
 
+/**
+ * 容量合同的唯一执行者：超限时**只**挤掉终态会话，最旧的先走；非终态（还在进行中的）
+ * 一条都不动。
+ *
+ * 为什么不按「最旧的一律挤掉」：一条 `draft`/`needs_credential`/`certifying` 会话代表用户
+ * 手上还没做完的活（甚至挂着一条在飞的 child run）。把它悄悄删掉＝用户填到一半的接入凭空消失，
+ * 而这正是上限本来要保护他免于遇到的那种事。终态会话则只是历史，挤掉只丢一条记录。
+ *
+ * `overCapacity` = 光非终态就已经超限，裁剪救不回来。这时读侧照样把它们**全部**还回去
+ * （宁可状态偏大，也不丢用户在做的事），由写侧据此拒绝新建——见 `IntegrationSessionService.begin`。
+ */
+export function capIntegrationSessions<T extends { id: string; stage: string; createdAt?: string; updatedAt?: string }>(
+  sessions: readonly T[],
+  limit: number = MAX_INTEGRATION_SESSIONS,
+): { sessions: T[]; dropped: T[]; overCapacity: boolean } {
+  if (sessions.length <= limit) return { sessions: [...sessions], dropped: [], overCapacity: false };
+  const touchedAt = (entry: T): number => {
+    const stamp = Date.parse(entry.updatedAt || entry.createdAt || "");
+    return Number.isFinite(stamp) ? stamp : 0;
+  };
+  const evictable = sessions
+    .map((entry, order) => ({ entry, order }))
+    .filter(({ entry }) => isTerminalIntegrationStage(entry.stage))
+    // 最旧的先走；同一时刻的按原始顺序，保证结果与输入顺序无关地可复现。
+    .sort((left, right) => touchedAt(left.entry) - touchedAt(right.entry) || left.order - right.order)
+    .slice(0, sessions.length - limit);
+  const doomed = new Set(evictable.map(({ entry }) => entry));
+  const kept = sessions.filter((entry) => !doomed.has(entry));
+  return {
+    sessions: kept,
+    dropped: evictable.map(({ entry }) => entry),
+    overCapacity: kept.length > limit,
+  };
+}
+
+/**
+ * 新建会话前的容量闸。写侧的 `persist` 会替我们挤掉最旧的终态会话，但挤不动非终态：
+ * 光是没做完的活就占满上限时，唯一诚实的答复是当场拒绝并说清怎么出去——
+ * 悄悄删掉用户填到一半的接入，恰恰是这个上限本来要保护他免于遇到的事。
+ */
+export function assertIntegrationSessionCapacity(
+  existing: readonly IntegrationSession[],
+  incoming: IntegrationSession,
+): void {
+  if (!capIntegrationSessions([...existing, incoming]).overCapacity) return;
+  throw new IntegrationRequestError(
+    "integration_session_limit_reached",
+    `This machine already holds ${MAX_INTEGRATION_SESSIONS} unfinished model setups. `
+      + "Cancel one you no longer need (nomi_model_setup action=cancel) before starting another",
+    { limit: MAX_INTEGRATION_SESSIONS },
+  );
+}
+
+/**
+ * 读这份状态的唯一入口：形状坏了照抛（那是真需要被看见的信号），条数多了就地裁剪并把结果写回去。
+ *
+ * 修复前这两件事共用一句 throw，于是第 101 条会话一落盘，主进程启动链上的这一抛直接走到
+ * `main.ts` 的 `.catch` → `app.quit()`，用户看到的是「双击 Nomi 没反应」，出路只有手工删文件。
+ *
+ * 回写失败不许拖垮启动：返回的状态已经是对的，下次启动会再裁一次。这不是吞错——
+ * 回写只是把自愈结果落盘的优化，它失败不改变任何不变量。
+ */
+export function readIntegrationSessionState(
+  filePath: string,
+  writeBack: (state: PersistedIntegrationState) => void,
+): PersistedIntegrationState {
+  if (!fs.existsSync(filePath)) return { version: 1, revision: 0, sessions: [] };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    throw new Error("Integration session storage is corrupt");
+  }
+  const onDisk = Array.isArray((raw as { sessions?: unknown[] })?.sessions)
+    ? (raw as { sessions: unknown[] }).sessions.length
+    : 0;
+  const state = validateState(raw);
+  if (state.sessions.length >= onDisk) return state;
+  try {
+    writeBack(state);
+  } catch (error) {
+    logWarn("onboarding", "integration-session-compaction-writeback-failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+  }
+  return state;
+}
+
+/**
+ * 读侧只判**形状**，不再判条数：条数多是我们自己写出来的，不是文件坏了，
+ * 把两件事共用一句 `throw` 正是「启动静默退出」的成因。超限的旧盘就地裁剪，
+ * 调用方（`IntegrationSessionService.read`）负责把裁剪结果回写。
+ */
 export function validateState(raw: unknown): PersistedIntegrationState {
   assertRecord(raw);
-  if (
-    raw.version !== 1 ||
-    !Number.isSafeInteger(raw.revision) ||
-    !Array.isArray(raw.sessions) ||
-    raw.sessions.length > MAX_SESSIONS
-  )
+  if (raw.version !== 1 || !Number.isSafeInteger(raw.revision) || !Array.isArray(raw.sessions))
     throw new Error("Invalid integration session state");
   const stages = new Set<IntegrationStage>(INTEGRATION_STAGES);
   // 与 handoffQueue 同源：内置 client 全量允许（2026-09-11 workbuddy 漏抄修复）。
@@ -151,5 +251,6 @@ export function validateState(raw: unknown): PersistedIntegrationState {
     )
       throw new Error("Invalid integration session record");
   }
-  return { version: 1, revision: Number(raw.revision), sessions: raw.sessions as IntegrationSession[] };
+  const capped = capIntegrationSessions(raw.sessions as IntegrationSession[]);
+  return { version: 1, revision: Number(raw.revision), sessions: capped.sessions };
 }

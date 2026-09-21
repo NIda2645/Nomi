@@ -952,10 +952,11 @@
         "integration_required_fields_missing",
         "integration_revision_ahead",
         "integration_revision_stale",
+        "integration_session_limit_reached",
         "integration_session_not_found",
         "integration_stage_not_allowed"
       ],
-      "reason": "C4 的 canonical owner 本体：接入认证会话的错误码唯一值源，IntegrationErrorCode 类型从它 derive，mcpToolErrorResults 的 POLICY_CODES 已改为 spread 它。",
+      "reason": "C4 的 canonical owner 本体：接入认证会话的错误码唯一值源，IntegrationErrorCode 类型从它 derive，mcpToolErrorResults 的 POLICY_CODES 已改为 spread 它。2026-09-21 增 integration_session_limit_reached：会话容量上限第一次有了写侧执行者（capIntegrationSessions），「非终态占满、挤不动」这一档需要一个能被 Agent 分辨并给出出路的码，而不是继续借 stage_not_allowed 的语义。",
       "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_ERROR_CODES/as-const"
     },
     {

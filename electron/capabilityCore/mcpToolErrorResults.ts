@@ -72,6 +72,14 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'This action is missing required fields (all of them are listed in the message)',
     recover: [{ zh: '把消息里列出的字段一次补齐后重试', en: 'Send every field listed in the message, then retry' }],
   },
+  integration_session_limit_reached: {
+    zh: '这台机器上没做完的接入会话已经占满上限，再建一条就会挤掉一条在做的活',
+    en: 'This machine is at its limit of unfinished model setups; another one would evict work in progress',
+    recover: [
+      { zh: '用 nomi_read（target=setup）看你的接入会话', en: 'List your setups with nomi_read (target=setup)' },
+      { zh: '用 nomi_model_setup action=cancel 取消不再需要的那条后重试', en: 'Cancel one you no longer need with nomi_model_setup action=cancel, then retry' },
+    ],
+  },
   renderer_or_provider_unknown: {
     zh: '找不到能执行这次生成的渲染器或供应商配置',
     en: 'No renderer or provider configuration can execute this generation',
