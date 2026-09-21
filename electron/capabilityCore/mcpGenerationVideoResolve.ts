@@ -5,8 +5,9 @@
 // 槽 / candidate 带不带角色参考 / 时长估计。全是纯函数（吃 candidate + 候选快照，零副作用、零 provider 调用），
 // preview/gate/多镜密封都靠它当单一真相源。mcpGenerationTools.ts 与 mcpGenerationMultiShot.ts 单向 import。
 
-import { ContractCompilationError, GENERATION_PLANNING_HINT_KEYS, type PlanCandidate } from "./executionContract";
+import { ContractCompilationError, GENERATION_PLANNING_HINT_KEYS, type ExecutionContractCompileOptions, type PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
+import type { ResolvedModule } from "./moduleRegistry";
 import type {
   VideoGenerationRecommendationInput,
   VideoModelCandidate,
@@ -274,5 +275,67 @@ export function normalizeVideoCandidate(candidate: PlanCandidate, candidates: re
       ?? selected.candidate.mode,
     modeId: mode.id,
     transportModelId,
+  };
+}
+
+/**
+ * 换模型/换模式之后，候选身上**这个新模型不接受**的参数键（字典序）。
+ *
+ * 读的就是准入层那一份 schema（video 档案投影优先，否则 registry 的那份）——「哪些键合法」
+ * 全仓只此一份判据，清理与校验不许各答一次。新模型此刻解析不出来（目录里没有 / 模式不对）
+ * → 返回空数组：那不是「参数残留」问题，交给准入层去报它自己的错，这里不抢着替它解释。
+ */
+function parametersNotAcceptedBy(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  candidates: readonly VideoModelCandidate[] | undefined,
+): string[] {
+  try {
+    const accepted = videoParameterSchema(candidate, candidates)
+      ?? registry.resolve({
+        moduleId: candidate.moduleId,
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+        mode: candidate.mode,
+      }).parameterSchema;
+    return Object.keys(candidate.parameters).filter((key) => !(key in accepted)).sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 就地清掉候选身上这个新模型不接受的参数，返回被清掉的键。
+ *
+ * 换模型/换模式会把上一个模型的参数原封不动带过来。这些残留过去靠准入层「静默丢弃」消化掉
+ * ——那正是本刀要杀的行为。残留该在**换模型这一刻**由调用方清掉并如实上报（进 changeset），
+ * 而不是让校验层装聋（P2：修在最早的共享边界，不在最后一道闸打补丁）。
+ */
+export function stripParametersNotAccepted(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  candidates: readonly VideoModelCandidate[] | undefined,
+): string[] {
+  const cleared = parametersNotAcceptedBy(candidate, registry, candidates);
+  if (cleared.length === 0) return cleared;
+  candidate.parameters = Object.fromEntries(
+    Object.entries(candidate.parameters).filter(([key]) => !cleared.includes(key)),
+  );
+  return cleared;
+}
+
+/**
+ * 编译执行契约时该带的那两样：这个模型此刻的参数表，以及它声明过的变体清单。
+ * 三个编译点（单镜 preview / 单镜 gate_request / 多镜 seal）共用这一处，
+ * 免得「preview 核了变体、gate 没核」这种两道闸不一致。
+ */
+export function videoCompileOptions(
+  candidate: PlanCandidate,
+  candidates: readonly VideoModelCandidate[] | undefined,
+): ExecutionContractCompileOptions {
+  const allowedVariantIds = videoAllowedVariantIds(candidate, candidates);
+  return {
+    parameterSchema: videoParameterSchema(candidate, candidates),
+    ...(allowedVariantIds ? { allowedVariantIds } : {}),
   };
 }

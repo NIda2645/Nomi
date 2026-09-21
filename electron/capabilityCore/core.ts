@@ -20,7 +20,6 @@ import { deriveModelListing, referenceModeForIntent, videoBodyKeysForModel, type
 import { classifyReferenceKeyDetailed } from '../catalog/referenceReachability'
 import { desktopT } from '../i18n'
 import {
-  CanvasGraphError,
   addNodes,
   connectNodes,
   deleteNodes,
@@ -38,6 +37,7 @@ import { previousShotPromptFor } from './shotOrder'
 import { MediaImportRejectedError, importLocalFile } from '../assets/localFileImport'
 import { mcpImportRejectionMessage } from './mcpImportRejectionMessage'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
+import { assertCatalogModelIdentity } from './canvasModelIdentity'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -312,46 +312,11 @@ export async function addProjectNodes(gateway: ProjectGateway, specs: NodeSpec[]
     })
     if (!approved) return { ids: [], cancelled: true }
   }
-  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs, { assertModelIdentity: assertCatalogModelIdentity })
+  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs, {
+    assertModelIdentity: (identity) => assertCatalogModelIdentity(listAvailableModels(), identity),
+  })
   await gateway.apply(snapshot)
   return { ids }
-}
-
-/** 媒体节点 kind → 这个节点该挂什么 kind 的模型。其余 kind（text/shot/output…）不绑模型，不校验。 */
-const MODEL_KIND_FOR_NODE_KIND: Record<string, string> = {
-  image: 'image', keyframe: 'image', character: 'image', scene: 'image', panorama: 'image',
-  video: 'video', clip: 'video', audio: 'audio', model3d: 'model3d',
-}
-
-/**
- * 外部调用方给的 `(vendor, modelKey)` 必须真的在目录里，且 kind 对得上节点。
- *
- * 判据读的就是 `listAvailableModels()` 那一份（全 App 唯一的「有哪些模型 / 能不能用」），
- * 不在这里另写一套查找。拒绝时**不**把 100 多个模型抄进错误里（那会把回合上下文撑爆，
- * 也是分级披露要治的那件事）——只给最接近的那个 + 指向薄名单的那一句。
- */
-export function assertCatalogModelIdentity(identity: { vendor?: string; modelKey?: string; kind: string }): void {
-  const expectedModelKind = MODEL_KIND_FOR_NODE_KIND[identity.kind]
-  if (!expectedModelKind || !identity.modelKey) return
-  const listing = listAvailableModels()
-  const sameKey = listing.filter((entry) => entry.modelKey === identity.modelKey)
-  const matched = identity.vendor ? sameKey.filter((entry) => entry.vendor === identity.vendor) : sameKey
-  if (matched.length === 0) {
-    const closest = listing.find((entry) => entry.modelKey.toLowerCase() === identity.modelKey!.toLowerCase())
-      ?? listing.find((entry) => entry.modelKey.toLowerCase().includes(identity.modelKey!.toLowerCase()))
-    throw new CanvasGraphError(
-      'unknown_model_identity',
-      `目录里没有${identity.vendor ? ` ${identity.vendor} 的` : ''}模型 ${identity.modelKey}。`
-      + (closest ? `最接近的是 ${closest.vendor}/${closest.modelKey}。` : '')
-      + '用 nomi_read{target:"models"} 取薄名单，再用 target:"model" 查那一个的详情。',
-    )
-  }
-  if (!matched.some((entry) => entry.kind === expectedModelKind)) {
-    throw new CanvasGraphError(
-      'unknown_model_identity',
-      `模型 ${identity.modelKey} 是 ${matched[0]!.kind} 模型，挂不到 ${identity.kind} 节点上（这里要 ${expectedModelKind} 模型）。`,
-    )
-  }
 }
 
 export async function connectProjectNodes(gateway: ProjectGateway, connections: ConnectionSpec[]): Promise<{
