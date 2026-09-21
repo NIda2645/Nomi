@@ -54,7 +54,7 @@ const baselinePath = path.join(repoRoot, 'scripts/platform-archetypes-baseline.j
 // 档案是真相源（渲染层），generated 文件只是主进程侧的桥接副本。读真相源，
 // 免得有人改了档案没跑 gen 就以为门岗过了。
 const archetypeDirs = [
-  path.join(repoRoot, '../electron/shared/modelArchetypes'),
+  path.join(repoRoot, 'electron/shared/modelArchetypes'),
   path.join(repoRoot, 'electron/shared/videoCapabilities'),
 ]
 
