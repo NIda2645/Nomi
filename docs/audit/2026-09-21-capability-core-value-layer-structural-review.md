@@ -96,3 +96,27 @@ schema 有主人（`generationPlanInputSchema` 一族）、路由有主人（`di
 - 不主张增加门岗。判据 A/B/C 里只有 C 值得机器化，而机器化它的前提是先有一个主人可比对。
 - 不主张冻结这一层的改动。它出血多是因为它是**所有外部入口的必经之路**，
   改动频率高本身不是缺陷证据。
+
+---
+
+# 追加（2026-09-22）：`electron/catalog` 也成簇了
+
+本刀把档案搬进中立契约层之后，`electron/catalog` 的文件进了合同的 `scope_paths`，
+于是它在同一个 7 天窗口里也凑够了阈值。门岗要求点名它，这一节就是回应。
+
+**它成簇的原因和 `electron/capabilityCore` 是同一条**：`electron/catalog` 是「目录说什么」的
+主人，而「模型说什么」的主人一直在渲染层（档案）。两份知识描述同一个对象（这个模型接受什么），
+中间没有任何东西比对——`modelParameterSchema` 从 onboarding 字段与 mapping 默认值里凑一份、
+档案里另有一份、video 档案投影再算一份，三份都对同一个问题给答案。
+本刀把**准入判据**收敛到档案那一份，并在 `agentModelEntriesFromCatalog` 里把
+「目录行（身份 + 可用性）」与「档案（能力 + 参数）」显式 join 成一个对象——
+这是让两份知识**在一处相遇**，不是又加一份。
+
+**实测支持这个判断**（数字见 `docs/plan/2026-09-21-model-spec-parity.md` §A-3）：
+全目录 **0 个**模型带 `onboarding.fields`；`parameterSchema` 非空的 6 个**全部**来自
+`mapping.create.defaultParams`。也就是说 `electron/catalog` 这一层里「模型参数」这份知识
+今天几乎是空的——它一直由档案承担，只是主进程够不着。**搬家消除的正是这条缝，不是掩盖它。**
+
+**这一层下一刀该看的**（建议，未拍板）：`catalogStore` 参与的硬环（架构耦合审计分析五已点名），
+以及 `onboarding.fields` 这条今天零使用者的来源要不要保留——它是用户自接模型的唯一参数声明口，
+删不得，但需要一条真实用例证明它走得通，否则下次还会有人以为「目录里有参数表」。
