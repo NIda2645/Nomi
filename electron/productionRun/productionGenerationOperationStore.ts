@@ -121,10 +121,18 @@ export function createProductionGenerationOperationStore(
       // 沿用顶层 revision 会让第二次改同一镜撞上第一次的键、被当成重放吃掉）。
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
       if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
+      // 改顶层：键必须带 planVersion。
+      //
+      // 为什么（花钱轴上的静默故障）：`generation.present`（用户在卡上改勾选）会把**顶层候选**
+      // 重写成「第一个被勾上的那一镜」（`productionGenerationPlanEdits.ts:233`），于是顶层候选的
+      // revision 会随勾选**往回跳**。只拿 revision 当键，「改一版 → 改勾选 → 再改一版」就会撞上
+      // 之前用过的键，被命令存储当成重放吃掉——用户按了、界面没反应、报价卡还印着旧参数。
+      // planVersion 每次 present 必 +1，所以带上它之后，一个纯粹的勾选动作再也改不动任何键的身份。
+      // 逐镜那条不受影响（present 不动各镜自己的 revision），保持原样即可。
       const result = await owner.command(projectId, operationId, {
         commandId: targetShot
           ? `generation.patch:${operationId}:${shotId}:${targetShot.candidate.revision}`
-          : `generation.patch:${operationId}:${current.candidate.revision}`,
+          : `generation.patch:${operationId}:v${targetRun.planVersion}:${current.candidate.revision}`,
         expectedRevision: targetRun.revision,
         type: "generation.patch",
         payload: { patch, ...(shotId ? { shotId } : {}) },
