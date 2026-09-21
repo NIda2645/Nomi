@@ -1,5 +1,5 @@
 /**
- * 介入槽 · 反问卡的**对外契约**（2026-09-21 拍板：「反问必须是通用能力」）。
+ * 介入槽 · 反问卡的**渲染层那一半**（2026-09-21 拍板：「反问必须是通用能力」）。
  *
  * 用户原话：「这个是模型要自己输入选项吧，通用的吧，别搞错了，只有那一种反问就离谱了」。
  * 所以这里定的不是「画幅怎么问」，而是**任何一次提问**长什么样：模型自己写问题、自己写
@@ -7,40 +7,44 @@
  * 时间轴）任何话题都能用同一张卡。宿主侧的「缺参数」「同字段 3 次熔断」只是同一张卡的
  * **另外两个生产者**，不是唯一触发——所以这个文件里不许出现任何一个具体题目的字段。
  *
+ * ── 形状不在这个文件里 ──
+ *
+ * `V4QuestionOption` / `V4QuestionAsk` 都是 `electron/shared/agentCapabilities/askUser.ts`
+ * 那份 zod schema 的 `z.infer`，**一个字段都不在这里手写**。模型看到的 JSON Schema、
+ * 主进程的校验、身份提示词里的例子、熔断构造的参数读的也是那一份。
+ * 手写一份平行类型的后果不是编译错误——是它们慢慢长得不一样，而没有任何东西会发现
+ * （`docs/lessons/stale-directives-outlive-tool-renames.md`）。
+ *
+ * 这件事在本分支上**真的发生过一次**：2026-09-21 做反向验红时，一条
+ * `git checkout -- <本文件>` 把刚写好的派生整段冲回了手写版，而 typecheck 全绿、
+ * `askUserContract.test.ts` 也全绿——因为那一刻两份形状恰好还一样。
+ * 所以那份对拍测试现在多一条：**直接读这个文件的源码，断言它 import 了那个 owner**
+ * （「还在派生吗」和「今天是否碰巧一致」是两个问题）。
+ *
  * ## 这份契约的两端
  *
- * · **吃什么**：`parseQuestionAsk(args)`——一次待决工具调用的 `args`。模型侧的提问工具由
- *   主进程 lane 接（届时它的 JSON Schema 必须与 `V4QuestionAsk` 逐字段对齐）。
- * · **回什么**：`V4QuestionAnswer`。今天回传的载体是 `laneClient.deny(toolCallId, text)`
- *   ——lane 的审批协议只有准 / 不准，而带话的那一支会把那句话**一字不改**变成模型看到的
- *   tool result（`laneClient.deny` 的注释；计划卡的「只留这几条」走的也是它）。
- *   `answerToolResult()` 是这条路上唯一的序列化口，主进程 lane 接上真正的提问工具之后
- *   只需要换掉调用它的那一行，卡与解析一个字都不用动。
+ * · **吃什么**：`parseQuestionSheet(args)`——一次待决工具调用的 `args`。产出它的动词是
+ *   `ask_user`（`electron/shared/agentCapabilities/verbs/askVerbs.ts`）。
+ * · **回什么**：`V4QuestionAnswer[]`，一题一条。载体是 `laneClient.answer(toolCallId, text)`
+ *   ——`answer` 是审批协议里**属于回答自己的那条 action**（2026-09-21 新增），那段话
+ *   一字不改变成模型看到的 tool result，回合不中断。在它之前这条路借的是 `deny`，
+ *   于是转录里留下的是一条用户从没做过的拒绝。
  *
  * ## 为什么解析住在渲染层
  *
  * 槽里这张卡今天就是靠嗅 `args` 认出来的（`agentPanelV4Intervention.ts` 顶上那段注释）。
  * 嗅探规则只有一份、是纯函数、逐条可单测——多一份就是「同一个语义两个主人」。
- * 这个文件是那一份；`residentExceptionProjections.residentQuestionOptions` 已随本次改动删除。
  */
+import type { AskUserHostReason, AskUserOption, AskUserQuestion } from '../../../../electron/shared/agentCapabilities/askUser'
+import { ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE } from '../../../../electron/shared/agentCapabilities/askUser'
 
-/**
- * 一个选项。
- *
- * · `label` 是 chip 上印的那几个字，**也是**答案本身（定稿 ⑤：反问格没有确认/不要，
- *   选项本身就是回答）。
- * · `description` 是标签下面那一句说明。模型不写就没有——我们不替它编。
- * · `recommended` 是「它建议这一个」。只是一个记号，不预选、不代答。
- */
-export type V4QuestionOption = Readonly<{
+export type V4QuestionOption = Readonly<Omit<AskUserOption, 'id'> & {
+  /** 卡上必须有一个稳定的 id；模型没给就由 `questionOptions()` 按位置补 `option-N`。 */
   id: string
-  label: string
-  description?: string
-  recommended?: true
 }>
 
 /** 我们**自己**要说的那句话（不是模型写的），所以只传一个码 + 数，文案在渲染层 i18n。 */
-export type V4QuestionAskReason = Readonly<{ code: 'retry_exhausted'; attempts: number }>
+export type V4QuestionAskReason = Readonly<AskUserHostReason>
 
 /**
  * 一次提问。
@@ -49,12 +53,23 @@ export type V4QuestionAskReason = Readonly<{ code: 'retry_exhausted'; attempts: 
  * 上限**不在这里卡**——拍板的是 2–4 个，但把它做成解析期的硬截断会让「模型多给了一个」
  * 变成一条静默丢失的数据。数量的判词归 `questionOptionCountIssue()`，调用方决定怎么说。
  */
-export type V4QuestionAsk = Readonly<{
+export type V4QuestionAsk = Readonly<Omit<AskUserQuestion, 'question' | 'options'> & {
+  /** 解析后恒有这个字段（只给了 `missingParam` 时是空串，问句由调用方按参数名补）。 */
   question: string
   options: readonly V4QuestionOption[]
-  /** 模型自己写的一句补充（「为什么现在问」）。 */
-  note?: string
-  /** 宿主生产者写的那一句（熔断）。文案由渲染层按码出，不接受成句的字符串。 */
+  /** 只给了 `missingParam` 时是那个参数名。 */
+  missingParamName?: string
+}>
+
+/**
+ * **一张卡**：1–3 题，一次显示一题（2026-09-21 拍板，版式整件还原 Beautiful UI 的 Approval Card）。
+ *
+ * 为什么是一张卡几题、而不是一题一张卡：对用户来说相关的几个问题是**一次**打断；
+ * 一题一回合则是「答一句、等它想一会、再被问一句」，同一件事被切成三次等待。
+ */
+export type V4QuestionSheet = Readonly<{
+  questions: readonly V4QuestionAsk[]
+  /** 宿主生产者写的那一句（熔断），整张卡一份。args 上叫 `askReason`，解析后叫 `reason`。 */
   reason?: V4QuestionAskReason
 }>
 
@@ -65,10 +80,14 @@ export type V4QuestionAsk = Readonly<{
  * 卡内打字时 `optionId` 缺席、`text` 是他打的那句话。**永远有 `text`**——模型只认字，
  * 一个光秃秃的 id 对它来说和没答一样。
  */
-export type V4QuestionAnswer = Readonly<{ optionId?: string; text: string }>
+export type V4QuestionAnswer = Readonly<{ questionIndex: number; optionIds?: readonly string[]; text: string }>
 
-/** 拍板的选项数量区间（2026-09-21：2–4 个）。超出不丢数据，只由调用方决定怎么说。 */
-export const V4_QUESTION_OPTION_RANGE = Object.freeze({ min: 2, max: 4 })
+/**
+ * 拍板的选项数量区间（2026-09-21：2–4 个）与题数区间（1–3 题）。超出不丢数据，只由调用方决定怎么说。
+ * 数值**从共享契约来**：说明书里印给模型的那几个数和这里判越界用的必须是同几个数。
+ */
+export const V4_QUESTION_OPTION_RANGE = ASK_USER_OPTION_RANGE
+export const V4_QUESTION_COUNT_RANGE = ASK_USER_QUESTION_RANGE
 
 function asRecord(value: unknown): Readonly<Record<string, unknown>> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -118,20 +137,46 @@ function askReason(rawArgs: unknown): V4QuestionAskReason | undefined {
  * （2026-09-12 已经把它并进反问格了）。它只缺**问题那句话**——工具通常只说「缺 duration」，
  * 那对用户不是一句话，所以问句由调用方按 `missingParamName` 补一句人话，这里只如实说缺哪个。
  */
-export function parseQuestionAsk(rawArgs: unknown): (V4QuestionAsk & { missingParamName?: string }) | undefined {
-  const record = asRecord(rawArgs)
-  const missing = trimmed(record.missingParam)
+function parseOneQuestion(raw: unknown, missingParamName?: string): V4QuestionAsk | undefined {
+  const record = asRecord(raw)
   const question = trimmed(record.question)
-  if (!missing && !question) return undefined
-  const reason = askReason(rawArgs)
+  if (!question && !missingParamName) return undefined
   const note = trimmed(record.note)
   return Object.freeze({
     question: question ?? '',
-    options: questionOptions(rawArgs),
-    ...(missing ? { missingParamName: missing } : {}),
+    options: questionOptions(raw),
+    ...(missingParamName ? { missingParamName } : {}),
     ...(note ? { note } : {}),
-    ...(reason ? { reason } : {}),
+    ...(record.multiSelect === true ? { multiSelect: true as const } : {}),
   })
+}
+
+/**
+ * 这次待决是不是一次提问；是就返回**整张卡**。
+ *
+ * 题数上限**不在这里卡**（与选项数同一条理由）：模型多给一题时截断会让它变成一条静默
+ * 丢失的数据。判词归 `questionCountIssue()`，调用方决定怎么说。
+ */
+export function parseQuestionSheet(rawArgs: unknown): V4QuestionSheet | undefined {
+  const record = asRecord(rawArgs)
+  const missing = trimmed(record.missingParam)
+  const raw = Array.isArray(record.questions) ? record.questions : []
+  const questions = raw.flatMap((entry) => { const one = parseOneQuestion(entry); return one ? [one] : [] })
+  if (questions.length === 0 && missing) {
+    // 缺参数本来就是「一句问题 + 几个现成答案」，它没有第二种长相（2026-09-12 并档）。
+    // 它只缺**问题那句话**——工具通常只说「缺 duration」，那对用户不是一句话，
+    // 所以问句由调用方按 `missingParamName` 补一句人话，这里只如实说缺哪个。
+    const one = parseOneQuestion(rawArgs, missing)
+    if (one) questions.push(one)
+  }
+  if (questions.length === 0) return undefined
+  const reason = askReason(rawArgs)
+  return Object.freeze({ questions: Object.freeze(questions), ...(reason ? { reason } : {}) })
+}
+
+/** 题数越界时的判词。`undefined` = 在区间内。 */
+export function questionCountIssue(sheet: V4QuestionSheet): 'too-many' | undefined {
+  return sheet.questions.length > V4_QUESTION_COUNT_RANGE.max ? 'too-many' : undefined
 }
 
 /** 选项数量越界时的判词。`undefined` = 在区间内。调用方决定说不说、怎么说。 */
@@ -149,13 +194,25 @@ export function questionOptionCountIssue(ask: V4QuestionAsk): 'too-few' | 'too-m
  * 那个——不提交，**也不把这次回车传给下面的 composer**（否则会发出一条空消息，或者把上一条
  * 草稿误发出去）。一个判据两处用，且它值得被单测钉住。
  */
-export function questionAnswerFromInput(text: string): V4QuestionAnswer | undefined {
+export function questionAnswerFromInput(text: string, questionIndex = 0): V4QuestionAnswer | undefined {
   const trimmedText = text.trim()
-  return trimmedText ? Object.freeze({ text: trimmedText }) : undefined
+  return trimmedText ? Object.freeze({ questionIndex, text: trimmedText }) : undefined
 }
 
-export function questionAnswerFromOption(option: V4QuestionOption): V4QuestionAnswer {
-  return Object.freeze({ optionId: option.id, text: option.label })
+/** 多选那一支：几颗一起提交，`text` 是它们的标签连起来——模型只认字。 */
+export function questionAnswerFromOptions(
+  options: readonly V4QuestionOption[], questionIndex = 0,
+): V4QuestionAnswer | undefined {
+  if (options.length === 0) return undefined
+  return Object.freeze({
+    questionIndex,
+    optionIds: Object.freeze(options.map((option) => option.id)),
+    text: options.map((option) => option.label).join('、'),
+  })
+}
+
+export function questionAnswerFromOption(option: V4QuestionOption, questionIndex = 0): V4QuestionAnswer {
+  return questionAnswerFromOptions([option], questionIndex)!
 }
 
 /**
@@ -165,6 +222,6 @@ export function questionAnswerFromOption(option: V4QuestionOption): V4QuestionAn
  * 把 `option-2` 这种内部 id 发回去只会让它去猜我们在说哪一个。带 id 的那一半留在
  * `V4QuestionAnswer` 里，等主进程 lane 接上真正的提问工具时由结构化字段承载。
  */
-export function answerToolResult(answer: V4QuestionAnswer): string {
-  return answer.text
+export function answerToolResult(answers: readonly V4QuestionAnswer[]): string {
+  return answers.map((answer) => answer.text).join('\n')
 }

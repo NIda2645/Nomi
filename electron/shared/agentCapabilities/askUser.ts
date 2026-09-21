@@ -21,6 +21,7 @@
 //   · 渲染层 `agentPanelV4Question` ← `z.infer<typeof askUserInputSchema>`（一行 re-export，不手写）
 //   · 身份提示词里举的例子           ← 动词声明的 `examples`（装配期逐条喂回同一份 schema）
 //   · 熔断转提问时构造的参数         ← `askUserPendingArgsSchema`（同一份 + 两个宿主字段）
+//   · 渲染层版式（Approval Card）     ← 同一份：一张卡 1–3 题、一次显示一题、每题单选或多选
 //
 // 任何一处想加字段，只能加在这个文件里；加错地方由 `askUserContract.test.ts` 当场红。
 import { z } from "zod";
@@ -59,22 +60,52 @@ export const askUserOptionSchema = z.object({
 export type AskUserOption = z.infer<typeof askUserOptionSchema>;
 
 /**
- * 一次提问，**模型这一侧的全部输入**。
+ * **一题。** 卡上一次显示一题。
  *
  * `options` 可以为空：没有现成答案的题目（「你想要什么风格？」）就只剩自由输入那一行，
- * 卡照样成立。自由输入**不是一个选项**，是卡的固有能力（2026-09-21 拍板），
+ * 题照样成立。自由输入**不是一个选项**，是卡的固有能力（2026-09-21 拍板），
  * 所以它不出现在这份 schema 里——模型不需要、也不应该能把它关掉。
  */
-export const askUserInputSchema = z.object({
+export const askUserQuestionSchema = z.object({
   question: z.string().trim().min(1)
     .describe("The question, in the user's own language, as one sentence he can answer without reading anything else."),
   options: z.array(askUserOptionSchema).optional()
-    .describe(`Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead.`),
+    .describe("Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead."),
+  multiSelect: z.boolean().optional()
+    .describe("True when he may pick several of these at once. Default is one answer only, which submits as soon as he picks it."),
   note: z.string().trim().min(1).optional()
-    .describe("One optional line of why you are asking right now. Not a second question."),
+    .describe("One optional line of why you are asking this one. Not a second question."),
+}).strict();
+
+export type AskUserQuestion = z.infer<typeof askUserQuestionSchema>;
+
+/**
+ * 一次提问，**模型这一侧的全部输入**：一到三题，一张卡问完。
+ *
+ * ── 为什么是一张卡几题，而不是一题一回合（2026-09-21 用户拍板） ──
+ *
+ * 版式整件还原 Beautiful UI 的 Approval Card（查证 `scratchpad/askcard-library-findings-0921.md`）：
+ * 一张卡可以带几题、**一次显示一题**、页脚写着 `1/3`。对用户来说这是一次打断而不是三次；
+ * 一题一回合则是「答完一句、等它想一会、再被问一句」——同一件事被切成三次等待。
+ * 上限三题不是审美：再多就不是提问，是问卷（`mcpBriefIntake.ts` 文件头那句「超过 3 题就是 interrogation」）。
+ */
+export const ASK_USER_QUESTION_RANGE = Object.freeze({ min: 1, max: 3 });
+
+export const askUserInputSchema = z.object({
+  questions: z.array(askUserQuestionSchema).min(1)
+    .describe("One to three questions, asked on one card, one at a time. Put related questions together in a single call rather than asking, waiting, and asking again."),
 }).strict();
 
 export type AskUserInput = z.infer<typeof askUserInputSchema>;
+
+/** 一题的答复。`optionIds` 只在多选时有多个；`text` **永远有**——模型只认字。 */
+export const askUserAnswerSchema = z.object({
+  questionIndex: z.number().int().nonnegative(),
+  optionIds: z.array(z.string()).optional(),
+  text: z.string(),
+}).strict();
+
+export type AskUserAnswer = z.infer<typeof askUserAnswerSchema>;
 
 /**
  * 我们**自己**要说的那句话（不是模型写的），所以只传一个码 + 一个数：文案在渲染层 i18n。
@@ -97,13 +128,13 @@ export type AskUserHostReason = z.infer<typeof askUserHostReasonSchema>;
  * 模型**填不出** `missingParam` / `askReason`，所以它们不在 `askUserInputSchema` 里——
  * 让模型能自己声称「这是第 3 次了」就是给它一个伪造理由的字段。
  */
-export const askUserPendingArgsSchema = askUserInputSchema.extend({
-  question: askUserInputSchema.shape.question.optional(),
+export const askUserPendingArgsSchema = z.object({
+  questions: z.array(askUserQuestionSchema).optional(),
   missingParam: z.string().trim().min(1).optional(),
   askReason: askUserHostReasonSchema.optional(),
 }).strict().refine(
-  (value) => Boolean(value.question || value.missingParam),
-  { message: "A question card needs either a question or the name of the missing parameter" },
+  (value) => Boolean(value.questions?.length || value.missingParam),
+  { message: "A question card needs at least one question, or the name of the missing parameter" },
 );
 
 export type AskUserPendingArgs = z.infer<typeof askUserPendingArgsSchema>;
@@ -124,7 +155,7 @@ export const AGENT_ASK_CAPABILITY = {
   version: 1,
   aliases: { pi: "ask_user" },
   inputSchema: askUserInputSchema,
-  outputSchema: z.object({ answer: z.string(), optionId: z.string().optional() }).strict(),
+  outputSchema: z.object({ answers: z.array(askUserAnswerSchema) }).strict(),
   effect: "read",
   effectClass: "reversible_local",
   alwaysAsksUser: true,
@@ -132,7 +163,7 @@ export const AGENT_ASK_CAPABILITY = {
   exposure: "internal_only",
   requiredScope: "agent:ask",
   targetKind: "project",
-} as const satisfies CapabilityContract<AskUserInput, { answer: string; optionId?: string }>;
+} as const satisfies CapabilityContract<AskUserInput, { answers: AskUserAnswer[] }>;
 
 /**
  * 内部面上这个动词叫什么。**从契约的别名取，不在别处手打字符串**——

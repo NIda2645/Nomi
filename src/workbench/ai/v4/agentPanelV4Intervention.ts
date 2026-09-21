@@ -24,7 +24,7 @@ import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabil
 import type { CapabilityEffectClass } from '../../../../electron/shared/agentCapabilities/capabilityContract'
 import { residentPlanShots, residentProposalParameters } from '../resident/residentExceptionProjections'
 import { readableToolName, readableToolPreview } from '../resident/residentToolDisplay'
-import { parseQuestionAsk, type V4QuestionAsk, type V4QuestionOption } from './agentPanelV4Question'
+import { parseQuestionSheet, type V4QuestionAsk, type V4QuestionOption, type V4QuestionSheet } from './agentPanelV4Question'
 import type { InterventionData, PlanRow, V4InterventionKind } from './agentPanelV4Types'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -87,9 +87,10 @@ export function questionText(ask: V4QuestionAsk & { missingParamName?: string },
  * 文案按码出，不接受生产者传成句的字符串——那样它就绕过了 i18n，英文用户会看到中文
  * （或者反过来）。生产者只说「这是第几次没过」，怎么讲是渲染层的事。
  */
-export function askReasonText(ask: V4QuestionAsk, t: Translate): string | undefined {
-  if (!ask.reason) return undefined
-  return t('agentPanelV4.questionRetryExhausted', { count: ask.reason.attempts })
+export function askReasonText(sheet: V4QuestionSheet, t: Translate): string | undefined {
+  // 熔断那一句挂在**整张卡**上，不是某一题上：它解释的是「为什么这一刻在问」。
+  if (!sheet.reason) return undefined
+  return t('agentPanelV4.questionRetryExhausted', { count: sheet.reason.attempts })
 }
 
 /**
@@ -125,7 +126,7 @@ export function interventionKindOf(args: unknown, effectClass: CapabilityEffectC
   if (stringField(record, 'missingCredential')) return 'credential'
   // 缺参数与提问是同一张卡的两个生产者（2026-09-12 并档），判据也只有一条：
   // `parseQuestionAsk` 认得出就是提问。这里不再各嗅一次 key。
-  if (parseQuestionAsk(args)) return 'question'
+  if (parseQuestionSheet(args)) return 'question'
   if (isPlan) return 'plan'
   if (effectClass === 'spend') return 'spend'
   // 认不出的能力 fail-closed 到**不可逆**：把一个未知操作当成可撤销的，等于替用户
@@ -153,12 +154,16 @@ export function projectV4Intervention(
   const isPlan = Boolean(source.planLines?.length) || residentPlanShots(source.args).length > 0
   const kind = interventionKindOf(source.args, source.effectClass, isPlan)
   const more = source.pendingCount > 1 ? t('agentPanelV4.interventionMore', { count: source.pendingCount - 1 }) : ''
-  const ask = kind === 'question' ? parseQuestionAsk(source.args) : undefined
+  // 一张卡 1–3 题、一次显示一题（2026-09-21 版式拍板）。今天的卡体还只画得了第一题，
+  // 所以这里取 `questions[0]`——**整张卡仍然在 `sheet` 里**，版式换成 Approval Card 之后
+  // 卡体自己翻页，这一行跟着删掉即可，不用再回来改解析。
+  const sheet = kind === 'question' ? parseQuestionSheet(source.args) : undefined
+  const ask = sheet?.questions[0]
   const summaryParts = [
     ask ? questionText(ask, t) : readableToolPreview(t, source.toolName, source.args),
     // 熔断那一句（「试了 3 次都没通过，交给你定。」）紧跟问句：它解释的是**为什么这一刻在问**，
     // 离问句远一格就读成了一条无主的旁白。
-    ask ? askReasonText(ask, t) : undefined,
+    sheet ? askReasonText(sheet, t) : undefined,
     ask?.note,
     // 「1 条内容」不足以让人决定要不要——用户在这一刻要判断的是**那句话该不该进文稿**。
     // B2e：完整保留列表、表格和换行；滚动由现有槽外壳管理。

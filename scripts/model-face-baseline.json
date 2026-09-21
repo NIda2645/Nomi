@@ -2148,36 +2148,62 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "agent.ask",
-      "description": "Ask the user one question and wait for his answer. The answer changes what you produce and guessing wrong costs him time or money: you cannot tell which thing he means, a fact you need is missing with no default, or you are about to spend or to do something irreversible. Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first. Never ask for confirmation of something you are allowed to do: a reversible edit (deleting a node, rewriting a line) just happens and the user can undo it, and spending is confirmed on its own card by generate — asking \"shall I?\" about those is one more click for nothing. question is one sentence in the user's own language, naming the choice itself (\"which one do you want deleted?\"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Leave options out when there is no short list — he can always type an answer instead. Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
+      "description": "Ask the user up to three related questions on one card and wait for his answers. The answer changes what you produce and guessing wrong costs him time or money: you cannot tell which thing he means, a fact you need is missing with no default, or you are about to spend or to do something irreversible. Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first. Never ask for confirmation of something you are allowed to do: a reversible edit (deleting a node, rewriting a line) just happens and the user can undo it, and spending is confirmed on its own card by generate — asking \"shall I?\" about those is one more click for nothing. questions holds one to 3 questions; he sees them one at a time on one card. Each question is one sentence in his own language, naming the choice itself (\"which one do you want deleted?\"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Set multiSelect when several answers can be true at once. Leave options out when there is no short list — he can always type instead. Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
       "effect": "read",
       "effectGroups": null,
       "examples": [
         {
           "arguments": {
-            "options": [
+            "questions": [
               {
-                "description": "画布中间那张，还没出过图",
-                "label": "镜 2 · 推门"
-              },
-              {
-                "description": "最右边那张静帧",
-                "label": "镜 3 · 走廊"
-              },
-              {
-                "description": "文字，不在画布上",
-                "label": "文稿最后一段"
+                "options": [
+                  {
+                    "description": "画布中间那张，还没出过图",
+                    "label": "镜 2 · 推门"
+                  },
+                  {
+                    "description": "最右边那张静帧",
+                    "label": "镜 3 · 走廊"
+                  },
+                  {
+                    "description": "文字，不在画布上",
+                    "label": "文稿最后一段"
+                  }
+                ],
+                "question": "要删哪一个？"
               }
-            ],
-            "question": "要删哪一个？"
+            ]
           },
           "when": "He said \"delete that one\" and three shots could be it:"
         },
         {
           "arguments": {
-            "note": "问一句是因为同一段文案给家长和给同事读，剪法完全不同。",
-            "question": "这支片子想给谁看？我按那个人的口味定语气和节奏。"
+            "questions": [
+              {
+                "note": "同一段文案给家长和给同事读，剪法完全不同。",
+                "question": "这支片子想给谁看？"
+              },
+              {
+                "options": [
+                  {
+                    "description": "发朋友圈那种长度",
+                    "label": "15 秒"
+                  },
+                  {
+                    "description": "够讲清一件事",
+                    "label": "30 秒",
+                    "recommended": true
+                  },
+                  {
+                    "description": "能放进两三个转折",
+                    "label": "1 分钟"
+                  }
+                ],
+                "question": "多长合适？"
+              }
+            ]
           },
-          "when": "Nothing short would cover the answer, so ask with no options:"
+          "when": "Two things you need are both missing, so ask them together instead of twice:"
         }
       ],
       "execution": {
@@ -2198,58 +2224,77 @@
         "Write labels and descriptions the way he talks about his own work: a shot's title, a file he recognises, what he will see. Never put an internal name in front of him — node kinds, ids, field names, tool names, anything with an underscore in it. Keep each label to about twelve characters and do not repeat words from the question in it.",
         "Do not ask when a sensible default exists — take it, do the work, and say in one line which default you took so he can correct it. Never ask for something the project already decided (aspect ratio, which document is open, the model in the picker), never ask permission for a reversible local edit, and never ask a second round of questions where one would have done.",
         "Two to four options, each a real answer he could pick, and they must not overlap. More than 4 is a list to read, not a question to answer; fewer than 2 is a yes/no you could have decided yourself.",
-        "The card always lets him type his own answer, so never add an option that means \"something else\" or \"let me explain\". What comes back is his words: one option's label if he clicked it, or whatever he typed. Carry on in the same turn."
+        "The card always lets him type his own answer, so never add an option that means \"something else\" or \"let me explain\". What comes back is his words, one entry per question: the labels he clicked, or whatever he typed. Carry on in the same turn.",
+        "Ask the related questions in one call — up to 3. He answers them on one card, one at a time. Asking one, waiting for the answer, then asking the next turns a single interruption into three."
       ],
-      "promptSnippet": "Ask the user one question and wait for his answer.",
+      "promptSnippet": "Ask the user up to three related questions on one card and wait for his answers.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
-          "note": {
-            "description": "One optional line of why you are asking right now. Not a second question.",
-            "minLength": 1,
-            "type": "string"
-          },
-          "options": {
-            "description": "Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead.",
+          "questions": {
+            "description": "One to three questions, asked on one card, one at a time. Put related questions together in a single call rather than asking, waiting, and asking again.",
             "items": {
               "additionalProperties": false,
               "properties": {
-                "description": {
-                  "description": "One short line under the label: what picking this one means. Leave it out rather than restating the label.",
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "id": {
-                  "description": "Your own id for this option, echoed back when the user picks it. Omit it and Nomi numbers them.",
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "label": {
-                  "description": "The words printed on the chip. Answering with this option sends exactly these words back to you.",
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "recommended": {
-                  "description": "Set true on at most one option: the one you would pick. It is only a mark — nothing is preselected and nothing is answered for the user.",
+                "multiSelect": {
+                  "description": "True when he may pick several of these at once. Default is one answer only, which submits as soon as he picks it.",
                   "type": "boolean"
+                },
+                "note": {
+                  "description": "One optional line of why you are asking this one. Not a second question.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "options": {
+                  "description": "Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "description": "One short line under the label: what picking this one means. Leave it out rather than restating the label.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "description": "Your own id for this option, echoed back when the user picks it. Omit it and Nomi numbers them.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "The words printed on the chip. Answering with this option sends exactly these words back to you.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recommended": {
+                        "description": "Set true on at most one option: the one you would pick. It is only a mark — nothing is preselected and nothing is answered for the user.",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "question": {
+                  "description": "The question, in the user's own language, as one sentence he can answer without reading anything else.",
+                  "minLength": 1,
+                  "type": "string"
                 }
               },
               "required": [
-                "label"
+                "question"
               ],
               "type": "object"
             },
+            "minItems": 1,
             "type": "array"
-          },
-          "question": {
-            "description": "The question, in the user's own language, as one sentence he can answer without reading anything else.",
-            "minLength": 1,
-            "type": "string"
           }
         },
         "required": [
-          "question"
+          "questions"
         ],
         "type": "object"
       }

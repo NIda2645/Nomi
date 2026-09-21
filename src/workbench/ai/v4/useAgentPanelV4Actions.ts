@@ -289,7 +289,8 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     approve: () => answer('allow-once'),
     reject: (reason) => answer('deny', reason),
     stopAsking: () => answer('allow-session'),
-    answerQuestion: (value) => answer('answer', answerToolResult(value)),
+    // 一次答复带的是**一张卡上所有题**的答案；今天卡体一次只交一题，所以包成一条。
+    answerQuestion: (value) => answer('answer', answerToolResult([value])),
     queueAction: (index) => run(() => cancelQueued(index)),
     queueInterrupt: (index) => run(() => cancelQueued(index)),
     newThread: () => run(() => checked(laneClient.createLane(newLaneName()))),

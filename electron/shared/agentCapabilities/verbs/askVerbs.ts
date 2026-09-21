@@ -2,7 +2,7 @@
 //
 // 为什么它常驻（没有 `internalGroup`）：能问一句话必须在每一轮都够得着。把它放进延迟披露组，
 // 就等于「只有先猜对该问什么、才能问」——那正是 2026-09-21 实测 0/16 的形状换一个说法。
-import { AGENT_ASK_CAPABILITY, ASK_USER_OPTION_RANGE, askUserInputSchema } from "../askUser";
+import { AGENT_ASK_CAPABILITY, ASK_USER_OPTION_RANGE, ASK_USER_QUESTION_RANGE, askUserInputSchema } from "../askUser";
 import type { VerbDeclaration } from "../verbDeclaration";
 
 export function askVerbs(): readonly VerbDeclaration[] {
@@ -15,29 +15,43 @@ export function askVerbs(): readonly VerbDeclaration[] {
     effect: "read",
     nextAction: "user_sees_question_card",
     describe: {
-      does: "Ask the user one question and wait for his answer.",
+      does: "Ask the user up to three related questions on one card and wait for his answers.",
       useWhen: "The answer changes what you produce and guessing wrong costs him time or money: you cannot tell which thing he means, a fact you need is missing with no default, or you are about to spend or to do something irreversible.",
       notWhen: "Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first. Never ask for confirmation of something you are allowed to do: a reversible edit (deleting a node, rewriting a line) just happens and the user can undo it, and spending is confirmed on its own card by generate — asking \"shall I?\" about those is one more click for nothing.",
-      params: `question is one sentence in the user's own language, naming the choice itself ("which one do you want deleted?"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Leave options out when there is no short list — he can always type an answer instead.`,
+      params: `questions holds one to ${ASK_USER_QUESTION_RANGE.max} questions; he sees them one at a time on one card. Each question is one sentence in his own language, naming the choice itself ("which one do you want deleted?"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Set multiSelect when several answers can be true at once. Leave options out when there is no short list — he can always type instead.`,
     },
     schema: askUserInputSchema,
     examples: [
       {
         when: "He said \"delete that one\" and three shots could be it:",
         arguments: {
-          question: "要删哪一个？",
-          options: [
-            { label: "镜 2 · 推门", description: "画布中间那张，还没出过图" },
-            { label: "镜 3 · 走廊", description: "最右边那张静帧" },
-            { label: "文稿最后一段", description: "文字，不在画布上" },
-          ],
+          questions: [{
+            question: "要删哪一个？",
+            options: [
+              { label: "镜 2 · 推门", description: "画布中间那张，还没出过图" },
+              { label: "镜 3 · 走廊", description: "最右边那张静帧" },
+              { label: "文稿最后一段", description: "文字，不在画布上" },
+            ],
+          }],
         },
       },
       {
-        when: "Nothing short would cover the answer, so ask with no options:",
+        when: "Two things you need are both missing, so ask them together instead of twice:",
         arguments: {
-          question: "这支片子想给谁看？我按那个人的口味定语气和节奏。",
-          note: "问一句是因为同一段文案给家长和给同事读，剪法完全不同。",
+          questions: [
+            {
+              question: "这支片子想给谁看？",
+              note: "同一段文案给家长和给同事读，剪法完全不同。",
+            },
+            {
+              question: "多长合适？",
+              options: [
+                { label: "15 秒", description: "发朋友圈那种长度" },
+                { label: "30 秒", description: "够讲清一件事", recommended: true },
+                { label: "1 分钟", description: "能放进两三个转折" },
+              ],
+            },
+          ],
         },
       },
     ],
@@ -71,7 +85,9 @@ export function askVerbs(): readonly VerbDeclaration[] {
       + `More than ${ASK_USER_OPTION_RANGE.max} is a list to read, not a question to answer; `
       + `fewer than ${ASK_USER_OPTION_RANGE.min} is a yes/no you could have decided yourself.`,
       "The card always lets him type his own answer, so never add an option that means \"something else\" or \"let me explain\". "
-      + "What comes back is his words: one option's label if he clicked it, or whatever he typed. Carry on in the same turn.",
+      + "What comes back is his words, one entry per question: the labels he clicked, or whatever he typed. Carry on in the same turn.",
+      `Ask the related questions in one call — up to ${ASK_USER_QUESTION_RANGE.max}. He answers them on one card, one at a time. `
+      + "Asking one, waiting for the answer, then asking the next turns a single interruption into three.",
     ],
   };
 
