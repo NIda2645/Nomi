@@ -100,7 +100,9 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
 
 /** User projection deliberately has only four actions; protocol codes stay in structuredContent for machines. */
 const USER_ACTION_HINT: Record<string, { action: string; zh: string; en: string }> = {
-  human_approval_required: { action: 'in_nomi', zh: '请在 Nomi 确认这次生成。', en: 'Confirm this generation in Nomi.' },
+  // 2026-09-21：这个码不止用在生成上（降档、闸决定都会抛它），原话「确认这次生成」会让助手
+  // 去找一张根本不会出现的生成确认卡。改成中性的一句：要你本人在 Nomi 里确认一次。
+  human_approval_required: { action: 'in_nomi', zh: '这一步要你本人在 Nomi 里确认一次。', en: 'This step needs you to confirm it once in Nomi.' },
   receipt_invalid: { action: 'in_nomi', zh: '这次确认已失效，请在 Nomi 重新确认。', en: 'This confirmation is no longer valid; confirm again in Nomi.' },
   receipt_expired: { action: 'in_nomi', zh: '确认已过期，请在 Nomi 重新确认。', en: 'The confirmation expired; confirm again in Nomi.' },
   lease_required: { action: 'reselect_project', zh: '请重新选择当前项目。', en: 'Select the current project again.' },

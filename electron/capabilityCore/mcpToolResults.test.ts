@@ -235,7 +235,7 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
       code: 'human_approval_required', nextAction: 'nomi://settings/automation', phase: 'e1_paid', capability: 'gate_decide',
     })
     const { text, outcome } = buildToolErrorOutcome('nomi_decide_generation_gate', error)
-    expect(text).toContain('请在 Nomi 确认这次生成')
+    expect(text).toContain('这一步要你本人在 Nomi 里确认一次')
     expect(text).not.toContain('human_approval_required')
     expect(outcome).toMatchObject({ errorCode: 'human_approval_required', nextActions: ['in_nomi'], nextAction: 'nomi://settings/automation' })
   })

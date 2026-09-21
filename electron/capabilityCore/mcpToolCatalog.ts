@@ -270,7 +270,9 @@ const RUN_START_TOOL = {
       trustLevel: {
         type: 'string',
         enum: ['key_confirm', 'budget_only', 'confirm_all'],
-        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。要求直接出时用 budget_only。',
+        // 2026-09-21：原话是「要求直接出时用 budget_only」——而 `nomi_run_start` 从那天起**不再收**
+        // 更松的档位（调用方自报的值不是用户的决定）。照旧话做的助手会撞 403，然后以为是自己填错了。
+        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。这里只收默认或更严的档；budget_only 要用户授权：先建 Run，再 nomi_run_control action=set_trust（会在 Nomi 里弹一次确认）。',
       },
     },
     required: ['projectId', 'playbook', 'brief'],
