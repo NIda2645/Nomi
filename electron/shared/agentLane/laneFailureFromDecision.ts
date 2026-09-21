@@ -51,6 +51,7 @@ export function laneFailureFromDecision(input: {
     generation_operation_not_found: { message: 'No generation task exists for this reference in the authorized project.', nextAction: 'Read the current task list or canvas and use its taskRef. Do not create another paid request to recover an unknown outcome.' },
     production_run_not_found: { message: 'This run is not available in the authorized project.', nextAction: 'Read the project task list again. Do not switch domains or automatically submit a replacement.' },
     generation_execution_failed: { message: 'The generation action could not be completed; its submission outcome may be unknown.', nextAction: 'Query the same domain-qualified task and reconcile its existing submission. Do not request payment or submit again until its outcome is known.' },
+    generation_not_started: { message: 'The generation action stopped before anything was submitted; nothing was spent.', nextAction: 'Read the failure detail, fix what it names, and let the user approve again. Do not query for a task: none exists.' },
     generation_provider_unavailable: { message: 'The configured generation provider cannot perform this action.', nextAction: 'Check provider configuration and query any existing task before requesting a new paid submission.' },
   };
   const safeAdvice = taskAdvice[code];

@@ -66,16 +66,33 @@ export type PendingSpendActionDeps = Readonly<{
   now?: () => string;
 }>;
 
-function failed(error: unknown): ProductionActionResult {
+/**
+ * 失败那一句要说的是**事实**，不是一句放之四海的安慰话。
+ *
+ * 「暂时无法确认这一步的结果」在「根本没发起」的情况下是误导——它暗示可能已经提交、可能已经
+ * 扣了钱，于是用户不敢再按，转而去找一个并不存在的任务。所以这一层按账本分两种话：
+ * 只要**没有任何一份提交意图落过盘**（`submit_intent_persisted` 是那条线），就是
+ * `generation_not_started`（没发起、没花钱，改一下再按）；一旦落过，才是
+ * `generation_execution_failed`（结果未知，先去核对，别再付一次）。
+ *
+ * `started` 由调用方从 Run 的作业状态里读出来——是可验证的事实，不是猜。
+ */
+function failed(error: unknown, started = true): ProductionActionResult {
   // Provider text is private diagnostics, never renderer or model copy.
   const safe = error instanceof Error && ['generation_quote_changed', 'run_not_open', 'generation_scope_invalid'].includes(error.message)
-    ? error.message : 'generation_execution_failed';
-  // 「私有诊断」此前**谁都拿不到**：原话在这一行被换成 `generation_execution_failed` 就消失了，
-  // 主进程日志里一个字都没有。于是付费卡按下去失败时，能排查的人手上只有一句兜底话
-  // （2026-09-21 Pass 3b：一条真机走查红在这里，查不出为什么，只能靠猜）。原话进日志，不进用户面。
-  if (safe === 'generation_execution_failed') logWarn("capability", "spend-confirm-failed", { code: safe }, error);
+    ? error.message
+    : started ? 'generation_execution_failed' : 'generation_not_started';
+  // 「私有诊断」此前**谁都拿不到**：原话在这一行被换成兜底码就消失了，主进程日志里一个字都没有。
+  // 于是付费卡按下去失败时，能排查的人手上只有一句兜底话（2026-09-21 Pass 3b：一条真机走查红在
+  // 这里，查不出为什么，只能靠猜）。原话进日志，不进用户面。
+  if (safe === 'generation_execution_failed' || safe === 'generation_not_started') {
+    logWarn("capability", "spend-confirm-failed", { code: safe }, error);
+  }
   return { ok: false, code: "failed", message: safe };
 }
+
+/** 这条线之前，一个字节都没有离开过这台机器（`submissionOutbox` 先落 intent 再出站）。 */
+const STATUSES_BEFORE_ANY_SUBMISSION = new Set(["planned", "authorization_required", "authorized"]);
 
 /**
  * 装配这一层要的那几件，从能力核已经建好的实例里取。
@@ -234,6 +251,15 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 卡上改了提示词/参数/模型。撤掉还没被点头的授权、把改动落到候选、回 draft 等重新封印。
    * 价格由下一次投影现算——数只有一个产地。
    */
+  /**
+   * 这一笔到底有没有离开过这台机器。判据是账本里的作业状态，不是异常的长相：
+   * `submissionOutbox` 先把提交意图落盘、再出站，所以只要还有作业停在 intent 之前，
+   * 就是「没发起」。一个作业都读不到 = 连 Run 都没有 = 更没发起。
+   */
+  const anySubmissionStarted = (projectId: string, operationId: string): boolean =>
+    (deps.runs.read(projectId, operationId)?.jobs ?? [])
+      .some((job) => !STATUSES_BEFORE_ANY_SUBMISSION.has(job.status));
+
   const revisePendingSpend = async (input: Readonly<{
     projectId: string;
     operationId: string;
@@ -284,7 +310,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       if (!successor || successor.planVersion !== revised.planVersion || successor.candidateRevision !== revised.candidate.revision) throw new Error('generation_quote_changed');
       return { ok: true, code: "revised", quoteId: successor.quoteId };
     } catch (error) {
-      return failed(error);
+      // 改参数这一步**只动候选**，永远不提交：这里失败一定是「没发起」。
+      return failed(error, false);
     }
   };
 
@@ -298,7 +325,7 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       await deps.operations.dismiss(input.projectId, input.operationId, now());
       return { ok: true, code: "discarded" };
     } catch (error) {
-      return failed(error);
+      return failed(error, false);
     }
   };
 
@@ -333,7 +360,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
           throw new Error("generation_quote_changed");
         }
       }
-    } catch (error) { return failed(error); }
+      // 这一段只收窄勾选范围，还没封印，更没提交。
+    } catch (error) { return failed(error, false); }
     const acceptedQuote = pending;
     const target = deps.rendererTarget();
     if (!target) return { ok: false, code: "unavailable" };
@@ -369,7 +397,7 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       );
       return { ok: true, code: "spend_confirmed" };
     } catch (error) {
-      return failed(error);
+      return failed(error, anySubmissionStarted(input.projectId, input.operationId));
     }
   };
 

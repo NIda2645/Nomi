@@ -401,6 +401,7 @@ export const zhAgentPanelV4 = {
   spendParamsScopeUnknown: '价格没取到。要继续就得接受「花多少事后才知道」。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
+  spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
   qualityStandard: '标准画质',
   qualityPro: '高画质',
 
@@ -804,6 +805,7 @@ export const enAgentPanelV4 = {
   spendParamsDecline: 'No',
   spendParamsScopeUnknown: 'No price came back. Continuing means you only learn the cost afterwards.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
+  spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
   qualityStandard: 'Standard',
   qualityPro: 'High quality',
 

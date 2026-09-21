@@ -61,6 +61,7 @@ export const AGENT_TOOL_FAILURE_TEXT_KEY = {
   generation_operation_not_found: 'agentToolFailure.generation_operation_not_found',
   production_run_not_found: 'agentToolFailure.production_run_not_found',
   generation_execution_failed: 'agentToolFailure.generation_execution_failed',
+  generation_not_started: 'agentToolFailure.generation_not_started',
   generation_provider_unavailable: 'agentToolFailure.generation_provider_unavailable',
 } as const
 

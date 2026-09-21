@@ -102,7 +102,13 @@ try {
   // 在面板上照样画成一条红带，于是这个阴性对照从那天起就把「按设计出卡」数成了「决门失败」。
   // 它一直没被发现，是因为同一个 commit 还把 `candidate` 丢了，这条走查在更早的 ① 就红了。
   // 判据改成「除了那句出卡公告之外的失败」——档位这个唯一变量照旧钉着，多余的那一条被排除。
-  const CARD_ANNOUNCEMENT = 'priced confirmation card'
+  // 公告那句话不在这里重打一遍：它住在 i18n 词表里，走查按 **code** 去取。
+  // 2026-09-18 的 C5（`3aa705b66`）把工具失败正文从「给模型读的英文散文」换成了按 code 查的中文
+  // 词条——于是这条走查里写死的英文串 `priced confirmation card` 再也匹配不到任何东西，①③ 两条
+  // 同时失真（main 上从那天起就红，不是本批引入）。钉字面串会随文案漂移，钉 code 不会。
+  const { require: tsxRequire } = await import('tsx/cjs/api')
+  const CARD_ANNOUNCEMENT = tsxRequire('../../src/i18n/locales/agentToolFailure.ts', import.meta.url)
+    .zhAgentToolFailure.user_sees_spend_card
   const anyFailure = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
   const failures = anyFailure.filter({ hasNotText: CARD_ANNOUNCEMENT })
   await expect(anyFailure.filter({ hasText: CARD_ANNOUNCEMENT }),

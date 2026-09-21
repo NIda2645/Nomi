@@ -431,6 +431,15 @@
       "members": [
         "authorization_required",
         "authorized",
+        "planned"
+      ],
+      "reason": "付费确认失败时判定「这一笔到底有没有离开过这台机器」的集合（planned 刚落计划 / authorization_required 待授权 / authorized 已授权未落提交意图）：它决定用户读到的是「没发起、没花钱，改一下再按」还是「结果未知，先去核对别再付」，是话术的事实依据。与 UNSUBMITTED_AUTHORIZATION_STATUSES（授权窗口幂等）差一个 submit_intent_persisted，而那一个正是分界：意图一旦落盘，供应商就可能已经拿到这一笔，说「没发起」就是假话；反过来它缺 planned，复用会把刚落计划就失败的那一笔说成「可能已提交」。故独立。",
+      "site": "electron/capabilityCore/appIntegrationSpendConfirm.ts::variable:STATUSES_BEFORE_ANY_SUBMISSION/set"
+    },
+    {
+      "members": [
+        "authorization_required",
+        "authorized",
         "submit_intent_persisted"
       ],
       "reason": "ProductionRun 授权准备时判定「run 内是否还有未提交给供应商的 job」的集合（authorization_required 待授权 / authorized 已授权未提交 / submit_intent_persisted 提交意图已落盘未确认）：它守护「批准后、真正调 production.generate-node 前」这段授权窗口的幂等，是授权阶段专属词表，不等同于任何供应商轮询态或终态，故独立。",

@@ -278,17 +278,24 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     const target = pending
     if (!target || busy) return
     setBusy(true)
-    // 用户看到的永远是这一句（i18n，R15），**不是宿主那句原话**：主进程的 message 混着内部术语和英文
+    // 用户看到的永远是 i18n 的句子（R15），**不是宿主那句原话**：主进程的 message 混着内部术语和英文
     // （`Provider X lacks required recovery capabilities: configured_provider`），直接印出去就是把
-    // 内部状态倒给用户。原话进控制台供排查，用户这边说明结果尚未确认，不承诺未生成或未扣费。
-    const failed = (reason: unknown): void => {
+    // 内部状态倒给用户。原话进控制台供排查。
+    //
+    // 说哪一句由**事实**决定，不是一句放之四海的安慰话：宿主按账本回 `generation_not_started`
+    // （没有任何提交意图落过盘）还是 `generation_execution_failed`（落过了、结果未知）。
+    // 「暂时无法确认这一步的结果」用在「根本没发起」上是误导——它暗示可能已经提交、可能已经扣钱，
+    // 于是用户不敢再按，转而去找一个并不存在的任务（2026-09-21 Pass 3b）。
+    const failed = (reason: unknown, code?: string): void => {
       console.warn('[spend-confirm] host refused', reason)
-      toast(t('agentPanelV4.spendActionFailed'), 'error')
+      const started = code !== 'generation_not_started' && code !== 'generation_quote_changed'
+        && code !== 'run_not_open' && code !== 'generation_scope_invalid'
+      toast(t(started ? 'agentPanelV4.spendActionFailed' : 'agentPanelV4.spendActionNotStarted'), 'error')
     }
     void run(target)
       .then((result) => {
         const outcome = result as { ok?: boolean; message?: string } | undefined
-        if (outcome && outcome.ok === false) failed(outcome.message ?? outcome)
+        if (outcome && outcome.ok === false) failed(outcome.message ?? outcome, outcome.message)
       })
       .catch((error: unknown) => failed(error))
       .finally(() => {
