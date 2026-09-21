@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { assetReadInputForAlias, type AssetReadInput } from "../shared/agentCapabilities/assetRead";
@@ -21,11 +22,7 @@ import {
 const PUBLIC_FAILURE_CODES = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES;
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const candidate = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : undefined;
-  const code = candidate && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  return safeTransportFailure(error, { allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed" });
 }
 
 type Phase4ReadInput = AssetReadInput | ExportReadInput;

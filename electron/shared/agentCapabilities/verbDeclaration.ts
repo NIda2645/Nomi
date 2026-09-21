@@ -194,6 +194,21 @@ export function verbBillable(effect: VerbEffect): boolean {
 }
 
 /**
+ * 这次调用**有没有可能**已经把一笔提交发到供应商那里。
+ *
+ * `spend` 自不必说；`user_sees_spend_card` 那一档在「全自动」审批档下由策略当场代答、当场开跑
+ * （`policyStartedGeneration`），所以它也算。其余一律不算——它们连一次提交都发不出去。
+ *
+ * 为什么要这个派生：失败措辞里「提交结果可能未知，先去核对、别再提交」这句话，只有在它为真时才成立。
+ * 2026-09-21 真实模型实测（`docs/evidence/2026-09-21-askback-real-model/`）里，**23 次**失败把这句话
+ * 发给了 `draft_shots`——一个只起草、一分钱都花不出去的工具。模型照做，去核对一个从不存在的任务，
+ * A3 那一轮原地打转 27 次调用 / 696 秒。措辞按码选、而它的真假取决于**哪个工具**，就是那次的形状。
+ */
+export function verbMaySubmitGeneration(effect: VerbEffect, nextAction: VerbNextAction): boolean {
+  return effect === "spend" || nextAction === "user_sees_spend_card";
+}
+
+/**
  * 审批闸眼里的两个事实（`capabilityApprovalPolicy.ts` 的 `CapabilityApprovalSubject`），从一个动词
  * 效果派生。**与契约层词表的对应关系只写这一次**；契约上的 `effect/effectClass` 是审批的判据，
  * 动词的 `effect` 与它对账（A1），不替换它。

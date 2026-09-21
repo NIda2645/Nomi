@@ -5,6 +5,7 @@
 // 槽 / candidate 带不带角色参考 / 时长估计。全是纯函数（吃 candidate + 候选快照，零副作用、零 provider 调用），
 // preview/gate/多镜密封都靠它当单一真相源。mcpGenerationTools.ts 与 mcpGenerationMultiShot.ts 单向 import。
 
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { PlanCandidate } from "./executionContract";
 import type { ParameterField } from "./moduleManifest";
 import type {
@@ -139,7 +140,7 @@ export function videoCandidateForPlan(candidate: PlanCandidate, candidates: read
     || (variant.identifierPatterns ?? []).some((identity) => normalizedModelIdentity(identity) === modelId));
   const requested = typeof candidate.variantId === "string" ? candidate.variantId.trim() : "";
   const requestedCanonical = canonicalVideoVariantId(source.archetype, requested);
-  if (requested && !requestedCanonical) throw new Error(`Unknown video variant: ${candidate.variantId}`);
+  if (requested && !requestedCanonical) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Unknown video variant: ${candidate.variantId}. Read the model with list_models and use a variantId it lists.`);
   const variantId = requestedCanonical ?? inferredVariant?.id ?? source.variantId ?? source.archetype.defaultVariantId;
   const baseModelId = source.archetype.catalogModelKey?.trim() || source.modelKey;
   return {
@@ -162,10 +163,10 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
   const requestedModeId = typeof candidate.modeId === "string" ? candidate.modeId.trim() : "";
   if (requestedModeId) {
     const mode = modes.find((item) => normalizedMode(item.id) === normalizedMode(requestedModeId));
-    if (!mode) throw new Error(`Unknown video mode: ${candidate.modeId}`);
+    if (!mode) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Unknown video mode: ${candidate.modeId}. Allowed for this model: ${modes.map((item) => item.id).join(", ")}.`);
     const requestedTransport = normalizedTaskKind(candidate.mode);
     if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== normalizedTaskKind(mode.transportTaskKind)) {
-      throw new Error(`Video mode ${candidate.modeId} does not match transport task ${candidate.mode}`);
+      refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Video mode ${candidate.modeId} is a ${mode.transportTaskKind} mode, but this shot asks for ${candidate.mode}. Set taskKind to ${mode.transportTaskKind}, or drop modeId and let Nomi pick.`);
     }
     return mode;
   }
@@ -174,7 +175,7 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
   if (byId) return byId;
   const byTask = modes.filter((item) => normalizedTaskKind(item.transportTaskKind) === normalizedTaskKind(candidate.mode));
   if (byTask.length === 1) return byTask[0]!;
-  if (byTask.length === 0) throw new Error(`Video mode is unsupported: ${candidate.mode}`);
+  if (byTask.length === 0) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This model cannot do ${candidate.mode}. It supports: ${modes.map((item) => `${item.id} (${item.transportTaskKind})`).join(", ")}.`);
 
   // Legacy drafts may not have modeId. Use the same recommendation facts as
   // preview, but only among modes that actually share this transport task.
@@ -190,7 +191,7 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
   const declaredDefault = modes.find((mode) => normalizedMode(mode.id) === normalizedMode(videoCandidate.archetype.defaultModeId)
     && byTask.includes(mode));
   if (declaredDefault) return declaredDefault;
-  throw new Error(`Video task ${candidate.mode} has multiple modes; specify modeId`);
+  refuseToModel(GENERATION_ARGUMENT_REFUSAL, `${candidate.mode} has several modes on this model; set modeId to one of: ${byTask.map((item) => item.id).join(", ")}.`);
 }
 
 /** Exact provider wire model used by the existing catalog mappings. */

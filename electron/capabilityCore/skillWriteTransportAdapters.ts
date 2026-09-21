@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { createHash } from "node:crypto";
 
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
@@ -71,8 +72,7 @@ const PUBLIC_FAILURE_CODES = new Set([
 ]);
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
-  const publicCode = PUBLIC_FAILURE_CODES.has(code) ? code : "capability_execution_failed";
-  return { ok: false, code: publicCode, message: publicCode };
+  return safeTransportFailure({ code }, { allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed" });
 }
 
 function stableJson(value: unknown): string {

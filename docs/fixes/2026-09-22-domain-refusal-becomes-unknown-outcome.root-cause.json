@@ -1,0 +1,274 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-22-domain-refusal-becomes-unknown-outcome",
+ "problem_type": "A deliberate, actionable refusal raised by our own domain is collapsed into an unknown-outcome fallback, and the fallback's wording then instructs the model to reconcile a submission that never existed",
+ "symptom": "2026-09-21 真实模型 18 句实测：121 次工具调用里 45 次是重试，其中 **23 次**（`draft_shots` 17 + `generate` 6）收到的是同一句「The generation action could not be completed; its submission outcome may be unknown. Next: Query the same domain-qualified task and reconcile its existing submission. Do not request payment or submit again until its outcome is known.」。`draft_shots` **只起草**、一分钱都花不出去，却被告知可能已经提交、要先去核对——模型照做，去查一个从不存在的任务，A3 那一轮原地打转 27 次调用 / 696 秒。（观测仪器：tests/ux/agent-askback-real-model.walk.mjs —— 它是量这件事的尺子，不是一个用户入口。）",
+ "direct_cause": "复现（`electron/capabilityCore/generationDomainRefusalReachesModel.test.ts`，入参逐字取自 A3.jsonl seq=25）拿到被吞掉的真异常两条：`参考素材 gen-v2-asset-mubc3wx1-i0us 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`（semanticGenerationCandidate.ts / mcpGenerationTools.ts 各一份）与 `Video mode omni does not match transport task text_to_video`（mcpGenerationVideoResolve.ts）。两条都是 `throw new Error(...)`——**没有 code**。于是 `generationTransportAdapters.safeFailure` 的兜底把它们收敛成 `generation_execution_failed` 并丢掉正文，`laneFailureFromDecision` 再按码查出那句「结果可能未知」。",
+ "class_root": "两层各错一半，合起来把一句可行动的话换成一句有害的话。① 「抛出来的异常 → 模型看得见的失败」这个函数全仓有 **8 份手写副本**，每一份都把 `error.message` 丢掉（放行码表 C4 那一刀已收敛，函数本身没有），所以「我们自己写的那句话」和「供应商的原始文本」在这一层没有区分，只能一起丢。② 失败措辞按 **code** 选，而「可能已经提交过」这句话的真假取决于 **哪个工具**——同一个码落在起草工具上就是假话，而假话恰好指挥模型去做一件永远做不成的事。",
+ "affected_population": [
+  "内部 Agent 面的全部生成动词（`draft_shots` / `generate` / `check_job` / `cancel_job`）：任何域里有意抛出的拒绝，模型都读不到理由",
+  "另外 7 条传输路（canvas 读写 / document 读写 / timeline / phase4 / productionRun / skillWrite）：同一个形状，只是今天还没有域在那边抛带正文的拒绝",
+  "不受影响：外部 MCP 面走 `mcpToolErrorResults`，不经这条链"
+ ],
+ "scope_paths": [
+  "electron/capabilityCore/transportFailure.ts",
+  "electron/capabilityCore/generationTransportAdapters.ts",
+  "electron/capabilityCore/mcpGenerationTools.ts",
+  "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+  "electron/capabilityCore/semanticGenerationCandidate.ts",
+  "electron/shared/agentLane/laneFailureFromDecision.ts",
+  "electron/shared/agentCapabilities/verbDeclaration.ts"
+ ],
+ "entry_points": [
+  "Agent 面板 composer（内部 lane 的 draft_shots / generate）",
+  "画布节点 / 分镜行经 Agent 发起的起草与出卡"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "只改我们自己产出的失败正文与它的挑选规则；对外 wire 契约、工具 schema、码表都没有新增或改名（`check:model-face-frozen` 零字节变化）。",
+ "invariants": [
+  "我们**有意**拒绝一次调用时（`ModelFacingRefusal`），模型读到的就是我们写的那句话，原样",
+  "其它任何异常（上游库、供应商、TypeError）只给码，一个字的正文都不流出去",
+  "`error.code` 是可能来自上游的字符串，必须在本条路的放行表里才作数；只有我们自己的 `classify`（错误类 → 码）可以指定放行表之外的码",
+  "「提交结果可能未知、先去核对别再提交」这句话只发给**发得出提交**的工具，判据由动词声明的 `effect × nextAction` 派生；认不出的工具名 fail-closed 到「可能提交过」",
+  "一条参考素材的身份补齐全仓只有一份实现"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/documentReadTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/documentWriteTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/generationTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/skillWriteTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/timelineTransportAdapters.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "symbol": "refuseToModel"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+   "symbol": "refuseToModel"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+   "symbol": "refuseToModel"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneDesktopTools.ts",
+   "symbol": "laneFailureFromDecision"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneExtendedTools.ts",
+   "symbol": "laneFailureFromDecision"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/transportFailure.ts",
+   "symbol": "safeTransportFailure"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+   "symbol": "verbMaySubmitGeneration"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/agentLane/laneFailureFromDecision.ts",
+   "symbol": "laneFailureFromDecision"
+  }
+ ],
+ "door_reduction": {
+  "before": 25,
+  "after": 17,
+  "why_not": "「异常 → 模型看得见的失败」从 8 份手写实现收成 1 份（`safeTransportFailure`），9 扇门现在全是同一个函数的调用点；「一条参考素材的身份补齐」从 2 份实现收成 1 份（`pinAssetReference`）。剩下不合的 2 扇是 `laneFailureFromDecision` 的两个调用点（`laneDesktopTools` / `laneExtendedTools`）——它们是**两种工具装配方式**（常驻组 / 延迟组）的出口，2026-09-18 已经把措辞收敛到同一个函数，调用点本身不该合并。"
+ },
+ "generality_proof": "判据里没有任何工具名：可不可以把正文交给模型，看的是「这个异常是不是 `ModelFacingRefusal`」——即**谁写的这句话**，不是它长得像不像内部信息；说不说「可能提交过」，看的是动词自己声明的 `effect × nextAction`。明天新加一个生成动词，两条判据自动对它成立，不用谁回来加一行。",
+ "shared_boundaries": [
+  {
+   "path": "electron/capabilityCore/transportFailure.ts",
+   "symbol": "safeTransportFailure",
+   "responsibility": "8 条传输路唯一的「抛出来的异常 → 模型看得见的失败」实现：选码（classify 优先、raw code 须在放行表里）、选正文（我们写的原样给，别人写的一个字不给）。"
+  },
+  {
+   "path": "electron/shared/agentCapabilities/verbDeclaration.ts",
+   "symbol": "verbMaySubmitGeneration",
+   "responsibility": "「这次调用有没有可能已经把一笔提交发出去」的唯一派生点，供失败措辞与任何需要这条事实的地方取用。"
+  },
+  {
+   "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+   "symbol": "pinAssetReference",
+   "responsibility": "一条参考素材的身份补齐（create 与 patch 同吃）。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/capabilityCore/generationTransportAdapters.ts",
+   "entry_point": "生成域（draft_shots / generate / check_job / cancel_job）",
+   "disposition": "enforced",
+   "evidence": "generationDomainRefusalReachesModel.test.ts 三条（两条真轨迹入参 + 一条阳性对照）"
+  },
+  {
+   "path": "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+   "entry_point": "画布写",
+   "disposition": "enforced",
+   "evidence": "改吃同一个函数；`ownMessage` 保住它原有的 surface-port 人话，既有 canvasWrite 测试全绿"
+  },
+  {
+   "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+   "entry_point": "Run 读写",
+   "disposition": "enforced",
+   "evidence": "`classify` 保住 ProductionRunNotFoundError 那条，既有测试全绿"
+  },
+  {
+   "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+   "entry_point": "画布读",
+   "disposition": "enforced",
+   "evidence": "同一个函数；行为逐字不变（域里还没有带正文的拒绝）"
+  },
+  {
+   "path": "electron/capabilityCore/documentReadTransportAdapters.ts",
+   "entry_point": "文稿读",
+   "disposition": "enforced",
+   "evidence": "同上"
+  },
+  {
+   "path": "electron/capabilityCore/documentWriteTransportAdapters.ts",
+   "entry_point": "文稿写",
+   "disposition": "enforced",
+   "evidence": "同上"
+  },
+  {
+   "path": "electron/capabilityCore/timelineTransportAdapters.ts",
+   "entry_point": "时间轴写",
+   "disposition": "enforced",
+   "evidence": "同上"
+  },
+  {
+   "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+   "entry_point": "媒体 / 导出（look_at_media）",
+   "disposition": "enforced",
+   "evidence": "同上；实测里 look_at_media 的 3 次 `capability_execution_failed` 属于这条路，域侧还没给出带正文的拒绝，留作下一刀"
+  },
+  {
+   "path": "electron/capabilityCore/skillWriteTransportAdapters.ts",
+   "entry_point": "技能写",
+   "disposition": "enforced",
+   "evidence": "它的 `failure(code)` 只收码不收异常，改成调同一个函数后形状不变"
+  },
+  {
+   "path": "electron/capabilityCore/mcpToolErrorResults.ts",
+   "entry_point": "外部 MCP 面",
+   "disposition": "not-affected",
+   "evidence": "外部面有自己的错误结果 owner，不经 lane 的措辞层；本次一行未改"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "「兜底把我们自己写的那句话一起吃掉」这个形状在 8 条传输路上各存在一份；而每加一个域拒绝、每加一条传输路，它都会再出现一次。2026-09-18 的根因合同治过同一形状的一格（schema 字段级理由被抹掉），当时只修了 generation 那一份。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs safeTransportFailure → 9 扇，全部是同一个函数的调用点",
+   "node scripts/door-map.mjs refuseToModel → 4 扇（生成域三处 + adapter 的分镜选择三处）",
+   "grep -n 'function safeFailure' electron/capabilityCore/*.ts → 8 处，改动前是 8 份各不相同的实现",
+   "grep -n 'throw new Error' electron/capabilityCore/mcpGenerationVideoResolve.ts electron/capabilityCore/semanticGenerationCandidate.ts → 0 处剩余的裸抛"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/capabilityCore/transportFailure.ts",
+  "invariant": "模型收到的正文要么是我们有意写给它的一句可行动的话，要么只有一个码；而「可能已经提交过」只说给发得出提交的工具。",
+  "failure_mode": "把 `refuseToModel` 换回裸 `throw new Error` → `generationDomainRefusalReachesModel.test.ts` 第 1 条红；把措辞改成不按动词派生 → `laneFailureFromDecision.test.ts` 的「draft_shots 只起草」红；让 `error.code` 绕过放行表自称 `generation_operation_not_found` → `generationTransportAdapters.test.ts` 的 C18「provider forged absence」红（本次实测红过一次，见报告）。",
+  "exception_policy": "none",
+  "strategy": "先把 8 份实现收成 1 份，再在这一份里把「谁写的这句话」做成显式的类型区分（`ModelFacingRefusal`），最后把措辞的挑选规则从码挪到动词声明。",
+  "artifacts": [
+   "electron/capabilityCore/transportFailure.ts",
+   "electron/capabilityCore/generationDomainRefusalReachesModel.test.ts",
+   "electron/shared/agentLane/laneFailureFromDecision.test.ts"
+  ]
+ },
+ "regression_tests": [
+  "electron/capabilityCore/generationDomainRefusalReachesModel.test.ts",
+  "electron/shared/agentLane/laneFailureFromDecision.test.ts",
+  "electron/capabilityCore/generationTransportAdapters.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/capabilityCore/generationDomainRefusalReachesModel.test.ts",
+  "electron/shared/agentLane/laneFailureFromDecision.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/capabilityCore/canvasReadTransportAdapters.ts",
+   "electron/capabilityCore/canvasWriteTransportAdapters.ts",
+   "electron/capabilityCore/documentReadTransportAdapters.ts",
+   "electron/capabilityCore/documentWriteTransportAdapters.ts",
+   "electron/capabilityCore/generationTransportAdapters.ts",
+   "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+   "electron/capabilityCore/productionRunTransportAdapters.ts",
+   "electron/capabilityCore/skillWriteTransportAdapters.ts",
+   "electron/capabilityCore/timelineTransportAdapters.ts",
+   "electron/capabilityCore/mcpGenerationTools.ts"
+  ],
+  "rationale": "8 份手写 `safeFailure` 的函数体同 commit 全部删除（现在每一份只剩一行委派），`mcpGenerationTools.pinReference` 的重复实现同 commit 删除。没有开关、没有旧路径分支。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "不变量完全由本仓代码决定，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：只改这一刻产生的失败正文，没有落盘数据。",
+ "residual_risks": [
+  "`look_at_media` 那 3 次 `capability_execution_failed` 仍然只有码没有正文——phase4 的域侧还没有任何一处改用 `refuseToModel`。管道已经通，内容是下一刀。",
+  "「模型真的因此少重试了吗」要由 run2 的对照数字回答；本合同只证到「那句话现在到得了模型」。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/capabilityCore/transportFailure.ts",
+  "tests": [
+   "electron/capabilityCore/generationDomainRefusalReachesModel.test.ts",
+   "electron/capabilityCore/generationTransportAdapters.test.ts",
+   "electron/shared/agentLane/laneFailureFromDecision.test.ts"
+  ],
+  "notes": "「一次失败对模型说什么」从此只由这一层与 `laneFailureFromDecision` 两层回答：前者决定正文能不能出去，后者决定措辞。两层各有自己的测试，且两层都被 `generationDomainRefusalReachesModel.test.ts` 端到端串过一次。"
+ }
+}

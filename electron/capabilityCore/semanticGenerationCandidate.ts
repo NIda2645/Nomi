@@ -1,3 +1,4 @@
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import type { PlanCandidate } from "./executionContract";
 
@@ -123,19 +124,29 @@ function record(value: unknown, label: string): Record<string, unknown> {
  * schema 的 `Required`——而那两个字段模型根本拿不到。已经带着身份来的（外部宿主、面板自己那条路）
  * 逐字节不变；缺身份又没接解析器时，报的是人话而不是一个模型看不懂的字段名。
  */
+/**
+ * 一条参考素材的身份补齐。**全仓唯一的那一份**。
+ *
+ * 2026-09-22 之前这条规则有两份实现：create 走这里，patch 走 `mcpGenerationTools.pinReference`——
+ * 逐字一样的两段，连那句中文提示都抄了一遍。它们一起被 adapter 的兜底吃掉时，我只改了其中一份，
+ * 回归测试当场报出另一份还在（这正是「同一个语义有几份定义」那一族缺陷的长相）。现在 patch 那条
+ * 调的就是这个函数，改措辞只有一个地方。
+ */
+export function pinAssetReference(item: unknown, resolve?: ResolveAssetReferenceIdentity): unknown {
+  if (!item || typeof item !== "object") return item;
+  const reference = { ...(item as Record<string, unknown>) };
+  if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
+  const assetId = text(reference.assetId);
+  if (!assetId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "参考素材需要 assetId（来自 look_at_media）");
+  const identity = resolve?.(assetId);
+  if (!identity) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+  return { ...reference, contentHash: identity.contentHash, version: identity.version };
+}
+
 function references(value: unknown, resolve?: ResolveAssetReferenceIdentity): unknown[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value)) throw new Error("references must be an array");
-  return value.map((item) => {
-    if (!item || typeof item !== "object") return item;
-    const reference = { ...(item as Record<string, unknown>) };
-    if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
-    const assetId = text(reference.assetId);
-    if (!assetId) throw new Error("参考素材需要 assetId（来自 look_at_media）");
-    const identity = resolve?.(assetId);
-    if (!identity) throw new Error(`参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
-    return { ...reference, contentHash: identity.contentHash, version: identity.version };
-  });
+  if (!Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "references must be an array of asset ids.");
+  return value.map((item) => pinAssetReference(item, resolve));
 }
 
 /** Infer only the semantic task family; model/mode selection remains catalog-owned. */

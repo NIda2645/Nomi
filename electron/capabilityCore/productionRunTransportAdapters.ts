@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { ProductionRunNotFoundError } from '../productionRun/productionRunErrors';
 import { createHash } from "node:crypto";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
@@ -22,13 +23,10 @@ const PUBLIC_FAILURE_CODES = new Set([
 ]);
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const rawCode = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : undefined;
-  const code = error instanceof ProductionRunNotFoundError ? 'production_run_not_found' : rawCode && PUBLIC_FAILURE_CODES.has(rawCode)
-    ? rawCode
-    : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  return safeTransportFailure(error, {
+    allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed",
+    classify: (value) => value instanceof ProductionRunNotFoundError ? 'production_run_not_found' : undefined,
+  });
 }
 
 function digest(value: unknown): string {

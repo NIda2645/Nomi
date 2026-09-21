@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES, parseSurfacePortFailure, surfacePortFailureAdvice } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision, CanvasWriteApprovalAuthority } from "../shared/agentCapabilities/transportContracts";
 import {
@@ -50,16 +51,12 @@ const PUBLIC_FAILURE_CODES = new Set([
 const CANVAS_DELETE_TOOL_ALIAS = CANVAS_DELETE_CAPABILITY.aliases.mcp;
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const candidate =
-    error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-      ? (error as { code: string }).code
-      : undefined;
-  const code = candidate && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  const failure = parseSurfacePortFailure(error);
-  return { ok: false, code,
-    message: failure ? surfacePortFailureAdvice(failure).message : code,
-    ...(failure?.reason ? { reason: failure.reason } : {}),
-  };
+  return safeTransportFailure(error, {
+    allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed",
+    // 端口自己给的那句人话也是**我们写的**（`surfacePortFailureAdvice`），所以走「原样交给模型」那一档。
+    ownMessage: (value) => { const failure = parseSurfacePortFailure(value); return failure ? surfacePortFailureAdvice(failure).message : undefined },
+    reason: (value) => parseSurfacePortFailure(value)?.reason,
+  });
 }
 
 export function createPiCanvasWriteTransportAdapter(

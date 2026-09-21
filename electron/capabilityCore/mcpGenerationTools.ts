@@ -1,3 +1,5 @@
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
+import { pinAssetReference } from "./semanticGenerationCandidate";
 import { storyboardPlanFromDraftSubjects, presentStoryboardAuthoring, patchStoryboardAuthoring, upsertStoryboardDesign } from './mcpGenerationMultiShot';
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
@@ -259,14 +261,7 @@ function pinReference(
   value: unknown,
   resolve: ((projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined) | undefined,
 ): unknown {
-  if (!value || typeof value !== "object") return value;
-  const reference = { ...(value as Record<string, unknown>) };
-  if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
-  const assetId = typeof reference.assetId === "string" ? reference.assetId.trim() : "";
-  if (!assetId) throw new Error("参考素材需要 assetId（来自 look_at_media）");
-  const identity = resolve?.(projectId, assetId);
-  if (!identity) throw new Error(`参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
-  return { ...reference, contentHash: identity.contentHash, version: identity.version };
+  return pinAssetReference(value, resolve ? (assetId: string) => resolve(projectId, assetId) : undefined);
 }
 
 const RECOVERY_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
@@ -348,7 +343,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
 
   /** patch 入口的参考素材身份补齐。与 create 那条同一个解析器，只是调用点不同。 */
   const resolvePatchReferences = (projectId: string, value: unknown): PlanCandidate["references"] => {
-    if (!Array.isArray(value)) throw new Error("references must be an array");
+    if (!Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "references must be an array of asset ids.");
     // 补完身份后过一次候选自己的 schema：钉住的形状是执行契约签名的那一份，不能只靠类型断言说它齐了。
     return generationCandidateSchema.shape.references.parse(
       value.map((item) => pinReference(projectId, item, deps.resolveAssetReferenceIdentity)),
@@ -589,7 +584,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // 第一镜的镜像，拿它当基准会把别的镜的模型/模式当成「变了」）。缺省 = 顶层候选（单镜草稿，逐字不变）。
       const shotId = typeof params.shotId === "string" && params.shotId.trim() ? params.shotId.trim() : undefined;
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
-      if (shotId && !targetShot) throw new Error(`Generation shot not found: ${shotId}`);
+      if (shotId && !targetShot) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Generation shot not found: ${shotId}. Read the draft again and copy a shotId it actually lists.`);
       const baseCandidate = targetShot?.candidate ?? current.candidate;
       const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : baseCandidate.providerId;
       const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : baseCandidate.modelId;
@@ -656,7 +651,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       };
     }
     if (input.capability === "gate_request") {
-      if (current.sourceDocumentId) throw new Error("storyboard_present_required: use the original storyboard confirmation");
+      if (current.sourceDocumentId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "This draft came from a storyboard; use the original storyboard confirmation instead of requesting a gate here.");
       const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
       const contract = contractFor(candidate, input.lease.projectId);
       const readiness = resolveProviderReadiness(deps, candidate);
@@ -748,7 +743,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // turn; treat that replay as an observation instead of attempting a
       // second provider submission.
       if (current.state === "submitted") return { operation: current, taskRef: generationTaskReference(operationId), operationId, nextAction: "observe" };
-      if (current.state !== "sealed" || !current.contract || !current.approvedReceiptId) throw new Error("Confirm the generation plan before starting");
+      if (current.state !== "sealed" || !current.contract || !current.approvedReceiptId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Confirm the generation plan before starting: the user has not approved this draft yet.");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
     if (input.capability === "cancel") return { operation: await deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };

@@ -4,6 +4,7 @@ import { GenerationProviderCapabilityError, GenerationProviderObservationError, 
 import { ProductionGenerationAuthorizationError } from '../productionRun/productionGenerationAuthorization';
 import { z } from "zod";
 import { logWarn } from "../logging/logger";
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel, safeTransportFailure } from "./transportFailure";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { GENERATION_METHODS, GENERATION_METHOD_NAMES, isGenerationMethodName, type GenerationMethodName } from "../shared/agentCapabilities/generation";
 import { generationPlanInputSchema, generationStatusInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
@@ -78,25 +79,36 @@ export function describeSchemaIssues(issues: readonly GenerationSchemaIssue[]): 
   return issues.map((issue) => `${issue.path || "(root)"}: ${issue.message}`).join("; ");
 }
 
+/**
+ * 这条路放行的码。除了传输那一族共有的，生成域自己还有五个。
+ * `generation_input_invalid` 是「模型写的入参我们收不了」那一档——2026-09-22 起它也承载
+ * 域里**有意**抛出的拒绝（`ModelFacingRefusal`），正文原样到模型。
+ */
+const GENERATION_PUBLIC_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'generation_input_invalid', 'generation_cancelled', 'project_binding_stale',
+  'generation_approval_unavailable', 'generation_approval_required',
+]);
+// `generation_operation_not_found` / `generation_provider_unavailable` **刻意不在**上面那张表里：
+// 它们只能由 `classify` 从我们自己的错误类认出来，不能由异常上挂的一个 `code` 字符串自称
+// （C18「provider forged absence」）。
+
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const rawCode = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : "generation_execution_failed";
-  const localCodes = new Set(['generation_input_invalid', 'generation_cancelled', 'project_binding_stale',
-    'generation_approval_unavailable', 'generation_approval_required']);
-  const code = productionTaskAbsenceCode(error)
-    ? 'generation_operation_not_found'
-    : error instanceof GenerationProviderCapabilityError || error instanceof GenerationProviderObservationError
-      ? 'generation_provider_unavailable'
-      : error instanceof ProductionGenerationAuthorizationError || error instanceof GenerationRuntimeBindingError
-        ? error.code : localCodes.has(rawCode) ? rawCode : 'generation_execution_failed';
-  // 收敛成码挡住的应当只有**供应商 / 凭据的原始文本**。连我们自己 schema 的字段级理由一起抹掉，
-  // 模型拿到的就是一个说不出拒了什么的裸码，于是同一份载荷原样重试到回合超时——那正是
-  // 2026-09-18 那份根因合同修掉的失效方式（`generation_input_invalid — shots.0.prompt: Required`）。
-  const issues = schemaIssuesOf(error);
-  // 兜底码盖住的也可能是我们自己的缺陷（TypeError 这类）。不留痕 = 把 bug 洗成产品结论。
-  if (code === 'generation_execution_failed') logWarn("capability", "generation-transport-failed", { rawCode }, error);
-  return { ok: false, code, message: issues.length ? `${code} — ${describeSchemaIssues(issues)}` : code };
+  return safeTransportFailure(error, {
+    allowedCodes: GENERATION_PUBLIC_FAILURE_CODES,
+    fallbackCode: 'generation_execution_failed',
+    classify: (value) => productionTaskAbsenceCode(value)
+      ? 'generation_operation_not_found'
+      : value instanceof GenerationProviderCapabilityError || value instanceof GenerationProviderObservationError
+        ? 'generation_provider_unavailable'
+        : value instanceof ProductionGenerationAuthorizationError || value instanceof GenerationRuntimeBindingError
+          ? value.code : undefined,
+    // 收敛成码挡住的应当只有**供应商 / 凭据的原始文本**。连我们自己 schema 的字段级理由一起抹掉，
+    // 模型拿到的就是一个说不出拒了什么的裸码，于是同一份载荷原样重试到回合超时——那正是
+    // 2026-09-18 那份根因合同修掉的失效方式（`generation_input_invalid — shots.0.prompt: Required`）。
+    detail: (value) => { const issues = schemaIssuesOf(value); return issues.length ? describeSchemaIssues(issues) : undefined },
+    // 兜底码盖住的也可能是我们自己的缺陷（TypeError 这类）。不留痕 = 把 bug 洗成产品结论。
+    onFallback: (rawCode, value) => logWarn("capability", "generation-transport-failed", { rawCode }, value),
+  });
 }
 
 /**
@@ -435,10 +447,10 @@ export function createPiGenerationTransportAdapter(
         if (storyboardTarget && (storyboardTarget.projectId !== binding.projectId
           || (typeof args.operationId === 'string'
             && !storyboardTarget.plans.some((plan) => plan.id === args.operationId)))) {
-          throw new Error('storyboard_target_mismatch');
+          refuseToModel(GENERATION_ARGUMENT_REFUSAL, 'That plan is not one of the storyboard plans this request covers. Use an operationId the request names, or omit it to start a new draft.');
         }
         if (canonicalCall.toolName === GATE_TOOL) {
-          if (storyboardTarget?.shotIds) throw new Error("storyboard_present_required");
+          if (storyboardTarget?.shotIds) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "This storyboard selection is confirmed through its own card; do not request a separate generation gate for it.");
           const result = await requestGate(args, currentLease, signal);
           const denied = result && typeof result === "object" && (result as { nextAction?: unknown }).nextAction === "revise";
           return denied
@@ -448,11 +460,11 @@ export function createPiGenerationTransportAdapter(
         const capability = isGenerationMethodName(canonicalCall.toolName) ? CAPABILITY_BY_METHOD[canonicalCall.toolName] : undefined;
         if (!capability) throw Object.assign(new Error("generation_input_invalid"), { code: "generation_input_invalid" });
         if (storyboardTarget?.shotIds) {
-          if (capability === 'plan' && (typeof args.shotId !== 'string' || !storyboardTarget.shotIds.includes(args.shotId))) throw new Error('storyboard_shot_target_mismatch');
+          if (capability === 'plan' && (typeof args.shotId !== 'string' || !storyboardTarget.shotIds.includes(args.shotId))) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This request covers only these shots: ${storyboardTarget.shotIds.join(', ')}. Name one of them in shotId.`);
           if (capability === 'present') args.shotIds = resolveGenerationShotScope(storyboardTarget.shotIds,args.shotIds);
           // The selection names its plan, so a call that addresses a different one is refused
           // rather than silently retargeted.
-          if ((capability === 'plan' || capability === 'present') && args.operationId !== storyboardTarget.designId) throw new Error('storyboard_target_mismatch');
+          if ((capability === 'plan' || capability === 'present') && args.operationId !== storyboardTarget.designId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This request is about plan ${storyboardTarget.designId}. Use that operationId.`);
         }
         // operationId is required by every non-create descriptor. Parsing it
         // here keeps malformed model calls out of the durable operation store.
