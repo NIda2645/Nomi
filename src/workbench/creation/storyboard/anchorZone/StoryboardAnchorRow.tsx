@@ -17,10 +17,12 @@ import { cn } from '../../../../utils/cn'
 import { NomiImage } from '../../../../design/media'
 import { NomiSelect } from '../../../../design'
 import type { ModelOption } from '../../../../config/models'
-import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import { AutoGrowTextarea } from '../../../ai/composer/AutoGrowTextarea'
-import type { PlanAnchor, PlanAnchorKind } from '../../../generationCanvas/agent/storyboardPlan'
-import { ANCHOR_KINDS } from '../../../generationCanvas/agent/storyboardPlanEdits'
+import type { PlanAnchorKind } from '../../../generationCanvas/agent/storyboardPlan'
+import { ANCHOR_KINDS, planModelSelection, type PlanAnchorPatch } from '../../../generationCanvas/agent/storyboardPlanEdits'
+import { modelVisibilityFooterAction, useDedupedModelSelect } from '../../../common/useDedupedModelSelect'
+import { useVendorPreferenceOrder } from '../../../common/useVendorPreference'
+import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
 import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
 import StoryboardRowShell from '../shotRow/StoryboardRowShell'
 import { REFERENCE_COLUMN_WIDTH } from '../shotRow/shotReferenceStackGeometry'
@@ -53,7 +55,7 @@ type Props = {
   aspect: string
   modelOptions?: ModelOption[]
   nameInvalid?: boolean
-  onUpdate: (patch: Partial<PlanAnchor>) => void
+  onUpdate: (patch: PlanAnchorPatch) => void
   onChangeKind: (kind: PlanAnchorKind) => void
   onRemove: () => void
   onGenerate: () => void
@@ -99,7 +101,16 @@ export default function StoryboardAnchorRow({
   const displayName = anchor.name.trim() || t('storyboardEditor.unnamed')
   const KindIcon = KIND_ICON[anchor.kind]
   const box = frameMediaBox(aspect)
-  const modelOption = modelOptions.find((option) => option.value === anchor.modelKey) ?? null
+  // 锚的模型框与镜头卡、画布节点**同一个选择 owner**（useDedupedModelSelect）：同名模型按供应商区分，
+  // (modelKey, modelVendor) 成对读、成对写。这里以前是一只原生下拉，option value 是裸 modelKey——
+  // 两家同名就是两个同值选项，选哪家都只写 modelKey（2026-09-21 分镜三处复现之一）。
+  const onAnchorModelChange = React.useCallback(
+    (value: string, vendor?: string) => onUpdate(planModelSelection(value, vendor)),
+    [onUpdate],
+  )
+  const modelSelect = useDedupedModelSelect(modelOptions, anchor.modelKey ?? '', onAnchorModelChange, anchor.modelVendor)
+  const orderedVendorKeys = useVendorPreferenceOrder()
+  const modelOption = findModelOptionByIdentifier(modelOptions, anchor.modelKey, anchor.modelVendor, orderedVendorKeys)
   const resolvedArchetype = resolveShotArchetypeMode(modelOption, anchor.modeId)
   const resolvedMode = resolvedArchetype?.mode ?? null
 
@@ -341,15 +352,30 @@ export default function StoryboardAnchorRow({
             </button>
             {anchor.carrier === 'visual' ? (
               modelOptions.length > 0 ? (
-                <NomiSelect
-                  ariaLabel={t('storyboardEditor.anchor.modelAria')}
-                  leadingLabel={t('storyboardEditor.anchor.modelLabel')}
-                  size="xs"
-                  triggerMaxWidth={150}
-                  value={anchor.modelKey || ''}
-                  options={[{ value: '', label: t('storyboardEditor.defaultModel') }, ...modelOptions.map((option) => ({ value: option.value, label: translateModelDisplayText(option.label) }))]}
-                  onChange={(value) => onUpdate({ modelKey: value || undefined, modeId: undefined, params: undefined })}
-                />
+                <>
+                  <NomiSelect
+                    ariaLabel={t('storyboardEditor.anchor.modelAria')}
+                    leadingLabel={t('storyboardEditor.anchor.modelLabel')}
+                    size="xs"
+                    triggerMaxWidth={150}
+                    value={anchor.modelKey ? modelSelect.modelValue : ''}
+                    options={[{ value: '', label: t('storyboardEditor.defaultModel') }, ...modelSelect.modelOptions]}
+                    onChange={(id) => (id ? modelSelect.onModelPick(id) : onAnchorModelChange(''))}
+                    onChipChange={modelSelect.onModelProviderPick}
+                    footerAction={modelVisibilityFooterAction()}
+                    hiddenNote={modelSelect.hiddenNote}
+                  />
+                  {modelSelect.providerOptions.length > 1 ? (
+                    <NomiSelect
+                      ariaLabel={t('storyboardEditor.provider')}
+                      size="xs"
+                      triggerMaxWidth={110}
+                      value={modelSelect.providerValue}
+                      options={modelSelect.providerOptions}
+                      onChange={modelSelect.onProviderPick}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <span className="text-micro text-nomi-warning" data-anchor-model-empty="true">
                   {t('storyboardEditor.anchor.noImageModel')}

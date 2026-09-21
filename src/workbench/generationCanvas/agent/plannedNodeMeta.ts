@@ -1,4 +1,3 @@
-import { orderByVendorPreference } from "../../../../electron/shared/contracts/vendorPreference";
 // 把 agent 建议的 modelKey/modeId/params 校验+补全成可写入 node.meta 的对象。
 //
 // 关键约束（bug① spike）：agent 一旦写了 modelKey，useNodeModelAutoSelect 的 effect1（只在
@@ -11,6 +10,7 @@ import {
   specializeArchetypeForVariant,
   type ModelArchetype,
 } from "../../../config/modelArchetypes";
+import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 
 export type PlannedNodeModelInput = {
   modelKey?: unknown;
@@ -58,14 +58,23 @@ const isValidParamValue = isParamValueAllowed;
 /**
  * 模型清单索引：**同时**含 `vendor::modelKey` 与裸 `modelKey` 两种键。
  * 前者是身份唯一键（同名模型来自不同供应商是两个模型）；后者供旧计划/无 vendor 的目录行回落。
- * 裸键取**第一次出现**的条目（后来者不覆盖），避免「索引里最后写入的那家」这种随机身份。
- * 两处落地路径（applyCanvasToolCall / storyboardRowActions）共用本构造器，不各写一份（P1）。
+ * 裸键由 `pickImplicitVendorMatch` 决定落哪家——与分镜/画布模型框回显旧数据用的是**同一个判定口**
+ * （用户顺序 > 官方 > 内置中转 > 自接 > 目录序），所以一条只记了模型名的旧镜头，界面上显示哪家，请求就发去哪家。
+ * 以前取「第一次出现」的条目，而目录是新接入的在前：用户一自定义同名模型，裸键就悄悄换成了它（2026-09-21）。
+ * 所有落地路径（applyCanvasToolCall / storyboardRowActions / multiShotCanvasLanding）共用本构造器（P1）。
  */
 export function buildModelEntryIndex(entries: readonly AgentModelEntry[], orderedVendorKeys: readonly string[] = []): Map<string, AgentModelEntry> {
   const index = new Map<string, AgentModelEntry>();
-  for (const entry of orderByVendorPreference(entries, orderedVendorKeys, (row) => row.vendor)) {
+  const byModelId = new Map<string, AgentModelEntry[]>();
+  for (const entry of entries) {
     if (entry.vendor) index.set(`${entry.vendor}::${entry.modelId}`, entry);
-    if (!index.has(entry.modelId)) index.set(entry.modelId, entry);
+    const bucket = byModelId.get(entry.modelId);
+    if (bucket) bucket.push(entry);
+    else byModelId.set(entry.modelId, [entry]);
+  }
+  for (const [modelId, bucket] of byModelId) {
+    const implicit = pickImplicitVendorMatch(bucket, (row) => row.vendor, orderedVendorKeys);
+    if (implicit) index.set(modelId, implicit);
   }
   return index;
 }

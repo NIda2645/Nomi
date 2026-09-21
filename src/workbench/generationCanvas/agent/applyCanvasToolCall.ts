@@ -15,6 +15,7 @@ import {
   type CreateGenerationNodeToolInput,
 } from './generationCanvasTools'
 import { listAvailableModelsForAgent } from './availableModels'
+import { getVendorPreference } from '../../api/vendorPreferenceApi'
 import { buildModelEntryIndex, buildPlannedNodeMeta } from './plannedNodeMeta'
 import { indexMaterializedNodes, materializationKey, readNodeInputStamp } from './materializationStamp'
 import { withCanvasGestureContext, type CanvasGestureContext } from '../events/canvasGestureContext'
@@ -293,7 +294,7 @@ export async function applyCanvasToolCall(
     // 校验失败 throw → 调用方映射成 tool error,回喂 LLM 自我修正(与 gate deny 同语义)。
     const parsedPlan = parseStoryboardPlan(record)
     const plan = hasRealCharacterReferences(parsedPlan)
-      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent())
+      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
       : parsedPlan
     const store = useWorkbenchStore.getState()
     // P4:按 documentId 存方案。documentId 由调用方在发起拆镜头时捕获，异步期间切文档不串稿。
@@ -362,7 +363,10 @@ export async function applyCanvasToolCall(
     const needsModels = incoming.some(
       (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
     )
-    const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
+    // 裸 modelKey（没带 vendor）落哪家：与模型框回显同一把尺，要用户排的供应商顺序（buildModelEntryIndex 注释）。
+    const entryByKey = needsModels
+      ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
+      : buildModelEntryIndex([])
     const total = incoming.length
     // T4 轨迹分层布局：层由 kind 推导（参考/关键帧/视频三列），原点避让画布已有节点
     // 包围盒（修审计 bug D）；单层/不可推导退网格（同样避让）。忽略 LLM 像素坐标。

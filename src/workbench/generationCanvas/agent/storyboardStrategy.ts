@@ -44,7 +44,7 @@ export function storyboardPlanToPlanShotInputs(plan: StoryboardPlan): PlanShotIn
     durationSec: shot.durationSec,
     ...(shot.sceneId ? { sceneAnchorId: shot.sceneId } : {}),
     ...(shot.anchorIds.length > 0 ? { anchorIds: [...shot.anchorIds] } : {}),
-    ...(shot.modelKey ? { modelKey: shot.modelKey } : {}),
+    ...(shot.modelKey ? { modelKey: shot.modelKey, ...(shot.modelVendor ? { modelVendor: shot.modelVendor } : {}) } : {}),
     ...(shot.modeId ? { modeId: shot.modeId } : {}),
     ...(() => {
       const params = resolveShotParams(plan, shot);
