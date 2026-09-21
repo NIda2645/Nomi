@@ -4,6 +4,9 @@ export const zhCreationAi = {
   },
   documentList: {
     deleteStoryboard: '删除方案',
+    // 删完那一下的回执。它要说清**删的是哪一条**——侧栏里同名方案很常见，
+    // 一句「已删除」会让用户不确定刚才那下删的是不是他想的那个。
+    storyboardDeleted: '已删除「{{title}}」',
     title: '创作内容',
     aria: '创作内容列表',
     count: '原稿 · {{count}} 篇',
@@ -123,6 +126,7 @@ export const enCreationAi = {
   },
   documentList: {
     deleteStoryboard: 'Delete plan',
+    storyboardDeleted: 'Deleted “{{title}}”',
     title: 'Creation content',
     aria: 'Creation content list',
     count: 'Drafts · {{count}}',

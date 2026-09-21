@@ -203,9 +203,12 @@ function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean
 function QuestionAnsweredCell(): JSX.Element {
   const fx = useV4Fixtures()
   const labels = useV4Labels()
+  // 收据那一行印的就是**那句问题**——反问卡的身份是它问了什么，不是一句「需要你定一下」
+  // （那句套话随整件还原一起删了）。所以这里和上面那张卡取同一个字符串。
+  const askedQuestion = fx.t('agentPanelV4.slotQuestionRetryTitle')
   const receipt = laneDrivenReceipt(
-    laneSnapshotQuestionAnswered(fx.t('agentPanelV4.slotQuestionRetryTitle'), fx.t('agentPanelV4.slotOptionAsReference')),
-    labViewModelLabels(fx, fx.t('agentPanelV4.questionTitle')),
+    laneSnapshotQuestionAnswered(askedQuestion, fx.t('agentPanelV4.slotOptionAsReference')),
+    labViewModelLabels(fx, askedQuestion),
   )
   return (
     <Piece>

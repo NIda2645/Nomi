@@ -14,6 +14,8 @@ import {
   IconPlus,
 } from '@tabler/icons-react'
 import { confirmDialog, WorkbenchIconButton } from '../../design'
+import { SwipeToDeleteRow } from '../../design/SwipeToDeleteRow'
+import { showUndoToast } from '../../utils/showUndoToast'
 import { cn } from '../../utils/cn'
 import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
@@ -44,6 +46,7 @@ export default function DocumentListSidebar(): JSX.Element {
   const duplicateStoryboardDesign = useWorkbenchStore((state) => state.duplicateStoryboardDesign)
   const renameStoryboardDesign = useWorkbenchStore((state) => state.renameStoryboardDesign)
   const deleteStoryboardDesign = useWorkbenchStore((state) => state.deleteStoryboardDesign)
+  const restoreStoryboardDesign = useWorkbenchStore((state) => state.restoreStoryboardDesign)
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({})
   const [editing, setEditing] = React.useState<EditingTarget>(null)
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -95,15 +98,33 @@ export default function DocumentListSidebar(): JSX.Element {
     if (confirmed) deleteWorkbenchDocument(id)
   }, [deleteWorkbenchDocument, t])
 
-  const onDeleteStoryboard = React.useCallback(async (id: string, documentId: string) => {
-    const confirmed = await confirmDialog({
-      title: t('storyboardEditor.discardTitle'),
-      message: t('storyboardEditor.planCard.discardMessage'),
-      confirmLabel: t('creationAi.documentList.deleteConfirm'),
-      danger: true,
+  /**
+   * 删一条方案。**不弹确认**（2026-09-21 改）——删除是一个手势，不是一道题。
+   *
+   * 原来是「⋮ → 删除方案 → 模态确认」三步，而这件事本来就撤得回来：确认弹窗拦得住手滑，
+   * 代价是对**每一次**删除都收一遍税；撤销只对真的手滑那一次收税（Spectrum 的
+   * Swipe to Delete 那篇文档的读法，也是用户 09-21「有个删除 icon 就行」的意思）。
+   *
+   * 撤销接的是仓库现成的 owner `showUndoToast`（今天 8 个调用方共用同一只 toast 容器），
+   * 不新造一颗撤销药丸。它是**先做后撤**的模型，所以这里必须先把「它原来排第几」记下来
+   * ——`restoreStoryboardDesign` 靠它放回原位；放回队尾的话用户点完撤销还得重新找一遍。
+   *
+   * `isUndoable` 那条判据不是形式主义：toast 挂着的这几秒里，模型、另一条 lane、
+   * 另一个会话都可能往同一份表里写。同 id 已经回来了就别再插一遍
+   * （`restoreStoryboardDesign` 自己也挡一道，两头都挡是因为这笔数据会落盘）。
+   */
+  const onDeleteStoryboard = React.useCallback((id: string, documentId: string) => {
+    const designs = useWorkbenchStore.getState().storyboardDesignsByDocumentId[documentId] ?? []
+    const index = designs.findIndex((design) => design.id === id)
+    const removed = designs[index]
+    if (!removed) return
+    deleteStoryboardDesign(id, documentId)
+    showUndoToast({
+      message: t('creationAi.documentList.storyboardDeleted', { title: removed.title || t('storyboardEditor.planCard.defaultTitle') }),
+      onUndo: () => restoreStoryboardDesign(removed, documentId, index),
+      isUndoable: () => !(useWorkbenchStore.getState().storyboardDesignsByDocumentId[documentId] ?? []).some((design) => design.id === id),
     })
-    if (confirmed) deleteStoryboardDesign(id, documentId)
-  }, [deleteStoryboardDesign, t])
+  }, [deleteStoryboardDesign, restoreStoryboardDesign, t])
 
   // 点原稿 = 回到剧本编辑器。模式必须一起切回 creation：在分镜页只清 activeStoryboardId
   // 的话，StoryboardWorkspace 的「没有激活方案就自动选第一个」会立刻把用户弹回方案里。
@@ -208,7 +229,7 @@ export default function DocumentListSidebar(): JSX.Element {
               const title = documents.find((document) => document.id === menuTarget.id)?.title || t('runtime.project.untitled')
               void onDeleteDocument(menuTarget.id, title)
             } else {
-              void onDeleteStoryboard(menuTarget.id, menu.documentId)
+              onDeleteStoryboard(menuTarget.id, menu.documentId)
             }
           }}
         >
@@ -326,8 +347,20 @@ export default function DocumentListSidebar(): JSX.Element {
                     const statusLabel = stale ? t('storyboardEditor.planCard.stale') : committedNow ? t('storyboardEditor.planCard.committed') : t('storyboardEditor.planCard.draft')
                     const title = design.title || t('storyboardEditor.planCard.defaultTitle')
                     return (
-                      <div
+                      // 行外面包一层手势壳：hover/聚焦时轻推探头露出删除区，点它即删；
+                      // 行聚焦时 Delete/Backspace 也删。删除区的宽度按 240px 侧栏给，
+                      // 不用组件的默认值（那是给一屏宽的列表行定的，会吃掉半行标题）。
+                      <SwipeToDeleteRow
                         key={design.id}
+                        label={title}
+                        deleteLabel={t('creationAi.documentList.deleteStoryboard')}
+                        deletedAnnouncement={t('creationAi.documentList.storyboardDeleted', { title })}
+                        actionWidth={64}
+                        hoverPeek={36}
+                        onDelete={() => onDeleteStoryboard(design.id, doc.id)}
+                        className="mb-0.5"
+                      >
+                      <div
                         className={cn(
                           'group/design relative flex min-h-10 w-full items-center gap-1 rounded-nomi-sm border border-transparent px-2 py-1.5',
                           designActive ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-80 hover:bg-nomi-ink-05',
@@ -393,6 +426,7 @@ export default function DocumentListSidebar(): JSX.Element {
                           onClick={(event) => openMenuFromButton(event, { kind: 'storyboard', id: design.id }, doc.id)}
                         />
                       </div>
+                      </SwipeToDeleteRow>
                     )
                   })}
                   <button
