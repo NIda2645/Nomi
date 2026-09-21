@@ -258,7 +258,7 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
       keptCuts: cuts.length,
       appliedThreshold,
       capped,
-      coveredSeconds: cuts.length ? cuts[cuts.length - 1].seconds : 0,
+      coveredSeconds: cuts.at(-1)?.seconds ?? 0,
       durationSeconds,
     };
     // 压上限是**正常事件**，不是错误：用 logInfo 带结构化字段，别造一个假 Error 去挤错误通道
@@ -274,12 +274,8 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
         durationSeconds: String(durationSeconds),
       });
     }
-    if (!cuts.length) {
-      return {
-        cuts: [], durationSeconds, sheetUrl: null,
-        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
-      };
-    }
+    const base = { cuts, durationSeconds, sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage };
+    if (!cuts.length) return { ...base, sheetUrl: null };
 
     // ② 联系表：按**这份清单的 pts** 点名选帧，故第 i 格恒是 cuts[i]——由构造保证，不靠两边算得一样。
     const outPath = path.join(os.tmpdir(), `nomi-shotsheet-${crypto.randomUUID()}.jpg`);
@@ -293,17 +289,11 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
       ]);
       if (sheet.code !== 0 || !fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
         // 缩略图挂了不该拖垮整件事：切点数据仍然有用（用户照样能按时间点选）。
-        return {
-          cuts, durationSeconds, sheetUrl: null,
-          sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
-        };
+        return { ...base, sheetUrl: null };
       }
       // 落项目缓存区而非素材库：这是可再生的中间产物，写进素材库会把用户的库刷屏（见 filmstrip 的同款教训）。
       const written = writeProjectCacheFile(projectId, fs.readFileSync(outPath), "shot-cuts", ".jpg");
-      return {
-        cuts, durationSeconds, sheetUrl: written.url,
-        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
-      };
+      return { ...base, sheetUrl: written.url };
     } finally {
       try { fs.unlinkSync(outPath); } catch { /* non-fatal */ }
     }

@@ -384,7 +384,7 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
   const cutCoverage: ShotCutCoverage = {
     ...detected.coverage,
     keptCuts: cutSeconds.length,
-    coveredSeconds: cutSeconds.length ? cutSeconds[cutSeconds.length - 1] : 0,
+    coveredSeconds: cutSeconds.at(-1) ?? 0,
   };
 
   const brain = resolveTextBrainKeys({ preferImageInput: true });
