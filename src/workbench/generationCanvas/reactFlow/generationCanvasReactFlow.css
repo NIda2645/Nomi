@@ -93,6 +93,13 @@
   height: 100% !important;
 }
 
+/* 选中卡的卡面压在自己的磁吸带之上：伸出卡外的版本胶囊（「2 版」）/ 版本托盘落在带子的命中区里，
+ * 带子（z 8）若在上面，点「2 版」会变成起一条线，托盘也点不动（2026-09-21 走查发现，带子常驻后必现）。
+ * 磁吸带只在卡外侧，卡面本身不和它重叠，所以抬高卡面不会吃掉起线入口。 */
+.generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node[data-selected='true'] {
+  z-index: 9;
+}
+
 .generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node__resize-zone {
   display: none !important;
 }
