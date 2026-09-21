@@ -1,0 +1,119 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-21-fixture-budget-pin-blocked-priced-walkthroughs",
+ "problem_type": "A duplicate safety belt in the test fixture made an entire user-facing path untestable on a real machine, so that path shipped unverified",
+ "symptom": "「卡上写着 ¥0.30 → 我按下去 → 钱按那个数记进账本 → 图落回我的节点」这条链，在真机走查里**一次都没被验过**。所有真机 spend 走查都只能跑「算不出价」那一档；有价的那一档一提交就撞 policy-budget-exceeded。",
+ "direct_cause": "`productionRunRuntime.ts` 在 E2E 夹具模式（`NOMI_E2E_PRODUCTION_FIXTURE=1`）下把 Run 的 `policy.maxSpend` 钉成 0。任何有已知价的作业在授权那一步必然被 `approval-budget-exceeded` 拒掉，于是有价确认链在真机上走不通。",
+ "class_root": "同一个风险被两道保险各挡一次，而其中一道的**副作用是让一整条用户路径不可测**。夹具模式真正的保险是「出站只认回环」（`safeFixtureBaseUrl` 只接受 127.0.0.1 / localhost / ::1，且要显式 flag）——钱本来就花不出去。钉 0 的那道重复保险没有增加任何安全性，却把「有价确认」整条链从验收范围里挖掉了；而没被验收的路径最后由用户来发现。",
+ "affected_population": [
+  "所有走 Agent 付款卡 / 分镜提交执行计划 / 外部 MCP 的**已定价**模型：这条链的真机证据此前为零",
+  "不影响真实用户：`maxSpend: 0` 只在 E2E 夹具模式下生效（更正此前把它说成「发版包里的规则」的说法）"
+ ],
+ "scope_paths": [
+  "electron/productionRun/productionRunRuntime.ts",
+  "electron/productionRun/productionRunE2eFixture.ts",
+  "docs/engineering-rules.md"
+ ],
+ "entry_points": [
+  "真机走查（tests/ux/agent-spend-*.walk.mjs）经 getProductionRunService 拿到的夹具策略"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "夹具策略与走查纪律完全是本仓自己的约定，没有外部规范参与。",
+ "invariants": [
+  "夹具模式下「钱花不出去」由**出站只认回环**保证，不由额度上限保证",
+  "夹具的额度上限取一个**小的正数**：既让有价确认在真机走查里走得通，又保住「夹具里不许出现大额」那层体检",
+  "验收类测试允许最小必要的真实生成（每模型 1 次、最低档、事后如实报花了多少）；默认仍走回环假供应商"
+ ],
+ "doors": [
+  {
+   "kind": "read",
+   "path": "electron/productionRun/productionRunRuntime.ts",
+   "symbol": "PRODUCTION_E2E_FIXTURE_MAX_SPEND"
+  },
+  {
+   "kind": "write",
+   "path": "electron/productionRun/productionRunE2eFixture.ts",
+   "symbol": "PRODUCTION_E2E_FIXTURE_MAX_SPEND"
+  }
+ ],
+ "door_reduction": {
+  "before": 2,
+  "after": 2,
+  "why_not": "一扇是常量的定义处、一扇是它唯一的读点——这已经是一份状态能有的最小形状。此前那个字面量 `0` 连名字都没有，也就无处写「它为什么是这个值」；给它一个名字与一段说明，正是这次要收的东西。"
+ },
+ "generality_proof": "上限来自一个具名常量而不是散落的字面量，任何新增的夹具装配都读同一份；而「钱花不出去」那条不变量由出站回环判据保证，与额度无关——所以调整上限不会动摇安全边界，调整安全边界也不必回来改上限。",
+ "shared_boundaries": [
+  {
+   "path": "electron/productionRun/productionRunE2eFixture.ts",
+   "symbol": "PRODUCTION_E2E_FIXTURE_MAX_SPEND",
+   "responsibility": "夹具模式下的花费上限，以及「它守的是什么、不守什么」那段说明的唯一住处。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/productionRun/productionRunRuntime.ts",
+   "entry_point": "getProductionRunService 的夹具 policyResolver",
+   "disposition": "enforced",
+   "evidence": "新走查 tests/ux/agent-spend-priced-card.walk.mjs 首跑通过（paidCalls=0）：卡上 CNY 0.30 → 确认 → 供应商收到一次 → 授权信封 price.maximum=0.3、unknownJobCount=0 → 产物落回草稿那一刻建的节点；并硬断言 policy.maxSpend > 0.3（钉子拔掉的机读证据）。"
+  },
+  {
+   "path": "tests/ux/agent-spend-confirm-executes.walk.mjs",
+   "entry_point": "未定价那一档的确认链",
+   "disposition": "not-affected",
+   "evidence": "它跑的是「干净装机」那份未定价目录，与上限无关；同 commit 更正了它文件头里那段已经过期的「maxSpend 被钉成 0」说明（R17：过期指令比没有指令更坏）。五条 spend 走查改后全部 exit=0。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "「为了保险把测试环境某个维度钉死 → 一整条路径从此不可测」是一类反复出现的形状；每加一道夹具保险都要问一遍「它挡住的是风险，还是我的验收」。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs PRODUCTION_E2E_FIXTURE_MAX_SPEND → 1 扇读点（productionRunRuntime.ts:62）",
+   "grep -rn 'maxSpend: 0' electron tests scripts → 仅剩三处**单元测试**里故意构造的「零预算必须拒」用例，不在夹具装配上",
+   "node scripts/door-map.mjs getProductionRunService → 6 扇读点，全部拿同一个单例，没有第二份夹具策略"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/productionRun/productionRunE2eFixture.ts",
+  "invariant": "夹具上限是一个具名的小正数；安全由出站回环判据保证。",
+  "failure_mode": "谁把它改回 0（或改到低于夹具价目），`agent-spend-priced-card.walk.mjs` 当场红——它硬断言 `policy.maxSpend > 0.3`，并且整条有价确认链会在授权那一步失败。",
+  "exception_policy": "none",
+  "strategy": "把重复的那道保险去掉，让真正的那道（出站回环）独自承担；同时把「验收类测试允许最小必要真实生成」写进规则出处，免得下一个人再用零额度把路径挖掉。",
+  "artifacts": [
+   "electron/productionRun/productionRunE2eFixture.ts",
+   "electron/productionRun/productionRunRuntime.ts",
+   "tests/ux/agent-spend-priced-card.walk.mjs",
+   "docs/engineering-rules.md"
+  ]
+ },
+ "regression_tests": [
+  "tests/ux/agent-spend-priced-card.walk.mjs"
+ ],
+ "class_regression_tests": [
+  "tests/ux/agent-spend-priced-card.walk.mjs"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/productionRun/productionRunRuntime.ts"
+  ],
+  "rationale": "`maxSpend: 0` 那行同 commit 删除，没有开关也没有「旧行为优先」分支；文件头那段解释它的过期说明同 commit 改写。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "只涉及本仓的夹具装配，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：夹具策略只在 E2E 模式下装配，不落盘、不影响任何真实用户的项目。",
+ "residual_risks": [
+  "上限取 100 是一个**约定值**，不是从任何数据推出来的：它只要大于夹具价目、又小到能在夹具里当体检用即可。真出现一条比它还贵的夹具作业时，会以「提交被拒」的形式暴露，而不是静默放行。",
+  "「验收类测试允许最小必要真实生成」这条写进了规则出处，但本 lane 本身**一次真实付费生成都没跑**（全部走回环，paidCalls=0）。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/productionRun/productionRunE2eFixture.ts",
+  "tests": [
+   "tests/ux/agent-spend-priced-card.walk.mjs"
+  ],
+  "notes": "夹具上限从一个匿名字面量变成有名字、有说明、有走查盯着的常量。新走查首跑即通过，且它硬断言上限大于夹具价目——钉子再被钉回去会当场红。"
+ }
+}

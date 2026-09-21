@@ -14,14 +14,16 @@
 // `generationProvider: 'apimart'` 上：内置 apimart 档案 + 内置 curated mapping + 只认 loopback 的
 // `NOMI_E2E_PRODUCTION_FIXTURE` 口子，供应商换成本机这台夹具服务器。
 //
-// 四条（全部是真人视角看得见的事）：
-// 为什么这台机器上的模型**没有价目**：`NOMI_E2E_PRODUCTION_FIXTURE=1` 那条口子同时把 Run 的
-// `policy.maxSpend` 钉成 0（`productionRunRuntime.ts`）——这是 E2E 的零额度硬保险：**任何有已知
-// 价的作业都提交不了**（`approval-budget-exceeded`）。所以真机上能走完整条链的只有「算不出价」
-// 那一档，而那恰好也是今天干净装机的真实处境（内置 204 个生成模型一条价都没有）。
-// 「改参数 → 卡上价格原地重算 0.30→0.50 → 改动回写画布」那三拍由 `agent-spend-reprice.walk.mjs`
-// 在自造 loopback 供应商上逐拍钉住；有价那条的封印/收据/决门由零额度的
-// `electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts` 断言。
+// 这台机器上的模型**没有价目**：这条走查要的就是「干净装机」那一档（内置 204 个生成模型一条价
+// 都没有），所以它跑在未定价的那份夹具目录上。
+//
+// 2026-09-21 更正一段过期的说明：这里原本写着「`NOMI_E2E_PRODUCTION_FIXTURE=1` 把
+// `policy.maxSpend` 钉成 0，所以真机上能走完整条链的只有算不出价那一档」。那颗钉子已按用户拍板
+// 拔掉（夹具真正的保险是**出站只认回环**，钱本来就花不出去），上限改成一个小的正数。
+// 有价那一档现在由 `agent-spend-priced-card.walk.mjs` 在**真实界面上**走完整条链
+// （卡上显示价 → 确认 → 账本记同一价 → 产物落回节点）。
+// 「改参数 → 卡上价格原地重算 0.30→0.50 → 改动回写画布」那三拍仍由 `agent-spend-reprice.walk.mjs`
+// 在自造 loopback 供应商上逐拍钉住。
 //
 // 四条（全部是真人视角看得见的事）：
 //   ① 卡在介入槽里等着（这台机器算不出价，主按钮是「仍要生成」）
