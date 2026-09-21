@@ -12,9 +12,8 @@ import { V4Row } from './AgentPanelV4Row'
 //
 // ⑥ 队列行：只在「运行中还继续输入」时出现在 composer 顶上；完成的划掉；空队列不渲染。
 import React from 'react'
-import { useTranslation } from 'react-i18next'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
-import { NomiSegmented } from '../../../design'
+import { WorkbenchButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import {
   ActionIcon,
@@ -27,14 +26,13 @@ import {
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
 import { V4AskCard, type V4AskCardLabels } from './AgentPanelV4AskCard'
-import { V4SlotShell, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
+import { V4Pager, V4SlotShell } from './AgentPanelV4SlotShell'
 import { askCardQuestions } from './agentPanelV4AskModel'
-import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
+import type { V4QuestionAnswer } from './agentPanelV4Question'
 import type {
   InterventionData,
   QueueRowData,
   TaskCardData,
-  V4InterventionKind,
   V4TaskStatus,
 } from './agentPanelV4Types'
 
@@ -164,71 +162,6 @@ export function V4TaskCard({
 // `SLOT_ACTION` 那张 kind→动词家族的表也随之退役——它只有 `SlotIcon` 一个消费者。
 
 /**
- * 翻页器（`‹ 2/4 ›`）+ 范围切换（`逐镜 | 全部`）+ 键盘提示（`←→`）。
- *
- * **2026-09-10 v3：它从槽头搬到了动作行上方那一行。** 两条理由：
- *
- * ① 它现在决定主按钮上印的那个数——「逐镜」印这一页的价、「全部」印合计。
- *    改一个数的控件必须和那个数在一处，否则用户按下去之前得在两处之间来回对。
- * ② 槽头在 390px 面板里已经排满了（icon + 标题 + 「付费 · Nomi 选的」），
- *    再塞一个范围切换就会挤出视口——而范围切换和翻页器必须挨着（用户 2026-09-10：
- *    「翻页器旁加一个『全部』切换」）。
- *
- * 排布仍守 2026-09-09 的通用规则：三件都在内容流里紧跟彼此，**不靠自动外边距顶到右缘**
- * （`check:tokens` 对 `src/workbench/ai/` 是硬零——连注释里写出那个类名都会被它数进去）。
- *
- * 只有一项时调用方不传 `pager`，整行不渲染——「1/1」是一句废话，而单镜卡也没有「全部」可言。
- */
-function V4Pager({
-  pager,
-  onPage,
-  onScope,
-}: {
-  pager: NonNullable<InterventionData['pager']>
-  onPage?: (index: number) => void
-  onScope?: (value: 'each' | 'all') => void
-}): JSX.Element {
-  const { t } = useTranslation()
-  const step = (delta: number): void => onPage?.((pager.index + delta + pager.total) % pager.total)
-  const arrow = 'flex size-5 shrink-0 items-center justify-center rounded-nomi-sm text-nomi-accent hover:bg-nomi-info-edge disabled:opacity-40'
-  const scope = pager.scope
-  return (
-    <V4Row as="div" className="shrink-0 gap-0.5 font-normal" data-v4-block="pager">
-      <button type="button" className={arrow} aria-label={t('agentPanelV4.pagerPrev')} disabled={pager.total < 2} onClick={() => step(-1)} data-v4-control="pager-prev">
-        <IconChevronRight size={12} className="rotate-180" aria-hidden="true" />
-      </button>
-      <span className="tabular-nums text-micro">{`${pager.index + 1}/${pager.total}`}</span>
-      <button type="button" className={arrow} aria-label={t('agentPanelV4.pagerNext')} disabled={pager.total < 2} onClick={() => step(1)} data-v4-control="pager-next">
-        <IconChevronRight size={12} aria-hidden="true" />
-      </button>
-      {/* 键盘提示：只印两个箭头。它不是说明文字，是**告诉你这里有快捷键**的最短形式；
-          写成「按左右键翻页」就是让用户多读一行（D1）。 */}
-      {pager.keyHint ? (
-        <span className="ml-1 shrink-0 select-none text-micro text-nomi-ink-40" data-v4-block="pager-keyhint">
-          {pager.keyHint}
-        </span>
-      ) : null}
-      {scope ? (
-        <NomiSegmented
-          value={scope.value}
-          onChange={(value) => onScope?.(value === 'all' ? 'all' : 'each')}
-          ariaLabel={scope.ariaLabel}
-          density="compact"
-          // 宽度写死 w-32（128px）不是凑数：NomiSegmented 的列是 `auto-fit, minmax(56px, 1fr)`，
-          // 容器窄于「2×56 + 列间距 4 + 内边距 8 = 124」时 auto-fit 会塌成一列，
-          // 两档就竖着摞起来（v3 首轮实测就是这样）。128 是能横着放下两档的最小整数格。
-          className="ml-1.5 w-32 shrink-0"
-          options={[
-            { value: 'each', label: scope.eachLabel },
-            { value: 'all', label: scope.allLabel },
-          ]}
-        />
-      ) : null}
-    </V4Row>
-  )
-}
-
-/**
  * ⑤ 介入槽的**价格行**（形态 9 · B-02）。
  *
  * 一行两端：左边说「怎么算出来的」，右边是加粗合计。合计缺席时右边印的是那句
@@ -236,7 +169,6 @@ function V4Pager({
  * 印 0 恰好是唯一会让用户误以为「这次不花钱」的那一种。
  */
 function V4PriceRow({ price }: { price: NonNullable<InterventionData['price']> }): JSX.Element {
-  const known = Boolean(price.total)
   return (
     <div className="flex flex-col gap-1" data-v4-block="price">
       {/* 合计**紧跟**算式，不用 flex-1 把它推到右缘（2026-09-09 用户拍板：行尾附属信息紧跟内容）。
@@ -416,36 +348,30 @@ export function V4Intervention({
           {rejecting || data.kind === 'reject-reason' ? (
             <>
               <span className="flex-1" />
-              <button
-                type="button"
-                className="h-7 rounded-nomi-sm px-2.5 text-nomi-ink-60"
-                onClick={() => { setRejecting(false); setReason('') }}
-                data-v4-control="cancel-reject"
-              >
+              <WorkbenchButton size="sm" onClick={() => { setRejecting(false); setReason('') }} data-v4-control="cancel-reject">
                 {labels.cancel}
-              </button>
-              <button
-                type="button"
-                className="h-7 rounded-nomi-sm px-2.5 text-nomi-danger"
+              </WorkbenchButton>
+              <WorkbenchButton
+                size="sm"
+                className="text-nomi-danger"
                 onClick={() => onReject?.(reason.trim() || undefined)}
                 data-v4-control="confirm-reject"
               >
                 {labels.confirmReject}
-              </button>
+              </WorkbenchButton>
             </>
           ) : (
             <>
               {/* ── 左下：**元信息**（2026-09-22 换壳后的新排布）──
                   徽章（「不可逆」「付费」）、价格行、「不再问 →」、「收起清单」都在这一侧。
                   它们的共同点是**读的东西 / 次要的东西**，不是这张卡要人按的那一下。 */}
-              {data.badge ? (
-                <span className="shrink-0 text-micro text-nomi-ink-60" data-v4-block="slot-badge">{data.badge}</span>
-              ) : null}
               {/* 这次要花多少。放在这里而不是按钮上：按钮只说动作，金额只印一处。
-                  算不出价时这里是一整句话，**按钮照常可点**（花钱边界的产品拍板）。 */}
+                  **颜色是 ink，不是警示色**：价格不是警告（设计系统 §2.1.2b——语义靠色相，
+                  警示色留给真的警示）。合计用正文档；「价格未知」那句用次级 ink——它是一句
+                  如实交代，不是报错，而且**按钮照常可点**（花钱边界的产品拍板）。 */}
               {data.totalLead ? (
                 <span
-                  className={cn('min-w-0 truncate tabular-nums', data.price?.total ? 'font-semibold text-nomi-ink' : 'text-nomi-warning')}
+                  className={cn('min-w-0 truncate tabular-nums', data.price?.total ? 'text-nomi-ink' : 'text-nomi-ink-60')}
                   data-v4-block="slot-total"
                   // 走查认「这张卡报不报得出价」靠的就是这个属性（`PRICE_TOTAL` /
                   // `PRICE_UNAVAILABLE` 两个共享选择器）。它跟着那个数从卡体搬到页脚。
@@ -473,22 +399,26 @@ export function V4Intervention({
               {/* ── 右下：**动作**。安静次按钮在左、深色主按钮在右（参照物的排法）。
                   否定动作那颗 × 已经搬到卡右上角，由外壳统一摆，这里不再有它。 */}
               {data.alternateLabel ? (
-                <button type="button" className={V4_SLOT_QUIET_BUTTON} onClick={onAlternate} data-v4-control="alternate">
+                // 次动作 = 现役描边按钮（agent 专章 §8.2：主次只用颜色分，深底=主、描边=次；
+                // 文字链不与按钮同排）。
+                <WorkbenchButton size="sm" onClick={onAlternate} data-v4-control="alternate">
                   {data.alternateLabel}
-                </button>
+                </WorkbenchButton>
               ) : null}
-              <button
-                type="button"
+              <WorkbenchButton
+                variant="primary"
+                size="sm"
                 onClick={onConfirm}
                 data-v4-control="confirm"
-                className={V4_SLOT_PRIMARY_BUTTON}
+                // 单动作最小宽 72px（agent 专章 §8.2），否则两个字的按钮会缩成小方块。尺寸阶梯上没有 72，取上一档 80（`min-w-20`），不写任意值。
+                className="min-w-20"
               >
                 {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
-                  <IconCheck size={12} aria-hidden="true" />
+                  <IconCheck aria-hidden="true" />
                 ) : null}
                 {data.confirmLabel ?? labels.confirm}
                 <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
-              </button>
+              </WorkbenchButton>
             </>
           )}
         </V4Row>
@@ -502,7 +432,18 @@ export function V4Intervention({
       // 标题就是**一句话**，不再是带底色卡头条里的一行小字（2026-09-22 换壳）。
       // icon 与徽章跟着卡头条一起走了：icon 在参照物里本来就没有，
       // 徽章（「不可逆」「付费」）是**元信息**，它的新家在页脚左下。
-      title={<AgentPanelV4Markdown text={data.title} />}
+      // 徽章（「付费 · Nomi 选的」「不可逆」「可撤销」）**回到它原来的位置**：紧跟标题、同一行。
+      // 上一版把它搬去了页脚左下，结果占了合计的位——真卡左下只剩「付费 · Nomi 选的」、
+      // 合计不见了（用户 2026-09-22 看真机指出）。来源信息说的是「这张卡是什么」，属于标题行；
+      // 页脚左下只留「这次要花多少」。
+      title={(
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+          <AgentPanelV4Markdown text={data.title} />
+          {data.badge ? (
+            <span className="shrink-0 text-micro font-normal text-nomi-ink-60" data-v4-block="slot-badge">{data.badge}</span>
+          ) : null}
+        </span>
+      )}
       // × 统一钉在右上（三张卡一处），不再蹲在页脚右端。
       {...(hasActions ? {
         dismiss: {

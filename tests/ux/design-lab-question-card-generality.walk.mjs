@@ -126,14 +126,15 @@ try {
           ? answerStyle.borderTopWidth !== '0px' || answerStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
           : false
         const heading = visible.querySelector('[data-v4-block="ask-question"]')
-        const pager = element.querySelectorAll('[data-v4-block="ask-pager"]').length
-        // 判据用**量到的半径**，不是「不等于 999px」：后者把任何非全圆都算成方，
-        // 6px 和 0px 一样过关，而 6px 在 16px 的方块上看起来仍然很圆。
-        const markerRadii = [...visible.querySelectorAll('[data-ask-marker]')]
-          .map((marker) => Math.round(parseFloat(getComputedStyle(marker).borderRadius) || 0))
-        const squareMarkers = markerRadii.filter((radius) => radius > 0 && radius <= 6).length
-        const roundMarkers = markerRadii.filter((radius) => radius > 6).length
-        const markers = visible.querySelectorAll('[data-ask-marker]').length
+        const pager = element.querySelectorAll('[data-v4-block="pager"]').length
+        // 圆点 / 方框是**原生控件**（与同槽计划卡的勾选行同一写法），形状由 `type` 决定，
+        // 所以这里数的是 type，不再量自画标记的圆角。
+        const radios = visible.querySelectorAll('[data-v4-control="question-option"] input[type="radio"]').length
+        const checks = visible.querySelectorAll('[data-v4-control="question-option"] input[type="checkbox"]').length
+        const markers = radios + checks
+        const squareMarkers = checks
+        const roundMarkers = radios
+        const markerRadii = []
         const text = (element.textContent || '')
         const misplaced = [...chips].filter((chip) => {
           const chipRect = chip.getBoundingClientRect()
@@ -185,7 +186,7 @@ try {
         const wantSquare = MULTI_STATES.has(state) ? shape.markers : 0
         const wantRound = MULTI_STATES.has(state) ? 0 : shape.markers
         if (shape.squareMarkers !== wantSquare || shape.roundMarkers !== wantRound) {
-          failures.push(`${tag}/${state}：标记半径 ${JSON.stringify(shape.markerRadii)}——单选该全圆(>6px)、多选该全方(≤6px)，形状本身说明能选几个`)
+          failures.push(`${tag}/${state}：radio ${shape.roundMarkers} 个 / checkbox ${shape.squareMarkers} 个——单选题该全是 radio、多选题该全是 checkbox`)
         }
       }
     }

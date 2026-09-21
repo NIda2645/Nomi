@@ -28,8 +28,12 @@ fs.mkdirSync(outDir, { recursive: true })
 const STATES = [
   ['v4-panel-question-light', 'question', 'light'],
   ['v4-panel-question-light', 'question', 'dark'],
+  // 付费卡 = **真卡**：正文是节点参数条那个共享组件，数据由生产投影 `projectSpendCard` 算。
   ['v4-panel-spend-light', 'spend', 'light'],
   ['v4-panel-spend-light', 'spend', 'dark'],
+  // 普通确认卡（可撤销档）——同族第三张，验的是「换壳是一处改、全族生效」。
+  ['v4-panel-approval-light', 'approval', 'light'],
+  ['v4-panel-approval-light', 'approval', 'dark'],
 ]
 
 const failures = []
@@ -97,7 +101,17 @@ try {
         const closeRect = close?.getBoundingClientRect()
         const body = card.querySelector('[data-v4-block="ask-question"]')?.closest('div[class*="p-"]')
           ?? [...card.children].find((child) => child.querySelector('[data-v4-row]') || child.querySelector('p'))
+        const composerStyle = composer ? getComputedStyle(composer) : null
+        const shellOf = (style) => style ? {
+          background: style.backgroundColor,
+          borderColor: style.borderTopColor,
+          borderWidth: style.borderTopWidth,
+          radius: style.borderTopLeftRadius,
+          shadow: style.boxShadow,
+        } : null
         return {
+          cardShell: shellOf(cs),
+          composerShell: shellOf(composerStyle),
           width: Math.round(rect.width),
           border: `${cs.borderTopWidth} ${cs.borderTopColor}`,
           radius: cs.borderTopLeftRadius,
@@ -127,12 +141,21 @@ try {
       measured.push({ locale: tag, theme, kind, ...shape })
       if (shape.missing) failures.push(`${tag}/${theme}/${kind}：面板里没渲染出介入槽`)
       if (shape.scheme !== theme) failures.push(`${tag}/${theme}/${kind}：主题没翻过去（量到 ${shape.scheme}）`)
+      // **卡是 composer 的兄弟**（用户 2026-09-22 看真机后的验收标准）：底色、描边色、描边粗细、
+      // 圆角、阴影的 computed 值必须与同屏 composer **逐字相等**，明暗都是。
+      // 读之前已经等过主题 transition（上面那 400ms），否则读到的是插值中的那一帧。
+      if (!shape.composerShell) failures.push(`${tag}/${theme}/${kind}：同屏找不到 composer，兄弟对账做不了`)
+      else for (const key of ['background', 'borderColor', 'borderWidth', 'radius', 'shadow']) {
+        if (shape.cardShell[key] !== shape.composerShell[key]) {
+          failures.push(`${tag}/${theme}/${kind}：卡与 composer 的 ${key} 不相等（卡「${shape.cardShell[key]}」/ composer「${shape.composerShell[key]}」）`)
+        }
+      }
     }
     await context.close()
   }
 
   // 同槽两张卡的外壳必须**同族**。这几条不是审美偏好，是「一眼看出是不是一家人」的机器判据。
-  for (const kind of ['question', 'spend']) {
+  for (const kind of ['question', 'spend', 'approval']) {
     const light = measured.find((row) => row.locale === 'zh' && row.theme === 'light' && row.kind === kind)
     const dark = measured.find((row) => row.locale === 'zh' && row.theme === 'dark' && row.kind === kind)
     if (light && dark && light.background === dark.background) {

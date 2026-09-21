@@ -22,30 +22,18 @@
  * 而外框、圆角、内边距、按钮族这些「一眼看出是不是一家人」的东西，从此只有一份。
  */
 import React from 'react'
+import { useTranslation } from 'react-i18next'
+import { NomiSegmented, WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
-import { IconX } from './AgentPanelV4Icons'
-import type { V4InterventionKind } from './agentPanelV4Types'
+import { IconChevronRight, IconX } from './AgentPanelV4Icons'
+import { V4Row } from './AgentPanelV4Row'
+import type { InterventionData, V4InterventionKind } from './agentPanelV4Types'
 
-/**
- * 页脚里那颗**主按钮**的长相（卡族同一套）。
- *
- * 抽成常量而不是各写各的：这颗钮在付费卡上是「生成」、在确认卡上是「确认」、
- * 在反问卡上是「继续 / 发送」，三处长得必须一样。反问卡第一版用的是全圆角药丸
- * （Approval Card 的长相），在这个面板里是独一份——邻居全是方角 ink 钮。
- */
-export const V4_SLOT_PRIMARY_BUTTON = 'inline-flex h-7 items-center gap-1.5 rounded-nomi-sm border border-nomi-ink bg-nomi-ink px-2.5 text-nomi-paper disabled:opacity-40'
-
-/**
- * 槽里那种**只有一个图标**的钮（确认卡页脚那颗 ×、反问卡右上那颗 ×）。
- *
- * 尺寸只写在这一处：原来两张卡各写各的（确认卡 22、反问卡 28），并排一量就差 6px。
- * 语义色不在这里给——确认卡那颗是「不要」（hover 转 danger），反问卡那颗是「这次不答」
- * （跳过不是破坏性动作，转红会把它说重了）。调用方各自补那一句。
- */
-export const V4_SLOT_ICON_BUTTON = 'grid size-[22px] shrink-0 place-items-center rounded-nomi-sm text-nomi-ink-60 hover:bg-nomi-ink-05'
-
-/** 页脚里那些**安静的**次动作（付费卡的「换模型」、反问卡的「跳过」）。 */
-export const V4_SLOT_QUIET_BUTTON = 'h-7 rounded-nomi-sm px-2.5 text-nomi-ink-60 hover:bg-nomi-ink-05'
+// 这个文件**不定义任何按钮长相**。卡上的按钮一律是现役组件：
+// 主动作 = `WorkbenchButton variant="primary" size="sm"`、次动作 = `WorkbenchButton size="sm"`、
+// 图标钮 = `WorkbenchIconButton size="sm"`（`src/design/actions.tsx`，agent 专章 §8.1 的尺寸真相源）。
+// 上一版这里有过三个自写的 className 常量——那正是 actions.tsx 文件头点名的病根：
+// 「各处 ad-hoc className 各覆写一套 = 明显不是一个设计风格」。
 
 export function V4SlotShell({
   kind,
@@ -77,34 +65,38 @@ export function V4SlotShell({
   return (
     <aside
       {...rest}
-      // 安静纸面 + 发丝线（2026-09-22 用户拍板：「他的设计好像更好看、简洁，
-      // 我们原来的外壳看起来不优雅」）。三处换掉的东西：
-      // · 彩色描边 → `border-nomi-line` 发丝线。蓝描边把每一张卡都喊成警告，
-      //   而这个槽里大多数卡只是在问一句话。
-      // · 卡底色 `--nomi-paper` → `--nomi-ink-05`：面板本身就是 paper，同色的卡在亮色下
-      //   **一点边界都没有**（上一轮真面板截图量到的就是这个）。ink-05 是离面板最近的
-      //   那一档，亮色下比白底暗一点、暗色下比 paper 亮一点，两轨都是「抬起来一档」。
-      // · `overflow-hidden` 仍要：页脚铺满宽度，不裁会在圆角处戳出方角。
-      className={cn('relative overflow-hidden rounded-nomi border border-nomi-line bg-nomi-ink-05 shadow-nomi-sm', rest.className)}
+      // **卡是 composer 的兄弟**（2026-09-22 用户看真机后的更正）：卡面底色、描边色与粗细、
+      // 圆角，和同屏 composer 的外壳**逐字相同**——`AgentPanelV4Composer.tsx` 根节点就是
+      // `rounded-nomi border border-nomi-line bg-nomi-paper`，没有阴影。
+      //
+      // 这里走过一次弯路：为了让白卡在白面板上有边界，上一版把卡面「抬一档」成 `ink-05`
+      // 再加一层柔影。真机上一看就不对——亮色下卡成了一块发灰的禁用区，而正文里复用的
+      // 节点参数条是按「放在白纸面上」设计的，白 chip 浮在灰卡上，和画布节点下那同一条
+      // 参数条观感两样。设计系统 §2.1.1 写得很明白：`--nomi-paper` ＝ 卡片 / 浮层 / 面板表面。
+      // 边界就用 composer 今天站得住的那同一条发丝线，不另造。
+      //
+      // 相比旧外壳删掉的两样不变：彩色（accent）描边、带底色的卡头条。
+      // `overflow-hidden` 仍要：页脚铺满宽度，不裁会在圆角处戳出方角。
+      className={cn('relative overflow-hidden rounded-nomi border border-nomi-line bg-nomi-paper', rest.className)}
       data-v4-block="intervention"
       data-kind={kind}
     >
       {dismiss ? (
-        <button
-          type="button"
-          aria-label={dismiss.label}
-          title={dismiss.label}
+        // 现役图标钮（28×28 · 7px 圆角 · 图标 16/stroke-2，agent 专章 §8.1）。否定动作全站统一是这颗 ×
+        //（设计系统 §1.8 规则 4），文字只当无障碍名与 tooltip。
+        <WorkbenchIconButton
+          size="sm"
+          icon={<IconX aria-hidden="true" />}
+          label={dismiss.label}
           onClick={dismiss.onClick}
           data-v4-control="slot-dismiss"
-          className={cn(V4_SLOT_ICON_BUTTON, 'absolute right-2 top-2 z-10')}
-        >
-          <IconX size={14} aria-hidden="true" />
-        </button>
+          className="absolute right-1.5 top-1.5 z-10"
+        />
       ) : null}
       <div className="flex flex-col gap-1.5 px-2.5 py-2 text-caption text-nomi-ink">
         {title ? (
           // `pr-8` 给右上那颗 × 让位——两者同一行，不让位就会压在字上。
-          <h3 className="m-0 pr-8 text-body font-medium text-nomi-ink" data-v4-block="slot-title">{title}</h3>
+          <h3 className="m-0 pr-8 text-body-sm font-semibold text-nomi-ink" data-v4-block="slot-title">{title}</h3>
         ) : null}
         {children}
       </div>
@@ -112,5 +104,70 @@ export function V4SlotShell({
         <footer className="flex flex-col gap-1.5 border-t border-nomi-line-soft px-2.5 py-2 text-caption">{footer}</footer>
       ) : null}
     </aside>
+  )
+}
+
+/**
+ * 翻页器（`‹ 2/4 ›`）+ 范围切换（`逐镜 | 全部`）+ 键盘提示（`←→`）。
+ *
+ * **2026-09-10 v3：它从槽头搬到了动作行上方那一行。** 两条理由：
+ *
+ * ① 它现在决定主按钮上印的那个数——「逐镜」印这一页的价、「全部」印合计。
+ *    改一个数的控件必须和那个数在一处，否则用户按下去之前得在两处之间来回对。
+ * ② 槽头在 390px 面板里已经排满了（icon + 标题 + 「付费 · Nomi 选的」），
+ *    再塞一个范围切换就会挤出视口——而范围切换和翻页器必须挨着（用户 2026-09-10：
+ *    「翻页器旁加一个『全部』切换」）。
+ *
+ * 排布仍守 2026-09-09 的通用规则：三件都在内容流里紧跟彼此，**不靠自动外边距顶到右缘**
+ * （`check:tokens` 对 `src/workbench/ai/` 是硬零——连注释里写出那个类名都会被它数进去）。
+ *
+ * 只有一项时调用方不传 `pager`，整行不渲染——「1/1」是一句废话，而单镜卡也没有「全部」可言。
+ */
+export function V4Pager({
+  pager,
+  onPage,
+  onScope,
+}: {
+  pager: NonNullable<InterventionData['pager']>
+  onPage?: (index: number) => void
+  onScope?: (value: 'each' | 'all') => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const step = (delta: number): void => onPage?.((pager.index + delta + pager.total) % pager.total)
+  const arrow = 'flex size-5 shrink-0 items-center justify-center rounded-nomi-sm text-nomi-accent hover:bg-nomi-info-edge disabled:opacity-40'
+  const scope = pager.scope
+  return (
+    <V4Row as="div" className="shrink-0 gap-0.5 font-normal" data-v4-block="pager">
+      <button type="button" className={arrow} aria-label={t('agentPanelV4.pagerPrev')} disabled={pager.total < 2} onClick={() => step(-1)} data-v4-control="pager-prev">
+        <IconChevronRight size={12} className="rotate-180" aria-hidden="true" />
+      </button>
+      <span className="tabular-nums text-micro">{`${pager.index + 1}/${pager.total}`}</span>
+      <button type="button" className={arrow} aria-label={t('agentPanelV4.pagerNext')} disabled={pager.total < 2} onClick={() => step(1)} data-v4-control="pager-next">
+        <IconChevronRight size={12} aria-hidden="true" />
+      </button>
+      {/* 键盘提示：只印两个箭头。它不是说明文字，是**告诉你这里有快捷键**的最短形式；
+          写成「按左右键翻页」就是让用户多读一行（D1）。 */}
+      {pager.keyHint ? (
+        <span className="ml-1 shrink-0 select-none text-micro text-nomi-ink-40" data-v4-block="pager-keyhint">
+          {pager.keyHint}
+        </span>
+      ) : null}
+      {scope ? (
+        <NomiSegmented
+          value={scope.value}
+          onChange={(value) => onScope?.(value === 'all' ? 'all' : 'each')}
+          ariaLabel={scope.ariaLabel}
+          density="compact"
+          // 宽度写死 w-32（128px）不是凑数：NomiSegmented 的列是 `auto-fit, minmax(56px, 1fr)`，
+          // 容器窄于「2×56 + 列间距 4 + 内边距 8 = 124」时 auto-fit 会塌成一列，
+          // 两档就竖着摞起来（v3 首轮实测就是这样）。128 是能横着放下两档的最小整数格。
+          className="ml-1.5 w-32 shrink-0"
+          options={[
+            { value: 'each', label: scope.eachLabel },
+            { value: 'all', label: scope.allLabel },
+          ]}
+        />
+      ) : null}
+    </V4Row>
   )
 }

@@ -1,39 +1,39 @@
 /**
- * 反问卡 = **整件还原** Beautiful UI 的 Approval Card。
+ * 反问卡。**骨架**来自 Beautiful UI 的 Approval Card（MIT，见 `vendor/BEAUTIFUL-UI-LICENSE.md`），
+ * **长相百分之百是 Nomi 的**（2026-09-22 用户：「卡族换壳，主要是要用我们的设计系统」）。
  *
- * 实物：`https://www.beautifului.dev/#approval-card`；源码 registry：
- * `https://beautifului.dev/r/approval-card.json`（单文件 `components/primitives/ApprovalCard.tsx`，
- * 419 行；依赖 `foundation` / `button` / `glide-menu` 三件也取了）。
- * 上一版是把它拆成零件再自拼（卡头一句套话 + 一排方框 chip + 带框输入），用户退回了。
- * 这一版逐件照搬，**只换 Nomi 的 token / 图标 / i18n**：
+ * 判据只有一条：把这张卡的截图贴在 Nomi 任何一屏旁边，看不出它是外来的。
+ * 所以卡上**每一样东西都是 Nomi 里已有的那个件**，不是照着 Beautiful UI 新画一个相似的：
  *
- * | Approval Card | 这里 | 换了什么 |
+ * | 卡上的元素 | 用的是 Nomi 的哪一件 | 出处 |
  * |---|---|---|
- * | 问题作标题 + 右上 × | 同 | 文案走 i18n；× 用 `IconX` |
- * | 竖排整行可点的 radio / check 行，无方框 | 同 | 圆角 8px → `rounded-nomi-sm`(6px)，底色 → `bg-nomi-ink-05` |
- * | `GlideMenu` 一条滑动高亮带 | 同 | 220ms 曲线照搬；`prefers-reduced-motion` 下不滑 |
- * | 末行无边框内联「Something else…」 | 同 | 占位走 i18n |
- * | 卡高随题滑动 + 题轨 translate3d | 同 | 360ms `cubic-bezier(.22,1,.36,1)` 照搬 |
- * | 左下 `1/3` 页码（滚动） | 同 | 只有一题时整段不渲染 |
- * | 右下安静 Skip + 主按钮 Continue/Send | 同 | 主按钮用 Nomi 家的 ink 主钮（见下） |
- * | 单选点了自动前进（480ms）、多选等按钮 | 同 | — |
- * | 全部答完收成一行回执 | 同 | 回执文案走 i18n |
+ * | 卡壳（底色/描边/圆角） | 和同屏 composer 逐字相同 | `AgentPanelV4SlotShell.tsx` ← `AgentPanelV4Composer.tsx:181` |
+ * | 右上 × | `WorkbenchIconButton size="sm"` | `src/design/actions.tsx:124`，agent 专章 §8.1 |
+ * | 主按钮（继续 / 发送） | `WorkbenchButton variant="primary" size="sm"` | `src/design/actions.tsx:267` |
+ * | 选项行的圆点 / 方框 | 原生 `<input type="radio|checkbox">` + `accent-nomi-accent`，与**同槽计划卡的勾选行**同一写法 | `AgentPanelV4Cards.tsx` plan-rows |
+ * | 选项文字 / 说明 | `text-caption text-nomi-ink-80` / `text-micro text-nomi-ink-60`（计划行同档） | 同上 |
+ * | 行 hover 底 | `bg-nomi-ink-05`（composer 里每颗钮的 hover 就是它） | `AgentPanelV4Composer.tsx:264` |
+ * | 「推荐」标 | 状态徽标：11px 药丸、soft 底 + `-ink` 档小字（不可点） | 设计系统 §2.1（`-ink` 不是可选装饰）、agent 专章 §8.1 |
+ * | 末行自由输入 | composer 输入框同一组字色类（透明底、无边框、`placeholder:text-nomi-ink-40`） | `AgentPanelV4Composer.tsx:250` |
+ * | 页码 `‹ 1/3 ›` | 面板现役翻页器 `V4Pager`（付费卡多镜翻页用的就是它） | `AgentPanelV4SlotShell.tsx` |
  *
- * **我们只加两样**（任务书允许的领域扩展）：选项第二行 `description`（次级色）与「推荐」标
- * （推荐项排第一，`orderedAskOptions`）。
+ * 从 Beautiful UI 拿的**只有骨架与交互**：问题作标题、竖排整行可点的选项、末行内联输入、
+ * 一次一题且卡高随题滑动（360ms `cubic-bezier(.22,1,.36,1)`）、单选点了 480ms 自动前进、
+ * 多选与自由输入等主按钮、一条在行间滑动的高亮带（220ms）、`ready` 闸防首帧撑满。
+ * 它的颜色、圆角、字号、阴影、按钮长相**一个值都没带过来**。
  *
- * 一处**有意的偏差**，记在这里免得被当成手滑：实物的主按钮是 accent 蓝药丸，这里用
- * `bg-nomi-ink text-nomi-paper`。理由有两条且都不是审美——① Approval Card 源码自己的
- * 文件头注释写的是「a quiet Skip and a **dark** Continue」，蓝是它 demo 站的 `accent` 变体；
- * ② Nomi 这个面板里「一屏一个主动作」的主钮**全部**是 ink（`V4Intervention` 的确认钮、
- * composer 的发送钮），这里独一份蓝反而会让人以为它是另一种东西。
- * 另一处：实物页脚没渲染 ⏎（源码注释写了、JSX 里漏了），回车确实是它的快捷键，
- * 所以这里把 ⏎ 补上——补的是作者写在注释里的意图。
+ * **比 Approval Card 少一颗「Skip」**，这是按 Nomi 自己的规则删的，不是漏了：
+ * 设计系统 §1.8 规则 1「一屏一个主动作，不铺第二颗文字按钮」、规则 4「否定动作统一用 ×」，
+ * agent 专章 §8.2「文字链不与按钮同排」。而它做的两件事各自已经有家了（§1.5.2 一功能一个家）：
+ * 最后一题上的「跳过」＝右上那颗 ×；中间题上的「跳过」＝翻页器的 ›。
+ *
+ * 我们在骨架上只加两样：选项第二行 `description`、「推荐」标（推荐项排第一）。
  */
 import React from 'react'
+import { WorkbenchButton } from '../../../design'
 import { cn } from '../../../utils/cn'
-import { V4SlotShell, V4_SLOT_ICON_BUTTON, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
-import { IconChevronDown, IconCheck, IconX } from './AgentPanelV4Icons'
+import { V4Row } from './AgentPanelV4Row'
+import { V4Pager, V4SlotShell } from './AgentPanelV4SlotShell'
 import {
   ASK_AUTO_ADVANCE_MS,
   EMPTY_ASK_DRAFT,
@@ -52,17 +52,12 @@ import {
 } from './agentPanelV4AskModel'
 
 export type V4AskCardLabels = Readonly<{
-  /** 右上那颗 × 的无障碍名（= 跳过这次提问）。 */
+  /** 右上那颗 × 的无障碍名（= 这次不答）。 */
   dismiss: string
-  skip: string
   continueLabel: string
   send: string
   customPlaceholder: string
   recommended: string
-  /** 页码的无障碍名（`第 2 题，共 3 题`）。 */
-  step: (index: number, total: number) => string
-  prev: string
-  next: string
 }>
 
 /** 滑动曲线与时长照搬 Approval Card 的 `SLIDE`。 */
@@ -128,38 +123,6 @@ function AskGlideMenu({ children, className }: { children: React.ReactNode; clas
       />
       {children}
     </div>
-  )
-}
-
-/**
- * 选项左边那个标记。未选 = 一圈 1.5px 内描边、**没有底色也没有外框**；
- * 已选 = 实心 ink + 反色的内点 / 对勾。单选是圆的、多选是方的——形状本身就说明了
- * 「能选几个」，不必再写一句说明。
- */
-function AskMarker({ on, multiple }: { on: boolean; multiple: boolean }): JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      data-ask-marker={on ? 'on' : 'off'}
-      className={cn(
-        'grid size-4 shrink-0 place-items-center transition-colors duration-200',
-        multiple ? 'rounded-nomi-sm' : 'rounded-pill',
-        // 未选 = 一圈细环，**不是** border（border 会参与布局，16px 的方块会被挤小一圈）。
-        // 用仓库通用的 `ring-1 ring-inset` 写法而不是 `shadow-[inset_…]`：后者在这套
-        // Tailwind 配置下解析成 `box-shadow: none`（走查截图里三个圆圈整个不见了，
-        // 是我第一版栽的坑），`ring` 这一族别处一直在用、是活的。
-        on ? 'bg-nomi-ink text-nomi-paper' : 'ring-1 ring-inset ring-nomi-ink-30 text-transparent',
-      )}
-    >
-      {multiple ? (
-        <IconCheck size={11} aria-hidden="true" />
-      ) : (
-        <span
-          className="size-1.5 rounded-pill bg-nomi-paper transition-transform duration-200"
-          style={{ transform: on ? 'scale(1)' : 'scale(0)' }}
-        />
-      )}
-    </span>
   )
 }
 
@@ -278,7 +241,9 @@ export function V4AskCard({
    * 抢走它等于让人打不出「3 秒」。回车与 Esc 两条照常接管（它们在输入框里没有别的含义）。
    */
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
-    const typing = event.target instanceof HTMLInputElement
+    // 「在打字」只认**文本框**：选项上的原生 radio / checkbox 也是 HTMLInputElement，
+    // 把它们也算成打字，↑↓ 和数字键就会在点过一个选项之后全部失灵。
+    const typing = event.target instanceof HTMLInputElement && event.target.type === 'text'
     if (event.key === 'Escape') { event.preventDefault(); onDismiss(); return }
     if (event.key === 'Enter') {
       if (event.nativeEvent.isComposing) return
@@ -308,183 +273,149 @@ export function V4AskCard({
       data-ask-card="true"
       tabIndex={0}
       onKeyDown={onKeyDown}
-      // × 的位置由外壳定死（三张卡一处），反问卡不再自己摆那颗钮。
+      // × 的位置由外壳定死（卡族一处），反问卡不自己摆那颗钮。
       dismiss={{ label: labels.dismiss, onClick: onDismiss }}
-      // **没有卡头条**：问题本身就是标题（Approval Card 的形状，也是这次把
-      // 「需要你定一下」那句套话删掉的原因）。外壳把 `head` 做成可缺席的正是为了这一档；
-      // 描边 / 圆角 / 底色 / 内边距 / 页脚那条分隔线全部由外壳给，与付费确认卡同一份。
+      // **没有 `title`**：问题要跟着题轨一起滑（多题），钉在壳上就滑不动了，
+      // 所以标题由下面每一题自己画——字号字重与外壳的标题同一档。
       footer={(
-        <>
-        {/* 页脚：左页码（只有一题时整段不渲染）、右 Skip + 主按钮。 */}
-        {/* 页脚：左页码、右 Skip + 主按钮。两端分开用的是内容流里的一根弹性垫片，
-            不是那个「两端对齐」的类——`check:tokens` 对 `src/workbench/ai/` 这一族是硬零
-            （附属信息一律走 V4Row 的内容流），而它连**注释里**写出那个类名都会数进去，
-            所以这里只能这么绕着说。`V4Intervention` 的底栏是同一个写法。 */}
-        <div className="flex items-center gap-3" data-v4-block="ask-footer">
+        <V4Row as="div" className="text-caption" data-v4-block="ask-footer">
+          {/* 左下：页码。用的就是面板现役翻页器（付费卡多镜翻页那一颗），不另画一套。
+              只有一题时整段不渲染——「1/1」是一句废话，`V4Pager` 对单项也是这条规矩。 */}
           {shouldShowPager(total) ? (
-            <div className="flex items-center gap-1 text-nomi-ink-40" data-v4-block="ask-pager">
-              <button
-                type="button"
-                aria-label={labels.prev}
-                disabled={index <= 0}
-                onClick={() => goTo(index - 1)}
-                data-v4-control="ask-prev"
-                className="grid size-5 rotate-180 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
-              >
-                <IconChevronDown size={13} aria-hidden="true" />
-              </button>
-              <span className="inline-flex items-center text-caption font-medium tabular-nums text-nomi-ink-40" aria-label={labels.step(index + 1, total)}>
-                {`${index + 1} / ${total}`}
-              </span>
-              <button
-                type="button"
-                aria-label={labels.next}
-                disabled={last}
-                onClick={() => goTo(index + 1)}
-                data-v4-control="ask-next"
-                className="grid size-5 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
-              >
-                <IconChevronDown size={13} aria-hidden="true" />
-              </button>
-            </div>
+            <V4Pager pager={{ index, total }} onPage={goTo} />
           ) : null}
           <span className="flex-1" />
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => (last ? onDismiss() : goTo(index + 1))}
-              data-v4-control="ask-skip"
-              className={V4_SLOT_QUIET_BUTTON}
-            >
-              {labels.skip}
-            </button>
-            <button
-              type="button"
-              disabled={!answered}
-              onClick={() => advance(drafts)}
-              data-v4-control="ask-continue"
-              className={cn('inline-flex items-center gap-1.5', V4_SLOT_PRIMARY_BUTTON)}
-            >
-              {last ? labels.send : labels.continueLabel}
-              <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
-            </button>
-          </div>
-        </div>
-        </>
+          {/* 右下：**只有一颗主按钮**（设计系统 §1.8 规则 1）。未作答置灰。 */}
+          <WorkbenchButton
+            variant="primary"
+            size="sm"
+            disabled={!answered}
+            onClick={() => advance(drafts)}
+            data-v4-control="ask-continue"
+            className="min-w-20"
+          >
+            {last ? labels.send : labels.continueLabel}
+            <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
+          </WorkbenchButton>
+        </V4Row>
       )}
     >
-      <div className="relative">
-        {/* 题轨：所有题竖着摞在一条轨上，靠 translate3d 把当前那一题推到视口里；
-            外层的高度跟着当前题动。这就是 Approval Card 的「卡高随题滑动」。 */}
+      {/* 题轨：所有题竖着摞在一条轨上，靠 translate3d 把当前那一题推到视口里；
+          外层的高度跟着当前题动（骨架来自 Approval Card，曲线与时长照搬）。 */}
+      <div
+        className="overflow-hidden"
+        style={{ height: viewportH, transition: animate ? `height ${SLIDE}` : undefined }}
+        aria-live="polite"
+      >
         <div
-          className="overflow-hidden"
-          style={{ height: viewportH, transition: animate ? `height ${SLIDE}` : undefined }}
-          aria-live="polite"
+          ref={trackRef}
+          className="flex flex-col gap-6"
+          style={{
+            transform: `translate3d(0, ${-trackY}px, 0)`,
+            transition: animate ? `transform ${SLIDE}` : undefined,
+            willChange: 'transform',
+          }}
         >
-          <div
-            ref={trackRef}
-            className="flex flex-col gap-6"
-            style={{
-              transform: `translate3d(0, ${-trackY}px, 0)`,
-              transition: animate ? `transform ${SLIDE}` : undefined,
-              willChange: 'transform',
-            }}
-          >
-            {questions.map((item, position) => {
-              const active = position === index
-              if (!ready && !active) return null
-              const itemOptions = active ? options : orderedAskOptions(item.options)
-              const itemDraft = drafts[position] ?? EMPTY_ASK_DRAFT
-              return (
-                <div
-                  key={`${position}-${item.question}`}
-                  ref={(element) => { itemRefs.current[position] = element }}
-                  aria-hidden={active ? undefined : true}
-                  data-ask-question={position}
-                  data-active={active ? 'true' : 'false'}
-                  style={{
-                    opacity: active ? 1 : 0,
-                    transition: animate ? `opacity ${SLIDE}` : undefined,
-                    pointerEvents: active ? undefined : 'none',
-                  }}
-                >
-                  {/* 问题**就是**标题。没有第二行卡头——「需要你定一下」那句套话已经删掉。 */}
-                  <h3 className="m-0 pr-8 text-body font-medium text-nomi-ink" data-v4-block="ask-question">
-                    {item.question}
-                  </h3>
-                  {item.note ? (
-                    <p className="m-0 mt-1 pr-8 text-caption text-nomi-ink-60" data-v4-block="ask-note">{item.note}</p>
-                  ) : null}
-                  <AskGlideMenu className="mt-2.5 flex flex-col gap-1">
-                    {itemOptions.map((option, optionIndex) => {
-                      const on = itemDraft.picked.includes(optionIndex)
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          data-ask-row="option"
-                          data-v4-control="question-option"
-                          data-option-id={option.id}
-                          data-cursor={active && cursor === optionIndex ? 'true' : undefined}
-                          aria-pressed={on}
+          {questions.map((item, position) => {
+            const active = position === index
+            if (!ready && !active) return null
+            const itemOptions = active ? options : orderedAskOptions(item.options)
+            const itemDraft = drafts[position] ?? EMPTY_ASK_DRAFT
+            const multi = item.multiSelect === true
+            return (
+              <div
+                key={`${position}-${item.question}`}
+                ref={(element) => { itemRefs.current[position] = element }}
+                aria-hidden={active ? undefined : true}
+                data-ask-question={position}
+                data-active={active ? 'true' : 'false'}
+                style={{
+                  opacity: active ? 1 : 0,
+                  transition: animate ? `opacity ${SLIDE}` : undefined,
+                  pointerEvents: active ? undefined : 'none',
+                }}
+              >
+                {/* 问题**就是**标题（同外壳标题一档：text-body-sm / semibold，和对话流里
+                    助手那段话同字号）。`pr-8` 给右上那颗 × 让位。 */}
+                <h3 className="m-0 pr-8 text-body-sm font-semibold text-nomi-ink" data-v4-block="ask-question">
+                  {item.question}
+                </h3>
+                {item.note ? (
+                  <p className="m-0 mt-1 pr-8 text-caption text-nomi-ink-60" data-v4-block="ask-note">{item.note}</p>
+                ) : null}
+                <AskGlideMenu className="mt-2 flex flex-col gap-0.5">
+                  {itemOptions.map((option, optionIndex) => {
+                    const on = itemDraft.picked.includes(optionIndex)
+                    return (
+                      // 一行 = 一个 <label>：整行可点，圆点 / 方框是**原生控件**
+                      // （同槽计划卡的勾选行就是这个写法：原生 input + `accent-nomi-accent`）。
+                      // 单选圆、多选方由浏览器给，形状本身说明「能选几个」。
+                      <label
+                        key={option.id}
+                        data-ask-row="option"
+                        data-v4-control="question-option"
+                        data-option-id={option.id}
+                        data-cursor={active && cursor === optionIndex ? 'true' : undefined}
+                        className={cn(
+                          'relative z-10 flex w-full cursor-pointer items-start gap-2 rounded-nomi-sm px-1 py-1 text-caption',
+                          active && cursor === optionIndex ? 'bg-nomi-ink-05' : '',
+                        )}
+                      >
+                        <input
+                          type={multi ? 'checkbox' : 'radio'}
+                          name={`ask-${position}`}
+                          checked={on}
                           tabIndex={active ? 0 : -1}
-                          onClick={() => { if (active) pick(optionIndex) }}
-                          className={cn(
-                            'relative z-10 flex w-full items-start gap-1.5 rounded-nomi-sm py-1 pl-1 pr-2 text-left transition-colors duration-100',
-                            active && cursor === optionIndex ? 'bg-nomi-ink-05' : '',
-                          )}
-                        >
-                          <span className="mt-px shrink-0"><AskMarker on={on} multiple={item.multiSelect === true} /></span>
-                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                            <span className="flex min-w-0 items-center gap-1.5">
-                              <span className={cn('min-w-0 text-body-sm transition-colors duration-200', on ? 'text-nomi-ink' : 'text-nomi-ink-80')}>
-                                {option.label}
+                          onChange={() => { if (active) pick(optionIndex) }}
+                          className="mt-0.5 size-3.5 shrink-0 accent-nomi-accent"
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn('min-w-0', on ? 'text-nomi-ink' : 'text-nomi-ink-80')}>{option.label}</span>
+                            {/* 「推荐」= 状态徽标（不可点）：soft 底 + `-ink` 档小字。base 色压在自己的
+                                soft 底上对比只有 4.3 左右，够不到 AA 小字——设计系统 §2.1 的硬规则。 */}
+                            {option.recommended ? (
+                              <span className="shrink-0 rounded-pill bg-nomi-info-soft px-1.5 text-micro text-nomi-info-ink" data-v4-block="ask-recommended">
+                                {labels.recommended}
                               </span>
-                              {/* 「推荐」只是一个记号：不预选、不代答，只把它排第一。 */}
-                              {option.recommended ? (
-                                <span className="shrink-0 rounded-pill bg-nomi-accent-soft px-1.5 text-micro text-nomi-accent" data-v4-block="ask-recommended">
-                                  {labels.recommended}
-                                </span>
-                              ) : null}
-                            </span>
-                            {option.description ? (
-                              <span className="text-micro font-normal text-nomi-ink-60">{option.description}</span>
                             ) : null}
                           </span>
-                        </button>
-                      )
-                    })}
-                    {/* 末行自由输入：**无边框、无底色**，和选项行同宽同缩进，靠上面那条滑动带
-                        提示它可点。它永远在——一张只有选项的卡等于说「你只能从这几个里挑」。 */}
-                    <label data-ask-row="custom" className="relative z-10 flex items-center rounded-nomi-sm py-1 pl-1 pr-2">
-                      {/* 让这一行的文字和上面选项的**标签**对齐，所以空出一个标记那么宽的位。
-                          一个选项都没有时那一列根本不存在，再缩进就成了一段没有来由的空白
-                          （Approval Card 的 demo 里永远有选项，所以它没碰到这一档）。 */}
-                      {itemOptions.length ? <span className="size-4 shrink-0" aria-hidden="true" /> : null}
-                      <input
-                        ref={active ? inputRef : undefined}
-                        type="text"
-                        value={itemDraft.custom}
-                        tabIndex={active ? 0 : -1}
-                        onChange={(event) => {
-                          if (!active) return
-                          const value = event.target.value
-                          setDraft(Object.freeze({
-                            picked: item.multiSelect === true ? itemDraft.picked : (Object.freeze([]) as readonly number[]),
-                            custom: value,
-                          }))
-                        }}
-                        placeholder={labels.customPlaceholder}
-                        aria-label={labels.customPlaceholder}
-                        data-v4-control="question-answer"
-                        className="min-w-0 flex-1 border-0 bg-transparent pl-1.5 text-body-sm text-nomi-ink outline-none placeholder:text-nomi-ink-40"
-                      />
-                    </label>
-                  </AskGlideMenu>
-                </div>
-              )
-            })}
-          </div>
+                          {option.description ? (
+                            <span className="text-micro text-nomi-ink-60">{option.description}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    )
+                  })}
+                  {/* 末行自由输入：和 composer 输入框同一组字色类（透明底、无边框），
+                      与选项行同宽同缩进。它永远在——只有选项的卡等于说「你只能从这几个里挑」。 */}
+                  <label data-ask-row="custom" className="relative z-10 flex items-center gap-2 rounded-nomi-sm px-1 py-1">
+                    {/* 空出一个控件那么宽的位，让文字和上面选项的**标签**对齐；
+                        一个选项都没有时那一列不存在，再缩进就是一段没来由的空白。 */}
+                    {itemOptions.length ? <span className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+                    <input
+                      ref={active ? inputRef : undefined}
+                      type="text"
+                      value={itemDraft.custom}
+                      tabIndex={active ? 0 : -1}
+                      onChange={(event) => {
+                        if (!active) return
+                        const value = event.target.value
+                        setDraft(Object.freeze({
+                          picked: multi ? itemDraft.picked : (Object.freeze([]) as readonly number[]),
+                          custom: value,
+                        }))
+                      }}
+                      placeholder={labels.customPlaceholder}
+                      aria-label={labels.customPlaceholder}
+                      data-v4-control="question-answer"
+                      className="min-w-0 flex-1 border-0 bg-transparent text-caption leading-normal text-nomi-ink outline-none placeholder:text-nomi-ink-40"
+                    />
+                  </label>
+                </AskGlideMenu>
+              </div>
+            )
+          })}
         </div>
       </div>
     </V4SlotShell>

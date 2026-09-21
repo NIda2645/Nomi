@@ -86,19 +86,19 @@ describe('付费卡投影', () => {
     const data = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1, scope: 'each' }, t)!
     expect(data.price?.breakdown).toContain('spendParamsBreakdownMixed')
     expect(data.price?.perItem).toHaveLength(2)
-    // 翻到第 2 页时印的是**那一页**的价，不是第一页的。
-    // 2026-09-22 换壳后这个数搬到了页脚左下（`totalLead`），按钮只说动作——
-    // 断言跟着数走，不是跟着控件走。
-    expect(data.totalLead).toContain('amount=0.30')
-    expect(data.confirmLabel).not.toContain('amount=')
+    // 翻到第 2 页时**主按钮**印的是那一页的价，不是第一页的（这一下花多少）。
+    expect(data.confirmLabel).toContain('amount=0.30')
+    // 页脚左下印的是**整单合计**，带镜数——逐镜确认时用户始终看得见整单要花多少。
+    // 两格说的是两件事，所以这里两个数不一样才是对的（0.30 vs 0.80）。
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=agentPanelV4.money(currency=CNY,amount=0.80))')
   })
 
   it('切到「全部」：主按钮改口印合计，动作行仍然只有一颗填色按钮', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0, scope: 'all' }, t)!
     expect(data.pager?.scope?.value).toBe('all')
-    expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmAll(count=2)')
-    // 合计仍然要印，只是印在页脚左下那一格。
-    expect(data.totalLead).toBe('agentPanelV4.spendTotalLead(amount=agentPanelV4.money(currency=CNY,amount=0.60))')
+    expect(data.confirmLabel).toBe('agentPanelV4.spendParamsConfirmAll(count=2,amount=agentPanelV4.money(currency=CNY,amount=0.60))')
+    // 「全部」档下按钮与左下是同一个数（这一下 = 整单）。
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=agentPanelV4.money(currency=CNY,amount=0.60))')
     expect(data.alternateLabel).toBeUndefined()
   })
 

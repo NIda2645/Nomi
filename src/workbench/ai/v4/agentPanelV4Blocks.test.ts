@@ -44,10 +44,8 @@ const QUESTION_OPTIONS = [
 ]
 
 const askLabels = {
-  dismiss: '这次不答', skip: '跳过', continueLabel: '继续', send: '发送',
+  dismiss: '这次不答', continueLabel: '继续', send: '发送',
   customPlaceholder: '或者直接告诉它…', recommended: '推荐',
-  step: (index: number, total: number) => `第 ${index} 题，共 ${total} 题`,
-  prev: '上一题', next: '下一题',
 }
 const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾', ask: askLabels }
 // `unknown` 是「这个数我们没有」的那个字（环上写「—」而不是「0%」）。接线后它是必填的，
@@ -272,7 +270,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     // ——2026-09-11 用户实测「8 镜计划卡无法取消」。
     // 2026-09-22 换壳后它由外壳统一摆在**右上**，锚点随之改名；断言一条没少。
     expect(markup).toContain('data-v4-control="slot-dismiss"')
-    expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-2[^"]*top-2/)
+    expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-1\.5[^"]*top-1\.5/)
     expect(markup).not.toContain('>不要<')
   })
 
@@ -328,7 +326,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
 
     // ③ × 由外壳统一钉在右上——两张卡同一处，不再一个在右上一个在页脚。
     for (const markup of [ask, spend]) {
-      expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-2[^"]*top-2/)
+      expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-1\.5[^"]*top-1\.5/)
     }
 
     // ④ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
@@ -349,12 +347,14 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     const spendPrimary = primary(spend, 'confirm')
     expect(askPrimary).toBeTruthy()
     expect(spendPrimary).toBeTruthy()
-    // 同高、同圆角、同底色。第一版是 `rounded-pill`，在这个面板里是独一份——
-    // 邻居全是方角 ink 钮，一颗药丸读起来像从别的 App 掉进来的。
-    for (const token of ['h-7', 'rounded-nomi-sm', 'bg-nomi-ink', 'text-nomi-paper']) {
+    // 两张卡的主按钮是**同一个现役组件**（`WorkbenchButton variant="primary" size="sm"`），
+    // 所以类名逐字相同——不是「长得像」，是同一件。第一版是自带的 `rounded-pill` 药丸，
+    // 在这个面板里是独一份。
+    for (const token of ['h-7', 'rounded-workbench-control', 'bg-nomi-ink', 'text-nomi-paper']) {
       expect(askPrimary).toContain(token)
       expect(spendPrimary).toContain(token)
     }
+    expect(askPrimary).toBe(spendPrimary)
     expect(askPrimary).not.toContain('rounded-pill')
   })
 
@@ -363,8 +363,10 @@ describe('⑤ 介入槽 · 八种内容体', () => {
       data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
-    // 每个选项一个标记 + 一整行的按钮；chip 版那两个类名（自带 border、按内容定宽）绝迹。
-    expect((markup.match(/data-ask-marker=/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    // 每个选项一个**原生**单选控件（与同槽计划卡的勾选行同一写法：`accent-nomi-accent`），
+    // 行是整行可点的 <label>；chip 版那两个类名（自带 border、按内容定宽）绝迹。
+    expect((markup.match(/type="radio"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(markup).toContain('accent-nomi-accent')
     expect((markup.match(/data-v4-control="question-option"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
     expect(markup).toMatch(/data-v4-control="question-option"[^>]*class="[^"]*w-full/)
     expect(markup).not.toMatch(/data-v4-control="question-option"[^>]*class="[^"]*inline-flex/)
@@ -378,7 +380,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).toContain('适合横屏平台')
     expect(markup).toContain('推荐')
     // 「推荐」是记号不是预选：卡一挂上来一个都不该是按下态。
-    expect(markup).not.toContain('aria-pressed="true"')
+    expect(markup).not.toMatch(/<input[^>]*type="radio"[^>]*checked/)
   })
 
   it('末行自由输入是**无边框内联**的，和拒绝原因那条带框输入不是同一件', () => {
@@ -420,7 +422,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
       data: { kind: 'question', title: '这段想要几秒？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
-    expect(one).not.toContain('data-v4-block="ask-pager"')
+    expect(one).not.toContain('data-v4-block="pager"')
     const three = html(el(V4Intervention, { ...NO_HANDLERS,
       data: {
         kind: 'question', title: '第一题', questions: [
@@ -431,10 +433,18 @@ describe('⑤ 介入槽 · 八种内容体', () => {
       },
       labels: slotLabels,
     }))
-    expect(three).toContain('data-v4-block="ask-pager"')
-    expect(three).toContain('1 / 3')
-    // 多选那一题的标记是方的、单选是圆的——形状本身就说明了能选几个。
-    expect(three).toContain('rounded-nomi-sm')
+    // 页码用的是面板**现役翻页器**（付费卡多镜翻页那一颗），不另画一套。
+    expect(three).toContain('data-v4-block="pager"')
+    expect(three).toContain('1/3')
+  })
+
+  it('多选题用原生 checkbox、单选题用原生 radio——形状由控件自己说明「能选几个」', () => {
+    const multi = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '要哪几样？', questions: [{ question: '要哪几样？', options: QUESTION_OPTIONS, multiSelect: true }] },
+      labels: slotLabels,
+    }))
+    expect((multi.match(/type="checkbox"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(multi).not.toContain('type="radio"')
   })
 
   it('拒绝原因是渐进披露的输入 + 取消/确认不要', () => {

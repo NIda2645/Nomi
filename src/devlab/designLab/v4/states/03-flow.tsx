@@ -136,7 +136,7 @@ function CollapsedScene(): JSX.Element {
  *
  * 用现成夹具就够：这里要看的是**外观在不在一个家族里**，不是模型答得对不对。
  */
-function PanelWithQuestion({ dark }: { dark?: boolean }): JSX.Element {
+function PanelWithQuestion(): JSX.Element {
   const fx = useV4Fixtures()
   return (
     <AgentPanelV4Panel
@@ -145,22 +145,28 @@ function PanelWithQuestion({ dark }: { dark?: boolean }): JSX.Element {
       slot={fx.slots.question}
       context={{ ...fx.context, used: 36000 }}
       height={860}
-      {...(dark ? { darkMode: true } : {})}
     />
   )
 }
 
-/** 同一个取景、同一条对话，只把槽换成**付费确认卡**——并排对账用的那一张。 */
-function PanelWithSpend({ dark }: { dark?: boolean }): JSX.Element {
+/**
+ * 同一个取景、同一条对话，槽里换成**普通确认卡**（可撤销档）。
+ * 付费卡那一格不在这里：它的正文是节点参数条那个真组件，要先给画布 store 播种，
+ * 住在 `07-spend-params.tsx`（`v4-panel-spend-light`）。
+ *
+ * 暗色**不另立一格**：暗色是翻真 token（`data-mantine-color-scheme`），由走查在同一格上翻。
+ * 这里原来有过 `-dark` 两格，用的是面板的 `darkMode` prop——那个 prop 只换用户气泡的底色，
+ * 面板和卡一点不动，拍出来的「暗色」和亮色是同一张。
+ */
+function PanelWithApproval(): JSX.Element {
   const fx = useV4Fixtures()
   return (
     <AgentPanelV4Panel
       slotHandlers={V4_LAB_SLOT_HANDLERS}
       flow={fx.flows.creation}
-      slot={fx.slots.spendOneClip}
+      slot={fx.slots.reversible}
       context={{ ...fx.context, used: 36000 }}
       height={860}
-      {...(dark ? { darkMode: true } : {})}
     />
   )
 }
@@ -168,35 +174,19 @@ function PanelWithSpend({ dark }: { dark?: boolean }): JSX.Element {
 export const V4_FLOW_STATES: readonly LabState[] = [
   {
     id: 'v4-panel-question-light',
-    name: '⑤ 反问卡**在真面板里**（亮色）——和对话流、composer、面板壳一起看',
-    source: '2026-09-21 用户：「有弄我们的设计系统不？会不会格格不入？」',
+    name: '⑤ 反问卡**在真面板里**——和对话流、composer、面板壳一起看',
+    source: '2026-09-21 用户：「有弄我们的设计系统不？会不会格格不入？」；对账物 = 同屏 composer',
     coverage: 'component-only',
     span: 2,
     render: () => <PanelWithQuestion />,
   },
   {
-    id: 'v4-panel-question-dark',
-    name: '⑤ 反问卡在真面板里（暗色）',
-    source: '同上；暗色是 token 翻转后才看得出来的那一档',
+    id: 'v4-panel-approval-light',
+    name: '⑤ 普通确认卡在真面板里（同族第三张）',
+    source: '2026-09-22 卡族换壳：一处改、全族生效',
     coverage: 'component-only',
     span: 2,
-    render: () => <PanelWithQuestion dark />,
-  },
-  {
-    id: 'v4-panel-spend-light',
-    name: '⑤ 付费确认卡在同一位置（亮色）——并排参照',
-    source: '2026-09-21 外观对账：同槽兄弟卡的外框/圆角/内边距/按钮族',
-    coverage: 'component-only',
-    span: 2,
-    render: () => <PanelWithSpend />,
-  },
-  {
-    id: 'v4-panel-spend-dark',
-    name: '⑤ 付费确认卡在同一位置（暗色）——并排参照',
-    source: '同上',
-    coverage: 'component-only',
-    span: 2,
-    render: () => <PanelWithSpend dark />,
+    render: () => <PanelWithApproval />,
   },
   {
     id: 'v4-flow-creation',

@@ -117,26 +117,24 @@ export function projectSpendCard(
     // 正常那两档一句话都不多说：卡上每一样东西都能改、改完价格就变，这件事**看得见**。
     // 只有报不出价那一档必须说话——那是用户在按下去之前唯一没法自己看出来的事。
     ...(total === undefined ? { scope: t('agentPanelV4.spendParamsScopeUnknown') } : {}),
-    // 页脚**左下**那一格：这次要花多少。2026-09-22 换壳把金额从按钮上挪到这里
-    // （同一行、离按钮两厘米），按钮只说动作——两处印同一个数一定有一个先漂。
-    //
-    // 算不出价时印的是一整句话而不是 `¥0`：三种可能（免费 / 算不出 / 真零元）里，
-    // 印 0 恰好是唯一会让用户误以为「这次不花钱」的那一种。**而且按钮照常可点**
-    // （用户 2026-09-21 硬性拍板：「不能因为这个拦截其他任何东西」）。
-    //
-    // ⚠️ 分档判据必须和主按钮**逐字相同**（`batch`，不是「有没有合计」）：
-    // 「逐镜」档翻到第 2 页时要印**那一页**的价，而 `total` 是整批的合计。
-    // 我第一版写成 `total !== undefined ? 合计 : …`，第 2 页上印出了整批的 0.80——
-    // 用户会以为按一下要花 0.80，实际只花 0.30。单测当场红（那条断言本来就钉着这件事）。
-    totalLead: batch && total !== undefined
-      ? t('agentPanelV4.spendTotalLead', { amount: money(t, pending.currency, total) })
-      : current.price.known
-        ? t('agentPanelV4.spendTotalLead', { amount: money(t, pending.currency, current.price.amount) })
-        : t('agentPanelV4.spendTotalUnknown'),
+    // 页脚**左下** = **这一单合计**；主按钮 = **这一下花多少**。两格说的是两件事：
+    // · 单镜时两个数相同；
+    // · 多镜「逐镜」档时，按钮印这一页的价、左下印整单「N 镜 · 合计 ¥X」——
+    //   用户一边逐镜确认，一边始终看得见整单要花多少；
+    // · 算不出价时左下是一整句话，不是 `¥0`（印 0 是三种可能里唯一会被读成「这次免费」的），
+    //   **而且按钮照常可点**（用户 2026-09-21 硬性拍板：不能因为算不出价拦住任何东西）。
+    totalLead: total !== undefined
+      ? shots.length > 1
+        ? t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(t, pending.currency, total) })
+        : t('agentPanelV4.spendTotalLead', { amount: money(t, pending.currency, total) })
+      : t('agentPanelV4.spendTotalUnknown'),
+    // 主按钮**带后果**：设计系统 §1.8 规则 1「带后果时把后果写进标签（生成 ¥1.20）」。
+    // 上一版我把金额从按钮上拿掉了（照 Recommendation Card 的排法），那是拿别人的版式
+    // 压过了自己的规则——按下去的那颗钮上就该印着要花的钱。
     confirmLabel: batch && total !== undefined
-      ? t('agentPanelV4.spendParamsConfirmAll', { count: shots.length })
+      ? t('agentPanelV4.spendParamsConfirmAll', { count: shots.length, amount: money(t, pending.currency, total) })
       : current.price.known
-        ? t('agentPanelV4.spendParamsConfirm')
+        ? t('agentPanelV4.spendParamsConfirm', { amount: money(t, pending.currency, current.price.amount) })
         : t('agentPanelV4.spendParamsConfirmUnknown'),
   })
 }

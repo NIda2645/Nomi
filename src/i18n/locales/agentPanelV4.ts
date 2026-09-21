@@ -214,12 +214,8 @@ export const zhAgentPanelV4 = {
   // 反问卡页脚（Approval Card 整件的那四个词）。
   // 「继续」与「发送」分开是它的原设计：不是最后一题就往下走，最后一题才是把答案交出去。
   askDismiss: '这次不答',
-  askSkip: '跳过',
   askContinue: '继续',
   askSend: '发送',
-  askStep: '第 {{index}} 题，共 {{total}} 题',
-  askPrev: '上一题',
-  askNext: '下一题',
   // 熔断转提问：同一个字段连着 {{count}} 次没过，就别再撞了，交给用户定。
   // 数由生产者给、话由这里说——生产者传成句的字符串就等于绕开了 i18n。
   questionRetryExhausted: '试了 {{count}} 次都没通过，交给你定。',
@@ -439,7 +435,6 @@ export const zhAgentPanelV4 = {
   /** 模型芯片上的极小徽标：这一项是 Nomi 替你挑的，不是你选的。 */
   spendParamsModelPicked: 'Nomi 选的',
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
-  spendParamsBreakdown: '{{count}} 镜 × {{seconds}}s · {{quality}} · {{unit}}/秒',
   /** 逐镜参数已经不一样了：那句算式不再成立，改说「逐镜不同」，数字交给下面的逐镜折叠口。 */
   spendParamsBreakdownMixed: '{{count}} 镜 · 逐镜不同',
   /** 报不出价时的算式：**不印单价、不印时长**。报不出价却印着 ¥0.10/秒，等于自己编了一个数。 */
@@ -449,16 +444,15 @@ export const zhAgentPanelV4 = {
   spendParamsPerItem: '逐镜 · {{count}} 镜',
   spendParamsShot: '镜头 {{number}}',
   /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
-  // 金额从按钮上挪到了页脚**左下**（同一行、离按钮两厘米），所以按钮只说动作。
-  // 两处印同一个数一定有一个先漂——这条原则本来就写在 projectSpendCard 的注释里。
-  spendParamsConfirm: '生成',
+  spendParamsConfirm: '生成 {{amount}}',
   /** 合计那一格（页脚左下）。 */
   spendTotalLead: '合计 {{amount}}',
+  spendTotalLeadBatch: '{{count}} 镜 · 合计 {{amount}}',
   /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
   spendTotalUnknown: '价格未知 · 以供应商账单为准',
   spendParamsConfirmUnknown: '仍要生成',
   /** 范围切到「全部」后的同一颗主按钮：多印一句「几镜」，因为这时的数不再是眼前这一页的。 */
-  spendParamsConfirmAll: '生成 {{count}} 镜',
+  spendParamsConfirmAll: '生成 {{count}} 镜 {{amount}}',
   /** 范围切换两档（2026-09-10 v3：批量不再是第二颗文字按钮，是同一个决定的范围）。 */
   spendParamsScopeEach: '逐镜',
   spendParamsScopeAll: '全部',
@@ -475,8 +469,6 @@ export const zhAgentPanelV4 = {
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
   spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
-  qualityStandard: '标准画质',
-  qualityPro: '高画质',
 
   // 「全自动」档（2026-09-10 用户拍板 · 增量 2）
   autoModeConfirmTitle: '切到「全自动」？',
@@ -699,12 +691,8 @@ export const enAgentPanelV4 = {
   questionAnswerPlaceholder: 'Or just tell it…',
   questionRecommended: 'Suggested',
   askDismiss: 'Not this time',
-  askSkip: 'Skip',
   askContinue: 'Continue',
   askSend: 'Send',
-  askStep: 'Question {{index}} of {{total}}',
-  askPrev: 'Previous question',
-  askNext: 'Next question',
   questionRetryExhausted: '{{count}} tries and none went through — your call.',
   questionAnswered: 'Answered',
   credentialSummary: 'Enter it in Nomi\u2019s own window; the model never sees it.',
@@ -906,18 +894,18 @@ export const enAgentPanelV4 = {
   spendParamsTitle: 'Generate these {{count}} video shots?',
   spendParamsTitleImage: 'Generate these {{count}} image(s)?',
   spendParamsModelPicked: 'Nomi picked',
-  spendParamsBreakdown: '{{count}} shots × {{seconds}}s · {{quality}} · {{unit}}/s',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
   spendParamsBreakdownNoUnit: '{{count}} shots',
   spendParamsTotalLabel: 'Total',
   spendParamsUnavailable: 'Price unavailable right now',
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
-  spendParamsConfirm: 'Generate',
+  spendParamsConfirm: 'Generate {{amount}}',
   spendTotalLead: '{{amount}} total',
+  spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
   spendTotalUnknown: 'Price unknown — your provider bills it',
   spendParamsConfirmUnknown: 'Generate anyway',
-  spendParamsConfirmAll: 'Generate {{count}} shots',
+  spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
   spendParamsScopeEach: 'Per shot',
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',
@@ -927,8 +915,6 @@ export const enAgentPanelV4 = {
   spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
-  qualityStandard: 'Standard',
-  qualityPro: 'High quality',
 
   autoModeConfirmTitle: 'Switch to Full auto?',
   autoModeConfirmBody: 'Nomi will make undoable edits directly and **paid generation will run without showing you a quote each time** — this confirmation is your authorisation for them. Irreversible actions are still confirmed every time.',
