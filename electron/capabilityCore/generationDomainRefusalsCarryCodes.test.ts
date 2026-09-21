@@ -86,3 +86,23 @@ describe('生成域里每一次有意的拒绝都带码', () => {
     expect(stale, '这几条豁免已经没有对应的代码了——豁免表不留永久名额，修好就删行').toEqual([])
   })
 })
+
+// `look_at_media` 那一格（2026-09-22）：它的失败此前只有一个裸码。带上字段级理由之后，
+// 下一轮至少知道是**哪一格**对不上；而「绝不含收到的值」这条要一起守住——
+// 参数里可能有用户的文稿正文与素材路径。
+describe("媒体/导出这条路的失败也说清是哪一格", () => {
+  const adapter = fs.readFileSync(path.join(process.cwd(), 'electron/capabilityCore/phase4SurfaceTransportAdapters.ts'), 'utf8')
+
+  it("两个失败点都走共用的那一个组装处，不再各自返回裸码", () => {
+    expect(adapter).toContain('safeTransportFailure')
+    expect(adapter, '输入不合法那一格原来是 `catch { return {code, message: code} }`——理由整个丢掉了')
+      .not.toContain('return { ok: false, code: "capability_input_invalid", message: "capability_input_invalid" }')
+  })
+
+  it("字段级理由只取字段名与期望类型，绝不取收到的值", () => {
+    const detail = adapter.slice(adapter.indexOf('function zodFieldDetail'), adapter.indexOf('function safeFailure'))
+    expect(detail).toContain('path')
+    expect(detail).toContain('expected')
+    expect(detail, '一旦这里开始读 `received`，用户的文稿正文就会流到模型那里').not.toContain('received')
+  })
+})
