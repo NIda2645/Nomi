@@ -377,18 +377,28 @@ describe("custom-call custom config secure persistence", () => {
     const secrets = await import("./secrets");
     const publicVendor = store.listModelCatalogVendors()[0];
 
+    // 给一个**已存在**的 vendor 换凭据 = 覆盖，必须是用户在确认那一步显式选的。
+    // 默认的 'keep' 会保留本机那一份（导入是合并，不是覆盖），所以这条用例走 replace。
     expect(
-      store.importModelCatalogPackage({
-        vendors: [
-          {
-            vendor: publicVendor,
-            apiKey: { customConfig: { newSecret } },
-            models: [],
-            mappings: [],
-          },
-        ],
-      }),
-    ).toEqual({ imported: { vendors: 1, models: 0, mappings: 0 }, errors: [] });
+      store.importModelCatalogPackage(
+        {
+          vendors: [
+            {
+              vendor: publicVendor,
+              apiKey: { customConfig: { newSecret } },
+              models: [],
+              mappings: [],
+            },
+          ],
+        },
+        { conflictPolicy: "replace" },
+      ),
+    ).toEqual({
+      imported: { vendors: 1, models: 0, mappings: 0 },
+      kept: { vendors: 0, models: 0, mappings: 0 },
+      conflicts: [{ kind: "vendor", vendorKey: publicVendor.key }],
+      errors: [],
+    });
 
     const disk = fs.readFileSync(catalogFile(), "utf8");
     const state = store.readCatalog();
@@ -553,7 +563,7 @@ describe("custom-call custom config secure persistence", () => {
       accessKey: "ak-user-visible-once",
       secretKey: "sk-never-on-disk",
     });
-    const exported = store.exportModelCatalogPackage({ includeApiKeys: true });
+    const exported = store.exportModelCatalogPackage();
     expect(JSON.stringify(exported)).not.toContain("ak-user-visible-once");
     expect(JSON.stringify(exported)).not.toContain("sk-never-on-disk");
   });
@@ -648,7 +658,7 @@ describe("custom-call custom config secure persistence", () => {
     });
     const store = await import("./catalogStore");
 
-    const exported = JSON.stringify(store.exportModelCatalogPackage({ includeApiKeys: true }));
+    const exported = JSON.stringify(store.exportModelCatalogPackage());
     expect(exported).not.toContain("legacy-export-secret");
     expect(exported).not.toContain("signingKey");
     expect(exported).toContain("safe-meta");

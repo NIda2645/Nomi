@@ -62,6 +62,8 @@ describe("desktop-local-v1 catalog package format", () => {
 
     expect(store.importModelCatalogPackage(fixture)).toEqual({
       imported: { vendors: 1, models: 2, mappings: 2 },
+      kept: { vendors: 0, models: 0, mappings: 0 },
+      conflicts: [],
       errors: [],
     });
     const state = store.readCatalog();
@@ -103,6 +105,8 @@ describe("desktop-local-v1 catalog package format", () => {
 
     expect(store.importModelCatalogPackage({ vendors: fixture.vendors })).toEqual({
       imported: { vendors: 1, models: 2, mappings: 2 },
+      kept: { vendors: 0, models: 0, mappings: 0 },
+      conflicts: [],
       errors: [],
     });
   });

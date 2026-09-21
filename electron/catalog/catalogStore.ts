@@ -48,7 +48,7 @@ import {
   overlayDecryptedNetworkConfig,
   resolveNetworkConfigForWrite,
 } from "./networkConfigStore";
-import { buildCatalogPackage, catalogPackageImportSchema, type CatalogPackage } from "./catalogPackageFormat";
+import { buildCatalogPackage, CATALOG_PACKAGE_VERSION, catalogPackageImportSchema, type CatalogPackage } from "./catalogPackageFormat";
 import { invalidateProviderAdapterRunsForVendors } from "../providerAdapter/store";
 import { invalidateVendorValidation, normalizedConnectionScope } from "./vendorValidationInvalidation";
 import { assertNoCredentialBindingRewrite, bindCredentialDestination } from "./credentialBinding"; // §6.1
@@ -613,10 +613,10 @@ export function deleteModelCatalogMapping(id: string): void {
   state.mappings = state.mappings.filter((mapping) => mapping.id !== id);
   writeCatalog(state);
 }
-export function exportModelCatalogPackage(params?: unknown): CatalogPackage {
-  // 形状与凭据裁决都住在 catalogPackageFormat（那里同时放着它必须满足的 zod 契约）。
-  // 这里只负责「读一份 state」和「includeApiKeys 这一格从 IPC 参数怎么读」。
-  return buildCatalogPackage(readCatalog(), { includeApiKeys: Boolean((params as JsonRecord | undefined)?.includeApiKeys) });
+export function exportModelCatalogPackage(): CatalogPackage {
+  // 形状与凭据裁决都住在 catalogPackageFormat（那里同时放着它必须满足的 zod 契约与「永不带 key」的理由）。
+  // 这里只负责读一份 state。导出**不接受任何参数**：没有「这次带上 key」这一档。
+  return buildCatalogPackage(readCatalog());
 }
 /**
  * 事务化导入（P2·根治半成品）：整包先在**一份内存 state** 上逐项应用 + 校验，全部成功才
@@ -627,55 +627,116 @@ export function exportModelCatalogPackage(params?: unknown): CatalogPackage {
  * 的整体，单条 upsert 立即落盘才会产生中途半截态。把写盘收敛到唯一 choke point（事务边界），
  * 这类 bug 整类消失，而不是逐 upsert 补偿。`apply*` 纯函数与单条公开 upsert 共用（无第二份逻辑）。
  */
-export function importModelCatalogPackage(payload: unknown): unknown {
+export type CatalogImportConflict = Readonly<{
+  kind: "vendor" | "model" | "mapping";
+  /** 供应商 key；model 再带 modelKey，mapping 再带 id。界面照这个出「冲突清单」。 */
+  vendorKey: string;
+  modelKey?: string;
+  mappingId?: string;
+}>;
+
+export type CatalogImportResult = Readonly<{
+  imported: { vendors: number; models: number; mappings: number };
+  /** 因为本机已经有同一条而**没有动**的数量。 */
+  kept: { vendors: number; models: number; mappings: number };
+  conflicts: CatalogImportConflict[];
+  errors: string[];
+}>;
+
+const emptyImportResult = (errors: string[]): CatalogImportResult => ({
+  imported: { vendors: 0, models: 0, mappings: 0 },
+  kept: { vendors: 0, models: 0, mappings: 0 },
+  conflicts: [],
+  errors,
+});
+
+export function importModelCatalogPackage(payload: unknown, options?: { conflictPolicy?: "keep" | "replace" }): CatalogImportResult {
+  // 比 zod 早一步说人话：包版本比这个应用新时，zod 只会吐一句「Invalid literal value」，
+  // 而用户需要知道的是「这份是更新版本的 Nomi 导出的，请升级后再导入」。
+  const declaredVersion = isJsonRecord(payload) ? payload.version : undefined;
+  if (typeof declaredVersion === "string" && declaredVersion !== CATALOG_PACKAGE_VERSION) {
+    return emptyImportResult([
+      `这份配置包的格式是 ${declaredVersion}，当前 Nomi 只认识 ${CATALOG_PACKAGE_VERSION}。`
+        + `多半是更新版本的 Nomi 导出的——请先升级 Nomi 再导入。你现在的配置一个字都没动。`,
+    ]);
+  }
   // 信封先过公开契约（docs/engineering/formats/desktop-local-v1.schema.json 就是它导出来的）。
   // 骨架不对 = 整包不写、原因照实说，而不是一路 as 下去在某条 upsert 里抛一句看不懂的话。
   // 条目内部仍交给既有 apply*Upsert 归一（新旧两种 mapping 形状都收），这里不改写任何一格。
   const envelope = catalogPackageImportSchema.safeParse(payload);
   if (!envelope.success) {
-    return {
-      imported: { vendors: 0, models: 0, mappings: 0 },
-      errors: envelope.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "package"}: ${issue.message}`),
-    };
+    return emptyImportResult(
+      envelope.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "package"}: ${issue.message}`),
+    );
   }
   const raw = payload as {
     vendors?: Array<{ vendor?: unknown; apiKey?: unknown; models?: unknown[]; mappings?: unknown[] }>;
   };
+  // **合并，不是覆盖**（09-21 拍板）：本机已经有同一条时默认保留本机那份，并把冲突列给用户看。
+  // 为什么默认是「保留」：导入最常见的两个场景是「新机器上恢复」（本机是空的，零冲突、全量进来）
+  // 和「补上我缺的那几家」。反过来默认覆盖，就会在用户只想补一家时安静改掉他调好的另一家——
+  // 那又是一次「我的配置自己变了」。要覆盖必须是用户在确认那一步显式选的（conflictPolicy: 'replace'）。
+  const keepExisting = (options?.conflictPolicy ?? "keep") === "keep";
   const state = readCatalog();
   let vendors = 0;
   let models = 0;
   let mappings = 0;
+  const kept = { vendors: 0, models: 0, mappings: 0 };
+  const conflicts: CatalogImportConflict[] = [];
   try {
     for (const bundle of raw.vendors || []) {
-      const vendor = applyVendorUpsert(state, bundle.vendor);
-      vendors += 1;
+      const incomingKey = sanitizeName((bundle.vendor as JsonRecord | undefined)?.key, "").toLowerCase().replace(/\s+/g, "-");
+      const existingVendor = state.vendors.find((candidate) => candidate.key === incomingKey);
+      let vendorKey = incomingKey;
+      if (existingVendor && keepExisting) {
+        conflicts.push({ kind: "vendor", vendorKey: existingVendor.key });
+        kept.vendors += 1;
+      } else {
+        const vendor = applyVendorUpsert(state, bundle.vendor);
+        vendorKey = vendor.key;
+        if (existingVendor) conflicts.push({ kind: "vendor", vendorKey });
+        vendors += 1;
+      }
       const apiKey = bundle.apiKey as JsonRecord | undefined;
-      if (apiKey?.apiKey) applyApiKeyUpsert(state, vendor.key, apiKey);
-      if (isJsonRecord(apiKey?.customConfig)) {
-        applyPlainCustomConfigWrite(state, vendor.key, normalizedCustomConfig(apiKey.customConfig));
+      // 凭据只在本机还没有一份时写入：导入绝不覆盖用户已经存好的 key（那是最难重建、也最不该被
+      // 一次导入换掉的东西）。导入侧仍然**收** key——那是「让 AI 直接写一份配置」那条接入路径。
+      const hasCredential = Boolean(state.apiKeysByVendor[vendorKey]);
+      if (apiKey?.apiKey && (!hasCredential || !keepExisting)) applyApiKeyUpsert(state, vendorKey, apiKey);
+      if (isJsonRecord(apiKey?.customConfig) && (!hasCredential || !keepExisting)) {
+        applyPlainCustomConfigWrite(state, vendorKey, normalizedCustomConfig(apiKey.customConfig));
       }
       for (const model of bundle.models || []) {
-        applyModelUpsert(state, { ...(model as JsonRecord), vendorKey: (model as JsonRecord).vendorKey || vendor.key });
+        const row = model as JsonRecord;
+        const modelKey = String(row.modelKey || "");
+        const owner = String(row.vendorKey || vendorKey);
+        if (keepExisting && state.models.some((item) => item.vendorKey === owner && item.modelKey === modelKey)) {
+          conflicts.push({ kind: "model", vendorKey: owner, modelKey });
+          kept.models += 1;
+          continue;
+        }
+        applyModelUpsert(state, { ...row, vendorKey: owner });
         models += 1;
       }
       for (const mapping of bundle.mappings || []) {
-        applyMappingUpsert(state, {
-          ...(mapping as JsonRecord),
-          vendorKey: (mapping as JsonRecord).vendorKey || vendor.key,
-        });
+        const row = mapping as JsonRecord;
+        const mappingId = String(row.id || "");
+        if (keepExisting && mappingId && state.mappings.some((item) => item.id === mappingId)) {
+          conflicts.push({ kind: "mapping", vendorKey: String(row.vendorKey || vendorKey), mappingId });
+          kept.mappings += 1;
+          continue;
+        }
+        applyMappingUpsert(state, { ...row, vendorKey: row.vendorKey || vendorKey });
         mappings += 1;
       }
     }
   } catch (error) {
     // 整体回滚：不写盘（磁盘还是导入前的 state），返回 0 计数 + 清晰错误。
-    return {
-      imported: { vendors: 0, models: 0, mappings: 0 },
-      errors: [error instanceof Error ? error.message : String(error)],
-    };
+    return emptyImportResult([error instanceof Error ? error.message : String(error)]);
   }
-  // 全部成功 → 一次性提交。空包也安全（无变更则写回等值 state）。
+  // 全部成功 → 一次性提交，走的就是手动保存那一扇写入门（writeCatalog），所以：读不出来拒绝写、
+  // 盘上版本更新拒绝写、写前把上一版轮转成 model-catalog.bak.json —— 导入前的留底不需要另写一份。
   writeCatalog(state);
-  return { imported: { vendors, models, mappings }, errors: [] };
+  return { imported: { vendors, models, mappings }, kept, conflicts, errors: [] };
 }
 
 export type CatalogMutation = {
