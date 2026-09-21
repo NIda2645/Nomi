@@ -425,10 +425,17 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
   return { resolveCreateShots, sealMultiShotFor };
 }
 
-/** Creation adapter only: execution remains owned by the original renderer runner. */
+/**
+ * Creation adapter only: execution remains owned by the original renderer runner.
+ *
+ * 方案名取**模型自己写的标题**（第一个非锚镜头的 `title`）。锚是「被别的镜头复用的参考卡」，
+ * 拿风格锚的名字当整份方案的名字是胡说；一句提示词的头一行也不是名字，那是内容。
+ * 模型一个标题都没给时才退回提示词首行——那是今天唯一还能叫得出口的东西。
+ */
 export function storyboardPlanFromDraftSubjects(subjects: readonly GenerationOperationDraftShot[], projectId: string,
   resolveUrl?: (projectId:string,reference:PlanCandidate['references'][number])=>string): StoryboardPlan {
-  const plan: StoryboardPlan = {title:subjects[0].candidate.prompt.split('\n')[0].slice(0,500),anchors:[],shots:[]};
+  const named = subjects.find(subject=>subject.role!=='anchor'&&subject.title?.trim()) ?? subjects.find(subject=>subject.title?.trim());
+  const plan: StoryboardPlan = {title:(named?.title?.trim() || subjects[0].candidate.prompt.split('\n')[0]).slice(0,500),anchors:[],shots:[]};
   subjects.forEach((subject,index)=>{
     const urls=Object.fromEntries(subject.candidate.references.map(reference=>[reference.assetId,resolveUrl?.(projectId,reference) ?? '']));
     const authored=storyboardSubjectFromCandidate(subject,index+1,subject.storyboard,urls);

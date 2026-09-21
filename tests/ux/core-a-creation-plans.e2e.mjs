@@ -58,7 +58,7 @@ try {
   for (const [label,documentId] of [['a1','a'],['a2','a'],['b1','b'],['b2','b']]) {
     const expand=win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
     if(await expand.isVisible())await expand.click()
-    await win.locator(`button[data-document-id="${documentId}"]`).click()
+    await win.locator(`[data-document-row="${documentId}"] button[data-document-id="${documentId}"]`).click()
     const before=new Set((await designsOf(win,documentId)).map(design=>design.id))
     const creationRequest=fixture.expectText({label:`create ${label}`,reply:{type:'tool',id:`create-${label}`,name:'draft_shots',args:{shots:[{
       title:`Plan ${label}`,prompt:`Prompt ${label}`,taskKind:'text_to_image',candidate:{providerId:FIXTURE_VENDOR,modelId:FIXTURE_IMAGE_MODEL},modeId:'t2i',parameters:{size:'1024x1024'},durationSec:3,
@@ -76,16 +76,26 @@ try {
   for (const documentId of ['a','b']) {
     const expand=win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
     if(await expand.isVisible())await expand.click()
-    await win.locator(`button[data-document-id="${documentId}"]`).click()
-    await expect(win.locator('[data-storyboard-id]')).toHaveCount(2)
+    await win.locator(`[data-document-row="${documentId}"] button[data-document-id="${documentId}"]`).click()
+    await expect(win.locator(`[data-storyboard-id][data-document-id="${documentId}"]`)).toHaveCount(2)
   }
   check(true,'Both documents list two agent-made plans as ordinary sidebar plans')
-  // 一个家的验收判据之一：没有第二种行，也没有 1.5s 轮询把它刷出来。
+  // 一个家的验收判据之一：没有第二种行，也没有一条 1.5s 轮询把它刷出来。
   await expectAbsent(win.locator('[data-storyboard-run-row]'),{provenBy:await proveProbe(win.locator('[data-storyboard-id]').first(),'sidebar plan rows are on screen'),message:'no second kind of plan row exists in the sidebar'})
+  // 真数一遍，而不是读代码断言：站在创作面上计一段墙钟里 Run 列表被问了几次。
+  // 旧的侧栏轮询是 1500ms 一次，5 秒里至少 3 次；现在应当**一次都没有**。
+  await win.evaluate(() => {
+    const bridge = window.nomiDesktop.productionRuns
+    window.__nomiRunListCalls = 0
+    const original = bridge.list.bind(bridge)
+    bridge.list = (...args) => { window.__nomiRunListCalls += 1; return original(...args) }
+  })
+  await expect.poll(async () => win.evaluate(() => window.__nomiRunListCalls), { timeout: 6_000, intervals: [5_000, 500] }).toBe(0)
+  check(true, 'The creation surface polls the Run list zero times while showing its plans')
   for (const id of ['a1', 'a2', 'b1', 'b2', 'a1']) {
     const expandTree = win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
     if (await expandTree.isVisible()) await expandTree.click()
-    await win.locator(`button[data-document-id="${id.startsWith('a') ? 'a' : 'b'}"]`).click()
+    await win.locator(`[data-document-row="${id.startsWith('a') ? 'a' : 'b'}"] button[data-document-id]`).click()
     await win.locator(`[data-storyboard-id="${ids[id]}"]`).click()
     // Preserve the already approved editor contract: being able to edit a
     // textarea in a replacement form is not storyboard feature parity.
@@ -101,7 +111,7 @@ try {
   check(true, 'Selecting plans loads each exact plan without sibling content')
   const expandForEdit = win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
   if (await expandForEdit.isVisible()) await expandForEdit.click()
-  await win.locator('button[data-document-id="a"]').click()
+  await win.locator('[data-document-row="a"] button[data-document-id]').click()
   await win.locator(`[data-storyboard-id="${ids.a1}"]`).click()
   const originalFields=structuredClone((await designById(win,ids.a1)).plan.shots[0])
   const editor = win.locator('[data-storyboard-editor="true"]')
