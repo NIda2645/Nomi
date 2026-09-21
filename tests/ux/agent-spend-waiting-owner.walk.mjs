@@ -13,7 +13,7 @@
 //      供应商仍然只收到那一次，而且**出过图的节点还在**。
 //
 // 「看卡 >90 秒再确认仍成功」不在这里：`check:test-waits` 不许走查里放墙钟空等，而那条要证的不变量
-// 本来也不是「90 秒」，是「等待不计入工具超时」——由 `tests/agent-runtime/lane-preflight-wait.test.mts`
+// 本来也不是「90 秒」，是「等待不计入工具超时」——由 `tests/agent-runtime/lane-resilience.test.mts`（「waiting in the domain preflight…」）
 // 用一个 50ms 预算的工具 + 阳性对照证（等在 execute 里同样久 → 超时）。
 
 import fs from 'node:fs'

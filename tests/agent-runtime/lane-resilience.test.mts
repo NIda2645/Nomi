@@ -270,6 +270,40 @@ test('阳性对照 · waiting on an approval does not spend the tool’s budget'
     'the tool ran and succeeded, so the 500ms the user spent deciding was not charged to its 300ms budget');
 });
 
+test('阳性对照 · waiting in the domain preflight (the priced card) does not spend the tool’s budget either', async (t) => {
+  // 2026-09-22 裁决 A：`generate` 等用户点那张报价卡，等在 `toolLifecycle.approved` 里（`before_tool`，闸放行之后）。
+  // 此前那次等待住在工具执行里，撞 60 秒写类预算——文稿方案的 generate 三轮实测一次没成过。
+  // 这条和上面那条是同一个仪器：预算 300ms 的工具、在预检里**故意等** 500ms、工具本身瞬时返回。
+  // 真机走查没法放「看卡 90 秒」的墙钟空等（`check:test-waits`），要证的不变量也不是 90 秒，是「这段等待不计时」。
+  const fixture = await createLaneFixture(t, [
+    { type: 'tool', calls: [{ id: 'call-held', name: 'held_in_preflight', arguments: {} }] },
+    { type: 'text', text: 'The user answered and it ran.' },
+  ], { hasUserInterface: true, policy: () => ({ mode: 'safe-auto', spend: 'confirm' }) });
+  let waitedInPreflight = false;
+  const lane = await fixture.openLane({
+    ...fixture.options,
+    tools: [stallingTool('held_in_preflight', 300, async () => {})],
+    toolLifecycle: {
+      prepare: async () => {},
+      approved: async (call, _record, host) => {
+        if (call.toolName !== 'held_in_preflight' || !host) return;
+        const wait = host.waitForUser();
+        setTimeout(() => { wait.settle({ kind: 'confirmed' }); }, 500);
+        assert.deepEqual(await wait.outcome, { kind: 'confirmed' });
+        waitedInPreflight = true;
+      },
+      settled: () => {},
+    },
+  });
+
+  await lane.execute({ kind: 'prompt', text: 'Use the tool.' });
+
+  assert.equal(waitedInPreflight, true, 'the preflight really held the call (otherwise this proves nothing)');
+  const [result] = toolResults(lane.projection());
+  assert.equal(result?.kind === 'tool-result' && result.isError, false,
+    'the 500ms spent waiting for the user in preflight was not charged to the tool’s 300ms budget');
+});
+
 test('a billable tool may not claim a long budget — it must submit and return an id', async (t) => {
   // 长任务形状（调研 #599 §长任务 L1）落成装配期不变量。违反它的工具**不会报错**，
   // 它只会很慢——而「很慢」在真机上和「模型在想事情」长得一模一样。
