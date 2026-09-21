@@ -19,6 +19,7 @@ import { V4ErrorBar, V4ToolReceipt } from '../../../../workbench/ai/v4/AgentPane
 import { V4FlowRow } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { useV4Labels } from '../../../../workbench/ai/v4/agentPanelV4Labels'
 import type { ToolReceipt, V4AssistantStatus } from '../../../../workbench/ai/v4/agentPanelV4Types'
+import { formatMoney } from '../../../../workbench/ai/v4/formatMoney'
 import { Piece, useV4Fixtures, V4_LAB_SLOT_HANDLERS } from '../agentPanelV4LabKit'
 import type { LaneViewModelLabels } from '../../../../workbench/ai/lane/laneViewModel'
 import { laneDrivenReceipt, laneSnapshotQuestionAnswered, laneSnapshotToolDenied, laneSnapshotToolRunning } from '../laneDrivenFixtures'
@@ -131,7 +132,7 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     // 不是画面上的一块空白。
     taskTitle: fx.t('agentPanelV4.taskRun'),
     formatStages: (done, total) => fx.t('agentPanelV4.taskStages', { done, total }),
-    formatMoney: (currency, amount) => fx.t('agentPanelV4.money', { currency, amount: amount.toFixed(2) }),
+    formatMoney: (currency, amount) => formatMoney(fx.locale, currency, amount),
     taskUnknown: fx.t('agentPanelV4.taskUnknown'),
     answered: fx.t('agentPanelV4.questionAnswered'),
     // 技能名。这一格的转录里一条用户消息都没有，所以永远查不到它——但类型要求穷尽，

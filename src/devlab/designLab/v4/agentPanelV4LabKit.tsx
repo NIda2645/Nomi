@@ -68,8 +68,9 @@ export function Piece({
 }
 
 export function useV4Fixtures() {
-  const { t } = useTranslation()
-  return React.useMemo(() => buildFixtures(t), [t])
+  const { t, i18n } = useTranslation()
+  // `locale` 跟着夹具一起给出去：金额怎么印看界面语言（`formatMoney`），实验室与生产同一条路。
+  return React.useMemo(() => ({ ...buildFixtures(t), locale: i18n.language }), [t, i18n.language])
 }
 
 /** 夹具照定稿画布逐格抄：同一句话、同一个数字，才比得出实现有没有走样。 */

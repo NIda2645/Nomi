@@ -83,7 +83,7 @@ export type AgentPanelSpendConfirm = Readonly<{
 }>
 
 export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [pending, setPending] = React.useState<PendingSpendConfirm | undefined>(undefined)
   const [draft, setDraft] = React.useState<SpendDraft>(EMPTY_SPEND_DRAFT)
   const draftOwner = React.useRef<string | undefined>(undefined)
@@ -263,13 +263,14 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     if (!repriced) return undefined
     const remembered = originalModelIds.current
     const card = projectSpendCard(repriced, { page: index, scope }, t, {
+      locale: i18n.language,
       ...(remembered?.operationId === repriced.operationId ? { agentPickedModelIds: remembered.modelIds } : {}),
     })
     // 卡上有还没提交的手改时，× 先问一句（D4：撤什么、丢什么明着说）。没有手改就不打扰。
     return card && !draftIsEmpty(draft)
       ? Object.freeze({ ...card, rejectConfirmNote: t('agentPanelV4.spendDiscardEditsWarning') })
       : card
-  }, [readFailure, repriced, index, scope, draft, t])
+  }, [readFailure, repriced, index, scope, draft, t, i18n.language])
 
   /**
    * 卡上四个动作共用的一次执行。**宿主说不行就必须让用户看见**：

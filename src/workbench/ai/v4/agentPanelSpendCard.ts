@@ -9,6 +9,7 @@
 //   ③ 算式只印我们真的算过的东西。目录的价目是「基价 + 命中的规格加价」，**不是**「每秒单价 × 时长」，
 //      所以这里印的是「N 镜」而不是「N 镜 × 3s · ¥0.10/秒」。后者要等目录长出按秒计价才成立，
 //      在那之前印它就是编一个不存在的算法（样张上那句是报价桩，不是我们的价目模型）。
+import { formatMoney } from './formatMoney'
 import type { PendingSpendConfirm, PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { InterventionData } from './agentPanelV4Types'
 
@@ -20,9 +21,6 @@ export type SpendCardView = Readonly<{
 }>
 
 /** 这一镜的价格文本；算不出 → `undefined`（调用方据此走「算不出」那一档）。 */
-function money(t: Translate, currency: string, amount: number): string {
-  return t('agentPanelV4.money', { currency, amount: amount.toFixed(2) })
-}
 
 /**
  * 这一单是视频还是图片。判据是候选自己的 `mode`（`text_to_image` / `image_to_video` …），
@@ -54,9 +52,14 @@ export function projectSpendCard(
   pending: PendingSpendConfirm,
   view: SpendCardView,
   t: Translate,
-  options: Readonly<{ agentPickedModelIds?: readonly string[] }> = {},
+  /**
+   * `locale` **必填**：金额怎么印跟着界面语言走（`formatMoney`）。做成必填是因为漏传不会报错、
+   * 只会悄悄按某个默认语言印——那种分歧只有换了语言的用户看得见。
+   */
+  options: Readonly<{ locale: string; agentPickedModelIds?: readonly string[] }>,
 ): InterventionData | undefined {
   const shots = pending.shots
+  const money = (amount: number): string => formatMoney(options.locale, pending.currency, amount)
   if (shots.length === 0) return undefined
   const index = spendCardPage(pending, view.page)
   const current = shots[index]
@@ -82,7 +85,7 @@ export function projectSpendCard(
           : t('agentPanelV4.spendParamsBreakdownMixed', { count: shots.length }),
     ...(total === undefined
       ? { unavailable: t('agentPanelV4.spendParamsUnavailable') }
-      : { totalLabel: t('agentPanelV4.spendParamsTotalLabel'), total: money(t, pending.currency, total) }),
+      : { totalLabel: t('agentPanelV4.spendParamsTotalLabel'), total: money(total) }),
     // 逐镜摊开只在「不整齐」时才有信息量：整齐时每一行都是同一个数，摊开等于把同一句话抄 N 遍。
     ...(total !== undefined && shots.length > 1 && !uniform
       ? {
@@ -90,7 +93,7 @@ export function projectSpendCard(
           perItem: shots.map((shot) => ({
             label: t('agentPanelV4.spendParamsShot', { number: shot.index }),
             amount: shot.price.known
-              ? money(t, pending.currency, shot.price.amount)
+              ? money(shot.price.amount)
               : t('agentPanelV4.spendParamsUnavailable'),
           })),
         }
@@ -133,15 +136,15 @@ export function projectSpendCard(
     ...(total === undefined
       ? { totalLead: t('agentPanelV4.spendTotalUnknown') }
       : shots.length > 1
-        ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(t, pending.currency, total) }) }
+        ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(total) }) }
         : {}),
     // 主按钮**带后果**：设计系统 §1.8 规则 1「带后果时把后果写进标签（生成 ¥1.20）」。
     // 上一版我把金额从按钮上拿掉了（照 Recommendation Card 的排法），那是拿别人的版式
     // 压过了自己的规则——按下去的那颗钮上就该印着要花的钱。
     confirmLabel: batch && total !== undefined
-      ? t('agentPanelV4.spendParamsConfirmAll', { count: shots.length, amount: money(t, pending.currency, total) })
+      ? t('agentPanelV4.spendParamsConfirmAll', { count: shots.length, amount: money(total) })
       : current.price.known
-        ? t('agentPanelV4.spendParamsConfirm', { amount: money(t, pending.currency, current.price.amount) })
+        ? t('agentPanelV4.spendParamsConfirm', { amount: money(current.price.amount) })
         : t('agentPanelV4.spendParamsConfirmUnknown'),
   })
 }

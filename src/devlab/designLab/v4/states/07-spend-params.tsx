@@ -258,6 +258,7 @@ function SpendComposerCard({
   }
   const data = projectSpendCard(pendingSpend, { page: index, scope: activeScope }, fx.t, {
     // 「Nomi 选的」= 模型还是 Nomi 当初挑的那个。用户在卡上一改模型，这句话跟着消失。
+    locale: fx.locale,
     agentPickedModelIds: [String(KLING.modelKey ?? '')],
   })
   if (!data) return <Piece><div /></Piece>
