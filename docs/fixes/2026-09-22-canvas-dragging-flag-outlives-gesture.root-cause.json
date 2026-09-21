@@ -1,0 +1,167 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-canvas-dragging-flag-outlives-gesture",
+  "problem_type": "Canvas-wide transient UI state released by per-owner bookkeeping that later gestures can overwrite",
+  "symptom": "On main 195bf3a2c (and already on 46b71c973) the user selects an image node, empty or already generated, and the generation composer does not appear, so there is no parameter bar. Clicking the '2 版' version pill opens nothing: the result tray is rendered but invisible. The floating node toolbar is gone too, and the state persists until the next complete drag-pan.",
+  "direct_cause": "GenerationCanvasReactFlowViewport.onMoveEnd released the react-flow-viewport dragging owner only if canvasPanMovedRef was still true. @xyflow/system createPanZoomEndHandler defers onPanZoomEnd by 150ms when panOnScroll is on (the user's modifier-zoom scheme) and by 0ms otherwise. Any pointerdown inside .react-flow__pane in that window resets canvasPanMovedRef=false. That includes a pointerdown on a node, because nodes live inside the pane. The deferred onMoveEnd then skips the release and data-dragging='true' stays on the stage.",
+  "class_root": "The stage-level data-dragging flag had no lifetime bound. Every owner (node drag, selection drag, group drag, pointer pan, viewport pan) is a pointer gesture, yet release depended entirely on each owner's own bookkeeping. Any timing that skips one owner's release left every node overlay (composer, floating toolbar, version tray) invisible indefinitely.",
+  "affected_population": [
+    "Every canvas user; with the modifier-zoom wheel scheme (Figma-style, trackpad users) the window is 150ms after every drag-pan, with wheel-zoom it is the 0ms timer tick",
+    "Wheel or trackpad panning never releases the stuck owner, so trackpad users stay stuck for the rest of the session"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx"
+  ],
+  "entry_points": [
+    "Drag-pan then click a node or blank within the deferred move-end window",
+    "Drag-pan followed by a wheel/programmatic viewport move within that window",
+    "Any future owner whose own release is skipped by a timing race"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/xyflow/xyflow/blob/main/packages/system/src/xypanzoom/eventhandler.ts",
+      "checked_at": "2026-09-22",
+      "purpose": "createPanZoomEndHandler defers onPanZoomEnd with setTimeout(panOnScroll ? 150 : 0); installed @xyflow/system@0.0.81 dist/esm/index.mjs lines 2848-2872 read locally"
+    }
+  ],
+  "invariants": [
+    "data-dragging on a canvas stage never outlives the pointer gesture that raised it: after pointerup / pointercancel / window blur no owner remains",
+    "A viewport move end always releases the viewport owner (idempotent)"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "setCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "symbol": "setCanvasDragging"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 7,
+    "why_not": "Each door is a different gesture owner (selection drag, legacy node drag, RF node drag start/stop, RF viewport pan, host pointer pan). They legitimately start and stop at different moments; merging them would re-couple unrelated gestures. The class is closed at the shared flag module (armGestureEndGuard) that every door writes through, so no door can leak past the gesture regardless of its own timing."
+  },
+  "generality_proof": "All six writer doors call setCanvasDragging. The first raise now arms a window-level gesture-end guard on that stage, and pointerup, pointercancel or window blur clears every owner. So a skipped release from any current or future owner, from any timing race, pointer type or platform, is bounded by the gesture. The specific viewport race is also fixed at its source by releasing unconditionally.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "setCanvasDragging",
+      "responsibility": "Single owner of the stage data-dragging attribute; bounds its lifetime to the pointer gesture"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "onMoveEnd",
+      "responsibility": "Viewport owner always released at move end"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "entry_point": "onMove / onMoveEnd",
+      "disposition": "enforced",
+      "evidence": "Walkthrough G2/G3 red on 46b71c973 and 195bf3a2c (data-dragging='true' stuck), green after fix"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "entry_point": "commitCanvasNodeDragStop",
+      "disposition": "enforced",
+      "evidence": "Releases only when draggingRef is set; if RF never fires drag stop (node unmounted mid-drag) the guard clears on pointerup. Unit class test iterates every CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "entry_point": "group/selection drag handleUp",
+      "disposition": "enforced",
+      "evidence": "Already released on window pointerup/blur; now also bounded by the shared guard"
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "entry_point": "handleCanvasPointerEnd",
+      "disposition": "enforced",
+      "evidence": "Pointer-pan owner cleared on pointer end; bounded by guard for pointercancel/blur (walkthrough G7/G8)"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The flag has six independent writers and one of them already leaked through a third-party timer. Any new owner or timing change can leak the same way, and the effect is every overlay on the canvas disappearing.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs setCanvasDragging → 6 writer doors, 15 call sites",
+      "grep '\\[dragging=true\\]/canvas' → NodeGenerationComposer, NodeFloatingToolbar, NodeResultStack all hide on the flag",
+      "grep canvasPanMovedRef → pointerdown on .react-flow__pane (which contains nodes) resets it"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "invariant": "No dragging owner survives pointerup, pointercancel or window blur on the stage",
+    "failure_mode": "The guard clears every owner and removes the attribute, so overlays become visible again. A late owner release is a no-op.",
+    "exception_policy": "none",
+    "strategy": "The flag module arms a one-shot capture listener per stage when the first owner is raised and disarms it when the last owner releases normally",
+    "artifacts": [
+      "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
+    "tests/ux/node-params-and-version-pill.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx"
+    ],
+    "rationale": "The conditional release keyed on canvasPanMovedRef in onMoveEnd is removed and replaced by an unconditional idempotent release"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The 150ms deferral is documented xyflow behaviour for panOnScroll (debouncing scroll end), not a defect; our release must not depend on it. No upgrade changes it.",
+    "exit_criteria": []
+  },
+  "migration": "None: transient in-memory DOM attribute, nothing persisted.",
+  "residual_risks": [
+    "A programmatic viewport move while no pointer is down cannot raise the flag (canvasPanMovedRef is false then), so the guard waiting for the next pointerup is sufficient; not independently proven for touch pinch.",
+    "The integration branch (ab9460f45, unpushed) replaces this module with a lease model; its owner will keep the behaviour-level walkthrough as the shared acceptance."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "tests": [
+      "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
+      "tests/ux/node-params-and-version-pill.walk.mjs"
+    ],
+    "why": "The flag module is the only writer of data-dragging, so it owns the lifetime bound. Unit tests cover every owner. The walkthrough is the behavioural positive control: red on 46b71c973 and 195bf3a2c, green after the fix."
+  }
+}
