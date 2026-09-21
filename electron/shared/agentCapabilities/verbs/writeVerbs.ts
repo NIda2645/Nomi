@@ -45,7 +45,11 @@ export const draftShotSchema = z.object({
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
   }).optional().describe("Catalog candidate identity when known."),
   parameters: generationParameters.optional().describe("Parameter values the model's profile declares, minus length — length is durationSec. The host clamps them to real limits and reports every clamp."),
-  references: z.array(z.string().trim().min(1)).max(30).optional().describe("Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references."),
+  // 2026-09-22：这句话原来写着「asset ids …**or shot ids** (from look_at_canvas or this call)」，
+  // 而解析这一头（`pinAssetReference`）只认项目素材库里的 assetId——镜头 id 送进来**必然**被拒，
+  // 理由还是「不在这个项目的素材库里」（run2 的 A1/A4 各一次，模型照着说明书做的）。
+  // 跨镜复用走的是 `storyboard.anchorIds`，不是这里。说明书按真的那份写。
+  references: z.array(z.string().trim().min(1)).max(30).optional().describe("Asset ids from look_at_media — files already in the project library. To reuse another shot's look, do not put its shot id here: name it in storyboard.anchorIds instead."),
 }).strict();
 
 /**

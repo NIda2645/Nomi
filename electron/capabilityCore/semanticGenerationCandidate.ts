@@ -139,7 +139,13 @@ export function pinAssetReference(item: unknown, resolve?: ResolveAssetReference
   const assetId = text(reference.assetId);
   if (!assetId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "参考素材需要 assetId（来自 look_at_media）");
   const identity = resolve?.(assetId);
-  if (!identity) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+  if (!identity) {
+    // 模型最常见的两种错法，分开说：给了一个**镜头 id**（说明书曾经说这里收镜头 id，见 writeVerbs 的
+    // `references`），和给了一个**根本不在库里的 assetId**。两种的下一步不一样，合成一句话等于两种都没说清。
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, /^(gen-v2-|shot-)/.test(assetId)
+      ? `${assetId} 看起来是画布上的一个镜头/节点 id，不是素材库里的文件。references 只收 look_at_media 给出的 assetId；要复用另一镜的形象，把它写进 storyboard.anchorIds。`
+      : `参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+  }
   return { ...reference, contentHash: identity.contentHash, version: identity.version };
 }
 

@@ -26,6 +26,7 @@ import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/w
 import type { DispatchContext } from './dispatcher'
 import { requestRenderer, requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
 import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+import { resolveProjectAssetReferenceIdentity } from '../assets/projectAssetStore'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { installGuiResolveNarrowIpc } from './generationResolveIpc'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
@@ -324,6 +325,13 @@ export async function startCapabilityCore(
         requestRendererDecision,
         requestRenderer,
         resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
+        // 2026-09-22：**这一行以前不在**，而 `mcpStdioServer` 那个宿主一直有它。
+        // 后果：App 内的 Agent 面板（真实用户唯一走的那条路）上，`draft_shots` 的 `references`
+        // **必定**被拒——`resolve?.(assetId)` 恒 undefined ⇒「参考素材 … 不在这个项目的素材库里」。
+        // run2 的 A1 里，`look_at_media` 刚给出 `asset-c7ce…`，下一句 `draft_shots` 就说不认识它：
+        // 两个工具对「素材身份」的答案不一样，而不一样的原因是**其中一个宿主没把解析器递下去**
+        // （与 report-B 项 4 同一形状：判据写对了，没人把状态交给它，而且没有任何东西会红）。
+        resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
         get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).
         defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),

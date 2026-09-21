@@ -55,3 +55,13 @@ describe("报价卡上的行怎么选", () => {
     expect(rows.map((shot) => shot.shotId), "唯一的镜头被取消勾选 → 剩下的锚才是要花的钱").toEqual(["a1"]);
   });
 });
+
+// `references` 的说明书曾经说这里也收镜头 id（`look_at_canvas` 给的那种），而解析这一头只认
+// 素材库里的 assetId——模型照着说明书做，run2 的 A1/A4 各被拒一次。说明书按真的那份写。
+describe("references 的说明书与解析这一头对得上", () => {
+  it("不再承诺镜头 id：跨镜复用点名 storyboard.anchorIds", () => {
+    const printed = JSON.stringify(draftShots().schema);
+    expect(printed).not.toContain("or shot ids");
+    expect(printed).toContain("storyboard.anchorIds");
+  });
+});

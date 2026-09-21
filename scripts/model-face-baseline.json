@@ -620,7 +620,7 @@
                   "type": "string"
                 },
                 "references": {
-                  "description": "Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references.",
+                  "description": "Asset ids from look_at_media — files already in the project library. To reuse another shot's look, do not put its shot id here: name it in storyboard.anchorIds instead.",
                   "items": {
                     "minLength": 1,
                     "type": "string"
