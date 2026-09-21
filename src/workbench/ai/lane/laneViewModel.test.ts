@@ -411,10 +411,11 @@ describe('laneViewModel', () => {
   it('separates a policy denial from a broken tool — they are two different sentences', () => {
     next = 0
     const model = laneViewModel(projection([
-      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
-        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
+      // 同上：记录排在 toolResult **后面**，这是真实转录的顺序。
       part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'append_to_end', args: { content: 'x' }, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'append_to_end', text: 'The document is locked.', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
       part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'read_full_text', args: {}, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'read_full_text', text: 'boom', isError: true }),
     ]), labels)
@@ -425,6 +426,29 @@ describe('laneViewModel', () => {
     const broken = model.items[1]
     expect(denied.kind === 'tool' && denied.receipt.status).toBe('output-denied')
     expect(broken.kind === 'tool' && broken.receipt.status).toBe('output-error')
+  })
+
+  // 2026-09-21 真机抓到的：用户点了 chip 把问题答了，而那一行写着「问你一个问题 ⚠ 失败」。
+  // 协议上那次确实是 `allow:false`（没有东西要执行），面板把「没跑」读成了「坏了」。
+  it('答完一张提问卡的那一行读作「已回答 · 他的原话」，不是「失败」', () => {
+    next = 0
+    const model = laneViewModel(projection([
+      // **顺序照真实转录摆**：记录是在 `before_tool` 里 append 的，而 pi 把 toolResult
+      // 排在它前面（2026-09-21 从真机 transcript 读出来的：assistant → toolResult →
+      // nomi.ui.approval → assistant）。以前的夹具按「先 note 后 result」摆，
+      // 那个顺序真实转录里从来不出现——于是单测全绿而真机上每一次都读成「失败」。
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'ask_user',
+        args: { questions: [{ question: '要删哪一个？' }] }, running: false }),
+      // pi 那一侧这次调用是 `isError`——它没有跑。用户那一侧发生的却是「他回答了」。
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'ask_user', text: '镜 2 · 推门', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'ask_user', decision: 'answered', reason: '镜 2 · 推门' } }),
+    ]), labels)
+    const answered = model.items[0]
+    expect(answered.kind === 'tool' && answered.receipt.status).toBe('output-denied')
+    expect(answered.kind === 'tool' && answered.receipt.answered).toBe(true)
+    expect(answered.kind === 'tool' && answered.receipt.label).toBe(labels.answered)
+    expect(answered.kind === 'tool' && answered.receipt.summary).toBe('镜 2 · 推门')
   })
 
   it('does not turn a host note into a second bubble saying the same thing twice', () => {

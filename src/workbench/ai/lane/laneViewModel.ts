@@ -320,7 +320,24 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
    */
   const turnOf: number[] = []
   const slots = new Map<string, ToolSlot>()
+  /**
+   * 「这次调用没跑起来」的宿主记录，**先扫一遍收齐，再进主循环**。
+   *
+   * 为什么不能边走边收（2026-09-21 真机抓到）：真实转录里这三条是**这个顺序**——
+   * `assistant(toolCall) → toolResult → nomi.ui.approval → assistant`。
+   * 记录是在 `before_tool` 里 append 的，而 pi 把 toolResult 排在它前面。
+   * 边走边收的那一版在读到 toolResult 那一刻 `denials` 还是空的，于是**每一次**
+   * 拒绝/回答都被读成「坏了」——用户刚刚答完一个问题，屏幕上写着「⚠ 失败」。
+   *
+   * 这条 bug 一直在（不是这次改出来的），而单测看不见它：夹具是手写的，
+   * 顺序按「先 note 后 result」摆，那个顺序真实转录里从来不出现。
+   * 收齐之后顺序就不再是判据的一部分——这类 bug 也就没有地方再长出来。
+   */
   const denials = new Map<string, LaneApprovalNote>()
+  for (const part of projection.parts) {
+    if (part.kind !== 'host-note' || part.noteType !== LANE_APPROVAL_NOTE_TYPE) continue
+    if (isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) denials.set(part.data.toolCallId, part.data)
+  }
   /** 这一回合挂着的技能（来自开启这一回合的那条用户消息）。缺席 = 这一轮没挂技能。 */
   const skillOfTurn = new Map<number, string>()
   let turn = 0
@@ -335,15 +352,10 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     }
     previous = part.sequence
 
-    if (part.kind === 'host-note') {
-      // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
-      // tool result（探针 §4.2 臂 B），所以这里只用它把那一行的状态从「坏了」改成
-      // 「被拒了」——同一句话说两遍是在骗用户，让他以为发生了两件事。
-      if (part.noteType === LANE_APPROVAL_NOTE_TYPE && isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) {
-        denials.set(part.data.toolCallId, part.data)
-      }
-      continue
-    }
+    // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
+    // tool result（探针 §4.2 臂 B），所以它只用来把那一行的状态从「坏了」改成它实际是什么
+    // ——同一句话说两遍是在骗用户，让他以为发生了两件事。收集在上面那一趟预扫里。
+    if (part.kind === 'host-note') continue
     if (part.kind === 'error') {
       push({ kind: 'error', reason: part.text })
       continue

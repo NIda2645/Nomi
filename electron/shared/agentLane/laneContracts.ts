@@ -492,9 +492,29 @@ export function isLaneApprovalNote(value: unknown): value is LaneApprovalNote {
     && typeof note.decision === 'string' && APPROVAL_DECISIONS.has(note.decision)
 }
 
-/** 一条被拒的记录（含策略拒和取消）——面板据此把那一行从「坏了」改成「被拒了」。 */
+/**
+ * 这次调用**批准并且跑了**吗。三个 grant 值，穷举。
+ *
+ * 它是下面那条判据的唯一依据：判「跑没跑」比判「被怎么拒的」少一个自由度——
+ * 拒法会变多（2026-09-21 就多了一个 `answered`），批法不会。
+ */
+export function laneApprovalWasGranted(note: LaneApprovalNote): boolean {
+  return note.decision === 'auto-granted' || note.decision === 'granted-once' || note.decision === 'granted-session'
+}
+
+/**
+ * 一条**没有跑起来**的记录（拒绝、策略拒、取消，以及「用户回答了一个问题」）——
+ * 面板据此把那一行从「坏了」改成它实际是什么。
+ *
+ * **从 grant 那一侧取反，不再手列**（2026-09-21 真机抓到的 bug）：
+ * 这个函数原来是 `denied || denied-by-policy || cancelled` 一张手列的名单。
+ * 那天给审批协议加了第七个结局 `answered`（用户回答了提问卡），名单没跟上——
+ * 于是面板拿不到那条记录，一次**成功的回答**在用户眼里变成了
+ * 「问你一个问题 ⚠ 失败」。typecheck 绿、单测绿、门岗绿：往一张开放名单里加一个成员，
+ * 没有任何东西会说话。取反之后，以后再加任何一个「没跑起来」的结局都自动落对边。
+ */
 export function laneApprovalWasRefused(note: LaneApprovalNote): boolean {
-  return note.decision === 'denied' || note.decision === 'denied-by-policy' || note.decision === 'cancelled'
+  return !laneApprovalWasGranted(note)
 }
 
 /**
