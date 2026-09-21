@@ -31,8 +31,8 @@ export type CanvasStageDropContext = {
   readOnly: boolean
   /** Active project boundary for asset-library references. */
   activeProjectId: string | null
-  offset: { x: number; y: number }
-  zoom: number
+  /** 屏幕坐标 → 画布坐标。只许由画布内核（React Flow screenToFlowPosition）提供，不在这里手算。 */
+  toCanvasPoint: (clientX: number, clientY: number) => { x: number; y: number }
   activeCategoryId?: string
 }
 
@@ -42,10 +42,6 @@ type BrowserAssetCanvasItem = {
   title: string
   url?: string
   prompt?: string
-}
-
-function clampNodePos(value: number): number {
-  return Math.max(40, Math.round(value))
 }
 
 function layoutColumns(count: number): number {
@@ -63,16 +59,18 @@ export function layoutBrowserAssetDropPositions(
   const cellWidth = footprint.width + 36
   const cellHeight = footprint.height + 36
   return Array.from({ length: count }, (_, index) => ({
-    x: clampNodePos(basePosition.x + (index % columns) * cellWidth),
-    y: clampNodePos(basePosition.y + Math.floor(index / columns) * cellHeight),
+    x: Math.round(basePosition.x + (index % columns) * cellWidth),
+    y: Math.round(basePosition.y + Math.floor(index / columns) * cellHeight),
   }))
 }
 
-export function resolveAssetLibraryDropPosition(
+/** 放下时光标该压在第一张卡的哪一点：素材库卡带着「抓在哪」就按它，其余来源（系统文件 / 文件树 / 浏览器素材盒）按卡中心。 */
+const CENTER_DROP_ANCHOR = { xRatio: 0.5, yRatio: 0.5 }
+
+export function resolveDropOrigin(
   cursorPosition: { x: number; y: number },
-  dragAnchor?: AssetLibraryDragPayload['dragAnchor'],
+  dragAnchor: AssetLibraryDragPayload['dragAnchor'] = CENTER_DROP_ANCHOR,
 ): { x: number; y: number } {
-  if (!dragAnchor) return cursorPosition
   const size = getGenerationNodeDefaultSize('asset')
   return {
     x: cursorPosition.x - size.width * dragAnchor.xRatio,
@@ -251,11 +249,9 @@ export function importBrowserAssetsToGenerationCanvas(
 
 export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: CanvasStageDropContext): void {
   if (ctx.readOnly) return
-  const rect = event.currentTarget.getBoundingClientRect()
-  const basePosition = {
-    x: (event.clientX - rect.left - ctx.offset.x) / ctx.zoom,
-    y: (event.clientY - rect.top - ctx.offset.y) / ctx.zoom,
-  }
+  // 用户松手的那一点就是落点：由内核换算成画布坐标（负坐标同样合法，不钳制），卡片压在光标下。
+  const cursor = ctx.toCanvasPoint(event.clientX, event.clientY)
+  const dropOrigin = resolveDropOrigin(cursor)
 
   // 1) 项目文件树拖入：文件已在项目里，直接用 nomi-local 协议引用，按 kind 建图片/视频 asset 节点。
   const workspaceDrag = parseWorkspaceFileDrag(event.dataTransfer.getData(WORKSPACE_FILE_DRAG_MIME))
@@ -269,8 +265,9 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
       kind: 'asset',
       title: workspaceDrag.name.replace(/\.[^.]+$/, '') || (kind === 'video' ? '本地视频' : '本地素材'),
       prompt: '',
-      position: { x: clampNodePos(basePosition.x), y: clampNodePos(basePosition.y) },
+      position: { x: Math.round(dropOrigin.x), y: Math.round(dropOrigin.y) },
       categoryId: ctx.activeCategoryId,
+      exactPosition: true,
     })
     const result = { id: `workspace-${node.id}-${Date.now()}`, type: kind, url, createdAt: Date.now() }
     store.updateNode(node.id, {
@@ -305,7 +302,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
     }
     const store = useGenerationCanvasStore.getState()
     const dragAnchor = assetDragItems.find((asset) => asset.dragAnchor)?.dragAnchor
-    const anchoredPosition = resolveAssetLibraryDropPosition(basePosition, dragAnchor)
+    const anchoredPosition = resolveDropOrigin(cursor, dragAnchor)
     const positions = layoutBrowserAssetDropPositions(anchoredPosition, mediaItems.length)
     const nodeIds: string[] = []
     mediaItems.forEach((assetDrag, index) => {
@@ -359,7 +356,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
         prompt: asset.prompt,
       })),
       {
-        basePosition,
+        basePosition: dropOrigin,
         categoryId: ctx.activeCategoryId,
       },
     )
@@ -371,7 +368,8 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   if (!files.length) return
   event.preventDefault()
   event.stopPropagation()
-  void importLocalFilesToGenerationCanvas(files, { basePosition, categoryId: ctx.activeCategoryId })
+  // 系统文件的卡面尺寸要读完文件才知道（图片按像素比例），锚点交给导入适配器按真实尺寸换算。
+  void importLocalFilesToGenerationCanvas(files, { basePosition: cursor, anchor: CENTER_DROP_ANCHOR, categoryId: ctx.activeCategoryId, exactPosition: true })
 }
 
 /**
@@ -381,7 +379,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
  */
 export function importLocalFilesToGenerationCanvas(
   files: readonly File[],
-  options: { basePosition: { x: number; y: number }; categoryId?: string },
+  options: { basePosition: { x: number; y: number }; categoryId?: string; exactPosition?: boolean; anchor?: { xRatio: number; yRatio: number } },
 ): Promise<void> {
   // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
   // 先同步签发、再挂 .catch：这个命令不会把拒绝丢给调用它的控件。

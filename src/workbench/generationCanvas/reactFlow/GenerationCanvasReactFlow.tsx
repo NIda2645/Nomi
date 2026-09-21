@@ -615,16 +615,14 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly])
 
   const handleDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
       // 放下即动作起点：签发此刻打开的项目作为素材归属边界。
       activeProjectId: withProjectAction((project) => project.binding.projectId) ?? null,
-      offset: { x: currentViewport.x, y: currentViewport.y },
-      zoom: currentViewport.zoom,
+      toCanvasPoint: getCanvasPointFromClientPoint,
       activeCategoryId,
     })
-  }, [activeCategoryId, flow, readOnly])
+  }, [activeCategoryId, getCanvasPointFromClientPoint, readOnly])
 
   return (
     <section

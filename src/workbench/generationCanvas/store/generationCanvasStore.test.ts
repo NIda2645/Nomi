@@ -780,6 +780,19 @@ describe('generationCanvasStore clipboard paste placement', () => {
     ])
     expect(useGenerationCanvasStore.getState().edges.some((edge) => edge.source === pasted[0]?.id && edge.target === pasted[1]?.id)).toBe(true)
   })
+  it('粘贴到负坐标区时原样落在光标处（不钳回 40，否则跑到视线外）', () => {
+    const store = useGenerationCanvasStore.getState()
+    store.selectNode('copy-a')
+    store.selectNode('copy-b', true)
+    store.copySelectedNodes()
+    store.pasteNodes({ x: -800, y: -300 })
+
+    const pasted = useGenerationCanvasStore.getState().nodes.filter((candidate) => candidate.id.includes('-copy-'))
+    expect(pasted.map((candidate) => candidate.position)).toEqual([
+      { x: -800, y: -300 },
+      { x: -640, y: -260 },
+    ])
+  })
 })
 
 // 2026-08-24 用户反馈：「下面是生了视频的，有这个报错窗口在，就一直看不了原本的视频」。

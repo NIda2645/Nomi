@@ -67,6 +67,7 @@
 | T-CV-13 | Group / Frame 命名双轨：UI 叫 Frame，数据类型仍叫 `NodeGroup` | todo | [设计实扫](designs-not-yet-built.md) | 卫生项 |
 | T-CV-14 | 画布「按屏幕尺寸判 LOD（S5）」重做：#787 的这半在列车里被撤出（`3a72f0ce7` 由 `fae43a80e` + `29e232a31` 撤回），main 仍是「节点数 > 80 且 zoom < 0.55」的老判据 | todo | #787 · #802 正文「进过批次又撤出去的」 | 2026-09-17 查清根因是**两条**：① 契约漏了一格——`data-status` 只长在全套 chrome 上，卡片掉档就没了（已在 `integration/release-20260917` 修：轻量档补齐身份三件套 + 测试钉住，走查的「等不到 success」自此不再是假红）；② 产品行为——那一刀规定「有结果媒体才准进轻量档」，于是卡片**生成完成那一刻外观掉档**，掉档时机是设计决策（R8 要样张拍板），这半仍未做 |
 | T-CV-15 | 独立镜头号重复，首帧/视频与 Agent 指代一致性 | done | 2026-09-20 用户会话，共号并区分角色已拍板 | [方案](../plan/2026-09-20-shot-number-identity.md)：已合入 #825（b5cf48bc0）；模板/粘贴/恢复和 UI/Agent 复用共享 owner，旧日志回放已审计修复 |
+| T-CV-16 | 拖入/粘贴不落在松手处、跑出视线（群反馈 09-21） | doing | 用户 09-21 截图反馈 | 分支 `fix/canvas-drop-at-cursor-20260921` 已修根因（删 ≥40 钳制、落点只经 `screenToFlowPosition`、中心对准光标），随下一批集成合入。残留：视频卡元数据回填后中心上移 44px；结构提议「放置意图 {point, anchor}」见 [`docs/audit/2026-09-21-canvas-node-placement-structure.md`](../audit/2026-09-21-canvas-node-placement-structure.md) §3，待排期 |
 
 ## D. 设计落地（界面大改）
 
