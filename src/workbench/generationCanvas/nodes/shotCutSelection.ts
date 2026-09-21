@@ -112,11 +112,8 @@ export function shotSheetTileStyle(
   }
 }
 
-// 联系表行数**不在这一层算**（2026-09-22 第二条阻断）：它由主进程随结果下发（`sheetRows`）。
-// 曾经这里有一个 `shotSheetRows(总数, 列数)`，主进程自己也算一遍——两份算式只要输入口径差一点
-// （末帧恰好是被去重并掉的那一帧就会差一行），`background-size` 的高度就按错的行数算，
-// 整张联系表**竖向压扁**、所有格子一起错位。实测 0.4%–2% 的片长会中，且不压上限的普通片子也会中。
-// 一份状态只许有一个 owner：那个 owner 是生产它的主进程，这里只读。
+// 联系表行数/格子数**不在这一层算**：owner 在主进程（`shotSheetRowsFor`），随结果下发。
+// 这里再长出一份算式就会与它分叉（整张表竖向压扁），有结构守卫测试盯着。
 
 /** 秒 → `m:ss` / 超过一小时 `h:mm:ss`。 */
 export function formatShotTimestamp(seconds: number): string {

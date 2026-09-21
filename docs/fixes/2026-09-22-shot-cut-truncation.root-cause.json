@@ -430,11 +430,6 @@
     },
     {
       "kind": "read",
-      "path": "electron/screenshot/screenshotHotkey.ts",
-      "symbol": "ScreenshotHotkeyStatus"
-    },
-    {
-      "kind": "read",
       "path": "src/desktop/bridge.ts",
       "symbol": "DesktopMediaBridge"
     },
@@ -442,66 +437,6 @@
       "kind": "read",
       "path": "src/desktop/bridge.ts",
       "symbol": "DesktopVideoDepthBridge"
-    },
-    {
-      "kind": "read",
-      "path": "src/desktop/bridgeAssetsSurface.ts",
-      "symbol": "DesktopAssetDto"
-    },
-    {
-      "kind": "read",
-      "path": "src/desktop/bridgeAssetsSurface.ts",
-      "symbol": "DesktopAssetFoldersState"
-    },
-    {
-      "kind": "read",
-      "path": "src/desktop/bridgeBrowserTypes.ts",
-      "symbol": "DesktopAssetDto"
-    },
-    {
-      "kind": "read",
-      "path": "src/desktop/bridgeMedia.ts",
-      "symbol": "ScreenshotHotkeyStatus"
-    },
-    {
-      "kind": "read",
-      "path": "src/desktop/bridgeMedia.ts",
-      "symbol": "DesktopAssetFolder"
-    },
-    {
-      "kind": "read",
-      "path": "src/ui/browser/popover/browserAssetPopoverUtils.ts",
-      "symbol": "DesktopAssetDto"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/assets/assetLibraryLocalImport.ts",
-      "symbol": "DesktopAssetDto"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/assets/assetSurfaceMigration.ts",
-      "symbol": "DesktopAssetFoldersState"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/assets/useAllProjectAssets.ts",
-      "symbol": "DesktopAssetDto"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/assets/useAssetFolders.ts",
-      "symbol": "DesktopAssetFoldersState"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/settings/ScreenshotHotkeySection.tsx",
-      "symbol": "ScreenshotHotkeyStatus"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/timeline/agent/mediaToolCall.ts",
-      "symbol": "DesktopAssetDto"
     },
     {
       "kind": "read",
@@ -686,7 +621,7 @@
   ],
   "door_reduction": {
     "before": 15,
-    "after": 126,
+    "after": 113,
     "why_not": "门数没减反增（detectShotCuts 单文件 15→21，跨全部改动文件合计 121），因为这次**把隐式耦合变成了显式契约**：新增的 RawShotCut / dedupeShotCuts / capShotCutsByScore / assignSheetIndexes / SHOT_CUT_DEDUPE_FRAMES / shotSheetTileCount 是原来藏在函数体里的无名逻辑，拆出来才测得动、才钉得住；ShotCutCoverage 与 shotCutCoverageSchema 则是这次新立的 owner，它们带来的门正是「这份状态终于有人管了」的形状。真正该数的那扇门只有一扇且已收口：`coverage` 的**写入口仍然只有 detectShotCuts 一处**，而读侧不再能忽略它——DeconstructVideoResult.cutCoverage 与 DeconstructionResult.cutCoverage 都是必填，漏读在编译期就过不去。门表里其余条目是同一份状态的类型/常量/纯函数在各自文件内的读点，不构成第二个写入口。"
   },
   "generality_proof": "把「给全了没有」从生产者本地的布尔提升为 shared 层的 ShotCutCoverage（类型 + zod 同一份，electron/shared/canvas/shotTable.ts），并在两个下游结果类型里做成**必填字段**。于是：① 任何新的 detectShotCuts 读侧要构造结果，编译器都会要求它把 coverage 传下去；② 任何要落盘的分镜表都经过同一个 zod schema，半块 coverage 直接 parse 失败；③ 压上限这件事本身被收进一个纯函数 capShotCutsByScore，它的后置条件（kept === cuts.filter(score > appliedThreshold)）由单测钉死，任何改回「按时间取前 N」的改动都会红。这三条覆盖了本次扫到的全部同类入口。",

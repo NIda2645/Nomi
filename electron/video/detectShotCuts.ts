@@ -55,20 +55,7 @@ export const MAX_CUTS = 120;
  */
 export const SHOT_CUT_DEDUPE_FRAMES = 2;
 
-/**
- * 一个切点。
- *
- * **第 i 刀恒是联系表的第 i 格**——这条不再靠「两边算出来应该相等」，而是**由构造保证**：
- * 联系表那一趟 ffmpeg 不再自己按分数重筛一遍，而是按这份清单的 `pts` **精确点名选帧**
- * （`buildSheetFilter`）。JS 这一份就是唯一真相源，ffmpeg 只负责照单抓帧。
- *
- * 2026-09-22 第一版栽在这上面：当时联系表用 `gt(scene,appliedThreshold)` 重筛，以为能原样复现。
- * 实际上 JS 手里只有 `lavfi.scene_score` **打印出来的 6 位小数**，而 ffmpeg 的 `gt()` 比的是
- * 内部全精度 double。分数恰好等于阈值的那一帧，JS 按 `>` 排除、ffmpeg 按全精度收下——
- * 真实素材上实测 ffmpeg 多吐 1 帧，120 刀里 21 刀指错格、末刀的格子号甚至超出图的容量。
- * 每格都有图、只是配错了时间戳，正是「错得很安静」。阈值必然取自某一帧的打印值，
- * 所以这不是小概率：约一半压上限的片子都会中。
- */
+/** 一个切点。第 i 刀恒是联系表第 i 格——见文件头与 `buildSheetFilter`（按 pts 点名，由构造保证）。 */
 export type ShotCut = {
   /** 切点在源视频里的秒数。 */
   seconds: number;
@@ -171,14 +158,7 @@ export function dedupeShotCuts(cuts: readonly RawShotCut[], fps: number, frames 
   return out;
 }
 
-/**
- * 联系表有几行。**这是这份状态唯一的算式**（2026-09-22 阻断 B）。
- *
- * 它同时喂给 `tile=CxR` 和随结果下发给渲染层——一个数、一个来源。
- * 曾经渲染层自己也有一份（`shotSheetRows(格子数, 列数)`），两份算式的输入口径只要差一点
- * （末帧恰好是被去重并掉的那一帧就差一行），`background-size` 的高度就按错的行数算，
- * 整张联系表**竖向压扁**、所有格子一起错位。实测 0.4%–2% 的片长会中，普通片子也会中。
- */
+/** 联系表行数的**唯一** owner；语义与它防的那个 bug 见 `DetectShotCutsResult.sheetRows`。 */
 export function shotSheetRowsFor(cutCount: number, columns: number): number {
   return Math.max(1, Math.ceil(Math.max(0, cutCount) / Math.max(1, columns)));
 }
@@ -224,8 +204,8 @@ export function capShotCutsByScore(
   // 分数从高到低排，取第 cap+1 名当阈值：严格大于它的顶多 cap 条，而再低一档就必然超上限。
   const appliedThreshold = cuts.map((cut) => cut.score).sort((a, b) => b - a)[cap];
   const strong = cuts.filter((cut) => cut.score > appliedThreshold);
-  if (strong.length >= cap) return { kept: strong, appliedThreshold, capped: true };
   // 并列补齐：名额没用满的那部分，从恰好等于阈值的那一档里按时间均匀取。
+  // 名额正好用满时 need<=0，补齐集为空，这条路自然退化成「只要 strong」——不必单独提前返回。
   const tied = cuts.filter((cut) => cut.score === appliedThreshold);
   const filled = new Set(pickEvenlyByTime(tied, cap - strong.length));
   const kept = cuts.filter((cut) => cut.score > appliedThreshold || filled.has(cut));
@@ -238,19 +218,9 @@ export function buildDetectFilter(threshold: number): string {
 }
 
 /**
- * 联系表用的 filtergraph：**按 pts 点名选帧**，不再按分数重筛一遍。
- *
- * 这是「第 i 格 = 第 i 刀」从「两边应该算出一样的结果」变成「由构造保证」的那一刀。
- * 第一版用 `select='gt(scene,T)'` 让 ffmpeg 自己再筛一次，前提是「JS 的 T 和 ffmpeg 的 scene
- * 会做出同样的判断」——而 JS 只看得到 6 位小数的打印值，ffmpeg 比的是内部 double，
- * 分数恰好等于 T 的那一帧两边判断相反。真实素材上因此 120 刀里错了 21 刀。
- *
- * 现在 ffmpeg 只负责照单抓帧：`select='eq(pts\,A)+eq(pts\,B)+…'`。pts 是**整数**，没有精度可言。
- * 于是 tile 铺出来的第 i 格必然就是清单里第 i 条，不存在「多吐一帧」这种事。
- *
- * 表达式长度：一条 `eq(pts\,NNNNNNN)+` 约 16 字节，刀数上限 `MAX_CUTS`=120 ⇒ 最长约 2KB，
- * 实测 ffmpeg 8.0.1 接受（1994 字节那条跑通、耗时 2.5s）。**长度由 MAX_CUTS 封顶**，不会随片长增长。
- * 逗号必须转义成 `\,`，否则会被 filtergraph 当成 filter 分隔符。
+ * 联系表的 filtergraph：按**整数 pts 点名选帧**（不按分数重筛，理由见文件头）。
+ * 逗号要转义成 `\,`，否则会被 filtergraph 当成 filter 分隔符。
+ * 表达式长度由 `MAX_CUTS` 封顶（实测 1994 字节、ffmpeg 8.0.1 接受、2.54s）；抬高 MAX_CUTS 要重验。
  */
 export function buildSheetFilter(ptsList: readonly number[], columns: number, rows: number, tileHeight: number): string {
   const picks = ptsList.map((pts) => `eq(pts\\,${pts})`).join("+");

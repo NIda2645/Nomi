@@ -150,7 +150,7 @@ describe("联系表逐格对得上原片（真实素材）", () => {
         // 第一版在这条素材上是 90/120 错位；按 pts 点名之后实测 0/120、最差 2.4。
         expect(mismatches).toEqual([]);
       } finally {
-        try { fs.unlinkSync(sheet); } catch { /* non-fatal */ }
+        fs.rmSync(sheet, { force: true });
       }
     },
   );
