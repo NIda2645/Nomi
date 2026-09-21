@@ -66,7 +66,7 @@ describe('③ 同一个工具连着调 N 次 → 一行', () => {
 
   it('不同工具不合并：相邻同名才是一段', () => {
     const flow = collapseV4Flow(
-      [tool('读取文稿', 'output-available'), tool('创建或修改镜头卡', 'output-error'), tool('创建或修改镜头卡', 'output-error')],
+      [tool('读取文稿', 'output-available'), tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'output-error', '必须是数组')],
       t,
     )
     expect(flow.map((item) => item.kind)).toEqual(['process'])
@@ -115,8 +115,8 @@ describe('② 过程自述折起来，最终回答摊开', () => {
     const flow = collapseV4Flow(
       [
         assistant('我先看看画布。已经按脚本排好了。'),
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
       ],
       t,
     )
@@ -127,9 +127,9 @@ describe('② 过程自述折起来，最终回答摊开', () => {
   it('夹在两次调用之间的助手文本不按位置猜成过程', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         assistant('让我修正。'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
       ],
       t,
     )
@@ -139,7 +139,7 @@ describe('② 过程自述折起来，最终回答摊开', () => {
 
   it('没有中间自述时仍用同一个过程摘要', () => {
     const flow = collapseV4Flow(
-      [tool('创建或修改镜头卡', 'output-error'), tool('创建或修改镜头卡', 'output-error'), assistant('失败了')],
+      [tool('创建或修改镜头卡', 'output-error', '必须是数组'), tool('创建或修改镜头卡', 'output-error', '必须是数组'), assistant('失败了')],
       t,
     )
     expect(flow.map((item) => item.kind)).toEqual(['process', 'assistant'])
@@ -149,8 +149,8 @@ describe('② 过程自述折起来，最终回答摊开', () => {
   it('用户气泡截断一段：下一轮的收据不会被折进上一轮', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         { kind: 'user', text: '换个方式' },
         tool('修改文稿', 'output-available'),
       ],
@@ -163,8 +163,8 @@ describe('② 过程自述折起来，最终回答摊开', () => {
   it('思考行接在流尾时收入同一过程明细', () => {
     const flow = collapseV4Flow(
       [
-        tool('创建或修改镜头卡', 'output-error'),
-        tool('创建或修改镜头卡', 'output-error'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
+        tool('创建或修改镜头卡', 'output-error', '必须是数组'),
         { kind: 'thinking', label: '正在想…', meta: '4s' },
       ],
       t,
@@ -202,6 +202,15 @@ describe('回合还在跑的时候：安静披露，不弹红条', () => {
     expect(process.running).toBe(true)
     expect(process.label).toBe('agentPanelV4.processAttempt(3)')
     expect(process.retryNote).toBe('agentPanelV4.processRetryingDetail')
+  })
+
+  it('说不出原因就不挂那一条——行尾已经写着「失败」，复述行标签不是信息', () => {
+    // 真实夹具里有这种：宿主只给了「这一步失败了」，没有任何原因字段。
+    // 以前会挂一条写着「停止任务」的红条——把一个**动作名**说成一个原因（设计实验室
+    // v4-wired-failure 那一屏看得见）。行仍然标 failed、过程行仍然自己展开。
+    const flow = collapseV4Flow([tool('停止任务', 'output-error')], t)
+    expect(flow[0]?.kind === 'process' && flow[0].failed).toBe(true)
+    expect(errorsUnderRows(flow[0])).toEqual([])
   })
 
   it('回合落定之后同一批收据才出红条，并且标 failed', () => {

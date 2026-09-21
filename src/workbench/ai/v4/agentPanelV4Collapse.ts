@@ -138,8 +138,12 @@ export function collapseV4Flow(
       // 一行只说**一句**：折成一组的那几次里，说的是这一行自己印着的那个原因（第一条失败——
       // 后面几次是同一堵墙的复读）。行上印一句、行下再印另一句，会让人以为是两件事。
       const spoken = detail.item.kind === 'tool-group' ? detail.item.reason : undefined
-      const first = owned[0]
-      if (first) withErrors.push({ item: { kind: 'error', reason: spoken || first.summary || first.label }, index: detail.index })
+      // 先问「这一行有没有**没解决**的失败」，再问「说得出原因吗」。反过来会让一组里
+      // 那条已经被后继解决掉的失败原因（行上印着的那句）在回合中途又变出一条红条。
+      const reason = owned.length > 0 ? (spoken || owned[0]!.summary) : undefined
+      // **没有原因就不挂这一条**：行尾已经写着「失败」，再挂一条只复述行标签的红条
+      // （「停止任务」）等于把一个动作名说成一个原因——一句没有行动价值的话（R2）。
+      if (reason) withErrors.push({ item: { kind: 'error', reason }, index: detail.index })
     }
     // 回合中说重试（2026-09-21 用户拍板②）：摘要一句「第 N 次尝试」，展开才见那句灰字。
     const attempt = running && retried.length > 0 ? retried.length + 1 : 0
