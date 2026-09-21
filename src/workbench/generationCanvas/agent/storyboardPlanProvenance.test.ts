@@ -30,10 +30,13 @@ const PLAN: StoryboardPlan = {
 
 describe('StoryboardPlan provenance', () => {
   it('does not project legacy editorial fields into generation or accept them as shot fields', () => {
+    // 旧字段的正确下场是**被剥掉**，不是让整份方案解析失败：这份 schema 是持久化/迁移的读口
+    // （见 storyboardPlanSchema.ts 头注释），一个历史键不该让用户的分镜消失。
     const legacy = { ...PLAN, shots: [{ ...PLAN.shots[0], subtitle: '旧字幕', dialogue: '旧台词', transition: { type: 'fade' } }] }
-    expect(() => parseStoryboardPlan(legacy)).toThrow(/Unrecognized key/)
+    const parsed = parseStoryboardPlan(legacy)
     const metadata = storyboardPlanToCreateNodesArgs(legacy).nodes.find((node) => node.clientId === 'shot-stable-1')?.metadata
     for (const key of ['subtitle', 'dialogue', 'transition']) {
+      expect(parsed.shots[0]).not.toHaveProperty(key)
       expect(metadata).not.toHaveProperty(key)
     }
   })
