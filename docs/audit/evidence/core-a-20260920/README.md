@@ -1,5 +1,7 @@
 # Core A 审计证据
 
+> 说明：`semantic-audit.json`、`final-semantic-audit.json` 两份逐差异块账本（合计约 2.9 万行 / 3MB）与本目录全部截图**不随本分支进 main**，证据见 PR #828 分支。下文对它们的描述保留为审计事实记录。
+
 `semantic-audit.json` 是 base `96d368c26` 至工作树 `30aaa144ea821efb0830997f9289798ec921de42` 的逐文件/逐差异块静态审查，覆盖 368 文件、790 hunks。每项保留原/现行为、理由、归属、证据和 blob/patch hash。`semantic-review.md` 是同一快照的可读报告。
 
 这是历史静态判断，不是最后运行验收收据。随后 Electron 揭示 `core-a-composer.e2e.mjs` 新增“Create 必须卸载 DOM”的预期与原 keep-alive 契约冲突；**撤回该快照对该文件的 correct 判断**：新增测试还混淆锁定提示词与参数、依赖默认模式错误标签，且 blur 后先 mouseup 会掩盖取消失效。各项修复与复验另记，不反写历史账本。账本自身、之后文档/截图和源码增量不在该树内，必须另审。

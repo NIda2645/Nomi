@@ -29,7 +29,7 @@
 
 原按钮红测 tree `7eed1f2b` 实际0方案/1文本请求；修后第一次完整运行在冷恢复整节点比较处失败，唯一差异为原 `projectV51ToV60Migration.ts:114` 补 `renderKind`。保留该失败日志 `/private/tmp/nomi-blank-plan-electron-green/report.json`；断言改为显式期望原迁移值并继续比较所有字段，新进程复跑通过，不通过丢弃节点字段或放宽数量掩盖差异。新建瞬间零节点；作者编辑/显式复制保留主线 `dc113e712` 的原引用表视图，禁止新媒体节点或生成提交。
 
-截图均由主代理亲看：[修复前点新建进入聊天](evidence/core-a-blank-create-20260920/before-new-opens-chat.png)、[修复后原空白编辑器](evidence/core-a-blank-create-20260920/after-new-opens-editor-zh.png)、[英文冷重开](evidence/core-a-blank-create-20260920/after-cold-reopen-en.png)、[明确Agent创建后的原编辑器结果](evidence/core-a-blank-create-20260920/agent-original-editor-result-en.png)、[切项目后A保留3个版本](evidence/core-a-blank-create-20260920/variants-original-project-result.png)。展开左栏时英文原分镜控件仍有已延期的窄屏碰撞，未以收起截图宣称展开布局通过。
+截图均由主代理亲看：修复前点新建进入聊天（证据见 PR #828 分支）、修复后原空白编辑器（证据见 PR #828 分支）、英文冷重开（证据见 PR #828 分支）、明确Agent创建后的原编辑器结果（证据见 PR #828 分支）、切项目后A保留3个版本（证据见 PR #828 分支）。展开左栏时英文原分镜控件仍有已延期的窄屏碰撞，未以收起截图宣称展开布局通过。
 
 ### 后续验收执行规则
 

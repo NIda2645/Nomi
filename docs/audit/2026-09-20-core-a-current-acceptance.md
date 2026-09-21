@@ -59,15 +59,15 @@
 
 ## 截图
 
-- [中文图片参数条](evidence/core-a-20260920/composer-v12-zh-image.png)
-- [英文冷恢复视频参数条](evidence/core-a-20260920/composer-v14-en-restored-video.png)
-- [原历史托盘与视频](evidence/core-a-20260920/canvas-v12-03-real-video-history-scrub-light.png)
-- [真实付费首帧视频](evidence/core-a-20260920/paid-v14-zh-first-frame-real-video.png)
+- 中文图片参数条（证据见 PR #828 分支）
+- 英文冷恢复视频参数条（证据见 PR #828 分支）
+- 原历史托盘与视频（证据见 PR #828 分支）
+- 真实付费首帧视频（证据见 PR #828 分支）
 
-- [候选包旧项目冷恢复](evidence/core-a-20260920/candidate-v17-zh-cold-restored-original-editor.png)
-- [候选包原MP4导出](evidence/core-a-20260920/candidate-v17-zh-export-complete.png)
+- 候选包旧项目冷恢复（证据见 PR #828 分支）
+- 候选包原MP4导出（证据见 PR #828 分支）
 
-主代理已亲看以上截图。完整日志当前在/private/tmp，PR引用持久收据/源码hash，不把本地路径当远程附件。逐处审查见 [最终账本](evidence/core-a-20260920/final-semantic-audit.json)，账本的自排除和身份边界见同目录 README。
+主代理已亲看以上截图。完整日志当前在/private/tmp，PR引用持久收据/源码hash，不把本地路径当远程附件。逐处审查见 最终账本（证据见 PR #828 分支），账本的自排除和身份边界见同目录 README。
 
 
 ## 交付工具补记：Ponytail 读取阻断
