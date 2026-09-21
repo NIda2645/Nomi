@@ -6,7 +6,7 @@ import path from 'node:path'
 import { once } from 'node:events'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { clickOrFail, expect, screenshotSettled } from './_assert.mjs'
-import { createAgentRuntimeFixture, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
+import { createAgentRuntimeFixture, FIXTURE_APIMART_API_KEY, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
 import { require as tsxRequire } from 'tsx/cjs/api'
 
 const { LANE_MODEL_TOOL_CATALOG, LANE_DEFERRED_TOOL_CATALOG } = tsxRequire('../../electron/agentLane/laneToolCatalog.ts', import.meta.url)
@@ -346,7 +346,15 @@ export async function approvePendingIntervention(win, panel) {
   await clickOrFail(slot.locator(INTERVENTION_CONFIRM), '介入槽「确认」')
 }
 
-export async function createRuntimeWalk(name) {
+/**
+ * @param {string} name
+ * @param {{generationProvider?: 'loopback'|'apimart'}} [options]
+ *   `generationProvider: 'apimart'` = 这条走查要走**真实那条生成供应商路径**：目录里装内置 apimart
+ *   档案与 curated mapping，供应商地址由 `NOMI_E2E_PRODUCTION_FIXTURE` 那个只认 loopback 的口子
+ *   指到本机这台夹具。不传 = 老样子（自造 loopback 供应商，只跑 SDK/画布那半边，按付费确认键会被
+ *   宿主在供应商就绪那一步诚实拒绝）。
+ */
+export async function createRuntimeWalk(name, { generationProvider = 'loopback' } = {}) {
   const args = process.argv.slice(2)
   if (args.length && (args.length !== 2 || args[0] !== '--packaged' || !path.isAbsolute(args[1]))) {
     throw new Error('Usage: node <walk.mjs> [--packaged /absolute/Nomi.app/Contents/MacOS/Nomi]')
@@ -357,7 +365,14 @@ export async function createRuntimeWalk(name) {
   const settingsDir = path.join(tempRoot, 'settings')
   const outputDir = path.join(repoRoot, '.tmp', `pi-${name}-${mode}-${Date.now()}`)
   fs.mkdirSync(outputDir, { recursive: true })
-  const fixture = await createAgentRuntimeFixture({ rootDir: repoRoot, settingsDir })
+  // safeStorage 的加密身份 = app 名。开发态跑的是仓库目录（package.json 的 `nomi`），
+  // `--packaged` 跑的是打包后的 `Nomi`。给错只会解出 `locked`，模型照样显示为不可用。
+  const fixture = await createAgentRuntimeFixture({
+    rootDir: repoRoot, settingsDir, generationProvider,
+    ...(generationProvider === 'apimart'
+      ? { userDataDir: path.join(tempRoot, 'user-data'), appName: executablePath ? 'Nomi' : 'nomi' }
+      : {}),
+  })
   const launches = []
   const screenshots = []
   const report = { name, mode, tempRoot, outputDir, launches, screenshots, paidCalls: 0 }
@@ -379,7 +394,14 @@ export async function createRuntimeWalk(name) {
           'nomi.assistantModel': JSON.stringify({ vendorKey: FIXTURE_VENDOR, modelKey: FIXTURE_TEXT_MODEL }),
         },
       } : {}),
-      env: { NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_E2E_PRODUCTION_FIXTURE: '0', NOMI_DISABLE_AUTO_UPDATE: '1' },
+      env: {
+        NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_DISABLE_AUTO_UPDATE: '1',
+        // 这三个是同一个口子的三把钥匙（`safeFixtureBaseUrl` 只接受 http(s) 的 127.0.0.1/localhost/::1）：
+        // 少一把就装不出可提交的生成供应商。默认仍是 '0'，老走查一个字都不变。
+        ...(generationProvider === 'apimart'
+          ? { NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_APIMART_BASE_URL: fixture.baseURL, NOMI_E2E_APIMART_API_KEY: FIXTURE_APIMART_API_KEY }
+          : { NOMI_E2E_PRODUCTION_FIXTURE: '0' }),
+      },
       args: ['--no-proxy-server', ...extraArgs],
     })
     const { win, app } = current

@@ -10,17 +10,18 @@
 //      盘上那份 Run 里 `price.maximum === null`、`budget.unknownJobCount === 1`（不是 0）；
 //   ③ 英文一样（EN 串长 1.5-2 倍，截断只有眼睛看得出）。
 //
-// ⚠️ 这条走查证不到「产物真的落回节点」，和 `agent-spend-confirm-executes.walk.mjs` 同一个原因：
-// 这台夹具的供应商身份是 `agent-runtime-loopback`，而 `generationProviderBootstrap.ts` 只把
-// **apimart** 装成可提交的生成供应商。所以按下确认之后宿主会在**价格闸之后**、供应商那一步
-// 诚实地停下来，一分钱不花。「确认 → 封印 → 铸收据 → 决门 → 真的发出去 → 账本记未知」那一整条，
-// 由零额度的 `electron/capabilityCore/unknownPriceSpendConfirm.e2e.test.ts` 在真 loopback HTTP
-// 供应商上逐条断言（Agent 面板 + 全自动两条路）。
+// 2026-09-21（Pass 3b）：这条走查此前**只证到「按下去有回应」**——因为它跑在自造供应商
+// `agent-runtime-loopback` 上，而 `generationProviderBootstrap.ts` 全仓只把 apimart 装成可提交
+// 的生成供应商，于是确认键必然在供应商就绪那一步被拒。「有 toast 就算有反应」不是验收标准：
+// 用户要的是**按下去真的出图**。现在这条走查跑在 `generationProvider: 'apimart'` 上——内置
+// apimart 档案 + 内置 curated mapping + 只认 loopback 的 `NOMI_E2E_PRODUCTION_FIXTURE` 口子，
+// 供应商换成本机这台夹具服务器（零额度）。于是「确认 → 封印 → 铸收据 → 决门 → 真的发出去 →
+// 产物落回同一个节点」整条链在**真实界面上**被硬断言。
 import fs from 'node:fs'
 import path from 'node:path'
 
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
-import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
+import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
   createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
@@ -43,10 +44,13 @@ function readRunEnvelope(projectRoot, runId) {
   const snapshot = path.join(projectRoot, '.nomi', 'runs', runId, 'run.json')
   if (!fs.existsSync(snapshot)) return null
   const run = JSON.parse(fs.readFileSync(snapshot, 'utf8')).run
-  return { state: run?.generationPlan?.state, envelope: run?.generationPlan?.authorizationEnvelope, budget: run?.budget }
+  return {
+    state: run?.generationPlan?.state, envelope: run?.generationPlan?.authorizationEnvelope, budget: run?.budget,
+    artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
+  }
 }
 
-const walk = await createRuntimeWalk('spend-unknown-price')
+const walk = await createRuntimeWalk('spend-unknown-price', { generationProvider: 'apimart' })
 let failure
 try {
   const { win } = await walk.start({ first: true })
@@ -58,7 +62,7 @@ try {
     label: 'the agent drafts a generation on a model the catalog cannot price',
     match: (body) => flattenRequestText(body).includes('S_UNPRICED'),
     reply: { type: 'tool', id: PLAN_CALL, name: 'draft_shots', args: {
-      shots: [{ prompt: '一个悬浮的六棱柱，柔和的演播室灯光', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters: { size: '1024x1024' } }],
+      shots: [{ prompt: '一个悬浮的六棱柱，柔和的演播室灯光', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: {} }],
     } },
   })
   let operationId
@@ -88,7 +92,7 @@ try {
 
   // ── ① 卡上说的是「算不出」，不是「免费」──
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
-  await proveProbe(card, 'The unpriced paid confirmation still reaches the intervention slot')
+  const cardProbe = await proveProbe(card, 'The unpriced paid confirmation still reaches the intervention slot')
   const priceProbe = await proveProbe(card.locator(PRICE_UNAVAILABLE),
     'the card renders a data-v4-price slot at all（同一个属性、同一处 DOM）')
   await expect(card.locator(PRICE_UNAVAILABLE), '价格位印的是「暂时算不出价格」（warning 色）')
@@ -107,72 +111,56 @@ try {
   expect(walk.fixture.images, '卡还没按之前，一次供应商生成都没发生').toHaveLength(0)
   await walk.snap('unknown-price-card-zh')
 
-  // ── ② 按下去：**不再是价格把你挡住了** ──
+  // ── ② 按下去：**真的发起生成、真的出图** ──
   //
-  // 这台夹具的供应商身份是 `agent-runtime-loopback`，而 `generationProviderBootstrap.ts` 只把
-  // apimart 装成可提交的生成供应商——所以 `gate_request` 会在**供应商就绪**那一步停下（它排在
-  // 价格之前的位置上：mcpGenerationTools.ts 先查 readiness 再封印）。要证的正是这个：
-  // 用户按下去之后听到的是「供应商」那件事，**不再是价格**。开闸前这颗钮按下去必然失败、
-  // 而且原因只进 console（TODO T-MO-25）；现在失败原因既看得见，也和价格无关。
-  //
-  // 「确认 → 封印 → 铸收据 → 决门 → 真的发出去 → 账本记未知」那一整条由
-  // electron/capabilityCore/unknownPriceSpendConfirm.e2e.test.ts 在真 loopback HTTP 供应商上断言；
-  // 外部 MCP 那条由 tests/ux/mcp-l2-journeys.e2e.mjs 在 apimart 夹具供应商上跑完整程。
-  // 用户那一侧看得见的证据（toast）与排查那一侧的证据（console 里宿主的原话）都要抓：
-  // 前者证「按下去有回应」，后者证「停下来的理由不是价格」——两句话缺一条这条走查就不成立。
+  // 这一段就是这条走查的验收门。判据不是「屏上冒出一句话」——那只证明代码跑到了某个 catch；
+  // 判据是这四件事同时成立：供应商真的收到一次生成请求、送出去的就是卡上那一镜、盘上那张
+  // 授权信封的金额位是 `null`（不是 0）、产物真的落回**草稿那一刻建的那个节点**且屏上变成 success。
+  // 阳性对照在上面：按之前 `walk.fixture.images` 刚断过是 0，所以下面的「收到了」不是本来就有。
   const hostRefusals = []
   win.on('console', (message) => {
     const text = message.text()
     if (text.includes('[spend-confirm] host refused')) hostRefusals.push(text)
   })
-  await win.evaluate(() => {
-    window.__nomiToastLog = []
-    const record = () => {
-      for (const node of document.querySelectorAll('[class*="mantine-Notification-root"]')) {
-        const text = (node.textContent ?? '').trim()
-        if (text && !window.__nomiToastLog.includes(text)) window.__nomiToastLog.push(text)
-      }
-    }
-    record()
-    new MutationObserver(record).observe(document.body, { childList: true, subtree: true })
-  })
+  const nodeId = (await readProject(win, projectId)).payload.generationCanvas.nodes[0].id
   await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「仍要生成」', { noWaitAfter: true })
 
-  await expect.poll(async () => (await win.evaluate(() => window.__nomiToastLog ?? [])).length,
-    { message: '按下去必须当场有回应，不能按了没反应（开闸前这里是一片沉默）', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
-  const spoken = (await win.evaluate(() => window.__nomiToastLog ?? [])).join(' ')
-  expect(spoken, '屏上说的是人话').toContain('暂时无法确认这一步的结果')
-  expect(spoken, '不许把宿主的内部错误串倒给中文用户').not.toContain('configured_provider')
+  // ②-a 供应商真的收到了请求（这台夹具的 `/v1/images/generations` 就是 apimart 的 create）
+  await expect.poll(() => walk.fixture.images.length,
+    { message: '按下「仍要生成」之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
+  expect(hostRefusals, `宿主不许再拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
 
-  // **这条走查真正要证的那一句**：宿主停下来的理由不再是价格。
-  await expect.poll(() => hostRefusals.length,
-    { message: '宿主那句原话必须进控制台（供排查），不能吞掉', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
-  const refusal = hostRefusals.join(' ')
-  // 阳性对照在上面：卡上 `data-v4-price="unavailable"` 在、`total` 不在 ⇒ 我们**确实**在
-  // 「算不出价」那一档。所以这条「不是价格」才有意义，不是一句碰巧成立的否定。
-  // 开闸前这里必然是 `generation_pricing_unknown`；现在它是供应商那一侧的失败
-  // （这台夹具的 `agent-runtime-loopback` 不是可提交的生成供应商，见文件头）。
-  expect(refusal, `「算不出价」这条拒绝已经不存在了（实际：${refusal}）`).not.toContain('pricing_unknown')
-  expect(refusal, '也不该是任何价格相关的拒绝').not.toMatch(/known price|pricing/i)
-  expect(refusal, '宿主确实回了一个失败码（不是空的）').toMatch(/generation_\w+/)
-  // 阳性对照：Run 确实在盘上（不是「按钮压根没接上」）。
+  // ②-b 送出去的就是卡上那一镜、那个算不出价的模型——不是顺手发了别的东西
+  const submitted = JSON.stringify(walk.fixture.images[0].body)
+  expect(submitted, '发给供应商的就是卡上那一镜的提示词').toContain('六棱柱')
+  expect(submitted, '发给供应商的就是那个算不出价的模型').toContain(FIXTURE_APIMART_MODEL)
+
+  // ②-c 盘上那份 Run：为一个算不出价的镜头铸出的授权，金额位是 null（不是 0）
+  await expect.poll(() => readRunEnvelope(projectRoot, operationId)?.envelope?.jobs?.length ?? 0,
+    { message: 'Run 里必须真的有一张授权信封', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   const run = readRunEnvelope(projectRoot, operationId)
-  expect(run, '这一笔的 Run 真的在盘上').toBeTruthy()
-  expect(walk.fixture.images, '被拒之后依然一次供应商生成都没发生（零额度）').toHaveLength(0)
-  await expect(card, '被拒之后卡还在等人答（问题没答完就不该消失）').toBeVisible()
+  expect(run.envelope.jobs[0].price.maximum, '未知价那一镜的授权金额位是 null，绝不是 0').toBeNull()
+  expect(run.envelope.budget.unknownJobCount, '账本如实记下这一镜价格未知').toBe(1)
+
+  // ②-d **节点真的拿到产物**：盘上有一份 ready 的产物，屏上那个节点变成 success（不是还挂着「排队中」）
+  await expect.poll(() => (readRunEnvelope(projectRoot, operationId)?.artifacts ?? []).filter((item) => item.status === 'ready').length,
+    { message: '产物必须真的落盘 —— 这就是用户说的「出图」', timeout: 90_000 }).toBeGreaterThan(0)
+  await expect(win.locator(`[data-node-id="${nodeId}"][data-status="success"]`),
+    '草稿那一刻建的那个节点在屏上变成 success').toBeVisible({ timeout: 90_000 })
+  await expectAbsent(card, { provenBy: cardProbe, message: '答完的卡要收起来（问题答完了就不该还在等人答）' })
   await walk.snap('unknown-price-after-confirm-zh')
 
   // ── ③ 英文：同一条路再走一遍（EN 串长 1.5-2 倍，截断只有眼睛看得出）──
   //
-  // 为什么是**第二份草稿**而不是把上面那张卡切成英文：上面那张刚被按过一次（宿主拒了），
-  // 拿一张带着拒绝态的卡去看文案，看到的是拒绝态不是未知价那一档。
+  // 为什么是**第二份草稿**而不是把上面那张卡切成英文：上面那张已经被按过、已经收起来了，
+  // 要看的是「未知价待确认」那一档的英文长相，只能再摆一张新的。
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await win.reload()
   const enPlanner = walk.fixture.expectText({
     label: 'a second unpriced draft, this time with the UI in English',
     match: (body) => flattenRequestText(body).includes('S_UNPRICED_EN'),
     reply: { type: 'tool', id: EN_PLAN_CALL, name: 'draft_shots', args: {
-      shots: [{ prompt: 'A floating hexagonal prism, soft studio lighting', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters: { size: '1024x1024' } }],
+      shots: [{ prompt: 'A floating hexagonal prism, soft studio lighting', taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: {} }],
     } },
   })
   let enOperationId
@@ -210,7 +198,9 @@ try {
   await walk.snap('unknown-price-card-en')
 
   walk.report.verified = ['card-says-unavailable-not-zero', 'confirm-label-is-generate-anyway',
-    'no-zero-anywhere-on-the-card-zh-and-en', 'price-is-no-longer-the-reason-the-host-stops']
+    'no-zero-anywhere-on-the-card-zh-and-en',
+    'confirm-really-reaches-the-vendor-and-the-node-gets-its-artifact',
+    'unknown-price-authorization-carries-null-not-zero']
 } catch (error) {
   failure = error
   process.exitCode = 1
