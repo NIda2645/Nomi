@@ -138,10 +138,16 @@ function truncateForModel(text: string): { text: string; truncation?: LaneOutput
 /**
  * 契约 parse 的失败 → 模型看到的失败正文（§3.3 的形状）。
  *
+ * 2026-09-22：**导出**给 `laneExtendedDesktopPorts` 用。那边的 `spec.schema.parse(...)` 原来直接抛裸
+ * `ZodError`，而 `ZodError.message` 就是 `JSON.stringify(issues, null, 2)`——模型收到的是一整段
+ * JSON 数组（2026-09-21 实测 5 次、09-22 复跑 3 次，`resultText` 以 `[` 开头的那几条就是它）。
+ * 同一条 lane 上两个校验点、两种说法，正是 handoff §7.5 记下的「schema 沿内部路被校验了 3-4 次」。
+ * 说法只留这一份。
+ *
  * 只带**类型名与字段名**，绝不回传收到的值：用户文稿正文、素材路径都可能在参数里。
  * `allowed` 从枚举类 issue 的 `options` 取，那是模型自纠时最有用的一样东西。
  */
-function argumentFailure(toolName: string, args: unknown, error: ZodError): LaneToolFailureShape {
+export function argumentFailure(toolName: string, args: unknown, error: ZodError): LaneToolFailureShape {
   const issues = error.issues.map((issue) => ({
     path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
     expected: expectedOf(issue),

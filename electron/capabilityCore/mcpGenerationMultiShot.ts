@@ -1,3 +1,4 @@
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { StoryboardPlan } from '../shared/storyboard/storyboardPlan';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import { storyboardSubjectFromCandidate, storyboardReferenceSlot } from '../shared/storyboard/storyboardSubjectAdapter';
@@ -104,13 +105,13 @@ const SHOT_ROLES = new Set(["anchor", "shot"]);
 function shotEnvelope(raw: Record<string, unknown>, index: number, fallbackId: string): GenerationShotEnvelope {
   const rawShotId = typeof raw.shotId === "string" ? raw.shotId.trim() : "";
   const shotId = rawShotId || fallbackId;
-  if (!/^[A-Za-z0-9._:-]{1,120}$/.test(shotId)) throw new Error(`Invalid shot id at ${index}`);
+  if (!/^[A-Za-z0-9._:-]{1,120}$/.test(shotId)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Invalid shot id at ${index}`);
   const role = raw.role;
-  if (role !== undefined && !SHOT_ROLES.has(String(role))) throw new Error(`Invalid shot role at ${index}`);
+  if (role !== undefined && !SHOT_ROLES.has(String(role))) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Invalid shot role at ${index}`);
   const included = raw.included;
-  if (included !== undefined && typeof included !== "boolean") throw new Error(`Invalid shot included flag at ${index}`);
+  if (included !== undefined && typeof included !== "boolean") refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Invalid shot included flag at ${index}`);
   const rawTitle = typeof raw.title === "string" ? raw.title.trim() : "";
-  if (rawTitle.length > 120) throw new Error(`Shot title at ${index} is longer than 120 characters`);
+  if (rawTitle.length > 120) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Shot title at ${index} is longer than 120 characters`);
   return {
     shotId,
     ...(role === undefined ? {} : { role: role as "anchor" | "shot" }),
@@ -183,10 +184,10 @@ export function draftShotFromPlan(
 export function draftShotFromStoryboard(draft: StoryboardShotDraft, index: number, defaults: () => { moduleId: string; providerId: string; modelId: string; mode: string; modeId?: string }, parsers: MultiShotCandidateParsers): GenerationOperationDraftShot {
   const raw = draft as Record<string, unknown>;
   const env = shotEnvelope(raw, index, `shot-${index + 1}`);
-  if (typeof draft.prompt !== "string" || !draft.prompt.trim()) throw new Error(`Storyboard shot ${index} needs a prompt`);
+  if (typeof draft.prompt !== "string" || !draft.prompt.trim()) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Storyboard shot ${index} needs a prompt`);
   if (draft.durationSeconds !== undefined
     && (!Number.isFinite(draft.durationSeconds) || draft.durationSeconds <= 0)) {
-    throw new Error(`Storyboard shot ${index} has an invalid duration`);
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Storyboard shot ${index} has an invalid duration`);
   }
   // Resolve module/provider/model/mode defaults lazily — only when the planner left a field unset, so a
   // fully-specified board never requires a configured video model just to build defaults it won't use.
@@ -275,10 +276,10 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     const configured = deps.defaultModelForTaskKind?.(taskKind);
     if (configured) return configured;
     if (!deps.allowRegistryFallback) {
-      throw new Error("没有配置该任务的默认视频模型，请先在设置中选择模型或在计划中指定模型");
+      refuseToModel(GENERATION_ARGUMENT_REFUSAL, "没有配置该任务的默认视频模型，请先在设置中选择模型或在计划中指定模型");
     }
     const first = deps.videoModelCandidates?.[0];
-    if (!first) throw new Error("没有可用的视频模型，无法从剧本自动拟镜（请先在 Nomi 配置一个视频模型）");
+    if (!first) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "没有可用的视频模型，无法从剧本自动拟镜（请先在 Nomi 配置一个视频模型）");
     const selectedMode = deps.effectiveVideoModes(first).find((item) => item.transportTaskKind === taskKind)
       ?? deps.effectiveVideoModes(first)[0];
     const mode = selectedMode?.transportTaskKind ?? "image-to-video";
@@ -293,7 +294,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
   const resolveCreateShots = async (projectId: string, params: Record<string, unknown>): Promise<GenerationOperationDraftShot[] | undefined> => {
     let shots: GenerationOperationDraftShot[];
     if (Array.isArray(params.shots)) {
-      if (params.shots.length === 0) throw new Error("多镜生成需要至少一个镜头");
+      if (params.shots.length === 0) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "多镜生成需要至少一个镜头");
       shots = params.shots.map((shot, index) => draftShotFromPlan(shot, index, deps.parsers, {
         ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
         ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
@@ -310,8 +311,8 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
       const scriptText = typeof params.scriptText === "string"
         ? params.scriptText.trim()
         : typeof params.prompt === "string" ? params.prompt.trim() : "";
-      if (!scriptText) throw new Error("剧本文本为空，无法拟镜");
-      if (!deps.planStoryboard) throw new Error("当前未启用「剧本自动拟镜」，请改为直接提供逐镜计划（shots）");
+      if (!scriptText) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "剧本文本为空，无法拟镜");
+      if (!deps.planStoryboard) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "当前未启用「剧本自动拟镜」，请改为直接提供逐镜计划（shots）");
       const longForm = typeof params.scriptText !== "string" && isLongFormGenerationRequest(params);
       const targetDurationSeconds = requestedVideoDurationSeconds(params);
       const board = await deps.planStoryboard({
@@ -320,9 +321,9 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
         ...(longForm ? { minimumShots: 2 } : {}),
         ...(targetDurationSeconds !== undefined ? { targetDurationSeconds } : {}),
       });
-      if (!board || !Array.isArray(board.shots) || board.shots.length === 0) throw new Error("拟镜没有产出任何镜头，请检查剧本内容");
+      if (!board || !Array.isArray(board.shots) || board.shots.length === 0) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "拟镜没有产出任何镜头，请检查剧本内容");
       if (longForm && board.shots.length < 2) {
-        throw new Error("长视频请求必须先拆成至少两个镜头；请让 Agent 重新拟定剧本和分镜");
+        refuseToModel(GENERATION_ARGUMENT_REFUSAL, "长视频请求必须先拆成至少两个镜头；请让 Agent 重新拟定剧本和分镜");
       }
       if (targetDurationSeconds !== undefined) {
         const durations = board.shots
@@ -330,7 +331,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
           .map((shot) => shot.durationSeconds ?? shot.parameters?.duration ?? shot.parameters?.durationSeconds);
         const plannedDuration = durations.reduce((sum, value) => sum + (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0), 0);
         if (durations.length === 0 || durations.some((value) => typeof value !== "number" || !Number.isFinite(value) || value <= 0) || plannedDuration < targetDurationSeconds) {
-          throw new Error(`拟镜未覆盖目标时长 ${targetDurationSeconds} 秒；每个视频镜头必须带有效 duration`);
+          refuseToModel(GENERATION_ARGUMENT_REFUSAL, `拟镜未覆盖目标时长 ${targetDurationSeconds} 秒；每个视频镜头必须带有效 duration`);
         }
       }
       // A natural-language multi-shot request can still carry the same model,
@@ -355,7 +356,7 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
       const sharedReferences = params.references === undefined
         ? undefined
         : (() => {
-          if (!Array.isArray(params.references)) throw new Error("references must be an array");
+          if (!Array.isArray(params.references)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "references must be an array");
           return params.references;
         })();
       const inheritedParameters = targetDurationSeconds === undefined
@@ -384,14 +385,14 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     }
     const ids = new Set<string>();
     for (const shot of shots) {
-      if (ids.has(shot.shotId)) throw new Error(`镜头 id 重复：${shot.shotId}`);
+      if (ids.has(shot.shotId)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `镜头 id 重复：${shot.shotId}`);
       ids.add(shot.shotId);
       // P4 §5.1.4 锚复用授权面：每个镜的参考素材（复用锚）必须存在且属于本项目（对抗矩阵 #3）。
       if (deps.assertReferencesResolvable && shot.candidate.references.length > 0) {
         deps.assertReferencesResolvable(projectId, shot.candidate.references);
       }
     }
-    if (!shots.some((shot) => shot.role !== "anchor")) throw new Error("多镜计划至少需要一个视频镜头（不能只有形象参考）");
+    if (!shots.some((shot) => shot.role !== "anchor")) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "多镜计划至少需要一个视频镜头（不能只有形象参考）");
     return shots;
   };
 

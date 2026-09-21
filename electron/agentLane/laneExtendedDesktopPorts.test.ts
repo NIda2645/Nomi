@@ -66,7 +66,16 @@ describe('deferred desktop domain authority', () => {
     const f = setup(), value = call('cancel_job', { jobId: 'same-id' })
     const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: { operationId: 'same-id' } })), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation)
-    await expect(f.prepareAndApprove(value)).rejects.toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({ path: ['domain'], code: 'invalid_type' })]) })
+    // 2026-09-22：这里原来断的是**裸 ZodError** 的形状（`issues[].code/path` 是 zod 内部结构）。
+    // 裸 ZodError 的 `message` 就是 `JSON.stringify(issues, null, 2)`，模型收到的是一整段 JSON 数组
+    // （真实轨迹里以 `[` 开头的那几条）。现在这条路和 `laneTools` 共用同一个正文构造器，
+    // 断言也跟着换成**模型真正读到的那份**：码 + 字段名 + 期望类型，不含收到的值。
+    await expect(f.prepareAndApprove(value)).rejects.toMatchObject({
+      failure: { code: 'tool_arguments_invalid',
+        // 顺带证明这次换法是**变好**：模型读到的是「domain 该是 'generation' | 'export'」，
+        // 而不是一段 zod 内部结构的 JSON。
+        issues: expect.arrayContaining([expect.objectContaining({ path: 'domain', expected: "'generation' | 'export'" })]) },
+    })
     expect(f.input.phase4.prepareWrite).not.toHaveBeenCalled()
     expect(f.input.phase4.executeWrite).not.toHaveBeenCalled()
     expect(generation.tryExecute).not.toHaveBeenCalled()

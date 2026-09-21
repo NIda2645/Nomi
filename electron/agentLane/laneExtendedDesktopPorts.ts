@@ -1,3 +1,5 @@
+import { argumentFailure } from './laneTools.mjs';
+import { ZodError } from "zod";
 import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/transportContracts'
 import { randomUUID } from 'node:crypto'
 import type { ProjectBinding } from '../shared/projectBinding'
@@ -60,6 +62,19 @@ function generationSurfaceUnavailable(): Extract<RuntimeToolDecision, { ok: fals
   return { ok: false, code: 'generation_surface_unavailable', message: residentGenerationUnavailableMessage() }
 }
 
+/**
+ * 契约 parse：失败走**与 `laneTools` 同一个**正文构造器，不抛裸 `ZodError`。
+ * 裸 `ZodError` 的 `message` 是 `JSON.stringify(issues, null, 2)`——模型读到的是一段 JSON 数组。
+ */
+function parseToolArguments(spec: { name: string; schema: { parse(value: unknown): unknown } }, args: unknown): unknown {
+  try {
+    return spec.schema.parse(args)
+  } catch (error) {
+    if (error instanceof ZodError) throw new LaneDomainFailure(argumentFailure(spec.name, args, error))
+    throw error
+  }
+}
+
 function rejectPreparation(code: string): never {
   if (code === 'task_reference_required') throw new LaneDomainFailure({ code,
     message: 'The task reference has no verified domain (task_reference_required).',
@@ -107,7 +122,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       if (!spec) return
       if (disposed || signal.aborted) rejectPreparation('capability_cancelled')
       if (pending.has(wire.toolCallId)) rejectPreparation('capability_authority_invalid')
-      const call = { ...wire, args: spec.schema.parse(wire.args) }
+      const call = { ...wire, args: parseToolArguments(spec, wire.args) }
       const contract = capabilityContractById(modelToolCapabilityId(spec, call.args))
       if (!contract) rejectPreparation('capability_unsupported')
       if (contract.effect === 'read') return
@@ -173,7 +188,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     // Compare the same schema-normalized arguments captured during prepare. Zod
     // may materialize defaults/normalization, so comparing the raw wire object
     // would reject an otherwise identical approved call.
-    const normalizedCall = { ...call, args: spec.schema.parse(call.args) }
+    const normalizedCall = { ...call, args: parseToolArguments(spec, call.args) }
     const contract = capabilityContractById(modelToolCapabilityId(spec, normalizedCall.args))
     if (!contract) return failure('capability_unsupported')
     // 读走 `executeRead`：路由判据是**动词声明翻出来的 lane**（`translate`，20 动词那张传输表），
