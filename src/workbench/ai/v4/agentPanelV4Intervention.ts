@@ -190,7 +190,15 @@ export function projectV4Intervention(
     ...(kind === 'question' ? { answerPlaceholder: t('agentPanelV4.questionAnswerPlaceholder'), answerSubmitLabel: t('agentPanelV4.questionAnswerSubmit') } : {}),
     // 范围那一行是**诚实交代**，不是装饰：可撤销的档才有「不再问」，
     // 所以这里写清楚它到底覆盖什么，别让用户以为按一下就全项目放行。
-    ...(kind === 'plan' ? {} : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
+    //
+    // 2026-09-21 **反问卡也不该有这一行**：`canEscalate`（`AgentPanelV4Cards.tsx:361`）只认
+    // `approval-reversible` / `reject-reason` 两档，提问卡上从来就没有那颗「不再问 →」；
+    // 而闸那边 `alwaysAsksUser` 保证它永远不可能被放行（`capabilityIsHardGated` ⑥）。
+    // 于是这一行在描述一个不存在的按钮——用户第一次看到真卡时读到的就是它。
+    // 一张提问卡的「范围」本来也无话可说：问一句话没有授权面。
+    ...(kind === 'plan' || kind === 'question'
+      ? {}
+      : { scope: canStopAskingFor(source.effectClass) ? labels.scopeCapability : labels.scopeOnce }),
   }
   if (kind === 'credential') {
     return Object.freeze({ ...base, confirmLabel: labels.credentialConfirm, alternateLabel: labels.credentialAlternate })

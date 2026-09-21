@@ -41,6 +41,9 @@ import ffmpeg from '@ffmpeg-installer/ffmpeg'
 import { closeNomiApp, launchNomiApp } from './_launchApp.mjs'
 import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
+// 判据与它的阳性对照住 `askback-option-judges.mjs` / `.test.mjs`：一把尺子只能有一个家，
+// 而且它得能在不起 App、不花额度的情况下被喂夹具（用户看到的那张卡就是那份夹具）。
+import { asksPermissionForReversible, judgeAskOptions } from './askback-option-judges.mjs'
 import {
   CANVAS_PANEL, COMPOSER, COMPOSER_INPUT, COMPOSER_SEND, CREATION_PANEL, DOCUMENT, HISTORY_BUTTON,
   MODEL_POPOVER, COMPOSER_MODEL, THREAD_MENU, escapeForRegExp, expandResidentPanel,
@@ -60,10 +63,7 @@ const outputDir = path.resolve(repoRoot, values['output-dir'] || `tests/ux/shots
 fs.mkdirSync(outputDir, { recursive: true })
 
 const ASK_TOOL = 'ask_user'
-/** 「参数被拒」的机器判据。与 agent-storyboard-real-model.walk.mjs 逐字相同——同一个指标只能有一把尺子。 */
 const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
-/** 假选项：卡内本来就永远能自己打字，再列一个「其它」就是在教用户多点一下。 */
-const FAKE_OPTION = /^(其它|其他|别的|让我说说|自己说|other|something else|let me explain)$/i
 
 // ── ④ 真实素材 ────────────────────────────────────────────────────────────
 const { assets } = requireRealMediaAssets(['video-4k-hevc-10bit', 'image-4k-png'])
@@ -111,25 +111,6 @@ function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
     }
   }
   return { calls, results }
-}
-
-/**
- * 选项质量：**机器判得了的那几条**。
- * 「互斥」判不了全部（语义），但判得了「字面重复」和「假选项」，而那两条正是真实模型最常犯的。
- */
-function judgeOptions(args) {
-  const options = Array.isArray(args?.options) ? args.options : []
-  const labels = options.map((option) => String(option?.label ?? option ?? '').trim()).filter(Boolean)
-  const recommended = options.filter((option) => option?.recommended === true).length
-  return {
-    count: labels.length,
-    inRange: labels.length === 0 || (labels.length >= 2 && labels.length <= 4),
-    distinct: new Set(labels).size === labels.length,
-    withDescription: options.filter((option) => String(option?.description ?? '').trim()).length,
-    recommended,
-    atMostOneRecommended: recommended <= 1,
-    fakeOptions: labels.filter((label) => FAKE_OPTION.test(label)),
-  }
 }
 
 let app, win, failure
@@ -273,8 +254,11 @@ try {
     row.askedUser = askCalls.length > 0
     row.askCount = askCalls.length
     row.askArgs = askCalls.map((call) => call.args)
-    row.optionQuality = askCalls.map((call) => judgeOptions(call.args))
+    row.optionQuality = askCalls.map((call) => judgeAskOptions(call.args))
     row.correct = row.askedUser === item.shouldAsk
+    // ① 为一个**可撤销**的动作问「要不要」。判据：题目是征询许可的句式，而选项里
+    //    没有两个真候选（真的指代不明时选项就是候选本身，题目不会是「要不要」）。
+    row.askedForReversibleConfirmation = askCalls.some((call) => asksPermissionForReversible(call.args))
     row.rejectedArgs = results.filter((result) => ARG_REJECTED.test(result.text)).map((result) => result.name)
     row.argsOkFirstTry = calls.length > 0 && row.rejectedArgs.length === 0
     report.cases.push(row)
@@ -296,6 +280,13 @@ try {
     optionsDistinct: `${allQualities.filter((q) => q.distinct).length}/${allQualities.length}`,
     atMostOneRecommended: `${allQualities.filter((q) => q.atMostOneRecommended).length}/${allQualities.length}`,
     fakeOptionSets: allQualities.filter((q) => q.fakeOptions.length > 0).length,
+    // 09-21 用户点名的五条，各算一次失败
+    askedForReversibleConfirmation: `${report.cases.filter((c) => c.askedForReversibleConfirmation).length}/${report.cases.filter((c) => c.askedUser).length}`,
+    yesNoNestingSets: allQualities.filter((q) => q.yesNoNesting.length > 0).length,
+    cancelOptionSets: allQualities.filter((q) => q.cancelOptions.length > 0).length,
+    internalIdentifierSets: allQualities.filter((q) => q.internalIdentifiers.length > 0).length,
+    labelTooLongSets: allQualities.filter((q) => q.labelsTooLong.length > 0).length,
+    questionEchoSets: allQualities.filter((q) => q.questionEchoes.length > 0).length,
     argsOkFirstTry: `${count((c) => c.argsOkFirstTry)}/${report.cases.length}`,
     askToolArgsRejected: count((c) => (c.rejectedArgs ?? []).includes(ASK_TOOL)),
     answeredTurnContinued: report.cases.filter((c) => c.answeredByChip).map((c) => `${c.id}:${c.turnContinuedAfterAnswer}`),
