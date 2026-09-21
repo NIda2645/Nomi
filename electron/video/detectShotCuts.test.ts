@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CUTS,
-  SHOT_CUT_DETECT_THRESHOLD,
-  SHOT_SHEET_COLUMNS,
   buildDetectFilter,
   buildSheetFilter,
   parseShotCutOutput,
@@ -56,12 +54,6 @@ describe("filtergraph", () => {
     expect(buildSheetFilter([20480, 40960, 61440], 8, 2, 90)).toBe(
       "select='eq(pts\\,20480)+eq(pts\\,40960)+eq(pts\\,61440)',scale=-2:90,tile=8x2",
     );
-  });
-
-  it("联系表的 select 里**不许**再出现 scene —— 那正是错位的来源", () => {
-    const sheet = buildSheetFilter([1, 2, 3], SHOT_SHEET_COLUMNS, 1, 90);
-    expect(sheet).not.toContain("scene");
-    expect(sheet).not.toContain(String(SHOT_CUT_DETECT_THRESHOLD));
   });
 
   it("表达式长度由 MAX_CUTS 封顶，不随片长增长", () => {

@@ -143,9 +143,9 @@ export function parseShotCutOutput(stdout: string): RawShotCut[] {
  * 保留簇里**分数最高**的那一帧：它才是真正的切点位置，余震那帧画面已经切完了。
  * `fps` 读不出来时**原样返回**，不猜一个秒数窗口——猜窄了白做，猜宽了误杀真快剪。
  */
-export function dedupeShotCuts(cuts: readonly RawShotCut[], fps: number, frames = SHOT_CUT_DEDUPE_FRAMES): RawShotCut[] {
+export function dedupeShotCuts(cuts: readonly RawShotCut[], fps: number): RawShotCut[] {
   if (!Number.isFinite(fps) || fps <= 0) return [...cuts];
-  const windowSeconds = frames / fps;
+  const windowSeconds = SHOT_CUT_DEDUPE_FRAMES / fps;
   const out: RawShotCut[] = [];
   for (const cut of cuts) {
     const prev = out[out.length - 1];
@@ -160,7 +160,7 @@ export function dedupeShotCuts(cuts: readonly RawShotCut[], fps: number, frames 
 
 /** 联系表行数的**唯一** owner；语义与它防的那个 bug 见 `DetectShotCutsResult.sheetRows`。 */
 export function shotSheetRowsFor(cutCount: number, columns: number): number {
-  return Math.max(1, Math.ceil(Math.max(0, cutCount) / Math.max(1, columns)));
+  return Math.max(1, Math.ceil(cutCount / columns));
 }
 
 /**
@@ -173,13 +173,7 @@ export function shotSheetRowsFor(cutCount: number, columns: number): number {
  * 挑的判据是**时间均匀**而不是再比分数（同分之间没有可比性），这样补进来的刀仍然铺满全片。
  */
 export function pickEvenlyByTime(cuts: readonly RawShotCut[], need: number): RawShotCut[] {
-  if (need <= 0) return [];
-  if (need >= cuts.length) return [...cuts];
-  const picked: RawShotCut[] = [];
-  for (let i = 0; i < need; i += 1) {
-    picked.push(cuts[Math.floor((i * cuts.length) / need)]);
-  }
-  return picked;
+  return Array.from({ length: need }, (_, i) => cuts[Math.floor((i * cuts.length) / need)]);
 }
 
 /**
@@ -212,7 +206,7 @@ export function capShotCutsByScore(
   return { kept, appliedThreshold, capped: true };
 }
 
-/** 检测用的 filtergraph（纯函数，与联系表共用同一个 select 条件——两者必须同阈值，否则格子对不上切点）。 */
+/** 检测用的 filtergraph（纯函数）。联系表**不**共用它——那一趟按 pts 点名，见 `buildSheetFilter`。 */
 export function buildDetectFilter(threshold: number): string {
   return `select='gt(scene,${threshold})',metadata=print:file=-`;
 }

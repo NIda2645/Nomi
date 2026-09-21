@@ -111,7 +111,6 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
   const allCuts = React.useMemo(() => (state.phase === 'ready' ? state.cuts : []), [state])
   const visible = React.useMemo(() => filterShotCuts(allCuts, threshold), [allCuts, threshold])
   const selected = React.useMemo(() => visible.filter((cut) => !excluded.has(cut.index)), [visible, excluded])
-  const rows = state.phase === 'ready' ? state.sheetRows : 1
 
   const durationSeconds = state.phase === 'ready' ? state.durationSeconds : 0
   /** 全集 = 0：这段结构上就是一镜到底（AI 生成的片段基本都是）。不是失败，是换一条路——均匀抽帧。 */
@@ -272,7 +271,7 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
               {visible.map((cut) => {
                 const isOn = !excluded.has(cut.index)
                 // 第 i 格 = cuts[i]：联系表是按这份数组的 pts 点名拼的，下标就是格子号（由构造保证）。
-                const tile = shotSheetTileStyle(cut.index, state.sheetColumns, rows)
+                const tile = shotSheetTileStyle(cut.index, state.sheetColumns, state.sheetRows)
                 return (
                   <button
                     key={cut.index}
