@@ -186,6 +186,9 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       effect: contract?.effect,
       effectClass: capabilityEffectClassOf(contract, request.args),
       ...capabilityPlanReviewOf(contract, request.args),
+      // 「这个能力就是问用户一句」。从契约上原样带过来，不在这里按工具名判——
+      // 按名字判就是第二份真相源，而提问工具正是最容易长出第二份的那一个。
+      ...(contract?.alwaysAsksUser ? { alwaysAsksUser: true as const } : {}),
       // 原生 lane 工具没有外部服务器的 hint。MCP 工具进 lane 是阶段 5 的事，
       // 那时它从工具声明上读，且**只能抬高摩擦**（`CapabilityApprovalSubject` 的注释）。
       destructiveHint: false,
@@ -290,6 +293,16 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     drainNotes: () => undrained.splice(0, undrained.length),
 
     answer: (toolCallId, action, reason) => {
+      if (action === "answer") {
+        const text = reason?.trim();
+        // 空答案不成立：卡自己已经挡住了（`questionAnswerFromInput` 对空串回 undefined），
+        // 这里再挡一次是因为**这一侧不该相信渲染层送来的东西**——一个空的「答案」会变成
+        // 一段空白 tool result，模型只能接着猜，而用户以为自己答过了。
+        if (!text) return false;
+        // `allow: false`：没有东西要执行。这次调用的**全部内容就是这句话**，
+        // 它一字不改成为模型看到的 tool result（与 deny 走同一条既有通路）。
+        return settleWaiting(toolCallId, { allow: false, decision: "answered", reason: text });
+      }
       if (action === "deny") {
         const text = reason?.trim();
         return settleWaiting(toolCallId, {

@@ -1,5 +1,5 @@
 {
-  "verbCount": 27,
+  "verbCount": 28,
   "tools": [
     {
       "aliasBoundInput": null,
@@ -2141,6 +2141,113 @@
             "type": "string"
           }
         },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "agent.ask",
+      "description": "Ask the user one question and wait for his answer. The answer changes what you produce and guessing wrong costs him time or money: you cannot tell which thing he means, a fact you need is missing with no default, or you are about to spend or to do something irreversible. Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first. Do not use this to confirm an action you are allowed to take; a reversible edit just happens, and spending is confirmed on its own card by generate. question is one sentence in the user's own language. options is two to four answers he can click, each with a label and optionally one line of description; mark at most one recommended. Leave options out when there is no short list — he can always type an answer instead. Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "options": [
+              {
+                "description": "画布中间那张，还没生成过",
+                "label": "镜 2 · 推门"
+              },
+              {
+                "description": "最右边那张静帧",
+                "label": "镜 3 · 走廊"
+              },
+              {
+                "description": "不是画布上的东西",
+                "label": "文稿最后那段"
+              }
+            ],
+            "question": "哪一个要删掉？"
+          },
+          "when": "He said \"delete that one\" and three shots could be it:"
+        },
+        {
+          "arguments": {
+            "note": "问一句是因为同一段文案给家长和给同事读，剪法完全不同。",
+            "question": "这支片子想给谁看？我按那个人的口味定语气和节奏。"
+          },
+          "when": "Nothing short would cover the answer, so ask with no options:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "ask_user",
+      "nextAction": "user_sees_question_card",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Ask when the answer changes what you produce and guessing wrong wastes the user's time or money: you cannot tell which of several things he means, a fact you need is missing and no project default supplies it, or you are about to spend his credit or do something that cannot be taken back. Ask once, in one question.",
+        "Do not ask when a sensible default exists — take it, do the work, and say in one line which default you took so he can correct it. Never ask for something the project already decided (aspect ratio, which document is open, the model in the picker), never ask permission for a reversible local edit, and never ask a second round of questions where one would have done.",
+        "Two to four options, each a real answer he could pick, and they must not overlap. More than 4 is a list to read, not a question to answer; fewer than 2 is a yes/no you could have decided yourself.",
+        "The card always lets him type his own answer, so never add an option that means \"something else\" or \"let me explain\". What comes back is his words: one option's label if he clicked it, or whatever he typed. Carry on in the same turn."
+      ],
+      "promptSnippet": "Ask the user one question and wait for his answer.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "One optional line of why you are asking right now. Not a second question.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "options": {
+            "description": "Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "description": {
+                  "description": "One short line under the label: what picking this one means. Leave it out rather than restating the label.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Your own id for this option, echoed back when the user picks it. Omit it and Nomi numbers them.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "label": {
+                  "description": "The words printed on the chip. Answering with this option sends exactly these words back to you.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "recommended": {
+                  "description": "Set true on at most one option: the one you would pick. It is only a mark — nothing is preselected and nothing is answered for the user.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "question": {
+            "description": "The question, in the user's own language, as one sentence he can answer without reading anything else.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
         "type": "object"
       }
     },

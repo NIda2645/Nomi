@@ -1,7 +1,6 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
 import { isModelControlSignal } from './laneToolControlSignals'
-import { parseQuestionAsk } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -398,10 +397,13 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
       ...existing,
       kind: 'tool',
       receipt: denial !== undefined
-        // 反问答完的那一行不说「已拒绝」：那次 deny 承载的是用户的**答案**（`answerToolResult`），
-        // 不是一次否决。同一个判据（`parseQuestionAsk` 认不认得出这次 args）既决定槽里画不画
-        // 反问卡，也决定这一行怎么读——两处读同一份规则，不会出现「问的时候是反问、答完变成拒绝」。
-        ? parseQuestionAsk(slot.args) && denial.decision === 'denied' && denial.reason
+        // 反问答完的那一行不说「已拒绝」，因为**协议现在自己说得清**：用户回答走
+        // `answer` 这条 action，落成 `decision: 'answered'`（2026-09-21）。
+        // 这里原来嗅的是 `parseQuestionAsk(slot.args)`——用「这次 args 长得像不像一次提问」
+        // 去倒推「用户刚才做了什么」。那是两个不同的问题，只是今天恰好同真假：
+        // 一张提问卡上用户也可以按停（那是 `cancelled`），而一次 deny 的理由里也可能
+        // 正好带着话。判据换成协议里那个字之后，这一行读的是事实，不是相貌。
+        ? denial.decision === 'answered' && denial.reason
           ? { ...withoutSummary, status: 'output-denied', answered: true as const,
               label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
           : { ...withoutSummary, status: 'output-denied' }

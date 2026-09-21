@@ -69,6 +69,11 @@ const EXCLUDED_FILES = new Set([
   'src/workbench/generationCanvas/agent/shotVerify.ts', // stable source strings; ReconcileDeviationCard translates them at the display boundary
   // 阶段 5a：说明书那一半搬到了能力契约旁边(两个 profile 共用),示例参数跟着搬。理由不变——
   // 「林夏」「天台开场」是喂模型的示范数据(契约本身要求中文用户配中文提示词),不是界面文案。
+  // ask_user 的示例参数。它比 canvasVerbs 那条更要紧：这个工具的全部内容就是**用用户自己的
+  // 语言问一句话**，示例里那几个中文 label/description 正是在示范这件事（动词装配期不变量 A3
+  // 也是为此把「示例**值**」从「说明性文字全英文」里单独豁免出去的）。这个文件里没有、也永远
+  // 不会有界面文案——它是一份说明书。
+  'electron/shared/agentCapabilities/verbs/askVerbs.ts',
   'electron/shared/agentCapabilities/verbs/canvasVerbs.ts',
   // 对外 MCP 工具的租约字段说明。模型可见,不是界面文案;它随 tools/list 广播给宿主的模型,
   // 走 i18n 等于让同一份 schema 有两个版本——那正是本阶段在消灭的东西。
@@ -223,6 +228,11 @@ const ELECTRON_EXCLUDED_FILES = new Set([
   // 那时目录级豁免会把真的漏译一起放过去。下面六条各自的理由:
   // 见上面 EXCLUDED_FILES 里同一条的理由(模型可见工具的示例参数,不是界面文案)。
   'electron/shared/agentCapabilities/verbs/canvasVerbs.ts',
+  // ask_user 的示例参数。它比 canvasVerbs 那条更要紧：这个工具的全部内容就是**用用户自己的
+  // 语言问一句话**，示例里那几个中文 label/description 正是在示范这件事（动词装配期不变量 A3
+  // 也是为此把「示例**值**」从「说明性文字全英文」里单独豁免出去的）。这个文件里没有、也永远
+  // 不会有界面文案——它是一份说明书。
+  'electron/shared/agentCapabilities/verbs/askVerbs.ts',
   // 工具预算超限时的**装配期**报错。它在模块加载时抛,受众是往目录里加第 12 个工具的开发者;
   // 用户会话里到不了这一句——真到了,那是 lane 压根没起来,界面显示的是别的东西。
   'electron/agentLane/laneToolCatalog.ts',

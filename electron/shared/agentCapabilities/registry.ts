@@ -1,3 +1,4 @@
+import { AGENT_ASK_CAPABILITY } from "./askUser";
 import { ASSET_READ_CAPABILITY } from "./assetRead";
 import { CANVAS_DELETE_CAPABILITY } from "./canvasDelete";
 import { CANVAS_READ_CAPABILITY } from "./canvasRead";
@@ -38,6 +39,7 @@ export type ContractOnlyRegistry<Contracts extends readonly AnyCapabilityContrac
 };
 
 const REGISTERED_CONTRACTS = [
+  AGENT_ASK_CAPABILITY,
   ASSET_READ_CAPABILITY,
   CANVAS_DELETE_CAPABILITY,
   CANVAS_READ_CAPABILITY,

@@ -255,6 +255,12 @@ export function readableToolName(t: Translate, name: string, rawArgs?: unknown):
   if (normalized.includes('model.onboarding.remove') || normalized.includes('remove_model_provider')) {
     return t('agentResident.toolModelRemove')
   }
+  // 2026-09-21 通用反问。它在面板上必须有自己的名字：用户看到的那一行是
+  // 「它在问我一句话」，而不是一个工具在跑——这也是 residentToolDisplay 那两条
+  // 「每个工具/每个契约都得有人话名」的断言存在的理由。
+  if (normalized.includes('agent.ask') || normalized.includes('ask_user')) {
+    return t('agentResident.toolAsk')
+  }
   if (normalized.includes('model.onboarding.setup') || normalized.includes('connect_model_provider')) {
     return t('agentResident.toolModelSetup')
   }

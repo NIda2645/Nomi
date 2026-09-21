@@ -20,7 +20,8 @@
     "export_video",
     "cancel_job",
     "save_skill",
-    "start_model_setup"
+    "start_model_setup",
+    "ask_user"
   ],
   "metrics": [
     "first_tool_accuracy",
@@ -480,6 +481,33 @@
       "tools": [
         "read_script",
         "draft_shots"
+      ]
+    },
+    {
+      "id": "U33",
+      "userSays": "把那个删了",
+      "firstTool": "look_at_canvas",
+      "proof": [
+        "trajectory",
+        "page",
+        "answer"
+      ],
+      "tools": [
+        "look_at_canvas",
+        "ask_user"
+      ]
+    },
+    {
+      "id": "U34",
+      "userSays": "帮我做个视频",
+      "firstTool": "ask_user",
+      "proof": [
+        "trajectory",
+        "page",
+        "answer"
+      ],
+      "tools": [
+        "ask_user"
       ]
     }
   ]

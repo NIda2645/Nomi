@@ -247,12 +247,16 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     }
   }, [checked, data.selectedModel, surface, t])
 
-  const answer = (action: 'allow-once' | 'allow-session' | 'deny', reason?: string) => {
+  const answer = (action: 'allow-once' | 'allow-session' | 'deny' | 'answer', reason?: string) => {
     const pending = data.primaryPending
     if (!pending || !visibleAddress) return
-    run(() => checked(action === 'deny' ? laneClient.deny(pending.toolCallId, reason, visibleAddress)
-      : action === 'allow-session' ? laneClient.approveForSession(pending.toolCallId, visibleAddress)
-        : laneClient.approve(pending.toolCallId, visibleAddress)))
+    run(() => checked(
+      // 回答一张提问卡走它自己那条 action：用户做的是「我告诉你」，不是「别做这个」。
+      // 借 deny 送答案的那一版会在转录里留下一条他从没做过的拒绝（`laneClient.answer` 的注释）。
+      action === 'answer' ? laneClient.answer(pending.toolCallId, reason ?? '', visibleAddress)
+        : action === 'deny' ? laneClient.deny(pending.toolCallId, reason, visibleAddress)
+          : action === 'allow-session' ? laneClient.approveForSession(pending.toolCallId, visibleAddress)
+            : laneClient.approve(pending.toolCallId, visibleAddress)))
   }
   const cancelQueued = async (rowIndex: number) => {
     const queued = data.snapshot.active.queues[rowIndex]
@@ -285,7 +289,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     approve: () => answer('allow-once'),
     reject: (reason) => answer('deny', reason),
     stopAsking: () => answer('allow-session'),
-    answerQuestion: (value) => answer('deny', answerToolResult(value)),
+    answerQuestion: (value) => answer('answer', answerToolResult(value)),
     queueAction: (index) => run(() => cancelQueued(index)),
     queueInterrupt: (index) => run(() => cancelQueued(index)),
     newThread: () => run(() => checked(laneClient.createLane(newLaneName()))),
