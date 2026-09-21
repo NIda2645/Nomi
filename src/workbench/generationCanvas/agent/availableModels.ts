@@ -20,6 +20,7 @@ import type { ModelOption } from "../../../config/models";
 import { parseModelParameterControls } from "../../../config/modelCatalogMeta";
 import { resolveArchetypeForModel } from "../../../config/modelArchetypes";
 import { preloadModelOptions } from "../../../config/modelCatalogCache";
+import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 import i18n from "../../../i18n";
 
 import type { AgentModelEntry } from "../../../../electron/shared/agentCapabilities/availableModels";
@@ -149,12 +150,16 @@ export function pickSavedDefaultModel(
  * 生成钮直接是灰的——「什么都不给」比「给一个通用的好模型」更伤。它**不是权威**：
  * 权威是用户保存的默认（`pickSavedDefaultModel`），这条阶梯只在权威缺席时补位。
  */
-export function pickStoryboardDefaultModel(entries: readonly AgentModelEntry[], kind: 'image' | 'video'): AgentModelEntry | undefined {
+export function pickStoryboardDefaultModel(entries: readonly AgentModelEntry[], kind: 'image' | 'video', orderedVendorKeys: readonly string[] = []): AgentModelEntry | undefined {
   const candidates = entries.filter(entry => entry.kind === kind)
   const byName = (re: RegExp) => candidates.find(entry => re.test(`${entry.modelId} ${entry.modelAlias ?? ''} ${entry.label}`))
-  return kind === 'image'
+  const model = kind === 'image'
     ? byName(/gpt[\s-]?image/i) ?? byName(/nano[\s-]?banana/i) ?? candidates[0]
     : byName(/seedance/i) ?? candidates[0]
+  if (!model) return undefined
+  // 阶梯只决定「哪个模型」；同名多家时「哪一家」走全仓同一把尺（pickImplicitVendorMatch），
+  // 不是列表里第一个同名的——目录新接入的在前，自定义同名中转会悄悄变成默认（2026-09-21 同类扫描）。
+  return pickImplicitVendorMatch(candidates.filter(entry => entry.modelId === model.modelId), entry => entry.vendor, orderedVendorKeys) ?? model
 }
 
 /**
@@ -172,7 +177,7 @@ async function preferredDefaultModel(
   } catch {
     defaults = {}
   }
-  return pickSavedDefaultModel(entries, kind, defaults) ?? pickStoryboardDefaultModel(entries, kind)
+  return pickSavedDefaultModel(entries, kind, defaults) ?? pickStoryboardDefaultModel(entries, kind, (await getVendorPreference()).orderedVendorKeys)
 }
 
 /**

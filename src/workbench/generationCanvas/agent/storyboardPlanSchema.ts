@@ -2,6 +2,15 @@ import { z } from 'zod'
 import type { StoryboardPlan } from './storyboardPlan'
 import { jsonTolerantArray } from '../../../../electron/shared/agentCapabilities/jsonArgTolerance'
 
+/** 按槽的参考绑定（镜头与锚同一形状）。 */
+const referenceBindingsSchema = z.record(z.array(z.object({
+  url: z.string().min(1),
+  name: z.string().optional(),
+  sourceNodeId: z.string().min(1).optional(),
+  anchorId: z.string().min(1).optional(),
+  ignore: z.string().optional(),
+})))
+
 // schema 与手写类型分层，避免方案转换器继续膨胀；编译期守卫仍固定在同一份 schema owner。
 const planAnchorSchema = z.object({
   id: z.string().min(1),
@@ -16,6 +25,14 @@ const planAnchorSchema = z.object({
   referenceUrl: z.string().min(1).optional(),
   referenceKind: z.enum(['image', 'video', 'audio']).optional(),
   referenceSourceNodeId: z.string().min(1).optional(),
+  // 锚自己选的生成模型（身份 = modelKey + modelVendor 一对）。以前 schema 里没有这几项，
+  // zod 默认静默丢未知键：项目一重开（projectNormalize）、一经 materialize 能力，锚上选的模型就没了，
+  // 参考卡改用默认模型、落到另一家（2026-09-21 同类扫描）。
+  modelKey: z.string().optional(),
+  modelVendor: z.string().optional(),
+  modeId: z.string().optional(),
+  params: z.record(z.unknown()).optional(),
+  referenceBindings: referenceBindingsSchema.optional(),
 })
 
 const promptSegmentRangeSchema = z.object({
@@ -43,12 +60,7 @@ const planShotSchema = z.object({
   durationSec: z.number(),
   anchorIds: z.array(z.string()),
   /** 按槽的参考绑定：键 = 槽 kind（未知键原样保留，前向兼容），值 = 有序素材。 */
-  referenceBindings: z.record(z.array(z.object({
-    url: z.string().min(1),
-    name: z.string().optional(),
-    sourceNodeId: z.string().min(1).optional(),
-    anchorId: z.string().min(1).optional(),
-  }))).optional(),
+  referenceBindings: referenceBindingsSchema.optional(),
   prompt: z.string(),
   promptSegments: z.array(promptSegmentRangeSchema).optional(),
   modelKey: z.string().optional(),
@@ -94,6 +106,16 @@ const _schemaToType = (plan: z.infer<typeof storyboardPlanSchema>): StoryboardPl
 const _typeToSchema = (plan: StoryboardPlan): z.infer<typeof storyboardPlanSchema> => plan
 void _schemaToType
 void _typeToSchema
+
+// 上面两条互相赋值的守卫**看不见缺席的可选字段**（类型里有、schema 里没有的 `x?:` 两个方向都能赋值），
+// 而 zod 会在解析时把它静默丢掉——锚的 modelKey/modelVendor 就是这样在重开项目时消失的。
+// 这里按键逐个对账：手写类型里的每个键，schema 必须都有。
+type MissingSchemaKeys<TType, TSchema> = Exclude<keyof TType, keyof TSchema>
+type AssertNoMissingKeys<T extends never> = T
+type _AnchorKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan['anchors'][number], z.infer<typeof planAnchorSchema>>>
+type _ShotKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan['shots'][number], z.infer<typeof planShotSchema>>>
+type _KeyframeKeys = AssertNoMissingKeys<MissingSchemaKeys<NonNullable<StoryboardPlan['shots'][number]['keyframe']>, NonNullable<z.infer<typeof planShotSchema>['keyframe']>>>
+type _PlanKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan, z.infer<typeof storyboardPlanSchema>>>
 
 export function parseStoryboardPlan(raw: unknown): StoryboardPlan {
   return storyboardPlanSchema.parse(raw)

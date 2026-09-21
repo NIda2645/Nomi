@@ -141,8 +141,16 @@ describe("模型身份唯一键含 vendor（选 A 家就发去 A 家）", () => 
     expect(index.get("apimart::nano-banana")?.vendor).toBe("apimart");
   });
 
-  it("裸 key 取首次出现的那家，不是「最后写入的那家」", () => {
+  // 裸 key（没记供应商的旧数据）落哪家由 pickImplicitVendorMatch 决定——与模型框回显同一把尺：
+  // 用户顺序 > 官方 > 内置中转 > 自接 > 目录序。以前是「首次出现」，而目录新接入的在前，
+  // 用户一自定义同名模型裸键就换成了它（2026-09-21）。既不是「最后写入」也不是「第一条」。
+  it("裸 key 按同一把尺落家：内置中转 apimart 先于自接中转，不看目录里谁先出现", () => {
     const index = buildModelEntryIndex(buildAgentModelEntries(TWO_VENDORS));
+    expect(index.get("nano-banana")?.vendor).toBe("apimart");
+  });
+
+  it("裸 key 跟随用户排的供应商顺序", () => {
+    const index = buildModelEntryIndex(buildAgentModelEntries(TWO_VENDORS), ["code-newcli-com"]);
     expect(index.get("nano-banana")?.vendor).toBe("code-newcli-com");
   });
 
