@@ -555,7 +555,7 @@
             "type": "object"
           },
           "operationId": {
-            "description": "The operationId an earlier draft_shots call returned, when updating its shots.",
+            "description": "operationId from an earlier draft_shots call, to update it.",
             "maxLength": 160,
             "minLength": 1,
             "type": "string"
@@ -587,13 +587,13 @@
                   "type": "object"
                 },
                 "durationSec": {
-                  "description": "Video clip length in seconds; omit for stills. This is the only place to set length — never also put duration inside parameters.",
+                  "description": "Clip length in seconds; omit for stills. The only place for length, never parameters.",
                   "exclusiveMinimum": 0,
                   "maximum": 600,
                   "type": "number"
                 },
                 "modeId": {
-                  "description": "Mode id of that model from list_models. Naming a mode already decides the kind of job, so leave taskKind out when you name one.",
+                  "description": "Mode id from list_models. It decides the job kind: omit taskKind with it.",
                   "minLength": 1,
                   "type": "string"
                 },
@@ -610,17 +610,17 @@
                       "boolean"
                     ]
                   },
-                  "description": "Parameter values the model's profile declares, minus length — length is durationSec. The host clamps them to real limits and reports every clamp.",
+                  "description": "Values the model's profile declares, except length (use durationSec). The host clamps them and reports every clamp.",
                   "type": "object"
                 },
                 "prompt": {
-                  "description": "Generation prompt in the user's language (Chinese user → Chinese prompt). Required when you create a shot; when you revise one (operationId + shotId) send it only if you are changing it — leaving it out keeps the prompt the shot already has.",
+                  "description": "Prompt in the user's language. Required for a new shot; when revising (operationId + shotId) send it only to change it.",
                   "maxLength": 8000,
                   "minLength": 1,
                   "type": "string"
                 },
                 "references": {
-                  "description": "Asset ids from look_at_media — files already in the project library. To reuse another shot's look, do not put its shot id here: name it in storyboard.anchorIds instead.",
+                  "description": "Asset ids from look_at_media. To reuse another shot's look use storyboard.anchorIds, not a shot id.",
                   "items": {
                     "minLength": 1,
                     "type": "string"
@@ -637,7 +637,7 @@
                   "type": "string"
                 },
                 "shotId": {
-                  "description": "Pass an existing shot id to update that draft; omit to create a new shot.",
+                  "description": "Existing shot id to update; omit to create one.",
                   "maxLength": 160,
                   "minLength": 1,
                   "type": "string"
@@ -894,7 +894,7 @@
                   "type": "object"
                 },
                 "taskKind": {
-                  "description": "What to produce; omit to infer from prompt, references and durationSec, or from modeId when you name one.",
+                  "description": "What to produce; omit to infer it (a named modeId decides it).",
                   "enum": [
                     "text_to_image",
                     "image_edit",
@@ -904,7 +904,7 @@
                   "type": "string"
                 },
                 "title": {
-                  "description": "Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language.",
+                  "description": "Short human title in the user's language, shown on the canvas node and spend card.",
                   "maxLength": 120,
                   "minLength": 1,
                   "type": "string"

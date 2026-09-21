@@ -482,7 +482,10 @@ test('阳性对照 · three failures that are not the same failure are not treat
     examples: [{ when: 'Call it with no arguments:', arguments: {} }],
   }, async () => {
     attempt += 1;
-    return { ok: false, failure: { code: 'varies', message: `Wall number ${attempt} is in the way.`,
+    // 一堵墙的身份是**失败码 + 出错字段**，不是正文（`laneWallKey`，2026-09-21：真实轨迹里同一堵墙的正文
+    // 每次都带着不同的 id / 镜头数，按正文认墙 = 熔断在真机上一次都没触发过）。所以「不同的失败」在这里
+    // 必须是不同的码——只换措辞、码不变，那就是同一堵墙，该拦。
+    return { ok: false, failure: { code: `varies_${attempt}`, message: `Wall number ${attempt} is in the way.`,
       nextAction: 'Try the next one.' } };
   });
   const call = (id: string) => ({ type: 'tool' as const, calls: [{ id, name: 'fails_differently', arguments: {} }] });

@@ -130,7 +130,14 @@ function generateReceipt(result: unknown): LaneToolNextAction {
     return { kind: 'none', ...id,
       userSees: `While the priced card was waiting, the user wrote: "${decision.userSaid}". That is his answer to the card: this quote was withdrawn, nothing was generated and nothing was spent, and the draft is kept as it was. Do what he wrote (revise the draft with draft_shots if he asked for changes), then call generate again only if he still wants it generated.` }
   }
-  return startedGenerationAction(result)
+  if (policyStartedGeneration(result)) return startedGenerationAction(result)
+  // 卡摆出去了，却没有任何结论随结果回来：预检期那次等待没跑（宿主没接 `toolLifecycle.approved`）。
+  // 这里**不许**顺着说「已经开始生成」——那句话只属于上面那一支。照实报错，模型据此不会谎报。
+  throw new LaneDomainFailure({
+    code: 'generation_approval_unavailable',
+    message: 'generate put a priced card in front of the user, but this host did not wait for his answer, so there is no decision to report. Generation has NOT started and nothing has been spent.',
+    nextAction: 'Do not claim generation started. Tell the user the confirmation step did not run in this session and ask him to try again.',
+  })
 }
 
 export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescriptor[] {

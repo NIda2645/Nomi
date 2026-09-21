@@ -65,8 +65,8 @@ describe("一镜把同一件事写了两遍", () => {
   it("说明书自己也只承认一个家——否则模型读到的和宿主执行的不是一回事", () => {
     const spec = VERB_DECLARATIONS.find((declaration) => declaration.name === "draft_shots")!;
     const printed = JSON.stringify(spec.schema);
-    expect(printed).toContain("This is the only place to set length");
-    expect(printed).toContain("minus length — length is durationSec");
+    expect(printed).toContain("The only place for length, never parameters");
+    expect(printed).toContain("except length (use durationSec)");
   });
 });
 
@@ -97,6 +97,6 @@ describe("draft_shots 的两种形状", () => {
   it("说明书自己承认这两种形状——schema 与描述不许各说各的", () => {
     const spec = VERB_DECLARATIONS.find((declaration) => declaration.name === "draft_shots")!;
     expect(spec.describe.params).toMatch(/Two shapes/);
-    expect(JSON.stringify(spec.schema)).toContain("Required when you create a shot");
+    expect(JSON.stringify(spec.schema)).toContain("Required for a new shot");
   });
 });

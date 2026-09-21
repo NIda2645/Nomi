@@ -32,7 +32,10 @@ test('safe-auto saves draft_shots without a review card or a generation-start cl
   } finally { await lane.close(); }
 });
 
-test('generate returns isError + STOP: the model cannot claim generation started', async (t) => {
+// 2026-09-22 裁决 A：等用户住在预检期（`toolLifecycle.approved`），正常路径上 `generate` 返回时已带着用户的结论、
+// 是成功形状（`laneExtendedDesktopPorts.test.ts` 钉那三种）。这条守的是另一半：宿主**没接**那次等待时，
+// 回执不许顺着说「已经开始生成」。
+test('generate with no recorded user decision never claims generation started', async (t) => {
   const fixture = await createLaneFixture(t, [
     { type: 'tool', calls: [{ id: 'fixture-generate', name: 'generate', arguments: { operationId: 'op-1' } }] },
     { type: 'text', text: 'The card is in front of you.' },
@@ -44,11 +47,10 @@ test('generate returns isError + STOP: the model cannot claim generation started
   try {
     await lane.execute({ kind: 'prompt', text: 'Generate them.' });
     const result = lane.projection().parts.find((part) => part.kind === 'tool-result');
-    assert.ok(result?.kind === 'tool-result' && result.isError, `the spend card is delivered as an error result: ${result?.kind === 'tool-result' ? result.text : String(result?.kind)}`);
-    assert.match(result.text, /priced confirmation card in Nomi/);
-    assert.match(result.text, /for 2 shot\(s\)/);
-    assert.match(result.text, /STOP/);
+    assert.ok(result?.kind === 'tool-result' && result.isError, `a card nobody waited on is an error, not a started job: ${result?.kind === 'tool-result' ? result.text : String(result?.kind)}`);
+    assert.match(result.text, /did not wait for his answer/);
     assert.match(result.text, /Generation has NOT started/);
+    assert.doesNotMatch(result.text, /generation has started|credit is being spent/);
   } finally { await lane.close(); }
 });
 
