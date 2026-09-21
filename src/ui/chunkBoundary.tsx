@@ -69,8 +69,6 @@ function canAutoReloadChunk(label: string, now = Date.now()): boolean {
 type BoundaryProps = {
   label: string
   children: React.ReactNode
-  onRetry?: () => void
-  className?: string
 }
 
 type ChunkTranslationKey =
@@ -124,7 +122,7 @@ class ChunkErrorBoundary extends React.Component<BoundaryProps, { error: Error |
       /* 日志旁路失败不影响降级 UI */
     }
     console.error(`[nomi] chunk boundary "${this.props.label}" caught:`, error)
-    if (!this.props.onRetry && isChunkLoadNetworkError(error) && canAutoReloadChunk(this.props.label)) {
+    if (isChunkLoadNetworkError(error) && canAutoReloadChunk(this.props.label)) {
       this.autoReloadTimer = window.setTimeout(reloadRendererWindow, CHUNK_AUTO_RELOAD_DELAY_MS)
     }
   }
@@ -148,7 +146,6 @@ class ChunkErrorBoundary extends React.Component<BoundaryProps, { error: Error |
         className={cn(
           'flex h-full w-full min-h-24 flex-col items-center justify-center gap-2 p-4 text-center',
           'rounded-nomi border border-nomi-line-soft bg-nomi-ink-05/60',
-          this.props.className,
         )}
       >
         <span className={cn('text-caption text-nomi-ink-80')}>{i18n.t('errors.chunkFailed', { label })}</span>
@@ -161,9 +158,12 @@ class ChunkErrorBoundary extends React.Component<BoundaryProps, { error: Error |
             'inline-flex h-6 items-center px-2 rounded-nomi-sm border border-nomi-line bg-nomi-paper',
             'text-caption text-nomi-ink-80 cursor-pointer hover:bg-nomi-ink-05',
           )}
-          onClick={this.props.onRetry ?? reloadRendererWindow}
+          // 重试 = 整页重载：工厂层 importWithRetry 已自动退避重试 2 次吃掉瞬时抖动，
+          // 走到降级说明 chunk 持续不可用；React.lazy 一旦 reject 会永久缓存失败、
+          // 在同一 JS 上下文里无法复活，只有 reload 拿到全新上下文才可能自愈。
+          onClick={reloadRendererWindow}
         >
-          {i18n.t(this.props.onRetry ? 'common.retry' : 'common.reload')}
+          {i18n.t('common.reload')}
         </button>
       </div>
     )
@@ -184,26 +184,9 @@ class ChunkErrorBoundary extends React.Component<BoundaryProps, { error: Error |
 export function lazyWithChunkBoundary<T extends React.ComponentType<any>>(
   label: string,
   factory: () => Promise<{ default: T }>,
-  options?: { recovery: 'local'; pending: React.ReactNode; errorClassName?: string },
 ): (props: React.ComponentProps<T>) => JSX.Element {
   const Lazy = React.lazy(() => importWithRetry(factory))
-  // The resource exists before first render. Only explicit retry creates a replacement;
-  // the local Suspense is inside the committed recovery owner, so initial suspend cannot
-  // discard hook state and repeatedly restart an import.
-  class LocalChunkGuard extends React.Component<React.ComponentProps<T>> {
-    state = { Resource: Lazy, attempt: 0 }
-    retry = () => this.setState(({ attempt }: { attempt: number }) => ({
-      Resource: React.lazy(() => importWithRetry(factory)), attempt: attempt + 1,
-    }))
-    render(): JSX.Element {
-      const { Resource, attempt } = this.state
-      return <ChunkErrorBoundary key={attempt} label={label} onRetry={this.retry} className={options?.errorClassName}>
-        <React.Suspense fallback={options?.pending}><Resource {...(this.props as React.ComponentProps<T>)} /></React.Suspense>
-      </ChunkErrorBoundary>
-    }
-  }
   function ChunkGuarded(props: React.ComponentProps<T>): JSX.Element {
-    if (options?.recovery === 'local') return <LocalChunkGuard {...props} />
     return (
       <ChunkErrorBoundary label={label}>
         <Lazy {...props} />

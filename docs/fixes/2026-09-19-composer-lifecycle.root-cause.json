@@ -4,7 +4,7 @@
   "problem_type": "Transient presentation ownership survives its interaction lifetime",
   "symptom": "Selected editable nodes intermittently lose the composer after history, interrupted drag, zero-sized layout or lazy failure. At default zoom, a large canvas node places composer parameter actions behind fixed bottom workspace docks. Editing B then confirming only A discarded B unsubmitted payment-card input. Frozen full audit also reproduced an unselected node history button doing nothing, canvas outer-card scrolling against its fixed-footer contract, and normal focus transfer cancelling a new primary pan. Real Electron video duration keyboard edits persisted but the visible slider stayed stale, and control arrow keys also moved the canvas node. EV-01 real Electron cancelled composer resource replaces the whole workbench and initiates a renderer reload.",
   "direct_cause": "History has two state owners; boolean drag writes rediscover stage and reuse source identity; chunk errors reload the window; geometry can resolve to zero height in a nonzero stage. Reference hooks and prompt-library media also bypassed the host writer and modified canvas from panel. The panel writer ignored caller node identity and read current shot/scope after uploads settled; the same node could also belong to a refreshed quote or operation. Composer placement excluded the left dock but treated the full stage bottom as usable; its existing geometry watcher ignored bottom dock mounting and resizing. The newly bounded outer composer scroll card omitted the existing native React Flow nowheel region class; React synthetic stopPropagation alone does not provide that framework contract. Renderer revises only selected shots but cleared the entire two-layer draft after refresh/confirmation. The captured window blur listener accepted child-element blur events; its cancel callback cleared pointer start before movement. The history setter closed over selected=false although the visible trigger stops selection bubbling. The canvas card unconditionally enabled outer overflow-y-auto. Every React Flow position event, including keyboard movement outside a drag, disabled hasDefaultNodes and only populated a drag draft. Without drag-stop the ownership flag never recovered; batched projection updates stopped applying. Composer lacked the existing React Flow nokey scope. History open intent triggered its own invalidation effect while selected was still false in React Flow: domain selection updates pass through a passive projection effect and the framework batch. The synchronous selected-state harness had missed this intermediate render. The initial keyboard writeback also accepted late XYDrag position packets after cancellation; keyboard and mouse-end both carry dragging=false. Electron blur then mouseup reproduced a discarded position being saved and persistRevision incrementing. Final Electron v13 proved the duration panel portal escapes the composer DOM nokey ancestor while React synthetic keydown still bubbles to the node wrapper, moving the selected node by 5px during a valid slider edit. ProjectAgentResidentShell statically imports the same composer that BaseGenerationNode tries to load lazily, pulling its resource into the WorkbenchShell eager module graph before the local boundary exists.",
-  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes. Shared composer content writes lacked explicit host-scoped authority. Asynchronous write authority was rebound to the currently displayed draft rather than the initiating editing visit. Usable-stage geometry must account for intersecting fixed workspace chrome through its existing owner. Framework input exclusion must follow each actual DOM interaction surface, including portals, rather than only the React component ancestor. Optional resource recovery must cover every production import edge, not only the visually obvious canvas host.",
+  "class_root": "Temporary UI state lacks a single owner tied to valid node, stage and gesture lifetimes. Shared composer content writes lacked explicit host-scoped authority. Asynchronous write authority was rebound to the currently displayed draft rather than the initiating editing visit. Usable-stage geometry must account for intersecting fixed workspace chrome through its existing owner. Framework input exclusion must follow each actual DOM interaction surface, including portals, rather than only the React component ancestor. Optional resource loading must cover every production import edge, not only the visually obvious canvas host; recovery itself stays with the existing full-page reload owner.",
   "affected_population": [
     "Canvas and spend-card composer hosts; all reachable drag sources and canvas visibility transitions"
   ],
@@ -20,7 +20,6 @@
     "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
     "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
     "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
-    "src/ui/chunkBoundary.tsx",
     "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
     "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
     "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
@@ -287,16 +286,6 @@
       "kind": "write",
       "path": "src/NomiRouterApp.tsx",
       "symbol": "lazyWithChunkBoundary"
-    },
-    {
-      "kind": "write",
-      "path": "src/ui/chunkBoundary.tsx",
-      "symbol": "isChunkLoadNetworkError"
-    },
-    {
-      "kind": "write",
-      "path": "src/ui/chunkBoundary.tsx",
-      "symbol": "importWithRetry"
     },
     {
       "kind": "write",
@@ -2856,10 +2845,10 @@
   ],
   "door_reduction": {
     "before": 515,
-    "after": 551,
-    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points. Existing unrelated lazy hosts remain independent optional-feature boundaries. Composer imports are consolidated so canvas and resident cannot bypass local recovery."
+    "after": 549,
+    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points. Existing unrelated lazy hosts remain independent optional-feature boundaries. Composer imports are consolidated so canvas and resident cannot eager-load the composer chunk."
   },
-  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner. History intent invalidates on selection/availability/identity lifecycle changes, not on opening intent itself; delayed framework selection can therefore complete without discarding the original click. InlineParameterBar renders both single/multiple controls and canvas portal/payment inline surfaces through renderParameterPanel; each surface root supplies the installed framework nokey contract. Both production composer hosts use the shared lazy import module; only host loading/error geometry differs. No production static composer edge remains.",
+  "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner. History intent invalidates on selection/availability/identity lifecycle changes, not on opening intent itself; delayed framework selection can therefore complete without discarding the original click. InlineParameterBar renders both single/multiple controls and canvas portal/payment inline surfaces through renderParameterPanel; each surface root supplies the installed framework nokey contract. Both production composer hosts use the shared lazy import module; only host loading geometry differs. No production static composer edge remains.",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
@@ -2875,11 +2864,6 @@
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
       "symbol": "BaseGenerationNode",
       "responsibility": "Control history selection and availability"
-    },
-    {
-      "path": "src/ui/chunkBoundary.tsx",
-      "symbol": "lazyWithChunkBoundary",
-      "responsibility": "Opt-in local retry using fresh lazy resource"
     },
     {
       "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
@@ -2919,7 +2903,7 @@
     {
       "path": "src/workbench/generationCanvas/nodes/LazyNodeGenerationComposer.tsx",
       "symbol": "LazyNodeGenerationComposer",
-      "responsibility": "Own the production composer import for both canvas and payment surfaces through the existing local recovery utility."
+      "responsibility": "Own the production composer import for both canvas and payment surfaces so neither host eager-loads it; chunk failure recovery stays with chunkBoundary's full-page reload."
     }
   ],
   "same_class_entry_points": [
@@ -3051,8 +3035,7 @@
       "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
       "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
       "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
-      "src/ui/chunkBoundary.tsx",
-      "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
       "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
       "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
       "src/workbench/generationCanvas/nodes/nodeWriteAccess.ts",
@@ -3092,8 +3075,7 @@
     "electron/capabilityCore/generationProviderBootstrap.test.ts",
     "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts",
     "tests/ux/core-a-composer.e2e.mjs",
-    "tests/ux/param-panel-numeric.e2e.mjs",
-    "tests/ux/core-a-t7-recovery.e2e.mjs"
+    "tests/ux/param-panel-numeric.e2e.mjs"
   ],
   "class_regression_tests": [
     "tests/ux/selection-drag-lifecycle.test.mjs",
@@ -3109,8 +3091,7 @@
     "electron/assets/assetReferenceIdentity.test.ts",
     "electron/capabilityCore/generationProviderBootstrap.test.ts",
     "src/workbench/generationCanvas/reactFlow/canvasDragDraft.test.ts",
-    "tests/ux/param-panel-numeric.e2e.mjs",
-    "tests/ux/core-a-t7-recovery.e2e.mjs"
+    "tests/ux/param-panel-numeric.e2e.mjs"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -3124,7 +3105,7 @@
   "dependency_lifecycle": {
     "decision": "retain-with-exit",
     "current": "@xyflow/react 12.11.5; React 18.3.1; Electron 43.4.1 / Chromium 150.0.7871.224",
-    "target": "Existing React Flow renderer plus anchoredPlacement adapter; supported stable Electron with verified native failed-module-fetch eviction enabled, retaining src/ui/chunkBoundary.tsx as the recovery owner",
+    "target": "Existing React Flow renderer plus anchoredPlacement adapter; supported stable Electron with verified native failed-module-fetch eviction enabled, retaining src/ui/chunkBoundary.tsx (unchanged on this branch) as the recovery owner",
     "rationale": "NodeToolbar source provides portal and inverse zoom but no measured flip/clamp. Replacement would remove required behavior. Installed @xyflow/react 12.11.5 NodeWrapper and NodesSelection use the same synchronous useMoveSelectedNodes → updateNodePositions → triggerNodeChanges → onNodesChange path. The adapter observes the native keydown eventPhase only during that dispatch; @xyflow/system isInputDOMNode excludes .nokey descendants, preserving control keyboard handling without replacing framework key, selection or movement logic. Separately, real Electron proves React.lazy replacement cannot clear Chromium's failed module map. Exact upstream Chromium sources for 43.7.3 (150.0.7871.250) and 44.4.3 (152.0.7977.130) lack eviction; their binaries and all Electron patch contents were not independently executed/audited. Retain the current runtime and leave complete T7 BLOCKED, not accepted by this retention decision. No alpha upgrade, URL-graph rewrite or second loader is introduced.",
     "exit_criteria": [
       "Revisit if placement requires virtual anchors, auto-placement or scrolling-container middleware; migrate whole owner with geometry and draft-preservation tests.",
