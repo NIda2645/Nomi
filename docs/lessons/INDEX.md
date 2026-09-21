@@ -205,5 +205,6 @@
 - [Docs Gate Autosync 必须有正式 CI](docs-autosync-cannot-push-protected-main.md) — GH006 与跳过 CI 是写回链故障；固定 action PR + 默认 token 防循环，CI 批准边界明确
 - [样张两条硬纪律：真字形、真比例](mockups-need-real-glyphs-and-true-proportions.md) — 图标从 @tabler 包抽真实路径；布局线框按 1680×842 真比例并自己看过
 
+- [省额度：重复的事写脚本，有界的机械活给 Codex，要判断的才用最贵的模型](save-quota-script-the-repeats-codex-the-mechanical.md) — 派工前三问（做过吗·有界有判官吗·上下文是不是太大了）；Codex 外发姿势与四条硬约束；哪些验收绝不能省
 - [实验夹具必须经过真实调用点的投影](lab-fixtures-must-mirror-real-callsites.md) — 模型目录、档位与 canonical 参数不可手写平行真相。
 - [真机走查里的失败先查自己这条分支的调用链，再怪环境](branch-failure-blame-your-own-call-chain-first.md) — #777 把自己造的 `generation_surface_unavailable` 写成凭据问题；错误码字面量先找产生点、环境归因必须带排除证据、修法加门岗不补名字
