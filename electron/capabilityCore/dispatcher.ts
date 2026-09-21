@@ -45,6 +45,7 @@ import {
 } from '../integrationCertification/integrationSession'
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
 import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
+import { buildOnboardingKit } from './modelOnboarding/kit'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
@@ -110,6 +111,12 @@ export type DispatchContext = {
   integrationSessions?: IntegrationSessionService
   /** GUI-owned credential handoff effect. Called after the durable handoff is queued. */
   openCredentialsInNomi?: (input: { sessionId: string; vendorName: string }) => { opened: boolean } | void | Promise<{ opened: boolean } | void>
+  /**
+   * 用户此刻选的审批档位（宿主持有的那一份快照）。**它只被读，不被这一层解释**——
+   * 「该不该弹卡」全仓只有 `spendDecidedByPolicy` 回答（capabilityApprovalPolicy.ts:144）。
+   * 不传 = 不猜档位 = 照旧弹卡，与 `generationTransportAdapters.decideByPolicyAfterDraft` 同一条纪律。
+   */
+  approvalPolicy?: () => import('../shared/agentCapabilities/capabilityApprovalPolicy').ProjectAgentApprovalPolicy | undefined
 }
 
 const PROJECT_SESSION_RETRY = 'Open a new project session and retry'
@@ -762,14 +769,25 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         params.expectedRevision,
         ctx.origin?.host || 'external',
       )
-    // 接模型：两个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那两个名字同源。
+    // 接入套件：**无前置的只读常量**（schema + 撰写规范 + 两份样例卡）。它不读任何用户数据，
+    // 所以也不要求签名身份——要求它等于把「读一份公开 schema」也挡在门外，而那正是
+    // 2026-09-21 实测里 AI 什么都做不了的那道墙。
+    case 'model.onboarding.kit':
+      return buildOnboardingKit()
+    // 接模型：三个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那几个名字同源。
     case 'model.onboarding.setup':
+    case 'model.onboarding.try':
     case 'model.onboarding.remove': {
       if (ctx.origin?.host === 'external' || !ctx.origin?.host) throw new RpcError('Signed client identity is required', 403)
       return dispatchModelOnboarding(method, params, {
         owner: ctx.origin.host,
         ...(ctx.integrationSessions ? { sessions: ctx.integrationSessions } : {}),
         ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
+        // 试跑走的就是画布那条执行器；这里只是把同一个 runTask 递过去，不另起一条。
+        runTask: ctx.runTask,
+        // 「该不该问人」由用户的档位决定，不由入口决定：档位原样往下递，判据只有
+        // `spendDecidedByPolicy` 一处。宿主没给 = 不猜 = 照旧问人。
+        ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
       })
     }
     default:

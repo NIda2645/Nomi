@@ -160,7 +160,12 @@ describe("importModelCatalogPackage — 事务边界（全成功才写，任一�
       imported: { vendors: number; models: number; mappings: number };
       errors: string[];
     };
-    expect(res).toEqual({ imported: { vendors: 0, models: 0, mappings: 0 }, errors: [] });
+    expect(res).toEqual({
+      imported: { vendors: 0, models: 0, mappings: 0 },
+      kept: { vendors: 0, models: 0, mappings: 0 },
+      conflicts: [],
+      errors: [],
+    });
   });
 });
 

@@ -372,12 +372,12 @@
         {
           "what": "Each JSONL row is a user turn, not an OTLP span. Unknown metrics remain null; cost is estimated USD from native usage with pricing provenance.",
           "reason": "Creators need one local record per prompt plus session totals; streamed model/tool events would obscure the user-turn boundary."
-        }
-      ,
+        },
         {
           "what": "上报出门的不是这份 trace.jsonl，而是它的**字段白名单投影**（electron/telemetry/trajectoryProjection.ts）：OTel 自己标成敏感的六格（input.messages / output.messages / system_instructions / tool.call.arguments / tool.call.result / retrieval.query.text）连字段位都不存在，工具参数只留键名，会话 id 哈希。",
           "reason": "本地这份要完整（用户得读得到自己的文稿），出门那份要最小。两件事同一个格式做不到，所以做成同一格式上的一次减法，而不是第二个格式。"
-        }]
+        }
+      ]
     },
     {
       "name": "model-catalog-package",
@@ -460,6 +460,55 @@
           "reason": "Domain constraint: the canonical text skill package hash includes only supported text and script source files; this endpoint reads that package and never executes its scripts."
         }
       ]
+    },
+    {
+      "name": "nomi-provider-declaration-card",
+      "kind": "nomi-defined",
+      "wire": true,
+      "files": [],
+      "wireContract": "`nomi_read target=onboarding_kit` 发出去、`nomi_model_setup action=submit_declaration` 收回来的那张声明卡（不是盘上文件，是线上载荷）",
+      "spec": "https://json-schema.org/draft-07/schema",
+      "upstreamVersion": "JSON Schema draft-07；卡的形状由 zod 单一真相 electron/providerAdapter/validator.ts 的 adapterDraftSchema 派生（zod-to-json-schema），不手写第二份",
+      "why": "外部 AI（Claude Code / Codex / WorkBuddy）读这份 schema 写配置、Nomi 按同一份 schema 校验——这是**外面也读写**的东西。2026-09-21 真机实测：schema 要等用户贴完 key 才投影、一份例子都不给，结果 14 次调用 0 个模型登记成（scratchpad/mcp-onboarding-higgsfield.md）。把 schema 与两份实测过的样例卡做成无前置的套件，是这条路上成本最低、收益最大的一格。",
+      "searched": [
+        {
+          "what": "OpenAPI 3.1（https://spec.openapis.org/oas/v3.1.0），以及吃 OpenAPI 的两家自定义工具导入：Dify 自定义工具、Coze 插件导入",
+          "verdict": "**对不上，而且是结构性的**：OpenAPI 描述得了一次同步请求/响应，描述不了「提交 → 轮询 → 取产物」这条异步链与终态语义（failed/nsfw 这类词表）。Dify 与 Coze 都能直接粘一份 OpenAPI，但它们的工具也因此只覆盖同步调用。照抄只会把我们的轮询字段塞进别人的扩展点，用户拿到一个两边都读不了的文件。"
+        },
+        {
+          "what": "Replicate 的 per-version `openapi_schema`、fal.ai 的 per-model queue OpenAPI（/api/openapi/queue/openapi.json?endpoint_id=…）",
+          "verdict": "证实了同一条分界：两家都出 per-model 的**参数** schema，而异步语义（submit → status → result、starting/processing/succeeded/failed/canceled）是**平台自己统一定义**的，调用方不声明轮询。我们没有那个前提——用户接的是任意一家中转站，轮询形状各不相同，所以这一格必须留在卡上。可借的是「拿一段 OpenAPI 预填 parameters/create.body」，已记进发版后清单（L5），不阻塞本刀。"
+        },
+        {
+          "what": "Coze 的「导入后进 Debug 页真跑一次，跑通才能 Done」",
+          "verdict": "**直接抄了**：本刀的 `nomi_try_model` 就是它——试跑是接入流程的必经一步，而不是接完之后的可选动作。区别是我们把供应商原始响应脱敏后原样回传给 AI，让它自己收敛。"
+        }
+      ],
+      "fixtures": [],
+      "readers": [
+        "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+        "electron/providerAdapter/validator.ts"
+      ],
+      "writers": [
+        "electron/capabilityCore/modelOnboarding/kit.ts",
+        "electron/capabilityCore/modelOnboarding/kitExamples.ts"
+      ],
+      "deviations": [
+        {
+          "what": "卡比 OpenAPI 多出 delivery / query / statusMapping / response_mapping / assetIngestion / selfCheck 六格",
+          "reason": "领域约束：它们表达的是「这条异步链怎么走完、产物在哪一格、被审核算不算失败、怎么免费自检」——OpenAPI 的词汇里没有任何一格能承载。四家先例（Replicate / fal / Dify / Coze）的异步语义全由平台自己定义，没有一家让配置去描述轮询，所以这一层是我们在别人之上多做的那一层，不是绕开标准。"
+        },
+        {
+          "what": "`provider` 块（baseUrl / authType / authHeader / authScheme）在卡上，但只在这条连接**还没有凭据绑定**时可写",
+          "reason": "领域约束（安全）：地址与鉴权放法决定「用户的 key 发往哪里、怎么放」。没有绑定时没有任何已存密钥会改道，绑定在用户按下保存的那一刻才产生；已经绑了就只能复述，改地址只有回贴 key 页重存一次密钥这一条路。判据住 electron/catalog/declaredProviderRegistration.ts，由 check:credential-origin 规则 4 核它还在。"
+        }
+      ],
+      "debt": {
+        "what": "还没有把一段真实供应商 OpenAPI 片段吃进来预填 parameters / create.body 的能力，也还没抓一份 `tools/list` 往返样例当夹具",
+        "why": "fal / Replicate 拿得到 per-model schema，预填能再砍掉一批手写字段，但它不阻塞「把配置交出去」这条路本身；夹具要连着一次真实的 initialize + tools/list 往返才有意义。",
+        "plan": "docs/plan/2026-09-21-mcp-model-onboarding-floor.md",
+        "due": "2026-11-21"
+      }
     }
   ]
 }

@@ -74,6 +74,7 @@ const SEMANTIC_EDITING_TOOL_TITLES = {
   nomi_layout_read: { 'zh-CN': '读取工作区布局', en: 'Read workspace layout' },
   nomi_layout_write: { 'zh-CN': '调整工作区布局', en: 'Change workspace layout' },
   nomi_model_setup: { 'zh-CN': '接入或调整模型', en: 'Set up or adjust a model connection' },
+  nomi_try_model: { 'zh-CN': '试跑一次（会花钱）', en: 'Try this model once (spends credit)' },
   nomi_remove_provider: { 'zh-CN': '永久删除连接或模型', en: 'Permanently delete a connection or model' },
 } as const
 /** M2 语义编辑工具名单（真相源），供测试派生完整目录范围而非手抄排除规则。 */
@@ -101,6 +102,11 @@ const READ_METHOD_BY_TARGET: Record<string, string> = {
   // 「接到哪一步了」。旧名 `integration` 与旧工具 `nomi_integration` 一起退役（#754）：
   // 那条路上模型要同时学「integration 是名词还是动词」，而它其实只是一次**接入**的状态。
   setup: 'integration.get',
+  // 「写一份配置需要的东西」。**无任何前置**：schema、撰写规范、两份实测过的样例卡，
+  // 三样都是进程常量、零用户数据、零凭据。2026-09-21 之前它们挂在会话的 `compileRequest` 上，
+  // 而那要等 `credentialStatus=ready` —— AI 在人贴 key 之前一件事都做不了，实测四个模型
+  // 一个都没走到「声明」那一步。让它们等 key 从来没换来任何安全。
+  onboarding_kit: 'model.onboarding.kit',
 }
 /** nomi_read 的 target 集合（供 mcpProtocol 判 widget/canonical 投影时复用，真相单一）。 */
 export const READ_TARGETS = Object.freeze(Object.keys(READ_METHOD_BY_TARGET))
@@ -118,7 +124,7 @@ const READ_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      target: { type: 'string', enum: READ_TARGETS, description: '读取：canvas/projects/models/generation_context/operation/run/run_events/artifact/artifact_content/setup。target=projects 每行带一个短 projectSelectionHandle，原样喂给 nomi_session_open 即续接该项目。' },
+      target: { type: 'string', enum: READ_TARGETS, description: '读取：canvas/projects/models/generation_context/operation/run/run_events/artifact/artifact_content/setup/onboarding_kit。target=projects 每行带一个短 projectSelectionHandle，原样喂给 nomi_session_open 即续接该项目。target=onboarding_kit 无前置：接一家新供应商前先读它，拿到声明卡的 JSON Schema、撰写规范与两份可照抄的样例卡（不需要先有 API key，也不需要先开接入会话）。' },
       projectId: { type: 'string' },
       leaseHandle: { type: 'string', description: 'target=canvas/generation_context/operation 必填。' },
       runId: RUN_EVENT_FIELDS.runId,
@@ -147,6 +153,7 @@ const READ_TOOL = {
         return { projectId: a.projectId, leaseHandle: a.leaseHandle, operationId: a.operationId }
       case 'projects':
       case 'models':
+      case 'onboarding_kit':
         return {}
       case 'run':
         return { projectId: a.projectId, runId: a.runId }

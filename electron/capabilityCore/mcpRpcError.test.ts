@@ -7,17 +7,19 @@ import { rpcErrorFromPayload, rpcErrorWirePayload, RpcTransportError } from './m
 
 describe('structured local RPC errors', () => {
   it('keeps policy fields when decoding an object error payload', () => {
+    // 2026-09-21：`phase_not_ready` 与 `phase` 随 env flag / 三段式 rollout 一起删除，
+    // 这里换成仍然抛得出来的那一族策略码（缺一张有效的项目租约）。
     const error = rpcErrorFromPayload({
       ok: false,
       error: {
-        message: 'generation.single-shot phase_not_ready',
-        code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+        message: 'generation.single-shot lease_required',
+        code: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
       },
     }, 403)
     expect(error).toBeInstanceOf(RpcTransportError)
     expect(error).toMatchObject({
-      message: 'generation.single-shot phase_not_ready', code: 'phase_not_ready', errorCode: 'phase_not_ready',
-      nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+      message: 'generation.single-shot lease_required', code: 'lease_required', errorCode: 'lease_required',
+      nextAction: 'Open a new project session and retry', capability: 'start',
     })
   })
 

@@ -20,6 +20,15 @@
 //   规则 3（硬零）：出站守卫必须引用 `credentialBinding`。守卫是不变量的执行端；判据被人删掉
 //       之后，上面两条仍然全绿，而 key 又能去任何地方了。
 //
+//   规则 4（硬零，2026-09-21 随「AI 交整份声明卡」一起加）：**声明卡自带 `provider` 块**，
+//       也就是说地址与鉴权放法第一次能从一段未签名的数据里来。放开它的前提是一条**绑定**判据
+//       （不是「谁在说话」判据）：这条连接还没绑过 key → 卡可以写（没有任何已存密钥会改道，
+//       绑定在用户按下保存的那一刻才产生）；已经绑了 → 卡只能复述那个 origin，改地址只有
+//       回贴 key 页重存一次密钥这一条路。判据住 `catalog/declaredProviderRegistration.ts`，
+//       这里核它**还在**：删掉那几行，规则 1–3 仍然全绿，而一张卡就能把已存 key 送去别处。
+//       同一条判据在工具面还有一份**更早**的（`modelOnboarding/submitDeclaration.ts`），它只是
+//       为了给 AI 一个能照着做的码与下一步，不是第二个真相源——登记门那一份才是拦得住的那层。
+//
 // **加规则先验它会红**（R17）：本门岗落地时对 `origin/main` 1ba0c0cb5 实跑 8 处红，分属两个文件——
 //   · electron/catalog/catalogManagement.ts:21   写 baseUrlHint（规则 1）
 //   · electron/capabilityCore/mcpIntegrationManagementTools.ts:15-18  广播四个字段（规则 2）
@@ -52,6 +61,10 @@ const DESTINATION_OWNERS = new Map([
   ['electron/catalog/comfyuiWorkflowImportStore.ts', '本地 ComfyUI 导入：地址是用户填的本机实例'],
   ['electron/integrationCertification/integrationSession.ts', '贴 key 页的会话：saveCredential 就是「用户按下保存」那一刻'],
   ['electron/providerAdapter/serviceCatalog.ts', '认证 run 的落库：身份与地址由会话锁死，Agent 改不动'],
+  // 2026-09-21：外部 AI 交整份声明卡那条路的登记门。它能写地址，**前提是这条连接还没有绑定**
+  // （规则 4 核那条判据仍在）；已绑定的连接上它主动抛 DeclaredOriginRewriteError，用户回贴 key
+  // 页重存才是改地址的唯一路径。
+  ['electron/catalog/declaredProviderRegistration.ts', '声明卡登记门：没有绑定时才许写地址，已绑定一律拒（规则 4 核这条判据）'],
   ['src/ui/onboarding/VendorBaseUrlField.tsx', '接入页上那个地址输入框——用户亲手在改'],
   ['src/ui/onboarding/ComfyuiLocalCard.tsx', '本地 ComfyUI 卡片：用户亲手填本机地址'],
   ['src/ui/onboarding/AddComfyuiInstanceButton.tsx', '同上（新增实例）'],
@@ -144,6 +157,18 @@ async function scanBroadcastSchemas(): Promise<string[]> {
   return findings
 }
 
+/** 规则 4：声明卡登记门里的那条绑定判据还在吗。认**调用与抛出**，不认注释里的同名字符串。 */
+function scanDeclaredRegistration(): string[] {
+  const relative = 'electron/catalog/declaredProviderRegistration.ts'
+  const file = path.join(repoRoot, relative)
+  if (!fs.existsSync(file)) return []
+  const text = fs.readFileSync(file, 'utf8')
+  const missing = ['readCredentialBinding(', 'throw new DeclaredOriginRewriteError('].filter((call) => !text.includes(call))
+  return missing.length === 0
+    ? []
+    : [`${relative} 不再 ${missing.join(' / ')} —— 一张未签名的卡就能把已存 key 送去别的 origin`]
+}
+
 function scanGuard(): string[] {
   const guard = path.join(repoRoot, 'electron/vendor/vendorOutboundGuard.ts')
   const text = fs.readFileSync(guard, 'utf8')
@@ -155,7 +180,7 @@ function scanGuard(): string[] {
 }
 
 async function main(): Promise<void> {
-  const findings = [...scanWriters(), ...(await scanBroadcastSchemas()), ...scanGuard()]
+  const findings = [...scanWriters(), ...(await scanBroadcastSchemas()), ...scanDeclaredRegistration(), ...scanGuard()]
   if (findings.length > 0) {
     console.error(`✖ check:credential-origin：${findings.length} 处「密钥去向不由用户确认」：`)
     for (const finding of findings) console.error(`   · ${finding}`)
@@ -163,7 +188,7 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
-  console.log('✅ check:credential-origin 通过（写门唯一 / 工具面不广播去向 / 守卫仍在）。')
+  console.log('✅ check:credential-origin 通过（写门唯一 / 工具面不广播去向 / 声明卡只在未绑定时可写地址 / 守卫仍在）。')
 }
 
 void main()

@@ -1,0 +1,540 @@
+[
+ {
+  "caseId": "prompt-mentions-reference",
+  "entranceId": "external-mcp-generate",
+  "field": "body.prompt",
+  "baseline": "让 @image1 走进画面右侧",
+  "actual": "让 @[asset:https%3A%2F%2Fassets.example.com%2Fparity%2Fcharacter-a.png] 走进画面右侧",
+  "blocker": "A5",
+  "why": "@ 引用的最终投影（projectPromptForSend：@[asset:url] → @imageN）只在渲染层 catalogTaskActions.ts:304 做过一次；主进程全链路零命中，core.ts:580 与 apimart provider 都把 node.prompt 原样发出去。供应商收到的是一串 URL 编码的内部标记。"
+ },
+ {
+  "caseId": "prompt-mentions-reference",
+  "entranceId": "try-model",
+  "field": "body.prompt",
+  "baseline": "让 @image1 走进画面右侧",
+  "actual": "让 @[asset:https%3A%2F%2Fassets.example.com%2Fparity%2Fcharacter-a.png] 走进画面右侧",
+  "blocker": "A5",
+  "why": "@ 引用的最终投影（projectPromptForSend：@[asset:url] → @imageN）只在渲染层 catalogTaskActions.ts:304 做过一次；主进程全链路零命中，core.ts:580 与 apimart provider 都把 node.prompt 原样发出去。供应商收到的是一串 URL 编码的内部标记。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.image_urls.0",
+  "baseline": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.image_with_roles.0.url",
+  "actual": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "submit-execution-plan",
+  "field": "body.image_urls.0",
+  "baseline": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "submit-execution-plan",
+  "field": "body.image_with_roles.0.url",
+  "actual": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.image_urls.0",
+  "baseline": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.image_with_roles.0.url",
+  "actual": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "auto-run-batch",
+  "field": "body.image_urls.0",
+  "baseline": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "auto-run-batch",
+  "field": "body.image_with_roles.0.url",
+  "actual": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "continue-batch",
+  "field": "body.image_urls.0",
+  "baseline": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "i2v-with-reference",
+  "entranceId": "continue-batch",
+  "field": "body.image_with_roles.0.url",
+  "actual": "https://assets.example.com/parity/character-a.png",
+  "blocker": "NEW-1（本轮矩阵新发现，两轮横扫都没有）",
+  "why": "同一张参考图，手动路经 taskParams 落进 image_urls，Run 路经 apimartGenerationProjection.ts:215 的 channels.has('image_with_roles') 落进 image_with_roles。同一个模型、同一次提交，参考图进的是**不同的 wire 通道**。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "authorization",
+  "baseline": "authorization: Key <redacted>",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.aspect_ratio",
+  "baseline": "4:3",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.batch_size",
+  "baseline": 1,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.enhance_prompt",
+  "baseline": true,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.prompt",
+  "baseline": "a red paper crane on a windowsill",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "body.resolution",
+  "baseline": "720p",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "contentType",
+  "baseline": "application/json",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "failure.code",
+  "actual": "configured_provider",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "method",
+  "baseline": "POST",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "origin",
+  "baseline": "https://api.higgsfield.ai",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "agent-panel-spend-confirm",
+  "field": "path",
+  "baseline": "/higgsfield-ai/soul/v2/standard",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "authorization",
+  "baseline": "authorization: Key <redacted>",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "body.aspect_ratio",
+  "baseline": "4:3",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "body.batch_size",
+  "baseline": 1,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "body.enhance_prompt",
+  "baseline": true,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "body.prompt",
+  "baseline": "a red paper crane on a windowsill",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "body.resolution",
+  "baseline": "720p",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "contentType",
+  "baseline": "application/json",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "failure.code",
+  "actual": "configured_provider",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "method",
+  "baseline": "POST",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "origin",
+  "baseline": "https://api.higgsfield.ai",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "submit-execution-plan",
+  "field": "path",
+  "baseline": "/higgsfield-ai/soul/v2/standard",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "authorization",
+  "baseline": "authorization: Key <redacted>",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.aspect_ratio",
+  "baseline": "4:3",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.batch_size",
+  "baseline": 1,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.enhance_prompt",
+  "baseline": true,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.prompt",
+  "baseline": "a red paper crane on a windowsill",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "body.resolution",
+  "baseline": "720p",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "contentType",
+  "baseline": "application/json",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "failure.code",
+  "actual": "configured_provider",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "method",
+  "baseline": "POST",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "origin",
+  "baseline": "https://api.higgsfield.ai",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "external-mcp-start-generation",
+  "field": "path",
+  "baseline": "/higgsfield-ai/soul/v2/standard",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "authorization",
+  "baseline": "authorization: Key <redacted>",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "body.aspect_ratio",
+  "baseline": "4:3",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "body.batch_size",
+  "baseline": 1,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "body.enhance_prompt",
+  "baseline": true,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "body.prompt",
+  "baseline": "a red paper crane on a windowsill",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "body.resolution",
+  "baseline": "720p",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "contentType",
+  "baseline": "application/json",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "failure.code",
+  "actual": "configured_provider",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "method",
+  "baseline": "POST",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "origin",
+  "baseline": "https://api.higgsfield.ai",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "auto-run-batch",
+  "field": "path",
+  "baseline": "/higgsfield-ai/soul/v2/standard",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "authorization",
+  "baseline": "authorization: Key <redacted>",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "body.aspect_ratio",
+  "baseline": "4:3",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "body.batch_size",
+  "baseline": 1,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "body.enhance_prompt",
+  "baseline": true,
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "body.prompt",
+  "baseline": "a red paper crane on a windowsill",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "body.resolution",
+  "baseline": "720p",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "contentType",
+  "baseline": "application/json",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "failure.code",
+  "actual": "configured_provider",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "method",
+  "baseline": "POST",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "origin",
+  "baseline": "https://api.higgsfield.ai",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ },
+ {
+  "caseId": "non-apimart-vendor",
+  "entranceId": "continue-batch",
+  "field": "path",
+  "baseline": "/higgsfield-ai/soul/v2/standard",
+  "blocker": "A3 / BL-1",
+  "why": "generationProviderBootstrap.ts:100 只为 vendor.key === 'apimart' 造 provider，其余一律 providerReady:false / missingForSubmit:['configured_provider']。用户自己接好的 Higgsfield 在画布上按生成能跑（鉴权头正确地用了 Key 方案词），在 Agent 付款卡 / 外部 MCP / 全自动 Run 上一步都走不出去。"
+ }
+]

@@ -31,8 +31,18 @@ export type ModelCatalogHealthIssueDto = {
   kind?: BillingModelKind
 }
 
+/**
+ * 目录为什么只能读不能改。`null` = 一切正常。
+ * `newer_on_disk` 是本次事故里那条：盘上的配置由更新版本写入，当前版本读得出来但不许改——
+ * 界面必须明说「你的配置没有丢」，而不是渲染成一个空列表。
+ */
+export type ModelCatalogReadOnlyDto =
+  | { reason: 'newer_on_disk'; diskVersion: number; appVersion: number }
+  | { reason: 'unreadable_file'; detail: string; quarantinedPath: string | null }
+
 export type ModelCatalogHealthDto = {
   ok: boolean
+  readOnly?: ModelCatalogReadOnlyDto | null
   counts: {
     vendors: number
     enabledVendors: number

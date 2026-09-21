@@ -170,14 +170,25 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
   })
 
   it('preserves typed generation policy codes in structured MCP outcomes', () => {
-    const error = Object.assign(new Error('generation.single-shot phase_not_ready'), {
-      code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+    // 2026-09-21：`phase_not_ready` 与 `phase` 随 env flag / 三段式 rollout 一起删除，
+    // 换成仍在册的策略码。**同时新增一条阳性对照**：已删除的码不许再被当成策略码放行，
+    // 否则删了一半（抛的那半没了、认的这半还在）会长出一份失真的清单。
+    const error = Object.assign(new Error('generation.single-shot lease_required'), {
+      code: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
     })
     const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
     expect(outcome).toMatchObject({
-      kind: 'error', errorCode: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+      kind: 'error', errorCode: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
     })
   })
+
+  it.each(['feature_disabled', 'phase_not_ready'])(
+    '已删除的 %s 不再被当成策略码（它抛不出来了，认它只会留下一份失真的清单）', (code) => {
+      const error = Object.assign(new Error('some private cause'), { code, nextAction: 'x', capability: 'start' })
+      const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
+      expect(outcome).toMatchObject({ kind: 'error', errorCode: null })
+      expect(outcome).not.toHaveProperty('phase')
+    })
 
   it.each([
     'capability_invocation_unverified',

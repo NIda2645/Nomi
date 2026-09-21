@@ -11,6 +11,7 @@ import { DOCUMENT_WRITE_CAPABILITY, documentWriteResultSchema } from "../shared/
 import {
   MODEL_ONBOARDING_REMOVE_CAPABILITY,
   MODEL_ONBOARDING_SETUP_CAPABILITY,
+  MODEL_ONBOARDING_TRY_CAPABILITY,
 } from "../shared/agentCapabilities/modelOnboarding";
 import { ASSET_READ_CAPABILITY } from "../shared/agentCapabilities/assetRead";
 import { EXPORT_READ_CAPABILITY, exportReadPiInputSchemaForAlias } from "../shared/agentCapabilities/exportCapabilities";
@@ -436,6 +437,16 @@ export const MODEL_SETUP_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MODE
   outputSchema: z.unknown(),
 });
 
+/**
+ * 试跑是**付费**能力，所以它是自己一个适配器：`destructiveHint` 由 `effectClass:"spend"` 派生
+ * （`mcpAnnotationsFor`），宿主因此会停下来问用户，而不是把它当成又一次接模型的本地写。
+ */
+export const MODEL_TRY_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MODEL_ONBOARDING_TRY_CAPABILITY, {
+  authority: { kind: "project_session", requiredScope: MODEL_ONBOARDING_TRY_CAPABILITY.requiredScope },
+  port: { kind: "model-catalog", access: "write" },
+  outputSchema: z.unknown(),
+});
+
 export const MODEL_REMOVE_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MODEL_ONBOARDING_REMOVE_CAPABILITY, {
   authority: { kind: "project_session", requiredScope: MODEL_ONBOARDING_REMOVE_CAPABILITY.requiredScope },
   port: { kind: "model-catalog", access: "write" },
@@ -445,7 +456,7 @@ export const MODEL_REMOVE_MCP_ADAPTER: McpCapabilityAdapter = derivedAdapter(MOD
 const MCP_SAFE_ADAPTERS = new Set<McpCapabilityAdapter>([
   CANVAS_READ_MCP_ADAPTER, CANVAS_EDIT_MCP_ADAPTER, CANVAS_MAINTENANCE_MCP_ADAPTER,
   DOCUMENT_READ_MCP_ADAPTER, DOCUMENT_EDIT_MCP_ADAPTER, TIMELINE_READ_MCP_ADAPTER, TIMELINE_EDIT_MCP_ADAPTER, EXPORT_JOB_MCP_ADAPTER, MEDIA_QUERY_MCP_ADAPTER,
-  MODEL_SETUP_MCP_ADAPTER, MODEL_REMOVE_MCP_ADAPTER,
+  MODEL_SETUP_MCP_ADAPTER, MODEL_TRY_MCP_ADAPTER, MODEL_REMOVE_MCP_ADAPTER,
 ]);
 
 // Deliberately explicit: do not map CAPABILITY_CONTRACTS, Skills, manifests, or plugin metadata.
@@ -460,5 +471,6 @@ export const MCP_CAPABILITY_RESOLVER = createMcpCapabilityResolver([
   EXPORT_JOB_MCP_ADAPTER,
   MEDIA_QUERY_MCP_ADAPTER,
   MODEL_SETUP_MCP_ADAPTER,
+  MODEL_TRY_MCP_ADAPTER,
   MODEL_REMOVE_MCP_ADAPTER,
 ]);

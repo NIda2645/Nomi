@@ -163,12 +163,27 @@ export type ModelCatalogImportPackageDto = {
   }>
 }
 
+export type ModelCatalogImportConflictDto = {
+  kind: 'vendor' | 'model' | 'mapping'
+  vendorKey: string
+  modelKey?: string
+  mappingId?: string
+}
+
 export type ModelCatalogImportResultDto = {
   imported: {
     vendors: number
     models: number
     mappings: number
   }
+  /** 本机已经有同一条、因此**没有被动过**的数量。导入是合并不是覆盖。 */
+  kept: {
+    vendors: number
+    models: number
+    mappings: number
+  }
+  /** 冲突清单：界面据此告诉用户「这几条我保留了你现在的，没有替换」。 */
+  conflicts: ModelCatalogImportConflictDto[]
   errors: string[]
 }
 
@@ -263,8 +278,9 @@ export async function deleteModelCatalogMapping(id: string): Promise<void> {
   requireDesktopRuntime('model catalog').modelCatalog.deleteMapping(id)
 }
 
-export async function exportModelCatalogPackage(params?: { includeApiKeys?: boolean }): Promise<ModelCatalogImportPackageDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage(params) as ModelCatalogImportPackageDto
+/** 导出包**永远不含密钥材料**（明文与 safeStorage 密文都不含）——理由在 catalogPackageFormat.ts。 */
+export async function exportModelCatalogPackage(): Promise<ModelCatalogImportPackageDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage() as ModelCatalogImportPackageDto
 }
 
 export async function importModelCatalogPackage(payload: ModelCatalogImportPackageDto): Promise<ModelCatalogImportResultDto> {

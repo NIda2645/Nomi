@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import { getSettingsRoot } from "./settingsRoot";
 import {
   DEFAULT_AGENT_APPROVAL_POLICY_SETTINGS,
@@ -21,13 +21,22 @@ export function agentApprovalPolicySettingsPath(): string {
   return path.join(getSettingsRoot(), AGENT_APPROVAL_POLICY_FILE);
 }
 
-/** 主进程侧「用户现在选的权限档」的**唯一**读口。缺文件/读坏 = 默认档（更常问的那一档）。 */
+/**
+ * 主进程侧「用户现在选的权限档」的**唯一**读口。**没有这份文件** = 默认档（更常问的那一档）。
+ *
+ * 2026-09-21 合并 ①：本函数原先是 `try { readJsonFile } catch { DEFAULT }`——正是批次 E
+ * 在全仓删掉的那种写法。它把「文件不存在」和「文件读不出来（被锁 / 语法坏了）」答成同一句话，
+ * 于是读不出来时**悄悄按默认档跑**：用户选的是「每步都问」，这一次却按「全自动」放行。
+ * 权限档在花钱轴上，这条路上的默认绝不能靠一个 catch 决定。改走 `configFileStore` 那份原语：
+ * 缺文件给默认，读得出来但坏了的会被改名留底（原字节不动）并拦下写回，不会被一次默认覆盖掉。
+ */
 export function readAgentApprovalPolicy(): ProjectAgentApprovalPolicy {
-  try {
-    return normalizeAgentApprovalPolicySettings(readJsonFile(agentApprovalPolicySettingsPath())).policy;
-  } catch {
-    return DEFAULT_AGENT_APPROVAL_POLICY_SETTINGS.policy;
-  }
+  return normalizeAgentApprovalPolicySettings(
+    readConfigFileOrDefault<unknown>(
+      agentApprovalPolicySettingsPath(),
+      () => DEFAULT_AGENT_APPROVAL_POLICY_SETTINGS,
+    ),
+  ).policy;
 }
 
 /**
@@ -36,6 +45,6 @@ export function readAgentApprovalPolicy(): ProjectAgentApprovalPolicy {
  */
 export function writeAgentApprovalPolicy(value: unknown): ProjectAgentApprovalPolicy {
   const next = normalizeAgentApprovalPolicySettings(value);
-  writeJsonFileAtomic(agentApprovalPolicySettingsPath(), next);
+  writeConfigFileAtomic(agentApprovalPolicySettingsPath(), next);
   return next.policy;
 }

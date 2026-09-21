@@ -72,7 +72,7 @@
                   "apiKey"
                 ],
                 "additionalProperties": true,
-                "description": "Present only when the export was asked to carry credentials; re-import re-encrypts on the target machine."
+                "description": "Import-only: a credential supplied by whoever wrote this file. Exports never contain it. On import it is encrypted on this machine."
               },
               "models": {
                 "type": "array",

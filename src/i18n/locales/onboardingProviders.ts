@@ -560,7 +560,7 @@ export const zhOnboardingProviders = {
       mcp: 'MCP 配置片段',
     },
     promptBody:
-      '用 nomi-add-model 这个技能，帮我把 <模型名，或厂商文档页链接> 接进 Nomi。\n如果你的助手有技能目录，把下面那份 SKILL.md 存进去；没有就直接照它做。\n接完跑一次最小样例确认真能出东西，再告诉我它在模型列表里叫什么。',
+      '用 nomi-add-model 这个技能，帮我把 <模型名，或厂商文档页链接> 接进 Nomi。\n如果你的助手有技能目录，把下面那份 SKILL.md 存进去；没有就直接照它做。\n先读这家的官方 API 文档再动手，凭记忆填等于没查。\n密钥只由我本人在 Nomi 自己的页面里粘贴：不要向我索要、不要写进任何参数或文件、不要打印。轮到我操作时停下来告诉我该点哪里。\n没有真跑成一次、拿到产物之前，不要说「接好了」；跑不成就直说卡在哪一步、对方回了什么。\n最后告诉我它在模型列表里叫什么。',
     mcpNote: '只有「其它」要手动粘这段；上面三家由 Nomi 一键写入。',
     otherOneClickHint: 'Nomi 也能替 {{clients}} 一键写好配置。',
     steps: {
@@ -1793,7 +1793,7 @@ export const enOnboardingProviders = {
       mcp: 'MCP config snippet',
     },
     promptBody:
-      'Use the nomi-add-model skill to connect <model name, or a link to the vendor API docs> to Nomi.\nIf your assistant has a skills directory, save the SKILL.md below into it; otherwise just follow it directly.\nRun one minimal sample to prove it really produces output, then tell me what it is called in the model list.',
+      'Use the nomi-add-model skill to connect <model name, or a link to the vendor API docs> to Nomi.\nIf your assistant has a skills directory, save the SKILL.md below into it; otherwise just follow it directly.\nRead the provider\'s official API docs first — working from memory counts as not having checked.\nThe key is pasted by me, on Nomi\'s own page: never ask me for it, never put it in an argument or a file, never print it. When it is my turn, stop and tell me exactly what to click.\nDo not tell me it works until you have actually generated something with it; if a run fails, say so plainly and name the step it stopped at.\nFinally, tell me what it is called in the model list.',
     mcpNote: 'Only "Other" needs this pasted by hand; Nomi writes it for the three hosts above.',
     otherOneClickHint: 'Nomi can also write the config for {{clients}} in one click.',
     steps: {

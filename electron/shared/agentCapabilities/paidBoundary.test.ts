@@ -17,19 +17,24 @@ import {
 } from "./paidBoundary";
 
 describe("付费边界（方案 §3.1 第二行）", () => {
-  it("唯一判据是契约上的 effect:\"paid\"，今天恰好只有 generation.gate", () => {
-    expect(PAID_CAPABILITY_CONTRACTS.map((contract) => contract.id)).toEqual(["generation.gate"]);
+  it("唯一判据是契约上的 effect:\"paid\"", () => {
+    // 2026-09-21 起是两条：Run 的付费门，和接模型的试跑（一次真实生成 = 真花钱）。
+    expect(PAID_CAPABILITY_CONTRACTS.map((contract) => contract.id)).toEqual(["generation.gate", "model.onboarding.try"]);
     // 阳性对照：判据真的在读契约，而不是抄了一个 id。
     expect(CAPABILITY_CONTRACTS.filter((contract) => contract.effect === "paid").map((c) => c.id))
       .toEqual(PAID_CAPABILITY_CONTRACTS.map((c) => c.id));
   });
 
   it("内部面：付费能力不投影，模型面根本够不着", () => {
-    // 付费边界上的名字只住 `method` surface（宿主/dispatcher 方法名）；`pi` surface 上一个都没有。
-    expect(paidBoundaryAliases("pi")).toEqual([]);
-    for (const alias of paidBoundaryAliases("method")) {
-      expect(LANE_MODEL_TOOL_CATALOG.some((tool) => tool.name === alias)).toBe(false);
+    // 判据是「内部 lane 的工具表里一个都没有」，不是「某个 surface 上恰好没写别名」——
+    // 后者会在有人给付费契约补一个 pi 别名的那天静默失效（2026-09-21 `try_model` 就补了一个：
+    // 它要在付费名单里被认出来，A1 的「动词声明 spend 而契约声明 paid」才对得上账）。
+    for (const surface of ["pi", "mcp", "method"] as const) {
+      for (const alias of paidBoundaryAliases(surface)) {
+        expect(LANE_MODEL_TOOL_CATALOG.some((tool) => tool.name === alias), alias).toBe(false);
+      }
     }
+    expect(paidBoundaryAliases("pi").length + paidBoundaryAliases("method").length).toBeGreaterThan(0);
     // 阳性对照：这条断言不是因为「lane 目录恰好是空的」而通过。
     expect(LANE_MODEL_TOOL_CATALOG.length).toBeGreaterThan(0);
     expect(projectsToInternalProfile(PAID_CAPABILITY_CONTRACTS[0]!)).toBe(false);

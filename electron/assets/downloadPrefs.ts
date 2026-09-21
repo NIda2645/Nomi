@@ -3,7 +3,8 @@
 //（2026-08-01，生成完自动复制一份到用户目录）。所有写都走 writePrefs 做 merge——写一个字段绝不抹掉另一个。
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, getSettingsRoot, readJson } from "../runtimePaths";
+import { ensureDir, getSettingsRoot } from "../runtimePaths";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 
 const PREFS_FILE = "download-prefs.json";
 
@@ -14,7 +15,7 @@ function prefsPath(): string {
 }
 
 function readPrefs(): DownloadPrefs {
-  const prefs = readJson<DownloadPrefs>(prefsPath(), {});
+  const prefs = readConfigFileOrDefault<DownloadPrefs>(prefsPath(), () => ({}));
   return prefs && typeof prefs === "object" ? prefs : {};
 }
 
@@ -22,7 +23,7 @@ function readPrefs(): DownloadPrefs {
 function writePrefs(patch: DownloadPrefs): void {
   try {
     ensureDir(getSettingsRoot());
-    fs.writeFileSync(prefsPath(), JSON.stringify({ ...readPrefs(), ...patch }, null, 2), "utf8");
+    writeConfigFileAtomic(prefsPath(), { ...readPrefs(), ...patch });
   } catch {
     /* 写失败只是下次回退默认，不影响本次操作 */
   }

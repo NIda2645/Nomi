@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import {
   DEFAULT_AUTOMATION_POLICY_SETTINGS,
   normalizeAutomationPolicySettings,
@@ -21,15 +21,13 @@ export function automationPolicySettingsPath(): string {
 }
 
 export function readAutomationPolicySettings(): AutomationPolicySettings {
-  try {
-    return normalizeAutomationPolicySettings(readJsonFile(automationPolicySettingsPath()));
-  } catch {
-    return normalizeAutomationPolicySettings(DEFAULT_AUTOMATION_POLICY_SETTINGS);
-  }
+  return normalizeAutomationPolicySettings(
+    readConfigFileOrDefault<unknown>(automationPolicySettingsPath(), () => DEFAULT_AUTOMATION_POLICY_SETTINGS),
+  );
 }
 
 export function writeAutomationPolicySettings(value: unknown): AutomationPolicySettings {
   const next = normalizeAutomationPolicySettings(value);
-  writeJsonFileAtomic(automationPolicySettingsPath(), next);
+  writeConfigFileAtomic(automationPolicySettingsPath(), next);
   return next;
 }
