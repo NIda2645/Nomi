@@ -237,17 +237,13 @@ export function persistIntegrationSessionState(
 ): void {
   const capped = capIntegrationSessions(state.sessions);
   state.sessions = capped.sessions;
-  let failure: unknown;
-  let persisted = false;
   try {
     save(state);
-    persisted = true;
   } catch (error) {
-    failure = error;
+    logIntegrationSessionCompaction(capped.report, "memory-only", error);
     throw error;
-  } finally {
-    logIntegrationSessionCompaction(capped.report, persisted ? "persisted" : "memory-only", failure);
   }
+  logIntegrationSessionCompaction(capped.report, "persisted");
 }
 
 /**
