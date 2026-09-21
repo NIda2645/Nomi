@@ -258,6 +258,11 @@ export function readableToolName(t: Translate, name: string, rawArgs?: unknown):
   if (normalized.includes('model.onboarding.setup') || normalized.includes('connect_model_provider')) {
     return t('agentResident.toolModelSetup')
   }
+  // 2026-09-21 合并 ①：试跑是**花钱**的那一口（一次真实生成），不能和「接入模型」共用一句话——
+  // 面板上长得一样，用户就分不出「他在接」和「他在花我的钱」。和上面 remove 单列是同一条理由。
+  if (normalized.includes('model.onboarding.try') || normalized.includes('try_model')) {
+    return t('agentResident.toolModelTry')
+  }
   if (normalized.includes('production.run.write')) return t('agentResident.toolProductionWrite')
   if (normalized.includes('skill.read')) return t('agentResident.toolSkillRead')
   if (normalized.includes('skill.write')) return t('agentResident.toolSkillWrite')
