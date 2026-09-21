@@ -55,7 +55,19 @@ const authorFieldDescriptions: Record<string,string> = {
   url:'Media URL',name:'Media name',sourceNodeId:'Source node id',anchorId:'Source anchor id',ignore:'Features to ignore',
   key:'Segment name',start:'Start offset',end:'End offset',durationSec:'Seconds for stills too',
 };
-const describeAuthorFields = <T extends z.ZodRawShape>(shape:T):T => Object.fromEntries(Object.entries(shape).map(([key,value])=>[key,value.description ? value : value.describe(authorFieldDescriptions[key] ?? key)])) as T;
+/**
+ * 作者字段的说明文字由上面那张表**逐个**登记。缺一条就在装配期抛，不许退回裸 key。
+ *
+ * 为什么不留 `?? key`：分镜 schema（`electron/shared/storyboard/storyboardPlanSchema.ts`）新长一个
+ * 字段，它会自动出现在模型的工具 schema 里，说明就是那个字段的裸变量名——不报错、不红、没人看见，
+ * 而模型据此写出来的东西要花钱。这条断言的位置就是「能让门岗拦的别留给人」（R17）。
+ */
+const describeAuthorFields = <T extends z.ZodRawShape>(shape:T):T => Object.fromEntries(Object.entries(shape).map(([key,value])=>{
+  if (value.description) return [key,value];
+  const described = authorFieldDescriptions[key];
+  if (!described) throw new Error(`storyboard author field has no model-visible description: ${key}`);
+  return [key,value.describe(described)];
+})) as T;
 const originalBindings=planShotSchema.shape.referenceBindings.unwrap();
 const authorBindings=z.record(z.array(z.object(describeAuthorFields(originalBindings.element.element.shape))));
 const authorShape=planAnchorSchema.omit({id:true,name:true,description:true,modelKey:true,modelVendor:true,modeId:true,params:true,referenceBindings:true})
