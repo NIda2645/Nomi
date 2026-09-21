@@ -70,6 +70,40 @@ type CanvasKeydownHandlerOptions = {
   zoomByStep: (direction: -1 | 1) => void
   undo: () => void
   redo: () => void
+  /** Cmd/Ctrl+D：所选节点及其之间的边原地复制。 */
+  duplicateSelectedNodes: () => void
+  /** Cmd/Ctrl+L：选中两张卡时把它们连起来（左 → 右）。 */
+  connectSelectedNodes: () => void
+  /** Cmd/Ctrl+Enter：生成所选（走浮条「生成」同一个入口与花钱确认）。 */
+  generateSelectedNodes: () => void
+  /** Tab：在鼠标处打开「添加节点」菜单。 */
+  openAddNodeMenu: () => void
+  /** ⌥⇧F / Alt+Shift+F：整理画布（与左下「整理」按钮同一个动作）。 */
+  tidyCanvas: () => void
+}
+
+/**
+ * 快捷键里的字母：按 `event.key` 认（Dvorak / AZERTY 按的是键帽上的字），
+ * 只有 key 不是 ASCII 字母时才回退物理位置 `event.code`——macOS 上 ⌥ 组合会把 F 变成 `Ï`、
+ * 俄文 / 希腊文布局下 Z 是 `я`。与 tldraw `useKeyboardShortcuts` 同一裁决（见 docs/plan/2026-09-21-canvas-shortcut-parity.md）。
+ */
+export function canvasShortcutKey(event: Pick<KeyboardEvent, 'key' | 'code'>): string {
+  const key = event.key.toLowerCase()
+  if (/^[a-z]$/.test(key)) return key
+  if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3).toLowerCase()
+  return key
+}
+
+const INTERACTIVE_FOCUS_SELECTOR =
+  'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [role="button"], [role="menuitem"], [role="tab"], [role="slider"], [role="checkbox"], [role="switch"], [role="option"], [role="combobox"]'
+
+/**
+ * Tab 只在「焦点不在任何可交互控件上」时归画布（打开添加菜单）；焦点在按钮 / 菜单 / 输入上时
+ * Tab 仍是浏览器的焦点切换——键盘用户靠它走遍界面，画布不能把它吃掉。
+ */
+export function tabBelongsToCanvas(activeElement: Element | null): boolean {
+  if (!activeElement || activeElement === document.body) return true
+  return !activeElement.matches(INTERACTIVE_FOCUS_SELECTOR)
 }
 
 function shouldIgnoreCanvasShortcut(target: EventTarget | null, stageRef: React.RefObject<HTMLDivElement>): boolean {
@@ -97,11 +131,18 @@ export function createCanvasKeydownHandler(opts: CanvasKeydownHandlerOptions): (
     zoomByStep,
     undo,
     redo,
+    duplicateSelectedNodes,
+    connectSelectedNodes,
+    generateSelectedNodes,
+    openAddNodeMenu,
+    tidyCanvas,
   } = opts
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return
+    // 输入法组字中（中文 / 日文候选框开着）按的任何键都属于输入法。
+    if (event.isComposing) return
     if (shouldIgnoreCanvasShortcut(event.target, stageRef)) return
-    const key = event.key.toLowerCase()
+    const key = canvasShortcutKey(event)
     const mod = event.metaKey || event.ctrlKey
     const hasTextSelection = !(window.getSelection()?.isCollapsed ?? true)
     if (mod && hasTextSelection && (key === 'c' || key === 'x')) return
@@ -132,7 +173,37 @@ export function createCanvasKeydownHandler(opts: CanvasKeydownHandlerOptions): (
       }
       return
     }
-    if (!mod) return
+    if (!mod) {
+      if (event.key === 'Tab' && !event.altKey && !event.shiftKey) {
+        if (!tabBelongsToCanvas(document.activeElement)) return
+        event.preventDefault()
+        openAddNodeMenu()
+        return
+      }
+      if (key === 'f' && event.altKey && event.shiftKey) {
+        event.preventDefault()
+        tidyCanvas()
+      }
+      return
+    }
+    if (event.key === 'Enter' && !event.altKey && !event.shiftKey) {
+      if (!selectedNodeCount) return
+      event.preventDefault()
+      generateSelectedNodes()
+      return
+    }
+    if (key === 'd' && !event.altKey && !event.shiftKey) {
+      if (!selectedNodeCount) return
+      event.preventDefault()
+      duplicateSelectedNodes()
+      return
+    }
+    if (key === 'l' && !event.altKey && !event.shiftKey) {
+      if (selectedNodeCount !== 2) return
+      event.preventDefault()
+      connectSelectedNodes()
+      return
+    }
     const zoomDirection = canvasZoomShortcutDirection(event)
     if (zoomDirection !== 0) {
       event.preventDefault()
@@ -238,7 +309,7 @@ export function useCanvasShortcuts(opts: {
   zoomByStep: (direction: -1 | 1) => void
   undo: () => void
   redo: () => void
-}): void {
+} & Pick<CanvasKeydownHandlerOptions, 'duplicateSelectedNodes' | 'connectSelectedNodes' | 'generateSelectedNodes' | 'openAddNodeMenu' | 'tidyCanvas'>): void {
   const {
     readOnly,
     stageRef,
@@ -258,6 +329,11 @@ export function useCanvasShortcuts(opts: {
     zoomByStep,
     undo,
     redo,
+    duplicateSelectedNodes,
+    connectSelectedNodes,
+    generateSelectedNodes,
+    openAddNodeMenu,
+    tidyCanvas,
   } = opts
   const pasteFallbackTimerRef = React.useRef<number | null>(null)
 
@@ -296,6 +372,11 @@ export function useCanvasShortcuts(opts: {
       zoomByStep,
       undo,
       redo,
+      duplicateSelectedNodes,
+      connectSelectedNodes,
+      generateSelectedNodes,
+      openAddNodeMenu,
+      tidyCanvas,
     })
     const handlePaste = (event: ClipboardEvent) => {
       // A real paste owns this keystroke even when it belongs to an editor. Cancel the keydown
@@ -345,6 +426,11 @@ export function useCanvasShortcuts(opts: {
   }, [
     activeCategoryId,
     cancelConnection,
+    connectSelectedNodes,
+    duplicateSelectedNodes,
+    generateSelectedNodes,
+    openAddNodeMenu,
+    tidyCanvas,
     copySelectedNodes,
     cutSelectedNodes,
     deleteSelectedNodes,

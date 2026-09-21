@@ -156,6 +156,8 @@ export type GenerationCanvasState = {
   setGenerationAiCollapsed: (collapsed: boolean) => void
   resetGenerationAiConversation: () => void
   duplicateNodesForDrag: (nodeIds: string[]) => Map<string, string>
+  /** Cmd/Ctrl+D：所选节点及其之间的边原地偏移复制，一个撤销点，不动用户剪贴板。 */
+  duplicateSelectedNodes: () => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
   /**

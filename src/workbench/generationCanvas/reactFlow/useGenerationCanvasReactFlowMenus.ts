@@ -123,6 +123,7 @@ export function useGenerationCanvasReactFlowMenus({
   handleImportContextFiles: (files: File[]) => void
   handleNodeContextAction: (action: NodeContextMenuAction) => void
   handleAddConnectedNode: (kind: GenerationNodeKind) => void
+  openAddNodeMenuAt: (clientX: number, clientY: number) => void
 } {
   const connectionStartRef = React.useRef<{ nodeId: string; side: ConnectionSide } | null>(null)
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<CanvasConnectionCreateMenu | null>(null)
@@ -134,6 +135,7 @@ export function useGenerationCanvasReactFlowMenus({
   const {
     contextNodeMenu,
     setContextNodeMenu,
+    openBlankMenuAt,
     prepareContextMenuPointerDown,
     handleContextMenuPointerMove,
     finishContextMenuPointerUp,
@@ -325,5 +327,6 @@ export function useGenerationCanvasReactFlowMenus({
     handleImportContextFiles,
     handleNodeContextAction,
     handleAddConnectedNode,
+    openAddNodeMenuAt: openBlankMenuAt,
   }
 }

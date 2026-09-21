@@ -25,3 +25,13 @@ export function platformModifier(platform: string): '⌘' | 'Ctrl' {
 export function platformAltKey(platform: string): '⌥ Option' | 'Alt' {
   return isMacPlatform(platform) ? '⌥ Option' : 'Alt'
 }
+
+/** Shift 在提示里的写法：Mac 键帽印 ⇧，Windows / Linux 写 Shift。 */
+export function platformShiftKey(platform: string): '⇧' | 'Shift' {
+  return isMacPlatform(platform) ? '⇧' : 'Shift'
+}
+
+/** 组合键里 Alt 的紧凑写法（⌥⇧F / Alt Shift F）。拖动手势那一行用上面的全称。 */
+export function platformAltGlyph(platform: string): '⌥' | 'Alt' {
+  return isMacPlatform(platform) ? '⌥' : 'Alt'
+}

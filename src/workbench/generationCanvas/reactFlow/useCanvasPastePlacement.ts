@@ -16,21 +16,28 @@ export function resolvePastePlacement(input: {
   stageRect: StageRect | null
   toCanvasPoint: (clientX: number, clientY: number) => { x: number; y: number }
 }): CanvasPlacement | null {
-  const { lastPointer, stageRect, toCanvasPoint } = input
+  const client = resolveStageClientPoint(input.lastPointer, input.stageRect)
+  return client ? { point: input.toCanvasPoint(client.x, client.y), anchor: CENTER_PLACEMENT_ANCHOR } : null
+}
+
+/**
+ * 「键盘动作落在哪」的视口坐标：鼠标在舞台里 → 那一点；否则舞台中央；舞台没量到 → null。
+ * 粘贴（Cmd+V）与新建（Tab 打开添加菜单）共用这一个判据，不各记一份指针。
+ */
+export function resolveStageClientPoint(lastPointer: ClientPoint | null, stageRect: StageRect | null): ClientPoint | null {
   if (!stageRect || stageRect.width <= 0 || stageRect.height <= 0) return null
   const pointerInStage = lastPointer
     && lastPointer.x >= stageRect.left && lastPointer.x <= stageRect.right
     && lastPointer.y >= stageRect.top && lastPointer.y <= stageRect.bottom
-  const client = pointerInStage
+  return pointerInStage
     ? lastPointer
     : { x: stageRect.left + stageRect.width / 2, y: stageRect.top + stageRect.height / 2 }
-  return { point: toCanvasPoint(client.x, client.y), anchor: CENTER_PLACEMENT_ANCHOR }
 }
 
 export function useCanvasPastePlacement(
   hostRef: React.RefObject<HTMLElement | null>,
   toCanvasPoint: (clientX: number, clientY: number) => { x: number; y: number },
-): () => CanvasPlacement | null {
+): { getPastePlacement: () => CanvasPlacement | null; getStageClientPoint: () => ClientPoint | null } {
   // 最后一次在舞台里的指针位置；离开舞台即清空（离开后按 V 应回到舞台中央，而不是离开前那一点）。
   const lastPointerRef = React.useRef<ClientPoint | null>(null)
   React.useEffect(() => {
@@ -47,9 +54,14 @@ export function useCanvasPastePlacement(
       host.removeEventListener('pointerleave', forget)
     }
   }, [hostRef])
-  return React.useCallback(() => resolvePastePlacement({
+  const getPastePlacement = React.useCallback(() => resolvePastePlacement({
     lastPointer: lastPointerRef.current,
     stageRect: hostRef.current?.getBoundingClientRect() ?? null,
     toCanvasPoint,
   }), [hostRef, toCanvasPoint])
+  const getStageClientPoint = React.useCallback(
+    () => resolveStageClientPoint(lastPointerRef.current, hostRef.current?.getBoundingClientRect() ?? null),
+    [hostRef],
+  )
+  return React.useMemo(() => ({ getPastePlacement, getStageClientPoint }), [getPastePlacement, getStageClientPoint])
 }

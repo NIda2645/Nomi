@@ -363,13 +363,19 @@ describe('generation canvas control structure', () => {
     )
   })
 
-  it('keeps help actions and keycaps legible in the two-column panel', () => {
+  it('keeps the help panel above every canvas chrome layer and its rows overlap-free in any locale', () => {
     const helpPopover = source('./CanvasControlsHelpPopover.tsx')
 
-    // 布局断言随 2026-08-08 溢出修复更新：w-96 → w-[30rem]（长 kbd 如「Delete / Backspace」
-    // 在 174px 列宽下必溢出右缘）、right-0 → left-1/2 -translate-x-1/2（居中防左右遮挡）。
-    expect(helpPopover).toContain("'absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 z-[12] w-[30rem] p-3'")
-    expect(helpPopover).toContain('text-caption whitespace-nowrap text-nomi-ink-60')
+    // 层级：走 design 层的 AnchoredPopover（Portal + overlayLayers.popover），不在导航竖列里原地 absolute——
+    // 原地写法被困在竖列 z-8 的层叠上下文里，Agent 收起坞 / 批量生成条一出现就把它盖住半截（2026-09-21 实拍）。
+    expect(helpPopover).toContain('<AnchoredPopover anchorRef={anchorRef}')
+    expect(helpPopover).not.toMatch(/absolute bottom-\[calc\(100%/)
+    expect(helpPopover).not.toMatch(/z-\[\d+\]/)
+    // 行布局：说明列可以折行（minmax(0,1fr) + min-w-0），键位列不折行。两边都 nowrap 时英文长说明
+    // 会压到键位上（2026-09-21 EN「Box select」行实拍；2026-08-08 那次只加宽了面板，治的是同一个症状）。
+    expect(helpPopover).toContain('grid-cols-[minmax(0,1fr)_auto]')
+    expect(helpPopover).toContain('min-w-0 text-caption text-nomi-ink-60')
+    expect(helpPopover).not.toContain('text-caption whitespace-nowrap text-nomi-ink-60')
     expect(helpPopover).toContain('text-caption font-medium leading-none whitespace-nowrap text-nomi-ink')
   })
 

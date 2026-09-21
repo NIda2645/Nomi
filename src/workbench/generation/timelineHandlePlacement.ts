@@ -10,6 +10,22 @@
 
 export type Interval = { left: number; right: number }
 
+export type VerticalBand = { top: number; bottom: number }
+export type DockSpan = Interval & Partial<VerticalBand>
+
+/**
+ * 只有和手柄**同一水平带**的停靠区才挡它。
+ *
+ * 2026-09-21 真机（1280 宽、Agent 面板展开）：批量生成条浮在底排**上方**、横跨整块画布，
+ * 被当成一条占满全宽的横向区间 → 没有任何自由间隙 → 退回「理想位居中」→ 胶囊正好压住左下的
+ * 画布工具簇（连帮助按钮一起）。批量条根本不在胶囊那一排，挡不着它；按一维区间算就把它算进去了。
+ * 没给带（旧调用方 / 量不到高度）时按原规则全算，不放松。
+ */
+function sharesVerticalBand(dock: DockSpan, band: VerticalBand | undefined): boolean {
+  if (!band || dock.top === undefined || dock.bottom === undefined) return true
+  return dock.bottom > band.top && dock.top < band.bottom
+}
+
 /** 手柄与停靠区之间至少留的呼吸空隙（px）。 */
 export const TIMELINE_HANDLE_GAP = 12
 
@@ -30,15 +46,18 @@ function mergeIntervals(intervals: readonly Interval[]): Interval[] {
  */
 export function resolveTimelineHandleLeft(
   canvasWidth: number,
-  docks: readonly Interval[],
+  docks: readonly DockSpan[],
   handleWidth: number,
   gap: number = TIMELINE_HANDLE_GAP,
+  handleBand?: VerticalBand,
 ): number {
   const idealLeft = canvasWidth / 2 - handleWidth / 2
   if (!(canvasWidth > 0) || !(handleWidth > 0)) return Math.max(0, idealLeft)
   // 停靠区间向外各涨 gap，使手柄贴边时也留呼吸空隙；再合并成占用带。
   const merged = mergeIntervals(
-    docks.map((i) => ({ left: i.left - gap, right: i.right + gap })),
+    docks
+      .filter((dock) => sharesVerticalBand(dock, handleBand))
+      .map((i) => ({ left: i.left - gap, right: i.right + gap })),
   )
   // 自由间隙 = [0, canvasWidth] 减去占用带；能容下手柄的才候选。
   const gaps: Interval[] = []

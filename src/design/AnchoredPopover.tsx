@@ -30,7 +30,9 @@ import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './an
  *   ① 本组件 —— 生产侧 4 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
  *      `workbench/assets/AssetPickerPopover.tsx`、`workbench/library/ProjectSyncBadge.tsx`、
  *      `workbench/creation/storyboard/shotRow/ShotComposerBar.tsx`
- *      ——后两个分别是 2026-09-12 与 2026-09-17 从 ④ 那类「原地 absolute」收编过来的），
+ *      ——后两个分别是 2026-09-12 与 2026-09-17 从 ④ 那类「原地 absolute」收编过来的；
+ *      2026-09-21 又收编了 `generationCanvas/components/CanvasControlsHelpPopover.tsx`：它在画布导航竖列里
+ *      原地 absolute，被困在竖列 z-8 的层叠上下文里，底部浮着的 Agent 收起坞与批量生成条都盖得住它），
  *      外加设计实验室的 3 处陈列；
  *   ② Radix —— `src/design/tooltip.tsx`（tooltip 一族）**与 `src/design/menu.tsx`（菜单一族，
  *      2026-09-08 刀 1 起：`timeline/TimelineContextMenu.tsx`、

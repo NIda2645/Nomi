@@ -28,6 +28,14 @@ function keyboardEvent(target: EventTarget, overrides: Partial<KeyboardEvent> = 
   return event as KeyboardEvent
 }
 
+const NO_PARITY_COMMANDS = {
+  duplicateSelectedNodes: () => {},
+  connectSelectedNodes: () => {},
+  generateSelectedNodes: () => {},
+  openAddNodeMenu: () => {},
+  tidyCanvas: () => {},
+}
+
 const originalWindow = globalThis.window
 const originalDocument = globalThis.document
 
@@ -151,6 +159,7 @@ describe('画布快捷键的文本编辑边界', () => {
       zoomByStep: () => {},
       undo,
       redo: store.redo,
+      ...NO_PARITY_COMMANDS,
     })
     eventWindow.addEventListener('keydown', (event) => handler(event as KeyboardEvent))
     eventWindow.dispatchEvent(keyboardEvent(modelPicker))
@@ -190,6 +199,7 @@ describe('画布快捷键的文本编辑边界', () => {
       zoomByStep: () => {},
       undo,
       redo: store.redo,
+      ...NO_PARITY_COMMANDS,
     })
     eventWindow.addEventListener('keydown', (event) => handler(event as KeyboardEvent))
     const event = keyboardEvent(promptTextarea)
