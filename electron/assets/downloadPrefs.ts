@@ -1,7 +1,6 @@
 // 下载/输出偏好持久化 —— 存 userData/download-prefs.json（非用户数据、丢了只是回退默认、无损）。
 // 两件事同住这一份：① 记住上次「另存」到的目录（fb-20260724）；② 集中设置页「自动另存」的开关+目录
 //（2026-08-01，生成完自动复制一份到用户目录）。所有写都走 writePrefs 做 merge——写一个字段绝不抹掉另一个。
-import fs from "node:fs";
 import path from "node:path";
 import { ensureDir, getSettingsRoot } from "../runtimePaths";
 import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";

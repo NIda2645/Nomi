@@ -9,13 +9,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // `~/.nomi/capability-core/keys/*.key`（收据签名密钥）。给它一个本轮独有的空目录。
 // **必须 `vi.hoisted`**：这一摸发生在被测模块求值的那一刻，而 ESM 的 import 会被提到
 // 普通语句之前——写成顶层赋值实测拦不住（探针照样记到 4 次真实读）。
-const capabilityRoot = vi.hoisted(() => {
+vi.hoisted(() => {
   const nodeFs = require('node:fs') as typeof import('node:fs')
   const nodeOs = require('node:os') as typeof import('node:os')
   const nodePath = require('node:path') as typeof import('node:path')
   const root = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), 'nomi-stdio-doc-receipt-cap-'))
   process.env.NOMI_CAPABILITY_DIR = root
-  return root
 })
 
 vi.mock('electron', () => ({

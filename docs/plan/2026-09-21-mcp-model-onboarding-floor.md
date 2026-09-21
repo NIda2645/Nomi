@@ -63,13 +63,25 @@
 
 `set_key` 入参**只加 key 本身**：地址与「key 怎么放」六个字段仍一律不上 schema（`check:credential-origin` 规则 2 不放宽）。AI 直填后模型设置页该连接卡留一行可见来源提示。
 
-## 7. 先查别人（R5·R5.5 对齐）
+## 先查别人（R5·R5.5 对齐）
+
+> 2026-09-21 合并 ①：标题原先写成「## 7. 先查别人」，`check:prior-art` 认的是 `^##\s*先查别人`，
+> 于是这一节**在机器眼里等于不存在**。内容一个字没改，只把编号从标题里挪走。
 
 已复用 `~/Desktop/nomi-scratch-0917/batch3/onboarding-prior-art/report-full.md`（九家）与本轮媒体生成向补查（规格正本 §8），三条结论直接落进设计：
 
 1. **Replicate / fal.ai** 每个模型自带机读 `openapi_schema`，**异步语义由平台统一定义**，调用方不声明轮询。→ 证实我们不把卡做成 OpenAPI；轮询/取产物仍由我们的 `delivery/query/statusMapping/response_mapping` 表达。
 2. **Coze 插件导入**：导入后进 Debug 页**真跑一次，跑通才能 Done**。→ 这正是我们缺的第四样东西，F3 `try_model` 就是它。
 3. **没有一家做「AI 直接写供应商适配器」**（九家零先例）。→ 没有先例可抄，成功率只能靠「例子 + 校验 + 真实报错」三件顶上去，不靠提示词更长。
+
+**仓库里已有？**（2026-09-21 合并 ① 补：上面三条讲的是外面九家，门岗要的「我们自己有没有」当时没写出处，补齐）
+
+- 声明卡的**校验器**早就在，且只有一份：`electron/providerAdapter/validator.ts:408` `validateProviderAdapterDraft`。
+  本刀三个生产者（设置页编译、agent 编译请求、MCP 交卡）共用它，没有再造第二个校验面。
+- 声明卡的**类型**也早就在：`electron/providerAdapter/types.ts:52` `adapterDraft?: ProviderAdapterDraft`。
+  六次重写换的一直是「谁写/写什么」，从没动过「这份卡长什么样」——所以这一刀不发明格式，只改「怎么交」。
+- 卡上的**样例**由真实校验器验过，不是手抄的示意：`electron/capabilityCore/modelOnboarding/kitExamples.ts:37`
+  起两份（同步 / 异步轮询），`kit.test.ts` 第一条断言就是「样例过得了真实校验器」——样例随 schema 漂就当场红。
 
 **R5.5 规范/偏差登记**（进 `docs/engineering/standard-formats.json`）：
 

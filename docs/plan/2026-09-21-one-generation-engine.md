@@ -20,6 +20,23 @@
 @ 过参考图的镜头交给 Agent 重拍，供应商收到一串 `@[asset:nomi-local%3A%2F%2F…]`；
 设置里选了「全自动」，外部 MCP 仍然每一步问人。
 
+## 先查别人
+
+> 2026-09-21 合并 ① 补：这一节当时漏了。这一刀是**把本仓两条内部路径合成一条**，所以「别人」
+> 首先是「我们自己已经有的那一份」——下面每条都带 file:line，是现查的。
+
+- **两台发动机已经共享报文骨架**：`electron/catalog/profileHttpRequest.ts:38` `buildProfileHttpRequest`
+  同时被手动路与 Run 路调用。所以「合并」不是从零造，差的只是骨架**外面**那几步
+  （参数怎么定、prompt 投影做不做）——这决定了修法是把那几步收进同一个编译口，而不是重写发动机。
+- **参数缺省也已经共享**：`electron/catalog/taskParams.ts:124` `applyHeadlessParamDefaults`。
+  两边吃同一份缺省，却对「用户改过的那些键」各答一次——分歧只可能出在白名单那一格。
+- **提示词投影函数本来就住共享层**：`electron/shared/storyboard/promptMentions.ts:112`
+  `projectPromptForSend`（渲染层只是再导出）。**缺的不是实现，是调用**——`grep -rn "projectPromptForSend" electron/`
+  在改动前除定义处零命中。所以这一项是「接上去」，不是「再写一份」（P1：没有第二份投影规则）。
+- **生态里已有？/ TikHub？** 本轮**没做**，如实登记：这条是两条内部路径的收敛，外部没有可抄的对象；
+  真正要对外查的那一格（参考图落哪个 wire 键、各家怎么约定）已经按 R5⑤ 逐条对账过供应商官方文档，
+  结论写在 `electron/catalog/apimartVideos.ts` 各 mapping 的注释里（Seedance / Wan 2.7 / Wan 3.0 三处）。
+
 ## 2. 范围（做什么 / 不做什么）
 
 ### 步骤 A（本次）——不铺开执行器也能先收口的四件 + 两条评估

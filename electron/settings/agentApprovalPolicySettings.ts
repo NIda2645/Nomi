@@ -5,7 +5,6 @@ import { getSettingsRoot } from "./settingsRoot";
 import {
   DEFAULT_AGENT_APPROVAL_POLICY_SETTINGS,
   normalizeAgentApprovalPolicySettings,
-  type AgentApprovalPolicySettings,
 } from "./agentApprovalPolicyContract";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 

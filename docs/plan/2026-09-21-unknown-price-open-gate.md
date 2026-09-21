@@ -96,11 +96,20 @@
 - 真机走查（loopback 供应商 + 无 pricing 模型）：Agent 面板 / 分镜提交 / 全自动 / 重拍 / 续批 /
   画布手动，zh 逐条截图 + 至少一条 en，亲眼确认屏上没有 ¥0。
 
-## 7. 先查别人
+## 先查别人
+
+> 2026-09-21 合并 ①：同上，标题里的编号让门岗看不见这一节；内容未改。
 - 本仓内的既有正解：`electron/spendGrant.ts:135` `assertAndConsumeQuotedSpend` 的 `unknownRemaining`
   名额位 —— 「未知不当 0、也不拒绝」在本仓已经跑了很久的那一份实现，本次是把同一形状搬到 Run 这一侧，
   不是新发明（P1：两条钱闸从此对同一个问题给同一个答案）。
 - 类根因登记：`docs/fixes/2026-09-07-absent-number-printed-as-zero.root-cause.json` —— 「用 in-band
   数值同时编码三态」，它的 `entry_points` 已经把 `deriveShotPrice` 的 `{known:false}` 列为同类正解。
+- 名额是**从报价里数出来的**，不是另记一份：`electron/spendGrant.ts:67`
+  （`quote.lines.filter(line => line.amount === null).length`）。Run 这一侧要补的
+  `budget.unknownJobCount` 就是同一个数，同一种数法。
+- 「暂时算不出价格 / 仍要生成」那句**早就在 main 上**：`src/i18n/locales/agentPanelV4.ts:393`（zh）
+  与 `:800`（en）的 `spendParamsConfirmUnknown`。本次是把已拍板的那张卡真正接上，不是新写文案。
+- 「把未知当 0 参与预算比较」的那一处在 `electron/productionRun/batchScheduleDerivation.ts`
+  （`price.known ? amount : 0`）——同改，否则未知会以 0 元的身份混进上限比较，比拒绝更危险。
 - 外部标准：这是本仓内部的授权信封形状（非对外读写的格式/协议），不落 R5⑤；
   用的是 OpenAPI/JSON Schema 里表达「缺席」的常规做法（可空字段 + 独立计数），不自造第三态编码。

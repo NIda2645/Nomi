@@ -30,6 +30,27 @@ Windows 上被杀软/索引器锁住一瞬间），就立刻把**空目录原子
 今天选的是后者（安静回落默认值），代价是用户的东西被安静盖掉。这次全部改成前者：
 **宁可这一次不能改配置，也绝不覆盖一份我们没读懂的文件。**
 
+## 先查别人
+
+> 2026-09-21 合并 ① 补：这一节当时漏了，`check:prior-art` 把它拦了下来。下面每条都是现查的，带 file:line。
+
+- **依赖里已有？** 没有可直接装的那一层。`electron/jsonFile.ts:29` 的注释点名了这一族的标准解法
+  （graceful-fs / write-file-atomic 的短退避重试），但 `node_modules/write-file-atomic` **实查不存在**
+  （本仓没装）——而且那类包解决的是「写得原子不原子」，不回答「读不出来怎么办」，正是本次的题。
+- **仓库里已有？（原子写：有；留底：有，但只在项目侧）**
+  - `electron/jsonFile.ts:53` `writeJsonFileAtomic`：临时文件 + fsync + rename，原子写这一半早就有，
+    所以本次**没有重写它**，新原语层是包着它的（`configFileStore.ts` 直接调）。
+  - `electron/workspace/workspaceManifest.ts:548`：**项目清单**读失败时会去读 `.bak` 那一份。
+    同一套语义在项目侧已经跑了很久，配置侧一份都没有——这就是缺口本身，不是要发明的新东西。
+  - `electron/workspace/workspaceManifestTransaction.ts:6`：事务化双写，但它绑 workspace root
+    （`assertInsideWorkspace`），是「工程目录」的事务，不是通用的「配置文件」原语。
+    **结论：复用它的语义（原子写 + 留底 + 损坏隔离），不复制它的实现**——理由是它的前提（workspace 租约）
+    在 settings 根下不成立，照抄会把一条不适用的约束一起搬过来。
+- **生态里已有？/ TikHub 上真实用户怎么解决？** **本轮没做这两问**，如实登记，不冒充查过。
+  理由：这次要判的是「我们自己这份读通道为什么会把配置显示成空」，证据全在本仓三处代码里
+  （根因调查 `rootcause-config-loss-on-reinstall.md` 已逐处核过），外部做法改变不了那三处的裁决。
+  真要补，补的是「Electron 应用怎么做配置迁移与回滚」这一问，排在 Preview 分家那条之后。
+
 ## 做什么
 
 | # | 动作 | 落点 |

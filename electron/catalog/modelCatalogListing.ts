@@ -6,7 +6,7 @@
 //   ② references：这个模型的 mapping body 到底带得动什么参考（复用 referenceReachability.bodyReferenceSupport，
 //      与第三闸/UI 收窄同源判据，P1 不另写一份），跨该模型所有 mapping 汇总，并记下「哪个 taskKind 模式能带」。
 // 已发布模型即使没 key 也照列并带状态；adapter staging/failed 新行则不进入生产清单。
-import { apiKeyDecryptStatus, type ApiKeyDecryptStatus, type ApiKeyRecord, type KeyStatusProbe } from "./secrets";
+import { type ApiKeyDecryptStatus, type KeyStatusProbe } from "./secrets";
 import { bodyReferenceSupport, type BodyReferenceSupport } from "./referenceReachability";
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import type { ModelModeBody } from "./taskParams";

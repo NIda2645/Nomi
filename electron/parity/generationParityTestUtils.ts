@@ -10,7 +10,6 @@
  *              （Agent 付款卡、提交执行计划、`nomi_start_generation`、全自动 / 批量 Run）
  * 出站在 `globalThis.fetch` 这一层捕获——两台都经过它，所以捕获点对两边是同一个。
  */
-import { readCatalog } from "../catalog/catalogStore";
 import type { CatalogState } from "../catalog/types";
 import { redactAuthorization, type OutboundRecord } from "./outboundRecord";
 

@@ -112,7 +112,14 @@ export const modelTryInputSchema = z.object({
   modelKey: z.string().trim().min(1).max(256).describe("Exact model id, as nomi_read target=models or your own submitted card spells it."),
   prompt: z.string().trim().min(1).max(4_000).optional().describe("Prompt for the one test generation; a short neutral prompt is used when omitted."),
   taskKind: z.string().trim().min(1).max(64).optional().describe("Which declared mode to exercise, for example text_to_image. The model's first declared mode is used when omitted."),
-  params: z.record(z.string(), z.unknown()).optional().describe("Parameter values for this run, using the keys the card declared."),
+  // 2026-09-21：这里原本是 `z.record(z.string(), z.unknown())`，广播出去是
+  // `{"type":"object","additionalProperties":{}}` —— 键名不可枚举是真话（参数名由卡自己声明），
+  // 但「值随便什么都行」不是：执行侧只认标量。`check:model-schema` 就是冲这条来的，
+  // 而这一族的失败本地看不见——编译过、单测过、广播得出去，只有真模型会用一次失败告诉你。
+  // 值的类型用与画布写入同一族的那一份（`canvasWrite.ts` 的 `canvasNodeMetaValueSchema` 同一个 union），
+  // 不另造第二种「参数值」的说法。
+  params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional()
+    .describe("Parameter values for this run: the keys the card declared, each a string, number or boolean."),
 }).strict();
 
 export const modelRemoveInputSchema = z.object({
