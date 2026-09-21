@@ -14,8 +14,12 @@
 // 分家之后 Preview 是一个全新的空 userData。**首次启动拷贝一份**稳定版的配置过来：
 // 拷贝可以，共用不行——用户要的是「试新版不用赌上配置」，不是「两份配置各配一遍」。
 // 拷完两边就此各走各路，Preview 怎么升级都碰不到稳定版那一份。
+import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+
+import { logError, logInfo } from "../logging/logger";
+import { getSettingsRoot } from "./settingsRoot";
 
 /** 稳定版的 app name（= package.json 的 `name`），它的 userData 是 `<appData>/nomi`。 */
 export const STABLE_APP_NAME = "nomi";
@@ -115,4 +119,21 @@ export function seedFromStableInstall(options: {
     }
   }
   return { seeded, skippedBecauseAlreadyPresent: false, source };
+}
+
+/**
+ * 启动期调用点：把「问 Electron 要身份」和「失败怎么办」留在这一层，main.ts 只写一行。
+ * 拷不成不阻断启动——Preview 用默认配置照样能跑，而稳定版那份**一个字节都没碰**。
+ */
+export function seedFromStableInstallAtBoot(): void {
+  try {
+    const result = seedFromStableInstall({
+      appName: app.getName(),
+      settingsRoot: getSettingsRoot(),
+      appDataRoot: app.getPath("appData"),
+    });
+    if (result.seeded.length) logInfo("main", "side-by-side-seeded", { files: result.seeded.length, source: result.source });
+  } catch (error) {
+    logError("main", "side-by-side-seed-failed", error);
+  }
 }

@@ -29,7 +29,9 @@
     "electron/screenshot/screenshotHotkey.ts",
     "electron/connectors/connectorPrefsStore.ts",
     "electron/promptLibrary/userPromptStore.ts",
-    "electron/assets/downloadPrefs.ts"
+    "electron/assets/downloadPrefs.ts",
+    "electron/catalog/networkConfigStore.ts",
+    "electron/catalog/catalogFileAccess.ts"
   ],
   "entry_points": [
     "App launch (whenReady → seedFromStableInstall → ensureBuiltinModelSeeds → readCatalog)",
@@ -70,11 +72,6 @@
     "Importing a package merges: an entry that already exists on this machine is kept and reported as a conflict unless the user explicitly chose to replace."
   ],
   "doors": [
-    {
-      "kind": "read",
-      "path": "electron/catalog/catalogStore.ts",
-      "symbol": "readConfigFile"
-    },
     {
       "kind": "read",
       "path": "electron/configFileStore.ts",
@@ -243,12 +240,7 @@
     {
       "kind": "write",
       "path": "electron/main.ts",
-      "symbol": "seedFromStableInstall"
-    },
-    {
-      "kind": "write",
-      "path": "electron/catalog/catalogStore.ts",
-      "symbol": "modelCatalogReadOnlyStatus"
+      "symbol": "seedFromStableInstallAtBoot"
     },
     {
       "kind": "write",
@@ -304,11 +296,91 @@
       "kind": "read",
       "path": "electron/catalog/catalogStore.ts",
       "symbol": "catalogPackageImportSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "EncryptedNetworkConfig"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "resolveNetworkConfigForRead"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "decryptProxyUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "decryptExtraHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "encryptProxyUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "encryptExtraHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/networkConfigStore.ts",
+      "symbol": "normalizedExtraHeaders"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogFileAccess.ts",
+      "symbol": "ModelCatalogReadOnlyStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogFileAccess.ts",
+      "symbol": "readCatalogFile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "readCatalogFile"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "snapshotBeforeMigration"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogFileAccess.ts",
+      "symbol": "catalogPath"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogFileAccess.ts",
+      "symbol": "catalogIsNewerOnDisk"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "catalogPath"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "catalogIsNewerOnDisk"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "modelCatalogReadOnlyStatus"
     }
   ],
   "door_reduction": {
     "before": 62,
-    "after": 47,
+    "after": 61,
     "why_not": "这 47 扇不是 47 份策略，而是 47 个调用同一扇门的入口——每个 store 仍要决定「写哪个文件、写什么形状」，那是它自己的职责。改之前，「这份配置读不出来时该怎么办」这个问题有 15 份各自独立的答案（readJson(path, fallback) 一份 + try{readJsonFile}catch{DEFAULT} 十三份 + downloadPrefs 的裸 writeFileSync 一份）；改之后只有一份（electron/configFileStore.ts），调用方连表达「读失败就写默认」的手段都没有了。before/after 的数字是门的总数（62 → 47：读写原语从 readJson/readJsonFile/writeJsonFileAtomic 三族收敛到 configFileStore 一族，少掉的是那 15 处各自的 try/catch 回落分支）。把 15 个 store 合并成一个写入口既不可能（文件不同）也不可取（会造出一个知道全部配置形状的上帝模块），所以合并的是**判断**不是入口；机器判据 check:no-default-overwrite 守住「不许再长出第 16 份判断」。"
   },
   "generality_proof": "The primitive sits below every settings-root reader and writer, so the catalog, all 13 settings files, proxy prefs, screenshot hotkey, connector prefs, the user prompt library and download prefs all gained the same behaviour from one change. The gate scans src + electron + workers, so a new config store cannot reintroduce the shape without being named.",
@@ -317,6 +389,11 @@
       "path": "electron/configFileStore.ts",
       "symbol": "readConfigFile / readConfigFileOrDefault / writeConfigFileAtomic",
       "responsibility": "「一份用户配置读不出来时该怎么办」的唯一答案：区分不存在/读不了、损坏的改名留底、只是打不开的一个字节都不碰并拦下写、写前轮转 .bak、迁移前留带版本号的底。"
+    },
+    {
+      "path": "electron/catalog/catalogFileAccess.ts",
+      "symbol": "readCatalogFile / modelCatalogReadOnlyStatus / snapshotBeforeMigration",
+      "responsibility": "模型目录**那一个文件**怎么读、迁移前怎么留底、以及「它现在为什么只能读不能改」的唯一答案。改动前这个判断散在三个读点上（readCatalog / ensureBuiltinModelSeeds / onDiskCatalogVersion 各自 readJson 吞异常），谁都不知道另外两个看到了什么。"
     }
   ],
   "same_class_entry_points": [
@@ -407,9 +484,10 @@
       "electron/screenshot/screenshotHotkey.ts",
       "electron/connectors/connectorPrefsStore.ts",
       "electron/promptLibrary/userPromptStore.ts",
-      "electron/assets/downloadPrefs.ts"
+      "electron/assets/downloadPrefs.ts",
+      "electron/catalog/networkConfigStore.ts"
     ],
-    "rationale": "这些文件里的 readJson(path, fallback) / try{readJsonFile}catch{DEFAULT} / 裸 writeFileSync 全部在同一次改动里换成 configFileStore 的原语，没有留并行版；导出侧的 includeApiKeys 整格删除（删前全仓零个生产调用方）。"
+    "rationale": "这些文件里的 readJson(path, fallback) / try{readJsonFile}catch{DEFAULT} / 裸 writeFileSync 全部在同一次改动里换成 configFileStore 的原语，没有留并行版；导出侧的 includeApiKeys 整格删除（删前全仓零个生产调用方）。 networkConfigStore 的 exportableVendorWithNetworkConfig 随 includeApiKeys 一起删除——它存在的唯一理由就是「导出时把解密后的代理/请求头当明文带走」，删了那一档它就是死代码。"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",

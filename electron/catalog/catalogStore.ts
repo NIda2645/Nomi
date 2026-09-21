@@ -1,17 +1,15 @@
 import crypto from "node:crypto";
-import path from "node:path";
 import { findNonHeaderSafeChar, isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
 import { sanitizeName } from "../projects/repository";
-import { CATALOG_FILE, getSettingsRoot } from "../runtimePaths";
+import { configReadFailure, quarantineUnreadableConfigFile, writeConfigFileAtomic } from "../configFileStore";
 import {
-  configQuarantineNotice,
-  configReadFailure,
-  quarantineUnreadableConfigFile,
-  readConfigFile,
-  snapshotConfigVersion,
-  writeConfigFileAtomic,
-  type ConfigFileReadResult,
-} from "../configFileStore";
+  catalogIsNewerOnDisk,
+  catalogPath,
+  modelCatalogReadOnlyStatus,
+  readCatalogFile,
+  snapshotBeforeMigration,
+} from "./catalogFileAccess";
+export { modelCatalogReadOnlyStatus, type ModelCatalogReadOnlyStatus } from "./catalogFileAccess";
 import { apiKeyDecryptStatus, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
 import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
@@ -57,10 +55,6 @@ export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./
 export { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
 export { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
 export { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
-function catalogPath(): string {
-  return path.join(getSettingsRoot(), CATALOG_FILE);
-}
-
 function defaultCatalog(): CatalogState {
   // v0.8: empty catalog. Fresh users add their own models via the Wizard.
   // No more phantom seed entries (chatfire/sora/gpt-4o-mini) that have no keys.
@@ -71,40 +65,6 @@ function defaultCatalog(): CatalogState {
     mappings: [],
     apiKeysByVendor: {},
   };
-}
-
-/**
- * 目录为什么读不了 / 为什么改不了的结构化答案。界面拿它出横幅（「你的配置没丢，是……」），
- * 不再靠渲染层从一个空列表里猜（根因：`rootcause-config-loss-on-reinstall.md` §0）。
- */
-export type ModelCatalogReadOnlyStatus =
-  | { reason: "newer_on_disk"; diskVersion: number; appVersion: number }
-  | { reason: "unreadable_file"; detail: string; quarantinedPath: string | null };
-
-/**
- * 目录文件的唯一读口：区分「不存在」「读不了」「读到了」。
- *
- * 旧写法是 `readJson(catalogPath(), null)`——文件缺失、JSON 解析失败、Windows 上被杀软/索引器
- * 锁住的 EPERM，全都吞成同一个 null，调用方于是把空目录原子写回覆盖用户文件。
- */
-function readCatalogFile(): ConfigFileReadResult<CatalogState> {
-  return readConfigFile<CatalogState>(catalogPath(), isJsonRecord);
-}
-
-export function modelCatalogReadOnlyStatus(): ModelCatalogReadOnlyStatus | null {
-  const failure = configReadFailure(catalogPath()) ?? configQuarantineNotice(catalogPath());
-  if (failure) {
-    return { reason: "unreadable_file", detail: failure.message, quarantinedPath: failure.quarantinedPath };
-  }
-  const outcome = readCatalogFile();
-  if (outcome.status === "failed") {
-    const recorded = configReadFailure(catalogPath());
-    return { reason: "unreadable_file", detail: outcome.message, quarantinedPath: recorded?.quarantinedPath ?? null };
-  }
-  if (outcome.status === "ok" && typeof outcome.value?.version === "number" && outcome.value.version > CURRENT_CATALOG_VERSION) {
-    return { reason: "newer_on_disk", diskVersion: outcome.value.version, appVersion: CURRENT_CATALOG_VERSION };
-  }
-  return null;
 }
 
 export function readCatalog(): CatalogState {
@@ -184,8 +144,8 @@ function writeCatalog(state: CatalogState): CatalogState {
         `CATALOG_UNREADABLE_READ_ONLY — the existing file is left untouched${failure?.quarantinedPath ? ` (kept as ${failure.quarantinedPath})` : ""}.`,
     );
   }
-  const diskVersion = outcome.status === "ok" && typeof outcome.value?.version === "number" ? outcome.value.version : null;
-  if (diskVersion != null && diskVersion > CURRENT_CATALOG_VERSION) {
+  const diskVersion = catalogIsNewerOnDisk(outcome);
+  if (diskVersion != null) {
     throw new Error(
       `[catalog] refusing to write: on-disk version ${diskVersion} > app version ${CURRENT_CATALOG_VERSION} (read-only to avoid silent downgrade). Update the app to edit this catalog.`,
     );
@@ -194,20 +154,6 @@ function writeCatalog(state: CatalogState): CatalogState {
   return state;
 }
 
-/**
- * 跨版本迁移前留一份带版本号的底（`model-catalog.v<旧版本>.bak.json`，保留最近几份）。
- *
- * 这是「装了新版、又装回旧版」唯一的解药：新版把文件升到 v13 之后旧版读不懂它，但旧版能认领
- * v9 那一份。日常写轮转出来的 `.bak` 救不了这个场景——它会被升级之后的每一次写覆盖掉。
- * 幂等（同版本留过就跳过），所以它挂在每次读上也只在真要迁移的那一次做一次拷贝。
- */
-function snapshotBeforeMigration(parsed: CatalogState): CatalogState {
-  const version = typeof parsed.version === "number" ? parsed.version : null;
-  if (version != null && version >= 1 && version < CURRENT_CATALOG_VERSION) {
-    snapshotConfigVersion(catalogPath(), version);
-  }
-  return parsed;
-}
 function normalizeEnabled(value: unknown, fallback = true): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
