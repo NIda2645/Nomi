@@ -368,7 +368,8 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   if (!files.length) return
   event.preventDefault()
   event.stopPropagation()
-  void importLocalFilesToGenerationCanvas(files, { basePosition: dropOrigin, categoryId: ctx.activeCategoryId, exactPosition: true })
+  // 系统文件的卡面尺寸要读完文件才知道（图片按像素比例），锚点交给导入适配器按真实尺寸换算。
+  void importLocalFilesToGenerationCanvas(files, { basePosition: cursor, anchor: CENTER_DROP_ANCHOR, categoryId: ctx.activeCategoryId, exactPosition: true })
 }
 
 /**
@@ -378,7 +379,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
  */
 export function importLocalFilesToGenerationCanvas(
   files: readonly File[],
-  options: { basePosition: { x: number; y: number }; categoryId?: string; exactPosition?: boolean },
+  options: { basePosition: { x: number; y: number }; categoryId?: string; exactPosition?: boolean; anchor?: { xRatio: number; yRatio: number } },
 ): Promise<void> {
   // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
   // 先同步签发、再挂 .catch：这个命令不会把拒绝丢给调用它的控件。

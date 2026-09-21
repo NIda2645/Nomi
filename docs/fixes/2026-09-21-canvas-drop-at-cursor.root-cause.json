@@ -30,7 +30,7 @@
   "invariants": [
     "Screen-to-canvas conversion for drops comes only from the kernel (flow.screenToFlowPosition), passed in as CanvasStageDropContext.toCanvasPoint.",
     "No placement writer clamps canvas coordinates to a positive floor; negative coordinates are preserved.",
-    "A drop places the first card with the cursor at its anchor (grab point for asset-library cards, center otherwise) and does not run collision avoidance."
+    "A drop places the first card with the cursor at its anchor (grab point for asset-library cards, visible-card center otherwise; OS images are anchored on their real pixel-ratio card size inside the import adapter) and does not run collision avoidance."
   ],
   "doors": [
     {
@@ -247,11 +247,13 @@
   },
   "regression_tests": [
     "src/workbench/generationCanvas/components/canvasStageDrop.test.ts",
-    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts"
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
-    "src/workbench/generationCanvas/components/canvasStageDrop.test.ts"
+    "src/workbench/generationCanvas/components/canvasStageDrop.test.ts",
+    "src/workbench/generationCanvas/adapters/assetImportAdapter.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -269,8 +271,9 @@
   },
   "migration": "No data migration: existing node positions are untouched; only new placements change. Nodes previously clamped to 40 stay where they are.",
   "residual_risks": [
-    "Anchor uses the default asset card size; image cards whose size is set from real dimensions after import are anchored by the default size, so the cursor stays inside the card but may be off-center.",
-    "Native OS drag cannot be driven by automation; the real-app walkthrough dispatches a DOM drop event with a real File."
+    "Video cards are anchored on the default 340x280 card because the aspect is unknown until metadata loads; the card then shrinks with its top edge fixed (real-app walkthrough: center moves up 44 px on 16:9, release point stays inside the card).",
+    "Project-tree/browser/asset-library image drops anchor on the default card size; the cursor stays inside the card but may be off-center.",
+    "Native OS drag cannot be automated; tests/ux/canvas-drop-at-cursor.walk.mjs dispatches a DOM drop with a real disk-backed File (zh-CN and en pass; old code fails 10 checks)."
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generationCanvas/components/canvasStageDrop.ts",
