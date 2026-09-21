@@ -127,7 +127,77 @@ function CollapsedScene(): JSX.Element {
   )
 }
 
+/**
+ * **反问卡放进真面板里**（2026-09-21 用户问「有弄我们的设计系统不？会不会格格不入？」）。
+ *
+ * 单件取景框里那张卡是浅色底、孤零零一格，看不出它和邻居合不合得来。这两格把它放回
+ * 它真正出现的位置——上面是对话流、下面是 composer、外面是面板壳——并且**和付费确认卡
+ * 用同一个取景**，好让两张卡的外框/圆角/内边距/按钮族能并排对账。
+ *
+ * 用现成夹具就够：这里要看的是**外观在不在一个家族里**，不是模型答得对不对。
+ */
+function PanelWithQuestion({ dark }: { dark?: boolean }): JSX.Element {
+  const fx = useV4Fixtures()
+  return (
+    <AgentPanelV4Panel
+      slotHandlers={V4_LAB_SLOT_HANDLERS}
+      flow={fx.flows.creation}
+      slot={fx.slots.question}
+      context={{ ...fx.context, used: 36000 }}
+      height={860}
+      {...(dark ? { darkMode: true } : {})}
+    />
+  )
+}
+
+/** 同一个取景、同一条对话，只把槽换成**付费确认卡**——并排对账用的那一张。 */
+function PanelWithSpend({ dark }: { dark?: boolean }): JSX.Element {
+  const fx = useV4Fixtures()
+  return (
+    <AgentPanelV4Panel
+      slotHandlers={V4_LAB_SLOT_HANDLERS}
+      flow={fx.flows.creation}
+      slot={fx.slots.spendOneClip}
+      context={{ ...fx.context, used: 36000 }}
+      height={860}
+      {...(dark ? { darkMode: true } : {})}
+    />
+  )
+}
+
 export const V4_FLOW_STATES: readonly LabState[] = [
+  {
+    id: 'v4-panel-question-light',
+    name: '⑤ 反问卡**在真面板里**（亮色）——和对话流、composer、面板壳一起看',
+    source: '2026-09-21 用户：「有弄我们的设计系统不？会不会格格不入？」',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion />,
+  },
+  {
+    id: 'v4-panel-question-dark',
+    name: '⑤ 反问卡在真面板里（暗色）',
+    source: '同上；暗色是 token 翻转后才看得出来的那一档',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion dark />,
+  },
+  {
+    id: 'v4-panel-spend-light',
+    name: '⑤ 付费确认卡在同一位置（亮色）——并排参照',
+    source: '2026-09-21 外观对账：同槽兄弟卡的外框/圆角/内边距/按钮族',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithSpend />,
+  },
+  {
+    id: 'v4-panel-spend-dark',
+    name: '⑤ 付费确认卡在同一位置（暗色）——并排参照',
+    source: '同上',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithSpend dark />,
+  },
   {
     id: 'v4-flow-creation',
     name: 'FlowCreation · 读文稿 → 载技能 → 起草分镜 → 计划槽',

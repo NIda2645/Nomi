@@ -296,21 +296,56 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).not.toContain('取消')
   })
 
-  it('反问走 Approval Card 那只壳：没有确认/不要，也没有确认卡的卡头与边框', () => {
-    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+  it('反问卡：**和兄弟卡同一只外壳**，但没有卡头条、没有确认/不要、没有「不再问」', () => {
+    const ask = html(el(V4Intervention, { ...NO_HANDLERS,
       data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
-    expect(markup).toContain('data-ask-card="true"')
-    expect(markup).toContain('16:9 横版')
-    expect(markup).not.toContain('不要')
-    // 确认卡的三件零件一件都不许漏过来（2026-09-21 用户退回自拼版时点名的那几样）。
-    expect(markup).not.toContain('border-nomi-accent')
-    expect(markup).not.toContain('bg-nomi-accent-soft px-2.5')
-    expect(markup).not.toContain('不再问')
-    // 问题**就是**标题，不再有第二行卡头，也不印两遍。
-    expect(markup.match(/用什么画幅？/g)).toHaveLength(1)
-    expect(markup).toContain('data-v4-block="ask-question"')
+    const spend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels }))
+    expect(ask).toContain('data-ask-card="true"')
+    expect(ask).toContain('16:9 横版')
+
+    // ① 外壳**同族**（2026-09-21 用户：「会不会格格不入？」）。
+    //    第一版反问卡自带一套壳（纸色底 + 发丝环 + 柔影），放进真面板里一点边界都没有——
+    //    分不清对话在哪结束、卡从哪开始。描边/圆角/底色现在由 `V4SlotShell` 一处给，
+    //    这条判据就是「它俩还是不是一家人」：两张卡的外壳类名必须逐字相同。
+    // `class` 不一定是 `<aside>` 上的第一个属性（反问卡还带 data-ask-card / tabindex），
+    // 所以在整段开标签里找它，别写死属性顺序——那种写法只会在另一张卡上悄悄匹配不到。
+    const shellOf = (markup: string) => markup.match(/<aside\b[^>]*?\bclass="([^"]*)"/)?.[1]
+    expect(shellOf(ask)).toBeTruthy()
+    expect(shellOf(ask)).toBe(shellOf(spend))
+
+    // ② 但**没有卡头条**：问题本身就是标题，不再有「需要你定一下」那句套话。
+    expect(ask).not.toContain('bg-nomi-accent-soft px-2.5 py-2')
+    expect(spend).toContain('bg-nomi-accent-soft px-2.5 py-2')
+    expect(ask.match(/用什么画幅？/g)).toHaveLength(1)
+    expect(ask).toContain('data-v4-block="ask-question"')
+
+    // ③ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
+    expect(ask).not.toContain('不要')
+    expect(ask).not.toContain('不再问')
+  })
+
+  it('反问卡的主按钮用的是**卡族那一套**，不是自带的药丸', () => {
+    const ask = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    const spend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels }))
+    const primary = (markup: string, control: string) =>
+      markup.match(new RegExp(`data-v4-control="${control}"[^>]*class="([^"]*)"`))?.[1]
+        ?? markup.match(new RegExp(`class="([^"]*)"[^>]*data-v4-control="${control}"`))?.[1]
+    const askPrimary = primary(ask, 'ask-continue')
+    const spendPrimary = primary(spend, 'confirm')
+    expect(askPrimary).toBeTruthy()
+    expect(spendPrimary).toBeTruthy()
+    // 同高、同圆角、同底色。第一版是 `rounded-pill`，在这个面板里是独一份——
+    // 邻居全是方角 ink 钮，一颗药丸读起来像从别的 App 掉进来的。
+    for (const token of ['h-7', 'rounded-nomi-sm', 'bg-nomi-ink', 'text-nomi-paper']) {
+      expect(askPrimary).toContain(token)
+      expect(spendPrimary).toContain(token)
+    }
+    expect(askPrimary).not.toContain('rounded-pill')
   })
 
   it('选项是整行可点的 radio 行——没有方框，也没有一排宽度参差的药丸', () => {

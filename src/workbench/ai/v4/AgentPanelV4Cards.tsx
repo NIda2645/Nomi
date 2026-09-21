@@ -27,6 +27,7 @@ import {
 } from './AgentPanelV4Icons'
 import { V4ErrorBar } from './AgentPanelV4Receipt'
 import { V4AskCard, type V4AskCardLabels } from './AgentPanelV4AskCard'
+import { V4SlotShell } from './AgentPanelV4SlotShell'
 import { askCardQuestions } from './agentPanelV4AskModel'
 import { questionAnswerFromInput, questionAnswerFromOption, type V4QuestionAnswer } from './agentPanelV4Question'
 import type {
@@ -420,72 +421,10 @@ export function V4Intervention({
     )
   }
 
-  return (
-    <aside
-      className="overflow-hidden rounded-nomi border border-nomi-accent bg-nomi-paper"
-      data-v4-block="intervention"
-      data-kind={data.kind}
-      // 有翻页器才可聚焦：焦点是「← → 归谁管」的唯一凭据，没有翻页器的卡不该抢 Tab 序。
-      {...(pager ? { tabIndex: 0, onKeyDown: handleKeyDown } : {})}
-    >
-      <V4Row as="header" className="bg-nomi-accent-soft px-2.5 py-2 text-caption font-semibold text-nomi-accent">
-        {data.hideIcon ? null : <SlotIcon kind={data.kind} />}
-        <AgentPanelV4Markdown text={data.title} />
-        {data.badge ? <span className="shrink-0 font-normal opacity-85">{data.badge}</span> : null}
-      </V4Row>
-      <div className="flex flex-col gap-1.5 px-2.5 py-2 text-caption text-nomi-ink">
-        {data.summary ? <AgentPanelV4Markdown text={data.summary} /> : null}
-        {composer ?? (data.params?.length ? (
-          <div className="flex flex-wrap gap-1">
-            {data.params.map((param) => (
-              <span
-                key={param}
-                className="inline-flex h-5 items-center rounded-pill bg-nomi-ink-05 px-[7px] text-micro text-nomi-ink-60"
-              >
-                {param}
-              </span>
-            ))}
-          </div>
-        ) : null)}
-        {data.price ? <V4PriceRow price={data.price} /> : null}
-        {data.plan?.length && !planCollapsed ? (
-          // 清单自己滚：卡壳是 `overflow-hidden`（圆角要它），所以清单不给自己一个滚动容器
-          // 就等于「第 9 行起不存在」——用户 2026-09-11 报的 8 镜计划卡正是这样，
-          // 下面几镜连同底栏一起被裁在卡外。高度上限按 6 行留（再多就该收起来读）。
-          <div className="flex max-h-[13.5rem] flex-col gap-1 overflow-y-auto" data-v4-block="plan-rows">
-            {data.plan.map((row, index) => (
-              <div key={`${index}-${row.label}`} className="flex items-start gap-2 py-[3px] text-caption text-nomi-ink-80">
-                <input
-                  type="checkbox"
-                  aria-label={row.label}
-                  checked={row.checked}
-                  onChange={(event) => onPlanToggle(row.label, event.target.checked)}
-                  className="mt-0.5 size-3.5 shrink-0 accent-nomi-accent"
-                />
-                {row.technical ? (
-                  <details className="group min-w-0 flex-1" data-v4-block="plan-detail">
-                    <summary className="flex cursor-pointer list-none items-start gap-1">
-                      <div className="min-w-0 flex-1"><AgentPanelV4Markdown text={row.label} />{row.detail ? <AgentPanelV4Markdown text={row.detail} /> : null}</div>
-                      <IconChevronRight size={12} className="mt-0.5 shrink-0 group-open:rotate-90" aria-hidden="true" />
-                    </summary>
-                    <pre className="m-0 mt-1 whitespace-pre-wrap break-all font-nomi-mono text-micro text-nomi-ink-40">{row.technical}</pre>
-                  </details>
-                ) : <div className="min-w-0 flex-1"><AgentPanelV4Markdown text={row.label} />{row.detail ? <AgentPanelV4Markdown text={row.detail} /> : null}</div>}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {data.rejectConfirmNote && rejecting ? (
-          <p className="m-0 text-caption text-nomi-danger" data-v4-control="reject-confirm-note">{data.rejectConfirmNote}</p>
-        ) : null}
-        {data.reasonPlaceholder && (rejecting || data.kind === 'reject-reason') ? (
-          // 这一行不自己提交：拒绝要说的那句话由底栏的「确认不要」收尾（渐进披露的第二下）。
-          <V4SlotInput value={reason} placeholder={data.reasonPlaceholder} control="reject-reason" onChange={setReason} />
-        ) : null}
-        {data.scope ? <p className="m-0 text-micro text-nomi-ink-60">{data.scope}</p> : null}
-      </div>
-      {hasActions ? (
-        <footer className="flex flex-col gap-1.5 border-t border-nomi-line-soft px-2.5 py-2 text-caption">
+  // 页脚先算成一个值再交给外壳：它闭包里用着 rejecting / reason / pager / labels 一大把
+  // 局部量，抽成独立组件要把它们全当 prop 再传一遍，那是把一处可读的 JSX 换成十个参数。
+  const slotFooter = hasActions ? (
+    <>
         {/* 翻页 + 范围切换单独占一行，压在主按钮正上方：它们决定按钮上印的那个数，
             所以要挨着它；而挤进同一行会让 390px 的卡横向溢出（实测 350px 可用宽放不下）。 */}
         {pager && !rejecting && data.kind !== 'reject-reason' ? (
@@ -566,9 +505,72 @@ export function V4Intervention({
             </>
           )}
         </V4Row>
-        </footer>
-      ) : null}
-    </aside>
+    </>
+  ) : undefined
+  return (
+    <V4SlotShell
+      kind={data.kind}
+      // 有翻页器才可聚焦：焦点是「← → 归谁管」的唯一凭据，没有翻页器的卡不该抢 Tab 序。
+      {...(pager ? { tabIndex: 0, onKeyDown: handleKeyDown } : {})}
+      head={(
+        <>
+          {data.hideIcon ? null : <SlotIcon kind={data.kind} />}
+          <AgentPanelV4Markdown text={data.title} />
+          {data.badge ? <span className="shrink-0 font-normal opacity-85">{data.badge}</span> : null}
+        </>
+      )}
+      {...(slotFooter ? { footer: slotFooter } : {})}
+    >
+        {data.summary ? <AgentPanelV4Markdown text={data.summary} /> : null}
+        {composer ?? (data.params?.length ? (
+          <div className="flex flex-wrap gap-1">
+            {data.params.map((param) => (
+              <span
+                key={param}
+                className="inline-flex h-5 items-center rounded-pill bg-nomi-ink-05 px-[7px] text-micro text-nomi-ink-60"
+              >
+                {param}
+              </span>
+            ))}
+          </div>
+        ) : null)}
+        {data.price ? <V4PriceRow price={data.price} /> : null}
+        {data.plan?.length && !planCollapsed ? (
+          // 清单自己滚：卡壳是 `overflow-hidden`（圆角要它），所以清单不给自己一个滚动容器
+          // 就等于「第 9 行起不存在」——用户 2026-09-11 报的 8 镜计划卡正是这样，
+          // 下面几镜连同底栏一起被裁在卡外。高度上限按 6 行留（再多就该收起来读）。
+          <div className="flex max-h-[13.5rem] flex-col gap-1 overflow-y-auto" data-v4-block="plan-rows">
+            {data.plan.map((row, index) => (
+              <div key={`${index}-${row.label}`} className="flex items-start gap-2 py-[3px] text-caption text-nomi-ink-80">
+                <input
+                  type="checkbox"
+                  aria-label={row.label}
+                  checked={row.checked}
+                  onChange={(event) => onPlanToggle(row.label, event.target.checked)}
+                  className="mt-0.5 size-3.5 shrink-0 accent-nomi-accent"
+                />
+                {row.technical ? (
+                  <details className="group min-w-0 flex-1" data-v4-block="plan-detail">
+                    <summary className="flex cursor-pointer list-none items-start gap-1">
+                      <div className="min-w-0 flex-1"><AgentPanelV4Markdown text={row.label} />{row.detail ? <AgentPanelV4Markdown text={row.detail} /> : null}</div>
+                      <IconChevronRight size={12} className="mt-0.5 shrink-0 group-open:rotate-90" aria-hidden="true" />
+                    </summary>
+                    <pre className="m-0 mt-1 whitespace-pre-wrap break-all font-nomi-mono text-micro text-nomi-ink-40">{row.technical}</pre>
+                  </details>
+                ) : <div className="min-w-0 flex-1"><AgentPanelV4Markdown text={row.label} />{row.detail ? <AgentPanelV4Markdown text={row.detail} /> : null}</div>}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {data.rejectConfirmNote && rejecting ? (
+          <p className="m-0 text-caption text-nomi-danger" data-v4-control="reject-confirm-note">{data.rejectConfirmNote}</p>
+        ) : null}
+        {data.reasonPlaceholder && (rejecting || data.kind === 'reject-reason') ? (
+          // 这一行不自己提交：拒绝要说的那句话由底栏的「确认不要」收尾（渐进披露的第二下）。
+          <V4SlotInput value={reason} placeholder={data.reasonPlaceholder} control="reject-reason" onChange={setReason} />
+        ) : null}
+        {data.scope ? <p className="m-0 text-micro text-nomi-ink-60">{data.scope}</p> : null}
+    </V4SlotShell>
   )
 }
 

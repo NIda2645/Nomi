@@ -32,6 +32,7 @@
  */
 import React from 'react'
 import { cn } from '../../../utils/cn'
+import { V4SlotShell, V4_SLOT_PRIMARY_BUTTON, V4_SLOT_QUIET_BUTTON } from './AgentPanelV4SlotShell'
 import { IconChevronDown, IconCheck, IconX } from './AgentPanelV4Icons'
 import {
   ASK_AUTO_ADVANCE_MS,
@@ -302,15 +303,75 @@ export function V4AskCard({
   if (!question) return <></>
 
   return (
-    <section
-      className="overflow-hidden rounded-nomi bg-nomi-paper shadow-[0_0_0_1px_var(--nomi-line),var(--nomi-shadow-sm)]"
-      data-v4-block="intervention"
-      data-kind="question"
+    <V4SlotShell
+      kind="question"
       data-ask-card="true"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      // **没有卡头条**：问题本身就是标题（Approval Card 的形状，也是这次把
+      // 「需要你定一下」那句套话删掉的原因）。外壳把 `head` 做成可缺席的正是为了这一档；
+      // 描边 / 圆角 / 底色 / 内边距 / 页脚那条分隔线全部由外壳给，与付费确认卡同一份。
+      footer={(
+        <>
+        {/* 页脚：左页码（只有一题时整段不渲染）、右 Skip + 主按钮。 */}
+        {/* 页脚：左页码、右 Skip + 主按钮。两端分开用的是内容流里的一根弹性垫片，
+            不是那个「两端对齐」的类——`check:tokens` 对 `src/workbench/ai/` 这一族是硬零
+            （附属信息一律走 V4Row 的内容流），而它连**注释里**写出那个类名都会数进去，
+            所以这里只能这么绕着说。`V4Intervention` 的底栏是同一个写法。 */}
+        <div className="flex items-center gap-3" data-v4-block="ask-footer">
+          {shouldShowPager(total) ? (
+            <div className="flex items-center gap-1 text-nomi-ink-40" data-v4-block="ask-pager">
+              <button
+                type="button"
+                aria-label={labels.prev}
+                disabled={index <= 0}
+                onClick={() => goTo(index - 1)}
+                data-v4-control="ask-prev"
+                className="grid size-5 rotate-180 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
+              >
+                <IconChevronDown size={13} aria-hidden="true" />
+              </button>
+              <span className="inline-flex items-center text-caption font-medium tabular-nums text-nomi-ink-40" aria-label={labels.step(index + 1, total)}>
+                {`${index + 1} / ${total}`}
+              </span>
+              <button
+                type="button"
+                aria-label={labels.next}
+                disabled={last}
+                onClick={() => goTo(index + 1)}
+                data-v4-control="ask-next"
+                className="grid size-5 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
+              >
+                <IconChevronDown size={13} aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
+          <span className="flex-1" />
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => (last ? onDismiss() : goTo(index + 1))}
+              data-v4-control="ask-skip"
+              className={V4_SLOT_QUIET_BUTTON}
+            >
+              {labels.skip}
+            </button>
+            <button
+              type="button"
+              disabled={!answered}
+              onClick={() => advance(drafts)}
+              data-v4-control="ask-continue"
+              className={cn('inline-flex items-center gap-1.5', V4_SLOT_PRIMARY_BUTTON)}
+            >
+              {last ? labels.send : labels.continueLabel}
+              <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
+            </button>
+          </div>
+        </div>
+        </>
+      )}
     >
-      <div className="relative p-3">
+      <div className="relative">
         {(
           <button
             type="button"
@@ -318,7 +379,10 @@ export function V4AskCard({
             title={labels.dismiss}
             onClick={onDismiss}
             data-v4-control="ask-dismiss"
-            className="absolute right-2.5 top-2.5 z-10 grid size-7 place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05 hover:text-nomi-ink"
+            // 贴着卡体这一格的右上角，**不再另加偏移**：外壳已经给了 `px-2.5 py-2`，
+            // 再写一次 `top-2.5` 就是把它按两遍内边距往下推，× 会掉到问句和第一个选项中间
+            // （真面板截图上量到偏低 25px）。`-mt-0.5` 是把 28px 的命中框对回 21px 那行文字。
+            className="absolute -mt-0.5 right-0 top-0 z-10 grid size-7 place-items-center rounded-nomi-sm text-nomi-ink-40 hover:bg-nomi-ink-05 hover:text-nomi-ink"
           >
             <IconX size={14} aria-hidden="true" />
           </button>
@@ -436,62 +500,6 @@ export function V4AskCard({
           </div>
         </div>
       </div>
-
-      {/* 页脚：左页码（只有一题时整段不渲染）、右 Skip + 主按钮。 */}
-      {/* 页脚：左页码、右 Skip + 主按钮。两端分开用的是内容流里的一根弹性垫片，
-          不是那个「两端对齐」的类——`check:tokens` 对 `src/workbench/ai/` 这一族是硬零
-          （附属信息一律走 V4Row 的内容流），而它连**注释里**写出那个类名都会数进去，
-          所以这里只能这么绕着说。`V4Intervention` 的底栏是同一个写法。 */}
-      <div className="flex items-center gap-3 p-2.5" data-v4-block="ask-footer">
-        {shouldShowPager(total) ? (
-          <div className="flex items-center gap-1 text-nomi-ink-40" data-v4-block="ask-pager">
-            <button
-              type="button"
-              aria-label={labels.prev}
-              disabled={index <= 0}
-              onClick={() => goTo(index - 1)}
-              data-v4-control="ask-prev"
-              className="grid size-[18px] rotate-180 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
-            >
-              <IconChevronDown size={13} aria-hidden="true" />
-            </button>
-            <span className="inline-flex items-center text-caption font-medium tabular-nums text-nomi-ink-40" aria-label={labels.step(index + 1, total)}>
-              {`${index + 1} / ${total}`}
-            </span>
-            <button
-              type="button"
-              aria-label={labels.next}
-              disabled={last}
-              onClick={() => goTo(index + 1)}
-              data-v4-control="ask-next"
-              className="grid size-[18px] place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
-            >
-              <IconChevronDown size={13} aria-hidden="true" />
-            </button>
-          </div>
-        ) : null}
-        <span className="flex-1" />
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => (last ? onDismiss() : goTo(index + 1))}
-            data-v4-control="ask-skip"
-            className="h-7 rounded-pill bg-nomi-ink-05 px-3 text-body-sm font-medium text-nomi-ink-60 hover:bg-nomi-ink-10"
-          >
-            {labels.skip}
-          </button>
-          <button
-            type="button"
-            disabled={!answered}
-            onClick={() => advance(drafts)}
-            data-v4-control="ask-continue"
-            className="inline-flex h-7 items-center gap-1.5 rounded-pill bg-nomi-ink px-3 text-body-sm font-medium text-nomi-paper disabled:opacity-50"
-          >
-            {last ? labels.send : labels.continueLabel}
-            <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
-          </button>
-        </div>
-      </div>
-    </section>
+    </V4SlotShell>
   )
 }
