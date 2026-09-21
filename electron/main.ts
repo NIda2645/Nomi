@@ -442,15 +442,17 @@ function registerIpc(): void {
     assertTrustedSender(event);
     recreateMainWindowFromSender(event.sender, { preserveRoute: true, reason: "hard reload window" });
   });
-  // 读目录前补一次内置种子（渲染层热更新不重启 main，不补就停在旧目录）：共用同一份目录的读路径必须都补——只补 models:list 正是「供应商列表不全」的根因。
-  const readCatalog = <T>(read: (params?: unknown) => T) => (params?: unknown): T => {
-    ensureBuiltinModelSeeds();
-    return read(params);
-  };
-  registerSyncIpc("nomi:model-catalog:vendors:list", readCatalog(listModelCatalogVendors));
-  registerSyncIpc("nomi:model-catalog:models:list", readCatalog(listModelCatalogModels));
-  registerSyncIpc("nomi:model-catalog:mappings:list", readCatalog(listModelCatalogMappings));
-  registerSyncIpc("nomi:model-catalog:health", readCatalog(getModelCatalogHealth));
+  // 读目录的 IPC 是**纯读**：内置种子对账（一次写盘）只在启动期跑一次（whenReady 里的
+  // ensureBuiltinModelSeeds，headless 在 capabilityCore/host.ts 同一步）。
+  // 为什么不能挂在读上（本次事故的直接原因，rootcause-config-loss-on-reinstall.md §0）：
+  // 盘上目录版本高于本应用时，那次顺带的写被「不许静默降级」保护拒绝并抛出 → registerSyncIpc
+  // 翻成 {ok:false} → preload 重新抛出 → 设置页三个列表全空、零报错。用户看到的就是「配置没了」。
+  // 代价（明写）：开发时改了内置种子而只热更新渲染层，新种子要等 main 重启才出现——那是开发者的
+  // 不便，换掉的是用户的配置被一次读操作推进只读死角。
+  registerSyncIpc("nomi:model-catalog:vendors:list", listModelCatalogVendors);
+  registerSyncIpc("nomi:model-catalog:models:list", listModelCatalogModels);
+  registerSyncIpc("nomi:model-catalog:mappings:list", listModelCatalogMappings);
+  registerSyncIpc("nomi:model-catalog:health", getModelCatalogHealth);
   registerSyncIpc("nomi:model-catalog:vendor:upsert", upsertRendererCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor:delete", deleteModelCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
@@ -462,7 +464,7 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
   registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertRendererCatalogMapping);
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
-  registerSyncIpc("nomi:model-catalog:export", readCatalog(exportModelCatalogPackage));
+  registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
   registerSyncIpc("nomi:model-catalog:import", importRendererCatalogPackage);
   // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块，别回填这里）。comfy 那棵树重 → 惰性 require；素材通道薄 → 顶部静态 import。
   (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);

@@ -310,7 +310,10 @@ export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
   return listOnboardingAgentCandidates()[0] ?? null;
 }
 export function getModelCatalogHealth(): unknown {
-  return deriveModelCatalogHealth(readCatalog());
+  const health = deriveModelCatalogHealth(readCatalog());
+  // 降级运行（盘上版本更新）与「文件读不了」都必须**随健康度一起下发**，不能只留在主进程日志里：
+  // 这两种情况下目录看起来就是空的，界面若拿不到理由就只能猜，用户就只会看到「配置没了」。
+  return { ...(health as Record<string, unknown>), readOnly: modelCatalogReadOnlyStatus() };
 }
 /**
  * 把一次 vendor upsert 应用到内存 state，不读盘不写盘。
