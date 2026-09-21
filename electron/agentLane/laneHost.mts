@@ -11,6 +11,7 @@ import { LANE_CODING_TOOL_NAMES } from './laneCodingTools.mjs';
 import { LANE_LEGACY_NOTE, LANE_LEGACY_TOOLS_NOTE, laneLegacyFacts } from '../shared/agentLane/laneLegacyNote.js';
 import { findLaneReceiptAuthority } from './laneReceiptAuthority.mjs';
 import { createLaneRepeatedFailureTracker } from './laneRepeatedFailure.mjs';
+import { ASK_USER_VERB_NAME } from '../shared/agentCapabilities/askUser.js';
 // Agent lane · 主进程宿主（**薄**）
 //
 // 它只做三件事，方案 §2.1 ⑤ 写死的那三件：
@@ -429,8 +430,17 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     await options.toolLifecycle?.prepare(event, hookContext.abortSignal ?? new AbortController().signal);
     // ② 闸。上限先判：到了上限就没有「问用户要不要放行」这回事了。
     if (gate) {
+      // 撞满 3 次之后模型改去问用户：那张卡上要多一句**我们自己**说的话
+      // （「试了 3 次还是不对，所以来问你」）。它只传一个码 + 一个数，文案在渲染层 i18n——
+      // 生产者传成句的字符串就绕过了翻译，英文用户会读到中文（`askUser.ts` 的
+      // `askUserHostReasonSchema`）。模型填不出这个字段，也不该填得出：能自己声称
+      // 「这是第 3 次了」就是给它一个伪造理由的字段。
+      const exhausted = event.toolName === ASK_USER_VERB_NAME ? failures.exhausted() : undefined;
+      const askArgs = exhausted && event.args && typeof event.args === 'object' && !Array.isArray(event.args)
+        ? { ...event.args as Record<string, unknown>, askReason: { code: 'retry_exhausted', attempts: exhausted.attempts } }
+        : event.args;
       const outcome = await gate.preflight(
-        { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args },
+        { toolCallId: event.toolCallId, toolName: event.toolName, args: askArgs },
         hookContext.abortSignal,
       );
       if (outcome.allow && outcome.decision === 'auto-granted' && outcome.undoable) directlyApplied.add(event.toolCallId);
@@ -481,7 +491,11 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     gate?.forget(event.toolCallId);
     const appliedDirectly = directlyApplied.delete(event.toolCallId);
     const body = event.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
-    const consecutive = failures.note(event.toolName, event.isError, body);
+    // 信封在计数**之前**取走：撞满之后要转成一次提问，而那张卡上的选项就是这份 `allowed`
+    // （见 `laneRepeatedFailure.mts` 的 `exhausted()`）。让模型自己回忆拒收信里写了哪几个值，
+    // 是在赌它——而它已经连着错了三次的正是这件事。
+    const failure = event.isError ? takeLaneToolFailure(event.toolCallId) : undefined;
+    const consecutive = failures.note(event.toolName, event.isError, body, failure?.allowed);
     // 工具失败要在**主进程日志**里留一行（2026-09-17）。此前整条失败链只有 lane 自己的会话 JSONL
     // 记得住：真机复现 `surface_port_stale` 那一轮，`read_script` 连挂 3 次、会话里 12 处命中，
     // 而 `logs/nomi-<date>.log` 一共 9 行、**一个字都没提这件事**。排查的人打开日志看到的是「什么都没发生」。
@@ -497,7 +511,6 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
     // 那段英文散文（中文界面上印出 `... (surface_port_stale). Next: …` 的就是它）。
     // 走 pi 自己的 `after_tool` result.details，和成功那条路的 `details.nextAction` 同形。
     // `details` 是**整体替换**（`harness/agent-harness.d.ts:576`），所以必须带上原有的那份。
-    const failure = event.isError ? takeLaneToolFailure(event.toolCallId) : undefined;
     const details = failure
       ? { ...(event.details && typeof event.details === 'object' && !Array.isArray(event.details)
           ? event.details as Record<string, unknown> : {}), failure }

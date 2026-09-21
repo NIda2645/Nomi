@@ -133,3 +133,10 @@ export const AGENT_ASK_CAPABILITY = {
   requiredScope: "agent:ask",
   targetKind: "project",
 } as const satisfies CapabilityContract<AskUserInput, { answer: string; optionId?: string }>;
+
+/**
+ * 内部面上这个动词叫什么。**从契约的别名取，不在别处手打字符串**——
+ * 宿主要按工具名认出「这一次是提问」的地方不止一处，而每多一个手打的 `"ask_user"`
+ * 就多一个改名时会悄悄失效的判据（`docs/lessons/stale-directives-outlive-tool-renames.md`）。
+ */
+export const ASK_USER_VERB_NAME = AGENT_ASK_CAPABILITY.aliases.pi;
