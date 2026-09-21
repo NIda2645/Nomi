@@ -3,6 +3,7 @@
 > 查文档前先看这张表，按「我要找什么」跳到对应目录；索引仍有历史存量缺口，查不到时必须继续全量 grep。
 > 各目录若有自己的索引（如 plan/），表里直接给出。
 
+- [「等用户」只有一个 owner（花钱路状态机 · 门表 · 反方评审）](plan/2026-09-22-waiting-for-user-one-owner.md)
 - [通用反问：模型自己能问用户一句话（一份契约 · 三振转提问）](plan/2026-09-21-ask-user-tool.md)
 - [交付流程去堵：评审单位、机器锁与合并队列方案](plan/2026-09-08-delivery-flow-unclog.md)
 - [Agent runtime 测试资源生命周期修复](plan/2026-09-08-agent-runtime-flakes.md)
