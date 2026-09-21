@@ -51,6 +51,17 @@ describe('InlineParameterBar catalog variant control', () => {
     expect(onModelChange).toHaveBeenCalledWith('gemini-3.7-flash-low', 'antigravity-cli')
   })
 
+  // 2026-09-21 走查：1100×720 英文下画布节点（summary 摆法）的变体芯片被压到值区只剩 5px，
+  // 「Variant 5.0」读成「Variant E」。行窄时让位的只许是模型那枚（有意省略号 + title 全名）；
+  // 变体是短枚举，从不缩——与分镜底栏 composerBarGeometry 的「短枚举不缩」同一条规则。
+  it('summary: only the model chip yields width; the short variant enum never shrinks', () => {
+    render(['low', 'medium', 'high'], 'high')
+    const [model, variant] = captured.selects
+    expect(variant.leadingLabel).toBeTruthy()
+    expect(variant.className ?? '').toContain('shrink-0')
+    expect(model.className ?? '').not.toContain('shrink-0')
+  })
+
   it('shows a single enabled tier as a fixed value without offering disabled tiers', () => {
     const { html } = render(['high'], 'high')
     expect(captured.selects).toHaveLength(2)

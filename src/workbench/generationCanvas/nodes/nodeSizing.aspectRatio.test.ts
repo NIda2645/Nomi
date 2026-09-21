@@ -4,7 +4,6 @@ import {
   anchorNodePosition,
   buildAspectRatioNodePatch,
   didComposerAvailableSpaceChange,
-  getUnobstructedComposerSpaceBelow,
   resolveAreaPreservingSize,
   shouldAllowComposerAttachmentRecompute,
   shouldPreserveComposerAttachmentOnRatioChange,
@@ -133,34 +132,6 @@ describe('shouldAllowComposerAttachmentRecompute', () => {
         attachmentObstructed: true,
       }),
     ).toBe(true)
-  })
-})
-
-describe('getUnobstructedComposerSpaceBelow', () => {
-  const stage = { left: 0, right: 1600, top: 0, bottom: 900 }
-  const node = { left: 610, right: 990, top: 360, bottom: 740 }
-  const timelineHandle = { left: 690, right: 910, top: 850, bottom: 886 }
-
-  it('reserves the floating timeline handle when it crosses the composer footprint', () => {
-    expect(
-      getUnobstructedComposerSpaceBelow({
-        stage,
-        node,
-        composer: { left: 560, right: 1040 },
-        obstacles: [timelineHandle],
-      }),
-    ).toBe(110)
-  })
-
-  it('uses the full stage when the bottom obstacle is horizontally clear', () => {
-    expect(
-      getUnobstructedComposerSpaceBelow({
-        stage,
-        node,
-        composer: { left: 1000, right: 1480 },
-        obstacles: [timelineHandle],
-      }),
-    ).toBe(160)
   })
 })
 

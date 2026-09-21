@@ -9,6 +9,7 @@ import { TableKit } from '@tiptap/extension-table'
 import { markdownToTiptapContent } from '../creation/markdownToTiptap'
 import { sanitizePastedHtml } from './sanitizePastedHtml'
 import { PersistentSelectionExtension } from './persistentSelection'
+import { createControlledEditorSync } from './controlledEditorSync'
 
 // ==高亮== 输入/粘贴规则：Tiptap 默认规则要求 `==` 前是行首或空白，中文「这是==重点==」
 // 无空格场景会失效；这里放宽为任意位置触发，对齐 ColaMD 的 `/==([^=]+)==/`。
@@ -100,8 +101,12 @@ export function useNomiRichTextEditor(options: {
     onSelectionChangeRef.current = onSelectionChange
   }, [onSelectionChange])
 
-  // Guards against the controlled-content effect re-applying the editor's own edits.
-  const lastEditorJsonRef = React.useRef('')
+  // 编辑器是自己文档的唯一 owner：受控 content 只有「真正来自外部」时才写进来，
+  // 自己发出去又经 store → props 回流的旧 JSON（React Flow 投影会晚一拍）一律不覆盖文档。
+  // 裁决与 PromptEditor 共用一份（controlledEditorSync.ts）。
+  const syncRef = React.useRef<ReturnType<typeof createControlledEditorSync> | null>(null)
+  if (!syncRef.current) syncRef.current = createControlledEditorSync(JSON.stringify(content))
+  const sync = syncRef.current
 
   const editor = useEditor(
     {
@@ -119,8 +124,7 @@ export function useNomiRichTextEditor(options: {
       },
       onUpdate: ({ editor: current }) => {
         const json = current.getJSON()
-        lastEditorJsonRef.current = JSON.stringify(json)
-        onChangeRef.current?.(json)
+        if (sync.emit(JSON.stringify(json))) onChangeRef.current?.(json)
       },
       onSelectionUpdate: ({ editor: current }) => {
         onSelectionChangeRef.current?.(readSelectedText(current))
@@ -129,13 +133,16 @@ export function useNomiRichTextEditor(options: {
     [placeholder],
   )
 
+  // placeholder 变化会重建编辑器实例，新实例的文档就是它创建时拿到的那份 content：账从它重开。
+  React.useEffect(() => {
+    if (isEditorReady(editor)) sync.reset(JSON.stringify(editor.getJSON()))
+  }, [editor, sync])
+
   // Sync controlled content in (e.g. AI wrote into the doc, or node switched).
   React.useEffect(() => {
     if (!isEditorReady(editor)) return
-    const nextJson = JSON.stringify(content)
-    if (!nextJson || nextJson === lastEditorJsonRef.current) return
+    if (!sync.receive(JSON.stringify(content))) return
     const previousSelection = editor.state.selection
-    lastEditorJsonRef.current = nextJson
     // Controlled resource switches are hydration, not user edits. Emitting an
     // update here would bump the destination document timestamp and mark its
     // storyboard designs stale merely because the user opened the document.
@@ -147,7 +154,7 @@ export function useNomiRichTextEditor(options: {
         to: Math.min(previousSelection.to, maxPosition),
       })
     }
-  }, [editor, content])
+  }, [editor, content, sync])
 
   React.useEffect(() => {
     if (isEditorReady(editor)) editor.setEditable(editable)

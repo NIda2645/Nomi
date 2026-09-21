@@ -9,7 +9,8 @@ import { cn } from '../../utils/cn'
 import { AssetMention } from './AssetMentionNode'
 import { createAssetMentionSuggestion } from './AssetMentionSuggestion'
 import type { MentionSuggestionItem, MentionUploadControls } from './AssetMentionSuggestionList'
-import { promptToContent, shouldApplyExternalPromptSync, shouldEmitPromptUpdate } from './promptEditorContent'
+import { promptToContent } from './promptEditorContent'
+import { createControlledEditorSync } from '../common/controlledEditorSync'
 import { encodeMention } from './promptMentions'
 import { promptRangeToDocRanges, promptRunsFromDocument, type PromptEditorSegment } from './promptEditorSkeleton'
 
@@ -133,10 +134,11 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     }),
     [],
   )
-  // 防控制内容回灌死循环:记下编辑器自身最后产出的字符串,外部 value 等于它就不重设。
-  const lastStringRef = React.useRef(value)
-  const latestValueRef = React.useRef(value)
-  latestValueRef.current = value
+  // 编辑器是自己文本的唯一 owner：外部 value 只有「真正来自外部」时才写进来，
+  // 自己发出去又从 store → props 回流的旧值一律不覆盖文档（裁决见 controlledEditorSync.ts）。
+  const syncRef = React.useRef<ReturnType<typeof createControlledEditorSync> | null>(null)
+  if (!syncRef.current) syncRef.current = createControlledEditorSync(value)
+  const sync = syncRef.current
 
   const editor = useEditor({
     extensions: [
@@ -149,12 +151,11 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     content: promptToContent(value, mentionReferences ?? mentionCandidates),
     editable: editable !== false,
     editorProps: { attributes: { class: 'generation-canvas-v2-node__prompt-input outline-0', ...(ariaLabel ? { 'aria-label': ariaLabel } : {}) } },
+    // 仅真正改变 prompt 字符串的文档事务向 owner 回写；胶囊编号事务（串不变）不回写，不覆盖外部 plan 编辑。
     onUpdate: ({ editor: current, transaction }) => {
+      if (!transaction.docChanged) return
       const next = contentToPrompt(current)
-      if (!shouldEmitPromptUpdate(transaction.docChanged, next, latestValueRef.current)) return
-      lastStringRef.current = next
-      latestValueRef.current = next
-      onChangeRef.current(next)
+      if (sync.emit(next)) onChangeRef.current(next)
     },
   })
 
@@ -181,13 +182,12 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     if (editor.isEditable !== next) editor.setEditable(next, false)
   }, [editor, editable])
 
-  // 外部 value 变化(切节点 / AI 写入)→ 同步进编辑器,跳过自身刚产出的那次。
+  // 外部 value 变化(切节点 / AI 写入 / 撤销)→ 写进编辑器；自己发出去的回声不写。
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    if (!shouldApplyExternalPromptSync(value, latestValueRef.current, lastStringRef.current)) return
-    lastStringRef.current = value
+    if (!sync.receive(value)) return
     editor.commands.setContent(promptToContent(value, mentionReferences ?? orderedUrlsRef.current), { emitUpdate: false })
-  }, [editor, mentionReferences, value])
+  }, [editor, mentionReferences, sync, value])
 
   // 参考拖拽重排后，prompt 字符串仍是同一批 url，但 chip 的媒体编号必须按最新列表立即刷新。
   // 只改易失的 index 属性，不改持久化内容、不重建编辑器，也不打断当前光标。
