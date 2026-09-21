@@ -1,0 +1,293 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-generate-waits-in-preflight",
+  "problem_type": "Waiting for the user lives inside a tool execution (or nowhere), so the turn either times out on a 60s budget or ends before the user answers and nothing receives his decision",
+  "symptom": "① 让 Agent「生成一下」文稿方案，三轮真实模型实测一次没成过（run3：`generate did not finish within 60s`）。② 报价卡出来之后回合当场结束：用户点了「生成 ¥X」，没有任何回合接得住这个结论；× 在模型眼里和「工具坏了」同形，于是它重试、进熔断。③ 报价卡待答时打字，话石沉大海（run3 连着 15 句没反应）。④ 卡挂着时退出 Nomi，重开后卡还在、却没有任何人在等它。",
+  "direct_cause": "`generate` 的两条路各有一种等法，都不在审批闸里：报价卡那条以 `LaneDomainFailure{user_sees_spend_card}`（isError + STOP）把回合当场结束，等待只活在 Run 账本的投影 + 面板 1.5s 轮询里；文稿方案那条在工具执行里 `requestRendererDecision(\"storyboard.present\")` 无超时地等用户点头，撞写类工具 60 秒预算。宿主输入分派只认闸上的待决，闸外那两种等待它不知道，所以待决时打的字被当成普通插话。盘上的「已摆出、未决」在进程死后仍被投影成卡。",
+  "class_root": "「这一刻在等用户」这件事有三个 owner（审批闸 / Run 账本投影 / 工具执行里的渲染层往返），只有闸具备等待该有的性质（不计工具超时、被打断时兑现、关窗统一收尾、认得出用户打的字是对它的回答）。等待住在闸外的地方，这四条性质就一条都没有，而且每多一种卡就多一个这样的地方。",
+  "affected_population": [
+    "内部 Agent 面板上每一次 `generate`（报价卡路径与文稿方案路径）",
+    "任何在报价卡待答时继续在输入框里打字、或点那颗圆钮的用户",
+    "卡挂着时退出 / 重启 Nomi 的用户",
+    "不受影响：全自动档（策略当场代答，不借等待）；外部 MCP 宿主（它不走面板的卡，本轮未动 mcpGateConfirmation / rpcServer）"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneApprovalGate.ts",
+    "electron/agentLane/laneExtendedDesktopPorts.ts",
+    "electron/agentLane/laneExtendedTools.ts",
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneRuntimePort.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/productionRun/productionPendingSpend.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/stalePresentationSweep.ts",
+    "electron/shared/agentLane/generateUserDecision.ts",
+    "src/workbench/ai/v4/spendCardRollback.ts"
+  ],
+  "entry_points": [
+    "模型调 `generate`（lane `before_tool` → `toolLifecycle.approved` → `preflightGenerate`）",
+    "面板报价卡：「生成 ¥X」/ ×（`confirmPendingSpend` / `discardPendingSpend` → `settleSpendWaiter`）",
+    "Agent 面板输入框：卡待答时的回车 / Alt+回车 / 圆钮",
+    "按停止 / 关窗 / 切对话 / 退出（`cancelAll` → 出价收回）",
+    "打开项目的补齐钩子（`withdrawStalePresentations`）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "只动本仓 lane 宿主、Run 账本状态机与面板输入框；没有新增或改动任何对外 wire 契约。模型可见面有意改了两句（`generate` 的菜单句与后果句：这次调用会等用户答完），`check:model-face-frozen` 基线按门岗程序更新。与 MCP elicitation 规范的对照（2025-11-25 / 2026-07-28）写在 docs/plan/2026-09-22-waiting-for-user-one-owner.md §5c。",
+  "invariants": [
+    "等用户只有一个 owner：审批闸。`generate` 的 present 与等用户都发生在 `before_tool`（`toolLifecycle.approved`），不计入工具超时；execute 里没有任何等待，也不再碰一次领域",
+    "用户在报价卡上的结论以**成功形状**回给模型：approved / declined / redirected；只有「没有窗口能问」「被停下」是错误形状",
+    "待决身份锚 `operationId`：改参数换了 quoteId，等的那个回合照样收得到结论；确认链**成功之后**才递 confirmed",
+    "收回出价 ≠ ×：`generation.withdraw` 回 draft / 未 present、不写 cancelled、幂等；重启清扫只收早于本进程启动的出价，判据与面板投影共用 `awaitingSpendDecision` 一份",
+    "卡待答时用户打的字就是对这张卡的回答（出价收回、计划留着、原话到模型）；框里有字时圆钮是发送不是停止",
+    "只扣一次：要花钱必须有一次真人点击；× 撤的是这次请求的占位，不动已经出过图的节点",
+    "回合被停下的那一支不等「收回出价」落盘就把钩子还给 pi——否则退出路上 abort 收不了尾，重开后对话卡死"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "LaneHoldOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "GENERATE_USER_DECISION_KEY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "waitForUser"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "symbol": "LaneHoldOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "symbol": "LaneToolPreflightHost"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/generateUserDecision.ts",
+      "symbol": "GENERATE_USER_DECISION_KEY"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "registerSpendWaiter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "withdrawPresentation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "waitForUser"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "generateUserDecisionOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "settleHold"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "holding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "withdrawStalePresentations"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "settleSpendWaiter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "awaitingSpendDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "withdrawGenerationPresentation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/stalePresentationSweep.ts",
+      "symbol": "awaitingSpendDecision"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardRollback.ts",
+      "symbol": "ownedSpendNodeIds"
+    }
+  ],
+  "door_reduction": {
+    "before": 25,
+    "after": 22,
+    "why_not": "删掉的三扇是「等用户」的另外两个 owner 与一条旁路：`spendCardResult`（isError + STOP，回合当场结束）、失败信封的 `waiting` 轴（生产者 + 渲染层旁路）。剩下的门是**同一条边上的不同层**，不是并行实现：闸的 hold/settleHold/holding（等待本身）→ 端口的 preflightGenerate（借等待）→ 转接表 register/settle（把面板上的结论递给等的那个回合，两处 settle 是同一条边的两个结局：确认成功 / ×）→ Run 账本的 withdraw（收回出价）→ `awaitingSpendDecision`（一份判据两个读者：画卡 / 启动清扫，抽成一个函数正是为了不让两边各写一遍）。文稿方案那次等待仍在渲染层自己的确认里（只是不再受工具超时管），没有搬进闸：列入 residual_risks。"
+  },
+  "generality_proof": "闸的 `hold` 不认识花钱：它只说「替一张画在别处的卡等用户」。端口按**结果形状**（present 返回 `nextAction: await_user`）决定借不借等待，不按工具名；转接表只认 projectId + operationId。下一种「卡画在别处」的等待复用同一个 `host.waitForUser()`。",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "hold",
+      "responsibility": "所有「等用户」的唯一 owner：race signal、被打断时兑现、不设超时、cancelAll 一并收尾、不投影成闸卡。"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "preflightGenerate",
+      "responsibility": "`generate` 的 present + 等用户只发生在预检期；execute 只交出预检期定好的结局。"
+    },
+    {
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "generation.withdraw",
+      "responsibility": "收回这一次出价、计划留着（回 draft / 未 present），幂等。"
+    },
+    {
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "awaitingSpendDecision",
+      "responsibility": "「这份计划此刻正摆在用户面前等他点头吗」的唯一判据。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "generate · 报价卡路径",
+      "disposition": "enforced",
+      "evidence": "laneExtendedDesktopPorts.test.ts 六条 + 走查 agent-spend-waiting-owner / agent-spend-confirm-executes 等 12 条全绿"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "generate · 文稿方案路径（storyboard.present）",
+      "disposition": "enforced",
+      "evidence": "present 整体搬进预检期，不再受 60 秒预算管（lane-resilience.test.mts「waiting in the domain preflight…」）；端到端真机走查未跑，见 residual_risks"
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "提问卡 / 确认卡待答时打字",
+      "disposition": "enforced",
+      "evidence": "agent-gate-typing-answers.walk.mjs 三个用例（回车 / Alt+回车 / 圆钮）全绿"
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "entry_point": "全自动档代答失败后留下的那张卡（sealed + gate waiting）",
+      "disposition": "not-affected",
+      "evidence": "那一笔以错误形状回给模型，卡留在原处等用户；没有回合在等它（既有裁决「策略答不了才问人」）。列入 residual_risks"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "entry_point": "外部 MCP 宿主的确认（elicitation / confirmGenerationInNomi）",
+      "disposition": "not-affected",
+      "evidence": "本轮按任务书不碰；对外投影的设计在方案 §5b / §5c"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每多一种「等用户」的卡、每多一个能出卡的入口，都会再长出一个闸外的等待。三轮真实模型实测里同一个根在三处冒头（文稿 generate 从未成功 / 待决时打字无反应 / × 被当成错误重试）。",
+    "same_class_scan": [
+      "grep -rn 'requestRendererDecision' electron → 只剩 storyboard.present 一处（已在预检期）",
+      "grep -rn 'user_sees_spend_card' electron/agentLane electron/shared/agentLane src → 失败码 0 命中（只剩 verb 的 nextAction 档位名）",
+      "grep -rn 'laneToolWaitsForUser\\|waiting: true' electron src → 0 命中（waiting 轴删净）"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneApprovalGate.ts",
+    "invariant": "等用户只住在审批闸；工具执行里没有等待。",
+    "failure_mode": "有人再把「等用户」写回工具执行 → lane-resilience「waiting in the domain preflight…」的姊妹断言（工具预算）与 laneExtendedDesktopPorts.test.ts「整条链上领域只被碰一次」红；回执再谎报「已开跑」→ lane-storyboard-review.test.mts 红。",
+    "exception_policy": "none",
+    "strategy": "删掉第二终态而不是给它打补丁；把「别复活」从一趟会抢跑的补救往返，挪回账本自己的状态。",
+    "artifacts": [
+      "electron/agentLane/laneApprovalGate.ts",
+      "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+      "tests/agent-runtime/lane-resilience.test.mts",
+      "tests/ux/agent-spend-waiting-owner.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardRollback.test.ts",
+    "tests/agent-runtime/lane-resilience.test.mts",
+    "tests/agent-runtime/lane-storyboard-review.test.mts"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardRollback.test.ts",
+    "tests/agent-runtime/lane-resilience.test.mts",
+    "tests/agent-runtime/lane-storyboard-review.test.mts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "electron/agentLane/laneTools.mts",
+      "src/workbench/ai/lane/laneViewModel.ts",
+      "src/i18n/locales/agentToolFailure.ts"
+    ],
+    "rationale": "`dismissGenerationPlan`、reducer 的 `generation.dismiss` 分支、两个 store 的 `dismiss`、接口成员同 commit 删除；`cardHidden` 的 (b) 义随之消失，只剩 (a)。没有开关、没有旧路径分支。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量完全由本仓的 Run 账本与 lane 宿主决定。",
+    "exit_criteria": []
+  },
+  "migration": "不迁移盘上数据。旧 Run 里「已摆出、未决」的计划在下一次打开项目时由启动清扫收回出价（回 draft / 未 present）——镜头、参数、画布节点不变。旧转录里 `user_sees_spend_card` 的失败行按普通失败行渲染（该分支未发布过）。",
+  "residual_risks": [
+    "文稿方案的 `generate`：等用户点头仍发生在渲染层自己的确认里（`storyboard.present`），只是搬到了预检期、不再受工具超时管；它没有搬进闸的 hold，待决时打字对它不生效。端到端真机走查本轮没跑成（需要文稿面夹具）。",
+    "全自动档代答失败后留下的那张卡没有回合在等它（既有裁决）；用户点了它，生成会开始，但 Agent 那头没有回合接结果。",
+    "卡待答时用户打的那句话没有以「用户气泡」出现在对话里（它成了 generate 的结果正文，折叠在工具行里）——走查截图 02 可见；退出打断的那一行读作「准备生成 · 失败」，没有说是被退出打断的。",
+    "Agent 出的付费卡现在天然串行（同一条对话里答完一张才有下一张；开新对话 = 原 lane 关了 = 出价收回）。介入槽「还有 N 条」这一形态从 lane 路径走不到了，只剩分镜编辑器那条路能产生。",
+    "多镜计划上 × 仍是整份计划终结而只撤卡上那几镜的占位（上一份合同已列）。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneApprovalGate.ts",
+    "tests": [
+      "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+      "tests/agent-runtime/lane-resilience.test.mts"
+    ],
+    "notes": "「等用户」这条不变量归审批闸管；端口只借等待、Run 账本只记出价状态、面板只画卡。"
+  }
+}
