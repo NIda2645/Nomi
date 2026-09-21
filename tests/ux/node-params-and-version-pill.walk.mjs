@@ -24,7 +24,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import ffmpeg from '@ffmpeg-installer/ffmpeg'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
-import { expect, expectHittable, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
+import { expect, expectAbsent, expectHittable, proveProbe, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
 import { findCanvasBlankPoint, findFrameDragHandlePoint, findNodeHitPoint, CANVAS_STAGE_SELECTOR } from './_canvasHit.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
@@ -259,7 +259,7 @@ try {
   try {
     await expectHittable(downloadButton, 'P5 下载这一版')
     await downloadButton.click()
-    await expect.poll(() => fs.existsSync(downloadPath) && fs.statSync(downloadPath).size > 0, { timeout: 10_000 }).toBe(true)
+    await expect.poll(() => fs.existsSync(downloadPath) && fs.statSync(downloadPath).size > 0, { timeout: stationTimeout() }).toBe(true)
     check(true, 'P5 下载这一版写出非空文件', { bytes: fs.statSync(downloadPath).size })
   } catch (error) { check(false, 'P5 下载这一版写出非空文件', String(error.message).split('\n')[0]) }
   await pill.click()
@@ -267,6 +267,16 @@ try {
 
   // ═══ F 删框 ═══
   const countOf = (selector) => win.locator(selector).count()
+  /** 「删掉了」＝先证明探针此刻找得到它，再断言它消失（expectAbsent 的签名强制这一步，免得死选择器报绿）。 */
+  const expectGone = async (selector, label) => {
+    try {
+      await expectAbsent(win.locator(selector), { provenBy: proofs.get(selector), message: label })
+      return true
+    } catch (error) { check(false, label, String(error.message).split('\n')[0]); return false }
+  }
+  const proofs = new Map()
+  const prove = async (selector, label) => proofs.set(selector, await proveProbe(win.locator(selector), label))
+  const MEMBERS = `${sel('frame-m1')}, ${sel('frame-m2')}`
   const undo = async () => { await win.keyboard.press(`${MOD}+z`); await waitForVisualQuiescence(win) }
   const clickFrame = async (id) => {
     const p = await findFrameDragHandlePoint(win, { frameSelector: frameSel(id) })
@@ -276,22 +286,26 @@ try {
     return p
   }
   await fitView()
+  await prove(frameSel('frame-rain'), '删之前框在画布上')
+  await prove(MEMBERS, '删之前框里的两张卡在画布上')
   await clickFrame('frame-rain')
   await win.keyboard.press('Delete')
   await waitForVisualQuiescence(win)
-  check(await countOf(frameSel('frame-rain')) === 0 && await countOf(sel('frame-m1')) === 0 && await countOf(sel('frame-m2')) === 0,
-    'F1 选中框按 Delete：框和里面的卡一起删掉', { frames: await countOf(frameSel('frame-rain')), members: await countOf(`${sel('frame-m1')}, ${sel('frame-m2')}`) })
+  check(await expectGone(frameSel('frame-rain'), 'F1 选中框按 Delete：框删掉') && await expectGone(MEMBERS, 'F1 选中框按 Delete：框里的卡一起删掉'),
+    'F1 选中框按 Delete：框和里面的卡一起删掉', {})
   await shot('03-frame-deleted')
   await undo()
   check(await countOf(frameSel('frame-rain')) === 1 && await countOf(`${sel('frame-m1')}, ${sel('frame-m2')}`) === 2, 'F1 ⌘Z 一次全部回来', {})
 
   await clickFrame('frame-empty')
   check(await win.locator(frameSel('frame-empty')).getAttribute('data-frame-selected') === 'true', 'F2 点空框：框本身被选中', {})
-  check(await win.locator('.react-flow__node.selected').count() === 0, 'F2 点空框：之前选中的卡不再被选着（Delete 不会误删别处）', {})
+  const stillSelected = await win.locator('.react-flow__node.selected').evaluateAll((els) => els.map((el) => el.getAttribute('data-id')))
+  check(stillSelected.join(',') === '', 'F2 点空框：之前选中的卡不再被选着（Delete 不会误删别处）', {})
   await shot('04-empty-frame-selected')
+  await prove(frameSel('frame-empty'), '删之前空框在画布上')
   await win.keyboard.press('Backspace')
   await waitForVisualQuiescence(win)
-  check(await countOf(frameSel('frame-empty')) === 0, 'F2 选中空框按 Backspace 删掉', {})
+  check(await expectGone(frameSel('frame-empty'), 'F2 选中空框按 Backspace 删掉'), 'F2 选中空框按 Backspace 删掉', {})
   check(await countOf(sel('stack')) === 1 && await countOf(sel('empty-image')) === 1, 'F2 别的卡一张没少', {})
   await undo()
   check(await countOf(frameSel('frame-empty')) === 1, 'F2 ⌘Z 空框回来', {})
@@ -304,7 +318,7 @@ try {
     await shot('05-frame-menu-delete')
     await menuDelete.click()
     await waitForVisualQuiescence(win)
-    check(await countOf(frameSel('frame-rain')) === 0 && await countOf(`${sel('frame-m1')}, ${sel('frame-m2')}`) === 0, 'F3 框菜单「删除」：框和里面的卡一起删', {})
+    check(await expectGone(frameSel('frame-rain'), 'F3 框菜单「删除」：框删掉') && await expectGone(MEMBERS, 'F3 框菜单「删除」：框里的卡一起删'), 'F3 框菜单「删除」：框和里面的卡一起删', {})
     await undo()
     check(await countOf(frameSel('frame-rain')) === 1 && await countOf(`${sel('frame-m1')}, ${sel('frame-m2')}`) === 2, 'F3 ⌘Z 一次全部回来', {})
   } catch (error) { check(false, 'F3 框菜单「删除」', String(error.message).split('\n')[0]) }
