@@ -102,23 +102,8 @@
     },
     {
       "kind": "read",
-      "path": "electron/capabilityCore/apimartGenerationProjection.ts",
-      "symbol": "ApimartReferenceUrlResolver"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
-      "symbol": "ApimartReferenceUrlResolver"
-    },
-    {
-      "kind": "read",
       "path": "electron/capabilityCore/apimartGenerationProvider.ts",
       "symbol": "sameJson"
-    },
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
-      "symbol": "ApimartReferenceUrlResolver"
     },
     {
       "kind": "write",
@@ -348,8 +333,8 @@
   ],
   "door_reduction": {
     "before": 63,
-    "after": 63,
-    "why_not": "Existing desktop, MCP, reducer and fixture callers share durable authorization ownership"
+    "after": 60,
+    "why_not": "Existing desktop, MCP, reducer and fixture callers share durable authorization ownership 2026-09-21 Pass 3c：`ApimartReferenceUrlResolver` 那条并行的参考 URL 路整刀删除（生产侧早已无调用者，新分支还无条件覆盖它），本合同门表里属于它的 3 扇随之消失——`node scripts/door-map.mjs ApimartReferenceUrlResolver` 现在是 0 扇。"
   },
   "generality_proof": "Desktop and MCP converge on one async preparation boundary and the existing durable envelope",
   "shared_boundaries": [
