@@ -607,6 +607,28 @@ describe("capabilityCore/rpcServer", () => {
     expect(forged.body).toMatchObject({ ok: false, error: { code: "capability_authority_invalid" } });
   });
 
+  it("a refusal is not a fault: 自报更松的信任档 → 403 + human_approval_required，不是 500", async () => {
+    // 2026-09-21 真机探针先拿到的是 HTTP 500——调用方读到「Nomi 崩了」，真相是「Nomi 在等你点头」。
+    // 领域层抛的授权拒绝有公开码，状态码要跟着它走。
+    const created = await rpc("project.create", { name: "信任档自报" });
+    const projectId = (created.body.result as { id: string }).id;
+    const denied = await rpc("production.start", {
+      projectId, playbook: "brand.promo", brief: { goal: "probe" }, trustLevel: "budget_only",
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ ok: false, error: { code: "human_approval_required" } });
+    // 非法值仍是 400（这条分支还在跑，阳性对照）。
+    const invalid = await rpc("production.start", {
+      projectId, playbook: "brand.promo", brief: { goal: "probe" }, trustLevel: "anything",
+    });
+    expect(invalid.status).toBe(400);
+    // 收紧照收。
+    const tightened = await rpc("production.start", {
+      projectId, playbook: "brand.promo", brief: { goal: "probe tighten" }, trustLevel: "confirm_all",
+    });
+    expect(tightened.status).toBe(200);
+  });
+
   it("never downgrades MCP-looking canvas traffic without exact connection proof to internal bearer", async () => {
     await server!.close();
     server = await startRpcServer({

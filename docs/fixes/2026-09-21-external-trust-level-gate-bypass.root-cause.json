@@ -16,7 +16,9 @@
     "electron/productionRun/productionRunApprovalReceipt.ts",
     "electron/productionRun/productionTrustLevel.test.ts",
     "electron/productionRun/productionRunApprovalReceipt.test.ts",
-    "electron/productionRun/productionGateIdempotency.test.ts"
+    "electron/productionRun/productionGateIdempotency.test.ts",
+    "electron/capabilityCore/rpcServer.ts",
+    "electron/capabilityCore/rpcServer.test.ts"
   ],
   "entry_points": [
     "POST /rpc production.start，params.trustLevel（裸 bearer 或注册过的 MCP 宿主）",
@@ -127,11 +129,16 @@
       "kind": "write",
       "path": "src/workbench/production/productionRunApi.ts",
       "symbol": "createDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "rpcErrorWirePayload"
     }
   ],
   "door_reduction": {
-    "before": 19,
-    "after": 19,
+    "before": 20,
+    "after": 20,
     "why_not": "门表列的是「谁读写一个 Run 的信任档、谁据它自动批门」的全部入口（machine：node scripts/door-map.mjs assertCallerDeclaredTrustLevel / isTrustDowngrade / verifyTrustGrant / trustLevelOf / autoApproveGate / createDraft）。门一扇没减是对的：这 19 扇里绝大多数是**读**档位来决定「这一步要不要停」（driverOps 的逐镜门、gateIdentity、projections、reducer、渲染层的合同视图），它们本来就该各自读，合并等于把五个阶段的判断挤进一个函数。真正要收的是**「谁能把档位改松」**：修前有 2 个答案（createDraft 直接收 payload、verifyTrustGrant 对 key_confirm 早退），修后只有 1 个判据 —— `isTrustDowngrade` + 一次真人证据，两扇门同吃（productionRunService.ts:153 与 productionRunApprovalReceipt.ts:165 都调它）。让「第三个答案」会报错的机器判据是 productionTrustLevel.test.ts 新增的三条负例（建 Run 自报更松 → 拒；收紧 → 照收；裸 set_trust 降档 → 拒，且门不许被顺手批掉）。"
   },
   "generality_proof": "「往少问的方向走要不要授权」现在只有一个判据函数 `isTrustDowngrade(from, to)`，由 `TRUST_LEVEL_STRICTNESS` 这张唯一的序表算出来。两扇门都调它：① `createDraft` 走 `assertCallerDeclaredTrustLevel(input.policy?.trustLevel, policyResolver())` —— 这条路上连能问人的面都没有，所以直接拒并指路；② `verifyTrustGrant` 删掉「不是 confirm_all 就早退」那一句，任何降档都要手势章或收据（confirm_all → budget_only 额外绑死花费范围，那一档真的拿掉了逐镜付费确认）。再加第三档也只需在序表里加一行，两扇门自动同步。",
@@ -183,6 +190,12 @@
       "entry_point": "按档位决定要不要生成逐镜付费门",
       "disposition": "enforced",
       "evidence": "只读档位，不改；付费门任何档位都不自动批（既有硬拒，本次未动）。"
+    },
+    {
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "entry_point": "POST /rpc 的错误状态码推导",
+      "disposition": "not-affected",
+      "evidence": "真机探针先拿到的是 HTTP 500 + code human_approval_required——调用方读到「Nomi 崩了」，真相是「Nomi 在等你点头」。只把这一个公开码映到 403（它就是授权判定），其余非 RpcError 仍按 500 上报，不替它们猜。rpcServer.test.ts 新增一条：403 + 码 / 非法值仍 400（阳性对照）/ 收紧仍 200。"
     }
   ],
   "recurrence": {
@@ -210,7 +223,8 @@
   "regression_tests": [
     "electron/productionRun/productionTrustLevel.test.ts",
     "electron/productionRun/productionRunApprovalReceipt.test.ts",
-    "electron/productionRun/productionGateIdempotency.test.ts"
+    "electron/productionRun/productionGateIdempotency.test.ts",
+    "electron/capabilityCore/rpcServer.test.ts"
   ],
   "class_regression_tests": [
     "electron/productionRun/productionTrustLevel.test.ts"
@@ -232,7 +246,8 @@
   "residual_risks": [
     "对外 MCP 工具描述（electron/capabilityCore/mcpToolCatalog.ts:266「要求直接出时用 budget_only」）与 human_approval_required 的错误提示（mcpToolErrorResults.ts:87「请在 Nomi 确认这次生成」）都还是旧说法，模型读到会按旧流程试。这两份文案属 MCP lane 的面，本合同没改，已在 report-A-pass3e.md 里写清建议措辞交由主会话转交。",
     "用户今天**没有**一个『全自动档』的设置开关：automationPolicyContract 里没有 trustLevel 字段（2026-09-14 删设置页时把档位的 owner 判给了 Agent 面板的 PermissionTier）。所以 `policyResolver()` 恒给 key_confirm，等于外部入口暂时完全要不到 budget_only，只能靠 set_trust 当场问人。PermissionTier ↔ TrustLevel 两套词表之间没有转换函数（第一轮横扫 B3 的原始发现），补那座桥是产品决定，不在本合同范围。",
-    "`origin.host` 来自请求头，不是被验证过的身份。本次没有把 trustedHosts 与档位挂钩，正是因为那会把问题挪到一张同样可自报的表上。"
+    "`origin.host` 来自请求头，不是被验证过的身份。本次没有把 trustedHosts 与档位挂钩，正是因为那会把问题挪到一张同样可自报的表上。",
+    "其余领域公开码（receipt_invalid / receipt_expired 等）仍落 500。只改了 human_approval_required 这一个，因为只有它这次被真机量到；把整张公开码表映到状态码是另一刀（该由 mcpToolErrorResults 的那张表派生，不再在 rpcServer 里手写第二份）。"
   ],
   "invariant_owner_layer": {
     "layer": "electron/productionRun/productionRunTrustAuthority.ts",
