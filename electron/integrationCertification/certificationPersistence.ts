@@ -5,11 +5,8 @@ import { fsyncDirectoryIfDurable, fsyncIfDurable } from "../durability";
 import { renameSyncWithRetry } from "../jsonFile";
 
 /**
- * 这一族状态文件的硬上限。**它是最后一道兜底，不该是用户撞上的那一道**：
- * 撞上它的调用方只会拿到一句 `oversized`，而在启动路径上（看门狗收尾 → persist）
- * 那一抛会一路走到 `main.ts` 的 `.catch` → `app.quit()`，和「接入会话超过 100 条」
- * 那次静默退出是同一种死法。所以「还能不能写得下」要在更早的地方按预算裁掉，
- * 再由这里 fail-closed 收口——见 integrationSessionRecord.capIntegrationSessions。
+ * 这一族状态文件的硬上限：**最后一道兜底，不该是用户撞上的那一道**。谁在它之前按预算
+ * 裁掉、为什么，见 integrationSessionRecord.capIntegrationSessions。
  */
 export const CERTIFICATION_MAX_FILE_BYTES = 1_048_576;
 

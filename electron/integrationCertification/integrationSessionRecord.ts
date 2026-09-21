@@ -26,12 +26,14 @@ import {
 } from "./integrationSessionTerminal";
 
 /**
- * 这份状态的**容量合同**。修复前它只是读侧的一句断言：写侧（`begin`）无限追加，
- * 于是 app 自己生产出一份自己读不了的盘——第 101 条落盘后主进程启动即 `app.quit()`，
- * 用户看到的是「双击没反应」。一个上限只在读侧断言、没有任何一层负责让它成立，
- * 就不是上限，是一颗定时炸弹（handoffQueue 同模块早就是写时挤掉最旧的，见其 MAX_ENTRIES）。
+ * 这份状态的**容量合同**，两根轴（记录条数 / 落盘字节）共一个 owner：`capIntegrationSessions`。
  *
- * 现在这个数字有唯一 owner：`capIntegrationSessions` 既在读侧自愈旧盘，也在写侧封顶。
+ * 为什么它必须有 owner，而不只是一句断言：2026-09-21 之前这两个上限都只在**读**或**写**的
+ * 一侧断言，没有任何一层负责让它成立，于是 app 自己生产出一份自己读不回、写不下的盘——
+ * 第 101 条落盘后启动即 `app.quit()`（用户看到「双击没反应」），序列化超 1MiB 后
+ * 看门狗收尾那一次写同样把启动打挂。一个没人执行的上限不是上限，是定时炸弹。
+ * 同模块的 handoffQueue 早就是写时挤掉最旧的（见其 MAX_ENTRIES），这份漏了。
+ * 完整经过与取证：docs/fixes/2026-09-21-integration-session-cap.root-cause.json。
  */
 export const MAX_INTEGRATION_SESSIONS = 100;
 
@@ -106,11 +108,9 @@ function backfillCertifyingDeadline(item: Record<string, unknown>): void {
 }
 
 /**
- * 字节预算。留 20% 余量的理由：`CERTIFICATION_MAX_FILE_BYTES` 是**兜底**——撞上它的调用方
- * 只拿到一句 `oversized`，而在启动路径上（看门狗收尾 → persist）那一抛会一路走到
- * `main.ts` 的 `.catch` → `app.quit()`，与「超过 100 条」那次静默退出是同一种死法。
- * 预算比兜底先响，兜底才保得住「fail-closed 最后一道」的身份。0.8 这个系数与同族的
- * promotionJournal 压缩触发同源（见其 compact()）。
+ * 字节轴的预算。留 20% 余量是为了让**预算先响、兜底后响**：兜底（写盘那 1MiB）只会抛
+ * `oversized`，兜底才保得住「fail-closed 最后一道」的身份。0.8 与同族 promotionJournal
+ * 的压缩触发同源（见其 compact()）。
  */
 const INTEGRATION_SESSION_BYTE_BUDGET = Math.floor(CERTIFICATION_MAX_FILE_BYTES * 0.8);
 
@@ -245,10 +245,8 @@ export function assertIntegrationSessionCapacity(
 }
 
 /**
- * 读这份状态的唯一入口：形状坏了照抛（那是真需要被看见的信号），条数多了就地裁剪并把结果写回去。
- *
- * 修复前这两件事共用一句 throw，于是第 101 条会话一落盘，主进程启动链上的这一抛直接走到
- * `main.ts` 的 `.catch` → `app.quit()`，用户看到的是「双击 Nomi 没反应」，出路只有手工删文件。
+ * 读这份状态的唯一入口。**形状坏了照抛**（那是真需要被看见的信号），**容量超了就地裁剪
+ * 并把结果写回去**——修复前这两件事共用一句 throw，正是启动静默退出的成因。
  *
  * 回写失败不许拖垮启动：返回的状态已经是对的，下次启动会再裁一次。这不是吞错——
  * 回写只是把自愈结果落盘的优化，它失败不改变任何不变量。
