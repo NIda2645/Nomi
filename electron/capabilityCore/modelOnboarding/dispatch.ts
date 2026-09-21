@@ -40,7 +40,15 @@ import {
 } from "./envelope";
 
 export type OnboardingDispatchDeps = {
-  sessions: IntegrationSessionService;
+  /**
+   * 会话服务**按需现取**：只有「打开贴 key 页」与「取消」两跳真的用它。
+   *
+   * 以前这里是一个现成的值，而装配处一律 `ctx.sessions || getIntegrationSessionService()`——
+   * 于是在没装会话服务的宿主上，连「交一份卡」「填一把 key」这种根本不碰会话的动作也会
+   * 在装配那一行当场抛 `integration_session_service_not_installed`。那正是本刀要拆的那种
+   * 耦合的最后一处残留：一个跟你无关的东西没准备好，你就不许动。
+   */
+  sessions: () => IntegrationSessionService;
   owner: CapabilityOriginHost;
   /** 打开 Nomi 的贴 key 页（app 没开时排队等下次打开，与旧 open_credentials 同一条路）。 */
   openCredentialsInNomi?: (input: { sessionId: string; vendorName: string }) => Promise<{ opened: boolean } | void> | { opened: boolean } | void;
@@ -136,7 +144,7 @@ async function connectProvider(
 
   const opened = vendorKey
     ? reopenForVendor(deps, vendorKey, vendor)
-    : deps.sessions.begin({
+    : deps.sessions().begin({
       kind: "http-api-provider",
       name: text(args.name),
       baseUrl: suggestedBaseUrl,
@@ -144,7 +152,7 @@ async function connectProvider(
     }, deps.owner);
   if ("ok" in opened) return opened;
 
-  const credentials = deps.sessions.openCredentials(opened.id, opened.revision, deps.owner);
+  const credentials = deps.sessions().openCredentials(opened.id, opened.revision, deps.owner);
   let ui: { opened: boolean } | void;
   try {
     ui = await deps.openCredentialsInNomi?.({ sessionId: credentials.id, vendorName: credentials.config.name });
@@ -210,7 +218,7 @@ function reopenForVendor(
       nextAction: "Ask the user to open Nomi's model settings and add the address there.",
     };
   }
-  return deps.sessions.begin({
+  return deps.sessions().begin({
     kind: "http-api-provider",
     name: vendor?.name || vendorKey,
     baseUrl,
@@ -314,8 +322,9 @@ function showModels(args: Record<string, unknown>): OnboardingResult | Onboardin
 
 function cancelSetup(deps: OnboardingDispatchDeps, args: Record<string, unknown>): OnboardingResult | OnboardingFailure {
   const setupId = text(args.setupId);
-  const before = deps.sessions.get(setupId, deps.owner) as { revision: number };
-  const cancelled = deps.sessions.cancel(setupId, before.revision, deps.owner);
+  const sessions = deps.sessions();
+  const before = sessions.get(setupId, deps.owner) as { revision: number };
+  const cancelled = sessions.cancel(setupId, before.revision, deps.owner);
   return {
     ok: true, setupId, state: cancelled,
     unverified: unverified("model_produces_output"),
@@ -429,7 +438,7 @@ export function dispatchModelOnboarding(
     return tryModel({ runTask: ctx.runTask }, params);
   }
   return dispatchModelSetup({
-    sessions: ctx.sessions || getIntegrationSessionService(),
+    sessions: () => ctx.sessions || getIntegrationSessionService(),
     owner: ctx.owner,
     ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
     withCredentialElicitationTicket: (projection) => withCredentialElicitationTicket(projection as never) as Record<string, unknown>,
