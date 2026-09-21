@@ -60,7 +60,8 @@ try {
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDoneDraft.received, 'generation draft result')
   plannerDoneDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(plannerDone.received, 'generation draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回（等待住在审批闸里，不计工具超时）。
+  // 所以这里不再等它的结果——结果要到下面 × 之后才有；那时回合在同一轮里读到「用户没同意」。
 
   // 草稿落画布（一本账）：节点先出现，用户看得见 agent 到底要生成什么。
   await expect.poll(async () => {
@@ -145,6 +146,9 @@ try {
     '卡上改过还没提交时，× 必须先说清「改的内容会一起丢」').toBeVisible()
   await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), '确认丢弃这次请求')
   await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
+  // × 把结论递回正在等的那个回合：`generate` 以**成功形状**返回「用户没同意」，模型照着收尾。
+  const declinedTurn = flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user closed the card')).body)
+  expect(declinedTurn, '模型读到的是「他关了这张卡、别重试」，不是一个错误').toContain('closed the priced card without approving')
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id).sort(),
     { timeout: DEFAULT_TIMEOUT_MS, message: '× 只撤这次操作建的占位镜头，用户自己建的那个一个字不动' })
     .toEqual([userNodeId])
@@ -217,7 +221,6 @@ try {
   await recorded(redrafted.received, 'fresh draft result')
   expect(redraftedOperationId, '重新起草 = 一个新的 operationId，不是把旧的叫回来').not.toBe(operationId)
   redrafted.release({type:'tool',id:REDRAFT_GENERATE,name:'generate',args:{operationId:redraftedOperationId}})
-  await recorded(redraftDone.received, 'fresh card presented')
   await expect(card).toBeVisible()
   await expect(card, '新卡上是新起草的那一镜，不是被撤回的那一份').toContainText('清晨的侧光')
   expect(walk.fixture.images, '重新起草、出卡都不提交').toHaveLength(0)
@@ -234,6 +237,7 @@ try {
   const confirmNote = card.locator('[data-v4-control="reject-confirm-note"]')
   if (await confirmNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), 'confirm declining the redrafted request')
   await expectAbsent(card, { provenBy: cardProof, message: 'the redrafted card leaves the slot once declined' })
+  await recorded(redraftDone.received, 'the second generate returns once its card was closed too')
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
     'discard-removes-only-this-operations-own-shots','discard-is-one-undo-step','user-built-node-survives-discard',

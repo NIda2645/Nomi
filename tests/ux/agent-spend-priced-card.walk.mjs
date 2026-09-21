@@ -25,7 +25,7 @@ import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
-  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
+  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas, closeSpendCard,
 } from './agent-runtime-walk-support.mjs'
 
 // 这条走查的前提正好与 unknown-price 那条相反：目录里**有**价目那一行。
@@ -82,8 +82,8 @@ async function draft(walk, win, { ask, planCall, generateCall, prompt, done }) {
   await recorded(planner.received, 'generation draft request')
   await recorded(draftResult.received, 'generation draft result')
   draftResult.release({ type: 'tool', id: generateCall, name: 'generate', args: { operationId } })
-  await recorded(turnDone.received, 'generation draft turn')
-  return operationId
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——这一轮的收尾交给调用方在答完卡之后等。
+  return { operationId, turnDone }
 }
 
 const walk = await createRuntimeWalk('spend-priced-card', { generationProvider: 'apimart' })
@@ -94,7 +94,7 @@ try {
   const projectRoot = walk.report.projectRoot
   await openCanvas(win)
 
-  const operationId = await draft(walk, win, {
+  const { operationId, turnDone } = await draft(walk, win, {
     ask: ASK, planCall: PLAN_CALL, generateCall: GENERATE_CALL,
     prompt: '一只青瓷茶杯，晨光斜照', done: 'S_PRICED_DONE：草稿已就绪，等你确认。',
   })
@@ -128,6 +128,7 @@ try {
   await expect.poll(() => walk.fixture.images.length,
     { message: '按下带价格的主按钮之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许再拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
+  await recorded(turnDone.received, 'generate returns once the user approved the card')
   const submitted = JSON.stringify(walk.fixture.images[0].body)
   expect(submitted, '发给供应商的就是卡上那一镜的提示词').toContain('青瓷')
   expect(submitted, '发给供应商的就是卡上那个模型').toContain(FIXTURE_APIMART_MODEL)
@@ -152,7 +153,7 @@ try {
   // ── ⑤ 英文：同一档再摆一张新卡（按过的那张已经收起来了，看不到「待确认」的英文长相）──
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await win.reload()
-  await draft(walk, win, {
+  const en = await draft(walk, win, {
     ask: 'S_PRICED_EN: please generate one more celadon teacup image.',
     planCall: EN_PLAN_CALL, generateCall: EN_GENERATE_CALL,
     prompt: 'A celadon teacup in slanting morning light', done: 'S_PRICED_EN_DONE: the draft is ready for your confirmation.',
@@ -163,6 +164,9 @@ try {
   await expectAbsent(enCard.locator(PRICE_UNAVAILABLE), { provenBy: enTotalProbe, message: 'EN：有价这一档没有 unavailable 那一格' })
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上也带着那个数').toContainText('0.30')
   await walk.snap('priced-card-en')
+  // EN 这张只是来看长相的；看完就答（关掉），让等它的那个回合收尾。
+  await closeSpendCard(enCard, 'close the EN card')
+  await recorded(en.turnDone.received, 'the EN generate returns once its card was closed')
 
   walk.report.verified = ['priced-card-shows-the-amount-zh-and-en',
     'confirm-really-reaches-the-vendor',

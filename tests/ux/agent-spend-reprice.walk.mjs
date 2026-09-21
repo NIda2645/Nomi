@@ -19,7 +19,7 @@ import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, proveProbe } from './_assert.m
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
-  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
+  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas, closeSpendCard,
 } from './agent-runtime-walk-support.mjs'
 
 const ASK = 'S_REPRICE_ASK：帮我生成一张六棱柱的图。'
@@ -75,7 +75,7 @@ try {
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDraft.received, 'generation draft result')
   plannerDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(plannerDone.received, 'generation draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
     { timeout: DEFAULT_TIMEOUT_MS }).toBe(1)
@@ -130,6 +130,9 @@ try {
   // 顺带暴露的一条（缺口 ⑥ 已记）：渲染层这一侧是**静默**的——`useAgentPanelSpendConfirm` 的
   // `act` 把 `ProductionActionResult` 整个吞掉，成功失败一个样，用户看到的是「按了没反应」。
   expect(walk.fixture.images, '本轮走查零额度：到此为止一次供应商生成都不该发生').toHaveLength(0)
+  // 确认在这个夹具里走不通（见上），卡还在原处等——所以等它的那个回合也还在等。看完就答：关掉它。
+  await closeSpendCard(card)
+  await recorded(plannerDone.received, 'generate returns once the card was closed')
 
   walk.report.verified = ['price-follows-the-chip-immediately', 'canvas-node-untouched-until-generate',
     'candidate-written-back-on-generate']

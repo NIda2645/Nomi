@@ -113,7 +113,7 @@ try {
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDoneDraft.received, 'generation draft result')
   plannerDoneDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(plannerDone.received, 'generation draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
     { timeout: DEFAULT_TIMEOUT_MS }).toBe(1)
@@ -166,6 +166,9 @@ try {
     { message: '按下确认之后必须有结论（发出去了，或者宿主说了为什么不行）', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
   expect(walk.fixture.images, '按下确认之后，供应商必须真的收到一次生成请求').not.toHaveLength(0)
+  // 确认把结论递回正在等的那个回合：`generate` 此刻才返回，而且说的是真话——已经开跑。
+  expect(flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user approved the card')).body),
+    '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
   const submitted = walk.fixture.images[0].body
   expect(JSON.stringify(submitted), '发出去的就是卡上那一镜').toContain('六棱柱')
   // 卡上改的那处提示词**真的到了线缆上**（loopback 供应商收到的请求体里就有它）。

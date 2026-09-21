@@ -3,7 +3,7 @@
 import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, INTERVENTION_REJECT,
-  createRuntimeWalk, hasToolResult, openCanvas, permissionTier, readProject, recorded, sendCanvas,
+  createRuntimeWalk, hasToolResult, newConversation, openCanvas, permissionTier, readProject, recorded, sendCanvas,
   waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
@@ -52,10 +52,18 @@ export async function checkSpendScopeJourney(walk, win) {
     // IDs come from the real host; create schema intentionally forbids caller shotId.
     return (await runs()).find(run => !before.has(run.runId)).runId
   }
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回（等待住在审批闸里，不计工具超时）。
+  // 所以出卡这一步只等到「请求发出去、卡出现」；那一轮的结果要到卡被答掉之后才有——`settled()` 到那时再等。
   const present = async (operationId, shotIds) => {
-    await toolTurn('generate', { operationId, shotIds })
+    const id = `CJ1_TOOL_${++turn}`, done = `${id}_DONE`
+    const request = walk.fixture.expectText({ label: id, match: body => flattenRequestText(body).includes(id),
+      reply: { type: 'tool', id, name: 'generate', args: { operationId, shotIds } } })
+    const result = walk.fixture.expectText({ label: done, match: body => hasToolResult(body, id), reply: { type: 'text', text: done } })
+    await sendCanvas(win, `${id}：执行这一条分镜操作，保留其他草稿。`)
+    await recorded(request.received, id)
     await expect.poll(async () => (await pending()).find(row => row.operationId === operationId)?.shots.map(shot => shot.shotId)).toEqual(shotIds)
     await expect(card).toBeVisible()
+    return { settled: async () => flattenRequestText((await recorded(result.received, done)).body) }
   }
   const setScope = async scope => {
     const radio = pager.getByRole('radio', { name: scope === 'all' ? '全部' : '逐镜', exact: true })
@@ -86,7 +94,7 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(createdNodes.filter(node => node.kind === 'shot_table')).toHaveLength(1)
   expect(createdNodes.filter(node => node.kind === 'image').map(node => node.prompt).sort())
     .toEqual(originalShots.map(shot => shot.candidate.prompt).sort())
-  await present(operationId, requestedIds)
+  const firstTurn = await present(operationId, requestedIds)
   expect(await graph()).toEqual(draftedGraph)
   const initialGraph = await graph()
   const presentedShots = originalShots.map(shot => ({ ...shot, included: requestedIds.includes(shot.shotId) }))
@@ -113,9 +121,12 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(walk.fixture.images).toHaveLength(0)
   await walk.snap('cj1-three-of-33-pager-and-two-edit-layers')
 
+  // 第二笔必须来自**另一条对话**：第一条对话的回合此刻正挂在那张卡上等用户，在它里面再打一句话
+  // 就是对那张卡的回答（裁决 E：出价收回）。真人要同时攒两笔待决，也只能是开一条新对话。
+  await newConversation(win, CANVAS_PANEL)
   const otherOperationId = await draft([makeShot(99)])
   const otherShots = (await readRun(otherOperationId)).generationPlan.shots
-  await present(otherOperationId, otherShots.map(shot => shot.shotId))
+  const secondTurn = await present(otherOperationId, otherShots.map(shot => shot.shotId))
   await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([operationId, otherOperationId])
   await expect(input).toHaveText(editedPrompt)
   await expect.poll(async () => (await graph()).nodes.length).toBe(initialGraph.nodes.length + 1)
@@ -139,6 +150,8 @@ export async function checkSpendScopeJourney(walk, win) {
     return 'clicked-reject'
   }
   await decline('关闭第一笔，原介入槽依序显示第二笔')
+  // × 把结论递回第一条对话里正在等的那个回合：成功形状的「用户没同意」，不是错误。
+  expect(await firstTurn.settled(), '第一笔的回合读到的是「他关了这张卡」').toContain('closed the priced card without approving')
   await expect.poll(async () => (await pending()).map(row => row.operationId)).toEqual([otherOperationId])
   await expect(input).toHaveText('CJ1_shot_99 原始画面')
   await expect(size).toHaveAttribute('data-parameter-chip-value', '1024x1024')
@@ -152,6 +165,8 @@ export async function checkSpendScopeJourney(walk, win) {
   const proof = await proveProbe(card, 'Second pending really appears before dismissal')
   const secondDecline = await decline('关闭第二笔')
   await expectAbsent(card, { provenBy: proof, message: 'Both declined operations leave the slot' })
+  expect(await secondTurn.settled(), '第二笔的回合同样读到「他关了这张卡」').toContain('closed the priced card without approving')
+  await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
   expect((await readRun(operationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
   expect((await readRun(otherOperationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
   // 被撤回的请求不许被同一个 id 叫回来：模型再叫一次 generate，读到的是「请重新起草」，介入槽保持空。

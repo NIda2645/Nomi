@@ -34,7 +34,7 @@ import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM,
-  PERMISSION_POPOVER, createRuntimeWalk, openCanvas, permissionTier, readProject, recorded, sendCanvas,
+  PERMISSION_POPOVER, createRuntimeWalk, openCanvas, permissionTier, readProject, recorded, sendCanvas, closeSpendCard,
 } from './agent-runtime-walk-support.mjs'
 
 const ASK_SAFE = 'S_AUTO_ASK_1：帮我生成一张六棱柱的图。'
@@ -85,7 +85,7 @@ try {
   const first = draftTurn(walk, { marker: 'S_AUTO_ASK_1', callId: 'auto-draft-1', prompt: '一个悬浮的六棱柱，柔和的演播室灯光', done: 'S_AUTO_DONE_1：草稿已就绪，等你确认。' })
   await sendCanvas(win, ASK_SAFE)
   await recorded(first.planner.received, 'safe-auto draft request')
-  await recorded(first.finished.received, 'safe-auto draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——这一轮此刻正挂在卡上，收尾在下面关卡之后。
 
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   await expect(card, '「自动改」档下每一笔付费生成照旧逐次问——这一档一个字都没变').toBeVisible()
@@ -96,35 +96,18 @@ try {
   // 阴性对照：这一档下宿主**根本不去碰那道门**，所以不该有任何失败。
   // ③ 里同一个定位器要变成「有」——两次之间唯一的变量就是档位。
   //
-  // ⚠️ 「有卡了，停下」**不算失败**（2026-09-18 修）：这条断言 09-12 写下时，`generate` 成功出卡
-  // 还是一条普通成功结果；09-14 的 20 动词切换（`4753f64af`）把它改成了 GitHub MCP `issue_write`
-  // 那个形状——**isError + 明文停下**，好让模型不会把「卡出来了」说成「已经生成了」。那条结果
-  // 在面板上照样画成一条红带，于是这个阴性对照从那天起就把「按设计出卡」数成了「决门失败」。
-  // 它一直没被发现，是因为同一个 commit 还把 `candidate` 丢了，这条走查在更早的 ① 就红了。
-  // 判据改成「除了那句出卡公告之外的失败」——档位这个唯一变量照旧钉着，多余的那一条被排除。
-  // 公告那句话不在这里重打一遍：它住在 i18n 词表里，走查按 **code** 去取。
-  // 2026-09-18 的 C5（`3aa705b66`）把工具失败正文从「给模型读的英文散文」换成了按 code 查的中文
-  // 词条——于是这条走查里写死的英文串 `priced confirmation card` 再也匹配不到任何东西，①③ 两条
-  // 同时失真（main 上从那天起就红，不是本批引入）。钉字面串会随文案漂移，钉 code 不会。
-  const { require: tsxRequire } = await import('tsx/cjs/api')
-  const CARD_ANNOUNCEMENT = tsxRequire('../../src/i18n/locales/agentToolFailure.ts', import.meta.url)
-    .zhAgentToolFailure.user_sees_spend_card
+  // 出卡不留任何失败痕迹：等用户不再以「错误 + STOP」的形状出现（2026-09-22 裁决 A），
+  // 所以这里没有一句要滤掉的「公告」——**任何**失败行都算数。
   const anyFailure = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
   // 公告那一行现在是普通完成态，所以「除了公告之外的失败」= **任何**失败行：不用再把它滤出去。
   const failures = anyFailure
-  // 2026-09-22：出卡公告**不再画成失败**。「卡在等你」是给模型的控制信号，不是用户的失败——判据在
-  // 失败信封的 `waiting` 轴上（`laneToolFailureEnvelope.ts`），面板把那一行落回普通完成态。
-  // 这条走查原来到「失败行」里去找那句公告，于是它从合并 ③ 起就红了（死选择器：它钉的是旧长相）。
-  // 现在两面都钉：那句话**还在**（它是 ③ 的对照基准）；而下面那条「零失败」不再把它滤出去，
-  // 所以它一旦又被画成失败行/红条，那一条当场红。
-  await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="tool"]`).filter({ hasText: CARD_ANNOUNCEMENT }),
-    '出卡本身要留下那句「停下、去看卡」的公告——它是 ③ 的对照基准').toHaveCount(1)
   await expect(failures, '「自动改」档下不该去决门，也就不该有任何决门失败').toHaveCount(0)
   await walk.snap('full-auto-01-safe-auto-still-asks')
 
-  // 这一张**不丢弃**：2026-09-11 用户拍板「已经在等的那张卡不因切档而被放行」，
-  // 而 ④ 正要证它在决门失败之后仍然在原处。切档对它的影响那一条由
-  // `agent-spend-card.walk.mjs` 钉着，这里不重复断言。
+  // 看完就答：把这张卡关掉，等它的那个回合才收得了尾（「已经在等的那张卡不因切档而被放行」由
+  // `agent-spend-card.walk.mjs` 钉着，这里不重复）。不关它，下面那句新的请求就成了对这张卡的回答（裁决 E）。
+  await closeSpendCard(card, '关掉「自动改」档下的那张卡')
+  await recorded(first.finished.received, 'the safe-auto generate returns once its card was closed')
 
   // ② 切到「全自动」。那张二次确认卡上的话必须和今天的行为一致——
   // 它 2026-09-12 之前写的是「付费和不可逆的操作仍然每次问」，而那句话现在是假的。

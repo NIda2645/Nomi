@@ -126,6 +126,18 @@ export function hasToolResult(body, id) {
   return (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === id)
 }
 
+/**
+ * 像人一样把一张待决的报价卡关掉：点 ×，卡要是先问一句「改的内容会一起丢」就再点确认。
+ *
+ * 2026-09-22 裁决 A 之后 `generate` 的回合**挂在这张卡上等用户**；一条走查要是看完卡就走，
+ * 那个回合永远不结束，夹具里那条「回合收尾」的期望也就永远没人消费。看完就该答——真人也是。
+ */
+export async function closeSpendCard(card, label = '关掉这张报价卡') {
+  const confirm = card.locator(INTERVENTION_CONFIRM_REJECT)
+  if (!(await confirm.isVisible().catch(() => false))) await clickOrFail(card.locator(INTERVENTION_REJECT), label)
+  if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
+}
+
 /** One I/O safety bound, not a polling/sleep-based completion signal. */
 export async function recorded(promise, label) {
   let timer

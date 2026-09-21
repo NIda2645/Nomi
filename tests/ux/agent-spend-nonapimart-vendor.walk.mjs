@@ -67,7 +67,7 @@ try {
   await recorded(planner.received, 'generation draft request')
   await recorded(draftResult.received, 'generation draft result')
   draftResult.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(turnDone.received, 'generation draft turn')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
     { timeout: DEFAULT_TIMEOUT_MS }).toBe(1)
@@ -90,6 +90,7 @@ try {
   await expect.poll(() => walk.fixture.images.length,
     { message: '按下确认之后，这家供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许再拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
+  await recorded(turnDone.received, 'generate returns once the user approved the card')
 
   const call = walk.fixture.images[0]
   // ②-a 路径来自**这条 mapping 的声明**，不是某条写死的 APIMart 串

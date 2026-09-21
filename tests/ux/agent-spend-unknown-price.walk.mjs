@@ -25,7 +25,7 @@ import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
-  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
+  createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas, closeSpendCard,
 } from './agent-runtime-walk-support.mjs'
 
 // 这条走查的前提就是「目录里没有价目」。不设这个开关，夹具会种一行 pricing，
@@ -86,7 +86,7 @@ try {
   await recorded(planner.received, 'generation draft request')
   await recorded(plannerDoneDraft.received, 'generation draft result')
   plannerDoneDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(plannerDone.received, 'generation draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
     { timeout: DEFAULT_TIMEOUT_MS }).toBe(1)
@@ -138,6 +138,7 @@ try {
   await expect.poll(() => walk.fixture.images.length,
     { message: '按下「仍要生成」之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许再拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
+  await recorded(plannerDone.received, 'generate returns once the user approved the card')
 
   // ②-b 送出去的就是卡上那一镜、那个算不出价的模型——不是顺手发了别的东西
   const submitted = JSON.stringify(walk.fixture.images[0].body)
@@ -192,7 +193,7 @@ try {
   await recorded(enPlanner.received, 'english generation draft request')
   await recorded(enDraftResult.received, 'english generation draft result')
   enDraftResult.release({ type: 'tool', id: EN_GENERATE_CALL, name: 'generate', args: { operationId: enOperationId } })
-  await recorded(enDone.received, 'english generation draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   const enCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   // 同上：换壳后这一格在页脚左下，措辞是新的那一句（zh/en 一起改的）。
@@ -210,6 +211,9 @@ try {
   expect(enCardText, `EN 卡上同样不许出现 ¥0（实际文本：${enCardText}）`).not.toMatch(/[¥￥$]\s?0(?!\d)/)
   expect(enCardText, 'EN 也不许是 0.00 那种写法').not.toContain('0.00')
   await walk.snap('unknown-price-card-en')
+  // EN 这张只是来看长相的；看完就答（关掉），让等它的那个回合收尾。
+  await closeSpendCard(enCard, 'close the EN card')
+  await recorded(enDone.received, 'the EN generate returns once its card was closed')
 
   walk.report.verified = ['card-says-unavailable-not-zero', 'confirm-label-is-generate-anyway',
     'no-zero-anywhere-on-the-card-zh-and-en',
