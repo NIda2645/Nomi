@@ -42,9 +42,6 @@ export type ControlledEditorSync = {
   reset: (value: string) => void
 }
 
-/** 账本上限：只防病态增长（owner 永不回流时）。正常情况下每一拍回流都会把账划短。 */
-const MAX_PENDING_ECHOES = 512
-
 export function createControlledEditorSync(initial: string): ControlledEditorSync {
   let current = initial
   let acknowledged = initial
@@ -54,8 +51,9 @@ export function createControlledEditorSync(initial: string): ControlledEditorSyn
     emit(next) {
       if (next === current) return false
       current = next
+      // 不设上限：截掉旧账会让晚到的旧回声被误判成外部改写、覆盖文档（正是要防的事）。
+      // 账只在 owner 没追上时增长，每一次回流都会把它划短，编辑器卸载时随之释放。
       pending.push(next)
-      if (pending.length > MAX_PENDING_ECHOES) pending = pending.slice(pending.length - MAX_PENDING_ECHOES)
       return true
     },
     receive(value) {
