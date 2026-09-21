@@ -111,7 +111,12 @@ export function nextGenerationAttempt(run: ProductionRun | undefined, shotId?: s
 export function prepareProductionGenerationAuthorization(input: Readonly<{
   lease: GenerationAuthorizationProjectIdentity;
   projectRevision: number;
-  run?: ProductionRun;
+  /**
+   * 必填。`run?` 曾经是一个降级口：不传就按「这一镜还没有任何 attempt」算，于是 attempt 恒为 1；
+   * 校验那一侧（`productionGenerationAuthorizationState`）是无条件按真实 Run 算的，两边对不上就抛。
+   * 生产三个调用点一直都传，只有 harness 不传——结果是**第二批次那条真实路径从来没有一条测试走过**。
+   */
+  run: ProductionRun;
   operation: AuthorizationOperation;
   contract: ExecutionContractV1;
   multiShot?: GenerationSealMultiShot;
@@ -133,7 +138,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   if (!Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0) {
     throw new Error("Generation authorization requires the current project revision");
   }
-  if (input.run && (input.run.runId !== input.operation.operationId || input.run.projectId !== input.operation.projectId || input.run.planVersion !== planVersion)) {
+  if (input.run.runId !== input.operation.operationId || input.run.projectId !== input.operation.projectId || input.run.planVersion !== planVersion) {
     throw new Error("Generation authorization requires the current Run snapshot");
   }
   const adapter = createGenerationRuntimeAdapter({ providers: input.providers });
@@ -141,7 +146,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   const currency = "CNY";
   const jobs = units.map((unit) => {
     const attempt = nextGenerationAttempt(input.run, unit.jobShotId);
-    if (input.run && attempt > input.run.policy.maxAttemptsPerJob) throw new Error("Generation attempt limit exceeded");
+    if (attempt > input.run.policy.maxAttemptsPerJob) throw new Error("Generation attempt limit exceeded");
     const price = input.resolveShotPrice(unit.contract);
     const jobId = productionGenerationJobId(
       input.operation.operationId,
@@ -190,11 +195,11 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
     throw new Error("Generation authorization spend ceiling is invalid");
   }
-  const liability = input.run ? sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]) : 0;
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   const completeMaximum = sumBudgetAmounts([liability, jobMaximum]);
   const completeBatchFits = maximumSpend === undefined || maximumSpend === null || !budgetExceeds(completeMaximum, maximumSpend);
   const initialCeiling = completeBatchFits ? jobMaximum : Math.max(0, maximumSpend - liability);
-  const ledgerCeiling = Math.max(input.run?.budget.authorized ?? 0, sumBudgetAmounts([liability, initialCeiling]));
+  const ledgerCeiling = Math.max(input.run.budget.authorized, sumBudgetAmounts([liability, initialCeiling]));
   const expiresAt = new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString();
   const runId = input.operation.operationId;
   const envelope = createProductionGenerationAuthorizationEnvelope({
@@ -228,7 +233,7 @@ export async function prepareProductionGenerationAuthorizationWithReferences(
   if (input.operation.projectId !== input.lease.projectId) throw new Error("Generation operation does not belong to the leased project");
   if (!Number.isSafeInteger(input.operation.planVersion) || (input.operation.planVersion ?? 0) < 1
     || !Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0
-    || (input.run && (input.run.runId !== input.operation.operationId || input.run.projectId !== input.lease.projectId || input.run.planVersion !== input.operation.planVersion))) {
+    || input.run.runId !== input.operation.operationId || input.run.projectId !== input.lease.projectId || input.run.planVersion !== input.operation.planVersion) {
     throw new Error("Generation reference preparation requires the current Run snapshot");
   }
   const referenceUrlsByContract: Record<string, Readonly<Record<string, string>>> = {};

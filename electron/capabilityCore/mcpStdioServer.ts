@@ -344,6 +344,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
         if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
         const authorizationRun = productionRuns.repository.read(lease.projectId, operation.operationId)
+        if (!authorizationRun) throw new Error('Generation authorization requires the current Run snapshot')
         return prepareProductionGenerationAuthorizationWithReferences({
           lease,
             assertCurrent: () => {
@@ -361,7 +362,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           providers: providerBootstrap.providers,
           resolveShotPrice,
           maximumSpend: authorizationRun?.policy.maxSpend,
-            run: authorizationRun ?? undefined,
+            run: authorizationRun,
           now: new Date().toISOString(),
         }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
       },

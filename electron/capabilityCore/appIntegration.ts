@@ -345,6 +345,9 @@ export async function startCapabilityCore(
           const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
           if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
           const authorizationRun = generationService.repository.read(lease.projectId, operation.operationId)
+          // attempt 谱系、负债合计和硬上限全部从这份快照里算。读不到就停在这里——
+          // 以前的 `run?` 会让它按「这一镜没有任何 attempt」继续，算出来的 attempt 在校验侧对不上。
+          if (!authorizationRun) throw new Error('Generation authorization requires the current Run snapshot')
           return prepareProductionGenerationAuthorizationWithReferences({
             lease,
             assertCurrent: () => {
@@ -362,7 +365,7 @@ export async function startCapabilityCore(
             providers: providerBootstrap.providers,
             resolveShotPrice,
             maximumSpend: authorizationRun?.policy.maxSpend,
-            run: authorizationRun ?? undefined,
+            run: authorizationRun,
             now: new Date().toISOString(),
           }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
         },

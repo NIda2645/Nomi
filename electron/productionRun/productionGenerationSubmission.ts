@@ -14,6 +14,7 @@ import {
   productionGenerationJobId,
   productionGenerationProviderIdempotencyKey,
 } from "./productionGenerationAuthorization";
+import { nextGenerationAttempt } from "./prepareProductionGenerationAuthorization";
 import { createProductionRunRuntimeEnvelope } from "./productionRunRuntimeEnvelope";
 import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
@@ -170,15 +171,20 @@ function requiredContract(run: ProductionRun, shotId?: string): ExecutionContrac
 }
 
 /**
+ * 「这次提交要发的是第几次尝试」**只有一个 owner**：`nextGenerationAttempt`（按 `metadata.shotId`
+ * 数这一镜已有的 attempt）。授权在 job 落盘**之前**问它，拿到 `max + 1`；提交在 job 落盘**之后**问，
+ * 要的就是那一条，于是 `- 1`。
+ *
+ * 这里原本另有一份 `latestGenerationAttempt`，按 jobId 前缀（含 contractHash）去数。它今天给的答案
+ * 和这条一样，但口径不同：换了参数就换 contractHash，于是它对「同一镜的第几次」这个问题的回答
+ * 会从头开始。一个语义两个推导式、两边都不报错 —— 那正是要收掉的形状（P1/R14.1）。
+ *
  * P4 S1 identity: shotId is part of the jobId so two shots with identical parameters (equal contract
  * hash) never collide. The default shot keeps the legacy prefix (`generation-<run>-<hash16>`) so
  * durable Runs and single-shot callers are byte-compatible; a named shot inserts `-<shotId>` after it.
  */
-function latestGenerationAttempt(run: ProductionRun, contractHash: string, shotId?: string): number {
-  const prefix = productionGenerationJobId(run.runId, contractHash, 1, shotId).replace(/-attempt-\d+$/, "");
-  return run.jobs
-    .filter((job) => job.jobId === prefix || job.jobId.startsWith(`${prefix}-attempt-`))
-    .reduce((latest, job) => Math.max(latest, job.attempt), 0);
+export function addressedGenerationAttempt(run: ProductionRun, shotId?: string): number {
+  return Math.max(1, nextGenerationAttempt(run, shotId) - 1);
 }
 
 function envelopeRefFor(runId: string, jobId: string): string {
@@ -424,7 +430,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     const shotId = input.shotId;
     let run = requiredRun(deps.repository, input.projectId, input.operationId);
     const contract = requiredContract(run, shotId);
-    const attempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, contract.contractHash, shotId));
+    const attempt = input.attempt ?? addressedGenerationAttempt(run, shotId);
     if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Generation attempt is invalid");
     let jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
     const existingJob = run.jobs.find((job) => job.jobId === jobId);
@@ -443,7 +449,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       run = requiredRun(deps.repository, input.projectId, input.operationId);
       const lockedContract = requiredContract(run, shotId);
       if (lockedContract.contractHash !== contract.contractHash) throw new Error("Generation contract changed while waiting for the Run lock");
-      const lockedAttempt = input.attempt ?? Math.max(1, latestGenerationAttempt(run, lockedContract.contractHash, shotId));
+      const lockedAttempt = input.attempt ?? addressedGenerationAttempt(run, shotId);
       jobId = productionGenerationJobId(run.runId, lockedContract.contractHash, lockedAttempt, shotId);
       const prepared = prepareAuthorizedSubmission(run, lockedContract, jobId, lockedAttempt, lease.fencingEpoch, shotId);
       run = prepared.run;

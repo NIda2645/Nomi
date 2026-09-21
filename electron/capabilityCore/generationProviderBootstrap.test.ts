@@ -10,6 +10,16 @@ import type { GenerationProviderRequestInputV1 } from "./generationRuntimeAdapte
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
 import type { CatalogState } from "../catalog/types";
 import type { ProductionExecutionBinding } from "../productionRun/productionExecutionBinding";
+import type { ProductionRun } from "../productionRun/productionRunTypes";
+
+/** 授权必须站在真实 Run 上（`run` 现在是必填）。这份草稿快照只带 prepare 真正读的那几项。 */
+function draftRunFor(operationId: string, projectId: string): ProductionRun {
+  return {
+    runId: operationId, projectId, planVersion: 1, revision: 0, jobs: [], gates: [], artifacts: [],
+    policy: { maxAttemptsPerJob: 2 },
+    budget: { currency: "CNY", reserved: 0, actual: 0, unsettled: 0, authorized: 0 },
+  } as unknown as ProductionRun;
+}
 
 const referencePorts = vi.hoisted(() => ({
   catalog: vi.fn(), settings: vi.fn(), list: vi.fn(), identity: vi.fn(), read: vi.fn(),
@@ -192,6 +202,7 @@ describe("generation provider bootstrap", () => {
     const prepared = await prepareProductionGenerationAuthorizationWithReferences({
       lease: { projectId: "p", immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
       projectRevision: 1, operation: { operationId: "run", projectId: "p", candidate, planVersion: 1 }, contract,
+      run: draftRunFor("run", "p"),
       multiShot: { planHash: "plan", shots: [{ shotId: "included", candidate, contract }, { shotId: "excluded", candidate: { ...candidate, references: [{ ...reference, assetId: "outside-scope" }] }, included: false }] },
       providers: boot().providers, resolveShotPrice: () => ({ known: true, amount: 1 }), now: "2026-09-20T00:00:00Z", assertCurrent() {},
     }, resolve);
@@ -436,6 +447,7 @@ it.each(['ask', 'deny', 'allow'] as const)('real authorization wrapper preserves
   const preparing = prepareProductionGenerationAuthorizationWithReferences({
     lease: { projectId: 'p', immutableProjectUuid: 'uuid', projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 1,
     operation: { operationId: 'run', projectId: 'p', candidate, planVersion: 1 }, contract,
+    run: draftRunFor('run', 'p'),
     providers: bootstrap.providers, resolveShotPrice: () => ({ known: true, amount: 1 }), now: '2026-09-20T00:00:00Z', assertCurrent() {},
   });
   const prepared = await preparing;

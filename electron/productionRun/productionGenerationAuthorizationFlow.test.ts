@@ -98,6 +98,8 @@ function setup(approve = true, hardCap = 10) {
     projectRevision: 12,
     operation: { operationId: "op-1", projectId: "project-1", candidate: planCandidate, planVersion: 1 },
     contract,
+    // 授权站在真实 Run 上：attempt 谱系和硬上限都从它算（`run` 是必填，不再有 attempt 恒为 1 的降级口）。
+    run: repository.read("project-1", "op-1")!,
     providers: [provider],
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     now: NOW,

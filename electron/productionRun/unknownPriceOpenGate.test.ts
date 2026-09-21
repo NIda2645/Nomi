@@ -144,6 +144,7 @@ function sealAndApprove(
     operation: { operationId: "op-1", projectId: "project-1", candidate: top, planVersion: 1 },
     contract,
     ...(multiShot ? { multiShot: multiShot as never } : {}),
+    run: repository.read("project-1", "op-1")!,
     providers: [provider],
     resolveShotPrice: (shotContract) => resolveShotPrice(shotContract.candidateId),
     ...(maximumSpend === undefined ? {} : { maximumSpend }),

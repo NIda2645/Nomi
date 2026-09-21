@@ -220,6 +220,12 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     },
     now,
   });
+  /** 授权必须站在真实 Run 上（`run` 现在是必填）。读不到就在这里停，而不是悄悄退回 attempt=1。 */
+  const requiredHarnessRun = (projectId: string, operationId: string) => {
+    const run = repository.read(projectId, operationId);
+    if (!run) throw new Error(`Harness has no durable Run for ${operationId}`);
+    return run;
+  };
   const handler = createGenerationPlanningHandler({
     registry,
     operations,
@@ -227,8 +233,8 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     now,
     prepareAuthorization: ({ lease: projectLease, operation, contract, multiShot }) => prepareProductionGenerationAuthorization({
       lease: projectLease, projectRevision: 0, operation, contract,
-      run: repository.read(operation.projectId, operation.operationId) ?? undefined,
-      maximumSpend: repository.read(operation.projectId, operation.operationId)?.policy.maxSpend,
+      run: requiredHarnessRun(operation.projectId, operation.operationId),
+      maximumSpend: requiredHarnessRun(operation.projectId, operation.operationId).policy.maxSpend,
       ...(multiShot ? { multiShot } : {}),
       providers: [provider],
       resolveShotPrice: (shotContract) => {

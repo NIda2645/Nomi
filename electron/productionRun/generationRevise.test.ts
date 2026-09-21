@@ -90,6 +90,7 @@ function sealedRun(): ProductionRun {
     operation: { operationId: "op-r", projectId: "project-1", candidate: a, planVersion: 1 },
     contract: contractA,
     multiShot: { shots: sealed, planHash: "plan-hash-r" },
+    run: draft,
     providers: [provider()],
     resolveShotPrice: () => ({ known: true, amount: 0.3 }),
     now: NOW,

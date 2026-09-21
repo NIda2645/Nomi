@@ -139,6 +139,8 @@ describe("semantic MCP one-confirmation journey", () => {
         projectRevision: 1,
         operation,
         contract,
+        // 授权站在真实 Run 上（`run` 必填）：不传曾经让这台 harness 恒停在 attempt=1。
+        run: repository.read(operation.projectId, operation.operationId)!,
         ...(multiShot ? { multiShot } : {}),
         providers: [provider],
         resolveShotPrice: () => ({ known: true, amount: 0 }),
