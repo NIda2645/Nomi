@@ -192,7 +192,7 @@
     },
     {
       "kind": "write",
-      "path": "tests/ux/original-storyboard-run.test.mjs",
+      "path": "tests/ux/original-storyboard-editor.test.mjs",
       "symbol": "createServer"
     },
     {
@@ -303,7 +303,7 @@
       "evidence": "Same platform directory rule; actual editable composer remains browser-tested."
     },
     {
-      "path": "tests/ux/original-storyboard-run.test.mjs",
+      "path": "tests/ux/original-storyboard-editor.test.mjs",
       "entry_point": "original storyboard width tests",
       "disposition": "enforced",
       "evidence": "Per-case isolated cache plus portable evidence destination; keeps four stable layout frames."
@@ -339,7 +339,7 @@
     "scripts/check-quality-gate-workflow.node-test.mjs",
     "tests/ux/composerLifecycle.test.mjs",
     "tests/ux/spend-panel-write-ownership.test.mjs",
-    "tests/ux/original-storyboard-run.test.mjs"
+    "tests/ux/original-storyboard-editor.test.mjs"
   ],
   "class_regression_tests": [
     "scripts/check-quality-gate-workflow.node-test.mjs",
@@ -351,7 +351,7 @@
     "removed_paths": [
       "tests/ux/composerLifecycle.test.mjs",
       "tests/ux/spend-panel-write-ownership.test.mjs",
-      "tests/ux/original-storyboard-run.test.mjs"
+      "tests/ux/original-storyboard-editor.test.mjs"
     ],
     "rationale": "Hardcoded macOS Vite cache paths removed; no fallback paths or test exclusions."
   },

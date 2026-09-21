@@ -65,10 +65,16 @@ const editedPrompt = 'A small white ceramic cup beside a sunlit window, warm mor
 const keyframePrompt = 'Static wide composition: one white ceramic cup on a wooden table beside a sunlit window, warm morning light, no text.'
 const run = () => repository.read(projectId, runId)
 const nodes = () => readProjectPayload(projectRoot)?.payload?.generationCanvas?.nodes ?? []
+/**
+ * 方案正本住在项目记录里（和用户手建的方案同一处），`runId` 同时是那条方案的 id：
+ * 模型手里那个 draft id 与用户侧栏那一行是同一个身份。
+ */
+const plan = () => Object.values(readProjectPayload(projectRoot)?.payload?.storyboardDesignsByDocumentId ?? {})
+  .flat().find(design => design.id === runId)?.plan
 const boundNodes = () => nodes().filter(node => node.meta?.storyboardDesignId === runId)
 const execution = () => ({ jobs: run()?.jobs ?? [], nodes: nodes().map(node => ({ id: node.id, runs: node.runs ?? [], result: node.result ?? null, taskId: node.progress?.taskId ?? null })) })
 const identity = () => boundNodes().map(node => ({ nodeId: node.id, resultId: node.result?.id ?? null })).sort((a, b) => a.nodeId.localeCompare(b.nodeId))
-const editor = () => win.locator(`[data-creation-run-editor="${runId}"]`)
+const editor = () => win.locator('[data-storyboard-editor="true"]')
 const dialog = () => win.locator('[data-spend-confirm-dialog]')
 function completedResults() {
   return nodes().filter(node => node.result?.id && node.meta?.storyboardDesignId).map(node => ({
@@ -78,7 +84,7 @@ function completedResults() {
 }
 function assertRemainingImage() {
   validateDraft()
-  const shots = run().generationPlan.editorial.shots
+  const shots = plan().shots
   const done = boundNodes().filter(node => node.result?.url)
   assert.equal(done.length, 1, 'Resume/batch requires exactly one existing completed image')
   assert.equal(done[0].meta.shotId, shots[0].shotId, 'Only the first shot may already be complete')
@@ -123,7 +129,7 @@ async function openPlan() {
   const treeToggle = win.locator('[data-creation-resource-tree-toggle]:visible')
   await expect(treeToggle).toBeVisible()
   if (await treeToggle.getAttribute('data-creation-resource-tree-toggle') === 'expand') await treeToggle.click()
-  await win.locator(`[data-storyboard-run-id="${runId}"]`).click()
+  await win.locator(`[data-storyboard-id="${runId}"]`).click()
   await expect(editor()).toBeVisible()
   const collapse = win.locator('[data-creation-resource-tree-toggle="collapse"]:visible')
   if (await collapse.isVisible()) await collapse.click()
@@ -149,8 +155,8 @@ function validateDraft() {
     assert.equal(shot.candidate.mode, 'text_to_image')
     assert.equal((shot.candidate.references ?? []).length, 0)
   }
-  assert.equal(draft.editorial?.shots.length, 2, 'The original runner must read exactly the authorized two image shots')
-  for (const shot of draft.editorial.shots) {
+  assert.equal(plan()?.shots.length, 2, 'The original runner must read exactly the authorized two image shots')
+  for (const shot of plan().shots) {
     assert.equal(shot.modelVendor, 'apimart')
     assert.equal(shot.modelKey, 'z-image-turbo')
     assert.equal(shot.shotKind, 'image')
@@ -158,7 +164,7 @@ function validateDraft() {
     assert.equal((shot.anchorIds ?? []).length, 0)
     assert.equal(Object.values(shot.referenceBindings ?? {}).flat().length, 0)
   }
-  assert.equal((draft.editorial?.anchors ?? []).length, 0)
+  assert.equal((plan()?.anchors ?? []).length, 0)
 }
 async function approve(label) {
   assert.equal(values['verify-only'], false, 'Read-only verification cannot approve spending')
@@ -205,11 +211,11 @@ async function firstFrameJourney() {
   assert.equal(created.length, 1, 'Exactly one new first-frame plan must exist')
   runId = created[0].runId
   const validate = () => {
-    const plan = run().generationPlan
-    assert.equal(plan.shots.length, 1)
-    assert.equal(plan.editorial?.shots.length, 1)
-    assert.equal((plan.editorial.anchors ?? []).length, 0)
-    const candidate = plan.shots[0].candidate, shot = plan.editorial.shots[0]
+    const generation = run().generationPlan
+    assert.equal(generation.shots.length, 1)
+    assert.equal(plan()?.shots.length, 1)
+    assert.equal((plan().anchors ?? []).length, 0)
+    const candidate = generation.shots[0].candidate, shot = plan().shots[0]
     assert.equal(candidate.providerId, 'apimart')
     assert.equal(candidate.modelId, 'doubao-seedance-2.0')
     assert.equal(candidate.mode, 'image_to_video')
@@ -237,7 +243,7 @@ async function firstFrameJourney() {
   validate()
   await openPlan()
   await editor().getByRole('textbox', { name: '镜 1 首帧图提示词', exact: true }).fill(keyframePrompt)
-  await expect.poll(() => run().generationPlan.editorial.shots[0].keyframe.prompt).toBe(keyframePrompt)
+  await expect.poll(() => plan().shots[0].keyframe.prompt).toBe(keyframePrompt)
   validate()
   assert.equal(boundNodes().filter(node => node.result || node.runs?.length).length, 0)
   await editor().locator('[data-storyboard-row="1"] [data-storyboard-generate-state]').click()
@@ -267,11 +273,11 @@ async function verifyFirstFrameResults(keyframePrompt) {
   const frameDone = done.find(node => node.id === report.firstFrame.keyframeNodeId)
   const videoDone = done.find(node => node.id === report.firstFrame.videoNodeId)
   assert.ok(frameDone?.result?.url && videoDone?.result?.url)
-  const plan = run().generationPlan
-  assert.equal(plan.shots.length, 1)
-  assert.equal(plan.editorial.shots.length, 1)
-  assert.equal(plan.editorial.shots[0].keyframe.prompt, keyframePrompt)
-  for (const params of [plan.shots[0].candidate.parameters, plan.editorial.shots[0].params, videoDone.result.provenance?.params?.extras]) {
+  const generation = run().generationPlan
+  assert.equal(generation.shots.length, 1)
+  assert.equal(plan().shots.length, 1)
+  assert.equal(plan().shots[0].keyframe.prompt, keyframePrompt)
+  for (const params of [generation.shots[0].candidate.parameters, plan().shots[0].params, videoDone.result.provenance?.params?.extras]) {
     assert.equal(params.resolution, '480p')
     assert.equal(params.duration, 4)
     assert.equal(params.generate_audio, false)
@@ -347,7 +353,7 @@ try {
     assert.equal(readProjectPayload(projectRoot).id, projectId)
     repository = createProductionRunRepository({ projectDirResolver: id => id === projectId ? projectRoot : null })
     validateDraft()
-    assert.equal(run().generationPlan.editorial.shots[0].prompt, editedPrompt)
+    assert.equal(plan().shots[0].prompt, editedPrompt)
     const completedCount = boundNodes().filter(node => node.result?.url).length
     if (values['verify-only']) assert.equal(completedCount, 2, 'Read-only verification requires both original completed images; never submit missing work')
     if (completedCount === 1) assertRemainingImage()
@@ -403,7 +409,7 @@ try {
     await openPlan()
     await expect(editor().locator('[data-storyboard-row]')).toHaveCount(2)
     await editor().locator('[data-storyboard-prompt-block] [contenteditable="true"]').first().fill(editedPrompt)
-    await expect.poll(() => run().generationPlan.editorial?.shots[0].prompt).toBe(editedPrompt)
+    await expect.poll(() => plan()?.shots[0].prompt).toBe(editedPrompt)
     await snap('zh-original-edited')
     const firstGenerate = () => editor().locator('[data-storyboard-row="1"] [data-storyboard-generate-state]')
     const beforeCancel = execution()

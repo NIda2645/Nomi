@@ -15,7 +15,7 @@ beforeAll(async () => {
   // Build and mount the real fixture under setup's existing budget. Scenario timeouts measure interactions.
   const fixture = await browser.newPage()
   try {
-    await fixture.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-run-harness.html?undo=true&host=run`)
+    await fixture.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-editor-harness.html?undo=true`)
     await expect(fixture.locator('[data-storyboard-editor]')).toBeVisible()
   } finally { await fixture.close() }
 })
@@ -24,11 +24,11 @@ afterAll(async () => {
   await server?.close()
   if (cacheDir) rmSync(cacheDir, { recursive: true, force: true })
 })
-for (const host of ['run', 'legacy']) for (const scenario of ['redo', 'consumed', 'hidden', 'later-edit', 'outside', 'input', 'ordinary', 'immediate', 'generated-immediate']) test(`${host} storyboard deletion Undo: ${scenario}`, async () => {
+for (const scenario of ['redo', 'consumed', 'hidden', 'later-edit', 'outside', 'input', 'ordinary', 'immediate', 'generated-immediate']) test(`storyboard deletion Undo: ${scenario}`, async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
   page.setDefaultTimeout(5000)
   try {
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-run-harness.html?undo=true&host=${host}${scenario === 'generated-immediate' ? '&confirm=true' : ''}`)
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-editor-harness.html?undo=true${scenario === 'generated-immediate' ? '&confirm=true' : ''}`)
     await page.addStyleTag({ url: '/tailwind.generated.css' })
     const editor = page.locator('[data-storyboard-editor]')
     await expect(editor).toBeVisible()
@@ -56,11 +56,11 @@ for (const host of ['run', 'legacy']) for (const scenario of ['redo', 'consumed'
   } finally { await page.close() }
 })
 
-for (const host of ['run', 'legacy']) test(`${host} delayed delete confirmation cannot delete after the editor target changed`, async () => {
+test('delayed delete confirmation cannot delete after the editor target changed', async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
   page.setDefaultTimeout(5000)
   try {
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-run-harness.html?undo=true&confirm=true&host=${host}`)
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-editor-harness.html?undo=true&confirm=true`)
     await page.addStyleTag({ url: '/tailwind.generated.css' })
     const editor = page.locator('[data-storyboard-editor]')
     const row = editor.locator('[data-storyboard-row="1"]')

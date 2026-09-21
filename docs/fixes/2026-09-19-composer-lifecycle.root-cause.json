@@ -1669,16 +1669,6 @@
     },
     {
       "kind": "read",
-      "path": "electron/productionRun/productionStoryboardAuthoring.ts",
-      "symbol": "ProductionRun"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/productionStoryboardAuthoring.ts",
-      "symbol": "RunCommand"
-    },
-    {
-      "kind": "read",
       "path": "electron/productionRun/singleShotRunLifecycle.ts",
       "symbol": "ProductionRun"
     },
@@ -1791,21 +1781,6 @@
       "kind": "read",
       "path": "electron/shared/contracts/pendingSpendConfirm.ts",
       "symbol": "PendingSpendConfirm"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
-      "symbol": "ProductionGenerationPlan"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
-      "symbol": "ProductionGenerationShot"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/storyboard/generationPlanEditorial.ts",
-      "symbol": "ProductionRun"
     },
     {
       "kind": "read",
@@ -1925,36 +1900,6 @@
     {
       "kind": "read",
       "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
-      "symbol": "productionRunApi"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/capability/storyboardPresent.ts",
-      "symbol": "productionRunApi"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
-      "symbol": "DesktopProductionRunBridge"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
-      "symbol": "ProductionRunSummary"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/useCreationRunPlans.ts",
-      "symbol": "productionRunApi"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
-      "symbol": "ProductionRunProjection"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/useStoryboardRunHost.ts",
       "symbol": "productionRunApi"
     },
     {
@@ -2845,8 +2790,8 @@
   ],
   "door_reduction": {
     "before": 515,
-    "after": 549,
-    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points. Existing unrelated lazy hosts remain independent optional-feature boundaries. Composer imports are consolidated so canvas and resident cannot eager-load the composer chunk."
+    "after": 538,
+    "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points. Existing unrelated lazy hosts remain independent optional-feature boundaries. Composer imports are consolidated so canvas and resident cannot eager-load the composer chunk. 2026-09-21 一个家：Run 侧那份分镜存储与它的读写口整刀删除，本合同的门表只剩仍然存在的那些；storyboardPresent 不再经 productionRunApi 读方案，改读项目记录里那份唯一的 storyboardDesign。"
   },
   "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner. History intent invalidates on selection/availability/identity lifecycle changes, not on opening intent itself; delayed framework selection can therefore complete without discarding the original click. InlineParameterBar renders both single/multiple controls and canvas portal/payment inline surfaces through renderParameterPanel; each surface root supplies the installed framework nokey contract. Both production composer hosts use the shared lazy import module; only host loading geometry differs. No production static composer edge remains.",
   "shared_boundaries": [
@@ -3035,7 +2980,7 @@
       "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
       "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
       "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
-        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
       "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
       "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
       "src/workbench/generationCanvas/nodes/nodeWriteAccess.ts",

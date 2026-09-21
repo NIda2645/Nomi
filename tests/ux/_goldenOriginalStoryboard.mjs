@@ -13,7 +13,6 @@ const { createProductionRunRepository } = tsxRequire('../../electron/productionR
 
 export async function runOriginalStoryboardGolden({ walk, win, projectId, projectRoot, shot, setCurrentWin,
   prompts, titles, newPrompt, instruction, planCall, patchCall, shotId, targetAssertion, positiveControl }) {
-  const repository = createProductionRunRepository({ projectDirResolver: id => id === projectId ? projectRoot : null })
   const plan = walk.fixture.expectText({ label: 'Original document selection creates a saved storyboard',
     match: body => flattenRequestText(body).includes('GOLDEN_SCRIPT') && !hasToolResult(body, planCall),
     reply: { type: 'tool', id: planCall, name: 'draft_shots', args: {
@@ -22,32 +21,32 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
     } } })
   const done = walk.fixture.expectText({ label: 'Original storyboard save returns through the same Agent turn',
     match: body => hasToolResult(body, planCall), reply: { type: 'text', text: 'GOLDEN_PLAN_DONE：三镜方案已保存。' } })
-  const beforeRunIds = repository.list(projectId).map(run => run.runId)
+  // 方案正本 = 项目记录里的 storyboardDesign，和用户手建的那种同一处。
+  const allDesigns = async () => Object.values((await readProject(win, projectId)).payload.storyboardDesignsByDocumentId ?? {}).flat()
+  const beforeDesignIds = (await allDesigns()).map(design => design.id)
   const document = win.locator(DOCUMENT)
   await document.click()
   await document.selectText()
   await clickOrFail(win.locator('.workbench-selection-popover').getByRole('button', { name: '拆成镜头', exact: true }), '原划词拆成三镜')
   await recorded(plan.received, 'original document storyboard request')
   await recorded(done.received, 'original storyboard saved')
-  await expect.poll(() => repository.list(projectId).filter(run => !beforeRunIds.includes(run.runId)),
+  await expect.poll(async () => (await allDesigns()).filter(design => !beforeDesignIds.includes(design.id)),
     { timeout: stationTimeout({ operations: 2 }) }).toHaveLength(1)
-  const runId = repository.list(projectId).find(run => !beforeRunIds.includes(run.runId)).runId
-  const readRun = () => repository.read(projectId, runId)
-  const originalEditorial = structuredClone(readRun().generationPlan.editorial)
-  expect(originalEditorial.shots.map(row => row.prompt)).toEqual(prompts)
-  expect(originalEditorial.shots.map(row => row.shotId)).toEqual(['shot-1', shotId, 'shot-3'])
-  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
-  expect(originalEditorial.shots.map(row => row.modelKey)).toEqual(prompts.map(() => FIXTURE_IMAGE_MODEL))
-  expect(readRun().origin.sourceDocument.documentId).toBeTruthy()
+  const designId = (await allDesigns()).find(design => !beforeDesignIds.includes(design.id)).id
+  const readPlan = async () => (await allDesigns()).find(design => design.id === designId).plan
+  const originalPlan = structuredClone(await readPlan())
+  expect(originalPlan.shots.map(row => row.prompt)).toEqual(prompts)
+  expect(originalPlan.shots.map(row => row.shotId)).toEqual(['shot-1', shotId, 'shot-3'])
+  expect(originalPlan.shots.map(row => row.title)).toEqual(titles)
+  expect(originalPlan.shots.map(row => row.modelKey)).toEqual(prompts.map(() => FIXTURE_IMAGE_MODEL))
   expect((await readProject(win, projectId)).payload.generationCanvas.nodes, 'Document drafting must not silently materialize nodes').toHaveLength(0)
   expect(walk.fixture.images, 'Saving a storyboard submits no media').toHaveLength(0)
   const openEditor = async () => {
     await win.getByRole('button', { name: '创作', exact: true }).click()
     const expand = win.locator('[data-creation-resource-tree-toggle="expand"]:visible')
     if (await expand.isVisible()) await expand.click()
-    await win.locator(`[data-storyboard-run-id="${runId}"]`).click()
-    const editor = win.locator(`[data-creation-run-editor="${runId}"]`)
-    await expect(editor).toHaveAttribute('data-storyboard-editor', 'true')
+    await win.locator(`[data-storyboard-id="${designId}"]`).click()
+    const editor = win.locator('[data-storyboard-editor="true"]')
     await expect(editor.locator('[data-storyboard-row]')).toHaveCount(3)
     return editor
   }
@@ -56,9 +55,9 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
     await expect(editor.locator(`[data-storyboard-row="${index + 1}"] [data-storyboard-prompt-block] [contenteditable="true"]`)).toHaveText(prompts[index])
   }
   await shot('original-three-shot-editor-before-placement')
-  await editor.locator(`[data-place-storyboard-run="${runId}"]`).click()
-  await expect(editor.locator(`[data-place-storyboard-run="${runId}"]`)).toHaveText('查看画布')
-  const nodesOf = payload => (payload.generationCanvas?.nodes ?? []).filter(node => node.meta?.storyboardDesignId === runId
+  await editor.locator(`[data-place-storyboard="${designId}"]`).click()
+  await expect(editor.locator(`[data-place-storyboard="${designId}"]`)).toHaveText('查看画布')
+  const nodesOf = payload => (payload.generationCanvas?.nodes ?? []).filter(node => node.meta?.storyboardDesignId === designId
     && node.meta?.shotId && node.meta?.storyboardKeyframe !== true && !node.derivedFrom && !node.regeneratedFrom)
   const readNodes = async () => nodesOf((await readProject(win, projectId)).payload)
   await expect.poll(async () => (await readNodes()).length).toBe(3)
@@ -70,7 +69,7 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   expect(originalNodes.map(node => node.meta.modelKey)).toEqual(prompts.map(() => FIXTURE_IMAGE_MODEL))
   const originalGroup = (await readProject(win, projectId)).payload.generationCanvas.groups.find(group => originalNodes.every(node => group.nodeIds?.includes(node.id)))
   expect(originalGroup, 'Original placement must group the three shot nodes').toBeTruthy()
-  await editor.locator(`[data-place-storyboard-run="${runId}"]`).click()
+  await editor.locator(`[data-place-storyboard="${designId}"]`).click()
   await openCanvas(win)
   await win.getByRole('button', { name: '适应视图', exact: true }).click()
   await waitForCanvasViewportSettled(win)
@@ -84,7 +83,7 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   const beforeViewport = await viewport.evaluate(element => getComputedStyle(element).transform)
   const patch = walk.fixture.expectText({ label: 'Agent patches the same saved Run and exact second shot',
     match: body => flattenRequestText(body).includes(instruction) && !hasToolResult(body, patchCall),
-    reply: { type: 'tool', id: patchCall, name: 'draft_shots', args: { operationId: runId, shots: [{ shotId, prompt: newPrompt }] } } })
+    reply: { type: 'tool', id: patchCall, name: 'draft_shots', args: { operationId: designId, shots: [{ shotId, prompt: newPrompt }] } } })
   const patched = walk.fixture.expectText({ label: 'Exact storyboard patch returns through original SDK',
     match: body => hasToolResult(body, patchCall), reply: { type: 'text', text: 'GOLDEN_PATCH_DONE：第二镜已更新。' } })
   await win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`).fill(instruction)
@@ -92,11 +91,11 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   const patchWire = await recorded(patch.received, 'exact second shot patch')
   expect(flattenRequestText(patchWire.body)).toContain(instruction)
   await recorded(patched.received, 'original author save after Agent patch')
-  await expect.poll(() => readRun().generationPlan.editorial.shots[1].prompt, { timeout: stationTimeout({ operations: 2 }) }).toBe(newPrompt)
-  const expectedEditorial = structuredClone(originalEditorial)
-  expectedEditorial.shots[1].prompt = newPrompt
-  delete expectedEditorial.shots[1].promptSegments
-  expect(readRun().generationPlan.editorial, 'Agent prompt change must preserve every other authored field').toEqual(expectedEditorial)
+  await expect.poll(async () => (await readPlan()).shots[1].prompt, { timeout: stationTimeout({ operations: 2 }) }).toBe(newPrompt)
+  const expectedPlan = structuredClone(originalPlan)
+  expectedPlan.shots[1].prompt = newPrompt
+  delete expectedPlan.shots[1].promptSegments
+  expect(await readPlan(), 'Agent prompt change must preserve every other authored field').toEqual(expectedPlan)
   await expect.poll(async () => (await readNodes()).map(node => node.prompt)).toEqual([prompts[0], newPrompt, prompts[2]])
   expect((await readNodes()).map(node => node.id)).toEqual(nodeIds)
   await waitForCanvasViewportSettled(win)
@@ -123,8 +122,7 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   const completedNodes = await readNodes()
   expect(completedNodes.map(node => node.id)).toEqual(nodeIds)
   expect(completedNodes.map(node => node.prompt)).toEqual([prompts[0], newPrompt, prompts[2]])
-  expect(readRun().generationPlan.editorial).toEqual(expectedEditorial)
-  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
+  expect(await readPlan()).toEqual(expectedPlan)
   const resultUrl = completedNodes.find(node => node.meta.shotId === shotId).result.url
   await expect.poll(() => secondRow.locator('[data-storyboard-frame] img').first().evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
   await shot('original-shot2-generated-real-jpg')
@@ -149,8 +147,7 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   expect(nodesOf(persisted).find(node => node.meta.shotId === shotId)?.prompt, targetAssertion).toBe(newPrompt)
   expect(nodesOf(persisted).find(node => node.meta.shotId === shotId)?.result?.url).toBe(resultUrl)
   expect(nodesOf(persisted).map(node => node.id)).toEqual(nodeIds)
-  expect(readRun().generationPlan.editorial).toEqual(expectedEditorial)
-  expect(readRun().generationPlan.shots.map(row => row.title)).toEqual(titles)
+  expect(Object.values(persisted.storyboardDesignsByDocumentId ?? {}).flat().find(design => design.id === designId).plan).toEqual(expectedPlan)
   const projectCard = win.locator('[data-project-card]').first()
   await projectCard.hover()
   await clickOrFail(projectCard.getByText('继续创作', { exact: false }).first(), '冷启动重开原项目')

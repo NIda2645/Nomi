@@ -1,7 +1,6 @@
 export const zhStoryboardEditor = {
   placeOnCanvas: '放入画布', viewOnCanvas: '查看画布',
   discardTitle: '删除方案',
-  runPlan: { localRetained: '本地修改已保留。保存本地版本将覆盖远端方案。', saveLocal: '覆盖远端', revision: 'r{{revision}}', reload: '重新加载', loading: '正在加载方案', loadFailed: '方案加载失败，请重试', },
   anchorPolicy: {
     ignoredReason: '模式 {{mode}} 没有图片参考槽，参考图不会被使用',
     switchMode: '第 {{index}} 镜按 {{mode}} 生成，「{{anchors}}」参考图不会被使用；要使用它们，请换同模型的 {{alternative}} 模式，或去掉该镜视觉锚。',
@@ -367,7 +366,6 @@ type TranslationShape<T> = {
 export const enStoryboardEditor = {
   placeOnCanvas: 'Place on canvas', viewOnCanvas: 'View canvas',
   discardTitle: 'Delete plan',
-  runPlan: { localRetained: 'Your local edits are retained. Saving them replaces the remote plan.', saveLocal: 'Overwrite remote', revision: 'r{{revision}}', reload: 'Reload', loading: 'Loading plan', loadFailed: 'Could not load this plan. Please retry.', },
   anchorPolicy: {
     modelUnsupported: 'This model does not accept references',
     catalogMissing: 'Shot {{index}} has no matching available model for character references. Choose an available model and retry.',

@@ -1,6 +1,5 @@
 import { test } from 'vitest'
 import { expect } from '@playwright/test'
-import { proveProbe, expectAbsent } from './_assert.mjs'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
 import fs from 'node:fs'
@@ -16,7 +15,7 @@ for (const locale of ['zh-CN', 'en']) for (const media of ['image', 'video']) te
     await server.listen()
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-run-harness.html?locale=${locale}&media=${media}`)
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-editor-harness.html?locale=${locale}&media=${media}`)
     await page.addStyleTag({ url: '/tailwind.generated.css' })
     await page.addStyleTag({ url: '/src/styles/index.css' })
     const editor = page.locator('[data-storyboard-editor]')
@@ -80,42 +79,4 @@ for (const locale of ['zh-CN', 'en']) for (const media of ['image', 'video']) te
     expect(after.anchor.controls.find(control => control.label === (en ? 'Reference card description' : '参考卡描述'))?.hit, 'Expanded reference description remains reachable at the established editor width').toBe(true)
     expect(after.anchor.controls.find(control => control.label === (en ? 'Delete reference card' : '删除参考卡'))?.hit, 'Expanded reference action must remain reachable').toBe(true)
   } finally { await browser?.close(); await server.close(); fs.rmSync(cacheDir, { recursive: true, force: true }) }
-})
-test('Run reuses the original full editor and keeps conflicted input across plan switches', async () => {
-  const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 } })
-  let browser
-  try {
-    await server.listen()
-    browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage()
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/original-storyboard-run-harness.html`)
-    const editor = page.locator('[data-storyboard-editor]')
-    await expect(editor).toBeVisible()
-    await expect(editor.locator('[data-storyboard-prompt-block]')).toHaveCount(1)
-    await expect(editor.locator('[data-storyboard-play-all]')).toBeVisible()
-    const title = editor.locator('header input')
-    await title.fill('Saved A')
-    await expect.poll(() => page.evaluate(() => window.originalStoryboard.snapshot().a.authoring.title)).toBe('Saved A')
-    await page.getByRole('button', { name: 'Plan B', exact: true }).click()
-    await expect(title).toHaveValue('Plan b')
-    await page.getByRole('button', { name: 'Plan A', exact: true }).click()
-    await expect(title).toHaveValue('Saved A')
-    await editor.getByRole('button', { name: '添加镜头', exact: true }).click()
-    await expect(editor.locator('[data-storyboard-prompt-block]')).toHaveCount(2)
-    await expect.poll(() => page.evaluate(() => window.originalStoryboard.snapshot().a.generationPlan.editorial.shots.length)).toBe(2)
-    expect(await page.evaluate(() => new Set(window.originalStoryboard.snapshot().a.generationPlan.editorial.shots.map(shot => shot.shotId)).size)).toBe(2)
-    await page.evaluate(() => window.originalStoryboard.conflict())
-    await title.fill('Keep my local draft')
-    const alertProof = await proveProbe(editor.getByRole('alert'), 'Save conflict is rendered')
-    await page.getByRole('button', { name: 'Plan B', exact: true }).click()
-    await page.getByRole('button', { name: 'Plan A', exact: true }).click()
-    await expect(title).toHaveValue('Keep my local draft')
-    await expect.poll(() => page.evaluate(() => window.originalStoryboard.snapshot().a.authoring.title)).toBe('Saved A')
-    await page.evaluate(() => window.originalStoryboard.recover())
-    await editor.getByRole('button', { name: '覆盖远端', exact: true }).click()
-    await expect.poll(() => page.evaluate(() => window.originalStoryboard.snapshot().a.authoring.title)).toBe('Keep my local draft')
-    await expectAbsent(editor.getByRole('alert'), { provenBy: alertProof })
-    expect(await page.evaluate(() => window.originalStoryboard.legacy().doc ?? [])).toEqual([])
-    expect(await page.evaluate(() => window.originalStoryboard.calls.every(call => call.type === 'generation.save_storyboard'))).toBe(true)
-  } finally { await browser?.close(); await server.close() }
 })
