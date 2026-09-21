@@ -277,7 +277,7 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
     if (!cuts.length) {
       return {
         cuts: [], durationSeconds, sheetUrl: null,
-        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows: 1, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
+        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
       };
     }
 

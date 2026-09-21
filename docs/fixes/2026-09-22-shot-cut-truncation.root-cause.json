@@ -61,47 +61,12 @@
     {
       "kind": "read",
       "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "shotTableColumnSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "shotTableFactRowSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
       "symbol": "deconstructionShotTableSchema"
     },
     {
       "kind": "read",
       "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "productionShotTableSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "storyboardShotTableSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
       "symbol": "shotTableDocumentSchema"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "ShotTableDocument"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "StoryboardShotTableDocument"
-    },
-    {
-      "kind": "read",
-      "path": "electron/shared/canvas/shotTable.ts",
-      "symbol": "ProductionShotTableDocument"
     },
     {
       "kind": "read",
@@ -120,21 +85,6 @@
     },
     {
       "kind": "read",
-      "path": "src/desktop/bridgeMedia.ts",
-      "symbol": "DeconstructionProgress"
-    },
-    {
-      "kind": "read",
-      "path": "src/devlab/designLab/shotTable/ShotTableStage.tsx",
-      "symbol": "ShotTableDocument"
-    },
-    {
-      "kind": "read",
-      "path": "src/devlab/designLab/shotTable/ShotTableStage.tsx",
-      "symbol": "ShotTableFactRow"
-    },
-    {
-      "kind": "read",
       "path": "src/workbench/capability/multiShotCanvasLanding.ts",
       "symbol": "readShotTable"
     },
@@ -142,11 +92,6 @@
       "kind": "read",
       "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
       "symbol": "readShotTable"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/creation/storyboard/openShotTableRow.ts",
-      "symbol": "StoryboardShotTableDocument"
     },
     {
       "kind": "read",
@@ -161,37 +106,12 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
-      "symbol": "DeconstructionShotTableDocument"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
       "symbol": "readShotTable"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/selectShotTableRows.ts",
-      "symbol": "ShotTableDocument"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
-      "symbol": "DeconstructionShotTableDocument"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
       "symbol": "readShotTable"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
-      "symbol": "ShotTableColumn"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
-      "symbol": "DeconstructionShotTableDocument"
     },
     {
       "kind": "read",
@@ -200,38 +120,13 @@
     },
     {
       "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableGrid.tsx",
-      "symbol": "ShotTableColumn"
-    },
-    {
-      "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
       "symbol": "readShotTable"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
-      "symbol": "ShotTableColumn"
     },
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
       "symbol": "readShotTable"
-    },
-    {
-      "kind": "write",
-      "path": "src/devlab/designLab/shotTable/ShotTableStage.tsx",
-      "symbol": "createStoryboardShotTable"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
-      "symbol": "createProductionShotTable"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
-      "symbol": "createStoryboardShotTable"
     },
     {
       "kind": "write",
@@ -245,73 +140,8 @@
     },
     {
       "kind": "read",
-      "path": "electron/video/deconstructSpend.ts",
-      "symbol": "DeconstructSpendPlan"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructColumn"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructSpendLine"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructSpendPlan"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructAuthorizeSpend"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructShot"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructVideoPayload"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructVideoOptions"
-    },
-    {
-      "kind": "read",
       "path": "electron/video/deconstructVideo.ts",
       "symbol": "DeconstructVideoResult"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DeconstructError"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DECONSTRUCT_FRAMES_PER_SHOT"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DECONSTRUCT_MAX_TOKENS"
-    },
-    {
-      "kind": "read",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "DECONSTRUCT_CONCURRENCY"
-    },
-    {
-      "kind": "write",
-      "path": "electron/video/deconstructVideo.ts",
-      "symbol": "buildShotAnalysisPrompt"
     },
     {
       "kind": "write",
@@ -435,36 +265,6 @@
     },
     {
       "kind": "read",
-      "path": "src/desktop/bridge.ts",
-      "symbol": "DesktopVideoDepthBridge"
-    },
-    {
-      "kind": "read",
-      "path": "src/i18n/locales/generationCommon.ts",
-      "symbol": "zhGenerationCommon"
-    },
-    {
-      "kind": "read",
-      "path": "src/i18n/resources.ts",
-      "symbol": "zhGenerationCommon"
-    },
-    {
-      "kind": "read",
-      "path": "src/i18n/resources.ts",
-      "symbol": "enGenerationCommon"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
-      "symbol": "NodeShotCutPanel"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
-      "symbol": "DeconstructionShot"
-    },
-    {
-      "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
       "symbol": "DeconstructionResult"
     },
@@ -472,11 +272,6 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
       "symbol": "StoredDeconstructionResult"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
-      "symbol": "NODE_DECONSTRUCTION_META_KEY"
     },
     {
       "kind": "read",
@@ -495,63 +290,8 @@
     },
     {
       "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "SHOT_SENSITIVITY_DEFAULT"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "SHOT_SENSITIVITY_MIN"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "SHOT_SENSITIVITY_MAX"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "SHOT_SENSITIVITY_STEP"
-    },
-    {
-      "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
       "symbol": "ShotCutCandidate"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
-      "symbol": "SHOT_CUT_MERGE_SECONDS"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
-      "symbol": "SHOT_SENSITIVITY_DEFAULT"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
-      "symbol": "SHOT_SENSITIVITY_MIN"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
-      "symbol": "SHOT_SENSITIVITY_STEP"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
-      "symbol": "shotCutNodePositions"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
-      "symbol": "formatShotTimestamp"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "pickDefaultSensitivity"
     },
     {
       "kind": "write",
@@ -561,27 +301,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "evenFrameCount"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
       "symbol": "shotSheetTileStyle"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "formatShotTimestamp"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "evenFrameSeconds"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
-      "symbol": "deconstructToShotTable"
     },
     {
       "kind": "write",
@@ -590,39 +310,24 @@
     },
     {
       "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
-      "symbol": "retryShot"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
-      "symbol": "deconstructToShotTable"
-    },
-    {
-      "kind": "write",
-      "path": "src/devlab/designLab/shotTable/ShotTableStage.tsx",
-      "symbol": "createDeconstructionShotTable"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
-      "symbol": "createDeconstructionShotTable"
-    },
-    {
-      "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
       "symbol": "deconstructionResultToShotTable"
     },
     {
       "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
-      "symbol": "defaultFactColumns"
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "zhGenerationCommon"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "enGenerationCommon"
     }
   ],
   "door_reduction": {
     "before": 15,
-    "after": 113,
-    "why_not": "门数没减反增（detectShotCuts 单文件 15→21，跨全部改动文件合计 121），因为这次**把隐式耦合变成了显式契约**：新增的 RawShotCut / dedupeShotCuts / capShotCutsByScore / assignSheetIndexes / SHOT_CUT_DEDUPE_FRAMES / shotSheetTileCount 是原来藏在函数体里的无名逻辑，拆出来才测得动、才钉得住；ShotCutCoverage 与 shotCutCoverageSchema 则是这次新立的 owner，它们带来的门正是「这份状态终于有人管了」的形状。真正该数的那扇门只有一扇且已收口：`coverage` 的**写入口仍然只有 detectShotCuts 一处**，而读侧不再能忽略它——DeconstructVideoResult.cutCoverage 与 DeconstructionResult.cutCoverage 都是必填，漏读在编译期就过不去。门表里其余条目是同一份状态的类型/常量/纯函数在各自文件内的读点，不构成第二个写入口。"
+    "after": 54,
+    "why_not": "门表按**本次真正读写的符号**过滤后 52 扇（door-map 按文件跑会把同文件里无关的符号也列进来）。真正该数的那些状态都已收口成单一 owner：`coverage` 的写入口只有 detectShotCuts 一处且读侧必填；联系表选帧只有 buildSheetFilter 一处且按整数 pts 点名；行数只有 shotSheetRowsFor 一个算式。其余条目是这些状态的类型/常量/纯函数在各自文件内的读点，不构成第二个写入口。"
   },
   "generality_proof": "把「给全了没有」从生产者本地的布尔提升为 shared 层的 ShotCutCoverage（类型 + zod 同一份，electron/shared/canvas/shotTable.ts），并在两个下游结果类型里做成**必填字段**。于是：① 任何新的 detectShotCuts 读侧要构造结果，编译器都会要求它把 coverage 传下去；② 任何要落盘的分镜表都经过同一个 zod schema，半块 coverage 直接 parse 失败；③ 压上限这件事本身被收进一个纯函数 capShotCutsByScore，它的后置条件（kept === cuts.filter(score > appliedThreshold)）由单测钉死，任何改回「按时间取前 N」的改动都会红。这三条覆盖了本次扫到的全部同类入口。",
   "shared_boundaries": [

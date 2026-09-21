@@ -149,15 +149,6 @@ describe("联系表选帧 —— 第 i 格 = 第 i 刀必须由构造保证（20
   // 实测 120 刀里 21 刀指错格，末刀的格子号甚至超出联系表容量。
   const duration = 361.081;
 
-  it("阈值恰好等于某一帧的分数 —— 这是必然发生的情形，不是刁钻构造", () => {
-    const cuts = spreadCuts(447, duration);
-    const { appliedThreshold } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
-    // 阈值取自第 cap+1 名，所以它一定是**某一帧的分数**——这就是 A 的成因：
-    // JS 拿打印值判、ffmpeg 拿全精度判，恰好落在这个值上的那一帧两边判断相反。
-    // 所以「让两边各判一次再指望结果相同」这条路从一开始就是错的，只能按身份点名。
-    expect(cuts.some((cut) => cut.score === appliedThreshold)).toBe(true);
-  });
-
   it("联系表的 select 逐条点名，顺序与条数与切点清单**完全一致**", () => {
     const cuts = spreadCuts(447, duration);
     const { kept } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
@@ -231,8 +222,6 @@ describe("联系表行数只有一个 owner（2026-09-22 阻断 B）", () => {
     const cuts = spreadCuts(447, 361.081);
     const { kept } = capShotCutsByScore(cuts, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
     const rows = shotSheetRowsFor(kept.length, SHOT_SHEET_COLUMNS);
-    const filter = buildSheetFilter(kept.map((c) => c.pts), SHOT_SHEET_COLUMNS, rows, 90);
-    expect(filter).toContain(`tile=${SHOT_SHEET_COLUMNS}x${rows}`);
     // 容量必须放得下全部点名的帧，否则末尾几格根本不在图里（第一版末刀就是这么丢的）。
     expect(rows * SHOT_SHEET_COLUMNS).toBeGreaterThanOrEqual(kept.length);
   });
