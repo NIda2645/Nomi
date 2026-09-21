@@ -166,7 +166,13 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
     if (!mode) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Unknown video mode: ${candidate.modeId}. Allowed for this model: ${modes.map((item) => item.id).join(", ")}.`);
     const requestedTransport = normalizedTaskKind(candidate.mode);
     if (requestedTransport && requestedTransport !== normalizedMode(mode.id) && requestedTransport !== normalizedTaskKind(mode.transportTaskKind)) {
-      refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Video mode ${candidate.modeId} is a ${mode.transportTaskKind} mode, but this shot asks for ${candidate.mode}. Set taskKind to ${mode.transportTaskKind}, or drop modeId and let Nomi pick.`);
+      // 有的档案不声明 `transportTaskKind`（那就是它的默认）。2026-09-22 run3 里这句话因此印成了
+      // 「Video mode omni is a **undefined** mode」——一句想帮忙的话把 undefined 递给了模型。
+      // 说得出种类就说，说不出就只说哪两样对不上，绝不插值一个不存在的值。
+      const kind = mode.transportTaskKind?.trim();
+      refuseToModel(GENERATION_ARGUMENT_REFUSAL, kind
+        ? `Video mode ${candidate.modeId} is a ${kind} mode, but this shot asks for ${candidate.mode}. Set taskKind to ${kind}, or drop modeId and let Nomi pick.`
+        : `Video mode ${candidate.modeId} does not go with taskKind ${candidate.mode} on this model. Drop taskKind (the mode already decides it), or drop modeId and let Nomi pick.`);
     }
     return mode;
   }
@@ -175,7 +181,7 @@ export function videoModeForPlan(candidate: PlanCandidate, videoCandidate: Video
   if (byId) return byId;
   const byTask = modes.filter((item) => normalizedTaskKind(item.transportTaskKind) === normalizedTaskKind(candidate.mode));
   if (byTask.length === 1) return byTask[0]!;
-  if (byTask.length === 0) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This model cannot do ${candidate.mode}. It supports: ${modes.map((item) => `${item.id} (${item.transportTaskKind})`).join(", ")}.`);
+  if (byTask.length === 0) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This model cannot do ${candidate.mode}. It supports: ${modes.map((item) => (item.transportTaskKind ? `${item.id} (${item.transportTaskKind})` : item.id)).join(", ")}.`);
 
   // Legacy drafts may not have modeId. Use the same recommendation facts as
   // preview, but only among modes that actually share this transport task.

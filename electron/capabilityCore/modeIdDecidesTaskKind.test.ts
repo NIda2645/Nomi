@@ -44,3 +44,15 @@ describe("modeId 定了，taskKind 就定了", () => {
     expect(inferGenerationTaskKind({ prompt: "一段视频，镜头推近" })).toBe("text_to_video");
   });
 });
+
+// run3 里那句「Video mode omni is a undefined mode」：帮忙的话不许把 undefined 递给模型。
+describe("拒绝信里不许出现 undefined", () => {
+  it("源码里每一处插值 transportTaskKind 的拒绝信都先判过它在不在", async () => {
+    const fs = await import("node:fs");
+    const source = fs.readFileSync("electron/capabilityCore/mcpGenerationVideoResolve.ts", "utf8");
+    const refusals = source.split("\n").filter((line) => line.includes("refuseToModel(") && line.includes("transportTaskKind"));
+    // 直接把 `${mode.transportTaskKind}` 插进句子里的写法一条都不许剩（要么走 `kind` 守卫，要么走三元）。
+    expect(refusals.filter((line) => /\$\{mode\.transportTaskKind\}/.test(line))).toEqual([]);
+    expect(refusals.filter((line) => /\$\{item\.transportTaskKind\}/.test(line) && !line.includes("item.transportTaskKind ?"))).toEqual([]);
+  });
+});
