@@ -17,18 +17,19 @@ beforeEach(() => {
   memory.writes = 0
 })
 describe('catalog persistence liveness owner', () => {
-  it('writes listing and disable atomically, retains user configuration, and recovery stays disabled', () => {
+  it('writes the listing note atomically, retains user configuration, and never flips the enable decision', () => {
     const original = readCatalog().models[0]
     const apply = (ids: string[]): void => { mutateCatalog((tx, state) => {
       modelListReconciliation(state.models, 'apimart', { ok: true, models: ids, statuses: [200] }).forEach(tx.upsertModel)
     }) }
-    apply([])
+    // 「有清单但不含这一条」才是证据；空清单不是（2026-09-21）。
+    apply(['some-other-model'])
     expect(memory.writes).toBe(1)
-    expect(readCatalog().models[0]).toMatchObject({ enabled: false, unlisted: true, labelZh: 'My label', tokenPricing: original.tokenPricing, customCall: original.customCall })
+    expect(readCatalog().models[0]).toMatchObject({ enabled: true, unlisted: true, labelZh: 'My label', tokenPricing: original.tokenPricing, customCall: original.customCall })
     apply(['deepseek-v4-flash'])
-    expect(readCatalog().models[0]).toMatchObject({ enabled: false, unlisted: false })
-    upsertModelCatalogModel({ vendorKey: 'apimart', modelKey: 'deepseek-v4-flash', enabled: true })
-    expect(readCatalog().models[0]).toMatchObject({ enabled: true, unlisted: false, tokenPricing: original.tokenPricing })
+    expect(readCatalog().models[0]).toMatchObject({ enabled: true, unlisted: false })
+    upsertModelCatalogModel({ vendorKey: 'apimart', modelKey: 'deepseek-v4-flash', enabled: false })
+    expect(readCatalog().models[0]).toMatchObject({ enabled: false, unlisted: false, tokenPricing: original.tokenPricing })
   })
   it('rolls back both state fields if the transaction fails', () => {
     expect(() => mutateCatalog((tx) => { tx.upsertModel({ vendorKey: 'apimart', modelKey: 'deepseek-v4-flash', unlisted: true, enabled: false }); throw new Error('rollback') })).toThrow('rollback')

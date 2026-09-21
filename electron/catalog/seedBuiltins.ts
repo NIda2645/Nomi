@@ -552,10 +552,13 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   if (pruneRetiredModels(models, APIMART_VENDOR_SEED.key, RETIRED_APIMART_IMAGE_MODEL_KEYS)) changed = true;
   if (pruneRetiredMappings(mappings, RETIRED_APIMART_IMAGE_MAPPING_IDS)) changed = true;
   // Explicit one-time migration: keep user configuration, including manual re-enabling afterwards.
+  // 2026-09-21：这里原来连 `enabled: false` 一起写——和上面那行「种子不碰 enabled（那是用户数据）」
+  // 自相矛盾，也和后台对账是同一个毛病：把「供应商不再列出」当成「替用户停用」。现在只落旁注，
+  // 停不停用由用户在模型设置里自己决定（`unlisted` 在界面上如实显示）。
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];
     if (model.vendorKey === APIMART_VENDOR_SEED.key && RETIRED_APIMART_TEXT_MODEL_KEYS.includes(model.modelKey) && model.unlisted === undefined) {
-      models[index] = { ...model, enabled: false, unlisted: true, meta: { ...(model.meta as Record<string, unknown> || {}), catalogLifecycle: "legacy" }, updatedAt: now };
+      models[index] = { ...model, unlisted: true, meta: { ...(model.meta as Record<string, unknown> || {}), catalogLifecycle: "legacy" }, updatedAt: now };
       changed = true;
     }
   }
