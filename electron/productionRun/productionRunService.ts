@@ -22,6 +22,7 @@ import { readAutomationPolicySettings } from '../settings/automationPolicySettin
 import { readConnectedModelScope } from './connectedModelScope'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { assertCallerDeclaredTrustLevel } from './productionRunTrustAuthority'
 import { createGateApprovalOwner } from './productionRunApprovalReceipt'
 import { isAnchorCheckpointGate } from './anchorCheckpoint'
 import { kickBatchSchedulerForRun } from './batchSchedulerKick'
@@ -146,10 +147,14 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function createDraft(input: CreateProductionRunInput): ProductionRunProjection {
+    const userPolicy = policyResolver()
+    // 调用方自报的信任档不得自证：放松（少问）只能由用户的设置或一次真人答过的确认产生，
+    // 而建 Run 这条路上连一个能问人的面都没有。收紧照收。
+    assertCallerDeclaredTrustLevel(input.policy?.trustLevel, userPolicy)
     const run = repository.create({
       ...input,
       runId: input.runId ? identifier(input.runId, 'run') : undefined,
-      policy: { ...policyResolver(), ...(input.policy || {}) },
+      policy: { ...userPolicy, ...(input.policy || {}) },
     })
     // create 只可能产出「等方向 + 至少一道门 + 零任务零预算」的草稿：未登记的 playbook / 缺 brief
     // 在 repository 层就抛错（productionPlaybooks.ts），draft 已不可达，这里不再给它留口子。
@@ -158,6 +163,9 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     }
     // B3：budget_only（「别问了直接出」）→ 自动批准创意方向门（留痕），不拟候选、不打扰。
     // 其余档位 → 异步拟方向候选（GUI 有 LLM 才成；关着则保持兜底 gate）。均不阻塞返回。
+    // 2026-09-21：这一行以前也认调用方在请求体里自报的档位——门在 run 创建的同一刻被批掉，
+    // 没有任何人看见过它。上面的 assertCallerDeclaredTrustLevel 保证走到这里的 budget_only
+    // 只可能来自用户的设置（放松档位的请求已经被拒了）。
     if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
     else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)

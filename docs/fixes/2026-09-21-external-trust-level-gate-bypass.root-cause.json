@@ -1,0 +1,244 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-external-trust-level-gate-bypass",
+  "problem_type": "Who decides how much Nomi asks",
+  "symptom": "一个只持裸 bearer 的本机进程 `production.start` 带 `trustLevel: 'budget_only'` → 200；回读 `production.get` 看到 `gate gate-direction-v1 -> approved`，decidedAt 就是 run 创建的那一刻。**没有任何人看见过这道门**。同一个进程也能直接 `production.control` 发 `set_trust → budget_only`：从默认档 key_confirm 降下去，当时一份证据都不要。",
+  "direct_cause": "`createDraft` 把调用方 payload 里的 `policy` 直接盖在用户策略上（`policy: { ...policyResolver(), ...(input.policy || {}) }`），紧接着 `if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(..., 'gate-direction-v1')`。另一扇门在 `verifyTrustGrant`：`if (trustLevelOf(current.policy) !== 'confirm_all') return undefined` —— 从 key_confirm 降到 budget_only 不进人证闸。",
+  "class_root": "同一条不变量（「Nomi 还问不问你，由你决定」）由两扇证据标准不同的门守着，弱的那扇接受调用方自己的话。与 `docs/fixes/2026-09-11-legacy-spend-door.root-cause.json` 的 class_root 逐字同形，这次发生在**审批轴**而不是付费轴：建 Run 那条路上根本没有能问人的面（没有手势章、没有收据、没有 elicitation 通道），却接受了一个能把门批掉的参数。",
+  "affected_population": [
+    "本机上任何能读到 <NOMI_CAPABILITY_DIR>/instance*.json 的进程（该文件权限 -rw-------）",
+    "任何注册过的外部 MCP 宿主：它按工具描述「要求直接出时用 budget_only」传参，用户从没被问过",
+    "受影响的是创意方向门与样片门（免费门）。付费门不受影响：productionRunService 硬拒自动批准付费门，这条不变量本次未动"
+  ],
+  "scope_paths": [
+    "electron/productionRun/productionRunTrustAuthority.ts",
+    "electron/productionRun/productionRunService.ts",
+    "electron/productionRun/productionRunApprovalReceipt.ts",
+    "electron/productionRun/productionTrustLevel.test.ts",
+    "electron/productionRun/productionRunApprovalReceipt.test.ts",
+    "electron/productionRun/productionGateIdempotency.test.ts"
+  ],
+  "entry_points": [
+    "POST /rpc production.start，params.trustLevel（裸 bearer 或注册过的 MCP 宿主）",
+    "POST /rpc production.control，payload.action=set_trust + trustLevel（同上）",
+    "对外 MCP 工具 nomi_run_start 的 trustLevel 字段 → production.start",
+    "对外 MCP 工具 nomi_run_control action=set_trust → production.control（经 mcpTrustDowngrade 先在客户端问一次人）",
+    "Nomi 窗口里的真人操作（humanGesture，受信 IPC 边界盖章）——这是唯一本来就合格的入口"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "内部审批边界。同类的外部规范依据（MCP 2025-11-25 security best practices 的 confused-deputy / 客户端自述的同意不构成授权、2025-06-18 elicitation 不是授权边界）已在 docs/fixes/2026-09-11-legacy-spend-door.root-cause.json 里逐条查过并列出；本次是同一条边界在审批轴上的实例，判据来自 2026-09-21 在隔离数据上的真机探针（trustLevel:'anything' → 400 作阳性对照，'budget_only' → 200 且 gate approved）。",
+  "invariants": [
+    "信任档只能由用户的设置或一次真人答过的确认产生；调用方在请求体里自报的档位不算证据",
+    "往「少问」方向的改档（降档）在任何入口都要 ① Nomi 窗口里的手势章 或 ② 一张主进程签发的收据；往「多问」方向（收紧）随便",
+    "自动批准永远碰不到付费门（本次未动，由 productionRunService 的既有硬拒守着）"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "createDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "createDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "isTrustDowngrade"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "verifyTrustGrant"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunGateIdentity.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "createDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "assertCallerDeclaredTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "autoApproveGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "verifyTrustGrant"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "assertCallerDeclaredTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "isTrustDowngrade"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/productionRunApi.ts",
+      "symbol": "createDraft"
+    }
+  ],
+  "door_reduction": {
+    "before": 19,
+    "after": 19,
+    "why_not": "门表列的是「谁读写一个 Run 的信任档、谁据它自动批门」的全部入口（machine：node scripts/door-map.mjs assertCallerDeclaredTrustLevel / isTrustDowngrade / verifyTrustGrant / trustLevelOf / autoApproveGate / createDraft）。门一扇没减是对的：这 19 扇里绝大多数是**读**档位来决定「这一步要不要停」（driverOps 的逐镜门、gateIdentity、projections、reducer、渲染层的合同视图），它们本来就该各自读，合并等于把五个阶段的判断挤进一个函数。真正要收的是**「谁能把档位改松」**：修前有 2 个答案（createDraft 直接收 payload、verifyTrustGrant 对 key_confirm 早退），修后只有 1 个判据 —— `isTrustDowngrade` + 一次真人证据，两扇门同吃（productionRunService.ts:153 与 productionRunApprovalReceipt.ts:165 都调它）。让「第三个答案」会报错的机器判据是 productionTrustLevel.test.ts 新增的三条负例（建 Run 自报更松 → 拒；收紧 → 照收；裸 set_trust 降档 → 拒，且门不许被顺手批掉）。"
+  },
+  "generality_proof": "「往少问的方向走要不要授权」现在只有一个判据函数 `isTrustDowngrade(from, to)`，由 `TRUST_LEVEL_STRICTNESS` 这张唯一的序表算出来。两扇门都调它：① `createDraft` 走 `assertCallerDeclaredTrustLevel(input.policy?.trustLevel, policyResolver())` —— 这条路上连能问人的面都没有，所以直接拒并指路；② `verifyTrustGrant` 删掉「不是 confirm_all 就早退」那一句，任何降档都要手势章或收据（confirm_all → budget_only 额外绑死花费范围，那一档真的拿掉了逐镜付费确认）。再加第三档也只需在序表里加一行，两扇门自动同步。",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "isTrustDowngrade",
+      "responsibility": "「这次改档是放松还是收紧」的唯一判据；放松要授权，收紧随便。两扇门同吃这一个答案。"
+    },
+    {
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "assertCallerDeclaredTrustLevel",
+      "responsibility": "建 Run 时调用方声明的档位只许收紧；放松在这条路上没有任何能问人的面，所以拒绝并指向 set_trust。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "createDraft 的 policy 合并与方向门自动批准",
+      "disposition": "not-affected",
+      "evidence": "合并前先过 assertCallerDeclaredTrustLevel；走到自动批准那一行的 budget_only 只可能来自用户设置。productionTrustLevel.test.ts「① 建 Run 时声明比用户默认更松的档位 → 拒」逐条断言，并断言连半个草稿都没落盘。"
+    },
+    {
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "entry_point": "verifyTrustGrant（run.control set_trust）",
+      "disposition": "not-affected",
+      "evidence": "删掉 key_confirm 早退；productionRunApprovalReceipt.test.ts 与 productionTrustLevel.test.ts「② 裸 set_trust 降档 → 拒」各一条。"
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "冷启动恢复扫描里按档位补批方向门",
+      "disposition": "enforced",
+      "evidence": "它读的是已经落盘的 run.policy——那份档位已经过了上面两扇门，不是调用方当场自报的。"
+    },
+    {
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "entry_point": "渲染层 nomi:production-runs:create-draft",
+      "disposition": "enforced",
+      "evidence": "createDraftInput 根本不解析 policy（逐字段白名单），渲染层递不进档位。"
+    },
+    {
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "entry_point": "应用内 Agent 的 start_production_run",
+      "disposition": "enforced",
+      "evidence": "同样不传 policy。"
+    },
+    {
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "entry_point": "按档位决定要不要生成逐镜付费门",
+      "disposition": "enforced",
+      "evidence": "只读档位，不改；付费门任何档位都不自动批（既有硬拒，本次未动）。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状第三次：2026-09-10 是 set_trust 顺手批掉逐镜付费门，2026-09-11 是付费放行长出第二扇弱门，这次是审批轴。三次都是同一件事——一条不变量由两扇证据标准不同的门守着，而弱的那扇接受调用方自己的话。只要还有「调用方可以声明自己要多少自动化」这种参数，它就会再来。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs trustLevelOf / autoApproveGate，逐扇门问它是读档位还是改档位，改的那些有没有过 isTrustDowngrade",
+      "git grep -n 'humanGesture' -- electron，逐处问「不带它的那条分支放行了什么」",
+      "git grep -nE 'params\\.(trustLevel|policy|approval|autoApprove)' -- electron/capabilityCore，找其它「调用方自报权限档」的参数"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/productionRunTrustAuthority.ts",
+    "invariant": "信任档只能由用户的设置或一次真人答过的确认产生",
+    "failure_mode": "Stop and show actionable feedback",
+    "exception_policy": "none",
+    "strategy": "把「放松还是收紧」收成一个判据函数与一张序表，两扇门同吃；建 Run 那条没有问人的面，就明确拒绝并指向真的会问人的那条路，而不是静默降级或静默放行。",
+    "artifacts": [
+      "electron/productionRun/productionRunTrustAuthority.ts",
+      "electron/productionRun/productionRunService.ts",
+      "electron/productionRun/productionRunApprovalReceipt.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/productionTrustLevel.test.ts",
+    "electron/productionRun/productionRunApprovalReceipt.test.ts",
+    "electron/productionRun/productionGateIdempotency.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/productionTrustLevel.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/productionRunService.ts",
+      "electron/productionRun/productionRunApprovalReceipt.ts"
+    ],
+    "rationale": "「payload 里的档位直接进 policy」与 verifyTrustGrant 的 key_confirm 早退同 commit 删除。没有留兼容开关、没有留「只对可信宿主放行」的白名单——白名单会把同一个问题挪到「谁算可信」上，而那张表同样是调用方够得着的（trustedHosts 在设置里，但 origin.host 是请求头说了算）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "内部审批边界，不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "行为变化要写进发版说明：外部宿主不能再在 `nomi_run_start` 里直接要 budget_only，必须建完 Run 再 `nomi_run_control action=set_trust`——那条路会在客户端弹一次确认（mcpTrustDowngrade）。而 trust-challenge 只在镜头计划已封存、价格已知时才铸得出来，所以「一上来就全自动」在计划定价之前做不到；这是刻意的：全自动档要不要开是用户的决定。已经跑在 budget_only 上的存量 Run 不受影响（档位已落盘）。",
+  "residual_risks": [
+    "对外 MCP 工具描述（electron/capabilityCore/mcpToolCatalog.ts:266「要求直接出时用 budget_only」）与 human_approval_required 的错误提示（mcpToolErrorResults.ts:87「请在 Nomi 确认这次生成」）都还是旧说法，模型读到会按旧流程试。这两份文案属 MCP lane 的面，本合同没改，已在 report-A-pass3e.md 里写清建议措辞交由主会话转交。",
+    "用户今天**没有**一个『全自动档』的设置开关：automationPolicyContract 里没有 trustLevel 字段（2026-09-14 删设置页时把档位的 owner 判给了 Agent 面板的 PermissionTier）。所以 `policyResolver()` 恒给 key_confirm，等于外部入口暂时完全要不到 budget_only，只能靠 set_trust 当场问人。PermissionTier ↔ TrustLevel 两套词表之间没有转换函数（第一轮横扫 B3 的原始发现），补那座桥是产品决定，不在本合同范围。",
+    "`origin.host` 来自请求头，不是被验证过的身份。本次没有把 trustedHosts 与档位挂钩，正是因为那会把问题挪到一张同样可自报的表上。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionRunTrustAuthority.ts",
+    "tests": [
+      "electron/productionRun/productionTrustLevel.test.ts",
+      "electron/productionRun/productionRunApprovalReceipt.test.ts"
+    ]
+  }
+}
