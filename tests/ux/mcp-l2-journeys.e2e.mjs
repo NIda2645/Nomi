@@ -174,11 +174,35 @@ try {
   // 密钥落地后，那条持久「去填 key」请求必须由写它的那层收走。留着它 = 用户下次打开设置→模型
   // 又被拽回一个已经接好的供应商的添加页（走查里这条 fixture 原本自己 ack 掉，把这个缺口盖住了）。
   check(credentialSaved.queued === 0, 'C7 T14 密钥落地后持久凭据 handoff 被收走')
+  // 2026-09-21：交卡不再走会话，卡**自带 `provider` 块**（地址 + 鉴权放法），连接 id 由 baseUrl 派生。
+  // 但用户刚才把 key 存进去的是**这一条已经存在的连接**，所以卡上要带它的 `vendorKey` —— 不带就会
+  // 另派生一个 id，登记成第二条没有 key 的连接，而用户以为自己已经填过了。
+  // 连接 id 从真实目录读，不从 baseUrl 反推：反推等于在测试里重写一遍生产的派生规则。
+  const declaredVendorKey = await win.evaluate(async (origin) => {
+    const vendors = await window.nomiDesktop?.modelCatalog?.listVendors?.() || []
+    const hit = vendors.find((vendor) => String(vendor.baseUrlHint || '').startsWith(origin))
+    return hit ? hit.key : JSON.stringify(vendors.map((vendor) => [vendor.key, vendor.baseUrlHint])).slice(0, 300)
+  }, provider.origin)
+  check(typeof declaredVendorKey === 'string' && declaredVendorKey.length > 0,
+    'C7 T14 存完 key 之后目录里有这条连接', String(declaredVendorKey))
+  // 2026-09-21：交卡**不再带 `setupId`**。那一格随「先开会话、再交卡」的顺序墙一起删了
+  // （`submit_declaration` 现在是无前置的整份覆盖），留着它会被 `.strict()` 当场按「多了一个字段」
+  // 打回——于是下面那条「打回原因要落到具体字段上」断言的就不再是我们想判的那个字段。
+  // 先正面钉住这条新契约，再走真正的用例。
+  const staleShaped = await mcp.callTool('nomi_model_setup', {
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({ sources: [], assetIngestion: { strategy: 'none' }, models: [] }),
+  })
+  check(staleShaped.isError || resultTextJson(staleShaped)?.ok === false,
+    'C7 T14 旧形状（带 setupId）交卡被拒', parseToolResult(staleShaped).text.slice(0, 160))
+
   // 一张**写坏的**卡：字段级打回，并且带着卡上自己声明的出处（不是我们猜的那条）。
   const rejectedProposal = await mcp.callTool('nomi_model_setup', {
     action: 'submit_declaration',
-    setupId: integrationSessionId,
+    vendorKey: declaredVendorKey,
     declaration: JSON.stringify({
+      provider: { baseUrl: provider.origin, authType: 'bearer', authHeader: 'Authorization' },
       sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images' }],
       assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
       models: [{
@@ -202,8 +226,9 @@ try {
 
   const proposed = await call(mcp, 'nomi_model_setup', {
     action: 'submit_declaration',
-    setupId: integrationSessionId,
+    vendorKey: declaredVendorKey,
     declaration: JSON.stringify({
+      provider: { baseUrl: provider.origin, authType: 'bearer', authHeader: 'Authorization' },
       sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images returns data[0].url' }],
       assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
       models: [{
