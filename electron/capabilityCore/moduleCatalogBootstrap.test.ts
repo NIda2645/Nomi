@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createCatalogModuleRegistry } from "./moduleCatalogBootstrap";
 import type { CatalogState, Mapping, Model } from "../catalog/types";
+import { GPT_IMAGE_2_T2I_CREATE_OP } from "../catalog/kieGptImage2";
 
 function state(over: Partial<CatalogState>): CatalogState {
   return { version: 8, vendors: [], models: [], mappings: [], apiKeysByVendor: {}, ...over } as CatalogState;
@@ -33,6 +34,52 @@ describe("createCatalogModuleRegistry", () => {
     expect(image.parameterSchema.aspectRatio).toMatchObject({ type: "enum", enum: ["1:1", "16:9"] });
     expect(video.mode).toBe("image_to_video");
     expect(video.capabilities).toEqual({ submitIdempotency: false, query: false, reconcile: false, cancel: false });
+  });
+
+  it("declares every parameter the mapping's own wire template references", () => {
+    // 这是「付款卡改 2K，供应商收到 1k」的根因测试：合法参数表此前只从 onboarding.fields +
+    // defaultParams 派生（真实目录里 165 个模型只有 3 个有前者、270 条 mapping 只有 12 条有后者），
+    // 于是绝大多数模型的表是空的，用户改的每个参数都被 compileExecutionContract 当成「不支持」。
+    // 权威来源是那条 mapping 自己的 create body——它引用了 `{{request.params.resolution}}`，
+    // 这个键就发得出去，就是合法的。用的是真实内置目录里的 op，不是合成夹具。
+    const registry = createCatalogModuleRegistry(state({
+      vendors: [{ key: "kie", name: "kie", enabled: true, createdAt: "t", updatedAt: "t" }],
+      models: [model({ vendorKey: "kie", modelKey: "gpt-image-2-text-to-image" })],
+      mappings: [mapping({
+        vendorKey: "kie",
+        modelKey: "gpt-image-2-text-to-image",
+        taskKind: "text_to_image",
+        create: { ...GPT_IMAGE_2_T2I_CREATE_OP },
+      })],
+    }));
+    const resolved = registry.resolve({
+      moduleId: "generation.single-shot", providerId: "kie",
+      modelId: "gpt-image-2-text-to-image", mode: "text_to_image",
+    });
+    expect(resolved.parameterSchema.resolution).toEqual({ type: "any" });
+    expect(resolved.parameterSchema.aspect_ratio).toEqual({ type: "any" });
+    expect(resolved.parameterSchema.model).toEqual({ type: "any" });
+  });
+
+  it("keeps the onboarding field's declared type and options over the bare wire key", () => {
+    // 两个来源同时命中一个键时，**带类型与选项的那一份赢**——否则会把可枚举的控件降级成 any，
+    // 等于把校验拱手让给供应商的 400。
+    const registry = createCatalogModuleRegistry(state({
+      vendors: [{ key: "kie", name: "kie", enabled: true, createdAt: "t", updatedAt: "t" }],
+      models: [model({
+        vendorKey: "kie", modelKey: "gpt-image-2-text-to-image",
+        onboarding: { addedVia: "manual", addedAt: "t", fields: [{ key: "resolution", displayName: "Resolution", type: "select", options: [{ value: "1K", label: "1K" }, { value: "2K", label: "2K" }] }] },
+      })],
+      mappings: [mapping({
+        vendorKey: "kie", modelKey: "gpt-image-2-text-to-image", taskKind: "text_to_image",
+        create: { ...GPT_IMAGE_2_T2I_CREATE_OP },
+      })],
+    }));
+    const resolved = registry.resolve({
+      moduleId: "generation.single-shot", providerId: "kie",
+      modelId: "gpt-image-2-text-to-image", mode: "text_to_image",
+    });
+    expect(resolved.parameterSchema.resolution).toEqual({ type: "enum", enum: ["1K", "2K"] });
   });
 
   it("returns an empty registry for an empty catalog instead of inventing a provider", () => {

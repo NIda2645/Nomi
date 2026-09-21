@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import type { ResolvedModule } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
+import { isGenerationPlanningParameter } from "./generationPlanningParameters";
 
 export const EXECUTION_CONTRACT_SCHEMA_VERSION = 1 as const;
 
@@ -34,7 +35,14 @@ export type PlanCandidate = {
   sealedContractHash?: string;
 };
 
-export type DroppedField = { path: string; reason: "unsupported_parameter" | "invalid_parameter" };
+export type DroppedField = {
+  path: string;
+  /**
+   * `planning_input` = Nomi 自己消费的意图键（`generationPlanningParameters.ts` 那张登记表），
+   * 它本来就不上线缆，记下来是为了诚实，不是「不支持」。真正不认识的键不再落这里——它们报错。
+   */
+  reason: "unsupported_parameter" | "invalid_parameter" | "planning_input";
+};
 
 export type ExecutionContractV1 = {
   schemaVersion: typeof EXECUTION_CONTRACT_SCHEMA_VERSION;
@@ -104,6 +112,8 @@ function parameterMatches(type: string, value: unknown): boolean {
     case "boolean": return typeof value === "boolean";
     case "object": return Boolean(value) && typeof value === "object" && !Array.isArray(value);
     case "array": return Array.isArray(value);
+    // 线缆模板证明得了「这个键发得出去」，证明不了取值域——形状由供应商裁决，我们不替它编。
+    case "any": return true;
     default: return false;
   }
 }
@@ -115,9 +125,19 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
   for (const [key, value] of Object.entries(candidate.parameters)) {
     const field = module.parameterSchema[key];
     if (!field) {
+      // Nomi 自己读的意图键：登记后丢，不上线缆（表与读者由 generationPlanningParameters.test 钉住）。
+      if (isGenerationPlanningParameter(key)) {
+        droppedFields.push({ path: `parameters.${key}`, reason: "planning_input" });
+        continue;
+      }
+      // 其余不认识的键**报错并列出合法键**。静默丢弃是「你批准的是 A、我们发出去的是 B」的制造机：
+      // 用户在付款卡上把清晰度改成 2K，这里一声不响地丢掉，供应商按自己的默认出 1k，节点上仍印 2K。
       droppedFields.push({ path: `parameters.${key}`, reason: "unsupported_parameter" });
-      warnings.push(`参数 ${key} 不被 ${module.providerId}/${module.modelId} 支持，已从合同中移除`);
-      continue;
+      const legal = Object.keys(module.parameterSchema).sort();
+      throw new ContractCompilationError(
+        `参数 parameters.${key} 不在 ${module.providerId}/${module.modelId}（${module.mode}）声明的参数里。`
+        + `该模型这一模式接受：${legal.length ? legal.join("、") : "（这条 mapping 没有声明任何参数）"}`,
+      );
     }
     if (!parameterMatches(field.type, value) || (field.enum && !field.enum.some((option) => Object.is(option, value)))) {
       droppedFields.push({ path: `parameters.${key}`, reason: "invalid_parameter" });

@@ -42,9 +42,11 @@ const blockedRegistry = createModuleRegistry([{
   inputKinds: ["image"],
   outputKinds: ["image"],
   modes: ["text-to-image"],
-  parameterSchema: {},
+  // 这份夹具要测的是「供应商只会提交、不会查询」的恢复能力，不是参数表。它的参数表必须像真目录那样
+  // 声明这条 wire 认得的键（候选带 seed），否则合同编译会先一步以「未声明的参数」拒掉，测的就不是这件事了。
+  parameterSchema: { seed: { type: "any" } },
   assetInputSchema: { references: { kind: "asset" } },
-  providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
+  providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: { seed: { type: "any" } }, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
 }]);
 
 const videoRegistry = createModuleRegistry([{

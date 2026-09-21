@@ -42,13 +42,15 @@ const registry = createModuleRegistry([{
   inputKinds: ["text", "image"],
   outputKinds: ["image", "video"],
   modes: ["text-to-image", "image-to-video"],
+  // 真目录里一条 i2v mapping 的 body 必然引用 duration（镜头长度发得出去），所以夹具照样要声明它；
+  // 空参数表在今天等于「这个模型什么参数都不接受」，合同编译会先一步拒掉带 durationSec 的镜头。
   parameterSchema: {},
   assetInputSchema: { references: { kind: "image", max: 4 } },
   providers: [{
     providerId: "apimart",
     models: [
-      { modelId: "image-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
-      { modelId: "video-model", modes: ["image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+      { modelId: "image-model", modes: ["text-to-image"], parameterSchema: { duration: { type: "any" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+      { modelId: "video-model", modes: ["image-to-video"], parameterSchema: { duration: { type: "any" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
     ],
   }],
 }]);

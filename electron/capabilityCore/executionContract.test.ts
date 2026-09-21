@@ -84,11 +84,40 @@ describe("ExecutionContract compiler", () => {
     expect(changed.references.map((reference) => reference.assetId)).toEqual(["asset-c"]);
   });
 
-  it("explains unsupported fields instead of silently dropping them", () => {
-    const contract = compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry);
-    expect(contract.droppedFields).toEqual([{ path: "parameters.unknownKnob", reason: "unsupported_parameter" }]);
-    expect(contract.warnings[0]).toContain("unknownKnob");
-    expect(contract.parameters).not.toHaveProperty("unknownKnob");
+  it("refuses an undeclared parameter and names the legal ones instead of dropping it", () => {
+    // 静默丢弃 = 「你批准的是 A、我们发出去的是 B」：用户在付款卡上把清晰度改成 2K，合同悄悄丢掉，
+    // 供应商按自己的默认出 1k，节点上仍印 2K。报错并列出合法键才是可执行的答复。
+    expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
+      .toThrow(/parameters\.unknownKnob/);
+    try {
+      compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry);
+    } catch (error) {
+      expect(String((error as Error).message)).toContain("aspectRatio");
+      expect(String((error as Error).message)).toContain("seed");
+    }
+  });
+
+  it("keeps a wire-declared parameter whose value domain only the provider knows", () => {
+    // 线缆模板引用了 `resolution` → 它发得出去 → 合同必须原样带着它（type: "any" 那一档）。
+    const wireRegistry = createModuleRegistry([{
+      ...manifest,
+      parameterSchema: { ...manifest.parameterSchema, resolution: { type: "any" } },
+    }]);
+    const contract = compileExecutionContract(
+      candidate({ parameters: { aspectRatio: "16:9", resolution: "2K" } }),
+      wireRegistry,
+    );
+    expect(contract.parameters.resolution).toBe("2K");
+    expect(contract.droppedFields).toEqual([]);
+  });
+
+  it("registers Nomi's own planning intents instead of calling them unsupported", () => {
+    const contract = compileExecutionContract(
+      candidate({ parameters: { aspectRatio: "16:9", preserveCharacter: true } }),
+      registry,
+    );
+    expect(contract.droppedFields).toEqual([{ path: "parameters.preserveCharacter", reason: "planning_input" }]);
+    expect(contract.parameters).not.toHaveProperty("preserveCharacter");
   });
 
   it("fails before provider work when a required parameter is missing", () => {

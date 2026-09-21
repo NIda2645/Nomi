@@ -370,7 +370,7 @@ describe("MCP semantic generation planning journey", () => {
         operationId,
         patch: {
           mode: "firstlast",
-          parameters: { duration: 8, trajectory: "orbit" },
+          parameters: { duration: 8 },
           references: [
             { assetId: "first", contentHash: "f".repeat(64), version: 1, kind: "image", role: "first_frame" },
             { assetId: "last", contentHash: "l".repeat(64), version: 1, kind: "image", role: "last_frame" },
@@ -382,9 +382,20 @@ describe("MCP semantic generation planning journey", () => {
     const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string; droppedFields: Array<{ path: string }> } };
     expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
     expect(secondPayload.contract.contractHash).not.toBe(firstHash);
-    expect(secondPayload.contract.droppedFields).toEqual([{ path: "parameters.trajectory", reason: "unsupported_parameter" }]);
+    expect(secondPayload.contract.droppedFields).toEqual([]);
     expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
     expect(runTask).not.toHaveBeenCalled();
+
+    // 模型编一个这条 wire 根本没有的旋钮（`trajectory`）时，合同**当场拒绝并报出合法键**，
+    // 不再记一条没有读者的 warning 然后照常放行——静默丢弃正是「你批准的是 A、我们发出去的是 B」。
+    await harness.call(26, "tools/call", {
+      name: "nomi_operation_plan",
+      arguments: { leaseHandle: lease, operationId, patch: { parameters: { duration: 8, trajectory: "orbit" } } },
+    });
+    const refused = await harness.call(27, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
+    const refusedText = (refused.result as { content: Array<{ text: string }> }).content[0]!.text;
+    expect(refusedText).toContain("parameters.trajectory");
+    expect(refusedText).toContain("duration");
   });
 
   it("walks the real GUI catalog profiles through model, mode, reference and parameter switches", async () => {
