@@ -53,11 +53,27 @@ export type DeconstructionResult = {
 /** 存进 GenerationCanvasNode.meta 的键：拆解结果随节点走（图片/运镜提示词随节点走，方案 §3.1）。 */
 export const NODE_DECONSTRUCTION_META_KEY = 'videoDeconstruction'
 
-/** 从节点 meta 读回拆解结果（供收起态角标 / 重开面板复用，绝不重复拆）。 */
-export function readNodeDeconstruction(meta: Record<string, unknown> | undefined): DeconstructionResult | null {
+/**
+ * 从节点 meta 读回拆解结果（供收起态角标 / 重开面板复用，绝不重复拆）。
+ *
+ * 返回类型**故意**是 `StoredDeconstructionResult` 而不是 `DeconstructionResult`：
+ * 2026-09-22 之前落盘的节点里没有 `cutCoverage`，而这里读的是**旧数据**。
+ * 原来这一行是无校验强转（`raw as DeconstructionResult`），于是类型上写着「必填」的字段
+ * 在这条 legacy 路上运行时就是 `undefined`——「编译期拦得住」这句话在这里是假的，
+ * 而那正是这次要消灭的「可选信号」形状：类型说了谎，读侧就会理直气壮地拿它去渲染。
+ *
+ * 现在把「可能没有」写进类型，读侧被迫自己处理缺失。**不在这里补一个默认 coverage**：
+ * 老节点里已经没有任何依据能还原它当时是不是被压过上限，编一个数就是伪造证据。
+ */
+export type StoredDeconstructionResult = Omit<DeconstructionResult, 'cutCoverage'> & {
+  /** 老节点没有这一块。缺失就是缺失——意味着「不知道这张表完不完整」，不等于「完整」。 */
+  cutCoverage?: ShotCutCoverage
+}
+
+export function readNodeDeconstruction(meta: Record<string, unknown> | undefined): StoredDeconstructionResult | null {
   if (!meta) return null
   const raw = meta[NODE_DECONSTRUCTION_META_KEY]
   if (!raw || typeof raw !== 'object') return null
   const candidate = raw as { shots?: unknown }
-  return Array.isArray(candidate.shots) ? (raw as DeconstructionResult) : null
+  return Array.isArray(candidate.shots) ? (raw as StoredDeconstructionResult) : null
 }

@@ -29,8 +29,6 @@ import {
   filterShotCuts,
   formatShotTimestamp,
   pickDefaultSensitivity,
-  shotSheetRows,
-  shotSheetTileCount,
   shotSheetTileStyle,
   type ShotCut,
 } from './shotCutSelection'
@@ -44,6 +42,7 @@ type DetectState =
       durationSeconds: number
       sheetUrl: string | null
       sheetColumns: number
+      sheetRows: number
       coverage: ShotCutCoverage
     }
 
@@ -91,6 +90,8 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
           durationSeconds: Number(result.durationSeconds) || 0,
           sheetUrl: result.sheetUrl ?? null,
           sheetColumns: result.sheetColumns || 8,
+          // 行数原样收下，**不在这里重算**：格子数只有主进程一个 owner（见 shotCutSelection.ts 的说明）。
+          sheetRows: result.sheetRows,
           coverage: result.coverage,
         })
       })
@@ -110,8 +111,7 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
   const allCuts = React.useMemo(() => (state.phase === 'ready' ? state.cuts : []), [state])
   const visible = React.useMemo(() => filterShotCuts(allCuts, threshold), [allCuts, threshold])
   const selected = React.useMemo(() => visible.filter((cut) => !excluded.has(cut.index)), [visible, excluded])
-  // 行数按**联系表的格子数**算，不是按切点数——主进程去重后两者不再相等（用切点数会整体错位）。
-  const rows = state.phase === 'ready' ? shotSheetRows(shotSheetTileCount(allCuts), state.sheetColumns) : 1
+  const rows = state.phase === 'ready' ? state.sheetRows : 1
 
   const durationSeconds = state.phase === 'ready' ? state.durationSeconds : 0
   /** 全集 = 0：这段结构上就是一镜到底（AI 生成的片段基本都是）。不是失败，是换一条路——均匀抽帧。 */
@@ -271,8 +271,8 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
             >
               {visible.map((cut) => {
                 const isOn = !excluded.has(cut.index)
-                // 切格一律用主进程给的 sheetIndex，**不是**数组下标（去重后两者不等，用错即整体错位）。
-                const tile = shotSheetTileStyle(cut.sheetIndex, state.sheetColumns, rows)
+                // 第 i 格 = cuts[i]：联系表是按这份数组的 pts 点名拼的，下标就是格子号（由构造保证）。
+                const tile = shotSheetTileStyle(cut.index, state.sheetColumns, rows)
                 return (
                   <button
                     key={cut.index}

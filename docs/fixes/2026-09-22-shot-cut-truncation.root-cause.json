@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-09-22-shot-cut-truncation",
   "problem_type": "producer-computed completeness signal that no reader is forced to carry, so a downstream consumer silently ships an incomplete result",
-  "symptom": "一条 361 秒的快剪片子拆解后得到一张「看着齐、其实只覆盖到第 55.4 秒」的分镜表：剩下 305.7 秒被并成单独一镜，界面上没有任何提示、没有报错、结果数据里也没有任何「被截断」的标记。用户拿到的是一张自称完整、实际只拆了 15% 的表。",
-  "direct_cause": "detectShotCuts 用 all.slice(0, MAX_CUTS) 按**时间顺序**取前 120 刀（ffmpeg@0.1 在该片上报 447 刀），并把「是否截断」算成 truncated 返回；deconstructVideo 只取了 detected.cuts，把 truncated 整个丢掉。截断又发生在用户灵敏度过滤**之前**，所以调任何阈值都换不回后半段。",
-  "class_root": "「这批结果给全了没有」这份状态没有跨进程的 owner：它是生产者本地的一个布尔，读侧可以整个不读而编译器不吭声。两个读侧因此各走各的——切镜面板读了并提示，拆解引擎没读，于是同一个上限在一条路上是「说清楚的取舍」、在另一条路上是「静默截断」。",
+  "symptom": "一条 361 秒的快剪片子拆解后得到一张「看着齐、其实只覆盖到第 52.7 秒」的分镜表：剩下 308.4 秒被并成单独一镜，界面上没有任何提示、没有报错、结果数据里也没有任何「被截断」的标记。第二症状（第一版修复自己引入、验收在真实素材上抓到）：联系表里 120 刀有 21 刀指向错误的格子，末刀的格子号甚至超出图的容量——每格都有图、只是配错了时间戳。",
+  "direct_cause": "① detectShotCuts 用 all.slice(0, MAX_CUTS) 按**时间顺序**取前 120 刀（ffmpeg@0.1 在该片上对**未去重**的 447 刀切），并把「是否截断」算成 truncated 返回；deconstructVideo 只取了 detected.cuts，把 truncated 整个丢掉。截断又发生在用户灵敏度过滤**之前**，所以调任何阈值都换不回后半段。② 第一版改用「按分数抬阈值」后，让联系表用同一个阈值 `gt(scene,T)` 重筛来复现同一批帧——但 JS 手里只有 lavfi.scene_score **打印出来的 6 位小数**，ffmpeg 的 gt() 比的是内部全精度 double，分数恰好等于阈值的那一帧两边判断相反（实测 ffmpeg 多吐 1 帧，129 vs JS 以为的 128）。③ 同时把联系表格子数变成双真相源：主进程按 emittedCount 算行数、渲染层按 max(sheetIndex)+1 又算一遍。",
+  "class_root": "同一个量在两个系统里各有一份判据，边界上不一致而且都不报错。① 「这批结果给全了没有」是生产者本地的一个可选布尔，读侧可以整个不读而编译器不吭声；② 「哪些帧入选」JS 按打印值判、ffmpeg 按全精度判；③ 「联系表几行」主进程算一遍、渲染层又算一遍。三者是同一个形状：**没有单一 owner 的状态会被各方各自重新计算，分叉处安静地错**。",
   "affected_population": [
     "任何用「视频拆解」拆切点数超过 120 的素材的用户：MV、广告、快剪预告、电影快切开场",
     "同一批素材走「按镜头拆」预览面板的用户（该面板有提示，但它的灵敏度滑杆同样够不到被砍掉的后半段）",
@@ -47,8 +47,10 @@
   ],
   "invariants": [
     "采用的切点少于检测到的切点时，结果必须同时带上：检测到多少、采用多少、实际生效阈值、覆盖到第几秒、全片多长、是否因上限而不完整",
-    "压上限只许按分数抬阈值，不许按时间截断：留下的那批必须恰好等于 score > appliedThreshold，从而与 ffmpeg 的 gt(scene,T) 严格同义，全片覆盖不塌",
-    "联系表的格子号由主进程算准后随切点带下来，任何一侧都不得用数组下标重新编号"
+    "压上限只许按分数抬阈值，不许按时间截断：全片覆盖不塌",
+    "联系表第 i 格必须是第 i 刀那一帧，**由构造保证**：第二趟 ffmpeg 按整数 pts 点名选帧，不得按分数重筛（浮点打印值与内部精度必然在边界上分歧）",
+    "联系表的行数/格子数只许有一个 owner（主进程 shotSheetRowsFor），随结果下发，渲染层不得自行推算",
+    "并列分数导致名额用不满时要有下限：按时间均匀补齐，不得塌回「一镜到底」"
   ],
   "doors": [
     {
@@ -389,6 +391,11 @@
     {
       "kind": "write",
       "path": "electron/video/detectShotCuts.ts",
+      "symbol": "pickEvenlyByTime"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
       "symbol": "buildDetectFilter"
     },
     {
@@ -409,7 +416,7 @@
     {
       "kind": "write",
       "path": "electron/video/detectShotCuts.ts",
-      "symbol": "assignSheetIndexes"
+      "symbol": "shotSheetRowsFor"
     },
     {
       "kind": "write",
@@ -529,6 +536,11 @@
     {
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+      "symbol": "StoredDeconstructionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
       "symbol": "NODE_DECONSTRUCTION_META_KEY"
     },
     {
@@ -540,6 +552,11 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
       "symbol": "DeconstructionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "symbol": "StoredDeconstructionResult"
     },
     {
       "kind": "read",
@@ -609,16 +626,6 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "shotSheetRows"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
-      "symbol": "shotSheetTileCount"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
       "symbol": "evenFrameCount"
     },
     {
@@ -635,6 +642,26 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
       "symbol": "evenFrameSeconds"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
+      "symbol": "deconstructToShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "ensureDeconstructionShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "retryShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "deconstructToShotTable"
     },
     {
       "kind": "write",
@@ -659,7 +686,7 @@
   ],
   "door_reduction": {
     "before": 15,
-    "after": 121,
+    "after": 126,
     "why_not": "门数没减反增（detectShotCuts 单文件 15→21，跨全部改动文件合计 121），因为这次**把隐式耦合变成了显式契约**：新增的 RawShotCut / dedupeShotCuts / capShotCutsByScore / assignSheetIndexes / SHOT_CUT_DEDUPE_FRAMES / shotSheetTileCount 是原来藏在函数体里的无名逻辑，拆出来才测得动、才钉得住；ShotCutCoverage 与 shotCutCoverageSchema 则是这次新立的 owner，它们带来的门正是「这份状态终于有人管了」的形状。真正该数的那扇门只有一扇且已收口：`coverage` 的**写入口仍然只有 detectShotCuts 一处**，而读侧不再能忽略它——DeconstructVideoResult.cutCoverage 与 DeconstructionResult.cutCoverage 都是必填，漏读在编译期就过不去。门表里其余条目是同一份状态的类型/常量/纯函数在各自文件内的读点，不构成第二个写入口。"
   },
   "generality_proof": "把「给全了没有」从生产者本地的布尔提升为 shared 层的 ShotCutCoverage（类型 + zod 同一份，electron/shared/canvas/shotTable.ts），并在两个下游结果类型里做成**必填字段**。于是：① 任何新的 detectShotCuts 读侧要构造结果，编译器都会要求它把 coverage 传下去；② 任何要落盘的分镜表都经过同一个 zod schema，半块 coverage 直接 parse 失败；③ 压上限这件事本身被收进一个纯函数 capShotCutsByScore，它的后置条件（kept === cuts.filter(score > appliedThreshold)）由单测钉死，任何改回「按时间取前 N」的改动都会红。这三条覆盖了本次扫到的全部同类入口。",
@@ -667,17 +694,22 @@
     {
       "path": "electron/shared/canvas/shotTable.ts",
       "symbol": "shotCutCoverageSchema",
-      "responsibility": "「这次切点检测给全了没有」这份状态的唯一 owner：类型与持久化 schema 同一份，三个跨进程读侧（切镜面板 / 拆解引擎 / 分镜表快照）共用；半块 coverage 在持久化边界上 parse 失败，不允许读侧自己补默认值"
+      "responsibility": "「这次切点检测给全了没有」这份状态的唯一 owner：类型与持久化 schema 同一份，三个跨进程读侧共用；半块 coverage 在持久化边界上 parse 失败"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "buildSheetFilter",
+      "responsibility": "联系表选帧的唯一出口：按整数 pts 点名，让 JS 的清单成为唯一真相源，ffmpeg 只照单抓帧。杜绝「两个系统各判一次、边界上分歧」这一类"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "shotSheetRowsFor",
+      "responsibility": "联系表行数的唯一算式：同一个数既喂 tile=CxR 也随结果下发给渲染层"
     },
     {
       "path": "electron/video/detectShotCuts.ts",
       "symbol": "capShotCutsByScore",
-      "responsibility": "「超上限怎么压」的唯一实现：按分数抬阈值并返回实际生效阈值，保证 kept 恰等于 score > appliedThreshold，从而与 ffmpeg gt(scene,T) 同义、全片覆盖不塌、联系表仍能一趟拼出"
-    },
-    {
-      "path": "electron/video/detectShotCuts.ts",
-      "symbol": "assignSheetIndexes",
-      "responsibility": "联系表格子号的唯一产出口：把「ffmpeg 铺了几格」与「我们留了几刀」之间的差显式化，杜绝任何一侧用数组下标重新编号"
+      "responsibility": "「超上限怎么压」的唯一实现：按分数抬阈值保住全片覆盖；并列导致名额不满时按时间均匀补齐，保证不塌回一镜到底"
     }
   ],
   "same_class_entry_points": [
@@ -739,11 +771,14 @@
   },
   "regression_tests": [
     "electron/video/shotCutCoverage.test.ts",
+    "electron/video/detectShotCuts.test.ts",
+    "electron/video/shotCutSheetAlignment.realMedia.test.ts",
     "electron/shared/canvas/shotTable.test.ts",
     "src/workbench/generationCanvas/nodes/shotCutSelection.test.ts"
   ],
   "class_regression_tests": [
     "electron/video/shotCutCoverage.test.ts",
+    "electron/video/shotCutSheetAlignment.realMedia.test.ts",
     "electron/shared/canvas/shotTable.test.ts"
   ],
   "legacy_paths": {
@@ -752,9 +787,10 @@
       "electron/video/detectShotCuts.ts",
       "src/desktop/bridgeMedia.ts",
       "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
       "src/i18n/locales/generationCommon.ts"
     ],
-    "rationale": "旧的 truncated 布尔连同 all.slice(0, MAX_CUTS) 同 commit 删除，没有留并行版：DetectShotCutsResult 上不再有 truncated 字段，桥类型、面板状态与 i18n 文案（旧文案「只取了前 N 个」正是在准确描述旧 bug）一并改掉。"
+    "rationale": "旧的 truncated 布尔连同 all.slice(0, MAX_CUTS) 同 commit 删除；第一版引入的 sheetIndex / assignSheetIndexes / 渲染层 shotSheetRows / shotSheetTileCount 也在返工同 commit 删除，没有留并行版——联系表格子号现在就是数组下标，行数只有主进程一个算式。i18n 旧文案「只取了前 N 个」同时改掉（它正是在准确描述旧 bug）。"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -763,11 +799,12 @@
   },
   "migration": "2026-09-22 之前落盘的分镜表没有 source.cutCoverage，schema 里该字段为 optional，老项目照常读回且不被改写——不猜一个 coverage 填进去（老表里已经没有任何依据能还原它当时是不是被截断了，编一个数就是在伪造证据）。重新拆解一次即得到真实的 coverage。",
   "residual_risks": [
-    "真实素材那一格仍是空的：本次单测用的是**按实测分布造**的夹具（形状取自三条真实素材的 ffmpeg 实测），不是真素材本身。已按 check:real-media-fixture 的既有约定登记为债 shot-cut-coverage-real-media（到期 2026-10-22），需要用户提供一条 ≥120 刀的快剪素材。",
-    "用户可见那一层只改了「按镜头拆」面板里那句已存在的提示（旧文案在准确描述旧 bug，不改就会留下一句谎话）。**分镜表节点上还没有任何「这张表被并过刀」的提示**——数据字段已备好，UI 按仓库规矩要先看真实界面再出样张，本次只出选项不实现。",
-    "联系表格子号与 ffmpeg 实际铺格的对齐只由单测证明，没有在真机上肉眼核对过一张被压过阈值的联系表（需要真实快剪素材，同上）。",
-    "默认阈值 0.1 是否该调**没有改**：本次只给数据与建议（见 docs/plan/2026-09-22-shot-cut-truncation.md），改它属于产品行为改动，要用户拍板。",
-    "渲染层 filterShotCuts 仍保留自己那套 0.2 秒余震合并，与引擎新加的 2 帧去重形成粗/细两层。实测 0.2 秒会吃掉真实快剪（F1 素材召回 0.846→0.808），本质上是 Kdenlive 那个「最小间隔」控制而不是去重；建议收成一个用户可见的「最短镜长」控件，但那是产品取舍，本次未动。"
+    "真实素材那一格已经补上（electron/video/shotCutSheetAlignment.realMedia.test.ts，逐格比对 0/120 错；退回按分数重筛即 90/120 错）。但素材是**从登记真素材派生**的快剪片，不是用户自己的快剪成片——真实 MV/预告片上的表现仍未验。",
+    "用户可见那一层只改了「按镜头拆」面板里那句已存在的提示。**分镜表节点上还没有任何「这张表被并过刀」的提示**——数据字段已备好，UI 按仓库规矩要先看真实界面再出样张，本次只出选项不实现。",
+    "返工后的 zh/en 文案**没有重新跑真截图走查**（第一版验收跑过并通过，本次只改了数据来源不改文案）。",
+    "默认阈值 0.1 是否该调**没有改**：本次只给数据与建议，改它属于产品行为改动，要用户拍板。",
+    "渲染层 filterShotCuts 仍保留自己那套 0.2 秒余震合并，与引擎 2 帧去重形成粗/细两层；它实质是 Kdenlive 那个「最小间隔」控制，建议收成用户可见控件，本次未动。",
+    "按 pts 点名的 select 表达式长度由 MAX_CUTS 封顶（实测 1994 字节、ffmpeg 8.0.1 接受、2.5s）。若将来抬高 MAX_CUTS，需要重新验证表达式长度上限并考虑分批。"
   ],
   "invariant_owner_layer": {
     "layer": "electron/shared/canvas/shotTable.ts",

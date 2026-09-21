@@ -6,17 +6,16 @@
  * 所以过滤后必须**保住原始下标**（`index`）——切格要靠它，用错就会张冠李戴。
  */
 
-/**
- * `sheetIndex` 由主进程算好带下来（`electron/video/detectShotCuts.ts` 的 `assignSheetIndexes`）。
- *
- * 为什么不再用数组下标（2026-09-22）：主进程会在 JS 侧去掉「同一刀连报两帧」，
- * 而联系表是 ffmpeg 自己按 `gt(scene,T)` 筛帧铺的、**没去过重**。两边一旦不等长，
- * 拿下标当格子号就会从第一个重复帧起整体错位——每格都有图，只是配错了时间戳，看不出来。
- */
-export type ShotCut = { seconds: number; score: number; sheetIndex: number }
+export type ShotCut = { seconds: number; score: number }
 
 export type ShotCutCandidate = ShotCut & {
-  /** 在**未过滤**全集里的下标。只用于 React key 与选择集，**切格一律用 `sheetIndex`**。 */
+  /**
+   * 在主进程给的那份切点数组里的下标 = 它在联系表里的格子号。
+   *
+   * 这条等式**由构造保证**（2026-09-22 返工后）：联系表那一趟 ffmpeg 是按这份数组的 `pts`
+   * 点名选帧拼出来的，第 i 格就是 `cuts[i]`，不存在「ffmpeg 自己多筛出一帧」这回事。
+   * 所以过滤后必须**保住原始下标**，重新编号就会张冠李戴。
+   */
   index: number
 }
 
@@ -113,21 +112,11 @@ export function shotSheetTileStyle(
   }
 }
 
-/**
- * 联系表行数。
- *
- * ⚠️ 传进来的必须是**联系表里的格子总数**，不是切点数——主进程去重后两者不再相等
- * （`emittedCount` vs `cuts.length`）。格子数从最大的 `sheetIndex` 反推最稳：
- * 它直接来自主进程给的格子号，不依赖任何一侧再数一遍。
- */
-export function shotSheetRows(totalTiles: number, cols: number): number {
-  return Math.max(1, Math.ceil(totalTiles / Math.max(1, cols)))
-}
-
-/** 联系表一共几格：最大格子号 + 1。切格的除数只认这个数。 */
-export function shotSheetTileCount(cuts: readonly ShotCut[]): number {
-  return cuts.reduce((max, cut) => (cut.sheetIndex > max ? cut.sheetIndex : max), -1) + 1
-}
+// 联系表行数**不在这一层算**（2026-09-22 第二条阻断）：它由主进程随结果下发（`sheetRows`）。
+// 曾经这里有一个 `shotSheetRows(总数, 列数)`，主进程自己也算一遍——两份算式只要输入口径差一点
+// （末帧恰好是被去重并掉的那一帧就会差一行），`background-size` 的高度就按错的行数算，
+// 整张联系表**竖向压扁**、所有格子一起错位。实测 0.4%–2% 的片长会中，且不压上限的普通片子也会中。
+// 一份状态只许有一个 owner：那个 owner 是生产它的主进程，这里只读。
 
 /** 秒 → `m:ss` / 超过一小时 `h:mm:ss`。 */
 export function formatShotTimestamp(seconds: number): string {

@@ -5,12 +5,16 @@
 // 这里是对**已有视频**做画面级切分。
 //
 // 两趟 ffmpeg，就两趟（不随切点数量增长）：
-//   ① 检测：select='gt(scene,LOW)',metadata=print → 吐出每个切点的 pts_time **和 scene_score**。
-//   ② 缩略图：同一个 select 条件 + tile → 把这些帧拼成**一张**联系表，切点与格子 1:1 对齐。
+//   ① 检测：select='gt(scene,LOW)',metadata=print → 吐出每个切点的 **pts（整数）**、pts_time 和 scene_score。
+//   ② 缩略图：select='eq(pts\,A)+eq(pts\,B)+…' + tile → 按①定下来的那份清单**点名选帧**拼成一张联系表。
 //
 // 关键设计：检测固定用**低阈值**跑一次拿到全集（带分数），UI 的灵敏度滑杆在**前端**按分数过滤。
-// 这样滑杆瞬时响应、且只花一次解码——不必每动一下滑杆重跑 ffmpeg。联系表也在同一阈值下生成，
-// 所以第 i 个切点恒对应第 i 个格子，前端过滤只是「少显示几格」，索引不会错位。
+// 这样滑杆瞬时响应、且只花一次解码——不必每动一下滑杆重跑 ffmpeg。
+//
+// 「第 i 格 = 第 i 刀」怎么保证（2026-09-22 返工）：靠**第二趟按 pts 点名**，不靠「两边各筛一次应该筛出同一批」。
+// 原来第二趟也写 `gt(scene,T)`，前提是 JS 的 T 和 ffmpeg 的 scene 会做出同样的判断——可 JS 只看得到
+// 打印出来的 6 位小数，ffmpeg 比的是内部 double，分数恰好等于 T 的那一帧两边判断相反。
+// 真实素材上 ffmpeg 因此多吐一帧，120 刀里 21 刀指错格。pts 是整数，点名选帧没有这种缝。
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +31,7 @@ import type { ShotCutCoverage } from "../shared/canvas/shotTable";
 
 /** 检测阈值下限：拿全集用它，前端滑杆再往上筛。太低会把运镜/闪光当切点，0.1 是实测的合理地板。 */
 export const SHOT_CUT_DETECT_THRESHOLD = 0.1;
-/** 联系表列数（行数按切点数推）。 */
+/** 联系表列数（行数由主进程按采用的刀数算好，随结果下发——渲染层不再自己推）。 */
 export const SHOT_SHEET_COLUMNS = 8;
 /** 每格高度（px）。宽度由源视频比例决定，前端按 sheet 实际宽 / 列数算。 */
 export const SHOT_SHEET_TILE_HEIGHT = 90;
@@ -40,8 +44,6 @@ export const SHOT_SHEET_TILE_HEIGHT = 90;
  * 灵敏度过滤**之前**，用户把滑杆拉到任何位置都换不回后半段。
  *
  * 现在按**分数**压（`capShotCutsByScore`）：留下最强的那些刀，全片覆盖不变，表短了但片子还是整条。
- * 选它而不是「按分数 Top-N」还有一个硬理由——只有「抬阈值」这一种压法能被 `gt(scene,T)` 原样复现，
- * 联系表才仍旧是一趟 ffmpeg 就能拼出、且第 i 格恒对得上第 i 刀（见下面的 sheetIndex）。
  */
 export const MAX_CUTS = 120;
 /**
@@ -53,20 +55,25 @@ export const MAX_CUTS = 120;
  */
 export const SHOT_CUT_DEDUPE_FRAMES = 2;
 
+/**
+ * 一个切点。
+ *
+ * **第 i 刀恒是联系表的第 i 格**——这条不再靠「两边算出来应该相等」，而是**由构造保证**：
+ * 联系表那一趟 ffmpeg 不再自己按分数重筛一遍，而是按这份清单的 `pts` **精确点名选帧**
+ * （`buildSheetFilter`）。JS 这一份就是唯一真相源，ffmpeg 只负责照单抓帧。
+ *
+ * 2026-09-22 第一版栽在这上面：当时联系表用 `gt(scene,appliedThreshold)` 重筛，以为能原样复现。
+ * 实际上 JS 手里只有 `lavfi.scene_score` **打印出来的 6 位小数**，而 ffmpeg 的 `gt()` 比的是
+ * 内部全精度 double。分数恰好等于阈值的那一帧，JS 按 `>` 排除、ffmpeg 按全精度收下——
+ * 真实素材上实测 ffmpeg 多吐 1 帧，120 刀里 21 刀指错格、末刀的格子号甚至超出图的容量。
+ * 每格都有图、只是配错了时间戳，正是「错得很安静」。阈值必然取自某一帧的打印值，
+ * 所以这不是小概率：约一半压上限的片子都会中。
+ */
 export type ShotCut = {
   /** 切点在源视频里的秒数。 */
   seconds: number;
   /** 该切点的画面变化强度（0-1）。前端灵敏度滑杆按它过滤。 */
   score: number;
-  /**
-   * 这一刀在**联系表**里占第几格。
-   *
-   * 为什么不能拿数组下标当格子号：联系表是 ffmpeg 用 `gt(scene,appliedThreshold)` 一趟拼的，
-   * 它按**自己**筛出来的帧顺序铺格；而我们在 JS 侧还会去掉「同一刀的第二帧」。
-   * 两边一旦不等长，「第 i 格 = 第 i 刀」就从第一个重复帧起整体错位——而且错得很安静
-   * （每格都有图，只是配错了时间戳）。所以格子号由主进程算准了带下来，别在任何地方重新编号。
-   */
-  sheetIndex: number;
 };
 
 export type DetectShotCutsPayload = { videoUrl: string; projectId: string };
@@ -77,6 +84,13 @@ export type DetectShotCutsResult = {
   /** 联系表图（nomi-local URL）；切点为 0 时为 null。落项目缓存区，**不进素材库**。 */
   sheetUrl: string | null;
   sheetColumns: number;
+  /**
+   * 联系表有几行。**由主进程算好下发，渲染层不许自己推**（2026-09-22 第二条阻断）：
+   * 两侧各算一份时，只要末帧是被去重并掉的那一帧，两边就差一行——而 `background-size` 的高度
+   * 按行数算，少一行就把整张联系表**竖向压扁**，所有格子一起错位。实测 0.4%–2% 的片长会中，
+   * 且**不压上限的普通片子也会中**。格子数/行数只许有一个 owner，就是这里。
+   */
+  sheetRows: number;
   sheetTileHeight: number;
   /** 这次给全了没有。**必填**：少给了就必须说，不能假装「就这么多」。 */
   coverage: ShotCutCoverage;
@@ -103,18 +117,30 @@ function runFfmpegCapture(ffmpegPath: string, args: string[]): Promise<{ code: n
   });
 }
 
-/** 解析出来的原始一行（还没定格子号——格子号要等阈值定下来才算得出）。 */
-export type RawShotCut = { seconds: number; score: number };
+/**
+ * 解析出来的原始一行。
+ *
+ * `pts` 是这一帧的**整数**时间戳——联系表靠它点名选帧。为什么必须是 pts 而不是 `pts_time` 或分数：
+ * 它是整数，两边比较不存在精度差；秒数是打印出来的小数，分数更是只有 6 位——拿它们跟 ffmpeg
+ * 对齐就是在赌舍入（第一版正是这么栽的，见 `ShotCut` 的注释）。
+ */
+export type RawShotCut = { seconds: number; score: number; pts: number };
 
-/** 解析 metadata=print 的输出：`pts_time:<秒>` 后跟一行 `lavfi.scene_score=<分>`。纯函数，可单测。 */
+/**
+ * 解析 metadata=print 的输出：`frame:N pts:<整数> pts_time:<秒>` 后跟一行 `lavfi.scene_score=<分>`。
+ * 纯函数，可单测。
+ *
+ * ⚠️ `frame:N` 是**选出来之后**的序号（0,1,2…），不是源帧号——别拿它当帧标识。真正能标识一帧的是 `pts`。
+ */
 export function parseShotCutOutput(stdout: string): RawShotCut[] {
   const cuts: RawShotCut[] = [];
-  const re = /pts_time:([\d.]+)[\s\S]*?lavfi\.scene_score=([\d.]+)/g;
+  const re = /pts:(\d+)\s+pts_time:([\d.]+)[\s\S]*?lavfi\.scene_score=([\d.]+)/g;
   let match = re.exec(stdout);
   while (match) {
-    const seconds = Number.parseFloat(match[1] ?? "");
-    const score = Number.parseFloat(match[2] ?? "");
-    if (Number.isFinite(seconds) && Number.isFinite(score)) cuts.push({ seconds, score });
+    const pts = Number.parseInt(match[1] ?? "", 10);
+    const seconds = Number.parseFloat(match[2] ?? "");
+    const score = Number.parseFloat(match[3] ?? "");
+    if (Number.isFinite(pts) && Number.isFinite(seconds) && Number.isFinite(score)) cuts.push({ seconds, score, pts });
     match = re.exec(stdout);
   }
   return cuts;
@@ -146,17 +172,48 @@ export function dedupeShotCuts(cuts: readonly RawShotCut[], fps: number, frames 
 }
 
 /**
+ * 联系表有几行。**这是这份状态唯一的算式**（2026-09-22 阻断 B）。
+ *
+ * 它同时喂给 `tile=CxR` 和随结果下发给渲染层——一个数、一个来源。
+ * 曾经渲染层自己也有一份（`shotSheetRows(格子数, 列数)`），两份算式的输入口径只要差一点
+ * （末帧恰好是被去重并掉的那一帧就差一行），`background-size` 的高度就按错的行数算，
+ * 整张联系表**竖向压扁**、所有格子一起错位。实测 0.4%–2% 的片长会中，普通片子也会中。
+ */
+export function shotSheetRowsFor(cutCount: number, columns: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, cutCount) / Math.max(1, columns)));
+}
+
+/**
+ * 从并列的那一档里按**时间**均匀挑 `need` 条。
+ *
+ * 为什么需要它：阈值取第 cap+1 名的分数，若那一档有大量并列，「严格大于阈值」会把整组一起丢掉。
+ * 极端情形（200 刀分数全同）会得到 kept=0 → `buildShotBoundaries` 给出**一个整片长的镜头**，
+ * 等于换条路走回这次要修的那个症状。所以并列时不能只会「宁少勿超」，要有个讲理的下限。
+ *
+ * 挑的判据是**时间均匀**而不是再比分数（同分之间没有可比性），这样补进来的刀仍然铺满全片。
+ */
+export function pickEvenlyByTime(cuts: readonly RawShotCut[], need: number): RawShotCut[] {
+  if (need <= 0) return [];
+  if (need >= cuts.length) return [...cuts];
+  const picked: RawShotCut[] = [];
+  for (let i = 0; i < need; i += 1) {
+    picked.push(cuts[Math.floor((i * cuts.length) / need)]);
+  }
+  return picked;
+}
+
+/**
  * 压到上限——**按分数压，不按时间砍**。
  *
- * 返回「实际生效的阈值」而不是只返回留下来的那些刀，因为这个数有三个下游都要用：
- * ① 联系表必须用**同一个**阈值重放（`gt(scene,T)` 能原样复现这批帧，Top-N 不能）；
- * ② 用户要看得见「我被自动提到了 0.21」，才知道该往哪调；
- * ③ 它是「这张表为什么只有 120 行」这句话的唯一依据。
+ * 返回「实际生效的阈值」而不是只返回留下来的那些刀，因为这个数有两个下游要用：
+ * ① 用户要看得见「我被自动提到了 0.21」，才知道该往哪调；
+ * ② 它是「这张表为什么只有 120 行」这句话的唯一依据。
  *
- * 阈值取**被丢掉的那些刀里分数最高的那个**，于是「留下的」恰好等于 `score > appliedThreshold`，
- * 和 ffmpeg 的 `gt(scene, appliedThreshold)` 严格同义（gt 是**严格**大于，这里必须对齐，差一个
- * 等号就会让联系表比切点多出一格）。并列分数整组一起丢，所以结果可能略少于 cap——宁可少给一刀，
- * 也不能让联系表和切点对不上。
+ * **阈值不再拿去跟 ffmpeg 对齐**（2026-09-22 第二版）：联系表改成按 `pts` 点名选帧，
+ * 谁入选完全由这里说了算，ffmpeg 不再自己筛一遍。所以这个阈值只是一条**对内**的选取判据，
+ * 它是打印值还是全精度值都不再影响任何跨系统的一致性。
+ *
+ * 并列处理：先取「严格大于阈值」的那些；若因为并列而不够 cap，再从并列那一档里按时间均匀补齐。
  */
 export function capShotCutsByScore(
   cuts: readonly RawShotCut[],
@@ -164,32 +221,15 @@ export function capShotCutsByScore(
   detectThreshold: number,
 ): { kept: RawShotCut[]; appliedThreshold: number; capped: boolean } {
   if (cuts.length <= cap) return { kept: [...cuts], appliedThreshold: detectThreshold, capped: false };
-  // 分数从高到低排，取第 cap+1 名当阈值：严格大于它的顶多 cap 条（前 cap 名里与它并列的那些
-  // 会一起被排除），而再低一档就必然超上限——所以它就是「最小的可行阈值」，一次排序拿到，
-  // 不必逐个候选阈值回扫一遍。
+  // 分数从高到低排，取第 cap+1 名当阈值：严格大于它的顶多 cap 条，而再低一档就必然超上限。
   const appliedThreshold = cuts.map((cut) => cut.score).sort((a, b) => b - a)[cap];
-  return { kept: cuts.filter((cut) => cut.score > appliedThreshold), appliedThreshold, capped: true };
-}
-
-/**
- * 给留下来的每一刀标上它在联系表里的格子号。
- *
- * 联系表是 ffmpeg 按 `gt(scene, appliedThreshold)` 自己筛的帧顺序铺的，**没有去过重**；
- * 我们手上的 `kept` 是去过重的子集。两边按时间顺序对齐一趟即可。
- * 返回值里的 `emittedCount` 是联系表真正有几格——行数必须按它算，不是按 `kept.length`。
- */
-export function assignSheetIndexes(
-  kept: readonly RawShotCut[],
-  emitted: readonly RawShotCut[],
-): { cuts: ShotCut[]; emittedCount: number } {
-  const cuts: ShotCut[] = [];
-  let cursor = 0;
-  for (const cut of kept) {
-    while (cursor < emitted.length && emitted[cursor].seconds < cut.seconds) cursor += 1;
-    cuts.push({ seconds: cut.seconds, score: cut.score, sheetIndex: Math.min(cursor, Math.max(0, emitted.length - 1)) });
-    cursor += 1;
-  }
-  return { cuts, emittedCount: emitted.length };
+  const strong = cuts.filter((cut) => cut.score > appliedThreshold);
+  if (strong.length >= cap) return { kept: strong, appliedThreshold, capped: true };
+  // 并列补齐：名额没用满的那部分，从恰好等于阈值的那一档里按时间均匀取。
+  const tied = cuts.filter((cut) => cut.score === appliedThreshold);
+  const filled = new Set(pickEvenlyByTime(tied, cap - strong.length));
+  const kept = cuts.filter((cut) => cut.score > appliedThreshold || filled.has(cut));
+  return { kept, appliedThreshold, capped: true };
 }
 
 /** 检测用的 filtergraph（纯函数，与联系表共用同一个 select 条件——两者必须同阈值，否则格子对不上切点）。 */
@@ -197,9 +237,24 @@ export function buildDetectFilter(threshold: number): string {
   return `select='gt(scene,${threshold})',metadata=print:file=-`;
 }
 
-/** 联系表用的 filtergraph。 */
-export function buildSheetFilter(threshold: number, columns: number, rows: number, tileHeight: number): string {
-  return `select='gt(scene,${threshold})',scale=-2:${tileHeight},tile=${columns}x${rows}`;
+/**
+ * 联系表用的 filtergraph：**按 pts 点名选帧**，不再按分数重筛一遍。
+ *
+ * 这是「第 i 格 = 第 i 刀」从「两边应该算出一样的结果」变成「由构造保证」的那一刀。
+ * 第一版用 `select='gt(scene,T)'` 让 ffmpeg 自己再筛一次，前提是「JS 的 T 和 ffmpeg 的 scene
+ * 会做出同样的判断」——而 JS 只看得到 6 位小数的打印值，ffmpeg 比的是内部 double，
+ * 分数恰好等于 T 的那一帧两边判断相反。真实素材上因此 120 刀里错了 21 刀。
+ *
+ * 现在 ffmpeg 只负责照单抓帧：`select='eq(pts\,A)+eq(pts\,B)+…'`。pts 是**整数**，没有精度可言。
+ * 于是 tile 铺出来的第 i 格必然就是清单里第 i 条，不存在「多吐一帧」这种事。
+ *
+ * 表达式长度：一条 `eq(pts\,NNNNNNN)+` 约 16 字节，刀数上限 `MAX_CUTS`=120 ⇒ 最长约 2KB，
+ * 实测 ffmpeg 8.0.1 接受（1994 字节那条跑通、耗时 2.5s）。**长度由 MAX_CUTS 封顶**，不会随片长增长。
+ * 逗号必须转义成 `\,`，否则会被 filtergraph 当成 filter 分隔符。
+ */
+export function buildSheetFilter(ptsList: readonly number[], columns: number, rows: number, tileHeight: number): string {
+  const picks = ptsList.map((pts) => `eq(pts\\,${pts})`).join("+");
+  return `select='${picks}',scale=-2:${tileHeight},tile=${columns}x${rows}`;
 }
 
 export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<DetectShotCutsResult> {
@@ -231,10 +286,9 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
     // 先去掉「同一刀两帧」，再压上限——顺序不能反：先压上限会让重复的刀白占名额。
     const deduped = dedupeShotCuts(parsed, typeof meta.fps === "number" ? meta.fps : 0);
     const { kept, appliedThreshold, capped } = capShotCutsByScore(deduped, MAX_CUTS, SHOT_CUT_DETECT_THRESHOLD);
-    // 联系表那一趟 ffmpeg 会按 `gt(scene, appliedThreshold)` 自己筛帧——**没去重**，所以格子号要对齐它。
-    // （没压过时 appliedThreshold 就是检测下限，这一筛是恒等的——全集本来就都 > 它。）
-    const emitted = parsed.filter((cut) => cut.score > appliedThreshold);
-    const { cuts, emittedCount } = assignSheetIndexes(kept, emitted);
+    const cuts: ShotCut[] = kept.map((cut) => ({ seconds: cut.seconds, score: cut.score }));
+    // 行数在这里算一次，既喂给 tile 也随结果下发——渲染层不许再推一遍（B 那条阻断）。
+    const sheetRows = shotSheetRowsFor(cuts.length, SHOT_SHEET_COLUMNS);
     const coverage: ShotCutCoverage = {
       detectedCuts: deduped.length,
       keptCuts: cuts.length,
@@ -251,18 +305,17 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
     if (!cuts.length) {
       return {
         cuts: [], durationSeconds, sheetUrl: null,
-        sheetColumns: SHOT_SHEET_COLUMNS, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
+        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows: 1, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
       };
     }
 
-    // ② 联系表：用**实际生效的那个阈值**重放同一个 select 条件，故第 i 格恒是第 sheetIndex 刀。
-    const rows = Math.ceil(emittedCount / SHOT_SHEET_COLUMNS);
+    // ② 联系表：按**这份清单的 pts** 点名选帧，故第 i 格恒是 cuts[i]——由构造保证，不靠两边算得一样。
     const outPath = path.join(os.tmpdir(), `nomi-shotsheet-${crypto.randomUUID()}.jpg`);
     try {
       const sheet = await runFfmpegCapture(ffmpegPath, [
         "-y", "-hide_banner", "-nostats",
         "-i", filePath,
-        "-vf", buildSheetFilter(appliedThreshold, SHOT_SHEET_COLUMNS, rows, SHOT_SHEET_TILE_HEIGHT),
+        "-vf", buildSheetFilter(kept.map((cut) => cut.pts), SHOT_SHEET_COLUMNS, sheetRows, SHOT_SHEET_TILE_HEIGHT),
         "-frames:v", "1", "-q:v", "4", "-an",
         outPath,
       ]);
@@ -270,14 +323,14 @@ export async function detectShotCuts(payload: DetectShotCutsPayload): Promise<De
         // 缩略图挂了不该拖垮整件事：切点数据仍然有用（用户照样能按时间点选）。
         return {
           cuts, durationSeconds, sheetUrl: null,
-          sheetColumns: SHOT_SHEET_COLUMNS, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
+          sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
         };
       }
       // 落项目缓存区而非素材库：这是可再生的中间产物，写进素材库会把用户的库刷屏（见 filmstrip 的同款教训）。
       const written = writeProjectCacheFile(projectId, fs.readFileSync(outPath), "shot-cuts", ".jpg");
       return {
         cuts, durationSeconds, sheetUrl: written.url,
-        sheetColumns: SHOT_SHEET_COLUMNS, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
+        sheetColumns: SHOT_SHEET_COLUMNS, sheetRows, sheetTileHeight: SHOT_SHEET_TILE_HEIGHT, coverage,
       };
     } finally {
       try { fs.unlinkSync(outPath); } catch { /* non-fatal */ }

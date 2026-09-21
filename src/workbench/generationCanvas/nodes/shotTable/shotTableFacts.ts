@@ -3,7 +3,7 @@ import {
   type DeconstructionShotTableDocument,
   type ShotTableColumn,
 } from '../../../../../electron/shared/canvas/shotTable'
-import type { DeconstructionResult } from '../deconstructionTypes'
+import type { DeconstructionResult, StoredDeconstructionResult } from '../deconstructionTypes'
 
 export function defaultFactColumns(): ShotTableColumn[] {
   return ['shotSize', 'motion', 'visual', 'dialogue', 'onScreenText', 'mood'].map((columnId, order) => ({
@@ -19,9 +19,18 @@ export function createDeconstructionShotTable(sourceNodeId: string, title: strin
   })
 }
 
+/**
+ * 引擎结果 → 分镜表。
+ *
+ * 入参收 `DeconstructionResult | StoredDeconstructionResult`：前者是**这次刚拆出来的**（`cutCoverage` 必填），
+ * 后者是**从老节点 meta 读回来的**（2026-09-22 之前落盘的没有这一块）。
+ * 缺了就让 `source.cutCoverage` 也缺着——schema 那边是 `.optional()`，读得回来；
+ * **绝不在这里编一个默认值**：老数据里已经没有任何依据能还原它当时是不是被压过上限，
+ * 补一个 `capped:false` 就是把「不知道」伪造成「完整」。
+ */
 export function deconstructionResultToShotTable(
   table: DeconstructionShotTableDocument,
-  result: DeconstructionResult,
+  result: DeconstructionResult | StoredDeconstructionResult,
 ): DeconstructionShotTableDocument {
   return deconstructionShotTableSchema.parse({
     ...table,

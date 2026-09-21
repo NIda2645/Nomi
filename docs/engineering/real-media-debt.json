@@ -46,15 +46,6 @@
       "owner": "用户提供素材",
       "registeredAt": "2026-09-17",
       "due": "2026-10-14"
-    },
-    {
-      "id": "shot-cut-coverage-real-media",
-      "class": "shot-cut-coverage",
-      "why": "2026-09-22 修的「切点超上限按分数压、不按时间砍」只在**真实画面的 scene_score 分布**上才有行为：合成素材（testsrc2 / 色块 / 黑场）分数分布是退化的，既长不出「同一刀连报两帧」的余震，也长不出那条长尾，于是 capped 恒为 false、dedupe 恒为恒等，测试会恒绿地证明「没事」。本次的单测用的是**按实测分布造的**夹具（形状取自真实素材，见 docs/plan/2026-09-22-shot-cut-truncation.md 的实测表），不是真素材本身——这一格仍然是空的。",
-      "plan": "向用户要一条**快剪**素材（≥120 刀 / ffmpeg@0.1，如 MV、广告、电影快切开场，≥2 分钟），登记进 tests/ux/real-media-fixtures.json；再建 tests/ux/real-media-shot-cut-coverage.e2e.mjs：真 ffmpeg 一趟检测 → dedupeShotCuts → capShotCutsByScore，断言 ①kept 恰等于 score>appliedThreshold ②覆盖面 covered/fullReach > 0.9 ③联系表格子数 = emittedCount。不放进 vitest 单测：真素材要真解码，塞进单测会把 pnpm test 拖成几十分钟。",
-      "owner": "unassigned",
-      "registeredAt": "2026-09-22",
-      "due": "2026-10-22"
     }
   ]
 }

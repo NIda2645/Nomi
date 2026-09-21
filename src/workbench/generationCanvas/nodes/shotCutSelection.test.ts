@@ -8,16 +8,14 @@ import {
   formatShotTimestamp,
   pickDefaultSensitivity,
   shotCutNodePositions,
-  shotSheetRows,
-  shotSheetTileCount,
   shotSheetTileStyle,
 } from './shotCutSelection'
 
 const cuts = [
-  { seconds: 2, score: 0.67, sheetIndex: 0 },
-  { seconds: 4, score: 0.22, sheetIndex: 0 },
-  { seconds: 6, score: 0.51, sheetIndex: 0 },
-  { seconds: 9, score: 0.13, sheetIndex: 0 },
+  { seconds: 2, score: 0.67 },
+  { seconds: 4, score: 0.22 },
+  { seconds: 6, score: 0.51 },
+  { seconds: 9, score: 0.13 },
 ]
 
 describe('filterShotCuts — 灵敏度过滤保住原始下标', () => {
@@ -36,17 +34,17 @@ describe('filterShotCuts — 灵敏度过滤保住原始下标', () => {
   })
 
   it('等于阈值算留下（>=，不是 >）', () => {
-    expect(filterShotCuts([{ seconds: 1, score: 0.3, sheetIndex: 0 }], 0.3)).toHaveLength(1)
+    expect(filterShotCuts([{ seconds: 1, score: 0.3 }], 0.3)).toHaveLength(1)
   })
 })
 
 describe('filterShotCuts — 合并「同一刀的余震」', () => {
   // 真实数据（某导入短片）：一个真切点会被 ffmpeg 连报两帧，差整整一帧。
   const echo = [
-    { seconds: 5.4, score: 0.576, sheetIndex: 0 },
-    { seconds: 5.433, score: 0.341, sheetIndex: 0 },
-    { seconds: 13.933, score: 0.591, sheetIndex: 0 },
-    { seconds: 13.967, score: 0.223, sheetIndex: 0 },
+    { seconds: 5.4, score: 0.576 },
+    { seconds: 5.433, score: 0.341 },
+    { seconds: 13.933, score: 0.591 },
+    { seconds: 13.967, score: 0.223 },
   ]
 
   it('紧邻的两帧算一刀，只留一个', () => {
@@ -54,7 +52,7 @@ describe('filterShotCuts — 合并「同一刀的余震」', () => {
   })
 
   it('留的是分数最高那帧——它才是真正的切点位置', () => {
-    const kept = filterShotCuts([{ seconds: 3, score: 0.2, sheetIndex: 0 }, { seconds: 3.05, score: 0.6, sheetIndex: 0 }], 0.1)
+    const kept = filterShotCuts([{ seconds: 3, score: 0.2 }, { seconds: 3.05, score: 0.6 }], 0.1)
     expect(kept).toHaveLength(1)
     expect(kept[0]?.score).toBe(0.6)
     // 下标跟着赢家走，否则联系表会切到余震那格。
@@ -62,32 +60,32 @@ describe('filterShotCuts — 合并「同一刀的余震」', () => {
   })
 
   it('隔得开的快剪不会被误并（0.2s 窗口只吃紧邻余震）', () => {
-    const fast = [{ seconds: 1, score: 0.5, sheetIndex: 0 }, { seconds: 1.3, score: 0.5, sheetIndex: 0 }, { seconds: 1.6, score: 0.5, sheetIndex: 0 }]
+    const fast = [{ seconds: 1, score: 0.5 }, { seconds: 1.3, score: 0.5 }, { seconds: 1.6, score: 0.5 }]
     expect(filterShotCuts(fast, 0.1)).toHaveLength(3)
   })
 })
 
 describe('pickDefaultSensitivity — 默认灵敏度从这条视频 derive，不写死', () => {
   it('有强切点 → 维持 0.3，常见片子行为不变', () => {
-    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.58, sheetIndex: 0 }])).toBe(SHOT_SENSITIVITY_DEFAULT)
+    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.58 }])).toBe(SHOT_SENSITIVITY_DEFAULT)
   })
 
   it('最强只有 0.161（实测 nomi-clip-01）→ 退到看得见的那档，而不是打开即空', () => {
-    const picked = pickDefaultSensitivity([{ seconds: 1, score: 0.161, sheetIndex: 0 }])
+    const picked = pickDefaultSensitivity([{ seconds: 1, score: 0.161 }])
     expect(picked).toBe(0.15)
-    expect(filterShotCuts([{ seconds: 1, score: 0.161, sheetIndex: 0 }], picked)).toHaveLength(1)
+    expect(filterShotCuts([{ seconds: 1, score: 0.161 }], picked)).toHaveLength(1)
   })
 
   it('全集非空 → 选出的档必然能看到东西（面板不可能打开就是空的）', () => {
     for (const score of [0.101, 0.12, 0.199, 0.25, 0.299, 0.3, 0.7]) {
-      const cuts = [{ seconds: 1, score, sheetIndex: 0 }]
+      const cuts = [{ seconds: 1, score }]
       expect(filterShotCuts(cuts, pickDefaultSensitivity(cuts)).length).toBeGreaterThan(0)
     }
   })
 
   it('浮点不漂：退档结果落在滑杆的合法刻度上', () => {
-    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.28, sheetIndex: 0 }])).toBe(0.25)
-    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.1001, sheetIndex: 0 }])).toBe(SHOT_SENSITIVITY_MIN)
+    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.28 }])).toBe(0.25)
+    expect(pickDefaultSensitivity([{ seconds: 1, score: 0.1001 }])).toBe(SHOT_SENSITIVITY_MIN)
   })
 
   it('空集 → 回默认（此时面板走一镜到底那条路，值用不上）', () => {
@@ -125,39 +123,6 @@ describe('shotSheetTileStyle — 联系表切格', () => {
 
   it('单列/单行不除以 0', () => {
     expect(shotSheetTileStyle(0, 1, 1)).toEqual({ backgroundSize: '100% 100%', backgroundPosition: '0% 0%' })
-  })
-})
-
-describe('shotSheetRows — 必须与主进程同一算式', () => {
-  it.each([[1, 8, 1], [8, 8, 1], [9, 8, 2], [16, 8, 2], [17, 8, 3]])(
-    '%i 个格子 / %i 列 → %i 行',
-    (total, cols, expected) => {
-      expect(shotSheetRows(total, cols)).toBe(expected)
-    },
-  )
-
-  it('0 个格子也至少 1 行（不产生 tile=Nx0）', () => {
-    expect(shotSheetRows(0, 8)).toBe(1)
-  })
-})
-
-describe('shotSheetTileCount — 行数按格子数算，不是按切点数（2026-09-22）', () => {
-  // 主进程去掉了「同一刀的第二帧」，但联系表是 ffmpeg 自己铺的、没去过重。
-  // 拿切点数当格子数会把行数算少，整张表的切格随之错位。
-  it('按最大格子号反推，而不是数数组长度', () => {
-    const cuts = [
-      { seconds: 1.033, score: 0.6, sheetIndex: 1 },
-      { seconds: 4, score: 0.5, sheetIndex: 2 },
-      { seconds: 9, score: 0.7, sheetIndex: 8 },
-    ]
-    expect(shotSheetTileCount(cuts)).toBe(9)
-    expect(shotSheetRows(shotSheetTileCount(cuts), 8)).toBe(2)
-    // 数数组长度只会得到 3 → 1 行，于是第 9 格那张图被切到了第一行。
-    expect(shotSheetRows(cuts.length, 8)).toBe(1)
-  })
-
-  it('空集 → 0 格（面板此时走一镜到底那条路）', () => {
-    expect(shotSheetTileCount([])).toBe(0)
   })
 })
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_CUTS,
   SHOT_CUT_DETECT_THRESHOLD,
   SHOT_SHEET_COLUMNS,
   buildDetectFilter,
@@ -18,22 +19,22 @@ lavfi.scene_score=0.630627
 `;
 
 describe("parseShotCutOutput", () => {
-  it("按真实样本解出秒数 + 分数", () => {
+  it("按真实样本解出 pts + 秒数 + 分数", () => {
     expect(parseShotCutOutput(REAL_STDOUT)).toEqual([
-      { seconds: 2, score: 0.673689 },
-      { seconds: 4, score: 0.520391 },
-      { seconds: 6, score: 0.630627 },
+      { pts: 20480, seconds: 2, score: 0.673689 },
+      { pts: 40960, seconds: 4, score: 0.520391 },
+      { pts: 61440, seconds: 6, score: 0.630627 },
     ]);
   });
 
   it("一镜到底（无切点）→ 空数组，不抛", () => {
     expect(parseShotCutOutput("")).toEqual([]);
-    expect(parseShotCutOutput("frame:0 pts_time:1\n")).toEqual([]);
+    expect(parseShotCutOutput("frame:0 pts:1024 pts_time:1\n")).toEqual([]);
   });
 
   it("小数秒照收", () => {
-    expect(parseShotCutOutput("pts_time:12.583\nlavfi.scene_score=0.41")).toEqual([
-      { seconds: 12.583, score: 0.41 },
+    expect(parseShotCutOutput("pts:257699 pts_time:12.583\nlavfi.scene_score=0.41")).toEqual([
+      { pts: 257699, seconds: 12.583, score: 0.41 },
     ]);
   });
 
@@ -43,20 +44,29 @@ describe("parseShotCutOutput", () => {
   });
 });
 
-describe("filtergraph — 检测与联系表必须同阈值", () => {
+describe("filtergraph", () => {
   it("检测用 select+metadata，写 stdout", () => {
     expect(buildDetectFilter(0.1)).toBe("select='gt(scene,0.1)',metadata=print:file=-");
   });
 
-  it("联系表用同一个 select 条件 —— 否则第 i 格就不是第 i 个切点了", () => {
-    const threshold = SHOT_CUT_DETECT_THRESHOLD;
-    const detect = buildDetectFilter(threshold);
-    const sheet = buildSheetFilter(threshold, SHOT_SHEET_COLUMNS, 2, 90);
-    const selectOf = (filter: string) => filter.slice(0, filter.indexOf("',") + 1);
-    expect(selectOf(sheet)).toBe(selectOf(detect));
+  // 2026-09-22 返工：联系表**不再**按分数重筛一遍。它按 pts 点名取帧，所以第 i 格必然是清单第 i 条。
+  // 旧写法 `select='gt(scene,T)'` 的前提是「JS 的 T 和 ffmpeg 的 scene 会做出同样的判断」，
+  // 而 JS 只看得到 6 位小数的打印值——真实素材上实测差了一帧，120 刀里 21 刀指错格。
+  it("联系表按 pts 点名选帧，逗号要转义成 \\,", () => {
+    expect(buildSheetFilter([20480, 40960, 61440], 8, 2, 90)).toBe(
+      "select='eq(pts\\,20480)+eq(pts\\,40960)+eq(pts\\,61440)',scale=-2:90,tile=8x2",
+    );
   });
 
-  it("联系表带 scale + tile", () => {
-    expect(buildSheetFilter(0.1, 8, 2, 90)).toBe("select='gt(scene,0.1)',scale=-2:90,tile=8x2");
+  it("联系表的 select 里**不许**再出现 scene —— 那正是错位的来源", () => {
+    const sheet = buildSheetFilter([1, 2, 3], SHOT_SHEET_COLUMNS, 1, 90);
+    expect(sheet).not.toContain("scene");
+    expect(sheet).not.toContain(String(SHOT_CUT_DETECT_THRESHOLD));
+  });
+
+  it("表达式长度由 MAX_CUTS 封顶，不随片长增长", () => {
+    const worst = buildSheetFilter(Array.from({ length: MAX_CUTS }, (_, i) => 999_999_999 - i), 8, 15, 90);
+    // 实测 ffmpeg 8.0.1 接受 1994 字节那条；留足余量并钉住「不会失控」。
+    expect(worst.length).toBeLessThan(4096);
   });
 });
