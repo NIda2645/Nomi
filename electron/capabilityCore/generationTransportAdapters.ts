@@ -315,7 +315,6 @@ export function createPiGenerationTransportAdapter(
       params: { ...args },
       lease: currentLease,
       origin: { host: "nomi", actorId: "project-agent-host", ...(context?.sourceDocument ? { sourceDocument: context.sourceDocument } : {}) },
-      ...(context?.selectedPlan ? { selectedPlan: context.selectedPlan } : {}),
       ...(context?.storyboardTarget ? { storyboardTarget: context.storyboardTarget } : {}),
     })),
     signal,

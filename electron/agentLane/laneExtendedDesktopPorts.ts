@@ -75,14 +75,12 @@ function captureGenerationContext(context: LaneComposerContext | undefined): Gen
     return { storyboardTarget: target, sourceDocument: { documentId: target.sourceDocumentId,
       revision: target.sourceDocumentRevision, contentHash: target.sourceDocumentContentHash } };
   }
+  // 渲染层声称的来源文稿。记录与比对用（见 GenerationInvocationContext 的头注释），不是凭据。
   const source = context.admissionSurface === 'document' && context.documentId && context.preconditions?.document
     && typeof context.preconditions.document.contentHash === 'string'
     ? { documentId: context.documentId, revision: context.preconditions.document.revision, contentHash: context.preconditions.document.contentHash }
     : undefined;
-  const selected = context.target?.kind === 'production' && context.preconditions?.run && context.target.runId === context.preconditions.run.runId
-    ? { runId: context.target.runId, revision: context.preconditions.run.revision }
-    : undefined;
-  return source || selected ? { ...(source ? { sourceDocument: source } : {}), ...(selected ? { selectedPlan: selected } : {}) } : undefined;
+  return source ? { sourceDocument: source } : undefined;
 }
 
 /**

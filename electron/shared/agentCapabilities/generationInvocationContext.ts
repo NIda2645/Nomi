@@ -40,16 +40,25 @@ export function formatStoryboardRequestTarget(target: StoryboardRequestTarget | 
   ].join('\n');
 }
 
-/** Trusted host context captured at the lane boundary for generation calls. */
+/**
+ * **渲染层声称的意图**，在 lane 边界上取一次快照。**不是**已验证的宿主事实。
+ *
+ * 这里原本写着 "Trusted host context"，而这两个字段整份来自渲染层提交的那个信封——同一份契约里
+ * 它自己把 `target` / `preconditions` 标成 "untrusted selectors"。唯一那道检查是拿一个未验证字段
+ * 去核另一个未验证字段（自证）。今天下游只是**记录**它（`run.origin.sourceDocument`）和**比对**它
+ * （`assertTarget` → `storyboard_target_stale`），没有人拿它当凭据，所以这不是一个正在冒烟的洞；
+ * 但那句注释会让下一个人按「已验证」用它，而方向写反的身份检查看起来和真检查一模一样。
+ *
+ * 主进程今天**证不了**这两个值：文稿 `revision` 是 store 里的 `updatedAt`、`contentHash` 由渲染层
+ * 用编辑器那套 schema 算（`src/workbench/project/documentSessionPort.ts`），主进程手里没有这份状态。
+ * 所以规矩写在这里：**领域 owner 在据此动作之前必须自己验一次**；只当标签用（记录、比对、拒绝陈旧）
+ * 时可以直接用。
+ */
 export type GenerationInvocationContext = Readonly<{
   storyboardTarget?: StoryboardRequestTarget;
   sourceDocument?: Readonly<{
     documentId: string;
     revision: number;
     contentHash: string;
-  }>;
-  selectedPlan?: Readonly<{
-    runId: string;
-    revision: number;
   }>;
 }>;

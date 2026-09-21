@@ -744,7 +744,6 @@ export type GenerationPlanningHandler = (input: {
   params: Record<string, unknown>;
   lease?: ProjectLeaseV2;
   origin?: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
-  selectedPlan?: GenerationInvocationContext['selectedPlan'];
   storyboardTarget?: GenerationInvocationContext['storyboardTarget'];
 }) => unknown | Promise<unknown>;
 
