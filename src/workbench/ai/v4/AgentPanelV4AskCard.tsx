@@ -32,7 +32,7 @@
  */
 import React from 'react'
 import { cn } from '../../../utils/cn'
-import { IconArrowUp, IconCheck, IconX } from './AgentPanelV4Icons'
+import { IconChevronDown, IconCheck, IconX } from './AgentPanelV4Icons'
 import type { V4QuestionAnswer } from './agentPanelV4Question'
 import {
   ASK_AUTO_ADVANCE_MS,
@@ -143,7 +143,11 @@ function AskMarker({ on, multiple }: { on: boolean; multiple: boolean }): JSX.El
       className={cn(
         'grid size-4 shrink-0 place-items-center transition-colors duration-200',
         multiple ? 'rounded-nomi-sm' : 'rounded-pill',
-        on ? 'bg-nomi-ink text-nomi-paper' : 'shadow-[inset_0_0_0_1.5px_var(--nomi-ink-30)] text-transparent',
+        // 未选 = 一圈细环，**不是** border（border 会参与布局，16px 的方块会被挤小一圈）。
+        // 用仓库通用的 `ring-1 ring-inset` 写法而不是 `shadow-[inset_…]`：后者在这套
+        // Tailwind 配置下解析成 `box-shadow: none`（走查截图里三个圆圈整个不见了，
+        // 是我第一版栽的坑），`ring` 这一族别处一直在用、是活的。
+        on ? 'bg-nomi-ink text-nomi-paper' : 'ring-1 ring-inset ring-nomi-ink-30 text-transparent',
       )}
     >
       {multiple ? (
@@ -174,8 +178,16 @@ export function V4AskCard({
    */
   answerDraft?: string
   onAnswer?: (answer: V4QuestionAnswer) => void
-  /** × 与 Skip 走这里（= 这次不答）。缺席 = 这一格没有宿主可跳过（实验室取景）。 */
-  onDismiss?: () => void
+  /**
+   * × 与「跳过」走这里（= 这次不答）。**必填**，和 `V4Intervention.onPlanToggle` 同一条规矩
+   * （R28：能让编译器拦的别留给门岗）。
+   *
+   * 它可选过一版，代价当场就出现了：设计实验室没传，于是那颗 × 在实验室里整个不见，
+   * 而我正是靠实验室截图去和实物对账的——一颗**可选**的钮在截图里和「设计上就没有」
+   * 长得一模一样。跳过一次提问永远是做得到的事，不存在「这个宿主没有这个能力」，
+   * 所以真没有去处的取景位也得显式写 `() => undefined`，那是一次表态，不是遗漏。
+   */
+  onDismiss: () => void
 }): JSX.Element {
   const total = questions.length
   const [index, setIndex] = React.useState(0)
@@ -193,6 +205,15 @@ export function V4AskCard({
   const [viewportH, setViewportH] = React.useState<number | undefined>(undefined)
   const [trackY, setTrackY] = React.useState(0)
   const [animate, setAnimate] = React.useState(false)
+  /**
+   * 量到第一题的高度之前**只挂当前这一题**（Approval Card 的 `ready`，照搬）。
+   *
+   * 不这么做的后果它自己的注释写得很清楚，我第一版漏了、走查当场抓了出来：首帧 `viewportH`
+   * 还是 undefined，高度是 auto，于是三道题一起摞出来把卡撑满，量完再缩回去——用户看到
+   * 卡「闪」一下。顺带还有第二个后果：静态标记渲染里三道题**全在 DOM 里**，
+   * 「这张卡上有几个选项、有几行自由输入」这类判据会把看不见的那两题也数进去。
+   */
+  const [ready, setReady] = React.useState(false)
 
   const question = questions[index]
   const options = React.useMemo(() => orderedAskOptions(question?.options ?? []), [question])
@@ -211,6 +232,7 @@ export function V4AskCard({
     setViewportH(item.offsetHeight)
     setTrackY(item.offsetTop)
     setAnimate(withAnim)
+    setReady(true)
   }, [index, drafts, questions])
 
   React.useEffect(() => () => { if (advanceTimer.current) clearTimeout(advanceTimer.current) }, [])
@@ -255,7 +277,7 @@ export function V4AskCard({
    */
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
     const typing = event.target instanceof HTMLInputElement
-    if (event.key === 'Escape' && onDismiss) { event.preventDefault(); onDismiss(); return }
+    if (event.key === 'Escape') { event.preventDefault(); onDismiss(); return }
     if (event.key === 'Enter') {
       if (event.nativeEvent.isComposing) return
       event.preventDefault()
@@ -288,7 +310,7 @@ export function V4AskCard({
       onKeyDown={onKeyDown}
     >
       <div className="relative p-3">
-        {onDismiss ? (
+        {(
           <button
             type="button"
             aria-label={labels.dismiss}
@@ -299,7 +321,7 @@ export function V4AskCard({
           >
             <IconX size={14} aria-hidden="true" />
           </button>
-        ) : null}
+        )}
         {/* 题轨：所有题竖着摞在一条轨上，靠 translate3d 把当前那一题推到视口里；
             外层的高度跟着当前题动。这就是 Approval Card 的「卡高随题滑动」。 */}
         <div
@@ -318,6 +340,7 @@ export function V4AskCard({
           >
             {questions.map((item, position) => {
               const active = position === index
+              if (!ready && !active) return null
               const itemOptions = active ? options : orderedAskOptions(item.options)
               const itemDraft = drafts[position] ?? EMPTY_ASK_DRAFT
               return (
@@ -382,7 +405,10 @@ export function V4AskCard({
                     {/* 末行自由输入：**无边框、无底色**，和选项行同宽同缩进，靠上面那条滑动带
                         提示它可点。它永远在——一张只有选项的卡等于说「你只能从这几个里挑」。 */}
                     <label data-ask-row="custom" className="relative z-10 flex items-center rounded-nomi-sm py-1 pl-1 pr-2">
-                      <span className="size-4 shrink-0" aria-hidden="true" />
+                      {/* 让这一行的文字和上面选项的**标签**对齐，所以空出一个标记那么宽的位。
+                          一个选项都没有时那一列根本不存在，再缩进就成了一段没有来由的空白
+                          （Approval Card 的 demo 里永远有选项，所以它没碰到这一档）。 */}
+                      {itemOptions.length ? <span className="size-4 shrink-0" aria-hidden="true" /> : null}
                       <input
                         ref={active ? inputRef : undefined}
                         type="text"
@@ -420,9 +446,9 @@ export function V4AskCard({
               disabled={index <= 0}
               onClick={() => goTo(index - 1)}
               data-v4-control="ask-prev"
-              className="grid size-[18px] place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
+              className="grid size-[18px] rotate-180 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
             >
-              <IconArrowUp size={13} aria-hidden="true" />
+              <IconChevronDown size={13} aria-hidden="true" />
             </button>
             <span className="inline-flex items-center text-caption font-medium tabular-nums text-nomi-ink-40" aria-label={labels.step(index + 1, total)}>
               {`${index + 1} / ${total}`}
@@ -433,16 +459,16 @@ export function V4AskCard({
               disabled={last}
               onClick={() => goTo(index + 1)}
               data-v4-control="ask-next"
-              className="grid size-[18px] rotate-180 place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
+              className="grid size-[18px] place-items-center rounded-nomi-sm enabled:hover:text-nomi-ink disabled:opacity-30"
             >
-              <IconArrowUp size={13} aria-hidden="true" />
+              <IconChevronDown size={13} aria-hidden="true" />
             </button>
           </div>
         ) : <span />}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => (last ? onDismiss?.() : goTo(index + 1))}
+            onClick={() => (last ? onDismiss() : goTo(index + 1))}
             data-v4-control="ask-skip"
             className="h-7 rounded-pill bg-nomi-ink-05 px-3 text-body-sm font-medium text-nomi-ink-60 hover:bg-nomi-ink-10"
           >

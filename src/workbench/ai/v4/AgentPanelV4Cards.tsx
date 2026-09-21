@@ -406,7 +406,7 @@ export function V4Intervention({
         labels={labels.ask}
         {...(data.answerDraft ? { answerDraft: data.answerDraft } : {})}
         {...(onAnswer ? { onAnswer } : {})}
-        {...(onReject ? { onDismiss: () => onReject() } : {})}
+        onDismiss={() => onReject?.()}
       />
     )
   }

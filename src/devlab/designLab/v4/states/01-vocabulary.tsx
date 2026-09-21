@@ -181,7 +181,7 @@ function SlotCell({ pick }: { pick: keyof ReturnType<typeof useV4Fixtures>['slot
  */
 type QuestionPick =
   | 'question' | 'questionRetry' | 'questionFree' | 'questionTwo' | 'questionFourMixed'
-  | 'questionLabelsOnly' | 'questionMissingParam'
+  | 'questionLabelsOnly' | 'questionMissingParam' | 'questionThree' | 'questionMulti'
 
 function QuestionSlotCell({ pick, draft }: { pick: QuestionPick; draft?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
@@ -508,7 +508,7 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
   },
   {
     id: 'v4-intervention-question',
-    name: '⑤ 介入槽 · 反问 · 待答（选项 chip + 卡内那一行）',
+    name: '⑤ 介入槽 · 反问 · 待答（整行选项 + 末行自由作答）',
     source: '2026-09-06-agent-panel-v4.md · Vocabulary 板 ⑩｜2026-09-21 拍板 ⑤（卡内自由作答）',
     coverage: 'component-only',
     render: () => <QuestionSlotCell pick="question" />,
@@ -563,6 +563,20 @@ export const V4_VOCABULARY_STATES: readonly LabState[] = [
     source: '2026-09-21 拍板：description 缺席 = 不替它编',
     coverage: 'component-only',
     render: () => <QuestionSlotCell pick="questionLabelsOnly" />,
+  },
+  {
+    id: 'v4-intervention-question-three',
+    name: '⑤ 介入槽 · 反问 · 多题一张卡（第 1 题，左下 1/3）',
+    source: 'Beautiful UI Approval Card 整件：一次一题、卡高随题滑动、左下页码',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionThree" />,
+  },
+  {
+    id: 'v4-intervention-question-multi',
+    name: '⑤ 介入槽 · 反问 · 多选（标记是方的，等「继续」不自动前进）',
+    source: 'Approval Card 的 type: "check"；单选点了就走、多选等按钮（2026-09-21 拍板）',
+    coverage: 'component-only',
+    render: () => <QuestionSlotCell pick="questionMulti" />,
   },
   {
     id: 'v4-intervention-question-missing-param',

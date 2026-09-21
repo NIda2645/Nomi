@@ -33,6 +33,12 @@ import type { V4CommandRow, V4ModelRow } from '../../../workbench/ai/v4/AgentPan
 export const V4_LAB_SLOT_HANDLERS = Object.freeze({
   onPlanToggle: () => undefined,
   onCollapsePlan: () => undefined,
+  /**
+   * 反问卡那颗 ×（与「跳过」）的去处。实验室没有宿主可跳过，但仍要**显式**接上——
+   * 不接就等于那颗钮在取景里整个消失，而我是靠这些截图去和 Approval Card 实物对账的。
+   * 一颗没接线的钮和一颗设计上就没有的钮，在截图里长得一模一样（2026-09-21 实测栽过）。
+   */
+  onReject: () => undefined,
 })
 
 export const V4_PANEL_WIDTH = 390
@@ -332,6 +338,56 @@ function buildFixtures(t: TFunction) {
         { id: '3s', label: t('agentPanelV4.slotQuestionMissingOptionA') },
         { id: '5s', label: t('agentPanelV4.slotQuestionMissingOptionB'), description: t('agentPanelV4.slotQuestionMissingOptionBWhy'), recommended: true },
       ],
+    },
+    /**
+     * ⑦ **多题一张卡**（Approval Card 的「一次一题、卡高随题滑动、左下 1/3」）。
+     *
+     * 今天**没有生产者**：对外契约 `askUserInputSchema` 一次只收一题。这一格是
+     * 卡的能力取景，不是一条已接线的旅程——所以它只进实验室，不进真机走查的断言。
+     * 契约哪天长出 `questions[]`，`askCardQuestions()` 改一个函数就接上了。
+     */
+    questionThree: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionTwoTitle'),
+      questions: [
+        {
+          question: t('agentPanelV4.slotQuestionTwoTitle'),
+          options: [
+            { id: 'shot-3', label: t('agentPanelV4.slotQuestionTwoOptionA'), description: t('agentPanelV4.slotQuestionTwoOptionAWhy'), recommended: true },
+            { id: 'shot-5', label: t('agentPanelV4.slotQuestionTwoOptionB'), description: t('agentPanelV4.slotQuestionTwoOptionBWhy') },
+          ],
+        },
+        {
+          // 第二题是**多选**：标记从圆点变方框，主按钮等用户按（不自动前进）。
+          question: t('agentPanelV4.slotQuestionMixedTitle'),
+          multiple: true,
+          options: [
+            { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+            { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+            { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+          ],
+        },
+        {
+          // 第三题一个选项都没有：末题的主按钮印「发送」，卡高缩到只剩一行输入。
+          question: t('agentPanelV4.slotQuestionFreeTitle'),
+          options: [],
+        },
+      ],
+    },
+    /** ⑧ 多选**单独**一格（上面那格要翻到第二题才看得到，静态取景看不见）。 */
+    questionMulti: {
+      kind: 'question',
+      title: t('agentPanelV4.slotQuestionMixedTitle'),
+      questions: [{
+        question: t('agentPanelV4.slotQuestionMixedTitle'),
+        multiple: true,
+        options: [
+          { id: 'png', label: t('agentPanelV4.slotQuestionMixedOptionA'), description: t('agentPanelV4.slotQuestionMixedOptionAWhy') },
+          { id: 'jpeg', label: t('agentPanelV4.slotQuestionMixedOptionB'), description: t('agentPanelV4.slotQuestionMixedOptionBWhy'), recommended: true },
+          { id: 'webp', label: t('agentPanelV4.slotQuestionMixedOptionC') },
+          { id: 'both', label: t('agentPanelV4.slotQuestionMixedOptionD'), description: t('agentPanelV4.slotQuestionMixedOptionDWhy') },
+        ],
+      }],
     },
     // 熔断转提问：同一字段连着 3 次没过，就别再撞了。**复用同一张卡**——
     // 它只是这张卡的第三个生产者，不是第二种长相。
