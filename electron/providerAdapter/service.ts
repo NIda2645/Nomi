@@ -547,10 +547,10 @@ export class ProviderAdapterService {
                   };
             },
             // 自检不向上游提交任何东西（见上面 2026-09-11 拍板注释），所以自检本身超时
-            // 不可能留下一个「不知道有没有落地」的远端任务——判「uncertain」永远是 false。
-            // 只有 service.cancel() 主动打断一次正在飞的 verify() 时才真的不知道对方收没收到，
-            // 那条路径走的是 markSubmissionUnknown，不经过这里。
-            isUncertainError: () => false,
+            // 不可能留下一个「不知道有没有落地」的远端任务——executeSubmission 已删掉
+            // 「execute 超时就判 uncertain → reconciling」的分支（2026-09-22，isUncertainError
+            // 选项本身也删了，唯一调用者一直恒 false，是死代码）。这里的 AdapterWaitError
+            // 原样往上抛，走下面 catch 的 deadline 分支即可。
           });
         } catch (error) {
           if (error instanceof AdapterReconciliationRequiredError) throw error;
