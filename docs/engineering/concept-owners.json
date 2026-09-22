@@ -32,12 +32,19 @@
       "name": "参数准入",
       "owner": {
         "path": "electron/capabilityCore/executionContract.ts",
-        "symbol": "GENERATION_PLANNING_HINTS",
-        "pending": true
+        "symbol": "compileParameters"
       },
-      "consumers": [],
+      "consumers": [
+        "electron/capabilityCore/generationPlanPatch.ts",
+        "electron/capabilityCore/mcpGenerationTools.ts",
+        "electron/capabilityCore/mcpGenerationMultiShot.ts",
+        "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+        "electron/capabilityCore/modelAdmissionSchema.ts",
+        "electron/capabilityCore/moduleCatalogBootstrap.ts",
+        "electron/parity/generationParityTestUtils.ts"
+      ],
       "since": "2026-09-22",
-      "notes": "pending：待总合并收成一份。今天 main 上是这一份（GENERATION_PLANNING_HINTS / GENERATION_PLANNING_HINT_KEYS）；另一条未合并 lane 有第二份判据 GENERATION_PLANNING_PARAMETER_KEYS，各带一套拒绝形状。收口人：同上那份总合并任务书（两张表并成一张、一个 owner，拒绝形状取 ParameterRejection）。合完去掉 pending 并补 consumers。"
+      "notes": "2026-09-22 总合并收口（合同 docs/fixes/2026-09-22-parameter-admission-one-owner.root-cause.json）。判据本体 = compileParameters，合法键集三档派生：档案 mode.params（videoCompileOptions / archetypeCompileOptions）→ mapping 的 create op 派生（moduleCatalogBootstrap.modelParameterSchema）→ 都拿不到则放行 + warning。拒绝形状只有 ParameterRejection 一套（droppedFields 账本已删）。「Nomi 自己消费、不上 wire」的意图键表下沉到 electron/capabilityCore/generationPlanningParameters.ts 的 GENERATION_PLANNING_HINTS（键 + 类型，唯一那一张；executionContract 只 re-export）——它是同一个概念的子表，不是第二个 owner。准入那一趟单独有入口 admitPlanCandidate：要校验参数的调用方走它，要整份合同（含提示词 @ 投影）的走 compileExecutionContract。刻意未收：electron/parity/generationParityTestUtils.ts 的对拍 harness 自己编一份（它的职责就是绕开生产装配），已在合同 door_reduction.why_not 点名。"
     },
     {
       "name": "供应商落家",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GENERATION_PLANNING_PARAMETER_KEYS } from "./generationPlanningParameters";
+import { GENERATION_PLANNING_HINTS, GENERATION_PLANNING_PARAMETER_KEYS } from "./generationPlanningParameters";
 import { videoRecommendationInput } from "./mcpGenerationVideoResolve";
 import { requestedVideoDurationSeconds } from "./semanticGenerationCandidate";
 import type { PlanCandidate } from "./executionContract";
@@ -38,5 +38,15 @@ describe("generation planning parameters", () => {
     expect(GENERATION_PLANNING_PARAMETER_KEYS.has("resolution")).toBe(false);
     expect(GENERATION_PLANNING_PARAMETER_KEYS.has("aspect_ratio")).toBe(false);
     expect(GENERATION_PLANNING_PARAMETER_KEYS.has("duration")).toBe(false);
+  });
+
+  it("键名集合与类型表是同一张表——不许再漂出第二份（2026-09-22 总合并）", () => {
+    // 两张表曾经并存：打捞分支只有键名，#837 只有推荐器那六个键 + 类型。
+    // 合并后键名集合必须由类型表派生；谁再写一个独立的 Set，这条就红。
+    expect([...GENERATION_PLANNING_PARAMETER_KEYS].sort()).toEqual(Object.keys(GENERATION_PLANNING_HINTS).sort());
+    // 每个键都得有一个真类型（`any` 不算声明——那正是「原样吞掉」的写法）。
+    for (const [key, type] of Object.entries(GENERATION_PLANNING_HINTS)) {
+      expect(["string", "number", "boolean"], `${key} 的类型没声明成可判的那三种之一`).toContain(type);
+    }
   });
 });

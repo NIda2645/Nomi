@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { ResolvedModule } from "./moduleRegistry";
 import type { ParameterField } from "./moduleManifest";
-import { isGenerationPlanningParameter } from "./generationPlanningParameters";
+import { generationPlanningHintType } from "./generationPlanningParameters";
 import { hasMentions, numberPromptReferences, projectPromptForSend } from "../shared/storyboard/promptMentions";
 
 export const EXECUTION_CONTRACT_SCHEMA_VERSION = 1 as const;
@@ -212,29 +212,11 @@ function closestParameterKey(written: string, allowedKeys: readonly string[]): s
 const displayValue = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value));
 
 /**
- * `candidate.parameters` 里那一小撮**不是供应商参数**的键：它们是 Nomi 自己的选型意图，
- * 由 `videoRecommendationInput`（`mcpGenerationVideoResolve.ts`）读走用来推荐模式/模型，
- * 从来不上 wire。
- *
- * **每个键连同它的类型一起声明**（2026-09-22 验收：旧版只有键名，于是
- * `{quality: 99999, preferredFamily: {a:1}}` 会被原样吞掉、连 warning 都没有——
- * 比「没有参数表」那条分支还弱）。现在类型不对照样拒，与真参数同一套话术。
- *
- * 这张表是**消费方那 12 个键的子集**，子集关系由 `parameterAdmission.class.test.ts` 按行为核：
- * 表里的每个键都必须真被读走，消费方新读一个键却没进表也要红。
+ * 「Nomi 自己消费、永远不上 wire」的意图键表——**owner 在
+ * `generationPlanningParameters.ts`**（2026-09-22 总合并：打捞分支的键名表与 #837 的类型表
+ * 并成了那一张）。这里只转出去给现有导入方用，不在本文件再写一份。
  */
-export const GENERATION_PLANNING_HINTS = Object.freeze({
-  cameraIntent: "string",
-  preferredFamily: "string",
-  preserveCharacter: "boolean",
-  preserveTransition: "boolean",
-  quality: "string",
-  useReferenceAudio: "boolean",
-} as const satisfies Record<string, ParameterField["type"]>);
-
-export const GENERATION_PLANNING_HINT_KEYS = Object.freeze(
-  Object.keys(GENERATION_PLANNING_HINTS) as Array<keyof typeof GENERATION_PLANNING_HINTS>,
-);
+export { GENERATION_PLANNING_HINTS, GENERATION_PLANNING_HINT_KEYS } from "./generationPlanningParameters";
 
 
 /**
@@ -254,7 +236,7 @@ function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { 
     const field = module.parameterSchema[key];
     // 选型意图键：Nomi 的推荐器读它，供应商请求里没有它。不进合同，也不算「填错」——
     // 但**类型照判**：垃圾值无声吞掉与静默丢弃是同一个毛病。
-    const hintType = (GENERATION_PLANNING_HINTS as Record<string, ParameterField["type"]>)[key];
+    const hintType = generationPlanningHintType(key);
     if (!field && hintType) {
       if (!parameterMatches(hintType, value)) {
         throw new ContractCompilationError(
@@ -344,6 +326,45 @@ export type ExecutionContractCompileOptions = {
 };
 
 /**
+ * **参数值层准入的那一趟**（身份 → 变体 → 参数），从编译里单拎出来。
+ *
+ * 为什么要它：`nomi_operation_plan` 要在**模型点名那一刻**就拒掉填错的参数，此前它的做法是
+ * 整份合同编译一遍再把结果丢掉。那一趟里还有提示词投影——而 plan 那条路拿不到
+ * `referenceSourceUrls`，于是任何一份 prompt 里带 `@[asset:…]` 的草稿只要改一次参数就被
+ * 「投影不出 @image1」打回（两件事被同一个函数绑在一起，一件事的前置缺了就拦下另一件事）。
+ *
+ * 判据一个字没变：`compileExecutionContract` 现在也走这里，两条路用的是同一趟检查，
+ * 不是第二份实现。plan 只做准入，preview/gate_request 才做投影与封装。
+ */
+export function admitPlanCandidate(
+  candidate: PlanCandidate,
+  registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
+  options: ExecutionContractCompileOptions = {},
+): { module: ResolvedModule; parameters: Record<string, unknown>; warnings: string[] } {
+  if (!Number.isInteger(candidate.revision) || candidate.revision < 1) throw new ContractCompilationError("Candidate revision must be a positive integer");
+  if (!candidate.prompt.trim()) throw new ContractCompilationError("Prompt is required");
+  if (candidate.variantId !== undefined && !candidate.variantId.trim()) throw new ContractCompilationError("Variant id must not be empty");
+  if (candidate.variantId !== undefined && options.allowedVariantIds !== undefined
+    && !options.allowedVariantIds.includes(candidate.variantId.trim())) {
+    const allowedVariantIds = [...options.allowedVariantIds];
+    throw new ContractCompilationError(
+      `变体 ${candidate.variantId.trim()} 不属于 ${candidate.providerId}/${candidate.modelId}。`
+      + `该模型的变体：${allowedVariantIds.length ? allowedVariantIds.join("、") : "（这个模型没有变体，请不要传 variantId）"}。`,
+      { code: "unknown_variant", path: "variantId", allowedVariantIds },
+    );
+  }
+  if (candidate.modeId !== undefined && !candidate.modeId.trim()) throw new ContractCompilationError("Mode id must not be empty");
+  if (candidate.transportModelId !== undefined && !candidate.transportModelId.trim()) throw new ContractCompilationError("Transport model id must not be empty");
+  if (candidate.sealedContractHash) throw new NewDraftRequiredError();
+  const module = registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
+  if (candidate.references.length > (module.assetInputSchema.references?.max ?? Number.MAX_SAFE_INTEGER)) {
+    throw new ContractCompilationError("参考素材数量超过当前模式支持的上限");
+  }
+  const effectiveModule = options.parameterSchema ? { ...module, parameterSchema: options.parameterSchema } : module;
+  return { module, ...compileParameters(candidate, effectiveModule) };
+}
+
+/**
  * 发给供应商之前的最终 prompt。投影规则与编号规则都住在共享层
  * （`electron/shared/storyboard/promptMentions.ts`），两条生成路径吃的是同一份。
  */
@@ -372,28 +393,8 @@ export function compileExecutionContract(
   registry: { resolve(input: { moduleId: string; providerId: string; modelId: string; mode: string }): ResolvedModule },
   options: ExecutionContractCompileOptions = {},
 ): ExecutionContractV1 {
-  if (!Number.isInteger(candidate.revision) || candidate.revision < 1) throw new ContractCompilationError("Candidate revision must be a positive integer");
-  if (!candidate.prompt.trim()) throw new ContractCompilationError("Prompt is required");
+  const { module, parameters, warnings } = admitPlanCandidate(candidate, registry, options);
   const prompt = projectContractPrompt(candidate, options.referenceSourceUrls);
-  if (candidate.variantId !== undefined && !candidate.variantId.trim()) throw new ContractCompilationError("Variant id must not be empty");
-  if (candidate.variantId !== undefined && options.allowedVariantIds !== undefined
-    && !options.allowedVariantIds.includes(candidate.variantId.trim())) {
-    const allowedVariantIds = [...options.allowedVariantIds];
-    throw new ContractCompilationError(
-      `变体 ${candidate.variantId.trim()} 不属于 ${candidate.providerId}/${candidate.modelId}。`
-      + `该模型的变体：${allowedVariantIds.length ? allowedVariantIds.join("、") : "（这个模型没有变体，请不要传 variantId）"}。`,
-      { code: "unknown_variant", path: "variantId", allowedVariantIds },
-    );
-  }
-  if (candidate.modeId !== undefined && !candidate.modeId.trim()) throw new ContractCompilationError("Mode id must not be empty");
-  if (candidate.transportModelId !== undefined && !candidate.transportModelId.trim()) throw new ContractCompilationError("Transport model id must not be empty");
-  if (candidate.sealedContractHash) throw new NewDraftRequiredError();
-  const module = registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
-  if (candidate.references.length > (module.assetInputSchema.references?.max ?? Number.MAX_SAFE_INTEGER)) {
-    throw new ContractCompilationError("参考素材数量超过当前模式支持的上限");
-  }
-  const effectiveModule = options.parameterSchema ? { ...module, parameterSchema: options.parameterSchema } : module;
-  const { parameters, warnings } = compileParameters(candidate, effectiveModule);
   const semantic = {
     schemaVersion: EXECUTION_CONTRACT_SCHEMA_VERSION,
     candidateId: candidate.candidateId,

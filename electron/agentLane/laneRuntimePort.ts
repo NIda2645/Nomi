@@ -249,3 +249,14 @@ export type RunLaneSingleShot = (options: {
   input?: OpenLaneOptions['input']
   signal?: AbortSignal
 }) => Promise<LaneProjection>
+
+/**
+ * 「这条路真的拿不到目录」——**说出来的**那句话，不是一个省略号。
+ *
+ * 2026-09-22（对方会话 Ponytail 记的账）：可用性注入以前一路可选，于是
+ * `createLaneModelRead(resolve, availabilityOf?)` 里一个 `?.` 就把「装配漏接目录」
+ * 洗成了「这个模型没有可用性信息」——模型读到的每一行都没有 keyStatus/usable，
+ * 它以为所有模型都能用，然后带着一个没钥匙的模型去花钱。装配层现在**必传**；
+ * 只有这一个常量可以表示「没有目录」，而它在代码里是看得见的一句话。
+ */
+export const NO_CATALOG_MODEL_AVAILABILITY = (): ModelAvailabilityFacts | undefined => undefined

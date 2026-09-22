@@ -60,7 +60,7 @@
     },
     {
       "kind": "write",
-      "path": "electron/capabilityCore/executionContract.ts",
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
       "symbol": "isGenerationPlanningParameter"
     },
     {

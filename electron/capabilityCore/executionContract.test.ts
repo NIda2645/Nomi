@@ -91,11 +91,15 @@ describe("ExecutionContract compiler", () => {
     // 全仓没有生产读者——模型点名的参数与真正发出去的参数可以不一样，且没有任何地方会红。
     expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
       .toThrow(ContractCompilationError);
-    expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
-      .toThrow(/parameters\.unknownKnob/);
     try {
       compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry);
+      throw new Error("未知键必须被拒");
     } catch (error) {
+      // 机器可读那一面指到**具体哪一处**（模型照它改下一轮）；人话那一面列出合法键。
+      expect((error as ContractCompilationError).rejection?.code).toBe("unknown_parameter");
+      expect((error as ContractCompilationError).rejection?.path).toBe("parameters.unknownKnob");
+      expect((error as ContractCompilationError).rejection?.allowedKeys).toContain("seed");
+      expect(String((error as Error).message)).toContain("unknownKnob");
       expect(String((error as Error).message)).toContain("aspectRatio");
       expect(String((error as Error).message)).toContain("seed");
     }

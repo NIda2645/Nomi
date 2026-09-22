@@ -36,8 +36,12 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
   factories?: LaneCodingToolsInput['factories'];
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
-  /** 由持有目录的上层注入的只读可用性查询（lane 自己不碰目录）。 */
-  modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
+  /**
+   * 由持有目录的上层注入的只读可用性查询（lane 自己不碰目录）。**必传**：
+   * 可选的注入点 = 可选的真相，漏接时模型读到的每一行都没有 keyStatus/usable。
+   * 这条路真的拿不到目录时显式传 `NO_CATALOG_MODEL_AVAILABILITY`（见 laneHost）。
+   */
+  modelAvailability: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
 }) {
   let activeTools: LaneActiveToolsController | undefined;
   const canReadProject = async () => {

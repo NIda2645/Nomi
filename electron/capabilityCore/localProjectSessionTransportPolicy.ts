@@ -46,7 +46,8 @@ export const LOCAL_BEARER_ROUTE_REGISTER: Readonly<Record<string, string>> = Obj
   // 只读投影，不落任何状态。
   'ping': '只回存活',
   'project.list': '只读项目列表；handle 签发要 ctx.projectSession，裸 bearer 拿不到 handle',
-  'models.list': '只读模型目录投影',
+  'models.list': '只读模型目录投影（分级披露第一档：薄名单）',
+  'models.read': '只读单个模型的说明书（分级披露第二档）；与 models.list 同一份投影、同一层判词，不落任何状态',
   'skills.list': '只读技能元数据，按 origin 分级（mcpSkillAccess）',
   'skills.read': '只读技能正文，按 origin 分级（mcpSkillAccess）',
   'brief.intake': '只组题给默认，不落状态（见 case 内注释）',

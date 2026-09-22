@@ -14,7 +14,6 @@
     "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
     "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
     "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
-    "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
     "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
     "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
     "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
@@ -151,16 +150,6 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
       "symbol": "CANVAS_DRAGGING_OWNER"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
-      "symbol": "AnchoredRect"
-    },
-    {
-      "kind": "read",
-      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
-      "symbol": "AnchoredPlacement"
     },
     {
       "kind": "read",
@@ -365,7 +354,7 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
-      "symbol": "toolbarClearanceInCanvasUnits"
+      "symbol": "aboveClearanceFromNodeChrome"
     },
     {
       "kind": "write",
@@ -2765,7 +2754,7 @@
   ],
   "door_reduction": {
     "before": 515,
-    "after": 533,
+    "after": 531,
     "why_not": "Distinct node/pan/selection/viewport producers remain required; each converges on one lease primitive. Composer hosts retain separate approved write boundaries. Panel host, reference drop and mention entry points remain necessary; one captured host write authority fences all callers. Partial consumption keeps the original renderer and pricing readers; consumeSpendDraft centralizes selective cleanup without adding a second persistence owner. Keyboard and pointer completion share canvasDragWriteback, but require distinct authority: synchronous framework key dispatch versus active drag lease. The added keyboard commit caller is counted explicitly; existing frame/history metadata doors remain unchanged. Existing parameter bar consumers (production NodeParameterControls and design lab) remain necessary and converge on the same parameter surface renderer; newly recorded read doors are existing consumers, not new runtime routes. NomiSelect consumers remain independently required UI hosts; their existing dropdowns converge on the original shared component. These are newly inventoried existing read doors, not added product entry points. Existing unrelated lazy hosts remain independent optional-feature boundaries. Composer imports are consolidated so canvas and resident cannot eager-load the composer chunk. 2026-09-21 一个家：Run 侧那份分镜存储与它的读写口整刀删除，本合同的门表只剩仍然存在的那些；storyboardPresent 不再经 productionRunApi 读方案，改读项目记录里那份唯一的 storyboardDesign。 2026-09-21 Pass 3c：`ApimartReferenceUrlResolver` 那条并行的参考 URL 路整刀删除（生产侧早已无调用者，新分支还无条件覆盖它），本合同门表里属于它的 3 扇随之消失——`node scripts/door-map.mjs ApimartReferenceUrlResolver` 现在是 0 扇。 2026-09-22 下午追记：付费卡 × 的画布回滚口 `rollBackDiscardedSpendNodes` 随用户改窄裁决 D（「× 只关这次请求，节点和草稿都留着」）删除，这里少一扇。 2026-09-22 追记（spend-draft-owner lane）：`clearConsumedSpendDraft` 随「草稿账本锚 operationId」那一刀删除——键不再含报价身份之后，`consumeSpendDraft` 的「先清这一笔、再写回剩下的」变成同一个地址上的一删一写，空账本本来就由 `retainSpendDraft` 删键；它因此没有调用方了，本合同的门表少一扇。见 docs/fixes/2026-09-22-spend-draft-owner.root-cause.json。"
   },
   "generality_proof": "Every drag producer consumes the same stage-token lease primitive; all cancellation paths terminate that lease and producer state. History state is parent-controlled; both hosts reuse unchanged write access. Geometry and lazy behavior remain in existing owners. Composer usable-bottom calculation derives all marked workspace docks from the existing owner, not a toolbar class list; the existing geometry watcher includes their rectangles. Partial consumption expands the existing all layer into remaining per-shot effective patches and reuses the existing input-bound recovery key per remaining shot; only matching project/Run/operation/content/reference identities restore. No second storage owner. History intent invalidates on selection/availability/identity lifecycle changes, not on opening intent itself; delayed framework selection can therefore complete without discarding the original click. InlineParameterBar renders both single/multiple controls and canvas portal/payment inline surfaces through renderParameterPanel; each surface root supplies the installed framework nokey contract. Both production composer hosts use the shared lazy import module; only host loading geometry differs. No production static composer edge remains.",
@@ -2784,11 +2773,6 @@
       "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
       "symbol": "BaseGenerationNode",
       "responsibility": "Control history selection and availability"
-    },
-    {
-      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
-      "symbol": "resolveAnchoredPlacement",
-      "responsibility": "Clamp composer into current usable stage"
     },
     {
       "path": "src/workbench/ai/v4/spendCardDraft.ts",
@@ -2949,8 +2933,6 @@
       "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
       "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
       "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
-      "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
-      "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
       "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
       "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
       "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
@@ -2981,7 +2963,6 @@
   "regression_tests": [
     "tests/ux/selection-drag-lifecycle.test.mjs",
     "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
-    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
     "tests/ux/composerLifecycle.test.mjs",
     "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.test.ts",
     "src/workbench/generationCanvas/nodes/nodeAssetWrite.test.ts",
@@ -3000,7 +2981,6 @@
   "class_regression_tests": [
     "tests/ux/selection-drag-lifecycle.test.mjs",
     "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
-    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
     "src/workbench/generationCanvas/nodes/nodeAssetWrite.test.ts",
     "tests/ux/spend-panel-write-ownership.test.mjs",
     "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
@@ -3036,7 +3016,7 @@
       "Verify canvas and payment hosts in zh/en with editable/clickable controls, original project/node/draft retention, zero unapproved media submission, inspected screenshots and affected native interruption/Undo/project-target/package lanes. Windows remains unverified until actually executed."
     ]
   },
-  "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.",
+  "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.\n\n2026-09-22 总合并订正：`anchoredPlacement.ts` / `.test.ts` 与 `useComposerViewportPlacement` 的让位量计算已整体归 main #834（`aboveClearanceFromNodeChrome` + `bottomDocks` + `minHeight` 三条一起重写），本合同的门与回归测试里那两条随之摘掉——它们现在由 main 的 `resolveAnchoredPlacement × bottom docks` / `× minimum content height` 两族测试守；本分支自己那条 `toolbarClearanceInCanvasUnits` 的写口按裁决表丢弃，它要修的「工具条进指纹」由 main 的 `NODE_ABOVE_CHROME_SELECTOR` 覆盖（工具条/标签行/行内状态三样都进）。",
   "residual_risks": [
     "Final v13 strengthened Electron assertion exposed parameter-portal key leakage; fix and real-host rerun are required before delivery. Current acceptance and exact evidence live in docs/audit/2026-09-20-core-a-current-acceptance.md.",
     "Paid-v9 first-frame video and two-image receipts verify the exercised supplier paths only; other supplier/reference combinations and Windows remain unverified. Full-app lazy failure and all native OS interrupt combinations are not established by controlled fixtures.",
