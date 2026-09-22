@@ -274,8 +274,13 @@ try {
       //   · 提问卡 → 点第一颗选项（没有选项就在卡上打一句）。**每一张都答**，不再「只答第一张、其余按停」——
       //     按停量不到「答完之后它走不走得下去」，而 2026-09-22 起同一回合里可能连着问两次；
       //   · 报价卡 → ×。真人不想花钱时就是这么做的；这条走查量的是「问不问」，不是出片，整场零生成额度。
+      //   · 不可逆审批卡 → ×（拒绝）。T-QA-25（A4「把那个删了」）走的是 `delete_from_canvas`：
+      //     它声明不可逆，闸是**硬**的、没有墙钟，没人答就一直停着。上一版等待循环只认 question / spend，
+      //     于是 A4 每轮白等满 20.6 分钟（run5/run6 都是）。这里像真人一样**拒绝**——走查不真删东西，
+      //     量的是「它问不问」，批准了反而会毁掉下一轮的画布。
       const questionCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="question"]`)
       const spendCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="spend"]`)
+      const irreversibleCard = win.locator(`${panel} [data-v4-block="intervention"][data-kind="approval-irreversible"]`)
       const deadline = Date.now() + stationTimeout({ turns: 3 })
       let sawCard = false
       row.cardsAnswered = []
@@ -329,6 +334,19 @@ try {
           if (!await confirmReject.isVisible().catch(() => false)) await spendCard.locator('[data-v4-control="slot-dismiss"]').click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
           if (await confirmReject.isVisible().catch(() => false)) await confirmReject.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
           row.cardsAnswered.push('spend:declined')
+          await win.waitForTimeout(1500)
+          continue
+        }
+        // 不可逆审批卡（delete_from_canvas 等）：和报价卡同一套 DOM——右上那颗 ×（`slot-dismiss`）先把
+        // 「不要」摊开成填原因的那一档，再按 `confirm-reject` 落定。`reasonPlaceholder` 在介入槽里是
+        // **恒给**的（agentPanelV4Intervention.ts），所以两步都要走；先问一次 `confirm-reject` 可不可见，
+        // 是为了在卡已经处于拒绝态时不再多点一次 ×（那一下会把卡关掉、闸永远等不到答复）。
+        if (await irreversibleCard.count() > 0) {
+          await win.screenshot({ path: path.join(outputDir, `${item.id}-approval-irreversible-card.png`) }).catch(() => {})
+          const confirmReject = irreversibleCard.locator('[data-v4-control="confirm-reject"]')
+          if (!await confirmReject.isVisible().catch(() => false)) await irreversibleCard.locator('[data-v4-control="slot-dismiss"]').click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+          if (await confirmReject.isVisible().catch(() => false)) await confirmReject.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+          row.cardsAnswered.push('approval-irreversible:declined')
           await win.waitForTimeout(1500)
           continue
         }
