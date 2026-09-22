@@ -96,3 +96,54 @@ export function asksPermissionForReversible(args) {
   const realCandidates = labels.filter((label) => !YES_NO_NESTING.test(label) && !CANCEL_OPTION.test(label))
   return realCandidates.length < 2
 }
+
+// ── 「它其实问了，只是没用那个工具」──────────────────────────────────────────────────
+//
+// 2026-09-22 run4/run5 逐句还原发现的那件事：走查的「该问时问了」只数 `ask_user` 调用
+// （`row.askedUser = askCalls.length > 0`），而模型多数时候是**在正文里**把问题问出来的——
+// 带编号选项、以问号收尾、回合就此结束。run5 那 8 句该问却记成「没问」的用例里有 6 句是这样
+// （run4 是 4 句）。两者在产品上完全不是一回事：正文里的问句不会变成卡，用户答不了，回合已经结束。
+//
+// 所以再加一把尺子，专量**回合的收尾那段话**。它不替代「有没有调工具」那一格，
+// 是把「模型自己认为该问」和「问对了地方」拆成两个数——一个数字说不清两件事。
+
+/**
+ * 收尾那段话 = 这一轮**最后一条** assistant 文本消息。
+ *
+ * 给数组就取最后一条非空的；给字符串就整段当收尾。**不是「最后一个自然段」**——
+ * 实测 run4/A9 的形状是「问题列在上一段、最后一段是『请告诉我你想怎么改』」，
+ * 按自然段切会把编号选项切掉，这把尺子就对它说 false（第一版正是这么写的，当场验出来）。
+ */
+function closingProse(text) {
+  if (Array.isArray(text)) {
+    const parts = text.map((part) => String(part ?? '').trim()).filter(Boolean)
+    return parts.length ? parts[parts.length - 1] : ''
+  }
+  return String(text ?? '').trim()
+}
+
+/** 编号选项：`1.` `2、` `①` `- ` 之类连着出现两个以上。 */
+const NUMBERED_ITEM = /(^|\n)\s*(?:[（(]?\d+[.)、）]|[①②③④⑤⑥⑦⑧⑨])\s*\S/g
+
+/**
+ * 这一轮的正文算不算「它问了」。
+ *
+ * 判据只认两种**回合真的停在问题上**的形状：
+ *   · 收尾那条消息以问号结束；
+ *   · 收尾那条消息列了两个以上编号选项，且里面有问号（光有编号可能只是「我做了这几件事」）。
+ *
+ * 只看收尾那条消息，不看整轮全文：模型在工具之间写的「让我看看画布上还有什么」这类旁白里
+ * 也带问号，那不是在问用户，是在自言自语——把它算进去这把尺子就永远说 true。
+ */
+export function judgeProseQuestion(text) {
+  const closing = closingProse(text)
+  const endsWithQuestion = /[？?]\s*$/.test(closing)
+  const numberedOptions = (closing.match(NUMBERED_ITEM) ?? []).length >= 2
+  const hasQuestionMark = /[？?]/.test(closing)
+  return {
+    closing,
+    endsWithQuestion,
+    numberedOptions,
+    askedInProse: endsWithQuestion || (numberedOptions && hasQuestionMark),
+  }
+}

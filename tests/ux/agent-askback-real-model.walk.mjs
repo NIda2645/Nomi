@@ -43,7 +43,7 @@ import { requireRealMediaAssets } from './fixtures/realMedia.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 // 判据与它的阳性对照住 `askback-option-judges.mjs` / `.test.mjs`：一把尺子只能有一个家，
 // 而且它得能在不起 App、不花额度的情况下被喂夹具（用户看到的那张卡就是那份夹具）。
-import { asksPermissionForReversible, judgeAskOptions } from './askback-option-judges.mjs'
+import { asksPermissionForReversible, judgeAskOptions, judgeProseQuestion } from './askback-option-judges.mjs'
 // 轨迹（每次调用的入参/返回/校验错误原文/第几次重试）落 JSONL：用户 2026-09-21 点名
 // 「里面经常有重试、参数出错，这些轨迹都对我们后续优化有帮助」。
 import { writeTrajectories } from './askback-trajectory.mjs'
@@ -96,10 +96,15 @@ const report = {
 function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
   const calls = []
   const results = []
+  // 这一轮模型**自己写的正文**。2026-09-22 起要数它：模型多数时候是在正文里把问题问出来的
+  // （带编号选项、问号收尾、回合就此结束），只数 `ask_user` 调用的话这些全部记 0。
+  // 读的是 transcript 里的 assistant 文本段——`*.trace/trace.md` 的 `### Response` 就是它的渲染。
+  const prose = []
   for (const session of readLaneTranscripts(projectDir)) {
     for (const message of laneMessages(session)) {
       if (message.role === 'assistant' && Array.isArray(message.content)) {
         for (const part of message.content) {
+          if (part?.type === 'text' && typeof part.text === 'string') prose.push(part.text)
           if (part?.type !== 'toolCall' || seenToolCallIds.has(part.id)) continue
           seenToolCallIds.add(part.id)
           calls.push({ id: part.id, name: part.name, args: part.arguments })
@@ -113,7 +118,7 @@ function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
       }
     }
   }
-  return { calls, results }
+  return { calls, results, prose }
 }
 
 let app, win, failure
@@ -225,6 +230,8 @@ try {
 
   const seenToolCallIds = new Set()
   const seenResultIds = new Set()
+  // 正文按轮切：`readRoundTrajectory` 每次读的是全量，这个游标记住上一轮读到哪。
+  let seenProse = 0
   let answeredOnce = false
   for (const item of CASES.cases.slice(0, ROUNDS)) {
     const panel = item.surface === 'creation' ? CREATION_PANEL : CANVAS_PANEL
@@ -345,7 +352,7 @@ try {
     } catch (roundError) {
       row.roundError = roundError.message
     }
-    const { calls, results } = readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds)
+    const { calls, results, prose } = readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds)
     row.ms = Date.now() - started
     row.toolCalls = calls.map((call) => call.name)
     row.firstTool = calls[0]?.name ?? null
@@ -358,10 +365,18 @@ try {
     // ① 为一个**可撤销**的动作问「要不要」。判据：题目是征询许可的句式，而选项里
     //    没有两个真候选（真的指代不明时选项就是候选本身，题目不会是「要不要」）。
     row.askedForReversibleConfirmation = askCalls.some((call) => asksPermissionForReversible(call.args))
+    // 「它其实问了，只是没用那个工具」：量的是**回合的收尾那段话**。
+    // 这一格和 `askedUser` 不是一个数——一个说「模型自己认为该问」，一个说「问对了地方」。
+    // 收尾正文只在这一轮新增的那几段里取最后一段（`prose` 是本轮之前读过的全量，按轮切）。
+    const proseJudged = judgeProseQuestion(prose.slice(seenProse))
+    seenProse = prose.length
+    row.askedInProse = proseJudged.askedInProse
+    row.proseQuestion = { endsWithQuestion: proseJudged.endsWithQuestion, numberedOptions: proseJudged.numberedOptions,
+      closing: proseJudged.closing.slice(0, 600) }
     row.rejectedArgs = results.filter((result) => ARG_REJECTED.test(result.text)).map((result) => result.name)
     row.argsOkFirstTry = calls.length > 0 && row.rejectedArgs.length === 0
     report.cases.push(row)
-    console.log(`${item.id} shouldAsk=${item.shouldAsk} asked=${row.askedUser} card=${row.questionCardVisible === true} tools=[${row.toolCalls.join(',')}] ${row.ms}ms`)
+    console.log(`${item.id} shouldAsk=${item.shouldAsk} asked=${row.askedUser} inProse=${row.askedInProse} card=${row.questionCardVisible === true} tools=[${row.toolCalls.join(',')}] ${row.ms}ms`)
     fs.writeFileSync(path.join(outputDir, 'report.json'), JSON.stringify(report, null, 2))
   }
 
@@ -372,6 +387,11 @@ try {
   report.summary = {
     rounds: report.cases.length,
     askedWhenShould: `${should.filter((c) => c.askedUser).length}/${should.length}`,
+    // 「模型自己认为该问」= 调了工具 **或** 在正文里问了。它与上一行的差额就是
+    // 「它想问、但问在了用户答不了的地方」——2026-09-22 run4/run5 那 4 句 / 6 句。
+    askedInProseWhenShould: `${should.filter((c) => c.askedInProse).length}/${should.length}`,
+    wantedToAskWhenShould: `${should.filter((c) => c.askedUser || c.askedInProse).length}/${should.length}`,
+    askedInProseWhenShouldNot: `${shouldNot.filter((c) => c.askedInProse).length}/${shouldNot.length}`,
     didNotAskWhenShouldNot: `${shouldNot.filter((c) => !c.askedUser).length}/${shouldNot.length}`,
     questionCardRendered: `${count((c) => c.questionCardVisible === true)}/${report.cases.length}`,
     optionSets: allQualities.length,
