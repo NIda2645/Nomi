@@ -1,6 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
+/**
+ * 真素材腿的文件名约定 —— 这份清单只有这一个 owner。
+ * 默认车道按它 exclude，`vitest.realMedia.config.ts` 按它 include，两边读同一个常量，
+ * 不会出现「一边排掉了、另一边没收进来」的静默空洞（正是本分支在修的那类根因）。
+ */
+export const REAL_MEDIA_TESTS = ["**/*.realMedia.test.ts"];
+
 export default defineConfig({
   test: {
     // scripts/ 两种后缀都收：历史门岗脚本是 .mjs，需要 import 仓库 TS 的脚本（如 model-radar 要
@@ -14,6 +21,13 @@ export default defineConfig({
       "scripts/**/*.test.ts",
       "tests/**/*.test.mjs",
     ],
+    // 真素材腿**不进这条车道**。它们按设计「缺素材就硬红」（R13 四件真实第④件 / R17：
+    // 登记即放绿的 skip 是自欺），而 CI runner 上没有那 1.38GB 素材——放进来只会让每个 PR
+    // 红在一件与改动无关的事上，红灯一旦不可信，人就开始绕过它。
+    // 登记表 tests/ux/real-media-fixtures.json 里其余 live 条目（.probe.mjs / .walk.mjs /
+    // scripts/*.ts）天然落在 include 之外，本行只是把同一条规矩写给 *.realMedia.test.ts。
+    // 跑它：`pnpm run test:real-media`（缺素材照样硬红，不 skip）。
+    exclude: [...REAL_MEDIA_TESTS, "**/node_modules/**", "**/dist/**", "**/dist-electron/**"],
     environment: "node",
     // 单测不做真 fsync：临时目录的数据没人需要它跨掉电存活，但 fsync 会让墙钟随磁盘队列漂移，
     // 把 productionRun 的编排测试顶过 5000ms testTimeout（flake 根因）。见该文件顶部注释。

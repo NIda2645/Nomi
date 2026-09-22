@@ -212,6 +212,10 @@ ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，�
 - [x] 并列分数下限：全同分也给满名额，不塌回一镜到底
 - [x] **真实快剪素材上的端到端**：`electron/video/shotCutSheetAlignment.realMedia.test.ts`
       （175 段派生快剪片与未派生 `shot-cut-aug12-hevc` 参数化执行；统一用生产 resolver，缺素材硬红不 skip）
+      **本机腿**，用 `pnpm run test:real-media` 跑 —— CI runner 上没有那 1.38GB 素材，该文件按
+      `*.realMedia.test.ts` 约定排除在默认 vitest 车道之外（唯一 owner：`vitest.config.ts` 的
+      `REAL_MEDIA_TESTS`，`vitest.realMedia.config.ts` 读同一个常量 include）。**不是 skip**：
+      在它自己那条车道上缺素材照样硬红。2026-09-22 初版漏了这一刀，PR #839 的 CI Unit 因此红过一次。
 - [ ] 分镜表节点的用户可见提示：§9 出选项，等拍板
 
 ## 10.5 返工：第一版被验收打回的两条阻断（2026-09-22）
@@ -328,6 +332,11 @@ M5 是 Ponytail 那条简化之后**补上的**：第一轮跑它时全绿——
 3. 分镜表节点仍然没有任何「这张表被并过刀」的提示——数据备好了，UI 等拍板。
 4. 渲染层 0.2 秒合并与引擎 2 帧去重的粗/细两层并存（见「不动项」）。
 5. 默认阈值与两条路默认灵敏度不一致的问题没动（§8）。
+6. **真素材腿是本机腿，CI 不跑它**（见 §10 验收门那一条）。所以「联系表第 i 格 = 第 i 刀」这条
+   在 CI 上**没有自动防线**——它靠的是本机跑 `pnpm run test:real-media`。这不是本次新增的口子
+   （登记表里其余 live 条目同样是本机腿），但它对本次这条不变量尤其重要：第一版正是**单测全绿**
+   而真素材上 120 刀错了 21 刀。素材进 CI 之前，改 `buildSheetFilter` / `capShotCutsByScore` /
+   `shotSheetRowsFor` 的人必须本机跑一次那条腿，单测绿不构成证据。
 
 ## 参考
 
