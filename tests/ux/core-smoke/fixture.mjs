@@ -131,7 +131,7 @@ function buildUsedBackground({ snapshot, projectId, media, origin }) {
       id: entry.id,
       type: isVideo ? 'video' : 'image',
       url: isVideo ? media.video.url : frame.url,
-      thumbnailUrl: isVideo ? frame.url : frame.url,
+      thumbnailUrl: frame.url,
       ...(entry.model ? { model: entry.model } : {}),
       ...(entry.taskKind ? { taskKind: entry.taskKind } : {}),
       createdAt: entry.createdAt ?? version + 1,

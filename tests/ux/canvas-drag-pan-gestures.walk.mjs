@@ -11,7 +11,8 @@
 // 核心冒烟清单的一员（tests/ux/core-smoke/scenarios.mjs）：empty（空项目）/ used（用过的项目：
 // 24 张真实卡 + 编组 + 时间轴展开 + Agent 面板开着 + 1280×800 小窗）两种夹具都跑，项目从项目库点开。
 // 用法：pnpm run build && pnpm run test:core-smoke -- --fixture used
-//       pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs      （单跑，默认 empty）
+//       pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs      （单跑，默认 empty / zh-CN）
+//       pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs en   （单跑英文）
 import { ACCEPTANCE_VIEWPORT } from './_launchApp.mjs'
 import { mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
@@ -21,10 +22,13 @@ import { CANVAS_PANE_SELECTOR, findCanvasBlankPoint, findNodeHitPoint } from './
 import { launchCoreSmoke } from './core-smoke/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-// 这条走查的文案断言全是中文：夹具的语言固定 zh-CN（profile-copy 下若用户资料是英文，夹具会如实报出来）。
-const smoke = await launchCoreSmoke({ name: 'canvas-drag-pan', locale: 'zh-CN', emptyViewport: ACCEPTANCE_VIEWPORT })
-if (smoke.locale !== 'zh-CN') throw new Error(`canvas-drag-pan-gestures 的断言是中文文案，当前资料的界面语言是 ${smoke.locale}`)
-const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-drag-pan-gestures', smoke.fixture)
+// 语言与 node-params 走查同一套约定：位置参数 argv[2]，夹具再让 NOMI_CORE_SMOKE_LOCALE（runner 的 --locale）覆盖。
+// 下面凡是按界面文案找控件的地方都按 EN 取词，两种语言各跑一遍才算数。
+const REQUESTED_LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
+const smoke = await launchCoreSmoke({ name: 'canvas-drag-pan', locale: REQUESTED_LOCALE, emptyViewport: ACCEPTANCE_VIEWPORT })
+const LOCALE = smoke.locale
+const EN = LOCALE === 'en'
+const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-drag-pan-gestures', `${smoke.fixture}-${LOCALE}`)
 // 回填①的交付证据：只写不跟踪的目录（冒烟必跑，不许把已跟踪文件改脏——跑完 git status 必须干净）。
 const evidenceDir = path.join(shotsDir, 'evidence')
 rmSync(shotsDir, { recursive: true, force: true })
@@ -735,7 +739,7 @@ try {
   // 浮框要避让它们：1280×800 小窗里可用高度因此放不下浮框，选中卡的浮框按既定兜底被 clamp 到盖住卡本身
   // 和连线握把（useComposerViewportPlacement.ts「放不下时宁可盖住节点一截」）。人会先把碍事的两样收起来
   // 再连线，走查照做；empty 夹具里两样都不在，这一步什么都不做。
-  for (const name of ['收起画面小窗', '隐藏地图']) {
+  for (const name of EN ? ['Collapse mini preview', 'Hide minimap'] : ['收起画面小窗', '隐藏地图']) {
     const dockToggle = getWin().getByRole('button', { name, exact: true })
     if (!(await dockToggle.isVisible())) continue
     await dockToggle.click()
@@ -1216,6 +1220,9 @@ try {
   // 而帮助浮层还照着这个开关生成文案——说明书与实物不符（审计 ③ 表第 3 行）。
   // 这一段走真人路径：点设置 → 通用 → 点芯片 → 关掉 → 回画布滚轮。
   const modifierGlyph = process.platform === 'darwin' ? '⌘' : 'Ctrl'
+  // 帮助浮层里的两条词（i18n generationCommon 的 shortcuts.wheelOrTwoFinger / modWheel）。
+  const WHEEL_OR_TWO_FINGER = EN ? 'Wheel / two-finger' : '滚轮 / 双指滑'
+  const WHEEL_WORD = EN ? 'wheel' : '滚轮'
 
   // 用过的项目里的卡是 apimart 模型生成的，隔离资料里没有它的 key，App 会挂一条常驻的「模型当前不可用」提醒
   // （警告类 toast 要手动关）。它浮在所有弹层之上，正好压住设置弹窗右上角的关闭钮——人会先点掉提醒再关弹窗，走查照做。
@@ -1237,8 +1244,9 @@ try {
   }
 
   async function chooseCanvasGesture(scheme) {
-    await getWin().getByRole('button', { name: '设置', exact: true }).first().click()
-    const dialog = getWin().getByRole('dialog', { name: '设置', exact: true })
+    const settingsName = EN ? 'Settings' : '设置'
+    await getWin().getByRole('button', { name: settingsName, exact: true }).first().click()
+    const dialog = getWin().getByRole('dialog', { name: settingsName, exact: true })
     await expect(dialog).toBeVisible()
     await dialog.locator('[data-settings-tab-id="general"]').click()
     const chip = dialog.locator(`[data-canvas-gesture-scheme="${scheme}"]`)
@@ -1253,13 +1261,13 @@ try {
     // 用过的项目里有一批还没生成的卡，画布底部居中挂着批量生成栏；1280 宽、Agent 面板开着时画布只剩 ~800 宽，
     // 这条栏压在左下角缩放条上，「画布操作」那颗钮被它盖住点不到（已记为待修的布局问题，见方案「实测发现」）。
     // 人会先点栏上的 × 把它收起再去点帮助，走查照做；empty 夹具里没有这条栏，这一步什么都不做。
-    const batchDockDismiss = getWin().getByRole('button', { name: '隐藏批量生成栏', exact: true })
+    const batchDockDismiss = getWin().getByRole('button', { name: EN ? 'Hide batch generation bar' : '隐藏批量生成栏', exact: true })
     if (await batchDockDismiss.isVisible()) {
       await batchDockDismiss.click()
       await expect(batchDockDismiss).toBeHidden()
     }
-    await getWin().getByRole('button', { name: '画布操作', exact: true }).first().click()
-    const panel = getWin().getByRole('dialog', { name: '画布操作帮助', exact: true })
+    await getWin().getByRole('button', { name: EN ? 'Canvas controls' : '画布操作', exact: true }).first().click()
+    const panel = getWin().getByRole('dialog', { name: EN ? 'Canvas controls help' : '画布操作帮助', exact: true })
     await expect(panel).toBeVisible()
     await evidence(name)
     const text = (await panel.innerText()).replace(/\s+/g, ' ')
@@ -1271,7 +1279,7 @@ try {
   await chooseCanvasGesture('modifier-zoom')
   const panSchemeHelp = await readControlsHelp('backfill-a-help-modifier-zoom.png')
   assert(
-    panSchemeHelp.includes('滚轮 / 双指滑') && panSchemeHelp.includes(`${modifierGlyph} + 滚轮`),
+    panSchemeHelp.includes(WHEEL_OR_TWO_FINGER) && panSchemeHelp.includes(`${modifierGlyph} + ${WHEEL_WORD}`),
     '平移档的帮助浮层写着「滚轮/双指滑=平移、修饰键+滚轮=缩放」',
     panSchemeHelp.slice(0, 160),
   )
@@ -1316,7 +1324,7 @@ try {
   // `data-dragging` 就永远摘不掉，浮框 / 浮条 / 版本托盘全部隐身（docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
   // 本文件别处每次平移后都等 ≥260ms 才下一步，正好错过那 150ms——所以这里刻意「松手即点」。
   {
-    await getWin().getByLabel('适应视图', { exact: true }).first().click()
+    await getWin().getByLabel(EN ? 'Fit view' : '适应视图', { exact: true }).first().click()
     await getWin().waitForTimeout(500)
     const panStart = await findBlankPoint()
     const target = await getWin().evaluate(() => {
@@ -1355,7 +1363,7 @@ try {
   await chooseCanvasGesture('wheel-zoom')
   const zoomSchemeHelp = await readControlsHelp('backfill-a-help-wheel-zoom.png')
   assert(
-    !zoomSchemeHelp.includes('滚轮 / 双指滑'),
+    !zoomSchemeHelp.includes(WHEEL_OR_TWO_FINGER),
     '缩放档的帮助浮层不再列「滚轮=平移」那一行（文案跟着实物走）',
     zoomSchemeHelp.slice(0, 160),
   )
