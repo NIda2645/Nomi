@@ -156,7 +156,7 @@ export async function upsertRendererCatalogVendorApiKey(vendorKey: string, paylo
   // 的同一形状：`ApiKeyRecord.enabled` 同时被当成「用户停用了」和「还没验过」两个意思用。
   // 免鉴权这一档没有第二种意思可讲，先归位；剩下的自定义家仍由认证晋升决定发布（不变）。
   const nothingToVerify = vendor.authType === 'none'
-  const publishNow = (Boolean(strategy) || nothingToVerify) && !verificationPending
+  const publishNow = (strategy || nothingToVerify) && !verificationPending
   const result = upsertModelCatalogVendorApiKey(vendorKey, {
     ...candidate,
     ...(verificationPending ? { verificationPending: true } : {}),
