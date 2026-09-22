@@ -546,8 +546,11 @@ export class ProviderAdapterService {
                     submissionState: "settled" as const,
                   };
             },
-            isUncertainError: (error) => error instanceof AdapterWaitError
-              && error.reason !== "cancelled" && error.reason !== "terminal",
+            // 自检不向上游提交任何东西（见上面 2026-09-11 拍板注释），所以自检本身超时
+            // 不可能留下一个「不知道有没有落地」的远端任务——判「uncertain」永远是 false。
+            // 只有 service.cancel() 主动打断一次正在飞的 verify() 时才真的不知道对方收没收到，
+            // 那条路径走的是 markSubmissionUnknown，不经过这里。
+            isUncertainError: () => false,
           });
         } catch (error) {
           if (error instanceof AdapterReconciliationRequiredError) throw error;
