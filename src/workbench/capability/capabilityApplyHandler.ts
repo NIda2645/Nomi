@@ -151,6 +151,28 @@ async function runProductionTextPlanner(input: {
  *   · 用户自己在画布上点的那一下（视频拆解）→ 金币图标 + 说清「这一批要发几次调用」。
  */
 async function confirmSpendFromMainProcess(info: SpendConfirmPayload): Promise<{ confirmed: boolean }> {
+  // 凭据验证（T-MO-10，用户 2026-09-22 拍板）：这家没有免费的自检端点，验一次 key 就要发一次
+  // 可能计费的请求。它**不挂在任何节点上**（用户此刻在接入页，不在画布），所以不走下面那段
+  // 按节点取标题的路——硬套会在卡上印一句「新节点」，那是假的。同一张卡、同一份报价、
+  // 只换成这件事自己的措辞。
+  if (info.intent === 'credential-probe') {
+    const ok = await useSpendConfirmStore.getState().requestConfirm({
+      kind: 'generation',
+      source: 'user',
+      title: i18n.t('runtime.capability.credentialProbeTitle', { vendor: info.vendor || '' }),
+      message: i18n.t('runtime.capability.credentialProbeMessage'),
+      confirmLabel: i18n.t('runtime.capability.confirmCredentialProbe'),
+      details: [
+        spendQuoteDetail(info.quote ?? { amount: null }),
+        {
+          label: i18n.t('runtime.capability.model'),
+          value: [info.vendor, info.modelKey].filter(Boolean).join(' · ') || i18n.t('runtime.capability.defaultModel'),
+        },
+        { label: i18n.t('runtime.capability.callCount'), value: String(info.callCount ?? 1) },
+      ],
+    })
+    return { confirmed: Boolean(ok) }
+  }
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find((item) => item.id === info.nodeId)
   const nodeLabel =

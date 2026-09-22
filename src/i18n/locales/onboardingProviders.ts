@@ -406,6 +406,12 @@ export const zhOnboardingProviders = {
     // 「这台机器上到底存没存住这把 key」——从状态派生，不是一条文案分支（2026-09-17，W-17）。
     storedYes: '这台机器上已经存着 {{name}} 的密钥。',
     storedNo: '这台机器上还没有存 {{name}} 的密钥。',
+    // 「点这一下会发什么、花不花钱」——料源是主进程那份唯一的探测策略（T-MO-10，09-22 拍板）。
+    // 不知道就说不知道：**不许**在问不到的时候默认说「免费验证」。
+    probeCostFree: '保存时会用这把密钥发一次免费的验证请求（只查额度/权限，不生成内容，不花钱）。',
+    probeCostPaid: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，预计消耗 {{amount}} 额度。发之前会再问你一次。',
+    probeCostPaidUnpriced: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，会消耗额度（这家还没填价，具体多少说不准）。发之前会再问你一次。',
+    probeCostUnknown: '暂时读不到这家的验证方式；保存前 Nomi 会先告诉你这一下花不花钱。',
   },
   knownVendors: {
     apimart: {
@@ -1635,6 +1641,10 @@ export const enOnboardingProviders = {
     saveFailed: 'Could not save: {{message}}',
     storedYes: 'A {{name}} key is stored on this machine.',
     storedNo: 'No {{name}} key is stored on this machine yet.',
+    probeCostFree: 'Saving sends one free verification request with this key (it checks quota and access only — nothing is generated, nothing is charged).',
+    probeCostPaid: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, costing about {{amount}} in credits. You are asked once more before it goes out.',
+    probeCostPaidUnpriced: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, which spends credits (no price is on file, so the amount is unknown). You are asked once more before it goes out.',
+    probeCostUnknown: 'Nomi cannot read this provider’s verification method right now; it will tell you whether the check costs anything before sending it.',
   },
   knownVendors: {
     apimart: {
