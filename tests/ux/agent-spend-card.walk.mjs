@@ -215,9 +215,10 @@ try {
   await expect(input, '重新出价回来的是他没提交的那句话，不是原候选').toHaveText(draftPrompt)
   await expect(sizeChip, '他改过的尺寸也跟着回来').toContainText('1536x1024')
   // 而宿主那份候选**没被偷偷改过**：手改只活在卡上，直到他按「生成」。
-  const readRun = () => win.evaluate(({ projectId, operationId }) => window.nomiDesktop.productionRuns.read(projectId, operationId), { projectId, operationId })
-  const requotedShot = (await readRun()).generationPlan.shots[0]
-  expect(requotedShot.candidate?.prompt ?? requotedShot.prompt, '没提交的手改没有落进宿主候选').toBe(DRAFTED_PROMPT)
+  const pendingRows = await win.evaluate(id => window.nomiDesktop.productionRuns.pendingSpend(id), projectId)
+  expect(pendingRows.surface, '探针：待决投影这一刻真的读得到').toBe('ready')
+  expect(pendingRows.rows[0]?.operationId, '重新出价的是同一次生成').toBe(operationId)
+  expect(pendingRows.rows[0]?.shots[0]?.prompt, '没提交的手改没有落进宿主候选').toBe(DRAFTED_PROMPT)
   expect((await nodesAfterRestart()).find(entry => entry.id === node.id), '重新出价不动画布').toEqual(restoredShot)
   expect(walk.fixture.images, '重新出价不提交').toHaveLength(0)
   await walk.snap('spend-card-zh-requoted-same-draft')
