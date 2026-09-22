@@ -1,10 +1,8 @@
 [walkthrough] content viewport {"width":1280,"height":933}
-feel record: probe-free/waitForLoadState.png; findings=11; new-surfaces=2; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-dbd1715c-8c76-4674-a2a7-03bf9efa9c10
-feel record: probe-free/waitForLoadState.png; findings=0; new-surfaces=0; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-dbd1715c-8c76-4674-a2a7-03bf9efa9c10
+feel record: probe-free/waitForLoadState.png; findings=11; new-surfaces=2; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-1df0a079-3daa-4d72-aad7-8fdccfe1913c
+feel record: probe-free/waitForLoadState.png; findings=0; new-surfaces=0; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-1df0a079-3daa-4d72-aad7-8fdccfe1913c
   探测策略投影：cost=free amount=null
   保存验证的真实出站：GET /v1/balance
   verificationPending=false
-feel record: probe-free/waitForFunction.png; findings=32; new-surfaces=3; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-dbd1715c-8c76-4674-a2a7-03bf9efa9c10
-feel record: probe-free/01-models-home.png; findings=32; new-surfaces=3; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-dbd1715c-8c76-4674-a2a7-03bf9efa9c10
 
-✅ 凭据免费探测走查通过：保存验证只打了 GET /v1/balance，零次生成请求。截图：/Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/tests/ux/shots/credential-probe-free
+✅ 凭据免费探测走查通过：保存验证只打了 GET /v1/balance，零次生成请求。

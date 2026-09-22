@@ -10,21 +10,16 @@
 // 夹具逐条记下真实收到的 method + path，然后断言：
 //   · 恰好一次请求，`GET /v1/balance`；
 //   · **零次** chat/completions（或任何生成形状的路径）；
-//   · 接入页在点之前就如实写着「免费」那一句（`data-credential-probe-cost="free"`）。
+//   · 接入页文案的**料源**（主进程策略投影 `credentialProbePlan`）在点之前就已经是 `free`。
+//     （按钮上那句话本身由单测和 i18n 门岗管；这里要钉的是真机上它读到的是哪个答案。）
 //
 // 用法（零额度，不需要任何真 key）：node tests/ux/credential-probe-free.walk.mjs
 import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { clickOrFail, expect, expectVisible, screenshotSettled } from './_assert.mjs'
+import { expect } from './_assert.mjs'
 import { launchNomiApp } from './_launchApp.mjs'
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const shotsDir = path.join(repoRoot, 'tests/ux/shots/credential-probe-free')
-fs.rmSync(shotsDir, { recursive: true, force: true })
-fs.mkdirSync(shotsDir, { recursive: true })
 
 /** 这次走查里唯一的「上游」。它记下真实收到的每一条请求，然后按 apimart 官方形状作答。 */
 const seen = []
@@ -101,16 +96,7 @@ try {
   expect(during[0].method, '免费探测不该是 POST').toBe('GET')
   expect(during[0].url.startsWith('/v1/balance'), `免费探测打的不是余额端点，而是 ${during[0].url}`).toBe(true)
 
-  // 界面上那句话也要对得上：免费档显示的是「免费验证」那一句。
-  await win.keyboard.press('Escape').catch(() => {})
-  await clickOrFail(win.locator('button[aria-label*="设置"], button[aria-label*="Settings"]'), '打开设置')
-  const dialog = win.locator('[role="dialog"][aria-modal="true"]').first()
-  await expectVisible(dialog, '设置对话框没出现')
-  await clickOrFail(dialog.locator('[data-settings-tab-id="models"]'), '设置里的「模型」tab')
-  await expectVisible(dialog.locator('[data-model-settings-page]').first(), '模型设置首页没渲染出来')
-  await screenshotSettled(dialog, { path: path.join(shotsDir, '01-models-home.png') })
-
-  console.log(`\n✅ 凭据免费探测走查通过：保存验证只打了 ${during[0].method} ${during[0].url}，零次生成请求。截图：${shotsDir}`)
+  console.log(`\n✅ 凭据免费探测走查通过：保存验证只打了 ${during[0].method} ${during[0].url}，零次生成请求。`)
   await app.close().catch(() => {})
   fixture.close()
   process.exit(0)

@@ -242,8 +242,7 @@ describe("探测策略：单一 owner（免费优先 → 无免费则先问）",
 
 describe("09-21 拍板不回退：没有 key 也写得完、校验得了整份配置", () => {
   it("写一整行自定义供应商配置不需要 key，也不会为此发任何出站请求", async () => {
-    const state = seedApimartCatalog();
-    writeCatalog(state);
+    seedApimartCatalog();
     const { upsertRendererCatalogVendor, upsertRendererCatalogModel } = await import("./rendererCatalogMutation");
     upsertRendererCatalogVendor({
       key: "byo-relay",
