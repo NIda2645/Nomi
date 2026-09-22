@@ -1,0 +1,144 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-spend-draft-owner",
+  "problem_type": "Unapproved user input was addressed by a freshness fingerprint instead of by the thing it belongs to, so every refresh of that fingerprint silently orphaned it",
+  "symptom": "两条红，同一个根：① **T-QA-23**（继承红，`tests/ux/spend-panel-write-ownership.test.mjs`「an all-scope revision failure preserves the remaining shot across quote refresh and paging」）——在付费卡上用「全部」范围改参数，部分镜封印失败；成功的那几镜把报价推进一版，用户翻页回到**还没提交**的那一镜，他刚打的那句提示词不见了（实收 `'b'`，应为 `'edited'`）。② **T-QA-26**（09-22 D4 真机走查如实钉住）——在卡上点 ×（裁决 D：只收回这一次出价），同一个 operationId 再 `generate`，卡回来了、账本里那份草稿一个字不丢，但他在卡上**没提交**的手改（正在打的那句提示词、刚点的那个尺寸）是空的。",
+  "direct_cause": "`src/workbench/ai/v4/spendCardDraft.ts` 的 `spendDraftKey` 把卡本地那本未提交改动的账本键派生成 `[projectId, runId, operationId, quoteId, planVersion, candidateRevision]`——**含报价身份**。而报价身份按设计就是会变的：`persistEdits` 每封印一镜就拿回一个新的 `quoteId`（T-QA-23 的那一半），`withdrawGenerationPresentation` 之后重新出价必然换一份 `quoteId` 并推进 `planVersion`（T-QA-26 的那一半）。`useAgentPanelSpendConfirm` 的轮询用这个键当 draft owner：键一变就当成「换了一笔」，`restoreSpendDraft` 读空，用户正在编辑的那一层被整层换掉。",
+  "class_root": "**身份锚错了层**：一份属于「这一次操作」的用户输入，被钉在「这一刻的现时性指纹」上。现时性指纹的职责是回答「你确认的是不是你看到的那个数」，它按设计必须频繁变化；拿它做寻址，等于宣布「每刷新一次，用户还没提交的东西就换一本账」。同一族的判据是：**这份状态跟着谁生、跟着谁死**——答案是这一次 `generate`（`operationId`），不是它的第 n 次报价。",
+  "affected_population": [
+    "每一个在付费确认卡上改过东西、又遇到价格刷新 / 部分封印失败 / 翻页的用户（T-QA-23）",
+    "每一个 × 收回出价之后又说「还是生成吧」的用户：卡回来了，他没提交的手改没回来（T-QA-26）",
+    "不受影响：全自动档（不出卡）；确认一次就成功走完的单镜路径（报价只推进一次、卡随即消失）"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/spendCardDraft.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
+  ],
+  "entry_points": [
+    "付费确认卡上的任何一次手改（NodeGenerationComposer → NodeWriteAccess.updateNode → draftAfterNodeEdit → retainSpendDraft）",
+    "付费确认卡的轮询换卡（useAgentPanelSpendConfirm.refresh → restoreSpendDraft）",
+    "确认那一刻的部分消费（confirm → persistEdits → consumeSpendDraft）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "账本只活在渲染层的 localStorage，键、形状、生命周期都是 Nomi 自己的；没有任何外部方读写它，也没有跨进程契约变化（`PendingSpendConfirm` 一个字节没动，`check:model-face-frozen` 不受影响）。姿势上对齐的是本仓已定的那条裁决：待决身份锚 `operationId` 不锚 `quoteId`（docs/plan/2026-09-22-waiting-for-user-one-owner.md §1 B）。",
+  "invariants": [
+    "卡上没提交的手改，身份 = 这一次 `generate`（`operationId`）：报价刷新、改参数推版、× 收回再出价都带得过去。",
+    "换一次生成（或换项目 / 换 Run）才是换一本账本，一个字都带不过去。",
+    "一次生成一本账本、一个键派生：镜头分层住在账本自己的结构里（`perShot` 压 `all`），不许提进键。",
+    "报价身份只做现时性校验（确认时比对 `quoteId`），不参与任何寻址。",
+    "× 不让用户丢掉任何没提交的手改，所以 × 也不再先问一句（`spendDiscardEditsWarning` 与它那一支渐进披露同刀删，见 docs/fixes/2026-09-21-spend-decline-deletes-user-nodes.root-cause.json）。"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "spendDraftKey"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "spendDraftKey"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "`node scripts/door-map.mjs spendDraftKey --roots=src,electron` 修前修后都是 2 扇（7 处 → 6 处出现），但这两扇不是同一件事的两份实现：**派生只有一个**（`spendCardDraft.ts` 的 `spendDraftKey`，本次唯一被改的那一行），`useAgentPanelSpendConfirm.ts` 那一扇是它唯一的调用方——它拿这个键当「我此刻在编哪一本」的 owner 标识（`draftOwner.current`），并在每次 await 之后比一次「我还在同一本上吗」。把它并掉只有两条路，都更糟：① 让 hook 自己拼键 = 第二份派生（正是 R33 要拦的那一种）；② 把 owner 比对搬进 `spendCardDraft.ts` = 让纯账本认识 React 的 ref 生命周期。本次真正收掉的是**键本身的维度**：6 维 → 3 维，`consumeSpendDraft` 的 `successor` 参数（恒等于 `pending` 的第二个说法）与 `clearConsumedSpendDraft`（没有调用方了）同刀删除。",
+    "owner": "src/workbench/ai/v4/spendCardDraft.ts"
+  },
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/v4/spendCardDraft.ts",
+    "tests": [
+      "src/workbench/ai/v4/spendCardDraft.test.ts",
+      "tests/ux/spend-panel-write-ownership.test.mjs"
+    ],
+    "notes": "键派生是这本账本唯一的地址来源；`useAgentPanelSpendConfirm` 只消费它。`spendCardDraft.test.ts` 里三条原本明写「绑报价身份」的判据已重钉成「换报价草稿仍在 / 换生成草稿隔离 / 同一次生成里镜头各归各的」。"
+  },
+  "generality_proof": "「这份未提交的输入属于谁」在卡上只有一个答案：它属于用户此刻正在回答的那一次 `generate`，而那一次 `generate` 在系统里只有一个身份——`operationId`（裁决 B 已把待决、闸、ticket 全部锚在它上面）。报价身份（`quoteId` / `planVersion` / `candidateRevision`）按定义是「这一刻这份候选值多少钱」的指纹，系统里每一条会改候选或刷新价格的路都会换掉它：`generation.revise`、重新出价、目录改价。于是这一族的推演路（部分封印失败后翻页、× 之后重新出价、价格刷新、改一个参数再改回来）全都由同一条不变量覆盖，而不是逐条打补丁。反向也成立：真正该换一本的那些事（换项目、换 Run、换一次生成）仍然各自换掉键的一维。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "spendDraftKey",
+      "responsibility": "卡本地未提交改动这本账本**唯一**的地址派生；一次生成一本。"
+    },
+    {
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "effectivePatchForShot",
+      "responsibility": "镜头维度的唯一居所：逐镜层压全部层，都在同一本账本里。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "付费卡轮询换卡时的 draft owner 比对",
+      "disposition": "enforced",
+      "evidence": "`draftOwner.current !== nextOwner` 才换账本；键锚 operationId 之后，报价刷新不再触发换账本（`tests/ux/spend-panel-write-ownership.test.mjs`「retains this operation draft through renderer remount and a newer quote, never across operations」）。"
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "确认时的部分消费（persistEdits → consumeSpendDraft）",
+      "disposition": "enforced",
+      "evidence": "封印成功的那几镜从账本里消费掉，其余留着；`successor` 参数删除后消费与保留写在同一个地址上（`spendCardDraft.test.ts`「partial consumption keeps all-layer and per-shot edits…」）。"
+    },
+    {
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "entry_point": "本地重算价格（repricePendingSpend）",
+      "disposition": "not-affected",
+      "evidence": "它读的是账本内容（`SpendDraft`），从不构造键；本次一行未改。"
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "主进程侧的报价现时性校验",
+      "disposition": "not-affected",
+      "evidence": "`quoteId` 在主进程那一侧的职责没变（确认的是不是你看到的那个数）；本次只是不再拿它做渲染层的寻址。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "「这份状态跟着谁生跟着谁死」这个问题，每多一份卡本地的未提交输入就要重答一次；而「就近抓一个手边的 id 当键」是最省事的答案，报价指纹恰好每次都在手边。只要还有人把现时性指纹当地址用，同一件事会从下一份卡本地状态回来。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs spendDraftKey --roots=src,electron（修后 2 扇：1 份派生 + 1 个消费方）",
+      "全仓扫 `localStorage` 键前缀 `nomi:`：付费卡这一本是唯一一份「卡本地未提交输入」账本；`nomi:dismissed-spend-draft:` 那本 2026-09-21 已整族删除",
+      "同查「把 quoteId 当身份用」的其他地方：`useAgentPanelSpendConfirm.confirm` 里比对 `saved.quoteId` 是**现时性校验**（保留，正是它该干的事）；`appIntegrationSpendConfirm.revisePendingSpend` 同理"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/spendCardDraft.ts",
+    "invariant": "卡本地未提交改动的地址只由 `spendDraftKey` 派生，且只含「这份输入跟着谁生跟着谁死」的那几维（projectId / runId / operationId）；任何现时性指纹（quoteId / planVersion / candidateRevision）都不进键。",
+    "failure_mode": "有人为了「让这一刻的卡和这一刻的报价严丝合缝」把报价指纹加回键里（或在别处另拼一个键），于是报价每刷新一次，用户还没提交的输入就被换成另一本空账本——用户看到的是「我打的字自己没了」，而代码每一行看上去都对。",
+    "exception_policy": "none",
+    "strategy": "派生收敛成一处并由门表钉住（`node scripts/door-map.mjs spendDraftKey --roots=src,electron` 必须仍只有一份派生 + 它的消费方）；判据由三条重钉的单测正面钉住「换报价草稿仍在」，并各带一条反向对照（换生成隔离）——把「键里多一维」这件事变成必然红的改动，而不是靠评审看出来。 门表那一条在评审时跑：`node scripts/door-map.mjs spendDraftKey --roots=src,electron`——修前 2 扇 7 处、修后 2 扇 6 处，派生始终只有一份。",
+    "artifacts": [
+      "src/workbench/ai/v4/spendCardDraft.ts",
+      "src/workbench/ai/v4/spendCardDraft.test.ts",
+      "tests/ux/spend-panel-write-ownership.test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "tests/ux/agent-spend-card.walk.mjs",
+    "tests/ux/_agentSpendScopeJourney.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有文件被删除。本次的删除都是模块内的收窄：`spendCardDraft.ts` 去掉 `clearConsumedSpendDraft`（键收窄之后没有调用方——空账本 = 删键，`retainSpendDraft` 本来就做）与 `consumeSpendDraft` 的 `successor` 参数（恒等于 `pending` 的第二个说法）；`rejectConfirmNote` 那一族（类型字段、卡体那一支渲染、两份 i18n 文案）随它唯一的生产者一起消失，记在 docs/fixes/2026-09-21-spend-decline-deletes-user-nodes.root-cause.json 的门表与不变量订正里。旧键（含报价身份）只存在于这条未合入的分支与开发机的 localStorage 上：读不到就是空（`readSpendDraft` 自己兜住），用户端没有旧键需要迁移。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有第三方运行时或协议版本参与这本渲染层账本。",
+    "exit_criteria": []
+  },
+  "migration": "无。旧键读不到即为空（`readSpendDraft` 对缺失与坏数据一律回 `EMPTY_SPEND_DRAFT`），开发机上遗留的那几条旧键不会被读到也不会报错；这条分支从未合入 main，用户端没有旧键。",
+  "residual_risks": [
+    "账本仍然住在 localStorage：配额满 / 隐私模式下「关掉面板再回来还在不在」这件便利会失效（已钉：`a storage quota failure never interrupts the card and never leaks the previous draft`）。它按设计只是便利，正在编辑的那一份活在 React state 里。",
+    "同一个 operationId 的账本不会因为时间流逝而回收：用户改了一半、再也不碰那次生成，那条键会一直留在 localStorage 里。量级是每次生成一条小 JSON，且确认 / 全部消费时自删；没有上限回收策略是已知的、刻意不做的（加一个 LRU 就是给同一份状态加第二个 owner）。",
+    "× 之后那句前置确认删掉了，所以「× 是不是太容易点到」这件事回到卡体自己的布局（右上角、与其它两张卡同形）。本次没有改布局。"
+  ]
+}

@@ -24,8 +24,8 @@
     "撤销一次未批准的生成，只撤这次操作自己造出来的节点；没有物化章的节点一律不动。",
     "同一批节点建的时候占一个撤销步，撤的时候也只占一个撤销步。",
     "撤销目标已经不在画布上时静默跳过，不报错。",
-    "卡上有未提交的手改时，× 必须先说清「改的内容会一起丢」再撤。",
-    "「这次未批准的草稿到此为止」只有一个终态，不留第二本找回账本。"
+    "× 不让用户丢掉任何没提交的手改——所以它也不必先问一句。（2026-09-22 订正：本条原文是「卡上有未提交的手改时，× 必须先说清『改的内容会一起丢』再撤」。裁决 D 之后 × 只收回这一次出价，草稿账本改锚 `operationId` 之后没提交的手改也跟着留，那句话不再为真，文案与它那一支渐进披露同刀删。见 docs/fixes/2026-09-22-spend-draft-owner.root-cause.json。）",
+    "「这一次生成上没提交的改动」只有一本账本、一个键派生，不留第二本找回账本（2026-09-22：键从报价身份收成 `operationId`，一次生成一本）。"
   ],
   "doors": [
     {
@@ -84,20 +84,20 @@
       "symbol": "restoreSpendDraft"
     },
     {
-      "kind": "read",
-      "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
-      "symbol": "rejectConfirmNote"
-    },
-    {
       "kind": "write",
       "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
       "symbol": "discard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+      "symbol": "onReject"
     }
   ],
   "door_reduction": {
     "before": 15,
     "after": 13,
-    "why_not": "门表两族：画布 deleteNode 九扇 + 付费卡草稿账本六扇。deleteNode 那九扇里只有一扇问错了问题，逐扇判过：CategoryTree / PromptLibraryPanel / SkillLibraryPanel 三扇是用户在 UI 上显式点名删除（判据就是他点的那几个，问绑定才对）；startVideoDepthDerivation 是自建自删；proposalUndo 已经是「按我建的记账、倒序补偿、缺目标 no-op」的正确范本；storyboardDeleteUndo 是用户在分镜表里勾选的行；generationCanvasTools 的 delete_from_canvas 是模型点名 + 不可逆确认卡那条独立边界。把它们合成一扇会把「用户点名删」和「撤销我自己造的」两种语义混成一件事——那正是本次事故的形状。所以这一次收的不是门数，是**那一扇门的判据**：付费卡 × 从 useAgentPanelSpendConfirm 里的裸循环搬进 spendCardRollback.ts，判据换成来源章，事务与 barrier 与建它们时逐字对称。草稿账本那一族反过来是真的减了：找回账本（dismissedSpendDraftKey / retainDismissedSpendDraft 两个写入口 + 三处逐镜找回分支）整族删掉，「这一笔未提交的改动」只剩 spendDraftKey 一个键、一个写入口。 （2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。）",
+    "why_not": "门表两族：画布 deleteNode 九扇 + 付费卡草稿账本六扇。deleteNode 那九扇里只有一扇问错了问题，逐扇判过：CategoryTree / PromptLibraryPanel / SkillLibraryPanel 三扇是用户在 UI 上显式点名删除（判据就是他点的那几个，问绑定才对）；startVideoDepthDerivation 是自建自删；proposalUndo 已经是「按我建的记账、倒序补偿、缺目标 no-op」的正确范本；storyboardDeleteUndo 是用户在分镜表里勾选的行；generationCanvasTools 的 delete_from_canvas 是模型点名 + 不可逆确认卡那条独立边界。把它们合成一扇会把「用户点名删」和「撤销我自己造的」两种语义混成一件事——那正是本次事故的形状。所以这一次收的不是门数，是**那一扇门的判据**：付费卡 × 从 useAgentPanelSpendConfirm 里的裸循环搬进 spendCardRollback.ts，判据换成来源章，事务与 barrier 与建它们时逐字对称。草稿账本那一族反过来是真的减了：找回账本（dismissedSpendDraftKey / retainDismissedSpendDraft 两个写入口 + 三处逐镜找回分支）整族删掉，「这一笔未提交的改动」只剩 spendDraftKey 一个键、一个写入口。 （2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。） 2026-09-22 追记（spend-draft-owner lane）：`rejectConfirmNote`（× 之前那句「你在卡上改的内容会一起丢掉」的渐进披露）整族删除——裁决 D 之后 × 只收回这一次出价，而草稿账本改锚 `operationId` 之后**没提交的手改也跟着留**（同一个 operationId 重新出价就在卡上）。没有东西会丢，就不该拦用户一下；文案（zh/en）、它在 `useAgentPanelSpendConfirm` 的唯一生产者、卡体那一支渲染与这扇门一起消失，付费卡的 × 回到一下就撤。卡体那一侧的门数没变：这一扇换成同一个文件里仍然活着的 × 入口 `onReject`——判据回到「× 这一下做了什么」本身，而不是「× 之前先说哪句话」。见 docs/fixes/2026-09-22-spend-draft-owner.root-cause.json。",
     "owner": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
   },
   "invariant_owner_layer": {
