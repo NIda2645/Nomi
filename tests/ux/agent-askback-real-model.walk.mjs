@@ -203,6 +203,26 @@ try {
     return true
   }
 
+  /**
+   * 画布的花钱确认 `SpendConfirmDialog`——**第三张**要答的面，也是 2026-09-22 起等待不再受工具超时管的那一张。
+   * 它同样是盖满整窗的模态（`fixed inset-0` + `pointer-events-auto`，z 在 dialog 档），
+   * 而且 `generate` 对「文稿方案」走的就是它：run4 第六次起跑里 A1 在这张卡前面干等到回合预算见底（20.6 分钟），
+   * 之后 A2 起每一轮的第一下又被它拦掉，30 秒超时、`tools=[]`。
+   *
+   * 真人不想花钱时点遮罩/「先不」；走查点**遮罩**——`onPointerDown` 里 `target === currentTarget`
+   * 就是 `resolvePending(false)`，一颗按钮都不用认，多镜/形象/普通三种形态通吃。
+   * **绝不去碰 `data-production-action="confirm"`**：那一下是真花钱。
+   */
+  async function declineSpendDialogIfOpen(caseId) {
+    const card = win.locator('[data-spend-confirm-dialog]').first()
+    if (!await card.isVisible().catch(() => false)) return false
+    await win.screenshot({ path: path.join(outputDir, `${caseId}-spend-dialog.png`) }).catch(() => {})
+    const backdrop = win.locator('div:has(> [data-spend-confirm-dialog])').first()
+    await backdrop.click({ position: { x: 5, y: 5 }, timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
+    await card.waitFor({ state: 'hidden', timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
+    return true
+  }
+
   const seenToolCallIds = new Set()
   const seenResultIds = new Set()
   let answeredOnce = false
@@ -214,6 +234,7 @@ try {
       // 上一轮可能留下一个应用级模态（`start_model_setup` 开的设置面板）。它得在这一轮的
       // **第一下**之前收掉，否则连切页钮都点不动——那一下超时，这一轮就什么都没发生。
       row.closedSettingsPanel = await closeSettingsPanelIfOpen()
+      row.declinedSpendDialogBefore = await declineSpendDialogIfOpen(`${item.id}-before`)
       await win.getByRole('button', { name: item.surface === 'creation' ? '创作' : '生成', exact: true })
         .first().click({ timeout: stationTimeout({ operations: 2 }) })
       await win.waitForTimeout(1200)
@@ -247,6 +268,12 @@ try {
         if (await closeSettingsPanelIfOpen()) {
           row.settingsPanelClosed = (row.settingsPanelClosed ?? 0) + 1
           await win.waitForTimeout(1000)
+          continue
+        }
+        // 花钱确认同样盖在卡之上，而且回合就停在它那儿等人——先答它。
+        if (await declineSpendDialogIfOpen(item.id)) {
+          row.cardsAnswered.push('spend-dialog:declined')
+          await win.waitForTimeout(1500)
           continue
         }
         if (await questionCard.count() > 0) {
