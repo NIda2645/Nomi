@@ -106,15 +106,6 @@ export function resolveConnectionVendorKey(input: ConnectionVendorKeyInput): str
 }
 
 /**
- * 这次保存会**新建**一条连接，还是**更新**已有的那条？UI 的提示行与写入侧共用这一条判据。
- * 返回被命中的那条已有连接的 key（= 更新），或 null（= 新建）。
- */
-export function connectionUpdateTarget(input: ConnectionVendorKeyInput): string | null {
-  const key = resolveConnectionVendorKey(input);
-  return input.vendors.some((vendor) => vendor.key === key) ? key : null;
-}
-
-/**
  * 兄弟连接（同域名、不同连接名）要写进 `vendor.meta` 的血统键。
  *
  * 为什么**复用** `vendorLineage` 的既有字段、不另造一套：`resolvedVendorLineageRoot` 已经是

@@ -34,17 +34,22 @@ export function onlyFromVendors(models: readonly ModelOption[], vendors: Readonl
 type Row = {
   label: string
   canonicalId: string
-  vendors: readonly string[]
+  vendors: readonly (string | { key: string; name: string })[]
 }
 
 function toOptions(rows: readonly Row[]): ModelOption[] {
-  return rows.flatMap((row) => row.vendors.map((vendor) => ({
-    value: `${vendor}-${row.canonicalId}`,
-    modelKey: `${vendor}-${row.canonicalId}`,
-    label: row.label,
-    vendor,
-    meta: { archetypeId: 'agnes-image', canonicalModelId: row.canonicalId },
-  })))
+  return rows.flatMap((row) => row.vendors.map((entry) => {
+    // 两种写法同一条路：裸 key = 厂商短名那种表达；{ key, name } = 带连接名的兄弟连接。
+    const vendor = typeof entry === 'string' ? { key: entry, name: undefined } : entry
+    return {
+      value: `${vendor.key}-${row.canonicalId}`,
+      modelKey: `${vendor.key}-${row.canonicalId}`,
+      label: row.label,
+      vendor: vendor.key,
+      ...(vendor.name ? { vendorName: vendor.name } : {}),
+      meta: { archetypeId: 'agnes-image', canonicalModelId: row.canonicalId },
+    }
+  }))
 }
 
 /** 三家都接入了：偏好顺序与供应商分级各自的效果都能在这一份上看出来。 */
@@ -77,17 +82,6 @@ export const MIXED_MODELS: ModelOption[] = toOptions([
 // 「同一个模型挂在同一家的两条连接下」这个事实。
 export const VENDOR_APIMART_MINI = 'apimart--mini'
 
-function toNamedOptions(rows: readonly { label: string; canonicalId: string; vendors: readonly { key: string; name: string }[] }[]): ModelOption[] {
-  return rows.flatMap((row) => row.vendors.map((vendor) => ({
-    value: `${vendor.key}-${row.canonicalId}`,
-    modelKey: `${vendor.key}-${row.canonicalId}`,
-    label: row.label,
-    vendor: vendor.key,
-    vendorName: vendor.name,
-    meta: { archetypeId: 'agnes-image', canonicalModelId: row.canonicalId },
-  })))
-}
-
 const APIMART_FULL = { key: VENDOR_APIMART, name: '满血组' }
 const APIMART_MINI = { key: VENDOR_APIMART_MINI, name: 'Mini 特价组' }
 const KIE_ONLY = { key: VENDOR_KIE, name: 'Kie' }
@@ -104,7 +98,7 @@ const APIMART_MINI_EN = { key: VENDOR_APIMART_MINI, name: 'Mini budget tier' }
  *  · FLUX.2 Pro       只有一条连接 → 连 chip 都没有；
  *  · Kling 2.5        同 Seedance，但连接名是 EN 长串 → 钉住「放得下」。
  */
-export const SIBLING_CONNECTION_MODELS: ModelOption[] = toNamedOptions([
+export const SIBLING_CONNECTION_MODELS: ModelOption[] = toOptions([
   { label: 'Seedance 2.0', canonicalId: 'seedance-2-0', vendors: [APIMART_FULL, APIMART_MINI] },
   { label: 'Nano Banana 2', canonicalId: 'nano-banana-2', vendors: [APIMART_FULL, KIE_ONLY] },
   { label: 'FLUX.2 Pro', canonicalId: 'flux-2-pro', vendors: [KIE_ONLY] },

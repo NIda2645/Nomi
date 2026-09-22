@@ -12,7 +12,7 @@ import {
   isVendorOfBuiltin,
   slugifyConnectionName,
 } from "../shared/builtinVendorIdentity";
-import { connectionUpdateTarget, resolveConnectionVendorKey } from "./connectionVendorKey";
+import { resolveConnectionVendorKey } from "./connectionVendorKey";
 
 /** 只关心 key 的用例用它；名字留空（= slug 为空，永远不会和真名字撞）。 */
 const vendors = (...keys: string[]) => keys.map((key) => ({ key, name: "" }));
@@ -59,7 +59,6 @@ describe("resolveConnectionVendorKey", () => {
   it("同域名同名 = 更新那条连接，不加 -2 后缀", () => {
     const state = vendors(hostKey, `${hostKey}--mini`);
     expect(resolveConnectionVendorKey({ baseUrl, name: "Mini 特价组", vendors: state })).toBe(`${hostKey}--mini`);
-    expect(connectionUpdateTarget({ baseUrl, name: "Mini 特价组", vendors: state })).toBe(`${hostKey}--mini`);
   });
 
   it("slug 撞车视为同名（不静默新建第二条）", () => {
@@ -72,7 +71,6 @@ describe("resolveConnectionVendorKey", () => {
     const state = vendors(hostKey);
     expect(resolveConnectionVendorKey({ baseUrl, name: "", vendors: state })).toBe(hostKey);
     expect(resolveConnectionVendorKey({ baseUrl, name: "满血组", vendors: state })).toBe(hostKey);
-    expect(connectionUpdateTarget({ baseUrl, name: "满血组", vendors: state })).toBe(hostKey);
   });
 
   it("重新保存同一条连接（同域名同名）落回它自己，不长出兄弟", () => {
@@ -80,7 +78,6 @@ describe("resolveConnectionVendorKey", () => {
     // 比 key 空间会把「重新保存」误判成「新建兄弟」，凭据随即找不到。
     const state = [{ key: hostKey, name: "Saved Gateway" }];
     expect(resolveConnectionVendorKey({ baseUrl, name: "Saved Gateway", vendors: state })).toBe(hostKey);
-    expect(connectionUpdateTarget({ baseUrl, name: "Saved Gateway", vendors: state })).toBe(hostKey);
   });
 
   it("重新保存一条兄弟连接落回那条兄弟", () => {
