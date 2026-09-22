@@ -278,8 +278,6 @@
     "9715411730dfd7268a7d757408be2e7b86a40542ee9fe0c8882fc0b33577d088": 1
   },
   "tests/ux/canvas-drag-pan-gestures.walk.mjs": {
-    "eaeb022bda46140255c78b6561044dbe2126e451f3563803bd4b5eb531970e55": 1,
-    "3e2f99df4420beee3a14c1e0109c95595dd12caed9178bb3fb770272c83ac8c6": 1,
     "0da94fa48fa4f1d7120e109cc68479f362c2af581a2768510e827be5cdf1512e": 1
   },
   "tests/ux/canvas-frame-real-task.walk.mjs": {

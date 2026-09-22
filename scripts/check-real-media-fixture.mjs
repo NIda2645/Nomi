@@ -133,7 +133,7 @@ export function scanSynthetic(sources) {
 }
 
 /** 判据本体。吃纯数据，不碰盘——这样 node-test 才测得到「明天新增一条会不会红」而不是只测今天的存量。 */
-export function evaluate({ registry, debt, baseline, synthetic, testFiles, today }) {
+export function evaluate({ registry, debt, baseline, synthetic, testFiles, today, repoFileExists }) {
   const errors = []
   const warnings = []
 
@@ -196,7 +196,9 @@ export function evaluate({ registry, debt, baseline, synthetic, testFiles, today
   }
   for (const asset of registry.assets ?? []) {
     if (!asset.whyThisOne) errors.push(`素材 ${asset.id} 缺 whyThisOne——说不出「为什么是这一份」的素材，换成别的也没人知道亏在哪`)
-    if (!asset.derivedFrom && !asset.relativePath) errors.push(`素材 ${asset.id} 既不是派生素材，又没有 relativePath`)
+    if (!asset.derivedFrom && !asset.relativePath && !asset.repoPath) errors.push(`素材 ${asset.id} 既不是派生素材，又没有 relativePath / repoPath`)
+    if (asset.relativePath && asset.repoPath) errors.push(`素材 ${asset.id} 同时写了 relativePath 与 repoPath——一件素材只许一个来处`)
+    if (asset.repoPath && repoFileExists && !repoFileExists(asset.repoPath)) errors.push(`素材 ${asset.id} 的 repoPath ${asset.repoPath} 在仓库里不存在`)
   }
 
   // ---- (c) 债：绑到期日、≤maxDebtDays、到期即红 ----
@@ -271,7 +273,10 @@ function main() {
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const { errors, warnings } = evaluate({ registry, debt, baseline, synthetic: scanned, testFiles, today })
+  const { errors, warnings } = evaluate({
+    registry, debt, baseline, synthetic: scanned, testFiles, today,
+    repoFileExists: (relative) => fs.existsSync(path.join(repoRoot, relative)),
+  })
 
   for (const w of warnings) console.log(`· ${w}`)
   if (errors.length > 0) {

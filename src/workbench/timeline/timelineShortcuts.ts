@@ -1,3 +1,5 @@
+import { shortcutSurfaceMayHandle } from '../shortcutSurface'
+
 export type TimelineShortcutAction =
   | { type: 'undo' }
   | { type: 'redo' }
@@ -69,12 +71,18 @@ export function isTimelineShortcutEditingTarget(target: EventTarget | null): boo
   return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
 
+/**
+ * `surface`：发起这次认领的那一面的根元素（带 data-shortcut-surface）。看不见的面、或同屏另一面刚被
+ * 按过时不认领——否则 keep-alive 的时间轴会吃掉画布上的 ⌘Z / Delete（见 ../shortcutSurface.ts）。
+ */
 export function dispatchTimelineShortcut(
   event: KeyboardEvent,
   context: TimelineShortcutContext,
   onAction: (action: TimelineShortcutAction) => void,
+  surface: Element | null,
 ): boolean {
   if (event.defaultPrevented || isTimelineShortcutEditingTarget(event.target)) return false
+  if (!shortcutSurfaceMayHandle(surface)) return false
   const action = resolveTimelineShortcut(event, context)
   if (!action) return false
   event.preventDefault()

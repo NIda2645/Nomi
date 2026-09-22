@@ -139,6 +139,7 @@
     "test:model-access:inventory": "python3 scripts/with-gates-lock.py -- vitest run tests/ux/model-access-journeys/inventory.test.mjs",
     "test:model-access:journeys": "python3 scripts/with-gates-lock.py -- node tests/ux/model-access-journeys/run-journeys.mjs --all",
     "test:model3d:asset-library": "python3 scripts/with-gates-lock.py -- node tests/ux/model3d-asset-library.e2e.mjs",
+    "test:core-smoke": "python3 scripts/with-gates-lock.py -- node tests/ux/core-smoke/run.mjs",
     "test:canvas:critical": "python3 scripts/with-gates-lock.py -- node tests/ux/canvas-real-suite.mjs critical",
     "test:canvas:acceptance": "python3 scripts/with-gates-lock.py -- node tests/ux/canvas-real-suite.mjs full",
     "test:canvas:performance": "python3 scripts/with-gates-lock.py -- node tests/ux/canvas-real-suite.mjs performance",
