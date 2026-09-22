@@ -7,7 +7,6 @@
 //   3. profile-copy 只在本机：cp -R 深拷贝用户真实 profile（不用硬链接），只在拷贝上跑，跑完删；
 //      原库的关键文件跑前跑后比指纹，变了就红（说明有东西写到了原库——或者你同时开着 Nomi，关掉再跑）。
 import { execFileSync } from 'node:child_process'
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -65,15 +64,12 @@ function defaultRealProfile() {
 }
 
 function fingerprint(files) {
-  const hash = crypto.createHash('sha256')
-  for (const file of files) {
-    hash.update(file)
-    if (fs.existsSync(file)) {
-      const stat = fs.statSync(file)
-      hash.update(`${stat.size}:${stat.mtimeMs}`)
-    } else hash.update('missing')
-  }
-  return hash.digest('hex')
+  // 只用于「跑之前 / 跑之后是否一字不差」这一次相等比较，不当摘要用，所以不必散列。
+  return files.map((file) => {
+    if (!fs.existsSync(file)) return `${file}:missing`
+    const stat = fs.statSync(file)
+    return `${file}:${stat.size}:${stat.mtimeMs}`
+  }).join('|')
 }
 
 function sourceWatchList({ userData, projectsRoot }) {

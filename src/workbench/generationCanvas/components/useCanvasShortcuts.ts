@@ -423,7 +423,10 @@ export function useCanvasShortcuts(opts: {
       })
     }
     const offDesktopZoom = window.nomiDesktop?.window?.onCanvasZoomShortcut?.((direction) => {
-      if (!stageRef.current || stageRef.current.offsetParent === null) return
+      // 桌面菜单来的 ⌘+/⌘− 同样是一扇键盘门，走同一条归属规则：看不见的面不认领，
+      // 同屏两面时归最近一次指针落下的那一面。此前这里留着旧的 offsetParent 自检，
+      // 于是时间轴展开时画布仍会吃掉这一组快捷键。
+      if (!shortcutSurfaceMayHandle(stageRef.current)) return
       zoomByStep(direction)
     })
     installShortcutSurfaceTracker()

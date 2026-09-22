@@ -349,14 +349,18 @@ export function mergedCheckRequirement({ cwd, commitSha }) {
     : { names: [...REQUIRED_MERGED_CHECKS], successOnly: [], advisory: [], coreSmoke: { required: false, reason: policy.reason } }
 }
 
+/** 同名 check 取最新一条（必需档与非阻断档共用同一条取法）。 */
+function latestCheck(checkRuns, name) {
+  return checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))[0]
+}
+
 export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS, { successOnly = [], advisory = [] } = {}) {
   const checks = []
   const missing = []
   const pending = []
   const failed = []
   for (const name of requiredNames) {
-    const candidates = checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))
-    const check = candidates[0]
+    const check = latestCheck(checkRuns, name)
     if (!check) {
       missing.push(name)
       continue
@@ -370,8 +374,8 @@ export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGE
   }
   // 非阻断档：只把结论抄进收据，不进 state 的任何一支。缺席就写 missing，不算红。
   const advisoryChecks = advisory.map((name) => {
-    const candidates = checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))
-    return candidates[0] ? { ...receiptCheck(candidates[0]), advisory: true } : { name, conclusion: 'missing', advisory: true }
+    const check = latestCheck(checkRuns, name)
+    return check ? { ...receiptCheck(check), advisory: true } : { name, conclusion: 'missing', advisory: true }
   })
   return {
     state: failed.length > 0 ? 'failed' : missing.length > 0 || pending.length > 0 ? 'pending' : 'passed',
