@@ -17,7 +17,6 @@
 // 快照归一化、事件尾巴重放、外部图应用三条读路径共用这同一个函数，不各写一遍。
 import type { DeconstructionShotTableDocument } from '../../../../../electron/shared/canvas/shotTable'
 import { readShotTable } from '../../../../../electron/shared/canvas/shotTable'
-import i18n from '../../../../i18n'
 
 type DeconstructionStatus = DeconstructionShotTableDocument['source']['status']
 
@@ -71,6 +70,20 @@ export function isDeconstructionRunCancelled(tableNodeId: string, requestId: str
   return run?.requestId === requestId && run.cancelled
 }
 
+/**
+ * 中断 / 取消要对用户说的那句话的**i18n key**，不是那句话本身。
+ *
+ * 为什么不把译好的句子写进 `errorMessage`：`errorMessage` 是**落盘**字段，它存的是
+ * 供应商或 ffmpeg 的原话——那种东西没有译文、也不该有。而「这次拆解被中断了」是界面文案：
+ * 把它冻进项目数据，等于用户在中文界面下中断一次、之后切到 English，这句话永远留在中文
+ * （真机走查第一轮就这么红的）。状态本身已经是机器可读的，句子在渲染时按当前语言现取。
+ */
+export function deconstructionNoticeKey(status: DeconstructionStatus): string | undefined {
+  if (status === 'interrupted') return 'shotTable.interrupted'
+  if (status === 'cancelled') return 'shotTable.cancelled'
+  return undefined
+}
+
 /** 测试与项目切换用：清空在飞登记（等价于「这个渲染进程重来了」）。 */
 export function resetDeconstructionRuns(): void {
   liveRuns.clear()
@@ -93,9 +106,9 @@ export function convergeDeconstructionTable(
       status: 'interrupted',
       phase: undefined,
       progressDetail: undefined,
-      // 中断没有供应商原话可抄，但**不能什么都不说**：一张空表加一句「还在跑」的错觉，
-      // 正是走查里用户卡住的那一刻。这句话连着 footer 的「重新拆解」一起构成找回入口。
-      errorMessage: i18n.t('shotTable.interrupted'),
+      // 中断没有供应商原话可抄，所以这里**不留**上一次的 errorMessage（那是别的事的原因）。
+      // 要对用户说的那句话由 deconstructionNoticeKey 在渲染时按当前语言取，不冻进项目数据。
+      errorMessage: undefined,
     },
   }
 }

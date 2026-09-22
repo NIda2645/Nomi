@@ -161,14 +161,18 @@ export function settleInterruptedDeconstructions(): void {
  * 在「这台机器上拆解成功率」里都留下一条假的失败。
  */
 export function cancelDeconstruction(tableNodeId: string): void {
-  if (!markDeconstructionCancelled(tableNodeId)) return
+  // 没有在飞的调用却停在 running = 这次拆解**早就已经死了**（进程重启前留下的影子）。
+  // 那一下点击仍然必须有反应：按 owner 的判据落中断态，而不是一颗点不动的按钮——
+  // 「看着能点、点了没事」正是 T-ED-06 那一格的另一种形态。
+  if (!markDeconstructionCancelled(tableNodeId)) { settleInterruptedDeconstructions(); return }
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find((entry) => entry.id === tableNodeId)
   const table = readShotTable(node?.meta)
   if (!node || table?.source.kind !== 'deconstruction' || !('columns' in table)) return
   store.updateNode(tableNodeId, { meta: { ...node.meta, shotTable: {
     ...table,
-    source: { ...table.source, status: 'cancelled', phase: undefined, progressDetail: undefined, errorMessage: i18n.t('shotTable.cancelled') },
+    // 同 convergeDeconstructionTable：取消没有原因可抄，那句话在渲染时按当前语言取。
+    source: { ...table.source, status: 'cancelled', phase: undefined, progressDetail: undefined, errorMessage: undefined },
     updatedAt: new Date().toISOString(),
   } } }, { history: false })
 }

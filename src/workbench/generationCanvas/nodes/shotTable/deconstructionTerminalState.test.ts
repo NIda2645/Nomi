@@ -12,6 +12,7 @@ import { readShotTable } from '../../../../../electron/shared/canvas/shotTable'
 import {
   convergeDeconstructionTable,
   isDeconstructionRunLive,
+  deconstructionNoticeKey,
   isDeconstructionTerminal,
   registerDeconstructionRun,
   releaseDeconstructionRun,
@@ -95,8 +96,10 @@ describe('deconstruction node terminal state', () => {
     const source = tableSource('table-1')
     expect(source.status).not.toBe('running')
     expect(isDeconstructionTerminal(source.status)).toBe(true)
-    // 「可找回」不是「什么都没发生」：必须留一句用户看得见的话，否则空表和「还没拆过」长得一样。
-    expect(source.errorMessage).toBeTruthy()
+    // 「可找回」不是「什么都没发生」：必须有一句用户看得见的话。
+    // 但那句话**不落盘**——它是界面文案，冻进项目数据就再也跟不上语言切换（真机走查抓到过）。
+    expect(deconstructionNoticeKey(source.status)).toBe('shotTable.interrupted')
+    expect(source.errorMessage).toBeUndefined()
     expect(source.phase).toBeUndefined()
   })
 
@@ -112,7 +115,7 @@ describe('deconstruction node terminal state', () => {
     const source = tableSource(tableId)
     expect(source.status).not.toBe('running')
     expect(isDeconstructionTerminal(source.status)).toBe(true)
-    expect(source.errorMessage).toBeTruthy()
+    expect(deconstructionNoticeKey(source.status)).toBeTruthy()
   })
 
   it('引擎 / ffmpeg 子进程死掉时落失败态并带上原因', async () => {
@@ -176,7 +179,12 @@ describe('deconstruction lifecycle owner', () => {
     // 阶段与阶段内进度是「还在跑」的两条视觉证据，中断时必须一起清掉，否则节点还在演。
     expect(converged?.source.phase).toBeUndefined()
     expect(converged?.source.progressDetail).toBeUndefined()
-    expect(converged?.source.errorMessage).toBeTruthy()
+    // 中断没有原话可抄：落盘字段留空，那句话由 key 在渲染时现取。
+    expect(converged?.source.errorMessage).toBeUndefined()
+    expect(deconstructionNoticeKey('interrupted')).toBe('shotTable.interrupted')
+    expect(deconstructionNoticeKey('cancelled')).toBe('shotTable.cancelled')
+    // 失败那一格没有界面文案——它要显示的是供应商 / ffmpeg 的原话。
+    expect(deconstructionNoticeKey('failed')).toBeUndefined()
   })
 
   it('幂等：已经是终态的表再收敛一次原样不动', () => {

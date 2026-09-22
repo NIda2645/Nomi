@@ -15,7 +15,7 @@ import { selectShotTableRows } from './selectShotTableRows'
 import { openShotTableRow } from '../../../creation/storyboard/openShotTableRow'
 import { editShotTableFacts, generateSelectedTableRows } from './shotTableActions'
 import { cancelDeconstruction, deconstructToShotTable, retryShot } from './factBridge'
-import { canRestartDeconstruction } from './deconstructionLifecycle'
+import { canRestartDeconstruction, deconstructionNoticeKey } from './deconstructionLifecycle'
 import { withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { ShotTableGrid } from './ShotTableGrid'
 
@@ -47,7 +47,8 @@ function ShotTableContent({ node: rawNode, selected, readOnly = false, flowDensi
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const facts = table && 'columns' in table ? table : undefined
-  const interrupted = facts?.source.status === 'interrupted' || facts?.source.status === 'cancelled'
+  // 中断 / 取消那句话按**当前语言**现取（它是界面文案，不是落盘的供应商原话）。
+  const noticeKey = facts ? deconstructionNoticeKey(facts.source.status) : undefined
   const sourceAvailable = source?.kind === 'deconstruction' && nodes.some(candidate => candidate.id === source.sourceNodeId && candidate.result?.url)
   const selectedIds = (table?.view.selectedRowIds ?? []).filter(id => rows.some(row => row.id === id))
   const openRow = (id?: string) => {
@@ -94,12 +95,12 @@ function ShotTableContent({ node: rawNode, selected, readOnly = false, flowDensi
     </header>
     {/* 拆解失败/半成的原因**只在顶上说一次**（B10：不要每格一句「没读出」）。
         rows 为空时下面的空状态也会显示它，这里保证「表里已有行」时同样看得到。 */}
-    {density !== 'card' && facts?.source.errorMessage && rows.length > 0 && !interrupted
+    {density !== 'card' && facts?.source.errorMessage && rows.length > 0 && !noticeKey
       && <div role="alert" data-testid="shot-table-failure-reason" className="shrink-0 border-b border-nomi-line-soft px-3 py-1 text-micro text-nomi-danger">{facts.source.errorMessage}</div>}
     {/* 中断 / 取消**不是失败**：没有供应商原话可抄，也不该红着报警——但必须有一句话，
         否则一张空表和「还没拆过」长得一模一样（2026-09-17 走查 §6.5 的那一屏）。 */}
-    {density !== 'card' && interrupted && facts?.source.errorMessage
-      && <div data-testid="shot-table-interrupted-notice" className="shrink-0 border-b border-nomi-line-soft px-3 py-1 text-micro text-nomi-ink-60">{facts.source.errorMessage}</div>}
+    {density !== 'card' && noticeKey
+      && <div data-testid="shot-table-interrupted-notice" className="shrink-0 border-b border-nomi-line-soft px-3 py-1 text-micro text-nomi-ink-60">{t(noticeKey)}</div>}
     {/* 阶段内部那句更细的进度（本地转写的下载 / 分段）。**就地告知**，和失败那行分开两个颜色——
         本地第一次用要先下 575MB、之后按段跑几分钟，没有这行的几分钟等待和「卡死了」长得一样。 */}
     {density !== 'card' && facts?.source.status === 'running' && facts.source.progressDetail && rows.length > 0
@@ -116,7 +117,7 @@ function ShotTableContent({ node: rawNode, selected, readOnly = false, flowDensi
       {/* 找回入口。判据是终态 owner 的 canRestartDeconstruction，不是在这里再列一遍状态词——
           中断（关 app / 切项目）和取消都是可以再起的终态，它们**必须**能走到这一颗按钮上，
           否则就又回到 2026-09-17 走查里那个「看着像在跑、其实点不动」的格子。 */}
-      {facts && canRestartDeconstruction(facts.source.status) && !readOnly && <WorkbenchButton size="sm" variant={interrupted ? 'primary' : 'default'} data-testid="shot-table-restart-deconstruction" disabled={!sourceAvailable} title={!sourceAvailable ? t('shotTable.sourceVideoMissing') : undefined} onClick={() => { withProjectAction(project => { void deconstructToShotTable(facts.source.sourceNodeId, project).catch(cause => setError(cause instanceof Error ? cause.message : String(cause))) }) }}>{t('shotTable.retry')}</WorkbenchButton>}
+      {facts && canRestartDeconstruction(facts.source.status) && !readOnly && <WorkbenchButton size="sm" variant={noticeKey ? 'primary' : 'default'} data-testid="shot-table-restart-deconstruction" disabled={!sourceAvailable} title={!sourceAvailable ? t('shotTable.sourceVideoMissing') : undefined} onClick={() => { withProjectAction(project => { void deconstructToShotTable(facts.source.sourceNodeId, project).catch(cause => setError(cause instanceof Error ? cause.message : String(cause))) }) }}>{t('shotTable.retry')}</WorkbenchButton>}
       {/* 「取消」是把「永远在跑」这一格堵上的另一半：等不下去的人得有一个不用关 app 的出口。 */}
       {facts?.source.status === 'running' && !readOnly && <WorkbenchButton size="sm" variant="default" data-testid="shot-table-cancel-deconstruction" onClick={() => { cancelDeconstruction(node.id) }}>{t('shotTable.cancel')}</WorkbenchButton>}
       {/* 本地离线转写挂了时的**出口**。判据是 failureKind 这个机器可读的类别，不是错误文案

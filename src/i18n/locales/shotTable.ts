@@ -17,8 +17,8 @@ export const zhShotTable = {
 export const enShotTable = {
   openScript: 'Open script', factsEmpty: 'Deconstruct again to read this reference video',
   sourceVideoMissing: 'Source video was deleted; cannot deconstruct again',
-  interrupted: 'This deconstruction was interrupted (the app closed or the project changed). What it read is still here — choose Deconstruct again to continue.',
-  cancelled: 'You cancelled this deconstruction. What it read is still here — choose Deconstruct again to start over.',
+  interrupted: 'Interrupted (the app closed or the project changed). What it read is still here — deconstruct again to continue.',
+  cancelled: 'You cancelled this deconstruction. What it read is still here — deconstruct again to start over.',
   cancel: 'Cancel deconstruction',
   addColumn: 'Add column', editCell: 'Edit cell', renameColumn: 'Rename column', removeColumn: 'Delete column', generate: 'Generate {{count}} Shots', running: 'Reading shots', retry: 'Deconstruct again', retryWithCloud: 'Use cloud', facts: { shotSize: 'Shot size', motion: 'Motion', visual: 'Visual', dialogue: 'Dialogue', onScreenText: 'On-screen text', mood: 'Mood' },
   title: 'Shot table', count: '{{count}} shots', duration: '{{duration}}s', timeRange: '{{start}}–{{end}}s', open: 'Open storyboard',
