@@ -12,6 +12,8 @@ import {
   MODEL_BOX_PREFERENCE,
   RUNNABLE_VENDORS,
   UNLISTED_MODELS,
+  SIBLING_CONNECTION_MODELS,
+  VENDOR_APIMART_MINI,
   onlyFromVendors,
   VENDOR_APIMART,
   VENDOR_KIE,
@@ -108,6 +110,26 @@ export const PICKER_STATES: readonly LabState[] = [
         models={MODEL_BOX_MODELS}
         preferredVendorKeys={[VENDOR_APIMART, VENDOR_KIE]}
         modelBoxPreference={MODEL_BOX_PREFERENCE}
+      />
+    ),
+  },
+  {
+    id: 'vo-07-picker-sibling-connections',
+    name: '同一家多条连接 · 只有重名的那行改显示连接名',
+    source: 'docs/plan/2026-09-22-vendor-connection-identity.md §4.5 · GitHub issue #831 · 用户 2026-09-22 拍板',
+    coverage: 'shell',
+    // #831：一个中转站可以有三个计价分组（同地址、不同 Key）。它们的 chip 若都显示厂商短名
+    // 「APIMart」，用户分不出哪个是满血组。这一格钉住三种情形同屏：
+    //   · Seedance 2.0   同一家两条连接 → 两个 chip 各显示**自己的连接名**（满血组 / Mini 特价组）；
+    //   · Nano Banana 2  两家不同 root → 仍是厂商短名，一个字都不加；
+    //   · FLUX.2 Pro     只有一条连接 → 连 chip 都没有；
+    //   · Kling 2.5      同 Seedance，但连接名是 EN 长串（R15 串长 1.5-2 倍）→ 钉住放得下。
+    // 这一格还钉住一件第一版做错的事：曾经拼成「APIMart · 满血组」，超宽后被截成「APIMart · …」，
+    // 截掉的正好是唯一有区分力的那段。判据由 `providerConnectionSuffixes` 一处算，写反了当场变样。
+    render: () => (
+      <ModelPickerStage
+        models={SIBLING_CONNECTION_MODELS}
+        preferredVendorKeys={[VENDOR_APIMART, VENDOR_APIMART_MINI, VENDOR_KIE]}
       />
     ),
   },

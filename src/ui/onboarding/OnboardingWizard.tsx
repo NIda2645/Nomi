@@ -7,6 +7,7 @@ import { DesignButton, DesignModal, DesignTextInput, DesignSwitch } from '../../
 import { ModelPickerScreen } from './ModelPickerScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { CustomCallDraftIdentity } from '../../desktop/modelCatalogBridgeTypes'
+import { useDuplicateHostHint } from './useDuplicateHostHint'
 import type {
   DesktopExistingConnectionSummary,
   DesktopHttpCertificationRun,
@@ -413,6 +414,13 @@ export function OnboardingWizard({
     if (result?.ok && result.models?.length) setScreen('select')
   }, [fetchModels])
 
+  // 撞域名时**原位替换**下面那句静态 hint —— 同一行、同一档灰字，不新增元素也不新增样式。
+  const baseUrlHint = useDuplicateHostHint({
+    opened,
+    baseUrl: effectiveBaseUrl,
+    name: vendorName,
+    fallbackHint: providerKind === 'anthropic' ? t('modelSetup.baseUrlAnthropicHint') : t('modelSetup.baseUrlHint'),
+  })
   const baseUrlTrimmed = effectiveBaseUrl
   const proxyUrlTrimmed = proxyUrl.trim()
   const baseUrlValid =
@@ -484,11 +492,9 @@ export function OnboardingWizard({
                   {showBaseUrlField ? (
                     <Field
                       label={t('modelSetup.baseUrl')}
-                      hint={
-                        providerKind === 'anthropic'
-                          ? t('modelSetup.baseUrlAnthropicHint')
-                          : t('modelSetup.baseUrlHint')
-                      }
+                      hint={baseUrlHint.text}
+                      hintMarker={baseUrlHint.marker}
+                      hintEmphasis={baseUrlHint.emphasis}
                     >
                       <DesignTextInput
                         value={baseUrl}

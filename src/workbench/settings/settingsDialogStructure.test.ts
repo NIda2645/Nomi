@@ -63,7 +63,9 @@ const APPROVED_NON_MODEL_SECTION_SHA256 = {
   // 2026-09-21：目录读失败不再把供应商/模型清空（同形裸 catch 横扫）。清空等于替用户断言
   //             「你没有这些」，而真相只是「这一次没读到」——用户那句「重装之后配置都没了」
   //             就是这么来的。正向断言见下方 keeps the last catalog when a read fails。
-  'AiModelsSection.tsx': 'a34e26e3d551756c56eb8adccf19d5df18d8f0e6e894d3a89b0f3b2379cd97d5',
+  // 2026-09-22（#831）：「已接入 Kie」的判据从 key 字面量改成经 builtinVendorIdentity 解析身份，
+  //             这样兄弟连接（`kie--x`）也认得出。两刀都只改判据，布局与文案一个字没动。
+  'AiModelsSection.tsx': '86943ed52df1c7fa0924940d232265d94bfd3ba32777c4c2c52cf3e43ab3a6b6',
   // 2026-09-03：toggleHost 参数类型从 SettingsHostKey（四值联合）泛化为 string（支持自定义 profile key）；
   // 新增 CustomMcpClientCard UI TODO 注释（底层能力已就绪，UI 面另排样张拍板）。
   // 2026-09-09：声音归通用设置的单一入口，移除这里的旧开关；下方断言保留系统通知策略。
@@ -229,7 +231,10 @@ describe('settings dialog structure', () => {
     // 现状必须来自 main 的真解析器；渲染层一旦自己排优先级，这张卡迟早开始说谎。
     expect(aiModelsSource).toContain('assetTransport?.describeChannels()')
     // 「已接入」按它是否真的在收文件判，不按 key 存不存在判——否则徽章和下面的通道行会互相打架。
-    expect(aiModelsSource).toContain("channels.some((channel) => channel.vendorKey === 'kie')")
+    // #831：同域名可以有多条 Kie 连接（`kie--x`），所以这里问的是**身份**而不是 key 字面量——
+    // 比字面量的话，第二条 Kie 连接接好了徽章也不亮，下面的通道行却说它在收文件。
+    expect(aiModelsSource).toContain("builtinVendorKeyOfKey(channel.vendorKey) === 'kie'")
+    expect(aiModelsSource).toContain("electron/shared/builtinVendorIdentity")
     // 公开可访问的通道必须走警示样式，不能和私有链接长一样。
     expect(aiModelsSource).toContain(
       "channel.visibility === 'public-anonymous' || channel.visibility === 'public-provider'",

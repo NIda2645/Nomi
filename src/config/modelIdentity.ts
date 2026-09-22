@@ -11,6 +11,7 @@
 //   3) 兜底 value/modelKey（认不出的中转模型——不合并，各自独立，符合预期）
 import type { ModelOption } from './models'
 import { compareVendorLanding } from '../../electron/shared/contracts/vendorPreference'
+import { builtinVendorKeyOfKey } from '../../electron/shared/builtinVendorIdentity'
 
 export interface ModelProviderRef {
   vendor?: string
@@ -107,7 +108,39 @@ export function isRecognizedModel(option: ModelOption): boolean {
 // 供应商分级与「先走哪家」的比较子都住 `electron/shared/contracts/vendorPreference.ts`：
 // 渲染层的选择器和主进程的执行侧必须是逐字同一把尺，否则「界面显示一家、钱花另一家」。
 // 这里只转出去给渲染层现有的导入方用，本文件不再写第二份表（2026-09-22 总合并）。
+// #831 的「兄弟连接与 root 同档」也在那一份里（`vendorTier` 先 `builtinVendorKeyOfKey` 再查表），
+// 所以两条 lane 改的是同一个函数，不是两份。
 export { vendorTier } from '../../electron/shared/contracts/vendorPreference'
+
+/**
+ * 同一个模型挂在**同一家的多条连接**下时，每条连接各自的区分后缀（issue #831）。
+ *
+ * 判据（「只在重名时」那一条的唯一解析点 —— R2 信息密度：不重名一个字都不加）：
+ * 两个及以上 provider 解析回**同一个 root**（= 同一个上游的兄弟连接，例如满血组 / Mini 特价组）
+ * → 它们各自拿自己的连接名当后缀；root 各不相同（APIMart vs Kie）→ 谁都不加，
+ * 因为厂商短名本来就已经把它们分开了。
+ *
+ * 返回 `provider.vendor` → 后缀。没有后缀的 provider 不进这张表。
+ */
+export function providerConnectionSuffixes(providers: readonly ModelProviderRef[]): Map<string, string> {
+  const byRoot = new Map<string, ModelProviderRef[]>()
+  for (const provider of providers) {
+    const root = builtinVendorKeyOfKey(provider.vendor)
+    if (!root) continue
+    const bucket = byRoot.get(root)
+    if (bucket) bucket.push(provider)
+    else byRoot.set(root, [provider])
+  }
+  const suffixes = new Map<string, string>()
+  for (const bucket of byRoot.values()) {
+    if (bucket.length < 2) continue
+    for (const provider of bucket) {
+      const name = provider.option.vendorName?.trim()
+      if (name && provider.vendor) suffixes.set(provider.vendor, name)
+    }
+  }
+  return suffixes
+}
 
 /** 按 canonical 身份聚合：同模型只一条，收集所有供应商；保持首次出现顺序。 */
 export function dedupeModelOptions(options: ModelOption[]): DedupedModel[] {

@@ -13,7 +13,7 @@ import type { LabState } from '../../labScreen'
 // `source` 逐条写字面单引号串，理由同 01-picker.tsx（那把源码正则只认这种形状）。
 export const SETTINGS_STATES: readonly LabState[] = [
   {
-    id: 'vo-07-settings-order',
+    id: 'vo-08-settings-order',
     name: '默认走哪家 · 三家可排序',
     source: 'docs/design/nomi-design-system.md §1.7.2 接入 vs 策略 · 用户 2026-09-06 返工要求',
     coverage: 'shell',
@@ -24,7 +24,7 @@ export const SETTINGS_STATES: readonly LabState[] = [
     ),
   },
   {
-    id: 'vo-08-settings-two-vendors',
+    id: 'vo-09-settings-two-vendors',
     name: '默认走哪家 · 两家（首尾两端的禁用态）',
     source: 'docs/design/nomi-design-system.md §1.7.2 接入 vs 策略 · 用户 2026-09-06 返工要求',
     coverage: 'shell',
@@ -37,7 +37,7 @@ export const SETTINGS_STATES: readonly LabState[] = [
     ),
   },
   {
-    id: 'vo-09-settings-model-box',
+    id: 'vo-10-settings-model-box',
     name: '模型框里显示哪些、排在哪 · 含「已隐藏 · 2」找回组',
     source: 'docs/plan/2026-09-11-model-box-tidy.md §5 + 样张 Main.dc.html · 用户 2026-09-11 拍板',
     coverage: 'shell',

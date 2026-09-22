@@ -1,3 +1,4 @@
+import { builtinVendorKeyOfKey } from '../builtinVendorIdentity'
 /** Cross-process contract for model picker provider ordering. */
 export const VENDOR_PREFERENCE_SCHEMA_VERSION = 1 as const
 export const VENDOR_PREFERENCE_KEY_MAX_LENGTH = 200
@@ -40,7 +41,12 @@ const OFFICIAL_VENDOR_KEYS = new Set([
 const BUILTIN_RELAY_VENDOR_KEYS = new Set(['apimart', 'kie', 'newapi'])
 
 export function vendorTier(vendorKey?: string | null): number {
-  const key = (vendorKey || '').trim().toLowerCase()
+  // #831：`apimart--mini` 这类**兄弟连接**必须和 `apimart` 同档。先把 key 解析回 root 再查表——
+  // 不这么做，用户新建的特价组会被降进「用户自接」档，默认家在没人决定过的情况下悄悄换人。
+  // （「主连接默认在前」由同档内的目录原序保证，不靠给兄弟连接降档这种副作用。）
+  // 这里用的是只看 key 形状的那一档（`builtinVendorKeyOfKey`）：本函数是纯比较子，拿不到 vendors 列表；
+  // 拿得到列表的调用点该问 `resolveBuiltinVendorKey`（它还认得出用户手工改过的血统）。
+  const key = builtinVendorKeyOfKey(vendorKey).trim().toLowerCase()
   if (OFFICIAL_VENDOR_KEYS.has(key)) return 0
   if (BUILTIN_RELAY_VENDOR_KEYS.has(key)) return 1
   return 2

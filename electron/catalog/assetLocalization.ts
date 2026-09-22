@@ -31,6 +31,7 @@ import {
   ANON_UPLOAD_CHAIN,
 } from "./assetIngestionRegistry";
 import { readAssetRelayRuntimeConfig, readDefaultAssetRelayRuntimeConfig } from "./assetRelayRuntimeConfig";
+import { isVendorOfBuiltin } from "../shared/builtinVendorIdentity";
 
 export {
   ingestionAccepts,
@@ -767,7 +768,7 @@ export function resolveAssetIngestionWithFallback(
   // 3. KIE/APIMart 可能未出现在旧存量 catalog；已配置时补入，push 去重。
   const kieKey = getApiKey("kie");
   if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
-  if (targetVendor?.key !== "apimart") {
+  if (!isVendorOfBuiltin(allVendors, targetVendor?.key, "apimart")) {
     const apimartKey = getApiKey("apimart");
     if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
   }
