@@ -10,6 +10,7 @@
 //   2) 规范化 labelZh（去能力后缀/空格/大小写；火山「Seedream 4.5」与 apimart「Seedream 4.5」→ 合并）
 //   3) 兜底 value/modelKey（认不出的中转模型——不合并，各自独立，符合预期）
 import type { ModelOption } from './models'
+import { builtinVendorKeyOfKey } from '../../electron/shared/builtinVendorIdentity'
 
 export interface ModelProviderRef {
   vendor?: string
@@ -112,10 +113,43 @@ const OFFICIAL_VENDOR_KEYS = new Set([
 const BUILTIN_RELAY_VENDOR_KEYS = new Set(['apimart', 'kie', 'newapi'])
 
 export function vendorTier(vendorKey?: string): number {
-  const k = (vendorKey || '').toLowerCase()
+  // #831：`apimart--mini` 这类兄弟连接必须和 `apimart` 同档。先解析回 root 再查表——
+  // 不这么做，用户新建的特价组会被降进「用户自接」档，默认家在没人决定过的情况下悄悄换人。
+  // （「主连接默认在前」由同档内的 catalog 原序保证，不靠给兄弟连接降档这种副作用。）
+  const k = builtinVendorKeyOfKey(vendorKey).toLowerCase()
   if (OFFICIAL_VENDOR_KEYS.has(k)) return 0
   if (BUILTIN_RELAY_VENDOR_KEYS.has(k)) return 1
   return 2
+}
+
+/**
+ * 同一个模型挂在**同一家的多条连接**下时，每条连接各自的区分后缀（issue #831）。
+ *
+ * 判据（「只在重名时」那一条的唯一解析点 —— R2 信息密度：不重名一个字都不加）：
+ * 两个及以上 provider 解析回**同一个 root**（= 同一个上游的兄弟连接，例如满血组 / Mini 特价组）
+ * → 它们各自拿自己的连接名当后缀；root 各不相同（APIMart vs Kie）→ 谁都不加，
+ * 因为厂商短名本来就已经把它们分开了。
+ *
+ * 返回 `provider.vendor` → 后缀。没有后缀的 provider 不进这张表。
+ */
+export function providerConnectionSuffixes(providers: readonly ModelProviderRef[]): Map<string, string> {
+  const byRoot = new Map<string, ModelProviderRef[]>()
+  for (const provider of providers) {
+    const root = builtinVendorKeyOfKey(provider.vendor)
+    if (!root) continue
+    const bucket = byRoot.get(root)
+    if (bucket) bucket.push(provider)
+    else byRoot.set(root, [provider])
+  }
+  const suffixes = new Map<string, string>()
+  for (const bucket of byRoot.values()) {
+    if (bucket.length < 2) continue
+    for (const provider of bucket) {
+      const name = provider.option.vendorName?.trim()
+      if (name && provider.vendor) suffixes.set(provider.vendor, name)
+    }
+  }
+  return suffixes
 }
 
 /** 按 canonical 身份聚合：同模型只一条，收集所有供应商；保持首次出现顺序。 */

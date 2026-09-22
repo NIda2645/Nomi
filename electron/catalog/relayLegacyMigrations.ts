@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
 import { NEWAPI_IMAGE_EDIT_OP, NEWAPI_IMAGE_PARAM_MAP, NEWAPI_STANDARD_IMAGE_PARAMS, NEWAPI_VIDEO_PARAM_MAP } from "./newapiTransport";
-import { BUILTIN_VENDOR_KEYS } from "./relayImageEditMigration";
+import { isBuiltinRelayVendorKey } from "./relayImageEditMigration";
 import type { CatalogState, Mapping } from "./types";
 
 // 自建中转(relay)的存量目录迁移 v3→v4 / v4→v5。从 catalogStore 拆出（R9 防巨壳：迁移逻辑与
@@ -18,7 +18,7 @@ import type { CatalogState, Mapping } from "./types";
 export function migrateRelayParamMaps(mappings: Mapping[]): { mappings: Mapping[]; changed: boolean } {
   let changed = false;
   const out = mappings.map((m) => {
-    if (BUILTIN_VENDOR_KEYS.has(m.vendorKey)) return m;
+    if (isBuiltinRelayVendorKey(m.vendorKey)) return m;
     const create = m.create;
     if (!create || create.paramMap) return m;
     const pathStr = typeof create.path === "string" ? create.path : "";
@@ -68,7 +68,7 @@ export function migrateRelayImageEditCapability(state: CatalogState): { state: C
   const t = nowIso();
   const imageVendorKeys = new Set(models.filter((m) => m.kind === "image").map((m) => m.vendorKey));
   for (const vendorKey of imageVendorKeys) {
-    if (BUILTIN_VENDOR_KEYS.has(vendorKey)) continue;
+    if (isBuiltinRelayVendorKey(vendorKey)) continue;
     const hasOpenAiImageShape = mappings.some(
       (m) =>
         m.vendorKey === vendorKey &&

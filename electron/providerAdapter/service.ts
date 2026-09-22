@@ -9,7 +9,7 @@ import {
   type CertificationStartCheckpoint,
 } from "../integrationCertification/providerAdapterCoordinator";
 import { certificationModeOperationKey } from "../integrationCertification/modeIdentity";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveHostVendorKey } from "../catalog/connectionVendorKey";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { AdapterNeedsAiError, compileProviderAdapter } from "./compiler";
 import type { DiscoveredDocs } from "./docsDiscovery";
@@ -192,8 +192,13 @@ export class ProviderAdapterService {
 
   async start(rawInput: ProviderAdapterStartInput): Promise<ProviderAdapterRun> {
     const input = normalizeProviderAdapterInput(rawInput, "verify");
-    const vendorKey = String(input.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.baseUrl);
-    if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
+    // #831：这里只解析到「这一族的 root」，和 registration.ts 同一支。落在哪条兄弟连接上
+    // 由目录写入层决定 —— 身份判据只许有一个 owner，而它必须是读得到目录的那一层。
+    // （验证流程手里本来就有 catalogVendorKey：连接是先保存、后验证的。）
+    const vendorKey = resolveHostVendorKey({
+      baseUrl: input.baseUrl,
+      catalogVendorKey: input.catalogVendorKey,
+    });
     const id = this.dependencies.id();
     const prepared = await this.certification.prepareStart(input, id, vendorKey);
     if (prepared.duplicate) return prepared.duplicate;
@@ -541,8 +546,11 @@ export class ProviderAdapterService {
                     submissionState: "settled" as const,
                   };
             },
-            isUncertainError: (error) => error instanceof AdapterWaitError
-              && error.reason !== "cancelled" && error.reason !== "terminal",
+            // 自检不向上游提交任何东西（见上面 2026-09-11 拍板注释），所以自检本身超时
+            // 不可能留下一个「不知道有没有落地」的远端任务——executeSubmission 已删掉
+            // 「execute 超时就判 uncertain → reconciling」的分支（2026-09-22，isUncertainError
+            // 选项本身也删了，唯一调用者一直恒 false，是死代码）。这里的 AdapterWaitError
+            // 原样往上抛，走下面 catch 的 deadline 分支即可。
           });
         } catch (error) {
           if (error instanceof AdapterReconciliationRequiredError) throw error;

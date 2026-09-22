@@ -27,7 +27,7 @@ import type { IntegrationHandoff } from "./handoffQueue";
 import { enqueueIntegrationHandoff, retireIntegrationHandoffs } from "./handoffQueue";
 import { mutateCatalog, readCatalog, normalizeProviderKind } from "../catalog/catalogStore";
 import { decryptApiKeyRecord } from "../catalog/secrets";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { sessionVendorKey } from "./sessionVendorKey";
 import type { ProfileKind } from "../catalog/types";
 import { runComfyCandidateTest } from "../tasks/comfyCandidateTest";
 import { isComfyuiVendor, COMFYUI_VENDOR_KEY } from "../catalog/types";
@@ -141,6 +141,7 @@ export type IntegrationSession = {
   /** 驱动 Agent 交回并已通过 validateProviderAdapterDraft 的说明卡。 */
   adapterDraft?: ProviderAdapterDraft;
 };
+
 export type IntegrationSessionProjection = Omit<
   IntegrationSession,
   "config" | "credentialRef" | "adapterDraft" | "compileRequest"
@@ -204,9 +205,9 @@ export function createRuntimeIntegrationSessionService(
     new OperationLedger(path.join(capabilityCoreDir(), "integration-comfy-operations.json"));
   const resolveCredential = (session: IntegrationSession): string | undefined => {
     if (session.kind !== "http-api-provider" || !session.config.baseUrl) return undefined;
-    const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-    if (!vendorKey) return undefined;
-    return decryptApiKeyRecord(readCatalog().apiKeysByVendor[vendorKey]) || undefined;
+    const catalog = readCatalog();
+    const vendorKey = sessionVendorKey(session, catalog.vendors);
+    return vendorKey ? decryptApiKeyRecord(catalog.apiKeysByVendor[vendorKey]) || undefined : undefined;
   };
   const runTask = input.runTask;
   const fetchTaskResult = input.fetchTaskResult;
@@ -981,9 +982,9 @@ export class IntegrationSessionService {
     if (session.kind !== "http-api-provider" || !session.config.baseUrl)
       throw new Error("Credential is only valid for an HTTP provider");
     const clean = text(apiKey, "apiKey", 8 * 1024);
-    const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-    if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
-    const existing = readCatalog().vendors.find((vendor) => vendor.key === vendorKey);
+    const catalogVendors = readCatalog().vendors;
+    const vendorKey = sessionVendorKey(session, catalogVendors);
+    const existing = catalogVendors.find((vendor) => vendor.key === vendorKey);
     // A credential write creates only a disabled/configured vendor. Promotion by the
     // canonical certification run is the sole path that can make it selectable.
     // Vendor metadata and encrypted credential are one Catalog transaction. A
@@ -1181,7 +1182,7 @@ export class IntegrationSessionService {
     if (session.kind === "comfyui-workflow" && this.deps.comfyOperationLedger) {
       const contractDigest = integrationContractDigest(session, normalizedIdempotencyKey);
       const runId = `integration-${session.id}-${digest(normalizedIdempotencyKey).slice(0, 24)}`;
-      const sourceVendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl || "") || COMFYUI_VENDOR_KEY;
+      const sourceVendorKey = session.config.baseUrl ? sessionVendorKey(session, readCatalog().vendors) : COMFYUI_VENDOR_KEY;
       comfyReservation = this.deps.comfyOperationLedger.begin({
         runId,
         contractDigest,
