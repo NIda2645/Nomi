@@ -100,10 +100,16 @@ function imageMapping(taskKind) {
  * 仓库目录，app 名就是 package.json 的 `nomi`；`--packaged` 那档是 `Nomi`。传错只会得到
  * `locked`（不是 `ok`），所以这里由调用方按真实启动形态给。
  */
+function withLinuxHeadless(args, platform = process.platform) {
+  const normalized = [...args]
+  if (platform === 'linux' && !normalized.includes('--headless')) normalized.push('--headless')
+  return normalized
+}
+
 function encryptApimartKey({ rootDir, userDataDir, appName }) {
   const script = path.join(rootDir, 'tests/ux/_encryptFixtureKey.cjs')
   const result = spawnSync(require('electron'), withLinuxSyntheticCredentialStorage(
-    withLinuxNoSandbox([script, FIXTURE_APIMART_API_KEY]), true,
+    withLinuxHeadless(withLinuxNoSandbox([script, FIXTURE_APIMART_API_KEY])), true,
   ), {
     cwd: rootDir,
     env: {

@@ -219,7 +219,7 @@ function BaseGenerationNodeImpl({
   // 图片类与素材类共用；编辑产物进入当前节点历史堆叠，并切换为主图。
   const imageEditing = useNodeImageEditing(node, visualSize, reportFeedback)
   const { downloading: panoramaDownloading, download: downloadPanorama } = useResultDownload(node, reportFeedback)
-  const useMagneticConnectionHandles =
+  const showFlowConnectionHandle =
     node.kind !== 'panorama' && (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind))
 
   return (

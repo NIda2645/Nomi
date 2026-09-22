@@ -29,7 +29,7 @@ const release = () => page.evaluate(() => window.dispatchEvent(new PointerEvent(
 async function interrupt(reason) {
   await page.evaluate(reason => {
     if (reason === 'blur') window.dispatchEvent(new Event('blur'))
-    else if (reason === 'hidden') document.querySelector('#stage').hidden = true
+    else if (reason === 'hidden') window.selectionDragFixture.hide()
     else if (reason === 'unmount') window.selectionDragFixture.unmount()
     else if (reason === 'readOnly') window.selectionDragFixture.readOnly()
     else window.dispatchEvent(new PointerEvent(reason, { pointerId: 7, bubbles: true }))
