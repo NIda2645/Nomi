@@ -95,6 +95,13 @@ describe('modelIdentity · sortModelProviders 先走哪家', () => {
     expect(vendorTier('myrelay')).toBe(2)
   })
 
+  it('分级表只有一份：渲染层这个名字转的就是 electron/shared 那一个（2026-09-22 总合并）', async () => {
+    // 执行侧（findExecutableModelAnyVendor）用的是同一个函数。这里比的是**同一个函数对象**——
+    // 值相等挡不住「有人在渲染层又抄了一份一模一样的表」，而那正是当初分叉的样子。
+    const shared = await import('../../electron/shared/contracts/vendorPreference')
+    expect(vendorTier).toBe(shared.vendorTier)
+  })
+
   it('用户没设过偏好 → 按分级排（官方在前），不是按厂商名字母序', () => {
     // 字母序会是 apimart < myrelay < volcengine——这条测试就是钉住「别退化成字母序」。
     expect(vendorsOf(sortModelProviders(model.providers))).toEqual(['volcengine', 'apimart', 'myrelay'])

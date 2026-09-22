@@ -108,7 +108,13 @@ describe('model select structure — 选了模型就必须选得了供应商', (
   it('「先走哪家」只有一条排序规则', () => {
     const identity = readCode('src/config/modelIdentity.ts')
     expect(identity, '排序规则必须住在 sortModelProviders').toContain('export function sortModelProviders')
-    expect(identity, '分级这一级不许省：省了就退化成厂商名字母序').toContain('vendorTier(a.provider.vendor) - vendorTier(b.provider.vendor)')
+    // 2026-09-22 总合并：前两级（用户排过的顺序 → 供应商分级）搬进
+    // `electron/shared/contracts/vendorPreference.ts` 的 `compareVendorLanding`，
+    // 执行侧用的是同一个比较子。渲染层不许再自己算这两级——只许补第三级「显示名字母序」。
+    expect(identity, '前两级必须走共享比较子（执行侧同一把尺）').toContain('compareVendorLanding(a.provider.vendor, b.provider.vendor, orderedVendorKeys)')
+    expect(identity, '分级这一级不许在渲染层重写一份').not.toContain('const BUILTIN_RELAY_VENDOR_KEYS')
+    const shared = readCode('electron/shared/contracts/vendorPreference.ts')
+    expect(shared, '分级这一级不许省：省了就退化成目录原序').toContain('vendorTier(leftVendor) - vendorTier(rightVendor)')
     const survivors = listSourceFiles(SRC_ROOT)
       .map((file) => path.relative(process.cwd(), file))
       .filter((relative) => readCode(relative).includes('resolveBestProvider'))

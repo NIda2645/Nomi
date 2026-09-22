@@ -1,0 +1,175 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-vendor-landing-one-owner",
+  "problem_type": "The renderer and the main process each ranked providers with their own rule, so the vendor shown in the picker and the vendor that actually got the money could differ",
+  "symptom": "同名模型（同一个 `modelKey` 既来自内置中转又来自用户自接的中转）在**界面上**按「用户排过的顺序 → 供应商分级（官方 > 内置中转 > 自接）→ 显示名字母序」排，第一家是 APIMart；而**真正发请求**那一侧（`electron/catalog/executableModel.ts` 的 `findExecutableModelAnyVendor`，经 `orderByVendorPreference`）只认第一级，用户没排过序时就退化成目录原序——目录把新接入的排在前面，于是挑中的是用户刚自接的那家。用户镜头：2026-09-21 群反馈「自定义了一个也叫 gpt-image-2 的模型之后，APIMart 那条选不上」；更贵的那一半是**界面显示一家、钱花另一家**，而两边的代码各自看上去都对。",
+  "direct_cause": "「同一个模型先走哪家」有两份实现：① 渲染层 `src/config/modelIdentity.ts` 的 `vendorTier` + `pickImplicitVendorMatch` + `sortModelProviders`（#832 补的三级判据）；② 跨进程契约 `electron/shared/contracts/vendorPreference.ts` 的 `orderByVendorPreference`——它只有「用户排过的顺序」这一级，没有分级。执行侧与 Agent 面板的模型行都走 ②。两份规则的**第一级相同**，所以在「用户排过序」这条最常被测的路上两边一致，分歧只在「用户没排过序」时显出来——而那正是绝大多数用户的状态。",
+  "class_root": "**判据住在消费方那一侧，而不是住在它自己的家里**：渲染层因为要画选择器，顺手把排序规则写在了身份模块里；主进程因为要挑执行家，顺手用了跨进程契约里那个只做一半的排序函数。两边都不是「复制了一份」，而是「各自长出了一份」——所以没有任何字符串比对、没有任何句法门岗能看见它。判据是：**这条规则的读者跨进程吗？跨，就必须住在两边都 import 得到的那一个文件里**，而不是在各自那侧各写一半。",
+  "affected_population": [
+    "每一个没在设置里排过供应商顺序、又同时装了内置中转与自接中转的用户（默认状态）：界面显示 APIMart，执行侧挑自接那家",
+    "每一条只记了模型名、没记供应商的旧选择（旧镜头 / 旧锚 / 旧节点）：回显与执行可能落到两家",
+    "不受影响：记了 (modelKey, vendor) 的精确选择（永远按身份精确命中，不经排序）；只装了一家的用户"
+  ],
+  "scope_paths": [
+    "electron/shared/contracts/vendorPreference.ts",
+    "src/config/modelIdentity.ts"
+  ],
+  "entry_points": [
+    "渲染层模型选择器的供应商顺序（`sortModelProviders`）",
+    "只记了模型名的旧选择读回哪一家（`pickImplicitVendorMatch`）",
+    "主进程执行侧按 kind 找一家能跑的（`findExecutableModelAnyVendor`）",
+    "Agent 面板模型行（`agentPanelV4ModelRows`）与画布 Agent 可用模型清单（`availableModels`）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "规则本体是 Nomi 自己的产品裁决（用户 2026-09-22 原话「按照默认走」：没排过序时内置中转优先、自接靠后），没有任何外部协议或第三方文档参与；跨进程契约的形状（`VendorPreferenceSettings`）一个字节没动。",
+  "invariants": [
+    "「同一个模型先走哪家」的前两级——用户排过的顺序 → 供应商分级（官方 > 内置中转 > 自接/未知）——只有一份实现：`electron/shared/contracts/vendorPreference.ts` 的 `compareVendorLanding`。渲染层与主进程都 import 它，两侧逐字同一把尺。",
+    "分级表（`OFFICIAL_VENDOR_KEYS` / `BUILTIN_RELAY_VENDOR_KEYS`）只有一份，住在同一个文件里；渲染层不许再写第二份。",
+    "调用方只许在共享比较子之后补**稳定序**那一级（渲染层补显示名字母序，执行侧补目录原序）——那一级不携带任何偏好语义。",
+    "供应商键比对不区分大小写与首尾空白：设置里存的和目录里的不必一模一样。",
+    "用户排过的顺序永远比分级强：用户说过的话不许被默认覆盖。"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/shared/contracts/vendorPreference.ts",
+      "symbol": "vendorTier"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/contracts/vendorPreference.ts",
+      "symbol": "compareVendorLanding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/executableModel.ts",
+      "symbol": "orderByVendorPreference"
+    },
+    {
+      "kind": "write",
+      "path": "src/config/modelIdentity.ts",
+      "symbol": "compareVendorLanding"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/agentPanelV4ModelRows.ts",
+      "symbol": "orderByVendorPreference"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "symbol": "orderByVendorPreference"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 6,
+    "why_not": "`node scripts/door-map.mjs vendorTier compareVendorLanding orderByVendorPreference` 修前是 7 扇（渲染层 `vendorTier` 自己一份 + `pickImplicitVendorMatch`/`sortModelProviders` 各自算一遍、执行侧与两处 Agent 清单共用的 `orderByVendorPreference`），修后 6 扇。真正收掉的不是门的**数量**而是判据的**份数**：分级表与比较子从两份变一份，6 扇门现在全部经过同一个 `compareVendorLanding`。剩下的每一扇都点名过：`vendorTier` / `compareVendorLanding` 两扇是规则本体（同一个文件，分级表与比较子）；`orderByVendorPreference` 的三扇（执行侧 + Agent 面板行 + 画布可用模型）是同一个函数的三个调用点，不是三份实现；`src/config/modelIdentity.ts` 的两处 `compareVendorLanding` 是渲染层两个不同问题（「那几家怎么排」与「旧选择读回哪一家」）各自在共享比较子之后补自己的稳定序那一级——它们**不许**再碰前两级，由 `modelSelectStructure.test.ts` 的结构断言钉住。",
+    "owner": "electron/shared/contracts/vendorPreference.ts"
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/shared/contracts/vendorPreference.ts",
+    "tests": [
+      "electron/parity/vendorLandingParity.test.ts",
+      "src/workbench/common/modelSelectStructure.test.ts",
+      "src/config/modelIdentity.test.ts"
+    ],
+    "notes": "规则本体与分级表都在这一层（`electron/shared` 是两侧都 import 得到的唯一位置）。渲染层 `modelIdentity.ts` 只 re-export `vendorTier` 给现有导入方，不再持有表。"
+  },
+  "generality_proof": "把前两级收进一个比较子之后，「先走哪家」的答案由同一段代码给出，而两侧的差异被压到一个**不携带偏好语义**的稳定序：渲染层有显示名可排，执行侧只有目录原序。于是这一族的推演路——用户没排过序、用户排了一半（只点名了一家）、用户把自接那家排到最前、目录里新接入的排在前面、供应商键大小写不一致、出现一个分级表不认识的新家——全都由同一条不变量覆盖，两侧必然给同一个第一家。对拍测试按「任取一个排序」逐个核三处调用点的第一家是否相同（类断言），而不是逐个 case 打补丁。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/contracts/vendorPreference.ts",
+      "symbol": "compareVendorLanding",
+      "responsibility": "「同一个模型先走哪家」前两级的**唯一**比较子：用户排过的顺序 → 供应商分级。"
+    },
+    {
+      "path": "electron/shared/contracts/vendorPreference.ts",
+      "symbol": "vendorTier",
+      "responsibility": "供应商分级表（官方 / 内置中转 / 自接·未知）的唯一居所。"
+    },
+    {
+      "path": "electron/shared/contracts/vendorPreference.ts",
+      "symbol": "orderByVendorPreference",
+      "responsibility": "按上面那条规则排一批候选——执行侧与两处 Agent 清单共用的那一个函数。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/executableModel.ts",
+      "entry_point": "findExecutableModelAnyVendor（按 kind 挑一家真正发请求的）",
+      "disposition": "enforced",
+      "evidence": "经 `orderByVendorPreference` → `compareVendorLanding`；`electron/parity/vendorLandingParity.test.ts` 逐个排序核它与渲染层两处的第一家相同。抽掉分级这一级 → 该测试与结构断言共三条当场红（2026-09-22 实跑变异验证）。"
+    },
+    {
+      "path": "src/config/modelIdentity.ts",
+      "entry_point": "sortModelProviders / pickImplicitVendorMatch（选择器顺序与旧选择回显）",
+      "disposition": "enforced",
+      "evidence": "两处都改成先调 `compareVendorLanding` 再补自己的稳定序；`modelSelectStructure.test.ts` 断言渲染层源码里不再有 `const BUILTIN_RELAY_VENDOR_KEYS`、且 `sortModelProviders` 必须出现共享比较子的调用。"
+    },
+    {
+      "path": "src/workbench/ai/v4/agentPanelV4ModelRows.ts",
+      "entry_point": "Agent 面板模型行的供应商顺序",
+      "disposition": "enforced",
+      "evidence": "调用的就是 `orderByVendorPreference`，本次改动后它自动带上分级这一级（此前它和执行侧一样只有第一级）。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "entry_point": "画布 Agent 可用模型清单（模型面读到的顺序）",
+      "disposition": "enforced",
+      "evidence": "同上，同一个函数；模型读到的清单顺序从此与用户在界面上看到的一致。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "「跨进程共享的判据被各自那侧各写一半」在本仓已经出现过不止一次（参数准入、供应商落家同一天各一次）：写判据的人手边只有自己这一侧的类型，把规则写在自己模块里是最省事的做法，而分歧只在默认状态下显出来——测试通常测的是「用户明确设置过」那一条路。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs vendorTier compareVendorLanding orderByVendorPreference（修后 6 扇，全部经同一个比较子）",
+      "全仓扫 `vendorTier` / `BUILTIN_RELAY_VENDOR_KEYS`：只剩 electron/shared 那一份 + modelIdentity 的 re-export",
+      "docs/engineering/concept-owners.json 的「供应商落家」一行：owner 从 pending 改成实路径，consumers 逐条登记"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/contracts/vendorPreference.ts",
+    "invariant": "「先走哪家」的前两级只由 `compareVendorLanding` 给；调用方只许在它之后补不携带偏好语义的稳定序。",
+    "failure_mode": "有人在自己那一侧「顺手」再排一次（多半是因为手边只有 vendorKey 没有显示名，或者觉得少一级无所谓），于是默认状态下两侧分叉——界面显示一家、钱花另一家，而两边的测试各自都是绿的。",
+    "exception_policy": "none",
+    "strategy": "规则本体搬进两侧都 import 得到的 `electron/shared`，分级表只留一份；对拍测试按「任取一个排序」核三处调用点的第一家必须相同（类断言，不是逐 case）；结构测试正面断言渲染层源码里不再有分级表、且必须出现共享比较子的调用。变异验证：抽掉 `compareVendorLanding` 里的分级那一项 → 对拍两条 + 结构一条共三条当场红（2026-09-22 实跑）。",
+    "artifacts": [
+      "electron/shared/contracts/vendorPreference.ts",
+      "src/config/modelIdentity.ts",
+      "electron/parity/vendorLandingParity.test.ts",
+      "src/workbench/common/modelSelectStructure.test.ts"
+    ],
+    "gate": "electron/parity/vendorLandingParity.test.ts"
+  },
+  "regression_tests": [
+    "electron/parity/vendorLandingParity.test.ts",
+    "src/workbench/common/modelSelectStructure.test.ts",
+    "src/config/modelIdentity.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/parity/vendorLandingParity.test.ts",
+    "src/workbench/common/modelSelectStructure.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/config/modelIdentity.ts",
+      "electron/shared/contracts/vendorPreference.ts"
+    ],
+    "rationale": "删的是渲染层那份分级表与它自己算前两级的两段比较逻辑（`OFFICIAL_VENDOR_KEYS` / `BUILTIN_RELAY_VENDOR_KEYS` 与两处手写的 rank/tier 计算），改为 import 共享比较子；没有开关、没有兼容分支、没有转发壳——`vendorTier` 只留一个 re-export 给现有导入方，它转的就是新家那一份。执行侧那半原本就少一级，本次是把缺的那一级补上，不是留旧路。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有第三方运行时或协议版本参与；`VendorPreferenceSettings` 的跨进程形状与 schemaVersion 一个字节没动。",
+    "exit_criteria": []
+  },
+  "migration": "无存储形状变化。用户已保存的供应商顺序（`orderedVendorKeys`）照旧读，只是比对时一律按小写去空白匹配——此前渲染层就是这么比的，执行侧此前是精确比对，所以这一改只会让**更多**已存的顺序被认出来，不会让任何一条失效。用户没排过序时的默认从「目录原序」变成「内置中转优先」，这正是用户 2026-09-22 拍板的那一条。",
+  "residual_risks": [
+    "分级表仍然是一份**手写的供应商键清单**（`OFFICIAL_VENDOR_KEYS` / `BUILTIN_RELAY_VENDOR_KEYS`）：接一家新的官方供应商而忘了加进表，它会被当成「自接/未知」排到最后。影响只限默认项（用户可以排序、可以锁定），零生成风险；但它没有机器判据，记为已知缺口。",
+    "「内置中转」这三个键（apimart / kie / newapi）与另一条会话正在做的 `electron/shared/builtinVendorIdentity.ts`（#831，连接身份）语义相邻但不同：那一份答的是「这个连接是不是内置那一家」，这一份答的是「排序时算第几档」。#831 合入后应核一次两张表要不要合并——本刀不碰它（任务书裁决：概念不交集，互相避让）。",
+    "渲染层补的第三级是显示名字母序、执行侧补的是目录原序：同级（同 rank 同 tier）的两家在两侧可能排出不同的**第二名**。第一家永远相同（对拍类断言钉的就是这一条），而「第一家」是钱花在哪家的唯一决定因素；第二名之后的顺序只影响选择器里的视觉排列。"
+  ]
+}
