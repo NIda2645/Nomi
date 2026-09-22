@@ -1,6 +1,6 @@
 # 连接身份 = 域名 + 连接名（GitHub issue #831）
 
-状态：**已实施**（第二段完成；下方「实施后的偏差」记录方案与落地的出入）
+状态：**✅ 已实施**（第二段完成；下方「实施后的偏差」记录方案与落地的出入）
 分支：`fix/vendor-connection-identity-20260922` · worktree `/Users/aoqimin/Desktop/Nomi-fix-831-0922`
 Issue：https://github.com/aqm857886159/Nomi/issues/831
 
