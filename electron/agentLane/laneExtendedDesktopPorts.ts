@@ -217,9 +217,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         outcome = await wait.outcome
       }
       if (outcome.kind === 'confirmed') return decided({ outcome: 'approved' })
-      // × 那条路上计划已经由 `discardPendingSpend` 写成真终态，这里不再动它。
+      // × 那条路上 `discardPendingSpend` 已经把这一次出价收回了（计划回到 draft / 未 present），这里不再动它。
       if (outcome.kind === 'declined') return decided({ outcome: 'declined' })
-      // 另外两种结局（用户打了字 / 回合被停下）都不是用户说「不」：收回的只是这一次出价，计划留着。
+      // 另外两种结局（用户打了字 / 回合被停下）同样不是「不要这份草稿」：收回的只是这一次出价，计划留着。
       if (outcome.kind === 'redirected') {
         await generation.withdrawPresentation(operationId)
         return decided({ outcome: 'redirected', userSaid: outcome.text })

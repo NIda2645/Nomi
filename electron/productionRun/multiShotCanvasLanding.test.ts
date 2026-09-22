@@ -76,19 +76,22 @@ describe('buildMaterializeShotsPayload', () => {
     expect(payload?.shots[0]).toMatchObject({ shotId: 'cat', kind: 'image', title: '一只可爱的橘色小猫头像' })
   })
 
-  // 2026-09-22 · 用户点了 ×（或打字拒绝）= 撤回这一次请求，真终态。落地**不再为它建任何占位**。
-  // 此前 × 走 dismiss（仍是 draft），这里照旧投影——× 删掉的占位会被落地轮询重建，
-  // 用户看到的是「点了 ×，画布上多出一个节点」（`agent-spend-card.walk.mjs` 自合并 ③ 起红）。
-  it('用户撤回的请求不再落地：单镜、多镜都不建占位', () => {
+  // 2026-09-22 下午用户拍板：报价卡上的 × **只收回这一次出价**（「节点和草稿都留着」）。
+  // 计划回到 `draft` / 未 present（`cardHidden`），所以落地这一侧一个字不变——占位照旧在画布上，
+  // 用户说一句「还是生成吧」就能对同一份草稿重新出价。
+  //
+  // 当天上午那一版把 × 落成 `cancelled + cancelReason:"declined"`，并在这里加了一条「不投影」。
+  // 它在 33 镜的计划上说不通：卡上只摆 3 镜，× 终结整份计划，另外 30 个占位成了孤儿。已随裁决删。
+  it('× 收回出价之后计划回到未 present 的 draft：占位照旧投影，一个不少', () => {
     const multi = run([shot('s1'), shot('s2')])
-    multi.generationPlan = { ...multi.generationPlan!, state: 'cancelled', cancelReason: 'declined' }
-    expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', cardHidden: true }
+    expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(2)
     const single = run([shot('cat')])
-    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'cancelled', cancelReason: 'declined' }
-    expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', cardHidden: true }
+    expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
   })
 
-  it('阳性对照：别的来由的 cancelled（没有 declined 章）照旧投影——放行的只有「用户说不」这一格', () => {
+  it('阳性对照：真终态（用户删了这份草稿）照旧投影——落地不看 cancelled，那一格由别处管', () => {
     const cancelled = run([shot('s1')])
     cancelled.generationPlan = { ...cancelled.generationPlan!, state: 'cancelled' }
     expect(buildMaterializeShotsPayload(cancelled, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)

@@ -135,10 +135,6 @@ export function buildMaterializeShotsPayload(
 ): MaterializeShotsWirePayload | null {
   const plan = run.generationPlan;
   if (!plan) return null;
-  // 用户撤回的请求（× / 打字拒绝）是终态：**不再为它建任何占位**。2026-09-22 之前「× 之后别复活」
-  // 靠的是渲染层观察到节点被删、再另发一趟 `plan.detach-shot-nodes`——那一趟和这里的落地轮询抢跑，
-  // 抢输了节点就被重建。终态由账本自己说，不靠第二趟往返去补。
-  if (plan.state === "cancelled" && plan.cancelReason === "declined") return null;
   // A deleted single-shot placeholder is an explicit user decision. Keep the
   // durable artifact in the Run/asset owner, but do not recreate the canvas
   // node on every reconciliation pass.

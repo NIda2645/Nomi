@@ -109,11 +109,11 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },
-    cancel(projectId, operationId, now, reason) {
+    cancel(projectId, operationId, now) {
       const current = read(projectId, operationId);
       if (!current) throw new Error(`Generation operation not found: ${operationId}`);
       if (current.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
-      const next = freeze({ ...current, state: "cancelled" as const, ...(reason ? { cancelReason: reason } : {}), updatedAt: now });
+      const next = freeze({ ...current, state: "cancelled" as const, updatedAt: now });
       operations.set(keyFor(projectId, operationId), next);
       return next;
     },

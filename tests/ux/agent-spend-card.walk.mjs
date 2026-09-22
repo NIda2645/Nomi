@@ -136,30 +136,31 @@ try {
   expect(walk.fixture.images, '编辑未批准卡不发媒体请求').toHaveLength(0)
   await walk.snap('spend-card-zh-edited-isolated')
 
-  // ── × = 撤销这次草稿（2026-09-21 用户拍板的单一语义）───────────────────────────
-  // 用户原话：「我不生成，我的所有节点卡片都没了。」所以这里要同时钉住**两面**：
-  //   ① 这次操作自己造出来的占位镜头，× 之后**真的撤掉**（不留孤儿节点等着用户猜）；
-  //   ② **用户自己建的节点一个都不许动**——判据是来源章，不是「卡引用了谁」。
-  // 卡上有没提交的手改，所以 × 第一下先摊开那句确认（D4：撤什么、丢什么明着说）。
+  // ── × = **收回这一次出价**，草稿和画布都留着（2026-09-22 下午用户拍板，改窄裁决 D）──────────
+  // 用户原话：「第二种，× 只关这次请求，节点和草稿都留着」。所以这里钉的是：
+  //   ① 卡走了、这一笔不再待决；
+  //   ② 画布**一个节点都不动**——这次操作落的占位、用户自己建的那个，全都原样在（09-21 Q3 的
+  //      「× 永远不删用户自己建的节点」是这条的一个子集）；
+  //   ③ 计划本身留着，后面那一段证明同一个 operationId 还能重新出价。
+  // 这两刀之间那一版（× 撤掉卡上摆出来的那几镜的占位）在 33 镜的计划上说不通：卡上摆 3 镜，
+  // 撤 3 个、留 30 个孤儿，而且撤掉的那几个会被落地轮询重建（「点了 ×，画布上多出一个节点」那条红）。
+  const cardShotNodeIds = (await readProject(win, projectId)).payload.generationCanvas.nodes.map(entry => entry.id).sort()
   await clickOrFail(card.locator(INTERVENTION_REJECT), '丢弃付款卡（第一下先出确认）')
-  await expect(card.locator('[data-v4-control="reject-confirm-note"]'),
-    '卡上改过还没提交时，× 必须先说清「改的内容会一起丢」').toBeVisible()
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), '确认丢弃这次请求')
+  const rejectNote = card.locator('[data-v4-control="reject-confirm-note"]')
+  if (await rejectNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), '确认收回这次出价')
   await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
-  // × 把结论递回正在等的那个回合：`generate` 以**成功形状**返回「用户没同意」，模型照着收尾。
+  // × 把结论递回正在等的那个回合：`generate` 以**成功形状**返回「用户没同意这次」，模型照着收尾。
   const declinedTurn = flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user closed the card')).body)
-  expect(declinedTurn, '模型读到的是「他关了这张卡、别重试」，不是一个错误').toContain('closed the priced card without approving')
-  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id).sort(),
-    { timeout: DEFAULT_TIMEOUT_MS, message: '× 只撤这次操作建的占位镜头，用户自己建的那个一个字不动' })
-    .toEqual([userNodeId])
+  expect(declinedTurn, '模型读到的是「他关了这张卡」，不是一个错误').toContain('closed the priced card without approving')
+  expect(declinedTurn, '而且要读到「收回的是这次出价，草稿还在」——否则它会替他重新起草一份')
+    .toContain('withdrew this quote, not the draft')
+  // 「× 之后画布不多也不少」：落地轮询在这段时间里对这份计划又跑过好几趟。
+  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(entry => entry.id).sort(),
+    { timeout: DEFAULT_TIMEOUT_MS, message: '× 一个节点都不删：这次操作落的占位和用户自建的那个都在' })
+    .toEqual(cardShotNodeIds)
+  expect(cardShotNodeIds, '探针：画布上确实有这次操作的占位 + 用户自建那个两个节点')
+    .toEqual(before.map(entry => entry.id).sort())
   expect(walk.fixture.images, '关闭不提交媒体').toHaveLength(0)
-
-  // 建的时候一个 Cmd+Z，撤的时候也必须是一个 Cmd+Z（与 txn_materialize_shots_* 对称）。
-  await win.locator(`.react-flow__node[data-id="${userNodeId}"]`).focus()
-  await win.keyboard.press('Meta+Z')
-  await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(node => node.id).sort(),
-    { timeout: DEFAULT_TIMEOUT_MS, message: '一次 Cmd+Z 整批回来' })
-    .toEqual(before.map(node => node.id).sort())
   const requestsBeforeCold = walk.fixture.requests.length
   await walk.stopApp()
   ;({ win } = await walk.start())
@@ -184,62 +185,43 @@ try {
   expect(walk.fixture.images,'冷启动不提交媒体').toHaveLength(0)
   expect(walk.fixture.requests,'冷启动不重新请求模型').toHaveLength(requestsBeforeCold)
   await walk.snap('spend-card-cold-closed-no-resurrection')
-  // ── × 是真终态（2026-09-22 裁决 D）：被撤回的请求**不复活**；要再生成 = 起草一份新的 ─────────
+  // ── × 收回的是**这一次出价**：同一个 operationId 再 generate = 重新出价 ────────────────────
   //
-  // 这一段原来钉的是相反的事：「对同一个 operationId 再 generate，卡带着他没提交的手改原样回来」。
-  // 那正是 × 不是终态的另一半后果——同一份计划既「被用户撤回了」又「随时能被模型叫回来」，
-  // 而落地投影因此照旧认它，× 删掉的占位节点会被重建（这条走查自合并 ③ 起红的就是那一步）。
-  // 现在：模型对旧 id 叫 generate → 读到一句可行动的话（「用户撤回了，要再生成请重新起草」）→
-  // 它重新起草 → 一张**新的**卡。旧卡不回来，旧占位不复活。
+  // 2026-09-22 下午用户拍板改窄裁决 D：「× 只关这次请求，节点和草稿都留着」。所以这一段钉回它本来
+  // 钉的那件事——模型对**同一个** operationId 叫一次 generate，那张卡就回来了，草稿一个字不用重写。
+  // （当天上午那一版在这里钉的是相反的：旧 id 被拒、模型必须 draft_shots 重新起草出一个新 id。
+  //  它让 33 镜的计划在 × 之后变成孤儿，已被推翻。）
   const REOPEN_GENERATE = 'spend-reopen'
-  const REDRAFT_CALL = 'spend-redraft'
-  const REDRAFT_GENERATE = 'spend-redraft-generate'
-  const REDRAFT_PROMPT = '一个悬浮的六棱柱，换成清晨的侧光'
-  const reopen = walk.fixture.expectText({label:'the model tries the withdrawn operation again',
+  const reopen = walk.fixture.expectText({label:'the model re-quotes the same withdrawn draft',
     match:body=>flattenRequestText(body).includes('S_SPEND_REOPEN'),
     reply:{type:'tool',id:REOPEN_GENERATE,name:'generate',args:{operationId}}})
-  const refused = walk.fixture.expectText({label:'it reads why that request is closed, and drafts a fresh one',
+  const reopenDone = walk.fixture.expectText({label:'the re-quoted request reaches its card',
     match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id===REOPEN_GENERATE),
-    reply:{type:'tool',id:REDRAFT_CALL,name:'draft_shots',args:{
-      shots:[{ prompt: REDRAFT_PROMPT, taskKind:'text_to_image', candidate:{ providerId: FIXTURE_VENDOR, modelId: FIXTURE_IMAGE_MODEL }, parameters:{ size:'1024x1024' } }] }}})
-  let redraftedOperationId
-  const redrafted = walk.fixture.expectText({label:'the fresh draft comes back with a NEW operationId',
-    match:body=>{
-      const result=(body.messages??[]).find(message=>message.role==='tool' && message.tool_call_id===REDRAFT_CALL)
-      if(!result) return false
-      redraftedOperationId=/"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
-      return true
-    },
-    reply:{type:'hold'}})
-  const redraftDone = walk.fixture.expectText({label:'the fresh request reaches its own card',
-    match:body=>(body.messages??[]).some(message=>message.role==='tool' && message.tool_call_id===REDRAFT_GENERATE),
-    reply:{type:'text',text:'S_SPEND_REOPEN_DONE：重新起草好了，等你确认。'}})
+    reply:{type:'text',text:'S_SPEND_REOPEN_DONE：还是这份草稿，等你确认。'}})
   await sendCanvas(win, 'S_SPEND_REOPEN：还是生成吧。')
-  await recorded(reopen.received, 'generate on the withdrawn operation')
-  const refusal = flattenRequestText((await recorded(refused.received, 'the refusal reaches the model')).body)
-  expect(refusal, '模型必须读到「这次请求被用户撤回了、要重新起草」，而不是一个裸码').toContain('declined this generation request')
-  await recorded(redrafted.received, 'fresh draft result')
-  expect(redraftedOperationId, '重新起草 = 一个新的 operationId，不是把旧的叫回来').not.toBe(operationId)
-  redrafted.release({type:'tool',id:REDRAFT_GENERATE,name:'generate',args:{operationId:redraftedOperationId}})
-  await expect(card).toBeVisible()
-  await expect(card, '新卡上是新起草的那一镜，不是被撤回的那一份').toContainText('清晨的侧光')
-  expect(walk.fixture.images, '重新起草、出卡都不提交').toHaveLength(0)
-  await walk.snap('spend-card-zh-redrafted-after-decline')
+  await recorded(reopen.received, 'generate on the same operation')
+  await expect(card, '同一个 operationId 再 generate，卡就回来了（不用重新起草）').toBeVisible()
+  await expect(input, '卡上还是这一份草稿：他在卡上改过的那句话原样回来').toHaveText(draftPrompt)
+  await expect(sizeChip, '他在卡上改过的尺寸也原样回来').toContainText('1536x1024')
+  expect((await nodesAfterRestart()).find(entry => entry.id === node.id), '重新出价不动画布').toEqual(restoredShot)
+  expect(walk.fixture.images, '重新出价不提交').toHaveLength(0)
+  await walk.snap('spend-card-zh-requoted-same-draft')
   // （这里原来有一段「切 EN → win.reload() → 卡还在」。2026-09-22 裁决 A 之后它不再成立，而且不该成立：
   //  等这张卡的那个回合住在这扇窗的 lane 里，渲染层重挂 = 那条 lane 关了 = 出价收回（卡不留成没人等的孤儿）。
   //  EN 轨的长相由 priced-card / unknown-price 两条走查钉；「窗没了 → 出价收回、计划留着」由
   //  `agent-spend-waiting-owner.walk.mjs` 钉。）
-  // 这张新卡也用 × 收掉（像人一样点）：它没有未提交的手改，所以不该再出那句「改的内容会一起丢」。
-  // 顺带把「× 是终态」在**第二个** operation 上再证一遍，并让后面的范围旅程从一块干净的介入槽开始。
-  await clickOrFail(card.locator(INTERVENTION_REJECT), 'decline the redrafted request')
+  // 这张卡也用 × 收掉（像人一样点），让后面的范围旅程从一块干净的介入槽开始。
+  await clickOrFail(card.locator(INTERVENTION_REJECT), 'withdraw the re-quoted request')
   const confirmNote = card.locator('[data-v4-control="reject-confirm-note"]')
-  if (await confirmNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), 'confirm declining the redrafted request')
-  await expectAbsent(card, { provenBy: cardProof, message: 'the redrafted card leaves the slot once declined' })
-  await recorded(redraftDone.received, 'the second generate returns once its card was closed too')
+  if (await confirmNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), 'confirm withdrawing the re-quoted request')
+  await expectAbsent(card, { provenBy: cardProof, message: 'the re-quoted card leaves the slot once withdrawn' })
+  await recorded(reopenDone.received, 'the second generate returns once its card was closed too')
+  expect((await nodesAfterRestart()).map(entry => entry.id).sort(), '两次 × 之后画布节点一个不多也一个不少')
+    .toEqual(before.map(entry => entry.id).sort())
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
-    'discard-removes-only-this-operations-own-shots','discard-is-one-undo-step','user-built-node-survives-discard',
-    'cold-process-reopen-no-old-card','declined-operation-stays-closed-and-redraft-gets-a-new-card']
+    'decline-withdraws-only-the-quote','canvas-untouched-by-decline','user-built-node-survives-decline',
+    'cold-process-reopen-no-old-card','same-operation-requotes-the-same-draft']
   await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error

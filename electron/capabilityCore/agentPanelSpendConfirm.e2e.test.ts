@@ -463,12 +463,13 @@ describe('reliability: scoped presentation and dismissal', () => {
     expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.jobs).toEqual([]);
   });
 
-  // 2026-09-22 裁决 D 改判：这条原来是「× 只关掉这次请求，草稿还是 draft、还能再 present」。
-  // 那个「还是 draft」正是 bug 的形状——× 不是终态，落地投影照旧认它，× 删掉的占位节点会被重建
-  // （用户看到的是「点了 ×，画布上多出一个节点」）。现在 × = 撤回这一次请求，真终态：
-  // 要再生成 = 起草一份新的计划，不复活旧的。**不变的那一半照旧钉着**：主进程这一侧不动任何节点、
-  // 镜头数据一个字不丢（用户的创作内容不因为他说了一次「不」而消失）。
-  it('S02: × withdraws the request for good; shots data and nodes are untouched, and it cannot be presented again', async () => {
+  // 2026-09-22 下午用户拍板改窄裁决 D：× **只关这次请求，节点和草稿都留着**。所以这条钉的是
+  // 「收回这一次出价」那条边（与裁决 C 同一条）：卡没了，计划回到 draft / 未 present，镜头一个字不丢、
+  // 节点一个不动，同一个 operationId 还能再出价。
+  //
+  // 当天上午那一版把 × 落成 `cancelled + declined` 的计划级终态，这里钉的是「不许再 present」。
+  // 它在 33 镜的计划上说不通（卡上摆 3 镜，× 终结整份计划，另外 30 个占位成孤儿），已被推翻。
+  it('S02: × withdraws only this quote; the draft, its shots and the canvas nodes all survive and it can be presented again', async () => {
     const base = harness();
     await mixedDraft(base);
     const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
@@ -479,18 +480,18 @@ describe('reliability: scoped presentation and dismissal', () => {
       quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId })).toMatchObject({ ok: true });
     expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
     const after = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
-    expect(after.state).toBe('cancelled');
-    expect(after.cancelReason).toBe('declined');
+    expect(after.state, '没有人说「不要这份草稿」：计划还是 draft').toBe('draft');
+    expect(after.cardHidden, '只是不再摆在用户面前').toBe(true);
     expect(after.shots).toEqual(before);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
-    // 被撤回的请求不许被复活：模型读到的是一句可行动的话，不是一个裸码。
-    await expect(handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease }))
-      .rejects.toThrow(/declined this generation request/);
-    expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
+    // 对同一份草稿再 generate = 重新出价，同一个 operationId 再出一张卡。
+    await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease });
+    expect(withWindow.listPendingSpend(PROJECT_ID)[0].shots.map((shot) => shot.shotId)).toEqual(['shot-1']);
   });
 
   // ── 裁决 C（2026-09-22 二次裁决）：重启作废的是「那一次出价」，不是「那份计划」──
-  it('C: 收回出价 ≠ ×——卡没了，计划、镜头、节点都在，同一个 operationId 还能再出价', async () => {
+  // 2026-09-22 下午起 × 走的也是这条边（用户拍板「× 只关这次请求」），所以这条同时是 × 的下半身。
+  it('C: 收回出价——卡没了，计划、镜头、节点都在，同一个 operationId 还能再出价', async () => {
     const base = harness();
     await mixedDraft(base);
     const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
@@ -500,9 +501,8 @@ describe('reliability: scoped presentation and dismissal', () => {
     await handler({ capability: 'withdraw', params: { operationId: OPERATION_ID }, lease });
     expect(withWindow.listPendingSpend(PROJECT_ID), '收回之后面板上不许再有那张卡').toEqual([]);
     const plan = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
-    expect(plan.state, '不是 cancelled：没有人说过「不」').toBe('draft');
+    expect(plan.state, '不是 cancelled：没有人说过「不要这份草稿」').toBe('draft');
     expect(plan.cardHidden).toBe(true);
-    expect(plan.cancelReason).toBeUndefined();
     expect(plan.shots).toHaveLength(33);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
     // 幂等：再收一次什么都不变（重启清扫与「按停止」可能先后各来一次）。
@@ -585,20 +585,23 @@ it('rejects a revision from an older displayed quote before mutating the current
 });
 
 
-// 2026-09-22 裁决 D 改判：原来这条钉的是「× 之后再 present，报价身份会变、候选不变」——它以
-// 「× 之后还能 present」为前提，而那正是被删掉的第二终态。现在钉的是终态本身。
-it('× is terminal: the card is gone, nothing is submitted, and the same operation never reopens', async () => {
+// 2026-09-22 下午用户拍板改窄裁决 D：× 收回的是**这一次出价**。所以这条钉回原来那件事
+// （× 之后再 present，报价身份会变、候选一字不变），并把「第二次 × 不许变成错误」一起留着。
+it('× withdraws the quote: the card is gone, nothing is submitted, and the same operation re-quotes the identical candidate', async () => {
   const base = harness(); const submits: string[] = [];
   const { withWindow, handler } = buildActions(base, 'http://127.0.0.1:1', submits);
   await draft(base);
   const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
   expect(await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId })).toMatchObject({ok:true});
   expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
-  await expect(handler({capability:'present', params:{operationId:OPERATION_ID}, lease})).rejects.toThrow(/declined this generation request/);
-  expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
   // × 第二次（用户连点、或面板晚到一拍）不许变成一个错误弹给他：那张卡已经不在了。
   expect(await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: displayed.quoteId }))
     .toMatchObject({ ok: false });
+  await handler({capability:'present', params:{operationId:OPERATION_ID}, lease});
+  const reopened = withWindow.listPendingSpend(PROJECT_ID)[0];
+  expect(reopened.quoteId, '重新出价 = 新的报价身份（旧卡上那个数不许批这一张）').not.toBe(displayed.quoteId);
+  expect(reopened.planVersion).toBeGreaterThan(displayed.planVersion);
+  expect(reopened.shots, '候选一个字不变').toEqual(displayed.shots);
   expect(submits).toEqual([]);
 });
 

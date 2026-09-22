@@ -46,7 +46,6 @@ import {
 import { priceDisagreements, pricingResolverFromModelOptions, repricePendingSpend, type SpendPriceDisagreement } from './spendCardEstimate'
 import type { InterventionData } from './agentPanelV4Types'
 import { missingCardReasonOfReadFailure, missingInterventionCard, type MissingCardReason } from './missingInterventionCard'
-import { rollBackDiscardedSpendNodes } from './spendCardRollback'
 
 /** 和任务中心同一个节拍：付费卡是同一批 Run 事实的另一个读者，不另立一套刷新频率。 */
 const POLL_INTERVAL_MS = 1500
@@ -378,18 +377,17 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       return confirmed
     }),
     /**
-     * × = **撤销这次草稿**，单一语义（2026-09-21 用户拍板）。
+     * × = **收回这一次出价**，草稿和画布一个字不动（2026-09-22 下午用户拍板：
+     * 「第二种，× 只关这次请求，节点和草稿都留着」）。
      *
-     * 宿主那边把这一笔作废，画布这边把**这次操作自己造出来的占位节点**撤掉——判据是来源章，
-     * 不是「卡引用了谁」（见 `spendCardRollback.ts` 顶部；用户自己建的节点一个都不动）。
-     * 整批一个撤销步，一次 ⌘Z 全回来，所以不需要第二套「找回账本」。
+     * 所以这里**不再动画布**：宿主那边把这一次出价收回（计划回到 draft / 未 present），
+     * 占位节点、分镜表、用户自己建的节点全都原样留着，他随时可以说一句「还是生成吧」再出同一张卡。
+     *
+     * 2026-09-21 到 09-22 中间这里是「撤掉这次操作自己造的占位节点 + 一个 ⌘Z 全回来」
+     * （`spendCardRollback.ts`，随本刀删）。它在 33 镜的计划上说不通：卡上只摆 3 镜，撤 3 个、
+     * 留 30 个孤儿；撤了之后落地轮询又会把它们补回来（那正是「点了 ×，画布上多出一个节点」那条红）。
+     * 两个自洽方向里用户选了「都留着」。
      */
-    discard: () => act(async (target) => {
-      const result = await productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)
-      if (!result.ok) return result
-      const removed = rollBackDiscardedSpendNodes(target)
-      if (removed > 0) toast(t('agentPanelV4.spendDiscardedNodes', { count: removed }), 'info')
-      return result
-    }),
+    discard: () => act(async (target) => productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)),
   }
 }

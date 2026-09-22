@@ -461,12 +461,6 @@ export const zhAgentPanelV4 = {
   spendParamsScopeAll: '全部',
   spendParamsScopeAria: '生成范围',
   spendParamsDecline: '不要',
-  /**
-   * × 撤掉这次请求之后那一句。**只有真撤掉了占位节点时才说**：撤了东西就得说撤了什么、怎么拿回来。
-   * 用户自己建的节点从来不在这个数里（`spendCardRollback.ts` 只认物化章）。
-   */
-  spendDiscardedNodes_one: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
-  spendDiscardedNodes_other: '已丢弃这次请求，撤掉 {{count}} 个占位镜头 · 按 ⌘Z 撤销',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   spendDiscardEditsWarning: '丢弃这次请求？你在卡上改的内容会一起丢掉。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
@@ -914,8 +908,6 @@ export const enAgentPanelV4 = {
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
-  spendDiscardedNodes_one: 'Request discarded — 1 placeholder shot removed · press ⌘Z to undo',
-  spendDiscardedNodes_other: 'Request discarded — {{count}} placeholder shots removed · press ⌘Z to undo',
   spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',

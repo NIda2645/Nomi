@@ -35,8 +35,6 @@ export type GenerationOperation = Readonly<{
   state: GenerationOperationState;
   /** 草稿建好但报价卡还没摆到用户面前（见 `ProductionGenerationPlan.cardHidden`）。 */
   cardHidden?: boolean;
-  /** 见 `ProductionGenerationPlan.cancelReason`。 */
-  cancelReason?: "declined";
   contract?: ExecutionContractV1;
   approvedReceiptId?: string;
   /** P4 S4: multi-shot entries (anchors + video shots). Absent = single-shot (today's flat path). */
@@ -66,13 +64,15 @@ export type GenerationOperationStore = {
   // → single-shot seal of the one top-level contract (byte-identical to today).
   seal(projectId: string, operationId: string, contract: ExecutionContractV1, now: string, multiShot?: GenerationSealMultiShot, authorization?: GenerationAuthorizationPreparation): GenerationOperation | Promise<GenerationOperation>;
   /**
-   * 终结一份还没提交的计划。`reason: "declined"` = 用户在报价卡上点了 ×（或打字拒绝）：真终态，
-   * 投影不出卡、落地不建占位、同一个 operationId 不再被 present 复活。
+   * 终结一份还没提交的计划（**计划级终态**）。只有一条路走到这里：用户自己不要这份草稿了
+   * （左侧栏删草稿 / 外部宿主撤草稿）。报价卡上的 × **不**走这里——它收回的只是这一次出价，见 `withdraw`。
    */
-  cancel(projectId: string, operationId: string, now: string, reason?: "declined"): GenerationOperation | Promise<GenerationOperation>;
+  cancel(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   /**
-   * 撤回**这一次出价**，计划留着（回到 draft / 未 present）。不是用户说「不」——是问这句话的那个回合没了
-   * （重启 / 按停止 / 关窗）。幂等；钱的事已经定了的（门已决 / 已提交 / 已终结）原样返回。
+   * 收回**这一次出价**，计划留着（回到 draft / 未 present）。三种回答者共用这一条边：
+   * 报价卡上的 ×（2026-09-22 用户拍板「× 只关这次请求，节点和草稿都留着」）、
+   * 用户在卡待决时打字、以及「问这句话的那个回合没了」（重启 / 按停止 / 关窗，裁决 C）。
+   * 幂等；钱的事已经定了的（门已决 / 已提交 / 已终结）原样返回。
    */
   withdraw(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   /** P4 S4 试拍首镜: invalidate the waiting authority and return a narrowed plan to draft for re-seal. */

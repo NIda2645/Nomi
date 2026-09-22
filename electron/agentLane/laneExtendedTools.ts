@@ -108,7 +108,8 @@ function nextActionFor(
  * 回执从那个真实结论派生，三种都是成功形状——没有任何东西坏了：
  *
  *   · approved   → 钱的那条链已经跑完，任务开跑；
- *   · declined   → 他点了 ×。这份请求到此为止，**不要重试**，也不要替他再起一份；
+ *   · declined   → 他点了 ×。收回的是**这一次出价**，草稿原样留着（2026-09-22 用户拍板）：
+ *                  不要重试、不要替他重新起草，等他说下一步；他要是还想生成，对同一份草稿再 generate；
  *   · redirected → 卡还没答他就打了字。这一次出价收回、草稿留着，那句话就是下一步的输入。
  *
  * 2026-09-22 之前这里是一条 `isError + STOP`（`user_sees_spend_card`）：回合当场结束，用户点完「生成」
@@ -124,7 +125,7 @@ function generateReceipt(result: unknown): LaneToolNextAction {
   }
   if (decision?.outcome === 'declined') {
     return { kind: 'none', ...id,
-      userSees: 'The user closed the priced card without approving it. Nothing was generated and nothing was spent, and this request is closed for good. Do not call generate again for it and do not redraft on your own: acknowledge it briefly and ask what he would like instead.' }
+      userSees: 'The user closed the priced card without approving it. Nothing was generated and nothing was spent. He withdrew this quote, not the draft: the shots, parameters and his own edits are all still there, and so are the placeholder nodes on the canvas. Do not call generate again right now and do not redraft on your own: acknowledge it briefly and ask what he would like instead. If he asks for it again later, call generate on this same draft (revise it first with draft_shots if he wants changes).' }
   }
   if (decision?.outcome === 'redirected') {
     return { kind: 'none', ...id,

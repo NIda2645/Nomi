@@ -17,7 +17,6 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     candidate: structuredClone(plan.candidate),
     state: plan.state,
     ...(plan.cardHidden === true ? { cardHidden: true } : {}),
-    ...(plan.cancelReason ? { cancelReason: plan.cancelReason } : {}),
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
     ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
     ...(plan.authorizationEnvelope ? { authorizationEnvelope: structuredClone(plan.authorizationEnvelope) } : {}),
@@ -201,13 +200,13 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
-    async cancel(projectId, operationId, now, reason) {
+    async cancel(projectId, operationId, now) {
       const current = read(projectId, operationId);
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.cancel:${operationId}:v${current.planVersion}:${current.state}`,
         expectedRevision: owner.readFull(projectId, operationId).revision,
         type: "generation.cancel",
-        payload: reason ? { reason } : {},
+        payload: {},
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

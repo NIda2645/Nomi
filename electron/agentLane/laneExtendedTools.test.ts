@@ -193,7 +193,9 @@ describe('工具回执从真实审批结论派生', () => {
   // 错误形状会让模型重试、进熔断、向用户报「出错了」，对一个「他说不」或「他想先改一下」三样都是错的。
   it.each([
     ['approved', { outcome: 'approved' }, 'job_running', /generation has started/],
-    ['declined', { outcome: 'declined' }, 'none', /closed for good/],
+    // 2026-09-22 下午用户拍板改窄：× 收回的是这一次出价，草稿留着——回执必须这么说，
+    // 否则模型会替他重新起草一份（旧文案「closed for good / draft the shots again」正是那个）。
+    ['declined', { outcome: 'declined' }, 'none', /withdrew this quote, not the draft/],
     ['redirected', { outcome: 'redirected', userSaid: '第二镜改成竖版' }, 'none', /第二镜改成竖版/],
   ] as const)('用户在报价卡上 %s → 成功形状的回执，照实说', async (_name, userDecision, kind, says) => {
     const outcome = await runVerb('generate', { operation: { operationId: 'op-7' }, nextAction: 'await_user', userDecision },

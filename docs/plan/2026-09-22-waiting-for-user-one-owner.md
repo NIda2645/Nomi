@@ -1,6 +1,6 @@
 # 「等用户」只有一个 owner（花钱路）
 
-状态：🚧 实施中（分支 `integration/core-a-salvage-20260921`，未 push）· 2026-09-22 · 主会话二次裁决 6 条已并入（C 改窄、decline 不发票、ticket 绑定、确认面排序约束、外部等待改短、规范版本更正）
+状态：🚧 实施中（分支 `integration/core-a-salvage-20260921`，未 push）· 2026-09-22 · 主会话二次裁决 6 条已并入（C 改窄、decline 不发票、ticket 绑定、确认面排序约束、外部等待改短、规范版本更正）· **2026-09-22 下午用户拍板改窄裁决 D：× 只收回这一次出价，节点和草稿都留着**（§1 裁决 D、§2、§3、§4、§5 Q3(b) 已订正）
 
 ## 0. 它在解决哪个真实摩擦
 
@@ -21,8 +21,27 @@
 A 等用户 = 审批闸一个 owner｜B 待决身份锚 `operationId` 不锚 `quoteId`｜
 C **重启作废的是「那一次出价」，不是「那份计划」**（2026-09-22 二次裁决，改窄）：启动时把「已 present、未决」的计划
 **退回 draft / 未 present**——待决、报价卡、内存里的 ticket 作废；计划本身（镜头、参数、锚点）留着，用户再说一句就能重新出价。
-**不写 `cancelled`**：应用重启不是用户说「不」，× 才是。过期清扫同理，一律「退回 draft」｜
-D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支｜E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端证明。
+**不写 `cancelled`**：应用重启不是用户说「不」｜
+D **× = 收回这一次出价，走 C 那条边**（2026-09-22 下午用户拍板改窄；原文是「× = 真终态」）｜
+E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端证明。
+
+**裁决 D（2026-09-22 下午用户拍板改窄）。** 用户原话：「第二种，× 只关这次请求，节点和草稿都留着」。
+
+> 起因是 D3 实施报告里那条要用户拍板的产品后果：多镜计划上 ×，渲染层只撤**卡上摆出来的那几镜**的占位
+> （33 镜的方案出 3 镜的卡 → 撤 3 个），而「计划级终态」让整份计划终结——另外 30 个节点留在画布上，
+> 挂在一份已经终结的计划上；用户说「还是生成吧」，模型只能重新起草 33 镜 → 画布上 30 旧 + 33 新。
+> 两个自洽方向：**① × 撤整份草稿的全部占位**，或 **② × 只关这次请求、草稿与节点都留着、可以再出卡**。用户选了 ②。
+
+含义（本文以下各节按这一条读）：
+- × = 收回**这一次出价**（这个 `operationId` 的这张报价卡），**不是**对计划说「不」。计划**退回 draft / 未 present**，
+  与裁决 C 走**同一条边**（`generation.withdraw` → `withdrawGenerationPresentation`）：镜头、参数、锚点、
+  用户已提交的手改一个字不丢，**画布占位节点一个不删**（渲染层那一下 × 现在只发一次 IPC，一行画布代码都没有）。
+- 模型侧读到的仍是**成功形状**的「用户没同意这次」，正文明说「收回的是这次出价，草稿还在」；
+  对同一份草稿再 `generate` = 重新出价，同一个 `operationId` 再出一张卡。
+- **「计划级终态」（`generation.cancel`）只剩一条路**：用户自己不要这份草稿（左侧栏删草稿 / 外部宿主撤草稿）。
+- 删除侧只留一条机制：`dismiss` / `cardHidden` 的 (b) 义的删除**保留**（不复活「藏卡 + 找回」那一套），
+  额外删掉的是上午那一版加的 `cancelReason: "declined"`、present 的「不许复活」拒绝、渲染层的 `spendCardRollback.ts`。
+- 与 2026-09-21 Q3 定案一致且更强：× / 不生成**不删任何节点**（「永远不删用户自己建的节点」是它的子集）。
 
 **不变量：金额永远不是闸的判据。** 闸只问「这一次出价（`operationId` + 合同指纹）有没有被一个可追溯的回答者同意过」，
 不问「多少钱」。金额只用于**展示**与「你确认的是不是你看到的那个数」的现时性校验（`quoteId`）；不进任何授权凭据的绑定，
@@ -63,7 +82,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    │                                                                          │
    │   事件（谁能触发）                          结局                          │
    │   · 面板「生成 ¥X」→ confirmPendingSpend 成功   → confirmed               │
-   │   · 面板 × → discardPendingSpend 成功           → declined                │
+   │   · 面板 × → discardPendingSpend 成功           → declined：出价收回、计划留着（D）│
    │   · 用户在 composer 打字（E）                    → redirected：出价收回、计划留着、原话到模型│
    │   · 按停止 / 关窗 / 切项目（cancelAll）          → cancelled（既有）       │
    │   · 进程重启（C）                                → 回合侧 cancelled{restart}（既有）；│
@@ -71,7 +90,8 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
    ▼                                                                          │
  execute（工具真正执行，≤60s 预算，此刻**没有任何等待**）◀──────────────────────┘
    · confirmed  → 返回「已开始生成 N 镜」（成功形状；提交已由 confirm 那条既有链完成）
-   · declined   → 返回「用户没同意，这次不生成」（**成功形状**，不是 isError → 不重试、不进熔断）
+   · declined   → 返回「用户没同意这次；收回的是这次出价，草稿原样留着」（**成功形状**，不是 isError →
+                  不重试、不进熔断）。盘上和 redirected 落在同一条边：**退回 draft / 未 present**
    · redirected → 返回「他没答这张卡，而是说了这句话」（**成功形状**）；实现时从 declined 里分出来的第三种：
                   「把第二镜改短点」不是用户在说「这份方案我不要了」，落成 × 的终态就得让模型把整份分镜重起一遍
    · 全自动     → 既有 `decideByPolicyAfterDraft`（一个字不改）
@@ -79,8 +99,9 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 
 落盘字段：**不新增等待态字段**。等待只活在内存里的 `waiter` 表（与审批闸的 `waiting` 同性质：进程死则等待死）。
 盘上只有 Run 账本的 `generationPlan.state`：`draft`（`cardHidden`，未 present）→（present）→ `draft`（可见）→ `sealed` → `submitted`；
-× → `cancelled{declined}`（终态）；**重启 / 出价过期 → 退回 `draft`（`cardHidden`，未 present）**——`sealed` 且门还在 waiting 的，
+**× / 待决时打字 / 重启 / 出价过期 → 一律退回 `draft`（`cardHidden`，未 present）**——`sealed` 且门还在 waiting 的，
 先按既有的 `revokeWaitingGenerationAuthorization` 撤掉那次未决授权再解封。「未 present」用的就是 `cardHidden` 的 (a) 义，不新增字段。
+`cancelled` 只由「用户不要这份草稿了」写（左侧栏删草稿 / 外部宿主撤草稿），它不是 × 的落点。
 
 文稿方案（②）：`presentStoryboardAuthoring` 的「等用户在分镜编辑器里点头」同样挪到 preflight——
 工具执行里只剩「读这次决定的结果」。
@@ -90,20 +111,28 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 | 符号 | 写口 | 说明 |
 |---|---|---|
 | `decideGenerationSpend` | `appIntegrationSpendConfirm.ts:391`（面板确认）、`generationTransportAdapters.ts:368`（全自动代答） | 两扇都保留：封印→铸收据→决门→消费→开跑这条链**只有一份**，差别只在 attestation 是人点的还是策略代答的 |
-| `dismissGenerationPlan` | `productionRunReducer.ts:221` 一扇 | **删**（D） |
-| `cardHidden`（读 7 扇） | 其中 `productionPendingSpend.ts:106` 是 live 语义 (a)「草稿还没摆到用户面前」；`productionGenerationPlanEdits.ts:243` 是 (b)「用户 × 了」 | (b) **删**；(a) 保留——它是落盘字段，改名要迁移用户已有账本，不在这一刀 |
-| `plan.detach-shot-nodes` | 渲染层 `ProductionCanvasLandingHost.tsx:143` | **保留**：它服务的是「用户自己手动删占位」（任务书 D 末句：手动 detach 不受影响）。× 不再**依赖**它 |
-| pending 投影读口 | `listPendingSpendConfirms` / `projectPendingSpendConfirm`（`productionPendingSpend.ts`） | 保留；新增一条判据：`cancelled` 的计划不投影（今天靠 `plan.state !== "draft"` 已经成立，补测试钉住） |
+| `dismissGenerationPlan` | `productionRunReducer.ts` 一扇 | **已删**（D 第一版）。它的位置由 `generation.withdraw` 顶上 |
+| `withdrawGenerationPresentation` | `productionGenerationPlanEdits.ts` 一扇（转移实现）+ `productionRunReducer.ts` 一扇（命令）；上游四个回答者：面板 ×（`appIntegrationSpendConfirm.discardPendingSpend`）、待决时打字与关窗（`laneExtendedDesktopPorts.withdrawPresentation`）、启动清扫（`stalePresentationSweep`） | **「收回这一次出价」唯一的边**（2026-09-22 下午起 × 也走它）。幂等 |
+| `generation.cancel` | `productionRunReducer.ts` 一扇；调用方只剩 `mcpGenerationTools` 的 `cancel` 能力 | 保留，收窄成**计划级终态**：用户自己不要这份草稿。× 不再走它 |
+| `cancelReason` | —— | **已删**（上午那一版加的字段；下午的拍板把它的唯一读者都去掉了） |
+| `cardHidden`（读 7 扇） | 其中 `productionPendingSpend.ts` 是 live 语义 (a)「草稿还没摆到用户面前」 | 只剩 (a)——「未 present」用的就是它；(b)「用户 × 了」那一支已删 |
+| `rollBackDiscardedSpendNodes` | 渲染层 `useAgentPanelSpendConfirm.discard` 一扇 | **已删**（连模块与单测）：× 不删任何节点，那一下只发一次 IPC |
+| `plan.detach-shot-nodes` | 渲染层 `ProductionCanvasLandingHost.tsx:143` | **保留**：它服务的是「用户自己手动删占位」（任务书 D 末句：手动 detach 不受影响）。× 不再制造它要补救的那个抢跑窗口 |
+| pending 投影读口 | `listPendingSpendConfirms` / `projectPendingSpendConfirm`（`productionPendingSpend.ts`） | 保留。判据不变：`draft` 且 `cardHidden !== true` 才投影；`cancelled` / `submitted` 本来就不投影 |
 
 ## 4. 删除清单（P1，同 commit）
 
 - `dismissGenerationPlan`（`productionGenerationPlanEdits.ts`）、reducer 的 `generation.dismiss` 分支、
   `operations.dismiss`（memory store 与 production store 两支）、`GenerationOperationStore.dismiss` 接口成员；
-- `discardPendingSpend` 内部从 `operations.dismiss` 改走 `operations.cancel`——**IPC 名不变**，所以渲染层此刻一行不用动；
+- `discardPendingSpend` 内部改走 `operations.withdraw`（= 裁决 C 那条边）——**IPC 名不变**；
+- （2026-09-22 下午的拍板追加删的）`ProductionGenerationPlan.cancelReason` 与 `cancel(reason)` 形参、
+  `mcpGenerationTools` 里「被 × 过的 operationId 不许再 present」那条拒绝、
+  渲染层的 `src/workbench/ai/v4/spendCardRollback.ts` 与它的单测、i18n 键 `spendDiscardedNodes`；
 - `laneExtendedTools.spendCardResult`（isError + STOP 那一支）与 `user_sees_spend_card` 这个**失败码**、
   第一轮加的 `waiting` 轴里它那一项（等待不再以失败的形状出现，这条轴对它就没有意义了）；
 - `generate` 动词声明里「出卡后 STOP」的措辞；
-- 落地：`buildMaterializeShotsPayload` 对 `state === "cancelled"` 的计划返回 null（× 之后不复活，**不再靠** detach 抢跑）。
+- 落地：`buildMaterializeShotsPayload` **一个字不改**——草稿在，占位就在。× 之后画布**一个不多也一个不少**，
+  因为没有任何一侧动过它（上午那一版在这里加过一条「declined 不投影」，随拍板删）。
 
 ## 5. 反方评审（自己做的，答案写在这里）
 
@@ -127,7 +156,9 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 (a) 重启：waiter 没了而盘上的计划还是「已 present 的 draft」→ 卡还会被投影出来、还能点确认——**这就是 C 要堵的**。
     启动（项目打开）时把「已 present、未决」的计划**退回 draft / 未 present**（不是 `cancel`）：卡不再投影、旧 ticket 随内存没了；
     镜头与参数都还在，用户重启后说一句「生成」= 对同一份草稿重新出价，不用重写分镜。× 过的计划不受这条影响——它早已是终态。
-(b) × 之后：`cancelled`，投影与落地都不认。
+(b) × 之后：**退回 draft / 未 present**（与 (a) 同一条边）。投影不出卡（`cardHidden`）；落地照旧维护占位
+    ——草稿还在，它的节点就还在，这正是用户要的（「× 只关这次请求，节点和草稿都留着」）。
+    孤儿的反面不是「把卡和节点都消灭」，是「卡收回、草稿留着、随时能再出价」。
 (c) lane 被删 / 切对话：`close()` → `cancelAll('window-closed')` → waiter settle cancelled → **同时 cancel 那份计划**（否则卡留在面板上没人等它）。
 
 **Q4 对非 lane 入口（外部 MCP `nomi_operation_gate`、分镜编辑器「提交执行计划」）有没有副作用？**
@@ -136,7 +167,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 
 **评审发现的一处要向主会话报备的偏差**：裁决 D 写「删 detach 补救往返」。数门之后：那个观察者同时服务
 「用户手动删占位 → 不复活」（裁决 D 自己的末句要保住的行为），删掉它会把手动删除弄坏。所以**保留观察者**，
-只保证 × 不再依赖它（落地不认 `cancelled`）。
+只保证 × 不再依赖它。2026-09-22 下午的拍板之后这条更干净：× 根本不删节点，那个抢跑窗口从源头没有了。
 
 ## 5b. 外部 MCP 宿主作为「回答者」——同一道闸的对外投影（**本轮不实现，只留好这一格**）
 
@@ -161,7 +192,7 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
                              （以上四种「不转移」的返回**全部是成功形状**，非 isError：没有任何东西坏了，只是还没人点头。
                                错误形状会让宿主模型重试 / 进熔断 / 向用户报「出错了」——三样都是错的）
    外部宿主 · ticket          phase=decide + 有效 ticket                confirmed
-                             phase=decide + 显式「用户说不」             declined（与 × 同一条边、同一个终态）
+                             phase=decide + 显式「用户说不」             declined（与 × 同一条边：收回这一次出价，计划留着）
                              ticket 过期 / 被用过 / 绑定对不上           不转移；回可行动的拒绝（重新 request）
    任何回答者                 进程重启 / 出价过期（裁决 C）               **退回 draft / 未 present**——ticket 随内存一起没了；计划本身留着，重新 request 即重新出价
 ```
@@ -174,9 +205,10 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 这和 §0 的 ② 是**同一种病**（等人等在工具执行预算里）。所以不写 300 秒；写「远短于宿主工具超时，到点落『不转移 + ticket』，
 让真正的等待发生在对话里」。具体秒数 = 宿主侧那一轮的调研项（逐个宿主实测它的工具超时，不拍脑袋）。
 
-**为什么 decline / cancel / 超时在外部是「不转移」，而在面板上 × 是终态**：面板的 × 是**人的手势**（主进程铸的
+**为什么 decline / cancel / 超时在外部也是「不转移」**（面板上的 × 2026-09-22 下午起同样只收回这一次出价，两边就此完全同形）：面板的 × 是**人的手势**（主进程铸的
 `human-gesture` attestation 带 webContentsId / frameId）；宿主回的 decline 可能是宿主**自己替人答的**（Codex 实测 100% 自动 decline）。
-把一个不可证明来自人的「不」落成终态，就是今天那条根因（链路当场结束、报价被丢）。只有**显式**的「用户说不」才走 declined。
+把一个不可证明来自人的「不」落成终态，就是今天那条根因（链路当场结束、报价被丢）。只有**显式**的「用户说不」才走 declined；
+而 declined 本身也只收回这一次出价——「计划级终态」两边都只剩「用户自己不要这份草稿」那一条路。
 
 **「只扣一次」这条不变量怎么共用**——ticket **不是**第二条花钱路，它是收据之前的那一张凭据：
 
@@ -189,7 +221,8 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 
 **本刀落地后，宿主侧要接上来时不需要拆我的东西——凭的是这四条**：
 1. 待决身份锚 `operationId`（裁决 B）：ticket 绑的也是它，不会和 `quoteId` 的刷新打架；
-2. 「用户说不」只有一个终态：`generation.cancel`。`dismiss` / `cardHidden` 的 (b) 义删掉之后，宿主侧的显式拒绝直接复用这条边；
+2. 「用户没同意这次」只有一条边：`generation.withdraw`（收回这一次出价，计划留着）；「用户不要这份草稿」才是 `generation.cancel`。
+   `dismiss` / `cardHidden` 的 (b) 义删掉之后，宿主侧的显式拒绝直接复用前一条边；
 3. lane 的 waiter 注册表对「不是 lane 出的卡」是 **no-op**（反方评审 Q4）：外部宿主出的价、它自己 confirm，不会误 settle 任何回合；
 4. 本轮**不碰** `mcpGateConfirmation.ts` / `mcpSemanticGenerationFlow.ts` / `rpcServer.ts` / `mcpTrustDowngrade.ts`，也不碰 `executionContract.ts`、不新增对 `src/config/modelArchetypes/` 的 import（那条会话要搬它）。
 
@@ -235,9 +268,10 @@ D × = 真终态，删 `dismiss` / `cardHidden` 的「用户 × 了」那一支�
 
 1. 复现并修 ③（E）：真 Electron、真页面输入，零额度 loopback。
 2. A + B + F：waiter 注册表、preflight 出卡并等、execute 读结局、`generate` 声明同步；C：启动时「已 present、未决」退回 draft / 未 present。
-3. D 主进程半：× → cancel，删 dismiss 一支，落地不认 cancelled。
+3. D 主进程半：× → **withdraw**（收回这一次出价），删 dismiss 一支；落地一个字不改（草稿在，占位就在）。
+   （上午先做成了 `cancel{declined}` 的计划级终态，下午被用户改窄推翻，D4 一刀改回。）
 4. （等主会话通知）合并 ④ + 渲染层调用点。
-5. 验收：spend 全部走查绿 + 新增六条（× 后 5 秒节点数不变 / 同回合再 generate 不出第二笔 / 重启后 pending 作废 /
+5. 验收：spend 全部走查绿 + 新增六条（× 后一整个回合节点数不变 / 同回合再 generate 不出第二笔 / 重启后 pending 作废 /
    看卡 >90 秒再确认仍成功 / 文稿方案 generate 端到端成功 / 待决时打字两种卡各一条）+ `mcp-l2-journeys` + `elicitation-first`；
    run4 = 同 18 句全量跑到、走查像真人一样答卡。
 

@@ -25,8 +25,7 @@
     "electron/productionRun/productionPendingSpend.ts",
     "electron/productionRun/productionRunReducer.ts",
     "electron/productionRun/stalePresentationSweep.ts",
-    "electron/shared/agentLane/generateUserDecision.ts",
-    "src/workbench/ai/v4/spendCardRollback.ts"
+    "electron/shared/agentLane/generateUserDecision.ts"
   ],
   "entry_points": [
     "模型调 `generate`（lane `before_tool` → `toolLifecycle.approved` → `preflightGenerate`）",
@@ -151,17 +150,12 @@
       "kind": "write",
       "path": "electron/productionRun/stalePresentationSweep.ts",
       "symbol": "awaitingSpendDecision"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/ai/v4/spendCardRollback.ts",
-      "symbol": "ownedSpendNodeIds"
     }
   ],
   "door_reduction": {
     "before": 25,
-    "after": 22,
-    "why_not": "删掉的三扇是「等用户」的另外两个 owner 与一条旁路：`spendCardResult`（isError + STOP，回合当场结束）、失败信封的 `waiting` 轴（生产者 + 渲染层旁路）。剩下的门是**同一条边上的不同层**，不是并行实现：闸的 hold/settleHold/holding（等待本身）→ 端口的 preflightGenerate（借等待）→ 转接表 register/settle（把面板上的结论递给等的那个回合，两处 settle 是同一条边的两个结局：确认成功 / ×）→ Run 账本的 withdraw（收回出价）→ `awaitingSpendDecision`（一份判据两个读者：画卡 / 启动清扫，抽成一个函数正是为了不让两边各写一遍）。文稿方案那次等待仍在渲染层自己的确认里（只是不再受工具超时管），没有搬进闸：列入 residual_risks。"
+    "after": 21,
+    "why_not": "删掉的三扇是「等用户」的另外两个 owner 与一条旁路：`spendCardResult`（isError + STOP，回合当场结束）、失败信封的 `waiting` 轴（生产者 + 渲染层旁路）。剩下的门是**同一条边上的不同层**，不是并行实现：闸的 hold/settleHold/holding（等待本身）→ 端口的 preflightGenerate（借等待）→ 转接表 register/settle（把面板上的结论递给等的那个回合，两处 settle 是同一条边的两个结局：确认成功 / ×）→ Run 账本的 withdraw（收回出价）→ `awaitingSpendDecision`（一份判据两个读者：画卡 / 启动清扫，抽成一个函数正是为了不让两边各写一遍）。文稿方案那次等待仍在渲染层自己的确认里（只是不再受工具超时管），没有搬进闸：列入 residual_risks。 2026-09-22 下午追记：× 的画布回滚口 `spendCardRollback.ts` 随用户改窄裁决 D（「× 只关这次请求，节点和草稿都留着」）整个删掉，这里又少一扇。"
   },
   "generality_proof": "闸的 `hold` 不认识花钱：它只说「替一张画在别处的卡等用户」。端口按**结果形状**（present 返回 `nextAction: await_user`）决定借不借等待，不按工具名；转接表只认 projectId + operationId。下一种「卡画在别处」的等待复用同一个 `host.waitForUser()`。",
   "shared_boundaries": [
@@ -246,7 +240,6 @@
     "electron/agentLane/laneExtendedDesktopPorts.test.ts",
     "electron/agentLane/laneExtendedTools.test.ts",
     "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
-    "src/workbench/ai/v4/spendCardRollback.test.ts",
     "tests/agent-runtime/lane-resilience.test.mts",
     "tests/agent-runtime/lane-storyboard-review.test.mts"
   ],
@@ -254,7 +247,6 @@
     "electron/agentLane/laneExtendedDesktopPorts.test.ts",
     "electron/agentLane/laneExtendedTools.test.ts",
     "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
-    "src/workbench/ai/v4/spendCardRollback.test.ts",
     "tests/agent-runtime/lane-resilience.test.mts",
     "tests/agent-runtime/lane-storyboard-review.test.mts"
   ],
@@ -267,7 +259,7 @@
       "src/workbench/ai/lane/laneViewModel.ts",
       "src/i18n/locales/agentToolFailure.ts"
     ],
-    "rationale": "`dismissGenerationPlan`、reducer 的 `generation.dismiss` 分支、两个 store 的 `dismiss`、接口成员同 commit 删除；`cardHidden` 的 (b) 义随之消失，只剩 (a)。没有开关、没有旧路径分支。"
+    "rationale": "`dismissGenerationPlan`、reducer 的 `generation.dismiss` 分支、两个 store 的 `dismiss`、接口成员同 commit 删除；`cardHidden` 的 (b) 义随之消失，只剩 (a)。没有开关、没有旧路径分支。 （`src/workbench/ai/v4/spendCardRollback.ts` 与它的单测是本分支上加的、又在本分支上删的，对 main 来说从未存在，所以不列进 removed_paths。）"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",

@@ -334,13 +334,18 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
   };
 
   /**
-   * × = **撤回这一次请求**，真终态（2026-09-22 裁决 D）。
+   * × = **收回这一次出价**，不是对这份计划说「不」（2026-09-22 下午用户拍板，改窄裁决 D）。
    *
-   * 此前这里调的是 `operations.dismiss`：只置 `cardHidden`、计划仍是 `draft`。那不是终态，
-   * 落地投影照旧认它——× 删掉的占位节点会被重建，用户看到的是「点了 ×，画布上多出一个节点」
-   * （`agent-spend-card.walk.mjs` 自合并 ③ 起红的就是这条）。现在走 `cancel("declined")`：
-   * 投影不出卡、落地不建占位、同一个 operationId 不再被 present 复活。
-   * **IPC 名（`discardSpend`）不变**，所以渲染层那一侧一行不用动。
+   * 用户原话：「× 只关这次请求，节点和草稿都留着」。所以这里走的是裁决 C 那条边
+   * （`operations.withdraw` → `withdrawGenerationPresentation`）：计划**退回 draft / 未 present**，
+   * 镜头、参数、锚点、用户手改一个字不丢，画布占位节点一个不删；封印了的先把那道还在等的门撤掉。
+   * 对同一份草稿再 `generate` = 重新出价，同一个 `operationId` 还能再出卡。
+   *
+   * 「计划级终态」只剩用户自己在左侧栏删草稿那一条路（`operations.cancel`）。
+   * 2026-09-22 上午那一版在这里调的是 `cancel("declined")`——它让 × 变成计划级终态，于是多镜计划上
+   * × 掉三镜的卡会终结整份 33 镜的计划，另外 30 个占位挂在一份已终结的计划上成了孤儿。
+   * 再往前那一版调的是 `operations.dismiss`（只置 `cardHidden`、不收门），已随裁决删净。
+   * **IPC 名（`discardSpend`）不变**。
    */
   const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
@@ -348,8 +353,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
     if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
     try {
-      await deps.operations.cancel(input.projectId, input.operationId, now(), "declined");
-      // 有回合在等这一笔（lane 的 `generate` 挂在审批闸上）→ 把「他说不」递过去；没人等 = no-op。
+      await deps.operations.withdraw(input.projectId, input.operationId, now());
+      // 有回合在等这一笔（lane 的 `generate` 挂在审批闸上）→ 把「他没同意这次」递过去；没人等 = no-op。
       settleSpendWaiter(input.projectId, input.operationId, { kind: "declined" });
       return { ok: true, code: "discarded" };
     } catch (error) {

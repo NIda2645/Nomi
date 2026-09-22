@@ -384,19 +384,20 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    // **计划级终态**：用户不要这份草稿了（左侧栏删草稿 / 外部宿主撤草稿）。报价卡上的 × 不走这里
+    // ——它收回的只是这一次出价，走 `generation.withdraw`（2026-09-22 下午用户拍板改窄裁决 D）。
     case "generation.cancel": {
       const currentPlan = current.generationPlan;
       if (!currentPlan) throw new Error("Generation plan not found");
       if (currentPlan.state === "submitted") throw new Error("Submitted generation cannot be cancelled as a draft");
-      const declined = command.payload.reason === "declined";
-      // 已封印、门还在等人 → 先把那道门收回（× 从前走的 `dismiss` 做的就是这一步；不收回，
-      // 盘上会留一道永远 `waiting` 的门，挂在一份已经终结的计划上）。
+      // 已封印、门还在等人 → 先把那道门收回；不收回，盘上会留一道永远 `waiting` 的门，
+      // 挂在一份已经终结的计划上。
       const revoked = currentPlan.state === "sealed"
         ? revokeWaitingGenerationAuthorization(current, currentPlan, now, "Cancel") : undefined;
       return {
         run: { ...current, ...(revoked ?? {}),
           generationPlan: { ...(revoked ? unsealedGenerationPlanFields(currentPlan, now) : currentPlan),
-            state: "cancelled", ...(declined ? { cancelReason: "declined" as const } : {}), updatedAt: now },
+            state: "cancelled", updatedAt: now },
           updatedAt: now },
         eventType: "generation.plan.cancelled",
         message: currentPlan.operationId,

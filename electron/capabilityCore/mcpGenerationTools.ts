@@ -506,10 +506,9 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       if (current.sourceDocumentId) return presentStoryboardAuthoring(current,capturedProjectId,operationId,params.shotIds,deps.requestRendererDecision);
       // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
       // The durable owner validates lifecycle and preserves prior execution evidence.
+      // 2026-09-22 上午这里有一条「被 × 过的 operationId 不许再 present」的拒绝。当天下午用户改窄了裁决 D：
+      // × 收回的是**这一次出价**，不是那份计划——对同一份草稿再 `generate` 就是重新出价，必须放行。
       const scope = resolveGenerationShotScope(current.shots?.map((shot) => shot.shotId) ?? [current.candidate.candidateId], params.shotIds);
-      if (current.state === "cancelled" && current.cancelReason === "declined") {
-        refuseToModel(GENERATION_ARGUMENT_REFUSAL, "The user declined this generation request, so it is closed for good. If he asks again, draft the shots again with draft_shots and call generate on the new draft.");
-      }
       const operation = await deps.operations.present(input.lease.projectId, operationId, now(), scope, input.storyboardTarget);
       const shots = operation.shots && operation.shots.length > 0
         ? operation.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)

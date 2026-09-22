@@ -129,11 +129,13 @@ export async function checkSpendScopeJourney(walk, win) {
   // Agent 出的付费卡现在**天然是串行的**：答完这一张，才会有下一张。所以下面改成先答第一笔、再出第二笔，
   // 守的仍是原来那几件事——× 只撤卡上那三镜的占位、第二笔有它自己的草稿（不串第一笔的手改）、× 过的不复活。
   const beforeDeclineGraph = await graph()
-  // ── × = 撤回这一次请求，真终态（2026-09-21 用户拍板「× = 撤销这次草稿」；2026-09-22 裁决 D 落成终态）──
+  // ── × = **收回这一次出价**，不是对这份计划说「不」（2026-09-22 下午用户拍板改窄裁决 D）──
   //
-  // 这一段原来钉的是相反的事：两笔都 × 掉之后，对**同一个** operationId 再 generate，逐镜手改原样回来
-  // （「same-operation-scope-and-draft-recovery」）。它以「× 只是把卡藏起来」为前提，而那个前提正是
-  // 「× 之后占位节点被落地重建」的成因：计划还活着，落地就有理由把它的节点补回来。
+  // 用户原话：「第二种，× 只关这次请求，节点和草稿都留着」。所以这一段钉三件事：
+  //   ① 计划**仍然是 draft**（只是不再摆在他面前），镜头、参数、分镜表一个字不丢；
+  //   ② 对**同一个** operationId 再 generate = 重新出价，卡真的再出来；
+  //   ③ 画布节点**一个不多也一个不少**——× 不删占位（当天上午那一版删了，33 镜的计划上只删卡上那 3 个，
+  //      另外 30 个成了挂在已终结计划上的孤儿），落地也不重建。
   // 第一笔卡上有没提交的手改，所以 × 第一下先摊开那句确认（像人一样点两下）。
   const decline = async (label) => {
     const confirm = card.locator('[data-v4-control="confirm-reject"]')
@@ -153,12 +155,14 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(await firstTurn.settled(), '第一笔的回合读到的是「他关了这张卡」').toContain('closed the priced card without approving')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
   expect(await pending(), '第一笔关掉之后没有任何待决').toEqual([])
-  // × 只撤**卡上摆出来的那三镜**自己造的占位；没摆出来的 30 镜、第二笔的节点、分镜表一个都不动。
+  expect((await readRun(operationId)).generationPlan, '× 收回的是出价，不是计划').toMatchObject({ state: 'draft', cardHidden: true })
+  expect((await readRun(operationId)).generationPlan.shots, '33 镜一个不少').toHaveLength(33)
+  // × 一个占位都不删：卡上摆出来的那三镜、没摆出来的 30 镜、分镜表，全都留在画布上。
   const bothGraph = beforeDeclineGraph
   const requestedNodeIds = new Set(bothGraph.nodes.filter(node => node.meta?.productionRunId === operationId && requestedIds.includes(node.meta?.productionShotId)).map(node => node.id))
   expect(requestedNodeIds.size, '探针：卡上那三镜各有一个占位节点').toBe(3)
-  await expect.poll(async () => (await graph()).nodes.map(node => node.id).sort())
-    .toEqual(bothGraph.nodes.filter(node => !requestedNodeIds.has(node.id)).map(node => node.id).sort())
+  expect((await graph()).nodes.map(node => node.id).sort(), '× 之后画布一个节点都没动')
+    .toEqual(bothGraph.nodes.map(node => node.id).sort())
   // 第二笔：答完第一笔之后才起草、才出卡。它有自己的草稿——第一笔卡上那句手改、那个改过的尺寸一个都不串过来。
   const otherOperationId = await draft([makeShot(99)])
   const otherShots = (await readRun(otherOperationId)).generationPlan.shots
@@ -173,23 +177,30 @@ export async function checkSpendScopeJourney(walk, win) {
   await expectAbsent(card, { provenBy: proof, message: 'Both declined operations leave the slot' })
   expect(await secondTurn.settled(), '第二笔的回合同样读到「他关了这张卡」').toContain('closed the priced card without approving')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
-  expect((await readRun(operationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
-  expect((await readRun(otherOperationId)).generationPlan).toMatchObject({ state: 'cancelled', cancelReason: 'declined' })
-  // 被撤回的请求不许被同一个 id 叫回来：模型再叫一次 generate，读到的是「请重新起草」，介入槽保持空。
+  expect((await readRun(operationId)).generationPlan).toMatchObject({ state: 'draft', cardHidden: true })
+  expect((await readRun(otherOperationId)).generationPlan).toMatchObject({ state: 'draft', cardHidden: true })
+  // 两笔都 × 掉之后：对**旧的那个 operationId** 再 generate = 重新出价，卡真的再出来（不用重新起草）。
   const afterBothDeclined = (await graph()).nodes.map(node => node.id).sort()
-  expect(afterBothDeclined.every(id => afterFirstDecline.includes(id)), '第二次 × 同样只减不增').toBe(true)
-  await toolTurn('generate', { operationId, shotIds: requestedIds })
-  expect(await pending(), '被撤回的那一笔不复活').toEqual([])
-  // 「× 之后占位不复活」不靠墙钟等：上面这一整个模型回合（两次账本变更 + 一次读 + 回合落定）期间，
-  // 落地对这两份计划各被触发过不止一次（账本每变一次它就重算一遍）。此前的 bug 在这段时间里必然多出节点。
-  expect((await graph()).nodes.map(node => node.id).sort(), '× 之后经过一整个回合，画布节点一个都没多').toEqual(afterBothDeclined)
+  expect(afterBothDeclined, '第二次 × 同样一个节点都没动').toEqual(afterFirstDecline)
+  const requotedTurn = await present(operationId, requestedIds)
+  expect((await pending()).map(row => row.operationId), '同一份草稿重新出价').toEqual([operationId])
+  expect((await pending())[0].shots.map(shot => shot.shotId), '还是原来那三镜').toEqual(requestedIds)
+  expect((await readRun(operationId)).generationPlan.shots, '镜头、参数、锚点一个字不丢').toEqual(presentedShots)
+  // 「× 之后画布不多也不少」不靠墙钟等：上面这一整个模型回合（两次账本变更 + 一次读 + 回合落定）期间，
+  // 落地对这两份计划各被触发过不止一次（账本每变一次它就重算一遍）。
+  expect((await graph()).nodes.map(node => node.id).sort(), '× 之后经过一整个回合，画布节点一个不多也一个不少').toEqual(afterBothDeclined)
   expect((await readRun(operationId)).jobs).toHaveLength(0)
   expect((await readRun(otherOperationId)).jobs).toHaveLength(0)
   expect(walk.fixture.images).toHaveLength(0)
-  await walk.snap('cj1-declined-requests-stay-closed')
+  await walk.snap('cj1-withdrawn-quote-can-be-requoted')
+  // 收尾：把重新出的这张卡也 × 掉，别把一个还在等人的回合留给下一段（和退出路）。
+  await decline('关闭重新出的那张卡')
+  expect(await requotedTurn.settled(), '重新出价的那一轮同样以成功形状收尾').toContain('closed the priced card without approving')
+  await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
+  expect(await pending(), '收尾之后介入槽是空的').toEqual([])
   walk.report.spendScopeJourney = { projectId, projectRoot, operationId, otherOperationId, requestedIds, planItems: 33,
     pendingOrder: 'serial — one lane-issued card at a time (2026-09-22 ruling A/E)', graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
-    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'declined-requests-stay-closed-and-never-reland'],
+    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'decline-withdraws-only-the-quote-and-the-same-draft-requotes'],
     secondCardArrivedAlreadyConfirming: secondDecline === 'already-confirming',
     mediaSubmissions: 0, boundary: 'Real Electron UI/Agent tools/storage with text loopback. No confirmation execution, generated-history, next-execution-batch or arbitrary pending navigation claim.' }
 }
