@@ -1,9 +1,8 @@
 /**
  * 凭据验证/自检的**付费边界**（T-MO-10，用户 2026-09-22 拍板）。
  *
- * 用户点「保存验证」时，`probeDirectKeyCredential` 当场发一次真实 `POST /chat/completions`
- * （`max_tokens:1`）扣积分，且这条路经 `appFetch` 直接出门、没有 `grantId`，报价卡在结构上
- * 永远不会为它出现（09-11 群反馈）。本文件钉住拍板后的三条：
+ * 这条边界为什么存在、09-11 群反馈撞上的是什么，写在 owner 那里
+ * （`electron/catalog/credentialProbePolicy.ts` 文件头）。本文件钉住拍板后的三条：
  *
  *   ① 有免费端点的供应商（apimart：`GET /v1/balance`，零成本、坏 key 回 401）→ 保存验证
  *      **一次生成请求都不发**；

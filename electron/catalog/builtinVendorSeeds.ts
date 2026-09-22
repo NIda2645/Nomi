@@ -54,11 +54,9 @@ export type VendorSeed = {
    * 它按定义是一次**真实的最小生成**（apimart: `POST /api/v1/chat/completions`，`max_tokens:1`），
    * 也只该由 `scripts/model-liveness.ts` 那条每周任务付钱 —— 一个模型一次，刻意的、有预算的。
    *
-   * ⚠️ 它**不是**「这把 key 能不能用」的判据，那是 `credentialProbe`。
-   * 2026-09-22（T-MO-10）之前这两件事共用这一个字段，于是用户点一次「保存验证」就跑了一遍
-   * 每周雷达那条付费探针——花他的钱，还绕过报价卡（09-11 群反馈）。两个问题不同：
-   * 逐模型存活必须真发一次生成才答得了，凭据有效性不必。合用一个声明位，就等于让后者
-   * 继承前者的价格。
+   * ⚠️ 它**不是**「这把 key 能不能用」的判据，那是下面的 `credentialProbe`。两个问题不同：
+   * 逐模型存活必须真发一次生成才答得了，凭据有效性不必；合用一个声明位，就等于让后者继承
+   * 前者的价格——2026-09-22 之前正是如此（原委见 `credentialProbePolicy.ts` 文件头）。
    */
   livenessProbe?: {
     request: Pick<HttpOperation, "method" | "path" | "body">;
@@ -70,13 +68,10 @@ export type VendorSeed = {
   /**
    * 「这把 key 现在能不能用」的代码拥有的探测端点（2026-09-22 T-MO-10 新增）。
    *
-   * `cost` 是这条声明的一部分，由 `credentialProbePolicy.ts` **单点**消费：
+   * `cost` 是这条声明的一部分，由 `credentialProbePolicy.ts` **单点**消费（为什么、以及缺省
+   * 为什么是 `paid`，见那个文件的文件头）：
    *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
    *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
-   *
-   * 缺省 fail-closed 不是洁癖：T-MO-20 就是把 Higgsfield 的 `POST /marketing-studio/image`
-   * 当余额探针用，它只要 prompt 就真排任务，当场烧掉 $0.439。「我以为它免费」必须写成
-   * 「有出处地声明它免费」才算数。
    */
   credentialProbe?: {
     request: Pick<HttpOperation, "method" | "path" | "body">;
