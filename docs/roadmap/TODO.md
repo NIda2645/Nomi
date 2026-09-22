@@ -204,6 +204,7 @@
 | T-QA-21 | 反馈层（警告 toast）z 序高于弹窗：常驻的「模型当前不可用」提醒压住设置弹窗的关闭钮 | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 确定 toast 与模态的层级规则（模态打开时 toast 让位或下移）。**挡着 T-QA-23**：走查关设置弹窗时等 `[data-settings-close]` 超时，走查里的 `clickPastToasts` 兜底本身时序相关、会间歇失手，[5 跑 1 绿的实测](../evidence/2026-09-22-core-smoke-negative-control/) |
 | T-QA-22 | 核心冒烟花钱路最小一条：由「Draft PR 代码审查与整合」会话在其集成分支进 main 的同一个 PR 里登记进 `CORE_SMOKE_SCENARIOS` | todo | [方案 · 实测发现](../plan/2026-09-22-core-flow-smoke-three-defenses.md) | 登记方式见方案「如何登记新场景」；needs=`loopbackProvider`+`fixtureTextModel` 已就绪 |
 | T-QA-23 | 核心冒烟 `used` 夹具升为阻断门 | todo | [方案 · 用户拍板](../plan/2026-09-22-core-flow-smoke-three-defenses.md)、[5 跑 1 绿的实测](../evidence/2026-09-22-core-smoke-negative-control/) | 2026-09-22 拍板先落防线：`empty`（zh-CN/en）阻断，`used` 照跑不判。**升阻断条件**：T-CV-19 / T-CV-20 / T-QA-21 三条修完，且 `used` 连跑 5 次全绿。**怎么升**：只改 `scripts/validation-policy.mjs` 的 `CORE_SMOKE_BLOCKING_FIXTURES`，CI 的 `continue-on-error` 与合后收据都从它派生，三份门岗测试（含一条写死名字防漂的）钉住派生关系 |
+| T-QA-24 | 概念登记表门岗 `check:concept-owners`（发版后第一批）：`docs/engineering/concept-owners.json` 今天只有人读，没有任何机器判据保证「同一个概念只有一个写口」 | todo | 09-22 并行 lane 概念分裂复盘 · 规则进了 R33 | 语义级门岗：把根因合同的门表（`node scripts/door-map.mjs` → `doors`）映射到登记概念，同一概念出现第二个写口即红；棘轮只减不增、pending 条目带收口人。**加规则前先验它会红**（R17）——09-22 那四个概念里至少参数准入与供应商落家会红。**先判能不能并进已有门岗**（T-QA-20 ① 的别名族判据 `check:identity-compare` 管的是身份比对的调用点，不是概念登记表）——两个登记表门岗只许存在一个，能并就并、不能并要写清为什么 |
 
 ## J. 官网与发布
 
