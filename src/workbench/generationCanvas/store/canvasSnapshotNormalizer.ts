@@ -2,7 +2,8 @@ import { backfillShotIndexes } from '../model/shotNumbering'
 // 画布快照归一化 + 种子节点。从 generationCanvasStore.ts 抽出。
 // 注意：这是 store 专用的深度归一化（过滤未知 kind、position 兜底、groups 走 zod、edges 校验端点），
 // 与 workbenchPersistence.ts 的轻量直通版 normalizeGenerationCanvasSnapshot 行为不同，故改名 normalizeStoreSnapshot。
-import { normalizeShotTableMeta, readShotTable } from '../../../../electron/shared/canvas/shotTable'
+import { normalizeShotTableMeta } from '../../../../electron/shared/canvas/shotTable'
+import { convergeDeconstructionNodes } from '../nodes/shotTable/deconstructionLifecycle'
 import { isGenerationNodeKind } from '../model/generationNodeKinds'
 import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { nodeGroupSchema } from '../model/generationCanvasSchema'
@@ -76,11 +77,10 @@ export function normalizeStoreSnapshot(input: unknown): GenerationCanvasSnapshot
           position: { x, y },
           ...(kind === 'shot_table' ? { meta: normalizeShotTableMeta(node.meta) } : {}),
         }
-        const table = kind === 'shot_table' ? readShotTable(normalizedNode.meta) : undefined
-        // Deconstruction calls do not survive a renderer restart. Preserve evidence and permit an explicit retry.
-        if (table?.source.kind === 'deconstruction' && table.source.status === 'running') {
-          normalizedNode.meta = { ...normalizedNode.meta, shotTable: { ...table, source: { ...table.source, status: 'idle', phase: undefined } } }
-        }
+        // 拆解的终态判定不在这里自己算一遍：`deconstructionLifecycle` 是唯一 owner，
+        // 这里只是它的三条读路径之一（另两条是事件尾巴重放与外部图应用），
+        // 且必须在**重放之后**再收敛一次——2026-09-10 那句只在这里收敛的 `running → idle`
+        // 会被事件尾巴原样盖回去，等于没收敛（T-ED-06）。
         const convergedNode = convergeStuckMidFlightNode(normalizedNode)
         return [categoryId ? { ...convergedNode, categoryId } : convergedNode]
       })
@@ -138,7 +138,7 @@ export function normalizeStoreSnapshot(input: unknown): GenerationCanvasSnapshot
     ? raw.workflowTemplates.filter(isCanvasWorkflowTemplate)
     : []
   return {
-    nodes: backfillShotIndexes(nodes).nodes,
+    nodes: convergeDeconstructionNodes(backfillShotIndexes(nodes).nodes),
     edges: normalizeParameterEdges(nodes, edges),
     groups,
     selectedNodeIds,
