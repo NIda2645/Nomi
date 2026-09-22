@@ -27,7 +27,7 @@ import { applySpendReferences, pendingReferenceInputs, referenceInputsFromNode }
 // `镜 ⊕ 全部层 ⊕ 这一镜层`。不这么分会出一个很坏的手感——在「全部」模式下改一个
 // 已经有逐镜覆写的字段，按优先级它改了也看不见，用户读到的是「改了又弹回去」。
 // 价格与最终落盘一律按**优先级后的有效值**算，显示层的分层只影响「你此刻在编哪一层」。
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import { resolveRenderedControls } from '../../generationCanvas/nodes/nodeModelArchetype'
 import type { ModelOption } from '../../../config/models'
 import { isGenerationNodeKind } from '../../generationCanvas/model/generationNodeKinds'

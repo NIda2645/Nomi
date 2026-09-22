@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { resolveArchetypeForModel } from '../../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../../electron/shared/modelArchetypes'
 import { notifyModelOptionsRefresh, preloadModelOptions } from '../../../../config/modelCatalogCache'
 import type { ModelCatalogHealthDto, ModelCatalogModelDto } from '../../../api/modelCatalogApi'
 import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../../project/projectSessionTestHarness'

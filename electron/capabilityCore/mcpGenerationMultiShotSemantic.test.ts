@@ -47,7 +47,6 @@ function helpers(overrides: Partial<Parameters<typeof createMultiShotCreateHelpe
     // 合同编译只有一个实现（生产里是 mcpGenerationTools 的 contractFor）；这里注入等价的最小版本，
     // 不在测试里重写一份参数表/提示词投影，否则夹具就成了第二台发动机。
     compileContract: (candidate) => compileExecutionContract(candidate, registry),
-    videoCompileOptions: () => ({}),
     priceForCandidate: () => ({ known: true, amount: 0.3 } as never),
     effectiveVideoModes: () => [],
     ...overrides,

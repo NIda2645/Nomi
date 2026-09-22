@@ -491,13 +491,12 @@ export default function InlineParameterBar({
   const modelChipClass = chipsMode && !stacked ? 'shrink-0' : undefined
   const variantChipClass = stacked ? undefined : 'shrink-0'
   const identityRow = (
-    // chips 横排时这层包装**也不许缩**（`identityChipClass` 同一个条件）。它原来是 `min-w-0` 可缩的，
-    // 而里面那颗模型芯片是 `shrink-0`——于是行宽一紧（EN 的「1 outputs」比「1 个」宽），被压缩的
-    // 就只有这层包装：芯片从包装里溢出来、压到后一颗 chip 上（「Kling 3.0」盖住「16:9」），
-    // 而整行的 scrollWidth 并没有超过 clientWidth，`useFittedChipCount` 量不到「装不下」、
-    // 也就不会把多出来的 chip 退到 ⚙ 后面。上面那句注释说的前提——「所有成员都不缩，行才会真的溢出」——
-    // 漏了这一层。只动布局类名，props 与语义不变。
-    <div className={cn('flex min-w-0 items-center gap-2', stacked && 'w-full', identityChipClass)}>
+    // 2026-09-22 总合并裁决：身份两枚谁让宽由 **#834 的规则**说了算（只有模型 chip `shrink-0`，
+    // 变体短枚举从不缩），本分支 `70ebda21e` 给这层包装也加 `shrink-0` 的那一行按裁决撤掉。
+    // 它想修的「EN 下 Kling 3.0 压住 16:9」由 #834 的 `modelChipClass` / `variantChipClass`
+    // 两条一起覆盖；本分支留下的是**判据**——参数条一行里相邻两颗控件不许相压
+    // （`tests/ux/design-lab-ask-card-in-panel.walk.mjs` 的重叠断言，原样保留、照跑）。
+    <div className={cn('flex min-w-0 items-center gap-2', stacked && 'w-full')}>
       <NomiSelect
         ariaLabel={t('generationCommon.parameters.model')}
         placeholder={t('generationCommon.parameters.selectModel')}

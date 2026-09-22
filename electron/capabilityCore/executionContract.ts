@@ -336,6 +336,7 @@ export type ExecutionContractCompileOptions = {
    * 不是「投影不了就原样发」——原样发正是那个 bug。
    */
   referenceSourceUrls?: readonly (string | undefined)[];
+  /**
    * 该模型声明过的变体 id。给了就**逐个核**——不给等于「这条路还拿不到变体清单」，
    * 而不是「随便填都行」；拿得到清单的调用点必须传，见 `mcpGenerationTools` 的 preview/gate_request。
    */

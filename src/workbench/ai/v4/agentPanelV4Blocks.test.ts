@@ -369,7 +369,7 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     ['approval-reversible' as const, 'confirm'],
     ['plan' as const, 'confirm'],
     ['question' as const, 'ask-continue'],
-  ])('待答态：%s 卡在等用户时外框是 accent 发丝线 + 一层同色描边光', (kind) => {
+  ])('待答态：%s 卡在等用户时外框是 accent 发丝线 + 一层同色描边光', (kind, _waitingControl) => {
     const data: InterventionData = kind === 'question'
       ? { kind, title: '用什么画幅？', options: QUESTION_OPTIONS }
       : of(kind)

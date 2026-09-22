@@ -195,8 +195,9 @@ export async function driveEngineB(capture: FetchCapture, input: EngineBTaskInpu
   } catch (error) {
     return { failure: { code: failureCode(error), message: String((error as Error)?.message ?? error) } };
   }
+  // `droppedFields` 随 #837 一起删了（它全仓没有生产读者，而「悄悄丢掉」正是对拍要抓的病）：
+  // 现在未知键在编译期就被拒，两侧的差异会以 `failure.code` 出现，不再需要一本丢弃账。
   const notes = {
-    droppedFields: contract.droppedFields.map((entry) => entry.path),
     contractParameters: contract.parameters,
   };
   try {
