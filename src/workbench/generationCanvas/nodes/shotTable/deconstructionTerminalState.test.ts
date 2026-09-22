@@ -9,7 +9,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'
 import { abandonPendingCanvasWrite } from '../../events/canvasWriteBoundary'
 import { readShotTable } from '../../../../../electron/shared/canvas/shotTable'
-import { isDeconstructionTerminal } from './deconstructionLifecycle'
+import {
+  convergeDeconstructionTable,
+  isDeconstructionRunLive,
+  isDeconstructionTerminal,
+  registerDeconstructionRun,
+  releaseDeconstructionRun,
+  resetDeconstructionRuns,
+} from './deconstructionLifecycle'
 import { cancelDeconstruction, deconstructToShotTable, ensureDeconstructionShotTable } from './factBridge'
 
 const bridge = vi.hoisted(() => ({ deconstruct: vi.fn(), onDeconstructionProgress: vi.fn(() => vi.fn()) }))
@@ -29,6 +36,7 @@ beforeEach(() => {
   project.controller = new AbortController()
   abandonPendingCanvasWrite()
   bridge.deconstruct.mockReset()
+  resetDeconstructionRuns()
   useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [], selectedNodeIds: [] })
 })
 
@@ -142,5 +150,46 @@ describe('deconstruction node terminal state', () => {
     bridge.deconstruct.mockResolvedValue({ shots: [], durationSeconds: 0, hasAudio: false, failedShotIndexes: [] })
     await deconstructToShotTable(sourceId, originProject())
     expect(tableSource(tableId).status).toBe('ready')
+  })
+})
+
+// owner 本体的纯函数判据。节点只投影它，所以判据在这里钉一次，读路径那边不再各钉一份。
+describe('deconstruction lifecycle owner', () => {
+  const table = {
+    schemaVersion: 1 as const,
+    source: { kind: 'deconstruction' as const, sourceNodeId: 'video-1', title: 'Reference', status: 'running' as const, phase: 0 as const, progressDetail: '转写第 2/6 段' },
+    columnSetId: 'facts' as const, columns: [], rows: [],
+    view: { selectedRowIds: [], density: 'auto' as const }, revision: 1, updatedAt: '2026-09-22T00:00:00.000Z',
+  }
+
+  it('只有 running 不是终态', () => {
+    expect(isDeconstructionTerminal('running')).toBe(false)
+    for (const status of ['idle', 'ready', 'failed', 'interrupted', 'cancelled'] as const) {
+      expect(isDeconstructionTerminal(status)).toBe(true)
+    }
+  })
+
+  it('在飞时不收敛，没人作保时落中断并清掉进度残影', () => {
+    expect(convergeDeconstructionTable('table-1', table, () => true)).toBeUndefined()
+    const converged = convergeDeconstructionTable('table-1', table, () => false)
+    expect(converged?.source.status).toBe('interrupted')
+    // 阶段与阶段内进度是「还在跑」的两条视觉证据，中断时必须一起清掉，否则节点还在演。
+    expect(converged?.source.phase).toBeUndefined()
+    expect(converged?.source.progressDetail).toBeUndefined()
+    expect(converged?.source.errorMessage).toBeTruthy()
+  })
+
+  it('幂等：已经是终态的表再收敛一次原样不动', () => {
+    for (const status of ['idle', 'ready', 'failed', 'interrupted', 'cancelled'] as const) {
+      expect(convergeDeconstructionTable('table-1', { ...table, source: { ...table.source, status } }, () => false)).toBeUndefined()
+    }
+  })
+
+  it('在飞登记只认自己那次 requestId，迟到的一次注销不掉后来者', () => {
+    registerDeconstructionRun('table-1', 'req-1')
+    releaseDeconstructionRun('table-1', 'req-0')
+    expect(isDeconstructionRunLive('table-1')).toBe(true)
+    releaseDeconstructionRun('table-1', 'req-1')
+    expect(isDeconstructionRunLive('table-1')).toBe(false)
   })
 })

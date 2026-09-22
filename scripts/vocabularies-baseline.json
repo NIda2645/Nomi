@@ -827,12 +827,14 @@
     },
     {
       "members": [
+        "cancelled",
         "failed",
         "idle",
+        "interrupted",
         "ready",
         "running"
       ],
-      "reason": "拆参考片流水线的四态 owner 从旧 DeconstructionEntry.status 迁入共享 shotTable 持久化 schema（docs/plan/2026-09-10-shot-table-contract.md）：idle 未拆 / running 拆解中 / ready 事实可采用 / failed 整次拆解失败。旧右栏及其状态 owner 同时删除；逐镜失败仍由 fact row visionFailed 表达。它不是生成任务或 Agent 注意力状态，保留独立语义，成员完全不变。",
+      "reason": "拆参考片流水线的状态 owner（docs/plan/2026-09-10-shot-table-contract.md）：idle 未拆 / running 拆解中 / ready 事实可采用 / failed 整次拆解失败。2026-09-22 T-ED-06 补上 interrupted 与 cancelled，补的是**终态保证**——每个节点必须落到成功/失败/可找回三者之一，没有「永远在跑」这一格（2026-09-17 付费走查 §6.5：拆到一半关 app 再开，节点永久停在「本地找切点」）。三者不可合并：failed 跑挂了、有供应商或 ffmpeg 的原话可说，重拆要重新付费；interrupted 跑过、被关 app/切项目打断，没有原因可说但证据都在，下一步是「重新拆解」；cancelled 是用户自己不要了，记成 failed 会在拆解成功率里留一条假失败。idle 则是**从没拆过**，把中断并进 idle 正是走查里那一屏的成因——空表和「还没开始」长得一模一样。running 是唯一非终态，且它成立与否的判据在 src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts 的在飞登记，不在这个持久化字段本身。它不是生成任务或 Agent 注意力状态，保留独立语义；逐镜失败仍由 fact row visionFailed 表达。",
       "site": "electron/shared/canvas/shotTable.ts::variable:deconstructionShotTableSchema/property:source/property:status/z.enum"
     },
     {
