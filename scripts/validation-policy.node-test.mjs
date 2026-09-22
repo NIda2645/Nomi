@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { writeGithubOutput } from './select-quality-gate-profile.mjs'
-import { classifyValidationPolicy } from './validation-policy.mjs'
+import { classifyValidationPolicy, CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_FIXTURES } from './validation-policy.mjs'
 
 function surfaces(result) {
   return {
@@ -219,6 +219,22 @@ test('core flow smoke is on for every non-docs diff — including the shared CSS
   assert.equal(classifyValidationPolicy(['docs/a.md', 'README.md']).coreSmoke, false)
   // 冒烟自身的清单 / 夹具 / 跑法算验证基础设施：改它就全跑。
   assert.equal(classifyValidationPolicy(['tests/ux/core-smoke/scenarios.mjs']).failClosed, true)
+})
+
+test('阻断档与非阻断档：两档互斥、合起来是全集，且 used 当前不阻断', () => {
+  // 2026-09-22 用户拍板：empty 阻断，used 照跑不判。升阻断只改 CORE_SMOKE_BLOCKING_FIXTURES 一处，
+  // CI 的 continue-on-error 与合后收据都从它派生（各自的门岗测试钉死派生关系）。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES], ['empty'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_FIXTURES], ['used'])
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_CHECK_NAMES], ['Core Flow Smoke (empty)'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_CHECK_NAMES], ['Core Flow Smoke (used)'])
+  // 没有哪个夹具两边都不在（那就是没人管），也没有哪个两边都在。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES, ...CORE_SMOKE_ADVISORY_FIXTURES].sort(), [...CORE_SMOKE_FIXTURES].sort())
+  for (const fixture of CORE_SMOKE_FIXTURES) {
+    assert.notEqual(CORE_SMOKE_BLOCKING_FIXTURES.includes(fixture), CORE_SMOKE_ADVISORY_FIXTURES.includes(fixture), fixture)
+  }
+  // 非阻断不等于不跑：CI matrix 仍然是全集。
+  assert.ok(CORE_SMOKE_FIXTURES.includes('used'))
 })
 
 test('main pushes reuse changed-file risk instead of becoming full only because they are pushes', () => {

@@ -24,8 +24,8 @@
 | 跑法：按「夹具 × 场景 × 用例」逐个起子进程，汇总写到 `outputs/core-smoke/<fixture>/summary.json` | `tests/ux/core-smoke/run.mjs`，命令为 `pnpm run test:core-smoke -- --fixture <empty\|used\|profile-copy>` |
 | 两条走查改成从夹具开项目 | `tests/ux/node-params-and-version-pill.walk.mjs`、`tests/ux/canvas-drag-pan-gestures.walk.mjs` |
 | 分类器新增 `coreSmoke` lane：只有纯文档改动才关，其他一律开，fail-closed | `scripts/validation-policy.mjs` 和它的单测 |
-| CI 新增 job `core-smoke`（matrix: empty/used），纳入汇总判定 | `.github/workflows/quality-gate.yml`、`scripts/check-quality-gate-workflow.node-test.mjs` |
-| 合后收据要求核心冒烟两份 check 都是 success（仅纯文档 merge 例外，并写明原因） | `scripts/git-delivery.mjs` 和它的单测 |
+| CI 新增 job `core-smoke`（matrix: empty/used），**empty 纳入汇总判定，used 非阻断**（见下「2026-09-22 用户拍板」） | `.github/workflows/quality-gate.yml`、`scripts/check-quality-gate-workflow.node-test.mjs` |
+| 合后收据要求**阻断档**的核心冒烟是 success（仅纯文档 merge 例外，并写明原因）；非阻断档抄结论不判 | `scripts/git-delivery.mjs` 和它的单测 |
 | 流程纪律：上一个合入没有收据，就不合下一个 | `CLAUDE.md`（再跑 `gen:agents`）、`docs/release-process.md` |
 | 真实素材登记：仓库内真实素材（公开仓库里已有的真 AI 镜头）登记为 `repoPath` 类素材 | `tests/ux/real-media-fixtures.json`、`tests/ux/fixtures/realMedia.mjs`、`scripts/check-real-media-fixture.mjs` |
 
@@ -82,6 +82,22 @@ CI 的汇总步骤：只有 `core_smoke=false` 且 `reason=docs_only` 时，才�
 
 红了**不自动回滚**，由人决定修还是 revert。
 
+## 2026-09-22 用户拍板：`used` 暂为非阻断
+
+交工前按验收门 1 和 3 实测，结果分两半（全部原始数据见 [`docs/evidence/2026-09-22-core-smoke-negative-control/`](../evidence/2026-09-22-core-smoke-negative-control/)）：
+
+- **验收门 1 成立**：把 `data-dragging` 的三个 owner 回退到 #836 之前，`empty` 与 `used` 都红 0/2，红的条目逐条对上用户报的三件事；`used` 还多抓到一条 `G6`（平移后接滚轮）。
+- **验收门 3 不成立**：修复在位、生产代码逐字未变的前提下，`empty` 两种语言各 2/2，但 **`used` / zh-CN 连跑 5 次只有 1 次全绿**（1、1、2、0、1），`used` / en 两次都是 1/2。三种失败全部出自下面「实测发现」里已登记、本 PR 没修的小窗布局问题（T-CV-19 / T-CV-20 / T-QA-21），归因依据是 Playwright 报出的拦截者 DOM 原文。
+
+**拍板**：先落防线，`used` 暂时非阻断。
+
+- `empty`（zh-CN / en）是阻断门；`used` **照跑、照传证据、红了照样亮红给人看**，但不拉垮汇总判定，也不拦合后收据——收据里把它的结论抄下来（`coreSmoke.advisory`），看得见但不判。
+- **升阻断的条件**：T-CV-19 / T-CV-20 / T-QA-21 三条布局 bug 修完，且 `used` **连跑 5 次全绿**。
+- **怎么升**：只改 `scripts/validation-policy.mjs` 的 `CORE_SMOKE_BLOCKING_FIXTURES` 一处（把 `'used'` 加进去）。CI 的 `continue-on-error` 与合后收据都从它派生，三份门岗测试钉死这层派生关系——其中 `git-delivery.node-test.mjs` 有一条**故意写死名字**的用例，防止名单和测试一起漂而什么都证不到。
+- 为什么不干脆让 `used` 一直红着当阻断门：一条 5 次绿 1 次的必过门，会让后续每个 PR 和每张合入收据都押在掷骰子上，红灯一旦不可信人就开始绕过它——那正是本方案要根除的东西。
+
+跟进项：`docs/roadmap/TODO.md` 的 T-QA-23。
+
 ## 实测发现（「用过的项目」夹具第一次跑就抓到的）
 
 | # | 现象（1280×800、时间轴展开、Agent 面板开着） | 性质 | 本 PR 的处理 |
@@ -126,9 +142,11 @@ CI 的汇总步骤：只有 `core_smoke=false` 且 `reason=docs_only` 时，才�
 ## 验收门
 
 1. **阳性对照：会红。** 本地临时回退 #836 的生产代码修复（不提交）后，`empty` 和 `used` 两遍冒烟都必须红，并记下哪几条红。
+   → **已验，通过**：两遍各 0/2，证据 `docs/evidence/2026-09-22-core-smoke-negative-control/`。
 2. **分类器阳性对照：** 一个只改共享 CSS（`src/styles/*.css`）或 `src/workbench/generation/*` 的 diff，`coreSmoke` 必须为 true，有单测钉住。纯文档 diff 为 false。
 3. 修复还在时，两种夹具本地全绿；截图 zh-CN 和 en 都亲眼看过。
-4. CI 上 `Core Flow Smoke (empty)` 和 `Core Flow Smoke (used)` 均为 success，时长记录进 PR。
+   → **部分**：`empty` zh-CN / en 各 2/2；`used` 5 次只绿 1 次，据此降为非阻断（见上「用户拍板」）。截图两种语言都看过。
+4. CI 上 `Core Flow Smoke (empty)` 为 success（阻断档），`Core Flow Smoke (used)` 记录结论但不判，时长记录进 PR。
 5. `check:quality-gate-workflow`、`check:real-media-fixture`、`check:git-delivery` 等 contracts 全过；`pnpm run gates` 过。
 
 ## 先查别人

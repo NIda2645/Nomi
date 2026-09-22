@@ -20,7 +20,7 @@ import {
   runBoundedCommand,
   verifyMergedDelivery,
 } from './git-delivery.mjs'
-import { CORE_SMOKE_CHECK_NAMES } from './validation-policy.mjs'
+import { CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_CHECK_NAMES } from './validation-policy.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '..')
 
@@ -315,9 +315,13 @@ test('merged verification records exact-SHA CI evidence once and reuses its rece
   assert.deepEqual(first.receipt.checks.map(({ name, conclusion }) => ({ name, conclusion })), [
     { name: 'Quality Gate', conclusion: 'success' },
     { name: 'Mac Package', conclusion: 'skipped' },
-    ...CORE_SMOKE_CHECK_NAMES.map((name) => ({ name, conclusion: 'success' })),
+    // 收据只记阻断档；非阻断的 used 另记在 coreSmoke.advisory 里，不进这份清单。
+    ...CORE_SMOKE_BLOCKING_CHECK_NAMES.map((name) => ({ name, conclusion: 'success' })),
   ])
-  assert.deepEqual(first.receipt.coreSmoke, { required: true, checks: [...CORE_SMOKE_CHECK_NAMES] })
+  assert.deepEqual(first.receipt.coreSmoke.checks, [...CORE_SMOKE_BLOCKING_CHECK_NAMES])
+  assert.equal(first.receipt.coreSmoke.required, true)
+  // 非阻断档的结论抄进收据（看得见），但不参与判定。
+  assert.deepEqual(first.receipt.coreSmoke.advisory.map((check) => check.name), [...CORE_SMOKE_ADVISORY_CHECK_NAMES])
   assert.match(first.receiptPath, /nomi-delivery.*ci-evidence\.json$/)
 })
 
@@ -337,7 +341,7 @@ test('merged verification waits for missing checks and never converts a failed c
     sleep: async () => {},
     pollIntervalMs: 1,
   })
-  assert.equal(waiting.receipt.checks.length, 2 + CORE_SMOKE_CHECK_NAMES.length)
+  assert.equal(waiting.receipt.checks.length, 2 + CORE_SMOKE_BLOCKING_CHECK_NAMES.length)
   fs.rmSync(waiting.receiptPath)
 
   await assert.rejects(
@@ -378,7 +382,7 @@ test('merged verification fails closed when required checks remain incomplete', 
   )
 })
 
-test('core flow smoke must be success on a non-docs merge: skipped or missing never becomes a receipt', async (t) => {
+test('阻断档（empty）必须是 success：skipped 或缺席都不发收据', async (t) => {
   const f = fixture()
   t.after(f.cleanup)
   const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
@@ -402,7 +406,78 @@ test('core flow smoke must be success on a non-docs merge: skipped or missing ne
       sleep: async () => {},
     }),
     (error) => error instanceof DeliveryError && error.code === 'required_checks_timeout'
-      && error.details.missing.join(',') === CORE_SMOKE_CHECK_NAMES.join(','),
+      && error.details.missing.join(',') === CORE_SMOKE_BLOCKING_CHECK_NAMES.join(','),
+  )
+})
+
+// 上面那些用例都从 CORE_SMOKE_*_CHECK_NAMES 派生，好处是改名单不用改测试，
+// 坏处是**名单本身改错时它们会跟着一起动**，于是什么都证不到（本仓栽过的「门岗失去分辨力」）。
+// 这一条故意把名字写死：只要「used 是非阻断」这个结论还成立，它就必须绿；
+// 哪天有人把 used 放回阻断名单（不管有意无意），它当场红。
+test('用字面量钉住：used 红着也照发收据（它是非阻断档）', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+
+  const result = await verifyMergedDelivery({
+    cwd: f.work,
+    expectedSha,
+    repository: 'example/nomi',
+    fetchRemote: async () => {},
+    listCheckRuns: async () => [
+      checkRun('Quality Gate', 'success'),
+      checkRun('Mac Package', 'skipped'),
+      checkRun('Core Flow Smoke (empty)', 'success'),
+      checkRun('Core Flow Smoke (used)', 'failure'),
+    ],
+  })
+  assert.ok(result.receipt, 'used 红了就不发收据 —— 说明它又变回阻断门了')
+  assert.equal(result.receipt.requiredChecks.includes('Core Flow Smoke (used)'), false)
+  assert.equal(result.receipt.coreSmoke.advisory.some((check) => check.name === 'Core Flow Smoke (used)' && check.conclusion === 'failure'), true)
+})
+
+// 2026-09-22 用户拍板：used 非阻断。它红 / 缺席都照发收据，但收据上必须看得见它是什么结论。
+test('非阻断档（used）红了或缺席都不拦收据，但结论要抄进收据', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+  const base = { cwd: f.work, expectedSha, repository: 'example/nomi', fetchRemote: async () => {} }
+  const blocking = CORE_SMOKE_BLOCKING_CHECK_NAMES.map((name) => checkRun(name, 'success'))
+  const advisoryRed = CORE_SMOKE_ADVISORY_CHECK_NAMES.map((name) => checkRun(name, 'failure'))
+
+  const red = await verifyMergedDelivery({
+    ...base,
+    listCheckRuns: async () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped'), ...blocking, ...advisoryRed],
+  })
+  assert.deepEqual(
+    red.receipt.coreSmoke.advisory.map(({ name, conclusion, advisory }) => ({ name, conclusion, advisory })),
+    CORE_SMOKE_ADVISORY_CHECK_NAMES.map((name) => ({ name, conclusion: 'failure', advisory: true })),
+  )
+  // 红的那份不许混进 requiredChecks——混进去就等于又把它变成阻断门了。
+  for (const name of CORE_SMOKE_ADVISORY_CHECK_NAMES) assert.equal(red.receipt.requiredChecks.includes(name), false)
+
+})
+
+// 同一个 SHA 的收据会被复用，所以「缺席」这一支必须另起一个干净夹具，不能接着上一条跑。
+test('非阻断档（used）整个缺席也照发收据，收据里记成 missing', async (t) => {
+  const f = fixture()
+  t.after(f.cleanup)
+  const expectedSha = git(f.work, ['rev-parse', 'origin/main'])
+  git(f.work, ['switch', '--detach', expectedSha])
+  const blocking = CORE_SMOKE_BLOCKING_CHECK_NAMES.map((name) => checkRun(name, 'success'))
+
+  const absent = await verifyMergedDelivery({
+    cwd: f.work,
+    expectedSha,
+    repository: 'example/nomi',
+    fetchRemote: async () => {},
+    listCheckRuns: async () => [checkRun('Quality Gate', 'success'), checkRun('Mac Package', 'skipped'), ...blocking],
+  })
+  assert.deepEqual(
+    absent.receipt.coreSmoke.advisory.map(({ name, conclusion, advisory }) => ({ name, conclusion, advisory })),
+    CORE_SMOKE_ADVISORY_CHECK_NAMES.map((name) => ({ name, conclusion: 'missing', advisory: true })),
   )
 })
 

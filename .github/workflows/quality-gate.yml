@@ -356,6 +356,13 @@ jobs:
     needs: scope
     if: needs.scope.outputs.core_smoke == 'true'
     runs-on: ubuntu-latest
+    # used 这一格**照跑、照传证据，但不阻断**（2026-09-22 用户拍板）：实测同一份代码连跑 5 次
+    # 只有 1 次全绿，三种失败都出自还没修的小窗布局问题（T-CV-19 / T-CV-20 / T-QA-21），
+    # 证据在 docs/evidence/2026-09-22-core-smoke-negative-control/。continue-on-error 只改 conclusion、
+    # 不改 outcome，所以 used 红了这格仍然亮红给人看，只是不拉垮 needs.core-smoke.result。
+    # 阻断名单的唯一 owner 是 scripts/validation-policy.mjs 的 CORE_SMOKE_BLOCKING_FIXTURES，
+    # check-quality-gate-workflow 钉死这里与它逐字一致；升阻断只改那一处。
+    continue-on-error: ${{ matrix.fixture != 'empty' }}
     strategy:
       fail-fast: false
       matrix:
@@ -445,6 +452,8 @@ jobs:
           test "${{ needs.contracts.result }}" = "success"
           test "${{ needs.unit.result }}" = "success"
           # 核心冒烟：只有纯文档才允许 skipped；其余（含分类器没给出结论）一律要求 success。
+          # 非阻断的 used 带 continue-on-error，它红时 conclusion 仍是 success，
+          # 所以下面这一行实际判的是**阻断档（empty）过没过**——这正是要的语义。
           if [ "${{ needs.scope.outputs.core_smoke }}" = "false" ]; then
             test "${{ needs.scope.outputs.reason }}" = "docs_only"
             test "${{ needs['core-smoke'].result }}" = "skipped"

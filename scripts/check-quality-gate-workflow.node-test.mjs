@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 
 import { CI_E2E_CHAIN } from './run-ci-e2e-chain.mjs'
-import { CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES, coreSmokeCheckName } from './validation-policy.mjs'
+import { CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES, coreSmokeCheckName } from './validation-policy.mjs'
 import { REQUIRED_MERGED_CHECKS } from './git-delivery.mjs'
 import { CORE_SMOKE_SCENARIOS } from '../tests/ux/core-smoke/scenarios.mjs'
 import { PROFILES, STAGES } from '../tests/system/profiles.mjs'
@@ -242,8 +242,23 @@ test('core flow smoke runs on every non-docs change as a two-fixture matrix deri
   assert.equal(smoke.name, 'Core Flow Smoke (${{ matrix.fixture }})')
   assert.equal(coreSmokeCheckName('${{ matrix.fixture }}'), smoke.name)
   assert.deepEqual(CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES.map(coreSmokeCheckName))
-  // 核心冒烟 check 不进「skipped 也算过」的常规名单：它们在 git-delivery 里是 success-only。
+  // 核心冒烟 check 不进「skipped 也算过」的常规名单：阻断档在 git-delivery 里是 success-only。
   for (const name of CORE_SMOKE_CHECK_NAMES) assert.equal(REQUIRED_MERGED_CHECKS.includes(name), false)
+
+  // 阻断 / 非阻断的唯一 owner 是分类器，CI 的 continue-on-error 必须逐字从它派生。
+  // 现状（2026-09-22 用户拍板）：empty 阻断，used 非阻断。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES], ['empty'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_FIXTURES], ['used'])
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_CHECK_NAMES], ['Core Flow Smoke (empty)'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_CHECK_NAMES], ['Core Flow Smoke (used)'])
+  // 两档互斥且合起来正好是全集——不许有哪个夹具既不阻断也不在非阻断名单里（那就是没人管）。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES, ...CORE_SMOKE_ADVISORY_FIXTURES].sort(), [...CORE_SMOKE_FIXTURES].sort())
+  // 非阻断那一格挂 continue-on-error，阻断那一格绝不能挂——挂了 empty 就等于没有必过门。
+  assert.equal(smoke['continue-on-error'], "${{ matrix.fixture != 'empty' }}")
+  for (const fixture of CORE_SMOKE_FIXTURES) {
+    const blocking = CORE_SMOKE_BLOCKING_FIXTURES.includes(fixture)
+    assert.equal(smoke['continue-on-error'].includes(`!= '${fixture}'`), blocking, `${fixture} 的阻断档与 continue-on-error 表达式不一致`)
+  }
 
   const commands = runCommands(smoke)
   assert.equal(commands.filter((command) => command === 'pnpm run build').length, 1)
