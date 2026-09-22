@@ -1,0 +1,892 @@
+{
+  "label": "ask-run5",
+  "model": "DeepSeek V3.2",
+  "rounds": 18,
+  "sourceSha": "50d473151f496ebd1fb5797ecef74ce57bf87d95",
+  "baseline": "2026-09-21 修复前同样这 16 句：反问卡触发 0/16（scratchpad/investigate-askback.md §3.3）",
+  "startedAt": "2026-09-22T10:23:09.029Z",
+  "cases": [
+    {
+      "id": "A1",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "帮我做个视频",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "spend-dialog:declined"
+      ],
+      "questionCardVisible": false,
+      "turnContinuedAfterAnswer": true,
+      "ms": 119769,
+      "toolCalls": [
+        "read_script",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "generate",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A2",
+      "kind": "二义（改哪个面）",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把这个改好看点",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 15438,
+      "toolCalls": [
+        "read_script",
+        "read_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A3",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "生成一下",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "spend-dialog:declined",
+        "spend-dialog:declined"
+      ],
+      "questionCardVisible": false,
+      "turnContinuedAfterAnswer": true,
+      "ms": 44518,
+      "toolCalls": [
+        "read_script",
+        "look_at_canvas",
+        "list_models",
+        "draft_shots",
+        "generate",
+        "generate"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A9",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把开头改一下",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 20290,
+      "toolCalls": [
+        "read_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A4",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "把那个删了",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 1233571,
+      "toolCalls": [
+        "look_at_canvas",
+        "delete_from_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A5",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我把这些都生成了",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "spend:declined"
+      ],
+      "questionCardVisible": false,
+      "turnContinuedAfterAnswer": true,
+      "ms": 65984,
+      "toolCalls": [
+        "look_at_canvas",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "generate"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A6",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "加个镜头",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 12330,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A7",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "改成竖的",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 10327,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A8",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "换个模型重做",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "question:chip",
+        "spend:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 96516,
+      "toolCalls": [
+        "look_at_canvas",
+        "list_models",
+        "ask_user",
+        "check_job",
+        "ask_user",
+        "look_at_media",
+        "look_at_media",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "generate"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": true,
+      "askCount": 2,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "要重做哪些镜头？当前有镜3（摊主煮面）和镜4（吃面），还有角色参考图。",
+              "options": [
+                {
+                  "label": "全部镜头",
+                  "description": "镜3+镜4"
+                },
+                {
+                  "label": "只重做镜3",
+                  "description": "煮面镜头"
+                },
+                {
+                  "label": "只重做镜4",
+                  "description": "吃面镜头"
+                },
+                {
+                  "label": "全都不要",
+                  "description": "取消所有生成"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "question": "换到哪个模型重做？",
+              "options": [
+                {
+                  "label": "GPT Image 2.5 Flare",
+                  "description": "高质量，有图生图模式，适合保持角色一致",
+                  "recommended": true
+                },
+                {
+                  "label": "Nano Banana 2",
+                  "description": "跨镜身份一致性最强"
+                },
+                {
+                  "label": "Seedream 5.0 Pro",
+                  "description": "火山引擎，也有编辑模式"
+                },
+                {
+                  "label": "告诉我模型名",
+                  "description": "我从列表里找对应的模型"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        },
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A10",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我导出",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "spend:declined",
+        "spend:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 43297,
+      "toolCalls": [
+        "read_timeline",
+        "look_at_canvas",
+        "check_job",
+        "check_job",
+        "ask_user",
+        "generate",
+        "generate"
+      ],
+      "firstTool": "read_timeline",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想导出什么内容？",
+              "options": [
+                {
+                  "label": "现在生成图片并导出",
+                  "description": "先生成画布上的两张图片，然后导出"
+                },
+                {
+                  "label": "先剪成视频再导出",
+                  "description": "把生成的图片拖到时间线剪成短片"
+                },
+                {
+                  "label": "直接用已有素材导出",
+                  "description": "目前没有已生成素材"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N1",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "读一遍我的文稿，告诉我哪一段最长",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 12267,
+      "toolCalls": [
+        "read_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N2",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "在文稿最后加一句「灯灭了」",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 10331,
+      "toolCalls": [
+        "write_script"
+      ],
+      "firstTool": "write_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N6",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "把文稿里所有的「碗」都换成「大碗」",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 17269,
+      "toolCalls": [
+        "read_script",
+        "write_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N3",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "画布上现在有几个节点？",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 13352,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N4",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "镜头 2 是什么内容？",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 12331,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N5",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "列一下现在能用的视频模型",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 21438,
+      "toolCalls": [
+        "list_models"
+      ],
+      "firstTool": "list_models",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A11",
+      "kind": "只有一个所指（夹具保证）",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "用素材库那张图做参考，排两个镜头",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:typed",
+        "question:chip",
+        "question:chip"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 168712,
+      "toolCalls": [
+        "look_at_media",
+        "look_at_canvas",
+        "list_models",
+        "look_at_media",
+        "ask_user",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "look_at_canvas",
+        "draft_shots",
+        "draft_shots",
+        "ask_user",
+        "write_script",
+        "make_artifact",
+        "draft_shots",
+        "look_at_canvas",
+        "arrange_canvas"
+      ],
+      "firstTool": "look_at_media",
+      "askedUser": true,
+      "askCount": 2,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想用哪两个镜头描述或氛围？",
+              "note": "图里的内容决定了镜头的方向。比如是人物、风景、产品，还是别的什么？"
+            },
+            {
+              "question": "想用哪个视频模型生成？",
+              "options": [
+                {
+                  "label": "Seedance 2.0",
+                  "description": "全能参考模式，图生视频很稳定",
+                  "recommended": true
+                },
+                {
+                  "label": "可灵 3.0",
+                  "description": "质量不错，支持图生视频"
+                },
+                {
+                  "label": "HappyHorse 1.1",
+                  "description": "角色参考模式适合人物"
+                },
+                {
+                  "label": "其他模型",
+                  "description": "告诉我你想用的模型"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "question": "具体想用什么类型的视频镜头？",
+              "options": [
+                {
+                  "label": "纯视频镜头",
+                  "description": "创建新视频镜头，引用参考图",
+                  "recommended": true
+                },
+                {
+                  "label": "用现有图片镜头",
+                  "description": "直接用现有的镜5和镜6"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        },
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A12",
+      "kind": "风格冲突",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "我要赛博朋克的冷调，但要拍得像九十年代港片那种暖胶片感",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "spend:declined",
+        "question:chip",
+        "spend:declined",
+        "question:chip",
+        "spend:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 222471,
+      "toolCalls": [
+        "read_script",
+        "look_at_canvas",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "list_models",
+        "nomi_request_tools",
+        "draft_shots",
+        "look_at_canvas",
+        "check_job",
+        "draft_shots",
+        "generate",
+        "ask_user",
+        "check_job",
+        "draft_shots",
+        "generate",
+        "look_at_media",
+        "look_at_media",
+        "ask_user",
+        "generate",
+        "make_artifact"
+      ],
+      "firstTool": "read_script",
+      "askedUser": true,
+      "askCount": 2,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "锚点图片需要生成，两个视频镜头也要生成。你想先花额度生成哪些部分？",
+              "options": [
+                {
+                  "label": "只生成锚点",
+                  "description": "风格锚和场景锚的图片，共2张"
+                },
+                {
+                  "label": "生成锚点+镜1",
+                  "description": "锚点图片和全景视频（5秒）"
+                },
+                {
+                  "label": "全部生成",
+                  "description": "锚点图片和两个视频镜头",
+                  "recommended": true
+                },
+                {
+                  "label": "只生成视频",
+                  "description": "跳过锚点图片，直接生成视频"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "question": "预算有限还是想看看效果再决定？有两个方案：",
+              "options": [
+                {
+                  "label": "直接生成视频",
+                  "description": "用文字描述生成两个5秒视频，看看赛博朋克×港片效果",
+                  "recommended": true
+                },
+                {
+                  "label": "先看风格锚",
+                  "description": "只生成一张风格参考图（便宜）"
+                },
+                {
+                  "label": "用现有图片",
+                  "description": "用画布上已有的深夜食堂图片做转换"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        },
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    }
+  ],
+  "projectDir": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/askback-real-model-1790072589016/projects/未命名项目 09_22 18_23-mucj07ci-c30b87e0",
+  "importedAssets": 2,
+  "summary": {
+    "rounds": 18,
+    "askedWhenShould": "3/11",
+    "didNotAskWhenShouldNot": "6/7",
+    "questionCardRendered": "4/18",
+    "optionSets": 7,
+    "optionsInRange": "7/7",
+    "optionsDistinct": "7/7",
+    "atMostOneRecommended": "7/7",
+    "fakeOptionSets": 0,
+    "askedForReversibleConfirmation": "0/4",
+    "yesNoNestingSets": 0,
+    "cancelOptionSets": 0,
+    "internalIdentifierSets": 0,
+    "labelTooLongSets": 0,
+    "questionEchoSets": 0,
+    "argsOkFirstTry": "15/18",
+    "askToolArgsRejected": 0,
+    "answeredTurnContinued": [
+      "A8:true",
+      "A10:true",
+      "A11:true",
+      "A12:true"
+    ],
+    "roundErrors": 0
+  },
+  "endedAt": "2026-09-22T10:59:04.336Z"
+}
