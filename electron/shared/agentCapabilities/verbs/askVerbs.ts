@@ -21,7 +21,13 @@ export function askVerbs(): readonly VerbDeclaration[] {
       // 「把那个删了」——它读完画布看见 6 个节点，**然后就停住了**，既没问也没动；
       // 「换个模型重做」——读完模型清单，停住。两次都不是「它挑了个默认」，是**它什么都没做**。
       // 「不确定就问」这种话对模型等于没说；「你刚读到的东西里不止一个对得上」是它当场能判的。
-      useWhen: "Use it the moment one of these is true: (1) you just read the canvas, the document or the model list and MORE THAN ONE of the things you found matches what he pointed at (\"that one\", \"this\", \"the model\") — ask which, do not pick for him and do not stop; (2) you know exactly what he wants but one fact you cannot read anywhere would change the result (how long, who it is for, which look) — ask that one fact; (3) the next call spends his credit on something he has not described, or cannot be taken back. In all three, asking costs one card; guessing wrong costs him a rerun, and stopping costs him the turn.",
+      //
+      // 2026-09-22（H3）加第 (4) 条。前三条覆盖的是**用例表里写过的那几种**二义，
+      // 而 run5/run8 两轮里模型真正该问却没问的那几句，卡的是另外三种：
+      // 两种以上做法而结果差得远（多方案取舍）、他自己两个要求互相拉扯（A12「赛博朋克冷调」
+      // 又要「九十年代港片暖胶片感」）、要改的东西可能在另一个面或不止一个所指（跨面二义 / 指代不清）。
+      // 这三种在旧条文下都能被读成「有合理默认，自己挑一个」——所以它挑了，挑完两头不讨好。
+      useWhen: "Use it the moment one of these is true: (1) you just read the canvas, the document or the model list and MORE THAN ONE of the things you found matches what he pointed at (\"that one\", \"this\", \"the model\") — ask which, do not pick for him and do not stop; (2) you know exactly what he wants but one fact you cannot read anywhere would change the result (how long, who it is for, which look) — ask that one fact; (3) the next call spends his credit on something he has not described, or cannot be taken back; (4) there is more than one good way to do it and the results would not look the same — two approaches both worth taking, two of his own requirements pulling against each other (a cold look and a warm one), or a target that could sit on another surface or mean more than one thing — name the two or three you mean and let him pick. In all of them, asking costs one card; guessing wrong costs him a rerun, and stopping costs him the turn.",
       // 2026-09-22（H1）末句改口。原文是「Never stop the turn **in silence**…」——那个 "in silence"
       // 是一个口子：模型做的不是沉默地停住，是**在正文里写一段带编号的问句然后停住**，字面上不违反任何一条。
       // run4/run5 逐句还原：run5 那 8 句该问却没调 `ask_user` 的用例里，6 句它在正文里把问题问出来了
@@ -30,7 +36,13 @@ export function askVerbs(): readonly VerbDeclaration[] {
       // 同一段里那个「可撤销」的例子也改了：原文举的是 "deleting a node"，而 `delete_from_canvas`
       // 自己声明 `effect: "irreversible"`、后果句写着 "cannot be undone by Nomi"——同一份提示词里
       // 「删节点」既是可撤销的日常编辑又是不可撤销的硬闸。以动词声明为准，换成真正可撤销的那两个。
-      notWhen: "Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first, and when the read comes back with exactly ONE match, that is your answer, not a question. Never ask for confirmation of something you are allowed to do: a reversible edit (rewriting a line of the script, renaming a shot) just happens and the user can undo it, and spending is confirmed on its own card by generate — asking \"shall I?\" about those is one more click for nothing. Never end a turn on a question you only typed into your reply: prose is not a card — he cannot answer it, the turn is already over, and he is left reading a question nobody is waiting on. If you need his answer, ask it with this tool; if you do not, take a default and say which one you took.",
+      //
+      // 2026-09-22（H2）把「花钱归 generate 的卡管」这半句拆成**范围**与**价格**两件事。
+      // 原文一句「spending is confirmed on its own card by generate」被读成了「凡是和这次生成有关的
+      // 都不用问」，于是 A5「帮我把这些都生成了」这种**范围**二义（整块画布还是只选中的那几个）
+      // 也被咽了下去——而报价卡只报价、只收「付不付」，它从来不问「你指的是哪几个」。
+      // 范围问错了，后面那张卡报的就是另一笔钱，用户点「确认」也救不回来。
+      notWhen: "Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first, and when the read comes back with exactly ONE match, that is your answer, not a question. Never ask for confirmation of something you are allowed to do: a reversible edit (rewriting a line of the script, renaming a shot) just happens and the user can undo it, and what a generation costs and whether to pay for it is settled on generate's own card — asking \"shall I?\" about the price is one more click for nothing. Scope is not price: when \"all of them\" could mean the whole canvas or only what he selected, which shots he means is yours to ask before you draft, and no card downstream will ask it for you. Never end a turn on a question you only typed into your reply: prose is not a card — he cannot answer it, the turn is already over, and he is left reading a question nobody is waiting on. If you need his answer, ask it with this tool; if you do not, take a default and say which one you took.",
       params: `questions holds one to ${ASK_USER_QUESTION_RANGE.max} questions; he sees them one at a time on one card. Each question is one sentence in his own language, naming the choice itself ("which one do you want deleted?"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Set multiSelect when several answers can be true at once. Leave options out when there is no short list — he can always type instead.`,
     },
     schema: askUserInputSchema,
