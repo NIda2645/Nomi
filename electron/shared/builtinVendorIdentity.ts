@@ -25,12 +25,9 @@ import { resolvedVendorLineageRoot, type VendorLineageEntry } from "./vendorLine
 export type VendorIdentityEntry = { key?: string | null; meta?: unknown };
 
 function lineageEntries(vendors: readonly VendorIdentityEntry[]): VendorLineageEntry[] {
-  const entries: VendorLineageEntry[] = [];
-  for (const vendor of vendors) {
-    const key = String(vendor?.key ?? "").trim();
-    if (key) entries.push({ key, meta: vendor?.meta });
-  }
-  return entries;
+  return vendors
+    .map((vendor) => ({ key: String(vendor?.key ?? "").trim(), meta: vendor?.meta }))
+    .filter((entry) => entry.key);
 }
 
 /** 回环 host：同一台机器上多个本地后端按**端口**分家（ComfyUI 8188 / Ollama 11434 不是同一个地址）。 */
@@ -142,18 +139,4 @@ export function isVendorOfBuiltin(
 ): boolean {
   if (!builtin) return false;
   return resolveBuiltinVendorKey(vendors, vendorKey) === builtin;
-}
-
-/**
- * 两条 key 是不是同一个身份（不管谁是第一条、谁是兄弟连接）。
- * 给「节点上记的 vendor」对「目录里那条 vendor」这类比较用。
- */
-export function sameVendorIdentity(
-  vendors: readonly VendorIdentityEntry[],
-  left: string | null | undefined,
-  right: string | null | undefined,
-): boolean {
-  const a = resolveBuiltinVendorKey(vendors, left);
-  const b = resolveBuiltinVendorKey(vendors, right);
-  return Boolean(a) && a === b;
 }

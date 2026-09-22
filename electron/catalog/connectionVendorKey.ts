@@ -110,5 +110,3 @@ export function connectionUpdateTarget(input: ConnectionVendorKeyInput): string 
   const key = resolveConnectionVendorKey(input);
   return input.vendors.some((vendor) => vendor.key === key) ? key : null;
 }
-
-export { slugifyConnectionName };

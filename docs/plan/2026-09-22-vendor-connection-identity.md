@@ -270,7 +270,7 @@ hostOf(draftBaseUrl) === hostOf(meta.baseUrl)  →  收集同域名的已有连�
 | en 添加连接表单（空） | [assets/…/05-en-add-connection-form-empty.png](./assets/2026-09-22-vendor-connection-identity/05-en-add-connection-form-empty.png) |
 | en 添加连接表单（填好） | [assets/…/06-en-add-connection-form-filled.png](./assets/2026-09-22-vendor-connection-identity/06-en-add-connection-form-filled.png) |
 
-采集脚本：[tests/ux/issue831-add-connection-before.probe.mjs](../../tests/ux/issue831-add-connection-before.probe.mjs) —— 真实 Electron 冷启动、隔离 profile、走真实用户路径（连接模型 → 本地运行时与即梦会员 → 自定义 API / 中转站），en 轨走设置 → 通用 → English 的真实切换（不是注入 locale；切不过去就抛错，不许把没切过去当切过去）。
+采集方式：真实 Electron 冷启动、隔离 profile、走真实用户路径（连接模型 → 本地运行时与即梦会员 → 自定义 API / 中转站），en 轨走设置 → 通用 → English 的真实切换（不是注入 locale；切不过去就抛错，不许把没切过去当切过去）。取证用的一次性探针在证据落盘后已删（Ponytail 建议）；同一条路径由带断言的验收走查 [tests/ux/vendor-connection-identity.walk.mjs](../../tests/ux/vendor-connection-identity.walk.mjs) 长期覆盖。
 
 **样张（真实布局 + 只加那一行）**：
 
