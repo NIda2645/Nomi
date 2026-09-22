@@ -28,7 +28,7 @@
 //
 //   pnpm run build
 //   export NOMI_REAL_MEDIA_DIR="/Users/aoqimin/Desktop/视频/"
-//   node tests/ux/agent-askback-real-model.walk.mjs [--rounds 18] [--model "DeepSeek V3.2"] [--label run1]
+//   node tests/ux/agent-askback-real-model.walk.mjs [--rounds 18] [--model "DeepSeek V3.2"] [--label run1] [--only N3,N4,N5]
 import { stationTimeout } from './_station-budget.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -56,10 +56,25 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../..')
 const { values } = parseArgs({ options: {
   rounds: { type: 'string' }, model: { type: 'string' }, 'output-dir': { type: 'string' }, label: { type: 'string' },
+  only: { type: 'string' },
 } })
 
 const CASES = JSON.parse(fs.readFileSync(path.join(here, 'agent-askback-real-model.cases.json'), 'utf8'))
-const ROUNDS = Number(values.rounds || CASES.cases.length)
+// `--only N3,N4,N5`：**按 id 挑用例**，给连通性探测用。
+//
+// 没有它的时候 `--rounds 3` 取的是表头前三句（A1/A2/A3），而那三句是创作面「该问」的用例，
+// 一路跑下去会调 `generate`——探一次连通性不该花生成额度。挑 id 才能只跑只读的那几句。
+// 写错的 id **直接报错退出**，不静默忽略：探测跑完才发现少跑了一句，比不跑更坏。
+const ONLY = values.only ? values.only.split(',').map((id) => id.trim()).filter(Boolean) : null
+if (ONLY) {
+  const known = new Set(CASES.cases.map((item) => item.id))
+  const unknown = ONLY.filter((id) => !known.has(id))
+  if (unknown.length) throw new Error(`--only 里这些 id 不在用例表里：${unknown.join(', ')}`)
+}
+const SELECTED = ONLY
+  ? ONLY.map((id) => CASES.cases.find((item) => item.id === id))
+  : CASES.cases
+const ROUNDS = Number(values.rounds || SELECTED.length)
 const MODEL_LABEL = values.model || 'DeepSeek V3.2'
 const LABEL = values.label || 'run'
 const outputDir = path.resolve(repoRoot, values['output-dir'] || `tests/ux/shots/askback-real-model/${LABEL}`)
@@ -243,7 +258,7 @@ try {
   let seenProse = 0
   let seenOutcomes = 0
   let answeredOnce = false
-  for (const item of CASES.cases.slice(0, ROUNDS)) {
+  for (const item of SELECTED.slice(0, ROUNDS)) {
     const panel = item.surface === 'creation' ? CREATION_PANEL : CANVAS_PANEL
     const row = { id: item.id, kind: item.kind, shouldAsk: item.shouldAsk, surface: item.surface, text: item.text }
     const started = Date.now()
