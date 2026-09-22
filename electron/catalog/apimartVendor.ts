@@ -34,7 +34,6 @@ export const APIMART_VENDOR_SEED = {
   livenessProbe: {
     request: { method: "POST", path: "/api/v1/chat/completions", body: { model: "{{model}}", messages: [{ role: "user", content: "Hi" }], max_tokens: 1, stream: false } },
     successPath: "choices.0",
-    cost: "paid" as const,
     source: { url: "https://docs.apimart.ai/en/api-reference/texts/general/chat-completions-nostream.md", checkedAt: "2026-09-08" },
   },
   /**

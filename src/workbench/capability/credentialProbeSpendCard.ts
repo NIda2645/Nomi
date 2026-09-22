@@ -21,6 +21,11 @@ export type CredentialProbeSpendPayload = {
   callCount?: number
 }
 
+/** 卡上「模型」那一行怎么写（供应商 · 模型），两张卡同一份写法。 */
+export function spendModelLine(vendor: string | undefined, modelKey: string | undefined): string {
+  return [vendor, modelKey].filter(Boolean).join(' · ') || i18n.t('runtime.capability.defaultModel')
+}
+
 export async function confirmCredentialProbeSpend(info: CredentialProbeSpendPayload): Promise<{ confirmed: boolean }> {
   const ok = await useSpendConfirmStore.getState().requestConfirm({
     kind: 'generation',
@@ -30,10 +35,7 @@ export async function confirmCredentialProbeSpend(info: CredentialProbeSpendPayl
     confirmLabel: i18n.t('runtime.capability.confirmCredentialProbe'),
     details: [
       spendQuoteDetail(info.quote ?? { amount: null }),
-      {
-        label: i18n.t('runtime.capability.model'),
-        value: [info.vendor, info.modelKey].filter(Boolean).join(' · ') || i18n.t('runtime.capability.defaultModel'),
-      },
+      { label: i18n.t('runtime.capability.model'), value: spendModelLine(info.vendor, info.modelKey) },
       { label: i18n.t('runtime.capability.callCount'), value: String(info.callCount ?? 1) },
     ],
   })

@@ -27,6 +27,13 @@ import type { HttpOperation, Vendor } from "./types";
 
 export type CredentialMode = "direct-key" | "certification";
 
+/** 一条代码拥有的探测端点声明（端点 + 成功判据 + 出处）。两种探针共用这个形状。 */
+export type ProbeDeclaration = {
+  request: Pick<HttpOperation, "method" | "path" | "body">;
+  successPath: string;
+  source: { url: string; checkedAt: string };
+};
+
 export type VendorSeed = {
   key: string;
   name: string;
@@ -58,13 +65,7 @@ export type VendorSeed = {
    * 逐模型存活必须真发一次生成才答得了，凭据有效性不必；合用一个声明位，就等于让后者继承
    * 前者的价格——2026-09-22 之前正是如此（原委见 `credentialProbePolicy.ts` 文件头）。
    */
-  livenessProbe?: {
-    request: Pick<HttpOperation, "method" | "path" | "body">;
-    successPath: string;
-    /** 缺省 = `paid`（逐模型存活探针本来就要真发一次生成）。 */
-    cost?: "free" | "paid";
-    source: { url: string; checkedAt: string };
-  };
+  livenessProbe?: ProbeDeclaration;
   /**
    * 「这把 key 现在能不能用」的代码拥有的探测端点（2026-09-22 T-MO-10 新增）。
    *
@@ -73,21 +74,17 @@ export type VendorSeed = {
    *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
    *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
    */
-  credentialProbe?: {
-    request: Pick<HttpOperation, "method" | "path" | "body">;
-    successPath: string;
-    cost?: "free" | "paid";
-    source: { url: string; checkedAt: string };
-  };
+  credentialProbe?: ProbeDeclaration & { cost?: "free" | "paid" };
   /**
    * 该家的 key 该拿什么当判据（**种子声明，不是按路由猜**）。
+   *
+   * ⚠️ 种子带 `credentialProbe` 的（apimart / higgsfield）按那条声明走，根本不读本字段。
    *
    * 为什么需要它：`GET /v1/models` 既不充分也不必要，两个方向的反例都在我们自己的证据里——
    * apimart 对合法 key 恒 401（electron/vendor/vendorBaseFallback.ts 实测注释），minimax 回 200
    * 却连最小生成 canary 都跑不通（认证账本 blocker 原文）。详见
    * docs/research/2026-09-10-vendor-key-publish-class/prior-art.md 第 ④ 节。
    *
-   *  · `seed-probe`   ：种子带 `credentialProbe`，按它声明的端点与价格判（apimart / higgsfield）。
    *  · `model-list`    ：上游确有 OpenAI 兼容模型列表端点，且它对合法 key 会放行。
    *                      ⚠️ 现役无人声明这一档。第一个声明它的人请连带补上
    *                      `electron/ai/onboarding/vendorHealth.ts` 的清标记分支：那里探测成功后
@@ -113,8 +110,8 @@ export type VendorSeed = {
   bespokeExecution?: { capability: string; path: string };
 };
 
-/** key 判据的三种形态（详见 `VendorSeed.keyValidation`）。 */
-export type KeyValidationStrategy = "liveness-probe" | "model-list" | "first-use";
+/** key 判据的两种形态（详见 `VendorSeed.keyValidation`）。种子带 `credentialProbe` 时按它走，不经这里。 */
+export type KeyValidationStrategy = "model-list" | "first-use";
 
 /** 顺序 = 原 seedBuiltins 的播种顺序（保持既有装机行为一致）。 */
 export const BUILTIN_VENDOR_SEEDS: readonly VendorSeed[] = [
