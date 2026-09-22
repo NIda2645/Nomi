@@ -110,7 +110,20 @@ export const deconstructionShotTableSchema = z.object({
     sourceAssetRef: z.string().startsWith('nomi-local://').optional(),
     title: z.string(),
     durationSeconds: z.number().finite().nonnegative().transform(quantizeShotSeconds).optional(),
-    status: z.enum(['idle', 'running', 'ready', 'failed']),
+    /**
+     * 拆解这条参考片的生命周期。**终态保证（T-ED-06）**：`running` 之外的每一格都是终态，
+     * 而 `running` 只在**这个渲染进程里真有一次在飞的调用**时才成立——判据是
+     * `deconstructionLifecycle` 那份在飞登记，不是磁盘上这个字段本身。
+     *
+     * 为什么要 `interrupted` 而不是复用 `failed` 或 `idle`：
+     * - `failed` = 跑到了、跑挂了，有一句供应商 / ffmpeg 的原话可说；
+     * - `idle` = **从没拆过**，UI 的空态和「还没开始」一模一样——2026-09-17 走查里
+     *   用户看到的正是这种「看着像正在跑、其实已经死了」的空白（§6.5）；
+     * - `interrupted` = 跑过、被外力打断（关 app、切项目、渲染进程没了），证据都在、
+     *   没有失败原因可说，但**必须给一个找回入口**。三件事是三种不同的下一步动作，合并任何两个
+     *   都会让其中一种没有出口。
+     */
+    status: z.enum(['idle', 'running', 'ready', 'failed', 'interrupted', 'cancelled']),
     phase: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
     failedShotIndexes: z.array(z.number().int().nonnegative()).optional(),
     errorMessage: z.string().optional(),

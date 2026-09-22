@@ -1,6 +1,10 @@
 export const zhShotTable = {
   openScript: '打开原稿', factsEmpty: '点击重新拆解，读取这段参考片',
   sourceVideoMissing: '来源视频已删除，无法重新拆解',
+  // 中断 / 取消不是失败，也不是「还没拆过」：两句话各自说清发生了什么、下一步点哪儿。
+  interrupted: '这次拆解被中断了（应用关闭或切换了项目）。已拆出的都还在，点「重新拆解」接着来。',
+  cancelled: '你取消了这次拆解。已拆出的都还在，点「重新拆解」可以重来。',
+  cancel: '取消拆解',
   addColumn: '添加列', editCell: '编辑单元格', renameColumn: '重命名列', removeColumn: '删除列', generate: '生成 {{count}} 镜', running: '正在读取镜头', retry: '重新拆解', retryWithCloud: '改用云端', facts: { shotSize: '景别', motion: '运镜', visual: '画面', dialogue: '对白', onScreenText: '字幕', mood: '情绪' },
   title: '分镜表', count: '{{count}} 镜', duration: '{{duration}}s', timeRange: '{{start}}–{{end}}s', open: '打开分镜表',
   sourceMissing: '来源方案已删除', productionSourceMissing: '这组镜头已从画布删除', empty: '还没有镜头，打开原稿继续拆解',
@@ -13,6 +17,9 @@ export const zhShotTable = {
 export const enShotTable = {
   openScript: 'Open script', factsEmpty: 'Deconstruct again to read this reference video',
   sourceVideoMissing: 'Source video was deleted; cannot deconstruct again',
+  interrupted: 'This deconstruction was interrupted (the app closed or the project changed). What it read is still here — choose Deconstruct again to continue.',
+  cancelled: 'You cancelled this deconstruction. What it read is still here — choose Deconstruct again to start over.',
+  cancel: 'Cancel deconstruction',
   addColumn: 'Add column', editCell: 'Edit cell', renameColumn: 'Rename column', removeColumn: 'Delete column', generate: 'Generate {{count}} Shots', running: 'Reading shots', retry: 'Deconstruct again', retryWithCloud: 'Use cloud', facts: { shotSize: 'Shot size', motion: 'Motion', visual: 'Visual', dialogue: 'Dialogue', onScreenText: 'On-screen text', mood: 'Mood' },
   title: 'Shot table', count: '{{count}} shots', duration: '{{duration}}s', timeRange: '{{start}}–{{end}}s', open: 'Open storyboard',
   sourceMissing: 'Source storyboard was deleted', productionSourceMissing: 'These shots were removed from the canvas', empty: 'No shots yet. Open the script to continue',

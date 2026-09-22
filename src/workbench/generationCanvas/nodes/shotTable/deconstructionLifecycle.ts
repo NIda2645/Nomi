@@ -1,0 +1,122 @@
+// 拆解任务终态判定的**唯一 owner**（T-ED-06）。
+//
+// 「这次拆解还有没有可能完成」这个判断只有一层配拥有：**谁手里攥着那个 promise**。
+// 视频拆解不是任务表里的一行——它是一次 `nomi:video:deconstruct` 的 invoke，编排全程活在
+// 主进程的那次调用里，没有 taskId、没有可轮询的上游、重启后也没有任何东西能替它续跑。
+// 所以在飞与否这件事，只有发起它的**这个渲染进程**知道；磁盘上那个 `status: 'running'`
+// 只是它的一张影子照片，跨进程读回来时已经没有任何东西为它作保。
+//
+// 2026-09-17 付费走查 §6.5 撞到的就是这张影子照片：拆到一半关 app 再打开，
+// 节点永久停在「本地找切点 / 0 镜」。快照归一化里其实有一句 `running → idle` 的收敛
+// （2026-09-10 加的），但它**收敛完就被事件尾巴重放原样盖了回去**——
+// `writeTable` 的每一下进度写都走 `canvas.node.updated` 进了事件日志，
+// 重放把 `status: 'running'` 又写了回去。收敛发生在重放之前，于是等于没发生。
+//
+// 这里把判据收成一份：**节点不自己算终态，它投影这份在飞登记**。
+// 读到 `running` 而登记里没有这个节点 → 这次拆解不可能再完成了 → `interrupted`。
+// 快照归一化、事件尾巴重放、外部图应用三条读路径共用这同一个函数，不各写一遍。
+import type { DeconstructionShotTableDocument } from '../../../../../electron/shared/canvas/shotTable'
+import { readShotTable } from '../../../../../electron/shared/canvas/shotTable'
+import i18n from '../../../../i18n'
+
+type DeconstructionStatus = DeconstructionShotTableDocument['source']['status']
+
+/** 终态 = 用户在这一格上有明确的下一步动作（看结果 / 看原因重试 / 重新拆解）。只有 `running` 不是。 */
+const TERMINAL_STATUSES: readonly DeconstructionStatus[] = ['idle', 'ready', 'failed', 'interrupted', 'cancelled']
+
+export function isDeconstructionTerminal(status: DeconstructionStatus): boolean {
+  return TERMINAL_STATUSES.includes(status)
+}
+
+/** 从这一格能不能再起一次拆解。`running` 不行（会起第二条）；`ready` 不行（已有结果，重拆走显式重试）。 */
+export function canRestartDeconstruction(status: DeconstructionStatus): boolean {
+  return status === 'idle' || status === 'failed' || status === 'interrupted' || status === 'cancelled'
+}
+
+/**
+ * 在飞登记：key = 分镜表节点 id，value = 这次调用的 requestId。
+ *
+ * 模块级单例是故意的——它要和「这个渲染进程还活着」同寿命：进程没了，登记自然全空，
+ * 下次读回来的每一张 `running` 表都会被判为中断。这正是我们要的语义。
+ */
+const liveRuns = new Map<string, { requestId: string; cancelled: boolean }>()
+
+export function registerDeconstructionRun(tableNodeId: string, requestId: string): void {
+  liveRuns.set(tableNodeId, { requestId, cancelled: false })
+}
+
+/** 只有当前这次调用能注销自己——迟到的那次不许把后来者的在飞登记抹掉。 */
+export function releaseDeconstructionRun(tableNodeId: string, requestId: string): void {
+  if (liveRuns.get(tableNodeId)?.requestId === requestId) liveRuns.delete(tableNodeId)
+}
+
+export function isDeconstructionRunLive(tableNodeId: string): boolean {
+  return liveRuns.has(tableNodeId)
+}
+
+/**
+ * 标记「用户取消了这一次」。不 abort 主进程那次调用（IPC invoke 没有取消口），
+ * 而是**把这次调用的结果作废**：它回来时不许再写进表。
+ * 返回 false = 这个节点上根本没有在飞的调用，没什么可取消。
+ */
+export function markDeconstructionCancelled(tableNodeId: string): boolean {
+  const run = liveRuns.get(tableNodeId)
+  if (!run) return false
+  run.cancelled = true
+  return true
+}
+
+export function isDeconstructionRunCancelled(tableNodeId: string, requestId: string): boolean {
+  const run = liveRuns.get(tableNodeId)
+  return run?.requestId === requestId && run.cancelled
+}
+
+/** 测试与项目切换用：清空在飞登记（等价于「这个渲染进程重来了」）。 */
+export function resetDeconstructionRuns(): void {
+  liveRuns.clear()
+}
+
+/**
+ * 把一张表收敛到终态。纯函数：在飞与否由 `isLive` 注入，便于单测钉死而不碰模块单例。
+ * 返回 undefined = 这张表不用动（已是终态，或确实还在飞）。
+ */
+export function convergeDeconstructionTable(
+  tableNodeId: string,
+  table: DeconstructionShotTableDocument,
+  isLive: (nodeId: string) => boolean = isDeconstructionRunLive,
+): DeconstructionShotTableDocument | undefined {
+  if (table.source.status !== 'running' || isLive(tableNodeId)) return undefined
+  return {
+    ...table,
+    source: {
+      ...table.source,
+      status: 'interrupted',
+      phase: undefined,
+      progressDetail: undefined,
+      // 中断没有供应商原话可抄，但**不能什么都不说**：一张空表加一句「还在跑」的错觉，
+      // 正是走查里用户卡住的那一刻。这句话连着 footer 的「重新拆解」一起构成找回入口。
+      errorMessage: i18n.t('shotTable.interrupted'),
+    },
+  }
+}
+
+/**
+ * 整张画布收敛一遍。读路径（快照恢复 / 事件尾巴重放 / 外部图应用）末尾各调一次，
+ * 幂等：已经是终态的表原样返回，同一份 nodes 引用也原样返回（不白白触发重渲染）。
+ */
+export function convergeDeconstructionNodes<T extends { id: string; kind: string; meta?: Record<string, unknown> }>(
+  nodes: readonly T[],
+  isLive: (nodeId: string) => boolean = isDeconstructionRunLive,
+): T[] {
+  let changed = false
+  const next = nodes.map((node) => {
+    if (node.kind !== 'shot_table') return node
+    const table = readShotTable(node.meta)
+    if (table?.source.kind !== 'deconstruction' || !('columns' in table)) return node
+    const converged = convergeDeconstructionTable(node.id, table, isLive)
+    if (!converged) return node
+    changed = true
+    return { ...node, meta: { ...node.meta, shotTable: converged } }
+  })
+  return changed ? next : (nodes as T[])
+}
