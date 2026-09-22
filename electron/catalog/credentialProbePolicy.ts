@@ -63,16 +63,3 @@ export function credentialProbePlan(vendorKey: string): CredentialProbePlan {
   if (seed.keyValidation === 'model-list') return { kind: 'model-list', cost: 'free' }
   return { kind: 'first-use', cost: 'free' }
 }
-
-/** 这一下验证会不会花用户的钱。发请求之前问它，不要各自猜。 */
-export function credentialProbeIsFree(plan: CredentialProbePlan): boolean {
-  return plan.cost === 'free'
-}
-
-/**
- * 这家的凭据验证需不需要先问用户（= 会花钱）。渲染层的按钮文案与主进程的发送闸读同一个答案，
- * 于是「界面说免费、实际扣了钱」在结构上讲不出来。
- */
-export function credentialProbeNeedsConsent(vendorKey: string): boolean {
-  return !credentialProbeIsFree(credentialProbePlan(vendorKey))
-}

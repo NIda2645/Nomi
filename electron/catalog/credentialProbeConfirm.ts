@@ -14,7 +14,6 @@
 // 在这一层把它兜底成 0 或者「免费」，那正是 T-MO-25 记着的那种不诚实。
 import { requestRendererDecision } from '../capabilityCore/rendererBridge'
 import { quoteSpendLine } from '../spendQuote'
-import type { SpendQuote } from '../shared/contracts/spendQuote'
 
 export type CredentialProbeSpendRequest = {
   vendorKey: string
@@ -33,7 +32,6 @@ export type CredentialProbeSpendRequest = {
  */
 export async function confirmCredentialProbeSpend(request: CredentialProbeSpendRequest): Promise<boolean> {
   const line = quoteSpendLine({ vendorKey: request.vendorKey, modelKey: request.modelKey })
-  const quote: SpendQuote = { lines: [line], amount: line.amount }
   try {
     const reply = (await requestRendererDecision('spend.confirm', {
       intent: 'credential-probe',
@@ -41,7 +39,7 @@ export async function confirmCredentialProbeSpend(request: CredentialProbeSpendR
       modelKey: line.modelKey,
       quote: line,
       // 一次验证 = 一次调用。说出这个数，用户才知道自己批的是「一下」而不是「一批」。
-      callCount: quote.lines.length,
+      callCount: 1,
     })) as { confirmed?: boolean } | null
     return reply?.confirmed === true
   } catch {
