@@ -1,0 +1,124 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-self-check-timeout-uncertain-remnant",
+  "problem_type": "Policy deletion left the predicate it should have flipped untouched (删旧删了行为，没删判据)",
+  "symptom": "electron/providerAdapter/serviceCatalogLifecycle.integration.test.ts > 'cleans a timed-out candidate without touching the active source' failed under real machine load (4 concurrent `yes` spinners), reliably 3/3, with `stage: reconciling` instead of the expected `timed_out`; passed reliably when run in isolation (fast DNS failure lets the 5ms deadline win before the race can flip). Not reproducible by reading the assertion alone — needed a real concurrent-load harness to force the losing race.",
+  "direct_cause": "`ProviderAdapterCertificationCoordinator.executeSubmission` (electron/integrationCertification/providerAdapterCoordinator.ts, catch block) classified any `AdapterWaitError` for which the caller's `isUncertainError(error)` returned true as an unresolved remote submission and wrote `stage: reconciling` + threw `AdapterReconciliationRequiredError`. `ProviderAdapterService`'s only caller (electron/providerAdapter/service.ts, the Model self-check step) passed `isUncertainError: (error) => error instanceof AdapterWaitError && error.reason !== \"cancelled\" && error.reason !== \"terminal\"` — true for every deadline/step timeout. But 2026-09-11 commit d76745ec6 had already deleted the paid auto-repair/reconcile family with the explicit rationale that self-check never submits anything upstream and therefore can never be uncertain about a remote task; it deleted the call sites that *depended* on that predicate but left `isUncertainError` and the catch branch that used it fully wired, so the branch it argued should not exist kept firing on every self-check deadline timeout under the right timing.",
+  "class_root": "A policy commit (d76745ec6) changed the argument for WHY a predicate should always be false, but did not go find and flip the predicate itself — it deleted the expensive consequence (auto-repair) and assumed the classification helper (isUncertainError) would follow, when in fact it was a separate, still-live parameter threaded through a shared function (executeSubmission) with its own default-true behavior. P1 (加新必删旧) was satisfied for the feature but not for the classification logic feeding it, so the class of risk is: any time a policy commit says '<X> can never happen anymore', grep for the predicate that used to detect X and confirm it was actually flipped/deleted, not just orphaned.",
+  "migration": "isUncertainError removed from ProviderAdapterCertificationCoordinator.executeSubmission's input type and from its only call site (service.ts); the catch block's uncertain->reconciling branch deleted outright (kept only the pre-existing resume path for runs persisted before this fix, lines ~434-450, which is a genuinely different scenario — historical on-disk submitting/unknown state, not a live timeout). AdapterWaitError now propagates unmodified out of executeSubmission on a self-check timeout, handled by service.ts's existing local catch (already correct, already tested by the same commit that introduced the residual predicate).",
+  "affected_population": [
+    "Every onboarding run whose self-check (credential probe or per-mode verify) times out against the batch deadline while under any load that shifts the internal race — previously misreported as stage=reconciling (a dead-end state requiring manual reconcile_or_contact_provider) instead of the correct, actionable stage=timed_out"
+  ],
+  "scope_paths": [
+    "electron/providerAdapter/service.ts",
+    "electron/integrationCertification/providerAdapterCoordinator.ts"
+  ],
+  "entry_points": [
+    "electron/providerAdapter/service.ts:504 (this.certification.executeSubmission call for \"Model self-check\")",
+    "electron/integrationCertification/providerAdapterCoordinator.ts:executeSubmission (the catch block's uncertain-classification branch, deleted)"
+  ],
+  "invariants": [
+    "A self-check (credential probe or per-mode verify) never creates durable remote state, so its own timeout can never be classified as an unresolved remote submission — it always resolves to a clean terminal stage (timed_out), directly from executeRun, without ever touching stage=reconciling.",
+    "reconciling stays reachable only for the two scenarios that genuinely involve an unresolved remote write: a historical run persisted before this fix in submitting/unknown state (resume path, lines ~434-450), and a live cancel() of a real in-flight submission (a different code path, markSubmissionUnknown called directly by cancel(), not by executeSubmission's catch)."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/providerAdapterCoordinator.ts",
+      "symbol": "syncRunOperationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/service.ts",
+      "symbol": "finishTerminal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/service.ts",
+      "symbol": "executeSubmission"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "Doors are counted at file+symbol granularity (`node scripts/door-map.mjs executeSubmission syncRunOperationState finishTerminal --roots=electron`), which does not shrink here: syncRunOperationState keeps 4 call sites (was 5 — the deleted uncertain-branch call site is gone) but the file+symbol pair still counts as one door either way, and executeSubmission/finishTerminal are unchanged entry shapes. The actual reduction is behavioural, not door-count: the entire uncertain->reconciling branch (and the isUncertainError parameter that fed it) is deleted, not narrowed — there is no remaining code path by which a self-check timeout can reach stage=reconciling."
+  },
+  "regression_tests": [
+    "electron/providerAdapter/serviceHangingModel.integration.test.ts"
+  ],
+  "residual_risks": [
+    "The kept resume path (providerAdapterCoordinator.ts:434-450) still faces a genuine reconcile scenario for runs persisted before this fix landed, stuck in submitting/unknown — intentional, not a self-check scenario, left untouched by this contract.",
+    "cancel()'s own markSubmissionUnknown call (a real in-flight verify() cancelled mid-flight, socket-level — serviceHangingModel's first test) is a separate, still-correct 'uncertain' case: a real HTTP request may have already reached the provider. This contract does not touch it and does not claim self-check can never be uncertain in that scenario — only that a *timeout* (not an explicit cancel) can never be."
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Purely an internal state-machine/classification bug inside ProviderAdapterService and its certification coordinator; no external protocol or vendor contract involved.",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The failure mode — a policy commit removes the expensive consequence of a boolean/predicate but leaves the predicate itself wired into a shared function with its old default — can recur anywhere a policy deletion argues 'X can no longer happen' without grepping for and flipping the helper that used to detect X.",
+    "same_class_scan": [
+      "rg 'isUncertainError|uncertain' electron/ --include=*.ts (excluding tests): electron/integrationCertification/types.ts:18 (comment, no logic), electron/providerAdapter/service.ts:447 (comment, no logic) — both inert; electron/capabilityCore/canvasReadSurfacePort.ts:141-142 (uncertain flag for cancelled/stale mutating renderer capability calls) and electron/capabilityCore/generationRecoveryProjection.ts:55 ('submission result is uncertain' for real provider generation tasks) are the only other live 'uncertain' predicates in electron/ — both gate genuinely different, still-real remote side effects (a real capability IPC call, a real paid generation submission), not self-check, so neither is a residual of the 09-11 self-check policy and neither was touched.",
+      "grep 'electron/integrationCertification/*.test.ts' and 'tests/' for isUncertainError/executeSubmission coverage: zero hits before this fix — the deleted catch branch had no dedicated test of its own; its only exerciser was service.ts's Model self-check call, confirming it was genuinely dead once isUncertainError went to () => false in the prior commit (c85781a73)."
+    ]
+  },
+  "generality_proof": "executeSubmission is the single shared boundary every self-check submission in ProviderAdapterService passes through (grep confirms exactly one call site in all of electron/). Removing the isUncertainError parameter from its type signature, not just hardcoding it false at the call site, makes it structurally impossible for a future second caller to silently reintroduce timeout->uncertain classification for self-check — they would have to add a new parameter and branch back into the shared coordinator, which is a visible, reviewable change, not a one-line predicate flip.",
+  "shared_boundaries": [
+    {
+      "path": "electron/integrationCertification/providerAdapterCoordinator.ts",
+      "symbol": "executeSubmission",
+      "responsibility": "The only place that decides whether a submission attempt's failure should be treated as a clean failure (propagate the error) or an unresolved remote write (mark reconciling). Now has no code path from a live timeout to the latter."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "entry_point": "uncertain flag (line 141-142) in the renderer capability request settle path",
+      "disposition": "not-affected",
+      "evidence": "Gates a real mutating IPC call to the renderer that may have partially applied before cancellation/staleness — a genuinely different, still-real side effect, not self-check; not part of the 09-11 self-check policy and not touched by this fix."
+    },
+    {
+      "path": "electron/capabilityCore/generationRecoveryProjection.ts",
+      "entry_point": "'submission result is uncertain' message (line 55) for provider generation task recovery",
+      "disposition": "not-affected",
+      "evidence": "Covers real paid generation submissions where the provider may have accepted the task — the domain the 09-11 policy explicitly distinguished self-check FROM (self-check submits nothing; generation submissions do). Left untouched."
+    },
+    {
+      "path": "electron/providerAdapter/service.ts",
+      "entry_point": "executeSubmission call for \"Model self-check\" (line ~504)",
+      "disposition": "enforced",
+      "evidence": "serviceCatalogLifecycle.integration.test.ts 'cleans a timed-out candidate without touching the active source' and serviceHangingModel.integration.test.ts 'executeRun 自己把挂死的自检收成 timed_out，不用看门狗' both assert stage=timed_out directly from executeRun; verified 3/3 green under 4-spinner load, and 3/3 red when isUncertainError's old true-predicate was temporarily restored."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/integrationCertification/providerAdapterCoordinator.ts",
+    "invariant": "executeSubmission has no parameter and no code path that can reclassify a plain timeout as an unresolved remote submission; that classification only exists for the historical resume path (pre-existing submitting/unknown state) and for cancel()'s own explicit markSubmissionUnknown call.",
+    "failure_mode": "Any future attempt to reintroduce timeout->uncertain classification for self-check would require adding a new parameter back to executeSubmission's type and a new branch to its body — a visible diff on the single shared boundary, not a silent one-line predicate change at a call site; serviceCatalogLifecycle's timed-out test and serviceHangingModel's self-collect test both go from green to red (stage: reconciling) if that branch comes back with a true-yielding predicate.",
+    "exception_policy": "none",
+    "strategy": "Delete the extension point (the isUncertainError parameter) instead of hardcoding its only caller to false, so the shared function's own type signature enforces that self-check timeouts cannot be reclassified.",
+    "artifacts": [
+      "electron/integrationCertification/providerAdapterCoordinator.ts",
+      "electron/providerAdapter/service.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/providerAdapter/serviceHangingModel.integration.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The dead branch and the isUncertainError parameter were deleted within electron/integrationCertification/providerAdapterCoordinator.ts and electron/providerAdapter/service.ts, which both remain live files — nothing was deleted at file granularity, so there is no separate legacy path to list here (the deletion is captured by doors/door_reduction and the diff itself, not by a removed_paths entry)."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No external dependency or framework involved; purely internal state-machine logic.",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/providerAdapter/service.ts",
+    "tests": [
+      "electron/providerAdapter/serviceCatalogLifecycle.integration.test.ts",
+      "electron/providerAdapter/serviceHangingModel.integration.test.ts"
+    ],
+    "why": "service.ts owns both halves of the self-check-timeout contract end to end: the 09-11 half (executeRun's own local catch + promoteFinal deciding timed_out, proven by serviceCatalogLifecycle's timed-out test and serviceHangingModel's self-collect test) and the 09-12 half (the watchdog reaper it wires up via TerminalReaper, proven by serviceHangingModel's stranded-run test). Both test files assert against real ProviderAdapterService instances, not mocks of it."
+    }
+}
