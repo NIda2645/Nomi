@@ -10,7 +10,6 @@ import { readNodeDeconstruction } from '../deconstructionTypes'
 import { createDeconstructionShotTable, deconstructionResultToShotTable } from './shotTableFacts'
 import {
   canRestartDeconstruction,
-  convergeDeconstructionTable,
   convergedDeconstructionEntries,
   isDeconstructionRunCancelled,
   markDeconstructionCancelled,

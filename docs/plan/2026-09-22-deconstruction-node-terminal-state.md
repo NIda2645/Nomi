@@ -101,18 +101,27 @@ footer 的重试钮只认 `failed` / `idle`（不会出现）。三者合起来 
 
 ---
 
-## 3. 先查别人（R5）：别人怎么处理「进程重启时在飞的活」
+## 先查别人（本方案第 3 节）
 
-| 产品 | 做法 | 本次实读出处 |
+> 完整报告：[`docs/research/2026-09-22-deconstruction-terminal-state/prior-art.md`](../research/2026-09-22-deconstruction-terminal-state/prior-art.md)（四问全查，出处均本次实读）
+
+**一句话结论**：这个问题别人全都解过，答案惊人地一致——
+**「还在跑」这句话必须锚在一个「它死了你看得见」的东西上**。
+别人锚的是进程外的东西，所以能**续跑**；我们没有那个东西可锚，所以锚在**进程本身**，
+得到的是**可找回**。同一条原理，不同锚点，两种都诚实的答案。
+
+| 出处 | 它怎么做 | 我们怎么用 |
 |---|---|---|
-| **本仓 · 生成节点** | `convergeStuckMidFlightNode`：有 `taskId` → `recoverable`（免费续查）；无 → `idle`。09-17 走查 §5.2 H 记着这条「诚实、可恢复」，并当场点名它和拆解那条形成鲜明对比 | `src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts` |
-| **本仓 · 生成队列** | `QueueEntryState` 有独立的 `cancelled`，与 `error` 分开记 | `runner/generationQueueStore.ts` |
+| **VS Code 任务重连**（[`abstractTaskService.ts`](https://raw.githubusercontent.com/microsoft/vscode/main/src/vs/workbench/contrib/tasks/browser/abstractTaskService.ts)，实读） | 先筛 `instances.filter(e => e.reconnectionProperties?.ownerId === TaskTerminalType)`，**筛到活着的终端才**重连；用户终止的任务从持久化里删掉 | **不照抄重连**：它敢续跑是因为终端住在独立的 pty host 进程里，窗口 reload 不死；拆解全程活在一次 IPC invoke 里，app 一关什么都不剩。取它的另一半——认领不到就别假装还在跑 |
+| **BullMQ stalled job**（[docs.bullmq.io](https://docs.bullmq.io/guide/jobs/stalled)，实读） | worker 死在半路 → 作业永远卡 active；靠 Redis 里的锁 + 心跳 + 30 秒巡检推到终态，超 `maxStalledCount` 则 *"failed permanently"* | **症状与骨架同形**，但它的心跳锚在 Redis（比 worker 活得久）所以要等 30 秒；我们锚在进程自己，「没有登记」即「没有在飞」**瞬时且确定**——**因此不加心跳和巡检定时器**，少一个定时器少一类竞态 |
+| **Node `child_process`**（[nodejs.org](https://nodejs.org/api/child_process.html)，实读） | `'close'` *"will always emit after `'exit'`… or `'error'` if the child process failed to spawn"`*——spawn 失败时 `'close'` **不发** | **查出来这一格本来就对**：`detectShotCuts.ts:102-103` 双挂 `'error'` + `'close'`。ffmpeg 子进程死从不是本轮病灶，只补回归测试钉住。也解释了为何不需要给子进程加心跳——同进程内死亡是同步可观测事件 |
+| **本仓 · 生成节点**（`canvasSnapshotNormalizer.ts:32-44`） | `convergeStuckMidFlightNode`：有 taskId → `recoverable`（免费续查），无 → `idle`，`progress` 一律清空 | **复用它的诚实**（不转圈、清进度残影、给出口），**不复用它的续跑方式**。也因此新状态叫 `interrupted` 而非 `recoverable`——后者在本仓已有确定语义（钱已花、上游多半已出片），而拆解中断一分钱没花 |
+| **本仓 · 生成队列**（`generationQueueStore.ts:21`） | `QueueEntryState` 里 `cancelled` 与 `error` 是两格 | **直接照着分**。给拆解补 `cancelled` 不是新发明，是把队列那边做过一次的判断补齐 |
+| **本仓 · `electron/tasks/*`** | 终态是给**可轮询的供应商任务**用的（`taskResultQuery.ts:88`），前提是存在可再查一次的远端任务 | **明确排除**：拆解没有 taskId、没有可轮询上游，「让节点读任务表的终态」不成立，硬造假 taskId 只多一份假账。记在这里以免下次重提 |
+| **zustand `persist`**（`middleware/persist.d.ts:70`） | `onRehydrateStorage` 是「水合**结束之后**」的统一钩子 | 画布没走 persist，但它的**形状**正是本轮教训：我们原来的收敛写在水合**中间**，后面还有一步重放就被盖掉了。修法本质就是把收敛挪到最后一步之后 |
+| **`p-cancelable`**（readme:7） | 自己劝你 *"should probably use `AbortController` instead"* | **不用**。它解的是「我不想等了」，本轮病灶是「等的人已经不存在了」——取消需要一个活着的取消者 |
 
-**结论：答案就在同一个 app 里。** 生成节点那条路早就做对了——重启后在飞的活变成「可找回 / 重新拉取」，
-而不是继续转圈。本次做的事，本质是把**同一个诚实**补到拆解这条路上。
-差别只在续跑方式：生成节点有 `taskId` 可以免费续查；拆解没有，所以它的找回入口是「重新拆解」。
-
----
+**自研的只有那份在飞登记（约 20 行）**，其余判据全部复用仓库既有形状。
 
 ## 4. 改了什么
 
