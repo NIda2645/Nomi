@@ -130,6 +130,23 @@ async function fillConnectionForm({ name, apiKey }) {
   return (await hint.count()) ? hint.getAttribute('data-field-hint') : null
 }
 
+/**
+ * 提示行里被抬成 ink 色 + 中粗的那一段是什么、它跟整句是不是真的不同色。
+ * 只断言「有这一段且颜色与整句不同」——不比字面色值（oklch 序列化是已知的坑）。
+ */
+async function hintEmphasis() {
+  return win.evaluate(() => {
+    const line = document.querySelector('[data-field-hint]')
+    const mark = line?.querySelector('[data-field-hint-emphasis]')
+    if (!line || !mark) return null
+    return {
+      text: (mark.textContent || '').trim(),
+      sameColorAsLine: getComputedStyle(mark).color === getComputedStyle(line).color,
+      weight: getComputedStyle(mark).fontWeight,
+    }
+  })
+}
+
 async function saveConnection(hints) {
   await clickFirst(hints.save, '保存连接')
   await win.waitForTimeout(1600)
@@ -153,6 +170,12 @@ async function runTrack(track, hints) {
       check(
         marker === 'duplicate-host-create',
         `${track}·第 ${index + 1} 条：撞域名 + 新名字 → 出「会新建独立连接」那一句（marker=${marker}）`,
+      )
+      // 拍板：整句 muted，**只有连接名**抬成 ink 色 + 中粗。
+      const emphasis = await hintEmphasis()
+      check(
+        Boolean(emphasis) && emphasis.text.length > 0 && !emphasis.sameColorAsLine && Number(emphasis.weight) >= 500,
+        `${track}·第 ${index + 1} 条：提示行里的连接名是 ink 加粗、与整句不同色（${JSON.stringify(emphasis)}）`,
       )
     }
     await saveConnection(hints)
@@ -188,7 +211,38 @@ async function runTrack(track, hints) {
     left.some((row) => row.name === 'Full tier') && left.some((row) => row.name === 'Fast tier'),
     `${track}：删「Mini tier」不影响另外两条`,
   )
-  await openAddConnectionForm(hints)
+  // 拍**改动区**：删完之后的连接列表（看得见剩下两条的名字），不是空的添加表单。
+  await clickFirst(hints.modelAccess, '连接模型入口')
+  await win.waitForTimeout(900)
+  const rows = win.locator('[data-model-home-connection]')
+  await rows.first().waitFor({ state: 'visible' })
+  const listedNames = await win.evaluate(() =>
+    [...document.querySelectorAll('[data-model-home-connection]')].map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim()))
+  console.log(`  · 连接列表: ${JSON.stringify(listedNames)}`)
+  check(
+    listedNames.some((t) => t.includes('Full tier')) && listedNames.some((t) => t.includes('Fast tier')),
+    `${track}：删除后的连接列表里仍看得见 Full tier 与 Fast tier`,
+  )
+  check(
+    !listedNames.some((t) => t.includes('Mini tier')),
+    `${track}：删掉的 Mini tier 已经不在列表里`,
+  )
+  // 把剩下那两条滚进画面再拍——改动区在视口外，截图就证明不了任何事（R13 眼见链）。
+  await rows.last().scrollIntoViewIfNeeded()
+  await win.waitForTimeout(400)
+  const visibleAfterScroll = await win.evaluate(() => {
+    const view = { top: 0, bottom: window.innerHeight }
+    return [...document.querySelectorAll('[data-model-home-connection]')]
+      .filter((el) => {
+        const box = el.getBoundingClientRect()
+        return box.top >= view.top && box.bottom <= view.bottom
+      })
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+  })
+  check(
+    visibleAfterScroll.some((t) => t.includes('Full tier')) && visibleAfterScroll.some((t) => t.includes('Fast tier')),
+    `${track}：两条幸存连接都在视口内（截图拍得到改动区）`,
+  )
   await snap(`${track}-5-connections-after-delete`)
   await closeOverlays()
 }

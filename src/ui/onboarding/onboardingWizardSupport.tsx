@@ -12,12 +12,18 @@ export function Field({
   hint,
   children,
   hintMarker,
+  hintEmphasis,
 }: {
   label: string
   hint?: string
   children: React.ReactNode
   /** 走查用的锚点：这行 hint 现在说的是哪一种话（#831 的 create / update）。缺省不加属性。 */
   hintMarker?: string
+  /**
+   * hint 里要抬成 ink 色 + 中粗的那一段（#831：只有**连接名**抬，整句其余仍是 muted）。
+   * 传的是那段文字本身；在 hint 里找不到它就整句按 muted 渲染，不会渲出半截。
+   */
+  hintEmphasis?: string
 }): JSX.Element {
   return (
     <Stack gap={4}>
@@ -25,9 +31,31 @@ export function Field({
       {children}
       {hint && (
         <Text size="xs" c="var(--nomi-ink-60)" data-field-hint={hintMarker}>
-          {hint}
+          {renderHint(hint, hintEmphasis)}
         </Text>
       )}
     </Stack>
+  )
+}
+
+/**
+ * 把 hint 拆成「前段 · 被强调的那段 · 后段」。
+ *
+ * 为什么不用 `<Trans>`：全仓一次都没用过它，为一行提示引进第二套插值机制不划算；
+ * 而这里要强调的恰好就是**插值进去的那个值本身**（连接名），按它切一刀即可。
+ */
+function renderHint(hint: string, emphasis?: string): React.ReactNode {
+  const needle = emphasis?.trim()
+  if (!needle) return hint
+  const at = hint.indexOf(needle)
+  if (at < 0) return hint
+  return (
+    <>
+      {hint.slice(0, at)}
+      <Text span inherit fw={500} c="var(--nomi-ink)" data-field-hint-emphasis>
+        {needle}
+      </Text>
+      {hint.slice(at + needle.length)}
+    </>
   )
 }

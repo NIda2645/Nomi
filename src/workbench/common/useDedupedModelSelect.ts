@@ -42,11 +42,14 @@ export function modelProviderLabel(provider?: ModelProviderRef | null, connectio
   const base = short
     ? translateModelDisplayText(short)
     : translateModelDisplayText(provider.option.vendorName?.trim() || provider.vendor || '默认')
-  // #831：同一家有多条连接（满血组 / Mini 特价组）时才补「· 连接名」。后缀由
-  // `providerConnectionSuffixes` 一处算出，且**只进显示名**——不进排序键、不进请求、不进持久化。
+  // #831：同一家有多条连接（满血组 / Mini 特价组）时，chip 直接显示**连接名本身**。
+  //
+  // 为什么不是「APIMart · 满血组」：实验室那一格（vo-07）拍出来是 `APIMart · …` —— 两段拼起来
+  // 超出 chip 宽度，被截掉的恰好是**唯一有区分力的那一段**，等于白加。而这一刻品牌名是冗余的：
+  // 两个 chip 本来就同属一家，用户要认的是「哪个分组」。
+  // 后缀由 `providerConnectionSuffixes` 一处算出，且**只进显示名**——不进排序键、不进请求、不进持久化。
   if (!connectionSuffix) return base
-  const suffix = translateModelDisplayText(connectionSuffix)
-  return suffix && suffix !== base ? `${base} · ${suffix}` : base
+  return translateModelDisplayText(connectionSuffix) || base
 }
 
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */

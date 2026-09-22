@@ -14,6 +14,8 @@ import { duplicateHostVerdict, type DuplicateHostConnection } from './duplicateH
 export type DuplicateHostHint = {
   /** 这一行要显示的字。撞域名时是动态句，否则是传进来的那句静态 hint。 */
   text: string
+  /** 句子里要抬成 ink 色 + 中粗的那一段 = 已有连接的名字（拍板：只有连接名抬）。 */
+  emphasis?: string
   /** 走查锚点；不撞时为 undefined（那一行就是原来那句静态 hint）。 */
   marker?: string
 }
@@ -55,6 +57,7 @@ export function useDuplicateHostHint(input: {
       verdict.kind === 'create'
         ? t('modelSetup.baseUrlDuplicateCreate', { name: verdict.existingName })
         : t('modelSetup.baseUrlDuplicateUpdate', { name: verdict.existingName }),
+    emphasis: verdict.existingName,
     marker: `duplicate-host-${verdict.kind}`,
   }
 }

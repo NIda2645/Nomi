@@ -70,6 +70,47 @@ export const MIXED_MODELS: ModelOption[] = toOptions([
   { label: 'Wan 2.6', canonicalId: 'wan-2-6', vendors: [VENDOR_RUNNINGHUB] },
 ])
 
+// ── 同一家的多条连接（issue #831 拍板：只在重名时加「· 连接名」后缀） ──
+//
+// 这一份的关键在 `vendorName`：兄弟连接的 key 是 `apimart--mini`，而用户看到的是它自己起的名字。
+// 屏上哪几行带后缀、哪几行不带，由现役的 `providerConnectionSuffixes` 算——夹具只提供
+// 「同一个模型挂在同一家的两条连接下」这个事实。
+export const VENDOR_APIMART_MINI = 'apimart--mini'
+
+function toNamedOptions(rows: readonly { label: string; canonicalId: string; vendors: readonly { key: string; name: string }[] }[]): ModelOption[] {
+  return rows.flatMap((row) => row.vendors.map((vendor) => ({
+    value: `${vendor.key}-${row.canonicalId}`,
+    modelKey: `${vendor.key}-${row.canonicalId}`,
+    label: row.label,
+    vendor: vendor.key,
+    vendorName: vendor.name,
+    meta: { archetypeId: 'agnes-image', canonicalModelId: row.canonicalId },
+  })))
+}
+
+const APIMART_FULL = { key: VENDOR_APIMART, name: '满血组' }
+const APIMART_MINI = { key: VENDOR_APIMART_MINI, name: 'Mini 特价组' }
+const KIE_ONLY = { key: VENDOR_KIE, name: 'Kie' }
+// EN 侧的连接名天然更长（R15：EN 串长是中文的 1.5-2 倍）。同屏放一行长名，
+// 「chip 放得下吗」这件事就不用再靠另开一屏去验——第一版拼成「APIMart · 满血组」
+// 正是栽在放不下上。
+const APIMART_FULL_EN = { key: VENDOR_APIMART, name: 'Full tier' }
+const APIMART_MINI_EN = { key: VENDOR_APIMART_MINI, name: 'Mini budget tier' }
+
+/**
+ * 三行，各钉一种情形：
+ *  · Seedance 2.0     同一家两条连接 → 两个 chip 各显示**自己的连接名**；
+ *  · Nano Banana 2    两家不同 root（APIMart / Kie）→ 仍是厂商短名，一个字都不改；
+ *  · FLUX.2 Pro       只有一条连接 → 连 chip 都没有；
+ *  · Kling 2.5        同 Seedance，但连接名是 EN 长串 → 钉住「放得下」。
+ */
+export const SIBLING_CONNECTION_MODELS: ModelOption[] = toNamedOptions([
+  { label: 'Seedance 2.0', canonicalId: 'seedance-2-0', vendors: [APIMART_FULL, APIMART_MINI] },
+  { label: 'Nano Banana 2', canonicalId: 'nano-banana-2', vendors: [APIMART_FULL, KIE_ONLY] },
+  { label: 'FLUX.2 Pro', canonicalId: 'flux-2-pro', vendors: [KIE_ONLY] },
+  { label: 'Kling 2.5', canonicalId: 'kling-2-5', vendors: [APIMART_FULL_EN, APIMART_MINI_EN] },
+])
+
 export const CONFIGURED_VENDOR_ENTRIES = [
   { vendorKey: VENDOR_APIMART, name: 'APIMart' },
   { vendorKey: VENDOR_KIE, name: 'Kie' },

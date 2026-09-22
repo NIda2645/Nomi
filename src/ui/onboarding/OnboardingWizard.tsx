@@ -494,6 +494,7 @@ export function OnboardingWizard({
                       label={t('modelSetup.baseUrl')}
                       hint={baseUrlHint.text}
                       hintMarker={baseUrlHint.marker}
+                      hintEmphasis={baseUrlHint.emphasis}
                     >
                       <DesignTextInput
                         value={baseUrl}
