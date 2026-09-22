@@ -13,6 +13,32 @@ const commonShape = {
   updatedAt: z.string().datetime(),
 }
 
+/**
+ * 「这次切点检测给全了没有」——**唯一 owner 在这里**。
+ *
+ * 为什么住在 shared 而不是 `electron/video/detectShotCuts.ts`：它有三个跨进程的读侧
+ * （切镜面板 / 拆解引擎 / 分镜表快照），而 2026-09-22 之前的那个 `truncated: boolean`
+ * 恰恰是因为**没有一个跨侧的 owner**，被拆解那条路整个丢掉了而编译器一声不吭。
+ * 放在这里，schema 和类型就是同一份，读侧再想「只取我关心的那几个字段」也绕不开它。
+ *
+ * 语义：超上限时我们**抬分数阈值**（不是砍时间），所以「表变短」而「整条片子仍在表里」。
+ */
+export const shotCutCoverageSchema = z.object({
+  /** ffmpeg 在检测下限上一共报了多少刀（已去掉「同一刀两帧」）。 */
+  detectedCuts: z.number().int().nonnegative(),
+  /** 这次实际采用了多少刀。 */
+  keptCuts: z.number().int().nonnegative(),
+  /** 为压到上限而实际生效的分数阈值；没压过就是检测下限。 */
+  appliedThreshold: z.number().finite().nonnegative(),
+  /** 是否因为上限而没给全。 */
+  capped: z.boolean(),
+  /** 采用的切点覆盖到第几秒。 */
+  coveredSeconds: z.number().finite().nonnegative(),
+  /** 全片多长。 */
+  durationSeconds: z.number().finite().nonnegative(),
+}).strict()
+export type ShotCutCoverage = z.infer<typeof shotCutCoverageSchema>
+
 export const shotTableColumnSchema = z.object({
   columnId: identitySchema,
   kind: z.enum(['builtin', 'custom']),
@@ -100,6 +126,15 @@ export const deconstructionShotTableSchema = z.object({
      * 「给不给『改用云端』这个出口」这件事绑在字符串比对上——那正是最容易静默失效的那种判据。
      */
     failureKind: z.literal('local-speech').optional(),
+    /**
+     * 这张表是不是整条片子（切点超上限时自动抬了阈值）。
+     *
+     * `.optional()` 只为**已经存在的老项目**：2026-09-22 之前落盘的表里没有这一块，
+     * 读不回来不该让整张表 parse 失败。新写入一律带着它——写侧的类型是**必填**的
+     * （`DeconstructionResult.cutCoverage`），所以「忘了带」在编译期就过不去，
+     * 这里的 optional 不是一条可以走的后路。
+     */
+    cutCoverage: shotCutCoverageSchema.optional(),
   }).strict(),
   columnSetId: z.literal('facts'),
   columns: z.array(shotTableColumnSchema).refine((columns) => new Set(columns.map((column) => column.columnId)).size === columns.length),

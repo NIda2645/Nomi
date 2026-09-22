@@ -9,7 +9,13 @@
 export type ShotCut = { seconds: number; score: number }
 
 export type ShotCutCandidate = ShotCut & {
-  /** 在**未过滤**全集里的下标 = 它在联系表里的格子号。过滤后千万别重新编号。 */
+  /**
+   * 在主进程给的那份切点数组里的下标 = 它在联系表里的格子号。
+   *
+   * 这条等式**由构造保证**（2026-09-22 返工后）：联系表那一趟 ffmpeg 是按这份数组的 `pts`
+   * 点名选帧拼出来的，第 i 格就是 `cuts[i]`，不存在「ffmpeg 自己多筛出一帧」这回事。
+   * 所以过滤后必须**保住原始下标**，重新编号就会张冠李戴。
+   */
   index: number
 }
 
@@ -104,11 +110,6 @@ export function shotSheetTileStyle(
     backgroundSize: `${safeCols * 100}% ${safeRows * 100}%`,
     backgroundPosition: `${x}% ${y}%`,
   }
-}
-
-/** 联系表行数——必须和主进程 `Math.ceil(cuts.length / cols)` 用同一个算式，否则切格全错位。 */
-export function shotSheetRows(totalCuts: number, cols: number): number {
-  return Math.max(1, Math.ceil(totalCuts / Math.max(1, cols)))
 }
 
 /** 秒 → `m:ss` / 超过一小时 `h:mm:ss`。 */

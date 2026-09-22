@@ -1,0 +1,461 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-shot-cut-truncation",
+  "problem_type": "producer-computed completeness signal that no reader is forced to carry, so a downstream consumer silently ships an incomplete result",
+  "symptom": "一条 361 秒的快剪片子拆解后得到一张「看着齐、其实只覆盖到第 52.7 秒」的分镜表：剩下 308.4 秒被并成单独一镜，界面上没有任何提示、没有报错、结果数据里也没有任何「被截断」的标记。第二症状（第一版修复自己引入、验收在真实素材上抓到）：联系表里 120 刀有 21 刀指向错误的格子，末刀的格子号甚至超出图的容量——每格都有图、只是配错了时间戳。",
+  "direct_cause": "① detectShotCuts 用 all.slice(0, MAX_CUTS) 按**时间顺序**取前 120 刀（ffmpeg@0.1 在该片上对**未去重**的 447 刀切），并把「是否截断」算成 truncated 返回；deconstructVideo 只取了 detected.cuts，把 truncated 整个丢掉。截断又发生在用户灵敏度过滤**之前**，所以调任何阈值都换不回后半段。② 第一版改用「按分数抬阈值」后，让联系表用同一个阈值 `gt(scene,T)` 重筛来复现同一批帧——但 JS 手里只有 lavfi.scene_score **打印出来的 6 位小数**，ffmpeg 的 gt() 比的是内部全精度 double，分数恰好等于阈值的那一帧两边判断相反（实测 ffmpeg 多吐 1 帧，129 vs JS 以为的 128）。③ 同时把联系表格子数变成双真相源：主进程按 emittedCount 算行数、渲染层按 max(sheetIndex)+1 又算一遍。",
+  "class_root": "同一个量在两个系统里各有一份判据，边界上不一致而且都不报错。① 「这批结果给全了没有」是生产者本地的一个可选布尔，读侧可以整个不读而编译器不吭声；② 「哪些帧入选」JS 按打印值判、ffmpeg 按全精度判；③ 「联系表几行」主进程算一遍、渲染层又算一遍。三者是同一个形状：**没有单一 owner 的状态会被各方各自重新计算，分叉处安静地错**。",
+  "affected_population": [
+    "任何用「视频拆解」拆切点数超过 120 的素材的用户：MV、广告、快剪预告、电影快切开场",
+    "同一批素材走「按镜头拆」预览面板的用户（该面板有提示，但它的灵敏度滑杆同样够不到被砍掉的后半段）",
+    "已落盘的分镜表：表里没有任何字段能说明它是不是整条片子，重开项目也判断不出来"
+  ],
+  "scope_paths": [
+    "electron/video/detectShotCuts.ts",
+    "electron/video/deconstructVideo.ts",
+    "electron/shared/canvas/shotTable.ts",
+    "src/desktop/bridgeMedia.ts",
+    "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+    "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
+    "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+    "src/i18n/locales/generationCommon.ts"
+  ],
+  "entry_points": [
+    "视频节点浮条 →「按镜头拆」面板（NodeShotCutPanel → bridge.video.detectShotCuts）",
+    "分镜表节点 →「拆解」（bridge.video.deconstruct → deconstructVideo → detectShotCuts）"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/mifi/lossless-cut/master/src/main/ffmpeg.ts",
+      "checked_at": "2026-09-22",
+      "purpose": "确认 LosslessCut 的 detectSceneChanges 对切点数**没有任何上限/截断**——逐条 onSegmentDetected 回调全部上报"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/KDE/kdenlive/master/src/jobs/scenesplittask.cpp",
+      "checked_at": "2026-09-22",
+      "purpose": "确认 Kdenlive 同样没有条数上限；它给用户的两个控制是**阈值**与**最小间隔**（minInterval，跳过挨得太近的刀），两者都保住全片覆盖"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.scenedetect.com/docs/latest/api/detectors.html",
+      "checked_at": "2026-09-22",
+      "purpose": "确认 PySceneDetect 没有最大场景数上限；它对「太碎」的答案是 min_scene_len（时间维度的合并），不是取前 N"
+    }
+  ],
+  "invariants": [
+    "采用的切点少于检测到的切点时，结果必须同时带上：检测到多少、采用多少、实际生效阈值、覆盖到第几秒、全片多长、是否因上限而不完整",
+    "压上限只许按分数抬阈值，不许按时间截断：全片覆盖不塌",
+    "联系表第 i 格必须是第 i 刀那一帧，**由构造保证**：第二趟 ffmpeg 按整数 pts 点名选帧，不得按分数重筛（浮点打印值与内部精度必然在边界上分歧）",
+    "联系表的行数/格子数只许有一个 owner（主进程 shotSheetRowsFor），随结果下发，渲染层不得自行推算",
+    "并列分数导致名额用不满时要有下限：按时间均匀补齐，不得塌回「一镜到底」"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "shotCutCoverageSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "deconstructionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "shotTableDocumentSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "ShotCutCoverage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "ShotCutCoverage"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridgeMedia.ts",
+      "symbol": "ShotCutCoverage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+      "symbol": "ShotCutCoverage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "symbol": "ShotCutCoverage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "symbol": "deconstructionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "normalizeShotTableMeta"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchPersistence.ts",
+      "symbol": "normalizeShotTableMeta"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "DeconstructVideoResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/videoIpc.ts",
+      "symbol": "deconstructVideo"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "ShotCut"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "RawShotCut"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "SHOT_CUT_DEDUPE_FRAMES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "DetectShotCutsPayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "DetectShotCutsResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "ShotCutError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "SHOT_CUT_DETECT_THRESHOLD"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "MAX_CUTS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "SHOT_SHEET_COLUMNS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "SHOT_SHEET_TILE_HEIGHT"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "symbol": "ShotCut"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "symbol": "detectShotCuts"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
+      "symbol": "ShotCut"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "detectShotCuts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "pickEvenlyByTime"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "buildDetectFilter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "parseShotCutOutput"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "dedupeShotCuts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "capShotCutsByScore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "shotSheetRowsFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "buildSheetFilter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/videoIpc.ts",
+      "symbol": "detectShotCuts"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "symbol": "DesktopMediaBridge"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+      "symbol": "DeconstructionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+      "symbol": "StoredDeconstructionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "readNodeDeconstruction"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "symbol": "StoredDeconstructionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
+      "symbol": "ShotCutCandidate"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "symbol": "filterShotCuts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "symbol": "shotSheetTileStyle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "ensureDeconstructionShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "deconstructionResultToShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "zhGenerationCommon"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "enGenerationCommon"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "symbol": "deconstructionResultToShotTable"
+    }
+  ],
+  "door_reduction": {
+    "before": 15,
+    "after": 54,
+    "why_not": "门表按**本次真正读写的符号**过滤后 52 扇（door-map 按文件跑会把同文件里无关的符号也列进来）。真正该数的那些状态都已收口成单一 owner：`coverage` 的写入口只有 detectShotCuts 一处且读侧必填；联系表选帧只有 buildSheetFilter 一处且按整数 pts 点名；行数只有 shotSheetRowsFor 一个算式。其余条目是这些状态的类型/常量/纯函数在各自文件内的读点，不构成第二个写入口。"
+  },
+  "generality_proof": "把「给全了没有」从生产者本地的布尔提升为 shared 层的 ShotCutCoverage（类型 + zod 同一份，electron/shared/canvas/shotTable.ts），并在两个下游结果类型里做成**必填字段**。于是：① 任何新的 detectShotCuts 读侧要构造结果，编译器都会要求它把 coverage 传下去；② 任何要落盘的分镜表都经过同一个 zod schema，半块 coverage 直接 parse 失败；③ 压上限这件事本身被收进一个纯函数 capShotCutsByScore，它的后置条件（kept === cuts.filter(score > appliedThreshold)）由单测钉死，任何改回「按时间取前 N」的改动都会红。这三条覆盖了本次扫到的全部同类入口。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "shotCutCoverageSchema",
+      "responsibility": "「这次切点检测给全了没有」这份状态的唯一 owner：类型与持久化 schema 同一份，三个跨进程读侧共用；半块 coverage 在持久化边界上 parse 失败"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "buildSheetFilter",
+      "responsibility": "联系表选帧的唯一出口：按整数 pts 点名，让 JS 的清单成为唯一真相源，ffmpeg 只照单抓帧。杜绝「两个系统各判一次、边界上分歧」这一类"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "shotSheetRowsFor",
+      "responsibility": "联系表行数的唯一算式：同一个数既喂 tile=CxR 也随结果下发给渲染层"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "symbol": "capShotCutsByScore",
+      "responsibility": "「超上限怎么压」的唯一实现：按分数抬阈值保住全片覆盖；并列导致名额不满时按时间均匀补齐，保证不塌回一镜到底"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "entry_point": "NodeShotCutPanel detect effect",
+      "disposition": "enforced",
+      "evidence": "原来读 result.truncated 并显示一行提示（:228），是两个读侧里唯一没丢信号的那个；现在改读 result.coverage.capped，并把实际生效阈值与条数写进提示。它证明上限本身不是 bug——同一个上限在这条路上一直是「说清楚的取舍」。"
+    },
+    {
+      "path": "electron/video/deconstructVideo.ts",
+      "entry_point": "deconstructVideo",
+      "disposition": "enforced",
+      "evidence": "本次的失败入口：只取 detected.cuts、丢掉 truncated。现在构造 cutCoverage 并以**本层实际采用的条数**为准（用户的 payload.threshold 会再筛一次，照抄检测层的数就会说谎），字段必填。"
+    },
+    {
+      "path": "electron/video/extractAudioTrack.ts",
+      "entry_point": "AUDIO_TRACK_MAX_SECONDS",
+      "disposition": "not-affected",
+      "evidence": "同样是一个上限（3000 秒），但它**抛错**并在消息里说清「视频太长，先剪短再拆」（:112-114）。上限本身从来不是问题，静默才是——这条是同一族里做对了的那个对照。"
+    },
+    {
+      "path": "electron/video/shotTimeline.ts",
+      "entry_point": "assignSegmentsToShots",
+      "disposition": "not-affected",
+      "evidence": "跨镜的长句不切分，被跨过的镜头标 carriedOver；超出片尾的句子归最后一镜而不是丢掉（shotIndexAt :70）。归属链上没有静默丢弃。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts",
+      "entry_point": "deconstructionResultToShotTable",
+      "disposition": "enforced",
+      "evidence": "表的落盘映射。原来只搬 durationSeconds/failedShotIndexes；现在把 cutCoverage 一起写进 source，否则重开项目就再也判断不出这张表是不是整条片子。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个形状已经在这条链上出现过两次：`truncated` 被拆解侧丢掉，以及渲染层自己长了一份 0.2 秒的余震合并而引擎侧一份都没有。只要「某份结果是否完整」还只是生产者本地的一个可选信号，下一个接 detectShotCuts 的读侧（MCP 工具、Agent 拆解、批量拆解）会以完全相同的方式再丢一次。",
+    "same_class_scan": [
+      "grep -rn 'truncated' electron src —— 全仓 truncated 的其它用处（hardenedFetch / workspaceFileIndex / catalogCommit）都被同文件或同模块立即读回，只有 detectShotCuts 这一份跨到了另一条链上并被丢弃",
+      "grep -rn 'detectShotCuts' electron src —— 两个读侧：NodeShotCutPanel（读了信号）与 deconstructVideo（丢了信号），同一个生产者两种待遇",
+      "grep -rnE '\\.slice\\(0,|MAX_|Math\\.min\\(' electron/video/ electron/localSpeech/ —— 逐条判过链上其余上限：AUDIO_TRACK_MAX_SECONDS 抛错（对照组）、DECONSTRUCT_MAX_TOKENS 是模型参数不是结果截断、localSpeech 分段的 Math.min 是窗口边界不是丢弃",
+      "grep -rnE '48|maxRows|MAX_ROWS' src/workbench/generationCanvas/nodes/shotTable/ —— docs/plan/2026-09-06 提议过的「表节点 48 行硬上限」**从未实现**，所以链上不存在第二处静默截断；该取舍仍然开放，结论是不要把它实现成取前 N"
+    ]
+  },
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "electron/shared/canvas/shotTable.ts",
+    "invariant": "「这批切点给全了没有」必须随结果一路传到持久化层：DeconstructVideoResult.cutCoverage 与 DeconstructionResult.cutCoverage 为必填字段，落盘经 shotCutCoverageSchema 校验，半块结构 parse 失败",
+    "failure_mode": "读侧漏传 → TypeScript 编译失败；落盘时结构不全或多出字段 → zod strict 抛错，整张表拒绝写入而不是写进一个半真的 coverage",
+    "exception_policy": "none",
+    "strategy": "把信号从「生产者本地的可选布尔」提升为「shared 层的必填结构」。可选字段只在**读回老数据**那一处存在（2026-09-22 之前落盘的表没有这一块，缺了不该让项目打不开），而写侧的类型是必填的，所以那个 optional 不构成一条可以走的后路。同时把「怎么压」收进纯函数 capShotCutsByScore，其后置条件由单测钉死，改回按时间截断即红。",
+    "artifacts": [
+      "electron/shared/canvas/shotTable.ts",
+      "electron/video/detectShotCuts.ts",
+      "electron/video/deconstructVideo.ts",
+      "src/workbench/generationCanvas/nodes/deconstructionTypes.ts",
+      "src/workbench/generationCanvas/nodes/shotTable/shotTableFacts.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/video/shotCutCoverage.test.ts",
+    "electron/video/detectShotCuts.test.ts",
+    "electron/video/shotCutSheetAlignment.realMedia.test.ts",
+    "electron/shared/canvas/shotTable.test.ts",
+    "src/workbench/generationCanvas/nodes/shotCutSelection.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/video/shotCutCoverage.test.ts",
+    "electron/video/shotCutSheetAlignment.realMedia.test.ts",
+    "electron/shared/canvas/shotTable.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/video/detectShotCuts.ts",
+      "src/desktop/bridgeMedia.ts",
+      "src/workbench/generationCanvas/nodes/NodeShotCutPanel.tsx",
+      "src/workbench/generationCanvas/nodes/shotCutSelection.ts",
+      "src/i18n/locales/generationCommon.ts"
+    ],
+    "rationale": "旧的 truncated 布尔连同 all.slice(0, MAX_CUTS) 同 commit 删除；第一版引入的 sheetIndex / assignSheetIndexes / 渲染层 shotSheetRows / shotSheetTileCount 也在返工同 commit 删除，没有留并行版——联系表格子号现在就是数组下标，行数只有主进程一个算式。i18n 旧文案「只取了前 N 个」同时改掉（它正是在准确描述旧 bug）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量完全在应用层：ffmpeg 的 select/scene 行为本身没有变，我们只是不再在它的输出上做按时间截断。ffmpeg 版本差异只影响检测质量，不影响「少给了要说」这条契约。",
+    "exit_criteria": []
+  },
+  "migration": "2026-09-22 之前落盘的分镜表没有 source.cutCoverage，schema 里该字段为 optional，老项目照常读回且不被改写——不猜一个 coverage 填进去（老表里已经没有任何依据能还原它当时是不是被截断了，编一个数就是在伪造证据）。重新拆解一次即得到真实的 coverage。",
+  "residual_risks": [
+    "真实素材测试参数化覆盖派生快剪片与未派生 8月12日.mov，使用生产 resolver 的随附 ffmpeg 4.4；原片 HEVC、B 帧重排深度 2、547.202 秒，切点 390 → 去重 320 → 封顶 120。真实 MV/预告片等其他内容类型仍未验。",
+    "用户可见那一层只改了「按镜头拆」面板里那句已存在的提示。**分镜表节点上还没有任何「这张表被并过刀」的提示**——数据字段已备好，UI 按仓库规矩要先看真实界面再出样张，本次只出选项不实现。",
+    "返工后的 zh/en 文案**没有重新跑真截图走查**（第一版验收跑过并通过，本次只改了数据来源不改文案）。",
+    "默认阈值 0.1 是否该调**没有改**：本次只给数据与建议，改它属于产品行为改动，要用户拍板。",
+    "渲染层 filterShotCuts 仍保留自己那套 0.2 秒余震合并，与引擎 2 帧去重形成粗/细两层；它实质是 Kdenlive 那个「最小间隔」控制，建议收成用户可见控件，本次未动。",
+    "渲染层源码扫描只是一条廉价的回归提醒，换个变量名或写法可绕过，不能证明不可能分叉；真正起作用的是结构：sheetRows 只在 shotSheetRowsFor 算一次并随结果下发。",
+    "按 pts 点名的 select 表达式长度由 MAX_CUTS 封顶；历史 PATH 版本的 1994 字节 / 2.5s 不是随附版本的耗时证据。随附 ffmpeg 4.4 的执行覆盖见真实素材测试。若将来抬高 MAX_CUTS，需要重新验证表达式长度上限并考虑分批。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/canvas/shotTable.ts",
+    "owner_path": "electron/shared/canvas/shotTable.ts",
+    "owner_symbol": "shotCutCoverageSchema",
+    "has_tests": true,
+    "tests": [
+      "electron/shared/canvas/shotTable.test.ts",
+      "electron/video/shotCutCoverage.test.ts"
+    ],
+    "why": "「这批切点给全了没有」是一份要跨进程（主进程检测 → 桥 → 渲染层面板/分镜表）并要落盘的状态，所以它的 owner 只能是 shared 契约层：类型与 zod schema 同一份，写侧必填、落盘 strict 校验、老数据可选读回。放在 electron/video 那一层就是它原来出事的样子——生产者本地的一个布尔，读侧爱读不读。该层有测试：shotTable.test.ts 钉持久化边界（整块往返 / 老表兼容 / 半块拒绝），shotCutCoverage.test.ts 钉压上限与去重的后置条件。"
+  }
+}

@@ -3,6 +3,7 @@
 // 关键设计：拆解结果按**源视频节点身份（nodeId）**建槽，而不是按「面板 open 布尔」。
 // 这样同一条视频无论从哪个入口拆——v1 的节点浮条、M 线后的 Agent 工具——都写回**同一个槽**、
 // 渲染进**同一张卡**（R-C-7 双入口汇聚同一张卡）。现在把这个接缝留对，M 线接线不返工。
+import type { ShotCutCoverage } from '../../../../electron/shared/canvas/shotTable'
 
 /** 引擎回来的单镜结构（镜像 electron/video/deconstructVideo.ts 的 DeconstructShot，桥的投影形状）。 */
 export type DeconstructionShot = {
@@ -33,6 +34,8 @@ export type DeconstructionResult = {
   shots: DeconstructionShot[]
   durationSeconds: number
   hasAudio: boolean
+  /** 这张表是不是整条片子。**必填**——可选字段就是给「忘了带」留后路。 */
+  cutCoverage: ShotCutCoverage
   /** 画面分析失败的镜号（诚实回报，UI 据此提示可单独重试）。 */
   failedShotIndexes: number[]
   /** 整次拆解层面的失败原因（顶部一行显示；不是每格一句「没读出」）。 */
@@ -47,11 +50,18 @@ export type DeconstructionResult = {
 /** 存进 GenerationCanvasNode.meta 的键：拆解结果随节点走（图片/运镜提示词随节点走，方案 §3.1）。 */
 export const NODE_DECONSTRUCTION_META_KEY = 'videoDeconstruction'
 
-/** 从节点 meta 读回拆解结果（供收起态角标 / 重开面板复用，绝不重复拆）。 */
-export function readNodeDeconstruction(meta: Record<string, unknown> | undefined): DeconstructionResult | null {
+/**
+ * 老节点 meta 里可能没有 `cutCoverage`（2026-09-22 之前落盘的）。缺失 = **不知道这张表完不完整**，
+ * 不等于完整——所以是可选字段，且**不补默认值**（编一个 `capped:false` 就是伪造证据）。
+ */
+export type StoredDeconstructionResult = Omit<DeconstructionResult, 'cutCoverage'> & {
+  cutCoverage?: ShotCutCoverage
+}
+
+export function readNodeDeconstruction(meta: Record<string, unknown> | undefined): StoredDeconstructionResult | null {
   if (!meta) return null
   const raw = meta[NODE_DECONSTRUCTION_META_KEY]
   if (!raw || typeof raw !== 'object') return null
   const candidate = raw as { shots?: unknown }
-  return Array.isArray(candidate.shots) ? (raw as DeconstructionResult) : null
+  return Array.isArray(candidate.shots) ? (raw as StoredDeconstructionResult) : null
 }

@@ -8,7 +8,6 @@ import {
   formatShotTimestamp,
   pickDefaultSensitivity,
   shotCutNodePositions,
-  shotSheetRows,
   shotSheetTileStyle,
 } from './shotCutSelection'
 
@@ -124,19 +123,6 @@ describe('shotSheetTileStyle — 联系表切格', () => {
 
   it('单列/单行不除以 0', () => {
     expect(shotSheetTileStyle(0, 1, 1)).toEqual({ backgroundSize: '100% 100%', backgroundPosition: '0% 0%' })
-  })
-})
-
-describe('shotSheetRows — 必须与主进程同一算式', () => {
-  it.each([[1, 8, 1], [8, 8, 1], [9, 8, 2], [16, 8, 2], [17, 8, 3]])(
-    '%i 个切点 / %i 列 → %i 行',
-    (total, cols, expected) => {
-      expect(shotSheetRows(total, cols)).toBe(expected)
-    },
-  )
-
-  it('0 个切点也至少 1 行（不产生 tile=Nx0）', () => {
-    expect(shotSheetRows(0, 8)).toBe(1)
   })
 })
 
