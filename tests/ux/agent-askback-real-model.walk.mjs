@@ -183,6 +183,26 @@ try {
     return -1
   }
 
+  /**
+   * 「设置」是**应用级模态**（`aria-modal`、整屏黑底，z 在 applicationModal 档）。它一挂上来，
+   * 切页钮、composer、介入槽里的卡全都点不动。run4 第五次起跑就是这么死的：A1 里模型自己调了
+   * `start_model_setup`——这是那个动词的**设计**（把「设置 · 模型」打开、预填供应商，让用户去填 key），
+   * 不是故障；但面板挂上之后没人收，接下来 17 轮每一轮的第一下（切「创作」/「生成」）都被它拦掉，
+   * 每轮恰好 30 秒超时、`tools=[]`。真人这时候要么去填 key、要么把它关掉；这条走查不配模型、零额度，
+   * 所以照真人的另一半做：点面板自己的关闭钮。
+   *
+   * **只点关闭，不碰任何确认框**：这一层看不出弹出来的是「放弃修改」还是分镜编辑器那个花钱确认，
+   * 而后者点确认就是真花钱。关不掉就让它关不掉——下面的循环会把确认框按「取消」，这一轮如实记失败。
+   */
+  async function closeSettingsPanelIfOpen() {
+    const overlay = win.locator('[data-settings-overlay]').first()
+    if (!await overlay.isVisible().catch(() => false)) return false
+    await win.locator('[data-settings-close]').first()
+      .click({ timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
+    await overlay.waitFor({ state: 'hidden', timeout: stationTimeout({ operations: 1 }) }).catch(() => {})
+    return true
+  }
+
   const seenToolCallIds = new Set()
   const seenResultIds = new Set()
   let answeredOnce = false
@@ -191,6 +211,9 @@ try {
     const row = { id: item.id, kind: item.kind, shouldAsk: item.shouldAsk, surface: item.surface, text: item.text }
     const started = Date.now()
     try {
+      // 上一轮可能留下一个应用级模态（`start_model_setup` 开的设置面板）。它得在这一轮的
+      // **第一下**之前收掉，否则连切页钮都点不动——那一下超时，这一轮就什么都没发生。
+      row.closedSettingsPanel = await closeSettingsPanelIfOpen()
       await win.getByRole('button', { name: item.surface === 'creation' ? '创作' : '生成', exact: true })
         .first().click({ timeout: stationTimeout({ operations: 2 }) })
       await win.waitForTimeout(1200)
@@ -219,6 +242,13 @@ try {
       let sawCard = false
       row.cardsAnswered = []
       while (Date.now() < deadline) {
+        // 回合中途也可能弹设置面板（模型调 `start_model_setup`），它会把下面那张卡整个盖住。
+        // 关掉的次数单独记，**不进 `cardsAnswered`**：那一栏是「答了几张卡」，掺进来这个数就不能看了。
+        if (await closeSettingsPanelIfOpen()) {
+          row.settingsPanelClosed = (row.settingsPanelClosed ?? 0) + 1
+          await win.waitForTimeout(1000)
+          continue
+        }
         if (await questionCard.count() > 0) {
           if (!sawCard) await win.screenshot({ path: path.join(outputDir, `${item.id}-question-card.png`) }).catch(() => {})
           sawCard = true
