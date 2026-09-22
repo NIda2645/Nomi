@@ -11,6 +11,8 @@
 // 就是装饰，而 CI 里一片绿和「真的测过了」长得一模一样。
 //
 // 素材不进仓库（1.38 GB）：路径走 env NOMI_REAL_MEDIA_DIR，登记表只记规格与来源。
+// 例外只有一类：`repoPath` 素材——早已在公开仓库里的真实镜头（不是合成色块），CI 上也在，
+// 所以每个 PR 都跑的核心冒烟能用它（2026-09-22，docs/plan/2026-09-22-core-flow-smoke-three-defenses.md）。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,18 +50,24 @@ export function resolveRealMediaDir({ env = process.env } = {}) {
  */
 export function requireRealMediaAssets(assetIds, { env = process.env } = {}) {
   const registry = readRealMediaRegistry()
-  const dir = resolveRealMediaDir({ env })
   const wanted = assetIds && assetIds.length > 0 ? assetIds : registry.assets.map((a) => a.id)
-  const resolved = new Map()
-  const missing = []
-  for (const id of wanted) {
+  const entries = wanted.map((id) => {
     const asset = registry.assets.find((a) => a.id === id)
     if (!asset) throw new Error(`真实素材缺失：登记表里没有 id="${id}"`)
+    return asset
+  })
+  // 仓库内素材（repoPath）不读 env：它们随仓库走，CI 上也在。只有要了本机素材库里的那几件才要 env——
+  // 否则「只要仓库内真实素材」的冒烟会因为一个它根本不用的目录而在 CI 上恒红。
+  const dir = entries.some((asset) => asset.relativePath) ? resolveRealMediaDir({ env }) : null
+  const resolved = new Map()
+  const missing = []
+  for (const asset of entries) {
+    const id = asset.id
     if (asset.derivedFrom) {
       resolved.set(id, { ...asset, file: null, derived: true })
       continue
     }
-    const file = path.join(dir, asset.relativePath)
+    const file = asset.repoPath ? path.join(repoRoot, asset.repoPath) : path.join(dir, asset.relativePath)
     if (!fs.existsSync(file)) {
       missing.push(`  - ${id} → ${file}（来源：${asset.source}）`)
       continue

@@ -1079,7 +1079,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 - `pending: true` 的条目必须在 `notes` 里写清由**哪份任务书 / 哪条分支**收口。
 - schema（极简，刻意不长）：`concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }]`。owner 只写真实存在的文件；不确定就标 `pending`，**不许编一个路径填进去**。
 
-**语义级门岗不在本条的落地范围**：把根因合同的门表（R21.3 `node scripts/door-map.mjs`）映射到登记概念、做成只减不增的棘轮，列为**发版后第一批 TODO**（`docs/roadmap/TODO.md` T-QA-21）。本轮只立表不立门；加门岗前先验它会红（R17）。
+**语义级门岗不在本条的落地范围**：把根因合同的门表（R21.3 `node scripts/door-map.mjs`）映射到登记概念、做成只减不增的棘轮，列为**发版后第一批 TODO**（`docs/roadmap/TODO.md` T-QA-24）。本轮只立表不立门；加门岗前先验它会红（R17）。
 
 ### R33.5 对等矩阵是分歧的报警器
 

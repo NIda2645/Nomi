@@ -7,36 +7,52 @@
 //   ③ 连线标签默认不显示，选中节点后其关联边才浮出标签
 //   ④ 拖动节点时浮动工具条 / 提示词面板隐身，松手回来
 //
-// 真 Electron + 真构建产物，隔离 userData / projects，不触发任何生成请求（零额度）。
-// 用法：pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs
-import { launchNomiApp } from './_launchApp.mjs'
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import os from 'node:os'
+// 真 Electron + 真构建产物，不触发任何生成请求（零额度）。
+// 核心冒烟清单的一员（tests/ux/core-smoke/scenarios.mjs）：empty（空项目）/ used（用过的项目：
+// 24 张真实卡 + 编组 + 时间轴展开 + Agent 面板开着 + 1280×800 小窗）两种夹具都跑，项目从项目库点开。
+// 用法：pnpm run build && pnpm run test:core-smoke -- --fixture used
+//       pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs      （单跑，默认 empty / zh-CN）
+//       pnpm run build && node tests/ux/canvas-drag-pan-gestures.walk.mjs en   （单跑英文）
+import { ACCEPTANCE_VIEWPORT } from './_launchApp.mjs'
+import { mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, screenshotSettled } from './_assert.mjs'
+import { expect, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
 import { CANVAS_PANE_SELECTOR, findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
+import { launchCoreSmoke } from './core-smoke/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-drag-pan-gestures')
-// 回填①的交付证据（PR 正文引用的就是这几张）：与常规走查截图分开放，别混进按次覆盖的 shots。
-const evidenceDir = path.join(repoRoot, 'docs/plan/2026-09-11-triage-board-evidence')
-const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'nomi-canvas-drag-pan-'))
-const userDataDir = path.join(tempRoot, 'user-data')
-const projectsDir = path.join(tempRoot, 'projects')
-mkdirSync(projectsDir, { recursive: true })
-mkdirSync(shotsDir, { recursive: true })
-mkdirSync(evidenceDir, { recursive: true })
-
-const { app, win: _initialWin } = await launchNomiApp({
-  name: 'canvas-drag-pan-gestures',
-  userDataDir,
-  settingsDir: userDataDir,
-  projectsDir,
-  args: ['--no-proxy-server'],
-  settleMs: 0,
+// 语言与 node-params 走查同一套约定：位置参数 argv[2]，夹具再让 NOMI_CORE_SMOKE_LOCALE（runner 的 --locale）覆盖。
+// 下面凡是按界面文案找控件的地方都按 EN 取词，两种语言各跑一遍才算数。
+const REQUESTED_LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
+const smoke = await launchCoreSmoke({
+  name: 'canvas-drag-pan',
+  locale: REQUESTED_LOCALE,
+  emptyViewport: ACCEPTANCE_VIEWPORT,
+  // 这条走查会往 catalog 写一个占位 key（让内置图像/视频模型出现，好算出真实的连线 mode）。
+  // 声明它必须落在隔离的合成凭据存储里：夹具给不了就在起进程之前拒，占位 key 永远碰不到真钥匙串。
   syntheticCredentialStorage: true,
 })
+const LOCALE = smoke.locale
+const EN = LOCALE === 'en'
+const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-drag-pan-gestures', `${smoke.fixture}-${LOCALE}`)
+// 回填①的交付证据：只写不跟踪的目录（冒烟必跑，不许把已跟踪文件改脏——跑完 git status 必须干净）。
+const evidenceDir = path.join(shotsDir, 'evidence')
+rmSync(shotsDir, { recursive: true, force: true })
+mkdirSync(evidenceDir, { recursive: true })
+
+const { app } = smoke
+const SEEDED_NODE_IDS = new Set(smoke.project.record.payload.generationCanvas.nodes.map((node) => node.id))
+const SEEDED_EDGE_IDS = smoke.project.record.payload.generationCanvas.edges.map((edge) => edge.id)
+// 这条走查自己建的两张卡与那条线。empty 夹具里画布上只有它们，选择器与「全画布」等价；
+// used 夹具里还有 24 张别的卡——判据必须只看自己那两张，否则量到的是背景。建好之后改写成按 id 选。
+const OWN = {
+  node: '.generation-canvas-v2-node',
+  image: '.generation-canvas-v2-node[data-kind="image"]',
+  video: '.generation-canvas-v2-node[data-kind="video"]',
+  edge: '.generation-canvas-v2__edge',
+}
+const _initialWin = smoke.win
 
 let passed = 0
 function assert(condition, label, detail = '') {
@@ -53,6 +69,8 @@ const getWin = () => {
 }
 
 async function resize(width, height) {
+  // used 夹具的小窗是被测前提，走查不许自己把它放大。
+  if (smoke.lockedViewport) return
   const browserWindow = await app.browserWindow(getWin())
   await browserWindow.evaluate((target, size) => {
     target.setBounds({ x: 0, y: 0, width: size.width, height: size.height })
@@ -129,9 +147,9 @@ const MARQUEE_MAX_BOUNDS_RATIO = 0.6
 
 // 两张卡在 stage 里占多大：框选余量够不够，唯一可信的判据是实测，不是猜。
 async function readMarqueeHeadroom() {
-  return getWin().evaluate(() => {
+  return getWin().evaluate((ownNode) => {
     const stage = document.querySelector('.generation-canvas-v2__stage')
-    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+    const nodes = Array.from(document.querySelectorAll(ownNode))
     if (!stage || !nodes.length) return null
     const stageRect = stage.getBoundingClientRect()
     const rects = nodes.map((node) => node.getBoundingClientRect())
@@ -141,13 +159,13 @@ async function readMarqueeHeadroom() {
       widthRatio: Math.round((width / stageRect.width) * 1000) / 1000,
       heightRatio: Math.round((height / stageRect.height) * 1000) / 1000,
     }
-  })
+  }, OWN.node)
 }
 
 async function findMarqueeGesture() {
-  return getWin().evaluate(({ paneSelector, inset }) => {
+  return getWin().evaluate(({ paneSelector, inset, ownNode }) => {
     const stage = document.querySelector('.generation-canvas-v2__stage')
-    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+    const nodes = Array.from(document.querySelectorAll(ownNode))
     if (!stage) throw new Error('画布 stage 未渲染，无法构造框选手势')
     if (!nodes.length) throw new Error('画布节点未渲染，无法构造框选手势')
     const stageRect = stage.getBoundingClientRect()
@@ -203,7 +221,62 @@ async function findMarqueeGesture() {
       }
     }
     return null
-  }, { paneSelector: CANVAS_PANE_SELECTOR, inset: MARQUEE_STAGE_INSET_PX })
+  }, { paneSelector: CANVAS_PANE_SELECTOR, inset: MARQUEE_STAGE_INSET_PX, ownNode: OWN.node })
+}
+
+/**
+ * 「把我这两张卡收进视野」：先点真实的「适应视图」，再像人一样在两张卡附近的空白处滚轮放大，
+ * 直到卡在屏上够大（≥260px 宽，或两张卡已占满画布四分之三）。empty 夹具里适应视图后本来就够大，一格都不会滚；
+ * used 夹具里适应视图要装下 26 张卡，两张卡只有指甲盖大——人会凑近了再连线，走查也照做。
+ */
+async function frameOwnCards() {
+  await getWin().locator('.generation-canvas-v2__zoom-bar button').first().click()
+  await getWin().waitForTimeout(420)
+  const measure = () => getWin().evaluate(({ ownNode, paneSelector }) => {
+    const stage = document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect()
+    const rects = Array.from(document.querySelectorAll(ownNode)).map((node) => node.getBoundingClientRect())
+    if (!stage) return null
+    const inside = rects.filter((r) => r.left >= stage.left && r.right <= stage.right && r.top >= stage.top && r.bottom <= stage.bottom)
+    if (!rects.length) return { visible: 0, share: 0, minCardWidth: 0, point: null }
+    const box = {
+      left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)),
+      top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)),
+    }
+    const share = Math.max((box.right - box.left) / stage.width, (box.bottom - box.top) / stage.height)
+    const center = { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 }
+    // 滚轮要落在空白上（落在卡上是卡自己的滚动）：从两卡中心往外找最近的一块真空白。
+    for (let radius = 0; radius < 400; radius += 12) {
+      for (let angle = 0; angle < 360; angle += 30) {
+        const x = center.x + radius * Math.cos((angle * Math.PI) / 180)
+        const y = center.y + radius * Math.sin((angle * Math.PI) / 180)
+        if (x < stage.left + 8 || x > stage.right - 8 || y < stage.top + 8 || y > stage.bottom - 8) continue
+        if (document.elementFromPoint(x, y)?.matches(paneSelector)) {
+          return { visible: inside.length, share, minCardWidth: Math.min(...rects.map((r) => r.width)), point: { x, y } }
+        }
+      }
+    }
+    return { visible: inside.length, share, minCardWidth: Math.min(...rects.map((r) => r.width)), point: null }
+  }, { ownNode: OWN.node, paneSelector: CANVAS_PANE_SELECTOR })
+  let view = await measure()
+  for (let step = 0; step < 12 && view?.point; step += 1) {
+    // 卡在屏上至少这么宽，它自己的浮框（固定屏幕尺寸）才不会把卡和握把整个盖住——人也是凑到这个大小才去连线。
+    if (view.minCardWidth >= 240 || view.share >= 0.7) break
+    const point = view.point
+    await getWin().mouse.move(point.x, point.y)
+    await getWin().mouse.wheel(0, -120)
+    await getWin().waitForTimeout(220)
+    const next = await measure()
+    if (!next || next.visible < 2) {
+      // 放过头了（有一张卡出了视野）：退回一格就停。
+      await getWin().mouse.move(point.x, point.y)
+      await getWin().mouse.wheel(0, 120)
+      await getWin().waitForTimeout(220)
+      view = await measure()
+      break
+    }
+    view = next
+  }
+  return view
 }
 
 // 数一段操作里「连线层 / 标签层 / 画布外壳」到底被写了多少次 DOM。
@@ -255,7 +328,8 @@ async function addNode(kind) {
   await getWin().waitForTimeout(700)
   const after = await getWin().evaluate(() =>
     Array.from(document.querySelectorAll('.react-flow__node')).map((node) => node.getAttribute('data-id')))
-  return after.find((id) => !before.includes(id)) ?? null
+  // 夹具里原有的卡（used 夹具有 24 张）在视口一动时才进 DOM（只渲染可见节点）——它们不是「这一次新建的」。
+  return after.find((id) => !before.includes(id) && !SEEDED_NODE_IDS.has(id)) ?? null
 }
 
 /** 某张卡此刻相对 stage 的位置。stage 尺寸一并交出来：判几何红时先看是不是舞台根本不是这么大。 */
@@ -285,14 +359,6 @@ getWin().on('console', (msg) => {
 
 try {
   await getWin().waitForLoadState('domcontentloaded')
-  await getWin().waitForTimeout(1700)
-  await getWin().evaluate(() => {
-    localStorage.setItem('__nomiE2E', '1')
-    for (const key of ['nomi:splash:v1', 'nomi:journey-tour:v1']) localStorage.setItem(key, 'seen')
-  })
-  await getWin().reload()
-  await getWin().waitForLoadState('domcontentloaded')
-  await getWin().waitForTimeout(1600)
   await resize(1600, 1000)
   await dismissFirstRun()
 
@@ -320,16 +386,10 @@ try {
   await getWin().waitForTimeout(1500)
   await dismissFirstRun()
 
-  const blankProject = getWin().locator('button, [role="button"]', { hasText: '新建空白项目' }).first()
-  await blankProject.waitFor({ timeout: 8000 })
-  await blankProject.click()
-  await getWin().waitForTimeout(2200)
+  // 从项目库点开夹具项目（empty = 空项目；used = 用过的项目），进生成画布。
+  win = await smoke.openProject()
   await dismissFirstRun()
   await resize(1600, 1000)
-
-  const generation = getWin().getByRole('button', { name: '生成', exact: true }).first()
-  await generation.waitFor({ timeout: 8000 })
-  await generation.click()
   await getWin().locator('.generation-canvas-v2-toolbar').waitFor({ timeout: 8000 })
 
   // ── 任务准备：摆一个图片节点 + 一个视频节点 ─────────────────────────────
@@ -350,11 +410,15 @@ try {
     '每张新建的卡当场完整露出在 stage 内（不被常驻 Agent 面板遮住）',
     JSON.stringify(createdPlacement),
   )
-  const nodeIds = await getWin().evaluate(() =>
-    Array.from(document.querySelectorAll('.generation-canvas-v2-node')).map((node) => ({
+  const ownId = (kind) => createdPlacement.find((entry) => entry.kind === kind)?.id
+  OWN.image = `.generation-canvas-v2-node[data-node-id="${ownId('image')}"]`
+  OWN.video = `.generation-canvas-v2-node[data-node-id="${ownId('video')}"]`
+  OWN.node = `${OWN.image}, ${OWN.video}`
+  const nodeIds = await getWin().evaluate((ownNode) =>
+    Array.from(document.querySelectorAll(ownNode)).map((node) => ({
       id: node.getAttribute('data-node-id'),
       kind: node.getAttribute('data-kind'),
-    })),
+    })), OWN.node,
   )
   if (nodeIds.length < 2) {
     // 节点建了却没渲染出来：把 React Flow 容器尺寸、视口、节点数与控制台告警一起交出去（NaN 视口那一族见
@@ -377,9 +441,32 @@ try {
   // ── ① 空白左键拖 = 平移画布 ────────────────────────────────────────────
   const blank = await findBlankPoint()
   assert(Boolean(blank), '找得到一块画布空白', JSON.stringify(blank))
+  // 建卡后的「露出平移」是一段动画：它没停就读基线，量到的是动画而不是这次拖动（机器忙时实测 Δ 反号）。
+  // 等画面视觉安定（_assert.mjs 的共享判据）再开始。
+  await waitForVisualQuiescence(getWin())
   const before = await readTransform()
   assert(before.willChange.includes('transform'), '变换层已提升为合成层（will-change: transform）', before.willChange)
 
+  // 这一笔平移偶发「画布反向跳 (+322,+177)」（2026-09-22 两个会话各见过一次，之后 30+ 次复跑未再现）。
+  // 失败时要有证据：被动记下视口 transform 的每次改写、指针事件落点、选中变化（只观察、不改时序），
+  // 断言红了就把这份轨迹连同截图一起交出去。
+  await getWin().evaluate(() => {
+    const trace = []
+    window.__walkPanTrace = trace
+    const t0 = performance.now()
+    const at = () => Math.round(performance.now() - t0)
+    const viewportLayer = document.querySelector('.react-flow__viewport')
+    if (viewportLayer) new MutationObserver(() => trace.push(['viewport', at(), viewportLayer.style.transform])).observe(viewportLayer, { attributes: true, attributeFilter: ['style'] })
+    for (const type of ['pointerdown', 'pointerup', 'click']) {
+      window.addEventListener(type, (event) => trace.push([type, at(), String(event.target?.className ?? '').slice(0, 60)]), true)
+    }
+    const nodeLayer = document.querySelector('.react-flow__nodes')
+    if (nodeLayer) {
+      new MutationObserver((records) => {
+        for (const record of records) trace.push(['node-class', at(), record.target.getAttribute('data-id'), record.target.classList.contains('selected')])
+      }).observe(nodeLayer, { attributes: true, attributeFilter: ['class'], subtree: true })
+    }
+  })
   await getWin().mouse.move(blank.x, blank.y)
   await getWin().mouse.down()
   await getWin().mouse.move(blank.x - 140, blank.y - 90, { steps: 14 })
@@ -401,6 +488,8 @@ try {
   await getWin().mouse.up()
   await getWin().waitForTimeout(220)
   const afterPan = await readTransform()
+  const panMoved = Math.round(afterPan.x - before.x) <= -100 && Math.round(afterPan.y - before.y) <= -60
+  if (!panMoved) console.log('  · 平移轨迹（失败证据）', JSON.stringify({ before, afterPan, trace: await getWin().evaluate(() => window.__walkPanTrace.slice(-120)) }))
 
   assert(duringPan.cursor === 'grabbing', '拖动中光标是 grabbing', duringPan.cursor)
   assert(duringPan.panningAttr === null, '左键平移不写 data-panning（光标交给 CSS :active）')
@@ -408,35 +497,35 @@ try {
   assert(duringPan.visibleOverlays === 0, '平移期间浮层也收起来了', JSON.stringify(duringPan))
   assert(duringPan.marquee === 0, '空白左键拖不再拉出框选矩形')
   assert(
-    Math.round(afterPan.x - before.x) <= -100 && Math.round(afterPan.y - before.y) <= -60,
+    panMoved,
     '画布确实跟着鼠标移动了',
     `Δ=(${Math.round(afterPan.x - before.x)}, ${Math.round(afterPan.y - before.y)})`,
   )
   assert(afterPan.zoom === before.zoom, '平移不改变缩放')
 
   // ── ② 平移不重建节点：拖完还是同一批 DOM 实例（React 没重挂），且没有新的页面错误 ──
-  const nodeIdentity = await getWin().evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+  const nodeIdentity = await getWin().evaluate((ownNode) => {
+    const nodes = Array.from(document.querySelectorAll(ownNode))
     window.__walkNodeRefs = nodes
     return nodes.length
-  })
+  }, OWN.node)
   const blankAgain = await findBlankPoint()
   await getWin().mouse.move(blankAgain.x, blankAgain.y)
   await getWin().mouse.down()
   await getWin().mouse.move(blankAgain.x + 90, blankAgain.y + 40, { steps: 10 })
   await getWin().mouse.up()
   await getWin().waitForTimeout(200)
-  const sameInstances = await getWin().evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+  const sameInstances = await getWin().evaluate((ownNode) => {
+    const nodes = Array.from(document.querySelectorAll(ownNode))
     const refs = window.__walkNodeRefs || []
     return nodes.length === refs.length && nodes.every((node, index) => node === refs[index])
-  })
+  }, OWN.node)
   assert(nodeIdentity >= 2 && sameInstances, '平移前后节点是同一批 DOM 实例（没有整层重建）')
 
   // ── ① 点一下空白 = 取消选中；Shift + 左键拖 = 框选并追加 ─────────────────
   // 点卡片本体的那一点由 `_canvasHit.mjs` 定（单一 owner）：外接盒角上的固定偏移在窄舞台下
   // 会滑到左侧工具条底下，Playwright 只报 "html intercepts pointer events"。
-  const firstNodeHit = await findNodeHitPoint(getWin(), { nodeSelector: '.generation-canvas-v2-node' })
+  const firstNodeHit = await findNodeHitPoint(getWin(), { nodeSelector: OWN.image })
   assert(Boolean(firstNodeHit), '第一张卡上找得到真正点得到的一点', JSON.stringify(firstNodeHit))
   await getWin().mouse.click(firstNodeHit.x, firstNodeHit.y)
   await getWin().waitForTimeout(300)
@@ -525,9 +614,9 @@ try {
   await getWin().waitForTimeout(250)
   assert((await selectedNodeIds()).length === 0, '半扫之前先把选区清空（否则选上了也说明不了问题）')
 
-  const partialGesture = await getWin().evaluate(({ paneSelector, inset }) => {
+  const partialGesture = await getWin().evaluate(({ paneSelector, inset, ownNode }) => {
     const stage = document.querySelector('.generation-canvas-v2__stage')
-    const nodes = Array.from(document.querySelectorAll('.generation-canvas-v2-node'))
+    const nodes = Array.from(document.querySelectorAll(ownNode))
     if (!stage || !nodes.length) return null
     const stageRect = stage.getBoundingClientRect()
     const insideStage = (point) =>
@@ -562,7 +651,7 @@ try {
       }
     }
     return null
-  }, { paneSelector: CANVAS_PANE_SELECTOR, inset: MARQUEE_STAGE_INSET_PX })
+  }, { paneSelector: CANVAS_PANE_SELECTOR, inset: MARQUEE_STAGE_INSET_PX, ownNode: OWN.node })
   assert(Boolean(partialGesture), '找得到「只扫到一张卡一半」的框选手势', JSON.stringify(partialGesture))
   assert(
     partialGesture.coveredRatio > 0.2 && partialGesture.coveredRatio < 0.9,
@@ -650,33 +739,68 @@ try {
   )
 
   // ── ③ 连线标签：默认不显示，选中节点才浮出 ──────────────────────────────
-  const imageNode = getWin().locator('.generation-canvas-v2-node[data-kind="image"]').first()
-  const videoNode = getWin().locator('.generation-canvas-v2-node[data-kind="video"]').first()
+  const imageNode = getWin().locator(OWN.image).first()
+  const videoNode = getWin().locator(OWN.video).first()
+
+  // 用过的项目里，画布底部挂着两样「底部停靠物」：时间轴有片段时的「画面小窗」、卡多时自动出现的小地图。
+  // 浮框要避让它们：1280×800 小窗里可用高度因此放不下浮框，选中卡的浮框按既定兜底被 clamp 到盖住卡本身
+  // 和连线握把（useComposerViewportPlacement.ts「放不下时宁可盖住节点一截」）。人会先把碍事的两样收起来
+  // 再连线，走查照做；empty 夹具里两样都不在，这一步什么都不做。
+  for (const name of EN ? ['Collapse mini preview', 'Hide minimap'] : ['收起画面小窗', '隐藏地图']) {
+    const dockToggle = getWin().getByRole('button', { name, exact: true })
+    if (!(await dockToggle.isVisible())) continue
+    await dockToggle.click()
+    await expect(dockToggle).toBeHidden()
+  }
 
   // 中途缩放可能把节点中心推到视口外；连线前先把两张卡完整收回可视区域。
-  await getWin().locator('.generation-canvas-v2__zoom-bar button').first().click()
-  await getWin().waitForTimeout(420)
+  await frameOwnCards()
 
-  // 先摆位置：把视频节点拖到图片节点的右下方空地（真实动作，也给连线握把腾出空间）。
+  // 先摆位置（真实动作）：把视频卡拖到图片卡**右边同一行**，再像人一样把画布平移到两张卡贴近左上角——
+  // 连线时图片卡的浮框在下沿展开，不会压住视频卡与右侧握把。
+  // （小窗里浮框放不下时会被 clamp 进视口、盖住卡本身，那是浮框的既定兜底，走查不能指望它让路。）
   const deselectPoint = await findBlankPoint()
   await getWin().mouse.click(deselectPoint.x, deselectPoint.y)
   await getWin().waitForTimeout(200)
+  const imageBeforeLayout = await imageNode.boundingBox()
   const videoStart = await videoNode.boundingBox()
-  const visibleStage = await getWin().locator('.generation-canvas-v2__stage').boundingBox()
+  const stageForLayout = await getWin().locator('.generation-canvas-v2__stage').boundingBox()
   const videoTarget = {
-    x: Math.min(videoStart.x + videoStart.width / 2 + 60, visibleStage.x + visibleStage.width - videoStart.width / 2 - 24),
-    y: Math.min(videoStart.y + 200, visibleStage.y + visibleStage.height - videoStart.height - 24),
+    x: Math.min(imageBeforeLayout.x + imageBeforeLayout.width + 80 + videoStart.width / 2, stageForLayout.x + stageForLayout.width - videoStart.width / 2 - 24),
+    y: imageBeforeLayout.y + 12,
   }
   await getWin().mouse.move(videoStart.x + videoStart.width / 2, videoStart.y + 12)
   await getWin().mouse.down()
   await getWin().mouse.move(videoTarget.x, videoTarget.y, { steps: 14 })
   await getWin().mouse.up()
   await getWin().waitForTimeout(400)
+  const collapseAfterDrag = await findBlankPoint()
+  await getWin().mouse.click(collapseAfterDrag.x, collapseAfterDrag.y)
+  await getWin().waitForTimeout(250)
+  const imageBeforePan = await imageNode.boundingBox()
+  const panFrom = await findBlankPoint()
+  const panBy = {
+    x: Math.round(stageForLayout.x + 150 - imageBeforePan.x),
+    y: Math.round(stageForLayout.y + 72 - imageBeforePan.y),
+  }
+  await getWin().mouse.move(panFrom.x, panFrom.y)
+  await getWin().mouse.down()
+  await getWin().mouse.move(panFrom.x + panBy.x, panFrom.y + panBy.y, { steps: 12 })
+  await getWin().mouse.up()
+  await getWin().waitForTimeout(320)
+  const visibleStage = await getWin().locator('.generation-canvas-v2__stage').boundingBox()
 
-  await imageNode.click({ position: { x: 20, y: 10 } })
+  // 拖完视频卡它是选中态，浮框展开；小窗（used 夹具 1280×800）里浮框会盖住图片卡。
+  // 真人会先点一下空白收起它，再去点图片卡上真正点得到的那一点（命中判据归 _canvasHit.mjs）。
+  const collapseComposerAt = await findBlankPoint()
+  await getWin().mouse.click(collapseComposerAt.x, collapseComposerAt.y)
+  await getWin().waitForTimeout(300)
+  const imageSelectHit = await findNodeHitPoint(getWin(), { nodeSelector: OWN.image })
+  assert(Boolean(imageSelectHit), '图片卡上找得到真正点得到的一点', JSON.stringify(imageSelectHit))
+  await getWin().mouse.click(imageSelectHit.x, imageSelectHit.y)
   await getWin().waitForTimeout(450)
-  const selectedImageAffordances = await getWin().evaluate(() => {
-    const image = document.querySelector('.generation-canvas-v2-node[data-kind="image"]')
+  const selectedImageAffordances = await getWin().evaluate((ownImage) => {
+    const image = document.querySelector(ownImage)
     const flowNode = image?.closest('.react-flow__node')
     const handles = Array.from(
       flowNode?.querySelectorAll('.generation-canvas-react-flow__handle[data-affordance="magnetic"]') || [],
@@ -707,7 +831,7 @@ try {
         }
       }),
     }
-  })
+  }, OWN.image)
   assert(
       selectedImageAffordances.handles.length === 2 &&
       selectedImageAffordances.handles.map((handle) => handle.side).sort().join(',') === 'left,right' &&
@@ -741,6 +865,13 @@ try {
     },
     handlePoint,
   )
+  if (!handleHit.magnetic) {
+    const layout = await getWin().evaluate((ownImage) => {
+      const r = (el) => { const b = el?.getBoundingClientRect(); return b ? [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)] : null }
+      return { stage: r(document.querySelector('.generation-canvas-v2__stage')), image: r(document.querySelector(ownImage)), composer: r(document.querySelector('.generation-canvas-v2-node__composer-card')) }
+    }, OWN.image)
+    console.log('  · DIAG handle', JSON.stringify({ handlePoint, imageBox, layout }))
+  }
   assert(handleHit.magnetic, '图片节点右侧握把可点', JSON.stringify(handleHit))
   await getWin().mouse.move(handlePoint.x, handlePoint.y)
   await getWin().mouse.down()
@@ -751,12 +882,17 @@ try {
   await getWin().mouse.move(videoVisibleTarget.x, videoVisibleTarget.y, { steps: 16 })
   await getWin().mouse.up()
   await getWin().waitForTimeout(700)
-  const edgeCount = await getWin().evaluate(() => document.querySelectorAll('.generation-canvas-v2__edge').length)
+  // 刚连出来的那条线：夹具里原有的线不算（used 夹具有 27 条）。
+  const ownEdgeIds = () => getWin().evaluate((seeded) => Array.from(document.querySelectorAll('.generation-canvas-v2__edge'))
+    .map((edge) => edge.getAttribute('data-edge-id')).filter((id) => id && !seeded.includes(id)), SEEDED_EDGE_IDS)
+  const createdEdges = await ownEdgeIds()
+  const edgeCount = createdEdges.length
   assert(edgeCount >= 1, '图片节点连到了视频节点', `${edgeCount} 条边`)
-  const connectedEdgeVisual = await getWin().evaluate(() => {
-    const image = document.querySelector('.generation-canvas-v2-node[data-kind="image"]')
-    const video = document.querySelector('.generation-canvas-v2-node[data-kind="video"]')
-    const path = document.querySelector('.generation-canvas-v2__edge-path')
+  OWN.edge = `.generation-canvas-v2__edge[data-edge-id="${createdEdges[0]}"]`
+  const connectedEdgeVisual = await getWin().evaluate((own) => {
+    const image = document.querySelector(own.image)
+    const video = document.querySelector(own.video)
+    const path = document.querySelector(`${own.edge} .generation-canvas-v2__edge-path`)
     if (!image || !video || !(path instanceof SVGPathElement)) return null
     const imageRect = image.getBoundingClientRect()
     const videoRect = video.getBoundingClientRect()
@@ -782,7 +918,7 @@ try {
       stroke: getComputedStyle(path).stroke,
       accent,
     }
-  })
+  }, OWN)
   assert(
     connectedEdgeVisual &&
       connectedEdgeVisual.sourceBoundaryError <= 2 && connectedEdgeVisual.targetBoundaryError <= 2 &&
@@ -805,7 +941,7 @@ try {
   await snap('03-edge-labels-hidden.png')
   assert(labelsWhenIdle === 0, '没选中任何节点时，画布上一个连线标签都没有')
 
-  const videoHit = await findNodeHitPoint(getWin(), { nodeSelector: '.generation-canvas-v2-node[data-kind="video"]' })
+  const videoHit = await findNodeHitPoint(getWin(), { nodeSelector: OWN.video })
   assert(Boolean(videoHit), '视频卡上找得到真正点得到的一点', JSON.stringify(videoHit))
   await getWin().mouse.click(videoHit.x, videoHit.y)
   await getWin().waitForTimeout(400)
@@ -838,7 +974,7 @@ try {
   // 同一条真实任务继续：改边模式 / 断开 / 锁定，各按一次 Cmd+Z，不能撤掉前一笔。
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const edgeLabel = getWin().locator('.generation-canvas-v2__edge-tag-pill').first()
-  const historyEdge = getWin().locator('.generation-canvas-v2__edge').first()
+  const historyEdge = getWin().locator(OWN.edge).first()
   const originalMode = await historyEdge.getAttribute('data-mode')
   const originalModeLabel = await edgeLabel.innerText()
   await edgeLabel.click()
@@ -852,17 +988,17 @@ try {
   await getWin().keyboard.press(`${mod}+z`)
   await expect(historyEdge).toHaveAttribute('data-mode', originalMode)
   await expect(edgeLabel).toHaveText(originalModeLabel)
-  await expect(getWin().locator('.generation-canvas-v2__edge')).toHaveCount(edgeCount)
-  await expect(getWin().locator('.generation-canvas-v2-node')).toHaveCount(nodeIds.length)
+  await expect.poll(async () => (await ownEdgeIds()).length).toBe(edgeCount)
+  await expect(getWin().locator(OWN.node)).toHaveCount(nodeIds.length)
   await snap('04b-edge-mode-undone.png')
 
   await edgeLabel.click()
   await getWin().locator('.generation-canvas-react-flow__edge-menu-delete').click()
-  await expect(getWin().locator('.generation-canvas-v2__edge')).toHaveCount(edgeCount - 1)
+  await expect.poll(async () => (await ownEdgeIds()).length).toBe(edgeCount - 1)
   await snap('04c-edge-disconnected.png')
   await getWin().keyboard.press(`${mod}+z`)
-  await expect(getWin().locator('.generation-canvas-v2__edge')).toHaveCount(edgeCount)
-  await expect(getWin().locator('.generation-canvas-v2-node')).toHaveCount(nodeIds.length)
+  await expect.poll(async () => (await ownEdgeIds()).length).toBe(edgeCount)
+  await expect(getWin().locator(OWN.node)).toHaveCount(nodeIds.length)
   await snap('04d-edge-disconnect-undone.png')
 
   const lockBadge = videoNode.locator('[data-node-lock]')
@@ -871,7 +1007,7 @@ try {
   await expect(lockBadge).toHaveAttribute('data-node-lock', 'locked')
   await getWin().keyboard.press(`${mod}+z`)
   await expect(lockBadge).toHaveAttribute('data-node-lock', 'unlocked')
-  await expect(getWin().locator('.generation-canvas-v2__edge')).toHaveCount(edgeCount)
+  await expect.poll(async () => (await ownEdgeIds()).length).toBe(edgeCount)
   await snap('04e-node-lock-undone.png')
   console.log('  ✓ 改边模式、断线、锁定各按一次 Cmd+Z 还原，前一笔节点/连线保留')
 
@@ -884,7 +1020,7 @@ try {
 
   // 起手点同样按「最顶层就是这张卡」取（外接盒顶边 +12 在窄舞台下会压在卡片标题片/浮层上，
   // 于是 mousedown 根本没落到卡上，走查报的却是「拖动中画布没发布 data-dragging」）。
-  const dragGrab = await findNodeHitPoint(getWin(), { nodeSelector: '.generation-canvas-v2-node[data-kind="video"]' })
+  const dragGrab = await findNodeHitPoint(getWin(), { nodeSelector: OWN.video })
   assert(Boolean(dragGrab), '视频卡上找得到可以起手拖动的一点', JSON.stringify(dragGrab))
   await getWin().mouse.move(dragGrab.x, dragGrab.y)
   await getWin().mouse.down()
@@ -986,19 +1122,47 @@ try {
     const metrics = async () =>
       Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]))
     const panPoint = await findBlankPoint()
+    // 平移方向朝画布中心：把选中卡往停靠物（左侧工具条、底部导航）边缘推，浮框会被 clamp 住、每帧重新定位——
+    // 那是浮框的既定避让行为（useComposerViewportPlacement.ts），不是「平移本身」。这里量的是平移本身。
+    const panDirection = await getWin().evaluate(() => {
+      const stage = document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect()
+      const selected = document.querySelector('.react-flow__node.selected')?.getBoundingClientRect()
+      if (!stage || !selected) return { x: -1, y: -1 }
+      const sx = (stage.left + stage.right) / 2 - (selected.left + selected.right) / 2
+      const sy = (stage.top + stage.bottom) / 2 - (selected.top + selected.bottom) / 2
+      return { x: sx >= 0 ? 1 : -1, y: sy >= 0 ? 1 : -1 }
+    })
+    // 只渲染可见节点：平移把卡带进 / 带出视野时，React 挂载 / 卸载那几张卡会各触发一次布局——那是虚拟化本身的代价，
+    // 不是「平移路径上读了尺寸」。所以按帧数一数这段里节点层真的增删过几次，每一帧挂卸放行一次布局。
+    // empty 夹具只有两张卡、一直都在视野里，这个数是 0，判据与原来逐字相同。
+    await getWin().evaluate(() => {
+      const layer = document.querySelector('.react-flow__nodes')
+      const state = { frame: 0, frames: new Set(), running: true }
+      const tick = () => { state.frame += 1; if (state.running) requestAnimationFrame(tick) }
+      requestAnimationFrame(tick)
+      state.observer = new MutationObserver(() => state.frames.add(state.frame))
+      if (layer) state.observer.observe(layer, { childList: true })
+      window.__walkNodeMountFrames = state
+    })
     const beforeMetrics = await metrics()
     await getWin().mouse.move(panPoint.x, panPoint.y)
     await getWin().mouse.down()
     for (let step = 0; step < 60; step += 1) {
-      await getWin().mouse.move(panPoint.x - step * 2, panPoint.y - step, { steps: 1 })
+      await getWin().mouse.move(panPoint.x + panDirection.x * step * 2, panPoint.y + panDirection.y * step, { steps: 1 })
       await getWin().waitForTimeout(16)
     }
     await getWin().mouse.up()
     await getWin().waitForTimeout(200)
     const afterMetrics = await metrics()
     const layouts = Math.round(afterMetrics.LayoutCount - beforeMetrics.LayoutCount)
-    console.log(`  · 一秒平移（60 次移动）期间布局重算 ${layouts} 次`)
-    assert(layouts <= 6, '平移是纯合成：整段拖动几乎不重算布局', `${layouts} 次 / 60 帧`)
+    const mountFrames = await getWin().evaluate(() => {
+      const state = window.__walkNodeMountFrames
+      state.running = false
+      state.observer.disconnect()
+      return state.frames.size
+    })
+    console.log(`  · 一秒平移（60 次移动）期间布局重算 ${layouts} 次；其中节点进出视野的帧 ${mountFrames} 帧`)
+    assert(layouts <= 6 + mountFrames, '平移是纯合成：整段拖动几乎不重算布局（节点进出视野那几帧除外）', `${layouts} 次 / 60 帧，挂卸帧 ${mountFrames}`)
   }
 
   // ── ⑨ 双击空白不缩放（旧画布没有这个手势；内核默认 zoomOnDoubleClick=true）────────
@@ -1063,23 +1227,54 @@ try {
   // 而帮助浮层还照着这个开关生成文案——说明书与实物不符（审计 ③ 表第 3 行）。
   // 这一段走真人路径：点设置 → 通用 → 点芯片 → 关掉 → 回画布滚轮。
   const modifierGlyph = process.platform === 'darwin' ? '⌘' : 'Ctrl'
+  // 帮助浮层里的两条词（i18n generationCommon 的 shortcuts.wheelOrTwoFinger / modWheel）。
+  const WHEEL_OR_TWO_FINGER = EN ? 'Wheel / two-finger' : '滚轮 / 双指滑'
+  const WHEEL_WORD = EN ? 'wheel' : '滚轮'
+
+  // 用过的项目里的卡是 apimart 模型生成的，隔离资料里没有它的 key，App 会挂一条常驻的「模型当前不可用」提醒
+  // （警告类 toast 要手动关）。它浮在所有弹层之上，正好压住设置弹窗右上角的关闭钮——人会先点掉提醒再关弹窗，走查照做。
+  async function clickPastToasts(locator) {
+    const box = await locator.boundingBox()
+    if (box) {
+      const toastClose = await getWin().evaluate(({ x, y }) => {
+        const toast = document.elementFromPoint(x, y)?.closest('.mantine-Notification-root')
+        const close = toast?.querySelector('.mantine-Notification-closeButton')
+        const rect = close?.getBoundingClientRect()
+        return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
+      }, { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+      if (toastClose) {
+        await getWin().mouse.click(toastClose.x, toastClose.y)
+        await getWin().waitForTimeout(300)
+      }
+    }
+    await locator.click()
+  }
 
   async function chooseCanvasGesture(scheme) {
-    await getWin().getByRole('button', { name: '设置', exact: true }).first().click()
-    const dialog = getWin().getByRole('dialog', { name: '设置', exact: true })
+    const settingsName = EN ? 'Settings' : '设置'
+    await getWin().getByRole('button', { name: settingsName, exact: true }).first().click()
+    const dialog = getWin().getByRole('dialog', { name: settingsName, exact: true })
     await expect(dialog).toBeVisible()
     await dialog.locator('[data-settings-tab-id="general"]').click()
     const chip = dialog.locator(`[data-canvas-gesture-scheme="${scheme}"]`)
     await chip.click()
     await expect(chip).toHaveAttribute('aria-checked', 'true')
-    await dialog.locator('[data-settings-close]').click()
+    await clickPastToasts(dialog.locator('[data-settings-close]'))
     await expect(dialog).toHaveCount(0)
     await getWin().waitForTimeout(360)
   }
 
   async function readControlsHelp(name) {
-    await getWin().getByRole('button', { name: '画布操作', exact: true }).first().click()
-    const panel = getWin().getByRole('dialog', { name: '画布操作帮助', exact: true })
+    // 用过的项目里有一批还没生成的卡，画布底部居中挂着批量生成栏；1280 宽、Agent 面板开着时画布只剩 ~800 宽，
+    // 这条栏压在左下角缩放条上，「画布操作」那颗钮被它盖住点不到（已记为待修的布局问题，见方案「实测发现」）。
+    // 人会先点栏上的 × 把它收起再去点帮助，走查照做；empty 夹具里没有这条栏，这一步什么都不做。
+    const batchDockDismiss = getWin().getByRole('button', { name: EN ? 'Hide batch generation bar' : '隐藏批量生成栏', exact: true })
+    if (await batchDockDismiss.isVisible()) {
+      await batchDockDismiss.click()
+      await expect(batchDockDismiss).toBeHidden()
+    }
+    await getWin().getByRole('button', { name: EN ? 'Canvas controls' : '画布操作', exact: true }).first().click()
+    const panel = getWin().getByRole('dialog', { name: EN ? 'Canvas controls help' : '画布操作帮助', exact: true })
     await expect(panel).toBeVisible()
     await evidence(name)
     const text = (await panel.innerText()).replace(/\s+/g, ' ')
@@ -1091,7 +1286,7 @@ try {
   await chooseCanvasGesture('modifier-zoom')
   const panSchemeHelp = await readControlsHelp('backfill-a-help-modifier-zoom.png')
   assert(
-    panSchemeHelp.includes('滚轮 / 双指滑') && panSchemeHelp.includes(`${modifierGlyph} + 滚轮`),
+    panSchemeHelp.includes(WHEEL_OR_TWO_FINGER) && panSchemeHelp.includes(`${modifierGlyph} + ${WHEEL_WORD}`),
     '平移档的帮助浮层写着「滚轮/双指滑=平移、修饰键+滚轮=缩放」',
     panSchemeHelp.slice(0, 160),
   )
@@ -1136,7 +1331,7 @@ try {
   // `data-dragging` 就永远摘不掉，浮框 / 浮条 / 版本托盘全部隐身（docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
   // 本文件别处每次平移后都等 ≥260ms 才下一步，正好错过那 150ms——所以这里刻意「松手即点」。
   {
-    await getWin().getByLabel('适应视图', { exact: true }).first().click()
+    await getWin().getByLabel(EN ? 'Fit view' : '适应视图', { exact: true }).first().click()
     await getWin().waitForTimeout(500)
     const panStart = await findBlankPoint()
     const target = await getWin().evaluate(() => {
@@ -1175,7 +1370,7 @@ try {
   await chooseCanvasGesture('wheel-zoom')
   const zoomSchemeHelp = await readControlsHelp('backfill-a-help-wheel-zoom.png')
   assert(
-    !zoomSchemeHelp.includes('滚轮 / 双指滑'),
+    !zoomSchemeHelp.includes(WHEEL_OR_TWO_FINGER),
     '缩放档的帮助浮层不再列「滚轮=平移」那一行（文案跟着实物走）',
     zoomSchemeHelp.slice(0, 160),
   )
@@ -1199,5 +1394,5 @@ try {
   console.error(`\n❌ ${error.message}`)
   process.exitCode = 1
 } finally {
-  await app.close().catch(() => {})
+  await smoke.close()
 }

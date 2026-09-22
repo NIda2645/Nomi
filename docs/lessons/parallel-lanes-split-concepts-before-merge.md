@@ -17,4 +17,4 @@
 - 「两边改的文件不重叠」**不是**可以并行的理由：这四个实例里文件一个都不重叠。
 - 多入口共享同一概念（Agent 面板 / 画布 / 外部 MCP / 批量）→ 做「同一输入 → 各入口出站报文逐字节相同」的对等测试，做成棘轮（新入口必须登记），让分歧在测试里报错。
 
-**出处**：2026-09-22 并行 lane 概念分裂复盘；规则 R33（`../engineering-rules.md`）与编排手册 [§18](../engineering/agent-orchestration-playbook.md)；语义级门岗 `check:concept-owners` 排在发版后第一批（`../roadmap/TODO.md` T-QA-21）。
+**出处**：2026-09-22 并行 lane 概念分裂复盘；规则 R33（`../engineering-rules.md`）与编排手册 [§18](../engineering/agent-orchestration-playbook.md)；语义级门岗 `check:concept-owners` 排在发版后第一批（`../roadmap/TODO.md` T-QA-24）。

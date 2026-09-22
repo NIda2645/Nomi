@@ -25,6 +25,7 @@ import { buildSnapPoints, resolveSnap, pixelThresholdToFrames } from './snapping
 import { notify } from '../../ui/notificationPolicy'
 import { reportAdoptionOutcome } from '../adoption/adoptionReceipt'
 import { dispatchTimelineShortcut } from './timelineShortcuts'
+import { installShortcutSurfaceTracker } from '../shortcutSurface'
 import { groupTimelineTransitionFeedbackByTrack } from './timelineVisualFeedback'
 import { TimelineContextMenu, type TimelineContextTarget } from './TimelineContextMenu'
 import { TimelineShortcutsDialog } from './TimelineShortcutsDialog'
@@ -161,6 +162,7 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
     [rulerEndFrame, timeline.fps, timeline.scale],
   )
   const tracksRef = React.useRef<HTMLDivElement | null>(null)
+  const panelRef = React.useRef<HTMLElement | null>(null)
   const [tracksViewportWidth, setTracksViewportWidth] = React.useState(0)
   const contentViewportWidth = tracksViewportWidth
   const rulerWidth = Math.max(frameToPixel(rulerEndFrame, timeline.scale), contentViewportWidth)
@@ -223,8 +225,9 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
             break
           }
         }
-      })
+      }, panelRef.current)
     }
+    installShortcutSurfaceTracker()
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [
@@ -347,6 +350,8 @@ export default function TimelinePanel({ density = 'compact', regionLabel, action
 
   return (
     <section
+      ref={panelRef}
+      data-shortcut-surface="timeline"
       className={cn(
         'workbench-timeline',
         'relative min-w-0 min-h-0 h-full grid grid-rows-[auto_minmax(0,1fr)]',
