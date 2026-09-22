@@ -45,6 +45,10 @@ export default tseslint.config(
       'skills/**',
       // 研究产物中的原型脚本（可独立运行的 ESM 采集/校验器）——非产品源码，不 lint。
       'docs/research/**/prototype/**',
+      // 归档的实测证据（docs/evidence/<日期>-<主题>/）：当时那次测量的**原件**，含可独立运行的
+      // .mjs 计时脚本（Node 全局、自带未用变量）。它们在仓库里的唯一价值是可核对——
+      // 按 lint 改一个字，它就不再是「当时那次运行的记录」了。非产品源码，不 lint。
+      'docs/evidence/**',
       // design-sync（组件库同步）：.ds-sync 是外部技能暂存的转换器脚本、ds-bundle 是它的构建产物、
       // .design-sync/support 是本地构建脚本+压平后的 CSS——三者都 gitignored，是构建工具不是产品源码，不 lint。
       // （.design-sync/previews/ 是手写的预览组合，走 tsx，保持被 lint。）

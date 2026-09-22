@@ -92,6 +92,43 @@
       },
       "source": "用户 2026-08-12 真机录屏口播；素材不进仓库，本机在 localDefaultDir",
       "whyThisOne": "纯中文长口播（9 分钟），用来验分段接缝：一条要切成两段以上的音轨，接缝处那句话有没有被腰斩或重复，只有真实连续语流看得出来"
+    },
+    {
+      "id": "shot-cut-aug12-hevc",
+      "kind": "video",
+      "relativePath": "8月12日.mov",
+      "spec": {
+        "codec": "hevc",
+        "width": 1980,
+        "height": 1080,
+        "bytes": 175405597,
+        "durationSeconds": 547.202,
+        "fps": 30,
+        "bFrames": 2,
+        "frameCount": 16414,
+        "rawDetectedCuts": 390,
+        "dedupedCuts": 320,
+        "keptCuts": 120
+      },
+      "source": "用户 2026-08-12 真机录屏；素材不进仓库，本机在 localDefaultDir",
+      "whyThisOne": "HEVC 长片含 B 帧重排，约 547 秒；随附 ffmpeg 实测原始切点 390、两帧去重后 320、按分数封顶 120，直接覆盖 shot-cut 的真实上限路径"
+    },
+    {
+      "id": "video-fastcut-derived",
+      "kind": "video",
+      "derivedFrom": {
+        "assetId": "speech-zh-only-hevc",
+        "how": "按时间跳着截 175 段各 0.40 秒（scale=480:-2, fps=30），首尾相接成一条 70 秒的片子——每个接缝就是一次真实硬切。落测试自己的 tmp（按源文件身份缓存），不写用户素材目录、不进仓库。实现在 electron/video/shotCutSheetAlignment.realMedia.test.ts 的 deriveFastCutClip()"
+      },
+      "spec": {
+        "format": "mp4",
+        "width": 480,
+        "height": 262,
+        "fps": 30,
+        "durationSeconds": 70,
+        "minDetectedCuts": 121
+      },
+      "whyThisOne": "保留短间隔接缝的 H.264 回归样本，画面来自真实录制；原片的 HEVC / B 帧重排另由 shot-cut-aug12-hevc 覆盖。测试要求派生片去重后仍超过 120 刀，并有打印分数恰好等于封顶阈值的帧。派生过程使用生产 resolver 的随附二进制，缓存身份包含源文件与二进制身份"
     }
   ],
   "coverage": [
@@ -170,6 +207,17 @@
       ],
       "status": "live",
       "why": "「用户照文稿让 Agent 出分镜」这条整机走查里，参考图是从登记素材抽的 4K 帧、经**素材库的文件选择器**真导入的。它证的是别的腿证不了的那半件事：Agent 说「用我素材库那张图当参考」时，那张图真的走过导入链路、真的有 assetId、真的能被 look_at_media 读到。合成占位图在这条路上永远不会暴露参考图那一族缺陷（2026-09-18 之前带参考图的分镜 100% 失败，正是这一段）。**注意它不覆盖 walkthrough 那条债**：那条说的是 J4/J5 的冷开成本与 S 规模素材，这里只有一张图。"
+    },
+    {
+      "class": "shot-cut-coverage",
+      "test": "electron/video/shotCutSheetAlignment.realMedia.test.ts",
+      "assets": [
+        "speech-zh-only-hevc",
+        "video-fastcut-derived",
+        "shot-cut-aug12-hevc"
+      ],
+      "status": "live",
+      "why": "联系表「第 i 格 = 第 i 刀」这条只有真 ffmpeg 才证得了：第一版单测全绿、合成夹具零发现，而真实素材上 120 刀里 21 刀指向错误格子（JS 只看得到 scene_score 的 6 位打印值，ffmpeg 的 gt() 比内部 double，恰好等于阈值那一帧两边判断相反）。这条测试不看中间量，只逐格比对『格子里的画面 vs 原片在该刀时间戳上的帧』（16x12 灰度平均绝对差，同帧 ≤2.4 / 错帧普遍 >20）。实测：按 pts 点名 0/120 错；退回按分数重筛 90/120 错。**本机腿**：CI runner 上没有这份素材，该文件已按 `*.realMedia.test.ts` 约定排除在默认 vitest 车道之外（vitest.config.ts 的 REAL_MEDIA_TESTS），用 `pnpm run test:real-media` 跑——缺素材时照样硬红，不 skip"
     },
     {
       "class": "core-smoke",
