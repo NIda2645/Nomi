@@ -124,6 +124,8 @@ try {
         return {
           cardShell: shellOf(cs),
           composerShell: shellOf(composerStyle),
+          // 这张卡此刻在不在等用户（外壳直接落的属性，两态都在）。兄弟对账按它分账。
+          waiting: card.getAttribute('data-waiting'),
           width: Math.round(rect.width),
           border: `${cs.borderTopWidth} ${cs.borderTopColor}`,
           radius: cs.borderTopLeftRadius,
@@ -193,13 +195,40 @@ try {
         }
       }
       if (shape.uncheckedChecked) failures.push(`${tag}/${theme}/${kind}：卡一挂上来就有 ${shape.uncheckedChecked} 个选项是选中态——「推荐」只是记号，不预选`)
-      // **卡是 composer 的兄弟**（用户 2026-09-22 看真机后的验收标准）：底色、描边色、描边粗细、
-      // 圆角、阴影的 computed 值必须与同屏 composer **逐字相等**，明暗都是。
+      // **卡是 composer 的兄弟**（用户 2026-09-22 看真机后的验收标准）：底色、描边粗细、圆角
+      // 的 computed 值必须与同屏 composer **逐字相等**，明暗都是。
       // 读之前已经等过主题 transition（上面那 400ms），否则读到的是插值中的那一帧。
+      //
+      // **描边色与阴影从这张对照表里挪出去了**（2026-09-22 用户追加的待答态）：等用户回答时
+      // 卡的外框是 accent 发丝线 + 一层同色描边光，那是**有意**与静息 composer 不同的。
+      // 兄弟这条没被推翻——用的还是 composer 自己那两句（`border-nomi-accent` /
+      // `shadow-[0_0_0_Npx_var(--nomi-accent-soft)]`，它聚焦与在跑时说的就是这个），
+      // 只是卡在「等你」这一刻说了出来。所以这两项改成按 `data-waiting` 分账：
+      // 待答 → 必须是 accent 且必须带那层光；非待答 → 必须退回与 composer 逐字相等。
+      // 这里的实验室取景全是待答态（槽里有卡 ≡ 有一条在等你），非待答那一支由单测守
+      //（`agentPanelV4Blocks.test.ts`「待答态」那几条），截图归两版样张。
       if (!shape.composerShell) failures.push(`${tag}/${theme}/${kind}：同屏找不到 composer，兄弟对账做不了`)
-      else for (const key of ['background', 'borderColor', 'borderWidth', 'radius', 'shadow']) {
-        if (shape.cardShell[key] !== shape.composerShell[key]) {
-          failures.push(`${tag}/${theme}/${kind}：卡与 composer 的 ${key} 不相等（卡「${shape.cardShell[key]}」/ composer「${shape.composerShell[key]}」）`)
+      else {
+        for (const key of ['background', 'borderWidth', 'radius']) {
+          if (shape.cardShell[key] !== shape.composerShell[key]) {
+            failures.push(`${tag}/${theme}/${kind}：卡与 composer 的 ${key} 不相等（卡「${shape.cardShell[key]}」/ composer「${shape.composerShell[key]}」）`)
+          }
+        }
+        if (shape.waiting === 'true') {
+          // accent 此刻是什么值由 token 说了算（明暗两套），所以不比字面色值，比「和静息
+          // composer 的发丝线不是同一个色」——那正是「一眼看得出这张卡在等你」的机器判据。
+          if (shape.cardShell.borderColor === shape.composerShell.borderColor) {
+            failures.push(`${tag}/${theme}/${kind}：卡在待答态，外框却还是 composer 那条发丝线（${shape.cardShell.borderColor}）——强调没生效`)
+          }
+          if (shape.cardShell.shadow === 'none') {
+            failures.push(`${tag}/${theme}/${kind}：卡在待答态却没有那层同色描边光`)
+          }
+        } else {
+          for (const key of ['borderColor', 'shadow']) {
+            if (shape.cardShell[key] !== shape.composerShell[key]) {
+              failures.push(`${tag}/${theme}/${kind}：卡已不在待答态，${key} 却没回到 composer 那一档（卡「${shape.cardShell[key]}」/ composer「${shape.composerShell[key]}」）`)
+            }
+          }
         }
       }
     }
