@@ -27,9 +27,13 @@ export function isDeconstructionTerminal(status: DeconstructionStatus): boolean 
   return TERMINAL_STATUSES.includes(status)
 }
 
-/** 从这一格能不能再起一次拆解。`running` 不行（会起第二条）；`ready` 不行（已有结果，重拆走显式重试）。 */
+/**
+ * 从这一格能不能再起一次拆解。从终态集派生，**不另列一份状态清单**——
+ * 原来那颗找回钮正是因为手列了 `failed || idle` 才把 interrupted 漏在外面。
+ * `running` 不行（会起第二条）；`ready` 不行（已有结果，重拆走显式重试）。
+ */
 export function canRestartDeconstruction(status: DeconstructionStatus): boolean {
-  return status === 'idle' || status === 'failed' || status === 'interrupted' || status === 'cancelled'
+  return isDeconstructionTerminal(status) && status !== 'ready'
 }
 
 /**
@@ -84,7 +88,14 @@ export function deconstructionNoticeKey(status: DeconstructionStatus): string | 
   return undefined
 }
 
-/** 测试与项目切换用：清空在飞登记（等价于「这个渲染进程重来了」）。 */
+/**
+ * **测试隔离专用**的清零口（生产没有调用方，也不该有）。
+ *
+ * 在飞登记是模块级单例，寿命就是这个渲染进程——这正是它的语义，所以生产代码里
+ * 没有任何地方「该」清空它：项目切换不清（切走的那张画布上的节点 id 随画布一起消失，
+ * 而真在飞的那次调用仍然归它自己的 finally 注销），进程结束自然就空了。
+ * 单测需要每个 case 从空登记起跑，只为这一件事开这个口。
+ */
 export function resetDeconstructionRuns(): void {
   liveRuns.clear()
 }
