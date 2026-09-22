@@ -239,9 +239,29 @@ export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanv
   }, pendingReferenceInputs(shot))
 }
 
-/** Card-local unapproved edits, bound to the exact displayed request. Never a plan write. */
-export function spendDraftKey(pending: { projectId: string; runId: string; operationId: string; quoteId: string; planVersion: number; candidateRevision: number }): string {
-  return 'nomi:spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId, pending.quoteId, pending.planVersion, pending.candidateRevision])
+/**
+ * 卡上**没提交**的那些改动住在哪一本账本里。身份 = **这一次 `generate`**（`operationId`），
+ * 不是卡上那一刻的报价（2026-09-22 裁决 B，`docs/plan/2026-09-22-waiting-for-user-one-owner.md` §1）。
+ *
+ * ── 为什么 `quoteId` / `planVersion` / `candidateRevision` 不在键里 ──
+ *
+ * 它们是**报价指纹**：一次改参数、一次价格刷新、一次「收回出价再出价」都会换一份。而用户正在打的
+ * 那句话不是「这一次报价」的东西，是「这一次生成」的东西。绑死报价身份于是有两个必然的丢字现场：
+ *   · **T-QA-23**：「全部」范围改参数，部分镜封印失败——成功的那几镜把 `quoteId` 推进一版，
+ *     翻页回到还没提交的那一镜，他刚打的提示词已经是另一本账本里的了；
+ *   · **T-QA-26**：× 收回这一次出价（裁决 D：只收回出价，草稿和节点都留着），同一份草稿再 `generate`
+ *     必然换一个 `quoteId`——卡回来了，他没提交的手改读不回来。
+ * 两条同根，根就在这一行。报价指纹仍然有它的岗位：「你确认的是不是你看到的那个数」那条现时性校验
+ * （`confirm` 里比对 `saved.quoteId`），它不参与**寻址**。
+ *
+ * ── 为什么键里没有镜头维度 ──
+ *
+ * 有，但不在键里：镜头分层是这本账本**自己的结构**（`perShot`，逐镜压全部——见文件顶部）。
+ * 把 `shotId` 提进键 = 一次生成有 N 本账本，「全部」那一层就没有家了；那正是 R33 说的第二本账本。
+ * 一次生成一本，一个键派生，`node scripts/door-map.mjs spendDraftKey` 数得出来。
+ */
+export function spendDraftKey(pending: { projectId: string; runId: string; operationId: string }): string {
+  return 'nomi:spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId])
 }
 export function readSpendDraft(key: string): SpendDraft {
   try {
@@ -253,7 +273,7 @@ export function readSpendDraft(key: string): SpendDraft {
   } catch { return EMPTY_SPEND_DRAFT }
 }
 /**
- * 写回这一笔的账本。**一个键一笔**（quote 身份），没有第二本。
+ * 写回这一笔的账本。**一次生成一本**（`operationId`），没有第二本。
  *
  * 2026-09-21 删掉的那本：× 之后按「输入身份」另存一份 `nomi:dismissed-spend-draft:` 的
  * 找回账本（含每镜全文 prompt、逐镜再写一条、无回收）。它存在的唯一理由是「× 会把东西弄丢」，
@@ -269,23 +289,23 @@ export function retainSpendDraft(key: string, draft: SpendDraft): void {
   } catch { /* storage is a convenience here; the live draft lives in React state */ }
 }
 
-/** 这一笔上次留下的未提交改动（换了 quote 身份就是另一笔，读不到就是空）。 */
+/** 这一次生成上次留下的未提交改动（换了 `operationId` 就是另一本，读不到就是空）。 */
 export function restoreSpendDraft(pending: PendingSpendConfirm): SpendDraft {
   return readSpendDraft(spendDraftKey(pending))
 }
 
-export function clearConsumedSpendDraft(pending: PendingSpendConfirm): void {
-  retainSpendDraft(spendDraftKey(pending), EMPTY_SPEND_DRAFT)
-}
-
-/** Consume exactly the durable/approved set, retaining all other input in this ledger. */
+/**
+ * Consume exactly the durable/approved set, retaining all other input in this ledger.
+ *
+ * 2026-09-22 起没有 `successor` 参数了：键锚的是 `operationId`，而「封印完再读一次正式报价」
+ * 拿回来的那一份**必然是同一次生成**（`confirm` 里就是这么比的）。换一份报价 = 换一个键，
+ * 那是上一版才有的事；留着一个恒等于自己的参数，就是给同一个地址留第二个说法。
+ */
 export function consumeSpendDraft(
   pending: PendingSpendConfirm, draft: SpendDraft, shotIds?: readonly string[],
-  successor: PendingSpendConfirm = pending,
 ): SpendDraft {
   const consumed = new Set(shotIds ?? pending.shots.map(shot => shot.shotId))
   const perShot: Record<string, SpendCandidatePatch> = {}
-  clearConsumedSpendDraft(pending)
   for (const shot of pending.shots) {
     if (consumed.has(shot.shotId)) continue
     const patch = effectivePatchForShot(draft, shot.shotId)
@@ -293,6 +313,7 @@ export function consumeSpendDraft(
     perShot[shot.shotId] = patch
   }
   const remaining = { all: {}, perShot }
-  retainSpendDraft(spendDraftKey(successor), remaining)
+  // 空账本 = 把这一笔的键删掉（`retainSpendDraft` 自己做），所以不需要先清一次再写。
+  retainSpendDraft(spendDraftKey(pending), remaining)
   return remaining
 }
