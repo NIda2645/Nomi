@@ -222,15 +222,27 @@ try {
         if (await questionCard.count() > 0) {
           if (!sawCard) await win.screenshot({ path: path.join(outputDir, `${item.id}-question-card.png`) }).catch(() => {})
           sawCard = true
-          const chip = questionCard.locator('[data-v4-control="question-option"]').first()
-          if (await chip.count() > 0) {
-            await chip.click({ timeout: stationTimeout({ operations: 2 }) })
-            row.cardsAnswered.push('question:chip')
+          // 一张卡 1–3 题：单选点了自己往下走（480ms），多选 / 自己打字要按「继续 / 发送」。像人一样：
+          // 能点的选项就点第一颗，「继续」亮着就按它；哪一下没点到不算仪器故障（卡可能正在翻题），下一圈再看。
+          const tap = { timeout: stationTimeout({ operations: 1 }) }
+          // 多题卡里**每一题都在 DOM 里**，只有 `data-active="true"` 的那一题点得动；`.first()` 不限定它，
+          // 翻到第 2 题之后就会一直去点第 1 题那颗已经滑走的选项（run4 第三次起跑在 1/3 上卡了十几分钟）。
+          const chip = questionCard.locator('[data-ask-question][data-active="true"] [data-v4-control="question-option"]').first()
+          const proceed = questionCard.locator('[data-v4-control="ask-continue"]').first()
+          // 先数再问：`isEnabled()` 会**等**元素出现，这一题一颗选项都没有时（卡上永远有自由输入那一行，
+          // 选项却可以是零个）它要白等满一个默认动作超时才轮得到下面的打字支。
+          const chipCount = await chip.count()
+          // 「继续 / 发送」未作答时置灰走的是原生 `disabled`（`WorkbenchButton` 把 `disabled` 直接透给 `<button>`，
+          // 见 src/design/actions.tsx），而 Playwright 1.60 的 `isEnabled()` = 原生 disabled ∪ aria-disabled 都算禁用，
+          // 所以问它比自己写属性选择器稳：设计系统哪天把置灰换成 aria-disabled，这里也不用跟着改。
+          if (await proceed.isEnabled().catch(() => false)) {
+            await proceed.click(tap).then(() => row.cardsAnswered.push('question:continue')).catch(() => {})
+          } else if (chipCount > 0 && await chip.isEnabled().catch(() => false)) {
+            await chip.click(tap).then(() => row.cardsAnswered.push('question:chip')).catch(() => {})
           } else {
-            const own = questionCard.locator('input, textarea, [contenteditable="true"]').first()
+            const own = questionCard.locator('[data-ask-question][data-active="true"] [data-v4-control="question-answer"]').first()
             await own.fill('你定就好，按最稳妥的来').catch(() => {})
-            await own.press('Enter').catch(() => {})
-            row.cardsAnswered.push('question:typed')
+            await own.press('Enter').then(() => row.cardsAnswered.push('question:typed')).catch(() => {})
           }
           row.answeredByChip = true
           answeredOnce = true
@@ -243,6 +255,23 @@ try {
           if (!await confirmReject.isVisible().catch(() => false)) await spendCard.locator('[data-v4-control="slot-dismiss"]').click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
           if (await confirmReject.isVisible().catch(() => false)) await confirmReject.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
           row.cardsAnswered.push('spend:declined')
+          await win.waitForTimeout(1500)
+          continue
+        }
+        // 文稿方案的 `generate` 走的是分镜编辑器**原来那一套**花钱确认（一个居中的确认框 / 批量预览条），不是介入槽里的卡。
+        // 2026-09-22 起这次等待不再受工具超时管——没人答它，回合就一直等着（run4 第四次起跑在这里等了十几分钟）。
+        // 真人不想花钱时点「取消」；走查照做。
+        const dialogCancel = win.locator('[data-confirm-dialog-cancel="true"]').first()
+        const batchCancel = win.locator('[data-batch-plan-overlay] button').filter({ hasText: /取消|Cancel/ }).first()
+        if (await dialogCancel.isVisible().catch(() => false)) {
+          await win.screenshot({ path: path.join(outputDir, `${item.id}-editor-confirm.png`) }).catch(() => {})
+          await dialogCancel.click({ timeout: stationTimeout({ operations: 1 }) }).then(() => row.cardsAnswered.push('editor-confirm:cancelled')).catch(() => {})
+          await win.waitForTimeout(1500)
+          continue
+        }
+        if (await batchCancel.isVisible().catch(() => false)) {
+          await win.screenshot({ path: path.join(outputDir, `${item.id}-batch-preview.png`) }).catch(() => {})
+          await batchCancel.click({ timeout: stationTimeout({ operations: 1 }) }).then(() => row.cardsAnswered.push('batch-preview:cancelled')).catch(() => {})
           await win.waitForTimeout(1500)
           continue
         }
