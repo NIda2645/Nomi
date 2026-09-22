@@ -1,6 +1,7 @@
 import { withCanvasGestureContext, type CanvasGestureContext } from '../../../generationCanvas/events/canvasGestureContext'
 import { pushUndoSnapshot, getUndoJournalGeneration } from '../../../generationCanvas/events/canvasUndoJournal'
 import { projectShotNode } from './storyboardProjection'
+import type { GenerationRunOutcome } from '../../../generationCanvas/runner/generationRunOutcome'
 import { ignoredShotAnchors, type IgnoredAnchor } from '../../../generationCanvas/agent/storyboardAnchorPolicy'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
@@ -256,7 +257,7 @@ export function toggleNodeLock(nodeId: string): void {
 // ── 参考卡（锚）的就地生成（B3 图卡用；B1 先落通路）──
 
 /** 锚卡「生成」：没建过则 materialize，再走单发通路（参考卡不吃参考，无波次）。 */
-export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor): Promise<void> {
+export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor): Promise<GenerationRunOutcome> {
   const { nodes } = canvasState()
   const node = anchorNodeFor(ctx, nodes, anchor)
   if (!node) {
@@ -267,26 +268,27 @@ export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnch
       storyboardDesignId: ctx.designId,
       materializationOperationId: `storyboard:${ctx.designId}`,
     })
-    if (!args) return // 文本锚不生成图（按钮态就不该出现）
+    if (!args) return 'nothing-to-run' // 文本锚不生成图（按钮态就不该出现）
     const clientIdToNodeId = await applyCreate(args, ctx.gesture, ctx.assertCurrent)
     const nodeId = clientIdToNodeId[anchor.id]
     if (!nodeId) throw new Error('materialize failed: anchor node missing')
     await ctx.assertCurrent?.()
-    await confirmAndRunNode(nodeId, confirmationGuards(ctx))
-    return
+    // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+    return confirmAndRunNode(nodeId, confirmationGuards(ctx))
   }
   await ctx.assertCurrent?.()
   syncAnchorNodeWithCard(ctx, anchor, node)
   await ctx.assertCurrent?.()
-  await confirmAndRunNode(node.id, confirmationGuards(ctx))
+  return confirmAndRunNode(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡「重生成」：写回描述编辑 + 原地重出（引用它的镜之后经「参考已变」提示重跑，绝不自动跑）。 */
-export async function regenerateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor, node: GenerationCanvasNode): Promise<void> {
+export async function regenerateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor, node: GenerationCanvasNode): Promise<GenerationRunOutcome> {
   await ctx.assertCurrent?.()
   syncAnchorNodeWithCard(ctx, anchor, node)
   await ctx.assertCurrent?.()
-  await regenerateNodeInPlace(node.id, confirmationGuards(ctx))
+  // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+  return regenerateNodeInPlace(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡编辑写回节点（描述/静动特征改了再生成，出的是改后的卡）。 */
@@ -317,12 +319,12 @@ export async function runStoryboardBatch(
   ctx: RowActionContext,
   rows: readonly StoryboardRowRuntime[],
   landing?: { groupTitle: string; placementOnly?: boolean },
-): Promise<void> {
-  if (rows.length === 0 && !landing?.placementOnly) return
+): Promise<GenerationRunOutcome> {
+  if (rows.length === 0 && !landing?.placementOnly) return 'nothing-to-run'
   if (landing?.placementOnly && rows.every(row => {
     const bound = existingRowBindings(ctx, row.shot)
     return bound.shotNode && (!(row.shot.shotKind !== 'image' && row.shot.keyframe?.enabled) || bound.keyframeNode)
-  }) && ctx.plan.anchors.every(anchor => !isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor) || anchorNodeFor(ctx, canvasState().nodes, anchor))) return
+  }) && ctx.plan.anchors.every(anchor => !isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor) || anchorNodeFor(ctx, canvasState().nodes, anchor))) return 'nothing-to-run'
   const existingNodeIds = new Set(canvasState().nodes.map(node => node.id))
   if (landing) {
     const generation = getUndoJournalGeneration()
@@ -358,8 +360,10 @@ export async function runStoryboardBatch(
     })
   }
   if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard confirmation')
-  if (landing?.placementOnly) return
+  // 只摆位不生成：一张卡都没弹过。
+  if (landing?.placementOnly) return 'nothing-to-run'
   const { nodes, edges } = canvasState()
   await ctx.assertCurrent?.()
-  await confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }), confirmationGuards(ctx))
+  // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+  return confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }), confirmationGuards(ctx))
 }

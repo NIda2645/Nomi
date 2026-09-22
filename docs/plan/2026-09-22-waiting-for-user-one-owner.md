@@ -112,7 +112,17 @@ E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端�
 `cancelled` 只由「用户不要这份草稿了」写（左侧栏删草稿 / 外部宿主撤草稿），它不是 × 的落点。
 
 文稿方案（②）：`presentStoryboardAuthoring` 的「等用户在分镜编辑器里点头」同样挪到 preflight——
-工具执行里只剩「读这次决定的结果」。
+工具执行里只剩「读这次决定的结果」。**✅ 2026-09-22（D5）落地**：整段跑在 `before_tool` 的预检期，
+且 `requestRendererDecision` 那条通道刻意没有墙钟（判据是「收件的那个渲染层还在不在」），所以他看卡看多久都行。
+D5 真正补上的是**结局**那一格：渲染层此前对确认和取消一律回 `{status:'presented'}`，把结论扔掉，
+于是回合只能落到 `generation_approval_unavailable`（run5 发现 ③，A1 一次 / A3 两次，与答框次数一一对应）。
+现在三种结局都回来，并翻成**与报价卡同一份** `GenerateUserDecision`：
+确认 → 「已开始生成」；取消 / 关闭 / 点遮罩 → 成功形状的「他没同意这次」（与 × 同一条边，草稿和占位一个不动）；
+一张卡都没弹过 → `nothing_to_generate`，不编一个他没做过的决定。**真的没人答仍是 unavailable 的错误**（阳性对照钉着）。
+
+> **为什么这条不另起一个 waiter**：报价卡需要 `registerSpendWaiter`，是因为那张卡由另一条 IPC 回答，
+> 结论不在工具调用的回包里。文稿方案这条不一样——`storyboard.present` 是一次 `requestRendererDecision`，
+> 它本来就一直等到用户答完，结局天然在回包里。再架一个 waiter 就是同一件事的第二套机制（P1）。
 
 ## 3. 门表（`node scripts/door-map.mjs`，2026-09-22）
 
@@ -282,5 +292,13 @@ E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端�
 5. 验收：spend 全部走查绿 + 新增六条（× 后一整个回合节点数不变 / 同回合再 generate 不出第二笔 / 重启后 pending 作废 /
    看卡 >90 秒再确认仍成功 / 文稿方案 generate 端到端成功 / 待决时打字两种卡各一条）+ `mcp-l2-journeys` + `elicitation-first`；
    run4 = 同 18 句全量跑到、走查像真人一样答卡。
+   **✅ 2026-09-22 记账**：spend 七条 + `mcp-l2-journeys` + `elicitation-first` 全绿
+   （证据 `docs/evidence/2026-09-22-spend-walkthrough-sweep-d4/`）；「× 后一整个回合节点数不变」与
+   「同一份草稿重新出价」由 `agent-spend-card.walk.mjs` + 范围旅程钉住；「重启后出价作废、计划留着」与
+   「同回合再 generate 不多扣」由 `agent-spend-waiting-owner.walk.mjs` 钉住；「待决时打字」由
+   `agent-gate-typing-answers.walk.mjs` 钉住；**「文稿方案 generate 端到端成功」由 D5 新增的
+   `agent-storyboard-generate-confirm.walk.mjs` 钉住**（取消 → 回包 declined、零供应商请求、节点一个不动；
+   确认 → 回包 started、loopback 真的出了两张图、两次审片跟上）。run4 / run5 见
+   `docs/evidence/2026-09-22-askback-real-model-run{4,5}/`。
 
 回滚：每步一个 commit；2 与 3 各自可独立 `git revert`（3 不依赖 2 的 waiter）。

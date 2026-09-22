@@ -12,6 +12,7 @@ import { confirmAndMintGrant, describeGenerationCost, generationCostContextForNo
 import { hasLocalAssetReference, resolveAssetUploadConsent } from '../runner/assetUploadConsent'
 import { resolveGenerationReferences } from '../runner/generationReferenceResolver'
 import { buildDependencyWaves, type DependencyWavePlan } from '../runner/dependencyWaves'
+import type { GenerationRunOutcome } from '../runner/generationRunOutcome'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { verifyShotsAndReport } from '../agent/shotVerifyStore'
 import { resolveShotIdentities } from '../model/shotNumbering'
@@ -130,20 +131,21 @@ function hostingDisclosureFor(
 export async function confirmAndRunPlan(
   plan: DependencyWavePlan,
   options: { concurrency?: number } & GenerationConfirmationGuards = {},
-): Promise<void> {
+): Promise<GenerationRunOutcome> {
   // 点「生成」即动作起点：签发此刻打开的项目。提交前换了项目 = 取消（没花钱）；提交后整批归原项目。
   const project = withProjectAction((issued) => issued)
-  if (!project) return
+  if (!project) return 'unavailable'
   const ids = plan.waves.flat()
   if (ids.length === 0) {
     // 无可跑 → 复用人话 toast 报「为什么不能跑」。零节点也就没有素材要上传。
     await runPlanWithToasts(plan, { assetUploadConsent: 'not-needed', project })
-    return
+    return 'nothing-to-run'
   }
   const assertApprovedInputs = captureApprovedGenerationInputs(ids)
   const nodesById = new Map(useGenerationCanvasStore.getState().nodes.map((n) => [n.id, n]))
   const hosting = await resolveBatchHosting(ids)
-  if (!hosting) return
+  // 素材托管那张披露卡也是一次「他没同意这次」，不是一个错误。
+  if (!hosting) return 'declined'
   const grantId = await confirmAndMintGrant({
     assertCurrent: async () => { await options.assertCurrent?.(); project.assertCurrent() },
     nodeIds: ids,
@@ -157,9 +159,11 @@ export async function confirmAndRunPlan(
     confirmLabel: i18n.t('generationCommon.batchPlan.confirmGenerate'),
     ...hostingDisclosureFor(hosting),
   })
-  if (!grantId) return
+  // **这一行就是那个结局**：2026-09-22 之前它是一个裸 `return`，Agent 那一侧因此读不到
+  // 「他点了取消」，`generate` 只好报 `generation_approval_unavailable`（见 `generationRunOutcome.ts`）。
+  if (!grantId) return 'declined'
   await options.assertCurrent?.()
-  if (!isProjectExecutionContextCurrent(project)) return
+  if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   await runPlanWithToasts(plan, {
     project,
     assertAuthorCurrent: options.assertAuthorCurrent,
@@ -169,6 +173,7 @@ export async function confirmAndRunPlan(
     // 用户刚在上面那张卡里同意了（或判定无需问）——决定在这里定死，波次里不再问第二次。
     assetUploadConsent: hosting.needsConfirmation ? 'allow' : 'not-needed',
   })
+  return 'started'
 }
 
 /** 按计划真实生成 + 可行动的失败反馈。「全部生成」与 S6b agent 受理路径共用(单一执行口)。

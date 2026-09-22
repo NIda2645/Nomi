@@ -273,7 +273,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const noNameAnchorIds = new Set(visibleIssues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
 
   // 动作统一包一层：失败原因回当前方案（生成失败本身落在节点卡片，这里只兜 materialize/确认前异常）。
-  const runAction = async (action: (context: RowActionContext) => Promise<void>): Promise<void> => {
+  // 回调的返回值放宽成 `unknown`：这些执行口 2026-09-22 起会**回报结局**（用户同意 / 取消 /
+  // 没得跑，见 `generationRunOutcome.ts`），而编辑器这一侧是用户自己在点按钮——他自己知道点了什么，
+  // 不需要读那一格。要读它的是 Agent 那条路（`storyboardPresent.ts`）。
+  const runAction = async (action: (context: RowActionContext) => Promise<unknown>): Promise<void> => {
     if (busy) {
       return
     }
@@ -325,7 +328,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const resolveClient = (): StoryboardResolveClient | null => getDesktopBridge()?.generationStrategy ?? null
   const guardMaterialize = async (
     scope: readonly StoryboardRowRuntime[],
-    action: (context: RowActionContext) => Promise<void>,
+    action: (context: RowActionContext) => Promise<unknown>,
   ): Promise<void> => {
     await runAction(async context => {
       const shotIds = scope.map((runtime) => storyboardShotId(runtime.shot))

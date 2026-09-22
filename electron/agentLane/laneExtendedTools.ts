@@ -25,6 +25,15 @@ function userAnsweredACard(decision: LaneApprovalDecision | undefined): boolean 
  * 「全自动」档代答之后的那份结果（`generationTransportAdapters.decideByPolicyAfterDraft`）：
  * 封印 → 铸收据 → 决门 → **已经开跑**。认得出它，`generate` 的回执才说得出真话。
  */
+/**
+ * 文稿方案那条路的「没得跑」：`presentStoryboardAuthoring` 在范围里一张确认框都没弹过时回它。
+ * 它**不是**一个用户决定，所以不走 `GenerateUserDecision`——不给模型编一个他没做过的选择。
+ */
+function nothingNeededGenerating(result: unknown): boolean {
+  const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
+  return record.status === 'nothing_to_generate'
+}
+
 function policyStartedGeneration(result: unknown): boolean {
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
   const spend = record.spendDecision
@@ -132,6 +141,11 @@ function generateReceipt(result: unknown): LaneToolNextAction {
       userSees: `While the priced card was waiting, the user wrote: "${decision.userSaid}". That is his answer to the card: this quote was withdrawn, nothing was generated and nothing was spent, and the draft is kept as it was. Do what he wrote (revise the draft with draft_shots if he asked for changes), then call generate again only if he still wants it generated.` }
   }
   if (policyStartedGeneration(result)) return startedGenerationAction(result)
+  // 文稿方案：范围里一张卡都没弹过——该生成的都已经有结果了。没有决定可报，也没有东西坏了。
+  if (nothingNeededGenerating(result)) {
+    return { kind: 'none', ...id,
+      userSees: 'Everything in that scope already has a result, so no priced card was shown and nothing was spent. Tell him it is already generated; do not call generate again for it.' }
+  }
   // 卡摆出去了，却没有任何结论随结果回来：预检期那次等待没跑（宿主没接 `toolLifecycle.approved`）。
   // 这里**不许**顺着说「已经开始生成」——那句话只属于上面那一支。照实报错，模型据此不会谎报。
   throw new LaneDomainFailure({

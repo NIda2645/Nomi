@@ -40,19 +40,43 @@ const shotNodes = () => useGenerationCanvasStore.getState().nodes.filter(node =>
 beforeEach(() => {
   vi.clearAllMocks(); calls.current = true; calls.defaults.mockReset()
   calls.preload.mockResolvedValue([])
-  calls.confirm.mockResolvedValue(undefined); calls.single.mockResolvedValue(undefined)
+  // 2026-09-22：这两个执行口现在**回报结局**（用户同意 / 取消 / 没得跑）。夹具默认「他同意了」。
+  calls.confirm.mockResolvedValue('started'); calls.single.mockResolvedValue('started')
   const store = useWorkbenchStore.getState()
   store.hydrateWorkbenchDocuments([{ id: 'doc', version: 1, title: 'Doc', updatedAt: 1, contentJson: { type: 'doc', content: [] } }], 'doc')
   store.hydrateStoryboardDesigns({})
   store.addStoryboardDesign('doc', structuredClone(plan), { id: 'run', title: plan.title })
   useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [], selectedNodeIds: [] })
 })
-it('executes the original materializer and batch action for exact scope; cancellation is only presented', async () => {
+it('executes the original materializer and batch action for exact scope, and reports that he approved', async () => {
   const result = await presentStoryboard(input())
-  expect(result).toEqual({ status: 'presented', designId: 'run', shotIds: ['shot-1'] })
+  expect(result).toEqual({ status: 'presented', designId: 'run', shotIds: ['shot-1'], decision: 'started' })
   expect(shotNodes().map(node => node.meta?.shotId)).toEqual(['shot-1'])
   expect(calls.confirm).toHaveBeenCalledOnce()
   expect(calls.confirm.mock.calls[0][0].waves.flat()).toEqual(shotNodes().map(node => node.id))
+})
+
+// ── 结局必须往回送（2026-09-22）─────────────────────────────────────────────────────
+//
+// 这里原来写的是「cancellation is only presented」——确认和取消**一律**回 `{status:'presented'}`。
+// 那正是 run5 发现 ③ 的成因：用户在全屏 `SpendConfirmDialog` 上答了，主进程却读不到任何结论，
+// `generate` 只好以 `generation_approval_unavailable`（「this host did not wait for his answer」）
+// 的错误形状回给模型并进熔断（A1 一次、A3 两次，与答框次数一一对应）。
+it('他点了取消 → 回包带 declined，画布和方案都不动', async () => {
+  calls.confirm.mockResolvedValue('declined')
+  const result = await presentStoryboard(input())
+  expect(result).toMatchObject({ status: 'presented', designId: 'run', shotIds: ['shot-1'], decision: 'declined' })
+  // 取消不撤占位：占位属于草稿，不属于这一次出价（2026-09-22 用户拍板的同一条）。
+  expect(shotNodes().map(node => node.meta?.shotId)).toEqual(['shot-1'])
+  expect(design().plan.shots.map(shot => shot.prompt)).toEqual(['Prompt 1', 'Prompt 2'])
+})
+
+it('范围里一张卡都没弹过 → nothing-to-run，不编一个他没做过的决定', async () => {
+  const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', meta: { storyboardDesignId: 'run', shotId: 'shot-1' } })
+  useGenerationCanvasStore.getState().updateNode(node.id, { result: { id: 'r', createdAt: 1, type: 'image', url: 'https://fixture.invalid/r.png' } })
+  const result = await presentStoryboard(input())
+  expect(result).toMatchObject({ decision: 'nothing-to-run' })
+  expect(calls.confirm).not.toHaveBeenCalled()
 })
 it('rejects a changed target after model preload before any original action writes', async () => {
   calls.preload.mockImplementationOnce(async () => { editPlan(next => { next.title = 'Edited' }); return [] })

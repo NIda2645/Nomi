@@ -1,6 +1,7 @@
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { StoryboardPlan } from '../shared/storyboard/storyboardPlan';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
+import { GENERATE_USER_DECISION_KEY, type GenerateUserDecision } from '../shared/agentLane/generateUserDecision';
 import { storyboardSubjectFromCandidate, storyboardReferenceSlot } from '../shared/storyboard/storyboardSubjectAdapter';
 import { storyboardAuthorFieldsSchema, type StoryboardAuthorFields } from '../shared/agentCapabilities/generationPlanSchemas';
 // 能力核 · P4 S6.5 语义多镜 create 入口逻辑（从 mcpGenerationTools.ts 抽出，守 800 行门岗 R9）。
@@ -467,14 +468,48 @@ export async function upsertStoryboardDesign(request: RequestRenderer,
   if (!reply || reply.status!=='saved' || reply.designId!==input.designId) throw new Error('storyboard_design_save_rejected');
 }
 
+/**
+ * 文稿方案的 `generate`：把方案摆到分镜编辑器里，**并且等他在那张花钱确认框上答完**。
+ *
+ * ── 等待住在哪里 ──
+ *
+ * 整段跑在 `before_tool` 的预检期（`laneExtendedDesktopPorts.preflightGenerate` → `tryExecute`），
+ * 所以**不计入工具超时**；`requestRendererDecision` 这条通道刻意没有墙钟（判据是「收件的那个渲染层还在不在」），
+ * 所以他看卡看多久都行。方案 §2「文稿方案 ②：等用户挪到 preflight，工具执行里只剩读结果」说的就是这个形状。
+ *
+ * ── 2026-09-22 补上的那一格：结局 ──
+ *
+ * 在此之前渲染层对确认和取消**一律**回 `{status:'presented'}`，结局被扔掉。主进程于是读不到任何结论，
+ * `generate` 的回执只能落到 `generation_approval_unavailable`（「this host did not wait for his answer」）
+ * ——**错误形状**，模型据此重试、进熔断，而用户明明刚刚答过。run5 实测 A1 一次、A3 两次，
+ * 与各自答框的次数一一对应（`docs/evidence/2026-09-22-askback-real-model-run5` 发现 ③）。
+ *
+ * 现在回包带 `decision`，这里把它翻成**与报价卡那条路同一份** `GenerateUserDecision`
+ * （`GENERATE_USER_DECISION_KEY`），于是 `laneExtendedTools.generateReceipt` 一个字不用改：
+ * 同意 → 「已开始生成 N 镜」，取消 → 成功形状的「用户没同意这次」。都不是错误，都不进熔断。
+ * 一张卡都没弹过（没有要跑的东西）时不造一个假决定——回 `nothing_to_generate`，回执照实说。
+ */
 export async function presentStoryboardAuthoring(current: {candidate:PlanCandidate;sourceDocumentId?:string},
   projectId:string,designId:string,requested:unknown,request?: (op:string,payload:unknown)=>Promise<unknown>) {
   if (!request || !current.sourceDocumentId) throw new Error('storyboard_renderer_required');
   const reply=await request('storyboard.present',{projectId,designId,sourceDocumentId:current.sourceDocumentId,
     ...(Array.isArray(requested) ? {shotIds:requested} : {})});
-  const receipt=reply as {status?:unknown;designId?:unknown;shotIds?:unknown} | null;
+  const receipt=reply as {status?:unknown;designId?:unknown;shotIds?:unknown;decision?:unknown} | null;
   if (!receipt || receipt.status!=='presented' || receipt.designId!==designId || !Array.isArray(receipt.shotIds)) throw new Error('storyboard_presentation_receipt_mismatch');
-  return {taskRef:generationTaskReference(designId),status:'presented',shots:receipt.shotIds as string[],nextAction:'inspect_canvas'};
+  const shots=receipt.shotIds as string[];
+  const decision=storyboardUserDecision(receipt.decision);
+  // 回执缺 `decision` = 对面是**旧的渲染层**（没跟上这一刀）。不许替用户编一个决定：
+  // 照旧回 `presented`，`generateReceipt` 会照实说「这个宿主没有等他的答案」。
+  if (!decision) return {taskRef:generationTaskReference(designId),status:receipt.decision==='nothing-to-run' ? 'nothing_to_generate' : 'presented',shots,nextAction:'inspect_canvas'};
+  return {taskRef:generationTaskReference(designId),status:'presented',shots,nextAction:'inspect_canvas',
+    [GENERATE_USER_DECISION_KEY]:decision};
+}
+
+/** 渲染层回的那一格 → 模型面那一格。只认这三种，别的（含缺席）一律不造决定。 */
+function storyboardUserDecision(value: unknown): GenerateUserDecision | undefined {
+  if (value === 'started') return {outcome:'approved'};
+  if (value === 'declined') return {outcome:'declined'};
+  return undefined;
 }
 
 /**

@@ -2,6 +2,7 @@ import { normalizeCanvasBatchConcurrency } from '../components/canvasProductionS
 import type { GenerationCanvasEdge, GenerationCanvasNode, GenerationNodeResult } from '../model/generationCanvasTypes'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
+import type { GenerationRunOutcome } from './generationRunOutcome'
 import { persistActiveWorkbenchProjectNow } from '../../project/workbenchProjectSession'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
@@ -493,16 +494,17 @@ export async function runGenerationNodesBatch(
  * 单节点生成/重试/生成变体的轻确认 + 铸令牌 + 跑（付费守卫，务实纵深 A1）。
  * rerun=true 是「基于此生成变体」：先复制出新节点再绑令牌跑；普通重新生成走 regenerateNodeInPlace。
  */
-export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean } & GenerationConfirmationGuards = {}): Promise<void> {
+export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean } & GenerationConfirmationGuards = {}): Promise<GenerationRunOutcome> {
   // 点「生成」即动作起点：签发此刻打开的项目。提交前（确认卡、铸令牌）换了项目 = 取消，没花钱；
   // 一旦提交，运行归原项目（target），之后切页/切项目都不取消它。
   const project = withProjectAction((issued) => issued)
-  if (!project) return
+  if (!project) return 'unavailable'
   const projectId = project.binding.projectId
   let assertApprovedInputs = captureApprovedGenerationInputs([nodeId])
   const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === nodeId)
   const hosting = await resolveHostingDisclosure(node)
-  if (!hosting.allowed) return
+  // 素材托管那张披露卡也是一次「他没同意这次」，不是一个错误。
+  if (!hosting.allowed) return 'declined'
   let quoteId: string | undefined
   const ok = await confirmGenerationSpend([node], {
     onQuoteConfirmed: (id) => { quoteId = id },
@@ -515,14 +517,16 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
       : i18n.t('generationCommon.spend.generate'),
     ...(hosting.disclosure ? { hostingDisclosure: hosting.disclosure } : {}),
   })
-  if (!ok) return
+  // **这一行就是那个结局**：2026-09-22 之前它是一个裸 `return`，Agent 那一侧因此读不到
+  // 「他点了取消」（见 `generationRunOutcome.ts`）。
+  if (!ok) return 'declined'
   await opts.assertCurrent?.()
-  if (!isProjectExecutionContextCurrent(project)) return
+  if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   let runId = nodeId
   if (opts.rerun) {
     assertApprovedInputs(useGenerationCanvasStore.getState(), nodeId)
     const dup = useGenerationCanvasStore.getState().duplicateNodeForRegeneration(nodeId)
-    if (!dup) return
+    if (!dup) return 'unavailable'
     runId = dup.id
     assertApprovedInputs = captureApprovedGenerationInputs([runId])
     if (typeof window !== 'undefined') {
@@ -534,15 +538,17 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
     grantId = await mintSpendGrant([runId], undefined, quoteId)
   } catch (error) {
     reportAuthorizationFailure(error, projectId, runId)
-    return
+    return 'unavailable'
   }
   await opts.assertCurrent?.()
-  if (!isProjectExecutionContextCurrent(project)) return
+  if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   try {
     await runGenerationNode(runId, { assertAuthorCurrent: opts.assertAuthorCurrent, assertApprovedInputs, grantId, assetUploadConsent: 'allow', target: project.binding })
   } catch {
     // 原任务队列保留失败原因；原项目身份有效时，节点也显示错误。
   }
+  // 提交已经发出去了（跑挂了由任务队列记失败），对「用户同不同意这次」这一格就是 started。
+  return 'started'
 }
 
 /** ×N shares one approval/grant, runs serially on the original node, and retains completed
@@ -599,16 +605,17 @@ export async function regenerateNodeInPlace(
   // 不让一张通用「重新生成」卡吃掉刚建立的语境（R16 情绪走查：小白在这一步会迟疑
   // 「到底用没用新图」）。缺省仍是「重新生成」，画布 composer 等既有调用方零变化。
   opts?: { title?: string; confirmLabel?: string } & GenerationConfirmationGuards,
-): Promise<void> {
+): Promise<GenerationRunOutcome> {
   const project = withProjectAction((issued) => issued)
-  if (!project) return
+  if (!project) return 'unavailable'
   const projectId = project.binding.projectId
   const id = String(nodeId || '').trim()
-  if (!id) return
+  if (!id) return 'nothing-to-run'
   const assertApprovedInputs = captureApprovedGenerationInputs([id])
   const node = useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)
   const hosting = await resolveHostingDisclosure(node)
-  if (!hosting.allowed) return
+  // 素材托管那张披露卡也是一次「他没同意这次」，不是一个错误。
+  if (!hosting.allowed) return 'declined'
   let quoteId: string | undefined
   const ok = await confirmGenerationSpend([node], {
     onQuoteConfirmed: (id) => { quoteId = id },
@@ -617,24 +624,28 @@ export async function regenerateNodeInPlace(
     confirmLabel: opts?.confirmLabel || i18n.t('generationCommon.composer.regenerate'),
     ...(hosting.disclosure ? { hostingDisclosure: hosting.disclosure } : {}),
   })
-  if (!ok) return
+  // **这一行就是那个结局**：2026-09-22 之前它是一个裸 `return`，Agent 那一侧因此读不到
+  // 「他点了取消」（见 `generationRunOutcome.ts`）。
+  if (!ok) return 'declined'
   await opts?.assertCurrent?.()
-  if (!isProjectExecutionContextCurrent(project)) return
+  if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   let grantId: string
   try {
     grantId = await mintSpendGrant([id], undefined, quoteId)
   } catch (error) {
     reportAuthorizationFailure(error, projectId, id)
-    return
+    return 'unavailable'
   }
   await opts?.assertCurrent?.()
-  if (!isProjectExecutionContextCurrent(project)) return
+  if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   try {
     const result = await runGenerationNode(id, { assertAuthorCurrent: opts?.assertAuthorCurrent, assertApprovedInputs, grantId, assetUploadConsent: 'allow', target: project.binding })
     whenRunTargetLoaded(project.binding, () => useWorkbenchStore.getState().reconcileTimelineForUpdatedNodes(id, result))
   } catch {
     // 原任务队列保留失败原因；身份被替换时不向新项目写错误。
   }
+  // 提交已经发出去了（跑挂了由任务队列记失败），对「用户同不同意这次」这一格就是 started。
+  return 'started'
 }
 
 export function canRunGenerationNode(
