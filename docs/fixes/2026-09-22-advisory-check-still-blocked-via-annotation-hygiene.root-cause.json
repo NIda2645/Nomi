@@ -1,0 +1,135 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-advisory-check-still-blocked-via-annotation-hygiene",
+  "problem_type": "把一条检查降级为「非阻断」只在部分判定链路上落地：剩下那条链路照旧把它判红，于是降级是假的，而且假得看不出来——红的是另一个 job",
+  "symptom": "2026-09-22 main 上 merge ffffadc7d（#843，一次纯文档 PR 的合入）：`Core Flow Smoke (used)` 这一格偶发红。按 #842 的设计它是非阻断档，红了不该拦任何东西，但 Quality Gate 汇总 job 整体红、合入收据出不来。注解卫生的报告是 16 annotations / 10 delegated / 0 allowed / **1 unexpected**——那一条 unexpected 就是 used 这一格留下的 `##[error]Process completed with exit code 1.`。用户拍板的「照跑、照传证据、红了照样亮红给人看，但不拉垮汇总判定」当场不成立。",
+  "direct_cause": "`非阻断` 这个决定有**三条独立的判定链路**要落地：① job 聚合——`.github/workflows/quality-gate.yml` 的 core-smoke job 带 `continue-on-error: ${{ matrix.fixture != 'empty' }}`，它只改 conclusion，needs['core-smoke'].result 因此仍是 success；② 合后收据——`scripts/git-delivery.mjs` 的 mergedCheckRequirement 把 used 记进 coreSmoke.advisory、不进 requiredChecks；③ Quality Gate 汇总里的注解卫生——`Require every validation surface` 的第一行是 `test \"${{ steps.ci-hygiene.outcome }}\" = \"success\"`。#842 落了 ① 和 ②，没落 ③：`scripts/ci-annotation-hygiene.mjs` 的 delegatedOwner() 当时只认三种情形（Mac Package 被取消的 failure、Contracts 带路径的 warning、docs-autosync 的 warning），没有任何一条认领 advisory 冒烟格的失败注解，于是它落进 unexpected，注解卫生 exit 1，汇总 job 红。",
+  "class_root": "「降级为非阻断」被当成了**一个开关**，实际上它是一份**名单加一张判定链路清单**：名单（哪些格子不判）有单一 owner，链路清单（哪些地方会因为这格而红）**没有任何 owner**。于是每多一条判定链路，非阻断就多一个漏点，而漏点的症状是「另一个 job 红了」——和这一格自己的红灯长得完全不一样，看日志的人不会把两件事连起来。更糟的是它对 advisory 这类偶发失败**只在偶发时暴露**：used 五次里有四次红，可只有红的那几次才会把汇总拖红，中间的绿让人以为已经修好了。",
+  "migration": "加新删旧在同一个 diff 里：delegatedOwner() 新增第四条规则，认领非阻断冒烟格的 failure 注解，owner 写成登记在案的 TODO（T-QA-23：used 升阻断）。格子名**不写死**，从 `scripts/validation-policy.mjs` 的 CORE_SMOKE_ADVISORY_CHECK_NAMES 派生——#842 立的单一 owner 因此多了第三个读入口，而不是多出一份平行名单。同时 evaluateAnnotations 多返回一个 advisorySmoke 子集并写进 outputs/ci-hygiene/ci-annotations.json，CLI 单列一行 `advisory-smoke: N`：不判不等于看不见。没有并行的旧版本留下——此前那条链路上压根没有关于冒烟档位的判据，不存在要删的旧实现。",
+  "affected_population": [
+    "每一个非纯文档 PR 与每一次 main push：used 这一格实测 5 跑 1 绿，也就是约四成的运行会因为一个**设计上不判**的格子而让 Quality Gate 整体红",
+    "每一次合入 main 的交付：汇总 job 红 → 合后收据不签发 → 这次合入没有任何一方确认过核心流程仍然成立（2026-09-22 ffffadc7d 实测）",
+    "后续每一条被降级为非阻断的检查：链路清单没有 owner，同一个漏法会照样复发"
+  ],
+  "scope_paths": [
+    "scripts/ci-annotation-hygiene.mjs",
+    "scripts/validation-policy.mjs"
+  ],
+  "entry_points": [
+    "scripts/ci-annotation-hygiene.mjs:delegatedOwner —— 唯一决定「这条 warning/failure 注解有没有主体」的地方",
+    "scripts/ci-annotation-hygiene.mjs:evaluateAnnotations —— 把注解分成 delegated / allowed / unexpected / advisorySmoke，unexpected 非空即 exit 1",
+    "scripts/validation-policy.mjs:CORE_SMOKE_ADVISORY_CHECK_NAMES —— 非阻断格子名的单一 owner，三条判定链路都从它派生"
+  ],
+  "invariants": [
+    "一个夹具被列为非阻断档，就必须在**每一条会把它变红的判定链路**上都不判：job 聚合（needs 的 result）、合后收据（不进 requiredChecks）、Quality Gate 汇总的注解卫生（失败注解有主体、不进 unexpected）。三条里少认一条，非阻断就是假的",
+    "注解卫生认哪些格子，只能从 CORE_SMOKE_ADVISORY_CHECK_NAMES 派生，不许写死格子名——名单和判据一起漂就什么都证不到",
+    "阻断档（CORE_SMOKE_BLOCKING_CHECK_NAMES）的注解永远不被这条委派吞掉：逐字相同的 `##[error]Process completed with exit code 1.`，在 empty 那一格仍然是 unexpected",
+    "非阻断 ≠ 看不见：advisory 冒烟格红了要在注解卫生的报告与日志里单列（advisorySmoke / `advisory-smoke: N`），否则 T-QA-23 的升阻断条件（连跑 5 次全绿）没有观测面"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/ci-annotation-hygiene.mjs",
+      "symbol": "CORE_SMOKE_ADVISORY_CHECK_NAMES"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/git-delivery.mjs",
+      "symbol": "CORE_SMOKE_ADVISORY_CHECK_NAMES"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/validation-policy.mjs",
+      "symbol": "CORE_SMOKE_BLOCKING_FIXTURES"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 3,
+    "why_not": "门表按 `node scripts/door-map.mjs CORE_SMOKE_ADVISORY_CHECK_NAMES CORE_SMOKE_BLOCKING_FIXTURES --roots=src,electron,scripts` 生成。修之前这份名单只有 2 个读入口（合后收据 git-delivery、以及 validation-policy 自己按阻断名单派生出 advisory 档）；修完是 3 个——多出来的正是本次补上的注解卫生。门**增加**一扇是这次修复的内容而不是代价：漏掉的那条判定链路此前压根没读这份名单，所以在旧门表上连一个空位都看不见，这正是 class_root 说的「链路清单没有 owner」。三扇不合并：它们的执行时机与消费者互不相干（合后校验读 merge SHA 的 check 结论 / CI 汇总读本次 run 的注解 / 名单自身在进程内派生档位），合并会把「收据要什么」和「汇总怎么判注解」绑成同一次调用，制造新的耦合。本次收的不是门的数量，是**每扇门读的是不是同一份名单**——三扇现在全部派生自 CORE_SMOKE_BLOCKING_FIXTURES，T-QA-23 升阻断只改那一行，三扇同时改口径。"
+  },
+  "regression_tests": [
+    "scripts/ci-annotation-hygiene.node-test.mjs"
+  ],
+  "residual_risks": [
+    "委派按 job 名**整格**放行：那一格里任何 failure 注解都归 T-QA-23，不区分是冒烟断言失败还是 runner 自身出问题。这是有意的——整格本来就不判——代价是该格内的基础设施故障也不会在注解卫生这一环报出来，只能靠那一格自己亮红被人看见，以及日志里的 `advisory-smoke: N`。",
+    "判定链路的清单本身仍然只存在于本合同的 invariants 里，没有机器判据。再长出第四条会因为这格而红的链路（例如某个新的汇总断言），还是要靠人想起来把它也接上名单。把链路清单做成机器可数的东西排在 T-QA-24 那一族语义级门岗里。",
+    "used 升阻断（T-QA-23）之后，这条委派规则会自动失效——这是设计——但届时 used 的偶发红会立刻变成真的阻断门。升阻断的前置条件（T-CV-19 / T-CV-20 / T-QA-21 修完 + 连跑 5 次全绿）没变，本次不动它。"
+  ],
+  "internal_only_reason": "缺口完全在本仓 CI 装配的判据之间——工作流的 continue-on-error、合后收据、注解卫生三者对同一份名单的理解不一致。GitHub Actions 的语义（continue-on-error 只改 conclusion 不改 outcome；失败步骤留下 annotation_level=failure 的注解）是既有用法，同一份工作流里已有先例，不是本次判断的依据。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "这是结构性的：只要「把某格降为非阻断」和「把它接进每一条判定链路」是两个互不校验的动作，就会继续产出「降了但还在拦」的假降级。本仓已有同形状的先例——docs-autosync 那条 advisory 降级，当初同样是先在 gates 里降成 warning，再单独补一条 delegatedOwner 才真的不拦人（本文件里那条规则的注释写明了理由）。本次是同一类的第二例，差别只在没人第二次想起来要补。",
+    "same_class_scan": [
+      "scripts/ci-annotation-hygiene.mjs:delegatedOwner 的 docs-autosync 规则 —— 同一类里做对了的那一侧（对照组）：advisory 降级时同时补了注解卫生这条链路",
+      "scripts/ci-annotation-hygiene.mjs:delegatedOwner 的 Mac Package 取消规则 —— 同形状：job 层面已经不判（cancelled），注解层面要单独再认一次",
+      ".github/workflows/quality-gate.yml:Require every validation surface —— 漏掉的那条链路所在处；它的第一行断言对所有 job 的注解一视同仁，不认任何档位"
+    ]
+  },
+  "generality_proof": "修在「注解卫生凭什么认这一格」这一层，而不是「给 used 这一格加一条豁免」。委派规则的判据是 `ADVISORY_CORE_SMOKE_JOB_NAMES.has(annotation.jobName)`，而这个集合由 CORE_SMOKE_ADVISORY_CHECK_NAMES 构造，后者又由 CORE_SMOKE_FIXTURES 减去 CORE_SMOKE_BLOCKING_FIXTURES 派生。于是：新增一个非阻断夹具，注解卫生自动认它，不必碰本文件；T-QA-23 把 used 移进阻断名单，这条委派当天自动失效、used 的失败注解立刻变回 unexpected，也不必碰本文件。「名单说不判、判据却还在判」这个状态在结构上表达不出来——回归测试里有一条把 validation-policy.mjs 整份复制出去、只改那一行名单再 import，证明这层派生是真的而不是巧合。阻断档不受影响是同一个派生的另一面：empty 不在 advisory 名单里，所以逐字相同的注解在它那里照样红。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/ci-annotation-hygiene.mjs",
+      "symbol": "delegatedOwner",
+      "responsibility": "唯一决定一条 warning/failure 注解有没有主体；非阻断冒烟格的失败注解委派给 T-QA-23，格子名从 CORE_SMOKE_ADVISORY_CHECK_NAMES 派生而不写死，阻断档不在此列"
+    },
+    {
+      "path": "scripts/validation-policy.mjs",
+      "symbol": "CORE_SMOKE_ADVISORY_CHECK_NAMES",
+      "responsibility": "非阻断格子名的单一 owner；三条判定链路（job 聚合、合后收据、注解卫生）都只从它派生，谁都不许自带一份格子名"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/ci-annotation-hygiene.mjs",
+      "entry_point": "delegatedOwner",
+      "disposition": "enforced",
+      "evidence": "ci-annotation-hygiene.node-test.mjs 三条：(a) advisory 格的 failure 注解 → delegated 且进 advisorySmoke；(b) 阻断档 Core Flow Smoke (empty) 的**逐字相同**注解 → 仍是 unexpected；(c) 派生证明——把 validation-policy.mjs 整份复制到临时目录、把 used 挪进 CORE_SMOKE_BLOCKING_FIXTURES 后重新 import，(a) 当场翻红，同手法不改名单的对照组仍然委派。先验它会红：摘掉那条 delegatedOwner 规则，(a) 与 (c) 全红，装回后 8/8 绿。"
+    },
+    {
+      "path": "scripts/git-delivery.mjs",
+      "entry_point": "mergedCheckRequirement",
+      "disposition": "not-affected",
+      "evidence": "#842 已经把这条链路接上同一份名单（advisory 进 coreSmoke.advisory、不进 requiredChecks），git-delivery.node-test.mjs 有一条故意写死 'Core Flow Smoke (used)' 的用例钉住它；本次不改它的判据，只是把它和注解卫生并列成同一份名单的两个读入口。"
+    },
+    {
+      "path": "scripts/select-quality-gate-profile.mjs",
+      "entry_point": "classifyValidationPolicy",
+      "disposition": "not-affected",
+      "evidence": "job 聚合那条链路由工作流的 continue-on-error 表达式承担，check-quality-gate-workflow.node-test.mjs 钉死它与 CORE_SMOKE_BLOCKING_FIXTURES 逐字一致；本次未改工作流。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/ci-annotation-hygiene.mjs",
+    "invariant": "非阻断冒烟格的失败注解必须有主体（委派给 T-QA-23）且单列可见；认哪些格子只能从 CORE_SMOKE_ADVISORY_CHECK_NAMES 派生，阻断档不在此列",
+    "failure_mode": "把 advisory 格的失败注解判回 unexpected、把委派写死成字符串、或让它顺手把阻断档 empty 一起吞掉，都会当场打红 scripts/ci-annotation-hygiene.node-test.mjs（`check:quality-gate-workflow` 里跑）。其中一条用例把 validation-policy.mjs 复制出去改名单再 import，证明委派是从名单派生的——名单和判据一起漂的那种假绿在这里表达不出来。本次先验过：摘掉那条规则，新增两条用例全红；装回后 8/8 绿。",
+    "exception_policy": "none",
+    "strategy": "名单只有一份（scripts/validation-policy.mjs 的 CORE_SMOKE_BLOCKING_FIXTURES，advisory 档由它派生），三条判定链路都只读它、各自不带格子名。注解卫生这条链路此前不读名单，本次把它接上；接法是构造一个 Set 而不是加一条 if 判字符串，于是升阻断当天它自动改口径。",
+    "artifacts": [
+      "scripts/ci-annotation-hygiene.mjs",
+      "scripts/validation-policy.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/ci-annotation-hygiene.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "注解卫生这条链路此前没有任何关于冒烟档位的判据，不存在并行的旧实现要删；其余三条 delegatedOwner 规则各管各的情形，原样不动。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及任何依赖的引入、升级或退役；改动全在本仓 CI 判据之间的一致性上。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "scripts/validation-policy.mjs",
+    "tests": [
+      "scripts/ci-annotation-hygiene.node-test.mjs",
+      "scripts/validation-policy.node-test.mjs"
+    ],
+    "why": "哪些格子不判，只有 CORE_SMOKE_BLOCKING_FIXTURES 说了算；注解卫生是它的第三个消费方，和 CI 起 job、合后收据平级，谁都不能单方面改口径。ci-annotation-hygiene.node-test.mjs 钉住这层派生（含一条复制源文件改名单的反证），validation-policy.node-test.mjs 钉住名单自身的判据。两份都跑在 `check:quality-gate-workflow` 里，先验过会红。"
+  }
+}

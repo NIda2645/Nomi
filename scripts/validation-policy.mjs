@@ -56,6 +56,16 @@ const VALIDATION_INFRASTRUCTURE_PATTERNS = [
   /^(?:eslint|playwright|vitest)\.config\.(?:ts|mts|cts|js|mjs|cjs)$/,
 ]
 
+// 纯文档判据（docs_only）的唯一 owner。docs/ 与 marketing/ 是整棵子树；根目录另有三族
+// 只给人和 Agent 看、不进产物也不被任何运行时读取的文件：README*（含 README.zh-CN.md）、
+// 以及根目录的 AGENTS.md / CLAUDE.md。后两个此前不在名单里，于是「只改一份 Agent 说明」
+// 的 PR 被判成 isolated_change 而不是 docs_only，两格核心冒烟在纯文档 diff 上照跑
+// （2026-09-22 #843 实测）。**只认根目录**：src/**/CLAUDE.md 那二十来份贴着代码住，
+// 继续走 fail-safe 的常规判定，不在本条放宽范围内。
+// 根目录其余 .md（CHANGELOG / CLA / Design / CODEX-REPORT / MARKET-RESEARCH）性质相同但
+// 本次不放宽——漏判只是多跑一遍冒烟（安全方向），加进来才需要逐个论证没有门岗挂着它们。
+const DOCS_ONLY_PATTERN = /^(?:docs\/|marketing\/|README[^/]*$|AGENTS\.md$|CLAUDE\.md$)/
+
 const PACKAGE_PATTERNS = [
   /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.pnpmrc)$/,
   /^electron-builder(?:\.[^/]+)?\.(?:cjs|js|json|ya?ml)$/,
@@ -180,7 +190,7 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
   // Image extensions alone cannot distinguish docs from shipped/test assets;
   // renames retain fail-closed because an entry may omit the source path.
   const docsOnly = files.every(({ path, status }) =>
-    /^(?:A|M|D)$/.test(status) && /^(?:docs\/|marketing\/|README[^/]*$)/.test(path),
+    /^(?:A|M|D)$/.test(status) && DOCS_ONLY_PATTERN.test(path),
   )
   const validationInfrastructure = files.filter((entry) =>
     matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS),
