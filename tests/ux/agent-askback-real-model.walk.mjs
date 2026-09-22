@@ -100,7 +100,16 @@ function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
   // （带编号选项、问号收尾、回合就此结束），只数 `ask_user` 调用的话这些全部记 0。
   // 读的是 transcript 里的 assistant 文本段——`*.trace/trace.md` 的 `### Response` 就是它的渲染。
   const prose = []
+  // 这一轮**到底有没有跑到模型**。run6 实测：7 轮连着 `assistant_error: Connection error.`
+  // （四次重试全是 0 token），而走查照旧记 `roundErrors: 0`——它只捕自己的异常，不读 lane
+  // 那边这次 operation 的结局。后果不是少一行日志，是**所有比率的分母都掺进了没跑到的轮次**，
+  // 报告看上去完全正常（证据 docs/evidence/2026-09-22-askback-real-model-run6 发现 ①）。
+  const outcomes = []
   for (const session of readLaneTranscripts(projectDir)) {
+    for (const write of session.writes) {
+      if (write?.namespace !== 'pi.result' || write.op !== 'set' || !write.value) continue
+      outcomes.push({ key: write.key, status: write.value.status, error: write.value.error })
+    }
     for (const message of laneMessages(session)) {
       if (message.role === 'assistant' && Array.isArray(message.content)) {
         for (const part of message.content) {
@@ -118,7 +127,7 @@ function readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds) {
       }
     }
   }
-  return { calls, results, prose }
+  return { calls, results, prose, outcomes }
 }
 
 let app, win, failure
@@ -232,6 +241,7 @@ try {
   const seenResultIds = new Set()
   // 正文按轮切：`readRoundTrajectory` 每次读的是全量，这个游标记住上一轮读到哪。
   let seenProse = 0
+  let seenOutcomes = 0
   let answeredOnce = false
   for (const item of CASES.cases.slice(0, ROUNDS)) {
     const panel = item.surface === 'creation' ? CREATION_PANEL : CANVAS_PANEL
@@ -352,7 +362,17 @@ try {
     } catch (roundError) {
       row.roundError = roundError.message
     }
-    const { calls, results, prose } = readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds)
+    const { calls, results, prose, outcomes } = readRoundTrajectory(projectDir, seenToolCallIds, seenResultIds)
+    // 这一轮新增的那几个 operation 结局。`failed` = 根本没跑到模型，这一轮的任何比率都不该数它。
+    const roundOutcomes = outcomes.slice(seenOutcomes)
+    seenOutcomes = outcomes.length
+    const failedOutcome = roundOutcomes.find((outcome) => outcome.status === 'failed')
+    row.reachedModel = !failedOutcome
+    if (failedOutcome) {
+      row.roundFailed = failedOutcome.status
+      row.assistantError = failedOutcome.error?.code ?? null
+      row.assistantErrorMessage = failedOutcome.error?.message ?? null
+    }
     row.ms = Date.now() - started
     row.toolCalls = calls.map((call) => call.name)
     row.firstTool = calls[0]?.name ?? null
@@ -376,16 +396,22 @@ try {
     row.rejectedArgs = results.filter((result) => ARG_REJECTED.test(result.text)).map((result) => result.name)
     row.argsOkFirstTry = calls.length > 0 && row.rejectedArgs.length === 0
     report.cases.push(row)
-    console.log(`${item.id} shouldAsk=${item.shouldAsk} asked=${row.askedUser} inProse=${row.askedInProse} card=${row.questionCardVisible === true} tools=[${row.toolCalls.join(',')}] ${row.ms}ms`)
+    console.log(`${item.id} shouldAsk=${item.shouldAsk} asked=${row.askedUser} inProse=${row.askedInProse} card=${row.questionCardVisible === true} reached=${row.reachedModel} tools=[${row.toolCalls.join(',')}] ${row.ms}ms`)
     fs.writeFileSync(path.join(outputDir, 'report.json'), JSON.stringify(report, null, 2))
   }
 
   const count = (predicate) => report.cases.filter(predicate).length
-  const should = report.cases.filter((c) => c.shouldAsk)
-  const shouldNot = report.cases.filter((c) => !c.shouldAsk)
+  // **没跑到模型的轮次不进任何分母**：一轮「模型根本没回话」和一轮「模型想了想决定不问」
+  // 在比率里长得一模一样，那正是 run6 那 7 轮把整份报告变成假绿的原因。
+  const reached = report.cases.filter((c) => c.reachedModel !== false)
+  const should = reached.filter((c) => c.shouldAsk)
+  const shouldNot = reached.filter((c) => !c.shouldAsk)
   const allQualities = report.cases.flatMap((c) => c.optionQuality ?? [])
   report.summary = {
     rounds: report.cases.length,
+    // 跑到模型的轮次。低于 `rounds` 就说明下面每一格的分母都缩了——这一份不能和别的轮次直接比。
+    roundsReachedModel: `${reached.length}/${report.cases.length}`,
+    roundsFailedBeforeModel: report.cases.filter((c) => c.reachedModel === false).map((c) => `${c.id}:${c.assistantError ?? 'failed'}`),
     askedWhenShould: `${should.filter((c) => c.askedUser).length}/${should.length}`,
     // 「模型自己认为该问」= 调了工具 **或** 在正文里问了。它与上一行的差额就是
     // 「它想问、但问在了用户答不了的地方」——2026-09-22 run4/run5 那 4 句 / 6 句。
