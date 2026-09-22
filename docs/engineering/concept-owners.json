@@ -1,0 +1,52 @@
+{
+  "_schema": "concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }] · 纪律与判据见 docs/engineering-rules.md R33.4",
+  "concepts": [
+    {
+      "name": "等用户",
+      "owner": {
+        "path": "electron/agentLane/laneApprovalGate.ts",
+        "symbol": "createLaneApprovalGate"
+      },
+      "consumers": [
+        "electron/agentLane/laneNativeApproval.ts",
+        "electron/agentLane/laneRuntimePort.ts",
+        "electron/agentLane/laneHost.mts",
+        "electron/agentLane/laneTools.mts",
+        "electron/agentLane/laneExtendedTools.ts"
+      ],
+      "since": "2026-09-22",
+      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。"
+    },
+    {
+      "name": "出价/待决身份",
+      "owner": {
+        "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+        "symbol": "PendingSpendConfirm",
+        "pending": true
+      },
+      "consumers": [],
+      "since": "2026-09-22",
+      "notes": "pending：唯一 owner 待总合并核定，这里先锚在跨进程契约上。身份字段是 operationId。2026-09-22 复盘实例——草稿键绑的是报价身份而不是 operationId，于是「这一笔」在两个地方有两种身份。收口人：集成分支 integration/core-a-salvage-20260921 追平 main 的那份总合并任务书；核定后去掉 pending 并补齐 consumers。"
+    },
+    {
+      "name": "参数准入",
+      "owner": {
+        "path": "electron/capabilityCore/executionContract.ts",
+        "symbol": "GENERATION_PLANNING_HINTS",
+        "pending": true
+      },
+      "consumers": [],
+      "since": "2026-09-22",
+      "notes": "pending：待总合并收成一份。今天 main 上是这一份（GENERATION_PLANNING_HINTS / GENERATION_PLANNING_HINT_KEYS）；另一条未合并 lane 有第二份判据 GENERATION_PLANNING_PARAMETER_KEYS，各带一套拒绝形状。收口人：同上那份总合并任务书（两张表并成一张、一个 owner，拒绝形状取 ParameterRejection）。合完去掉 pending 并补 consumers。"
+    },
+    {
+      "name": "供应商落家",
+      "owner": {
+        "pending": true
+      },
+      "consumers": [],
+      "since": "2026-09-22",
+      "notes": "pending：owner 待总合并放进 electron/shared 之后再登记路径，此处刻意不写路径（不拿现有文件冒充 owner）。今天的两个写口：渲染层排序规则（src/workbench/common/useVendorPreference.ts 一线）与主进程侧；electron/shared/contracts/vendorPreference.ts 只是跨进程的存储契约（顺序设置的读写），不是落家规则本体。收口人：同上那份总合并任务书（规则本体放 electron/shared，两侧都 import 它、删各自副本，并补一条「自接入供应商 × 用户重排过顺序」的对拍测试）。"
+    }
+  ]
+}
