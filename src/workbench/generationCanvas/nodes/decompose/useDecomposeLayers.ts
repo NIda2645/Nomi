@@ -13,6 +13,7 @@ import { isProjectExecutionContextCurrent, withProjectAction } from '../../../pr
 import { listWorkbenchModelCatalogVendors } from '../../../api/modelCatalogApi'
 import { confirmDialog } from '../../../../design/confirmDialogStore'
 import i18n from '../../../../i18n'
+import { isVendorOfBuiltin } from '../../../../../electron/shared/builtinVendorIdentity'
 
 /**
  * 没接 Replicate 时不甩死胡同错误，而是引导去「模型接入」（那里已有 Replicate 卡：官网链接 +
@@ -20,7 +21,8 @@ import i18n from '../../../../i18n'
  */
 async function ensureReplicateConnectedOrGuide(): Promise<boolean> {
   const vendors = await listWorkbenchModelCatalogVendors().catch(() => [])
-  const replicate = vendors.find((v) => v.key === 'replicate')
+  // #831：同域名可以有多条 Replicate 连接，身份经 lineage 解析，不比 key 字面量。
+  const replicate = vendors.find((v) => isVendorOfBuiltin(vendors, v.key, 'replicate'))
   if (replicate?.enabled && replicate.hasApiKey) return true
   const go = await confirmDialog({
     title: i18n.t('generationCommon.decompose.connectTitle'),

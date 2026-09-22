@@ -1,6 +1,6 @@
 import { authHeaders } from "../ai/requestPipeline";
 import { extractVendorExtraHeaders, readCatalog, normalizeProviderKind } from "../catalog/catalogStore";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
 import { desktopT } from "../i18n";
 import type { AiSdkProviderKind } from "../catalog/types";
 import type { ConnectionCertificationService } from "./service";
@@ -18,8 +18,15 @@ export async function discoverHttpCandidates(input: {
   if (!apiKey) throw new Error(desktopT("integration.discoveryMissingCredential"));
   const providerKind = normalizeProviderKind(session.config.providerKind) as AiSdkProviderKind;
   const authType = session.config.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer");
-  const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-  const vendor = readCatalog().vendors.find((candidate) => candidate.key === vendorKey);
+  // #831：同域名可以有多条连接，身份 = 域名 + 连接名。反查必须带上连接名，
+  // 否则永远落到 host 那条，模型发现会拿错一把 Key。
+  const catalogVendors = readCatalog().vendors;
+  const vendorKey = resolveConnectionVendorKey({
+    baseUrl: session.config.baseUrl,
+    name: session.config.name,
+    vendors: catalogVendors,
+  });
+  const vendor = catalogVendors.find((candidate) => candidate.key === vendorKey);
   try {
     const candidates = await input.certification.discoverHttpModels({
       baseUrl: session.config.baseUrl,

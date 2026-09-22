@@ -2,9 +2,19 @@ import crypto from "node:crypto";
 import { isJsonRecord, nowIso } from "../jsonUtils";
 import { newapiImageEditProfileForModel } from "./newapiTransport";
 import type { CatalogState } from "./types";
+import { builtinVendorKeyOfKey } from "../shared/builtinVendorIdentity";
 
 // 由内置 seed/repair 自己维护传输协议；relay catalog 迁移不得覆盖这些策展 vendor。
-export const BUILTIN_VENDOR_KEYS = new Set(["kie", "apimart", "modelscope", "volcengine", "volcengine-speech", "runninghub"]);
+const BUILTIN_VENDOR_KEYS = new Set(["kie", "apimart", "modelscope", "volcengine", "volcengine-speech", "runninghub"]);
+
+/**
+ * 这条 vendorKey 是不是「由 seed/repair 自己维护协议」的内置家。
+ * #831：兄弟连接（`apimart--mini`）也算 —— 不解析 root 的话，relay 迁移会去改写
+ * APIMart 特价组的 mapping，而那些 mapping 本该由 seedBuiltins 独占。
+ */
+export function isBuiltinRelayVendorKey(vendorKey: string | null | undefined): boolean {
+  return BUILTIN_VENDOR_KEYS.has(builtinVendorKeyOfKey(vendorKey));
+}
 
 /**
  * v5 → v6：把存量中转的改图协议从 vendor 级 generic mapping 拆成模型级精确 mapping。
@@ -19,7 +29,7 @@ export function migrateRelayImageEditProtocols(state: CatalogState): { state: Ca
   const t = nowIso();
   for (let i = 0; i < models.length; i += 1) {
     const model = models[i];
-    if (model.kind !== "image" || BUILTIN_VENDOR_KEYS.has(model.vendorKey)) continue;
+    if (model.kind !== "image" || isBuiltinRelayVendorKey(model.vendorKey)) continue;
     const hasOpenAiImageShape = mappings.some(
       (mapping) => mapping.vendorKey === model.vendorKey && mapping.taskKind === "text_to_image" && /\/images\/generations$/.test(String(mapping.create?.path || "")),
     );
