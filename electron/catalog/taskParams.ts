@@ -8,6 +8,7 @@ import { firstString, isJsonRecord, type JsonRecord } from "../jsonUtils";
 import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
+import { hasMentions, numberPromptReferences, projectPromptForSend } from "../shared/storyboard/promptMentions";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
 import { readSelectedComfyReferenceContract, type ParameterReferenceSelection } from "./parameterReferenceContract";
 
@@ -759,4 +760,19 @@ export function jsonImageEditInput(referenceImages: unknown): { image?: JsonImag
     .map((url) => ({ type: "image_url" as const, url }));
   if (refs.length === 1) return { image: refs[0] };
   return refs.length > 1 ? { images: refs } : {};
+}
+
+/**
+ * A5：发给供应商之前的**最终** prompt —— `@[asset:<url>]` 投影成 `@image1/@video1`。
+ *
+ * 引擎 A 只有 `runtime.runTask` 一个出口，所以判据收在这一个函数里、由它调一次：渲染层那条路在
+ * `catalogTaskActions.ts` 已经投影过一次（串里不再有标记，这里是 no-op），而 headless 那两条
+ * （外部 MCP 单发 `core.ts`、接入试跑 `tryModel.ts`）**从来没投影过**——供应商收到的是一串
+ * `@[asset:nomi-local%3A%2F%2F…png]`，花了钱拿回错东西（对等矩阵 A5）。
+ * 编号与投影规则住在共享层，与 Run 路径（`executionContract.projectContractPrompt`）同一份。
+ * 没对上参考的孤儿标记按共享规则删掉（与界面上的非编辑态预览逐字相同），绝不原样外泄。
+ */
+export function projectOutboundPrompt(prompt: string, extras: Record<string, unknown> | undefined): string {
+  if (!hasMentions(prompt)) return prompt;
+  return projectPromptForSend(prompt, numberPromptReferences(carriedPromptReferences(extras || {})));
 }

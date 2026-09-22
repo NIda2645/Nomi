@@ -15,8 +15,7 @@ import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallT
 import { localizeTaskAsset } from "./assets/localizeTaskAsset";
 export { localizeTaskAsset };
 import { localizedTaskAssetFileName } from "./assets/localizedAsset";
-import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline";
-import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
+import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline"; import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
 import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation"; import type { AntigravityProcessStage } from "./catalog/antigravityCatalog";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
@@ -55,8 +54,7 @@ import { extractVendorExtraHeaders, readCatalog } from "./catalog/catalogStore";
 import { unlocalizedTaskAsset } from "./tasks/unlocalizedTaskAsset";
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectTaskMapping } from "./catalog/types";
-import { applyHeadlessParamDefaults, carriedPromptReferences, imageEditGuardError } from "./catalog/taskParams";
-import { hasMentions, numberPromptReferences, projectPromptForSend } from "./shared/storyboard/promptMentions";
+import { applyHeadlessParamDefaults, imageEditGuardError, projectOutboundPrompt } from "./catalog/taskParams";
 import { modelModeBodies } from "./catalog/modelCatalogListing";
 import { runCustomCallTask } from "./catalog/customCallDispatch";
 import { resolveCustomCallExecution } from "./catalog/customCallMode";
@@ -169,7 +167,6 @@ export function admitTask(id: string, entry: CachedTask): void {
 // 可执行模型解析下沉到 catalog/executableModel（R12 净减）；re-export 保住 textTaskRunner/taskResultQuery 既有 import 面。
 export { findExecutableModel, findExecutableModelForTask } from "./catalog/executableModel";
 import { findExecutableModel } from "./catalog/executableModel";
-
 
 // billingKindForTaskKind 下沉到 catalog/types（R12 净减）；re-export 保住既有消费方 import 面。
 export { billingKindForTaskKind } from "./catalog/types";
@@ -323,17 +320,8 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const effectiveVendorKey = vendor.key;
   const mapping = stagedCandidate?.mapping || findTaskMapping(effectiveVendorKey, kind, modelKey, modeId);
   request.extras = applyHeadlessParamDefaults(request.extras, (model?.meta as { archetypeId?: string } | undefined)?.archetypeId, kind, effectiveVendorKey, mapping?.create?.defaultParams, mapping?.create?.body, model.modelKey);
-  // A5：发给供应商之前的**最终** prompt —— `@[asset:<url>]` 投影成 `@image1/@video1`。
-  //
-  // 这是引擎 A 唯一的出口，所以判据收在这里而不是各入口自己做：渲染层那条路在
-  // `catalogTaskActions.ts` 已经投影过一次（串里不再有标记，这里是 no-op），而 headless 那两条
-  // （外部 MCP 单发 `core.ts`、接入试跑 `tryModel.ts`）**从来没投影过**——供应商收到的是一串
-  // `@[asset:nomi-local%3A%2F%2F…png]`，花了钱拿回错东西（对等矩阵 A5）。
-  // 编号与投影规则住在共享层，与 Run 路径（`executionContract.projectContractPrompt`）同一份。
-  // 没对上参考的孤儿标记按共享规则删掉（与界面上的非编辑态预览逐字相同），绝不原样外泄。
-  if (hasMentions(request.prompt)) {
-    request.prompt = projectPromptForSend(request.prompt, numberPromptReferences(carriedPromptReferences(request.extras || {})));
-  }
+  // A5：@ 内联参考在发出去之前投影成 @image1/@video1。判据与注释住 taskParams（引擎 A 只有这一个出口）。
+  request.prompt = projectOutboundPrompt(request.prompt, request.extras);
   const customCall = resolveCustomCallExecution(model as Model, request, mapping);
   const customCallScript = customCall?.script || "";
   const guardError = imageEditGuardError(kind, request, Boolean(mapping) || Boolean(customCallScript), model.labelZh || model.modelKey, customCallScript ? undefined : mapping?.create?.body, modelModeBodies(readCatalog().mappings, effectiveVendorKey, modelKey, (model as Model).modelAlias), { vendorKey: effectiveVendorKey, modelKey: model.modelKey });

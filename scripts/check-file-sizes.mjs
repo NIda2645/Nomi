@@ -31,12 +31,12 @@ const ALLOWLIST = {
   // transitions together. It is reviewed as one security boundary and must
   // be split only along a stable ownership seam, not by moving methods into
   // a second writer. (2026-08-29)
-  "electron/integrationCertification/integrationSession.ts": 1394, // 1695→1652（2026-09-10 把 workflow 绑定净化与「谁来编译说明卡」的裁决各抽成独立模块）→ 1338（2026-09-15 棘轮锁定：门岗自己报「已瘦身」要求下调，来自 main 的既有瘦身，不是本 PR 改的）→ 1394（2026-09-21 会话容量合同：读盘那一段整体搬进 integrationSessionRecord，服务层只剩一行委托）
+  "electron/integrationCertification/integrationSession.ts": 1393, // 1695→1652（2026-09-10 把 workflow 绑定净化与「谁来编译说明卡」的裁决各抽成独立模块）→ 1338（2026-09-15 棘轮锁定：门岗自己报「已瘦身」要求下调，来自 main 的既有瘦身，不是本 PR 改的）→ 1394（2026-09-21 会话容量合同：读盘那一段整体搬进 integrationSessionRecord，服务层只剩一行委托）
   // Existing SettingsDialog shell now owns the durable integration handoff
   // projection alongside the legacy model settings pages. Keep this reviewed
   // baseline until the planned settings-surface extraction. (2026-08-29)
   "src/ui/onboarding/OnboardingDrawer.tsx": 795, // 795（2026-09-21 合并 ① 按门岗提示拧紧，只减不增）
-  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 654, // …→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）→ 710（2026-09-07 agent-artifact：正文/浮条插槽移出壳 + composer 排除表收进 resolveRenderKind）→ 677（2026-09-12 S3：四个整表选择器收进 canvasNodeGenerationIndex）→ 654（2026-09-21 合并 ① 按门岗提示拧紧）
+  "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx": 562, // …→ 713（2026-08-29 React Flow 单内核：移除旧布局与缩放分支）→ 710（2026-09-07 agent-artifact：正文/浮条插槽移出壳 + composer 排除表收进 resolveRenderKind）→ 677（2026-09-12 S3：四个整表选择器收进 canvasNodeGenerationIndex）→ 654（2026-09-21 合并 ① 按门岗提示拧紧）
   // Project Agent Host 迁移巨壳（M1 transplant：electron 切片随 r2 入库、renderer 切片随
   // 本次 cutover 入库；上游 pr223 原型已人工评审同一批 owner，数字按本分支实际行数锁棘轮，
   // 只减不增，下一个分解批次按稳定 ownership seam 拆分后逐个出表）。834→836：并 origin/main 的

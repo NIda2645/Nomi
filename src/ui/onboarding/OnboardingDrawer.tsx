@@ -747,7 +747,6 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       </ModelSettingsDetailBoundary>,
     )
   }
-
   return (
     <ModelSettingsHome
       connections={homeConnections}

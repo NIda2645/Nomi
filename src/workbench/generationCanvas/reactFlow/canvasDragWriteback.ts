@@ -10,6 +10,8 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { findTimelineDropTarget } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
+import { withCanvasGestureContext } from '../events/canvasGestureContext'
+import { restoreCanvasDragKernelOwnership } from './canvasDragDraft'
 import type { GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 
 type DragPosition = { x: number; y: number }
@@ -126,4 +128,60 @@ export function commitCanvasNodeDragStop({
   commitPersistedChange()
   dragStartPositionsRef.current.clear()
   dragDraftNodesRef.current = []
+}
+
+/**
+ * 取消一次节点拖动的**唯一**收尾：租约释放、草稿清空、框预览撤掉、内核位置还原。
+ *
+ * 它和 `commitCanvasNodeDragStop`（正常松手）是同一件事的两个结局，所以住同一个文件：
+ * 2026-09-22 总合并之前它长在 `GenerationCanvasReactFlow.tsx` 的组件体里，那份文件因此越过 800 行门岗，
+ * 而「拖动怎么收尾」本来就不该是那个壳的知识。
+ */
+export function cancelCanvasNodeDrag(input: {
+  dragLeaseRef: { current: { release: () => void } | null }
+  draggingRef: { current: boolean }
+  dragStartPositionsRef: { current: Map<string, { x: number; y: number }> }
+  dragDraftNodesRef: { current: unknown[] }
+  duplicateDragIdsRef: { current: Map<string, string> }
+  setNodeDragActive: (active: boolean) => void
+  cancelFramePreview: () => void
+  flowStore: Parameters<typeof restoreCanvasDragKernelOwnership>[0]
+  /** 把内核的节点数组拨回应用侧那一份（拖动草稿作废）。由调用方给，本文件不认识 RF 的公开 store API。 */
+  restoreFlowNodes: () => void
+}): void {
+  input.dragLeaseRef.current?.release()
+  input.dragLeaseRef.current = null
+  if (!input.draggingRef.current) return
+  input.draggingRef.current = false
+  input.setNodeDragActive(false)
+  input.dragStartPositionsRef.current.clear()
+  input.dragDraftNodesRef.current = []
+  input.duplicateDragIdsRef.current.clear()
+  input.cancelFramePreview()
+  restoreCanvasDragKernelOwnership(input.flowStore)
+  input.restoreFlowNodes()
+}
+
+/**
+ * 正常松手那条收尾的**唯一**入口：租约释放 → 位置写回 → 框归属提交 → 内核归属还原。
+ *
+ * 顺序是判据的一部分：位置写回之后才提交框归属，先改成员再移动会让框在同一帧里既缩又长，
+ * 看着像抖了一下。2026-09-22 总合并把它从 `GenerationCanvasReactFlow.tsx` 的组件体里搬过来——
+ * 「拖动怎么收尾」和取消那一条住同一个家，那个壳也因此回到 800 行门岗之内。
+ */
+export function finishCanvasNodeDrag(input: Parameters<typeof commitCanvasNodeDragStop>[0] & {
+  dragLeaseRef: { current: { release: () => void } | null }
+  duplicateDragIdsRef: { current: Map<string, string> }
+  setNodeDragActive: (active: boolean) => void
+  commitFrameMembership: () => void
+  flowStore: Parameters<typeof restoreCanvasDragKernelOwnership>[0]
+}): void {
+  input.dragLeaseRef.current?.release()
+  input.dragLeaseRef.current = null
+  // #5：解冻 minimap（在所有退出路径之前，含时间轴投放早退；draggingRef 由 writeback 清）。
+  input.setNodeDragActive(false)
+  commitCanvasNodeDragStop(input)
+  withCanvasGestureContext({ source: 'user', txnId: crypto.randomUUID(), suppressUndoBarriers: true }, () => input.commitFrameMembership())
+  input.duplicateDragIdsRef.current.clear()
+  restoreCanvasDragKernelOwnership(input.flowStore)
 }

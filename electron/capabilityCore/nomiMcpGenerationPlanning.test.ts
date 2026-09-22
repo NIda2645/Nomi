@@ -380,7 +380,7 @@ describe("MCP semantic generation planning journey", () => {
 
     // **拒了就不许落盘**：被拒的那一次 patch 不能留下半张脸（模式换了、参数没换那种）。
     // 草稿原样停在上一次成功的样子，模型改对之后重发即可。
-    const stored = repository.read("project-1", operationId!).generationPlan;
+    const stored = repository.read("project-1", operationId!)!.generationPlan;
     expect(stored).toMatchObject({ state: "draft", candidate: { revision: 1, mode: "image-to-video", parameters: { duration: 5 } } });
 
     // 改对之后同一条路照常放行——拒绝不是把这条草稿判死。
@@ -404,7 +404,7 @@ describe("MCP semantic generation planning journey", () => {
     const secondPayload = JSON.parse((secondPreview.result as { content: Array<{ text: string }> }).content[0]!.text) as { recommendation: { recommendations: Array<{ modeId: string }> }; contract: { contractHash: string } };
     expect(secondPayload.recommendation.recommendations[0]?.modeId).toBe("firstlast");
     expect(secondPayload.contract.contractHash).not.toBe(firstPayload.contract.contractHash);
-    expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
+    expect(repository.read("project-1", operationId!)!.generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "firstlast" } });
   });
 
   it("walks the real GUI catalog profiles through model, mode, reference and parameter switches", async () => {

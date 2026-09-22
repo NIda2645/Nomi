@@ -79,7 +79,6 @@ const ASSERT_ANNOUNCED_CARDS: boolean =
  * 这一行告诉我们「断在哪、原话是什么」。两者缺一，下一次复现还是只能靠猜。
  */
 export function traceMissingInterventionCard(trace: MissingCardTrace): void {
-  // eslint-disable-next-line no-console
   console.error('[missing-intervention-card]', trace.announcer, trace.reason, trace.detail)
 }
 

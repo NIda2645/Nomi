@@ -50,6 +50,7 @@ import {
 import { referenceCombineChannelFor } from "../shared/videoCapabilities/referenceChannels";
 import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 import { ApimartGenerationProviderError as CatalogGenerationProviderError } from "./apimartGenerationErrors";
+import { catalogFingerprint } from "./apimartGenerationIdentity";
 
 export type {
   ApimartImageReferenceWithRole,
@@ -232,49 +233,6 @@ function assertCreateOperation(mapping: Mapping, taskKind: ProfileKind, vendorKe
     throw new CatalogGenerationProviderError(`${vendorKey} catalog mapping ${mapping.id} needs a local process transport this executor cannot run`);
   }
   return billingKindForTaskKind(taskKind);
-}
-
-function catalogFingerprint(selection: { vendor: Vendor; model: Model; mapping: Mapping }, extraHeaders: Record<string, string> | undefined, vendorKey: string): string {
-  try {
-    return productionGenerationPayloadHash({
-      vendor: {
-        key: selection.vendor.key,
-        enabled: selection.vendor.enabled,
-        baseUrlHint: selection.vendor.baseUrlHint,
-        authType: selection.vendor.authType,
-        authHeader: selection.vendor.authHeader,
-        // 方案词是出站身份的一部分（Higgsfield 的 `Authorization: Key …`）：授权之后有人把它
-        // 从 Key 改成 Bearer，必须当成「目录变了」重建请求，而不是照着旧批准发出去。
-        authScheme: selection.vendor.authScheme,
-        authQueryParam: selection.vendor.authQueryParam,
-        providerKind: selection.vendor.providerKind,
-        // Extra headers are part of the effective transport identity. They
-        // must be frozen with the model/base URL so a header change after
-        // approval cannot silently alter the paid request.
-        extraHeaders,
-      },
-      model: {
-        vendorKey: selection.model.vendorKey,
-        modelKey: selection.model.modelKey,
-        modelAlias: selection.model.modelAlias,
-        kind: selection.model.kind,
-        enabled: selection.model.enabled,
-        meta: selection.model.meta,
-      },
-      mapping: {
-        id: selection.mapping.id,
-        vendorKey: selection.mapping.vendorKey,
-        modelKey: selection.mapping.modelKey,
-        taskKind: selection.mapping.taskKind,
-        enabled: selection.mapping.enabled,
-        create: selection.mapping.create,
-        query: selection.mapping.query,
-        statusMapping: selection.mapping.statusMapping,
-      },
-    });
-  } catch {
-    throw new CatalogGenerationProviderError(`${vendorKey} catalog identity is not serializable`);
-  }
 }
 
 function selectCatalogSelection(

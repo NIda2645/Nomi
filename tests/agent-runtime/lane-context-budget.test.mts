@@ -169,7 +169,9 @@ test('C59 on-demand models returns every mode contract and follows the latest ca
   let entries = [model, { ...model, modelId: 'Second-Video', modes: [...model.modes,
     { ...model.modes[0]!, modeId: 'first', params: [{ key: 'resolution', type: 'select' as const, label: '分辨率',
       options: [{ value: '1080P', label: '1080P' }] }] }] }];
-  const tool = createLaneModelRead(() => entries);
+  // 可用性必传（2026-09-22）：这条测试的夹具里没有目录，所以**说出来**——
+  // 不许靠一个 `?.` 把「没接目录」和「这个模型没有可用性信息」混成一件事。
+  const tool = createLaneModelRead(() => entries, () => undefined);
   const full = await tool.execute('full', {});
   assert.equal(JSON.parse(full.content[0]!.text).models.length, 2);
   const narrowed = await tool.execute('narrow', { modelId: 'Second-Video' });

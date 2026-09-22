@@ -127,9 +127,11 @@ const READ_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      target: { type: 'string', enum: READ_TARGETS, description: '读取：canvas/projects/models/model/generation_context/operation/run/run_events/artifact/artifact_content/setup/onboarding_kit。模型目录分两档（渐进披露）：target=models 给**薄名单**（标识/类型/可用性/有哪些模式与变体/吃不吃参考），选定后用 target=model + modelId 取**那一个**的完整说明书（每个模式的参数、取值范围、参考槽、变体）。别为了拿参数去拉整份名单。target=projects 每行带一个短 projectSelectionHandle，原样喂给 nomi_session_open 即续接该项目。target=onboarding_kit 无前置：接一家新供应商前先读它，拿到声明卡的 JSON Schema、撰写规范与两份可照抄的样例卡（不需要先有 API key，也不需要先开接入会话）。' },
-      modelId: { type: 'string', description: 'target=model 必填：薄名单里那一行的 modelId。' },
-      vendor: { type: 'string', description: 'target=model 可选：同名模型来自多家时用它指定哪一家。' },
+      // 对外 payload 有只减不增的棘轮（check:mcp-payload）。两条 lane 各写了一版这段散文，2026-09-22 总合并
+      // 把两版的**事实**合起来、话压到最短：合法值本来就在 `enum` 里，散文里再抄一遍是纯重复。
+      target: { type: 'string', enum: READ_TARGETS, description: '模型分两档：models 薄名单；model + modelId 取那一个的说明书（参数/取值/参考槽/变体），别为拿参数拉整份名单。projects 每行带 projectSelectionHandle，喂给 nomi_session_open 续接。' },
+      modelId: { type: 'string', description: 'target=model 必填：薄名单里的 modelId。' },
+      vendor: { type: 'string', description: 'target=model 可选：同名模型多家时指定哪家。' },
       projectId: { type: 'string' },
       leaseHandle: { type: 'string', description: 'target=canvas/generation_context/operation 必填。' },
       runId: RUN_EVENT_FIELDS.runId,

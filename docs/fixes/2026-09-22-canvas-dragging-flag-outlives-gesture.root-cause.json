@@ -34,37 +34,37 @@
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
-      "symbol": "setCanvasDragging"
+      "symbol": "armGestureEndGuard"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
-      "symbol": "setCanvasDragging"
+      "symbol": "beginCanvasDragging"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
-      "symbol": "setCanvasDragging"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
-      "symbol": "setCanvasDragging"
+      "symbol": "beginCanvasDragging"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
-      "symbol": "setCanvasDragging"
+      "symbol": "beginCanvasDragging"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
-      "symbol": "setCanvasDragging"
+      "symbol": "beginCanvasDragging"
     },
     {
       "kind": "write",
       "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
-      "symbol": "setCanvasDragging"
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "symbol": "cancelCanvasDraggingWithin"
     }
   ],
   "door_reduction": {
@@ -72,12 +72,12 @@
     "after": 7,
     "why_not": "Each door is a different gesture owner (selection drag, legacy node drag, RF node drag start/stop, RF viewport pan, host pointer pan). They legitimately start and stop at different moments; merging them would re-couple unrelated gestures. The class is closed at the shared flag module (armGestureEndGuard) that every door writes through, so no door can leak past the gesture regardless of its own timing."
   },
-  "generality_proof": "All six writer doors call setCanvasDragging. The first raise now arms a window-level gesture-end guard on that stage, and pointerup, pointercancel or window blur clears every owner. So a skipped release from any current or future owner, from any timing race, pointer type or platform, is bounded by the gesture. The specific viewport race is also fixed at its source by releasing unconditionally.",
+  "generality_proof": "每一扇写口拿的都是同一个 `beginCanvasDragging` 租约。第一次升旗就给那张 stage 装上手势兜底闸，pointerup / pointercancel / 窗口 blur 之后等一帧，仍挂着的租约一律收掉。于是任何一位现有或将来的 owner、任何时序竞态、任何指针类型或平台上「漏了一次 release」，都被这一次手势框住。视口那条具体竞态另外在源头修好了：`onMoveEnd` 无条件 `release()`，不再按「这次平移动过没」那个会被重置的布尔判断。",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
-      "symbol": "setCanvasDragging",
-      "responsibility": "Single owner of the stage data-dragging attribute; bounds its lifetime to the pointer gesture"
+      "symbol": "beginCanvasDragging",
+      "responsibility": "Single owner of the stage data-dragging attribute: one lease per gesture, and the flag's lifetime is bounded by that pointer gesture (armGestureEndGuard)"
     },
     {
       "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
@@ -115,7 +115,7 @@
     "classification": "recurring",
     "reason": "The flag has six independent writers and one of them already leaked through a third-party timer. Any new owner or timing change can leak the same way, and the effect is every overlay on the canvas disappearing.",
     "same_class_scan": [
-      "node scripts/door-map.mjs setCanvasDragging → 6 writer doors, 15 call sites",
+      "node scripts/door-map.mjs beginCanvasDragging armGestureEndGuard cancelCanvasDraggingWithin → 7 writer doors, 11 call sites（2026-09-22 总合并换成租约模型之后重数）",
       "grep '\\[dragging=true\\]/canvas' → NodeGenerationComposer, NodeFloatingToolbar, NodeResultStack all hide on the flag",
       "grep canvasPanMovedRef → pointerdown on .react-flow__pane (which contains nodes) resets it"
     ]
@@ -151,7 +151,7 @@
     "rationale": "The 150ms deferral is documented xyflow behaviour for panOnScroll (debouncing scroll end), not a defect; our release must not depend on it. No upgrade changes it.",
     "exit_criteria": []
   },
-  "migration": "None: transient in-memory DOM attribute, nothing persisted.",
+  "migration": "None: transient in-memory DOM attribute, nothing persisted.\n\n2026-09-22 总合并订正（主会话裁决：data-dragging 取打捞分支的**租约模型**，同时原样保留本合同的行为级测试）：升旗/摘旗的入口从 `setCanvasDragging(origin, dragging, owner)` 换成 `beginCanvasDragging(...) → {activate, release, cancel}` 一张租约，宿主隐藏那条走 `cancelCanvasDraggingWithin`。本合同要守的那条不变量**一个字没改**——「标志的寿命上限 = 这一次指针手势」——它现在由 `canvasDraggingFlag.armGestureEndGuard` 实现（pointerup/pointercancel/窗口 blur + 等一帧的 epoch 兜底），行为级测试（`canvasDraggingFlag.test.ts` 的「the flag never outlives the pointer gesture」四条）改用租约 API 表达、断言逐条保留。门表按新符号重锚。",
   "residual_risks": [
     "A programmatic viewport move while no pointer is down cannot raise the flag (canvasPanMovedRef is false then), so the guard waiting for the next pointerup is sufficient; not independently proven for touch pinch.",
     "The integration branch (ab9460f45, unpushed) replaces this module with a lease model; its owner will keep the behaviour-level walkthrough as the shared acceptance."
