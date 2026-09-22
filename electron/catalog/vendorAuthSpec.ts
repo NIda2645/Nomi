@@ -1,5 +1,6 @@
 import type { AuthType, VendorAuthSpec } from "../ai/requestPipeline";
-import { deriveVendorKeyFromBaseUrl } from "./catalogCommit";
+import { resolveHostVendorKey } from "./connectionVendorKey";
+import { builtinVendorKeyOfKey } from "../shared/builtinVendorIdentity";
 import { readCatalog } from "./catalogStore";
 import type { Vendor } from "./types";
 
@@ -46,10 +47,19 @@ export function connectionAuthSpec(input: {
   };
 }
 
-/** 按 baseUrl 找那条已保存的连接（与模型发现用的是同一个推导，不另起一份）。 */
+/**
+ * 按 baseUrl 找那条已保存的连接（与模型发现用的是同一个推导，不另起一份）。
+ *
+ * #831：同一个域名可以有多条连接（满血组 / 特价组各一把 Key），所以「这条地址的那条连接」
+ * 不再等于 hostname 推出来的那一个 key。这里只拿得到 baseUrl、拿不到连接名——所以按**那一族**
+ * 找：root 那条优先（它就是第一条连接），没有 root 时退回族里的第一条兄弟连接。
+ * 拿得到连接名的调用点该用 `resolveConnectionVendorKey`，它答得更准。
+ */
 export function savedVendorForBaseUrl(baseUrl: string): Vendor | undefined {
   if (!baseUrl) return undefined;
-  const key = deriveVendorKeyFromBaseUrl(baseUrl);
-  if (!key) return undefined;
-  return readCatalog().vendors.find((candidate) => candidate.key === key);
+  const vendors = readCatalog().vendors;
+  const root = resolveHostVendorKey({ baseUrl });
+  if (!root) return undefined;
+  return vendors.find((candidate) => candidate.key === root)
+    ?? vendors.find((candidate) => builtinVendorKeyOfKey(candidate.key) === root);
 }

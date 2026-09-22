@@ -19,7 +19,7 @@ import { validateProviderAdapterDraft } from "../../providerAdapter/validator";
 import { readCatalog } from "../../catalog/catalogStore";
 import { readCredentialBinding } from "../../catalog/credentialBinding";
 import { decryptApiKeyRecord } from "../../catalog/secrets";
-import { deriveVendorKeyFromBaseUrl } from "../../catalog/catalogCommit";
+import { resolveConnectionVendorKey } from "../../catalog/connectionVendorKey";
 import { DeclaredOriginRewriteError, registerDeclaredProvider } from "../../catalog/declaredProviderRegistration";
 import type { Model } from "../../catalog/types";
 import { isJsonRecord } from "../../jsonUtils";
@@ -105,7 +105,14 @@ export async function submitDeclaration(
     };
   }
   const state = readCatalog();
-  const vendorKey = text(args.vendorKey) || deriveVendorKeyFromBaseUrl(declaredBaseUrl);
+  // #831：同域名可以有多条连接，身份 = 域名 + 连接名。只看 hostname 会让第二张声明卡
+  // 覆盖第一条连接的名字与 Key（那正是 #831 报的那个数据丢失）。
+  const vendorKey = resolveConnectionVendorKey({
+    baseUrl: declaredBaseUrl,
+    name: (isJsonRecord(card.provider) ? text(card.provider.name) : "") || text(args.name),
+    catalogVendorKey: text(args.vendorKey),
+    vendors: state.vendors,
+  });
   const existingVendor = state.vendors.find((vendor) => vendor.key === vendorKey);
   const binding = readCredentialBinding(existingVendor);
 

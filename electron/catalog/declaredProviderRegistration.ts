@@ -19,8 +19,8 @@
  * 2026-09-21 实测的 K1 正是这条判据被写反的样子：分支只判「有没有传地址」，不判「有没有 key」，
  * 于是一条**根本没有 key** 的连接被告知 "already holds a key"。
  */
-import { deriveVendorKeyFromBaseUrl } from "./catalogCommit";
-import { mutateCatalog } from "./catalogStore";
+import { resolveConnectionVendorKey } from "./connectionVendorKey";
+import { mutateCatalog, readCatalog } from "./catalogStore";
 import { readCredentialBinding } from "./credentialBinding";
 import type { ProviderAdapterDraft } from "../providerAdapter/types";
 import type { Mapping, Vendor } from "./types";
@@ -93,7 +93,14 @@ export function mappingRowFromDeclaredMode(input: {
 export function registerDeclaredProvider(input: DeclaredRegistrationInput): DeclaredRegistrationResult {
   const card = input.card;
   const declaredOrigin = originOf(card.provider.baseUrl);
-  const vendorKey = String(input.vendorKey || "").trim() || deriveVendorKeyFromBaseUrl(card.provider.baseUrl);
+  // #831：身份 = 域名 + 连接名。只按 hostname 推导会让同一中转站的第二条连接覆盖第一条
+  // （用户那句「保存之后第一条连接的名字和 Key 没了」就是这么来的）。
+  const vendorKey = resolveConnectionVendorKey({
+    baseUrl: card.provider.baseUrl,
+    name: input.vendorName ?? "",
+    catalogVendorKey: String(input.vendorKey || "").trim(),
+    vendors: readCatalog().vendors,
+  });
   if (!vendorKey) throw new Error("Unable to derive a connection id from the declared base URL");
   const now = input.now || (() => new Date().toISOString());
 

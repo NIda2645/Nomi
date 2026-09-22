@@ -1,4 +1,5 @@
 import React from 'react'
+import { builtinVendorKeyOfKey } from '../../../electron/shared/builtinVendorIdentity'
 import {
   IconChevronDown,
   IconChevronRight,
@@ -314,10 +315,13 @@ function ConnectedRows({
 }
 
 function availableHint(connection: ModelSettingsHomeConnection, t: ReturnType<typeof useTranslation>['t']): string {
-  if (connection.vendorKey === 'apimart') return t('onboardingProviders.drawer.home.apimartHint')
-  if (connection.vendorKey === 'kie') return t('onboardingProviders.drawer.home.kieHint')
-  if (connection.vendorKey.startsWith('comfyui')) return t('onboardingProviders.drawer.home.comfyuiHint')
-  if (connection.vendorKey === 'dreamina-member') return t('onboardingProviders.drawer.home.dreaminaHint')
+  // #831：身份按 root 问，别比 key 字面量——`apimart--mini` 这类兄弟连接也是 APIMart，
+  // 比字面量会让用户新建的特价组丢掉说明文字与「推荐」徽章（症状：接了，但看起来像个陌生家）。
+  const root = builtinVendorKeyOfKey(connection.vendorKey)
+  if (root === 'apimart') return t('onboardingProviders.drawer.home.apimartHint')
+  if (root === 'kie') return t('onboardingProviders.drawer.home.kieHint')
+  if (root.startsWith('comfyui')) return t('onboardingProviders.drawer.home.comfyuiHint')
+  if (root === 'dreamina-member') return t('onboardingProviders.drawer.home.dreaminaHint')
   if (connection.vendorKey === 'codex-local') return t('onboardingProviders.drawer.home.codexImageHint')
   if (connection.vendorKey === 'antigravity-cli') return t('antigravity.subtitle')
   const name = translateModelDisplayText(connection.name)
@@ -440,7 +444,7 @@ export function ModelSettingsHome({
             connection={connection}
             title={hasConnections ? t('onboardingProviders.drawer.home.connectPlatform', { name: translateModelDisplayText(connection.name) }) : undefined}
             hint={availableHint(connection, t)}
-            badge={connection.vendorKey === 'apimart' ? t('onboardingProviders.drawer.home.recommended') : undefined}
+            badge={builtinVendorKeyOfKey(connection.vendorKey) === 'apimart' ? t('onboardingProviders.drawer.home.recommended') : undefined}
             end={t('onboardingProviders.drawer.home.fillKey')}
           />
         ))}
