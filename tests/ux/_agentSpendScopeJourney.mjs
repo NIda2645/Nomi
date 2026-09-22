@@ -136,16 +136,18 @@ export async function checkSpendScopeJourney(walk, win) {
   //   ② 对**同一个** operationId 再 generate = 重新出价，卡真的再出来；
   //   ③ 画布节点**一个不多也一个不少**——× 不删占位（当天上午那一版删了，33 镜的计划上只删卡上那 3 个，
   //      另外 30 个成了挂在已终结计划上的孤儿），落地也不重建。
-  // 第一笔卡上有没提交的手改，所以 × 第一下先摊开那句确认（像人一样点两下）。
+  // × 是**一下**。2026-09-22 之前，卡上有没提交的手改时 × 先摊开一句「你在卡上改的内容会一起丢掉」
+  // 再要第二下确认；那句话已经不为真（裁决 D：× 只收回这一次出价；草稿锚 operationId 之后没提交的
+  // 手改也留着），文案与它那一支渐进披露同刀删了。
+  //
+  // 连带修掉的那个实测症状：上一版里第一张卡 × 掉之后，**第二张卡一出来就已经停在「取消 / 确认不要」
+  // 那一态**——「正在确认丢弃」这个状态挂在介入槽上、没跟着卡走，真人会看到一张自己没点过 × 的卡
+  // 在问他「确认不要」。付费卡不再有任何进入那一态的理由，所以这里钉死它：一下就撤，没有第二问。
   const decline = async (label) => {
     const confirm = card.locator('[data-v4-control="confirm-reject"]')
-    // ⚠️ 2026-09-22 实测：第一张卡 × 掉之后，**第二张卡一出来就已经停在「取消 / 确认不要」那一态**——
-    // 「正在确认丢弃」这个状态挂在介入槽上、没有跟着卡走。真人会看到一张自己还没点过 × 的卡在问他
-    // 「确认不要」。这是渲染层的事（`src/workbench/ai/v4/**`，等合并 ④ 之后修），这里像人一样：
-    // 看到什么点什么，并把它记进报告，不替它遮。
-    if (await confirm.isVisible().catch(() => false)) { await clickOrFail(confirm, `${label}（卡一出来就停在确认态）`); return 'already-confirming' }
+    await expect(confirm, `${label}：卡一出来不许停在确认态`).toHaveCount(0)
     await clickOrFail(card.locator(INTERVENTION_REJECT), label)
-    if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
+    await expect(confirm, `${label}：× 没有第二下`).toHaveCount(0)
     return 'clicked-reject'
   }
   const firstProof = await proveProbe(card, 'the first priced card is really on screen before it is closed')
@@ -173,7 +175,7 @@ export async function checkSpendScopeJourney(walk, win) {
   const afterFirstDecline = (await graph()).nodes.map(node => node.id).sort()
   await walk.snap('cj1-second-operation-has-own-draft')
   const proof = await proveProbe(card, 'Second pending really appears before dismissal')
-  const secondDecline = await decline('关闭第二笔')
+  await decline('关闭第二笔')
   await expectAbsent(card, { provenBy: proof, message: 'Both declined operations leave the slot' })
   expect(await secondTurn.settled(), '第二笔的回合同样读到「他关了这张卡」').toContain('closed the priced card without approving')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
@@ -186,6 +188,16 @@ export async function checkSpendScopeJourney(walk, win) {
   expect((await pending()).map(row => row.operationId), '同一份草稿重新出价').toEqual([operationId])
   expect((await pending())[0].shots.map(shot => shot.shotId), '还是原来那三镜').toEqual(requestedIds)
   expect((await readRun(operationId)).generationPlan.shots, '镜头、参数、锚点一个字不丢').toEqual(presentedShots)
+  // T-QA-26（2026-09-22 修）：他在这张卡上**没提交**的那两层手改也一个字不丢——
+  // 账本锚的是这一次生成（`spendDraftKey` 只含 projectId/runId/operationId），重新出价换的只是报价指纹。
+  // 两层各查一层：逐镜那层挂在第二镜上，全部那层在哪一镜都该显示。
+  await setScope('each')
+  await pageTo(2)
+  await expect(input, '重新出价带回他在第二镜上没提交的那句话').toHaveText(editedPrompt)
+  await expect(size, '全部层那个尺寸也跟着回来').toHaveAttribute('data-parameter-chip-value', '1536x1024')
+  await pageTo(3)
+  await expect(input, '逐镜那层仍然只落在第二镜上').toHaveText('CJ1_anchor_3 原始画面')
+  await expect(size, '全部层压在每一镜上').toHaveAttribute('data-parameter-chip-value', '1536x1024')
   // 「× 之后画布不多也不少」不靠墙钟等：上面这一整个模型回合（两次账本变更 + 一次读 + 回合落定）期间，
   // 落地对这两份计划各被触发过不止一次（账本每变一次它就重算一遍）。
   expect((await graph()).nodes.map(node => node.id).sort(), '× 之后经过一整个回合，画布节点一个不多也一个不少').toEqual(afterBothDeclined)
@@ -200,7 +212,7 @@ export async function checkSpendScopeJourney(walk, win) {
   expect(await pending(), '收尾之后介入槽是空的').toEqual([])
   walk.report.spendScopeJourney = { projectId, projectRoot, operationId, otherOperationId, requestedIds, planItems: 33,
     pendingOrder: 'serial — one lane-issued card at a time (2026-09-22 ruling A/E)', graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
-    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'decline-withdraws-only-the-quote-and-the-same-draft-requotes'],
-    secondCardArrivedAlreadyConfirming: secondDecline === 'already-confirming',
+    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'decline-withdraws-only-the-quote-and-the-same-draft-requotes',
+      'requote-restores-both-unsubmitted-edit-layers'],
     mediaSubmissions: 0, boundary: 'Real Electron UI/Agent tools/storage with text loopback. No confirmation execution, generated-history, next-execution-batch or arbitrary pending navigation claim.' }
 }
