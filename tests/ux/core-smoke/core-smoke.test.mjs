@@ -13,14 +13,22 @@ const temps = []
 afterEach(() => { for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true }) })
 
 describe('core smoke scenario list (single owner)', () => {
-  it('the checked-in list is valid and runs the two 09-22 walkthroughs under both CI fixtures', () => {
+  it('the checked-in list is valid and runs the registered walkthroughs under both CI fixtures', () => {
     expect(checkCoreSmokeScenarios()).toEqual([])
     expect(CORE_SMOKE_FIXTURES).toEqual(['empty', 'used'])
     for (const fixture of CORE_SMOKE_FIXTURES) {
-      expect(expandCoreSmokeRuns(fixture).map((run) => run.script)).toEqual([
+      // 花钱路那条带两例（confirm / cancel），所以它的脚本在展开里出现两次——一例一个进程。
+      expect(expandCoreSmokeRuns(fixture).map((run) => run.id)).toEqual([
+        'node-params-and-version-pill',
+        'canvas-drag-pan-gestures',
+        'spend-confirm--confirm',
+        'spend-confirm--cancel',
+      ])
+      expect(new Set(expandCoreSmokeRuns(fixture).map((run) => run.script))).toEqual(new Set([
         'tests/ux/node-params-and-version-pill.walk.mjs',
         'tests/ux/canvas-drag-pan-gestures.walk.mjs',
-      ])
+        'tests/ux/core-smoke-spend-confirm.walk.mjs',
+      ]))
     }
   })
 

@@ -29,8 +29,9 @@ export const CORE_SMOKE_SCENARIOS = Object.freeze([
   Object.freeze({ id: 'node-params-and-version-pill', script: 'tests/ux/node-params-and-version-pill.walk.mjs', needs: Object.freeze([]) }),
   // 平移 / 框选 / 滚轮缩放 / 拖节点浮层隐身 / 中键与空格平移 / 画布手势设置两档（含平移档松手即点）。
   Object.freeze({ id: 'canvas-drag-pan-gestures', script: 'tests/ux/canvas-drag-pan-gestures.walk.mjs', needs: Object.freeze([]) }),
-  // 花钱路最小一条：由「Draft PR 代码审查与整合」会话在其集成分支进 main 的同一个 PR 里登记（needs:
-  // ['loopbackProvider', 'fixtureTextModel']，cases: 确认 / 取消）。**这里不放占位条目**——占位就是空跑的绿。
+  // 花钱路最小一条（2026-09-22 总合并登记）：agent 要花钱 → 面板出报价卡 → 确认扣一次、× 一个节点都不动。
+  // 零付费：远端只有 loopback（零额度）。两例一个进程一次：confirm / cancel。
+  Object.freeze({ id: 'spend-confirm', script: 'tests/ux/core-smoke-spend-confirm.walk.mjs', needs: Object.freeze(['loopbackProvider', 'fixtureTextModel']), cases: Object.freeze(['confirm', 'cancel']) }),
 ])
 
 const ALLOWED_KEYS = new Set(['id', 'script', 'needs', 'cases', 'timeoutMs'])
