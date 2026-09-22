@@ -1,6 +1,6 @@
 # 切点超上限：不再按时间砍掉后半条片子
 
-> 状态：已实现未推送 · 2026-09-22 · 分支 `fix/shot-cut-truncation-20260922`
+> 状态：🚧 进行中（PR 待开）· 2026-09-22 · 分支 `fix/shot-cut-truncation-20260922`
 > 根因合同：`docs/fixes/2026-09-22-shot-cut-truncation.root-cause.json`
 
 ## 0. 一句话
@@ -64,7 +64,7 @@ deconstructVideo:              → filter(score >= payload.threshold)  ← 用�
 | **LosslessCut** | **没有**。`detectSceneChanges` 逐条 `onSegmentDetected` 全部上报，无 slice / 无 limit | 用户调 `minChange` 阈值 | [`src/main/ffmpeg.ts`](https://raw.githubusercontent.com/mifi/lossless-cut/master/src/main/ffmpeg.ts)（2026-09-22 实读） |
 | **Kdenlive** | **没有** | 两个控制：**阈值**（百分比，官方推荐 15–25%）+ **最小间隔** `minInterval`（`if (m_minInterval > 0 && pos - lastCut < m_minInterval) continue;`） | [`src/jobs/scenesplittask.cpp`](https://raw.githubusercontent.com/KDE/kdenlive/master/src/jobs/scenesplittask.cpp)（2026-09-22 实读） |
 | **PySceneDetect** | **没有** | `min_scene_len`：「Once a cut is detected, this much time must pass before a new one can be added」+ `filter_mode` 合并 | [detectors API 文档](https://www.scenedetect.com/docs/latest/api/detectors.html)（2026-09-22 实读） |
-| **DaVinci Resolve** | 没有 | 置信度曲线图 + 可拖的阈值线 + 人工确认后才入库 | 二手（elements.tv 评测，见 `scratchpad/shot-boundary-research.md` §4；官方手册镜像 404） |
+| **DaVinci Resolve** | 没有 | 置信度曲线图 + 可拖的阈值线 + 人工确认后才入库 | 二手（elements.tv 评测，见 `docs/evidence/2026-09-22-shot-cut-truncation/shot-boundary-research.md` §4；官方手册镜像 404） |
 
 **一条结论**：没有任何一个同类产品用「取前 N」。所有人的答案都是**阈值**或**最短镜长**——两者都保住全片覆盖。我们那一刀是这一族里的孤例。
 
@@ -73,6 +73,10 @@ deconstructVideo:              → filter(score >= payload.threshold)  ← 用�
 ## 5. 三种压法的实测对比
 
 **素材**：三条真实片子，历史对比使用本机 PATH ffmpeg，生产同款 filtergraph `select='gt(scene,0.1)',metadata=print`，零模型花费。随附二进制现场 `-version` 为 **ffmpeg 4.4**；此表历史数字不冒充随附版本的重新测量。
+
+> **证据边界（2026-09-22 归档时补记）**：本节与 §6 两张表的**计算脚本**（原 `scratchpad/trunc/compare.mjs`、`sweep.mjs`、`compare.json`）**原始数据未能归档，数字为当时记录**，本次没有重新跑过。
+> 两张表的**输入**在：`docs/evidence/2026-09-22-shot-cut-truncation/sbd/results/ffmpeg-select-F{1,2,3}.txt`（逐帧分数，77 / 51 / 447 行，与下表「ffmpeg@0.1 报几刀」一行对得上）与 `…/cuts.json`（真值；F3 的 TransNetV2 p>0.5 = 65）。
+> 另：下表 F1 / F2 的「人工 52 刀 / 45 刀」那份标注没有落进任何文件，**同样未归档**。
 
 | | F1 `demo-video.mp4` | F2 `demo-en.mp4` | F3 快剪电影开场 |
 |---|---|---|---|
@@ -116,7 +120,7 @@ D（并短镜）在「时间上更均匀」这项上最好，但它用召回换�
 
 ## 6. ≤2 帧去重
 
-ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，容差 ±3 帧）：
+ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，容差 ±3 帧）——**扫描脚本原始数据未能归档，下表数字为当时记录**，输入见 §5 的证据边界一段；`extra-experiments.json` 里留有 `F1_ffmpeg0.1_dedup` / `F2_ffmpeg0.1_dedup` 等几条的 n / P / R / F1：
 
 | 窗口 | F1 精确/召回/F1 | F2 精确/召回/F1 | F3 刀数 → F1 |
 |---|---|---|---|
@@ -132,7 +136,7 @@ ffmpeg 常把一个硬切报在相邻两帧上。窗口扫描（三条素材，�
 
 ## 7. scdet 的处置
 
-**本次不做。** §5 选定的 C 只需要「每个切点的分数」，而现役 `select + metadata=print` 已经给了。`scdet` 的价值是拿到**全帧**分数曲线（用于 Resolve 那种可视化曲线、或自适应阈值），那是另一件事，留给做那条曲线的时候一起做。实测两者算法相同、耗时持平（见 `scratchpad/sbd/REPORT.md` §2.2）。
+**本次不做。** §5 选定的 C 只需要「每个切点的分数」，而现役 `select + metadata=print` 已经给了。`scdet` 的价值是拿到**全帧**分数曲线（用于 Resolve 那种可视化曲线、或自适应阈值），那是另一件事，留给做那条曲线的时候一起做。实测两者算法相同、耗时持平（见 `docs/evidence/2026-09-22-shot-cut-truncation/sbd/REPORT.md` §2.2）。
 
 ## 8. 默认阈值 0.1：只给数据，不改
 
@@ -327,6 +331,8 @@ M5 是 Ponytail 那条简化之后**补上的**：第一轮跑它时全绿——
 
 ## 参考
 
-- 实测数据：`scratchpad/trunc/compare.json`、`scratchpad/trunc/compare.mjs`、`scratchpad/trunc/sweep.mjs`
-- 上一轮选型调研：`scratchpad/shot-boundary-research.md`、`scratchpad/sbd/REPORT.md`
+- **证据归档目录：`docs/evidence/2026-09-22-shot-cut-truncation/`**（含 README 逐份说明对应本文哪一节）
+- §5 / §6 的一手输入：`docs/evidence/2026-09-22-shot-cut-truncation/sbd/results/ffmpeg-select-F1.txt`、`…-F2.txt`、`…-F3.txt`（生产同款 filtergraph 的逐帧分数表，行数 77 / 51 / 447，与 §5 表对得上）；真值清单 `…/sbd/results/cuts.json`（F3 的 TransNetV2 p>0.5 = 65）
+- 上一轮选型调研：`docs/evidence/2026-09-22-shot-cut-truncation/shot-boundary-research.md`、`…/sbd/REPORT.md`
+- ⚠️ 原 `scratchpad/trunc/compare.json`、`compare.mjs`、`sweep.mjs`（§5 四策略表与 §6 去重扫描表的计算脚本）：**原始数据未能归档，数字为当时记录**。递归搜索 `nomi-scratch-0921` / `nomi-scratch-0917` 及 Desktop 均未找到。两张表的**输入**已归档（见上一条），原则上可重算。
 - 素材本身**不进仓库**（用户本机的版权片段 + 用户自己的录制）
