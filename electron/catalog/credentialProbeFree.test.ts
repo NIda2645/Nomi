@@ -186,10 +186,13 @@ describe("T-MO-10 ② 没有免费端点：不经确认一个计费请求都不�
     expect(outboundCalls()).toEqual([]);
   });
 
-  it("根本没给确认函数（无人可问）→ 同样零出站，不静默替用户花钱", async () => {
+  it("没有可问的人（缺省确认函数 + 没有窗口）→ 同样零出站，不静默替用户花钱", async () => {
     const state = seedLoopbackFixtureCatalog();
     const { probeDirectKeyCredential } = await import("./directKeyCredential");
-    await expect(probeDirectKeyCredential(vendorRow(state, LOOPBACK_FIXTURE_KEY), "sk-test", { confirmSpend: async () => false }))
+    // 刻意不注入 confirmSpend：走缺省的 confirmCredentialProbeSpend → requestRendererDecision，
+    // 而这里没有注册过渲染层目标，所以它会抛 RendererUnavailableError。「问不到人」的正确
+    // 行为是**不发**（fail-closed），不是「没人反对就发」。
+    await expect(probeDirectKeyCredential(vendorRow(state, LOOPBACK_FIXTURE_KEY), "sk-test"))
       .resolves.toBe("declined");
     expect(outboundCalls()).toEqual([]);
   });
