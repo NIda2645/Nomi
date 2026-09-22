@@ -1,11 +1,5 @@
 {
-  "_comment": [
-    "概念登记表（R33.4）：概念 → owner → 消费方的唯一正本。",
-    "纪律：① 只登记碰到的概念，不回头补全仓；② 改动碰到未登记的概念就在同一个 commit 里当场登记；",
-    "③ 同一个概念出现第二个写口即违规；④ owner 只写真实存在的文件与符号，不确定就 pending:true 并在 notes 写清由谁收口。",
-    "schema: concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }]",
-    "语义级门岗 check:concept-owners（根因合同门表 → 登记概念的只减不增棘轮）是发版后第一批 TODO（T-QA-21），本文件暂由人读。"
-  ],
+  "_schema": "concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }] · 纪律与判据见 docs/engineering-rules.md R33.4",
   "concepts": [
     {
       "name": "等用户",
