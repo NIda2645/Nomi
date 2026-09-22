@@ -49,6 +49,14 @@ E 待决时用户打字 = 对这道闸的回答｜F 只扣一次要有端到端�
 
 ## 先查别人
 
+> **2026-09-22 追记（run4 发现 ①，四轮都在）**：这条硬约束在仓库里已经被撞到过一次，而且没人发现。
+> 用户在提问卡上答完之后，闸把「答上了」编码成 `allow: false`（`laneApprovalGate.ts`，注释自陈
+> 「与 deny 走同一条既有通路」），宿主照旧翻成 `block`，于是**「他答上了」以 `is_error: true` 发给模型**，
+> 正文恰好就是他那句答案；Nomi 自己还拿 `event.isError` 计熔断——他答一次，计数器加一格，撞满三次
+> `ask_user` 被自己拦下。既是错误形状，又在教模型「问了会失败」（run4「该问时问了」只有 3/11，这是可能的成因之一）。
+> 修法与下面这条约束同源：**`answered` 放行**，`ask_user` 的 execute 读闸记下的原话（`laneAskUserTool.ts`），
+> 把它作为成功形状的 tool result 交回去。「没人可问」（没装闸）仍是 fail-closed 的错误形状。
+
 1. **依赖里有没有现成的等待机制**：有，而且我们已经在用。pi 的 `before_tool` 钩子
    （`node_modules/@earendil-works/pi-agent-core/dist/agent-loop.js:400-440` `prepareToolCall` →
    `config.beforeToolCall`）在工具执行**之前**跑、不计入工具预算；返回形状只有 `{block, reason, terminate}`

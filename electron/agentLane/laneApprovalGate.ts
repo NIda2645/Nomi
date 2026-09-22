@@ -95,6 +95,11 @@ export interface LaneApprovalGate {
    * （2026-09-12 「劈成两半」那次）。事实在这里，回执就该从这里取。
    */
   decisionFor(toolCallId: string): LaneApprovalDecision | undefined;
+  /**
+   * 用户回答这道题时的**原话**（只有 `answered` 有）。`ask_user` 的 execute 读它，
+   * 把这句话作为成功形状的 tool result 交回模型——「他答上了」不是一次工具失败。
+   */
+  answerFor(toolCallId: string): string | undefined;
   /** 这次调用结束了，忘掉它的结论（宿主在 `after_tool` 调）。 */
   forget(toolCallId: string): void;
   describe(request: LaneApprovalRequest): string;
@@ -160,6 +165,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
    * lane 上就是泄漏。超了丢最老的（Map 按插入序），丢掉的后果只是那条回执少一句限定语。
    */
   const decisions = new Map<string, LaneApprovalDecision>();
+  /** `toolCallId` → 用户答这道题时的原话。只有 `answered` 有，随 `decisions` 同生同死。 */
+  const answers = new Map<string, string>();
   const DECISION_MEMORY = 256;
 
   function rememberDecision(toolCallId: string, decision: LaneApprovalDecision): void {
@@ -168,8 +175,14 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     while (decisions.size > DECISION_MEMORY) {
       const oldest = decisions.keys().next();
       if (oldest.done) break;
+      answers.delete(oldest.value);
       decisions.delete(oldest.value);
     }
+  }
+
+  function rememberAnswer(toolCallId: string, text: string): void {
+    if (!toolCallId) return;
+    answers.set(toolCallId, text);
   }
 
   function note(entry: LaneApprovalNote): void {
@@ -295,7 +308,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
   return {
     pending: currentPending,
     decisionFor: (toolCallId) => decisions.get(toolCallId),
-    forget: (toolCallId) => { decisions.delete(toolCallId); },
+    answerFor: (toolCallId) => answers.get(toolCallId),
+    forget: (toolCallId) => { answers.delete(toolCallId); decisions.delete(toolCallId); },
     describe: (request) => {
       const { subject, decided } = decisionOf(request);
       if (decided.state === 'denied-by-policy') return '当前策略禁止此动作';
@@ -312,9 +326,22 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
         // 这里再挡一次是因为**这一侧不该相信渲染层送来的东西**——一个空的「答案」会变成
         // 一段空白 tool result，模型只能接着猜，而用户以为自己答过了。
         if (!text) return false;
-        // `allow: false`：没有东西要执行。这次调用的**全部内容就是这句话**，
-        // 它一字不改成为模型看到的 tool result（与 deny 走同一条既有通路）。
-        return settleWaiting(toolCallId, { allow: false, decision: "answered", reason: text });
+        /**
+         * `allow: true`——**「他答上了」是成功，不是失败**（2026-09-22，run4 六次全中）。
+         *
+         * 这里原来写 `allow: false`，注释自陈「与 deny 走同一条既有通路」。那条通路的下游是
+         * `laneHost` 的 `block`，而 pi 对 `block` 是硬编码的 `immediateError(isError: true)`
+         * （`pi-agent-core/dist/harness/execution/tools.js`），再由 `pi-ai` 原样映射成 Anthropic
+         * `tool_result.is_error: true`。于是**用户每答一次卡，模型都收到一条「ask_user 失败了」**，
+         * 正文恰好是他那句答案；Nomi 自己还拿 `event.isError` 计「连续撞墙」——他答一次，熔断计数器加一格。
+         * 既是错误形状，又在教模型「问了会失败」。
+         *
+         * 放行之后没有东西会被执行：`ask_user` 的 execute 读 `context.approvalAnswer`，
+         * 把这句原话原样作为**成功形状**的 tool result 交回去（`laneDesktopTools.ts`）。
+         * 读不到才是 fail-closed 的那一支（没装闸 = 这条会话没有能问的人）。
+         */
+        rememberAnswer(toolCallId, text);
+        return settleWaiting(toolCallId, { allow: true, decision: "answered", reason: text });
       }
       if (action === "deny") {
         const text = reason?.trim();

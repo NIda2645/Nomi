@@ -4,7 +4,6 @@ import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/t
 import { randomUUID } from 'node:crypto'
 import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceRegistry'
 import type { ProjectBinding } from '../shared/projectBinding'
-import { AGENT_ASK_CAPABILITY } from '../shared/agentCapabilities/askUser'
 import { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
 import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
 import type { ProjectAgentApprovalPolicy } from '../shared/agentCapabilities/capabilityApprovalPolicy'
@@ -30,6 +29,7 @@ import { requestRenderer } from '../capabilityCore/rendererBridge'
 import type { PiGenerationTransportAdapter } from '../capabilityCore/generationTransportAdapters'
 import { createLaneExtendedDesktopPorts } from './laneExtendedDesktopPorts'
 import { toSemanticInput } from '../shared/agentCapabilities/modelFacingTools'
+import { createAskUserLaneTools } from './laneAskUserTool'
 import { specsForCapability } from '../shared/agentCapabilities/modelFacingToolRegistry'
 import { bindLaneTool } from './laneRuntimePort'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuthority'
@@ -144,19 +144,8 @@ export function createDesktopLaneTools(input: {
       // The alias transport owns operation binding; its strict args exclude that semantic field.
       toolCallId: context.toolCallId, toolName: operation, args,
     }, context.signal), operation) }),
-    // `ask_user`：这条 lane 上**唯一**一个正常路径下永远走不到 `execute` 的工具。
-    // 它的全部内容就是停在审批闸里等人（契约声明 `alwaysAsksUser`，`capabilityIsHardGated` ⑥
-    // 保证任何档位、任何会话级授权都不会替用户答），用户的回答经 `answer` 这条 action
-    // 一字不改变成这次调用的结果。所以这里不是「执行提问」，是**闸没装上时的 fail-closed**：
-    // 没有闸就意味着这条会话没有能问的人，那时候唯一诚实的回答是说清楚这件事，
-    // 而不是回一句空答案让模型当成用户说过的话。
-    ...specsForCapability(AGENT_ASK_CAPABILITY.id).map(spec => bindLaneTool(spec, async () => {
-      throw new LaneDomainFailure({
-        code: 'question_has_no_one_to_ask',
-        message: 'This session has no user to ask, so the question was not shown to anyone.',
-        nextAction: 'Do not ask again here. Say what you would have asked and what you will assume, then carry on with your best default.',
-      })
-    })),
+    // `ask_user`：执行那一半住 `laneAskUserTool.ts`（用户答上了 = 成功形状，理由写在那里）。
+    ...createAskUserLaneTools(),
     // `start_model_setup`：只打开「设置 · 模型」面板并预填供应商；密钥永远由用户在面板里输入。
     ...specsForCapability('model.setup.open').map(spec => bindLaneTool(spec, async (args) => {
       const provider = typeof (args as { provider?: unknown }).provider === 'string' ? (args as { provider: string }).provider : undefined

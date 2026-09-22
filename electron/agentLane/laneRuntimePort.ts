@@ -63,6 +63,14 @@ export type LaneToolExecutionContext = {
    * 缺席 = 这条 lane 没装闸（阶段 1 的影子夹具 / 单测）。那时回执只说做成了什么，不提卡。
    */
   approvalDecision?: LaneApprovalDecision
+  /**
+   * 用户回答这道题时的**原话**（只有 `approvalDecision === 'answered'` 才有）。
+   *
+   * `ask_user` 的 execute 读它，把这句话原样作为**成功形状**的 tool result 交回模型。
+   * 2026-09-22 之前「他答上了」走的是 `block`，而 pi 对 block 硬编码 `isError: true`——
+   * 模型收到的是一条「ask_user 失败了」，正文恰好是他那句答案（run4 六次全中）。
+   */
+  approvalAnswer?: string
 }
 
 export type LaneToolDescriptor = LaneToolSpec & {

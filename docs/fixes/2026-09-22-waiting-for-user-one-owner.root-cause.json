@@ -2,18 +2,24 @@
   "schema_version": 3,
   "id": "2026-09-22-waiting-for-user-one-owner",
   "problem_type": "A user-facing wait has more than one owner, so withdrawing a request is not a terminal state and a message typed while a card is pending is read as something else",
-  "symptom": "① 在付费确认卡上点 ×，画布上多出一个节点（`agent-spend-card.walk.mjs` 自合并 ③ 起红）。② 提问卡待答时在 composer 里打字：话送到了，但那一行读作「问你一个问题 ✕ 已拒绝」；用 Alt+回车则排在一张他以为已经答过的卡后面。③（v2，2026-09-22 下午）33 镜的计划上 × 掉一张只摆了 3 镜的卡：3 个占位被撤、另外 30 个留在画布上挂着一份已经终结的计划；用户说「还是生成吧」，模型只能重新起草 33 镜，画布上于是 30 旧 + 33 新。",
-  "direct_cause": "① × 走 `generation.dismiss`：只置 `cardHidden`、计划仍是 `draft`。落地投影 `buildMaterializeShotsPayload` 对任何还挂着计划的 Run 都投影，唯一的排除条件是 `canvasDetached`——而那个标记靠渲染层观察到节点被删之后**另发一趟** `plan.detach-shot-nodes`（先读再写、失败静默吞掉）。它和落地轮询抢跑，抢输了占位就被重建（探针：占位 `…t4bk` 被删，新 id `…ig1k` 冒出来）。② `laneHost` 对任何待决卡一律 `gate.answer(…, 'deny')`，而且只在 `command.kind !== 'follow-up'` 时才动那道闸。③（v2）第一版修法把 × 落成**计划级终态**（`cancel{declined}`），而卡只代表计划的一个子集——「一次出价」和「一份计划」被当成了同一个东西。",
+  "symptom": "① 在付费确认卡上点 ×，画布上多出一个节点（`agent-spend-card.walk.mjs` 自合并 ③ 起红）。② 提问卡待答时在 composer 里打字：话送到了，但那一行读作「问你一个问题 ✕ 已拒绝」；用 Alt+回车则排在一张他以为已经答过的卡后面。③（v2，2026-09-22 下午）33 镜的计划上 × 掉一张只摆了 3 镜的卡：3 个占位被撤、另外 30 个留在画布上挂着一份已经终结的计划；用户说「还是生成吧」，模型只能重新起草 33 镜，画布上于是 30 旧 + 33 新。④（v3，run4 实测四轮都在）用户在提问卡上点完选项之后，这次 `ask_user` 的 tool result 带着 `isError: true` 回到模型，**正文恰好就是他那句答案**；Nomi 自己还拿它计「连续撞墙」——用户每答一次卡，就给这一轮的熔断计数器加一格。",
+  "direct_cause": "① × 走 `generation.dismiss`：只置 `cardHidden`、计划仍是 `draft`。落地投影 `buildMaterializeShotsPayload` 对任何还挂着计划的 Run 都投影，唯一的排除条件是 `canvasDetached`——而那个标记靠渲染层观察到节点被删之后**另发一趟** `plan.detach-shot-nodes`（先读再写、失败静默吞掉）。它和落地轮询抢跑，抢输了占位就被重建（探针：占位 `…t4bk` 被删，新 id `…ig1k` 冒出来）。② `laneHost` 对任何待决卡一律 `gate.answer(…, 'deny')`，而且只在 `command.kind !== 'follow-up'` 时才动那道闸。③（v2）第一版修法把 × 落成**计划级终态**（`cancel{declined}`），而卡只代表计划的一个子集——「一次出价」和「一份计划」被当成了同一个东西。④（v3）`laneApprovalGate.ts` 把「答上了」编码成 `allow: false`（注释自陈「与 deny 走同一条既有通路」），`laneHost.mts` 把 `!allow` 一律翻成 pi 的 `block`，而 pi 对 `block` 是**硬编码**的 `immediateError(… isError: true)`，`pi-ai` 再原样映射成 Anthropic `tool_result.is_error: true`。",
   "class_root": "「这一刻在等用户」有好几个 owner，而「用户说了不」在其中一个 owner 那里不是终态。终态不由账本自己说、要靠第二趟往返去补的地方，就一定有一个抢跑窗口；一句话的意思由「它是哪种命令」决定而不由「此刻在等什么」决定的地方，用户说的话就会被读成别的意思。**v2 追加的一句**：一次**出价**和一份**计划**是两个生命周期，把对出价的回答记成对计划的裁决，就会在「卡只摆了计划的一部分」时把没被问到的那部分一起判了。",
   "affected_population": [
     "内部 Agent 面板上每一次在付费卡上点 ×（单镜与多镜）",
     "任何在提问卡 / 确认卡待答时继续在 composer 里打字的用户",
-    "不受影响：外部 MCP 宿主出的价（它不走面板的 ×）；全自动档（不出卡）"
+    "不受影响：外部 MCP 宿主出的价（它不走面板的 ×）；全自动档（不出卡）",
+    "每一个在提问卡上答过话的用户：他答一次，模型就收到一条「ask_user 失败了」，熔断计数器加一格"
   ],
   "scope_paths": [
+    "electron/agentLane/laneApprovalGate.ts",
+    "electron/agentLane/laneAskUserTool.ts",
+    "electron/agentLane/laneDesktopTools.ts",
     "electron/agentLane/laneExtendedDesktopPorts.ts",
     "electron/agentLane/laneExtendedTools.ts",
     "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneRuntimePort.ts",
+    "electron/agentLane/laneTools.mts",
     "electron/capabilityCore/appIntegrationSpendConfirm.ts",
     "electron/capabilityCore/generationOperationTypes.ts",
     "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
@@ -28,7 +34,8 @@
   "entry_points": [
     "Agent 面板付费确认卡上的 ×（渲染层 discardSpend → discardPendingSpendConfirmation）",
     "Agent 面板 composer：有卡待答时的回车 / Alt+回车",
-    "画布落地轮询（ProductionCanvasLandingHost → buildMaterializeShotsPayload）"
+    "画布落地轮询（ProductionCanvasLandingHost → buildMaterializeShotsPayload）",
+    "Agent 面板提问卡上的选项 / 自由输入（`ask_user`、缺参数、熔断转提问三个生产者共用的那张卡）"
   ],
   "external_sources": [],
   "internal_only_reason": "只动本仓的 Run 账本状态机与 lane 宿主的输入分派；没有新增或改动任何对外 wire 契约（`discardSpend` 的 IPC 名与入参不变，`check:model-face-frozen` 零字节变化）。方案与对外规范的对照（MCP elicitation 三态）写在 docs/plan/2026-09-22-waiting-for-user-one-owner.md 的「先查别人」与 §5b。",
@@ -38,7 +45,8 @@
     "「计划级终态」（`generation.cancel`）只剩一条路：用户自己不要这份草稿（左侧栏删草稿 / 外部宿主撤草稿）",
     "收回出价只有一条边：`generation.withdraw` → `withdrawGenerationPresentation`。× / 待决时打字 / 重启清扫 / 关窗 共用它，幂等",
     "已封印、门还在等人的计划被收回时，那道门同一步撤掉（不留一道永远 waiting 的门）",
-    "提问卡待答时用户在 composer 里打的那句话就是那道题的答案，一字不改成为 tool result；有闸在等时 follow-up 与 steer 同义"
+    "提问卡待答时用户在 composer 里打的那句话就是那道题的答案，一字不改成为 tool result；有闸在等时 follow-up 与 steer 同义",
+    "用户在提问卡上答上了 = **成功形状**的 tool result，正文就是他的原话（没有第二行），`isError` 为 false、不进熔断计数；只有真的「不要」和「没人可问」才是错误形状"
   ],
   "doors": [
     {
@@ -110,12 +118,37 @@
       "kind": "read",
       "path": "electron/agentLane/laneHost.mts",
       "symbol": "ASK_USER_VERB_NAME"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "answerFor"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneAskUserTool.ts",
+      "symbol": "approvalAnswer"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "createAskUserLaneTools"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "symbol": "approvalAnswer"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneTools.mts",
+      "symbol": "LaneApprovalAnswerReader"
     }
   ],
   "door_reduction": {
     "before": 10,
-    "after": 14,
-    "why_not": "v2（2026-09-22 下午裁决变更）不是一次合门，是**换 owner**：× 从 v1 的 `cancel{declined}` 改挂到裁决 C 早就存在的 `generation.withdraw` 边上，于是「收回这一次出价」全仓只有一条边、四个回答者（面板 × / 待决时打字 / 重启清扫 / 关窗）共用它。这一刀**删掉了**三扇：`ProductionGenerationPlan.cancelReason` 这个字段、`mcpGenerationTools` 里那条「被 × 过的 operationId 不许再 present」的拒绝、渲染层的 `rollBackDiscardedSpendNodes`（× 不再动画布，整个模块随之删）。数字从 10 涨到 14 是因为**这一版把之前留在 scope 之外的入口都数进来了**：lane 那两扇（`laneExtendedDesktopPorts.withdrawPresentation` / `laneExtendedTools.generateReceipt`）、store 与动词的 `withdraw` 三扇、以及渲染层那个真正的 × 手势（`useAgentPanelSpendConfirm.discard`）。它们是同一条边上的不同层（渲染层手势 → IPC → 动词 / store → reducer → 转移实现 → 类型），不是并行实现。渲染层的 `plan.detach-shot-nodes` 观察者**刻意保留**：它服务的是「用户手动删占位 → 不复活」。"
+    "after": 19,
+    "why_not": "v2（2026-09-22 下午裁决变更）不是一次合门，是**换 owner**：× 从 v1 的 `cancel{declined}` 改挂到裁决 C 早就存在的 `generation.withdraw` 边上，于是「收回这一次出价」全仓只有一条边、四个回答者（面板 × / 待决时打字 / 重启清扫 / 关窗）共用它。这一刀**删掉了**三扇：`ProductionGenerationPlan.cancelReason` 这个字段、`mcpGenerationTools` 里那条「被 × 过的 operationId 不许再 present」的拒绝、渲染层的 `rollBackDiscardedSpendNodes`（× 不再动画布，整个模块随之删）。数字从 10 涨到 14 是因为**这一版把之前留在 scope 之外的入口都数进来了**：lane 那两扇（`laneExtendedDesktopPorts.withdrawPresentation` / `laneExtendedTools.generateReceipt`）、store 与动词的 `withdraw` 三扇、以及渲染层那个真正的 × 手势（`useAgentPanelSpendConfirm.discard`）。它们是同一条边上的不同层（渲染层手势 → IPC → 动词 / store → reducer → 转移实现 → 类型），不是并行实现。渲染层的 `plan.detach-shot-nodes` 观察者**刻意保留**：它服务的是「用户手动删占位 → 不复活」。 v3（同一刀的改动二）又数进来五扇：「他答上了」这条结论从闸（`answerFor`）到工具执行（`laneAskUserTool`）之间的那一条链。它们同样是一条边上的不同层——闸记原话 → 上下文读法（`LaneApprovalAnswerReader` / `approvalAnswer`）→ `ask_user` 的 execute 把它交回去；删掉的是那条**错误形状**的旁路（`allow: false` → `block` → pi 的 `isError`）。"
   },
   "generality_proof": "判据里没有工具名、没有卡的种类：收回出价只问「此刻这份计划是不是正摆在用户面前等他点头」（`withdrawGenerationPresentation`，幂等），落地只问「这份计划有没有镜头要落」，宿主只问「此刻有没有一道闸在等、它是不是一次提问」（由契约上的 `ASK_USER_VERB_NAME` 认，不手打字符串）。外部 MCP 宿主的 decline / cancel / 超时 / 不支持将来复用同一条 withdraw 边（方案 §5b：一律「不转移」）。",
   "shared_boundaries": [
@@ -138,6 +171,11 @@
       "path": "electron/agentLane/laneHost.mts",
       "symbol": "execute",
       "responsibility": "composer 输入的唯一分派点：有闸在等时，这句话先是对这道闸的回答。"
+    },
+    {
+      "path": "electron/agentLane/laneAskUserTool.ts",
+      "symbol": "createAskUserLaneTools",
+      "responsibility": "`ask_user` 执行那一半的唯一定义：有答案 → 成功形状的原话；读不到 → fail-closed。"
     }
   ],
   "same_class_entry_points": [
@@ -176,6 +214,12 @@
       "entry_point": "用户手动删占位 → plan.detach-shot-nodes",
       "disposition": "not-affected",
       "evidence": "观察者保留，行为不变；× 不再依赖它，也不再制造它要补救的那个窗口"
+    },
+    {
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "entry_point": "提问卡上的「答上了」",
+      "disposition": "enforced",
+      "evidence": "tests/agent-runtime/lane-approval-gate.test.mts：连答三次全是 isError=false、正文就是原话、没有一次被熔断拦下；阳性对照钉真 deny 仍是 isError"
     }
   ],
   "recurrence": {
@@ -192,7 +236,7 @@
     "kind": "centralized-boundary",
     "enforcement_path": "electron/productionRun/productionGenerationPlanEdits.ts",
     "invariant": "「收回这一次出价」只有一条边（withdraw，幂等），「不要这份草稿」是另一条边（cancel）；两条边都不碰画布。",
-    "failure_mode": "有人再让 × 走 cancel / 另起一条「先藏起来」的旁路 → agentPanelSpendConfirm.e2e.test.ts 的 S02 红；渲染层再在 × 上动画布 → agent-spend-card.walk.mjs「× 一个节点都不删」与范围旅程「一个不多也一个不少」红；落地再按计划状态挑投影 → multiShotCanvasLanding.test.ts 红。",
+    "failure_mode": "有人再让 × 走 cancel / 另起一条「先藏起来」的旁路 → agentPanelSpendConfirm.e2e.test.ts 的 S02 红；渲染层再在 × 上动画布 → agent-spend-card.walk.mjs「× 一个节点都不删」与范围旅程「一个不多也一个不少」红；落地再按计划状态挑投影 → multiShotCanvasLanding.test.ts 红。 谁再把「答上了」挂回 `block`（或给 `ask_user` 的 execute 加一条错误支路），lane-approval-gate.test.mts 的「连答三次不进熔断」当场红。",
     "exception_policy": "none",
     "strategy": "把「用户对这一次出价的回答」和「用户对这份计划的裁决」分成两条边，画布只跟着草稿走，不跟着出价走。",
     "artifacts": [
@@ -201,18 +245,22 @@
       "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
       "tests/ux/agent-spend-card.walk.mjs",
       "tests/ux/_agentSpendScopeJourney.mjs",
-      "tests/ux/agent-gate-typing-answers.walk.mjs"
+      "tests/ux/agent-gate-typing-answers.walk.mjs",
+      "electron/agentLane/laneAskUserTool.ts",
+      "tests/agent-runtime/lane-approval-gate.test.mts"
     ]
   },
   "regression_tests": [
     "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
     "electron/productionRun/multiShotCanvasLanding.test.ts",
-    "electron/agentLane/laneExtendedTools.test.ts"
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "tests/agent-runtime/lane-approval-gate.test.mts"
   ],
   "class_regression_tests": [
     "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
     "electron/productionRun/multiShotCanvasLanding.test.ts",
-    "electron/agentLane/laneExtendedTools.test.ts"
+    "electron/agentLane/laneExtendedTools.test.ts",
+    "tests/agent-runtime/lane-approval-gate.test.mts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -233,7 +281,7 @@
   "residual_risks": [
     "卡上**没提交**的手改（`spendCardDraft` 的本地账本）绑在报价身份上（`spendDraftKey` 含 quoteId / planVersion）。× 收回出价、再 present 会换一个 quoteId，于是那些没提交的改动读不回来——「手改一个字不丢」在**账本那一半**成立（镜头/参数/锚点），在**卡上那一半**还没成立。TODO 已记。",
     "渲染层一处待修：composer 那颗圆钮在「有卡待答 + 有字」时是停止不是发送（第二张卡「一出来就停在确认态」已在 D3 记）。",
-    "答上了的 `ask_user` 曾以 isError 回给模型并计熔断（run4 六次全中）——同一刀的改动二修的就是它。"
+    "`ask_user` 之外还有两处结局也可能被形状带偏，本刀没碰：`approval-irreversible`（`delete_from_canvas`）与 `start_model_setup` 开的设置面板——前者走查没有支路、后者回合结束时没人负责收。TODO 已记。"
   ],
   "invariant_owner_layer": {
     "layer": "electron/productionRun/productionGenerationPlanEdits.ts",

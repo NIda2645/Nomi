@@ -157,9 +157,16 @@ function detailsWithTruncation(details: unknown, truncation: LaneOutputTruncatio
  */
 export type LaneApprovalDecisionReader = (toolCallId: string) => LaneApprovalDecision | undefined;
 
+/**
+ * 用户答这道题时的原话（`laneApprovalGate.answerFor`）。`ask_user` 的 execute 读它，
+ * 把那句话作为成功形状的 tool result 交回去——「他答上了」不是一次工具失败。
+ */
+export type LaneApprovalAnswerReader = (toolCallId: string) => string | undefined;
+
 export function createLaneTools(
   descriptors: readonly LaneToolDescriptor[],
   approvalDecision?: LaneApprovalDecisionReader,
+  approvalAnswer?: LaneApprovalAnswerReader,
 ): AgentHarnessTool<undefined>[] {
   const names = new Set<string>();
   return descriptors.map((descriptor) => {
@@ -244,6 +251,7 @@ export function createLaneTools(
             // 回执要说「用户此刻看到什么」，就必须拿到这次调用**真的**是怎么过闸的
             // （静态表说不准，见 `LaneToolExecutionContext.approvalDecision`）。
             ...(() => { const decision = approvalDecision?.(toolCallId); return decision ? { approvalDecision: decision } : {}; })(),
+            ...(() => { const answer = approvalAnswer?.(toolCallId); return answer ? { approvalAnswer: answer } : {}; })(),
           }),
           // 领域端口**可能根本不看 signal**（第三方 SDK、同步阻塞、忘了接）。只把信号传下去
           // 等于把预算交给被超时的那一方自己执行。这条 race 是唯一真正会到期的东西。
