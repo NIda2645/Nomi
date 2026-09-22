@@ -1,0 +1,216 @@
+{
+  "perCase": [
+    {
+      "caseId": "A1",
+      "calls": 10,
+      "argRejected": 3,
+      "domainFailed": 3,
+      "retried": 2
+    },
+    {
+      "caseId": "A2",
+      "calls": 3,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A3",
+      "calls": 14,
+      "argRejected": 4,
+      "domainFailed": 3,
+      "retried": 4
+    },
+    {
+      "caseId": "A9",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A4",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A5",
+      "calls": 11,
+      "argRejected": 2,
+      "domainFailed": 1,
+      "retried": 1
+    },
+    {
+      "caseId": "A6",
+      "calls": 8,
+      "argRejected": 3,
+      "domainFailed": 0,
+      "retried": 2
+    },
+    {
+      "caseId": "A7",
+      "calls": 4,
+      "argRejected": 1,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A8",
+      "calls": 11,
+      "argRejected": 0,
+      "domainFailed": 3,
+      "retried": 2
+    },
+    {
+      "caseId": "A10",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N1",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N2",
+      "calls": 2,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N6",
+      "calls": 2,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N3",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N4",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N5",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A11",
+      "calls": 10,
+      "argRejected": 4,
+      "domainFailed": 1,
+      "retried": 5
+    },
+    {
+      "caseId": "A12",
+      "calls": 6,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    }
+  ],
+  "byTool": [
+    {
+      "tool": "draft_shots",
+      "calls": 33,
+      "arg_rejected": 17,
+      "domain_failed": 10,
+      "retries": 16
+    },
+    {
+      "tool": "look_at_canvas",
+      "calls": 15,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "list_models",
+      "calls": 12,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "read_script",
+      "calls": 9,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "ask_user",
+      "calls": 4,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "look_at_media",
+      "calls": 4,
+      "arg_rejected": 0,
+      "domain_failed": 1,
+      "retries": 0
+    },
+    {
+      "tool": "write_script",
+      "calls": 3,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "arrange_canvas",
+      "calls": 3,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "generate",
+      "calls": 2,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "start_model_setup",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "check_job",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "read_timeline",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    }
+  ]
+}

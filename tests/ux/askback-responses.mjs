@@ -64,6 +64,14 @@ for (const [index, row] of report.cases.entries()) {
     `> shouldAsk=${row.shouldAsk} · 调了 ask_user=${row.askedUser === true} · **正文里问了=${row.askedInProse === true}**`
       + `（问号收尾=${q.endsWithQuestion === true} · 编号选项=${q.numberedOptions === true}）`,
     '>',
+    // 第二档（run8 起）：光说「正文里问了」分不开「问住了」和「答完顺口一问」，
+    // 而 H1 的验收只看前者。把两格和它们的依据一并印在头上，省得回头翻 report.json。
+    ...(row.askedInProse === true ? [
+      `> └ **以问代做=${row.askedInsteadOfActing === true}** · 答完顺口一问=${row.askedAfterDelivering === true}`
+        + `（调过写类工具=${q.wroteSomething === true} · 正文即答案=${q.deliveredInProse === true}`
+        + ` · 待选摆在问句之后=${q.menuAfterQuestion === true}）`,
+      '>',
+    ] : []),
     // 没跑到模型的轮次**先说这一句**：那几份文件是空的，而「空」正是那件事的直接证据，
     // 不写明的话读的人会以为是抄漏了。
     `> 跑到模型=${row.reachedModel !== false}${row.reachedModel === false ? ` · 结局：\`${row.assistantError ?? 'failed'}\`` : ''}`,
@@ -71,7 +79,7 @@ for (const [index, row] of report.cases.entries()) {
     // 引的是**真的那一份**（`evidence/agent-sessions/…`），不是下面那个临时搭出来的项目根——
     // 后者跑完就删了，写进证据里等于指向一个不存在的文件。
     `来源：\`${path.join('evidence', 'agent-sessions', path.relative(path.join(projectRoot, '.nomi', 'agent-sessions'), session.path))}\``
-      + '（走查收尾时拷进 `tests/ux/shots/askback-real-model/ask-run7/` 的那份 lane transcript）里的 assistant 文本段，'
+      + `（走查收尾时拷进 \`${path.relative(process.cwd(), shotsDir)}/\` 的那份 lane transcript）里的 assistant 文本段，`
       + '逐字，与 `*.trace/trace.md` 的 `### Response` 同一份。',
     `判据：\`tests/ux/askback-option-judges.mjs\` 的 \`judgeProseQuestion\`，量的是**最后一条**消息。`,
     '',
