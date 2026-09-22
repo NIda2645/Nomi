@@ -15,7 +15,7 @@ A5 / A6 / A7 / A8 / A10 / N1 / N2，时间上**连续**（12:09:17 → 12:12:21�
 `totalTokens: 0`，然后整个 operation 判 failed。12:12:52 起自己恢复，后面 6 轮正常跑完。
 供应商侧的连接中断，不是产品行为，也**不是 H1 的效果**。
 
-它紧接在 A4 那一轮 20.6 分钟的停顿之后（`delete_from_canvas` 的不可逆卡没人答，T-QA-25），
+它紧接在 A4 那一轮 20.6 分钟的停顿之后（`delete_from_canvas` 的不可逆卡没人答，T-QA-29），
 最可能是那段长时间空转把连接放掉了；但这一点**没有被证明**，只是时间上相邻。
 
 > **走查没有发现这件事。** `report.json` 的 `summary.roundErrors` 是 **0**，
@@ -92,7 +92,7 @@ run4 的误问是 2/7（N4、N5，都在正文里），run5 是 1/7（A11，调�
 `report.json` 的 `roundFailed` / `assistantError`，并在 summary 里单列
 `roundsReachedModel`；没跑到的轮次不再和「跑到了但没问」混在一个分母里。
 
-### ② A4「把那个删了」第三次复现 20.6 分钟（T-QA-25）
+### ② A4「把那个删了」第三次复现 20.6 分钟（T-QA-29）
 
 与 run4 / run5 逐字同形：`look_at_canvas` → `delete_from_canvas` → 整轮停住 `1233745ms`，
 调用结局 `Tool execution was cancelled before completion.`。走查的等待循环仍然只认
@@ -100,7 +100,7 @@ run4 的误问是 2/7（N4、N5，都在正文里），run5 是 1/7（A11，调�
 **这一轮它可能还有下游代价**：紧接着的 7 轮连接中断就发生在这 20.6 分钟之后。
 （时间相邻，未证明因果。）
 
-### ③ `start_model_setup` 连着三轮没被调到，T-QA-24 仍无样本
+### ③ `start_model_setup` 连着三轮没被调到，T-QA-28 仍无样本
 
 `settingsPanelClosed` 全场 0。
 
@@ -122,4 +122,4 @@ node scripts/agent-trajectory-report.mjs \
 ## 6. 建议
 
 **这一轮作废，重跑一次**（仪器缺口已修，重跑会当场报出没跑到的轮次）。
-重跑之前最好先补 T-QA-25 那条走查支路——A4 每轮白等 20.6 分钟，而且它可能就是连接中断的上游。
+重跑之前最好先补 T-QA-29 那条走查支路——A4 每轮白等 20.6 分钟，而且它可能就是连接中断的上游。

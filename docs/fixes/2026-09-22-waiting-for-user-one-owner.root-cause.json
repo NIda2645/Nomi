@@ -349,7 +349,7 @@
   "residual_risks": [
     "卡上**没提交**的手改（`spendCardDraft` 的本地账本）绑在报价身份上（`spendDraftKey` 含 quoteId / planVersion）。× 收回出价、再 present 会换一个 quoteId，于是那些没提交的改动读不回来——「手改一个字不丢」在**账本那一半**成立（镜头/参数/锚点），在**卡上那一半**还没成立。TODO 已记。",
     "渲染层一处待修：composer 那颗圆钮在「有卡待答 + 有字」时是停止不是发送（第二张卡「一出来就停在确认态」已在 D3 记）。",
-    "`approval-irreversible`（`delete_from_canvas`）与 `start_model_setup` 开的设置面板这两条仍未碰：前者走查没有支路（T-QA-25，run4/run5 各复现一次 20.6 分钟），后者回合结束时没人负责收（T-QA-24，连着两轮无样本）。"
+    "`approval-irreversible`（`delete_from_canvas`）与 `start_model_setup` 开的设置面板这两条仍未碰：前者走查没有支路（T-QA-29，run4/run5 各复现一次 20.6 分钟），后者回合结束时没人负责收（T-QA-28，连着两轮无样本）。"
   ],
   "invariant_owner_layer": {
     "layer": "electron/productionRun/productionGenerationPlanEdits.ts",

@@ -188,7 +188,7 @@ export async function checkSpendScopeJourney(walk, win) {
   expect((await pending()).map(row => row.operationId), '同一份草稿重新出价').toEqual([operationId])
   expect((await pending())[0].shots.map(shot => shot.shotId), '还是原来那三镜').toEqual(requestedIds)
   expect((await readRun(operationId)).generationPlan.shots, '镜头、参数、锚点一个字不丢').toEqual(presentedShots)
-  // T-QA-26（2026-09-22 修）：他在这张卡上**没提交**的那两层手改也一个字不丢——
+  // T-QA-30（2026-09-22 修）：他在这张卡上**没提交**的那两层手改也一个字不丢——
   // 账本锚的是这一次生成（`spendDraftKey` 只含 projectId/runId/operationId），重新出价换的只是报价指纹。
   // 两层各查一层：逐镜那层挂在第二镜上，全部那层在哪一镜都该显示。
   await setScope('each')

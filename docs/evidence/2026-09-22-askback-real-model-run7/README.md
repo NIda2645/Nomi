@@ -99,7 +99,7 @@ roundsFailedBeforeModel: [
 | **`approval-irreversible:declined`（本轮新增支路）** | —— | **0** | **无样本**，见发现 ② |
 | `editor-confirm:cancelled` | 0 | **0** | —— |
 | `batch-preview:cancelled` | 0 | **0** | —— |
-| 关掉设置面板（`settingsPanelClosed`） | 0 | **0** | 连着三轮为零，T-QA-24 仍无样本 |
+| 关掉设置面板（`settingsPanelClosed`） | 0 | **0** | 连着三轮为零，T-QA-28 仍无样本 |
 
 A11 一轮四次作答的顺序是 `typed → chip → continue → chip`，回合**继续到底**
 （`turnContinuedAfterAnswer: true`，19 次工具调用跑完）。`question:continue` 是这条支路
@@ -206,7 +206,7 @@ Validation failed for tool "ask_user":
 > 是否要在题这一层**容忍并下沉**这个字段（而不是整次拒绝），请主会话定。
 > **本轮没有动产品代码。**
 
-### ② T-QA-25 的走查支路已补上，但**这一轮拿不到样本**（`190c1a88b`）
+### ② T-QA-29 的走查支路已补上，但**这一轮拿不到样本**（`190c1a88b`）
 
 等待循环现在认 `data-kind="approval-irreversible"` 的卡：出现即截图，然后像真人一样**拒绝**
 （右上 × 摊开填原因那一档、再按 `confirm-reject`），记 `approval-irreversible:declined`。
@@ -291,8 +291,8 @@ node tests/ux/askback-responses.mjs \
 2. 发现 ① 的 `ask_user` schema 拒绝值得先定：它把一次**完全正确的提问行为**变成了用户眼里的沉默，
    而这正是 H1 想拿到的那种行为。
 3. 发现 ③ / ④ 两条仪器缺口最好在下一轮之前补——尤其 ④，它直接决定 H1 的验收口径算不算数。
-4. T-QA-25 的支路已就位，等 A4 跑到模型那一轮验收（发现 ②）。
-5. T-QA-24 连着三轮无样本（`settingsPanelClosed` 全场 0）。
+4. T-QA-29 的支路已就位，等 A4 跑到模型那一轮验收（发现 ②）。
+5. T-QA-28 连着三轮无样本（`settingsPanelClosed` 全场 0）。
 
 ---
 

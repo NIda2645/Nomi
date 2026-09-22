@@ -34,9 +34,9 @@ D4 之前单跑过、这次没重跑的两条：`agent-spend-card`（含 33 镜�
 
 | 用例 | 红在哪条判据 | 归属 |
 |---|---|---|
-| `selection-drag-lifecycle` > group settles applied positions once on hidden | `expect(settled.revision).toBe(before.revision + 1)` | **继承红**（T-QA-23，画布拖拽那条会话的地盘）。D4 一个字没碰 `src/workbench/generationCanvas/**` 与这条测试 |
+| `selection-drag-lifecycle` > group settles applied positions once on hidden | `expect(settled.revision).toBe(before.revision + 1)` | **继承红**（T-QA-27，画布拖拽那条会话的地盘）。D4 一个字没碰 `src/workbench/generationCanvas/**` 与这条测试 |
 | `selection-drag-lifecycle` > selection settles applied positions once on hidden | 同上 | 同上 |
-| `spend-panel-write-ownership` > an all-scope revision failure preserves the remaining shot across quote refresh and paging | `expect(snapshot().prompt).toBe('edited')`，实收 `'b'` | **继承红**（T-QA-23），而且与 D4 新记的 **T-QA-26 同根**：夹具在那一步把 `quoteId` 改成 `quote-revised` 并 `planVersion++`，而本地草稿账本的键 `spendDraftKey` 绑死报价身份，于是用户改过的那句读不回来。失败发生在第 220 行，比同一条用例里的 `discard()`（222 行）**更早**，所以与 D4 改的那一下 × 无关 |
+| `spend-panel-write-ownership` > an all-scope revision failure preserves the remaining shot across quote refresh and paging | `expect(snapshot().prompt).toBe('edited')`，实收 `'b'` | **继承红**（T-QA-27），而且与 D4 新记的 **T-QA-30 同根**：夹具在那一步把 `quoteId` 改成 `quote-revised` 并 `planVersion++`，而本地草稿账本的键 `spendDraftKey` 绑死报价身份，于是用户改过的那句读不回来。失败发生在第 220 行，比同一条用例里的 `discard()`（222 行）**更早**，所以与 D4 改的那一下 × 无关 |
 
 机器核对：`git diff --stat 88f077600..HEAD -- tests/ux/spend-panel-write-ownership.test.mjs
 tests/ux/selection-drag-lifecycle.test.mjs tests/ux/fixtures/ src/workbench/generationCanvas/` → **空**。

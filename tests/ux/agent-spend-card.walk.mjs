@@ -208,7 +208,7 @@ try {
   await sendCanvas(win, 'S_SPEND_REOPEN：还是生成吧。')
   await recorded(reopen.received, 'generate on the same operation')
   await expect(card, '同一个 operationId 再 generate，卡就回来了（不用重新起草）').toBeVisible()
-  // 草稿一个字不丢，**没提交的手改也一个字不丢**（T-QA-26，2026-09-22 修）：
+  // 草稿一个字不丢，**没提交的手改也一个字不丢**（T-QA-30，2026-09-22 修）：
   // 卡上回来的是「账本里那份候选 ⊕ 他自己改的那一层」——他正在打的那句话、刚点的那个尺寸都在。
   // 账本锚的是这一次生成（`spendDraftKey` 只含 projectId/runId/operationId），重新出价换的
   // 只是报价指纹，换不掉他的地址。

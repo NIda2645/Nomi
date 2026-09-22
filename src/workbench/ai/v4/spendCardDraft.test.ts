@@ -134,7 +134,7 @@ it('saves declared model controls that were absent from the original candidate',
 
 // 2026-09-21：× 之后**没有**第二本账本（`nomi:dismissed-spend-draft:` 那本连同它的键已删）。
 // 2026-09-22 裁决 B/D 之后这条更强了：× 收回的只是这一次出价，账本锚 `operationId`，
-// 所以**换一份报价指纹草稿还在**——重新出价、价格刷新、改参数推版都带得过去（T-QA-26 的那一半）。
+// 所以**换一份报价指纹草稿还在**——重新出价、价格刷新、改参数推版都带得过去（T-QA-30 的那一半）。
 it('a fresh quote on the same operation still reads the user edits it never approved', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
@@ -180,7 +180,7 @@ it('partial consumption keeps all-layer and per-shot edits for remaining shots a
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b'), shot('c')] }
     const draft = { all: { prompt: 'all edited', parameters: { quality: 'high' } }, perShot: { b: { prompt: 'B edited' } } }
-    // 封印成功的那几镜会把报价推进一版；剩下没提交的那几镜仍然读得回来（T-QA-23 的那一半）。
+    // 封印成功的那几镜会把报价推进一版；剩下没提交的那几镜仍然读得回来（T-QA-27 的那一半）。
     const successor = { ...pending, quoteId: 'q2', planVersion: 2 }
     const remaining = consumeSpendDraft(pending, draft, ['a'])
     expect(effectivePatchForShot(remaining, 'a')).toEqual({})

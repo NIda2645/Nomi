@@ -2,12 +2,12 @@
   "schema_version": 3,
   "id": "2026-09-22-spend-draft-owner",
   "problem_type": "Unapproved user input was addressed by a freshness fingerprint instead of by the thing it belongs to, so every refresh of that fingerprint silently orphaned it",
-  "symptom": "两条红，同一个根：① **T-QA-23**（继承红，`tests/ux/spend-panel-write-ownership.test.mjs`「an all-scope revision failure preserves the remaining shot across quote refresh and paging」）——在付费卡上用「全部」范围改参数，部分镜封印失败；成功的那几镜把报价推进一版，用户翻页回到**还没提交**的那一镜，他刚打的那句提示词不见了（实收 `'b'`，应为 `'edited'`）。② **T-QA-26**（09-22 D4 真机走查如实钉住）——在卡上点 ×（裁决 D：只收回这一次出价），同一个 operationId 再 `generate`，卡回来了、账本里那份草稿一个字不丢，但他在卡上**没提交**的手改（正在打的那句提示词、刚点的那个尺寸）是空的。",
-  "direct_cause": "`src/workbench/ai/v4/spendCardDraft.ts` 的 `spendDraftKey` 把卡本地那本未提交改动的账本键派生成 `[projectId, runId, operationId, quoteId, planVersion, candidateRevision]`——**含报价身份**。而报价身份按设计就是会变的：`persistEdits` 每封印一镜就拿回一个新的 `quoteId`（T-QA-23 的那一半），`withdrawGenerationPresentation` 之后重新出价必然换一份 `quoteId` 并推进 `planVersion`（T-QA-26 的那一半）。`useAgentPanelSpendConfirm` 的轮询用这个键当 draft owner：键一变就当成「换了一笔」，`restoreSpendDraft` 读空，用户正在编辑的那一层被整层换掉。",
+  "symptom": "两条红，同一个根：① **T-QA-27**（继承红，`tests/ux/spend-panel-write-ownership.test.mjs`「an all-scope revision failure preserves the remaining shot across quote refresh and paging」）——在付费卡上用「全部」范围改参数，部分镜封印失败；成功的那几镜把报价推进一版，用户翻页回到**还没提交**的那一镜，他刚打的那句提示词不见了（实收 `'b'`，应为 `'edited'`）。② **T-QA-30**（09-22 D4 真机走查如实钉住）——在卡上点 ×（裁决 D：只收回这一次出价），同一个 operationId 再 `generate`，卡回来了、账本里那份草稿一个字不丢，但他在卡上**没提交**的手改（正在打的那句提示词、刚点的那个尺寸）是空的。",
+  "direct_cause": "`src/workbench/ai/v4/spendCardDraft.ts` 的 `spendDraftKey` 把卡本地那本未提交改动的账本键派生成 `[projectId, runId, operationId, quoteId, planVersion, candidateRevision]`——**含报价身份**。而报价身份按设计就是会变的：`persistEdits` 每封印一镜就拿回一个新的 `quoteId`（T-QA-27 的那一半），`withdrawGenerationPresentation` 之后重新出价必然换一份 `quoteId` 并推进 `planVersion`（T-QA-30 的那一半）。`useAgentPanelSpendConfirm` 的轮询用这个键当 draft owner：键一变就当成「换了一笔」，`restoreSpendDraft` 读空，用户正在编辑的那一层被整层换掉。",
   "class_root": "**身份锚错了层**：一份属于「这一次操作」的用户输入，被钉在「这一刻的现时性指纹」上。现时性指纹的职责是回答「你确认的是不是你看到的那个数」，它按设计必须频繁变化；拿它做寻址，等于宣布「每刷新一次，用户还没提交的东西就换一本账」。同一族的判据是：**这份状态跟着谁生、跟着谁死**——答案是这一次 `generate`（`operationId`），不是它的第 n 次报价。",
   "affected_population": [
-    "每一个在付费确认卡上改过东西、又遇到价格刷新 / 部分封印失败 / 翻页的用户（T-QA-23）",
-    "每一个 × 收回出价之后又说「还是生成吧」的用户：卡回来了，他没提交的手改没回来（T-QA-26）",
+    "每一个在付费确认卡上改过东西、又遇到价格刷新 / 部分封印失败 / 翻页的用户（T-QA-27）",
+    "每一个 × 收回出价之后又说「还是生成吧」的用户：卡回来了，他没提交的手改没回来（T-QA-30）",
     "不受影响：全自动档（不出卡）；确认一次就成功走完的单镜路径（报价只推进一次、卡随即消失）"
   ],
   "scope_paths": [
