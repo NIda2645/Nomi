@@ -203,6 +203,8 @@ A12 中途调了一次 `nomi_request_tools`（延迟披露组的按需取用）�
   用的是 `703ac7c04` 之后**按会话文件名 ISO 时间戳排序**的读法，所以 run5 的按用例归属是对的
   （run4 是离线重算的，run1–run3 不可重算，见 run4 README 发现 ⑤）。
 - `trajectories/_matrix.json` —— 按用例与按工具的两张汇总（第三、四节那两张表的来源）。
+- `responses/<case>.md` —— **模型自己写的正文**，逐字（见文末那一节）。轨迹 jsonl 只记工具调用，
+  正文只有 transcript 有；`*.trace/trace.md` 住在 `tests/ux/shots/` 下会被下一轮覆盖，所以抄一份进来。
 - 截图留在 `tests/ux/shots/askback-real-model/ask-run5/`（不入 git，`.gitignore` 第 68 行忽略 `tests/ux/shots/`），
   含 `A8/A10/A11/A12-question-card.png`、`A1/A3/A5/A8/A10/A11/A12-after-answer.png`、
   `A5/A8/A10/A12-spend-card.png`、`A1/A3-spend-dialog.png`，以及 `evidence/agent-sessions/`（原始 lane transcript）。
@@ -214,3 +216,29 @@ node scripts/agent-trajectory-report.mjs \
   docs/evidence/2026-09-22-askback-real-model-run5 \
   docs/evidence/2026-09-22-askback-real-model-run4 --label run5,run4
 ```
+
+## 附 · 「模型自己认为该问」——事后按新判据回算（2026-09-22 补）
+
+> **这是事后回算，不是这一轮量出来的。** 判据（`judgeProseQuestion`，住
+> `tests/ux/askback-option-judges.mjs`）是 run5 之后才加的：走查原来的「该问时问了」只数
+> `ask_user` 工具调用（`row.askedUser = askCalls.length > 0`），而模型多数时候是**在正文里**
+> 把问题问出来的——带编号选项、以问号收尾、回合就此结束。两件事在产品上完全不是一回事：
+> 正文里的问句不会变成卡，用户答不了，回合已经结束。
+>
+> 回算喂的是和走查**同一份来源**：lane transcript 里的 assistant 文本段，只量**最后一条**消息
+> （工具之间那些带问号的旁白是自言自语，不是在问用户）。原文逐字存在 `responses/<case>.md`
+> ——`trace.md` 住在 `tests/ux/shots/` 下（`.gitignore` 忽略），下一轮会被覆盖，所以抄进证据目录。
+
+| | 调了 `ask_user` | 只在正文里问了 | 真·自行取默认不问 | **模型自己认为该问** |
+|---|---|---|---|---|
+| run4 | 3/11（A1 A5 A8） | 4（A4 A7 A9 A10） | 4（A2 A3 A6 A12） | **7/11** |
+| run5 | 3/11（A8 A10 A12） | 6（A1 A2 A5 A6 A7 A9） | 2（A3 A4） | **9/11** |
+
+两轮按调用都是 3/11，按「它自己认为该问」是 7/11 和 9/11。**瓶颈不在「要不要问」，在「用哪条通道问」。**
+H1（2026-09-22，`18b93c311`）改的就是这一条：`ask_user` 的 `notWhen` 末句原本只禁止
+「沉默地停住」（stop the turn *in silence*），而模型做的是「在正文里写一段问句然后停住」，
+字面上不违反任何一条。
+
+**误问那一侧也照实记**：run4 有 **2/7** 本不该问的用例在正文里问了（N4、N5）；run5 是 0/7，
+但 A11（run3 起被改判成「不该问」）直接调了 `ask_user`。这一格是 H1 的已知代价所在——
+把「正文提问」也算成问，误问率的分母就变了，下一轮要盯着它看。
