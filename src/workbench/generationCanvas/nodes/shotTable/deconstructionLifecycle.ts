@@ -125,22 +125,38 @@ export function convergeDeconstructionTable(
 }
 
 /**
- * 整张画布收敛一遍。读路径（快照恢复 / 事件尾巴重放 / 外部图应用）末尾各调一次，
- * 幂等：已经是终态的表原样返回，同一份 nodes 引用也原样返回（不白白触发重渲染）。
+ * 扫一张画布，列出**需要被收敛**的那几张表。扫描与判据都只有这一份——
+ * 读路径要的是「一张新的 nodes 数组」，引擎的 finally 要的是「逐个 updateNode 落盘」，
+ * 两种落笔方式共用它，不各写一遍循环。
+ */
+export function convergedDeconstructionEntries<T extends { id: string; kind: string; meta?: Record<string, unknown> }>(
+  nodes: readonly T[],
+  isLive: (nodeId: string) => boolean = isDeconstructionRunLive,
+): { node: T; table: DeconstructionShotTableDocument }[] {
+  const entries: { node: T; table: DeconstructionShotTableDocument }[] = []
+  for (const node of nodes) {
+    if (node.kind !== 'shot_table') continue
+    const table = readShotTable(node.meta)
+    if (table?.source.kind !== 'deconstruction' || !('columns' in table)) continue
+    const converged = convergeDeconstructionTable(node.id, table, isLive)
+    if (converged) entries.push({ node, table: converged })
+  }
+  return entries
+}
+
+/**
+ * 整张画布收敛一遍（读路径用）。快照恢复 / 事件尾巴重放 / 外部图应用末尾各调一次，
+ * 幂等：没有要动的表时**原样返回同一份 nodes 引用**，不白白触发重渲染。
  */
 export function convergeDeconstructionNodes<T extends { id: string; kind: string; meta?: Record<string, unknown> }>(
   nodes: readonly T[],
   isLive: (nodeId: string) => boolean = isDeconstructionRunLive,
 ): T[] {
-  let changed = false
-  const next = nodes.map((node) => {
-    if (node.kind !== 'shot_table') return node
-    const table = readShotTable(node.meta)
-    if (table?.source.kind !== 'deconstruction' || !('columns' in table)) return node
-    const converged = convergeDeconstructionTable(node.id, table, isLive)
-    if (!converged) return node
-    changed = true
-    return { ...node, meta: { ...node.meta, shotTable: converged } }
+  const entries = convergedDeconstructionEntries(nodes, isLive)
+  if (!entries.length) return nodes as T[]
+  const byId = new Map(entries.map((entry) => [entry.node.id, entry.table]))
+  return nodes.map((node) => {
+    const table = byId.get(node.id)
+    return table ? { ...node, meta: { ...node.meta, shotTable: table } } : node
   })
-  return changed ? next : (nodes as T[])
 }

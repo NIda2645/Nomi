@@ -11,6 +11,7 @@ import { createDeconstructionShotTable, deconstructionResultToShotTable } from '
 import {
   canRestartDeconstruction,
   convergeDeconstructionTable,
+  convergedDeconstructionEntries,
   isDeconstructionRunCancelled,
   markDeconstructionCancelled,
   registerDeconstructionRun,
@@ -143,13 +144,10 @@ export async function deconstructToShotTable(
  */
 export function settleInterruptedDeconstructions(): void {
   const store = useGenerationCanvasStore.getState()
-  for (const node of store.nodes) {
-    if (node.kind !== 'shot_table') continue
-    const table = readShotTable(node.meta)
-    if (table?.source.kind !== 'deconstruction' || !('columns' in table)) continue
-    const converged = convergeDeconstructionTable(node.id, table)
-    if (!converged) continue
-    store.updateNode(node.id, { meta: { ...node.meta, shotTable: { ...converged, updatedAt: new Date().toISOString() } } }, { history: false })
+  // 扫描与判据都在 owner 那一份里；这里只负责**怎么落笔**——走 updateNode 而不是直接
+  // setState，才会进持久化与事件日志（收敛结果本身也要能跨重启留下来）。
+  for (const { node, table } of convergedDeconstructionEntries(store.nodes)) {
+    store.updateNode(node.id, { meta: { ...node.meta, shotTable: { ...table, updatedAt: new Date().toISOString() } } }, { history: false })
   }
 }
 
