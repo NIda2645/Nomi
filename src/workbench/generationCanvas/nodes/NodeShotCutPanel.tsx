@@ -16,6 +16,7 @@ import { IconAlertTriangle, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import type { ShotCutCoverage } from '../../../../electron/shared/canvas/shotTable'
 import { extractShotCutsToNodes } from './extractShotCutsToNodes'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import {
@@ -28,7 +29,6 @@ import {
   filterShotCuts,
   formatShotTimestamp,
   pickDefaultSensitivity,
-  shotSheetRows,
   shotSheetTileStyle,
   type ShotCut,
 } from './shotCutSelection'
@@ -42,7 +42,8 @@ type DetectState =
       durationSeconds: number
       sheetUrl: string | null
       sheetColumns: number
-      truncated: boolean
+      sheetRows: number
+      coverage: ShotCutCoverage
     }
 
 type Props = { onFeedback: (message: string) => void;  node: GenerationCanvasNode; onClose: () => void }
@@ -89,7 +90,8 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
           durationSeconds: Number(result.durationSeconds) || 0,
           sheetUrl: result.sheetUrl ?? null,
           sheetColumns: result.sheetColumns || 8,
-          truncated: Boolean(result.truncated),
+          sheetRows: result.sheetRows,
+          coverage: result.coverage,
         })
       })
       .catch((error: unknown) => {
@@ -108,7 +110,6 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
   const allCuts = React.useMemo(() => (state.phase === 'ready' ? state.cuts : []), [state])
   const visible = React.useMemo(() => filterShotCuts(allCuts, threshold), [allCuts, threshold])
   const selected = React.useMemo(() => visible.filter((cut) => !excluded.has(cut.index)), [visible, excluded])
-  const rows = state.phase === 'ready' ? shotSheetRows(allCuts.length, state.sheetColumns) : 1
 
   const durationSeconds = state.phase === 'ready' ? state.durationSeconds : 0
   /** 全集 = 0：这段结构上就是一镜到底（AI 生成的片段基本都是）。不是失败，是换一条路——均匀抽帧。 */
@@ -225,10 +226,14 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
           </div>
         ) : null}
 
-        {state.phase === 'ready' && state.truncated ? (
+        {state.phase === 'ready' && state.coverage.capped ? (
           <div className="flex items-center gap-2 rounded-nomi-sm bg-nomi-ink-05 px-3 py-2 text-body-sm text-nomi-ink-80">
             <IconAlertTriangle size={15} stroke={1.8} aria-hidden />
-            {t('generationCommon.node.shotCuts.truncated', { count: allCuts.length })}
+            {t('generationCommon.node.shotCuts.capped', {
+              detected: state.coverage.detectedCuts,
+              kept: state.coverage.keptCuts,
+              threshold: state.coverage.appliedThreshold.toFixed(2),
+            })}
           </div>
         ) : null}
 
@@ -264,7 +269,7 @@ export default function NodeShotCutPanel({ onFeedback, node, onClose }: Props): 
             >
               {visible.map((cut) => {
                 const isOn = !excluded.has(cut.index)
-                const tile = shotSheetTileStyle(cut.index, state.sheetColumns, rows)
+                const tile = shotSheetTileStyle(cut.index, state.sheetColumns, state.sheetRows)
                 return (
                   <button
                     key={cut.index}

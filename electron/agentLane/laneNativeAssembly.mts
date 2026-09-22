@@ -1,6 +1,7 @@
 // Assemble upstream tools; pi owns tool activation and its durable addedToolNames transitions.
 import { createLaneModelRead, laneModelReadSpec } from './laneModelRead.mjs';
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels.js';
+import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection.js';
 import type { AgentLane, AgentHarnessTool } from '@earendil-works/pi-agent-core';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
 import type { Context } from '@earendil-works/pi-agent-core/harness/context';
@@ -35,6 +36,8 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
   factories?: LaneCodingToolsInput['factories'];
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
+  /** 由持有目录的上层注入的只读可用性查询（lane 自己不碰目录）。 */
+  modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
 }) {
   let activeTools: LaneActiveToolsController | undefined;
   const canReadProject = async () => {
@@ -102,7 +105,8 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
     [modelReadSpec.name]: modelReadSpec.effect,
     [LANE_TOOL_REQUEST_TOOL_NAME]: 'read',
   });
-  const modelRead = createLaneModelRead(() => input.availableModels?.() ?? []);
+  // 可用性三件由上层注入（见 `OpenLaneOptions.modelAvailability`）：lane 不 import 目录。
+  const modelRead = createLaneModelRead(() => input.availableModels?.() ?? [], input.modelAvailability);
   const promptSources = [...coding, request] as unknown as PiAgentTool[];
   // `nomi_read` 的系统提示词条目直接用注册表那份说明书（全文 + 示例 + 纪律），与领域工具同一条路。
   const promptTools = [

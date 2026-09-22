@@ -2,7 +2,7 @@ export { buildVideoModelCandidates, sourceBackedVideoProfiles, transportTaskKind
 
 // Video archetype definitions live here (canonical home). This barrel is the
 // single public surface the renderer imports from — no re-export shells in
-// src/config/modelArchetypes (P1: 搬家不留转发壳). Keep alphabetized by source module.
+// electron/shared/modelArchetypes (P1: 搬家不留转发壳). Keep alphabetized by source module.
 export { AGNES_VIDEO_ARCHETYPE } from "./agnesVideo";
 export { AGNES_VIDEO_25_ARCHETYPE, AGNES_VIDEO_25_FLASH_ARCHETYPE } from "./agnesVideo25";
 export { DREAMINA_MULTIFRAME_ARCHETYPE } from "./dreaminaMultiframe";

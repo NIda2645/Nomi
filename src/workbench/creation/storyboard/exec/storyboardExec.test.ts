@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanAnchor, PlanShot, StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
 import {
   storyboardAnchorToCreateNodesArgs,

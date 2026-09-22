@@ -44,7 +44,6 @@ function contractFor(id: string, hash: string): ExecutionContractV1 {
     references: [],
     contractHash: hash,
     warnings: [],
-    droppedFields: [],
   };
 }
 

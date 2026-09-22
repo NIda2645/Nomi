@@ -1,4 +1,5 @@
 import type { ModelOption } from './models'
+import { pickImplicitVendorMatch } from './modelIdentity'
 import i18n from '../i18n'
 
 function normalizeModelId(value: string): string {
@@ -43,6 +44,7 @@ export function findModelOptionByIdentifier(
   options: readonly ModelOption[],
   value: string | null | undefined,
   vendor?: string | null | undefined,
+  orderedVendorKeys: readonly string[] = [],
 ): ModelOption | null {
   const identifier = trimModelIdentifier(value)
   const normalizedIdentifier = normalizeModelId(identifier)
@@ -69,19 +71,9 @@ export function findModelOptionByIdentifier(
     const vendorMatch = matches.find((option) => trimVendorIdentifier(option.vendor) === requestedVendor)
     if (vendorMatch) return vendorMatch
   }
-  return matches[0]
-}
-
-export function getModelOptionRequestAlias(options: readonly ModelOption[], value: string | null | undefined): string {
-  const identifier = trimModelIdentifier(value)
-  const matched = findModelOptionByIdentifier(options, identifier)
-  const alias = trimModelIdentifier(matched?.modelAlias)
-  if (alias) return alias
-  const modelKey = trimModelIdentifier(matched?.modelKey)
-  if (modelKey) return modelKey
-  const fallbackValue = trimModelIdentifier(matched?.value)
-  if (fallbackValue) return fallbackValue
-  return identifier
+  // 没记供应商（旧数据）/ 记的那家不在了：不再是「数组首条 = 最新接入那家」，
+  // 而是与执行侧同一把尺（pickImplicitVendorMatch：用户顺序 > 官方 > 内置中转 > 自接 > 目录序）。
+  return pickImplicitVendorMatch(matches, (option) => option.vendor, orderedVendorKeys) ?? null
 }
 
 export type ResolvedExecutableImageModel = {

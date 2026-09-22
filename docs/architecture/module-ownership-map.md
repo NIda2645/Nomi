@@ -44,7 +44,7 @@
 
 | 职能 | Canonical 家（唯一真源） | 允许的卫星 | 禁止 |
 |---|---|---|---|
-| **模型档案定义** | video → `electron/shared/videoCapabilities/`（含 barrel `index.ts` 为渲染层导出的唯一公共面）；image/3D → `src/config/modelArchetypes/` | 无 | 新增 re-export 壳（历史 33 个已于二期清净，见下） |
+| **模型档案定义** | video → `electron/shared/videoCapabilities/`（含 barrel `index.ts` 为渲染层导出的唯一公共面）；image/3D → `electron/shared/modelArchetypes/` | 无 | 新增 re-export 壳（历史 33 个已于二期清净，见下） |
 | **跨进程契约 / 类型** | `electron/shared/contracts/`（**待建中立层**，第二期） | 无 | `src/` 直捅 `electron/*/…Contract.ts` / `…Types.ts` 拿类型 |
 | **供应商/模型目录存储 · 生命周期** | `electron/catalog/` | 无 | 渲染层直引 catalog（走 bridge）；与 providerAdapter/certification 直环 |
 | **供应商适配** | `electron/providerAdapter/` | 无 | 与 `catalog` / `integrationCertification` 互相直引成硬环（第三期解耦） |
@@ -82,7 +82,7 @@
   raw/大小写/前缀/末段变形）在新旧数组序上跑三趟匹配逐一对比，渲染层与主进程身份表两侧均
   diffs=0；唯一同串反序对 `"veo3.1"`（Runway 平台判别串 vs Veo 家族键）由
   `LEGACY_RESOLUTION_ORDER_PINS` 钉住渲染层存量赢家。跨档案同串的全部存量赢家锁在
-  `src/config/modelArchetypes/resolutionOrder.test.ts`（重排/新增翻转赢家即红）。
+  `electron/shared/modelArchetypes/resolutionOrder.test.ts`（重排/新增翻转赢家即红）。
   ⚠️ 已记录存量分裂：裸 `"veo3.1"` 渲染层解析 runway-video、registry 平局判据出 veo-3.1，
   两侧本就相反——修它属行为变更，单独立项裁决（契约：
   `docs/fixes/2026-09-02-archetype-video-registry-derivation.root-cause.json`）。

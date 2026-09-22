@@ -52,6 +52,9 @@ function makeService(dir: string) {
   // 用户本人的会话；他那份有 101 条、超过 MAX_SESSIONS=100，于是它在这台机器上红，在别的机器上绿。
   // 测试不许读写用户真实目录：给足真路径，`as never` 只留在那两个确实需要放宽的成员上。
   const sessions = new IntegrationSessionService({
+    dir,
+    // 会话文件必须落在这个临时目录里：不传 filePath 时服务写的是真实的 ~/.nomi/capability-core，
+    // 测试会污染用户资料，而且那份文件一过 100 条会话上限，这条测试就在那台机器上永远红。
     filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
     credentialResolver: (() => ({ apiKey: "sk-loopback", vendorKey: "deepseek" })) as never,

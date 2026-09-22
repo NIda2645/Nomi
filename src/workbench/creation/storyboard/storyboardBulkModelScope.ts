@@ -1,5 +1,6 @@
 import type { ModelOption } from '../../../config/models'
 import type { PlanShot, StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
+import { planModelSelection } from '../../generationCanvas/agent/storyboardPlanEdits'
 
 /**
  * 多选「统一模型」的**镜种作用域**（纯函数，无 React）。
@@ -74,7 +75,7 @@ export function applyBulkModelToShots(input: {
     ...plan,
     shots: plan.shots.map((shot) => (
       isSelected(shot) && storyboardShotKind(shot) === kind
-        ? { ...shot, modelKey, modelVendor: vendor || undefined, modeId: undefined, params: undefined }
+        ? { ...shot, ...planModelSelection(modelKey, vendor) }
         : shot
     )),
   }

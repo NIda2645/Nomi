@@ -30,11 +30,10 @@ import {
   candidateHasCharacterReference,
   candidatesForCurrentVideoModel,
   modelSupportsReferenceImage,
-  normalizedModelIdentity,
   normalizeVideoCandidate,
   shotDurationSeconds,
   videoCandidateForPlan,
-  videoParameterSchema,
+  videoCompileOptions,
   videoRecommendationInput,
 } from "./mcpGenerationVideoResolve";
 import type { ModuleRegistry } from "./moduleRegistry";
@@ -53,6 +52,7 @@ import type {
 import { effectiveVideoModes } from "../shared/videoCapabilities/recommendation";
 import { resolveGenerationPlan, type PlanShotInput } from "../shared/videoCapabilities/planResolver";
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
+import { normalizeStoredDraft, resolvePlanPatch } from "./generationPlanPatch";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
@@ -277,10 +277,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     return candidate.references.map((reference) => resolve(projectId, reference));
   };
 
+  /**
+   * **编译执行合同的唯一那一处**（preview / gate_request / 多镜密封都走它）。
+   *
+   * 参数表与变体清单由 `videoCompileOptions` 这一个 seam 给（它认不出视频档案时会退回通用档案判据，
+   * 所以 image/audio/3D 也有参数表可校验）；`referenceSourceUrls` 是本刀这一路独有的 @ 投影输入。
+   * 谁在别处再写一次 `compileExecutionContract(...)`，谁就是第二台发动机。
+   */
   const contractFor = (candidate: PlanCandidate, projectId: string) => {
     const referenceSourceUrls = referenceSourceUrlsFor(projectId, candidate);
     return compileExecutionContract(candidate, deps.registry, {
-      ...(videoParameterSchema(candidate, deps.videoModelCandidates) ? { parameterSchema: videoParameterSchema(candidate, deps.videoModelCandidates)! } : {}),
+      ...videoCompileOptions(candidate, deps.videoModelCandidates),
       ...(referenceSourceUrls ? { referenceSourceUrls } : {}),
     });
   };
@@ -500,8 +507,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         [{shotId:normalizedSingle.candidateId,candidate:normalizedSingle,storyboard:params.storyboard as GenerationOperationDraftShot['storyboard']}]);
       return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
     }
-    const current = await deps.operations.read(input.lease.projectId, operationId);
-    if (!current) throw new GenerationOperationNotFoundError();
+    const stored = await deps.operations.read(input.lease.projectId, operationId);
+    if (!stored) throw new GenerationOperationNotFoundError();
+    // 读盘归一（**唯一**的存量残留清理点）：所有 capability 都经这里，所以读出来的就是干净的、
+    // 而且已落盘。逐入口补会漏——上一轮就漏在 gate_request 上（预览看得见、点确认时炸）。
+    const normalizedDraft = await normalizeStoredDraft({
+      operation: stored, projectId: input.lease.projectId, operationId, now: now(),
+      registry: deps.registry, videoModelCandidates: deps.videoModelCandidates,
+      patch: (projectId, id, patch, at, shotId) => deps.operations.patch(projectId, id, patch, at, shotId),
+    });
+    const current = normalizedDraft.operation as typeof stored;
+    const storedLeftovers = normalizedDraft.clearedParameters;
     if (input.capability === "present") {
       if (current.sourceDocumentId) return presentStoryboardAuthoring(current,capturedProjectId,operationId,params.shotIds,deps.requestRendererDecision);
       // `generate` 动词：把草稿摆到用户面前。草稿一字不动，只让报价卡可投影；点头/花钱仍是用户在卡上的动作。
@@ -536,33 +552,10 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const targetShot = shotId ? current.shots?.find((shot) => shot.shotId === shotId) : undefined;
       if (shotId && !targetShot) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Generation shot not found: ${shotId}. Read the draft again and copy a shotId it actually lists.`);
       const baseCandidate = targetShot?.candidate ?? current.candidate;
-      const nextProviderId = typeof userPatch.providerId === "string" ? userPatch.providerId : baseCandidate.providerId;
-      const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : baseCandidate.modelId;
-      const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(baseCandidate.providerId)
-        || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(baseCandidate.modelId);
-      const modeChanged = typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(baseCandidate.mode);
-      const mergedCandidate = {
-        ...baseCandidate,
-        ...userPatch,
-        ...(modelChanged && userPatch.variantId === undefined ? { variantId: undefined } : {}),
-        ...((modelChanged || modeChanged) && userPatch.modeId === undefined ? { modeId: undefined } : {}),
-        parameters: userPatch.parameters ?? baseCandidate.parameters,
-        references: userPatch.references ?? baseCandidate.references,
-      } as PlanCandidate;
-      const normalizedCandidate = normalizeVideoCandidate(mergedCandidate, deps.videoModelCandidates);
-      const normalizedPatch = {
-        ...userPatch,
-        ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
-        ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
-      };
+      const { normalizedPatch, changeset } = resolvePlanPatch({
+        baseCandidate, userPatch, registry: deps.registry, videoModelCandidates: deps.videoModelCandidates,
+      });
       const operation = await deps.operations.patch(input.lease.projectId, operationId, normalizedPatch, now(), shotId, input.storyboardTarget);
-      const changeset = (modelChanged || modeChanged) ? {
-        modelChanged, modeChanged,
-        ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
-        ...((modelChanged || modeChanged) && userPatch.modeId === undefined && baseCandidate.modeId ? { clearedModeId: baseCandidate.modeId } : {}),
-        previousModel: `${baseCandidate.providerId}/${baseCandidate.modelId}`,
-        nextModel: `${nextProviderId}/${nextModelId}`,
-      } : undefined;
       return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview", ...(changeset ? { changeset } : {}) };
     }
     if (input.capability === "preview") {
@@ -589,6 +582,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         operationId,
         candidateRevision: current.candidate.revision,
         contract,
+        ...(storedLeftovers.length ? { clearedParameters: storedLeftovers } : {}),
         ...(recommendation ? { recommendation } : {}),
         pricing: projection,
         providerReady: readiness.providerReady,

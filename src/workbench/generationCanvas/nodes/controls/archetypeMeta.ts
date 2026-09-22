@@ -1,6 +1,6 @@
 // 内置「模型档案」与生成节点 UI 之间的桥（C2b）。
 //
-// 职责：把档案的 modes/slots/params（src/config/modelArchetypes，供应商无关）映射成节点 UI
+// 职责：把档案的 modes/slots/params（electron/shared/modelArchetypes，供应商无关）映射成节点 UI
 // 需要的三样东西 —— ① 模式分段切换的选项、② 当前模式的参考槽（复用现有 ImageUrlSlot 形状）、
 // ③ 当前模式的标量参数。
 //
@@ -21,7 +21,7 @@ import {
   combineChannelForMode,
   resolveArchetypeForModel,
   specializeArchetypeForVariant,
-} from '../../../../config/modelArchetypes'
+} from '../../../../../electron/shared/modelArchetypes'
 import type { ImageUrlSlot } from '../../model/parameterReferenceSlots'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import {

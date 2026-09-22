@@ -29,7 +29,7 @@ import {
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
-import { resolveGenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
+import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
 
@@ -64,7 +64,7 @@ function resetMagneticHandlePosition(event: React.PointerEvent<HTMLSpanElement>)
 type GenerationFlowConnectionHandleProps = {
   side: 'left' | 'right'
   type: 'source' | 'target'
-  affordance: 'dot' | 'magnetic' | 'hidden'
+  affordance: GenerationFlowConnectionAffordance
   active: boolean
   /** `null` = 没有连线在进行；`''` = 有连线但端点不在这张卡上；否则是这张卡上被吸住的把手 id。 */
   activeHandleId: string | null
@@ -171,9 +171,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     selected,
     primarySelection,
   })
-  const connectionAffordance = collapsedGroupProxy
-    ? 'hidden'
-    : resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
+  const connectionAffordance = resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
   const isPendingConnectionSource = pendingConnectionSourceId === node.id
   const isPendingConnectionTarget = Boolean(pendingConnectionSourceId && !isPendingConnectionSource)
   const startConnectionLabel = t('generationCommon.node.startConnection')
@@ -193,6 +191,9 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   return (
     <div
       className="generation-canvas-react-flow__node-shell"
+      // 卡面与自己把手的上下层由把手档位派生（见 generationCanvasReactFlow.css 的同名选择器）：
+      // 只有磁吸档才把卡面抬到带子之上，小圆点档的把手必须压在卡面上。
+      data-connection-affordance={connectionAffordance}
       style={{
         width: size.width,
         height: size.height,

@@ -25,4 +25,6 @@ export const agentModelEntrySchema: z.ZodType<AgentModelEntry> = z.object({
       max: z.number().finite().optional(), characterIndexed: z.boolean().optional(),
     }).strict()).max(64),
   }).strict()).max(64),
+  variants: z.array(z.object({ id: text.min(1), label: text, modelKey: text.optional() }).strict()).max(64).optional(),
+  defaultVariantId: text.optional(),
 }).strict()

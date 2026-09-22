@@ -26,6 +26,7 @@ import { GENERATE_BUTTON_CLASS } from './nodeComposerStyles'
 import { NodePromptToolCluster } from './NodePromptToolCluster'
 import { ToolbarDivider } from './NodeFloatingToolbar'
 import { NodePromptOptimizer } from './NodePromptOptimizer'
+import { NodePromptTranslator } from './NodePromptTranslator'
 import { useNodeAssetDrop } from './useNodeAssetDrop'
 import { persistActiveWorkbenchProjectNow } from '../../project/workbenchProjectSession'
 import {
@@ -36,7 +37,7 @@ import {
   isModel3dLikeGenerationNodeKind,
   isVideoLikeGenerationNodeKind,
 } from '../model/generationNodeKinds'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import { applyArchetypeModeSwitch, currentArchetypeMode } from './controls/archetypeMeta'
 import { archetypeForNode, resolveModeForReferenceDemand } from '../agent/referenceEdgeCapability'
 import { addAssetUrlToNode } from './nodeAssetWrite'
@@ -331,7 +332,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
 
   const effects = useNodeEffectChips({ enabled: hasPromptPickerButton, empty: !node.prompt?.trim(), kind: nodeExecutionKind ?? node.kind, disabled: node.locked, onSelect: applyPromptPickerItem })
 
-  // B 簇（帮我写提示词）：效果 → 优化。运镜控件已从视频/图片节点移除：用户直接在 prompt
+  // B 簇（帮我写提示词）：效果 → 翻译 → 优化（翻译与优化同一出现条件，2026-09-21 拍板）。运镜控件已从视频/图片节点移除：用户直接在 prompt
   // 里写运镜，避免节点控件和提示词重复表达。
   // 一件都没有（锁住的节点、不吃提示词的工作流、面板宿主）就整段不渲染——空的分组连同两根分隔线
   // 留在那里只会在底栏里留一段没人看得懂的空白。
@@ -403,6 +404,13 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
         }}
       >
       {readOnly ? <div role="status" className="text-caption text-nomi-ink-60">{t('generationCommon.workflowPlugin.readOnly')}</div> : null}
+      {/* 「生成方式」在参考区滚动口之外、紧贴在它上面：仍是参考区的头，但属于卡片的固定内容，
+          压到最小高度也整行可见可点（2026-09-21，见 NodeParameterControls 的 section="mode"）。 */}
+      {hasReferenceControls && !readOnly ? (
+        <div data-node-composer-mode-bar className={cn('shrink-0')}>
+          <NodeParameterControls node={node} section="mode" />
+        </div>
+      ) : null}
       {hasReferenceControls && !readOnly ? (
         <div data-node-composer-references className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-nomi-line-soft')} style={inPanel ? undefined : { maxHeight: referenceMaxHeight }}>
           <NodeParameterControls node={node} section="references" onInsertMention={insertMention} />
@@ -498,6 +506,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
             <ToolbarDivider />
             <NodePromptToolCluster ariaLabel={t('generationCommon.composerBarV1.promptTools')}>
               {showPromptPicker ? effects.more : null}
+              {showOptimizer ? <NodePromptTranslator editor={promptEditor} prompt={node.prompt || ''} mentionReferences={orderedMediaReferences} onFeedback={reportFeedback} /> : null}
               {showOptimizer ? <NodePromptOptimizer node={node} isVideo={nodeExecutionKind === 'video'} /> : null}
             </NodePromptToolCluster>
             <ToolbarDivider />

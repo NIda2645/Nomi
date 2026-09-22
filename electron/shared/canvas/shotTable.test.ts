@@ -42,6 +42,38 @@ describe('shot table persistence ownership', () => {
   })
 })
 
+describe('cut coverage survives persistence (2026-09-22)', () => {
+  const deconstruction = (extra: Record<string, unknown>) => ({
+    ...table(),
+    source: { kind: 'deconstruction', sourceNodeId: 'video-1', title: 'Reference', status: 'ready', ...extra },
+    columnSetId: 'facts',
+    columns: [{ columnId: 'visual', kind: 'builtin', labelKey: 'visual', order: 0, visible: true }],
+    rows: [],
+  })
+
+  it('round trips the whole coverage block, so a reopened project still knows the table was capped', () => {
+    const coverage = {
+      detectedCuts: 399, keptCuts: 120, appliedThreshold: 0.2055,
+      capped: true, coveredSeconds: 348.1, durationSeconds: 361.081,
+    }
+    const restored = shotTableDocumentSchema.parse(deconstruction({ cutCoverage: coverage }))
+    expect(restored.source).toMatchObject({ cutCoverage: coverage })
+  })
+
+  // 2026-09-22 之前落盘的表里没有这一块。读不回来不该让整张表 parse 失败——
+  // 那会把一次「缺字段」变成一次「项目打不开」。
+  it('still reads tables saved before the field existed', () => {
+    const restored = shotTableDocumentSchema.parse(deconstruction({}))
+    expect(restored.source).not.toHaveProperty('cutCoverage')
+  })
+
+  // 半块覆盖信息比没有更糟：它会让 UI 理直气壮地显示一个错数字。
+  it('refuses a partial coverage block instead of filling the gaps itself', () => {
+    expect(shotTableDocumentSchema.safeParse(deconstruction({ cutCoverage: { detectedCuts: 399, capped: true } })).success).toBe(false)
+    expect(shotTableDocumentSchema.safeParse(deconstruction({ cutCoverage: { detectedCuts: 399, keptCuts: 120, appliedThreshold: 0.2, capped: true, coveredSeconds: 1, durationSeconds: 2, extra: 1 } })).success).toBe(false)
+  })
+})
+
 describe('shot time precision is owned by the persistence boundary', () => {
   const factsTable = (rows: unknown[], sourceDuration?: number) => ({
     ...table(),

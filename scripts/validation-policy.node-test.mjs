@@ -5,10 +5,11 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { writeGithubOutput } from './select-quality-gate-profile.mjs'
-import { classifyValidationPolicy } from './validation-policy.mjs'
+import { classifyValidationPolicy, CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_FIXTURES } from './validation-policy.mjs'
 
 function surfaces(result) {
   return {
+    coreSmoke: result.coreSmoke,
     unit: result.unit,
     desktop: result.desktop,
     journeys: result.journeys,
@@ -21,6 +22,7 @@ function surfaces(result) {
 }
 
 const focusedOnly = {
+  coreSmoke: true,
   unit: 'focused',
   desktop: false,
   journeys: false,
@@ -31,9 +33,46 @@ const focusedOnly = {
   failClosed: false,
 }
 
+const docsOnly = { ...focusedOnly, coreSmoke: false }
+
 test('documentation and isolated renderer changes pay only focused-unit cost', () => {
-  assert.deepEqual(surfaces(classifyValidationPolicy(['README.md'])), focusedOnly)
+  assert.deepEqual(surfaces(classifyValidationPolicy(['README.md'])), docsOnly)
   assert.deepEqual(surfaces(classifyValidationPolicy(['src/workbench/timeline/TimelinePanel.tsx'])), focusedOnly)
+})
+
+// 根目录的 Agent 说明文档（AGENTS.md / CLAUDE.md）算纯文档（2026-09-22 用户拍板）：
+// 此前只认 docs/|marketing/|README*，于是 #843 那种只改一份 Agent 说明的 PR 被判
+// isolated_change，两格核心冒烟在纯文档 diff 上白跑一遍。
+test('根目录的 AGENTS.md / CLAUDE.md 算 docs_only，但只有整份 diff 都是文档才算', () => {
+  // (a) 只改一份根目录 Agent 说明 → docs_only，核心冒烟不开。
+  for (const path of ['CLAUDE.md', 'AGENTS.md']) {
+    const result = classifyValidationPolicy([path])
+    assert.deepEqual(surfaces(result), docsOnly, `${path} 应判 docs_only`)
+    assert.equal(result.reason, 'docs_only')
+    assert.equal(result.coreSmoke, false)
+  }
+  // 两份一起改，外加真文档目录，仍是 docs_only。
+  const mixedDocs = classifyValidationPolicy([
+    { status: 'M', path: 'CLAUDE.md' },
+    { status: 'M', path: 'AGENTS.md' },
+    { status: 'A', path: 'docs/lessons/x.md' },
+  ])
+  assert.equal(mixedDocs.reason, 'docs_only')
+  assert.equal(mixedDocs.coreSmoke, false)
+
+  // (b) 掺一个产品文件就不再是纯文档：冒烟照开，reason 回到 isolated_change。
+  const withSource = classifyValidationPolicy(['CLAUDE.md', 'src/workbench/timeline/TimelinePanel.tsx'])
+  assert.equal(withSource.reason, 'isolated_change')
+  assert.equal(withSource.coreSmoke, true)
+
+  // (c) 阳性对照：本次放宽**只**认这两个名字，根目录别的文件不许顺势变成纯文档。
+  //     package.json 仍是打包风险面；贴着代码住的 src/**/CLAUDE.md 也不在放宽范围内。
+  for (const path of ['package.json', 'model-catalog.json', 'index.html', 'CHANGELOG.md',
+    'src/workbench/generationCanvas/nodes/director/CLAUDE.md']) {
+    const result = classifyValidationPolicy([path])
+    assert.notEqual(result.reason, 'docs_only', `${path} 不该因这次放宽变成 docs_only`)
+    assert.equal(result.coreSmoke, true, `${path} 仍要开核心冒烟`)
+  }
 })
 
 test('docs-only deletions, including the historical README QR replacement, stay focused', () => {
@@ -47,7 +86,7 @@ test('docs-only deletions, including the historical README QR replacement, stay 
   for (const files of [qrFiles, [{ status: 'D', path: 'docs/中文.md' }],
     [{ status: 'D', path: 'marketing/old.png' }], [{ status: 'D', path: 'README.old.md' }]]) {
     const result = classifyValidationPolicy(files)
-    assert.deepEqual(surfaces(result), focusedOnly)
+    assert.deepEqual(surfaces(result), docsOnly)
     assert.equal(result.reason, 'docs_only')
   }
   // The historical commit also edited a test: its complete diff must stay full.
@@ -136,6 +175,23 @@ test('ordinary canvas behavior and React Flow performance paths select different
   )
 })
 
+test('lane levels only rise: a later ordinary canvas file never downgrades a full canvas lane', () => {
+  // PR #833 real shape: React Flow files first, ordinary generationCanvas files and canvas walks after them.
+  const reactFlow = 'src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css'
+  const ordinary = [
+    'src/workbench/generationCanvas/store/generationCanvasStore.ts',
+    'tests/ux/canvas-shortcut-parity.walk.mjs',
+  ]
+  const expected = { ...focusedOnly, unit: 'full', desktop: true, canvas: 'full', performance: true }
+  assert.deepEqual(surfaces(classifyValidationPolicy([reactFlow, ...ordinary])), expected)
+  assert.deepEqual(surfaces(classifyValidationPolicy([...ordinary, reactFlow])), expected)
+  // Same class without the performance lane: a full-canvas walkthrough followed by an ordinary canvas file.
+  const fullWalk = 'tests/ux/group-reference-direction.walk.mjs'
+  for (const order of [[fullWalk, ordinary[0]], [ordinary[0], fullWalk]]) {
+    assert.equal(classifyValidationPolicy(order).canvas, 'full', order.join(' -> '))
+  }
+})
+
 test('packaging and native runtime identity paths select package without forcing canvas performance', () => {
   assert.deepEqual(surfaces(classifyValidationPolicy(['electron/preload.ts'])), {
     ...focusedOnly,
@@ -179,10 +235,47 @@ test('canvas group/reference walkthroughs belong to functional canvas without fo
   })
 })
 
+test('core flow smoke is on for every non-docs diff — including the shared CSS / generation-workspace shape that escaped on 09-22', () => {
+  // 09-22 回归坏在共享 CSS 开关：画布套件因为「没改到 generationCanvas」被跳过。冒烟不跟路径挂钩。
+  for (const file of [
+    'src/styles/workbench.css',
+    'src/workbench/generation/GenerationWorkspace.tsx',
+    'src/workbench/timeline/TimelinePanel.tsx',
+    'src/i18n/locales/generationCommon.ts',
+    'electron/tasks/taskAdmission.ts',
+  ]) {
+    for (const eventName of ['pull_request', 'push', 'merge_group']) {
+      assert.equal(classifyValidationPolicy([file], { eventName }).coreSmoke, true, `${file} (${eventName})`)
+    }
+  }
+  // 文档混进一个非文档文件 = 不是纯文档。
+  assert.equal(classifyValidationPolicy(['docs/a.md', 'src/styles/workbench.css']).coreSmoke, true)
+  // 只有纯文档关掉它。
+  assert.equal(classifyValidationPolicy(['docs/a.md', 'README.md']).coreSmoke, false)
+  // 冒烟自身的清单 / 夹具 / 跑法算验证基础设施：改它就全跑。
+  assert.equal(classifyValidationPolicy(['tests/ux/core-smoke/scenarios.mjs']).failClosed, true)
+})
+
+test('阻断档与非阻断档：两档互斥、合起来是全集，且 used 当前不阻断', () => {
+  // 2026-09-22 用户拍板：empty 阻断，used 照跑不判。升阻断只改 CORE_SMOKE_BLOCKING_FIXTURES 一处，
+  // CI 的 continue-on-error 与合后收据都从它派生（各自的门岗测试钉死派生关系）。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES], ['empty'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_FIXTURES], ['used'])
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_CHECK_NAMES], ['Core Flow Smoke (empty)'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_CHECK_NAMES], ['Core Flow Smoke (used)'])
+  // 没有哪个夹具两边都不在（那就是没人管），也没有哪个两边都在。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES, ...CORE_SMOKE_ADVISORY_FIXTURES].sort(), [...CORE_SMOKE_FIXTURES].sort())
+  for (const fixture of CORE_SMOKE_FIXTURES) {
+    assert.notEqual(CORE_SMOKE_BLOCKING_FIXTURES.includes(fixture), CORE_SMOKE_ADVISORY_FIXTURES.includes(fixture), fixture)
+  }
+  // 非阻断不等于不跑：CI matrix 仍然是全集。
+  assert.ok(CORE_SMOKE_FIXTURES.includes('used'))
+})
+
 test('main pushes reuse changed-file risk instead of becoming full only because they are pushes', () => {
   assert.deepEqual(
     surfaces(classifyValidationPolicy(['README.md'], { eventName: 'push' })),
-    focusedOnly,
+    docsOnly,
   )
 })
 
@@ -196,6 +289,7 @@ test('empty, delete, rename, and explicit full requests fail closed across every
   ]
   for (const result of cases) {
     assert.deepEqual(surfaces(result), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -216,6 +310,7 @@ test('validation infrastructure changes exercise functional coverage without unr
     ['scripts/real-user-test-gates.mjs'],
   ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -235,6 +330,7 @@ test('performance-instrument changes re-run the performance lane on themselves s
     ['scripts/canvas-performance-verdict.mjs'],
   ]) {
     assert.deepEqual(surfaces(classifyValidationPolicy(files)), {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -256,6 +352,7 @@ test('validation infrastructure composes monotonically with real product and pac
       ]),
     ),
     {
+      coreSmoke: true,
       unit: 'full',
       desktop: true,
       journeys: true,
@@ -267,6 +364,7 @@ test('validation infrastructure composes monotonically with real product and pac
     },
   )
   assert.deepEqual(surfaces(classifyValidationPolicy(['scripts/select-quality-gate-profile.mjs', 'package.json'])), {
+    coreSmoke: true,
     unit: 'full',
     desktop: true,
     journeys: true,
@@ -278,6 +376,7 @@ test('validation infrastructure composes monotonically with real product and pac
   })
   // The perf instrument composes with packaging risk and still forces its own lane.
   assert.deepEqual(surfaces(classifyValidationPolicy(['scripts/validation-policy.mjs', 'package.json'])), {
+    coreSmoke: true,
     unit: 'full',
     desktop: true,
     journeys: true,
@@ -316,6 +415,7 @@ test('GitHub output exposes every policy dimension with stable snake-case names'
     fs.readFileSync(outputPath, 'utf8').trim().split('\n').map((line) => line.split('=')),
   )
   assert.deepEqual(output, {
+    core_smoke: 'true',
     unit: 'full',
     desktop: 'true',
     journeys: 'false',

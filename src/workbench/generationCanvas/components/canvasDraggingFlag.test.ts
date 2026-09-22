@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { beginCanvasDragging, cancelCanvasDraggingWithin, CANVAS_DRAGGING_ATTRIBUTE, CANVAS_DRAGGING_OWNER } from './canvasDraggingFlag'
+import type { CanvasDraggingOwner } from './canvasDraggingFlag'
 
 function stage() {
   const attrs = new Map<string, string>()
@@ -127,5 +128,100 @@ describe('canvas gesture ownership', () => {
     expect(a.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
     expect(b.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(true)
     other.release()
+  })
+
+  describe('the flag never outlives the pointer gesture (2026-09-22 stuck data-dragging)', () => {
+    function setup() {
+      const attributes = new Map<string, string>()
+      const stage = {
+        closest: () => stage,
+        hasAttribute: (name: string) => attributes.has(name),
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        removeAttribute: (name: string) => attributes.delete(name),
+      } as unknown as Element
+      const listeners = new Map<string, Set<(event: Event) => void>>()
+      const docListeners = new Map<string, Set<(event: Event) => void>>()
+      const fakeWindow = {
+        addEventListener: (name: string, fn: (event: Event) => void) => {
+          if (!listeners.has(name)) listeners.set(name, new Set())
+          listeners.get(name)!.add(fn)
+        },
+        removeEventListener: (name: string, fn: (event: Event) => void) => listeners.get(name)?.delete(fn),
+        // 兜底收尾等一帧；测试里把「下一帧」攒起来，由 nextFrame() 显式推进。
+        requestAnimationFrame: (fn: () => void) => { frames.push(fn); return frames.length },
+      }
+      const frames: Array<() => void> = []
+      const nextFrame = () => { for (const fn of frames.splice(0)) fn() }
+      vi.stubGlobal('document', {
+        hidden: false, querySelector: () => stage,
+        addEventListener: (name: string, fn: (event: Event) => void) => {
+          if (!docListeners.has(name)) docListeners.set(name, new Set())
+          docListeners.get(name)!.add(fn)
+        },
+        removeEventListener: (name: string, fn: (event: Event) => void) => docListeners.get(name)?.delete(fn),
+      })
+      vi.stubGlobal('window', fakeWindow)
+      const fire = (type: string, target: unknown = fakeWindow) => {
+        for (const fn of [...(listeners.get(type) ?? [])]) fn({ type, target } as unknown as Event)
+      }
+      const listenerCount = () =>
+        [...listeners.values()].reduce((sum, set) => sum + set.size, 0) +
+        [...docListeners.values()].reduce((sum, set) => sum + set.size, 0)
+      // 「某位 owner 的收尾压根没走到」——租约照旧开，但故意不调它的 release()。
+      const raise = (owner: CanvasDraggingOwner) => beginCanvasDragging(stage, owner)
+      return { attributes, stage, fire, listenerCount, nextFrame, raise }
+    }
+
+    it('reported case: a viewport owner whose own release was skipped is cleared when the pointer lifts', () => {
+      const { attributes, fire, nextFrame, raise } = setup()
+      // 平移升起标志，但 React Flow 推迟 150ms 的 onMoveEnd 因为共享布尔被重置而没有释放这张租约。
+      raise(CANVAS_DRAGGING_OWNER.reactFlowViewport)
+      expect(attributes.get(CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
+      fire('pointerup')
+      nextFrame()
+      expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+    })
+
+    it('a gesture that starts before the settle frame keeps its own flag', () => {
+      const { attributes, fire, nextFrame, raise } = setup()
+      raise(CANVAS_DRAGGING_OWNER.reactFlowViewport)
+      fire('pointerup')
+      raise(CANVAS_DRAGGING_OWNER.reactFlowNode)
+      nextFrame()
+      expect(attributes.get(CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
+      fire('pointerup')
+      nextFrame()
+      expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+    })
+
+    it('class: every owner is bounded by the gesture — pointercancel and window blur end it, a descendant blur does not', () => {
+      const { attributes, fire, nextFrame, raise } = setup()
+      for (const owner of Object.values(CANVAS_DRAGGING_OWNER)) {
+        const lease = raise(owner)
+        fire('blur', { nodeName: 'BUTTON' })
+        nextFrame()
+        expect(attributes.get(CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
+        fire(owner === CANVAS_DRAGGING_OWNER.group ? 'blur' : 'pointercancel')
+        nextFrame()
+        expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+        // 手势结束后 owner 迟到的释放是空操作，不会把下一次手势的标志摘掉。
+        lease.release()
+      }
+    })
+
+    it('a normal release disarms the guard, and a later gesture re-arms it', () => {
+      const { attributes, fire, listenerCount, nextFrame, raise } = setup()
+      const first = raise(CANVAS_DRAGGING_OWNER.reactFlowNode)
+      expect(listenerCount()).toBeGreaterThan(0)
+      first.release()
+      // 正常收尾之后一个监听都不许留（否则每次手势攒一份，热路径上越拖越慢）。
+      expect(listenerCount()).toBe(0)
+      raise(CANVAS_DRAGGING_OWNER.selection)
+      expect(listenerCount()).toBeGreaterThan(0)
+      fire('pointerup')
+      nextFrame()
+      expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+      expect(listenerCount()).toBe(0)
+    })
   })
 })

@@ -1,0 +1,263 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-export-text-overlay-cost",
+  "problem_type": "导出滤镜图里，一个叠加条目的上游按时间轴全长生成帧，成本随条目数成倍涨而不报错",
+  "symptom": "时间轴上文字层（字幕 / 标题卡）一多，导出就慢几十倍、吃几 GB 内存，全程零 ffmpeg 报错：真实视频 202.9s / 1080×1920 / crf23 上，2 条字幕 107s / 1.01GB，60 条字幕 4524s（75 分钟）/ 6.71GB，120 条外推 3.2–4.6 小时 / ~8.7GB。用户看不到任何错误，只会以为 Nomi 导出很慢。",
+  "direct_cause": "buildTextOverlayGraph 给每条文字 PNG 开一个 `-loop 1 -t <时间轴全长>` 的输入，再链式 `overlay=...:enable='between(t,a,b)'`。`enable` 是 libavfilter 的 timeline 开关，官方文档写明 disabled 时「the frame will be sent unchanged to the next filter」——它只决定这一帧混不混，不影响上游那条静帧流照 `-t` 逐帧产出、入队、参与 framesync。于是成本 ≈ 条目数 × 全片帧数 × 全画幅 RGBA。",
+  "class_root": "叠加层的上游生成时长没有被约束到它自己的可见窗口。缺的不变量是：一个 `-loop 1` 静帧输入的 `-t` 必须等于消费它的那个可见窗口，绝不能等于时间轴全长；`enable` 是显示开关，不是成本开关。同一个文件里的视觉 clip 路径本来就满足这条（buildInputs 用的是「用到该素材的最长 clip 时长」），文字层那套漏了它。",
+  "affected_population": [
+    "任何用 filtergraph 后端导出、且时间轴上有 2 条以上文字层的用户（字幕、标题卡共用这条链）",
+    "分镜批量采用产生的字幕：adoptStoryboardBatch 每个镜头一条 caption，30 分钟漫剧就是几百条",
+    "条目越多越严重，且没有任何错误或警告提示，导出只是越来越慢",
+    "全平台（macOS / Windows / Linux），与 ffmpeg 版本无关：这是我们自己拼的 argv"
+  ],
+  "scope_paths": [
+    "electron/export/ffmpegFiltergraph.ts",
+    "electron/export/ffmpegGraphPrimitives.ts",
+    "electron/export/ffmpegTextOverlayGraph.ts",
+    "electron/export/exportJobs.ts",
+    "scripts/check-heavy-path.mjs"
+  ],
+  "entry_points": [
+    "exportJobs.startExportJob → compileFfmpegFiltergraph（用户从时间轴点导出）",
+    "exportJobs.executeProductionRunExport → compileFfmpegFiltergraph（Run 自动出片）",
+    "exportJobs.tryBuildFiltergraphExport → compileFfmpegFiltergraph（预检，决定走 filtergraph 还是回退 WebM）"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://ffmpeg.org/ffmpeg-filters.html#Timeline-editing",
+      "checked_at": "2026-09-21",
+      "purpose": "确认 `enable` 为假时只是「the frame will be sent unchanged to the next filter」，不涉及上游是否生成——即 enable 省不了成本"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/libavfilter/framesync.c",
+      "checked_at": "2026-09-21",
+      "purpose": "ff_framesync_init_dualinput 里 in[1].before = EXT_NULL —— 第二路首帧之前主帧直通，这是「叠加流只覆盖自己窗口」能成立的依据"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/libavfilter/vf_overlay.c",
+      "checked_at": "2026-09-21",
+      "purpose": "do_blend 里 `if (!second) return ff_filter_frame(ctx->outputs[0], mainpic);` —— 第二路没帧时主帧像素原样输出"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/mltframework/mlt/master/src/framework/mlt_playlist.c",
+      "checked_at": "2026-09-21",
+      "purpose": "Kdenlive 的渲染引擎 MLT：一条轨是 playlist，每个 entry 带自己的 in/out（mlt_playlist_virtual_append 里 frame_in/frame_out），空档是显式 blank（mlt_playlist_blank）。成熟剪辑引擎的通用形状就是「每个条目只在自己的区间存在」，不是「每条铺满全片」"
+    }
+  ],
+  "invariants": [
+    "一个 `-loop 1` 静帧输入的 `-t` 只能是消费它的那个可见窗口（加固定余量，且末端夹到时间轴时长），绝不能是时间轴全长",
+    "`-loop 1` 这个字面量在门岗收集的 src/ + electron/ 全集里，只许出现在收口函数 loopedStillInput 里",
+    "叠加层的 `overlay` 链形状、层序与 `enable` 表达式在本次修复前后逐帧一致——包括 `between` 闭区间端点帧的开闭行为",
+    "叠加层静帧输入不许声明 `-framerate`：它会改那条链的 time_base，framesync 取两路 time_base 的公约数当输出 time_base，下游 `enable` 看到的 `t` 跟着变，闭区间端点帧会翻转"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/export/exportJobs.ts",
+      "symbol": "FfmpegFiltergraphPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/exportJobs.ts",
+      "symbol": "FfmpegTextOverlayInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/exportJobs.ts",
+      "symbol": "FfmpegFiltergraphError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegCommandBuilder.ts",
+      "symbol": "FfmpegFiltergraphPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "symbol": "FfmpegTextOverlayInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "symbol": "FfmpegFiltergraphPlanInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "symbol": "FfmpegFiltergraphError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "symbol": "FfmpegFiltergraphInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "symbol": "FfmpegFiltergraphPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegGraphPrimitives.ts",
+      "symbol": "FfmpegFiltergraphErrorCode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegGraphPrimitives.ts",
+      "symbol": "FfmpegFiltergraphPlanInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegGraphPrimitives.ts",
+      "symbol": "FfmpegFiltergraphError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegRunner.ts",
+      "symbol": "FfmpegFiltergraphPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegTextOverlayGraph.ts",
+      "symbol": "FfmpegTextOverlayInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegTextOverlayGraph.ts",
+      "symbol": "FfmpegFiltergraphPlanInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/export/ffmpegTextOverlayGraph.ts",
+      "symbol": "FfmpegFiltergraphError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/export/exportJobs.ts",
+      "symbol": "compileFfmpegFiltergraph"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 17,
+    "why_not": "门数从 11 涨到 17，是**拆文件**带来的记账变化，不是新增了控制点：地基与文字链搬进 ffmpegGraphPrimitives.ts / ffmpegTextOverlayGraph.ts 之后，ffmpegFiltergraph.ts 从那两个文件 import 这些符号来用（不转发 re-export，调用方直接从定义处 import），于是同一个符号在「定义处」和「使用处」各被数了一次。真正的控制面没变：写门仍只有一扇（exportJobs 三处调用同一个 compileFfmpegFiltergraph），滤镜图的内容完全由它一家产出；其余全是「拿到已编好的 plan 去拼 argv / 跑 ffmpeg / 声明类型」的读门，读的是结果不是决策，读门再多也改不了 `-t` 取什么值。收口发生在写门内部：`-loop 1` 的构造从两处收成一处 loopedStillInput（现居 ffmpegGraphPrimitives.ts），由 check:heavy-path 的 ffmpeg-still-input-outside-owner 按闸盯住，扫描范围是门岗收集的全部 src/ + electron/。"
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/export/ffmpegFiltergraph.ts",
+    "tests": [
+      "electron/export/ffmpegFiltergraph.test.ts",
+      "tests/ux/real-media-export-overlay-cost.probe.mjs"
+    ],
+    "why": "「导出成本随条目数的增长形状」这条不变量归滤镜图编译层管，因为只有这一层同时知道两件事：每个条目的可见窗口，和最终喂给 ffmpeg 的输入参数。再往上（exportJobs / ffmpegRunner）拿到的是编好的 plan，只能照着跑；再往下（ffmpeg 本身）只会忠实执行我们要它做的事——60 条全片长输入对它来说不是错误，所以它零报错。这一层有测试：单测里有一条与例子无关的类级断言（同样的叠加层，10 秒的片子与 10 分钟的片子必须编出完全相同的输入参数），真实素材腿在真 4K HEVC 上按条核每个输入的 `-t` 跟不跟自己的窗口走、并量 N=60 相对 N=2 的耗时倍数。"
+  },
+  "generality_proof": "叠加/静帧输入的 `-t` 现在只有一个来源：ffmpegGraphPrimitives.ts 的 loopedStillInput，它的入参就叫「可见窗口」，调用方拿不到「时间轴全长」这个概念，写不出旧写法。文字层与视觉图片 clip 两条路径都从它出。再往外一层，check:heavy-path 的 ffmpeg-still-input-outside-owner 规则按闸判（不按计数），扫描范围是门岗收集的**全部 src/ + electron/**：任何不在 loopedStillInput 里的 `-loop` 字面量当场红，所以将来新增第三种叠加层（水印、贴纸、封面卡）或者在别的子系统（缩略图、预览）新拼一条 ffmpeg 输入，都没法绕过。（第一版规则只扫 electron/export/，独立验收的变异测试当场打出洞：同样的违规放 electron/media/ 就漏网；现已扩到全集并实测报红。）单测里还有一条与例子无关的类级断言：同样两条叠加层，30 秒的片子与 10 分钟的片子必须编出完全相同的输入参数——这条直接否掉「成本跟片长走」这个类。",
+  "shared_boundaries": [
+    {
+      "path": "electron/export/ffmpegGraphPrimitives.ts",
+      "symbol": "loopedStillInput",
+      "responsibility": "唯一构造 `-loop 1` 静帧输入的地方；`-t` 由传入的可见窗口导出，窗口非正时抛 FfmpegFiltergraphError('invalid_manifest') fail-closed。不声明 `-framerate`，以免改动 framesync 的输出 time_base 进而挪动 enable 的边界帧。"
+    },
+    {
+      "path": "electron/export/ffmpegTextOverlayGraph.ts",
+      "symbol": "buildTextOverlayGraph",
+      "responsibility": "文字叠加链的唯一构造者：窗口两端各留 0.2s 余量、末端夹到时间轴时长、用 setpts 落位；overlay 链形状与 enable 表达式与修复前逐字相同。"
+    },
+    {
+      "path": "scripts/check-heavy-path.mjs",
+      "symbol": "ffmpeg-still-input-outside-owner",
+      "responsibility": "按闸盯住上面那条收口：门岗收集的 src/ + electron/ 里，出现在 loopedStillInput 之外的 `-loop` 字面量一律红，基线 0、不按计数（按计数会留「删一处合规的、加一处违规的」的洞）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "entry_point": "buildInputs",
+      "disposition": "enforced",
+      "evidence": "视觉图片 clip 的输入。原本就用「用到该素材的最长 clip 时长」而不是全片长（所以没病），但它是同一个写法族的第二处 `-loop 1`；本次一并改走 loopedStillInput，inputArgs 逐字节不变（ffmpegFiltergraph.test.ts 第 52 行、ffmpegCommandBuilder.test.ts 第 108/118/136 行的断言未改动仍绿）。"
+    },
+    {
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "entry_point": "buildBasicVisualGraph",
+      "disposition": "not-affected",
+      "evidence": "基础视觉轨也是「每个条目一条上游 + 链式 overlay」，但上游已按自身窗口 trim，只剩 O(N) 次直通。15 秒段实测（同机同素材，一张静帧被 N 个 clip 复用）：N=2 3.7s/1.68GB、N=30 4.0s/2.61GB、N=120 3.7s/2.55GB —— 条目数涨 60 倍耗时持平。现实上限是分镜数（30 分钟漫剧 300-600），持平意味着不用修。"
+    },
+    {
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "entry_point": "buildAudioGraph",
+      "disposition": "not-affected",
+      "evidence": "同形状（每路 `apad,atrim=end=<全片长>` 补齐到全片长再 amix），但音频每秒字节数比 1080p 视频小约三个数量级。15 秒段实测：N=2 2.0s/1.37GB、N=30 2.1s/1.30GB、N=120 2.4s/1.22GB —— 条目数涨 60 倍耗时 1.2x。量级可忽略，本次不动；形状记在案，真要修也是同一条不变量。"
+    },
+    {
+      "path": "electron/export/ffmpegFiltergraph.ts",
+      "entry_point": "buildTransitionVisualGraph",
+      "disposition": "not-affected",
+      "evidence": "**同类、更重，但机制不同，另起一条根因**（见 residual_risks）。它的成本不是「上游按全片长生成」，而是每加一个过渡就把**已经合成好的全部帧**再 tpad 克隆一遍喂给 blend 的逐像素表达式，成 O(k²) 帧处理量。15 秒段实测：k=2 45.2s、k=6 141.5s、k=12 278.2s（每多一个过渡 +23s，同样 15 秒成品不加过渡只要 3.7s）。本次不修的理由：不变量不同（不是「输入时长跟谁走」而是「已合成帧不许被重放」），正解是换成 xfade 式的顺序合成，那是另一套逐帧等价验证。"
+    },
+    {
+      "path": "src/workbench/export/textOverlayPng.ts",
+      "entry_point": "renderTextOverlays",
+      "disposition": "not-affected",
+      "evidence": "生产侧：每条文字 clip 渲成一张导出分辨率的全画幅透明 PNG。它决定的是「有几条叠加层、每条长什么样」，不决定「每条在 ffmpeg 里生成多久」。本次不需要改它，PNG 形状与数量一字未动——这也是逐帧等价能成立的前提。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个写法族在同一个文件里已经出现过两次（buildInputs 与 buildTextOverlayGraph），而且错的那次完全不报错、在 2-3 条字幕的开发时间轴上表现正常——写的人当场看不出来。将来任何新的叠加层（水印、贴纸、片尾卡、封面）都会面对同一个诱惑：给它开一个跟片子一样长的输入，再用 enable 决定什么时候显示。",
+    "same_class_scan": [
+      "`grep -rn '\"-loop\"' electron/ src/`：修复前 electron/export/ffmpegFiltergraph.ts 两处（:332 buildInputs、:675 buildTextOverlayGraph），修复后只剩 loopedStillInput 一处；测试文件里的 4 处是断言不是构造",
+      "`grep -rn 'textOverlays' src electron`：生产侧写入口只有 src/workbench/export/exportApi.ts:53（renderTextOverlays），主进程消费入口只有 exportJobs.ts 的 writeTextOverlayFiles 与三处 compileFfmpegFiltergraph",
+      "`node scripts/door-map.mjs electron/export/ffmpegFiltergraph.ts`：写门 1 扇、读门 10 扇，全部列进本合同的 doors",
+      "按「条目数 × 全片长」这个形状通读 ffmpegFiltergraph.ts 全文，逐个实测四处同族入口（buildBasicVisualGraph / buildAudioGraph / buildTransitionVisualGraph / buildInputs），结论与数字见 same_class_entry_points"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/export/ffmpegGraphPrimitives.ts",
+    "invariant": "每一个 `-loop 1` 静帧输入的 `-t` 都等于消费它的那个可见窗口（前后各 0.2s 余量），与时间轴长度无关。",
+    "failure_mode": "窗口非有限或 ≤0 时 loopedStillInput 抛 FfmpegFiltergraphError('invalid_manifest')；叠加层 endFrame ≤ startFrame 时 buildTextOverlayGraph 同样抛。两者都 fail-closed，不产出负时长或零时长输入。",
+    "exception_policy": "none",
+    "strategy": "把「时长取什么」这个决定从三处调用点收进一个函数，函数的入参只表达「可见窗口」这一个概念，写不出「时间轴全长」；再用 check:heavy-path 的按闸规则盯住这个收口不被绕过（规则先在修复前的代码上验过会红：命中 2 处）。",
+    "artifacts": [
+      "electron/export/ffmpegGraphPrimitives.ts",
+      "electron/export/ffmpegTextOverlayGraph.ts",
+      "electron/export/ffmpegFiltergraph.ts",
+      "scripts/check-heavy-path.mjs",
+      "scripts/heavy-path-baseline.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/export/ffmpegFiltergraph.test.ts",
+    "tests/ux/real-media-export-overlay-cost.probe.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/export/ffmpegFiltergraph.test.ts",
+    "tests/ux/real-media-export-overlay-cost.probe.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/export/ffmpegFiltergraph.ts"
+    ],
+    "rationale": "旧写法（两处手搓 `-loop 1 -t <...>`，其中文字层那处取时间轴全长）在同一个 commit 里删掉，没有开关、没有 fallback、没有并行路径（P1）。buildTextOverlayGraph 的 durationSeconds 入参一并删除——留着它就是留着「按全片长」这个可选项。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量归我们自己拼的 argv 管，不归 ffmpeg 版本管：@ffmpeg-installer/ffmpeg 4.4 的行为（enable 只挡混合、framesync in[1].before = EXT_NULL、eof_action=pass）是文档化且长期稳定的语义，我们依赖的正是这些语义而不是某个版本的副作用。换版本不会让旧写法变快，也不会让新写法失效。",
+    "exit_criteria": []
+  },
+  "migration": "不需要迁移：改的是每次导出现场拼出来的 ffmpeg 参数，没有持久化状态、没有落盘格式、没有用户数据。已经导出的 MP4 不受影响；正在跑的导出作业用的是它启动时编好的 plan。",
+  "residual_risks": [
+    "**峰值内存没有可复现的改善——本次解决的是时间，不是空间。** 新旧交替各跑 3 次（15 秒校准段、同机同素材）：修复前中位 6.06 GB（范围 5.27–6.55），修复后中位 5.07 GB（范围 4.29–5.60）——**范围重叠**，同一份代码三次之间就差 ±20%。独立验收在他的机器上量到 6.79 → 6.92 GB（修复后反而略高）。满长 N=120 修复后：我这边三次 4.47–5.52 GB，验收方 6.43 GB。这个量随机器负载走，不随本次改动走。机制是 60–120 级 overlay 滤镜链各自持有在途帧，线程越饥饿队列越长（诊断佐证：把静帧帧率调稀、每条少生成帧，内存反而从 4.64 涨到 5.42 GB）。后果：8 GB 机器上「时间轴长 + 字幕上百条」内存仍是第一堵墙，导出可能被 jetsam 杀掉而表现为「导出到一半失败」——又是一个零报错的坑。交「导出成本二期」。",
+    "**过渡链的成本悬崖在「加不加转场」，不在「加几个」**（独立验收复现，比我原先的描述更早撞到用户）：同样 15 秒成品、1080×1920、dissolve，k=0 **1.9 s** → k=1 **46.1 s（24 倍）** → k=2 91.7 s → k=6 190.9 s → k=12 **421.8 s**。也就是说用户只要在时间轴上点**一个**溶解转场，15 秒的片子就从 2 秒导出变成 46 秒。机制是 `buildTransitionVisualGraph` 每加一个过渡就用 `tpad=start_mode=clone:start_duration=<cumulativeSeconds>` 把已累积的全部时长克隆一遍，再喂给 `blend=all_expr` 的逐像素表达式。这是**同类但机制不同**的第二条根因（「已合成帧不许被重放」vs「上游只生成自己的窗口」），正解是 xfade 式顺序合成 + 另一轮逐帧等价，本次没动。加转场的入口是时间轴接缝上的 TimelineSeamHandle + TimelineTransitionPicker，没有默认加也没有一键全加，但悬崖在 k=1，点一次就够了。",
+    "**方案 A（分组 concat）已被实证否掉，别再翻案。** 独立验收按「诚实的 A」（duration 一律整帧倍数、空档补透明帧、保 z 序分 lane）重做，七种形态**全部叠错 1–8 帧**，连「首尾相接」这一档都错 3 帧，最低 PSNR 12.5–15.7 dB。根因是 concat demuxer 把每条 entry 的起点量化到它自己的 25 fps 时基，30 fps 下 5/6 的帧边界会被挪 ±0.2–0.6 帧；用 `-r` 钉时基则 demuxer 完全忽略 `duration`。而且 A 把 N 级 overlay 收成 L 级，混合级数变了，**永远做不到 bit 相同**。A 确实更快更省（同形态快 3.8–30x、内存少 1.3–4.4x），但正确性不成立，「不重叠的层走 A」这种混合方案前提也不成立（错帧的正是不重叠那一档）。原始数据：scratchpad/verify-export-overlays/REPORT.md §4。",
+    "逐帧等价是在 1080×1920 / 30fps / crf23 / 12 秒 × 7 种形态（2520 帧）上证的，用的是 macOS arm64 上仓库自带的 ffmpeg 4.4；独立验收另外用 20 种形态 / 4888 帧复证过（含 23/24/25/29/60 fps、8 层同刻重叠、横竖版、有无音轨），两边都是 framemd5 零差异。其他平台的 ffmpeg 构建没有逐帧验证过；真实素材回归腿本身是跨平台的（判据是每条输入的 -t 与耗时倍数），但它不做逐帧比对。",
+    "真实素材回归腿只在本机有 NOMI_REAL_MEDIA_DIR 时跑得起来（按 R13 的规矩，缺素材硬红、不许 skip）。CI 上没有这份 1.38GB 素材，所以它今天不进 CI 的自动跑，与登记表里其他 live 条目同样是本机腿。",
+    "文字层永远是最上层：`compileFfmpegFiltergraph` 把文字链无条件接在整条视觉链尾部，`textOverlays` 是平铺数组、没有层级字段，所以「文字夹在两层视觉轨之间」这种 z 序在数据模型里表达不出来，也就没测。这不是本次改动引入的限制。",
+    "编译失败现在会记一行 ERROR 日志再退回 WebM（不再静默），但**没有为它加自动化测试**：它要走 startExportJob / executeProductionRunExport 的完整项目夹具，成本不匹配。今天这条路在生产不可达（三个入口都先滤掉了 endFrame ≤ startFrame），它是纵深。"
+  ]
+}

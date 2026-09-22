@@ -28,6 +28,13 @@ pnpm run test:journeys
 
 PR 合入后运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`：它按该 SHA 拉取 checks，即使 `origin/main` 已前进也会记录当前 `tip` 与 `relation=ancestor`；文档门岗补齐则由 `Docs Gate Autosync` 另开 PR 回写，禁止直推受保护主线。
 
+### 合后立即验 main（核心冒烟第三道防线，2026-09-22）
+
+- 每合入一个 PR，**立刻**跑 `pnpm run delivery:verify-merged -- --expected-sha <merge SHA>`。
+- 只要这个 merge 不是纯文档（与 CI 同一个分类器，按相对第一父提交的 diff 判），收据就要求该 SHA 上 `Core Flow Smoke (empty)` 与 `Core Flow Smoke (used)` 两份 check 是 **success**。skipped、neutral、缺席都拒绝，并在报错里写明是哪一份、实际是什么结论。纯文档 merge 的收据会写 `coreSmoke: { required: false, reason: "docs_only" }`。
+- **上一个合入没有收据，就不合下一个。** 连着合两个 PR 时，第一个的收据没拿到，第二个就不许点合并。原因：两个各自绿的 PR 合在一起可能弄红 main，冒烟只有在真实 merge SHA 上跑过才算证明。
+- 冒烟红了**不自动回滚**。先看 `core-smoke-evidence-<fixture>` 里的截图和 `outputs/core-smoke/<fixture>/summary.json`，由人决定修还是 revert。
+
 ## 2. 生成可安装的开发预览版
 
 在 PR 上添加 `desktop-preview` label，或者手动运行 GitHub Actions 的 `Desktop Preview` 工作流并填写分支名。

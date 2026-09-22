@@ -11,7 +11,7 @@ import { remainingReferenceCapacity } from '../../../../electron/shared/videoCap
 //   故 fills 即使 url 为 null 也保留，显示画「已连接·待生成」占位 → 不再「连线没用」。
 // - **来源判别**：每个 fill 标明来自边（带源节点 id + 语义）还是上传。
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../model/generationCanvasTypes'
-import type { ArchetypeReferenceSlot, ArchetypeReferenceSlotKind } from '../../../config/modelArchetypes'
+import type { ArchetypeReferenceSlot, ArchetypeReferenceSlotKind } from '../../../../electron/shared/modelArchetypes'
 import { applyArchetypeModeSwitch, currentArchetypeMode, referenceSlotStorage } from '../nodes/controls/archetypeMeta'
 import { archetypeForNode, referenceAssetKindForNode, resolveTargetModeForEdge, SLOT_ACCEPTS, type ReferenceAssetKind } from '../agent/referenceEdgeCapability'
 import { sortEdgesByOrder } from '../model/graphOps'

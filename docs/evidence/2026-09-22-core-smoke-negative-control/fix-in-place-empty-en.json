@@ -1,0 +1,40 @@
+{
+  "fixture": "empty",
+  "locale": "en",
+  "durationMs": 48947,
+  "passed": 2,
+  "failed": 0,
+  "invariantProblems": [],
+  "results": [
+    {
+      "id": "node-params-and-version-pill",
+      "script": "tests/ux/node-params-and-version-pill.walk.mjs",
+      "args": [],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "timeoutMs": 480000,
+      "error": null,
+      "logPath": "outputs/core-smoke/empty/node-params-and-version-pill.log",
+      "failureSummary": null,
+      "durationMs": 15055,
+      "fixture": "empty",
+      "caseId": null
+    },
+    {
+      "id": "canvas-drag-pan-gestures",
+      "script": "tests/ux/canvas-drag-pan-gestures.walk.mjs",
+      "args": [],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "timeoutMs": 480000,
+      "error": null,
+      "logPath": "outputs/core-smoke/empty/canvas-drag-pan-gestures.log",
+      "failureSummary": null,
+      "durationMs": 33799,
+      "fixture": "empty",
+      "caseId": null
+    }
+  ]
+}

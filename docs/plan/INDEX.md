@@ -114,6 +114,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-09-22-shot-cut-truncation.md](2026-09-22-shot-cut-truncation.md) | **切点超上限不再按时间砍掉后半条片子**：120 刀上限原先按时间 `slice(0,120)`，6 分钟快剪片只拆出前 15% 却看不出来；改成按分数抬阈值压（全片覆盖 14.6% → 96.4%）+ ≤2 帧去重，联系表改按整数 pts 点名选帧、行数收成单一 owner。类根因「给全了没有」提升为 shared 层必填 `ShotCutCoverage`；实测证据 [`docs/evidence/2026-09-22-shot-cut-truncation/`](../evidence/2026-09-22-shot-cut-truncation/README.md)。§9 分镜表节点提示待拍板 | 🚧 |
 | [2026-09-11-canvas-migration-audit.md](2026-09-11-canvas-migration-audit.md) | **React Flow 迁移逐项等价审计**（OLD `8f9365aeb` vs main）：46 项交互逐条对照，列出 6 项无人拍板的改动与 6 项丢失；③ 表按用户影响排序，是各条回填轨的裁决依据 | 📎 |
 | [2026-09-08-canvas-undo-barrier-sweep.md](2026-09-08-canvas-undo-barrier-sweep.md) | 独立边模式、断线、节点锁手势的撤销边界与同族扫描 | 📎 |
 | [2026-09-06-agent-artifact-node.md](2026-09-06-agent-artifact-node.md) | **AI 手艺产物节点（agent-artifact）**：承载 SVG / 动态 HTML / 表格 / Markdown / 3D 摆位等不调模型的产物；meta.artifact 不扩 result 闭集、HTML 沙箱 allow-scripts、动作复用 FloatingToolbarShell；v1 已落地（Agent 交付落盘/渲染/下载/复制/SVG 固化为参考图），3D 视口截图与手艺选择决策树 = 下一刀 | 🚧 |

@@ -1,0 +1,172 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-connection-handle-visibility",
+  "problem_type": "Connection affordance visibility gated on incidental conditions instead of one owner rule",
+  "symptom": "User report 2026-09-21: the left/right '+' connection rings on canvas cards appear only sometimes. On a selected image card the ring vanished as soon as the pointer left the card; video, text, audio and other cards never showed a ring at all, only small dots.",
+  "direct_cause": "The ring needed four conditions at once: (1) selected, (2) sole selection, (3) kind is image/asset/image-like in resolveGenerationFlowConnectionAffordance, and (4) pointer hovering the card, because generationCanvasReactFlow.css kept the magnetic icon at opacity 0 unless .node-shell:hover / :focus-within / data-active / data-following.",
+  "class_root": "Who gets which connection affordance was decided in two places with two different vocabularies: a kind allow-list inside the owner function and a hover gate in CSS carried over from the pre-React-Flow design. Three node renderers (BaseGenerationNode, ClipNode, DirectorNode) also still mounted their own legacy MagneticConnectionHandle copies that CSS hid with display:none inside the React Flow shell, so there were parallel handle implementations and the visible behaviour depended on which one a reader looked at.",
+  "affected_population": [
+    "Every canvas user trying to start a connection from a selected card whose pointer is not over it, and every user of non-image cards (video, text, audio, 3D, panorama, director, clip, whiteboard, shot table, agent artifact...)"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+    "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+    "src/workbench/generationCanvas/styles/generationCanvas.css"
+  ],
+  "entry_points": [
+    "React Flow source handles on every canvas card (GenerationFlowConnectionHandle)",
+    "Collapsed group card handles (CollapsedGroupCard, projection layer)"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/xyflow/xyflow/blob/main/packages/react/src/components/Handle/index.tsx",
+      "checked_at": "2026-09-21",
+      "purpose": "React Flow renders one Handle per id per node; connectability is a node/handle property (isConnectableStart), so 'can start a connection' is derivable from the kernel and needs no kind list."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/tldraw/tldraw/blob/9bf849f/packages/tldraw/src/lib/tools/SelectTool/childStates/Translating.ts",
+      "checked_at": "2026-09-21",
+      "purpose": "Prior art consulted for the companion Alt-drag change (clone on first move while Alt is held)."
+    }
+  ],
+  "invariants": [
+    "Which connection affordance a card shows is decided only by resolveGenerationFlowConnectionAffordance: collapsed-group proxy -> hidden; not the sole primary selection or it is the in-progress connection source -> dot; otherwise -> magnetic. No kind allow-list. The collapsed-group proxy is hidden because its projection-layer card renders the handle; that card is not a React Flow node.",
+    "A magnetic ring is visible without hover (opacity 0.82 at rest, accent when hovered/active/following).",
+    "Only the sole selected card owns magnetic bands, so edges passing next to unselected cards stay clickable.",
+    "A selected card's own surface (version pill, version tray) sits above its magnetic bands.",
+    "There is one card connection handle implementation inside the React Flow shell; node renderers mount none."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "symbol": "resolveGenerationFlowConnectionAffordance"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "resolveGenerationFlowConnectionAffordance"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "symbol": "generation-canvas-react-flow__handle--magnetic"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+      "symbol": "MagneticConnectionHandle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/styles/generationCanvas.css",
+      "symbol": "generation-canvas-v2-node__magnetic-handle-icon"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 5,
+    "why_not": "Before: owner function + its reader + the flow CSS + four MagneticConnectionHandle mounts (BaseGenerationNode, ClipNode, DirectorNode, CollapsedGroupCard) + the legacy handle CSS. The three node-renderer mounts are deleted. CollapsedGroupCard keeps its own handle (and the legacy magnetic CSS it uses): it renders in the projection layer outside any React Flow node, so it cannot mount a React Flow Handle, and it has no selection state (clicking it does not select members), so the sole-selection rule has no input there. Left as a documented exception for the user to decide."
+  },
+  "generality_proof": "The owner no longer reads node.kind at all; the unit test enumerates GENERATION_NODE_KINDS so any newly registered kind is covered automatically, and the real-app walkthrough selects one card of every kind and asserts the ring after moving the pointer off the card.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "symbol": "resolveGenerationFlowConnectionAffordance",
+      "responsibility": "Single decision of hidden / dot / magnetic for every card."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "symbol": ".generation-canvas-react-flow__handle--magnetic .generation-canvas-react-flow__handle-icon",
+      "responsibility": "Magnetic ring is visible at rest; no hover gate."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "legacy in-card MagneticConnectionHandle / dot buttons",
+      "disposition": "enforced",
+      "evidence": "Only rendered outside the React Flow shell (devlab) or hidden by display:none inside it; deleted with its hide rule and legacy CSS."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "entry_point": "legacy MagneticConnectionHandle",
+      "disposition": "enforced",
+      "evidence": "Hidden by display:none inside the React Flow shell; deleted."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/director/DirectorNode.tsx",
+      "entry_point": "legacy MagneticConnectionHandle",
+      "disposition": "enforced",
+      "evidence": "Hidden by display:none inside the React Flow shell; deleted."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+      "entry_point": "MagneticConnectionHandle on the collapsed group card",
+      "disposition": "not-affected",
+      "evidence": "Projection-layer card without selection state; bands always present, '+' revealed on hover as before. Reported as an open product question instead of guessing a selection model."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every card kind other than image-like and every hover-off moment hid the entry; any new node kind would have been silently excluded by the allow-list.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs resolveGenerationFlowConnectionAffordance: 1 door",
+      "node scripts/door-map.mjs MagneticConnectionHandle: 1 door after removal (4 before)",
+      "rg 'generation-canvas-v2-node__handle|generation-canvas-v2-node__magnetic-handle' src tests: legacy selectors updated in two walkthroughs"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "invariant": "Affordance derives from selection and connection state only, never from kind or hover.",
+    "failure_mode": "Re-adding a kind condition turns the per-kind GENERATION_NODE_KINDS unit test red (positive control done: image-only rule -> 15 failures); re-adding a node-renderer handle turns canvasControlsStructure.test.ts red.",
+    "exception_policy": "none",
+    "strategy": "Delete the kind allow-list and the CSS hover gate, delete the legacy in-card handle copies, raise the selected card surface above its own bands.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+      "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+      "tests/ux/canvas-handles-alt-drag.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "src/workbench/generationCanvas/nodes/director/DirectorNode.tsx",
+      "src/workbench/generationCanvas/styles/generationCanvas.css"
+    ],
+    "rationale": "In-card handle copies, their display:none hide rule and the .generation-canvas-v2-node__handle CSS are deleted in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency change; @xyflow/react 12.11.5 Handle is already the single implementation.",
+    "exit_criteria": []
+  },
+  "migration": "No data migration; purely presentational.",
+  "residual_risks": [
+    "Collapsed group cards still show always-on bands with a hover-revealed '+' (no selection state to gate on); open question for the user.",
+    "Bands of the selected card can cover neighbouring cards' edges within 112 px of that one card, as in the pre-migration design."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "tests": [
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts"
+    ],
+    "why": "「谁有什么把手」只在这一个函数里判；测试按 GENERATION_NODE_KINDS 全表逐种断言，阳性对照：改回只给图片类即 15 条红。"
+  }
+}

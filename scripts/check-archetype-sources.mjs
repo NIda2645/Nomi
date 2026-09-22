@@ -15,7 +15,7 @@ import ts from 'typescript'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const archetypeDirs = [
-  path.join(repoRoot, 'src/config/modelArchetypes'),
+  path.join(repoRoot, 'electron/shared/modelArchetypes'),
   // Pure source-backed facts are shared by renderer and Electron. Keep them in
   // the same provenance gate so moving an owner cannot hide an unverified model.
   path.join(repoRoot, 'electron/shared/videoCapabilities'),

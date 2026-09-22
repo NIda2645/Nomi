@@ -52,33 +52,6 @@ export type ComposerAvailableSpaceMeasurement = {
     stage: { width: number; height: number };
 };
 
-type ComposerObstacleRect = {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-};
-
-/**
- * 返回 composer 朝下展开时真正可用的屏幕高度。
- * 折叠时间轴把手等浮层虽然不改变 stage 尺寸，却会盖住同一水平区间内的 composer；
- * 因此它们的顶边也必须成为下边界，不能只看 stage.bottom。
- */
-export function getUnobstructedComposerSpaceBelow(input: {
-    stage: ComposerObstacleRect;
-    node: ComposerObstacleRect;
-    composer: Pick<ComposerObstacleRect, "left" | "right">;
-    obstacles: ComposerObstacleRect[];
-}): number {
-    const boundary = input.obstacles.reduce((current, obstacle) => {
-        const isBelowNode = obstacle.top >= input.node.bottom;
-        const overlapsComposer = obstacle.left < input.composer.right && obstacle.right > input.composer.left;
-        return isBelowNode && overlapsComposer ? Math.min(current, obstacle.top) : current;
-    }, input.stage.bottom);
-
-    return Math.max(0, boundary - input.node.bottom);
-}
-
 /** composer 或舞台尺寸改变时，可用空间已经不同，必须解除比例切换期间的连接侧保持。 */
 export function didComposerAvailableSpaceChange(
     previous: ComposerAvailableSpaceMeasurement,

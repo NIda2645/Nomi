@@ -780,6 +780,19 @@ describe('generationCanvasStore clipboard paste placement', () => {
     ])
     expect(useGenerationCanvasStore.getState().edges.some((edge) => edge.source === pasted[0]?.id && edge.target === pasted[1]?.id)).toBe(true)
   })
+  it('粘贴到负坐标区时原样落在光标处（不钳回 40，否则跑到视线外）', () => {
+    const store = useGenerationCanvasStore.getState()
+    store.selectNode('copy-a')
+    store.selectNode('copy-b', true)
+    store.copySelectedNodes()
+    store.pasteNodes({ x: -800, y: -300 })
+
+    const pasted = useGenerationCanvasStore.getState().nodes.filter((candidate) => candidate.id.includes('-copy-'))
+    expect(pasted.map((candidate) => candidate.position)).toEqual([
+      { x: -800, y: -300 },
+      { x: -640, y: -260 },
+    ])
+  })
 })
 
 // 2026-08-24 用户反馈：「下面是生了视频的，有这个报错窗口在，就一直看不了原本的视频」。
@@ -1022,5 +1035,50 @@ describe('updateNodes', () => {
     state.undo()
     state = useGenerationCanvasStore.getState()
     expect(state.nodes.map((candidate) => candidate.meta?.modelKey)).toEqual([undefined, undefined])
+  })
+})
+
+describe('deleting a frame-covering selection removes the frame too (2026-09-22「编组框删不掉」)', () => {
+  const frameSnapshot = () => ({
+    nodes: [node('a', 'shots', 'f'), node('b', 'shots', 'f'), node('outside', 'shots')],
+    edges: [{ id: 'ab', source: 'a', target: 'b', mode: 'reference' as const }],
+    groups: [{ ...group('f', 'shots', ['a', 'b']), frameBounds: { x: 0, y: 0, w: 600, h: 400 } }, group('other', 'shots', ['outside'])],
+    selectedNodeIds: [] as string[],
+  })
+
+  it('reported case: selecting every member (what clicking the frame does) and deleting leaves no empty frame; one undo restores all', () => {
+    const store = useGenerationCanvasStore.getState()
+    store.restoreSnapshot(frameSnapshot())
+    store.selectNodes(['a', 'b'])
+    store.deleteSelectedNodes()
+    const after = useGenerationCanvasStore.getState()
+    expect(after.groups.map((g) => g.id)).toEqual(['other'])
+    expect(after.nodes.map((n) => n.id)).toEqual(['outside'])
+    store.undo()
+    const undone = useGenerationCanvasStore.getState()
+    expect(undone.groups.map((g) => g.id)).toEqual(['f', 'other'])
+    expect(undone.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'outside'])
+    expect(undone.edges.map((e) => e.id)).toEqual(['ab'])
+  })
+
+  it('class: only frames whose every member is deleted go; deleting part of a frame keeps it', () => {
+    const store = useGenerationCanvasStore.getState()
+    store.restoreSnapshot(frameSnapshot())
+    store.selectNodes(['a'])
+    store.deleteSelectedNodes()
+    expect(useGenerationCanvasStore.getState().groups.map((g) => g.id)).toEqual(['f', 'other'])
+    store.restoreSnapshot(frameSnapshot())
+    store.selectNodes(['a', 'b', 'outside'])
+    store.deleteSelectedNodes()
+    expect(useGenerationCanvasStore.getState().groups).toEqual([])
+  })
+
+  it('an empty frame is deleted by deleteGroup and restored by one undo', () => {
+    const store = useGenerationCanvasStore.getState()
+    store.restoreSnapshot({ ...frameSnapshot(), groups: [{ ...group('empty', 'shots', []), frameBounds: { x: 0, y: 0, w: 300, h: 200 } }] })
+    store.deleteGroup('empty', true)
+    expect(useGenerationCanvasStore.getState().groups).toEqual([])
+    store.undo()
+    expect(useGenerationCanvasStore.getState().groups.map((g) => g.id)).toEqual(['empty'])
   })
 })

@@ -484,8 +484,12 @@ export default function InlineParameterBar({
   // chips 形态的横排里身份两枚**不缩**：模型名本身已由 triggerMaxWidth 截到 150px，再让它跟着挤，
   // 结果是「宽度不够时模型名先被榨没、chip 却一颗不少」——而模型是这一行的一等决策（§1.5.4）。
   // 不缩也是「装不下」这件事能被量出来的前提：所有成员都不缩，行才会真的溢出（见 useFittedChipCount）。
-  // summary 形态只有一颗定宽 pill，不存在「装不下」，身份两枚照旧允许压缩（保持 2026-07-17 的样子）。
-  const identityChipClass = chipsMode && !stacked ? 'shrink-0' : undefined
+  // summary 形态只有一颗定宽 pill，不存在「装不下」，行窄时让位的只有**模型**那枚：它的值区是有意的
+  // 省略号、hover 的 title 是全名。变体是短枚举（「变体 5.0」），和分镜底栏的模式 / 时长同一条规则
+  // （`composerBarGeometry.ts`：短枚举从不缩）——2026-09-21 走查：1100×720 英文下它被压到值区只剩
+  // 5px，「Variant 5.0」读成「Variant E」，缩它省下的几像素换来的是一颗读不出的芯片。
+  const modelChipClass = chipsMode && !stacked ? 'shrink-0' : undefined
+  const variantChipClass = stacked ? undefined : 'shrink-0'
   const identityRow = (
     // chips 横排时这层包装**也不许缩**（`identityChipClass` 同一个条件）。它原来是 `min-w-0` 可缩的，
     // 而里面那颗模型芯片是 `shrink-0`——于是行宽一紧（EN 的「1 outputs」比「1 个」宽），被压缩的
@@ -498,7 +502,7 @@ export default function InlineParameterBar({
         ariaLabel={t('generationCommon.parameters.model')}
         placeholder={t('generationCommon.parameters.selectModel')}
         triggerMaxWidth={stacked ? 132 : 150}
-        className={identityChipClass}
+        className={modelChipClass}
         value={modelSelect.modelValue}
         options={modelSelect.modelOptions}
         onChange={modelSelect.onModelPick}
@@ -512,7 +516,7 @@ export default function InlineParameterBar({
         <NomiSelect
           ariaLabel={t('generationCommon.parameters.variant')}
           leadingLabel={t('generationCommon.parameters.variant')}
-          className={identityChipClass}
+          className={variantChipClass}
           value={catalogVariants ? modelSelect.variantValue : activeVariantId || ''}
           options={visibleVariants}
           disabled={visibleVariants.length < 2}

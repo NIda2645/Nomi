@@ -9,7 +9,7 @@ import { IconEyeOff } from '@tabler/icons-react'
 import type { ModelOption } from '../../config/models'
 import type { NomiSelectOption } from '../../design'
 import i18n from '../../i18n'
-import { dedupeModelOptions, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
+import { dedupeModelOptions, pickImplicitVendorMatch, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
 import { partitionByModelBoxPreference, rememberedProviderIndex, rememberedVendorFor } from '../../config/modelBoxPreference'
 import type { ModelBoxPreferenceSettings } from '../../../electron/shared/contracts/modelBoxPreference'
 import { useVendorPreferenceOrder } from './useVendorPreference'
@@ -407,9 +407,21 @@ export function useDedupedModelSelect(
     [deduped, preference, i18n.language],
   )
 
+  // 「当前存的是哪一家」只有一个判定口：记了 vendor → (value, vendor) 精确命中，那家不在就是没选中
+  // （不许悄悄换成同名的别家）；没记 vendor（旧数据）→ pickImplicitVendorMatch，与执行侧落地同一把尺。
+  // 以前没记 vendor 时取「第一个含同名 value 的组」——目录新接入的在前，于是自定义同名模型一加，
+  // 回显就换成了它（2026-09-21 分镜三处复现）。
+  const effectiveVendor = React.useMemo(() => {
+    if (!value) return null
+    const candidates = deduped.flatMap((m) => m.providers).filter((p) => p.option.value === value)
+    if (vendor) return candidates.some((p) => p.vendor === vendor) ? vendor : null
+    return pickImplicitVendorMatch(candidates, (p) => p.vendor, orderedVendorKeys)?.vendor ?? null
+  }, [deduped, value, vendor, orderedVendorKeys])
   const selectedModel = React.useMemo(
-    () => deduped.find((m) => m.providers.some((p) => p.option.value === value && (!vendor || p.vendor === vendor))) || null,
-    [deduped, value, vendor],
+    () => (value && (effectiveVendor !== null || !vendor)
+      ? deduped.find((m) => m.providers.some((p) => p.option.value === value && (effectiveVendor === null || p.vendor === effectiveVendor))) || null
+      : null),
+    [deduped, value, vendor, effectiveVendor],
   )
 
   const modelOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -424,13 +436,13 @@ export function useDedupedModelSelect(
       const model = deduped.find((m) => m.canonicalId === canonicalId)
       if (!model) return
       // Reopening/reselecting the family must not reset a saved reasoning tier.
-      const current = model.providers.find((p) => p.option.value === value && (!vendor || p.vendor === vendor))
+      const current = model.providers.find((p) => p.option.value === value && (effectiveVendor === null || p.vendor === effectiveVendor))
       if (current) { onChange(current.option.value, current.vendor); return }
       const best = pickHealthiestProvider(model, isModelRecentlyAiling, orderedVendorKeys, rememberedVendorFor(model, preference))
       const preferred = model.providers.find((p) => p.vendor === best?.vendor && p.option.variant?.defaultVariant) || best
       if (preferred) onChange(preferred.option.value, preferred.vendor)
     },
-    [deduped, onChange, value, vendor, orderedVendorKeys, preference],
+    [deduped, onChange, value, effectiveVendor, orderedVendorKeys, preference],
   )
 
   const onModelProviderPick = React.useCallback(
@@ -462,7 +474,7 @@ export function useDedupedModelSelect(
     [selectedModel, onChange],
   )
 
-  const providerValue = resolveProviderSelectValue(selectedModel, value, vendor)
+  const providerValue = resolveProviderSelectValue(selectedModel, value, effectiveVendor)
   const selectedProvider = selectedModel?.providers.find((p) => providerAddress(p) === providerValue)
   const variantOptions = selectedProvider?.option.variant
     ? (selectedModel?.providers || [])

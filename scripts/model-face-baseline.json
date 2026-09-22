@@ -259,7 +259,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.context.read",
-      "description": "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots. Before choosing a modelId or any parameter in draft_shots, and when the user asks which models can do something. It cannot connect a model or take an API key (start_model_setup). Never invent a modelId — use the exact strings returned here. kind (image, video or audio) narrows the catalog; modelId returns one model in full. Nothing changes; it only reads.",
+      "description": "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots. Before choosing a modelId or any parameter in draft_shots, and when the user asks which models can do something. It cannot connect a model or take an API key (start_model_setup). Never invent a modelId — use the exact strings returned here. kind (image, video or audio) narrows the catalog; modelId returns one model in full; vendor picks which provider when two of them carry the same modelId. Nothing changes; it only reads.",
       "effect": "read",
       "effectGroups": null,
       "examples": [
@@ -300,6 +300,11 @@
           },
           "modelId": {
             "description": "Catalog id of one model to read in full — the same modelId this verb returns and draft_shots takes.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "vendor": {
+            "description": "Provider of that model. Required when the thin list shows the same modelId under two providers — they are two different models with different modes and parameters.",
             "minLength": 1,
             "type": "string"
           }

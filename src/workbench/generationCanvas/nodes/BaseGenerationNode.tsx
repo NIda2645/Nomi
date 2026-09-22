@@ -28,14 +28,12 @@ import {
   STRIPED_BG_CLASS,
 } from './render/CardCommon'
 import PanoramaUploadFallback from './PanoramaUploadFallback'
-import { MagneticConnectionHandle } from './NodeConnectionHandles'
 import { SideTimelineDragHandle, TimelineNotchDragHandle } from './NodeTimelineDragHandles'
 import { cn } from '../../../utils/cn'
 import { DeferredNodeImage } from './DeferredNodeMedia'
 import { NodeVideoPlaybackGuard } from './NodeVideoPlaybackGuard'
 import { useNodePanoramaHandlers } from './useNodePanoramaHandlers'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeGeneratingOverlay } from './NodeGeneratingOverlay'
 import { NodeGenerationStatus } from './NodeGenerationStatus'
@@ -51,7 +49,6 @@ import { NodeRecoverableReport } from './NodeRecoverableReport'
 import { dismissRecoverableNode, recoverNodeResult } from '../runner/recoverTaskActions'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { WorkbenchButton } from '../../../design'
-import { completeNodeConnection } from './completeNodeConnection'
 import { getGenerationNodeExecutionKind, isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { anchorFreezeToolbarProps } from '../fixation/freezeAnchor'
 import { TechnicalReviewBadge } from './TechnicalReviewBadge'
@@ -121,15 +118,7 @@ function BaseGenerationNodeImpl({
   const sourceNodeExists = useGenerationCanvasStore((state) =>
     selectCanvasNodeExists(state, node.derivedFrom),
   )
-  const startConnection = useGenerationCanvasStore((state) => state.startConnection)
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const isPendingConnectionSource = useGenerationCanvasStore((state) => state.pendingConnectionSourceId === node.id)
-  const pendingConnectionSourceSide = useGenerationCanvasStore((state) =>
-    state.pendingConnectionSourceId === node.id ? state.pendingConnectionSourceSide : null,
-  )
-  const isPendingConnectionTarget = useGenerationCanvasStore(
-    (state) => state.pendingConnectionSourceId !== '' && state.pendingConnectionSourceId !== node.id,
-  )
   const panoramaFullscreenRef = React.useRef<(() => void) | null>(null)
   const panoramaUploadInputRef = React.useRef<HTMLInputElement | null>(null)
   const [provenanceOpen, setProvenanceOpen] = React.useState(false)
@@ -143,18 +132,6 @@ function BaseGenerationNodeImpl({
     event.dataTransfer.effectAllowed = 'copy'
     event.dataTransfer.setData(TIMELINE_GENERATION_NODE_DRAG_MIME, encodeTimelineGenerationNodeDragPayload(node))
   }
-
-  const handleConnectionDragStart = React.useCallback(
-    (event: React.PointerEvent<HTMLElement>, side: ConnectionAnchorSide = 'right') => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (typeof event.currentTarget.releasePointerCapture === 'function') {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
-      startConnection(node.id, side)
-    },
-    [node.id, startConnection],
-  )
 
   const handleAddToTimelineAtPlayhead = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) => {
     event.preventDefault()
@@ -273,78 +250,6 @@ function BaseGenerationNodeImpl({
       onPointerLeave={handleVideoNodePointerLeave}
     >
 {feedback ? <p role="status" className="absolute inset-x-0 bottom-0 z-[15] m-0 bg-nomi-paper px-2 py-1 text-caption text-nomi-ink-60">{feedback}</p> : null}
-      {!flowManagedLayout && !readOnly && node.kind !== 'panorama' ? (
-        selected && useMagneticConnectionHandles && !isPendingConnectionSource ? (
-          <>
-            <MagneticConnectionHandle
-              side="left"
-              active={isPendingConnectionTarget || pendingConnectionSourceSide === 'left'}
-              pendingTarget={isPendingConnectionTarget}
-              onStart={handleConnectionDragStart}
-              onComplete={(event) => {
-                event.stopPropagation()
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            />
-            <MagneticConnectionHandle
-              side="right"
-              active={isPendingConnectionTarget || pendingConnectionSourceSide === 'right'}
-              pendingTarget={isPendingConnectionTarget}
-              onStart={handleConnectionDragStart}
-              onComplete={(event) => {
-                event.stopPropagation()
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <WorkbenchButton
-              className={cn(
-                'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--input',
-                'absolute top-1/2 left-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
-                'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
-                'opacity-80 transition-opacity duration-150 hover:opacity-100',
-                'data-[active=true]:opacity-100',
-              )}
-              aria-label={
-                isPendingConnectionTarget
-                  ? t('generationCommon.node.connectHere')
-                  : t('generationCommon.node.startConnection')
-              }
-              data-active={isPendingConnectionTarget ? 'true' : 'false'}
-              onPointerDown={(event) => {
-                if (isPendingConnectionTarget) {
-                  event.stopPropagation()
-                  return
-                }
-                handleConnectionDragStart(event, 'left')
-              }}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (!isPendingConnectionTarget) return
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            >
-              <span className="generation-canvas-v2-node__handle-dot" aria-hidden="true" />
-            </WorkbenchButton>
-            <WorkbenchButton
-              className={cn(
-                'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--output',
-                'absolute top-1/2 right-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
-                'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
-                'opacity-80 transition-opacity duration-150 hover:opacity-100',
-                'data-[active=true]:opacity-100',
-              )}
-              aria-label={t('generationCommon.node.startConnection')}
-              data-active={isPendingConnectionSource ? 'true' : 'false'}
-              onPointerDown={(event) => handleConnectionDragStart(event, 'right')}
-            >
-              <span className="generation-canvas-v2-node__handle-dot" aria-hidden="true" />
-            </WorkbenchButton>
-          </>
-        )
-      ) : null}
 
       <EmptyNodeVariantToolbar nodeId={node.id} visible={selected && !isMultiSelectActive && !readOnly && !resultStackOpen && !hasResult} />
       {node.kind === 'panorama' && selected && !isMultiSelectActive && !readOnly && node.result?.url ? (

@@ -1,6 +1,6 @@
 import type { ModelCatalogModelDto } from '../workbench/api/modelCatalogApi'
 import type { ModelOption, ModelOptionPricing } from './models'
-import { archetypeParameterControls } from './modelArchetypes'
+import { archetypeParameterControls } from '../../electron/shared/modelArchetypes'
 import { ANTIGRAVITY_VENDOR_KEY } from '../../electron/shared/antigravity'
 import { getAntigravityModelVariant } from '../../electron/shared/antigravityModelVariants'
 

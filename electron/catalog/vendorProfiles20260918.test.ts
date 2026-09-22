@@ -5,7 +5,7 @@ import { KIE_IMAGE_MODELS_2026 } from "./kieImages2026";
 import { APIMART_IMAGE_MODELS } from "./apimartImages";
 import { applyParamMap } from "./paramTranslate";
 import { taskTemplateParams } from "./taskParams";
-import { resolveArchetypeForModel } from "../../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { KIE_GPT_IMAGE_25_ONE_K_ONLY_RATIOS, KIE_GPT_IMAGE_25_TRANSFORM, validateKieGptImage25Body } from "./kieGptImage25";
 import { applyRequestTransformSync, validateRequestTransformSync } from "../tasks/requestTransforms";
 import type { CatalogState, HttpOperation } from "./types";

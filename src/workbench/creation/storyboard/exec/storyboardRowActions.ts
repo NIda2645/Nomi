@@ -4,7 +4,7 @@ import { projectShotNode } from './storyboardProjection'
 import type { GenerationRunOutcome } from '../../../generationCanvas/runner/generationRunOutcome'
 import { ignoredShotAnchors, type IgnoredAnchor } from '../../../generationCanvas/agent/storyboardAnchorPolicy'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanAnchor, PlanShot, StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
 import { anchorCarriesOwnMaterial, isVisualAnchor, buildAnchorSheetPrompt } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import {
@@ -26,6 +26,7 @@ import { confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, ty
 import { confirmAndRunPlan } from '../../../generationCanvas/components/batchPlanPreview'
 import i18n from '../../../../i18n'
 import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNodeMeta'
+import { getVendorPreference } from '../../../api/vendorPreferenceApi'
 import { ANCHOR_META_KEYS, isAnchorFrozen, type AnchorFrozenMark } from '../../../generationCanvas/model/anchorBibleKeys'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
 import { rowConsumesReferences, type StoryboardRowRuntime } from './storyboardRowStatus'
@@ -111,7 +112,8 @@ async function applyCreate(args: PlanCreateNodesArgs, gesture?: CanvasGestureCon
 // ── 行编辑写回节点（跑之前的唯一收口）──
 
 async function syncShotNodeWithRow(ctx: RowActionContext, shot: PlanShot, node: GenerationCanvasNode, part: 'shot' | 'keyframe', mode?: ArchetypeMode | null): Promise<void> {
-  const entries = buildModelEntryIndex(await listAvailableModelsForAgent())
+  // 只记了模型名的旧镜头落哪家 = 模型框回显的那家：同一个判定口 + 同一份用户供应商顺序。
+  const entries = buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
   if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard update')
   await ctx.assertCurrent?.()
   const current = useGenerationCanvasStore.getState().nodes.find(candidate => candidate.id === node.id)

@@ -17,6 +17,7 @@ import { useWorkbenchStore } from '../workbenchStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
 import { listAvailableModelsForAgent } from '../generationCanvas/agent/availableModels'
+import { getVendorPreference } from '../api/vendorPreferenceApi'
 import { buildModelEntryIndex, buildPlannedNodeMeta } from '../generationCanvas/agent/plannedNodeMeta'
 import {
   materializedNodeIdsByClientId,
@@ -133,7 +134,9 @@ async function rebindLandedShots(
   inLandingTxn: <T>(fn: () => T) => T,
 ): Promise<void> {
   const needsModels = shots.some((shot) => Boolean(shot.candidate?.modelKey))
-  const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
+  const entryByKey = needsModels
+    ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
+    : buildModelEntryIndex([])
   for (const shot of shots) {
     const nodeId = nodeIdByShot.get(shot.shotId)
     if (!nodeId) continue

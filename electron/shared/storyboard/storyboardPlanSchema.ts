@@ -103,6 +103,16 @@ const _typeToSchema = (plan: StoryboardPlan): z.infer<typeof storyboardPlanSchem
 void _schemaToType
 void _typeToSchema
 
+// 上面两条互相赋值的守卫**看不见缺席的可选字段**（类型里有、schema 里没有的 `x?:` 两个方向都能赋值），
+// 而 zod 会在解析时把它静默丢掉——锚的 modelKey/modelVendor 就是这样在重开项目时消失的。
+// 这里按键逐个对账：手写类型里的每个键，schema 必须都有。（main #833 带来，搬家后仍钉在同一份 owner 上。）
+type MissingSchemaKeys<TType, TSchema> = Exclude<keyof TType, keyof TSchema>
+type AssertNoMissingKeys<T extends never> = T
+type _AnchorKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan['anchors'][number], z.infer<typeof planAnchorSchema>>>
+type _ShotKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan['shots'][number], z.infer<typeof planShotSchema>>>
+type _KeyframeKeys = AssertNoMissingKeys<MissingSchemaKeys<NonNullable<StoryboardPlan['shots'][number]['keyframe']>, NonNullable<z.infer<typeof planShotSchema>['keyframe']>>>
+type _PlanKeys = AssertNoMissingKeys<MissingSchemaKeys<StoryboardPlan, z.infer<typeof storyboardPlanSchema>>>
+
 export function parseStoryboardPlan(raw: unknown): StoryboardPlan {
   return storyboardPlanSchema.parse(raw)
 }

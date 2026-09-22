@@ -1,4 +1,4 @@
-import { anchorsConsumedBy } from '../../../../config/modelArchetypes/anchorPolicy'
+import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { NodeGenerationStatus } from '../../../generationCanvas/nodes/NodeGenerationStatus'
 import { StoryboardOverrideBadge } from '../../../generationCanvas/nodes/StoryboardOverrideBadge'
 import { resolveStoryboardOverride } from '../exec/storyboardOverrideActions'
@@ -19,7 +19,9 @@ import {
 import { cn } from '../../../../utils/cn'
 import type { MentionSuggestionItem, MentionUploadControls } from '../../../assets/AssetMentionSuggestionList'
 import type { PlanAnchor, PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
-import { NO_SCENE_VALUE } from '../../../generationCanvas/agent/storyboardPlanEdits'
+import { NO_SCENE_VALUE, type PlanShotPatch } from '../../../generationCanvas/agent/storyboardPlanEdits'
+import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
+import { useVendorPreferenceOrder } from '../../../common/useVendorPreference'
 import type { PromptSegmentRange, StoryboardProfile } from '../../../generationCanvas/agent/storyboardPlan'
 import type { ModelOption } from '../../../../config/models'
 import { resolveShotArchetypeMode } from './shotRowModel'
@@ -109,7 +111,7 @@ type Props = {
   onKeyboardFocus?: ((direction: -1 | 1) => void) | undefined
   onRerunFreshRefs?: (() => void) | undefined
   onResolveOverride?: (field: string, action: 'adopt' | 'discard') => void
-  onUpdate: (patch: Partial<PlanShot>) => void
+  onUpdate: (patch: PlanShotPatch) => void
   onToggleAnchor: (anchorId: string) => void
   onRemove: () => void
   promptInvalid?: boolean
@@ -178,6 +180,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
     onRerunFreshRefs, onUpdate, onRemove, promptInvalid, durationWarning,
     mentionSearch, onMentionSelect, currentRefUrls, mentionUpload, storyboardProfile, sourceSegment,
   } = props
+  const orderedVendorKeys = useVendorPreferenceOrder()
   const [actionsOpen, setActionsOpen] = React.useState(false)
   const [aspectMenuOpen, setAspectMenuOpen] = React.useState(false)
   const [variantsOpen, setVariantsOpen] = React.useState(false)
@@ -191,7 +194,8 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
   const closeMenus = (): void => { setActionsOpen(false); setAspectMenuOpen(false) }
 
   const isImageShot = shot.shotKind === 'image'
-  const resolved = resolveShotArchetypeMode(modelOptions?.find((option) => option.value === shot.modelKey) ?? null, shot.modeId)
+  // 档案按 (modelKey, modelVendor) 取：同名两家的档案/参数可以不同，按名字取会拿到另一家的模式表。
+  const resolved = resolveShotArchetypeMode(findModelOptionByIdentifier(modelOptions ?? [], shot.modelKey, shot.modelVendor, orderedVendorKeys), shot.modeId)
   const resolvedMode = resolved?.mode ?? null
 
 

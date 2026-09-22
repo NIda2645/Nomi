@@ -249,6 +249,10 @@ export function GenerationCanvasReactFlowViewport({
         } })
       }}
       onMoveEnd={(_event, nextViewport) => {
+        // 无条件释放这张租约（`release()` 幂等，没升起时是空操作）。不许按 `canvasPanMovedRef` 判断要不要释放：
+        // React Flow 在 panOnScroll 下把这次回调推迟 150ms，这期间画布内任何一次按下都会把那个布尔重置成 false，
+        // 于是这里跳过释放、`data-dragging` 卡死（2026-09-22，见 docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
+        // 真漏掉的那一次由 canvasDraggingFlag 的手势兜底闸收（标志的寿命上限 = 这一次指针手势）。
         viewportLeaseRef.current?.release()
         viewportLeaseRef.current = null
         canvasPanMovedRef.current = false

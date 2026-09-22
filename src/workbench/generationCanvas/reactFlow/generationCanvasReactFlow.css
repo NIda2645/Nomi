@@ -83,8 +83,8 @@
   min-height: 1px;
 }
 
-/* Existing node cards still contain their legacy canvas positioning and handles.
- * React Flow owns the outer transform and connection ports in this experiment. */
+/* Existing node cards still contain their legacy canvas positioning and resize zones.
+ * React Flow owns the outer transform and the connection ports (GenerationFlowConnectionHandle). */
 .generation-canvas-react-flow .generation-canvas-v2-node {
   position: relative !important;
   inset: auto !important;
@@ -93,8 +93,17 @@
   height: 100% !important;
 }
 
-.generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node__magnetic-handle,
-.generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node__handle,
+/* 卡面与自己把手的上下层，按把手档位分（档位唯一 owner：generationCanvasReactFlowVisualContract.ts）：
+ * - 磁吸档（唯一主选中）：卡面压在自己的磁吸带之上。伸出卡外的版本胶囊（「2 版」）/ 版本托盘落在带子的
+ *   命中区里，带子（z 8）若在上面，点「2 版」会变成起一条线，托盘也点不动（2026-09-21 走查发现，带子常驻后必现）。
+ *   磁吸带在卡外侧，起线入口是卡外那颗常驻「+」圈，抬高卡面不吃它。
+ * - 小圆点档（多选里的每一张、未选中、起线进行中的起点）：卡面**不**抬。圆点骑在卡边上、一半在卡内，
+ *   卡面若压上来，点圆点中心会变成拖卡/选卡——2026-09-22 回归：#833 曾按 data-selected 抬卡面，
+ *   多选时每张卡的圆点内半边都被吞掉（docs/fixes/2026-09-22-card-face-over-own-ports.root-cause.json）。 */
+.generation-canvas-react-flow .generation-canvas-react-flow__node-shell[data-connection-affordance='magnetic'] .generation-canvas-v2-node {
+  z-index: 9;
+}
+
 .generation-canvas-react-flow .generation-canvas-react-flow__node-shell .generation-canvas-v2-node__resize-zone {
   display: none !important;
 }
@@ -178,7 +187,6 @@
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic .generation-canvas-react-flow__handle-icon {
-  --connection-handle-reveal-x: 0px;
   position: absolute;
   top: var(--connection-handle-y);
   left: var(--connection-handle-x);
@@ -186,7 +194,7 @@
   width: 29px;
   height: 29px;
   place-items: center;
-  transform: translate(calc(-50% + var(--connection-handle-reveal-x)), -50%) scale(0.86);
+  transform: translate(-50%, -50%);
   border: 2px solid color-mix(in srgb, var(--workbench-muted-soft) 72%, transparent);
   border-radius: 999px;
   background: color-mix(in oklab, var(--nomi-paper) 82%, transparent);
@@ -194,26 +202,11 @@
   box-shadow:
     0 10px 26px rgba(18, 24, 38, 0.18),
     0 0 0 1px color-mix(in srgb, var(--nomi-ink) 8%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transition: left 180ms cubic-bezier(0.16, 1, 0.3, 1), top 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic[data-side='left'] .generation-canvas-react-flow__handle-icon {
-  --connection-handle-reveal-x: 28px;
-}
-
-.generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic[data-side='right'] .generation-canvas-react-flow__handle-icon {
-  --connection-handle-reveal-x: -28px;
-}
-
-.generation-canvas-react-flow .generation-canvas-react-flow__node-shell:hover .generation-canvas-react-flow__handle--magnetic .generation-canvas-react-flow__handle-icon,
-.generation-canvas-react-flow .generation-canvas-react-flow__node-shell:focus-within .generation-canvas-react-flow__handle--magnetic .generation-canvas-react-flow__handle-icon,
-.generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic[data-active='true'] .generation-canvas-react-flow__handle-icon,
-.generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic .generation-canvas-react-flow__handle-hit[data-following='true'] .generation-canvas-react-flow__handle-icon {
-  --connection-handle-reveal-x: 0px;
-  transform: translate(-50%, -50%) scale(1);
+  /* 2026-09-21 拍板：选中即常驻可见，不再要求指针悬停在卡上（旧版 opacity:0 → hover 才露）。
+   * 磁吸带只会出现在唯一主选中的那张卡上（generationCanvasReactFlowVisualContract.ts），所以常驻不会铺满画布。 */
   opacity: 0.82;
+  pointer-events: none;
+  transition: left 180ms cubic-bezier(0.16, 1, 0.3, 1), top 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .generation-canvas-react-flow .generation-canvas-react-flow__handle--magnetic:hover .generation-canvas-react-flow__handle-icon,

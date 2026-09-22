@@ -17,7 +17,11 @@ type DragRecord = {
   historyCaptured: boolean
 }
 
-type GroupDragRecord = DragRecord & { groupId: string }
+/**
+ * `duplicateOnMove`：按下时按着 Alt/⌥（LibTV「Option + 拖动」同款）。第一次真的移动时才复制——
+ * 只点一下不拖不会凭空多出一个框（tldraw Translating.startCloning / Excalidraw 同样在移动时才复制）。
+ */
+type GroupDragRecord = DragRecord & { groupId: string; duplicateOnMove: boolean }
 type Delta = { x: number; y: number }
 
 function isDragTargetCurrent(drag: DragRecord): boolean {
@@ -33,6 +37,8 @@ type CanvasSelectionDragOptions = {
   moveGroupNodes: GenerationCanvasState['moveGroupNodes']
   moveSelectedNodes: GenerationCanvasState['moveSelectedNodes']
   selectNodes: GenerationCanvasState['selectNodes']
+  /** 点中的框里没有可选的成员：框本身成为选区（交给框动作层记着，Delete / 菜单删它）。 */
+  onSelectEmptyFrame?: (groupId: string | null) => void
 }
 
 export function useCanvasSelectionDrag({
@@ -44,6 +50,7 @@ export function useCanvasSelectionDrag({
   moveGroupNodes,
   moveSelectedNodes,
   selectNodes,
+  onSelectEmptyFrame,
 }: CanvasSelectionDragOptions): {
   handleGroupFramePointerDown: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -174,6 +181,12 @@ export function useCanvasSelectionDrag({
         if (event.pointerId !== drag.pointerId) return
         const delta = { x: (event.clientX - drag.clientX) / scale, y: (event.clientY - drag.clientY) / scale }
         if (delta.x === 0 && delta.y === 0) return
+        if (drag.duplicateOnMove) {
+          drag.duplicateOnMove = false
+          // 复制本身就是这次手势的撤销点（duplicateGroupForDrag 打了 barrier），后面的搬动不再另打。
+          const copyId = useGenerationCanvasStore.getState().duplicateGroupForDrag(drag.groupId)
+          if (copyId) Object.assign(drag, { groupId: copyId, historyCaptured: true })
+        }
         if (!drag.historyCaptured) {
           captureHistory()
           drag.historyCaptured = true
@@ -236,16 +249,20 @@ export function useCanvasSelectionDrag({
     settleDrag()
     const state = useGenerationCanvasStore.getState()
     const group = state.groups.find((candidate) => candidate.id === groupId)
-    if (options?.selectMembers !== false && group?.nodeIds.length) {
+    if (options?.selectMembers !== false && group) {
       const groupNodeIds = new Set(group.nodeIds)
       const memberIds = state.nodes
         .filter((node) => groupNodeIds.has(node.id) && (node.categoryId || 'shots') === group.categoryId)
         .map((node) => node.id)
-      if (memberIds.length) selectNodes(memberIds)
+      // 空框：以前这里什么都不做，上一次的选区原样留着——点了空框再按 Delete，删掉的是别处的卡。
+      // 现在点空框 = 选中这个框本身（节点选区清空），Delete / 菜单「删除」删的就是它。
+      selectNodes(memberIds)
+      onSelectEmptyFrame?.(memberIds.length ? null : groupId)
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
-    draggingGroupRef.current = { project, generation: getUndoJournalGeneration(), lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.group, { pointerId: event.pointerId, active: false, onCancel: settleDrag }), pointerId: event.pointerId, groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
-  }, [settleDrag, readOnly, selectNodes])
+    pendingGroupDeltaRef.current = null
+    draggingGroupRef.current = { project, generation: getUndoJournalGeneration(), lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.group, { pointerId: event.pointerId, active: false, onCancel: settleDrag }), pointerId: event.pointerId, groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false, duplicateOnMove: event.altKey }
+  }, [settleDrag, onSelectEmptyFrame, readOnly, selectNodes])
 
   const handleSelectionBoundsPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || event.button !== 0 || selectedNodeCount < 2) return

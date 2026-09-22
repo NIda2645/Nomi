@@ -6,11 +6,11 @@ import { AnchoredPopover, DesignSwitch, NomiSelect } from '../../../../design'
 import type { ModelOption } from '../../../../config/models'
 import { modelVisibilityFooterAction, useDedupedModelSelect } from '../../../common/useDedupedModelSelect'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
-import type { ArchetypeMode, ModelArchetype } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ModelArchetype } from '../../../../../electron/shared/modelArchetypes/types'
 import type { ModelParameterControl } from '../../../../config/modelCatalogMeta'
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { effectiveShotDurationSec } from '../../../generationCanvas/agent/storyboardPlan'
-import { DURATION_OPTIONS_SEC, shotTypeOf } from '../../../generationCanvas/agent/storyboardPlanEdits'
+import { DURATION_OPTIONS_SEC, planModelSelection, shotTypeOf, type PlanShotPatch } from '../../../generationCanvas/agent/storyboardPlanEdits'
 import { composerBarPlan, composerModeOptions } from './composerBarModel'
 import {
   COMPOSER_CHIP_YIELD,
@@ -70,7 +70,7 @@ type Props = {
   aspectOverridden: boolean
   aspectOptions: readonly string[]
   onChangeAspect: (aspect: string | null) => void
-  onUpdate: (patch: Partial<PlanShot>) => void
+  onUpdate: (patch: PlanShotPatch) => void
   /** 行内「生成 / 重试」；缺省 = 不渲染主按钮（如已生成态）。 */
   onGenerate?: (() => void) | undefined
   /**
@@ -126,11 +126,13 @@ export default function ShotComposerBar({
   const isImageShot = shotTypeOf(shot) === 'image'
   const [switchesOpen, setSwitchesOpen] = React.useState(false)
 
+  // 与画布节点同一个选择 owner（useDedupedModelSelect）：读用 (modelKey, modelVendor)，写也成对写。
+  // 以前这里既不传 vendor 也只回写 modelKey——镜头留着旧供应商，界面选 APIMart、钱花在自定义那家（2026-09-21）。
   const onShotModelChange = React.useCallback(
-    (value: string) => onUpdate({ modelKey: value || undefined, modeId: undefined, params: undefined }),
+    (value: string, vendor?: string) => onUpdate(planModelSelection(value, vendor)),
     [onUpdate],
   )
-  const modelSelect = useDedupedModelSelect(modelOptions ?? [], shot.modelKey ?? '', onShotModelChange)
+  const modelSelect = useDedupedModelSelect(modelOptions ?? [], shot.modelKey ?? '', onShotModelChange, shot.modelVendor)
   const modelSelectOptions = modelOptions && modelOptions.length > 0
     ? [{ value: '', label: t('storyboardEditor.defaultModel') }, ...modelSelect.modelOptions]
     : null

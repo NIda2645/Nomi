@@ -87,6 +87,10 @@ describe("ExecutionContract compiler", () => {
   it("refuses an undeclared parameter and names the legal ones instead of dropping it", () => {
     // 静默丢弃 = 「你批准的是 A、我们发出去的是 B」：用户在付款卡上把清晰度改成 2K，合同悄悄丢掉，
     // 供应商按自己的默认出 1k，节点上仍印 2K。报错并列出合法键才是可执行的答复。
+    // 2026-09-21 行为反转（main #837）：旧实现把未知键记进 `droppedFields` 就放行，而那个字段
+    // 全仓没有生产读者——模型点名的参数与真正发出去的参数可以不一样，且没有任何地方会红。
+    expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
+      .toThrow(ContractCompilationError);
     expect(() => compileExecutionContract(candidate({ parameters: { aspectRatio: "16:9", unknownKnob: 10 } }), registry))
       .toThrow(/parameters\.unknownKnob/);
     try {
@@ -108,16 +112,23 @@ describe("ExecutionContract compiler", () => {
       wireRegistry,
     );
     expect(contract.parameters.resolution).toBe("2K");
-    expect(contract.droppedFields).toEqual([]);
   });
 
-  it("registers Nomi's own planning intents instead of calling them unsupported", () => {
+  it("lets Nomi's own planning intents through without putting them on the wire", () => {
+    // 意图键是 Nomi 的推荐器读的，供应商请求里没有它：不算「填错」（不许报 unknown_parameter），
+    // 也不进合同参数。登记账本 `droppedFields` 随 #837 一起删了——它全仓没有生产读者。
     const contract = compileExecutionContract(
       candidate({ parameters: { aspectRatio: "16:9", preserveCharacter: true } }),
       registry,
     );
-    expect(contract.droppedFields).toEqual([{ path: "parameters.preserveCharacter", reason: "planning_input" }]);
     expect(contract.parameters).not.toHaveProperty("preserveCharacter");
+  });
+
+  it("still type-checks a planning intent — a garbage value is not silently swallowed", () => {
+    expect(() => compileExecutionContract(
+      candidate({ parameters: { aspectRatio: "16:9", preserveCharacter: "yes please" } }),
+      registry,
+    )).toThrow(/parameters\.preserveCharacter/);
   });
 
   it("projects @ mentions into @imageN before the prompt can reach a provider", () => {

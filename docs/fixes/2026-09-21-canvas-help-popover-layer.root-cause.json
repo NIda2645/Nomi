@@ -1,0 +1,140 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-canvas-help-popover-layer",
+  "problem_type": "Canvas chrome popover rendered in place inside a low stacking context instead of the global overlay layer; fixed-width row layout with nowrap on both columns",
+  "symptom": "2026-09-21 real-app walkthrough (canvas-handles-alt-drag, zh-CN screenshot 09): opening the canvas controls help (keyboard button, bottom-left) showed a panel half covered by the floating Agent input dock and the batch-generate bar. In the English UI the 'Box select (adds to selection)' action text overlapped its 'Shift + drag' keycap.",
+  "direct_cause": "CanvasControlsHelpPopover rendered its panel with `absolute bottom-[calc(100%+8px)] ... z-[12]` inside CanvasNavigationStack, whose container is `z-[8]`; any sibling chrome above z-8 (Agent collapsed dock z-40, batch dock z-9) painted over it regardless of the inner z-12. Each row was `flex justify-between` with `whitespace-nowrap` on the action text and on the keycap inside a fixed w-[30rem] two-column grid, so a long translated action had no way to wrap and ran under the keycap.",
+  "class_root": "The panel chose its own layer (a local z-index) instead of using the design-system owner of 'what is on top' (src/design/overlayLayers.ts via AnchoredPopover). A local z-index can only order siblings inside the same stacking context, so the result depends on whoever else happens to be mounted at the bottom of the workspace. The 2026-08-08 fix for the same panel widened it (w-96 -> w-[30rem]) and re-centered it: it tuned the symptom for the strings of that day instead of letting the text column wrap.",
+  "affected_population": [
+    "Every user opening canvas controls help while the Agent panel is collapsed (floating input dock) or while the batch-generate bar is visible",
+    "English (and any longer-string locale) users reading the help panel"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/CanvasControlsHelpPopover.tsx",
+    "src/design/AnchoredPopover.tsx"
+  ],
+  "entry_points": [
+    "Canvas navigation stack keyboard button (CanvasNavigationStack -> CanvasControlsHelpPopover)"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_positioned_layout/Understanding_z-index/Stacking_context",
+      "checked_at": "2026-09-21",
+      "purpose": "A z-index inside a stacking context never paints above content outside that context; portal to the root layer is the standard fix."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/tldraw/tldraw/blob/main/packages/tldraw/src/lib/ui/components/KeyboardShortcutsDialog/DefaultKeyboardShortcutsDialog.tsx",
+      "checked_at": "2026-09-21",
+      "purpose": "tldraw renders its shortcuts help as a portal dialog on the top UI layer, not inside the toolbar that opens it."
+    }
+  ],
+  "invariants": [
+    "The canvas controls help panel renders through AnchoredPopover (portal to body, overlayLayers.popover z-index, viewport flip/clamp); it never positions itself inside the navigation stack.",
+    "Each help row is a two-column grid: the action column may wrap (minmax(0,1fr), min-w-0), the keycap column never wraps; a long action grows the row, never overlaps the keycap."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CanvasNavigationStack.tsx",
+      "symbol": "CanvasControlsHelpPopover"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CanvasControlsHelpPopover.tsx",
+      "symbol": "AnchoredPopover"
+    },
+    {
+      "kind": "write",
+      "path": "src/design/AnchoredPopover.tsx",
+      "symbol": "AnchoredPopover"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "CanvasNavigationStack mounts the help popover, the popover now reads the shared AnchoredPopover, and AnchoredPopover owns the layer (only its consumer note changed). Three different responsibilities, nothing to merge."
+  },
+  "generality_proof": "The layer is no longer a per-component number: AnchoredPopover takes it from overlayLayers.popover (9200), above every canvas chrome tier and below dialogs/confirmations, so any future bottom chrome cannot cover it. The walkthrough measures reach (49/49 elementFromPoint samples owned by the panel) and per-row overlap in zh-CN and en, with the Agent panel open and collapsed, with and without the batch bar, at 1280x900 and at the 1100x720 window minimum.",
+  "shared_boundaries": [
+    {
+      "path": "src/design/AnchoredPopover.tsx",
+      "symbol": "AnchoredPopover",
+      "responsibility": "Portal + global popover layer + viewport placement for anchored rich-content popovers."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/CanvasControlsHelpPopover.tsx",
+      "entry_point": "canvas controls help panel",
+      "disposition": "enforced",
+      "evidence": "Moved onto AnchoredPopover; structure test forbids in-place absolute and local z-index; walkthrough reach 49/49 in 8 layouts x 2 locales."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CanvasBatchGenerateDock.tsx",
+      "entry_point": "model / concurrency selects in the batch bar",
+      "disposition": "not-affected",
+      "evidence": "They open through NomiSelect / WorkbenchMenu (Radix portal), not in place."
+    },
+    {
+      "path": "src/workbench/timeline/TimelineMiniPreview.tsx",
+      "entry_point": "mini preview chip",
+      "disposition": "not-affected",
+      "evidence": "No popover; it is itself bottom chrome."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Second report on the same panel (2026-08-08 overflow, 2026-09-21 covered + overlap); each new bottom chrome or longer locale string would re-break an in-place, fixed-width panel.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs CanvasControlsHelpPopover: 1 door",
+      "node scripts/door-map.mjs AnchoredPopover: 7 read doors, help panel is now one of them",
+      "rg 'bottom-\\[calc\\(100%' src/workbench/generationCanvas/components: only the old help panel (removed)"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/design/AnchoredPopover.tsx",
+    "invariant": "Help panel uses AnchoredPopover, carries no local z-index, and its action column may wrap.",
+    "failure_mode": "Restoring the in-place absolute panel, a local z-[n], or nowrap on the action text turns canvasControlsStructure.test.ts red; the walkthrough's reach and row-overlap checks turn red in the real app.",
+    "exception_policy": "none",
+    "strategy": "Move the panel onto AnchoredPopover; replace the flex/nowrap rows with a wrap-safe two-column grid; flow sections with CSS columns so height stays within the minimum window.",
+    "artifacts": [
+      "src/design/AnchoredPopover.tsx",
+      "src/workbench/generationCanvas/components/CanvasControlsHelpPopover.tsx",
+      "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts",
+      "tests/ux/canvas-shortcut-parity.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/components/CanvasControlsHelpPopover.tsx"
+    ],
+    "rationale": "The in-place absolute panel and its own pointerdown/Escape listeners are replaced by AnchoredPopover's dismissal in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency change.",
+    "exit_criteria": []
+  },
+  "migration": "None; presentational.",
+  "residual_risks": [
+    "The node composer can still be covered by the floating Agent dock; that is the separate composer/bottom-dock fix on fix/composer-overlap-and-dropped-keys-20260921."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/design/AnchoredPopover.tsx",
+    "tests": [
+      "src/design/anchoredPopoverPlacement.test.ts",
+      "src/workbench/generationCanvas/components/canvasControlsStructure.test.ts"
+    ],
+    "why": "「谁在最上面」只归 overlayLayers/AnchoredPopover 管；帮助面板只负责用它。结构测试钉死不许再回到原地 absolute + 局部 z-index。"
+  }
+}

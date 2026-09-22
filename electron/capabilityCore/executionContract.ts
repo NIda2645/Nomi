@@ -36,13 +36,37 @@ export type PlanCandidate = {
   sealedContractHash?: string;
 };
 
-export type DroppedField = {
+/**
+ * 参数值层被拒的**机器可读那一面**（人话那一面是 `Error.message`）。
+ *
+ * 为什么要它：这条错误的第一读者是模型，不是人。MCP 2026-07-28 把「input validation errors
+ * (e.g., date in wrong format, value out of range)」归进 tool execution errors，并要求客户端
+ * *"provide tool execution errors to language models to enable self-correction"*——
+ * 能自纠的前提是错误里说得出**合法键**与**合法取值**。旧实现两样都没有：未知键直接丢，
+ * 值不合法只回一句「不符合当前模型的声明」。
+ */
+export type ParameterRejectionCode =
+  | "unknown_parameter"
+  | "parameter_type_mismatch"
+  | "parameter_not_in_enum"
+  | "parameter_out_of_range"
+  | "missing_required_parameter"
+  | "unknown_variant";
+
+export type ParameterRejection = {
+  code: ParameterRejectionCode;
+  /** `parameters.<key>` 或 `variantId`——模型下一次该改哪一处。 */
   path: string;
-  /**
-   * `planning_input` = Nomi 自己消费的意图键（`generationPlanningParameters.ts` 那张登记表），
-   * 它本来就不上线缆，记下来是为了诚实，不是「不支持」。真正不认识的键不再落这里——它们报错。
-   */
-  reason: "unsupported_parameter" | "invalid_parameter" | "planning_input";
+  /** 这个模型此刻接受的全部参数键（字典序，稳定）。 */
+  allowedKeys?: string[];
+  /** 与写错那个键最接近的合法键；没有足够接近的就不给（不许猜一个凑数）。 */
+  closestKey?: string;
+  expectedType?: ParameterField["type"];
+  allowedValues?: Array<string | number | boolean>;
+  min?: number;
+  max?: number;
+  /** 该模型声明过的变体 id；空数组 = 这个模型没有变体，不是「随便填」。 */
+  allowedVariantIds?: string[];
 };
 
 export type ExecutionContractV1 = {
@@ -62,15 +86,48 @@ export type ExecutionContractV1 = {
   references: PlanAssetReference[];
   contractHash: string;
   warnings: string[];
-  droppedFields: DroppedField[];
 };
 
-export class ContractCompilationError extends Error {
-  readonly code = "contract_invalid" as const;
+/**
+ * 把拒绝摊平成**语言中立、机器可读**的一层（键名、取值、范围——没有一个字是散文）。
+ *
+ * 为什么必须摊平：工具错误的渲染层 `buildToolErrorOutcome` 读的是 `error.details`，
+ * 它是那条通路上唯一会被原样送到模型眼前的结构化字段。2026-09-22 验收查到
+ * `rejection` 全仓零消费者——机器可读那一半从未离开进程，到模型那儿的只有一句中文散文。
+ * 人话（zh/en 两版）由错误码表出，事实由这里出，两者分工不混。
+ */
+function rejectionDetails(rejection: ParameterRejection): Record<string, string | number> {
+  return {
+    at: rejection.path,
+    ...(rejection.allowedKeys?.length ? { allowedKeys: rejection.allowedKeys.join(",") } : {}),
+    ...(rejection.closestKey ? { closestKey: rejection.closestKey } : {}),
+    ...(rejection.expectedType ? { expectedType: rejection.expectedType } : {}),
+    ...(rejection.allowedValues?.length ? { allowedValues: rejection.allowedValues.map(String).join(",") } : {}),
+    ...(rejection.min !== undefined ? { min: rejection.min } : {}),
+    ...(rejection.max !== undefined ? { max: rejection.max } : {}),
+    ...(rejection.allowedVariantIds ? { allowedVariantIds: rejection.allowedVariantIds.join(",") || "(none)" } : {}),
+  };
+}
 
-  constructor(message: string) {
+export class ContractCompilationError extends Error {
+  /**
+   * 带 rejection 时就是那条具体的码（`unknown_parameter` 等），否则是笼统的 `contract_invalid`。
+   * 具体码才让模型知道该改什么；`buildToolErrorOutcome` 按它查 zh/en 文案与恢复动作。
+   */
+  readonly code: ParameterRejectionCode | "contract_invalid";
+  /** Present whenever the rejection is about a value the caller sent (see `ParameterRejection`). */
+  readonly rejection?: ParameterRejection;
+  /** 语言中立的事实，由传输层原样送到模型眼前。 */
+  readonly details?: Record<string, string | number>;
+
+  constructor(message: string, rejection?: ParameterRejection) {
     super(message);
     this.name = "ContractCompilationError";
+    this.code = rejection?.code ?? "contract_invalid";
+    if (rejection) {
+      this.rejection = rejection;
+      this.details = rejectionDetails(rejection);
+    }
   }
 }
 
@@ -100,7 +157,7 @@ function stableJson(value: unknown): string {
   throw new ContractCompilationError("Contract values must be JSON serializable");
 }
 
-function hashContract(value: Omit<ExecutionContractV1, "contractHash" | "warnings" | "droppedFields">): string {
+function hashContract(value: Omit<ExecutionContractV1, "contractHash" | "warnings">): string {
   return crypto.createHash("sha256").update(stableJson(value)).digest("hex");
 }
 
@@ -119,37 +176,149 @@ function parameterMatches(type: string, value: unknown): boolean {
   }
 }
 
-function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { parameters: Record<string, unknown>; warnings: string[]; droppedFields: DroppedField[] } {
+/** Levenshtein distance, capped at the shorter word — only used to suggest a near-miss key. */
+function editDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = previous[0]!;
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const candidateCost = Math.min(
+        previous[j]! + 1,
+        previous[j - 1]! + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+      diagonal = previous[j]!;
+      previous[j] = candidateCost;
+    }
+  }
+  return previous[right.length]!;
+}
+
+/**
+ * 「你是不是想写这个」——只在**真的接近**时才给（阈值 = 键长的 1/3，至少 1，最多 3）。
+ * 没有足够接近的就返回 undefined：给一个不相干的键会把模型带去第二个错误答案。
+ */
+function closestParameterKey(written: string, allowedKeys: readonly string[]): string | undefined {
+  const budget = Math.min(3, Math.max(1, Math.floor(written.length / 3)));
+  let best: { key: string; distance: number } | undefined;
+  for (const key of allowedKeys) {
+    const distance = editDistance(written.toLowerCase(), key.toLowerCase());
+    if (distance <= budget && (!best || distance < best.distance)) best = { key, distance };
+  }
+  return best?.key;
+}
+
+const displayValue = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value));
+
+/**
+ * `candidate.parameters` 里那一小撮**不是供应商参数**的键：它们是 Nomi 自己的选型意图，
+ * 由 `videoRecommendationInput`（`mcpGenerationVideoResolve.ts`）读走用来推荐模式/模型，
+ * 从来不上 wire。
+ *
+ * **每个键连同它的类型一起声明**（2026-09-22 验收：旧版只有键名，于是
+ * `{quality: 99999, preferredFamily: {a:1}}` 会被原样吞掉、连 warning 都没有——
+ * 比「没有参数表」那条分支还弱）。现在类型不对照样拒，与真参数同一套话术。
+ *
+ * 这张表是**消费方那 12 个键的子集**，子集关系由 `parameterAdmission.class.test.ts` 按行为核：
+ * 表里的每个键都必须真被读走，消费方新读一个键却没进表也要红。
+ */
+export const GENERATION_PLANNING_HINTS = Object.freeze({
+  cameraIntent: "string",
+  preferredFamily: "string",
+  preserveCharacter: "boolean",
+  preserveTransition: "boolean",
+  quality: "string",
+  useReferenceAudio: "boolean",
+} as const satisfies Record<string, ParameterField["type"]>);
+
+export const GENERATION_PLANNING_HINT_KEYS = Object.freeze(
+  Object.keys(GENERATION_PLANNING_HINTS) as Array<keyof typeof GENERATION_PLANNING_HINTS>,
+);
+
+
+/**
+ * 参数值层的**唯一**准入边界（两个模型面、三个调用点共用这一处）。
+ *
+ * 旧实现对未知键只做 `droppedFields.push(...)` 然后继续——而 `droppedFields` 全仓没有生产读者，
+ * 于是「模型点名的参数」和「真正发给供应商的参数」可以不一样，**没有任何地方会红**：
+ * 外部宿主猜错一个键名，计划照样成功，用户拿到的是按默认值跑出来的片子。
+ * 现在五种填错方式一律当场拒，并在 `ParameterRejection` 里带上模型下一次写对所需的全部事实。
+ */
+function compileParameters(candidate: PlanCandidate, module: ResolvedModule): { parameters: Record<string, unknown>; warnings: string[] } {
   const parameters: Record<string, unknown> = {};
   const warnings: string[] = [];
-  const droppedFields: DroppedField[] = [];
+  const allowedKeys = Object.keys(module.parameterSchema).sort();
+  const model = `${module.providerId}/${module.modelId}`;
   for (const [key, value] of Object.entries(candidate.parameters)) {
     const field = module.parameterSchema[key];
-    if (!field) {
-      // Nomi 自己读的意图键：登记后丢，不上线缆（表与读者由 generationPlanningParameters.test 钉住）。
-      if (isGenerationPlanningParameter(key)) {
-        droppedFields.push({ path: `parameters.${key}`, reason: "planning_input" });
-        continue;
+    // 选型意图键：Nomi 的推荐器读它，供应商请求里没有它。不进合同，也不算「填错」——
+    // 但**类型照判**：垃圾值无声吞掉与静默丢弃是同一个毛病。
+    const hintType = (GENERATION_PLANNING_HINTS as Record<string, ParameterField["type"]>)[key];
+    if (!field && hintType) {
+      if (!parameterMatches(hintType, value)) {
+        throw new ContractCompilationError(
+          `参数 parameters.${key} 是 Nomi 的选型意图键，类型必须是 ${hintType}，收到的是 ${typeof value}。`,
+          { code: "parameter_type_mismatch", path: `parameters.${key}`, expectedType: hintType, allowedKeys },
+        );
       }
-      // 其余不认识的键**报错并列出合法键**。静默丢弃是「你批准的是 A、我们发出去的是 B」的制造机：
-      // 用户在付款卡上把清晰度改成 2K，这里一声不响地丢掉，供应商按自己的默认出 1k，节点上仍印 2K。
-      droppedFields.push({ path: `parameters.${key}`, reason: "unsupported_parameter" });
-      const legal = Object.keys(module.parameterSchema).sort();
+      continue;
+    }
+    if (!field && allowedKeys.length === 0) {
+      // 这个模型在目录里**一个参数都没声明**。那不等于「这个键是错的」，只等于「我们不知道」——
+      // 证不出错就不许拒（R17：能判的判，判不了的明说）。但也绝不能像旧实现那样悄悄丢掉：
+      // 调用方点名的值原样留在合同里，并在 warnings 里说清它没被校验过。
+      parameters[key] = value;
+      warnings.push(`${model} 没有声明参数表，参数 ${key} 原样带过、未经校验`);
+      continue;
+    }
+    if (!field) {
+      const closestKey = closestParameterKey(key, allowedKeys);
       throw new ContractCompilationError(
-        `参数 parameters.${key} 不在 ${module.providerId}/${module.modelId}（${module.mode}）声明的参数里。`
-        + `该模型这一模式接受：${legal.length ? legal.join("、") : "（这条 mapping 没有声明任何参数）"}`,
+        `${model} 不接受参数 ${key}。`
+        + (closestKey ? `最接近的合法键是 ${closestKey}。` : "")
+        + `该模型此刻接受的参数键：${allowedKeys.length ? allowedKeys.join("、") : "（无）"}。`,
+        { code: "unknown_parameter", path: `parameters.${key}`, allowedKeys, ...(closestKey ? { closestKey } : {}) },
       );
     }
-    if (!parameterMatches(field.type, value) || (field.enum && !field.enum.some((option) => Object.is(option, value)))) {
-      droppedFields.push({ path: `parameters.${key}`, reason: "invalid_parameter" });
-      throw new ContractCompilationError(`参数 parameters.${key} 不符合当前模型的声明`);
+    if (!parameterMatches(field.type, value)) {
+      throw new ContractCompilationError(
+        `参数 parameters.${key} 的类型不对：${model} 要 ${field.type}，收到的是 ${typeof value}。`,
+        { code: "parameter_type_mismatch", path: `parameters.${key}`, expectedType: field.type, allowedKeys },
+      );
+    }
+    if (field.enum && !field.enum.some((option) => Object.is(option, value))) {
+      throw new ContractCompilationError(
+        `参数 parameters.${key} 的取值 ${displayValue(value)} 不在 ${model} 的合法取值里。`
+        + `合法取值：${field.enum.map(displayValue).join("、")}。`,
+        { code: "parameter_not_in_enum", path: `parameters.${key}`, allowedValues: [...field.enum], allowedKeys },
+      );
+    }
+    if (typeof value === "number"
+      && ((field.min !== undefined && value < field.min) || (field.max !== undefined && value > field.max))) {
+      throw new ContractCompilationError(
+        `参数 parameters.${key} 的取值 ${value} 超出 ${model} 声明的范围`
+        + `（${field.min ?? "不限"} ～ ${field.max ?? "不限"}）。`,
+        {
+          code: "parameter_out_of_range",
+          path: `parameters.${key}`,
+          ...(field.min !== undefined ? { min: field.min } : {}),
+          ...(field.max !== undefined ? { max: field.max } : {}),
+          allowedKeys,
+        },
+      );
     }
     parameters[key] = value;
   }
   for (const [key, field] of Object.entries(module.parameterSchema)) {
-    if (field.required && !(key in parameters)) throw new ContractCompilationError(`缺少必填参数 parameters.${key}`);
+    if (field.required && !(key in parameters)) {
+      throw new ContractCompilationError(
+        `缺少必填参数 parameters.${key}（${model}）。该模型接受的参数键：${allowedKeys.join("、")}。`,
+        { code: "missing_required_parameter", path: `parameters.${key}`, allowedKeys },
+      );
+    }
   }
-  return { parameters, warnings, droppedFields };
+  return { parameters, warnings };
 }
 
 export type ExecutionContractCompileOptions = {
@@ -167,6 +336,10 @@ export type ExecutionContractCompileOptions = {
    * 不是「投影不了就原样发」——原样发正是那个 bug。
    */
   referenceSourceUrls?: readonly (string | undefined)[];
+   * 该模型声明过的变体 id。给了就**逐个核**——不给等于「这条路还拿不到变体清单」，
+   * 而不是「随便填都行」；拿得到清单的调用点必须传，见 `mcpGenerationTools` 的 preview/gate_request。
+   */
+  allowedVariantIds?: readonly string[];
 };
 
 /**
@@ -202,6 +375,15 @@ export function compileExecutionContract(
   if (!candidate.prompt.trim()) throw new ContractCompilationError("Prompt is required");
   const prompt = projectContractPrompt(candidate, options.referenceSourceUrls);
   if (candidate.variantId !== undefined && !candidate.variantId.trim()) throw new ContractCompilationError("Variant id must not be empty");
+  if (candidate.variantId !== undefined && options.allowedVariantIds !== undefined
+    && !options.allowedVariantIds.includes(candidate.variantId.trim())) {
+    const allowedVariantIds = [...options.allowedVariantIds];
+    throw new ContractCompilationError(
+      `变体 ${candidate.variantId.trim()} 不属于 ${candidate.providerId}/${candidate.modelId}。`
+      + `该模型的变体：${allowedVariantIds.length ? allowedVariantIds.join("、") : "（这个模型没有变体，请不要传 variantId）"}。`,
+      { code: "unknown_variant", path: "variantId", allowedVariantIds },
+    );
+  }
   if (candidate.modeId !== undefined && !candidate.modeId.trim()) throw new ContractCompilationError("Mode id must not be empty");
   if (candidate.transportModelId !== undefined && !candidate.transportModelId.trim()) throw new ContractCompilationError("Transport model id must not be empty");
   if (candidate.sealedContractHash) throw new NewDraftRequiredError();
@@ -210,7 +392,7 @@ export function compileExecutionContract(
     throw new ContractCompilationError("参考素材数量超过当前模式支持的上限");
   }
   const effectiveModule = options.parameterSchema ? { ...module, parameterSchema: options.parameterSchema } : module;
-  const { parameters, warnings, droppedFields } = compileParameters(candidate, effectiveModule);
+  const { parameters, warnings } = compileParameters(candidate, effectiveModule);
   const semantic = {
     schemaVersion: EXECUTION_CONTRACT_SCHEMA_VERSION,
     candidateId: candidate.candidateId,
@@ -226,8 +408,8 @@ export function compileExecutionContract(
     prompt,
     parameters,
     references: candidate.references.map((reference) => ({ ...reference })),
-  } satisfies Omit<ExecutionContractV1, "contractHash" | "warnings" | "droppedFields">;
-  return { ...semantic, contractHash: hashContract(semantic), warnings, droppedFields };
+  } satisfies Omit<ExecutionContractV1, "contractHash" | "warnings">;
+  return { ...semantic, contractHash: hashContract(semantic), warnings };
 }
 
 export function applyPlanCandidatePatch(candidate: PlanCandidate, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>): PlanCandidate {

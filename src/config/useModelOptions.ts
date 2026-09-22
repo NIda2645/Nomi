@@ -25,7 +25,6 @@ export {
 export {
   inferImageModelVendor,
   findModelOptionByIdentifier,
-  getModelOptionRequestAlias,
   resolveExecutableImageModelFromOptions,
   type ResolvedExecutableImageModel,
 } from './modelOptionResolvers'

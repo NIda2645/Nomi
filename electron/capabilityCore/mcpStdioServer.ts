@@ -53,6 +53,7 @@ import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { installCatalogRowLookup } from './modelSpecRead'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import { createMcpStdioProjectSessionRouter } from './mcpStdioProjectSessionRouter'
 import { createProductionMcpStdioProjectSessionBinding } from './mcpStdioProjectSessionBinding'
@@ -71,6 +72,9 @@ import { executeMcpDocumentWriteWithReceipt } from './mcpDocumentWriteReceipt'
 import { logWarn } from '../logging/logger'
 
 const productionRuns = getProductionRunService()
+
+// 档案解析要目录行里的 meta（fal/* 这类键靠 meta.archetypeId 钉档案）。装配期接一次。
+installCatalogRowLookup()
 
 export type McpStdioServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority

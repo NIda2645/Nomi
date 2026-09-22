@@ -31,11 +31,14 @@ import { projectCollapsedGroups } from '../model/canvasCardStackModel'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
 import { useCanvasGroupActions } from '../components/useCanvasGroupActions'
 import { measuredRectFromInternalNode } from './canvasMeasuredNodeRect'
+import { useCanvasPastePlacement } from './useCanvasPastePlacement'
+import { CANVAS_RESULT_DRAG_MIME } from '../components/canvasResultDrag'
 import { useCanvasFrameTool } from '../components/useCanvasFrameTool'
 import { useCanvasFrameMembership } from '../components/useCanvasFrameMembership'
 import { useCanvasFrameActions } from '../components/useCanvasFrameActions'
 import type { CanvasFrameInteraction } from '../components/GroupFrame'
 import { useCanvasShortcuts } from '../components/useCanvasShortcuts'
+import { connectSelectedCanvasNodes } from '../components/canvasSelectionConnection'
 import { useCanvasScreenshotCapture } from '../components/useCanvasScreenshotCapture'
 import { useCanvasProductionActions } from '../components/useCanvasProductionActions'
 import { useCanvasBatchDockVisibility } from '../components/useCanvasBatchDockVisibility'
@@ -43,7 +46,7 @@ import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
 import { useNodeAppearTracking } from '../components/useNodeAppearTracking'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
-import { useCreatedNodeVisibilityPan } from '../components/useCreatedNodeVisibilityPan'
+import { useCreatedNodeVisibilityPan, useRevealCreatedNodes } from '../components/useCreatedNodeVisibilityPan'
 import { useReactFlowViewportAnimation } from './useReactFlowViewportAnimation'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
 import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
@@ -289,6 +292,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     zoomRef,
   })
 
+  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
+  const selectCanvasFrame = frameActions.selectFrame
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -298,6 +303,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     moveGroupNodes,
     moveSelectedNodes,
     selectNodes,
+    onSelectEmptyFrame: frameActions.selectFrame,
   })
   const {
     handleGroupSelectedNodes,
@@ -326,7 +332,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     getNodeRect: getMeasuredNodeRect,
   })
   const frameMembership = useCanvasFrameMembership({ readOnly, frameBoxes: groupBoxes, getNodeRect: getMeasuredNodeRect })
-  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
   const renameGroup = useGenerationCanvasStore((state) => state.renameGroup)
   const setGroupDescription = useGenerationCanvasStore((state) => state.setGroupDescription)
 
@@ -366,6 +371,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const getCanvasPointFromClientPoint = React.useCallback((clientX: number, clientY: number) => {
     return flow.screenToFlowPosition({ x: clientX, y: clientY })
   }, [flow])
+  const { getPastePlacement, getStageClientPoint } = useCanvasPastePlacement(hostRef, getCanvasPointFromClientPoint)
   const {
     contextNodeMenu,
     closeContextNodeMenu,
@@ -384,6 +390,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     handleImportContextFiles,
     handleNodeContextAction,
     handleAddConnectedNode,
+    openAddNodeMenuAt,
   } = useGenerationCanvasReactFlowMenus({
     readOnly,
     hostRef,
@@ -435,7 +442,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     onRename: renameGroup,
     onDescribe: setGroupDescription,
     onOpenMenu: frameActions.openFrameMenu,
+    selectedGroupId: frameActions.selectedFrameId,
   }), [
+    frameActions.selectedFrameId,
     frameActions.editingFrameId,
     frameActions.openFrameMenu,
     frameActions.setEditingFrameId,
@@ -610,8 +619,25 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly, startConnection])
 
   const handlePaneClick = React.useCallback(() => {
-    if (!readOnly && !canvasPanMovedRef.current) clearSelection()
-  }, [canvasPanMovedRef, clearSelection, readOnly])
+    if (readOnly || canvasPanMovedRef.current) return
+    clearSelection()
+    selectCanvasFrame(null)
+  }, [canvasPanMovedRef, clearSelection, readOnly, selectCanvasFrame])
+
+  const revealCreatedNodes = useRevealCreatedNodes({ animateViewportTo, readViewportTarget, stageRef: hostRef })
+  // ⌘D：副本被整簇避让推开后常落在视口外，由这次手势显式把整簇露出来（副本即复制后的选区）。
+  const duplicateSelectedNodes = React.useCallback(() => {
+    const state = useGenerationCanvasStore.getState()
+    state.duplicateSelectedNodes()
+    const next = useGenerationCanvasStore.getState()
+    if (next.nodes !== state.nodes) revealCreatedNodes(next.nodes.filter((node) => next.selectedNodeIds.includes(node.id)))
+  }, [revealCreatedNodes])
+  const handleTidy = React.useCallback(() => tidy(stageSize.width / Math.max(1, stageSize.height)), [stageSize, tidy])
+  // Tab 新建：与 Cmd+V 同一个落点判据（鼠标在舞台里 → 那一点；否则舞台中央）。
+  const openAddNodeMenu = React.useCallback(() => {
+    const point = getStageClientPoint()
+    if (point) openAddNodeMenuAt(point.x, point.y)
+  }, [getStageClientPoint, openAddNodeMenuAt])
 
   useCanvasShortcuts({
     readOnly,
@@ -621,6 +647,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     activeCategoryId,
     setActiveEdge: () => setSelectedEdgeId(null),
     deleteActiveEdge,
+    deleteActiveFrame: frameActions.deleteSelectedFrame,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes: handleGroupSelectedNodes,
@@ -628,15 +655,20 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     copySelectedNodes,
     cutSelectedNodes,
     pasteNodes,
-    getPastePosition: getInsertionPosition,
+    getPastePlacement,
     zoomByStep: handleZoomByStep,
     undo,
     redo,
+    duplicateSelectedNodes,
+    connectSelectedNodes: connectSelectedCanvasNodes,
+    generateSelectedNodes: production.generate,
+    openAddNodeMenu,
+    tidyCanvas: handleTidy,
   })
 
   const handleDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (readOnly) return
-    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME]
+    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME, CANVAS_RESULT_DRAG_MIME]
     if (droppableTypes.some((type) => event.dataTransfer.types.includes(type))) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
@@ -644,22 +676,21 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly])
 
   const handleDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
       // 放下即动作起点：签发此刻打开的项目作为素材归属边界。
       activeProjectId: withProjectAction((project) => project.binding.projectId) ?? null,
-      offset: { x: currentViewport.x, y: currentViewport.y },
-      zoom: currentViewport.zoom,
+      toCanvasPoint: getCanvasPointFromClientPoint,
       activeCategoryId,
     })
-  }, [activeCategoryId, flow, readOnly])
+  }, [activeCategoryId, getCanvasPointFromClientPoint, readOnly])
 
   return (
     <section
       ref={hostRef}
       className={cn('generation-canvas-react-flow', 'generation-canvas-v2__stage', 'group/canvas', 'relative w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink')}
       aria-label={t('generationCommon.canvas.aria')}
+      data-shortcut-surface="canvas"
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
@@ -777,7 +808,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         // fit 那 200ms 的 rAF 动画还在逐帧写视口，d3 过渡每一帧都被盖回去——滑块停在 fit 的 59% 而不是 100%
         // （2026-09-18 金路径真机；与 fitView 零时长那条「先停掉在飞的动画」是同一类，#503 同款）。
         onResetView={() => { cancelViewportAnimation(); animateViewportTo(1, { x: 0, y: 0 }, 200) }}
-        onTidy={() => tidy(stageSize.width / Math.max(1, stageSize.height))}
+        onTidy={handleTidy}
         onZoomTo={zoomTo}
         frameMenu={frameActions.frameMenu}
         onFrameMenuAction={frameActions.handleFrameMenuAction}

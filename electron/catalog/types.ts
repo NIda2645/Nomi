@@ -436,7 +436,7 @@ export type HttpOperation = {
   request_transform?: string;
   /**
    * **wire 必填参数的兜底默认值**（headless/MCP 路专用）。UI 路由 NodeGenerationComposer 会按档案
-   * (src/config/modelArchetypes) 把用户选的 size/voice/model 等填进 request.params；但 MCP/CLI 的
+   * (electron/shared/modelArchetypes) 把用户选的 size/voice/model 等填进 request.params；但 MCP/CLI 的
    * `generate` 不经 UI、调用方也无从知道每家 vendor 的必填参数（nomi_generate 根本不暴露 params）。
    * 缺这些参数时 vendor 直接拒（实测：火山 Seedream 缺 size→HTTP 400；apimart TTS 缺 model→HTTP 500；
    * 豆包语音缺 voice→「未选择音色」）。runtime.runTask 解析出 mapping 后，把这里的默认值**合并到

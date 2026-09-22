@@ -28,6 +28,7 @@ import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
 import { getGenerationNodeIcon } from './renderRegistry'
+import { CANVAS_RESULT_DRAG_MIME, encodeCanvasResultDrag } from '../components/canvasResultDrag'
 
 const INITIAL_VISIBLE_RESULTS = 12
 
@@ -190,6 +191,28 @@ function HistoryVideoThumb({
       </div>
     </span>
   )
+}
+
+/**
+ * 版本托盘里的一行：按着 Alt/⌥ 拖出去 → 在画布松手处复制出一张独立素材卡（落卡在舞台 onDrop，
+ * components/canvasResultDrag.ts）。不按 Alt 的拖动直接取消——托盘里的拖动原本就什么也不做，
+ * 点一下仍是「设为当前版本」。
+ */
+function startResultCopyDrag(event: React.DragEvent<HTMLElement>, nodeId: string, entry: GenerationNodeResult): void {
+  if (!event.altKey || !entry.url) {
+    event.preventDefault()
+    return
+  }
+  event.stopPropagation()
+  const thumb = event.currentTarget.querySelector('img')
+  const original = thumb && thumb.naturalWidth > 0 && thumb.getAttribute('src') === entry.url ? thumb : null
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData(CANVAS_RESULT_DRAG_MIME, encodeCanvasResultDrag({
+    sourceNodeId: nodeId,
+    resultIdentity: resultIdentity(entry),
+    ...(original ? { width: original.naturalWidth, height: original.naturalHeight } : {}),
+  }))
+  if (thumb) event.dataTransfer.setDragImage(thumb, thumb.width / 2, thumb.height / 2)
 }
 
 function ResultThumb({
@@ -407,6 +430,8 @@ export function NodeResultStack({
                     )}
                     data-result-stack-item={identity}
                     data-current={isCurrent ? 'true' : undefined}
+                    draggable={!readOnly}
+                    onDragStart={(event) => startResultCopyDrag(event, node.id, entry)}
                     onPointerEnter={() => setHoveredId(identity)}
                     onPointerLeave={(event) => {
                       if (event.currentTarget.contains(document.activeElement)) return

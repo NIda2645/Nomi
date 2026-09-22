@@ -236,9 +236,9 @@ export type MultiShotHelperDeps = {
   parsers: MultiShotCandidateParsers;
   normalizeVideoCandidate: (candidate: PlanCandidate) => PlanCandidate;
   /**
-   * 编译一份执行合同。**故意不在这里自己调 `compileExecutionContract`**：参数表投影与
-   * 提示词投影必须和 preview／gate_request 那两次逐字一致，谁多写一份谁就是第二台发动机。
-   * 由 `mcpGenerationTools` 给唯一的那一个实现。
+   * 编译一份执行合同。**故意不在这里自己调 `compileExecutionContract`**：参数表（含
+   * `videoCompileOptions` 给的变体清单）与提示词投影必须和 preview／gate_request 那两次逐字一致，
+   * 谁多写一份谁就是第二台发动机。由 `mcpGenerationTools` 的 `contractFor` 给唯一的那一个实现。
    */
   compileContract: (candidate: PlanCandidate, projectId: string) => ExecutionContractV1;
   priceForCandidate: (candidate: PlanCandidate) => ShotPrice;

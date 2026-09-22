@@ -5,7 +5,7 @@
 > **怎么读这份文件（3 层）**：
 > - **L0 每轮** = `scripts/claude-hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D6** + 规则索引。**每次 session 读完再动手。** 保持精简（一屏左右）。
-> - **L2 触发才查** = `docs/engineering-rules.md`（17 个主号详解 + 旧号别名表）；`docs/coding-standards.md`（编码规范）；`docs/lessons/INDEX.md`（踩过的坑，按 A/B/C/D/E/F 场景分，走查/CI/分支/平台/产品/编排前各查一眼）；`docs/ARCHITECTURE-NOW.md`（各子系统现在真正跑的是什么，带 file:line，读方案前先过）；`docs/GLOSSARY.md`（同一东西的多个叫法）。
+> - **L2 触发才查** = `docs/engineering-rules.md`（18 个主号详解 + 旧号别名表）；`docs/coding-standards.md`（编码规范）；`docs/lessons/INDEX.md`（踩过的坑，按 A/B/C/D/E/F 场景分，走查/CI/分支/平台/产品/编排前各查一眼）；`docs/ARCHITECTURE-NOW.md`（各子系统现在真正跑的是什么，带 file:line，读方案前先过）；`docs/GLOSSARY.md`（同一东西的多个叫法）。
 >
 > **维护纪律**：本文件是**策展的，不是 append 的**。新踩的坑进 `docs/lessons/`（一条一个文件，挂 `INDEX.md`）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1。Hook 真相源是 `scripts/claude-hooks/`，`pnpm install` postinstall 自动装进 `.Codex/`；`check:claude-hooks` 验同步。**禁止手改 `AGENTS.md`**：改纪律只改本文件，再跑 `pnpm run gen:agents`；`check:agents-sync` 拦漂移。本文件已做过可机器化分诊，删减依据见 `docs/engineering/rule-enforcement-audit.md`。
 
@@ -26,6 +26,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run test` | Vitest 单测 |
 | `pnpm run gates` | 五门（按风险分档）：contracts 全部 + **改动相关**的测试 + build + 盖戳；碰测试基础设施/删改名/空 diff 自动升全量并打印原因 |
 | `pnpm run gates:full` | 五门全量档（今天的全量测试）：测试基础设施改动、手动发布边界、想自己兜底时用 |
+| `pnpm run test:core-smoke -- --fixture <empty\|used\|profile-copy>` | 核心流程冒烟（空节点 composer / 「2 版」托盘 / 编组框删除+⌘Z / 平移手势）：非纯文档 PR 与 main push 必跑，CI 两遍（空项目 / 用过的项目）；`profile-copy` 只在本机、深拷贝真实资料跑完即删。清单唯一 owner `tests/ux/core-smoke/scenarios.mjs` |
 | `pnpm run test:system:focused` | 普通 PR 的 changed/sibling/related tests；仍须配合 contracts |
 | `pnpm run test:system:full` | 测试基础设施或手动发布边界的显式全量本地验证 |
 | `pnpm run review:branch` | 交工前对整条分支跑一次 Ponytail 评审（超限自动分块）；findings 进 `.Codex/ponytail-findings/`，收据进 `.Codex/ponytail-receipt.json`，pre-push 只查这张收据 |
@@ -50,7 +51,7 @@ Nomi：本地优先 AI 视频创作工作台。
 
 **Push 前按风险面分层（R22）**：contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就停；`check:docs-index`/`check:doc-status`/`check:ledger` 只出 warning 不阻断，合入 main 后由 `docs-autosync` workflow 自动补齐回写）；unit 独立选 focused/full（**本机 `pnpm run gates` 也按同一份 `scripts/validation-policy.mjs` 分档**，全量一万两千多个测试交给 CI 并行机器，不再占着全机那把 gates 锁；想本机兜底跑全量用 `pnpm run gates:full`）；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
 
-**交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后只在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
+**交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后**立即**在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`：非纯文档的 merge 必须看到该 SHA 上 `Core Flow Smoke (empty)` / `(used)` 都是 success 才发收据（skipped / 缺席一律拒绝）。**上一个合入没有收据，就不合下一个**；冒烟红了不自动回滚，由人决定修还是 revert。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
 **交工前的 Ponytail 评审（R25，R24 由 PR #223 保留）**：评审只在**能落地的时刻**跑一次——交工前对整条分支 `merge-base(origin/main, HEAD)..HEAD` 跑 `pnpm run review:branch`（只读、限时的 Ponytail 适配器，超过单次上限自动按提交／按文件分块多跑几次再合并，不再逼人拆提交）。findings 落 `.Codex/ponytail-findings/<headSha>.md`，收据落 `.Codex/ponytail-receipt.json`；PR 正文必须带 `## Ponytail` 节，每条发现写「已改」或「不改，因为…」。**钩子只查收据不跑模型**：`pre-commit` 只做敏感数据扫描；`pre-push` 校验要推的每个 ref 的**树**等于收据的树（rebase／改提交信息不改树，不必重审；改一行就失效）——没有收据、树不符、收据 mergeBase 不在这条历史里都 fail-closed。**runner 不可用时的留痕延后**：`pnpm run review:branch -- --defer` 记一行进 `.Codex/ponytail-deferred.log` 并发一张 deferred 收据，`check:ponytail-review` 一直红到补审或 `--accept <sha>`；绕口写法（`--no-verify`、`-c core.hooksPath=` 等）照旧拒绝。
 
@@ -69,6 +70,8 @@ Nomi：本地优先 AI 视频创作工作台。
 ## 动手前/报完成前/push 前的三闸
 
 三闸由 `self-check.sh` hook 每轮自动注入，本文件不复述。核心触发：**P5（动手前）**、**P3+R13（报完成前，含原 R16/R30 两档）**、**R11+R22（push 前）**。贯穿：根因不症状(P2)、加新删旧无并行版(P1)、随输入 derive 不 hardcode、分层≤800 行(R9)。细节查 `docs/engineering-rules.md`。
+
+**派工/接任务时的第六问：概念占用表（R33）** — 动手前五问（哪个用户动作·入口汇不汇到同一函数·加新还是改旧·不一致时谁会红·用户怎么知道成了）之外再问一句：**这一刀碰哪几个概念？每个概念的唯一 owner 在哪个文件/符号？允许谁消费？** 写不出这张表不派工、不开工；同一时段同一概念只归一条 lane，碰到别人持有的概念先停下协调。验收也多一问：**有没有让任何概念多出第二个 owner**（第二份状态/规则/判据、渲染层替主进程做决定的补偿逻辑）——有就打回，**测试绿不作为放行理由**。正本 `docs/engineering/concept-owners.json`。
 
 ## 每日雷达（每 session 第一条消息自动 · 两条）
 
@@ -103,6 +106,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；删改名、空 diff、分类器自身与手动发布边界 fail-closed 到全维度；不删安全/持久化/认证边界覆盖；**没有真实资源时记 `unverified`，不许 mock 绿灯替代 live 证据** |
 | R25 | 交工前 Ponytail 评审 | 交工前 `pnpm run review:branch` 对整分支跑一次（超限自动分块）、findings 进 PR 正文 `## Ponytail` 节逐条表态；钩子只查收据（树相等即放行），失败或无收据 fail-closed，runner 不可用时只许 `-- --defer` 留痕延后 |
 | R27 | 多智能体编排手册 | 派工/收货/接力机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占+开工三行头、收货三查（behind 数/两点回滚/套件失败 delta=0）、等待用 shell 哨兵轮询（禁 `--watch`/Monitor/交卷）；实施派工先引用反方 prior-art 报告（R5②）、`recurring` bug 派工两段式先出门表（R21）。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
+| R33 | 概念的 owner 先于目录 | 派工切的是概念不是文件夹：任务书必带「概念占用表」（碰哪些概念 / 唯一 owner 的文件·符号 / 允许谁消费），写不出不开工；同一时段同一概念只归一条 lane，要碰别人持有的概念先停下协调、不许先写再合；验收多一问「有没有多出第二个 owner」，测试绿不作为放行理由；正本 `docs/engineering/concept-owners.json`（只登记碰到的概念、当场登记、第二个写口即违规）；多入口共享同一概念要有「同一输入 → 出站报文逐字节相同」的对等棘轮。语义级门岗是发版后第一批 TODO |
 
 ## 决策自治
 

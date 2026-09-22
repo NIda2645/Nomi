@@ -28,7 +28,7 @@ import {
   modeTransportFor,
   replaceCustomCapabilityContractMeta,
   resolveArchetypeForModel,
-} from '../../../config/modelArchetypes'
+} from '../../../../electron/shared/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'

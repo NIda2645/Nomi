@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { filledReferenceKinds, nodeUnmetReferenceDependency, unmetReferenceDependency } from './referenceDependency'
 import { SEEDANCE_2_APIMART_ARCHETYPE, SEEDANCE_2_5_ARCHETYPE } from '../../../../../electron/shared/videoCapabilities'
-import type { ArchetypeMode, ArchetypeReferenceSlotKind } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode, ArchetypeReferenceSlotKind } from '../../../../../electron/shared/modelArchetypes'
 
 const omniOf = (archetype: { modes: ArchetypeMode[] }, id: string) =>
   archetype.modes.find((mode) => mode.id === id) as ArchetypeMode

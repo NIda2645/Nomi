@@ -46,6 +46,53 @@ const draggingOwnersByStage = new WeakMap<Element, Set<symbol>>()
 const liveLeases = new Set<{ origin: Element; stage: Element | null | undefined; cancel: () => void }>()
 
 /**
+ * 标志的寿命上限 = 这一次指针手势。**租约模型的最后一道闸**。
+ *
+ * 升起标志的每一位 owner（拖节点 / 拖选区 / 拖框 / 平移）都是**按着指针**才会发生的动作，所以
+ * 指针一松开（pointerup / pointercancel / 窗口失焦），这张画布上就不该再有任何租约。
+ * 各租约自己的 `release()` 照旧走；这里只保证：哪位 owner 的收尾因为时序没走到，标志也**不会活过这次手势**。
+ *
+ * 为什么必须在这一层兜（main #836 / 2026-09-22 用户报「选中节点浮框整个没了 / 点『2 版』没反应」）：
+ * 视口平移的收尾被 React Flow 推迟 150ms（`panOnScroll` 时 `createPanZoomEndHandler` 用 setTimeout 防抖），
+ * 这 150ms 里任何一次画布内按下都会把「这次平移动过没」重置掉，收尾于是跳过，`data-dragging` 永远留在 true，
+ * 浮框 / 浮条 / 版本托盘全部 `invisible`。触发它的是 owner 之间的时序，不是某一位 owner 写错了一行——
+ * 只要释放还靠 owner 各自记账，下一位 owner 就能用另一种时序再漏一次。
+ *
+ * 注意它和 `pointercancel`/`blur` 的**每租约**监听不是两份规则：那一路带 `pointerId`、只收得掉自己这一条，
+ * 且要求 owner 传了 pointerId；这一路按 stage 收全部，兜的正是「没人来收」那一格。
+ */
+const gestureEndGuardByStage = new WeakMap<Element, () => void>()
+/** 每次升旗 +1：兜底收尾只收「手势结束那一刻」的租约，不误伤紧接着开始的下一次手势。 */
+const activateEpochByStage = new WeakMap<Element, number>()
+
+function armGestureEndGuard(stage: Element): void {
+  activateEpochByStage.set(stage, (activateEpochByStage.get(stage) ?? 0) + 1)
+  if (gestureEndGuardByStage.has(stage) || typeof window === 'undefined') return
+  const events = ['pointerup', 'pointercancel', 'blur'] as const
+  const onGestureEnd = (event: Event) => {
+    // 捕获阶段也看得到后代元素的 blur（焦点在控件间移动）；只有窗口本身失焦才算手势被打断。
+    if (event.type === 'blur' && event.target !== window) return
+    disarm()
+    const epoch = activateEpochByStage.get(stage)
+    // 等一帧再收：正常路径上各租约自己的 `release()`（React 的 pointerup、React Flow 0ms 的 move-end）
+    // 先走完，属性只摘一次、和它们的状态更新落在同一轮布局里；只有漏收的那位才轮到这里。
+    window.requestAnimationFrame(() => {
+      if (activateEpochByStage.get(stage) !== epoch || !draggingOwnersByStage.has(stage)) return
+      for (const lease of [...liveLeases]) if (lease.stage === stage) lease.cancel()
+      if (!draggingOwnersByStage.has(stage)) return
+      draggingOwnersByStage.delete(stage)
+      stage.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
+    })
+  }
+  const disarm = () => {
+    for (const name of events) window.removeEventListener(name, onGestureEnd, true)
+    gestureEndGuardByStage.delete(stage)
+  }
+  for (const name of events) window.addEventListener(name, onGestureEnd, true)
+  gestureEndGuardByStage.set(stage, disarm)
+}
+
+/**
  * 把这个容器里所有还没结束的手势**当作被打断**收掉（宿主隐藏/卸载画布时调）。
  *
  * 与 pointercancel 走同一条 `cancel()`：属性摘掉、`onCancel` 照常回调，
@@ -74,6 +121,7 @@ export function beginCanvasDragging(
     draggingOwnersByStage.set(stage, owners)
     owners.add(token)
     stage.setAttribute(CANVAS_DRAGGING_ATTRIBUTE, 'true')
+    armGestureEndGuard(stage)
   }
   if (options.active !== false) activate()
   const release = () => {
@@ -83,6 +131,7 @@ export function beginCanvasDragging(
     const owners = stage && draggingOwnersByStage.get(stage)
     if (!owners?.delete(token) || owners.size) return
     draggingOwnersByStage.delete(stage!)
+    gestureEndGuardByStage.get(stage!)?.()
     stage!.removeAttribute(CANVAS_DRAGGING_ATTRIBUTE)
   }
   const cancel = () => {

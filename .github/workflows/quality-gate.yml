@@ -50,6 +50,7 @@ jobs:
     name: Validation Scope
     runs-on: ubuntu-latest
     outputs:
+      core_smoke: ${{ steps.profile.outputs.core_smoke }}
       unit: ${{ steps.profile.outputs.unit }}
       desktop: ${{ steps.profile.outputs.desktop }}
       journeys: ${{ steps.profile.outputs.journeys }}
@@ -347,6 +348,57 @@ jobs:
             tests/ux/perf-results/canvas-*.json
           if-no-files-found: warn
           retention-days: 7
+  # 核心流程冒烟（2026-09-22 用户拍板，docs/plan/2026-09-22-core-flow-smoke-three-defenses.md）：
+  # 除纯文档外每个 PR、每次 main push 都跑，分类器不许降档。两种夹具各一片：
+  # empty = 空白起点；used = 用过的项目（24 张真实卡、编组 + 空编组框、时间轴展开、Agent 面板开着、1280×800）。
+  # 场景清单唯一 owner：tests/ux/core-smoke/scenarios.mjs；夹具清单与 check 名派生自 scripts/validation-policy.mjs。
+  # 合后 delivery:verify-merged 要这两份 check 在该 merge SHA 上是 success 才发收据。
+  core-smoke:
+    name: Core Flow Smoke (${{ matrix.fixture }})
+    needs: scope
+    if: needs.scope.outputs.core_smoke == 'true'
+    runs-on: ubuntu-latest
+    # used 这一格**照跑、照传证据，但不阻断**（2026-09-22 用户拍板）：实测同一份代码连跑 5 次
+    # 只有 1 次全绿，三种失败都出自还没修的小窗布局问题（T-CV-19 / T-CV-20 / T-QA-21），
+    # 证据在 docs/evidence/2026-09-22-core-smoke-negative-control/。continue-on-error 只改 conclusion、
+    # 不改 outcome，所以 used 红了这格仍然亮红给人看，只是不拉垮 needs.core-smoke.result。
+    # 阻断名单的唯一 owner 是 scripts/validation-policy.mjs 的 CORE_SMOKE_BLOCKING_FIXTURES，
+    # check-quality-gate-workflow 钉死这里与它逐字一致；升阻断只改那一处。
+    continue-on-error: ${{ matrix.fixture != 'empty' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [empty, used]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build selected desktop surfaces once
+        run: pnpm run build
+      - name: Core flow smoke
+        run: xvfb-run -a pnpm run test:core-smoke -- --fixture ${{ matrix.fixture }}
+      - name: Upload walkthrough evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: core-smoke-evidence-${{ matrix.fixture }}
+          path: |
+            artifacts/feel/**
+            outputs/core-smoke/**
+            tests/ux/shots/node-params-and-version-pill/**
+            tests/ux/shots/canvas-drag-pan-gestures/**
+          if-no-files-found: warn
+          retention-days: 7
+
   mac-package:
     name: Mac Package
     needs: scope
@@ -372,7 +424,7 @@ jobs:
 
   quality:
     name: Quality Gate
-    needs: [scope, contracts, unit, desktop-linux, canvas-acceptance, canvas-performance, mac-package]
+    needs: [scope, contracts, unit, core-smoke, desktop-linux, canvas-acceptance, canvas-performance, mac-package]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -401,6 +453,15 @@ jobs:
           test "${{ needs.scope.result }}" = "success"
           test "${{ needs.contracts.result }}" = "success"
           test "${{ needs.unit.result }}" = "success"
+          # 核心冒烟：只有纯文档才允许 skipped；其余（含分类器没给出结论）一律要求 success。
+          # 非阻断的 used 带 continue-on-error，它红时 conclusion 仍是 success，
+          # 所以下面这一行实际判的是**阻断档（empty）过没过**——这正是要的语义。
+          if [ "${{ needs.scope.outputs.core_smoke }}" = "false" ]; then
+            test "${{ needs.scope.outputs.reason }}" = "docs_only"
+            test "${{ needs['core-smoke'].result }}" = "skipped"
+          else
+            test "${{ needs['core-smoke'].result }}" = "success"
+          fi
           if [ "${{ needs.scope.outputs.desktop }}" = "true" ] || \
              [ "${{ needs.scope.outputs.journeys }}" = "true" ] || \
              [ "${{ needs.scope.outputs.canvas }}" = "critical" ]; then

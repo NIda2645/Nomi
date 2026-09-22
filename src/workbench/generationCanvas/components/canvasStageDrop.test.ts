@@ -1,11 +1,14 @@
+import type { DragEvent } from 'react'
 import { describe, expect, it } from 'vitest'
+import { WORKSPACE_FILE_DRAG_MIME } from '../../explorer/workspaceFileDrag'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import {
   isAssetLibraryDropAllowed,
   importBrowserAssetsToGenerationCanvas,
+  handleCanvasStageDrop,
   layoutBrowserAssetDropPositions,
-  resolveAssetLibraryDropPosition,
+  resolveDropOrigin,
 } from './canvasStageDrop'
 
 describe('asset-library canvas write boundary', () => {
@@ -43,7 +46,7 @@ describe('layoutBrowserAssetDropPositions', () => {
     const size = getGenerationNodeDefaultSize('asset')
     const cursor = { x: 640, y: 480 }
     const anchor = { xRatio: 0.25, yRatio: 0.75 }
-    const position = resolveAssetLibraryDropPosition(cursor, anchor)
+    const position = resolveDropOrigin(cursor, anchor)
 
     expect(position.x + size.width * anchor.xRatio).toBe(cursor.x)
     expect(position.y + size.height * anchor.yRatio).toBe(cursor.y)
@@ -73,5 +76,45 @@ describe('importBrowserAssetsToGenerationCanvas', () => {
     expect(state.nodes[2]?.prompt).toBe('雨夜街道\n霓虹反光')
     expect(state.nodes[2]?.contentJson?.content).toHaveLength(2)
     expect(state.selectedNodeIds).toEqual(result.nodeIds)
+  })
+})
+
+// 2026-09-21 用户反馈：「拖放图片/视频上来，不会落在我鼠标最后消失的地方……有时候还会在视线外」。
+// 根因：落点被钳到 x/y ≥ 40（旧画布不许负坐标的遗留），视口在负坐标区时卡片被推到屏外；
+// 且落点是手算的、卡片左上角贴光标。现在：内核换算、不钳制、卡片中心压在光标下、不避让挪位。
+describe('handleCanvasStageDrop — 落在松手的那一点', () => {
+  function workspaceDrop(clientX: number, clientY: number): DragEvent<HTMLDivElement> {
+    const payload = JSON.stringify({ projectId: 'p1', relativePath: 'a.png', name: 'a.png', kind: 'image' })
+    return {
+      clientX,
+      clientY,
+      preventDefault() {},
+      stopPropagation() {},
+      dataTransfer: { getData: (type: string) => (type === WORKSPACE_FILE_DRAG_MIME ? payload : ''), files: [] },
+    } as unknown as DragEvent<HTMLDivElement>
+  }
+
+  it('视口在负坐标区时，卡片中心仍在光标换算出的画布点上（不被钳回 40）', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [], selectedNodeIds: [] })
+    const cursorOnCanvas = { x: -900, y: -350 }
+    handleCanvasStageDrop(workspaceDrop(640, 480), {
+      readOnly: false,
+      activeProjectId: 'p1',
+      toCanvasPoint: () => cursorOnCanvas,
+      activeCategoryId: 'shots',
+    })
+    const [dropped] = useGenerationCanvasStore.getState().nodes
+    const size = getGenerationNodeDefaultSize('asset')
+    expect(dropped?.position.x + size.width / 2).toBeCloseTo(cursorOnCanvas.x, 0)
+    expect(dropped?.position.y + size.height / 2).toBeCloseTo(cursorOnCanvas.y, 0)
+  })
+
+  it('落在已有卡上也不被避让推走（用户指定的点优先）', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [], selectedNodeIds: [] })
+    const ctx = { readOnly: false, activeProjectId: 'p1', toCanvasPoint: () => ({ x: 400, y: 300 }), activeCategoryId: 'shots' }
+    handleCanvasStageDrop(workspaceDrop(0, 0), ctx)
+    handleCanvasStageDrop(workspaceDrop(0, 0), ctx)
+    const [first, second] = useGenerationCanvasStore.getState().nodes
+    expect(second?.position).toEqual(first?.position)
   })
 })

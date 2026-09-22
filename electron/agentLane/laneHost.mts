@@ -185,6 +185,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
       toolNames: group.toolNames.filter(name => options.tools.some(tool => tool.name === name)),
     })).filter(group => group.toolNames.length > 0),
     availableModels: () => snapshot.transcript.flatMap(entry => entry.type === 'message' && isLaneInputMessage(entry.message) ? [entry.message.context.availableModels ?? []] : []).at(-1) ?? [],
+    modelAvailability: options.modelAvailability,
   });
   // 看门狗装在 provider 的流上，所以**每一次**模型请求都带着它——包括压缩与分支摘要那两次
   // （它们走 `streamSimple`，只用 `result()`）。装在别处就会漏掉那两条路，而它们卡住的样子

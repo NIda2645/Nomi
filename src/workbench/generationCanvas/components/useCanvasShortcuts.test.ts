@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createGenerationNode } from '../model/graphOps'
 import { useGenerationCanvasStore, __resetGenerationCanvasHistoryForTests } from '../store/generationCanvasStore'
 import { canvasZoomShortcutDirection, createCanvasKeydownHandler, isCanvasTextEditingContext, shouldPreferCanvasClipboard } from './useCanvasShortcuts'
+import { installShortcutSurfaceTracker, resetShortcutSurfaceForTest } from '../../shortcutSurface'
 
 function targetWithEditableAncestor(editable: boolean): EventTarget {
   const ancestor = editable ? {} : null
@@ -28,11 +29,20 @@ function keyboardEvent(target: EventTarget, overrides: Partial<KeyboardEvent> = 
   return event as KeyboardEvent
 }
 
+const NO_PARITY_COMMANDS = {
+  duplicateSelectedNodes: () => {},
+  connectSelectedNodes: () => {},
+  generateSelectedNodes: () => {},
+  openAddNodeMenu: () => {},
+  tidyCanvas: () => {},
+}
+
 const originalWindow = globalThis.window
 const originalDocument = globalThis.document
 
 afterEach(() => {
   __resetGenerationCanvasHistoryForTests()
+  resetShortcutSurfaceForTest()
   if (originalWindow === undefined) delete (globalThis as { window?: Window }).window
   else globalThis.window = originalWindow
   if (originalDocument === undefined) delete (globalThis as { document?: Document }).document
@@ -151,6 +161,7 @@ describe('画布快捷键的文本编辑边界', () => {
       zoomByStep: () => {},
       undo,
       redo: store.redo,
+      ...NO_PARITY_COMMANDS,
     })
     eventWindow.addEventListener('keydown', (event) => handler(event as KeyboardEvent))
     eventWindow.dispatchEvent(keyboardEvent(modelPicker))
@@ -190,6 +201,7 @@ describe('画布快捷键的文本编辑边界', () => {
       zoomByStep: () => {},
       undo,
       redo: store.redo,
+      ...NO_PARITY_COMMANDS,
     })
     eventWindow.addEventListener('keydown', (event) => handler(event as KeyboardEvent))
     const event = keyboardEvent(promptTextarea)
@@ -197,6 +209,49 @@ describe('画布快捷键的文本编辑边界', () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(useGenerationCanvasStore.getState().nodes[0]?.meta?.modelKey).toBe('new-model')
+  })
+
+  it('同屏时间轴刚被按过时，⌘Z 不归画布（归属判据住在 shortcutSurface.ts）', () => {
+    const eventWindow = new EventTarget() as EventTarget & { getSelection: () => { isCollapsed: boolean } }
+    eventWindow.getSelection = () => ({ isCollapsed: true })
+    globalThis.window = eventWindow as Window & typeof globalThis
+    globalThis.document = { activeElement: null, querySelector: () => null } as unknown as Document
+    const stage = { offsetParent: {} } as unknown as HTMLDivElement
+    const timeline = { offsetParent: {} }
+    installShortcutSurfaceTracker(eventWindow as Window)
+    const pointer = new Event('pointerdown')
+    Object.defineProperty(pointer, 'target', { value: { closest: () => timeline } })
+    eventWindow.dispatchEvent(pointer)
+
+    const undo = vi.fn()
+    const handler = createCanvasKeydownHandler({
+      stageRef: { current: stage } as RefObject<HTMLDivElement>,
+      selectedNodeCount: 0,
+      selectedGroupCount: 0,
+      activeCategoryId: 'shots',
+      setActiveEdge: () => {},
+      cancelConnection: () => {},
+      deleteSelectedNodes: () => {},
+      groupSelectedNodes: () => {},
+      ungroupSelectedNodes: () => {},
+      copySelectedNodes: () => {},
+      cutSelectedNodes: () => {},
+      pasteNodes: () => {},
+      zoomByStep: () => {},
+      undo,
+      redo: () => {},
+      ...NO_PARITY_COMMANDS,
+    })
+    const event = keyboardEvent(targetWithEditableAncestor(false))
+    handler(event)
+    expect(undo).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+
+    const backOnCanvas = new Event('pointerdown')
+    Object.defineProperty(backOnCanvas, 'target', { value: { closest: () => stage } })
+    eventWindow.dispatchEvent(backOnCanvas)
+    handler(keyboardEvent(targetWithEditableAncestor(false)))
+    expect(undo).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -21,7 +21,10 @@ import {
 } from "./exportAuditManifest";
 import { planExport } from "./exportPlanner";
 import { ExportCancelledError, renderFiltergraphToMp4, transcodeWebmFileToMp4, transcodeWebmToMp4, type TimelineMp4ExportResult } from "./ffmpegRunner";
-import { compileFfmpegFiltergraph, type FfmpegFiltergraphPlan, type FfmpegTextOverlayInput } from "./ffmpegFiltergraph";
+import { compileFfmpegFiltergraph, type FfmpegFiltergraphPlan } from "./ffmpegFiltergraph";
+import { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
+import type { FfmpegTextOverlayInput } from "./ffmpegTextOverlayGraph";
+import { logError } from "../logging/logger";
 import { probeMediaMetadata } from "./mediaProbe";
 import { appendExportTempInputChunk, finishExportTempInput as finishExportTempInputFile, removeExportTempInput } from "./exportTempInput";
 import { ensureProjectFolders, projectDirById, resolveProjectRelativePath } from "../projects/repository";
@@ -198,8 +201,15 @@ async function tryBuildFiltergraphExport(
       };
     }
     return { manifest, plan };
-  } catch {
-    return null; // 校验/编译失败 → 回退 WebM
+  } catch (error) {
+    // 「不适用」与「编译失败」是两件事，别混成一个静默降级：不适用（素材不是本地文件、没有轨、
+    // fps/时长不合法…）在上面每一处都是直接 return null，走到这里的只剩编译失败。
+    // 退回照旧（用户仍拿得到片子），但留一行可诊断的 ERROR——零报错的降级是本仓反复抓的那一族。
+    logError("export", "filtergraph_compile_failed_fell_back_to_webm", error, {
+      projectId,
+      code: error instanceof FfmpegFiltergraphError ? error.code : "unknown",
+    });
+    return null;
   }
 }
 

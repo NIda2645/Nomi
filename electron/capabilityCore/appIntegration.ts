@@ -50,6 +50,7 @@ import { readGenerationDefaultModelResolver } from './generationDefaultModelReso
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { installCatalogRowLookup } from './modelSpecRead'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
 import type { CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import {
@@ -87,6 +88,9 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
 
 /** 当前进程 RPC 端口（未启动=null）。「接入助手卡」据此显示能力核就绪态。 */
+// 档案解析要目录行里的 meta（fal/* 这类带斜杠的键靠 meta.archetypeId 钉档案）。装配期接一次。
+installCatalogRowLookup()
+
 export function getCapabilityPort(): number | null {
   return handle?.port ?? null
 }

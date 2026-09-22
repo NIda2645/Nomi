@@ -1,4 +1,5 @@
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
+import { CENTER_PLACEMENT_ANCHOR, type CanvasPlacementAnchor } from '../model/canvasPlacement'
 import { importLocalFilesToGenerationCanvas } from './canvasStageDrop'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
@@ -32,7 +33,7 @@ type CanvasMenuActionsInput = {
   startConnection: (nodeId: string, side: ConnectionAnchorSide) => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (position: { x: number; y: number }) => void
+  pasteNodes: (position: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   groupSelectedNodes: () => void
   deleteSelectedNodes: () => void
 }
@@ -71,7 +72,7 @@ export function buildCanvasMenuActions(input: CanvasMenuActionsInput): {
     input.setContextNodeMenu(null)
     if (action === 'copy') input.copySelectedNodes()
     else if (action === 'cut') input.cutSelectedNodes()
-    else if (action === 'paste') input.pasteNodes(pastePosition)
+    else if (action === 'paste') input.pasteNodes(pastePosition, CENTER_PLACEMENT_ANCHOR)
     else if (action === 'group') input.groupSelectedNodes()
     else if (action === 'delete') input.deleteSelectedNodes()
   }

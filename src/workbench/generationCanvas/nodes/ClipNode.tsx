@@ -18,9 +18,6 @@ import {
   clipNodeSourceFromAsset,
   readClipNodeMeta,
 } from './clipNodeModel'
-import { MagneticConnectionHandle } from './NodeConnectionHandles'
-import { completeNodeConnection } from './completeNodeConnection'
-import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { getNodeSizeBounds, resolveNodeVisualSize } from './nodeSizing'
 import { useNodeDragResize } from './useNodeDragResize'
 import { useCanvasLiveZoom } from '../reactFlow/canvasViewportScale'
@@ -44,6 +41,7 @@ import { buildClipNodeOutputPatch } from './clipNodeOutput'
 import { formatClipNodeDuration, resolveClipNodeVisualMode } from './clipNodeVisual'
 import { buildClipNodeExportTasks, type ClipNodeExportScope } from './clipNodeExport'
 import { dispatchTimelineShortcut } from '../../timeline/timelineShortcuts'
+import { SHORTCUT_SURFACE_ATTRIBUTE } from '../../shortcutSurface'
 import { useTimelinePlaybackClock } from '../../timeline/useTimelinePlaybackClock'
 import { readVideoDurationSeconds } from '../../../media/videoDurationProbe'
 
@@ -73,9 +71,6 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
   // 这里读错一格，卡内时间轴的拖/裁就会按错误的屏幕像素→帧换算走位。
   const canvasZoom = useCanvasLiveZoom()
   const isMultiSelectActive = useGenerationCanvasStore((state) => selected && state.selectedNodeIds.length > 1)
-  const startConnection = useGenerationCanvasStore((state) => state.startConnection)
-  const pendingSourceId = useGenerationCanvasStore((state) => state.pendingConnectionSourceId)
-  const pendingSourceSide = useGenerationCanvasStore((state) => state.pendingConnectionSourceSide)
   const upstreamMedia = useGenerationCanvasStore((state) => state.edges
     .filter((edge) => edge.target === node.id)
     .map((edge) => state.nodes.find((candidate) => candidate.id === edge.source))
@@ -202,11 +197,6 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
       selectedClipId: additions[additions.length - 1].id,
     })
   }, [meta, persist, upstreamMedia, upstreamMediaKey])
-
-  const handleConnectionStart = (event: React.PointerEvent<HTMLElement>, side: ConnectionAnchorSide): void => {
-    event.stopPropagation()
-    startConnection(node.id, side)
-  }
 
   const addAsset = React.useCallback(async (asset: AssetRef, context: ProjectExecutionContext) => {
     try {
@@ -450,7 +440,7 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
           case 'exit-split-mode':
           case 'remove-text-selection': break
         }
-      })
+      }, articleRef.current?.closest(`[${SHORTCUT_SURFACE_ATTRIBUTE}]`) ?? null)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
@@ -504,10 +494,6 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
       onPointerUp={handlePointerUp}
     >
       {feedback ? <p role="status" className="m-0 px-2 py-1 text-caption text-nomi-ink-60">{feedback}</p> : null}
-      {!readOnly ? <>
-        <MagneticConnectionHandle side="left" active={pendingSourceId === node.id || pendingSourceSide === 'left'} pendingTarget={Boolean(pendingSourceId && pendingSourceId !== node.id)} onStart={handleConnectionStart} onComplete={(event) => { event.stopPropagation(); completeNodeConnection(node.id, reportFeedback) }} />
-        <MagneticConnectionHandle side="right" active={pendingSourceId === node.id || pendingSourceSide === 'right'} pendingTarget={Boolean(pendingSourceId && pendingSourceId !== node.id)} onStart={handleConnectionStart} onComplete={(event) => { event.stopPropagation(); completeNodeConnection(node.id, reportFeedback) }} />
-      </> : null}
 
       {visualMode === 'editing' && activeClip && floatingLayerStyle ? createPortal(
         <div style={floatingLayerStyle} onPointerDown={(event) => event.stopPropagation()}>

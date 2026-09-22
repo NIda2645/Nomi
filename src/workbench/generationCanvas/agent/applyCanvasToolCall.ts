@@ -16,6 +16,7 @@ import {
   type CreateGenerationNodeToolInput,
 } from './generationCanvasTools'
 import { listAvailableModelsForAgent } from './availableModels'
+import { getVendorPreference } from '../../api/vendorPreferenceApi'
 import { buildModelEntryIndex, buildPlannedNodeMeta } from './plannedNodeMeta'
 import { indexMaterializedNodes, materializationKey, readNodeInputStamp } from './materializationStamp'
 import { withCanvasGestureContext, type CanvasGestureContext } from '../events/canvasGestureContext'
@@ -302,7 +303,7 @@ export async function applyCanvasToolCall(
     const { operation: _operation, ...authorPlan } = record
     const parsedPlan = parseStoryboardPlan(authorPlan)
     const plan = hasRealCharacterReferences(parsedPlan)
-      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent())
+      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
       : parsedPlan
     const store = useWorkbenchStore.getState()
     const currentDocument = store.workbenchDocuments.find(document => document.id === targetDocumentId)
@@ -345,10 +346,14 @@ export async function applyCanvasToolCall(
     const requested = Array.isArray(record.nodes) ? record.nodes : []
     // Finish all asynchronous reads before checking stamps. Lookup and creation
     // must share one synchronous segment so concurrent retries see each other.
+    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
     const needsModels = requested.some(
       (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
     )
-    const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
+    // 裸 modelKey（没带 vendor）落哪家：与模型框回显同一把尺，要用户排的供应商顺序（buildModelEntryIndex 注释）。
+    const entryByKey = needsModels
+      ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
+      : buildModelEntryIndex([])
     if (assertTargetCurrent) await assertTargetCurrent()
     assertWritable()
     // 幂等（判据的唯一 owner 在这条写边界，不在调用方）：带物化章的节点，章已经在画布上就**不再建

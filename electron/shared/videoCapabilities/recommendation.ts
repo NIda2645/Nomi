@@ -106,6 +106,18 @@ export function canonicalVideoVariantId(archetype: ModelArchetype, requested?: s
     ?? Object.entries(archetype.variantIdAliases ?? {}).find(([alias]) => alias.toLowerCase() === normalized)?.[1];
 }
 
+/**
+ * 这个档案声明过的全部变体 id（含别名指向的 id，去重、保声明序）。
+ * 与 `canonicalVideoVariantId` 同一个主人：拒绝一个变体时要说得出「那合法的是哪些」，
+ * 两处不许各数一遍。
+ */
+export function videoVariantIdsOf(archetype: ModelArchetype): string[] {
+  return [...new Set([
+    ...(archetype.variants ?? []).map((variant) => variant.id),
+    ...Object.values(archetype.variantIdAliases ?? {}),
+  ])];
+}
+
 export const effectiveVideoModes = (candidate: VideoModelCandidate): ArchetypeMode[] => {
   const variantId = candidate.variantId ?? candidate.archetype.defaultVariantId;
   const variant = candidate.archetype.variants?.find((item) => item.id === variantId);

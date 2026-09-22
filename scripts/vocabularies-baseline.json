@@ -308,6 +308,14 @@
     },
     {
       "members": [
+        "memory-only",
+        "persisted"
+      ],
+      "reason": "裁剪日志里「这次删除落到哪一层」的唯一说法：persisted = 内存与盘都少了这些记录；memory-only = 只有内存少了，盘上还是旧内容（内存与盘就此分叉）。它不是会话阶段、也不是 OperationLedgerBeginResult.status 那种业务结果，而是**一次写的落地程度**，仓库里此前没有这个语义的 owner，所以独立登记而不是复用。两种必须分得开：2026-09-21 验收实测，写失败那次删除若与成功的长得一样，盘上删了 3 条、日志只记了 2 条，而下一次 cap 已看不到被删的记录，痕迹就是永久丢失。",
+      "site": "electron/integrationCertification/integrationSessionRecord.ts::function:logIntegrationSessionCompaction/parameter:outcome/type-union"
+    },
+    {
+      "members": [
         "created",
         "duplicate"
       ],
@@ -956,10 +964,11 @@
         "integration_required_fields_missing",
         "integration_revision_ahead",
         "integration_revision_stale",
+        "integration_session_limit_reached",
         "integration_session_not_found",
         "integration_stage_not_allowed"
       ],
-      "reason": "C4 的 canonical owner 本体：接入认证会话的错误码唯一值源，IntegrationErrorCode 类型从它 derive，mcpToolErrorResults 的 POLICY_CODES 已改为 spread 它。",
+      "reason": "C4 的 canonical owner 本体：接入认证会话的错误码唯一值源，IntegrationErrorCode 类型从它 derive，mcpToolErrorResults 的 POLICY_CODES 已改为 spread 它。2026-09-21 增 integration_session_limit_reached：会话容量上限第一次有了写侧执行者（capIntegrationSessions），「非终态占满、挤不动」这一档需要一个能被 Agent 分辨并给出出路的码，而不是继续借 stage_not_allowed 的语义。",
       "site": "electron/shared/integrationContract.ts::variable:INTEGRATION_ERROR_CODES/as-const"
     },
     {

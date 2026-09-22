@@ -70,9 +70,9 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
 describe('nomi_read target=models 转述（交付1：只有 keyStatus=ok 说可用 + 参考能力 + locale）', () => {
   const modelsResult = {
     models: [
-      { vendor: 'apimart', modelKey: 'seedream', label: 'Seedream', kind: 'image', keyStatus: 'ok', statusReason: '已接入且可用', references: { image: true, video: false, audio: false, multiImage: true, referenceModes: ['image_edit'] } },
-      { vendor: 'kie', modelKey: 'kie-x', label: 'Kie X', kind: 'video', keyStatus: 'missing', statusReason: '未配置 Kie 的 API Key；请先在 Nomi 应用的模型接入里填入', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
-      { vendor: 'volcengine', modelKey: 'volc-y', label: '火山 Y', kind: 'image', keyStatus: 'locked', statusReason: '火山 的 API Key 已保存但当前宿主身份解不开；请在 Nomi 应用里重新保存该 Key', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
+      { vendor: 'apimart', modelId: 'seedream', label: 'Seedream', kind: 'image', keyStatus: 'ok', statusReason: '已接入且可用', accepts: { image: true, video: false, audio: false, multiImage: true }, modeIds: ['image_edit'] },
+      { vendor: 'kie', modelId: 'kie-x', label: 'Kie X', kind: 'video', keyStatus: 'missing', statusReason: '未配置 Kie 的 API Key；请先在 Nomi 应用的模型接入里填入', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] },
+      { vendor: 'volcengine', modelId: 'volc-y', label: '火山 Y', kind: 'image', keyStatus: 'locked', statusReason: '火山 的 API Key 已保存但当前宿主身份解不开；请在 Nomi 应用里重新保存该 Key', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] },
     ],
   }
 
@@ -109,7 +109,7 @@ describe('nomi_read target=models 转述（交付1：只有 keyStatus=ok 说可�
 
   it('全部无 key：明说去配 + nextActions=configure_api_key', () => {
     const { text, outcome } = buildToolOutcome('nomi_read', { target: 'models' }, {
-      models: [{ vendor: 'kie', modelKey: 'x', label: 'X', kind: 'image', keyStatus: 'missing', statusReason: '未配置', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } }],
+      models: [{ vendor: 'kie', modelId: 'x', label: 'X', kind: 'image', keyStatus: 'missing', statusReason: '未配置', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] }],
     })
     expect(text).toContain('无——请先配置 API Key')
     expect(outcome).toMatchObject({ usable: 0, nextActions: ['configure_api_key'] })

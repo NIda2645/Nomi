@@ -1,7 +1,8 @@
 {
   "electron/ai/composeAgentSystemPrompt.test.ts": 1,
+  "electron/capabilityCore/moduleCatalogBootstrap.test.ts": 1,
   "electron/capabilityCore/nomiMcpElicitation.test.ts": 1,
-  "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts": 5,
+  "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts": 4,
   "electron/capabilityCore/nomiMcpProductionArtifacts.test.ts": 2,
   "electron/catalog/apimartSeedance25H3.test.ts": 1,
   "electron/catalog/assetLocalization.test.ts": 1,
