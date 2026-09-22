@@ -94,6 +94,15 @@ export type AgentPanelV4PanelProps = {
    */
   slotComposer?: React.ReactNode
   /**
+   * 槽里那张卡在不在等用户回答。**缺席 = 在等**，完整推导在 `V4SlotShell` 的 `waiting` 上。
+   *
+   * 生产侧永远缺席，而且**应该**缺席：这个面板只在 `slot` 在时才挂卡，而 `slot` 正是
+   * `LaneProjection.pending` 的投影——「挂着」本身就是「在等」，再传一次等于把同一个事实
+   * 说两遍，也就多了一处可以说错的地方。它存在只为让设计实验室画得出「已答 / 已确认」
+   * 那一态（静态取景没有宿主投影可翻）。
+   */
+  slotWaiting?: boolean
+  /**
    * 压在 composer 上沿那一条微字横条。今天只有「全自动」档的常驻提醒用它
    * （`V4AutoModeBanner`）——它在的地方就是用户打字的地方，所以不该住在面板头上。
    */
@@ -207,6 +216,7 @@ export function AgentPanelV4Panel({
   onStarter,
   slot,
   slotComposer,
+  slotWaiting,
   composerBanner,
   queue,
   queueHint,
@@ -382,7 +392,7 @@ export function AgentPanelV4Panel({
       </div>
       {slot ? (
         <div className="shrink-0 px-2.5 pb-2">
-          <V4Intervention data={slot} labels={labels.intervention} {...(slotComposer ? { composer: slotComposer } : {})} {...slotHandlers} />
+          <V4Intervention data={slot} labels={labels.intervention} {...(slotComposer ? { composer: slotComposer } : {})} {...(slotWaiting === undefined ? {} : { waiting: slotWaiting })} {...slotHandlers} />
         </div>
       ) : null}
       {queue?.length ? (

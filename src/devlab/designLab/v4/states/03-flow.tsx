@@ -136,13 +136,14 @@ function CollapsedScene(): JSX.Element {
  *
  * 用现成夹具就够：这里要看的是**外观在不在一个家族里**，不是模型答得对不对。
  */
-function PanelWithQuestion({ multi = false }: { multi?: boolean }): JSX.Element {
+function PanelWithQuestion({ multi = false, waiting }: { multi?: boolean; waiting?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
   return (
     <AgentPanelV4Panel
       slotHandlers={V4_LAB_SLOT_HANDLERS}
       flow={fx.flows.creation}
       slot={multi ? fx.slots.questionThree : fx.slots.question}
+      {...(waiting === undefined ? {} : { slotWaiting: waiting })}
       context={{ ...fx.context, used: 36000 }}
       height={860}
     />
@@ -187,6 +188,17 @@ export const V4_FLOW_STATES: readonly LabState[] = [
     coverage: 'component-only',
     span: 2,
     render: () => <PanelWithQuestion multi />,
+  },
+  {
+    // 待答态的**对照格**（2026-09-22）：同一张反问卡、同一个取景，只把「在等你」关掉。
+    // 它画的是真机上一闪而过的那一刻——用户答完、卡还没从槽里撤走之前。
+    // 生产里这一态不由任何人传（卡挂着就是在等），所以它只能在这儿被看见、被拍下来。
+    id: 'v4-panel-question-answered',
+    name: '⑤ 反问卡**已答**——外框回到普通纸面（与同屏 composer 同一条发丝线）',
+    source: '2026-09-22 用户拍板：答完 / 收回 / 已确认后回到普通纸面，不是整族常驻蓝框',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <PanelWithQuestion waiting={false} />,
   },
   {
     id: 'v4-panel-approval-light',

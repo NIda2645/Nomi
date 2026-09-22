@@ -170,7 +170,8 @@ function SpendComposerCard({
   scope = 'each',
   openTrigger,
   inPanel = false,
-}: CardFixture & { inPanel?: boolean }): JSX.Element {
+  waiting,
+}: CardFixture & { inPanel?: boolean; waiting?: boolean }): JSX.Element {
   const fx = useV4Fixtures()
   const labels = useV4Labels()
   const [ready, setReady] = React.useState(false)
@@ -284,6 +285,7 @@ function SpendComposerCard({
           flow={fx.flows.creation}
           slot={data}
           slotComposer={composer}
+          {...(waiting === undefined ? {} : { slotWaiting: waiting })}
           context={{ ...fx.context, used: 36000 }}
           height={860}
         />
@@ -359,6 +361,15 @@ export const V4_SPEND_PARAMS_STATES: readonly LabState[] = [
     coverage: 'component-only',
     span: 2,
     render: () => <SpendComposerCard shots={1} inPanel />,
+  },
+  {
+    // 待答态的对照格（2026-09-22），付费卡这一张。理由同 `v4-panel-question-answered`。
+    id: 'v4-panel-spend-confirmed',
+    name: '⑤ 付费卡**已确认**——外框回到普通纸面',
+    source: '2026-09-22 用户拍板：待答时强调，已确认后回普通纸面',
+    coverage: 'component-only',
+    span: 2,
+    render: () => <SpendComposerCard shots={1} inPanel waiting={false} />,
   },
   {
     id: 'v4-panel-spend-batch',

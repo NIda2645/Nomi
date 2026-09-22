@@ -49,6 +49,13 @@ const STATES = [
   ['v4-panel-spend-batch', 'spend-batch', 'dark'],
   ['v4-panel-spend-unknown', 'spend-unknown', 'light'],
   ['v4-panel-spend-unknown', 'spend-unknown', 'dark'],
+  // 待答态的**对照格**（2026-09-22）：同一张卡、同一个取景，只把「在等你」关掉。
+  // 有了这两格，「待答 → 强调 / 答完 → 普通纸面」才是一组能并排看的证据，
+  // 而不是一句只能靠读代码相信的话。上面那条兄弟对账也正是靠它们跑到 else 那一支。
+  ['v4-panel-question-answered', 'question-answered', 'light'],
+  ['v4-panel-question-answered', 'question-answered', 'dark'],
+  ['v4-panel-spend-confirmed', 'spend-confirmed', 'light'],
+  ['v4-panel-spend-confirmed', 'spend-confirmed', 'dark'],
 ]
 
 const failures = []
@@ -271,7 +278,7 @@ const report = [
   '# design lab · ask card inside the real panel',
   '',
   `result: ${failures.length ? 'failed' : 'passed'}`,
-  `shots: ${outDir} (6 kinds × light/dark × zh/en = 24)`,
+  `shots: ${outDir} (8 kinds × light/dark × zh/en = 32)`,
   `measured: ${JSON.stringify(measured, null, 2)}`,
   'covers: the ask card rendered in its real place (conversation above, composer below, panel shell around) next to the paid confirm card in the same slot, with shell metrics (width, border, radius, shadow, head band, padding, primary button family, close button, composer gap) measured on both so they can be reconciled side by side.',
   failures.length ? `failures: ${failures.join(' | ')}` : 'failures: none',
