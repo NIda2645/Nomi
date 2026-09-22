@@ -1,6 +1,6 @@
 # 切点超上限：不再按时间砍掉后半条片子
 
-> 状态：🚧 进行中（PR 待开）· 2026-09-22 · 分支 `fix/shot-cut-truncation-20260922`
+> 状态：🚧 进行中（PR #839）· 2026-09-22 · 分支 `fix/shot-cut-truncation-20260922`
 > 根因合同：`docs/fixes/2026-09-22-shot-cut-truncation.root-cause.json`
 
 ## 0. 一句话
