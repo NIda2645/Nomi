@@ -4,7 +4,7 @@
 >
 > **谁读**：接手本仓任何工作的人或执行体（Claude / Codex / 协作者）。动手前不必通读——**按触发场景查**：写走查查 A 区、判测试红绿查 B 区、动分支/合并查 C 区、排查线上/平台故障查 D 区、做产品判断查 E 区。
 >
-> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 17 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
+> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 18 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
 
 ## 维护纪律
 
@@ -194,6 +194,7 @@
 
 > 编排纪律的主文档是 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)（`CLAUDE.md` R27 的 L2 详解）。本区只放**执行体自身的工具怪癖**——那不是编排原则，是踩过的具体坑。
 
+- [按目录派工的并行 lane，会在合并之前各自长出同一概念的第二份实现](parallel-lanes-split-concepts-before-merge.md) — 开两条以上 lane、或看到「两边改的文件不重叠，应该不冲突」时必读；R33 的来源实例（参数准入两份判据 / 供应商落家两份规则 / 渲染层替账本做决定 / 草稿键绑错身份）
 - [`codex exec` 后台派工要关 stdin](codex-exec-background-needs-stdin-closed.md) — 缺 `</dev/null` 会永久挂起等输入；会话内后台工人全随 App 死
 - [查不查不能靠记性：先看别人做了没必须机器逼](prior-art-check-cannot-rely-on-memory.md) — 派实施前先派反方出 prior-art 报告；系统只奖励「做出来」，提醒在高负载下必漏（`check:prior-art` 已接管）
 - [子 agent 起不来时的探针法](subagent-startup-400-probe-method.md) — 一次 harness 侧 400 故障的定位法与两次误诊，别照抄已过期的结论
