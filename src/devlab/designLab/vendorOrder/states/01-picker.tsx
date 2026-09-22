@@ -84,7 +84,9 @@ export const PICKER_STATES: readonly LabState[] = [
     ),
   },
   {
-    id: 'vo-10-picker-unlisted',
+    // 改号 2026-09-22：本分支原本 mint 的 vo-10 与 main（#831）的 `vo-10-settings-model-box` 撞号。
+    // 按「ID 不回收」，main 的留着，本分支这格顺延到 vo-11。
+    id: 'vo-11-picker-unlisted',
     name: '供应商清单里暂时没有它 · 如实标一句，照样选得了',
     source: 'scratchpad report-A-pass3e.md §3（后台对账不再静默停用）· 用户 2026-09-21',
     coverage: 'shell',
