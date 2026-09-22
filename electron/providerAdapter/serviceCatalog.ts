@@ -22,8 +22,7 @@ import {
   planStagedVendorIdentity,
   type CandidateModelPredecessors,
 } from "../catalog/stagedVendorIdentity";
-import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
-import { siblingConnectionLineageMeta } from "../catalog/connectionLineage";
+import { resolveConnectionVendorKey, siblingConnectionLineageMeta } from "../catalog/connectionVendorKey";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
   ProviderAdapterConnectionInput,

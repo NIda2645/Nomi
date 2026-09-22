@@ -19,9 +19,11 @@
  */
 import {
   CONNECTION_KEY_SEPARATOR,
+  builtinVendorKeyOfKey,
   composeConnectionVendorKey,
   slugifyConnectionName,
 } from "../shared/builtinVendorIdentity";
+import { ADAPTER_CANDIDATE_ROOT_VENDOR_KEY } from "../shared/vendorLineage";
 import { deriveVendorKeyFromBaseUrl } from "./catalogCommit";
 
 export type ConnectionVendorKeyInput = {
@@ -83,7 +85,8 @@ export function resolveHostVendorKey(
  */
 export function resolveConnectionVendorKey(input: ConnectionVendorKeyInput): string {
   const hostKey = resolveHostVendorKey(input);
-  if (input.catalogVendorKey && String(input.catalogVendorKey).trim()) return hostKey;
+  // 明确给了身份 = 编辑既有连接，名字改动不许把它带跑。
+  if (String(input.catalogVendorKey ?? "").trim()) return hostKey;
 
   // 这一族 = root 那条 + 它的兄弟连接。
   const family = input.vendors.filter(
@@ -109,4 +112,26 @@ export function resolveConnectionVendorKey(input: ConnectionVendorKeyInput): str
 export function connectionUpdateTarget(input: ConnectionVendorKeyInput): string | null {
   const key = resolveConnectionVendorKey(input);
   return input.vendors.some((vendor) => vendor.key === key) ? key : null;
+}
+
+/**
+ * 兄弟连接（同域名、不同连接名）要写进 `vendor.meta` 的血统键。
+ *
+ * 为什么**复用** `vendorLineage` 的既有字段、不另造一套：`resolvedVendorLineageRoot` 已经是
+ * 「从任意 vendor key 解析回它的根」的唯一 owner，全仓都走它；再造一套 = 两份真相。
+ *
+ * 兄弟连接只写 `adapterCandidateRootVendorKey`，**刻意不写** `adapterCandidateSourceVendorKey`：
+ * `isCandidateVendor()` 判的正是 source 有没有值。写了 source，这条兄弟连接就会被
+ * `planStagedVendorIdentity` 当成「待淘汰的认证候选」扫进 supersededVendorKeys 删掉
+ * —— 那正是 #831 红测试 (b) 的那条断言。
+ *
+ * 于是同一份 lineage 里天然分开两种语义：
+ * 有 source = 替换候选（新版本要顶掉旧版本）｜只有 root = 兄弟连接（共存，互不为前任）。
+ *
+ * 第一条连接（key 就是 root）返回 `{}` —— 它不需要指路，它自己就是根。
+ */
+export function siblingConnectionLineageMeta(vendorKey: string): Record<string, unknown> {
+  const root = builtinVendorKeyOfKey(vendorKey);
+  if (!root || root === vendorKey) return {};
+  return { [ADAPTER_CANDIDATE_ROOT_VENDOR_KEY]: root };
 }

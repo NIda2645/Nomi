@@ -69,11 +69,6 @@
       "symbol": "resolveConnectionVendorKey"
     },
     {
-      "kind": "write",
-      "path": "electron/catalog/connectionLineage.ts",
-      "symbol": "siblingConnectionLineageMeta"
-    },
-    {
       "kind": "read",
       "path": "electron/integrationCertification/httpModelDiscovery.ts",
       "symbol": "resolveConnectionVendorKey"
@@ -215,9 +210,9 @@
     }
   ],
   "door_reduction": {
-    "before": 30,
-    "after": 30,
-    "why_not": "Door COUNT is unchanged (30 files touch this state before and after); what changed is that they no longer each carry their own RULE. Before: 6 of them independently derived a vendorKey from a baseUrl (node scripts/door-map.mjs deriveVendorKeyFromBaseUrl on origin/main: 5 doors / 7 occurrences) and 15 more recognised a built-in vendor by comparing its key to a literal or by a Set lookup (scripts/check-builtin-vendor-literals.mjs against origin/main: 20 hits). After: every one of them is a CALLER of one of two owners — resolveConnectionVendorKey (derive) and builtinVendorIdentity (recognise) — so there are 28 doors but only 2 rules. Merging the doors further would mean merging unrelated features (asset upload consent, relay migrations, the model picker) into one module, which is worse. src/config/modelIdentity.ts#vendorTier is added by hand because door-map does not scan Set.has shapes; that blind spot is exactly why the new gate grew a second judgement.",
+    "before": 29,
+    "after": 29,
+    "why_not": "Door COUNT is unchanged (29 files touch this state before and after); what changed is that they no longer each carry their own RULE. Before: 6 of them independently derived a vendorKey from a baseUrl (node scripts/door-map.mjs deriveVendorKeyFromBaseUrl on origin/main: 5 doors / 7 occurrences) and 15 more recognised a built-in vendor by comparing its key to a literal or by a Set lookup (scripts/check-builtin-vendor-literals.mjs against origin/main: 20 hits). After: every one of them is a CALLER of one of two owners — resolveConnectionVendorKey (derive) and builtinVendorIdentity (recognise) — so there are 28 doors but only 2 rules. Merging the doors further would mean merging unrelated features (asset upload consent, relay migrations, the model picker) into one module, which is worse. src/config/modelIdentity.ts#vendorTier is added by hand because door-map does not scan Set.has shapes; that blind spot is exactly why the new gate grew a second judgement.",
     "manual_additions": [
       "src/config/modelIdentity.ts vendorTier — Set.has shape, invisible to door-map"
     ]
@@ -233,11 +228,6 @@
       "path": "electron/shared/builtinVendorIdentity.ts",
       "symbol": "isVendorOfBuiltin",
       "responsibility": "The only way to ask whether a vendor row belongs to a built-in family; shared by main process and renderer."
-    },
-    {
-      "path": "electron/catalog/connectionLineage.ts",
-      "symbol": "siblingConnectionLineageMeta",
-      "responsibility": "Registers a sibling connection's root using the existing vendorLineage fields (root only, never source — source means 'replacement candidate')."
     },
     {
       "path": "scripts/check-builtin-vendor-literals.mjs",
