@@ -8,6 +8,9 @@ import { defineConfig } from "vitest/config";
  */
 export const REAL_MEDIA_TESTS = ["**/*.realMedia.test.ts"];
 
+/** 两条车道都要排掉的产物目录。同样只有一个 owner，免得两边各写一份、漂成两套。 */
+export const BUILD_ARTIFACTS = ["**/node_modules/**", "**/dist/**", "**/dist-electron/**"];
+
 export default defineConfig({
   test: {
     // scripts/ 两种后缀都收：历史门岗脚本是 .mjs，需要 import 仓库 TS 的脚本（如 model-radar 要
@@ -27,7 +30,7 @@ export default defineConfig({
     // 登记表 tests/ux/real-media-fixtures.json 里其余 live 条目（.probe.mjs / .walk.mjs /
     // scripts/*.ts）天然落在 include 之外，本行只是把同一条规矩写给 *.realMedia.test.ts。
     // 跑它：`pnpm run test:real-media`（缺素材照样硬红，不 skip）。
-    exclude: [...REAL_MEDIA_TESTS, "**/node_modules/**", "**/dist/**", "**/dist-electron/**"],
+    exclude: [...REAL_MEDIA_TESTS, ...BUILD_ARTIFACTS],
     environment: "node",
     // 单测不做真 fsync：临时目录的数据没人需要它跨掉电存活，但 fsync 会让墙钟随磁盘队列漂移，
     // 把 productionRun 的编排测试顶过 5000ms testTimeout（flake 根因）。见该文件顶部注释。
