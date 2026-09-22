@@ -1,0 +1,1135 @@
+{
+  "label": "ask-run9",
+  "model": "DeepSeek V3.2",
+  "rounds": 18,
+  "sourceSha": "9ef06b569dcd1a5d30b6ed0321941c8ce23ad500",
+  "baseline": "2026-09-21 修复前同样这 16 句：反问卡触发 0/16（scratchpad/investigate-askback.md §3.3）",
+  "startedAt": "2026-09-22T13:25:41.643Z",
+  "cases": [
+    {
+      "id": "A1",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "帮我做个视频",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "question:chip"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 172399,
+      "toolCalls": [
+        "read_script",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "ask_user",
+        "draft_shots",
+        "look_at_canvas",
+        "draft_shots",
+        "ask_user",
+        "draft_shots"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": true,
+      "askCount": 2,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想怎么保持各镜头的一致性？",
+              "options": [
+                {
+                  "label": "只用文字描述",
+                  "description": "各镜头独立生成，可能人物环境会变"
+                },
+                {
+                  "label": "首尾帧模式",
+                  "description": "用场景设定图当首帧，后续镜头保持环境"
+                },
+                {
+                  "label": "全能参考模式",
+                  "description": "场景图当角色参考，但要准备场景设定图"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "question": "用哪个视频模型生成这些镜头？",
+              "options": [
+                {
+                  "label": "Seedance 2.0",
+                  "description": "默认的720p画质，速度快"
+                },
+                {
+                  "label": "可灵 3.0",
+                  "description": "1080p高清，但贵一点"
+                },
+                {
+                  "label": "Veo 3.1",
+                  "description": "谷歌模型，效果稳定"
+                },
+                {
+                  "label": "Wan 2.7",
+                  "description": "性价比高，1080p"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        },
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "看起来有某种系统限制阻止了我创建草稿。让我直接建议用户手动操作：\n\n草稿已创建失败。你可能需要：\n\n1. **检查模型连接**：确保 Seedance 2.0 等视频模型已正确配置\n2. **使用更简单的流程**：直接在Nomi界面中：\n   - 点击\"生成\"按钮\n   - 选择\"文生视频\"\n   - 粘贴你的文案：\"深夜十一点，招牌灯还亮着。她把牛骨汤从锅里舀进碗，热气糊住镜头，面条一根根落下去，最后撒一把葱花。她端着碗坐下，吸溜第一口。\"\n   - 设置时长约16秒（3+4+4+5）\n   - 生成单镜头版本\n\n如果你想要分镜头版本，我可以为你生成详细的分镜提示词，你自己在界面中操作。"
+      },
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A2",
+      "kind": "二义（改哪个面）",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把这个改好看点",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 27529,
+      "toolCalls": [
+        "read_script",
+        "read_script",
+        "write_script"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 1,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "改好了。我做了几个调整：\n1. 开头加了一点环境描写，让画面更有氛围\n2. \"舀进碗\"改成了\"从锅里缓缓舀出\"，动作更细致\n3. \"热气糊住镜头\"变成\"热气蒸腾，在镜头前结成朦胧的雾\"，保留了雾化效果但更诗意\n4. 最后一段加入了更多感官细节——吹散热气、满足感、深夜寂静\n\n现在文字更有电影分镜的感觉，节奏也更有层次感了。你觉得怎么样？"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A3",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "生成一下",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "spend-dialog:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 103018,
+      "toolCalls": [
+        "read_script",
+        "look_at_canvas",
+        "ask_user",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "generate"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想生成什么？是依据当前文档内容拆镜头，还是为画布上的参考图生成视频？",
+              "options": [
+                {
+                  "label": "拆镜头做片子",
+                  "description": "把深夜便利店这段文案拆成几个镜头并生成视频"
+                },
+                {
+                  "label": "为参考图做视频",
+                  "description": "用画布上那张已有的参考图生成一段视频"
+                },
+                {
+                  "label": "重新生成参考图",
+                  "description": "再抽一张深夜便利店的设定图"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 3,
+        "wroteSomething": true,
+        "menuAfterQuestion": true,
+        "deliveredInProse": false,
+        "closing": "用户关闭了报价卡，没有批准生成。草稿还在，画布上会有占位节点。\n\n我简要确认一下，然后问问用户想做什么：\n\n您关闭了生成请求。草稿已保存但未生成。\n\n您希望：\n1. 调整草稿后再生成？\n2. 换一种方案？\n3. 先看看画布上的占位节点？"
+      },
+      "rejectedArgs": [
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A9",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把开头改一下",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 24724,
+      "toolCalls": [
+        "read_script",
+        "look_at_canvas",
+        "read_timeline"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": true,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 5,
+        "wroteSomething": false,
+        "menuAfterQuestion": true,
+        "deliveredInProse": false,
+        "closing": "我看到了画布上有一个\"深夜便利店 · 场景\"的场景参考图节点，还有一个\"第一镜 · 外景\"的shot_table节点。时间线是空的，还没有剪辑。\n\n文档里是深夜便利店场景的详细描述，包括一个女人吃面的细节。你想怎么改开头呢？比如：\n\n1. 是想把开头从\"深夜十一点，招牌灯还亮着。\"改成别的描述吗？\n2. 还是想调整整个场景的开场节奏和画面感？\n3. 或者是要改得更简练或更丰富？\n\n告诉我你具体想怎么改，或者我给你几个修改方向，你来选一个？"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A4",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "把那个删了",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "approval-irreversible:declined"
+      ],
+      "questionCardVisible": false,
+      "turnContinuedAfterAnswer": true,
+      "ms": 27414,
+      "toolCalls": [
+        "look_at_canvas",
+        "delete_from_canvas"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": false,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "用户拒绝了删除操作。\n\n\"深夜便利店 · 场景\"这个节点还在画布上。如果你想删除别的节点，或者有其他操作，请告诉我具体要做什么。"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A5",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我把这些都生成了",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "spend:declined"
+      ],
+      "questionCardVisible": false,
+      "turnContinuedAfterAnswer": true,
+      "ms": 90920,
+      "toolCalls": [
+        "look_at_canvas",
+        "make_artifact",
+        "read_script",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "generate"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 1,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "您关闭了报价卡。两个草稿已保存，您可以稍后重新生成。\n\n总结一下我已为您创建的内容：\n1. **深夜便利店场景设定** - 场景参考图（GPT Image 2.5 Flare，2K分辨率）\n2. **第一镜 · 外景** - 视频镜头（Seedance 2.0，720p，5秒，带音频）\n\n两个草稿都已保存。您希望在哪些地方进行调整，或者想要我现在为您重新请求生成吗？"
+      },
+      "rejectedArgs": [
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A6",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "加个镜头",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 84400,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_script",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": false,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "看起来draft_shots遇到了问题。让我先看看画布上现有的视频镜头的参数配置，然后直接创建一个类似的视频镜头。\n\n从画布上看，现有的第一镜视频使用了Seedance 2.0模型，但不知道具体参数。让我尝试直接创建一个视频镜头。\n\n草稿已建好，模型和参数以确认卡为准。\n\n我为你添加了第二镜——煮面与吃面的内景镜头。这个镜头将使用Seedance 2.0的全能参考模式，能够参考现有的场景设定，确保视觉一致性。\n\n这个8秒的镜头描述的是店员在便利店里熬制牛骨汤、舀汤、撒葱花、端到桌边品尝的过程，正好承接第一镜的外景，完成深夜便利店的完整叙事。\n\n生成时会显示具体费用，你可以决定是否现在开始生成。"
+      },
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A7",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "改成竖的",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 72366,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_timeline",
+        "ask_user",
+        "check_job",
+        "list_models",
+        "draft_shots",
+        "look_at_canvas",
+        "check_job"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想把什么改成竖的？",
+              "options": [
+                {
+                  "label": "视频比例",
+                  "description": "把镜1·视频的生成比例改成竖屏"
+                },
+                {
+                  "label": "项目输出",
+                  "description": "整个项目输出MP4时用竖屏比例"
+                },
+                {
+                  "label": "分镜表布局",
+                  "description": "改变分镜表节点的显示布局"
+                }
+              ],
+              "note": "你只说'改成竖的'，我需要明确要改的对象。"
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": false,
+        "questionMarks": 2,
+        "wroteSomething": true,
+        "menuAfterQuestion": true,
+        "deliveredInProse": false,
+        "closing": "任务还没有开始执行，状态是`not_started`。现在你已经把镜1·视频的比例从16:9改成了9:16竖屏，需要生成它吗？\n\n**修改已完成：**\n- 镜1·视频的比例从16:9改成9:16竖屏\n- 其他参数保持不变：720p清晰度、5秒时长、生成音频\n- 草稿已保存\n\n现在你需要确认生成这个竖屏视频吗？"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A8",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "换个模型重做",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 15322,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": true,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 4,
+        "wroteSomething": false,
+        "menuAfterQuestion": true,
+        "deliveredInProse": false,
+        "closing": "现在我看到了画布上有：\n1. 深夜便利店场景设定（场景参考图）\n2. 镜1·视频（第一镜·外景）——这是已经生成的视频\n3. 还有一些其他节点\n\n你需要重做的是哪个部分？你是想：\n1. 换个模型重新生成场景设定图吗？\n2. 换个模型重新生成镜1视频吗？\n3. 还是整个项目都换个模型重做？\n\n请告诉我具体要重做什么。\n\n另外，我可以先查看一下当前视频生成用的是哪个模型，然后给你推荐其他可用的视频模型。"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A10",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我导出",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "spend:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 36471,
+      "toolCalls": [
+        "read_timeline",
+        "look_at_canvas",
+        "ask_user",
+        "check_job",
+        "generate",
+        "read_timeline"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_timeline",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想导出什么内容？",
+              "options": [
+                {
+                  "label": "导出现有视频文件",
+                  "description": "已经生成好的 '镜1 · 视频' 文件"
+                },
+                {
+                  "label": "时间线上重新剪辑",
+                  "description": "把生成的镜头放到时间线再导出完整视频",
+                  "recommended": true
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 1,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "时间线仍然是空的。你有两个选择：\n\n1. **先生成视频**：批准生成 \"镜1 · 视频\"，然后把它放到时间线导出\n2. **直接导出空视频**：导出当前空的时间线（会得到一个0秒的视频）\n\n请确认你想要哪种方式？"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N1",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "读一遍我的文稿，告诉我哪一段最长",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 13352,
+      "toolCalls": [
+        "read_script"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 0,
+        "wroteSomething": false,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "你的文稿总共包含两段：\n\n1. **较短的第一段**（45字）：\n   ```\n   深夜十一点，招牌灯还亮着。\n   她把牛骨汤从锅里舀进碗，热气糊住镜头，面条一根根落下去，最后撒一把葱花。\n   她端着碗坐下，吸溜第一\n   ```\n\n2. **较长的第二段**（80字）：\n   ```\n   深夜十一点，便利店的招牌在冷清的街道上泛着暖光。\n   她把熬了整晚的牛骨汤从锅里缓缓舀出，热气蒸腾，在镜头前结成朦胧的雾。面条根根落下，最后撒上一把青翠的葱花。\n   端着碗坐下，她轻轻吹散热气，低头吸溜第一口——那一瞬间的满足，在深夜的寂静里格外清晰。\n   口。\n   ```\n\n**最长的一段是第二段**，80字，是第一段（45字）的近两倍长度。两段内容相似，第二段有更多细节描写。"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N2",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "在文稿最后加一句「灯灭了」",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 12466,
+      "toolCalls": [
+        "write_script"
+      ],
+      "reachedModel": true,
+      "firstTool": "write_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": false,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": false,
+        "closing": "已在文稿末尾添加「灯灭了」。"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N6",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "把文稿里所有的「碗」都换成「大碗」",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 17300,
+      "toolCalls": [
+        "read_script",
+        "write_script"
+      ],
+      "reachedModel": true,
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "完成。文稿里所有的“碗”都替换成了“大碗”。现在有两处都改好了：\n1. “舀进大碗”\n2. “端着大碗坐下”\n\n你可以用 Cmd+Z 撤销这个修改。"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N3",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "画布上现在有几个节点？",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 12427,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 0,
+        "wroteSomething": false,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "当前画布上有 **7 个节点**：\n\n1. **reference-4k.png** - 已有图片素材\n2. **第一镜 · 外景** - 第一镜的详细分镜表\n3. **深夜便利店 · 场景** - 场景设定卡（参考边来源）\n4. **镜头内容概览** - 表格形式的镜头汇总\n5. **深夜便利店场景设定** - 生成的场景设定图\n6. **镜1 · 视频** - 第一镜的视频生成任务\n7. **分镜表** - 分镜表总览（当前选中）\n\n其中：\n- 有两个生成任务正在进行中（场景设定图和第一镜视频），任务状态可在它们各自的节点上查看\n- 场景设定节点（深夜便利店场景设定）为后续镜头提供了视觉锚点\n- 没有引用边连接，但场景设定卡已经存在，为后续镜头的一致性提供了基础"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N4",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "镜头 2 是什么内容？",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 14238,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": true,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 5,
+        "wroteSomething": false,
+        "menuAfterQuestion": true,
+        "deliveredInProse": false,
+        "closing": "画布上没有标记为\"镜2\"的镜头。目前只有：\n\n1. **第一镜 · 外景** - 对应 `gen-v2-video-mucps0s1-w0wr`，标题是\"镜1 · 视频\"\n2. **深夜便利店场景设定** - 场景设定图\n3. **深夜便利店 · 场景** - 场景锚点\n4. **镜头内容概览** - 文字概览\n\n你需要我为你创建第二镜吗？如果需要，请告诉我第二镜的内容，比如：\n- 是便利店内景吗？\n- 需要什么人物出现？\n- 镜头应该是怎样的（特写、中景、视角等）？\n- 时长大约多少秒？"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N5",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "列一下现在能用的视频模型",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [],
+      "questionCardVisible": false,
+      "ms": 23437,
+      "toolCalls": [
+        "list_models"
+      ],
+      "reachedModel": true,
+      "firstTool": "list_models",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": false,
+        "questionMarks": 0,
+        "wroteSomething": false,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "目前已连接的视频模型清单（按功能特色分组）：\n\n## 主流综合型\n- **Seedance 2.0** (bytedance/seedance-2) - 全能参考，最长15秒，支持角色/视频/音频多模态\n- **Seedance 2.5** (bytedance/seedance-2-5) - 最新版，最长30秒，参考量更大（30图/10视频/10音频）\n- **可灵 3.0** (kling-3.0) - 文生视频，支持4K画质，最长10秒\n- **Veo 3.1** (veo3.1-fast) - Google出品，720p-4k可选，最长20秒\n\n## 一致性优先\n- **HappyHorse 1.0** (happyhorse) - 角色参考模式：1-9张角色图直出，人物锁定稳\n- **Vidu Q3** (viduq3) - 1-7张参考图，主体一致性直出，最长16秒\n- **Wan 2.7** (wan2.7) - 参考图/视频模式，角色/风格一致性\n\n## 简单快速\n- **Sora 2** (sora-2) - OpenAI，720p固定，4-20秒可调\n- **Agnes Video 2.5** (agnes-video-2.5) - 720p-2K可选，最长12秒\n- **Agnes Video 2.5 Flash** (agnes-video-2.5-flas"
+      },
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A11",
+      "kind": "只有一个所指（夹具保证）",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "用素材库那张图做参考，排两个镜头",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 176402,
+      "toolCalls": [
+        "look_at_media",
+        "look_at_canvas",
+        "look_at_media",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "look_at_media",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "ask_user",
+        "read",
+        "find",
+        "nomi_request_tools",
+        "find",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "make_artifact"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_media",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你想要用什么方式参考这张图片？",
+              "note": "有些模型直接用图片作为首帧，有些当角色/场景参考，生成效果不同",
+              "options": [
+                {
+                  "label": "首帧驱动",
+                  "description": "用图片作为视频第一帧，生成连贯动作",
+                  "recommended": true
+                },
+                {
+                  "label": "角色参考",
+                  "description": "保持图中主体一致，但自由创作新动作"
+                },
+                {
+                  "label": "场景参考",
+                  "description": "复制画面环境，但内容可以自由发挥"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": false,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": false,
+      "proseQuestion": {
+        "endsWithQuestion": false,
+        "numberedOptions": true,
+        "questionMarks": 0,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "现在我已经为你创建了一个详细的镜头计划。计划中包含了：\n\n1. **两个镜头的具体描述**：\n   - 镜1：环境特写推进（缓慢推进镜头）\n   - 镜2：全景环绕展示（左右缓慢摇摄）\n\n2. **技术参数**：\n   - 使用首帧驱动模式（first 模式）\n   - Seedance 2.0 模型\n   - 720p，16:9 比例\n   - 5秒时长\n   - 自动生成音频\n\n3. **参考图信息**：\n   - 资产 ID：asset-d489582c9c30f1a70c99\n   - 文件名：reference-4k.png\n\n这个计划已经保存到画布上，你可以：\n- 查看 \"两个参考图镜头计划\" 节点\n- 按照计划手动创建两个视频镜头\n- 如果需要生成，使用引用连接将图片资产连接到视频镜头\n\n这个计划确保两个镜头都基于同一张参考图，保持画面一致性。"
+      },
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A12",
+      "kind": "风格冲突",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "我要赛博朋克的冷调，但要拍得像九十年代港片那种暖胶片感",
+      "closedSettingsPanel": false,
+      "declinedSpendDialogBefore": false,
+      "unblockedByEscape": 0,
+      "cardsAnswered": [
+        "question:chip",
+        "spend:declined"
+      ],
+      "answeredByChip": true,
+      "questionCardVisible": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 112973,
+      "toolCalls": [
+        "look_at_canvas",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "ask_user",
+        "generate"
+      ],
+      "reachedModel": true,
+      "firstTool": "look_at_canvas",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "要开始生成这些赛博朋克×港片融合风格的镜头吗？",
+              "options": [
+                {
+                  "label": "先看预览报价",
+                  "description": "查看花费再决定是否生成",
+                  "recommended": true
+                },
+                {
+                  "label": "先做风格锚图",
+                  "description": "只生成风格参考图，后续再决定视频镜头"
+                },
+                {
+                  "label": "调整后再生成",
+                  "description": "先修改镜头设计"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "askedInProse": true,
+      "askedInsteadOfActing": false,
+      "askedAfterDelivering": true,
+      "proseQuestion": {
+        "endsWithQuestion": true,
+        "numberedOptions": true,
+        "questionMarks": 1,
+        "wroteSomething": true,
+        "menuAfterQuestion": false,
+        "deliveredInProse": true,
+        "closing": "你关闭了报价卡。草稿和镜头设计都还在。\n\n现在你可以：\n1. **修改镜头设计** - 调整prompt、时长或模型参数\n2. **先做风格锚图** - 只生成那个风格参考卡\n3. **换一种融合方式** - 比如调整蓝紫/黄的比例，或强调不同的视觉元素\n\n你想怎么调整这个赛博朋克×港片融合风格？"
+      },
+      "rejectedArgs": [
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    }
+  ],
+  "projectDir": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/askback-real-model-1790083541629/projects/未命名项目 09_22 21_25-mucpizg6-05afd856",
+  "importedAssets": 2,
+  "summary": {
+    "rounds": 18,
+    "roundsReachedModel": "18/18",
+    "roundsFailedBeforeModel": [],
+    "askedWhenShould": "5/11",
+    "askedInProseWhenShould": "8/11",
+    "wantedToAskWhenShould": "9/11",
+    "askedInProseWhenShouldNot": "1/7",
+    "didNotAskWhenShouldNot": "6/7",
+    "askedInsteadOfActingWhenShould": "2/11",
+    "askedAfterDeliveringWhenShould": "6/11",
+    "askedInsteadOfActingWhenShouldNot": "1/7",
+    "askedAfterDeliveringWhenShouldNot": "0/7",
+    "misaskedWhenShouldNot": "2/7",
+    "questionCardRendered": "6/18",
+    "optionSets": 7,
+    "optionsInRange": "7/7",
+    "optionsDistinct": "7/7",
+    "atMostOneRecommended": "7/7",
+    "fakeOptionSets": 0,
+    "askedForReversibleConfirmation": "0/6",
+    "yesNoNestingSets": 0,
+    "cancelOptionSets": 0,
+    "internalIdentifierSets": 0,
+    "labelTooLongSets": 0,
+    "questionEchoSets": 0,
+    "argsOkFirstTry": "12/18",
+    "askToolArgsRejected": 0,
+    "answeredTurnContinued": [
+      "A1:true",
+      "A3:true",
+      "A7:true",
+      "A10:true",
+      "A11:true",
+      "A12:true"
+    ],
+    "roundErrors": 0
+  },
+  "endedAt": "2026-09-22T13:43:15.113Z"
+}
