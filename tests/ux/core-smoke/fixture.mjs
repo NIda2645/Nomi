@@ -300,7 +300,12 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true })
   const project = buildCoreSmokeProject({ fixture, projectsDir: dirs.projectsDir, name, seed })
   if (fixture === 'profile-copy') registerInCopiedRegistry(dirs.settingsDir, project)
-  const provisioned = await provisionNeeds(needs, { repoRoot, settingsDir: dirs.settingsDir })
+  // userDataDir + appName：需要「能真提交的生成路」的依赖要用它们复原 safeStorage 身份（内置档案的
+  // key 是加密存的）。核心冒烟一律跑**开发版 Electron**（initialLocalStorage 只在开发版下合法），
+  // 所以 appName 就是 package.json 里的 `nomi`（同 `agent-runtime-walk-support.mjs:390` 的非打包分支）。
+  const provisioned = await provisionNeeds(needs, {
+    repoRoot, settingsDir: dirs.settingsDir, userDataDir: dirs.userDataDir, appName: 'nomi',
+  })
   const used = fixture !== 'empty'
   const viewport = used ? USED_VIEWPORT : (emptyViewport ?? USED_VIEWPORT)
   const initialLocalStorage = {
@@ -322,6 +327,8 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
       settleMs: 0,
       viewportSize: viewport,
       initialLocalStorage,
+      // 依赖登记表里 `env` 那一格（needs.mjs）：只有主进程读得到的口子走这里。
+      ...(Object.keys(provisioned.env).length ? { env: provisioned.env } : {}),
       args: ['--no-proxy-server'],
       syntheticCredentialStorage: isolatedCredentials,
     })
@@ -377,6 +384,8 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
     /** used / profile-copy 下窗口由夹具定死，走查不许再改尺寸。 */
     lockedViewport: used,
     needs: provisioned.handles,
+    /** 主进程 stdout+stderr 的尾巴。红的时候「宿主为什么拒」只写在这里（渲染层只拿得到语义码）。 */
+    mainLogTail: launched.mainLogTail,
     project,
     tempRoot,
     ...dirs,

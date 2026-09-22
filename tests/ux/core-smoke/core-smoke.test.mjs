@@ -66,8 +66,9 @@ describe('core smoke scenario list (single owner)', () => {
 
 describe('core smoke needs', () => {
   it('only registered needs are accepted; requirements must be declared explicitly', () => {
-    expect(Object.keys(CORE_SMOKE_NEEDS)).toEqual(['loopbackProvider', 'fixtureTextModel'])
+    expect(Object.keys(CORE_SMOKE_NEEDS)).toEqual(['loopbackProvider', 'paidGenerationRoute', 'fixtureTextModel'])
     expect(checkNeeds(['loopbackProvider', 'fixtureTextModel'])).toEqual([])
+    expect(checkNeeds(['paidGenerationRoute'])[0]).toMatch(/需要「loopbackProvider」/)
     expect(checkNeeds(['nope'])[0]).toMatch(/缺依赖/)
   })
 
@@ -86,6 +87,35 @@ describe('core smoke needs', () => {
       expect(response.status).toBe(200)
     } finally {
       await provisioned.close()
+    }
+  })
+
+  // 「能真按下去的那条生成路」：声明了才开执行侧那三把钥匙。不声明 → 一把都不给（老场景一个字不变）；
+  // 声明 → 三把齐，且地址就是这台夹具（少一把主进程就装不出可提交的执行器，见 needs.mjs 里的理由）。
+  it('paidGenerationRoute hands the main process the three fixture keys, and nothing does without it', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-core-smoke-needs-plain-'))
+    temps.push(plain)
+    const textOnly = await provisionNeeds(['loopbackProvider', 'fixtureTextModel'], { repoRoot, settingsDir: plain })
+    try {
+      expect(textOnly.env).toEqual({})
+    } finally {
+      await textOnly.close()
+    }
+
+    const paidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-core-smoke-needs-paid-'))
+    temps.push(paidDir)
+    const paid = await provisionNeeds(['loopbackProvider', 'paidGenerationRoute'], {
+      repoRoot, settingsDir: paidDir, userDataDir: paidDir, appName: 'nomi',
+    })
+    try {
+      expect(paid.env.NOMI_E2E_PRODUCTION_FIXTURE).toBe('1')
+      expect(paid.env.NOMI_E2E_FIXTURE_BASE_URL).toBe(paid.handles.loopbackProvider.baseURL)
+      expect(String(paid.env.NOMI_E2E_FIXTURE_API_KEY || '')).not.toBe('')
+      // 目录里真的有那家内置档案（异步协议那条路），否则提交层拿不到 task id。
+      const catalog = JSON.parse(fs.readFileSync(path.join(paidDir, 'model-catalog.json'), 'utf8'))
+      expect(catalog.vendors.map((vendor) => vendor.key)).toContain(paid.handles.paidGenerationRoute.vendorKey)
+    } finally {
+      await paid.close()
     }
   })
 
