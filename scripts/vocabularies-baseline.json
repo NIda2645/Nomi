@@ -249,9 +249,10 @@
       "members": [
         "verified",
         "invalid-key",
-        "pending"
+        "pending",
+        "declined"
       ],
-      "reason": "direct-key 凭据探测的三态结论（2026-09-10 回归修复）：verified=代码拥有的 livenessProbe 探测成功、invalid-key=上游 401/403 明确拒绝、pending=网络/上游抖动不可判。与 adapter certification 状态族（testing/verified/failed）不同域：这是存 key 一次性的验证结论，不落 adapter meta，也不参与 vendor enabled 晋升之外的生命周期。",
+      "reason": "direct-key 凭据探测的四态结论：verified=代码拥有的 credentialProbe 探测成功、invalid-key=上游 401/403 明确拒绝、pending=网络/上游抖动不可判、declined=这次探测会花钱而用户在报价卡上没同意（2026-09-22 T-MO-10 新增，与 pending 刻意分开：pending 是「我们没问出结论」，declined 是「用户不让我们去问上游」——前者会自动复验，后者只会在用户再次显式点「保存验证」时重来）。与 adapter certification 状态族（testing/verified/failed）不同域：这是存 key 一次性的验证结论，不落 adapter meta，也不参与 vendor enabled 晋升之外的生命周期。",
       "site": "electron/catalog/directKeyCredential.ts::type:DirectKeyProbeOutcome/type-union"
     },
     {
@@ -831,12 +832,14 @@
     },
     {
       "members": [
+        "cancelled",
         "failed",
         "idle",
+        "interrupted",
         "ready",
         "running"
       ],
-      "reason": "拆参考片流水线的四态 owner 从旧 DeconstructionEntry.status 迁入共享 shotTable 持久化 schema（docs/plan/2026-09-10-shot-table-contract.md）：idle 未拆 / running 拆解中 / ready 事实可采用 / failed 整次拆解失败。旧右栏及其状态 owner 同时删除；逐镜失败仍由 fact row visionFailed 表达。它不是生成任务或 Agent 注意力状态，保留独立语义，成员完全不变。",
+      "reason": "拆参考片流水线的状态 owner（docs/plan/2026-09-10-shot-table-contract.md）：idle 未拆 / running 拆解中 / ready 事实可采用 / failed 整次拆解失败；2026-09-22 T-ED-06 补上 interrupted 与 cancelled，补的是终态保证——每个节点必须落到成功/失败/可找回之一，没有「永远在跑」这一格。五格各对应一种不同的下一步动作（重新付费重拆 / 免费重拆 / 从没拆过 / 看结果 / 等），合并任何两个都会让其中一种没有出口；逐条理由见 docs/fixes/2026-09-22-deconstruction-node-terminal-state.root-cause.json。running 是唯一非终态，其成立与否的判据在 deconstructionLifecycle.ts 的在飞登记，不在这个持久化字段。它不是生成任务或 Agent 注意力状态，保留独立语义；逐镜失败仍由 fact row visionFailed 表达。",
       "site": "electron/shared/canvas/shotTable.ts::variable:deconstructionShotTableSchema/property:source/property:status/z.enum"
     },
     {

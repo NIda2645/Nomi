@@ -27,6 +27,13 @@ import type { HttpOperation, Vendor } from "./types";
 
 export type CredentialMode = "direct-key" | "certification";
 
+/** 一条代码拥有的探测端点声明（端点 + 成功判据 + 出处）。两种探针共用这个形状。 */
+export type ProbeDeclaration = {
+  request: Pick<HttpOperation, "method" | "path" | "body">;
+  successPath: string;
+  source: { url: string; checkedAt: string };
+};
+
 export type VendorSeed = {
   key: string;
   name: string;
@@ -49,33 +56,35 @@ export type VendorSeed = {
    */
   credentialMode?: CredentialMode;
   /**
-   * ⚠️ 这条注释原来写的是「Paid only by the weekly radar, never by application
-   * reconciliation」，**那已经不成立**（2026-09-17 核实，T-MO-10）：
-   * `validateCandidateCredential` 的 `liveness-probe` 分支在**用户点「保存验证」的那一刻**
-   * 就调 `probeDirectKeyCredential`，而它是一次真实的 `POST /chat/completions`
-   * （`max_tokens:1`）——花的是用户的钱，且**完全不经过钱的闸**：
-   * 这条路走 `appFetch` 直接出门，不碰 `runtime.ts`，没有 `grantId`，
-   * 所以报价卡永远不可能为它出现（钱的闸 = 每次提交看报价确认，用户 2026-09-09 拍板）。
-   * `revalidatePendingCredential` 在首次使用前还会再跑一次同样的付费探测。
+   * **每周雷达**的逐模型存活探针：「这个模型这周还活着吗」。
    *
-   * 本批只纠正这条**已经在说假话**的注释，没有改行为：怎么修是产品岔路
-   * （免费自检 / 接进报价卡 / 退回 first-use 存 key 不验），三条对用户的承诺各不相同，
-   * 归 TODO 的 T-MO-10，等用户拍板。
+   * 它按定义是一次**真实的最小生成**（apimart: `POST /api/v1/chat/completions`，`max_tokens:1`），
+   * 也只该由 `scripts/model-liveness.ts` 那条每周任务付钱 —— 一个模型一次，刻意的、有预算的。
+   *
+   * ⚠️ 它**不是**「这把 key 能不能用」的判据，那是下面的 `credentialProbe`。两个问题不同：
+   * 逐模型存活必须真发一次生成才答得了，凭据有效性不必；合用一个声明位，就等于让后者继承
+   * 前者的价格——2026-09-22 之前正是如此（原委见 `credentialProbePolicy.ts` 文件头）。
    */
-  livenessProbe?: {
-    request: Pick<HttpOperation, "method" | "path" | "body">;
-    successPath: string;
-    source: { url: string; checkedAt: string };
-  };
+  livenessProbe?: ProbeDeclaration;
+  /**
+   * 「这把 key 现在能不能用」的代码拥有的探测端点（2026-09-22 T-MO-10 新增）。
+   *
+   * `cost` 是这条声明的一部分，由 `credentialProbePolicy.ts` **单点**消费（为什么、以及缺省
+   * 为什么是 `paid`，见那个文件的文件头）：
+   *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
+   *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
+   */
+  credentialProbe?: ProbeDeclaration & { cost?: "free" | "paid" };
   /**
    * 该家的 key 该拿什么当判据（**种子声明，不是按路由猜**）。
+   *
+   * ⚠️ 种子带 `credentialProbe` 的（apimart / higgsfield）按那条声明走，根本不读本字段。
    *
    * 为什么需要它：`GET /v1/models` 既不充分也不必要，两个方向的反例都在我们自己的证据里——
    * apimart 对合法 key 恒 401（electron/vendor/vendorBaseFallback.ts 实测注释），minimax 回 200
    * 却连最小生成 canary 都跑不通（认证账本 blocker 原文）。详见
    * docs/research/2026-09-10-vendor-key-publish-class/prior-art.md 第 ④ 节。
    *
-   *  · `liveness-probe`：种子带 `livenessProbe`，一次零成本探测即判（apimart）。
    *  · `model-list`    ：上游确有 OpenAI 兼容模型列表端点，且它对合法 key 会放行。
    *                      ⚠️ 现役无人声明这一档。第一个声明它的人请连带补上
    *                      `electron/ai/onboarding/vendorHealth.ts` 的清标记分支：那里探测成功后
@@ -101,8 +110,8 @@ export type VendorSeed = {
   bespokeExecution?: { capability: string; path: string };
 };
 
-/** key 判据的三种形态（详见 `VendorSeed.keyValidation`）。 */
-export type KeyValidationStrategy = "liveness-probe" | "model-list" | "first-use";
+/** key 判据的两种形态（详见 `VendorSeed.keyValidation`）。种子带 `credentialProbe` 时按它走，不经这里。 */
+export type KeyValidationStrategy = "model-list" | "first-use";
 
 /** 顺序 = 原 seedBuiltins 的播种顺序（保持既有装机行为一致）。 */
 export const BUILTIN_VENDOR_SEEDS: readonly VendorSeed[] = [
@@ -157,15 +166,15 @@ export function isBuiltinDirectKeyVendor(vendorKey: string): boolean {
 }
 
 /**
- * 这家的 key 该怎么验（**唯一分派点**）。内置种子自己说了算；没有内置种子的行（自定义供应商、
- * 用户自建中转、认证晋升出来的候选）返回 undefined，由调用方回落到 OpenAI 兼容的 `/v1/models`
- * —— 那对「用户自己填地址的兼容端点」确实是成立的判据，对内置 curated 家则不是。
+ * 这家的凭据判据是不是**代码拥有**的（= 有内置种子）。
+ *
+ * 2026-09-22（T-MO-10）：原来这里叫 `credentialValidationStrategy`，既回答「怎么验」也被
+ * 当成「有没有内置判据」用。「怎么验、验它花不花钱」已经收进唯一 owner
+ * `credentialProbePolicy.ts`——判据只该在那一处成立，这里如果再派发一次就是第二份判断，
+ * 而两份判断里会漂的那一份正好是**钱**。所以这里只剩下发布侧真正要问的那个是非题。
  */
-export function credentialValidationStrategy(vendorKey: string): KeyValidationStrategy | undefined {
-  const seed = builtinVendorSeed(vendorKey);
-  if (!seed) return undefined;
-  if (seed.livenessProbe) return "liveness-probe";
-  return seed.keyValidation ?? "first-use";
+export function hasBuiltinCredentialJudgement(vendorKey: string): boolean {
+  return Boolean(builtinVendorSeed(vendorKey));
 }
 
 /**

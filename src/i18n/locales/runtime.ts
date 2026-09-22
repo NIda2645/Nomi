@@ -122,6 +122,11 @@ export const zhRuntime = {
     spendMessageWithPrompt: '提示词：「{{prompt}}」。确认后将消耗模型额度生成。',
     // 授权范围必须写在卡上：用户以为批的是「这一张」，实际还批掉了一段免问期（D4 缺口明着标）。
     confirmGenerate: '确认生成',
+    // 凭据验证（T-MO-10）：这家没有免费自检端点，验一次 key 就要发一次可能计费的请求。
+    // 卡上必须说清「这是验证请求、不是生成」，且金额如实（算不出价时显示「未知价」）。
+    credentialProbeTitle: '验证 {{vendor}} 的密钥要发一次付费请求',
+    credentialProbeMessage: '这家没有免费的验证端点。确认后 Nomi 会用你刚填的密钥发一次最小的真实请求来验它是否可用，这一次会消耗模型额度。不确认也能保存密钥，只是标为「未验证」，首次真正调用时再见分晓。',
+    confirmCredentialProbe: '确认并验证',
     generationGateTitle: '允许 Nomi 生成这一镜？',
     generationGateBatchTitle: '允许 Nomi 生成这一批镜头？',
     generationGateMessage: '允许 Nomi 在当前项目使用模型 {{model}}，最多花费 {{cost}}，{{shot}}？',
@@ -304,6 +309,9 @@ export const enRuntime = {
     spendMessage: 'Confirm to spend model credits and start generation.',
     spendMessageWithPrompt: 'Prompt: “{{prompt}}”. Confirm to spend model credits and start generation.',
     confirmGenerate: 'Confirm generation',
+    credentialProbeTitle: 'Verifying the {{vendor}} key sends one billable request',
+    credentialProbeMessage: 'This provider has no free verification endpoint. Confirm and Nomi sends one minimal real request with the key you just entered to check that it works; that request spends model credits. You can also decline and still save the key — it is then marked unverified, and the first real call is the judge.',
+    confirmCredentialProbe: 'Confirm and verify',
     generationGateTitle: 'Allow Nomi to generate this shot?',
     generationGateBatchTitle: 'Allow Nomi to generate this batch of shots?',
     generationGateMessage: 'Allow Nomi to use {{model}} in the current project, spend up to {{cost}}, and {{shot}}?',

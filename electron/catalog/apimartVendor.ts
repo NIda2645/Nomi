@@ -26,10 +26,33 @@ export const APIMART_VENDOR_SEED = {
   // 注释）——凭据经内置 Settings 卡直接生效，不走认证晋升。缺此字段则 isBuiltinDirectKeyVendor 恒 false、
   // assertDirectKeyContract 早退，认证占用守卫（cert-owned 连接必须走其认证传输）就哑火。
   credentialMode: "direct-key" as const,
+  /**
+   * 每周雷达的逐模型存活探针（`scripts/model-liveness.ts` 专用，一个模型一次、刻意付费）。
+   * **不要**拿它验 key —— 那是下面的 `credentialProbe`；2026-09-22 之前两者共用这一个字段，
+   * 于是用户点一次「保存验证」就替他跑了一遍这条付费探针（T-MO-10、09-11 群反馈）。
+   */
   livenessProbe: {
     request: { method: "POST", path: "/api/v1/chat/completions", body: { model: "{{model}}", messages: [{ role: "user", content: "Hi" }], max_tokens: 1, stream: false } },
     successPath: "choices.0",
     source: { url: "https://docs.apimart.ai/en/api-reference/texts/general/chat-completions-nostream.md", checkedAt: "2026-09-08" },
+  },
+  /**
+   * **免费**的 key 有效性探测：`GET /v1/balance`（查这把 token 的剩余/已用额度）。
+   *
+   * 实测对照组（2026-09-22，只发 GET、不生成）：
+   *   · 假 key    → HTTP 401 `{"error":{"message":"invalid API key",...,"type":"apimart_error"}}`
+   *   · 不带鉴权  → HTTP 401 同上
+   * 即它**按 key 判**（不是 apimart 全站对 `/v1/models` 恒 401 的那种无差别拒绝），
+   * 所以 401/403 → key 无效这条判据在这个端点上成立。
+   *
+   * 成功判据取 `remain_balance`：文档说 `message` 只在失败时出现，`remain_balance` 只在
+   * 成功时给；无限额度时它是 `-1`（仍非 null，照样判 verified）。
+   */
+  credentialProbe: {
+    request: { method: "GET", path: "/v1/balance" },
+    successPath: "remain_balance",
+    cost: "free" as const,
+    source: { url: "https://docs.apimart.ai/en/api-reference/account/token-balance.md", checkedAt: "2026-09-22" },
   },
 } as const;
 

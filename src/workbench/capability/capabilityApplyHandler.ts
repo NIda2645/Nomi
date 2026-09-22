@@ -45,6 +45,7 @@ import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
 import { presentStoryboard } from './storyboardPresent'
 import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
+import { confirmCredentialProbeSpend, spendModelLine } from './credentialProbeSpendCard'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -156,6 +157,9 @@ async function runProductionTextPlanner(input: {
  *   · 用户自己在画布上点的那一下（视频拆解）→ 金币图标 + 说清「这一批要发几次调用」。
  */
 async function confirmSpendFromMainProcess(info: SpendConfirmPayload): Promise<{ confirmed: boolean }> {
+  // 凭据验证（T-MO-10）：它不挂在任何节点上（用户此刻在接入页，不在画布），措辞与明细
+  // 另有一家（`credentialProbeSpendCard.ts`），但弹的仍是全仓唯一那张卡。
+  if (info.intent === 'credential-probe') return confirmCredentialProbeSpend(info)
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find((item) => item.id === info.nodeId)
   const nodeLabel =
@@ -195,10 +199,7 @@ async function confirmSpendFromMainProcess(info: SpendConfirmPayload): Promise<{
       // 项目行放第一位：用户可能不在这个项目里，先让他知道花在哪个项目。
       ...(projectName ? [{ label: i18n.t('runtime.capability.project'), value: projectName }] : []),
       { label: i18n.t('runtime.capability.node'), value: nodeLabel },
-      {
-        label: i18n.t('runtime.capability.model'),
-        value: [info.vendor, info.modelKey].filter(Boolean).join(' · ') || i18n.t('runtime.capability.defaultModel'),
-      },
+      { label: i18n.t('runtime.capability.model'), value: spendModelLine(info.vendor, info.modelKey) },
       ...(isDeconstruct ? [] : [{ label: i18n.t('runtime.capability.output'), value: describeIntent(info.intent) }]),
     ],
   })

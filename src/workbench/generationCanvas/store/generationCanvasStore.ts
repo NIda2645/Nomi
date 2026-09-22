@@ -20,6 +20,7 @@ import {
 } from './canvasClipboard'
 import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
+import { convergeDeconstructionNodes } from '../nodes/shotTable/deconstructionLifecycle'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
 import { assignClonedShotIndexes } from '../model/shotNumbering'
 import { placementOrigin } from '../model/canvasPlacement'
@@ -271,7 +272,10 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     if (!events.length) return
     const state = get()
     const projection = replayCanvasEvents(events, { nodes: state.nodes, edges: state.edges, groups: state.groups })
-    set({ nodes: projection.nodes, edges: projection.edges, groups: projection.groups })
+    // 拆解进度的每一下写都走 canvas.node.updated 进了事件日志，重放会把 `status: 'running'`
+    // 原样写回来——快照那一步的收敛因此等于没发生（T-ED-06 的重启卡死正是这一下）。
+    // 终态判定的 owner 只有一份，重放完再问它一次；已终态的表它原样返回，幂等。
+    set({ nodes: convergeDeconstructionNodes(projection.nodes), edges: projection.edges, groups: projection.groups })
   },
   applyExternalGraph: (snapshot) => {
     // A 模式实时桥:外部 MCP 改动经主进程算好整张快照,这里应用进运行中 store。
