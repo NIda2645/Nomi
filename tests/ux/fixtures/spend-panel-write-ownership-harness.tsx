@@ -48,6 +48,9 @@ const fixture = { nodes, pending, calls,
     else if (field === 'each') model.setScope('each')
     else { Object.assign(pending, field === 'quote' ? { quoteId: 'quote-next' } : field === 'operation' ? { operationId: 'operation-next' } : { candidateRevision: 2 }); refresh?.() }
   },
+  // 重新出价：宿主收回这一次出价（× / 待决时打字 / 重启）之后，同一份草稿再 `generate`
+  // 走的就是这一条——**operationId 不变**，报价指纹换一份、计划进一版。
+  rebid: () => { Object.assign(pending, { quoteId: 'quote-rebid', planVersion: pending.planVersion + 1, candidateRevision: pending.candidateRevision + 1 }); refresh?.() },
   back: () => model.setPage(0),
   finish: () => releaseUpload?.({ id: 'asset', data: { url: 'nomi-local://asset/reference.png' } }),
   unmount: () => root.unmount(),

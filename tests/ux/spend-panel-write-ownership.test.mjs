@@ -232,6 +232,31 @@ it('an all-scope revision failure preserves the remaining shot across quote refr
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('b')
 })
 
+// T-QA-26（2026-09-22，与上面那条 T-QA-23 同根）：× 收回的是**这一次出价**，不是这份草稿
+// （裁决 D）。同一个 operationId 再 `generate` = 重新出价，报价指纹必然换一份——而用户在卡上
+// **没提交**的那句话是「这一次操作」的东西，不是「这一次报价」的东西，必须原样还在。
+// 阳性对照写在同一条里：换一次 operationId 就是另一本账本，一个字都带不过去。
+it('a withdrawn bid re-presented under the same operation keeps unsubmitted card edits', async () => {
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard) && !window.spendOwnership.snapshot().busy)
+  await page.evaluate(() => window.spendOwnership.rebid())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-rebid')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().operation)).toBe('operation')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  // 冷启动（D4 走查里真实走过的那一步）：账本活在存储里，键是这一次操作，重挂之后照样读回来。
+  await page.reload()
+  await page.locator('#upload').waitFor()
+  await page.waitForFunction(() => Boolean(window.spendOwnership?.snapshot().prompt))
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  // 没有任何改动被偷偷提交给宿主：草稿仍然只活在卡上。
+  expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.patch))).toBe(false)
+  await page.evaluate(() => window.spendOwnership.change('operation'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
+})
+
 // Real hook lifecycle with controlled storage failure; parent runs this browser slice serially.
 // 账本写不进去（配额满 / 隐私模式）只是「关掉再回来还在不在」这件便利失效——
 // **绝不允许**它把用户正在编辑的这张付费卡打断，也不许把上一笔的改动贴到下一笔上。
