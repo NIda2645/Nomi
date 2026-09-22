@@ -269,10 +269,20 @@ function registerInCopiedRegistry(settingsDir, project) {
  * @param {Record<string,string>} [options.preferences]  场景自己的本机偏好（语言外），如画布手势档
  * @param {{width:number,height:number}} [options.emptyViewport]  empty 夹具的窗口；used/profile-copy 固定 USED_VIEWPORT
  * @param {string} [options.locale]          'zh-CN' | 'en'；profile-copy 下以用户真实语言为准
+ * @param {true} [options.syntheticCredentialStorage]  走查会往 catalog 写占位凭据时**必须**显式声明 true：
+ *   声明了就不许在 profile-copy 下跑（那一档连的是用户真实资料的拷贝与真实钥匙串），起进程之前就拒。
  */
-export async function launchCoreSmoke({ name, seed = null, needs = [], preferences = {}, emptyViewport, locale = 'zh-CN' }) {
+export async function launchCoreSmoke({ name, seed = null, needs = [], preferences = {}, emptyViewport, locale = 'zh-CN', syntheticCredentialStorage = null }) {
   const environment = readCoreSmokeEnvironment()
   const { fixture } = environment
+  // 隔离的合成凭据存储是 empty / used 的既定前提；profile-copy 刻意不用它（要的是用户真实偏好）。
+  // 走查声明了要写占位凭据、而当前夹具给不了隔离存储时，**在起进程之前**就红，不靠事后人眼发现
+  // 一条 e2e 占位 key 被写进了真钥匙串。
+  const isolatedCredentials = fixture !== 'profile-copy'
+  if (syntheticCredentialStorage !== null) {
+    if (syntheticCredentialStorage !== true) throw new Error(`场景 ${name}：syntheticCredentialStorage 只接受 true（声明「我要写占位凭据」），不接受 ${syntheticCredentialStorage}`)
+    if (!isolatedCredentials) throw new Error(`场景 ${name} 声明要往 catalog 写占位凭据（需要隔离的合成凭据存储），但 ${fixture} 夹具连的是用户真实资料的拷贝——这条走查不能在 ${fixture} 下跑`)
+  }
   if (environment.assignedNeeds) {
     const declared = [...needs].sort().join(',')
     const assigned = [...environment.assignedNeeds].sort().join(',')
@@ -313,7 +323,7 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
       viewportSize: viewport,
       initialLocalStorage,
       args: ['--no-proxy-server'],
-      syntheticCredentialStorage: fixture !== 'profile-copy',
+      syntheticCredentialStorage: isolatedCredentials,
     })
   } catch (error) {
     await provisioned.close()
@@ -359,6 +369,8 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
     get win() { return win },
     fixture,
     used,
+    /** 这次是不是跑在隔离的合成凭据存储上（profile-copy 为 false）。 */
+    isolatedCredentials,
     caseId: environment.caseId,
     locale: finalLocale,
     viewport,

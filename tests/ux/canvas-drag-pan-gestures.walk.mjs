@@ -25,7 +25,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 // 语言与 node-params 走查同一套约定：位置参数 argv[2]，夹具再让 NOMI_CORE_SMOKE_LOCALE（runner 的 --locale）覆盖。
 // 下面凡是按界面文案找控件的地方都按 EN 取词，两种语言各跑一遍才算数。
 const REQUESTED_LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
-const smoke = await launchCoreSmoke({ name: 'canvas-drag-pan', locale: REQUESTED_LOCALE, emptyViewport: ACCEPTANCE_VIEWPORT })
+const smoke = await launchCoreSmoke({
+  name: 'canvas-drag-pan',
+  locale: REQUESTED_LOCALE,
+  emptyViewport: ACCEPTANCE_VIEWPORT,
+  // 这条走查会往 catalog 写一个占位 key（让内置图像/视频模型出现，好算出真实的连线 mode）。
+  // 声明它必须落在隔离的合成凭据存储里：夹具给不了就在起进程之前拒，占位 key 永远碰不到真钥匙串。
+  syntheticCredentialStorage: true,
+})
 const LOCALE = smoke.locale
 const EN = LOCALE === 'en'
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-drag-pan-gestures', `${smoke.fixture}-${LOCALE}`)
