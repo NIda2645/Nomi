@@ -4,16 +4,18 @@
 
 **问题**：238 commits 的集成分支已完成开发和测试，但 3 个门岗失败阻塞合入。如何清理这些门岗？
 
-**依赖里已有？** 无现成方案。gates 脚本（`scripts/gates.mjs`）和具体门岗检查器（`check-design-lab.mjs` / `check-symptom-cluster.mjs` / `check-ponytail-deferred.mjs`）是项目自有的工程纪律实施。
+**依赖里已有？** 无现成方案。gates 脚本和具体门岗检查器是项目自有的工程纪律实施：
+- scripts/gates.mjs:1 - 门岗入口脚本
+- scripts/check-design-lab.mjs:1 - 视觉回归门岗
+- scripts/check-symptom-cluster.mjs:1 - 根因合同聚类门岗
+- scripts/check-ponytail-deferred.mjs:1 - 代码评审门岗
 
-**仓库里已有？** 有类似案例。`git log --grep="clean gates"` 显示多次门岗清理提交，模式一致：
-- 视觉基线：运行 `pnpm run design-lab:update`，提交生成的截图
-- 结构审计：写 `docs/audit/*.md`，解释症状聚类的结构性原因
-- Ponytail：deferred 记录通过 `--accept` 接受
+**仓库里已有？** 有类似案例。历史门岗清理提交记录了标准操作：
+- ab027e3f1 "chore: clean gates - vo-11 baseline + electron/ai audit" - 视觉基线 + 结构审计
+- 893ad17ac "fix(门岗): 补先查别人报告、i18n 层结构评审、清掉本 PR 引入的 lint 警告"
+- b84eab32d "test(design-lab): 五个尾巴之后重录卡族基线" - 批量视觉基线更新
 
 **生态里已有？** 不适用。门岗系统（design-lab 视觉回归、symptom-cluster 根因合同聚类、Ponytail 代码评审）是项目特有的质量保障机制，无对应开源实现。
-
-**TikHub 自媒体里怎么说？** 不适用于工程纪律实施。
 
 **结论**：用已有流程。本 taskbook 基于项目既有的门岗清理操作（`design-lab:update` / 审计文档 / `--accept`），文档化了清理步骤和两条可选路径（先清理再合入 vs 先进 PR 边 review 边清理）。无需自研新方案。
 
