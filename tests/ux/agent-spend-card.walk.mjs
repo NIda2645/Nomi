@@ -147,9 +147,14 @@ try {
   // 这两刀之间那一版（× 撤掉卡上摆出来的那几镜的占位）在 33 镜的计划上说不通：卡上摆 3 镜，
   // 撤 3 个、留 30 个孤儿，而且撤掉的那几个会被落地轮询重建（「点了 ×，画布上多出一个节点」那条红）。
   const cardShotNodeIds = (await readProject(win, projectId)).payload.generationCanvas.nodes.map(entry => entry.id).sort()
-  await clickOrFail(card.locator(INTERVENTION_REJECT), '丢弃付款卡（第一下先出确认）')
+  // × 是**一下**：2026-09-22 之前这里先摊开一句「你在卡上改的内容会一起丢掉」再要第二下确认，
+  // 而那句话已经不为真（裁决 D + 草稿锚 operationId：× 什么都不丢），文案与它那一支渐进披露同刀删。
+  // 死锚点两头骗人（docs/lessons/dead-selector-lies-both-ways.md），所以这里钉它**确实不在**，
+  // 不留一个 `isVisible().catch(false)` 的软分支替它遮。
   const rejectNote = card.locator('[data-v4-control="reject-confirm-note"]')
-  if (await rejectNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), '确认收回这次出价')
+  await clickOrFail(card.locator(INTERVENTION_REJECT), '收回这次出价（一下就撤，没有第二问）')
+  await expect(rejectNote, '× 不再问「改的内容会一起丢掉」——它不会丢').toHaveCount(0)
+  await expect(card.locator(INTERVENTION_CONFIRM_REJECT), '付费卡的 × 没有第二下').toHaveCount(0)
   await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
   // × 把结论递回正在等的那个回合：`generate` 以**成功形状**返回「用户没同意这次」，模型照着收尾。
   const declinedTurn = flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user closed the card')).body)
@@ -203,14 +208,17 @@ try {
   await sendCanvas(win, 'S_SPEND_REOPEN：还是生成吧。')
   await recorded(reopen.received, 'generate on the same operation')
   await expect(card, '同一个 operationId 再 generate，卡就回来了（不用重新起草）').toBeVisible()
-  // 草稿一个字不丢：卡上回来的就是账本里那一份（镜头、提示词、参数）。
-  await expect(input, '重新出价 = 同一份草稿的同一镜').toHaveText(DRAFTED_PROMPT)
-  await expect(sizeChip, '参数也是账本里那一份').toContainText('1024x1024')
-  // ⚠️ 已知缺口（T-QA-26）：他在卡上**没提交**的那些手改（这里是 `draftPrompt` 与 1536x1024）
-  // 读不回来——本地草稿账本的键绑死了报价身份（`spendDraftKey` 含 quoteId / planVersion），
-  // 而重新出价必然换一个 quoteId。这条与 T-QA-23（「全部范围改参数部分失败后，翻页回来提示词丢了」）
-  // 同根。走查如实钉住今天的样子，不替它遮。
-  await expect(input, '已知缺口：没提交的手改不随重新出价回来（T-QA-26）').not.toHaveText(draftPrompt)
+  // 草稿一个字不丢，**没提交的手改也一个字不丢**（T-QA-26，2026-09-22 修）：
+  // 卡上回来的是「账本里那份候选 ⊕ 他自己改的那一层」——他正在打的那句话、刚点的那个尺寸都在。
+  // 账本锚的是这一次生成（`spendDraftKey` 只含 projectId/runId/operationId），重新出价换的
+  // 只是报价指纹，换不掉他的地址。
+  await expect(input, '重新出价回来的是他没提交的那句话，不是原候选').toHaveText(draftPrompt)
+  await expect(sizeChip, '他改过的尺寸也跟着回来').toContainText('1536x1024')
+  // 而宿主那份候选**没被偷偷改过**：手改只活在卡上，直到他按「生成」。
+  const pendingRows = await win.evaluate(id => window.nomiDesktop.productionRuns.pendingSpend(id), projectId)
+  expect(pendingRows.surface, '探针：待决投影这一刻真的读得到').toBe('ready')
+  expect(pendingRows.rows[0]?.operationId, '重新出价的是同一次生成').toBe(operationId)
+  expect(pendingRows.rows[0]?.shots[0]?.prompt, '没提交的手改没有落进宿主候选').toBe(DRAFTED_PROMPT)
   expect((await nodesAfterRestart()).find(entry => entry.id === node.id), '重新出价不动画布').toEqual(restoredShot)
   expect(walk.fixture.images, '重新出价不提交').toHaveLength(0)
   await walk.snap('spend-card-zh-requoted-same-draft')
@@ -220,8 +228,7 @@ try {
   //  `agent-spend-waiting-owner.walk.mjs` 钉。）
   // 这张卡也用 × 收掉（像人一样点），让后面的范围旅程从一块干净的介入槽开始。
   await clickOrFail(card.locator(INTERVENTION_REJECT), 'withdraw the re-quoted request')
-  const confirmNote = card.locator('[data-v4-control="reject-confirm-note"]')
-  if (await confirmNote.isVisible().catch(() => false)) await clickOrFail(card.locator(INTERVENTION_CONFIRM_REJECT), 'confirm withdrawing the re-quoted request')
+  await expect(card.locator(INTERVENTION_CONFIRM_REJECT), 'the re-quoted card withdraws in one click too').toHaveCount(0)
   await expectAbsent(card, { provenBy: cardProof, message: 'the re-quoted card leaves the slot once withdrawn' })
   await recorded(reopenDone.received, 'the second generate returns once its card was closed too')
   expect((await nodesAfterRestart()).map(entry => entry.id).sort(), '两次 × 之后画布节点一个不多也一个不少')
@@ -229,7 +236,8 @@ try {
   expect(walk.fixture.images, '整场零媒体提交').toHaveLength(0)
   walk.report.verified = ['card-still-waits-under-full-auto', 'agent-draft-generate-real-card','real-keyboard-and-parameter-draft-only',
     'decline-withdraws-only-the-quote','canvas-untouched-by-decline','user-built-node-survives-decline',
-    'cold-process-reopen-no-old-card','same-operation-requotes-the-same-draft']
+    'cold-process-reopen-no-old-card','same-operation-requotes-the-same-draft',
+    'requote-restores-unsubmitted-card-edits','withdraw-asks-nothing-because-nothing-is-lost']
   await checkSpendScopeJourney(walk, win)
 } catch (error) {
   failure = error

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import {
-  readSpendDraft, consumeSpendDraft, restoreSpendDraft, clearConsumedSpendDraft, retainSpendDraft, spendDraftKey,
+  readSpendDraft, consumeSpendDraft, restoreSpendDraft, retainSpendDraft, spendDraftKey,
   applyPatchToNode,
   candidatePatchFromNode,
   draftAfterNodeEdit,
@@ -132,9 +132,10 @@ it('saves declared model controls that were absent from the original candidate',
 })
 
 
-// 2026-09-21：× 之后**没有**第二本账本。× 撤的是这次操作自己造的占位节点（一次 ⌘Z 全回来），
-// 所以「找回被藏起来的草稿」这件事从根上不存在了。这条测试钉住「撤完就真没了」。
-it('discarding a request leaves no recovery ledger behind', () => {
+// 2026-09-21：× 之后**没有**第二本账本（`nomi:dismissed-spend-draft:` 那本连同它的键已删）。
+// 2026-09-22 裁决 B/D 之后这条更强了：× 收回的只是这一次出价，账本锚 `operationId`，
+// 所以**换一份报价指纹草稿还在**——重新出价、价格刷新、改参数推版都带得过去（T-QA-26 的那一半）。
+it('a fresh quote on the same operation still reads the user edits it never approved', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
@@ -142,15 +143,36 @@ it('discarding a request leaves no recovery ledger behind', () => {
     const draft = { all: {}, perShot: { a: { prompt: 'unapproved edit' } } }
     retainSpendDraft(spendDraftKey(pending), draft)
     expect(restoreSpendDraft(pending)).toEqual(draft)
-    clearConsumedSpendDraft(pending)
-    expect(entries.size).toBe(0)
-    // 另一笔（新 quote / 新 plan 版本）永远读不到上一笔的账本：账本绑的是报价身份。
-    for (const reopened of [{ ...pending, quoteId: 'q2' }, { ...pending, planVersion: 3 }, { ...pending, candidateRevision: 9 }]) {
-      expect(restoreSpendDraft(reopened)).toEqual(EMPTY_SPEND_DRAFT)
+    // 报价指纹的每一维单独换一次，账本都还是同一本：它们是「你确认的是不是你看到的那个数」，不是地址。
+    for (const requoted of [{ ...pending, quoteId: 'q2' }, { ...pending, planVersion: 3 }, { ...pending, candidateRevision: 9 },
+      { ...pending, quoteId: 'q2', planVersion: 3, candidateRevision: 9 }]) {
+      expect(restoreSpendDraft(requoted)).toEqual(draft)
     }
+    // 一个键一本：整场只有这一条记录，没有第二本跟着长出来。
+    expect([...entries.keys()]).toEqual([spendDraftKey(pending)])
+    // 全部封印 = 这一本消费干净，删得一条不剩。
+    expect(draftIsEmpty(consumeSpendDraft(pending, draft))).toBe(true)
+    expect(entries.size).toBe(0)
   } finally { vi.unstubAllGlobals() }
 })
 
+
+// 镜头维度不在键里，在这本账本**自己的结构**里（`perShot`）：一次生成一本，一本里镜头各归各的。
+// 把 shotId 提进键就是一次生成 N 本，「全部」那一层没有家——这条钉住「同一次生成里镜头仍然隔离」。
+it('one operation keeps one ledger in which shots stay isolated from each other', () => {
+  const entries = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
+  try {
+    const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
+    const edited = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, pending.shots[0]!,
+      applyPatchToNode(node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), { prompt: 'A only' }), 'each')
+    retainSpendDraft(spendDraftKey(pending), edited)
+    expect([...entries.keys()], '一次生成只有一本账本').toEqual([spendDraftKey(pending)])
+    const restored = restoreSpendDraft({ ...pending, quoteId: 'q2', planVersion: 2 })
+    expect(effectivePatchForShot(restored, 'a')).toMatchObject({ prompt: 'A only' })
+    expect(effectivePatchForShot(restored, 'b'), '改 A 那一下不落到 B 头上').toEqual({})
+  } finally { vi.unstubAllGlobals() }
+})
 
 it('partial consumption keeps all-layer and per-shot edits for remaining shots across new quotes and scopes', () => {
   const entries = new Map<string, string>()
@@ -158,8 +180,9 @@ it('partial consumption keeps all-layer and per-shot edits for remaining shots a
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b'), shot('c')] }
     const draft = { all: { prompt: 'all edited', parameters: { quality: 'high' } }, perShot: { b: { prompt: 'B edited' } } }
+    // 封印成功的那几镜会把报价推进一版；剩下没提交的那几镜仍然读得回来（T-QA-23 的那一半）。
     const successor = { ...pending, quoteId: 'q2', planVersion: 2 }
-    const remaining = consumeSpendDraft(pending, draft, ['a'], successor)
+    const remaining = consumeSpendDraft(pending, draft, ['a'])
     expect(effectivePatchForShot(remaining, 'a')).toEqual({})
     expect(effectivePatchForShot(remaining, 'b')).toEqual({ prompt: 'B edited', parameters: { quality: 'high' } })
     expect(effectivePatchForShot(remaining, 'c')).toEqual(draft.all)
@@ -167,8 +190,8 @@ it('partial consumption keeps all-layer and per-shot edits for remaining shots a
     const editedAgain = { ...remaining, perShot: { ...remaining.perShot, b: { ...remaining.perShot.b, prompt: 'B edited again' } } }
     retainSpendDraft(spendDraftKey(successor), editedAgain)
     expect(restoreSpendDraft(successor).perShot.b).toEqual(editedAgain.perShot.b)
-    // 换一份报价身份 = 换一本账本，一个字都带不过去。
-    for (const changed of [{ ...successor, runId: 'other' }, { ...successor, operationId: 'other' }, { ...successor, quoteId: 'q3' }]) {
+    // 换一次**生成**（或换个项目 / 换条 Run）才是换一本账本，一个字都带不过去。
+    for (const changed of [{ ...successor, runId: 'other' }, { ...successor, operationId: 'other' }, { ...successor, projectId: 'other' }]) {
       expect(draftIsEmpty(restoreSpendDraft(changed))).toBe(true)
     }
     const consumed = consumeSpendDraft(successor, restoreSpendDraft(successor))
@@ -177,7 +200,7 @@ it('partial consumption keeps all-layer and per-shot edits for remaining shots a
   } finally { vi.unstubAllGlobals() }
 })
 
-it('confirming every shot consumes the ledger without resurrecting fragments', () => {
+it('confirming every shot consumes this operation ledger without resurrecting fragments', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
@@ -186,7 +209,9 @@ it('confirming every shot consumes the ledger without resurrecting fragments', (
     retainSpendDraft(spendDraftKey(pending), draft)
     expect(restoreSpendDraft(pending)).toEqual(draft)
     expect(draftIsEmpty(consumeSpendDraft(pending, draft))).toBe(true)
+    // 消费干净之后，同一次生成重新出价也读不到碎片；另一次生成本来就是另一本。
     expect(draftIsEmpty(restoreSpendDraft({ ...pending, quoteId: 'q3', shots: [shot('b')] }))).toBe(true)
+    expect(draftIsEmpty(restoreSpendDraft({ ...pending, operationId: 'other' }))).toBe(true)
     expect(entries.size).toBe(0)
   } finally { vi.unstubAllGlobals() }
 })

@@ -112,7 +112,8 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       const next = pendingSpendOfRead(read)
       const nextOwner = next ? spendDraftKey(next) : undefined
       if (draftOwner.current !== nextOwner) {
-        // 账本绑死这一笔的报价身份：换了身份就是换了一本，读不到就是空。
+        // 账本锚的是**这一次生成**（`operationId`）：换了一次生成才是换了一本，读不到就是空。
+        // 价格刷新、改参数推版、收回出价再出价都只换报价指纹，换不掉他正在打的那句话（裁决 B）。
         // 读永不抛（`readSpendDraft` 自己兜住），所以这里不需要「失败就别换 owner」的回退。
         const restored = next ? restoreSpendDraft(next) : EMPTY_SPEND_DRAFT
         draftOwner.current = nextOwner
@@ -265,11 +266,11 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       locale: i18n.language,
       ...(remembered?.operationId === repriced.operationId ? { agentPickedModelIds: remembered.modelIds } : {}),
     })
-    // 卡上有还没提交的手改时，× 先问一句（D4：撤什么、丢什么明着说）。没有手改就不打扰。
-    return card && !draftIsEmpty(draft)
-      ? Object.freeze({ ...card, rejectConfirmNote: t('agentPanelV4.spendDiscardEditsWarning') })
-      : card
-  }, [readFailure, repriced, index, scope, draft, t, i18n.language])
+    // 2026-09-22：× 不再问那一句「你在卡上改的内容会一起丢掉」——它已经不为真。
+    // 裁决 D（× 只收回这一次出价）之后草稿和节点都留着，而账本锚 `operationId` 之后
+    // **没提交的手改也跟着留**（同一个 operationId 再出价就在卡上）。没有东西丢，就不拦他一下。
+    return card
+  }, [readFailure, repriced, index, scope, t, i18n.language])
 
   /**
    * 卡上四个动作共用的一次执行。**宿主说不行就必须让用户看见**：
@@ -363,8 +364,8 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
           const gaps = priceDisagreements(local, authoritative).filter(gap => !shotIds || shotIds.includes(gap.shotId))
           setDisagreements(gaps)
           // Only the submitted scope entered the canonical candidate; other edits stay local.
-          remaining = consumeSpendDraft(target, remaining, shotIds, authoritative)
-          if (draftOwner.current === spendDraftKey(authoritative)) setDraft(remaining)
+          remaining = consumeSpendDraft(target, remaining, shotIds)
+          if (draftOwner.current === spendDraftKey(target)) setDraft(remaining)
           if (gaps.length > 0) return { ok: false, message: 'generation_quote_changed' }
           approved = authoritative
         } else return { ok: false, message: 'generation_quote_changed' }

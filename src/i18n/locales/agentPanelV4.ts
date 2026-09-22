@@ -462,7 +462,6 @@ export const zhAgentPanelV4 = {
   spendParamsScopeAria: '生成范围',
   spendParamsDecline: '不要',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
-  spendDiscardEditsWarning: '丢弃这次请求？你在卡上改的内容会一起丢掉。',
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
   spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
@@ -908,7 +907,6 @@ export const enAgentPanelV4 = {
   spendParamsScopeAll: 'All',
   spendParamsScopeAria: 'Generation scope',
   spendParamsDecline: 'No',
-  spendDiscardEditsWarning: 'Discard this request? The changes you made on the card go with it.',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
 

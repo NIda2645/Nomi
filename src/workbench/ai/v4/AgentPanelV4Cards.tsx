@@ -473,7 +473,7 @@ export function V4Intervention({
       {...(hasActions ? {
         dismiss: {
           label: labels.reject,
-          onClick: () => (data.reasonPlaceholder || data.rejectConfirmNote ? setRejecting(true) : onReject?.()),
+          onClick: () => (data.reasonPlaceholder ? setRejecting(true) : onReject?.()),
         },
       } : {})}
       {...(slotFooter ? { footer: slotFooter } : {})}
@@ -518,9 +518,6 @@ export function V4Intervention({
               </div>
             ))}
           </div>
-        ) : null}
-        {data.rejectConfirmNote && rejecting ? (
-          <p className="m-0 text-caption text-nomi-danger" data-v4-control="reject-confirm-note">{data.rejectConfirmNote}</p>
         ) : null}
         {data.reasonPlaceholder && (rejecting || data.kind === 'reject-reason') ? (
           // 这一行不自己提交：拒绝要说的那句话由底栏的「确认不要」收尾（渐进披露的第二下）。

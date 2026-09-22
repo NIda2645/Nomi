@@ -267,14 +267,6 @@ export type InterventionData = Readonly<{
   hideIcon?: true
   /** 「不要」之后渐进披露的拒绝原因输入。 */
   reasonPlaceholder?: string
-  /**
-   * × 之前要先说的那一句（同一条渐进披露：第一下摊开这句话 + 「确认不要」，第二下才真的撤）。
-   *
-   * 只在**有东西会跟着一起丢**时出现——付费卡上用户亲手改过、还没提交的那些参数（D4：撤什么、
-   * 丢什么，明着说）。没有手改就不打扰，× 一下直接撤。它不是一个输入框：这一刻要的是确认，
-   * 不是让用户写作文（那是 `reasonPlaceholder` 那一档的事）。
-   */
-  rejectConfirmNote?: string
   confirmLabel?: string
   /** 第二动作（「改一下」「换模型」「去配置」）。 */
   alternateLabel?: string

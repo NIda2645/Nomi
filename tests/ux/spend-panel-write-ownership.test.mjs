@@ -122,13 +122,18 @@ it('failed dismissal keeps the local edit without revising the candidate', async
   expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
 })
 
-it('retains only the exact request draft through renderer remount and never carries it to a newer quote', async () => {
+// 账本锚的是**这一次生成**：渲染层重挂它还在，报价刷新它也还在（报价指纹不是地址）；
+// 换一次生成才是换一本，一个字都带不过去。
+it('retains this operation draft through renderer remount and a newer quote, never across operations', async () => {
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
   await page.reload()
   await page.waitForFunction(() => window.spendOwnership?.snapshot().prompt === 'edited')
   await page.evaluate(() => window.spendOwnership.change('quote'))
   await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  await page.evaluate(() => window.spendOwnership.change('operation'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
   expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
   expect(await page.evaluate(() => window.spendOwnership.calls)).toEqual([])
 })
@@ -162,17 +167,19 @@ it('actual shared composer keeps a visible read-only reason and rejects text edi
 })
 
 
-// 2026-09-21 用户拍板：× = 撤销这次草稿，单一语义。撤了就是撤了——**不留找回账本**
-// （那套 localStorage 账本连同它的键一起删了）。下一次请求是一笔全新的，读不到上一笔的改动。
-it('a discarded request leaves nothing behind for the next quote to recover', async () => {
+// 2026-09-21 起**没有第二本账本**（`nomi:dismissed-spend-draft:` 那套「藏起来再找回」整族删了）。
+// 2026-09-22 裁决 D 之后 × 收回的只是这一次出价，所以「找回」这件事更没有存在的理由：
+// 这一次生成的那一本账本从头到尾就是同一本，× 不动它，也不复制它。
+it('a discarded request leaves exactly one ledger behind, never a recovery copy', async () => {
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
   await page.evaluate(() => window.spendOwnership.discard())
   await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
   await page.evaluate(() => window.spendOwnership.change('quote'))
   await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
-  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nomi:dismissed-spend-draft:')))).toEqual([])
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nomi:spend-draft:')))).toHaveLength(1)
   expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.patch))).toBe(false)
 })
 
@@ -221,7 +228,8 @@ it('an all-scope revision failure preserves the remaining shot across quote refr
   expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.confirm))).toBe(false)
   await page.evaluate(() => window.spendOwnership.discard())
   await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard) && !window.spendOwnership.snapshot().busy)
-  // × 之后再来一笔就是**全新**的一笔：撤销没有找回账本，B 回到它自己的原文。
+  // × 收回的是这一次出价（裁决 D）：同一个 operationId 重新出价——哪怕只剩 B 这一镜、报价换了一份——
+  // 他在 B 上没提交的那句话仍然在卡上。
   await page.evaluate(() => {
     window.spendOwnership.pending.shots.splice(0, 1)
     window.spendOwnership.pending.quoteId = 'quote-B-only'
@@ -229,12 +237,41 @@ it('an all-scope revision failure preserves the remaining shot across quote refr
     window.spendOwnership.change('revision')
   })
   await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-B-only')
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('edited')
+  // 阳性对照：换一次生成就是另一本账本，B 回到它自己的原文。
+  await page.evaluate(() => window.spendOwnership.change('operation'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('b')
+})
+
+// T-QA-26（2026-09-22，与上面那条 T-QA-23 同根）：× 收回的是**这一次出价**，不是这份草稿
+// （裁决 D）。同一个 operationId 再 `generate` = 重新出价，报价指纹必然换一份——而用户在卡上
+// **没提交**的那句话是「这一次操作」的东西，不是「这一次报价」的东西，必须原样还在。
+// 阳性对照写在同一条里：换一次 operationId 就是另一本账本，一个字都带不过去。
+it('a withdrawn bid re-presented under the same operation keeps unsubmitted card edits', async () => {
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard) && !window.spendOwnership.snapshot().busy)
+  await page.evaluate(() => window.spendOwnership.rebid())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-rebid')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().operation)).toBe('operation')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  // 冷启动（D4 走查里真实走过的那一步）：账本活在存储里，键是这一次操作，重挂之后照样读回来。
+  await page.reload()
+  await page.locator('#upload').waitFor()
+  await page.waitForFunction(() => Boolean(window.spendOwnership?.snapshot().prompt))
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('edited')
+  // 没有任何改动被偷偷提交给宿主：草稿仍然只活在卡上。
+  expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.patch))).toBe(false)
+  await page.evaluate(() => window.spendOwnership.change('operation'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
+  expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
 })
 
 // Real hook lifecycle with controlled storage failure; parent runs this browser slice serially.
 // 账本写不进去（配额满 / 隐私模式）只是「关掉再回来还在不在」这件便利失效——
-// **绝不允许**它把用户正在编辑的这张付费卡打断，也不许把上一笔的改动贴到下一笔上。
+// **绝不允许**它把用户正在编辑的这张付费卡打断，也不许把上一次生成的改动贴到下一次上。
 it('a storage quota failure never interrupts the card and never leaks the previous draft', async () => {
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
@@ -256,9 +293,9 @@ it('a storage quota failure never interrupts the card and never leaks the previo
   expect(await page.evaluate(() => window.spendOwnership.snapshot().operation)).toBe('operation')
   await page.evaluate(() => {
     Storage.prototype.setItem = window.recoverySetItem
-    window.spendOwnership.change('quote')
+    window.spendOwnership.change('operation')
   })
-  await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
+  await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
   expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
   expect(await page.evaluate(() => window.spendOwnership.calls)).toEqual([])
 })
