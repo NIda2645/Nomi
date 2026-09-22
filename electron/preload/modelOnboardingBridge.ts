@@ -25,6 +25,8 @@ export const modelOnboardingBridge = {
       return unwrapIpcResult(await ipcRenderer.invoke(channel, vendorKey, payload), channel);
     },
     clearVendorApiKey: (vendorKey: string) => invokeSync("nomi:model-catalog:vendor-api-key:clear", vendorKey),
+    /** 「验这家的 key 要不要花钱、大概多少」——接入页按钮文案的唯一料源（T-MO-10）。 */
+    credentialProbePlan: (vendorKey: string) => ipcRenderer.invoke("nomi:model-catalog:credential-probe-plan", vendorKey),
     upsertModel: (payload: unknown) => invokeSync("nomi:model-catalog:model:upsert", payload),
     /** 改类型 = 改 kind + 按新 kind 重建调用通道（单事务）。见 catalog/modelRetype.ts。 */
     retypeModel: (payload: { vendorKey: string; modelKey: string; kind: string }) =>
