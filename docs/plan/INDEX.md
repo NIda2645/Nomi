@@ -114,6 +114,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-09-22-deconstruction-node-terminal-state.md](2026-09-22-deconstruction-node-terminal-state.md) | **拆解中断后分镜表节点不再永远停在「进行中」**（T-ED-06 发版前阻断）：拆到一半关 app 再打开，节点永久停在「本地找切点 / 0 镜」——根因不是没人收敛，是快照那趟收敛完又被事件尾巴重放原样盖回去。终态判定收成唯一 owner `deconstructionLifecycle`（在飞登记与渲染进程同寿命），两条读路径共用同一个收敛且**重放之后再问一次**；状态词表加 `interrupted` / `cancelled`，新增取消入口。真机冷重启走查 `tests/ux/deconstruction-interrupted-recovery.walk.mjs`（零成本） | 🚧 |
 | [2026-09-22-shot-cut-truncation.md](2026-09-22-shot-cut-truncation.md) | **切点超上限不再按时间砍掉后半条片子**：120 刀上限原先按时间 `slice(0,120)`，6 分钟快剪片只拆出前 15% 却看不出来；改成按分数抬阈值压（全片覆盖 14.6% → 96.4%）+ ≤2 帧去重，联系表改按整数 pts 点名选帧、行数收成单一 owner。类根因「给全了没有」提升为 shared 层必填 `ShotCutCoverage`；实测证据 [`docs/evidence/2026-09-22-shot-cut-truncation/`](../evidence/2026-09-22-shot-cut-truncation/README.md)。§9 分镜表节点提示待拍板 | 🚧 |
 | [2026-09-11-canvas-migration-audit.md](2026-09-11-canvas-migration-audit.md) | **React Flow 迁移逐项等价审计**（OLD `8f9365aeb` vs main）：46 项交互逐条对照，列出 6 项无人拍板的改动与 6 项丢失；③ 表按用户影响排序，是各条回填轨的裁决依据 | 📎 |
 | [2026-09-08-canvas-undo-barrier-sweep.md](2026-09-08-canvas-undo-barrier-sweep.md) | 独立边模式、断线、节点锁手势的撤销边界与同族扫描 | 📎 |
