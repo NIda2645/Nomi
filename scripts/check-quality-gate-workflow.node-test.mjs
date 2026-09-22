@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 
 import { CI_E2E_CHAIN } from './run-ci-e2e-chain.mjs'
+import { CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES, coreSmokeCheckName } from './validation-policy.mjs'
+import { REQUIRED_MERGED_CHECKS } from './git-delivery.mjs'
+import { CORE_SMOKE_SCENARIOS } from '../tests/ux/core-smoke/scenarios.mjs'
 import { PROFILES, STAGES } from '../tests/system/profiles.mjs'
 import { assertFullCanvasShardPartition, FULL_CANVAS_SHARDS } from '../tests/ux/canvas-real-suite.mjs'
 
@@ -51,6 +54,7 @@ test('quality gate runs for pull requests and real main before/after pushes', ()
 
 test('scope exposes every independent validation surface from the shared classifier', () => {
   assert.deepEqual(workflow.jobs.scope.outputs, {
+    core_smoke: '${{ steps.profile.outputs.core_smoke }}',
     unit: '${{ steps.profile.outputs.unit }}',
     desktop: '${{ steps.profile.outputs.desktop }}',
     journeys: '${{ steps.profile.outputs.journeys }}',
@@ -70,9 +74,9 @@ test('quality gate uses Node 24-native actions without a forced runtime shim', (
     (job) => job.steps?.flatMap((step) => (typeof step.uses === 'string' ? [step.uses] : [])) ?? [],
   )
 
-  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 8)
-  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 6)
-  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 7)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 9)
+  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 7)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 8)
   assert.ok(actionUses.includes('actions/upload-artifact@v7'))
   assert.ok(actionUses.every((uses) => !/@v4$/.test(uses)))
   for (const job of Object.values(workflow.jobs)) {
@@ -228,6 +232,47 @@ test('canvas performance budget runs as its own parallel job with an untouched i
   assert.match(evidence.with.path, /tests\/ux\/perf-results\/canvas-\*\.json/)
 })
 
+test('core flow smoke runs on every non-docs change as a two-fixture matrix derived from the single fixture owner', () => {
+  const smoke = workflow.jobs['core-smoke']
+  assert.equal(smoke.needs, 'scope')
+  // 唯一开关是分类器的 core_smoke（= 非纯文档）；不许再挂任何别的路径条件。
+  assert.equal(smoke.if, "needs.scope.outputs.core_smoke == 'true'")
+  assert.deepEqual(smoke.strategy, { 'fail-fast': false, matrix: { fixture: [...CORE_SMOKE_FIXTURES] } })
+  // check 名由 matrix 值展开；合后收据按 coreSmokeCheckName 找它们——两边字面必须对得上。
+  assert.equal(smoke.name, 'Core Flow Smoke (${{ matrix.fixture }})')
+  assert.equal(coreSmokeCheckName('${{ matrix.fixture }}'), smoke.name)
+  assert.deepEqual(CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES.map(coreSmokeCheckName))
+  // 核心冒烟 check 不进「skipped 也算过」的常规名单：阻断档在 git-delivery 里是 success-only。
+  for (const name of CORE_SMOKE_CHECK_NAMES) assert.equal(REQUIRED_MERGED_CHECKS.includes(name), false)
+
+  // 阻断 / 非阻断的唯一 owner 是分类器，CI 的 continue-on-error 必须逐字从它派生。
+  // 现状（2026-09-22 用户拍板）：empty 阻断，used 非阻断。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES], ['empty'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_FIXTURES], ['used'])
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_CHECK_NAMES], ['Core Flow Smoke (empty)'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_CHECK_NAMES], ['Core Flow Smoke (used)'])
+  // 两档互斥且合起来正好是全集——不许有哪个夹具既不阻断也不在非阻断名单里（那就是没人管）。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES, ...CORE_SMOKE_ADVISORY_FIXTURES].sort(), [...CORE_SMOKE_FIXTURES].sort())
+  // 非阻断那一格挂 continue-on-error，阻断那一格绝不能挂——挂了 empty 就等于没有必过门。
+  assert.equal(smoke['continue-on-error'], "${{ matrix.fixture != 'empty' }}")
+  for (const fixture of CORE_SMOKE_FIXTURES) {
+    const blocking = CORE_SMOKE_BLOCKING_FIXTURES.includes(fixture)
+    assert.equal(smoke['continue-on-error'].includes(`!= '${fixture}'`), blocking, `${fixture} 的阻断档与 continue-on-error 表达式不一致`)
+  }
+
+  const commands = runCommands(smoke)
+  assert.equal(commands.filter((command) => command === 'pnpm run build').length, 1)
+  assert.ok(commands.includes('xvfb-run -a pnpm run test:core-smoke -- --fixture ${{ matrix.fixture }}'))
+  assert.equal(packageJson.scripts['test:core-smoke'], 'python3 scripts/with-gates-lock.py -- node tests/ux/core-smoke/run.mjs')
+  assert.ok(CORE_SMOKE_SCENARIOS.some((scenario) => scenario.script === 'tests/ux/node-params-and-version-pill.walk.mjs'))
+  assert.ok(CORE_SMOKE_SCENARIOS.some((scenario) => scenario.script === 'tests/ux/canvas-drag-pan-gestures.walk.mjs'))
+
+  const evidence = smoke.steps.find((step) => step.uses === 'actions/upload-artifact@v7')
+  assert.equal(evidence.if, 'always()')
+  assert.equal(evidence.with.name, 'core-smoke-evidence-${{ matrix.fixture }}')
+  assert.match(evidence.with.path, /outputs\/core-smoke\/\*\*/)
+})
+
 test('macOS package is selected independently and retains build, package, and signature checks', () => {
   const macPackage = workflow.jobs['mac-package']
   assert.equal(macPackage.needs, 'scope')
@@ -288,6 +333,7 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
     'scope',
     'contracts',
     'unit',
+    'core-smoke',
     'desktop-linux',
     'canvas-acceptance',
     'canvas-performance',
@@ -321,6 +367,9 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
   assert.match(command, /needs\['canvas-acceptance'\]\.result/)
   assert.match(command, /needs\['canvas-performance'\]\.result/)
   assert.match(command, /needs\['mac-package'\]\.result/)
+  // 核心冒烟 fail-closed：skipped 只在 core_smoke=false 且 reason=docs_only 时放行，其余一律要 success。
+  const coreSmokeBlock = /if \[ "\$\{\{ needs\.scope\.outputs\.core_smoke \}\}" = "false" \]; then\n\s*test "\$\{\{ needs\.scope\.outputs\.reason \}\}" = "docs_only"\n\s*test "\$\{\{ needs\['core-smoke'\]\.result \}\}" = "skipped"\n\s*else\n\s*test "\$\{\{ needs\['core-smoke'\]\.result \}\}" = "success"\n\s*fi/
+  assert.match(command, coreSmokeBlock)
 })
 
 /**

@@ -11,6 +11,7 @@ import { hasClipboardContent } from '../store/canvasClipboard'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { showUndoToast } from '../../../utils/showUndoToast'
 import i18n from '../../../i18n'
+import { installShortcutSurfaceTracker, shortcutSurfaceMayHandle } from '../../shortcutSurface'
 
 type CanvasZoomShortcutInput = {
   key: string
@@ -111,7 +112,8 @@ export function tabBelongsToCanvas(activeElement: Element | null): boolean {
 function shouldIgnoreCanvasShortcut(target: EventTarget | null, stageRef: React.RefObject<HTMLDivElement>): boolean {
   if (document.querySelector('[data-nomi-whiteboard-modal="true"]')) return true
   if (isCanvasTextEditingContext(target, document.activeElement)) return true
-  if (!stageRef.current || stageRef.current.offsetParent === null) return true
+  // 画布藏起来了、或者同屏的另一面（时间轴）刚被按过：这一下不归画布（shortcutSurface.ts 唯一 owner）。
+  if (!shortcutSurfaceMayHandle(stageRef.current)) return true
   return false
 }
 
@@ -421,9 +423,13 @@ export function useCanvasShortcuts(opts: {
       })
     }
     const offDesktopZoom = window.nomiDesktop?.window?.onCanvasZoomShortcut?.((direction) => {
-      if (!stageRef.current || stageRef.current.offsetParent === null) return
+      // 桌面菜单来的 ⌘+/⌘− 同样是一扇键盘门，走同一条归属规则：看不见的面不认领，
+      // 同屏两面时归最近一次指针落下的那一面。此前这里留着旧的 offsetParent 自检，
+      // 于是时间轴展开时画布仍会吃掉这一组快捷键。
+      if (!shortcutSurfaceMayHandle(stageRef.current)) return
       zoomByStep(direction)
     })
+    installShortcutSurfaceTracker()
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('paste', handlePaste)
     return () => {
