@@ -80,6 +80,39 @@ describe("(a) direct-key 必须带零成本存活探测", () => {
       expect(seed.livenessProbe?.source.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
   });
+
+  /**
+   * T-MO-10（用户 2026-09-22 拍板「免费探测」）：探测端点花不花钱，必须**写在声明里**。
+   * 09-11 群反馈撞上的正是「注释说零成本、实际是一次真实生成」——没写下来的免费不算免费。
+   */
+  it("每个 direct-key 种子都显式声明了 livenessProbe.cost（缺省 fail-closed，但内置家不许靠缺省)", () => {
+    for (const seed of BUILTIN_VENDOR_SEEDS) {
+      if (seed.credentialMode !== "direct-key") continue;
+      expect(
+        seed.livenessProbe?.cost,
+        `${seed.key} 的 livenessProbe 没说自己花不花钱；免费要有出处，付费要走确认面`,
+      ).toMatch(/^(free|paid)$/);
+    }
+  });
+
+  /**
+   * 「验证不花钱」的机器判据（TODO T-MO-10 09-17 裁决原话：任何 credential 探测路径出现
+   * `POST /chat/completions` 即红）。声明成 free 的端点不许长成一次生成提交。
+   */
+  it("声明为 free 的探测端点，不许是一次生成提交（chat/completions、*/generations、messages…）", () => {
+    const GENERATION_LIKE = /(chat\/completions|\/completions|\/generations|\/v1\/messages|\/responses|\/images|\/videos|\/audio)/i;
+    let checkedFree = 0;
+    for (const seed of BUILTIN_VENDOR_SEEDS) {
+      if (seed.livenessProbe?.cost !== "free") continue;
+      checkedFree += 1;
+      expect(
+        GENERATION_LIKE.test(seed.livenessProbe.request.path),
+        `${seed.key} 把一个长得像生成提交的端点声明成了免费探测：${seed.livenessProbe.request.path}`,
+      ).toBe(false);
+    }
+    // 采不到样本的扫描会以「全绿」的样子通过，和真绿长得一模一样。
+    expect(checkedFree, "一个 free 探测端点都没采到——选择器失效了").toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe("(b) 有代码拥有执行契约的家，发布判据必须能返回 true", () => {
@@ -127,8 +160,10 @@ describe("(c) 填 key → 凭据落盘 + 该家发布（逐家参数化，用户
     const { readCatalog } = await import("./catalogStore");
     const modelListProbe = await import("../ai/onboarding/modelListProbe");
     vi.spyOn(modelListProbe, "fetchModelList").mockResolvedValue({ ok: true, models: [], statuses: [200] });
-    // 探测型（apimart）：上游按官方契约回一条最小 completion。
-    mockAppFetch.mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Hi" } }] }), { status: 200 }));
+    // 探测型（apimart 的 `GET /v1/balance` / higgsfield 的 estimate）：两家的免费端点各回各的
+    // 成功字段，一条响应体同时满足两个 successPath（`remain_balance` / `credits`）即可
+    // ——这里要钉的是「每家都存得进、存完就发布」，不是各家的响应形状。
+    mockAppFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, remain_balance: 10.5, credits: "0.050" }), { status: 200 }));
 
     const failures: string[] = [];
     for (const vendorKey of credentialVendorKeys()) {

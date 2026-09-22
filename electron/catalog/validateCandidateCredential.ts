@@ -7,13 +7,14 @@ import { fetchModelList, readExtraHeaders } from '../ai/onboarding/modelListProb
 import { isJsonRecord, mergeHeadersCaseInsensitive } from '../jsonUtils'
 import { desktopT } from '../i18n'
 import { providerProxyUrl } from '../providerNetwork'
-import { credentialValidationStrategy } from './builtinVendorSeeds'
+import { hasBuiltinCredentialJudgement } from './builtinVendorSeeds'
+import { credentialProbePlan } from './credentialProbePolicy'
 import { probeDirectKeyCredential, publishBuiltinCuratedVendor } from './directKeyCredential'
 
 /**
  * 返回「是否仍待验证」；明确的鉴权拒绝直接抛，候选不发布。
  *
- * 判据按**种子声明**分派（credentialValidationStrategy），不按 vendor 名、也不假设人人都有
+ * 判据按**种子声明**分派（credentialProbePolicy），不按 vendor 名、也不假设人人都有
  * `GET /v1/models`：apimart 对合法 key 恒 401、minimax 回 200 却连最小生成都跑不通，
  * 两个方向的反例都在我们自己的证据里（prior-art ④）。
  */
@@ -34,7 +35,7 @@ function credentialFailure(messageKey: 'credential.invalid' | 'credential.valida
 }
 
 export async function validateCandidateCredential(vendor: Vendor, apiKey: string): Promise<boolean> {
-  const strategy = credentialValidationStrategy(vendor.key)
+  const strategy = credentialProbePlan(vendor.key).kind
   // 内置家里没有便宜且可信的预检的那一类（最小真实请求 = 一次付费生成，不能替用户花钱）：
   // 存 key 即发布，首次生成时的鉴权失败走现有诚实报错。
   // 火山语音这类 authType:'none'（三头鉴权由 audioTaskRunner 手搓）也从这条路存得进去。
@@ -56,11 +57,14 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   if (!apiKey || !vendor.baseUrlHint) {
     throw credentialFailure('credential.validationUnavailable', vendor.key)
   }
-  // 种子声明了零成本存活探测的（apimart）：那份代码拥有的 livenessProbe 才是诚实的 key 判据。
-  if (strategy === 'liveness-probe') {
+  // 种子声明了探测端点的（apimart / higgsfield）：那份代码拥有的 livenessProbe 才是诚实的 key 判据。
+  // 花不花钱、要不要先问，由 `credentialProbePolicy` 决定，`probeDirectKeyCredential` 执行。
+  if (strategy === 'seed-probe') {
     const outcome = await probeDirectKeyCredential(vendor, apiKey)
     if (outcome === 'invalid-key') throw credentialFailure('credential.invalid', vendor.key)
-    return outcome === 'pending'
+    // `declined` = 用户在报价卡上说了「不发」。那不是失败：密钥照存（标未验证），
+    // 判据留给首次真实调用的诚实报错——把它当失败就等于「不付这一下钱就别想接入」。
+    return outcome !== 'verified'
   }
   const providerKind = normalizeProviderKind(vendor.providerKind)
   const authType = vendor.authType || (providerKind === 'anthropic' ? 'x-api-key' : 'bearer')
@@ -93,7 +97,11 @@ export async function revalidatePendingCredential(vendorKey: string): Promise<vo
   // 存量装机可能还留着本次改动之前写下的 pending 记录。对 `first-use` 这一类没有零成本预检
   // 可跑（唯一判据就是这次真实调用本身），在这里挡住等于把「没法便宜地预检」翻译成「不许用」。
   // 鉴权真错时，上游 401 会经现有诚实报错路径回到用户面前。
-  if (credentialValidationStrategy(vendorKey) === 'first-use') return
+  const plan = credentialProbePlan(vendorKey)
+  if (plan.kind === 'first-use') return
+  // 会花钱的探测**只由用户显式点「保存验证」发起**（T-MO-10，2026-09-22）。首用前的这一下
+  // 是我们自己挑的时机，不该在这里横插一张付费确认卡；判据本来就有——紧接着的那次真实调用。
+  if (plan.cost === 'paid') return
   const vendor = state.vendors.find(item => item.key === vendorKey)
   if (!vendor) throw credentialFailure('credential.validationUnavailable', vendorKey)
   const snapshot = candidateCredentialSnapshot(vendorKey)
@@ -107,7 +115,7 @@ export async function revalidatePendingCredential(vendorKey: string): Promise<vo
     // pending→verified 的转正：探测型凭据存进来时是 enabled:false（诚实门要求未验证先不发布），
     // 复检通过后凭据与 vendor 一起发布——只清 pending 不发布，用户会卡在
     // 「验证过了但模型还是不出现」的半截状态。
-    if (credentialValidationStrategy(vendorKey)) {
+    if (hasBuiltinCredentialJudgement(vendorKey)) {
       mutateCatalog((_tx, current) => { const record = current.apiKeysByVendor[vendorKey]; if (record) record.enabled = true })
       publishBuiltinCuratedVendor(vendorKey)
     }

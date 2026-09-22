@@ -10,28 +10,32 @@
 //
 // 本文件给出 direct-key 的两条正路（只对 isBuiltinDirectKeyVendor 且带 livenessProbe
 // 的种子生效，certification 供应商一律走原路，诚实门不变量不放松）：
-//   ① 验证 = 种子里代码拥有的 livenessProbe（apimart: POST /api/v1/chat/completions，
-//     max_tokens:1，与每周雷达 scripts/model-liveness.ts 同一声明、同一成功判据）。
+//   ① 验证 = 种子里代码拥有的 livenessProbe。**2026-09-22（T-MO-10）起它必须是免费的，
+//     否则先问**：apimart 已从 `POST /api/v1/chat/completions`（真实生成、扣用户积分）换成
+//     `GET /v1/balance`（零费用、坏 key 回 401，实测有对照组）。发不发、花不花钱由
+//     `credentialProbePolicy.ts` 单点决定，本文件只执行。
 //     401/403 → key 无效（throw）；探测成功 → verified；网络/上游其它失败 → pending
-//     （诚实：不假装可用，也不把网络抖动误报成 key 错误）。
+//     （诚实：不假装可用，也不把网络抖动误报成 key 错误）；用户拒绝付费探测 → declined。
 //   ② 发布 = 凭据落盘后把 vendor 行重新 enable（内置家的「认证」就是代码拥有的契约本身：
 //     scope 匹配 + 无认证占用 + curated 执行契约还在，三者缺一就不发布，供应商改过
 //     baseUrl / 契约漂移照样 fail-closed）。
 //
 // 2026-09-10 第二刀：以上两条原来只对 apimart 生效（发布判据写死 vendorKey、验证判据写死
 // /v1/models），另外 17 家内置供应商填 key 后整家下架且重启不自愈。现在两条判据都由**种子声明**
-// 派生：`credentialValidationStrategy` 决定怎么验，`hasBuiltinCuratedExecution`（登记表驱动）
+// 派生：`credentialProbePolicy` 决定怎么验、花不花钱，`hasBuiltinCuratedExecution`（登记表驱动）
 // 决定能不能发布。见 docs/plan/2026-09-10-vendor-key-publish-class.md。
 
 import { mutateCatalog, readCatalog } from './catalogStore'
 import { builtinVendorSeed, builtinVendorScopeMatches } from './builtinVendorSeeds'
+import { credentialProbePlan } from './credentialProbePolicy'
+import { confirmCredentialProbeSpend } from './credentialProbeConfirm'
 import { hasBuiltinCuratedExecution } from './seedBuiltins'
 import { buildHttpRequest, appendQueryParams } from '../ai/requestPipeline'
 import { readNestedRecord } from '../jsonUtils'
 import { appFetch } from '../appFetch'
 import type { Vendor } from './types'
 
-export type DirectKeyProbeOutcome = 'verified' | 'invalid-key' | 'pending'
+export type DirectKeyProbeOutcome = 'verified' | 'invalid-key' | 'pending' | 'declined'
 
 export function directKeyProbeModelId(state: ReturnType<typeof readCatalog>, vendorKey: string): string | null {
   const models = state.models.filter((model) => model.vendorKey === vendorKey && model.enabled)
@@ -39,17 +43,42 @@ export function directKeyProbeModelId(state: ReturnType<typeof readCatalog>, ven
   return (text ?? models[0])?.modelKey ?? null
 }
 
+export type DirectKeyProbeOptions = {
+  fetchImpl?: typeof fetch
+  /**
+   * 「这次验证会花钱，发不发」的问人函数。缺省走全仓那张付费确认卡
+   * （`credentialProbeConfirm.ts` → `requestRendererDecision('spend.confirm')`）。
+   */
+  confirmSpend?: (input: { vendorKey: string; vendorName?: string; modelKey: string }) => Promise<boolean>
+}
+
 /**
- * Run the code-owned liveness probe declared on the vendor seed. Paid by this
- * single verification call (max_tokens:1), never by reconciliation. Never
- * persists upstream bodies, request headers, or exception messages (they may
- * echo credentials) — same discipline as the weekly radar probe.
+ * 跑种子声明的凭据探测。**发不发、花不花钱，由 `credentialProbePolicy` 一家说了算**
+ * （T-MO-10，用户 2026-09-22 拍板「免费探测」）：
+ *
+ *   · 免费档（apimart 的 `GET /v1/balance`、higgsfield 的 estimate）→ 直接发，不打扰用户；
+ *   · 付费档（含**缺省**：种子没声明 `cost` 的一律按付费）→ 先经确认面问一句，
+ *     用户没点同意就 `declined`，**一个字节都不发**。
+ *
+ * 2026-09-22 之前这里无条件发种子声明的请求，而 apimart 声明的是一次真实
+ * `POST /chat/completions`：用户点「保存验证」就扣他的积分，且这条路经 `appFetch` 直接出门、
+ * 没有 `grantId`，报价卡在结构上永远不可能为它出现（09-11 群反馈）。
+ *
+ * 永不落盘上游响应体、请求头或异常信息（它们可能回显凭据）——与每周雷达探针同一纪律。
  */
-export async function probeDirectKeyCredential(vendor: Vendor, apiKey: string, fetchImpl: typeof fetch = appFetch): Promise<DirectKeyProbeOutcome> {
-  const declaration = builtinVendorSeed(vendor.key)?.livenessProbe
-  if (!declaration) return 'pending'
+export async function probeDirectKeyCredential(vendor: Vendor, apiKey: string, options: DirectKeyProbeOptions = {}): Promise<DirectKeyProbeOutcome> {
+  const fetchImpl = options.fetchImpl ?? appFetch
+  const plan = credentialProbePlan(vendor.key)
+  if (plan.kind !== 'seed-probe') return 'pending'
+  const declaration = plan.probe
   const model = directKeyProbeModelId(readCatalog(), vendor.key)
   if (!model) return 'pending'
+  // 花钱的那一档：先问人，再决定发不发。问不到人 = 不发（fail-closed）。
+  if (plan.cost === 'paid') {
+    const confirm = options.confirmSpend ?? confirmCredentialProbeSpend
+    const approved = await confirm({ vendorKey: vendor.key, vendorName: vendor.name, modelKey: model })
+    if (!approved) return 'declined'
+  }
   try {
     const request = buildHttpRequest({
       baseUrl: vendor.baseUrlHint || builtinVendorSeed(vendor.key)!.baseUrl,
@@ -64,7 +93,9 @@ export async function probeDirectKeyCredential(vendor: Vendor, apiKey: string, f
     const response = await fetchImpl(appendQueryParams(request.url, request.query), {
       method: request.method,
       headers: request.headers,
-      body: JSON.stringify(request.body),
+      // 免费探测多半是 GET（apimart 的余额查询就是），带 body 的 GET 会被 undici 直接拒。
+      // 声明里没有 body 就不要造一个 "undefined" 出来。
+      ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
       redirect: 'error',
       signal: AbortSignal.timeout(15_000),
     })

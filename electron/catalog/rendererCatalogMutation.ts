@@ -3,7 +3,7 @@ import type { CatalogState, Model } from './types'
 import { derivePublishedExecution, modelHasPublishedExecution } from '../shared/modelPublication'
 
 import { validateCandidateCredential, candidateCredentialSnapshot } from './validateCandidateCredential'
-import { credentialValidationStrategy } from './builtinVendorSeeds'
+import { hasBuiltinCredentialJudgement } from './builtinVendorSeeds'
 import { publishBuiltinCuratedVendor } from './directKeyCredential'
 import { desktopT } from '../i18n'
 
@@ -146,7 +146,7 @@ export async function upsertRendererCatalogVendorApiKey(vendorKey: string, paylo
   // 自定义 / 中转供应商（无内置种子）行为完全不变：仍由认证晋升决定发布。
   // 渲染层传来的 enabled 永远不算数（恒 false，manualCertificationBoundary.test.ts 锁着），
   // 启用与否只由这里的主进程验证结果决定。
-  const strategy = credentialValidationStrategy(vendorKey)
+  const strategy = hasBuiltinCredentialJudgement(vendorKey)
   // `authType: 'none'`（本地 ComfyUI / Ollama 这类免鉴权的家）没有「验过没验过」这个状态：
   // 它压根不发鉴权头。以前这里把它和「自定义家等认证晋升」并作一档，凭据落成 enabled:false，
   // 而 `credentialRecordCounts` 读 `enabled !== false` —— 于是**存进去的 key 恒不算数**，

@@ -44,6 +44,10 @@ export const HIGGSFIELD_VENDOR_SEED = {
       body: { prompt: "ping" },
     },
     successPath: "credits",
+    // 零费用（2026-09-17 实测 200 `{"type":"estimate","credits":"0.050","usd":"0.004"}`，不排任务、不扣费）。
+    // 对照组就在 T-MO-20 的账上：把 `POST /marketing-studio/image` 当探针时它**真排了任务**，
+    // 烧掉 $0.439——所以这个 `free` 是实测出来的，不是从端点名字推的。
+    cost: "free" as const,
     source: { url: "https://docs.higgsfield.ai/docs/concepts/pricing", checkedAt: "2026-09-17" },
   },
   keyValidation: "liveness-probe" as const,

@@ -49,22 +49,27 @@ export type VendorSeed = {
    */
   credentialMode?: CredentialMode;
   /**
-   * ⚠️ 这条注释原来写的是「Paid only by the weekly radar, never by application
-   * reconciliation」，**那已经不成立**（2026-09-17 核实，T-MO-10）：
-   * `validateCandidateCredential` 的 `liveness-probe` 分支在**用户点「保存验证」的那一刻**
-   * 就调 `probeDirectKeyCredential`，而它是一次真实的 `POST /chat/completions`
-   * （`max_tokens:1`）——花的是用户的钱，且**完全不经过钱的闸**：
-   * 这条路走 `appFetch` 直接出门，不碰 `runtime.ts`，没有 `grantId`，
-   * 所以报价卡永远不可能为它出现（钱的闸 = 每次提交看报价确认，用户 2026-09-09 拍板）。
-   * `revalidatePendingCredential` 在首次使用前还会再跑一次同样的付费探测。
+   * 这家「key 到底能不能用」的代码拥有的探测端点。
    *
-   * 本批只纠正这条**已经在说假话**的注释，没有改行为：怎么修是产品岔路
-   * （免费自检 / 接进报价卡 / 退回 first-use 存 key 不验），三条对用户的承诺各不相同，
-   * 归 TODO 的 T-MO-10，等用户拍板。
+   * 2026-09-22（T-MO-10，用户拍板「免费探测」）：**`cost` 现在是这条声明的一部分**。
+   * 在此之前这里只有端点本身，于是 apimart 声明的是一次真实 `POST /chat/completions`
+   * （`max_tokens:1`），用户点「保存验证」的那一刻就花他的钱；而这条路走 `appFetch`
+   * 直接出门、不碰 `runtime.ts`、没有 `grantId`，报价卡在结构上永远不可能为它出现
+   * （钱的闸 = 每次提交看报价确认，用户 2026-09-09 拍板；09-11 群反馈撞上）。
+   *
+   * 现在「花不花钱」和端点写在一起，由 `credentialProbePolicy.ts` **单点**消费：
+   *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
+   *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
+   *
+   * 缺省 fail-closed 不是洁癖：T-MO-20 就是把 Higgsfield 的
+   * `POST /marketing-studio/image` 当余额探针用，它只要 prompt 就真排任务，当场烧掉
+   * $0.439。「我以为它免费」必须写成「有出处地声明它免费」才算数。
    */
   livenessProbe?: {
     request: Pick<HttpOperation, "method" | "path" | "body">;
     successPath: string;
+    /** 缺省 = `paid`（见上）。写 `free` 的，`source` 必须能证明它零费用。 */
+    cost?: "free" | "paid";
     source: { url: string; checkedAt: string };
   };
   /**
@@ -157,15 +162,15 @@ export function isBuiltinDirectKeyVendor(vendorKey: string): boolean {
 }
 
 /**
- * 这家的 key 该怎么验（**唯一分派点**）。内置种子自己说了算；没有内置种子的行（自定义供应商、
- * 用户自建中转、认证晋升出来的候选）返回 undefined，由调用方回落到 OpenAI 兼容的 `/v1/models`
- * —— 那对「用户自己填地址的兼容端点」确实是成立的判据，对内置 curated 家则不是。
+ * 这家的凭据判据是不是**代码拥有**的（= 有内置种子）。
+ *
+ * 2026-09-22（T-MO-10）：原来这里叫 `credentialValidationStrategy`，既回答「怎么验」也被
+ * 当成「有没有内置判据」用。「怎么验、验它花不花钱」已经收进唯一 owner
+ * `credentialProbePolicy.ts`——判据只该在那一处成立，这里如果再派发一次就是第二份判断，
+ * 而两份判断里会漂的那一份正好是**钱**。所以这里只剩下发布侧真正要问的那个是非题。
  */
-export function credentialValidationStrategy(vendorKey: string): KeyValidationStrategy | undefined {
-  const seed = builtinVendorSeed(vendorKey);
-  if (!seed) return undefined;
-  if (seed.livenessProbe) return "liveness-probe";
-  return seed.keyValidation ?? "first-use";
+export function hasBuiltinCredentialJudgement(vendorKey: string): boolean {
+  return Boolean(builtinVendorSeed(vendorKey));
 }
 
 /**
