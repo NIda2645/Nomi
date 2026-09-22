@@ -22,6 +22,7 @@ import {
   planStagedVendorIdentity,
   type CandidateModelPredecessors,
 } from "../catalog/stagedVendorIdentity";
+import { resolveConnectionVendorKey, siblingConnectionLineageMeta } from "../catalog/connectionVendorKey";
 import { adapterModelMetadataForPromotion } from "./promotionMeta";
 import type {
   ProviderAdapterConnectionInput,
@@ -105,7 +106,17 @@ function connectionIdentity(input: ProviderAdapterConnectionInput): Record<strin
 export const defaultCatalog: ProviderAdapterCatalogPort = {
   register(input) {
     const before = readCatalog();
-    const sourceVendorKey = input.vendorKey;
+    // #831：一条连接的身份 = 域名 + 连接名。`input.vendorKey` 只是这一族的 root（host 段）；
+    // 同域名的第二条连接必须落在自己的 key 上，否则这一次保存会把第一条连接的名字和 Key
+    // 一起顶掉（用户症状：三个计价分组变成一个，老模型拿着新分组的 Key 去跑）。
+    // 判据只有一份，住 catalog/connectionVendorKey.ts —— 这一层是唯一读得到目录的地方。
+    const sourceVendorKey = resolveConnectionVendorKey({
+      rootVendorKey: input.vendorKey,
+      baseUrl: input.baseUrl,
+      name: input.vendorName,
+      vendors: before.vendors,
+      catalogVendorKey: input.catalogVendorKey,
+    });
     const identity = planStagedVendorIdentity({
       state: before,
       sourceVendorKey,
@@ -147,6 +158,8 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
+          // 兄弟连接（`apimart--mini`）登记 root，这样「这是不是 apimart」解析得回去（#831）。
+          ...siblingConnectionLineageMeta(targetVendorKey),
           ...candidateLineageMeta(identity),
         },
       });
@@ -224,6 +237,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
         meta: {
           ...asRecord(existingVendor?.meta),
           ...(Object.keys(cleanHeaders).length ? { extraHeaders: cleanHeaders } : {}),
+          ...siblingConnectionLineageMeta(targetVendorKey),
           ...candidateLineageMeta(identity),
         },
       });

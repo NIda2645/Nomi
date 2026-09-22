@@ -1,0 +1,357 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-vendor-connection-identity",
+  "problem_type": "A connection's identity was its domain, so a second connection on the same Base URL overwrote the first one's name and credential",
+  "symptom": "GitHub issue #831 (dreamcolor123): a relay sells three pricing tiers behind one Base URL, each with its own API key and model permissions. Adding the second connection (new name, new key) silently renamed the first connection and replaced its key; the first connection's already-onboarded models stayed put and therefore started calling with the wrong tier's key (401, or billed at the wrong multiplier). Reproduced by electron/providerAdapter/registrationSameHostSecondConnection.test.ts (2 failing on origin/main 71eefe272, 1 precondition passing).",
+  "direct_cause": "`registerProviderConnection` derived the target vendorKey from `deriveVendorKeyFromBaseUrl(baseUrl)` (electron/catalog/catalogCommit.ts:400-420), which only looks at hostname. `defaultCatalog.register` (electron/providerAdapter/serviceCatalog.ts:106-157) then upserted that same key's vendor row and apiKey record, so the second save was an update of the first connection rather than an insert.",
+  "class_root": "A connection's identity was modelled as \"which server am I talking to\" (domain) instead of \"which identity do I hold on that server\" (domain + connection name). Because the domain-derived key was ALSO the system-wide primary key, sixteen call sites learned to ask \"is this vendor apimart?\" by comparing the key to a literal. Identity derivation lived in one place, but identity *recognition* was copied sixteen times — so widening identity silently breaks all sixteen at once, each with a different, non-erroring symptom.",
+  "affected_population": [
+    "Every user of a relay that sells several pricing/permission groups behind one Base URL (the #831 reporter's three Seedance tiers), and anyone who deliberately keeps two keys for one upstream",
+    "After the widening: every code path that recognised a built-in vendor by key literal would have mis-classified a second connection of a built-in (apimart/kie) — asset upload would fall back to anonymous hosting, relay migrations would rewrite seed-owned mappings, the default-vendor tier would silently demote it"
+  ],
+  "scope_paths": [
+    "electron/shared/builtinVendorIdentity.ts",
+    "electron/catalog/",
+    "electron/providerAdapter/",
+    "electron/integrationCertification/httpModelDiscovery.ts",
+    "electron/integrationCertification/integrationSession.ts",
+    "electron/integrationCertification/service.ts",
+    "electron/integrationCertification/sessionVendorKey.ts",
+    "electron/runtime.ts",
+    "src/config/modelIdentity.ts",
+    "src/ui/onboarding/",
+    "src/workbench/common/useDedupedModelSelect.ts",
+    "src/workbench/generationCanvas/runner/",
+    "src/workbench/generationCanvas/nodes/",
+    "src/workbench/settings/AiModelsSection.tsx",
+    "src/devlab/designLab/catalogLiveness/states/01-listing.tsx",
+    "src/i18n/locales/modelSetup.ts",
+    "scripts/check-builtin-vendor-literals.mjs"
+  ],
+  "entry_points": [
+    "Settings → Models → Connect an API or relay → Save connection (OnboardingWizard → nomi:integration-certification:http:configure → registerProviderConnection → defaultCatalog.register)",
+    "Every reader that asked \"is this vendor <builtin>\" by key literal"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/CherryHQ/cherry-studio/blob/main/src/shared/data/types/provider.ts#L237-L243",
+      "checked_at": "2026-09-22",
+      "purpose": "Cherry Studio splits identity (`id`), display (`name`) and built-in lineage (`presetProviderId`) into three fields; a custom provider's id is a uuid unrelated to its Base URL. Confirms the three-field separation adopted here."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/BerriAI/litellm/blob/main/litellm/router.py#L8602-L8617",
+      "checked_at": "2026-09-22",
+      "purpose": "LiteLLM hashes ALL litellm_params — including api_key — into a deployment id. Counter-example: rotating a key would re-key the connection, so our rule deliberately excludes secrets (same reason stagedVendorIdentity.ts:123 already did)."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/open-webui/open-webui/blob/main/backend/open_webui/routers/openai.py#L338-L343",
+      "checked_at": "2026-09-22",
+      "purpose": "Open WebUI keys connections by array index (`url_idx`), with a `api_configs.get(str(idx), api_configs.get(url, {}))` migration scar. Counter-example for ordinal identity: deleting one connection re-points every stored reference."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/songquanpeng/one-api/blob/main/model/channel.go#L21-L43",
+      "checked_at": "2026-09-22",
+      "purpose": "one-api's Channel{Id, Name, BaseURL, Key, Models, Group} is exactly the reporter's mental model of a 'pricing group'; BaseURL is never the identity there."
+    }
+  ],
+  "invariants": [
+    "A connection's identity is (domain, connection name). The FIRST connection on a domain keeps the bare host key, so an existing catalog needs no migration.",
+    "Renaming a connection never changes its key (models, credentials, preferences and history stay put).",
+    "Same domain + same name means update that connection; same domain + different name means a new, independent connection with its own key, models and pricing.",
+    "Whether a vendor row belongs to a built-in family is answered only by electron/shared/builtinVendorIdentity — never by comparing the key to a literal.",
+    "The add-connection form's hint and the catalog write path use the same verdict: what the hint promises is what saving does."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/catalog/connectionVendorKey.ts",
+      "symbol": "resolveConnectionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "symbol": "resolveConnectionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "sessionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/service.ts",
+      "symbol": "resolveHostVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/service.ts",
+      "symbol": "resolveHostVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/registration.ts",
+      "symbol": "resolveHostVendorKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "symbol": "resolveConnectionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/runtime.ts",
+      "symbol": "catalogCommit"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/builtinVendorIdentity.ts",
+      "symbol": "isVendorOfBuiltin"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "isVendorOfBuiltin"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "isVendorOfBuiltin"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/kieGptImage2.ts",
+      "symbol": "builtinVendorKeyOfKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/relayImageEditMigration.ts",
+      "symbol": "isBuiltinRelayVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/relayLegacyMigrations.ts",
+      "symbol": "isBuiltinRelayVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/relayNativeWireUpgrade.ts",
+      "symbol": "isBuiltinRelayVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/relayVideoI2vMigration.ts",
+      "symbol": "isBuiltinRelayVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/config/modelIdentity.ts",
+      "symbol": "vendorTier"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/duplicateHostConnections.ts",
+      "symbol": "duplicateHostVerdict"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingWizard.tsx",
+      "symbol": "useDuplicateHostHint"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/onboardingWizardSupport.tsx",
+      "symbol": "hintMarker"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "symbol": "providerConnectionSuffixes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "builtinVendorKeyOfKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts",
+      "symbol": "isVendorOfBuiltin"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/assetUploadConsent.ts",
+      "symbol": "isVendorOfBuiltin"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/settings/AiModelsSection.tsx",
+      "symbol": "builtinVendorKeyOfKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/catalogLiveness/states/01-listing.tsx",
+      "symbol": "KNOWN_VENDORS"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/modelSetup.ts",
+      "symbol": "baseUrlDuplicateCreate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/sessionVendorKey.ts",
+      "symbol": "resolveConnectionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/useDuplicateHostHint.ts",
+      "symbol": "duplicateHostVerdict"
+    }
+  ],
+  "door_reduction": {
+    "before": 29,
+    "after": 29,
+    "why_not": "Door COUNT is unchanged (29 files touch this state before and after); what changed is that they no longer each carry their own RULE. Before: 6 of them independently derived a vendorKey from a baseUrl (node scripts/door-map.mjs deriveVendorKeyFromBaseUrl on origin/main: 5 doors / 7 occurrences) and 15 more recognised a built-in vendor by comparing its key to a literal or by a Set lookup (scripts/check-builtin-vendor-literals.mjs against origin/main: 20 hits). After: every one of them is a CALLER of one of two owners — resolveConnectionVendorKey (derive) and builtinVendorIdentity (recognise) — so there are 28 doors but only 2 rules. Merging the doors further would mean merging unrelated features (asset upload consent, relay migrations, the model picker) into one module, which is worse. src/config/modelIdentity.ts#vendorTier is added by hand because door-map does not scan Set.has shapes; that blind spot is exactly why the new gate grew a second judgement.",
+    "manual_additions": [
+      "src/config/modelIdentity.ts vendorTier — Set.has shape, invisible to door-map"
+    ]
+  },
+  "generality_proof": "Identity derivation: every path that turns a baseUrl into a vendorKey now goes through `resolveConnectionVendorKey`; `deriveVendorKeyFromBaseUrl` has no callers outside it and `scripts/check-builtin-vendor-literals.mjs` fails closed on any new direct call, including from files that do not exist yet. Identity recognition: `isVendorOfBuiltin` / `builtinVendorKeyOfKey` resolve through `resolvedVendorLineageRoot`, which already handles every lineage shape in the catalog (bare key, sibling connection, certification candidate), so a future built-in family inherits the behaviour without being listed anywhere.",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/connectionVendorKey.ts",
+      "symbol": "resolveConnectionVendorKey",
+      "responsibility": "The only place that decides which connection a save lands on."
+    },
+    {
+      "path": "electron/shared/builtinVendorIdentity.ts",
+      "symbol": "isVendorOfBuiltin",
+      "responsibility": "The only way to ask whether a vendor row belongs to a built-in family; shared by main process and renderer."
+    },
+    {
+      "path": "scripts/check-builtin-vendor-literals.mjs",
+      "symbol": "check-builtin-vendor-literals",
+      "responsibility": "Ratchet that keeps identity recognition and baseUrl-derivation in their single owners."
+    },
+    {
+      "path": "electron/integrationCertification/sessionVendorKey.ts",
+      "symbol": "sessionVendorKey",
+      "responsibility": "接入会话侧「这条会话落在哪条连接上」的单一问法（住在 integrationSession.ts 外面，因为那是 check:filesize 的白名单巨壳，只可减不可增）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "entry_point": "selectCatalogSelection / currentVendor / buildRequest providerId guard",
+      "disposition": "enforced",
+      "evidence": "All five literals replaced by isVendorOfBuiltin / builtinVendorKeyOfKey; the mapping lookup now follows the resolved vendor's own key instead of the literal \"apimart\". This file is a CALL SITE of the identity rule, not a layer this contract owns — the invariant lives in electron/catalog/connectionVendorKey.ts. It is therefore listed as a same-class entry point and as a door, but deliberately NOT in scope_paths: claiming electron/capabilityCore as this fix's layer would be false, and would also mis-file this contract into that module's symptom cluster."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/assetUploadConsent.ts",
+      "entry_point": "kie upload-channel lookup",
+      "disposition": "enforced",
+      "evidence": "Highest-risk site: an unrecognised sibling connection would have pushed local assets to anonymous hosting. Now resolved through lineage."
+    },
+    {
+      "path": "electron/catalog/relayImageEditMigration.ts",
+      "entry_point": "BUILTIN_VENDOR_KEYS.has(model.vendorKey)",
+      "disposition": "enforced",
+      "evidence": "Found by the new gate, not by hand. Collapsed into isBuiltinRelayVendorKey() and reused by relayLegacyMigrations / relayNativeWireUpgrade / relayVideoI2vMigration; otherwise relay migrations would have rewritten a sibling connection's seed-owned mappings."
+    },
+    {
+      "path": "src/config/modelIdentity.ts",
+      "entry_point": "vendorTier",
+      "disposition": "enforced",
+      "evidence": "Set.has shape the grep probe could not see. Resolves root before the lookup, so a sibling connection keeps the same tier as its family; ordering within the tier keeps the first connection first."
+    },
+    {
+      "path": "src/devlab/designLab/catalogLiveness/states/01-listing.tsx",
+      "entry_point": "KNOWN_VENDORS.find(v => v.vendorKey === 'apimart')",
+      "disposition": "not-affected",
+      "evidence": "Queries the display directory (KNOWN_VENDORS), whose vendorKey is always a built-in key and never a runtime vendor row. Registered as a gate exemption whose needle is asserted to still exist."
+    },
+    {
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "entry_point": "vendors.find(v => v.key === \"apimart\")",
+      "disposition": "not-affected",
+      "evidence": "NOT fixed here, and deliberately so: the file is rewritten on the parallel integration/core-a-salvage branch, so touching it here guarantees a conflict. Registered as dated debt in scripts/check-builtin-vendor-literals.mjs (owner integration/core-a-salvage merge, due 2026-10-06, shrink-only, red on expiry). Existing single connections are unaffected; the residual impact on a NEW sibling connection is written out in residual_risks. Dated debt in scripts/check-builtin-vendor-literals.mjs (owner integration/core-a-salvage merge, due 2026-10-06). The file is rewritten on a parallel branch. Residual impact recorded below."
+    },
+    {
+      "path": "src/ui/onboarding/ModelSettingsHome.tsx",
+      "entry_point": "connection.vendorKey === 'apimart' | 'kie' hints and badge",
+      "disposition": "not-affected",
+      "evidence": "NOT fixed here, and deliberately so: the file is rewritten on the parallel integration/core-a-salvage branch, so touching it here guarantees a conflict. Registered as dated debt in scripts/check-builtin-vendor-literals.mjs (owner integration/core-a-salvage merge, due 2026-10-06, shrink-only, red on expiry). Existing single connections are unaffected; the residual impact on a NEW sibling connection is written out in residual_risks. Same debt entry and owner. Cosmetic only."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Identity derivation had one owner but identity recognition had sixteen copies. Any new built-in family, or any newly written `vendor.key === \"x\"`, reintroduces the same class with a different symptom and no error.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs deriveVendorKeyFromBaseUrl (on origin/main): 5 doors / 7 occurrences, all independently deriving identity from baseUrl",
+      "node scripts/check-builtin-vendor-literals.mjs against origin/main via git archive: 20 hits (positive control); against this branch: 0 new, 2 dated debt, 1 asserted exemption",
+      "node scripts/door-map.mjs resolveConnectionVendorKey isVendorOfBuiltin (this branch): 6 + 4 doors, all callers of one rule"
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-builtin-vendor-literals.mjs",
+    "invariant": "Built-in vendor identity is resolved through electron/shared/builtinVendorIdentity, and a vendorKey is derived from a baseUrl only inside electron/catalog/connectionVendorKey.ts.",
+    "failure_mode": "The gate fails closed on: a new `<vendor-ish> === \"apimart\"` comparison, a `.has(\"kie\")` literal lookup, a direct `deriveVendorKeyFromBaseUrl(` call outside its owner, an exemption whose needle no longer exists, a debt entry that is already clean, or a debt entry past its due date. Positive control run before the fix: 20 hits on origin/main.",
+    "exception_policy": "none",
+    "strategy": "Move both halves of the invariant (derive, recognise) into single owners and ratchet the call sites. Exemptions are only for literals that are provably accurate (the family has no address+key onboarding shape, so it cannot grow a sibling connection) and each carries a needle the gate asserts still exists; debt entries are dated, shrink-only, and go red on expiry rather than being renewable.",
+    "artifacts": [
+      "scripts/check-builtin-vendor-literals.mjs",
+      "electron/shared/builtinVendorIdentity.ts",
+      "electron/catalog/connectionVendorKey.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/providerAdapter/registrationSameHostSecondConnection.test.ts",
+    "electron/providerAdapter/sameHostConnectionsIndependence.test.ts",
+    "electron/catalog/connectionVendorKey.test.ts",
+    "src/ui/onboarding/duplicateHostConnections.test.ts",
+    "src/config/providerConnectionSuffixes.test.ts",
+    "tests/ux/vendor-connection-identity.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/connectionVendorKey.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/runtime.ts",
+      "electron/providerAdapter/registration.ts",
+      "electron/integrationCertification/httpModelDiscovery.ts",
+      "electron/integrationCertification/integrationSession.ts",
+      "electron/integrationCertification/service.ts",
+      "electron/providerAdapter/service.ts"
+    ],
+    "rationale": "Every independent `String(catalogVendorKey) || deriveVendorKeyFromBaseUrl(baseUrl)` fallback is deleted in the same commit, along with runtime.ts's unused re-export of the host step. No parallel derivation and no escape hatch remain."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency behaviour involved; this is our own identity model.",
+    "exit_criteria": []
+  },
+  "migration": "None. The first connection on a domain keeps the exact key it has today, so an existing catalog is read and written unchanged; only newly created second-and-later connections use the new shape. Proved byte-for-byte by sameHostConnectionsIndependence.test.ts's zero-migration case. The catalog version is deliberately NOT bumped: no new field, no changed semantics for existing rows, only a wider key space.",
+  "residual_risks": [
+    "Caught during implementation by the pre-existing electron/providerAdapter/registrationCatalog.test.ts: the 'same domain + same name' rule must compare the EXISTING connections' NAMES, not the key space. The first connection's key is the bare root while its name can be anything, so a key-space comparison turned 're-save this connection' into 'create a sibling' and the preserved credential then went missing. Pinned by connectionVendorKey.test.ts ('重新保存同一条连接…落回它自己').",
+    "Until the integration/core-a-salvage merge lands (debt due 2026-10-06), a SECOND apimart connection is not recognised as the apimart execution provider by electron/capabilityCore/generationProviderBootstrap.ts. This affects only newly created sibling connections of a built-in; an existing single connection is untouched.",
+    "Same debt: src/ui/onboarding/ModelSettingsHome.tsx renders a sibling connection of a built-in as a custom card (hint text and the 'recommended' badge). Cosmetic only — it does not affect whether the connection runs.",
+    "Two connection names that differ only in non-ASCII characters slug to the same value and are therefore treated as the same connection. The form says so in the same breath ('saving will update the key for X'), and connectionVendorKey.test.ts pins the behaviour, but it is a deliberate limitation rather than a solved problem.",
+    "The duplicate-host hint reads the vendor list when the drawer opens; a connection added in another window during the same open session is not reflected until reopen."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/connectionVendorKey.ts",
+    "tests": [
+      "electron/catalog/connectionVendorKey.test.ts",
+      "electron/providerAdapter/sameHostConnectionsIndependence.test.ts",
+      "tests/ux/vendor-connection-identity.walk.mjs"
+    ],
+    "why": "「这次保存落在哪条连接上」这条不变量归身份派生层管，而那一层此前根本不存在（判据散在 6 个调用点里）。本次把它立起来并把 6 扇门全指过去；它的测试既有纯规则单测（第一条保持 host key、改名不换 key、slug 撞车视为同名），也有走真实 catalogStore 的写盘/重新读盘验证，以及 zh/en 真机走查。阳性对照：红测试 (a)(b) 在 origin/main 71eefe272 上为红。"
+  }
+}

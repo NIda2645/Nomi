@@ -9,7 +9,7 @@ import { IconEyeOff } from '@tabler/icons-react'
 import type { ModelOption } from '../../config/models'
 import type { NomiSelectOption } from '../../design'
 import i18n from '../../i18n'
-import { dedupeModelOptions, pickImplicitVendorMatch, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
+import { dedupeModelOptions, pickImplicitVendorMatch, providerConnectionSuffixes, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
 import { partitionByModelBoxPreference, rememberedProviderIndex, rememberedVendorFor } from '../../config/modelBoxPreference'
 import type { ModelBoxPreferenceSettings } from '../../../electron/shared/contracts/modelBoxPreference'
 import { useVendorPreferenceOrder } from './useVendorPreference'
@@ -36,13 +36,20 @@ const VENDOR_LABELS: Record<string, string> = {
 
 /** 厂商显示名：内置短名映射（下拉附注要短）> option.vendorName（自定义中转的真名）> key 原样。
  *  短名优先：catalog 里内置家的 name 是接入卡全称（如「即梦会员（本地 CLI）」），当 trailing 太啰嗦。 */
-export function modelProviderLabel(provider?: ModelProviderRef | null): string {
+export function modelProviderLabel(provider?: ModelProviderRef | null, connectionSuffix?: string): string {
   if (!provider) return translateModelDisplayText('默认')
   const short = provider.vendor ? VENDOR_LABELS[provider.vendor.toLowerCase()] : undefined
-  if (short) return translateModelDisplayText(short)
-  const fromCatalog = provider.option.vendorName?.trim()
-  if (fromCatalog) return translateModelDisplayText(fromCatalog)
-  return translateModelDisplayText(provider.vendor || '默认')
+  const base = short
+    ? translateModelDisplayText(short)
+    : translateModelDisplayText(provider.option.vendorName?.trim() || provider.vendor || '默认')
+  // #831：同一家有多条连接（满血组 / Mini 特价组）时，chip 直接显示**连接名本身**。
+  //
+  // 为什么不是「APIMart · 满血组」：实验室那一格（vo-07）拍出来是 `APIMart · …` —— 两段拼起来
+  // 超出 chip 宽度，被截掉的恰好是**唯一有区分力的那一段**，等于白加。而这一刻品牌名是冗余的：
+  // 两个 chip 本来就同属一家，用户要认的是「哪个分组」。
+  // 后缀由 `providerConnectionSuffixes` 一处算出，且**只进显示名**——不进排序键、不进请求、不进持久化。
+  if (!connectionSuffix) return base
+  return translateModelDisplayText(connectionSuffix) || base
 }
 
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */
@@ -156,10 +163,11 @@ export function buildModelSelectOptions(
     // 「我改过的是这一行」而不是「全局顺序变了」（2026-09-11 样张：Nano Banana 2 高亮 Kie，其余高亮第一家）。
     const rememberedIndex = rememberedProviderIndex(uniqueProviders, rememberedVendorFor(m, preference))
     const activeIndex = rememberedIndex >= 0 ? rememberedIndex : 0
+    const connectionSuffixes = providerConnectionSuffixes(uniqueProviders)
     const chips = multiVendor
       ? uniqueProviders.map((provider, index) => ({
           value: providerAddress(provider),
-          label: modelProviderLabel(provider),
+          label: modelProviderLabel(provider, provider.vendor ? connectionSuffixes.get(provider.vendor) : undefined),
           active: index === activeIndex,
         }))
       : undefined

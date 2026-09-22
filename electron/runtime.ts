@@ -106,7 +106,6 @@ export {
 } from "./catalog/catalogStore";
 export {
   commitOnboardedModelToCatalog,
-  deriveVendorKeyFromBaseUrl,
   fetchModelCatalogDocs,
   testModelCatalogMapping,
 } from "./catalog/catalogCommit";
