@@ -17,16 +17,31 @@
  * `deriveVendorKeyFromBaseUrl` 自此**只是本模块内部的 host 步**，不许别处再直接调
  * （`scripts/check-builtin-vendor-literals.mjs` 盯着）。
  */
-import { composeConnectionVendorKey, slugifyConnectionName } from "../shared/builtinVendorIdentity";
+import {
+  CONNECTION_KEY_SEPARATOR,
+  composeConnectionVendorKey,
+  slugifyConnectionName,
+} from "../shared/builtinVendorIdentity";
 import { deriveVendorKeyFromBaseUrl } from "./catalogCommit";
 
 export type ConnectionVendorKeyInput = {
   /** 用户填的接入地址。首次接入时目录里还没有这条 vendor，从它派生 host 段是合法的。 */
   baseUrl?: string | null;
+  /**
+   * 调用方手里**已经算好的 root**（host 段）。给了就用它，不再从 baseUrl 重算一遍。
+   * 写入侧（serviceCatalog.register）走这一支：root 是上游 `registration.ts` 解析好的，
+   * 这里只负责「被占了就追加连接名」那一步 —— 同一条 key 不许被两处各算一遍（P1）。
+   */
+  rootVendorKey?: string | null;
   /** 用户填的「来源名称」。空 = 按「更新那条 host 连接」处理（见下）。 */
   name?: string | null;
-  /** 目录里现有的 vendor（只用到 key）。 */
-  vendors: readonly { key: string }[];
+  /**
+   * 目录里现有的 vendor。**名字是判据的一部分**：「同域名同名 = 更新那条」比的是
+   * 已有连接的**名字**，不是 key 空间 —— 第一条连接的 key 是裸 root，它的名字却可能是
+   * 任何东西（`saved-gateway` / 「满血组」）。只比 key 会把「重新保存同一条连接」
+   * 误判成「新建一条兄弟」，凭据随即找不到（registrationCatalog 那条测试抓到的就是这个）。
+   */
+  vendors: readonly { key: string; name?: string | null }[];
   /** 调用方手里已经有的连接身份（编辑既有连接 / 上游传下来的）。给了就按它，不再派生。 */
   catalogVendorKey?: string | null;
 };
@@ -38,9 +53,13 @@ export type ConnectionVendorKeyInput = {
  * 还没有这条 vendor，从地址派生是**合法**的，盲抛才是错的。它们拿到的是「这一族的 root」，
  * 具体落在哪条兄弟连接上由 {@link resolveConnectionVendorKey} 在写入侧决定。
  */
-export function resolveHostVendorKey(input: Pick<ConnectionVendorKeyInput, "baseUrl" | "catalogVendorKey">): string {
+export function resolveHostVendorKey(
+  input: Pick<ConnectionVendorKeyInput, "baseUrl" | "catalogVendorKey" | "rootVendorKey">,
+): string {
   const explicit = String(input.catalogVendorKey ?? "").trim();
   if (explicit) return explicit;
+  const given = String(input.rootVendorKey ?? "").trim();
+  if (given) return given;
   const hostKey = deriveVendorKeyFromBaseUrl(String(input.baseUrl ?? ""));
   if (!hostKey) throw new Error("Unable to derive a provider id from the API base URL");
   return hostKey;
@@ -52,25 +71,35 @@ export function resolveHostVendorKey(input: Pick<ConnectionVendorKeyInput, "base
  * 规则（拍板 2026-09-22，详见 docs/plan/2026-09-22-vendor-connection-identity.md §4.1）：
  *   1. 给了 `catalogVendorKey` → 就是它（= 编辑既有连接，不许被名字改动带跑）。
  *   2. host 段还没被占 → 返回 host 段本身。**与改之前逐字相同 = 存量目录零迁移。**
- *   3. host 段已被占 + 连接名 slug 非空 → `host--slug`。
- *      该 key 已存在 = 同域名同名 = **更新那条连接**（不加 `-2` 后缀，这是拍板 1 的直接后果）。
+ *   3. host 段已被占 + 连接名 slug 非空：
+ *      · 这一族里已有**同名**的那条（按名字比，不是按 key 比）→ 就是它，**更新**它；
+ *      · 否则 → `host--slug`，新建一条兄弟连接（不加 `-2` 后缀，这是拍板 1 的直接后果）。
  *   4. host 段已被占 + 连接名为空或 slug 化后为空（纯中文名/纯符号）→ 回落到 host 段，
  *      即「更新那条 host 连接」。UI 在这种情况下显示的是「保存会更新连接「X」的 Key」那一句，
  *      两边必须是同一条判据，否则提示说的和实际做的不是一回事。
  *
- * 只有「既没有 catalogVendorKey、也没有可解析的 baseUrl」才抛——那种情况下确实无从得知
+ * 只有「既没有 catalogVendorKey、也没有 rootVendorKey、也没有可解析的 baseUrl」才抛——那种情况下确实无从得知
  * 该写哪一行，猜一个默认就是 #831 的老路（P1 不留逃生口）。
  */
 export function resolveConnectionVendorKey(input: ConnectionVendorKeyInput): string {
   const hostKey = resolveHostVendorKey(input);
   if (input.catalogVendorKey && String(input.catalogVendorKey).trim()) return hostKey;
 
-  const taken = new Set(input.vendors.map((vendor) => vendor.key));
-  if (!taken.has(hostKey)) return hostKey;
+  // 这一族 = root 那条 + 它的兄弟连接。
+  const family = input.vendors.filter(
+    (vendor) => vendor.key === hostKey || vendor.key.startsWith(`${hostKey}${CONNECTION_KEY_SEPARATOR}`),
+  );
+  if (family.length === 0) return hostKey;
 
-  const sibling = composeConnectionVendorKey(hostKey, String(input.name ?? ""));
-  // slug 为空（纯中文名/纯符号/没填）→ 按「更新那条 host 连接」走，见规则 4。
-  return sibling || hostKey;
+  const slug = slugifyConnectionName(String(input.name ?? ""));
+  // slug 为空（纯中文名/纯符号/没填）→ 按「更新那条 root 连接」走，见规则 4。
+  if (!slug) return hostKey;
+
+  // 同名 = 就是那一条（不管它的 key 是裸 root 还是兄弟形状）。
+  const sameName = family.find((vendor) => slugifyConnectionName(String(vendor.name ?? "")) === slug);
+  if (sameName) return sameName.key;
+
+  return composeConnectionVendorKey(hostKey, String(input.name ?? "")) || hostKey;
 }
 
 /**

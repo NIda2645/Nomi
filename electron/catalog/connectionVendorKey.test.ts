@@ -14,7 +14,8 @@ import {
 } from "../shared/builtinVendorIdentity";
 import { connectionUpdateTarget, resolveConnectionVendorKey } from "./connectionVendorKey";
 
-const vendors = (...keys: string[]) => keys.map((key) => ({ key }));
+/** 只关心 key 的用例用它；名字留空（= slug 为空，永远不会和真名字撞）。 */
+const vendors = (...keys: string[]) => keys.map((key) => ({ key, name: "" }));
 
 describe("slugifyConnectionName", () => {
   it("只保留 ASCII 字母数字，折叠连写、去首尾连字符", () => {
@@ -72,6 +73,31 @@ describe("resolveConnectionVendorKey", () => {
     expect(resolveConnectionVendorKey({ baseUrl, name: "", vendors: state })).toBe(hostKey);
     expect(resolveConnectionVendorKey({ baseUrl, name: "满血组", vendors: state })).toBe(hostKey);
     expect(connectionUpdateTarget({ baseUrl, name: "满血组", vendors: state })).toBe(hostKey);
+  });
+
+  it("重新保存同一条连接（同域名同名）落回它自己，不长出兄弟", () => {
+    // 第一条连接的 key 是裸 root，名字却可以是任何东西。同名判定必须比**名字**，
+    // 比 key 空间会把「重新保存」误判成「新建兄弟」，凭据随即找不到。
+    const state = [{ key: hostKey, name: "Saved Gateway" }];
+    expect(resolveConnectionVendorKey({ baseUrl, name: "Saved Gateway", vendors: state })).toBe(hostKey);
+    expect(connectionUpdateTarget({ baseUrl, name: "Saved Gateway", vendors: state })).toBe(hostKey);
+  });
+
+  it("重新保存一条兄弟连接落回那条兄弟", () => {
+    const state = [
+      { key: hostKey, name: "满血组" },
+      { key: `${hostKey}--mini`, name: "Mini 特价组" },
+    ];
+    expect(resolveConnectionVendorKey({ baseUrl, name: "Mini 特价组", vendors: state })).toBe(`${hostKey}--mini`);
+  });
+
+  it("调用方给了 rootVendorKey 就按它当 root，不再从 baseUrl 重算", () => {
+    expect(resolveConnectionVendorKey({
+      rootVendorKey: "saved-gateway",
+      baseUrl,
+      name: "Saved Gateway",
+      vendors: [],
+    })).toBe("saved-gateway");
   });
 
   it("给了 catalogVendorKey 就按它 —— 编辑既有连接不被名字带跑（改名不换 key）", () => {

@@ -86,12 +86,12 @@
     {
       "kind": "read",
       "path": "electron/integrationCertification/service.ts",
-      "symbol": "resolveConnectionVendorKey"
+      "symbol": "resolveHostVendorKey"
     },
     {
       "kind": "read",
       "path": "electron/providerAdapter/service.ts",
-      "symbol": "resolveConnectionVendorKey"
+      "symbol": "resolveHostVendorKey"
     },
     {
       "kind": "read",
@@ -346,6 +346,7 @@
   },
   "migration": "None. The first connection on a domain keeps the exact key it has today, so an existing catalog is read and written unchanged; only newly created second-and-later connections use the new shape. Proved byte-for-byte by sameHostConnectionsIndependence.test.ts's zero-migration case. The catalog version is deliberately NOT bumped: no new field, no changed semantics for existing rows, only a wider key space.",
   "residual_risks": [
+    "Caught during implementation by the pre-existing electron/providerAdapter/registrationCatalog.test.ts: the 'same domain + same name' rule must compare the EXISTING connections' NAMES, not the key space. The first connection's key is the bare root while its name can be anything, so a key-space comparison turned 're-save this connection' into 'create a sibling' and the preserved credential then went missing. Pinned by connectionVendorKey.test.ts ('重新保存同一条连接…落回它自己').",
     "Until the integration/core-a-salvage merge lands (debt due 2026-10-06), a SECOND apimart connection is not recognised as the apimart execution provider by electron/capabilityCore/generationProviderBootstrap.ts. This affects only newly created sibling connections of a built-in; an existing single connection is untouched.",
     "Same debt: src/ui/onboarding/ModelSettingsHome.tsx renders a sibling connection of a built-in as a custom card (hint text and the 'recommended' badge). Cosmetic only — it does not affect whether the connection runs.",
     "Two connection names that differ only in non-ASCII characters slug to the same value and are therefore treated as the same connection. The form says so in the same breath ('saving will update the key for X'), and connectionVendorKey.test.ts pins the behaviour, but it is a deliberate limitation rather than a solved problem.",

@@ -9,8 +9,7 @@ import {
   type CertificationStartCheckpoint,
 } from "../integrationCertification/providerAdapterCoordinator";
 import { certificationModeOperationKey } from "../integrationCertification/modeIdentity";
-import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
-import { readCatalog } from "../catalog/catalogStore";
+import { resolveHostVendorKey } from "../catalog/connectionVendorKey";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { AdapterNeedsAiError, compileProviderAdapter } from "./compiler";
 import type { DiscoveredDocs } from "./docsDiscovery";
@@ -193,11 +192,11 @@ export class ProviderAdapterService {
 
   async start(rawInput: ProviderAdapterStartInput): Promise<ProviderAdapterRun> {
     const input = normalizeProviderAdapterInput(rawInput, "verify");
-    // #831：验证跑在哪条连接上，由「域名 + 连接名」决定，不再只看域名。
-    const vendorKey = resolveConnectionVendorKey({
+    // #831：这里只解析到「这一族的 root」，和 registration.ts 同一支。落在哪条兄弟连接上
+    // 由目录写入层决定 —— 身份判据只许有一个 owner，而它必须是读得到目录的那一层。
+    // （验证流程手里本来就有 catalogVendorKey：连接是先保存、后验证的。）
+    const vendorKey = resolveHostVendorKey({
       baseUrl: input.baseUrl,
-      name: input.vendorName,
-      vendors: readCatalog().vendors,
       catalogVendorKey: input.catalogVendorKey,
     });
     const id = this.dependencies.id();

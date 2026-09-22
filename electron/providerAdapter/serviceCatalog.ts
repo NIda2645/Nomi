@@ -112,6 +112,7 @@ export const defaultCatalog: ProviderAdapterCatalogPort = {
     // 一起顶掉（用户症状：三个计价分组变成一个，老模型拿着新分组的 Key 去跑）。
     // 判据只有一份，住 catalog/connectionVendorKey.ts —— 这一层是唯一读得到目录的地方。
     const sourceVendorKey = resolveConnectionVendorKey({
+      rootVendorKey: input.vendorKey,
       baseUrl: input.baseUrl,
       name: input.vendorName,
       vendors: before.vendors,

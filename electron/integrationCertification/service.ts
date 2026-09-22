@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import type { ProviderAdapterRun, ProviderAdapterRegistration } from "../providerAdapter/types";
-import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
-import { readCatalog } from "../catalog/catalogStore";
+import { resolveHostVendorKey } from "../catalog/connectionVendorKey";
 import { HttpProviderConnector } from "./httpConnector";
 import {
   ComfyUiConnector,
@@ -154,11 +153,9 @@ export class ConnectionCertificationService {
   }
 
   async startHttp(input: HttpStartInput): Promise<CanonicalHttpCertificationRun> {
-    // #831：认证启动也走同一份身份派生（连接名从 connection payload 里已有的 vendorName 来）。
-    const vendorKey = resolveConnectionVendorKey({
+    // #831：同上 —— 认证启动只解析到 root，兄弟连接的落点由目录写入层决定。
+    const vendorKey = resolveHostVendorKey({
       baseUrl: input.connection.baseUrl,
-      name: input.connection.vendorName,
-      vendors: readCatalog().vendors,
       catalogVendorKey: input.connection.catalogVendorKey,
     });
     const certification = contractBinding(
