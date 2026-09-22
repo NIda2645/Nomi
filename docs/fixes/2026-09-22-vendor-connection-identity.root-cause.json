@@ -13,7 +13,6 @@
     "electron/shared/builtinVendorIdentity.ts",
     "electron/catalog/",
     "electron/providerAdapter/",
-    "electron/capabilityCore/apimartGenerationProvider.ts",
     "electron/integrationCertification/",
     "electron/runtime.ts",
     "src/config/modelIdentity.ts",
@@ -82,7 +81,7 @@
     {
       "kind": "read",
       "path": "electron/integrationCertification/integrationSession.ts",
-      "symbol": "resolveConnectionVendorKey"
+      "symbol": "sessionVendorKey"
     },
     {
       "kind": "read",
@@ -162,7 +161,7 @@
     {
       "kind": "read",
       "path": "src/ui/onboarding/OnboardingWizard.tsx",
-      "symbol": "duplicateHostVerdict"
+      "symbol": "useDuplicateHostHint"
     },
     {
       "kind": "read",
@@ -203,12 +202,22 @@
       "kind": "read",
       "path": "src/i18n/locales/modelSetup.ts",
       "symbol": "baseUrlDuplicateCreate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/sessionVendorKey.ts",
+      "symbol": "resolveConnectionVendorKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/useDuplicateHostHint.ts",
+      "symbol": "duplicateHostVerdict"
     }
   ],
   "door_reduction": {
-    "before": 28,
-    "after": 28,
-    "why_not": "Door COUNT is unchanged (28 files touch this state before and after); what changed is that they no longer each carry their own RULE. Before: 6 of them independently derived a vendorKey from a baseUrl (node scripts/door-map.mjs deriveVendorKeyFromBaseUrl on origin/main: 5 doors / 7 occurrences) and 15 more recognised a built-in vendor by comparing its key to a literal or by a Set lookup (scripts/check-builtin-vendor-literals.mjs against origin/main: 20 hits). After: every one of them is a CALLER of one of two owners — resolveConnectionVendorKey (derive) and builtinVendorIdentity (recognise) — so there are 28 doors but only 2 rules. Merging the doors further would mean merging unrelated features (asset upload consent, relay migrations, the model picker) into one module, which is worse. src/config/modelIdentity.ts#vendorTier is added by hand because door-map does not scan Set.has shapes; that blind spot is exactly why the new gate grew a second judgement.",
+    "before": 30,
+    "after": 30,
+    "why_not": "Door COUNT is unchanged (30 files touch this state before and after); what changed is that they no longer each carry their own RULE. Before: 6 of them independently derived a vendorKey from a baseUrl (node scripts/door-map.mjs deriveVendorKeyFromBaseUrl on origin/main: 5 doors / 7 occurrences) and 15 more recognised a built-in vendor by comparing its key to a literal or by a Set lookup (scripts/check-builtin-vendor-literals.mjs against origin/main: 20 hits). After: every one of them is a CALLER of one of two owners — resolveConnectionVendorKey (derive) and builtinVendorIdentity (recognise) — so there are 28 doors but only 2 rules. Merging the doors further would mean merging unrelated features (asset upload consent, relay migrations, the model picker) into one module, which is worse. src/config/modelIdentity.ts#vendorTier is added by hand because door-map does not scan Set.has shapes; that blind spot is exactly why the new gate grew a second judgement.",
     "manual_additions": [
       "src/config/modelIdentity.ts vendorTier — Set.has shape, invisible to door-map"
     ]
@@ -234,6 +243,11 @@
       "path": "scripts/check-builtin-vendor-literals.mjs",
       "symbol": "check-builtin-vendor-literals",
       "responsibility": "Ratchet that keeps identity recognition and baseUrl-derivation in their single owners."
+    },
+    {
+      "path": "electron/integrationCertification/sessionVendorKey.ts",
+      "symbol": "sessionVendorKey",
+      "responsibility": "接入会话侧「这条会话落在哪条连接上」的单一问法（住在 integrationSession.ts 外面，因为那是 check:filesize 的白名单巨壳，只可减不可增）。"
     }
   ],
   "same_class_entry_points": [
@@ -241,7 +255,7 @@
       "path": "electron/capabilityCore/apimartGenerationProvider.ts",
       "entry_point": "selectCatalogSelection / currentVendor / buildRequest providerId guard",
       "disposition": "enforced",
-      "evidence": "All five literals replaced by isVendorOfBuiltin / builtinVendorKeyOfKey; the mapping lookup now follows the resolved vendor's own key instead of the literal \"apimart\"."
+      "evidence": "All five literals replaced by isVendorOfBuiltin / builtinVendorKeyOfKey; the mapping lookup now follows the resolved vendor's own key instead of the literal \"apimart\". This file is a CALL SITE of the identity rule, not a layer this contract owns — the invariant lives in electron/catalog/connectionVendorKey.ts. It is therefore listed as a same-class entry point and as a door, but deliberately NOT in scope_paths: claiming electron/capabilityCore as this fix's layer would be false, and would also mis-file this contract into that module's symptom cluster."
     },
     {
       "path": "src/workbench/generationCanvas/runner/assetUploadConsent.ts",

@@ -7,7 +7,7 @@ import { DesignButton, DesignModal, DesignTextInput, DesignSwitch } from '../../
 import { ModelPickerScreen } from './ModelPickerScreen'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { CustomCallDraftIdentity } from '../../desktop/modelCatalogBridgeTypes'
-import { duplicateHostVerdict, type DuplicateHostConnection } from './duplicateHostConnections'
+import { useDuplicateHostHint } from './useDuplicateHostHint'
 import type {
   DesktopExistingConnectionSummary,
   DesktopHttpCertificationRun,
@@ -76,19 +76,6 @@ export function OnboardingWizard({
   const [userApiKey, setUserApiKey] = React.useState('')
   const [noApiKey, setNoApiKey] = React.useState(false)
   const [vendorName, setVendorName] = React.useState('')
-  // #831：表单要知道「这个地址是不是已经有连接了」。走既有的 modelCatalog.listVendors，
-  // 不加新 IPC；连接数是个位数，每次输入全量扫一遍没有成本。
-  const [existingConnections, setExistingConnections] = React.useState<DuplicateHostConnection[]>([])
-  React.useEffect(() => {
-    if (!opened) return
-    const rows = getDesktopBridge()?.modelCatalog?.listVendors?.() as Array<Record<string, unknown>> | undefined
-    if (!Array.isArray(rows)) return
-    setExistingConnections(rows.map((row) => ({
-      vendorKey: String(row.key || ''),
-      name: String(row.name || row.key || ''),
-      baseUrl: String(row.baseUrlHint || ''),
-    })).filter((row) => row.vendorKey && row.baseUrl))
-  }, [opened])
   const [presetId, setPresetId] = React.useState('')
   // Named presets can hide BaseURL; this flag reveals custom gateways.
   const [editBaseUrl, setEditBaseUrl] = React.useState(false)
@@ -428,18 +415,12 @@ export function OnboardingWizard({
   }, [fetchModels])
 
   // 撞域名时**原位替换**下面那句静态 hint —— 同一行、同一档灰字，不新增元素也不新增样式。
-  const duplicateHost = React.useMemo(
-    () => duplicateHostVerdict({ baseUrl: effectiveBaseUrl, name: vendorName, connections: existingConnections }),
-    [effectiveBaseUrl, vendorName, existingConnections],
-  )
-  const baseUrlHintText =
-    duplicateHost.kind === 'create'
-      ? t('modelSetup.baseUrlDuplicateCreate', { name: duplicateHost.existingName })
-      : duplicateHost.kind === 'update'
-        ? t('modelSetup.baseUrlDuplicateUpdate', { name: duplicateHost.existingName })
-        : providerKind === 'anthropic'
-          ? t('modelSetup.baseUrlAnthropicHint')
-          : t('modelSetup.baseUrlHint')
+  const baseUrlHint = useDuplicateHostHint({
+    opened,
+    baseUrl: effectiveBaseUrl,
+    name: vendorName,
+    fallbackHint: providerKind === 'anthropic' ? t('modelSetup.baseUrlAnthropicHint') : t('modelSetup.baseUrlHint'),
+  })
   const baseUrlTrimmed = effectiveBaseUrl
   const proxyUrlTrimmed = proxyUrl.trim()
   const baseUrlValid =
@@ -511,8 +492,8 @@ export function OnboardingWizard({
                   {showBaseUrlField ? (
                     <Field
                       label={t('modelSetup.baseUrl')}
-                      hint={baseUrlHintText}
-                      hintMarker={duplicateHost.kind === 'none' ? undefined : `duplicate-host-${duplicateHost.kind}`}
+                      hint={baseUrlHint.text}
+                      hintMarker={baseUrlHint.marker}
                     >
                       <DesignTextInput
                         value={baseUrl}

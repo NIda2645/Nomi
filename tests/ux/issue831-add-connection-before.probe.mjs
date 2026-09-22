@@ -41,7 +41,7 @@ await win.reload()
 await win.waitForTimeout(1800)
 for (let i = 0; i < 5; i += 1) {
   const skip = win.locator('button, [role="button"], a', { hasText: /跳过|开始创作|进入|完成|Skip|Start/ }).first()
-  if (await skip.count()) await skip.click({ timeout: 1000 }).catch(() => {})
+  if (await skip.count()) await skip.click().catch(() => {})
   await win.keyboard.press('Escape').catch(() => {})
   await win.waitForTimeout(300)
 }
@@ -58,7 +58,7 @@ async function clickFirst(patterns, label) {
   for (const pattern of patterns) {
     const target = win.locator('button, [role="button"], a, div[role="menuitem"], summary', { hasText: pattern }).first()
     if (await target.count()) {
-      await target.click({ timeout: 3000 }).catch(() => {})
+      await target.click().catch(() => {})
       await win.waitForTimeout(900)
       console.log(`  → 点了「${label}」(${pattern})`)
       return true
@@ -88,8 +88,8 @@ async function openAddConnectionForm(tagPrefix, hints) {
   await clickFirst(hints.otherWays, '展开其他接入方式')
   await win.waitForTimeout(500)
   const customRow = win.locator('[data-model-home-action="custom-api"]').first()
-  await customRow.waitFor({ state: 'visible', timeout: 8000 })
-  await customRow.click({ timeout: 6000 })
+  await customRow.waitFor({ state: 'visible' })
+  await customRow.click()
   await win.waitForTimeout(1200)
   await snap(`${tagPrefix}-add-connection-form-empty`)
   await dumpClickables(`${tagPrefix}-表单`)
@@ -142,7 +142,7 @@ await clickFirst([/通用/, /General/], '通用 tab')
 await win.waitForTimeout(500)
 const enBtn = win.locator('[data-settings-locale="en"]').first()
 if (await enBtn.count()) {
-  await enBtn.click({ timeout: 6000 }).catch(() => {})
+  await enBtn.click().catch(() => {})
   await win.waitForTimeout(1000)
   console.log('  → 点了 [data-settings-locale="en"]')
 } else {
