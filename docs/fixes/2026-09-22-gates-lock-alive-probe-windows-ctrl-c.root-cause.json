@@ -1,0 +1,174 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-gates-lock-alive-probe-windows-ctrl-c",
+  "problem_type": "A read-only liveness probe expressed as a POSIX idiom that is a console-wide write on Windows",
+  "symptom": "Reported in issue #838 by @dreamcolor123 on Windows 11 Pro 10.0.26200 / CPython 3.11: running `pnpm run gates` interrupted the Codex backend hosting the session twice, killing the task in flight and leaving the conversation pane blank (sidebar and composer still drawn); restarting Codex restored the view and rerunning the same check reproduced it. Isolated repro on the user's Windows 11 machine against the pre-fix file (sha256 b74e83abde1504dd5867f6a36f9f6f8f6b9cf3ae7cd995321fe0ce6efd831c3d, = origin/main 71eefe272): an observer process that only watches for Ctrl+C received one on 6 of 6 probes (3x alive, 3x inherited_owner), and the caller either got KeyboardInterrupt or died with STATUS_CONTROL_C_EXIT while still reporting 'owner is alive'. After the fix: 0 of 6, both entry points, in both harness modes.",
+  "direct_cause": "scripts/with-gates-lock.py alive() probed the lock owner with `os.kill(int(pid), 0)`. Windows has no signals, so CPython does not translate signal 0 into a query: it routes sig 0 (== CTRL_C_EVENT) to GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid), which delivers a console interrupt to every process in that pid's group on the shared console. The call still returned True, so the caller read a successful liveness answer while the host it was observing was being interrupted.",
+  "class_root": "The invariant 'observing a lock owner must not affect it' was never owned by anything; it was implied by a POSIX idiom. alive() is the single liveness reader for the whole machine lock, but it was written and exercised only on platforms where signal-zero happens to be a read, so nothing in the repo could tell a read from a write on the one platform where they differ. Any Python helper could reintroduce the same shape and stay green on every developer machine and every CI runner the repo actually has.",
+  "migration": "No data or state migration: the lock file format, the token/cwd check, the nested-admission rule and the queueing loop are byte-for-byte unchanged. Only how liveness is observed changed, and the Windows-reachable os.kill path is deleted in the same commit rather than kept as a fallback.",
+  "affected_population": [
+    "Every Windows contributor running `pnpm run gates` or `pnpm run test`: both fan out through the wrapper twice (gates -> gates:contracts, test -> test:agent-runtime), so the inner run always reaches the nested-admission path that calls alive()",
+    "Every other process sharing that console — in the report, the Codex backend hosting the session, which exited mid-task"
+  ],
+  "scope_paths": [
+    "scripts/with-gates-lock.py",
+    "scripts/with-gates-lock.node-test.mjs"
+  ],
+  "entry_points": [
+    "scripts/with-gates-lock.py alive() — the only liveness reader in the wrapper",
+    "scripts/with-gates-lock.py inherited_owner() — alive()'s only caller, reached from main()'s nested-admission branch after try_lock() fails",
+    "package.json `gates` -> `gates:contracts` and `test` -> `test:agent-runtime`: the two npm chains that re-enter the wrapper while the outer run holds the lock"
+  ],
+  "invariants": [
+    "alive() observes; on every platform it sends no signal, no console control event and no termination to any process.",
+    "A value that is not a positive int never reaches a process API: pid 0 means 'my own group' to both kill(2) and GenerateConsoleCtrlEvent, so junk metadata must be rejected before the syscall, not by it.",
+    "An unknown liveness state raises instead of returning True: a false 'alive' hands the shared machine lock to a caller that cannot actually inherit it."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/with-gates-lock.py",
+      "symbol": "alive"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/with-gates-lock.py",
+      "symbol": "inherited_owner"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "scripts/door-map.mjs cannot produce this table: it parses TypeScript/JS with the ts compiler and its default roots are src,electron, so `node scripts/door-map.mjs scripts/with-gates-lock.py` answers 「文件不存在」 and `node scripts/door-map.mjs alive` reports 19 reads that are all unrelated TypeScript symbols named `alive` (electron/comfyuiProgressSocket.ts, src/ui/onboarding/*, …) — zero of them this function. The table is therefore written by hand from the same file+symbol identity the script would emit, verified with `rg -n 'alive\\(' scripts/with-gates-lock.py` (one definition, one call site); this is the same accommodation docs/fixes/2026-09-22-card-face-over-own-ports.root-cause.json made for CSS. Both doors have to exist and neither is removable: alive() is the observation itself and inherited_owner() is the admission rule that consumes it (token + cwd + liveness). They are not merged because inherited_owner() also carries a POSIX-only process-group fallback that must not run on Windows, and alive() has to stay callable on its own for the regression probes."
+  },
+  "regression_tests": [
+    "scripts/with-gates-lock.node-test.mjs"
+  ],
+  "residual_risks": [
+    "ERROR_ACCESS_DENIED -> True deliberately mirrors POSIX PermissionError -> True (the process exists, we just cannot open it). A lock owner running as another user is therefore reported alive; inheriting it still requires a matching uuid4 token and an identical cwd, so this is reachable only by a caller that already holds the secret.",
+    "CI has no Windows runner for check:gates-lock: quality-gate.yml runs ubuntu + macOS only, and win-gate.yml is workflow_dispatch and does not run this suite. The two win32-only tests are verified on the user's Windows 11 machine in this change, not by CI — so a future Windows-only regression would be caught by the all-platform AST gate, not by those two tests.",
+    "The pre-fix positive control is recorded in --mode new-group (one console, observer in its own process group). Under --mode new-console the pre-fix observer produced no output at all in an SSH session-0 host, which is consistent with it being killed before it could report but is not a clean measurement; that cell is left unverified rather than counted."
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://docs.python.org/3/library/os.html#os.kill",
+      "checked_at": "2026-09-22",
+      "purpose": "CPython documents that on Windows os.kill only understands CTRL_C_EVENT and CTRL_BREAK_EVENT as signals and terminates unconditionally for any other value — there is no signal-zero query, so the POSIX 'probe' idiom has no Windows meaning."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://learn.microsoft.com/en-us/windows/console/handlerroutine",
+      "checked_at": "2026-09-22",
+      "purpose": "CTRL_C_EVENT is the control type with value 0, which is what makes `os.kill(pid, 0)` a Ctrl+C on Windows rather than a no-op."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocess",
+      "checked_at": "2026-09-22",
+      "purpose": "SYNCHRONIZE is enough to wait on a process object, so the replacement asks for no right to terminate or to read memory; failure codes ERROR_INVALID_PARAMETER and ERROR_ACCESS_DENIED distinguish 'no such pid' from 'exists but not ours'."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess",
+      "checked_at": "2026-09-22",
+      "purpose": "Microsoft warns that STILL_ACTIVE is ambiguous because a process may exit with that very code — the reason liveness is read from the process object's signaled state instead."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/libuv/libuv/blob/v1.x/src/win/process.c",
+      "checked_at": "2026-09-22",
+      "purpose": "uv_kill's `case 0` is labelled 'Health check: is the process still alive?' and implements GetExitCodeProcess + WaitForSingleObject(handle, 0) with no console event — the evidence that the repo's 7 Node-side `process.kill(pid, 0)` sites are genuine read-only probes on Windows and are not part of this class."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://nodejs.org/api/process.html#processkillpid-signal",
+      "checked_at": "2026-09-22",
+      "purpose": "Node documents signal 0 as a test for the existence of a process; combined with the libuv implementation above this is what separates the Node call sites from the Python one."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Not a one-off input: the nested-admission path runs on every `pnpm run gates` and `pnpm run test` on every Windows machine, and the reporter reproduced it deterministically 6/6. The shape is also re-addable at will — signal-zero is the standard POSIX liveness idiom, it is correct on macOS and Linux, and no developer machine or CI runner in this repo would show the difference.",
+    "same_class_scan": [
+      "rg -n 'os\\.kill' scripts/*.py: 2 hits — with-gates-lock.py alive() (this fix) and os.killpg in execute(), which is a deliberate termination already inside an `os.name != 'nt'` branch",
+      "rg -n 'process\\.kill\\([^,]*, ?0\\)' electron scripts src tests: 7 hits (electron/agentLane/laneLegacyFiles.ts laneLegacyFiles, electron/capabilityCore/lockfile.ts isProcessAlive, electron/parentProcessWatchdog.ts defaultProcessLiveness, electron/workspace/workspaceManifestLock.ts defaultIsProcessAlive, scripts/git-delivery.mjs processIsAlive, scripts/lib/nomiClient.mjs isAlive, scripts/vitest-fair-share.mjs isAlive) — all Node, all not-affected per libuv uv_kill case 0 (see external_sources)",
+      "node --test scripts/with-gates-lock.node-test.mjs with origin/main's scripts/with-gates-lock.py restored: 'signal-zero liveness probes are unreachable on windows' RED, reporting `with-gates-lock.py:54 os.kill(int(pid), 0)`; GREEN with the fix in place — the gate is proven to fail before it is trusted",
+      "python repro-838.py --file <pre-fix> --rounds 3 --mode new-group on Windows 11 10.0.26200 / CPython 3.11.9: unexpected_ctrl_c_count 6/6 (alive 3/3, inherited_owner 3/3); same command --file <post-fix>: 0/6 in both --mode new-group and --mode new-console"
+    ]
+  },
+  "generality_proof": "alive() is the single place in the wrapper that turns a pid into a liveness answer, and inherited_owner() is its only caller, so every path that can admit a nested command converges on it. The platform decision now lives inside that one function instead of at any call site, which means no caller can pick the wrong probe and no future caller needs to know there is a choice. Class coverage does not depend on that argument holding forever: 'signal-zero liveness probes are unreachable on windows' parses every scripts/**/*.py with ast and flags any `os.kill(x, 0)` whose scope has not already returned or raised for `os.name == 'nt'`, so a brand-new helper — or a copy of this call into another function — fails on macOS and Linux too, where the defect is otherwise invisible.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/with-gates-lock.py",
+      "symbol": "alive",
+      "responsibility": "The only liveness observation in the machine lock. Rejects non-pid values, reads the process object on Windows and signal-zero on POSIX, and raises rather than guessing when the platform cannot answer."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/with-gates-lock.py",
+      "entry_point": "inherited_owner",
+      "disposition": "enforced",
+      "evidence": "alive()'s only caller and the one that the reporter exercised; its Windows probe is covered by the 'windows liveness does not interrupt processes sharing the console' test (3/3 clean) and measured at 0/3 Ctrl+C on the real Windows 11 machine against 3/3 before the fix."
+    },
+    {
+      "path": "scripts/with-gates-lock.py",
+      "entry_point": "execute",
+      "disposition": "not-affected",
+      "evidence": "The other process API in the same file is `os.killpg(child.pid, signum)`, which is a deliberate termination of the wrapper's own foreground group and already sits inside an `os.name != 'nt'` branch; on Windows the same handler calls child.terminate() instead. Read at scripts/with-gates-lock.py execute()."
+    },
+    {
+      "path": "scripts/vitest-fair-share.mjs",
+      "entry_point": "isAlive",
+      "disposition": "not-affected",
+      "evidence": "Node, not Python: `process.kill(pid, 0)` reaches libuv uv_kill, whose `case 0` is a GetExitCodeProcess + zero-wait health check and emits no console event (source read at libuv v1.x src/win/process.c). Same verdict for the six sibling helpers listed in recurrence.same_class_scan; no change needed and none made."
+    },
+    {
+      "path": "electron/capabilityCore/lockfile.ts",
+      "entry_point": "isProcessAlive",
+      "disposition": "not-affected",
+      "evidence": "The closest structural twin — a lockfile owner-liveness check with the same POSIX comment — but Node-side, so the same libuv evidence applies. It already rejects non-positive-int pids, which is the guard this fix adds to the Python side."
+    },
+    {
+      "path": "scripts/comfyui-ui-to-api.py",
+      "entry_point": "<module>",
+      "disposition": "not-affected",
+      "evidence": "The repo's only other Python helper; it touches no process APIs. Confirmed by the same ast gate, which parses it on every run of check:gates-lock and reports zero sites."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/with-gates-lock.py",
+    "invariant": "Liveness is read, never signalled: alive() owns the platform decision, so no caller can choose a probe and no probe can reach os.kill on Windows.",
+    "failure_mode": "check:gates-lock goes red three ways. On every platform, 'signal-zero liveness probes are unreachable on windows' names the offending file, line and expression from the ast scan (positive control: red on origin/main's wrapper). On Windows, 'windows liveness never calls os.kill' replaces os.kill with a spy that raises on call, and 'windows liveness does not interrupt processes sharing the console' fails if an observer in the same console receives SIGINT while either entry point runs.",
+    "exception_policy": "none",
+    "strategy": "Put the platform decision inside the single liveness reader, delete the Windows-reachable signal path in the same commit, and back it with an all-platform static gate so the shape cannot return through a helper nobody runs on Windows.",
+    "artifacts": [
+      "scripts/with-gates-lock.py",
+      "scripts/with-gates-lock.node-test.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/with-gates-lock.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/with-gates-lock.py"
+    ],
+    "rationale": "P1: the `os.kill(int(pid), 0)` path reachable on Windows is deleted in this commit, not left behind a flag or a try/except fallback. Signal-zero survives only after the function has already returned or raised for os.name == 'nt', which the ast gate checks mechanically."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime is involved: ctypes and the kernel32 entry points are the stdlib and the OS. This is documented-API misuse, not a version defect — CPython 3.11 through 3.14 behave identically here and no upgrade would change it.",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "scripts/with-gates-lock.py",
+    "tests": [
+      "scripts/with-gates-lock.node-test.mjs"
+    ],
+    "why": "「观测锁持有者不能影响它」这条不变量归 alive() 一层管：它是全仓唯一把 pid 变成存活答案的地方，平台判断收在函数内部，调用方没得选。这一层有测试：三条 win32 测试（os.kill spy、同控制台 Ctrl+C 观测、取值表）加一条全平台 ast 门岗；门岗的阳性对照是把 origin/main 的 wrapper 放回去当场报红。"
+  }
+}
