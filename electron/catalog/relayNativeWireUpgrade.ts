@@ -2,7 +2,7 @@ import { archetypeIdForModel } from "./archetypeIdentity";
 import { nativeWireProfileForArchetype, type NativeWireProfile } from "./nativeWireProfiles";
 import { probeNativeEndpoint } from "./nativeEndpointProbe";
 import type { ProfileKind } from "./types";
-import { BUILTIN_VENDOR_KEYS } from "./relayImageEditMigration";
+import { isBuiltinRelayVendorKey } from "./relayImageEditMigration";
 import { decryptApiKeyRecord } from "./secrets";
 import {
   listModelCatalogMappings,
@@ -49,7 +49,7 @@ export async function upgradeRelayModelsToNativeWire(): Promise<UpgradeOutcome[]
   // 每个 (vendor, probePath) 只探一次。
   const probeCache = new Map<string, Promise<boolean>>();
   for (const model of listModelCatalogModels()) {
-    if (model.kind !== "video" || BUILTIN_VENDOR_KEYS.has(model.vendorKey)) continue;
+    if (model.kind !== "video" || isBuiltinRelayVendorKey(model.vendorKey)) continue;
     const archetypeId = archetypeIdForModel(model.modelKey, model.modelAlias);
     const profile = nativeWireProfileForArchetype(archetypeId);
     if (!profile) continue;

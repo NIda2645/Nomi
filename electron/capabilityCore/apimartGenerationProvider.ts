@@ -35,6 +35,10 @@ import {
   type ApimartReferenceUrlResolver,
 } from "./apimartGenerationProjection";
 import { ApimartGenerationProviderError } from "./apimartGenerationErrors";
+import { builtinVendorKeyOfKey, isVendorOfBuiltin } from "../shared/builtinVendorIdentity";
+
+/** 这条执行器服务的内置身份。兄弟连接（`apimart--mini`）经 lineage 解析回它。 */
+const APIMART_BUILTIN_KEY = "apimart";
 
 export type {
   ApimartImageReferenceWithRole,
@@ -251,9 +255,11 @@ function selectCatalogSelection(
   taskKind: ProfileKind,
 ): CatalogSelection {
   const state = readCatalogSnapshot(reader);
-  const vendor = state.vendors.find((candidate) => candidate.key === "apimart" && candidate.enabled);
+  // #831：同域名可以有多条 APIMart 连接（满血组 / 特价组各一把 Key），身份不再等于 key 字面量。
+  // 「这条 vendor 是不是 apimart」只许经 isVendorOfBuiltin 问一次。
+  const vendor = state.vendors.find((candidate) => candidate.enabled && isVendorOfBuiltin(state.vendors, candidate.key, APIMART_BUILTIN_KEY));
   if (!vendor) throw new ApimartGenerationProviderError("APIMart catalog vendor is unavailable");
-  const model = state.models.find((candidate) => candidate.vendorKey === "apimart"
+  const model = state.models.find((candidate) => candidate.vendorKey === vendor.key
     && candidate.modelKey === modelKey
     && candidate.enabled
     && candidate.kind === billingKindForTaskKind(taskKind));
@@ -262,7 +268,7 @@ function selectCatalogSelection(
   if (!publication.publishedModes.includes(taskKind)) {
     throw new ApimartGenerationProviderError(`APIMart catalog mapping is unavailable: ${modelKey}/${taskKind}`);
   }
-  const mapping = selectTaskMapping(state.mappings, "apimart", taskKind, model.modelKey);
+  const mapping = selectTaskMapping(state.mappings, vendor.key, taskKind, model.modelKey);
   if (!mapping) throw new ApimartGenerationProviderError(`APIMart catalog mapping is unavailable: ${modelKey}/${taskKind}`);
   const endpoint = endpointForMapping(mapping, taskKind);
   assertCanonicalQueryMapping(mapping);
@@ -430,7 +436,7 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
 
   const currentVendor = (): { vendor: Vendor; baseUrl: string } => {
     const state = readCatalogSnapshot(catalogReader);
-    const vendor = state.vendors.find((candidate) => candidate.key === "apimart" && candidate.enabled);
+    const vendor = state.vendors.find((candidate) => candidate.enabled && isVendorOfBuiltin(state.vendors, candidate.key, APIMART_BUILTIN_KEY));
     if (!vendor) throw new ApimartGenerationProviderError("APIMart catalog vendor is unavailable");
     assertDirectKeyContract(state, vendor);
     return { vendor, baseUrl: networkBaseUrl(vendor.baseUrlHint) };
@@ -556,7 +562,7 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
     providerId: "apimart",
     capabilities: { submitIdempotency: false, query: true, reconcile: true, cancel: false, materialize: true },
     buildRequest(input) {
-      if (input.providerId !== "apimart") throw new ApimartGenerationProviderError("APIMart provider identity does not match the request");
+      if (builtinVendorKeyOfKey(input.providerId) !== APIMART_BUILTIN_KEY) throw new ApimartGenerationProviderError("APIMart provider identity does not match the request");
       const taskKind = taskKindForMode(input.mode);
       const selection = selectCatalogSelection(catalogReader, input.modelId, taskKind);
       const { key, hash } = inputCacheKey(input);
@@ -595,7 +601,7 @@ export function createApimartGenerationProvider(options: ApimartGenerationProvid
       if (!entries || entries.length === 0) {
         throw new ApimartGenerationProviderError("APIMart sealed catalog identity is missing; rebuild the request before submission");
       }
-      if (input.providerId !== "apimart") throw new ApimartGenerationProviderError("APIMart provider identity does not match the request");
+      if (builtinVendorKeyOfKey(input.providerId) !== APIMART_BUILTIN_KEY) throw new ApimartGenerationProviderError("APIMart provider identity does not match the request");
       const taskKind = taskKindForMode(input.mode);
       const selection = selectCatalogSelection(catalogReader, input.modelId, taskKind);
       if (!findPrepared(entries, selection)) {

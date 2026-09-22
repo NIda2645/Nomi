@@ -49,17 +49,11 @@ p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width
 }
 .input.focused { border-color: var(--nomi-accent); }
 .hint { font-size: 11px; color: var(--nomi-ink-40); margin-top: 6px; }
-/* ── 本次样张唯一的新增：同域名已有连接时的内联一行 ── */
-.dupe-hint {
-  margin-top: 8px; display: flex; gap: 7px; align-items: flex-start;
-  border-left: 2px solid var(--nomi-info-edge);
-  background: var(--nomi-info-soft);
-  border-radius: 0 6px 6px 0;
-  padding: 7px 10px;
-  font-size: 11px; line-height: 1.6; color: var(--nomi-ink-60);
-}
-.dupe-hint svg { flex: 0 0 auto; margin-top: 2px; color: var(--nomi-info-ink); }
-.dupe-hint strong { color: var(--nomi-ink); font-weight: 500; }
+/* ── 本次样张唯一的新增：撞域名时**原位替换**上面那句静态 hint ──
+   不新增元素、不新增样式：同一个 .hint 容器、同一档 muted 文字 token，
+   只有连接名用 ink 色加粗。表单的视觉词汇就是「标签 / 输入框 / 灰字提示」，
+   蓝底块和聚焦态输入框同色系，会被读成一个能点的控件。 */
+.hint strong { color: var(--nomi-ink); font-weight: 500; }
 .switch-row { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 14px; }
 .switch { width: 34px; height: 19px; border-radius: 999px; background: var(--nomi-ink-05); border: 1px solid var(--nomi-line); position: relative; flex: 0 0 auto; }
 .switch::after { content: ""; position: absolute; left: 2px; top: 1.5px; width: 14px; height: 14px; border-radius: 999px; background: var(--nomi-ink-60); }
@@ -76,10 +70,11 @@ p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width
 <body>
 <h1>issue #831 样张 · 添加连接表单：域名撞上已有连接时的内联一行</h1>
 <p class="lede">
-  除了 <em>接入地址</em> 下面新增的那一行，其余每个字段、每句 hint、每个控件都与真实 before 截图逐项相同
+  <strong>不新增任何元素。</strong>撞域名时，把 <em>接入地址</em> 下面那句静态 hint
+  （「中转后台那个地址，带不带 /v1 都行」）<strong>原位替换</strong>成动态句——同一行、同一档灰字，
+  只有连接名用 ink 色加粗。其余每个字段、每句 hint、每个控件都与真实 before 截图逐项相同
   （<code>03-zh-add-connection-form-filled.png</code> / <code>06-en-add-connection-form-filled.png</code>）。
-  这一行只在「填进去的域名已经有连接」时出现：不弹窗、不拦保存、不给按钮——它唯一的活是把
-  「你现在做的是<strong>新建</strong>，不是改那一个」说清楚。
+  不弹窗、不拦保存、不给按钮——它唯一的活是把「你现在做的是<strong>新建</strong>，不是改那一个」说清楚。
 </p>
 
 <div class="tracks">
@@ -100,11 +95,7 @@ p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width
         <div class="field">
           <div class="label">接入地址（BaseURL）</div>
           <div class="input focused">https://gw.example.com/v1</div>
-          <div class="hint">中转后台那个地址，带不带 /v1 都行</div>
-          <div class="dupe-hint">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
-            <span>这个地址已经有连接「<strong>满血组</strong>」。填不同名称会新建一个独立连接，各自存 Key 和模型；想改「满血组」的 Key，去那个连接里改。</span>
-          </div>
+          <div class="hint">此地址已有连接「<strong>满血组</strong>」：填不同名称会新建独立连接；要改它的 Key，去那个连接里改。</div>
         </div>
         <div class="switch-row">
           <div class="switch"></div>
@@ -143,11 +134,7 @@ p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width
         <div class="field">
           <div class="label">Base URL</div>
           <div class="input focused">https://gw.example.com/v1</div>
-          <div class="hint">Enter the gateway URL; /v1 is optional</div>
-          <div class="dupe-hint">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
-            <span>This address already has a connection: “<strong>Full tier</strong>”. A different name creates a separate connection with its own key and models. To change Full tier’s key, edit that connection.</span>
-          </div>
+          <div class="hint">This address already has a connection “<strong>Full tier</strong>”. A different name creates a separate connection; to change its key, edit that connection.</div>
         </div>
         <div class="switch-row">
           <div class="switch"></div>
@@ -171,9 +158,12 @@ p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width
 </div>
 
 <p class="note">
-  英文那句比中文长约 1.6 倍，两行仍在同一块里收住（EN 串长是 R15 点名的坑）。<br />
-  提示行<strong>只</strong>在同域名已有连接时渲染；同域名 + 同名（= 要更新那个连接）时换一句
-  「保存会更新连接「X」的 Key」，两句共用同一个容器，不新增第二种提示样式。
+  三种状态共用同一行、同一个容器：<code>none</code> 显示原来那句静态 hint；
+  <code>create</code>（同域名 + 不同名）显示上图那句；<code>update</code>（同域名 + 同名，
+  或名字为空 / 纯中文导致 slug 为空）显示「保存会更新连接「满血组」的 Key。」。
+  判据住 <code>src/ui/onboarding/duplicateHostConnections.ts</code>，和写入侧
+  <code>electron/catalog/connectionVendorKey.ts</code> 用同一条规则——提示说的必须就是实际会做的。<br />
+  英文那句比中文长约 1.6 倍，仍在一行灰字里收住（EN 串长是 R15 点名的坑）。
 </p>
 </body>
 </html>

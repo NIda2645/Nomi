@@ -9,7 +9,8 @@ import {
   type CertificationStartCheckpoint,
 } from "../integrationCertification/providerAdapterCoordinator";
 import { certificationModeOperationKey } from "../integrationCertification/modeIdentity";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
+import { readCatalog } from "../catalog/catalogStore";
 import type { BillingModelKind, Model, Vendor } from "../catalog/types";
 import { AdapterNeedsAiError, compileProviderAdapter } from "./compiler";
 import type { DiscoveredDocs } from "./docsDiscovery";
@@ -192,8 +193,13 @@ export class ProviderAdapterService {
 
   async start(rawInput: ProviderAdapterStartInput): Promise<ProviderAdapterRun> {
     const input = normalizeProviderAdapterInput(rawInput, "verify");
-    const vendorKey = String(input.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.baseUrl);
-    if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
+    // #831：验证跑在哪条连接上，由「域名 + 连接名」决定，不再只看域名。
+    const vendorKey = resolveConnectionVendorKey({
+      baseUrl: input.baseUrl,
+      name: input.vendorName,
+      vendors: readCatalog().vendors,
+      catalogVendorKey: input.catalogVendorKey,
+    });
     const id = this.dependencies.id();
     const prepared = await this.certification.prepareStart(input, id, vendorKey);
     if (prepared.duplicate) return prepared.duplicate;

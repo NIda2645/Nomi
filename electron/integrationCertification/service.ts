@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { ProviderAdapterRun, ProviderAdapterRegistration } from "../providerAdapter/types";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
+import { readCatalog } from "../catalog/catalogStore";
 import { HttpProviderConnector } from "./httpConnector";
 import {
   ComfyUiConnector,
@@ -153,8 +154,13 @@ export class ConnectionCertificationService {
   }
 
   async startHttp(input: HttpStartInput): Promise<CanonicalHttpCertificationRun> {
-    const vendorKey =
-      String(input.connection.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.connection.baseUrl);
+    // #831：认证启动也走同一份身份派生（连接名从 connection payload 里已有的 vendorName 来）。
+    const vendorKey = resolveConnectionVendorKey({
+      baseUrl: input.connection.baseUrl,
+      name: input.connection.vendorName,
+      vendors: readCatalog().vendors,
+      catalogVendorKey: input.connection.catalogVendorKey,
+    });
     const certification = contractBinding(
       canonicalHttpContract(vendorKey, input.connection.models),
       input.idempotencyKey,

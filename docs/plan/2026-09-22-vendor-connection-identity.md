@@ -1,6 +1,6 @@
 # 连接身份 = 域名 + 连接名（GitHub issue #831）
 
-状态：**方案待审**（两段式派工第一段，只出方案 + 红测试，未实施）
+状态：**已实施**（第二段完成；下方「实施后的偏差」记录方案与落地的出入）
 分支：`fix/vendor-connection-identity-20260922` · worktree `/Users/aoqimin/Desktop/Nomi-fix-831-0922`
 Issue：https://github.com/aqm857886159/Nomi/issues/831
 
@@ -378,4 +378,28 @@ zh / en 两轨各跑一遍（R15）。截图**人眼判断**，不只看断言�
 
 ## 8. 待主会话裁的点
 
-见交付回报，此处不重复。
+五条已于 2026-09-22 裁决完毕（vendorTier 同档 / 提示行不用蓝块 / 四扇门不盲抛 / catalog 版本不升 / 计价倍率不做），裁决内容已并入上面各节。
+
+---
+
+## 9. 实施后的偏差（方案 → 落地）
+
+方案写在实施之前，落地时有五处与它不同。**偏差本身不是问题，写下来才是**——不记就会变成下一个人「照方案读代码读不懂」。
+
+1. **共享派生住 `electron/catalog/` 而不是 `electron/shared/`**（裁决 3 说的是后者）。理由：host 步要查「内置 host 别名表」，那张表是从 19 个 vendor seed 模块派生的。放进中立契约层 = 渲染层一 import 就把 19 个种子模块拖进浏览器 bundle，正是 `.dependency-cruiser.mjs` R-B5 注释里记着的那次白屏（#614）。**六个调用方全在主进程**，所以派生住 `electron/catalog/connectionVendorKey.ts`；渲染层要的那半（「这条 key 属于谁」）住 `electron/shared/builtinVendorIdentity.ts`，两边共用同一套 key 形状常量。裁决的意图（一份派生、六处都走它）完整保留。
+
+2. **身份解析落在 `serviceCatalog.register`，不落在 `registration.ts`**。方案原本要在 `registration.ts` 决定 key。实际上「落在哪条连接」必须由**读得到目录**的那一层决定，而 `registration.ts` 不读目录；而且红测试 (a)(b) 正是在 `defaultCatalog.register` 这个边界上断言的。`registration.ts` 现在只解析到 root（`resolveHostVendorKey`）。
+
+3. **多出两扇门**：`electron/runtime.ts` 有一条无人使用的 `deriveVendorKeyFromBaseUrl` re-export（方案没数到），一并删掉，否则门岗守不住「不许外部直接调」。
+
+4. **字面量实际是 16 + 5 处，不是 15 处**。方案里的 grep 探针漏了两族：`vendorTier` 的 `Set.has`（已在 §4.7 补记），以及 `relayImageEditMigration.ts` 的 `BUILTIN_VENDOR_KEYS`——后者是**新门岗自己扫出来的**，不是人找出来的。它被 4 个 relay 迁移共用，认不出兄弟连接就会去改写 APIMart 特价组那些本该由 seedBuiltins 独占的 mapping。已收成 `isBuiltinRelayVendorKey()`。
+
+5. **回环地址按端口分家**（方案完全没想到）。真机走查第一条断言就红了：本地目录里预置着 `comfyui-local`（`http://127.0.0.1:8188`），于是给一个**另一个端口**的本地网关填地址时，表单跳出「此地址已有连接「本地 ComfyUI」」——一句准确的谎话。已加 `connectionHostScope()`：普通域名只看 hostname，回环地址连端口一起看，与 `deriveVendorKeyFromBaseUrl` 的 `local-<port>` 同一条规则。**这条只有真机走查抓得到**——纯单测里没人会想到去造一个预置的本地供应商（P3：全绿 ≠ 完成）。
+
+### 提示行的最终形态（裁决 2）
+
+不要蓝底信息块。表单的视觉词汇就是「标签 / 输入框 / 灰字提示」，蓝块和聚焦态输入框同色系会被读成控件。落地做法：撞域名时把 Base URL 下面那句静态 hint **原位替换**成动态句，同一个容器、同一档 muted token，只有连接名用 ink 色加粗。三种状态（`none` / `create` / `update`）共用那一行，不新增元素、不新增样式。
+
+### 欠账（跨会话）
+
+`electron/capabilityCore/generationProviderBootstrap.ts` 与 `src/ui/onboarding/ModelSettingsHome.tsx` 的字面量**本次不改**：两个文件在 Core-A 打捞分支上已重写，同时改必冲突。它们登记成门岗里的**带到期日的债**（owner `integration/core-a-salvage 总合并`，到期 2026-10-06，只减不增、到期即红）。在总合并落地前的实际影响写进了根因合同的 `residual_risks`：第二条 apimart 连接不会被 `generationProviderBootstrap` 认成 apimart 执行器（只影响新建的兄弟连接，不影响存量单连接）；`ModelSettingsHome` 把兄弟连接显示成自定义卡（仅外观）。
