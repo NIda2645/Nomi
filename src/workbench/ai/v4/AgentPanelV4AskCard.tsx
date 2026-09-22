@@ -134,11 +134,18 @@ export function V4AskCard({
   questions,
   labels,
   answerDraft,
+  waiting = true,
   onAnswer,
   onDismiss,
 }: {
   questions: readonly V4AskQuestion[]
   labels: V4AskCardLabels
+  /**
+   * 这张卡在等用户回答。**缺席 = 在等**——理由与推导全写在 `V4SlotShell` 的同名参数上
+   *（一句话：生产里卡挂着就等于 `projection.pending` 在，答完它自己会从槽里消失）。
+   * 这里留成可选，是为了让设计实验室画得出「已答」那一态；生产侧没有人需要传它。
+   */
+  waiting?: boolean
   /**
    * 卡挂载时自由输入那一行里已经有的字（只给设计实验室画「正在打字」那一态用；
    * 生产侧永远缺席）。和 `InterventionData.answerDraft` 同一个理由、同一条规矩：
@@ -283,6 +290,7 @@ export function V4AskCard({
   return (
     <V4SlotShell
       kind="question"
+      waiting={waiting}
       data-ask-card="true"
       tabIndex={0}
       onKeyDown={onKeyDown}

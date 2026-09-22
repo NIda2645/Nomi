@@ -1,5 +1,6 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
+import { parseQuestionSheet } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -305,6 +306,27 @@ function settledStatus(isError: boolean, denied: boolean): V4ToolStatus {
 }
 
 /**
+ * 这条审批记录承载的是**用户的答案**，还是一次否决？
+ *
+ * · **今天的转录**：用户回答走 `answer` 这条 action，落成 `decision: 'answered'`
+ *   （2026-09-21 D4 改动二）；同一次调用的 tool result 是**成功形状**（`isError: false`、
+ *   `details.answered`），因为他没有拒绝任何东西——他回答了一个问题。真机 run2/3/4/6/7
+ *   的转录里「答上了」一律是这个字，一条 `denied` 都没有。
+ * · **D4 之前的转录**：那条路借的是 `deny`，转录里留下的是一条用户从没做过的拒绝
+ *   （`decision: 'denied'` + 理由里塞着他的原话）。那些转录**今天还能被回放**，
+ *   所以判据保留第二条腿：这次调用的 args 是不是一次提问（`parseQuestionSheet`）。
+ *
+ * 两条腿的分工要记清楚：新形状读的是**事实**（协议里那个字），老形状读的是**相貌**
+ * （args 长得像不像一次提问）。相貌那条只对老转录开——它会把「老转录里一次对提问卡的
+ * 真 deny」读成已回答，而那正是 D4 之前面板本来的样子，不是这次新造的错。
+ * 非提问工具的真 deny 两条腿都不沾，照旧读作「已拒绝」（阳性对照，单测钉住）。
+ */
+function laneApprovalWasAnswer(note: LaneApprovalNote, args: unknown): boolean {
+  if (note.decision === 'answered') return true
+  return note.decision === 'denied' && parseQuestionSheet(args) !== undefined
+}
+
+/**
  * 把一份有序投影摊成 v4 的流。
  *
  * 走的是 `parts` 的自然顺序——它已经是 `sequence` 递增的（主进程按 pi 转录走序赋值）。
@@ -405,13 +427,9 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
       ...existing,
       kind: 'tool',
       receipt: denial !== undefined
-        // 反问答完的那一行不说「已拒绝」，因为**协议现在自己说得清**：用户回答走
-        // `answer` 这条 action，落成 `decision: 'answered'`（2026-09-21）。
-        // 这里原来嗅的是 `parseQuestionAsk(slot.args)`——用「这次 args 长得像不像一次提问」
-        // 去倒推「用户刚才做了什么」。那是两个不同的问题，只是今天恰好同真假：
-        // 一张提问卡上用户也可以按停（那是 `cancelled`），而一次 deny 的理由里也可能
-        // 正好带着话。判据换成协议里那个字之后，这一行读的是事实，不是相貌。
-        ? denial.decision === 'answered' && denial.reason
+        // 反问答完的那一行不说「已拒绝」。判据在 `laneApprovalWasAnswer()`：
+        // 新协议读 `decision: 'answered'`，老转录退回「这次 args 是不是一次提问」。
+        ? laneApprovalWasAnswer(denial, slot.args) && denial.reason
           ? { ...withoutSummary, status: 'output-denied', answered: true as const,
               label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
           : { ...withoutSummary, status: 'output-denied' }

@@ -219,6 +219,7 @@ export function V4Intervention({
   onPlanToggle,
   onCollapsePlan,
   planCollapsed = false,
+  waiting = true,
 }: {
   data: InterventionData
   /**
@@ -263,6 +264,14 @@ export function V4Intervention({
   onCollapsePlan: () => void
   /** 清单当前是不是收起态（由宿主持有：它知道这张卡是哪一次待决的）。 */
   planCollapsed?: boolean
+  /**
+   * 这张卡在等用户回答。**缺席 = 在等**——完整推导写在 `V4SlotShell` 的同名参数上。
+   * 一句话：生产里介入槽只在 `projection.pending` 在时才挂卡，而那正是
+   * `laneComposerState()` 回 `'awaiting-approval'` 的同一个字段；答完 / 收回 / 已确认之后
+   * 卡从槽里消失、在流里变成一行「已回答 · …」收据，不是留在原地换皮。
+   * 留成可选是给设计实验室画「已答 / 已确认」那一态用的，生产侧没有人需要传。
+   */
+  waiting?: boolean
 }): JSX.Element {
   // 拒绝原因是**渐进披露**的：先点「不要」，才出现那一行输入和「确认不要」。
   // 一上来就摆一个输入框，等于要求用户为每一次拒绝写作文。
@@ -279,6 +288,16 @@ export function V4Intervention({
   // 反问只有选项 chip；「本该有卡却没有」是一条**报错**，没有可点的东西——
   // 给它一个「确认」按钮等于让用户去确认一件我们自己都没渲染出来的事。
   const hasActions = data.kind !== 'question' && data.kind !== 'missing-card'
+  /**
+   * 「本该有卡却没有」那一张**永远不强调**（2026-09-22 待答态）。
+   *
+   * 它挂在槽里的理由和别的卡不是一件事：别的卡在等一个答复，它在**报一条断链**——
+   * 上面根本没有可点的东西（`hasActions` 对它恒 false）。给它套上「在等你」的框，
+   * 等于让用户去回答一张我们自己都没渲染出来的卡，而那正是它被造出来要说清楚的病。
+   *
+   * 这不是第二个 pending 布尔：它读的是已有的 `kind`，没有新字段、没有新产地。
+   */
+  const shellWaiting = waiting && data.kind !== 'missing-card'
   // 计划槽底栏：主动作 + 「改一下」…… 「收起 ▴/展开 ▾」，**以及和其余档一样的那颗 ×**。
   //
   // 原来这里没有 ×，理由是「整张不要就是不勾任何一项」。2026-09-11 用户实测把这条否了：
@@ -322,6 +341,7 @@ export function V4Intervention({
       <V4AskCard
         questions={askCardQuestions(data)}
         labels={labels.ask}
+        waiting={shellWaiting}
         {...(data.answerDraft ? { answerDraft: data.answerDraft } : {})}
         // 卡按契约吐整张卡的答复（答了的 + 明说跳过的）；问句表一并递上去——回给模型的那段字
         // 要带题号与问句，而写法只有 owner 那一份（`askUserReplyText`）。
@@ -431,6 +451,7 @@ export function V4Intervention({
   return (
     <V4SlotShell
       kind={data.kind}
+      waiting={shellWaiting}
       // 有翻页器才可聚焦：焦点是「← → 归谁管」的唯一凭据，没有翻页器的卡不该抢 Tab 序。
       {...(pager ? { tabIndex: 0, onKeyDown: handleKeyDown } : {})}
       // 标题就是**一句话**，不再是带底色卡头条里的一行小字（2026-09-22 换壳）。

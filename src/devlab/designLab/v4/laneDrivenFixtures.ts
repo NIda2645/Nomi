@@ -84,18 +84,49 @@ export function laneSnapshotToolDenied(reason: string): LaneSnapshot {
   ])
 }
 
+/** 一次提问的 args。`questions` 是数组——`parseQuestionSheet` 认的就是这个形状。 */
+function askArgs(question: string, answer: string): Record<string, unknown> {
+  return { questions: [{ question, options: [{ id: 'reference', label: answer }] }] }
+}
+
 /**
- * **反问答完**：同一条带话的 deny，只是那次调用的 args 是一次提问。
+ * **反问答完**（D4 之后的形状，2026-09-21 改动二）。
  *
- * 形状与上面那条被拒的一模一样——这正是要被钉住的事：协议上它们没有区别，
- * 区别只在 `parseQuestionAsk` 认不认得出那份 args。认得出，那句话就是**答案**
- * （行读作「已回答 · …」）；认不出，它才是拒绝的理由（行读作「已拒绝」）。
+ * 协议上它**不再是一次拒绝**：闸把「答上了」落成 `allow: true`，审批记录记
+ * `decision: 'answered'`，工具执行把用户原话做成**成功形状**的 tool result
+ * （`isError: false` + `details.answered`）回交给模型，回合不中断。
+ * 真机转录（`askback-real-model` run2/3/4/6/7）里一律是这个形状，一条 `denied` 都没有。
+ *
+ * 这一格要钉的事：这样一条记录读出来的是「已回答 · 他的原话 ✓」，不红、不打 ×。
  */
 export function laneSnapshotQuestionAnswered(question: string, answer: string): LaneSnapshot {
-  const args = { question, options: [{ id: 'reference', label: answer }] }
   const call: AssistantMessage = {
     ...assistantCall(),
-    content: [{ type: 'toolCall', id: CALL, name: ASK_TOOL, arguments: args }],
+    content: [{ type: 'toolCall', id: CALL, name: ASK_TOOL, arguments: askArgs(question, answer) }],
+  }
+  return snapshot([
+    userEntry,
+    { id: 'n1', parentId: 'e1', seq: 2, timestamp: AT, type: 'custom', customType: LANE_APPROVAL_NOTE_TYPE, data: { toolCallId: CALL, toolName: ASK_TOOL, decision: 'answered', reason: answer } },
+    { id: 'e2', parentId: 'n1', seq: 3, timestamp: AT, type: 'message', message: call },
+    {
+      id: 'e3', parentId: 'e2', seq: 4, timestamp: AT, type: 'message',
+      message: { role: 'toolResult', toolCallId: CALL, toolName: ASK_TOOL, content: [{ type: 'text', text: answer }], details: { answered: true }, isError: false, timestamp: AT },
+    },
+  ])
+}
+
+/**
+ * **反问答完 · D4 之前的老形状**（回放兼容用，不进设计实验室的格子）。
+ *
+ * 那时「答上了」借的是 `deny` 这条 action：转录里留下的是一条用户从没做过的拒绝
+ * （`decision: 'denied'`、理由里塞着他的原话），tool result 还是失败形状。
+ * 这些转录今天还能被回放，所以这一行仍要读作「已回答」——判据退回
+ * 「这次调用的 args 是不是一次提问」（`laneApprovalWasAnswer` 的第二条腿）。
+ */
+export function laneSnapshotQuestionAnsweredLegacy(question: string, answer: string): LaneSnapshot {
+  const call: AssistantMessage = {
+    ...assistantCall(),
+    content: [{ type: 'toolCall', id: CALL, name: ASK_TOOL, arguments: askArgs(question, answer) }],
   }
   return snapshot([
     userEntry,

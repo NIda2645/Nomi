@@ -317,10 +317,26 @@ describe('⑤ 介入槽 · 八种内容体', () => {
 
     // ② **两张卡都没有带底色的卡头条了**（2026-09-22 换壳：用户说旧外壳不优雅）。
     //    这一条以前断的是「只有反问卡没有」，现在是「一张都不许有」。
+    //
+    //    ⚠️ 这里原来还断「一张都不许有 `border-nomi-accent`」。2026-09-22 用户在换壳之上
+    //    追加了**待答态**（等用户回答时外框换 accent 发丝线），所以那句话必须换个说法：
+    //    禁的是**常驻**彩色描边，不是彩色描边本身。改成对「已答 / 已确认」那一态断言
+    //    ——回到普通纸面时一点 accent 都不许剩。待答态的正面断言在下面那一支里。
+    const resolvedAsk = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels, waiting: false,
+    }))
+    const resolvedSpend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels, waiting: false }))
     for (const markup of [ask, spend]) {
       expect(markup).not.toContain('bg-nomi-accent-soft px-2.5 py-2')
-      expect(markup).not.toContain('border-nomi-accent')
     }
+    for (const markup of [resolvedAsk, resolvedSpend]) {
+      expect(shellOf(markup)).not.toContain('border-nomi-accent')
+      expect(shellOf(markup)).toContain('border-nomi-line')
+    }
+    // 答完之后两张卡的外壳**仍然同族**——待答态是加在同一只壳上的一个状态，
+    // 不是给其中一张卡开的小灶。
+    expect(shellOf(resolvedAsk)).toBe(shellOf(resolvedSpend))
     expect(ask.match(/用什么画幅？/g)).toHaveLength(1)
     expect(ask).toContain('data-v4-block="ask-question"')
 
@@ -332,6 +348,73 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     // ④ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
     expect(ask).not.toContain('不要')
     expect(ask).not.toContain('不再问')
+  })
+
+  /**
+   * 待答态（2026-09-22 用户拍板）：「等你回答」时外框换 accent 发丝线 + 一层极轻的同色描边光，
+   * 答完 / 收回 / 已确认回到普通纸面。
+   *
+   * 这几条断的是**两态之间的差**，不是「待答态长这样」——后者归视觉基线。
+   * 逐条的理由：
+   * · 属性两态都要在（缺席既可能是「不在等」，也可能是「这一版根本没接线」，读不出区别）；
+   * · 非待答态必须**一像素不变**：除了 border-color 这一处，壳的类名要与换壳前逐字相同；
+   * · 强调只许加在外框上，不许把卡底染成 accent（那是旧卡头条的病，09-22 刚删掉）。
+   */
+  const shellClassOf = (markup: string): string =>
+    markup.match(/<aside\b[^>]*?\bclass="([^"]*)"/)?.[1] ?? ''
+
+  it.each([
+    ['spend' as const, 'confirm'],
+    ['approval-irreversible' as const, 'confirm'],
+    ['approval-reversible' as const, 'confirm'],
+    ['plan' as const, 'confirm'],
+    ['question' as const, 'ask-continue'],
+  ])('待答态：%s 卡在等用户时外框是 accent 发丝线 + 一层同色描边光', (kind) => {
+    const data: InterventionData = kind === 'question'
+      ? { kind, title: '用什么画幅？', options: QUESTION_OPTIONS }
+      : of(kind)
+    const waiting = html(el(V4Intervention, { ...NO_HANDLERS, data, labels: slotLabels }))
+    const resolved = html(el(V4Intervention, { ...NO_HANDLERS, data, labels: slotLabels, waiting: false }))
+
+    // ① 两态都落属性，值相反。
+    expect(waiting).toContain('data-waiting="true"')
+    expect(resolved).toContain('data-waiting="false"')
+
+    // ② 待答 = accent 描边 + 同色描边光；两样都在同一只 `<aside>` 上，不是套了一层新盒子。
+    const waitingShell = shellClassOf(waiting)
+    expect(waitingShell).toContain('border-nomi-accent')
+    expect(waitingShell).toContain('shadow-[0_0_0_1px_var(--nomi-accent-soft)]')
+    // 描边光用的是 composer 现役那一句的低透明变体（`--nomi-accent-soft`），不是新 token，
+    // 也不是手写色——暗色由 token 自己翻，这里没有第二份 `dark:` 覆写。
+    expect(waitingShell).not.toMatch(/dark:/)
+
+    // ③ 回到普通纸面 = composer 那条发丝线，accent 一点不剩，描边光也收掉。
+    const resolvedShell = shellClassOf(resolved)
+    expect(resolvedShell).toContain('border-nomi-line')
+    expect(resolvedShell).not.toContain('border-nomi-accent')
+    expect(resolvedShell).not.toContain('accent-soft')
+    expect(resolvedShell).not.toContain('shadow-')
+
+    // ④ 非待答态**一像素不变**：两态的壳类名之差只许是 border-color 与那一层描边光，
+    //    底色 / 圆角 / overflow / 定位这些一个字都不许动。
+    const strip = (classes: string): string => classes
+      .split(/\s+/)
+      .filter((token) => token !== 'border-nomi-line' && token !== 'border-nomi-accent'
+        && token !== 'shadow-[0_0_0_1px_var(--nomi-accent-soft)]')
+      .join(' ')
+    expect(strip(waitingShell)).toBe(strip(resolvedShell))
+
+    // ⑤ 强调只在框上：卡面仍是纸色，没有人把 accent 抹成底。
+    expect(waitingShell).toContain('bg-nomi-paper')
+    expect(waitingShell).not.toContain('bg-nomi-accent')
+  })
+
+  it('待答态不给「本该有卡却没有」那一张——它不在等回答，它在报一条断链', () => {
+    // 这张卡上没有任何可点的东西（`hasActions` 对 missing-card 恒 false）。
+    // 套上「在等你」的框，等于让用户去回答一张我们自己都没渲染出来的卡。
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS, data: of('missing-card'), labels: slotLabels }))
+    expect(markup).toContain('data-waiting="false"')
+    expect(shellClassOf(markup)).not.toContain('border-nomi-accent')
   })
 
   it('反问卡的主按钮用的是**卡族那一套**，不是自带的药丸', () => {

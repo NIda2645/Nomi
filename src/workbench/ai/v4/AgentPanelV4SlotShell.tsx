@@ -37,6 +37,7 @@ import type { InterventionData, V4InterventionKind } from './agentPanelV4Types'
 
 export function V4SlotShell({
   kind,
+  waiting,
   title,
   dismiss,
   footer,
@@ -44,6 +45,32 @@ export function V4SlotShell({
   ...rest
 }: {
   kind: V4InterventionKind
+  /**
+   * 这张卡此刻**在等用户回答**（2026-09-22 用户拍板）。
+   *
+   * ## 它从哪一份状态来——**不是**第二个 pending 布尔
+   *
+   * 「有一张卡在等你」全仓只有一个产地：`LaneProjection.pending`
+   * （`electron/shared/agentLane/laneContracts.ts`）。中立契约层已经给它起过名字——
+   * `laneComposerState()` 读的就是这个字段，`pending` 在就回 `'awaiting-approval'`
+   * （`electron/shared/agentLane/laneComposerIntent.ts`）。渲染层这一侧，
+   * `laneViewModel` 把同一个字段投影成 `slot`，而面板**只在 `slot` 在时才挂这张卡**
+   * （`AgentPanelV4Panel.tsx`：`{slot ? <V4Intervention …/> : null}`）。
+   *
+   * 也就是说，生产里「卡挂着」≡「`projection.pending` 在」≡「`laneComposerState()`
+   * 回 `'awaiting-approval'`」——三句话是同一件事。所以这只外壳**不问第二遍**：
+   * 默认就是 `true`，答完 / 收回 / 已确认时卡本身会从槽里消失（它在流里变成一行
+   * 「已回答 · …」收据，`ToolReceipt.answered`），不是留在原地换一身皮。
+   *
+   * 那这个参数为什么还要存在？因为「普通纸面」这一态必须**画得出来**：
+   * 设计实验室是静态取景，没有宿主投影可翻；两版样张（待答 / 常驻）也要在同一只壳上对照。
+   * 同一个理由下 `answerDraft`、`reject-reason` 早就是这么做的——把一个只在真机上
+   * 一闪而过的状态固定下来，好让它有地方被看见、被断言。
+   *
+   * **外壳这一层必填**（R28：能让编译器拦的别留给门岗）。上一版 `onPlanToggle` 做成可选
+   * 的代价已经付过一次：宿主一根都没接，承诺在界面上点不动而没人报错。
+   */
+  waiting: boolean
   /**
    * 卡头那**一句话**（Recommendation Card 的形状：标题就是一句问话，
    * 「生成这 1 段视频？」）。缺席 = 这张卡自己在 `children` 里画标题——
@@ -75,11 +102,40 @@ export function V4SlotShell({
       // 参数条观感两样。设计系统 §2.1.1 写得很明白：`--nomi-paper` ＝ 卡片 / 浮层 / 面板表面。
       // 边界就用 composer 今天站得住的那同一条发丝线，不另造。
       //
-      // 相比旧外壳删掉的两样不变：彩色（accent）描边、带底色的卡头条。
+      // 相比旧外壳删掉的两样不变：**常驻**彩色描边、带底色的卡头条。
       // `overflow-hidden` 仍要：页脚铺满宽度，不裁会在圆角处戳出方角。
-      className={cn('relative overflow-hidden rounded-nomi border border-nomi-line bg-nomi-paper', rest.className)}
+      //
+      // ── 待答态（2026-09-22 用户拍板）───────────────────────────────────────
+      // 「等你回答」这一刻外框换成 accent 发丝线 + 一层极轻的同色描边光；答完 / 收回 /
+      // 已确认回到普通纸面（paper + `border-nomi-line`，与同屏 composer 逐字相同）。
+      //
+      // **这两样都不是新造的**：同一屏的 composer 早就用这套词汇说同一件事——
+      // 聚焦时 `border-nomi-accent shadow-[0_0_0_3px_var(--nomi-accent-soft)]`、
+      // 在跑时 `shadow-[0_0_0_1px_var(--nomi-accent-soft)]`
+      // （`AgentPanelV4Composer.tsx`）。卡取 1px 那一档：卡比 composer 大得多，
+      // 3px 在 390px 的面板里会读成一块发光的底，而这里要的是「一圈」不是「一团」。
+      // 于是 09-21 那条「卡是 composer 的兄弟」没有被推翻——**连强调的说法都是兄弟的那一句**。
+      //
+      // 暗色不另写一支：`--nomi-accent` / `--nomi-accent-soft` 两个 token 在
+      // `tailwind.config.ts` 的暗色块里自己翻（accent 0.55→0.70，soft 12%→26% 混纸色）。
+      // 手写一份 `dark:` 覆写等于给同一件事造第二份真相，而且它会和 token 的翻法各走各的。
+      //
+      // 两支**互斥**地给 `border-color`，不叠着写：`border-nomi-line` 与 `border-nomi-accent`
+      // 是同一个属性，谁赢由它们在生成的样式表里的先后决定，不是由这个字符串的顺序决定
+      //（cn/twMerge 之外那条路，用户是看不见自己写的顺序不算数的）。
+      // 动效不加：出现/消失本身已经是那一下变化，再补一段 transition 就是让一张等人答的卡自己动。
+      className={cn(
+        'relative overflow-hidden rounded-nomi border bg-nomi-paper',
+        waiting
+          ? 'border-nomi-accent shadow-[0_0_0_1px_var(--nomi-accent-soft)]'
+          : 'border-nomi-line',
+        rest.className,
+      )}
       data-v4-block="intervention"
       data-kind={kind}
+      // 待答与否**两态都落属性**（不是「待答时才有」）：走查与单测要能断言「这一张确实回到了
+      // 普通纸面」，而属性缺席既可能是「不在等」，也可能是「这一版根本没接这条线」。
+      data-waiting={waiting ? 'true' : 'false'}
     >
       {dismiss ? (
         // 现役图标钮（28×28 · 7px 圆角 · 图标 16/stroke-2，agent 专章 §8.1）。否定动作全站统一是这颗 ×
