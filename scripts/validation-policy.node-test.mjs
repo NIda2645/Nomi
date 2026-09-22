@@ -40,6 +40,41 @@ test('documentation and isolated renderer changes pay only focused-unit cost', (
   assert.deepEqual(surfaces(classifyValidationPolicy(['src/workbench/timeline/TimelinePanel.tsx'])), focusedOnly)
 })
 
+// 根目录的 Agent 说明文档（AGENTS.md / CLAUDE.md）算纯文档（2026-09-22 用户拍板）：
+// 此前只认 docs/|marketing/|README*，于是 #843 那种只改一份 Agent 说明的 PR 被判
+// isolated_change，两格核心冒烟在纯文档 diff 上白跑一遍。
+test('根目录的 AGENTS.md / CLAUDE.md 算 docs_only，但只有整份 diff 都是文档才算', () => {
+  // (a) 只改一份根目录 Agent 说明 → docs_only，核心冒烟不开。
+  for (const path of ['CLAUDE.md', 'AGENTS.md']) {
+    const result = classifyValidationPolicy([path])
+    assert.deepEqual(surfaces(result), docsOnly, `${path} 应判 docs_only`)
+    assert.equal(result.reason, 'docs_only')
+    assert.equal(result.coreSmoke, false)
+  }
+  // 两份一起改，外加真文档目录，仍是 docs_only。
+  const mixedDocs = classifyValidationPolicy([
+    { status: 'M', path: 'CLAUDE.md' },
+    { status: 'M', path: 'AGENTS.md' },
+    { status: 'A', path: 'docs/lessons/x.md' },
+  ])
+  assert.equal(mixedDocs.reason, 'docs_only')
+  assert.equal(mixedDocs.coreSmoke, false)
+
+  // (b) 掺一个产品文件就不再是纯文档：冒烟照开，reason 回到 isolated_change。
+  const withSource = classifyValidationPolicy(['CLAUDE.md', 'src/workbench/timeline/TimelinePanel.tsx'])
+  assert.equal(withSource.reason, 'isolated_change')
+  assert.equal(withSource.coreSmoke, true)
+
+  // (c) 阳性对照：本次放宽**只**认这两个名字，根目录别的文件不许顺势变成纯文档。
+  //     package.json 仍是打包风险面；贴着代码住的 src/**/CLAUDE.md 也不在放宽范围内。
+  for (const path of ['package.json', 'model-catalog.json', 'index.html', 'CHANGELOG.md',
+    'src/workbench/generationCanvas/nodes/director/CLAUDE.md']) {
+    const result = classifyValidationPolicy([path])
+    assert.notEqual(result.reason, 'docs_only', `${path} 不该因这次放宽变成 docs_only`)
+    assert.equal(result.coreSmoke, true, `${path} 仍要开核心冒烟`)
+  }
+})
+
 test('docs-only deletions, including the historical README QR replacement, stay focused', () => {
   // Documentation portion of fb79d8ac94dddb350fef69ed5627868d2140e726.
   const qrFiles = [

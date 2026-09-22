@@ -96,6 +96,8 @@ CI 的汇总步骤：只有 `core_smoke=false` 且 `reason=docs_only` 时，才�
 - **怎么升**：只改 `scripts/validation-policy.mjs` 的 `CORE_SMOKE_BLOCKING_FIXTURES` 一处（把 `'used'` 加进去）。CI 的 `continue-on-error` 与合后收据都从它派生，三份门岗测试钉死这层派生关系——其中 `git-delivery.node-test.mjs` 有一条**故意写死名字**的用例，防止名单和测试一起漂而什么都证不到。
 - 为什么不干脆让 `used` 一直红着当阻断门：一条 5 次绿 1 次的必过门，会让后续每个 PR 和每张合入收据都押在掷骰子上，红灯一旦不可信人就开始绕过它——那正是本方案要根除的东西。
 
+- **2026-09-22 补：advisory 在注解卫生这一环漏了，已堵**。「非阻断」有**三条判定链路**要落地，当初只落了两条：① job 聚合（`continue-on-error` 只改 conclusion，`needs['core-smoke'].result` 照旧 success）、② 合后收据（`used` 不进 `requiredChecks`，记进 `coreSmoke.advisory`）都对了；③ Quality Gate 汇总 job 的第一行 `test "${{ steps.ci-hygiene.outcome }}" = "success"` 没人管——`scripts/ci-annotation-hygiene.mjs` 的 `delegatedOwner()` 只认三种情形，不认 advisory 格失败留下的 `##[error]Process completed with exit code 1.`，于是它落进 `unexpected`，汇总 job 红、收据出不来。main 上 merge ffffadc7d（#843）实测：16 annotations / 10 delegated / 0 allowed / **1 unexpected**。也就是说 `used` 实际**仍然阻断**，上面这条拍板当时并没有真的生效。**怎么堵的**：`delegatedOwner()` 新增一条规则，把非阻断冒烟格的 failure 注解委派给 T-QA-23；格子名从 `CORE_SMOKE_ADVISORY_CHECK_NAMES` 派生而**不写死**，所以升阻断那天它自动失效，阻断档 `Core Flow Smoke (empty)` 的逐字相同注解照旧是 `unexpected`。不判不等于看不见：报告多一个 `advisorySmoke` 子集、日志单列一行 `advisory-smoke: N`，`used` 红了仍然看得见——否则 T-QA-23 的「连跑 5 次全绿」没有观测面。根因合同：`docs/fixes/2026-09-22-advisory-check-still-blocked-via-annotation-hygiene.root-cause.json`。
+
 跟进项：`docs/roadmap/TODO.md` 的 T-QA-23。
 
 ## 实测发现（「用过的项目」夹具第一次跑就抓到的）
