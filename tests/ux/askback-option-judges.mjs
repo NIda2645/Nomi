@@ -122,8 +122,19 @@ function closingProse(text) {
   return String(text ?? '').trim()
 }
 
-/** 编号选项：`1.` `2、` `①` `- ` 之类连着出现两个以上。 */
+/** 编号选项：`1.` `2、` `①` 之类连着出现两个以上。 */
 const NUMBERED_ITEM = /(^|\n)\s*(?:[（(]?\d+[.)、）]|[①②③④⑤⑥⑦⑧⑨])\s*\S/g
+
+/**
+ * 待选项：比 `NUMBERED_ITEM` 多认**无序列表**（`- ` `· ` `* `）。
+ *
+ * 只给第二档的「菜单」判据用，**不动 `NUMBERED_ITEM`**：后者是第一档
+ * （`askedInProse` / `numberedOptions`）的口径，run1–run7 七轮都按它量过，
+ * 顺手放宽会把历史那几格一起改掉，两边就不可比了。
+ * 而 run7 的 A10 恰恰是用短横线摆的待选（「你希望先做什么？\n- 生成一些视频内容\n- 还是…」），
+ * 光认数字就漏掉了它。
+ */
+const CHOICE_ITEM = /(^|\n)\s*(?:[-–—*·•]|[（(]?\d+[.)、）]|[①②③④⑤⑥⑦⑧⑨])\s*\S/g
 
 /**
  * 这一轮的正文算不算「它问了」。
@@ -135,15 +146,116 @@ const NUMBERED_ITEM = /(^|\n)\s*(?:[（(]?\d+[.)、）]|[①②③④⑤⑥⑦�
  * 只看收尾那条消息，不看整轮全文：模型在工具之间写的「让我看看画布上还有什么」这类旁白里
  * 也带问号，那不是在问用户，是在自言自语——把它算进去这把尺子就永远说 true。
  */
-export function judgeProseQuestion(text) {
+/**
+ * 只读动词。镜的是 `electron/shared/agentCapabilities/verbDeclarations.ts` 里
+ * `effect: 'read'` 的那一档（2026-09-22 核对）。**不在这张表上的一律按写类算**——
+ * 这个方向是刻意的：判错成「写了」只会把一轮从「以问代做」挪进「答完顺口一问」，
+ * 而 H1 的验收只看前者，宁可少算也不能虚报。
+ */
+const READ_ONLY_TOOLS = new Set([
+  'look_at_canvas', 'read_script', 'read_timeline', 'look_at_media',
+  'list_models', 'check_job', 'read_skill', 'ask_user',
+])
+
+/**
+ * 收尾那句问话**之前**还剩多少正文。低于这个字数就认为模型没交付什么，
+ * 那句问话才是这条消息的全部目的。
+ *
+ * 40 是照真夹具定的，不是拍的：run7 里 N3 那条「答完顺口一问」问句前有 ~60 字
+ * （「画布上目前有 1 个节点。这个节点是一个参考图资产…」），
+ * 而典型的「以问代做」问句前只有一句过渡（「我需要先确认一下。」≈ 9 字）。
+ * 它是一个**可调的钝器**，不是精确判据——两边差着一个量级才敢这么切。
+ */
+const DELIVERED_BODY_MIN = 40
+
+/** 收尾消息里**第一处**问号的位置（没有就是 -1）。 */
+function firstQuestionMark(closing) {
+  const marks = [closing.indexOf('？'), closing.indexOf('?')].filter((index) => index >= 0)
+  return marks.length ? Math.min(...marks) : -1
+}
+
+/**
+ * 收尾消息里第一句问话**之前**的正文（按句末标点/换行切回去）。
+ *
+ * 取**第一处**问号而不是最后一处：交付在前、问话在后是「答完顺口一问」的固定形状
+ * （N3：先给出「1 个节点」，再问「你需要对它做什么处理吗？比如…，或者…？」——
+ * 后面那半句还带一个问号，按最后一处切就把答案一起切没了）。
+ */
+function bodyBeforeFirstQuestion(closing) {
+  const mark = firstQuestionMark(closing)
+  if (mark < 0) return closing
+  const head = closing.slice(0, mark)
+  const sentenceStart = Math.max(
+    head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('!'),
+    head.lastIndexOf('\n'), head.lastIndexOf('：'), head.lastIndexOf(':'),
+  )
+  return (sentenceStart < 0 ? '' : head.slice(0, sentenceStart + 1)).trim()
+}
+
+/**
+ * 这一轮的正文算不算「它问了」，以及**问的是哪一种**。
+ *
+ * 第一档（`askedInProse`，口径不变）只认两种**回合停在问题上**的形状：
+ *   · 收尾那条消息以问号结束；
+ *   · 收尾那条消息列了两个以上编号选项，且里面有问号（光有编号可能只是「我做了这几件事」）。
+ *
+ * 只看收尾那条消息，不看整轮全文：模型在工具之间写的「让我看看画布上还有什么」这类旁白里
+ * 也带问号，那不是在问用户，是在自言自语——把它算进去这把尺子就永远说 true。
+ *
+ * **第二档（2026-09-22 run7 之后加）**：第一档分不开两件完全不同的事——
+ *   · **以问代做**（`askedInsteadOfActing`）：该做的没做，回合停在问题上等人。**H1 要压的就是它。**
+ *   · **答完顺口一问**（`askedAfterDelivering`）：用户要的东西**已经给了**，末尾提议下一步。
+ *
+ * run7 的 4 次「正文误问」里有 3 次（N3 / N4 / N5）是后者：
+ * 「画布上现在有几个节点？」已经答了「1 个」，末尾才加一句「你需要对它做什么处理吗？」。
+ * 把这种也算成误问，H1 的验收口径就不成立了（run7 README 发现 ④）。
+ *
+ * 「交付了」= 这一轮调过**写类工具**（`context.toolCalls` 里有非只读动词），
+ * **或者**收尾正文本身就是答案（只有一处问号、且问句前还剩 ≥40 字的陈述）。
+ * 两条是**或**的关系：N3 那种只调了 `look_at_canvas`（只读）却在正文里把答案给全了，
+ * 靠第二条才认得出来。
+ *
+ * @param {string|readonly string[]} text 这一轮的 assistant 文本段
+ * @param {{ toolCalls?: readonly string[] }} [context] 这一轮的工具调用名（判「写没写」用）
+ */
+export function judgeProseQuestion(text, context = {}) {
   const closing = closingProse(text)
   const endsWithQuestion = /[？?]\s*$/.test(closing)
   const numberedOptions = (closing.match(NUMBERED_ITEM) ?? []).length >= 2
   const hasQuestionMark = /[？?]/.test(closing)
+  const askedInProse = endsWithQuestion || (numberedOptions && hasQuestionMark)
+
+  const toolCalls = context.toolCalls ?? []
+  const wroteSomething = toolCalls.some((name) => !READ_ONLY_TOOLS.has(name))
+  const questionMarks = (closing.match(/[？?]/g) ?? []).length
+
+  // **选项摆在问句之后 = 在让人挑**（run7 A10：「你希望先做什么？」下面跟着两条待选；
+  // run4 A9：「你想要：1. 改描述？2. 加细节？…」），这是「以问代做」的签名——
+  // 回合把一个决定推回给了用户。问句**之前**的编号是答案内容，不是菜单
+  // （run7 N4 先逐条列出四个镜头**回答**「镜头 2 是什么」，末尾才问一句要不要建草稿；
+  // A12 先列好建完的三个镜头，再问「需要生成吗？」）。位置就是这两者的分界。
+  const mark = firstQuestionMark(closing)
+  const menuAfterQuestion = mark >= 0
+    && (closing.slice(mark).match(CHOICE_ITEM) ?? []).length >= 2
+
+  // 「正文本身就是答案」：没在摆菜单，而且问句之前还剩一整段陈述。
+  // N3 那种只调了 `look_at_canvas`（只读）却把答案给全了的轮次，靠的就是这一条。
+  const deliveredInProse = !menuAfterQuestion
+    && bodyBeforeFirstQuestion(closing).replace(/\s/g, '').length >= DELIVERED_BODY_MIN
+  const delivered = wroteSomething || deliveredInProse
+
   return {
     closing,
     endsWithQuestion,
     numberedOptions,
-    askedInProse: endsWithQuestion || (numberedOptions && hasQuestionMark),
+    questionMarks,
+    askedInProse,
+    wroteSomething,
+    menuAfterQuestion,
+    deliveredInProse,
+    /** 以问代做：该做的没做，回合停在问题上。**H1 的验收只看这一格。** */
+    askedInsteadOfActing: askedInProse && !delivered,
+    /** 答完顺口一问：东西已经给了，末尾提议下一步。不该记进误问。 */
+    askedAfterDelivering: askedInProse && delivered,
   }
 }

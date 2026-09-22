@@ -385,7 +385,6 @@ try {
     const roundOutcomes = outcomes.slice(seenOutcomes)
     seenOutcomes = outcomes.length
     const failedOutcome = roundOutcomes.find((outcome) => outcome.status === 'failed')
-    row.reachedModel = !failedOutcome
     if (failedOutcome) {
       row.roundFailed = failedOutcome.status
       row.assistantError = failedOutcome.error?.code ?? null
@@ -393,6 +392,18 @@ try {
     }
     row.ms = Date.now() - started
     row.toolCalls = calls.map((call) => call.name)
+    // 「跑到模型」= **这一轮模型真的回过话**。判据放宽成两条并列（run7 起）：
+    //   · lane 结局不是 `assistant_error`（那一档是连接中断，模型一个 token 都没吐）；
+    //   · **或者**这一轮至少有一次工具调用——调用只可能由模型发出，有调用就是回过话了。
+    //
+    // 原来的写法是「这一轮没有 failed 结局」，一刀切。run7 的 A1 被它误伤：
+    // 结局是 `summarization_failed`（回合跑完之后**压缩上下文**那一步挂了），
+    // 而那一轮模型发了 9 次工具调用、最后一次正是 `ask_user`——它显然回过话。
+    // 把这种轮次踢出分母，等于把「模型问了、但那次调用被 schema 拒了」这条最要紧的证据
+    // 一起丢掉（run7 发现 ①）。分母宁可宽一格，也不能把量到的行为当没发生。
+    const connectionDropped = failedOutcome?.error?.code === 'assistant_error'
+    row.reachedModel = !connectionDropped || calls.length > 0
+    if (failedOutcome && row.reachedModel) row.reachedModelDespiteFailure = true
     row.firstTool = calls[0]?.name ?? null
     const askCalls = calls.filter((call) => call.name === ASK_TOOL)
     row.askedUser = askCalls.length > 0
@@ -406,10 +417,18 @@ try {
     // 「它其实问了，只是没用那个工具」：量的是**回合的收尾那段话**。
     // 这一格和 `askedUser` 不是一个数——一个说「模型自己认为该问」，一个说「问对了地方」。
     // 收尾正文只在这一轮新增的那几段里取最后一段（`prose` 是本轮之前读过的全量，按轮切）。
-    const proseJudged = judgeProseQuestion(prose.slice(seenProse))
+    // 这一轮的工具调用要一起喂给判据：第二档要分「以问代做」和「答完顺口一问」，
+    // 而「这一轮到底有没有交付」的一半证据就在工具里（调过写类动词就是交付了）。
+    const proseJudged = judgeProseQuestion(prose.slice(seenProse), { toolCalls: row.toolCalls })
     seenProse = prose.length
     row.askedInProse = proseJudged.askedInProse
+    // **以问代做**：该做的没做，回合停在问题上等人。H1 要压的是它，验收也只看它。
+    row.askedInsteadOfActing = proseJudged.askedInsteadOfActing
+    // **答完顺口一问**：用户要的东西已经给了，末尾提议下一步。不该记进误问。
+    row.askedAfterDelivering = proseJudged.askedAfterDelivering
     row.proseQuestion = { endsWithQuestion: proseJudged.endsWithQuestion, numberedOptions: proseJudged.numberedOptions,
+      questionMarks: proseJudged.questionMarks, wroteSomething: proseJudged.wroteSomething,
+      menuAfterQuestion: proseJudged.menuAfterQuestion, deliveredInProse: proseJudged.deliveredInProse,
       closing: proseJudged.closing.slice(0, 600) }
     row.rejectedArgs = results.filter((result) => ARG_REJECTED.test(result.text)).map((result) => result.name)
     row.argsOkFirstTry = calls.length > 0 && row.rejectedArgs.length === 0
@@ -422,6 +441,11 @@ try {
   // **没跑到模型的轮次不进任何分母**：一轮「模型根本没回话」和一轮「模型想了想决定不问」
   // 在比率里长得一模一样，那正是 run6 那 7 轮把整份报告变成假绿的原因。
   const reached = report.cases.filter((c) => c.reachedModel !== false)
+  // 有效轮里数一格：**分母只能是 `reached`**。上一版（d1b45b909）只把反问那几格换过来，
+  // `questionCardRendered` / `argsOkFirstTry` 还在拿 `report.cases.length` 当分母，
+  // 于是 run7 的同一份报告里两种分母并排——`argsOkFirstTry: "7/18"` 看着像模型退步了一半，
+  // 按有效轮其实是 7/9（run7 README 发现 ③）。读的人无从分辨哪一格缩了，所以这里统一。
+  const ofReached = (predicate) => `${reached.filter(predicate).length}/${reached.length}`
   const should = reached.filter((c) => c.shouldAsk)
   const shouldNot = reached.filter((c) => !c.shouldAsk)
   const allQualities = report.cases.flatMap((c) => c.optionQuality ?? [])
@@ -437,20 +461,31 @@ try {
     wantedToAskWhenShould: `${should.filter((c) => c.askedUser || c.askedInProse).length}/${should.length}`,
     askedInProseWhenShouldNot: `${shouldNot.filter((c) => c.askedInProse).length}/${shouldNot.length}`,
     didNotAskWhenShouldNot: `${shouldNot.filter((c) => !c.askedUser).length}/${shouldNot.length}`,
-    questionCardRendered: `${count((c) => c.questionCardVisible === true)}/${report.cases.length}`,
+    // ── 第二档：把上面那几格里的「正文提问」拆成两种（2026-09-22 run7 之后加）──
+    // **H1 的验收只看 `askedInsteadOfActing*` 这两格**：H1 要堵的是「在正文里把问题问出来然后停住」，
+    // 而上面的 `askedInProse*` 连「答完了顺口问一句下一步」也算进去了——run7 的 4 次「正文误问」
+    // 里有 3 次是后者（N3/N4/N5，用户要的答案已经拿到了）。两件事混在一格，改动有没有效就永远说不清。
+    askedInsteadOfActingWhenShould: `${should.filter((c) => c.askedInsteadOfActing).length}/${should.length}`,
+    askedAfterDeliveringWhenShould: `${should.filter((c) => c.askedAfterDelivering).length}/${should.length}`,
+    // 误问只数「以问代做」那一半：不该问的用例上，答完了顺口提议下一步不是毛病。
+    askedInsteadOfActingWhenShouldNot: `${shouldNot.filter((c) => c.askedInsteadOfActing).length}/${shouldNot.length}`,
+    askedAfterDeliveringWhenShouldNot: `${shouldNot.filter((c) => c.askedAfterDelivering).length}/${shouldNot.length}`,
+    // 「真·误问」= 调了 `ask_user` **或** 以问代做。这是误问那一格该用的口径。
+    misaskedWhenShouldNot: `${shouldNot.filter((c) => c.askedUser || c.askedInsteadOfActing).length}/${shouldNot.length}`,
+    questionCardRendered: ofReached((c) => c.questionCardVisible === true),
     optionSets: allQualities.length,
     optionsInRange: `${allQualities.filter((q) => q.inRange).length}/${allQualities.length}`,
     optionsDistinct: `${allQualities.filter((q) => q.distinct).length}/${allQualities.length}`,
     atMostOneRecommended: `${allQualities.filter((q) => q.atMostOneRecommended).length}/${allQualities.length}`,
     fakeOptionSets: allQualities.filter((q) => q.fakeOptions.length > 0).length,
     // 09-21 用户点名的五条，各算一次失败
-    askedForReversibleConfirmation: `${report.cases.filter((c) => c.askedForReversibleConfirmation).length}/${report.cases.filter((c) => c.askedUser).length}`,
+    askedForReversibleConfirmation: `${reached.filter((c) => c.askedForReversibleConfirmation).length}/${reached.filter((c) => c.askedUser).length}`,
     yesNoNestingSets: allQualities.filter((q) => q.yesNoNesting.length > 0).length,
     cancelOptionSets: allQualities.filter((q) => q.cancelOptions.length > 0).length,
     internalIdentifierSets: allQualities.filter((q) => q.internalIdentifiers.length > 0).length,
     labelTooLongSets: allQualities.filter((q) => q.labelsTooLong.length > 0).length,
     questionEchoSets: allQualities.filter((q) => q.questionEchoes.length > 0).length,
-    argsOkFirstTry: `${count((c) => c.argsOkFirstTry)}/${report.cases.length}`,
+    argsOkFirstTry: ofReached((c) => c.argsOkFirstTry),
     askToolArgsRejected: count((c) => (c.rejectedArgs ?? []).includes(ASK_TOOL)),
     answeredTurnContinued: report.cases.filter((c) => c.answeredByChip).map((c) => `${c.id}:${c.turnContinuedAfterAnswer}`),
     roundErrors: count((c) => c.roundError),

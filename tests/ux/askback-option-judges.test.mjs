@@ -154,4 +154,82 @@ describe('正文里的提问', () => {
     expect(judgeProseQuestion('').askedInProse).toBe(false)
     expect(judgeProseQuestion(undefined).askedInProse).toBe(false)
   })
+
+  // ── 第二档：以问代做 vs 答完顺口一问（2026-09-22 run7 之后加） ──────────────
+  //
+  // 第一档把这两件事算成同一件，于是 run7 的「正文误问 4/7」里有 3 次是假阳性：
+  // 用户要的东西**已经给了**，末尾那句只是提议下一步。H1 要压的是前者，
+  // 验收口径如果连后者一起数，改动有没有效就永远说不清（run7 README 发现 ④）。
+  //
+  // 两段夹具都是 run7 的真实收尾正文，逐字抄自
+  // `docs/evidence/2026-09-22-askback-real-model-run7/responses/{N3,A10}.md`。
+  describe('第二档：以问代做 vs 答完顺口一问', () => {
+    /**
+     * run7 · N3「画布上现在有几个节点？」——**答完顺口一问**。
+     * 用户问的是一个数，模型第一句就把数给了；末尾那句是提议下一步，不是在等人。
+     * 这一轮只调了 `look_at_canvas`（只读），所以必须靠「正文本身就是答案」这一条认出来。
+     */
+    const RUN7_N3 = [
+      '画布上目前有**1个节点**。',
+      '',
+      '这个节点是一个参考图资产，标题是 `reference-4k.png`，显示为已生成状态。没有引用边连接其他节点。',
+      '',
+      '你需要对这个参考图做什么处理吗？比如用它作为视觉锚来生成其他镜头，或者需要添加更多节点？',
+    ].join('\n')
+
+    /**
+     * run7 · A10「帮我导出」——**以问代做**。
+     * 用户要的是「导出」，模型一次 `read_timeline`（只读）之后没有导出任何东西，
+     * 而是摆了一组待选让人挑。回合就停在这儿。
+     */
+    const RUN7_A10 = [
+      '我看到时间线是空的，没有剪辑。这意味着你还没有将任何内容添加到时间线上。',
+      '',
+      '要导出视频，你需要：\n1. 先生成一些镜头内容\n2. 将这些镜头添加到时间线上\n3. 然后才能导出',
+      '',
+      '你希望先做什么？\n- 生成一些视频内容\n- 还是你已经有一些内容在画布上，只是没有放到时间线上？',
+    ].join('\n')
+
+    it('N3：答案已给 + 问下一步 → 答完顺口一问，不记进以问代做', () => {
+      const judged = judgeProseQuestion(RUN7_N3, { toolCalls: ['look_at_canvas'] })
+      expect(judged.askedInProse).toBe(true)
+      expect(judged.wroteSomething).toBe(false)
+      // 只读工具救不了它，靠的是「问句前还剩一整段陈述」。
+      expect(judged.deliveredInProse).toBe(true)
+      expect(judged.askedAfterDelivering).toBe(true)
+      expect(judged.askedInsteadOfActing).toBe(false)
+    })
+
+    it('A10：该做的没做、摆了一组待选 → 以问代做，H1 要数的就是这一格', () => {
+      const judged = judgeProseQuestion(RUN7_A10, { toolCalls: ['read_timeline'] })
+      expect(judged.askedInProse).toBe(true)
+      expect(judged.wroteSomething).toBe(false)
+      // 待选摆在问句**之后** = 在让人挑，这是以问代做的签名。
+      expect(judged.menuAfterQuestion).toBe(true)
+      expect(judged.deliveredInProse).toBe(false)
+      expect(judged.askedInsteadOfActing).toBe(true)
+      expect(judged.askedAfterDelivering).toBe(false)
+    })
+
+    it('调过写类工具就算交付了：草稿已建好、末尾问「需要生成吗？」是顺口一问', () => {
+      // run7 · A12：四次 `draft_shots` 之后「草稿已建好…需要生成吗？」。
+      const judged = judgeProseQuestion('草稿已建好。现在为你添加风格锚和三个镜头。\n\n需要生成吗？',
+        { toolCalls: ['look_at_canvas', 'draft_shots', 'draft_shots'] })
+      expect(judged.wroteSomething).toBe(true)
+      expect(judged.askedAfterDelivering).toBe(true)
+      expect(judged.askedInsteadOfActing).toBe(false)
+    })
+
+    it('一句过渡就停住 → 以问代做（问句前没剩下什么）', () => {
+      const judged = judgeProseQuestion('我需要先确认一下。你想要什么比例？', { toolCalls: ['list_models'] })
+      expect(judged.askedInProse).toBe(true)
+      expect(judged.deliveredInProse).toBe(false)
+      expect(judged.askedInsteadOfActing).toBe(true)
+    })
+
+    it('没传工具调用时只按正文判：默认不把「没传」当成「写过」', () => {
+      expect(judgeProseQuestion('你想要什么比例？').wroteSomething).toBe(false)
+      expect(judgeProseQuestion('你想要什么比例？').askedInsteadOfActing).toBe(true)
+    })
+  })
 })
