@@ -398,8 +398,8 @@
     },
     {
       "kind": "write",
-      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
-      "symbol": "commitCanvasNodeDragStop"
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "symbol": "finishCanvasNodeDrag"
     },
     {
       "kind": "write",
@@ -2563,8 +2563,8 @@
     },
     {
       "kind": "write",
-      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
-      "symbol": "restoreCanvasDragKernelOwnership"
+      "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+      "symbol": "cancelCanvasNodeDrag"
     },
     {
       "kind": "write",
@@ -3016,7 +3016,7 @@
       "Verify canvas and payment hosts in zh/en with editable/clickable controls, original project/node/draft retention, zero unapproved media submission, inspected screenshots and affected native interruption/Undo/project-target/package lanes. Windows remains unverified until actually executed."
     ]
   },
-  "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.\n\n2026-09-22 总合并订正：`anchoredPlacement.ts` / `.test.ts` 与 `useComposerViewportPlacement` 的让位量计算已整体归 main #834（`aboveClearanceFromNodeChrome` + `bottomDocks` + `minHeight` 三条一起重写），本合同的门与回归测试里那两条随之摘掉——它们现在由 main 的 `resolveAnchoredPlacement × bottom docks` / `× minimum content height` 两族测试守；本分支自己那条 `toolbarClearanceInCanvasUnits` 的写口按裁决表丢弃，它要修的「工具条进指纹」由 main 的 `NODE_ABOVE_CHROME_SELECTOR` 覆盖（工具条/标签行/行内状态三样都进）。",
+  "migration": "No persisted schema changes. Existing transient state ends with component/gesture lifetime.\n\n2026-09-22 总合并订正：`anchoredPlacement.ts` / `.test.ts` 与 `useComposerViewportPlacement` 的让位量计算已整体归 main #834（`aboveClearanceFromNodeChrome` + `bottomDocks` + `minHeight` 三条一起重写），本合同的门与回归测试里那两条随之摘掉——它们现在由 main 的 `resolveAnchoredPlacement × bottom docks` / `× minimum content height` 两族测试守；本分支自己那条 `toolbarClearanceInCanvasUnits` 的写口按裁决表丢弃，它要修的「工具条进指纹」由 main 的 `NODE_ABOVE_CHROME_SELECTOR` 覆盖（工具条/标签行/行内状态三样都进）。\n\n2026-09-22 总合并再订正：拖动的两条收尾（正常松手 `finishCanvasNodeDrag` / 取消 `cancelCanvasNodeDrag`）整体搬进 `canvasDragWriteback.ts`——它本来就是拖动收尾的家，而那份壳因此回到 800 行门岗之内。门按新家重锚；不变量（位置写回之后才提交框归属）一个字没改。",
   "residual_risks": [
     "Final v13 strengthened Electron assertion exposed parameter-portal key leakage; fix and real-host rerun are required before delivery. Current acceptance and exact evidence live in docs/audit/2026-09-20-core-a-current-acceptance.md.",
     "Paid-v9 first-frame video and two-image receipts verify the exercised supplier paths only; other supplier/reference combinations and Windows remain unverified. Full-app lazy failure and all native OS interrupt combinations are not established by controlled fixtures.",

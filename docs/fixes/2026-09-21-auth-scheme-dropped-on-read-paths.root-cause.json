@@ -41,36 +41,135 @@
     "「一把 key 怎么放」只有一个类型（VendorAuthSpec）与一个产出它的 owner（catalog/vendorAuthSpec）；新增鉴权维度时编译器在全部消费点报红"
   ],
   "doors": [
-    { "kind": "write", "path": "electron/ai/requestPipeline.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/ai/requestPipeline.ts", "symbol": "authQueryParams" },
-    { "kind": "write", "path": "electron/catalog/vendorAuthSpec.ts", "symbol": "savedVendorForBaseUrl" },
-    { "kind": "write", "path": "electron/ai/onboarding/modelListProbe.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/ai/onboarding/onboardingIpc.ts", "symbol": "connectionAuthSpec" },
-    { "kind": "write", "path": "electron/ai/onboarding/onboardingIpc.ts", "symbol": "buildAuthHeaders" },
-    { "kind": "write", "path": "electron/ai/onboarding/vendorHealth.ts", "symbol": "vendorAuthSpec" },
-    { "kind": "write", "path": "electron/ai/onboarding/vendorHealth.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/ai/onboarding/vendorHealth.ts", "symbol": "authQueryParams" },
-    { "kind": "write", "path": "electron/catalog/validateCandidateCredential.ts", "symbol": "vendorAuthSpec" },
-    { "kind": "write", "path": "electron/catalog/validateCandidateCredential.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/catalog/validateCandidateCredential.ts", "symbol": "authQueryParams" },
-    { "kind": "write", "path": "electron/integrationCertification/credentialElicitationRuntime.ts", "symbol": "connectionAuthSpec" },
-    { "kind": "write", "path": "electron/integrationCertification/credentialElicitationRuntime.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/integrationCertification/httpConnector.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/integrationCertification/httpConnector.ts", "symbol": "authQueryParams" },
-    { "kind": "write", "path": "electron/integrationCertification/httpModelDiscovery.ts", "symbol": "connectionAuthSpec" },
-    { "kind": "write", "path": "electron/integrationCertification/httpModelDiscovery.ts", "symbol": "savedVendorForBaseUrl" },
-    { "kind": "write", "path": "electron/integrationCertification/httpModelDiscovery.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/providerAdapter/existingConnection.ts", "symbol": "vendorAuthSpec" },
-    { "kind": "write", "path": "electron/providerAdapter/selfCheck.ts", "symbol": "vendorAuthSpec" },
-    { "kind": "write", "path": "electron/providerAdapter/selfCheck.ts", "symbol": "authHeaders" },
-    { "kind": "write", "path": "electron/providerAdapter/selfCheck.ts", "symbol": "authQueryParams" },
-    { "kind": "write", "path": "electron/runtime.ts", "symbol": "vendorAuthSpec" },
-    { "kind": "write", "path": "electron/runtime.ts", "symbol": "buildAuthHeaders" },
-    { "kind": "write", "path": "electron/vendor/vendorHttp.ts", "symbol": "vendorAuthSpec" }
+    {
+      "kind": "write",
+      "path": "electron/ai/requestPipeline.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/requestPipeline.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/vendorAuthSpec.ts",
+      "symbol": "savedVendorForBaseUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/modelListProbe.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "symbol": "buildAuthHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/credentialElicitationRuntime.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/credentialElicitationRuntime.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpConnector.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpConnector.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/existingConnection.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "buildAuthHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "vendorAuthSpec"
+    }
   ],
   "door_reduction": {
     "before": 28,
-    "after": 26,
+    "after": 25,
     "why_not": "真正合并掉的是**「一把 key 怎么放」的答案数**：修前有 3 份独立答案（requestPipeline.authHeaders 的四散参数版、runtime.ts 里那个私有的 Vendor→头 适配、modelListProbe.buildAuthHeaders 里写死的 `Bearer ${apiKey}`），修后只剩 1 份（requestPipeline.authHeaders 收 VendorAuthSpec），另加 1 个把连接记录译成 VendorAuthSpec 的 owner（catalog/vendorAuthSpec，两个入口：手上有 Vendor 用 vendorAuthSpec，手上只有 baseUrl 用 connectionAuthSpec）。门表上少的 2 扇是 runtime.ts 那份私有适配（删）与 vendorHttp 里与 owner 同名的 authQueryParams（改名 vendorAuthQueryParams，不再是第二个同名答案）。剩下的 26 扇是**调用点**，它们必须各自存在——那是四条读路加三条写路本身；让它们不再各答一遍的机制是类型（VendorAuthSpec 是一个值对象，少一个维度编译不过）加 vendorAuthSpecReadPaths.test.ts 的结构断言（所有调用点的第一个实参只能来自 owner；接入/探测/自检三棵子树里除 owner 外一处手写 Authorization 都不许有，零基线）。"
   },
   "generality_proof": "① 类型闭合：`authHeaders` / `authQueryParams` 只接 `VendorAuthSpec`，四个维度作为一个值一起走；加第五个维度只需改 `VendorAuthSpec` 与 `catalog/vendorAuthSpec`，编译器会在全部 26 个调用点报红。这次的改造本身就是证据——把签名收成对象之后，`tsc -p electron/tsconfig.json` 一次性报出 7 个错，正好落在那三处读路上，外加一处我原先没发现的 `modelListProbe.buildAuthHeaders`（第四份手拼头）。② 结构闭合：`vendorAuthSpecReadPaths.test.ts` 机械扫 electron/ 全部非测试 .ts，断言所有 `authHeaders`/`authQueryParams`/`buildAuthQueryParams` 调用点的第一个实参都来自 owner，且 ai/ · integrationCertification/ · providerAdapter/ 三棵子树里除 owner 外没有任何手写 `Authorization: …` 字面量（零基线，不是棘轮）。③ 行为闭合：Higgsfield 式 `Key` 与缺省 `Bearer` 两种连接，在 existingConnection.listModels 与模型发现两条读路上拼出的头与生成路逐字相同。",
@@ -194,7 +293,7 @@
     "rationale": "内部契约形状，不涉及第三方依赖。",
     "exit_criteria": []
   },
-  "migration": "对用户无迁移，也不需要重新贴 key：方案词一直好好地存在 vendor.authScheme 上，只是读路没把它带出去。已接 Higgsfield 的用户下次点「列出这家的模型」或「测试连接」即恢复正常。",
+  "migration": "对用户无迁移，也不需要重新贴 key：方案词一直好好地存在 vendor.authScheme 上，只是读路没把它带出去。已接 Higgsfield 的用户下次点「列出这家的模型」或「测试连接」即恢复正常。\n\n2026-09-22 总合并订正：#831 把「哪条连接」的反查换成 `resolveConnectionVendorKey`（域名 + 连接名），所以 `httpModelDiscovery` 不再直接调 `savedVendorForBaseUrl`；本合同要守的是「方案词不许在读路径上被丢掉」，它今天的门是同一文件里的 `connectionAuthSpec`。判据未改。",
   "residual_risks": [
     "`catalog/assetLocalization.ts:278` 另有一处 `Authorization: ${scheme} ${apiKey}`，它的 scheme 来自 assetIngestion 声明的上传端点而不是连接记录——形状同源但状态不同源，本次未并入，也没有进结构断言的扫描范围（该文件不在 ai/ · integrationCertification/ · providerAdapter/ 三棵子树里）。并入它需要先判定「上传端点的鉴权是否永远等于连接的鉴权」，那是另一刀。",
     "`connectionAuthSpec` 按 baseUrl 反查已保存的连接（deriveVendorKeyFromBaseUrl 只按 hostname 造 key）。同一台主机上两条不同的连接（同域名不同路径前缀）会取到同一条记录的方案词。今天的推导本来就是这样（模型发现一直这么找 vendor），本次没有扩大它，但也没有收窄。",

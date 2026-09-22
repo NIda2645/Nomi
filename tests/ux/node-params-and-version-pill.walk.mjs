@@ -11,6 +11,11 @@
 // 拖动中被系统打断、拖动中窗口失焦），每一步之后断言标记已摘掉；再在「刚平移完立刻点」之后验浮框与托盘可见可点。
 // 断言只看行为（stage 上的属性、浮层的可见性与命中），不看实现——换成租约模型的实现也必须照样全绿。
 //
+// 2026-09-22 总合并：实现**确实换成了租约模型**（`beginCanvasDragging(...) → {activate, release, cancel}`，
+// 摘旗的最后一道闸是 `canvasDraggingFlag.armGestureEndGuard`：pointerup / pointercancel / 窗口 blur
+// 之后等一帧，仍挂着的租约一律收掉）。这条走查一个断言都没改——上面那句「不看实现」就是这么用的：
+// 换发动机的那一刀里，它是证明「用户看到的东西没变」的那份证据。
+//
 // 驱动：真实 Electron + 真实鼠标/键盘/滚轮。两处写明是**模拟**：触控板平移（带 deltaX 的 wheel，ctrlKey=false），
 // 系统打断（窗口上派发 pointercancel / blur——Playwright 造不出真的系统打断）。
 // 夹具：核心冒烟清单的一员（tests/ux/core-smoke/scenarios.mjs），empty / used 两遍都跑；
