@@ -3,13 +3,14 @@
  *
  * 回归：apimart 填 key 后模型全部消失 + 验证转圈后全失败。根因 = ①用 GET /v1/models
  * 可达性当 key 判据（apimart 该端点恒 401）；②渲染层 key 写入强制停用 + de-publish。
- * 本文件证明：direct-key 走 livenessProbe 判据（401/403=无效、200+成功字段=verified、
+ * 本文件证明：direct-key 走 credentialProbe 判据（401/403=无效、200+成功字段=verified、
  * 网络抖动=pending 不误报），verified 后凭据与 vendor 同步发布；scope 漂移照样
  * fail-closed（vendor 不 promote）。
  *
- * 2026-09-22（T-MO-10）：apimart 的探测端点从 `POST /api/v1/chat/completions`（真实生成、
- * 扣用户积分）换成 **免费** 的 `GET /v1/balance`，成功判据随之从 `choices.0` 换成
- * `remain_balance`。本文件的夹具响应体跟着换，判据本身一个字没动。
+ * 2026-09-22（T-MO-10）：凭据判据从每周雷达那条 `livenessProbe`（apimart:
+ * `POST /api/v1/chat/completions`，真实生成、扣用户积分）搬到独立的 `credentialProbe`，
+ * apimart 用 **免费** 的 `GET /v1/balance`，成功判据随之从 `choices.0` 换成 `remain_balance`。
+ * 本文件的夹具响应体跟着换，判据本身一个字没动。
  */
 import fs from "node:fs";
 import os from "node:os";

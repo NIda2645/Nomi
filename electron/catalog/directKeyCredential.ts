@@ -8,11 +8,12 @@
 //     vendor 整体 de-publish → 模型从选择器和 agent 可用清单里全部消失。
 // key 明明能用（直连生成没问题），目录却藏着——名实不一的假阴性。
 //
-// 本文件给出 direct-key 的两条正路（只对 isBuiltinDirectKeyVendor 且带 livenessProbe
+// 本文件给出 direct-key 的两条正路（只对 isBuiltinDirectKeyVendor 且带 credentialProbe
 // 的种子生效，certification 供应商一律走原路，诚实门不变量不放松）：
-//   ① 验证 = 种子里代码拥有的 livenessProbe。**2026-09-22（T-MO-10）起它必须是免费的，
+//   ① 验证 = 种子里代码拥有的 credentialProbe。**2026-09-22（T-MO-10）起它必须是免费的，
 //     否则先问**：apimart 已从 `POST /api/v1/chat/completions`（真实生成、扣用户积分）换成
-//     `GET /v1/balance`（零费用、坏 key 回 401，实测有对照组）。发不发、花不花钱由
+//     `GET /v1/balance`（零费用、坏 key 回 401，实测有对照组），并与每周雷达的逐模型
+//     存活探针 `livenessProbe` 彻底分家。发不发、花不花钱由
 //     `credentialProbePolicy.ts` 单点决定，本文件只执行。
 //     401/403 → key 无效（throw）；探测成功 → verified；网络/上游其它失败 → pending
 //     （诚实：不假装可用，也不把网络抖动误报成 key 错误）；用户拒绝付费探测 → declined。
@@ -53,7 +54,7 @@ export type DirectKeyProbeOptions = {
 }
 
 /**
- * 跑种子声明的凭据探测。**发不发、花不花钱，由 `credentialProbePolicy` 一家说了算**
+ * 跑种子声明的凭据探测（`credentialProbe`，**不是**每周雷达那条 `livenessProbe`）。**发不发、花不花钱，由 `credentialProbePolicy` 一家说了算**
  * （T-MO-10，用户 2026-09-22 拍板「免费探测」）：
  *
  *   · 免费档（apimart 的 `GET /v1/balance`、higgsfield 的 estimate）→ 直接发，不打扰用户；

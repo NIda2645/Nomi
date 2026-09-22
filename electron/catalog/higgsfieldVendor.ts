@@ -37,7 +37,7 @@ export const HIGGSFIELD_VENDOR_SEED = {
    * 证明不了「这把 key 能用」；而且它连 Soul Cinema / DoP 都没列（目录不是权威源）。
    * ⚠️ estimate **不判余额**：它 200 不代表这一单发得出去（余额不足是提交时的 403）。
    */
-  livenessProbe: {
+  credentialProbe: {
     request: {
       method: "POST",
       path: "/estimate/higgsfield-ai/soul/v2/standard",
@@ -50,7 +50,6 @@ export const HIGGSFIELD_VENDOR_SEED = {
     cost: "free" as const,
     source: { url: "https://docs.higgsfield.ai/docs/concepts/pricing", checkedAt: "2026-09-17" },
   },
-  keyValidation: "liveness-probe" as const,
 } as const;
 
 /**

@@ -7,7 +7,7 @@
  * 验证判据按单一 HTTP 路由（/v1/models）。只要还这么分派，下一家新接的供应商
  * 就会以同样方式再掉进来。三条不变量把「新加一家」的正确性搬到装配期：
  *
- *   (a) 声明 direct-key ⇒ 必须带零成本 livenessProbe（否则会掉回 /v1/models 判据）；
+ *   (a) 声明 direct-key ⇒ 必须带 credentialProbe（带出处 + 显式 cost），否则会掉回 /v1/models 判据；
  *   (b) 有 curated 模型 + curated mapping ⇒ 发布判据必须能对它返回 true；
  *   (c) 用户要填凭据的内置家 ⇒ 必须有一条不当场 throw 的验证分支。
  *
@@ -39,7 +39,7 @@ vi.mock("../ai/antigravityConnection", () => ({
   antigravityConnection: { canEnable: () => false, hasPassed: () => false },
 }));
 
-// livenessProbe 走生产传输 appFetch（check-network-entry 禁裸 fetch 当值），按既有夹具手法在模块层注入。
+// credentialProbe 走生产传输 appFetch（check-network-entry 禁裸 fetch 当值），按既有夹具手法在模块层注入。
 const { mockAppFetch } = vi.hoisted(() => ({ mockAppFetch: vi.fn<typeof fetch>() }));
 vi.mock("../appFetch", () => ({ appFetch: mockAppFetch }));
 
@@ -71,13 +71,13 @@ function vendorsWithCodeOwnedExecution(state: CatalogState): string[] {
     .map((seed) => seed.key);
 }
 
-describe("(a) direct-key 必须带零成本存活探测", () => {
-  it("每个 credentialMode==='direct-key' 的种子都声明了 livenessProbe（带官方出处）", () => {
+describe("(a) direct-key 必须带零成本凭据探测", () => {
+  it("每个 credentialMode==='direct-key' 的种子都声明了 credentialProbe（带官方出处）", () => {
     for (const seed of BUILTIN_VENDOR_SEEDS) {
       if (seed.credentialMode !== "direct-key") continue;
-      expect(seed.livenessProbe, `${seed.key} 声明了 direct-key 却没有 livenessProbe`).toBeTruthy();
-      expect(seed.livenessProbe?.source.url).toMatch(/^https:\/\//);
-      expect(seed.livenessProbe?.source.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(seed.credentialProbe, `${seed.key} 声明了 direct-key 却没有 credentialProbe`).toBeTruthy();
+      expect(seed.credentialProbe?.source.url).toMatch(/^https:\/\//);
+      expect(seed.credentialProbe?.source.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
   });
 
@@ -85,12 +85,12 @@ describe("(a) direct-key 必须带零成本存活探测", () => {
    * T-MO-10（用户 2026-09-22 拍板「免费探测」）：探测端点花不花钱，必须**写在声明里**。
    * 09-11 群反馈撞上的正是「注释说零成本、实际是一次真实生成」——没写下来的免费不算免费。
    */
-  it("每个 direct-key 种子都显式声明了 livenessProbe.cost（缺省 fail-closed，但内置家不许靠缺省)", () => {
+  it("每个 direct-key 种子都显式声明了 credentialProbe.cost（缺省 fail-closed，但内置家不许靠缺省)", () => {
     for (const seed of BUILTIN_VENDOR_SEEDS) {
       if (seed.credentialMode !== "direct-key") continue;
       expect(
-        seed.livenessProbe?.cost,
-        `${seed.key} 的 livenessProbe 没说自己花不花钱；免费要有出处，付费要走确认面`,
+        seed.credentialProbe?.cost,
+        `${seed.key} 的 credentialProbe 没说自己花不花钱；免费要有出处，付费要走确认面`,
       ).toMatch(/^(free|paid)$/);
     }
   });
@@ -103,11 +103,11 @@ describe("(a) direct-key 必须带零成本存活探测", () => {
     const GENERATION_LIKE = /(chat\/completions|\/completions|\/generations|\/v1\/messages|\/responses|\/images|\/videos|\/audio)/i;
     let checkedFree = 0;
     for (const seed of BUILTIN_VENDOR_SEEDS) {
-      if (seed.livenessProbe?.cost !== "free") continue;
+      if (seed.credentialProbe?.cost !== "free") continue;
       checkedFree += 1;
       expect(
-        GENERATION_LIKE.test(seed.livenessProbe.request.path),
-        `${seed.key} 把一个长得像生成提交的端点声明成了免费探测：${seed.livenessProbe.request.path}`,
+        GENERATION_LIKE.test(seed.credentialProbe.request.path),
+        `${seed.key} 把一个长得像生成提交的端点声明成了免费凭据探测：${seed.credentialProbe.request.path}`,
       ).toBe(false);
     }
     // 采不到样本的扫描会以「全绿」的样子通过，和真绿长得一模一样。
@@ -230,7 +230,7 @@ describe("每一类各自的正路（用户反馈里被点名的四种情形）"
     expect(state.apiKeysByVendor.replicate?.apiKey).toBeTruthy();
   });
 
-  it("apimart（种子带 livenessProbe）：401 仍然判 key 无效，不发布", async () => {
+  it("apimart（种子带 credentialProbe）：401 仍然判 key 无效，不发布", async () => {
     mockAppFetch.mockResolvedValue(new Response("{}", { status: 401 }));
     await expect(saveKey("apimart", "sk-bad")).rejects.toThrow();
     const { readCatalog } = await import("./catalogStore");

@@ -259,9 +259,10 @@
       "members": [
         "verified",
         "invalid-key",
-        "pending"
+        "pending",
+        "declined"
       ],
-      "reason": "direct-key 凭据探测的三态结论（2026-09-10 回归修复）：verified=代码拥有的 livenessProbe 探测成功、invalid-key=上游 401/403 明确拒绝、pending=网络/上游抖动不可判。与 adapter certification 状态族（testing/verified/failed）不同域：这是存 key 一次性的验证结论，不落 adapter meta，也不参与 vendor enabled 晋升之外的生命周期。",
+      "reason": "direct-key 凭据探测的四态结论：verified=代码拥有的 credentialProbe 探测成功、invalid-key=上游 401/403 明确拒绝、pending=网络/上游抖动不可判、declined=这次探测会花钱而用户在报价卡上没同意（2026-09-22 T-MO-10 新增，与 pending 刻意分开：pending 是「我们没问出结论」，declined 是「用户不让我们去问上游」——前者会自动复验，后者只会在用户再次显式点「保存验证」时重来）。与 adapter certification 状态族（testing/verified/failed）不同域：这是存 key 一次性的验证结论，不落 adapter meta，也不参与 vendor enabled 晋升之外的生命周期。",
       "site": "electron/catalog/directKeyCredential.ts::type:DirectKeyProbeOutcome/type-union"
     },
     {

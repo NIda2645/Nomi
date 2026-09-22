@@ -1,6 +1,6 @@
 [walkthrough] content viewport {"width":1280,"height":933}
-feel record: probe-free/waitForLoadState.png; findings=11; new-surfaces=2; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-1df0a079-3daa-4d72-aad7-8fdccfe1913c
-feel record: probe-free/waitForLoadState.png; findings=0; new-surfaces=0; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-1df0a079-3daa-4d72-aad7-8fdccfe1913c
+feel record: probe-free/waitForLoadState.png; findings=11; new-surfaces=2; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-6c654295-b71b-4ee0-8975-27f1e898b051
+feel record: probe-free/waitForLoadState.png; findings=0; new-surfaces=0; evidence: /Users/aoqimin/Desktop/Nomi-fix-mo10-free-probe-0922/artifacts/feel/probe-free-6c654295-b71b-4ee0-8975-27f1e898b051
   探测策略投影：cost=free amount=null
   保存验证的真实出站：GET /v1/balance
   verificationPending=false

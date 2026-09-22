@@ -29,13 +29,39 @@
 注释不是判据。没写成判据的「我以为它免费」，在 T-MO-20 上已经真金白银付过学费：
 把 Higgsfield 的 `POST /marketing-studio/image` 当余额探针，它只要 prompt 就真排任务，当场烧掉 $0.439。
 
+## 先查别人
+
+报告全文：`docs/research/2026-09-22-credential-probe-free/prior-art.md`（四问齐全）。结论摘要
+（每条都带出处；`file:line` 与 URL 为准）：
+
+- **依赖里已有？没有。** `node_modules/@ai-sdk/provider/dist/index.d.ts:1` 的 `ProviderV3` 只有三个模型工厂，既没有 `validateCredential` 这类端点，也没有「这次调用花多少」的声明位；`node_modules/electron/electron.d.ts:1` 的 `safeStorage` 只管凭据怎么存，不管怎么验。
+- **仓库里已有（付费确认卡 → 复用）**：`src/workbench/generationCanvas/spend/spendConfirm.ts:57` 与 `src/workbench/capability/capabilityApplyHandler.ts:154` 已经是全仓唯一那张卡，本刀只加一个 `intent` 分支，不造第二张。
+- **仓库里已有（报价与问人通道 → 复用）**：`electron/spendQuote.ts:9` 的 `quoteSpendLine` 是唯一报价 owner；`electron/capabilityCore/rendererBridge.ts:11` 的文件头写明「付费确认走它时 confirmed=true 只可能来自渲染层那条 reply」，信任边界照旧。
+- **仓库里已有（反例）**：`electron/vendor/vendorBaseFallback.ts:12` 的实测注释说 apimart 对无鉴权 `GET /v1/models` 恒 401——所以模型列表**不能**当它的 key 判据，这正是 09-17 裁决要求实测证伪的那条。
+- **生态里已有（共识形状）**：LiteLLM 把「真打上游、文档明说要花钱」的 `/health` 与只查本地配置的 `/health/readiness` 分开，并让运维指定便宜模型 <https://docs.litellm.ai/docs/proxy/health>。
+- **生态里已有（免费 key 判据）**：OpenAI <https://platform.openai.com/docs/api-reference/models/list>、Anthropic <https://docs.anthropic.com/en/api/models-list>、OpenRouter 的 `GET /api/v1/key` <https://openrouter.ai/docs/api-reference/limits>、APIMart 的 `GET /v1/balance` <https://docs.apimart.ai/en/api-reference/account/token-balance.md> —— 全都免费且按 key 鉴权。
+- **TikHub 自媒体？本次没用**，因为这一题的权威源只有官方文档与一次真实对照实验（假 key vs 无鉴权，见 §4），自媒体内容既不构成证据也无法证伪；详见 `docs/research/2026-09-22-credential-probe-free/prior-art.md`。
+- **结论：确认面 / 报价 / 问人通道用已有，声明位自研。** 自研的只有 `credentialProbe.cost` 这个声明位、它的唯一读者 `electron/catalog/credentialProbePolicy.ts:56`，以及缺省 `paid` + 装配期不变量这两道 fail-closed——生态里最接近的 LiteLLM 也只做到「分两个端点 + 在文档里提醒」，没把价格变成机器可判的声明 <https://docs.litellm.ai/docs/proxy/health>。
+
+## 2.8 顺带分家的一件事：`livenessProbe` 曾经兼职
+
+`VendorSeed.livenessProbe` 原本同时回答两个问题：
+
+1. **每周雷达**问的「这个模型这周还活着吗」——按定义就得真发一次最小生成，也该由
+   `scripts/model-liveness.ts` 那条每周任务付钱；
+2. **接入页**问的「这把 key 能不能用」——不必发生成。
+
+合用一个声明位，第二个问题就**继承了第一个问题的价格**。所以本刀给凭据探测单开
+`VendorSeed.credentialProbe`，两条各自带 `cost` 与出处；apimart 的 `livenessProbe`
+原样留给雷达（并如实标 `cost: 'paid'`），凭据侧换成免费的 `GET /v1/balance`。
+
 ## 3. 改法：一份「探测策略」，三档
 
 `electron/catalog/credentialProbePolicy.ts` 是唯一分派点：
 
 | 档 | 谁落在这 | 行为 |
 |---|---|---|
-| `seed-probe` + `cost:'free'` | apimart（`GET /v1/balance`）、higgsfield（`POST /estimate/...`） | 直接发，不打扰用户 |
+| `seed-probe` + `cost:'free'` | apimart（`GET /v1/balance`）、higgsfield（`POST /estimate/...`），均由 `credentialProbe` 声明 | 直接发，不打扰用户 |
 | `seed-probe` + `cost:'paid'`（**含缺省**） | 种子声明了端点却没说它免费的 | 先经确认面问一句；没同意 / 问不到人 → `declined`，**一个字节都不发** |
 | `model-list`（免费） | 没有内置种子的行（自定义供应商 / 用户自建中转 / 认证晋升候选） | `GET /models`，零费用 |
 | `first-use`（免费） | 内置家里没有便宜且可信的预检的 12 家 | 不发请求，判据留给首次真实调用的诚实报错 |

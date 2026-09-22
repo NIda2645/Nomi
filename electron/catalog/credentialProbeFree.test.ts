@@ -55,7 +55,7 @@ const LOOPBACK_FIXTURE_SEED = {
   authType: "bearer" as const,
   authHeader: "Authorization",
   credentialMode: "direct-key" as const,
-  livenessProbe: {
+  credentialProbe: {
     // 刻意不写 cost：缺省 = 无免费端点 = 先问（fail-closed）。
     request: {
       method: "POST",

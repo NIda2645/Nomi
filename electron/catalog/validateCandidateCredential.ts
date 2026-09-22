@@ -57,7 +57,7 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   if (!apiKey || !vendor.baseUrlHint) {
     throw credentialFailure('credential.validationUnavailable', vendor.key)
   }
-  // 种子声明了探测端点的（apimart / higgsfield）：那份代码拥有的 livenessProbe 才是诚实的 key 判据。
+  // 种子声明了凭据探测端点的（apimart / higgsfield）：那份代码拥有的 credentialProbe 才是诚实的 key 判据。
   // 花不花钱、要不要先问，由 `credentialProbePolicy` 决定，`probeDirectKeyCredential` 执行。
   if (strategy === 'seed-probe') {
     const outcome = await probeDirectKeyCredential(vendor, apiKey)

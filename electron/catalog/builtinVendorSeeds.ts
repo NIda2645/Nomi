@@ -49,26 +49,38 @@ export type VendorSeed = {
    */
   credentialMode?: CredentialMode;
   /**
-   * 这家「key 到底能不能用」的代码拥有的探测端点。
+   * **每周雷达**的逐模型存活探针：「这个模型这周还活着吗」。
    *
-   * 2026-09-22（T-MO-10，用户拍板「免费探测」）：**`cost` 现在是这条声明的一部分**。
-   * 在此之前这里只有端点本身，于是 apimart 声明的是一次真实 `POST /chat/completions`
-   * （`max_tokens:1`），用户点「保存验证」的那一刻就花他的钱；而这条路走 `appFetch`
-   * 直接出门、不碰 `runtime.ts`、没有 `grantId`，报价卡在结构上永远不可能为它出现
-   * （钱的闸 = 每次提交看报价确认，用户 2026-09-09 拍板；09-11 群反馈撞上）。
+   * 它按定义是一次**真实的最小生成**（apimart: `POST /api/v1/chat/completions`，`max_tokens:1`），
+   * 也只该由 `scripts/model-liveness.ts` 那条每周任务付钱 —— 一个模型一次，刻意的、有预算的。
    *
-   * 现在「花不花钱」和端点写在一起，由 `credentialProbePolicy.ts` **单点**消费：
-   *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
-   *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
-   *
-   * 缺省 fail-closed 不是洁癖：T-MO-20 就是把 Higgsfield 的
-   * `POST /marketing-studio/image` 当余额探针用，它只要 prompt 就真排任务，当场烧掉
-   * $0.439。「我以为它免费」必须写成「有出处地声明它免费」才算数。
+   * ⚠️ 它**不是**「这把 key 能不能用」的判据，那是 `credentialProbe`。
+   * 2026-09-22（T-MO-10）之前这两件事共用这一个字段，于是用户点一次「保存验证」就跑了一遍
+   * 每周雷达那条付费探针——花他的钱，还绕过报价卡（09-11 群反馈）。两个问题不同：
+   * 逐模型存活必须真发一次生成才答得了，凭据有效性不必。合用一个声明位，就等于让后者
+   * 继承前者的价格。
    */
   livenessProbe?: {
     request: Pick<HttpOperation, "method" | "path" | "body">;
     successPath: string;
-    /** 缺省 = `paid`（见上）。写 `free` 的，`source` 必须能证明它零费用。 */
+    /** 缺省 = `paid`（逐模型存活探针本来就要真发一次生成）。 */
+    cost?: "free" | "paid";
+    source: { url: string; checkedAt: string };
+  };
+  /**
+   * 「这把 key 现在能不能用」的代码拥有的探测端点（2026-09-22 T-MO-10 新增）。
+   *
+   * `cost` 是这条声明的一部分，由 `credentialProbePolicy.ts` **单点**消费：
+   *   · `cost: 'free'`  —— 有出处地证明过零费用（`source` 必须指得到官方文档原文）；
+   *   · `cost: 'paid'`（也是**缺省**）—— 它会花钱，发之前必须先经确认面问一句。
+   *
+   * 缺省 fail-closed 不是洁癖：T-MO-20 就是把 Higgsfield 的 `POST /marketing-studio/image`
+   * 当余额探针用，它只要 prompt 就真排任务，当场烧掉 $0.439。「我以为它免费」必须写成
+   * 「有出处地声明它免费」才算数。
+   */
+  credentialProbe?: {
+    request: Pick<HttpOperation, "method" | "path" | "body">;
+    successPath: string;
     cost?: "free" | "paid";
     source: { url: string; checkedAt: string };
   };
@@ -80,7 +92,7 @@ export type VendorSeed = {
    * 却连最小生成 canary 都跑不通（认证账本 blocker 原文）。详见
    * docs/research/2026-09-10-vendor-key-publish-class/prior-art.md 第 ④ 节。
    *
-   *  · `liveness-probe`：种子带 `livenessProbe`，一次零成本探测即判（apimart）。
+   *  · `seed-probe`   ：种子带 `credentialProbe`，按它声明的端点与价格判（apimart / higgsfield）。
    *  · `model-list`    ：上游确有 OpenAI 兼容模型列表端点，且它对合法 key 会放行。
    *                      ⚠️ 现役无人声明这一档。第一个声明它的人请连带补上
    *                      `electron/ai/onboarding/vendorHealth.ts` 的清标记分支：那里探测成功后
