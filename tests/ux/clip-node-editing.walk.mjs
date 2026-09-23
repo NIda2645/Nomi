@@ -207,10 +207,8 @@ async function runExport(scope, destination, expectedToast) {
   await menu.getByRole('radio', { name: scope }).click()
   await menu.getByRole('button', { name: destination, exact: true }).click()
   try {
-    // Both destinations must expose their own completion feedback; the RC journey owns this assertion.
-    const successNotification = win.getByText(expectedToast, { exact: false })
     const outcome = await Promise.race([
-      successNotification.waitFor({ state: 'visible', timeout: exportTimeoutMs }).then(() => 'success'),
+      win.getByText(expectedToast, { exact: false }).waitFor({ state: 'visible', timeout: exportTimeoutMs }).then(() => 'success'),
       win.waitForFunction((expected) => {
         const trace = globalThis.__nomiClipExportTrace
         return trace?.events?.some((event) => ['failed', 'cancelled'].includes(event?.snapshot?.status))

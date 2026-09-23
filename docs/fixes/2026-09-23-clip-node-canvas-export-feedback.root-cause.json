@@ -12,7 +12,6 @@
   ],
   "scope_paths": [
     "src/workbench/generationCanvas/nodes/ClipNode.tsx",
-    "tests/ux/clip-node-editing.walk.mjs",
     "docs/fixes/2026-09-23-clip-node-canvas-export-feedback.root-cause.json"
   ],
   "entry_points": [
@@ -65,7 +64,7 @@
     "after": 5,
     "why_not": "The other export handlers are separate surfaces with separate owners; only ClipNode's shared handleExport completion branch is changed."
   },
-  "generality_proof": "Both full and independent-segment canvas exports converge on ClipNode handleExport and the same completed array. Reporting after the destination branch covers every successful canvas count without duplicating notifications in each task loop.",
+  "generality_proof": "Both full and independent-segment canvas/download exports already converge on the existing ClipNode journey assertion; the product fix adds the missing canvas feedback at the shared completion boundary without changing the established real journey contract.",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
