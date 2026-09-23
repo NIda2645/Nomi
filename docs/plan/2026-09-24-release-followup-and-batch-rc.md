@@ -9,6 +9,10 @@
 
 本方案先对照了仓库已有的批量门岗和分层规则，详见 [`docs/research/2026-09-24-release-efficiency/prior-art.md`](../research/2026-09-24-release-efficiency/prior-art.md)。结论是复用 `run-gates-contracts`、Quality Gate 的 `continue-on-error` + 末尾汇总、`validation-policy` 的风险分档和 workflow 结构门禁；只为桌面 RC 增加五条旅程的 timeout/summary/artifact 约束，不引入第二套编排器。外部 TikHub 未查，因为本次是内部 CI/发布流程问题，不是产品市场调研。
 
+- 仓库已有「全部跑完再汇总」实现：`scripts/run-gates-contracts.mjs:3-12,104-161`。
+- 仓库已有 workflow 的 `continue-on-error`、末尾 outcome 汇总和 fail-closed 判定：`.github/workflows/quality-gate.yml:171-220`。
+- 仓库已有验证基础设施改动必须走 full unit/desktop/journeys/canvas 分档：`scripts/validation-policy.mjs:30-57`；外层 step timeout 使用 GitHub 官方 workflow 语法：<https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax>。
+
 ## 现状事实
 
 - PR #854 提交 `52aad196a`，内容是 release-critical 验收的批量收集、Clip 走查判据修正、流程文档和门禁；没有生产功能改动。
