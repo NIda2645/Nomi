@@ -204,8 +204,21 @@ try {
   await getWin().waitForTimeout(1000)
   const previewForeignCard = findAssetCard(foreignVideoName)
   await waitForRealCover(previewForeignCard)
-  const beforeClips = await getWin().locator('[data-testid="timeline-clip"]').count()
+  // The all-project view is intentionally browse-only for another project's asset.
+  // The append contract applies to a project-owned asset; keep this walk aligned
+  // with resolveAssetLibraryItemAction/assetBelongsToProject instead of asserting
+  // that a foreign URL is written into the active project's timeline.
   await previewForeignCard.click()
+  await getWin().waitForTimeout(500)
+  const foreignPreviewDialog = getWin().getByRole('dialog', { name: new RegExp(foreignVideoName.replace('.', '\\.')) }).first()
+  check('预览页跨项目视频保持浏览态', await foreignPreviewDialog.isVisible().catch(() => false))
+  await getWin().keyboard.press('Escape')
+  await getWin().waitForTimeout(300)
+
+  const previewCurrentCard = findAssetCard(currentVideoName)
+  await waitForRealCover(previewCurrentCard)
+  const beforeClips = await getWin().locator('[data-testid="timeline-clip"]').count()
+  await previewCurrentCard.click()
   await getWin().waitForTimeout(1300)
   const afterClips = await getWin().locator('[data-testid="timeline-clip"]').count()
   check('预览页单击视频素材后时间轴新增片段', afterClips > beforeClips, `${beforeClips} → ${afterClips}`)
