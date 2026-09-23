@@ -161,18 +161,38 @@ export function buildTemplateContext(input: {
 // ---------------------------------------------------------------------------
 
 /** Auth headers by auth type. `query`/`none` carry no header. */
-export function authHeaders(authType: AuthType, apiKey: string, headerName?: string, scheme?: string | null): Record<string, string> {
-  if (!apiKey || authType === "none" || authType === "query") return {};
-  if (authType === "x-api-key") return { [headerName || "X-API-Key"]: apiKey };
+/**
+ * 一把 key 怎么放进请求里 —— **整份**说法，不是四个可以各传各的散字段。
+ *
+ * 为什么是一个值对象（2026-09-21，R17「能让编译器拦的别留给人」）：这四个维度原来是
+ * `authHeaders(authType, apiKey, headerName?, scheme?)` 的四个位置参数，于是「少传一个」
+ * 在语法上完全合法。`authScheme` 是 2026-09-18 为 Higgsfield 的 `Authorization: Key id:secret`
+ * 加的第四个维度，写路收全了，读路的三处（接入向导列模型 / 模型发现 / 凭证页测连接）
+ * 谁也没补上最后一个实参——同一把 key 生成能跑、列模型 401，就是群里那句「key 是对的啊」。
+ * 收成一个对象之后，下一个维度加进来时编译器会在**全部**调用点报红。
+ */
+export type VendorAuthSpec = Readonly<{
+  authType: AuthType;
+  /** authType==="x-api-key" 时的头名，缺省 X-API-Key。 */
+  headerName?: string;
+  /** `Authorization` 里 key 前面的方案词，缺省 Bearer。 */
+  scheme?: string;
+  /** authType==="query" 时的参数名，缺省 api_key。 */
+  queryParam?: string;
+}>;
+
+export function authHeaders(auth: VendorAuthSpec, apiKey: string): Record<string, string> {
+  if (!apiKey || auth.authType === "none" || auth.authType === "query") return {};
+  if (auth.authType === "x-api-key") return { [auth.headerName || "X-API-Key"]: apiKey };
   // 方案词由 vendor.authScheme 声明（见 catalog/types.ts）；缺省 Bearer，故既有供应商零变化。
-  const word = typeof scheme === "string" && scheme.trim() ? scheme.trim() : "Bearer";
+  const word = typeof auth.scheme === "string" && auth.scheme.trim() ? auth.scheme.trim() : "Bearer";
   return { Authorization: `${word} ${apiKey}` };
 }
 
 /** Auth query params (only for authType === "query"). */
-export function authQueryParams(authType: AuthType, apiKey: string, paramName?: string): Record<string, string> {
-  if (!apiKey || authType !== "query") return {};
-  return { [paramName || "api_key"]: apiKey };
+export function authQueryParams(auth: VendorAuthSpec, apiKey: string): Record<string, string> {
+  if (!apiKey || auth.authType !== "query") return {};
+  return { [auth.queryParam || "api_key"]: apiKey };
 }
 
 /**
@@ -426,6 +446,13 @@ export function buildHttpRequest(input: {
   extraHeaders?: Record<string, string>;
 }): BuiltRequest {
   const { context, operation } = input;
+  // 这条出站路的整份鉴权说法，一处构造、头与 query 同吃（不许一个维度只到其中一边）。
+  const auth: VendorAuthSpec = {
+    authType: input.authType,
+    ...(input.authHeaderName ? { headerName: input.authHeaderName } : {}),
+    ...(input.authScheme ? { scheme: input.authScheme } : {}),
+    ...(input.authQueryParam ? { queryParam: input.authQueryParam } : {}),
+  };
   const method = (pickString(operation.method) || "POST").toUpperCase();
   const renderedPath = String(renderTemplateValue(operation.path || "/v1/tasks", context) || "/v1/tasks");
   // 原生端点声明 pathFrom:"host-root" → 走 hostRootJoin（剥版本段 + 折叠 base/path 重叠段）。
@@ -435,7 +462,7 @@ export function buildHttpRequest(input: {
 
   const renderedHeaders = stringifyHeaders(renderTemplateValue(operation.headers, context));
   const headers: Record<string, string> = {
-    ...authHeaders(input.authType, input.apiKey, input.authHeaderName, input.authScheme),
+    ...authHeaders(auth, input.apiKey),
     ...(input.extraHeaders || {}),
     ...renderedHeaders,
   };
@@ -449,7 +476,7 @@ export function buildHttpRequest(input: {
   const query = isRecord(renderTemplateValue(operation.query, context))
     ? (renderTemplateValue(operation.query, context) as JsonRecord)
     : {};
-  const outboundAuthQuery = authQueryParams(input.authType, input.apiKey, input.authQueryParam);
+  const outboundAuthQuery = authQueryParams(auth, input.apiKey);
   const outboundQuery = { ...outboundAuthQuery, ...query };
   const requestSecrets = collectRequestSecretValues({
     apiKey: input.apiKey,

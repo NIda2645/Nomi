@@ -42,7 +42,7 @@ test('C0 real desktop callsite sends catalog-projected model discovery in stable
     if (previous.projects === undefined) delete process.env.NOMI_PROJECTS_DIR; else process.env.NOMI_PROJECTS_DIR = previous.projects;
   });
   let context: LaneComposerContext = { approvalPolicy: policy, ...{ availableModels: entries } };
-  const input = createDesktopLaneInput({ projectId: 'models-fixture', capture: () => context, activate: () => {},
+  const input = createDesktopLaneInput({ projectId: 'models-fixture', capture: () => context, activate: () => {}, prepare: async (captured: LaneComposerContext) => captured,
     model: () => ({ model: { modelKey: 'chosen-model' } as CatalogState['models'][number], kind: 'openai-compatible' }) });
   const lane = await fixture.openLane({ ...fixture.options, input });
   await lane.execute({ kind: 'prompt', text: '八镜用 MiniMax H3，768P。' });
@@ -66,4 +66,19 @@ test('composer boundary accepts the real projection and rejects malformed model 
   assert.throws(() => parseLaneComposerContext(malformed), /Expected string/);
   assert.throws(() => parseLaneComposerContext({ ...context, availableModels: [{ modelKey: 'incomplete' }] }));
   assert.deepEqual(parseLaneComposerContext({ approvalPolicy: policy }), { approvalPolicy: policy });
+});
+
+
+test('restored intent is a strict selector envelope and never imports historical authority', () => {
+  const restoredIntent = { target: { kind: 'canvas', nodeIds: ['old-node'] }, systemPrompt: 'Original template' };
+  assert.deepEqual(parseLaneComposerContext({ approvalPolicy: policy, restoredIntent }).restoredIntent, restoredIntent);
+  for (const field of ['approvalPolicy', 'model', 'skillPrompt', 'skillSnapshot']) {
+    assert.throws(() => parseLaneComposerContext({ approvalPolicy: policy, restoredIntent: { ...restoredIntent, [field]: 'untrusted' } }));
+  }
+  // `admissionSurface` used to be in this list with the value 'untrusted' — which only proved that
+  // zod rejects a value outside the enum. A **legal** value is the real negative: the renderer may
+  // not name its own surface at all, neither at the top level nor inside a restored draft.
+  assert.throws(() => parseLaneComposerContext({ approvalPolicy: policy, admissionSurface: 'canvas' }));
+  assert.throws(() => parseLaneComposerContext({ approvalPolicy: policy, restoredIntent: { ...restoredIntent, admissionSurface: 'canvas' } }));
+  assert.throws(() => parseLaneComposerContext({ approvalPolicy: policy, restoredIntent, retryFromEntryId: 'old-entry' }));
 });

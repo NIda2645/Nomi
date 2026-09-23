@@ -28,10 +28,10 @@ export const runtimeBridge = {
     // 2026-09-11 Agent 面板付费确认卡：读待确认的那笔 / 卡上改参数 / 丢弃草稿 / 确认并开跑。
     pendingSpend: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:pending-spend", { projectId }),
     reviseSpend: (payload: unknown) => ipcRenderer.invoke("nomi:production-runs:revise-spend", payload),
-    discardSpend: (projectId: string, operationId: string) =>
-      ipcRenderer.invoke("nomi:production-runs:discard-spend", { projectId, operationId }),
-    confirmSpend: (projectId: string, operationId: string, shotIds?: readonly string[]) =>
-      ipcRenderer.invoke("nomi:production-runs:confirm-spend", { projectId, operationId, ...(shotIds ? { shotIds } : {}) }),
+    discardSpend: (projectId: string, operationId: string, quoteId: string) =>
+      ipcRenderer.invoke("nomi:production-runs:discard-spend", { projectId, operationId, quoteId }),
+    confirmSpend: (projectId: string, operationId: string, quoteId: string, shotIds?: readonly string[]) =>
+      ipcRenderer.invoke("nomi:production-runs:confirm-spend", { projectId, operationId, quoteId, ...(shotIds === undefined ? {} : { shotIds }) }),
   },
   tasks: {
     cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,

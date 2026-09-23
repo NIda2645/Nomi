@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { dispatch, type DispatchContext } from './dispatcher'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createMcpProtocol, MCP_TOOL_NAMES, type McpTransport } from './mcpProtocol'
 import { MCP_TOOL_RESOLVER } from './mcpToolCatalog'
+import { classifyMcpGenerationRoute } from './mcpGenerationPolicy'
 
 const flush = async () => {
   await Promise.resolve()
@@ -15,7 +15,7 @@ describe('retired nomi_generate route', () => {
     expect(MCP_TOOL_RESOLVER.resolve('nomi_generate')).toBeUndefined()
     expect(MCP_TOOL_RESOLVER.list().map((tool) => tool.name)).not.toContain('nomi_generate')
     expect(MCP_TOOL_NAMES).not.toContain('nomi_generate')
-    expect(createMcpGenerationPolicy().classifyRoute('nomi_generate'))
+    expect(classifyMcpGenerationRoute('nomi_generate'))
       .toEqual({ kind: 'legacy', route: 'nomi_generate' })
   })
 

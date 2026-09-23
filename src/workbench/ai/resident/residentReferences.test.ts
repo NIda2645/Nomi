@@ -108,3 +108,10 @@ describe('resident reference capture', () => {
     expect(applyStoryboardSelectionToToolArgs('nomi_canvas_plan', args, [])).toBe(args)
   })
 })
+
+it('stable plan references keep the selected shot across reorder and reject another plan',async()=>{
+  const api=await import('./residentReferences')
+  const ref=api.buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc',designId:'plan-a',shotId:'stable-a'})
+  expect(api.storyboardShotIdsForTarget([ref],{documentId:'doc',designId:'plan-a'})).toEqual(['stable-a'])
+  expect(()=>api.storyboardShotIdsForTarget([ref],{documentId:'doc',designId:'plan-b'})).toThrow(/target/)
+})

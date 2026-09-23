@@ -23,7 +23,7 @@ function run(shots: ProductionGenerationShot[], jobs: ProductionJob[] = [], arti
     schemaVersion: 1, runId: 'run-1', projectId: 'proj-1', revision: 1, status: 'running', stageId: 'generate',
     playbook: { name: 'generation.single-shot', version: '1.0.0' }, origin: { host: 'semantic-mcp' },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 1, minimizeUploads: true },
-    budget: { currency: 'CNY', authorized: 100, reserved: 0, actual: 0, unsettled: 0 }, planVersion: 1, snapshotCursor: 0,
+    budget: { currency: 'CNY', authorized: 100, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 }, planVersion: 1, snapshotCursor: 0,
     stages: [], gates: [], jobs, artifacts,
     generationPlan: { operationId: 'run-1', state: 'submitted', candidate: shots[0].candidate, shots, updatedAt: NOW },
     createdAt: NOW, updatedAt: NOW, brief: { goal: '雨夜便利店' },
@@ -31,15 +31,15 @@ function run(shots: ProductionGenerationShot[], jobs: ProductionJob[] = [], arti
 }
 
 describe('buildMaterializeShotsPayload', () => {
-  it('只投 included 的锚+镜；确认即落时无 result（还没生成）', () => {
+  it('投影完整草稿，included 仅决定付费批次；未生成时无 result', () => {
     const r = run([
       shot('a1', { role: 'anchor' }),
       shot('s1', { role: 'shot' }),
-      shot('s2', { role: 'shot', included: false }), // 未勾选 → 不投
+      shot('s2', { role: 'shot', included: false }), // 未纳入当前批次，草稿仍可见
     ])
     const payload = buildMaterializeShotsPayload(r, { projectRoot: '/tmp/x', previewSecret: 'secret', planName: '雨夜便利店' })
     expect(payload).not.toBeNull()
-    expect(payload!.shots.map((s) => s.shotId)).toEqual(['a1', 's1'])
+    expect(payload!.shots.map((s) => s.shotId)).toEqual(['a1', 's1', 's2'])
     expect(payload!.shots.every((s) => s.result === undefined)).toBe(true)
     expect(payload!.materializationOperationId).toBe(canvasLandingOperationId('run-1'))
     expect(payload!.planName).toBe('雨夜便利店')
@@ -67,13 +67,34 @@ describe('buildMaterializeShotsPayload', () => {
   })
 
   it('单镜 semantic plan 没有 shots[] 时仍投影一个真实图片占位', () => {
-    expect(buildMaterializeShotsPayload(run([shot('s1', { included: false })]), { projectRoot: '/tmp/x', previewSecret: 's' })).toBeNull()
+    expect(buildMaterializeShotsPayload(run([shot('s1', { included: false })]), { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
     const catCandidate = { ...shot('cat').candidate, mode: 'text_to_image', prompt: '一只可爱的橘色小猫头像' }
     const noShots = run([shot('cat', { candidate: catCandidate })])
     noShots.generationPlan = { ...noShots.generationPlan!, shots: undefined }
     const payload = buildMaterializeShotsPayload(noShots, { projectRoot: '/tmp/x', previewSecret: 's' })
     expect(payload?.shots).toHaveLength(1)
     expect(payload?.shots[0]).toMatchObject({ shotId: 'cat', kind: 'image', title: '一只可爱的橘色小猫头像' })
+  })
+
+  // 2026-09-22 下午用户拍板：报价卡上的 × **只收回这一次出价**（「节点和草稿都留着」）。
+  // 计划回到 `draft` / 未 present（`cardHidden`），所以落地这一侧一个字不变——占位照旧在画布上，
+  // 用户说一句「还是生成吧」就能对同一份草稿重新出价。
+  //
+  // 当天上午那一版把 × 落成 `cancelled + cancelReason:"declined"`，并在这里加了一条「不投影」。
+  // 它在 33 镜的计划上说不通：卡上只摆 3 镜，× 终结整份计划，另外 30 个占位成了孤儿。已随裁决删。
+  it('× 收回出价之后计划回到未 present 的 draft：占位照旧投影，一个不少', () => {
+    const multi = run([shot('s1'), shot('s2')])
+    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', cardHidden: true }
+    expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(2)
+    const single = run([shot('cat')])
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', cardHidden: true }
+    expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
+  })
+
+  it('阳性对照：真终态（用户删了这份草稿）照旧投影——落地不看 cancelled，那一格由别处管', () => {
+    const cancelled = run([shot('s1')])
+    cancelled.generationPlan = { ...cancelled.generationPlan!, state: 'cancelled' }
+    expect(buildMaterializeShotsPayload(cancelled, { projectRoot: '/tmp/x', previewSecret: 's' })?.shots).toHaveLength(1)
   })
 
   it('单镜默认 job 没有 shot metadata 时仍把已物化结果带回同一个占位', () => {

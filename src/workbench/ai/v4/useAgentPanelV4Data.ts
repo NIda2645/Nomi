@@ -2,6 +2,7 @@ import { formatV4Tokens } from './agentPanelV4UsageFormat'
 // The lane owns conversation state; workbenchStore owns unsent input.
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatMoney } from './formatMoney'
 import type { LanePendingApproval, LaneWorkspaceProjection } from '../../../../electron/shared/agentLane/laneContracts'
 import { getCommittedProposal, subscribeCommittedProposal } from '../../generationCanvas/agent/proposalUndo'
 import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
@@ -38,6 +39,7 @@ export type AgentPanelV4Data = Readonly<{
   snapshot: LaneWorkspaceProjection
   activeThreadId: string | null
   flow: readonly V4FlowItem[]
+  loadOlder?: () => Promise<void>
   slot: InterventionData | undefined
   /**
    * 计划槽的两件交互状态 + 它们的写口。住在读侧，是因为「哪几行还勾着」是**投影的输入**
@@ -131,9 +133,9 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
         }
       })
       .catch(() => {
+        // 读失败保留上一份模型列表：清空会让模型钮变成一个空壳，看起来像「模型没了」，
+        // 而真相是「这一次没读到」（2026-09-21 同形横扫，配置不许静默消失）。
         if (!alive) return
-        setModels([])
-        setGenerationModels([])
       })
     return () => {
       alive = false
@@ -196,8 +198,9 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     free: t('agentPanelV4.contextCostFree'),
     taskTitle: t('agentPanelV4.taskRun'),
     formatStages: (done, total) => t('agentPanelV4.taskStages', { done, total }),
-    formatMoney: (currency, amount) => t('agentPanelV4.money', { currency, amount: amount.toFixed(2) }),
+    formatMoney: (currency, amount) => formatMoney(i18n.language, currency, amount),
     taskUnknown: t('agentPanelV4.taskUnknown'),
+    answered: t('agentPanelV4.questionAnswered'),
     // 名字与 `/` 菜单、技能库画廊同一个 owner（`skillDisplayTitle`）：菜单里选的是「分镜规划」，
     // 气泡上就得也叫「分镜规划」。库里查不到就原样印 key——用户确实挂过它，只是这台机器上
     // 现在没有这份技能；把 chip 藏掉等于抹掉他做过的操作。
@@ -259,7 +262,7 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
 
   const liveChips = React.useMemo(() => {
     const chips: V4Chip[] = []
-    for (const attachment of attachments) chips.push({ kind: 'file', label: attachment.fileName })
+    for (const attachment of attachments) chips.push({ id: attachment.id, kind: 'file', label: attachment.fileName, description: attachment.error })
     if (activeSkill) {
       const skill = skills.find(s => s.name === activeSkill.key)
       chips.push({ kind: 'skill', label: activeSkill.name, cover: skill?.cover, preview: skill?.preview, description: skill?.description ?? undefined })
@@ -281,6 +284,10 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     snapshot,
     activeThreadId,
     flow,
+    loadOlder: snapshot.active.history?.hasMore ? async () => {
+      const result = await laneClient.loadOlder()
+      if (!result.ok) throw new Error(result.code)
+    } : undefined,
     slot,
     plan: { ...plan, kept: (slot?.plan ?? []).filter((row) => row.checked).map((row) => row.label) },
     queue,

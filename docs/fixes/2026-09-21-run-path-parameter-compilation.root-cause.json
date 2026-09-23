@@ -1,0 +1,200 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-run-path-parameter-compilation",
+  "problem_type": "A derived allow-list is built from a declaration that almost no record carries, so the authoritative declaration is discarded without failing",
+  "symptom": "在 Agent 付款卡上把清晰度改成 2K 并确认后，供应商收到的是 resolution:\"1k\"，画布节点上却印着 2K。用户批准并付费的是 A，发出去的是 B，界面上没有任何提示。",
+  "direct_cause": "compileParameters 用 module.parameterSchema 当白名单，不在表里的键记一条 warning 后 continue；而 moduleCatalogBootstrap.modelParameterSchema 只从 model.onboarding.fields 与 mapping.create.defaultParams 派生，用户真实目录里 165 个模型只有 3 个有前者、270 条 mapping 只有 12 条有后者，于是绝大多数模型的白名单是空的。",
+  "class_root": "「这个模型接受哪些参数」有两份定义：手动画布那条路读档案/mapping 的线缆声明（声明什么就发什么），Run 路径读另一份几乎总是空的目录字段。两份不一致时没有任何东西会红——多出来的那一份被静默丢弃，于是分歧以「供应商用了自己的默认值」的形式出现在账单和产物上。",
+  "affected_population": [
+    "所有经 Agent 付款卡 / 分镜提交执行计划 / 外部 MCP 单镜生成 / 全自动 Run 提交的模型：内置目录 165 个模型里 162 个在这条路上的合法参数表为空",
+    "手动画布节点与分镜行那条路不受影响（它走 electron/runtime.ts runTask，没有白名单过滤）"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/moduleCatalogBootstrap.ts",
+    "electron/capabilityCore/executionContract.ts",
+    "electron/capabilityCore/moduleManifest.ts",
+    "electron/capabilityCore/generationPlanningParameters.ts"
+  ],
+  "entry_points": [
+    "generation.preview / gate_request（mcpGenerationTools）",
+    "多镜草稿密封（mcpGenerationMultiShot）",
+    "目录派生的语义注册表（moduleCatalogBootstrap → moduleRegistry.resolve）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "合法参数集是本仓自己的目录契约（mapping 的 {{request.params.X}} 模板与档案 wire 默认），没有任何外部规范能裁决它；供应商文档只裁决取值域，而本次修法刻意不替供应商编取值域（type:\"any\"）。",
+  "invariants": [
+    "Run 路径的合法参数集必须由那条 mapping 自己的 create op（body + 进程 argv）与档案 wire 默认派生，与手动路径渲染同一批 {{request.params.X}} 令牌的那份声明同源",
+    "候选里出现一个未声明的参数键时必须报错并列出合法键，不得记一条 warning 后继续",
+    "「Nomi 自己消费、不上线缆」的意图键只能出自一张有名字、有读者、有测试的登记表"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "symbol": "modelParameterSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "symbol": "wireReferencedParamKeys"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/controls/useChannelCreateBody.ts",
+      "symbol": "wireReferencedParamKeys"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "compileExecutionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
+      "symbol": "GENERATION_PLANNING_PARAMETER_KEYS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
+      "symbol": "isGenerationPlanningParameter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/moduleManifest.ts",
+      "symbol": "parameterFieldSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "ParameterField"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "symbol": "ParameterField"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "compileContract"
+    }
+  ],
+  "door_reduction": {
+    "before": 12,
+    "after": 11,
+    "why_not": "写那份状态的两扇（modelParameterSchema 派生它、compileParameters 消费它）本次收到了同一份线缆声明上；编译口从两扇（mcpGenerationTools + mcpGenerationMultiShot 各调一次 compileExecutionContract）收成一扇（多镜密封改吃 deps.compileContract）。剩下各扇必须继续存在：ParameterField / parameterFieldSchema 的读门是类型与 zod 定义本身，合并它们等于把类型声明搬家；wireReferencedParamKeys 的渲染层那一扇（useChannelCreateBody）读的正是本次要对齐的同一份线缆声明，是收敛的证据不是重复；generationPlanningParameters 的读门是那张登记表自己的定义处。"
+  },
+  "generality_proof": "合法参数集不再由「这条目录记录碰巧填没填 onboarding/defaultParams」决定，而由那条 mapping 的线缆模板决定——任何模型、任何供应商、任何模式，只要它的 create op 引用了某个参数键，这个键在 Run 路径上就合法，和手动路径渲染同一批令牌的判据逐字同源。因此新接入的模型（自助接入、AI 直填、未来上新）默认就是对的，不需要谁记得去补 onboarding.fields。",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "symbol": "modelParameterSchema",
+      "responsibility": "把「这个模型这一模式接受哪些参数」一次性从线缆声明（wireReferencedParamKeys + paramMap + defaultParams）与档案 wire 默认派生，类型只在真的知道时才写死。"
+    },
+    {
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters",
+      "responsibility": "未声明的参数键一律报错并列出合法键；只有登记在册的 Nomi 意图键才按 planning_input 记录后不上线缆。"
+    },
+    {
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
+      "symbol": "GENERATION_PLANNING_PARAMETER_KEYS",
+      "responsibility": "唯一一张「Nomi 自己消费、永不上线缆」的键表，由测试证明表里每个键都真的有读者。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "createGenerationPlanningHandler preview / gate_request",
+      "disposition": "enforced",
+      "evidence": "两处 compileExecutionContract 调用（door-map compileExecutionContract）都吃同一个 registry，参数表换源后两条路同时生效；nomiMcpGenerationPlanning.test.ts 用真实 stdio harness 证明未声明键在 preview 上当场被拒。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "sealMultiShotFor → compileExecutionContract",
+      "disposition": "enforced",
+      "evidence": "多镜密封走同一个 compileExecutionContract；mcpMultiShotCreateEntrance.e2e.test.ts 的夹具补上 duration 声明后整条链绿，证明它确实经过这道闸。"
+    },
+    {
+      "path": "electron/runtime.ts",
+      "entry_point": "runTask（手动画布 / 分镜行 / 认证试跑 / 自定义调用 / 图层分解）",
+      "disposition": "not-affected",
+      "evidence": "这条路没有白名单过滤：applyHeadlessParamDefaults 只补缺省，extras 原样交给 buildProfileHttpRequest 渲染。它读的正是本次收敛过去的那份声明，所以它一直是对的。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "entry_point": "videoParameterSchema",
+      "disposition": "not-affected",
+      "evidence": "视频候选早就从档案模式的控件声明派生参数表（mode.params → ParameterField），是这条不变量在仓库里唯一已经做对的先例；本次把图像/音频/3D 与非视频候选也收到同一条判据上，没有改它。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个机制对每一个模型、每一个供应商、每一次参数改动都成立，而且随着用户自助接入的模型变多只会更普遍——自接的模型几乎不可能有 onboarding.fields。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs modelParameterSchema → 1 扇（moduleCatalogBootstrap.ts）",
+      "node scripts/door-map.mjs compileParameters → 1 扇（executionContract.ts）",
+      "node scripts/door-map.mjs compileExecutionContract → 2 扇（mcpGenerationTools.ts / mcpGenerationMultiShot.ts）",
+      "node scripts/door-map.mjs wireReferencedParamKeys → 2 扇（moduleCatalogBootstrap.ts / useChannelCreateBody.ts）",
+      "grep -rn \"parameterSchema\" electron/shared src scripts → 0 命中：这份状态没有渲染层或模型可见的第二个读者"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+    "invariant": "一个模型在 Run 路径上的合法参数集 = 该模式 mapping 的 create op 引用的键 ∪ paramMap 消费/丢弃的键 ∪ mapping 默认参数 ∪ 档案 wire 默认 ∪ onboarding.fields。",
+    "failure_mode": "候选带来一个不在这个集合、也不在 Nomi 意图键登记表里的参数 → ContractCompilationError，消息里列出该模型这一模式的全部合法键；不提交、不花钱。",
+    "exception_policy": "none",
+    "strategy": "把判据挪到「谁声明了这条线缆」那一层：参数表和真正渲染请求体的模板读同一份声明，于是不可能再出现「表里没有但线缆发得出去」或反过来的情况。新模型无需任何人补登记即正确。",
+    "artifacts": [
+      "electron/capabilityCore/moduleCatalogBootstrap.ts",
+      "electron/capabilityCore/executionContract.ts",
+      "electron/capabilityCore/moduleManifest.ts",
+      "electron/capabilityCore/generationPlanningParameters.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/moduleCatalogBootstrap.test.ts",
+    "electron/capabilityCore/executionContract.test.ts",
+    "electron/capabilityCore/generationPlanningParameters.test.ts",
+    "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/moduleCatalogBootstrap.test.ts",
+    "electron/capabilityCore/generationPlanningParameters.test.ts",
+    "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/executionContract.ts"
+    ],
+    "rationale": "「未声明的键记一条 warning 后 continue」这条静默丢弃分支同 commit 删除，没有留开关也没有留回退；它的 warning 从来没有读者（渲染层与模型都读不到 contract.warnings）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量完全由本仓的目录契约与模板渲染器决定，没有第三方运行时参与。",
+    "exit_criteria": []
+  },
+  "migration": "不需要迁移：参数表是每次读目录时派生的，不落盘。存量草稿里若留着一个今天已不合法的参数键，会在 preview 这一步被拒并报出合法键，用户改一下再按一次即可——这比原来「照样提交、拿回错东西」诚实。",
+  "residual_risks": [
+    "camelCase 别名（aspectRatio / durationSeconds）目前按「Nomi 意图键」丢弃：付款卡今天发的是 snake_case 规范键（实测 {aspect_ratio, resolution}），但如果将来某个调用方只发 camelCase，它会被当成意图丢掉而不是映射到线缆键。真正的收口是让 compileParameters 认识 apimartGenerationProjection.PARAMETER_ALIASES 那张别名表，属步骤 B 的执行器合并范围。",
+    "type:\"any\" 的键不做取值域校验，非法取值由供应商的 400 告诉用户；档案里其实有控件选项（renderer 侧 modelArchetypes），把它桥到 electron 需要扩 gen-archetype-wire-defaults 的产物形状，未做。",
+    "本合同只证到出站请求体这一层，没有在真实供应商上跑过 2K；真机验证走 loopback 夹具（tests/ux/agent-spend-confirm-executes.walk.mjs）。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/moduleCatalogBootstrap.ts",
+    "tests": [
+      "electron/capabilityCore/moduleCatalogBootstrap.test.ts",
+      "electron/capabilityCore/executionContract.test.ts",
+      "electron/capabilityCore/generationPlanningParameters.test.ts",
+      "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts"
+    ],
+    "notes": "「一个模型接受哪些参数」从此只由这一层回答，且它从那条 mapping 自己的线缆声明派生——与手动路径渲染同一批 {{request.params.X}} 令牌的那份声明同源。四条新断言在改动前全部实测为红。"
+  }
+}

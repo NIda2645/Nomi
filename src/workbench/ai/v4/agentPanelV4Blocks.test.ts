@@ -37,7 +37,17 @@ const taskLabels = {
   adopt: '采用',
   undo: '撤销',
 }
-const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾' }
+/** 模型自己写的那几个选项（标签 + 一句说明 + 可标推荐）——契约在 agentPanelV4Question.ts。 */
+const QUESTION_OPTIONS = [
+  { id: 'wide', label: '16:9 横版', description: '适合横屏平台', recommended: true as const },
+  { id: 'tall', label: '9:16 竖版' },
+]
+
+const askLabels = {
+  dismiss: '这次不答', skip: '跳过', continueLabel: '继续', send: '发送',
+  customPlaceholder: '或者直接告诉它…', recommended: '推荐',
+}
+const slotLabels = { confirm: '确认', reject: '不要', escalate: '不再问 →', cancel: '取消', confirmReject: '确认不要', collapsePlan: '收起 ▴', expandPlan: '展开 ▾', ask: askLabels }
 // `unknown` 是「这个数我们没有」的那个字（环上写「—」而不是「0%」）。接线后它是必填的，
 // 因为缺字段是常态：目录没写 contextWindow、供应商不报推理 token，都会走到它。
 const contextLabels = { context: '上下文用量', input: '输入', output: '输出', reasoning: '推理', cache: '缓存命中', threadCost: '本线程花费', unknown: '—', usedOnly: '已用 {{amount}}' }
@@ -258,7 +268,9 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).toContain('收起 ▴')
     // 否定动作永远是那颗 ×（文字只当无障碍名），计划卡不再是唯一没有它的档
     // ——2026-09-11 用户实测「8 镜计划卡无法取消」。
-    expect(markup).toContain('data-v4-control="reject"')
+    // 2026-09-22 换壳后它由外壳统一摆在**右上**，锚点随之改名；断言一条没少。
+    expect(markup).toContain('data-v4-control="slot-dismiss"')
+    expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-1\.5[^"]*top-1\.5/)
     expect(markup).not.toContain('>不要<')
   })
 
@@ -284,13 +296,242 @@ describe('⑤ 介入槽 · 八种内容体', () => {
     expect(markup).not.toContain('取消')
   })
 
-  it('反问只有选项 chip，没有确认/不要——选项本身就是回答', () => {
-    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
-      data: { kind: 'question', title: '用什么画幅？', options: ['16:9', '9:16'], selectedOption: 0 },
+  it('反问卡：**和兄弟卡同一只外壳**，但没有卡头条、没有确认/不要、没有「不再问」', () => {
+    const ask = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
       labels: slotLabels,
     }))
-    expect(markup).toContain('16:9')
-    expect(markup).not.toContain('不要')
+    const spend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels }))
+    expect(ask).toContain('data-ask-card="true"')
+    expect(ask).toContain('16:9 横版')
+
+    // ① 外壳**同族**（2026-09-21 用户：「会不会格格不入？」）。
+    //    第一版反问卡自带一套壳（纸色底 + 发丝环 + 柔影），放进真面板里一点边界都没有——
+    //    分不清对话在哪结束、卡从哪开始。描边/圆角/底色现在由 `V4SlotShell` 一处给，
+    //    这条判据就是「它俩还是不是一家人」：两张卡的外壳类名必须逐字相同。
+    // `class` 不一定是 `<aside>` 上的第一个属性（反问卡还带 data-ask-card / tabindex），
+    // 所以在整段开标签里找它，别写死属性顺序——那种写法只会在另一张卡上悄悄匹配不到。
+    const shellOf = (markup: string) => markup.match(/<aside\b[^>]*?\bclass="([^"]*)"/)?.[1]
+    expect(shellOf(ask)).toBeTruthy()
+    expect(shellOf(ask)).toBe(shellOf(spend))
+
+    // ② **两张卡都没有带底色的卡头条了**（2026-09-22 换壳：用户说旧外壳不优雅）。
+    //    这一条以前断的是「只有反问卡没有」，现在是「一张都不许有」。
+    //
+    //    ⚠️ 这里原来还断「一张都不许有 `border-nomi-accent`」。2026-09-22 用户在换壳之上
+    //    追加了**待答态**（等用户回答时外框换 accent 发丝线），所以那句话必须换个说法：
+    //    禁的是**常驻**彩色描边，不是彩色描边本身。改成对「已答 / 已确认」那一态断言
+    //    ——回到普通纸面时一点 accent 都不许剩。待答态的正面断言在下面那一支里。
+    const resolvedAsk = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels, waiting: false,
+    }))
+    const resolvedSpend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels, waiting: false }))
+    for (const markup of [ask, spend]) {
+      expect(markup).not.toContain('bg-nomi-accent-soft px-2.5 py-2')
+    }
+    for (const markup of [resolvedAsk, resolvedSpend]) {
+      expect(shellOf(markup)).not.toContain('border-nomi-accent')
+      expect(shellOf(markup)).toContain('border-nomi-line')
+    }
+    // 答完之后两张卡的外壳**仍然同族**——待答态是加在同一只壳上的一个状态，
+    // 不是给其中一张卡开的小灶。
+    expect(shellOf(resolvedAsk)).toBe(shellOf(resolvedSpend))
+    expect(ask.match(/用什么画幅？/g)).toHaveLength(1)
+    expect(ask).toContain('data-v4-block="ask-question"')
+
+    // ③ × 由外壳统一钉在右上——两张卡同一处，不再一个在右上一个在页脚。
+    for (const markup of [ask, spend]) {
+      expect(markup).toMatch(/data-v4-control="slot-dismiss"[^>]*class="[^"]*right-1\.5[^"]*top-1\.5/)
+    }
+
+    // ④ 没有确认/不要，也没有「不再问」（它根本没有那颗钮）。
+    expect(ask).not.toContain('不要')
+    expect(ask).not.toContain('不再问')
+  })
+
+  /**
+   * 待答态（2026-09-22 用户拍板）：「等你回答」时外框换 accent 发丝线 + 一层极轻的同色描边光，
+   * 答完 / 收回 / 已确认回到普通纸面。
+   *
+   * 这几条断的是**两态之间的差**，不是「待答态长这样」——后者归视觉基线。
+   * 逐条的理由：
+   * · 属性两态都要在（缺席既可能是「不在等」，也可能是「这一版根本没接线」，读不出区别）；
+   * · 非待答态必须**一像素不变**：除了 border-color 这一处，壳的类名要与换壳前逐字相同；
+   * · 强调只许加在外框上，不许把卡底染成 accent（那是旧卡头条的病，09-22 刚删掉）。
+   */
+  const shellClassOf = (markup: string): string =>
+    markup.match(/<aside\b[^>]*?\bclass="([^"]*)"/)?.[1] ?? ''
+
+  it.each([
+    ['spend' as const, 'confirm'],
+    ['approval-irreversible' as const, 'confirm'],
+    ['approval-reversible' as const, 'confirm'],
+    ['plan' as const, 'confirm'],
+    ['question' as const, 'ask-continue'],
+  ])('待答态：%s 卡在等用户时外框是 accent 发丝线 + 一层同色描边光', (kind, _waitingControl) => {
+    const data: InterventionData = kind === 'question'
+      ? { kind, title: '用什么画幅？', options: QUESTION_OPTIONS }
+      : of(kind)
+    const waiting = html(el(V4Intervention, { ...NO_HANDLERS, data, labels: slotLabels }))
+    const resolved = html(el(V4Intervention, { ...NO_HANDLERS, data, labels: slotLabels, waiting: false }))
+
+    // ① 两态都落属性，值相反。
+    expect(waiting).toContain('data-waiting="true"')
+    expect(resolved).toContain('data-waiting="false"')
+
+    // ② 待答 = accent 描边 + 同色描边光；两样都在同一只 `<aside>` 上，不是套了一层新盒子。
+    const waitingShell = shellClassOf(waiting)
+    expect(waitingShell).toContain('border-nomi-accent')
+    expect(waitingShell).toContain('shadow-[0_0_0_1px_var(--nomi-accent-soft)]')
+    // 描边光用的是 composer 现役那一句的低透明变体（`--nomi-accent-soft`），不是新 token，
+    // 也不是手写色——暗色由 token 自己翻，这里没有第二份 `dark:` 覆写。
+    expect(waitingShell).not.toMatch(/dark:/)
+
+    // ③ 回到普通纸面 = composer 那条发丝线，accent 一点不剩，描边光也收掉。
+    const resolvedShell = shellClassOf(resolved)
+    expect(resolvedShell).toContain('border-nomi-line')
+    expect(resolvedShell).not.toContain('border-nomi-accent')
+    expect(resolvedShell).not.toContain('accent-soft')
+    expect(resolvedShell).not.toContain('shadow-')
+
+    // ④ 非待答态**一像素不变**：两态的壳类名之差只许是 border-color 与那一层描边光，
+    //    底色 / 圆角 / overflow / 定位这些一个字都不许动。
+    const strip = (classes: string): string => classes
+      .split(/\s+/)
+      .filter((token) => token !== 'border-nomi-line' && token !== 'border-nomi-accent'
+        && token !== 'shadow-[0_0_0_1px_var(--nomi-accent-soft)]')
+      .join(' ')
+    expect(strip(waitingShell)).toBe(strip(resolvedShell))
+
+    // ⑤ 强调只在框上：卡面仍是纸色，没有人把 accent 抹成底。
+    expect(waitingShell).toContain('bg-nomi-paper')
+    expect(waitingShell).not.toContain('bg-nomi-accent')
+  })
+
+  it('待答态不给「本该有卡却没有」那一张——它不在等回答，它在报一条断链', () => {
+    // 这张卡上没有任何可点的东西（`hasActions` 对 missing-card 恒 false）。
+    // 套上「在等你」的框，等于让用户去回答一张我们自己都没渲染出来的卡。
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS, data: of('missing-card'), labels: slotLabels }))
+    expect(markup).toContain('data-waiting="false"')
+    expect(shellClassOf(markup)).not.toContain('border-nomi-accent')
+  })
+
+  it('反问卡的主按钮用的是**卡族那一套**，不是自带的药丸', () => {
+    const ask = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    const spend = html(el(V4Intervention, { ...NO_HANDLERS, data: of('spend'), labels: slotLabels }))
+    const primary = (markup: string, control: string) =>
+      markup.match(new RegExp(`data-v4-control="${control}"[^>]*class="([^"]*)"`))?.[1]
+        ?? markup.match(new RegExp(`class="([^"]*)"[^>]*data-v4-control="${control}"`))?.[1]
+    const askPrimary = primary(ask, 'ask-continue')
+    const spendPrimary = primary(spend, 'confirm')
+    expect(askPrimary).toBeTruthy()
+    expect(spendPrimary).toBeTruthy()
+    // 两张卡的主按钮是**同一个现役组件**（`WorkbenchButton variant="primary" size="sm"`），
+    // 所以类名逐字相同——不是「长得像」，是同一件。第一版是自带的 `rounded-pill` 药丸，
+    // 在这个面板里是独一份。
+    for (const token of ['h-7', 'rounded-workbench-control', 'bg-nomi-ink', 'text-nomi-paper']) {
+      expect(askPrimary).toContain(token)
+      expect(spendPrimary).toContain(token)
+    }
+    expect(askPrimary).toBe(spendPrimary)
+    expect(askPrimary).not.toContain('rounded-pill')
+  })
+
+  it('选项是整行可点的 radio 行——没有方框，也没有一排宽度参差的药丸', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    // 每个选项一个**原生**单选控件（与同槽计划卡的勾选行同一写法：`accent-nomi-accent`），
+    // 行是整行可点的 <label>；chip 版那两个类名（自带 border、按内容定宽）绝迹。
+    expect((markup.match(/type="radio"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(markup).toContain('accent-nomi-accent')
+    expect((markup.match(/data-v4-control="question-option"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(markup).toMatch(/data-v4-control="question-option"[^>]*class="[^"]*w-full/)
+    expect(markup).not.toMatch(/data-v4-control="question-option"[^>]*class="[^"]*inline-flex/)
+  })
+
+  it('选项带说明与推荐时两样都印出来——模型写了我们就如实显示，但不预选', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('适合横屏平台')
+    expect(markup).toContain('推荐')
+    // 「推荐」是记号不是预选：卡一挂上来一个都不该是按下态。
+    expect(markup).not.toMatch(/<input[^>]*type="radio"[^>]*checked/)
+  })
+
+  it('末行自由输入是**无边框内联**的，和拒绝原因那条带框输入不是同一件', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '用什么画幅？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('data-v4-control="question-answer"')
+    expect(markup).toContain('或者直接告诉它…')
+    const answerClass = markup.match(/data-v4-control="question-answer" class="([^"]*)"/)?.[1]
+      ?? markup.match(/class="([^"]*)" data-v4-control="question-answer"/)?.[1]
+    expect(answerClass).toBeTruthy()
+    // 这一条就是用户骂的「蓝色粗框输入」的机器判据：它**不许**再长边框或底色。
+    expect(answerClass).toContain('border-0')
+    expect(answerClass).toContain('bg-transparent')
+    expect(answerClass).not.toMatch(/\bborder-nomi-/)
+    // 拒绝原因那条仍然有框——渐进披露出来的输入需要被看见，两者本来就不是一件。
+    const reject = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'reject-reason', title: 'x', reasonPlaceholder: '拒绝原因（可选）' },
+      labels: slotLabels,
+    }))
+    const rejectClass = reject.match(/data-v4-control="reject-reason" class="([^"]*)"/)?.[1]
+      ?? reject.match(/class="([^"]*)" data-v4-control="reject-reason"/)?.[1]
+    expect(rejectClass).toContain('border-nomi-line')
+    expect(answerClass).not.toBe(rejectClass)
+  })
+
+  it('没有选项的反问照样有那一行——模型问的问题常常不是选择题', () => {
+    const markup = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '这段想要几秒？' },
+      labels: slotLabels,
+    }))
+    expect(markup).toContain('data-v4-control="question-answer"')
+    expect(markup).toContain('data-ask-card="true"')
+  })
+
+  it('只有一题时不显示页码——「1/1」是一句废话', () => {
+    const one = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '这段想要几秒？', options: QUESTION_OPTIONS },
+      labels: slotLabels,
+    }))
+    expect(one).not.toContain('data-v4-block="pager"')
+    // 只有一题：页脚没有「跳过」（右上 × 就是不答）；多题才有，且它和 × 是两颗不同的钮。
+    expect(one).not.toContain('data-v4-control="ask-skip"')
+    const three = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: {
+        kind: 'question', title: '第一题', questions: [
+          { question: '第一题', options: QUESTION_OPTIONS },
+          { question: '第二题', options: QUESTION_OPTIONS, multiSelect: true },
+          { question: '第三题', options: [] },
+        ],
+      },
+      labels: slotLabels,
+    }))
+    // 页码用的是面板**现役翻页器**（付费卡多镜翻页那一颗），不另画一套。
+    expect(three).toContain('data-v4-block="pager"')
+    expect(three).toContain('1/3')
+    expect(three).toContain('data-v4-control="ask-skip"')
+    expect(three).toContain('data-v4-control="slot-dismiss"')
+  })
+
+  it('多选题用原生 checkbox、单选题用原生 radio——形状由控件自己说明「能选几个」', () => {
+    const multi = html(el(V4Intervention, { ...NO_HANDLERS,
+      data: { kind: 'question', title: '要哪几样？', questions: [{ question: '要哪几样？', options: QUESTION_OPTIONS, multiSelect: true }] },
+      labels: slotLabels,
+    }))
+    expect((multi.match(/type="checkbox"/g) ?? []).length).toBe(QUESTION_OPTIONS.length)
+    expect(multi).not.toContain('type="radio"')
   })
 
   it('拒绝原因是渐进披露的输入 + 取消/确认不要', () => {
@@ -305,13 +546,13 @@ describe('⑤ 介入槽 · 八种内容体', () => {
 
 describe('⑥ 队列行', () => {
   it('空队列不渲染——一个空框比没有框更吵', () => {
-    expect(html(el(V4Queue, { rows: [], labels: { queued: '排队', running: '进行中', complete: '完成' } }))).toBe('')
+    expect(html(el(V4Queue, { rows: [], labels: { draft: '', queued: '排队', running: '进行中', complete: '完成' } }))).toBe('')
   })
 
   it('完成的划掉，进行中的点是 accent', () => {
     const markup = html(el(V4Queue, {
       rows: [{ title: 'a', status: 'complete' }, { title: 'b', status: 'running' }],
-      labels: { queued: '排队', running: '进行中', complete: '完成' },
+      labels: { draft: '', queued: '排队', running: '进行中', complete: '完成' },
     }))
     expect(markup).toContain('line-through')
     expect(markup).toContain('bg-nomi-accent')

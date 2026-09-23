@@ -180,8 +180,10 @@ describe("缺陷 4 · schema 的 required 说真话", () => {
     // 顶层只有 action 必填——其余随 action 变，且那个「变」由契约自己的联合表达，不是第二张表。
     expect(schema.required).toEqual(["action"]);
     // 每个 action 的真实必填由同一个联合回答；缺字段当场 parse 失败。
-    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", setupId: "s" }).success).toBe(false);
-    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", setupId: "s", declaration: "{}" }).success).toBe(true);
+    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration" }).success).toBe(false);
+    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", declaration: "{}" }).success).toBe(true);
+    // 顺序墙删干净的机器判据：句柄不再是这张 schema 上的字段，所以也不可能再变回必填。
+    expect(modelSetupInputSchema.safeParse({ action: "submit_declaration", declaration: "{}", setupId: "s" }).success).toBe(false);
     expect(modelSetupInputSchema.safeParse({ action: "show_models", vendorKey: "v", modelKeys: ["m"] }).success).toBe(false);
     expect(modelSetupInputSchema.safeParse({ action: "show_models", vendorKey: "v", modelKeys: ["m"], visible: false }).success).toBe(true);
     // 地址与鉴权放法一个都不在这张 schema 上（§6.1；`check:credential-origin` 也盯这一条）。

@@ -78,6 +78,7 @@ function ComposerChip({ chip, removeLabel, onRemove }: { chip: V4Chip; removeLab
 export type AgentPanelV4ComposerProps = {
   panelHeight?: number
   mode?: ComposerMode
+  admitting?: boolean
   permission?: PermissionTier
   chips?: readonly V4Chip[]
   /** 受控文本。没有 `onValueChange` 时框是只读的展示件（设计实验室取景用）。 */
@@ -98,6 +99,14 @@ export type AgentPanelV4ComposerProps = {
   dock?: boolean
   skillSelected?: boolean
   focused?: boolean
+  /**
+   * 上面那张反问卡正在等答案（2026-09-21 用户拍板：「有问题待答时下方 composer 降一档」）。
+   *
+   * **降一档不是禁用**：框变淡、占位改成「先回答上面的问题，或继续说别的」，但它照常能用
+   * ——用户本来就可以不理那个问题、先说别的。禁用会把「这一刻该答上面那张卡」变成
+   * 「你现在什么都不能说」，而那不是真的。
+   */
+  awaitingAnswer?: boolean
   /** 输入框本体。容器要能把光标交给它（空态起手 chip 填完那句话就聚焦）。 */
   inputRef?: React.Ref<HTMLTextAreaElement>
 }
@@ -105,6 +114,7 @@ export type AgentPanelV4ComposerProps = {
 export function AgentPanelV4Composer({
   panelHeight = 620,
   mode = 'idle',
+  admitting = false,
   permission = DEFAULT_PERMISSION_TIER,
   chips,
   value = '',
@@ -120,6 +130,7 @@ export function AgentPanelV4Composer({
   dock = false,
   skillSelected = false,
   focused = false,
+  awaitingAnswer = false,
   inputRef,
 }: AgentPanelV4ComposerProps): JSX.Element {
   const { t } = useTranslation()
@@ -163,11 +174,15 @@ export function AgentPanelV4Composer({
   const running = mode === 'running'
   // 「有东西可发」是**一个**判据，发送钮的长相、它的 disabled、以及 Enter 那条路都从这里取，
   // 免得三处各判一次、以后有人只改了其中一处（长相灰着但 Enter 还能发＝还是在假装能发）。
-  const canSend = Boolean(value.trim() || chips?.length)
+  const canSend = !admitting && Boolean(value.trim() || chips?.length)
+  /** 这颗圆钮此刻是「停止」：在跑，而且框里没有要发的东西。 */
+  const stopping = running && !canSend
   return (
     <form
       className={cn(
         'relative flex shrink-0 flex-col overflow-visible rounded-nomi border border-nomi-line bg-nomi-paper',
+        // 降一档只改**注意力**，不改能力：边框与文字淡下去，聚焦（用户真的点进来了）就复原。
+        awaitingAnswer && !focused && 'border-nomi-line-soft opacity-60',
         focused && 'border-nomi-accent shadow-[0_0_0_3px_var(--nomi-accent-soft)]',
         running && 'shadow-[0_0_0_1px_var(--nomi-accent-soft)]',
         dock && 'shadow-nomi-lg',
@@ -181,6 +196,7 @@ export function AgentPanelV4Composer({
       data-mode={mode}
       data-height={height}
       data-permission={permission}
+      data-awaiting-answer={awaitingAnswer ? 'true' : undefined}
       data-approval-mode={policy.mode}
       data-spend-policy={policy.spend}
     >
@@ -224,7 +240,9 @@ export function AgentPanelV4Composer({
             if (canSend) onSubmit?.(event.altKey ? 'secondary' : 'primary')
           }
         }}
-        placeholder={running ? t('agentPanelV4.placeholderRunning') : t('agentPanelV4.placeholder')}
+        placeholder={awaitingAnswer
+          ? t('agentPanelV4.placeholderAwaitingAnswer')
+          : running ? t('agentPanelV4.placeholderRunning') : t('agentPanelV4.placeholder')}
         aria-label={t('agentPanelV4.message')}
         rows={1}
         data-v4-control="input"
@@ -296,23 +314,31 @@ export function AgentPanelV4Composer({
             取「空框不该假装能发」这一条：它是那格的**论点**，另两处只是背景。
             2026-09-06 用户拍板补齐：灰只是长相，钮还是能按（Enter 也照样触发 submit），
             那就还是在假装能发。空态直接 `disabled`——点不动、键盘跳过、读屏念「已停用」，
-            长相和行为这才是同一件事。running 态是「停止」，永远可按。 */}
+            长相和行为这才是同一件事。
+
+            running 态：**框里有字就是「发送」，空着才是「停止」**（2026-09-22）。此前 running 态这颗钮
+            恒为「停止」——于是有卡在等他、他打了一句话再点这颗钮时，那句话留在框里没发出去，
+            回合反而被停掉（真机走查 `agent-spend-waiting-owner` 当场抓到；提问卡那条也是同一个现象）。
+            回车一直是「发送」（`laneComposerIntent` 的 primary = steer），同一个框上的钮却是相反的意思，
+            就是一功能两个家。想停的人框里本来就是空的；打了字的人要的是把这句话送到。 */}
         <button
-          type={running ? 'button' : 'submit'}
+          type={stopping ? 'button' : 'submit'}
           disabled={!running && !canSend}
-          onClick={running ? onStop : undefined}
-          aria-label={running ? t('agentPanelV4.stop') : t('agentPanelV4.send')}
+          aria-busy={admitting || undefined}
+          onClick={stopping ? onStop : undefined}
+          aria-label={stopping ? t('agentPanelV4.stop') : t('agentPanelV4.send')}
           className={cn(
             'grid size-[30px] shrink-0 place-items-center rounded-pill',
-            running
+            stopping
               ? 'border-[1.5px] border-nomi-ink bg-nomi-paper text-nomi-ink'
               : canSend
                 ? 'bg-nomi-ink text-nomi-paper'
                 : 'bg-nomi-ink-10 text-nomi-ink-40',
           )}
           data-v4-control="send"
+          data-v4-send-intent={stopping ? 'stop' : 'send'}
         >
-          {running ? (
+          {stopping ? (
             <span className="size-2.5 rounded-sm bg-nomi-ink" aria-hidden="true" />
           ) : (
             <IconArrowUp size={15} />

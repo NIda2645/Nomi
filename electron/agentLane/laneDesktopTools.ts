@@ -29,6 +29,7 @@ import { requestRenderer } from '../capabilityCore/rendererBridge'
 import type { PiGenerationTransportAdapter } from '../capabilityCore/generationTransportAdapters'
 import { createLaneExtendedDesktopPorts } from './laneExtendedDesktopPorts'
 import { toSemanticInput } from '../shared/agentCapabilities/modelFacingTools'
+import { createAskUserLaneTools } from './laneAskUserTool'
 import { specsForCapability } from '../shared/agentCapabilities/modelFacingToolRegistry'
 import { bindLaneTool } from './laneRuntimePort'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuthority'
@@ -143,6 +144,8 @@ export function createDesktopLaneTools(input: {
       // The alias transport owns operation binding; its strict args exclude that semantic field.
       toolCallId: context.toolCallId, toolName: operation, args,
     }, context.signal), operation) }),
+    // `ask_user`：执行那一半住 `laneAskUserTool.ts`（用户答上了 = 成功形状，理由写在那里）。
+    ...createAskUserLaneTools(),
     // `start_model_setup`：只打开「设置 · 模型」面板并预填供应商；密钥永远由用户在面板里输入。
     ...specsForCapability('model.setup.open').map(spec => bindLaneTool(spec, async (args) => {
       const provider = typeof (args as { provider?: unknown }).provider === 'string' ? (args as { provider: string }).provider : undefined
@@ -212,13 +215,13 @@ export function createDesktopLaneTools(input: {
         generation = factory?.(input.binding, input.approvalPolicy)
       }
       return generation
-    }, onTaskCreated: input.onTaskCreated,
+    }, onTaskCreated: input.onTaskCreated, context: input.context,
   })
   return {
     tools: [...tools, ...extended.tools],
     toolLifecycle: {
       prepare: async (call, signal) => { await toolLifecycle.prepare(call, signal); await extended.toolLifecycle.prepare(call, signal) },
-      approved: async (call, record) => { await toolLifecycle.approved(call, record); await extended.toolLifecycle.approved(call, record) },
+      approved: async (call, record, host) => { await toolLifecycle.approved(call, record, host); await extended.toolLifecycle.approved(call, record, host) },
       settled: (call) => { toolLifecycle.settled(call); extended.toolLifecycle.settled(call) },
     } satisfies NonNullable<OpenLaneOptions['toolLifecycle']>,
     dispose: () => {

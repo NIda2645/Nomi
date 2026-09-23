@@ -28,9 +28,7 @@ describe("M2 canvas/document semantic MCP surface", () => {
   });
 
   it("R2 grants the same session scope family used by read/write canvas and document tools", () => {
-    const scopes = deriveProjectSessionScopes({
-      snapshot: () => ({ flagEnabled: false, effectiveScope: [] }),
-    } as never);
+    const scopes = deriveProjectSessionScopes();
     expect(scopes).toEqual(expect.arrayContaining(["canvas:read", "canvas:write", "document:read", "document:write"]));
     for (const name of ["nomi_canvas_read", "nomi_canvas_edit", "nomi_canvas_maintenance", "nomi_document_read", "nomi_document_edit"]) {
       expect(MCP_CAPABILITY_RESOLVER.resolve(name)?.inputSchema.required).toContain("leaseHandle");

@@ -1,6 +1,5 @@
 {
   "electron/ai/composeAgentSystemPrompt.test.ts": 1,
-  "electron/capabilityCore/moduleCatalogBootstrap.test.ts": 1,
   "electron/capabilityCore/nomiMcpElicitation.test.ts": 1,
   "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts": 4,
   "electron/capabilityCore/nomiMcpProductionArtifacts.test.ts": 2,
@@ -12,7 +11,6 @@
   "electron/comfyuiLocal.integration.test.ts": 2,
   "electron/comfyuiProgressSocket.test.ts": 3,
   "electron/events/eventLogRepository.test.ts": 1,
-  "electron/productionRun/budgetLedger.test.ts": 13,
   "electron/productionRun/productionGenerationSubmission.test.ts": 1,
   "electron/productionRun/productionRunRepository.test.ts": 1,
   "electron/productionRun/productionTrustLevel.test.ts": 1,

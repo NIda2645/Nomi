@@ -31,7 +31,9 @@ function makeService(root: string) {
     repository,
     projectRootResolver: () => root,
     requestRenderer,
-    policyResolver: () => ({ trustedHosts: ['codex'], allowedProviders: ['local'], allowedModels: ['demo-video'], maxSpend: 10, maxAttemptsPerJob: 1 }),
+    // 这份夹具要的是「方向门自动过、直接停在合同门」的现场。2026-09-21 起档位只能来自用户设置，
+    // 不能由 createDraft 的 payload 自报，所以搬到这里。
+    policyResolver: () => ({ trustedHosts: ['codex'], allowedProviders: ['local'], allowedModels: ['demo-video'], maxSpend: 10, maxAttemptsPerJob: 1, trustLevel: 'budget_only' }),
   })
   return service
 }
@@ -41,7 +43,6 @@ async function draftAtContractGate(service: ReturnType<typeof createProductionRu
   service.createDraft({
     runId, projectId: 'project-1', playbook: { name: 'brand.promo', version: '1.0.0' },
     origin: { host: 'codex' }, brief: { goal: 'idempotency', durationSeconds: 30 },
-    policy: { trustLevel: 'budget_only' },
   })
   await approveLatestScript(service, 'project-1', runId)
   await approveLatestStoryboard(service, 'project-1', runId)

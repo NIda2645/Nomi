@@ -286,7 +286,7 @@ export function ParameterControlBody({
       <div className="flex items-center gap-3 min-w-0">
         <Slider
           className="flex-1 min-w-0"
-          aria-label={label}
+          thumbLabel={label}
           value={value}
           min={control.min}
           max={control.max}

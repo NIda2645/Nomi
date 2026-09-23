@@ -1,5 +1,6 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
 import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
+import { parseQuestionSheet } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
 // **这一层最重要的一句话是「它不排序」。**
@@ -107,6 +108,16 @@ export interface LaneViewModelLabels {
   formatMoney(currency: string, amount: number): string
   /** join 不到领域事实时卡上那句脚注（「任务详情在任务中心」）。 */
   taskUnknown: string
+  /**
+   * 反问答完之后那一行收据的头两个字（「已回答」）。
+   *
+   * 为什么它不是 `toolStatus` 那张表里的一个词：协议上这一次确实是一次 `output-denied`
+   * ——lane 只有准 / 不准两个答复，带话的那一支是今天唯一能把一句话原样送回模型的路
+   * （`laneClient.deny` 的注释）。但**用户没有拒绝任何东西，他回答了一个问题**。
+   * 在状态词表里加第八个词会让 `V4ToolStatus` 偏离它登记在案的外部参照（AI Elements 七态，
+   * `vocabularies-baseline.json:1449`）；而在这里换一句话，说的正是这一行实际发生的事。
+   */
+  answered: string
   /**
    * 技能 key → 用户在技能库里看到的那个名字。
    *
@@ -295,6 +306,27 @@ function settledStatus(isError: boolean, denied: boolean): V4ToolStatus {
 }
 
 /**
+ * 这条审批记录承载的是**用户的答案**，还是一次否决？
+ *
+ * · **今天的转录**：用户回答走 `answer` 这条 action，落成 `decision: 'answered'`
+ *   （2026-09-21 D4 改动二）；同一次调用的 tool result 是**成功形状**（`isError: false`、
+ *   `details.answered`），因为他没有拒绝任何东西——他回答了一个问题。真机 run2/3/4/6/7
+ *   的转录里「答上了」一律是这个字，一条 `denied` 都没有。
+ * · **D4 之前的转录**：那条路借的是 `deny`，转录里留下的是一条用户从没做过的拒绝
+ *   （`decision: 'denied'` + 理由里塞着他的原话）。那些转录**今天还能被回放**，
+ *   所以判据保留第二条腿：这次调用的 args 是不是一次提问（`parseQuestionSheet`）。
+ *
+ * 两条腿的分工要记清楚：新形状读的是**事实**（协议里那个字），老形状读的是**相貌**
+ * （args 长得像不像一次提问）。相貌那条只对老转录开——它会把「老转录里一次对提问卡的
+ * 真 deny」读成已回答，而那正是 D4 之前面板本来的样子，不是这次新造的错。
+ * 非提问工具的真 deny 两条腿都不沾，照旧读作「已拒绝」（阳性对照，单测钉住）。
+ */
+function laneApprovalWasAnswer(note: LaneApprovalNote, args: unknown): boolean {
+  if (note.decision === 'answered') return true
+  return note.decision === 'denied' && parseQuestionSheet(args) !== undefined
+}
+
+/**
  * 把一份有序投影摊成 v4 的流。
  *
  * 走的是 `parts` 的自然顺序——它已经是 `sequence` 递增的（主进程按 pi 转录走序赋值）。
@@ -309,28 +341,42 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
    */
   const turnOf: number[] = []
   const slots = new Map<string, ToolSlot>()
+  /**
+   * 「这次调用没跑起来」的宿主记录，**先扫一遍收齐，再进主循环**。
+   *
+   * 为什么不能边走边收（2026-09-21 真机抓到）：真实转录里这三条是**这个顺序**——
+   * `assistant(toolCall) → toolResult → nomi.ui.approval → assistant`。
+   * 记录是在 `before_tool` 里 append 的，而 pi 把 toolResult 排在它前面。
+   * 边走边收的那一版在读到 toolResult 那一刻 `denials` 还是空的，于是**每一次**
+   * 拒绝/回答都被读成「坏了」——用户刚刚答完一个问题，屏幕上写着「⚠ 失败」。
+   *
+   * 这条 bug 一直在（不是这次改出来的），而单测看不见它：夹具是手写的，
+   * 顺序按「先 note 后 result」摆，那个顺序真实转录里从来不出现。
+   * 收齐之后顺序就不再是判据的一部分——这类 bug 也就没有地方再长出来。
+   */
   const denials = new Map<string, LaneApprovalNote>()
+  for (const part of projection.parts) {
+    if (part.kind !== 'host-note' || part.noteType !== LANE_APPROVAL_NOTE_TYPE) continue
+    if (isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) denials.set(part.data.toolCallId, part.data)
+  }
   /** 这一回合挂着的技能（来自开启这一回合的那条用户消息）。缺席 = 这一轮没挂技能。 */
   const skillOfTurn = new Map<number, string>()
   let turn = 0
-  const push = (item: V4FlowItem): void => { turnOf.push(turn); items.push(item) }
+  let identity: string | undefined
+  const push = (item: V4FlowItem): void => { turnOf.push(turn); items.push({ ...item, ...(identity ? { identity } : {}) }) }
 
   let previous = -1
   for (const part of projection.parts) {
+    identity = part.entryId ? `${part.entryId}:${part.contentIndex}` : undefined
     if (part.sequence <= previous) {
       throw new Error(`Lane projection is out of order at sequence ${part.sequence} (previous ${previous})`)
     }
     previous = part.sequence
 
-    if (part.kind === 'host-note') {
-      // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
-      // tool result（探针 §4.2 臂 B），所以这里只用它把那一行的状态从「坏了」改成
-      // 「被拒了」——同一句话说两遍是在骗用户，让他以为发生了两件事。
-      if (part.noteType === LANE_APPROVAL_NOTE_TYPE && isLaneApprovalNote(part.data) && laneApprovalWasRefused(part.data)) {
-        denials.set(part.data.toolCallId, part.data)
-      }
-      continue
-    }
+    // 宿主记录不占流里的一行。审批拒收的那句话 pi 已经一字不改地做成了那次调用的
+    // tool result（探针 §4.2 臂 B），所以它只用来把那一行的状态从「坏了」改成它实际是什么
+    // ——同一句话说两遍是在骗用户，让他以为发生了两件事。收集在上面那一趟预扫里。
+    if (part.kind === 'host-note') continue
     if (part.kind === 'error') {
       push({ kind: 'error', reason: part.text })
       continue
@@ -342,15 +388,16 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     if (part.kind === 'user') {
       // 用户说话 = 新回合开始。这是转录里唯一硬的回合分界（模型一轮回复内部没有分界可言）。
       turn += 1
-      if (part.skillKey) skillOfTurn.set(turn, part.skillKey)
+      if (part.skillSnapshot) skillOfTurn.set(turn, part.skillSnapshot.name)
       const chip: V4Chip | undefined = part.skillKey
-        ? { kind: 'skill', label: labels.skillLabel(part.skillKey), ...labels.skillMedia?.(part.skillKey) } : undefined
+        ? { kind: 'skill', label: part.skillSnapshot?.name ?? labels.skillLabel(part.skillKey), ...labels.skillMedia?.(part.skillKey) } : undefined
       push({ kind: 'user', text: part.text, ...(chip ? { chips: [chip] } : {}) })
       continue
     }
     if (part.kind === 'assistant-text') {
       push({ kind: 'assistant', text: part.text, status: part.interrupted ? 'interrupted' : part.streaming ? 'streaming' : 'complete',
-        ...(part.continuationEntryId ? { continuationEntryId: part.continuationEntryId } : {}) })
+        ...(part.continuationEntryId ? { continuationEntryId: part.continuationEntryId } : {}),
+        ...(part.retryInputEntryId ? { retryInputEntryId: part.retryInputEntryId } : {}) })
       continue
     }
     if (part.kind === 'thinking') {
@@ -374,10 +421,18 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // 展开体，同一句话就在面板上出现三次——设计实验室 P6 探针把这一格接上真投影时当场红了。
     const { summary: _summary, ...withoutSummary } = existing.receipt
     const failure = part.isError ? labels.toolFailure(part.text, part.failure) : undefined
+    // 「等用户」不再以失败的形状出现（2026-09-22 裁决 A：`generate` 在预检期等、以成功形状返回），
+    // 所以这里不再有「这条 isError 其实不是失败」那条旁路——`isError` 就是失败。
     items[slot.index] = {
+      ...existing,
       kind: 'tool',
       receipt: denial !== undefined
-        ? { ...withoutSummary, status: 'output-denied' }
+        // 反问答完的那一行不说「已拒绝」。判据在 `laneApprovalWasAnswer()`：
+        // 新协议读 `decision: 'answered'`，老转录退回「这次 args 是不是一次提问」。
+        ? laneApprovalWasAnswer(denial, slot.args) && denial.reason
+          ? { ...withoutSummary, status: 'output-denied', answered: true as const,
+              label: labels.answered, summary: redactResidentSensitiveText(denial.reason), trailing: '' }
+          : { ...withoutSummary, status: 'output-denied' }
         : { ...(part.isError ? withoutSummary : existing.receipt), status: settledStatus(part.isError, false),
           ...(failure ? { summary: redactResidentSensitiveText(failure) } : {}),
           ...(!part.isError && part.toolCallId === undoableToolCallId
@@ -405,10 +460,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     ? labels.free : metricText(usage.cost, labels.formatCost, labels.unknown)
   const reasoning = metricText(usage.reasoningTokens, labels.formatTokens, labels.unknown)
   return {
-    items: mergeAssistantTextPerTurn(items, turnOf, (at) => {
-      const skillKey = skillOfTurn.get(at)
-      return skillKey ? labels.skillLabel(skillKey) : undefined
-    }),
+    items: mergeAssistantTextPerTurn(items, turnOf, (at) => skillOfTurn.get(at)),
     running: projection.running,
     // 队列原样带出去：这一层不合并、不去重、不改顺序——pi 的 FIFO 就是用户打字的顺序。
     queues: projection.queues,

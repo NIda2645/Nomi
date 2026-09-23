@@ -1,0 +1,952 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-19-original-input-replay",
+ "problem_type": "Lossy replay and composer admission races",
+ "symptom": "Retry sends visible prose without its original skill or attachments; a late send clears a new skill.",
+ "direct_cause": "Shell searches visible rows and calls composer send; cleanup unconditionally clears the current skill slot.",
+ "class_root": "Execution intent is reconstructed from a view and cleanup is not bound to its captured input.",
+ "affected_population": [
+  "Retry and Continue after paging or compaction",
+  "Queued input restore and concurrent composer edits"
+ ],
+ "scope_paths": [
+  "electron/agentLane/laneDesktopInput.ts",
+  "electron/agentLane/laneDesktopRuntime.ts",
+  "electron/agentLane/laneHistory.mts",
+  "electron/agentLane/laneHistoryPage.mts",
+  "electron/agentLane/laneHost.mts",
+  "electron/agentLane/laneRuntimePort.ts",
+  "electron/agentLane/laneSingleShot.mts",
+  "electron/shared/agentLane/laneContracts.ts",
+  "electron/shared/agentLane/laneDesktopContracts.ts",
+  "electron/shared/agentLane/laneErrorCodes.ts",
+  "electron/shared/agentLane/laneInputMessage.ts",
+  "electron/shared/agentLane/laneProjection.ts",
+  "src/workbench/ai/ProjectAgentResidentShell.tsx",
+  "src/workbench/ai/lane/laneCommandFailure.ts",
+  "src/workbench/ai/lane/laneViewModel.ts",
+  "src/workbench/ai/projectAgentAttachments.ts",
+  "src/workbench/ai/v4/agentPanelV4Types.ts",
+  "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+  "src/workbench/workbenchStore.ts",
+  "src/workbench/workbenchStoreLifetime.ts",
+  "electron/agentLane/laneOriginalInput.mts",
+  "electron/agentLane/laneInputPreparation.ts",
+  "electron/agentLane/laneRestoredInput.ts",
+  "electron/agentLane/laneIpc.ts",
+  "electron/agentLane/laneWorkspace.mts",
+  "src/workbench/ai/lane/laneClient.ts",
+  "electron/shared/agentLane/laneConversation.ts",
+  "src/workbench/ai/projectAgentDraftRecovery.ts",
+  "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+  "src/workbench/ai/v4/agentPanelV4Labels.ts",
+  "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+  "src/workbench/ai/composer/useComposerAttachments.ts",
+  "src/workbench/ai/v4/AgentPanelV4Composer.tsx"
+ ],
+ "entry_points": [
+  "ProjectAgentResidentShell Retry/Continue",
+  "useAgentPanelV4Actions send/cancelQueued/stop"
+ ],
+ "external_sources": [
+  {
+   "kind": "source-code",
+   "url": "https://github.com/earendil-works/pi/tree/v0.85.1/packages/agent/src/harness",
+   "checked_at": "2026-09-19",
+   "purpose": "Installed public branch ancestry and input admission APIs."
+  }
+ ],
+ "invariants": [
+  "Replay resolves an original input ID on the current pi branch.",
+  "Replay retains original content and immutable attachment claims while current authorization is revalidated.",
+  "Admission cleanup only removes the exact captured composer references.",
+  "A completed queue cancellation retains every original text, skill and attachment claim even if some media no longer resolves; unresolved media remains visible and blocks send until the user removes or replaces it.",
+  "Conversation commands retain their captured workspace, lane and pi session through every async wait; project identity alone never authorizes another conversation.",
+  "Recovered drafts are window-local input buffers keyed by immutable project UUID and pi session; late cancellation never borrows another project resolver or merges into its current composer.",
+  "Restored selectors are carried separately; admission surface, model and policy come from this send, never historical input.",
+  "The complete composer revision spans text, skills, templates, attachments and references; late cancellation auto-restores only an unchanged empty buffer.",
+  "A synchronous admission token prevents duplicate sends and buffer swaps until ACK; successful cleanup is atomic and cannot bank an accepted input as unsent.",
+  "Upload settlement follows the original attachment ID and immutable project owner across recovered buffer swaps; stale results never mutate another project composer."
+ ],
+ "doors": [
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneContextBudget.mts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneContextBudget.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopInput.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopInput.ts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopRuntime.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopRuntime.ts",
+   "symbol": "LaneIpcDependencies"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopTools.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneDesktopTools.ts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHistory.mts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHistoryPage.mts",
+   "symbol": "LANE_HISTORY_PAGE_SIZE"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "resolveLaneReplay"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneInputPreparation.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "LaneDraftInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "LaneRestoredDesktopInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "LaneIpcDependencies"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "LaneIpcRegistration"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneModelContext.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneOriginalInput.mts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneRestoredInput.ts",
+   "symbol": "LaneDraftInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneRestoredInput.ts",
+   "symbol": "LaneRestoredDesktopInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneRuntimePort.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneRuntimePort.ts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneSingleShot.mts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneWorkspace.mts",
+   "symbol": "OpenLaneOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneWorkspace.mts",
+   "symbol": "LaneWorkspaceOptions"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneWorkspace.mts",
+   "symbol": "LaneOpener"
+  },
+  {
+   "kind": "read",
+   "path": "electron/agentLane/laneWorkspace.mts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "electron/main.ts",
+   "symbol": "LaneIpcRegistration"
+  },
+  {
+   "kind": "read",
+   "path": "electron/preload/runtimeBridge.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneContracts.ts",
+   "symbol": "LanePart"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneContracts.ts",
+   "symbol": "LaneDraftInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneContracts.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneConversation.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+   "symbol": "LaneRestoredDesktopInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneErrorCodes.ts",
+   "symbol": "LANE_ERROR_CODES"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneInputMessage.ts",
+   "symbol": "LaneDraftInput"
+  },
+  {
+   "kind": "read",
+   "path": "electron/shared/agentLane/laneProjection.ts",
+   "symbol": "LanePart"
+  },
+  {
+   "kind": "read",
+   "path": "src/desktop/bridge.ts",
+   "symbol": "LaneBridge"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/creationColumns/CreationColumnsStage.tsx",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+   "symbol": "LanePart"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+   "symbol": "EMPTY_LANE_PROJECTION"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabKit.tsx",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+   "symbol": "AgentPanelV4Panel"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/states/03-flow.tsx",
+   "symbol": "AgentPanelV4Panel"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/agentLoopMode.ts",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/agentLoopMode.ts",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+   "symbol": "UseComposerAttachments"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneCommandResult"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneBridge"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "EMPTY_LANE_PROJECTION"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneComposerContext"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "resolveLaneBridge"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "EMPTY_LANE_WORKSPACE"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+   "symbol": "LANE_ERROR_TEXT_KEY"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneReceiptClient.ts",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneReceiptClient.ts",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneReceiptUndo.ts",
+   "symbol": "LanePart"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneViewModel.ts",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/lane/laneViewModel.ts",
+   "symbol": "LanePart"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/projectAgentAttachments.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "symbol": "RecoveredAgentDraft"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "symbol": "LaneRestoredDesktopInput"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "symbol": "projectAgentDraftRevision"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "setProjectAgentDraft"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "settleProjectAgentAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "COMPOSER_ATTACHMENT_ACCEPT"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "AgentPanelV4Panel"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/agentPanelV4Collapse.ts",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Composer.tsx",
+   "symbol": "AgentPanelV4ComposerProps"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+   "symbol": "AgentPanelV4ComposerProps"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Receipt.tsx",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/agentPanelV4Types.ts",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "AgentPanelV4Actions"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "LaneCommandResult"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "projectAgentDraftRevision"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+   "symbol": "LaneWorkspaceProjection"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+   "symbol": "V4FlowItem"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/workbenchAiTypes.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+   "symbol": "useComposerAttachments"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/generationCanvas/agent/proposalUndo.ts",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/NomiStudioApp.tsx",
+   "symbol": "laneClient"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/NomiStudioApp.tsx",
+   "symbol": "LaneCommandFailure"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/workbenchStore.ts",
+   "symbol": "ProjectAgentDraftRecoveryState"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/workbenchStore.ts",
+   "symbol": "ComposerAttachment"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/workbenchStore.ts",
+   "symbol": "projectAgentDraftRevision"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneContextBudget.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneDesktopRuntime.ts",
+   "symbol": "prepareLaneSkillContext"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneDesktopRuntime.ts",
+   "symbol": "restoreLaneDraftInputs"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneHistory.mts",
+   "symbol": "openLaneHistoryPage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "openLaneHistoryPage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneInputIntent.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneIpc.ts",
+   "symbol": "laneConversationOf"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneNativeLoader.cts",
+   "symbol": "openLaneWorkspace"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneOriginalInput.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/agentLane/laneTrace.mts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/main.ts",
+   "symbol": "registerAgentLaneIpc"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/agentLane/laneInputMessage.ts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/agentLane/laneProjection.ts",
+   "symbol": "isLaneInputMessage"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/agentUsageStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "laneConversationOf"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/lane/laneClient.ts",
+   "symbol": "createLaneClient"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "symbol": "composerAttachmentsFromProjectAgentRefs"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "useAgentPanelV4Actions"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "laneConversationOf"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "discardRecoveredAgentDraft"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "takeRecoveredAgentDraft"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "useComposerAttachments"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/residentActivity.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "laneConversationOf"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "restoreProjectAgentInputs"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "projectAgentAttachmentClaims"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+   "symbol": "useComposerAttachments"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/agent/shotVerifyStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/components/batchPlanPreview.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/store/assetImportProgressStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/store/canvasMenuPreferenceStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/store/nodeLivePreviewStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/onboarding/journeyTourStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/production/productionCanvasLandingStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/production/productionRunStore.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/workbenchStoreLifetime.ts",
+   "symbol": "declareStoreLifetime"
+  },
+  {
+   "kind": "read",
+   "path": "src/devlab/designLab/v4/agentPanelV4LabKit.tsx",
+   "symbol": "QueueRowData"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+   "symbol": "QueueRowData"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+   "symbol": "QueueRowData"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+   "symbol": "QueueRowData"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+   "symbol": "QueueRowData"
+  },
+  {
+   "kind": "read",
+   "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+   "symbol": "QueueRowData"
+  }
+ ],
+ "door_reduction": {
+  "before": 95,
+  "after": 153,
+  "why_not": "Distinct original input, IPC preparation, single-shot, history projection, composer cleanup and project release callers remain necessary; all replay uses the same ancestry resolver and skill preparer. Existing T6 and generation contracts own compaction/collapse and spend behavior. Locale dictionaries and the attachment version type-only edit do not introduce runtime mutation boundaries."
+ },
+ "generality_proof": "The native lane consumes original Session/Branch records for both retry and Continue; all composer sends share captured-reference cleanup.",
+ "shared_boundaries": [
+  {
+   "path": "electron/agentLane/laneHost.mts",
+   "symbol": "openLane",
+   "responsibility": "Resolve original branch records before admission."
+  },
+  {
+   "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "symbol": "useAgentPanelV4Actions",
+   "responsibility": "Capture and compare composer references at admission."
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/agentLane/laneHost.mts",
+   "entry_point": "inputMessage",
+   "disposition": "enforced",
+   "evidence": "Prompt, steer and follow-up use the same admission constructor."
+  },
+  {
+   "path": "electron/agentLane/laneSingleShot.mts",
+   "entry_point": "runLaneSingleShot",
+   "disposition": "enforced",
+   "evidence": "Single-shot and lane admission call the same input.prepare skill/version and attachment boundary."
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "Every replay or slow send can lose input references.",
+  "same_class_scan": [
+   "door-map LaneComposerContext",
+   "Read desktop parse/configure, native input construction, queue restore, renderer send and Shell row actions.",
+   "laneIpc applies cancellation before restoreInput; desktop asset resolution previously threw away a successful cancellation result on one missing attachment, and renderer ref projection silently omitted refs without display."
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/agentLane/laneHost.mts",
+  "invariant": "Replay is linked to original input and never silently substituted by current composer.",
+  "failure_mode": "Reject foreign or missing original IDs before input admission.",
+  "exception_policy": "none",
+  "strategy": "Use existing pi branch query and compare captured UI references.",
+  "artifacts": [
+   "electron/agentLane/laneHost.mts",
+   "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+   "electron/agentLane/laneRestoredInput.ts",
+   "src/workbench/ai/projectAgentAttachments.ts",
+   "src/workbench/ai/projectAgentDraftRecovery.ts",
+   "electron/agentLane/laneIpc.ts",
+   "electron/agentLane/laneWorkspace.mts",
+   "src/workbench/ai/lane/laneClient.ts",
+   "src/workbench/ai/composer/useComposerAttachments.ts",
+   "src/workbench/workbenchStore.ts"
+  ]
+ },
+ "regression_tests": [
+  "tests/agent-runtime/lane-original-input.test.mts",
+  "tests/agent-runtime/lane-replay-admission.test.mts",
+  "tests/agent-runtime/lane-skill-admission.test.mts",
+  "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+  "src/workbench/ai/projectAgentAttachments.test.ts",
+  "electron/agentLane/laneRestoredInput.test.ts",
+  "electron/agentLane/laneIpc.test.ts",
+  "src/workbench/ai/lane/laneClient.test.ts",
+  "tests/agent-runtime/lane-models-block.test.mts"
+ ],
+ "class_regression_tests": [
+  "tests/agent-runtime/lane-original-input.test.mts",
+  "tests/agent-runtime/lane-replay-admission.test.mts",
+  "tests/agent-runtime/lane-skill-admission.test.mts",
+  "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+  "src/workbench/ai/projectAgentAttachments.test.ts",
+  "electron/agentLane/laneRestoredInput.test.ts",
+  "tests/agent-runtime/lane-models-block.test.mts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "src/workbench/ai/ProjectAgentResidentShell.tsx"
+  ],
+  "rationale": "Remove visible-row text replay and unconditional skill cleanup."
+ },
+ "dependency_lifecycle": {
+  "decision": "retain-with-exit",
+  "current": "@earendil-works/pi-agent-core 0.85.1",
+  "target": "Locked public Session/Branch APIs; no upgrade in this task",
+  "rationale": "Original input lookup and replay use the installed public ancestry APIs. Nomi owns only domain context.",
+  "exit_criteria": [
+   "Remove Nomi-only replay relation handling if a future adopted public SDK adds equivalent durable original-input identity without weakening current project and skill checks."
+  ]
+ },
+ "migration": "New input provenance uses existing pi custom messages; legacy original context remains readable without rewriting records.",
+ "residual_risks": [
+  "Recovered draft selection and real Electron acceptance are pending.",
+  "Legacy embedded media cannot be silently flattened into text; replay reports that the media must be attached again.",
+  "Recovered unsent buffers survive project switches in this window, not application restart; no durable second history/queue is introduced."
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/agentLane/laneHost.mts",
+  "tests": [
+   "tests/agent-runtime/lane-original-input.test.mts",
+   "tests/agent-runtime/lane-replay-admission.test.mts",
+   "tests/agent-runtime/lane-skill-admission.test.mts",
+   "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+   "src/workbench/ai/projectAgentAttachments.test.ts"
+  ],
+  "structural_ticket": "docs/plan/2026-09-19-pi-history-read-side.md"
+ }
+}

@@ -12,7 +12,7 @@ import type { PendingSpendConfirm, PendingSpendRead, PendingSpendShot } from "..
 
 export type { PendingSpendConfirm, PendingSpendRead, PendingSpendShot };
 
-export type ProductionRunProjection = ProductionRun;
+export type ProductionRunProjection = ProductionRun & { storyboardReferenceUrls?: Readonly<Record<string,string>> };
 
 export type DesktopProductionRunBridge = {
   list: (projectId: string) => Promise<ProductionRunSummary[]>;
@@ -29,7 +29,7 @@ export type DesktopProductionRunBridge = {
    * `pendingSpend` 是**只读投影**（价格由宿主按目录算，渲染层不反推）；另外三个是动作。
    */
   pendingSpend: (projectId: string) => Promise<PendingSpendRead>;
-  reviseSpend: (input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
-  discardSpend: (projectId: string, operationId: string) => Promise<ProductionActionResult>;
-  confirmSpend: (projectId: string, operationId: string, shotIds?: readonly string[]) => Promise<ProductionActionResult>;
+  reviseSpend: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
+  discardSpend: (projectId: string, operationId: string, quoteId: string) => Promise<ProductionActionResult>;
+  confirmSpend: (projectId: string, operationId: string, quoteId: string, shotIds?: readonly string[]) => Promise<ProductionActionResult>;
 };

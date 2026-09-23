@@ -1,0 +1,172 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-task-absence-domain",
+  "problem_type": "Untrusted absence and mismatched task-domain contract",
+  "symptom": "Existing corrupt Run appears missing; schema-valid task calls fail runtime domain validation",
+  "direct_cause": "Repository null conflates absent and unrecoverable state; verb domain field remains optional",
+  "class_root": "Storage absence and task addressing lack matching earliest-boundary invariants",
+  "affected_population": [
+    "Generation task readers and cancellation callers"
+  ],
+  "scope_paths": [
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+    "electron/agentLane/laneVerbTransport.ts"
+  ],
+  "entry_points": [
+    "Run service readFull",
+    "Generation operation read",
+    "check_job and cancel_job"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing local repository and published tool schemas own these semantics",
+  "invariants": [
+    "Null indicates missing durable records only",
+    "Unrecoverable durable state cannot mint typed absence",
+    "Published task schemas require runtime-required domain"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDesktopLifecycle.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "cancelJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "cancelJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "cancelJobModelSchema"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 11,
+    "why_not": "Existing repository callers and shared tool projections remain; one storage read and one published schema family enforce their respective invariants"
+  },
+  "generality_proof": "Every service owner read uses repository read; both task verbs share existing projection schemas",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createProductionRunRepository",
+      "responsibility": "Distinguish missing durable records from corruption/read failure"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "checkJobModelSchema",
+      "responsibility": "Publish domain-qualified task identity"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "requireRun",
+      "disposition": "enforced",
+      "evidence": "Repository null is converted into typed absence here"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "translate",
+      "disposition": "enforced",
+      "evidence": "Existing runtime domain rejection is retained and aligned with schema"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any damaged Run or omitted task domain reaches the same shared boundary",
+    "same_class_scan": [
+      "Machine door maps for createProductionRunRepository/checkJobModelSchema/cancelJobModelSchema",
+      "Checked readJsonLines, validSnapshot, service.requireRun and operation-store absence conversion"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/productionRunRepository.ts",
+    "invariant": "Existing unrecoverable records throw rather than producing absence",
+    "failure_mode": "Safe read/corruption error; no routing fallback",
+    "exception_policy": "none",
+    "strategy": "Narrow repository read semantics and require domain in existing tool projections",
+    "artifacts": [
+      "electron/productionRun/productionRunRepository.ts",
+      "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "electron/agentLane/laneVerbTransport.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/productionRunRepository.test.ts",
+    "electron/productionRun/productionTaskAbsence.test.ts",
+    "electron/shared/agentCapabilities/verbs/verbProjections.test.ts",
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/productionRunRepository.test.ts",
+    "electron/productionRun/productionTaskAbsence.test.ts",
+    "electron/shared/agentCapabilities/verbs/verbProjections.test.ts",
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Retain existing routing and durable owner; no alternate API"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Local filesystem and shared application schema invariant",
+    "exit_criteria": []
+  },
+  "migration": "No persisted format change or repair write",
+  "residual_risks": [
+    "Controlled filesystem/service tests do not establish packaged Electron or Windows acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionRunRepository.ts",
+    "tests": [
+      "electron/productionRun/productionRunRepository.test.ts",
+      "electron/productionRun/productionTaskAbsence.test.ts",
+      "electron/shared/agentCapabilities/verbs/verbProjections.test.ts"
+    ]
+  }
+}

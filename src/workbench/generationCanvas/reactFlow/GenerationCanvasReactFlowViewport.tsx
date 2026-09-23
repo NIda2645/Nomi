@@ -30,7 +30,7 @@ import { canvasViewportFromFlow, isFiniteFlowViewport } from './generationCanvas
 import { edgeTypes, nodeTypes } from './GenerationCanvasReactFlowNodes'
 import { expandSelectionBoundsToOwningFrame, resolveSelectionToolbarPlacement } from './selectionToolbarPlacement'
 import { useCanvasBottomDockRects } from './useCanvasBottomDockRects'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 import { syncCanvasNodeProjection } from './canvasNodeProjectionSync'
 
 type GenerationCanvasReactFlowViewportProps = {
@@ -152,6 +152,21 @@ export function GenerationCanvasReactFlowViewport({
   onClearSelection,
   isNodeDragging,
 }: GenerationCanvasReactFlowViewportProps): JSX.Element {
+  // 这次视口手势**属于哪个分类**（在 moveStart 那一刻钉住）。
+  //
+  // 2026-09-21：这里原来是一个 `viewportCancelledRef`，被中断时置 true，然后让 `onMoveEnd`
+  // **整段 return**——连 NaN 守卫和 `rememberCategoryViewport` 一起跳过。于是「屏幕上的视口」
+  // 和「记住的视口」分家：中断不会把画布移回去，但没人把它记下来，下一次视口同步 effect
+  // 一跑就跳回中断前的位置（同一个病在 useGenerationCanvasReactFlowPointer 的 finishPan 里也犯过一次）。
+  // 它真正要防的其实只有一件事：**别把这次手势的视口记到另一个分类头上**。
+  // 那就记住分类本身，而不是整段不记。moveStart 缺席（例如 fitView 的过渡）时回落到当前分类。
+  const viewportGestureCategoryRef = React.useRef<string | null>(null)
+  const viewportLeaseRef = React.useRef<CanvasDragLease | null>(null)
+  React.useEffect(() => () => {
+    viewportLeaseRef.current?.release()
+    viewportLeaseRef.current = null
+    canvasPanMovedRef.current = false
+  }, [activeCategoryId, canvasPanMovedRef, readOnly])
   // 「画布手势」设置（#832）订阅式读：设置页改完，这块画布当场换语义，不用重开。
   // 翻译成内核开关的那一步住在 canvasViewportGestureProps（真值表仍归 resolveWheelIntent）。
   const wheelGestures = canvasWheelGestureProps(useCanvasGestureScheme())
@@ -223,17 +238,23 @@ export function GenerationCanvasReactFlowViewport({
       onConnectStart={onConnectStart}
       onConnectEnd={onConnectEnd}
       onMoveStart={() => {
+        viewportGestureCategoryRef.current = activeCategoryId
         if (!canvasPointerStartRef.current) canvasPanMovedRef.current = false
       }}
       onMove={() => {
         if (!canvasPanMovedRef.current) return
-        setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)
+        viewportLeaseRef.current ??= beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowViewport, { onCancel: () => {
+          viewportLeaseRef.current = null
+          canvasPanMovedRef.current = false
+        } })
       }}
       onMoveEnd={(_event, nextViewport) => {
-        // 无条件释放本 owner（释放是幂等的，没升起时是空操作）。以前按 `canvasPanMovedRef` 判断要不要释放：
+        // 无条件释放这张租约（`release()` 幂等，没升起时是空操作）。不许按 `canvasPanMovedRef` 判断要不要释放：
         // React Flow 在 panOnScroll 下把这次回调推迟 150ms，这期间画布内任何一次按下都会把那个布尔重置成 false，
         // 于是这里跳过释放、`data-dragging` 卡死（2026-09-22，见 docs/fixes/2026-09-22-canvas-dragging-flag-outlives-gesture.root-cause.json）。
-        setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)
+        // 真漏掉的那一次由 canvasDraggingFlag 的手势兜底闸收（标志的寿命上限 = 这一次指针手势）。
+        viewportLeaseRef.current?.release()
+        viewportLeaseRef.current = null
         canvasPanMovedRef.current = false
         if (!isFiniteFlowViewport(nextViewport)) {
           // React Flow 自己的 d3 过渡撞上 0×0 的 extent 缓存会吐出 NaN 视口（见 GenerationCanvasReactFlow
@@ -243,7 +264,9 @@ export function GenerationCanvasReactFlowViewport({
           return
         }
         setLiveViewport(nextViewport)
-        rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(nextViewport))
+        // 记到**这次手势开始时那个分类**头上：被中断、或收尾正好落在切分类之后，都不许写到别人账上。
+        rememberCategoryViewport(viewportGestureCategoryRef.current ?? activeCategoryId, canvasViewportFromFlow(nextViewport))
+        viewportGestureCategoryRef.current = null
       }}
       proOptions={{ hideAttribution: true }}
     >

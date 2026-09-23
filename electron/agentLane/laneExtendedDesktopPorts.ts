@@ -1,3 +1,5 @@
+import { argumentFailure } from '../shared/agentLane/laneArgumentFailure';
+import { ZodError } from "zod";
 import type { CanvasWriteApprovalAuthority } from '../shared/agentCapabilities/transportContracts'
 import { randomUUID } from 'node:crypto'
 import type { ProjectBinding } from '../shared/projectBinding'
@@ -17,7 +19,12 @@ import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuth
 import { LANE_DEFERRED_TOOL_CATALOG, LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog'
 import { createExtendedLaneTools } from './laneExtendedTools'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
-import { exportJobTransportCall, verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
+import { verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
+import { taskReferenceSchema } from '../shared/agentCapabilities/taskReference'
+import { registerSpendWaiter, type SpendDecision } from '../capabilityCore/spendDecisionWaiters'
+import { GENERATE_USER_DECISION_KEY, type GenerateUserDecision } from '../shared/agentLane/generateUserDecision'
+import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
+import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
 
 type Prepared =
   | { kind: 'timeline'; value: PreparedTimelineWrite }
@@ -26,7 +33,14 @@ type Prepared =
   | { kind: 'skill'; value: PreparedSkillWrite }
   | { kind: 'direct'; value: { call: RuntimeToolCall } }
 
-type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true }
+type Pending = { call: RuntimeToolCall; prepared: Prepared; approved?: CanvasWriteApprovalAuthority | true; generationContext?: GenerationInvocationContext
+  /** `generate` 在预检期就已经有了结局（见 `preflightGenerate`）：execute 只把它交出去，不再碰领域、不再等任何人。 */
+  decided?: RuntimeToolDecision }
+
+/** 「这份结果说的是：报价卡已经摆到用户面前，在等他点头」（`mcpGenerationTools` present 分支的 `nextAction`）。 */
+function awaitsUserOnSpendCard(result: unknown): boolean {
+  return Boolean(result && typeof result === 'object' && (result as { nextAction?: unknown }).nextAction === 'await_user')
+}
 
 export interface LaneExtendedDesktopPortsInput {
   binding: ProjectBinding
@@ -41,6 +55,7 @@ export interface LaneExtendedDesktopPortsInput {
   generation(): PiGenerationTransportAdapter | undefined
   receipts: Pick<ProjectAgentProposalReceiptService, 'read'>
   onTaskCreated?(call: RuntimeToolCall, result: unknown): Promise<void>
+  context?(): LaneComposerContext
 }
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
@@ -56,13 +71,41 @@ function generationSurfaceUnavailable(): Extract<RuntimeToolDecision, { ok: fals
   return { ok: false, code: 'generation_surface_unavailable', message: residentGenerationUnavailableMessage() }
 }
 
+/**
+ * 契约 parse：失败走**与 `laneTools` 同一个**正文构造器，不抛裸 `ZodError`。
+ * 裸 `ZodError` 的 `message` 是 `JSON.stringify(issues, null, 2)`——模型读到的是一段 JSON 数组。
+ */
+function parseToolArguments(spec: { name: string; schema: { parse(value: unknown): unknown } }, args: unknown): unknown {
+  try {
+    return spec.schema.parse(args)
+  } catch (error) {
+    if (error instanceof ZodError) throw new LaneDomainFailure(argumentFailure(spec.name, args, error))
+    throw error
+  }
+}
+
 function rejectPreparation(code: string): never {
+  if (code === 'task_reference_required') throw new LaneDomainFailure({ code,
+    message: 'The task reference has no verified domain (task_reference_required).',
+    nextAction: 'Read the task result or canvas and copy domain and jobId from taskRef. Do not infer a task ID from a node ID.' })
   throw new LaneDomainFailure({ code, message: `Nomi could not prepare this domain action (${code}).`,
     nextAction: 'Read the current project again and request a new action with its current identifiers and revision.' })
 }
 
-/** 生成域说「不认识这个 operationId」的那一族码；`check_job` / `cancel_job` 据此转问导出域。 */
-const UNKNOWN_GENERATION_JOB = new Set(['generation_operation_not_found', 'capability_execution_failed', 'generation_surface_unavailable'])
+function captureGenerationContext(context: LaneComposerContext | undefined): GenerationInvocationContext | undefined {
+  if (!context) return undefined;
+  if (context.admissionSurface === 'document' && context.storyboardTarget) {
+    const target = structuredClone(context.storyboardTarget);
+    return { storyboardTarget: target, sourceDocument: { documentId: target.sourceDocumentId,
+      revision: target.sourceDocumentRevision, contentHash: target.sourceDocumentContentHash } };
+  }
+  // 渲染层声称的来源文稿。记录与比对用（见 GenerationInvocationContext 的头注释），不是凭据。
+  const source = context.admissionSurface === 'document' && context.documentId && context.preconditions?.document
+    && typeof context.preconditions.document.contentHash === 'string'
+    ? { documentId: context.documentId, revision: context.preconditions.document.revision, contentHash: context.preconditions.document.contentHash }
+    : undefined;
+  return source ? { sourceDocument: source } : undefined;
+}
 
 /**
  * One lane boundary over existing executors; it owns no second domain store or mutation path.
@@ -74,6 +117,9 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
   let disposed = false
 
   const translate = (wire: RuntimeToolCall): VerbTransportCall => {
+    if ((wire.toolName === 'check_job' || wire.toolName === 'cancel_job') && !taskReferenceSchema.safeParse(wire.args).success) {
+      rejectPreparation('task_reference_required')
+    }
     const translated = verbToTransportCall(wire)
     if (!translated) rejectPreparation('capability_unsupported')
     return translated
@@ -85,7 +131,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       if (!spec) return
       if (disposed || signal.aborted) rejectPreparation('capability_cancelled')
       if (pending.has(wire.toolCallId)) rejectPreparation('capability_authority_invalid')
-      const call = { ...wire, args: spec.schema.parse(wire.args) }
+      const call = { ...wire, args: parseToolArguments(spec, wire.args) }
       const contract = capabilityContractById(modelToolCapabilityId(spec, call.args))
       if (!contract) rejectPreparation('capability_unsupported')
       if (contract.effect === 'read') return
@@ -108,25 +154,21 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         const value = await input.skillWrite.prepare(transport, { target: { kind: 'skill', dirName }, preconditions: {} }, signal)
         if (!value) rejectPreparation('capability_unsupported')
         prepared = { kind: 'skill', value }
-      } else if (lane === 'generation' && call.toolName === 'cancel_job') {
-        // 取消一个任务：先问导出域认不认这个 id；不认就是生成任务，走生成域的取消（直接路径，审批由闸管）。
-        const exportCall = exportJobTransportCall(call)
-        const value: PreparedExportWrite | null = await input.phase4.prepareWrite(exportCall, signal).catch(() => null)
-        prepared = value ? { kind: 'export', value } : { kind: 'direct', value: { call } }
       } else {
         // Draft creation, generation planning and the model-setup panel have their own durable domain owner.
         prepared = { kind: 'direct', value: { call } }
       }
       if (disposed || signal.aborted) rejectPreparation('capability_cancelled')
-      pending.set(call.toolCallId, { call, prepared })
+      pending.set(call.toolCallId, { call, prepared, generationContext: captureGenerationContext(input.context?.()) })
     },
-    async approved(call, record) {
+    async approved(call, record, host) {
       const entry = pending.get(call.toolCallId)
       if (!entry) return
       if (entry.approved || disposed || entry.call.toolName !== call.toolName) rejectPreparation('capability_authority_invalid')
       if (entry.prepared.kind === 'direct') {
         // The lane's approval note is already durable before this callback; no G5 journal is fabricated.
         entry.approved = true
+        if (entry.call.toolName === 'generate' && host) entry.decided = await preflightGenerate(entry, host)
         return
       }
       const approval: CanvasWriteApprovalAuthority = { approvalId: `approval-${randomUUID()}`,
@@ -139,15 +181,66 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     settled(call) { pending.delete(call.toolCallId) },
   }
 
+  /**
+   * `generate` 的全部「等人」都发生在这里——`before_tool` 里，**不计入工具超时**（2026-09-22 裁决 A）。
+   *
+   * 此前这一步住在 execute 里：报价卡那条路以「错误 + STOP」把回合当场结束（用户点完「生成」之后没有回合接结果），
+   * 文稿方案那条路干脆在工具执行里等用户点头，撞 60 秒写类预算——三轮实测一次没成过。
+   *
+   * 顺序：先登记「我在等这一笔」→ 再 present（卡出现）→ 卡真的在等人才向闸借一次等待。
+   * 先登记后出卡，是因为卡一落盘面板就读得到：晚一步，用户手快的那一下点击就没人接。
+   * 全自动档由策略当场决完、文稿方案在它自己的确认里等完——这两条路 present 返回时就已经有结局，不借等待。
+   */
+  async function preflightGenerate(entry: Pending, host: NonNullable<Parameters<NonNullable<OpenLaneOptions['toolLifecycle']>['approved']>[2]>): Promise<RuntimeToolDecision> {
+    const generation = input.generation()
+    if (!generation) return generationSurfaceUnavailable()
+    const { call: transport } = translate(entry.call)
+    const operationId = String((entry.call.args as { operationId?: unknown }).operationId ?? '')
+    let early: SpendDecision | undefined
+    let forward: ((decision: SpendDecision) => void) | undefined
+    const release = registerSpendWaiter(input.binding.projectId, operationId, (decision) => { if (forward) forward(decision); else early = decision })
+    try {
+      const presented = await generation.tryExecute(transport, host.signal, entry.generationContext) ?? generationSurfaceUnavailable()
+      if (!presented.ok || !awaitsUserOnSpendCard(presented.result)) return presented
+      const decided = (userDecision: GenerateUserDecision): RuntimeToolDecision =>
+        ({ ok: true, result: { ...(presented.result as Record<string, unknown>), [GENERATE_USER_DECISION_KEY]: userDecision } })
+      if (!host.canAskUser) {
+        // 卡摆出去了却没有人能点它（没有窗口的 lane）：收回这次出价，照实说。这是真错误，error 形状是对的。
+        await generation.withdrawPresentation(operationId)
+        return { ok: false, code: 'generation_approval_unavailable', message: 'This session has no window where the user could approve the spend, so nothing was generated.' }
+      }
+      let outcome: Awaited<ReturnType<typeof host.waitForUser>['outcome']>
+      if (early) outcome = early
+      else {
+        const wait = host.waitForUser()
+        forward = (decision) => { wait.settle(decision) }
+        outcome = await wait.outcome
+      }
+      if (outcome.kind === 'confirmed') return decided({ outcome: 'approved' })
+      // × 那条路上 `discardPendingSpend` 已经把这一次出价收回了（计划回到 draft / 未 present），这里不再动它。
+      if (outcome.kind === 'declined') return decided({ outcome: 'declined' })
+      // 另外两种结局（用户打了字 / 回合被停下）同样不是「不要这份草稿」：收回的只是这一次出价，计划留着。
+      if (outcome.kind === 'redirected') {
+        await generation.withdrawPresentation(operationId)
+        return decided({ outcome: 'redirected', userSaid: outcome.text })
+      }
+      // 回合被停下 / 窗口关了：**不等**收回落盘就把钩子还给 pi。这一支多半跑在退出路上，等它就是让 pi 的
+      // abort 收不了尾——进程带着一个 `cancel_requested` 的半截回合退出，重开后这条对话永远停在「在跑」，
+      // 用户之后打的每一句都安静地排在后面（走查 agent-spend-waiting-owner 实测）。收回本身是幂等的，
+      // 这里没赶上的那一次由启动清扫（`stalePresentationSweep`）兜住。
+      void generation.withdrawPresentation(operationId).catch(() => undefined)
+      return { ok: false, code: 'generation_cancelled', message: 'generation_cancelled', denied: true }
+    } finally {
+      release()
+    }
+  }
+
   async function executeRead(call: RuntimeToolCall, signal: AbortSignal): Promise<RuntimeToolDecision> {
     const { lane, call: transport } = translate(call)
     if (lane === 'skillRead') return await input.skillRead.tryExecute(transport, signal) ?? failure('capability_unsupported')
-    if (lane === 'media') return await input.phase4.tryExecuteRead(transport, signal) ?? failure('capability_unsupported')
+    if (lane === 'media' || lane === 'export') return await input.phase4.tryExecuteRead(transport, signal) ?? failure('capability_unsupported')
     if (lane === 'generation') {
-      // `check_job`：生成域先答；它不认识这个 id 就问导出域（同一个动词，用户不需要知道任务住哪个域）。
-      const generation = await input.generation()?.tryExecute(transport, signal)
-      if (generation?.ok || (generation && !UNKNOWN_GENERATION_JOB.has(generation.code ?? ''))) return generation
-      return await input.phase4.tryExecuteRead(exportJobTransportCall(call), signal) ?? generation ?? generationSurfaceUnavailable()
+      return await input.generation()?.tryExecute(transport, signal) ?? generationSurfaceUnavailable()
     }
     return failure('capability_unsupported')
   }
@@ -159,7 +252,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     // Compare the same schema-normalized arguments captured during prepare. Zod
     // may materialize defaults/normalization, so comparing the raw wire object
     // would reject an otherwise identical approved call.
-    const normalizedCall = { ...call, args: spec.schema.parse(call.args) }
+    const normalizedCall = { ...call, args: parseToolArguments(spec, call.args) }
     const contract = capabilityContractById(modelToolCapabilityId(spec, normalizedCall.args))
     if (!contract) return failure('capability_unsupported')
     // 读走 `executeRead`：路由判据是**动词声明翻出来的 lane**（`translate`，20 动词那张传输表），
@@ -175,9 +268,12 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     const { prepared, approved } = entry
     let result: RuntimeToolDecision
     if (prepared.kind === 'direct') {
+      // `generate` 的结局在预检期就定了（`preflightGenerate`）：这里**没有任何等待**，也不再碰一次领域——
+      // 再 present 一次会把用户刚答完的那张卡重新摆出来。
+      if (entry.decided) return entry.decided
       // 传输方法名同样由声明翻（`translate`），不按组名手写；生成面不在 → #785 那句「此刻是哪个相」。
       const { call: transport } = translate(normalizedCall)
-      result = await input.generation()?.tryExecute(transport, signal) ?? generationSurfaceUnavailable()
+      result = await input.generation()?.tryExecute(transport, signal, entry.generationContext) ?? generationSurfaceUnavailable()
     } else {
       if (approved === true) return failure('capability_authority_invalid')
       switch (prepared.kind) {

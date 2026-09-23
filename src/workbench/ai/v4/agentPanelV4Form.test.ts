@@ -17,10 +17,17 @@ describe('B2c process contract', () => {
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({ kind: 'process', running: true, label: '加载分镜技能' })
   })
-  it('keeps an unresolved failure outside collapsed details and keeps the answer', () => {
+  // 2026-09-21：终态失败**留在它那一行下面**，不在对话流里另起一块（定稿 #4）。
+  // 收起的过程行会把那一行连同红条一起藏掉，所以带失败的那一段标 `failed` 并自己展开。
+  it('keeps an unresolved failure under its own row and keeps the answer', () => {
     const result = collapseV4Flow([tool('读取全文'), tool('写入 8 镜', 'output-error'), answer], t)
-    expect(result.map(item => item.kind)).toEqual(['process', 'error', 'assistant'])
-    expect(result[1]).toMatchObject({ reason: '无法读取' })
+    expect(result.map(item => item.kind)).toEqual(['process', 'assistant'])
+    expect(result[0]).toMatchObject({ failed: true })
+    const details = result[0]?.kind === 'process' ? result[0].details ?? [] : []
+    expect(details.map(detail => detail.item.kind)).toEqual(['tool', 'tool', 'error'])
+    expect(details[2]!.item).toMatchObject({ kind: 'error', reason: '无法读取' })
+    // 红条紧跟着的是**出错的那一行**，不是它前面那条成功的。
+    expect(details[1]!.item).toMatchObject({ kind: 'tool', receipt: { label: '写入 8 镜' } })
   })
   it('does not join processes across a user message', () => {
     const result = collapseV4Flow([tool('读取全文'), { kind: 'user', text: '继续' }, tool('加载技能')], t)

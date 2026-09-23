@@ -1,0 +1,654 @@
+{
+  "label": "ask-run2",
+  "model": "DeepSeek V3.2",
+  "rounds": 18,
+  "sourceSha": "a46662265548224478312f1d22d4a05411b34ae5",
+  "baseline": "2026-09-21 修复前同样这 16 句：反问卡触发 0/16（scratchpad/investigate-askback.md §3.3）",
+  "startedAt": "2026-09-21T16:52:07.902Z",
+  "cases": [
+    {
+      "id": "A1",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "帮我做个视频",
+      "unblockedByEscape": 0,
+      "questionCardVisible": true,
+      "answeredByChip": true,
+      "turnContinuedAfterAnswer": true,
+      "ms": 212686,
+      "toolCalls": [
+        "read_script",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "ask_user",
+        "generate",
+        "look_at_canvas",
+        "draft_shots",
+        "generate",
+        "draft_shots",
+        "generate",
+        "draft_shots"
+      ],
+      "firstTool": "read_script",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "您希望如何处理人物一致性？",
+              "options": [
+                {
+                  "label": "现在生成",
+                  "description": "直接按现有方案生成，人物可能不太一致",
+                  "recommended": false
+                },
+                {
+                  "label": "优化一致性",
+                  "description": "我调整方案，让镜头引用角色设定，人物会更统一"
+                },
+                {
+                  "label": "先看看报价",
+                  "description": "先查看生成费用再决定"
+                }
+              ],
+              "note": "现有方案人物一致性可能不够，镜2和镜3会用不同面孔的老板娘。"
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "generate",
+        "generate",
+        "generate"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A2",
+      "kind": "二义（改哪个面）",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把这个改好看点",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 145955,
+      "toolCalls": [
+        "read_script",
+        "read_script",
+        "write_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A3",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "生成一下",
+      "unblockedByEscape": 0,
+      "questionCardVisible": true,
+      "ms": 337929,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_script",
+        "read",
+        "ask_user"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "你要生成画布上的哪个镜头计划？",
+              "options": [
+                {
+                  "label": "镜1：深夜店铺招牌",
+                  "description": "第一个镜头计划表"
+                },
+                {
+                  "label": "深夜食堂招牌",
+                  "description": "第二个镜头计划表"
+                },
+                {
+                  "label": "深夜食堂招牌",
+                  "description": "第三个镜头计划表"
+                },
+                {
+                  "label": "深夜小吃场景",
+                  "description": "第四个镜头计划表"
+                }
+              ],
+              "note": "画布上有4个镜头计划表，需要选一个生成。"
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A9",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "creation",
+      "text": "把开头改一下",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 17372,
+      "toolCalls": [
+        "read_script",
+        "look_at_canvas"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A4",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "把那个删了",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 12447,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A5",
+      "kind": "花钱前确认范围",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我把这些都生成了",
+      "unblockedByEscape": 0,
+      "questionCardVisible": true,
+      "ms": 376200,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_script",
+        "nomi_request_tools",
+        "list_models",
+        "look_at_media",
+        "draft_shots",
+        "draft_shots",
+        "ask_user"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": true,
+      "askCount": 1,
+      "askArgs": [
+        {
+          "questions": [
+            {
+              "question": "这些shot_table是已生成的分镜方案吗？还是需要我根据剧本重新规划镜头？",
+              "options": [
+                {
+                  "label": "重新规划",
+                  "description": "按剧本重新做三个镜头"
+                },
+                {
+                  "label": "按shot_table生成",
+                  "description": "基于现有的四个shot_table来生成"
+                },
+                {
+                  "label": "混合方案",
+                  "description": "用一个锚点+三个镜头"
+                }
+              ],
+              "note": "画布上有四个shot_table节点，需要确认如何处理。"
+            }
+          ]
+        }
+      ],
+      "optionQuality": [
+        {
+          "count": 0,
+          "inRange": true,
+          "distinct": true,
+          "withDescription": 0,
+          "recommended": 0,
+          "atMostOneRecommended": true,
+          "fakeOptions": [],
+          "yesNoNesting": [],
+          "cancelOptions": [],
+          "internalIdentifiers": [],
+          "labelsTooLong": [],
+          "questionEchoes": []
+        }
+      ],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A6",
+      "kind": "缺关键信息",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "加个镜头",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 77785,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_script",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "draft_shots",
+        "look_at_canvas",
+        "generate"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A7",
+      "kind": "指代不清",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "改成竖的",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 36380,
+      "toolCalls": [
+        "look_at_canvas",
+        "list_models",
+        "list_models",
+        "check_job",
+        "draft_shots"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A8",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "换个模型重做",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 23546,
+      "toolCalls": [
+        "look_at_canvas",
+        "list_models",
+        "check_job"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A10",
+      "kind": "多方案取舍",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "帮我导出",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 22324,
+      "toolCalls": [
+        "read_timeline",
+        "look_at_canvas",
+        "check_job"
+      ],
+      "firstTool": "read_timeline",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N1",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "读一遍我的文稿，告诉我哪一段最长",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 12412,
+      "toolCalls": [
+        "read_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N2",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "在文稿最后加一句「灯灭了」",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 9220,
+      "toolCalls": [
+        "write_script"
+      ],
+      "firstTool": "write_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N6",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "creation",
+      "text": "把文稿里所有的「碗」都换成「大碗」",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 15395,
+      "toolCalls": [
+        "read_script",
+        "write_script"
+      ],
+      "firstTool": "read_script",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N3",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "画布上现在有几个节点？",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 14360,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N4",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "镜头 2 是什么内容？",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 14261,
+      "toolCalls": [
+        "look_at_canvas"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "N5",
+      "kind": "完全清楚",
+      "shouldAsk": false,
+      "surface": "canvas",
+      "text": "列一下现在能用的视频模型",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 21290,
+      "toolCalls": [
+        "list_models"
+      ],
+      "firstTool": "list_models",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": true,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [],
+      "argsOkFirstTry": true
+    },
+    {
+      "id": "A11",
+      "kind": "参考图不明",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "用素材库那张图做参考，排两个镜头",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 130386,
+      "toolCalls": [
+        "look_at_media",
+        "look_at_canvas",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "look_at_media",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "arrange_canvas",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "arrange_canvas",
+        "draft_shots",
+        "generate"
+      ],
+      "firstTool": "look_at_media",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    },
+    {
+      "id": "A12",
+      "kind": "风格冲突",
+      "shouldAsk": true,
+      "surface": "canvas",
+      "text": "我要赛博朋克的冷调，但要拍得像九十年代港片那种暖胶片感",
+      "unblockedByEscape": 0,
+      "questionCardVisible": false,
+      "ms": 186549,
+      "toolCalls": [
+        "look_at_canvas",
+        "read_script",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "list_models",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "draft_shots",
+        "look_at_canvas",
+        "arrange_canvas",
+        "make_artifact"
+      ],
+      "firstTool": "look_at_canvas",
+      "askedUser": false,
+      "askCount": 0,
+      "askArgs": [],
+      "optionQuality": [],
+      "correct": false,
+      "askedForReversibleConfirmation": false,
+      "rejectedArgs": [
+        "draft_shots"
+      ],
+      "argsOkFirstTry": false
+    }
+  ],
+  "projectDir": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/askback-real-model-1790009527890/projects/未命名项目 09_22 00_52-mubhglqd-ad1b2453",
+  "importedAssets": 2,
+  "summary": {
+    "rounds": 18,
+    "askedWhenShould": "3/12",
+    "didNotAskWhenShouldNot": "6/6",
+    "questionCardRendered": "3/18",
+    "optionSets": 3,
+    "optionsInRange": "3/3",
+    "optionsDistinct": "3/3",
+    "atMostOneRecommended": "3/3",
+    "fakeOptionSets": 0,
+    "askedForReversibleConfirmation": "0/3",
+    "yesNoNestingSets": 0,
+    "cancelOptionSets": 0,
+    "internalIdentifierSets": 0,
+    "labelTooLongSets": 0,
+    "questionEchoSets": 0,
+    "argsOkFirstTry": "14/18",
+    "askToolArgsRejected": 0,
+    "answeredTurnContinued": [
+      "A1:true"
+    ],
+    "roundErrors": 0
+  },
+  "endedAt": "2026-09-21T17:20:10.239Z"
+}

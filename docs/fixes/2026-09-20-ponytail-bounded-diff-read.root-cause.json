@@ -1,0 +1,142 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-ponytail-bounded-diff-read",
+  "problem_type": "Chunked review loads the whole source before applying its bounded unit invariant",
+  "symptom": "Final core-a review:branch fails before any model call with spawnSync git ENOBUFS for an 8106786-byte unified-80 diff.",
+  "direct_cause": "chunkBranchDiff captures the entire range via execFileSync maxBuffer8064000 and only then splits patches into150KB units.",
+  "class_root": "The boundary limiting review memory/input is downstream of an unbounded aggregate read, so total branch size prevents otherwise bounded processing.",
+  "affected_population": [
+    "Large branches whose aggregate textual diff exceeds the Git capture buffer",
+    "A single enormous text file followed by other changed files; long UTF-8 diff lines"
+  ],
+  "scope_paths": [
+    "scripts/ponytail-review-branch.mjs"
+  ],
+  "entry_points": [
+    "CLI review:branch -> runBranchReview -> chunkBranchDiff",
+    "Direct chunkBranchDiff callers used by original review tests"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal ordering invariant proven by exact failing adapter/log and actual Git branch. Existing Node built-in fs/child_process and original packing/receipt mechanisms suffice; no dependency or protocol is introduced.",
+  "invariants": [
+    "Git range diff is processed in bounded read buffers before model packing; aggregate or single-file size cannot overflow execFileSync stdout capture.",
+    "All changed file boundaries and binary summary remain represented. Original150KB per-model input limit,80 context lines,scope and explicit per-file truncation policy are unchanged.",
+    "Git failure propagates and never produces a pass receipt; private temporary resources are cleaned."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/check-handoff.mjs",
+      "symbol": "runGit"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "runGit"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/check-handoff.mjs",
+      "symbol": "runGit"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "chunkBranchDiff"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "runGit"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "runBranchReview"
+    }
+  ],
+  "door_reduction": {
+    "before": 6,
+    "after": 6,
+    "why_not": "CLI range ingestion and existing Git metadata/receipt readers remain distinct legitimate operations; the check-handoff same-name local helper is unaffected. No second review owner is introduced."
+  },
+  "generality_proof": "The original single chunkBranchDiff owner reads every CLI/direct branch range through the same bounded ingestion, including multiple files, huge single files and UTF-8. No branch/path whitelist or buffer-budget increase.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "chunkBranchDiff",
+      "responsibility": "Consume the Git range before original per-file makeUnit/packUnits without a whole-stdout capture."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/ponytail-review-branch.mjs",
+      "entry_point": "runBranchReview -> chunkBranchDiff",
+      "disposition": "enforced",
+      "evidence": "CLI uses this owner before invoking reviewChunk; original failing command and large real-Git regression exercise it."
+    },
+    {
+      "path": "scripts/ponytail-review-branch.mjs",
+      "entry_point": "summarizeBinaryChanges",
+      "disposition": "not-affected",
+      "evidence": "Reads numstat/raw metadata rather than full binary bytes; existing binary summary is retained with original bound."
+    },
+    {
+      "path": "scripts/check-handoff.mjs",
+      "entry_point": "local runGit",
+      "disposition": "not-affected",
+      "evidence": "Door scanner matches a same-named local helper. It does not import the Ponytail reader or ingest its full branch patch."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any future branch or individual file can exceed the fixed aggregate buffer before the existing chunker is reached.",
+    "same_class_scan": [
+      "Read runGit/chunkBranchDiff/runBranchReview/summarizeBinaryChanges and original large-file,receipt,hook tests.",
+      "node scripts/door-map.mjs chunkBranchDiff runBranchReview runGit --roots=scripts; manually traced check-handoff same-name false positive."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/ponytail-review-branch.mjs",
+    "invariant": "Read large diff output through bounded ingestion before original per-file review units.",
+    "failure_mode": "Git/I/O errors throw before receipt creation; no empty-diff or success fallback.",
+    "exception_policy": "none",
+    "strategy": "Replace the whole-stdout string dependency with native private temporary output and fixed-buffer patch parsing at the original owner. Retain declared oversize truncation with total byte reporting.",
+    "artifacts": [
+      "scripts/ponytail-review-branch.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/ponytail-review-branch.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/ponytail-review-branch.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/ponytail-review-branch.mjs"
+    ],
+    "rationale": "Remove the eager aggregate textDiff/splitFilePatches path; keep one ingestion route and original review/receipt owners."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No new third-party dependency; Git and Node native process/filesystem APIs already power this script.",
+    "exit_criteria": []
+  },
+  "migration": "No app data or user workflow migration. Old deferred receipt remains an honest failed-attempt record until actual branch review completes; no manual pass receipt or hook bypass.",
+  "residual_risks": [
+    "Actual model availability and review content are separate from deterministic ingestion regression; real branch run still required.",
+    "Existing per-file150KB truncation policy remains and must stay explicit in review output.",
+    "Windows execution of this tooling change has not been verified.",
+    "Git metadata commands retain their existing bounded capture and fail closed for extreme path-count output; this repair removes full textual patch buffering, not every unrelated Git command bound."
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/ponytail-review-branch.mjs",
+    "tests": [
+      "scripts/ponytail-review-branch.node-test.mjs"
+    ],
+    "rationale": "The original range-to-review-unit owner must bound input before it packs units."
+  }
+}

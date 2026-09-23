@@ -1,3 +1,4 @@
+import NodeGenerationComposer from './LazyNodeGenerationComposer'
 import { StoryboardOverrideBadge } from './StoryboardOverrideBadge'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
@@ -13,6 +14,7 @@ import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
 import NodeImageEditToolbar from './NodeImageEditToolbar'
 import { NodeResultStack } from './NodeResultStack'
+import { useNodeResultHistory, nodeHasResultStack } from './useNodeResultHistory'
 import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarVariantProvenanceActions } from './NodeFloatingToolbar'
 import { useNodeImageEditing } from './useNodeImageEditing'
 import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
@@ -62,7 +64,6 @@ import {
 import { useNodeVideoHoverPreview } from './useNodeVideoHoverPreview'
 import { NodeLabelRow } from './NodeLabelRow'
 import { NodeInlineImageTitle } from './NodeImagePreviewActions'
-import { useNodeDisplayPrompt } from './useNodeDisplayPrompt'
 import { useNodeMediaMeasurement } from './useNodeMediaMeasurement'
 import { useNodeMediaPreview } from './useNodeMediaPreview'
 export type BaseGenerationNodeProps = {
@@ -77,7 +78,7 @@ export type BaseGenerationNodeProps = {
 const Model3DViewer = lazyWithChunkBoundary('3D 模型预览', () => import('./model3d/Model3DViewer')) // 生成出的 .glb 卡内可旋转预览（R3F）
 const TextDocumentNode = lazyWithChunkBoundary('文本节点编辑器', () => import('./render/TextDocumentNode'))
 const PanoramaViewer = lazyWithChunkBoundary('全景预览', () => import('./PanoramaViewer'))
-const NodeGenerationComposer = lazyWithChunkBoundary('节点生成面板', () => import('./NodeGenerationComposer'))
+
 
 function NodeBodyLoading(): JSX.Element {
   return <div className="h-full w-full rounded-nomi bg-nomi-paper shadow-nomi-md ring-1 ring-inset ring-nomi-line" />
@@ -121,7 +122,8 @@ function BaseGenerationNodeImpl({
   const panoramaFullscreenRef = React.useRef<(() => void) | null>(null)
   const panoramaUploadInputRef = React.useRef<HTMLInputElement | null>(null)
   const [provenanceOpen, setProvenanceOpen] = React.useState(false)
-  const [resultStackOpen, setResultStackOpen] = React.useState(false)
+  const showNodeResultStack = React.useMemo(() => nodeHasResultStack(node), [node])
+  const [resultStackOpen, setResultStackOpen] = useNodeResultHistory({ id: node.id, kind: node.kind, selected: selected && !isMultiSelectActive, available: showNodeResultStack })
   const { openMediaPreview, mediaPreviewControls, mediaPreviewDoubleClick } = useNodeMediaPreview(node, selected && !isMultiSelectActive && !resultStackOpen, () => setProvenanceOpen(true), reportFeedback)
   const sizeBounds = getNodeSizeBounds(node.kind)
 
@@ -208,7 +210,6 @@ function BaseGenerationNodeImpl({
   const shotIdentity = useShotIdentity(node.id)
   // 切片2：镜头「挂了哪些设定卡」——不选中也能一眼看出挂了林夏/咖啡馆（可审计，免数连线）。
   const mountedCards = useMountedCards(node.id)
-  const displayPrompt = useNodeDisplayPrompt(node)
   const hasFrameSourceEdge = useHasFrameSourceEdge(node.id, nodeExecutionKind === 'video') // A15：已连上游边时占位不再喊「拖图」
   const needsFirstFrame = nodeExecutionKind === 'video' && !canGenerate && !isGenerating
   const { handlePanoramaFileChange, handlePanoramaScreenshot } = useNodePanoramaHandlers(node, visualSize, reportFeedback)
@@ -218,12 +219,8 @@ function BaseGenerationNodeImpl({
   // 图片类与素材类共用；编辑产物进入当前节点历史堆叠，并切换为主图。
   const imageEditing = useNodeImageEditing(node, visualSize, reportFeedback)
   const { downloading: panoramaDownloading, download: downloadPanorama } = useResultDownload(node, reportFeedback)
-  const showNodeResultStack =
-    !isCardKind &&
-    !isTextKind &&
-    node.kind !== 'panorama' &&
-    (node.result?.type === 'image' || node.result?.type === 'video') &&
-    Boolean(node.result.url)
+  const showFlowConnectionHandle =
+    node.kind !== 'panorama' && (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind))
 
   return (
     <article
@@ -486,6 +483,7 @@ function BaseGenerationNodeImpl({
           node={node}
           readOnly={readOnly}
           selected={selected && !isMultiSelectActive}
+          open={resultStackOpen}
           onOpenChange={setResultStackOpen}
         />
       ) : null}
@@ -508,10 +506,13 @@ function BaseGenerationNodeImpl({
       ) : null}
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
+      {/* 只读画布不挂、结果堆叠展开时卸载（2026-09-21 收回来的两条）：
+          ① 只读时挂上去会多浮出一张「只读画布」提示卡，那是一张没出过样张的新 UI；
+          ② composer 的 `useComposerViewportPlacement` 是**每帧 rAF 量矩形**的循环，
+             用 invisible 藏起来等于让它在看不见的时候继续每帧 querySelectorAll + getBoundingClientRect。
+          藏不等于卸载——不挂才是不跑。 */}
       {selected && !isMultiSelectActive && !readOnly && !resultStackOpen && nodeHasGenerationComposer(node.kind) ? (
-        <React.Suspense fallback={null}>
-          <NodeGenerationComposer onFeedback={reportFeedback} node={node} visualSize={visualSize} />
-        </React.Suspense>
+        <NodeGenerationComposer onFeedback={reportFeedback} node={node} visualSize={visualSize} readOnly={readOnly} />
       ) : null}
       {selected && !readOnly && !flowManagedLayout
         ? RESIZE_DIRECTIONS.map((direction) => (

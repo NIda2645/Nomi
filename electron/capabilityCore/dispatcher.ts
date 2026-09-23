@@ -26,7 +26,7 @@ import { withPreApprovedPlan, type ProjectGateway } from './gateway'
 import { INTAKE_MAX_QUESTIONS, buildIntakeMessage, buildIntakeQuestions } from './mcpBriefIntake'
 import { isBuiltinMcpClient } from './security'
 import type { CapabilityOriginHost } from './security'
-import { createMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import { classifyMcpGenerationRoute } from './mcpGenerationPolicy'
 import { dispatchSemanticGeneration, guardLegacyGenerationRoute, isSemanticGenerationRoute } from './generationDispatcher'
 import { RpcError, type RpcPublicErrorCode } from './rpcError'
 import { assertOnlyFields, optionalText, requiredIdentifier } from './dispatcherParams'
@@ -34,6 +34,7 @@ import { issueTrustGrantChallenge } from './productionTrustGrantChallenge'
 export { RpcError } from './rpcError'
 export type { RpcPolicyErrorCode, RpcPolicyErrorDetails } from './rpcError'
 import type { ProjectLeaseV2 } from './projectLease'
+import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
 import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from './approvalReceipt'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import type { ProjectSessionAuthority } from './projectSessionAuthority'
@@ -42,16 +43,13 @@ import {
   type IntegrationSessionService,
 } from '../integrationCertification/integrationSession'
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
-import { dispatchModelOnboarding } from './modelOnboarding/dispatch'
+import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
+import { buildOnboardingKit } from './modelOnboarding/kit'
 import { dispatchModelSpec } from './modelSpecRead'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
   (typeof sessionId === 'string' && sessionId.trim() ? sessions.get(sessionId, owner) : sessions.list(owner))
-export function projectIdOf(params: Record<string, unknown>): string {
-  return typeof params.projectId === 'string' ? params.projectId : ''
-}
-
 /**
  * makeGateway：按 projectId 解析该用哪个网关——A 模式（app 开着且该项目正打开）→ 渲染层网关（实时）；
  * 否则 → 磁盘网关（直写盘）。rpcServer 据 isProjectOpen + 渲染层可达性提供；headless host 恒磁盘网关。
@@ -70,7 +68,6 @@ export type DispatchContext = {
   /** Transport-owned authority. Request bodies may provide only an audit label, never trust. */
   origin?: { host: CapabilityOriginHost; actorId?: string }
   /** The frozen server-side generation policy. Omit in legacy callers to build the default snapshot. */
-  generationPolicy?: McpGenerationPolicy
   /** One cohesive, transport-owned project-session authority for every leased MCP capability. */
   projectSession?: Readonly<{
     authority: ProjectSessionAuthority
@@ -79,7 +76,7 @@ export type DispatchContext = {
   /** Optional read-only context seam. No semantic route may fall through to a legacy service. */
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   /** Shared semantic planning/editing seam. MCP and GUI must provide the same handler; no provider call here. */
-  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV2; origin?: { host: CapabilityOriginHost; actorId?: string } }) => unknown | Promise<unknown>
+  generationPlanning?: (input: { capability: string; params: Record<string, unknown>; lease?: ProjectLeaseV2; origin?: { host: CapabilityOriginHost; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } }; storyboardTarget?: GenerationInvocationContext['storyboardTarget'] }) => unknown | Promise<unknown>
   /** Main-process approval-receipt authority. Gate routes verify receipts here; the Run owner consumes them. */
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   /** Run-owned challenge projection. It must recompute model/cost/contract from main-process state. */
@@ -99,8 +96,9 @@ export type DispatchContext = {
   /** Project-owner revision lookup. Receipt bindings never trust a revision supplied by the caller. */
   projectRevisionResolver?: (projectId: string) => number | undefined
   /**
-   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ canvas.addNodes 预批准
-   * 方案门、不再弹渲染层卡（免双问）。只作用于 addNodes 的 confirmPlan，钱路（confirmSpend）不受影响。
+   * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ `canvas.write`
+   * 的 create_canvas_nodes 预批准方案门、不再弹渲染层卡（免双问）。只作用于建节点那一步的 confirmPlan，
+   * 钱路（confirmSpend）不受影响。
    */
   planConfirmed?: boolean
   /**
@@ -113,6 +111,12 @@ export type DispatchContext = {
   integrationSessions?: IntegrationSessionService
   /** GUI-owned credential handoff effect. Called after the durable handoff is queued. */
   openCredentialsInNomi?: (input: { sessionId: string; vendorName: string }) => { opened: boolean } | void | Promise<{ opened: boolean } | void>
+  /**
+   * 用户此刻选的审批档位（宿主持有的那一份快照）。**它只被读，不被这一层解释**——
+   * 「该不该弹卡」全仓只有 `spendDecidedByPolicy` 回答（capabilityApprovalPolicy.ts:144）。
+   * 不传 = 不猜档位 = 照旧弹卡，与 `generationTransportAdapters.decideByPolicyAfterDraft` 同一条纪律。
+   */
+  approvalPolicy?: () => import('../shared/agentCapabilities/capabilityApprovalPolicy').ProjectAgentApprovalPolicy | undefined
 }
 
 const PROJECT_SESSION_RETRY = 'Open a new project session and retry'
@@ -336,8 +340,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       throw projectSessionOpenPublicError(error)
     }
   }
-  const generationPolicy = ctx.generationPolicy ?? createMcpGenerationPolicy()
-  const classifiedRoute = generationPolicy.classifyRoute(method)
+  const classifiedRoute = classifyMcpGenerationRoute(method)
   const legacyRoute = classifiedRoute.kind === 'legacy'
     ? classifiedRoute.route
     : method.startsWith('production.')
@@ -349,7 +352,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
   // 付费门仍 403 回 Nomi）。generationBindingGuard 把通用字段 `gateId` 也列作 marker（防生成路夹带），于是
   // 这条只带 gateId 的门表态被 legacy 防火墙误伤（legacy_path_forbidden）。故此路显式豁免：marker 集不动
   //（生成路仍拦），仅把「决门」这条正当可逆路径放行到它自己的 case 守卫。
-  if (legacyRoute && legacyRoute !== 'production.decide-gate') guardLegacyGenerationRoute(generationPolicy, legacyRoute, params)
+  if (legacyRoute && legacyRoute !== 'production.decide-gate') guardLegacyGenerationRoute(legacyRoute, params)
   if (isSemanticGenerationRoute(method)) return dispatchSemanticGeneration(method, params, ctx)
 
   switch (method) {
@@ -707,23 +710,6 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       const input = documentWriteSemanticInputSchema.parse({ operation: params.operation, content: params.content })
       return writeProjectDocument(lease.projectId, typeof params.documentId === 'string' ? params.documentId : undefined, input.operation, input.content)
     }
-    case 'canvas.addNodes': {
-      // 方案已被协议层 elicitation-first 批准 → 预批准方案门（不再弹渲染层卡，免双问）；否则原网关照常确认。
-      const base = ctx.makeGateway(projectIdOf(params))
-      const gateway = ctx.planConfirmed ? withPreApprovedPlan(base) : base
-      return addProjectNodes(gateway, Array.isArray(params.nodes) ? (params.nodes as never[]) : [], projectIdOf(params))
-    }
-    case 'canvas.connect':
-      return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
-    case 'canvas.setPrompt':
-      return setProjectNodePrompt(
-        ctx.makeGateway(projectIdOf(params)),
-        String(params.nodeId || ''),
-        String(params.prompt || ''),
-        typeof params.title === 'string' ? params.title : undefined,
-      )
-    case 'canvas.deleteNodes':
-      return deleteProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.nodeIds) ? (params.nodeIds as string[]) : [])
     case 'brief.intake': {
       // W3 幕 0：只组题/给默认，**不落任何状态**——真正的「问」由协议层弹 elicitation（enum 候选），
       // 客户端不支持表单时协议层退化成把题面交给模型在对话里一次问全。
@@ -784,14 +770,25 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         params.expectedRevision,
         ctx.origin?.host || 'external',
       )
-    // 接模型：两个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那两个名字同源。
+    // 接入套件：**无前置的只读常量**（schema + 撰写规范 + 两份样例卡）。它不读任何用户数据，
+    // 所以也不要求签名身份——要求它等于把「读一份公开 schema」也挡在门外，而那正是
+    // 2026-09-21 实测里 AI 什么都做不了的那道墙。
+    case 'model.onboarding.kit':
+      return buildOnboardingKit()
+    // 接模型：三个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那几个名字同源。
     case 'model.onboarding.setup':
+    case 'model.onboarding.try':
     case 'model.onboarding.remove': {
       if (ctx.origin?.host === 'external' || !ctx.origin?.host) throw new RpcError('Signed client identity is required', 403)
       return dispatchModelOnboarding(method, params, {
         owner: ctx.origin.host,
         ...(ctx.integrationSessions ? { sessions: ctx.integrationSessions } : {}),
         ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
+        // 试跑走的就是画布那条执行器；这里只是把同一个 runTask 递过去，不另起一条。
+        runTask: ctx.runTask,
+        // 「该不该问人」由用户的档位决定，不由入口决定：档位原样往下递，判据只有
+        // `spendDecidedByPolicy` 一处。宿主没给 = 不猜 = 照旧问人。
+        ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
       })
     }
     default:

@@ -76,7 +76,7 @@ try {
   await recorded(planner.received, 'draft request')
   await recorded(plannerDraft.received, 'generation draft result')
   plannerDraft.release({ type: 'tool', id: GENERATE_CALL, name: 'generate', args: { operationId } })
-  await recorded(plannerDone.received, 'draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   // ① announce 了，槽里就必须有卡。
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
@@ -106,6 +106,7 @@ try {
   await expect(card, '已经在等的那张付费卡不因切档而消失（2026-09-11 用户拍板）').toBeVisible()
   await clickOrFail(card.locator(INTERVENTION_REJECT), '丢弃这份草稿')
   await expectAbsent(card, { provenBy: cardProof, message: '丢弃之后槽里不再留着这张卡' })
+  await recorded(plannerDone.received, 'generate returns once the card was closed')
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length,
     { timeout: DEFAULT_TIMEOUT_MS }).toBe(0)
   await expect(panelError, '清空之后面板依然是可用的面板').toHaveCount(0)

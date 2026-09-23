@@ -12,6 +12,7 @@ vi.mock('./availableModels', async (importOriginal) => ({
 import { applyCanvasToolCall, resetClientIdRegistry, resolveCanvasToolNodeId } from './applyCanvasToolCall'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { indexMaterializedNodes, materializationKey, readNodeInputStamp } from './materializationStamp'
+import { listAvailableModelsForAgent } from './availableModels'
 
 describe('materialization stamp (pure)', () => {
   it('章的身份是两段：同 clientId 落在不同 operation 下是两个节点', () => {
@@ -88,6 +89,33 @@ describe('create_canvas_nodes idempotency lives in the write boundary', () => {
     expect(useGenerationCanvasStore.getState().nodes).toHaveLength(2)
     // 边在补建之后仍然连得上（复用节点已登记进注册表）。
     expect(useGenerationCanvasStore.getState().edges).toHaveLength(1)
+  })
+
+  it.each(['catalog', 'target'] as const)('concurrent repeated placement after %s wait creates one batch and one edge', async (boundary) => {
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const waiting = vi.fn(async () => { await held })
+    vi.mocked(listAvailableModelsForAgent).mockImplementation(async () => { await waiting(); return [] })
+    const input = args()
+    const concurrentInput = boundary === 'catalog'
+      ? {...input,nodes:input.nodes.map(node=>({...node,modelKey:'test-model'}))}
+      : input
+    const invoke = () => applyCanvasToolCall('create_canvas_nodes', concurrentInput, undefined, undefined, undefined, undefined,
+      boundary === 'target' ? waiting : undefined)
+    try {
+      const first = invoke()
+      const second = invoke()
+      expect(waiting).toHaveBeenCalledTimes(2)
+      release()
+      const results = await Promise.all([first,second]) as Array<{createdNodeIds:string[];clientIdToNodeId:Record<string,string>}>
+      expect(results.flatMap(result=>result.createdNodeIds)).toHaveLength(2)
+      expect(results[0].clientIdToNodeId).toEqual(results[1].clientIdToNodeId)
+      expect(useGenerationCanvasStore.getState().nodes).toHaveLength(2)
+      expect(useGenerationCanvasStore.getState().edges).toHaveLength(1)
+    } finally {
+      release()
+      vi.mocked(listAvailableModelsForAgent).mockResolvedValue([])
+    }
   })
 
   it('不带章的节点不受影响（agent 直接建卡照旧每次都建）', async () => {

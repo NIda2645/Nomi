@@ -1,4 +1,5 @@
 import { hasRealCharacterReferences, normalizeStoryboardAnchorDefaults, validateAnchorModelFit } from './storyboardAnchorPolicy'
+import { getUndoJournalGeneration } from '../events/canvasUndoJournal'
 import { captureCurrentProjectCanvasReadSurfaceBinding } from '../../project/projectCanvasReadSurface'
 import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type {
@@ -227,6 +228,7 @@ export async function applyCanvasToolCall(
   canWrite?: () => boolean,
   documentId?: string,
   storyboardId?: string,
+  assertTargetCurrent?: () => Promise<void>,
 ): Promise<unknown> {
   const assertWritable = () => {
     if (canWrite) assertTurnCanWrite(canWrite)
@@ -292,14 +294,25 @@ export async function applyCanvasToolCall(
   if (operation === 'propose_storyboard_plan') {
     // 规划写入唯一 owner 并同步表节点投影；不生成媒体。间接画布写也继承本提议的上下文。
     // 校验失败 throw → 调用方映射成 tool error,回喂 LLM 自我修正(与 gate deny 同语义)。
-    const parsedPlan = parseStoryboardPlan(record)
+    const before = useWorkbenchStore.getState()
+    const targetDocumentId = documentId ?? before.activeDocumentId
+    const sourceDocument = before.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const sourceDesign = storyboardId ? before.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    const canvasGeneration = getUndoJournalGeneration()
+    // The command discriminator belongs to this boundary, not author content.
+    const { operation: _operation, ...authorPlan } = record
+    const parsedPlan = parseStoryboardPlan(authorPlan)
     const plan = hasRealCharacterReferences(parsedPlan)
       ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
       : parsedPlan
     const store = useWorkbenchStore.getState()
-    // P4:按 documentId 存方案。documentId 由调用方在发起拆镜头时捕获，异步期间切文档不串稿。
-    // 缺 documentId（如旧调用方）回退 activeDocumentId，保证至少落到当前激活文档。
-    const targetDocumentId = documentId ?? store.activeDocumentId
+    const currentDocument = store.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const currentDesign = storyboardId ? store.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    if (getUndoJournalGeneration() !== canvasGeneration
+      || (currentDocument && currentDocument !== sourceDocument)
+      || (currentDesign && currentDesign !== sourceDesign)) {
+      throw new SurfacePortWireError('capability_target_stale')
+    }
     if (!store.workbenchDocuments.some((document) => document.id === targetDocumentId)) {
       return {
         status: 'obsolete',
@@ -331,6 +344,18 @@ export async function applyCanvasToolCall(
 
   if (operation === 'create_canvas_nodes') {
     const requested = Array.isArray(record.nodes) ? record.nodes : []
+    // Finish all asynchronous reads before checking stamps. Lookup and creation
+    // must share one synchronous segment so concurrent retries see each other.
+    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
+    const needsModels = requested.some(
+      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
+    )
+    // 裸 modelKey（没带 vendor）落哪家：与模型框回显同一把尺，要用户排的供应商顺序（buildModelEntryIndex 注释）。
+    const entryByKey = needsModels
+      ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
+      : buildModelEntryIndex([])
+    if (assertTargetCurrent) await assertTargetCurrent()
+    assertWritable()
     // 幂等（判据的唯一 owner 在这条写边界，不在调用方）：带物化章的节点，章已经在画布上就**不再建
     // 第二个**，直接把已有节点 id 回给调用方并登记进 clientId 注册表（后续连边/set_prompt 照样指得到）。
     // 此前 capabilityApplyHandler 与 multiShotCanvasLanding 各自手写了一份同样的去重（P1 违规）：
@@ -359,14 +384,6 @@ export async function applyCanvasToolCall(
       if (requestedAnchorCount !== null && index < requestedAnchorCount) retainedAnchorCount += 1
       return true
     })
-    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
-    const needsModels = incoming.some(
-      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
-    )
-    // 裸 modelKey（没带 vendor）落哪家：与模型框回显同一把尺，要用户排的供应商顺序（buildModelEntryIndex 注释）。
-    const entryByKey = needsModels
-      ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
-      : buildModelEntryIndex([])
     const total = incoming.length
     // T4 轨迹分层布局：层由 kind 推导（参考/关键帧/视频三列），原点避让画布已有节点
     // 包围盒（修审计 bug D）；单层/不可推导退网格（同样避让）。忽略 LLM 像素坐标。
@@ -493,6 +510,7 @@ export async function applyCanvasToolCall(
         ...(meta ? { meta } : {}),
       }
     })
+    assertWritable()
     const created = inputs.length > 0 ? inCtx(() => generationCanvasTools.create_nodes(inputs)) : []
     // 复用的（本次没建、章已在画布上的）先进映射，再让本次真建的覆盖同名键。
     const clientIdToNodeId: Record<string, string> = { ...reusedByClientId }

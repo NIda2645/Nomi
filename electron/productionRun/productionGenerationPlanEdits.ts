@@ -1,3 +1,4 @@
+import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // 生成计划的**候选补丁**与**撤未点头的授权**（`generation.patch` / `generation.revise` /
 // `generation.trial_narrow` 三条命令共用的那一段写法）。
 //
@@ -89,6 +90,9 @@ export function unsealedGenerationPlanFields(plan: ProductionGenerationPlan, now
     ...plan,
     state: "draft",
     candidate: { ...plan.candidate, sealedContractHash: undefined },
+    ...(plan.shots ? { shots: plan.shots.map((shot) => ({ ...shot, contract: undefined,
+      candidate: { ...shot.candidate, sealedContractHash: undefined }, approvedReceiptId: undefined,
+      approvedAt: undefined, approvedAttempt: undefined })) } : {}),
     contract: undefined,
     planHash: undefined,
     authorizationEnvelope: undefined,
@@ -189,3 +193,74 @@ function candidateIdentities(
   for (const shot of plan.shots ?? []) put(shot.shotId, shot.candidate);
   return entries;
 }
+
+/**
+ * 「这个 Run 还有没有没结清的负债」——重开一次付费请求之前唯一要回答的问题。
+ *
+ * 三个子句分别管三件事，原来挤在一个表达式里，覆盖面互相重叠（`cancelled_remote` 在第三句里被放行，
+ * 又会被第一句在 reserved > 0 时拦住），读代码判断不出「哪些状态允许重开」：
+ *
+ *  ① **预留还挂着，而且有作业还没落定**。一次 ready/adopted 的产出证明执行结束了，**不证明账结清了**，
+ *     它的预留要继续当累计负债；但只要还有作业没落定，这笔预留就既不能释放也不能重算。
+ *  ② **账本自己记着未结清**（供应商已经收了钱、我们还没对上）。
+ *  ③ **还有作业停在既不成功也不是「供应商已明确失败」的状态**。`cancelled_remote` 和
+ *     `needs_attention + provider_task_failed` 是两种**已经有结论**的收尾，它们不挡重开。
+ */
+export function hasUnsettledLiability(run: ProductionRun): boolean {
+  const unresolvedReservation = run.budget.reserved > 0 && run.jobs.some(job => !["ready", "adopted"].includes(job.status));
+  return unresolvedReservation || run.budget.unsettled > 0 || run.jobs.some((job) =>
+    !["ready", "adopted", "cancelled_remote"].includes(job.status)
+    && !(job.status === "needs_attention" && job.errorCode === "provider_task_failed"));
+}
+
+/**
+ * 撤回**这一次出价**，计划留着：回到 draft / 未 present（裁决 C，2026-09-22 二次裁决改窄）。
+ *
+ * 三种回答者共用这一条边：报价卡上的 ×（2026-09-22 下午用户拍板「× 只关这次请求，节点和草稿都留着」）、
+ * 用户在卡待决时打字、以及「问这句话的那个回合没了」（应用重启 / 按停止 / 关窗）。三种都不是
+ * 「不要这份草稿」，所以镜头 / 参数 / 锚点一个不动，画布占位节点一个不删，
+ * 只把「正摆在用户面前等他点头」这件事收回去：卡不再投影，封印了的先把那道还在等的门撤掉。
+ * 用户再说一句「生成」= 对同一份草稿重新出价（新的 planVersion、新的 quoteId）。
+ *
+ * 计划级终态（`generation.cancel`）只剩用户自己不要这份草稿那一条路（左侧栏删草稿 / 外部宿主撤草稿）。
+ *
+ * 「未 present」用的就是 `cardHidden` 的本义（草稿还没摆到用户面前），不新增字段。
+ * 幂等：已经是未 present / 已提交 / 已终结 / 门已经决过（钱的事已经定了）→ 原样返回。
+ */
+export function withdrawGenerationPresentation(current: ProductionRun, now: string): ProductionRun {
+  const plan = current.generationPlan;
+  if (!plan) throw new Error("Generation plan not found");
+  if (plan.state === "draft") {
+    if (plan.cardHidden === true) return current;
+    return { ...current, generationPlan: { ...plan, cardHidden: true, updatedAt: now }, updatedAt: now };
+  }
+  if (plan.state !== "sealed") return current;
+  const gate = current.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
+  if (!gate || gate.status !== "waiting") return current;
+  const revoked = revokeWaitingGenerationAuthorization(current, plan, now, "Withdraw");
+  return { ...current, ...revoked,
+    generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true, updatedAt: now }, updatedAt: now };
+}
+
+/** The complete draft survives changes to the current spend request. */
+export function presentGenerationPlan(current: ProductionRun, requested: unknown, now: string): ProductionRun {
+  const plan = current.generationPlan;
+  if (!plan) throw new Error("Generation plan not found");
+  const scope = resolveGenerationShotScope(plan.shots?.map((shot) => shot.shotId) ?? [plan.candidate.candidateId], requested);
+  let reopened = current;
+  if (plan.state === "sealed") {
+    reopened = { ...current, ...revokeWaitingGenerationAuthorization(current, plan, now, "Present") };
+  } else if (plan.state !== "draft") {
+    if (hasUnsettledLiability(current)) throw new Error("generation_reconciliation_required: previous batch is unsettled or in flight");
+  }
+  const { cardHidden: _cardHidden, ...visible } = unsealedGenerationPlanFields(plan, now);
+  return { ...reopened,
+    // A settled batch can open a fresh request even after completion/cancellation. Jobs remain immutable.
+    ...(plan.state === "submitted" || plan.state === "cancelled" ? { status: "draft" as const } : {}),
+    planVersion: current.planVersion + 1,
+    generationPlan: { ...visible,
+      candidate: visible.shots?.find(shot => scope.includes(shot.shotId))?.candidate ?? visible.candidate,
+      ...(visible.shots ? { shots: visible.shots.map((shot) => ({ ...shot, included: scope.includes(shot.shotId) })) } : {}),
+      updatedAt: now }, updatedAt: now };
+}
+

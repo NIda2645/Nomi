@@ -130,6 +130,10 @@ export const zhRuntime = {
     generationGateTitle: '允许 Nomi 生成这一镜？',
     generationGateBatchTitle: '允许 Nomi 生成这一批镜头？',
     generationGateMessage: '允许 Nomi 在当前项目使用模型 {{model}}，最多花费 {{cost}}，{{shot}}？',
+    // 目录算不出价：**不印 ¥0**（三种可能里只有它会被读成「这次免费」）。措辞沿用 2026-09-10
+    // 已拍板付费卡的两句话：「暂时算不出价格」与「花多少事后才知道」。
+    generationGateMessageUnknownCost: '允许 Nomi 在当前项目使用模型 {{model}}，{{shot}}？暂时算不出价格——要继续就得接受「花多少事后才知道」。',
+    generationGateCostUnknown: '暂时算不出价格',
     generationGateShotFallback: '生成这一镜',
     generationGateProject: '项目',
     generationGateModel: '模型',
@@ -311,6 +315,8 @@ export const enRuntime = {
     generationGateTitle: 'Allow Nomi to generate this shot?',
     generationGateBatchTitle: 'Allow Nomi to generate this batch of shots?',
     generationGateMessage: 'Allow Nomi to use {{model}} in the current project, spend up to {{cost}}, and {{shot}}?',
+    generationGateMessageUnknownCost: 'Allow Nomi to use {{model}} in the current project and {{shot}}? Price unavailable right now — continuing means you only learn the cost afterwards.',
+    generationGateCostUnknown: 'Price unavailable right now',
     generationGateShotFallback: 'generate this shot',
     generationGateProject: 'Project',
     generationGateModel: 'Model',

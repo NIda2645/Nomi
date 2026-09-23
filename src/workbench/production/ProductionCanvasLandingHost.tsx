@@ -137,6 +137,9 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
           try {
             const run = await productionRunApi.read(projectId, runId)
             if (!run) return
+            // × 之后计划已是真终态（`cancelled`）：落地投影本来就不认它，不需要再补一趟 detach 去「抢在落地前面」。
+            // 这个观察者只为**还活着的计划**服务——用户手动删占位 / 整批 ⌘Z，让 Run 记下「这个节点是他自己拿走的」。
+            if (run.generationPlan?.state === 'cancelled') return
             await productionRunApi.command(projectId, runId, {
               commandId: `detach-canvas:${runId}:${nodeIds.slice().sort().join(',')}`.slice(0, 200),
               expectedRevision: run.revision,

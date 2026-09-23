@@ -12,6 +12,7 @@ import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboard
 import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
 import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
 
+
 /**
  * 分镜行的**执行态 derive 层**（纯函数，v5 B）：行状态不是存的，是从「plan × 画布节点」推出来的
  * ——生成中/已生成/失败读绑定节点，等参考卡/缺必填读 plan×锚节点，锁定读节点 frozen 标记

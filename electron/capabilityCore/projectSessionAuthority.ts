@@ -4,7 +4,7 @@ import { CANVAS_WRITE_CAPABILITY } from '../shared/agentCapabilities/canvasWrite
 import { DOCUMENT_READ_CAPABILITY } from '../shared/agentCapabilities/documentRead'
 import { DOCUMENT_WRITE_CAPABILITY } from '../shared/agentCapabilities/documentWrite'
 import type { McpConnectionContext } from './mcpConnectionContext'
-import type { McpGenerationCapability, McpGenerationPolicy } from './mcpGenerationPolicy'
+import { MCP_GENERATION_CAPABILITIES, type McpGenerationCapability } from './mcpGenerationPolicy'
 import type {
   ProjectLeaseAuthority,
   ProjectLeaseExpectation,
@@ -48,7 +48,6 @@ export type ProjectSessionOpenResult = Readonly<{
 export type ProjectSessionAuthorityDeps = Readonly<{
   leaseAuthority: ProjectLeaseAuthority
   resolveProjectSelection: ProjectSelectionResolver
-  generationPolicy: McpGenerationPolicy
 }>
 
 export class ProjectSessionRequestError extends Error {
@@ -79,7 +78,7 @@ export function scopeForGenerationCapability(capability: McpGenerationCapability
 }
 
 /** The session bootstrap can only grant server-owned, non-submit scopes. */
-export function deriveProjectSessionScopes(policy: McpGenerationPolicy): readonly string[] {
+export function deriveProjectSessionScopes(): readonly string[] {
   // The same project session also authorizes the registered editing ports for the reversible project
   // surfaces: canvas, document and timeline. Each of those still has its own human gate one layer in
   // (canvas → plan confirm, document → `documentConfirmed`, timeline → `planConfirmed`, all minted
@@ -112,12 +111,11 @@ export function deriveProjectSessionScopes(policy: McpGenerationPolicy): readonl
     MODEL_ONBOARDING_SETUP_CAPABILITY.requiredScope,
     MODEL_ONBOARDING_REMOVE_CAPABILITY.requiredScope,
   ])
-  const snapshot = policy.snapshot()
-  if (snapshot.flagEnabled) {
-    for (const capability of snapshot.effectiveScope) {
-      if (capability === 'start') continue
-      scopes.add(scopeForGenerationCapability(capability))
-    }
+  // 生成面的 scope 无条件发（2026-09-21 删掉 env flag 之后没有「这个面开没开」这个问题了）。
+  // `start` 仍然不发：提交是花钱边界，它要的是一张人证，不是一张租约。
+  for (const capability of MCP_GENERATION_CAPABILITIES) {
+    if (capability === 'start') continue
+    scopes.add(scopeForGenerationCapability(capability))
   }
   return Object.freeze([...scopes].sort())
 }
@@ -134,7 +132,7 @@ function normalizedProjectHint(value: string): string {
 }
 
 export function createProjectSessionAuthority(deps: ProjectSessionAuthorityDeps) {
-  const effectiveScope = deriveProjectSessionScopes(deps.generationPolicy)
+  const effectiveScope = deriveProjectSessionScopes()
 
   async function selectionFor(
     source: ProjectSelectionSource,

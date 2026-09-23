@@ -31,8 +31,18 @@ export type ModelCatalogHealthIssueDto = {
   kind?: BillingModelKind
 }
 
+/**
+ * 目录为什么只能读不能改。`null` = 一切正常。
+ * `newer_on_disk` 是本次事故里那条：盘上的配置由更新版本写入，当前版本读得出来但不许改——
+ * 界面必须明说「你的配置没有丢」，而不是渲染成一个空列表。
+ */
+export type ModelCatalogReadOnlyDto =
+  | { reason: 'newer_on_disk'; diskVersion: number; appVersion: number }
+  | { reason: 'unreadable_file'; detail: string; quarantinedPath: string | null }
+
 export type ModelCatalogHealthDto = {
   ok: boolean
+  readOnly?: ModelCatalogReadOnlyDto | null
   counts: {
     vendors: number
     enabledVendors: number
@@ -72,6 +82,15 @@ export type ModelCatalogModelDto = {
   labelZh: string
   kind: BillingModelKind
   enabled: boolean
+  /**
+   * 「最近一次对账时，供应商的清单里没有列出它」——一条**旁注**，不是停用。
+   *
+   * 2026-09-21 起后台对账不再因为清单里查不到就替用户把模型关掉（主进程侧
+   * `modelListReconciliation` 的返回类型已经构造不出 `enabled`）：清单抖动是常态，
+   * 鉴权降级、网关抖动、上游改分页形状都会回一份不完整的清单，拿它去标「用户不要它了」
+   * 就是把一次抖动写成状态。所以这里带出来的只是**这一句话**，界面如实说，不拦使用。
+   */
+  unlisted?: boolean
   published: boolean
   publishedModes: ProfileKind[]
   /**

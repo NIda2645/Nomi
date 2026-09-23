@@ -15,7 +15,7 @@ import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallT
 import { localizeTaskAsset } from "./assets/localizeTaskAsset";
 export { localizeTaskAsset };
 import { localizedTaskAssetFileName } from "./assets/localizedAsset";
-import { type AuthType, authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline";
+import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline"; import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
 import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation"; import type { AntigravityProcessStage } from "./catalog/antigravityCatalog";
 import { executeTextTask } from "./textTaskRunner";
 import { runAudioTask } from "./audioTaskRunner";
@@ -54,7 +54,7 @@ import { extractVendorExtraHeaders, readCatalog } from "./catalog/catalogStore";
 import { unlocalizedTaskAsset } from "./tasks/unlocalizedTaskAsset";
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectTaskMapping } from "./catalog/types";
-import { applyHeadlessParamDefaults, imageEditGuardError } from "./catalog/taskParams";
+import { applyHeadlessParamDefaults, imageEditGuardError, projectOutboundPrompt } from "./catalog/taskParams";
 import { modelModeBodies } from "./catalog/modelCatalogListing";
 import { runCustomCallTask } from "./catalog/customCallDispatch";
 import { resolveCustomCallExecution } from "./catalog/customCallMode";
@@ -166,12 +166,6 @@ export function admitTask(id: string, entry: CachedTask): void {
 // 可执行模型解析下沉到 catalog/executableModel（R12 净减）；re-export 保住 textTaskRunner/taskResultQuery 既有 import 面。
 export { findExecutableModel, findExecutableModelForTask } from "./catalog/executableModel";
 import { findExecutableModel } from "./catalog/executableModel";
-
-// Thin Vendor→primitive adapters over the shared requestPipeline auth logic
-// (the shared module is electron-free and doesn't know the Vendor shape).
-function authHeaders(vendor: Vendor, apiKey: string): Record<string, string> {
-  return buildAuthHeaders(vendor.authType as AuthType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined);
-}
 
 // billingKindForTaskKind 下沉到 catalog/types（R12 净减）；re-export 保住既有消费方 import 面。
 export { billingKindForTaskKind } from "./catalog/types";
@@ -325,6 +319,8 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const effectiveVendorKey = vendor.key;
   const mapping = stagedCandidate?.mapping || findTaskMapping(effectiveVendorKey, kind, modelKey, modeId);
   request.extras = applyHeadlessParamDefaults(request.extras, (model?.meta as { archetypeId?: string } | undefined)?.archetypeId, kind, effectiveVendorKey, mapping?.create?.defaultParams, mapping?.create?.body, model.modelKey);
+  // A5：@ 内联参考在发出去之前投影成 @image1/@video1。判据与注释住 taskParams（引擎 A 只有这一个出口）。
+  request.prompt = projectOutboundPrompt(request.prompt, request.extras);
   const customCall = resolveCustomCallExecution(model as Model, request, mapping);
   const customCallScript = customCall?.script || "";
   const guardError = imageEditGuardError(kind, request, Boolean(mapping) || Boolean(customCallScript), model.labelZh || model.modelKey, customCallScript ? undefined : mapping?.create?.body, modelModeBodies(readCatalog().mappings, effectiveVendorKey, modelKey, (model as Model).modelAlias), { vendorKey: effectiveVendorKey, modelKey: model.modelKey });
@@ -431,7 +427,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const fallbackExtraHeaders = extractVendorExtraHeaders(vendor);
   const fallbackHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    ...authHeaders(vendor, apiKey),
+    ...buildAuthHeaders(vendorAuthSpec(vendor), apiKey),
     ...(fallbackExtraHeaders || {}),
   };
   const providerResponse = await requestJson(

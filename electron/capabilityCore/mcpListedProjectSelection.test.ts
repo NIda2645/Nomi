@@ -15,7 +15,6 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { McpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProjectLeaseAuthority } from './projectLease'
 import { createProjectLeaseStore } from './projectLeaseStore'
 import { createProjectSessionAuthority } from './projectSessionAuthority'
@@ -49,7 +48,6 @@ const connection: McpConnectionContext = Object.freeze({
 function makeServerInstance() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-listed-project-'))
   tempDirs.push(dir)
-  const generationPolicy = createMcpGenerationPolicy({ env: {}, checkpoints: {} })
   const leaseAuthority = createProjectLeaseAuthority({
     macKey: 'listed-project-authority-key',
     store: createProjectLeaseStore({ filePath: path.join(dir, 'leases.json'), macKey: 'listed-project-store-key' }),
@@ -62,7 +60,6 @@ function makeServerInstance() {
   })
   const authority = createProjectSessionAuthority({
     leaseAuthority,
-    generationPolicy,
     resolveProjectSelection: async ({ projectHint }) => ({
       projectId: projectHint as string,
       immutableProjectUuid: `uuid-${projectHint}`,
@@ -77,7 +74,6 @@ function makeServerInstance() {
       runTask: vi.fn(),
       makeGateway: vi.fn(),
       productionRuns: {},
-      generationPolicy,
       projectSession: { authority, connection },
     },
   }

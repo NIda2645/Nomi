@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_RUN_TOAST_ID, describeBlockedNotice, runPlanWithToasts } from './batchPlanPreview'
 import type { DependencyWavePlan } from '../runner/dependencyWaves'
-import { runGenerationNodesByPlan } from '../runner/generationRunController'
+import { runGenerationNodesByPlan } from '../runner/generationRunWaves'
 import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -33,8 +33,11 @@ vi.mock('../store/generationCanvasStore', () => ({
 vi.mock('../agent/shotVerifyStore', () => ({ verifyShotsAndReport: vi.fn() }))
 
 vi.mock('../runner/generationRunController', () => ({
-  runGenerationNodesByPlan: vi.fn(async () => ({ totalCount: 1, successes: [], failures: [] })),
   spendCostKindForNodes: vi.fn(() => 'image'),
+}))
+
+vi.mock('../runner/generationRunWaves', () => ({
+  runGenerationNodesByPlan: vi.fn(async () => ({ totalCount: 1, successes: [], failures: [] })),
 }))
 
 function plan(over: Partial<DependencyWavePlan>): DependencyWavePlan {
@@ -185,6 +188,8 @@ describe('runPlanWithToasts concurrency', () => {
     expect(runGenerationNodesByPlan).toHaveBeenLastCalledWith(expect.any(Object), {
       target: testProjectBinding('project-a'),
       grantId: 'retry-grant',
+      assertAuthorCurrent: undefined,
+      assertApprovedInputs: expect.any(Function),
       concurrency: 4,
       // 重试走 confirmAndRunPlan → 重新解析托管（不是把上一轮的决定翻出来复用）。
       // 本用例的节点没有本地素材，所以正确答案是 not-needed：压根不碰公共托管。

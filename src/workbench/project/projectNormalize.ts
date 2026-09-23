@@ -101,17 +101,26 @@ export function normalizePayload(input: unknown): WorkbenchProjectPayload {
     ? payload.storyboardDesignsByDocumentId
     : (() => {
         const migrated: Record<string, StoryboardDesign[]> = {}
+        // 迁移读不动一份旧方案时，用户失去的是整份分镜——那件事不许静默发生。schema 这一侧
+        // 已经回到「剥离未知键」（见 storyboardPlanSchema 头注释），所以走到这里只剩真正残缺的
+        // 记录；至少把是谁、缺哪个字段留在控制台，别让它变成「打开项目分镜就没了」的谜。
+        const reportUnreadablePlan = (documentId: string, issues: readonly { path: PropertyKey[]; message: string }[]): void => {
+          console.warn('storyboard plan migration skipped an unreadable plan',
+            { documentId, issues: issues.slice(0, 8).map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`) })
+        }
         const legacyEntries = legacyMap
           ? Object.entries(legacyMap).flatMap(([documentId, value]) => {
               if (!value || typeof value !== 'object') return []
               const entry = value as Record<string, unknown>
               const plan = storyboardPlanSchema.safeParse(entry.plan)
-              if (!plan.success) return []
+              if (!plan.success) { reportUnreadablePlan(documentId, plan.error.issues); return [] }
               return [[documentId, { plan: plan.data, committed: entry.committed === true }] as const]
             })
           : (() => {
+              if (raw[legacyPlanKey] === undefined) return []
               const plan = storyboardPlanSchema.safeParse(raw[legacyPlanKey])
-              return plan.success ? [[activeDocumentId, { plan: plan.data, committed: raw[legacyCommittedKey] === true }] as const] : []
+              if (!plan.success) { reportUnreadablePlan(activeDocumentId, plan.error.issues); return [] }
+              return [[activeDocumentId, { plan: plan.data, committed: raw[legacyCommittedKey] === true }] as const]
             })()
         for (const [documentId, entry] of legacyEntries) {
           const document = normalizedDocuments.find((item) => item.id === documentId)

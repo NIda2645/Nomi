@@ -124,6 +124,22 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
     en: 'This action is missing required fields (all of them are listed in the message)',
     recover: [{ zh: '把消息里列出的字段一次补齐后重试', en: 'Send every field listed in the message, then retry' }],
   },
+  // 2026-09-21：接入路径上最常撞的码，22 条 ERROR_HINT 里**一条都没有**——于是外部 AI
+  // 拿到的只有一行裸码：没有字段名、没有合法值、没有下一步（实测 K6，4 次调用全栽在这里）。
+  // 同一个 MCP 面上因此有两套错误质量：`nomi_model_setup` 那一档信封齐全，掉进本函数这一档
+  // 就只剩一个词。补这条不是补文案，是把那半条路接回来。
+  //
+  // 合并 ① 同时删掉了本处另一条 `feature_disabled` 的人话条目：那个码连同 env flag、三段式
+  // rollout 一起整条删除了（外部宿主发起生成现在默认就是开的），给一个抛不出来的码写人话，
+  // 只会让这张表变成失真的第二份清单——而外部 AI 正是照着它学「Nomi 会怎么拒绝我」。
+  capability_input_invalid: {
+    zh: '参数不合法（被拒的字段名在 details 里；最常见的是把读侧的 vendorKey/modelKey 直接当成了生成侧的 providerId/modelId）',
+    en: 'The arguments were rejected (the field names are in details; the usual cause is sending the read side\'s vendorKey/modelKey where the generation side wants providerId/modelId)',
+    recover: [
+      { zh: '用 nomi_read（target=models）重读，按它印出来的字段名原样填', en: 'Re-read with nomi_read (target=models) and use the exact field names it prints' },
+      { zh: 'details 里点名了哪个字段就改哪个，别整包重猜', en: 'Fix the field details names; do not re-guess the whole payload' },
+    ],
+  },
   integration_session_limit_reached: {
     zh: '这台机器上没做完的接入会话已经占满上限，再建一条就会挤掉一条在做的活',
     en: 'This machine is at its limit of unfinished model setups; another one would evict work in progress',
@@ -144,7 +160,9 @@ const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: 
 
 /** User projection deliberately has only four actions; protocol codes stay in structuredContent for machines. */
 const USER_ACTION_HINT: Record<string, { action: string; zh: string; en: string }> = {
-  human_approval_required: { action: 'in_nomi', zh: '请在 Nomi 确认这次生成。', en: 'Confirm this generation in Nomi.' },
+  // 2026-09-21：这个码不止用在生成上（降档、闸决定都会抛它），原话「确认这次生成」会让助手
+  // 去找一张根本不会出现的生成确认卡。改成中性的一句：要你本人在 Nomi 里确认一次。
+  human_approval_required: { action: 'in_nomi', zh: '这一步要你本人在 Nomi 里确认一次。', en: 'This step needs you to confirm it once in Nomi.' },
   receipt_invalid: { action: 'in_nomi', zh: '这次确认已失效，请在 Nomi 重新确认。', en: 'This confirmation is no longer valid; confirm again in Nomi.' },
   receipt_expired: { action: 'in_nomi', zh: '确认已过期，请在 Nomi 重新确认。', en: 'The confirmation expired; confirm again in Nomi.' },
   lease_required: { action: 'reselect_project', zh: '请重新选择当前项目。', en: 'Select the current project again.' },
@@ -193,7 +211,10 @@ const POLICY_CODES = new Set<string>([
   ...PROJECT_SESSION_CODES,
   ...INTEGRATION_ERROR_CODES,
   'mcp_connection_unauthenticated',
-  'legacy_path_forbidden', 'feature_disabled', 'phase_not_ready', 'not_ready',
+  // 2026-09-21：`feature_disabled` / `phase_not_ready` 随 env flag 与三段式 rollout 一起删除
+  // （`rpcError.ts` 的 `RpcPolicyErrorCode` 就是那份真相源）。`not_ready` 留着，但它现在只说
+  // 「这个装配点没装那个处理器」。
+  'legacy_path_forbidden', 'not_ready',
   'human_approval_required', 'receipt_invalid', 'receipt_expired',
 ])
 
@@ -226,7 +247,7 @@ export function buildToolErrorOutcome(
   const policyDetails = structuredCode && POLICY_CODES.has(structuredCode)
     ? {
         ...(nextAction ? { nextAction } : {}),
-        ...(typeof errorRecord.phase === 'string' ? { phase: errorRecord.phase } : {}),
+        // `phase` 随三段式 rollout 一起删除（2026-09-21）：没有生产者了，再透传就是永远为空的一格。
         ...(typeof errorRecord.capability === 'string' ? { capability: errorRecord.capability } : {}),
       }
     : {}

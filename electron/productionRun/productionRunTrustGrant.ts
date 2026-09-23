@@ -64,8 +64,13 @@ export function readTrustGrantBinding(run: ProductionRun): TrustGrantBinding {
   if (plan?.costCertainty === "partial") {
     throw new TrustGrantUnavailableError("At least one shot has no known price; the ceiling cannot be stated honestly");
   }
+  if (envelope.budget.unknownJobCount > 0) {
+    // 「以后 ¥X 内不再问」这条闸的全部意义就是那个 X。未知价开闸（2026-09-21）让**这一次**的
+    // 生成不再被价格挡住，但它给不出 X——所以信任降档对未知仍然 fail-closed，并且是**故意**的。
+    throw new TrustGrantUnavailableError("At least one shot has no known price; the ceiling cannot be stated honestly");
+  }
   const shots = envelope.jobs.map((job, index) => {
-    if (!Number.isFinite(job.price.maximum) || job.price.maximum < 0) {
+    if (job.price.maximum === null || !Number.isFinite(job.price.maximum) || job.price.maximum < 0) {
       throw new TrustGrantUnavailableError(`Shot price is unknown: ${job.shotId}`);
     }
     return {

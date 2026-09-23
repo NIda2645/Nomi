@@ -139,6 +139,27 @@ describe('removeShotBinding / reorderShotBinding', () => {
 })
 
 describe('missingRequiredSlots — 按声明算，绑定能让它变绿', () => {
+  it('planned video keyframes satisfy only the first-frame slot across declared modes', () => {
+    const planned = shotOf({ shotKind: 'video', keyframe: { enabled: true } })
+    expect(missingRequiredSlots(SEEDANCE_FIRST, planned, [])).toEqual([])
+    expect(missingRequiredSlots(VEO_FRAME, planned, [])).toEqual([])
+    expect(missingRequiredSlots(SEEDANCE_FIRSTLAST, planned, []).map(slot => slot.kind)).toEqual(['last_frame'])
+    expect(missingRequiredSlots(NANO_EDIT, planned, []).map(slot => slot.kind)).toEqual(['image_ref'])
+  })
+
+  it('disabled keyframes and image shots do not supply a planned first frame', () => {
+    for (const shot of [shotOf({ keyframe: { enabled: false } }), shotOf({ shotKind: 'image', keyframe: { enabled: true } })]) {
+      expect(missingRequiredSlots(SEEDANCE_FIRST, shot, []).map(slot => slot.kind)).toEqual(['first_frame'])
+    }
+    expect(missingRequiredSlots(SEEDANCE_FIRST, shotOf({ keyframe: { enabled: true } }), [])).toEqual([])
+  })
+
+  it('a planned first frame and a bound first frame do not count as two sources', () => {
+    const mode = { ...SEEDANCE_FIRST, slots: SEEDANCE_FIRST.slots.map(slot => ({ ...slot, min: 2 })) }
+    const planned = shotOf({ keyframe: { enabled: true }, referenceBindings: { first_frame: [{ url: 'frame.png' }] } })
+    expect(missingRequiredSlots(mode, planned, []).map(slot => slot.kind)).toEqual(['first_frame'])
+  })
+
   it('Seedance 首尾帧：空 → 两个都缺；填了首帧 → 只剩尾帧；都填 → 不缺', () => {
     expect(missingRequiredSlots(SEEDANCE_FIRSTLAST, shotOf(), []).map((s) => s.kind)).toEqual(['first_frame', 'last_frame'])
     const half = shotOf({ referenceBindings: { first_frame: [{ url: 'a.png' }] } })

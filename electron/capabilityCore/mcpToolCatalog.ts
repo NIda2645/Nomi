@@ -74,6 +74,7 @@ const SEMANTIC_EDITING_TOOL_TITLES = {
   nomi_layout_read: { 'zh-CN': '读取工作区布局', en: 'Read workspace layout' },
   nomi_layout_write: { 'zh-CN': '调整工作区布局', en: 'Change workspace layout' },
   nomi_model_setup: { 'zh-CN': '接入或调整模型', en: 'Set up or adjust a model connection' },
+  nomi_try_model: { 'zh-CN': '试跑一次（会花钱）', en: 'Try this model once (spends credit)' },
   nomi_remove_provider: { 'zh-CN': '永久删除连接或模型', en: 'Permanently delete a connection or model' },
 } as const
 /** M2 语义编辑工具名单（真相源），供测试派生完整目录范围而非手抄排除规则。 */
@@ -104,6 +105,11 @@ const READ_METHOD_BY_TARGET: Record<string, string> = {
   // 「接到哪一步了」。旧名 `integration` 与旧工具 `nomi_integration` 一起退役（#754）：
   // 那条路上模型要同时学「integration 是名词还是动词」，而它其实只是一次**接入**的状态。
   setup: 'integration.get',
+  // 「写一份配置需要的东西」。**无任何前置**：schema、撰写规范、两份实测过的样例卡，
+  // 三样都是进程常量、零用户数据、零凭据。2026-09-21 之前它们挂在会话的 `compileRequest` 上，
+  // 而那要等 `credentialStatus=ready` —— AI 在人贴 key 之前一件事都做不了，实测四个模型
+  // 一个都没走到「声明」那一步。让它们等 key 从来没换来任何安全。
+  onboarding_kit: 'model.onboarding.kit',
 }
 /** nomi_read 的 target 集合（供 mcpProtocol 判 widget/canonical 投影时复用，真相单一）。 */
 export const READ_TARGETS = Object.freeze(Object.keys(READ_METHOD_BY_TARGET))
@@ -121,9 +127,11 @@ const READ_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      target: { type: 'string', enum: READ_TARGETS, description: '读取：canvas/projects/models/model/generation_context/operation/run/run_events/artifact/artifact_content/setup。模型目录分两档（渐进披露）：target=models 给**薄名单**（标识/类型/可用性/有哪些模式与变体/吃不吃参考），选定后用 target=model + modelId 取**那一个**的完整说明书（每个模式的参数、取值范围、参考槽、变体）。别为了拿参数去拉整份名单。target=projects 每行带一个短 projectSelectionHandle，原样喂给 nomi_session_open 即续接该项目。' },
-      modelId: { type: 'string', description: 'target=model 必填：薄名单里那一行的 modelId。' },
-      vendor: { type: 'string', description: 'target=model 可选：同名模型来自多家时用它指定哪一家。' },
+      // 对外 payload 有只减不增的棘轮（check:mcp-payload）。两条 lane 各写了一版这段散文，2026-09-22 总合并
+      // 把两版的**事实**合起来、话压到最短：合法值本来就在 `enum` 里，散文里再抄一遍是纯重复。
+      target: { type: 'string', enum: READ_TARGETS, description: '模型分两档：models 薄名单；model + modelId 取那一个的说明书（参数/取值/参考槽/变体），别为拿参数拉整份名单。projects 每行带 projectSelectionHandle，喂给 nomi_session_open 续接。' },
+      modelId: { type: 'string', description: 'target=model 必填：薄名单里的 modelId。' },
+      vendor: { type: 'string', description: 'target=model 可选：同名模型多家时指定哪家。' },
       projectId: { type: 'string' },
       leaseHandle: { type: 'string', description: 'target=canvas/generation_context/operation 必填。' },
       runId: RUN_EVENT_FIELDS.runId,
@@ -152,6 +160,7 @@ const READ_TOOL = {
         return { projectId: a.projectId, leaseHandle: a.leaseHandle, operationId: a.operationId }
       case 'projects':
       case 'models':
+      case 'onboarding_kit':
         return {}
       case 'model':
         return { modelId: a.modelId, ...(typeof a.vendor === 'string' ? { vendor: a.vendor } : {}) }
@@ -270,7 +279,9 @@ const RUN_START_TOOL = {
       trustLevel: {
         type: 'string',
         enum: ['key_confirm', 'budget_only', 'confirm_all'],
-        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。要求直接出时用 budget_only。',
+        // 2026-09-21：原话是「要求直接出时用 budget_only」——而 `nomi_run_start` 从那天起**不再收**
+        // 更松的档位（调用方自报的值不是用户的决定）。照旧话做的助手会撞 403，然后以为是自己填错了。
+        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。这里只收默认或更严的档；budget_only 要用户授权：先建 Run，再 nomi_run_control action=set_trust（会在 Nomi 里弹一次确认）。',
       },
     },
     required: ['projectId', 'playbook', 'brief'],

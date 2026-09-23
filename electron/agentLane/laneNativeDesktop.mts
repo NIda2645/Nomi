@@ -20,7 +20,7 @@ export async function openLaneNativeDesktop(input: {
   skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>);
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
-  /** 见 laneNativeAssembly：上层注入，lane 不 import 目录。 */
+  /** 见 laneNativeAssembly：上层注入，lane 不 import 目录；不注入由那一层落成具名常量。 */
   modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
 }) {
   const source = input.skills;

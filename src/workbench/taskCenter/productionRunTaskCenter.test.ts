@@ -12,7 +12,7 @@ function summary(patch: Partial<ProductionRunSummary> = {}): ProductionRunSummar
     stageId: 'generate',
     playbook: { name: 'brand.promo', version: '1.0.0' },
     origin: { host: 'codex' },
-    budget: { currency: 'CNY', authorized: 20, reserved: 5, actual: 3, unsettled: 0 },
+    budget: { currency: 'CNY', authorized: 20, reserved: 5, actual: 3, unsettled: 0, unknownInFlight: 0 },
     updatedAt: '2026-08-09T02:00:00.000Z',
     ...patch,
   }

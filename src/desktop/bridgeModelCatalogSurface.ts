@@ -33,8 +33,10 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
   deleteModels: (targets: { vendorKey: string; modelKey: string }[]) => void
   upsertMapping: (payload: unknown) => unknown
   deleteMapping: (id: string) => void
-  exportPackage: (params?: unknown) => unknown
-  importPackage: (payload: unknown) => unknown
+  /** 导出一份配置包；**不收参数**——密钥永远不跟着包走。 */
+  exportPackage: () => unknown
+  /** 导入；第二个参数是冲突处置（缺省 = 保留本机已有）。旧 preload 会忽略它。 */
+  importPackage: (payload: unknown, options?: unknown) => unknown
   testMapping: (id: string, payload: unknown) => Promise<unknown>
   fetchDocs: (payload: unknown) => Promise<unknown>
   probeComfyui: (baseUrl?: string) => Promise<

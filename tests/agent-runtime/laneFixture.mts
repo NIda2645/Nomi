@@ -3,10 +3,11 @@
 // 只有**远端模型**是假的（复用 `httpFixture.mts` 那个真 HTTP 服务器）。pi 的循环、
 // 会话落盘、工具校验、闸全部是真的跑——把它们也 mock 掉，这套测试就只能证明
 // 「我写的 mock 和我写的断言一致」。
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
+import { laneSessionsRoot } from '../../electron/agentLane/laneSession.mjs';
 import { openLane } from '../../electron/agentLane/laneHost.mjs';
 
 import { createDocumentLaneTools, type DocumentLanePort } from '../../electron/agentLane/laneDocumentTools.js';
@@ -108,4 +109,22 @@ export async function createLaneFixture(
       return lane;
     },
   };
+}
+
+/** Read the actual native log, never the derived trace. Fixtures here own one session. */
+export async function readFixtureNativeEntries(projectDir: string): Promise<Array<{
+  id: string; seq: number; type: string; customType?: string; data?: unknown; message?: { role?: string };
+}>> {
+  const root = laneSessionsRoot(projectDir);
+  const files: string[] = [];
+  for (const slug of await readdir(root)) {
+    for (const name of await readdir(join(root, slug))) {
+      if (name.endsWith('.jsonl')) files.push(join(root, slug, name));
+    }
+  }
+  if (files.length !== 1) throw new Error(`Expected one native session, found ${files.length}`);
+  return (await readFile(files[0]!, 'utf8')).trim().split('\n').flatMap(line => {
+    const transaction = JSON.parse(line);
+    return Array.isArray(transaction) ? transaction : [transaction];
+  }).filter(row => row.kind === 'entry');
 }

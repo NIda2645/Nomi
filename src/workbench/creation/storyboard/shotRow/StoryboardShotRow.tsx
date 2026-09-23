@@ -110,6 +110,7 @@ type Props = {
   onKeyboardMove?: ((direction: -1 | 1) => void) | undefined
   onKeyboardFocus?: ((direction: -1 | 1) => void) | undefined
   onRerunFreshRefs?: (() => void) | undefined
+  onResolveOverride?: (field: string, action: 'adopt' | 'discard') => void
   onUpdate: (patch: PlanShotPatch) => void
   onToggleAnchor: (anchorId: string) => void
   onRemove: () => void
@@ -348,7 +349,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
 
   const prompt = (
     <div className="flex min-w-0 flex-col gap-1.5" data-storyboard-prompt-block="true">
-      {exec?.node ? <StoryboardOverrideBadge node={exec.node} onResolve={(field, action) => resolveStoryboardOverride(exec.node!.id, field, action)} /> : null}
+      {exec?.node ? <StoryboardOverrideBadge node={exec.node} onResolve={(field, action) => props.onResolveOverride ? props.onResolveOverride(field, action) : resolveStoryboardOverride(exec.node!.id, field, action)} /> : null}
       {exec?.ignoredAnchors?.length ? (
         <span className="text-micro text-nomi-ink-40" data-storyboard-anchor-ignored={shot.index} title={exec.ignoredAnchors.map(anchor => `${anchor.name}: ${anchor.reason}`).join('\n')}>
           {t(resolved?.archetype.modes.every(mode => anchorsConsumedBy(mode).includes('none'))

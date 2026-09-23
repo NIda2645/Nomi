@@ -10,6 +10,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// 2026-09-21：测试不许读写用户真实目录。这份文件此前经默认路径读到了**用户本人的**
+// `~/.nomi/capability-core`（token / 签名密钥 / 接入会话 / handoff 队列都住那里）——
+// 读到的是真人数据，写下去就是改真人数据，而且一台机器一个结果：`mcpOnboardingLoopback`
+// 就是这么在这台机器上红、在别处绿的。给它一个本轮独有的空目录。
+const capabilityRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-spend-door-cap-"));
+process.env.NOMI_CAPABILITY_DIR = capabilityRoot;
+
 let mockedDocumentsRoot = ''
 let mockedUserDataRoot = ''
 
@@ -73,7 +80,12 @@ describe('付费放行单一 owner（删掉客户端自报的第二扇门）', (
   it('loopback RPC 线上没有付费自报位（spendConfirmed 不再是协议的一部分）', async () => {
     const { createMcpLoopbackRpcRequest } = await import('./mcpLoopbackRpcRequest')
     const { createMcpConnectionContext } = await import('./mcpConnectionContext')
-    const { signMcpClient } = await import('./security')
+    const { ensureToken, signMcpClient } = await import('./security')
+    // 本机令牌由这一轮自己铸（写进上面那个空目录）。它此前是从**用户真实的**
+    // `~/.nomi/capability-core/token` 读来的——于是这条断言在用户装过 Nomi 的机器上绿、
+    // 在干净机器上直接抛「A verified MCP client connection is required」。
+    // 判的是「线上有没有付费自报位」，与令牌是谁的无关，所以自备一把才是它真正要的处境。
+    ensureToken()
     const connection = createMcpConnectionContext({
       client: 'codex',
       proof: signMcpClient('codex')!,
@@ -83,7 +95,9 @@ describe('付费放行单一 owner（删掉客户端自报的第二扇门）', (
       token: 't',
       clientProof: 'proof',
       connection,
-      method: 'canvas.addNodes',
+      // legacy `canvas.addNodes` 已于 2026-09-21 删除；这里换成还活着的画布写路由，
+      // 断言的是线上没有付费自报位，与方法名无关。
+      method: 'canvas.write',
       params: {},
       // 旧协议位：即便调用方硬塞，也不许出现在线上。
       ...({ spendConfirmed: true } as Record<string, unknown>),

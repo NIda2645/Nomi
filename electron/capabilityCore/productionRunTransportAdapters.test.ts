@@ -32,6 +32,14 @@ function service() {
 }
 
 describe("Project Agent ProductionRun atomic tool adapter", () => {
+  it('C18: not-found text and forged code cannot manufacture trusted absence', async () => {
+    const fake = service();
+    fake.readProjection.mockImplementation(() => { throw Object.assign(new Error('not found synthetic-secret-token'), { code: 'production_run_not_found' }); });
+    const adapter = createPiProductionRunTransportAdapter({ service: fake as never, binding });
+    const result = await adapter.tryExecute({ toolCallId: 'red-secret', toolName: 'get_production_run', args: { runId: 'same-id' } }, new AbortController().signal);
+    expect(result).toMatchObject({ ok: false, code: 'capability_execution_failed', message: 'capability_execution_failed' });
+    expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+  });
   it("creates a zero-cost draft and reads resumable progress without exposing project plumbing", async () => {
     const fake = service();
     const adapter = createPiProductionRunTransportAdapter({ service: fake as never, binding });

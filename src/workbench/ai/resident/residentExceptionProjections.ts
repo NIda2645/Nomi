@@ -18,23 +18,8 @@ export type ResidentCandidate = Readonly<{
   imageUrl?: string
 }>
 
-export type ResidentQuestionOption = Readonly<{ id: string; label: string }>
-
 export function residentVisibleCandidates(candidates: readonly ResidentCandidate[], expanded: boolean): readonly ResidentCandidate[] {
   return candidates.slice(0, expanded ? 6 : 3)
-}
-
-export function residentQuestionOptions(rawArgs: unknown): ResidentQuestionOption[] {
-  if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return []
-  const options = (rawArgs as Record<string, unknown>).options
-  if (!Array.isArray(options)) return []
-  return options.flatMap((option, index) => {
-    if (typeof option === 'string' && option.trim()) return [{ id: `option-${index + 1}`, label: option }]
-    if (!option || typeof option !== 'object' || Array.isArray(option)) return []
-    const record = option as Record<string, unknown>
-    const label = typeof record.label === 'string' ? record.label : typeof record.title === 'string' ? record.title : ''
-    return label.trim() ? [{ id: typeof record.id === 'string' ? record.id : `option-${index + 1}`, label }] : []
-  })
 }
 
 export function residentPlanShots(rawArgs: unknown): ResidentPlanShot[] {

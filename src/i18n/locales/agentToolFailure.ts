@@ -16,6 +16,12 @@
 // 写法约束（R2 用户视角 + 极简）：每句只说**发生了什么** + **他现在该做什么**。
 // 不出现 lane / port / capability / binding 这些我们内部的词——用户那里没有这些指称。
 export const zhAgentToolFailure = {
+  task_reference_required: '任务信息不完整。请刷新任务或画布后重试，尚未取消任何任务。',
+  generation_operation_not_found: '当前项目中没有找到这个生成任务。请刷新任务信息，先核对原任务，勿重复付费。',
+  production_run_not_found: '当前项目中没有找到这个任务。请刷新任务信息，勿重复提交。',
+  generation_execution_failed: '生成操作未能完成，原任务可能已经提交。请先查询并核对结果，勿再次付费。',
+  generation_not_started: '这一步没成，Nomi 没有开始生成，也没有花钱。',
+  generation_provider_unavailable: '当前生成服务无法执行这一步。请检查服务设置，并先核对已有任务。',
   // ── 传输：端口身份那一族 ──
   surface_port_stale: '刚才那一步针对的位置已经变了，没有执行。回到那个页面再让它做一次。',
   surface_port_suspended: '那个页面现在不接受改动，先把它打开再让它做。',
@@ -41,7 +47,6 @@ export const zhAgentToolFailure = {
   tool_timed_out: '这一步等太久被停掉了。看一眼当前状态再决定要不要重来。',
   wrong_verb: '它用错了方式，这一步没有执行——它会换一种再来。',
   generation_surface_unavailable: '生成面现在用不了，打开画布再让它生成。',
-  user_sees_spend_card: '这次生成要花钱，已经给你一张确认卡，答了它才会开始。',
   // ── 兜底 ──
   unknown: '这一步没做成（{{code}}）。看一眼当前状态，再决定要不要让它重试。',
   // ── 结构化细节（不是散文，是把信封里的字段摆出来）──
@@ -51,6 +56,12 @@ export const zhAgentToolFailure = {
 } as const
 
 export const enAgentToolFailure = {
+  task_reference_required: 'The task reference is incomplete. Refresh tasks or the canvas and try again. No task was cancelled.',
+  generation_operation_not_found: 'This generation task was not found in the current project. Refresh task information and reconcile the original task before paying again.',
+  production_run_not_found: 'This task was not found in the current project. Refresh task information before submitting again.',
+  generation_execution_failed: 'The generation action could not complete. The original task may already be submitted. Query and reconcile it before paying again.',
+  generation_not_started: 'That did not go through. Nomi has not started generating and has not spent anything.',
+  generation_provider_unavailable: 'The generation service cannot perform this action. Check its settings and reconcile existing tasks first.',
   surface_port_stale: 'What that step targeted has changed, so nothing ran. Go back to that page and ask again.',
   surface_port_suspended: 'That page is not accepting changes right now. Open it, then ask again.',
   surface_port_unavailable: 'The page it needs to change is not open. Open it, then ask again.',
@@ -73,7 +84,6 @@ export const enAgentToolFailure = {
   tool_timed_out: 'That step took too long and was stopped. Check the current state before retrying.',
   wrong_verb: 'It used the wrong action, so nothing ran — it will try a different one.',
   generation_surface_unavailable: 'Generation is unavailable right now. Open the canvas, then ask it to generate.',
-  user_sees_spend_card: 'That generation costs credits. A confirmation card is waiting for your answer.',
   unknown: 'That step did not go through ({{code}}). Check the current state before deciding whether to retry.',
   fieldExpected: '{{field}}: expected {{expected}}, got {{received}}',
   allowedValues: 'Allowed: {{values}}',

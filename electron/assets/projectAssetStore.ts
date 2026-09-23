@@ -1,3 +1,4 @@
+import { assetIdentityOf, findProjectAssetById } from "./assetReferenceIdentity";
 import { contentHashForFile, isContentAddressedUpload, persistUploadBytes, persistUploadFile, storedAssetRecord } from './uploadContentStore';
 import { captureAssetWriteContext, type AssetWriteContext } from './assetWriteContext';
 import type { ProjectBinding } from '../shared/projectBinding';
@@ -727,14 +728,6 @@ function projectAgentAttachmentClaim(value: unknown): ProjectAgentAttachmentClai
  * 版本恒 1 是内容寻址的推论，不是占位：素材按 `sha256/<hash>/` 落盘，改内容就是另一份素材、另一个
  * `assetId`（`core.ts` 导入那条路同样写死 1）。
  */
-function assetIdentityOf(asset: LocalAssetRecord): Readonly<{ contentHash: string; version: 1 }> | undefined {
-  const absolutePath = asset.data.absolutePath;
-  if (typeof absolutePath !== "string" || !fs.existsSync(absolutePath)) return undefined;
-  return Object.freeze({
-    contentHash: crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex"),
-    version: 1 as const,
-  });
-}
 
 /**
  * assetId → 可引用身份。**模型只知道 assetId**（`look_at_media` 返回的就是它），内容哈希与版本
@@ -748,7 +741,7 @@ export function resolveProjectAssetReferenceIdentity(
 ): Readonly<{ contentHash: string; version: 1 }> | undefined {
   const wanted = assetId.trim();
   if (!wanted) return undefined;
-  const asset = listProjectAssets({ projectId, limit: 500 }).items.find((item) => item.id === wanted);
+  const asset = findProjectAssetById(wanted, cursor => listProjectAssets({ projectId, limit: 500, cursor }));
   if (!asset || asset.projectId !== projectId) return undefined;
   return assetIdentityOf(asset);
 }

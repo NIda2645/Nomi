@@ -163,12 +163,27 @@ export type ModelCatalogImportPackageDto = {
   }>
 }
 
+export type ModelCatalogImportConflictDto = {
+  kind: 'vendor' | 'model' | 'mapping'
+  vendorKey: string
+  modelKey?: string
+  mappingId?: string
+}
+
 export type ModelCatalogImportResultDto = {
   imported: {
     vendors: number
     models: number
     mappings: number
   }
+  /** 本机已经有同一条、因此**没有被动过**的数量。导入是合并不是覆盖。 */
+  kept: {
+    vendors: number
+    models: number
+    mappings: number
+  }
+  /** 冲突清单：界面据此告诉用户「这几条我保留了你现在的，没有替换」。 */
+  conflicts: ModelCatalogImportConflictDto[]
   errors: string[]
 }
 
@@ -263,12 +278,25 @@ export async function deleteModelCatalogMapping(id: string): Promise<void> {
   requireDesktopRuntime('model catalog').modelCatalog.deleteMapping(id)
 }
 
-export async function exportModelCatalogPackage(params?: { includeApiKeys?: boolean }): Promise<ModelCatalogImportPackageDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage(params) as ModelCatalogImportPackageDto
+/**
+ * 导出一份可搬走的配置包。**不带参数 = 永不含密钥材料**（明文与 safeStorage 密文都不含，
+ * 理由与实现都在 `electron/catalog/catalogPackageFormat.ts`）。
+ * 密钥不跟着包走是刻意的：包会被发群里、贴进对话、留在下载目录，而密钥一旦出门就收不回来。
+ * 导入方在自己机器上逐条补 key，那一步只花十秒。
+ */
+export async function exportModelCatalogPackage(): Promise<ModelCatalogImportPackageDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.exportPackage() as ModelCatalogImportPackageDto
 }
 
-export async function importModelCatalogPackage(payload: ModelCatalogImportPackageDto): Promise<ModelCatalogImportResultDto> {
-  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload) as ModelCatalogImportResultDto
+/**
+ * 导入一份配置包。**默认合并、不覆盖**：同名条目保留本机已有的，冲突照实列出来交给用户。
+ * 只有他明说「用包里的覆盖」才传 `conflictPolicy: 'replace'`。
+ */
+export async function importModelCatalogPackage(
+  payload: ModelCatalogImportPackageDto,
+  options?: { conflictPolicy?: 'keep' | 'replace' },
+): Promise<ModelCatalogImportResultDto> {
+  return requireDesktopRuntime('model catalog').modelCatalog.importPackage(payload, options) as ModelCatalogImportResultDto
 }
 
 export async function fetchModelCatalogDocs(payload: { url: string }): Promise<ModelCatalogDocsFetchResultDto> {

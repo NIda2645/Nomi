@@ -17,6 +17,7 @@ import {
   receiptPath,
   resolveBranchRange,
   reviewChunk,
+  runGit,
   runBranchReview,
   verifyPushReceipt,
 } from './ponytail-review-branch.mjs'
@@ -148,6 +149,123 @@ test('单个提交太大按文件切；单个文件仍太大就截断——绝�
   assert.equal(hugeChunks[0].truncated, true)
   assert.match(hugeChunks[0].text, /TRUNCATED/)
   assert.ok(Buffer.byteLength(hugeChunks[0].text, 'utf8') <= MAX_REVIEW_DIFF_BYTES)
+})
+
+test('超过 8 MB 的真实多文件 diff 全部分块，末尾文件保留且失败块不发收据', (t) => {
+  const root = makeRepository(t)
+  const names = Array.from({ length: 90 }, (_, i) => `part-${String(i).padStart(3, '0')}.txt`)
+  for (const name of names) fs.writeFileSync(path.join(root, name), `${name}\n${'x'.repeat(99)}\n`.repeat(900))
+  fs.writeFileSync(path.join(root, 'zz-tail.txt'), 'TAIL MUST BE REVIEWED\n')
+  git(root, ['add', '.'])
+  git(root, ['commit', '--quiet', '-m', 'large aggregate diff'])
+  const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
+  const diffFile = path.join(root, 'actual.diff')
+  const fd = fs.openSync(diffFile, 'w')
+  try {
+    execFileSync('git', ['diff', '--no-ext-diff', '--unified=80', `${range.mergeBase}..${range.headSha}`, '--'], {
+      cwd: root, stdio: ['ignore', fd, 'pipe'],
+    })
+  } finally { fs.closeSync(fd) }
+  assert.ok(fs.statSync(diffFile).size > 8_064_000, 'fixture must cross the original aggregate buffer')
+
+  const chunks = chunkBranchDiff({ repoRoot: root, ...range })
+  const labels = chunks.flatMap((chunk) => chunk.text.split('\n').filter((line) => line.startsWith('### ')))
+  assert.deepEqual(labels, [...names, 'zz-tail.txt'].map((name) => `### ${range.mergeBase}..${range.headSha} · ${name}`))
+  assert.ok(chunks.every((chunk) => !chunk.truncated && Buffer.byteLength(chunk.text) <= MAX_REVIEW_DIFF_BYTES))
+  assert.match(chunks.at(-1).text, /TAIL MUST BE REVIEWED/)
+  const fake = fakeRunner({ report: (call) => call === 1 ? 'Lean already. Ship.' : 'invalid report' })
+  const outcome = runBranchReview({ repoRoot: root, env: envFor(root), spawnSyncImpl: fake.spawnSyncImpl })
+  assert.equal(outcome.ok, false)
+  assert.equal(fake.calls.length, 2)
+  assert.equal(readReceipt(root), null)
+})
+
+test('超过 8 MB 的单行 UTF-8 文件有界截断、计数准确、保留尾文件且清理私有临时文件', (t) => {
+  const root = makeRepository(t)
+  commit(root, 'huge.txt', '汉🙂'.repeat(1_200_000) + '\n', 'huge UTF-8 line')
+  commit(root, 'zz-tail.txt', 'TAIL AFTER HUGE FILE\n', 'tail')
+  const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
+  const temporary = []
+  const mkdtemp = fs.mkdtempSync
+  t.mock.method(fs, 'mkdtempSync', (...args) => {
+    const directory = mkdtemp(...args)
+    temporary.push(directory)
+    if (process.platform !== 'win32') assert.equal(fs.statSync(directory).mode & 0o777, 0o700)
+    return directory
+  })
+  const chunks = chunkBranchDiff({ repoRoot: root, ...range, runGit: (cwd, args, options) => {
+    if (process.platform !== 'win32' && options?.stdoutFd !== undefined) {
+      assert.equal(fs.fstatSync(options.stdoutFd).mode & 0o777, 0o600)
+    }
+    return runGit(cwd, args, options)
+  } })
+  assert.equal(chunks.length, 2)
+  assert.equal(chunks[0].truncated, true)
+  assert.equal(chunks[1].truncated, false)
+  const hugePrefix = 'diff --git a/huge.txt b/huge.txt\nnew file mode 100644\nindex 0000000..'
+  assert.ok(chunks[0].text.includes(hugePrefix))
+  const patchHeader = chunks[0].text.slice(chunks[0].text.indexOf('diff --git'), chunks[0].text.indexOf('+汉'))
+  const originalBytes = Buffer.byteLength(patchHeader) + 1 + 7 * 1_200_000
+  assert.ok(chunks[0].text.includes(`[TRUNCATED: ${originalBytes} bytes of diff;`))
+  for (const chunk of chunks) {
+    assert.ok(Buffer.byteLength(chunk.text) <= MAX_REVIEW_DIFF_BYTES)
+    assert.doesNotMatch(chunk.text, /\uFFFD/)
+  }
+  assert.match(chunks[1].text, /TAIL AFTER HUGE FILE/)
+  assert.ok(temporary.length > 0, 'real diff must use private disk output before bounded reads')
+  assert.ok(temporary.every((directory) => !fs.existsSync(directory)))
+})
+
+test('Git diff 失败即使已写部分输出也不能生成 pass 收据，临时输出仍清理', (t) => {
+  const root = makeRepository(t)
+  commit(root, 'a.txt', 'a\n', 'work')
+  const temporary = []
+  const mkdtemp = fs.mkdtempSync
+  t.mock.method(fs, 'mkdtempSync', (...args) => {
+    const directory = mkdtemp(...args)
+    temporary.push(directory)
+    return directory
+  })
+  assert.throws(() => runBranchReview({
+    repoRoot: root,
+    env: envFor(root),
+    spawnSyncImpl: () => assert.fail('failed Git must not invoke the reviewer'),
+    runGit: (cwd, args, options) => {
+      if (args.includes('--unified=80')) {
+        if (options?.stdoutFd !== undefined) fs.writeSync(options.stdoutFd, 'diff --git a/a.txt b/a.txt\n+partial\n')
+        return runGit(cwd, ['diff', 'not-an-existing-git-object', '--'], options)
+      }
+      return runGit(cwd, args, options)
+    },
+  }), /git diff/)
+  assert.equal(readReceipt(root), null)
+  assert.ok(temporary.length > 0)
+  assert.ok(temporary.every((directory) => !fs.existsSync(directory)))
+})
+
+test('有界读取保留原 80 行上下文、UTF-8 字节、二进制摘要和 runGit 注入契约', (t) => {
+  const root = makeRepository(t)
+  const lines = Array.from({ length: 200 }, (_, i) => `context ${i}\n`)
+  commit(root, 'tracked.txt', lines.join(''), 'context baseline')
+  git(root, ['branch', '-f', BASE_REF, 'HEAD'])
+  lines[100] = 'a' + '🙂'.repeat(6) + '\n'
+  commit(root, 'tracked.txt', lines.join(''), 'middle change')
+  commit(root, 'z.bin', Buffer.from([0, 1, 2, 3]), 'binary addition')
+  const range = resolveBranchRange({ repoRoot: root, env: envFor(root) })
+  const rangeSpec = `${range.mergeBase}..${range.headSha}`
+  const raw = git(root, ['diff', '--no-ext-diff', '--unified=80', rangeSpec, '--'])
+  const chunks = chunkBranchDiff({ repoRoot: root, ...range })
+  assert.equal(chunks.length, 1)
+  for (const patch of raw.split(/^(?=diff --git )/m).map((patch) => patch.trim())) {
+    assert.ok(chunks[0].text.includes(patch), 'bounded reads must preserve each full small patch byte for byte')
+  }
+  assert.match(chunks[0].text, /@@ -21,161 \+21,161 @@/)
+  assert.match(chunks[0].text, /BINARY: added z\.bin \(4 B\)/)
+  assert.deepEqual(chunkBranchDiff({
+    repoRoot: root,
+    ...range,
+    runGit: (cwd, args, options) => runGit(cwd, args, options),
+  }), chunks, 'synchronous runGit injection must forward the stdout descriptor')
 })
 
 test('空范围不跑模型，但仍发一张收据', (t) => {

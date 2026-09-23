@@ -14,6 +14,14 @@ export type DialogRequest = {
   tone?: DialogTone
   placeholder?: string
   initialValue?: string
+  /**
+   * 确认框里的一个勾选项（默认不勾）。
+   *
+   * 为什么放进这只原语而不是各页自己画一个：需要它的都是「同一个动作有两种后果」的确认——
+   * 导入配置就是（默认保留本机已有，勾上才用包里的覆盖）。各页自己画，意味着每一处都要
+   * 重新想一遍遮罩、焦点、ESC、按钮顺序；而这四件事正是 confirmDialog 存在的理由。
+   */
+  toggle?: { label: string }
   resolve: (value: boolean | string | null) => void
 }
 
@@ -47,6 +55,30 @@ export function confirmDialog(options: {
   })
 }
 
+/**
+ * 带一个勾选项的确认框。取消时 `confirmed=false`，此时 `toggled` 没有意义、恒为 false。
+ * 与 `confirmDialog` 是同一条渲染管线（同一个 Host、同一只 DialogRequest），不是第二套弹窗。
+ */
+export function confirmDialogWithToggle(options: {
+  title: string
+  message?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+  tone?: DialogTone
+  toggleLabel: string
+}): Promise<{ confirmed: boolean; toggled: boolean }> {
+  const { toggleLabel, ...rest } = options
+  return new Promise((resolve) => {
+    submit({
+      kind: 'confirm',
+      ...rest,
+      toggle: { label: toggleLabel },
+      resolve: (value) => resolve({ confirmed: value !== false && value !== null, toggled: value === 'toggle-on' }),
+    })
+  })
+}
+
 /** 提示框（替代 window.alert）：仅一个「知道了」键。 */
 export function alertDialog(options: { title: string; message?: string; confirmLabel?: string }): Promise<void> {
   return new Promise((resolve) => {
@@ -60,6 +92,14 @@ export function promptDialog(options: {
   message?: string
   placeholder?: string
   initialValue?: string
+  /**
+   * 确认框里的一个勾选项（默认不勾）。
+   *
+   * 为什么放进这只原语而不是各页自己画一个：需要它的都是「同一个动作有两种后果」的确认——
+   * 导入配置就是（默认保留本机已有，勾上才用包里的覆盖）。各页自己画，意味着每一处都要
+   * 重新想一遍遮罩、焦点、ESC、按钮顺序；而这四件事正是 confirmDialog 存在的理由。
+   */
+  toggle?: { label: string }
   confirmLabel?: string
 }): Promise<string | null> {
   return new Promise((resolve) => {

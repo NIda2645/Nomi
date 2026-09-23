@@ -76,8 +76,12 @@ export function resolveAnchoredPlacement(input: {
   const aboveSpace = clamp((anchor.top - gap - aboveClearance) - stage.top, 0, stageHeight)
   // 先要下方（阅读顺序），下方装不下才翻上去；两边都装不下就取大的那侧并压高度。
   const side: AnchoredPlacement['side'] = belowSpace >= Math.min(height, stageHeight) || belowSpace >= aboveSpace ? 'below' : 'above'
+  const sideSpace = side === 'below' ? belowSpace : aboveSpace
+  // 锚点可能恰好填满整个可用视口（例如适应视图后的大卡片）。这时两侧空间都是 0，
+  // 仍要保留内容的自然高度并在视口内 shift；返回 0 高度会让浮层不可测量、也不可交互。
+  const resolvedSideHeight = sideSpace > 0 ? Math.min(height, sideSpace) : Math.min(height, stageHeight)
   const resolvedHeight = Math.max(
-    Math.min(height, side === 'below' ? belowSpace : aboveSpace),
+    resolvedSideHeight,
     Math.min(minHeight, height, stageHeight),
   )
   const desiredTop = side === 'below'

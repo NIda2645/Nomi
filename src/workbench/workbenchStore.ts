@@ -37,6 +37,7 @@ import { applyTimelineOperation } from './timeline/kernel/timelineKernel'
 import { timelineUndoTimeline, type TimelineUndoEntry } from './timeline/timelineUndoHistory'
 import { normalizeWorkbenchDocument, type PreviewAspectRatio, type WorkbenchDocument } from './workbenchTypes'
 import type { ComposerAttachment } from './ai/composer/composerAttachmentTypes'
+import type { ProjectAgentDraftRecoveryState } from './ai/projectAgentDraftRecovery'
 import { createWorkbenchDocumentSlice, type WorkbenchDocumentSlice } from './workbenchDocumentSlice'
 import {
   cloneBuiltinCategories,
@@ -85,7 +86,7 @@ export type ProjectAgentReference = Readonly<{
   contextHandle?: AgentContextHandle
 }>
 
-type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & CreationResourceTreeSlice & TimelineClipWritesSlice & {
+type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & CreationResourceTreeSlice & TimelineClipWritesSlice & ProjectAgentDraftRecoveryState & {
   persistRevision: number
   workspaceMode: WorkspaceMode
   /** 生成/预览区右侧助手侧栏宽度（px，可拖宽）。 */
@@ -115,7 +116,7 @@ type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & Creatio
   creationSelectionText: string; storyboardPlannerLauncher: ((displayPrompt?: string) => void) | null
   creationAiModeId: string
   /** 手动锁定的 active skill（覆盖 mode 推导的 skillKey）。null = 自动（用创作模式默认）。 */
-  creationActiveSkill: { key: string; name: string } | null
+  creationActiveSkill: { key: string; name: string; contentHash?: string } | null
   /**
    * 「请画布适应视图」一次性信号（nonce，仿 createCategoryNonce）。bump 一次 = 请生成画布
    * 平滑 fit 到全部节点一次。用于落画布等「批量加节点到已加载画布」的场景——useAutoFitOnLoad
@@ -161,13 +162,14 @@ type WorkbenchState = WorkbenchDocumentSlice & EditingPanelLayoutSlice & Creatio
   setProjectSidebarWidth: (width: number) => void
   setCreationSelectionText: (text: string) => void; setStoryboardPlannerLauncher: (launcher: ((displayPrompt?: string) => void) | null) => void
   setCreationAiModeId: (modeId: string) => void
-  setCreationActiveSkill: (skill: { key: string; name: string } | null) => void
+  setCreationActiveSkill: (skill: { key: string; name: string; contentHash?: string } | null) => void
   /** 请生成画布平滑 fit 一次；可显式切到并绑定目标分类。 */
   requestCanvasFit: (categoryId?: string) => void
   /** Resident ProjectAgent composer state. Draft/attachments are ephemeral UI state, not Host history. */
   selectedLibraryPrompt: LibraryPrompt | null
   setSelectedLibraryPrompt: (prompt: LibraryPrompt | null) => void
   projectAgentDraft: string
+  projectAgentDraftRevision: number
   projectAgentAttachments: ComposerAttachment[]
   /** Composer-only references. Host remains the sole owner of durable context/history. */
   projectAgentReferences: ProjectAgentReference[]
@@ -317,16 +319,23 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   canvasFitNonce: 0,
   canvasFitCategoryId: null,
   selectedLibraryPrompt: null,
-  setSelectedLibraryPrompt: (selectedLibraryPrompt) => set({ selectedLibraryPrompt, creationActiveSkill: null }),
+  setSelectedLibraryPrompt: (selectedLibraryPrompt) => set(state => ({ selectedLibraryPrompt, creationActiveSkill: null,
+    projectAgentDraftRevision: state.projectAgentDraftRevision + 1,
+    projectAgentDraftIntent: state.projectAgentDraftIntent ? { ...state.projectAgentDraftIntent, systemPrompt: undefined } : null })),
   projectAgentDraft: '',
+  projectAgentDraftRevision: 0,
+  projectAgentRecoveredDrafts: [], projectAgentDraftIntent: null, projectAgentDraftDisplayText: null, projectAgentAdmissionId: null,
   projectAgentAttachments: [],
   projectAgentReferences: [],
   projectAgentApprovalPolicy: DEFAULT_PROJECT_AGENT_APPROVAL_POLICY,
-  setProjectAgentDraft: (projectAgentDraft) => set({ projectAgentDraft }),
+  setProjectAgentDraft: (projectAgentDraft) => set(state => ({ projectAgentDraft, projectAgentDraftDisplayText: null,
+    ...(!projectAgentDraft.trim() ? { projectAgentDraftIntent: null } : {}), projectAgentDraftRevision: state.projectAgentDraftRevision + 1 })),
   setProjectAgentAttachments: (attachments) => set((state) => ({
+    projectAgentDraftRevision: state.projectAgentDraftRevision + 1,
     projectAgentAttachments: typeof attachments === 'function' ? attachments(state.projectAgentAttachments) : attachments,
   })),
   setProjectAgentReferences: (references) => set((state) => ({
+    projectAgentDraftRevision: state.projectAgentDraftRevision + 1,
     projectAgentReferences: typeof references === 'function' ? references(state.projectAgentReferences) : references,
   })),
   setProjectAgentApprovalPolicy: (projectAgentApprovalPolicy) => set({ projectAgentApprovalPolicy: Object.freeze({ mode: projectAgentApprovalPolicy.mode, spend: projectAgentApprovalPolicy.spend }) }),
@@ -371,7 +380,9 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
     set({ creationAiModeId })
   },
   setCreationActiveSkill: (creationActiveSkill) => {
-    set({ creationActiveSkill, selectedLibraryPrompt: null })
+    set(state => ({ creationActiveSkill, selectedLibraryPrompt: null,
+      projectAgentDraftRevision: state.projectAgentDraftRevision + 1,
+      projectAgentDraftIntent: state.projectAgentDraftIntent ? { ...state.projectAgentDraftIntent, systemPrompt: undefined } : null }))
   },
   requestCanvasFit: (categoryId) => {
     // 一次性信号：目标分类与 nonce 原子更新。显式目标立即切过去，延迟消费时若用户又手动切走则跳过。

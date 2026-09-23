@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskReferenceSchema } from './taskReference';
 import { resolveShotIdentities } from "../canvas/shotNumbering";
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
 import type { CapabilityContract } from "./capabilityContract";
@@ -48,6 +49,7 @@ const canvasReadNodeSchema = z
     hasResult: z.boolean(),
     currentResultId: opaqueResultIdSchema.optional(),
     resultIds: z.array(opaqueResultIdSchema).optional(),
+    taskRef: taskReferenceSchema.optional(),
     /**
      * 这个节点挂着的模型身份（只有标识，不含参数——参数按需去 `nomi_read{target:"model"}` 查，
      * 那是分级披露的详情那一档；整张画布每个节点都拖着一份参数表会把回合上下文撑爆）。
@@ -258,6 +260,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
   const currentResultId = resultId(node.result);
   const resultIds = stableResultIds(node);
   const prompt = typeof node.prompt === "string" ? node.prompt : "";
+  const runId = nonEmptyString(asRecord(node.meta)?.productionRunId);
   const model = projectNodeModel(asRecord(node.meta));
 
   return {
@@ -271,6 +274,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
     hasResult: asRecord(node.result) !== undefined,
     ...(currentResultId ? { currentResultId } : {}),
     ...(resultIds.length ? { resultIds } : {}),
+    ...(runId ? { taskRef: { domain: 'generation' as const, jobId: runId } } : {}),
     ...(model ? { model } : {}),
   };
 }

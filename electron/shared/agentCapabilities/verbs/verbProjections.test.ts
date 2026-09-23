@@ -100,7 +100,7 @@ const CASES: readonly ProjectionCase[] = [
     hostSchema: exportReadSemanticInputSchema.options[0],
     modelSchema: checkJobModelSchema,
     hostFill: CHECK_JOB_HOST_FILL,
-    sample: { jobId: "export-1" },
+    sample: { domain: "export", jobId: "export-1" },
     admit: (args) => exportReadInputForAlias(EXPORT_READ_ALIASES.inspect, args),
   },
   {
@@ -108,7 +108,7 @@ const CASES: readonly ProjectionCase[] = [
     hostSchema: exportWriteSemanticInputSchema.options[1],
     modelSchema: cancelJobModelSchema,
     hostFill: CANCEL_JOB_HOST_FILL,
-    sample: { jobId: "export-1" },
+    sample: { domain: "export", jobId: "export-1" },
     admit: (args) => exportWriteInputForAlias(EXPORT_WRITE_ALIASES.cancel, args),
   },
 ];
@@ -184,5 +184,12 @@ describe("edit_timeline：fill 里有一个宿主**按这次调用派生**的值
       .toEqual({ ...modelArgs, ...editTimelineHostFill("call-1") });
     // 模型那一半单独喂给宿主 schema 必须过不了（缺 planId 与 operation）。
     expect(timelineWriteSemanticInputSchema.options[0].safeParse(modelArgs).success).toBe(false);
+  });
+});
+
+describe('K3 domain-qualified tool contract', () => {
+  it.each([['check_job', projections.checkJobModelSchema], ['cancel_job', projections.cancelJobModelSchema]] as const)('%s requires the same domain identity as its runtime boundary', (_name, schema) => {
+    expect(schema.safeParse({ jobId: 'same-id' }).success).toBe(false);
+    for (const domain of ['generation', 'export']) expect(schema.safeParse({ domain, jobId: 'same-id' }).success).toBe(true);
   });
 });

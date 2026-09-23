@@ -1,0 +1,114 @@
+{
+  "//": "生成入口登记表。门岗 scripts/check-generation-entrances.mjs 反向扫全仓能组装或发出供应商生成请求的调用点，逐条与这张表对账。",
+  "//2": "每条二选一：entrances = 对等矩阵里要跑的入口 id（electron/parity/generationEntrances.ts）；reason = 为什么它不是一个用户可达的生成入口。",
+  "//3": "count 是当前扫到的调用次数，只许减不许增——同一个文件里新长出第二处调用同样要有人裁决。",
+  "matrix": { "entrances": 10, "cases": 6 },
+  "sites": [
+    {
+      "site": "src/workbench/generationCanvas/runner/catalogTaskActions.ts::runTask",
+      "count": 1,
+      "entrances": ["canvas-node", "shot-table-row", "retake"],
+      "note": "渲染层三条入口共用这一个 runner：分镜行落画布后按生成、重拍只是多一个 promptSuffix。"
+    },
+    {
+      "site": "electron/tasks/taskIpcHandlers.ts::runTask",
+      "count": 1,
+      "entrances": ["canvas-node", "shot-table-row", "retake"],
+      "note": "上面那条的 IPC 落点（带幂等键）。"
+    },
+    {
+      "site": "electron/capabilityCore/core.ts::runTaskFn",
+      "count": 2,
+      "entrances": ["external-mcp-generate"],
+      "note": "两处＝主路一次 + I2V 两跳的首帧那一跳。两处都不做 @ 引用的最终投影（A5）。"
+    },
+    {
+      "site": "electron/capabilityCore/modelOnboarding/tryModel.ts::deps.runTask",
+      "count": 1,
+      "entrances": ["try-model"],
+      "note": "接入试跑刻意走引擎 A，因为 Run 那条今天只认 APIMart（A3/BL-1）。"
+    },
+    {
+      "site": "electron/capabilityCore/generationRuntimeAdapter.ts::provider.buildRequest",
+      "count": 3,
+      "entrances": ["agent-panel-spend-confirm", "submit-execution-plan", "external-mcp-start-generation", "auto-run-batch", "continue-batch"],
+      "note": "引擎 B 的唯一组装点（两次是封印前的确定性对照，一次是提交前）。五个入口全经这里。"
+    },
+    {
+      "site": "electron/capabilityCore/generationRuntimeAdapter.ts::contextualProvider.submitWithContext",
+      "count": 1,
+      "entrances": ["agent-panel-spend-confirm", "submit-execution-plan", "external-mcp-start-generation", "auto-run-batch", "continue-batch"],
+      "note": "引擎 B 的唯一出站点。"
+    },
+    {
+      "site": "electron/capabilityCore/apimartGenerationProvider.ts::buildRequest",
+      "count": 1,
+      "reason": "provider 自己的 buildRequest 实现（被上面那条调用），不是第二个入口。"
+    },
+    {
+      "site": "electron/capabilityCore/apimartGenerationProvider.ts::buildProfileHttpRequest",
+      "count": 2,
+      "reason": "引擎 B 的请求骨架构造，与引擎 A 共用同一个 buildProfileHttpRequest。2026-09-21（BL-1）从 1 处涨到 2 处，两处各有裁决：①projectionRequest 用占位密钥渲染，产出拿去封印/给用户批准的那份 body（密钥绝不进 body，assertNoProjectionCredential 守着）；②renderOperation 在提交/轮询那一刻用真密钥渲染，只取 method/url/headers/query——端点、鉴权方案词、网关额外头、query 式鉴权因此与引擎 A 逐字同源，而发出去的 body 仍是①封存的那一份。两处不是两个入口，是同一次提交的「批准形状」与「传输形状」。"
+    },
+    {
+      "site": "electron/runtime.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "引擎 A 的请求骨架构造（runTask 内部）。"
+    },
+    {
+      "site": "electron/catalog/profileHttpRequest.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "本体：validateProfileRequestBeforeSpend 的付费前预飞，在引擎 A 内部。"
+    },
+    {
+      "site": "electron/catalog/multipartOperation.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "引擎 A 的 multipart 分支（引擎 B 没有这一支，见 engineDifferences 的 multipart 那条）。"
+    },
+    {
+      "site": "electron/audioTaskRunner.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "音频同步任务，汇进引擎 A（runtime.ts 的 usesSynchronousAudioRunner 分支），不是独立入口。"
+    },
+    {
+      "site": "electron/audio/synchronousAudioResponse.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "上面那条的响应侧（查询/取回），不发生成。"
+    },
+    {
+      "site": "electron/catalog/catalogCommit.ts::buildProfileHttpRequest",
+      "count": 1,
+      "reason": "目录提交期的请求渲染校验，不带真实密钥、不出站。"
+    },
+    {
+      "site": "electron/main.ts::runTask",
+      "count": 1,
+      "reason": "IPC 装配转发（把 payload 交给 taskIpcHandlers 那条已登记的门）。"
+    },
+    {
+      "site": "electron/integrationCertification/integrationSession.ts::runTask",
+      "count": 1,
+      "reason": "接入认证会话的试跑，与 try-model 同一条执行器、同一份 mapping 选择；矩阵由 try-model 那一行代表。"
+    },
+    {
+      "site": "electron/integrationCertification/integrationSessionRuntimeInstall.ts::runTask",
+      "count": 1,
+      "reason": "上面那条的运行时注入点（懒加载 runtime 模块）。"
+    },
+    {
+      "site": "electron/tasks/comfyCandidateTest.ts::dependencies.runTask",
+      "count": 1,
+      "reason": "ComfyUI 候选工作流自检，不产出用户作品。"
+    },
+    {
+      "site": "electron/capabilityCore/shotVerifyDeps.ts::runTaskFn",
+      "count": 2,
+      "reason": "审片判分（image_to_prompt / 打分），产出的是判词不是作品。"
+    },
+    {
+      "site": "electron/video/deconstructVideo.ts::runTask",
+      "count": 2,
+      "reason": "视频拆解（转写 / 抽帧描述），不是生成入口。"
+    }
+  ]
+}

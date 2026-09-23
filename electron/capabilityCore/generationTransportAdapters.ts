@@ -1,4 +1,10 @@
+import { resolveGenerationShotScope } from '../shared/agentCapabilities/generationShotScope';
+import { productionTaskAbsenceCode } from '../productionRun/productionRunErrors';
+import { GenerationProviderCapabilityError, GenerationProviderObservationError, GenerationRuntimeBindingError } from './generationRuntimeAdapter';
+import { ProductionGenerationAuthorizationError } from '../productionRun/productionGenerationAuthorization';
 import { z } from "zod";
+import { logWarn } from "../logging/logger";
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel, safeTransportFailure } from "./transportFailure";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { GENERATION_METHODS, GENERATION_METHOD_NAMES, isGenerationMethodName, type GenerationMethodName } from "../shared/agentCapabilities/generation";
 import { generationPlanInputSchema, generationStatusInputSchema } from "../shared/agentCapabilities/generationPlanSchemas";
@@ -9,6 +15,7 @@ import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from "./approva
 import { decideGenerationSpend, generationChallengeTokenOf } from "./generationSpendDecision";
 import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { beginPolicySpendDecision } from "./policySpendDecision";
+import type { GenerationInvocationContext } from "../shared/agentCapabilities/generationInvocationContext";
 
 /**
  * Main-process transport for the semantic generation vocabulary.
@@ -19,7 +26,12 @@ import { beginPolicySpendDecision } from "./policySpendDecision";
  * provider directly and never exposes a lease or receipt in a tool result.
  */
 export type PiGenerationTransportAdapter = Readonly<{
-  tryExecute(call: RuntimeToolCall, signal: AbortSignal): Promise<RuntimeToolDecision | null>;
+  tryExecute(call: RuntimeToolCall, signal: AbortSignal, context?: GenerationInvocationContext): Promise<RuntimeToolDecision | null>;
+  /**
+   * 宿主内部：收回对 `operationId` 的**这一次出价**（回 draft / 未 present，计划留着）。模型够不着——
+   * 它不是一个工具。等用户的那个回合没了（按停止 / 关窗）或用户改了主意（待决时打字）时由 lane 端口调。
+   */
+  withdrawPresentation(operationId: string): Promise<void>;
   dispose(): void;
 }>;
 
@@ -54,15 +66,54 @@ export function isPiGenerationToolName(toolName: string): toolName is Generation
   return isGenerationMethodName(toolName);
 }
 
+/**
+ * 我们自己 schema 产生的逐字段拒收理由。**不是**供应商文本：`issue.path` 是我们契约里的字段名。
+ */
+export type GenerationSchemaIssue = Readonly<{ path: string; message: string }>;
+
+function schemaIssuesOf(error: unknown): readonly GenerationSchemaIssue[] {
+  const raw = error && typeof error === "object" ? (error as { issues?: unknown }).issues : undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((issue) => (issue && typeof issue === "object"
+    && typeof (issue as { message?: unknown }).message === "string"
+    ? [{ path: String((issue as { path?: unknown }).path ?? ""), message: (issue as { message: string }).message }]
+    : []));
+}
+
+export function describeSchemaIssues(issues: readonly GenerationSchemaIssue[]): string {
+  return issues.map((issue) => `${issue.path || "(root)"}: ${issue.message}`).join("; ");
+}
+
+/**
+ * 这条路放行的码。除了传输那一族共有的，生成域自己还有五个。
+ * `generation_input_invalid` 是「模型写的入参我们收不了」那一档——2026-09-22 起它也承载
+ * 域里**有意**抛出的拒绝（`ModelFacingRefusal`），正文原样到模型。
+ */
+const GENERATION_PUBLIC_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'generation_input_invalid', 'generation_cancelled', 'project_binding_stale',
+  'generation_approval_unavailable', 'generation_approval_required',
+]);
+// `generation_operation_not_found` / `generation_provider_unavailable` **刻意不在**上面那张表里：
+// 它们只能由 `classify` 从我们自己的错误类认出来，不能由异常上挂的一个 `code` 字符串自称
+// （C18「provider forged absence」）。
+
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const rawCode = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : "generation_execution_failed";
-  const message = error instanceof Error && error.message ? error.message : rawCode;
-  // Keep provider/credential internals out of the transcript while retaining
-  // actionable semantic codes for the resident failure item.
-  const code = /provider|catalog|credential|model/i.test(rawCode) ? "generation_provider_unavailable" : rawCode;
-  return { ok: false, code, message };
+  return safeTransportFailure(error, {
+    allowedCodes: GENERATION_PUBLIC_FAILURE_CODES,
+    fallbackCode: 'generation_execution_failed',
+    classify: (value) => productionTaskAbsenceCode(value)
+      ? 'generation_operation_not_found'
+      : value instanceof GenerationProviderCapabilityError || value instanceof GenerationProviderObservationError
+        ? 'generation_provider_unavailable'
+        : value instanceof ProductionGenerationAuthorizationError || value instanceof GenerationRuntimeBindingError
+          ? value.code : undefined,
+    // 收敛成码挡住的应当只有**供应商 / 凭据的原始文本**。连我们自己 schema 的字段级理由一起抹掉，
+    // 模型拿到的就是一个说不出拒了什么的裸码，于是同一份载荷原样重试到回合超时——那正是
+    // 2026-09-18 那份根因合同修掉的失效方式（`generation_input_invalid — shots.0.prompt: Required`）。
+    detail: (value) => { const issues = schemaIssuesOf(value); return issues.length ? describeSchemaIssues(issues) : undefined },
+    // 兜底码盖住的也可能是我们自己的缺陷（TypeError 这类）。不留痕 = 把 bug 洗成产品结论。
+    onFallback: (rawCode, value) => logWarn("capability", "generation-transport-failed", { rawCode }, value),
+  });
 }
 
 /**
@@ -122,13 +173,12 @@ function parsedArgs(call: RuntimeToolCall): Record<string, unknown> {
   if (!parsed.success) {
     // 说清**哪个字段为什么被拒**。2026-09-18 根因：这里原本只抛一个裸码，模型（和人）都看不到
     // 是哪一项不合法，于是同一份载荷被原样重试三次、回合挂到超时。校验拒收必须自带理由——
-    // 一个说不出自己拒了什么的边界，等于把契约漂移变成静默故障。
-    const where = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-      .join("; ");
-    throw Object.assign(new Error(`generation_input_invalid — ${where}`), {
+    // 一个说不出自己拒了什么的边界，等于把契约漂移变成静默故障。这些 path 是我们契约里的
+    // 字段名，不是供应商文本，所以 redaction 不该碰它们。
+    const issues = parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message }));
+    throw Object.assign(new Error(`generation_input_invalid — ${describeSchemaIssues(issues)}`), {
       code: "generation_input_invalid",
-      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+      issues,
     });
   }
   return parsed.data as Record<string, unknown>;
@@ -275,12 +325,14 @@ export function createPiGenerationTransportAdapter(
     args: Record<string, unknown>,
     currentLease: ProjectLeaseV2,
     signal: AbortSignal,
+    context?: GenerationInvocationContext,
   ): Promise<unknown> => abortable(
     Promise.resolve(deps.planning({
       capability,
       params: { ...args },
       lease: currentLease,
-      origin: { host: "nomi", actorId: "project-agent-host" },
+      origin: { host: "nomi", actorId: "project-agent-host", ...(context?.sourceDocument ? { sourceDocument: context.sourceDocument } : {}) },
+      ...(context?.storyboardTarget ? { storyboardTarget: context.storyboardTarget } : {}),
     })),
     signal,
   );
@@ -383,8 +435,15 @@ export function createPiGenerationTransportAdapter(
     throw Object.assign(new Error("generation_approval_required"), { code: "generation_approval_required" });
   };
 
+  /**
+   * 这条 lane **自己**从某份文稿起草出来的方案：operationId → sourceDocumentId。
+   * 它不是缓存也不是第二份真相——它记的是一件只有这里知道的事实（「这一笔 create 是我发的、
+   * 带着哪份文稿的 target」），用来补上请求清单在**同一轮里**必然缺的那一格。随 adapter 活，随 lane 死。
+   */
+  const draftedFromDocument = new Map<string, string>();
+
   return Object.freeze({
-    async tryExecute(call, signal) {
+    async tryExecute(call, signal, context) {
       if (!GENERATION_TOOL_NAMES.has(call.toolName)) return null;
       if (disposed) return { ok: false, code: "surface_port_unavailable", message: "surface_port_unavailable" };
       if (signal.aborted) return { ok: false, code: "generation_cancelled", message: "generation_cancelled", denied: true };
@@ -393,7 +452,24 @@ export function createPiGenerationTransportAdapter(
         const canonicalCall = canonicalGenerationCall(call, parsed);
         const args = canonicalCall.args as Record<string, unknown>;
         const currentLease = await lease(signal);
+        const storyboardTarget = context?.storyboardTarget;
+        // A document-admitted storyboard call may only address a plan that already belongs to
+        // this document. The plan the model names is its own choice (see
+        // `formatStoryboardRequestTarget`); the host only refuses a plan that is not on the list.
+        // 「这份方案属于这份文稿」有两种证法：它在这条消息发出时那张清单上；或者**就是这条 lane
+        // 刚刚从这份文稿起草出来的**（`draftedFromDocument`）。2026-09-22 之前只认前一种——
+        // 而清单是用户按发送那一刻拍下来的，**本轮新起草的方案不可能在上面**。后果（run2 的 A10）：
+        // `draft_shots` 成功返回 `op-9b2c…`，用户在反问卡上答了「现在生成」，紧接着对**同一个 id**
+        // 调 `generate`，被我们回「That plan is not one of the storyboard plans this request covers」。
+        // 从文稿面起草再生成，是这条 lane 上最常走的一步，它在结构上走不通。
+        if (storyboardTarget && (storyboardTarget.projectId !== binding.projectId
+          || (typeof args.operationId === 'string'
+            && !storyboardTarget.plans.some((plan) => plan.id === args.operationId)
+            && draftedFromDocument.get(args.operationId) !== storyboardTarget.sourceDocumentId))) {
+          refuseToModel(GENERATION_ARGUMENT_REFUSAL, 'That plan is not one of the storyboard plans this request covers. Use an operationId the request names, or omit it to start a new draft.');
+        }
         if (canonicalCall.toolName === GATE_TOOL) {
+          if (storyboardTarget?.shotIds) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "This storyboard selection is confirmed through its own card; do not request a separate generation gate for it.");
           const result = await requestGate(args, currentLease, signal);
           const denied = result && typeof result === "object" && (result as { nextAction?: unknown }).nextAction === "revise";
           return denied
@@ -402,6 +478,13 @@ export function createPiGenerationTransportAdapter(
         }
         const capability = isGenerationMethodName(canonicalCall.toolName) ? CAPABILITY_BY_METHOD[canonicalCall.toolName] : undefined;
         if (!capability) throw Object.assign(new Error("generation_input_invalid"), { code: "generation_input_invalid" });
+        if (storyboardTarget?.shotIds) {
+          if (capability === 'plan' && (typeof args.shotId !== 'string' || !storyboardTarget.shotIds.includes(args.shotId))) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This request covers only these shots: ${storyboardTarget.shotIds.join(', ')}. Name one of them in shotId.`);
+          if (capability === 'present') args.shotIds = resolveGenerationShotScope(storyboardTarget.shotIds,args.shotIds);
+          // The selection names its plan, so a call that addresses a different one is refused
+          // rather than silently retargeted.
+          if ((capability === 'plan' || capability === 'present') && args.operationId !== storyboardTarget.designId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `This request is about plan ${storyboardTarget.designId}. Use that operationId.`);
+        }
         // operationId is required by every non-create descriptor. Parsing it
         // here keeps malformed model calls out of the durable operation store.
         if (capability !== "context" && capability !== "create") operationId(args);
@@ -421,7 +504,12 @@ export function createPiGenerationTransportAdapter(
         // 释放放在 `finally`：代答**失败**时卡要回到原处等用户（「策略答不了才问人」）。
         let releasePolicyClaim = claimPolicyDecision(claimed);
         try {
-          const result = await plan(capability, args, currentLease, signal);
+        const result = await plan(capability, args, currentLease, signal, context);
+          // 记下「这份方案是这条 lane 从哪份文稿起草的」。只记 create 成功的那一刻，键是宿主发的 id。
+          if (capability === "create" && storyboardTarget) {
+            const drafted = draftedOperationIdOrNone(result, args);
+            if (drafted) draftedFromDocument.set(drafted, storyboardTarget.sourceDocumentId);
+          }
           // 报价卡该出现的那一刻 = 草稿被摆到用户面前的那一刻：`present`（`generate` 动词），或者建/改草稿时
           // 卡本来就没藏着（`cardHidden` 不为 true：外部 MCP 宿主与面板自己的路径）。「全自动」档在这里替用户决门（见上）。
           const cardShown = capability === "present"
@@ -438,6 +526,12 @@ export function createPiGenerationTransportAdapter(
       } catch (error) {
         return safeFailure(error);
       }
+    },
+    async withdrawPresentation(operationIdToWithdraw) {
+      if (disposed) return;
+      // 不挂调用方的 signal：这一步多半正是在 abort 之后跑的，而它要做的恰恰是把那次 abort 留下的卡收走。
+      const signal = new AbortController().signal;
+      await plan("withdraw", { operationId: operationIdToWithdraw }, await lease(signal), signal);
     },
     dispose() { disposed = true; },
   });

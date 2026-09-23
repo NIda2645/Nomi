@@ -58,20 +58,10 @@ const EXEMPTIONS = [
  * 棘轮债：别的会话（Core-A 打捞分支）正在改写这两个文件，总合并时由它统一改用
  * builtinVendorIdentity。**只减不增，到期即红。**
  */
-const DEBT = [
-  {
-    file: 'electron/capabilityCore/generationProviderBootstrap.ts',
-    owner: 'integration/core-a-salvage 总合并',
-    due: '2026-10-06',
-    why: '该文件在 Core-A 打捞分支上已重写；两边同时改必冲突。影响面：总合并落地前，第二条 apimart 连接不会被认成 apimart 执行器（只影响新建连接，不影响存量单连接）。',
-  },
-  {
-    file: 'src/ui/onboarding/ModelSettingsHome.tsx',
-    owner: 'integration/core-a-salvage 总合并',
-    due: '2026-10-06',
-    why: '同上。影响面：内置卡片对兄弟连接显示为自定义（仅外观，不影响能不能跑）。',
-  },
-]
+// 2026-09-22 总合并：两条债目都还清了 —— `generationProviderBootstrap.ts` 在打捞分支上已重写成
+// **目录驱动的通用执行器**（不再按 key 字面量认家，身份由调用方给的 vendorKey 决定），
+// `ModelSettingsHome.tsx` 那条在本分支上并不存在同名文件。棘轮只减不增：这张表空着才是对的。
+const DEBT = []
 
 const alt = IDENTITY_KEYS.map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
 /** ① 比较型：等号两侧之一是 vendor-ish 标识符。 */

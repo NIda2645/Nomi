@@ -3,7 +3,7 @@ import type { ProductionGenerationShot, ProductionRun } from "./productionRunTyp
 import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionGenerationSubmission } from "./productionGenerationSubmission";
 import type { ShotPrice } from "./shotPricing";
-import { anchorCheckpointGateId, buildAnchorCheckpointGate } from "./anchorCheckpoint";
+import { currentAnchorCheckpointGate, buildAnchorCheckpointGate } from "./anchorCheckpoint";
 import { logWarn } from "../logging/logger";
 
 /**
@@ -110,7 +110,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   function command(run: ProductionRun, type: string, payload: Record<string, unknown>, suffix: string): ProductionRun {
     return deps.repository.execute(run.projectId, run.runId, {
-      commandId: `batch.scheduler:${run.runId}:${suffix}`,
+      commandId: `batch.scheduler:${run.runId}:${run.generationPlan?.authorizationDigest ?? run.planVersion}:${suffix}`,
       expectedRevision: run.revision,
       type,
       payload,
@@ -127,9 +127,9 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
    */
   async function observeUnitOnce(task: DispatchTask): Promise<"settled" | "pending"> {
     try {
-      const polled = await deps.submission.poll({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
+      const polled = await deps.submission.poll({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId, attempt: task.attempt });
       if (polled.nextAction === "materialize") {
-        await deps.submission.materialize({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
+        await deps.submission.materialize({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId, attempt: task.attempt });
         // P4 S5：这一镜落地了 → 通知上层把 result 推给渲染层回填占位（逐个冒）。best-effort，不阻断批次。
         if (deps.onShotMaterialized) {
           try {
@@ -151,7 +151,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
   /** Submit one unit (anchor or shot), then poll once: instant providers settle in the same tick; a slow
    * provider leaves the job at `polling` and the derivation's `observe` list + waiting rounds take over. */
   async function dispatchUnit(task: DispatchTask): Promise<void> {
-    const started = await deps.submission.start({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId });
+    const started = await deps.submission.start({ projectId: deps.projectId, operationId: deps.runId, shotId: task.shotId, attempt: task.attempt });
     if (started.nextAction !== "observe") return;
     await observeUnitOnce(task);
   }
@@ -159,7 +159,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
   /** Open the anchor checkpoint gate (§3.2) referencing the ready anchor jobs — a free quality gate. */
   function openCheckpoint(run: ProductionRun, checkpoint: CheckpointState): ProductionRun {
     const gate = buildAnchorCheckpointGate({ runId: run.runId, planHash: run.generationPlan?.planHash ?? "", anchorJobIds: checkpoint.readyAnchorJobIds, now: now() });
-    return command(run, "gate.add", { gate }, "open-anchor-checkpoint");
+    return command(run, "gate.add", { gate }, `open-anchor-checkpoint:${gate.gateId}`);
   }
 
   async function notifyBatchComplete(progress: BatchDerivationResult["progress"]): Promise<void> {
@@ -207,10 +207,10 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     // A confirmed multi-shot plan drives the run. Gate approval already wrote the only budget
     // authorization; the scheduler may start execution but can never mint or raise spend authority.
     {
-      let seed = requireRun(deps);
+      const seed = requireRun(deps);
       const batchActive = seed.generationPlan?.state === "submitted" && (seed.generationPlan?.shots?.length ?? 0) > 0;
       if (batchActive && seed.status === "draft") {
-        seed = command(seed, "run.status", { status: "running" }, "batch-start-running");
+        command(seed, "run.status", { status: "running" }, `batch-start-running:v${seed.planVersion}`);
       }
     }
 
@@ -225,11 +225,11 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     };
 
     while (true) {
-      let run = requireRun(deps);
+      const run = requireRun(deps);
       const plan = run.generationPlan;
       if (!plan) throw new Error(`Batch scheduler requires a generation plan: ${run.runId}`);
 
-      const anchorGate = run.gates.find((gate) => gate.gateId === anchorCheckpointGateId(run.runId));
+      const anchorGate = currentAnchorCheckpointGate(run);
       const result = deriveBatchPlan({
         runId: run.runId,
         runStatus: run.status,
@@ -278,7 +278,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
               const halted = haltRun(requireRun(deps));
               void halted;
               const finalRun = requireRun(deps);
-              const finalGate = finalRun.gates.find((gate) => gate.gateId === anchorCheckpointGateId(finalRun.runId));
+              const finalGate = currentAnchorCheckpointGate(finalRun);
               const finalResult = deriveBatchPlan({
                 runId: finalRun.runId, runStatus: finalRun.status, plan: finalRun.generationPlan!, jobs: finalRun.jobs, budget: finalRun.budget,
                 perShotPrice: (shotId) => { const shot = (finalRun.generationPlan?.shots ?? []).find((c) => c.shotId === shotId); return shot ? deps.perShotPrice(shot) : { known: false }; },
@@ -338,7 +338,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       // 7. Budget halt → halt the Run and rest (提额续拍 is a fresh scheduler run). In-flight units have
       // already settled (case 5 runs first), so halting never strands pollable paid work.
       if (result.halt) {
-        run = haltRun(run);
+        haltRun(run);
         return { progress: result.progress, checkpoint: result.checkpoint, halt: result.halt, quiescent: true };
       }
 
@@ -380,7 +380,7 @@ function buildExhaustedHalt(run: ProductionRun, haltedAtShotId: string, perShotP
     if (reachedHalt && !(job && (job.status === "ready" || job.status === "adopted"))) remaining += 1;
   }
   void perShotPrice;
-  return { haltedAtShotId, completedCount: completed, dispatchableCount: 0, remainingCount: remaining, authorized: run.budget.authorized, currency: run.budget.currency };
+  return { haltedAtShotId, completedCount: completed, dispatchableCount: 0, unknownDispatchCount: 0, remainingCount: remaining, authorized: run.budget.authorized, currency: run.budget.currency };
 }
 
 export type MultiShotBatchScheduler = ReturnType<typeof createMultiShotBatchScheduler>;

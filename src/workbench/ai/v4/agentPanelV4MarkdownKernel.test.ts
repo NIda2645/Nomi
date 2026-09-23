@@ -13,7 +13,7 @@ const NO_HANDLERS = { onPlanToggle: () => undefined, onCollapsePlan: () => undef
 const html = renderToStaticMarkup;
 const text = '这是**「重点」**的句子\n\n| 参数 | 值 |\n| --- | --- |\n| 时长 | 8 |\n\n- 项目';
 const labels = { copy: 'copy', retry: 'retry', continue: 'continue', stopped: 'stopped' };
-const slotLabels = { confirm: 'yes', reject: 'no', escalate: 'always', cancel: 'cancel', confirmReject: 'no', collapsePlan: 'collapse', expandPlan: 'expand' };
+const slotLabels = { confirm: 'yes', reject: 'no', escalate: 'always', cancel: 'cancel', confirmReject: 'no', collapsePlan: 'collapse', expandPlan: 'expand' , ask: { dismiss: '', skip: '', continueLabel: '', send: '', customPlaceholder: '', recommended: '' } };
 const md = (source: string) => html(React.createElement(NomiMarkdown, { compact: true, profile: "agent-v4", children: source }));
 describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
     it('D1 代码复制消费内核 source，禁止从 ReactNode String 反提取', () => {
@@ -37,7 +37,7 @@ describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
     });
     it('D4 审批投影保留完整 Markdown 和换行', () => {
         const content = '- **镜头一**：窗边\n- **镜头二**：茶杯\n' + '完整正文'.repeat(30);
-        const output = projectV4Intervention({ toolName: 'append_to_end', args: { content }, effectClass: 'reversible_local', pendingCount: 1 }, { irreversible: '', reversible: '', spendBadge: '', credentialTitle: '', credentialConfirm: '', credentialAlternate: '', questionTitle: '', planTitle: '', more: '', scopeOnce: '', scopeCapability: '' }, key => key);
+        const output = projectV4Intervention({ toolName: 'append_to_end', args: { content }, effectClass: 'reversible_local', pendingCount: 1 }, { irreversible: '', reversible: '', spendBadge: '', credentialTitle: '', credentialConfirm: '', credentialAlternate: '', planTitle: '', more: '', scopeOnce: '', scopeCapability: '' }, key => key);
         expect(JSON.stringify(output)).toContain(JSON.stringify(content).slice(1, -1));
         expect(html(React.createElement(V4Intervention, { ...NO_HANDLERS, data: output!, labels: slotLabels }))).toContain('<ul');
     });

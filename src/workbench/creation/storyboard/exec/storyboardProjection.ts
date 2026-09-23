@@ -69,7 +69,7 @@ export function projectShotNode(
 }
 
 /** Called only for explicit plan edits, never project hydration. Dependency supplied by the composition root. */
-export function projectStoryboardDesign(design: StoryboardDesign, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
+export function projectStoryboardDesign(design: Pick<StoryboardDesign, 'id' | 'plan'>, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
   for (const shot of design.plan.shots) {
     const entries = buildModelEntryIndex(buildAgentModelEntries(shot.modelKey ? [{ value: shot.modelKey, label: shot.modelKey, vendor: shot.modelVendor, kind: shot.shotKind ?? 'video' }] : []))
     const profile = resolveArchetypeForModel({ modelKey: shot.modelKey ?? '', vendorKey: shot.modelVendor })

@@ -48,7 +48,8 @@ import type { ModelArchetype } from "./types";
 import { customCapabilityArchetypeForModel } from "./customCapabilityContract";
 
 export type { ModelArchetype, ArchetypeMode, ArchetypeReferenceSlot, ArchetypeReferenceSlotKind, ArchetypeExpressionChannel, ArchetypeIntent, ArchetypeTransportTaskKind, ModelArchetypeVariant } from "./types";
-export { modeTransportFor, recommendVideoGeneration } from "../videoCapabilities";
+export { combineChannelForMode, modeTransportFor, recommendVideoGeneration } from "../videoCapabilities";
+export type { ReferenceCombineChannel } from "../videoCapabilities";
 export type {
   VideoGenerationRecommendation,
   VideoGenerationRecommendationInput,

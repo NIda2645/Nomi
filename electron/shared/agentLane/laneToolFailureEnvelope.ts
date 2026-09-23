@@ -64,7 +64,15 @@ export const LANE_TOOL_OWN_FAILURE_CODE_LIST = [
   "tool_timed_out",
   "wrong_verb",
   "generation_surface_unavailable",
-  "user_sees_spend_card",
+  "task_reference_required",
+  "generation_operation_not_found",
+  "production_run_not_found",
+  "generation_execution_failed",
+  // 与上面那条的区别是**事实**，不是措辞：账本里没有任何一份提交意图落过盘，
+  // 所以「没发起」是可验证的，不是安慰话。分两个码，是因为用户下一步该做的事不一样：
+  // 一个是「改一下再按」，另一个是「先去核对，别再付一次」。
+  "generation_not_started",
+  "generation_provider_unavailable",
 ] as const;
 
 export type LaneToolOwnFailureCode = (typeof LANE_TOOL_OWN_FAILURE_CODE_LIST)[number];

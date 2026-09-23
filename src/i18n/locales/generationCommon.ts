@@ -613,6 +613,10 @@ export const zhGenerationCommon = {
     // 「未试跑」：自检只证明了地址、密钥与调用形状对，没证明这个模型点了一定能出片。
     // 第一次真实生成就是试跑（钱的闸在提交处看报价确认）。
     untried: '未试跑',
+    // 模型框里那一行后面的短限定语：供应商最近一次给的清单里没有它。
+    // 设置页那条是整句（要解释「所以我没动你的开关」），下拉里只放得下这几个字——
+    // 长一点就会把模型名挤没（2026-09-06 实测）。同一件事、两个长度，不是两份判据。
+    unlisted: '暂未列出',
     noVendorConnected: '还没接入供应商',
     connectVendorAction: '去接入',
     // 模型框底部脚注：列表变短了要说出来，否则「我藏的」和「坏了」在屏幕上长得一样。
@@ -2091,6 +2095,8 @@ export const enGenerationCommon = {
     panel: 'Generation parameters panel',
     provider: 'Provider',
     untried: 'not tried yet',
+    // EN 串长 1.5–2 倍：'not listed now' 在这个下拉里实测被截成「not listed…」（zh/en 双轨真截图）。
+    unlisted: 'unlisted',
     noVendorConnected: 'No provider connected yet',
     connectVendorAction: 'Connect',
     hiddenModels: '{{count}} hidden · bring back in Settings',

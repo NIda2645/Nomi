@@ -21,7 +21,7 @@ import { prepareProductionGenerationAuthorization } from "../productionRun/prepa
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
-import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+import { currentAnchorCheckpointGate } from "../productionRun/anchorCheckpoint";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import { verbToTransportCall } from "../agentLane/laneVerbTransport";
 
@@ -42,13 +42,15 @@ const registry = createModuleRegistry([{
   inputKinds: ["text", "image"],
   outputKinds: ["image", "video"],
   modes: ["text-to-image", "image-to-video"],
+  // 真目录里一条 i2v mapping 的 body 必然引用 duration（镜头长度发得出去），所以夹具照样要声明它；
+  // 空参数表在今天等于「这个模型什么参数都不接受」，合同编译会先一步拒掉带 durationSec 的镜头。
   parameterSchema: {},
   assetInputSchema: { references: { kind: "image", max: 4 } },
   providers: [{
     providerId: "apimart",
     models: [
-      { modelId: "image-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
-      { modelId: "video-model", modes: ["image-to-video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+      { modelId: "image-model", modes: ["text-to-image"], parameterSchema: { duration: { type: "any" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
+      { modelId: "video-model", modes: ["image-to-video"], parameterSchema: { duration: { type: "any" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true } },
     ],
   }],
 }]);
@@ -160,6 +162,9 @@ function harness(
       projectRevision: 0,
       operation,
       contract,
+      // 授权站在真实 Run 上（`run` 必填）：不传曾经让这台 harness 恒停在 attempt=1，
+      // 第二批次那条真实路径于是一条测试都没走过。
+      run: repository.read(operation.projectId, operation.operationId)!,
       ...(multiShot ? { multiShot } : {}),
       providers: [provider],
       resolveShotPrice: () => ({ known: true, amount: 6 }),
@@ -257,7 +262,7 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
       // Anchor generated, checkpoint opened & auto-passed? No — default has no auto-release, so the batch
       // stops at the checkpoint after the anchor. Exactly 1 submit so far (the anchor image).
       expect(submits).toHaveLength(1);
-      const checkpoint = run.gates.find((g) => g.gateId === anchorCheckpointGateId(operationId))!;
+      const checkpoint = run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(run)?.gateId)!;
       expect(checkpoint.status).toBe("waiting");
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(1); // anchor
       const blockedShotJob = run.jobs.find((job) => job.metadata?.shotId === "shot-1");
@@ -295,13 +300,20 @@ describe("P4 S6.5 — semantic multi-shot create entrance (plan) over a real loo
     }
   });
 
-  it("rejects a plan with no video shot (only an anchor) with a human error", async () => {
+  // 2026-09-22 改判：这条原来是「只有形象参考 → 拒绝」。拦的理由是**投影管道**（报价行按「非锚」筛），
+  // 不是领域：锚本身有候选、有价，`present`/`seal` 的范围本来就含它，调度器也早就有
+  // 「an anchor-only request tracks its actual paid units」那一支。而「先建参考卡、镜头下一轮补」
+  // 是用户与 Agent 都会走的正常路径——用户 2026-09-21 亲自点名过这条报错。
+  // 现在放行，并且草稿上带一条**安静提示**说清「还没有镜头用到它们」。
+  it("accepts a plan with only reference cards, and says so quietly instead of refusing", async () => {
     const vendor = await startLoopbackVendor();
     const { handler } = harness(vendor.origin, []);
     try {
-      await expect(handler({ capability: "create", lease, params: { shots: [
+      const created = await handler({ capability: "create", lease, params: { shots: [
         { role: "anchor", candidate: shotCandidate("anchor-1", "只有形象", "anchor") },
-      ] } })).rejects.toThrow(/至少需要一个视频镜头/);
+      ] } }) as { operation: { shots?: unknown[] }; note?: string };
+      expect(created.operation.shots).toHaveLength(1);
+      expect(created.note, "放行不等于沉默：模型要知道还没有镜头用到它们").toMatch(/only reference cards/);
     } finally {
       await vendor.close();
     }

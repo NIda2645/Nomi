@@ -14,6 +14,8 @@ import { estimateTokens } from '@earendil-works/pi-agent-core';
 import { createExtendedLaneTools, type LaneExtendedPort } from '../../electron/agentLane/laneExtendedTools.js';
 import type { LaneToolDescriptor } from '../../electron/agentLane/laneRuntimePort.js';
 import { createLaneTools } from '../../electron/agentLane/laneTools.mjs';
+import { storyboardAuthorFieldsSchema } from '../../electron/shared/agentCapabilities/generationPlanSchemas.js';
+import { toPublishedJsonSchema } from '../../electron/shared/agentCapabilities/modelVisibleJsonSchema.js';
 import { createLaneFixture } from './laneFixture.mjs';
 
 const TOOL = 'draft_shots';
@@ -25,7 +27,19 @@ const TOOL = 'draft_shots';
  * 而压预算的另外两条路都是症状修法：删别的字段/enum（契约变窄）或删工具描述（那 92 chars 也是 23 tokens）。
  * 这条断言的本意是「长大时有人看见」（见文件头），所以按看得见的方式记账：涨了 23，预算留 5 的余量。
  */
-const TOKEN_BUDGET = 1_220;
+// 2026-09-21 重量：core **777**。原来的 1_220 量的是「所有作者字段都摊在 shot 上」那个形状；
+// 作者字段收进 `storyboard` 子树之后，剩下的 envelope 本身就只有这么大。棘轮只减不增，
+// 所以按今天真实的数收紧（777 + 8 的余量），别让一个已经不成立的上限继续当挡板。
+const CORE_TOKEN_BUDGET = 785;
+// 2026-09-20: the original editor's complete author fields are now writable by this
+// tool. Preserve the old core cap separately; explicitly account for the new subtree.
+// This is a +486 total-cap change, not an unchanged budget. No schema field, validator,
+// description or estimator is removed to fit. See core-a-restart.md, P5 contract review.
+const FULL_TOKEN_BUDGET = 1_706;
+
+type DraftPublishedSchema = {
+  properties: { shots: { items: { properties: Record<string, unknown> } } };
+};
 
 const SHOTS = [
   { title: '天台', prompt: 'Wide: she steps onto the rooftop, dusk light behind her.', taskKind: 'text_to_image' },
@@ -58,17 +72,36 @@ test('P5 ① · size of the draft_shots schema, by pi\'s own estimator', () => {
   const schema = JSON.stringify(storyboard.parameters);
   const schemaTokens = estimate(schema);
   const descriptionTokens = estimate(storyboard.description);
-  console.log(`[P5①] ${TOOL}: schema ${schema.length} chars ≈ ${schemaTokens} tokens · description ${storyboard.description.length} chars ≈ ${descriptionTokens} tokens · total ≈ ${schemaTokens + descriptionTokens} (budget ${TOKEN_BUDGET})`);
+  const core = structuredClone(storyboard.parameters) as DraftPublishedSchema;
+  assert.ok(core.properties.shots.items.properties.storyboard, 'the new authoring subtree is present');
+  delete core.properties.shots.items.properties.storyboard;
+  const coreTokens = estimate(JSON.stringify(core)) + descriptionTokens;
+  console.log(`[P5①] ${TOOL}: schema ${schema.length} chars ≈ ${schemaTokens} tokens · description ${storyboard.description.length} chars ≈ ${descriptionTokens} tokens · total ≈ ${schemaTokens + descriptionTokens} (budget ${FULL_TOKEN_BUDGET}); core ${coreTokens}/${CORE_TOKEN_BUDGET}, authoring increment ${schemaTokens + descriptionTokens - coreTokens}`);
   for (const tool of tools) {
     const size = estimate(JSON.stringify(tool.parameters)) + estimate(tool.description);
     console.log(`[P5①]   ${tool.name}: ≈ ${size} tokens`);
   }
   const properties = Object.keys((storyboard.parameters as { properties: Record<string, unknown> }).properties);
   assert.deepEqual(properties, ['operationId', 'taskKind', 'candidate', 'shots'], 'draft_shots root: the draft to revise, per-draft defaults, and the shots');
-  // B1c moves full guidance/examples into the stable system prompt; the budget above records
-  // the one deliberate growth since (film-level aspectRatio), not prose creeping back in.
-  assert.ok(schemaTokens + descriptionTokens <= TOKEN_BUDGET,
-    `pi's estimate (${schemaTokens + descriptionTokens}) must stay within the original ${TOKEN_BUDGET} budget`);
+  // B1c's original envelope still cannot grow prose beyond its original cap.
+  assert.ok(coreTokens <= CORE_TOKEN_BUDGET, `core estimate (${coreTokens}) exceeds ${CORE_TOKEN_BUDGET}`);
+  assert.ok(schemaTokens + descriptionTokens <= FULL_TOKEN_BUDGET,
+    `full estimate (${schemaTokens + descriptionTokens}) exceeds the explicitly reviewed ${FULL_TOKEN_BUDGET} budget`);
+});
+
+test('P5 authoring growth preserves the complete canonical author schema, including nested constraints', () => {
+  const tool = createLaneTools(createExtendedLaneTools(port([]))).find(item => item.name === TOOL)!;
+  const published = (tool.parameters as DraftPublishedSchema).properties.shots.items.properties.storyboard;
+  // Local references have a different root when embedded in the shots envelope.
+  // Normalize only that location; do not strip any type, constraint or field guidance.
+  const prefix = '#/properties/shots/items/properties/storyboard';
+  const normalized = JSON.parse(JSON.stringify(published, (key, value: unknown) =>
+    key === '$ref' && typeof value === 'string' && value.startsWith(`${prefix}/`)
+      ? `#${value.slice(prefix.length)}` : value)) as Record<string, unknown>;
+  delete normalized.description; // optional wrapper guidance belongs to draft_shots
+  const canonical = { ...toPublishedJsonSchema(storyboardAuthorFieldsSchema) };
+  delete canonical.$schema; // a nested schema has no document-level dialect declaration
+  assert.deepEqual(normalized, canonical, 'budget reduction must not silently narrow original author capabilities');
 });
 
 async function firstCallSucceeds(t: TestContext, arm: 'with-tolerance' | 'without-tolerance', args: unknown) {

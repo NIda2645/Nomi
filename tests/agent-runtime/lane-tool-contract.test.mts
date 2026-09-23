@@ -361,24 +361,21 @@ test('动词 → 宿主契约贯通：声明的示例、以及真实分镜那种
 // 那正是我们自己的导演技能教它的。宿主拦得对（锚 = 被别的镜头复用的参考卡，全是锚自相矛盾），
 // 但那条拦截住在宿主里，模型只能撞上去才知道。6 次里 5 次靠错误信息自纠了，每次白费一个来回，
 // 还有 1 次整轮没救回来。约束搬到动词面之后，它在调用发出前就知道（R17）。
-test('draft_shots：全是锚的计划在动词面就被拒，且告诉模型那条合法路怎么走', async () => {
+test('draft_shots：只建参考卡（全是锚）是一条正常路径，动词面不拦', async () => {
   const { VERB_DECLARATIONS } = await import('../../electron/shared/agentCapabilities/verbDeclarations.js');
   const draftShots = VERB_DECLARATIONS.find((verb) => verb.name === 'draft_shots');
   assert.ok(draftShots, 'draft_shots 必须在动词表里');
   const parse = (args: unknown) => draftShots!.schema.safeParse(args) as
     { success: boolean; error?: { issues: Array<{ message: string; path: Array<string | number> }> } };
 
-  // ① 全是锚 → 拒
+  // ① 全是锚 → **过**（2026-09-22 第二轮第 2 项，用户点名）：「先帮我把三个角色的参考卡建出来」是一条正常路径，
+  //    不是一次拒绝。此前这里在动词面拒收，真实回合里模型因此连撞三次墙。落地侧的安静说明由
+  //    `anchorsOnlyDraftIsAllowed.test.ts` 钉；这里只守「动词面不再拦」。
   const anchorsOnly = parse({ shots: [
     { role: 'anchor', prompt: '角色锚：林野，25 岁，短发' },
     { role: 'anchor', prompt: '场景锚：旧房子客厅，午后' },
   ] });
-  assert.equal(anchorsOnly.success, false, '全是锚的计划必须在动词面被拒');
-  const message = (anchorsOnly.error?.issues ?? []).map((issue) => issue.message).join(' ');
-  // 拒绝必须可行动：说清为什么 + 两条出路（合到一次调用里 / 省掉 role）。
-  assert.match(message, /anchor is a reference card that other shots reuse/);
-  assert.match(message, /this one call/, '要告诉它把锚和镜头放在同一次调用里');
-  assert.match(message, /omit role/, '要告诉它「只想要那几张图本身」时怎么发');
+  assert.equal(anchorsOnly.success, true, `只建参考卡必须放行：${JSON.stringify(anchorsOnly.error?.issues ?? [])}`);
 
   // ② 锚 + 镜 → 过（这是我们教它的那条路，不能连带拦掉）
   assert.equal(parse({ shots: [

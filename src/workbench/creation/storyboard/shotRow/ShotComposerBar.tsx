@@ -19,7 +19,7 @@ import {
   type ComposerChipDemand,
   type ComposerChipKind,
 } from './composerBarGeometry'
-import { useComposerBarWidth } from './useComposerBarWidth'
+import { useElementWidth } from './useElementWidth'
 
 /**
  * 提示词框下方的**底栏**（合同 v6 §2.3）——「和画布里的图片节点一样」那句话的落点。
@@ -53,7 +53,7 @@ import { useComposerBarWidth } from './useComposerBarWidth'
  *      模型 / 模式 / 时长不可以）。判据是这一行自己那条 bar 的**实测宽度** + 这一行真要渲染的
  *      那几个标签——同一个容器宽度下中文装得下而英文装不下，一个全局断点表达不了。
  *      注意这与 ① 删掉的那套测量 hook 不是一回事：那套量内容、改行高（抖）；
- *      这条量外框、改内容，而外框宽度不取决于内容（见 `useComposerBarWidth`）。
+ *      这条量外框、改内容，而外框宽度不取决于内容（见 `useElementWidth`）。
  *
  * 摆几枚由 `composerBarPlan` derive（select 摆出来、boolean 收进行尾 ⋯），画幅胶囊只在这一行
  * 覆盖了整片默认时出现（§2.4.1）——于是"胶囊出现"本身就是信息。已生成/已锁定的行，
@@ -168,7 +168,7 @@ export default function ShotComposerBar({
   // 「默认模型」那一项没有身份图标，固定开销少 20px——下限和估算都得跟着变，否则会把它撑胖。
   const modelChipHasIcon = Boolean(selectedModelOption?.icon)
   const barRef = React.useRef<HTMLDivElement>(null)
-  const barWidth = useComposerBarWidth(barRef)
+  const barWidth = useElementWidth(barRef)
   const chipDemands: (ComposerChipDemand & { key?: string })[] = [
     ...(modelSelectOptions ? [{ kind: 'model' as const, label: modelChipLabel, hasIcon: modelChipHasIcon }] : []),
     ...(modelSelect.providerOptions.length > 1 ? [{ kind: 'provider' as const, label: modelSelect.providerOptions.find((option) => option.value === modelSelect.providerValue)?.label ?? '' }] : []),

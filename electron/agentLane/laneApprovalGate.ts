@@ -30,6 +30,7 @@ import type {
   LaneApprovalCancelCause,
   LaneApprovalDecision,
   LaneApprovalNote,
+  LaneHoldOutcome,
   LanePendingApproval,
 } from "../shared/agentLane/laneContracts";
 import { modelToolCapabilityId } from "../shared/agentCapabilities/modelFacingTools";
@@ -94,9 +95,24 @@ export interface LaneApprovalGate {
    * （2026-09-12 「劈成两半」那次）。事实在这里，回执就该从这里取。
    */
   decisionFor(toolCallId: string): LaneApprovalDecision | undefined;
+  /**
+   * 用户回答这道题时的**原话**（只有 `answered` 有）。`ask_user` 的 execute 读它，
+   * 把这句话作为成功形状的 tool result 交回模型——「他答上了」不是一次工具失败。
+   */
+  answerFor(toolCallId: string): string | undefined;
   /** 这次调用结束了，忘掉它的结论（宿主在 `after_tool` 调）。 */
   forget(toolCallId: string): void;
   describe(request: LaneApprovalRequest): string;
+  /**
+   * 替一张**画在别处的卡**等用户（见 `LaneHoldOutcome`）。与 `preflight` 的等待同性质：race 那个 signal、
+   * 被打断时兑现成 `cancelled`、不设超时、`cancelAll` 一并收尾。**不投影成闸卡**——那张卡已经有人画了，
+   * 再投影一张就是同一个问题问两遍。
+   */
+  hold(request: Pick<LaneApprovalRequest, "toolCallId" | "toolName">, signal: AbortSignal | undefined): Promise<LaneHoldOutcome>;
+  /** 那张卡上的结论到了（面板点了「生成」/ ×，或用户打了字）。只认第一次；没有这笔等待返回 `false`。 */
+  settleHold(toolCallId: string, outcome: Exclude<LaneHoldOutcome, { kind: "cancelled" }>): boolean;
+  /** 此刻替哪次调用等着（E：宿主据此把用户打的字送给它）。 */
+  holding(): Readonly<{ toolCallId: string; toolName: string }> | undefined;
   /** 关窗 / 切项目 / 按停止：等待中的卡一律以 `cancelled` 收尾。 */
   cancelAll(cause: LaneApprovalCancelCause): void;
   /** 还没落盘的结局记录（只有 `cancelled` 会走这里，理由见文件头 ③）。取走即清空。 */
@@ -130,6 +146,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
   const sessionGrants = new Set<string>();
   const restored = new Set<string>(options.restoredToolCallIds ?? []);
   const waiting = new Map<string, WaitingCard>();
+  /** 「卡画在别处」的等待（`hold`）。键同样是 toolCallId；不进 `waiting`——那张表是要投影成闸卡的。 */
+  const holds = new Map<string, { toolName: string; settle: (outcome: LaneHoldOutcome) => void }>();
   const undrained: LaneApprovalNote[] = [];
   /**
    * 已经记过一条结局的调用。
@@ -147,6 +165,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
    * lane 上就是泄漏。超了丢最老的（Map 按插入序），丢掉的后果只是那条回执少一句限定语。
    */
   const decisions = new Map<string, LaneApprovalDecision>();
+  /** `toolCallId` → 用户答这道题时的原话。只有 `answered` 有，随 `decisions` 同生同死。 */
+  const answers = new Map<string, string>();
   const DECISION_MEMORY = 256;
 
   function rememberDecision(toolCallId: string, decision: LaneApprovalDecision): void {
@@ -155,8 +175,14 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     while (decisions.size > DECISION_MEMORY) {
       const oldest = decisions.keys().next();
       if (oldest.done) break;
+      answers.delete(oldest.value);
       decisions.delete(oldest.value);
     }
+  }
+
+  function rememberAnswer(toolCallId: string, text: string): void {
+    if (!toolCallId) return;
+    answers.set(toolCallId, text);
   }
 
   function note(entry: LaneApprovalNote): void {
@@ -186,6 +212,9 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       effect: contract?.effect,
       effectClass: capabilityEffectClassOf(contract, request.args),
       ...capabilityPlanReviewOf(contract, request.args),
+      // 「这个能力就是问用户一句」。从契约上原样带过来，不在这里按工具名判——
+      // 按名字判就是第二份真相源，而提问工具正是最容易长出第二份的那一个。
+      ...(contract?.alwaysAsksUser ? { alwaysAsksUser: true as const } : {}),
       // 原生 lane 工具没有外部服务器的 hint。MCP 工具进 lane 是阶段 5 的事，
       // 那时它从工具声明上读，且**只能抬高摩擦**（`CapabilityApprovalSubject` 的注释）。
       destructiveHint: false,
@@ -279,7 +308,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
   return {
     pending: currentPending,
     decisionFor: (toolCallId) => decisions.get(toolCallId),
-    forget: (toolCallId) => { decisions.delete(toolCallId); },
+    answerFor: (toolCallId) => answers.get(toolCallId),
+    forget: (toolCallId) => { answers.delete(toolCallId); decisions.delete(toolCallId); },
     describe: (request) => {
       const { subject, decided } = decisionOf(request);
       if (decided.state === 'denied-by-policy') return '当前策略禁止此动作';
@@ -290,6 +320,29 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     drainNotes: () => undrained.splice(0, undrained.length),
 
     answer: (toolCallId, action, reason) => {
+      if (action === "answer") {
+        const text = reason?.trim();
+        // 空答案不成立：卡自己已经挡住了（`questionAnswerFromInput` 对空串回 undefined），
+        // 这里再挡一次是因为**这一侧不该相信渲染层送来的东西**——一个空的「答案」会变成
+        // 一段空白 tool result，模型只能接着猜，而用户以为自己答过了。
+        if (!text) return false;
+        /**
+         * `allow: true`——**「他答上了」是成功，不是失败**（2026-09-22，run4 六次全中）。
+         *
+         * 这里原来写 `allow: false`，注释自陈「与 deny 走同一条既有通路」。那条通路的下游是
+         * `laneHost` 的 `block`，而 pi 对 `block` 是硬编码的 `immediateError(isError: true)`
+         * （`pi-agent-core/dist/harness/execution/tools.js`），再由 `pi-ai` 原样映射成 Anthropic
+         * `tool_result.is_error: true`。于是**用户每答一次卡，模型都收到一条「ask_user 失败了」**，
+         * 正文恰好是他那句答案；Nomi 自己还拿 `event.isError` 计「连续撞墙」——他答一次，熔断计数器加一格。
+         * 既是错误形状，又在教模型「问了会失败」。
+         *
+         * 放行之后没有东西会被执行：`ask_user` 的 execute 读 `context.approvalAnswer`，
+         * 把这句原话原样作为**成功形状**的 tool result 交回去（`laneDesktopTools.ts`）。
+         * 读不到才是 fail-closed 的那一支（没装闸 = 这条会话没有能问的人）。
+         */
+        rememberAnswer(toolCallId, text);
+        return settleWaiting(toolCallId, { allow: true, decision: "answered", reason: text });
+      }
       if (action === "deny") {
         const text = reason?.trim();
         return settleWaiting(toolCallId, {
@@ -312,7 +365,44 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       return settleWaiting(toolCallId, { allow: true, decision: "granted-once" });
     },
 
+    hold: async (request, signal) => {
+      let settle!: (outcome: LaneHoldOutcome) => void;
+      const answered = new Promise<LaneHoldOutcome>((resolve) => { settle = resolve; });
+      holds.set(request.toolCallId, { toolName: request.toolName, settle });
+      const detach = new AbortController();
+      const stopped = new Promise<LaneHoldOutcome>((resolve) => {
+        if (!signal) return;
+        const cancelled: LaneHoldOutcome = { kind: "cancelled", cause: "stopped" };
+        if (signal.aborted) { resolve(cancelled); return; }
+        signal.addEventListener("abort", () => resolve(cancelled), { once: true, signal: detach.signal });
+      });
+      try {
+        return await Promise.race([answered, stopped]);
+      } finally {
+        detach.abort();
+        holds.delete(request.toolCallId);
+      }
+    },
+
+    settleHold: (toolCallId, outcome) => {
+      const held = holds.get(toolCallId);
+      if (!held) return false;
+      // 只认第一次：面板确认与「用户打字」同时到时，先到的那个算数（方案反方评审 Q1-b）。
+      holds.delete(toolCallId);
+      held.settle(outcome);
+      return true;
+    },
+
+    holding: () => {
+      const first = holds.entries().next();
+      return first.done ? undefined : { toolCallId: first.value[0], toolName: first.value[1].toolName };
+    },
+
     cancelAll: (cause) => {
+      for (const [toolCallId, held] of [...holds]) {
+        holds.delete(toolCallId);
+        held.settle({ kind: "cancelled", cause });
+      }
       for (const [toolCallId, card] of [...waiting]) {
         waiting.delete(toolCallId);
         // 记录不在这里写：abort 不是一个转录边界，钩子里追加的条目会悬在 `queues` 里

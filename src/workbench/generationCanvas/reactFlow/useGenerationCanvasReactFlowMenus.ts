@@ -55,7 +55,7 @@ type UseGenerationCanvasReactFlowMenusArgs = {
   handleCanvasPointerDownCapture: (event: React.PointerEvent<HTMLDivElement>) => void
   handleCanvasPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
   handleCanvasPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void
-  handleCanvasPointerEnd: () => void
+  handleCanvasPointerEnd: (event?: React.PointerEvent<HTMLDivElement>) => void
   shouldSuppressContextMenu: () => boolean
   /** 右键落在框体上时改开框菜单（与头部 ⋯ 同一份）；由 useCanvasFrameActions 拥有那份状态。 */
   onFrameMenu?: (frameId: string, point: { x: number; y: number }) => void
@@ -192,7 +192,7 @@ export function useGenerationCanvasReactFlowMenus({
 
   const handleStagePointerEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const suppressContextMenu = event.button === 2 && shouldSuppressContextMenu()
-    handleCanvasPointerEnd()
+    handleCanvasPointerEnd(event)
     finishContextMenuPointerUp(event, suppressContextMenu)
   }, [finishContextMenuPointerUp, handleCanvasPointerEnd, shouldSuppressContextMenu])
 

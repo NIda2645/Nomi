@@ -1,6 +1,7 @@
 import { authHeaders } from "../ai/requestPipeline";
 import { extractVendorExtraHeaders, readCatalog, normalizeProviderKind } from "../catalog/catalogStore";
 import { resolveConnectionVendorKey } from "../catalog/connectionVendorKey";
+import { connectionAuthSpec } from "../catalog/vendorAuthSpec";
 import { desktopT } from "../i18n";
 import type { AiSdkProviderKind } from "../catalog/types";
 import type { ConnectionCertificationService } from "./service";
@@ -19,7 +20,8 @@ export async function discoverHttpCandidates(input: {
   const providerKind = normalizeProviderKind(session.config.providerKind) as AiSdkProviderKind;
   const authType = session.config.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer");
   // #831：同域名可以有多条连接，身份 = 域名 + 连接名。反查必须带上连接名，
-  // 否则永远落到 host 那条，模型发现会拿错一把 Key。
+  // 否则永远落到 host 那条，模型发现会拿错一把 Key。（2026-09-22 总合并：这条调用点取 #831 的；
+  // 下面的方案词解析是本分支那一段，两件事不冲突——一件是「哪条连接」，一件是「它怎么签名」。）
   const catalogVendors = readCatalog().vendors;
   const vendorKey = resolveConnectionVendorKey({
     baseUrl: session.config.baseUrl,
@@ -27,16 +29,21 @@ export async function discoverHttpCandidates(input: {
     vendors: catalogVendors,
   });
   const vendor = catalogVendors.find((candidate) => candidate.key === vendorKey);
+  // 方案词（Higgsfield 的 `Key id:secret`）只存在于已保存的那条连接上；接入向导没有填它的格子。
+  const auth = connectionAuthSpec({
+    baseUrl: session.config.baseUrl,
+    authType,
+    ...(session.config.authHeader ? { authHeader: session.config.authHeader } : {}),
+    ...(session.config.authQueryParam ? { authQueryParam: session.config.authQueryParam } : {}),
+  });
   try {
     const candidates = await input.certification.discoverHttpModels({
       baseUrl: session.config.baseUrl,
       providerKind,
-      authType,
       apiKey,
-      ...(session.config.authHeader ? { authHeader: session.config.authHeader } : {}),
-      ...(session.config.authQueryParam ? { authQueryParam: session.config.authQueryParam } : {}),
+      auth,
       headers: {
-        ...authHeaders(authType, apiKey, session.config.authHeader),
+        ...authHeaders(auth, apiKey),
         ...(vendor ? extractVendorExtraHeaders(vendor) || {} : {}),
       },
     });

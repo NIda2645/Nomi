@@ -1,3 +1,4 @@
+import { resolveIndexedReferencePreview } from '../capabilityCore/pendingSpendReferences';
 import { ipcMain } from "electron";
 
 import { createProductionRunRepository, type ProductionRunRepository } from "./productionRunRepository";
@@ -5,8 +6,9 @@ import { getProductionRunService } from "./productionRunRuntime";
 import type { ProductionRunService } from "./productionRunService";
 import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes";
 
+
 import { assertTrustedSender } from "../ipcSenderGuard";
-const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile", "plan.detach-shot-nodes"]);
+const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile", "plan.detach-shot-nodes", "generation.present"]);
 
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -47,6 +49,14 @@ function storyboardMetadata(value: unknown): Record<string, unknown> | undefined
 
 function rendererCommandPayload(type: string, value: unknown): Record<string, unknown> {
   const raw = objectValue(value, "production command payload");
+  if (type === "generation.present") {
+    if (!Number.isSafeInteger(raw.sourceDocumentRevision) || Number(raw.sourceDocumentRevision) < 0) throw new Error("Invalid source document revision");
+    if (!Array.isArray(raw.shotIds) || raw.shotIds.length === 0 || raw.shotIds.length > 256) throw new Error("Invalid generation scope");
+    const shotIds = raw.shotIds.map(value => identifier(value, "shot"));
+    if (new Set(shotIds).size !== shotIds.length) throw new Error("Duplicate generation scope");
+    return { sourceDocumentId: identifier(raw.sourceDocumentId, "source document"), sourceDocumentRevision: Number(raw.sourceDocumentRevision), shotIds };
+  }
+
   if (type === "run.status") {
     return { status: typeof raw.status === "string" ? raw.status.trim() : raw.status };
   }
@@ -207,7 +217,9 @@ export function registerProductionRunIpc(
     const { projectId, runId } = projectRunPayload(payload);
     const run = read(projectId, runId);
     if (run && run.projectId !== projectId) throw new Error("Production run project mismatch");
-    return run;
+    if (!run?.generationPlan) return run;
+    const references=run.generationPlan.shots?.length ? run.generationPlan.shots.flatMap(shot=>shot.candidate.references) : run.generationPlan.candidate.references;
+    return references.length ? {...run,storyboardReferenceUrls:Object.fromEntries(references.map(reference=>[reference.assetId,resolveIndexedReferencePreview(projectId,reference)]))} : run;
   });
   ipcMain.handle("nomi:production-runs:create-draft", async (event, payload: unknown) => {
     assertTrustedSender(event);
@@ -216,12 +228,22 @@ export function registerProductionRunIpc(
   ipcMain.handle("nomi:production-runs:command", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const { projectId, runId, raw } = projectRunPayload(payload);
+    const command = rendererCommand(raw.command);
+    if (command.type === "generation.present") {
+      const current = read(projectId, runId);
+      const source = current?.origin.sourceDocument;
+      if (!current || current.projectId !== projectId || current.origin.host !== "nomi"
+        || !source || command.payload.sourceDocumentId !== source.documentId
+        || command.payload.sourceDocumentRevision !== source.revision) throw new Error("Storyboard source mismatch");
+      // The normal repository CAS and scope reducer arbitrate any subsequent change.
+      // This exposes a pending card; approval remains exclusively in the spend boundary.
+    }
     if (service) {
       if (!read(projectId, runId)) throw new Error(`Production run not found: ${runId}`);
-      return service.command(projectId, runId, rendererCommand(raw.command));
+      return service.command(projectId, runId, command);
     }
     assertProjectRun(repository!, projectId, runId);
-    return repository!.execute(projectId, runId, rendererCommand(raw.command));
+    return repository!.execute(projectId, runId, command);
   });
   ipcMain.handle("nomi:production-runs:materialize-storyboard", async (event, payload: unknown) => {
     assertTrustedSender(event);

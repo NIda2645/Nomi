@@ -14,8 +14,8 @@ import type { PlanAnchor } from '../../../generationCanvas/agent/storyboardPlan'
 import { appendBinding, bindingsOf, removeBinding, reorderBinding, type ReferenceBindingMap } from './shotReferenceSlots'
 import { cellCount, referenceColumnOf, type ShotReferenceCell } from './shotReferenceCells'
 import ShotReferenceSlotPopover from './ShotReferenceSlotPopover'
+import { referenceColumnWidthOf, useStoryboardRowNarrow } from './storyboardRowDensity'
 import {
-  REFERENCE_COLUMN_WIDTH,
   REFERENCE_SLOT_BOX,
   REFERENCE_SLOT_GAP,
   REFERENCE_STACK_ANGLES,
@@ -36,6 +36,11 @@ import {
  * 键用跨供应商稳定的 `slot.kind`），上传/素材库/引用四条入口仍复用现役 `AssetPicker`——
  * 参考槽的声明式数据与选择器都已存在，这里不新造（见 docs/lessons/nomi-reference-slots-are-already-declarative）。
  * 新的只有**行内的排布方式**，那正是本合同要求与画布节点不同的地方。
+ *
+ * **窄档（2026-09-21 样张 v1）**：编辑器被左栏挤到 585px 时，这一列从「三格 211px」收成
+ * 「一格 65px + 『+N』」，省下的 146px 全给提示词列。参考卡是**已经定好的**、提示词是**正在写的**，
+ * 空间不够时让前者；收成一格后信息没丢——「+N」点一下就摊开，摊开的还是这同一排格子，
+ * 不是第二套渲染。判据与到期条件（T-DS-01 · A-2 落地即收回）都在 `storyboardRowDensity.ts`。
  */
 
 type Props = {
@@ -124,6 +129,10 @@ function SlotStack({ cell }: { cell: ShotReferenceCell }): JSX.Element {
 export default function ShotReferenceZone({ mode, archetype, bindings, onChangeBindings, anchors, onTriggerMention, mentionEnabled }: Props): JSX.Element {
   const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
+  const narrow = useStoryboardRowNarrow()
+  const [expanded, setExpanded] = React.useState(false)
+  // 回到宽档就没有「摊开」这回事了——留着的话再窄下来时会以展开态出场。
+  React.useEffect(() => { if (!narrow) setExpanded(false) }, [narrow])
   const [openSlotKey, setOpenSlotKey] = React.useState('')
   const [uploadingSlotKey, setUploadingSlotKey] = React.useState('')
   const [uploadError, setUploadError] = React.useState('')
@@ -208,20 +217,33 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
     return { text: anchor?.name.trim() || first.name?.trim() || cell.label, title, danger: false }
   }
 
+  // 窄档下这一列只露第一格；其余的藏在「+N」后面，点一下摊开（摊开的仍是同一排格子）。
+  const collapsible = narrow && column.kind === 'cells' && column.cells.length > 1
+  const shownCells = column.kind === 'cells'
+    ? (collapsible && !expanded ? column.cells.slice(0, 1) : column.cells)
+    : []
+  const hiddenCellCount = column.kind === 'cells' ? column.cells.length - shownCells.length : 0
+
   return (
-    // 列宽固定（REFERENCE_COLUMN_WIDTH = 三只固定盒 + 两个间距）、nowrap。
+    // 列宽按档位来（宽档 = 三只固定盒 + 两个间距；窄档 = 一只盒）、nowrap。
     // 槽数 >3 的模式今天不存在（合同 §4.1 按六种真实档案定的上限），
     // 真出现时这一行横向滚动——宁可滚，也不换行（换行 = 行高不稳 = 表格扫不动），更不静默丢槽。
     // 顶对齐、不撑最小高：这一列要和左边的画面格共用同一条顶线（2026-09-06 用户反馈四）。
     // 上一版 `min-h-[135px] justify-center` 把参考卡垂直居中在 135px 里——16:9 的行画面格只有 77 高，
     // 参考卡却仍落在 135 的中线上，两列从此对不上。
     <div
-      className="flex shrink-0 flex-col items-start gap-2 overflow-x-auto"
-      style={{ width: REFERENCE_COLUMN_WIDTH }}
+      className={cn('relative flex shrink-0 flex-col items-start gap-2', narrow ? '' : 'overflow-x-auto')}
+      style={{ width: referenceColumnWidthOf(narrow) }}
       data-storyboard-refzone="true"
+      data-storyboard-refzone-density={narrow ? 'narrow' : 'wide'}
     >
       {column.kind === 'none-accepted' ? (column.switchTo ? (
-        <span className="text-micro leading-relaxed text-nomi-ink-30">
+        <span
+          className={cn('text-micro leading-relaxed text-nomi-ink-30', narrow && 'line-clamp-3')}
+          title={column.switchTo.modeLabel === column.switchTo.slotLabel
+            ? t('storyboardEditor.row.noRefAcceptedSwitchSame', { mode: column.modeLabel, other: column.switchTo.modeLabel })
+            : t('storyboardEditor.row.noRefAcceptedSwitch', { mode: column.modeLabel, other: column.switchTo.modeLabel, slot: column.switchTo.slotLabel })}
+        >
           {/* 模式名和槽名撞词时（「首帧」模式的槽也叫「首帧」）换一句说法——
               「切「首帧」可挂首帧」读起来像卡带了。 */}
           {column.switchTo.modeLabel === column.switchTo.slotLabel
@@ -258,8 +280,16 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
           </span>
         </span>
       ) : (
-        <div className="flex flex-nowrap items-start" style={{ gap: `${REFERENCE_SLOT_GAP}px` }}>
-          {column.cells.map((cell) => {
+        <div
+          className={cn(
+            'flex flex-nowrap items-start',
+            // 摊开 = 同一排格子挪到浮层里画，不是第二套渲染；纸底 + 描边 + 投影才读得出它浮在提示词列上面。
+            collapsible && expanded && 'absolute left-0 top-0 z-[5] rounded-nomi border border-nomi-line bg-nomi-paper p-1.5 shadow-nomi-md',
+          )}
+          style={{ gap: `${REFERENCE_SLOT_GAP}px` }}
+          data-storyboard-refzone-expanded={collapsible && expanded ? 'true' : undefined}
+        >
+          {shownCells.map((cell, cellIndex) => {
             const caption = captionOf(cell)
             const first = cell.bindings[0]
             return (
@@ -297,6 +327,21 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
                     </span>
                   )}
                 </button>
+                {collapsible && cellIndex === 0 ? (
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); setExpanded((previous) => !previous) }}
+                    aria-label={expanded
+                      ? t('storyboardEditor.slot.collapseAria')
+                      : t('storyboardEditor.slot.moreAria', { count: hiddenCellCount })}
+                    aria-expanded={expanded}
+                    title={t('storyboardEditor.slot.moreTitle', { total: column.cells.length })}
+                    data-storyboard-ref-more={expanded ? 0 : hiddenCellCount}
+                    className="absolute right-0 top-0 z-[6] grid h-4 min-w-4 place-items-center rounded-nomi-sm bg-nomi-overlay-chip-strong px-1 text-micro text-nomi-media-ink tabular-nums"
+                  >
+                    {expanded ? '\u2212' : `+${hiddenCellCount}`}
+                  </button>
+                ) : null}
                 <span className={cn('w-full truncate text-micro', caption.danger ? 'text-workbench-danger' : 'text-nomi-ink-40')} title={caption.title}>
                   {caption.text}
                 </span>
@@ -323,6 +368,10 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
           })}
         </div>
       )}
+      {collapsible && expanded ? (
+        // 浮层脱离文档流，列里留一只同尺寸的空盒——否则摊开的瞬间整行高度先塌一下再弹回来。
+        <span aria-hidden className="block" style={{ width: `${REFERENCE_SLOT_BOX.width}px`, height: `${REFERENCE_SLOT_BOX.height}px` }} />
+      ) : null}
       {uploadError ? (
         <span className="text-micro leading-tight text-workbench-danger" role="alert">{uploadError}</span>
       ) : null}

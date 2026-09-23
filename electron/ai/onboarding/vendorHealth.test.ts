@@ -301,12 +301,14 @@ describe('live catalog reconciliation delivery', () => {
   const state = () => ({ vendors: [{ key: 'v', authType: 'bearer', hasApiKey: true, baseUrlHint: 'https://gateway.test/v1' }], models: [row()], apiKeysByVendor: { v: encryptedRecord('synthetic', 'one') } })
   beforeEach(() => { resetVendorHealthCache(); broadcast.mockClear() })
   afterEach(() => vi.unstubAllGlobals())
-  it('disables from a full response and broadcasts invalidation to active windows', async () => {
+  it('marks unlisted from a full response and broadcasts invalidation, without touching the user enable decision', async () => {
+    // 2026-09-21：后台对账只落旁注。两处同改：① 断言从 enabled:false 改成 enabled 原样为 true
+    // ② 清单从空数组改成「有内容但不含这一条」——一份成功但空的清单不再算证据（网关抖动会回它）。
     const catalog = state()
     readCatalog.mockReturnValue(catalog)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [] }))))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'still-here' }] }))))
     expect((await checkVendorHealth('v')).state).toBe('reachable')
-    expect(catalog.models[0]).toMatchObject({ enabled: false, unlisted: true })
+    expect(catalog.models[0]).toMatchObject({ enabled: true, unlisted: true })
     expect(broadcast).toHaveBeenCalledWith('nomi:model-catalog:changed')
   })
   it('drops old list evidence if the connection changes while the request is in flight', async () => {
@@ -316,7 +318,7 @@ describe('live catalog reconciliation delivery', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { respond = resolve })))
     const pending = checkVendorHealth('v')
     catalog.vendors[0].baseUrlHint = 'https://replacement.test/v1'
-    respond(new Response(JSON.stringify({ data: [] })))
+    respond(new Response(JSON.stringify({ data: [{ id: 'still-here' }] })))
     await pending
     expect(catalog.models[0].enabled).toBe(true)
     expect(broadcast).not.toHaveBeenCalled()

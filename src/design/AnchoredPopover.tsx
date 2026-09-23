@@ -162,6 +162,11 @@ export function AnchoredPopover({
   const layer = (
     <div
       ref={popRef}
+      // 浮层让位给自己弹出的下拉/菜单时不会 stopPropagation，那一下 Escape 会继续走到
+      // React Flow 的 NodeWrapper 并取消选中 —— 节点的 composer 连同这张浮层一起消失。
+      // `.nokey` 是 @xyflow/system `isInputDOMNode` 认的排除边界：声明在**自己**的 Portal
+      // 根上（不写进调用方锚点的 className，那会被调用方下一次渲染冲掉）。
+      className="nokey"
       style={{
         position: 'fixed',
         top: placement?.top ?? -9999,

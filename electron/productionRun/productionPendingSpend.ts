@@ -1,3 +1,5 @@
+import { sumBudgetAmounts } from "./budgetLedger";
+import { createHash } from "node:crypto";
 // 「有一笔生成在等你点头」的**宿主投影**（纯函数，唯一 owner）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -54,6 +56,7 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
     parameters: { ...(entry.candidate.parameters ?? {}) },
+    references: entry.candidate.references.map(reference => ({ ...reference })),
     price: candidatePrice(entry.candidate, resolvePricing),
   }));
 }
@@ -66,6 +69,34 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
  * 从来不传它）。
  */
 export type SpendAnsweredByPolicy = (projectId: string, operationId: string) => boolean;
+
+/**
+ * 「这份计划此刻**正摆在用户面前等他点头**吗」——这条判据只有这一份。
+ *
+ * 两个读者：`projectPendingSpendConfirm`（把它画成卡）与启动清扫 `stalePresentationSweep`
+ * （重启后没人在等的那一笔要撤回出价，裁决 C）。两边各写一遍就会出现「卡不画了、清扫却不认」
+ * 或反过来的分叉——那种分叉不报错。
+ */
+export function awaitingSpendDecision(
+  run: ProductionRun,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
+): Readonly<{ plan: ProductionGenerationPlan; gateId?: string }> | undefined {
+  if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
+  const plan = run.generationPlan;
+  if (!plan) return undefined;
+  if (plan.state === "sealed") {
+    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
+    // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
+    if (!gate || gate.status !== "waiting") return undefined;
+    return { plan, gateId: gate.gateId };
+  }
+  if (plan.state !== "draft") return undefined;
+  // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
+  if (plan.cardHidden === true) return undefined;
+  // 「全自动」档正在替用户决这一笔。它不在等人，别摆卡。
+  if (spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) return undefined;
+  return { plan };
+}
 
 /**
  * 这个 Run 里有没有一笔「等人点头」的生成？没有 → `undefined`（那时面板上一张卡都不该出现）。
@@ -89,24 +120,9 @@ export function projectPendingSpendConfirm(
   resolvePricing: PricingResolver,
   spendAnsweredByPolicy?: SpendAnsweredByPolicy,
 ): PendingSpendConfirm | undefined {
-  if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
-  const plan = run.generationPlan;
-  if (!plan) return undefined;
-  let gateId: string | undefined;
-  if (plan.state === "sealed") {
-    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
-    // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
-    if (!gate || gate.status !== "waiting") return undefined;
-    gateId = gate.gateId;
-  } else if (plan.state !== "draft") {
-    return undefined;
-  } else if (plan.cardHidden === true) {
-    // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
-    return undefined;
-  } else if (spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) {
-    // 「全自动」档正在替用户决这一笔（见上）。它不在等人，别摆卡。
-    return undefined;
-  }
+  const awaiting = awaitingSpendDecision(run, spendAnsweredByPolicy);
+  if (!awaiting) return undefined;
+  const { plan, gateId } = awaiting;
   const shots = shotsOf(plan, resolvePricing);
   // 走到这里意味着**这一笔确实在等人点头**（draft，或封印后那道门还 `waiting`），却一镜都投影不出来。
   // 那不是「没有要确认的东西」，是「我知道有，但我画不出来」——写成 `undefined` 的后果是：
@@ -119,12 +135,18 @@ export function projectPendingSpendConfirm(
       { code: "pending_spend_projection_empty" },
     );
   }
-  const knownSubtotal = shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
+  const knownSubtotal = sumBudgetAmounts(shots.map(shot => shot.price.known ? shot.price.amount : 0));
   return Object.freeze({
     projectId: run.projectId,
     runId: run.runId,
     operationId: plan.operationId,
     planVersion: run.planVersion,
+    quoteId: createHash("sha256").update(JSON.stringify({
+      projectId: run.projectId, operationId: plan.operationId, planVersion: run.planVersion,
+      candidateRevision: plan.candidate.revision,
+      revisions: plan.shots?.filter((shot) => shot.included !== false).map((shot) => [shot.shotId, shot.candidate.revision]),
+      shots: shots.map(({ nodeId: _nodeId, ...shot }) => shot), currency: run.budget.currency,
+    })).digest("hex"),
     candidateRevision: plan.candidate.revision,
     ...(gateId ? { gateId } : {}),
     currency: run.budget.currency,

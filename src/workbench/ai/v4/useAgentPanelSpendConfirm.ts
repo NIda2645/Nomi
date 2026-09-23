@@ -24,7 +24,7 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 import { productionRunApi } from '../../production/productionRunApi'
 import { toast } from '../../../ui/toast'
 import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
-import { getGenerationNodeCatalogKind } from '../../generationCanvas/model/generationNodeKinds'
+import { GENERATION_NODE_KINDS, getGenerationNodeCatalogKind } from '../../generationCanvas/model/generationNodeKinds'
 import { preloadModelOptions, MODEL_REFRESH_EVENT } from '../../../config/modelCatalogCache'
 import type { ModelOption, NodeKind } from '../../../config/models'
 import type { NodeWriteAccess } from '../../generationCanvas/nodes/nodeWriteAccess'
@@ -32,7 +32,9 @@ import type { GenerationCanvasNode } from '../../generationCanvas/model/generati
 import type { PendingSpendConfirm, PendingSpendRead } from '../../../desktop/productionRunBridgeTypes'
 import { projectSpendCard, spendCardPage } from './agentPanelSpendCard'
 import {
+  spendDraftKey, restoreSpendDraft, retainSpendDraft, consumeSpendDraft,
   applyPatchToNode,
+  projectSpendNode,
   draftAfterNodeEdit,
   draftIsEmpty,
   effectivePatchForShot,
@@ -80,9 +82,10 @@ export type AgentPanelSpendConfirm = Readonly<{
 }>
 
 export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [pending, setPending] = React.useState<PendingSpendConfirm | undefined>(undefined)
   const [draft, setDraft] = React.useState<SpendDraft>(EMPTY_SPEND_DRAFT)
+  const draftOwner = React.useRef<string | undefined>(undefined)
   const [page, setPage] = React.useState(0)
   const [scope, setScope] = React.useState<SpendScope>('each')
   const [busy, setBusy] = React.useState(false)
@@ -107,13 +110,21 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       const read = await productionRunApi.pendingSpend(project.binding.projectId)
       if (!isProjectExecutionContextCurrent(project)) return undefined
       const next = pendingSpendOfRead(read)
+      const nextOwner = next ? spendDraftKey(next) : undefined
+      if (draftOwner.current !== nextOwner) {
+        // 账本锚的是**这一次生成**（`operationId`）：换了一次生成才是换了一本，读不到就是空。
+        // 价格刷新、改参数推版、收回出价再出价都只换报价指纹，换不掉他正在打的那句话（裁决 B）。
+        // 读永不抛（`readSpendDraft` 自己兜住），所以这里不需要「失败就别换 owner」的回退。
+        const restored = next ? restoreSpendDraft(next) : EMPTY_SPEND_DRAFT
+        draftOwner.current = nextOwner
+        setDraft(restored)
+        setDisagreements([])
+      }
       setReadFailure(undefined)
       setPending(next)
       if (next && originalModelIds.current?.operationId !== next.operationId) {
         originalModelIds.current = { operationId: next.operationId, modelIds: next.shots.map((shot) => shot.modelId) }
         // 换了一笔 = 换了一份账本。旧覆写跟着走只会把上一笔的模型贴到这一笔上。
-        setDraft(EMPTY_SPEND_DRAFT)
-        setDisagreements([])
       }
       if (!next) {
         originalModelIds.current = null
@@ -149,6 +160,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     for (const entry of pending?.shots ?? []) {
       const node = entry.nodeId ? nodes.find((candidate) => candidate.id === entry.nodeId) : undefined
       if (node) kinds.add(getGenerationNodeCatalogKind(node.kind))
+      else for (const kind of GENERATION_NODE_KINDS) kinds.add(getGenerationNodeCatalogKind(kind))
     }
     return [...kinds].sort().join(',')
   }, [pending, nodes])
@@ -186,9 +198,12 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
 
   // 卡体绑的那份草稿节点：宿主投影 ⊕ **正在编辑的那一层**（见 spendCardDraft 顶部注释）。
   const draftNode = React.useMemo(() => {
-    if (!storeNode || !shot) return undefined
-    return applyPatchToNode(storeNode, effectivePatchForShot(draft, shot.shotId, scope))
-  }, [storeNode, shot, draft, scope])
+    if (!shot) return undefined
+    const option = modelOptions.find(entry => entry.modelKey === shot.modelId && entry.vendor === shot.providerId)
+    const base = projectSpendNode(shot, storeNode, option)
+    if (!base) return undefined
+    return applyPatchToNode(base, effectivePatchForShot(draft, shot.shotId, scope))
+  }, [storeNode, shot, draft, scope, modelOptions])
 
   // 写入面：卡体所有改动都落这里。`latestNode` 必须回**草稿**那一份——增量 patch 要在最新值上
   // 合并，回 store 那份会把用户刚改的字段悄悄擦掉（lost-update）。
@@ -199,16 +214,45 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
   const pendingRef = React.useRef<PendingSpendConfirm | undefined>(undefined)
   pendingRef.current = pending
 
-  const writeAccess = React.useMemo<NodeWriteAccess>(() => Object.freeze({
-    updateNode: (_nodeId: string, patch: Partial<GenerationCanvasNode>) => {
-      const context = editContext.current
-      const base = context.node
-      const target = pendingRef.current?.shots.find((entry) => entry.shotId === context.shotId)
-      if (!base || !target) return
-      setDraft((previous) => draftAfterNodeEdit(previous, target, { ...base, ...patch }, context.scope))
-    },
-    latestNode: () => editContext.current.node,
-  }), [])
+  // A writer belongs to one editing visit, not whichever card occupies the panel
+  // when an upload settles. A -> B -> A creates a new visit and cannot revive A's
+  // retired callbacks. Candidate/quote identity matters even when nodeId is equal.
+  const writeOwner = JSON.stringify([
+    pending?.projectId, pending?.runId, pending?.operationId, pending?.quoteId,
+    pending?.candidateRevision, pending?.planVersion, shot?.shotId, shot?.nodeId, scope,
+  ])
+  const writeScope = React.useMemo(() => ({ owner: writeOwner, active: true }), [writeOwner])
+  const currentWriteScope = React.useRef(writeScope)
+  currentWriteScope.current = writeScope
+  React.useLayoutEffect(() => {
+    writeScope.active = true
+    return () => { writeScope.active = false }
+  }, [writeScope])
+
+  const writeAccess = React.useMemo<NodeWriteAccess>(() => {
+    const nodeId = draftNode?.id
+    const canWrite = () => Boolean(nodeId && writeScope.active && currentWriteScope.current === writeScope)
+    return Object.freeze({
+      canWrite,
+      updateNode: (requestedNodeId: string, patch: Partial<GenerationCanvasNode>) => {
+        if (!canWrite() || requestedNodeId !== nodeId) return
+        const context = editContext.current
+        const base = context.node
+        const target = pendingRef.current?.shots.find((entry) => entry.shotId === context.shotId)
+        if (!base || base.id !== nodeId || !target) return
+        const nextNode = { ...base, ...patch }
+        // A gesture can append several references before React renders again.
+        context.node = nextNode
+        setDraft((previous) => {
+          const selected = modelOptions.find(option => option.modelKey === nextNode.meta?.modelKey && option.vendor === nextNode.meta?.modelVendor)
+          const next = draftAfterNodeEdit(previous, target, nextNode, context.scope, selected)
+          if (draftOwner.current) retainSpendDraft(draftOwner.current, next)
+          return next
+        })
+      },
+      latestNode: (requestedNodeId: string) => canWrite() && requestedNodeId === nodeId ? editContext.current.node : undefined,
+    })
+  }, [draftNode?.id, writeScope, modelOptions])
 
   const slot = React.useMemo(() => {
     // 读不到的时候**先**出那张会说话的卡：此刻我们并不知道有没有待确认的一笔，
@@ -218,10 +262,15 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     }
     if (!repriced) return undefined
     const remembered = originalModelIds.current
-    return projectSpendCard(repriced, { page: index, scope }, t, {
+    const card = projectSpendCard(repriced, { page: index, scope }, t, {
+      locale: i18n.language,
       ...(remembered?.operationId === repriced.operationId ? { agentPickedModelIds: remembered.modelIds } : {}),
     })
-  }, [readFailure, repriced, index, scope, t])
+    // 2026-09-22：× 不再问那一句「你在卡上改的内容会一起丢掉」——它已经不为真。
+    // 裁决 D（× 只收回这一次出价）之后草稿和节点都留着，而账本锚 `operationId` 之后
+    // **没提交的手改也跟着留**（同一个 operationId 再出价就在卡上）。没有东西丢，就不拦他一下。
+    return card
+  }, [readFailure, repriced, index, scope, t, i18n.language])
 
   /**
    * 卡上四个动作共用的一次执行。**宿主说不行就必须让用户看见**：
@@ -235,18 +284,24 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     const target = pending
     if (!target || busy) return
     setBusy(true)
-    // 用户看到的永远是这一句（i18n，R15），**不是宿主那句原话**：主进程的 message 混着内部术语和英文
+    // 用户看到的永远是 i18n 的句子（R15），**不是宿主那句原话**：主进程的 message 混着内部术语和英文
     // （`Provider X lacks required recovery capabilities: configured_provider`），直接印出去就是把
-    // 内部状态倒给用户。原话进控制台供排查，用户这边只留「没成 · 没开始生成 · 没花钱」这三件他能用的事。
-    const failed = (reason: unknown): void => {
-      // eslint-disable-next-line no-console
+    // 内部状态倒给用户。原话进控制台供排查。
+    //
+    // 说哪一句由**事实**决定，不是一句放之四海的安慰话：宿主按账本回 `generation_not_started`
+    // （没有任何提交意图落过盘）还是 `generation_execution_failed`（落过了、结果未知）。
+    // 「暂时无法确认这一步的结果」用在「根本没发起」上是误导——它暗示可能已经提交、可能已经扣钱，
+    // 于是用户不敢再按，转而去找一个并不存在的任务（2026-09-21 Pass 3b）。
+    const failed = (reason: unknown, code?: string): void => {
       console.warn('[spend-confirm] host refused', reason)
-      toast(t('agentPanelV4.spendActionFailed'), 'error')
+      const started = code !== 'generation_not_started' && code !== 'generation_quote_changed'
+        && code !== 'run_not_open' && code !== 'generation_scope_invalid'
+      toast(t(started ? 'agentPanelV4.spendActionFailed' : 'agentPanelV4.spendActionNotStarted'), 'error')
     }
     void run(target)
       .then((result) => {
         const outcome = result as { ok?: boolean; message?: string } | undefined
-        if (outcome && outcome.ok === false) failed(outcome.message ?? outcome)
+        if (outcome && outcome.ok === false) failed(outcome.message ?? outcome, outcome.message)
       })
       .catch((error: unknown) => failed(error))
       .finally(() => {
@@ -254,6 +309,23 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
         void refresh()
       })
   }, [pending, busy, refresh, t])
+
+  const persistEdits = async (target: PendingSpendConfirm, shotIds?: readonly string[]) => {
+    let quoteId = target.quoteId
+    let remaining = draft
+    for (const revision of revisionsForConfirm(target.shots, draft, shotIds)) {
+      const result = await productionRunApi.reviseSpend({
+        projectId: target.projectId, operationId: target.operationId, quoteId,
+        shotId: revision.shotId, patch: { ...revision.patch },
+      })
+      if (!result.ok) return { ...result, remaining }
+      if (!result.quoteId) return { ok: false, message: 'generation_quote_changed', remaining }
+      quoteId = result.quoteId
+      // A later revision can fail; preserve the still-unsubmitted shots before any refresh.
+      remaining = consumeSpendDraft(target, remaining, [revision.shotId])
+    }
+    return { ok: true, quoteId, remaining }
+  }
 
   return {
     pending: repriced,
@@ -271,49 +343,52 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
      *
      * 顺序是硬的：**先把账本落进候选，再封印**。反了就会封上一份用户已经改掉的合同。
      * 落完先读一次宿主的**正式报价**：与本地估算不一致时以它为准、卡上原地换数（不弹第二张卡），
-     * 然后照常往下走——用户按的那一下不该被一个四舍五入拦住。
+     * 报价不同则停在更新后的卡上，等用户再次确认。
      */
     confirm: () => act(async (target) => {
       const currentShot = target.shots[index]
       const single = scope === 'each' && target.shots.length > 1 && currentShot
       const shotIds = single && currentShot ? [currentShot.shotId] : undefined
+      let approved = target
+      let remaining = draft
       if (!draftIsEmpty(draft)) {
-        for (const revision of revisionsForConfirm(target.shots, draft, shotIds)) {
-          await productionRunApi.reviseSpend({
-            projectId: target.projectId,
-            operationId: target.operationId,
-            ...(target.shots.length > 1 ? { shotId: revision.shotId } : {}),
-            patch: { ...revision.patch },
-          })
+        const saved = await persistEdits(target, shotIds)
+        remaining = saved.remaining
+        if (!saved.ok) {
+          if (draftOwner.current === spendDraftKey(target)) setDraft(remaining)
+          return saved
         }
         const authoritative = await refresh()
         const local = repricePendingSpend(target, draft, resolvePricing)
-        if (authoritative && authoritative.operationId === target.operationId) {
-          const gaps = priceDisagreements(local, authoritative)
+        if (authoritative && authoritative.operationId === target.operationId && authoritative.quoteId === saved.quoteId) {
+          const gaps = priceDisagreements(local, authoritative).filter(gap => !shotIds || shotIds.includes(gap.shotId))
           setDisagreements(gaps)
-          // 主进程已经把改动落进候选了：账本清空，卡上从此显示的就是宿主那一份（正式报价）。
-          setDraft(EMPTY_SPEND_DRAFT)
-        }
+          // Only the submitted scope entered the canonical candidate; other edits stay local.
+          remaining = consumeSpendDraft(target, remaining, shotIds)
+          if (draftOwner.current === spendDraftKey(target)) setDraft(remaining)
+          if (gaps.length > 0) return { ok: false, message: 'generation_quote_changed' }
+          approved = authoritative
+        } else return { ok: false, message: 'generation_quote_changed' }
       }
-      return productionRunApi.confirmSpend(target.projectId, target.operationId, shotIds)
+      const confirmed = await productionRunApi.confirmSpend(approved.projectId, approved.operationId, approved.quoteId, shotIds)
+      if (confirmed.ok) {
+        remaining = consumeSpendDraft(approved, remaining, shotIds)
+        if (draftOwner.current === spendDraftKey(approved)) setDraft(remaining)
+      }
+      return confirmed
     }),
     /**
-     * × = **丢弃这份草稿**，两件事一起做：取消 durable 计划 + 撤掉它已经落到画布上的占位节点。
+     * × = **收回这一次出价**，草稿和画布一个字不动（2026-09-22 下午用户拍板：
+     * 「第二种，× 只关这次请求，节点和草稿都留着」）。
      *
-     * 少做后一件就是把「我不要了」做成一半：Run 里没有它了，画布上却还留着一排没人认领的空节点，
-     * 而用户按那颗 × 时看着的正是它们。撤节点走的是画布自己的删除动作（同一条撤销栈），
-     * 不新建第二条删除路径。
+     * 所以这里**不再动画布**：宿主那边把这一次出价收回（计划回到 draft / 未 present），
+     * 占位节点、分镜表、用户自己建的节点全都原样留着，他随时可以说一句「还是生成吧」再出同一张卡。
+     *
+     * 2026-09-21 到 09-22 中间这里是「撤掉这次操作自己造的占位节点 + 一个 ⌘Z 全回来」
+     * （`spendCardRollback.ts`，随本刀删）。它在 33 镜的计划上说不通：卡上只摆 3 镜，撤 3 个、
+     * 留 30 个孤儿；撤了之后落地轮询又会把它们补回来（那正是「点了 ×，画布上多出一个节点」那条红）。
+     * 两个自洽方向里用户选了「都留着」。
      */
-    discard: () => act(async (target) => {
-      const result = await productionRunApi.discardSpend(target.projectId, target.operationId)
-      if (result.ok) {
-        const canvas = useGenerationCanvasStore.getState()
-        for (const entry of target.shots) {
-          if (entry.nodeId) canvas.deleteNode(entry.nodeId)
-        }
-        setDraft(EMPTY_SPEND_DRAFT)
-      }
-      return result
-    }),
+    discard: () => act(async (target) => productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)),
   }
 }

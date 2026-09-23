@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import { CANVAS_READ_CAPABILITY, type CanvasReadResult } from "../shared/agentCapabilities/canvasRead";
 import type { IpcMainInvokeEvent } from "electron";
@@ -35,11 +36,7 @@ export function isCanvasReadTransportMethod(method: string): boolean {
 const PUBLIC_FAILURE_CODES = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES;
 
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const candidate =
-    error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
-  const code =
-    typeof candidate === "string" && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  return safeTransportFailure(error, { allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed" });
 }
 
 export function createMcpCanvasReadTransportAdapter(

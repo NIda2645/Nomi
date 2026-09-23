@@ -35,7 +35,11 @@ export type HumanApprovalChallengeInput = {
   revocationEpoch?: number;
   costScope: string;
   pricingSnapshotHash: string;
-  reservationPreview: { currency: string; maximum: number };
+  /**
+   * 这次要冻住的额度。`maximum` 只说**已知价**那部分；`unknownJobCount > 0` 表示另有 N 笔
+   * 价格未知（2026-09-21 开闸）——它进 MAC，所以确认面上那句「另有 N 镜价格未知」同样篡改不了。
+   */
+  reservationPreview: { currency: string; maximum: number; unknownJobCount?: number };
   display?: HumanApprovalDisplay;
   ttlMs?: number;
 };
@@ -411,7 +415,9 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
         || !input.contractHash || input.targetHash !== input.contractHash || !Number.isInteger(input.projectRevision)
         || (input.revocationEpoch !== undefined && !Number.isInteger(input.revocationEpoch))
         || !input.costScope || !input.pricingSnapshotHash || !input.reservationPreview.currency
-        || !Number.isFinite(input.reservationPreview.maximum) || input.reservationPreview.maximum < 0) {
+        || !Number.isFinite(input.reservationPreview.maximum) || input.reservationPreview.maximum < 0
+        || (input.reservationPreview.unknownJobCount !== undefined
+          && (!Number.isSafeInteger(input.reservationPreview.unknownJobCount) || input.reservationPreview.unknownJobCount < 0))) {
         throw new ReceiptScopeError("Challenge input is incomplete");
       }
       const withoutMac: Omit<HumanApprovalChallengeV1, "mac"> = {

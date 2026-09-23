@@ -31,7 +31,7 @@ test('C59 stable catalog is in system context; user turns contain only catalog c
     if (previous.projects === undefined) delete process.env.NOMI_PROJECTS_DIR; else process.env.NOMI_PROJECTS_DIR = previous.projects;
   });
   let context: LaneComposerContext = { approvalPolicy: { mode: 'safe-auto', spend: 'confirm' }, availableModels: [model] };
-  const input = createDesktopLaneInput({ projectId: 'budget-fixture', capture: () => context, activate: () => {},
+  const input = createDesktopLaneInput({ projectId: 'budget-fixture', capture: () => context, activate: () => {}, prepare: async (captured: LaneComposerContext) => captured,
     model: () => ({ model: { modelKey: 'chosen-model' }, kind: 'openai-compatible' }) });
   const lane = await fixture.openLane({ ...fixture.options, input });
   await lane.execute({ kind: 'prompt', text: '把这份文稿拆成分镜' });
@@ -102,7 +102,7 @@ test('C59 the 24 recorded user turns reduce total input by 60 percent and add un
   });
   const context: LaneComposerContext = { approvalPolicy: { mode: 'safe-auto', spend: 'confirm' }, availableModels: recorded.models,
     model: { vendorKey: 'fixture', modelKey: 'chosen-model' } };
-  const input = createDesktopLaneInput({ projectId: 'replay', capture: () => context, activate: () => {},
+  const input = createDesktopLaneInput({ projectId: 'replay', capture: () => context, activate: () => {}, prepare: async (captured: LaneComposerContext) => captured,
     model: () => ({ model: { modelKey: 'chosen-model' }, kind: 'openai-compatible' }) });
   const lane = await fixture.openLane({ ...fixture.options, input });
   for (const text of recorded.turns) await lane.execute({ kind: 'prompt', text });
@@ -169,7 +169,9 @@ test('C59 on-demand models returns every mode contract and follows the latest ca
   let entries = [model, { ...model, modelId: 'Second-Video', modes: [...model.modes,
     { ...model.modes[0]!, modeId: 'first', params: [{ key: 'resolution', type: 'select' as const, label: '分辨率',
       options: [{ value: '1080P', label: '1080P' }] }] }] }];
-  const tool = createLaneModelRead(() => entries);
+  // 可用性必传（2026-09-22）：这条测试的夹具里没有目录，所以**说出来**——
+  // 不许靠一个 `?.` 把「没接目录」和「这个模型没有可用性信息」混成一件事。
+  const tool = createLaneModelRead(() => entries, () => undefined);
   const full = await tool.execute('full', {});
   assert.equal(JSON.parse(full.content[0]!.text).models.length, 2);
   const narrowed = await tool.execute('narrow', { modelId: 'Second-Video' });

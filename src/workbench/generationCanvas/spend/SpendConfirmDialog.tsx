@@ -278,7 +278,9 @@ export function SpendConfirmDialog() {
         ) : null}
 
         <div className={cn('flex items-center justify-end gap-2')}>
-          <WorkbenchButton className={cn('h-8 px-4 cursor-pointer')} onClick={() => resolvePending(false)}>
+          {/* 走查/工具的稳定锚点，与卡本体的 `data-spend-confirm-dialog` 同理：这两颗钮的文案
+              随调用方走（「生成 N 镜」「再想想」「忽略」…），按文案找就是易碎选择器。 */}
+          <WorkbenchButton data-spend-confirm-action="cancel" className={cn('h-8 px-4 cursor-pointer')} onClick={() => resolvePending(false)}>
             {pending.cancelLabel || (isAgent ? t('generationCommon.spend.ignore') : t('generationCommon.spend.cancel'))}
           </WorkbenchButton>
           {incompletePolicy ? (
@@ -294,6 +296,7 @@ export function SpendConfirmDialog() {
             </WorkbenchButton>
           ) : (
             <WorkbenchButton
+              data-spend-confirm-action="confirm"
               className={cn(
                 'h-8 px-4 cursor-pointer bg-nomi-ink text-nomi-paper border-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper',
               )}

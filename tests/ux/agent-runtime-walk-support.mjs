@@ -6,7 +6,7 @@ import path from 'node:path'
 import { once } from 'node:events'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { clickOrFail, expect, screenshotSettled } from './_assert.mjs'
-import { createAgentRuntimeFixture, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
+import { createAgentRuntimeFixture, FIXTURE_APIMART_API_KEY, FIXTURE_NON_APIMART_VENDOR, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
 import { require as tsxRequire } from 'tsx/cjs/api'
 
 const { LANE_MODEL_TOOL_CATALOG, LANE_DEFERRED_TOOL_CATALOG } = tsxRequire('../../electron/agentLane/laneToolCatalog.ts', import.meta.url)
@@ -76,7 +76,12 @@ export const EMPTY_STARTER = '[data-v4-starter]'
 export const APPROVAL_CARD = '[data-v4-block="intervention"]'
 export const INTERVENTION_SLOT = APPROVAL_CARD
 export const INTERVENTION_CONFIRM = '[data-v4-control="confirm"]'
-export const INTERVENTION_REJECT = '[data-v4-control="reject"]'
+/**
+ * 卡上那颗否定动作（×）。2026-09-22 换壳后它由 `V4SlotShell` 统一摆在**右上**，
+ * 锚点随之从 `reject` 改成 `slot-dismiss`——它不再是页脚里的一颗钮，而是外壳的零件。
+ * 常量在这里改一次，全部走查跟着走（这就是它当初被抽成常量的理由）。
+ */
+export const INTERVENTION_REJECT = '[data-v4-control="slot-dismiss"]'
 export const INTERVENTION_CONFIRM_REJECT = '[data-v4-control="confirm-reject"]'
 export const INTERVENTION_CANCEL_REJECT = '[data-v4-control="cancel-reject"]'
 export const INTERVENTION_ESCALATE = '[data-v4-control="escalate"]'
@@ -110,7 +115,7 @@ export const COLLAPSE_BUTTON = '[data-v4-control="collapse"]'
 /** The real desktop assembly publishes domain and native schemas from the first request. */
 export function residentToolNames() {
   return [...LANE_MODEL_TOOL_CATALOG, ...LANE_DEFERRED_TOOL_CATALOG].map(tool => tool.name)
-    .concat([...LANE_CODING_TOOL_NAMES, 'nomi_read', 'nomi_request_tools']).sort()
+    .concat([...LANE_CODING_TOOL_NAMES, 'list_models', 'nomi_request_tools']).sort()
 }
 
 export function toolNames(body) {
@@ -119,6 +124,18 @@ export function toolNames(body) {
 
 export function hasToolResult(body, id) {
   return (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === id)
+}
+
+/**
+ * 像人一样把一张待决的报价卡关掉：点 ×，卡要是先问一句「改的内容会一起丢」就再点确认。
+ *
+ * 2026-09-22 裁决 A 之后 `generate` 的回合**挂在这张卡上等用户**；一条走查要是看完卡就走，
+ * 那个回合永远不结束，夹具里那条「回合收尾」的期望也就永远没人消费。看完就该答——真人也是。
+ */
+export async function closeSpendCard(card, label = '关掉这张报价卡') {
+  const confirm = card.locator(INTERVENTION_CONFIRM_REJECT)
+  if (!(await confirm.isVisible().catch(() => false))) await clickOrFail(card.locator(INTERVENTION_REJECT), label)
+  if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
 }
 
 /** One I/O safety bound, not a polling/sleep-based completion signal. */
@@ -346,7 +363,15 @@ export async function approvePendingIntervention(win, panel) {
   await clickOrFail(slot.locator(INTERVENTION_CONFIRM), '介入槽「确认」')
 }
 
-export async function createRuntimeWalk(name) {
+/**
+ * @param {string} name
+ * @param {{generationProvider?: 'loopback'|'apimart'|'higgsfield'}} [options]
+ *   `generationProvider: 'apimart'` = 这条走查要走**真实那条生成供应商路径**：目录里装内置 apimart
+ *   档案与 curated mapping，供应商地址由 `NOMI_E2E_PRODUCTION_FIXTURE` 那个只认 loopback 的口子
+ *   指到本机这台夹具。不传 = 老样子（自造 loopback 供应商，只跑 SDK/画布那半边，按付费确认键会被
+ *   宿主在供应商就绪那一步诚实拒绝）。
+ */
+export async function createRuntimeWalk(name, { generationProvider = 'loopback' } = {}) {
   const args = process.argv.slice(2)
   if (args.length && (args.length !== 2 || args[0] !== '--packaged' || !path.isAbsolute(args[1]))) {
     throw new Error('Usage: node <walk.mjs> [--packaged /absolute/Nomi.app/Contents/MacOS/Nomi]')
@@ -357,7 +382,14 @@ export async function createRuntimeWalk(name) {
   const settingsDir = path.join(tempRoot, 'settings')
   const outputDir = path.join(repoRoot, '.tmp', `pi-${name}-${mode}-${Date.now()}`)
   fs.mkdirSync(outputDir, { recursive: true })
-  const fixture = await createAgentRuntimeFixture({ rootDir: repoRoot, settingsDir })
+  // safeStorage 的加密身份 = app 名。开发态跑的是仓库目录（package.json 的 `nomi`），
+  // `--packaged` 跑的是打包后的 `Nomi`。给错只会解出 `locked`，模型照样显示为不可用。
+  const fixture = await createAgentRuntimeFixture({
+    rootDir: repoRoot, settingsDir, generationProvider,
+    ...(generationProvider === 'apimart' || generationProvider === 'higgsfield'
+      ? { userDataDir: path.join(tempRoot, 'user-data'), appName: executablePath ? 'Nomi' : 'nomi' }
+      : {}),
+  })
   const launches = []
   const screenshots = []
   const report = { name, mode, tempRoot, outputDir, launches, screenshots, paidCalls: 0 }
@@ -379,7 +411,20 @@ export async function createRuntimeWalk(name) {
           'nomi.assistantModel': JSON.stringify({ vendorKey: FIXTURE_VENDOR, modelKey: FIXTURE_TEXT_MODEL }),
         },
       } : {}),
-      env: { NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_E2E_PRODUCTION_FIXTURE: '0', NOMI_DISABLE_AUTO_UPDATE: '1' },
+      env: {
+        NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_DISABLE_AUTO_UPDATE: '1',
+        // 这三个是同一个口子的三把钥匙（`safeFixtureBaseUrl` 只接受 http(s) 的 127.0.0.1/localhost/::1）：
+        // 少一把就装不出可提交的生成供应商。默认仍是 '0'，老走查一个字都不变。
+        ...(generationProvider === 'apimart' || generationProvider === 'higgsfield'
+          ? {
+            NOMI_E2E_PRODUCTION_FIXTURE: '1',
+            NOMI_E2E_FIXTURE_BASE_URL: fixture.baseURL,
+            NOMI_E2E_FIXTURE_API_KEY: FIXTURE_APIMART_API_KEY,
+            // 夹具只认一家；不点名就是 apimart（老走查一个字不变）。
+            ...(generationProvider === 'higgsfield' ? { NOMI_E2E_FIXTURE_VENDOR: FIXTURE_NON_APIMART_VENDOR } : {}),
+          }
+          : { NOMI_E2E_PRODUCTION_FIXTURE: '0' }),
+      },
       args: ['--no-proxy-server', ...extraArgs],
     })
     const { win, app } = current

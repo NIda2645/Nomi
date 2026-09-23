@@ -4,6 +4,7 @@
 // ② stopPropagation + preventDefault，否则冒泡到 stage.handleStageDrop 会新建独立 asset 卡；
 // ③ 统一经 addAssetUrlToNode 单源写入（含去重/上限）。
 import React from 'react'
+import { useNodeWriteAccess, type NodeWriteAccess } from './nodeWriteAccess'
 import i18n from '../../../i18n'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { importWorkbenchLocalAssetFile } from '../../api/assetUploadApi'
@@ -39,14 +40,16 @@ function reportOutcome(outcome: AddAssetOutcome, reportFeedback: (message: strin
   }
 }
 
-export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (message: string) => void): NodeAssetDrop {
+export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (message: string) => void, writeAccess?: NodeWriteAccess): NodeAssetDrop {
+  const inheritedAccess = useNodeWriteAccess()
+  const access = writeAccess ?? inheritedAccess
   const [isDragOver, setDragOver] = React.useState(false)
   const [isUploading, setUploading] = React.useState(false)
   const acceptsDrop = React.useMemo(() => resolveNodeArraySlots(node.meta).length > 0, [node.meta])
 
   const onDragOver = React.useCallback(
     (event: React.DragEvent<HTMLElement>) => {
-      if (!acceptsDrop) return
+      if (!acceptsDrop || access.canWrite?.() === false) { event.preventDefault(); event.stopPropagation(); return }
       const types = Array.from(event.dataTransfer.types || [])
       if (!types.includes('Files') && !types.includes(WORKSPACE_FILE_DRAG_MIME)) return
       event.preventDefault()
@@ -54,7 +57,7 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
       event.dataTransfer.dropEffect = 'copy'
       setDragOver(true)
     },
-    [acceptsDrop],
+    [acceptsDrop, access],
   )
 
   const onDragLeave = React.useCallback((event: React.DragEvent<HTMLElement>) => {
@@ -65,7 +68,7 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
 
   const onDrop = React.useCallback(
     async (event: React.DragEvent<HTMLElement>) => {
-      if (!acceptsDrop) return
+      if (!acceptsDrop || access.canWrite?.() === false) { event.preventDefault(); event.stopPropagation(); return }
       event.preventDefault()
       event.stopPropagation()
       setDragOver(false)
@@ -80,7 +83,7 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
           return
         }
         reportOutcome(
-          addAssetUrlToNode(node.id, kind, buildWorkspaceFileUrl(workspace.projectId, workspace.relativePath)), reportFeedback,
+          addAssetUrlToNode(node.id, kind, buildWorkspaceFileUrl(workspace.projectId, workspace.relativePath), access), reportFeedback,
         )
         return
       }
@@ -92,6 +95,7 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
         setUploading(true)
         try {
           for (const file of files) {
+            if (access.canWrite?.() === false) return
             context.assertCurrent()
             const kind = dropKindFromFile(file)
             if (!kind) {
@@ -109,9 +113,10 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
                 },
               )
               context.assertCurrent()
+              if (access.canWrite?.() === false) return
               const url = assetUrl(uploaded)
               if (!url) throw new Error(i18n.t('generationCommon.node.assetDrop.missingUrl'))
-              reportOutcome(addAssetUrlToNode(node.id, kind, url), reportFeedback)
+              reportOutcome(addAssetUrlToNode(node.id, kind, url, access), reportFeedback)
             } catch (error) {
               if (!isProjectExecutionContextCurrent(context) || isProjectImportCancellation(error)) return
               reportFeedback(error instanceof Error ? error.message : i18n.t('generationCommon.node.assetDrop.uploadFailed'))
@@ -126,7 +131,7 @@ export function useNodeAssetDrop(node: GenerationCanvasNode, reportFeedback: (me
         }
       })
     },
-    [acceptsDrop, node.id, reportFeedback],
+    [acceptsDrop, node.id, reportFeedback, access],
   )
 
   return { acceptsDrop, isDragOver, isUploading, dropHandlers: { onDragOver, onDragLeave, onDrop } }

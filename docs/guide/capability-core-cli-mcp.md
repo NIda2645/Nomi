@@ -77,14 +77,13 @@ node scripts/nomi.mjs project create "咖啡广告"
 # → { "id": "workspace-xxxx", "name": "咖啡广告" }
 ```
 
-**③ 批量加 3 个镜头节点**（一次加一个；记下每个返回的 `nodeId`）
+**③ 批量加 3 个镜头节点** —— **不走这条 CLI**
 
-```bash
-node scripts/nomi.mjs canvas add workspace-xxxx image "晨光中的咖啡杯特写，蒸汽升腾，暖色调"
-node scripts/nomi.mjs canvas add workspace-xxxx image "咖啡师拉花的手部特写，浅景深"
-node scripts/nomi.mjs canvas add workspace-xxxx image "咖啡馆窗边，一个人捧着杯子微笑，逆光"
-# 每条 → { "ids": ["node-aaaa"] } / { "ids": ["node-bbbb"] } / { "ids": ["node-cccc"] }
-```
+画布的**写**只在 MCP 语义面上：`nomi_canvas_edit`（建节点 / 连边 / 改提示词）与
+`nomi_canvas_maintenance`（删节点，带确认与 `undoToken`）。两者都要 `leaseHandle`，
+而租约只发给验证过的项目会话传输。`scripts/nomi.mjs` 拿的是裸 bearer——它只证明
+「这台机器上的某个进程读到了 token」，证不出「哪个客户端、哪次会话、哪个项目」，
+所以它读得到画布，写不了画布（2026-09-21 删掉了 `canvas add/connect/prompt/delete` 四个子命令）。
 
 **④ 看一眼画布，确认都加上了**
 
@@ -143,7 +142,7 @@ node scripts/nomi.mjs generate workspace-xxxx modelscope "Tongyi-MAI/Z-Image-Tur
 检测到 `~/.workbuddy/` 目录只表示宿主已安装，不代表已配置 Nomi。写入配置不自动授予制作权限；仍按「设置 → 自动化与权限」中的可信发起方设置执行。
 
 
-工具总数**以 `tools/list` 为准**；写在这里的数字由 `nomiMcpProductionRuns.test.ts` 钉住目录派生值（没有测试盯着的地方就别写数字——`docs/integrate-with-your-agent.md` 曾经写着「47 个工具」）。当前是 23 个工具。15 个按对象归并：`nomi_read`（读侧统一入口，整体只读）、`nomi_canvas_edit`（画布语义写，唯一的画布写工具；`operation` 枚举即全部合法动作，须持项目租约。传输 schema 由 canvasWrite.ts 的 Zod 校验器派生，不再手写第二份）、`nomi_asset_import`、`nomi_project_create`、`nomi_session_open`、`nomi_run_start` / `nomi_run_control` / `nomi_run_gate`（持久制作 Run）、`nomi_artifact_review`（剧本/分镜审阅+修订）、`nomi_model_setup`（接模型：`action`=connect_provider / submit_declaration / show_models / cancel，四步都可撤、本地、不花钱；**地址与鉴权放法一个字都不是它的入参**——密钥去哪由用户在 Nomi 的贴 key 页按下保存时绑定）、`nomi_remove_provider`（永久删除一条连接或几个模型，撤不回，要 `nomi_read target=models` 给的指纹）。单次生成的可编辑流程是 `nomi_operation_plan` → `nomi_operation_preview` → `nomi_operation_gate`（付费两相）→ `nomi_operation_execute` → `nomi_operation_control`：先展示/编辑计划，再由 rollout policy 决定何时可提交；未通过阶段检查时会明确返回下一步，不会回退到旧生成器。另外 7 个 M2 语义编辑工具：`nomi_canvas_maintenance`、`nomi_document_read`、`nomi_document_edit`（`where: cursor | selection | end` 与内部面 `write_script` 同一份声明）、`nomi_timeline_read`、`nomi_timeline_edit`、`nomi_export_job`、`nomi_media_query`。（`nomi_layout_read` / `nomi_layout_write` 于 2026-09-14 随 20 动词工具面退役：42 句用户话术里没有一句要它，布局契约留给渲染层 RPC。）（`nomi_canvas_plan` 已于 2026-09-05 退役：它与 `nomi_canvas_edit` 在 `tools/list` 里 description / inputSchema / method 字节级相同，宿主没有依据选哪个。）
+工具总数**以 `tools/list` 为准**；写在这里的数字由 `nomiMcpProductionRuns.test.ts` 钉住目录派生值（没有测试盯着的地方就别写数字——`docs/integrate-with-your-agent.md` 曾经写着「47 个工具」）。当前是 24 个工具。15 个按对象归并：`nomi_read`（读侧统一入口，整体只读）、`nomi_canvas_edit`（画布语义写，唯一的画布写工具；`operation` 枚举即全部合法动作，须持项目租约。传输 schema 由 canvasWrite.ts 的 Zod 校验器派生，不再手写第二份）、`nomi_asset_import`、`nomi_project_create`、`nomi_session_open`、`nomi_run_start` / `nomi_run_control` / `nomi_run_gate`（持久制作 Run）、`nomi_artifact_review`（剧本/分镜审阅+修订）、`nomi_model_setup`（接模型：`action`=connect_provider / submit_declaration / set_key / show_models / cancel，五步都可撤、本地、不花钱；**地址与鉴权放法一个字都不是它的入参**——密钥去哪由用户在 Nomi 的贴 key 页按下保存时绑定，`set_key` 只多收 key 本身，走的是同一扇写门）、`nomi_try_model`（**会花钱**：用刚接进来的模型真跑一次，走手动画布同一条执行器，钱闸是渲染层的报价确认卡；它是唯一能把「这个模型产出过东西吗」从 `unverified` 里消掉的证据，所以带 `destructiveHint`）、`nomi_remove_provider`（永久删除一条连接或几个模型，撤不回，要 `nomi_read target=models` 给的指纹）。单次生成的可编辑流程是 `nomi_operation_plan` → `nomi_operation_preview` → `nomi_operation_gate`（付费两相）→ `nomi_operation_execute` → `nomi_operation_control`：先展示/编辑计划，再由 rollout policy 决定何时可提交；未通过阶段检查时会明确返回下一步，不会回退到旧生成器。另外 7 个 M2 语义编辑工具：`nomi_canvas_maintenance`、`nomi_document_read`、`nomi_document_edit`（`where: cursor | selection | end` 与内部面 `write_script` 同一份声明）、`nomi_timeline_read`、`nomi_timeline_edit`、`nomi_export_job`、`nomi_media_query`。（`nomi_layout_read` / `nomi_layout_write` 于 2026-09-14 随 20 动词工具面退役：42 句用户话术里没有一句要它，布局契约留给渲染层 RPC。）（`nomi_canvas_plan` 已于 2026-09-05 退役：它与 `nomi_canvas_edit` 在 `tools/list` 里 description / inputSchema / method 字节级相同，宿主没有依据选哪个。）
 
 **③ 直接说人话**，它自己挑工具完成：
 

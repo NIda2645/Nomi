@@ -22,10 +22,11 @@ import { cn } from '../../../utils/cn'
 import { AgentPanelV4Composer, type AgentPanelV4ComposerProps } from './AgentPanelV4Composer'
 import { V4ContextRing } from './AgentPanelV4Context'
 import { V4Intervention, V4Queue, V4TaskCard } from './AgentPanelV4Cards'
-import { V4AssistantMessage, V4Suggestion, V4Thinking, V4UserBubble } from './AgentPanelV4Message'
+import { V4AssistantMessage, V4Thinking, V4UserBubble } from './AgentPanelV4Message'
 import { V4ErrorBar, V4Process, V4ToolGroup, V4ToolReceipt } from './AgentPanelV4Receipt'
 import { V4EmptyState } from './AgentPanelV4Empty'
 import { IconHistory, IconLayoutSidebarRightCollapse } from './AgentPanelV4Icons'
+import type { V4QuestionReply } from './agentPanelV4Question'
 import { useV4Labels } from './agentPanelV4Labels'
 import type { V4FlowScrollMemoryBox } from './agentPanelV4ScrollMemory'
 import type { ResidentSurface } from '../resident/residentShellDisplay'
@@ -52,7 +53,6 @@ export type V4FlowHandlers = Readonly<{
   onErrorAction?: (index: number) => void
   /** 失败行上的「反馈」。宿主接了才画那颗钮（#789 的规矩：画出来的必须接得上）。 */
   onFeedback?: (index: number, reason: string) => void
-  onSuggestion?: (index: number, option: string) => void
 }>
 
 export type V4InterventionHandlers = Readonly<{
@@ -64,7 +64,8 @@ export type V4InterventionHandlers = Readonly<{
   onReject?: (reason?: string) => void
   onEscalate?: () => void
   onAlternate?: () => void
-  onOption?: (option: string, index: number) => void
+  /** 用户答了反问（chip 或卡内那一行，同一个动作）。 */
+  onAnswer?: (reply: V4QuestionReply, questions: readonly string[]) => void
   /** 计划行勾选 / 收起。**必填**——见 `V4Intervention` 里那段注释（R28）。 */
   onPlanToggle: (label: string, checked: boolean) => void
   onCollapsePlan: () => void
@@ -93,6 +94,15 @@ export type AgentPanelV4PanelProps = {
    */
   slotComposer?: React.ReactNode
   /**
+   * 槽里那张卡在不在等用户回答。**缺席 = 在等**，完整推导在 `V4SlotShell` 的 `waiting` 上。
+   *
+   * 生产侧永远缺席，而且**应该**缺席：这个面板只在 `slot` 在时才挂卡，而 `slot` 正是
+   * `LaneProjection.pending` 的投影——「挂着」本身就是「在等」，再传一次等于把同一个事实
+   * 说两遍，也就多了一处可以说错的地方。它存在只为让设计实验室画得出「已答 / 已确认」
+   * 那一态（静态取景没有宿主投影可翻）。
+   */
+  slotWaiting?: boolean
+  /**
    * 压在 composer 上沿那一条微字横条。今天只有「全自动」档的常驻提醒用它
    * （`V4AutoModeBanner`）——它在的地方就是用户打字的地方，所以不该住在面板头上。
    */
@@ -112,6 +122,11 @@ export type AgentPanelV4PanelProps = {
   slotHandlers: V4InterventionHandlers
   queueHandlers?: V4QueueHandlers
   onHistory?: () => void
+  /** Workspace/lane/session identity, distinct from remembered reading position. */
+  historyIdentity?: string
+  historyCursor?: string
+  /** Returns the authoritative cursor after loading, even before React commits its projection. */
+  onLoadOlder?: () => Promise<string | undefined>
   onCollapse?: () => void
   /**
    * 「用户读到哪儿了」的存放处（09-01 定稿 §11.2：点角标 = 原宽**原状态**还原）。
@@ -155,15 +170,6 @@ export function V4FlowRow({
     )
   }
   if (item.kind === 'thinking') return <V4Thinking label={item.label} meta={item.meta} text={item.text} streaming={item.streaming} />
-  if (item.kind === 'suggestion') {
-    return (
-      <V4Suggestion
-        text={item.text}
-        options={item.options}
-        onSelect={(option) => handlers?.onSuggestion?.(at, option)}
-      />
-    )
-  }
   if (item.kind === 'tool') {
     return (
       <V4ToolReceipt
@@ -210,6 +216,7 @@ export function AgentPanelV4Panel({
   onStarter,
   slot,
   slotComposer,
+  slotWaiting,
   composerBanner,
   queue,
   queueHint,
@@ -222,6 +229,9 @@ export function AgentPanelV4Panel({
   slotHandlers,
   queueHandlers,
   onHistory,
+  onLoadOlder,
+  historyIdentity,
+  historyCursor,
   onCollapse,
   scrollMemory,
 }: AgentPanelV4PanelProps): JSX.Element {
@@ -235,6 +245,36 @@ export function AgentPanelV4Panel({
     ...(legacy.missingToolArguments ? [t('agentPanelV4.legacyMissingArguments')] : []),
   ].join(t('agentPanelV4.legacySeparator')) : undefined
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const paging = React.useRef<{ settled: boolean } | null>(null)
+  const pageOwner = React.useRef<object>({})
+  const pageAnchor = React.useRef<{ owner: object; request: object; height: number; top: number; first?: string; cursor?: string } | null>(null)
+  const [pageCompletion, setPageCompletion] = React.useState(0)
+  const [historyError, setHistoryError] = React.useState(false)
+  React.useLayoutEffect(() => {
+    const owner = {}
+    pageOwner.current = owner
+    paging.current = null
+    pageAnchor.current = null
+    setHistoryError(false)
+    return () => {
+      if (pageOwner.current === owner) {
+        pageOwner.current = {}
+        paging.current = null
+        pageAnchor.current = null
+      }
+    }
+  }, [historyIdentity])
+  React.useLayoutEffect(() => {
+    const node = scrollRef.current
+    if (node && pageAnchor.current && (flow[0]?.identity !== pageAnchor.current.first || historyCursor !== pageAnchor.current.cursor)) {
+      // A reset/compaction is not a prepend. Only preserve an existing row's position.
+      if (flow[0]?.identity !== pageAnchor.current.first && pageAnchor.current.owner === pageOwner.current && flow.some(item => item.identity === pageAnchor.current?.first)) {
+        node.scrollTop = pageAnchor.current.top + node.scrollHeight - pageAnchor.current.height
+      }
+      pageAnchor.current = null
+      if (paging.current?.settled) paging.current = null
+    }
+  }, [flow, historyCursor])
   // 跟到底：只有用户本来就在底部时才跟。他往上翻着看历史的时候把他拽回来，
   // 比不跟更糟——那是把「我在读」当成「我想看新的」。
   // 初值取自宿主记下的那次：展开回来时先恢复「他当时在不在底」，再决定跟不跟。
@@ -270,10 +310,42 @@ export function AgentPanelV4Panel({
     if (!node) return
     const onScroll = (): void => {
       atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
+      if (node.scrollTop <= 24 && historyIdentity && onLoadOlder && !paging.current) {
+        const owner = pageOwner.current
+        const request = { settled: false }
+        paging.current = request
+        pageAnchor.current = { owner, request, height: node.scrollHeight, top: node.scrollTop, first: flow[0]?.identity, cursor: historyCursor }
+        const current = () => pageOwner.current === owner && paging.current === request
+        atBottomRef.current = false
+        setHistoryError(false)
+        let advanced = false
+        void onLoadOlder().then(cursor => {
+          advanced = cursor !== undefined && cursor !== historyCursor
+          // The host has completed its read. An unchanged cursor proves no prepend;
+          // a changed cursor retains the anchor until React commits that projection.
+          if (current() && cursor === historyCursor && pageAnchor.current?.request === request) pageAnchor.current = null
+        }).catch(() => {
+          if (!current()) return
+          pageAnchor.current = null
+          setHistoryError(true)
+        }).finally(() => {
+          if (!current()) return
+          request.settled = true
+          // ACK is not a React commit. Keep the lock while this page still owns
+          // an anchor, so another scroll cannot overwrite its pending geometry.
+          if (pageAnchor.current?.request !== request) {
+            paging.current = null
+            // Commit may precede ACK; let a short filtered page continue only
+            // after actual cursor progress, never retry an empty page in a loop.
+            if (advanced) setPageCompletion(value => value + 1)
+          }
+        })
+      }
     }
     node.addEventListener('scroll', onScroll, { passive: true })
+    if (node.scrollHeight <= node.clientHeight) onScroll()
     return () => node.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [onLoadOlder, flow, historyIdentity, historyCursor, pageCompletion])
   React.useEffect(() => {
     const node = scrollRef.current
     if (node && atBottomRef.current) node.scrollTop = node.scrollHeight
@@ -305,10 +377,11 @@ export function AgentPanelV4Panel({
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-3 py-2.5 [&>*]:shrink-0" data-v4-flow="true">
         {/* 空态只在**流为空**时占这块地方：来了第一条消息它就永远不再出现，
             所以它不是常驻件、不参与控件预算（设计系统 §1.5）。 */}
+        {historyError ? <div role="alert">{t('agentPanelV4.historyLoadFailed')}</div> : null}
         {flow.length === 0 ? <V4EmptyState surface={surface} onStarter={onStarter} /> : null}
         {flow.map((item, index) => (
           <V4FlowRow
-            key={`${item.kind}-${index}`}
+            key={item.identity ?? `${item.kind}-${index}`}
             item={item}
             index={index}
             darkMode={darkMode}
@@ -319,7 +392,7 @@ export function AgentPanelV4Panel({
       </div>
       {slot ? (
         <div className="shrink-0 px-2.5 pb-2">
-          <V4Intervention data={slot} labels={labels.intervention} {...(slotComposer ? { composer: slotComposer } : {})} {...slotHandlers} />
+          <V4Intervention data={slot} labels={labels.intervention} {...(slotComposer ? { composer: slotComposer } : {})} {...(slotWaiting === undefined ? {} : { waiting: slotWaiting })} {...slotHandlers} />
         </div>
       ) : null}
       {queue?.length ? (

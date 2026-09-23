@@ -30,9 +30,18 @@ function runIsStopped(status: ProductionRunStatus): boolean {
   return status === 'pausing' || status === 'paused' || status === 'cancelled' || status === 'needs_attention'
 }
 
-/** 视频镜（非 anchor、included）——排队序列的分母 N 与位次都按它算（与调度器 videoShotsOf 同规则）。 */
+/**
+ * 排队序列的分母 N 与位次按哪些镜算——**与调度器的 `progressShots` 同规则**
+ * （`electron/productionRun/batchScheduleDerivation.ts`：`videoShots.length > 0 ? videoShots : anchors`）。
+ *
+ * 2026-09-22：这里原来只写了「非 anchor」那一半，注释却说「与调度器 videoShotsOf 同规则」——
+ * 调度器早就为「只有参考卡」的批次留了那一支（原话：an anchor-only request tracks its actual paid units），
+ * 而 `draft_shots` 现在允许只建参考卡了。少掉那一支的后果是：用户会看到一排「排队中 1/0」。
+ */
 function includedVideoShots(run: ProductionRun): { shotId: string }[] {
-  return (run.generationPlan?.shots ?? []).filter((shot) => shot.role !== 'anchor' && shot.included !== false).map((shot) => ({ shotId: shot.shotId }))
+  const included = (run.generationPlan?.shots ?? []).filter((shot) => shot.included !== false)
+  const nonAnchors = included.filter((shot) => shot.role !== 'anchor')
+  return (nonAnchors.length > 0 ? nonAnchors : included).map((shot) => ({ shotId: shot.shotId }))
 }
 
 function jobForNode(run: ProductionRun, nodeId: string): ProductionJob | undefined {

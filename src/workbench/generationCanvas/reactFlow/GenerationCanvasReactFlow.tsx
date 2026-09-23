@@ -1,4 +1,3 @@
-import { withCanvasGestureContext } from '../events/canvasGestureContext'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import React from 'react'
 import {
@@ -49,11 +48,9 @@ import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
 import { useCreatedNodeVisibilityPan, useRevealCreatedNodes } from '../components/useCreatedNodeVisibilityPan'
 import { useReactFlowViewportAnimation } from './useReactFlowViewportAnimation'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
-import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
 import { hasPendingDirectorCameraMoveCapture, hasPendingDirectorStagingCapture } from '../components/directorCaptureHostActivation'
-import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import CanvasToolbar from '../components/CanvasToolbar'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
@@ -61,7 +58,7 @@ import {
 } from '../components/canvasStageDrop'
 import {
   collectFlowPositionChanges,
-  collectFlowSelectionChanges,
+  nextSelectionFromFlowChanges,
   flowViewportFromCanvas,
   type GenerationFlowEdge,
   toGenerationFlowNode,
@@ -71,9 +68,8 @@ import {
   applyCanvasDragKernelPositionChanges,
   applyCanvasDragPositionChanges,
   overlayCanvasDragDraft,
-  restoreCanvasDragKernelOwnership,
 } from './canvasDragDraft'
-import { commitCanvasNodeDragStop } from './canvasDragWriteback'
+import { cancelCanvasNodeDrag, commitCanvasKeyboardPositions, finishCanvasNodeDrag, restoreDisownedKernelPositions } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
@@ -99,6 +95,11 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hostRef = React.useRef<HTMLDivElement>(null)
   const duplicateDragIdsRef = React.useRef(new Map<string, string>())
   const draggingRef = React.useRef(false)
+  // 「此刻还在这一次 keydown 的同步派发里吗」。2026-09-21：原来存的是那个 native KeyboardEvent，
+  // 判据 `Boolean(event.eventPhase)` —— 拿未文档化的 DOM 细节（派发完归 0）当同步栈探测器，
+  // 且 ref 从不清空、长期持有一个 KeyboardEvent 连带它的 target。改成自己说了算的布尔。
+  const keyboardDispatchRef = React.useRef(false)
+  const dragLeaseRef = React.useRef<CanvasDragLease | null>(null)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
@@ -469,27 +470,17 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (duplicateDragIdsRef.current.size) changes = changes.map((change) => change.type === 'position' && duplicateDragIdsRef.current.has(change.id)
       ? { ...change, id: duplicateDragIdsRef.current.get(change.id)! } : change)
     const positionChanges = collectFlowPositionChanges(changes)
-    if (positionChanges.length) {
+    if (positionChanges.length && draggingRef.current) {
       const draftNodes = dragDraftNodesRef.current.length ? dragDraftNodesRef.current : flowNodes
       dragDraftNodesRef.current = applyCanvasDragPositionChanges(draftNodes, changes)
       applyCanvasDragKernelPositionChanges(flowStore, changes)
+    } else if (positionChanges.length && !commitCanvasKeyboardPositions(positionChanges, keyboardDispatchRef.current && !readOnly)) {
+      restoreDisownedKernelPositions(flowStore, positionChanges)
     }
 
-    const selectionChanges = collectFlowSelectionChanges(changes)
-    if (selectionChanges.length === 0) return
-    const selected = new Set(useGenerationCanvasStore.getState().selectedNodeIds)
-    for (const change of selectionChanges) {
-      if (change.selected) selected.add(change.nodeId)
-      else selected.delete(change.nodeId)
-    }
-    const nextSelection = [...selected]
-    const currentSelection = useGenerationCanvasStore.getState().selectedNodeIds
-    if (
-      nextSelection.length === currentSelection.length &&
-      nextSelection.every((nodeId, index) => nodeId === currentSelection[index])
-    ) return
-    selectNodes(nextSelection)
-  }, [flowNodes, flowStore, selectNodes])
+    const nextSelection = nextSelectionFromFlowChanges(changes, useGenerationCanvasStore.getState().selectedNodeIds)
+    if (nextSelection) selectNodes(nextSelection)
+  }, [flowNodes, flowStore, readOnly, selectNodes])
 
   // React Flow's selection store is internal while the persisted selection lives
   // in Zustand. Syncing on every internal selection notification causes a
@@ -518,13 +509,27 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     setSelectedEdgeId(null)
   }, [disconnectEdge, readOnly, selectedEdgeId])
 
+  // 收尾住 canvasDragWriteback（与正常松手同一个家）：这个壳只负责把自己的 ref 递过去。
+  const cancelNodeDrag = React.useCallback(() => cancelCanvasNodeDrag({
+    dragLeaseRef, draggingRef, dragStartPositionsRef, dragDraftNodesRef, duplicateDragIdsRef,
+    setNodeDragActive, cancelFramePreview: frameMembership.cancelPreview, flowStore,
+    restoreFlowNodes: () => flowStore.getState().setNodes(flowNodes),
+  }), [flowNodes, flowStore, frameMembership])
+  const cancelNodeDragRef = React.useRef(cancelNodeDrag)
+  cancelNodeDragRef.current = cancelNodeDrag
+  React.useEffect(() => () => cancelNodeDragRef.current(), [activeCategoryId, readOnly])
+  React.useEffect(() => {
+    if (draggingRef.current && [...dragStartPositionsRef.current.keys()].some(id => !allNodes.some(node => node.id === id))) cancelNodeDragRef.current()
+  }, [allNodes])
+
   const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
     setNodeDragActive(true) // #5：冻结 minimap（纯渲染门，不碰写入路径）
     dragDraftNodesRef.current = flowNodes
     flowStore.setState({ hasDefaultNodes: false })
-    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
+    dragLeaseRef.current?.release()
+    dragLeaseRef.current = beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowNode, { onCancel: () => cancelNodeDragRef.current(), ...('pointerId' in event && typeof event.pointerId === 'number' ? { pointerId: event.pointerId } : {}) })
     const originalIds = selectedSet.has(draggedNode.id) ? selectedNodeIds : [draggedNode.id]
     duplicateDragIdsRef.current = 'altKey' in event && event.altKey
       ? useGenerationCanvasStore.getState().duplicateNodesForDrag(originalIds) : new Map()
@@ -551,36 +556,24 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   // 拖动中算「松手会发生什么」——进框/出框的反馈就在这里产生（只写本地预览，不碰 store）。
   const handleNodeDrag: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode, draggedNodes) => {
-    if (readOnly) return
+    if (readOnly || !draggingRef.current) return
     frameMembership.handleNodeDrag((draggedNodes.length ? draggedNodes : [draggedNode])
       .map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })))
   }, [frameMembership, readOnly])
 
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) {
-      frameMembership.cancelPreview()
+      cancelNodeDrag()
       return
     }
-    setNodeDragActive(false) // #5：解冻 minimap（在所有退出路径之前，含时间轴投放早退；draggingRef 由 writeback 清）
-    commitCanvasNodeDragStop({
+    finishCanvasNodeDrag({
       event,
       draggedNode: { ...draggedNode, id: duplicateDragIdsRef.current.get(draggedNode.id) ?? draggedNode.id },
       draggedNodes: draggedNodes.map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })),
-      readOnly,
-      t,
-      hostRef,
-      draggingRef,
-      dragStartPositionsRef,
-      dragDraftNodesRef,
-      moveNode,
-      commitPersistedChange,
+      readOnly, t, draggingRef, dragStartPositionsRef, dragDraftNodesRef, moveNode, commitPersistedChange,
+      dragLeaseRef, duplicateDragIdsRef, setNodeDragActive, commitFrameMembership: frameMembership.commitMembership, flowStore,
     })
-    // 位置写回之后才提交归属变更：先改成员再移动会让框在同一帧里既缩又长，看着像抖了一下。
-    withCanvasGestureContext({ source: 'user', txnId: crypto.randomUUID(), suppressUndoBarriers: true }, () => frameMembership.commitMembership())
-    duplicateDragIdsRef.current.clear()
-    // 还原拖动内核关掉的 hasDefaultNodes，恢复 RF 对选择/投影变更的自应用（机制见 helper JSDoc）。
-    restoreCanvasDragKernelOwnership(flowStore)
-  }, [commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
+  }, [cancelNodeDrag, commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
@@ -665,6 +658,8 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
+      // 微任务跑在这一轮派发之后、下一帧之前：React Flow 的键盘移动就在这一轮里发 position change。
+      onKeyDownCapture={() => { keyboardDispatchRef.current = true; queueMicrotask(() => { keyboardDispatchRef.current = false }) }}
       onPointerDownCapture={handleStagePointerDownCapture}
       onPointerMoveCapture={handleCanvasPointerMoveCapture}
       onWheelCapture={handleCanvasWheelCapture}

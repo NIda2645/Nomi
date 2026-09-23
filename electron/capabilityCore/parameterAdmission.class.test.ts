@@ -17,6 +17,7 @@ import {
   type PlanCandidate,
 } from "./executionContract";
 import { videoRecommendationInput } from "./mcpGenerationVideoResolve";
+import { requestedVideoDurationSeconds } from "./semanticGenerationCandidate";
 import type { ModuleManifest } from "./moduleManifest";
 
 const manifest: ModuleManifest = {
@@ -159,19 +160,27 @@ describe("parameter admission (shared boundary)", () => {
     expect(error.rejection?.expectedType).toBe("string");
   });
 
-  it("every declared planning hint is one the recommendation reader actually consumes", () => {
-    // 活的判据：逐个键真喂进去，看 videoRecommendationInput 读不读得到它。
+  it("every declared planning hint is one Nomi itself actually consumes", () => {
+    // 活的判据：逐个键真喂进去，看它**有没有读者**。
     // （把常量再导出一遍然后和自己比，那种断言恒真——它挡不住「这里加了键、那边没加」。）
+    //
+    // 两个读者，不是一个：选型意图归 `videoRecommendationInput`，时长意图归
+    // `requestedVideoDurationSeconds`（2026-09-22 总合并把两张表并成一张之后，这条判据
+    // 也必须同时覆盖两位读者——只核推荐器会让四个时长键误判成「没人读」）。
     const sample: Record<string, unknown> = {
       cameraIntent: "orbit", preferredFamily: "seedance", preserveCharacter: true,
       preserveTransition: true, quality: "final", useReferenceAudio: true,
+      aspectRatio: "16:9", durationSeconds: 7, totalDurationSeconds: 120, targetDurationSeconds: 120,
     };
+    const unread: string[] = [];
     for (const key of GENERATION_PLANNING_HINT_KEYS) {
-      const withHint = videoRecommendationInput(candidate({ [key]: sample[key] }));
-      const without = videoRecommendationInput(candidate({}));
-      expect(JSON.stringify(withHint), `planning hint ${key} is declared but nothing reads it`)
-        .not.toBe(JSON.stringify(without));
+      expect(sample[key], `${key} 在探针里没有取值，测试本身证明不了任何事`).toBeDefined();
+      const readByRecommendation = JSON.stringify(videoRecommendationInput(candidate({ [key]: sample[key] })) ?? {})
+        !== JSON.stringify(videoRecommendationInput(candidate({})) ?? {});
+      const readByDuration = requestedVideoDurationSeconds({ [key]: sample[key] }) !== undefined;
+      if (!readByRecommendation && !readByDuration) unread.push(key);
     }
+    expect(unread, "这些键登记成了「Nomi 自己消费」，但全仓没有读者——它们应该报错而不是被放行").toEqual([]);
   });
 
   it("carries a value through unvalidated — never drops it — when the model declares no parameters at all", () => {

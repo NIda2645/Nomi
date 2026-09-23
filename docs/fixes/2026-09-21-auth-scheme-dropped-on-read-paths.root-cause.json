@@ -1,0 +1,309 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-auth-scheme-dropped-on-read-paths",
+  "problem_type": "Outbound credential header owner",
+  "symptom": "供应商用的不是 `Authorization: Bearer <k>` 而是别的方案词（Higgsfield 的 `Authorization: Key id:secret`）时，同一把 key **生成能跑**、而「设置→列出这家的模型」/ 接入向导既有连接分支 / 凭证页「测试连接」/「测试连接」探测 401 或列空。用户镜头：「key 是对的啊，生成都能跑，这里怎么说连不上」——群里最常见的那句。",
+  "direct_cause": "`authHeaders(authType, apiKey, headerName?, scheme?)` 是四个位置参数，读路那几处只传了前三个；`providerAdapter/existingConnection.ts` 的 `fetchModels` 契约里根本没有 `authScheme` 这个字段，方案词传不进这条路。另有第二份 `modelListProbe.buildAuthHeaders` 直接写死 `authorization: Bearer ${apiKey}`，「测试连接 / 可达性探测」走的是它。",
+  "class_root": "「一把 key 怎么放进请求里」是**一件事**，却被表达成四个可以各传各的散字段 + 两个各写一遍的构造函数。散字段的形状让「少传一个维度」在语法上完全合法，于是新增维度（2026-09-18 的 authScheme）只在作者当时看到的那几处补齐，其余各处静默沿用缺省——编译器看不见，门岗看不见，只有用户看得见（401）。上一轮横扫判这一格「已收（类型级闭合）」，那是**写路**；读路没有对应的闭合，这是同一条不变量的另外半边。",
+  "affected_population": [
+    "任何 authScheme 不是 Bearer 的供应商连接（今天：Higgsfield 的 `Key id:secret`；任何自建网关都可能）",
+    "四条读路的用户：设置→模型→列出这家的模型｜接入向导既有连接分支｜接入会话的模型发现｜凭证页与向导的「测试连接」"
+  ],
+  "scope_paths": [
+    "electron/ai/requestPipeline.ts",
+    "electron/catalog/vendorAuthSpec.ts",
+    "electron/catalog/vendorAuthSpecReadPaths.test.ts",
+    "electron/catalog/validateCandidateCredential.ts",
+    "electron/ai/onboarding/modelListProbe.ts",
+    "electron/ai/onboarding/onboardingIpc.ts",
+    "electron/ai/onboarding/vendorHealth.ts",
+    "electron/integrationCertification/httpConnector.ts",
+    "electron/integrationCertification/httpModelDiscovery.ts",
+    "electron/integrationCertification/credentialElicitationRuntime.ts",
+    "electron/providerAdapter/existingConnection.ts",
+    "electron/providerAdapter/selfCheck.ts",
+    "electron/runtime.ts",
+    "electron/vendor/vendorHttp.ts"
+  ],
+  "entry_points": [
+    "设置→模型→某家连接→列出这家的模型（IPC nomi:integration-certification:http:existing:list-models → existingConnection.listModels）",
+    "接入向导既有连接分支（同一条 listModels）",
+    "接入会话的模型发现（httpModelDiscovery.discoverHttpCandidates → certification.discoverHttpModels）",
+    "凭证页「测试连接」（credentialElicitationRuntime.testCredential）",
+    "添加供应商向导的「测试连接」与可达性探测（IPC nomi:onboarding:test-connection / list-models → modelListProbe.buildAuthHeaders）",
+    "生成出站（requestPipeline.buildHttpRequest，一直是对的）",
+    "供应商健康自动检查（vendorHealth）、档案自检（selfCheck）、候选凭证校验（validateCandidateCredential），这三处一直传了 scheme"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是本仓自己「把一把 key 放进出站请求」的内部契约形状问题，没有外部规范可对——`Authorization` 的方案词本身由各供应商自定（RFC 9110 只规定语法是 `<scheme> <credentials>`，我们已按这个语法拼）。判据来自本仓源码逐点核对（git grep authHeaders 的 10 个调用点）与 2026-09-18 Higgsfield 接入实测（`vendor-authscheme-was-silently-dropped-20260918`）。",
+  "invariants": [
+    "同一条已保存的连接，在生成、列模型、模型发现、认证探测、健康检查、自检、上传的任何一条路上，拼出的鉴权头逐字相同",
+    "「一把 key 怎么放」只有一个类型（VendorAuthSpec）与一个产出它的 owner（catalog/vendorAuthSpec）；新增鉴权维度时编译器在全部消费点报红"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/ai/requestPipeline.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/requestPipeline.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/vendorAuthSpec.ts",
+      "symbol": "savedVendorForBaseUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/modelListProbe.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "symbol": "buildAuthHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/credentialElicitationRuntime.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/credentialElicitationRuntime.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpConnector.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpConnector.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "symbol": "connectionAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/existingConnection.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "authHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "symbol": "authQueryParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "vendorAuthSpec"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "buildAuthHeaders"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "vendorAuthSpec"
+    }
+  ],
+  "door_reduction": {
+    "before": 28,
+    "after": 25,
+    "why_not": "真正合并掉的是**「一把 key 怎么放」的答案数**：修前有 3 份独立答案（requestPipeline.authHeaders 的四散参数版、runtime.ts 里那个私有的 Vendor→头 适配、modelListProbe.buildAuthHeaders 里写死的 `Bearer ${apiKey}`），修后只剩 1 份（requestPipeline.authHeaders 收 VendorAuthSpec），另加 1 个把连接记录译成 VendorAuthSpec 的 owner（catalog/vendorAuthSpec，两个入口：手上有 Vendor 用 vendorAuthSpec，手上只有 baseUrl 用 connectionAuthSpec）。门表上少的 2 扇是 runtime.ts 那份私有适配（删）与 vendorHttp 里与 owner 同名的 authQueryParams（改名 vendorAuthQueryParams，不再是第二个同名答案）。剩下的 26 扇是**调用点**，它们必须各自存在——那是四条读路加三条写路本身；让它们不再各答一遍的机制是类型（VendorAuthSpec 是一个值对象，少一个维度编译不过）加 vendorAuthSpecReadPaths.test.ts 的结构断言（所有调用点的第一个实参只能来自 owner；接入/探测/自检三棵子树里除 owner 外一处手写 Authorization 都不许有，零基线）。"
+  },
+  "generality_proof": "① 类型闭合：`authHeaders` / `authQueryParams` 只接 `VendorAuthSpec`，四个维度作为一个值一起走；加第五个维度只需改 `VendorAuthSpec` 与 `catalog/vendorAuthSpec`，编译器会在全部 26 个调用点报红。这次的改造本身就是证据——把签名收成对象之后，`tsc -p electron/tsconfig.json` 一次性报出 7 个错，正好落在那三处读路上，外加一处我原先没发现的 `modelListProbe.buildAuthHeaders`（第四份手拼头）。② 结构闭合：`vendorAuthSpecReadPaths.test.ts` 机械扫 electron/ 全部非测试 .ts，断言所有 `authHeaders`/`authQueryParams`/`buildAuthQueryParams` 调用点的第一个实参都来自 owner，且 ai/ · integrationCertification/ · providerAdapter/ 三棵子树里除 owner 外没有任何手写 `Authorization: …` 字面量（零基线，不是棘轮）。③ 行为闭合：Higgsfield 式 `Key` 与缺省 `Bearer` 两种连接，在 existingConnection.listModels 与模型发现两条读路上拼出的头与生成路逐字相同。",
+  "shared_boundaries": [
+    {
+      "path": "electron/ai/requestPipeline.ts",
+      "symbol": "authHeaders",
+      "responsibility": "全仓唯一「把一把 key 放进出站请求头」的实现；只接 VendorAuthSpec 这一个整份说法，不接散字段。"
+    },
+    {
+      "path": "electron/catalog/vendorAuthSpec.ts",
+      "symbol": "vendorAuthSpec",
+      "responsibility": "全仓唯一「由一条连接记录得到鉴权说法」的实现；手上有 Vendor 走 vendorAuthSpec，手上只有 baseUrl（接入会话/探测）走 connectionAuthSpec，方案词一律从已保存的连接取。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/providerAdapter/existingConnection.ts",
+      "entry_point": "fetchModels 契约（设置→列出这家的模型 / 接入向导既有连接分支）",
+      "disposition": "not-affected",
+      "evidence": "契约里的 authType/authHeader/authQueryParam 三个散字段删掉，换成 `auth: VendorAuthSpec`，由 vendorAuthSpec(connection.vendor) 派生；vendorAuthSpecReadPaths.test.ts 第二条逐条断言两种 scheme 的出站头。"
+    },
+    {
+      "path": "electron/integrationCertification/httpModelDiscovery.ts",
+      "entry_point": "接入会话的模型发现",
+      "disposition": "not-affected",
+      "evidence": "改用 connectionAuthSpec + savedVendorForBaseUrl（原来这里自己写了一遍按 baseUrl 找 vendor 的推导）；测试第三条断言 headers.Authorization === 'Key <k>'。"
+    },
+    {
+      "path": "electron/integrationCertification/credentialElicitationRuntime.ts",
+      "entry_point": "凭证页「测试连接」",
+      "disposition": "not-affected",
+      "evidence": "改用 connectionAuthSpec；HttpDiscoveryInput 的散字段已删，不传就编译不过。"
+    },
+    {
+      "path": "electron/ai/onboarding/modelListProbe.ts",
+      "entry_point": "添加供应商向导的测试连接 / 可达性探测 / 拉模型清单",
+      "disposition": "not-affected",
+      "evidence": "第四份手拼头（写死 `authorization: Bearer ${apiKey}`）改为委托 authHeaders；新增可选的 auth 参数，由 onboardingIpc 的 savedConnectionAuth 从已保存连接派生。这一处是收紧签名之后编译器报出来的，不是人找出来的。"
+    },
+    {
+      "path": "electron/runtime.ts",
+      "entry_point": "生成出站（Vendor→头 的私有适配）",
+      "disposition": "not-affected",
+      "evidence": "私有 authHeaders(vendor, apiKey) 删除，改用 vendorAuthSpec；行为不变（它本来就传了 scheme）。"
+    },
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "付费提交的鉴权 query",
+      "disposition": "not-affected",
+      "evidence": "与 owner 同名的 authQueryParams(vendor, apiKey) 改名 vendorAuthQueryParams 并改用 vendorAuthSpec；同名并存正是「读代码的人分不清这一份收不收 scheme」的土壤。"
+    },
+    {
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "entry_point": "供应商连接健康自动检查",
+      "disposition": "enforced",
+      "evidence": "本来就传了 scheme；改成 vendorAuthSpec 之后不再逐字段手抄。"
+    },
+    {
+      "path": "electron/providerAdapter/selfCheck.ts",
+      "entry_point": "档案自检",
+      "disposition": "enforced",
+      "evidence": "同上。"
+    },
+    {
+      "path": "electron/catalog/validateCandidateCredential.ts",
+      "entry_point": "候选凭证校验",
+      "disposition": "enforced",
+      "evidence": "同上。"
+    },
+    {
+      "path": "electron/catalog/assetLocalization.ts",
+      "entry_point": "素材上传到供应商",
+      "disposition": "enforced",
+      "evidence": "`assetLocalization.ts:278` 自己按 `${scheme} ${apiKey}` 拼头，scheme 来自档案声明——它读的是 assetIngestion 声明的上传端点鉴权，与连接记录不是同一份状态，本次未并入（见 residual_risks）。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状已发生两次：2026-09-18 是写路把 authScheme 静默丢掉（vendor upsert），本次是读路。只要「一把 key 怎么放」还表达成可以各传各的散字段，下一个维度（mTLS、签名、双头）加进来时还会只补作者看到的那几处。",
+    "same_class_scan": [
+      "git grep -n 'authHeaders(\\|authQueryParams(' -- electron src，逐个调用点看它的第一个实参是不是来自 catalog/vendorAuthSpec（vendorAuthSpecReadPaths.test.ts 已机器化）",
+      "git grep -nE '[Aa]uthorization[[:space:]]*:[[:space:]]*[`\"'\\'']' -- electron/ai electron/integrationCertification electron/providerAdapter，找手写鉴权头的第二份实现",
+      "node scripts/door-map.mjs vendorAuthSpec / connectionAuthSpec，核每条出站路是不是都从这一个 owner 取说法"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/vendorAuthSpec.ts",
+    "invariant": "同一条已保存的连接，在任何一条出站路上拼出的鉴权头逐字相同",
+    "failure_mode": "Stop and show actionable feedback",
+    "exception_policy": "none",
+    "strategy": "把四个散字段收成一个值对象（R17：能让编译器拦的别留给门岗），再把「连接记录→鉴权说法」收成一个 owner；两份手拼头的第二实现同 commit 删除/委托。编译器负责「少传一个维度」，结构测试负责「有人另起一份」。",
+    "artifacts": [
+      "electron/ai/requestPipeline.ts",
+      "electron/catalog/vendorAuthSpec.ts",
+      "electron/catalog/vendorAuthSpecReadPaths.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/vendorAuthSpecReadPaths.test.ts",
+    "electron/ai/requestPipeline.test.ts",
+    "electron/ai/onboarding/onboardingIpc.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/vendorAuthSpecReadPaths.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/runtime.ts",
+      "electron/ai/onboarding/modelListProbe.ts",
+      "electron/vendor/vendorHttp.ts",
+      "electron/providerAdapter/existingConnection.ts",
+      "electron/integrationCertification/httpConnector.ts"
+    ],
+    "rationale": "四参数位置签名、runtime.ts 的私有 Vendor→头 适配、modelListProbe 里写死的 Bearer、existingConnection/HttpDiscoveryInput 的三个散字段，全部同 commit 删除。没有留兼容重载、没有留 `scheme?` 可选实参的旧签名——留着就等于留一条「可以不传」的路，而这条 bug 的全部内容就是「可以不传」。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "内部契约形状，不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "对用户无迁移，也不需要重新贴 key：方案词一直好好地存在 vendor.authScheme 上，只是读路没把它带出去。已接 Higgsfield 的用户下次点「列出这家的模型」或「测试连接」即恢复正常。\n\n2026-09-22 总合并订正：#831 把「哪条连接」的反查换成 `resolveConnectionVendorKey`（域名 + 连接名），所以 `httpModelDiscovery` 不再直接调 `savedVendorForBaseUrl`；本合同要守的是「方案词不许在读路径上被丢掉」，它今天的门是同一文件里的 `connectionAuthSpec`。判据未改。",
+  "residual_risks": [
+    "`catalog/assetLocalization.ts:278` 另有一处 `Authorization: ${scheme} ${apiKey}`，它的 scheme 来自 assetIngestion 声明的上传端点而不是连接记录——形状同源但状态不同源，本次未并入，也没有进结构断言的扫描范围（该文件不在 ai/ · integrationCertification/ · providerAdapter/ 三棵子树里）。并入它需要先判定「上传端点的鉴权是否永远等于连接的鉴权」，那是另一刀。",
+    "`connectionAuthSpec` 按 baseUrl 反查已保存的连接（deriveVendorKeyFromBaseUrl 只按 hostname 造 key）。同一台主机上两条不同的连接（同域名不同路径前缀）会取到同一条记录的方案词。今天的推导本来就是这样（模型发现一直这么找 vendor），本次没有扩大它，但也没有收窄。",
+    "接入向导上没有填方案词的格子（它是档案声明的）。全新接入一个 `Key` 式供应商时，第一次「测试连接」仍然会按 Bearer 探——因为那时还没有已保存的连接可查。这一条属于批次 D 的接入面，不在本合同范围。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/vendorAuthSpec.ts",
+    "tests": [
+      "electron/catalog/vendorAuthSpecReadPaths.test.ts",
+      "electron/ai/requestPipeline.test.ts"
+    ]
+  }
+}

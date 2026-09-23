@@ -46,7 +46,7 @@ export default function StoryboardWorkspace({ projectId, aiCollapsed = false, ag
         aria-label={t('workspace.storyboard')}
       >
         <div className="min-w-0 min-h-0 overflow-hidden">
-          <StoryboardPlanEditor projectId={projectId} />
+          <StoryboardPlanEditor key={activeStoryboardId} projectId={projectId} />
         </div>
         {agentDockRef ? <AssistantPane dockRef={agentDockRef} collapsed={aiCollapsed} /> : null}
       </section>

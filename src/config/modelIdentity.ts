@@ -10,6 +10,7 @@
 //   2) 规范化 labelZh（去能力后缀/空格/大小写；火山「Seedream 4.5」与 apimart「Seedream 4.5」→ 合并）
 //   3) 兜底 value/modelKey（认不出的中转模型——不合并，各自独立，符合预期）
 import type { ModelOption } from './models'
+import { compareVendorLanding } from '../../electron/shared/contracts/vendorPreference'
 import { builtinVendorKeyOfKey } from '../../electron/shared/builtinVendorIdentity'
 
 export interface ModelProviderRef {
@@ -104,23 +105,12 @@ export function isRecognizedModel(option: ModelOption): boolean {
   return typeof meta.archetypeId === 'string' && meta.archetypeId.trim().length > 0
 }
 
-// 供应商分级（自动选最优：官方 > 内置中转 > 用户自接/未知）。是默认挑选的稳定排序键，
-// 不是硬限制——用户可在弹窗点开锁定任意一家。分级错了也只影响默认项，零生成风险。
-const OFFICIAL_VENDOR_KEYS = new Set([
-  'volcengine', 'modelscope', 'openai', 'anthropic', 'claude', 'gemini', 'google',
-  'deepseek', 'dashscope', 'zhipu', 'moonshot', 'kimi', 'siliconflow', 'groq', 'openrouter',
-])
-const BUILTIN_RELAY_VENDOR_KEYS = new Set(['apimart', 'kie', 'newapi'])
-
-export function vendorTier(vendorKey?: string): number {
-  // #831：`apimart--mini` 这类兄弟连接必须和 `apimart` 同档。先解析回 root 再查表——
-  // 不这么做，用户新建的特价组会被降进「用户自接」档，默认家在没人决定过的情况下悄悄换人。
-  // （「主连接默认在前」由同档内的 catalog 原序保证，不靠给兄弟连接降档这种副作用。）
-  const k = builtinVendorKeyOfKey(vendorKey).toLowerCase()
-  if (OFFICIAL_VENDOR_KEYS.has(k)) return 0
-  if (BUILTIN_RELAY_VENDOR_KEYS.has(k)) return 1
-  return 2
-}
+// 供应商分级与「先走哪家」的比较子都住 `electron/shared/contracts/vendorPreference.ts`：
+// 渲染层的选择器和主进程的执行侧必须是逐字同一把尺，否则「界面显示一家、钱花另一家」。
+// 这里只转出去给渲染层现有的导入方用，本文件不再写第二份表（2026-09-22 总合并）。
+// #831 的「兄弟连接与 root 同档」也在那一份里（`vendorTier` 先 `builtinVendorKeyOfKey` 再查表），
+// 所以两条 lane 改的是同一个函数，不是两份。
+export { vendorTier } from '../../electron/shared/contracts/vendorPreference'
 
 /**
  * 同一个模型挂在**同一家的多条连接**下时，每条连接各自的区分后缀（issue #831）。
@@ -211,12 +201,10 @@ export function pickImplicitVendorMatch<T>(
   orderedVendorKeys: readonly string[] = [],
 ): T | undefined {
   if (matches.length <= 1) return matches[0]
-  const rank = new Map(orderedVendorKeys.map((key, index) => [key.toLowerCase(), index]))
-  const scored = matches.map((match, index) => {
-    const vendor = (vendorOf(match) || '').toLowerCase()
-    return { match, index, pref: rank.get(vendor) ?? Number.MAX_SAFE_INTEGER, tier: vendorTier(vendor) }
-  })
-  scored.sort((a, b) => (a.pref - b.pref) || (a.tier - b.tier) || (a.index - b.index))
+  // 前两级（用户排过的顺序 → 供应商分级）住 `electron/shared/contracts/vendorPreference.ts`，
+  // 执行侧用的是同一个比较子；这里只补第三级「目录原序」。
+  const scored = matches.map((match, index) => ({ match, index, vendor: vendorOf(match) }))
+  scored.sort((a, b) => compareVendorLanding(a.vendor, b.vendor, orderedVendorKeys) || (a.index - b.index))
   return scored[0]!.match
 }
 
@@ -234,13 +222,11 @@ export function pickImplicitVendorMatch<T>(
  * （`keepUsableModelRows`，判据在主进程 `electron/shared/modelAvailability.ts`）就已经不存在了，排到这里的每一家都能跑。
  */
 export function sortModelProviders<T extends ModelProviderRef>(providers: readonly T[], orderedVendorKeys: readonly string[] = []): T[] {
-  const rank = new Map(orderedVendorKeys.map((key, index) => [key.toLowerCase(), index]))
-  const rankOf = (provider: ModelProviderRef): number => rank.get((provider.vendor || '').toLowerCase()) ?? Number.MAX_SAFE_INTEGER
+  // 前两级（用户排过的顺序 → `vendorTier` 分级）由共享比较子给，与执行侧逐字同一把尺；
+  // 这里只补第三级「厂商显示名字母序 → 目录原序」（纯为稳定，不携带任何偏好语义）。
   return providers.map((provider, index) => ({ provider, index })).sort((a, b) => {
-    const pref = rankOf(a.provider) - rankOf(b.provider)
-    if (pref) return pref
-    const tier = vendorTier(a.provider.vendor) - vendorTier(b.provider.vendor)
-    if (tier) return tier
+    const landing = compareVendorLanding(a.provider.vendor, b.provider.vendor, orderedVendorKeys)
+    if (landing) return landing
     return (a.provider.option.vendorName || a.provider.vendor || '').localeCompare(b.provider.option.vendorName || b.provider.vendor || '', undefined, { sensitivity: 'base' }) || a.index - b.index
   }).map(({ provider }) => provider)
 }

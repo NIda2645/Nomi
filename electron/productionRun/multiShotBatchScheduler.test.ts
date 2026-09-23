@@ -1,3 +1,4 @@
+import { deriveGenerationContinuationAuthorizationState } from "./productionGenerationAuthorizationState";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +58,7 @@ function shotEntry(shotId: string, prompt: string, opts: { role?: "anchor" | "sh
 }
 
 /** Build a sealed+approved multi-shot Run in a fresh temp project. maxSpend caps the plan. */
-function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null): {
+function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null, hardCap = maxSpend): {
   root: string;
   repository: ReturnType<typeof createProductionRunRepository>;
 } {
@@ -74,7 +75,7 @@ function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null):
     origin: { host: "semantic-mcp" },
     candidate: shots[0].candidate,
     shots,
-    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend, maxAttemptsPerJob: 2 },
+    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: hardCap, maxAttemptsPerJob: 2 },
   });
   const topContract = shots[0].contract!;
   sealAndApproveProductionGeneration({
@@ -193,6 +194,24 @@ afterEach(() => {
 });
 
 describe("P4 S4 batch scheduler — budget halt", () => {
+  it("does not mint a continuation when decimal authority already covers liability plus the remaining job", () => {
+    const { repository } = setupBatch([shotEntry("shot-a", "a")], null);
+    const run = repository.read("project-1", "op-batch")!;
+    const exactCap = {
+      ...run,
+      budget: { ...run.budget, authorized: 10.1, actual: 10, reserved: 0, unsettled: 0 },
+    };
+
+    expect(() => prepareProductionGenerationContinuationAuthorization({
+      lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
+      projectRevision: 0,
+      run: exactCap,
+      providers: [mockProvider(vi.fn())],
+      resolveShotPrice: () => ({ known: true, amount: 0.1 }),
+      now: NOW,
+    })).toThrow(/already covers the remaining jobs/);
+  });
+
   it("stops at the correct Kth shot (checkbox order) and records structured halt counts", async () => {
     // 3 shots @ ¥6 = ¥18 total, cap ¥13 → only shots a,b (¥12) fit; halt at c.
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
@@ -218,7 +237,7 @@ describe("P4 S4 batch scheduler — budget halt", () => {
 
   it("resumes the halted batch after the cap is raised (same plan, second wave)", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
-    const { root, repository } = setupBatch(shots, 13);
+    const { root, repository } = setupBatch(shots, 13, 18);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     await scheduler(root, repository, submit).runToQuiescence();
@@ -235,6 +254,9 @@ describe("P4 S4 batch scheduler — budget halt", () => {
       resolveShotPrice: () => ({ known: true, amount: 6 }),
       now: NOW,
     });
+    expect(() => deriveGenerationContinuationAuthorizationState({
+      run: { ...run, policy: { ...run.policy, maxSpend: 13 } }, preparation: continuation, now: NOW,
+    })).toThrow(/safely extend/);
     run = repository.execute("project-1", "op-batch", {
       commandId: "continue-authorize", expectedRevision: run.revision, type: "generation.continue_authorization",
       payload: { authorization: continuation }, issuedAt: NOW,

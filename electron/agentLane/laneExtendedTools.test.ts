@@ -152,14 +152,58 @@ describe('工具回执从真实审批结论派生', () => {
     expect(outcome.nextAction?.userSees).toMatch(/generation has started/)
   })
 
-  it('没有代答的 generate 仍然是「卡在等你、停下来」那条失败路', async () => {
-    const tool = createExtendedLaneTools({ execute: async () => ({ ok: true, result: { shots: [{}, {}] } }) })
-      .find(candidate => candidate.name === 'generate')!
-    const outcome = await tool.execute(tool.schema.parse({ operationId: 'op-7' }), { toolCallId: 'call-1', signal }) as
-      { ok: boolean; failure?: { code: string; message: string } }
-    expect(outcome.ok).toBe(false)
-    expect(outcome.failure?.code).toBe('user_sees_spend_card')
-    expect(outcome.failure?.message).toMatch(/for 2 shot\(s\)/)
+  it.each(['document-create', 'document-patch', 'canvas-create'])('%s reports saved draft facts without inventing placement', async kind => {
+    const result = { operation: { operationId: 'op-draft', state: 'draft',
+      ...(kind.startsWith('document') ? { sourceDocumentId: 'doc-1' } : {}) } }
+    const args = { shots: [{ prompt: 'saved prompt' }],
+      ...(kind === 'document-patch' ? { operationId: 'op-draft' } : {}) }
+    const outcome = await runVerb('draft_shots', result, 'auto-granted', args)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-draft' })
+    expect(outcome.nextAction?.userSees).toMatch(/saved in the project/)
+    expect(outcome.nextAction?.userSees).not.toMatch(/are on the canvas|price badge|generation has started/)
+  })
+
+  it('a draft patch reports actual policy-started spend through the same receipt as generate', async () => {
+    const result = { drafted: { operation: { operationId: 'op-7', sourceDocumentId: 'doc-1' } },
+      spendDecision: { decidedBy: 'policy:full_auto', receiptId: 'receipt-1' }, started: { ok: true } }
+    const generated = await runVerb('generate', result, 'auto-granted', { operationId: 'op-7' })
+    const patched = await runVerb('draft_shots', result, 'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(patched.nextAction).toMatchObject({ kind: 'job_running', jobId: 'op-7', operationId: 'op-7' })
+    expect(patched.nextAction?.userSees).toBe(generated.nextAction?.userSees)
+    expect(patched.nextAction?.userSees).not.toMatch(/nothing has been spent/)
+  })
+
+  it('a presented draft patch reports only saved facts when transport returns no new spend decision', async () => {
+    const outcome = await runVerb('draft_shots', { operation: { operationId: 'op-7', state: 'draft' } },
+      'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-7' })
+    expect(outcome.nextAction?.userSees).toMatch(/saved in the project/)
+    expect(outcome.nextAction?.userSees).not.toMatch(/call generate|no card|generation has started/)
+  })
+
+  it('historical submitted state without a current spendDecision does not claim this edit started generation', async () => {
+    const outcome = await runVerb('draft_shots', { operation: { operationId: 'op-7', state: 'submitted' } },
+      'auto-granted', { operationId: 'op-7', shots: [{ prompt: 'updated' }] })
+    expect(outcome.nextAction).toMatchObject({ kind: 'none', operationId: 'op-7' })
+    expect(outcome.nextAction?.userSees).not.toMatch(/generation has started|nothing has been spent/)
+  })
+
+  // 2026-09-22 裁决 A：等用户住在预检期，`generate` 返回时用户**已经答完了**。三种结局都是成功形状——
+  // 错误形状会让模型重试、进熔断、向用户报「出错了」，对一个「他说不」或「他想先改一下」三样都是错的。
+  it.each([
+    ['approved', { outcome: 'approved' }, 'job_running', /generation has started/],
+    // 2026-09-22 下午用户拍板改窄：× 收回的是这一次出价，草稿留着——回执必须这么说，
+    // 否则模型会替他重新起草一份（旧文案「closed for good / draft the shots again」正是那个）。
+    ['declined', { outcome: 'declined' }, 'none', /withdrew this quote, not the draft/],
+    ['redirected', { outcome: 'redirected', userSaid: '第二镜改成竖版' }, 'none', /第二镜改成竖版/],
+  ] as const)('用户在报价卡上 %s → 成功形状的回执，照实说', async (_name, userDecision, kind, says) => {
+    const outcome = await runVerb('generate', { operation: { operationId: 'op-7' }, nextAction: 'await_user', userDecision },
+      'auto-granted', { operationId: 'op-7' })
+    expect(outcome.ok, '「用户没同意」不是错误').toBe(true)
+    expect(outcome.nextAction).toMatchObject({ kind })
+    expect(outcome.nextAction?.userSees).toMatch(says)
+    if (userDecision.outcome !== 'approved') expect(outcome.nextAction?.userSees).toMatch(/[Nn]othing was (generated|spent)/)
   })
 })
 

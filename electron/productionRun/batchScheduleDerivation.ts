@@ -1,3 +1,4 @@
+import { budgetExceeds, createBudgetAmountAccumulator } from "./budgetLedger";
 import type {
   BudgetLedgerSummary,
   ProductionGate,
@@ -81,6 +82,8 @@ export type BudgetHalt = {
   completedCount: number;
   /** Included video shots cleared for dispatch this tick (fit under the cap). */
   dispatchableCount: number;
+  /** 这批里价格未知、不参与上限比较的镜头数（诚实披露，绝不折成金额）。 */
+  unknownDispatchCount: number;
   /** Included video shots that did not fit (from the halt point onward, minus already-finished/in-flight). */
   remainingCount: number;
   authorized: number;
@@ -116,7 +119,15 @@ export type BatchDerivationInput = {
   plan: ProductionGenerationPlan;
   jobs: ProductionJob[];
   budget: BudgetLedgerSummary;
-  /** Resolve a shot's derived price (S2). Unknown → 0 liability toward the cap (still dispatchable). */
+  /**
+   * Resolve a shot's derived price (S2).
+   *
+   * **未知价不进金额比较**（2026-09-21）：它既不加进已提交负债，也不触发 halt。从前这里写的是
+   * `price.known ? price.amount : 0`——那行今天被上游的 `assertKnownShotPrice` 挡着不可达，
+   * 一开闸就会变成「一批全是未知价的镜头被判定 running + 0 ≤ authorized、全部派出去」的静默口：
+   * 上限证明看起来成立，其实什么都没证明。未知单独计数（`unknownDispatchCount`），
+   * 它能不能派由「这个 job 在不在人批过的那份信封里」决定，不由金额决定。
+   */
   perShotPrice: (shotId: string) => ShotPrice;
   /** The current anchor checkpoint gate, if one was opened. */
   anchorGate?: ProductionGate;
@@ -136,6 +147,8 @@ export type BatchDerivationResult = {
   observe: DispatchTask[];
   checkpoint: CheckpointState;
   progress: BatchProgress;
+  /** 本 tick 派出去的镜头里价格未知的笔数。`nomi_get_run` 据此如实说「另有 N 镜价格未知」。 */
+  unknownDispatchCount: number;
   halt?: BudgetHalt;
 };
 
@@ -194,9 +207,6 @@ function needsDispatch(runId: string, shot: ProductionGenerationShot, jobs: Prod
   return Boolean(job && DISPATCHABLE.has(job.status));
 }
 
-function priceAmount(price: ShotPrice): number {
-  return price.known ? price.amount : 0;
-}
 
 function toTask(runId: string, shot: ProductionGenerationShot): DispatchTask {
   return { shotId: shot.shotId, attempt: currentAttemptOf(shot), contractHash: shot.contract!.contractHash };
@@ -225,7 +235,8 @@ function deriveCheckpoint(input: BatchDerivationInput, anchors: ProductionGenera
   }
 
   const gate = input.anchorGate;
-  if (!gate) return { status: "should_open", readyAnchorJobIds };
+  if (!gate || gate.jobIds.length !== readyAnchorJobIds.length
+    || gate.jobIds.some((jobId, index) => jobId !== readyAnchorJobIds[index])) return { status: "should_open", readyAnchorJobIds };
   if (gate.status === "approved") return { status: "approved", readyAnchorJobIds };
   if (gate.status === "rejected") return { status: "rejected", readyAnchorJobIds };
   // waiting (or expired/revoked treated as still-blocking). No timeout branch exists on purpose:
@@ -242,18 +253,19 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const anchors = anchorsOf(input.plan);
   const videoShots = videoShotsOf(input.plan);
 
-  // Progress projection over VIDEO shots (always available, even when stopped, for status queries).
+  // Mixed batches retain their video progress; an anchor-only request tracks its actual paid units.
+  const progressShots = videoShots.length > 0 ? videoShots : anchors;
   let completed = 0;
   let inFlight = 0;
-  for (const shot of videoShots) {
+  for (const shot of progressShots) {
     if (shotFinished(input.runId, shot, input.jobs)) completed += 1;
     else if (shotInFlight(input.runId, shot, input.jobs)) inFlight += 1;
   }
   const progress: BatchProgress = {
-    total: videoShots.length,
+    total: progressShots.length,
     completed,
     inFlight,
-    pending: videoShots.length - completed - inFlight,
+    pending: progressShots.length - completed - inFlight,
   };
 
   const checkpoint = deriveCheckpoint(input, anchors);
@@ -271,7 +283,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
   const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "cancelled";
   if (stopped) {
-    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress };
+    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
   }
 
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
@@ -282,7 +294,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const checkpointReleased = checkpoint.status === "approved";
   if (anchors.length > 0 && !checkpointReleased) {
     // Anchors present but checkpoint not released → dispatch anchors (if any pending), block shots.
-    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress };
+    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
   }
 
   // Checkpoint approved by a person, or no anchors at all → consider video shots.
@@ -291,30 +303,39 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // shot that would breach `authorized` halts the batch there (that shot and all after are not dispatched).
   const authorized = input.budget.authorized;
   const committed = input.budget.reserved + input.budget.actual + input.budget.unsettled;
-  let running = committed;
+  const addLiability = createBudgetAmountAccumulator();
+  addLiability(committed);
   const shotDispatch: DispatchTask[] = [];
   let halt: BudgetHalt | undefined;
   let dispatchableCount = 0;
+  let unknownDispatchCount = 0;
   let haltIndex = -1;
 
   for (let i = 0; i < videoShots.length; i += 1) {
     const shot = videoShots[i];
     if (!needsDispatch(input.runId, shot, input.jobs)) continue; // finished or in-flight → skip
-    const price = priceAmount(input.perShotPrice(shot.shotId));
-    if (running + price > authorized) {
+    const price = input.perShotPrice(shot.shotId);
+    if (!price.known) {
+      // 算不出价 → 这一镜不进金额比较，也不因为金额被 halt。它照常派（人已经在信封上批过它）。
+      unknownDispatchCount += 1;
+      dispatchableCount += 1;
+      shotDispatch.push(toTask(input.runId, shot));
+      continue;
+    }
+    if (budgetExceeds(addLiability(price.amount), authorized)) {
       // This shot breaches the cap → halt here; do not dispatch it or any later shot.
       haltIndex = i;
       halt = {
         haltedAtShotId: shot.shotId,
         completedCount: completed,
         dispatchableCount,
+        unknownDispatchCount,
         remainingCount: 0,
         authorized,
         currency: input.budget.currency,
       };
       break;
     }
-    running += price;
     dispatchableCount += 1;
     shotDispatch.push(toTask(input.runId, shot));
   }
@@ -328,5 +349,5 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     halt = { ...halt, dispatchableCount, remainingCount: remaining };
   }
 
-  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, ...(halt ? { halt } : {}) };
+  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, unknownDispatchCount, ...(halt ? { halt } : {}) };
 }

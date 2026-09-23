@@ -30,6 +30,7 @@ export function sealAndApproveProductionGeneration(input: Readonly<{
       projectGeneration: input.projectGeneration,
       revocationEpoch: 0,
     },
+    run: current,
     projectRevision: input.projectRevision,
     operation: {
       operationId: input.operationId,

@@ -2,7 +2,7 @@ import { isTextPromptEdge } from '../agent/referenceEdgeCapability'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import { sortEdgesByOrder } from '../model/graphOps'
-import { docToPlainText } from './textActions'
+import { docToPlainText } from './textGenerationDocument'
 
 type TextPromptContext = {
   nodes?: readonly GenerationCanvasNode[]

@@ -1,3 +1,7 @@
+import { withSpendReferencePreviews, resolveSpendReferenceInputs, projectSpendReferenceAssets, type SpendReferenceAssets } from './pendingSpendReferences';
+import { generationPlanInputSchema } from '../shared/agentCapabilities/generationPlanSchemas';
+import { sameProjectAgentBinding } from '../shared/projectBinding';
+import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // Agent 面板付费确认卡的**编排**（P1 · 2026-09-11）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -23,6 +27,7 @@
 //
 // 见 `productionRunReducer.ts` 的 `generation.revise`：改了载荷还沿用旧授权，
 // 面板收据上写的和真正跑的就分叉了，而用户是照着收据点的头。
+import { logWarn } from "../logging/logger";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 import type { DispatchContext } from "./dispatcher";
 import type { GenerationOperationStore, GenerationReviseInput } from "./mcpGenerationTools";
@@ -35,6 +40,7 @@ import { decideGenerationSpend } from "./generationSpendDecision";
 import { spendAnsweredByPolicy } from "./policySpendDecision";
 import type { PendingSpendConfirm, PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 import { readResidentSurfaceLifecycle } from "./residentSurfaceLifecycle";
+import { settleSpendWaiter } from "./spendDecisionWaiters";
 
 type RunReader = Readonly<{
   read(projectId: string, runId: string): ProductionRun | null;
@@ -44,6 +50,7 @@ type RunReader = Readonly<{
 export type RendererGestureTarget = Readonly<{ webContentsId: number; frameId: number; origin: string }>;
 
 export type PendingSpendActionDeps = Readonly<{
+  referenceAssets?: SpendReferenceAssets;
   isProjectOpen: (projectId: string) => boolean;
   runs: RunReader;
   operations: GenerationOperationStore;
@@ -60,9 +67,50 @@ export type PendingSpendActionDeps = Readonly<{
   now?: () => string;
 }>;
 
-function failed(error: unknown): ProductionActionResult {
-  return { ok: false, code: "failed", message: error instanceof Error ? error.message : String(error) };
+/**
+ * 失败那一句要说的是**事实**，不是一句放之四海的安慰话。
+ *
+ * 「暂时无法确认这一步的结果」在「根本没发起」的情况下是误导——它暗示可能已经提交、可能已经
+ * 扣了钱，于是用户不敢再按，转而去找一个并不存在的任务。所以这一层按账本分两种话：
+ * 只要**没有任何一份提交意图落过盘**（`submit_intent_persisted` 是那条线），就是
+ * `generation_not_started`（没发起、没花钱，改一下再按）；一旦落过，才是
+ * `generation_execution_failed`（结果未知，先去核对，别再付一次）。
+ *
+ * `started` 由调用方从 Run 的作业状态里读出来——是可验证的事实，不是猜。
+ */
+/**
+ * Nomi 自己的语义码前缀。只有这些才允许出现在 `reason` 里——供应商与凭据文本照旧只进日志
+ * （收敛本身没有放松：`message` 这一格仍然只有那两个账本事实）。
+ */
+const NOMI_FAILURE_CODE = /^[a-z][a-z0-9_]{2,63}$/;
+const NOMI_FAILURE_PREFIXES = ['generation_', 'run_', 'storyboard_', 'capability_', 'project_'];
+
+/** 这次失败的**语义码**（哪一步不成），与账本事实分开。认不出来的一律不带出去。 */
+export function spendFailureReason(error: unknown): string | undefined {
+  const raw = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+    ? (error as { code: string }).code
+    : error instanceof Error ? error.message : undefined;
+  if (!raw || !NOMI_FAILURE_CODE.test(raw)) return undefined;
+  return NOMI_FAILURE_PREFIXES.some((prefix) => raw.startsWith(prefix)) ? raw : undefined;
 }
+
+function failed(error: unknown, started = true): ProductionActionResult {
+  // Provider text is private diagnostics, never renderer or model copy.
+  const safe = error instanceof Error && ['generation_quote_changed', 'run_not_open', 'generation_scope_invalid'].includes(error.message)
+    ? error.message
+    : started ? 'generation_execution_failed' : 'generation_not_started';
+  const reason = spendFailureReason(error);
+  // 「私有诊断」此前**谁都拿不到**：原话在这一行被换成兜底码就消失了，主进程日志里一个字都没有。
+  // 于是付费卡按下去失败时，能排查的人手上只有一句兜底话（2026-09-21 Pass 3b：一条真机走查红在
+  // 这里，查不出为什么，只能靠猜）。原话进日志，不进用户面。
+  if (safe === 'generation_execution_failed' || safe === 'generation_not_started') {
+    logWarn("capability", "spend-confirm-failed", { code: safe }, error);
+  }
+  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}) };
+}
+
+/** 这条线之前，一个字节都没有离开过这台机器（`submissionOutbox` 先落 intent 再出站）。 */
+const STATUSES_BEFORE_ANY_SUBMISSION = new Set(["planned", "authorization_required", "authorized"]);
 
 /**
  * 装配这一层要的那几件，从能力核已经建好的实例里取。
@@ -119,17 +167,17 @@ export function listPendingSpendConfirmations(projectId: string): PendingSpendRe
   }
 }
 
-export async function revisePendingSpendConfirmation(input: { projectId: string; operationId: string; shotId?: string; patch: Record<string, unknown> }): Promise<ProductionActionResult> {
+export async function revisePendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.revisePendingSpend(input);
 }
 
-export async function discardPendingSpendConfirmation(input: { projectId: string; operationId: string }): Promise<ProductionActionResult> {
+export async function discardPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.discardPendingSpend(input);
 }
 
-export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; shotIds?: readonly string[] }): Promise<ProductionActionResult> {
+export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.confirmPendingSpend(input);
 }
@@ -176,6 +224,7 @@ export function pendingSpendDependencies(input: Readonly<{
 }
 
 export function createPendingSpendActions(deps: PendingSpendActionDeps) {
+  const referenceAssets = deps.referenceAssets ?? projectSpendReferenceAssets;
   const now = deps.now ?? (() => new Date().toISOString());
 
   const readRuns = (projectId: string): ProductionRun[] => {
@@ -196,7 +245,8 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    */
   const listPendingSpend = (projectId: string): readonly PendingSpendConfirm[] => {
     if (!deps.isProjectOpen(projectId)) return Object.freeze([]);
-    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing, spendAnsweredByPolicy);
+    return listPendingSpendConfirms(readRuns(projectId), deps.resolvePricing, spendAnsweredByPolicy)
+      .map(pending => withSpendReferencePreviews(pending, referenceAssets));
   };
 
   /**
@@ -219,9 +269,19 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 卡上改了提示词/参数/模型。撤掉还没被点头的授权、把改动落到候选、回 draft 等重新封印。
    * 价格由下一次投影现算——数只有一个产地。
    */
+  /**
+   * 这一笔到底有没有离开过这台机器。判据是账本里的作业状态，不是异常的长相：
+   * `submissionOutbox` 先把提交意图落盘、再出站，所以只要还有作业停在 intent 之前，
+   * 就是「没发起」。一个作业都读不到 = 连 Run 都没有 = 更没发起。
+   */
+  const anySubmissionStarted = (projectId: string, operationId: string): boolean =>
+    (deps.runs.read(projectId, operationId)?.jobs ?? [])
+      .some((job) => !STATUSES_BEFORE_ANY_SUBMISSION.has(job.status));
+
   const revisePendingSpend = async (input: Readonly<{
     projectId: string;
     operationId: string;
+    quoteId: string;
     shotId?: string;
     patch: Readonly<Record<string, unknown>>;
   }>): Promise<ProductionActionResult> => {
@@ -229,28 +289,76 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!deps.operations.revise) return { ok: false, code: "unavailable" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to revise" };
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
+    const capturedRun = deps.runs.read(input.projectId, input.operationId);
+    const plan = capturedRun?.generationPlan;
+    const shotId = input.shotId ?? (!plan?.shots?.length ? plan?.candidate.candidateId : undefined);
+    if (!shotId || !pending.shots.some(shot => shot.shotId === shotId)) {
+      return { ok: false, code: "failed", message: "generation_shot_not_found" };
+    }
+    // The displayed scope can contain one row of a many-shot plan. Only the
+    // persisted structure determines whether this address is a shot or candidate.
     const revision: GenerationReviseInput = {
-      ...(input.shotId ? { shotId: input.shotId } : {}),
+      ...(plan?.shots?.length ? { shotId } : {}),
       patch: input.patch,
+      expectedRevision: capturedRun?.revision,
     };
     try {
-      await deps.operations.revise(input.projectId, input.operationId, revision, now());
-      return { ok: true, code: "revised" };
+      const binding = deps.committedBinding();
+      if (!binding || binding.projectId !== input.projectId) throw new Error('run_not_open');
+      const assertCurrent = (): void => {
+        const currentBinding = deps.committedBinding();
+        if (!deps.isProjectOpen(input.projectId) || !currentBinding || !sameProjectAgentBinding(binding, currentBinding)
+          || pendingFor(input.projectId, input.operationId)?.quoteId !== pending.quoteId) throw new Error('generation_quote_changed');
+      };
+      const { referenceInputs, ...remainingPatch } = input.patch;
+      const patch: Record<string, unknown> = { ...remainingPatch };
+      if (referenceInputs !== undefined && patch.references !== undefined) throw new Error('generation_reference_invalid');
+      if (referenceInputs !== undefined || patch.references !== undefined) {
+        const shot = pending.shots.find(shot => shot.shotId === shotId);
+        if (!shot) throw new Error('generation_reference_scope_required');
+        patch.references = await resolveSpendReferenceInputs({ projectId: input.projectId, binding,
+          values: referenceInputs ?? (Array.isArray(patch.references) ? patch.references.map(reference => ({ reference })) : patch.references), existing: shot.references ?? [], assets: referenceAssets, assertCurrent });
+      }
+      assertCurrent();
+      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch,
+        ...(input.shotId ? { shotId: input.shotId } : {}) });
+      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch }, now());
+      const successor = pendingFor(input.projectId, input.operationId);
+      if (!successor || successor.planVersion !== revised.planVersion || successor.candidateRevision !== revised.candidate.revision) throw new Error('generation_quote_changed');
+      return { ok: true, code: "revised", quoteId: successor.quoteId };
     } catch (error) {
-      return failed(error);
+      // 改参数这一步**只动候选**，永远不提交：这里失败一定是「没发起」。
+      return failed(error, false);
     }
   };
 
-  /** × = 丢弃这份草稿。取消计划（画布上的占位节点由既有落地链按 detached 收尾）。 */
-  const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string }>): Promise<ProductionActionResult> => {
+  /**
+   * × = **收回这一次出价**，不是对这份计划说「不」（2026-09-22 下午用户拍板，改窄裁决 D）。
+   *
+   * 用户原话：「× 只关这次请求，节点和草稿都留着」。所以这里走的是裁决 C 那条边
+   * （`operations.withdraw` → `withdrawGenerationPresentation`）：计划**退回 draft / 未 present**，
+   * 镜头、参数、锚点、用户手改一个字不丢，画布占位节点一个不删；封印了的先把那道还在等的门撤掉。
+   * 对同一份草稿再 `generate` = 重新出价，同一个 `operationId` 还能再出卡。
+   *
+   * 「计划级终态」只剩用户自己在左侧栏删草稿那一条路（`operations.cancel`）。
+   * 2026-09-22 上午那一版在这里调的是 `cancel("declined")`——它让 × 变成计划级终态，于是多镜计划上
+   * × 掉三镜的卡会终结整份 33 镜的计划，另外 30 个占位挂在一份已终结的计划上成了孤儿。
+   * 再往前那一版调的是 `operations.dismiss`（只置 `cardHidden`、不收门），已随裁决删净。
+   * **IPC 名（`discardSpend`）不变**。
+   */
+  const discardPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
     try {
-      await deps.operations.cancel(input.projectId, input.operationId, now());
+      await deps.operations.withdraw(input.projectId, input.operationId, now());
+      // 有回合在等这一笔（lane 的 `generate` 挂在审批闸上）→ 把「他没同意这次」递过去；没人等 = no-op。
+      settleSpendWaiter(input.projectId, input.operationId, { kind: "declined" });
       return { ok: true, code: "discarded" };
     } catch (error) {
-      return failed(error);
+      return failed(error, false);
     }
   };
 
@@ -261,39 +369,70 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 收据把手势绑到那个 gateId + digest 上，`authorizeGeneration` 只认对得上的收据，
    * 消费一次之后同一张收据再也批不动第二次。
    */
-  const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
+  const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
+    const binding = deps.committedBinding();
+    if (!binding || binding.projectId !== input.projectId) return { ok: false, code: 'run_not_open' };
+    const assertBindingCurrent = (): void => {
+      const current = deps.committedBinding();
+      if (!deps.isProjectOpen(input.projectId) || !current || !sameProjectAgentBinding(binding, current)) throw new Error('run_not_open');
+    };
     let pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
-    // 「逐镜」= 只生成这一镜。它不是一个显示选项，是一次**真的把计划收窄**（同 trial_narrow 的家族）：
-    // 没被选中的镜取消勾选，封印时它们就不进合同，用户付的钱和他看到的那个数一致。
-    if (input.shotIds && input.shotIds.length > 0 && input.shotIds.length < pending.shots.length) {
-      if (!deps.operations.revise) return { ok: false, code: "unavailable" };
-      const keep = new Set(input.shotIds);
-      try {
-        for (const shot of pending.shots) {
-          if (keep.has(shot.shotId)) continue;
-          await deps.operations.revise(input.projectId, input.operationId, { shotId: shot.shotId, patch: {}, included: false }, now());
+    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
+    try {
+      const selected = resolveGenerationShotScope(pending.shots.map((shot) => shot.shotId), input.shotIds);
+      if (selected.length !== pending.shots.length) {
+        const displayed = pending;
+        const selectedShots = displayed.shots.filter(shot => selected.includes(shot.shotId));
+        await deps.operations.present(input.projectId, input.operationId, now(), selected);
+        pending = pendingFor(input.projectId, input.operationId);
+        const content = (shots: PendingSpendConfirm['shots']) => JSON.stringify(shots.map(({ nodeId: _nodeId, index: _index, ...shot }) => shot));
+        if (!pending || pending.planVersion !== displayed.planVersion + 1
+          || pending.currency !== displayed.currency || content(pending.shots) !== content(selectedShots)) {
+          throw new Error("generation_quote_changed");
         }
-      } catch (error) {
-        return failed(error);
       }
-      pending = pendingFor(input.projectId, input.operationId);
-      if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
-    }
+      // 这一段只收窄勾选范围，还没封印，更没提交。
+    } catch (error) { return failed(error, false); }
+    const acceptedQuote = pending;
     const target = deps.rendererTarget();
     if (!target) return { ok: false, code: "unavailable" };
     try {
       const lease = await leased(input.projectId);
+      assertBindingCurrent();
+      if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId) throw new Error("generation_quote_changed");
       // 封印 → 铸收据 → 决门 → 消费 → 开跑：这条链只有一份（`generationSpendDecision.ts`）。
       // 「全自动」档那条免卡放行走的是同一个函数，差别只在那张 attestation 是人点的还是策略代答的。
       await decideGenerationSpend(
-        { requestGenerationGate: deps.requestGenerationGate, authorizeGeneration: deps.authorizeGeneration, planning: deps.planning, receipts: deps.receipts },
+        { requestGenerationGate: async (request) => {
+          const gate = await deps.requestGenerationGate(request);
+          assertBindingCurrent();
+          const prepared = gate as { maximumCost?: unknown; currency?: unknown };
+          // 现时性校验：门算出来的金额不许**高于**用户刚在卡上看到的那个数。
+          //
+          // 这里曾经还有一条 `|| acceptedQuote.unknownShotCount > 0`——它把「价格未知」当成拒绝
+          // 的理由，而且报成 `generation_quote_changed`（一句假话：报价没变，是从来就没有）。
+          // 2026-09-21 用户拍板未知价不许挡生成，这条外层重复拒绝随之删除；未知价的门
+          // `maximumCost` 回 null（不是 0），对它做金额比较没有意义，所以只比已知的那一档。
+          if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId
+            || prepared.currency !== acceptedQuote.currency
+            || (prepared.maximumCost !== null
+              && (typeof prepared.maximumCost !== "number" || prepared.maximumCost > acceptedQuote.knownSubtotal))) {
+            throw new Error("generation_quote_changed");
+          }
+          return gate;
+        }, authorizeGeneration: async request => {
+          assertBindingCurrent();
+          return deps.authorizeGeneration(request);
+        }, planning: deps.planning, receipts: deps.receipts },
         { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel" },
       );
+      // **成功之后**才递：链上任何一步失败，卡都还在原处等用户，等的那个回合也就该继续等。
+      settleSpendWaiter(input.projectId, input.operationId, { kind: "confirmed" });
       return { ok: true, code: "spend_confirmed" };
     } catch (error) {
-      return failed(error);
+      return failed(error, anySubmissionStarted(input.projectId, input.operationId));
     }
   };
 

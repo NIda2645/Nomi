@@ -21,6 +21,7 @@ const labels: LaneViewModelLabels = {
   formatStages: (done, total) => `${done}/${total} stages`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
   taskUnknown: '[task-unknown]',
+  answered: '[answered]',
   skillLabel: (key) => `[skill:${key}]`,
 }
 

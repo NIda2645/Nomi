@@ -83,10 +83,11 @@ export function AiModelsSection({
           .catch(() => undefined)
       }
       void listWorkbenchModelCatalogModels({ enabled: true })
-        .then((values) => setModels(Array.isArray(values) ? values : []))
-        .catch(() => setModels([]))
+        .then((values) => { if (Array.isArray(values)) setModels(values) })
+        // 读失败保留上一份：一次读不到就把下拉清空，用户会以为模型被删了（2026-09-21 同形横扫）。
+        .catch(() => undefined)
     } catch {
-      setProviders([])
+      // 同上——不清 providers。
     }
   }, [])
 

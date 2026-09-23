@@ -209,3 +209,11 @@ test('数值界：产物更紧算过桥，产物更松必须红', () => {
   const loosened = lossFrom(contract, z.object({ frame: z.number().int().min(-100).max(1000) }).strict());
   assert.equal(loosened.length, 2, `更松的界必须两条都报：${JSON.stringify(loosened)}`);
 });
+
+
+test('all published lane tools assemble through the same lossless schema boundary as createSession', async () => {
+  const { modelFacingToolSpecs } = await import('../../electron/shared/agentCapabilities/modelFacingToolRegistry.js');
+  for (const spec of modelFacingToolSpecs('internal')) {
+    assert.doesNotThrow(() => toModelVisibleSchema(spec.schema, {toolName:spec.name}));
+  }
+});

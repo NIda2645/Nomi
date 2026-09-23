@@ -19,12 +19,12 @@
 // parse，就在这个唯一的出口——不是第二个形状验证器（ajv 刚验过形状，这里只会剩下组合错误），
 // 而是设计里本来就该有、却没人调用的那一次。
 import { formatSize, truncateHead, type AgentHarnessTool, type AgentToolResult } from '@earendil-works/pi-agent-core';
-import type { ZodError, ZodIssue } from 'zod';
 import { LANE_MODEL_OUTPUT_MAX_BYTES, LANE_MODEL_OUTPUT_MAX_LINES } from '../shared/agentLane/laneContracts.js';
 import {
   LANE_READ_TOOL_TIMEOUT_MS, laneToolBillable, laneToolModelDescription, laneToolMutates, renderLaneToolFailure,
   renderLaneToolNextAction, type LaneToolFailureShape,
 } from '../shared/agentLane/laneToolContract.js';
+import { argumentFailure } from '../shared/agentLane/laneArgumentFailure.js';
 import type { LaneToolPublicFailure } from '../shared/agentLane/laneToolFailureEnvelope.js';
 import { VERB_EFFECTS } from '../shared/agentCapabilities/verbDeclaration.js';
 import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts.js';
@@ -64,6 +64,7 @@ function rememberToolFailure(toolCallId: string, failure: LaneToolFailureShape):
     ...(failure.useInstead ? { useInstead: failure.useInstead } : {}),
   })
 }
+
 
 /** `after_tool` 侧的取件口：取走即删（见上）。 */
 export function takeLaneToolFailure(toolCallId: string): LaneToolPublicFailure | undefined {
@@ -130,57 +131,6 @@ function truncateForModel(text: string): { text: string; truncation?: LaneOutput
 }
 
 /**
- * 契约 parse 的失败 → 模型看到的失败正文（§3.3 的形状）。
- *
- * 只带**类型名与字段名**，绝不回传收到的值：用户文稿正文、素材路径都可能在参数里。
- * `allowed` 从枚举类 issue 的 `options` 取，那是模型自纠时最有用的一样东西。
- */
-function argumentFailure(toolName: string, args: unknown, error: ZodError): LaneToolFailureShape {
-  const issues = error.issues.map((issue) => ({
-    path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
-    expected: expectedOf(issue),
-    receivedType: receivedTypeOf(issue, args),
-  }));
-  const enumIssue = error.issues.find(
-    (issue): issue is Extract<ZodIssue, { options: unknown[] }> =>
-      issue.code === 'invalid_enum_value' || issue.code === 'invalid_union_discriminator',
-  );
-  return {
-    code: 'tool_arguments_invalid',
-    message: `${toolName} was called with arguments its contract rejects.`,
-    issues,
-    ...(enumIssue ? { allowed: enumIssue.options.map(String) } : {}),
-    nextAction: 'Fix the listed fields and call again with the same operation. Fields that belong to another operation must be left out.',
-  };
-}
-
-function expectedOf(issue: ZodIssue): string {
-  switch (issue.code) {
-    case 'invalid_type':
-      return issue.expected;
-    case 'invalid_enum_value':
-    case 'invalid_union_discriminator':
-      return `one of ${issue.options.map(String).join(', ')}`;
-    case 'unrecognized_keys':
-      return `no field named ${issue.keys.join(', ')} for this operation`;
-    default:
-      // 剩下的是我们自己写的约束文案（"connect_canvas_edges needs at least one edge"）
-      // 或 zod 的界文案（"Array must contain at least 1 element(s)"）——都不含收到的值。
-      return issue.message;
-  }
-}
-
-function receivedTypeOf(issue: ZodIssue, args: unknown): string {
-  if (issue.code === 'invalid_type') return issue.received;
-  let current: unknown = args;
-  for (const key of issue.path) {
-    if (!current || typeof current !== 'object') return 'undefined';
-    current = (current as Record<string | number, unknown>)[key as string | number];
-  }
-  return Array.isArray(current) ? 'array' : current === null ? 'null' : typeof current;
-}
-
-/**
  * 超时那一条失败。**它必须带「下一步」**，理由和别的失败一样：模型看到的只有这段正文。
  * 「timed out」四个字对一个要自纠的模型等于什么都没说，它只会把同一个调用再发一遍。
  */
@@ -207,9 +157,16 @@ function detailsWithTruncation(details: unknown, truncation: LaneOutputTruncatio
  */
 export type LaneApprovalDecisionReader = (toolCallId: string) => LaneApprovalDecision | undefined;
 
+/**
+ * 用户答这道题时的原话（`laneApprovalGate.answerFor`）。`ask_user` 的 execute 读它，
+ * 把那句话作为成功形状的 tool result 交回去——「他答上了」不是一次工具失败。
+ */
+export type LaneApprovalAnswerReader = (toolCallId: string) => string | undefined;
+
 export function createLaneTools(
   descriptors: readonly LaneToolDescriptor[],
   approvalDecision?: LaneApprovalDecisionReader,
+  approvalAnswer?: LaneApprovalAnswerReader,
 ): AgentHarnessTool<undefined>[] {
   const names = new Set<string>();
   return descriptors.map((descriptor) => {
@@ -294,6 +251,7 @@ export function createLaneTools(
             // 回执要说「用户此刻看到什么」，就必须拿到这次调用**真的**是怎么过闸的
             // （静态表说不准，见 `LaneToolExecutionContext.approvalDecision`）。
             ...(() => { const decision = approvalDecision?.(toolCallId); return decision ? { approvalDecision: decision } : {}; })(),
+            ...(() => { const answer = approvalAnswer?.(toolCallId); return answer ? { approvalAnswer: answer } : {}; })(),
           }),
           // 领域端口**可能根本不看 signal**（第三方 SDK、同步阻塞、忘了接）。只把信号传下去
           // 等于把预算交给被超时的那一方自己执行。这条 race 是唯一真正会到期的东西。

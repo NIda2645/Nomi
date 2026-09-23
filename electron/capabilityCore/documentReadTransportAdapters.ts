@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { documentReadScopeForAlias } from "../shared/agentCapabilities/documentRead";
@@ -10,14 +11,10 @@ export type PiDocumentReadTransportAdapter = Readonly<{
   dispose(): void;
 }>;
 
+// C4：放行清单从 owner 派生，不再手抄。这一份以前少了 `capability_receipt_unresolved`
+// 与 `capability_target_stale`，两者都被静默替换成 `capability_execution_failed`。
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const code = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : "capability_execution_failed";
-  // C4：放行清单从 owner 派生，不再手抄。这一份以前少了 `capability_receipt_unresolved`
-  // 与 `capability_target_stale`，两者都被静默替换成 `capability_execution_failed`。
-  const published = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES.has(code) ? code : "capability_execution_failed";
-  return { ok: false, code: published, message: published };
+  return safeTransportFailure(error, { allowedCodes: CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES, fallbackCode: "capability_execution_failed" });
 }
 
 export function createPiDocumentReadTransportAdapter(input: Readonly<{

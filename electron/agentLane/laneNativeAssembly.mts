@@ -1,5 +1,6 @@
 // Assemble upstream tools; pi owns tool activation and its durable addedToolNames transitions.
 import { createLaneModelRead, laneModelReadSpec } from './laneModelRead.mjs';
+import { NO_CATALOG_MODEL_AVAILABILITY } from './laneRuntimePort.js';
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels.js';
 import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection.js';
 import type { AgentLane, AgentHarnessTool } from '@earendil-works/pi-agent-core';
@@ -36,7 +37,11 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
   factories?: LaneCodingToolsInput['factories'];
   deferredGroups?: readonly LaneDeferredGroup[];
   availableModels?: () => readonly AgentModelEntry[];
-  /** 由持有目录的上层注入的只读可用性查询（lane 自己不碰目录）。 */
+  /**
+   * 由持有目录的上层注入的只读可用性查询（lane 自己不碰目录）。
+   * 不注入 = 这条路真的拿不到目录，**由本层显式落成 `NO_CATALOG_MODEL_AVAILABILITY`**
+   * （见下方唯一那一处），再往下就必传了——`createLaneModelRead` 不接受 undefined。
+   */
   modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined;
 }) {
   let activeTools: LaneActiveToolsController | undefined;
@@ -106,7 +111,10 @@ export async function createLaneNativeAssembly(input: Omit<LaneCodingToolsInput,
     [LANE_TOOL_REQUEST_TOOL_NAME]: 'read',
   });
   // 可用性三件由上层注入（见 `OpenLaneOptions.modelAvailability`）：lane 不 import 目录。
-  const modelRead = createLaneModelRead(() => input.availableModels?.() ?? [], input.modelAvailability);
+  // 「拿不到目录」在整条装配链上**只在这里说一次**，而且是一个有名字的常量，不是一个 `?.`
+  // （2026-09-22 对方会话 Ponytail 记的账：可选的注入点 = 可选的真相，漏接时模型读到的每一行
+  // 都没有 keyStatus/usable，它以为所有模型都能用，然后带着一个没钥匙的模型去花钱）。
+  const modelRead = createLaneModelRead(() => input.availableModels?.() ?? [], input.modelAvailability ?? NO_CATALOG_MODEL_AVAILABILITY);
   const promptSources = [...coding, request] as unknown as PiAgentTool[];
   // `nomi_read` 的系统提示词条目直接用注册表那份说明书（全文 + 示例 + 纪律），与领域工具同一条路。
   const promptTools = [

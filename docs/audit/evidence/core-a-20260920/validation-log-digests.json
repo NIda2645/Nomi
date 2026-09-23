@@ -1,0 +1,110 @@
+{
+  "boundary": "Local original log digests, not remote log attachments. Stage results are read by the main reviewer; stages used different documented source snapshots. No claim all ran at final PR head.",
+  "logs": {
+    "unit-v10": {
+      "source": "/private/tmp/nomi-core-a-unit-final-v10.log",
+      "sha256": "a1bba317f515d597d452bd631ece2ee2005f8e15ac2dabbab6fac2e351f48285",
+      "bytes": 128601
+    },
+    "contracts-v14": {
+      "source": "/private/tmp/nomi-core-a-contracts-final-v14.log",
+      "sha256": "5626b39da73fbce885bfb21bf10dccdecff9779bc3a0078c794096ce1dc4034d",
+      "bytes": 294522
+    },
+    "root-contracts-v15": {
+      "source": "/private/tmp/nomi-core-a-portal-contract-final.log",
+      "sha256": "6c7be9429f62ab671dce2b40cd58a124335515abdbc0b9a335a1f8402f109f80",
+      "bytes": 11097
+    },
+    "walkthrough-gate-v15": {
+      "source": "/private/tmp/nomi-core-a-walkthrough-gate-final-v15.log",
+      "sha256": "92776f4491da986ae2fcd76a7cb50b7776990cff156fff6236496b2994be666b",
+      "bytes": 11692
+    },
+    "performance-v10": {
+      "source": "/private/tmp/nomi-core-a-performance-final-v10.log",
+      "sha256": "f208ebb3e69fbda8b8e4be6bdd39b77faa31da23bfddc1493de735dfcdd8becb",
+      "bytes": 14825
+    },
+    "journeys-v10": {
+      "source": "/private/tmp/nomi-core-a-journeys-final-v10.log",
+      "sha256": "3f15b2a22339e0d8ef3ec28c104323e24cb6f0e2840d6422220bf5520f85ed85",
+      "bytes": 6139
+    },
+    "real-user-v10": {
+      "source": "/private/tmp/nomi-core-a-real-user-final-v10.log",
+      "sha256": "226f4b5215c23c1cc82823d4184bc9df575a07485bdbe8efe35936899cded026",
+      "bytes": 320
+    },
+    "composer-v14": {
+      "source": "/private/tmp/nomi-core-a-composer-final-v14.log",
+      "sha256": "eeb28c06f7b176069f4b4af522d324fc6aab1917104816d00e021ff87b1d366d",
+      "bytes": 4972
+    },
+    "portal-red": {
+      "source": "/private/tmp/nomi-portal-keyboard-red.log",
+      "sha256": "d11da9fe4d2d192fab2c5a6c3b945f5d771d2a03214edadab911a24fa363b5d2",
+      "bytes": 5091
+    },
+    "portal-green": {
+      "source": "/private/tmp/nomi-portal-keyboard-green.log",
+      "sha256": "fd45ad2c75b5f143771d1e996b52e5c5d9deeb0c1ef534732aaa15fcb2481bcb",
+      "bytes": 1095
+    },
+    "build-v14": {
+      "source": "/private/tmp/nomi-core-a-build-final-v14.log",
+      "sha256": "b07f3fa111cf85dde73d1011f66f2fd5dea01038d9e4209cde6b35c8020f7caa",
+      "bytes": 67675
+    },
+    "package-v14": {
+      "source": "/private/tmp/nomi-core-a-package-final-v14.log",
+      "sha256": "84190a3d144683f29510f13160edd051cc550d5959b931b93c8a962118c5ad7f",
+      "bytes": 6803
+    },
+    "paid-verify-v14": {
+      "source": "/private/tmp/nomi-core-a-paid-verify-final-v14.log",
+      "sha256": "0176198e51009cb3529d9caa2f43540fa6959eae1ff7058b1a11b0baec8a103f",
+      "bytes": 1547
+    },
+    "old-project-v14": {
+      "source": "/private/tmp/nomi-core-a-old-project-packaged-final-v14.log",
+      "sha256": "3fda3357b0c7c48e72df040cc3dafb61eccf83852a0ec4b944a8260a7d5af559",
+      "bytes": 18849
+    },
+    "candidate-v17": {
+      "source": "/private/tmp/nomi-core-a-old-project-packaged-final-v17.log",
+      "sha256": "4f504a77fd2425b1ddba8e858be31d28dedf08838fc31a8a3913e7c7372df46f",
+      "bytes": 182925
+    },
+    "walkthrough-gate-v17": {
+      "source": "/private/tmp/nomi-core-a-walkthrough-gate-final-v17.log",
+      "sha256": "7f49087f84efa775dfa993c177c24d82c68b414c3f16bbe5f45434c30f58dde8",
+      "bytes": 11693
+    },
+    "ponytail-initial-failure": {
+      "source": "/private/tmp/nomi-core-a-ponytail-final-v19.log",
+      "sha256": "aa69cd7f9fddff2ca0ca5e88864c4c4250aff050fa7fc8eae4dbfde2e6f77c24",
+      "bytes": 211
+    },
+    "ponytail-bounded-red": {
+      "source": "/private/tmp/nomi-ponytail-bounded-red.log",
+      "sha256": "3c6b908fbee68b89e165c98b1b4a26591d2a8f34d015ef282dcd8dc09504ec47",
+      "bytes": 3678
+    },
+    "ponytail-utf8-red": {
+      "source": "/private/tmp/nomi-ponytail-bounded-utf8-red.log",
+      "sha256": "dd548a1ba51c64c5f454262af59cfa99b94edabaab6f439e2015e0e46accf542",
+      "bytes": 1069
+    },
+    "ponytail-bounded-green": {
+      "source": "/private/tmp/nomi-ponytail-bounded-green.log",
+      "sha256": "fc037118dcb9882e34c289690f9566e50577df41dc5b13423d64f8c3362a48cc",
+      "bytes": 4433
+    },
+    "ponytail-root-contracts": {
+      "source": "/private/tmp/nomi-ponytail-bounded-contracts.log",
+      "sha256": "3f7a9ae1879510417d1ebf9fb7856e05a92aaee8e9556850a91d11043ea2b58a",
+      "bytes": 11093
+    }
+  }
+}

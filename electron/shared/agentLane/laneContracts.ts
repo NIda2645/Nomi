@@ -1,3 +1,4 @@
+import type { StoryboardRequestTarget } from '../agentCapabilities/generationInvocationContext'
 import type { CanvasWriteApprovalAuthority } from '../agentCapabilities/transportContracts'
 // Agent lane · 中立契约层（阶段 1 影子期）
 //
@@ -16,12 +17,15 @@ import type { LaneLegacyFacts } from './laneLegacyNote'
 import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
 import type { LaneToolNextAction } from './laneToolNextAction'
 import type { LaneToolPublicFailure } from './laneToolFailureEnvelope'
+import type { LaneDraftIntent } from './laneDesktopContracts'
 
 /** 一段 = 模型一轮回复里的一个小块，或转录里的一条记录。顺序由 `sequence` 唯一决定。 */
 export interface LanePartIdentity {
+  /** Original pi entry identity; absent only for unsettled streaming parts. */
+  readonly entryId?: string
   /**
-   * 这一段在这条 lane 转录里的位置。**唯一的顺序真相。**
-   * 由主进程按 pi 转录的走序赋值，冷重启后重放同一条转录得到同一串数字。
+   * 这一段在当前已加载历史页里的位置，由主进程按 pi 分支走序赋值。
+   * 加载较早页时序号会平移；跨分页/重开身份使用 entryId + contentIndex。
    */
   readonly sequence: number
   /** 这一段所属条目在 pi 存储里的序号（`Entry.seq`）。用来 join 与排错，**不用来排序**。 */
@@ -45,9 +49,11 @@ export type LanePart =
        * 为什么必须上屏：技能是「这一轮按哪套方法做」的唯一开关，而选完之后
        * 对话里一个字都看不到它，用户只能猜「到底用上没有」（2026-09-10 用户反馈 #6）。
        */
+      readonly storyboardTarget?: StoryboardRequestTarget
       readonly skillKey?: string
+      readonly skillSnapshot?: { name: string; contentHash: string }
     })
-  | (LanePartIdentity & { readonly kind: 'assistant-text'; readonly text: string; readonly streaming: boolean; readonly interrupted?: true; readonly continuationEntryId?: string })
+  | (LanePartIdentity & { readonly kind: 'assistant-text'; readonly text: string; readonly streaming: boolean; readonly interrupted?: true; readonly continuationEntryId?: string; readonly retryInputEntryId?: string })
   | (LanePartIdentity & { readonly kind: 'thinking'; readonly text: string; readonly streaming: boolean })
   | (LanePartIdentity & {
       readonly kind: 'tool-call'
@@ -269,6 +275,10 @@ export interface LaneThinking {
  */
 export interface LaneDraftInput {
   readonly text: string
+  readonly displayText?: string
+  readonly skillKey?: string
+  readonly skillSnapshot?: { name: string; contentHash: string }
+  readonly intent?: LaneDraftIntent
   readonly attachments?: readonly ProjectAgentAttachmentClaim[]
 }
 
@@ -326,6 +336,7 @@ export interface LaneProjection {
   /** Current runtime identity only; credentials never enter the projection. */
   readonly model?: { readonly provider: string; readonly modelId: string }
   readonly parts: readonly LanePart[]
+  readonly history?: { readonly hasMore: boolean; readonly before?: string }
   /** 这条 lane 现在有没有在跑（`LaneSnapshot.operation !== null`）。 */
   readonly running: boolean
   readonly usage: LaneUsage
@@ -444,6 +455,13 @@ export const LANE_APPROVAL_DECISIONS = [
   'granted-session',
   /** 用户点了「不要」，`reason` 是他自己那句话（或默认文案）。 */
   'denied',
+  /**
+   * 用户**回答了一个问题**（`ask_user`、缺参数、熔断转提问三个生产者共用的那张卡）。
+   * `reason` 是他的原话——点了 chip 就是那颗 chip 的标签，自己打字就是他打的那句。
+   * 它和 `denied` 分开，是因为「他说了不要」和「他回答了我」在用户那里是两件事，
+   * 而转录、工具回执与面板那一行都要说对其中的哪一件。
+   */
+  'answered',
   /** 预检就拒了：工作模式不允许、无 UI 可问、或硬清单。用户从没被问过。 */
   'denied-by-policy',
   /** 等待期被打断：按了停、关了窗、切了项目、或重启前没答完。 */
@@ -455,6 +473,26 @@ export type LaneApprovalDecision = (typeof LANE_APPROVAL_DECISIONS)[number]
 /** `cancelled` 是被什么打断的。文案不同，所以它不是一个可省的细节。 */
 export const LANE_APPROVAL_CANCEL_CAUSES = ['stopped', 'window-closed', 'restart'] as const
 export type LaneApprovalCancelCause = (typeof LANE_APPROVAL_CANCEL_CAUSES)[number]
+
+/**
+ * 一次「卡画在别处」的等待的结局（2026-09-22 · 裁决 A：等用户只有这一个 owner）。
+ *
+ * 付费报价卡不是闸自己的卡——它由 Run 账本投影（`productionPendingSpend.ts`），用户在那张卡上点头。
+ * 但**等**这件事必须住在审批闸（`laneApprovalGate.hold`）：只有这里的等待不受工具超时管、被打断时兑现而不是抛、关窗 / 切项目 /
+ * 按停止有统一的收尾、待决时用户打的字认得出是对它的回答。此前那次等待住在工具执行里
+ * （撞 60 秒写类预算）或者干脆没有（回合直接结束，确认之后没有回合接结果）。
+ */
+export type LaneHoldOutcome =
+  | Readonly<{ kind: "confirmed" }>
+  /** 用户在那张卡上点了 ×：明确的「不」，那份请求到此为止（真终态）。 */
+  | Readonly<{ kind: "declined" }>
+  /**
+   * 卡待决时用户在输入框里打了字（裁决 E：那句话就是对这道闸的回答，绝不石沉大海）。
+   * 它**不是** ×：「把第二镜改短点」不是在说「这份方案我不要了」。所以收回的只是这一次出价，
+   * 计划留着——模型照那句话改完，对同一份草稿再出一次价。
+   */
+  | Readonly<{ kind: "redirected"; text: string }>
+  | Readonly<{ kind: "cancelled"; cause: LaneApprovalCancelCause }>
 
 export interface LaneApprovalNote {
   readonly toolCallId: string
@@ -474,9 +512,29 @@ export function isLaneApprovalNote(value: unknown): value is LaneApprovalNote {
     && typeof note.decision === 'string' && APPROVAL_DECISIONS.has(note.decision)
 }
 
-/** 一条被拒的记录（含策略拒和取消）——面板据此把那一行从「坏了」改成「被拒了」。 */
+/**
+ * 这次调用**批准并且跑了**吗。三个 grant 值，穷举。
+ *
+ * 它是下面那条判据的唯一依据：判「跑没跑」比判「被怎么拒的」少一个自由度——
+ * 拒法会变多（2026-09-21 就多了一个 `answered`），批法不会。
+ */
+export function laneApprovalWasGranted(note: LaneApprovalNote): boolean {
+  return note.decision === 'auto-granted' || note.decision === 'granted-once' || note.decision === 'granted-session'
+}
+
+/**
+ * 一条**没有跑起来**的记录（拒绝、策略拒、取消，以及「用户回答了一个问题」）——
+ * 面板据此把那一行从「坏了」改成它实际是什么。
+ *
+ * **从 grant 那一侧取反，不再手列**（2026-09-21 真机抓到的 bug）：
+ * 这个函数原来是 `denied || denied-by-policy || cancelled` 一张手列的名单。
+ * 那天给审批协议加了第七个结局 `answered`（用户回答了提问卡），名单没跟上——
+ * 于是面板拿不到那条记录，一次**成功的回答**在用户眼里变成了
+ * 「问你一个问题 ⚠ 失败」。typecheck 绿、单测绿、门岗绿：往一张开放名单里加一个成员，
+ * 没有任何东西会说话。取反之后，以后再加任何一个「没跑起来」的结局都自动落对边。
+ */
 export function laneApprovalWasRefused(note: LaneApprovalNote): boolean {
-  return note.decision === 'denied' || note.decision === 'denied-by-policy' || note.decision === 'cancelled'
+  return !laneApprovalWasGranted(note)
 }
 
 /**
@@ -501,8 +559,16 @@ export interface LanePendingApproval {
   readonly pendingCount: number
 }
 
-/** 用户在审批卡上能做的四件事。「停」不在这里——它是 `abort`，停的是整轮不是这一次。 */
-export const LANE_APPROVAL_ACTIONS = ['allow-once', 'allow-session', 'deny'] as const
+/**
+ * 用户在卡上能做的四件事。「停」不在这里——它是 `abort`，停的是整轮不是这一次。
+ *
+ * `answer` 是 2026-09-21 通用反问加进来的第四件，它**不是** `deny` 的别名：
+ * 提问卡上没有「不要」，用户做的是回答，而回答那句话要原样变成这次工具调用的结果。
+ * 在它存在之前，反问只能借 `deny(toolCallId, 答案)` 送出去，于是转录里留下的是一条
+ * 「用户拒绝了」，而渲染层要靠嗅 args 把它读回成「已回答」（`laneViewModel.ts`）——
+ * 同一件事两个说法，第二个说法还得靠猜。
+ */
+export const LANE_APPROVAL_ACTIONS = ['allow-once', 'allow-session', 'deny', 'answer'] as const
 export type LaneApprovalAction = (typeof LANE_APPROVAL_ACTIONS)[number]
 
 /**
@@ -528,6 +594,7 @@ export const LANE_MODEL_OUTPUT_MAX_BYTES = 50 * 1024
 export type LaneCommand =
   | { readonly kind: 'prompt'; readonly text: string }
   | { readonly kind: 'abort' }
+  | { readonly kind: 'history-older'; readonly before: string }
   /**
    * 对某一张审批卡的答复。`toolCallId` 是 pi 铸的，渲染层只是把它原样送回来——
    * 它证明「用户答的是这一张卡」，而不是答完之后又来了一张、答案落到了新的那张上。
@@ -602,7 +669,7 @@ export interface LaneHandle {
   receiptAuthority(proposalId: string): CanvasWriteApprovalAuthority | undefined
   projection(): LaneProjection
   subscribe(listener: (projection: LaneProjection) => void): () => void
-  execute(command: LaneCommand, options?: { onAccepted?(): void }): Promise<LaneCommandOutcome>
+  execute(command: LaneCommand, options?: { onAccepted?(): void; admissionSignal?: AbortSignal }): Promise<LaneCommandOutcome>
   /**
    * 领域侧在这条对话里记下「这儿有一张生成任务卡」（G13 的承接点）。
    *
@@ -631,13 +698,17 @@ export interface LaneHandle {
  * 不是同时开着好几条：pi 的单打开者名单（#8852）是按会话算的，同时开两条同名会话会写坏文件；
  * 而同时开两条**不同**会话虽然安全，却意味着两条对话同时在跑、同时在花钱，而用户只看得见一条。
  */
+export type LaneConversationRef = Readonly<{ laneName: string; sessionId: string }>
+
 export interface LaneWorkspaceHandle {
+  /** Main-only: capture before async configuration; Stop retires this conversation admission scope. */
+  captureInputSignal(): AbortSignal
   /** Main-only configuration; credentials never enter the IPC projection. */
   configureModel(model: NomiModelConfig): Promise<void>
   receiptAuthority(proposalId: string): CanvasWriteApprovalAuthority | undefined
   projection(): LaneWorkspaceProjection
   subscribe(listener: (projection: LaneWorkspaceProjection) => void): () => void
-  execute(command: LaneCommand, options?: { onAccepted?(): void }): Promise<LaneCommandOutcome>
+  execute(command: LaneCommand, options?: { onAccepted?(): void; expectedConversation?: LaneConversationRef; admissionSignal?: AbortSignal }): Promise<LaneCommandOutcome>
   /** 把任务卡记进**当前打开的那条**对话。领域侧只认识工作区，不该自己去挑 lane。 */
   appendTaskNote(note: LaneTaskNote): Promise<void>
   /** 见 `LaneHandle.refreshTasks`。 */

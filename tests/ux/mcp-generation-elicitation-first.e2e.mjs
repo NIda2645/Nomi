@@ -57,9 +57,8 @@ async function driveGate(dirs, token, { capabilities, clientName, providerOrigin
     capabilities,
     syntheticCredentialStorage: true,
     env: {
-      NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_APIMART_BASE_URL: providerOrigin,
-      NOMI_E2E_APIMART_API_KEY: 'semantic-fixture-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1', NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_PRODUCTION_FIXTURE: '1', NOMI_E2E_FIXTURE_BASE_URL: providerOrigin,
+      NOMI_E2E_FIXTURE_API_KEY: 'semantic-fixture-key',
       NOMI_MCP_CLIENT: 'codex', NOMI_MCP_CLIENT_PROOF: proofFor(token, 'codex'),
     },
   })
@@ -97,18 +96,16 @@ const check = (condition, message) => {
 
 try {
   provider = await startSemanticProvider()
-  const seededCatalog = writeFakeApimartCatalog(dirs.settingsDir, dirs.userDataDir, provider.origin, { withKey: false })
-  seededCatalog.models = seededCatalog.models.map((model) => model.modelKey === 'gpt-image-2'
-    ? { ...model, pricing: { cost: 0, enabled: true, specCosts: [] } }
-    : model)
-  fs.writeFileSync(path.join(dirs.settingsDir, 'model-catalog.json'), JSON.stringify(seededCatalog), 'utf8')
+  // 2026-09-21：这里曾经给 gpt-image-2 塞一行 `pricing: { cost: 0, enabled: true }` 绕开当时的
+  // 「算不出价就不发付费门」。那是一个**编出来的 0 元价**（三种可能里唯一会被读成「免费」的那种），
+  // 而真实装机上这个模型一条价都没有。闸开了之后绕行没必要，去掉——这条旅程从此跑真实处境。
+  writeFakeApimartCatalog(dirs.settingsDir, dirs.userDataDir, provider.origin, { withKey: false })
   gui = await launchNomiApp({
     name: 'mcp-generation-elicitation-first',
     userDataDir: dirs.userDataDir, settingsDir: dirs.settingsDir, projectsDir: dirs.projectsDir, capabilityDir: dirs.capabilityDir,
     env: {
       NOMI_CAPABILITY_DIR: dirs.capabilityDir, NOMI_E2E_PRODUCTION_FIXTURE: '1',
-      NOMI_E2E_APIMART_BASE_URL: provider.origin, NOMI_E2E_APIMART_API_KEY: 'semantic-fixture-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1', NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin, NOMI_E2E_FIXTURE_API_KEY: 'semantic-fixture-key',
     },
     args: ['--disable-gpu', '--disable-software-rasterizer'], settleMs: 0, syntheticCredentialStorage: true,
   })

@@ -449,7 +449,7 @@ export default function InlineParameterBar({
           role="group"
           aria-label={surfaceLabel}
           data-agent-parameter-panel="true"
-          className="w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
+          className="nokey w-full rounded-nomi-lg border border-nomi-line bg-nomi-paper"
           style={{ boxShadow: 'var(--workbench-shadow-pop)' }}
         >
           {content}
@@ -462,7 +462,7 @@ export default function InlineParameterBar({
         role="group"
         aria-label={surfaceLabel}
         data-agent-parameter-panel="true"
-        className="fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
+        className="nokey fixed rounded-nomi-lg border border-nomi-line bg-nomi-paper"
         style={{
           zIndex: 600,
           left: hugsContent ? panelInit?.anchorLeft : panelInit?.left,
@@ -491,6 +491,11 @@ export default function InlineParameterBar({
   const modelChipClass = chipsMode && !stacked ? 'shrink-0' : undefined
   const variantChipClass = stacked ? undefined : 'shrink-0'
   const identityRow = (
+    // 2026-09-22 总合并裁决：身份两枚谁让宽由 **#834 的规则**说了算（只有模型 chip `shrink-0`，
+    // 变体短枚举从不缩），本分支 `70ebda21e` 给这层包装也加 `shrink-0` 的那一行按裁决撤掉。
+    // 它想修的「EN 下 Kling 3.0 压住 16:9」由 #834 的 `modelChipClass` / `variantChipClass`
+    // 两条一起覆盖；本分支留下的是**判据**——参数条一行里相邻两颗控件不许相压
+    // （`tests/ux/design-lab-ask-card-in-panel.walk.mjs` 的重叠断言，原样保留、照跑）。
     <div className={cn('flex min-w-0 items-center gap-2', stacked && 'w-full')}>
       <NomiSelect
         ariaLabel={t('generationCommon.parameters.model')}

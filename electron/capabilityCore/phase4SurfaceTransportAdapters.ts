@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES } from "../shared/surfacePortBinding";
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
 import { assetReadInputForAlias, type AssetReadInput } from "../shared/agentCapabilities/assetRead";
@@ -20,12 +21,26 @@ import {
 // C4：放行清单从 owner 派生。这一份以前少了 `project_identity_unavailable`。
 const PUBLIC_FAILURE_CODES = CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES;
 
+/**
+ * 我们自己 schema 产生的**字段级**理由：只有字段名与期望类型，**绝不含收到的值**
+ * （用户文稿正文、素材路径都可能在参数里）。判据与 `generationTransportAdapters` 那一份同形。
+ */
+function zodFieldDetail(error: unknown): string | undefined {
+  const issues = error && typeof error === "object" ? (error as { issues?: unknown }).issues : undefined;
+  if (!Array.isArray(issues) || issues.length === 0) return undefined;
+  return issues.slice(0, 6).flatMap((issue) => {
+    if (!issue || typeof issue !== "object") return [];
+    const path = Array.isArray((issue as { path?: unknown }).path) ? (issue as { path: unknown[] }).path.join(".") : "";
+    const expected = typeof (issue as { expected?: unknown }).expected === "string"
+      ? (issue as { expected: string }).expected
+      : typeof (issue as { code?: unknown }).code === "string" ? (issue as { code: string }).code : "";
+    return [`${path || "(root)"}: ${expected || "invalid"}`];
+  }).join("; ") || undefined;
+}
+
 function safeFailure(error: unknown): Extract<RuntimeToolDecision, { ok: false }> {
-  const candidate = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : undefined;
-  const code = candidate && PUBLIC_FAILURE_CODES.has(candidate) ? candidate : "capability_execution_failed";
-  return { ok: false, code, message: code };
+  return safeTransportFailure(error, { allowedCodes: PUBLIC_FAILURE_CODES,
+    fallbackCode: "capability_execution_failed", detail: zodFieldDetail });
 }
 
 type Phase4ReadInput = AssetReadInput | ExportReadInput;
@@ -68,8 +83,11 @@ export function createPiPhase4SurfaceTransportAdapter(input: Readonly<{
           semanticInput = exportReadInputForAlias(call.toolName, call.args);
           if (semanticInput) kind = "export";
         }
-      } catch {
-        return { ok: false, code: "capability_input_invalid", message: "capability_input_invalid" };
+      } catch (error) {
+        // 2026-09-22：这里原来把**为什么不合法**整个丢掉，模型只收到一个裸码。
+        // 字段级理由只有字段名与期望类型，不含收到的值（用户文稿/素材路径可能在参数里）。
+        return safeTransportFailure(error, { allowedCodes: PUBLIC_FAILURE_CODES,
+          fallbackCode: "capability_input_invalid", detail: zodFieldDetail });
       }
       if (!semanticInput || !kind) return null;
       if (disposed) return { ok: false, code: "surface_port_unavailable", message: "surface_port_unavailable" };
@@ -83,6 +101,8 @@ export function createPiPhase4SurfaceTransportAdapter(input: Readonly<{
         );
         return { ok: true, result, silent: true };
       } catch (error) {
+        // `look_at_media` 在 run2 里回过一次裸 `capability_execution_failed`（A11）。
+        // 带上字段级理由之后，下一轮至少知道是**哪一格**对不上，而不是「这一步没做成」。
         return safeFailure(error);
       }
     },

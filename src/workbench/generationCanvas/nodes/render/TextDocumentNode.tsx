@@ -21,6 +21,7 @@ import { useNomiRichTextEditor } from '../../../common/useNomiRichTextEditor'
 import { NODE_SCROLL_REGION_CLASS_NAME } from '../nodeScrollRegionClassName'
 import { buildRichTextActions } from '../../../common/richTextActions'
 import { NodeEmptyState } from './NodeEmptyState'
+import { textDocumentDigest } from '../../runner/textGenerationDocument'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 type Props = {
@@ -89,10 +90,13 @@ function TextDocumentNodeImpl({ node }: Props): JSX.Element {
     if (text) tools.replaceSelection(text)
     const store = useGenerationCanvasStore.getState()
     const current = store.nodes.find((candidate) => candidate.id === node.id)
+    if (!current?.result || current.result.id !== resultId) return
+    const appliedRun = current.runs?.find(run => run.resultId === resultId)
+    const runs = current.runs?.map(run => run.id === appliedRun?.id
+      ? { ...run, textDocumentDigest: textDocumentDigest(current.contentJson) } : run)
     store.updateNode(
       node.id,
-      { meta: { ...(current?.meta || {}), textPendingSelectionApply: null } },
-      { persist: false },
+      { runs, meta: { ...(current.meta || {}), textPendingSelectionApply: null } },
     )
   }, [resultId, pendingApplyId, node.id, node.result?.text, tools])
 

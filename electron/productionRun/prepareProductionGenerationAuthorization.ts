@@ -1,3 +1,5 @@
+import { resolveProductionReferenceUrls } from "../capabilityCore/productionReferenceUrls";
+import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 import {
   createGenerationRuntimeAdapter,
@@ -7,13 +9,26 @@ import type { ProjectLeaseV2 } from "../capabilityCore/projectLease";
 import type { GenerationSealMultiShot } from "../capabilityCore/mcpGenerationMultiShot";
 import {
   PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
+  countUnknownJobPrices,
   createProductionGenerationAuthorizationEnvelope,
   productionGenerationAuthorizationDigest,
   productionGenerationJobId,
   productionGenerationProviderIdempotencyKey,
+  sumKnownJobCeilings,
   type ProductionGenerationAuthorizationEnvelopeV1,
 } from "./productionGenerationAuthorization";
-import { assertKnownShotPrice, type ShotPrice } from "./shotPricing";
+import type { ShotPrice } from "./shotPricing";
+
+/**
+ * 一镜的授权上限。**目录算不出 → `null`，不是 0**（2026-09-21 用户拍板：价格未知不许挡住生成）。
+ *
+ * 这一行就是从前 `assertKnownShotPrice` 抛 `generation_pricing_unknown` 的那个位置。抛点删掉了，
+ * 因为它防的从来不是「未知的生成」，是「未知被静默当成 0 元放行」——而这件事现在由类型防：
+ * `price.maximum` 一旦是 `number | null`，任何求和/比较都得先回答「未知怎么办」。
+ */
+function jobPriceCeiling(price: ShotPrice): number | null {
+  return price.known ? price.amount : null;
+}
 import type { ProductionGenerationShot, ProductionJob, ProductionRun } from "./productionRunTypes";
 
 type AuthorizationOperation = Readonly<{
@@ -86,9 +101,22 @@ function unitsFor(
     });
 }
 
+/** Attempts belong to a durable shot, including executions of earlier candidate revisions. */
+export function nextGenerationAttempt(run: ProductionRun | undefined, shotId?: string): number {
+  return 1 + (run?.jobs ?? [])
+    .filter(job => job.stageId === "generate" && job.metadata?.shotId === shotId)
+    .reduce((latest, job) => Math.max(latest, job.attempt), 0);
+}
+
 export function prepareProductionGenerationAuthorization(input: Readonly<{
   lease: GenerationAuthorizationProjectIdentity;
   projectRevision: number;
+  /**
+   * 必填。`run?` 曾经是一个降级口：不传就按「这一镜还没有任何 attempt」算，于是 attempt 恒为 1；
+   * 校验那一侧（`productionGenerationAuthorizationState`）是无条件按真实 Run 算的，两边对不上就抛。
+   * 生产三个调用点一直都传，只有 harness 不传——结果是**第二批次那条真实路径从来没有一条测试走过**。
+   */
+  run: ProductionRun;
   operation: AuthorizationOperation;
   contract: ExecutionContractV1;
   multiShot?: GenerationSealMultiShot;
@@ -98,6 +126,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   maximumSpend?: number | null;
   now: string;
   ttlMs?: number;
+  referenceUrlsByContract?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }>): PreparedProductionGenerationAuthorization {
   if (input.operation.projectId !== input.lease.projectId) {
     throw new Error("Generation operation does not belong to the leased project");
@@ -109,32 +138,37 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   if (!Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0) {
     throw new Error("Generation authorization requires the current project revision");
   }
+  if (input.run.runId !== input.operation.operationId || input.run.projectId !== input.operation.projectId || input.run.planVersion !== planVersion) {
+    throw new Error("Generation authorization requires the current Run snapshot");
+  }
   const adapter = createGenerationRuntimeAdapter({ providers: input.providers });
   const units = unitsFor(input.operation, input.contract, input.multiShot);
   const currency = "CNY";
   const jobs = units.map((unit) => {
+    const attempt = nextGenerationAttempt(input.run, unit.jobShotId);
+    if (attempt > input.run.policy.maxAttemptsPerJob) throw new Error("Generation attempt limit exceeded");
     const price = input.resolveShotPrice(unit.contract);
-    assertKnownShotPrice(price, unit.shotId);
     const jobId = productionGenerationJobId(
       input.operation.operationId,
       unit.contract.contractHash,
-      1,
+      attempt,
       unit.jobShotId,
     );
     const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
       input.operation.operationId,
       unit.contract.contractHash,
-      1,
+      attempt,
       unit.jobShotId,
     );
     const prepared = adapter.prepareAuthorization({
       contract: unit.contract,
       providerIdempotencyKey,
+      referenceUrls: input.referenceUrlsByContract?.[unit.contract.contractHash],
     });
     return {
       jobId,
       shotId: unit.shotId,
-      attempt: 1,
+      attempt,
       target: {
         kind: "generation-operation" as const,
         operationId: input.operation.operationId,
@@ -146,21 +180,26 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
       mode: unit.contract.mode,
       parameters: unit.contract.parameters,
       references: unit.contract.references,
+      ...(input.referenceUrlsByContract?.[unit.contract.contractHash] ? { referenceUrls: input.referenceUrlsByContract[unit.contract.contractHash] } : {}),
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
-      price: { currency, maximum: price.amount },
+      price: { currency, maximum: jobPriceCeiling(price) },
     };
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation authorization time is invalid");
-  const jobMaximum = jobs.reduce((sum, job) => sum + job.price.maximum, 0);
+  // 已知价之和；未知的那几镜单独数一次，两个数都不许折进对方。
+  const jobMaximum = sumKnownJobCeilings(jobs);
+  const unknownJobCount = countUnknownJobPrices(jobs);
   const maximumSpend = input.maximumSpend;
   if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
     throw new Error("Generation authorization spend ceiling is invalid");
   }
-  const initialCeiling = maximumSpend === undefined || maximumSpend === null
-    ? jobMaximum
-    : Math.min(jobMaximum, maximumSpend);
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
+  const completeMaximum = sumBudgetAmounts([liability, jobMaximum]);
+  const completeBatchFits = maximumSpend === undefined || maximumSpend === null || !budgetExceeds(completeMaximum, maximumSpend);
+  const initialCeiling = completeBatchFits ? jobMaximum : Math.max(0, maximumSpend - liability);
+  const ledgerCeiling = Math.max(input.run.budget.authorized, sumBudgetAmounts([liability, initialCeiling]));
   const expiresAt = new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString();
   const runId = input.operation.operationId;
   const envelope = createProductionGenerationAuthorizationEnvelope({
@@ -178,10 +217,35 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     budget: {
       currency,
       maximum: initialCeiling,
-      ledgerCeiling: initialCeiling,
+      ledgerCeiling,
+      unknownJobCount,
     },
   });
   return { envelope, authorizationDigest: productionGenerationAuthorizationDigest(envelope) };
+}
+
+/** Reuse asset transport once for the exact included scope, then seal its durable URL snapshot. */
+export async function prepareProductionGenerationAuthorizationWithReferences(
+  input: Parameters<typeof prepareProductionGenerationAuthorization>[0] & { assertCurrent: () => void },
+  resolveReferences: typeof resolveProductionReferenceUrls = resolveProductionReferenceUrls,
+): Promise<PreparedProductionGenerationAuthorization> {
+  input.assertCurrent();
+  if (input.operation.projectId !== input.lease.projectId) throw new Error("Generation operation does not belong to the leased project");
+  if (!Number.isSafeInteger(input.operation.planVersion) || (input.operation.planVersion ?? 0) < 1
+    || !Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0
+    || input.run.runId !== input.operation.operationId || input.run.projectId !== input.lease.projectId || input.run.planVersion !== input.operation.planVersion) {
+    throw new Error("Generation reference preparation requires the current Run snapshot");
+  }
+  const referenceUrlsByContract: Record<string, Readonly<Record<string, string>>> = {};
+  for (const unit of unitsFor(input.operation, input.contract, input.multiShot)) {
+    if (unit.contract.references.length === 0) continue;
+    referenceUrlsByContract[unit.contract.contractHash] = await resolveReferences({
+      projectId: input.lease.projectId, providerId: unit.contract.providerId,
+      references: unit.contract.references, assertCurrent: input.assertCurrent,
+    });
+  }
+  input.assertCurrent();
+  return prepareProductionGenerationAuthorization({ ...input, referenceUrlsByContract });
 }
 
 function addressedUnit(run: ProductionRun, shotId?: string): {
@@ -243,7 +307,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
     throw new Error("Generation rework exceeds the Run attempt limit");
   }
   const price = input.resolveShotPrice(unit.contract);
-  assertKnownShotPrice(price, input.shotId ?? unit.contract.candidateId);
+  const priceCeiling = jobPriceCeiling(price);
 
   const jobId = productionGenerationJobId(input.run.runId, unit.contract.contractHash, attempt, input.shotId);
   const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
@@ -255,11 +319,12 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   const prepared = createGenerationRuntimeAdapter({ providers: input.providers }).prepareAuthorization({
     contract: unit.contract,
     providerIdempotencyKey,
+    referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation reauthorization time is invalid");
   const shotScope = input.shotId ?? unit.candidate.candidateId;
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   const envelope = createProductionGenerationAuthorizationEnvelope({
     schemaVersion: PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
     immutableProjectUuid: input.lease.immutableProjectUuid,
@@ -286,14 +351,18 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
       mode: unit.contract.mode,
       parameters: unit.contract.parameters,
       references: unit.contract.references,
+      referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
-      price: { currency: input.run.budget.currency, maximum: price.amount },
+      price: { currency: input.run.budget.currency, maximum: priceCeiling },
     }],
     budget: {
       currency: input.run.budget.currency,
-      maximum: price.amount,
-      ledgerCeiling: Math.max(input.run.budget.authorized, liability + price.amount),
+      // 重拍这一镜价格未知 → 这次决定覆盖的**已知**负债是 0，但那不是「免费」：
+      // `unknownJobCount: 1` 才是这份信封在说的话。
+      maximum: priceCeiling ?? 0,
+      ledgerCeiling: Math.max(input.run.budget.authorized, liability + (priceCeiling ?? 0)),
+      unknownJobCount: priceCeiling === null ? 1 : 0,
     },
   });
   return {
@@ -341,7 +410,6 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       const existing = input.run.jobs.find((job) => job.jobId === jobId);
       if (!existing || existing.status !== "authorized" || existing.providerTaskId) return [];
       const price = input.resolveShotPrice(contract);
-      assertKnownShotPrice(price, shot.shotId);
       const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
         input.run.runId,
         contract.contractHash,
@@ -351,7 +419,8 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       if (existing.providerIdempotencyKey !== providerIdempotencyKey) {
         throw new Error(`Generation continuation job identity changed: ${shot.shotId}`);
       }
-      const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey });
+      const referenceUrls = plan.authorizationEnvelope?.jobs.find(job => job.contractHash === contract.contractHash)?.referenceUrls;
+      const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey, referenceUrls });
       return [{
         jobId,
         shotId: shot.shotId,
@@ -367,16 +436,22 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
         mode: contract.mode,
         parameters: contract.parameters,
         references: contract.references,
+        ...(referenceUrls ? { referenceUrls } : {}),
         providerWirePayloadHash: prepared.providerRequestHash,
         providerIdempotencyKey,
-        price: { currency: input.run.budget.currency, maximum: price.amount },
+        price: { currency: input.run.budget.currency, maximum: jobPriceCeiling(price) },
       }];
     });
   if (jobs.length === 0) throw new Error("This generation Run has no unsubmitted jobs to continue");
 
-  const remainingMaximum = jobs.reduce((sum, job) => sum + job.price.maximum, 0);
-  const liability = input.run.budget.reserved + input.run.budget.actual + input.run.budget.unsettled;
-  if (input.run.budget.authorized - liability >= remainingMaximum) {
+  const remainingMaximum = sumKnownJobCeilings(jobs);
+  const unknownJobCount = countUnknownJobPrices(jobs);
+  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
+  const completeMaximum = sumBudgetAmounts([liability, remainingMaximum]);
+  // 「已经覆盖了」这句话过去只问金额。价格未知的续批**金额永远是 0**，于是它会被这条判据当成
+  // 「不用再开门」而卡死在这里——续批那条路因此对未知价永远走不通。判据补上未知那根轴：
+  // 还有未知价的镜头要跑，就仍然需要一次人的决定（或全自动档的代答）。
+  if (unknownJobCount === 0 && !budgetExceeds(completeMaximum, input.run.budget.authorized)) {
     throw new Error("The current generation authorization already covers the remaining jobs");
   }
   const issuedAt = Date.parse(input.now);
@@ -397,7 +472,8 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
     budget: {
       currency: input.run.budget.currency,
       maximum: remainingMaximum,
-      ledgerCeiling: Math.max(input.run.budget.authorized, liability + remainingMaximum),
+      ledgerCeiling: Math.max(input.run.budget.authorized, completeMaximum),
+      unknownJobCount,
     },
   });
   return {

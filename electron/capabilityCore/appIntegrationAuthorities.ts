@@ -1,6 +1,5 @@
 import type { RpcServerOptions } from './rpcServer'
 import { currentProjectRevision, getApprovalReceiptAuthority } from './approvalReceiptRuntime'
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
 import { createProductionProjectSessionRuntime } from './projectSessionRuntime'
@@ -12,7 +11,7 @@ import { logError } from '../logging/logger'
  * Keeping this receipt/session wiring outside appIntegration keeps startup
  * orchestration focused on lifecycle and provider assembly.
  */
-export function createDefaultAuthorities(generationPolicy: McpGenerationPolicy, hooks: {
+export function createDefaultAuthorities(hooks: {
   /**
    * P4 S4 试拍首镜: called when a multi-shot confirmation card resolves
    * trialFirst. Narrows the plan to shot 1 and re-seals it durably.
@@ -23,7 +22,6 @@ export function createDefaultAuthorities(generationPolicy: McpGenerationPolicy, 
   'approvalReceiptAuthority' | 'projectRevisionResolver' | 'confirmGenerationInNomi'
 > & Pick<RpcServerOptions, 'projectSessionAuthority' | 'verifyClientGenerationGateInMain'> {
   const projectSession = createProductionProjectSessionRuntime({
-    generationPolicy,
     getOpenProjectSelection: canvasReadSurfaceRuntime.getCommittedProjectSelection,
     // Existing non-current projects are not implicitly authorized merely
     // because they exist. A future allowlist must be an explicit policy.
@@ -44,6 +42,7 @@ export function createDefaultAuthorities(generationPolicy: McpGenerationPolicy, 
       model: challenge.display.model,
       referenceCount: challenge.display.referenceCount,
       maximumCost: challenge.reservationPreview.maximum,
+      ...(challenge.reservationPreview.unknownJobCount ? { unknownShotCount: challenge.reservationPreview.unknownJobCount } : {}),
       currency: challenge.reservationPreview.currency,
       expiresAt: challenge.expiresAt,
       ...(challenge.display.shots ? { shots: challenge.display.shots } : {}),

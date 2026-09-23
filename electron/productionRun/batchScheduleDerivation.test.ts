@@ -132,7 +132,7 @@ function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivati
     runStatus: "running",
     plan: sealedPlan(shots),
     jobs: authorizedJobsFor(shots),
-    budget: { currency: "CNY", authorized: 100, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: "CNY", authorized: 100, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     perShotPrice: () => ({ known: true, amount: 6 }),
     anchorGate: undefined,
     now: NOW,
@@ -283,7 +283,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
       jobs: authorizedJobsFor(shots),
-      budget: { currency: "CNY", authorized: 13, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 13, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     }));
     expect(result.shotDispatch.map((s) => s.shotId)).toEqual(["shot-a", "shot-b"]);
     expect(result.halt).toBeDefined();
@@ -304,7 +304,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
       jobs,
-      budget: { currency: "CNY", authorized: 13, reserved: 6, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 13, reserved: 6, actual: 0, unsettled: 0, unknownInFlight: 0 },
     }));
     // shot-a already has a job; among remaining b,c only b fits the 7 headroom.
     expect(result.shotDispatch.map((s) => s.shotId)).toEqual(["shot-b"]);
@@ -321,7 +321,7 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
     const result = deriveBatchPlan(baseInput({
       plan: sealedPlan(shots),
-      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0 },
+      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
       perShotPrice: (shotId) => (shotId === "shot-b" ? { known: false } : { known: true, amount: 6 }),
     }));
     // a costs 6 (fits exactly), b is unknown (0 toward cap) → both dispatchable.
@@ -401,5 +401,79 @@ describe("P4 slow-provider observe — in-flight units the orchestrator keeps po
     // Anchors in flight → checkpoint pending, shots blocked — but BOTH stay observable (anchor first).
     expect(result.checkpoint.status).toBe("pending_anchors");
     expect(result.observe.map((t) => t.shotId)).toEqual(["anchor-1", "shot-a"]);
+  });
+});
+
+it("reports actual progress for a pure anchor batch and ignores an earlier batch approval", () => {
+  const anchor = shot("anchor", "a".repeat(64), { role: "anchor" });
+  const plan = sealedPlan([anchor]);
+  const pending = deriveBatchPlan(baseInput({ plan, jobs: authorizedJobsFor([anchor]) }));
+  expect(pending.progress).toMatchObject({ total: 1, completed: 0, pending: 1 });
+  const done = deriveBatchPlan(baseInput({ plan, jobs: [jobFor("anchor", "a".repeat(64), "ready")],
+    anchorGate: { ...anchorCheckpointGate("approved"), planHash: "earlier-batch" } }));
+  expect(done.progress).toMatchObject({ total: 1, completed: 1, pending: 0 });
+  expect(done.checkpoint.status).toBe("should_open");
+});
+
+// ── 未知价开闸（2026-09-21 用户拍板）──
+//
+// 这三条守的是同一件事：**算不出价的镜头不进金额比较**。从前这里写的是
+// `price.known ? amount : 0`——那行被上游的抛点挡着不可达，一开闸就是「一批全是未知价的镜头
+// 被判成 running + 0 ≤ authorized、全部派出去」的静默口：上限证明看起来成立，其实什么都没证明。
+describe("unknown-price shots never enter the budget comparison", () => {
+  it("dispatches an all-unknown batch even when the authorized ceiling is zero, and says how many", () => {
+    const result = deriveBatchPlan(baseInput({
+      budget: { currency: "CNY", authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: () => ({ known: false }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a", "shot-b"]);
+    expect(result.halt).toBeUndefined();
+    // 派出去了，而且账上如实记着「这两镜花多少事后才知道」——不是「这两镜不花钱」。
+    expect(result.unknownDispatchCount).toBe(2);
+  });
+
+  it("still halts the KNOWN shot that breaches the cap while letting the unknown one through", () => {
+    const result = deriveBatchPlan(baseInput({
+      // 额度只够 5：shot-a 未知（不比较、照派），shot-b 已知 6 → 超，halt 在它这里。
+      budget: { currency: "CNY", authorized: 5, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: (shotId) => (shotId === "shot-a" ? { known: false } : { known: true, amount: 6 }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a"]);
+    expect(result.unknownDispatchCount).toBe(1);
+    expect(result.halt).toMatchObject({ haltedAtShotId: "shot-b", authorized: 5, unknownDispatchCount: 1 });
+  });
+
+  it("does not let an unknown shot consume the ceiling a later known shot needs", () => {
+    // 若未知仍被当成某个金额加进去，shot-b 就会被误判超支。它必须完全不影响这趟累加。
+    const result = deriveBatchPlan(baseInput({
+      budget: { currency: "CNY", authorized: 6, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
+      perShotPrice: (shotId) => (shotId === "shot-a" ? { known: false } : { known: true, amount: 6 }),
+    }));
+    expect(result.shotDispatch.map((task) => task.shotId)).toEqual(["shot-a", "shot-b"]);
+    expect(result.halt).toBeUndefined();
+  });
+});
+
+
+// ── 2026-09-22 · 只有参考卡的批次 ────────────────────────────────────────────
+//
+// `draft_shots` 从今天起允许「只建几张参考卡、镜头下一轮再补」（用户 2026-09-21 亲自点名过
+// 那条拒绝）。这一组钉住的是：**调度器本来就支持这一支**，本次放行校验没有把它弄坏。
+// （原话在 `deriveBatchPlan`："Mixed batches retain their video progress; an anchor-only request
+// tracks its actual paid units"。）
+describe("anchor-only batch（校验放行之后仍然照旧工作）", () => {
+  it("锚照常派发，进度按锚算", () => {
+    const anchors = [anchorShot("anchor-1"), anchorShot("anchor-2")];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(anchors), jobs: authorizedJobsFor(anchors) }));
+    expect(result.anchorDispatch.map((task) => task.shotId)).toEqual(["anchor-1", "anchor-2"]);
+    expect(result.progress).toMatchObject({ total: 2, completed: 0, pending: 2 });
+    expect(result.shotDispatch, "这一批没有镜头可派").toEqual([]);
+  });
+
+  it("阳性对照：同一批里只要还有一个镜头，检查点照旧要开、镜头照旧被挡在它后面", () => {
+    const mixed = [anchorShot("anchor-1"), shot("shot-a", "a".repeat(64))];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(mixed), jobs: [anchorJobReady("anchor-1")] }));
+    expect(result.checkpoint.status).toBe("should_open");
+    expect(result.shotDispatch, "检查点没放行之前，镜头一个都不许派").toEqual([]);
   });
 });

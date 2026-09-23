@@ -15,7 +15,7 @@ import { useNodeMentionSource } from './useNodeMentionSource'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { useNodeWriteAccess } from './nodeWriteAccess'
+import { NodeWriteAccessProvider, useNodeWriteAccess } from './nodeWriteAccess'
 import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, unmetReferenceDependencyForNode } from '../runner/generationRunController'
 import type { UnmetReferenceDependency } from './controls/referenceDependency'
 import { collectUngeneratedReferenceAncestors } from '../runner/referenceAncestors'
@@ -109,6 +109,7 @@ type Props = {
   node: GenerationCanvasNode
   visualSize: { width: number; height: number }
   host?: NodeComposerHost
+  readOnly?: boolean
 }
 
 type FloatingComposerLayout = {
@@ -131,7 +132,7 @@ function floatingComposerLayout(_width: number, _height: number, kind: Generatio
   return { maxHeight, gap }
 }
 
-export default function NodeGenerationComposer({ onFeedback, node, visualSize, host = 'canvas' }: Props): JSX.Element {
+export default function NodeGenerationComposer({ onFeedback, node, visualSize, host = 'canvas', readOnly = false }: Props): JSX.Element {
   const feedbackOwnerRef = React.useRef<string | null>(node.id)
   feedbackOwnerRef.current = node.id
   React.useEffect(() => { feedbackOwnerRef.current = node.id; return () => { feedbackOwnerRef.current = null } }, [node.id])
@@ -144,7 +145,13 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   const inPanel = host === 'panel'
   // 写到哪儿由宿主接住（见 nodeWriteAccess）：画布宿主写 store，付费确认卡写它自己的草稿账本，
   // 直到用户按下「生成」才由主进程把改动投影回画布。组件这一侧两个宿主一条写入调用。
-  const { updateNode } = useNodeWriteAccess()
+  const { updateNode: writeNode, latestNode, connectNodes } = useNodeWriteAccess()
+  const readOnlyRef = React.useRef(readOnly)
+  readOnlyRef.current = readOnly
+  const updateNode = React.useCallback((...args: Parameters<typeof writeNode>) => {
+    if (!readOnlyRef.current) writeNode(...args)
+  }, [writeNode])
+  const writeAccess = React.useMemo(() => ({ updateNode, latestNode, canWrite: () => !readOnlyRef.current, ...(!inPanel && connectNodes ? { connectNodes: ((...args: Parameters<typeof connectNodes>) => { if (!readOnlyRef.current) return connectNodes(...args) }) as typeof connectNodes } : {}) }), [updateNode, latestNode, inPanel, connectNodes])
   const status = node.status || 'idle'
   const isGenerating = status === 'queued' || status === 'running'
   const hasResult = Boolean(node.result?.url)
@@ -214,7 +221,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   // 变体张数是会话态、不落盘；显式列出 1–4，避免循环按钮让用户猜下一档。
   const [variantCount, setVariantCount] = React.useState<GenerationVariantCount>(1)
   // 拖文件到卡 → 加为参考（捷径 A）。仅当当前模式有数组参考槽时接管拖拽。
-  const { acceptsDrop, isDragOver, isUploading, dropHandlers } = useNodeAssetDrop(node, reportFeedback)
+  const { acceptsDrop, isDragOver, isUploading, dropHandlers } = useNodeAssetDrop(node, reportFeedback, writeAccess)
   // @ 候选 = 当前模式 image_ref 槽的有序填充（连线在前+上传，option 2 单源），与面板编号①②③、
   // 发送的 reference_image 数组同一口径——连线进来的参考图也在候选里、能被 @（此前只读 meta 漏掉边）。
   // 候选已扩到三组：当前参考 / 画布已出图节点 / 素材库。后两组选中会**先真的建立引用**再插 chip
@@ -228,7 +235,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
     [projectAssets],
   )
   const { orderedReferenceUrls: mentionCandidates, orderedMediaReferences, mentionSearch, onMentionSelect } =
-    useNodeMentionSource(node, mentionLibraryAssets, reportFeedback)
+    useNodeMentionSource(node, mentionLibraryAssets, reportFeedback, writeAccess)
   const insertMention = React.useCallback((url: string) => {
     if (!promptEditor || promptEditor.isDestroyed) return
     const reference = orderedMediaReferences.find((candidate) => candidate.url === url)
@@ -248,7 +255,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
 
   const applyPromptPickerItem = React.useCallback(
     (item: LibraryPrompt): void => {
-      if (node.locked) return
+      if (node.locked || readOnlyRef.current) return
       const before = node.prompt || ''
       const next = [before, item.prompt].filter(Boolean).join('\n')
       if (promptEditor && !promptEditor.isDestroyed) {
@@ -266,8 +273,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
       // 模型任何模式都不吃图参考 → 诚实提示只应用了文本，不写死数据。
       const referenceUrls = (item.referenceImages ?? []).map((reference) => reference.url).filter(Boolean)
       if (referenceUrls.length) {
-        const state = useGenerationCanvasStore.getState()
-        const target = state.nodes.find((candidate) => candidate.id === node.id)
+        const target = latestNode(node.id)
         const archetype = target ? archetypeForNode(target) : null
         if (target && archetype) {
           const promotedModeId = resolveModeForReferenceDemand(
@@ -276,19 +282,19 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
             [{ slots: ['image_ref'], asset: 'image' }],
           )
           if (promotedModeId) {
-            state.updateNode(node.id, {
+            updateNode(node.id, {
               meta: applyArchetypeModeSwitch((target.meta || {}) as Record<string, unknown>, archetype, promotedModeId),
             })
           }
         }
-        const outcomes = referenceUrls.map((url) => addAssetUrlToNode(node.id, 'image', url))
+        const outcomes = referenceUrls.map((url) => addAssetUrlToNode(node.id, 'image', url, writeAccess))
         if (outcomes.every((outcome) => outcome.status === 'no-slot')) {
           reportFeedback(t('generationCommon.composer.promptReferenceUnsupported'))
         }
       }
-      void persistActiveWorkbenchProjectNow().catch(() => {})
+      if (!inPanel) void persistActiveWorkbenchProjectNow().catch(() => {})
     },
-    [mentionCandidates, node.id, node.locked, node.prompt, promptEditor, reportFeedback, t, updateNode],
+    [mentionCandidates, node.id, node.locked, node.prompt, promptEditor, reportFeedback, t, updateNode, latestNode, writeAccess, inPanel],
   )
 
   const handleGenerate = async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -348,10 +354,10 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
 
   return (
     // 外层只做屏幕空间定位锚，反向缩放保持参数卡可读。
-    <div
+    <NodeWriteAccessProvider value={writeAccess}><div
       ref={anchorRef}
       className={cn(
-        'generation-canvas-v2-node__composer',
+        'generation-canvas-v2-node__composer nokey',
         // 面板里的卡由介入槽定位，这里只是一段普通内容流；画布上才是浮在节点下沿的绝对定位层。
         inPanel ? 'w-full' : 'absolute z-[8] w-max',
         // 画布拖动期间隐身（拖节点、拖选区/组框、拖画布平移都算；状态源=stage 的 data-dragging，见 canvasDraggingFlag）。
@@ -380,6 +386,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
       <div
         className={cn(
           'generation-canvas-v2-node__composer-card',
+          NODE_SCROLL_REGION_CLASS_NAME,
           'relative flex flex-col gap-1.5 min-w-0',
           // 面板宿主里**卡壳是介入槽的**：再描一层边就成了框中框，而里外说的是同一张卡。
           inPanel ? 'w-full p-0' : 'p-3 max-w-[880px] w-max border border-nomi-line rounded-nomi bg-nomi-paper overflow-hidden shadow-nomi-md',
@@ -396,14 +403,15 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           touchAction: 'auto',
         }}
       >
+      {readOnly ? <div role="status" className="text-caption text-nomi-ink-60">{t('generationCommon.workflowPlugin.readOnly')}</div> : null}
       {/* 「生成方式」在参考区滚动口之外、紧贴在它上面：仍是参考区的头，但属于卡片的固定内容，
           压到最小高度也整行可见可点（2026-09-21，见 NodeParameterControls 的 section="mode"）。 */}
-      {hasReferenceControls ? (
+      {hasReferenceControls && !readOnly ? (
         <div data-node-composer-mode-bar className={cn('shrink-0')}>
           <NodeParameterControls node={node} section="mode" />
         </div>
       ) : null}
-      {hasReferenceControls ? (
+      {hasReferenceControls && !readOnly ? (
         <div data-node-composer-references className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-nomi-line-soft')} style={inPanel ? undefined : { maxHeight: referenceMaxHeight }}>
           <NodeParameterControls node={node} section="references" onInsertMention={insertMention} />
         </div>
@@ -452,14 +460,14 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
             className={cn('min-h-[72px]')}
             value={node.prompt || ''}
             placeholder={appendMentionHint(isTextKind ? t(TEXT_MODE_PLACEHOLDER_KEY[textGenMode]) : getGenerationNodePromptPlaceholder(node.kind))}
-            editable={!node.locked}
-            onChange={(next) => updateNode(node.id, { prompt: next })}
-            onBlur={() => { void persistActiveWorkbenchProjectNow().catch(() => {}) }}
+            editable={!node.locked && !readOnly}
+            onChange={(next) => { if (!readOnly) updateNode(node.id, { prompt: next }) }}
+            onBlur={() => { if (!inPanel && !readOnlyRef.current) void persistActiveWorkbenchProjectNow().catch(() => {}) }}
             onReady={setPromptEditor}
             mentionCandidates={mentionCandidates}
             mentionReferences={orderedMediaReferences}
             mentionSearch={mentionSearch}
-            onMentionSelect={onMentionSelect}
+            onMentionSelect={(...args) => readOnlyRef.current ? null : onMentionSelect(...args)}
           />
         </div>
       )}
@@ -476,7 +484,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           面板宿主只剩第一段与第三段（B 簇、锁、生成钮都不进，见 NodeComposerHost 那张表），
           `flex-nowrap` 对两个宿主都成立：排不下不靠换行解决，靠别往这一排里塞第四件。
           `data-node-composer-footer` / `data-bar-segment` 是走查锚点，好断言「单行 + 段序没漂」。 */}
-      <div data-node-composer-footer className={cn('flex items-center gap-2 mt-auto pt-1 shrink-0 w-full flex-nowrap')}>
+      {!readOnly && <div data-node-composer-footer className={cn('flex items-center gap-2 mt-auto pt-1 shrink-0 w-full flex-nowrap')}>
         {/* 第一段：模型芯片 + 变体 + 参数区（画布=摘要 pill，见 composerHeadlineSummary；付费卡=chips）。 */}
         <div data-bar-segment="model-params" className={cn('flex min-w-0 shrink items-center')}>
           <NodeParameterControls
@@ -566,7 +574,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
             </span>
           )
         })()}
-      </div>
+      </div>}
       {/* 参数面板的落点：底栏**下面**、整幅宽。`empty:hidden` 让它在面板收着时一个像素都不占
           （空 div 也会吃掉外层 flex 的 gap）。画布宿主没有这个落点——那儿的面板 portal 到 body。 */}
       {inPanel ? <div ref={parameterPanelSlotRef} className="w-full empty:hidden" data-node-composer-parameter-panel-slot /> : null}
@@ -587,6 +595,6 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           </span>
         </div>
       ) : null}
-    </div>
+    </div></NodeWriteAccessProvider>
   )
 }

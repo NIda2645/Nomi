@@ -24,6 +24,7 @@ import { readCatalog, normalizeProviderKind, mutateCatalog } from "../../catalog
 import { decryptApiKeyRecord } from "../../catalog/secrets";
 import { isJsonRecord, mergeHeadersCaseInsensitive } from "../../jsonUtils";
 import { authHeaders, authQueryParams } from "../requestPipeline";
+import { vendorAuthSpec } from "../../catalog/vendorAuthSpec";
 import { fetchModelList, readExtraHeaders, type ModelListFailureKind } from "./modelListProbe";
 import { modelListReconciliation } from "../../catalog/modelListReconcile";
 import { modelListErrorRedactor } from "./modelListSafety";
@@ -88,10 +89,10 @@ function resolveTarget(vendorKey: string): Target | null {
   const authType = vendor.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer");
   const headers = mergeHeadersCaseInsensitive(
     providerKind === "anthropic" ? { "anthropic-version": "2023-06-01" } : {},
-    authHeaders(authType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
+    authHeaders({ ...vendorAuthSpec(vendor), authType }, apiKey),
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
   );
-  const query = authQueryParams(authType, apiKey, vendor.authQueryParam ?? undefined);
+  const query = authQueryParams({ ...vendorAuthSpec(vendor), authType }, apiKey);
   return {
     baseUrl,
     proxyUrl: providerProxyUrl(vendor),

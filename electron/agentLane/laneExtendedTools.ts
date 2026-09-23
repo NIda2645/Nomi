@@ -2,6 +2,7 @@ import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabi
 import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts'
 import type { LaneToolNextAction } from '../shared/agentLane/laneToolContract'
 import { laneFailureFromDecision } from '../shared/agentLane/laneFailureFromDecision'
+import { generateUserDecisionOf } from '../shared/agentLane/generateUserDecision'
 import { LANE_DEFERRED_TOOL_CATALOG } from './laneToolCatalog'
 import { bindLaneTool, LaneDomainFailure, type LaneToolDescriptor } from './laneRuntimePort'
 
@@ -24,6 +25,15 @@ function userAnsweredACard(decision: LaneApprovalDecision | undefined): boolean 
  * 「全自动」档代答之后的那份结果（`generationTransportAdapters.decideByPolicyAfterDraft`）：
  * 封印 → 铸收据 → 决门 → **已经开跑**。认得出它，`generate` 的回执才说得出真话。
  */
+/**
+ * 文稿方案那条路的「没得跑」：`presentStoryboardAuthoring` 在范围里一张确认框都没弹过时回它。
+ * 它**不是**一个用户决定，所以不走 `GenerateUserDecision`——不给模型编一个他没做过的选择。
+ */
+function nothingNeededGenerating(result: unknown): boolean {
+  const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
+  return record.status === 'nothing_to_generate'
+}
+
 function policyStartedGeneration(result: unknown): boolean {
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
   const spend = record.spendDecision
@@ -36,6 +46,12 @@ function operationIdOf(result: unknown): string | undefined {
   const operation = drafted.operation && typeof drafted.operation === 'object' ? drafted.operation as Record<string, unknown> : undefined
   if (typeof operation?.operationId === 'string') return operation.operationId
   return typeof drafted.operationId === 'string' ? drafted.operationId : undefined
+}
+
+/** One receipt for an explicit policy decision that already started generation. */
+function startedGenerationAction(result: unknown): LaneToolNextAction {
+  const jobId = operationIdOf(result)
+  return { kind: 'job_running', userSees: 'The user is in full-auto approval mode, so Nomi approved the spend on the authorisation they gave when switching in: generation has started and their provider credit is being spent. No card is waiting for them; progress shows in the task list.', ...(jobId ? { jobId } : {}) }
 }
 
 /**
@@ -57,19 +73,15 @@ function nextActionFor(
   verb: string, result: unknown, approvalDecision: LaneApprovalDecision | undefined,
 ): LaneToolNextAction | undefined {
   const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
-  const operation = record.operation && typeof record.operation === 'object' ? record.operation as Record<string, unknown> : undefined
-  const draftOperationId = typeof operation?.operationId === 'string' ? operation.operationId : typeof record.operationId === 'string' ? record.operationId : undefined
+  const draftOperationId = operationIdOf(result)
   const confirmed = userAnsweredACard(approvalDecision)
   switch (verb) {
     case 'draft_shots':
       // 草稿 id 按 `draft_shots` / `generate` 收它的那个名字回给模型（这里曾经印 `jobId=`：
-      // 同一个值出来叫 jobId、进去要填 operationId，而且这一刻根本没有 job 在跑）。
-      return { kind: 'none', userSees: 'Draft shots are on the canvas with their model and price badge. Nothing has been generated and nothing has been spent; call generate when the user wants them made.', ...(draftOperationId ? { operationId: draftOperationId } : {}) }
-    case 'generate': {
-      // 走到这里只有一种可能：档位替用户决了门，这一笔**已经在跑**（没决成的那条走 `spendCardResult`）。
-      const jobId = operationIdOf(result)
-      return { kind: 'job_running', userSees: 'The user is in full-auto approval mode, so Nomi approved the spend on the authorisation they gave when switching in: generation has started and their provider credit is being spent. No card is waiting for them; progress shows in the task list.', ...(jobId ? { jobId } : {}) }
-    }
+      // 草稿的寻址字段仍为 operationId；只有本次结果明确已开跑时，才另带执行回执）。
+      return { ...(policyStartedGeneration(result) ? startedGenerationAction(result) : { kind: 'none' as const, userSees: 'Draft changes are saved in the project. Saving does not imply canvas placement or a new generation start.' }), ...(draftOperationId ? { operationId: draftOperationId } : {}) }
+    case 'generate':
+      return generateReceipt(result)
     case 'edit_timeline': {
       // 闸跑在执行**之前**，所以能走到这一行就说明编辑已经落到时间轴上了。回执讲的是那件事。
       const how = confirmed
@@ -101,37 +113,47 @@ function nextActionFor(
 }
 
 /**
- * `generate` 的返回值抄 GitHub MCP `issue_write` 弹表单时的形状：**isError + 明文停下**。模型读到的是一条
- * 错误结果，所以它不会把「卡已经出了」说成「已经生成了」，也不会接着调下一个工具。
+ * `generate` 成功返回时，用户在那张报价卡上**已经答完了**（等待住在预检期，见 `laneExtendedDesktopPorts.preflightGenerate`）。
+ * 回执从那个真实结论派生，三种都是成功形状——没有任何东西坏了：
  *
- * **只在真的有一张卡在等人时才走这条**：全自动档由策略代答的那一笔已经开跑了
- * （`policyStartedGeneration`），对它说「停下来等用户点卡」是双重错误——卡不存在，钱也已经花了。
+ *   · approved   → 钱的那条链已经跑完，任务开跑；
+ *   · declined   → 他点了 ×。收回的是**这一次出价**，草稿原样留着（2026-09-22 用户拍板）：
+ *                  不要重试、不要替他重新起草，等他说下一步；他要是还想生成，对同一份草稿再 generate；
+ *   · redirected → 卡还没答他就打了字。这一次出价收回、草稿留着，那句话就是下一步的输入。
  *
- * ── 为什么条件写在函数里，而不是只写在调用点（2026-09-18）──
- *
- * F 块的合同把这条列进 `residual_risks`：`code: 'user_sees_spend_card'` 只靠调用点那个 `if` 保证，
- * 门岗看不见。`check:announced-card` 的 `hardcoded-card-claim` 是**正则**，它分不清「写死且无条件」
- * 和「写死但被真实结论守着」——把它扩到 `code:` 会对这一行报**假红**，而假红只会教人绕开门岗
- * （R17：门岗红了先读它红在哪条判据，不是改判据）。所以这条不变量往**更早**一层搬：函数自己拿着
- * 那份结果，宣称「有一张卡在等你」之前先核对它。第二个调用点再出现时，它也带着同一道核对。
+ * 2026-09-22 之前这里是一条 `isError + STOP`（`user_sees_spend_card`）：回合当场结束，用户点完「生成」
+ * 之后没有任何回合接得住结果；而 × 在模型眼里和「工具坏了」是同一个形状，于是它重试、进熔断。
  */
-function spendCardResult(result: unknown): never {
-  if (policyStartedGeneration(result)) {
-    // 程序员错误，不是用户错误：这一笔已经开跑、钱已经花了，任何「卡在等你」都是假话。
-    throw new Error('spendCardResult called for a generation the approval policy already started'
-      + ' — no card is waiting and credit is already being spent (see nextActionFor: job_running).')
+function generateReceipt(result: unknown): LaneToolNextAction {
+  const decision = generateUserDecisionOf(result)
+  const operationId = operationIdOf(result)
+  const id = operationId ? { operationId } : {}
+  if (decision?.outcome === 'approved') {
+    return { kind: 'job_running', ...(operationId ? { jobId: operationId } : {}),
+      userSees: 'The user approved the priced card, so generation has started and their provider credit is being spent. No card is waiting any more; progress shows in the task list. Do not call generate again for this draft.' }
   }
-  const record = result && typeof result === 'object' ? result as Record<string, unknown> : {}
-  const shots = Array.isArray(record.shots) ? record.shots.length : undefined
+  if (decision?.outcome === 'declined') {
+    return { kind: 'none', ...id,
+      userSees: 'The user closed the priced card without approving it. Nothing was generated and nothing was spent. He withdrew this quote, not the draft: the shots, parameters and his own edits are all still there, and so are the placeholder nodes on the canvas. Do not call generate again right now and do not redraft on your own: acknowledge it briefly and ask what he would like instead. If he asks for it again later, call generate on this same draft (revise it first with draft_shots if he wants changes).' }
+  }
+  if (decision?.outcome === 'redirected') {
+    return { kind: 'none', ...id,
+      userSees: `While the priced card was waiting, the user wrote: "${decision.userSaid}". That is his answer to the card: this quote was withdrawn, nothing was generated and nothing was spent, and the draft is kept as it was. Do what he wrote (revise the draft with draft_shots if he asked for changes), then call generate again only if he still wants it generated.` }
+  }
+  if (policyStartedGeneration(result)) return startedGenerationAction(result)
+  // 文稿方案：范围里一张卡都没弹过——该生成的都已经有结果了。没有决定可报，也没有东西坏了。
+  if (nothingNeededGenerating(result)) {
+    return { kind: 'none', ...id,
+      userSees: 'Everything in that scope already has a result, so no priced card was shown and nothing was spent. Tell him it is already generated; do not call generate again for it.' }
+  }
+  // 卡摆出去了，却没有任何结论随结果回来：预检期那次等待没跑（宿主没接 `toolLifecycle.approved`）。
+  // 这里**不许**顺着说「已经开始生成」——那句话只属于上面那一支。照实报错，模型据此不会谎报。
   throw new LaneDomainFailure({
-    code: 'user_sees_spend_card',
-    message: `The user now sees a priced confirmation card in Nomi${shots ? ` for ${shots} shot(s)` : ''}. Generation has NOT started and nothing has been spent; only the user can approve the card.`,
-    nextAction: 'STOP. Do not call any other tools and do not claim generation has started or completed. Tell the user what the card shows and wait for their decision.',
+    code: 'generation_approval_unavailable',
+    message: 'generate put a priced card in front of the user, but this host did not wait for his answer, so there is no decision to report. Generation has NOT started and nothing has been spent.',
+    nextAction: 'Do not claim generation started. Tell the user the confirmation step did not run in this session and ask him to try again.',
   })
 }
-
-/** 测试用：让「卡在等你」这句话的守卫本身可以被直接打上一枪（R17 阳性对照）。 */
-export const __spendCardResultForTest = spendCardResult;
 
 export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescriptor[] {
   // Visibility groups do not transfer execution ownership: timeline reads keep their typed port
@@ -149,8 +171,6 @@ export function createExtendedLaneTools(port: LaneExtendedPort): LaneToolDescrip
         fallbackCode: 'capability_execution_failed',
         nextAction: 'Read the current project state and review the current identifiers, revision and approval before requesting a new action. Do not repeat an unknown paid submission.',
       }))
-      // 卡真的在等人时才停下模型；全自动档代答的那一笔已经开跑，回执照实说（见 `nextActionFor`）。
-      if (spec.name === 'generate' && !policyStartedGeneration(decision.result)) spendCardResult(decision.result)
       const text = JSON.stringify(decision.result ?? null)
       const nextAction = nextActionFor(spec.name, decision.result, context.approvalDecision)
       return { ok: true, text, details: decision.result, ...(nextAction ? { nextAction } : {}) }

@@ -8,6 +8,7 @@ import { firstString, isJsonRecord, type JsonRecord } from "../jsonUtils";
 import { referenceInputParams } from "./archetypeInput";
 import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archetypeWireDefaults.generated";
 import { bodyReferencedParamKeys } from "./paramTranslate";
+import { hasMentions, numberPromptReferences, projectPromptForSend } from "../shared/storyboard/promptMentions";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
 import { readSelectedComfyReferenceContract, type ParameterReferenceSelection } from "./parameterReferenceContract";
 
@@ -352,15 +353,15 @@ function referenceLabelForKey(key: string): string {
  * 用户连了参考图、模板发不出、闸门不吭声，于是生成成功、扣费成功、和参考图毫无关系
  * （正是本条被报的体感）。改读 refInput 后，任何新增参考键自动纳管，不需要回来补名单。
  */
-function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSelection): Array<{ label: string; url: string }> {
-  const out: Array<{ label: string; url: string }> = [];
+function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSelection): Array<{ label: string; url: string; family: ReferenceFamily }> {
+  const out: Array<{ label: string; url: string; family: ReferenceFamily }> = [];
   const seen = new Set<string>();
   const walk = (key: string, value: unknown): void => {
     if (typeof value === "string") {
       const url = value.trim();
       if (!url || !REF_URL_RE.test(url) || seen.has(url)) return;
       seen.add(url);
-      out.push({ label: referenceLabelForKey(key), url });
+      out.push({ label: referenceLabelForKey(key), url, family: classifyReferenceKey(key) ?? "image" });
       return;
     }
     // 数组沿用父键名（image_urls[0] 仍是「参考图」）；对象用子键名（volcengine content 项等嵌套结构）。
@@ -376,9 +377,23 @@ function carriedReferences(extras: JsonRecord, selected?: ParameterReferenceSele
   for (const reference of declaredComfyReferences(extras, selected)) {
     if (seen.has(reference.url)) continue
     seen.add(reference.url)
-    out.push({ label: referenceLabelForKey(reference.family), url: reference.url })
+    out.push({ label: referenceLabelForKey(reference.family), url: reference.url, family: reference.family })
   }
   return out;
+}
+
+/**
+ * 本次请求真正携带的参考素材，**按发送顺序**，带族别——供 `@[asset:url]` 投影成 `@imageN` 用。
+ *
+ * 为什么复用 `carriedReferences` 而不是另数一遍：编号必须与「真的发出去的那几条」一一对应，
+ * 而那份真相源就是 `referenceInputParams`（wire 铺的就是它）。另写一份 = 编号与实际发送顺序
+ * 慢慢对不上，而那种错**不报错**：供应商收到 `@image2` 却只拿到一张图。
+ */
+export function carriedPromptReferences(
+  extras: JsonRecord,
+  selected?: ParameterReferenceSelection,
+): Array<{ url: string; kind: ReferenceFamily }> {
+  return carriedReferences(extras, selected).map((reference) => ({ url: reference.url, kind: reference.family }));
 }
 
 /**
@@ -745,4 +760,19 @@ export function jsonImageEditInput(referenceImages: unknown): { image?: JsonImag
     .map((url) => ({ type: "image_url" as const, url }));
   if (refs.length === 1) return { image: refs[0] };
   return refs.length > 1 ? { images: refs } : {};
+}
+
+/**
+ * A5：发给供应商之前的**最终** prompt —— `@[asset:<url>]` 投影成 `@image1/@video1`。
+ *
+ * 引擎 A 只有 `runtime.runTask` 一个出口，所以判据收在这一个函数里、由它调一次：渲染层那条路在
+ * `catalogTaskActions.ts` 已经投影过一次（串里不再有标记，这里是 no-op），而 headless 那两条
+ * （外部 MCP 单发 `core.ts`、接入试跑 `tryModel.ts`）**从来没投影过**——供应商收到的是一串
+ * `@[asset:nomi-local%3A%2F%2F…png]`，花了钱拿回错东西（对等矩阵 A5）。
+ * 编号与投影规则住在共享层，与 Run 路径（`executionContract.projectContractPrompt`）同一份。
+ * 没对上参考的孤儿标记按共享规则删掉（与界面上的非编辑态预览逐字相同），绝不原样外泄。
+ */
+export function projectOutboundPrompt(prompt: string, extras: Record<string, unknown> | undefined): string {
+  if (!hasMentions(prompt)) return prompt;
+  return projectPromptForSend(prompt, numberPromptReferences(carriedPromptReferences(extras || {})));
 }

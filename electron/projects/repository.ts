@@ -243,6 +243,7 @@ export async function saveProject(projectId: string, input: unknown): Promise<Pr
     return saveWorkspaceProject(id, input, getWorkspaceRepositoryDeps());
   }
 
+  if (input && typeof input === "object" && "expectedBinding" in input) throw new Error("project_binding_stale");
   const projectDir = legacyProjectDirById(id);
   if (!projectDir) throw new Error("Cannot save unknown workspace project");
   const record = normalizeProjectRecord({ ...(input as JsonRecord), id });

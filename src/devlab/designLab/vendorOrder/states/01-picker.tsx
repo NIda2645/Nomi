@@ -11,6 +11,7 @@ import {
   MODEL_BOX_MODELS,
   MODEL_BOX_PREFERENCE,
   RUNNABLE_VENDORS,
+  UNLISTED_MODELS,
   SIBLING_CONNECTION_MODELS,
   VENDOR_APIMART_MINI,
   onlyFromVendors,
@@ -79,6 +80,22 @@ export const PICKER_STATES: readonly LabState[] = [
         models={CONFIGURED_MODELS}
         preferredVendorKeys={[VENDOR_APIMART]}
         selected="seedream-4-5"
+      />
+    ),
+  },
+  {
+    // 改号 2026-09-22：本分支原本 mint 的 vo-10 与 main（#831）的 `vo-10-settings-model-box` 撞号。
+    // 按「ID 不回收」，main 的留着，本分支这格顺延到 vo-11。
+    id: 'vo-11-picker-unlisted',
+    name: '供应商清单里暂时没有它 · 如实标一句，照样选得了',
+    source: 'scratchpad report-A-pass3e.md §3（后台对账不再静默停用）· 用户 2026-09-21',
+    coverage: 'shell',
+    // 判据是「**每一家**都没列出才标」：FLUX.2 Pro 只挂 Kie 且没列出 → 标；
+    // Nano Banana 2 还有 APIMart 列着 → 不标。哪天写成「有一家没列出就标」，这一格当场变样。
+    render: () => (
+      <ModelPickerStage
+        models={UNLISTED_MODELS}
+        preferredVendorKeys={[VENDOR_APIMART, VENDOR_KIE]}
       />
     ),
   },

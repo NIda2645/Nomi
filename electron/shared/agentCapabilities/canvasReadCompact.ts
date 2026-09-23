@@ -103,6 +103,7 @@ export function formatCanvasForAgent(result: CanvasReadResult): string {
       promptHead ? ` | prompt: ${promptHead}` : "",
       node.currentResultId ? ` | currentResultId: ${compactHead(node.currentResultId, 120)}` : "",
       resultIds ? ` | resultIds: ${resultIds}` : "",
+      node.taskRef ? ` | taskRef: ${JSON.stringify(node.taskRef)}` : "",
     ].join("");
   });
   const edges = boundedJoin(result.edges, EDGE_SUMMARY_BUDGET, ", ", (edge) =>

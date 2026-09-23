@@ -1,3 +1,4 @@
+import { sameProjectAgentBinding, type ProjectBinding } from '../../../electron/shared/projectBinding'
 import {
   workbenchProjectRecordSchema,
   type WorkbenchProjectPayload,
@@ -228,6 +229,7 @@ export async function saveLocalProject(
   projectId: string,
   state: WorkbenchProjectPayload,
   name?: string,
+  expectedBinding?: ProjectBinding,
 ): Promise<WorkbenchProjectRecordV1> {
   const id = String(projectId || '').trim()
   if (!id) throw new Error('projectId is required')
@@ -264,7 +266,14 @@ export async function saveLocalProject(
   }
   assertWorkbenchProjectMediaUrlsPersistable(record)
   if (desktop) {
-    return await desktop.projects.save(id, record) as WorkbenchProjectRecordV1
+    return await desktop.projects.save(id, { ...record, ...(expectedBinding ? { expectedBinding } : {}) }) as WorkbenchProjectRecordV1
+  }
+  if (expectedBinding) {
+    const current = workbenchProjectRecordSchema.safeParse(existingRecord)
+    if (!current.success || !sameProjectAgentBinding(expectedBinding, { projectId: current.data.id,
+      immutableProjectUuid: current.data.immutableProjectUuid ?? '', projectGeneration: current.data.projectGeneration ?? 0 })) throw new Error('project_binding_stale')
+    record.immutableProjectUuid = expectedBinding.immutableProjectUuid
+    record.projectGeneration = expectedBinding.projectGeneration
   }
   if (existingRecord) rememberProjectBackup(id, existingRecord)
   const nextIndex = [summary, ...readMergedProjectSummaries().filter((item) => item.id !== id)]

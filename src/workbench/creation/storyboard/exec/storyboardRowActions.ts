@@ -1,11 +1,12 @@
 import { withCanvasGestureContext, type CanvasGestureContext } from '../../../generationCanvas/events/canvasGestureContext'
 import { pushUndoSnapshot, getUndoJournalGeneration } from '../../../generationCanvas/events/canvasUndoJournal'
 import { projectShotNode } from './storyboardProjection'
+import type { GenerationRunOutcome } from '../../../generationCanvas/runner/generationRunOutcome'
 import { ignoredShotAnchors, type IgnoredAnchor } from '../../../generationCanvas/agent/storyboardAnchorPolicy'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanAnchor, PlanShot, StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
-import { buildAnchorSheetPrompt } from '../../../generationCanvas/agent/storyboardPromptCompiler'
+import { anchorCarriesOwnMaterial, isVisualAnchor, buildAnchorSheetPrompt } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import {
   stableShotId,
   storyboardAnchorToCreateNodesArgs,
@@ -21,7 +22,7 @@ import {
 import { applyCanvasToolCall } from '../../../generationCanvas/agent/applyCanvasToolCall'
 import { useGenerationCanvasStore } from '../../../generationCanvas/store/generationCanvasStore'
 import { buildDependencyWaves, hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
-import { confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace } from '../../../generationCanvas/runner/generationRunController'
+import { confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, type GenerationConfirmationGuards } from '../../../generationCanvas/runner/generationRunController'
 import { confirmAndRunPlan } from '../../../generationCanvas/components/batchPlanPreview'
 import i18n from '../../../../i18n'
 import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNodeMeta'
@@ -40,11 +41,19 @@ import { rowConsumesReferences, type StoryboardRowRuntime } from './storyboardRo
  * 方案是内容正本，行内采纳/丢弃控制字段归属，生成不静默夺回覆写字段。
  */
 
-type RowActionContext = {
+export type RowActionContext = GenerationConfirmationGuards & {
   documentId: string
   designId: string
   plan: StoryboardPlan
   gesture?: CanvasGestureContext
+}
+
+function confirmationGuards(ctx: RowActionContext): GenerationConfirmationGuards {
+  return ctx.assertCurrent ? { assertCurrent: ctx.assertCurrent, assertAuthorCurrent: ctx.assertAuthorCurrent } : {}
+}
+
+function anchorNodeFor(ctx: RowActionContext, nodes: GenerationCanvasNode[], anchor: PlanAnchor) {
+  return findAnchorNode(nodes, ctx.designId, anchor)
 }
 
 async function resolveDefaults(): Promise<Pick<StoryboardShotRowArgsOptions,
@@ -81,7 +90,7 @@ function existingRowBindings(ctx: RowActionContext, shot: PlanShot): {
   for (const anchorId of shot.anchorIds) {
     const anchor = ctx.plan.anchors.find((candidate) => candidate.id === anchorId)
     if (!anchor) continue
-    const node = findAnchorNode(nodes, ctx.designId, anchor)
+    const node = anchorNodeFor(ctx, nodes, anchor)
     if (node) anchorNodeIdByAnchorId[anchorId] = node.id
   }
   return {
@@ -93,9 +102,10 @@ function existingRowBindings(ctx: RowActionContext, shot: PlanShot): {
 
 type CreateNodesResult = { createdNodeIds?: string[]; clientIdToNodeId?: Record<string, string> }
 
-async function applyCreate(args: PlanCreateNodesArgs, gesture?: CanvasGestureContext): Promise<Record<string, string>> {
+async function applyCreate(args: PlanCreateNodesArgs, gesture?: CanvasGestureContext, assertCurrent?: () => Promise<void>): Promise<Record<string, string>> {
+  await assertCurrent?.()
   if (gesture?.canWrite && !gesture.canWrite()) throw new Error('Canvas changed before storyboard landing')
-  const result = (await applyCanvasToolCall('create_canvas_nodes', args, gesture, gesture?.canWrite)) as CreateNodesResult
+  const result = (await applyCanvasToolCall('create_canvas_nodes', args, gesture, gesture?.canWrite, undefined, undefined, assertCurrent)) as CreateNodesResult
   return result?.clientIdToNodeId ?? {}
 }
 
@@ -105,6 +115,7 @@ async function syncShotNodeWithRow(ctx: RowActionContext, shot: PlanShot, node: 
   // 只记了模型名的旧镜头落哪家 = 模型框回显的那家：同一个判定口 + 同一份用户供应商顺序。
   const entries = buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
   if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard update')
+  await ctx.assertCurrent?.()
   const current = useGenerationCanvasStore.getState().nodes.find(candidate => candidate.id === node.id)
   if (!current) return
   const patch = projectShotNode(ctx.plan, shot, current, part, entries, mode)
@@ -121,26 +132,32 @@ export async function materializeShotRow(
   ctx: RowActionContext,
   shot: PlanShot,
   mode: ArchetypeMode | null,
+  preserveExisting = false,
 ): Promise<{ shotNodeId: string; keyframeNodeId: string | null; ignoredAnchors: IgnoredAnchor[] }> {
+  await ctx.assertCurrent?.()
   const ignoredAnchors = ignoredShotAnchors(ctx.plan, shot, mode)
   const existing = existingRowBindings(ctx, shot)
   const keyframeEnabled = shot.shotKind !== 'image' && shot.keyframe?.enabled === true
-  if (existing.shotNode && (!keyframeEnabled || existing.keyframeNode)) {
-    await syncShotNodeWithRow(ctx, shot, existing.shotNode, 'shot', mode)
-    if (existing.keyframeNode) await syncShotNodeWithRow(ctx, shot, existing.keyframeNode, 'keyframe')
-    return { ignoredAnchors, shotNodeId: existing.shotNode.id, keyframeNodeId: existing.keyframeNode?.id ?? null }
-  }
   const defaults = await resolveDefaults()
   if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard materialization')
   const args = storyboardShotToCreateNodesArgs(ctx.plan, shot, {
     ...defaults,
     creationDocumentId: ctx.documentId,
     storyboardDesignId: ctx.designId,
+    materializationOperationId: `storyboard:${ctx.designId}`,
     existingAnchorNodeIdByAnchorId: existing.anchorNodeIdByAnchorId,
     ...(existing.keyframeNode ? { existingKeyframeNodeId: existing.keyframeNode.id } : {}),
     ...(rowConsumesReferences(mode) ? {} : { omitAnchorReferenceEdges: true }),
   })
-  const clientIdToNodeId = await applyCreate(args, ctx.gesture)
+  if (existing.shotNode) {
+    const clientId = stableShotId(shot)
+    args.nodes = args.nodes.filter(node => node.clientId !== clientId)
+    args.edges = args.edges.map(edge => ({ ...edge,
+      sourceClientId: edge.sourceClientId === clientId ? existing.shotNode!.id : edge.sourceClientId,
+      targetClientId: edge.targetClientId === clientId ? existing.shotNode!.id : edge.targetClientId,
+    }))
+  }
+  const clientIdToNodeId = await applyCreate(args, ctx.gesture, ctx.assertCurrent)
   const shotNodeId = existing.shotNode?.id ?? clientIdToNodeId[stableShotId(shot)]
   if (!shotNodeId) throw new Error('materialize failed: shot node missing')
   const keyframeNodeId = existing.keyframeNode?.id
@@ -148,8 +165,8 @@ export async function materializeShotRow(
   // 刚建出来的节点同样要过一遍写回 —— 参考绑定不在 create_canvas_nodes 的参数面里，
   // 只在这条写回边界上进 meta；漏掉它 = 第一次生成不带参考、第二次才带（最阴的静默陷阱）。
   const created = canvasState().nodes.find((node) => node.id === shotNodeId)
-  if (created) await syncShotNodeWithRow(ctx, shot, created, 'shot', mode)
-  if (existing.keyframeNode) await syncShotNodeWithRow(ctx, shot, existing.keyframeNode, 'keyframe')
+  if (created && (!preserveExisting || !existing.shotNode)) await syncShotNodeWithRow(ctx, shot, created, 'shot', mode)
+  if (existing.keyframeNode && !preserveExisting) await syncShotNodeWithRow(ctx, shot, existing.keyframeNode, 'keyframe')
   return { shotNodeId, keyframeNodeId, ignoredAnchors }
 }
 
@@ -166,10 +183,12 @@ export async function generateShotRow(
   const { nodes, edges } = canvasState()
   const keyframeNode = keyframeNodeId ? nodes.find((node) => node.id === keyframeNodeId) ?? null : null
   if (keyframeNode && !hasUsableResult(keyframeNode)) {
-    await confirmAndRunPlan(buildDependencyWaves([keyframeNodeId!, shotNodeId], { nodes, edges }))
+    await ctx.assertCurrent?.()
+    await confirmAndRunPlan(buildDependencyWaves([keyframeNodeId!, shotNodeId], { nodes, edges }), confirmationGuards(ctx))
     return
   }
-  await confirmAndRunNode(shotNodeId)
+  await ctx.assertCurrent?.()
+  await confirmAndRunNode(shotNodeId, confirmationGuards(ctx))
 }
 
 /** 悬停浮条 ↻：写回行编辑 + 原地重生成（同节点、不换 id、时间轴回填闸沿用）。 */
@@ -181,7 +200,8 @@ export async function regenerateShotRow(
   confirmOpts?: { title?: string; confirmLabel?: string },
 ): Promise<void> {
   await syncShotNodeWithRow(ctx, shot, node, 'shot', mode)
-  await regenerateNodeInPlace(node.id, confirmOpts)
+  await ctx.assertCurrent?.()
+  await regenerateNodeInPlace(node.id, { ...confirmOpts, ...confirmationGuards(ctx) })
 }
 
 /**
@@ -206,13 +226,15 @@ export async function rerunShotRowWithFreshRefs(
   await syncShotNodeWithRow(ctx, shot, exec.keyframeNode, 'keyframe')
   await syncShotNodeWithRow(ctx, shot, exec.node, 'shot', mode)
   const { nodes, edges } = canvasState()
-  await confirmAndRunPlan(buildDependencyWaves([exec.keyframeNode.id, exec.node.id], { nodes, edges }))
+  await ctx.assertCurrent?.()
+  await confirmAndRunPlan(buildDependencyWaves([exec.keyframeNode.id, exec.node.id], { nodes, edges }), confirmationGuards(ctx))
 }
 
 /** 悬停浮条 ×3：写回行编辑 + 同镜连出 3 版（结果堆叠进历史，失败即停不连烧）。 */
 export async function generateShotRowVariants(ctx: RowActionContext, shot: PlanShot, node: GenerationCanvasNode, mode: ArchetypeMode | null): Promise<void> {
   await syncShotNodeWithRow(ctx, shot, node, 'shot', mode)
-  await confirmAndRunNodeVariants(node.id, 3)
+  await ctx.assertCurrent?.()
+  await confirmAndRunNodeVariants(node.id, 3, confirmationGuards(ctx))
 }
 
 /**
@@ -237,35 +259,43 @@ export function toggleNodeLock(nodeId: string): void {
 // ── 参考卡（锚）的就地生成（B3 图卡用；B1 先落通路）──
 
 /** 锚卡「生成」：没建过则 materialize，再走单发通路（参考卡不吃参考，无波次）。 */
-export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor): Promise<void> {
+export async function generateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor): Promise<GenerationRunOutcome> {
   const { nodes } = canvasState()
-  const node = findAnchorNode(nodes, ctx.designId, anchor)
+  const node = anchorNodeFor(ctx, nodes, anchor)
   if (!node) {
     const defaults = await resolveDefaults()
     const args = storyboardAnchorToCreateNodesArgs(ctx.plan, anchor, {
       ...defaults,
       creationDocumentId: ctx.documentId,
       storyboardDesignId: ctx.designId,
+      materializationOperationId: `storyboard:${ctx.designId}`,
     })
-    if (!args) return // 文本锚不生成图（按钮态就不该出现）
-    const clientIdToNodeId = await applyCreate(args)
+    if (!args) return 'nothing-to-run' // 文本锚不生成图（按钮态就不该出现）
+    const clientIdToNodeId = await applyCreate(args, ctx.gesture, ctx.assertCurrent)
     const nodeId = clientIdToNodeId[anchor.id]
     if (!nodeId) throw new Error('materialize failed: anchor node missing')
-    await confirmAndRunNode(nodeId)
-    return
+    await ctx.assertCurrent?.()
+    // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+    return confirmAndRunNode(nodeId, confirmationGuards(ctx))
   }
-  syncAnchorNodeWithCard(anchor, node)
-  await confirmAndRunNode(node.id)
+  await ctx.assertCurrent?.()
+  syncAnchorNodeWithCard(ctx, anchor, node)
+  await ctx.assertCurrent?.()
+  return confirmAndRunNode(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡「重生成」：写回描述编辑 + 原地重出（引用它的镜之后经「参考已变」提示重跑，绝不自动跑）。 */
-export async function regenerateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor, node: GenerationCanvasNode): Promise<void> {
-  syncAnchorNodeWithCard(anchor, node)
-  await regenerateNodeInPlace(node.id)
+export async function regenerateAnchorCard(ctx: RowActionContext, anchor: PlanAnchor, node: GenerationCanvasNode): Promise<GenerationRunOutcome> {
+  await ctx.assertCurrent?.()
+  syncAnchorNodeWithCard(ctx, anchor, node)
+  await ctx.assertCurrent?.()
+  // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+  return regenerateNodeInPlace(node.id, confirmationGuards(ctx))
 }
 
 /** 锚卡编辑写回节点（描述/静动特征改了再生成，出的是改后的卡）。 */
-function syncAnchorNodeWithCard(anchor: PlanAnchor, node: GenerationCanvasNode): void {
+function syncAnchorNodeWithCard(ctx: RowActionContext, anchor: PlanAnchor, node: GenerationCanvasNode): void {
+  if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard anchor update')
   const prompt = buildAnchorSheetPrompt(anchor)
   const meta: Record<string, unknown> = { ...(node.meta || {}) }
   const staticFeatures = (anchor.staticFeatures || '').trim()
@@ -275,7 +305,9 @@ function syncAnchorNodeWithCard(anchor: PlanAnchor, node: GenerationCanvasNode):
   const patch: { prompt?: string; title?: string; meta: Record<string, unknown> } = { meta }
   if ((node.prompt || '') !== prompt) patch.prompt = prompt
   if (anchor.name.trim() && node.title !== anchor.name.trim()) patch.title = anchor.name.trim()
-  useGenerationCanvasStore.getState().updateNode(node.id, patch, { origin: 'storyboard-projection' })
+  const write = () => useGenerationCanvasStore.getState().updateNode(node.id, patch, { origin: 'storyboard-projection' })
+  if (ctx.gesture) withCanvasGestureContext(ctx.gesture, write)
+  else write()
 }
 
 // ── 批量（footer 主按钮）──
@@ -288,19 +320,34 @@ function syncAnchorNodeWithCard(anchor: PlanAnchor, node: GenerationCanvasNode):
 export async function runStoryboardBatch(
   ctx: RowActionContext,
   rows: readonly StoryboardRowRuntime[],
-  landing?: { groupTitle: string },
-): Promise<void> {
-  if (rows.length === 0) return
+  landing?: { groupTitle: string; placementOnly?: boolean },
+): Promise<GenerationRunOutcome> {
+  if (rows.length === 0 && !landing?.placementOnly) return 'nothing-to-run'
+  if (landing?.placementOnly && rows.every(row => {
+    const bound = existingRowBindings(ctx, row.shot)
+    return bound.shotNode && (!(row.shot.shotKind !== 'image' && row.shot.keyframe?.enabled) || bound.keyframeNode)
+  }) && ctx.plan.anchors.every(anchor => !isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor) || anchorNodeFor(ctx, canvasState().nodes, anchor))) return 'nothing-to-run'
   const existingNodeIds = new Set(canvasState().nodes.map(node => node.id))
   if (landing) {
     const generation = getUndoJournalGeneration()
     pushUndoSnapshot()
-    ctx = { ...ctx, gesture: { source: 'user', txnId: `shot-table-batch-${crypto.randomUUID()}`, suppressUndoBarriers: true, canWrite: () => getUndoJournalGeneration() === generation } }
+    const canWrite = ctx.gesture?.canWrite
+    ctx = { ...ctx, gesture: { source: 'user', txnId: `shot-table-batch-${crypto.randomUUID()}`, suppressUndoBarriers: true, canWrite: () => getUndoJournalGeneration() === generation && (canWrite?.() ?? true) } }
+  }
+  // Placement includes the original reference pool, including unused visual anchors.
+  if (landing?.placementOnly) {
+    for (const anchor of ctx.plan.anchors) {
+      if (!isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor) || anchorNodeFor(ctx, canvasState().nodes, anchor)) continue
+      const defaults = await resolveDefaults()
+      if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard anchor placement')
+      const args = storyboardAnchorToCreateNodesArgs(ctx.plan, anchor, { ...defaults, creationDocumentId: ctx.documentId, storyboardDesignId: ctx.designId, materializationOperationId: `storyboard:${ctx.designId}` })
+      if (args) await applyCreate(args, ctx.gesture, ctx.assertCurrent)
+    }
   }
   const runIds: string[] = []
   for (const row of rows) {
     if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard batch')
-    const { shotNodeId, keyframeNodeId } = await materializeShotRow(ctx, row.shot, row.mode)
+    const { shotNodeId, keyframeNodeId } = await materializeShotRow(ctx, row.shot, row.mode, landing?.placementOnly)
     const { nodes } = canvasState()
     const keyframeNode = keyframeNodeId ? nodes.find((node) => node.id === keyframeNodeId) ?? null : null
     if (keyframeNode && !hasUsableResult(keyframeNode)) runIds.push(keyframeNode.id)
@@ -310,11 +357,15 @@ export async function runStoryboardBatch(
     withCanvasGestureContext(ctx.gesture, () => {
       const store = useGenerationCanvasStore.getState()
       if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard grouping')
-      const createdIds = runIds.filter(id => !existingNodeIds.has(id))
+      const createdIds = store.nodes.filter(node => !existingNodeIds.has(node.id) && node.meta?.storyboardDesignId === ctx.designId).map(node => node.id)
       if (createdIds.length) store.createGroup('shots', landing.groupTitle, { nodeIds: createdIds })
     })
   }
   if (ctx.gesture?.canWrite && !ctx.gesture.canWrite()) throw new Error('Canvas changed before storyboard confirmation')
+  // 只摆位不生成：一张卡都没弹过。
+  if (landing?.placementOnly) return 'nothing-to-run'
   const { nodes, edges } = canvasState()
-  await confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }))
+  await ctx.assertCurrent?.()
+  // 结局要往回送：Agent 的 `generate` 对文稿方案就是经这条链问的用户（见 `generationRunOutcome.ts`）。
+  return confirmAndRunPlan(buildDependencyWaves(runIds, { nodes, edges }), confirmationGuards(ctx))
 }

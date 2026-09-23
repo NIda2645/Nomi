@@ -3,7 +3,7 @@
 //
 // 为什么单独成文件：`mcpGenerationTools.ts` 贴着 800 行门岗（R9），而这段逻辑本身是一个
 // 完整的单元（两种参数两种待遇那条分界线就住在这里），拆出来比塞在 handler 里更好读、可单测。
-import { compileExecutionContract, type PlanCandidate } from "./executionContract";
+import { admitPlanCandidate, type PlanCandidate } from "./executionContract";
 import { normalizeVideoCandidate, stripParametersNotAccepted, videoCompileOptions } from "./mcpGenerationVideoResolve";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
@@ -55,7 +55,10 @@ export function resolvePlanPatch(input: {
   // 判的是**归一之后**的候选：变体别名（`fast-face` → `fast`）要先被认成正名，
   // 否则合法的别名会被自己的变体清单拒掉。
   if (userPatch.parameters !== undefined) {
-    compileExecutionContract(normalizedCandidate, registry, videoCompileOptions(normalizedCandidate, videoModelCandidates));
+    // 只做**准入**那一趟，不做提示词投影：plan 这条路拿不到 `referenceSourceUrls`，
+    // 整份合同编译一遍会让任何一份 prompt 里带 `@[asset:…]` 的草稿改一次参数就被
+    // 「投影不出 @image1」打回。判据与 preview/gate_request 是同一趟（`admitPlanCandidate`）。
+    admitPlanCandidate(normalizedCandidate, registry, videoCompileOptions(normalizedCandidate, videoModelCandidates));
   }
   return {
     normalizedPatch: {

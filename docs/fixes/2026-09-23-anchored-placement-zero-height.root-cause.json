@@ -1,0 +1,123 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-23-anchored-placement-zero-height",
+  "problem_type": "Anchored composer placement collapses to zero height when its anchor fills the usable viewport",
+  "symptom": "The core canvas lifecycle test reports a zero-height placement, leaving the composer unmeasurable and unusable at the fit-view boundary.",
+  "direct_cause": "resolveAnchoredPlacement clamps both aboveSpace and belowSpace to zero and uses the selected side space as the only height source when minHeight is omitted.",
+  "class_root": "The shared placement boundary had no fallback that preserved natural content height when an anchor consumed all available side space.",
+  "affected_population": [
+    "Composer overlays anchored to a node that touches both usable viewport edges",
+    "Fit-view and small-window layouts where the selected node fills the stage"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts"
+  ],
+  "entry_points": [
+    "AgentPanelV4Context placement",
+    "useComposerViewportPlacement placement"
+  ],
+  "internal_only_reason": "The invariant is an application-owned geometry contract; no dependency behavior determines the fallback height.",
+  "invariants": [
+    "A non-degenerate usable stage and positive natural content height produce a positive in-stage placement height even when the anchor leaves no side space."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Context.tsx",
+      "symbol": "resolveAnchoredPlacement"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+      "symbol": "AnchoredRect"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+      "symbol": "AnchoredPlacement"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
+      "symbol": "resolveAnchoredPlacement"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 4,
+    "why_not": "The two consumers must remain separate because AgentPanelV4Context and useComposerViewportPlacement own different host lifecycles; both now converge on the same resolveAnchoredPlacement boundary. The type declarations are local reads required by the shared contract."
+  },
+  "generality_proof": "Both production consumers call the same pure resolver, and the resolver derives the fallback from the supplied stage and natural height rather than from a caller, host, or viewport size. Any anchor geometry that exhausts both side spaces therefore receives the same positive in-stage fallback.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+      "symbol": "resolveAnchoredPlacement",
+      "responsibility": "Choose side, clamp dimensions, and preserve measurable natural content height inside the usable stage."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Context.tsx",
+      "entry_point": "AgentPanelV4Context composer placement",
+      "disposition": "enforced",
+      "evidence": "This consumer calls resolveAnchoredPlacement for the resident Agent panel composer and inherits the shared fallback."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
+      "entry_point": "useComposerViewportPlacement composer placement",
+      "disposition": "enforced",
+      "evidence": "This consumer calls the same resolver for canvas node composers and therefore receives the same full-stage behavior."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The geometry is shared by multiple hosts and can recur for any viewport, zoom, dock, or anchor combination that leaves no side space.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+      "Checked AgentPanelV4Context.tsx and useComposerViewportPlacement.ts as the two production consumers.",
+      "Checked anchoredPlacement.test.ts and coreCanvasLifecycle.test.ts for edge and full-stage geometry coverage."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+    "invariant": "When the usable stage has positive height, resolved height is at least the natural height clamped to that stage whenever both side spaces are zero.",
+    "failure_mode": "A degenerate stage still resolves to zero dimensions; a valid stage never returns a zero-height natural composer solely because the anchor fills it.",
+    "exception_policy": "none",
+    "strategy": "Keep the fallback in the pure shared resolver so every host and every future caller receives the same geometry rule.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+      "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
+    "src/workbench/generationCanvas/components/coreCanvasLifecycle.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The resolver remains the single placement path; this change only closes its missing full-stage branch."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The failure is in the application geometry invariant and does not depend on a third-party runtime.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data or caller contract changes; all callers continue using the same resolver signature.",
+  "residual_risks": [
+    "Visual confirmation is covered by the golden-path Electron run; packaged macOS visual evidence remains part of the release lane."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/anchoredPlacement.ts",
+    "tests": [
+      "src/workbench/generationCanvas/nodes/anchoredPlacement.test.ts",
+      "src/workbench/generationCanvas/components/coreCanvasLifecycle.test.ts"
+    ],
+    "why": "The pure resolver is the single owner of side-space clamping and natural composer height; both its direct geometry tests and the lifecycle consumer test exercise the invariant."
+  }
+}

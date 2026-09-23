@@ -13,7 +13,6 @@ import {
   getMcpConnectionAttestation,
   type McpConnectionContext,
 } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import {
   createProjectSessionRuntime,
   createVerifiedProjectSessionBinding,
@@ -78,9 +77,7 @@ describe('MCP stdio project-session router', () => {
       projectGeneration: identity.projectGeneration,
       payload: {},
     }
-    const generationPolicy = createMcpGenerationPolicy({ env: {} })
     const runtime = () => createProjectSessionRuntime({
-      generationPolicy,
       leaseFilePath: path.join(dir, 'project-leases-v2'),
       leaseMacKey: 'route-flip-lease-key',
       leaseStoreMacKey: 'route-flip-store-key',
@@ -103,7 +100,6 @@ describe('MCP stdio project-session router', () => {
       runTask: vi.fn(),
       makeGateway: vi.fn(() => gateway),
       productionRuns: {},
-      generationPolicy,
       origin: { host: 'codex' as const },
     }
     let guiIsLive = true

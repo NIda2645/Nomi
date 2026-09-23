@@ -265,7 +265,7 @@ function outsideProjectWrites() {
 // ---------------------------------------------------------------------------
 // D4 错误码表副本
 // ---------------------------------------------------------------------------
-const KNOWN_CODES = ['surface_port_stale', 'surface_port_unavailable', 'surface_port_unbound', 'capability_unsupported', 'capability_target_stale', 'capability_input_invalid', 'capability_output_invalid', 'generation_input_invalid', 'generation_execution_failed', 'document_target_stale', 'spend_confirm_surface_unavailable']
+const KNOWN_CODES = ['surface_port_stale', 'surface_port_unavailable', 'surface_port_unbound', 'capability_unsupported', 'capability_target_stale', 'capability_input_invalid', 'capability_output_invalid', 'generation_input_invalid', 'generation_execution_failed', 'generation_not_started', 'document_target_stale', 'spend_confirm_surface_unavailable']
 function errorCodeTables() {
   const out = []
   for (const rel of FILES) {

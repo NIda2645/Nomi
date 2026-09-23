@@ -12,6 +12,7 @@ import {
 } from './aiAssistedOnboardingContent'
 import { genericMcpSnippet } from './mcpGenericSnippet'
 import { ASSISTANT_CLIENT_ORDER } from './assistantActivationState'
+import { enOnboardingProviders, zhOnboardingProviders } from '../../i18n/locales/onboardingProviders'
 
 const headings = { prompt: '任务提示词', skill: '技能文件', mcp: 'MCP 配置片段' }
 const prompt = '帮我把 X 接进 Nomi。'
@@ -59,6 +60,27 @@ describe('AI-assisted onboarding clipboard', () => {
     expect(text).not.toMatch(/\bsk-[A-Za-z0-9]/)
     expect(text.toLowerCase()).not.toContain('apikey')
     expect(text.toLowerCase()).not.toContain('api_key')
+  })
+
+  /**
+   * 复制出去的那一份里有两段密钥纪律：**任务提示词**（i18n，zh/en 各一份）与 **SKILL.md**。
+   * 它们会被同一个助手同时读到，所以只要说的不是一回事，助手就得自己挑一条——而它挑哪条
+   * 不报错、也没人看得见。2026-09-21 就出过这个：SKILL.md 按拍板写了「用户主动交给你时可以
+   * 用 set_key 代填」，提示词却还写着「不要写进任何参数」，等于当场把那条路作废。
+   *
+   * 这条断言判的是**相抵**，不是措辞：提示词必须说出那个例外，且不许再出现那句绝对禁止。
+   */
+  it('the task prompt and the skill file agree on who may type the key', () => {
+    expect(ASSISTED_ONBOARDING_SKILL_MARKDOWN).toContain('set_key')
+
+    const contradictions: string[] = [
+      ['zh', zhOnboardingProviders.assistedOnboarding.promptBody, '除非我主动把密钥交给你', '不要写进任何参数'],
+      ['en', enOnboardingProviders.assistedOnboarding.promptBody, 'Only if I hand you the key myself', 'never put it in an argument'],
+    ].flatMap(([locale, body, exception, absoluteBan]) => [
+      ...(body.includes(exception) ? [] : [`${locale}: 提示词没说出「用户主动交给你时可以代填」这个例外`]),
+      ...(body.includes(absoluteBan) ? [`${locale}: 提示词仍写着绝对禁止（「${absoluteBan}」），与 SKILL.md 的 set_key 那条相抵`] : []),
+    ])
+    expect(contradictions).toEqual([])
   })
 
   // 「其它」那一行点名的宿主必须从真实客户端表 derive——手列一份，加一个客户端就漏一个。

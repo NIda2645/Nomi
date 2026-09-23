@@ -32,21 +32,34 @@
       "name": "参数准入",
       "owner": {
         "path": "electron/capabilityCore/executionContract.ts",
-        "symbol": "GENERATION_PLANNING_HINTS",
-        "pending": true
+        "symbol": "compileParameters"
       },
-      "consumers": [],
+      "consumers": [
+        "electron/capabilityCore/generationPlanPatch.ts",
+        "electron/capabilityCore/mcpGenerationTools.ts",
+        "electron/capabilityCore/mcpGenerationMultiShot.ts",
+        "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+        "electron/capabilityCore/modelAdmissionSchema.ts",
+        "electron/capabilityCore/moduleCatalogBootstrap.ts",
+        "electron/parity/generationParityTestUtils.ts"
+      ],
       "since": "2026-09-22",
-      "notes": "pending：待总合并收成一份。今天 main 上是这一份（GENERATION_PLANNING_HINTS / GENERATION_PLANNING_HINT_KEYS）；另一条未合并 lane 有第二份判据 GENERATION_PLANNING_PARAMETER_KEYS，各带一套拒绝形状。收口人：同上那份总合并任务书（两张表并成一张、一个 owner，拒绝形状取 ParameterRejection）。合完去掉 pending 并补 consumers。"
+      "notes": "2026-09-22 总合并收口（合同 docs/fixes/2026-09-22-parameter-admission-one-owner.root-cause.json）。判据本体 = compileParameters，合法键集三档派生：档案 mode.params（videoCompileOptions / archetypeCompileOptions）→ mapping 的 create op 派生（moduleCatalogBootstrap.modelParameterSchema）→ 都拿不到则放行 + warning。拒绝形状只有 ParameterRejection 一套（droppedFields 账本已删）。「Nomi 自己消费、不上 wire」的意图键表下沉到 electron/capabilityCore/generationPlanningParameters.ts 的 GENERATION_PLANNING_HINTS（键 + 类型，唯一那一张；executionContract 只 re-export）——它是同一个概念的子表，不是第二个 owner。准入那一趟单独有入口 admitPlanCandidate：要校验参数的调用方走它，要整份合同（含提示词 @ 投影）的走 compileExecutionContract。刻意未收：electron/parity/generationParityTestUtils.ts 的对拍 harness 自己编一份（它的职责就是绕开生产装配），已在合同 door_reduction.why_not 点名。"
     },
     {
       "name": "供应商落家",
       "owner": {
-        "pending": true
+        "path": "electron/shared/contracts/vendorPreference.ts",
+        "symbol": "compareVendorLanding"
       },
-      "consumers": [],
+      "consumers": [
+        "electron/catalog/executableModel.ts",
+        "src/config/modelIdentity.ts",
+        "src/workbench/ai/v4/agentPanelV4ModelRows.ts",
+        "src/workbench/generationCanvas/agent/availableModels.ts"
+      ],
       "since": "2026-09-22",
-      "notes": "pending：owner 待总合并放进 electron/shared 之后再登记路径，此处刻意不写路径（不拿现有文件冒充 owner）。今天的两个写口：渲染层排序规则（src/workbench/common/useVendorPreference.ts 一线）与主进程侧；electron/shared/contracts/vendorPreference.ts 只是跨进程的存储契约（顺序设置的读写），不是落家规则本体。收口人：同上那份总合并任务书（规则本体放 electron/shared，两侧都 import 它、删各自副本，并补一条「自接入供应商 × 用户重排过顺序」的对拍测试）。"
+      "notes": "2026-09-22 总合并收口（合同 docs/fixes/2026-09-22-vendor-landing-one-owner.root-cause.json）。规则本体 = compareVendorLanding：用户排过的顺序 → 供应商分级 vendorTier（官方 > 内置中转 > 自接/未知）；用户 09-22 拍板「按照默认走」= 没排过序时内置中转优先、自接靠后（#832 渲染层规则为准）。分级表只此一份，渲染层 src/config/modelIdentity.ts 只 re-export vendorTier。消费方只许在共享比较子之后补**不携带偏好语义**的稳定序（渲染层补显示名字母序、执行侧补目录原序）。electron/shared/contracts/vendorPreference.ts 同时还是顺序设置的跨进程存储契约——存储形状与落家规则住同一个文件、是同一个概念的两面，不是两个 owner。对拍棘轮：electron/parity/vendorLandingParity.test.ts（任取一个排序，三处调用点的「第一家」必须相同）。"
     }
   ]
 }

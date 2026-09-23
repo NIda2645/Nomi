@@ -1,16 +1,18 @@
 import type { AgentModelEntry } from "../agentCapabilities/availableModels"
+import type { StoryboardRequestTarget } from '../agentCapabilities/generationInvocationContext'
 import type { ProjectAgentAttachmentRef } from '../workbenchInput'
 import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
 import type { ProjectBinding } from '../projectBinding'
 import type { ProjectAgentApprovalPolicy } from '../agentCapabilities/capabilityApprovalPolicy';
 import type { AgentContextSnapshot } from '../agentContextSnapshot'
 import type { PreconditionSet, TargetRef } from '../capabilityTargeting'
-import type { LaneCommand, LaneCommandOutcome, LaneProjection } from './laneContracts'
+import type { LaneCommand, LaneCommandOutcome, LaneConversationRef, LaneProjection } from './laneContracts'
 import type { LaneErrorCode } from './laneErrorCodes'
 import type { ProjectAgentProposalReceiptWrite, ProjectAgentProposalReceiptTransition, ProjectAgentProposalReceiptClear, ProjectAgentProposalReceiptView } from '../projectAgentProposalReceipt'
 
 /** User input only. Model credentials and capability authority are resolved in main. */
 export interface LaneComposerContext {
+  storyboardTarget?: StoryboardRequestTarget
   model?: { vendorKey: string; modelKey: string }
   approvalPolicy: ProjectAgentApprovalPolicy
   documentId?: string
@@ -20,10 +22,22 @@ export interface LaneComposerContext {
   availableModels?: readonly AgentModelEntry[]
   attachments?: readonly ProjectAgentAttachmentClaim[]
   systemPrompt?: string
+  /** Main-resolved skill contribution, separate from the original template instructions. */
+  skillPrompt?: string
+  /** Captured on each new admission; historical target selectors cannot grant surface authority. */
+  admissionSurface?: TargetRef['kind']
   displayText?: string
   skillKey?: string
+  /** Optional pinned version for restored drafts; main rejects a changed installed skill. */
+  expectedSkillHash?: string
+  /** Main-resolved immutable label/version, never accepted from renderer input. */
+  skillSnapshot?: { name: string; contentHash: string }
   /** Untrusted selector: main validates the stopped entry on this lane's current branch. */
   continueFromEntryId?: string
+  /** Original input selector, validated against the current pi branch by main. */
+  retryFromEntryId?: string
+  /** Unsent historical intent, separate from this admission's current surface and policy. */
+  restoredIntent?: LaneDraftIntent
 }
 
 export type LaneReceiptCommand =
@@ -40,16 +54,24 @@ export interface LaneSingleShotRequest {
   context: LaneComposerContext
 }
 
+export type LaneConversationAddress = LaneConversationRef & Readonly<{ workspaceId: string }>
+/** Restorable user intent; current model, policy and capability authority are deliberately excluded. */
+export type LaneDraftIntent = Pick<LaneComposerContext, 'documentId' | 'target' | 'preconditions' | 'contextSnapshot' | 'systemPrompt' | 'storyboardTarget'>
+
 export type LaneDesktopCommand = (LaneCommand | LaneReceiptCommand
   | ({ kind: 'single-shot' } & LaneSingleShotRequest)
   | { kind: 'single-shot-abort'; requestId: string }
   | { kind: 'workspace-open'; binding: ProjectBinding; model?: LaneComposerContext['model'] }
   | { kind: 'workspace-close' }
   | { kind: 'workspace-policy'; policy: ProjectAgentApprovalPolicy }
-) & { workspaceId?: string; expectedLane?: string; context?: LaneComposerContext }
+) & { workspaceId?: string; expectedLane?: string; expectedSessionId?: string; context?: LaneComposerContext }
 
 export interface LaneRestoredDesktopInput {
   text: string
+  displayText?: string
+  skillKey?: string
+  skillSnapshot?: { name: string; contentHash: string }
+  intent?: LaneDraftIntent
   attachments?: readonly (ProjectAgentAttachmentClaim & Partial<ProjectAgentAttachmentRef>)[]
 }
 

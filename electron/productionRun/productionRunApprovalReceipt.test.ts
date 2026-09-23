@@ -186,7 +186,7 @@ describe('production approval receipt scope', () => {
   // 2026-09-10 21:00：降到 budget_only 也是一次付费放行（逐镜确认门只在 confirm_all 生成，降档=以后不再问）。
   // 判据与付费门逐字同构：手势章或收据，缺两者拒。收紧方向（升到 confirm_all）与还没开逐镜确认的
   // 档位不进这条闸——把不变量放大成打扰不是守住它。
-  it('requires a human approval fact only when the downgrade actually removes a paid confirmation', () => {
+  it('requires a human approval fact for every downgrade to budget_only, not only the paid one', () => {
     const { command } = fixture()
     const trust = (payload: Record<string, unknown>, extra: Partial<RunCommand> = {}): RunCommand => ({
       ...command({}, extra),
@@ -199,8 +199,15 @@ describe('production approval receipt scope', () => {
     expect(() => owner(undefined).verifyTrustGrant('project-1', 'run-1', confirmAll, trust({})))
       .toThrowError(expect.objectContaining({ code: 'human_approval_required' }))
     expect(owner(undefined).verifyTrustGrant('project-1', 'run-1', confirmAll, trust({}, { humanGesture: true }))).toBeUndefined()
-    expect(owner(undefined).verifyTrustGrant('project-1', 'run-1', keyConfirm, trust({}))).toBeUndefined()
+    // 2026-09-21：key_confirm → budget_only 以前一份证据都不要（「只跳免费的创意/样片门」）。
+    // 但「全自动档要不要开」本身就是用户的决定——真机已证一个裸 bearer 进程能靠这一条把方向门批掉。
+    expect(() => owner(undefined).verifyTrustGrant('project-1', 'run-1', keyConfirm, trust({})))
+      .toThrowError(expect.objectContaining({ code: 'human_approval_required' }))
+    expect(owner(undefined).verifyTrustGrant('project-1', 'run-1', keyConfirm, trust({}, { humanGesture: true }))).toBeUndefined()
+    // 收紧与同档位不进这条闸。
     expect(owner(undefined).verifyTrustGrant('project-1', 'run-1', confirmAll, trust({ trustLevel: 'confirm_all' }))).toBeUndefined()
+    const budgetOnly = { ...run, policy: { trustLevel: 'budget_only' } } as unknown as ProductionRun
+    expect(owner(undefined).verifyTrustGrant('project-1', 'run-1', budgetOnly, trust({}))).toBeUndefined()
   })
 
   // 反向也要堵死：一张真门的收据不能拿来当信任降档的人证（gateId 与 costScope 都对不上）。

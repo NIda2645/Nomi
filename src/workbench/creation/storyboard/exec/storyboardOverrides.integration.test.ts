@@ -95,3 +95,37 @@ it('prompt event replay retains the same override ownership as the live node', a
     expect(replay.nodes[0].meta).toEqual(node().meta)
   } finally { setCanvasEventSinkForTests(null) }
 })
+
+it('plan-bound nodes retain later canvas prompt overrides when the original row generates', async () => {
+  const store = useGenerationCanvasStore.getState()
+  store.restoreSnapshot({ nodes: [{ id: 'run-node', kind: 'video', title: 'Run shot', position: { x: 0, y: 0 }, prompt: '傍晚', meta: { storyboardDesignId: 'run', shotId: 's3' } }], edges: [], groups: [], selectedNodeIds: [] })
+  store.updateNode('run-node', { prompt: '用户画布夜景' })
+  await generateShotRow({ ...ctx, designId: 'run' }, shot, null)
+  expect(submitted.prompts).toEqual(['用户画布夜景'])
+  expect(node().meta?.overriddenFields).toContain('prompt')
+})
+
+it('an existing shot materializes and connects a newly referenced visual anchor before generation', async () => {
+  const updatedShot = { ...shot, anchorIds: ['new-actor'] }
+  const updatedPlan = { ...plan, anchors: [{ id: 'new-actor', kind: 'character' as const, carrier: 'visual' as const, name: 'Actor', description: 'New actor' }], shots: [updatedShot] }
+  const mode = null
+  await materializeShotRow({ ...ctx, plan: updatedPlan }, updatedShot, mode)
+  const canvas = useGenerationCanvasStore.getState()
+  const anchorNode = canvas.nodes.find(value => value.meta?.anchorId === 'new-actor')
+  expect(anchorNode).toBeDefined()
+  expect(canvas.edges.some(edge => edge.source === anchorNode?.id && edge.target === 'n3')).toBe(true)
+})
+
+it('Run identity does not grant override ownership to variants, derived nodes, keyframes or partial identities', () => {
+  const store = useGenerationCanvasStore.getState()
+  for (const spec of [
+    { meta: { productionRunId: 'run' } },
+    { meta: { productionRunId: 'run', productionShotId: 's3' }, regeneratedFrom: 'original' },
+    { meta: { productionRunId: 'run', productionShotId: 's3' }, derivedFrom: 'original' },
+    { meta: { productionRunId: 'run', productionShotId: 's3', storyboardKeyframe: true } },
+  ]) {
+    store.restoreSnapshot({ nodes: [{ id: 'branch', kind: 'video', title: 'Shot 3', position: { x: 0, y: 0 }, prompt: 'Original', ...spec }], edges: [], groups: [], selectedNodeIds: [] })
+    store.updateNode('branch', { prompt: 'Independent edit' })
+    expect(node().meta?.overriddenFields).toBeUndefined()
+  }
+})

@@ -1,3 +1,4 @@
+import { storyboardAuthorFieldsSchema } from '../generationPlanSchemas'
 // 十三个写动词（设计正本 §5.2）：一个动词一种状态一种效果。执行那一半住 `electron/agentLane/`：常驻的
 // （write_script / 三个画布写 / start_model_setup）在 `laneDocumentTools.ts` / `laneCanvasTools.ts` /
 // `laneDesktopTools.ts` 各自绑定；延迟组的经 `laneVerbTransport.ts` 翻成传输方法，`laneExtendedDesktopPorts.ts` 执行。
@@ -30,20 +31,28 @@ const generationParameters = z.record(z.union([z.string(), z.number(), z.boolean
 
 /** 一镜草稿：模型填的是**语义**（提示词/模型/参数/参考），候选身份由宿主按目录合成，与单镜路径同一个解析器。 */
 export const draftShotSchema = z.object({
-  shotId: shotId.optional().describe("Pass an existing shot id to update that draft; omit to create a new shot."),
-  title: z.string().trim().min(1).max(120).optional().describe("Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language."),
-  prompt: z.string().trim().min(1).max(8_000).describe("Generation prompt in the user's language (Chinese user → Chinese prompt)."),
-  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer from prompt, references and durationSec."),
+  shotId: shotId.optional().describe("Existing shot id to update; omit to create one."),
+  storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
+  title: z.string().trim().min(1).max(120).optional().describe("Short human title in the user's language, shown on the canvas node and spend card."),
+  prompt: z.string().trim().min(1).max(8_000).optional().describe("Prompt in the user's language. Required for a new shot; when revising (operationId + shotId) send it only to change it."),
+  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer it (a named modeId decides it)."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
-  durationSec: z.number().positive().max(600).optional().describe("Video clip length in seconds; omit for stills."),
+  durationSec: z.number().positive().max(600).optional().describe("Clip length in seconds; omit for stills. The only place for length, never parameters."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
-  modeId: z.string().trim().min(1).optional().describe("Mode id of that model from list_models."),
+  // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
+  // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
+  // 两个都填正是它自己给自己造矛盾的地方（run2 A3/A6 三次）。
+  modeId: z.string().trim().min(1).optional().describe("Mode id from list_models. It decides the job kind: omit taskKind with it."),
   candidate: z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
   }).optional().describe("Catalog candidate identity when known."),
-  parameters: generationParameters.optional().describe("Parameter values the model's profile declares; the host clamps them to real limits and reports every clamp."),
-  references: z.array(z.string().trim().min(1)).max(30).optional().describe("Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references."),
+  parameters: generationParameters.optional().describe("Values the model's profile declares, except length (use durationSec). The host clamps them and reports every clamp."),
+  // 2026-09-22：这句话原来写着「asset ids …**or shot ids** (from look_at_canvas or this call)」，
+  // 而解析这一头（`pinAssetReference`）只认项目素材库里的 assetId——镜头 id 送进来**必然**被拒，
+  // 理由还是「不在这个项目的素材库里」（run2 的 A1/A4 各一次，模型照着说明书做的）。
+  // 跨镜复用走的是 `storyboard.anchorIds`，不是这里。说明书按真的那份写。
+  references: z.array(z.string().trim().min(1)).max(30).optional().describe("Asset ids from look_at_media. To reuse another shot's look use storyboard.anchorIds, not a shot id."),
 }).strict();
 
 /**
@@ -95,20 +104,42 @@ const prepareWriteScriptArguments = (() => {
  * 2026-09-18 之前平铺的那个叫 `modelKey`，于是这条拒绝还得先解释「这两个名字是同一件事」；
  * 名字统一之后它只剩本来的职责：同一件事被说了两遍且说法不一致。
  */
-function rejectConflictingModelIdentity(args: unknown): Record<string, unknown> {
+/**
+ * 一镜把**同一件事写了两遍且说法不一样** → 当场拒绝并点名两处。
+ *
+ * 两条判据同一个形状，所以住同一个函数（它们不是两个功能，是一条规则的两格）：
+ *   · 模型身份：`modelId` 与 `candidate.modelId`；
+ *   · 时长：`durationSec` 与 `parameters.duration`。
+ *
+ * 时长这一条是 2026-09-21 实测加的：A3 那一镜同时写了 `durationSec: 43.7` 与
+ * `parameters.duration: 5`（投影里 `durationSec` 赢，于是用户会拿到一段 43.7 秒的片子）。
+ * 更要命的是它和当天 12 次「shots: must be array」在**同一个 token 上**断掉——
+ * 那 12 段坏掉的 JSON 全部坏在 `"durationSec": ` 之后。两个家的字段正是模型最容易卡住的地方。
+ *
+ * **能宽容就宽容**：两处写的是同一个数 → 放行（不是歧义）；只写了一处 → 放行。
+ */
+function rejectDuplicateShotIdentity(args: unknown): Record<string, unknown> {
   const record = (args && typeof args === "object" && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
   const shots = Array.isArray(record.shots) ? record.shots : [];
+  const refuse = (because: string): never => {
+    throw new LaneDomainFailure(wrongVerbFailure({ attempted: "draft_shots", useInstead: "draft_shots", because }));
+  };
   for (const shot of shots) {
     if (!shot || typeof shot !== "object") continue;
-    const { modelId, candidate } = shot as { modelId?: unknown; candidate?: { modelId?: unknown } };
+    const { modelId, candidate, durationSec, parameters } = shot as {
+      modelId?: unknown; candidate?: { modelId?: unknown };
+      durationSec?: unknown; parameters?: { duration?: unknown };
+    };
     const declared = candidate && typeof candidate === "object" ? candidate.modelId : undefined;
     if (typeof modelId === "string" && typeof declared === "string" && modelId.trim() && declared.trim()
       && modelId.trim() !== declared.trim()) {
-      throw new LaneDomainFailure(wrongVerbFailure({
-        attempted: "draft_shots", useInstead: "draft_shots",
-        because: `A shot names two different models: modelId="${modelId.trim()}" and candidate.modelId="${declared.trim()}". `
-          + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.",
-      }));
+      refuse(`A shot names two different models: modelId="${modelId.trim()}" and candidate.modelId="${declared.trim()}". `
+        + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.");
+    }
+    const nestedDuration = parameters && typeof parameters === "object" ? parameters.duration : undefined;
+    if (typeof durationSec === "number" && typeof nestedDuration === "number" && durationSec !== nestedDuration) {
+      refuse(`A shot names two different lengths: durationSec=${durationSec} and parameters.duration=${nestedDuration}. `
+        + "Length has one home: set durationSec and leave duration out of parameters.");
     }
   }
   return record;
@@ -142,14 +173,14 @@ export function writeVerbs(): VerbDeclaration[] {
     name: "draft_shots", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.plan", effect: "reversible_local", nextAction: "none", internalGroup: "generation",
     effectGroups: ["canvas-node-creation"],
     describe: {
-      does: "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
+      does: "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
-      notWhen: "It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp.",
+      notWhen: "New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Two shapes: creating a shot needs prompt; revising one (operationId + shotId) carries only the fields you are changing — prompt, model, modeId, parameters, references — and leaves the rest out, including title and role, which are fixed when the shot is created. The host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
-      operationId: z.string().trim().min(1).max(160).optional().describe("The operationId an earlier draft_shots call returned, when updating its shots."),
+      operationId: z.string().trim().min(1).max(160).optional().describe("operationId from an earlier draft_shots call, to update it."),
       taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce for every shot; omit to infer per shot."),
       candidate: z.object({
         providerId: z.string().trim().min(1).describe("Provider id from list_models."),
@@ -160,6 +191,27 @@ export function writeVerbs(): VerbDeclaration[] {
       // `shotId` 只在「改已有草稿」时有意义。少了这条约束，模型发
       // `{shots:[{shotId:"shot-3", prompt:"…"}]}`（忘了 operationId）时会新建一份草稿、把 shot-3 悄悄丢掉——
       // 它以为改好了，用户看到的是画布上多了一个镜头（2026-09-18 扫描的 D 类：静默丢字段）。
+      // 「新建」与「修订」是**两种形状**，而 schema 只有一份（模型面不许长出第二个工具）。
+      // 差别只有一条，就写在这里：新建必须给 `prompt`，修订只带你要改的那几件。
+      //
+      // 2026-09-21 实测里这条是自相矛盾的：`prompt` 在 schema 上是必填，而同一份说明书告诉模型
+      // 「改草稿改的是提示词/模型/参数/参考」。于是只想改一个参数的那次被回了
+      // `shots.0.prompt: must have required properties prompt`——它照做，把整段提示词重抄一遍，
+      // 而重抄的那一遍就是它写坏 JSON 的地方。
+      if (value.operationId === undefined) {
+        const missing = value.shots.findIndex((shot) => shot.prompt === undefined);
+        if (missing >= 0) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", missing, "prompt"],
+            message: "a new shot needs a prompt (only a revision may leave it out, and a revision needs operationId)" });
+        }
+      } else {
+        // 修订一镜却一个字段都没改 = 一次没有意义的往返；当场说清，别让它以为改成功了。
+        const empty = value.shots.findIndex((shot) => Object.keys(shot).filter((key) => key !== "shotId").length === 0);
+        if (empty >= 0) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", empty],
+            message: "this revision changes nothing — include at least one of prompt, modelId/candidate, modeId, parameters, references, durationSec" });
+        }
+      }
       const stray = value.shots.findIndex((shot) => shot.shotId !== undefined);
       if (value.operationId === undefined && stray >= 0) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", stray, "shotId"], message: "shotId only addresses a shot inside an existing draft — pass operationId too, or omit shotId to create" });
@@ -179,45 +231,38 @@ export function writeVerbs(): VerbDeclaration[] {
           message: `a shot's ${field} is set when the shot is created — revising a draft changes its prompt, model, parameters and references, so drop ${field} here`,
         });
       }
-      // 「整份计划不能只有锚」——语义上自洽的约束：`role: "anchor"` 的定义就是「被**其它镜头**复用的
-      // 参考卡」，一份只有锚的计划自相矛盾（没有任何镜头去复用它们）。
+      // ── 2026-09-22：这条曾经是**拒绝**，现在不是了 ──
       //
-      // 为什么搬到这一面：宿主本来就拦（`mcpGenerationMultiShot.ts` 的
-      // 「多镜计划至少需要一个视频镜头」），但模型**只能撞上去才知道有这条规矩**。
-      // 2026-09-18 真机 23 轮实测，这是剩余失败的最大一类——27 次失败里 11 次是它，
-      // 而模型的意图完全正确：它在做标准分镜流程，先单独立视觉锚再排镜头，标题都写着
-      // 「角色锚｜林野」「场景锚｜旧房子客厅」「陈默·人物设定」——**那正是我们自己的导演技能教它的**。
-      // 6 次里 5 次它靠错误信息自纠了（下一次带 6~12 镜成功），但每次白费一个来回，还有 1 次整轮没救回来。
+      // 原文（git blame 96462450a / 2026-09-18）：「`role: "anchor"` 的定义就是被**其它镜头**复用的参考卡，
+      // 一份只有锚的计划自相矛盾」。那是个**定义**上的论证，不是机械上的：
+      //   · 锚本身就是要生成的图（它有候选、有价、`anchorChips` 在报价卡上逐张标价），
+      //   · present/seal 的范围是 `shots.filter(included !== false)`——**锚本来就在里面**，会真的跑、真的扣钱，
+      //   · 真正会坏的只有一处：`multiShotGateProjectionFor` 的行是按「非锚」筛的，全是锚就返回 undefined。
+      // 也就是说，拦的理由是**投影的管道**，不是领域。而「先建几张参考卡、镜头下一轮再补」是用户与
+      // Agent 都会走的正常路径（2026-09-18 实测 27 次失败里 11 次是模型在走标准分镜流程被这条拦下来），
+      // 用户 2026-09-21 亲自点名过这条报错。按「不因为我们自己的缺省拦用户」：**放行**。
       //
-      // 所以这里给的不只是「不行」，还有那条合法路怎么走：用户如果只想要那几张参考图本身，
-      // 它们就不是锚（没有别的镜头复用），省掉 `role` 当普通镜头发即可。
-      if (value.operationId === undefined && value.shots.every((shot) => shot.role === "anchor")) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom, path: ["shots", 0, "role"],
-          message: "an anchor is a reference card that other shots reuse, so a plan cannot be anchors only — "
-            + "put the anchors and the shots that reuse them in this one call. "
-            + "If the user only wants those reference images themselves, omit role so they are ordinary shots.",
-        });
-      }
+      // 管道那一处同 commit 修好（锚也能投影成报价行），「还没有镜头用到它们」降成草稿上的一条安静提示
+      // （`anchorsOnly` note，`mcpGenerationTools` 的 create 返回里），不是一次拒绝。
     }),
     examples: [
       { when: "One opening still:", arguments: { shots: [{ title: "Opening", prompt: "sunrise over the sea, wide shot, warm light", taskKind: "text_to_image", candidate: { providerId: "apimart", modelId: "image-1" } }] } },
       { when: "Change one existing shot's prompt:", arguments: { operationId: "op-1", shots: [{ shotId: "shot-3", prompt: "夜景，霓虹灯下的街道" }] } },
     ],
-    prepareArguments: (args: unknown) => rejectConflictingModelIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
+    prepareArguments: (args: unknown) => rejectDuplicateShotIdentity(modelArgumentTolerance({ arrayFields: ["shots"] })(args)),
   };
 
   const generate: VerbDeclaration = {
     name: "generate", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.plan", effect: "reversible_local", nextAction: "user_sees_spend_card", internalGroup: "generation",
     describe: {
-      does: "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi.",
+      does: "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else.",
       useWhen: `Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts ("run all six").`,
-      notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots.`,
+      notWhen: `Never to get a price — look_at_canvas already carries unit prices. Never when the user said "don't generate yet". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots.`,
       params: "operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots.",
     },
     // 模型面 = `generation.plan` 的 `present` 分支减掉 `operation`，只覆写描述（`verbProjections.ts`）。
     schema: generateModelSchema,
-    examples: [{ when: "Show the card for a draft:", arguments: { operationId: "op-1" } }],
+    examples: [{ when: "Ask the user to approve a draft, and learn what he decided:", arguments: { operationId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({ arrayFields: ["shotIds"] }),
   };
 
@@ -394,14 +439,14 @@ export function writeVerbs(): VerbDeclaration[] {
       does: "Cancel one running generation or export job.",
       useWhen: "The user asks to stop it.",
       notWhen: "Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded.",
-      params: "jobId from generate, export_video, check_job or look_at_canvas.",
+      params: "Copy domain and jobId from taskRef returned by generate, export_video, check_job or look_at_canvas. Never guess a task ID from a node ID or retry cancellation in another domain.",
     },
     // **投影原型（2026-09-18，只有这一个动词）**：模型面不再手写，而是从它声明的那份宿主契约 schema
     // 派生——`.omit()` 掉宿主自补的分支判别值，只覆写描述。宿主字段改名时这里是 tsc 红。
     // 为什么只有这一个、它覆盖不到什么（双域动词），见 `verbs/verbProjections.ts` 的文件头与
     // `docs/plan/2026-09-18-tool-projection-cancel-job-prototype.md`。
     schema: cancelJobModelSchema,
-    examples: [{ when: "Stop a running export:", arguments: { jobId: "export-1" } }],
+    examples: [{ when: "Stop a running export:", arguments: { domain: 'export', jobId: "export-1" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
 

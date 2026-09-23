@@ -250,7 +250,7 @@ export function NomiSelect({
         </button>
       </Combobox.Target>
 
-      <Combobox.Dropdown data-nomi-select-dropdown>
+      <Combobox.Dropdown data-nomi-select-dropdown className="nokey">
         {searchable ? (
           <Combobox.Search
             // Focus after the visible search input mounts, including nested-portal reparenting.

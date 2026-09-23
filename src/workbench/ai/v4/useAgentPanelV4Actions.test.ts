@@ -7,28 +7,36 @@ import type { ProjectAgentCommittedProposalRecord } from '../../../../electron/s
 import type { LanePart } from '../../../../electron/shared/agentLane/laneContracts'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../../../../electron/shared/agentLane/laneReceiptAuthority'
 import { buildAgentModelEntries } from '../../generationCanvas/agent/availableModels'
+import type { RecoveredAgentDraft } from '../projectAgentDraftRecovery'
+import { takeRecoveredAgentDraft } from '../projectAgentDraftRecovery'
+import type { LaneDraftIntent } from '../../../../electron/shared/agentLane/laneDesktopContracts'
 import type { ComposerAttachment } from '../composer/composerAttachmentTypes'
 
 const fixture = vi.hoisted(() => {
   const state = {
-    projectAgentDraft: '', projectAgentAttachments: [] as ComposerAttachment[],
+    projectAgentDraft: '', projectAgentDraftRevision: 0, projectAgentAdmissionId: null as string | null, projectAgentReferences: [] as import('../../workbenchStore').ProjectAgentReference[], projectAgentDraftIntent: null as LaneDraftIntent | null, projectAgentDraftDisplayText: null, projectAgentRecoveredDrafts: [] as RecoveredAgentDraft[], projectAgentAttachments: [] as ComposerAttachment[],
     activeDocumentId: 'doc-1', persistRevision: 1,
+    storyboardDesignsByDocumentId: {} as Record<string, Array<{ id: string; title: string }>>,
+    activeStoryboardId: null as string | null,
     workbenchDocuments: [{ id: 'doc-1', title: 'Current document', updatedAt: 42,
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一句。' }] }] } }],
     creationActiveSkill: null as { key: string; name: string } | null, selectedLibraryPrompt: null as { id: string } | null,
     projectAgentApprovalPolicy: { mode: 'safe-auto', spend: 'confirm' },
-    setProjectAgentDraft(text: string) { state.projectAgentDraft = text },
+    setProjectAgentDraft(text: string) { state.projectAgentDraft = text; state.projectAgentDraftRevision++ },
     // 真店里这个 setter 一次清掉同一个引用槽的两半（`workbenchStore.setCreationActiveSkill`）。
     setCreationActiveSkill(skill: { key: string; name: string } | null) {
       state.creationActiveSkill = skill
       state.selectedLibraryPrompt = null
+      state.projectAgentDraftRevision++
     },
     setProjectAgentAttachments(update: (current: ComposerAttachment[]) => ComposerAttachment[]) {
       state.projectAgentAttachments = update(state.projectAgentAttachments)
+      state.projectAgentDraftRevision++
     },
     setProjectAgentApprovalPolicy: vi.fn(),
   }
-  return { state, owner: { subscriptionId: 'workspace-a' } as object | null, say: vi.fn(), models: vi.fn(),
+  return { state, owner: { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } } as { subscriptionId: string; binding?: { projectId?: string; immutableProjectUuid: string } } | null, say: vi.fn(), models: vi.fn(),
+    cancelQueued: vi.fn(), abort: vi.fn(),
     record: null as ProjectAgentCommittedProposalRecord | null, undo: vi.fn(), projection: { lane: 'main', parts: [] as LanePart[] } }
 })
 vi.mock('../../generationCanvas/agent/availableModels', async importOriginal => ({
@@ -37,9 +45,12 @@ vi.mock('../../generationCanvas/agent/availableModels', async importOriginal => 
 vi.mock('react-i18next', async importOriginal => ({
   ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string) => key }),
 }))
-vi.mock('../lane/laneClient', () => ({ laneClient: { context: () => fixture.owner, say: fixture.say, projection: () => fixture.projection } }))
+vi.mock('../lane/laneClient', () => ({ laneClient: { context: () => fixture.owner, say: fixture.say,
+  prepareInput: async () => fixture.owner ? { workspaceId: (fixture.owner as { subscriptionId: string }).subscriptionId, laneName: fixture.projection.lane, sessionId: 'session-main' } : null,
+  conversation: () => fixture.owner ? { workspaceId: (fixture.owner as { subscriptionId: string }).subscriptionId, laneName: fixture.projection.lane, sessionId: 'session-main' } : null,
+  projection: () => fixture.projection, cancelQueued: fixture.cancelQueued, abort: fixture.abort } }))
 vi.mock('../../workbenchStore', () => ({ useWorkbenchStore: Object.assign(
-  (selector: (state: typeof fixture.state) => unknown) => selector(fixture.state), { getState: () => fixture.state },
+  (selector: (state: typeof fixture.state) => unknown) => selector(fixture.state), { getState: () => fixture.state, setState: (patch: Partial<typeof fixture.state> | ((state: typeof fixture.state) => Partial<typeof fixture.state>)) => Object.assign(fixture.state, typeof patch === 'function' ? patch(fixture.state) : patch) },
 ) }))
 vi.mock('../../generationCanvas/store/generationCanvasStore', () => ({ useGenerationCanvasStore: {
   getState: () => ({ persistRevision: 1, nodes: [], selectedNodeIds: [] }),
@@ -47,10 +58,10 @@ vi.mock('../../generationCanvas/store/generationCanvasStore', () => ({ useGenera
 vi.mock('../../generationCanvas/agent/proposalUndo', () => ({ getCommittedProposal: () => fixture.record, runProposalUndo: fixture.undo }))
 vi.mock('../../generationCanvas/agent/canvasSystemPrompt', () => ({ buildStaticAgentSystemPrompt: () => 'generation domain prompt' }))
 
-function mountActions() {
+function mountActions(surface: 'creation' | 'generation' = 'generation') {
   let actions!: AgentPanelV4Actions
   function Consumer() {
-    actions = useAgentPanelV4Actions('generation', { snapshot: { active: { lane: 'main' } } } as AgentPanelV4Data)
+    actions = useAgentPanelV4Actions(surface, { snapshot: { workspaceId: 'workspace-a', lanes: [{ laneName: 'main', sessionId: 'session-main' }], active: { lane: 'main', queues: [{ entryId: 'queued-1' }] } } } as unknown as AgentPanelV4Data)
     return null
   }
   renderToStaticMarkup(React.createElement(Consumer))
@@ -62,19 +73,120 @@ function deferred() {
   return { promise, resolve }
 }
 beforeEach(() => {
-  fixture.owner = { subscriptionId: 'workspace-a' }
+  fixture.owner = { subscriptionId: 'workspace-a', binding: { projectId: 'project-a', immutableProjectUuid: 'uuid-a' } }
   fixture.state.projectAgentDraft = 'keep this draft'
+  fixture.state.projectAgentAdmissionId = null
+  fixture.state.projectAgentDraftRevision = 0
   fixture.state.projectAgentAttachments = []
+  fixture.state.projectAgentRecoveredDrafts = []
+  fixture.state.projectAgentDraftIntent = null
+  fixture.state.projectAgentDraftDisplayText = null
   fixture.state.creationActiveSkill = null
   fixture.state.selectedLibraryPrompt = null
   fixture.say.mockReset()
   fixture.models.mockReset().mockResolvedValue([])
+  fixture.cancelQueued.mockReset()
+  fixture.abort.mockReset()
   fixture.record = null
   fixture.projection = { lane: 'main', parts: [] }
   fixture.undo.mockReset().mockResolvedValue(undefined)
 })
 
 describe('composer sends commit local cleanup only after current admission', () => {
+  it('preserves a new skill selection made while the captured send awaits admission', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.state.creationActiveSkill = { key: 'original', name: 'Original' }
+    fixture.say.mockResolvedValue({ ok: true })
+    const sending = mountActions().send('keep this draft')
+    const next = { key: 'next', name: 'Next' }
+    fixture.state.creationActiveSkill = next
+    release([])
+    expect(await sending).toBe(true)
+    expect(fixture.state.creationActiveSkill).toBe(next)
+  })
+  it('keeps current admission separate from a restored historical target', async () => {
+    fixture.state.projectAgentDraftIntent = { target: { kind: 'document', documentId: 'original', anchor: { kind: 'whole-document' } }, systemPrompt: 'Original template' }
+    fixture.say.mockResolvedValue({ ok: true })
+    expect(await mountActions().send('keep this draft')).toBe(true)
+    expect(fixture.say.mock.calls[0][2]).toMatchObject({ target: { kind: 'canvas' },
+      restoredIntent: { target: { kind: 'document', documentId: 'original' }, systemPrompt: 'Original template' } })
+  })
+  it('does not send an A draft into B after the model catalog resolves', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    const sending = mountActions().send('keep this draft')
+    fixture.projection.lane = 'other'
+    release([])
+    expect(await sending).toBe(false)
+    expect(fixture.say).not.toHaveBeenCalled()
+    expect(fixture.state.projectAgentDraft).toBe('keep this draft')
+  })
+
+  it('keeps a new draft separate when a queued input is withdrawn', async () => {
+    const result = { ok: true, cancelQueued: 'cancelled', restoredInput: [{ text: 'old queued instruction', skillKey: 'old-skill' }] }
+    const finished = Promise.resolve(result)
+    fixture.cancelQueued.mockReturnValue(finished)
+    mountActions().queueAction(0, 'withdraw')
+    await finished
+    expect(fixture.state.projectAgentDraft).toBe('keep this draft')
+    expect(fixture.state.projectAgentRecoveredDrafts).toMatchObject([{ text: 'old queued instruction',
+      projectUuid: 'uuid-a', conversation: { laneName: 'main', sessionId: 'session-main' }, skill: { key: 'old-skill' } }])
+    expect(fixture.say).not.toHaveBeenCalled()
+  })
+
+  it('keeps a late withdrawal with its original project and conversation', async () => {
+    let resolve!: (value: { ok: true; restoredInput: { text: string }[] }) => void
+    const pending = new Promise<{ ok: true; restoredInput: { text: string }[] }>(done => { resolve = done })
+    fixture.abort.mockReturnValue(pending)
+    mountActions().stop()
+    fixture.owner = { subscriptionId: 'workspace-b', binding: { immutableProjectUuid: 'uuid-b' } }
+    fixture.projection.lane = 'other'
+    fixture.state.setProjectAgentDraft('B unsent input')
+    resolve({ ok: true, restoredInput: [{ text: 'A withdrawn input' }] })
+    await pending
+    expect(fixture.state.projectAgentDraft).toBe('B unsent input')
+    expect(fixture.state.projectAgentRecoveredDrafts).toMatchObject([{ text: 'A withdrawn input', projectUuid: 'uuid-a',
+      conversation: { laneName: 'main', sessionId: 'session-main' } }])
+    takeRecoveredAgentDraft(fixture.state.projectAgentRecoveredDrafts[0].id, 'uuid-b', { laneName: 'other', sessionId: 'session-main' })
+    expect(fixture.state.projectAgentDraft).toBe('B unsent input')
+  })
+
+  it('taking back one of several inputs swaps the complete current draft without merging or sending', async () => {
+    fixture.state.creationActiveSkill = { key: 'current-skill', name: 'Current' }
+    const currentAttachment = { id: 'current-file', fileName: 'current.txt', status: 'error' } as ComposerAttachment
+    fixture.state.projectAgentAttachments = [currentAttachment]
+    const pending = Promise.resolve({ ok: true, restoredInput: [
+      { text: 'First', skillKey: 'first', skillSnapshot: { name: 'First skill', contentHash: 'hash-1' } },
+      { text: 'Second', skillKey: 'second' },
+    ] })
+    fixture.abort.mockReturnValue(pending)
+    mountActions().stop()
+    await pending
+    const first = fixture.state.projectAgentRecoveredDrafts[0]
+    takeRecoveredAgentDraft(first.id, 'uuid-a', { laneName: 'main', sessionId: 'session-main' })
+    expect(fixture.state.projectAgentDraft).toBe('First')
+    expect(fixture.state.creationActiveSkill).toEqual({ key: 'first', name: 'First skill', contentHash: 'hash-1' })
+    expect(fixture.state.projectAgentAttachments).toEqual([])
+    expect(fixture.state.projectAgentRecoveredDrafts).toMatchObject([
+      { text: 'Second', skill: { key: 'second' } },
+      { text: 'keep this draft', skill: { key: 'current-skill' }, attachments: [currentAttachment] },
+    ])
+    expect(fixture.say).not.toHaveBeenCalled()
+  })
+
+  it('restores the selected skill and pinned version along with an empty composer input', async () => {
+    fixture.state.projectAgentDraft = ''
+    const finished = Promise.resolve({ ok: true, restoredInput: [{ text: 'old queued instruction', skillKey: 'old-skill',
+      skillSnapshot: { name: 'Old skill', contentHash: 'old-hash' } }] })
+    fixture.abort.mockReturnValue(finished)
+    mountActions().stop()
+    await finished
+    expect(fixture.state.projectAgentDraft).toBe('old queued instruction')
+    expect(fixture.state.creationActiveSkill).toEqual({ key: 'old-skill', name: 'Old skill', contentHash: 'old-hash' })
+  })
+
   it('captures the current catalog projection on every send', async () => {
     const entries = buildAgentModelEntries([{ value: 'MiniMax-H3', label: 'MiniMax H3', kind: 'video', vendor: 'apimart' }])
     expect(entries).toHaveLength(1)
@@ -120,6 +232,49 @@ describe('composer sends commit local cleanup only after current admission', () 
     else fixture.say.mockResolvedValue({ ok: false, code: 'agent_lane_execute_failed', diagnostic: 'lane down' })
     expect(await mountActions().send('plan the opening')).toBe(false)
     expect(fixture.state.creationActiveSkill).toEqual({ key: 'workbench-storyboard-planner', name: '分镜规划' })
+  })
+
+  it('S24: preserves a newly edited draft even when the user retypes the same text before admission', async () => {
+    fixture.state.projectAgentDraft = 'same text'
+    const pending = deferred()
+    fixture.say.mockReturnValue(pending.promise)
+    const actions = mountActions()
+    const sending = actions.send('same text')
+    fixture.state.setProjectAgentDraft('new thought')
+    fixture.state.setProjectAgentDraft('same text')
+    pending.resolve({ ok: true })
+    expect(await sending).toBe(true)
+    expect(fixture.state.projectAgentDraft).toBe('same text')
+  })
+
+  it('S24: preserves a newly selected skill and prompt while the captured send is admitted', async () => {
+    const original = { key: 'original-skill', name: 'Original' }
+    fixture.state.creationActiveSkill = original
+    const ack = deferred()
+    fixture.say.mockReturnValue(ack.promise)
+    const sent = mountActions().send('keep this draft')
+    const replacement = { key: 'next-skill', name: 'Next' }
+    fixture.state.creationActiveSkill = replacement
+    fixture.state.selectedLibraryPrompt = { id: 'next-prompt' }
+    ack.resolve({ ok: true })
+    expect(await sent).toBe(true)
+    expect(fixture.say.mock.calls[0][2].skillKey).toBe('original-skill')
+    expect(fixture.state.creationActiveSkill).toBe(replacement)
+    expect(fixture.state.selectedLibraryPrompt).toEqual({ id: 'next-prompt' })
+  })
+
+  it('S21: replay carries only the original selector and leaves the new composer untouched', async () => {
+    fixture.state.creationActiveSkill = { key: 'unsent-skill', name: 'Unsent' }
+    fixture.state.projectAgentAttachments = [{ id: 'upload-next', status: 'uploading' } as ComposerAttachment]
+    fixture.say.mockResolvedValue({ ok: true })
+    const originalSkill = fixture.state.creationActiveSkill
+    const replay = mountActions().send as (text: string, options: { retryFromEntryId: string }) => Promise<boolean>
+    expect(await replay('Retry', { retryFromEntryId: 'original-input' })).toBe(true)
+    expect(fixture.say.mock.calls[0][2]).toMatchObject({ retryFromEntryId: 'original-input', attachments: [] })
+    expect(fixture.say.mock.calls[0][2].skillKey).toBeUndefined()
+    expect(fixture.state.creationActiveSkill).toBe(originalSkill)
+    expect(fixture.state.projectAgentAttachments).toHaveLength(1)
+    expect(fixture.state.projectAgentDraft).toBe('keep this draft')
   })
 
   it('preserves the draft and sends nothing when catalog capture fails', async () => {
@@ -177,7 +332,7 @@ describe('composer sends commit local cleanup only after current admission', () 
   it('sends an explicit interrupted-entry reference without changing the user instruction', async () => {
     fixture.say.mockResolvedValue({ ok: true })
     expect(await mountActions().send('继续', { continueFromEntryId: 'stopped-entry' })).toBe(true)
-    expect(fixture.say).toHaveBeenCalledWith('继续', 'primary', expect.objectContaining({ continueFromEntryId: 'stopped-entry' }))
+    expect(fixture.say).toHaveBeenCalledWith('继续', 'primary', expect.objectContaining({ continueFromEntryId: 'stopped-entry' }), expect.objectContaining({ sessionId: 'session-main' }))
     fixture.say.mockClear()
     expect(await mountActions().send('继续')).toBe(true)
     expect(fixture.say.mock.calls[0][2]).not.toHaveProperty('continueFromEntryId')
@@ -211,4 +366,187 @@ describe('exact receipt undo admission', () => {
     actions.undoTool(kind === 'wrong-call' ? 'other-call' : 'call-1')
     expect(fixture.undo).not.toHaveBeenCalled()
   })
+})
+
+
+describe('independent recovery review probes', () => {
+  it('keeps restored selectors separate from the current admission surface', async () => {
+    fixture.state.projectAgentDraftIntent = { target: { kind: 'timeline', clipIds: ['old-clip'] }, systemPrompt: 'OLD_TEMPLATE' } as never
+    fixture.say.mockResolvedValue({ ok: true })
+    expect(await mountActions().send('keep this draft')).toBe(true)
+    const context = fixture.say.mock.calls[0][2]
+    expect(context.target).toEqual({ kind: 'canvas', nodeIds: [] })
+    expect(context.restoredIntent).toMatchObject({ target: { kind: 'timeline', clipIds: ['old-clip'] }, systemPrompt: 'OLD_TEMPLATE' })
+  })
+  it('does not refill an intentionally cleared composer after a late cancellation ACK', async () => {
+    fixture.state.projectAgentDraft = ''
+    const ack = deferred()
+    fixture.abort.mockReturnValue(ack.promise)
+    mountActions().stop()
+    fixture.state.setProjectAgentDraft('new thought')
+    fixture.state.setProjectAgentDraft('')
+    ack.resolve({ ok: true, restoredInput: [{ text: 'old queued input' }] } as never)
+    await ack.promise
+    expect(fixture.state.projectAgentDraft).toBe('')
+    expect(fixture.state.projectAgentRecoveredDrafts).toMatchObject([{ text: 'old queued input' }])
+  })
+  it('does not label a now-accepted draft as unsent after take-back during catalog admission', async () => {
+    fixture.state.projectAgentRecoveredDrafts = [{ id: 'recovered-a', projectUuid: 'uuid-a', conversation: { laneName: 'main', sessionId: 'session-main' }, text: 'Recovered A', displayText: null, skill: null, template: null, attachments: [], references: [], intent: null }]
+    let release!: (value: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    const sending = mountActions().send('keep this draft')
+    takeRecoveredAgentDraft('recovered-a', 'uuid-a', { laneName: 'main', sessionId: 'session-main' })
+    const afterTake = fixture.state.projectAgentDraft
+    release([])
+    expect(await sending).toBe(true)
+    expect(fixture.state.projectAgentDraft).toBe(afterTake === 'keep this draft' ? '' : 'Recovered A')
+    expect(fixture.state.projectAgentRecoveredDrafts.some(entry => entry.text === 'keep this draft')).toBe(false)
+    if (afterTake === 'keep this draft') expect(fixture.state.projectAgentRecoveredDrafts.some(entry => entry.id === 'recovered-a')).toBe(true)
+  })
+})
+
+
+describe('F12 stop cancels pending input admission', () => {
+  it('keeps the draft and never sends after Stop during the model catalog wait', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    fixture.abort.mockResolvedValue({ ok: true })
+    const actions = mountActions()
+    const sending = actions.send('keep this draft')
+    actions.stop()
+    release([])
+    expect(await sending).toBe(false)
+    expect(fixture.say).not.toHaveBeenCalled()
+    expect(fixture.state.projectAgentDraft).toBe('keep this draft')
+    expect(fixture.state.projectAgentAdmissionId).toBeNull()
+    expect(await actions.send('keep this draft')).toBe(true)
+  })
+
+  it('does not let an old visible conversation Stop cancel another workspace admission', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.abort.mockResolvedValue({ ok: true })
+    const actions = mountActions()
+    const sending = actions.send('keep this draft')
+    fixture.owner = { subscriptionId: 'workspace-b', binding: { immutableProjectUuid: 'uuid-b' } }
+    fixture.state.projectAgentAdmissionId = 'new-workspace-admission'
+    actions.stop()
+    release([])
+    expect(await sending).toBe(false)
+    expect(fixture.state.projectAgentAdmissionId).toBe('new-workspace-admission')
+    expect(fixture.say).not.toHaveBeenCalled()
+  })
+})
+
+
+it('F12: an old cancelled send finally never clears the next same-conversation admission', async () => {
+  let releaseOld!: (models: never[]) => void, releaseNew!: (models: never[]) => void
+  fixture.models.mockReturnValueOnce(new Promise<never[]>(resolve => { releaseOld = resolve }))
+    .mockReturnValueOnce(new Promise<never[]>(resolve => { releaseNew = resolve }))
+  fixture.abort.mockResolvedValue({ ok: true })
+  fixture.say.mockResolvedValue({ ok: true })
+  const actions = mountActions()
+  const old = actions.send('keep this draft')
+  actions.stop()
+  fixture.state.setProjectAgentDraft('new draft')
+  const next = actions.send('new draft')
+  const nextId = fixture.state.projectAgentAdmissionId
+  expect(nextId).not.toBeNull()
+  releaseOld([])
+  expect(await old).toBe(false)
+  expect(fixture.state.projectAgentAdmissionId).toBe(nextId)
+  expect(fixture.state.projectAgentDraft).toBe('new draft')
+  releaseNew([])
+  expect(await next).toBe(true)
+  expect(fixture.say).toHaveBeenCalledOnce()
+  expect(fixture.say.mock.calls[0][0]).toBe('new draft')
+})
+
+it('F12: Stop after IPC dispatch keeps the recovery exchange locked until its admission ACK', async () => {
+  let dispatched!: () => void
+  const entered = new Promise<void>(resolve => { dispatched = resolve })
+  const ack = deferred()
+  fixture.say.mockImplementation(() => { dispatched(); return ack.promise })
+  fixture.abort.mockResolvedValue({ ok: true })
+  fixture.state.projectAgentRecoveredDrafts = [{ id: 'recovered-a', projectUuid: 'uuid-a',
+    conversation: { laneName: 'main', sessionId: 'session-main' }, text: 'Recovered A', displayText: null,
+    skill: null, template: null, attachments: [], references: [], intent: null }]
+  const actions = mountActions()
+  const sending = actions.send('keep this draft')
+  await entered
+  actions.stop()
+  takeRecoveredAgentDraft('recovered-a', 'uuid-a', { laneName: 'main', sessionId: 'session-main' })
+  ack.resolve({ ok: true })
+  expect(await sending).toBe(true)
+  expect(fixture.state.projectAgentRecoveredDrafts.some(draft => draft.text === 'keep this draft')).toBe(false)
+  expect(fixture.state.projectAgentAdmissionId).toBeNull()
+})
+
+
+describe('creation send-time storyboard target', () => {
+  it('keeps the source captured at input time when the document changes before admission', async () => {
+    let release!: (models: never[]) => void
+    fixture.models.mockReturnValue(new Promise<never[]>(resolve => { release = resolve }))
+    fixture.say.mockResolvedValue({ ok: true })
+    const sending = mountActions('creation').send('make storyboard')
+    fixture.state.activeDocumentId = 'doc-2'
+    release([])
+    expect(await sending).toBe(true)
+    expect(fixture.say.mock.calls[0][2].storyboardTarget).toMatchObject({
+      projectId: 'project-a', sourceDocumentId: 'doc-1', targetKind: 'storyboard',
+      requestId: expect.any(String), plans: [], sourceDocumentRevision: expect.any(Number),
+    })
+    // No Run is preallocated any more: a turn that does not name a plan is a turn that has not
+    // decided yet, and the model — not the host — decides between creating and editing.
+    expect(fixture.say.mock.calls[0][2].storyboardTarget).not.toHaveProperty('targetRunId')
+    fixture.state.activeDocumentId = 'doc-1'
+  })
+  it('hands the model this document\'s existing plans so it can name one', async () => {
+    fixture.say.mockResolvedValue({ ok: true })
+    fixture.state.storyboardDesignsByDocumentId = { 'doc-1': [{ id: 'op-a', title: 'Seaside' }, { id: 'op-b', title: 'Night' }] }
+    await mountActions('creation').send('change the second shot')
+    expect(fixture.say.mock.calls[0][2].storyboardTarget.plans)
+      .toEqual([{ id: 'op-a', title: 'Seaside' }, { id: 'op-b', title: 'Night' }])
+    fixture.state.storyboardDesignsByDocumentId = {}
+  })
+})
+
+it('captures stable shot references against the plan they name and refuses chips from another plan',async()=>{
+  const {buildStoryboardReference}=await import('../resident/residentReferences')
+  fixture.state.storyboardDesignsByDocumentId={'doc-1':[{id:'plan-a',title:'A'},{id:'plan-b',title:'B'}]}
+  fixture.state.activeStoryboardId='plan-a'
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',designId:'plan-a',shotId:'stable-id'})]
+  fixture.say.mockResolvedValue({ok:true})
+  const actions=mountActions('creation')
+  expect(await actions.send('edit selected')).toBe(true)
+  expect(fixture.say.mock.calls[0][2].storyboardTarget.shotIds).toEqual(['stable-id'])
+  expect(fixture.say.mock.calls[0][2].storyboardTarget.designId).toBe('plan-a')
+  fixture.state.projectAgentReferences=[buildStoryboardReference('shot',1,'Shot 1','selected',{documentId:'doc-1',designId:'plan-a',shotId:'stable-id'})]
+  fixture.state.activeStoryboardId='plan-b'
+  expect(await actions.send('edit selected')).toBe(false)
+  expect(fixture.say).toHaveBeenCalledTimes(1)
+  fixture.state.activeStoryboardId=null;fixture.state.storyboardDesignsByDocumentId={};fixture.state.projectAgentReferences=[]
+})
+
+it('ACK consumes only captured storyboard references, preserving a newer selection and failed-send references',async()=>{
+  const {buildStoryboardReference}=await import('../resident/residentReferences')
+  fixture.state.storyboardDesignsByDocumentId={'doc-1':[{id:'plan-a',title:'A'}]}
+  fixture.state.activeStoryboardId='plan-a'
+  const old=buildStoryboardReference('shot',1,'old','selected',{documentId:'doc-1',designId:'plan-a',shotId:'old'})
+  const newer=buildStoryboardReference('shot',2,'new','selected',{documentId:'doc-1',designId:'plan-a',shotId:'new'})
+  fixture.state.projectAgentReferences=[old]
+  let finish!:(value:{ok:boolean})=>void
+  fixture.say.mockImplementation(()=>new Promise(resolve=>{finish=resolve}))
+  const actions=mountActions('creation')
+  const sending=actions.send('edit old')
+  await vi.waitFor(()=>expect(fixture.say).toHaveBeenCalledTimes(1))
+  fixture.state.projectAgentReferences=[old,newer]
+  finish({ok:true});expect(await sending).toBe(true)
+  expect(fixture.state.projectAgentReferences).toEqual([newer])
+  fixture.say.mockRejectedValue(new Error('transport failed'))
+  expect(await actions.send('edit new')).toBe(false)
+  expect(fixture.state.projectAgentReferences).toEqual([newer])
+  fixture.state.activeStoryboardId=null;fixture.state.storyboardDesignsByDocumentId={};fixture.state.projectAgentReferences=[]
 })

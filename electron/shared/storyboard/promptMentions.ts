@@ -1,0 +1,133 @@
+// @ 内联引用的「持久化格式 + 发送投影」单源(规范 §4 R6 / §6)。纯函数,与 Tiptap UI 解耦、可单测。
+//
+// 持久化格式:prompt 字符串里内联标记 `@[asset:<encodeURIComponent(url)>]`(encode 保证内部无 `]`,可安全正则解析)。
+//   - 纯文字 prompt 不含标记 → 一切照旧(向后兼容,投影是 no-op)。
+//   - 这一格式存进 node.prompt;Tiptap 加载时解析回 chip,编辑时序列化回标记。
+//
+// 最终投影(R6 单一真相源,最易漂移):**同一个有序数组**既产出 prompt 文本(chip→@imageN)、
+//   又是 reference_image 的顺序。numbering = 该 url 在「有序图片参考数组」里的位置 → 句中编号与数组顺序天然一致。
+
+const MENTION_RE = /@\[asset:([^\]]+)\]/g
+
+export type PromptReferenceKind = 'image' | 'video' | 'audio'
+export type PromptReference = { url: string; kind: PromptReferenceKind; index: number }
+
+function safeDecode(enc: string): string {
+  try { return decodeURIComponent(enc) } catch { return enc }
+}
+
+/** 把一个素材 url 编码成 prompt 里的内联标记。 */
+export function encodeMention(url: string): string {
+  return `@[asset:${encodeURIComponent(url)}]`
+}
+
+export type PromptSegment = { type: 'text'; value: string } | { type: 'mention'; url: string }
+
+/** 按文本出现顺序取出引用 URL；重复引用只保留第一次，供绑定顺序使用。 */
+export function mentionUrlsInOrder(prompt: string): string[] {
+  const seen = new Set<string>()
+  return parsePromptSegments(prompt).flatMap((segment) => {
+    if (segment.type !== 'mention' || seen.has(segment.url)) return []
+    seen.add(segment.url)
+    return [segment.url]
+  })
+}
+
+/** 把含标记的 prompt 解析成「文字 / 引用」段(供 Tiptap 渲染成 文本 + chip)。 */
+export function parsePromptSegments(prompt: string): PromptSegment[] {
+  const segments: PromptSegment[] = []
+  let lastIndex = 0
+  const re = new RegExp(MENTION_RE.source, 'g')
+  let match: RegExpExecArray | null
+  while ((match = re.exec(prompt)) !== null) {
+    if (match.index > lastIndex) segments.push({ type: 'text', value: prompt.slice(lastIndex, match.index) })
+    segments.push({ type: 'mention', url: safeDecode(match[1]) })
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < prompt.length) segments.push({ type: 'text', value: prompt.slice(lastIndex) })
+  return segments
+}
+
+/** prompt 里是否含 @ 引用标记。 */
+export function hasMentions(prompt: string): boolean {
+  return new RegExp(MENTION_RE.source).test(prompt)
+}
+
+/**
+ * 最终投影(R6):把 prompt 里的 `@[asset:url]` 标记替换成 `@imageN`,
+ * N = 该 url 在 orderedImageUrls(有序图片参考数组,= 发送的 reference_image 顺序)里的位置 +1。
+ * 数组里找不到(对应 tile 已删)→ 标记移除(连带清理多余空格)。无标记时原样返回(no-op,向后兼容)。
+ */
+export function normalizePromptReferences(
+  references: readonly string[] | readonly PromptReference[],
+): PromptReference[] {
+  if (!references.length) return []
+  if (typeof references[0] === 'string') {
+    return (references as readonly string[]).map((url, index) => ({ url, kind: 'image' as const, index: index + 1 }))
+  }
+  return [...references as readonly PromptReference[]]
+}
+
+/**
+ * **编号规则的唯一 owner**：一串「按实际发送顺序排好的参考」→ `@imageN / @videoN / @audioN` 的编号。
+ * N 是该 url 在**同类**参考里的位置（图第几张、视频第几条），与线缆上那几个数组的下标一一对应。
+ *
+ * 为什么必须共享：手动画布那条路按档案的槽顺序走一遍就得到这串有序参考
+ * （`archetypeMeta.orderedSentMediaReferenceUrls` 末尾那两行做的就是本函数），Run 路径按
+ * `candidate.references` 的数组顺序走。**顺序怎么来的两路可以不同（槽 vs 数组），但「排好之后怎么编号」
+ * 只能有一个答案**——否则同一张参考图在两条路上会被写成 @image1 和 @image2，模型照着句子找图就找错了。
+ */
+export function numberPromptReferences(
+  references: readonly Readonly<{ url: string; kind?: PromptReferenceKind }>[],
+): PromptReference[] {
+  const counts: Record<PromptReferenceKind, number> = { image: 0, video: 0, audio: 0 }
+  return references.map((reference) => {
+    const kind = reference.kind ?? 'image'
+    counts[kind] += 1
+    return { url: reference.url, kind, index: counts[kind] }
+  })
+}
+
+export function promptReferenceForUrl(
+  url: string,
+  references: readonly string[] | readonly PromptReference[],
+): PromptReference | null {
+  return normalizePromptReferences(references).find((reference) => reference.url === url) ?? null
+}
+
+function projectPromptMentions(
+  prompt: string,
+  references: readonly string[] | readonly PromptReference[],
+): string {
+  if (!prompt) return prompt
+  const byUrl = new Map(normalizePromptReferences(references).map((reference) => [reference.url, reference]))
+  const replaced = prompt.replace(MENTION_RE, (_full, enc: string) => {
+    const reference = byUrl.get(safeDecode(enc))
+    return reference ? `@${reference.kind}${reference.index}` : ''
+  })
+  return collapsePromptWhitespace(replaced)
+}
+
+/** 发给模型前的最终 Prompt：严格按实际参考图数组顺序转成 @imageN。 */
+export const projectPromptForSend = projectPromptMentions
+
+/** 非编辑态 Prompt 预览：与最终发送口径相同，绝不显示内部 @[asset:URL] 标记。 */
+export const projectPromptForDisplay = projectPromptMentions
+
+// 删标记后清理多余空格/标点前空白(「 @image1  走」→「@image1 走」)。最终投影与
+// removeMention 同源调用(对抗评审 must-fix:别两处各清各的导致行为漂移)。
+export function collapsePromptWhitespace(text: string): string {
+  return text.replace(/[ \t]{2,}/g, ' ').replace(/\s+([，。、,.!?])/g, '$1').trim()
+}
+
+/**
+ * 删 tile 时同步抹掉描述框里指向该 url 的所有 @ chip(对抗评审 must-fix:UX 清理孤儿 chip)。
+ * 按持久化整串 `@[asset:encodeURIComponent(url)]` 精确匹配(含 %/中文/空格的 url 也对得上)、删**全部**重复、
+ * 复用 collapsePromptWhitespace;url 不在 prompt 里 → 原样返回(no-op,避免无谓 setContent 抢光标)。
+ */
+export function removeMention(prompt: string, url: string): string {
+  if (!prompt) return prompt
+  const marker = encodeMention(url)
+  if (!prompt.includes(marker)) return prompt
+  return collapsePromptWhitespace(prompt.split(marker).join(''))
+}

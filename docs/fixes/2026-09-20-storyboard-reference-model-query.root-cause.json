@@ -1,0 +1,190 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-storyboard-reference-model-query",
+  "problem_type": "Model selection scope does not match a multi-mode editor",
+  "symptom": "Reference-only models lose their original editor slots; Agent presentation can reach confirmation without a required reference or omit the selected reference when projecting a shot into its node.",
+  "direct_cause": "StoryboardPlanEditor and presentStoryboard request default text_to_video/text_to_image projections; reference-only models disappear before row mode resolution, required-slot validation and reference projection.",
+  "class_root": "Multi-mode storyboard consumers must request all published modes from the shared catalog; a default single-mode query cannot preserve the model contract used to validate and project author references.",
+  "affected_population": [
+    "Legacy and Run storyboard hosts using image_to_video-only or image_edit-only models from any vendor"
+  ],
+  "scope_paths": [
+    "src/config/modelCatalogCache.ts",
+    "src/config/useModelOptions.ts",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/capability/storyboardPresent.ts"
+  ],
+  "entry_points": [
+    "Original storyboard video model list and reference slots",
+    "Original storyboard image model list and reference slots",
+    "Agent presentStoryboard through original row actions, materializer, confirmation and runner"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal catalog publication contract and original editor rendering; no dependency API or layout changes.",
+  "invariants": [
+    "Any-published queries retain every usable published row of the requested media kind exactly once.",
+    "Default and explicit task-mode queries retain their original publication filtering.",
+    "Unavailable or unpublished rows never become selectable.",
+    "Original editor and reference controls remain the only rendering owners.",
+    "Agent presentation resolves the published shot mode before required-reference validation and node projection; selected author references replace stale node references."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/config/modelCatalogCache.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/config/useModelOptions.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/config/useModelOptions.ts",
+      "symbol": "useModelOptionsState"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "useModelOptionsState"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/adapters/modelOptionsAdapter.ts",
+      "symbol": "useModelOptionsState"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/availableModels.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useBatchPlanCost.ts",
+      "symbol": "preloadModelOptions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "useModelOptionsState"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/settings/ModelBoxOrderSection.tsx",
+      "symbol": "useModelOptionsState"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 11,
+    "why_not": "The cache and hook own projection/lifecycle; payment, canvas adapters, costs, shot-table and settings keep their own task-specific queries. Agent availableModels unions explicit modes. Original storyboard editor and Agent presentation require any-published scope because both consume multi-mode author plans."
+  },
+  "generality_proof": "One explicit query scope in the original cache applies the same availability/publication filter to image and video rows for both storyboard hosts, independent of vendor or model identity.",
+  "shared_boundaries": [
+    {
+      "path": "src/config/modelCatalogCache.ts",
+      "symbol": "preloadModelOptions",
+      "responsibility": "Select published task scope before one existing DTO-to-option projection and cache."
+    },
+    {
+      "path": "src/config/useModelOptions.ts",
+      "symbol": "useModelOptionsState",
+      "responsibility": "Carry explicit scope through original reactive catalog lifecycle."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "entry_point": "presentStoryboard image/video model options",
+      "disposition": "enforced",
+      "evidence": "Original-entry regression retains real catalog projection, runtime derivation, row actions, materializer, confirmation and runner: missing first frame must not confirm; explicit binding must reach executor instead of stale node URL."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "StoryboardPlanEditor videoModelOptions",
+      "disposition": "enforced",
+      "evidence": "Real Electron first-frame v2 executes the requested image_to_video-only model while screenshots still show a generic reference entry; new original-page assertion requires first_frame."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "StoryboardPlanEditor imageModelOptions",
+      "disposition": "enforced",
+      "evidence": "Same default-only call excludes image_edit-only; the existing catalog regression supplies both populations through IPC DTOs."
+    },
+    {
+      "path": "src/workbench/generationCanvas/adapters/modelOptionsAdapter.ts",
+      "entry_point": "useGenerationModelOptionsState",
+      "disposition": "not-affected",
+      "evidence": "Explicit/default task-mode calls retain existing filtering; no caller changed."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every reference-only published model and either original storyboard host can reproduce the same omission.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs preloadModelOptions useModelOptionsState; followed StoryboardShotTable to StoryboardShotRow resolveShotArchetypeMode and ShotReferenceZone.",
+      "Read modelCatalogCache.test.ts and availableModels.ts: Agent discovery unions modes, but presentStoryboard separately queried defaults and lost reference-only modes before deriving rows.",
+      "git diff 96d368c26 -- src/config/modelCatalogCache.ts src/config/useModelOptions.ts was empty before repair; original Editor default calls also predate this branch."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/config/modelCatalogCache.ts",
+    "invariant": "Explicit editor scope includes reference-only published models without changing single-mode callers.",
+    "failure_mode": "Existing availability and nonempty publication checks fail closed.",
+    "exception_policy": "none",
+    "strategy": "Extend original query type with any-published; include it in the existing cache key and pass it from original editor and Agent presentation, with no duplicate catalog/state or execution path.",
+    "artifacts": [
+      "src/config/modelCatalogCache.ts",
+      "src/config/useModelOptions.ts",
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "src/workbench/capability/storyboardPresent.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardFirstFrameApproval.test.ts",
+    "src/config/modelCatalogCache.test.ts",
+    "tests/ux/project-switch-background-run.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardFirstFrameApproval.test.ts",
+    "src/config/modelCatalogCache.test.ts",
+    "tests/ux/project-switch-background-run.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "src/workbench/capability/storyboardPresent.ts"
+    ],
+    "rationale": "Replace unsuitable default-scope calls in the original editor and Agent presentation, preserving task-specific callers."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Application-owned model query and UI projection; no framework behavior change.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted fields, model defaults, page structure or execution semantics change.",
+  "residual_risks": [
+    "Pending real Electron first-frame slot rerun, build and both-host acceptance; Windows remains unverified.",
+    "A successful loopback journey does not prove real-provider reliability or the unrelated T7 native resource retry."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/config/modelCatalogCache.ts",
+    "tests": [
+      "src/config/modelCatalogCache.test.ts"
+    ],
+    "why": "The original catalog projection owns publication filtering for every caller."
+  }
+}

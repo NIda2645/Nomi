@@ -22,6 +22,11 @@ import { IntegrationSessionService } from "../integrationCertification/integrati
  * 东西，而它们正是旧实验里烧掉回合最多的两样：
  *   · `expectedRevision` 不再是模型入参（它是会话指纹，由执行层现读现填）；
  *   · 「提案 → 确认 → 跑自检」三跳合成一跳 `submit_declaration`（自检是收卡的一部分）。
+ *
+ * 2026-09-21：这一轮又少两样，而它们是实测里把四个模型全挡在「声明」之前的那两样——
+ *   · 句柄与阶段（`setupId`）不再存在：整份卡自带身份，一跳登记；
+ *   · 「先有 key 才能提交」不再成立：这一轮**先交卡、后贴 key**，顺序反过来照样走得通。
+ * 所以这个 loopback 现在按新顺序走：读套件 → 交整份卡（无 key）→ 用户贴 key → 读回来。
  */
 
 const HOST = "codex" as const;
@@ -41,22 +46,26 @@ function makeService(dir: string) {
       childRunRef: { runId: "run-loopback", revisionDigest: "f".repeat(64) },
     })),
   };
+  // 这个服务的选项叫 `filePath`，不是 `dir`（`integrationSession.ts` 的 `Dependencies`）。
+  // 整个对象上原先套了一层 `as never`，于是编译器对这个不存在的键一个字都没说，服务退回默认值
+  // —— **用户真实的** `~/.nomi/capability-core/integration-sessions.json`。这份测试因此会读到
+  // 用户本人的会话；他那份有 101 条、超过 MAX_SESSIONS=100，于是它在这台机器上红，在别的机器上绿。
+  // 测试不许读写用户真实目录：给足真路径，`as never` 只留在那两个确实需要放宽的成员上。
   const sessions = new IntegrationSessionService({
-    dir,
     // 会话文件必须落在这个临时目录里：不传 filePath 时服务写的是真实的 ~/.nomi/capability-core，
     // 测试会污染用户资料，而且那份文件一过 100 条会话上限，这条测试就在那台机器上永远红。
     filePath: path.join(dir, "integration-sessions.json"),
     certification: certification as never,
-    credentialResolver: () => ({ apiKey: "sk-loopback", vendorKey: "deepseek" }),
+    credentialResolver: (() => ({ apiKey: "sk-loopback", vendorKey: "deepseek" })) as never,
     compilerAvailable: () => true,
-  } as never);
+  });
   return { sessions, certification };
 }
 
 describe("接模型对外面 · 零额度 loopback", () => {
   it("照着广播的契约一步步走，全程零 schema 打回", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-onboarding-loopback-"));
-    const { sessions, certification } = makeService(dir);
+    const { sessions } = makeService(dir);
     const ctx = { integrationSessions: sessions, origin: { host: HOST } } as never;
 
     const setupTool = MCP_TOOL_RESOLVER.resolve("nomi_model_setup");
@@ -86,31 +95,22 @@ describe("接模型对外面 · 零额度 loopback", () => {
     const setup = setupTool!;
     const read = readTool!;
 
-    // ① 连上一家：**没有** baseUrl / authType / authHeader 这些入参，只有一条「建议」。
-    const connected = await call(setup, {
-      action: "connect_provider",
-      name: "DeepSeek",
-      docs: "https://api-docs.deepseek.com",
-      suggestedBaseUrl: "https://api.deepseek.com",
-    }) as { ok: boolean; setupId: string; unverified: Array<{ claim: string }>; nextAction: { kind: string } };
-    expect(connected.ok).toBe(true);
-    expect(connected.nextAction.kind).toBe("user_sees_key_page");
-    // 这一跳之后模型手里**没有**任何可以说成「接好了」的证据。
-    expect(connected.unverified.map((entry) => entry.claim)).toContain("model_produces_output");
+    // ⓪ 读套件：**无任何前置**——没有会话、没有密钥、没有前一跳。
+    const kit = await call(read, { target: "onboarding_kit" }) as {
+      contractSchema: Record<string, unknown>;
+      instructions: string;
+      examples: Array<{ name: string; card: unknown }>;
+    };
+    expect(kit.contractSchema).toHaveProperty("$schema");
+    expect(kit.examples.length).toBeGreaterThanOrEqual(2);
+    expect(kit.instructions.length).toBeGreaterThan(200);
 
-    // ②' 用户在 Nomi 的贴 key 页粘了密钥并保存——**这一步模型做不到，也不该做得到**。
-    //    夹具走与那一页同一条可信写入路（markCredentialReady），不伪造一个「模型自己存了 key」的世界。
-    sessions.markCredentialReady(connected.setupId, "catalog-deepseek", HOST);
-
-    // ② 上下文丢了也能找回来：不带 setupId 列出接入会话（与旧面同一条找回路）。
-    const listed = await call(read, { target: "setup" }) as { sessions: Array<{ id: string }> };
-    expect(listed.sessions.map((entry) => entry.id)).toContain(connected.setupId);
-
-    // ③ 交卡：一跳做完「形状校验 + 同源 + 免费自检 + 登记」。**没有 expectedRevision**。
+    // ① 交整份卡：**没有 setupId，也还没有任何 key**。这一跳做完形状校验 + 同源 + 登记。
     const submitted = await call(setup, {
       action: "submit_declaration",
-      setupId: connected.setupId,
+      name: "DeepSeek",
       declaration: JSON.stringify({
+        provider: { baseUrl: "https://api.deepseek.com", authType: "bearer", authHeader: "Authorization" },
         sources: [{ url: "https://api-docs.deepseek.com/images", evidence: "POST /images returns data[0].url" }],
         assetIngestion: { strategy: "none", sourceUrl: "https://api-docs.deepseek.com/images" },
         models: [{
@@ -119,6 +119,7 @@ describe("接模型对外面 · 零额度 loopback", () => {
           kind: "image",
           modes: [{
             taskKind: "text_to_image",
+            delivery: "synchronous",
             create: {
               method: "POST",
               path: "/images",
@@ -129,20 +130,42 @@ describe("接模型对外面 · 零额度 loopback", () => {
           }],
         }],
       }),
-    }) as { ok: boolean; unverified: Array<{ claim: string }>; blastRadius: { modelsAppearing: number; outboundRequests: Array<{ billable: boolean }> } };
+    }) as {
+      ok: boolean; vendorKey: string;
+      state: { hasApiKey: boolean };
+      unverified: Array<{ claim: string }>;
+      blastRadius: { modelsAppearing: number; outboundRequests: Array<{ billable: boolean }> };
+      nextAction: { kind: string };
+    };
     expect(submitted.ok).toBe(true);
     expect(submitted.blastRadius.modelsAppearing).toBe(1);
-    // 自检发的请求**恒不计费**——这条路上一个花钱的动作都没有。
+    // 卡收下了，但这条连接还没有 key——信封如实说，并把下一步指向贴 key 页。
+    expect(submitted.state.hasApiKey).toBe(false);
+    expect(submitted.nextAction.kind).toBe("user_sees_key_page");
+    // 登记这一跳**恒不计费**：花钱的动作只有 nomi_try_model 那一个，而它是另一个契约。
     expect(submitted.blastRadius.outboundRequests.every((request) => request.billable === false)).toBe(true);
-    // 自检过了也消不掉这一条：只有用户真跑一次才能。
+    // 自检过了也消不掉这一条：只有一次真实生成才能。
     expect(submitted.unverified.map((entry) => entry.claim)).toContain("model_produces_output");
-    expect(certification.startHttp).toHaveBeenCalledTimes(1);
 
-    // ④ 终态照旧读得回来。
-    const final = await call(read, { target: "setup", setupId: connected.setupId }) as { stage: string };
-    expect(final.stage).toBe("completed");
+    // ② 打开贴 key 页：Nomi 没在跑时**不许说「已经打开了」**（2026-09-21 K3：同一封信里
+    //    一句说已打开、另一句说 Nomi 没在运行，AI 会照着前半句对用户撒谎）。
+    const connected = await call(setup, {
+      action: "connect_provider",
+      vendorKey: submitted.vendorKey,
+      reissueKey: true,
+    }) as { ok: boolean; setupId: string; changes: Array<{ summary: string }>; nextAction: { kind: string } };
+    expect(connected.ok).toBe(true);
+    expect(connected.nextAction.kind).toBe("waiting_for_user");
+    expect(connected.changes[0]!.summary).not.toContain("Opened");
 
-    // ⑤ 删除要指纹：`nomi_read target=models` 给什么，`ifUnchanged` 就填什么（同一个函数算的）。
+    // ②' 用户在那一页粘了密钥并保存——**这一步模型做不到，也不该做得到**。
+    sessions.markCredentialReady(connected.setupId, "catalog-deepseek", HOST);
+
+    // ③ 上下文丢了也能找回来：不带 setupId 列出接入会话。
+    const listed = await call(read, { target: "setup" }) as { sessions: Array<{ id: string }> };
+    expect(listed.sessions.map((entry) => entry.id)).toContain(connected.setupId);
+
+    // ④ 删除要指纹：`nomi_read target=models` 给什么，`ifUnchanged` 就填什么（同一个函数算的）。
     const models = await call(read, { target: "models" }) as { fingerprint: string };
     expect(models.fingerprint).toMatch(/^models-[0-9a-f]{12}$/);
 
@@ -150,7 +173,10 @@ describe("接模型对外面 · 零额度 loopback", () => {
     const firstTryRate = (attempted.length - rejectedBySchema.length) / attempted.length;
     expect(rejectedBySchema).toEqual([]);
     expect(firstTryRate).toBeGreaterThanOrEqual(0.9);
-    expect(attempted.length).toBeGreaterThanOrEqual(5);
+    // 走完一整条接入要几跳：读套件 + 交卡 + 开贴 key 页 + 找回会话 + 读模型清单 = 5。
+    // 上限钉死在这里，是因为「步数」正是这条路上唯一的衡量标准（用户 09-21 的裁决）：
+    // 2026-09-21 实测 14 次调用、0 个模型登记成，砍掉的每一跳都是一道墙。
+    expect(attempted.length).toBe(5);
   });
 
   it("陈旧指纹的删除被拒，且什么都没删（撤不回的那一格必须先证明你看的是现在）", async () => {

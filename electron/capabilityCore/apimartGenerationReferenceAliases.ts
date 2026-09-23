@@ -27,7 +27,7 @@ export function mirrorApimartReferenceParameterAliases(
   for (const [wire, source] of [["first_frame_image", "first_frame_url"], ["last_frame_image", "last_frame_url"]] as const) {
     if (present(parameters[wire])) {
       if (present(parameters[source]) && !sameJson(parameters[wire], parameters[source])) {
-        throw new Error("APIMart reference URL projection conflicts with canonical parameters");
+        throw new Error("catalog reference URL projection conflicts with canonical parameters");
       }
       parameters[source] = parameters[wire];
       delete parameters[wire];

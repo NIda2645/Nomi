@@ -40,7 +40,9 @@ const M2_EDITING_TOOL_NAMES = [
   'nomi_timeline_read', 'nomi_timeline_edit', 'nomi_export_job', 'nomi_media_query',
   // 2026-09-18（#754）：接模型两口与它们走同一条路（从动词声明派生的能力适配器），
   // 所以在 tools/list 上也排在同一段——顺序是 prompt/KV-cache 的前缀合同，不是审美。
-  'nomi_model_setup', 'nomi_remove_provider',
+  // 2026-09-21：试跑（`nomi_try_model`）是**付费**能力，所以它有自己的名字与 destructiveHint，
+  // 不是 `nomi_model_setup` 的第五个 action——付费边界的全部判据都挂在契约的 effect 上。
+  'nomi_model_setup', 'nomi_try_model', 'nomi_remove_provider',
 ]
 const NEW_TOOL_NAMES = [...COLLAPSED_TOOL_NAMES, ...M2_EDITING_TOOL_NAMES]
 
@@ -227,17 +229,23 @@ describe('MCP surface collapse · equivalence-anchor mapping table', () => {
     // 两个工具、两种后果：可撤本地的四个 action 合成一个；撤不回的删除单独一个（跨格必拆）。
     expect(route('nomi_model_setup', { action: 'connect_provider', name: 'X', suggestedBaseUrl: 'https://x' }))
       .toEqual({ method: 'model.onboarding.setup', params: { action: 'connect_provider', name: 'X', suggestedBaseUrl: 'https://x' } })
-    expect(route('nomi_model_setup', { action: 'submit_declaration', setupId: 's', declaration: '{}' }))
-      .toEqual({ method: 'model.onboarding.setup', params: { action: 'submit_declaration', setupId: 's', declaration: '{}' } })
+    // 2026-09-21：整份卡一次提交，**没有 setupId**（那是两个要 AI 猜对的隐藏状态之一，已按
+    // 用户裁决真删）。
+    expect(route('nomi_model_setup', { action: 'submit_declaration', declaration: '{}' }))
+      .toEqual({ method: 'model.onboarding.setup', params: { action: 'submit_declaration', declaration: '{}' } })
+    expect(route('nomi_try_model', { vendorKey: 'relay', modelKey: 'm-1' }))
+      .toEqual({ method: 'model.onboarding.try', params: { vendorKey: 'relay', modelKey: 'm-1' } })
     expect(route('nomi_remove_provider', { vendorKey: 'relay', ifUnchanged: 'models-0' }))
       .toEqual({ method: 'model.onboarding.remove', params: { vendorKey: 'relay', ifUnchanged: 'models-0' } })
     const setup = MCP_TOOL_RESOLVER.resolve('nomi_model_setup')!
     expect((setup.inputSchema as unknown as { properties: { action: { enum: string[] } } }).properties.action.enum)
-      .toEqual(['cancel', 'connect_provider', 'show_models', 'submit_declaration'])
+      .toEqual(['cancel', 'connect_provider', 'set_key', 'show_models', 'submit_declaration'])
     // App 级能力不发租约字段：接模型不该先要求用户开一个项目。
     expect((setup.inputSchema as unknown as { properties: Record<string, unknown> }).properties.leaseHandle).toBeUndefined()
     // 撤不回的那一个带 destructiveHint（宿主的硬闸靠它）。
     expect(MCP_TOOL_RESOLVER.resolve('nomi_remove_provider')!.annotations).toEqual({ destructiveHint: true })
+    // 花钱的那一个也带（宿主据此停下来问用户；缺了它，一次真花钱的调用在宿主眼里和一次读一样普通）。
+    expect(MCP_TOOL_RESOLVER.resolve('nomi_try_model')!.annotations).toEqual({ destructiveHint: true })
   })
 
   it('T15 nomi_project_create ≡ nomi_create_project', () => {

@@ -3,6 +3,7 @@ import { readCatalog, normalizeProviderKind, mutateCatalog } from './catalogStor
 import { decryptApiKeyRecord } from './secrets'
 import type { Vendor } from './types'
 import { authHeaders, authQueryParams } from '../ai/requestPipeline'
+import { vendorAuthSpec } from './vendorAuthSpec'
 import { fetchModelList, readExtraHeaders } from '../ai/onboarding/modelListProbe'
 import { isJsonRecord, mergeHeadersCaseInsensitive } from '../jsonUtils'
 import { desktopT } from '../i18n'
@@ -71,10 +72,10 @@ export async function validateCandidateCredential(vendor: Vendor, apiKey: string
   const headers = mergeHeadersCaseInsensitive(
     providerKind === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {},
     readExtraHeaders(isJsonRecord(vendor.meta) ? vendor.meta.extraHeaders : undefined),
-    authHeaders(authType, apiKey, vendor.authHeader ?? undefined, vendor.authScheme ?? undefined),
+    authHeaders({ ...vendorAuthSpec(vendor), authType }, apiKey),
   )
   const result = await fetchModelList(providerKind, vendor.baseUrlHint, headers, AbortSignal.timeout(12_000), {
-    query: authQueryParams(authType, apiKey, vendor.authQueryParam ?? undefined),
+    query: authQueryParams({ ...vendorAuthSpec(vendor), authType }, apiKey),
     proxyUrl: providerProxyUrl(vendor),
   })
   if (!result.ok && result.failureKind === 'auth') throw credentialFailure('credential.invalid', vendor.key)

@@ -17,7 +17,8 @@ import type {
   LaneWorkspaceProjection,
 } from '../../../../electron/shared/agentLane/laneContracts'
 import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
-import type { LaneComposerContext, LaneDesktopCommand, LaneDesktopResult, LaneReceiptCommand, LaneSingleShotRequest } from '../../../../electron/shared/agentLane/laneDesktopContracts'
+import type { LaneComposerContext, LaneConversationAddress, LaneDesktopCommand, LaneDesktopResult, LaneReceiptCommand, LaneSingleShotRequest } from '../../../../electron/shared/agentLane/laneDesktopContracts'
+import { laneConversationOf } from '../../../../electron/shared/agentLane/laneConversation'
 import { LANE_IPC_CHANNELS } from '../../../../electron/shared/agentLane/laneContracts'
 import { laneComposerIntent, type LaneComposerIntent } from '../../../../electron/shared/agentLane/laneComposerIntent'
 import { LaneCommandFailure } from './laneCommandFailure'
@@ -73,6 +74,9 @@ export interface LaneClient {
   close(): Promise<void>
   setPolicy(policy: LaneComposerContext['approvalPolicy']): Promise<LaneCommandResult>
   context(): Readonly<{ subscriptionId: string; binding: ProjectBinding }> | null
+  conversation(): LaneConversationAddress | null
+  /** Capture this opening/reopening before any caller waits for catalogs or files. */
+  prepareInput(): Promise<LaneConversationAddress | null>
   receipt(subscriptionId: string, command: LaneReceiptCommand): Promise<LaneCommandResult>
   singleShot(request: LaneSingleShotRequest): Promise<LaneCommandResult>
   abortSingleShot(requestId: string): Promise<LaneCommandResult>
@@ -89,7 +93,7 @@ export interface LaneClient {
    * 它不自己决定这句话是什么意思：判据在 `laneComposerIntent`（中立契约层，主进程侧的
    * 验收门用的是同一份）。composer 只负责把用户按的是回车还是那个明确的按钮告诉它。
    */
-  say(text: string, choice?: 'primary' | 'secondary', context?: LaneComposerContext): Promise<LaneCommandResult>
+  say(text: string, choice?: 'primary' | 'secondary', context?: LaneComposerContext, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 这句话现在会走哪条路。面板用它渲染次选按钮，不用它做决定。 */
   intent(text: string): LaneComposerIntent
   /** 「等这一步做完就听我的」。 */
@@ -97,7 +101,7 @@ export interface LaneClient {
   /** 「等它整个做完再说」。 */
   followUp(text: string): Promise<LaneCommandResult>
   /** 撤回一条排队的插话。结果三态，见 `LaneCancelQueuedResult`。 */
-  cancelQueued(entryId: string): Promise<LaneCommandResult>
+  cancelQueued(entryId: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 对话列表的三件事。切换/新建会把当前那条关掉——等待中的卡随之以「关窗」收尾。 */
   selectLane(laneName: string): Promise<LaneCommandResult>
   createLane(laneName: string): Promise<LaneCommandResult>
@@ -109,12 +113,21 @@ export interface LaneClient {
    * `toolCallId` 必须由调用方从 `projection().pending` 取：它证明用户答的是**那一张卡**。
    * 「答当前那张」这种写法在用户点得慢、卡已经翻篇时会把答案落到下一张上。
    */
-  approve(toolCallId: string): Promise<LaneCommandResult>
-  approveForSession(toolCallId: string): Promise<LaneCommandResult>
+  approve(toolCallId: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
+  approveForSession(toolCallId: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 「不要」+ 可选的一句话。那句话会一字不改成为模型看到的 tool result。 */
-  deny(toolCallId: string, reason?: string): Promise<LaneCommandResult>
+  deny(toolCallId: string, reason?: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
+  /**
+   * **回答**一张提问卡。`text` 一字不改成为模型看到的 tool result，同一个回合继续。
+   *
+   * 它和 `deny` 分开是因为用户做的不是同一件事：拒绝是「别做这个」，回答是「我告诉你」。
+   * 走同一个 action 的那一版里，转录留下的是一条「用户拒绝了」，面板那一行只能靠嗅 args
+   * 把它读回成「已回答」——两个说法，第二个还得靠猜。空串会被主进程拒收。
+   */
+  answer(toolCallId: string, text: string, expected?: LaneConversationAddress): Promise<LaneCommandResult>
   /** 停。回值里可能带着用户没送出去的话——调用方**必须**把它放回输入框。 */
-  abort(): Promise<LaneCommandResult>
+  abort(expected?: LaneConversationAddress): Promise<LaneCommandResult>
+  loadOlder(): Promise<LaneCommandResult>
   dispose(): void
 }
 
@@ -129,17 +142,23 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
   let current: Readonly<{ subscriptionId: string; binding: ProjectBinding }> | null = null
   let reopen: { binding: ProjectBinding; model?: LaneComposerContext['model'] } | null = null
   let openedModel: LaneComposerContext['model']
-  let closedWhileOpening: LaneWorkspaceProjection | null = null
+  const openingProjections = new Map<string, LaneWorkspaceProjection>()
+  let openingEpoch: number | null = null
   let epoch = 0
+  let connectionEpoch = 0
   const listeners = new Set<(projection: LaneWorkspaceProjection) => void>()
   // `useSyncExternalStore` 的 getter 必须**引用稳定**：只在真收到新投影时换对象。
   // 这条不是风格问题——仓库里 6 个手写 store 之一因为每次 getter 新建对象，
   // 在「有待决工具」时把整页打成「工作台加载失败」（G6 判据②）。
   const publish = (projection: LaneWorkspaceProjection) => {
+    if (projection.workspaceId && !current) {
+      if (openingEpoch === epoch) openingProjections.set(projection.workspaceId, projection)
+      return
+    }
     if (projection.workspaceId && current && projection.workspaceId !== current.subscriptionId) return
     if (projection.closed) {
       // Closing an older workspace during open/close cannot seed reauthorization.
-      if (!current) { closedWhileOpening = projection; return }
+      if (!current) return
       reopen = { binding: current.binding, model: openedModel }
       current = null
     }
@@ -152,46 +171,86 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     bridge = next
     current = null
     reopen = null
-    closedWhileOpening = null
+    openingProjections.clear()
+    openingEpoch = null
     epoch += 1
     publish(EMPTY_LANE_WORKSPACE)
-    unsubscribe = bridge?.onProjection(publish)
+    const connectedEpoch = ++connectionEpoch
+    const connectedBridge = bridge
+    unsubscribe = bridge?.onProjection((projection) => {
+      if (connectedBridge !== bridge || connectedEpoch !== connectionEpoch) return
+      publish(projection)
+    })
   }
   connect(bridge)
   // 「这次 open 还没落定」。面板刚打开的那一两秒里用户就打字/点按钮是常态：以前这些命令
   // 带着一个**空身份**发出去（`current` 还是 null），主进程那边当然找不到归属，于是回一条
   // 失败、那句话还得他自己重打。现在它们等自己这次 open 落定，再带着真身份发。
   let opening: Promise<unknown> | undefined
-  const send = async (command: LaneDesktopCommand): Promise<LaneCommandResult> => {
-    if (!bridge) return NO_BRIDGE
-    // open / close 本身不能等自己（那是死锁），只有「装进这条对话」的命令要等。
-    if (opening && command.kind !== 'workspace-open' && command.kind !== 'workspace-close') {
-      await opening.catch(() => undefined)
-    }
-    if (command.kind === 'prompt' && reopen) {
+  const conversation = (): LaneConversationAddress | null => {
+    const ref = laneConversationOf(latest)
+    return current && ref ? { ...ref, workspaceId: current.subscriptionId } : null
+  }
+  const stale = (): LaneCommandResult => ({ ok: false, code: 'agent_lane_workspace_stale', diagnostic: 'conversation changed before command admission' })
+  const prepareInput = async (): Promise<LaneConversationAddress | null> => {
+    const startedBridge = bridge
+    const startedEpoch = epoch
+    if (opening) await opening.catch(() => undefined)
+    if (startedBridge !== bridge || startedEpoch !== epoch) throw new LaneCommandFailure('agent_lane_workspace_stale', 'input opening was replaced')
+    if (reopen) {
       const previous = reopen
       const pending = open(previous.binding, previous.model)
       const generation = epoch
       const result = await pending
       if (!result.ok) {
         if (generation === epoch) reopen = previous
-        return result
+        throw new LaneCommandFailure(result.code, result.diagnostic)
       }
       if (generation !== epoch || !current || current.subscriptionId !== result.workspaceId) {
-        return { ok: false, code: 'agent_lane_workspace_stale', diagnostic: 'project changed while reopening a revoked workspace' }
+        throw new LaneCommandFailure('agent_lane_workspace_stale', 'input reauthorization was replaced')
       }
     }
-    return bridge.send({ ...command, ...(current ? { workspaceId: current.subscriptionId } : {}) })
+    return conversation()
+  }
+  const send = async (command: LaneDesktopCommand, expected?: LaneConversationAddress): Promise<LaneCommandResult> => {
+    if (!bridge) return NO_BRIDGE
+    const startedBridge = bridge
+    const startedEpoch = epoch
+    const scoped = command.kind === 'prompt' || command.kind === 'steer' || command.kind === 'follow-up'
+      || command.kind === 'abort' || command.kind === 'approval' || command.kind === 'cancel-queued' || command.kind === 'history-older'
+    let address = scoped ? expected ?? conversation() : null
+    // open / close 本身不能等自己（那是死锁），只有「装进这条对话」的命令要等。
+    if (opening && command.kind !== 'workspace-open' && command.kind !== 'workspace-close') {
+      await opening.catch(() => undefined)
+      if (startedEpoch !== epoch || startedBridge !== bridge) return stale()
+      if (scoped && !address) address = conversation()
+    }
+    if (command.kind === 'prompt' && reopen) {
+      try {
+        const opened = await prepareInput()
+        if (scoped && !address) address = opened
+      } catch (error) {
+        if (error instanceof LaneCommandFailure) return { ok: false, code: error.laneCode, diagnostic: '' }
+        throw error
+      }
+    }
+    if (address) {
+      const now = conversation()
+      if (!now || address.workspaceId !== now.workspaceId || address.laneName !== now.laneName || address.sessionId !== now.sessionId) return stale()
+    }
+    return bridge.send({ ...command, ...(current ? { workspaceId: current.subscriptionId } : {}),
+      ...(address ? { expectedLane: address.laneName, expectedSessionId: address.sessionId } : {}) })
   }
 
-  const approval = (toolCallId: string, action: LaneApprovalAction, reason?: string) =>
-    send({ kind: 'approval', toolCallId, action, ...(reason?.trim() ? { reason } : {}) })
+  const approval = (toolCallId: string, action: LaneApprovalAction, reason?: string, expected?: LaneConversationAddress) =>
+    send({ kind: 'approval', toolCallId, action, ...(reason?.trim() ? { reason } : {}) }, expected)
 
   const open: LaneClient['open'] = async (binding, model) => {
     const generation = ++epoch
     current = null
     reopen = null
-    closedWhileOpening = null
+    openingProjections.clear()
+    openingEpoch = generation
     openedModel = model
     publish(EMPTY_LANE_WORKSPACE)
     const inFlight = send({ kind: 'workspace-open', binding, ...(model ? { model } : {}) })
@@ -200,11 +259,14 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
       const result = await inFlight
       if (generation === epoch && result.ok && result.workspaceId) {
         current = Object.freeze({ subscriptionId: result.workspaceId, binding: Object.freeze({ ...binding }) })
-        const terminal = closedWhileOpening as LaneWorkspaceProjection | null
-        if (terminal?.workspaceId === result.workspaceId) publish(terminal)
+        const buffered = openingProjections.get(result.workspaceId)
+        if (buffered) publish(buffered)
       }
       return result
-    } finally { if (opening === inFlight) opening = undefined }
+    } finally {
+      if (opening === inFlight) opening = undefined
+      if (openingEpoch === generation) { openingEpoch = null; openingProjections.clear() }
+    }
   }
 
   return {
@@ -222,6 +284,8 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     },
     setPolicy: (policy) => send({ kind: 'workspace-policy', policy }),
     context: () => current,
+    conversation,
+    prepareInput,
     singleShot: (request) => send({ kind: 'single-shot', ...request }),
     abortSingleShot: (requestId) => send({ kind: 'single-shot-abort', requestId }),
     receipt: (subscriptionId, command) => {
@@ -237,23 +301,30 @@ export function createLaneClient(bridge: LaneBridge | undefined = resolveLaneBri
     },
     prompt: (text: string) => send({ kind: 'prompt', text }),
     intent: (text: string) => laneComposerIntent(latest.active, text),
-    say: (text: string, choice: 'primary' | 'secondary' = 'primary', context?: LaneComposerContext) => {
+    say: (text: string, choice: 'primary' | 'secondary' = 'primary', context?: LaneComposerContext, expected?: LaneConversationAddress) => {
       const intent = laneComposerIntent(latest.active, text)
       // 空闲态没有次选。用户在「新一轮」上按不到第二个按钮，所以这里回落到主动作而不是抛：
       // 抛会让一次正常的回车在极短的状态竞态里（刚跑完那一瞬）变成一个错误弹窗。
       const chosen = choice === 'secondary' ? intent.secondary ?? intent.primary : intent.primary
-      return send({ ...chosen.command, ...(context ? { context, expectedLane: latest.active.lane } : {}) })
+      return send({ ...chosen.command, ...(context ? { context } : {}) }, expected)
     },
     steer: (text: string) => send({ kind: 'steer', text }),
     followUp: (text: string) => send({ kind: 'follow-up', text }),
-    cancelQueued: (entryId: string) => send({ kind: 'cancel-queued', entryId }),
+    cancelQueued: (entryId: string, expected) => send({ kind: 'cancel-queued', entryId }, expected),
     selectLane: (laneName: string) => send({ kind: 'lane-select', laneName }),
     createLane: (laneName: string) => send({ kind: 'lane-create', laneName }),
     deleteLane: (laneName: string) => send({ kind: 'lane-delete', laneName }),
-    approve: (toolCallId: string) => approval(toolCallId, 'allow-once'),
-    approveForSession: (toolCallId: string) => approval(toolCallId, 'allow-session'),
-    deny: (toolCallId: string, reason?: string) => approval(toolCallId, 'deny', reason),
-    abort: () => send({ kind: 'abort' }),
+    approve: (toolCallId: string, expected) => approval(toolCallId, 'allow-once', undefined, expected),
+    approveForSession: (toolCallId: string, expected) => approval(toolCallId, 'allow-session', undefined, expected),
+    deny: (toolCallId: string, reason?: string, expected?: LaneConversationAddress) => approval(toolCallId, 'deny', reason, expected),
+    answer: (toolCallId: string, text: string, expected?: LaneConversationAddress) => approval(toolCallId, 'answer', text, expected),
+    abort: (expected) => send({ kind: 'abort' }, expected),
+    loadOlder: () => {
+      const before = latest.active.history?.before
+      return before && latest.active.history?.hasMore
+        ? send({ kind: 'history-older', before, expectedLane: latest.active.lane })
+        : Promise.resolve({ ok: true })
+    },
     dispose: () => {
       unsubscribe?.()
       listeners.clear()

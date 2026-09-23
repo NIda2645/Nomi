@@ -1,0 +1,1481 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-core-task-identity",
+  "problem_type": "Cross-domain task authority and untrusted failure disclosure",
+  "symptom": "Raw identifiers select an arbitrary cancellation domain and provider errors leak into model transcripts.",
+  "direct_cause": "Export preparation is tried before generation; catch-all failures select another owner; arbitrary code/message fields are trusted.",
+  "class_root": "Task identity and public failure provenance are not enforced at the shared transport boundary.",
+  "affected_population": [
+    "GUI-origin generation tasks",
+    "Internal Agent check/cancel",
+    "MCP generation and export"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneExtendedDesktopPorts.ts",
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/capabilityCore/productionRunTransportAdapters.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/productionRun/productionRunService.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+    "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/shared/agentLane/laneFailureFromDecision.ts",
+    "electron/shared/agentCapabilities/exportCapabilities.ts",
+    "src/workbench/timeline/agent/exportToolCall.ts",
+    "electron/productionRun/productionRunErrors.ts",
+    "electron/shared/agentCapabilities/taskReference.ts",
+    "electron/shared/agentCapabilities/canvasRead.ts",
+    "electron/shared/agentCapabilities/canvasReadCompact.ts",
+    "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+    "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+    "src/workbench/ai/lane/laneToolFailureText.ts",
+    "src/i18n/locales/agentToolFailure.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "src/workbench/ai/lane/laneClient.ts"
+  ],
+  "entry_points": [
+    "check_job/cancel_job",
+    "generation and production transport failures"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing domain owners, project authorization and transport contracts define these internal invariants; no third-party API is changed.",
+  "invariants": [
+    "Explicit task domain selects exactly one authorized owner.",
+    "Unknown raw IDs cause zero writes.",
+    "Provider text and forged codes cannot imply trusted absence or safe retry."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "LaneExtendedDesktopPortsInput"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "createLaneExtendedDesktopPorts"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationLeaseFactory"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationTransportAdapterDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPiGenerationTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "createPiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "PreparedProductionRunWrite"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "PiProductionRunTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationResolveIpc.ts",
+      "symbol": "GenerationPlanningHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationAuthorizationPreparation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationPlanningHandlerDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpSemanticBatchStart.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStoryboardPlanner.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStoryboardPlanner.ts",
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "coldstartEtaForGate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/artifactPreviewHttpServer.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "MaterializeStoryboardResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunArtifactOperations.ts",
+      "symbol": "ProductionArtifactProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "ProductionEventProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionEventProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTestHelpers.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionRunProjection"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "MaterializeStoryboardResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "createProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionGenerationOperationStoreHooks"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionGenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "generateModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "cancelJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "editTimelineModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "undoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "exportVideoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "readSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "saveSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "CancelJobModelArgs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "readScriptModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "READ_SCRIPT_SCOPE_DEFAULT"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "readSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "HostFill"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "readSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "cancelJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "exportVideoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "saveSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "undoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "editTimelineModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "generateModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "checkJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "generateModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "editTimelineModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "undoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "exportVideoModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "cancelJobModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "saveSkillModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "startModelSetupModelSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "editTimelinePlanId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "editTimelinePlanId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "readVerbs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "symbol": "DOCUMENT_ID_TRANSPORT_FIELD"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "DOCUMENT_ID_TRANSPORT_FIELD"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "writeVerbs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "symbol": "LaneFailureAdvice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "laneFailureFromDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "laneFailureFromDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "symbol": "isBareCodeMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "EXPORT_WRITE_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "EXPORT_READ_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "ExportReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "ExportWriteResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "EXPORT_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "EXPORT_WRITE_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpCapabilityProjection.ts",
+      "symbol": "EXPORT_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "EXPORT_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRendererFactories.ts",
+      "symbol": "EXPORT_WRITE_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportWriteResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "ExportReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "ExportWriteResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "EXPORT_READ_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "EXPORT_WRITE_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/registry.ts",
+      "symbol": "EXPORT_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/registry.ts",
+      "symbol": "EXPORT_WRITE_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "EXPORT_WRITE_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "EXPORT_READ_ALIASES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "symbol": "exportWriteResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/surfacePortBinding.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/surfacePortPreloadBridge.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/surfacePortPreloadBridge.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "ExportReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "ExportWriteInput"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/phase4CapabilityTargets.ts",
+      "symbol": "ExportReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/phase4CapabilityTargets.ts",
+      "symbol": "exportReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/phase4CapabilityTargets.ts",
+      "symbol": "ExportWriteResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/phase4CapabilityTargets.ts",
+      "symbol": "exportWriteSemanticInputSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "projectExportReadResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "projectExportWriteResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpCapabilityProjection.ts",
+      "symbol": "exportReadPiInputSchemaForAlias"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "symbol": "exportReadInputForAlias"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/phase4SurfaceTransportAdapters.ts",
+      "symbol": "exportWriteInputForAlias"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportReadPiInputSchemaForAlias"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "exportWritePiInputSchemaForAlias"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/timeline/agent/exportToolCall.ts",
+      "symbol": "ExportToolRuntime"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/timeline/agent/phase4CapabilityTargets.ts",
+      "symbol": "applyExportToolCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "symbol": "ProductionRunNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperationNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionRunNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionRunNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "taskReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "taskReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "symbol": "taskReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/taskReference.ts",
+      "symbol": "taskReferenceSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/taskReference.ts",
+      "symbol": "TaskReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "taskDomainSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "generationTaskReference"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneCanvasTools.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneCanvasTools.ts",
+      "symbol": "canvasReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadCapturedSnapshotRegistry.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadCapturedSnapshotRegistry.ts",
+      "symbol": "canvasReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadPublicError.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/canvasReadTransportAdapters.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "canvasReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpCapabilityProjection.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "symbol": "canvasReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolCatalog.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/nodeKindDomain.ts",
+      "symbol": "CANVAS_NODE_KINDS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/projectSessionAuthority.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcError.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "symbol": "CanvasReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationRuntime.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationSessionFactories.ts",
+      "symbol": "CanvasReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/verifiedCapabilityInvocationSessionFactories.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "canvasReadSemanticInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "canvasReadResultSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "CANVAS_NODE_KINDS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "CANVAS_EDGE_MODES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasRead.ts",
+      "symbol": "CanvasReadInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasReadCompact.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/registry.ts",
+      "symbol": "CANVAS_READ_CAPABILITY"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/canvasReadResultSeal.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "CanvasReadResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/capabilityExecutorRegistry.ts",
+      "symbol": "projectCanvasRead"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/canvasReadResultSeal.ts",
+      "symbol": "projectCanvasRead"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/canvasReadCompact.ts",
+      "symbol": "MAX_CANVAS_PROMPT_CHARACTERS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneCanvasTools.ts",
+      "symbol": "formatCanvasForAgent"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/runStoryboardPlanner.ts",
+      "symbol": "formatCanvasForAgent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "VerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "NOT_YET_DECLARED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "PROVENANCE_UNVERIFIABLE"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "symbol": "assertVerbFieldProvenance"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneTools.mts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "symbol": "LANE_TOOL_OWN_FAILURE_CODE_LIST"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "LANE_TOOL_OWN_FAILURE_CODE_LIST"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "laneToolFailureOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "AGENT_TOOL_FAILURE_TEXT_KEY"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "laneToolFailureSummary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneToolFailureSummary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneToolFailureDetail"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/agentToolFailure.ts",
+      "symbol": "zhAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "enAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "RendererGestureTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendActionDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendSurfaceUnavailableError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "listPendingSpendConfirmations"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "installPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "pendingSpendDependencies"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "revisePendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "confirmPendingSpendConfirmation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunErrors.ts",
+      "symbol": "GenerationOperationNotFoundError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunErrors.ts",
+      "symbol": "ProductionRunNotFoundError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "productionTaskAbsenceCode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/agentLoopMode.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneReceiptClient.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "LaneCommandFailure"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "createLaneClient"
+    }
+  ],
+  "door_reduction": {
+    "before": 261,
+    "after": 261,
+    "why_not": "The existing task domain routers and public-error boundaries remain necessary consumers; renderer auto-reopen now retains the same safe-code-only projection rather than copying diagnostics."
+  },
+  "generality_proof": "Both task verbs share domain resolution; all generation/production transport failures use safe provenance-based classification.",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "createLaneExtendedDesktopPorts",
+      "responsibility": "Route only explicit domain references."
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "createPiGenerationTransportAdapter",
+      "responsibility": "Safe public failure classification."
+    },
+    {
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "createLaneClient",
+      "responsibility": "Automatic reopen returns only a safe error code, without recopying provider diagnostics into the renderer result."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "createLaneExtendedDesktopPorts",
+      "disposition": "enforced",
+      "evidence": "Read and cancellation must use the same explicit domain."
+    },
+    {
+      "path": "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "entry_point": "createPiProductionRunTransportAdapter",
+      "disposition": "enforced",
+      "evidence": "Message regex cannot manufacture absence."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any ID collision, permission failure or untrusted provider error can trigger the class.",
+    "same_class_scan": [
+      "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "electron/capabilityCore/mcpGenerationTools.ts",
+      "electron/productionRun/productionRunService.ts",
+      "electron/productionRun/productionGenerationOperationStore.ts",
+      "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "src/workbench/timeline/agent/exportToolCall.ts"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+    "invariant": "Unqualified tasks and unknown failures cannot select mutation targets.",
+    "failure_mode": "Reject missing domain, preserve unknown outcome, return stable codes and safe advice.",
+    "exception_policy": "none",
+    "strategy": "Domain-tagged public reference and owner-issued absence; remove fallback and raw message propagation.",
+    "artifacts": [
+      "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "electron/capabilityCore/productionRunTransportAdapters.ts",
+      "electron/capabilityCore/mcpGenerationTools.ts",
+      "electron/productionRun/productionRunService.ts",
+      "electron/productionRun/productionGenerationOperationStore.ts",
+      "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "electron/shared/agentCapabilities/exportCapabilities.ts",
+      "src/workbench/timeline/agent/exportToolCall.ts",
+      "electron/productionRun/productionRunErrors.ts",
+      "electron/shared/agentCapabilities/taskReference.ts",
+      "electron/shared/agentCapabilities/canvasRead.ts",
+      "electron/shared/agentCapabilities/canvasReadCompact.ts",
+      "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "src/workbench/ai/lane/laneToolFailureText.ts",
+      "src/i18n/locales/agentToolFailure.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "src/workbench/ai/lane/laneClient.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "src/workbench/ai/lane/laneClient.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "src/workbench/ai/lane/laneClient.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "electron/capabilityCore/productionRunTransportAdapters.ts"
+    ],
+    "rationale": "Delete cross-domain cancellation probing and raw error routing."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Existing internal contracts own identity and failures.",
+    "exit_criteria": []
+  },
+  "migration": "No stored migration. Historical raw IDs require a refreshed domain-qualified reference.",
+  "residual_risks": [
+    "Final installed-app journey and live provider behavior are unverified."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/",
+    "has_tests": true,
+    "tests": [
+      "electron/agentLane/laneExtendedDesktopPorts.test.ts"
+    ],
+    "rationale": "Shared task routing owns domain selection."
+  }
+}

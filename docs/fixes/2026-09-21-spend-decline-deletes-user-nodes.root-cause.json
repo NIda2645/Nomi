@@ -1,0 +1,210 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-spend-decline-deletes-user-nodes",
+  "problem_type": "A rollback asked \"who does this card reference\" instead of \"who did this operation create\"",
+  "symptom": "用户原话（2026-09-21）：「我创建了节点卡片，让他给我生成一下，他弹生成卡片…我不生成，我的所有节点卡片都没了。」按下付费确认卡上的 × 之后，卡上每一镜绑着的画布节点都被删掉——包括不是这次操作造出来的那些；删除当场落盘、时间轴一起清，而且每删一个节点自己打一个 undo barrier，33 镜要按 33 次 Cmd+Z（HISTORY_LIMIT=80）。",
+  "direct_cause": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts 的 discard 在 discardSpend 成功后裸循环 `for (const entry of target.shots) if (entry.nodeId) canvas.deleteNode(entry.nodeId)`，判据是 PendingSpendShot.nodeId（一条引用），循环也不在任何 gesture context / txn 里。主进程的 generation.cancel 一个画布节点都没碰，而 appIntegrationSpendConfirm 的注释却写着「画布上的占位节点由既有落地链按 detached 收尾」——两不管，于是渲染层另起了一条删除路。",
+  "class_root": "画布上「这个节点是谁的」有两份判据：**绑定**（shots[].nodeId，落地链允许它指向一个早就在画布上的节点，还允许 rebind 写进老节点）和**来源**（节点 meta 上的 materializationOperationId / productionRunId / productionShotId 物化章）。撤销类动作必须问来源，读取类动作才问绑定；把两者当成一回事，任何一条撤销路都会顺手删掉用户自己的东西。同族的第二半是撤销粒度：建的时候整批一个 txn 一个 barrier，撤的时候是 N 次裸 deleteNode。",
+  "affected_population": [
+    "任何让 Agent 起过一次生成草稿、然后在付费确认卡上按 × 的用户",
+    "画布上存在与草稿镜同 shotId 的既有节点（复制粘贴的副本、跨操作重放、rebind 过的老节点）时，被删的就是真·手建节点"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/ai/v4/spendCardDraft.ts",
+    "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+    "src/workbench/generationCanvas/agent/materializationStamp.ts"
+  ],
+  "entry_points": [
+    "付费确认卡上的 ×（AgentPanelV4Cards 的 data-v4-control=reject → useAgentPanelSpendConfirm.discard）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "物化章与付费确认卡都是 Nomi 自己的形状，没有任何外部方读写它们；「撤销一次未批准的草稿该撤谁」也没有可对齐的公开规范，所以 R5.5 无外部规范可引。姿势上对齐的是本仓已有的先例（proposalUndo 的补偿计划：按「我建的」记账、倒序补偿、缺目标 no-op）。",
+  "invariants": [
+    "撤销一次未批准的生成，只撤这次操作自己造出来的节点；没有物化章的节点一律不动。",
+    "同一批节点建的时候占一个撤销步，撤的时候也只占一个撤销步。",
+    "撤销目标已经不在画布上时静默跳过，不报错。",
+    "× 不让用户丢掉任何没提交的手改——所以它也不必先问一句。（2026-09-22 订正：本条原文是「卡上有未提交的手改时，× 必须先说清『改的内容会一起丢』再撤」。裁决 D 之后 × 只收回这一次出价，草稿账本改锚 `operationId` 之后没提交的手改也跟着留，那句话不再为真，文案与它那一支渐进披露同刀删。见 docs/fixes/2026-09-22-spend-draft-owner.root-cause.json。）",
+    "「这一次生成上没提交的改动」只有一本账本、一个键派生，不留第二本找回账本（2026-09-22：键从报价身份收成 `operationId`，一次生成一本）。"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/sidebar/CategoryTree.tsx",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/storyboardDeleteUndo.ts",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/generationCanvasTools.ts",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/proposalUndo.ts",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/promptLibrary/PromptLibraryPanel.tsx",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/sidebar/CategoryTree.tsx",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/skillLibrary/SkillLibraryPanel.tsx",
+      "symbol": "deleteNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "retainSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "retainSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "restoreSpendDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "discard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+      "symbol": "onReject"
+    }
+  ],
+  "door_reduction": {
+    "before": 15,
+    "after": 13,
+    "why_not": "门表两族：画布 deleteNode 九扇 + 付费卡草稿账本六扇。deleteNode 那九扇里只有一扇问错了问题，逐扇判过：CategoryTree / PromptLibraryPanel / SkillLibraryPanel 三扇是用户在 UI 上显式点名删除（判据就是他点的那几个，问绑定才对）；startVideoDepthDerivation 是自建自删；proposalUndo 已经是「按我建的记账、倒序补偿、缺目标 no-op」的正确范本；storyboardDeleteUndo 是用户在分镜表里勾选的行；generationCanvasTools 的 delete_from_canvas 是模型点名 + 不可逆确认卡那条独立边界。把它们合成一扇会把「用户点名删」和「撤销我自己造的」两种语义混成一件事——那正是本次事故的形状。所以这一次收的不是门数，是**那一扇门的判据**：付费卡 × 从 useAgentPanelSpendConfirm 里的裸循环搬进 spendCardRollback.ts，判据换成来源章，事务与 barrier 与建它们时逐字对称。草稿账本那一族反过来是真的减了：找回账本（dismissedSpendDraftKey / retainDismissedSpendDraft 两个写入口 + 三处逐镜找回分支）整族删掉，「这一笔未提交的改动」只剩 spendDraftKey 一个键、一个写入口。 （2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。） 2026-09-22 追记（spend-draft-owner lane）：`rejectConfirmNote`（× 之前那句「你在卡上改的内容会一起丢掉」的渐进披露）整族删除——裁决 D 之后 × 只收回这一次出价，而草稿账本改锚 `operationId` 之后**没提交的手改也跟着留**（同一个 operationId 重新出价就在卡上）。没有东西会丢，就不该拦用户一下；文案（zh/en）、它在 `useAgentPanelSpendConfirm` 的唯一生产者、卡体那一支渲染与这扇门一起消失，付费卡的 × 回到一下就撤。卡体那一侧的门数没变：这一扇换成同一个文件里仍然活着的 × 入口 `onReject`——判据回到「× 这一下做了什么」本身，而不是「× 之前先说哪句话」。见 docs/fixes/2026-09-22-spend-draft-owner.root-cause.json。",
+    "owner": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
+  },
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "tests": [
+      "src/workbench/ai/v4/spendCardDraft.test.ts",
+      "tests/ux/agent-spend-card.walk.mjs"
+    ],
+    "notes": "× 的执行点只发一次 IPC（收回这一次出价），画布归落地投影管。（2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。）"
+  },
+  "generality_proof": "「这次未批准的生成造了哪些节点」在画布上只有一个答案：节点 meta 上的物化章（materializationOperationId + productionRunId + productionShotId），由 multiShotCanvasLanding 这个唯一落地口写。撤销侧现在读的就是它，而不是 shots[].nodeId 那条允许复用/改绑的引用。于是「绑定 ≠ 来源」这一族的两条推演路（带章节点被复制粘贴、同 shotId 跨操作重放）自然失效：副本与老节点要么没有这次操作的章，要么不在卡的 shots[].nodeId 里。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/agent/materializationStamp.ts",
+      "symbol": "MATERIALIZATION_OPERATION_META_KEY",
+      "responsibility": "「这个节点是某次物化造的」这条事实的唯一 owner；撤销侧读它，不重拼 canvas-landing:{runId} 那个串。"
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "discard",
+      "responsibility": "付费确认卡 × 的唯一执行点：收回这一次出价，不动画布。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/agent/proposalUndo.ts",
+      "entry_point": "Agent 提案整笔撤销 / 事务 abort 回滚",
+      "disposition": "not-affected",
+      "evidence": "（本次未改，已经是正确姿势）applyCompensationOps 按补偿计划里记的「本提案建的」节点倒序撤，对已消失目标 no-op；本次的实现就是照它写的。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "entry_point": "视频深度推导被取消",
+      "disposition": "not-affected",
+      "evidence": "（本次未改，已经是正确姿势）只删它自己刚建的那一个 nodeId。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/storyboardDeleteUndo.ts",
+      "entry_point": "分镜表里勾选行后删除",
+      "disposition": "not-affected",
+      "evidence": "（本次未改，判据本就对这一类不适用）用户显式点名的那几行，判据本就该是绑定；它的撤销粒度问题另记（不是「删了不该删的」，是「撤要按 N 次」）。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/generationCanvasTools.ts",
+      "entry_point": "Agent 动词 delete_from_canvas",
+      "disposition": "not-affected",
+      "evidence": "（本次未改，判据本就对这一类不适用）模型点名谁就删谁，缓解手段是 effect:irreversible + 确认卡这条独立边界；那张卡是否必弹另记为走查项。"
+    },
+    {
+      "path": "src/workbench/sidebar/CategoryTree.tsx",
+      "entry_point": "侧栏右键删除节点 / 整组",
+      "disposition": "not-affected",
+      "evidence": "（本次未改，判据本就对这一类不适用）用户在 UI 上选的，带真确认弹窗。"
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "付费确认卡 ×",
+      "disposition": "enforced",
+      "evidence": "× 只发一次 `discardSpend`，画布一行都不碰；agent-spend-card.walk.mjs 与范围旅程各钉一遍「一个节点都不动」。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "「撤销/取消时该撤谁」这个问题在画布上有九扇门，而每多一条撤销路就要重新回答一次；本次错的那一扇之所以错，是因为它没去读现成的来源章，而是就近抓了卡上那条引用。只要撤销侧还允许各自挑判据，同一件事会从下一条撤销路回来。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs deleteNode（9 扇门逐扇判「会不会误删用户自建节点」，见 same_class_entry_points）",
+      "另查「取消 / 失败 / 超时 / 切项目 / 关应用」四类：失败与超时走 deliverRunOutcome(status:'error')，节点留在画布上标错，没有任何一扇门删节点；切项目与关应用在门表里零命中（画布 store 随项目整体换掉）；主进程 generation.cancel 与 plan.detach-shot-nodes 都不碰画布。全仓「因为取消而删画布节点」的路只有付费卡 × 这一条。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "invariant": "× 不删任何画布节点——用户自己建的、这次操作落的占位，一个都不动。（2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。）",
+    "failure_mode": "谁再在 × 上动画布，agent-spend-card.walk.mjs 的「× 一个节点都不删」与范围旅程的「一个不多也一个不少」当场红；door-map 上 `deleteNode` 也会在付费卡那一侧多出一扇门。",
+    "exception_policy": "none",
+    "strategy": "把「撤销该撤谁」的判据从调用点搬到一个有测试的边界上，并与建它们时的事务姿势逐字对称。",
+    "artifacts": [
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "tests/ux/agent-spend-card.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "tests/ux/agent-spend-card.walk.mjs",
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/ai/v4/spendCardDraft.ts",
+      "tests/ux/fixtures/spend-panel-write-ownership-harness.tsx"
+    ],
+    "rationale": "删掉的是 spendCardDraft.ts 里的 dismissedSpendDraftKey / retainDismissedSpendDraft，以及 restoreSpendDraft / consumeSpendDraft / clearConsumedSpendDraft 里的逐镜找回分支（localStorage 找回账本），连同夹具 spend-panel-write-ownership-harness.tsx 的 prepareRecovery。找回账本存在的唯一理由是「× 会把东西弄丢」；根上修掉之后（× 只撤这次操作造的占位节点、一次 Cmd+Z 全回来）它就是 P1 说的并行版：同一语义两个终态、第二份没人住的房子。该分支从未合入 main，所以没有用户端遗留键需要迁移。 （2026-09-22 下午用户拍板改窄裁决 D 之后，这条不变量升成更强的一条：**× 一个节点都不删**——「不删用户自己建的节点」是它的子集。`spendCardRollback.ts` 那个按来源章取交集的回滚口因此没有调用方了，与它的单测同刀删除；执行点回到 `useAgentPanelSpendConfirm.discard`：那一下只发一次 IPC，一行画布代码都没有。见 docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json。） （`src/workbench/ai/v4/spendCardRollback.ts` 与它的单测是本分支上加的、又在本分支上删的，对 main 来说从未存在，所以不列进 removed_paths。）"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有第三方运行时或协议版本参与这条画布撤销边界。",
+    "exit_criteria": []
+  },
+  "migration": "无。物化章早已在节点 meta 上持久化（multiShotCanvasLanding 一直在写），撤销侧只是开始读它；被删的找回账本键只存在于这条未合入的分支上。",
+  "residual_risks": [
+    "主进程那一半（operations.dismiss / cardHidden 这个第二终态）不在本 lane 的范围里：× 单一语义要等主进程 lane 把 dismiss 删回 cancel 才算闭合，在那之前一个被 × 掉的草稿仍可被同 operationId 重新 present。",
+    "Agent 动词 delete_from_canvas 的不可逆确认卡是否必弹仍是推演级，没有运行证据；另记为走查项。",
+    "分镜表勾选删除（storyboardDeleteUndo）的撤销粒度仍是 N 步，本次没动。"
+  ]
+}

@@ -255,8 +255,19 @@ export function readableToolName(t: Translate, name: string, rawArgs?: unknown):
   if (normalized.includes('model.onboarding.remove') || normalized.includes('remove_model_provider')) {
     return t('agentResident.toolModelRemove')
   }
+  // 2026-09-21 通用反问。它在面板上必须有自己的名字：用户看到的那一行是
+  // 「它在问我一句话」，而不是一个工具在跑——这也是 residentToolDisplay 那两条
+  // 「每个工具/每个契约都得有人话名」的断言存在的理由。
+  if (normalized.includes('agent.ask') || normalized.includes('ask_user')) {
+    return t('agentResident.toolAsk')
+  }
   if (normalized.includes('model.onboarding.setup') || normalized.includes('connect_model_provider')) {
     return t('agentResident.toolModelSetup')
+  }
+  // 2026-09-21 合并 ①：试跑是**花钱**的那一口（一次真实生成），不能和「接入模型」共用一句话——
+  // 面板上长得一样，用户就分不出「他在接」和「他在花我的钱」。和上面 remove 单列是同一条理由。
+  if (normalized.includes('model.onboarding.try') || normalized.includes('try_model')) {
+    return t('agentResident.toolModelTry')
   }
   if (normalized.includes('production.run.write')) return t('agentResident.toolProductionWrite')
   if (normalized.includes('skill.read')) return t('agentResident.toolSkillRead')
@@ -524,15 +535,24 @@ function humanizeSchemaIssues(t: Translate, text: string): string | undefined {
   const lines: string[] = []
   for (const issue of issues) {
     const field = Array.isArray(issue.path) && issue.path.length ? issue.path.join('.') : t('agentResident.issueRoot')
-    const line = typeof issue.expected === 'string' && typeof issue.received === 'string'
-      ? t('agentResident.issueType', { field, expected: issue.expected, received: issue.received })
-      : typeof issue.message === 'string' && issue.message.trim()
-        ? t('agentResident.issueMessage', { field, message: issue.message.trim() })
+    // 2026-09-21：这里原来有第三支 `issueMessage`，把 `issue.message` **原样**插进中文模板。
+    // 那个 message 是写给模型看的英文散文（产地 `verbs/writeVerbs.ts` 的 `expectedOf()`），
+    // 于是中文用户在行内读到 `shots.0.role：an anchor is a reference card …`。
+    // 与 `humanizeValidationProse` 对齐成同一条纪律：**翻得出才说，翻不出就说一句通用的**，
+    // 英文全文只留在展开区的「输出」里。
+    const expected = typeof issue.expected === 'string' ? issue.expected.trim() : ''
+    const received = typeof issue.received === 'string' ? issue.received.trim() : ''
+    const line = JSON_TYPE_WORDS.has(expected.toLowerCase()) && received
+      ? t('agentResident.issueType', { field, expected, received })
+      : /required/i.test(typeof issue.code === 'string' ? issue.code : '')
+        || (expected && !received)
+        ? t('agentResident.issueRequired', { field })
         : ''
     if (line && !lines.includes(line)) lines[lines.length] = line
     if (lines.length >= 6) break
   }
-  return lines.length ? lines.join('\n') : undefined
+  // 一条都翻不出来时**也不放英文过去**：给一句通用的「参数不合法」（同 `humanizeValidationProse`）。
+  return lines.length ? lines.join('\n') : t('agentResident.issueInvalidArgs')
 }
 
 /** 校验回执行里那句 `Expected array` 里的类型词。只认 JSON 的七个类型，别的不硬翻。 */

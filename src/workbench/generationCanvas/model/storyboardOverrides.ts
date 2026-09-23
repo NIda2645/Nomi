@@ -3,7 +3,9 @@ import { resolveArchetypeForModel } from '../../../../electron/shared/modelArche
 
 /** Variants are independent branches; only original shot nodes own plan overrides. */
 export function isStoryboardOriginal(node: GenerationCanvasNode): boolean {
-  return Boolean(node.meta?.shotId && node.meta?.storyboardDesignId)
+  const identified = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+  return ((identified(node.meta?.shotId) && identified(node.meta?.storyboardDesignId))
+    || (identified(node.meta?.productionRunId) && identified(node.meta?.productionShotId) && node.meta?.productionShotRole !== 'anchor'))
     && !node.meta?.storyboardKeyframe && !node.regeneratedFrom && !node.derivedFrom
 }
 

@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "write",
+    "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+    "symbol": "useNodeAssetDrop"
+  },
+  {
+    "kind": "write",
+    "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+    "symbol": "useNodeMentionSource"
+  },
+  {
+    "kind": "write",
+    "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+    "symbol": "addAssetUrlToNode"
+  },
+  {
+    "kind": "write",
+    "path": "src/workbench/generationCanvas/nodes/useNodeAssetDrop.ts",
+    "symbol": "addAssetUrlToNode"
+  }
+]

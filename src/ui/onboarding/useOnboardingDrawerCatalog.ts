@@ -4,6 +4,7 @@ import { getDesktopBridge } from '../../desktop/bridge'
 import type { DreaminaStatus } from './DreaminaMemberCard'
 import type { ChipModel } from './ModelChipGroups'
 import { projectModelSettingsCatalog } from './modelSettingsCatalogProjection'
+import type { ModelCatalogReadOnlyDto } from '../../workbench/api/modelCatalogApi'
 import { vendorFieldLossNoticeAt } from '../../../electron/shared/vendorFieldLossNotice'
 
 export type OnboardingVendorMeta = {
@@ -38,6 +39,10 @@ export function useOnboardingDrawerCatalog(): {
   dreaminaStatus: DreaminaStatus | null
   loaded: boolean
   bridgeMissing: boolean
+  /** 这一次读为什么失败；非空时**上一份数据仍在其余字段里**，不是空目录，界面上必须看得见。 */
+  loadError: string | null
+  /** 目录为什么只能读不能改（`newer_on_disk` = 装过新版又装回旧版）。null = 可写。 */
+  readOnly: ModelCatalogReadOnlyDto | null
   reloadFromError: () => void
   refresh: () => void
 } {
@@ -48,6 +53,8 @@ export function useOnboardingDrawerCatalog(): {
   const [dreaminaStatus, setDreaminaStatus] = React.useState<DreaminaStatus | null>(null)
   const [loaded, setLoaded] = React.useState(false)
   const [bridgeMissing, setBridgeMissing] = React.useState(false)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [readOnly, setReadOnly] = React.useState<ModelCatalogReadOnlyDto | null>(null)
   const bridgeRetries = React.useRef(0)
   const [version, setVersion] = React.useState(0)
 
@@ -88,10 +95,26 @@ export function useOnboardingDrawerCatalog(): {
       setVendorMeta(metaMap)
       setModels(projectedCatalog.models)
       setMappings(storedMappings)
+      setLoadError(null)
+    } catch (error) {
+      /**
+       * **读失败不许把界面清空。**
+       *
+       * 用户那句「重装之后所有模型配置都没了」就是从这里出来的：配置一条都没丢，是读通道上
+       * 挂了一次写、写被拒、抛错，而这里把异常吞成了一片空白页。空白页说的是「你什么都没有」，
+       * 而真相是「这一次没读到」——两句话让用户做的事完全相反（一个去重配，一个去看看怎么了）。
+       * 根因合同：`docs/fixes/2026-09-21-config-never-silently-lost.root-cause.json`。
+       *
+       * 所以：**上一份数据原样留着**（不 set 任何一个数据状态），只多出一条说得出原因的错。
+       */
+      setLoadError(error instanceof Error ? error.message : String(error))
+    }
+    // 健康度**单独读一次**（读成功与读失败两条路共用），所以「目录能不能编辑」只有一个取值点。
+    try {
+      setReadOnly((bridge.modelCatalog.health() as { readOnly?: ModelCatalogReadOnlyDto | null } | null)?.readOnly ?? null)
     } catch {
-      setVendorMeta(new Map())
-      setModels([])
-      setMappings([])
+      // 健康度读不到不改变「目录能不能编辑」这个判断——宁可当可写，也不要凭一次失败把用户锁成只读。
+      setReadOnly(null)
     }
     setLoaded(true)
     let alive = true
@@ -116,6 +139,7 @@ export function useOnboardingDrawerCatalog(): {
   const reloadFromError = React.useCallback(() => {
     bridgeRetries.current = 0
     setBridgeMissing(false)
+    setLoadError(null)
     setLoaded(false)
     setVersion((value) => value + 1)
   }, [])
@@ -132,6 +156,8 @@ export function useOnboardingDrawerCatalog(): {
     dreaminaStatus,
     loaded,
     bridgeMissing,
+    loadError,
+    readOnly,
     reloadFromError,
     refresh,
   }

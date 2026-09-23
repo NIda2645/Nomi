@@ -230,6 +230,28 @@ export function collectFlowSelectionChanges(
   })
 }
 
+/**
+ * 把内核报上来的那批选择变更叠到当前选区上，算出下一份选区；**没真变就回 null**。
+ *
+ * 「没变就不写」这一条必须在这里：React Flow 的选择 store 是内部的、持久选区在 Zustand，
+ * 每收到一次内部通知就同步一次会自激（2026-09-22 总合并把它从组件体里搬出来，同刻让那份壳回到 800 行门岗内）。
+ */
+export function nextSelectionFromFlowChanges(
+  changes: readonly NodeChange<GenerationFlowNode>[],
+  currentSelection: readonly string[],
+): string[] | null {
+  const selectionChanges = collectFlowSelectionChanges(changes)
+  if (selectionChanges.length === 0) return null
+  const selected = new Set(currentSelection)
+  for (const change of selectionChanges) {
+    if (change.selected) selected.add(change.nodeId)
+    else selected.delete(change.nodeId)
+  }
+  const next = [...selected]
+  if (next.length === currentSelection.length && next.every((nodeId, index) => nodeId === currentSelection[index])) return null
+  return next
+}
+
 export function flowViewportFromCanvas(viewport: { zoom: number; offset: { x: number; y: number } }): Viewport {
   return { x: viewport.offset.x, y: viewport.offset.y, zoom: viewport.zoom }
 }

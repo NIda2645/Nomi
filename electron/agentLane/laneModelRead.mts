@@ -40,18 +40,22 @@ export const laneModelReadDefinition = (() => {
  * 旧行为是无论问什么都把全部模型的完整说明书倒出来；108 个模型是十万字量级，
  * 每回合都背着它就是拿上下文换一份大多数时候用不上的东西。
  *
- * @param availabilityOf 目录注入的可用性（keyStatus/usable/statusReason）。生产装配必给。
+ * @param availabilityOf 目录注入的可用性（keyStatus/usable/statusReason）。**必传**。
+ *   2026-09-22（对方会话 Ponytail 记的账）：它原来是可选的，于是「生产装配漏接可用性」
+ *   这件事编译器一个字都不会说——模型读到的每一行都没有 keyStatus/usable，
+ *   它以为所有模型都能用，然后带着一个没钥匙的模型去花钱。可选的注入点 = 可选的真相。
+ *   拿不到目录的调用方显式传 `() => undefined`，那是一句**说出来的**「这条路没有可用性」。
  */
 export function createLaneModelRead(
   resolve: () => readonly AgentModelEntry[],
-  availabilityOf?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined,
+  availabilityOf: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined,
 ) {
   return { ...laneModelReadDefinition, execute: async (_id: string, args: { kind?: string; modelId?: string; vendor?: string }) => {
     const all = resolve();
     if (args.modelId !== undefined) {
       const found = resolveModelEntry(all, args.modelId, args.vendor);
       const payload = found.ok
-        ? { model: modelSpecDetail(found.entry, availabilityOf?.(found.entry)) }
+        ? { model: modelSpecDetail(found.entry, availabilityOf(found.entry)) }
         : found.reason === 'ambiguous'
           // 没点名哪一家、而这个 modelId 有好几家：**不许替调用方挑**。
           ? {
@@ -73,7 +77,7 @@ export function createLaneModelRead(
     }
     const rows = all
       .filter(entry => args.kind === undefined || entry.kind === args.kind)
-      .map(entry => modelSpecRow(entry, availabilityOf?.(entry)));
+      .map(entry => modelSpecRow(entry, availabilityOf(entry)));
     const payload = { models: rows };
     return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }], details: payload };
   } };

@@ -28,7 +28,7 @@ const ACCEPTED_BY_LANE: Record<VerbTransportCall["lane"], (method: string) => bo
 
 /** 一份能过每个动词 schema 的最小参数：翻译只改形状不改语义，所以这里只要字段齐。 */
 const SAMPLE_FIELDS: Record<string, unknown> = {
-  shots: [{ prompt: "海上日出" }], operationId: "op-1", jobId: "op-1", name: "ugc-ad", nodeIds: ["node-1"],
+  domain: "generation", shots: [{ prompt: "海上日出" }], operationId: "op-1", jobId: "op-1", name: "ugc-ad", nodeIds: ["node-1"],
   baseRevision: "revision-1", summary: "move", operations: [{ kind: "move", clipId: "clip-1", startFrame: 0 }], undoToken: "undo-1", expectedRevision: "revision-1",
   dirName: "talking-head", skillMarkdown: "---\nname: x\n---\nbody", provider: "DeepSeek", query: "rain",
 };
@@ -64,10 +64,10 @@ describe("verbToTransportCall · every transported verb lands on a method its la
     });
   }
 
-  it("check_job / cancel_job fall back to export methods the export adapter accepts", () => {
+  it("check_job / cancel_job route explicit export domain to methods the export adapter accepts", () => {
     for (const verb of ["check_job", "cancel_job"]) {
-      const exportCall = exportJobTransportCall({ toolCallId: "call-1", toolName: verb, args: { jobId: "export-1" } });
-      expect(resolveCapabilityAlias(exportCall.toolName)?.contract.id, `${verb} export fallback`).toMatch(/^export\./);
+      const exportCall = exportJobTransportCall({ toolCallId: "call-1", toolName: verb, args: { domain: "export", jobId: "export-1" } });
+      expect(resolveCapabilityAlias(exportCall.toolName)?.contract.id, `${verb} explicit export route`).toMatch(/^export\./);
     }
   });
 

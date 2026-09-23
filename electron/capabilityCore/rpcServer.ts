@@ -27,7 +27,6 @@ import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
 import { rpcErrorWirePayload } from './mcpRpcError'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import { bindMcpConnectionContext, McpConnectionAuthenticationError } from './mcpConnectionContext'
 import type { ProjectSessionAuthority } from './projectSessionAuthority'
 import { assertLocalBearerProjectSessionRoute } from './localProjectSessionTransportPolicy'
@@ -58,6 +57,12 @@ export type RpcServerOptions = {
   /** One project-session authority; each request adds its freshly verified transport connection. */
   projectSessionAuthority?: ProjectSessionAuthority
   approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /**
+   * 用户此刻选的审批档位（设置里持久化的那一份）。宿主只负责把它递进调度上下文；
+   * 判据只有一个 owner（`capabilityApprovalPolicy.spendDecidedByPolicy`），这里不作判断。
+   * 缺席 = 这条路读不到档位 → 下游一律 fail-closed，不许替用户花钱。
+   */
+  approvalPolicy?: import('./dispatcher').DispatchContext['approvalPolicy']
   requestGenerationGate?: import('./dispatcher').DispatchContext['requestGenerationGate']
   authorizeGeneration?: import('./dispatcher').DispatchContext['authorizeGeneration']
   /** Internal client→GUI fallback. The callback must verify the challenge before prompting. */
@@ -69,7 +74,6 @@ export type RpcServerOptions = {
    * `nomi_verify_client_generation_gate`.
    */
   verifyClientGenerationGateInMain?: (input: { challengeToken: string; authenticatedClient: string }) => Promise<unknown>
-  generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   generationPlanning?: import('./dispatcher').DispatchContext['generationPlanning']
   projectRevisionResolver?: (projectId: string) => number | undefined
@@ -358,7 +362,6 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           makeGateway,
           productionRuns,
           origin: { host: origin },
-          generationPolicy: options.generationPolicy,
           generationContext: options.generationContext,
           generationPlanning: options.generationPlanning,
           projectRevisionResolver: options.projectRevisionResolver,
@@ -367,6 +370,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
             ? { projectSession: { authority: options.projectSessionAuthority, connection: projectSessionConnection } }
             : {}),
           approvalReceiptAuthority: options.approvalReceiptAuthority,
+          approvalPolicy: options.approvalPolicy,
           requestGenerationGate: options.requestGenerationGate,
           authorizeGeneration: options.authorizeGeneration,
           // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
@@ -382,10 +386,17 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         })
         send(200, { ok: true, result })
       } catch (error) {
-        const status = error instanceof RpcError ? error.httpStatus : 500
         // Keep ordinary errors as legacy strings; policy errors preserve their
         // typed recovery contract for local RPC clients.
-        send(status, { ok: false, error: rpcErrorWirePayload(error) })
+        const payload = rpcErrorWirePayload(error)
+        // 2026-09-21：拒绝不是故障。领域层抛的 `human_approval_required`（「这件事要真人答一次」）
+        // 以前一律落到 500——调用方读到的是「Nomi 崩了」，而真相是「Nomi 在等你点头」。
+        // 只改这一个码：它是授权判定，语义上就是 403。其余非 RpcError 仍按 500 上报，不替它们猜。
+        const code = typeof payload === 'object' && payload ? payload.code : undefined
+        const status = error instanceof RpcError
+          ? error.httpStatus
+          : code === 'human_approval_required' ? 403 : 500
+        send(status, { ok: false, error: payload })
       } finally {
         req.removeListener('aborted', abortRequest)
         res.removeListener('close', abortOnClosedReply)

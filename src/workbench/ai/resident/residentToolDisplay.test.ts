@@ -191,6 +191,37 @@ describe('失败正文 → 人话：只有这一条门', () => {
     expect(humanizeToolFailure(translate, issues)).toBe('agentResident.issueType(field=nodes,expected=array,received=string)')
   })
 
+  /**
+   * 2026-09-21：这一支原来有第三条分支，把 `issue.message` **原样**插进中文模板。
+   * 那个 message 是写给模型看的英文散文（产地 `verbs/writeVerbs.ts` 的 `expectedOf()`），
+   * 于是中文用户在行内读到 `shots.0.role：an anchor is a reference card …`。
+   * 纪律与散文体那一支对齐：翻得出才说，翻不出就说一句通用的，英文全文只留在展开区。
+   */
+  it('zod issue JSON：模型面的英文 message 一个字都不进行内', () => {
+    const issues = JSON.stringify([{
+      code: 'custom', path: ['shots', 0, 'role'],
+      message: 'an anchor is a reference card that other shots point at; use role="shot" for an ordinary shot',
+    }])
+    const humanized = humanizeToolFailure(translate, issues)
+    expect(humanized).toBe('agentResident.issueInvalidArgs')
+    expect(humanized).not.toContain('anchor is a reference card')
+  })
+
+  it('zod issue JSON：翻得动的那几条照常翻，翻不动的那条不拖别人下水', () => {
+    const issues = JSON.stringify([
+      { code: 'invalid_type', expected: 'array', received: 'string', path: ['nodes'] },
+      { code: 'custom', path: ['shots'], message: 'free-form English for the model' },
+    ])
+    const humanized = humanizeToolFailure(translate, issues)
+    expect(humanized).toBe('agentResident.issueType(field=nodes,expected=array,received=string)')
+    expect(humanized).not.toContain('free-form English')
+  })
+
+  it('zod issue JSON：缺必填字段也有自己的说法（expected 在、received 缺）', () => {
+    const issues = JSON.stringify([{ code: 'invalid_type', expected: 'array', path: ['nodes'] }])
+    expect(humanizeToolFailure(translate, issues)).toBe('agentResident.issueRequired(field=nodes)')
+  })
+
   it('pi 的英文散文体回执：抬头丢掉、入参回显丢掉，只留说得出事的那句', () => {
     const humanized = humanizeToolFailure(translate, PI_PROSE)
     expect(humanized).toBe('agentResident.issueExpected(field=nodes,expected=array)')

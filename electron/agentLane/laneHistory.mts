@@ -1,3 +1,4 @@
+import { openLaneHistoryPage } from './laneHistoryPage.mjs';
 import { logError } from '../logging/logger.js';
 import { registerLiveLaneTrace } from './laneTraceRecorder.mjs';
 import { writeLaneTrace } from './laneTrace.mjs';
@@ -21,7 +22,9 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
       logError('agent', 'derived-view-write-failed', new Error('Agent trace could not be written'));
     });
     const branch = await opened.session.branch(laneName, context);
-    const transcript = branch ? await branch.findEntries({ order: 'oldestFirst' }, context) : [];
+    const history = await openLaneHistoryPage(opened.session, laneName, context);
+    // Runtime usage is separate from paged historical rows.
+    const transcript = branch ? (await branch.findEntries({ order: 'newestFirst', stopAtType: 'compaction' }, context)).reverse() : [];
     const stats = await opened.session.getStats(context);
     const snapshot: LaneSnapshot = {
       lane: laneName, transcript, tipId: branch ? await branch.getTipId(context) : null,
@@ -30,7 +33,7 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
       configuration: { model: { provider: '', modelId: '' }, thinkingLevel: 'off', activeToolNames: [] },
     };
     const model = { pricing: 'unpriced' as const, supportedThinkingLevels: ['off' as const] };
-    let projection = projectLaneSnapshot(snapshot, model, undefined, options.tasks);
+    let projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
     const listeners = new Set<(next: typeof projection) => void>();
     const unavailable = () => { throw new Error('Model is not configured'); };
     let closing: Promise<void> | undefined;
@@ -40,10 +43,19 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
       receiptAuthority: (proposalId) => findLaneReceiptAuthority(snapshot, proposalId),
       projection: () => projection,
       subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-      execute: async (command) => { if (command.kind === 'abort') return {}; return unavailable(); },
+      execute: async (command) => {
+        if (command.kind === 'abort') return {};
+        if (command.kind === 'history-older') {
+          await history.older(command.before);
+          projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
+          for (const listener of listeners) listener(projection);
+          return {};
+        }
+        return unavailable();
+      },
       appendTaskNote: async () => unavailable(),
       refreshTasks: () => {
-        projection = projectLaneSnapshot(snapshot, model, undefined, options.tasks);
+        projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
         for (const listener of listeners) listener(projection);
       },
       close: () => closing ??= (async () => {

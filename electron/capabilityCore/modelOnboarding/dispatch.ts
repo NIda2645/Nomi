@@ -21,6 +21,7 @@ import {
   readCatalog,
   upsertModelCatalogModel,
   upsertModelCatalogVendor,
+  upsertModelCatalogVendorApiKey,
   mutateCatalog,
 } from "../../catalog/catalogStore";
 import { readCredentialBinding } from "../../catalog/credentialBinding";
@@ -29,17 +30,25 @@ import type { CapabilityOriginHost } from "../security";
 import { getIntegrationSessionService, type IntegrationSessionService } from "../../integrationCertification/integrationSession";
 import { withCredentialElicitationTicket } from "../../integrationCertification/credentialElicitation";
 import { catalogFingerprint, changeIdFor } from "./fingerprint";
+import { submitDeclaration } from "./submitDeclaration";
+import { tryModel, type TryModelDeps } from "./tryModel";
 import {
-  freeRequests,
   noBlast,
   unverified,
   type OnboardingFailure,
-  type OnboardingRejection,
   type OnboardingResult,
 } from "./envelope";
 
 export type OnboardingDispatchDeps = {
-  sessions: IntegrationSessionService;
+  /**
+   * 会话服务**按需现取**：只有「打开贴 key 页」与「取消」两跳真的用它。
+   *
+   * 以前这里是一个现成的值，而装配处一律 `ctx.sessions || getIntegrationSessionService()`——
+   * 于是在没装会话服务的宿主上，连「交一份卡」「填一把 key」这种根本不碰会话的动作也会
+   * 在装配那一行当场抛 `integration_session_service_not_installed`。那正是本刀要拆的那种
+   * 耦合的最后一处残留：一个跟你无关的东西没准备好，你就不许动。
+   */
+  sessions: () => IntegrationSessionService;
   owner: CapabilityOriginHost;
   /** 打开 Nomi 的贴 key 页（app 没开时排队等下次打开，与旧 open_credentials 同一条路）。 */
   openCredentialsInNomi?: (input: { sessionId: string; vendorName: string }) => Promise<{ opened: boolean } | void> | { opened: boolean } | void;
@@ -74,12 +83,17 @@ async function connectProvider(
         nextAction: "Call nomi_read target=models and use one of the vendor ids it returns.",
       };
     }
-    // 地址与鉴权放法在这条路上是**只读**的：改它们等于让一段对话文本决定用户的密钥发往哪里。
-    if (suggestedBaseUrl) {
-      const binding = readCredentialBinding(vendor);
+    // 地址与鉴权放法只在**已经有绑定**时是只读的：那时改它们等于让一段对话文本决定一把
+    // 已存密钥发往哪里。没有绑定（新家、或这条连接从来没存过 key）时没有任何密钥会因此改道，
+    // 拒绝它只是把一条正路堵死。
+    //
+    // 2026-09-21 K1 就是这条判据被写反的样子：分支只判「有没有传地址」，于是一条
+    // **根本没有 key** 的连接被告知 "already holds a key"——第 1 次调用就撞上，而且是句假话。
+    const binding = readCredentialBinding(vendor);
+    if (suggestedBaseUrl && binding?.origin) {
       return {
         ok: false, code: "credential_origin_mismatch",
-        message: `This connection already holds a key${binding?.origin ? `, bound to ${binding.origin}` : ""}. Where a saved key is sent is decided by the user on Nomi's credential page, not by an argument.`,
+        message: `This connection's saved key is bound to ${binding.origin}. Where a saved key is sent is decided by the user on Nomi's credential page, not by an argument.`,
         nextAction: "Call connect_provider again with reissueKey=true (and no suggestedBaseUrl): Nomi reopens that page with the address editable, and the user's save rebinds the key.",
       };
     }
@@ -130,7 +144,7 @@ async function connectProvider(
 
   const opened = vendorKey
     ? reopenForVendor(deps, vendorKey, vendor)
-    : deps.sessions.begin({
+    : deps.sessions().begin({
       kind: "http-api-provider",
       name: text(args.name),
       baseUrl: suggestedBaseUrl,
@@ -138,7 +152,7 @@ async function connectProvider(
     }, deps.owner);
   if ("ok" in opened) return opened;
 
-  const credentials = deps.sessions.openCredentials(opened.id, opened.revision, deps.owner);
+  const credentials = deps.sessions().openCredentials(opened.id, opened.revision, deps.owner);
   let ui: { opened: boolean } | void;
   try {
     ui = await deps.openCredentialsInNomi?.({ sessionId: credentials.id, vendorName: credentials.config.name });
@@ -146,22 +160,39 @@ async function connectProvider(
     // 排队的交接单会在 Nomi 下次打开时重放；窗口消失不该让 MCP 契约不可用。
     ui = { opened: false };
   }
-  const ticketed = deps.withCredentialElicitationTicket({ ...credentials, credentialUiOpened: ui?.opened === true });
+  // 收据由**页面到底开没开**决定，不由这一跳的意图决定。2026-09-21 K3：同一个信封里
+  // `changes` 写着 "Opened Nomi's credential page"，而 `credentialEntry.instructions` 写着
+  // 「Nomi 没在运行」——AI 会照着前半句对用户说「我已经帮你打开了，去看一眼」，而用户面前
+  // 什么都没有。一封信里两句互相打脸，等于教模型撒谎。
+  const opened_ui = ui?.opened === true;
+  const ticketed = deps.withCredentialElicitationTicket({ ...credentials, credentialUiOpened: opened_ui });
+  const credentialUrl = typeof (ticketed as { credentialUrl?: unknown }).credentialUrl === "string"
+    ? (ticketed as { credentialUrl: string }).credentialUrl
+    : undefined;
   return {
     ok: true,
     setupId: credentials.id,
     changeId: changeIdFor(credentials.id, "connect_provider", args),
     state: ticketed,
     unverified: unverified("endpoint_reachable", "credential_accepted", "declaration_valid", "model_produces_output"),
-    changes: [{ state: "S11.1", summary: `Opened Nomi's credential page for ${credentials.config.name}.` }],
+    changes: [{
+      state: "S11.1",
+      summary: opened_ui
+        ? `Opened Nomi's credential page for ${credentials.config.name}.`
+        : credentialUrl
+          ? `Queued the credential page for ${credentials.config.name}; the user opens it from the link in nextAction.`
+          : `Queued the credential page for ${credentials.config.name}. Nomi is not running, so nothing is on screen yet; it opens the next time the user starts Nomi.`,
+    }],
     blastRadius: noBlast(),
     nextAction: {
-      kind: "user_sees_key_page",
-      userSees: `Nomi is showing the address this key will be bound to${suggestedBaseUrl ? ` (${suggestedBaseUrl})` : ""} with a box to paste the key. Saving is the user's confirmation of that address.`,
+      kind: opened_ui || credentialUrl ? "user_sees_key_page" : "waiting_for_user",
+      userSees: opened_ui
+        ? `Nomi is showing the address this key will be bound to${suggestedBaseUrl ? ` (${suggestedBaseUrl})` : ""} with a box to paste the key. Saving is the user's confirmation of that address.`
+        : credentialUrl
+          ? "Nomi is not on screen. Give the user the one-time link in this reply; the page it opens is Nomi's own, and the key never passes through you."
+          : "Nomi is not running, so nothing is on screen. Tell the user to start Nomi: the credential page opens for them then. Do not say a page is already open.",
       waitWith: "nomi_read target=setup waitMs",
-      ...(typeof (ticketed as { credentialUrl?: unknown }).credentialUrl === "string"
-        ? { url: (ticketed as { credentialUrl: string }).credentialUrl }
-        : {}),
+      ...(credentialUrl ? { url: credentialUrl } : {}),
     },
   };
 }
@@ -187,144 +218,69 @@ function reopenForVendor(
       nextAction: "Ask the user to open Nomi's model settings and add the address there.",
     };
   }
-  return deps.sessions.begin({
+  return deps.sessions().begin({
     kind: "http-api-provider",
     name: vendor?.name || vendorKey,
     baseUrl,
   }, deps.owner);
 }
 
-// ── submit_declaration ──────────────────────────────────────────────────────────────
-
-/** 校验器抛的一句话 → 卡上的位置 + 一个码。**不猜**：认不出位置就如实说「整张卡」。 */
-export function rejectionsFromError(error: unknown, card: unknown): OnboardingRejection[] {
-  const message = error instanceof Error ? error.message : String(error);
-  const path = /\b([A-Za-z0-9_.-]+)\.(text_to_image|image_edit|text_to_video|image_to_video|text_to_audio|image_to_audio|transcribe|text_to_3d|image_to_3d|chat|prompt_refine|image_to_prompt)\.(create|query|result)\b/.exec(message);
-  const code: OnboardingRejection["code"] =
-    /same origin/i.test(message) ? "same_origin"
-      : /requires referenceParam|referenceShape/i.test(message) ? "reference_slot_missing"
-        : /asynchronous|without a query|declares result without query/i.test(message) ? "async_without_query"
-          : /no executable request channel|media result mapping/i.test(message) ? "no_channel"
-            : /assetIngestion|upload/i.test(message) ? "upload_strategy_unsupported"
-              : "schema";
-  return [{
-    path: path ? `${path[1]}.${path[2]}.${path[3]}` : "declaration",
-    code,
-    message: message.slice(0, 600),
-    ...(cardSourceUrl(card) ? { sourceUrl: cardSourceUrl(card) as string } : {}),
-  }];
-}
+// ── set_key ─────────────────────────────────────────────────────────────────────────
 
 /**
- * 「这家需要的东西，声明卡表达不了」——**唯一**的出口是人写调用脚本（方案 §5 末段）。
+ * 密钥的第二个入口（§4，用户 09-21 拍板）。**同一份存储、同一扇写门、同一套 origin 绑定。**
  *
- * 四类表达不了的：请求签名 / HMAC / OAuth 换 token；非 HTTP（gRPC / WebSocket / 流式媒体）；
- * SDK-only；超出「（上传初始化 →）create → query → result」的多请求编排；自定义编码。
- *
- * `nextAction` **不许**指向 OpenAI 兼容模板：那正是 09-11 那条「静默落回模板」在人话层的复发——
- * 把「这条路本来就不通」说成「用那个模板试试」，用户会一直试，而每一次都必然在同一堵墙上。
- * `noGenericContract.test.ts` 逐字核这一条。
+ * 为什么这不算「两套实现」：这一跳做的事和用户在贴 key 页按下保存**逐字相同**——
+ * 都调 `applyApiKeyUpsert`，绑定在那扇门里自动生成（`bindCredentialDestination`），
+ * 出站守卫照判。变的只有「谁敲的这串字」，而那从来不是安全不变量。
+ * 真正的两条不变量一条没松：① 已存 key 要发往新域名仍须用户在 Nomi 里确认（去向不在入参里，
+ * 由 vendor 行 + 用户确认决定）；② Nomi 永不把已存 key 回显出去（这一跳也不回显它刚收的那把）。
  */
-export function noGenericContractFailure(what: string): OnboardingFailure {
+function setKey(args: Record<string, unknown>): OnboardingResult | OnboardingFailure {
+  const vendorKey = text(args.vendorKey);
+  const apiKey = typeof args.apiKey === "string" ? args.apiKey.trim() : "";
+  const vendor = vendorKey ? listModelCatalogVendors().find((row) => row.key === vendorKey) : undefined;
+  if (!vendor) {
+    return {
+      ok: false, code: "not_found",
+      message: `No connection called ${vendorKey || "(missing vendorKey)"}. A key can only be saved onto a connection that exists.`,
+      nextAction: "Submit the declaration first (action=submit_declaration): it creates the connection. Then save the key onto it.",
+    };
+  }
+  if (!apiKey) {
+    return {
+      ok: false, code: "needs_input",
+      message: "set_key needs the key itself.",
+      needs: ["apiKey"],
+      nextAction: "Send apiKey exactly as the provider issued it — and only when the user handed it to you for this. Otherwise use connect_provider so the user pastes it on Nomi's own page.",
+    };
+  }
+  try {
+    upsertModelCatalogVendorApiKey(vendorKey, { apiKey });
+  } catch (error) {
+    // 写门自己的判据（非法字符等）原样透传：它说的是这把 key 本身的问题，我们没有更好的话。
+    return {
+      ok: false, code: "invalid_args",
+      message: error instanceof Error ? error.message.slice(0, 400) : "The key was rejected by Nomi's credential store.",
+      nextAction: "Ask the user to check what they pasted, then send it again. Nothing was saved.",
+    };
+  }
+  // 界面上那一行「这把 key 是你的 AI 填的」。只记**来源与时间**，不记 key 的任何一段。
+  upsertModelCatalogVendor({
+    key: vendorKey,
+    meta: { ...(isJsonRecord(vendor.meta) ? vendor.meta : {}), credentialSource: { kind: "agent", at: new Date().toISOString() } },
+  });
+  const binding = readCredentialBinding(listModelCatalogVendors().find((row) => row.key === vendorKey));
   return {
-    ok: false,
-    code: "no_generic_contract",
-    message: `${what} needs something a declaration card cannot express: a request signature, a non-HTTP transport, an SDK, a custom encoding, or more request steps than (upload init ->) create -> query -> result.`,
-    nextAction: "This provider is not reachable by declaring it. In Nomi, open Settings > that model > Call script and write the call by hand; that path is exactly for this case.",
-  };
-}
-
-/** 卡**自己声明**的出处（不是我们猜的那一条）。 */
-function cardSourceUrl(card: unknown): string | undefined {
-  if (!isJsonRecord(card)) return undefined;
-  const sources = card.sources;
-  if (!Array.isArray(sources) || sources.length === 0) return undefined;
-  const first = sources[0];
-  return isJsonRecord(first) && typeof first.url === "string" ? first.url : undefined;
-}
-
-async function submitDeclaration(
-  deps: OnboardingDispatchDeps,
-  args: Record<string, unknown>,
-): Promise<OnboardingResult | OnboardingFailure> {
-  const setupId = text(args.setupId);
-  let card: unknown;
-  try {
-    card = JSON.parse(String(args.declaration ?? ""));
-  } catch (error) {
-    return {
-      ok: false, code: "declaration_rejected",
-      message: "The declaration is not valid JSON.",
-      rejections: [{ path: "declaration", code: "schema", message: error instanceof Error ? error.message.slice(0, 300) : "invalid JSON" }],
-      nextAction: "Send the card again as one JSON object; nomi_read target=setup returns the exact schema it must match.",
-    };
-  }
-  const models = isJsonRecord(card) && Array.isArray(card.models) ? card.models : [];
-  if (models.length === 0) {
-    return {
-      ok: false, code: "declaration_rejected",
-      message: "The declaration lists no models.",
-      rejections: [{ path: "models", code: "schema", message: "models must contain at least one model" }],
-      nextAction: "Describe at least one model, with its modelKey, kind and one mode.",
-    };
-  }
-  const candidates = models.map((model) => ({
-    modelKey: isJsonRecord(model) ? String(model.modelKey ?? "") : "",
-    kind: isJsonRecord(model) ? String(model.kind ?? "") : "",
-  }));
-
-  // 这条路上**不会**有 compileRequest：它只在「Nomi 得自己去读文档」时才产生，而这一跳永远带着
-  // 一张现成的卡（`adapterDraft`）。自建/内网端点的那条「不许静默套模板」因此也不需要在这里说——
-  // Agent 已经把形状声明出来了，没有可猜的东西。那条出路服务的是设置页/渲染层那条路
-  // （`integrationAdapterContract.compileRequestFor` 的 `private_host_needs_declaration`）。
-  let projection;
-  try {
-    const before = deps.sessions.get(setupId, deps.owner) as { revision: number };
-    projection = await deps.sessions.propose(setupId, before.revision, deps.owner, {
-      candidates,
-      selections: candidates.map((candidate) => ({ modelKey: candidate.modelKey })),
-      adapterDraft: String(args.declaration ?? ""),
-    });
-  } catch (error) {
-    return {
-      ok: false, code: "declaration_rejected",
-      message: "Nomi rejected the declaration.",
-      rejections: rejectionsFromError(error, card),
-      nextAction: "Fix the named field against the documentation URL you declared for it, then call submit_declaration again with the same setupId.",
-    };
-  }
-
-  let settled;
-  try {
-    settled = await deps.sessions.start(setupId, projection.revision, deps.owner, changeIdFor(setupId, "submit_declaration", args));
-  } catch (error) {
-    // 「这个 kind 在通用协议上根本没有端点」与「这张卡写错了」是两种处境，给的下一步相反：
-    // 前者改卡一万次都没用，出口是人写脚本（`serviceFallback` 的 no_generic_contract 一路传到这里）。
-    if (/no_generic_contract|no generic contract/i.test(error instanceof Error ? error.message : String(error))) {
-      return noGenericContractFailure(candidates.map((candidate) => candidate.modelKey).join(", "));
-    }
-    return {
-      ok: false, code: "provider_failed",
-      message: "The free self-check did not pass.",
-      rejections: rejectionsFromError(error, card),
-      nextAction: "Read nomi_read target=setup for the self-check evidence, fix the card and submit it again.",
-    };
-  }
-
-  const vendors = listModelCatalogVendors();
-  const origin = text(vendors.find((row) => row.name === (settled as { config?: { name?: string } }).config?.name)?.baseUrlHint);
-  return {
-    ok: true,
-    setupId,
-    changeId: changeIdFor(setupId, "submit_declaration", args),
-    state: settled,
-    // 自检过了也**永远**留着 model_produces_output：它只有一次真实生成能消掉。
-    unverified: unverified("model_produces_output", "asset_upload_works"),
-    changes: candidates.map((candidate) => ({ state: "S11.4" as const, summary: `Registered ${candidate.modelKey}, marked not tried yet.` })),
-    blastRadius: { ...noBlast(), modelsAppearing: candidates.length, outboundRequests: freeRequests(origin) },
+    ok: true, vendorKey,
+    // 回的是「有没有」，不是 key 的任何一段——两条不变量里的第二条就住在这一行的克制里。
+    state: { vendorKey, hasApiKey: true, boundOrigin: binding?.origin ?? null },
+    unverified: unverified("credential_accepted", "model_produces_output"),
+    changes: [{ state: "S11.1", summary: `Saved a key for ${vendor.name}${binding?.origin ? `, bound to ${binding.origin}` : ""}.` }],
+    blastRadius: noBlast(),
     nextAction: {
       kind: "none",
-      userSees: `${candidates.length} model(s) now appear in Nomi's model pickers, marked "not tried yet". The first real generation is the try-out.`,
+      userSees: `Nomi shows on ${vendor.name}'s card that this key was entered by the user's AI, and where it is bound. Prove the model works with nomi_try_model before saying it is connected.`,
     },
   };
 }
@@ -366,8 +322,9 @@ function showModels(args: Record<string, unknown>): OnboardingResult | Onboardin
 
 function cancelSetup(deps: OnboardingDispatchDeps, args: Record<string, unknown>): OnboardingResult | OnboardingFailure {
   const setupId = text(args.setupId);
-  const before = deps.sessions.get(setupId, deps.owner) as { revision: number };
-  const cancelled = deps.sessions.cancel(setupId, before.revision, deps.owner);
+  const sessions = deps.sessions();
+  const before = sessions.get(setupId, deps.owner) as { revision: number };
+  const cancelled = sessions.cancel(setupId, before.revision, deps.owner);
   return {
     ok: true, setupId, state: cancelled,
     unverified: unverified("model_produces_output"),
@@ -447,14 +404,15 @@ export async function dispatchModelSetup(
 ): Promise<OnboardingResult | OnboardingFailure> {
   switch (text(params.action)) {
     case "connect_provider": return connectProvider(deps, params);
-    case "submit_declaration": return submitDeclaration(deps, params);
+    case "submit_declaration": return submitDeclaration(params);
+    case "set_key": return setKey(params);
     case "show_models": return showModels(params);
     case "cancel": return cancelSetup(deps, params);
     default:
       return {
         ok: false, code: "invalid_args",
-        message: `nomi_model_setup needs one of these actions: connect_provider, submit_declaration, show_models, cancel.`,
-        nextAction: "Send action with one of those four values.",
+        message: `nomi_model_setup needs one of these actions: connect_provider, submit_declaration, set_key, show_models, cancel.`,
+        nextAction: "Send action with one of those five values.",
       };
   }
 }
@@ -471,11 +429,21 @@ export function dispatchModelOnboarding(
     owner: CapabilityOriginHost;
     sessions?: IntegrationSessionService;
     openCredentialsInNomi?: OnboardingDispatchDeps["openCredentialsInNomi"];
+    runTask?: TryModelDeps["runTask"];
+    approvalPolicy?: TryModelDeps["approvalPolicy"];
   },
 ): Promise<OnboardingResult | OnboardingFailure> | OnboardingResult | OnboardingFailure {
   if (method === "model.onboarding.remove") return removeProvider(params);
+  if (method === "model.onboarding.try") {
+    if (!ctx.runTask) throw new Error("model.onboarding.try needs the task runner; it runs on the same executor as the canvas.");
+    return tryModel({
+      runTask: ctx.runTask,
+      // 档位从宿主一路传下来。**不传 = 不猜 = 照旧问人**，与 Run 侧那条同一条纪律。
+      ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
+    }, params);
+  }
   return dispatchModelSetup({
-    sessions: ctx.sessions || getIntegrationSessionService(),
+    sessions: () => ctx.sessions || getIntegrationSessionService(),
     owner: ctx.owner,
     ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
     withCredentialElicitationTicket: (projection) => withCredentialElicitationTicket(projection as never) as Record<string, unknown>,

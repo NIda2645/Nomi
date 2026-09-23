@@ -244,21 +244,13 @@ describe("credential-bearing network config secure persistence", () => {
     expect(exported).not.toContain("export-token");
   });
 
-  it("round-trips proxy/headers through an includeApiKeys export → import (re-encrypted on import)", async () => {
-    writeCatalog({ version: CURRENT_CATALOG_VERSION, vendors: [], models: [], mappings: [], apiKeysByVendor: {} });
-    const store = await import("./catalogStore");
-    const network = await import("./networkConfigStore");
-    store.upsertModelCatalogVendor({
-      ...vendor(),
-      network: { proxyUrl: "http://user:pass@127.0.0.1:7897" },
-      meta: { extraHeaders: { Authorization: "Bearer portable-token" } },
-    });
-
-    const exported = store.exportModelCatalogPackage({ includeApiKeys: true }) as {
-      vendors: Array<{ vendor: Record<string, unknown>; apiKey?: unknown }>;
-    };
-
-    // Fresh box: import the bundle and confirm the secrets are re-encrypted, not plaintext.
+  /**
+   * 2026-09-21：导出侧不再带凭据（`includeApiKeys` 已删，理由在 catalogPackageFormat.ts），
+   * 所以这条用例改成从**手写的包**导入——那正是它现在唯一的真实来源：
+   * 用户（或他的 AI）照着供应商文档写一份配置文件，其中带上代理与请求头。
+   * 要证的那件事没变、而且更重要了：写进来的凭据在本机重新加密落盘，明文一个字节都不许留在盘上。
+   */
+  it("re-encrypts proxy/headers that arrive in a hand-written import package", async () => {
     const importRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-network-config-import-"));
     tempRoots.push(importRoot);
     mockedUserDataRoot = importRoot;
@@ -267,8 +259,23 @@ describe("credential-bearing network config secure persistence", () => {
     const store2 = await import("./catalogStore");
     const network2 = await import("./networkConfigStore");
 
-    expect(store2.importModelCatalogPackage({ vendors: exported.vendors })).toEqual({
+    const result = store2.importModelCatalogPackage({
+      vendors: [
+        {
+          vendor: {
+            ...vendor(),
+            network: { proxyUrl: "http://user:pass@127.0.0.1:7897" },
+            meta: { extraHeaders: { Authorization: "Bearer portable-token" } },
+          },
+          models: [],
+          mappings: [],
+        },
+      ],
+    });
+    expect(result).toEqual({
       imported: { vendors: 1, models: 0, mappings: 0 },
+      kept: { vendors: 0, models: 0, mappings: 0 },
+      conflicts: [],
       errors: [],
     });
     const disk = fs.readFileSync(catalogFile(), "utf8");
@@ -277,7 +284,6 @@ describe("credential-bearing network config secure persistence", () => {
     const record = store2.readCatalog().apiKeysByVendor["relay"];
     expect(network2.decryptProxyUrl(record.networkConfig)).toBe("http://user:pass@127.0.0.1:7897");
     expect(network2.decryptExtraHeaders(record.networkConfig)).toEqual({ Authorization: "Bearer portable-token" });
-    void network; // referenced to keep the first-box import symmetric with the second box
   });
 
   it("fails closed and leaves a v11 legacy catalog byte-for-byte unchanged when safeStorage is unavailable", async () => {

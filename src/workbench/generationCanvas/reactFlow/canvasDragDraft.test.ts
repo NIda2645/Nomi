@@ -71,7 +71,7 @@ describe('canvas drag draft', () => {
     expect(rendered[2]).toBe(projected[2])
   })
 
-  it('updates only React Flow kernel geometry while preserving the business nodes reference', () => {
+  it.each([true, false])('updates only kernel geometry preserving business nodes and existing ownership %s', (ownsNodes) => {
     const storeNodes = [flowNode('a', 10), flowNode('b', 200)]
     const businessNodes = storeNodes
     const internal = (node: GenerationFlowNode): InternalNode<GenerationFlowNode> => ({
@@ -86,7 +86,7 @@ describe('canvas drag draft', () => {
     const state = {
       nodes: storeNodes,
       nodeLookup: new Map(storeNodes.map((node) => [node.id, internal(node)])),
-      hasDefaultNodes: false,
+      hasDefaultNodes: ownsNodes,
     } as unknown as Pick<ReactFlowState<GenerationFlowNode>, 'nodes' | 'nodeLookup' | 'hasDefaultNodes'>
     const setState = vi.fn((partial: Partial<typeof state>) => Object.assign(state, partial))
 
@@ -101,7 +101,8 @@ describe('canvas drag draft', () => {
     expect(state.nodes).toBe(businessNodes)
     expect(state.nodeLookup.get('a')?.internals.positionAbsolute).toEqual({ x: 42, y: 18 })
     expect(state.nodeLookup.get('b')).toBeDefined()
-    expect(setState).toHaveBeenCalledWith(expect.objectContaining({ hasDefaultNodes: false }))
+    expect(state.hasDefaultNodes).toBe(ownsNodes)
+    expect(setState).not.toHaveBeenCalledWith(expect.objectContaining({ hasDefaultNodes: expect.anything() }))
   })
 
   // 回归护栏（S4 尾修 2026-09-02）：拖动内核关掉 hasDefaultNodes 后必须在松手时还原，否则

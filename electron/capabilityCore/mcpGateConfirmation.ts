@@ -18,7 +18,10 @@ export type GenerationGateChallengeProjection = {
   model: string
   referenceCount?: number
   costScope: string
-  maximumCost: number
+  /** 已知价那部分的合计。`null` = 这批**全部**算不出价——卡上写「价格未知」，绝不写 ¥0。 */
+  maximumCost: number | null
+  /** 这批里价格未知的镜数（2026-09-21 开闸）。> 0 时摘要里要如实说出来。 */
+  unknownShotCount?: number
   currency?: string
   expiresAt: string
   confirmationText?: string
@@ -80,14 +83,25 @@ function shotPriceLines(projection: MultiShotGateProjection): string[] {
  */
 export function spendConfirmationMessage(challenge: GenerationGateChallengeProjection): string {
   const currency = challenge.currency || ''
-  const total = `合计最多 ${currency}${challenge.maximumCost}`
+  const unknown = challenge.unknownShotCount ?? 0
+  // 三种说法，对应三种**不同的事实**——混成一句就一定有一句是假的：
+  //   · 全部算不出价 → 根本没有合计可报；
+  //   · 一部分算不出 → 报已知那部分的合计，并明说另外几镜花多少事后才知道；
+  //   · 全部已知 → 就是那个合计。
+  const total = challenge.maximumCost === null
+    ? `这批镜头目录里都没有标价，花多少事后才知道`
+    : unknown > 0
+      ? `已知的部分合计最多 ${currency}${challenge.maximumCost}；另有 ${unknown} 镜目录未标价，花多少事后才知道`
+      : `合计最多 ${currency}${challenge.maximumCost}`
   const head = challenge.trustGrant
     ? `以后在${challenge.projectName ? `项目《${challenge.projectName}》` : '当前项目'}的这个制作里，${currency}${challenge.trustGrant.maximum} 以内不再逐镜问你。这批镜头是：`
     : `允许 Nomi 在${challenge.projectName ? `项目《${challenge.projectName}》` : '当前项目'}使用模型 ${challenge.model}，${challenge.shotSummary || '生成这一镜'}：`
   const lines = challenge.shots?.shots.length ? shotPriceLines(challenge.shots) : [`· ${challenge.model}`]
   const tail = challenge.trustGrant
     ? `${total}。批准后这批镜头直接跑完，${currency}${challenge.trustGrant.maximum} 内不再逐镜问；超出这个数仍会重新问你。`
-    : `${total}。`
+    : unknown > 0
+      ? `${total}。要继续就得接受「花多少事后才知道」。`
+      : `${total}。`
   return [head, ...lines, tail].join('\n')
 }
 
@@ -107,16 +121,21 @@ export function createGenerationGateConfirmation({ transport, clientSupportsElic
     challenge: GenerationGateChallengeProjection,
     signal?: AbortSignal,
   ): Promise<GenerationGateConfirmation> {
-    if (!challenge.challengeId || !challenge.model || !challenge.costScope || !Number.isFinite(challenge.maximumCost)
+    if (!challenge.challengeId || !challenge.model || !challenge.costScope
+      || (challenge.maximumCost !== null && !Number.isFinite(challenge.maximumCost))
       || !challenge.expiresAt) throw new Error('Invalid generation gate challenge')
-    // 永不把「算不出」当 ¥0 摆给用户看。两种情况**不弹**、直接回 none：
-    //  · 一批镜头**全部**定不出价 —— 那个总数没有含义，拿它问「批不批准」等于诱导闭眼签字；
-    //  · 信任降档（以后 ¥X 内不再问）却给不出正数 X —— 这条闸的全部意义就是那个 X。
+    // 永不把「算不出」当 ¥0 摆给用户看——但也**不因此不弹**（2026-09-21 用户拍板）。
+    //
+    // 从前这里对「一批镜头全部定不出价」直接回 `surface:'none'`，理由是「那个总数没有含义」。
+    // 总数确实没有含义，但结论下错了一半：外部 MCP 那条路上这段文字**就是**那张卡，回 none
+    // 等于用户连拒绝的机会都没有，而内置 204 个模型一条价都没填 —— 这条分支把整条路堵死了。
+    // 正解是把「没有总数」如实说出来（见 spendConfirmationMessage 的三种说法），让人自己决定。
+    //
+    // 仍然 fail-closed 的只剩一条：**信任降档**（以后 ¥X 内不再问）给不出正数 X。
+    // 那条闸的全部意义就是那个 X，没有 X 就没有可授权的范围——它和「这一次花多少」不是一回事。
     // 注意 `amount === 0` **不是**未知：本地 ComfyUI 这类模型真就免费，把它一并拒掉是另一种谎。
     // 未知与免费的区别由 shotPricing.ts 的 `price.known` 承载，这里只是读它。
-    const shotRows = challenge.shots?.shots ?? []
-    if ((shotRows.length > 0 && shotRows.every((shot) => !shot.price.known))
-      || (challenge.trustGrant && !(challenge.trustGrant.maximum > 0))) {
+    if (challenge.trustGrant && !(challenge.trustGrant.maximum > 0)) {
       return { challengeId: challenge.challengeId, confirmed: false, surface: 'none', nextAction: 'in_nomi' }
     }
     const authenticatedClient = transport.getAuthenticatedClient?.() ?? null

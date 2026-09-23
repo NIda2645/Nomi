@@ -87,6 +87,8 @@ const { skillWriteInputForAlias } = await load('electron/shared/agentCapabilitie
  * 忘记登记的成本是门岗当场红——这个方向是故意的（R17：能让门岗拦的别留给人）。
  */
 const TRANSLATOR_CONSUMED = {
+  'check_job/domain': 'laneVerbTransport.verbToTransportCall 消费为 generation/export lane；域内宿主只接收自己的 jobId/operationId，不再次选择任务域',
+  'cancel_job/domain': 'laneVerbTransport.verbToTransportCall 消费为 generation/export lane；laneExtendedDesktopPorts 先要求明确任务域，禁止用取消失败探测另一个域',
   'draft_shots/shots[].role': 'patch 分支改的是候选，role 是逐镜信封字段，宿主的 candidatePatch 不收（表上是 refuse：填了就当场拒，不会静默丢）',
   'read_script/scope': 'scope 是契约的 operation 判别值，翻译成 full/selection 后由方法名承载',
   'write_script/where': '同上：where 翻成 document.write 的 operation（insert/replace/append）',
@@ -290,6 +292,39 @@ function checkCall(verb, spec, contract, label, args) {
  * （顶层 `candidate` 被逐镜 `candidate` 覆盖），整体比对分不清「被覆盖」和「被丢掉」。
  * 一次一个变量，量到的才是这个字段自己的命运。
  */
+/**
+ * 把最小实例修到「过得了这个动词自己的 refine」为止：**只补它点名缺的那几条路径**，值从示例里取。
+ *
+ * 为什么不整份换成示例：示例里本来就带着更具体的字段（逐镜 `candidate` / `modelId`），
+ * 再去探顶层同名字段时它会被合法地覆盖——那是「被盖掉」，不是「被丢掉」，整份换会把这类误报带回来。
+ * 补不齐（示例里也没有那个值）就返回 undefined，由调用方当场报问题，不许静默跳过。
+ */
+function repairedMinimal(verb, minimal, seeds) {
+  const attempt = clone(minimal)
+  for (let round = 0; round < 5; round += 1) {
+    const parsed = verb.schema.safeParse(attempt)
+    if (parsed.success) return attempt
+    let changed = false
+    for (const issue of parsed.error.issues) {
+      if (!issue.path.length) continue
+      const key = issue.path[issue.path.length - 1]
+      const parent = issue.path.slice(0, -1).reduce((acc, part) => (acc == null ? acc : acc[part]), attempt)
+      if (!parent || typeof parent !== 'object' || parent[key] !== undefined) continue
+      for (const seed of seeds) {
+        const value = issue.path.reduce((acc, part) => (acc == null ? acc : acc[part]), seed.arguments)
+        if (value === undefined) continue
+        parent[key] = clone(value)
+        changed = true
+        break
+      }
+    }
+    if (!changed) break
+  }
+  // 补不齐（判别联合这类，缺口不是「少一个字段」而是「形状不对」）：退到**过得了的那份示例**。
+  // 它可能带着更具体的字段，于是同名的上层字段会被合法覆盖——那种误报在下面按 `shadowedBy` 排除。
+  return seeds.map((seed) => seed.arguments).find((args) => verb.schema.safeParse(args).success)
+}
+
 function fieldProbes(verb, published, minimal) {
   const probes = []
   const walk = (schema, keys, container) => {
@@ -372,8 +407,21 @@ function checkVerb(verb) {
       }
     }
   }
-  if (verb.schema.safeParse(minimal).success) {
-    for (const probe of fieldProbes(verb, published, verb.schema.parse(minimal))) {
+  // 逐字段探针的起点：最小实例过不了这个动词自己的 refine 时，退到**过得了的那份示例**。
+  //
+  // 2026-09-22 总合并实测到的盲区：`draft_shots` 把「新建必须给 prompt」从 schema 的 required
+  // 挪进了 superRefine（为的是让「只改一个参数」的修订不被要求重抄整段提示词），于是
+  // `instanceFor` 造出来的最小实例 `{shots:[{}]}` 过不了 refine ——这一整块逐字段探针**一条都没跑**，
+  // 而 `if (...success) { ... }` 把这件事吞得无声无息（教训 `vacuous-probe-passes-forever`：
+  // 测不到它命名的那件事，断言就永远绿）。C 类变异（时长落到一个语义不对的宿主字段上）因此抓不到。
+  // 现在：**按这个动词自己报的缺口**从示例里补最少的那几个字段（只补它点名的路径，不整份换成示例——
+  // 整份换会把「顶层 candidate 被逐镜 candidate 合法覆盖」这类误报带回来），补不齐就当场报问题。
+  const probeBase = repairedMinimal(verb, minimal, seeds)
+  if (probeBase === undefined) {
+    problems.push('R3 逐字段：最小实例与全部示例都过不了这个动词自己的 refine，逐字段探针一条都没跑——这把尺子在这个动词上是瞎的'
+      + '\n        → 给它补一份过得了 refine 的示例，或把 refine 的前提写回 schema 的 required')
+  } else {
+    for (const probe of fieldProbes(verb, published, verb.schema.parse(probeBase))) {
       const outcome = checkCall(verb, spec, contract, `R3 逐字段 · ${probe.path}`, probe.args)
       if (outcome.translated === undefined) continue
       const kept = leafValues(outcome.translated)

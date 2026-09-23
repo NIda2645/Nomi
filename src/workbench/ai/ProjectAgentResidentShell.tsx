@@ -25,7 +25,10 @@ import type { ResidentSurface } from './resident/residentShellDisplay'
 import { AgentPanelV4Panel, type V4InterventionHandlers } from './v4/AgentPanelV4Panel'
 import { planConfirmDecision } from './v4/agentPanelV4Intervention'
 import { flowScrollMemoryFor } from './v4/agentPanelV4ScrollMemory'
-import { V4Intervention } from './v4/AgentPanelV4Cards'
+import { V4Intervention, V4Queue } from './v4/AgentPanelV4Cards'
+import { laneClient } from './lane/laneClient'
+import { discardRecoveredAgentDraft, takeRecoveredAgentDraft, settleProjectAgentAttachment } from './projectAgentDraftRecovery'
+import { laneConversationOf } from '../../../electron/shared/agentLane/laneConversation'
 import { V4CollapsedDock } from './v4/AgentPanelV4Dock'
 import { useV4DockStatus } from './v4/agentPanelV4DockStatus'
 import { AgentPanelV4Composer, V4ModelPopover, V4PermissionPopover, V4SkillPopover, type V4CommandRow } from './v4/AgentPanelV4Composer'
@@ -37,7 +40,7 @@ import { useAgentPanelAutoMode } from './v4/useAgentPanelAutoMode'
 import { V4AutoModeBanner } from './v4/AgentPanelV4AutoMode'
 import { V4SandboxNotice } from './v4/AgentPanelV4SandboxNotice'
 import { v4SandboxNoticeText } from './v4/agentPanelV4SandboxReason'
-import NodeGenerationComposer from '../generationCanvas/nodes/NodeGenerationComposer'
+import NodeGenerationComposer from '../generationCanvas/nodes/LazyNodeGenerationComposer'
 import { NodeWriteAccessProvider } from '../generationCanvas/nodes/nodeWriteAccess'
 import { useShotVerifyFeedback } from './resident/useShotVerifyFeedback'
 import { adoptLaneTaskCandidate } from './lane/laneTaskCandidateActions'
@@ -46,7 +49,7 @@ import { usePromptLibrary } from '../promptLibrary/usePromptLibrary'
 import { useUserPrompts } from '../promptLibrary/useUserPrompts'
 import { promptDisplayTitle } from '../promptLibrary/promptDisplay'
 import { filterPrompts } from '../api/promptLibraryApi'
-import type { ComposerPopover } from './v4/agentPanelV4Types'
+import type { ComposerPopover, QueueRowData, V4Chip } from './v4/agentPanelV4Types'
 import { buildV4ModelRows } from './v4/agentPanelV4ModelRows'
 import { useAgentTraceDirectory } from '../../desktop/useAgentTraceDirectory'
 
@@ -99,6 +102,29 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
 
   const data = useAgentPanelV4Data(surface)
   const actions = useAgentPanelV4Actions(surface, data)
+  const recoveredDrafts = useWorkbenchStore(state => state.projectAgentRecoveredDrafts)
+  const admitting = useWorkbenchStore(state => Boolean(state.projectAgentAdmissionId))
+  const conversation = laneConversationOf(data.snapshot)
+  const project = laneClient.context()
+  const recovered = recoveredDrafts.filter(entry => entry.projectUuid === project?.binding.immutableProjectUuid
+    && entry.conversation.sessionId === conversation?.sessionId && entry.conversation.laneName === conversation.laneName)
+  const queue: readonly QueueRowData[] = [...data.queue, ...recovered.map(entry => ({
+    title: entry.displayText || entry.text || entry.skill?.name || t('agentPanelV4.queueUntitled'), status: 'draft' as const,
+    actions: [t('agentPanelV4.recoveredDraftTakeBack')], destructiveAction: t('agentPanelV4.recoveredDraftDiscard'),
+    actionsDisabled: admitting,
+  }))]
+  const recoveryAction = (index: number, discard: boolean) => {
+    const entry = recovered[index - data.queue.length]
+    const current = laneClient.conversation()
+    if (!entry || !project || !conversation || !current || current.workspaceId !== data.snapshot.workspaceId
+      || current.laneName !== conversation.laneName || current.sessionId !== conversation.sessionId) return
+    if (discard) discardRecoveredAgentDraft(entry.id, project.binding.immutableProjectUuid, conversation)
+    else takeRecoveredAgentDraft(entry.id, project.binding.immutableProjectUuid, conversation)
+  }
+  const queueHandlers = {
+    onAction: (index: number, action: string) => index < data.queue.length ? actions.queueAction(index, action) : recoveryAction(index, false),
+    onDestructiveAction: (index: number) => index < data.queue.length ? actions.queueInterrupt(index) : recoveryAction(index, true),
+  }
   // 付费确认卡（2026-09-11 P1）。它是介入槽的**第二个数据源**：lane 的工具审批答的是
   // 「要不要让我做这件事」，这一张答的是「要不要花这笔钱」——后者住在 ProductionRun 域里，
   // `LanePendingApproval` 上根本没有报价字段。两者同时在时钱优先：钱撤不回来。
@@ -171,7 +197,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         onConfirm: confirmLaneSlot,
         onReject: actions.reject,
         onEscalate: actions.stopAsking,
-        onOption: (option: string) => actions.answerOption(option),
+        onAnswer: actions.answerQuestion,
         onAlternate: () => window.dispatchEvent(new Event('nomi-open-model-catalog')),
         ...planSlotHandlers,
       }
@@ -204,6 +230,9 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
    * 按线程记：位置属于那条对话，换项目/换线程各记各的，切回来还在原处。
    */
   const flowScroll = flowScrollMemoryFor(surface, data.activeThreadId)
+  const historyConversation = laneConversationOf(data.snapshot)
+  const historyIdentity = data.snapshot.workspaceId && historyConversation
+    ? JSON.stringify([data.snapshot.workspaceId, historyConversation.laneName, historyConversation.sessionId, surface]) : undefined
   const [popover, setPopover] = React.useState<ComposerPopover | null>(null)
   // 系统提示词编辑器（2026-09-14 从设置 → AI 策略搬来）：权限弹层底部那一行打开，Mantine 弹窗承载。
   const [systemPromptOpen, setSystemPromptOpen] = React.useState(false)
@@ -225,7 +254,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
   }, [popover])
   const [threadsOpen, setThreadsOpen] = React.useState(false)
   const [commandQuery, setCommandQuery] = React.useState('')
-  const attachmentApi = useComposerAttachments({ attachments, setAttachments, onError: () => undefined })
+  const attachmentApi = useComposerAttachments({ attachments, setAttachments, settleAttachment: settleProjectAgentAttachment, onError: () => undefined })
   const promptLibrary = usePromptLibrary(popover === 'skill')
   const userPromptLibrary = useUserPrompts(popover === 'skill')
   const timelinePlanPreviewPortal = useTimelinePlanPreview(
@@ -439,6 +468,15 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         ? <V4PermissionPopover permission={actions.permission} onSelect={(tier) => { autoMode.request(tier); setPopover(null) }} onEditSystemPrompt={() => { setPopover(null); setSystemPromptOpen(true) }} />
         : undefined
 
+  const removeComposerChip = (chip: V4Chip) => {
+    if (chip.kind === 'skill') setActiveSkill(null)
+    else if (chip.kind === 'file') {
+      const match = attachments.find(item => chip.id ? item.id === chip.id : item.fileName === chip.label)
+      if (match) attachmentApi.removeAttachment(match.id)
+    }
+  }
+  const attachmentInput = <input ref={attachmentApi.inputRef} type="file" multiple accept={COMPOSER_ATTACHMENT_ACCEPT}
+    className="hidden" tabIndex={-1} aria-hidden="true" onChange={attachmentApi.onInputChange} />
   // 收起 = 藏起**对话流**，不是藏起对话（定稿 Collapsed 板）。同一个 composer 掉到画面下沿
   // 居中，介入槽跟着它——这样一份编辑计划仍然读得到、批得下，不必把整列还给面板。
   // 用户可独立关闭这条坞；关闭选择跨项目记住，提醒仍由顶栏角标承担。
@@ -458,6 +496,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
       >
         <TimelineAgentReceiptEffect />
         {timelinePlanPreviewPortal}
+        {attachmentInput}
         {!dockHidden && <V4CollapsedDock onClose={() => setDockHidden(true)}>
           {activeSlot ? (
             <V4Intervention
@@ -468,8 +507,10 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
             />
           ) : null}
           {autoModeBanner}
+          <V4Queue rows={queue} labels={labels.queue} {...queueHandlers} />
           <AgentPanelV4Composer
             dock
+            admitting={admitting}
             panelHeight={size.height}
             mode={data.running ? 'running' : data.liveChips.length ? 'reference' : 'idle'}
             permission={actions.permission}
@@ -479,6 +520,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
             onSubmit={submit}
             onStop={actions.stop}
             onAddFile={() => attachmentApi.inputRef.current?.click()}
+            onRemoveChip={removeComposerChip}
             modelLabel={data.modelLabel}
             skillSelected={Boolean(activeSkill || actions.selectedLibraryPrompt)}
           />
@@ -506,16 +548,7 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     >
       <TimelineAgentReceiptEffect />
       {timelinePlanPreviewPortal}
-      <input
-        ref={attachmentApi.inputRef}
-        type="file"
-        multiple
-        accept={COMPOSER_ATTACHMENT_ACCEPT}
-        className="hidden"
-        tabIndex={-1}
-        aria-hidden="true"
-        onChange={attachmentApi.onInputChange}
-      />
+      {attachmentInput}
       {actions.error ? (
         <div className="shrink-0 px-3 pt-1 text-micro text-workbench-danger" role="alert" data-agent-error="true">
           {actions.error}
@@ -527,14 +560,20 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
         height={actions.error ? size.height - 20 : size.height}
         legacy={data.snapshot.active.legacy}
         flow={data.flow}
+        historyIdentity={historyIdentity}
+        historyCursor={data.snapshot.active.history?.before}
+        onLoadOlder={historyIdentity && data.loadOlder ? async () => {
+          await data.loadOlder!()
+          return laneClient.projection().history?.before
+        } : undefined}
         flowTail={shotVerifyFeedback}
         surface={surface}
         onStarter={startFromStarter}
         slot={activeSlot}
         {...(!autoMode.slot && spend.slot && spendComposer ? { slotComposer: spendComposer } : {})}
         {...(composerBanner ? { composerBanner } : {})}
-        queue={data.queue}
-        queueHint={t('agentPanelV4.queueHint')}
+        queue={queue}
+        queueHint={t(recovered.length ? 'agentPanelV4.recoveredDraftHint' : 'agentPanelV4.queueHint')}
         context={data.context}
         onHistory={() => setThreadsOpen((value) => !value)}
         onCollapse={() => setCollapsed(true)}
@@ -544,26 +583,16 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
           onCopy: (text) => navigator.clipboard
             ? navigator.clipboard.writeText(text)
             : Promise.reject(new Error('clipboard_unavailable')),
-          // 「重来」= 把**开这一轮的那句话**原样再发一次。lane 没有「重跑一个已经落定的回合」
-          // 这个原语（转录是只进不改的），所以重来就是再说一遍——这也正是这颗钮承诺的事。
-          //
-          // 这一项从 v4 面板上线起就**没有接过**（`flowHandlers` 里根本没有 `onRetry`），
-          // 而钮一直画着：用户点了没反应（2026-09-14）。往回找到最近的那条用户输入，
-          // 找不到就不接——`V4FlowRow` 只有接了才画钮，所以找不到的那几条不会留下死钮。
+          // Replay addresses the original pi input; the composer keeps the user's next draft.
           onRetry: (index) => {
             const target = data.flow[index]
-            if (target?.kind !== 'assistant') return
-            for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-              const item = data.flow[cursor]
-              if (item?.kind !== 'user') continue
-              if (item.text.trim()) void actions.send(item.text)
-              return
-            }
+            if (target?.kind !== 'assistant' || !target.retryInputEntryId) return
+            void actions.send(t('agentPanelV4.retry'), { retryFromEntryId: target.retryInputEntryId })
           },
           onContinue: (index) => {
             const item = data.flow[index]
             if (item?.kind !== 'assistant' || !item.continuationEntryId) return
-            void actions.send(draft.trim() || t('agentPanelV4.continue'), { continueFromEntryId: item.continuationEntryId })
+            void actions.send(t('agentPanelV4.continue'), { continueFromEntryId: item.continuationEntryId })
           },
           onUndoTool: actions.undoTool,
           onAdoptCandidate: (index, _tag, candidateIndex) => adoptLaneTaskCandidate(data.flow, index, candidateIndex, t),
@@ -586,14 +615,11 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
               () => openFeedbackFor(request),
             )
           },
-          onSuggestion: (_index, option) => actions.answerOption(option),
         }}
         slotHandlers={slotHandlers}
-        queueHandlers={{
-          onAction: actions.queueAction,
-          onDestructiveAction: actions.queueInterrupt,
-        }}
+        queueHandlers={queueHandlers}
         composer={{
+          admitting,
           mode: data.running ? 'running' : data.liveChips.length ? 'reference' : 'idle',
           permission: actions.permission,
           chips: data.liveChips,
@@ -603,17 +629,13 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
           onStop: actions.stop,
           onAddFile: () => attachmentApi.inputRef.current?.click(),
           inputRef: composerInputRef,
-          onRemoveChip: (chip) => {
-            if (chip.kind === 'skill') setActiveSkill(null)
-            else if (chip.kind === 'file') {
-              const match = attachments.find((item) => item.fileName === chip.label)
-              if (match) attachmentApi.removeAttachment(match.id)
-            }
-            // clip chip 指的是时间轴上的真实选中：它的「移除」是在时间轴上取消选中，
-            // 不是从一个附件列表里删一行。面板不代替用户操作另一个面。
-          },
+          onRemoveChip: removeComposerChip,
           modelLabel: data.modelLabel,
           skillSelected: Boolean(activeSkill || actions.selectedLibraryPrompt),
+          // 上面那张卡是在**问**用户（不是在求批准）时，composer 降一档（2026-09-21 拍板）。
+          // 降的是注意力不是能力：淡下去、占位改口，仍然能用——用户本来就可以不理那个问题、
+          // 先说别的。判据只有一个（槽的 kind），和卡自己画不画那一行自由输入同源。
+          awaitingAnswer: activeSlot?.kind === 'question',
           openPopover: popover,
           onTogglePopover: (next) => setPopover((current) => (current === next ? null : next)),
           ...(composerPopover ? { popover: composerPopover } : {}),

@@ -1,5 +1,5 @@
 {
-  "verbCount": 25,
+  "verbCount": 28,
   "tools": [
     {
       "aliasBoundInput": null,
@@ -318,7 +318,7 @@
         "export.read"
       ],
       "contractId": "generation.run.read",
-      "description": "Read one generation or export job: its stage, progress, result reference and what it has cost so far. The user asks whether something is done, what is still running, or what it cost; before cancel_job. It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit. jobId comes from the result of generate or export_video, or from look_at_canvas. Nothing changes; it only reads.",
+      "description": "Read one generation or export job: its stage, progress, result reference and what it has cost so far. The user asks whether something is done, what is still running, or what it cost; before cancel_job. It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit. Copy domain and jobId from taskRef returned by generate, export_video or look_at_canvas. A node ID is never a task ID. A draft has not executed; do not treat it as a failed execution. Nothing changes; it only reads.",
       "effect": "read",
       "effectGroups": [
         "job-status-cancel"
@@ -326,6 +326,7 @@
       "examples": [
         {
           "arguments": {
+            "domain": "generation",
             "jobId": "op-1"
           },
           "when": "Check a running job:"
@@ -350,6 +351,14 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "domain": {
+            "description": "Copy domain from the taskRef returned by the task owner. Never infer it from a node ID.",
+            "enum": [
+              "generation",
+              "export"
+            ],
+            "type": "string"
+          },
           "jobId": {
             "description": "The job id returned by generate or export_video, or shown on a canvas node.",
             "maxLength": 160,
@@ -358,7 +367,8 @@
           }
         },
         "required": [
-          "jobId"
+          "jobId",
+          "domain"
         ],
         "type": "object"
       }
@@ -412,7 +422,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "document.write",
-      "description": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end. The user asks you to write, rewrite, tighten or extend script text. Never write a diff, a summary of the change, or a plan to write later. Not for shot prompts (draft_shots). Read the selection first (read_script) unless the user told you exactly what to replace. content is the exact text; where is cursor, selection or end. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end. The user asks you to write, rewrite, tighten or extend script text. Never write a diff, a summary of the change, or a plan to write later. Not for shot prompts (draft_shots). Read the selection first (read_script) unless the user told you exactly what to replace. content is the exact text; where is cursor, selection or end. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -473,7 +483,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.plan",
-      "description": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots. Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create. It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot). shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement. Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create. New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot). shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Two shapes: creating a shot needs prompt; revising one (operationId + shotId) carries only the fields you are changing — prompt, model, modeId, parameters, references — and leaves the rest out, including title and role, which are fixed when the shot is created. The host clamps values to the model's real limits and reports every clamp. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -523,7 +533,7 @@
         "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork.",
         "High-quality generation prompt, in the SAME language as the user (Chinese user → Chinese prompt). Write it as a STRUCTURED skeleton, not a run-on sentence:\n- character/scene reference card: stable appearance/environment description + unified style keywords (neutral full-body pose for a character, empty wide establishing shot for a scene; no plot action).\n- image / keyframe shot: scene·time·light → subject·action·expression → shot language (wide / close-up / low-angle…) → style keywords.\n- video shot: camera move (push / pull / pan / track…) → on-screen action progression → rhythm & duration feel; do NOT restate the static keyframe description.\nKeep the same subject's appearance description consistent across shots. agent-artifact nodes carry no prompt: send an empty string."
       ],
-      "promptSnippet": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
+      "promptSnippet": "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -550,7 +560,7 @@
             "type": "object"
           },
           "operationId": {
-            "description": "The operationId an earlier draft_shots call returned, when updating its shots.",
+            "description": "operationId from an earlier draft_shots call, to update it.",
             "maxLength": 160,
             "minLength": 1,
             "type": "string"
@@ -582,13 +592,13 @@
                   "type": "object"
                 },
                 "durationSec": {
-                  "description": "Video clip length in seconds; omit for stills.",
+                  "description": "Clip length in seconds; omit for stills. The only place for length, never parameters.",
                   "exclusiveMinimum": 0,
                   "maximum": 600,
                   "type": "number"
                 },
                 "modeId": {
-                  "description": "Mode id of that model from list_models.",
+                  "description": "Mode id from list_models. It decides the job kind: omit taskKind with it.",
                   "minLength": 1,
                   "type": "string"
                 },
@@ -605,17 +615,17 @@
                       "boolean"
                     ]
                   },
-                  "description": "Parameter values the model's profile declares; the host clamps them to real limits and reports every clamp.",
+                  "description": "Values the model's profile declares, except length (use durationSec). The host clamps them and reports every clamp.",
                   "type": "object"
                 },
                 "prompt": {
-                  "description": "Generation prompt in the user's language (Chinese user → Chinese prompt).",
+                  "description": "Prompt in the user's language. Required for a new shot; when revising (operationId + shotId) send it only to change it.",
                   "maxLength": 8000,
                   "minLength": 1,
                   "type": "string"
                 },
                 "references": {
-                  "description": "Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references.",
+                  "description": "Asset ids from look_at_media. To reuse another shot's look use storyboard.anchorIds, not a shot id.",
                   "items": {
                     "minLength": 1,
                     "type": "string"
@@ -632,13 +642,264 @@
                   "type": "string"
                 },
                 "shotId": {
-                  "description": "Pass an existing shot id to update that draft; omit to create a new shot.",
+                  "description": "Existing shot id to update; omit to create one.",
                   "maxLength": 160,
                   "minLength": 1,
                   "type": "string"
                 },
+                "storyboard": {
+                  "additionalProperties": false,
+                  "description": "Original author fields; anchors require kind and carrier.",
+                  "properties": {
+                    "anchorIds": {
+                      "description": "Reused anchor ids",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "camIdx": {
+                      "description": "Camera preset index",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "carrier": {
+                      "description": "Visual or text guidance",
+                      "enum": [
+                        "visual",
+                        "text"
+                      ],
+                      "type": "string"
+                    },
+                    "continuity": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "items": {
+                                  "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2/additionalProperties"
+                                },
+                                "type": "array"
+                              },
+                              {
+                                "additionalProperties": {
+                                  "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2/additionalProperties"
+                                },
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "type": "object"
+                        }
+                      ],
+                      "description": "Continuity facts"
+                    },
+                    "durationSec": {
+                      "description": "Seconds for stills too",
+                      "type": "number"
+                    },
+                    "dynamicFeatures": {
+                      "description": "Clothing, accessories and temporary state; may vary between shots and do not define identity.",
+                      "type": "string"
+                    },
+                    "ffDesc": {
+                      "description": "First-frame description",
+                      "type": "string"
+                    },
+                    "keyframe": {
+                      "additionalProperties": false,
+                      "description": "Independent keyframe",
+                      "properties": {
+                        "enabled": {
+                          "description": "Enable",
+                          "type": "boolean"
+                        },
+                        "modeId": {
+                          "description": "Mode",
+                          "type": "string"
+                        },
+                        "modelKey": {
+                          "description": "Model id",
+                          "type": "string"
+                        },
+                        "modelVendor": {
+                          "description": "Provider",
+                          "type": "string"
+                        },
+                        "params": {
+                          "$ref": "#/properties/shots/items/properties/storyboard/properties/continuity/anyOf/2",
+                          "description": "Model parameters"
+                        },
+                        "prompt": {
+                          "description": "Prompt",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "kind": {
+                      "description": "Anchor category",
+                      "enum": [
+                        "character",
+                        "scene",
+                        "prop",
+                        "style"
+                      ],
+                      "type": "string"
+                    },
+                    "lfDesc": {
+                      "description": "Last-frame description",
+                      "type": "string"
+                    },
+                    "motionDesc": {
+                      "description": "Frame-to-frame motion",
+                      "type": "string"
+                    },
+                    "promptSegments": {
+                      "description": "Prompt text ranges",
+                      "items": {
+                        "additionalProperties": true,
+                        "properties": {
+                          "end": {
+                            "description": "End offset",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "key": {
+                            "description": "Segment name",
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "start": {
+                            "description": "Start offset",
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "start",
+                          "end"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "referenceBindings": {
+                      "additionalProperties": {
+                        "items": {
+                          "additionalProperties": true,
+                          "properties": {
+                            "anchorId": {
+                              "description": "Source anchor id",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "ignore": {
+                              "description": "Features to ignore",
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "Media name",
+                              "type": "string"
+                            },
+                            "sourceNodeId": {
+                              "description": "Source node id",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "url": {
+                              "description": "Media URL",
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "description": "Ordered slot media",
+                      "type": "object"
+                    },
+                    "referenceKind": {
+                      "description": "Anchor media type",
+                      "enum": [
+                        "image",
+                        "video",
+                        "audio"
+                      ],
+                      "type": "string"
+                    },
+                    "referenceSourceNodeId": {
+                      "description": "Source node id",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "referenceUrl": {
+                      "description": "Anchor media URL",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sceneId": {
+                      "description": "Scene id; omit when the story has no scene grouping.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "scope": {
+                      "description": "All or selected",
+                      "enum": [
+                        "all",
+                        "selective"
+                      ],
+                      "type": "string"
+                    },
+                    "staticFeatures": {
+                      "description": "Identity features that must remain consistent across shots, such as face shape, hair, bone structure and distinguishing marks.",
+                      "type": "string"
+                    },
+                    "variants": {
+                      "description": "Variants or states of the same anchor; omit when none are needed.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "variationType": {
+                      "description": "Variation strength",
+                      "enum": [
+                        "large",
+                        "medium",
+                        "small"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
                 "taskKind": {
-                  "description": "What to produce; omit to infer from prompt, references and durationSec.",
+                  "description": "What to produce; omit to infer it (a named modeId decides it).",
                   "enum": [
                     "text_to_image",
                     "image_edit",
@@ -648,15 +909,12 @@
                   "type": "string"
                 },
                 "title": {
-                  "description": "Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language.",
+                  "description": "Short human title in the user's language, shown on the canvas node and spend card.",
                   "maxLength": 120,
                   "minLength": 1,
                   "type": "string"
                 }
               },
-              "required": [
-                "prompt"
-              ],
               "type": "object"
             },
             "maxItems": 40,
@@ -684,7 +942,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "generation.plan",
-      "description": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. The draft lands on the canvas and Nomi shows the user a priced confirmation card in its own panel; nothing is generated and nothing is spent until the user approves it there. Never say generation has started — say what the card shows.",
+      "description": "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It does not grant new spending permission; the existing approval policy controls execution. To change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. Nomi applies the user's spending approval mode. In full-auto mode that mode approves the spend and generation starts at once. In every other mode the user sees a priced confirmation card and this call waits for him; its result is what he did with the card — approved (generation has started), closed it (the request is over), or wrote something else instead (the quote is withdrawn and his words are in the result). Say generation started only when the result says so. This request does not itself prove canvas placement.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -692,7 +950,7 @@
           "arguments": {
             "operationId": "op-1"
           },
-          "when": "Show the card for a draft:"
+          "when": "Ask the user to approve a draft, and learn what he decided:"
         }
       ],
       "execution": {
@@ -707,7 +965,7 @@
         "internal"
       ],
       "promptGuidelines": null,
-      "promptSnippet": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi.",
+      "promptSnippet": "Ask the user to approve generating a draft and wait for his answer; the result says whether generation started, he declined, or he wrote something else.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -739,7 +997,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout. The user asks to connect, link or tidy. It cannot create shots or any generating node — such a request is rejected and draft_shots is named instead. Not for hand-authored artifacts (make_artifact) or staging and camera references (stage_shot). links[] (fromId, toId, role) connect existing nodes; tidy true re-lays out the canvas (optionally one categoryId). All ids from look_at_canvas. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout. The user asks to connect, link or tidy. It cannot create shots or any generating node — such a request is rejected and draft_shots is named instead. Not for hand-authored artifacts (make_artifact) or staging and camera references (stage_shot). links[] (fromId, toId, role) connect existing nodes; tidy true re-lays out the canvas (optionally one categoryId). All ids from look_at_canvas. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -832,7 +1090,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself. The user wants a chart, table, mood board, comparison sheet or diagram that you can author directly without a generation model. Not for images or video that need a model (draft_shots), not for links or layout (arrange_canvas), not for staging references (stage_shot). fileType, title and content; the content is the whole file. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself. The user wants a chart, table, mood board, comparison sheet or diagram that you can author directly without a generation model. Not for images or video that need a model (draft_shots), not for links or layout (arrange_canvas), not for staging references (stage_shot). fileType, title and content; the content is the whole file. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -901,7 +1159,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "canvas.write",
-      "description": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it. The user asks for a push-in, a two-shot, a specific blocking, or \"show me the camera move\". It does not generate the shot itself and it is not a prompt edit (draft_shots). Not for links (arrange_canvas) or hand-made artifacts (make_artifact). shotId from look_at_canvas or draft_shots; exactly one of staging (characters, layout, camera, environment, customBlocking) or cameraMove (move, customMove, speed, subjectPose). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it. The user asks for a push-in, a two-shot, a specific blocking, or \"show me the camera move\". It does not generate the shot itself and it is not a prompt edit (draft_shots). Not for links (arrange_canvas) or hand-made artifacts (make_artifact). shotId from look_at_canvas or draft_shots; exactly one of staging (characters, layout, camera, environment, customBlocking) or cameraMove (move, customMove, speed, subjectPose). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": [
         "canvas-node-creation"
@@ -1546,7 +1804,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "timeline.write",
-      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -1739,7 +1997,7 @@
         "generation.control"
       ],
       "contractId": "export.write",
-      "description": "Cancel one running generation or export job. The user asks to stop it. Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded. jobId from generate, export_video, check_job or look_at_canvas. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
+      "description": "Cancel one running generation or export job. The user asks to stop it. Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded. Copy domain and jobId from taskRef returned by generate, export_video, check_job or look_at_canvas. Never guess a task ID from a node ID or retry cancellation in another domain. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
       "effect": "irreversible",
       "effectGroups": [
         "job-status-cancel"
@@ -1747,6 +2005,7 @@
       "examples": [
         {
           "arguments": {
+            "domain": "export",
             "jobId": "export-1"
           },
           "when": "Stop a running export:"
@@ -1769,6 +2028,14 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "domain": {
+            "description": "Copy domain from the taskRef returned by the task owner. Required for cancellation.",
+            "enum": [
+              "generation",
+              "export"
+            ],
+            "type": "string"
+          },
           "jobId": {
             "description": "The job to cancel.",
             "maxLength": 160,
@@ -1777,7 +2044,8 @@
           }
         },
         "required": [
-          "jobId"
+          "jobId",
+          "domain"
         ],
         "type": "object"
       }
@@ -1786,7 +2054,7 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "skill.write",
-      "description": "Save a validated skill package to the user's library. The user asks to save this way of working as a skill. Not for one-off instructions; to follow an existing skill use read_skill. dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Save a validated skill package to the user's library. The user asks to save this way of working as a skill. Not for one-off instructions; to follow an existing skill use read_skill. dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -1879,6 +2147,161 @@
       }
     },
     {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "agent.ask",
+      "description": "Ask the user up to three related questions on one card and wait for his answers. Use it the moment one of these is true: (1) you just read the canvas, the document or the model list and MORE THAN ONE of the things you found matches what he pointed at (\"that one\", \"this\", \"the model\") — ask which, do not pick for him and do not stop; (2) you know exactly what he wants but one fact you cannot read anywhere would change the result (how long, who it is for, which look) — ask that one fact; (3) the next call spends his credit on something he has not described, or cannot be taken back; (4) there is more than one good way to do it and the results would not look the same — two approaches both worth taking, two of his own requirements pulling against each other (a cold look and a warm one), or a target that could sit on another surface or mean more than one thing — name the two or three you mean and let him pick. In all of them, asking costs one card; guessing wrong costs him a rerun, and stopping costs him the turn. Do not ask when a sensible default exists — take it, do the work and say which one you took. Do not ask for something you can look up: read it with look_at_canvas, read_script or list_models first, and when the read comes back with exactly ONE match, that is your answer, not a question. Never ask for confirmation of something you are allowed to do: a reversible edit (rewriting a line of the script, renaming a shot) just happens and the user can undo it, and what a generation costs and whether to pay for it is settled on generate's own card — asking \"shall I?\" about the price is one more click for nothing. Scope is not price: when \"all of them\" could mean the whole canvas or only what he selected, which shots he means is yours to ask before you draft, and no card downstream will ask it for you. Never end a turn on a question you only typed into your reply: prose is not a card — he cannot answer it, the turn is already over, and he is left reading a question nobody is waiting on. If you need his answer, ask it with this tool; if you do not, take a default and say which one you took. questions holds one to 3 questions; he sees them one at a time on one card. Each question is one sentence in his own language, naming the choice itself (\"which one do you want deleted?\"), never a yes/no about one candidate. options is two to four answers he can click: each label is one of the actual candidates, at most about twelve characters, and does not repeat the question. description is one short line that helps him tell this one apart — what he would recognise or what happens if he picks it. Mark at most one recommended. Set multiSelect when several answers can be true at once. Leave options out when there is no short list — he can always type instead. Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "questions": [
+              {
+                "options": [
+                  {
+                    "description": "画布中间那张，还没出过图",
+                    "label": "镜 2 · 推门"
+                  },
+                  {
+                    "description": "最右边那张静帧",
+                    "label": "镜 3 · 走廊"
+                  },
+                  {
+                    "description": "文字，不在画布上",
+                    "label": "文稿最后一段"
+                  }
+                ],
+                "question": "要删哪一个？"
+              }
+            ]
+          },
+          "when": "He said \"delete that one\" and three shots could be it:"
+        },
+        {
+          "arguments": {
+            "questions": [
+              {
+                "note": "同一段文案给家长和给同事读，剪法完全不同。",
+                "question": "这支片子想给谁看？"
+              },
+              {
+                "options": [
+                  {
+                    "description": "发朋友圈那种长度",
+                    "label": "15 秒"
+                  },
+                  {
+                    "description": "够讲清一件事",
+                    "label": "30 秒",
+                    "recommended": true
+                  },
+                  {
+                    "description": "能放进两三个转折",
+                    "label": "1 分钟"
+                  }
+                ],
+                "question": "多长合适？"
+              }
+            ]
+          },
+          "when": "Two things you need are both missing, so ask them together instead of twice:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "ask_user",
+      "nextAction": "user_sees_question_card",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Ask when the answer changes what you produce and guessing wrong wastes the user's time or money: you cannot tell which of several things he means, a fact you need is missing and no project default supplies it, or you are about to spend his credit or do something that cannot be taken back. Ask once, in one question.",
+        "When two things he could mean are both plausible, the question names the choice — \"which one do you want removed?\" — and each option is one of the actual candidates. Never write a yes/no about one candidate and make the other options \"no, the other one\": that is two questions wearing one hat, and he has to read all of them to answer the first.",
+        "Never offer an option that means cancel, skip or none of these. Skipping is something the card already does (he can close it or just say something else), so spending one of your two to four slots on it takes a real answer away.",
+        "Write labels and descriptions the way he talks about his own work: a shot's title, a file he recognises, what he will see. Never put an internal name in front of him — node kinds, ids, field names, tool names, anything with an underscore in it. Keep each label to about twelve characters and do not repeat words from the question in it.",
+        "Do not ask when a sensible default exists — take it, do the work, and say in one line which default you took so he can correct it. Never ask for something the project already decided (aspect ratio, which document is open, the model in the picker), never ask permission for a reversible local edit, and never ask a second round of questions where one would have done.",
+        "Two to four options, each a real answer he could pick, and they must not overlap. More than 4 is a list to read, not a question to answer; fewer than 2 is a yes/no you could have decided yourself.",
+        "The card always lets him type his own answer, so never add an option that means \"something else\" or \"let me explain\". What comes back is his words, one entry per question: the labels he clicked, or whatever he typed. Carry on in the same turn.",
+        "Ask the related questions in one call — up to 3. He answers them on one card, one at a time. Asking one, waiting for the answer, then asking the next turns a single interruption into three."
+      ],
+      "promptSnippet": "Ask the user up to three related questions on one card and wait for his answers.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "questions": {
+            "description": "One to three questions, asked on one card, one at a time. Put related questions together in a single call rather than asking, waiting, and asking again.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "multiSelect": {
+                  "description": "True when he may pick several of these at once. Default is one answer only, which submits as soon as he picks it.",
+                  "type": "boolean"
+                },
+                "note": {
+                  "description": "One optional line of why you are asking this one. Not a second question.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "options": {
+                  "description": "Two to four answers he can pick with one click. Leave it out when there is no short list of answers — he can always type instead.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "description": "One short line under the label: what picking this one means. Leave it out rather than restating the label.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "description": "Your own id for this option, echoed back when the user picks it. Omit it and Nomi numbers them.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "The words printed on the chip. Answering with this option sends exactly these words back to you.",
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recommended": {
+                        "description": "Set true on at most one option: the one you would pick. It is only a mark — nothing is preselected and nothing is answered for the user.",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "question": {
+                  "description": "The question, in the user's own language, as one sentence he can answer without reading anything else.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "question"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "aliasBoundInput": {
         "action": "connect_provider"
       },
@@ -1890,16 +2313,16 @@
       "examples": [
         {
           "arguments": {
-            "docs": "https://docs.higgsfield.ai/api-reference",
-            "name": "Higgsfield",
-            "suggestedBaseUrl": "https://platform.higgsfield.ai"
+            "docs": "https://docs.example-relay.com/api",
+            "name": "Example Relay",
+            "suggestedBaseUrl": "https://api.example-relay.com"
           },
-          "when": "Connect a provider the user has an account with:"
+          "when": "Open the credential page for a provider the user has an account with:"
         },
         {
           "arguments": {
             "reissueKey": true,
-            "vendorKey": "higgsfield"
+            "vendorKey": "example-relay"
           },
           "when": "The user says the key stopped working:"
         }
@@ -1930,7 +2353,7 @@
             "type": "string"
           },
           "name": {
-            "description": "Provider display name, required when connecting a new one.",
+            "description": "Provider display name. Required when connecting a new provider; on a declaration it names the connection the card creates.",
             "maxLength": 240,
             "minLength": 1,
             "type": "string"
@@ -1942,18 +2365,6 @@
           "reissueKey": {
             "description": "Reopen the credential page for an existing connection so the user can paste a new key.",
             "type": "boolean"
-          },
-          "sourceUrl": {
-            "description": "Documentation page the suggestion was read from; shown to the user.",
-            "maxLength": 2048,
-            "minLength": 1,
-            "type": "string"
-          },
-          "suggestedAuthNote": {
-            "description": "One sentence on how this provider wants the key sent, shown next to the address.",
-            "maxLength": 400,
-            "minLength": 1,
-            "type": "string"
           },
           "suggestedBaseUrl": {
             "description": "Address suggestion. It is only pre-filled on the credential page; the user confirms it by saving, and Nomi binds the key to it.",
@@ -1977,16 +2388,16 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass. The key is saved and you have read the provider's API documentation. It never proves a model can produce anything: the reply always keeps whether this model can actually produce something in its unverified list until the user generates once. Send it only after connect_model_provider reports the key is saved. It does not delete anything; use remove_model_provider for that. setupId comes from connect_model_provider. declaration is the card as JSON text; nomi_read target=setup returns the exact schema it must match, and every rejected field comes back with the path and the documentation URL you declared for it. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Hand Nomi one whole declaration card describing a provider and its models, and register everything in it that passes. You have read the provider's API documentation. You do not need an API key or a handle first: the card is checked, and registered, without either. It never proves a model can produce anything: the reply keeps that claim in its unverified list until one real generation has run, which is what try_model is for. It does not delete anything; use remove_model_provider for that. declaration is the whole card as JSON text, provider block included; ask nomi_read for the onboarding kit and it returns the exact schema plus worked examples. Submitting is a full overwrite of the models it names, never a patch. vendorKey targets a connection that already exists; otherwise the connection id is derived from the declared base URL, and name is its display name. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
         {
           "arguments": {
-            "declaration": "{\"sources\":[],\"assetIngestion\":{\"strategy\":\"none\",\"sourceUrl\":\"https://docs.example/api\"},\"models\":[]}",
-            "setupId": "setup-1"
+            "declaration": "{\"provider\":{\"baseUrl\":\"https://api.example-relay.com\",\"authType\":\"bearer\",\"authHeader\":\"Authorization\"},\"sources\":[{\"url\":\"https://docs.example-relay.com/api\",\"evidence\":\"POST /v1/images/generations returns data[0].url\"}],\"assetIngestion\":{\"strategy\":\"none\",\"sourceUrl\":\"https://docs.example-relay.com/api\"},\"models\":[{\"modelKey\":\"demo-image\",\"labelZh\":\"Demo Image\",\"kind\":\"image\",\"modes\":[{\"taskKind\":\"text_to_image\",\"delivery\":\"synchronous\",\"create\":{\"method\":\"POST\",\"path\":\"/v1/images/generations\",\"body\":{\"prompt\":\"{{request.prompt}}\"},\"response_mapping\":{\"image_url\":\"data.0.url\"}},\"sourceUrls\":[\"https://docs.example-relay.com/api\"]}]}]}",
+            "name": "Example Relay"
           },
-          "when": "Describe one image model after reading the docs:"
+          "when": "Register a provider and its models in one call, before any key exists:"
         }
       ],
       "execution": {
@@ -2000,28 +2411,93 @@
       "profiles": [
         "mcp"
       ],
-      "promptGuidelines": null,
-      "promptSnippet": "Hand Nomi a declaration card describing this provider's models, and register the ones that pass.",
+      "promptGuidelines": [
+        "Read {\"target\": \"onboarding_kit\"} with nomi_read first: it hands you this card's JSON Schema, the writing rules and two worked cards to copy from. Working from memory counts as not having read the provider's documentation.",
+        "A rejection names the field, the legal values and the documentation URL you declared for it. Fix that field and send the whole card again."
+      ],
+      "promptSnippet": "Hand Nomi one whole declaration card describing a provider and its models, and register everything in it that passes.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
           "declaration": {
-            "description": "The declaration card as JSON text. Its shape is the contractSchema returned by nomi_read target=setup.",
+            "description": "The whole declaration card as JSON text, including its provider block. Its shape is the contractSchema returned by nomi_read target=onboarding_kit, which also carries worked examples.",
             "maxLength": 524288,
             "minLength": 2,
             "type": "string"
           },
-          "setupId": {
-            "description": "The setup handle returned by connect_provider; nomi_read target=setup reports its state.",
-            "maxLength": 200,
+          "name": {
+            "description": "Provider display name. Required when connecting a new provider; on a declaration it names the connection the card creates.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "setupId",
           "declaration"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": {
+        "action": "set_key"
+      },
+      "alsoCovers": null,
+      "contractId": "model.onboarding.setup",
+      "description": "Save an API key the user handed you onto one connection, through the same door Nomi's own credential page writes to. The user has explicitly given you the key and asked you to put it in, instead of pasting it themselves. Never ask the user for a key they have not offered, never read one out of a file or an environment variable, never print it back and never put it in a message. If the user would rather paste it themselves, use connect_model_provider, which opens Nomi's own page. This call cannot decide where the key is sent: the address comes from the connection, and changing it needs the user on that page. vendorKey is the connection id. apiKey is the key exactly as the provider issued it. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "apiKey": "<the key the user gave you>",
+            "vendorKey": "example-relay"
+          },
+          "when": "The user pasted their key to you and asked you to save it:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "set_provider_key",
+      "nextAction": "none",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": [
+        "Nomi never hands a saved key back: not in a result, not in an error, not in a trace. If you need to know whether a key is saved, read nomi_read target=models, which only says yes or no."
+      ],
+      "promptSnippet": "Save an API key the user handed you onto one connection, through the same door Nomi's own credential page writes to.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "description": "The API key exactly as the provider issued it. Only send a key the user handed you for this purpose; never ask for one, never print it back, never write it to a file.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendorKey",
+          "apiKey"
         ],
         "type": "object"
       }
@@ -2032,7 +2508,7 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Show or hide models of a connected provider in Nomi's model pickers. The user asks to tidy up the model list, or to bring a hidden model back. Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration. vendorKey and modelKeys come from nomi_read target=models. visible=false hides them. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Show or hide models of a connected provider in Nomi's model pickers. The user asks to tidy up the model list, or to bring a hidden model back. Hiding is not deleting and frees nothing: to remove a model or a whole connection use remove_model_provider. To add new models use submit_model_declaration. vendorKey and modelKeys come from nomi_read target=models. visible=false hides them. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -2101,7 +2577,7 @@
       },
       "alsoCovers": null,
       "contractId": "model.onboarding.setup",
-      "description": "Abandon an in-flight model setup. The user changes their mind before the declaration is accepted. It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration. setupId comes from connect_model_provider. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "description": "Abandon an in-flight model setup. The user changes their mind before the declaration is accepted. It leaves an already-saved key and an already-connected provider untouched; to delete those use remove_model_provider. To carry on instead, use submit_model_declaration. setupId comes from connect_model_provider. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
@@ -2138,6 +2614,85 @@
         },
         "required": [
           "setupId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "model.onboarding.try",
+      "description": "Run one real generation with a model that was just connected, and hand back the provider's own response. A card is registered and a key is saved, and you need to know whether this model actually produces something. This spends the user's provider credit: Nomi asks the user to confirm the charge in its own window, and nothing is sent until they do. It is not a way to generate content for a project, and it is not how you register a model — that is submit_model_declaration. Do not tell the user a model is connected until this call has returned an artifact. vendorKey and modelKey identify the model. prompt, taskKind and params are optional; the first mode the card declared and a short neutral prompt are used when omitted. The user's provider credit is spent only after the user approves the card in the host; the call itself never spends.",
+      "effect": "spend",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "modelKey": "demo-image",
+            "prompt": "a red apple on a white table",
+            "vendorKey": "example-relay"
+          },
+          "when": "Prove the model you just registered really works:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "try_model",
+      "nextAction": "user_sees_spend_card",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "mcp"
+      ],
+      "promptGuidelines": [
+        "The reply carries the provider's own response with secrets removed. When it fails, read that response rather than guessing: it is the same text a developer would see, and it is what tells you which field of the card is wrong."
+      ],
+      "promptSnippet": "Run one real generation with a model that was just connected, and hand back the provider's own response.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "modelKey": {
+            "description": "Exact model id, as nomi_read target=models or your own submitted card spells it.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "Parameter values for this run: the keys the card declared, each a string, number or boolean.",
+            "type": "object"
+          },
+          "prompt": {
+            "description": "Prompt for the one test generation; a short neutral prompt is used when omitted.",
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskKind": {
+            "description": "Which declared mode to exercise, for example text_to_image. The model's first declared mode is used when omitted.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "vendorKey": {
+            "description": "Connection id, exactly as nomi_read target=models returned it.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendorKey",
+          "modelKey"
         ],
         "type": "object"
       }

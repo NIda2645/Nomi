@@ -418,6 +418,54 @@ describe('模型框偏好', () => {
   })
 })
 
+// 「供应商清单里暂时没有它」（2026-09-21）。
+//
+// 这条旁注取代的是旧行为：后台对账查不到就替用户把模型停用。它现在**只是一句话**——
+// 所以这几条钉的全是「它不许改变别的东西」：不影响可选性、不排到后面、不覆盖厂商短名、
+// 一家没列出不代表整行没列出。
+describe('清单里暂时没有它 —— 只是一句实话，不是停用', () => {
+  const unlisted = (modelKey: string, vendor: string, label: string): ModelOption =>
+    ({ ...option(modelKey, vendor, label), unlisted: true })
+
+  it('目录行带 unlisted 就原样进 ModelOption——渲染层不自己推断', () => {
+    const [mapped] = toCatalogModelOptions([{
+      modelKey: 'kling-o1', vendorKey: 'kie', labelZh: 'Kling O1', kind: 'video',
+      enabled: true, unlisted: true, published: true, availability: { usable: true } as const,
+      publishedModes: ['text_to_video' as const], createdAt: '', updatedAt: '',
+    }])
+    expect(mapped.unlisted).toBe(true)
+    const [listed] = toCatalogModelOptions([{
+      modelKey: 'kling-o1', vendorKey: 'kie', labelZh: 'Kling O1', kind: 'video',
+      enabled: true, published: true, availability: { usable: true } as const,
+      publishedModes: ['text_to_video' as const], createdAt: '', updatedAt: '',
+    }])
+    expect(listed.unlisted).toBeUndefined()
+  })
+
+  it('折叠下拉：只有一家且那一家没列出时，短名后面加一句限定语', () => {
+    const [row] = buildModelSelectOptions(dedupeModelOptions([unlisted('kling-o1', 'kie', 'Kling O1')]), healthy)
+    expect(row.trailing).toContain('暂未列出')
+    // 仍可点：它不是 disabled、也不 dimmed（手动选择永不拦）。
+    expect(row.disabled).toBeUndefined()
+    expect(row.dimmed).toBeUndefined()
+  })
+
+  it('折叠下拉：还有一家列着它就不标——标了等于说「这个模型没了」，而他点下去能用', () => {
+    const deduped = dedupeModelOptions([unlisted('kling-o1', 'kie', 'Kling O1'), option('kling-o1', 'apimart', 'Kling O1')])
+    const [row] = buildModelSelectOptions(deduped, healthy)
+    expect(JSON.stringify(row)).not.toContain('暂未列出')
+  })
+
+  it('摊平下拉：一行就是一家，所以按那一家判——没列出的那一行标，另一行不标', () => {
+    const deduped = dedupeModelOptions([unlisted('kling-o1', 'kie', 'Kling O1'), option('kling-o1', 'apimart', 'Kling O1')])
+    const rows = buildVendorExplicitModelOptions(deduped, healthy)
+    expect(rows).toHaveLength(2)
+    expect(rows.filter((row) => (row.trailing ?? '').includes('暂未列出'))).toHaveLength(1)
+    // 厂商短名没被顶掉：这个下拉存在的全部理由就是让用户看清走哪家。
+    for (const row of rows) expect(row.trailing).toMatch(/Kie|APIMart|kie|apimart/i)
+  })
+})
+
 // ── 自定义供应商与 APIMart 同名 modelKey：选 APIMart 必须真的选中 APIMart（群反馈，0.20.1 报障）──
 //
 // 用户自定义了一个 modelKey 也叫 gpt-image-2 的模型后，在节点模型框里点 APIMart 那条「选不上」：

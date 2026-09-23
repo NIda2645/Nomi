@@ -13,7 +13,7 @@ const view: ProductionRunView = {
   controls: ['cancel'], decisionHome: 'nomi', originHost: 'nomi',
   details: {
     completedStages: 0, totalStages: 0, stages: [], skills: [], updatedAt: '2026-09-09T00:00:00Z',
-    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
   },
 }
 function render(actionError: string | null) {

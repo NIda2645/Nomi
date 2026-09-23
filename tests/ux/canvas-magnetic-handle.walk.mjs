@@ -179,6 +179,7 @@ try {
         expect(Math.round(box.width), '带子112px宽').toBe(112)
         expect(Math.round(box.height), '带子高度遵循min(168,卡高+28)').toBe(Math.min(168, expectedCardHeight + 28))
       }
+
     }
     await select(images[0].id)
     // 加号跟着指针走：在带内取一个**不是静止位**的点，图标中心要追上来。

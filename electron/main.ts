@@ -74,6 +74,7 @@ import { createDesktopProposalReceiptResolver } from "./capabilityCore/projectAg
 import { installContentSecurityPolicy } from "./contentSecurityPolicy";
 import { registerSkillIpc } from "./skills/skillIpc";
 import { logError, logInfo, logWarn } from "./logging/logger";
+import { seedFromStableInstallAtBoot } from "./settings/sideBySideInstallSeed";
 import { registerDevDiagnostics } from "./logging/devDiagnostics";
 import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
 import { issueChildWindowProject } from "./assets/windowProjectCapture";
@@ -442,15 +443,12 @@ function registerIpc(): void {
     assertTrustedSender(event);
     recreateMainWindowFromSender(event.sender, { preserveRoute: true, reason: "hard reload window" });
   });
-  // 读目录前补一次内置种子（渲染层热更新不重启 main，不补就停在旧目录）：共用同一份目录的读路径必须都补——只补 models:list 正是「供应商列表不全」的根因。
-  const readCatalog = <T>(read: (params?: unknown) => T) => (params?: unknown): T => {
-    ensureBuiltinModelSeeds();
-    return read(params);
-  };
-  registerSyncIpc("nomi:model-catalog:vendors:list", readCatalog(listModelCatalogVendors));
-  registerSyncIpc("nomi:model-catalog:models:list", readCatalog(listModelCatalogModels));
-  registerSyncIpc("nomi:model-catalog:mappings:list", readCatalog(listModelCatalogMappings));
-  registerSyncIpc("nomi:model-catalog:health", readCatalog(getModelCatalogHealth));
+  // 读目录的 IPC 是**纯读**：种子对账（写盘）只在启动期跑一次。挂在读上时，盘上版本比应用新就会
+  // 让每次读都抛 → 设置页全空零报错（判据住 electron/catalogReadChannelsPureRead.test.ts）。
+  registerSyncIpc("nomi:model-catalog:vendors:list", listModelCatalogVendors);
+  registerSyncIpc("nomi:model-catalog:models:list", listModelCatalogModels);
+  registerSyncIpc("nomi:model-catalog:mappings:list", listModelCatalogMappings);
+  registerSyncIpc("nomi:model-catalog:health", getModelCatalogHealth);
   registerSyncIpc("nomi:model-catalog:vendor:upsert", upsertRendererCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor:delete", deleteModelCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
@@ -462,7 +460,7 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
   registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertRendererCatalogMapping);
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
-  registerSyncIpc("nomi:model-catalog:export", readCatalog(exportModelCatalogPackage));
+  registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
   registerSyncIpc("nomi:model-catalog:import", importRendererCatalogPackage);
   // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块，别回填这里）。comfy 那棵树重 → 惰性 require；素材通道薄 → 顶部静态 import。
   (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);
@@ -647,7 +645,9 @@ if (hasSingleInstanceLock)
         .then(() => import("./vendor/vendorBaseFallbackBoot"))
         .then((m) => m.configureVendorBaseFallbackAtBoot())
         .catch((error) => logError("main", "network-boot-failed", error));
-      // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
+      // Preview/RC 首次启动从稳定版拷一份配置过来（共用 userData 不行，理由在该模块头注释）。
+      // 必须排在种子对账与任何一次配置读之前：它判断的正是「自己这份是不是全新的」。
+      seedFromStableInstallAtBoot();      // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
       // sync 且渲染层一进库就读 catalog → 须在 createWindow 前完成。
       try {
         ensureBuiltinModelSeeds();

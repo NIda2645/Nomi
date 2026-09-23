@@ -17,7 +17,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CANVAS_WRITE_OPERATIONS } from '../shared/agentCapabilities/canvasWrite'
 import { dispatch } from './dispatcher'
 import type { McpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProjectLeaseAuthority } from './projectLease'
 import { createProjectLeaseStore } from './projectLeaseStore'
 import { createProjectSessionAuthority } from './projectSessionAuthority'
@@ -56,7 +55,6 @@ async function leasedContext() {
     canonicalRootDigest: 'root-digest-1',
     manifestDigest: 'manifest-audit-1',
   }
-  const generationPolicy = createMcpGenerationPolicy({ env: {}, checkpoints: {} })
   const leaseAuthority = createProjectLeaseAuthority({
     macKey: 'canvas-fallback-authority-key',
     store: createProjectLeaseStore({ filePath: path.join(dir, 'leases.json'), macKey: 'canvas-fallback-store-key' }),
@@ -69,7 +67,6 @@ async function leasedContext() {
   })
   const authority = createProjectSessionAuthority({
     leaseAuthority,
-    generationPolicy,
     resolveProjectSelection: async () => identity,
   })
   const opened = await authority.open({ bootstrap: { mode: 'current_project' } }, connection)
@@ -81,7 +78,6 @@ async function leasedContext() {
       runTask: vi.fn(),
       makeGateway: vi.fn(),
       productionRuns: {},
-      generationPolicy,
       generationPlanning,
       projectSession: { authority, connection },
     },

@@ -534,3 +534,21 @@ describe("draft lifecycle + empty-draft GC", () => {
     expect(fs.existsSync(workspaceProjectFile(externalRoot))).toBe(true);
   });
 });
+
+
+it.each(['immutableProjectUuid', 'projectGeneration'] as const)('rejects a background outcome after persistent %s changes between read and save', async field => {
+  const repoDeps = deps()
+  const root = makeTempDir()
+  const created = createWorkspaceProject({ rootPath: root, record: { name: 'Original', payload: { value: 'original' } } }, repoDeps)
+  const identity = await ensureWorkspaceProjectIdentity(root)
+  const original = readWorkspaceProject(created.id, repoDeps)!
+  const manifestPath = workspaceProjectFile(root)
+  const replaced = { ...original, [field]: field === 'projectGeneration' ? identity.projectGeneration + 1 : '22222222-2222-4222-8222-222222222222' }
+  fs.writeFileSync(manifestPath, JSON.stringify(replaced))
+  fs.writeFileSync(workspaceProjectBackupFile(root), JSON.stringify(replaced))
+  const before = fs.readFileSync(manifestPath, 'utf8')
+  await expect(saveWorkspaceProject(created.id, { payload: { value: 'late result' }, expectedBinding: {
+    projectId: created.id, immutableProjectUuid: identity.immutableProjectUuid, projectGeneration: identity.projectGeneration,
+  } }, repoDeps)).rejects.toThrow('project_binding_stale')
+  expect(fs.readFileSync(manifestPath, 'utf8')).toBe(before)
+})

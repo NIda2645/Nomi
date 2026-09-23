@@ -1,9 +1,15 @@
 import crypto from "node:crypto";
-import path from "node:path";
 import { findNonHeaderSafeChar, isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
 import { sanitizeName } from "../projects/repository";
-import { writeJsonFileAtomic } from "../jsonFile";
-import { CATALOG_FILE, getSettingsRoot, readJson } from "../runtimePaths";
+import { configReadFailure, quarantineUnreadableConfigFile, writeConfigFileAtomic } from "../configFileStore";
+import {
+  catalogIsNewerOnDisk,
+  catalogPath,
+  modelCatalogReadOnlyStatus,
+  readCatalogFile,
+  snapshotBeforeMigration,
+} from "./catalogFileAccess";
+export { modelCatalogReadOnlyStatus, type ModelCatalogReadOnlyStatus } from "./catalogFileAccess";
 import { apiKeyDecryptStatus, decryptApiKeyRecord, makeApiKeyRecordFromPlain } from "./secrets";
 import { humanizeModelKey } from "./modelLabel";
 import { applyBuiltinSeeds } from "./seedBuiltins";
@@ -34,13 +40,12 @@ import {
 } from "./customConfigStore";
 import {
   applyPlainNetworkConfig,
-  exportableVendorWithNetworkConfig,
   hasLegacyNetworkConfigField,
   metaWithoutExtraHeaders,
   overlayDecryptedNetworkConfig,
   resolveNetworkConfigForWrite,
 } from "./networkConfigStore";
-import { buildCatalogPackage, catalogPackageImportSchema, type CatalogPackage } from "./catalogPackageFormat";
+import { buildCatalogPackage, CATALOG_PACKAGE_VERSION, catalogPackageImportSchema, type CatalogPackage } from "./catalogPackageFormat";
 import { invalidateProviderAdapterRunsForVendors } from "../providerAdapter/store";
 import { invalidateVendorValidation, normalizedConnectionScope } from "./vendorValidationInvalidation";
 import { assertNoCredentialBindingRewrite, bindCredentialDestination } from "./credentialBinding"; // §6.1
@@ -50,10 +55,6 @@ export type { CustomCallConfigPatchEntry, CustomCallConfigPublicEntry } from "./
 export { migrateRelayImageEditProtocols } from "./relayImageEditMigration";
 export { migrateRelayVideoImageToVideo } from "./relayVideoI2vMigration";
 export { migrateRelayImageEditCapability, migrateRelayParamMaps } from "./relayLegacyMigrations";
-function catalogPath(): string {
-  return path.join(getSettingsRoot(), CATALOG_FILE);
-}
-
 function defaultCatalog(): CatalogState {
   // v0.8: empty catalog. Fresh users add their own models via the Wizard.
   // No more phantom seed entries (chatfire/sora/gpt-4o-mini) that have no keys.
@@ -67,16 +68,24 @@ function defaultCatalog(): CatalogState {
 }
 
 export function readCatalog(): CatalogState {
-  const parsed = readJson<CatalogState | null>(catalogPath(), null);
-  if (!parsed) {
+  const outcome = readCatalogFile();
+  if (outcome.status === "missing") {
     const initial = defaultCatalog();
     writeCatalog(initial);
     return initial;
   }
+  if (outcome.status === "failed") {
+    // **绝不覆盖**：读不出来的文件原样留在盘上（语法损坏的那一份改名留底），本次会话以空目录
+    // 运行且 writeCatalog 会一路拒绝落盘。旧代码在这里写 defaultCatalog()，一次读失败就把用户
+    // 全部模型配置永久抹平。状态由 modelCatalogReadOnlyStatus() 向界面交代。
+    quarantineUnreadableConfigFile(catalogPath());
+    return defaultCatalog();
+  }
+  const parsed = outcome.value;
 
   // Migrate forward. v1 → v2 tags pre-existing keys as plaintext-encoded;
   // reads preserve those records so catalog access never opens the OS keychain.
-  const migrated = migrateCatalogForward(parsed, defaultCatalog, writeCatalog);
+  const migrated = migrateCatalogForward(snapshotBeforeMigration(parsed), defaultCatalog, writeCatalog);
 
   const apiKeysByVendor = migrated.apiKeysByVendor || {};
   return {
@@ -106,8 +115,14 @@ export function readCatalog(): CatalogState {
  * 写盘只在新建或种子有变化时发生。
  */
 export function ensureBuiltinModelSeeds(): void {
-  const current = readJson<CatalogState | null>(catalogPath(), null);
-  const base = current ? migrateCatalogForward(current, defaultCatalog, writeCatalog) : defaultCatalog();
+  const outcome = readCatalogFile();
+  // 读不出来 / 盘上版本比本应用新 → 这一次不对账。种子对账是**写**，而写不出去的两种情形
+  // 都必须安静跳过，不许抛：它此前挂在四条只读 IPC 上，抛出去就是渲染层那个空白设置页
+  // （rootcause-config-loss-on-reinstall.md §0）。真正的只读状态由 modelCatalogReadOnlyStatus() 报。
+  if (outcome.status === "failed") return;
+  if (outcome.status === "ok" && typeof outcome.value?.version === "number" && outcome.value.version > CURRENT_CATALOG_VERSION) return;
+  const current = outcome.status === "ok" ? outcome.value : null;
+  const base = current ? migrateCatalogForward(snapshotBeforeMigration(current), defaultCatalog, writeCatalog) : defaultCatalog();
   const { state, changed } = applyBuiltinSeeds(base, new Date().toISOString());
   if (!current || changed) writeCatalog(state);
 }
@@ -118,22 +133,27 @@ export function ensureBuiltinModelSeeds(): void {
  * 以当前形状压扁丢弃。保护设在唯一写盘 choke point，覆盖所有 upsert/delete/import，而非
  * 逐函数堵症状。读路径不调它 → 高版本文件仍可读、可用。
  */
-function onDiskCatalogVersion(): number | null {
-  const parsed = readJson<CatalogState | null>(catalogPath(), null);
-  const v = parsed?.version;
-  return typeof v === "number" ? v : null;
-}
-
 function writeCatalog(state: CatalogState): CatalogState {
-  const diskVersion = onDiskCatalogVersion();
-  if (diskVersion != null && diskVersion > CURRENT_CATALOG_VERSION) {
+  const outcome = readCatalogFile();
+  // 读不出来就绝不写回（本次会话只读）——我们不知道盘上那份是什么，盖掉它就是永久丢失。
+  // 账本只在这份文件重新读通时销账，所以一次损坏不会在同一次运行里被后续某个 upsert 洗掉。
+  const failure = configReadFailure(catalogPath());
+  if (outcome.status === "failed" || failure) {
+    throw new Error(
+      `[catalog] refusing to write: the catalog file could not be read (${failure?.reason ?? "unreadable"}: ${failure?.message ?? "unknown"}). ` +
+        `CATALOG_UNREADABLE_READ_ONLY — the existing file is left untouched${failure?.quarantinedPath ? ` (kept as ${failure.quarantinedPath})` : ""}.`,
+    );
+  }
+  const diskVersion = catalogIsNewerOnDisk(outcome);
+  if (diskVersion != null) {
     throw new Error(
       `[catalog] refusing to write: on-disk version ${diskVersion} > app version ${CURRENT_CATALOG_VERSION} (read-only to avoid silent downgrade). Update the app to edit this catalog.`,
     );
   }
-  writeJsonFileAtomic(catalogPath(), state);
+  writeConfigFileAtomic(catalogPath(), state);
   return state;
 }
+
 function normalizeEnabled(value: unknown, fallback = true): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -235,7 +255,10 @@ export function resolveOnboardingAgentFromCatalog(): OnboardingAgent | null {
   return listOnboardingAgentCandidates()[0] ?? null;
 }
 export function getModelCatalogHealth(): unknown {
-  return deriveModelCatalogHealth(readCatalog());
+  const health = deriveModelCatalogHealth(readCatalog());
+  // 降级运行（盘上版本更新）与「文件读不了」都必须**随健康度一起下发**，不能只留在主进程日志里：
+  // 这两种情况下目录看起来就是空的，界面若拿不到理由就只能猜，用户就只会看到「配置没了」。
+  return { ...(health as Record<string, unknown>), readOnly: modelCatalogReadOnlyStatus() };
 }
 /**
  * 把一次 vendor upsert 应用到内存 state，不读盘不写盘。
@@ -535,10 +558,10 @@ export function deleteModelCatalogMapping(id: string): void {
   state.mappings = state.mappings.filter((mapping) => mapping.id !== id);
   writeCatalog(state);
 }
-export function exportModelCatalogPackage(params?: unknown): CatalogPackage {
-  // 形状与凭据裁决都住在 catalogPackageFormat（那里同时放着它必须满足的 zod 契约）。
-  // 这里只负责「读一份 state」和「includeApiKeys 这一格从 IPC 参数怎么读」。
-  return buildCatalogPackage(readCatalog(), { includeApiKeys: Boolean((params as JsonRecord | undefined)?.includeApiKeys) });
+export function exportModelCatalogPackage(): CatalogPackage {
+  // 形状与凭据裁决都住在 catalogPackageFormat（那里同时放着它必须满足的 zod 契约与「永不带 key」的理由）。
+  // 这里只负责读一份 state。导出**不接受任何参数**：没有「这次带上 key」这一档。
+  return buildCatalogPackage(readCatalog());
 }
 /**
  * 事务化导入（P2·根治半成品）：整包先在**一份内存 state** 上逐项应用 + 校验，全部成功才
@@ -549,55 +572,116 @@ export function exportModelCatalogPackage(params?: unknown): CatalogPackage {
  * 的整体，单条 upsert 立即落盘才会产生中途半截态。把写盘收敛到唯一 choke point（事务边界），
  * 这类 bug 整类消失，而不是逐 upsert 补偿。`apply*` 纯函数与单条公开 upsert 共用（无第二份逻辑）。
  */
-export function importModelCatalogPackage(payload: unknown): unknown {
+export type CatalogImportConflict = Readonly<{
+  kind: "vendor" | "model" | "mapping";
+  /** 供应商 key；model 再带 modelKey，mapping 再带 id。界面照这个出「冲突清单」。 */
+  vendorKey: string;
+  modelKey?: string;
+  mappingId?: string;
+}>;
+
+export type CatalogImportResult = Readonly<{
+  imported: { vendors: number; models: number; mappings: number };
+  /** 因为本机已经有同一条而**没有动**的数量。 */
+  kept: { vendors: number; models: number; mappings: number };
+  conflicts: CatalogImportConflict[];
+  errors: string[];
+}>;
+
+const emptyImportResult = (errors: string[]): CatalogImportResult => ({
+  imported: { vendors: 0, models: 0, mappings: 0 },
+  kept: { vendors: 0, models: 0, mappings: 0 },
+  conflicts: [],
+  errors,
+});
+
+export function importModelCatalogPackage(payload: unknown, options?: { conflictPolicy?: "keep" | "replace" }): CatalogImportResult {
+  // 比 zod 早一步说人话：包版本比这个应用新时，zod 只会吐一句「Invalid literal value」，
+  // 而用户需要知道的是「这份是更新版本的 Nomi 导出的，请升级后再导入」。
+  const declaredVersion = isJsonRecord(payload) ? payload.version : undefined;
+  if (typeof declaredVersion === "string" && declaredVersion !== CATALOG_PACKAGE_VERSION) {
+    return emptyImportResult([
+      `这份配置包的格式是 ${declaredVersion}，当前 Nomi 只认识 ${CATALOG_PACKAGE_VERSION}。`
+        + `多半是更新版本的 Nomi 导出的——请先升级 Nomi 再导入。你现在的配置一个字都没动。`,
+    ]);
+  }
   // 信封先过公开契约（docs/engineering/formats/desktop-local-v1.schema.json 就是它导出来的）。
   // 骨架不对 = 整包不写、原因照实说，而不是一路 as 下去在某条 upsert 里抛一句看不懂的话。
   // 条目内部仍交给既有 apply*Upsert 归一（新旧两种 mapping 形状都收），这里不改写任何一格。
   const envelope = catalogPackageImportSchema.safeParse(payload);
   if (!envelope.success) {
-    return {
-      imported: { vendors: 0, models: 0, mappings: 0 },
-      errors: envelope.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "package"}: ${issue.message}`),
-    };
+    return emptyImportResult(
+      envelope.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "package"}: ${issue.message}`),
+    );
   }
   const raw = payload as {
     vendors?: Array<{ vendor?: unknown; apiKey?: unknown; models?: unknown[]; mappings?: unknown[] }>;
   };
+  // **合并，不是覆盖**（09-21 拍板）：本机已经有同一条时默认保留本机那份，并把冲突列给用户看。
+  // 为什么默认是「保留」：导入最常见的两个场景是「新机器上恢复」（本机是空的，零冲突、全量进来）
+  // 和「补上我缺的那几家」。反过来默认覆盖，就会在用户只想补一家时安静改掉他调好的另一家——
+  // 那又是一次「我的配置自己变了」。要覆盖必须是用户在确认那一步显式选的（conflictPolicy: 'replace'）。
+  const keepExisting = (options?.conflictPolicy ?? "keep") === "keep";
   const state = readCatalog();
   let vendors = 0;
   let models = 0;
   let mappings = 0;
+  const kept = { vendors: 0, models: 0, mappings: 0 };
+  const conflicts: CatalogImportConflict[] = [];
   try {
     for (const bundle of raw.vendors || []) {
-      const vendor = applyVendorUpsert(state, bundle.vendor);
-      vendors += 1;
+      const incomingKey = sanitizeName((bundle.vendor as JsonRecord | undefined)?.key, "").toLowerCase().replace(/\s+/g, "-");
+      const existingVendor = state.vendors.find((candidate) => candidate.key === incomingKey);
+      let vendorKey = incomingKey;
+      if (existingVendor && keepExisting) {
+        conflicts.push({ kind: "vendor", vendorKey: existingVendor.key });
+        kept.vendors += 1;
+      } else {
+        const vendor = applyVendorUpsert(state, bundle.vendor);
+        vendorKey = vendor.key;
+        if (existingVendor) conflicts.push({ kind: "vendor", vendorKey });
+        vendors += 1;
+      }
       const apiKey = bundle.apiKey as JsonRecord | undefined;
-      if (apiKey?.apiKey) applyApiKeyUpsert(state, vendor.key, apiKey);
-      if (isJsonRecord(apiKey?.customConfig)) {
-        applyPlainCustomConfigWrite(state, vendor.key, normalizedCustomConfig(apiKey.customConfig));
+      // 凭据只在本机还没有一份时写入：导入绝不覆盖用户已经存好的 key（那是最难重建、也最不该被
+      // 一次导入换掉的东西）。导入侧仍然**收** key——那是「让 AI 直接写一份配置」那条接入路径。
+      const hasCredential = Boolean(state.apiKeysByVendor[vendorKey]);
+      if (apiKey?.apiKey && (!hasCredential || !keepExisting)) applyApiKeyUpsert(state, vendorKey, apiKey);
+      if (isJsonRecord(apiKey?.customConfig) && (!hasCredential || !keepExisting)) {
+        applyPlainCustomConfigWrite(state, vendorKey, normalizedCustomConfig(apiKey.customConfig));
       }
       for (const model of bundle.models || []) {
-        applyModelUpsert(state, { ...(model as JsonRecord), vendorKey: (model as JsonRecord).vendorKey || vendor.key });
+        const row = model as JsonRecord;
+        const modelKey = String(row.modelKey || "");
+        const owner = String(row.vendorKey || vendorKey);
+        if (keepExisting && state.models.some((item) => item.vendorKey === owner && item.modelKey === modelKey)) {
+          conflicts.push({ kind: "model", vendorKey: owner, modelKey });
+          kept.models += 1;
+          continue;
+        }
+        applyModelUpsert(state, { ...row, vendorKey: owner });
         models += 1;
       }
       for (const mapping of bundle.mappings || []) {
-        applyMappingUpsert(state, {
-          ...(mapping as JsonRecord),
-          vendorKey: (mapping as JsonRecord).vendorKey || vendor.key,
-        });
+        const row = mapping as JsonRecord;
+        const mappingId = String(row.id || "");
+        if (keepExisting && mappingId && state.mappings.some((item) => item.id === mappingId)) {
+          conflicts.push({ kind: "mapping", vendorKey: String(row.vendorKey || vendorKey), mappingId });
+          kept.mappings += 1;
+          continue;
+        }
+        applyMappingUpsert(state, { ...row, vendorKey: row.vendorKey || vendorKey });
         mappings += 1;
       }
     }
   } catch (error) {
     // 整体回滚：不写盘（磁盘还是导入前的 state），返回 0 计数 + 清晰错误。
-    return {
-      imported: { vendors: 0, models: 0, mappings: 0 },
-      errors: [error instanceof Error ? error.message : String(error)],
-    };
+    return emptyImportResult([error instanceof Error ? error.message : String(error)]);
   }
-  // 全部成功 → 一次性提交。空包也安全（无变更则写回等值 state）。
+  // 全部成功 → 一次性提交，走的就是手动保存那一扇写入门（writeCatalog），所以：读不出来拒绝写、
+  // 盘上版本更新拒绝写、写前把上一版轮转成 model-catalog.bak.json —— 导入前的留底不需要另写一份。
   writeCatalog(state);
-  return { imported: { vendors, models, mappings }, errors: [] };
+  return { imported: { vendors, models, mappings }, kept, conflicts, errors: [] };
 }
 
 export type CatalogMutation = {

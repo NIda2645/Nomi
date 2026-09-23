@@ -1,3 +1,5 @@
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · app 集成（见 docs/plan/2026-06-20-capability-core-headless-exposure.md §S4）。
 //
 // 把 RPC server + token + 实例广告接到运行中的 Nomi app：启动时拉起 RPC（127.0.0.1）、ensureToken、
@@ -21,16 +23,18 @@ import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
-import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
-import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
+import { requestRenderer, requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+import { resolveProjectAssetReferenceIdentity } from '../assets/projectAssetStore'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { installGuiResolveNarrowIpc } from './generationResolveIpc'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { withdrawStalePresentations } from '../productionRun/stalePresentationSweep'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import {
-  prepareProductionGenerationAuthorization,
+  prepareProductionGenerationAuthorizationWithReferences,
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
@@ -132,7 +136,6 @@ export async function startCapabilityCore(
     requestGenerationGate?: DispatchContext['requestGenerationGate']
     authorizeGeneration?: DispatchContext['authorizeGeneration']
     confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
-    generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     generationPlanning?: DispatchContext['generationPlanning']
     generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
@@ -171,9 +174,8 @@ export async function startCapabilityCore(
     const operationStore = createProductionGenerationOperationStore(generationService, {
       onPlanChanged: (projectId, operationId) => landDraftOnCanvas?.(projectId, operationId),
     })
-    const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
     // P4 S4: trialFirst narrows the durable plan to shot 1 and re-seals it.
-    const defaults = createDefaultAuthorities(generationPolicy, {
+    const defaults = createDefaultAuthorities({
       onTrialFirst: async ({ projectId, operationId }) => {
         if (!operationStore.trialNarrow) return
         await operationStore.trialNarrow(projectId, operationId, new Date().toISOString())
@@ -181,20 +183,15 @@ export async function startCapabilityCore(
     })
     const projectRevisionResolver = authorities.projectRevisionResolver ?? defaults.projectRevisionResolver!
     const fixtureBaseUrlOverride = process.env.NOMI_E2E_PRODUCTION_FIXTURE === '1'
-      ? process.env.NOMI_E2E_APIMART_BASE_URL
+      ? process.env.NOMI_E2E_FIXTURE_BASE_URL
       : undefined
-    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_APIMART_REFERENCE_URL
-      ? process.env.NOMI_E2E_APIMART_REFERENCE_URL
+    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
+      ? process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
       : undefined
     const liveGenerationRuntime = createLiveGenerationRuntime({
       bootstrap: (state, options) => createGenerationProviderBootstrap(state, {
         ...options,
         ...(fixtureBaseUrlOverride ? { fixtureBaseUrlOverride } : {}),
-        ...(fixtureReferenceUrl ? {
-          resolveReferenceUrls: (input) => ({
-            imageUrls: input.references.filter((reference) => reference.kind === 'image').map(() => fixtureReferenceUrl),
-          }),
-        } : {}),
       }),
     })
     const readProviderBootstrap = liveGenerationRuntime.readBootstrap
@@ -330,6 +327,16 @@ export async function startCapabilityCore(
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: operationStore,
+        requestRendererDecision,
+        requestRenderer,
+        resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
+        // 2026-09-22：**这一行以前不在**，而 `mcpStdioServer` 那个宿主一直有它。
+        // 后果：App 内的 Agent 面板（真实用户唯一走的那条路）上，`draft_shots` 的 `references`
+        // **必定**被拒——`resolve?.(assetId)` 恒 undefined ⇒「参考素材 … 不在这个项目的素材库里」。
+        // run2 的 A1 里，`look_at_media` 刚给出 `asset-c7ce…`，下一句 `draft_shots` 就说不认识它：
+        // 两个工具对「素材身份」的答案不一样，而不一样的原因是**其中一个宿主没把解析器递下去**
+        // （与 report-B 项 4 同一形状：判据写对了，没人把状态交给它，而且没有任何东西会红）。
+        resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
         get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).
         defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
@@ -349,8 +356,19 @@ export async function startCapabilityCore(
           const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
           if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
           const authorizationRun = generationService.repository.read(lease.projectId, operation.operationId)
-          return prepareProductionGenerationAuthorization({
+          // attempt 谱系、负债合计和硬上限全部从这份快照里算。读不到就停在这里——
+          // 以前的 `run?` 会让它按「这一镜没有任何 attempt」继续，算出来的 attempt 在校验侧对不上。
+          if (!authorizationRun) throw new Error('Generation authorization requires the current Run snapshot')
+          return prepareProductionGenerationAuthorizationWithReferences({
             lease,
+            assertCurrent: () => {
+              const currentProject = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
+              const currentRun = generationService.repository.read(lease.projectId, operation.operationId)
+              if (!currentProject || currentProject.revision !== projectRecord.revision
+                || currentProject.immutableProjectUuid !== lease.immutableProjectUuid
+                || currentProject.projectGeneration !== lease.projectGeneration
+                || currentRun?.revision !== authorizationRun?.revision) throw new Error('generation_reference_scope_changed')
+            },
             projectRevision: projectRecord.revision,
             operation,
             contract,
@@ -358,8 +376,9 @@ export async function startCapabilityCore(
             providers: providerBootstrap.providers,
             resolveShotPrice,
             maximumSpend: authorizationRun?.policy.maxSpend,
+            run: authorizationRun,
             now: new Date().toISOString(),
-          })
+          }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
         },
         start: async (operation, lease) => {
           // Settings can save APIMart while this process is already running.
@@ -508,6 +527,20 @@ export async function startCapabilityCore(
     // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度。best-effort：异步、逐 run try/catch，不阻塞项目打开。
     reconcileOpenProjectHook = (projectId: string) => {
       void (async () => {
+        // 裁决 C：上一个进程摆出去、还没人答的那几次出价先撤回（回 draft / 未 present，计划留着）。
+        // 排在补落画布之前：占位节点照旧补，但那张「没人在等」的卡不该再闪出来一次。
+        try {
+          const runs = (typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : [])
+            .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
+          const withdrawn = await withdrawStalePresentations({
+            listRuns: () => runs,
+            withdraw: (owner, operationId, now) => operationStore.withdraw(owner, operationId, now),
+            onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
+          }, projectId)
+          if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })
+        } catch (error) {
+          logWarn('production-run', 'stale-presentation-sweep-failed', undefined, error)
+        }
         try {
           const summaries = typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : []
           for (const summary of summaries) {
@@ -603,6 +636,8 @@ export async function startCapabilityCore(
       authorizeGeneration: authorities.authorizeGeneration ?? runOwnedGenerationAuthority.authorizeGeneration,
       ...authorities,
       projectRevisionResolver,
+      // 同 mcpStdioServer：档位来自设置里持久化的那一份，宿主只负责递，不自己编。
+      approvalPolicy: readAgentApprovalPolicy,
       proposalReceiptFor: authorities.proposalReceiptFor,
       openCredentialsInNomi: authorities.openCredentialsInNomi ?? (async ({ sessionId }: { sessionId: string; vendorName: string }) => {
         const win = getMainWindow()
@@ -619,7 +654,6 @@ export async function startCapabilityCore(
         await requestRenderer('integration.open-credentials', { sessionId }, 30_000)
         return { opened: true }
       }),
-      generationPolicy,
       generationPlanning,
     })
     const location = getProjectLocationState()

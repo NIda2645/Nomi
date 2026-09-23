@@ -7,6 +7,8 @@ import { projectLaneSnapshot } from '../../../../electron/shared/agentLane/laneP
 import { laneViewModel, type LaneViewModelLabels } from '../../../workbench/ai/lane/laneViewModel'
 import {
   laneDrivenReceipt,
+  laneSnapshotQuestionAnswered,
+  laneSnapshotQuestionAnsweredLegacy,
   laneSnapshotToolDenied,
   laneSnapshotToolDone,
   laneSnapshotToolRunning,
@@ -28,6 +30,7 @@ const labels: LaneViewModelLabels = {
   formatStages: (done, total) => `${done} / ${total} 阶段`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
   taskUnknown: '任务详情在任务中心',
+  answered: '已回答',
   skillLabel: (key) => `[skill:${key}]`,
 }
 
@@ -54,6 +57,34 @@ describe('design-lab fixtures driven by a LaneSnapshot (probe P6)', () => {
     expect(receipt.status).toBe('output-denied')
     expect(receipt.trailing).toBeUndefined()
     expect(receipt.output).toBeUndefined()
+    expect(receipt.summary).toBeUndefined()
+  })
+
+  // ── 反问答完的那一行（`v4-intervention-question-answered` 这一格的判据）──
+  //
+  // 2026-09-22 抓到的回归就长在这两条之间：D4 改动二把协议换成了 `decision: 'answered'`
+  // + 成功形状的 tool result，而这份夹具还按老协议（`denied` + `isError`）喂数据，
+  // 于是那一格渲染成「✕ 已拒绝」（红字）。夹具与识别逻辑各钉一条，谁先走开谁先红。
+  it('答完（今天的协议）：读作「已回答 · 他的原话」，不红不打 ×', () => {
+    const receipt = laneDrivenReceipt(laneSnapshotQuestionAnswered('当参考图还是当正片？', '当参考图'), labels)
+    expect(receipt.answered).toBe(true)
+    expect(receipt.label).toBe(labels.answered)
+    expect(receipt.summary).toBe('当参考图')
+    expect(receipt.trailing).toBe('')
+  })
+
+  it('答完（D4 之前的老转录回放）：借 deny 记下来的那一条仍读作「已回答」', () => {
+    const receipt = laneDrivenReceipt(laneSnapshotQuestionAnsweredLegacy('当参考图还是当正片？', '当参考图'), labels)
+    expect(receipt.answered).toBe(true)
+    expect(receipt.label).toBe(labels.answered)
+    expect(receipt.summary).toBe('当参考图')
+  })
+
+  // 阳性对照：真 deny 不能被上面那条兼容腿蹭成「已回答」。
+  it('阳性对照：非提问工具的真 deny 仍是「已拒绝」，且不带原话', () => {
+    const receipt = laneDrivenReceipt(laneSnapshotToolDenied('这次先不删'), labels)
+    expect(receipt.answered).toBeUndefined()
+    expect(receipt.status).toBe('output-denied')
     expect(receipt.summary).toBeUndefined()
   })
 

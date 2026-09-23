@@ -5,7 +5,7 @@
 // 只要有人在这条 nextAction 里写一句「试试 openai-compatible 模板」，用户就会一直试，
 // 而每一次都必然撞在同一堵墙上——那堵墙不是配置错，是这条路本来就不通。
 import { describe, expect, it } from "vitest";
-import { noGenericContractFailure } from "./dispatch";
+import { noGenericContractFailure } from "./envelope";
 
 describe("no_generic_contract 的出口", () => {
   const failure = noGenericContractFailure("voice-clone-v2");

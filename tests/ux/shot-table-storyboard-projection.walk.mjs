@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { clickOrFail, expect, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
-import { AGENT_PANEL, COMPOSER_MODEL, CREATION_PANEL, MODEL_POPOVER, TOOL_RECEIPT, chooseAssistantModel, waitForV4TurnIdle } from './agent-runtime-walk-support.mjs'
+import { AGENT_PANEL, COMPOSER_MODEL, CREATION_PANEL, MODEL_POPOVER, TOOL_RECEIPT, chooseAssistantModel, sendCreation, waitForV4TurnIdle } from './agent-runtime-walk-support.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/shot-table-storyboard-projection')
@@ -37,11 +37,8 @@ try {
   if (await modelPopover.isVisible().catch(() => false)) await clickOrFail(win.locator(`${CREATION_PANEL} ${COMPOSER_MODEL}`), '收起模型菜单')
   await snap('replay-02-before-document')
   step = 'real-storyboard'
-  // 侧栏「新建方案」（2b59d13ef 之前叫「新建分镜方案」）= 把「拆分镜」指令直接发给常驻 Agent
-  // （DocumentListSidebar → storyboardPlannerLauncher → actions.send），真模型经保存分镜方案工具
-  // 直接落方案——**没有**计划卡 / 「确认」那一跳（805096d41 删掉了摘要卡与审批）。
-  // 落地的阳性信号 = 侧栏长出一行带状态的方案（`data-storyboard-status`，编辑器里的镜行没有这个属性）。
-  await clickOrFail(win.getByText('新建方案', { exact: true }), '从文稿拆分镜')
+  // Explicit Agent authoring is separate from the sidebar's local blank creation.
+  await sendCreation(win, '请读取当前文稿并新建一份三个镜头的分镜方案，不生成媒体。')
   // 面板不钉 surface：方案一落地工作区就切到分镜页，常驻面板的 data-agent-surface 随之变成 storyboard，
   // 钉 creation 的定位器会在回合还在跑时就「找不到 running」而假绿。起飞/落地都按 AGENT_PANEL 的 composer 运行态判。
   // User discipline: stop this station at three minutes without a usable UI transition.

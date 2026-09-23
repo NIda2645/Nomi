@@ -58,8 +58,11 @@ describe('generation canvas control structure', () => {
     const dragHandler = generationCanvas.match(/const handleNodesChange:[\s\S]*?\n\x20\x20}, \[[^\n]+\]\)/)?.[0] || ''
 
     expect(dragDraft).toContain('applyNodeChanges')
-    expect(dragHandler).toContain('dragDraft')
-    expect(dragHandler).not.toContain('moveNode(')
+    const activeDrag = dragHandler.split('if (positionChanges.length && draggingRef.current) {')[1]?.split('} else if')[0] ?? ''
+    expect(activeDrag).toContain('dragDraft')
+    expect(activeDrag).toContain('applyCanvasDragKernelPositionChanges')
+    expect(activeDrag).not.toContain('moveNode(')
+    expect(activeDrag).not.toContain('commitPersistedChange(')
   })
 
   it('lets React Flow exclusively own mounted node placement and interaction controls', () => {
@@ -116,7 +119,12 @@ describe('generation canvas control structure', () => {
       "const isAuxiliaryPan = event.button === 1 || event.button === 2 || (event.button === 0 && spaceHeldRef.current)",
     )
     expect(pointer).toContain('if (!isAuxiliaryPan || !event.isPrimary) return')
-    expect(pointer).toMatch(/if \(isBlankPrimaryPan\) \{[\s\S]{0,600}?\n {6}return\n {4}\}/)
+    const primary = pointer.slice(pointer.indexOf('if (isBlankPrimaryPan) {'), pointer.indexOf('const isAuxiliaryPan ='))
+    expect(primary).toContain('active: false')
+    expect(primary).toContain('takeoverAfterWheel: false')
+    expect(primary).toMatch(/return\s*\}/)
+    expect(primary).not.toContain('preventDefault(')
+    expect(primary).not.toContain('stopPropagation(')
   })
 
   it('cleans both pan and marquee state on pointer cancellation', () => {
@@ -126,8 +134,14 @@ describe('generation canvas control structure', () => {
     // 框选状态归 React Flow 自己；我们只需保证辅助平移在 pointercancel 上有收尾入口。
     expect(host).toContain('onPointerCancel={handleCanvasPointerEnd}')
     expect(generationCanvas).toContain('onMoveStart={() => {')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowViewport)')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, false, CANVAS_DRAGGING_OWNER.reactFlowViewport)')
+    expect(generationCanvas).toContain('beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowViewport, { onCancel:')
+    expect(generationCanvas).toMatch(/onMoveEnd=\{[^]*?viewportLeaseRef\.current\?\.release\(\)/)
+    // 2026-09-21：中断路径不许再整段 return。它原来跳过的是**整个** onMoveEnd —— 连 NaN 守卫
+    // 和 rememberCategoryViewport 一起——于是「屏幕上的视口」和「记住的视口」分家，下一次视口
+    // 同步 effect 一跑画布就跳回中断前的位置。现在中断照样记，只是记到手势开始时那个分类头上。
+    expect(generationCanvas).not.toContain('if (viewportCancelledRef.current) return')
+    expect(generationCanvas).toContain('viewportGestureCategoryRef.current = activeCategoryId')
+    expect(generationCanvas).toMatch(/rememberCategoryViewport\(viewportGestureCategoryRef\.current \?\? activeCategoryId,/)
   })
 
   it('replaces the persistent hint with one contextual help entry', () => {
@@ -329,16 +343,16 @@ describe('generation canvas control structure', () => {
 
     // 四条拖动路径（单节点 / 选区框 / 组框 / 画布平移）升同一个画布级标志，浮层各自声明隐身——
     // 不再是「只有被拖的那张卡收起来」（2026-08-09 用户：拖 B 的时候 A 的面板也不该杵着；平移同理）。
-    expect(dragResize).toContain('setCanvasDragging(event.currentTarget, true, CANVAS_DRAGGING_OWNER.node)')
-    expect(selectionDrag).toContain('setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.group)')
-    expect(pointer).toContain('setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowPan)')
-    expect(generationCanvas).toContain('setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)')
+    expect(dragResize).toContain('beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.node, { pointerId: event.pointerId, active: false')
+    expect(selectionDrag).toContain('beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.group, { pointerId: event.pointerId, active: false')
+    expect(pointer).toContain('beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.reactFlowPan, { pointerId: event.pointerId, active: false')
+    expect(generationCanvas).toContain('beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowNode, { onCancel:')
     for (const overlay of [composer, floatingToolbar, resultStack]) {
       expect(overlay).toContain('group-data-[dragging=true]/canvas:invisible')
     }
     // 平移那条必须在**跨过阈值之后**才升：按下就升 = 点一下空白也白写两次属性（08-08 的坑）。
     expect(pointer).toMatch(
-      /auxiliaryPan\.moved = true[\s\S]{0,160}setCanvasDragging\(hostRef\.current, true, CANVAS_DRAGGING_OWNER\.reactFlowPan\)/,
+      /auxiliaryPan\.moved = true\s+panLeaseRef\.current\?\.activate\(\)/,
     )
     // 旧的按节点作用域已删干净（P1：不留并行版）
     expect(composer).not.toContain('/node:invisible')

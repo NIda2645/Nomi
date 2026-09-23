@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Default: document draft → saved Run → original editor/placement → original runner.
+// --production-table: original canvas Agent → production shot table compatibility;
+// retains full table density, selection, viewport, generation and cold-restart assertions.
 // 金路径 · 每日走查（第二刀）。
 //
 // 这是**一条固定的、不许缩水的真实用户路径**，每天跑一次当门；红了当天修。
@@ -8,7 +11,7 @@
 // 剧本（一个字不许缩）：
 //   ① 新建空项目
 //   ② 在创作区文本编辑器写三句剧本
-//   ③ 显式拆成 3 镜（现役链路：选中正文 →「拆成镜头」→ Agent `draft_shots` → 草稿直接落画布）
+//   ③ 默认：划词拆镜保存Run→原编辑器→显式放置。production-table模式：画布Agent建三镜及表。
 //   ④ 选中第 2 镜（在画布的分镜表里勾选）
 //   ⑤ 改第 2 镜的一句提示词——经 Agent 的 `draft_shots(draftId, shots[{shotId}])`
 //   ⑥ 第 2 镜生成一张图片（loopback fixture 供应商，零额度）
@@ -16,7 +19,7 @@
 //   ⑧ 关闭 Nomi 重启
 //   ⑨ 图和修改仍在
 //
-// 账本（2026-09-18 单一账本）：Agent 分镜只有一份真相——Run 的 generationPlan 落成的画布节点；
+// production-table兼容模式的原账本：Run generationPlan落成production画布节点；
 // 分镜表（`shot_table` · source=production）是那组节点的表格表示版，行从节点 derive、零缓存。
 // 所以这里所有「落盘真相」都读 `generationCanvas.nodes`，**不**读 `storyboardDesignsByDocumentId`
 // （那是用户手写方案的账本，Agent 不写它；多认一份就是给假绿开后门）。
@@ -38,6 +41,7 @@
 //   · walkthrough-no-win-reload     —— 冷启动用真 app.close() + 重新 launch，绝不 win.reload()
 //   · assert-you-are-in-the-situation-you-claim —— 每步先断言「我到了这儿」再断言业务
 //   · dead-selector-lies-both-ways  —— 所有点击走 clickOrFail，点不到就红，不静默跳过
+import { runOriginalStoryboardGolden } from './_goldenOriginalStoryboard.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -87,7 +91,8 @@ const row = (nodeId) => `[data-shot-table-row="${nodeId}"]`
 // ── 参数解析。createRuntimeWalk 自己会校验 process.argv（只认 `--packaged <abs>`），
 //    所以本脚本的旗标必须在它读之前摘掉，否则它会以「用法错误」报红。 ────────────────
 const POSITIVE_CONTROL = process.argv.includes('--positive-control')
-process.argv = process.argv.filter((arg) => arg !== '--positive-control')
+const PRODUCTION_TABLE = process.argv.includes('--production-table')
+process.argv = process.argv.filter((arg) => !['--positive-control', '--production-table'].includes(arg))
 
 const walk = await createRuntimeWalk('golden-path')
 // 截图与 report.json 落在剧本自己的目录里（.tmp/golden-path-<ts>/），
@@ -96,6 +101,7 @@ const outputDir = path.join(process.cwd(), '.tmp', `golden-path-${Date.now()}`)
 fs.mkdirSync(outputDir, { recursive: true })
 walk.report.outputDir = outputDir
 walk.report.positiveControl = POSITIVE_CONTROL
+walk.report.journey = PRODUCTION_TABLE ? 'production-table-compatibility' : 'original-storyboard-editor'
 
 // 当前活着的窗口。刻意**不**挂在 report 上：report 会被 JSON 序列化落盘，
 // 塞一个 Playwright Page 进去会当场炸成循环引用。
@@ -253,12 +259,11 @@ async function stepSplitIntoThreeShots(win, projectId) {
     reply: { type: 'text', text: 'GOLDEN_PLAN_DONE：三镜草稿已落到画布，请审阅。' },
   })
 
-  const document = win.locator(DOCUMENT)
-  await document.click()
-  await document.selectText()
-  const splitButton = win.locator('.workbench-selection-popover').getByRole('button', { name: '拆成镜头', exact: true })
-  await expect(splitButton, '选中正文后划词浮条上的「拆成镜头」不可用').toBeEnabled()
-  await clickOrFail(splitButton, '在创作区就地拆镜头')
+  // This compatibility journey uses the existing canvas Agent entry, which has
+  // no document admission. Document drafting is tested by the default journey.
+  await openCanvas(win)
+  await win.locator(`${CANVAS_PANEL} ${COMPOSER_INPUT}`).fill(`把以下故事做成三个画布镜头：${SCRIPT_TEXT}`)
+  await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_SEND}`), '从画布Agent建立原production分镜表')
   await recorded(planner.received, '分镜规划请求')
   await recorded(plannerDone.received, '分镜规划工具结果')
 
@@ -498,19 +503,26 @@ try {
   const { projectId, projectRoot } = await stepNewProject()
   const win = currentWin
   await stepWriteScript(win)
-  const { runId, nodeIds } = await stepSplitIntoThreeShots(win, projectId)
-  await stepOpenShotTable(win, nodeIds)
-  await stepSelectShot2(win, nodeIds)
-  await stepAgentPatchShot2(win, projectId, runId, nodeIds)
-  const generated = await stepGenerateShot2Image(win, projectId, nodeIds)
-  await stepRestartAndVerify(projectRoot, projectId, nodeIds, generated)
+  if (PRODUCTION_TABLE) {
+    const { runId, nodeIds } = await stepSplitIntoThreeShots(win, projectId)
+    await stepOpenShotTable(win, nodeIds)
+    await stepSelectShot2(win, nodeIds)
+    await stepAgentPatchShot2(win, projectId, runId, nodeIds)
+    const generated = await stepGenerateShot2Image(win, projectId, nodeIds)
+    await stepRestartAndVerify(projectRoot, projectId, nodeIds, generated)
+  } else {
+    await runOriginalStoryboardGolden({ walk, win, projectId, projectRoot, shot,
+      setCurrentWin: value => { currentWin = value }, prompts: SHOT_PROMPTS, titles: SHOT_TITLES,
+      newPrompt: SHOT_2_NEW_PROMPT, instruction: PATCH_INSTRUCTION, planCall: PLAN_CALL_ID,
+      patchCall: PATCH_CALL_ID, shotId: SHOT_2_ID, targetAssertion: TARGET_ASSERTION, positiveControl: POSITIVE_CONTROL })
+  }
 
   if (POSITIVE_CONTROL) {
     // 走到这里意味着：盘上的修改被抹掉了，而「重启后修改仍在」的断言居然还是绿的。
     // 那条断言就是死的——它没有在测它命名的那件事。
     throw new Error('阳性对照失效：盘上第 2 镜的修改已被抹回旧值，重启断言却依然通过 —— 这条断言是死的，先修尺子再谈门。')
   }
-  walk.report.verified = [
+  if (PRODUCTION_TABLE) walk.report.verified = [
     'new-empty-project', 'three-line-script', 'draft-shots-land-on-canvas-with-shot-table',
     'shot2-selection-in-shot-table', 'draft-shots-patch-one-shot', 'loopback-image-generation',
     'cold-restart-persistence',

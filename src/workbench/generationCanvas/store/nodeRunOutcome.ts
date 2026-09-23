@@ -3,6 +3,7 @@
 // 画布 store 的 addNodeResult / setNodeStatus 与「运行所属项目不在前台时按项目读写盘」的投递
 // （runner/runProjectDelivery）共用这里：同一个结局，无论落进活的 store 还是关闭项目的盘上副本，
 // 节点长得一样，不存在第二份合并规则。
+import { textDocumentDigest } from '../runner/textGenerationDocument'
 import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import type { GenerationCanvasNode, GenerationNodeResult, GenerationNodeRunRecord, GenerationNodeStatus, TiptapDocJson } from '../model/generationCanvasTypes'
 import { createProgress, getResultTaskKind, mergeRunRecord, type NodeProgressInput } from './runRecordHelpers'
@@ -16,7 +17,7 @@ export type NodeRunOutcome =
   /** 运行中的进度（含首次拿到的 taskId——找回靠它）；undefined = 清掉进度。 */
   | Readonly<{ kind: 'progress'; progress: NodeProgressInput | undefined }>
   /** 文本生成定稿后的文档（续写/重写落地）。 */
-  | Readonly<{ kind: 'content'; contentJson: TiptapDocJson }>
+  | Readonly<{ kind: 'content'; contentJson: TiptapDocJson; runId?: string }>
 
 type NodeRunOutcomePatch = Partial<Pick<GenerationCanvasNode, 'size' | 'meta' | 'runs' | 'result' | 'history' | 'status' | 'error' | 'progress' | 'contentJson'>>
 
@@ -129,6 +130,12 @@ export function nodeRunOutcomePatch(node: GenerationCanvasNode, outcome: NodeRun
     case 'status': return statusPatch(node, outcome.status, outcome.error)
     case 'run-started': return runStartedPatch(node, outcome.run)
     case 'progress': return progressPatch(node, outcome.progress)
-    case 'content': return { contentJson: outcome.contentJson }
+    case 'content': {
+      const run = node.runs?.[0]
+      if (outcome.runId && run?.id !== outcome.runId) throw new Error('generation_run_changed')
+      return { contentJson: outcome.contentJson,
+        ...(outcome.runId && run ? { runs: [{ ...run, textDocumentDigest: textDocumentDigest(outcome.contentJson) }, ...node.runs!.slice(1)] } : {}),
+      }
+    }
   }
 }

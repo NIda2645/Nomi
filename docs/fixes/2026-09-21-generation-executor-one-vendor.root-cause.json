@@ -1,0 +1,201 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-21-generation-executor-one-vendor",
+ "problem_type": "One of two execution engines is hard-wired to a single vendor, so every entrance that routes through it refuses providers the user has already configured",
+ "symptom": "用户在设置里接好的 kie / 火山 / Higgsfield / 本地 ComfyUI / 自建中转，在画布节点上按生成能跑；**同一个模型**在 Agent 付款卡上按确认、外部 MCP 叫 `nomi_start_generation`、或全自动 Run / 续批，都在「供应商就绪」那一步停下，错误码 `configured_provider` —— 一个用户明明已经配好的供应商，被告知「没配」。",
+ "direct_cause": "`generationProviderBootstrap.ts:99` 是 `state.vendors.find(v => v.key === \"apimart\")`，`providers` 数组从头到尾只可能有 0 或 1 个元素；`catalogGenerationProvider.ts` 里另有 8 处写死 `\"apimart\"`，外加写死的 `Authorization: Bearer`、写死的两条 create 路径白名单、写死的 `/v1/tasks` 轮询路径与写死的 `data[0].task_id` 信封解析。",
+ "class_root": "同一个用户动作（「生成这一镜」）下面有两台发动机：引擎 A（`runtime.runTask`）从**声明**取一切（mapping 的 create op、用户保存的那条连接的鉴权说法），引擎 B（Run 路的 provider）把同样的几件事**写死成一家供应商的常量**。写死的那一份不会报错，它只是把别家挡在门外——于是「同一个按钮，有时候听我的、有时候说我没配」。",
+ "affected_population": [
+  "所有非 APIMart 的已配置供应商 × 五个入口（Agent 付款卡 / 分镜提交执行计划 / 外部 MCP nomi_start_generation / 全自动 Run / 续批）：本次之前一条都走不出去",
+  "画布节点与分镜行不受影响（它们走引擎 A）",
+  "APIMart 本身行为不变：鉴权方案词缺省仍是 Bearer、路径仍来自它自己的策展 mapping"
+ ],
+ "scope_paths": [
+  "electron/capabilityCore/apimartGenerationProvider.ts",
+  "electron/capabilityCore/generationProviderBootstrap.ts",
+  "electron/capabilityCore/apimartGenerationProjection.ts",
+  "electron/parity/engineDifferences.test.ts",
+  "electron/catalog/profileHttpRequest.ts"
+ ],
+ "entry_points": [
+  "Agent 付款卡确认（appIntegrationSpendConfirm → generationRuntimeAdapter）",
+  "分镜表提交执行计划（mcpGenerationTools.createGenerationPlanningHandler）",
+  "外部 MCP nomi_start_generation（mcpStdioServer）",
+  "全自动 / 批量 Run（productionGenerationSubmission、multiShotBatchScheduler）"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "本次没有新增或改动任何对外 wire 契约：端点、鉴权方案词、参数键、轮询路径统统改成从**用户保存的那条连接与这条 mapping 的声明**里读，而那些声明的外部依据（各家官方文档逐字段对账）早已落在 `electron/catalog/*` 的种子注释里。这一刀动的是「谁来回答这些问题」，不是「答案是什么」。",
+ "invariants": [
+  "执行器与供应商无关：端点、鉴权（含方案词与 query 式鉴权）、额外网关头、轮询路径、任务编号解析，全部由那条 mapping 的 op 声明与用户保存的连接派生，经 `buildProfileHttpRequest` 渲染——与引擎 A 同一个渲染器",
+  "装配期只问声明式问题：这家启用着 / 凭据存得下也解得开 / 至少有一个已发布执行的模型 / 它不是认证适配器拥有的连接；满足就造执行器，没有供应商名字的分支",
+  "执行器做不到的传输（multipart / 本地进程 op / 自定义调用脚本）在选型那一步就拒，绝不把它当普通 JSON POST 发出去",
+  "发出去的 body 是**授权时封存**的那一份；传输层（method/url/headers/query）是提交那一刻按真 key 现渲染的，两者分开",
+  "渲染出来的 origin 必须仍在用户保存的那个 base 上"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+   "symbol": "createCatalogGenerationProvider"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/appIntegration.ts",
+   "symbol": "createGenerationProviderBootstrap"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/liveGenerationRuntime.ts",
+   "symbol": "createGenerationProviderBootstrap"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/mcpStdioServer.ts",
+   "symbol": "createGenerationProviderBootstrap"
+  },
+  {
+   "kind": "write",
+   "path": "electron/parity/generationParityTestUtils.ts",
+   "symbol": "createGenerationProviderBootstrap"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "symbol": "buildProfileHttpRequest"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+   "symbol": "resolvedReferenceUrls"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationReferenceAliases.ts",
+   "symbol": "mirrorApimartReferenceParameterAliases"
+  }
+ ],
+ "door_reduction": {
+  "before": 9,
+  "after": 8,
+  "why_not": "造执行器的门从 1 扇写死一家收成 1 扇参数化的（`createCatalogGenerationProvider`，door-map 只有 1 处调用）；「发一次请求」的门从 2 份实现（provider 自己拼 base+path+Bearer vs 引擎 A 的 buildProfileHttpRequest）收成 1 份。剩下的 4 扇 `createGenerationProviderBootstrap` 调用点必须继续存在——它们是四个**不同宿主**（App 内 Agent、MCP stdio 宿主、常驻运行时、对等矩阵夹具），各自有自己的生命周期与夹具接缝；它们吃的是同一个装配函数，不是四份装配逻辑。"
+ },
+ "generality_proof": "装配与执行两层都不再出现供应商名字：用户自助接入的家、AI 直填的家、未来上新的家，只要目录里有一条可用的 mapping 与一条存得下的凭据，五个入口立刻就能用，不需要谁回来加一行 `if (vendorKey === …)`。对等测试矩阵的非 APIMart 用例（内置 Higgsfield，鉴权方案词是 `Key` 不是 `Bearer`）与新增的 `acme` 夹具（用户自接的家，自有 base / 方案词 / 轮询路径）各证一头。",
+ "shared_boundaries": [
+  {
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "symbol": "createCatalogGenerationProvider",
+   "responsibility": "把「一条已保存的连接 + 一条 mapping 声明」变成一个能提交/轮询/对账的执行器；供应商相关的一切都是它的入参或目录里的声明。"
+  },
+  {
+   "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+   "symbol": "createGenerationProviderBootstrap",
+   "responsibility": "按声明式判据遍历 vendors 造执行器，并给出每家的就绪度；没有供应商名字的分支。"
+  },
+  {
+   "path": "electron/catalog/profileHttpRequest.ts",
+   "symbol": "buildProfileHttpRequest",
+   "responsibility": "两台发动机唯一的请求渲染器：端点、鉴权（含方案词 / x-api-key / query 式）、网关额外头、模板参数。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/capabilityCore/appIntegration.ts",
+   "entry_point": "Agent 付款卡确认 → generationRuntimeAdapter.submit",
+   "disposition": "enforced",
+   "evidence": "对等矩阵 `agent-panel-spend-confirm` × 全部 6 个用例（含非 APIMart 的 higgsfield 用例）与基准入口逐字段相同；known-splits.json 由 55 条减到 0。"
+  },
+  {
+   "path": "electron/capabilityCore/mcpStdioServer.ts",
+   "entry_point": "外部 MCP nomi_start_generation",
+   "disposition": "enforced",
+   "evidence": "对等矩阵 `external-mcp-start-generation` 全绿（同上）。"
+  },
+  {
+   "path": "electron/productionRun/productionGenerationSubmission.ts",
+   "entry_point": "全自动 / 批量 Run",
+   "disposition": "enforced",
+   "evidence": "对等矩阵 `auto-run-batch` 与 `continue-batch` 全绿（同上）。"
+  },
+  {
+   "path": "electron/capabilityCore/mcpGenerationTools.ts",
+   "entry_point": "分镜表提交执行计划",
+   "disposition": "enforced",
+   "evidence": "对等矩阵 `submit-execution-plan` 全绿（同上）。"
+  },
+  {
+   "path": "electron/runtime.ts",
+   "entry_point": "runTask（引擎 A：画布 / 分镜行 / 重拍 / 外部 MCP 单发 / 接入试跑）",
+   "disposition": "not-affected",
+   "evidence": "引擎 A 一直从声明取一切，本次是让引擎 B 走上它那条路；它自己一行未改（本 commit 不含 runtime.ts）。"
+  },
+  {
+   "path": "electron/integrationCertification/httpConnector.ts",
+   "entry_point": "认证适配器拥有的连接（meta.adapter）",
+   "disposition": "not-affected",
+   "evidence": "装配期显式跳过这类行：它们的 auth / 端点 / 生命周期由认证契约拥有，这个执行器不接管。`generationProviderBootstrap.test.ts` 的 certification-owned 用例守着这条。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "每接入一家新供应商、每一个用户自己接的中转都会撞上；而「用户自己接模型」正是本轮发版的主题，所以它只会更频繁。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs createCatalogGenerationProvider → 1 扇（generationProviderBootstrap.ts:156）",
+   "node scripts/door-map.mjs createGenerationProviderBootstrap → 4 扇（appIntegration / liveGenerationRuntime / mcpStdioServer / parity 夹具）",
+   "node scripts/door-map.mjs buildProfileHttpRequest → 8 扇（两台发动机 + 音频 / multipart / 接入提交各自的渲染点，同一份实现）",
+   "grep -rn '\"apimart\"' electron/capabilityCore --include=*.ts | grep -v test → 0 命中：能力核里已经没有供应商名字的执行分支"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/capabilityCore/generationProviderBootstrap.ts",
+  "invariant": "同一份输入经任何一个已登记的生成入口，发给供应商的出站报文逐字段相同；已知分裂清单为空。",
+  "failure_mode": "装配期再长出一个供应商名字的分支、或任何入口再长出私有预处理，对等矩阵（`generationParity.matrix.test.ts`）当场红并列出差异字段；有人再往 `known-splits.json` 里加一行「先登记着回头再修」也会红——清单归零之后那条记账断言已按它自己写好的程序换成正向断言（`expect(KNOWN_SPLITS).toEqual([])`）。",
+  "exception_policy": "none",
+  "strategy": "把供应商相关的一切从代码常量挪回声明，两台发动机共用同一个渲染器；再用一张逐字段比对的矩阵把「两边不一致」变成一条会红的测试。",
+  "artifacts": [
+   "electron/capabilityCore/generationProviderBootstrap.ts",
+   "electron/parity/generationParity.matrix.test.ts",
+   "electron/parity/known-splits.json",
+   "electron/parity/engineDifferences.test.ts",
+   "scripts/check-generation-entrances.mjs"
+  ]
+ },
+ "regression_tests": [
+  "electron/parity/generationParity.matrix.test.ts",
+  "electron/parity/engineDifferences.test.ts",
+  "electron/capabilityCore/apimartGenerationProvider.test.ts",
+  "electron/capabilityCore/generationProviderBootstrap.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/parity/generationParity.matrix.test.ts",
+  "electron/parity/engineDifferences.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/capabilityCore/apimartGenerationProvider.ts",
+   "electron/capabilityCore/generationProviderBootstrap.ts"
+  ],
+  "rationale": "`catalogGenerationProvider.ts` 整份文件同 commit 删除（`git rm`），不是留在旁边当 fallback；写死的 Bearer、两条 create 路径白名单、`apimartTaskQueryPath()` 轮询路径、`data[0].task_id` 信封解析一并删掉。没有开关、没有「旧路径优先」分支。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "不变量完全由本仓的目录契约与请求渲染器决定，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：执行器是每次装配时按当前目录造出来的，不落盘。进程重启后仍在途的任务，轮询要么由调用方给出它提交时的模型（Run 的账本里就记着 job.model / job.taskKind），要么走「这家每条 mapping 的轮询 op 都一样且不依赖模型」那条无歧义路径；两条都答不出时报错要求人工对账，而不是猜一条路径去问。",
+ "residual_risks": [
+  "`provider.query` 的签名多了一个可选上下文参数，但 `productionGenerationSubmission.ts:530` 还没有把 `job.model` / `job.taskKind` 传下去。今天不影响任何内置家（它们的轮询 op 在全家范围内一致，走无歧义路径），但一旦有人接入一家**每个模型轮询路径都不同**的供应商，进程重启后那笔在途任务会报「说不出用哪条 op」而不是自动轮询。把那两个字段接上是下一刀，已写进报告。",
+  "七项引擎差异里 `own-guard` 的三条（结果缓存 / chat-image 回落 / 异步 transform 预飞）刻意没有复制进引擎 B，理由逐条写在 `engineDifferences.test.ts` 里；其中「结果缓存」意味着同一条配方在引擎 B 上不会被去重，重复提交由授权信封与 budgetLedger 拦，不由指纹缓存拦。",
+  "本合同只证到出站请求体与传输层这一层；真机只在 loopback 夹具上验过，没有对任何真实供应商付费提交。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/capabilityCore/apimartGenerationProvider.ts",
+  "tests": [
+   "electron/parity/generationParity.matrix.test.ts",
+   "electron/capabilityCore/apimartGenerationProvider.test.ts",
+   "electron/capabilityCore/generationProviderBootstrap.test.ts"
+  ],
+  "notes": "「这家怎么提交生成」从此只由这一层回答，而它自己不持有任何供应商常量——全部来自入参与目录声明。对等矩阵是它的机读判据：55 条已知分裂减到 0。"
+ }
+}

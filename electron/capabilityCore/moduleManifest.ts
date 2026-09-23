@@ -3,7 +3,13 @@ import { z } from "zod";
 const primitiveEnumValueSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
 
 const parameterFieldSchema = z.object({
-  type: z.enum(["string", "number", "integer", "boolean", "enum", "object", "array"]),
+  /**
+   * `any` = 「这个键送得出去，但取值域只有供应商知道」。目录里绝大多数参数键的唯一证据就是
+   * mapping 的线缆模板引用了它（`{{request.params.X}}`），模板不带类型。此前这一档不存在，
+   * 于是这些键根本进不了参数表，被 `compileParameters` 当成「不支持」整包丢掉（付款卡改 2K
+   * 最后发出去 1k 的根因）。写一个猜的类型比不写更糟：那是凭空造出的第二份真相源。
+   */
+  type: z.enum(["string", "number", "integer", "boolean", "enum", "object", "array", "any"]),
   required: z.boolean().optional(),
   enum: z.array(primitiveEnumValueSchema).min(1).optional(),
   description: z.string().optional(),

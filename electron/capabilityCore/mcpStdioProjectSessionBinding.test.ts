@@ -4,7 +4,6 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProductionMcpStdioProjectSessionBinding } from './mcpStdioProjectSessionBinding'
 import {
   MCP_CLIENT_ENV,
@@ -37,9 +36,7 @@ describe('production MCP stdio project-session binding', () => {
     ensureToken()
     process.env[MCP_CLIENT_PROOF_ENV] = signMcpClient('codex')!
 
-    const binding = createProductionMcpStdioProjectSessionBinding(
-      createMcpGenerationPolicy({ env: {} }),
-    )
+    const binding = createProductionMcpStdioProjectSessionBinding()
 
     expect(binding.connection).toMatchObject({
       authenticatedClient: 'codex',

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dispatch } from './dispatcher'
 import { isSemanticGenerationRoute } from './generationDispatcher'
 import type { McpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { MCP_GENERATION_TOOL_CATALOG } from './mcpGenerationToolCatalog'
 import { createMcpProtocol, type McpTransport } from './mcpProtocol'
 import { MCP_TOOL_RESOLVER } from './mcpToolCatalog'
@@ -56,7 +55,8 @@ async function callMcpTool(
   })
 }
 
-function makeProjectSession(options: { generationEnabled?: boolean } = {}) {
+// 2026-09-21：`generationEnabled` 这个开关随 env flag 一起消失——生成 scope 无条件发。
+function makeProjectSession() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-project-session-dispatch-'))
   tempDirs.push(dir)
   const identity = {
@@ -66,12 +66,6 @@ function makeProjectSession(options: { generationEnabled?: boolean } = {}) {
     canonicalRootDigest: 'root-digest-1',
     manifestDigest: 'manifest-audit-1',
   }
-  const generationPolicy = createMcpGenerationPolicy({
-    env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: options.generationEnabled ? '1' : '' },
-    checkpoints: options.generationEnabled
-      ? { p0Passed: true, p2Passed: true, p3Passed: true }
-      : {},
-  })
   const leaseAuthority = createProjectLeaseAuthority({
     macKey: 'dispatch-authority-key',
     store: createProjectLeaseStore({ filePath: path.join(dir, 'leases.json'), macKey: 'dispatch-store-key' }),
@@ -83,10 +77,8 @@ function makeProjectSession(options: { generationEnabled?: boolean } = {}) {
     }),
   })
   return {
-    generationPolicy,
     authority: createProjectSessionAuthority({
       leaseAuthority,
-      generationPolicy,
       resolveProjectSelection: async () => identity,
     }),
   }
@@ -103,7 +95,6 @@ describe('generic project-session route', () => {
       runTask,
       makeGateway: vi.fn(),
       productionRuns: {},
-      generationPolicy: projectSession.generationPolicy,
       projectSession: { authority: projectSession.authority, connection },
     } as never)
 
@@ -139,7 +130,7 @@ describe('generic project-session route', () => {
   })
 
   it('uses the cohesive project session for semantic leases and never accepts tool-supplied scope expansion', async () => {
-    const projectSession = makeProjectSession({ generationEnabled: true })
+    const projectSession = makeProjectSession()
     const generationContext = vi.fn(async (params: Record<string, unknown>) => params)
     const generationPlanning = vi.fn()
     const opened = await projectSession.authority.open({ bootstrap: { mode: 'current_project' } }, connection)
@@ -147,7 +138,6 @@ describe('generic project-session route', () => {
       runTask: vi.fn(),
       makeGateway: vi.fn(),
       productionRuns: {},
-      generationPolicy: projectSession.generationPolicy,
       generationContext,
       generationPlanning,
       projectSession: { authority: projectSession.authority, connection },

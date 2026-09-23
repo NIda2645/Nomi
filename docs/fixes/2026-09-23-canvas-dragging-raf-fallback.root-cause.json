@@ -1,0 +1,92 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-23-canvas-dragging-raf-fallback",
+  "problem_type": "Canvas drag lease release assumes requestAnimationFrame in non-browser test hosts",
+  "symptom": "The canvas dragging flag test reports an unhandled TypeError when the headless window fixture does not expose window.requestAnimationFrame.",
+  "direct_cause": "The gesture-end guard called window.requestAnimationFrame directly even though the shared drag lease is also exercised by non-browser and reduced-window hosts.",
+  "class_root": "The drag lease boundary had no host-safe scheduling adapter for the deferred release guard.",
+  "affected_population": [
+    "Canvas pointer and resize gesture cleanup in reduced or headless window hosts",
+    "Vitest and future non-browser consumers of the shared drag lease"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+  ],
+  "entry_points": [
+    "beginCanvasDragging lease creation",
+    "cancelCanvasDraggingWithin lease cancellation",
+    "CanvasDragLease end-guard scheduling"
+  ],
+  "internal_only_reason": "The scheduler fallback is an application-owned host boundary; browser requestAnimationFrame semantics are used when available and the deferred timer is only a compatibility path for reduced hosts.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "tests": ["src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"],
+    "why": "The canvasDraggingFlag module owns the lease lifecycle and is the only place that schedules the deferred end guard; its focused test covers the lease ordering and cancellation contract."
+  },
+  "invariants": [
+    "A matching drag lease release remains deferred until queued lease releases have run, regardless of whether the host provides requestAnimationFrame.",
+    "Browser hosts continue to use requestAnimationFrame while reduced hosts use an asynchronous timer without changing lease ownership semantics."
+  ],
+  "doors": [
+    {"kind":"read","path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"read","path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts","symbol":"CANVAS_DRAGGING_ATTRIBUTE"},
+    {"kind":"read","path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts","symbol":"CanvasDraggingOwner"},
+    {"kind":"read","path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"read","path":"src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts","symbol":"CANVAS_DRAGGING_ATTRIBUTE"},
+    {"kind":"read","path":"src/workbench/generationCanvas/nodes/useNodeDragResize.ts","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/nodes/useNodeDragResize.ts","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts","symbol":"CanvasDragLease"},
+    {"kind":"read","path":"src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts","symbol":"CANVAS_DRAGGING_OWNER"},
+    {"kind":"write","path":"src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts","symbol":"beginCanvasDragging"},
+    {"kind":"write","path":"src/workbench/generationCanvas/nodes/useNodeDragResize.ts","symbol":"beginCanvasDragging"},
+    {"kind":"write","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx","symbol":"beginCanvasDragging"},
+    {"kind":"write","path":"src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx","symbol":"beginCanvasDragging"},
+    {"kind":"write","path":"src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts","symbol":"beginCanvasDragging"},
+    {"kind":"write","path":"src/workbench/WorkbenchShell.tsx","symbol":"cancelCanvasDraggingWithin"}
+  ],
+  "door_reduction": {
+    "before": 21,
+    "after": 21,
+    "why_not": "The lease lifecycle has six write callers and fifteen read callers by design; this fix changes only the shared deferred scheduling boundary and does not merge independent gesture owners or host consumers."
+  },
+  "generality_proof": "All drag and resize callers already converge on CanvasDragLease; the scheduler adapter is selected at the shared release guard, so every caller gets identical ordering on browser and reduced hosts.",
+  "shared_boundaries": [
+    {
+      "path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol":"CanvasDragLease",
+      "responsibility":"Own drag lease state and schedule deferred matching-release cleanup across host capabilities."
+    }
+  ],
+  "same_class_entry_points": [
+    {"path":"src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts","entry_point":"selection drag","disposition":"enforced","evidence":"Uses the shared CanvasDragLease."},
+    {"path":"src/workbench/generationCanvas/nodes/useNodeDragResize.ts","entry_point":"node resize drag","disposition":"enforced","evidence":"Uses the shared CanvasDragLease."},
+    {"path":"src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts","entry_point":"React Flow canvas gesture","disposition":"enforced","evidence":"Uses the shared CanvasDragLease."}
+  ],
+  "recurrence": {
+    "classification":"recurring",
+    "reason":"Any reduced host can omit browser scheduling globals while exercising the shared drag lease.",
+    "same_class_scan":["node scripts/door-map.mjs src/workbench/generationCanvas/components/canvasDraggingFlag.ts","Checked all listed drag lease readers and writers."]
+  },
+  "prevention": {
+    "kind":"centralized-boundary",
+    "enforcement_path":"src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "invariant":"Deferred matching-release cleanup always uses an asynchronous scheduler available to the current host.",
+    "failure_mode":"A host without requestAnimationFrame no longer throws; the release guard still runs after prior lease releases.",
+    "exception_policy":"none",
+    "strategy":"Keep host capability detection in the shared lease module so gesture callers do not grow per-host fallbacks.",
+    "artifacts":["src/workbench/generationCanvas/components/canvasDraggingFlag.ts","src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"]
+  },
+  "regression_tests":["src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"],
+  "class_regression_tests":["src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"],
+  "legacy_paths":{"status":"not-applicable","removed_paths":[],"rationale":"The shared CanvasDragLease remains the only drag lifecycle path; only its scheduler capability branch was hardened."},
+  "dependency_lifecycle":{"decision":"not-applicable","rationale":"No dependency is added or upgraded; the fallback uses the host timer already available to the runtime.","exit_criteria":[]},
+  "migration":"No persisted data or public caller contract changes.",
+  "residual_risks":["Packaged browser visual evidence remains part of the release lane; browser hosts continue using requestAnimationFrame."]
+}

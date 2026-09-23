@@ -32,7 +32,6 @@ import { createWorkspaceProject } from '../workspace/workspaceRepository'
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
 import { CAPABILITY_DIR_ENV, ensureToken, signMcpClient } from './security'
 import { createMcpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProductionProjectSessionRuntime } from './projectSessionRuntime'
 import { createMcpProtocol, type McpTransport } from './mcpProtocol'
 import { dispatch } from './dispatcher'
@@ -166,13 +165,11 @@ async function makeFixture() {
     proof: signMcpClient('codex'),
     randomSecret: () => 'S'.repeat(43),
   })
-  const generationPolicy = createMcpGenerationPolicy({ env: {} })
   const runtime = createProductionProjectSessionRuntime({
-    generationPolicy,
     getOpenProjectSelection: () => committedSelection,
     isServerAllowlisted: () => false,
   })
-  return { connection, generationPolicy, runtime }
+  return { connection, runtime }
 }
 
 /**
@@ -251,7 +248,6 @@ async function measure(): Promise<Measurement & { controlFirstCallHits: number }
     runTask: vi.fn(),
     makeGateway: (projectId: string) => createDiskGateway(projectId),
     productionRuns: {},
-    generationPolicy: fixture.generationPolicy,
     origin: { host: 'codex' as const },
     projectSession: { authority: fixture.runtime.authority, connection: fixture.connection },
   } as never)
@@ -325,7 +321,6 @@ describe('R30 · MCP profile 的一次写对率与回合成功率', () => {
       runTask: vi.fn(),
       makeGateway: (projectId: string) => createDiskGateway(projectId),
       productionRuns: {},
-      generationPolicy: fixture.generationPolicy,
       origin: { host: 'codex' as const },
       projectSession: { authority: fixture.runtime.authority, connection: fixture.connection },
     } as never)

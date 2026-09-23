@@ -8,6 +8,10 @@ vi.mock("electron", () => ({
 vi.mock("../../ipcSenderGuard", () => ({ assertTrustedSender: vi.fn() }));
 vi.mock("../../catalog/catalogStore", () => ({
   normalizeProviderKind: (value: string) => value === "anthropic" || value === "openai-responses" ? value : "openai-compatible",
+  // 2026-09-21：探测路现在从「已保存的那条连接」取鉴权方案词（connectionAuthSpec），所以这份
+  // mock 要能回答「这条 baseUrl 有没有已保存的连接」。这里全是全新接入，恒空 → 缺省 Bearer，
+  // 本文件既有断言逐字不变。
+  readCatalog: () => ({ version: 8, vendors: [], models: [], mappings: [], apiKeysByVendor: {} }),
 }));
 vi.mock("./vendorHealth", () => ({ checkVendorHealth: vi.fn() }));
 

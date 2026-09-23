@@ -82,6 +82,8 @@ export const workbenchProjectPayloadSchema = z.object({
 
 export const workbenchProjectRecordSchema = workbenchProjectSummarySchema.extend({
   version: workbenchProjectRecordVersionSchema,
+  immutableProjectUuid: z.string().uuid().optional(),
+  projectGeneration: z.number().int().positive().optional(),
   payload: workbenchProjectPayloadSchema,
 })
 
@@ -142,6 +144,8 @@ export type WorkbenchProjectPayload = {
 }
 
 export type WorkbenchProjectRecordV1 = WorkbenchProjectSummary & {
+  immutableProjectUuid?: string
+  projectGeneration?: number
   version: 1
   payload: WorkbenchProjectPayload
 }

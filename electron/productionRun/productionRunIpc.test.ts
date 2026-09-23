@@ -63,13 +63,66 @@ function repository() {
     list: vi.fn(() => [fakeRun()]),
     read: vi.fn((_projectId: string, _runId: string) => fakeRun()),
     create: vi.fn(() => fakeRun()),
-    execute: vi.fn(() => ({ run: fakeRun(), events: [] })),
+    execute: vi.fn((_projectId: string, _runId: string, _command: unknown) => ({ run: fakeRun(), events: [] })),
     readEvents: vi.fn(() => []),
   };
 }
 
 describe("production run IPC", () => {
   beforeEach(() => handlers.clear());
+
+  it("presents only the addressed storyboard scope without granting spend authority", async () => {
+    const repo = repository();
+    repo.read.mockReturnValue({ ...fakeRun(), origin: { host: "nomi", sourceDocument: { documentId: "doc-1", revision: 3 } } } as ReturnType<typeof fakeRun>);
+    registerProductionRunIpc(repo as never);
+    await handlers.get("nomi:production-runs:command")?.(trustedEvent(), {
+      projectId: "project-1", runId: "run-1",
+      command: { commandId: "present-storyboard", expectedRevision: 2, type: "generation.present",
+        payload: { sourceDocumentId: "doc-1", sourceDocumentRevision: 3, shotIds: ["shot-2"], approved: true }, humanGesture: true },
+    });
+    expect(repo.execute).toHaveBeenCalledWith("project-1", "run-1", expect.objectContaining({
+      type: "generation.present", expectedRevision: 2,
+      payload: { sourceDocumentId: "doc-1", sourceDocumentRevision: 3, shotIds: ["shot-2"] },
+    }));
+    expect(repo.execute.mock.calls[0][2]).not.toHaveProperty("humanGesture");
+  });
+
+  it.each([
+    { shotIds: [] }, { shotIds: ["shot-2", "shot-2"] }, { shotIds: undefined },
+    { sourceDocumentId: "another-document" }, { sourceDocumentRevision: 2 },
+  ])("rejects invalid or stale storyboard presentation before a write: %j", async (patch) => {
+    const repo = repository();
+    repo.read.mockReturnValue({ ...fakeRun(), origin: { host: "nomi", sourceDocument: { documentId: "doc-1", revision: 3 } } } as ReturnType<typeof fakeRun>);
+    registerProductionRunIpc(repo as never);
+    await expect(handlers.get("nomi:production-runs:command")?.(trustedEvent(), {
+      projectId: "project-1", runId: "run-1",
+      command: { commandId: "present-storyboard", expectedRevision: 2, type: "generation.present",
+        payload: { sourceDocumentId: "doc-1", sourceDocumentRevision: 3, shotIds: ["shot-2"], ...patch } },
+    })).rejects.toThrow();
+    expect(repo.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect an external client's confirmation into the resident panel", async () => {
+    const repo = repository();
+    repo.read.mockReturnValue({ ...fakeRun(), origin: { host: "semantic-mcp", sourceDocument: { documentId: "doc-1", revision: 3 } } } as ReturnType<typeof fakeRun>);
+    registerProductionRunIpc(repo as never);
+    await expect(handlers.get("nomi:production-runs:command")?.(trustedEvent(), {
+      projectId: "project-1", runId: "run-1",
+      command: { commandId: "present-storyboard", expectedRevision: 2, type: "generation.present",
+        payload: { sourceDocumentId: "doc-1", sourceDocumentRevision: 3, shotIds: ["shot-2"] } },
+    })).rejects.toThrow();
+    expect(repo.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects the retired alternate placement command without writing", async () => {
+    const repo = repository();
+    registerProductionRunIpc(repo as never);
+    await expect(handlers.get("nomi:production-runs:command")?.(trustedEvent(), {
+      projectId: "project-1", runId: "run-1",
+      command: { commandId: "place-canvas", expectedRevision: 2, type: "generation.place_canvas", payload: {}, humanGesture: true },
+    })).rejects.toThrow();
+    expect(repo.execute).not.toHaveBeenCalled();
+  });
 
   it("registers the narrow list/read/create/command/events bridge", () => {
     registerProductionRunIpc(repository() as never);

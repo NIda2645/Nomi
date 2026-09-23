@@ -1,4 +1,5 @@
 export const zhStoryboardEditor = {
+  placeOnCanvas: '放入画布', viewOnCanvas: '查看画布',
   anchorPolicy: {
     ignoredReason: '模式 {{mode}} 没有图片参考槽，参考图不会被使用',
     switchMode: '第 {{index}} 镜按 {{mode}} 生成，「{{anchors}}」参考图不会被使用；要使用它们，请换同模型的 {{alternative}} 模式，或去掉该镜视觉锚。',
@@ -177,13 +178,9 @@ export const zhStoryboardEditor = {
     danglingRef: '镜 {{index}} 有失效引用',
     anchorNoName: '有张参考卡还没起名字',
   },
-  discardTitle: '丢弃这份方案？',
-  discardMessage: '方案和你刚才的修改会清空，可以重新让 AI 拆镜头。',
-  discard: '丢弃',
   titleAria: '方案标题',
   titlePlaceholder: '给方案起个名字',
   shotCount: '{{count}} 镜',
-  discardPlan: '丢弃方案',
   draftEditable: 'AI 草拟，随便改',
   spendHint: '先生成参考卡锁住长相，再生成镜头 · 每次生成前确认花费',
   consistencyTitle: '跨镜头要一致的',
@@ -191,8 +188,6 @@ export const zhStoryboardEditor = {
   noAnchors: '还没有参考卡——加一张，或直接写镜头。',
   addAnchor: '添加参考',
   addAnchorHint: '主角形象 / 场景参考 / 道具参考 / 风格',
-  resplitFromScript: '重新拆分',
-  resplitDraft: '照我最新的原稿重新拆一遍分镜：一镜一行，保留我已经改过的镜头。',
   aspectScope: {
     followDefault: '跟随默认',
     overrideMark: '覆盖',
@@ -232,6 +227,9 @@ export const zhStoryboardEditor = {
     anchorDescription: '设定：{{text}}',
     ignorePlaceholder: '这次别跟它的哪些特征（如：背景霓虹）',
     ignoreAria: '这一次引用 {{name}} 时要忽略的特征',
+    moreAria: '还有 {{count}} 个参考槽，点开看全部',
+    moreTitle: '这一镜共 {{total}} 个参考槽，编辑器窄的时候只露第一个——点开看全部',
+    collapseAria: '收起其余参考槽',
   },
   rowMenu: {
     insertAbove: '上方插入',
@@ -303,7 +301,6 @@ export const zhStoryboardEditor = {
   },
   planCard: {
     defaultTitle: '分镜方案',
-    discardMessage: '方案和你的修改会清空，可以重新让 AI 拆镜头。',
     committed: '已落画布',
     draft: '草稿',
     stale: '需同步',
@@ -368,6 +365,7 @@ type TranslationShape<T> = {
 }
 
 export const enStoryboardEditor = {
+  placeOnCanvas: 'Place on canvas', viewOnCanvas: 'View canvas',
   anchorPolicy: {
     modelUnsupported: 'This model does not accept references',
     catalogMissing: 'Shot {{index}} has no matching available model for character references. Choose an available model and retry.',
@@ -541,13 +539,9 @@ export const enStoryboardEditor = {
     danglingRef: 'Shot {{index}} has an invalid reference',
     anchorNoName: 'A reference card has no name',
   },
-  discardTitle: 'Discard this plan?',
-  discardMessage: 'The plan and your edits will be cleared. You can ask AI to split the story into shots again.',
-  discard: 'Discard',
   titleAria: 'Plan title',
   titlePlaceholder: 'Name this plan',
   shotCount: '{{count}} shots',
-  discardPlan: 'Discard plan',
   draftEditable: 'AI draft · Edit freely',
   spendHint: 'Generate reference cards to lock looks first, then shots · Cost is confirmed before every generation',
   consistencyTitle: 'Keep consistent across shots',
@@ -555,8 +549,6 @@ export const enStoryboardEditor = {
   noAnchors: 'No reference cards yet. Add one or write the shots directly.',
   addAnchor: 'Add Reference',
   addAnchorHint: 'Character / scene reference / prop reference / style',
-  resplitFromScript: 'Re-split Draft',
-  resplitDraft: 'Re-split the storyboard from my latest draft: one shot per row, and keep the shots I already edited.',
   aspectScope: {
     followDefault: 'Follow Default',
     overrideMark: 'overridden',
@@ -596,6 +588,9 @@ export const enStoryboardEditor = {
     anchorDescription: 'Setting: {{text}}',
     ignorePlaceholder: 'What not to copy this time (e.g. the neon background)',
     ignoreAria: 'Features to ignore when referencing {{name}} this time',
+    moreAria: '{{count}} more reference slots — open to see them all',
+    moreTitle: 'This shot has {{total}} reference slots. Only the first one fits while the editor is narrow — open to see them all',
+    collapseAria: 'Collapse the other reference slots',
   },
   rowMenu: {
     insertAbove: 'Insert Above',
@@ -671,7 +666,6 @@ export const enStoryboardEditor = {
   },
   planCard: {
     defaultTitle: 'Storyboard plan',
-    discardMessage: 'The plan and your edits will be cleared. You can ask AI to split the story into shots again.',
     committed: 'On canvas',
     draft: 'Draft',
     stale: 'Needs sync',

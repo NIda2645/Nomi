@@ -17,12 +17,17 @@
 // 真 Electron + 真构建产物，隔离 userData / projects，全程不发生成请求（零额度）。
 // 用法：pnpm run build && node tests/ux/canvas-shortcuts.walk.mjs
 import { launchNomiApp } from './_launchApp.mjs'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { createAgentRuntimeFixture, FIXTURE_VENDOR, FIXTURE_IMAGE_MODEL } from './agent-runtime-fixture.mjs'
+import { mkdirSync, mkdtempSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { require as tsxRequire } from 'tsx/cjs/api'
+import { isDeepStrictEqual } from 'node:util'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { screenshotSettled } from './_assert.mjs'
-import { findCanvasBlankPoint } from './_canvasHit.mjs'
+import { screenshotSettled, expect, proveProbe, expectAbsent } from './_assert.mjs'
+import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/canvas-shortcuts')
@@ -32,10 +37,79 @@ const projectsDir = path.join(tempRoot, 'projects')
 mkdirSync(projectsDir, { recursive: true })
 mkdirSync(shotsDir, { recursive: true })
 
+
+// C19 setup only: reuse the original workspace/Run repositories and one Electron
+// process. This second project is needed because the original shortcut matrix
+// creates and clears a blank project; its assertions remain unchanged.
+const { createWorkspaceProject } = tsxRequire('../../electron/workspace/workspaceRepository.ts', import.meta.url)
+const { createProductionRunRepository } = tsxRequire('../../electron/productionRun/productionRunRepository.ts', import.meta.url)
+const { generationCanvasNodeSchema, generationCanvasSnapshotSchema } = tsxRequire('../../src/workbench/generationCanvas/model/generationCanvasSchema.ts', import.meta.url)
+const { backfillGroupFrameBounds } = tsxRequire('../../src/workbench/generationCanvas/model/canvasFrameBounds.ts', import.meta.url)
+const { resolveNodeVisualSize } = tsxRequire('../../src/workbench/generationCanvas/nodes/nodeSizing.ts', import.meta.url)
+const { localAssetUrl } = tsxRequire('../../electron/assets/assetPaths.ts', import.meta.url)
+const c19Fixture = await createAgentRuntimeFixture({ rootDir: repoRoot, settingsDir: userDataDir })
+const c19Catalog = JSON.parse(readFileSync(path.join(userDataDir, 'model-catalog.json'), 'utf8'))
+const c19Model = c19Catalog.models.find(model => model.kind === 'image' && model.enabled && model.vendorKey === FIXTURE_VENDOR && model.modelKey === FIXTURE_IMAGE_MODEL)
+if (!c19Model) throw new Error('C19 requires the original runtime fixture catalog image model')
+const c19ProjectId = 'c19-shortcuts', c19RunId = 'c19-dismissed', c19GroupId = 'c19-group'
+const c19Root = path.join(projectsDir, c19ProjectId)
+const c19Image = localAssetUrl(c19ProjectId, 'assets/generated/shot.jpg')
+const c19MediaFile = path.join(repoRoot, 'resources/onboarding-demo/shot-3.jpg')
+const [c19Media] = JSON.parse(execFileSync(createRequire(import.meta.url)('@ffprobe-installer/ffprobe').path,
+  ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', c19MediaFile], { encoding: 'utf8' })).streams
+if (!(c19Media?.width > 0 && c19Media?.height > 0)) throw new Error('C19 requires decoded real JPEG dimensions')
+const c19Result = { id: 'c19-existing-result', type: 'image', url: c19Image, createdAt: 1 }
+const c19Nodes = ['source', 'one', 'two'].map((id, index) => ({
+  id: `c19-${id}`, kind: 'image', categoryId: 'shots', title: `C19 ${id}`, prompt: `C19 prompt ${id}`,
+  renderKind: 'shot-frame', shotIndex: index + 1,
+  position: { x: 80 + index * 320, y: 120 }, size: { width: 240, height: 240 },
+  status: 'success', result: { ...c19Result, id: `${c19Result.id}-${id}` },
+  history: [{ ...c19Result, id: `${c19Result.id}-${id}` }],
+  meta: { modelVendor: c19Model.vendorKey, modelKey: c19Model.modelKey, modeId: 't2i', promptSegments: [],
+    imageWidth: c19Media.width, imageHeight: c19Media.height, imageAspectRatio: c19Media.width / c19Media.height,
+    ...(index ? { storyboardDesignId: c19RunId, shotId: `shot-${id}` } : {}) },
+  ...(index ? { groupId: c19GroupId } : {}),
+}))
+for (const node of c19Nodes) generationCanvasNodeSchema.parse(node)
+createWorkspaceProject({ rootPath: c19Root, record: { id: c19ProjectId, name: 'C19 group Undo and focus', payload: {
+  workbenchDocuments: [{ id: 'c19-document', version: 1, title: 'C19 document', updatedAt: 1,
+    contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'C19 document text' }] }] } }],
+  activeDocumentId: 'c19-document', timeline: null,
+  generationCanvas: { nodes: c19Nodes, edges: [
+    { id: 'c19-external', source: 'c19-source', target: 'c19-one', mode: 'reference', viaGroupId: c19GroupId, order: 0 },
+    { id: 'c19-internal', source: 'c19-one', target: 'c19-two', mode: 'reference', order: 0 },
+  ], groups: [{ id: c19GroupId, name: 'C19 restore whole group', categoryId: 'shots', nodeIds: ['c19-one', 'c19-two'],
+    inputLinks: [{ sourceNodeId: 'c19-source' }], collapsed: false, createdAt: 1, updatedAt: 1 }],
+    selectedNodeIds: [], canvasZoom: 0.8, canvasPan: { x: 0, y: 20 } },
+} } }, { settingsRoot: userDataDir, defaultProjectsRoot: projectsDir })
+generationCanvasSnapshotSchema.parse(JSON.parse(readFileSync(path.join(c19Root, '.nomi/project.json'), 'utf8')).payload.generationCanvas)
+mkdirSync(path.join(c19Root, 'assets/generated'), { recursive: true })
+copyFileSync(c19MediaFile, path.join(c19Root, 'assets/generated/shot.jpg'))
+const c19Repository = createProductionRunRepository({ projectDirResolver: id => id === c19ProjectId ? c19Root : null })
+const c19Candidate = { candidateId: 'c19-candidate', revision: 1, moduleId: 'generation.single-shot',
+  providerId: c19Model.vendorKey, modelId: c19Model.modelKey, mode: 'text_to_image', prompt: 'C19 closed draft', parameters: {}, references: [] }
+const c19Created = c19Repository.createGenerationDraft({ projectId: c19ProjectId, operationId: c19RunId,
+  origin: { host: 'nomi' }, candidate: c19Candidate,
+  shots: ['one', 'two'].map(id => ({ shotId: `shot-${id}`, candidate: { ...c19Candidate, candidateId: `c19-${id}` } })) })
+// 2026-09-22：× = 收回这一次出价（`generation.withdraw`）——计划留在 draft、只是不再摆在用户面前。
+// （途中那一版 `generation.dismiss` 已删；当天上午那一版 `cancel("declined")` 被用户下午的拍板推翻。）
+c19Repository.execute(c19ProjectId, c19RunId, { commandId: 'c19-withdraw-before-open', expectedRevision: c19Created.revision,
+  type: 'generation.withdraw', payload: {}, issuedAt: new Date().toISOString() })
+const c19AuthorityBefore = { run: c19Repository.read(c19ProjectId, c19RunId), approvals: c19Repository.readApprovals(c19ProjectId, c19RunId) }
+if (!c19AuthorityBefore.run.generationPlan.cardHidden) throw new Error('C19 setup must persist a genuinely withdrawn quote')
+
+// Preserve the actual fixture's durable graph before hydration. Runtime measurement is
+// not a user edit and intentionally does not schedule a project save.
+const { nodes: c19SeedNodes, edges: c19SeedEdges, groups: c19SeedGroups } = JSON.parse(
+  readFileSync(path.join(c19Root, '.nomi/project.json'), 'utf8'),
+).payload.generationCanvas
+const c19SeedGraph = { nodes: c19SeedNodes, edges: c19SeedEdges, groups: c19SeedGroups }
+
 const { app, win: initialWin } = await launchNomiApp({
   name: 'canvas-shortcuts',
   userDataDir, settingsDir: userDataDir, projectsDir,
   args: ['--no-proxy-server'], settleMs: 0,
+  initialLocalStorage: { '__nomiE2E': '1', 'nomi:locale:v1': 'zh-CN' },
 })
 // keyboard.press(`${mod}+v`) emits a real paste event in Electron. Clear the
 // user's ambient OS clipboard so this walk exercises the canvas-node fallback,
@@ -110,6 +184,125 @@ async function press(keys) {
   return { before, after: await countNodes(), selected }
 }
 
+async function checkC19GroupUndoAndFocus() {
+  await getWin().getByRole('button', { name: '返回项目库', exact: true }).click()
+  const projectCard = getWin().locator('[data-project-card]').filter({ hasText: 'C19 group Undo and focus' })
+  await expect(projectCard).toBeVisible()
+  await projectCard.hover()
+  await projectCard.getByRole('button', { name: /继续创作/ }).click()
+  await getWin().getByRole('button', { name: '生成', exact: true }).click()
+  const graph = () => getWin().evaluate(() => {
+    const { nodes, edges, groups } = window.__nomiCanvasStore.getState()
+    return { nodes, edges, groups }
+  })
+  const diskGraph = () => {
+    const { nodes, edges, groups } = JSON.parse(readFileSync(path.join(c19Root, '.nomi/project.json'), 'utf8')).payload.generationCanvas
+    return { nodes, edges, groups }
+  }
+  const authority = () => ({ run: c19Repository.read(c19ProjectId, c19RunId), approvals: c19Repository.readApprovals(c19ProjectId, c19RunId) })
+  await expect.poll(async () => (await graph()).nodes.length).toBe(3)
+  const before = await graph()
+  // Opening the seeded legacy group does not itself persist hydration/measurement.
+  // Prove all original durable user fields remain intact, independently of live graph.
+  await expect.poll(diskGraph).toEqual(c19SeedGraph)
+  const seedRects = new Map(c19SeedNodes.map(node => {
+    const size = resolveNodeVisualSize(node)
+    return [node.id, { ...node.position, width: size.width, height: size.height }]
+  }))
+  const initialHydratedGraph = {
+    ...c19SeedGraph,
+    groups: backfillGroupFrameBounds(c19SeedGroups, id => seedRects.get(id) ?? null),
+  }
+  expect(before).toEqual(initialHydratedGraph)
+  await getWin().getByRole('button', { name: '分组', exact: true }).click()
+  const groupRow = getWin().locator('button[title="C19 restore whole group"]')
+  await expect(groupRow).toBeVisible()
+  const groupProof = await proveProbe(groupRow, 'C19 real sidebar group exists before deletion')
+  await groupRow.click({ button: 'right' })
+  await getWin().getByRole('menuitem', { name: '整组删除', exact: true }).click()
+  const confirm = getWin().locator('[data-confirm-dialog-surface]')
+  await expect(confirm).toContainText('C19 restore whole group')
+  await confirm.getByRole('button', { name: '删除', exact: true }).click()
+  await expectAbsent(groupRow, { provenBy: groupProof, message: 'Whole group disappears after actual confirmed UI deletion' })
+  await expect.poll(async () => (await graph()).nodes.map(node => node.id)).toEqual(['c19-source'])
+  await expect.poll(async () => (await graph()).edges).toEqual([])
+  await expect.poll(async () => (await graph()).groups).toEqual([])
+  // Only this actual keyboard gesture may restore the group. No store.undo,
+  // DOM dispatchEvent, imperative bridge or direct mutation is used below.
+  const blank = await findBlankPoint()
+  await getWin().mouse.click(blank.x, blank.y)
+  await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
+  await expect.poll(graph).toEqual(before)
+  await expect.poll(diskGraph).toEqual(before)
+  assert(isDeepStrictEqual(authority(), c19AuthorityBefore), 'Dismissed draft and approval ledger remain unchanged')
+  await expect(groupRow).toBeVisible()
+  const restoredImage = getWin().locator('.generation-canvas-v2-node[data-node-id="c19-one"] img').first()
+  await expect.poll(() => restoredImage.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+  await snap('02-c19-group-restored.png')
+
+  const nodePoint = await findNodeHitPoint(getWin(), { nodeSelector: '.generation-canvas-v2-node[data-node-id="c19-one"]' })
+  assert(Boolean(nodePoint), 'C19 restored member has a real pointer hit target')
+  await getWin().mouse.click(nodePoint.x, nodePoint.y)
+  const prompt = getWin().locator('[data-composer-host="canvas"] [contenteditable="true"]').first()
+  await expect(prompt).toHaveText('C19 prompt one')
+  const promptBefore = await graph()
+  // Original canvasNodeActions records manual storyboard prompt overrides.
+  // This is required binding protection, not an unintended graph edit.
+  promptBefore.nodes.find(node => node.id === 'c19-one').meta.overriddenFields = ['prompt']
+  // Compare all content except this editor's actual mutable prompt bookkeeping.
+  const exceptPrompt = value => ({ ...value, nodes: value.nodes.map(node => {
+    if (node.id !== 'c19-one') return node
+    const { prompt: _prompt, meta, ...rest } = node
+    const { promptSegments: _segments, ...otherMeta } = meta ?? {}
+    return { ...rest, meta: otherMeta }
+  }) })
+  await prompt.click()
+  await expect(prompt).toBeFocused()
+  await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home')
+  await getWin().keyboard.press('Shift+ArrowRight')
+  await expect.poll(() => getWin().evaluate(() => window.getSelection()?.toString())).toBe('C')
+  await expect.poll(() => prompt.evaluate(element => ({
+    from: element.editor.state.selection.from, to: element.editor.state.selection.to, focused: element.editor.view.hasFocus(),
+  }))).toEqual({ from: 1, to: 2, focused: true })
+  await getWin().keyboard.press('Delete')
+  await expect(prompt).toHaveText('19 prompt one')
+  expect(exceptPrompt(await graph()), 'Prompt Delete preserves graph/result/binding state').toEqual(exceptPrompt(promptBefore))
+  await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
+  await expect(prompt).toHaveText('C19 prompt one')
+  assert(isDeepStrictEqual(exceptPrompt(await graph()), exceptPrompt(promptBefore)), 'Prompt Undo belongs to the editor, not the canvas group transaction')
+  await expect.poll(() => diskGraph().nodes.find(node => node.id === 'c19-one')?.prompt).toBe('C19 prompt one')
+
+  // Keep a real selected node while the canvas becomes hidden: the hidden-stage
+  // guard must not steal the document editor's Delete/Undo.
+  const beforeDocument = await graph()
+  await getWin().getByRole('button', { name: '创作', exact: true }).click()
+  const document = getWin().locator('[aria-label="创作文档编辑区"] .tiptap[contenteditable="true"]')
+  await expect(document).toHaveText('C19 document text')
+  await document.click()
+  await expect(document).toBeFocused()
+  await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home')
+  await getWin().keyboard.press('Shift+ArrowRight')
+  await expect.poll(() => getWin().evaluate(() => window.getSelection()?.toString())).toBe('C')
+  await expect.poll(() => document.evaluate(element => ({
+    from: element.editor.state.selection.from, to: element.editor.state.selection.to, focused: element.editor.view.hasFocus(),
+  }))).toEqual({ from: 1, to: 2, focused: true })
+  await getWin().keyboard.press('Delete')
+  await expect(document).toHaveText('19 document text')
+  assert(isDeepStrictEqual(await graph(), beforeDocument), 'Document Delete cannot mutate the hidden canvas')
+  await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
+  await expect(document).toHaveText('C19 document text')
+  await expect.poll(graph).toEqual(beforeDocument)
+  await expect.poll(diskGraph).toEqual(beforeDocument)
+  assert(isDeepStrictEqual(authority(), c19AuthorityBefore), 'Dismissed draft and approval ledger remain unchanged')
+  await snap('03-c19-document-focus.png')
+  writeFileSync(path.join(shotsDir, 'c19-evidence.json'), JSON.stringify({ projectRoot: c19Root, platform: process.platform,
+    windows: process.platform === 'win32' ? 'executed' : 'unverified', before, restored: await graph(), authorityBefore: c19AuthorityBefore,
+    authorityAfter: authority(), boundary: 'Seeded real JPG and genuinely dismissed draft; no paid provider, no prior approved receipt. Real UI group delete and actual keyboard Undo; read-only state/disk observations.' }, null, 2))
+  c19Fixture.assertClean()
+  assert(c19Fixture.images.length === 0 && c19Fixture.requests.length === 0, 'C19 editing and Undo issue no provider requests')
+  assert(true, 'C19 group delete/one Undo and prompt/document focus isolation complete')
+}
+
 try {
   await getWin().waitForLoadState('domcontentloaded')
   await getWin().waitForTimeout(1500)
@@ -156,6 +349,7 @@ try {
   }
 
   await snap('01-final.png')
+  await checkC19GroupUndoAndFocus()
   console.log(`\n✅ 画布快捷键走查通过：${passed} 项`)
 } catch (err) {
   console.error(`\n❌ ${err.message}`)
@@ -163,4 +357,5 @@ try {
   process.exitCode = 1
 } finally {
   await app.close().catch(() => {})
+  await c19Fixture.close()
 }

@@ -127,6 +127,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install Chromium for browser integration tests
+        run: pnpm exec playwright install --with-deps chromium
       - name: Unit and agent runtime tests (full lane)
         if: needs.scope.outputs.unit == 'full'
         run: pnpm run test:system:unit

@@ -17,6 +17,16 @@ const workflow = load(fs.readFileSync(path.join(repoRoot, '.github/workflows/qua
 const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
 const runCommands = (job) => job.steps?.flatMap((step) => (typeof step.run === 'string' ? [step.run] : [])) ?? []
 
+test('the unit lane provisions Chromium before either browser integration test entry', () => {
+  const steps = workflow.jobs.unit.steps
+  const install = steps.findIndex(step => step.run === 'pnpm exec playwright install --with-deps chromium')
+  assert.ok(install >= 0, 'Unit runs real browser integration tests and must provision Chromium')
+  assert.equal(steps[install].if, undefined, 'Both focused and full lanes need the browser')
+  for (const command of ['pnpm run test:system:unit', 'pnpm run test:system:focused']) {
+    assert.ok(steps.findIndex(step => step.run === command) > install, `${command} must run after browser installation`)
+  }
+})
+
 test('quality gate runs for pull requests and real main before/after pushes', () => {
   assert.deepEqual(workflow.on, {
     push: { branches: ['main'] },
@@ -321,8 +331,9 @@ test('package scripts expose canonical separated profiles and classifier contrac
   assert.equal(scripts['test:system:canvas:full'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-canvas-full')
   assert.equal(scripts['test:system:performance'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-performance')
   assert.equal(scripts['test:canvas:performance'], 'python3 scripts/with-gates-lock.py -- node tests/ux/canvas-real-suite.mjs performance')
-  // 棘轮只减不增：2026-09-06 v4 接线删掉旧面板后降到 81。调高需要理由，调低直接改这一行。
-  assert.equal(scripts['lint:ci'], 'eslint . --max-warnings=81')
+  // 棘轮只减不增：2026-09-06 v4 接线删掉旧面板后降到 81；2026-09-22 总合并清完合并带来的
+  // 未用 import 与两处 prefer-const 后降到 79。调高需要理由，调低直接改这一行。
+  assert.equal(scripts['lint:ci'], 'eslint . --max-warnings=79')
   assert.match(scripts['check:quality-gate-workflow'], /validation-policy\.node-test\.mjs/)
   assert.match(scripts['check:quality-gate-workflow'], /real-user-test-gates\.node-test\.mjs/)
 })
@@ -415,7 +426,9 @@ test('browser feel fixtures run in the Chromium-equipped desktop lane, never Uni
   const run = commands.indexOf('pnpm run test:feel:browser')
   assert.ok(install >= 0 && run > install)
   for (const [name, job] of Object.entries(workflow.jobs)) {
-    if (/unit/i.test(name)) assert.doesNotMatch(runCommands(job).join('\n'), /playwright install|test:feel:browser/)
+    // Feel's node:test fixtures stay in desktop. Unit also has Vitest browser
+    // integration suites, which need Chromium without running Feel twice.
+    if (/unit/i.test(name)) assert.doesNotMatch(runCommands(job).join('\n'), /test:feel:browser/)
   }
   for (const name of ['_feel', '_feel-observer']) {
     assert.ok(!fs.existsSync(path.join(repoRoot, `tests/ux/${name}.test.mjs`)))
