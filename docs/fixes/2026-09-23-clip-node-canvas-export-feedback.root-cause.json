@@ -1,0 +1,131 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-23-clip-node-canvas-export-feedback",
+  "problem_type": "Clip node canvas export completes without user feedback",
+  "symptom": "Release Candidate run 35846678730 generated a successful MP4 for clip-node-editing, but the real journey timed out waiting for the success notification after exporting to canvas.",
+  "direct_cause": "ClipNode reported completion only for download exports; the canvas destination created nodes and edges but never called the shared inline feedback owner.",
+  "class_root": "Every completed clip export destination must report its result through the ClipNode feedback owner after the project write has completed.",
+  "affected_population": [
+    "Clip node users exporting a full cut to canvas",
+    "Clip node users exporting independent segments to canvas",
+    "Release-critical clip-node editing journey"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+    "tests/ux/clip-node-editing.walk.mjs",
+    "docs/fixes/2026-09-23-clip-node-canvas-export-feedback.root-cause.json"
+  ],
+  "entry_points": [
+    "ClipNode handleExport canvas destination",
+    "ClipNode handleExport download destination"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The missing notification is an application-owned feedback contract observed by the real Nomi journey; no third-party behavior decides whether a destination completed.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+    "tests": [
+      "tests/ux/clip-node-editing.walk.mjs"
+    ],
+    "why": "ClipNode owns both export destinations and the inline feedback state, so the completion message belongs immediately after the shared destination branch."
+  },
+  "invariants": [
+    "A successful canvas export reports its completed node count through ClipNode feedback.",
+    "A successful download export retains its existing file count feedback.",
+    "Failures continue through the existing shared export failure feedback path."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "symbol": "handleExport"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/ModelCatalogNotices.tsx",
+      "symbol": "handleExport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "handleExport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/preview/TimelinePreview.tsx",
+      "symbol": "handleExport"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/skillLibrary/SkillLibraryPanel.tsx",
+      "symbol": "handleExport"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 5,
+    "why_not": "The other export handlers are separate surfaces with separate owners; only ClipNode's shared handleExport completion branch is changed."
+  },
+  "generality_proof": "Both full and independent-segment canvas exports converge on ClipNode handleExport and the same completed array. Reporting after the destination branch covers every successful canvas count without duplicating notifications in each task loop.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "handleExport",
+      "responsibility": "Report a destination-specific success message after all export tasks and canvas writes complete."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "entry_point": "canvas export",
+      "disposition": "enforced",
+      "evidence": "The shared completion branch now reports the completed node count for canvas destination."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "entry_point": "download export",
+      "disposition": "enforced",
+      "evidence": "The same branch preserves the existing download file count message."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any future export destination branch can complete work while omitting user feedback unless the shared completion boundary reports every destination.",
+    "same_class_scan": [
+      "rg -n 'handleExport|exportDownloadComplete|exportToCanvas' src tests/ux",
+      "Checked full and independent-segment canvas/download calls in tests/ux/clip-node-editing.walk.mjs",
+      "RC run 35846678730 diagnostics showed export status succeeded and the expected canvas toast never appeared"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+    "invariant": "Every successful ClipNode export destination reports completion after its writes finish.",
+    "failure_mode": "The real journey waits for the destination-specific feedback and fails if it is absent; export failures remain visible through the existing error message.",
+    "exception_policy": "none",
+    "strategy": "Use one destination-specific reportFeedback call after the shared completion branch instead of adding notification calls inside each export loop.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "src/i18n/locales/generationCommon.ts"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/clip-node-editing.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/clip-node-editing.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No export destination or feedback path is removed; the missing canvas completion message is added to the existing owner."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency controls feedback delivery or export completion.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state migration is needed; the new strings are read through the existing i18n resources.",
+  "residual_risks": [
+    "The repaired RC must rerun the clip-node journey and all packaging jobs before stable promotion."
+  ]
+}

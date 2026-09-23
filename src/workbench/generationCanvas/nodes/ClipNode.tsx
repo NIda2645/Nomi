@@ -401,7 +401,9 @@ export default function ClipNode({ node: rawNode, selected, readOnly = false }: 
         }
       }
       setExportMenuOpen(false)
-      if (destination === 'download') reportFeedback(t('generationCommon.clipNode.exportDownloadComplete', { count: completed.length }))
+      reportFeedback(destination === 'download'
+        ? t('generationCommon.clipNode.exportDownloadComplete', { count: completed.length })
+        : t('generationCommon.clipNode.exportToCanvasComplete', { count: completed.length }))
     } catch (error) {
       reportFeedback(error instanceof Error ? error.message : t('generationCommon.clipNode.exportFailed'))
     } finally {
