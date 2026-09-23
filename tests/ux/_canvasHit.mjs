@@ -232,29 +232,42 @@ export async function findEdgeHitPoint(
  * @returns {Promise<{ x: number, y: number } | null>} 找不到返回 null（调用方须 fail-closed）
  */
 export async function findNodeHitPoint(page, { nodeSelector, withinSelector = CANVAS_STAGE_SELECTOR }) {
-  return page.evaluate(
-    ({ selector, within }) => {
-      const node = document.querySelector(selector)
-      const bounds = within ? document.querySelector(within)?.getBoundingClientRect() : null
-      if (!node || (within && !bounds)) return null
-      const rect = node.getBoundingClientRect()
-      const ratios = [0.12, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.88]
-      for (const ratioY of ratios) {
-        for (const ratioX of ratios) {
-          const x = rect.left + rect.width * ratioX
-          const y = rect.top + rect.height * ratioY
-          if (bounds && (x < bounds.left + 1 || x > bounds.right - 1 || y < bounds.top + 1 || y > bounds.bottom - 1)) continue
-          const hit = document.elementFromPoint(x, y)
-          if (!hit || !node.contains(hit)) continue
-          // 卡上的控件（生成、复制、句柄…）点下去是别的意思，不能拿来当「选中这张卡」。
-          if (hit.closest('button, a, input, textarea, [role="button"]')) continue
-          return { x, y }
-        }
+  return findElementHitPoint(page, {
+    selector: nodeSelector,
+    withinSelector,
+    allowInteractive: false,
+  })
+}
+
+/**
+ * 找任意画布内元素上真正可点击的点。内部时间轴的片段、标尺和拖动把手
+ * 会被常驻 Agent 面板部分覆盖；固定盒子中心会把 overlay 命中误报成产品回归。
+ * 判据仍是白名单：最顶层元素必须属于目标元素本身。
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ selector: string, withinSelector?: string | null, allowInteractive?: boolean }} options
+ * @returns {Promise<{ x: number, y: number } | null>}
+ */
+export async function findElementHitPoint(page, { selector, withinSelector = null, allowInteractive = true }) {
+  return page.evaluate(({ selector: targetSelector, within, allow }) => {
+    const target = document.querySelector(targetSelector)
+    const bounds = within ? document.querySelector(within)?.getBoundingClientRect() : null
+    if (!target || (within && !bounds)) return null
+    const rect = target.getBoundingClientRect()
+    const ratios = [0.12, 0.2, 0.3, 0.42, 0.5, 0.58, 0.7, 0.8, 0.88]
+    for (const ratioY of ratios) {
+      for (const ratioX of ratios) {
+        const x = rect.left + rect.width * ratioX
+        const y = rect.top + rect.height * ratioY
+        if (bounds && (x < bounds.left + 1 || x > bounds.right - 1 || y < bounds.top + 1 || y > bounds.bottom - 1)) continue
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || !target.contains(hit)) continue
+        if (!allow && hit.closest('button, a, input, textarea, [role="button"]')) continue
+        return { x, y }
       }
-      return null
-    },
-    { selector: nodeSelector, within: withinSelector },
-  )
+    }
+    return null
+  }, { selector, within: withinSelector, allow: allowInteractive })
 }
 
 /**
