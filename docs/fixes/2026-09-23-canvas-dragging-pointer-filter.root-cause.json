@@ -2,9 +2,9 @@
   "schema_version": 3,
   "id": "2026-09-23-canvas-dragging-pointer-filter",
   "problem_type": "Canvas drag end guard cancels a different pointer on the same stage",
-  "symptom": "A pointercancel from another pointer can clear data-dragging before the active pointerup, causing the active canvas gesture to lose its lease.",
-  "direct_cause": "The shared stage-level gesture end guard handled every pointer event without correlating pointerId to the live lease.",
-  "class_root": "The global fallback guard had stage scope but no pointer identity at the shared drag lease boundary.",
+  "symptom": "A pointercancel from another pointer or another stage can clear data-dragging before the active pointerup, causing an active canvas gesture to lose its lease.",
+  "direct_cause": "The shared stage-level gesture end guard treated an untracked lease as a match for every pointer event, so a tracked pointer on one stage could schedule fallback cancellation on another stage.",
+  "class_root": "The global fallback guard must correlate pointer events with tracked lease identities and must not manufacture a match for untracked leases on an unrelated stage.",
   "affected_population": [
     "Canvas pointer and resize gesture cleanup in reduced or headless window hosts",
     "Vitest and future non-browser consumers of the shared drag lease"
@@ -27,8 +27,8 @@
     "why": "The canvasDraggingFlag module owns the lease lifecycle and is the only place that schedules the deferred end guard; its focused test covers the lease ordering and cancellation contract."
   },
   "invariants": [
-    "A stage-level pointer end event only clears leases whose pointer identity matches the active gesture, while untracked legacy callers remain conservatively cancellable.",
-    "A different pointer cancellation leaves the active stage lease and data-dragging flag intact until the active pointer ends."
+    "A stage-level pointer end event only arms fallback cleanup when a lease on that stage has the same tracked pointer identity.",
+    "A different pointer cancellation leaves every unrelated stage and untracked lease intact until its own targeted interruption or release."
   ],
   "doors": [
     {
@@ -208,6 +208,6 @@
   },
   "migration": "No persisted data or public caller contract changes.",
   "residual_risks": [
-    "Callers that omit pointerId remain conservatively cancellable by any pointer event because identity cannot be proven."
+    "Callers that omit pointerId rely on their own targeted interruption listeners; a global pointer event cannot prove their identity and therefore does not arm another stage's fallback."
   ]
 }

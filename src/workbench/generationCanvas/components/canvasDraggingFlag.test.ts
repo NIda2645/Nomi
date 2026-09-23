@@ -130,6 +130,16 @@ describe('canvas gesture ownership', () => {
     other.release()
   })
 
+  it('does not let a tracked pointer cancel an untracked lease on another stage', () => {
+    const activeStage = stage(); const otherStage = stage()
+    beginCanvasDragging(activeStage, CANVAS_DRAGGING_OWNER.node, { pointerId: 4 })
+    const other = beginCanvasDragging(otherStage, CANVAS_DRAGGING_OWNER.node)
+    window.dispatchEvent(Object.assign(new Event('pointercancel'), { pointerId: 4 }))
+    expect(activeStage.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
+    expect(otherStage.hasAttribute(CANVAS_DRAGGING_ATTRIBUTE)).toBe(true)
+    other.release()
+  })
+
   describe('the flag never outlives the pointer gesture (2026-09-22 stuck data-dragging)', () => {
     function setup() {
       const attributes = new Map<string, string>()
