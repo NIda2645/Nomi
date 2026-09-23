@@ -51,13 +51,57 @@ jobs:
         run: xvfb-run -a pnpm run test:e2e
       - name: Real user journey suite
         run: xvfb-run -a pnpm run test:journeys
-      - name: Release-critical feature journeys
-        run: |
-          xvfb-run -a node tests/ux/clip-node-editing.walk.mjs
-          xvfb-run -a node tests/ux/production-mcp-journey.e2e.mjs
-          xvfb-run -a pnpm run test:mcp-journey
-          xvfb-run -a pnpm run test:mcp-elicitation
-          xvfb-run -a node tests/ux/canvas-performance-benchmark.e2e.mjs rc --scale S --runs 1 --warmup 0 --scenario media-reveal,media-error,video-hover,reload-heavy
+      # 一次收齐所有 release-critical 失败，再统一修复。不要恢复成一个 set -e 长链：
+      # Clip 红了也必须继续拿到 MCP 和性能证据；这些 Electron 旅程仍然串行，避免
+      # userData/端口/临时素材互相污染。末尾 summary 才是 validate 的结论。
+      - name: Clip editing journey
+        id: clip
+        continue-on-error: true
+        timeout-minutes: 20
+        run: xvfb-run -a node tests/ux/clip-node-editing.walk.mjs
+      - name: Production MCP journey
+        id: production-mcp
+        continue-on-error: true
+        timeout-minutes: 20
+        run: xvfb-run -a node tests/ux/production-mcp-journey.e2e.mjs
+      - name: MCP journey suite
+        id: mcp-journey
+        continue-on-error: true
+        timeout-minutes: 20
+        run: xvfb-run -a pnpm run test:mcp-journey
+      - name: MCP elicitation journey
+        id: mcp-elicitation
+        continue-on-error: true
+        timeout-minutes: 20
+        run: xvfb-run -a pnpm run test:mcp-elicitation
+      - name: Canvas performance RC journey
+        id: canvas-performance
+        continue-on-error: true
+        timeout-minutes: 20
+        run: xvfb-run -a node tests/ux/canvas-performance-benchmark.e2e.mjs rc --scale S --runs 1 --warmup 0 --scenario media-reveal,media-error,video-hover,reload-heavy
+      - name: Release-critical journey summary
+        if: always()
+        env:
+          CHAIN_LABEL: Release-critical feature journeys
+          CHAIN: >-
+            clip:${{ steps.clip.outcome }}
+            production-mcp:${{ steps.production-mcp.outcome }}
+            mcp-journey:${{ steps.mcp-journey.outcome }}
+            mcp-elicitation:${{ steps.mcp-elicitation.outcome }}
+            canvas-performance:${{ steps.canvas-performance.outcome }}
+        run: node scripts/summarize-e2e-chain.mjs
+      - name: Upload release-critical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-critical-evidence
+          path: |
+            outputs/**
+            tests/ux/shots/**
+            evals/**
+            /tmp/nomi-*.png
+          if-no-files-found: ignore
+          retention-days: 14
 
   macos:
     needs: validate

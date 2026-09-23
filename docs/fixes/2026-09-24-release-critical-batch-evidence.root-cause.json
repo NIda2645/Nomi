@@ -1,0 +1,112 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-release-critical-batch-evidence",
+  "problem_type": "RC release-critical 长链 fail-fast，无法在一轮收齐独立失败",
+  "symptom": "Clip 旅程失败后，Production MCP、MCP suite、elicitation 和 canvas performance 没有运行；一轮 RC 只留下一个失败面。",
+  "direct_cause": ".github/workflows/desktop-rc.yml 用一个多命令 run block，GitHub Bash 的默认 set -e 在第一条非零退出后停止后续命令。",
+  "class_root": "发布流程把单步命令的退出码直接当成整条链的终止信号，没有把逐步证据收集与最终红绿判定分开。",
+  "migration": "将五条旅程拆成独立串行 steps，各自保留真实失败 outcome；末尾统一 summary 读取 outcome、fail-closed，并上传本轮证据。",
+  "affected_population": [
+    "每次桌面 RC 的 release-critical 验收",
+    "需要同时判断 Clip、MCP 和画布性能的发版决策",
+    "后续维护 desktop-rc.yml 的 AI 或工程师"
+  ],
+  "scope_paths": [
+    ".github/workflows/desktop-rc.yml"
+  ],
+  "entry_points": [
+    "Release-critical feature journeys",
+    "Release-critical journey summary",
+    "Upload release-critical evidence"
+  ],
+  "invariants": [
+    "五条 release-critical 旅程必须在同一轮按顺序执行，即使前一条失败。",
+    "未知或缺失的 step outcome 必须让 RC 失败，不能静默放行。",
+    "失败旅程的截图和日志必须在 runner 结束前上传。",
+    "每条 release-critical 旅程必须有明确的 20 分钟 timeout，挂死不能阻塞后续证据。"
+  ],
+  "invariant_owner_layer": {
+    "layer": ".github/workflows/desktop-rc.yml",
+    "tests": [
+      "scripts/check-desktop-rc-workflow.node-test.mjs"
+    ],
+    "why": "发布流程本身拥有步骤编排与最终判定；node-test 锁定独立 steps、summary 和证据上传不能退回长链。"
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": ".github/workflows/desktop-rc.yml",
+      "symbol": "Release-critical journey summary"
+    }
+  ],
+  "door_reduction": {
+    "before": 1,
+    "after": 1,
+    "why_not": "这是同一个 validate job 的单一发布判定门；五条旅程是被它汇总的输入，不是五个独立发布写口。"
+  },
+  "regression_tests": [
+    "scripts/check-desktop-rc-workflow.node-test.mjs"
+  ],
+  "residual_risks": [
+    "五条旅程仍共享同一 runner，必须保持串行；20 分钟 timeout 是统一上限，若正常旅程超过它需先更新证据和门禁，不得静默抬高。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是 GitHub Actions 工作流内部的证据编排问题，不依赖外部服务协议。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "任何新增 release-critical 命令都可能被重新塞回 fail-fast 长链，导致同一轮只暴露第一条红。",
+    "same_class_scan": [
+      "rg -n 'Release-critical|run: \\|' .github/workflows/desktop-rc.yml",
+      "scripts/check-desktop-rc-workflow.node-test.mjs",
+      "对照 .github/workflows/quality-gate.yml 的 continue-on-error + summary 模式"
+    ]
+  },
+  "generality_proof": "RC 的每条独立旅程都经过带 id 的 continue-on-error step，唯一 summary 统一读取所有 outcome；未来增加旅程时，机器检查要求它拥有独立 step 与汇总输入。",
+  "shared_boundaries": [
+    {
+      "path": ".github/workflows/desktop-rc.yml",
+      "symbol": "Release-critical journey summary",
+      "responsibility": "在全部 release-critical steps 结束后给出 fail-closed 的 RC 结论。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": ".github/workflows/desktop-rc.yml",
+      "entry_point": "Release-critical journey summary",
+      "disposition": "enforced",
+      "evidence": "summary 设为 if: always()，不允许 continue-on-error，并由 node test 锁定。"
+    },
+    {
+      "path": "scripts/check-desktop-rc-workflow.node-test.mjs",
+      "entry_point": "desktop RC workflow contract",
+      "disposition": "enforced",
+      "evidence": "检查五条旅程的 id、continue-on-error、summary outcome 和 artifact upload。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": ".github/workflows/desktop-rc.yml",
+    "invariant": "release-critical 旅程只能以独立收集 steps + 每步 20 分钟 timeout + 最终 summary 组成，不能回退为 fail-fast 长链。",
+    "failure_mode": "check:desktop-rc-workflow 在缺少独立 step、summary 或 artifact 时失败；summary 对未知 outcome fail-closed。",
+    "exception_policy": "none",
+    "strategy": "把流程约束直接写进工作流和 node-test，并把 node-test 接入 gates:contracts。",
+    "artifacts": [
+      ".github/workflows/desktop-rc.yml",
+      "scripts/check-desktop-rc-workflow.node-test.mjs",
+      "scripts/summarize-e2e-chain.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/check-desktop-rc-workflow.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "旧的多命令 fail-fast run block 是工作流内联结构，不是可声明的独立文件路径；没有并行旧文件需要登记。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或升级依赖。",
+    "exit_criteria": []
+  }
+}

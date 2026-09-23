@@ -22,13 +22,14 @@ const rows = raw.split(/\s+/).filter(Boolean).map((entry) => {
 })
 
 const summary = renderChainSummary(rows)
-console.log('E2E 走查链（七步一次跑完，红了不中断）：')
+const label = String(process.env.CHAIN_LABEL ?? 'E2E 走查链').trim() || 'E2E 走查链'
+console.log(`${label}（一次跑完，红了不中断）：`)
 console.log(summary.text)
 
 const summaryPath = process.env.GITHUB_STEP_SUMMARY
 if (summaryPath) {
   try {
-    fs.appendFileSync(summaryPath, `### E2E 走查链\n\n${renderChainMarkdown(rows)}\n`)
+    fs.appendFileSync(summaryPath, `### ${label}\n\n${renderChainMarkdown(rows)}\n`)
   } catch (error) {
     // 汇总写不进去不该改变红绿结论，但要说出来。
     console.error(`⚠️ 写 step summary 失败：${error instanceof Error ? error.message : String(error)}`)
@@ -36,9 +37,9 @@ if (summaryPath) {
 }
 
 if (!summary.ok) {
-  console.error('\n✖ 走查链有红。证据（截图 + output.jsonl）在 linux-walkthrough-evidence 制品里，'
+  console.error(`\n✖ ${label}有红。证据（截图 + output.jsonl）已经上传为 release-critical-evidence 制品，`
     + '本轮已经把**全部**红的条目收齐——一次修完，别一条一轮。')
-  console.error('  本机按同序复跑：pnpm run test:e2e:ci-chain')
+  console.error('  本机按工作流同序复跑对应命令，先修完这张汇总表里的全部红项。')
   process.exit(1)
 }
 console.log(`\n✅ 走查链全绿（${rows.length} 步）`)

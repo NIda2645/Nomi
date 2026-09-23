@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { screenshotSettled } from './_assert.mjs'
-import { findEdgeHitPoint } from './_canvasHit.mjs'
+import { findEdgeHitPoint, findElementHitPoint } from './_canvasHit.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const require = createRequire(import.meta.url)
@@ -261,13 +261,13 @@ async function dragClipEnd(material, deltaX, screenshotPath) {
       await material.click({ position: { x: before.width / 2, y: before.height / 2 } })
     }
     await handle.scrollIntoViewIfNeeded()
-    await handle.hover()
-    const handleBox = await handle.boundingBox()
-    if (!handleBox) throw new Error('找不到片段出点把手')
-    const startX = handleBox.x + handleBox.width / 2
-    const startY = handleBox.y + handleBox.height / 2
+    const handleHit = await findElementHitPoint(win, {
+      selector: `[data-clip-id="${clipId}"] button[aria-label="调整片段出点"]`,
+    })
+    if (!handleHit) throw new Error('找不到片段出点把手的可点击位置')
+    await win.mouse.move(handleHit.x, handleHit.y)
     await win.mouse.down()
-    await win.mouse.move(startX + deltaX, startY, { steps: 12 })
+    await win.mouse.move(handleHit.x + deltaX, handleHit.y, { steps: 12 })
     started = await win.waitForFunction((id) => document.querySelector(`[data-clip-id="${id}"]`)?.getAttribute('data-resizing') === 'right', clipId, { timeout: 2500 })
       .then(() => true)
       .catch(() => false)
@@ -416,11 +416,14 @@ try {
   await screenshotSettled(win, { path: screenshots.compact })
 
   const nodeBeforeDrag = await clip.boundingBox()
-  const dragHandleBox = await clip.getByTestId('clip-node-drag-handle').boundingBox()
-  if (!nodeBeforeDrag || !dragHandleBox) throw new Error('找不到剪辑节点拖动区域')
-  await win.mouse.move(dragHandleBox.x + dragHandleBox.width / 2, dragHandleBox.y + dragHandleBox.height / 2)
+  if (!nodeBeforeDrag) throw new Error('找不到剪辑节点')
+  // 常驻 Agent 面板可能覆盖 header 的中心；从当前 DOM 几何取一个真正落在
+  // drag handle 顶层的点，避免把 overlay 命中误报成节点拖动坏了。
+  const dragHandleHit = await findElementHitPoint(win, { selector: '[data-testid="clip-node-drag-handle"]' })
+  if (!dragHandleHit) throw new Error('找不到剪辑节点拖动区域的可点击位置')
+  await win.mouse.move(dragHandleHit.x, dragHandleHit.y)
   await win.mouse.down()
-  await win.mouse.move(dragHandleBox.x + dragHandleBox.width / 2 + 100, dragHandleBox.y + dragHandleBox.height / 2 + 60, { steps: 10 })
+  await win.mouse.move(dragHandleHit.x + 100, dragHandleHit.y + 60, { steps: 10 })
   await win.mouse.up()
   await win.waitForTimeout(300)
   const nodeAfterDrag = await clip.boundingBox()
@@ -437,20 +440,40 @@ try {
     && nodeAfterDrag.x + nodeAfterDrag.width > 0
     && nodeAfterDrag.y + nodeAfterDrag.height > 0,
   )
+  // 拖动断言完成后撤销这次画布节点位移，避免后续时间轴断言把节点
+  // 故意拖进常驻 Agent 面板，再把 overlay 命中误报成时间轴回归。
+  if (nodeDragWorks) {
+    await win.keyboard.press('Control+z')
+    await win.waitForFunction((before) => {
+      const current = document.querySelector('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')?.getBoundingClientRect()
+      return current && Math.abs(current.x - before.x) < 2 && Math.abs(current.y - before.y) < 2 ? current : null
+    }, nodeBeforeDrag)
+  }
 
-  const rulerBox = await clip.getByTestId('clip-node-ruler').boundingBox()
-  if (!rulerBox) throw new Error('找不到剪辑轴标尺')
-  await win.mouse.click(rulerBox.x + rulerBox.width * 0.38, rulerBox.y + rulerBox.height / 2)
+  const rulerHit = await findElementHitPoint(win, { selector: '[data-testid="clip-node-ruler"]' })
+  if (!rulerHit) throw new Error('找不到剪辑轴标尺的可点击位置')
+  const nodePositionBeforePreview = await clip.evaluate((element) => ({
+    transform: element.style.transform,
+    left: element.style.left,
+    top: element.style.top,
+  }))
+  await win.mouse.click(rulerHit.x, rulerHit.y)
   const preview = win.getByTestId('clip-node-preview')
   await preview.waitFor({ state: 'visible' })
   const nodeAfterPreview = await clip.boundingBox()
+  const nodePositionAfterPreview = await clip.evaluate((element) => ({
+    transform: element.style.transform,
+    left: element.style.left,
+    top: element.style.top,
+  }))
   const previewBox = await preview.boundingBox()
   const timelineClickOpensPreview = Boolean(previewBox)
   const nodeStaysPutWhenPreviewOpens = Boolean(
-    nodeAfterDrag
-    && nodeAfterPreview
-    && Math.abs(nodeAfterPreview.x - nodeAfterDrag.x) < 2
-    && Math.abs(nodeAfterPreview.y - nodeAfterDrag.y) < 2,
+    nodePositionBeforePreview
+    && nodePositionAfterPreview
+    && nodePositionAfterPreview.transform === nodePositionBeforePreview.transform
+    && nodePositionAfterPreview.left === nodePositionBeforePreview.left
+    && nodePositionAfterPreview.top === nodePositionBeforePreview.top,
   )
   const previewDoesNotHideNode = Boolean(
     nodeAfterPreview
@@ -503,8 +526,11 @@ try {
   )
   await screenshotSettled(win, { path: screenshots.exportMenu })
 
+  const outputEdges = win.locator('.generation-canvas-v2__edge[data-edge-id^="edge-canvas-clip-editor::"]')
   await runExport('完整成片', '到画布', '已向画布导出 1 个视频节点')
-  const fullCanvasExport = (await win.locator('[data-kind="video"]').count()) === 2
+  // React Flow 只把可视节点挂进 DOM；导出节点会落在当前视口外，不能用
+  // [data-kind="video"] 计数判定写入是否成功。输出边由画布状态直接渲染，才是稳定的共享信号。
+  const fullCanvasExport = (await outputEdges.count()) === 1
   await runExport('完整成片', '下载', '已导出 1 个视频文件')
   const fullExportPath = fs.readdirSync(path.join(projectRoot, 'exports'))
     .map((name) => path.join(projectRoot, 'exports', name))
@@ -513,9 +539,8 @@ try {
     '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', fullExportPath,
   ]).toString().trim())
   await runExport(/独立片段/, '到画布', '已向画布导出 4 个视频节点')
-  const segmentCanvasExport = (await win.locator('[data-kind="video"]').count()) === 6
+  const segmentCanvasExport = (await outputEdges.count()) === 5
   await runExport(/独立片段/, '下载', '已导出 4 个视频文件')
-  const outputEdges = win.locator('.generation-canvas-v2__edge[data-edge-id^="edge-canvas-clip-editor::"]')
   const fiveOutputEdges = (await outputEdges.count()) === 5
   const restingEdgesHaveNoLabels = (await win.locator('.generation-canvas-v2__edge-control').count()) === 0
   await preview.getByRole('button', { name: '关闭预览' }).click()
@@ -527,7 +552,7 @@ try {
   if (!edgePoint) throw new Error('找不到可见的输出连线点击位置')
   await win.mouse.click(edgePoint.x, edgePoint.y)
   await win.waitForTimeout(250)
-  const clickingEdgeShowsNativeControl = (await win.locator('.generation-canvas-v2__edge-control[data-active="true"]').count()) === 1
+  const clickingEdgeShowsNativeControl = (await win.locator('.generation-canvas-v2__edge-control[data-edge-id^="edge-canvas-clip-editor::"]').count()) === 1
   await screenshotSettled(win, { path: screenshots.outputs, fullPage: true })
 
   // 导出新增节点后，画布会把视口带到输出区域；先走真实的「重置视图」动作，
@@ -571,15 +596,29 @@ try {
   const keyboardRedo = (await clips.count()) === beforeSplit + 1
 
   const toolbarTarget = clip.locator('[data-clip-id="clip-video-b"]')
-  const toolbarTargetBox = await toolbarTarget.boundingBox()
-  if (!toolbarTargetBox) throw new Error('找不到图标操作目标片段')
-  await toolbarTarget.click({ position: { x: toolbarTargetBox.width * 0.5, y: toolbarTargetBox.height / 2 } })
+  const toolbarTargetHit = await findElementHitPoint(win, { selector: '[data-clip-id="clip-video-b"]' })
+  if (!toolbarTargetHit) throw new Error('找不到图标操作目标片段的可点击位置')
+  await win.mouse.click(toolbarTargetHit.x, toolbarTargetHit.y)
+  await win.waitForFunction(() => document.querySelector('[data-clip-id="clip-video-b"]')?.getAttribute('data-selected') === 'true')
   const beforeToolbarActions = await clips.count()
+  await win.waitForFunction(() => !document.querySelector('[data-testid="clip-node-split"]')?.hasAttribute('disabled'))
   await clip.getByTestId('clip-node-split').click()
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1
+  ), beforeToolbarActions)
   const toolbarSplit = (await clips.count()) === beforeToolbarActions + 1
   await clip.getByTestId('clip-node-duplicate').click()
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 2
+  ), beforeToolbarActions)
   const toolbarDuplicate = (await clips.count()) === beforeToolbarActions + 2
   await clip.getByTestId('clip-node-remove').click()
+  await win.waitForFunction((count) => (
+    document.querySelector('[data-node-id="canvas-clip-editor"]')
+      ?.querySelectorAll('[data-testid="clip-node-clip"]').length === count + 1
+  ), beforeToolbarActions)
   const toolbarRemove = (await clips.count()) === beforeToolbarActions + 1
 
   const movable = clip.locator('[data-clip-id="clip-video-d"]')
@@ -587,31 +626,36 @@ try {
   const movableId = await movable.getAttribute('data-clip-id')
   const movableBefore = await movable.boundingBox()
   if (!movableId || !movableBefore) throw new Error('找不到可拖动片段')
-  await win.mouse.click(movableBefore.x + movableBefore.width / 2, movableBefore.y + movableBefore.height / 2)
-  await win.mouse.move(movableBefore.x + movableBefore.width / 2, movableBefore.y + movableBefore.height / 2)
+  const movableHit = await findElementHitPoint(win, { selector: `[data-clip-id="${movableId}"]` })
+  if (!movableHit) throw new Error('找不到可拖动片段的可点击位置')
+  await win.mouse.click(movableHit.x, movableHit.y)
+  await win.waitForFunction((id) => document.querySelector(`[data-clip-id="${id}"]`)?.getAttribute('data-selected') === 'true', movableId)
+  await win.mouse.move(movableHit.x, movableHit.y)
   await win.mouse.down()
-  await win.mouse.move(movableBefore.x + movableBefore.width / 2 + 90, movableBefore.y + movableBefore.height / 2, { steps: 8 })
+  // 只把片段移出原位，不把它推到时间轴右边界；否则后面的 trim 会只剩 1 帧，
+  // 测试的是边界夹紧而不是正常裁剪。
+  await win.mouse.move(movableHit.x + 30, movableHit.y, { steps: 8 })
   await win.mouse.up()
   await win.waitForTimeout(250)
   const moved = clip.locator(`[data-clip-id="${movableId}"]`)
   const movedBox = await moved.boundingBox()
   const timelineDrag = Boolean(movedBox && movedBox.x > movableBefore.x + 20)
   const nudgeBefore = movedBox?.x ?? 0
-  for (let index = 0; index < 8; index += 1) await win.keyboard.press('Shift+Period')
+  const nudgeBeforeFrame = Number(await moved.getAttribute('data-persisted-start-frame'))
+  const nudgeKey = nudgeBeforeFrame > 8 ? '<' : '>'
+  for (let index = 0; index < 8; index += 1) await win.keyboard.press(`Shift+${nudgeKey}`)
   await win.waitForTimeout(200)
   const nudgedBox = await moved.boundingBox()
-  const keyboardNudge = Boolean(nudgedBox && nudgedBox.x > nudgeBefore + 2)
-  const trimHandle = moved.getByRole('button', { name: '调整片段出点', exact: true })
-  const trimBefore = await moved.boundingBox()
-  const handleBox = await trimHandle.boundingBox()
-  if (!trimBefore || !handleBox) throw new Error('找不到片段裁剪把手')
-  await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-  await win.mouse.down()
-  await win.mouse.move(handleBox.x - 40, handleBox.y + handleBox.height / 2, { steps: 8 })
-  await win.mouse.up()
-  await win.waitForTimeout(200)
-  const trimAfter = await moved.boundingBox()
-  const trimWorks = Boolean(trimAfter && trimAfter.width < trimBefore.width - 4)
+  const nudgeAfterFrame = Number(await moved.getAttribute('data-persisted-start-frame'))
+  const keyboardNudge = Number.isFinite(nudgeBeforeFrame)
+    && Number.isFinite(nudgeAfterFrame)
+    && (nudgeKey === '<' ? nudgeAfterFrame < nudgeBeforeFrame : nudgeAfterFrame > nudgeBeforeFrame)
+    && Boolean(nudgedBox && (nudgeKey === '<' ? nudgedBox.x < nudgeBefore - 0.5 : nudgedBox.x > nudgeBefore + 0.5))
+  const trimResult = await dragClipEnd(moved, -40)
+  const trimWorks = Number.isFinite(trimResult.beforeEndFrame)
+    && Number.isFinite(trimResult.afterEndFrame)
+    && trimResult.afterEndFrame < trimResult.beforeEndFrame
+    && Boolean(trimResult.after && trimResult.before.width - trimResult.after.width > 4)
 
   const beforeImport = await clips.count()
   await clip.getByRole('button', { name: '添加素材', exact: true }).click()
@@ -749,7 +793,16 @@ try {
     toolbarRemove,
     timelineDrag,
     keyboardNudge,
+    nudgeKey,
+    nudgeBeforeFrame,
+    nudgeAfterFrame,
+    nudgeBeforeX: nudgeBefore,
+    nudgeAfterX: nudgedBox?.x ?? null,
     trimWorks,
+    trimBeforeEndFrame: trimResult.beforeEndFrame,
+    trimAfterEndFrame: trimResult.afterEndFrame,
+    trimBeforeWidth: trimResult.before.width,
+    trimAfterWidth: trimResult.after?.width ?? null,
     realImport,
     importUsesRealDuration,
     resizeAtHalfZoom,
