@@ -18,6 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { screenshotSettled } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -98,7 +99,11 @@ const { app, win } = await launchNomiApp({
 
 try {
 
-  await win.getByText('开项目体检回归').first().click()
+  // Project titles are rename affordances; opening the workspace is the
+  // card-level "继续创作" action used by the real project-library flow.
+  const projectCard = win.locator('[data-project-card="true"]', { hasText: '开项目体检回归' }).first()
+  await projectCard.waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
+  await projectCard.getByRole('button', { name: /继续创作/ }).first().click()
   await win.waitForTimeout(1500)
 
   // ① 体检把节点 result.url 从 http:// 换成 nomi-local://（后台异步，给它时间跑）。
