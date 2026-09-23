@@ -43,7 +43,7 @@ const draggingOwnersByStage = new WeakMap<Element, Set<symbol>>()
  * 而它要解决的问题（「工作区槽位隐藏时租约不释放」）根本不需要观测：**槽位隐藏是宿主自己知道的事**。
  * 所以改成宿主在隐藏路径上显式喊一声（`cancelCanvasDraggingWithin`），热路径上一个观察者都不装。
  */
-const liveLeases = new Set<{ origin: Element; stage: Element | null | undefined; cancel: () => void }>()
+const liveLeases = new Set<{ origin: Element; stage: Element | null | undefined; pointerId?: number; cancel: () => void }>()
 
 /**
  * 标志的寿命上限 = 这一次指针手势。**租约模型的最后一道闸**。
@@ -82,6 +82,12 @@ function armGestureEndGuard(stage: Element): void {
   const onGestureEnd = (event: Event) => {
     // 捕获阶段也看得到后代元素的 blur（焦点在控件间移动）；只有窗口本身失焦才算手势被打断。
     if (event.type === 'blur' && event.target !== window) return
+    if (event.type !== 'blur' && 'pointerId' in event && typeof event.pointerId === 'number') {
+      const hasMatchingLease = [...liveLeases].some(lease =>
+        lease.stage === stage && (lease.pointerId === undefined || lease.pointerId === event.pointerId),
+      )
+      if (!hasMatchingLease) return
+    }
     disarm()
     const epoch = activateEpochByStage.get(stage)
     // 等一帧再收：正常路径上各租约自己的 `release()`（React 的 pointerup、React Flow 0ms 的 move-end）
@@ -169,7 +175,7 @@ export function beginCanvasDragging(
     cleanup.push(() => document.removeEventListener('visibilitychange', visibility))
     // 工作区槽位隐藏时仍然挂着（`hidden` 不卸载），所以「藏起来了」要由宿主显式喊一声，
     // 见 `cancelCanvasDraggingWithin`。登记只是一次 Set.add，热路径上零观察者、零 getComputedStyle。
-    const record = { origin, stage, cancel: () => cancel() }
+    const record = { origin, stage, pointerId: options.pointerId, cancel: () => cancel() }
     liveLeases.add(record)
     cleanup.push(() => liveLeases.delete(record))
   }

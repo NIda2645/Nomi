@@ -44,6 +44,10 @@ export default defineConfig({
     // 仍两连挂在「Test timed out in 5000ms」，而安静机器 5 连绿。测试从未断言过自己的耗时，
     // 拿墙钟当判据只会把「机器忙」误报成「代码坏」。30s = 最重测试的 ~100× 余量，真死锁仍然会红。
     testTimeout: 30_000,
+    // 浏览器 fixture 的 beforeAll/beforeEach 也要共享同一份 CI 资源余量；默认 10s 会在
+    // full lane 的多个 Vite/Chromium fixture 并行初始化时误报超时。长 hook 仍受测试本身的
+    // assertions 和 process 退出约束，不改变产品运行时。
+    hookTimeout: 30_000,
   },
   resolve: {
     alias: {

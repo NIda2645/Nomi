@@ -164,12 +164,16 @@ describe('canvas gesture ownership', () => {
       const fire = (type: string, target: unknown = fakeWindow) => {
         for (const fn of [...(listeners.get(type) ?? [])]) fn({ type, target } as unknown as Event)
       }
+      const firePointer = (type: string, pointerId: number) => {
+        for (const fn of [...(listeners.get(type) ?? [])]) fn({ type, target: fakeWindow, pointerId } as unknown as Event)
+      }
       const listenerCount = () =>
         [...listeners.values()].reduce((sum, set) => sum + set.size, 0) +
         [...docListeners.values()].reduce((sum, set) => sum + set.size, 0)
       // 「某位 owner 的收尾压根没走到」——租约照旧开，但故意不调它的 release()。
-      const raise = (owner: CanvasDraggingOwner) => beginCanvasDragging(stage, owner)
-      return { attributes, stage, fire, listenerCount, nextFrame, raise }
+      const raise = (owner: CanvasDraggingOwner, pointerId?: number) =>
+        beginCanvasDragging(stage, owner, pointerId === undefined ? undefined : { pointerId })
+      return { attributes, stage, fire, firePointer, listenerCount, nextFrame, raise }
     }
 
     it('reported case: a viewport owner whose own release was skipped is cleared when the pointer lifts', () => {
@@ -222,6 +226,17 @@ describe('canvas gesture ownership', () => {
       nextFrame()
       expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
       expect(listenerCount()).toBe(0)
+    })
+
+    it('ignores a pointer cancellation belonging to another pointer on the same stage', () => {
+      const { attributes, firePointer, nextFrame, raise } = setup()
+      raise(CANVAS_DRAGGING_OWNER.reactFlowViewport, 4)
+      firePointer('pointercancel', 99)
+      nextFrame()
+      expect(attributes.get(CANVAS_DRAGGING_ATTRIBUTE)).toBe('true')
+      firePointer('pointercancel', 4)
+      nextFrame()
+      expect(attributes.has(CANVAS_DRAGGING_ATTRIBUTE)).toBe(false)
     })
   })
 })
