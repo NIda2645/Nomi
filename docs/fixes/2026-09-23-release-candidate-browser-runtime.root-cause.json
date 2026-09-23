@@ -1,0 +1,144 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-23-release-candidate-browser-runtime",
+  "problem_type": "Release Candidate validation lacks the browser runtime used by its gates",
+  "symptom": "Desktop Release Candidate run 35836781908 failed seven browser-backed test files before their assertions because Chromium was absent on the clean Ubuntu runner.",
+  "direct_cause": "The RC validate job installed JavaScript dependencies and immediately ran pnpm run gates without running the pinned Playwright browser installation command used by the regular Unit and desktop lanes.",
+  "class_root": "Every CI lane that executes browser-backed validation must provision the pinned browser runtime at that lane's execution boundary before selecting tests.",
+  "affected_population": [
+    "Desktop Release Candidate validate jobs on clean Ubuntu runners",
+    "All browser-backed Vitest suites selected by pnpm run gates"
+  ],
+  "scope_paths": [
+    ".github/workflows/desktop-rc.yml",
+    "scripts/release-contract.test.mjs",
+    "docs/fixes/2026-09-23-release-candidate-browser-runtime.root-cause.json"
+  ],
+  "entry_points": [
+    "Desktop Release Candidate validate job",
+    "pnpm run gates browser-backed test lane"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is internal to Nomi's CI workflow ownership; the existing quality-gate workflow already defines the repository's pinned Playwright provisioning command.",
+  "invariants": [
+    "RC validate installs Chromium before running gates.",
+    "RC uses the same pinned Playwright provisioning command as the Unit and desktop-linux lanes.",
+    "Browser-backed coverage remains enabled and fails closed when provisioning fails."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/check-gates-chain.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-hook-behavior.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-hook-behavior.node-test.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/electron-install-identity.node-test.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/run-gates-contracts.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/run-gates-contracts.node-test.mjs",
+      "symbol": "gates"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/run-gates-tests.node-test.mjs",
+      "symbol": "gates"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 7,
+    "why_not": "The seven gates readers remain distinct contract and regression consumers. They all consume the shared pnpm gates entry, while browser provisioning belongs to the RC validate boundary rather than duplicating logic in each reader."
+  },
+  "generality_proof": "The RC validate job is the single owner that invokes the complete gates command on a clean runner. Installing Chromium immediately before that command covers focused and full browser-backed suites without changing their selection or adding a skipped path.",
+  "shared_boundaries": [
+    {
+      "path": ".github/workflows/desktop-rc.yml",
+      "symbol": "validate",
+      "responsibility": "Provision the pinned Chromium runtime before RC repository gates and later browser journeys."
+    },
+    {
+      "path": "scripts/release-contract.test.mjs",
+      "symbol": "provisions Chromium before the RC gates that run browser-backed tests",
+      "responsibility": "Fail the release contract test if the RC workflow moves or removes browser provisioning."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "entry_point": "unit and desktop-linux browser provisioning",
+      "disposition": "not-affected",
+      "evidence": "Both existing lanes already run pnpm exec playwright install --with-deps chromium before browser-backed tests."
+    },
+    {
+      "path": ".github/workflows/desktop-rc.yml",
+      "entry_point": "validate",
+      "disposition": "enforced",
+      "evidence": "The repaired RC boundary installs the same pinned browser before pnpm run gates."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every fresh runner without a cached Playwright browser can reproduce the missing executable, and any browser-backed suite selected by the full RC gates would fail before assertions.",
+    "same_class_scan": [
+      "rg -n 'playwright install|pnpm run gates' .github/workflows scripts package.json",
+      "Compared .github/workflows/desktop-rc.yml with the Unit and desktop-linux provisioning steps in .github/workflows/quality-gate.yml",
+      "Run 35836781908 logs: seven browser suites reported the same missing chromium_headless_shell executable"
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/release-contract.test.mjs",
+    "invariant": "Desktop RC must provision Chromium before invoking pnpm run gates.",
+    "failure_mode": "The release contract test fails before publication when the provisioning command is absent or placed after gates.",
+    "exception_policy": "none",
+    "strategy": "Keep one provisioning command at the RC validate owner and pin it through a workflow contract test; do not make browser suites silently skip.",
+    "artifacts": [
+      ".github/workflows/desktop-rc.yml",
+      "scripts/release-contract.test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/release-contract.test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/release-contract.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "There was no alternate browser path or skipped fallback; the missing setup step is added at the existing RC owner."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The Playwright version remains pinned by package.json; this remediation provisions that existing runtime on the runner.",
+    "exit_criteria": []
+  },
+  "migration": "No product or persisted-state migration is needed; subsequent RC runs install the browser before validation.",
+  "residual_risks": [
+    "The repaired RC run must still complete Linux gates, macOS packaging, Windows packaging, and release-critical journeys before promotion."
+  ],
+  "invariant_owner_layer": {
+    "layer": ".github/workflows/desktop-rc.yml",
+    "tests": [
+      "scripts/release-contract.test.mjs"
+    ]
+  }
+}

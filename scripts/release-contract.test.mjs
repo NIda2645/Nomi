@@ -164,6 +164,13 @@ describe('release contract', () => {
     expect(release).not.toContain('--generate-notes')
   })
 
+  it('provisions Chromium before the RC gates that run browser-backed tests', () => {
+    const rc = fs.readFileSync(path.join(process.cwd(), '.github/workflows/desktop-rc.yml'), 'utf8')
+    const install = 'pnpm exec playwright install --with-deps chromium'
+    expect(rc).toContain(install)
+    expect(rc.indexOf(install)).toBeLessThan(rc.indexOf('pnpm run gates'))
+  })
+
   it('binds promotion to the repository, tag, and immutable commit', () => {
     const { input } = makeReleaseFixture()
     const manifest = createReleaseManifest({

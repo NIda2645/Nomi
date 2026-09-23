@@ -84,7 +84,7 @@ function armGestureEndGuard(stage: Element): void {
     if (event.type === 'blur' && event.target !== window) return
     if (event.type !== 'blur' && 'pointerId' in event && typeof event.pointerId === 'number') {
       const hasMatchingLease = [...liveLeases].some(lease =>
-        lease.stage === stage && (lease.pointerId === undefined || lease.pointerId === event.pointerId),
+        lease.stage === stage && lease.pointerId === event.pointerId,
       )
       if (!hasMatchingLease) return
     }
