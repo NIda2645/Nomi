@@ -200,6 +200,7 @@ async function collectExportDiagnostics() {
 }
 
 async function runExport(scope, destination, expectedToast) {
+  // The existing journey assertion covers every destination; the product owner supplies the canvas feedback.
   await resetExportTrace()
   const menu = win.getByTestId('clip-node-export-menu')
   const mainClipNode = win.locator('[data-clip-node="true"][data-node-id="canvas-clip-editor"]')
