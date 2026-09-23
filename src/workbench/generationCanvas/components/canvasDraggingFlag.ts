@@ -65,6 +65,16 @@ const gestureEndGuardByStage = new WeakMap<Element, () => void>()
 /** 每次升旗 +1：兜底收尾只收「手势结束那一刻」的租约，不误伤紧接着开始的下一次手势。 */
 const activateEpochByStage = new WeakMap<Element, number>()
 
+function scheduleAfterFrame(callback: FrameRequestCallback): void {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(callback)
+    return
+  }
+  // Non-browser hosts (Vitest and headless DOM shims) may expose `window` without RAF.
+  // Keep the deferred ordering that lets each lease release itself before the guard runs.
+  setTimeout(() => callback(typeof performance === 'undefined' ? 0 : performance.now()), 0)
+}
+
 function armGestureEndGuard(stage: Element): void {
   activateEpochByStage.set(stage, (activateEpochByStage.get(stage) ?? 0) + 1)
   if (gestureEndGuardByStage.has(stage) || typeof window === 'undefined') return
@@ -76,7 +86,7 @@ function armGestureEndGuard(stage: Element): void {
     const epoch = activateEpochByStage.get(stage)
     // 等一帧再收：正常路径上各租约自己的 `release()`（React 的 pointerup、React Flow 0ms 的 move-end）
     // 先走完，属性只摘一次、和它们的状态更新落在同一轮布局里；只有漏收的那位才轮到这里。
-    window.requestAnimationFrame(() => {
+    scheduleAfterFrame(() => {
       if (activateEpochByStage.get(stage) !== epoch || !draggingOwnersByStage.has(stage)) return
       for (const lease of [...liveLeases]) if (lease.stage === stage) lease.cancel()
       if (!draggingOwnersByStage.has(stage)) return

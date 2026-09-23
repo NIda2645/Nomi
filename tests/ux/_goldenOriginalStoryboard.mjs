@@ -5,7 +5,7 @@ import path from 'node:path'
 import { require as tsxRequire } from 'tsx/cjs/api'
 import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
-import { waitForCanvasViewportSettled, findNodeHitPoint } from './_canvasHit.mjs'
+import { waitForCanvasViewportSettled, findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import { FIXTURE_IMAGE_MODEL, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { CANVAS_PANEL, COMPOSER_INPUT, COMPOSER_SEND, DOCUMENT, hasToolResult, openCanvas, readProject, recorded } from './agent-runtime-walk-support.mjs'
@@ -91,10 +91,16 @@ export async function runOriginalStoryboardGolden({ walk, win, projectId, projec
   await win.getByRole('button', { name: '适应视图', exact: true }).click()
   await waitForCanvasViewportSettled(win)
   const second = originalNodes.find(node => node.meta.shotId === shotId)
+  // Materialization selects the last newly created node so its composer is ready. Close that
+  // anchored composer before selecting another shot; its overlay intentionally owns pointer input.
+  const blank = await findCanvasBlankPoint(win, { preference: 'top-left', inset: 48 })
+  expect(blank, 'Canvas exposes a blank point to dismiss the selected composer').toBeTruthy()
+  await win.mouse.click(blank.x, blank.y)
+  await waitForCanvasViewportSettled(win)
   const point = await findNodeHitPoint(win, { nodeSelector: `.generation-canvas-v2-node[data-node-id="${second.id}"]` })
   expect(point, 'Second original shot has a real hit target').toBeTruthy()
   await win.mouse.click(point.x, point.y)
-  await expect.poll(() => win.evaluate(() => window.__nomiCanvasStore.getState().selectedNodeIds)).toEqual([second.id])
+  await expect(win.locator(`.generation-canvas-v2-node[data-node-id="${second.id}"][data-selected="true"]`)).toHaveCount(1)
   const viewport = win.locator('.react-flow__viewport')
   await waitForCanvasViewportSettled(win)
   const beforeViewport = await viewport.evaluate(element => getComputedStyle(element).transform)

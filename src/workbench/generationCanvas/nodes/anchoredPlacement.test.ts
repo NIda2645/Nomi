@@ -65,6 +65,12 @@ describe('resolveAnchoredPlacement', () => {
     expect(contains(placement, shortStage)).toBe(true)
   })
 
+  it('keeps natural height when the anchor fills the usable stage', () => {
+    const placement = resolveAnchoredPlacement({ ...base, anchor: stage })
+    expect(placement.height).toBe(base.height)
+    expect(contains(placement, stage)).toBe(true)
+  })
+
   it('never reports a negative size for a degenerate stage', () => {
     const collapsed: AnchoredRect = { left: 500, top: 400, right: 480, bottom: 380 }
     const placement = resolveAnchoredPlacement({ ...base, stage: collapsed })
