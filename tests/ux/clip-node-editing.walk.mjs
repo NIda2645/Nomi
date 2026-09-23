@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { screenshotSettled } from './_assert.mjs'
 import { findEdgeHitPoint, findElementHitPoint } from './_canvasHit.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const require = createRequire(import.meta.url)
@@ -539,6 +540,11 @@ try {
     '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', fullExportPath,
   ]).toString().trim())
   await runExport(/独立片段/, '到画布', '已向画布导出 4 个视频节点')
+  // The completion toast is emitted before React Flow commits the four new
+  // edges. Wait for the durable canvas state before asserting the export.
+  await win.waitForFunction(() => (
+    document.querySelectorAll('.generation-canvas-v2__edge[data-edge-id^="edge-canvas-clip-editor::"]').length === 5
+  ), { timeout: stationTimeout({ operations: 1 }) })
   const segmentCanvasExport = (await outputEdges.count()) === 5
   await runExport(/独立片段/, '下载', '已导出 4 个视频文件')
   const fiveOutputEdges = (await outputEdges.count()) === 5
