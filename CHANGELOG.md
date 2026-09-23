@@ -2,6 +2,10 @@
 
 本项目的所有重要变更记录于此。版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## v0.22.0 — 画布、分镜与 Agent 制作链收口（2026-09-24）
+
+对照 v0.21.0 到候选主线的实际合入记录整理；完整用户变化、升级边界和来源见 [`docs/release-notes/v0.22.0.md`](docs/release-notes/v0.22.0.md)。
+
 ## 未发布 — AGPL-only 与不要求 CLA（2026-08-29）
 
 - Nomi 当前及后续版本只发布 **AGPL-3.0-only**，不再提供闭源商业授权例外。
