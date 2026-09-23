@@ -21,6 +21,7 @@ test('desktop RC collects every release-critical journey before deciding', () =>
     const step = steps.find((candidate) => candidate.name === name)
     assert.ok(step, `${name} must remain in the RC workflow`)
     assert.equal(step['continue-on-error'], true, `${name} must not hide later release-critical failures`)
+    assert.equal(step['timeout-minutes'], 20, `${name} needs a bounded timeout so a hang cannot hide later evidence`)
     assert.ok(step.id, `${name} needs an id for the final outcome summary`)
     assert.equal(typeof step.run, 'string')
   }

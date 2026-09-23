@@ -22,7 +22,8 @@
   "invariants": [
     "五条 release-critical 旅程必须在同一轮按顺序执行，即使前一条失败。",
     "未知或缺失的 step outcome 必须让 RC 失败，不能静默放行。",
-    "失败旅程的截图和日志必须在 runner 结束前上传。"
+    "失败旅程的截图和日志必须在 runner 结束前上传。",
+    "每条 release-critical 旅程必须有明确的 20 分钟 timeout，挂死不能阻塞后续证据。"
   ],
   "invariant_owner_layer": {
     "layer": ".github/workflows/desktop-rc.yml",
@@ -47,7 +48,7 @@
     "scripts/check-desktop-rc-workflow.node-test.mjs"
   ],
   "residual_risks": [
-    "五条旅程仍共享同一 runner，必须保持串行；若单个旅程自身不退出，仍由其命令的超时策略负责终止。"
+    "五条旅程仍共享同一 runner，必须保持串行；20 分钟 timeout 是统一上限，若正常旅程超过它需先更新证据和门禁，不得静默抬高。"
   ],
   "external_sources": [],
   "internal_only_reason": "这是 GitHub Actions 工作流内部的证据编排问题，不依赖外部服务协议。",
@@ -85,7 +86,7 @@
   "prevention": {
     "kind": "static-gate",
     "enforcement_path": ".github/workflows/desktop-rc.yml",
-    "invariant": "release-critical 旅程只能以独立收集 steps + 最终 summary 组成，不能回退为 fail-fast 长链。",
+    "invariant": "release-critical 旅程只能以独立收集 steps + 每步 20 分钟 timeout + 最终 summary 组成，不能回退为 fail-fast 长链。",
     "failure_mode": "check:desktop-rc-workflow 在缺少独立 step、summary 或 artifact 时失败；summary 对未知 outcome fail-closed。",
     "exception_policy": "none",
     "strategy": "把流程约束直接写进工作流和 node-test，并把 node-test 接入 gates:contracts。",

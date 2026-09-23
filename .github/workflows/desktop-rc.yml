@@ -57,22 +57,27 @@ jobs:
       - name: Clip editing journey
         id: clip
         continue-on-error: true
+        timeout-minutes: 20
         run: xvfb-run -a node tests/ux/clip-node-editing.walk.mjs
       - name: Production MCP journey
         id: production-mcp
         continue-on-error: true
+        timeout-minutes: 20
         run: xvfb-run -a node tests/ux/production-mcp-journey.e2e.mjs
       - name: MCP journey suite
         id: mcp-journey
         continue-on-error: true
+        timeout-minutes: 20
         run: xvfb-run -a pnpm run test:mcp-journey
       - name: MCP elicitation journey
         id: mcp-elicitation
         continue-on-error: true
+        timeout-minutes: 20
         run: xvfb-run -a pnpm run test:mcp-elicitation
       - name: Canvas performance RC journey
         id: canvas-performance
         continue-on-error: true
+        timeout-minutes: 20
         run: xvfb-run -a node tests/ux/canvas-performance-benchmark.e2e.mjs rc --scale S --runs 1 --warmup 0 --scenario media-reveal,media-error,video-hover,reload-heavy
       - name: Release-critical journey summary
         if: always()
