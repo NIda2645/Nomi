@@ -530,9 +530,29 @@ try {
   const clickingEdgeShowsNativeControl = (await win.locator('.generation-canvas-v2__edge-control[data-active="true"]').count()) === 1
   await screenshotSettled(win, { path: screenshots.outputs, fullPage: true })
 
+  // 导出新增节点后，画布会把视口带到输出区域；先走真实的「重置视图」动作，
+  // 再从当前 DOM 几何取命中点。固定中心坐标可能已经落到窗口外，Playwright
+  // 会报 html 拦截点击，但用户从可见画布点片段本身仍然是可用的。
+  await win.getByRole('button', { name: '重置视图', exact: true }).click()
+  await win.waitForTimeout(400)
   const firstBox = await first.boundingBox()
   if (!firstBox) throw new Error('找不到首个片段')
-  await first.click({ position: { x: firstBox.width * 0.5, y: firstBox.height / 2 } })
+  const firstHit = await first.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const ratios = [0.18, 0.3, 0.42, 0.5, 0.58, 0.7, 0.82]
+    for (const ratioY of ratios) {
+      for (const ratioX of ratios) {
+        const x = rect.left + rect.width * ratioX
+        const y = rect.top + rect.height * ratioY
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue
+        const hit = document.elementFromPoint(x, y)
+        if (hit && element.contains(hit) && !hit.closest('button')) return { x, y }
+      }
+    }
+    return null
+  })
+  if (!firstHit) throw new Error('找不到首个片段的可点击位置')
+  await win.mouse.click(firstHit.x, firstHit.y)
   const beforeSplit = await clips.count()
   await win.keyboard.press('s')
   await win.waitForTimeout(200)
