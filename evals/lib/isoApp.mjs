@@ -104,7 +104,11 @@ export async function createBlankProject(win, projectsDir) {
 
 /** 打开生成区 AI 面板(若未开),返回输入框 locator 已可用。 */
 export async function openGenerationAiPanel(win) {
-  const input = win.locator('[aria-label="给生成助手发送消息"]');
+  // Agent v4 owns its composer contract through data-v4-control. The former
+  // generation-assistant aria label and launcher class were removed when the
+  // resident panel became the shared host, so looking them up makes every
+  // agent journey fail before its first message.
+  const input = win.locator('textarea[data-v4-control="input"]');
   if (await input.count()) return;
   // 空白项目默认落「创作」标签,生成 AI 面板在「生成」工作区——先切过去
   // (旧版直接点「Nomi 生成」文字在创作标签下找不到 → 整批评测 infra 超时)。
@@ -119,16 +123,15 @@ export async function openGenerationAiPanel(win) {
     await win.waitForTimeout(1200);
   }
   if (await input.count()) return;
-  // 开侧栏:点「生成区 AI 启动器」。Playwright 的 click(含 force) 对这个启动器**不稳**——
-  // 偶发不触发 onOpen(data-collapsed 仍为 true、输入框不挂载)。改用页面内原生 DOM .click():
-  // 它直接触发 React onClick(openPanel→setCollapsed(false)),无 actionability/坐标/遮挡判定的不确定性。
+  // 面板若处于收起态，点击顶栏唯一的 dock-open 入口。使用页面内原生 DOM
+  // click，避免顶栏 tooltip/拖拽层带来的 actionability 干扰。
   // 外裹重试轮询直到输入框真出现,绝不在超时上谎报。
   const deadline = Date.now() + 12_000;
   let opened = false;
   while (Date.now() < deadline) {
     if (await input.count()) { opened = true; break; }
     await win.evaluate(() => {
-      const btn = document.querySelector(".generation-canvas-v2-assistant__launcher");
+      const btn = document.querySelector('[data-v4-control="dock-open"]');
       if (btn) (btn).click();
     });
     await win.waitForTimeout(600);
@@ -154,8 +157,8 @@ export async function readAssistantModelLabel(win) {
 }
 
 export async function sendAgentMessage(win, message) {
-  await win.locator('[aria-label="给生成助手发送消息"]').first().fill(message, { timeout: 5000 });
-  await win.locator('[aria-label="生成 AI 发送"]').first().click({ timeout: 5000 });
+  await win.locator('textarea[data-v4-control="input"]').first().fill(message, { timeout: 5000 });
+  await win.locator('[data-v4-control="send"]').first().click({ timeout: 5000 });
 }
 
 export function readEventsLog(projectDir) {
