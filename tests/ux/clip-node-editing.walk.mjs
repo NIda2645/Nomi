@@ -416,9 +416,7 @@ try {
   await screenshotSettled(win, { path: screenshots.compact })
 
   const nodeBeforeDrag = await clip.boundingBox()
-  const dragHandle = clip.getByTestId('clip-node-drag-handle')
-  const dragHandleBox = await dragHandle.boundingBox()
-  if (!nodeBeforeDrag || !dragHandleBox) throw new Error('找不到剪辑节点拖动区域')
+  if (!nodeBeforeDrag) throw new Error('找不到剪辑节点')
   // 常驻 Agent 面板可能覆盖 header 的中心；从当前 DOM 几何取一个真正落在
   // drag handle 顶层的点，避免把 overlay 命中误报成节点拖动坏了。
   const dragHandleHit = await findElementHitPoint(win, { selector: '[data-testid="clip-node-drag-handle"]' })
@@ -452,8 +450,6 @@ try {
     }, nodeBeforeDrag)
   }
 
-  const rulerBox = await clip.getByTestId('clip-node-ruler').boundingBox()
-  if (!rulerBox) throw new Error('找不到剪辑轴标尺')
   const rulerHit = await findElementHitPoint(win, { selector: '[data-testid="clip-node-ruler"]' })
   if (!rulerHit) throw new Error('找不到剪辑轴标尺的可点击位置')
   const nodePositionBeforePreview = await clip.evaluate((element) => ({
@@ -600,8 +596,6 @@ try {
   const keyboardRedo = (await clips.count()) === beforeSplit + 1
 
   const toolbarTarget = clip.locator('[data-clip-id="clip-video-b"]')
-  const toolbarTargetBox = await toolbarTarget.boundingBox()
-  if (!toolbarTargetBox) throw new Error('找不到图标操作目标片段')
   const toolbarTargetHit = await findElementHitPoint(win, { selector: '[data-clip-id="clip-video-b"]' })
   if (!toolbarTargetHit) throw new Error('找不到图标操作目标片段的可点击位置')
   await win.mouse.click(toolbarTargetHit.x, toolbarTargetHit.y)
@@ -657,8 +651,6 @@ try {
     && Number.isFinite(nudgeAfterFrame)
     && (nudgeKey === '<' ? nudgeAfterFrame < nudgeBeforeFrame : nudgeAfterFrame > nudgeBeforeFrame)
     && Boolean(nudgedBox && (nudgeKey === '<' ? nudgedBox.x < nudgeBefore - 0.5 : nudgedBox.x > nudgeBefore + 0.5))
-  const trimBefore = await moved.boundingBox()
-  if (!trimBefore) throw new Error('找不到片段裁剪目标')
   const trimResult = await dragClipEnd(moved, -40)
   const trimWorks = Number.isFinite(trimResult.beforeEndFrame)
     && Number.isFinite(trimResult.afterEndFrame)
