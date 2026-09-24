@@ -31,5 +31,10 @@
 
 ## 先查别人（R5）
 
-- React Flow 官方：把手必须挂在节点里、连线手势只从 `Handle` 起（@xyflow/react v12 `Handle` / `onConnectStart` / `onConnectEnd` 文档）。编组不是节点，所以用「端口节点」承载把手，而不是另写一套指针拖拽——另写就是第二个连线手势引擎（R1）。
-- 仓内先例：折叠编组的 proxy 节点（`GenerationCanvasReactFlow.tsx` flowProjectionNodes）已经是「非真实节点、只为画布内核存在」的投影节点，本次沿用而不是新造。
+2026-09-24 用 Context7 查 React Flow（@xyflow/react v12）官方文档：
+
+- **把手只能挂在节点里**：官方 `Handle` 文档的写法是自定义节点里渲染 `<Handle type="source" position={Position.Right} />`，连线手势只从 Handle 起——https://reactflow.dev/api-reference/components/handle 。编组在我们这里不是节点，所以用「端口节点」承载把手，不另写指针拖拽（那是第二个连线手势引擎，违反 R1）。**一致。**
+- **拖到空白处新建节点**：官方示例用 `onConnectStart` 记住起点、`onConnectEnd` 判断 `connectionState.isValid` 为假（落在画布平面）再建节点——https://reactflow.dev/examples/nodes/add-node-on-edge-drop 。我们编组起的线在空白处走同一个 `onConnectEnd` 分支出新建菜单。**一致**（多一步菜单，选种类，已有行为）。
+- **官方的编组 = 一个 `type: 'group'` 节点 + 子节点 `parentId`**，边可以直接连到编组节点上（示例里 `{ source: '3', target: '4b' }`）——https://reactflow.dev/examples/grouping/sub-flows 。**有意不同**：我们的成员是自由摆放的独立卡、编组只是一个框（`groups[].nodeIds`），而生成运行器按「每张卡读自己的入边」取参考，一条连到编组的边它消费不了。所以编组起 / 落的线在 store 里物化成「每个成员一条」（`src/workbench/generationCanvas/store/canvasGraphActions.ts:109` 把编组待连态转给 `connectToGroup`，同文件 `:133` 的 `materializeGroupOutputLink` 与多选拖线共用）。偏差理由是领域约束（运行器读边的粒度），不是偏好。
+- **仓内先例**：折叠编组的 proxy 节点（`src/workbench/generationCanvas/model/canvasCardStackModel.ts:81` 以编组 id 投影一个非真实节点承接聚合边），本次复用它当折叠编组的端口节点，而不是新造一种节点。
+- **store 已有的编组起线**：`src/workbench/generationCanvas/store/canvasGraphActions.ts:98` `startGroupConnection`，此前只有旧按钮调用、在 React Flow 画布里没人收尾；本次改由 `onConnectStart` 调用。
