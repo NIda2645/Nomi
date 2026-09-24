@@ -17,7 +17,7 @@ import { refreshLiveLaneTrace } from './laneTraceRecorder.mjs';
 import { JsonlSessionRepo, type JsonlSessionMetadata } from '@earendil-works/pi-agent-core/harness/session';
 import type { Context } from '@earendil-works/pi-agent-core/harness/context';
 import type { Session } from '@earendil-works/pi-agent-core';
-import { createLaneFileSystem, ensureLaneSessionsRoot } from './laneFileSystem.mjs';
+import { createLaneFileSystem, ensureLaneSessionsRoot, LANE_IDENTITY_ROOT } from './laneFileSystem.mjs';
 
 /**
  * 一条对话的 `cwd`。它只用来生成 slug 目录名与 `list()` 的过滤键，**不是文件系统路径**。
@@ -42,8 +42,6 @@ export function laneSessionCwd(laneName: string): string {
   return `${LANE_IDENTITY_ROOT}${laneName}`;
 }
 
-/** 对话身份的根。写进表头、算 slug、列表认对话，三处都只认这一个串。 */
-export const LANE_IDENTITY_ROOT = '/nomi-lane/';
 
 /** 会话根目录。跟着项目走，删项目即删历史——这是本地优先该有的样子。 */
 export function laneSessionsRoot(projectDir: string): string {
@@ -76,7 +74,7 @@ async function acquireRepo(projectDir: string): Promise<JsonlSessionRepo> {
     return existing.repo;
   }
   await ensureLaneSessionsRoot(root);
-  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir, LANE_IDENTITY_ROOT), sessionsRoot: root });
+  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir), sessionsRoot: root });
   openRepos.set(root, { repo, holders: 1 });
   return repo;
 }

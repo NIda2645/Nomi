@@ -31,6 +31,7 @@ import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { CANVAS_STAGE_SELECTOR, findCanvasBlankPoint } from './_canvasHit.mjs'
 import { addCanvasNodeFromRail } from './_canvasRail.mjs'
 import { placeCharacter } from './_directorLab.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { createProcessFixture } from './process-feedback-real-fixture.mjs'
 
 const argv = process.argv.slice(2)
@@ -199,12 +200,12 @@ while ($true) { Get-ChildItem -LiteralPath $root -Recurse -Force | ForEach-Objec
 try {
   for (let index = 0; index < 3; index += 1) { await win.keyboard.press('Escape').catch(() => {}); await win.waitForTimeout(120) }
   await step('新建空白项目 → 进生成画布', async () => {
-    await win.getByRole('button', { name: /新建空白项目/ }).click({ timeout: 30_000 })
+    await win.getByRole('button', { name: /新建空白项目/ }).click({ timeout: stationTimeout({ operations: 2 }) })
     const deadline = Date.now() + 30_000
     while (Date.now() < deadline && !app.windows().some((page) => /projectId=/.test(page.url()))) await new Promise((resolve) => setTimeout(resolve, 200))
     win = projectWindow()
-    await win.getByRole('button', { name: '生成', exact: true }).click({ timeout: 30_000 })
-    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: 30_000 })
+    await win.getByRole('button', { name: '生成', exact: true }).click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
   })
   if (held) startHandleHolder(projectsDir)
   const box = await win.locator(CANVAS_STAGE_SELECTOR).first().boundingBox()
@@ -214,7 +215,7 @@ try {
     await waitLanded(landed += 4)
   }, 3000)
   await step('工具栏「导入文件」选 2 张', async () => {
-    const chooser = win.waitForEvent('filechooser', { timeout: 15_000 })
+    const chooser = win.waitForEvent('filechooser', { timeout: stationTimeout({ operations: 1 }) })
     await win.getByRole('button', { name: '导入文件' }).first().click()
     await (await chooser).setFiles([images[4], images[5]])
     await waitLanded(landed += 2)
@@ -249,11 +250,11 @@ try {
     await node.click({ position: { x: 40, y: 15 } })
     await win.locator('[contenteditable=true]:visible').first().fill('傍晚河边，一位女孩望向远处的桥，电影画面。')
     await win.getByRole('button', { name: '生成素材', exact: true }).click()
-    await win.getByText('开始生成', { exact: true }).waitFor({ timeout: 15_000 })
+    await win.getByText('开始生成', { exact: true }).waitFor({ timeout: stationTimeout({ operations: 1 }) })
     await win.getByRole('button', { name: '生成', exact: true }).last().click()
     const deadline = Date.now() + 30_000
     while (Date.now() < deadline && fixture.jobs.length < 1) await new Promise((resolve) => setTimeout(resolve, 200))
-    await win.locator(`article[data-node-id="${generatedId}"] [data-process-fx]`).waitFor({ timeout: 30_000 })
+    await win.locator(`article[data-node-id="${generatedId}"] [data-process-fx]`).waitFor({ timeout: stationTimeout({ operations: 2 }) })
   }, 6000)
   await step('生成完成 → 结果揭示', async () => {
     fixture.jobs[0].done = true
@@ -263,33 +264,33 @@ try {
       if (status === 'success') break
       await new Promise((resolve) => setTimeout(resolve, 300))
     }
-    await win.locator(`article[data-node-id="${generatedId}"] [data-generation-waiting]`).waitFor({ state: 'detached', timeout: 15_000 })
+    await win.locator(`article[data-node-id="${generatedId}"] [data-generation-waiting]`).waitFor({ state: 'detached', timeout: stationTimeout({ operations: 1 }) })
   }, 3000)
   await step('进入 3D 导演台 → 放一个角色 → 退出', async () => {
     await addCanvasNodeFromRail(win, 'director')
-    await win.locator('[data-testid="director-node-open"]').first().click({ timeout: 30_000 })
-    await win.locator('[data-testid="director-editor"]').waitFor({ timeout: 60_000 })
+    await win.locator('[data-testid="director-node-open"]').first().click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.locator('[data-testid="director-editor"]').waitFor({ timeout: stationTimeout({ operations: 4 }) })
     await win.waitForFunction(() => {
       const bridge = window.__nomiDirectorE2E
       const point = bridge && typeof bridge.projectPoint === 'function' ? bridge.projectPoint(0, 0, 0) : null
       return Boolean(point && Number.isFinite(point.x))
-    }, null, { timeout: 60_000 })
+    }, null, { timeout: stationTimeout({ operations: 4 }) })
     const lab = { page: win, bridge: (method, ...args) => win.evaluate(([name, list]) => window.__nomiDirectorE2E?.[name]?.(...list) ?? null, [method, args]) }
     await placeCharacter(lab, 'female', 0, 0)
-    await win.locator('[data-testid="director-outliner-row"]', { hasText: '角色' }).first().waitFor({ timeout: 60_000 })
+    await win.locator('[data-testid="director-outliner-row"]', { hasText: '角色' }).first().waitFor({ timeout: stationTimeout({ operations: 4 }) })
     await win.locator('[data-testid="director-exit"]').first().click()
     // 确认框带入场动画：等它真出现再点，别在它出现前的那一帧判成「没有确认框」。
     const confirmExit = win.getByRole('dialog').getByRole('button', { name: '退出', exact: true })
-    await confirmExit.waitFor({ timeout: 5_000 }).then(() => confirmExit.click(), () => {})
-    await win.locator('[data-testid="director-editor"]').waitFor({ state: 'hidden', timeout: 30_000 })
+    await confirmExit.waitFor({ timeout: stationTimeout({ operations: 1 }) }).then(() => confirmExit.click(), () => {})
+    await win.locator('[data-testid="director-editor"]').waitFor({ state: 'hidden', timeout: stationTimeout({ operations: 2 }) })
   }, 3000)
   await step('回项目库', async () => {
     await win.getByText('项目库', { exact: true }).first().click()
-    await win.getByRole('button', { name: /新建空白项目/ }).waitFor({ timeout: 30_000 })
+    await win.getByRole('button', { name: /新建空白项目/ }).waitFor({ timeout: stationTimeout({ operations: 2 }) })
   })
   await step('重新打开这个项目', async () => {
     await win.locator('[data-project-card]').first().click()
-    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: 30_000 })
+    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
     await waitLanded(landed)
   }, 3000)
   await step('窗口失焦再聚焦（触发项目清单重读）', async () => {
@@ -298,12 +299,12 @@ try {
   })
   await step('回库 → 新建第二个项目 → 切回第一个', async () => {
     await win.getByText('项目库', { exact: true }).first().click()
-    await win.getByRole('button', { name: /新建空白项目/ }).click({ timeout: 30_000 })
-    await win.getByRole('button', { name: '生成', exact: true }).first().waitFor({ timeout: 30_000 })
+    await win.getByRole('button', { name: /新建空白项目/ }).click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.getByRole('button', { name: '生成', exact: true }).first().waitFor({ timeout: stationTimeout({ operations: 2 }) })
     await win.getByText('项目库', { exact: true }).first().click()
-    await win.locator('[data-project-card]').nth(1).click({ timeout: 30_000 })
-    await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: 30_000 })
-    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: 30_000 })
+    await win.locator('[data-project-card]').nth(1).click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.getByRole('button', { name: '生成', exact: true }).first().click({ timeout: stationTimeout({ operations: 2 }) })
+    await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
   }, 3000)
 } finally {
   sampling = false

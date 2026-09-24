@@ -31,10 +31,10 @@
       "purpose": "path.resolve prepends the current drive on Windows for a root-relative path ('/foo' → 'C:\\foo'); verified locally: path.resolve('C:\\\\proj', '/nomi-lane/main') = 'C:\\nomi-lane\\main', path.posix.resolve gives '/nomi-lane/main'."
     },
     {
-      "kind": "upstream-source",
-      "url": "node_modules/@earendil-works/pi-agent-core/dist/harness/env/nodejs.js:325",
+      "kind": "source-code",
+      "url": "https://github.com/earendil-works/pi",
       "checked_at": "2026-09-24",
-      "purpose": "NodeExecutionEnv.absolutePath = resolvePath(this.cwd, path); JsonlSessionRepo.resolveCreateDestination (repo.js:172) and list({cwd}) both pass the session cwd through it, so our FileSystem is the one place that decides how a lane identity resolves."
+      "purpose": "pi-agent-core (installed dist/harness/env/nodejs.js:325) implements NodeExecutionEnv.absolutePath as resolvePath(this.cwd, path); JsonlSessionRepo.resolveCreateDestination (dist/harness/session/jsonl/repo.js:172) and list({cwd}) both pass the session cwd through it, so the FileSystem Nomi hands to pi is the one place that decides how a lane identity resolves."
     }
   ],
   "invariants": [
@@ -49,13 +49,18 @@
       "tests/agent-runtime/lane-multi.test.mts",
       "src/workbench/ai/lane/laneClient.test.ts"
     ],
-    "why": "createLaneFileSystem is the only FileSystem pi receives for lane sessions and therefore the only resolver of session cwd; keeping identities under LANE_IDENTITY_ROOT verbatim there fixes create, list, delete and trace reads at once. laneSession.mts stays the single owner of the identity string (LANE_IDENTITY_ROOT). prepareInput is the single admission step every composer send passes."
+    "why": "createLaneFileSystem is the only FileSystem pi receives for lane sessions and therefore the only resolver of session cwd; keeping identities under LANE_IDENTITY_ROOT verbatim there fixes create, list, delete and trace reads at once. LANE_IDENTITY_ROOT is defined once, next to the resolver that must keep it verbatim (laneFileSystem.mts); laneSession.mts builds identities from it and filters lists with it. prepareInput is the single admission step every composer send passes."
   },
   "doors": [
     {
       "kind": "write",
       "path": "electron/agentLane/laneSession.mts",
       "symbol": "laneSessionCwd"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneFileSystem.mts",
+      "symbol": "createLaneFileSystem"
     },
     {
       "kind": "write",
@@ -84,9 +89,9 @@
     }
   ],
   "door_reduction": {
-    "before": 6,
-    "after": 6,
-    "why_not": "laneSessionCwd and createLaneFileSystem each have exactly one writer (laneSession.mts) already. The prepareInput doors in laneDesktopRuntime.ts are a different function of the same name (main-process input preparation), unrelated to renderer admission; the renderer has one definition (laneClient) and one composer caller (useAgentPanelV4Actions)."
+    "before": 7,
+    "after": 7,
+    "why_not": "laneSessionCwd has one writer (laneSession.mts); createLaneFileSystem is defined in laneFileSystem.mts and constructed only by laneSession.mts. The prepareInput doors in laneDesktopRuntime.ts are a different function of the same name (main-process input preparation), unrelated to renderer admission; the renderer has one definition (laneClient) and one composer caller (useAgentPanelV4Actions)."
   },
   "generality_proof": "The identity is resolved in exactly one place for all four session operations (create, list, delete, trace), so no lane command can see a host-resolved identity again; and every composer send now passes an admission step that either returns an address or throws a lane code the panel already translates (agent_lane_closed).",
   "shared_boundaries": [
@@ -156,15 +161,14 @@
     "src/workbench/ai/lane/laneClient.test.ts"
   ],
   "class_regression_tests": [
-    "tests/agent-runtime/lane-identity-host-path.test.mts",
-    "tests/agent-runtime/lane-multi.test.mts"
+    "tests/agent-runtime/lane-identity-host-path.test.mts"
   ],
   "legacy_paths": {
     "status": "removed",
     "removed_paths": [
       "electron/agentLane/laneSession.mts"
     ],
-    "rationale": "The separate CWD_PREFIX literal is gone; the identity root is one exported constant used by the identity function, the list filter, the trace filter and the FileSystem. prepareInput no longer has a null branch."
+    "rationale": "The separate CWD_PREFIX literal in laneSession.mts is gone; the identity root is one constant in laneFileSystem.mts used by the FileSystem, the identity function, the list filter and the trace filter. prepareInput no longer has a null branch."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
