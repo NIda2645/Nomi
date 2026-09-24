@@ -95,23 +95,13 @@ type ParsedOwner = { valid: true; owner: WorkspaceManifestLockOwner } | { valid:
  * 记着的是**本进程自己**的 pid。旧逻辑只问「这个 pid 还活着吗」，于是本进程此后每一次取锁都被
  * 自己挡住：保存、导入、生成结果落盘全部先干等 5 秒再失败，直到退出 Nomi。
  * 有了这张表就能分清：pid 是自己、但 nonce 不在表里 ＝ 残留，立即收回；在表里 ＝ 真有一次操作在持有。
- * 挂在 globalThis 上：哪天这个模块被打进两份产物，同一进程里仍然只有一张表。
+ * 前提：本模块在一个进程里只有一份（dist-electron 里只编出一份，主进程不开工作线程）。
  */
-const LIVE_LEASE_NONCES_KEY = Symbol.for("nomi.workspaceManifestLock.liveLeaseNonces");
-
-function liveLeaseNonces(): Set<string> {
-  const scope = globalThis as unknown as Record<symbol, Set<string> | undefined>;
-  let nonces = scope[LIVE_LEASE_NONCES_KEY];
-  if (!nonces) {
-    nonces = new Set();
-    scope[LIVE_LEASE_NONCES_KEY] = nonces;
-  }
-  return nonces;
-}
+const liveLeaseNonces = new Set<string>();
 
 /** 记录的主人就是本进程（同主机同 pid），而本进程没有任何一次操作在持有它：残留，可立即收回。 */
 function isOwnAbandonedRecord(owner: WorkspaceManifestLockOwner, self: { host: string; pid: number }): boolean {
-  return owner.host === self.host && owner.pid === self.pid && !liveLeaseNonces().has(owner.nonce);
+  return owner.host === self.host && owner.pid === self.pid && !liveLeaseNonces.has(owner.nonce);
 }
 
 /** 删一个已经不代表任何持有者的目录（隔离区 / 旧锁）。删不掉只是「清理还没完」，按忙处理、下次再来。 */
@@ -123,7 +113,6 @@ function removeRecoveryDirectory(nomiDir: string, directoryPath: string): void {
   }
   fsyncDirectoryIfDurable(nomiDir);
 }
-
 
 function defaultProcessLiveness(pid: number): ProcessLiveness {
   try {
@@ -444,7 +433,7 @@ function tryAcquireCanonicalWorkspaceManifestLock(
 
   const lease = { canonicalRootPath, lockDir, owner };
   assertWorkspaceManifestLockOwned(lease);
-  liveLeaseNonces().add(owner.nonce);
+  liveLeaseNonces.add(owner.nonce);
   return lease;
 }
 
@@ -524,7 +513,7 @@ export function releaseWorkspaceManifestLock(lease: WorkspaceManifestLockLease):
       // directory is reserved metadata and the next acquirer safely reaps it.
     }
   } finally {
-    liveLeaseNonces().delete(lease.owner.nonce);
+    liveLeaseNonces.delete(lease.owner.nonce);
   }
 }
 
@@ -537,7 +526,7 @@ function reapOrphanedLock(lease: WorkspaceManifestLockLease): boolean {
   if (!fs.existsSync(lease.lockDir)) return true;
   const current = parseOwner(lease.lockDir);
   if (!current.valid) return !current.unreadable;
-  if (!sameOwner(current.owner, lease.owner) || liveLeaseNonces().has(current.owner.nonce)) return true;
+  if (!sameOwner(current.owner, lease.owner) || liveLeaseNonces.has(current.owner.nonce)) return true;
   const releaseDir = releaseDirFor(lease);
   try {
     fs.renameSync(lease.lockDir, releaseDir);
