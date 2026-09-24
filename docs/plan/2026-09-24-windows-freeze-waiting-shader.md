@@ -44,8 +44,25 @@
 - `pnpm run gates` 按风险分档通过；Windows 真应用巡检（`scratchpad/windows-freeze-sweep.mjs`）无 > 500 ms 的渲染线程阻塞、无 GPU 进程退出。
 - 未验证（记 `unverified`）：macOS 上补丁后的首帧编译耗时（机制上只减不增）；Intel 核显 / AMD 显卡的 D3D11 编译耗时（D3D 编译器在 CPU 上跑，与显卡厂商无关，但未实测）。
 
-## 同一轮巡检发现、另行处理
+## 第三条：同步盘 / 杀毒占用文件时存盘锁永久卡死（同一轮巡检发现，用户拍板一起修）
 
-- 项目文件夹被同步盘/杀毒软件占用文件时，存盘锁会卡在「本进程自己持有」的状态，此后每次保存失败、无法离开项目。模拟占用（只读共享打开新文件 300 ms）下确定性复现，另开 PR 修。
+**现象**：项目文件夹放在同步盘里（我们「换电脑继续」的引导正是这么建议的）或被杀毒扫描时，一次保存后，之后每次保存、导入、粘贴、生成结果落盘、导出、Agent 写入都先干等 5 秒再失败，界面常驻「项目保存失败」，回不了项目库、关不了窗口，只能强退并丢掉之后的全部修改。
+
+**机制（带插桩实测，3 次运行各复现一次）**：释放锁要把 `.nomi/manifest-transaction.lock` 改名挪走；同步盘 / 杀毒恰好在 `owner.json` 刚写出时以只读共享打开它，Windows 上这让目录改名直接 EPERM（POSIX 允许，所以 macOS 永远碰不到）。旧代码随即抛 Lost、锁目录留在原地，记着的是**本进程自己的 pid** → `process.kill(pid,0)` 说还活着 → 此后本进程每次取锁都被自己挡住，直到退出（每次运行 5181–8612 次拒绝）。同类相邻路径：读不到别人的 owner.json 被当成「记录坏了」而可能强拆活锁；发布失败后的清理错误盖掉可重试错误；release / quarantine 残留目录挡住同步调用方；注册表锁残留让下一次调用在主线程干等 3 秒。
+
+**先查别人**：graceful-fs 对 win32 rename 的 EPERM/EBUSY/EACCES 做退避重试（<https://github.com/isaacs/node-graceful-fs/blob/main/polyfills.js>）；Windows 共享模式语义见 <https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew>；仓库已有同一策略的 `renameSyncWithRetry`（`electron/jsonFile.ts:33`），只是锁目录操作一处都没用。
+
+| 文件 | 改动 |
+|---|---|
+| `electron/jsonFile.ts` | 抽出 `retryOnSharingViolation` / `isSharingViolation`（唯一一份重试策略），`renameSyncWithRetry` 改为调用它 |
+| `electron/workspace/workspaceManifestLock.ts` | 本进程在持锁表（按 nonce，挂 globalThis）；「记录是本进程、但没有在持的操作」＝残留，立即收回（锁与隔离区都适用）；读 owner.json 遇共享冲突 → 忙，绝不强拆；释放遇共享冲突先重试，仍失败就交出所有权、后台补收（0.25/1/4/15/60 s + 进程退出时），不再把已提交的事务报成失败；清理失败不再盖掉原错误、不再挡住下一次取锁；超龄候选目录按年龄回收 |
+| `electron/workspace/workspaceRegistry.ts` | 注册表锁释放时的 rmdir 走同一重试 |
+
+**证据**：真应用「模拟同步盘占用」巡检（新文件一出现就只读共享打开 300 ms）修复后：无锁错误、无「项目保存失败」、回项目库正常、GPU 零崩溃、占用结束后无残留锁目录（只剩一个关窗前一刻的候选目录，不挡任何人，下次取锁按年龄回收）。单测 7 条（其中一条起真实 PowerShell 进程占文件）修复前全红。根因合同 [`docs/fixes/2026-09-24-manifest-lock-sharing-violation.root-cause.json`](../fixes/2026-09-24-manifest-lock-sharing-violation.root-cause.json)。
+
+## 仍未覆盖 / 已知小问题
+
 - 导入完成后，进度用的临时预览 `.import-previews/*.preview.jpg` 被挪成正式预览，正在卸载的进度层仍去读旧地址 → 控制台 404；用户无感知。
-- 冷启动后第一次「新建项目」渲染线程阻塞约 1.3 s（第二次 0.23 s）。
+- 冷启动后第一次「新建项目」渲染线程阻塞约 1.1–1.3 s（第二次 0.23 s）。
+- 占用期间事件日志追加会被丢弃（设计上尽力而为）；主进程单次操作最多约 0.8 s 花在同步重试上。
+- 没在真实 OneDrive / 坚果云 / NAS 目录、360 / 火绒下测；没测视频导入、导出、3D 导演台、Agent 对话、用户自己的 a6api 真实生图。
