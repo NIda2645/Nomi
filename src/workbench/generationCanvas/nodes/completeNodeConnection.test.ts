@@ -61,6 +61,15 @@ describe('completeNodeConnection — 捷径 B（地基收口：数组参考也�
     expect(edgesTo('dst')).toHaveLength(1)
     expect(notify).toHaveBeenCalledOnce()
   })
+  it('连线菜单刚新建的节点（还没挂模型）：建边、不误报「该参考已满」（2026-09-24）', () => {
+    const source = { ...imageNode('src', 'nomi-local://asset/p/a.png'), status: 'success', result: { id: 'r', type: 'image', url: 'nomi-local://asset/p/a.png' } } as GenerationCanvasNode
+    seed([source])
+    const created = useGenerationCanvasStore.getState().addNode({ kind: 'video', position: { x: 500, y: 0 }, exactPosition: true, select: true })
+    useGenerationCanvasStore.getState().startConnection('src', 'right')
+    completeNodeConnection(created.id)
+    expect(edgesTo(created.id)).toHaveLength(1)
+    expect(notify).not.toHaveBeenCalled()
+  })
   it('image source(有结果) → omni target：建有序 character_ref 边(order 0)，不写 meta-only，不弹 toast', () => {
     seed([imageNode('src', 'https://cdn/x.png'), omniVideoNode('dst')])
     useGenerationCanvasStore.getState().startConnection('src')

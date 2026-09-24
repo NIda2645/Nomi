@@ -176,7 +176,13 @@ async function handleState(id) {
       const style = icon ? getComputedStyle(icon) : null
       const hr = hit?.getBoundingClientRect()
       const ir = icon?.getBoundingClientRect()
+      // 「看得见」不等于「在最上面」：computed style 全对时，卡面里的别的东西仍可能正好盖在圈上
+      // （2026-09-24 用户反馈：版本托盘展开时，侧边时间轴拖柄压住右侧「+」圈，圈看不见也拖不出线）。
+      // 只算画布里的遮挡（卡面 / 卡上控件）：宽卡的一侧落在舞台外、被侧栏压住，是视口问题不是把手问题。
+      const top = ir && ir.width > 0 ? document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2) : null
+      const coveredOnCanvas = Boolean(top && !handle?.contains(top) && top.closest('.react-flow__node'))
       return {
+        onTop: !coveredOnCanvas,
         side,
         affordance: handle?.getAttribute('data-affordance') ?? null,
         iconOpacity: style ? Number(style.opacity) : null,
@@ -317,9 +323,9 @@ try {
     await win.mouse.move(4, 4)
     await waitForVisualQuiescence(win)
     const state = await handleState(id)
-    const ok = state.every((s) => s.affordance === 'magnetic' && s.iconVisible && s.plus && s.iconOpacity >= 0.8)
+    const ok = state.every((s) => s.affordance === 'magnetic' && s.iconVisible && s.onTop && s.plus && s.iconOpacity >= 0.8)
     kindRows.push({ kind, ok, state })
-    check(ok, `A1·${kind}：唯一选中、鼠标移开后左右「+」圈仍可见`, state.map((s) => ({ side: s.side, affordance: s.affordance, opacity: s.iconOpacity })))
+    check(ok, `A1·${kind}：唯一选中、鼠标移开后左右「+」圈仍可见且在最上层`, state.map((s) => ({ side: s.side, affordance: s.affordance, opacity: s.iconOpacity, onTop: s.onTop })))
     if (['image', 'video', 'text', 'audio', 'panorama', 'director', 'clip', 'shot_table'].includes(kind)) await shot(`01-plus-${kind}`)
   }
   results.kinds = kindRows
@@ -455,6 +461,10 @@ try {
     await expect(tray, '版本托盘没打开').toBeVisible()
     await waitForVisualQuiescence(win)
     await shot('06-result-stack-open')
+    await win.mouse.move(4, 4)
+    await waitForVisualQuiescence(win)
+    const trayHandles = await handleState('stack')
+    check(trayHandles.every((s) => s.affordance === 'magnetic' && s.iconVisible && s.onTop), 'B3·版本托盘展开时左右「+」圈仍在最上层（不被别的卡面控件盖住）', trayHandles.map((s) => ({ side: s.side, onTop: s.onTop })))
     const row = tray.locator('[data-result-stack-item]').nth(1)
     const rowBox = await row.boundingBox()
     const grab = { x: rowBox.x + 30, y: rowBox.y + rowBox.height / 2 }

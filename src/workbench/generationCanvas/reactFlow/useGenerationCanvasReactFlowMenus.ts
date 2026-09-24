@@ -6,7 +6,7 @@ import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import type { NodeContextMenuAction } from '../components/NodeContextMenu'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
-import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
+import { connectionCreateKindsForSource, type ConnectionCreateKind } from '../agent/referenceEdgeCapability'
 import {
   useCanvasContextNodeMenu,
   type CanvasContextNodeMenu,
@@ -23,6 +23,8 @@ export type CanvasConnectionCreateMenu = {
   stageY: number
   canvasX: number
   canvasY: number
+  /** 这条线能接出的节点种类（connectionCreateKindsForSource 派生，非空）。 */
+  kinds: ConnectionCreateKind[]
 }
 
 type UseGenerationCanvasReactFlowMenusArgs = {
@@ -245,8 +247,8 @@ export function useGenerationCanvasReactFlowMenus({
     connectionStartRef.current = null
     if (readOnly || !started || (connectionState.isValid && connectionState.toNode)) return
     const sourceNode = nodeById.get(started.nodeId)
-    const canCreateMedia = sourceNode?.kind === 'text' || sourceNode?.kind === 'image' || Boolean(sourceNode && isImageLikeGenerationNodeKind(sourceNode.kind))
-    if (!canCreateMedia) {
+    const kinds = sourceNode ? connectionCreateKindsForSource(sourceNode) : []
+    if (kinds.length === 0) {
       cancelConnection()
       return
     }
@@ -282,6 +284,7 @@ export function useGenerationCanvasReactFlowMenus({
       stageY: Math.max(8, Math.min(rect.height - 90, stageY)),
       canvasX: Math.round(canvasPoint.x),
       canvasY: Math.round(canvasPoint.y),
+      kinds,
     })
   }, [cancelConnection, getCanvasPointFromClientPoint, handleConnectToGroup, hostRef, nodeById, readOnly, visibleGroups])
 

@@ -25,7 +25,7 @@ function writeManifest(root: string, payload: unknown): void {
 describe("workspace sync inspection", () => {
   it("reports a missing manifest as corrupt-manifest", () => {
     const root = makeRoot();
-    expect(inspectWorkspaceSync(root).status).toBe("corrupt-manifest");
+    expect(inspectWorkspaceSync(root, "project-1").status).toBe("corrupt-manifest");
   });
 
   it("counts local assets and reports missing references", () => {
@@ -33,18 +33,41 @@ describe("workspace sync inspection", () => {
     fs.mkdirSync(path.join(root, "assets", "imported"), { recursive: true });
     fs.writeFileSync(path.join(root, "assets", "imported", "ok.png"), "image", "utf8");
     writeManifest(root, { image: localAssetUrl("project-1", "assets/imported/ok.png"), video: localAssetUrl("project-1", "assets/imported/missing.mp4") });
-    const report = inspectWorkspaceSync(root);
+    const report = inspectWorkspaceSync(root, "project-1");
     expect(report.referencedAssetCount).toBe(2);
     expect(report.missingAssetCount).toBe(1);
     expect(report.status).toBe("missing-assets");
   });
 
+  it("does not count another project's assets as missing from this folder", () => {
+    // 从「全部素材」拖进来的素材 URL 编的是源项目 id，文件住在源项目文件夹——不归本文件夹同步。
+    const root = makeRoot();
+    fs.mkdirSync(path.join(root, "assets", "imported"), { recursive: true });
+    fs.writeFileSync(path.join(root, "assets", "imported", "own.png"), "image", "utf8");
+    writeManifest(root, {
+      own: localAssetUrl("project-1", "assets/imported/own.png"),
+      borrowed: localAssetUrl("project-other", "assets/generated/hero shot.png"),
+    });
+    const report = inspectWorkspaceSync(root, "project-1");
+    expect(report.referencedAssetCount).toBe(1);
+    expect(report.missingAssetCount).toBe(0);
+    expect(report.status).toBe("ready");
+  });
+
+  it("decodes encoded path segments the same way the protocol does", () => {
+    const root = makeRoot();
+    fs.mkdirSync(path.join(root, "assets", "imported"), { recursive: true });
+    fs.writeFileSync(path.join(root, "assets", "imported", "雨夜 1.png"), "image", "utf8");
+    writeManifest(root, { image: localAssetUrl("project-1", "assets/imported/雨夜 1.png") });
+    expect(inspectWorkspaceSync(root, "project-1").status).toBe("ready");
+  });
+
   it("detects an external revision or content change", () => {
     const root = makeRoot();
     writeManifest(root, { title: "A" });
-    const first = inspectWorkspaceSync(root);
+    const first = inspectWorkspaceSync(root, "project-1");
     writeManifest(root, { title: "B" });
-    expect(inspectWorkspaceSync(root, { revision: first.observedRevision ?? 0, contentHash: first.contentHash ?? "" }).status).toBe("external-change");
+    expect(inspectWorkspaceSync(root, "project-1", { revision: first.observedRevision ?? 0, contentHash: first.contentHash ?? "" }).status).toBe("external-change");
   });
 });
 
@@ -68,6 +91,6 @@ describe("workspace sync state", () => {
     const root = makeRoot();
     writeManifest(root, { title: "A" });
     fs.copyFileSync(workspaceProjectFile(root), workspaceProjectBackupFile(root));
-    expect(inspectWorkspaceSync(root).backupExists).toBe(true);
+    expect(inspectWorkspaceSync(root, "project-1").backupExists).toBe(true);
   });
 });

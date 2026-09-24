@@ -17,7 +17,7 @@
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../../electron/shared/modelArchetypes'
-import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
+import { MODEL_ARCHETYPES, resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 
 /** 源节点产出的可参考资产类型;text/shot/output 等无产出 → null(不能作参考源)。 */
@@ -168,6 +168,31 @@ export function validateReferenceEdge(
   const required = EDGE_MODE_SLOTS[mode ?? 'reference']
   const satisfiable = required.some((slot) => slotKinds.has(slot) && SLOT_ACCEPTS[slot].includes(asset))
   return satisfiable ? { ok: true } : { ok: false, reason: 'unsupported_reference' }
+}
+
+/** 从卡片「+」圈拖到空白处时，新建菜单里可选的节点种类（候选全集，顺序即菜单顺序）。 */
+const CONNECTION_CREATE_KINDS = ['image', 'video'] as const
+export type ConnectionCreateKind = (typeof CONNECTION_CREATE_KINDS)[number]
+
+/**
+ * 从这个源拖一条线到空白处，能**新建并接上**哪几种生成节点——连线新建菜单的唯一 owner。
+ *
+ * 由连线能力派生，不按 kind 名单：文本给下游当 prompt 上下文（isTextPromptEdge）；其余看源产出的
+ * 参考资产，有任一该种类的模型档案在任一模式里有槽收它，才列进菜单。于是视频源 → 视频节点（参考视频 /
+ * 尾帧接力），音频源 → 视频节点（参考音频），图片源 → 图片 + 视频。
+ *
+ * 2026-09-24 用户反馈「视频无法拖出下一个连线」：v0.22 起每张能连线的卡都有「+」圈，但松手处的菜单还按
+ * 旧名单只认 text/image，视频拖出去松手直接被取消，连线凭空消失。
+ */
+export function connectionCreateKindsForSource(source: GenerationCanvasNode): ConnectionCreateKind[] {
+  const asset = referenceAssetKindForNode(source)
+  return CONNECTION_CREATE_KINDS.filter((kind) => {
+    if (isTextPromptEdge(source, { ...source, kind })) return true
+    if (!asset) return false
+    return MODEL_ARCHETYPES.some((archetype) =>
+      archetype.kind === kind && archetype.modes.some((mode) => mode.slots.some((slot) => SLOT_ACCEPTS[slot.kind].includes(asset))),
+    )
+  })
 }
 
 /**
