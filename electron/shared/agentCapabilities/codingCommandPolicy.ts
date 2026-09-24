@@ -127,8 +127,11 @@ interface HardRule {
 const SECRET_PATH_FRAGMENTS: readonly string[] = [
   "/.ssh", "/.aws", "/.gnupg", "/.docker/config.json", "/.netrc", "/.npmrc", "/.pypirc",
   "/.config/gcloud", "/.kube/config",
-  // Nomi 自己的设置与密钥存储（model-catalog.json 里是 safeStorage 密文，但密文也不该出门）
-  "application support/nomi", "/.nomi/", "model-catalog.json",
+  // Nomi 自己的设置与密钥存储（model-catalog.json 里是 safeStorage 密文，但密文也不该出门）。
+  // 设置目录三个平台各一种：macOS `Application Support/Nomi`、Windows `%APPDATA%\nomi`（Preview 为
+  // `Nomi Preview`；在比对视图里是 `AppData/Roaming/nomi`、`$APPDATA/nomi`、`%APPDATA%/nomi`）、Linux `~/.config/nomi`。
+  "application support/nomi", "appdata/roaming/nomi", "appdata/nomi", "appdata%/nomi", "/.config/nomi",
+  "/.nomi/", "model-catalog.json",
 ];
 
 const HARD_RULES: readonly HardRule[] = [
@@ -195,13 +198,7 @@ function buildSecretPattern(): RegExp {
   const alternatives = SECRET_PATH_FRAGMENTS.map((fragment) =>
     fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // `security find-generic-password` 是 macOS 钥匙串的读取命令——它不是路径，但它是同一件事。
-  // Nomi 设置目录在 Windows 上是 `%APPDATA%\nomi`（Preview 为 `Nomi Preview`），在 Linux 上是
-  // `~/.config/nomi`——和 macOS 的 `Application Support/Nomi` 是同一个东西，三种写法都要认
-  // （`$APPDATA/nomi`、`%APPDATA%/nomi`、`AppData/Roaming/nomi` 在比对视图里长这三样）。
-  return new RegExp(
-    `(${alternatives.join("|")})|appdata(%|\\})?/(roaming/)?nomi|/\\.config/nomi|\\bsecurity\\s+find-(generic|internet)-password\\b`,
-    "i",
-  );
+  return new RegExp(`(${alternatives.join("|")})|\\bsecurity\\s+find-(generic|internet)-password\\b`, "i");
 }
 
 /**
@@ -292,10 +289,9 @@ const SYSTEM_READ_ONLY_PREFIXES: readonly string[] = [
 ];
 
 function isSystemReadOnly(candidate: string): boolean {
-  const expanded = expandHome(candidate);
-  // 这张表是 POSIX 路径。宿主 `path.resolve` 在 Windows 上会补盘符（`/usr` → `C:\usr`），
-  // 一条都对不上——和 `laneSessionCwd` 被补盘符是同一类错（2026-09-24）。POSIX 写法按 POSIX 解析。
-  const resolved = expanded.startsWith("/") ? path.posix.resolve(expanded) : path.resolve(expanded);
+  // 这张表是 POSIX 路径，按 POSIX 解析。宿主 `path.resolve` 在 Windows 上会补盘符（`/usr` → `C:\usr`），
+  // 一条都对不上——和 `laneSessionCwd` 被补盘符是同一类错（2026-09-24）。
+  const resolved = path.posix.resolve(expandHome(candidate));
   return SYSTEM_READ_ONLY_PREFIXES.some(
     (prefix) => resolved === prefix || resolved.startsWith(`${prefix}/`));
 }
