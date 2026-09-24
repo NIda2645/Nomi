@@ -377,7 +377,10 @@ try {
   const paneBox = await win.locator('.react-flow__pane').boundingBox()
   await win.mouse.click(paneBox.x + paneBox.width - 40, paneBox.y + 40)
   await expectCount(groupRings, 0, '点空白后折叠编组退出选中、「+」圈收起')
-  check('三条成员输入聚合为一条编组线', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
+  // 退出选中后聚合线要等 React Flow 重新投影一帧才出现：瞬时 count() 在慢机器（CI）上会读到 0 假红
+  // （2026-09-24 PR #862 Linux 撞到，本机 Windows 干净 main / 分支都绿）。等真信号，线真画不出来照样超时红。
+  await expectCount(win.locator('g[data-aggregate-group="reference-group"]'), 1, '三条成员输入应聚合为一条编组线')
+  check('三条成员输入聚合为一条编组线', true)
   // 连线是贝塞尔曲线：`locator.click()` 点的是外接盒中心，而曲线的外接盒中心不在曲线上——
   // 那一点谁盖着就点到谁（面板展开把画布收窄后，那里正好是选中节点的提示词面板，
   // Playwright 报 "subtree intercepts pointer events"）。用户点的是线本身，走查也点线本身。
