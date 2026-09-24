@@ -18,7 +18,6 @@
     "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowOverlays.tsx",
     "src/workbench/generationCanvas/nodes/completeNodeConnection.ts",
     "tests/ux/canvas-handles-alt-drag.walk.mjs",
-    "src/workbench/generationCanvas/runner/referenceSlots.ts",
     "docs/fixes/2026-09-24-canvas-connection-ring-dead-ends.root-cause.json"
   ],
   "entry_points": [
@@ -40,8 +39,7 @@
   "invariants": [
     "Nothing on a card occupies the left or right ring slot; timeline drag uses the top notch only.",
     "The drag-out create menu lists exactly the kinds whose model profiles can consume the source's output (text is prompt context).",
-    "A target without a model profile declares no slots and is never reported as full.",
-    "A video linked by a generic reference edge lands in a reference-video mode when the model has one; slot placement and mode choice read one ordered list (preferredSlotKinds / EDGE_MODE_SLOTS)."
+    "A target without a model profile declares no slots and is never reported as full."
   ],
   "doors": [
     {
@@ -123,16 +121,11 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
       "symbol": "completeNodeConnection"
-    },
-    {
-      "kind": "write",
-      "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
-      "symbol": "preferredSlotKinds"
     }
   ],
   "door_reduction": {
-    "before": 17,
-    "after": 17,
+    "before": 16,
+    "after": 16,
     "why_not": "Menu doors only open or close the menu and the one door deciding its content now reads connectionCreateKindsForSource; the completeNodeConnection callers are distinct gestures that already share one function where the fix lands; TimelineNotchDragHandle is now the single timeline affordance on the card."
   },
   "generality_proof": "The create menu kinds are derived from MODEL_ARCHETYPES slots and SLOT_ACCEPTS, so any new source kind or model profile is covered without editing a list; removing the side grip frees the ring slot for every card that renders through BaseGenerationNode, and the walk checks all GENERATION_NODE_KINDS plus the tray-open state for occlusion.",
@@ -146,11 +139,6 @@
       "path": "src/workbench/generationCanvas/nodes/completeNodeConnection.ts",
       "symbol": "completeNodeConnection",
       "responsibility": "Report only real slot overflow after a connection lands."
-    },
-    {
-      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
-      "symbol": "preferredSlotKinds",
-      "responsibility": "One ordered preference of slots per edge semantic and asset, read by slot placement and mode resolution."
     }
   ],
   "same_class_entry_points": [
@@ -218,7 +206,7 @@
   },
   "migration": "No persisted data changes.",
   "residual_risks": [
-    "2026-09-24 product decision: a video dragged into a new video node now defaults to reference video (全能参考 / multimodal) instead of tail-frame relay; explicit first_frame edges still relay.",
+    "A video linked into a new video node lands as tail-frame relay in 图生视频; the first-frame slot shows empty until generation extracts the frame. Relay works at send time, but the display and the relay-versus-reference-video default need a product decision.",
     "tests/ux/canvas-handles-alt-drag.walk.mjs needs NOMI_REAL_MEDIA_DIR; it was run here only with a stand-in clip, so the real-media rerun is still owed on the macOS machine."
   ]
 }
