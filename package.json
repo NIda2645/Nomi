@@ -470,6 +470,9 @@
     "ignoredBuiltDependencies": [
       "@ffmpeg-installer/darwin-arm64",
       "@ffprobe-installer/darwin-arm64"
-    ]
+    ],
+    "patchedDependencies": {
+      "img-fx@0.5.1": "patches/img-fx@0.5.1.patch"
+    }
   }
 }

@@ -3,18 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { confirmDialog } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../../ui/toast'
+import { shareInFlight } from './projectCreationFlight'
 
 /** Repeated library exits share the entire pending save/release operation. */
 export function useProjectLeaveAction(leave: () => Promise<void>): () => Promise<void> {
   const pending = useRef<Promise<void> | null>(null)
-  return useCallback(() => {
-    if (pending.current) return pending.current
-    const operation = Promise.resolve().then(leave)
-    pending.current = operation
-    const clear = () => { if (pending.current === operation) pending.current = null }
-    void operation.then(clear, clear)
-    return operation
-  }, [leave])
+  return useCallback(() => shareInFlight(pending, leave), [leave])
 }
 
 /** Close/reload acknowledges the active project's save before releasing its renderer. */

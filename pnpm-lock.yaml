@@ -12,6 +12,11 @@ overrides:
   '@earendil-works/pi-telemetry': 0.85.1
   '@earendil-works/pi-tui': 0.85.1
 
+patchedDependencies:
+  img-fx@0.5.1:
+    hash: 154bb3edce60ffb8f481292650a5d341f6881802d6d9b354d380725f8536be89
+    path: patches/img-fx@0.5.1.patch
+
 importers:
 
   .:
@@ -156,7 +161,7 @@ importers:
         version: 26.3.6(typescript@5.9.3)
       img-fx:
         specifier: 0.5.1
-        version: 0.5.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.184.0)
+        version: 0.5.1(patch_hash=154bb3edce60ffb8f481292650a5d341f6881802d6d9b354d380725f8536be89)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.184.0)
       immer:
         specifier: ^11.1.8
         version: 11.1.8
@@ -12009,7 +12014,7 @@ snapshots:
 
   ignore@7.0.6: {}
 
-  img-fx@0.5.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.184.0):
+  img-fx@0.5.1(patch_hash=154bb3edce60ffb8f481292650a5d341f6881802d6d9b354d380725f8536be89)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.184.0):
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
