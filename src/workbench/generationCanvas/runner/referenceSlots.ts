@@ -13,7 +13,7 @@ import { remainingReferenceCapacity } from '../../../../electron/shared/videoCap
 import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { ArchetypeReferenceSlot, ArchetypeReferenceSlotKind } from '../../../../electron/shared/modelArchetypes'
 import { applyArchetypeModeSwitch, currentArchetypeMode, referenceSlotStorage } from '../nodes/controls/archetypeMeta'
-import { archetypeForNode, referenceAssetKindForNode, resolveTargetModeForEdge, SLOT_ACCEPTS, type ReferenceAssetKind } from '../agent/referenceEdgeCapability'
+import { archetypeForNode, referenceAssetKindForNode, resolveTargetModeForEdge, SLOT_ACCEPTS, preferredSlotKinds, type ReferenceAssetKind } from '../agent/referenceEdgeCapability'
 import { sortEdgesByOrder } from '../model/graphOps'
 import { asUrl, findNodeResultUrl } from './referenceUrl'
 
@@ -60,10 +60,7 @@ function assignEdgeToSlot(
     const ir = findKind('image_ref'); if (ir >= 0) return { slotIndex: ir, preferredPosition: 1 } // 尾帧 = image_ref[1]
   }
   // 通用 reference / style_ref / character_ref / composition_ref / 未知：按源资产挑第一个能吃的槽
-  const order: ArchetypeReferenceSlotKind[] = assetKind === 'video'
-    ? ['video_ref', 'source_video', 'first_frame']
-    : ['image_ref', 'first_frame', 'last_frame']
-  for (const kind of order) { const i = findKind(kind); if (i >= 0) return { slotIndex: i } }
+  for (const kind of preferredSlotKinds('reference', assetKind)) { const i = findKind(kind); if (i >= 0) return { slotIndex: i } }
   const any = slots.findIndex(accepts)
   return any >= 0 ? { slotIndex: any } : null
 }
