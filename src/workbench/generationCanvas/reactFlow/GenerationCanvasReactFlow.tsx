@@ -576,14 +576,18 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
+    if (connection.source === connection.target) { cancelConnection(); return } // 编组端口拖回自己的收线口
     const side = connection.sourceHandle === 'source-left' ? 'left' : 'right'
     // 松手时重新起一次线不是多余的：按下把手那一刻若有菜单开着，同一次 pointerdown 会让菜单关闭并清掉待连态。
     // 所以按连线的**起点是谁**重起，而不是看待连态——编组的「+」（端口节点 id = 编组 id）重起编组线。
     const state = useGenerationCanvasStore.getState()
-    if (state.groups.some((group) => group.id === connection.source)) state.startGroupConnection(connection.source, side)
+    const isGroup = (id: string) => state.groups.some((group) => group.id === id)
+    if (isGroup(connection.source)) state.startGroupConnection(connection.source, side)
     else startConnection(connection.source, side)
-    completeNodeConnection(connection.target)
-  }, [readOnly, startConnection])
+    // 落在折叠编组的收线把手上（端口节点 id = 编组 id）= 连进这个编组，不是连一张叫这个 id 的卡。
+    if (isGroup(connection.target)) handleConnectToGroupFromFlow(connection.target)
+    else completeNodeConnection(connection.target)
+  }, [cancelConnection, handleConnectToGroupFromFlow, readOnly, startConnection])
 
   const handlePaneClick = React.useCallback(() => {
     if (readOnly || canvasPanMovedRef.current) return

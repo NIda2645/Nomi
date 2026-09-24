@@ -101,7 +101,8 @@ function GenerationFlowConnectionHandle({
       data-active={active ? 'true' : undefined}
       data-snapped={snapped ? 'true' : undefined}
       // 拖拽中源把手让开：它和目标热区叠在同一条卡片边上，不让它抢走落点。
-      style={type === 'source' && connecting ? { pointerEvents: 'none' } : undefined}
+      // `hidden` 档（没选中的编组端口）同样不接指针：把手在，只为让挂在它上面的边画得出来。
+      style={type === 'source' && (connecting || affordance === 'hidden') ? { pointerEvents: 'none' } : undefined}
       className={cn(
         'generation-canvas-react-flow__handle',
         `generation-canvas-react-flow__handle--${type}`,
@@ -146,7 +147,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     if (connection.fromHandle.nodeId === node.id) return connection.fromHandle.id ?? ''
     return connection.isValid && connection.toHandle?.nodeId === node.id ? connection.toHandle.id ?? '' : ''
   })
-  // 编组端口节点（model/groupPort.ts）：不画卡面、不收线（落到编组上走框体 / 折叠卡的落点），只挂起线把手。
+  // 编组端口节点（model/groupPort.ts）：不画卡面，只挂把手。左右收 / 发两对把手都要渲染——折叠编组的
+  // 聚合边就挂在它们上面，没有把手 React Flow 不画这条边；没选中时源把手只是不可见、不接指针（见下）。
   const groupPort = Boolean(readGroupPort(node))
   const NodeComponent = getGenerationNodeComponentForNode(node)
   const size = resolveNodeVisualSize(node)
@@ -242,7 +244,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           commitPersistedChange()
         }}
       />
-      {!data.readOnly && !groupPort ? (
+      {!data.readOnly ? (
         <>
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="left" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
@@ -285,7 +287,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           )}
         </GenerationFlowNodeScope>
       ) : null}
-      {!data.readOnly && connectionAffordance !== 'hidden' ? (
+      {!data.readOnly ? (
         <>
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="left" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
