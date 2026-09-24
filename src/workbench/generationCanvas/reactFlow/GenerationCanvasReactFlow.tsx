@@ -577,9 +577,11 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
     const side = connection.sourceHandle === 'source-left' ? 'left' : 'right'
-    // 编组的「+」起的线在 onConnectStart 已进入编组待连态，这里不能再按「卡起线」覆盖掉。
-    const pending = useGenerationCanvasStore.getState()
-    if (!(pending.pendingConnectionSourceKind === 'group' && pending.pendingConnectionSourceId === connection.source)) startConnection(connection.source, side)
+    // 松手时重新起一次线不是多余的：按下把手那一刻若有菜单开着，同一次 pointerdown 会让菜单关闭并清掉待连态。
+    // 所以按连线的**起点是谁**重起，而不是看待连态——编组的「+」（端口节点 id = 编组 id）重起编组线。
+    const state = useGenerationCanvasStore.getState()
+    if (state.groups.some((group) => group.id === connection.source)) state.startGroupConnection(connection.source, side)
+    else startConnection(connection.source, side)
     completeNodeConnection(connection.target)
   }, [readOnly, startConnection])
 

@@ -9,8 +9,6 @@ vi.mock('react-i18next', () => ({
       if (key.endsWith('nodeStackCount')) return `${values?.count} 节点`
       if (key.endsWith('collapsedAria')) return `${values?.name} · ${values?.count} 节点`
       if (key.endsWith('dragWhole')) return '拖动整体'
-      if (key.endsWith('connectInput')) return '连接到整组'
-      if (key.endsWith('connectOutput')) return '从整组连接'
       return key
     },
   }),
