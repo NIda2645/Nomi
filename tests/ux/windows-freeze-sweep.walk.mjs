@@ -32,6 +32,7 @@ import { CANVAS_STAGE_SELECTOR, findCanvasBlankPoint } from './_canvasHit.mjs'
 import { addCanvasNodeFromRail } from './_canvasRail.mjs'
 import { placeCharacter } from './_directorLab.mjs'
 import { stationTimeout } from './_station-budget.mjs'
+import { expectAbsent, proveProbe } from './_assert.mjs'
 import { createProcessFixture } from './process-feedback-real-fixture.mjs'
 
 const argv = process.argv.slice(2)
@@ -76,6 +77,9 @@ function stage(sources, name) {
 }
 const images = stage(imageSources, (index, ext) => `镜头 ${index + 1}（参考）${ext}`)
 const videos = stage(videoSources, (index, ext) => `视频 ${index + 1}${ext}`)
+// 失败横幅检查的阳性对照：导入一个不认得的文件，产品必须在提示区报错。
+const notMedia = path.join(mediaDir, '说明.txt')
+fs.writeFileSync(notMedia, 'not media')
 
 const { app, win: firstWin, mainLogTail } = await launchNomiApp({
   name: 'windows-freeze-sweep',
@@ -126,6 +130,9 @@ const sampler = (async () => {
 })()
 
 const steps = []
+/** 产品报错的地方：项目横幅、节点错误、导入反馈都挂 role=alert|status。 */
+const liveRegions = () => win.locator('[role="alert"], [role="status"]')
+let bannerProof = null
 async function step(name, run, settleMs = 1500) {
   await installFrameProbe()
   await win.evaluate(() => { const probe = window.__sweepProbe; if (probe) { probe.max = 0; probe.last = performance.now() } }).catch(() => {})
@@ -142,8 +149,12 @@ async function step(name, run, settleMs = 1500) {
   const gpuGone = await app.evaluate(() => globalThis.__sweepGone.splice(0)).catch(() => [])
   // 失败只从提示区读（项目横幅 / 节点错误 / 导入反馈都是 role=alert|status），不扫整页文字——
   // 整页里有用户自己的提示词、文件名，扫它会把「文稿里写着失败」也算成失败（check:walkthroughs）。
-  const banners = await win.locator('[role="alert"], [role="status"]').allInnerTexts()
-    .then((texts) => texts.filter((text) => /失败|请检查/.test(text)).slice(0, 3)).catch(() => [])
+  // 「没看到失败」要有基线：bannerProof 由第一步里那次「导入不认得的文件」证过探针看得见真实的失败提示。
+  const failureBanners = liveRegions().filter({ hasText: /失败|请检查/ })
+  const banners = bannerProof
+    ? await expectAbsent(failureBanners, { provenBy: bannerProof, message: `「${name}」之后不该有失败横幅` }).then(
+      () => [], () => failureBanners.allInnerTexts().then((texts) => texts.slice(0, 3), () => ['（横幅在，但读不到文字）']))
+    : ['（失败横幅检查没有基线：第一步的阳性对照没成立）']
   const result = { name, ms: Date.now() - started, frameGap, maxMain: current.maxMain, gpuGone, banners, error }
   result.ok = !error && gpuGone.length === 0 && banners.length === 0 && frameGap !== null && frameGap <= FREEZE_MS
   steps.push(result)
@@ -209,6 +220,14 @@ try {
     win = projectWindow()
     await win.getByRole('button', { name: '生成', exact: true }).click({ timeout: stationTimeout({ operations: 2 }) })
     await win.locator(CANVAS_STAGE_SELECTOR).first().waitFor({ state: 'visible', timeout: stationTimeout({ operations: 2 }) })
+    // 阳性对照：用户真会做的一件事——导入一个不认得的文件。产品必须在提示区报错；
+    // 看得见它，后面每一步的「没有失败横幅」才不是恒真的空话。看完点掉，不留在界面上。
+    const chooser = win.waitForEvent('filechooser', { timeout: stationTimeout({ operations: 1 }) })
+    await win.getByRole('button', { name: '导入文件' }).first().click()
+    await (await chooser).setFiles([notMedia])
+    const notice = liveRegions().filter({ hasText: '不是 Nomi 认得的媒体格式' })
+    bannerProof = await proveProbe(notice, '导入 .txt 时提示区报「不是 Nomi 认得的媒体格式」')
+    await notice.first().locator('button').last().click()
   })
   if (held) startHandleHolder(projectsDir)
   const box = await win.locator(CANVAS_STAGE_SELECTOR).first().boundingBox()
