@@ -487,8 +487,8 @@ function releaseDirFor(lease: WorkspaceManifestLockLease): string {
  * 挪不走分两种：锁已经不是我的（被回收 / 被改）→ 如实抛 Lost；owner.json 此刻被同步盘 /
  * 杀毒开着（Windows 上改名直接 EPERM）→ 这不是「丢了锁」，不能把一次已提交的保存报成失败。
  * 先按共享冲突短退避重试；仍挪不走就在这里交出所有权（nonce 离开在持表，本进程下一次取锁会
- * 直接收回），盘上的目录交给后台补收——它躺在同步目录里，另一台电脑会把它同步过去当成「别的
- * 主机正持有」，所以不能等到下次取锁才收。
+ * 直接收回），盘上的目录交给后台补收（0.25 / 1 / 4 / 15 / 60 秒）——它躺在同步目录里，另一台电脑会
+ * 把它同步过去当成「别的主机正持有」，所以不能等到下次取锁才收。
  */
 export function releaseWorkspaceManifestLock(lease: WorkspaceManifestLockLease): void {
   try {
@@ -518,8 +518,6 @@ export function releaseWorkspaceManifestLock(lease: WorkspaceManifestLockLease):
 }
 
 const ORPHANED_LOCK_REAP_DELAYS_MS = [250, 1_000, 4_000, 15_000, 60_000];
-const orphanedLeases = new Set<WorkspaceManifestLockLease>();
-let orphanedLockExitHookInstalled = false;
 
 /** 收一个已交出所有权、但目录还留在盘上的锁。返回 true = 不必再试（已收走，或它已经不是这把锁）。 */
 function reapOrphanedLock(lease: WorkspaceManifestLockLease): boolean {
@@ -542,17 +540,9 @@ function reapOrphanedLock(lease: WorkspaceManifestLockLease): boolean {
 }
 
 function scheduleOrphanedLockReap(lease: WorkspaceManifestLockLease, attempt = 0): void {
-  orphanedLeases.add(lease);
-  if (!orphanedLockExitHookInstalled) {
-    orphanedLockExitHookInstalled = true;
-    process.once("exit", () => {
-      for (const orphan of orphanedLeases) reapOrphanedLock(orphan);
-    });
-  }
   if (attempt >= ORPHANED_LOCK_REAP_DELAYS_MS.length) return;
   const timer = setTimeout(() => {
-    if (reapOrphanedLock(lease)) orphanedLeases.delete(lease);
-    else scheduleOrphanedLockReap(lease, attempt + 1);
+    if (!reapOrphanedLock(lease)) scheduleOrphanedLockReap(lease, attempt + 1);
   }, ORPHANED_LOCK_REAP_DELAYS_MS[attempt]);
   timer.unref?.();
 }

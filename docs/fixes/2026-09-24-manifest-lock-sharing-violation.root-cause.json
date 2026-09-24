@@ -186,7 +186,7 @@
   },
   "migration": "No data migration. A lock orphaned by an older build is reclaimed on the next acquire once that older process has exited (pid dead), as before; locks orphaned by this build are reclaimed immediately in-process and reaped in the background.",
   "residual_risks": [
-    "Another live Nomi process on the same machine (e.g. an MCP helper) still waits until this process reaps or reclaims its orphaned lock (reap retries at 0.25 s, 1 s, 4 s, 15 s, 60 s and at process exit).",
+    "Another live Nomi process on the same machine (e.g. an MCP helper) still waits until this process reaps or reclaims its orphaned lock (reap retries at 0.25 s, 1 s, 4 s, 15 s and 60 s; a process that quits within that window leaves the directory for the next acquire).",
     "A lock left by a crashed machine B in a synced folder still blocks machine A ('owned on another host'); cross-host stale-lock policy is unchanged and belongs to the multi-device design.",
     "PID reuse by an unrelated live process after a crash still keeps a dead owner's lock alive; processStartedAtMs is recorded but not compared.",
     "Event-log appends are still dropped (best-effort) while a holder has log-0.jsonl open.",

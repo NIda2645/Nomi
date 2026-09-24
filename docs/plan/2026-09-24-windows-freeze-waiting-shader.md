@@ -55,7 +55,7 @@
 | 文件 | 改动 |
 |---|---|
 | `electron/jsonFile.ts` | 抽出 `retryOnSharingViolation` / `isSharingViolation`（唯一一份重试策略），`renameSyncWithRetry` 改为调用它 |
-| `electron/workspace/workspaceManifestLock.ts` | 本进程在持锁表（按 nonce，挂 globalThis）；「记录是本进程、但没有在持的操作」＝残留，立即收回（锁与隔离区都适用）；读 owner.json 遇共享冲突 → 忙，绝不强拆；释放遇共享冲突先重试，仍失败就交出所有权、后台补收（0.25/1/4/15/60 s + 进程退出时），不再把已提交的事务报成失败；清理失败不再盖掉原错误、不再挡住下一次取锁；超龄候选目录按年龄回收 |
+| `electron/workspace/workspaceManifestLock.ts` | 本进程在持锁表（按 nonce，模块级集合）；「记录是本进程、但没有在持的操作」＝残留，立即收回（锁与隔离区都适用）；读 owner.json 遇共享冲突 → 忙，绝不强拆；释放遇共享冲突先重试，仍失败就交出所有权、后台补收（0.25/1/4/15/60 s），不再把已提交的事务报成失败；清理失败不再盖掉原错误、不再挡住下一次取锁；超龄候选目录按年龄回收 |
 | `electron/workspace/workspaceRegistry.ts` | 注册表锁释放时的 rmdir 走同一重试 |
 
 **证据**：真应用「模拟同步盘占用」巡检（新文件一出现就只读共享打开 300 ms）修复后：无锁错误、无「项目保存失败」、回项目库正常、GPU 零崩溃、占用结束后无残留锁目录（只剩一个关窗前一刻的候选目录，不挡任何人，下次取锁按年龄回收）。单测 7 条（其中一条起真实 PowerShell 进程占文件）修复前全红。根因合同 [`docs/fixes/2026-09-24-manifest-lock-sharing-violation.root-cause.json`](../fixes/2026-09-24-manifest-lock-sharing-violation.root-cause.json)。
