@@ -9,8 +9,10 @@
 //      ——拒收也要留痕，不然「为什么这条没进来」又是一个查不到的问题。
 //   ② **限流**：IPC 是信任边界，而每一行都是主进程上一次同步写盘。渲染层某个 effect 一旦进了循环，
 //      console.error 只是刷屏，这里会变成主进程卡顿 + 把当天日志挤满。每个事件每分钟最多 20 行、
-//      全部事件合计 200 行；超了只记一行 `renderer-log-suppressed`。
+//      全部事件合计 200 行；超了只记一行 `renderer-log-suppressed`。**按事件分开计数**是有意的：
+//      一批坏图片刷 `image-load-failed` 时，同一分钟里那一行 `project-save-failed` 不能被挤掉——那才是要的证据。
 //   ③ **分级落盘**：warn / error 进通用日志（scope=renderer）；crash 走崩溃道（崩溃文件 + 通用日志）。
+import { z } from "zod";
 import { logCrash } from "../crashLog";
 import { logError, logWarn, type LogFields } from "./logger";
 import {
@@ -20,7 +22,6 @@ import {
   RENDERER_LOG_MAX_TEXT_CHARS,
   type RendererLogEntry,
   type RendererLogError,
-  type RendererLogFieldValue,
 } from "../shared/contracts/rendererLog";
 
 export const RENDERER_LOG_CHANNEL = "nomi:log:renderer";
@@ -29,60 +30,25 @@ const WINDOW_MS = 60_000;
 const MAX_LINES_PER_EVENT = 20;
 const MAX_LINES_TOTAL = 200;
 
-type ParseResult = { ok: true; entry: RendererLogEntry } | { ok: false; reason: string };
+const text = z.string().max(RENDERER_LOG_MAX_TEXT_CHARS);
 
-function isText(value: unknown): value is string {
-  return typeof value === "string" && value.length <= RENDERER_LOG_MAX_TEXT_CHARS;
-}
+/** 渲染层来的报文不可信：按封闭形状收，任何一项不合格就整条拒收（不做「能收多少收多少」）。 */
+const rendererLogEntrySchema: z.ZodType<RendererLogEntry> = z.object({
+  level: z.enum(["warn", "error", "crash"]),
+  event: z.string().regex(RENDERER_LOG_EVENT_PATTERN),
+  error: z.object({ name: text, message: text, code: text.optional(), stack: text.optional() }).optional(),
+  fields: z
+    .record(z.string().regex(RENDERER_LOG_FIELD_KEY_PATTERN), z.union([text, z.number().finite(), z.boolean(), z.null()]))
+    .refine((fields) => Object.keys(fields).length <= RENDERER_LOG_MAX_FIELDS)
+    .optional(),
+});
 
-function parseError(raw: unknown): RendererLogError | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  if (!isText(record.name) || !isText(record.message)) return null;
-  if (record.code !== undefined && !isText(record.code)) return null;
-  if (record.stack !== undefined && !isText(record.stack)) return null;
-  return {
-    name: record.name,
-    message: record.message,
-    ...(record.code === undefined ? {} : { code: record.code }),
-    ...(record.stack === undefined ? {} : { stack: record.stack }),
-  };
-}
-
-function parseFields(raw: unknown): Record<string, RendererLogFieldValue> | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const entries = Object.entries(raw as Record<string, unknown>);
-  if (entries.length > RENDERER_LOG_MAX_FIELDS) return null;
-  const fields: Record<string, RendererLogFieldValue> = {};
-  for (const [key, value] of entries) {
-    if (!RENDERER_LOG_FIELD_KEY_PATTERN.test(key)) return null;
-    const scalar =
-      value === null || typeof value === "boolean" || isText(value) || (typeof value === "number" && Number.isFinite(value));
-    if (!scalar) return null;
-    fields[key] = value as RendererLogFieldValue;
-  }
-  return fields;
-}
-
-/** 渲染层来的报文不可信：逐项按封闭形状收，任何一项不合格就整条拒收（不做「能收多少收多少」）。 */
-export function parseRendererLogEntry(raw: unknown): ParseResult {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, reason: "not-an-object" };
-  const record = raw as Record<string, unknown>;
-  if (record.level !== "warn" && record.level !== "error" && record.level !== "crash") return { ok: false, reason: "bad-level" };
-  if (typeof record.event !== "string" || !RENDERER_LOG_EVENT_PATTERN.test(record.event)) return { ok: false, reason: "bad-event" };
-  const error = record.error === undefined ? undefined : parseError(record.error);
-  if (error === null) return { ok: false, reason: "bad-error" };
-  const fields = record.fields === undefined ? undefined : parseFields(record.fields);
-  if (fields === null) return { ok: false, reason: "bad-fields" };
-  return {
-    ok: true,
-    entry: {
-      level: record.level,
-      event: record.event,
-      ...(error ? { error } : {}),
-      ...(fields ? { fields } : {}),
-    },
-  };
+/** 拒收原因取第一处不合格的顶层字段（`bad-event` / `bad-fields`…），整条不是对象就是 `bad-entry`。 */
+export function parseRendererLogEntry(raw: unknown): { ok: true; entry: RendererLogEntry } | { ok: false; reason: string } {
+  const parsed = rendererLogEntrySchema.safeParse(raw);
+  if (parsed.success) return { ok: true, entry: parsed.data };
+  const field = parsed.error.issues[0]?.path[0];
+  return { ok: false, reason: field === undefined ? "bad-entry" : `bad-${String(field)}` };
 }
 
 /**

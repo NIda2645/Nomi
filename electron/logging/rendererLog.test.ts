@@ -152,6 +152,16 @@ describe("限流（IPC 是信任边界，每一行都是主进程一次同步写
     record({ level: "warn", event: "flood-probe", fields: { i: 999 } });
     expect(logLines("flood-probe i=999")).toHaveLength(1);
   });
+
+  it("按事件分开计数：一个事件刷屏挤不掉同一分钟里别的失败（坏图刷屏时那一行保存失败必须还在）", () => {
+    const record = createRendererLogRecorder(() => 5_000_000);
+    for (let i = 0; i < 300; i += 1) record({ level: "warn", event: "image-flood-probe", fields: { i } });
+    const saved = linesWrittenBy("save-after-flood-probe", () =>
+      record({ level: "error", event: "save-after-flood-probe", error: { name: "Error", message: "disk" } }),
+    );
+    expect(saved).toHaveLength(1);
+    expect(logLines(/renderer\s+image-flood-probe i=/)).toHaveLength(20);
+  });
 });
 
 describe("IPC 注册", () => {

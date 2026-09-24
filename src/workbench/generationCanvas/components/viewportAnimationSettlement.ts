@@ -8,9 +8,6 @@ export type ViewportAnimationSettlement = {
 
 export type ViewportAnimationSettlementErrorReporter = (error: unknown) => void
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-}
 
 function reportViewportAnimationSettlementError(error: unknown): void {
   const browserReportError = (globalThis as typeof globalThis & {
@@ -31,7 +28,7 @@ function safelyReportSettlementError(
     reportError(error)
   } catch (reportingError) {
     // Error reporting must never become a second viewport-command failure; the log owner never throws.
-    logRendererError('viewport-settlement-reporter-failed', reportingError, { originalError: describeError(error) })
+    logRendererError('viewport-settlement-reporter-failed', reportingError, { originalError: String(error) })
   }
 }
 
