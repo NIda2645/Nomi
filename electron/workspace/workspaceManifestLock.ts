@@ -226,7 +226,7 @@ function removeReleasedLocks(nomiDir: string): void {
 
 /** 发布失败留下、超过初始化宽限期仍在的候选目录：没有任何一次取锁还会用到它，按年龄回收。 */
 function removeAbandonedCandidates(nomiDir: string, nowMs: number, initializationGraceMs: number): void {
-  let names: string[] = [];
+  let names: string[];
   try {
     names = fs.readdirSync(nomiDir).filter((name) => name.startsWith(CANDIDATE_PREFIX));
   } catch {
