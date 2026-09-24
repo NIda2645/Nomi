@@ -6,6 +6,7 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { JsonlSessionRepo, type Entry, type JsonValue } from '@earendil-works/pi-agent-core/harness/session';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
 import { createLaneFileSystem } from '../../electron/agentLane/laneFileSystem.mjs';
+import { LANE_IDENTITY_ROOT } from '../../electron/agentLane/laneSession.mjs';
 import { deriveLaneTrace } from '../../electron/agentLane/laneTrace.mjs';
 import { applyTraceRedactions, collectTraceRedactions, LANE_TRACE_REDACTIONS_NOTE } from '../../electron/agentLane/laneTraceRedaction.mjs';
 
@@ -23,7 +24,7 @@ function content(entry: Entry): string {
 test('a native custom location note protects a cold trace rebuild after the known key is unavailable', async () => {
   await mkdir('.tmp', { recursive: true });
   const projectDir = await mkdtemp(resolve('.tmp/trace-redaction-cold-'));
-  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir), sessionsRoot: join(projectDir, 'sessions') });
+  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir, LANE_IDENTITY_ROOT), sessionsRoot: join(projectDir, 'sessions') });
   const context = BACKGROUND_CONTEXT;
   const secret = 'fixture-credential-with-no-standard-prefix';
   try {

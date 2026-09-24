@@ -6,6 +6,7 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { JsonlSessionRepo } from '@earendil-works/pi-agent-core/harness/session';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
 import { createLaneFileSystem } from '../../electron/agentLane/laneFileSystem.mjs';
+import { LANE_IDENTITY_ROOT } from '../../electron/agentLane/laneSession.mjs';
 import { deriveLaneTrace } from '../../electron/agentLane/laneTrace.mjs';
 
 test('official pi 0.85.1 conformance messages survive native JSONL reopen and trace derivation', async () => {
@@ -15,7 +16,7 @@ test('official pi 0.85.1 conformance messages survive native JSONL reopen and tr
   assert.match(fixture.upstreamVersion, /0\.85\.1/);
   await mkdir('.tmp', { recursive: true });
   const projectDir = await mkdtemp(resolve('.tmp/trace-official-format-'));
-  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir), sessionsRoot: join(projectDir, 'sessions') });
+  const repo = new JsonlSessionRepo({ fileSystem: createLaneFileSystem(projectDir, LANE_IDENTITY_ROOT), sessionsRoot: join(projectDir, 'sessions') });
   const context = BACKGROUND_CONTEXT;
   try {
     const session = await repo.create({ cwd: projectDir }, context);

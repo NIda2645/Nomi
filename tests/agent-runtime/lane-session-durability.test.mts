@@ -18,7 +18,7 @@ import { getOrThrow } from '@earendil-works/pi-agent-core';
 
 import { LANE_READ_TOOL_TIMEOUT_MS } from '../../electron/shared/agentLane/laneToolContract.js';
 import { createLaneFileSystem, LANE_DIR_MODE, LANE_FILE_MODE } from '../../electron/agentLane/laneFileSystem.mjs';
-import { laneSessionsRoot } from '../../electron/agentLane/laneSession.mjs';
+import { LANE_IDENTITY_ROOT, laneSessionsRoot } from '../../electron/agentLane/laneSession.mjs';
 import { createDocumentLaneTools } from '../../electron/agentLane/laneDocumentTools.js';
 import type { LaneToolDescriptor } from '../../electron/agentLane/laneRuntimePort.js';
 import { createDocumentPort, createLaneFixture, FIXTURE_DESCRIBE } from './laneFixture.mjs';
@@ -66,7 +66,7 @@ test('the transcript is owner-only on disk — it holds the user’s manuscript,
 
 test('renameFile stays pi’s own: an atomic same-filesystem replace, never a copy+delete', async (t) => {
   const fixture = await createLaneFixture(t, []);
-  const fileSystem = createLaneFileSystem(fixture.projectDir);
+  const fileSystem = createLaneFileSystem(fixture.projectDir, LANE_IDENTITY_ROOT);
 
   // ① 结构断言：我们**没有**改写 `renameFile`。0.84.0 起 pi 要求它是「同文件系统替换，
   //    不跨卷复制」（`harness/types.d.ts:189`）；一个满足签名但底层是 copy+delete 的实现

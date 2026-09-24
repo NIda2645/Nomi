@@ -59,3 +59,22 @@
 ## 关于 `electron` 顶层这一簇
 
 `electron` 这一簇的三份合同分别是 `2026-09-21-run-path-prompt-projection`（`electron/runtime.ts` 的提示词投影）、`2026-09-22-vendor-connection-identity`（连接身份）和本次锁修复（`electron/jsonFile.ts`）。三者只是都碰了 `electron/` 顶层文件，被门岗按目录归到了同一个模块键，并不共享结构缺陷。本次对 `electron/jsonFile.ts` 的改动，是把「Windows 共享冲突重试」收成唯一一份策略（`retryOnSharingViolation`），它不是第三次修同一处。结论：顶层这一簇不需要结构改动；门岗按两级目录分桶，把 `electron/` 下所有顶层文件归为一类，这个粒度偏粗，已如实记录，不在这里改门岗。
+
+## 补充：`electron/agentLane` 这一簇（同日第三次触发）
+
+同一天真模型走查（Windows 11，apimart DeepSeek V4 Pro）发现：Windows 上 Agent 面板**点发送没有任何反应**。合同 `2026-09-24-lane-identity-host-path` 让 `electron/agentLane` 在 2026-09-18 到 2026-09-24 之间累计到 **18 份**根因合同。这个数字本身就是结论的一半：这一层一周里被改了 18 次，门岗要求的「第三份合同先出结构评审」在这一层早就不是第三份了。
+
+**本次这一份和前 17 份是不是同根：不是。** 前 17 份的类根因集中在三件事上（按合同的 `class_root` 归并）：
+
+| 归并后的类根因 | 代表合同 |
+|---|---|
+| 同一个能力被重述多遍（动词声明 / 传输翻译 / 契约 schema / handler / 投影），靠手抄保持一致 | `verb-transport-translation-derived`、`verb-host-input-conformance`、`draft-shots-drops-declared-model-identity`、`shot-envelope-fields-die-in-hand-written-projections`、`model-face-refers-to-fields-the-model-cannot-fill` |
+| 同一个语义有第二个家（分镜方案、权限档位、「在等用户」、任务身份） | `agent-storyboard-single-ledger`、`agent-plan-one-home`、`permission-tier-single-owner`、`waiting-for-user-one-owner`、`core-task-identity` |
+| 生命周期不同的东西共用一份输入/身份（历史 vs 运行时、界面寿命 vs 已批准的执行、Stop 前后的输入） | `pi-history-read-side`、`original-input-replay`、`stop-pre-admission`、`storyboard-confirmation-target` |
+
+本次是第四类，而且和本文前两节同根：**平台假设**。会话身份 `/nomi-lane/<名字>` 被当成「POSIX 上的绝对路径」交给宿主 `path.resolve`，Windows 给它补了盘符；外加准入步骤把「无法接收输入」表达成静默的 null。它之所以活过 16 天，不是这一层的结构让它难修（修法是在 pi 拿到的唯一 `FileSystem` 上加一行），而是**这一层的全部测试从来没在 Windows 上跑过**——`tests/agent-runtime` 在 Windows 上用 Electron 自带 Node 跑，至今仍有约 19 条红，从没人看过（分诊中）。
+
+结构结论：
+
+- 平台这一类：修在最早边界（`createLaneFileSystem`）即可，不需要改 agentLane 的分层；需要补的是 Windows 验证链（`docs/release-process.md` §4 已加「Windows 上 Agent 真能说话」一项；agent-runtime 进 win-gate 等分诊结论）。教训见 `docs/lessons/mac-only-testing-ships-windows-blind.md`。
+- 前三类：18 份里 17 份指向「重述与第二个家」，这是真正的结构问题，本评审**没有**逐份核对其修复是否已经把重述收成单一来源，也不在本 PR 处理。建议单独做一次 agentLane 结构评审：以 `docs/engineering/concept-owners.json` 为底，列出这一层每个概念的 owner 与所有重述点，看 18 份合同之后还剩几处手抄。
