@@ -197,3 +197,25 @@ describe("workspace registry", () => {
     expect(() => rememberWorkspace(settingsRoot, noRoot)).toThrow(/rootPath/i);
   });
 });
+
+describe("registry lock release under a transient Windows sharing violation", () => {
+  it("retries removing the lock directory instead of leaving it for the next call to spin on", () => {
+    const settingsRoot = makeTempDir();
+    const lockDir = `${recentWorkspacesPath(settingsRoot)}.lock`;
+    const realRmdir = fs.rmdirSync.bind(fs);
+    let failures = 2;
+    const rmdirSpy = vi.spyOn(fs, "rmdirSync").mockImplementation(((target: fs.PathLike, options?: fs.RmDirOptions) => {
+      if (path.resolve(String(target)) === path.resolve(lockDir) && failures > 0) {
+        failures -= 1;
+        throw Object.assign(new Error(`EPERM: operation not permitted, rmdir '${lockDir}'`), { code: "EPERM" });
+      }
+      return realRmdir(target, options);
+    }) as typeof fs.rmdirSync);
+
+    rememberWorkspace(settingsRoot, record("project-1", makeTempDir()));
+
+    expect(failures).toBe(0);
+    expect(fs.existsSync(lockDir)).toBe(false);
+    rmdirSpy.mockRestore();
+  });
+});

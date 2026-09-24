@@ -30,20 +30,31 @@ function sleepSync(ms: number): void {
  * 高频写场景（模型启停连点、批量 upsert）撞锁概率高，重试把它从「用户看到操作失败」
  * 变成「几十毫秒内静默成功」；真持锁不放（>~400ms）才把原错误如实抛出。
  */
-const RENAME_RETRY_DELAYS_MS = [10, 30, 60, 100, 200];
+const SHARING_VIOLATION_RETRY_DELAYS_MS = [10, 30, 60, 100, 200];
 
-export function renameSyncWithRetry(from: string, to: string): void {
+/** 别的进程（杀毒 / 索引器 / 同步盘）短暂开着这个文件或它下面的文件时，Windows 给的三种错误码。 */
+export function isSharingViolation(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "EPERM" || code === "EBUSY" || code === "EACCES";
+}
+
+/**
+ * 同步文件操作撞上共享冲突时按短退避重试（总预算约 400ms），之后把原错误如实抛出。
+ * 文件与目录的 rename / 删除 / 读取都用这一份策略——不各自手写重试。
+ */
+export function retryOnSharingViolation<T>(operation: () => T): T {
   for (let attempt = 0; ; attempt++) {
     try {
-      fs.renameSync(from, to);
-      return;
+      return operation();
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException)?.code;
-      const retriable = code === "EPERM" || code === "EBUSY" || code === "EACCES";
-      if (!retriable || attempt >= RENAME_RETRY_DELAYS_MS.length) throw error;
-      sleepSync(RENAME_RETRY_DELAYS_MS[attempt]);
+      if (!isSharingViolation(error) || attempt >= SHARING_VIOLATION_RETRY_DELAYS_MS.length) throw error;
+      sleepSync(SHARING_VIOLATION_RETRY_DELAYS_MS[attempt]);
     }
   }
+}
+
+export function renameSyncWithRetry(from: string, to: string): void {
+  retryOnSharingViolation(() => fs.renameSync(from, to));
 }
 
 export type WriteJsonFileAtomicOptions = Readonly<{

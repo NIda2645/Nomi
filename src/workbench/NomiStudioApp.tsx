@@ -62,6 +62,7 @@ import { useSpendConfirmStore } from './generationCanvas/spend/spendConfirm'
 import { runAssetSurfaceMigrations } from './assets/assetSurfaceMigration'
 import { ProductionCanvasLandingHost } from './production/ProductionCanvasLandingHost'
 import { ProjectHydrationSupersededError, createProjectCanvasReadSurfaceCoordinator, registerProjectCanvasReadSurface } from './project/projectCanvasReadSurface'
+import { openCreatedProject, shareInFlight, type ProjectCreationOutcome } from './project/projectCreationFlight'
 import { hydrateWorkbenchProjectWithRecovery } from './project/projectHydrationRecovery'
 import { runProjectAssetHealthCheck } from './generationCanvas/runner/projectAssetHealthCheck'
 import { abandonPendingCanvasWrite } from './generationCanvas/events/canvasWriteBoundary'
@@ -415,14 +416,17 @@ export default function NomiStudioApp(): JSX.Element {
   // 由调用方显式声明（审计 A11）；seedKey 决定是否参与空壳 GC（带 seedKey 永不回收）。
   // 桌面端 createLocalProject 经 IPC 落到 ~/Documents/Nomi Projects 自动文件夹，Web 端落
   // localStorage；要绑定自选目录走「打开文件夹」（openWorkspaceFolder，另一条带 rootPath 的路径）。
+  // 单飞 + 「被顶掉不算失败」两条规则住在 projectCreationFlight，所有创建入口经这里得到同一份保证。
+  const creationFlightRef = React.useRef<Promise<ProjectCreationOutcome> | null>(null)
   const createAndOpenProject = React.useCallback(
-    async (spec: ProjectCreationSpec): Promise<{ projectId: string; opened: boolean }> => {
-      useWorkbenchStore.getState().setWorkspaceMode(spec.workspaceMode)
-      const project = createLocalProject(spec.name, spec.templateId, spec.seedKey ? { seedKey: spec.seedKey } : {})
-      refreshProjects()
-      const opened = await hydrateProject(project.id)
-      return { projectId: project.id, opened }
-    },
+    (spec: ProjectCreationSpec): Promise<ProjectCreationOutcome> =>
+      shareInFlight(creationFlightRef, async () => {
+        useWorkbenchStore.getState().setWorkspaceMode(spec.workspaceMode)
+        const project = createLocalProject(spec.name, spec.templateId, spec.seedKey ? { seedKey: spec.seedKey } : {})
+        refreshProjects()
+        const opened = await openCreatedProject(() => hydrateProject(project.id))
+        return { projectId: project.id, opened }
+      }),
     [hydrateProject, refreshProjects],
   )
 
