@@ -4,6 +4,7 @@ import type { GenerationCanvasNode } from "../model/generationCanvasTypes";
 import { GENERATION_NODE_PLUGIN_BY_KIND } from "./registry";
 import { readNodeAspectRatio } from "./aspectRatio";
 import { isCardRenderKind, resolveNodeRenderKind } from "./resolveRenderKind";
+import { readGroupPort } from "../model/groupPort";
 
 export type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
@@ -359,6 +360,8 @@ const DEFAULT_VISUAL_SIZE = { width: 320, height: 360 };
 export function resolveNodeVisualSize(
     node: Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">,
 ): { width: number; height: number } {
+    // 编组端口节点（model/groupPort.ts）覆盖的是框体 / 折叠卡本身，尺寸就是投影时给的那个，不走卡片规则。
+    if (node.size && readGroupPort(node)) return { width: node.size.width, height: node.size.height };
     if (node.kind === "shot_table") {
         const size = node.size ?? GENERATION_NODE_PLUGIN_BY_KIND.shot_table.defaultSize;
         const bounds = getNodeSizeBounds(node.kind);

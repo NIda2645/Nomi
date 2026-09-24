@@ -185,6 +185,12 @@ export type ConnectionCreateKind = (typeof CONNECTION_CREATE_KINDS)[number]
  * 2026-09-24 用户反馈「视频无法拖出下一个连线」：v0.22 起每张能连线的卡都有「+」圈，但松手处的菜单还按
  * 旧名单只认 text/image，视频拖出去松手直接被取消，连线凭空消失。
  */
+/** 从一个编组的右侧「+」拖到空白处：组内任一成员接得出的种类都列出（落下后组内每个成员各连一条，收不下的由连线侧说明）。 */
+export function connectionCreateKindsForSources(sources: readonly GenerationCanvasNode[]): ConnectionCreateKind[] {
+  const kinds = new Set(sources.flatMap((source) => connectionCreateKindsForSource(source)))
+  return CONNECTION_CREATE_KINDS.filter((kind) => kinds.has(kind))
+}
+
 export function connectionCreateKindsForSource(source: GenerationCanvasNode): ConnectionCreateKind[] {
   const asset = referenceAssetKindForNode(source)
   return CONNECTION_CREATE_KINDS.filter((kind) => {

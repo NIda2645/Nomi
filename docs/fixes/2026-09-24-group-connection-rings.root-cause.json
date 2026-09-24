@@ -1,0 +1,240 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-group-connection-rings",
+  "problem_type": "Group + rings are dead on collapsed groups and missing on expanded frames",
+  "symptom": "v0.22 user feedback: \"after grouping, show + on the left and right too\". A real-app probe on 2026-09-24 also showed that on a collapsed group card the two + buttons light up on press, but dragging draws no line and creates no edge, and a click on the card body falls through to the canvas pane.",
+  "direct_cause": "Since the React Flow migration a connection can only start from a Handle inside a Flow node. The collapsed card kept legacy MagneticConnectionHandle buttons that only set pending state, and no gesture in the React Flow canvas completes that state. The card body inherited pointer-events:none from the ViewportPortal layer. Expanded frames had no + at all.",
+  "class_root": "A connection entry was drawn outside the one gesture engine (React Flow Handles), so nothing owned completing it. This is the same class as the video ring that had no create menu.",
+  "affected_population": [
+    "Users who collapse a group and try to connect from it",
+    "Users who want to feed a whole group to the next node after grouping",
+    "Users trying to select or drag a collapsed group card"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/model/selectedGroup.ts",
+    "src/workbench/generationCanvas/model/groupPort.ts",
+    "src/workbench/generationCanvas/reactFlow/groupConnectionPorts.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+    "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+    "src/workbench/generationCanvas/components/CanvasGroupProjectionLayer.tsx",
+    "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+    "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "docs/fixes/2026-09-24-group-connection-rings.root-cause.json"
+  ],
+  "entry_points": [
+    "Collapsed group card: click and + drag",
+    "Expanded frame: + drag after selecting the group",
+    "Drop of a group-origin line on a card, on a group, or on blank canvas"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Handle placement, group selection and group connection materialization are application-owned; React Flow only supplies Handles and connection start/end events.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/model/selectedGroup.ts",
+    "tests": [
+      "src/workbench/generationCanvas/model/selectedGroup.test.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+      "src/workbench/generationCanvas/components/CollapsedGroupCard.test.ts"
+    ],
+    "why": "selectedGroup owns when a group counts as selected, and the ring shape stays in the visual contract. Every group connection goes through React Flow Handles on a group port node and the existing store group-connection path."
+  },
+  "invariants": [
+    "Every + ring on the canvas is a React Flow Handle; no connection entry lives outside the Flow gesture.",
+    "A group shows its + ring only while it is the selected group (all members selected, or the frame / collapsed card itself selected).",
+    "Right + = every member feeds the drop target; left + = the drop target feeds every member; both reuse connectToGroup materialization.",
+    "Selecting only one member keeps the single-card connection unchanged."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/canvasFrame/states/01-frame.tsx",
+      "symbol": "CollapsedGroupCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CanvasGroupProjectionLayer.tsx",
+      "symbol": "CollapsedGroupCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "onSelectEmptyFrame"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "symbol": "readGroupPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "resolveSelectedGroupId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "symbol": "readGroupPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "readGroupPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "CanvasGroupProjectionLayer"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "symbol": "readGroupPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "startGroupConnection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "startGroupConnection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "onSelectEmptyFrame"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "projectGroupConnectionPorts"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/groupConnectionPorts.ts",
+      "symbol": "withGroupPort"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "connectionCreateKindsForSources"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "startGroupConnection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "connectionCreateKindsForSource"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+      "symbol": "CardStackPeeks"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/groupPort.ts",
+      "symbol": "withGroupPort"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/model/selectedGroup.ts",
+      "symbol": "resolveSelectedGroupId"
+    }
+  ],
+  "door_reduction": {
+    "before": 20,
+    "after": 20,
+    "why_not": "Read doors only consume the port flag or the selection result. The write doors are distinct gestures (start, menu create, selection) that all feed the one store group-connection path."
+  },
+  "generality_proof": "Group ports are projected for every collapsed group and for whichever expanded group is selected, so the rule covers any group without a list. The selection rule is derived from membership, not from how the group was created.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/model/selectedGroup.ts",
+      "symbol": "resolveSelectedGroupId",
+      "responsibility": "Single definition of the selected group."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/groupConnectionPorts.ts",
+      "symbol": "projectGroupConnectionPorts",
+      "responsibility": "Project the group port nodes that carry the group Handles."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+      "symbol": "resolveGenerationFlowConnectionAffordance",
+      "responsibility": "Decide the ring shape for cards and group ports; group ports show a ring only while selected."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+      "entry_point": "legacy MagneticConnectionHandle buttons",
+      "disposition": "enforced",
+      "evidence": "Deleted together with NodeConnectionHandles.tsx; the card now only selects and drags, and the ring comes from the port node."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "entry_point": "handleConnectEnd drop order",
+      "disposition": "enforced",
+      "evidence": "Drops on a card or group are resolved before the create-menu check, so sources that cannot create a node still connect to cards."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any future connection entry drawn outside React Flow Handles would again look usable and do nothing.",
+    "same_class_scan": [
+      "rg -n \"startConnection\\(|startGroupConnection\\(\" src/workbench/generationCanvas",
+      "rg -n \"pointer-events-none\" src/workbench/generationCanvas/components",
+      "Real-app probe: collapsed and expanded group, right / left / blank / Delete / undo"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "invariant": "Rings are Handles decided by the visual contract, never standalone buttons.",
+    "failure_mode": "The CollapsedGroupCard test fails if a legacy handle reappears on the card; the visual contract tests fail if a group port shows a ring while unselected.",
+    "exception_policy": "none",
+    "strategy": "Group port nodes inside React Flow plus the existing store group connection.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/groupConnectionPorts.ts",
+      "src/workbench/generationCanvas/model/selectedGroup.ts",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/model/selectedGroup.test.ts",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts",
+    "src/workbench/generationCanvas/components/CollapsedGroupCard.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/NodeConnectionHandles.tsx",
+      "src/workbench/generationCanvas/components/useCollapsedGroupConnectionSource.ts",
+      "src/workbench/generationCanvas/styles/generationCanvas.css"
+    ],
+    "rationale": "The legacy handle component, its hook and its global CSS are deleted in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency changes.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes; group ports exist only in the canvas projection.",
+  "residual_risks": [
+    "Group-to-group drops are cancelled on purpose (N x M edges are unreadable). If users ask for it, it needs its own decision."
+  ]
+}

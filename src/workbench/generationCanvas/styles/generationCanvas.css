@@ -298,34 +298,4 @@
   color: var(--nomi-paper);
 }
 
-.generation-canvas-v2-node__magnetic-handle-icon {
-  --connection-handle-reveal-x: 0px;
-  opacity: 0;
-  transform: translate(calc(-50% + var(--connection-handle-reveal-x)), -50%) scale(0.86);
-}
-
-.generation-canvas-v2-node__magnetic-handle[data-side='left'] .generation-canvas-v2-node__magnetic-handle-icon {
-  --connection-handle-reveal-x: 28px;
-}
-
-.generation-canvas-v2-node__magnetic-handle[data-side='right'] .generation-canvas-v2-node__magnetic-handle-icon {
-  --connection-handle-reveal-x: -28px;
-}
-
-.generation-canvas-v2-node:hover .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node:focus-within .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node__magnetic-handle:hover .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node__magnetic-handle[data-active='true'] .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node__magnetic-handle[data-following='true'] .generation-canvas-v2-node__magnetic-handle-icon {
-  --connection-handle-reveal-x: 0px;
-  opacity: 0.82;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.generation-canvas-v2-node:hover .generation-canvas-v2-node__magnetic-handle:hover .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node__magnetic-handle[data-active='true'] .generation-canvas-v2-node__magnetic-handle-icon,
-.generation-canvas-v2-node__magnetic-handle[data-following='true'] .generation-canvas-v2-node__magnetic-handle-icon {
-  opacity: 1;
-}
-
 /* 助手面板的布局和交互样式全部由组件 Tailwind className 管理，避免 CSS 与组件双写漂移。 */

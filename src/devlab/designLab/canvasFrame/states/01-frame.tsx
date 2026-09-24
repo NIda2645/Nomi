@@ -101,12 +101,9 @@ export const CANVAS_FRAME_STATES: readonly LabState[] = [
         <CollapsedGroupCard
           card={{ groupId: 'frame-collapsed', name: '第二幕 · 咖啡馆', memberCount: 3, position: { x: 160, y: 92 } }}
           readOnly={false}
-          pendingConnection={false}
-          pendingConnectionSource={false}
+          selected={false}
           onPointerDown={NOOP}
           onExpand={NOOP}
-          onStartConnection={NOOP}
-          onCompleteConnection={NOOP}
         />
       </CanvasFrameStage>
     ),

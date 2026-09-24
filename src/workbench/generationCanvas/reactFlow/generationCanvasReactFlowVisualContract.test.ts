@@ -31,8 +31,12 @@ describe('React Flow canvas connection affordance contract', () => {
     expect(resolveGenerationFlowConnectionAffordance(image, true, 'another-node')).toBe('magnetic')
   })
 
-  it('renders no handle on the collapsed-group proxy node (the collapsed card owns its handles)', () => {
-    expect(resolveGenerationFlowConnectionAffordance(node('image', { collapsedGroupProxy: true }), true, '')).toBe('hidden')
-    expect(resolveGenerationFlowConnectionAffordance(node('image', { collapsedGroupProxy: true }), false, '')).toBe('hidden')
+  it('shows the + ring on a group port only while that group is selected (2026-09-24)', () => {
+    const selected = node('image', { groupPort: { groupId: 'g', selected: true } })
+    const unselected = node('image', { groupPort: { groupId: 'g', selected: false } })
+    // 端口自己的选中态说了算，与卡片的 primarySelection 无关（编组的选区是它的成员 / 框本身）。
+    expect(resolveGenerationFlowConnectionAffordance(selected, false, '')).toBe('magnetic')
+    expect(resolveGenerationFlowConnectionAffordance(unselected, true, '')).toBe('hidden')
+    expect(resolveGenerationFlowConnectionAffordance(selected, false, selected.id)).toBe('dot')
   })
 })

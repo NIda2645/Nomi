@@ -29,6 +29,7 @@ import {
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
+import { readGroupPort } from '../model/groupPort'
 import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
@@ -145,7 +146,8 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     if (connection.fromHandle.nodeId === node.id) return connection.fromHandle.id ?? ''
     return connection.isValid && connection.toHandle?.nodeId === node.id ? connection.toHandle.id ?? '' : ''
   })
-  const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
+  // 编组端口节点（model/groupPort.ts）：不画卡面、不收线（落到编组上走框体 / 折叠卡的落点），只挂起线把手。
+  const groupPort = Boolean(readGroupPort(node))
   const NodeComponent = getGenerationNodeComponentForNode(node)
   const size = resolveNodeVisualSize(node)
   const bounds = getNodeResizeBounds(node)
@@ -197,10 +199,10 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
       style={{
         width: size.width,
         height: size.height,
-        pointerEvents: collapsedGroupProxy ? 'none' : undefined,
+        pointerEvents: groupPort ? 'none' : undefined,
         '--generation-flow-node-height': `${size.height}px`,
       } as React.CSSProperties}
-      aria-hidden={collapsedGroupProxy || undefined}
+      aria-hidden={groupPort || undefined}
     >
       <NodeResizer
         isVisible={selected && !data.readOnly && CARD_FIXED_WIDTH[resolveNodeRenderKind(node) ?? ''] === undefined}
@@ -240,13 +242,13 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           commitPersistedChange()
         }}
       />
-      {!data.readOnly ? (
+      {!data.readOnly && !groupPort ? (
         <>
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="left" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
         </>
       ) : null}
-      {!collapsedGroupProxy ? (
+      {!groupPort ? (
         <GenerationFlowNodeScope>
           {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: data.focusFlash }) ? (
             // 节点渲染器按种类懒加载（renderRegistry 的 React.lazy）。第一次建某种节点时 chunk 还没到，
@@ -283,7 +285,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           )}
         </GenerationFlowNodeScope>
       ) : null}
-      {!data.readOnly ? (
+      {!data.readOnly && connectionAffordance !== 'hidden' ? (
         <>
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="left" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="source" affordance={connectionAffordance} active={isPendingConnectionSource} label={startConnectionLabel} />
