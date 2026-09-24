@@ -15,7 +15,8 @@ export type WorkspaceSyncState = {
   writtenAt: string;
 };
 
-const LOCAL_ASSET_RE = /nomi-local:\/\/asset\/[^/]+\/([^"'\s]+)/g;
+// 第 1 组 = URL 自带的项目 id（素材归谁由 URL 说了算，见 src/media/nomiLocalAssetUrl.ts），第 2 组 = 项目内相对路径。
+const LOCAL_ASSET_RE = /nomi-local:\/\/asset\/([^/"'\s]+)\/([^"'\s]+)/g;
 
 function syncStatePath(rootPath: string): string {
   return path.join(workspaceNomiDir(rootPath), "sync-state.json");
@@ -29,17 +30,30 @@ function contentHash(filePath: string): string | null {
   }
 }
 
-function referencedAssetPaths(rootPath: string): string[] {
+function decodeSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * 这个文件夹**自己的**素材引用（相对路径）。
+ *
+ * 只数 URL 里项目 id 等于本项目的那些：从「全部素材」拖进来的别的项目的素材，URL 仍编着源项目 id，
+ * 文件住在源项目文件夹里，协议也按那个 id 去读（electron/protocol/localProtocol.ts parseLocalAssetUrl）。
+ * 同步本文件夹既不搬它们、也不该为它们报「缺素材」——2026-09-24 用户反馈：把别的项目的素材拖进来后，
+ * 这些引用被拿去本文件夹下找，全数判成缺失，项目库随即拦住「继续创作」，项目再也进不去。
+ */
+function referencedAssetPaths(rootPath: string, projectId: string): string[] {
   const manifestPath = workspaceProjectFile(rootPath);
   if (!fs.existsSync(manifestPath)) return [];
   const raw = fs.readFileSync(manifestPath, "utf8");
   const paths = new Set<string>();
   for (const match of raw.matchAll(LOCAL_ASSET_RE)) {
-    try {
-      paths.add(decodeURIComponent(match[1]));
-    } catch {
-      paths.add(match[1]);
-    }
+    if (decodeSegment(match[1]) !== projectId) continue;
+    paths.add(match[2].split("/").map(decodeSegment).join("/"));
   }
   return [...paths];
 }
@@ -61,6 +75,7 @@ export function readWorkspaceSyncState(rootPath: string): WorkspaceSyncState | n
 
 export function inspectWorkspaceSync(
   rootPath: string,
+  projectId: string,
   expected?: { revision: number; contentHash: string },
 ): WorkspaceSyncInspection {
   const manifestPath = workspaceProjectFile(rootPath);
@@ -101,7 +116,7 @@ export function inspectWorkspaceSync(
   }
 
   const hash = contentHash(manifestPath);
-  const references = referencedAssetPaths(rootPath);
+  const references = referencedAssetPaths(rootPath, projectId);
   const missingAssetCount = references.filter((relativePath) => {
     try {
       return !fs.existsSync(resolveWorkspaceRelativePath(rootPath, relativePath));

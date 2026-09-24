@@ -28,7 +28,7 @@ import {
   STRIPED_BG_CLASS,
 } from './render/CardCommon'
 import PanoramaUploadFallback from './PanoramaUploadFallback'
-import { SideTimelineDragHandle, TimelineNotchDragHandle } from './NodeTimelineDragHandles'
+import { TimelineNotchDragHandle } from './NodeTimelineDragHandles'
 import { cn } from '../../../utils/cn'
 import { DeferredNodeImage } from './DeferredNodeMedia'
 import { NodeVideoPlaybackGuard } from './NodeVideoPlaybackGuard'
@@ -191,11 +191,10 @@ function BaseGenerationNodeImpl({
   const isGenerating = status === 'queued' || status === 'running'
   const canGenerate = useGenerationCanvasStore((state) => selectCanvasNodeCanRun(state, node.id)) && !isGenerating
   const canSendToTimeline = canDragGenerationNodeToTimeline(node, { readOnly })
-  const showTimelineNotch =
-    canSendToTimeline &&
-    (node.result?.type === 'image' || node.result?.type === 'video') &&
-    !resultStackOpen
-  const showSideTimelineDrag = canSendToTimeline && !showTimelineNotch
+  // 「拖进时间轴」只有顶部这一个把手。卡片左右两侧归连线「+」圈（generationCanvasReactFlowVisualContract.ts）；
+  // 2026-09-24 用户反馈「多结果卡片拉环不见了」：旧的侧边拖柄（版本托盘展开 / 非图非视频结果时顶替顶部把手）
+  // 就住在右侧「+」圈的位置上、层级还更高，把圈整个盖住，于是删掉那一个，不再有两个东西抢同一块地方。
+  const showTimelineNotch = canSendToTimeline && !resultStackOpen
   // 2026-09-05：这几条的 zh+en 词条一直都在，只是渲染处写死了中文（英文界面恒显中文），现接回词条。
   const sourceNodeLabel = sourceNodeTitle || (node.derivedFrom && !sourceNodeExists ? t('generationCommon.node.sourceMissing') : node.derivedFrom || '')
   const sourceCategoryName = sourceNodeCategoryId ? getBuiltinCategoryById(sourceNodeCategoryId)?.name : null
@@ -501,9 +500,6 @@ function BaseGenerationNodeImpl({
       {!localImageOpPending ? <NodeGeneratingOverlay reportFeedback={reportFeedback} node={node} motion={waitingMotion} preset={waitingPreset} /> : null}
 
       <ProductionShotOverlays reportFeedback={reportFeedback} node={node} selected={selected && !isMultiSelectActive} />{/* P4 S5+S6 多镜叠加：占位三态 + 版本条（非多镜早退零开销） */}
-      {showSideTimelineDrag ? (
-        <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
-      ) : null}
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
       {/* 只读画布不挂、结果堆叠展开时卸载（2026-09-21 收回来的两条）：

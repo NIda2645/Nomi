@@ -313,3 +313,29 @@ describe('archetypeForNode 与发送路径同源（2026-09-08 Agnes 2.1 根因�
     expect(archetypeForNode(bare)?.id).toBe('seedream')
   })
 })
+
+import { connectionCreateKindsForSource } from './referenceEdgeCapability'
+
+describe('connectionCreateKindsForSource — 从「+」圈拖到空白处能接出什么（2026-09-24 视频拖不出下一个节点）', () => {
+  it('文本 / 图片源可接出图片与视频节点', () => {
+    expect(connectionCreateKindsForSource(node('t', 'text'))).toEqual(['image', 'video'])
+    expect(connectionCreateKindsForSource(node('i', 'image'))).toEqual(['image', 'video'])
+  })
+
+  it('视频源至少能接出视频节点（参考视频 / 尾帧接力），不再被整条取消', () => {
+    expect(connectionCreateKindsForSource(node('v', 'video'))).toContain('video')
+  })
+
+  it('导入的视频素材按产物类型判，与视频节点同口径', () => {
+    const asset = { ...node('a', 'asset'), result: { id: 'r', type: 'video', url: 'nomi-local://asset/p/a.mp4', createdAt: 1 } } as GenerationCanvasNode
+    expect(connectionCreateKindsForSource(asset)).toEqual(connectionCreateKindsForSource(node('v', 'video')))
+  })
+
+  it('不产出可参考资产的源（镜头笔记 / 输出）接不出任何节点', () => {
+    for (const kind of GENERATION_NODE_KINDS) {
+      const source = node(`s-${kind}`, kind)
+      if (kind === 'text' || referenceAssetKindForNode(source)) continue
+      expect(connectionCreateKindsForSource(source), kind).toEqual([])
+    }
+  })
+})
