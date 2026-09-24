@@ -4,6 +4,7 @@ import { confirmDialog } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../../ui/toast'
 import { shareInFlight } from './projectCreationFlight'
+import { projectSaveFailureText } from './projectSaveFailureText'
 import { logRendererError } from '../../desktop/rendererLog'
 
 /** Repeated library exits share the entire pending save/release operation. */
@@ -34,7 +35,7 @@ export function useProjectWindowLifecycle(): void {
         })
         .catch((error: unknown) => {
           logRendererError('project-save-failed', error, { trigger: 'window-close' })
-          toast(t('studio.projectSaveFailed'), 'error')
+          toast(projectSaveFailureText(error, t), 'error')
           getDesktopBridge()?.window?.cancelClose?.(requestId)
         })
         .finally(() => { if (pendingClose.current === requestId) pendingClose.current = null })
@@ -54,7 +55,7 @@ export function useProjectWindowLifecycle(): void {
         .then(() => { app.hardReloadWindow?.() })
         .catch((error: unknown) => {
           logRendererError('project-save-failed', error, { trigger: 'hard-reload' })
-          toast(t('studio.projectSaveFailed'), 'error')
+          toast(projectSaveFailureText(error, t), 'error')
           reloading.current = false
         })
     }

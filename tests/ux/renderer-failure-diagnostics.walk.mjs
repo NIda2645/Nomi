@@ -9,7 +9,9 @@
 // （`.nomi/manifest-transaction.lock/owner.json`，host 不是本机 → 主进程一律按忙处理）。
 // 生产代码一行没为走查留口子；原生保存对话框在主进程侧打桩（同 diagnostics-bundle.walk.mjs）。
 //
-// 用法：pnpm run build && node tests/ux/renderer-failure-diagnostics.walk.mjs
+// 界面上那句话也在这里验：锁被占时是「项目正被别处占用」，不再把人支去查磁盘权限。
+//
+// 用法：pnpm run build && node tests/ux/renderer-failure-diagnostics.walk.mjs [zh-CN|en]
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -18,9 +20,12 @@ import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { clickOrFail, expect, expectVisible, screenshotSettled } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 
-const DOCUMENT = '[aria-label="创作文档编辑区"] .tiptap[contenteditable="true"]'
-const SAVE_FAILED_TEXT = '项目保存失败，请检查本地磁盘权限'
-const shotsDir = path.join(repoRoot, 'tests/ux/shots/renderer-failure-diagnostics')
+const LOCALE = process.argv[2] === 'en' ? 'en' : 'zh-CN'
+const UI = LOCALE === 'en'
+  ? { newProject: /^New blank project/, document: 'Creation document editor', inUse: 'This project is in use elsewhere', settings: 'Settings', general: 'General', exportBundle: 'Export bundle' }
+  : { newProject: /^新建空白项目/, document: '创作文档编辑区', inUse: '项目正被别处占用', settings: '设置', general: '通用', exportBundle: '导出诊断' }
+const DOCUMENT = `[aria-label="${UI.document}"] .tiptap[contenteditable="true"]`
+const shotsDir = path.join(repoRoot, 'tests/ux/shots/renderer-failure-diagnostics', LOCALE)
 fs.rmSync(shotsDir, { recursive: true, force: true })
 fs.mkdirSync(shotsDir, { recursive: true })
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-renderer-failure-walk-'))
@@ -35,7 +40,7 @@ function check(ok, label, detail = '') {
 const launched = await launchNomiApp({
   name: 'renderer-failure-diagnostics',
   initialLocalStorage: {
-    'nomi:locale:v1': 'zh-CN',
+    'nomi:locale:v1': LOCALE,
     'nomi:splash:v1': 'seen',
     'nomi:journey-tour:v1': 'seen',
     'nomi:canvas-gesture-hint:v1': 'seen',
@@ -50,7 +55,7 @@ try {
   }, targetZip)
 
   // ── 1. 像用户一样：项目库 → 新建空白项目 → 落在创作页 ─────────────────────────
-  await clickOrFail(win.getByRole('button', { name: /^新建空白项目/ }), '新建空白项目')
+  await clickOrFail(win.getByRole('button', { name: UI.newProject }), '新建空白项目')
   await expect.poll(() => app.windows().some((page) => /projectId=/.test(page.url())), { timeout: stationTimeout({ operations: 2 }) }).toBe(true)
   win = app.windows().find((page) => /projectId=/.test(page.url()))
   await expectVisible(win.locator(DOCUMENT), '创作文档编辑区', stationTimeout({ operations: 2 }))
@@ -72,7 +77,7 @@ try {
   // 三格预算：自动保存的防抖 + 主进程按「锁忙」重试到放弃（约 5s）+ 回到界面。
   await win.locator(DOCUMENT).click()
   await win.keyboard.type('雨夜里一只猫回头看镜头')
-  await expectVisible(win.getByText(SAVE_FAILED_TEXT).first(), '界面上的保存失败提示', stationTimeout({ operations: 3 }))
+  await expectVisible(win.getByText(UI.inUse, { exact: true }).first(), `界面上的保存失败提示「${UI.inUse}」`, stationTimeout({ operations: 3 }))
   await screenshotSettled(win, { path: path.join(shotsDir, '01-save-failed.png') })
 
   // 占锁撤掉：后面导出诊断包、退出都不该再被它拖住。
@@ -80,12 +85,12 @@ try {
   lockDir = null
 
   // ── 4. 设置 → 通用 → 导出诊断包（真按钮，主进程真组包） ─────────────────────────
-  await clickOrFail(win.getByRole('button', { name: '设置', exact: true }).first(), '设置')
-  await clickOrFail(win.getByRole('button', { name: '通用', exact: true }), '通用')
+  await clickOrFail(win.getByRole('button', { name: UI.settings, exact: true }).first(), '设置')
+  await clickOrFail(win.getByRole('button', { name: UI.general, exact: true }), '通用')
   const section = win.locator('[data-settings-section="diagnostics"]')
   await expectVisible(section, '导出诊断包区块')
   await section.scrollIntoViewIfNeeded()
-  await clickOrFail(section.getByRole('button', { name: '导出诊断', exact: true }), '导出诊断')
+  await clickOrFail(section.getByRole('button', { name: UI.exportBundle, exact: true }), '导出诊断')
   await expect.poll(() => section.getAttribute('data-diagnostics-state'), { timeout: stationTimeout({ operations: 2 }) }).toBe('saved')
   await screenshotSettled(win, { path: path.join(shotsDir, '02-bundle-saved.png') })
 

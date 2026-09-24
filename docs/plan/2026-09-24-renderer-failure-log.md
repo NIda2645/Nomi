@@ -50,6 +50,16 @@
 `…/Nomi Projects/猫咪短片/…` 会漏成 `<path> Projects/猫咪短片/…`，项目名进日志（主进程的 fs 错误早就这样，渲染层错误进日志后只会更多）。
 改为：引号内的绝对路径整段抹；盘符路径与 `/Users`、`/home` 等用户根下的路径按段认、段内允许空格。
 
+## 界面文案：锁被占时不再说「检查磁盘权限」（2026-09-24 用户拍板）
+
+真机复现时发现：锁被别处占着（另一个 Nomi 窗口 / 另一台电脑经同步盘），界面也说「项目保存失败，请检查本地磁盘权限」，
+把人支去查一个根本没坏的东西。用户定的文案：**「项目正被别处占用」**（en：This project is in use elsewhere）。
+
+- 身份：主进程锁忙错误的名字定在 `electron/shared/contracts/workspaceBusy.ts`（`WORKSPACE_MANIFEST_BUSY_ERROR_NAME`），
+  锁类用它命名、渲染层用 `isWorkspaceBusyError` 认——Electron invoke 只带回「名字: 信息」，认的是我们自己的类名，不匹配英文句子。
+- 挑文案只有一处：`src/workbench/project/projectSaveFailureText.ts`，四条保存路径（自动保存、改名后保存、关窗、刷新）共用；
+  其它失败（真的权限问题等）仍是原句。
+
 ## 概念占用表（R33）
 
 | 概念 | 唯一 owner | 允许谁消费 |
@@ -63,7 +73,7 @@
 ## 范围 / 不动项
 
 - 动：上表四个文件 + preload + `bridge.ts` 类型 + `crashLog.ts`（删旧注册、`logCrash` 可带字段）+ `main.ts` 一行 + `main.tsx` 装全局捕获 + 54 处迁移 + 相关测试 + eslint 规则 + `check-error-surface.mjs` 把新 owner 认作「诊断出口」+ 诊断包日志条目的说明文字 + `redact.ts` 带空格路径（见上）。
-- 不动：日志文件滚动/保留期、诊断包的收录范围、任何界面与界面文案。
+- 不动：日志文件滚动/保留期、诊断包的收录范围、界面布局；界面文案只动「锁被占时」那一句（见上）。
 - 顺带：`scripts/door-map.mjs` 入口判断在 Windows 上恒不成立（静默零输出），本次要用它出门表，改成 `pathToFileURL`；同族另 7 个脚本已开独立任务。
   两个错误边界各有一份一字不差的 `reloadRendererWindow`（都 cast window 绕过类型化的桥），合成一份放进 `src/desktop/bridge.ts`（症状簇触发的结构评审 `docs/audit/2026-09-24-src-desktop-ui-structure-review.md`）。
   `tests/ux/diagnostics-bundle.walk.mjs` 找的按钮文案「导出诊断包」早已改成「导出诊断」，这条走查一直是红的，顺手改对并实跑通过。
@@ -76,5 +86,5 @@
 
 1. 单测：渲染层一次保存失败 → 主进程日志**恰好一行**，含 `ERROR renderer project-save-failed`、错误名与码，**不含**绝对路径 / 提示词字段 / 密钥形串。
 2. 单测：非法报文、非受信 sender、刷屏限流。
-3. 真机：隔离实例里人为占住项目的 manifest 锁 → 触发保存失败 → 导出诊断包 → 包里 `logs/nomi-日期.log` 有那一行（`tests/ux/renderer-failure-diagnostics.walk.mjs`）。
+3. 真机（中英各一遍）：隔离实例里人为占住项目的 manifest 锁 → 触发保存失败 → 界面是「项目正被别处占用」→ 导出诊断包 → 包里 `logs/nomi-日期.log` 有那一行（`tests/ux/renderer-failure-diagnostics.walk.mjs [zh-CN|en]`）。
 4. `pnpm run gates`（contracts + focused unit + build）。

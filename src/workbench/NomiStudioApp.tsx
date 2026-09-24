@@ -51,6 +51,7 @@ import { notify } from '../ui/notificationPolicy'
 import { useProjectNotificationTarget } from './project/useProjectNotificationTarget'
 import { getDesktopBridge } from '../desktop/bridge'
 import { logRendererError } from '../desktop/rendererLog'
+import { projectSaveFailureText } from './project/projectSaveFailureText'
 import { useHasTextModel } from './library/useHasTextModel'
 import { SplashIntro } from './onboarding/SplashIntro'
 import { hasSeenSplash, markSplashSeen, hasSeenJourneyTour } from './onboarding/onboardingState'
@@ -579,7 +580,7 @@ export default function NomiStudioApp(): JSX.Element {
         },
         onSaveError: (error) => {
           logRendererError('project-save-failed', error, { trigger: 'autosave' })
-          report(activeProject.id, t('studio.projectSaveFailed'))
+          report(activeProject.id, projectSaveFailureText(error, t))
         },
       })
       let unbound: Promise<void> | undefined

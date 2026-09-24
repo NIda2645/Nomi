@@ -62,6 +62,14 @@ describe('project window save receipts', () => {
       error: expect.objectContaining({ name: 'Error', message: 'disk denied' }),
     }))
   })
+  it('says the project is in use elsewhere when the manifest lock is held, not "check disk permissions"', async () => {
+    // Electron invoke 带回来的真实形状：只剩「名字: 信息」。
+    deps.save.mockRejectedValueOnce(new Error("Error invoking remote method 'nomi:projects:save-async': WorkspaceManifestLockBusyError: Workspace manifest is owned on another host"))
+    useProjectWindowLifecycle()
+    deps.closeRequest?.({ requestId: 'close-busy' })
+    await vi.waitFor(() => expect(deps.cancelled).toHaveBeenCalledWith('close-busy'))
+    expect(deps.toast).toHaveBeenCalledExactlyOnceWith('studio.projectInUseElsewhere', 'error')
+  })
   it('keeps a failed reload in place and permits a later successful retry', async () => {
     deps.save.mockRejectedValueOnce(new Error('disk denied')).mockResolvedValueOnce(null)
     useProjectWindowLifecycle()
