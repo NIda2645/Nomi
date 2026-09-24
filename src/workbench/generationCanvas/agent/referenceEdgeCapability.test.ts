@@ -220,6 +220,18 @@ describe('resolveModeForConnectedReferences — 按活边对账「生成方式�
     expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'reference')])).toBe('edit')
   })
 
+  it('文生视频 + 视频参考边 → 落「全能参考」（参考视频），不落排在前面、只能拿它做首帧接力的图生视频（2026-09-24 拍板）', () => {
+    const source = videoAsset('s')
+    const target = { ...node('t', 'video', 'dreamina-seedance-2'), meta: { archetype: { id: 'dreamina-seedance-2', modeId: 't2v' } } } as GenerationCanvasNode
+    expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'reference')])).toBe('multimodal')
+  })
+
+  it('视频边明确是首帧接力（first_frame）→ 仍落图生视频', () => {
+    const source = videoAsset('s')
+    const target = { ...node('t', 'video', 'dreamina-seedance-2'), meta: { archetype: { id: 'dreamina-seedance-2', modeId: 't2v' } } } as GenerationCanvasNode
+    expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'first_frame')])).toBe('i2v')
+  })
+
   it('当前已是 edit（能收）→ null（幂等，尊重现状）', () => {
     const source = imageAsset('s')
     const target = { ...node('t', 'image', 'seedream'), meta: { archetype: { id: 'seedream', modeId: 'edit' } } } as GenerationCanvasNode

@@ -82,7 +82,8 @@ export function isTextPromptEdge(
  * 不放行就会把这条边静默丢弃 → 对账误报「批准已连接/实际未连接」(用户反复撞见的根因)。
  */
 const EDGE_MODE_SLOTS: Record<GenerationCanvasEdgeMode, readonly ArchetypeReferenceSlotKind[]> = {
-  reference: ['image_ref', 'video_ref', 'first_frame', 'last_frame', 'source_video', 'audio_ref'],
+  // 顺序即偏好（preferredSlotKinds）：视频先参考视频 / 源视频，最后才退成首帧接力。
+  reference: ['image_ref', 'video_ref', 'source_video', 'first_frame', 'last_frame', 'audio_ref'],
   first_frame: ['first_frame', 'image_ref'],
   last_frame: ['last_frame'],
   style_ref: ['image_ref'],
@@ -261,23 +262,44 @@ export type ReferenceDemand = { slots: readonly ArchetypeReferenceSlotKind[]; as
  * 当前模式已能消费**任一**需求 → null（尊重现状，与建边 auto-promote 的幂等口径一致）；
  * 一条都收不下 → 挑「能收下需求条数最多」的模式；档案没有任何模式能收 → null（真不支持）。
  */
+/**
+ * 一条边（语义 × 源资产）可落的槽，**按偏好排好序**——落槽（referenceSlots.assignEdgeToSlot）与挑模式
+ * （resolveModeForReferenceDemand）共用这一份顺序，不各写一张。
+ */
+export function preferredSlotKinds(
+  mode: GenerationCanvasEdgeMode | undefined,
+  asset: ReferenceAssetKind,
+): ArchetypeReferenceSlotKind[] {
+  return EDGE_MODE_SLOTS[mode ?? 'reference'].filter((kind) => SLOT_ACCEPTS[kind].includes(asset))
+}
+
 export function resolveModeForReferenceDemand(
   archetype: ModelArchetype,
   meta: Record<string, unknown> | undefined,
   demands: readonly ReferenceDemand[],
 ): string | null {
   if (!demands.length) return null
-  const accepts = (m: ArchetypeMode, d: ReferenceDemand): boolean =>
-    m.slots.some((slot) => d.slots.includes(slot.kind) && SLOT_ACCEPTS[slot.kind].includes(d.asset))
+  // 这个模式收这条需求时，用得上的最好的槽在需求的偏好顺序里排第几（收不下 = -1）。
+  const rankOf = (m: ArchetypeMode, d: ReferenceDemand): number => {
+    const ranks = m.slots
+      .map((slot) => d.slots.indexOf(slot.kind))
+      .filter((index) => index >= 0 && SLOT_ACCEPTS[d.slots[index]].includes(d.asset))
+    return ranks.length ? Math.min(...ranks) : -1
+  }
   const currentMode = currentArchetypeMode(archetype, meta)
-  if (demands.some((d) => accepts(currentMode, d))) return null
+  if (demands.some((d) => rankOf(currentMode, d) >= 0)) return null
+  // 收下的需求条数最多者胜；条数相同，按边的偏好顺序（EDGE_MODE_SLOTS）取槽更对口的——视频连进刚建的视频节点落「全能参考」
+  // （参考视频），而不是排在前面、只能拿它做首帧接力的「图生视频」（2026-09-24 用户拍板）。
   let best: ArchetypeMode | null = null
   let bestScore = 0
+  let bestRank = Infinity
   for (const m of archetype.modes) {
-    const score = demands.filter((d) => accepts(m, d)).length
-    if (score > bestScore) {
+    const ranks = demands.map((d) => rankOf(m, d)).filter((rank) => rank >= 0)
+    const rank = ranks.reduce((sum, value) => sum + value, 0)
+    if (ranks.length > bestScore || (ranks.length === bestScore && ranks.length > 0 && rank < bestRank)) {
       best = m
-      bestScore = score
+      bestScore = ranks.length
+      bestRank = rank
     }
   }
   return best && best.id !== currentMode.id ? best.id : null
