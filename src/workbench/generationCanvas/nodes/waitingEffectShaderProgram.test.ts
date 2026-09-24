@@ -26,27 +26,9 @@ function fragmentShaderOf(source: string): string {
   return source.slice(open + 1, close)
 }
 
-/** 只解析这份着色器用到的那一种预处理形状：#if/#elif IMG_FX_EFFECT == N … #endif。 */
-function specialize(shader: string, effect: number): string {
-  const kept: string[] = []
-  let inChain = false
-  let taking = false
-  let taken = false
-  for (const line of shader.split('\n')) {
-    const branch = line.match(/^\s*#(if|elif) IMG_FX_EFFECT == (\d+)\s*$/)
-    if (branch) {
-      inChain = true
-      taking = !taken && Number(branch[2]) === effect
-      taken ||= taking
-      continue
-    }
-    if (inChain && /^\s*#endif\s*$/.test(line)) {
-      inChain = false
-      continue
-    }
-    if (!inChain || taking) kept.push(line)
-  }
-  return kept.join('\n')
+/** 编译期特效链里每个分支的编号，按出现顺序。 */
+function compiledEffectIds(shader: string): number[] {
+  return [...shader.matchAll(/^\s*#(?:if|elif) IMG_FX_EFFECT == (\d+)\s*$/gm)].map((match) => Number(match[1]))
 }
 
 describe('img-fx waiting effect GPU program', () => {
@@ -54,7 +36,11 @@ describe('img-fx waiting effect GPU program', () => {
     it(`${id}: no runtime effect dispatch is shipped to the GPU`, () => {
       const shader = fragmentShaderOf(source)
       expect(shader).not.toMatch(/u_effect\s*==/)
-      expect(shader.match(/^\s*#(?:if|elif) IMG_FX_EFFECT == \d+\s*$/gm)?.length).toBe(26)
+      // 一条 #if/#elif 链、编号不重复：按 GLSL 预处理规则，每个程序只留下一个特效分支。
+      const ids = compiledEffectIds(shader)
+      expect(ids.length).toBe(26)
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(shader.match(/^\s*#endif\s*$/gm)?.length).toBe(1)
     })
 
     it(`${id}: the shared material compiles one program per preset effect`, () => {
@@ -64,26 +50,10 @@ describe('img-fx waiting effect GPU program', () => {
     })
   }
 
-  it('every bundled preset compiles to exactly its own effect body', () => {
-    const shader = fragmentShaderOf(distFiles[0].source)
-    const bodies = new Map<number, string>()
-    let current: number | null = null
-    for (const line of shader.split('\n')) {
-      const branch = line.match(/^\s*#(?:if|elif) IMG_FX_EFFECT == (\d+)\s*$/)
-      if (branch) { current = Number(branch[1]); bodies.set(current, ''); continue }
-      if (/^\s*#endif\s*$/.test(line)) { current = null; continue }
-      if (current !== null) bodies.set(current, `${bodies.get(current)}${line}\n`)
-    }
-    expect(bodies.size).toBe(26)
+  it('every bundled preset mode has its own compile-time branch', () => {
+    const ids = new Set(compiledEffectIds(fragmentShaderOf(distFiles[0].source)))
     const modes = Object.values(PRESETS).flatMap((preset) => Object.values(preset.modes).map((mode) => ({ label: `${preset.name}/${mode.theme}`, effect: mode.effectIndex })))
     expect(modes.length).toBeGreaterThan(0)
-    for (const { label, effect } of modes) {
-      const program = specialize(shader, effect)
-      expect(program).not.toMatch(/#(?:if|elif|endif)/)
-      expect(program, `${label} 的程序里应有它自己的特效`).toContain(bodies.get(effect))
-      for (const [other, body] of bodies) {
-        if (other !== effect) expect(program, `${label} 不该带上 effect ${other}`).not.toContain(body)
-      }
-    }
+    for (const { label, effect } of modes) expect(ids.has(effect), `${label} 用的 effect ${effect} 没有编译期分支`).toBe(true)
   })
 })

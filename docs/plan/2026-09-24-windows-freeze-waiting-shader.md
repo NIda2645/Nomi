@@ -12,9 +12,9 @@
 
 ## 先查别人（R5）
 
-- 上游 issue #3 给出三种修法：只保留用到的特效分支 / 按特效分别编译 / 异步编译（`KHR_parallel_shader_compile` / `compileAsync`）。本方案取第二种：它不改变任何视觉、对所有预设通用，不需要平台分支。
-- three.js 官方：`ShaderMaterial.defines` 直接生成 `#define`，改 defines 后置 `material.needsUpdate = true` 由渲染器换用对应程序（three.js `examples/jsm/csm/CSM.js` `_updateUniforms` 同一写法；程序按缓存键复用）。
-- 仓库约束：`docs/engineering/framework-boundaries.json` 登记「等待效果由 img-fx 提供，不能另造 shader 或 GPU renderer」→ 不自写着色器，用 pnpm 标准 `patchedDependencies` 给 img-fx 打补丁。
+- 上游 issue <https://github.com/Jakubantalik/img-fx/issues/3> 给出三种修法：只保留用到的特效分支 / 按特效分别编译 / 异步编译（`KHR_parallel_shader_compile` / `compileAsync`）。本方案取第二种：它不改变任何视觉、对所有预设通用，不需要平台分支。
+- three.js 官方 <https://threejs.org/docs/#api/en/materials/ShaderMaterial.defines>：`defines` 直接生成 `#define`；改 defines 后置 `material.needsUpdate = true` 由渲染器换用对应程序，官方示例同一写法见 `node_modules/three/examples/jsm/csm/CSM.js:465`（`_updateUniforms`，`:484` 置 `needsUpdate`）。
+- 仓库约束：`docs/engineering/framework-boundaries.json:1300`（`custom-generation-shader`）登记「等待效果由 img-fx 提供，不能另造 shader 或 GPU renderer」→ 不自写着色器，用 pnpm 标准 `patchedDependencies`（<https://pnpm.io/cli/patch>）给 img-fx 打补丁。
 
 ## 改动
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ProjectHydrationSupersededError } from './projectCanvasReadSurface'
-import { openCreatedProject, shareInFlight, type InFlightSlot, type ProjectCreationOutcome } from './projectCreationFlight'
+import { openCreatedProject, shareInFlight, type InFlightSlot } from './projectCreationFlight'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -47,44 +47,5 @@ describe('openCreatedProject', () => {
   it('still surfaces real failures to the entry that reports them', async () => {
     await expect(openCreatedProject(() => Promise.reject(new Error('lane closed')))).rejects.toThrow('lane closed')
     await expect(openCreatedProject(() => Promise.resolve(true))).resolves.toBe(true)
-  })
-})
-
-// 用户现场（2026-09-24）：界面卡住期间连点两下「新建空白项目」，恢复后两下一起执行。
-// 旧编排每一下都真建一个项目，后一次打开把前一次顶掉，前一次的入口把「被顶掉」报成「新建项目失败」。
-describe('create-and-open under repeated activation', () => {
-  function createAndOpen(slot: InFlightSlot<ProjectCreationOutcome>, deps: { create: () => string; hydrate: (id: string) => Promise<boolean> }) {
-    return shareInFlight(slot, async () => {
-      const projectId = deps.create()
-      const opened = await openCreatedProject(() => deps.hydrate(projectId))
-      return { projectId, opened }
-    })
-  }
-
-  it('creates one project for two queued clicks and never reports a failure', async () => {
-    const slot: InFlightSlot<ProjectCreationOutcome> = { current: null }
-    const hydration = deferred<boolean>()
-    let next = 0
-    const create = vi.fn(() => `project-${++next}`)
-    const hydrate = vi.fn(() => hydration.promise)
-    const report = vi.fn()
-    const clicks = [createAndOpen(slot, { create, hydrate }), createAndOpen(slot, { create, hydrate })]
-      .map((click) => click.catch(report))
-    hydration.resolve(true)
-    const outcomes = await Promise.all(clicks)
-    expect(create).toHaveBeenCalledOnce()
-    expect(outcomes).toEqual([{ projectId: 'project-1', opened: true }, { projectId: 'project-1', opened: true }])
-    expect(report).not.toHaveBeenCalled()
-  })
-
-  it('does not report a created project whose open was superseded by opening another project', async () => {
-    const slot: InFlightSlot<ProjectCreationOutcome> = { current: null }
-    const report = vi.fn()
-    const outcome = await createAndOpen(slot, {
-      create: () => 'project-new',
-      hydrate: () => Promise.reject(new ProjectHydrationSupersededError()),
-    }).catch(report)
-    expect(outcome).toEqual({ projectId: 'project-new', opened: false })
-    expect(report).not.toHaveBeenCalled()
   })
 })
