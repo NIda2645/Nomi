@@ -14,11 +14,9 @@ export type GroupPortMeta = {
   selected: boolean
 }
 
+/** 只由 withGroupPort 写、只活在投影里（从不落盘），所以按类型直接取，不做运行时解码。 */
 export function readGroupPort(node: Pick<GenerationCanvasNode, 'meta'>): GroupPortMeta | null {
-  const value = (node.meta as Record<string, unknown> | undefined)?.groupPort
-  if (!value || typeof value !== 'object') return null
-  const port = value as Partial<GroupPortMeta>
-  return typeof port.groupId === 'string' ? { groupId: port.groupId, selected: port.selected === true } : null
+  return (node.meta?.groupPort as GroupPortMeta | undefined) ?? null
 }
 
 export function withGroupPort(node: GenerationCanvasNode, port: GroupPortMeta): GenerationCanvasNode {

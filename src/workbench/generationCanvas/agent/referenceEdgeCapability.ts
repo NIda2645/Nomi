@@ -187,8 +187,7 @@ export type ConnectionCreateKind = (typeof CONNECTION_CREATE_KINDS)[number]
  */
 /** 从一个编组的右侧「+」拖到空白处：组内任一成员接得出的种类都列出（落下后组内每个成员各连一条，收不下的由连线侧说明）。 */
 export function connectionCreateKindsForSources(sources: readonly GenerationCanvasNode[]): ConnectionCreateKind[] {
-  const kinds = new Set(sources.flatMap((source) => connectionCreateKindsForSource(source)))
-  return CONNECTION_CREATE_KINDS.filter((kind) => kinds.has(kind))
+  return CONNECTION_CREATE_KINDS.filter((kind) => sources.some((source) => connectionCreateKindsForSource(source).includes(kind)))
 }
 
 export function connectionCreateKindsForSource(source: GenerationCanvasNode): ConnectionCreateKind[] {
@@ -286,12 +285,8 @@ export function resolveModeForReferenceDemand(
 ): string | null {
   if (!demands.length) return null
   // 这个模式收这条需求时，用得上的最好的槽在需求的偏好顺序里排第几（收不下 = -1）。
-  const rankOf = (m: ArchetypeMode, d: ReferenceDemand): number => {
-    const ranks = m.slots
-      .map((slot) => d.slots.indexOf(slot.kind))
-      .filter((index) => index >= 0 && SLOT_ACCEPTS[d.slots[index]].includes(d.asset))
-    return ranks.length ? Math.min(...ranks) : -1
-  }
+  const rankOf = (m: ArchetypeMode, d: ReferenceDemand): number =>
+    d.slots.findIndex((kind) => SLOT_ACCEPTS[kind].includes(d.asset) && m.slots.some((slot) => slot.kind === kind))
   const currentMode = currentArchetypeMode(archetype, meta)
   if (demands.some((d) => rankOf(currentMode, d) >= 0)) return null
   // 收下的需求条数最多者胜；条数相同，按边的偏好顺序（EDGE_MODE_SLOTS）取槽更对口的——视频连进刚建的视频节点落「全能参考」
