@@ -67,11 +67,9 @@ type GenerationCanvasReactFlowViewportProps = {
   collapsedGroupCards: readonly CollapsedGroupCardProjection[]
   onGroupFramePointerDown: (event: React.PointerEvent<HTMLDivElement>, groupId: string, options?: { selectMembers?: boolean }) => void
   pendingConnection: boolean
-  pendingConnectionSourceId: string
   pendingConnectionSourceKind: 'node' | 'group'
   pendingConnectionSide: ConnectionAnchorSide
   onConnectToGroup: (groupId: string) => void
-  onStartGroupConnection: (event: React.PointerEvent<HTMLElement>, groupId: string, side: ConnectionAnchorSide) => void
   onSetGroupCollapsed: (groupId: string, collapsed: boolean) => void
   selectedBounds: ReturnType<typeof getSelectedBounds>
   selectedNodeIds: readonly string[]
@@ -134,11 +132,9 @@ export function GenerationCanvasReactFlowViewport({
   collapsedGroupCards,
   onGroupFramePointerDown,
   pendingConnection,
-  pendingConnectionSourceId,
   pendingConnectionSourceKind,
   pendingConnectionSide,
   onConnectToGroup,
-  onStartGroupConnection,
   onSetGroupCollapsed,
   selectedBounds,
   selectedNodeIds,
@@ -280,11 +276,9 @@ export function GenerationCanvasReactFlowViewport({
           readOnly={readOnly}
           onPointerDown={onGroupFramePointerDown}
           pendingConnection={pendingConnection}
-          pendingConnectionSourceId={pendingConnectionSourceId}
           pendingConnectionSourceKind={pendingConnectionSourceKind}
           pendingConnectionSide={pendingConnectionSide}
           onConnectToGroup={onConnectToGroup}
-          onStartGroupConnection={onStartGroupConnection}
           onSetCollapsed={onSetGroupCollapsed}
         />
       </ViewportPortal>

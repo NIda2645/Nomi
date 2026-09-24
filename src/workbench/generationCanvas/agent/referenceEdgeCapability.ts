@@ -185,6 +185,11 @@ export type ConnectionCreateKind = (typeof CONNECTION_CREATE_KINDS)[number]
  * 2026-09-24 用户反馈「视频无法拖出下一个连线」：v0.22 起每张能连线的卡都有「+」圈，但松手处的菜单还按
  * 旧名单只认 text/image，视频拖出去松手直接被取消，连线凭空消失。
  */
+/** 从一个编组的右侧「+」拖到空白处：组内任一成员接得出的种类都列出（落下后组内每个成员各连一条，收不下的由连线侧说明）。 */
+export function connectionCreateKindsForSources(sources: readonly GenerationCanvasNode[]): ConnectionCreateKind[] {
+  return CONNECTION_CREATE_KINDS.filter((kind) => sources.some((source) => connectionCreateKindsForSource(source).includes(kind)))
+}
+
 export function connectionCreateKindsForSource(source: GenerationCanvasNode): ConnectionCreateKind[] {
   const asset = referenceAssetKindForNode(source)
   return CONNECTION_CREATE_KINDS.filter((kind) => {
@@ -280,12 +285,8 @@ export function resolveModeForReferenceDemand(
 ): string | null {
   if (!demands.length) return null
   // 这个模式收这条需求时，用得上的最好的槽在需求的偏好顺序里排第几（收不下 = -1）。
-  const rankOf = (m: ArchetypeMode, d: ReferenceDemand): number => {
-    const ranks = m.slots
-      .map((slot) => d.slots.indexOf(slot.kind))
-      .filter((index) => index >= 0 && SLOT_ACCEPTS[d.slots[index]].includes(d.asset))
-    return ranks.length ? Math.min(...ranks) : -1
-  }
+  const rankOf = (m: ArchetypeMode, d: ReferenceDemand): number =>
+    d.slots.findIndex((kind) => SLOT_ACCEPTS[kind].includes(d.asset) && m.slots.some((slot) => slot.kind === kind))
   const currentMode = currentArchetypeMode(archetype, meta)
   if (demands.some((d) => rankOf(currentMode, d) >= 0)) return null
   // 收下的需求条数最多者胜；条数相同，按边的偏好顺序（EDGE_MODE_SLOTS）取槽更对口的——视频连进刚建的视频节点落「全能参考」

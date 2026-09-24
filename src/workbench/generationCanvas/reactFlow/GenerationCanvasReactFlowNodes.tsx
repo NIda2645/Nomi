@@ -29,6 +29,7 @@ import {
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
+import { readGroupPort } from '../model/groupPort'
 import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
@@ -100,7 +101,8 @@ function GenerationFlowConnectionHandle({
       data-active={active ? 'true' : undefined}
       data-snapped={snapped ? 'true' : undefined}
       // 拖拽中源把手让开：它和目标热区叠在同一条卡片边上，不让它抢走落点。
-      style={type === 'source' && connecting ? { pointerEvents: 'none' } : undefined}
+      // `hidden` 档（没选中的编组端口）同样不接指针：把手在，只为让挂在它上面的边画得出来。
+      style={type === 'source' && (connecting || affordance === 'hidden') ? { pointerEvents: 'none' } : undefined}
       className={cn(
         'generation-canvas-react-flow__handle',
         `generation-canvas-react-flow__handle--${type}`,
@@ -145,7 +147,9 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     if (connection.fromHandle.nodeId === node.id) return connection.fromHandle.id ?? ''
     return connection.isValid && connection.toHandle?.nodeId === node.id ? connection.toHandle.id ?? '' : ''
   })
-  const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
+  // 编组端口节点（model/groupPort.ts）：不画卡面，只挂把手。左右收 / 发两对把手都要渲染——折叠编组的
+  // 聚合边就挂在它们上面，没有把手 React Flow 不画这条边；没选中时源把手只是不可见、不接指针（见下）。
+  const groupPort = Boolean(readGroupPort(node))
   const NodeComponent = getGenerationNodeComponentForNode(node)
   const size = resolveNodeVisualSize(node)
   const bounds = getNodeResizeBounds(node)
@@ -197,10 +201,10 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
       style={{
         width: size.width,
         height: size.height,
-        pointerEvents: collapsedGroupProxy ? 'none' : undefined,
+        pointerEvents: groupPort ? 'none' : undefined,
         '--generation-flow-node-height': `${size.height}px`,
       } as React.CSSProperties}
-      aria-hidden={collapsedGroupProxy || undefined}
+      aria-hidden={groupPort || undefined}
     >
       <NodeResizer
         isVisible={selected && !data.readOnly && CARD_FIXED_WIDTH[resolveNodeRenderKind(node) ?? ''] === undefined}
@@ -246,7 +250,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
         </>
       ) : null}
-      {!collapsedGroupProxy ? (
+      {!groupPort ? (
         <GenerationFlowNodeScope>
           {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: data.focusFlash }) ? (
             // 节点渲染器按种类懒加载（renderRegistry 的 React.lazy）。第一次建某种节点时 chunk 还没到，

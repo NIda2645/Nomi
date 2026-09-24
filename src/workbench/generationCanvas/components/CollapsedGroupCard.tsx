@@ -4,21 +4,19 @@ import { IconStack2 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import type { CollapsedGroupCardProjection } from '../model/canvasCardStackModel'
 import { CardStackPeeks } from './CardStackPeeks'
-import { MagneticConnectionHandle } from '../nodes/NodeConnectionHandles'
-import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { COLLAPSED_GROUP_CARD_SIZE } from '../model/canvasCardStackModel'
 import { GROUP_VISUAL_CLASS } from './groupVisualContract'
 
 type Props = {
   card: CollapsedGroupCardProjection
   readOnly: boolean
-  pendingConnection: boolean
-  pendingConnectionSource: boolean
-  pendingConnectionSide?: ConnectionAnchorSide
+  /**
+   * 这张折叠卡就是当前选区（点它 = 选中这个编组，走框选中态 useCanvasFrameActions.selectFrame）。
+   * 选中时边框亮 accent，左右「+」圈由画布内核里的编组端口节点画（model/groupPort.ts），不在这张卡上。
+   */
+  selected: boolean
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>, groupId: string) => void
   onExpand: (groupId: string) => void
-  onStartConnection: (event: React.PointerEvent<HTMLElement>, groupId: string, side: ConnectionAnchorSide) => void
-  onCompleteConnection: (groupId: string) => void
 }
 
 function coverUrl(card: CollapsedGroupCardProjection): string {
@@ -31,13 +29,9 @@ function coverUrl(card: CollapsedGroupCardProjection): string {
 export function CollapsedGroupCard({
   card,
   readOnly,
-  pendingConnection,
-  pendingConnectionSource,
-  pendingConnectionSide,
+  selected,
   onPointerDown,
   onExpand,
-  onStartConnection,
-  onCompleteConnection,
 }: Props): JSX.Element {
   const { t } = useTranslation()
   const imageUrl = coverUrl(card)
@@ -54,26 +48,6 @@ export function CollapsedGroupCard({
         height: COLLAPSED_GROUP_CARD_SIZE,
       }}
     >
-      {!readOnly ? (
-        <>
-          <MagneticConnectionHandle
-            side="left"
-            active={pendingConnectionSource ? pendingConnectionSide === 'left' : pendingConnection}
-            pendingTarget={pendingConnection && !pendingConnectionSource}
-            ariaLabel={t('generationCommon.canvas.group.connectInput')}
-            onStart={(event, side) => onStartConnection(event, card.groupId, side)}
-            onComplete={() => onCompleteConnection(card.groupId)}
-          />
-          <MagneticConnectionHandle
-            side="right"
-            active={pendingConnectionSource ? pendingConnectionSide === 'right' : pendingConnection}
-            pendingTarget={pendingConnection && !pendingConnectionSource}
-            ariaLabel={t('generationCommon.canvas.group.connectOutput')}
-            onStart={(event, side) => onStartConnection(event, card.groupId, side)}
-            onComplete={() => onCompleteConnection(card.groupId)}
-          />
-        </>
-      ) : null}
       <CardStackPeeks
         count={card.memberCount}
         label={countLabel}
@@ -84,9 +58,14 @@ export function CollapsedGroupCard({
       />
       <div
         className={cn(
-          'absolute inset-0 z-[2] flex cursor-grab flex-col overflow-hidden rounded-nomi-lg border active:cursor-grabbing',
+          // 这张卡住在画布内核的 ViewportPortal 里，那一层整体 pointer-events:none——卡身必须自己打开，
+          // 否则点它、拖它都穿到画布平面上（2026-09-24 真机：点折叠卡命中的是 react-flow__pane）。
+          'absolute inset-0 z-[2] flex flex-col overflow-hidden rounded-nomi-lg border',
+          readOnly ? 'pointer-events-none' : 'pointer-events-auto cursor-grab active:cursor-grabbing',
           GROUP_VISUAL_CLASS.collapsedCard,
+          selected ? 'border-nomi-accent' : null,
         )}
+        data-frame-selected={selected ? 'true' : undefined}
         role="group"
         aria-label={t('generationCommon.canvas.group.collapsedAria', { name: card.name, count: card.memberCount })}
         onPointerDown={(event) => onPointerDown(event, card.groupId)}

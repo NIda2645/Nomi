@@ -21,6 +21,8 @@ type CanvasMenuActionsInput = {
     sourceSide: ConnectionAnchorSide
     canvasX: number
     canvasY: number
+    /** 线从卡起还是从编组的「+」起；编组起的线新建节点后，组内每个成员各连一条（store.connectToGroup）。 */
+    sourceKind: 'node' | 'group'
   } | null
   setConnectionCreateMenu: (menu: null) => void
   addNode: (input: {
@@ -31,6 +33,7 @@ type CanvasMenuActionsInput = {
     select?: boolean
   }) => { id: string }
   startConnection: (nodeId: string, side: ConnectionAnchorSide) => void
+  startGroupConnection: (groupId: string, side: ConnectionAnchorSide) => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
   pasteNodes: (position: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
@@ -79,7 +82,7 @@ export function buildCanvasMenuActions(input: CanvasMenuActionsInput): {
 
   const handleAddConnectedNode = (kind: GenerationNodeKind) => {
     if (!input.connectionCreateMenu) return
-    const { sourceNodeId, sourceSide, canvasX, canvasY } = input.connectionCreateMenu
+    const { sourceNodeId, sourceSide, sourceKind, canvasX, canvasY } = input.connectionCreateMenu
     const created = input.addNode({
       kind,
       position: { x: canvasX, y: canvasY },
@@ -87,7 +90,8 @@ export function buildCanvasMenuActions(input: CanvasMenuActionsInput): {
       exactPosition: true,
       select: true,
     })
-    input.startConnection(sourceNodeId, sourceSide)
+    if (sourceKind === 'group') input.startGroupConnection(sourceNodeId, sourceSide)
+    else input.startConnection(sourceNodeId, sourceSide)
     completeNodeConnection(created.id)
     input.setConnectionCreateMenu(null)
   }

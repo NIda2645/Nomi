@@ -1,4 +1,5 @@
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { readGroupPort } from '../model/groupPort'
 
 export type GenerationFlowConnectionAffordance = 'dot' | 'magnetic' | 'hidden'
 
@@ -9,9 +10,11 @@ export type GenerationFlowConnectionAffordance = 'dot' | 'magnetic' | 'hidden'
  * - `magnetic`：两侧 112×min(168, h+28) 命中带 + 29px「+」圈，**常驻可见**、跟手（2026-09-21 拍板：
  *   去掉「还得悬停在卡上才露出」这一条）。
  * - `dot`：28px 命中 + 14px 可见圆点（逐字同迁移前 `BaseGenerationNode.tsx` 的 w-7 h-7 按钮 + 14px 点）。
- * - `hidden`：不渲染起线把手（折叠编组在画布内核里的占位节点——真正的把手画在投影层那张编组卡上，
- *   `components/CollapsedGroupCard.tsx`。那张卡没有选中态（点它不选成员），把手常驻、悬停露「+」，
- *   是有意保留的例外，见 docs/fixes/2026-09-21-connection-handle-visibility.root-cause.json）。
+ * - `hidden`：不渲染起线把手（没被选中的编组端口节点）。
+ *
+ * **编组也是「谁选中谁出圈」**（2026-09-24 用户拍板，反馈「打组后左右两边也出现 +」）：编组的把手挂在
+ * 它的端口节点上（model/groupPort.ts），选中这个编组（model/selectedGroup.ts）才出磁吸「+」圈，
+ * 没选中就什么都不画——折叠编组卡以前常驻两颗旧按钮，按下去亮、拖出去什么都不发生，已删。
  *
  * **谁能起线 → 谁就有「+」圈**（2026-09-21 用户拍板：所有能连线的节点同一种拉环，体验一致）。
  * 从连线能力派生，不按 kind 名单：画布内核里每张非只读的卡都是 `connectable`（generationCanvasReactFlowAdapter.ts），
@@ -33,7 +36,9 @@ export function resolveGenerationFlowConnectionAffordance(
   primarySelection: boolean,
   pendingConnectionSourceId: string,
 ): GenerationFlowConnectionAffordance {
-  if (node.meta?.collapsedGroupProxy === true) return 'hidden'
+  const groupPort = readGroupPort(node)
+  // 起线进行中的起点编组与卡片同理退回小圆点（带子别和目标热区抢落点）；把手本身不能卸载，否则正在拖的线没了起点。
+  if (groupPort) return !groupPort.selected ? 'hidden' : pendingConnectionSourceId === node.id ? 'dot' : 'magnetic'
   if (!primarySelection || pendingConnectionSourceId === node.id) return 'dot'
   return 'magnetic'
 }

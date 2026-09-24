@@ -347,23 +347,36 @@ try {
   // 同上：收起动画刚落地那一帧采样会假红，交给 web-first 断言等真信号。
   await expectVisible(collapsed.getByRole('button', { name: '3 节点' }), '编组卡应显示「3 节点」语义')
   check('编组显示节点语义', true)
-  const collapsedMagneticHandles = collapsed.locator('.generation-canvas-v2-node__magnetic-handle')
-  await expectCount(collapsedMagneticHandles, 2, '收起编组应保留左右两个磁性连接句柄')
-  const collapsedHandleStates = await collapsedMagneticHandles.evaluateAll((handles) => handles.map((handle) => {
-    const style = window.getComputedStyle(handle)
-    const bounds = handle.getBoundingClientRect()
-    return {
-      side: handle.getAttribute('data-side'),
-      rendered: style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0,
-      hasPlusIcon: Boolean(handle.querySelector('.generation-canvas-v2-node__magnetic-handle-icon svg')),
-    }
+  // 编组的「+」（2026-09-24 拍板）：选中才出，挂在画布内核里的编组端口节点上（model/groupPort.ts），
+  // 不再是折叠卡上常驻的两颗旧按钮（那两颗在 v0.22 按下会亮、拖出去不连线，已删）。
+  const groupRings = win.locator('.react-flow__node[data-id="reference-group"] .react-flow__handle[data-affordance="magnetic"]')
+  await expectCount(groupRings, 0, '未选中的折叠编组不出「+」圈')
+  check('未选中的折叠编组不出「+」圈', true)
+  const collapsedBody = collapsed.locator('[role="group"]')
+  const bodyBox = await collapsedBody.boundingBox()
+  if (!bodyBox) throw new Error('折叠编组卡身没有可点的边界')
+  await win.mouse.click(bodyBox.x + bodyBox.width / 2, bodyBox.y + bodyBox.height * 0.4)
+  await expectVisible(collapsed.locator('[data-frame-selected="true"]'), '点折叠卡身应选中这个编组（边框亮）')
+  await expectCount(groupRings, 2, '选中的折叠编组左右各出一个「+」圈')
+  const ringStates = await groupRings.evaluateAll((handles) => handles.map((handle) => {
+    const icon = handle.querySelector('.generation-canvas-react-flow__handle-icon')
+    const r = icon?.getBoundingClientRect()
+    const top = r && r.width > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null
+    // 只算画布里的遮挡（卡面 / 卡上控件）：卡摆在画布边缘时圈落到侧边工具栏底下，是视口问题，平移即可（同 canvas-handles-alt-drag 的判据）。
+    const coveredOnCanvas = Boolean(top && !handle.contains(top) && top.closest('.react-flow__node'))
+    return { side: handle.getAttribute('data-side'), hasPlusIcon: Boolean(icon?.querySelector('svg')), onTop: !coveredOnCanvas, coveredBy: coveredOnCanvas ? top.outerHTML.slice(0, 160) : null }
   }))
   check(
-    '收起编组保留可交互的左右悬浮加号',
-    collapsedHandleStates.map(({ side }) => side).sort().join(',') === 'left,right'
-      && collapsedHandleStates.every(({ rendered, hasPlusIcon }) => rendered && hasPlusIcon),
-    JSON.stringify(collapsedHandleStates),
+    '选中的折叠编组左右「+」圈可见、带加号、没被画布上的卡盖住',
+    ringStates.map(({ side }) => side).sort().join(',') === 'left,right'
+      && ringStates.every(({ hasPlusIcon, onTop }) => hasPlusIcon && onTop),
+    JSON.stringify(ringStates),
   )
+  await screenshotSettled(win, { path: path.join(outputDir, '04a-real-collapsed-group-selected-rings.png') })
+  // 退出选中再点聚合线：圈的命中带伸在卡外，别让它挡住后面要点的那条线。
+  const paneBox = await win.locator('.react-flow__pane').boundingBox()
+  await win.mouse.click(paneBox.x + paneBox.width - 40, paneBox.y + 40)
+  await expectCount(groupRings, 0, '点空白后折叠编组退出选中、「+」圈收起')
   check('三条成员输入聚合为一条编组线', await win.locator('g[data-aggregate-group="reference-group"]').count() === 1)
   // 连线是贝塞尔曲线：`locator.click()` 点的是外接盒中心，而曲线的外接盒中心不在曲线上——
   // 那一点谁盖着就点到谁（面板展开把画布收窄后，那里正好是选中节点的提示词面板，

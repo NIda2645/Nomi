@@ -258,6 +258,11 @@ export function useCanvasSelectionDrag({
       // 现在点空框 = 选中这个框本身（节点选区清空），Delete / 菜单「删除」删的就是它。
       selectNodes(memberIds)
       onSelectEmptyFrame?.(memberIds.length ? null : groupId)
+    } else if (group) {
+      // 折叠编组卡（selectMembers:false）：成员藏在卡里，选区就是这张卡本身——走框选中态，
+      // 于是出「+」圈（model/selectedGroup.ts）、Delete 删的是这个编组连同成员（一次撤销，2026-09-24 拍板）。
+      selectNodes([])
+      onSelectEmptyFrame?.(groupId)
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
     pendingGroupDeltaRef.current = null

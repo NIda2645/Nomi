@@ -25,7 +25,6 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useStableCategoryNodes } from './useStableCategoryNodes'
 import { getCanvasGroupBoxes, getSelectedBounds } from '../components/generationCanvasGeometry'
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM, unionCanvasFitBounds } from '../model/canvasFitBounds'
-import { useCollapsedGroupConnectionSource } from '../components/useCollapsedGroupConnectionSource'
 import { projectCollapsedGroups } from '../model/canvasCardStackModel'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
 import { useCanvasGroupActions } from '../components/useCanvasGroupActions'
@@ -35,6 +34,8 @@ import { CANVAS_RESULT_DRAG_MIME } from '../components/canvasResultDrag'
 import { useCanvasFrameTool } from '../components/useCanvasFrameTool'
 import { useCanvasFrameMembership } from '../components/useCanvasFrameMembership'
 import { useCanvasFrameActions } from '../components/useCanvasFrameActions'
+import { resolveSelectedGroupId } from '../model/selectedGroup'
+import { projectGroupConnectionPorts } from './groupConnectionPorts'
 import type { CanvasFrameInteraction } from '../components/GroupFrame'
 import { useCanvasShortcuts } from '../components/useCanvasShortcuts'
 import { connectSelectedCanvasNodes } from '../components/canvasSelectionConnection'
@@ -183,18 +184,21 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     }])),
     [collapsedProjection],
   )
-  const flowProjectionNodes = React.useMemo(() => {
-    if (collapsedProjection.cards.length === 0) return collapsedProjection.visibleNodes
-    const proxyNodes = collapsedProjection.cards.flatMap((card) => {
-      const proxy = collapsedProjection.edgeNodeById.get(card.groupId)
-      if (!proxy) return []
-      return [{
-        ...proxy,
-        meta: { ...(proxy.meta || {}), collapsedGroupProxy: true },
-      }]
-    })
-    return [...collapsedProjection.visibleNodes, ...proxyNodes]
-  }, [collapsedProjection])
+  const groupBoxes = React.useMemo(
+    () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
+    [collapsedProjection.visibleNodes, visibleGroups],
+  )
+  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
+  const selectedGroupId = React.useMemo(() => resolveSelectedGroupId({
+    selectedFrameId: frameActions.selectedFrameId, selectedNodeIds, groups: visibleGroups, existingNodeIds: visibleNodeIds,
+  }), [frameActions.selectedFrameId, selectedNodeIds, visibleGroups, visibleNodeIds])
+  const flowProjectionNodes = React.useMemo(() => projectGroupConnectionPorts({
+    visibleNodes: collapsedProjection.visibleNodes,
+    cards: collapsedProjection.cards,
+    edgeNodeById: collapsedProjection.edgeNodeById,
+    boxes: readOnly ? [] : groupBoxes,
+    selectedGroupId: readOnly ? null : selectedGroupId,
+  }), [collapsedProjection, groupBoxes, readOnly, selectedGroupId])
   const { selectedSet, nodeById, flowNodes, flowEdges } = useGenerationCanvasReactFlowProjection({
     nodes: flowProjectionNodes,
     edges: projectedEdges,
@@ -210,11 +214,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (!draggingRef.current || dragDraftNodesRef.current.length === 0) return flowNodes
     return overlayCanvasDragDraft(flowNodes, dragDraftNodesRef.current)
   }, [flowNodes])
-  const groupBoxes = React.useMemo(
-    () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
-    [collapsedProjection.visibleNodes, visibleGroups],
-  )
-  const collapsedGroupConnection = useCollapsedGroupConnectionSource(readOnly)
+  const pendingConnectionSourceKind = useGenerationCanvasStore((state) => state.pendingConnectionSourceKind)
   const selectedGroupIds = React.useMemo(() => {
     return visibleGroups
       .filter((group) => {
@@ -288,7 +288,6 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     zoomRef,
   })
 
-  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
   const selectCanvasFrame = frameActions.selectFrame
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
@@ -577,10 +576,18 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
+    if (connection.source === connection.target) { cancelConnection(); return } // 编组端口拖回自己的收线口
     const side = connection.sourceHandle === 'source-left' ? 'left' : 'right'
-    startConnection(connection.source, side)
-    completeNodeConnection(connection.target)
-  }, [readOnly, startConnection])
+    // 松手时重新起一次线不是多余的：按下把手那一刻若有菜单开着，同一次 pointerdown 会让菜单关闭并清掉待连态。
+    // 所以按连线的**起点是谁**重起，而不是看待连态——编组的「+」（端口节点 id = 编组 id）重起编组线。
+    const state = useGenerationCanvasStore.getState()
+    const isGroup = (id: string) => state.groups.some((group) => group.id === id)
+    if (isGroup(connection.source)) state.startGroupConnection(connection.source, side)
+    else startConnection(connection.source, side)
+    // 落在折叠编组的收线把手上（端口节点 id = 编组 id）= 连进这个编组，不是连一张叫这个 id 的卡。
+    if (isGroup(connection.target)) handleConnectToGroupFromFlow(connection.target)
+    else completeNodeConnection(connection.target)
+  }, [cancelConnection, handleConnectToGroupFromFlow, readOnly, startConnection])
 
   const handlePaneClick = React.useCallback(() => {
     if (readOnly || canvasPanMovedRef.current) return
@@ -714,11 +721,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         collapsedGroupCards={collapsedProjection.cards}
         onGroupFramePointerDown={handleGroupFramePointerDown}
         pendingConnection={Boolean(pendingConnectionSourceId)}
-        pendingConnectionSourceId={collapsedGroupConnection.pendingConnectionSourceId}
-        pendingConnectionSourceKind={collapsedGroupConnection.projectionProps.pendingConnectionSourceKind}
+        pendingConnectionSourceKind={pendingConnectionSourceKind}
         pendingConnectionSide={pendingConnectionSourceSide}
         onConnectToGroup={handleConnectToGroupFromFlow}
-        onStartGroupConnection={collapsedGroupConnection.projectionProps.onStartGroupConnection}
         onSetGroupCollapsed={setGroupCollapsed}
         selectedBounds={selectedBounds}
         selectedNodeIds={selectedNodeIds}
