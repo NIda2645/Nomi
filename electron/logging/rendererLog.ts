@@ -71,38 +71,37 @@ function writeEntry(entry: RendererLogEntry): void {
   else logCrash(`renderer:${entry.event}`, error ?? "(no error object)", fields);
 }
 
-type Window = { startedAt: number; lines: number; suppressed: boolean };
-
-/** 一个带限流状态的记录器。导出工厂而不是单例：单测要能拿到干净的计数与假时钟。 */
+/**
+ * 一个带限流状态的记录器：按整分钟分桶，一分钟一换、旧桶整个丢掉（计数表只装得下这一分钟放进来的事件，
+ * 最多 200 个名字，不会被渲染层撑爆）。导出工厂而不是单例：单测要能拿到干净的计数与假时钟。
+ */
 export function createRendererLogRecorder(now: () => number = Date.now): (raw: unknown) => void {
-  const perEvent = new Map<string, Window>();
-  let total: Window = { startedAt: now(), lines: 0, suppressed: false };
+  let minute = Number.NaN;
+  let total = 0;
+  let perEvent = new Map<string, number>();
+  let announced = new Set<string>();
 
   const admit = (key: string): boolean => {
-    const at = now();
-    if (at - total.startedAt >= WINDOW_MS) {
-      total = { startedAt: at, lines: 0, suppressed: false };
-      // 事件名集合由渲染层决定，不设上限就是一个可以被撑爆的 Map——过期窗口随总窗口一起清。
-      for (const [event, window] of perEvent) if (at - window.startedAt >= WINDOW_MS) perEvent.delete(event);
+    const current = Math.floor(now() / WINDOW_MS);
+    if (current !== minute) {
+      minute = current;
+      total = 0;
+      perEvent = new Map();
+      announced = new Set();
     }
-    let window = perEvent.get(key);
-    if (!window || at - window.startedAt >= WINDOW_MS) {
-      window = { startedAt: at, lines: 0, suppressed: false };
-      perEvent.set(key, window);
-    }
-    const overEvent = window.lines >= MAX_LINES_PER_EVENT;
-    const overTotal = total.lines >= MAX_LINES_TOTAL;
-    if (!overEvent && !overTotal) {
-      window.lines += 1;
-      total.lines += 1;
+    const count = perEvent.get(key) ?? 0;
+    const overTotal = total >= MAX_LINES_TOTAL;
+    if (count < MAX_LINES_PER_EVENT && !overTotal) {
+      perEvent.set(key, count + 1);
+      total += 1;
       return true;
     }
-    // 每个窗口只说一次「后面的被略掉了」，不然这一行本身又成了刷屏。
-    const bucket = overTotal ? total : window;
-    if (!bucket.suppressed) {
-      bucket.suppressed = true;
+    // 每分钟对每个桶只说一次「后面的被略掉了」，不然这一行本身又成了刷屏。
+    const bucket = overTotal ? "*" : key;
+    if (!announced.has(bucket)) {
+      announced.add(bucket);
       logWarn("renderer", "renderer-log-suppressed", {
-        event: overTotal ? "*" : key,
+        event: bucket,
         limit: overTotal ? MAX_LINES_TOTAL : MAX_LINES_PER_EVENT,
         windowMs: WINDOW_MS,
       });
