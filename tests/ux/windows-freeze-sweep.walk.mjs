@@ -140,7 +140,10 @@ async function step(name, run, settleMs = 1500) {
   await new Promise((resolve) => setTimeout(resolve, settleMs))
   const frameGap = await win.evaluate(() => Math.round(window.__sweepProbe?.max ?? -1)).catch(() => null)
   const gpuGone = await app.evaluate(() => globalThis.__sweepGone.splice(0)).catch(() => [])
-  const banners = await win.evaluate(() => (document.body.innerText.match(/[^\n]*(失败|请检查)[^\n]*/g) || []).slice(0, 3)).catch(() => [])
+  // 失败只从提示区读（项目横幅 / 节点错误 / 导入反馈都是 role=alert|status），不扫整页文字——
+  // 整页里有用户自己的提示词、文件名，扫它会把「文稿里写着失败」也算成失败（check:walkthroughs）。
+  const banners = await win.locator('[role="alert"], [role="status"]').allInnerTexts()
+    .then((texts) => texts.filter((text) => /失败|请检查/.test(text)).slice(0, 3)).catch(() => [])
   const result = { name, ms: Date.now() - started, frameGap, maxMain: current.maxMain, gpuGone, banners, error }
   result.ok = !error && gpuGone.length === 0 && banners.length === 0 && frameGap !== null && frameGap <= FREEZE_MS
   steps.push(result)
