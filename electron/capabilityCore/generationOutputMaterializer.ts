@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { HardenedFetchResult } from "../hardenedFetch";
 import { writeDeterministicAsset } from "../assets/projectAssetStore";
-import { fetchProviderMedia, PROVIDER_MEDIA_MAX_BYTES, type ProviderMediaFetchOptions } from "../assets/providerMediaFetch";
+import { exceedsProviderMediaCap, fetchProviderMedia, type ProviderMediaFetchOptions } from "../assets/providerMediaFetch";
 import type { ProviderNetworkConfig } from "../providerNetwork";
 import { readCatalog } from "../catalog/catalogStore";
 import { parseDataUrl } from "../assets/assetBytes";
@@ -69,7 +69,6 @@ function contentHash(bytes: Buffer): string {
 }
 
 export function createGenerationOutputMaterializer(deps: GenerationOutputMaterializerDependencies = {}) {
-  const maxBytes = PROVIDER_MEDIA_MAX_BYTES;
   const fetchOutput = deps.fetchOutput ?? fetchProviderMedia;
   const storeAsset = deps.writeAsset ?? writeDeterministicAsset;
 
@@ -90,7 +89,7 @@ export function createGenerationOutputMaterializer(deps: GenerationOutputMateria
     let contentType = input.output.contentType || "application/octet-stream";
     if (input.output.url.startsWith("data:")) {
       const parsed = parseDataUrl(input.output.url);
-      if (parsed.bytes.byteLength > maxBytes) throw new Error(`Generation output exceeds ${maxBytes} bytes`);
+      if (exceedsProviderMediaCap(parsed.bytes.byteLength)) throw new Error(`Generation output is too large (${parsed.bytes.byteLength} bytes)`);
       bytes = parsed.bytes;
       contentType = parsed.contentType;
     } else {

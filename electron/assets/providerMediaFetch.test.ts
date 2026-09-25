@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const hardenedFetch = vi.fn(async () => ({ bytes: Buffer.from('media'), contentType: 'video/mp4', status: 200, finalUrl: 'https://cdn.example/v.mp4', truncated: false }))
 vi.mock('../hardenedFetch', () => ({ hardenedFetch }))
 
-const { fetchProviderMedia, PROVIDER_MEDIA_FETCH_TIMEOUT_MS, PROVIDER_MEDIA_MAX_BYTES } = await import('./providerMediaFetch')
+const { fetchProviderMedia, PROVIDER_MEDIA_FETCH_TIMEOUT_MS } = await import('./providerMediaFetch')
+const MEDIA_BYTE_CAP = 200 * 1024 * 1024
 const { createGenerationOutputMaterializer } = await import('../capabilityCore/generationOutputMaterializer')
 
 // 供应商产物取回只有一条线路策略（2026-09-25）。付费卡那条路以前自己调 hardenedFetch、只给 maxBytes：
@@ -17,7 +18,7 @@ describe('fetchProviderMedia is the one retrieval policy for provider outputs', 
     await fetchProviderMedia('https://cdn.example/v.mp4')
     expect(hardenedFetch).toHaveBeenCalledWith('https://cdn.example/v.mp4', expect.objectContaining({
       timeoutMs: PROVIDER_MEDIA_FETCH_TIMEOUT_MS,
-      maxBytes: PROVIDER_MEDIA_MAX_BYTES,
+      maxBytes: MEDIA_BYTE_CAP,
       allowContentTypes: ['image/', 'video/', 'audio/', 'application/octet-stream'],
     }))
     expect(PROVIDER_MEDIA_FETCH_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000)
@@ -35,7 +36,7 @@ describe('fetchProviderMedia is the one retrieval policy for provider outputs', 
     const materializer = createGenerationOutputMaterializer({ writeAsset, resolveProviderNetwork: (providerId) => (providerId === 'apimart' ? { proxyUrl: 'http://127.0.0.1:7890' } : undefined) })
     await materializer.materialize({ projectId: 'p', providerTaskId: 't', providerId: 'apimart', output: { kind: 'video', url: 'https://cdn.example/v.mp4' } })
     const options = (hardenedFetch.mock.calls[0] as unknown[])[1] as Record<string, unknown>
-    expect(options).toMatchObject({ timeoutMs: PROVIDER_MEDIA_FETCH_TIMEOUT_MS, maxBytes: PROVIDER_MEDIA_MAX_BYTES, allowContentTypes: ['video/', 'application/octet-stream'] })
+    expect(options).toMatchObject({ timeoutMs: PROVIDER_MEDIA_FETCH_TIMEOUT_MS, maxBytes: MEDIA_BYTE_CAP, allowContentTypes: ['video/', 'application/octet-stream'] })
     expect(options.dispatcher).toBeDefined()
   })
 })

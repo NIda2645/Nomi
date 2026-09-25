@@ -57,7 +57,7 @@
     {
       "kind": "read",
       "path": "electron/assets/providerMediaFetch.ts",
-      "symbol": "PROVIDER_MEDIA_MAX_BYTES"
+      "symbol": "providerMediaCap"
     },
     {
       "kind": "read",
@@ -72,7 +72,7 @@
     {
       "kind": "read",
       "path": "electron/capabilityCore/generationOutputMaterializer.ts",
-      "symbol": "PROVIDER_MEDIA_MAX_BYTES"
+      "symbol": "exceedsProviderMediaCap"
     },
     {
       "kind": "read",
@@ -258,7 +258,7 @@
   "door_reduction": {
     "before": 41,
     "after": 40,
-    "why_not": "门表由 node scripts/door-map.mjs --write=materializeShots,applyShotGeneration,attachShotResult,followRunChange,landCanvasBestEffort,landDraftOnCanvas,observeSingleShotRun,fetchProviderMedia,queryTask,createGenerationOutputMaterializer --read=deriveProductionShotState,productionShotIdForNode,productionJobPhase,isProductionJobInFlight,GenerationProviderTaskContext,PROVIDER_MEDIA_MAX_BYTES,useProductionCanvasLandingStore,productionShotNodes,selectProductionShotRows,readGenerationExecution,assetUrlForProductionPreview,PRODUCTION_PREVIEW_PREFIX,canvasDetached 生成（覆盖这次碰到的五份状态：节点运行状态、用户删掉的镜不复活、渲染层 Run 投影缓存、供应商查询身份、产物取回线路）。按同一组状态数修前是 41 扇：删掉 4 扇（appIntegration 里只在出片那一下投递结果的专用通道及其两处 onShotMaterialized 装配、渲染层 production.attach-shot-result 回填口、单镜观察者 onMaterialized 的重复落地、分镜表 productionShotRows 自己再判一次三态），新增 3 扇（followRunChange 的装配与定义两扇、观察边界的 GenerationProviderTaskContext）。剩下的每一扇都点名过：画布写侧只有一条链——确认即落 / 草稿投影 / 打开补齐 / 跟随四个时机都进 canvasLandingHost.runLanding → landCanvasForRun → 渲染层 materializeShots（attachShotResult / applyShotGeneration 是它内部的两步，agentPanelSpendConfirmTestUtils 是测试装配）；判定只有 deriveProductionShotState 一个，两处调用（主进程投影写节点运行记录 / 渲染层排队与已停小标——后者没有普通生成对应物，只能留在渲染层）；「还在等供应商吗」只有 isProductionJobInFlight 一个判据，观察者重踢与打开补齐两处用；查询身份只经 generationRuntimeAdapter.query 一扇（apimart queryTask 是供应商实现内部的两处调用）；产物取回只经 fetchProviderMedia，三个调用方（普通生成本地化 / 另存 / 付费卡物化）不再各带一组数字。"
+    "why_not": "门表由 node scripts/door-map.mjs --write=materializeShots,applyShotGeneration,attachShotResult,followRunChange,landCanvasBestEffort,landDraftOnCanvas,observeSingleShotRun,fetchProviderMedia,queryTask,createGenerationOutputMaterializer --read=deriveProductionShotState,productionShotIdForNode,productionJobPhase,isProductionJobInFlight,GenerationProviderTaskContext,exceedsProviderMediaCap,providerMediaCap,useProductionCanvasLandingStore,productionShotNodes,selectProductionShotRows,readGenerationExecution,assetUrlForProductionPreview,PRODUCTION_PREVIEW_PREFIX,canvasDetached 生成（覆盖这次碰到的五份状态：节点运行状态、用户删掉的镜不复活、渲染层 Run 投影缓存、供应商查询身份、产物取回线路）。按同一组状态数修前是 41 扇：删掉 4 扇（appIntegration 里只在出片那一下投递结果的专用通道及其两处 onShotMaterialized 装配、渲染层 production.attach-shot-result 回填口、单镜观察者 onMaterialized 的重复落地、分镜表 productionShotRows 自己再判一次三态），新增 3 扇（followRunChange 的装配与定义两扇、观察边界的 GenerationProviderTaskContext）。剩下的每一扇都点名过：画布写侧只有一条链——确认即落 / 草稿投影 / 打开补齐 / 跟随四个时机都进 canvasLandingHost.runLanding → landCanvasForRun → 渲染层 materializeShots（attachShotResult / applyShotGeneration 是它内部的两步，agentPanelSpendConfirmTestUtils 是测试装配）；判定只有 deriveProductionShotState 一个，两处调用（主进程投影写节点运行记录 / 渲染层排队与已停小标——后者没有普通生成对应物，只能留在渲染层）；「还在等供应商吗」只有 isProductionJobInFlight 一个判据，观察者重踢与打开补齐两处用；查询身份只经 generationRuntimeAdapter.query 一扇（apimart queryTask 是供应商实现内部的两处调用）；产物取回只经 fetchProviderMedia，三个调用方（普通生成本地化 / 另存 / 付费卡物化）不再各带一组数字。"
   },
   "invariant_owner_layer": {
     "layer": "electron/shared/productionShotPhase.ts",

@@ -15,8 +15,17 @@ import { providerDispatcher, type ProviderNetworkConfig } from "../providerNetwo
 
 /** 一次取回的墙钟上限。视频成片比图大一个数量级，20 秒的通用缺省对它不够。 */
 export const PROVIDER_MEDIA_FETCH_TIMEOUT_MS = 60_000;
-/** 单个产物的字节上限（与素材导入同一个数：超过它的产物本来也进不了素材库）。 */
-export const PROVIDER_MEDIA_MAX_BYTES = 200 * 1024 * 1024;
+/**
+ * 单个产物的字节上限。沿用素材导入原来那一个数（本次只是把三处收成一处，不新增上限）；
+ * 取回与「已经在内存里的 data: 产物」都问这里，不各带一个数字。
+ */
+export function exceedsProviderMediaCap(byteLength: number): boolean {
+  return byteLength > providerMediaCap();
+}
+
+function providerMediaCap(): number {
+  return 200 * 1024 * 1024;
+}
 
 export type ProviderMediaFetchOptions = {
   /**
@@ -41,7 +50,7 @@ export async function fetchProviderMedia(url: string, options: ProviderMediaFetc
   try {
     return await hardenedFetch(url, {
       timeoutMs: PROVIDER_MEDIA_FETCH_TIMEOUT_MS,
-      maxBytes: PROVIDER_MEDIA_MAX_BYTES,
+      maxBytes: providerMediaCap(),
       ...(options.allowContentTypes === 'any' ? {} : { allowContentTypes: options.allowContentTypes ?? DEFAULT_MEDIA_CONTENT_TYPES }),
       ...(options.trustedPrivateOrigin ? { allowedPrivateOrigins: [options.trustedPrivateOrigin] } : {}),
       ...(providerRoute ? { dispatcher: providerRoute } : {}),
