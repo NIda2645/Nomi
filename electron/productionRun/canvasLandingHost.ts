@@ -72,16 +72,16 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     const payload = buildMaterializeShotsPayload(run, { projectRoot: deps.resolveProjectRoot(projectId) });
     return payload ? materializeShotsSignature(payload) : null;
   };
-  const runLanding = (projectId: string, runId: string, isCurrent?: () => boolean, existingOnly = false): Promise<boolean> => {
-    const key = runKey(projectId, runId);
+  const enqueue = (key: string, work: () => Promise<boolean>): Promise<boolean> => {
     const previous = chainByRun.get(key) ?? Promise.resolve();
-    const land = () => landOnce(projectId, runId, isCurrent, existingOnly);
-    const next = previous.then(land, land);
+    const next = previous.then(work, work);
     const settled = next.then(() => undefined, () => undefined);
     chainByRun.set(key, settled);
     void settled.then(() => { if (chainByRun.get(key) === settled) chainByRun.delete(key); });
     return next;
   };
+  const runLanding = (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> =>
+    enqueue(runKey(projectId, runId), () => landOnce(projectId, runId, isCurrent, false));
   const landOnce = async (projectId: string, runId: string, isCurrent: (() => boolean) | undefined, existingOnly: boolean): Promise<boolean> => {
     if (isCurrent && !isCurrent()) return false;
     let run: ProductionRun | null | undefined;
@@ -119,7 +119,8 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     if (landed && signature) projectedSignature.set(runKey(projectId, runId), signature);
     return landed;
   };
-  const scheduledFollows = new Set<string>();
+  // 已排进队、还没开始的那一次跟随：同一段时间里的多次变化并成一次（开始时摘掉，之后的变化会再排一次）。
+  const pendingFollows = new Set<string>();
   const followRunChange = (run: ProductionRun): void => {
     const plan = run.generationPlan;
     if (!plan) return;
@@ -130,22 +131,23 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       projectedSignature.delete(key);
       return;
     }
-    // execute 的事件旁路是同步调的（可能还在 Run 锁里）：挪出这一拍，同一拍里的多次变化并成一次。
-    if (scheduledFollows.has(key)) return;
-    scheduledFollows.add(key);
-    setTimeout(() => {
-      scheduledFollows.delete(key);
+    // execute 的事件旁路是同步调的（可能还在 Run 锁里）：排进这个 Run 的落地队列（异步开始，出了这一拍），
+    // 轮到它时再读一次最新的 Run、比一次指纹——没变就不打扰渲染层。
+    if (pendingFollows.has(key)) return;
+    pendingFollows.add(key);
+    track(run.projectId, enqueue(key, async () => {
+      pendingFollows.delete(key);
       let current: ProductionRun | null | undefined;
       try {
         current = deps.readRun(run.projectId, run.runId);
       } catch {
-        return;
+        return false;
       }
-      if (!current || !deps.isProjectOpen(current.projectId)) return;
+      if (!current || !deps.isProjectOpen(current.projectId)) return false;
       const signature = signatureOf(current, current.projectId);
-      if (!signature || projectedSignature.get(key) === signature) return;
-      track(current.projectId, runLanding(current.projectId, current.runId, undefined, true));
-    }, 0);
+      if (!signature || projectedSignature.get(key) === signature) return false;
+      return landOnce(current.projectId, current.runId, undefined, true);
+    }));
   };
   const landCanvasBestEffort = (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> => {
     const work = runLanding(projectId, runId, isCurrent);

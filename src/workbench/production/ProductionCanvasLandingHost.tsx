@@ -13,6 +13,7 @@ import type { ProductionRun } from '../../../electron/productionRun/productionRu
 import { productionRunApi } from './productionRunApi'
 import { useProductionCanvasLandingStore } from './productionCanvasLandingStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
+import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { buildDependencyWaves } from '../generationCanvas/runner/dependencyWaves'
 import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPreview'
 
@@ -27,13 +28,17 @@ function isTerminal(run: ProductionRun): boolean {
  * 只有它们会用到这份缓存（排队 / 已停小标、失败卡「重试」走不走返工链）；片子已经落好的节点不需要——
  * 否则一个做过几十次 Agent 生成的项目，每 1.5 秒要把几十份 run.json 读一遍。空 = 不用 poll（省电）。
  */
+function badgeRunIdOf(node: GenerationCanvasNode): string | null {
+  const meta = node.meta as Record<string, unknown> | undefined
+  if (typeof meta?.productionRunId !== 'string' || !meta.productionRunId) return null
+  return node.result?.url && node.status !== 'error' ? null : meta.productionRunId
+}
+
 function productionRunIdsNeedingBadges(): Set<string> {
   const runIds = new Set<string>()
   for (const node of useGenerationCanvasStore.getState().nodes) {
-    const meta = node.meta as Record<string, unknown> | undefined
-    if (typeof meta?.productionRunId !== 'string' || !meta.productionRunId) continue
-    if (node.result?.url && node.status !== 'error') continue
-    runIds.add(meta.productionRunId)
+    const runId = badgeRunIdOf(node)
+    if (runId) runIds.add(runId)
   }
   return runIds
 }
@@ -64,13 +69,8 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
       // localStorage 不可用 → 跳过
     }
   }, [])
-  // 画布上有没有多镜占位节点（有才 poll）。订阅 nodes 长度/meta 变化即可（低频）。
-  const hasProductionNodes = useGenerationCanvasStore((state) =>
-    state.nodes.some((node) => {
-      const meta = node.meta as Record<string, unknown> | undefined
-      return typeof meta?.productionRunId === 'string' && Boolean(meta.productionRunId)
-    }),
-  )
+  // 画布上有没有用得着这份缓存的制作节点（有才 poll；全落好了就停，不空转）。
+  const hasProductionNodes = useGenerationCanvasStore((state) => state.nodes.some((node) => badgeRunIdOf(node) !== null))
 
   // ① + ②：poll 活跃多镜 Run → store → 节点原地状态。
   React.useEffect(() => {

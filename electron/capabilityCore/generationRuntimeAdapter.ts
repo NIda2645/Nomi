@@ -68,10 +68,7 @@ export type GenerationProviderMaterializationResult = {
  * 「不知道这笔任务是用哪个模型交的」、被吞成「还在跑」。视频在供应商那边早就出好了，Run 永远停在 polling。
  * 供应商实现早就留了「调用方明说」这条路（apimartGenerationProvider.queryTargetFor ①），只是这一层从来没把它递下去。
  */
-export type GenerationProviderTaskContext = {
-  modelId?: string;
-  mode?: string;
-};
+export type GenerationProviderTaskContext = Partial<Pick<GenerationProviderRequestInputV1, "modelId" | "mode">>;
 
 export type GenerationProvider = {
   providerId: string;
@@ -79,7 +76,7 @@ export type GenerationProvider = {
   buildRequest: (input: GenerationProviderRequestInputV1) => unknown;
   submit: (request: unknown, idempotencyKey: string) => Promise<{ providerTaskId: string; raw?: unknown }>;
   query?: (providerTaskId: string, context?: GenerationProviderTaskContext) => Promise<{ status: string; raw?: unknown }>;
-  reconcile?: (input: { idempotencyKey: string; providerTaskId?: string; context?: GenerationProviderTaskContext }) => Promise<{ disposition: GenerationProviderReconcileDisposition; providerTaskId?: string; raw?: unknown }>;
+  reconcile?: (input: { idempotencyKey: string; providerTaskId?: string }) => Promise<{ disposition: GenerationProviderReconcileDisposition; providerTaskId?: string; raw?: unknown }>;
   materialize?: (input: { providerTaskId: string; raw?: unknown }) => Promise<GenerationProviderMaterializationResult>;
   cancel?: (providerTaskId: string) => Promise<{ disposition: Exclude<GenerationProviderCancelDisposition, "unsupported">; raw?: unknown }>;
 };
@@ -325,16 +322,12 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     };
   }
 
-  async function reconcile(input: { providerId: string; idempotencyKey: string; providerTaskId?: string; context?: GenerationProviderTaskContext }): Promise<GenerationProviderReconcileResult> {
+  async function reconcile(input: { providerId: string; idempotencyKey: string; providerTaskId?: string }): Promise<GenerationProviderReconcileResult> {
     const provider = providers.get(input.providerId);
     if (!provider) throw new GenerationProviderCapabilityError(input.providerId, ["registered_provider"]);
     if (!provider.reconcile || !provider.capabilities.reconcile) throw new GenerationProviderObservationError(input.providerId, "reconcile");
     const existingProviderTaskId = input.providerTaskId?.trim();
-    const result = await provider.reconcile({
-      idempotencyKey: input.idempotencyKey,
-      ...(existingProviderTaskId ? { providerTaskId: existingProviderTaskId } : {}),
-      ...(input.context ? { context: input.context } : {}),
-    });
+    const result = await provider.reconcile({ idempotencyKey: input.idempotencyKey, ...(existingProviderTaskId ? { providerTaskId: existingProviderTaskId } : {}) });
     if (!["found", "not_found", "indeterminate"].includes(result.disposition)) throw new Error("Provider returned an invalid reconciliation disposition");
     const providerTaskId = result.providerTaskId?.trim() || existingProviderTaskId;
     if (result.disposition === "found" && !providerTaskId) throw new Error("Provider reconciliation found a task without returning its id");

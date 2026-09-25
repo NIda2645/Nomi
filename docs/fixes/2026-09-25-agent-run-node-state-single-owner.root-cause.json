@@ -357,7 +357,7 @@
     "reason": "任何耗时超过一个观察窗的供应商任务、任何在任务进行中的重开 / 重启、任何画布上有多次 Agent 生成的项目都会走到同一个机制；供应商实例按读目录新建是刻意的设计（设置里改 key 立即生效），所以「实例内存里的身份」必然活不过下一次读取。",
     "same_class_scan": [
       "node scripts/door-map.mjs --write=materializeShots,applyShotGeneration,attachShotResult,followRunChange,landCanvasBestEffort,landDraftOnCanvas --read=deriveProductionShotState,productionShotIdForNode（修后 13 扇，见 doors）",
-      "全仓扫 adapter.query / provider.query( / provider.reconcile(：唯一的 Run-owned 查询入口是 productionGenerationSubmission.poll；reconcile 同样补了 context 透传",
+      "全仓扫 adapter.query / provider.query( / provider.reconcile(：唯一的 Run-owned 查询入口是 productionGenerationSubmission.poll；adapter.reconcile 在生产代码里没有调用方（MCP / 打开补齐的「对账」都走 poll），不加身份参数",
       "全仓扫 hardenedFetch 的产物取回调用：projectAssetStore / downloadAsset / generationOutputMaterializer 三处，全部改走 fetchProviderMedia",
       "全仓扫 production-preview 在 src/ 的出现：只剩测试夹具；旧项目里的结果由 canvasSnapshotNormalizer 加载时改写（productionPreviewUrl.ts）",
       "ProductionCanvasLandingHost 只轮询第一个 Run：改成画布上每个 Run 各一份（终结的 Run 读一次即缓存）"

@@ -285,7 +285,9 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
   const imageURL = `data:image/jpeg;base64,${imageBytes.toString('base64')}`
   // 视频产物用一段**真的供应商出片**（2026-08-20 L3 全旅程审计里真模型生成的 mp4），不是合成色块：
   // 宿主要把它下载、校验、落进项目素材库，再投成画布节点的 nomi-local:// 结果。
-  const videoBytes = await readFile(path.join(rootDir, 'docs/audit/2026-08-20-l3-f1-full-journey/08-video-1787216968985.mp4'))
+  // 只在真有人来取视频时才读（非视频走查不必把近 1MB 读进内存）。
+  let videoBytes
+  const readVideoBytes = async () => (videoBytes ??= await readFile(path.join(rootDir, 'docs/audit/2026-08-20-l3-f1-full-journey/08-video-1787216968985.mp4')))
   /** apimart 是**异步**协议：create 回 task_id，query 轮询到 completed 才给出图的 URL。 */
   const tasks = new Map()
   let taskSequence = 0
@@ -318,9 +320,10 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       return
     }
     if (record.path === '/fixture/video.mp4') {
+      const bytes = await readVideoBytes()
       if (!canWrite(response)) return
-      response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': videoBytes.length })
-      response.end(videoBytes)
+      response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': bytes.length })
+      response.end(bytes)
       return
     }
     // Higgsfield 轮询：`GET /requests/<id>/status`，产物键是 `images[0].url`（与 apimart 不对称）。

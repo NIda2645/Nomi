@@ -768,7 +768,7 @@ export function createCatalogGenerationProvider(options: CatalogGenerationProvid
     },
     async reconcile(input) {
       if (!input.providerTaskId?.trim()) return { disposition: "indeterminate" };
-      const result = await queryTask(input.providerTaskId, input.context);
+      const result = await queryTask(input.providerTaskId);
       // A successful HTTP response with an unrecognised/missing task status is
       // not proof that the paid operation exists. Keep it in manual
       // reconciliation (indeterminate): callers must not materialize outputs or
