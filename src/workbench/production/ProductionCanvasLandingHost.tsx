@@ -1,13 +1,14 @@
 // P4 S5 — 画布落地 host（全程挂在工作区，跟着画布）。三件事：
-//   ① 当画布上存在多镜占位节点时，周期拉取该项目最活跃的多镜 Run 全量 → landing store（供占位派生三态）；
+//   ① 画布上有制作节点时，周期拉取**每一个**落了节点的 Run → landing store（只供「排队中 / 已停」小标与续拍入口）；
 //   ② 进度由节点和任务中心原地显示，不再叠加常驻 toast；
 //   ③ 观察占位节点被删（整批 Cmd+Z / 手动删）→ 发 plan.detach-shot-nodes 让 Run 记 detached（撤销事实优先）。
 //
-// 真相源仍是主进程 Run；host 只是它的只读投影缓存 + 用户删节点的忠实上报。逐镜 result 回填由主进程 push
-// （见 appIntegration.pushShotResultToRenderer → attach-shot-result），不在此 poll。
+// 真相源仍是主进程 Run；host 只是它的只读投影缓存 + 用户删节点的忠实上报。
+// 「生成中 / 结果 / 失败」不在此 poll：主进程的画布落地跟着 Run 的每一次变化把它们写进节点自己的运行记录
+// （canvasLandingHost.followRunChange → materialize-shots），与普通生成同一份状态、同一套画法。
 import React from 'react'
 
-import type { ProductionRun, ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'
+import type { ProductionRun } from '../../../electron/productionRun/productionRunTypes'
 import { productionRunApi } from './productionRunApi'
 import { useProductionCanvasLandingStore } from './productionCanvasLandingStore'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
@@ -16,11 +17,11 @@ import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPrevi
 
 const POLL_INTERVAL_MS = 1500
 
-function isActiveSummary(summary: ProductionRunSummary): boolean {
-  return summary.status !== 'completed' && summary.status !== 'cancelled'
+function isTerminal(run: ProductionRun): boolean {
+  return run.status === 'completed' || run.status === 'cancelled'
 }
 
-/** 画布上属某多镜 Run 的占位节点 id 集合（meta.productionRunId）。空 = 不用 poll（省电）。 */
+/** 画布上属某制作 Run 的节点所引用的 runId 集合（meta.productionRunId）。空 = 不用 poll（省电）。 */
 function productionRunIdsOnCanvas(): Set<string> {
   const runIds = new Set<string>()
   for (const node of useGenerationCanvasStore.getState().nodes) {
@@ -72,30 +73,28 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
     }
     let cancelled = false
 
-    const readActiveRun = async (): Promise<ProductionRun | null> => {
-      // 画布上出现的 Run 优先（正在盯的批次）；否则退回列表里最活跃的一个。
-      const onCanvas = productionRunIdsOnCanvas()
-      if (onCanvas.size > 0) {
-        // 取画布上第一个 run（同项目通常只有一个在飞批次，§3.3 并行排队）。
-        const [runId] = [...onCanvas]
-        return productionRunApi.read(projectId, runId)
-      }
-      const summaries = await productionRunApi.list(projectId)
-      const summary = summaries.find(isActiveSummary) ?? summaries[0]
-      return summary ? productionRunApi.read(projectId, summary.runId) : null
-    }
-
+    // 画布上每一个 Run 都读（以前只读第一个：画布上有两次 Agent 生成时，第二次的节点永远拿不到自己的 Run）。
+    // 已经终结（completed / cancelled）的 Run 不会再变，读到过一次就不再读。
     const tick = async (): Promise<void> => {
-      let run: ProductionRun | null
-      try {
-        run = await readActiveRun()
-      } catch {
-        return // 瞬时 IPC 失败 → 保留上一份缓存，下一拍再试
+      const previous = useProductionCanvasLandingStore.getState().projectId === projectId
+        ? useProductionCanvasLandingStore.getState().runs
+        : {}
+      const next: Record<string, ProductionRun> = {}
+      for (const runId of productionRunIdsOnCanvas()) {
+        const cached = previous[runId]
+        if (cached && isTerminal(cached)) {
+          next[runId] = cached
+          continue
+        }
+        try {
+          const run = await productionRunApi.read(projectId, runId)
+          if (run) next[runId] = run
+        } catch {
+          if (cached) next[runId] = cached // 瞬时 IPC 失败 → 保留上一份缓存，下一拍再试
+        }
       }
       if (cancelled) return
-      useProductionCanvasLandingStore.getState().setRun(projectId, run)
-
-
+      useProductionCanvasLandingStore.getState().setRuns(projectId, next)
     }
 
     void tick()
