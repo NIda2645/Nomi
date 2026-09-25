@@ -1,5 +1,6 @@
 // P4 S5 — 画布落地 host（全程挂在工作区，跟着画布）。三件事：
-//   ① 画布上有制作节点时，周期拉取**每一个**落了节点的 Run → landing store（只供「排队中 / 已停」小标与续拍入口）；
+//   ① 画布上有制作节点时，周期拉取每一个**还用得着**的 Run（有节点没结果 / 停在失败）→ landing store
+//      （只供「排队中 / 已停」小标、续拍入口与失败卡的返工判断）；
 //   ② 进度由节点和任务中心原地显示，不再叠加常驻 toast；
 //   ③ 观察占位节点被删（整批 Cmd+Z / 手动删）→ 发 plan.detach-shot-nodes 让 Run 记 detached（撤销事实优先）。
 //
@@ -21,12 +22,18 @@ function isTerminal(run: ProductionRun): boolean {
   return run.status === 'completed' || run.status === 'cancelled'
 }
 
-/** 画布上属某制作 Run 的节点所引用的 runId 集合（meta.productionRunId）。空 = 不用 poll（省电）。 */
-function productionRunIdsOnCanvas(): Set<string> {
+/**
+ * 需要读 Run 的那些 runId：画布上还**没有结果**、或停在失败态的制作节点所属的 Run。
+ * 只有它们会用到这份缓存（排队 / 已停小标、失败卡「重试」走不走返工链）；片子已经落好的节点不需要——
+ * 否则一个做过几十次 Agent 生成的项目，每 1.5 秒要把几十份 run.json 读一遍。空 = 不用 poll（省电）。
+ */
+function productionRunIdsNeedingBadges(): Set<string> {
   const runIds = new Set<string>()
   for (const node of useGenerationCanvasStore.getState().nodes) {
     const meta = node.meta as Record<string, unknown> | undefined
-    if (typeof meta?.productionRunId === 'string' && meta.productionRunId) runIds.add(meta.productionRunId)
+    if (typeof meta?.productionRunId !== 'string' || !meta.productionRunId) continue
+    if (node.result?.url && node.status !== 'error') continue
+    runIds.add(meta.productionRunId)
   }
   return runIds
 }
@@ -73,14 +80,14 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
     }
     let cancelled = false
 
-    // 画布上每一个 Run 都读（以前只读第一个：画布上有两次 Agent 生成时，第二次的节点永远拿不到自己的 Run）。
+    // 每一个用得着的 Run 都读（以前只读画布上第一个：有两次 Agent 生成时，第二次的节点永远拿不到自己的 Run）。
     // 已经终结（completed / cancelled）的 Run 不会再变，读到过一次就不再读。
     const tick = async (): Promise<void> => {
       const previous = useProductionCanvasLandingStore.getState().projectId === projectId
         ? useProductionCanvasLandingStore.getState().runs
         : {}
       const next: Record<string, ProductionRun> = {}
-      for (const runId of productionRunIdsOnCanvas()) {
+      for (const runId of productionRunIdsNeedingBadges()) {
         const cached = previous[runId]
         if (cached && isTerminal(cached)) {
           next[runId] = cached
