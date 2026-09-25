@@ -110,7 +110,6 @@ describe('attachShotResult', () => {
   it('本地 url（nomi-local://）→ 回填成功，节点拿到 result', () => {
     const outcome = attachShotResult({
       nodeId: 'node-1',
-      shotId: 's1',
       result: { id: 'production-job-s1', type: 'video', url: 'nomi-local://production-preview/p/r/a/x.mp4?preview=t', createdAt: 1 },
     })
     expect(outcome).toEqual({ attached: true, nodeId: 'node-1' })
@@ -120,7 +119,6 @@ describe('attachShotResult', () => {
   it('非本地 url（https CDN）→ **当场抛**（R17 运行时断言，grep 棘轮抓不住）', () => {
     expect(() => attachShotResult({
       nodeId: 'node-1',
-      shotId: 's1',
       result: { id: 'r', type: 'video', url: 'https://cdn.example.com/x.mp4', createdAt: 1 },
     })).toThrow(/nomi-local/)
     // 断言拦下 → 节点不该被写入脏 url。
@@ -130,20 +128,18 @@ describe('attachShotResult', () => {
   it('节点已删（整批撤销）→ 静默跳过（返回 skipped:node-removed），不抛', () => {
     const outcome = attachShotResult({
       nodeId: 'node-gone',
-      shotId: 's1',
       result: { id: 'r', type: 'video', url: 'nomi-local://x', createdAt: 1 },
     })
     expect(outcome).toEqual({ skipped: 'node-removed' })
   })
 
   it('无 result → skipped:no-result', () => {
-    expect(attachShotResult({ nodeId: 'node-1', shotId: 's1' })).toEqual({ skipped: 'no-result' })
+    expect(attachShotResult({ nodeId: 'node-1' })).toEqual({ skipped: 'no-result' })
   })
 
   it('文本结果（无 url）→ 放行（不强制本地协议）', () => {
     const outcome = attachShotResult({
       nodeId: 'node-1',
-      shotId: 's1',
       result: { id: 'r', type: 'text', text: '一段字', createdAt: 1 } as never,
     })
     expect(outcome).toEqual({ attached: true, nodeId: 'node-1' })
@@ -190,7 +186,6 @@ describe('materializeShots undo transaction', () => {
     expect(shotNodeId).toBeTruthy()
     attachShotResult({
       nodeId: shotNodeId,
-      shotId: 'shot-1',
       result: { id: 'shot-1-result', type: 'video', url: 'nomi-local://shot-1.mp4', createdAt: 1 },
     })
 

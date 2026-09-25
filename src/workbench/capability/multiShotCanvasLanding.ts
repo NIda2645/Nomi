@@ -342,7 +342,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   for (const shot of ordered) {
     const nodeId = clientIdToNodeId[shot.shotId]
     if (!nodeId) continue
-    if (shot.result) inLandingTxn(() => attachShotResult({ nodeId, shotId: shot.shotId, result: shot.result! }))
+    if (shot.result) inLandingTxn(() => attachShotResult({ nodeId, result: shot.result! }))
     else if (shot.generation) inLandingTxn(() => applyShotGeneration(nodeId, shot.generation!))
   }
 
@@ -383,7 +383,6 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
 
 export type AttachShotResultPayload = {
   nodeId?: string
-  shotId?: string
   result?: GenerationNodeResult
 }
 
