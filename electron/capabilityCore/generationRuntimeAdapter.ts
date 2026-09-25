@@ -315,7 +315,7 @@ export function createGenerationRuntimeAdapter(deps: { providers: readonly Gener
     const provider = providers.get(input.providerId);
     if (!provider) throw new GenerationProviderCapabilityError(input.providerId, ["registered_provider"]);
     if (!provider.query || !provider.capabilities.query) throw new GenerationProviderObservationError(input.providerId, "query");
-    const result = input.context ? await provider.query(providerTaskId, input.context) : await provider.query(providerTaskId);
+    const result = await provider.query(providerTaskId, input.context);
     const providerStatus = typeof result.status === "string" ? result.status.trim() : "";
     if (!providerStatus) return { state: "unknown", providerStatus: "unknown", ...(result.raw === undefined ? {} : { raw: result.raw }) };
     return {

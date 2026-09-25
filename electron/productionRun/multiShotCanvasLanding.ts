@@ -62,7 +62,7 @@ export type MaterializeShotGenerationWire =
   | { state: "ended" };
 
 /** 节点运行记录的身份：这一镜那次任务。 */
-export function productionRunRecordId(jobId: string): string {
+function productionRunRecordId(jobId: string): string {
   return `production-${jobId}`;
 }
 

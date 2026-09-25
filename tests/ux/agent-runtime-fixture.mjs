@@ -297,8 +297,6 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
   // 真视频要跑**几分钟**：受理之后供应商一直回 `processing`，直到走查说「供应商那边出片了」。
   // 默认就压着——一条走查若不 release，它看到的正是用户看到的「还在生成」。
   let videosHeld = true
-  let videoDownloadStallMs = 0
-  let videoDownloads = 0
   const unexpected = []
   const expectations = []
   const sockets = new Set()
@@ -321,16 +319,7 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
     }
     if (record.path === '/fixture/video.mp4') {
       if (!canWrite(response)) return
-      videoDownloads += 1
       response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': videoBytes.length })
-      // 真 CDN 上一段 15 秒成片要传好一会儿：先给一半字节，按走查给的时长拖住后一半。
-      if (videoDownloadStallMs > 0) {
-        const half = Math.floor(videoBytes.length / 2)
-        response.write(videoBytes.subarray(0, half))
-        await new Promise((resolve) => setTimeout(resolve, videoDownloadStallMs))
-        if (canWrite(response)) response.end(videoBytes.subarray(half))
-        return
-      }
       response.end(videoBytes)
       return
     }
@@ -465,9 +454,6 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       baseURL, requests, images, videos, unexpected, close, generationProvider,
       /** 供应商那边出片了：此后每次查询都回 completed + 真 mp4 的地址。 */
       releaseVideos() { videosHeld = false },
-      /** 产物下载在传完一半后停这么久（模拟真 CDN 上传得慢的大文件）。 */
-      stallVideoDownloads(ms) { videoDownloadStallMs = Math.max(0, Number(ms) || 0) },
-      videoDownloadCount() { return videoDownloads },
       /** 每个视频任务被查询过几次（证「宿主一直在问」而不是停手了）。 */
       videoTaskPolls() { return [...tasks.values()].filter((task) => task.kind === 'video').map((task) => task.polls ?? 0) },
       /** @param {{label:string, match?:(body:unknown, record:RequestRecord)=>boolean, reply:Reply}} options */
