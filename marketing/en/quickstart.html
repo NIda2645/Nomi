@@ -3,40 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nomi — Pro-grade AI video. Models at their real price.</title>
-<meta name="description" content="Open-source, local-first AI video studio. The agent splits your story into shots, generates keyframes and video, and lays them on the timeline — on the models you connect, at your provider’s price. No subscription, no markup." />
+<title>Nomi quick start: from download to your first shot</title>
+<meta name="description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="theme-color" content="#faf9f6" />
-<link rel="canonical" href="https://nomiaqm.com/en/" />
-<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/" />
-<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/" />
-<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/" />
+<link rel="canonical" href="https://nomiaqm.com/en/quickstart" />
+<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/quickstart" />
+<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/quickstart" />
+<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/quickstart" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Nomi" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:title" content="Nomi — Pro-grade AI video. Models at their real price." />
-<meta property="og:description" content="Open-source, local-first AI video studio. The agent splits your story into shots, generates keyframes and video, and lays them on the timeline — on the models you connect, at your provider’s price. No subscription, no markup." />
-<meta property="og:url" content="https://nomiaqm.com/en/" />
+<meta property="og:title" content="Nomi quick start: from download to your first shot" />
+<meta property="og:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
+<meta property="og:url" content="https://nomiaqm.com/en/quickstart" />
 <meta property="og:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
-<meta property="og:image:alt" content="Nomi: pro-grade AI video, models at their real price" />
+<meta property="og:image:alt" content="Nomi quick start" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Nomi — Pro-grade AI video. Models at their real price." />
-<meta name="twitter:description" content="Open-source, local-first AI video studio. The agent splits your story into shots, generates keyframes and video, and lays them on the timeline — on the models you connect, at your provider’s price. No subscription, no markup." />
+<meta name="twitter:title" content="Nomi quick start: from download to your first shot" />
+<meta name="twitter:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
 <meta name="twitter:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
-<meta name="twitter:image:alt" content="Nomi: pro-grade AI video, models at their real price" />
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/","url":"https://nomiaqm.com/en/","name":"Nomi — Pro-grade AI video. Models at their real price.","description":"Open-source, local-first AI video studio. The agent splits your story into shots, generates keyframes and video, and lays them on the timeline — on the models you connect, at your provider’s price. No subscription, no markup.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.1","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
-<script>(() => {
-  if (location.pathname !== '/') return
-  const localeKey = 'nomi_locale'
-  const preferred = (() => { try { return localStorage.getItem(localeKey) } catch { return null } })()
-  const browserLanguages = navigator.languages || [navigator.language || '']
-  const browserLocale = browserLanguages
-    .map((value) => String(value).toLowerCase())
-    .map((value) => value.startsWith('zh') ? 'zh-CN' : value.startsWith('en') ? 'en' : null)
-    .find(Boolean)
-  const resolvedLocale = preferred === 'en' || preferred === 'zh-CN' ? preferred : browserLocale
-  if (resolvedLocale === 'en') location.replace('/en/' + location.search + location.hash)
-})()</script>
+<meta name="twitter:image:alt" content="Nomi quick start" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/quickstart","url":"https://nomiaqm.com/en/quickstart","name":"Nomi quick start: from download to your first shot","description":"Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.1","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
 <link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -284,198 +272,69 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
 .qr-content img { width: min(240px, 70vw); height: auto; border-radius: var(--radius); background: #fff; padding: 8px; }
 </style>
 </head>
-<body class="page-home">
+<body class="page-quickstart">
 <a class="skip-link" href="#main">Skip to main content</a>
 <header class="site-header">
   <nav class="nav wrap" aria-label="Primary navigation">
     <a class="brand" href="/en/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
     <div class="nav-links" id="nav-links">
-      <a href="#features">Features</a>
-      <a href="/en/quickstart">Quick start</a>
-      <a href="#open">Open source</a>
-      <a href="#community">Community</a>
+      <a href="/en/#features">Features</a>
+      <a href="/en/quickstart" aria-current="page">Quick start</a>
+      <a href="/en/#open">Open source</a>
+      <a href="/en/#community">Community</a>
     </div>
     <div class="nav-actions">
-      <a class="locale" href="/" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <a class="locale" href="/quickstart" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
       <a class="button primary small" data-download-nomi href="#download-options">Download</a>
       <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
     </div>
   </nav>
 </header>
 <main id="main">
-<section class="hero" id="top">
-  <div class="wrap hero-grid">
-    <div class="hero-copy">
-      <p class="eyebrow">Open source · Local-first · AI video studio</p>
-      <h1 class="display"><span>Pro-grade AI video.</span> <em>Models at their real price.</em></h1>
-      <p class="lede">Nomi gives you a pro-grade AI video workflow on top of the models you connect. You pay your provider directly, at their price — even the agent runs on the model you pick.</p>
-      <div class="hero-actions">
-        <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
-        <a class="button quiet" data-github-hero href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">Read the source on GitHub ↗</a>
-      </div>
-      <p class="hero-meta">macOS · Windows · AGPL-3.0 · No account</p>
-      <p class="mac-download-note">The macOS build is not yet signed or notarized, so macOS may block the first launch. <a href="#download-options" data-open-dialog="download-dialog">View safe opening steps</a></p>
-    </div>
-    <figure class="window" id="film">
-      <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Nomi 0.22 · in 90 seconds</span></div>
-      <div class="film" data-film data-film-src="/assets/video/nomi-0.22-film.mp4">
-        <img class="film-poster" src="/assets/promo-0.22/cover-en-light.jpg" alt="Nomi 0.22 film poster: pro-grade AI video, models at their real price" width="1920" height="1080" fetchpriority="high" />
-        <button class="film-play" type="button" data-film-play><span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9-5.5z" fill="currentColor" /></svg>Play the film (with sound)</span></button>
-        <noscript><video class="film-video" src="/assets/video/nomi-0.22-film.mp4" poster="/assets/promo-0.22/cover-en-light.jpg" controls preload="none"></video></noscript>
-      </div>
-    </figure>
+<section class="qs-hero">
+  <div class="wrap">
+    <p class="eyebrow">Quick start</p>
+    <h1 class="display"><span>From download</span> <em>to your first shot.</em></h1>
+    <p class="lede">Four steps. The only thing to prepare is one provider key — step two tells you where to get it.</p>
   </div>
 </section>
-<section class="block" id="price" aria-labelledby="price-title">
+<section class="block qs-steps">
   <div class="wrap">
-    <div class="block-head">
-      <p class="eyebrow">Why Nomi</p>
-      <h2 id="price-title">Same model. Stop paying several times over.</h2>
-      <p class="body">Relays, official APIs, ComfyUI, and local models are cheap. Commercial AI video products often run the very same models and charge several times more.</p>
-    </div>
-    <div class="gap-card" role="img" aria-label="Illustration: the commercial-product price bar is far longer than the direct-model price bar">
-      <div class="bar-row"><div class="bar-label">Commercial products</div><div class="bar commercial"></div></div>
-      <div class="bar-row"><div class="bar-label">Relays · Official APIs · ComfyUI · Local models</div><div class="bar yours"></div></div>
-      <p class="gap-note">Illustrative, not a quote: prices keep changing, and Nomi neither prices nor handles your money.</p>
-    </div>
-    <div class="facts"><div class="fact"><h3>Connect anyone</h3><p>APIMart, Kie.ai, Volcengine, ModelScope, a Dreamina membership, any OpenAI-compatible relay, or your local ComfyUI.</p></div><div class="fact"><h3>Your money skips Nomi</h3><p>Use your own keys and pay providers at their price. Nomi never proxies or resells inference.</p></div><div class="fact"><h3>The agent, at cost too</h3><p>The agent that does the work runs on the model you connect — free ones included. No subscription, no markup.</p></div></div>
-  </div>
-</section>
-<section class="block" id="features" aria-labelledby="features-title">
-  <div class="wrap">
-    <div class="block-head">
-      <p class="eyebrow">What 0.22 does</p>
-      <h2 id="features-title">From one sentence to a finished timeline.</h2>
-    </div>
-    <article class="feature" data-feature="agent">
-      <div class="feature-text">
-        <p class="kicker">Agent</p>
-        <h3>Just ask — it gets to work</h3>
-        <p>Describe the film you want. The agent reads your canvas, splits the story into shots, generates keyframes, turns them into video, and arranges the timeline. Everything lands on the canvas, where you can see it and change it.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Agent · four shots from one request</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="13" data-end="22" src="/assets/video/nomi-0.22-film.mp4#t=13,22" poster="/assets/promo-0.22/still-agent.jpg" muted playsinline preload="none" aria-label="The Nomi agent turning one request into four keyframes on the canvas"></video>
-          <span class="segment-time">0:13–0:22</span>
-        </div>
-      </div>
-    </article>
-<article class="feature flip" data-feature="charge">
-      <div class="feature-text">
-        <p class="kicker">You stay in charge</p>
-        <h3>You decide how much it asks</h3>
-        <p>Three levels: Ask each step, Auto-edit (paid generation still asks), and Full auto. Switching to Full auto takes your explicit confirmation, and irreversible actions are always confirmed.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Agent · autonomy</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="29" data-end="35" src="/assets/video/nomi-0.22-film.mp4#t=29,35" poster="/assets/promo-0.22/still-charge.jpg" muted playsinline preload="none" aria-label="The confirmation card shown before switching the agent to Full auto"></video>
-          <span class="segment-time">0:29–0:35</span>
-        </div>
-      </div>
-    </article>
-<article class="feature" data-feature="storyboard">
-      <div class="feature-text">
-        <p class="kicker">Storyboard</p>
-        <h3>Direct every shot</h3>
-        <p>One row per shot — prompt, first frame, model, duration. Lock a reference card for a character or place, and every shot that uses it keeps the same face.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Storyboard · a day by the sea</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="35" data-end="44" src="/assets/video/nomi-0.22-film.mp4#t=35,44" poster="/assets/promo-0.22/still-storyboard.jpg" muted playsinline preload="none" aria-label="The storyboard with all four shots generated and the character reference locked"></video>
-          <span class="segment-time">0:35–0:44</span>
-        </div>
-      </div>
-    </article>
-<article class="feature flip" data-feature="director">
-      <div class="feature-text">
-        <p class="kicker">3D director</p>
-        <h3>Your phone is the viewfinder</h3>
-        <p>Pose characters, place cameras, and frame the shot with your phone. The captures go straight back onto the canvas, ready to become video.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Director · corner café</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="44" data-end="58" src="/assets/video/nomi-0.22-film.mp4#t=44,58" poster="/assets/promo-0.22/still-director.jpg" muted playsinline preload="none" aria-label="The 3D director with the phone viewfinder page"></video>
-          <span class="segment-time">0:44–0:58</span>
-        </div>
-      </div>
-    </article>
-<article class="feature" data-feature="model">
-      <div class="feature-text">
-        <p class="kicker">Any model</p>
-        <h3>Any model, swapped per shot</h3>
-        <p>Take the same shot again with Seedance, Kling, Wan, or Hailuo. The model picker shows which providers offer each model.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Establishing shot · harbor at dawn</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="58" data-end="66" src="/assets/video/nomi-0.22-film.mp4#t=58,66" poster="/assets/promo-0.22/still-model.jpg" muted playsinline preload="none" aria-label="The same video card generated again with Kling 3.0"></video>
-          <span class="segment-time">0:58–1:06</span>
-        </div>
-      </div>
-    </article>
-<article class="feature flip" data-feature="newmodel">
-      <div class="feature-text">
-        <p class="kicker">New models</p>
-        <h3>New model today, in Nomi today</h3>
-        <p>Click “Let AI connect it for me” and let Claude Code or Codex wire it in: it looks up the endpoint, parameters and model IDs, you paste your key on Nomi’s own page (the assistant never sees it), and it runs one real test before the model is listed.</p>
-      </div>
-      <div class="node">
-        <p class="node-title">Settings · Models</p>
-        <div class="node-frame">
-          <video class="segment" data-segment data-start="66" data-end="75" src="/assets/video/nomi-0.22-film.mp4#t=66,75" poster="/assets/promo-0.22/still-newmodel.jpg" muted playsinline preload="none" aria-label="The “Let AI connect it for me” card with all five steps done"></video>
-          <span class="segment-time">1:06–1:15</span>
-        </div>
-      </div>
-    </article>
-  </div>
-</section>
-<section class="block" id="open" aria-labelledby="open-title">
-  <div class="wrap">
-    <div class="block-head">
-      <p class="eyebrow">Yours</p>
-      <h2 id="open-title">A project is a plain folder on your disk.</h2>
-    </div>
-    <div class="open-grid">
-      <div class="tree" role="img" aria-label="Folder structure of a Nomi project"><div><span class="root">seaside-town/</span></div><div><span>├─ .nomi/project.json</span><span class="note">canvas, storyboard, timeline</span></div><div><span>├─ assets/generated/</span><span class="note">every image and clip</span></div><div><span>└─ exports/seaside-town.mp4</span><span class="note">the film</span></div></div>
+    <ol class="steps"><li class="step" id="step-install">
       <div>
-        <ul class="checks"><li>No account. No telemetry.</li><li>When you call an external model, only what that generation needs goes to the provider you configured.</li><li>Fully open source (AGPL-3.0). Change anything — or have your AI coding assistant do it.</li></ul>
-        <div class="open-actions">
-          <a class="button quiet" href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">View on GitHub</a>
-          <a class="button quiet" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Read the license</a>
-        </div>
+        <p class="step-label">Install</p>
+        <h2>Download the build for your computer</h2>
+        <p>The installers are not code-signed yet, so the first launch gets a warning. Here’s how to get past it.</p>
       </div>
-    </div>
-  </div>
-</section>
-<section class="block" id="community" aria-labelledby="community-title">
-  <div class="wrap">
-    <div class="vision">
+      <div><p class="latest"><span data-latest-version>v0.22.1</span></p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><p class="tip">macOS: right-click Nomi in Applications → Open. Windows: on the SmartScreen prompt choose More info → Run anyway.</p></div>
+    </li>
+<li class="step" id="step-connect">
       <div>
-        <p class="eyebrow">Next</p>
-        <h2 id="community-title">AI editing. Then one studio for everything you make with AI.</h2>
-        <p class="body">Nomi is an open-source project started by one person, and it moves fast. Tell us what breaks — anything everyone runs into goes into the mainline. Want to build it with us? Come on in.</p>
-        <div class="hero-actions">
-          <a class="button on-dark" href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub</a>
-          <a class="button on-dark" href="https://github.com/aqm857886159/Nomi/discussions" target="_blank" rel="noreferrer">Discussions</a>
-          <a class="button on-dark" href="https://www.bilibili.com/video/BV1Lf8b6nEjf/" target="_blank" rel="noreferrer">Bilibili</a>
-        </div>
+        <p class="step-label">Connect</p>
+        <h2>Connect a model with one key</h2>
+        <p>Open Settings → Models, pick APIMart or Kie.ai, and paste the key from their site — the common image, video and chat models are ready. You can also add your own relay or local ComfyUI, or click “Let AI connect it for me” and hand it to Claude Code or Codex.</p>
       </div>
-      <div class="qr-row">
-        <figure class="qr" id="community-qr"><img src="/assets/group-wechat-2026-10-01.jpg" alt="WeChat QR code for the Nomi user group" width="140" height="210" /><figcaption>WeChat user group</figcaption></figure>
-        <figure class="qr"><img src="/assets/qingyang-wechat.jpg" alt="WeChat QR code for the Nomi maintainer" width="140" height="140" /><figcaption>Group code expired? Add TZ857886159</figcaption></figure>
+      <div class="shot"><img src="/assets/promo-0.22/still-newmodel.jpg" alt="The “Let AI connect it for me” card in settings" width="1920" height="1080" /></div>
+    </li>
+<li class="step" id="step-ask">
+      <div>
+        <p class="step-label">Ask</p>
+        <h2>Say what you want to make</h2>
+        <p>Create a project and tell the agent panel on the right, in plain words: what, how many shots, roughly how long. Start with the default Auto-edit level — it edits documents and the timeline without bothering you, and asks before any paid generation.</p>
       </div>
-    </div>
-    <div class="teams">
-      <div><h3>Putting Nomi into a real production workflow?</h3><p>Custom builds, integrations, AGPL-compliant deployment, and ongoing iteration.</p></div>
-      <div class="hero-actions">
-        <button class="button quiet" type="button" data-open-dialog="author-dialog">Maintainer WeChat</button>
-        <a class="button quiet" href="https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml" target="_blank" rel="noreferrer">Submit a project brief</a>
+      <div class="shot"><img src="/assets/promo-0.22/still-agent.jpg" alt="The agent put four keyframes on the canvas" width="1920" height="1080" /></div>
+    </li>
+<li class="step" id="step-export">
+      <div>
+        <p class="step-label">Export</p>
+        <h2>Keep the good takes, arrange, export</h2>
+        <p>For a shot you don’t like, change the prompt or the model in the storyboard and generate again; lock a reference card to keep a character consistent. Arrange the timeline and export MP4.</p>
       </div>
-    </div>
+      <div class="shot"><img src="/assets/promo-0.22/still-storyboard.jpg" alt="All four shots generated in the storyboard" width="1920" height="1080" /></div>
+    </li></ol>
+    <div class="block-head faq-head"><h2>FAQ</h2></div>
+    <div class="faq"><details><summary>How much does it cost?</summary><p>Nomi itself is free. Generation costs whatever your provider charges, settled directly between you and them. Free models (some on ModelScope, for example) and local ComfyUI cost nothing.</p></details><details><summary>Do I need a GPU?</summary><p>No. By default Nomi uses cloud APIs, so an ordinary laptop is enough. Local ComfyUI is optional — add it if you have a GPU and want to save money.</p></details><details><summary>Is my footage uploaded?</summary><p>Projects live on your own computer. Only when you call an external model does the content that generation needs go to the provider you configured.</p></details><details><summary>Can the agent hand me a finished film?</summary><p>It can go from one sentence to characters, keyframes and video, and lay them on the timeline. Export is still one click by you. On long tasks it may pause to check in — reply “continue”.</p></details></div>
+    <p class="more">Want the detailed walkthrough? <a href="/handbook">Chinese handbook</a> · <a href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP guide</a></p>
   </div>
 </section>
 </main>
@@ -486,7 +345,7 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
     <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub</a>
     <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">Release notes</a>
     <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
-    <a href="/" data-locale-choice="zh-CN">简体中文</a>
+    <a href="/quickstart" data-locale-choice="zh-CN">简体中文</a>
     <span class="made">Every screen in the film is Nomi’s real UI; every image and clip was generated with Nomi.</span>
   </div>
 </footer>

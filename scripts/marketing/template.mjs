@@ -15,6 +15,14 @@ const escapeAttr = (value) => escapeText(value)
 
 const externalAttrs = 'target="_blank" rel="noreferrer"'
 
+/** 每个页面在中英两边的地址（hreflang 互指、语言切换都读这一张表）。 */
+const PAGE_PATHS = {
+  home: { 'zh-CN': '/', en: '/en/' },
+  quickstart: { 'zh-CN': '/quickstart', en: '/en/quickstart' },
+}
+
+const otherLocale = (locale) => (locale === 'zh-CN' ? 'en' : 'zh-CN')
+
 function renderMetadata(metadata) {
   const alternates = metadata.alternates
     .map(({ lang, href }) => `<link rel="alternate" hreflang="${escapeAttr(lang)}" href="${escapeAttr(href)}" />`)
@@ -23,7 +31,7 @@ function renderMetadata(metadata) {
   return `<title>${escapeText(metadata.title)}</title>
 <meta name="description" content="${escapeAttr(metadata.description)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
-<meta name="theme-color" content="#f4f2ec" />
+<meta name="theme-color" content="#faf9f6" />
 <link rel="canonical" href="${escapeAttr(metadata.canonical)}" />
 ${alternates}
 <meta property="og:type" content="website" />
@@ -42,25 +50,23 @@ ${alternates}
 <script type="application/ld+json">${jsonLd}</script>`
 }
 
-function renderNav(content, shared, locale) {
-  const localeHref = locale === 'zh-CN' ? '/en/' : '/'
-  const localeChoice = locale === 'zh-CN' ? 'en' : 'zh-CN'
+function renderNav(content, locale, pageKey) {
+  const home = PAGE_PATHS.home[locale]
+  const onHome = pageKey === 'home'
+  const anchor = (id) => (onHome ? `#${id}` : `${home}#${id}`)
+  const localeHref = PAGE_PATHS[pageKey][otherLocale(locale)]
   return `<header class="site-header">
-  <nav class="nav" aria-label="${escapeAttr(content.nav.ariaLabel)}">
-    <a class="brand" href="${escapeAttr(content.path)}" aria-label="Nomi">
-      <img src="/assets/nomi-logo.svg" width="30" height="30" alt="" />
-      <span>Nomi</span>
-    </a>
+  <nav class="nav wrap" aria-label="${escapeAttr(content.nav.ariaLabel)}">
+    <a class="brand" href="${escapeAttr(home)}" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
     <div class="nav-links" id="nav-links">
-      <a href="#cost">${escapeText(content.nav.why)}</a>
-      <a href="#workflow">${escapeText(content.nav.workflow)}</a>
-      <a href="#open">${escapeText(content.nav.open)}</a>
-      <a href="#start">${escapeText(content.nav.manual)}</a>
-      <a href="#community">${escapeText(content.nav.community)}</a>
+      <a href="${escapeAttr(anchor('features'))}">${escapeText(content.nav.features)}</a>
+      <a href="${escapeAttr(PAGE_PATHS.quickstart[locale])}"${pageKey === 'quickstart' ? ' aria-current="page"' : ''}>${escapeText(content.nav.quickstart)}</a>
+      <a href="${escapeAttr(anchor('open'))}">${escapeText(content.nav.open)}</a>
+      <a href="${escapeAttr(anchor('community'))}">${escapeText(content.nav.community)}</a>
     </div>
     <div class="nav-actions">
-      <a class="locale" href="${localeHref}" data-locale-choice="${localeChoice}" aria-label="${escapeAttr(content.nav.localeLabel)}">${escapeText(content.nav.locale)}</a>
-      <a class="button primary nav-download" data-download-nomi href="#download-options">${escapeText(content.nav.download)}</a>
+      <a class="locale" href="${escapeAttr(localeHref)}" data-locale-choice="${otherLocale(locale)}" aria-label="${escapeAttr(content.nav.localeLabel)}">${escapeText(content.nav.locale)}</a>
+      <a class="button primary small" data-download-nomi href="#download-options">${escapeText(content.nav.download)}</a>
       <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">${escapeText(content.nav.menu)}</button>
     </div>
   </nav>
@@ -68,180 +74,146 @@ function renderNav(content, shared, locale) {
 }
 
 function renderHero(content, shared) {
-  const ribbons = content.hero.ribbon.map((item) => `<span>${escapeText(item)}</span>`).join('')
+  const poster = content.htmlLang === 'en' ? shared.filmPosterEn : shared.filmPoster
   return `<section class="hero" id="top">
-  <div class="wrap hero-copy" data-reveal>
-    <h1><span class="line">${escapeText(content.hero.titleLead)}</span><span class="line hit">${escapeText(content.hero.titleEmphasis)}</span></h1>
-    <p class="hero-lede">${escapeText(content.hero.lede)}</p>
-    <div class="hero-actions">
-      <a class="button primary" data-download-nomi href="#download-options">${escapeText(content.hero.download)}</a>
-      <a class="button hero-github" data-github-hero href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>${escapeText(content.hero.github)}</a>
-    </div>
-    <p class="hero-contribution">${escapeText(content.hero.contribution)}</p>
-    <p class="mac-download-note">${escapeText(content.hero.macNotice)} <a href="#download-options" data-open-dialog="download-dialog">${escapeText(content.hero.macInstallHelp)}</a></p>
-    <p class="truth-note">${escapeText(content.hero.truth)}</p>
-  </div>
-  <figure class="hero-product">
-    <div class="cost-ribbon" aria-hidden="true">${ribbons}</div>
-    <div class="product-shot"><img src="/assets/screen-canvas-2026-08-17.png" alt="${escapeAttr(content.hero.imageAlt)}" width="3200" height="1722" /></div>
-  </figure>
-</section>`
-}
-
-function renderCost(content) {
-  const initial = content.cost.items[0]
-  const tabs = content.cost.items.map((item, index) => `<button id="cost-tab-${escapeAttr(item.id)}" class="cost-tab" type="button" role="tab" aria-selected="${index === 0}" aria-controls="cost-panel" tabindex="${index === 0 ? '0' : '-1'}" data-cost="${escapeAttr(item.id)}">${escapeText(item.label)}</button>`).join('')
-  return `<section class="cost-section" id="cost">
-  <div class="wrap">
-    <div class="cost-heading" data-reveal>
-      <div><p class="eyebrow">${escapeText(content.cost.eyebrow)}</p><h2>${escapeText(content.cost.title)}</h2></div>
-      <p>${escapeText(content.cost.description)}</p>
-    </div>
-    <div class="cost-tabs" role="tablist" aria-label="${escapeAttr(content.cost.tabsLabel)}" data-reveal>${tabs}</div>
-    <div class="cost-panel" id="cost-panel" role="tabpanel" aria-labelledby="cost-tab-${escapeAttr(initial.id)}" aria-live="polite" data-reveal>
-      <div class="cost-panel-copy">
-        <div><div class="cost-index" id="cost-index">${escapeText(initial.index)}</div><h3 id="cost-title">${escapeText(initial.title)}</h3><p id="cost-copy">${escapeText(initial.description)}</p></div>
-        <div class="cost-proof" id="cost-proof">${escapeText(initial.proof)}</div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">${escapeText(content.hero.eyebrow)}</p>
+      <h1 class="display"><span>${escapeText(content.hero.titleLead)}</span> <em>${escapeText(content.hero.titleEmphasis)}</em></h1>
+      <p class="lede">${escapeText(content.hero.lede)}</p>
+      <div class="hero-actions">
+        <a class="button primary" data-download-nomi href="#download-options">${escapeText(content.hero.download)}</a>
+        <a class="button quiet" data-github-hero href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>${escapeText(content.hero.github)}</a>
       </div>
-      <div class="cost-evidence"><img id="cost-image" src="${escapeAttr(initial.image)}" alt="${escapeAttr(initial.imageAlt)}" width="3200" height="1722" /></div>
+      <p class="hero-meta">${escapeText(content.hero.meta)}</p>
+      <p class="mac-download-note">${escapeText(content.hero.macNotice)} <a href="#download-options" data-open-dialog="download-dialog">${escapeText(content.hero.macInstallHelp)}</a></p>
     </div>
-  </div>
-</section>`
-}
-
-function renderStack(content) {
-  const rows = content.stack.rows.map((row) => `<div class="stack-row">
-    <div class="stack-label">${escapeText(row.label)}</div>
-    <div class="stack-items">${row.items.map((item) => `<span>${escapeText(item)}</span>`).join('')}</div>
-    <div class="stack-arrow" aria-hidden="true">→</div>
-    <div class="stack-result">${escapeText(row.result)}</div>
-  </div>`).join('')
-  return `<section class="stack" aria-labelledby="stack-title">
-  <div class="wrap">
-    <div class="stack-head" data-reveal>
-      <p class="eyebrow">${escapeText(content.stack.eyebrow)}</p>
-      <h2 id="stack-title">${escapeText(content.stack.titleLead)}<br />${escapeText(content.stack.titleEmphasis)}</h2>
-      <p>${escapeText(content.stack.description)}</p>
-    </div>
-    <div class="stack-map" data-reveal>${rows}</div>
-  </div>
-</section>`
-}
-
-function renderWorkflow(content) {
-  const initial = content.workflow.steps[0]
-  const tabs = content.workflow.steps.map((step, index) => `<button id="workflow-tab-${escapeAttr(step.id)}" class="workflow-tab" type="button" role="tab" aria-selected="${index === 0}" aria-controls="workflow-panel" tabindex="${index === 0 ? '0' : '-1'}" data-step="${escapeAttr(step.id)}"><span>${escapeText(step.number)}</span><strong>${escapeText(step.label)}</strong></button>`).join('')
-  return `<section class="workflow" id="workflow">
-  <div class="wrap">
-    <p class="eyebrow" data-reveal>${escapeText(content.workflow.eyebrow)}</p>
-    <h2 data-reveal>${escapeText(content.workflow.title)}</h2>
-    <div class="workflow-grid" data-reveal>
-      <div class="workflow-tabs" role="tablist" aria-label="${escapeAttr(content.workflow.tabsLabel)}">${tabs}</div>
-      <div class="workflow-visual" id="workflow-panel" role="tabpanel" aria-labelledby="workflow-tab-${escapeAttr(initial.id)}" aria-live="polite">
-        <div class="workflow-image-frame"><img id="workflow-image" src="${escapeAttr(initial.image)}" alt="${escapeAttr(initial.imageAlt)}" width="3200" height="1722" /></div>
-        <p class="workflow-caption" id="workflow-caption">${escapeText(initial.caption)}</p>
+    <figure class="window" id="film">
+      <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>${escapeText(content.hero.windowTitle)}</span></div>
+      <div class="film" data-film data-film-src="${escapeAttr(shared.film)}">
+        <img class="film-poster" src="${escapeAttr(poster)}" alt="${escapeAttr(content.hero.posterAlt)}" width="1920" height="1080" fetchpriority="high" />
+        <button class="film-play" type="button" data-film-play><span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9-5.5z" fill="currentColor" /></svg>${escapeText(content.hero.play)}</span></button>
+        <noscript><video class="film-video" src="${escapeAttr(shared.film)}" poster="${escapeAttr(poster)}" controls preload="none"></video></noscript>
       </div>
-    </div>
+    </figure>
   </div>
 </section>`
 }
 
-function renderAgent(content) {
-  const bullets = content.agent.bullets.map((item) => `<li>${escapeText(item)}</li>`).join('')
-  return `<section class="agent-band" aria-labelledby="agent-title">
-  <div class="agent-grid">
-    <div class="agent-copy" data-reveal>
-      <p class="eyebrow">${escapeText(content.agent.eyebrow)}</p>
-      <h2 id="agent-title">${escapeText(content.agent.titleLead)}<br />${escapeText(content.agent.titleEmphasis)}</h2>
-      <p>${escapeText(content.agent.description)}</p>
-      <ul class="agent-list">${bullets}</ul>
-    </div>
-    <div class="agent-image" data-reveal><img src="/assets/screen-agentic-2026-08-17.png" alt="${escapeAttr(content.agent.imageAlt)}" width="3200" height="1722" /></div>
-  </div>
-</section>`
-}
-
-function renderOpenSource(content, shared) {
-  const facts = content.openSource.facts.map((fact) => `<div class="open-fact"><span>${escapeText(fact.label)}</span><span>${escapeText(fact.value)}</span></div>`).join('')
-  return `<section class="open-source" id="open">
-  <div class="wrap open-grid">
-    <div data-reveal>
-      <p class="eyebrow">${escapeText(content.openSource.eyebrow)}</p>
-      <h2>${escapeText(content.openSource.title)}</h2>
-      <div class="open-actions">
-        <a class="button primary" href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>${escapeText(content.openSource.github)}</a>
-        <a class="button" href="${escapeAttr(shared.licenseUrl)}" ${externalAttrs}>${escapeText(content.openSource.license)}</a>
-      </div>
-    </div>
-    <div class="open-facts" data-reveal>${facts}</div>
-  </div>
-</section>`
-}
-
-function renderStart(content, shared, locale) {
-  const steps = content.start.steps.map((step) => `<div class="start-row"><span class="start-number">${escapeText(step.number)}</span><h3>${escapeText(step.title)}</h3><p>${escapeText(step.description)}</p></div>`).join('')
-  const quickstartHref = locale === 'en' ? `${shared.repositoryUrl}#quick-start` : shared.quickstartUrl
-  return `<section class="start" id="start">
+function renderPrice(content) {
+  const facts = content.price.facts.map((fact) => `<div class="fact"><h3>${escapeText(fact.title)}</h3><p>${escapeText(fact.description)}</p></div>`).join('')
+  return `<section class="block" id="price" aria-labelledby="price-title">
   <div class="wrap">
-    <p class="eyebrow" data-reveal>${escapeText(content.start.eyebrow)}</p>
-    <h2 data-reveal>${escapeText(content.start.title)}</h2>
-    <div class="start-grid" data-reveal>${steps}</div>
-    <div class="manual-links" data-reveal>
-      <a class="button primary" href="${escapeAttr(quickstartHref)}">${escapeText(content.start.quickstart)}</a>
-      <a class="button" href="${escapeAttr(shared.handbookUrl)}">${escapeText(content.start.handbook)}</a>
-      <a class="button" href="${escapeAttr(shared.mcpGuideUrl)}" ${externalAttrs}>${escapeText(content.start.mcpGuide)}</a>
+    <div class="block-head">
+      <p class="eyebrow">${escapeText(content.price.eyebrow)}</p>
+      <h2 id="price-title">${escapeText(content.price.title)}</h2>
+      <p class="body">${escapeText(content.price.description)}</p>
+    </div>
+    <div class="gap-card" role="img" aria-label="${escapeAttr(content.price.barsLabel)}">
+      <div class="bar-row"><div class="bar-label">${escapeText(content.price.barCommercial)}</div><div class="bar commercial"></div></div>
+      <div class="bar-row"><div class="bar-label">${escapeText(content.price.barYours)}</div><div class="bar yours"></div></div>
+      <p class="gap-note">${escapeText(content.price.note)}</p>
+    </div>
+    <div class="facts">${facts}</div>
+  </div>
+</section>`
+}
+
+function renderFeatures(content, shared) {
+  const items = content.features.items.map((item, index) => {
+    const time = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+    return `<article class="feature${index % 2 ? ' flip' : ''}" data-feature="${escapeAttr(item.id)}">
+      <div class="feature-text">
+        <p class="kicker">${escapeText(item.kicker)}</p>
+        <h3>${escapeText(item.title)}</h3>
+        <p>${escapeText(item.description)}</p>
+      </div>
+      <div class="node">
+        <p class="node-title">${escapeText(item.nodeTitle)}</p>
+        <div class="node-frame">
+          <video class="segment" data-segment data-start="${item.start}" data-end="${item.end}" src="${escapeAttr(`${shared.film}#t=${item.start},${item.end}`)}" poster="${escapeAttr(item.still)}" muted playsinline preload="none" aria-label="${escapeAttr(item.stillAlt)}"></video>
+          <span class="segment-time">${time(item.start)}–${time(item.end)}</span>
+        </div>
+      </div>
+    </article>`
+  }).join('\n')
+  return `<section class="block" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="block-head">
+      <p class="eyebrow">${escapeText(content.features.eyebrow)}</p>
+      <h2 id="features-title">${escapeText(content.features.title)}</h2>
+    </div>
+    ${items}
+  </div>
+</section>`
+}
+
+function renderOpen(content, shared) {
+  const tree = content.open.tree.map((row, index) => `<div><span${index === 0 ? ' class="root"' : ''}>${escapeText(row.path)}</span>${row.note ? `<span class="note">${escapeText(row.note)}</span>` : ''}</div>`).join('')
+  const points = content.open.points.map((point) => `<li>${escapeText(point)}</li>`).join('')
+  return `<section class="block" id="open" aria-labelledby="open-title">
+  <div class="wrap">
+    <div class="block-head">
+      <p class="eyebrow">${escapeText(content.open.eyebrow)}</p>
+      <h2 id="open-title">${escapeText(content.open.title)}</h2>
+    </div>
+    <div class="open-grid">
+      <div class="tree" role="img" aria-label="${escapeAttr(content.open.treeLabel)}">${tree}</div>
+      <div>
+        <ul class="checks">${points}</ul>
+        <div class="open-actions">
+          <a class="button quiet" href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>${escapeText(content.open.github)}</a>
+          <a class="button quiet" href="${escapeAttr(shared.licenseUrl)}" ${externalAttrs}>${escapeText(content.open.license)}</a>
+        </div>
+      </div>
     </div>
   </div>
 </section>`
 }
 
 function renderCommunity(content, shared) {
-  return `<section class="community" id="community">
+  const c = content.community
+  return `<section class="block" id="community" aria-labelledby="community-title">
   <div class="wrap">
-    <div class="community-head" data-reveal>
-      <p class="eyebrow">${escapeText(content.community.eyebrow)}</p>
-      <h2>${escapeText(content.community.title)}</h2>
-      <p>${escapeText(content.community.description)}</p>
+    <div class="vision">
+      <div>
+        <p class="eyebrow">${escapeText(c.eyebrow)}</p>
+        <h2 id="community-title">${escapeText(c.title)}</h2>
+        <p class="body">${escapeText(c.description)}</p>
+        <div class="hero-actions">
+          <a class="button on-dark" href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>GitHub</a>
+          <a class="button on-dark" href="${escapeAttr(shared.discussionUrl)}" ${externalAttrs}>${escapeText(c.discussion)}</a>
+          <a class="button on-dark" href="${escapeAttr(shared.bilibiliUrl)}" ${externalAttrs}>${escapeText(c.bilibili)}</a>
+        </div>
+      </div>
+      <div class="qr-row">
+        <figure class="qr" id="community-qr"><img src="${escapeAttr(shared.groupQr)}" alt="${escapeAttr(c.groupAlt)}" width="140" height="210" /><figcaption>${escapeText(c.groupCaption)}</figcaption></figure>
+        <figure class="qr"><img src="${escapeAttr(shared.authorQr)}" alt="${escapeAttr(c.authorAlt)}" width="140" height="140" /><figcaption>${escapeText(c.authorCaption)}</figcaption></figure>
+      </div>
     </div>
-    <div class="community-grid">
-      <article class="community-card user-community" data-reveal>
-        <div class="community-copy">
-          <div><p class="eyebrow">${escapeText(content.community.group.eyebrow)}</p><h3>${escapeText(content.community.group.title)}</h3><p>${escapeText(content.community.group.description)}</p></div>
-          <div class="card-actions"><a class="button" href="${escapeAttr(shared.discussionUrl)}" ${externalAttrs}>${escapeText(content.community.group.discussion)}</a></div>
-        </div>
-        <figure class="community-qr" id="community-qr"><img src="${escapeAttr(shared.groupQr)}" alt="${escapeAttr(content.community.group.qrAlt)}" width="140" height="210" /><figcaption>${escapeText(content.community.group.qrCaption)}</figcaption></figure>
-      </article>
-      <article class="community-card dark" data-reveal>
-        <div><p class="eyebrow">${escapeText(content.community.project.eyebrow)}</p><h3>${escapeText(content.community.project.title)}</h3><p>${escapeText(content.community.project.description)}</p></div>
-        <div class="card-actions">
-          <button class="button light" type="button" data-open-dialog="author-dialog">${escapeText(content.community.project.wechat)}</button>
-          <a class="button coral" href="${escapeAttr(shared.businessUrl)}" ${externalAttrs}>${escapeText(content.community.project.submit)}</a>
-        </div>
-      </article>
+    <div class="teams">
+      <div><h3>${escapeText(c.teamsTitle)}</h3><p>${escapeText(c.teamsDescription)}</p></div>
+      <div class="hero-actions">
+        <button class="button quiet" type="button" data-open-dialog="author-dialog">${escapeText(c.wechat)}</button>
+        <a class="button quiet" href="${escapeAttr(shared.businessUrl)}" ${externalAttrs}>${escapeText(c.submit)}</a>
+      </div>
     </div>
   </div>
 </section>`
 }
 
-function renderClosing(content, shared, locale) {
-  const localeHref = locale === 'zh-CN' ? '/en/' : '/'
-  const localeChoice = locale === 'zh-CN' ? 'en' : 'zh-CN'
-  return `<section class="closing">
+function renderFooter(content, shared, locale, pageKey) {
+  return `<footer class="footer">
   <div class="wrap">
-    <p class="eyebrow" data-reveal>${escapeText(content.closing.eyebrow)}</p>
-    <h2 data-reveal>${escapeText(content.closing.title)}</h2>
-    <p data-reveal>${escapeText(content.closing.description)}</p>
-    <div class="hero-actions" data-reveal>
-      <a class="button light" data-download-nomi href="#download-options">${escapeText(content.closing.download)}</a>
-      <a class="button coral" href="#community-qr">${escapeText(content.closing.community)}</a>
-    </div>
-    <footer class="footer">
-      <span>${escapeText(content.footer.product)} · <a href="${escapeAttr(shared.licenseUrl)}" ${externalAttrs}>${escapeText(shared.licenseName)}</a></span>
-      <span>${escapeText(content.footer.truth)}</span>
-      <a href="${localeHref}" data-locale-choice="${localeChoice}">${escapeText(content.footer.locale)}</a>
-    </footer>
+    <span class="wordmark small">No<span>mi</span></span>
+    <a href="${escapeAttr(shared.licenseUrl)}" ${externalAttrs}>${escapeText(content.footer.license)}</a>
+    <a href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>GitHub</a>
+    <a href="${escapeAttr(shared.releaseNotesUrl)}" ${externalAttrs}>${escapeText(content.footer.releases)}</a>
+    <a href="${escapeAttr(shared.twitterUrl)}" ${externalAttrs}>X / Twitter</a>
+    <a href="${escapeAttr(PAGE_PATHS[pageKey][otherLocale(locale)])}" data-locale-choice="${otherLocale(locale)}">${escapeText(content.footer.locale)}</a>
+    <span class="made">${escapeText(content.footer.made)}</span>
   </div>
-</section>`
+</footer>`
 }
 
 function renderDownloadOptions(content) {
@@ -266,16 +238,7 @@ function renderMacInstallGuide(content) {
 }
 
 function renderDialogs(content, shared) {
-  const isEnglish = content.htmlLang === 'en'
-  const filmSource = isEnglish ? '/assets/video/launch-film-en.mp4' : '/assets/demo.mp4'
-  const trackSource = isEnglish ? '/assets/video/launch-film-en.vtt' : '/assets/video/launch-film-zh.vtt'
-  const trackLang = isEnglish ? 'en' : 'zh-CN'
-  const trackLabel = isEnglish ? 'English' : '简体中文'
-  return `<dialog id="launch-film" aria-labelledby="film-title">
-  <div class="dialog-head"><strong id="film-title">${escapeText(content.a11y.filmTitle)}</strong><button class="dialog-close" type="button" aria-label="${escapeAttr(content.a11y.close)}">×</button></div>
-  <div class="dialog-body"><video controls preload="metadata" poster="/assets/video/hero-poster.jpg"><source src="${filmSource}" type="video/mp4" /><track kind="captions" srclang="${trackLang}" src="${trackSource}" label="${trackLabel}" default /></video></div>
-</dialog>
-<dialog id="author-dialog" aria-labelledby="author-title">
+  return `<dialog id="author-dialog" aria-labelledby="author-title">
   <div class="dialog-head"><strong id="author-title">${escapeText(content.a11y.authorTitle)}</strong><button class="dialog-close" type="button" aria-label="${escapeAttr(content.a11y.close)}">×</button></div>
   <div class="dialog-body qr-content"><img src="${escapeAttr(shared.authorQr)}" alt="${escapeAttr(content.a11y.authorTitle)}" width="960" height="960" /><p>${escapeText(content.a11y.authorCopy)}</p></div>
 </dialog>
@@ -289,42 +252,80 @@ function renderNoScriptDownload(content) {
   return `<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>${escapeText(content.download.title)}</h2><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div>${renderMacInstallGuide(content)}</div></section></noscript>`
 }
 
-export function renderHomepage(locale, runtimeFacts) {
+function renderQuickstartMain(content, shared, version) {
+  const q = content.quickstart
+  const steps = q.steps.map((step) => {
+    const aside = step.id === 'install'
+      ? `<div><p class="latest"><span data-latest-version>v${escapeText(version)}</span></p><div class="download-options">${renderDownloadOptions(content)}</div><p class="tip">${escapeText(q.installTip)}</p></div>`
+      : `<div class="shot"><img src="${escapeAttr(step.image)}" alt="${escapeAttr(step.imageAlt)}" width="1920" height="1080" /></div>`
+    return `<li class="step" id="step-${escapeAttr(step.id)}">
+      <div>
+        <p class="step-label">${escapeText(step.label)}</p>
+        <h2>${escapeText(step.title)}</h2>
+        <p>${escapeText(step.description)}</p>
+      </div>
+      ${aside}
+    </li>`
+  }).join('\n')
+  const faq = q.faq.map((item) => `<details><summary>${escapeText(item.question)}</summary><p>${escapeText(item.answer)}</p></details>`).join('')
+  return `<section class="qs-hero">
+  <div class="wrap">
+    <p class="eyebrow">${escapeText(q.eyebrow)}</p>
+    <h1 class="display"><span>${escapeText(q.titleLead)}</span> <em>${escapeText(q.titleEmphasis)}</em></h1>
+    <p class="lede">${escapeText(q.lede)}</p>
+  </div>
+</section>
+<section class="block qs-steps">
+  <div class="wrap">
+    <ol class="steps">${steps}</ol>
+    <div class="block-head faq-head"><h2>${escapeText(q.faqTitle)}</h2></div>
+    <div class="faq">${faq}</div>
+    <p class="more">${escapeText(q.more)} <a href="${escapeAttr(shared.handbookUrl)}">${escapeText(q.handbook)}</a> · <a href="${escapeAttr(shared.mcpGuideUrl)}" ${externalAttrs}>${escapeText(q.mcpGuide)}</a></p>
+  </div>
+</section>`
+}
+
+function renderPage(locale, runtimeFacts, pageKey) {
   const content = contentByLocale[locale]
   if (!content) throw new Error(`Unknown marketing locale: ${locale}`)
-  const metadata = buildMetadata(locale, content, runtimeFacts)
-  const interactionData = { cost: content.cost.items, workflow: content.workflow.steps }
+  const page = pageKey === 'home'
+    ? { path: content.path, htmlLang: content.htmlLang, ogLocale: content.ogLocale, meta: content.meta, alternates: PAGE_PATHS.home }
+    : { path: content.quickstart.path, htmlLang: content.htmlLang, ogLocale: content.ogLocale, meta: content.quickstart.meta, alternates: PAGE_PATHS.quickstart }
+  const metadata = buildMetadata(locale, page, runtimeFacts)
+  const main = pageKey === 'home'
+    ? [renderHero(content, runtimeFacts), renderPrice(content), renderFeatures(content, runtimeFacts), renderOpen(content, runtimeFacts), renderCommunity(content, runtimeFacts)].join('\n')
+    : renderQuickstartMain(content, runtimeFacts, runtimeFacts.version)
   return `<!doctype html>
 <html lang="${escapeAttr(content.htmlLang)}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 ${renderMetadata(metadata)}
-<script>${localeBootstrapJs()}</script>
-<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
+${pageKey === 'home' ? `<script>${localeBootstrapJs()}</script>\n` : ''}<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
 <style>${homepageCss}</style>
 </head>
-<body>
+<body class="page-${pageKey}">
 <a class="skip-link" href="#main">${escapeText(content.a11y.skip)}</a>
-${renderNav(content, runtimeFacts, locale)}
+${renderNav(content, locale, pageKey)}
 <main id="main">
-${renderHero(content, runtimeFacts)}
-${renderCost(content)}
-${renderStack(content)}
-${renderWorkflow(content)}
-${renderAgent(content)}
-${renderOpenSource(content, runtimeFacts)}
-${renderStart(content, runtimeFacts, locale)}
-${renderCommunity(content, runtimeFacts)}
-${renderClosing(content, runtimeFacts, locale)}
+${main}
 </main>
+${renderFooter(content, runtimeFacts, locale, pageKey)}
 ${renderDialogs(content, runtimeFacts)}
 ${renderNoScriptDownload(content)}
-<script>${homepageClientJs(downloadUrls, interactionData)}</script>
+<script>${homepageClientJs(downloadUrls)}</script>
 </body>
 </html>
 `
+}
+
+export function renderHomepage(locale, runtimeFacts) {
+  return renderPage(locale, runtimeFacts, 'home')
+}
+
+export function renderQuickstart(locale, runtimeFacts) {
+  return renderPage(locale, runtimeFacts, 'quickstart')
 }

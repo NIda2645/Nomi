@@ -3,8 +3,8 @@ import test from 'node:test'
 import { marketingPages, renderSitemap } from '../../scripts/build-marketing-sitemap.mjs'
 
 test('manifest describes every canonical public route once', () => {
-  assert.deepEqual(marketingPages.map((page) => page.path), ['/', '/en/', '/quickstart', '/handbook'])
-  assert.ok(marketingPages.every((page) => /^2026-08-\d{2}$/.test(page.updatedAt)))
+  assert.deepEqual(marketingPages.map((page) => page.path), ['/', '/en/', '/quickstart', '/en/quickstart', '/handbook'])
+  assert.ok(marketingPages.every((page) => /^\d{4}-\d{2}-\d{2}$/.test(page.updatedAt) && !Number.isNaN(Date.parse(page.updatedAt))))
 })
 
 test('sitemap renderer is deterministic and XML-safe', () => {
@@ -12,6 +12,7 @@ test('sitemap renderer is deterministic and XML-safe', () => {
   assert.equal((xml.match(/<url>/g) || []).length, marketingPages.length)
   assert.match(xml, /<loc>https:\/\/nomiaqm\.com\/quickstart<\/loc>/)
   assert.doesNotMatch(xml, /<loc>https:\/\/nomiaqm\.com\/(?:quickstart|handbook)\.html<\/loc>/)
-  assert.match(xml, /<lastmod>2026-08-23<\/lastmod>/)
+  assert.match(xml, /<loc>https:\/\/nomiaqm\.com\/en\/quickstart<\/loc>/)
+  for (const page of marketingPages) assert.ok(xml.includes(`<lastmod>${page.updatedAt}</lastmod>`))
   assert.doesNotMatch(xml, /&(?!(amp|lt|gt);)/)
 })

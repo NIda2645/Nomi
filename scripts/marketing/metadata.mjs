@@ -3,27 +3,32 @@ const localizedImage = {
   en: '/assets/social-preview-en.jpg',
 }
 
-export function buildMetadata(locale, content, shared) {
-  const canonical = `${shared.siteUrl}${content.path}`
+/**
+ * 一个公开页面的 SEO / 分享 / 结构化数据。
+ * page = { path, htmlLang, ogLocale, meta, alternates: { 'zh-CN': path, en: path } }——
+ * 首页和快速上手各自有一对中英互为 hreflang 的地址，x-default 指中文那一版。
+ */
+export function buildMetadata(locale, page, shared) {
+  const canonical = `${shared.siteUrl}${page.path}`
   const image = `${shared.siteUrl}${localizedImage[locale]}`
 
   const websiteId = `${shared.siteUrl}/#website`
   const applicationId = `${shared.siteUrl}/#application`
   return {
-    title: content.meta.title,
-    description: content.meta.description,
+    title: page.meta.title,
+    description: page.meta.description,
     canonical,
     alternates: [
-      { lang: 'zh-CN', href: `${shared.siteUrl}/` },
-      { lang: 'en', href: `${shared.siteUrl}/en/` },
-      { lang: 'x-default', href: `${shared.siteUrl}/` },
+      { lang: 'zh-CN', href: `${shared.siteUrl}${page.alternates['zh-CN']}` },
+      { lang: 'en', href: `${shared.siteUrl}${page.alternates.en}` },
+      { lang: 'x-default', href: `${shared.siteUrl}${page.alternates['zh-CN']}` },
     ],
     openGraph: {
-      locale: content.ogLocale,
-      title: content.meta.title,
-      description: content.meta.description,
+      locale: page.ogLocale,
+      title: page.meta.title,
+      description: page.meta.description,
       image,
-      imageAlt: content.meta.imageAlt,
+      imageAlt: page.meta.imageAlt,
     },
     jsonLd: {
       '@context': 'https://schema.org',
@@ -39,9 +44,9 @@ export function buildMetadata(locale, content, shared) {
           '@type': 'WebPage',
           '@id': canonical,
           url: canonical,
-          name: content.meta.title,
-          description: content.meta.description,
-          inLanguage: content.htmlLang,
+          name: page.meta.title,
+          description: page.meta.description,
+          inLanguage: page.htmlLang,
           isPartOf: { '@id': websiteId },
           about: { '@id': applicationId },
           primaryImageOfPage: { '@type': 'ImageObject', contentUrl: image },

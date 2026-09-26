@@ -15,6 +15,7 @@ const pages = [
   ['marketing/index.html', 'https://nomiaqm.com/'],
   ['marketing/en/index.html', 'https://nomiaqm.com/en/'],
   ['marketing/quickstart.html', 'https://nomiaqm.com/quickstart'],
+  ['marketing/en/quickstart.html', 'https://nomiaqm.com/en/quickstart'],
   ['marketing/handbook.html', 'https://nomiaqm.com/handbook'],
 ]
 
@@ -62,7 +63,7 @@ test('SEO Observatory public paths match the canonical marketing manifest', () =
 })
 
 test('public onboarding links use the final clean routes', () => {
-  for (const file of ['marketing/index.html', 'marketing/en/index.html', 'marketing/quickstart.html', 'marketing/handbook.html']) {
+  for (const file of ['marketing/index.html', 'marketing/en/index.html', 'marketing/quickstart.html', 'marketing/en/quickstart.html', 'marketing/handbook.html']) {
     const html = read(file)
     assert.doesNotMatch(html, /(?:href|canonical|og:url)=?["'][^"']*\/(?:quickstart|handbook)\.html/, file)
   }

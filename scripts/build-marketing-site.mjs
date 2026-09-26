@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertLocaleParity, locales, shared } from './marketing/content.mjs'
-import { renderHomepage } from './marketing/template.mjs'
+import { renderHomepage, renderQuickstart } from './marketing/template.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
@@ -11,16 +11,17 @@ const checkOnly = process.argv.includes('--check')
 
 assertLocaleParity()
 
-const outputByLocale = new Map([
-  ['zh-CN', 'marketing/index.html'],
-  ['en', 'marketing/en/index.html'],
-])
+// 生成物：首页与快速上手，各一中一英。
+const pages = [
+  { render: renderHomepage, output: { 'zh-CN': 'marketing/index.html', en: 'marketing/en/index.html' } },
+  { render: renderQuickstart, output: { 'zh-CN': 'marketing/quickstart.html', en: 'marketing/en/quickstart.html' } },
+]
 
-const outputs = locales.map((locale) => {
-  const relativePath = outputByLocale.get(locale)
+const outputs = pages.flatMap(({ render, output }) => locales.map((locale) => {
+  const relativePath = output[locale]
   if (!relativePath) throw new Error(`No output path for locale: ${locale}`)
-  return { relativePath, contents: renderHomepage(locale, runtimeFacts) }
-})
+  return { relativePath, contents: render(locale, runtimeFacts) }
+}))
 
 if (checkOnly) {
   const stale = outputs

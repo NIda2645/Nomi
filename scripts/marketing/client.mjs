@@ -15,11 +15,9 @@ export function localeBootstrapJs() {
 })()`
 }
 
-export function homepageClientJs(downloadUrls, interactionData) {
-  const interactions = JSON.stringify(interactionData).replaceAll('<', '\\u003c')
+export function homepageClientJs(downloadUrls) {
   return `(() => {
   const downloadUrls = ${JSON.stringify(downloadUrls)}
-  const interactionData = ${interactions}
   const selectDownload = ${selectDownload.toString()}
   const resolveDownloadRequest = ${resolveDownloadRequest.toString()}
   const localeKey = 'nomi_locale'
@@ -53,60 +51,45 @@ export function homepageClientJs(downloadUrls, interactionData) {
     }
   })
 
-  const activateCost = (tab) => {
-    const data = interactionData.cost.find((item) => item.id === tab.dataset.cost)
-    if (!data) return
-    document.querySelectorAll('[data-cost]').forEach((item) => {
-      const selected = item === tab
-      item.setAttribute('aria-selected', String(selected))
-      item.setAttribute('tabindex', selected ? '0' : '-1')
-    })
-    document.querySelector('#cost-panel')?.setAttribute('aria-labelledby', tab.id)
-    document.querySelector('#cost-index').textContent = data.index
-    document.querySelector('#cost-title').textContent = data.title
-    document.querySelector('#cost-copy').textContent = data.description
-    document.querySelector('#cost-proof').textContent = data.proof
-    const image = document.querySelector('#cost-image')
-    image.src = data.image
-    image.alt = data.imageAlt
-  }
+  // 首屏整片：点了才加载、才出声（B 站那一版就是这个文件）。
+  document.querySelectorAll('[data-film-play]').forEach((button) => button.addEventListener('click', () => {
+    const frame = button.closest('[data-film]')
+    if (!frame) return
+    const video = document.createElement('video')
+    video.className = 'film-video'
+    video.src = frame.dataset.filmSrc
+    video.controls = true
+    video.playsInline = true
+    frame.querySelector('.film-poster')?.remove()
+    button.remove()
+    frame.appendChild(video)
+    video.play().catch(() => {})
+  }))
 
-  const activateWorkflow = (tab) => {
-    const data = interactionData.workflow.find((item) => item.id === tab.dataset.step)
-    if (!data) return
-    document.querySelectorAll('[data-step]').forEach((item) => {
-      const selected = item === tab
-      item.setAttribute('aria-selected', String(selected))
-      item.setAttribute('tabindex', selected ? '0' : '-1')
+  // 功能段：同一个片子文件，只在 [start, end] 这几秒里循环；滚到眼前才静音播放，减少动效偏好时不自动播。
+  const segments = Array.from(document.querySelectorAll('video[data-segment]'))
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  segments.forEach((video) => {
+    const start = Number(video.dataset.start)
+    const end = Number(video.dataset.end)
+    video.addEventListener('loadedmetadata', () => { video.currentTime = start })
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime >= end || video.currentTime < start - 0.5) video.currentTime = start
     })
-    document.querySelector('#workflow-panel')?.setAttribute('aria-labelledby', tab.id)
-    const image = document.querySelector('#workflow-image')
-    image.src = data.image
-    image.alt = data.imageAlt
-    document.querySelector('#workflow-caption').textContent = data.caption
+    if (reduceMotion) { video.controls = true; video.preload = 'metadata' }
+  })
+  if (!reduceMotion && 'IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      const video = entry.target
+      if (entry.isIntersecting) {
+        if (video.preload === 'none') video.preload = 'auto'
+        video.play().catch(() => {})
+      } else {
+        video.pause()
+      }
+    }), { threshold: 0.35 })
+    segments.forEach((video) => observer.observe(video))
   }
-
-  const bindTabs = (selector, activate) => {
-    const tabs = Array.from(document.querySelectorAll(selector))
-    tabs.forEach((tab, index) => {
-      tab.addEventListener('click', () => activate(tab))
-      tab.addEventListener('keydown', (event) => {
-        const horizontal = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
-        const vertical = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
-        let nextIndex = index + horizontal + vertical
-        if (event.key === 'Home') nextIndex = 0
-        else if (event.key === 'End') nextIndex = tabs.length - 1
-        else if (!horizontal && !vertical) return
-        event.preventDefault()
-        const next = tabs[(nextIndex + tabs.length) % tabs.length]
-        activate(next)
-        next.focus()
-      })
-    })
-  }
-  bindTabs('[data-cost]', activateCost)
-  bindTabs('[data-step]', activateWorkflow)
-
   document.querySelectorAll('[data-open-dialog]').forEach((trigger) => trigger.addEventListener('click', (event) => {
     const dialog = document.querySelector('#' + trigger.dataset.openDialog)
     if (!dialog || typeof dialog.showModal !== 'function') return
