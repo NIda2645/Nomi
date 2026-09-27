@@ -1,13 +1,20 @@
-const ACK_PATH = "/api/vendor-callbacks/kie/suno/ack";
+import { type AssetsFetcher, serveAssetWithRanges } from "./byteRange";
+import { ACK_PATH } from "./kieSunoAck";
+
 const ACK_BODY = JSON.stringify({ status: "received" });
 
-type AssetsBinding = { fetch(request: Request): Promise<Response> };
-export type WorkerEnv = { ASSETS?: AssetsBinding };
+export type WorkerEnv = { ASSETS: AssetsFetcher };
+
+// Workers runtime global (not in the DOM/Node libs this repo type-checks against).
+declare const FixedLengthStream: new (length: number) => TransformStream<Uint8Array, Uint8Array>;
 
 /**
  * Stateless KIE/Suno callback sink. It deliberately never reads the request
  * body, headers or query string: callbacks are acknowledged and discarded.
  * Production deployment is a separate approval-gated step.
+ *
+ * Every other request that reaches the worker (media via `run_worker_first`,
+ * paths with no asset) is answered by ASSETS, with byte ranges added on top.
  */
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -21,9 +28,6 @@ export default {
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
-    if (env.ASSETS) return env.ASSETS.fetch(request);
-    return new Response("Not Found", { status: 404 });
+    return serveAssetWithRanges(request, env.ASSETS, (length) => new FixedLengthStream(length));
   },
 };
-
-export { ACK_PATH };

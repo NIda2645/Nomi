@@ -178,3 +178,7 @@ CODEX-REPORT.md
 # scratchpad/（见 tests/ux/media-import-matrix.walk.mjs:31），2026-09-14 因此把 13 个证据文件
 # 连截图一起提进了仓库根。要留档的证据放 docs/evidence/<日期>-<主题>/，不是 scratchpad。
 /scratchpad/
+
+# wrangler dev 的本地状态（miniflare 的 sqlite、打包临时文件）：根目录的 wrangler.json 在这里跑 dev 就会生成，
+# 2026-09-27 修官网 Range 时被 git add -A 一起提进过树。infra/feedback-worker/.gitignore 同理。
+/.wrangler/
