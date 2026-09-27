@@ -125,7 +125,7 @@ More: [quick start](https://nomiaqm.com/en/quickstart) · [model connection](doc
 
 ## Use Nomi from your own agent
 
-Nomi ships an MCP server, so Claude Code, Codex, or Cursor can drive it — generate, arrange, and edit — while reusing the credits that come with your agent subscription. See [Let your AI connect Nomi](docs/integrate-with-your-agent-en.md).
+Nomi ships an MCP server with 24 MCP tools, so Claude Code, Codex, or Cursor can drive it — generate, arrange, and edit — while reusing the credits that come with your agent subscription. See [Let your AI connect Nomi](docs/integrate-with-your-agent-en.md).
 
 ## Community
 

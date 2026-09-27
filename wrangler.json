@@ -1,0 +1,12 @@
+{
+  "name": "nomi",
+  "compatibility_date": "2026-05-04",
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "./marketing",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/*.mp4"]
+  }
+}

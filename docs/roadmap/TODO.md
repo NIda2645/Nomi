@@ -189,6 +189,7 @@
 | T-MO-27 | 自定义中转的「测试连接」/协议自动探测同样静默发真实 `POST /chat/completions` | todo | 09-22 T-MO-10 数门时发现 | 本概念（凭据验证/自检的付费边界）的第 5 扇门：`electron/ai/onboarding/onboardingIpc.ts` 的 `probeOneProtocol`。它要判的是「这个中转说哪套协议」，模型列表答不了这个问题，所以不能简单改免费。没随 T-MO-10 一起改的理由：在发版前阻断 lane 里给每一次「测试连接」加一张确认卡，而那张卡在渲染层不可达时 fail-closed，会把自定义供应商向导变成死路。做法待定：或者先探 `GET /models` 再只对真需要协议判别的那一步问、或者把这一下的费用如实写在按钮上并接进同一份探测策略。**09-22 用户拍板：发后修，本批已加提示**（`src/ui/onboarding/OnboardingWizard.tsx` 的 `modelSetup.testConnectionSpendHint`，中英两语，只加文案不改行为；接进 `credentialProbePolicy` 仍是 T-MO-27 本体）。 |
 | T-MO-26 | 跨字段约束没有家：散在档案注释、手写 `request_transform`、供应商报错三处；UI 仍把非法组合摆成可选 | todo | 09-18 批次 3 收尾 | 最早能拦住的那层是 UI 置灰（R17），那要给档案体系加「跨字段约束」这个声明位；今天只能在发请求前拦。与 `vendorParams` / `paramMap` 两套机制解决同一类问题、可合并那条一起做 |
 | T-MO-28 | 模型雷达 09-24 发现 13 个新模型待分诊；论文雷达 09-07 起静默停跑（本机没装 `nomi-model-radar` / `nomi-research-radar` 技能） | todo（发版后） | 09-26 协调会话收口 · 卡 task_56ac7b30 · 用户 09-26 拍板 | 先装回雷达技能；分诊挑 2–3 个出接入方案；节奏：每版最多接 1–2 个新模型 |
+| T-MO-29 | KIE/Suno 回调地址 `https://nomiaqm.com/api/vendor-callbacks/kie/suno/ack` 一个语义多份定义：`electron/catalog/kieSunoAudio.ts`、`electron/shared/modelArchetypes/sunoAudio.ts`（3 处）、生成文件 `archetypeWireDefaults.audio.generated.ts`，站点侧在 `worker/kieSunoAck.ts` | todo | 09-27 修 T-WB-06 时发现（R14.1 同一语义几份定义） | 定一个 owner（档案侧常量），其余引用它；worker 侧路径与之对等棘轮 |
 
 ## G. 生态与插件
 
@@ -262,6 +263,7 @@
 | T-QA-38 | 走查 `agent-inflight-shots-reload` 判不了「重开后底栏『生成全部』不算在跑的制作镜头」：场景里两镜都归制作 Run、没有别的可生成节点，底栏本来就不出现，原断言「不在或置灰」永远过，已删 | todo | 09-26 协调会话收尾 N3c 时 check:walkthroughs 抓到（absence-without-baseline） | 场景里加一张用户自己的闲置节点作阳性对照：重开后底栏在、数的是 1 不是 3。归属判据现由 #875 单测守 |
 | T-QA-37 | 三条走查与现状漂移，不在任何 CI 链里：`agent-runtime-production.walk.mjs`（内联拆镜后等批准卡，但夹具的批准策略是「自动改」，方案直接写进去了）、`process-feedback-electron.e2e.mjs`（页面中途没了，catch 里截图先炸、原始错误被吞）、`decompose-ui.walk.mjs`（依赖本机 `.tmp/decompose-fixture.jpg`，仓库里没有） | todo | 09-26 协调会话在 `claude/walks-single-run-no-card` 上逐条真跑（Windows） | 前两条在本分支改动之前就红；另有两条只能在 Mac 验：`agent-runtime-video-export`（写死 `/opt/homebrew/bin/ffmpeg`）、`canvas-shortcut-parity`（要 `NOMI_REAL_MEDIA_DIR` 下的 4K HEVC 真素材） |
 | T-QA-39 | `pnpm run feel:nightly` 是空跑：截的是 `tests/ux/journeys/catalog.json` 里手写的 HTML 片段，不是产品 | todo | 09-26 协调会话打 v0.22.1 RC 时按 release-process 跑它才发现 | `scripts/feel-nightly.mjs:52` 用 `page.setContent(state.html)` 渲染夹具，记录里自己也写着 `evidence: rendered-fixture-not-product-walkthrough`——接触表「没有未分诊的发现」证明不了产品手感。发版清单（`docs/release-process.md:174`「RC 前必须运行…接触表无未分诊体感发现」）却把它当一道验收门。要么让它驱动真实应用（复用 `tests/ux/_walkthrough.mjs` 的真实启动），要么从发版清单里拿掉、别再当证据；二选一，不留两份 |
+| T-QA-41 | 改了非代码文件（README、`marketing/_headers`、`wrangler.json`、docs）时，Unit 的「相关测试」一条都选不中：`scripts/test-focused.mjs` 只给 `.ts/.js` 源码找同名测试和 import 关联，而有一批测试是用 `fs.readFileSync` 直接读这些文件做契约的。#901 重写 README 丢了「24 MCP tools」，Unit 绿着合进 main；到 #903 碰了 eslint 配置升全量才被 `electron/capabilityCore/nomiMcpProductionRuns.test.ts` 抓到 | todo | 09-27 #903 CI 实查 | 选测时对改动的非代码文件，按「测试源码里出现该文件的仓库相对路径」补选（README.md / wrangler.json 等字面量），读不到字面量的（`path.join(dir, name)`）改成字面量；加一条「改 README 必选中文档契约测试」的自测 |
 
 ## J. 官网与发布
 
@@ -271,6 +273,9 @@
 | T-WB-02 | logo 与真实产品不一致 | done #788 | [原文 09-13 19:12](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合 |
 | T-WB-03 | 产品发布会：PPT（对标 Apple）+ 逐字稿 + 图片/视频素材 + 特效 + 音乐 | hold | 09-08 用户加入，排最后 | **先写逐字稿**（逐字稿就是定位练习）；demo 段全部真机录屏，片子尽量用 Nomi 自己做 |
 | T-WB-04 | 每周 RC 的发版时钟；`docs-autosync` 从来没能开 PR（仓库设置禁止 Actions 建 PR），**债已经攒出来了**：09-14 实测 `origin/main` 上 `check:docs-index` 超基线 136 篇、`check:doc-status` 超基线 101 篇 | todo | 09-07 裁决 · 09-09 实核 · 09-14 实测 | 这两个门岗在 `gates:contracts` 里是 advisory 所以没人看见；**要么用户开「Actions 可建 PR」，要么手工 cherry-pick `docs/autosync-*` 分支补齐** |
+| T-WB-05 | 官网自动部署停了：Cloudflare 免费档每月 3000 构建分钟被**分支预览构建**烧光（9 月 624 个 PR，每推一次都装全套 Electron 依赖；官网构建本身零依赖），09-26 06:59 起所有构建失败，线上停在 0.22.0 | hold（等用户改后台） | 09-27 协调会话实查（Workers Builds 检查全红、`wrangler deploy --dry-run` 通过） | 用户在 Cloudflare 后台：分支控制关「Enable Preview Builds」、构建变量加 `SKIP_DEPENDENCY_INSTALL=1`；10 月额度重置前靠本机 `npx wrangler deploy`（09-27 已手动发布 #901） |
+| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | doing #903 | 09-27 部署后线上实测 | worker 接管 `*.mp4` 按 ETag 数长度切片；合入后重新部署并在线上复核 |
+| T-WB-07 | 官网没有 404 页：不存在的路径回空白 404（此前是 worker 的纯文本 `Not Found`） | todo | 09-27 修 T-WB-06 时发现 | 新画一页，按 R8 先出样张，放 `marketing/404.html`（`not_found_handling = "404-page"` 已配） |
 
 ---
 
