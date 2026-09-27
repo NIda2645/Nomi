@@ -32,7 +32,47 @@ import {
 import type { ResidentSurface } from '../resident/residentShellDisplay'
 import { collapseV4Flow } from './agentPanelV4Collapse'
 import { useV4Labels } from './agentPanelV4Labels'
+import { replaceEqualDeep } from './shareEqualDeep'
 import type { ContextUsage, InterventionData, QueueRowData, V4Chip, V4FlowItem } from './agentPanelV4Types'
+
+type ToolDisplay = Readonly<{ label: string; summary: string | undefined }>
+
+function createToolDisplayCache(t: (key: string, options?: Record<string, unknown>) => string): Readonly<{
+  label: (name: string, args: unknown) => string
+  summary: (name: string, args: unknown) => string | undefined
+}> {
+  const objectCache = new WeakMap<object, Map<string, ToolDisplay>>()
+  const primitiveCache = new Map<string, ToolDisplay>()
+  const get = (name: string, args: unknown): ToolDisplay => {
+    const objectKey = args !== null && (typeof args === 'object' || typeof args === 'function') ? args : undefined
+    const cache = objectKey
+      ? (() => {
+        const existing = objectCache.get(objectKey)
+        if (existing) return existing
+        const created = new Map<string, ToolDisplay>()
+        objectCache.set(objectKey, created)
+        return created
+      })()
+      : primitiveCache
+    const key = objectKey ? name : `${name}\u0000${typeof args}\u0000${String(args)}`
+    const cached = cache.get(key)
+    if (cached) return cached
+    const display = Object.freeze({
+      label: readableToolName(t, name, args),
+      summary: readableToolSummary(t, name, args),
+    })
+    cache.set(key, display)
+    return display
+  }
+  return {
+    label: (name, args) => get(name, args).label,
+    summary: (name, args) => get(name, args).summary,
+  }
+}
+
+export function shareFlowItems(previous: readonly V4FlowItem[], next: readonly V4FlowItem[]): readonly V4FlowItem[] {
+  return replaceEqualDeep(previous, next)
+}
 
 
 export type AgentPanelV4Data = Readonly<{
@@ -85,6 +125,8 @@ export type AgentPanelV4Data = Readonly<{
 export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data {
   const { t, i18n } = useTranslation()
   const labels = useV4Labels()
+  const toolDisplayCache = React.useMemo(() => createToolDisplayCache(t), [t])
+  const previousFlowRef = React.useRef<readonly V4FlowItem[]>([])
   const snapshot = React.useSyncExternalStore(laneClient.subscribe, laneClient.workspace, laneClient.workspace)
   const committedProposal = React.useSyncExternalStore(subscribeCommittedProposal, getCommittedProposal, getCommittedProposal)
   const undoableToolCallId = undoableLaneToolCallId(snapshot.active.parts, committedProposal)
@@ -187,8 +229,8 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
   const timelineSelection = useTimelineSelectionChips(surface, timeline, selectedClipIds, selectedTextClipId)
 
   const view = React.useMemo(() => laneViewModel(snapshot.active, {
-    toolLabel: (name, args) => readableToolName(t, name, args),
-    toolSummary: (name, args) => readableToolSummary(t, name, args),
+    toolLabel: toolDisplayCache.label,
+    toolSummary: toolDisplayCache.summary,
     // C5：有结构化信封就按 `code` 查本地词条；没有（旧转录）才退回按正文猜。
     // **两条路都不再 `?? text`**——那个兜底正是把模型收到的英文散文印给用户的那一行。
     toolFailure: (text, failure) => (failure ? laneToolFailureSummary(t, failure) : humanizeToolFailure(t, text)),
@@ -212,14 +254,17 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
       const found = skills.find((skill) => skill.name === key)
       return found ? { cover: found.cover, preview: found.preview } : undefined
     },
-  }, undoableToolCallId), [snapshot.active, i18n.language, skills, skillLabel, t, undoableToolCallId])
+  }, undoableToolCallId), [snapshot.active, i18n.language, skills, skillLabel, t, toolDisplayCache, undoableToolCallId])
   const flow = React.useMemo(() => {
     const items = [...view.items]
     const last = items.at(-1)
     if (view.retry || (view.running && !primaryPending && (!last || last.kind === 'user'))) {
       items.push({ kind: 'thinking', label: view.retry ?? t('agentPanelV4.thinkingLabel'), meta: '' })
     }
-    return collapseV4Flow(items, t)
+    const next = collapseV4Flow(items, t)
+    const shared = shareFlowItems(previousFlowRef.current, next)
+    previousFlowRef.current = shared
+    return shared
   }, [view.items, view.retry, view.running, primaryPending, t])
   const planRows = useTimelinePlanRows(primaryPending?.toolName, primaryPending?.args, timeline, t)
   const [planState, setPlanState] = React.useState<{ forCallId: string | null; unchecked: ReadonlySet<string>; collapsed: boolean }>(

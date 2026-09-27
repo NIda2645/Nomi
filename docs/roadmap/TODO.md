@@ -26,7 +26,7 @@
 | T-RL-12 | v0.22.1 重打 RC：画布跟手（#871）+ Windows 修复（#862 #863 #864）+ 09-25 一批回归（#869 #870 #873 #874 #875 #876）+ 画布手感三改（#880） | doing | 用户 09-25 拍板「画布手感修完和 Windows 修复一起重打 RC」 | 协调会话推进：#880 合入 → release/0.22.1 并入 main → feel:nightly → RC → Windows 验收三项（卡顿巡检两遍 / Agent 三回合 / 打包沙箱）→ 用户 Mac 验收 → 点头再发；发版后回 #861 |
 | T-RL-13 | RC 从 main 触发、却把 release 分支填进 `ref` 输入：构建、验收全过，`Desktop Release` 到最后一步才报 `RC commit mismatch` 拒发 | todo（下一版） | 09-26 协调会话 v0.22.1 晋级被拦（Desktop Release run 36248271714；RC 36235580649 只能从同一提交重打成 36248506177） | 防线放在最早那一层（R17）：`.github/workflows/desktop-rc.yml` 的 validate 第一步比较 `github.sha` 与解析出来的 `inputs.ref`，不等就直接红（加规则先验它会红），`docs/release-process.md` §4 写明「Use workflow from 选 release 分支 / `--ref`」。另外 §5 的顺序要写清：release→main 的 PR 合并会触发 `delete_branch_on_merge` 删掉 release 分支，晋级前如果还要重打 RC，得先把分支推回原提交。教训见 `docs/lessons/rc-must-be-dispatched-on-the-release-branch.md` |
 | T-RL-14 | `Desktop Release` 在「Create immutable tag」失败：CI 上 `pnpm install` 的 postinstall（`scripts/install-git-hooks.cjs`）把开发者用的 pre-push 钩子也装上了，钩子要 Ponytail 收据，于是工作流自己往远端写 `v0.22.1` 标签被拦 | todo（下一版） | 09-26 v0.22.1 晋级（Desktop Release run 36251951690 失败；在本机先打好同名标签后，run 36252239904 复用标签发布成功） | 开发者钩子是给人推分支用的，机器在 CI 里推标签不该经过它。修在最早那层（R17）：安装脚本在 `CI` / `GITHUB_ACTIONS` 环境下不装 git 钩子（先写一条会红的测试），不在工作流里加绕过参数（绕口写法照旧拒绝）。修好前的临时做法：发布前在本机把同名标签打到 RC 提交上推上去，工作流对「标签已存在且指向 RC_SHA」会直接复用 |
-
+| T-RL-15 | Agent 在跑时界面卡几分钟（渲染进程，行级 labels 每行每次重建 + 行未 memo） | doing | 09-27 用户反馈 + 主管 Windows 实测 | useV4Labels 按语言共享缓存、V4FlowRow memo、flow 条目结构共享与工具摘要按参数身份缓存；只改渲染进程性能边界 |
 ## B. Agent 质量
 
 > 用户 09-14 的验收句：「明显有问题的功能优化到可用 **+ Agent 优化到可用**」。
@@ -274,7 +274,7 @@
 | T-WB-03 | 产品发布会：PPT（对标 Apple）+ 逐字稿 + 图片/视频素材 + 特效 + 音乐 | hold | 09-08 用户加入，排最后 | **先写逐字稿**（逐字稿就是定位练习）；demo 段全部真机录屏，片子尽量用 Nomi 自己做 |
 | T-WB-04 | 每周 RC 的发版时钟；`docs-autosync` 从来没能开 PR（仓库设置禁止 Actions 建 PR），**债已经攒出来了**：09-14 实测 `origin/main` 上 `check:docs-index` 超基线 136 篇、`check:doc-status` 超基线 101 篇 | todo | 09-07 裁决 · 09-09 实核 · 09-14 实测 | 这两个门岗在 `gates:contracts` 里是 advisory 所以没人看见；**要么用户开「Actions 可建 PR」，要么手工 cherry-pick `docs/autosync-*` 分支补齐** |
 | T-WB-05 | 官网自动部署停了：Cloudflare 免费档每月 3000 构建分钟被**分支预览构建**烧光（9 月 624 个 PR，每推一次都装全套 Electron 依赖；官网构建本身零依赖），09-26 06:59 起所有构建失败，线上停在 0.22.0 | hold（等用户改后台） | 09-27 协调会话实查（Workers Builds 检查全红、`wrangler deploy --dry-run` 通过） | 用户在 Cloudflare 后台：分支控制关「Enable Preview Builds」、构建变量加 `SKIP_DEPENDENCY_INSTALL=1`；10 月额度重置前靠本机 `npx wrangler deploy`（09-27 已手动发布 #901） |
-| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | doing #903 | 09-27 部署后线上实测 | worker 接管 `*.mp4` 按 ETag 数长度切片；合入后重新部署并在线上复核 |
+| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | done #903 | 09-27 部署后线上实测 | 已合 #903 并部署；09-27 线上核对 Range 206 与原文件逐字节一致、越界 416、功能段循环正常 |
 | T-WB-07 | 官网没有 404 页：不存在的路径回空白 404（此前是 worker 的纯文本 `Not Found`） | todo | 09-27 修 T-WB-06 时发现 | 新画一页，按 R8 先出样张，放 `marketing/404.html`（`not_found_handling = "404-page"` 已配） |
 
 ---
