@@ -38,6 +38,17 @@ function makeRepository(t) {
   return root
 }
 
+function reviewHead(root) {
+  runBranchReview({
+    repoRoot: root,
+    env: { PONYTAIL_REVIEW_BASE_REF: BASE_REF, PONYTAIL_REVIEW_CODEX_BIN: 'codex', PONYTAIL_REVIEW_REPORT_DIR: path.join(root, 'reports') },
+    spawnSyncImpl: (_command, args) => {
+      fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], 'Lean already. Ship.\nnet: -0 lines possible.\nPONYTAIL_REVIEW: PASS\n')
+      return { status: 0, stdout: '', stderr: '' }
+    },
+  })
+}
+
 function hook(name) {
   const definition = installer.HOOKS.find((candidate) => candidate.name === name)
   assert.ok(definition, `missing ${name} definition`)
@@ -108,14 +119,7 @@ test('真跑一次生成的 pre-push：无收据被拦，评审过后放行', (t
   assert.notEqual(blocked.status, 0)
   assert.match(blocked.stderr, /review:branch/)
 
-  runBranchReview({
-    repoRoot: root,
-    env: { PONYTAIL_REVIEW_BASE_REF: BASE_REF, PONYTAIL_REVIEW_CODEX_BIN: 'codex', PONYTAIL_REVIEW_REPORT_DIR: path.join(root, 'reports') },
-    spawnSyncImpl: (_command, args) => {
-      fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], 'Lean already. Ship.\nnet: -0 lines possible.\nPONYTAIL_REVIEW: PASS\n')
-      return { status: 0, stdout: '', stderr: '' }
-    },
-  })
+  reviewHead(root)
 
   const allowed = run()
   assert.equal(allowed.status, 0, allowed.stderr)
@@ -125,6 +129,52 @@ test('真跑一次生成的 pre-push：无收据被拦，评审过后放行', (t
 test('空 push 输入不拦：没有 ref 更新就没有要评审的树', (t) => {
   const root = makeRepository(t)
   assert.equal(verifyPushReceipt({ repoRoot: root, ranges: parsePushInput('') }).ok, true)
+})
+
+
+// v0.22.2 发布：CI 里 pnpm install 装上了这个钩子，给已合入 main 的 RC 提交推版本标签时被拦（runner 上没有收据）。
+test('已在远端历史里的附注标签不要收据：推它没有新内容离开本机', (t) => {
+  const root = makeRepository(t)
+  git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+  git(root, ['tag', '-a', 'v9.9.9', '-m', 'release'])
+  const tagObject = git(root, ['rev-parse', 'refs/tags/v9.9.9'])
+  const result = verifyPushReceipt({ repoRoot: root, ranges: parsePushInput(`refs/tags/v9.9.9 ${tagObject} refs/tags/v9.9.9 ${ZERO}\n`) })
+  assert.equal(result.ok, true, result.reason)
+  assert.match(result.reason, /已在远端历史中/)
+})
+
+test('指向本机新提交的标签照样要收据：豁免判据是内容在不在远端，不是 ref 是不是 tag', (t) => {
+  const root = makeRepository(t)
+  git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+  fs.writeFileSync(path.join(root, 'fresh.txt'), 'fresh\n')
+  git(root, ['add', 'fresh.txt'])
+  git(root, ['commit', '--quiet', '-m', 'fresh'])
+  git(root, ['tag', '-a', 'v9.9.10', '-m', 'unreviewed'])
+  const tagObject = git(root, ['rev-parse', 'refs/tags/v9.9.10'])
+  const result = verifyPushReceipt({ repoRoot: root, ranges: parsePushInput(`refs/tags/v9.9.10 ${tagObject} refs/tags/v9.9.10 ${ZERO}\n`) })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /没有可读的分支评审收据/)
+})
+
+test('混合推送：已发布的 ref 豁免，新内容仍按收据的树校验', (t) => {
+  const root = makeRepository(t)
+  git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+  const published = git(root, ['rev-parse', 'HEAD'])
+  fs.writeFileSync(path.join(root, 'fresh.txt'), 'fresh\n')
+  git(root, ['add', 'fresh.txt'])
+  git(root, ['commit', '--quiet', '-m', 'fresh'])
+  const head = git(root, ['rev-parse', 'HEAD'])
+  const input = `refs/tags/v9.9.11 ${published} refs/tags/v9.9.11 ${ZERO}\nrefs/heads/task ${head} refs/heads/task ${ZERO}\n`
+  assert.equal(verifyPushReceipt({ repoRoot: root, ranges: parsePushInput(input) }).ok, false)
+  reviewHead(root)
+  const reviewed = verifyPushReceipt({ repoRoot: root, ranges: parsePushInput(input) })
+  assert.equal(reviewed.ok, true, reviewed.reason)
+  fs.writeFileSync(path.join(root, 'fresh.txt'), 'changed after review\n')
+  git(root, ['commit', '--quiet', '-am', 'drift'])
+  const drifted = git(root, ['rev-parse', 'HEAD'])
+  const stale = verifyPushReceipt({ repoRoot: root, ranges: parsePushInput(`refs/tags/v9.9.11 ${published} refs/tags/v9.9.11 ${ZERO}\nrefs/heads/task ${drifted} refs/heads/task ${ZERO}\n`) })
+  assert.equal(stale.ok, false)
+  assert.match(stale.reason, /不符/)
 })
 
 test('linked worktrees get isolated hook paths without touching the base worktree', (t) => {
