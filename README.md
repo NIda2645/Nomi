@@ -37,7 +37,7 @@ Nomi gives you a pro-grade workflow on top of **your own** models. You pay your 
 
 ## Watch the film
 
-[![Watch the 90-second Nomi 0.22 film](marketing/assets/promo-0.22/film-poster-en.jpg)](https://nomiaqm.com/assets/video/nomi-0.22-film.mp4)
+[![Watch the 90-second Nomi 0.22 film](marketing/assets/promo-0.22/film-poster-en.jpg)](https://github.com/aqm857886159/Nomi/blob/main/marketing/assets/video/nomi-0.22-film.mp4)
 
 Every screen in the film is Nomi's real UI, and every image and clip in it was generated with Nomi.
 

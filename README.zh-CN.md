@@ -39,7 +39,7 @@ Nomi 给你商业产品级别的工作流，底下跑的是**你自己的**模�
 
 ## 看宣传片
 
-[![看 90 秒 Nomi 0.22 宣传片](marketing/assets/promo-0.22/film-poster-zh.jpg)](https://nomiaqm.com/assets/video/nomi-0.22-film.mp4)
+[![看 90 秒 Nomi 0.22 宣传片](marketing/assets/promo-0.22/film-poster-zh.jpg)](https://github.com/aqm857886159/Nomi/blob/main/marketing/assets/video/nomi-0.22-film.mp4)
 
 片子里的界面都是 Nomi 的真实组件，画面素材都是用 Nomi 生成的。
 

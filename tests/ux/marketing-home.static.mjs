@@ -199,7 +199,8 @@ expect(readmeZh.includes('“系统设置”→“隐私与安全”'), 'Chinese
 for (const readme of [readmeEn, readmeZh]) {
   expect(readme.includes('xattr -dr com.apple.quarantine "/Applications/Nomi.app"'), 'README damaged-app recovery uses the scoped quarantine command')
   expect(!readme.includes('spctl --master-disable'), 'README never disables Gatekeeper globally')
-  expect(readme.includes('https://nomiaqm.com/assets/video/nomi-0.22-film.mp4'), 'README links the 0.22 film')
+  // README 链仓库里同一个片子文件：合并即可看，不依赖官网部署。
+  expect(readme.includes('https://github.com/aqm857886159/Nomi/blob/main/marketing/assets/video/nomi-0.22-film.mp4'), 'README links the 0.22 film hosted in this repository')
   for (const image of readme.matchAll(/(?:src|srcset)="(marketing\/assets\/[^"]+)"|\]\((marketing\/assets\/[^)]+)\)/g)) {
     const relative = image[1] ?? image[2]
     expect(fs.existsSync(path.join(root, relative)), `README image ${relative} exists`)
